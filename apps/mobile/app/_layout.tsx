@@ -246,7 +246,7 @@ function RootLayout() {
           // `mascotas/index` override this back to `() => null` below — they
           // hide the back control on purpose and were never this component's
           // decision to make.
-          headerLeft: () => <HeaderBackButton />,
+          headerLeft: (props) => <HeaderBackButton {...props} />,
         }}
       >
         {/* The gate renders no chrome of its own — it is a decision, not a page. */}
