@@ -1,4 +1,8 @@
-// ASENTAR — writing one of the asientos an owner may write, from the phone.
+// ANOTAR — writing one of the asientos an owner may write, from the phone.
+// (Renamed from "Asentar" on screen, U-2 native review — see `KindPicker`'s
+// own comment. The FILE and its identifiers keep the old word where it is
+// already load-bearing prose about the domain act of writing an asiento;
+// only the on-screen verb changed.)
 //
 // SIX WHEN THIS SCREEN WAS BUILT, ELEVEN NOW: WU-L added visita veterinaria,
 // información clínica, esterilización and microchip, and WU-M added síntoma —
@@ -150,6 +154,7 @@ import {
   dispositionMethodLabel,
   emptyDraft,
   frequencyLabel,
+  inputCodeMessage,
   invalidFields,
   kindSubtitle,
   kindTitle,
@@ -332,9 +337,20 @@ function KindPicker({
     // del kit ya trae `keyboardShouldPersistTaps="handled"`, así que ese botón
     // se puede tocar con el teclado abierto y sin un toque previo para cerrarlo.
     <Screen keyboardAvoiding>
+      {/* "Anotar", not "Asentar" (U-2, native review). The credential's front
+          pill (`OwnerFace.tsx`) and this picker are the exact same act reached
+          from two doors, and the two doors used to say two different verbs —
+          which reads as two different features to someone who has only ever
+          used one of the two faces. "Anotar" is the front's word, kept here
+          because the front is the surface most people meet first. The domain
+          verb the death form uses ("Asentar el fallecimiento",
+          `recordEventCta`) is deliberately untouched: that CTA is not naming
+          this entry point, it is naming the one act that closes a life
+          record, and its own comment there says why "registrar" was wrong
+          for it. */}
       <View style={styles.header}>
         <Eyebrow>Libreta sanitaria</Eyebrow>
-        <Title>Asentar</Title>
+        <Title>Anotar</Title>
         <Body>¿Qué querés registrar?</Body>
       </View>
       {/* ARRIBA DE LAS FILAS Y SIN REEMPLAZARLAS. Ver la cabecera de
@@ -616,6 +632,18 @@ function EventForm({
   // same-day confirm below is the SAME attempt resent.
   const attempt = useRef(createAttemptSession());
   const [photo, setPhoto] = useState<TattooPhotoState>({ phase: "none" });
+  // F-10 (native review): "Falta la foto del tatuaje…" stayed on screen after
+  // the photo it was complaining about finished uploading. `set()` above
+  // clears a stale field error the moment the DRAFT changes, but the photo is
+  // its own state — not a draft field, per `invalidFields`'s own comment on
+  // `TATTOO_PHOTO_REQUIRED` — so nothing was watching it. Cleared only when
+  // the CURRENT message is exactly this one, so an unrelated refusal
+  // (`TATTOO_CODE_REQUIRED`, a same-day confirm, a server error) is never
+  // dismissed by a photo finishing in the background.
+  useEffect(() => {
+    if (photo.phase !== "ready") return;
+    setError((current) => (current === inputCodeMessage("TATTOO_PHOTO_REQUIRED") ? null : current));
+  }, [photo.phase]);
   /** T4-M1 (2026-09-22): guards the recovery effect below against StrictMode's
    *  mount → unmount → mount. See that effect's own comment. */
   const startedRecovery = useRef(false);
@@ -847,7 +875,7 @@ function EventForm({
     return (
       <Screen>
         <View style={styles.header}>
-          <Eyebrow>Asentar</Eyebrow>
+          <Eyebrow>Anotar</Eyebrow>
           <Title>{kindTitle(kind)}</Title>
         </View>
         <Callout tone="neutral" title="Todavía no se puede registrar un tatuaje desde la app">
@@ -909,7 +937,7 @@ function EventForm({
   return (
     <Screen keyboardAvoiding scrollRef={scrollRef}>
       <View style={styles.header}>
-        <Eyebrow>Asentar</Eyebrow>
+        <Eyebrow>Anotar</Eyebrow>
         <Title>{kindTitle(kind)}</Title>
         <Body>{kindSubtitle(kind)}</Body>
       </View>
@@ -1086,6 +1114,14 @@ function TattooPhotoField({
         La foto es obligatoria: es la mejor forma de que quien encuentre a tu mascota reconozca el
         tatuaje.
       </Body>
+      {/* PO decision 20A (native review), same line `PetPhotoScreen` carries:
+          this button opens the gallery (`launchImageLibraryAsync`) and has no
+          camera control of its own. */}
+      {state.phase === "none" || state.phase === "failed" ? (
+        <Body>
+          Podés elegir una que ya tengas, o sacar una nueva con la cámara y elegirla después.
+        </Body>
+      ) : null}
 
       {state.phase === "ready" && state.previewUri !== null ? (
         <Image

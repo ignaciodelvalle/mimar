@@ -192,6 +192,21 @@ describe("the build without the module", () => {
   });
 });
 
+describe("PO decision 20A (native review): the gallery helper line", () => {
+  it("says a camera photo also lands in the gallery this button opens", () => {
+    // "Elegir una foto" only ever opens `launchImageLibraryAsync` — there is
+    // no camera control anywhere on this screen — so a person who wants a
+    // NEW photo has no way to know the camera app still gets them here.
+    installPicker();
+    render(<PetPhotoScreen publicToken={TOKEN} />);
+    expect(
+      screen.getByText(
+        "Podés elegir una que ya tengas, o sacar una nueva con la cámara y elegirla después.",
+      ),
+    ).toBeTruthy();
+  });
+});
+
 describe("the pick", () => {
   it("lands an accepted photo on the REVIEW step, not in an upload", async () => {
     installPicker();

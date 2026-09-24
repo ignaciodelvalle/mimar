@@ -123,7 +123,7 @@ export function LibretaScreen({
     async (mode: "initial" | "refresh" = "initial") => {
       const mine = ++generation.current;
       // A refresh leaves the ledger on screen; only a first read has nothing
-      // to show. `PrimaryButton`'s "Asentar" keys off this phase too, so
+      // to show. `PrimaryButton`'s "Anotar" keys off this phase too, so
       // resetting it on a pull also disabled the one control this face offers.
       if (mode === "initial") setState({ phase: "loading" });
       const result = await fetchPetLibreta(sessionPort, publicToken);
@@ -142,7 +142,7 @@ export function LibretaScreen({
   );
 
   // ON FOCUS, NOT ONLY ON MOUNT, and that changed the day this screen grew a
-  // write. "Asentar" pushes a route on top of this one; coming back does not
+  // write. "Anotar" pushes a route on top of this one; coming back does not
   // remount, so a plain mount effect would leave the owner staring at the
   // libreta they just added to, unchanged, wondering whether it saved. The
   // generation counter already makes a redundant load harmless.
@@ -194,8 +194,14 @@ export function LibretaScreen({
           flow rather than pinned: the kit has no sticky-footer primitive, and
           inventing one for a control that now needs no scrolling would be a new
           pattern bought for nothing. */}
+      {/* "Anotar", not "Asentar" (U-2, native review, one verb for recording
+          events): the credential's front pill (`OwnerFace.tsx`) and this
+          button open the exact same picker, and the two used to disagree —
+          which reads as two different actions to someone who has only ever
+          seen one of the two faces. "Anotar" won because it is the front's,
+          and the front is what most people see first. */}
       <PrimaryButton
-        label="Asentar"
+        label="Anotar"
         onPress={() => router.push(recordEventRoute(publicToken))}
         disabled={state.phase === "loading"}
       />

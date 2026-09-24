@@ -553,7 +553,7 @@ function ActionFooter({ view, gates }: { view: OwnerFaceView; gates: OwnerFaceGa
           <FaceAction
             icon="libreta"
             label="Anotar"
-            accessibilityHint="Asentar un evento en la libreta."
+            accessibilityHint="Anotar un evento en la libreta."
             onPress={() => router.push(recordEventRoute(view.publicToken))}
           />
         ) : null}
@@ -752,6 +752,15 @@ function MoreList({
           this different from the silent dead rows those handlers replaced. */}
       {gates.showWebOnlyRows ? (
         <MoreRow label="Chapa física" caption="Se pide desde la web" />
+      ) : null}
+      {/* U-5 (native review): the web's own "Más" sheet lists this beside
+          "Buscar hogar" and "Chapa física" (`MasSheet.tsx`'s own header
+          comment) — `/mis-mascotas/{token}/asistencia`, the assistance-dog
+          designation. Same pattern as "Chapa física" above: inert with a
+          caption naming where it lives, not a browser tab, for the reason
+          this whole block's header gives. */}
+      {gates.showWebOnlyRows ? (
+        <MoreRow label="Perro de asistencia" caption="Se hace desde la web" />
       ) : null}
       {/* ONE DESTINATION, TWO LABELS, TWO AUDIENCES — AND NOT AN `else`
             (finding F2, review 2026-09-07). The else arm here covered `owner`

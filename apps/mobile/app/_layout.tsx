@@ -59,6 +59,7 @@ import { startPushRegistration } from "../src/notifications/push-session-binding
 import { usePushTapNavigation } from "../src/notifications/push-tap";
 import { initSentry } from "../src/observability/sentry";
 import { useNavigationBreadcrumb } from "../src/observability/use-navigation-breadcrumb";
+import { HeaderBackButton } from "../src/ui/HeaderBackButton";
 import { OfflineBanner } from "../src/ui/OfflineBanner";
 import { HeaderMenuButton } from "../src/ui/TopLevelNavMenu";
 import { FONTS, useLnFonts } from "../src/ui/fonts";
@@ -237,6 +238,15 @@ function RootLayout() {
           },
           headerShadowVisible: false,
           contentStyle: { backgroundColor: COLORS.canvas },
+          // A-4 (native review): app-wide, replacing the automatic back
+          // control's TalkBack name ("Navigate up", AndroidX's own unlabelled
+          // default) with "Volver". See `HeaderBackButton`'s own header for
+          // why no declarative prop does this in this build's react-navigation
+          // / react-native-screens versions. `identidad-pendiente` and
+          // `mascotas/index` override this back to `() => null` below — they
+          // hide the back control on purpose and were never this component's
+          // decision to make.
+          headerLeft: () => <HeaderBackButton />,
         }}
       >
         {/* The gate renders no chrome of its own — it is a decision, not a page. */}
@@ -252,7 +262,11 @@ function RootLayout() {
         <Stack.Screen name="crear-cuenta" options={{ headerShown: false }} />
         <Stack.Screen
           name="identidad-pendiente"
-          options={{ title: "Falta un paso", headerBackVisible: false }}
+          // `headerLeft: () => null` — not just `headerBackVisible: false` —
+          // since the screenOptions default now supplies its OWN `headerLeft`,
+          // which a per-screen `headerBackVisible` no longer has any control
+          // over once one is set.
+          options={{ title: "Falta un paso", headerBackVisible: false, headerLeft: () => null }}
         />
         {/* HEADER MENU ON BOTH — U-1 (M2, Samsung J7 2016 / Android 8): every
             top-level destination used to be a footer link below every pet
@@ -266,6 +280,9 @@ function RootLayout() {
           options={{
             title: "Mis mascotas",
             headerBackVisible: false,
+            // See the note on `identidad-pendiente` above: the global
+            // `headerLeft` default needs its own override here too.
+            headerLeft: () => null,
             headerRight: () => <HeaderMenuButton />,
           }}
         />
@@ -283,8 +300,11 @@ function RootLayout() {
         />
         {/* The header says the ACT, not the kind: which asiento is being written
             is the screen's own title, and the picker has not decided yet when
-            this header first draws. */}
-        <Stack.Screen name="mascotas/[publicToken]/asentar" options={{ title: "Asentar" }} />
+            this header first draws.
+            "Anotar", not "Asentar" (U-2, native review): this native header
+            used to disagree with the credential front's own pill for the same
+            act, reached from the same button. */}
+        <Stack.Screen name="mascotas/[publicToken]/asentar" options={{ title: "Anotar" }} />
         <Stack.Screen name="alta" options={{ title: "Registrar una mascota" }} />
         <Stack.Screen name="ajustes" options={{ title: "Ajustes" }} />
         {/* Registered for its TITLE, like `editar` below. An unregistered route

@@ -840,14 +840,19 @@ describe("PetDocumentScreen — controls with no native destination are drawn ho
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/editar`);
 
     mockPush.mockClear();
-    // ONE web-only row left for a titular (Chapa física): the acompañamiento
-    // row went live on 2026-09-10 and navigates below.
+    // TWO web-only rows left for a titular now (Chapa física, and Perro de
+    // asistencia since U-5): the acompañamiento row went live on 2026-09-10
+    // and navigates below.
     //
     // THE CAPTION CHANGED ON 2026-09-11 and the new words are the decision.
     // "Disponible en la web" invites a tap that now does nothing; "Se pide
     // desde la web" says where the thing lives, which is what an inert row owes
     // the person reading it. See the note above the row in OwnerFace.tsx.
     expect(screen.getAllByText("Se pide desde la web").length).toBeGreaterThanOrEqual(1);
+    // U-5 (native review): the web's own "Más" sheet lists this beside "Buscar
+    // hogar" and "Chapa física" — an inert row, same pattern, own caption.
+    expect(screen.getByText("Perro de asistencia")).toBeOnTheScreen();
+    expect(screen.getByText("Se hace desde la web")).toBeOnTheScreen();
     // Viaje is disabled on the WEB too, with the web's own badge, and it is
     // the one row in this sheet that is still legitimately inert: "Próximamente"
     // promises nothing, so there is nowhere to send anybody.
@@ -950,10 +955,13 @@ describe("PetDocumentScreen — the face reads petStatus and the role (A3-docume
     expect(screen.queryByText("Transferir la titularidad")).toBeNull();
     expect(screen.queryByText("Cuidador temporal")).toBeNull();
     expect(screen.queryByText("Devolución")).toBeNull();
-    // AND THE TWO FALSE PROMISES ABOUT THE WEB. Both destinations are hidden
+    // AND THE FALSE PROMISES ABOUT THE WEB. Both destinations are hidden
     // there for a deceased animal, so "Disponible en la web" was sending
     // somebody to a browser to look for a page that is not on it either.
     expect(screen.queryByText("Chapa física")).toBeNull();
+    // U-5: "Perro de asistencia" shares `showWebOnlyRows` with "Chapa física",
+    // so it disappears with it here.
+    expect(screen.queryByText("Perro de asistencia")).toBeNull();
     expect(screen.queryByText("Acompañamiento de adopción")).toBeNull();
     expect(screen.queryByText("Viaje y movilidad")).toBeNull();
 
@@ -1089,7 +1097,9 @@ describe("PetDocumentScreen — the face reads petStatus and the role (A3-docume
     fireEvent.press(screen.getByText("Buscar hogar"));
     expect(mockOpenURL).not.toHaveBeenCalled();
     expect(mockPush).not.toHaveBeenCalled();
-    expect(screen.getByText("Se hace desde la web")).toBeOnTheScreen();
+    // getAllByText, not getByText: "Perro de asistencia" (U-5) shares this
+    // exact caption and is not gated by role, so a foster sees both.
+    expect(screen.getAllByText("Se hace desde la web").length).toBeGreaterThanOrEqual(1);
   });
 
   it("keeps Modo perdida on a LOST animal while the titular-only rows go inert", async () => {
@@ -1255,9 +1265,9 @@ describe("PetDocumentScreen — a pull re-reads the document without taking it a
     // one. The placeholder is the witness that it was: it only renders while
     // the libreta's own state is `loading`.
     expect(screen.queryByText("Leyendo la libreta…")).toBeNull();
-    // "Asentar" is the reason a person opens this face, and it is disabled
+    // "Anotar" is the reason a person opens this face, and it is disabled
     // while the read is loading. A refresh must not take it away either.
-    expect(screen.getByRole("button", { name: "Asentar" }).props.accessibilityState.disabled).toBe(
+    expect(screen.getByRole("button", { name: "Anotar" }).props.accessibilityState.disabled).toBe(
       false,
     );
     expect(mockFetchPetLibreta).toHaveBeenCalledTimes(2);

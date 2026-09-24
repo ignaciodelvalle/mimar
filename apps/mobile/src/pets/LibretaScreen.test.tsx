@@ -136,13 +136,13 @@ describe("LibretaScreen — what a read that worked shows", () => {
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/eventos/${EVENT_ID}`);
   });
 
-  it("offers ASENTAR, and sends the person to the writer with no kind pre-picked", async () => {
+  it("offers ANOTAR, and sends the person to the writer with no kind pre-picked", async () => {
     render(<LibretaScreen publicToken={TOKEN} />);
-    fireEvent.press(await screen.findByText("Asentar"));
+    fireEvent.press(await screen.findByText("Anotar"));
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/asentar`);
   });
 
-  it("draws ASENTAR BEFORE the ledger, so a long history cannot bury it", async () => {
+  it("draws ANOTAR BEFORE the ledger, so a long history cannot bury it", async () => {
     // D2 (native QA batch 1). The button used to be this face's last child, and
     // this face renders inside `PetDocumentScreen`'s single scroll view — so on
     // a pet with 26 asientos the only act the libreta offers sat under the whole
@@ -156,9 +156,9 @@ describe("LibretaScreen — what a read that worked shows", () => {
     await screen.findByText("Pampa");
 
     const order = renderedTextsInOrder();
-    expect(order).toContain("Asentar");
-    expect(order.indexOf("Asentar")).toBeLessThan(order.indexOf("Pampa"));
-    expect(order.indexOf("Asentar")).toBeLessThan(order.indexOf("Antirrábica"));
+    expect(order).toContain("Anotar");
+    expect(order.indexOf("Anotar")).toBeLessThan(order.indexOf("Pampa"));
+    expect(order.indexOf("Anotar")).toBeLessThan(order.indexOf("Antirrábica"));
   });
 });
 
@@ -187,7 +187,7 @@ describe("LibretaScreen — a failure is never drawn as an absence", () => {
     expect(await screen.findByText(/El servidor no pudo responder/)).toBeOnTheScreen();
   });
 
-  it("still offers ASENTAR after a failed read", async () => {
+  it("still offers ANOTAR after a failed read", async () => {
     // A section this app could not load says nothing about whether the animal
     // was vaccinated this morning, and the server is the one that decides
     // whether the write is allowed. Hiding the affordance would be the client
@@ -195,12 +195,12 @@ describe("LibretaScreen — a failure is never drawn as an absence", () => {
     mockFetchPetLibreta.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
     render(<LibretaScreen publicToken={TOKEN} />);
     await screen.findByText(/Revisá tu conexión/);
-    fireEvent.press(screen.getByText("Asentar"));
+    fireEvent.press(screen.getByText("Anotar"));
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/asentar`);
   });
 
   it("re-reads when the screen is entered, not only when it is first built", async () => {
-    // Since "Asentar" pushes a route on top of this one, coming back must show
+    // Since "Anotar" pushes a route on top of this one, coming back must show
     // what was just written. A mount-only effect would leave the owner staring
     // at the libreta they just added to, unchanged.
     render(<LibretaScreen publicToken={TOKEN} />);

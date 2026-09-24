@@ -1409,6 +1409,39 @@ describe("tatuaje — el asiento que necesita una foto", () => {
     expect(screen.getByText(recordEventCta("tattoo").label)).toBeOnTheScreen();
   });
 
+  it("PO decision 20A: dice que una foto de la cámara también sirve, antes de elegir una", async () => {
+    // "Elegir la foto del tatuaje" abre la galería (`launchImageLibraryAsync`)
+    // y no tiene control de cámara propio.
+    render(<RecordEventScreen publicToken={TOKEN} initialKind="tattoo" />);
+    expect(
+      screen.getByText(
+        "Podés elegir una que ya tengas, o sacar una nueva con la cámara y elegirla después.",
+      ),
+    ).toBeOnTheScreen();
+
+    setImagePickerPort({
+      name: "test-picks",
+      available: true,
+      pickImage: async () => ({
+        outcome: "picked",
+        bytes: new Uint8Array([0xff, 0xd8, 0xff]),
+        contentType: "image/jpeg",
+        previewUri: null,
+      }),
+      recoverPendingPick: async () => null,
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText("Elegir la foto del tatuaje"));
+    });
+
+    // GONE once a photo is ready — there is no camera choice left to explain.
+    expect(
+      screen.queryByText(
+        "Podés elegir una que ya tengas, o sacar una nueva con la cámara y elegirla después.",
+      ),
+    ).toBeNull();
+  });
+
   it("REFUSES sin foto y no manda nada — el contrato nombra el paso que falta", async () => {
     render(<RecordEventScreen publicToken={TOKEN} initialKind="tattoo" />);
     fireEvent.changeText(screen.getByLabelText("Código del tatuaje, obligatorio"), "ABC-1234");
@@ -1416,6 +1449,38 @@ describe("tatuaje — el asiento que necesita una foto", () => {
 
     await waitFor(() => expect(screen.getByText(/falta la foto del tatuaje/i)).toBeOnTheScreen());
     expect(mockRecordPetEvent).not.toHaveBeenCalled();
+  });
+
+  it("F-10 (native review): la foto que se sube DESPUÉS del refusal borra el aviso de que falta", async () => {
+    // El aviso vivía en un estado aparte del borrador (`error`, no `invalid`),
+    // así que agregar la foto no lo tocaba: `set()` sólo limpia un campo que
+    // cambió, y la foto no es un campo. El aviso quedaba en pantalla mintiendo
+    // sobre un formulario que ya podía enviarse.
+    setImagePickerPort({
+      name: "test-picks",
+      available: true,
+      pickImage: async () => ({
+        outcome: "picked",
+        bytes: new Uint8Array([0xff, 0xd8, 0xff]),
+        contentType: "image/jpeg",
+        previewUri: null,
+      }),
+      recoverPendingPick: async () => null,
+    });
+    render(<RecordEventScreen publicToken={TOKEN} initialKind="tattoo" />);
+
+    // Code filled so the ONLY missing thing is the photo — the same setup
+    // "REFUSES sin foto" below uses.
+    fireEvent.changeText(screen.getByLabelText("Código del tatuaje, obligatorio"), "ABC-1234");
+    fireEvent.press(submitControl());
+    await waitFor(() => expect(screen.getByText(/falta la foto del tatuaje/i)).toBeOnTheScreen());
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Elegir la foto del tatuaje"));
+    });
+
+    expect(screen.getByText("Foto lista")).toBeOnTheScreen();
+    expect(screen.queryByText(/falta la foto del tatuaje/i)).toBeNull();
   });
 
   it("SUBE LA FOTO AL ELEGIRLA, no al enviar", async () => {

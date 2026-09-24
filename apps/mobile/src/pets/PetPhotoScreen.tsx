@@ -263,6 +263,15 @@ export function PetPhotoScreen({ publicToken }: { publicToken: string }) {
         disabled={picking}
         onPress={() => void pick()}
       />
+      {/* PO decision 20A (native review): "Elegir una foto" opens the phone's
+          gallery (`launchImageLibraryAsync` — see `image-picker-port.ts`),
+          with no separate camera control anywhere on this screen. A person
+          who wants a NEW photo has no way to know the camera app still gets
+          them here — take the photo there and it lands in the same gallery
+          this button opens. */}
+      <Body>
+        Podés elegir una que ya tengas, o sacar una nueva con la cámara y elegirla después.
+      </Body>
       {/* The web's own format line, with the third type the bucket accepts. */}
       <Body>JPG, PNG o WebP, hasta 5 MB.</Body>
     </Screen>
