@@ -1,0 +1,67 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    // For `packages/contract` ONLY, which this program also compiles (see the
+    // `exclude` note below). Its relative imports carry an explicit `.ts`
+    // extension because Node's ESM resolver reads that package as source and
+    // guesses no extensions — see packages/contract/tsconfig.json for the
+    // measurement. App code should keep writing extension-less imports.
+    // `pnpm lint:contract` holds ONE direction of that: rule 8 requires the
+    // extension on every relative import INSIDE the package, and rule 6 bans
+    // path-form references to the package from outside it. Nothing there polices
+    // the extension style of app-code imports, and this line used to claim it
+    // held "both directions".
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      // The wildcard alias intentionally covers src/modules/* — there is no
+      // need for a dedicated @/modules/* path entry. Any import written as
+      // @/modules/adoption/... resolves correctly via this alias.
+      "@/*": ["./*"]
+    }
+  },
+  // `app/.well-known/**` is listed EXPLICITLY, and it has to be.
+  //
+  // TypeScript's glob expansion skips any directory whose name begins with a
+  // dot, so `**/*.ts` does not reach `app/.well-known/assetlinks.json/route.ts`
+  // — measured, not assumed: a deliberate `const X: number = "no"` planted
+  // there typechecked CLEAN. Next.js routes that directory perfectly well
+  // (it is how `/.well-known/*` is served), which is the worst combination
+  // available: shipped code, outside the program that checks it. Biome's
+  // project traversal skips dotted directories for the same reason, so the
+  // `lint` and `format` scripts in package.json name the path as a second
+  // argument rather than relying on `biome check .` finding it.
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    "app/.well-known/**/*.ts"
+  ],
+  // `apps` is excluded; `packages` deliberately is NOT.
+  //
+  // The difference is what each one is checked AGAINST. `packages/contract` is
+  // framework-free by fence (`pnpm lint:contract` bans react, next and
+  // react-native inside it), so it compiles correctly under these options and
+  // belongs in this program — that is what makes a wire type and the route
+  // handler that emits it fail to compile TOGETHER when they drift.
+  //
+  // `apps/mobile` is the opposite: React Native sources against `lib: ["dom",
+  // …]` and `jsx: "preserve"` with no Expo ambient types would report hundreds
+  // of failures that mean nothing about the code. It is checked by its own
+  // program instead — `pnpm --filter mimar typecheck`. `packages/contract` sits
+  // inside BOTH programs, which is exactly where the drift detector should be.
+  "exclude": ["node_modules", "apps"]
+}

@@ -1,0 +1,88 @@
+-- Migration 0211 — profiles: remove the PostgREST write surface entirely.
+-- (Fresh-review lens A01, 2026-09-01. Reachable-today self-minted admin.)
+--
+-- THE HOLE
+-- --------
+-- Migration 0086 §profiles (0086_track_rls_in_migrations.sql:60-64) shipped:
+--
+--   create policy "Profiles updatable by self" on public.profiles
+--     for update to authenticated
+--     using (id = auth.uid())
+--     with check (id = auth.uid());
+--
+-- Both clauses pin the ROW. Neither pins a COLUMN. And `profiles` is where the
+-- authorization layer keeps the three columns it trusts absolutely:
+-- `role`, `account_type` and `deactivated_at` are read by
+-- lib/infra/request-cache.ts:74-88 (`getProfileCached`) and turned into an
+-- authorization verdict by lib/infra/auth-guards.ts:177-188
+-- (`loadActiveInstitutionalProfile` → requireAdminOrGovtOrRedirect and every
+-- guard built on it). So one request signed with the caller's OWN JWT
+--
+--   PATCH /rest/v1/profiles?id=eq.<self>
+--   {"role":"admin","account_type":"institutional"}
+--
+-- promotes any authenticated owner to universal admin. The same surface also
+-- clears `deactivated_at` (undoing an admin deactivation) and `deleted_at`
+-- (undoing an art. 16 erasure).
+--
+-- Nothing else stood in the way:
+--   · Column-level privileges do not help. scripts/deploy-provision.ts:533-541
+--     (`applySchemaGrants`) runs `grant all on all tables in schema public to
+--     anon, authenticated, service_role` on EVERY provision, so a REVOKE on
+--     profiles.role would be silently re-granted by the next deploy. RLS is
+--     therefore the only durable gate on this surface.
+--   · No BEFORE UPDATE trigger on public.profiles compares old.role / new.role
+--     — db/triggers.sql has triggers on auth.users, pet_events and case_events
+--     only.
+--   · The DB CHECK that paired account_type with role
+--     (`profiles_account_type_role_match`) was DROPPED in migration 0016, so
+--     even the (personal, admin) pairing raises nothing.
+--   · scripts/check-authz-guards.ts polices `"use server"` exports; it cannot
+--     see PostgREST at all.
+--   · The write-path fence (__tests__/rls/write-path-matrix.test.ts) could not
+--     see it either, and that is not a bug in the fence: its heuristic is
+--     "UNCONDITIONAL clause" (`true` or absent), and `id = auth.uid()` is
+--     perfectly conditional. The defect is COLUMN scope, not row scope — a
+--     class that fence does not claim to cover.
+--
+-- WHY DENY-ALL IS THE CORRECT POLICY, NOT A NARROWER ONE
+-- ------------------------------------------------------
+-- Enumerated every writer of `public.profiles` in the tree (2026-09-01):
+-- complete-identity, verify-dni, approve-request, create-institutional-account,
+-- deactivate-admin, deactivate-govt, revoke-vet-role, request-vet-upgrade,
+-- govt-self-deactivate, self-deactivate-personal-account, update-profile,
+-- upload-avatar, vet-self-resign, claim-stub-profile, plus the seed and repair
+-- scripts. EVERY ONE of them is `db.update(profiles)` / `tx.update(profiles)`
+-- over the Drizzle connection, which is a direct Postgres session as a
+-- BYPASSRLS role — no policy on this table is ever consulted for them
+-- (db/rls.sql:18-23 states this contract; write-path-matrix.test.ts:16
+-- restates it). Row CREATION is the `handle_new_user` trigger (security
+-- definer, db/triggers.sql), which also bypasses RLS and already had no INSERT
+-- policy.
+--
+-- The count of legitimate writers that reach `profiles` THROUGH PostgREST is
+-- therefore ZERO. Outside the RLS probe suite (__tests__/rls/*, scripts/
+-- rls-smoke.ts, e2e/cross-tenant-isolation.spec.ts) nothing in the tree calls
+-- PostgREST on this table, and every probe is a SELECT except the deny
+-- assertions added by this change. The account-settings form, the avatar upload,
+-- the DNI verification and every admin decision keep working unchanged —
+-- they are server actions over Drizzle and never saw this policy.
+--
+-- A policy that "admits exactly the legitimate path and no other" is, for this
+-- table, no write policy at all. This mirrors migration 0163 for `ownerships`,
+-- decided on the same evidence.
+--
+-- SELECT stays: "Profiles readable by self" is correctly scoped
+-- (`id = auth.uid()`), the e2e cross-tenant probe asserts against it, and the
+-- table keeps ≥1 policy so check-rls-coverage.ts stays green without an
+-- allowlist entry.
+--
+-- Forward-only and idempotent: DROP POLICY IF EXISTS is a no-op on re-run.
+-- Mirrored into db/rls.sql (reference copy) in the same commit. Fenced by
+-- __tests__/rls/profiles-write-lockdown.test.ts.
+
+BEGIN;
+
+DROP POLICY IF EXISTS "Profiles updatable by self" ON public.profiles;
+
+COMMIT;

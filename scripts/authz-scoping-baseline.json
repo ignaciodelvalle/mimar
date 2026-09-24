@@ -1,0 +1,21 @@
+{
+  "app/actions/admin-decisions.ts": 3,
+  "app/actions/admin-institutional.ts": 4,
+  "app/actions/admin-proposals.ts": 2,
+  "app/actions/admin-revocations.ts": 2,
+  "app/actions/alert-firings.ts": 6,
+  "app/actions/alert-subscriptions.ts": 2,
+  "app/actions/bulk-actions.ts": 1,
+  "app/actions/bulk-adoption-actions.ts": 2,
+  "app/actions/bulk-pet-events.ts": 3,
+  "app/actions/custody-disputes.ts": 6,
+  "app/actions/decomiso-pet-lookup.ts": 1,
+  "app/actions/omnibox-search.ts": 2,
+  "app/actions/revocation-evidence.ts": 1,
+  "app/actions/rule-impact-preview.ts": 1,
+  "app/admin/libro/actions.ts": 1,
+  "app/admin/observaciones/[publicToken]/microchip/reemplazar/action.ts": 1,
+  "app/admin/outbox/actions.ts": 1,
+  "src/modules/organizations/actions.ts": 1,
+  "src/modules/welfare/actions.ts": 5
+}

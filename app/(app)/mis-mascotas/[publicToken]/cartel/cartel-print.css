@@ -1,0 +1,41 @@
+/* NOTE: @page rule deliberately absent — it is injected by <PosterPreview> via a
+   mounted <style> element so it is removed on client-side navigation. See PosterPreview.tsx.
+   (libreta-print.css follows the same pattern — no @page rule here.) */
+
+@media print {
+  html,
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Browsers default to print-color-adjust: economy, and Chrome's "Background
+     graphics" checkbox is OFF by default — so background colours are dropped.
+     The headline banner is a coloured background with white text, which meant
+     the word PERDIDO printed white-on-white and vanished from the one artifact
+     whose entire purpose is to be printed and taped to a lamppost. The rule
+     above does not save it: it targets html/body, not descendants.
+
+     Scoped to the poster so the rest of the page keeps the browser's ink-saving
+     default. Grayscale mode still works — .print-bw filters on top of this. */
+  [data-testid="poster-body"],
+  [data-testid="poster-body"] * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  button,
+  a[href]:not([href^="#"]) {
+    display: none !important;
+  }
+
+  /* Grayscale mode — toggled by the B&W button adding class .print-bw to <body>
+     or via the Tailwind print:grayscale on the poster wrapper. */
+  .print-bw * {
+    filter: grayscale(100%) !important;
+  }
+}

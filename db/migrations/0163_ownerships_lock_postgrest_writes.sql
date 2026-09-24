@@ -1,0 +1,74 @@
+-- Migration 0163 — ownerships: remove the PostgREST write surface entirely.
+-- (RA-8 finding R1, 2026-07-31. Reachable-today ownership self-grant.)
+--
+-- THE HOLE
+-- --------
+-- Migration 0086 §ownerships shipped:
+--
+--   create policy "Ownerships insertable by self" on public.ownerships
+--     for insert to authenticated
+--     with check (owner_user_id = auth.uid());
+--
+-- Nothing in that WITH CHECK ties `pet_id` to the caller. It only asserts the
+-- row names the caller as the holder — which is exactly what an attacker wants
+-- it to say. `deploy-provision.ts` grants every table to `authenticated`, so
+-- RLS is the ONLY gate on the PostgREST surface, and one request
+--
+--   POST /rest/v1/ownerships
+--   {"pet_id":"<any pet uuid>","owner_user_id":"<self>","role":"co_owner"}
+--
+-- signed with the attacker's own JWT creates an ACTIVE ownership on any pet in
+-- the country. The structural brakes all miss it:
+--   · `ownerships_one_active_owner_per_pet` (0000:142) is PARTIAL — `WHERE
+--     role = 'owner'`. co_owner / foster / caretaker are unconstrained.
+--   · `enforce_institutional_no_pets` (0015) rejects only
+--     account_type = 'institutional'.
+-- And every downstream policy checks for an ownership row with NO role filter:
+-- pets SELECT/UPDATE (0086:70,88), pet_events SELECT (0115) and INSERT
+-- (0086:150), attachments (0034:181). So the forged row grants full owner-side
+-- read AND append into the append-only spine — irreversible by invariant #2 —
+-- and it survives the attacker leaving whatever organization exposed the
+-- victim pet's UUID to them.
+--
+-- The sibling UPDATE policy is the same hole with one extra step:
+--
+--   create policy "Ownerships updatable by self" ... for update to authenticated
+--     using (owner_user_id = auth.uid()) with check (owner_user_id = auth.uid());
+--
+-- Neither clause pins `pet_id`, so a user holding ANY ownership row can repoint
+-- it at a victim pet (or promote their own `foster` row to `owner`) and land in
+-- exactly the same place.
+--
+-- WHY DENY-ALL IS THE CORRECT POLICY, NOT A NARROWER ONE
+-- ------------------------------------------------------
+-- Enumerated every writer of `public.ownerships` in the tree (2026-07-31):
+-- pets-repository (createPet), transfers-repository (accept transfer),
+-- adoption-repository, foster-repository, create-intake, submit-free-claim,
+-- confirm-chip-match-{vecino,refugio}, resolve-dispute, execute-decomiso,
+-- accept-decomiso-handoff, org-accept-owner-return, plus the seed scripts.
+-- EVERY ONE of them is `db.insert(ownerships)` / `tx.insert(ownerships)` over
+-- the Drizzle connection, which is a direct Postgres session as a BYPASSRLS
+-- role — no policy on this table is ever consulted for them (db/rls.sql:18-23
+-- states this contract; write-path-matrix.test.ts:16 restates it).
+--
+-- The count of legitimate writers that reach `ownerships` THROUGH PostgREST is
+-- therefore ZERO. Co-owner / foster / caretaker rows are real and stay real —
+-- they are created by the server actions above, after those actions have done
+-- their own authorization, and they are unaffected by this migration. A policy
+-- that "admits exactly the legitimate path and no other" is, for this table,
+-- no write policy at all.
+--
+-- SELECT stays: "Ownerships readable by self" is correctly scoped
+-- (`owner_user_id = auth.uid()`), the e2e cross-tenant probes assert against
+-- it, and the table keeps ≥1 policy so check-rls-coverage.ts stays green
+-- without an allowlist entry.
+--
+-- Forward-only and idempotent: DROP POLICY IF EXISTS is a no-op on re-run.
+-- Mirrored into db/rls.sql (reference copy) in the same commit.
+
+BEGIN;
+
+DROP POLICY IF EXISTS "Ownerships insertable by self" ON public.ownerships;
+DROP POLICY IF EXISTS "Ownerships updatable by self"  ON public.ownerships;
+
+COMMIT;

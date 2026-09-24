@@ -1,0 +1,60 @@
+name: Bug report
+description: Something is wrong — broken, surprising, or wrong-but-not-yet-broken behavior.
+title: "[bug] "
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Security vulnerability? Do not file it here.** Issues are public. Report it privately as described in [SECURITY.md](https://github.com/ignaciodelvalle/mimar/blob/main/SECURITY.md).
+
+        This repository is public: do not paste personal data (names, DNI, addresses, phone numbers, e-mails), credentials or tokens from any environment. Reproduce against a local stack when you can.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: One or two sentences. What did you expect, what did you get instead?
+      placeholder: |
+        Expected: clicking "Accept" on a foster proposal moves the pet.
+        Got: the page reloads with a generic error and the proposal stays pending.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimum sequence that reliably triggers the bug.
+      placeholder: |
+        1. Log in as a foster volunteer.
+        2. Visit /cuenta/transitos/propuestas.
+        3. Click "Aceptar" on any proposal.
+        4. Observe …
+    validations:
+      required: true
+
+  - type: input
+    id: route
+    attributes:
+      label: Route or component
+      description: URL path and / or component name where the bug surfaces.
+      placeholder: "/cuenta/transitos/propuestas/[proposalToken]"
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - "Sev 0 — outage or data loss (security issues go through SECURITY.md, not here)"
+        - "Sev 1 — feature broken, no workaround"
+        - "Sev 2 — feature degraded, workaround exists"
+        - "Sev 3 — papercut / cosmetic"
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Stack traces, screenshots, related events from `pet_events`, anything else useful — with personal data removed.

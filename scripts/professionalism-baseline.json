@@ -1,0 +1,9 @@
+{
+  "_meta": {
+    "totalViolations": 6,
+    "description": "Baseline of symbol-as-icon glyphs (✓✗✕✖⚠★☆✎●○⏸▶◔◑◕▲◹♥♦, plus a standalone ×) outside comments. Files listed here are grandfathered up to their count. New violations (new files, or counts above these) fail lint:professionalism. Regenerate only after a deliberate, reviewed grandfather decision."
+  },
+  "files": {
+    "components/admin/AlertInboxTable.tsx": 6
+  }
+}

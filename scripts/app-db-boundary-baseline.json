@@ -1,0 +1,94 @@
+{
+  "_meta": {
+    "generatedAt": "2026-09-18",
+    "description": "Canon B02 (PO 2026-09-02): writes go only through src/modules use cases. Every app/** file below already writes to the database directly and is grandfathered debt — the list may SHRINK, never grow. A new writer, a stale entry, or a changed write surface fails lint:app-db-boundary. `readers` is the tolerated read-path count (reported, never enforced); `spineWriters` counts app/** files inserting straight into petEvents and is pinned EXACTLY (invariant #2).",
+    "readers": 174,
+    "spineWriters": 1
+  },
+  "writers": {
+    "app/(public)/p/[publicToken]/encontre/action.ts": {
+      "kinds": ["insert"],
+      "tables": ["attachments", "petEvents"]
+    },
+    "app/actions/bulk-pet-events.ts": {
+      "kinds": ["transaction"],
+      "tables": []
+    },
+    "app/actions/decomiso.ts": {
+      "kinds": ["transaction"],
+      "tables": []
+    },
+    "app/actions/novedades.ts": {
+      "kinds": ["insert"],
+      "tables": ["operatorFeedWatermarks"]
+    },
+    "app/admin/outbox/actions.ts": {
+      "kinds": ["update"],
+      "tables": ["eventNotificationOutbox"]
+    },
+    "app/api/cron/auto-expire-approvals/route.ts": {
+      "kinds": ["insert", "transaction", "update"],
+      "tables": ["approvalRequests", "auditLog", "cronRuns"]
+    },
+    "app/api/cron/cron-health/route.ts": {
+      "kinds": ["insert", "update"],
+      "tables": ["cronRuns"]
+    },
+    "app/api/cron/daily/route.ts": {
+      "kinds": ["update"],
+      "tables": ["cronRuns"]
+    },
+    "app/api/cron/data-lifecycle/route.ts": {
+      "kinds": ["insert", "update"],
+      "tables": ["cronRuns"]
+    },
+    "app/api/cron/drain-notification-dead-letter/route.ts": {
+      "kinds": ["insert", "update"],
+      "tables": ["cronRuns"]
+    },
+    "app/api/cron/drain-outbox/route.ts": {
+      "kinds": ["insert", "transaction", "update"],
+      "tables": ["cronRuns", "eventNotificationOutbox"]
+    },
+    "app/api/cron/purge-scan-events/route.ts": {
+      "kinds": ["insert", "update"],
+      "tables": ["cronRuns"]
+    },
+    "app/api/cron/reconcile-pet-status/route.ts": {
+      "kinds": ["insert", "update"],
+      "tables": ["cronRuns"]
+    },
+    "app/api/v1/me/caretaker-grants/commands.ts": {
+      "kinds": ["insert"],
+      "tables": ["auditLog"]
+    },
+    "app/api/v1/pets/[publicToken]/events/writers.ts": {
+      "kinds": ["transaction"],
+      "tables": []
+    },
+    "app/api/v1/pets/[publicToken]/lost/commands.ts": {
+      "kinds": ["transaction"],
+      "tables": []
+    },
+    "app/api/v1/pets/[publicToken]/profile/commands.ts": {
+      "kinds": ["insert", "transaction"],
+      "tables": ["notifications"]
+    },
+    "app/api/v1/pets/route.ts": {
+      "kinds": ["transaction"],
+      "tables": []
+    },
+    "app/gob/analytics/export/actions.ts": {
+      "kinds": ["insert"],
+      "tables": ["auditLog"]
+    },
+    "app/org/[orgToken]/adopciones/[appEventId]/page.tsx": {
+      "kinds": ["insert"],
+      "tables": ["auditLog"]
+    },
+    "app/org/[orgToken]/atender/actions.ts": {
+      "kinds": ["transaction"],
+      "tables": []
+    }
+  }
+}

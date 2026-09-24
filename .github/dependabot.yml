@@ -1,0 +1,31 @@
+# Dependabot — Wave 5 Item 30.
+# Keeps npm dependencies and GitHub Actions pinned versions patched. Dependabot
+# reads pnpm-lock.yaml under the "npm" ecosystem.
+#
+# Repo-settings prerequisite (owner-gated, one-time): enable Dependabot alerts
+# and Dependabot security updates in Settings → Code security and analysis.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # Collapse routine minor/patch bumps into a single PR to keep review noise
+      # down; majors still open individually so breaking changes get scrutiny.
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore(ci)"

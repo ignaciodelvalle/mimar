@@ -1,0 +1,7 @@
+{
+  "_meta": {
+    "generatedAt": "2026-07-18",
+    "description": "Files with an eyebrow/kicker label identical to its adjacent heading, grandfathered at the recorded count. New files, or counts above baseline, fail lint:eyebrow. Curing a file lets its entry be removed — the ratchet only tightens."
+  },
+  "files": {}
+}

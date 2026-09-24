@@ -1,0 +1,31 @@
+# miMAR code ownership.
+#
+# GitHub reads this file from .github/ first. Each PR that touches a path
+# matched below auto-requests review from the listed owner(s). When
+# collaborators join, add targeted lines BELOW the catch-all (the last
+# matching pattern wins) so domain experts get pinged for their areas.
+
+# Catch-all
+*                                @ignaciodelvalle
+
+# Schema, migrations, triggers, RLS — anything that changes the DB shape
+/db/                             @ignaciodelvalle
+/supabase/                       @ignaciodelvalle
+
+# Admin surfaces (capability grants, decisions, revocations)
+/app/admin/                      @ignaciodelvalle
+
+# Specs and plans — the source of truth that code descends from
+/docs/superpowers/               @ignaciodelvalle
+
+# The public/private boundary and the secret fence
+/scripts/check-public-boundary.ts @ignaciodelvalle
+/scripts/check-secrets.ts        @ignaciodelvalle
+/docs/agents/                    @ignaciodelvalle
+
+# CI and contribution conventions
+/.github/                        @ignaciodelvalle
+/AGENTS.md                       @ignaciodelvalle
+/CLAUDE.md                       @ignaciodelvalle
+/CONTRIBUTING.md                 @ignaciodelvalle
+/SECURITY.md                     @ignaciodelvalle

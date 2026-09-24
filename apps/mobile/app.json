@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "miMAR",
+    "slug": "mimar",
+    "scheme": "mimar",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "platforms": ["android", "ios"],
+    "icon": "./assets/icon.png",
+    "ios": {
+      "supportsTablet": false
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon-foreground.png",
+        "backgroundColor": "#fbfaf5"
+      },
+      "allowBackup": false,
+      "blockedPermissions": [
+        "android.permission.WRITE_SETTINGS",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 176,
+          "resizeMode": "contain",
+          "backgroundColor": "#fbfaf5"
+        }
+      ]
+    ]
+  }
+}

@@ -1,0 +1,134 @@
+// Zod schema for the versioned legal-baseline dataset (jurisdiction-compliance
+// WU2, spec BD1). One row per (rule_key, jurisdiction) describing the resolved
+// obligation tier + legal provenance the seed writes into govt_business_rules'
+// migration-0183 columns.
+//
+// The tier + citations are table COLUMNS, not payload fields — `rulePayload`
+// here is the same thin payload the console's rule forms write, validated
+// against the same per-type Zod validators (lib/infra/business-rules-validators)
+// so a baseline row can never smuggle a payload the app itself would reject.
+
+import { z } from "zod";
+
+import { REQUIREMENT_LEVELS } from "@/db/schema";
+import { CANONICAL_PROVINCE_NAMES } from "@/lib/domain/jurisdiction-canonical";
+import { validateRulePayload } from "@/lib/infra/business-rules-validators";
+
+/**
+ * Rule types the baseline seed is allowed to write. Obligation-carrying types
+ * only — operational-window types (due_soon_window, mpf_export_format, ...)
+ * have no legal tier dimension and stay out of the baseline by construction.
+ */
+export const BASELINE_RULE_KEYS = [
+  "rabies_vaccination",
+  "sterilization",
+  "microchip_required",
+] as const;
+export type BaselineRuleKey = (typeof BASELINE_RULE_KEYS)[number];
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export const baselineJurisdictionSchema = z
+  .object({
+    country: z.literal("AR"),
+    /** Canonical display name ("Buenos Aires", "CABA") or null = country-wide. */
+    province: z.string().min(1).nullable(),
+    locality: z.string().min(1).nullable(),
+  })
+  .strict()
+  .superRefine((j, ctx) => {
+    if (j.province !== null && !CANONICAL_PROVINCE_NAMES.has(j.province)) {
+      ctx.addIssue({
+        code: "custom",
+        message: `province "${j.province}" is not a canonical province name (migration 0055 CHECK would reject it)`,
+      });
+    }
+    if (j.locality !== null && j.province === null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "a locality-scoped row must also carry its province",
+      });
+    }
+  });
+
+export const legalBaselineRowSchema = z
+  .object({
+    ruleKey: z.enum(BASELINE_RULE_KEYS),
+    jurisdiction: baselineJurisdictionSchema,
+    requirementLevel: z.enum(REQUIREMENT_LEVELS),
+    /** Statute / ordinance citation, e.g. "Ley 22.953". Never invented — a row
+     * without a sourced citation must not exist (leave a TODO instead). */
+    legalBasis: z.string().min(1).max(300),
+    /** Enforcing authority (organism name), or null while pending research. */
+    authority: z.string().min(1).max(200).nullable(),
+    sourceUrl: z.string().url().max(500).nullable(),
+    /** ISO date the norm took effect, or null while pending research. */
+    effectiveFrom: z.string().regex(ISO_DATE_RE).nullable(),
+    /** Thin per-type payload — same shape the console form for this rule type
+     * writes; validated against BUSINESS_RULE_VALIDATORS below. */
+    rulePayload: z.record(z.string(), z.unknown()),
+    /** Every row starts pending_legal_review; flipping to legal_approved is a
+     * PO/legal-reviewer action recorded via the sign-off flow, never a coding
+     * default. */
+    reviewStatus: z.enum(["pending_legal_review", "legal_approved"]),
+  })
+  .strict()
+  .superRefine((row, ctx) => {
+    const payloadCheck = validateRulePayload(row.ruleKey, row.rulePayload);
+    if (!payloadCheck.ok) {
+      ctx.addIssue({
+        code: "custom",
+        message: `rulePayload invalid for ${row.ruleKey}: ${payloadCheck.error}`,
+      });
+    }
+    // Write-both parity (design ADR-2 / spec OR5): microchip_required's legacy
+    // boolean must AGREE with the tier so pre-tier readers (payload.required)
+    // never disagree with tier-aware ones. Mirrors the console form contract.
+    if (row.ruleKey === "microchip_required") {
+      const required = (row.rulePayload as { required?: unknown }).required;
+      if (required !== (row.requirementLevel === "mandatory")) {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "microchip_required rows must keep payload.required === (requirementLevel === 'mandatory') (write-both parity, spec OR5)",
+        });
+      }
+    }
+  });
+export type LegalBaselineRow = z.infer<typeof legalBaselineRowSchema>;
+
+export const legalBaselineDatasetSchema = z
+  .object({
+    /** Dataset version tag, stamped into govt_business_rules.baseline_version. */
+    version: z.string().regex(/^ar-v\d+$/),
+    rows: z.array(legalBaselineRowSchema).min(1),
+  })
+  .strict()
+  .superRefine((dataset, ctx) => {
+    // One row per (rule_key, jurisdiction) — mirrors the DB's
+    // govt_business_rules_type_jurisdiction_unique constraint (NULLS NOT
+    // DISTINCT), so a duplicate fails at validation, not mid-upsert.
+    const seen = new Set<string>();
+    for (const row of dataset.rows) {
+      // JSON.stringify of the tuple, NOT a joined string with a sentinel
+      // for null (T6 review M7). The sentinel used to be a raw NUL byte,
+      // which made this file a BINARY BLOB to git ("Bin 0 -> 5357 bytes"):
+      // the entire Zod validation surface of a legal-liability gate became
+      // unreviewable in a diff. JSON encoding is null-safe by construction
+      // (null is distinct from any string) and keeps the file plain text.
+      const key = JSON.stringify([
+        row.ruleKey,
+        row.jurisdiction.country,
+        row.jurisdiction.province,
+        row.jurisdiction.locality,
+      ]);
+      if (seen.has(key)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `duplicate baseline row for (${row.ruleKey}, ${row.jurisdiction.country}/${row.jurisdiction.province ?? "—"}/${row.jurisdiction.locality ?? "—"})`,
+        });
+      }
+      seen.add(key);
+    }
+  });
+export type LegalBaselineDataset = z.infer<typeof legalBaselineDatasetSchema>;

@@ -1,0 +1,43 @@
+{
+  // Standalone tsconfig for the contract package.
+  //
+  // It deliberately does NOT extend the root tsconfig: the root config carries
+  // the Next.js plugin, the `@/*` path alias and `jsx: preserve` — the three
+  // things this package must never depend on. A React Native app compiling this
+  // source has none of them, so the package has to typecheck without them too.
+  //
+  // The root `tsc --noEmit` still covers these files (its include is `**/*.ts`
+  // from the repo root), which is what `pnpm typecheck` exercises. This file is
+  // the stricter, standalone contract: run it with
+  //   pnpm exec tsc --noEmit -p packages/contract
+  // to prove the package compiles with no app context at all.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    // Relative imports inside this package carry an explicit `.ts` extension,
+    // so TypeScript has to be told they are legal. It is safe precisely because
+    // `noEmit` is on: nothing here is compiled to a `.js` whose import line
+    // would then point at a file that does not exist.
+    //
+    // WHY THE EXTENSION IS NOT OPTIONAL (measured 2026-08-25). The package ships
+    // TypeScript SOURCE, and one consumer resolves it with Node's own ESM
+    // resolver rather than a bundler: `apps/mobile/app.config.ts` imports
+    // `@dim/contract/links`, and `expo config` loads that file through Node
+    // (v24 type stripping). Node's ESM resolution does NO extension guessing —
+    // `./deep-link-map` was ERR_MODULE_NOT_FOUND, and so was `./deep-link-map.js`
+    // (Node does not rewrite `.js` to `.ts` either). Only the real extension
+    // resolves, which is why `pnpm verify:mobile` now runs `expo config`.
+    "allowImportingTsExtensions": true,
+    "noUncheckedIndexedAccess": false,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

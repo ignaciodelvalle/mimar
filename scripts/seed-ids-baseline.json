@@ -1,0 +1,7 @@
+{
+  "_meta": {
+    "totalViolations": 0,
+    "description": "Baseline of seed-marker literals (PANO-/-Seed-/HIST-WEL/n-<digits>) written into a renderable column (displayName/description/name/legalName) inside scripts/seed-*.ts. Grandfathered up to these counts; new violations fail lint:seed-ids. The C5 sweep target is 0 — regenerate only after a deliberate, reviewed exception."
+  },
+  "files": {}
+}

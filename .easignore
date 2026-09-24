@@ -1,0 +1,232 @@
+# .easignore — what EAS Build uploads when it packages this repo.
+#
+# THE ONE THING TO KNOW BEFORE EDITING THIS FILE
+# ---------------------------------------------------------------------------
+# It REPLACES .gitignore. It does not add to it. From the EAS build-archive
+# reference: "EAS CLI will produce the archive by copying all files starting
+# from the root of the git repository with the exception of .git, node_modules,
+# and all files matched by rules from .gitignore" — and "`.easignore` can only
+# be located in the root of your git repository and, if it is present, none of
+# the existing .gitignore files will be respected by EAS CLI."
+#
+# So the intuitive edit — a short file listing "the extra stuff we don't need" —
+# makes the archive BIGGER, not smaller, and does something worse than that:
+# .env.local and .env.staging.local stop being ignored and get uploaded to a
+# build server with the Supabase SERVICE ROLE KEY inside them. Everything
+# .gitignore excludes has to be restated here, verbatim and in the same order
+# (order is load-bearing in gitignore syntax: a later `.env*` re-ignores what an
+# earlier `!.env.example` un-ignored).
+#
+# That duplication is a drift hazard, and it is fenced rather than trusted:
+# apps/mobile/src/release/release-config.test.ts asserts that every rule in
+# .gitignore also appears here, so adding a secret to .gitignore and forgetting
+# this file turns the mobile suite red instead of leaking on the next build.
+#
+# WHY IT EXISTS: the first real build (2026-08-26, 9900114a-c134-41cf-af38-
+# 6aaf789d2942) reported "Your project archive is 152 MB". Measured against the
+# tracked tree that day (exact bytes, `git ls-files` + `stat`): 126.3 MB, of
+# which docs/ alone is 84.4 MB and dim-interno:docs/reviews 74.9 MB of that — screenshots,
+# measurement dumps and a 12 MB zip of one critique's captures. Every build pays
+# that upload, on a connection that is not a datacentre's.
+#
+# The three additions below take the tracked tree from 126.3 MB to 34.7 MB.
+# THE 152 IS NOT RECONCILED WITH THE 126.3 and this comment will not pretend it
+# is: eas-cli is not a dependency here, so the archive was never produced
+# locally to be weighed. The honest number for the effect of this file is the
+# next build's own "Your project archive is N MB" line.
+#
+# WHAT IS EXCLUDED BEYOND .gitignore, and why each one is safe: the three
+# additions at the bottom are read by NO code that runs during a native build.
+# That was swept rather than assumed — every reference to `docs/`, `__tests__/`
+# and `e2e/` from app, apps, components, lib, src, db and packages is inside a
+# comment.
+#
+# WHAT IS DELIBERATELY *NOT* EXCLUDED. The web app's own source (app/,
+# components/, lib/, src/, public/) stays. It is most of the 34.7 MB left and
+# the Android build does not read it either — but `pnpm install` runs at the
+# repo root against this workspace, packages/contract is a real dependency of
+# apps/mobile (`@dim/contract: workspace:*`), and an archive missing pieces of
+# the workspace fails in a way that looks like a dependency problem rather than
+# an ignore rule. Three additions that take away 73% of the tracked tree is the
+# whole win; the rest is not worth a build that fails for a reason nobody
+# guesses.
+
+# ===========================================================================
+# Everything below, down to the ADDITIONS marker, mirrors .gitignore verbatim.
+# Keep it in sync — the fence test will tell you if you don't.
+# ===========================================================================
+
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build outputs
+.next/
+out/
+dist/
+
+# Expo (apps/mobile)
+.expo/
+
+# environment
+.env
+.env.local
+.env*.local
+!.env.example
+!.env.local.example
+
+# editor
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# misc
+.turbo/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# supabase local
+supabase/.branches/
+supabase/.temp/
+supabase/snippets/Untitled*.sql
+
+# agent/script scratch output, and the root session scratch (build artifacts, QA state)
+tmp/
+/scratchpad/
+
+# agent tool caches
+.atl/
+.claude/*
+!.claude/skills/
+!.claude/settings.json
+!.claude/agents/
+!.claude/hooks/
+
+# design handoff reference
+design_handoff_*/
+install.cmd
+
+# playwright
+playwright-report/
+test-results/
+e2e/.auth/
+
+# vercel CLI
+.vercel/
+.superpowers/
+
+# local demo screen recordings
+*.webm
+scripts/assets/pet-photos-real/*
+!scripts/assets/pet-photos-real/README.md
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+
+.vercel
+.env*
+
+# Playwright MCP session artifacts, and playwright-cli's page snapshots
+.playwright-mcp/
+.playwright-cli/
+
+# Graphify knowledge-graph output
+graphify-out/
+
+# Scratch scripts from parallel QA agents
+scripts/scratch/
+scripts/bulk-cursor-pets-staging.mjs
+
+# Playwright MCP writes snapshots and screenshots to the repo root
+/*.png
+/*-snapshot.md
+/panorama.md
+
+# vitest --reporter=json output
+.vitest-report.json
+
+# Local Definition-of-Done gate evidence (one dir per run, at the repo root).
+# Anchored: an unanchored `gate-*/` matches at any depth. Verbatim from
+# .gitignore — release-config.test.ts compares the two rule for rule.
+/gate-*/
+
+# QA session-minting output — carries live session tokens
+qa-sessions*.json
+
+# playwright-cli's browser storage-state files — same reasoning as
+# qa-sessions*.json above. Verbatim from .gitignore — release-config.test.ts
+# compares the two rule for rule.
+*.auth-state.json
+*-auth-state.json
+storage-state*.json
+auth.json
+my-session.json
+
+# Firebase Admin SDK service-account keys — verbatim from .gitignore, and this
+# copy matters MORE than that one. Keeping the key out of git keeps it off a
+# public repo; keeping it out of here keeps it out of the archive uploaded to
+# EAS on every build. A credential that never reaches GitHub but rides along in
+# every build upload has not been protected, only moved.
+#
+# NOT google-services.json, which is committed on purpose and which the build
+# actually needs — see the note beside these two lines in .gitignore.
+*firebase-adminsdk*.json
+service-account*.json
+
+# A ROOT app.json is Expo debris. The real one is apps/mobile/app.json.
+/app.json
+
+# ===========================================================================
+# ADDITIONS — not in .gitignore. Tracked files a native build never opens.
+# ===========================================================================
+
+# 84.4 MB of the 126.3 MB tracked tree, almost all of it dim-interno:docs/reviews/results:
+# screenshots, measurement dumps and a 12 MB zip of a critique's captures.
+# Prose and images. Nothing under here is imported, required, or read at
+# runtime by anything in the app.
+docs/
+
+# The web app's Vitest suite (6.7 MB). Runs on CI and on a developer's machine;
+# a Gradle build has no idea it exists.
+__tests__/
+
+# The Playwright suite. `e2e/.auth/` is already excluded above as a secret;
+# this excludes the specs themselves, which are equally irrelevant to a build.
+e2e/
+
+# The prebuild output, if a developer ever ran `expo prebuild` locally. It is
+# ignored by apps/mobile/.gitignore rather than by the root .gitignore (that
+# file's header explains why), and .easignore does not read nested .gitignores
+# — so without these two lines a local prebuild would be uploaded and land on
+# top of the one EAS runs for itself. Nothing here is tracked today; these are
+# a fence against a directory that appears the first time somebody debugs a
+# native build on their own machine.
+apps/mobile/android/
+apps/mobile/ios/
+
+# The five .claude/* mirror lines above (verbatim from .gitignore) re-include
+# skills/, settings.json, agents/ and hooks/ for GIT TRACKING purposes — none
+# of that is read by a native build. This bare rule sits AFTER those
+# negations, so gitignore's "a later parent-directory exclusion wins"
+# ordering takes the whole folder back out of the archive.
+.claude/
+
+# Restated from .gitignore (this file REPLACES it, it does not extend it).
+# Generated by scripts/copy-maplibre-worker.ts for the WEB build; the mobile
+# upload has no use for it and no reason to carry half a megabyte of it.
+/public/maplibre/

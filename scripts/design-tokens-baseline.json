@@ -1,0 +1,1414 @@
+{
+  "_meta": {
+    "generatedAt": "2026-07-05",
+    "branch": "integration/all-20260703",
+    "totalViolations": 375,
+    "description": "Baseline of arbitrary text/spacing/radius/shadow/hex-in-style values. Files listed here are grandfathered. New violations in unlisted files or counts exceeding these values will fail lint:tokens."
+  },
+  "files": {
+    "components/PetForm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/AmendedBadge.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/Badge.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/Button.test.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 1,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/Button.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 3,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/CaptureConfidenceCard.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "components/ui/Card.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 2,
+      "hexStyle": 0
+    },
+    "components/ui/Chip.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 5,
+      "rounded": 1,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/ConfirmDialog.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "components/ui/DocElements.tsx": {
+      "text": 1,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/Field.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 5,
+      "rounded": 0,
+      "shadow": 2,
+      "hexStyle": 0
+    },
+    "components/ui/Hero.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 6,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/Ledger.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/LnCardSkeleton.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "components/ui/RegRow.tsx": {
+      "text": 1,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 4,
+      "rounded": 1,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/Sheet.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 12,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "components/ui/StatusFlag.tsx": {
+      "text": 1,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 5,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/Tabs.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 6,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/Toggle.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "components/ui/UrlTabs.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpBreach.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpButton.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 3,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpCallout.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpCard.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 3,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpCardSkeleton.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 3,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpCodeBadge.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 1,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpKpi.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpKpiSm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpKpiSkeleton.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpMobileDrawer.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 5,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpOmnibox.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpPill.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 2,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpRail.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 3,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpRailNav.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 4,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpScopeChip.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpStatusPill.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 3,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/ui/dashboard/OpTopbar.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/panorama/DetailDrawer.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "components/panorama/PanoramaKpiTile.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/panorama/SituationalMapDynamic.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 1
+    },
+    "components/layout/AppCitizenMasthead.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 6,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "components/layout/AppShell.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/layout/AppShellDrawer.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 4,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/layout/ContextSwitcher.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/admin/AlertInboxTable.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "components/admin/QueueHealthCockpit.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/global-error.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 7
+    },
+    "app/org/[orgToken]/layout.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/org/[orgToken]/voluntarios/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 3,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/org/[orgToken]/voluntarios/VolunteerRow.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 3,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/org/[orgToken]/voluntarios/propuestas/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/org/[orgToken]/servicios/[offeringToken]/CapacityEditor.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/org/[orgToken]/miembros/ChangeRoleSelect.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/org/[orgToken]/miembros/EventWriteToggle.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/org/[orgToken]/miembros/LeaveOrgButton.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/org/[orgToken]/miembros/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/org/[orgToken]/miembros/RemoveMemberButton.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/org/[orgToken]/miembros/RevokeButton.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/org/[orgToken]/miembros/invitar/InviteForm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/org/[orgToken]/casos/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/libreta/compartir/[shareToken]/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/gob/layout.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/gob/vigilancia/investigaciones/[caseCode]/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 1,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/gob/campanas/CampanasScreen.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/admin/layout.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/admin/libro/EventLedgerRow.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/admin/acerca/integracion-miarg/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 1,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(public)/refugios/[orgToken]/OrgHero.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 6,
+      "rounded": 3,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(public)/perdidas/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(public)/p/[publicToken]/DegradedCredentialCard.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "app/(public)/p/[publicToken]/opengraph-image.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 3
+    },
+    "app/(public)/p/[publicToken]/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 10,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "app/(public)/p/[publicToken]/Tier2MedicalView.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 3,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(public)/p/[publicToken]/sighting/PetSightingForm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 4,
+      "hexStyle": 0
+    },
+    "app/(public)/p/[publicToken]/encontre/FinderInPossessionForm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "app/(public)/denuncias/nueva/DenunciaWizard.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 4,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(public)/denuncias/nueva/_components/Step1Kind.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 2,
+      "hexStyle": 0
+    },
+    "app/(public)/denuncias/nueva/_components/Step2Severity.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 1,
+      "shadow": 3,
+      "hexStyle": 0
+    },
+    "app/(public)/denuncias/nueva/_components/Step3Where.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "app/(public)/denuncias/nueva/_components/Step4Subject.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 3,
+      "hexStyle": 0
+    },
+    "app/(public)/denuncias/nueva/_components/Step5Contact.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 4,
+      "hexStyle": 0
+    },
+    "app/(public)/denuncias/buscar/SearchForm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "app/(public)/adoptar/AdoptionFiltersBar.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(public)/adoptar/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(public)/adoptar/[petToken]/ApplyButton.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(public)/adoptar/[petToken]/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 13,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(public)/adoptar/[petToken]/postular/ApplicationForm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 10,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 1
+    },
+    "app/(public)/adoptar/[petToken]/postular/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 5,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/turnos/buscar/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/turnos/buscar/SearchFiltersForm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 2,
+      "hexStyle": 0
+    },
+    "app/(app)/turnos/buscar/[offeringToken]/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/turnos/buscar/[offeringToken]/reservar/[slotId]/BookingFormClient.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "app/(app)/turnos/buscar/[offeringToken]/reservar/[slotId]/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/transferencias/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/transferencias/[transferToken]/AcceptTransferActions.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "app/(app)/notificaciones/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-turnos/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/page.tsx": {
+      "text": 1,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/vacunas/programar/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/perdida/MarkLostWizard.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 7,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/mudanza/MoveForm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/mudanza/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/libreta/LibretaSanitariaView.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 6,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/libreta/SharesManager.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/eventos/[eventId]/AmendEventForm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/AttachmentField.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/loading.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/tatuaje/TattooForm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/mordedura/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/microchip-reemplazo/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/medicacion-fin/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/embarazo/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/checkin/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/editar/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/devolucion/OwnerInitiateReturnForm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 3,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/devolucion/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 3,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/devolucion/ReturnAcceptanceCard.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/corregir-especie/CorrectSpeciesForm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/corregir-especie/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/cartel/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/buscar-hogar/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/asistencia/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/asistencia/ServiceDogForm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 7,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/asistencia/presentar/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/anotar/CaptureBox.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/[publicToken]/anotar/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/reclamar-dni/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/reclamar/ClaimWizard.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 2,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/reclamar/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/postulaciones/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/postulaciones/WithdrawApplicationButton.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 3,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/mis-mascotas/nueva/match/[matchedPetToken]/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/denuncias/mias/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/loading.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 2,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 7,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/_components/DeactivateAccountDialog.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/verificar-dni/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/upgrade/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/transitos/propuestas/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/transitos/propuestas/[proposalToken]/ProposalActions.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 3,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/transitos/historial/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/transitos/activos/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/solicitudes/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 6,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/renunciar/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/renunciar/VetSelfResignForm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/privacidad/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/privacidad/PrivacyActions.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/ofrecerme-como-transito/FosterVolunteerWizard.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 2,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/ofrecerme-como-transito/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/memberships/LeaveMembershipButton.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 4,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/memberships/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 6,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/editar/EditProfileForm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 2,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/desactivar/GovtSelfDeactivateForm.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 0,
+      "rounded": 0,
+      "shadow": 1,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/desactivar/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    },
+    "app/(app)/cuenta/crear-consultorio/page.tsx": {
+      "text": 0,
+      "deadTextVar": 0,
+      "deadFontVar": 0,
+      "space": 1,
+      "rounded": 0,
+      "shadow": 0,
+      "hexStyle": 0
+    }
+  }
+}

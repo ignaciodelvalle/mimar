@@ -1,0 +1,24 @@
+-- dim:no-transaction
+-- Migration 0214: add 'national' to the user_role enum.
+--
+-- 'national' is a READ-ONLY institutional role with country-wide READ scope:
+-- it enters /gob and sees what admin sees on every read surface there, holds no
+-- govt_assignments, and is refused by every mutating server action and route
+-- (those keep gating on admin | govt — see lib/infra/auth-guards.ts,
+-- requireGobReadAccessOrRedirect vs requireAdminOrGovtOrRedirect). It never
+-- enters /admin. Account type is 'institutional' (application-layer invariant,
+-- AGENTS.md "User roles & account types" — hard constraint 1).
+--
+-- NOTE: ALTER TYPE ... ADD VALUE cannot run inside a transaction block in
+-- Postgres; the `-- dim:no-transaction` directive above tells scripts/migrate.ts
+-- to run this file unwrapped (same pattern as 0064_add_finder_author_role.sql).
+-- Nothing else belongs in this file: a statement that USES the new value must
+-- live in a later, transactional migration so the value is committed first.
+--
+-- RLS: no policy change. Every /gob read reaches the database through the
+-- server-side Drizzle connection (DATABASE_URL, RLS-bypassing), and the
+-- PostgREST policies that key on role = 'govt' / 'admin' simply do not match a
+-- 'national' JWT — a national principal reads NOTHING through PostgREST, which
+-- is the closed direction for a role whose only surface is server-rendered.
+
+alter type "public"."user_role" add value if not exists 'national';

@@ -1,0 +1,7 @@
+{
+  "_meta": {
+    "totalViolations": 0,
+    "description": "Baseline of bare toLocaleDateString/toLocaleString/Intl.DateTimeFormat calls without a timeZone option. Files listed here are grandfathered. New bare calls (new files or counts above these) fail lint:timezone. Canonical module excluded: lib/utils/format.ts."
+  },
+  "files": {}
+}

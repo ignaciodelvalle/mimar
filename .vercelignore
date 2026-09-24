@@ -1,0 +1,18 @@
+# Keep the deploy archive to source only. Without this, `vercel --archive=tgz`
+# tar's the whole working tree — including node_modules, the Next build cache,
+# git history, and (the real bloat) every agent worktree under .claude/worktrees
+# (each a full repo checkout) — producing a ~3GB upload that stalls/dies.
+# Vercel installs deps and builds server-side, so none of this is needed.
+
+node_modules
+.next
+.git
+.claude
+.turbo
+coverage
+playwright-report
+test-results
+*.log
+supabase/.temp
+supabase/.branches
+.vercel

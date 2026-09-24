@@ -1,0 +1,21 @@
+-- 0209 — welfare_reports.observed_symptoms: the answer stops going nowhere.
+--
+-- WHAT WAS OPEN. The org intake (WelfareReportForm) asks "¿Notaste algún
+-- síntoma en el animal?", both server actions parse the answer, and the value
+-- had no column to land in. Its ONLY consumer was the `symptom_observed`
+-- pet-event bridge, which sits inside `subjectKind === "registered_pet" &&
+-- subjectPetId` — unreachable for the unowned_animal and location subjects
+-- that dominate real denuncias. So a vet described an injured animal's state
+-- and the inspector never read it. The mobile screen carried the same field
+-- for most of a day before the discard was measured and the field removed;
+-- the contract documented the hole (packages/contract/src/input/
+-- welfare-report.ts) and left the decision to the PO, because folding
+-- somebody's testimony into `description` is not a call code gets to make.
+--
+-- THE REPAIR (PO decision 2026-09-01: campo propio). One nullable text
+-- column, stored verbatim. Free text and not coded symptoms on purpose: the
+-- coded pipeline (symptom_observed events, matched_symptom_codes) needs a
+-- registered pet, and this column exists precisely for the reports that have
+-- none. The writers store it; the /gob/maltrato detail and the MPF export
+-- read it. Additive and nullable: every existing row simply recorded nothing.
+ALTER TABLE welfare_reports ADD COLUMN observed_symptoms text;

@@ -1,0 +1,18 @@
+@media print {
+  html,
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  li {
+    page-break-inside: avoid;
+  }
+  section {
+    page-break-before: auto;
+    margin-bottom: 1rem;
+  }
+  button,
+  a[href]:not([href^="#"]) {
+    display: none !important;
+  }
+}

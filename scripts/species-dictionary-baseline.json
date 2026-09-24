@@ -1,0 +1,4 @@
+{
+  "_comment": "VACIO desde 2026-08-09. Este archivo listaba los 11 archivos que traducian el enum de especie por su cuenta en vez de importar speciesLabel / speciesLabelPlural de lib/utils/format.ts. Los once se canalizaron por speciesOptions()/speciesLabel(): los valores siguen siendo la decision de producto de cada pantalla, la ortografia ya no. Dos esperaban criterio del PO y ahora lo tienen: sin desdoblamiento (Perro, no Perro/a) y sin variante regional (Cobayo, no Cobayo / Cuy). El fence falla tanto ante una entrada NUEVA como ante una obsoleta, asi que esta lista solo puede quedarse vacia. Guardado por __tests__/species-label-single-source.test.ts.",
+  "files": []
+}

@@ -1,0 +1,217 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build outputs
+.next/
+out/
+dist/
+
+# Expo (apps/mobile). `.expo/` is the local dev-server cache and generated
+# types; `expo export` writes the bundle into `dist/`, which the unanchored
+# entry above already matches at any depth.
+#
+# `android/` and `ios/` are ignored too — but from `apps/mobile/.gitignore`,
+# not from here, and that placement is load-bearing rather than tidy. Read the
+# header of that file before moving the rules up: @expo/fingerprint looks for
+# them from the Expo project root when it has no git to ask, which is the case
+# on an EAS worker, and a rule at this level is invisible to it. The 2026-08-26
+# build failure that taught us so is in docs/mobile/eas-build-profiles.md.
+.expo/
+
+# environment
+.env
+.env.local
+.env*.local
+!.env.example
+!.env.local.example
+
+# editor
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# misc
+.turbo/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# supabase local
+supabase/.branches/
+supabase/.temp/
+supabase/snippets/Untitled*.sql
+
+# agent/script scratch output (also the launchworthy audit report target)
+tmp/
+# Session scratch at the repo root: QA state files, downloaded build artifacts
+# (an AAB is ~80 MB) and one-off notes. Never history; anchored so a future
+# docs/scratchpad/ stays trackable.
+/scratchpad/
+
+# agent tool caches — but project-scoped agent skills, settings, and agent/hook
+# definitions are versioned on purpose (PO decision 2026-09-04, extended
+# 2026-09-04): `.claude/*` ignores worktrees, local settings and caches, and
+# the negations below re-include only `.claude/skills/`, `.claude/settings.json`
+# (verified secret-free: `enabledPlugins` + a `permissions.allow` command
+# allowlist, nothing else), `.claude/agents/` and `.claude/hooks/`.
+# `.claude/settings.local.json` (session-specific paths), `.claude/worktrees/`
+# (full worktree checkouts), `.claude/scratch/` and `.claude/scheduled_tasks.lock`
+# stay ignored on purpose — none of those are meant to leave this machine.
+.atl/
+.claude/*
+!.claude/skills/
+!.claude/settings.json
+!.claude/agents/
+!.claude/hooks/
+
+# design handoff reference (local only — source for the Libreta Nacional redesign, not production)
+design_handoff_*/
+install.cmd
+
+# playwright
+playwright-report/
+test-results/
+e2e/.auth/
+
+# vercel CLI (local project linkage + build cache — never commit)
+.vercel/
+.superpowers/
+
+# Local demo screen recordings — never commit (large binaries)
+*.webm
+scripts/assets/pet-photos-real/*
+!scripts/assets/pet-photos-real/README.md
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+
+.vercel
+.env*
+
+# Playwright MCP session artifacts (screenshots, snapshots), and the page
+# snapshots Microsoft's playwright-cli writes to CWD under its own directory
+.playwright-mcp/
+.playwright-cli/
+
+# Graphify knowledge-graph output (local index, rebuilt on demand)
+graphify-out/
+
+# Scratch scripts from parallel QA agents (cursor / cowork / one-off seeding).
+#
+# WHY THIS EXISTS: on 2026-08-01 an untracked one-off dropped into scripts/ put
+# `pnpm verify` in the red for work that had nothing to do with it, and every
+# gate run after that had to be discounted by hand — which is exactly the kind
+# of thing that later gets discounted when it IS real. biome.json sets
+# `vcs.useIgnoreFile: true`, so an entry here takes the file out of the gate AND
+# out of reach of a broad `git add` in one move.
+#
+# Convention: one-off scripts go in scripts/scratch/. Anything meant to survive
+# gets a real name, a test, and a commit.
+scripts/scratch/
+scripts/bulk-cursor-pets-staging.mjs
+
+# Playwright MCP writes snapshots and screenshots to CWD, which is the repo root.
+# `.playwright-mcp/` above only covers the cases where it uses its own directory.
+# Telling a browser agent "don't touch the repo" cannot prevent this — it is the
+# tool's default, not the agent's choice. These are session artifacts: the .md is
+# an accessibility-tree dump, the .png a screenshot. Neither is a finding.
+/*.png
+/*-snapshot.md
+/panorama.md
+
+# vitest --reporter=json output consumed by scripts/check-suite-coverage.ts
+.vitest-report.json
+
+# Local Definition-of-Done gate evidence (one dir per run: logs, .exit markers,
+# the vitest JSON report). Reproduced by re-running the gate, never committed.
+# ANCHORED AT THE ROOT on purpose: an unanchored `gate-*/` matches at ANY depth,
+# so a future `docs/gate-chain/` or `scripts/gate-runner/` would stop being
+# tracked in silence. The gate writes one directory per run at the repo root.
+# .easignore carries this line verbatim (release-config.test.ts compares them
+# rule for rule) — change both or that fence goes red.
+/gate-*/
+
+# QA session-minting output — carries live session tokens for seed accounts.
+# The repo is public: this file must never be committable, same reasoning as
+# e2e/.auth/ above.
+qa-sessions*.json
+
+# playwright-cli (the vendored .claude/skills/playwright-cli agent skill)
+# writes browser storage state — cookies, localStorage, live session tokens —
+# to CWD on request. Same reasoning as qa-sessions*.json above: the repo is
+# public and none of these may ever be committable. Covers the auto-generated
+# default name, the skill's own recommended save-file suffix
+# (references/storage-state.md: "Add *.auth-state.json to .gitignore"), and
+# the two names its own worked examples save to.
+*.auth-state.json
+*-auth-state.json
+storage-state*.json
+auth.json
+my-session.json
+
+# Firebase Admin SDK service-account keys — the FCM V1 credential that lets Expo
+# deliver push on this project's behalf. Downloaded from Firebase → Project
+# settings → Service accounts, uploaded once with `eas credentials`, and never
+# stored here: the repo is public and this file is a PRIVATE KEY, not an
+# identifier. Firebase names its download <project>-firebase-adminsdk-<id>.json,
+# which the first pattern catches; the second covers a copy somebody renamed.
+# .easignore carries both lines verbatim (release-config.test.ts compares them
+# rule for rule) — change both or that fence goes red.
+#
+# NOT to be confused with `apps/mobile/google-services.json`, which is committed
+# ON PURPOSE and must stay that way — that one carries public-facing identifiers
+# and `expo config` fails without it. Two files, one console, opposite rules.
+*firebase-adminsdk*.json
+service-account*.json
+
+# A ROOT app.json is Expo debris. The real one is apps/mobile/app.json.
+#
+# `@expo/config`'s `modifyConfigAsync()` writes `path.join(projectRoot, "app.json")`
+# whenever a config-mutating command runs and finds no static config at that root
+# (Config.js: `config.staticConfigPath ?? path.join(projectRoot, 'app.json')`).
+# Run any such command — `expo install`, `expo prebuild`, `eas update:configure`
+# — from C:\dev\dim instead of from apps/mobile and Expo resolves the REPO ROOT
+# as the project root, then leaves `{"expo": {}}` behind. Measured 2026-08-26:
+# from the repo root `expo config` reads the root package.json and reports the
+# WEB app's identity (name "dim", version 0.1.0), which is how it decides the
+# root is a project at all.
+#
+# WHY NOT FIX THE CAUSE, since a symptom in .gitignore is normally the worse
+# trade. There is no cause in this repo to fix, and that was measured rather than
+# assumed. `pnpm verify` → `verify:mobile` runs three things and NONE of them
+# emits the file: `pnpm --filter mimar typecheck`, `pnpm --filter mimar test`,
+# and `pnpm --filter mimar exec expo config --type public` were each run with the
+# root app.json deleted first, and it did not come back. `pnpm --filter mimar
+# exec` reports `cwd = C:\dev\dim\apps\mobile`, which is correct — the repo's own
+# invocation was never the one at fault. The file arrives from an ad-hoc `expo`
+# or `eas` command typed at the repo root, and no package.json script can stop a
+# human's cwd.
+#
+# WHY IT MATTERS ENOUGH TO IGNORE RATHER THAN DELETE. It is untracked, so a
+# `git add -A` sweeps it into somebody's commit; the repo already bans `-A` for
+# other reasons and this is one more. A committed root `app.json` would also be a
+# static Expo config at the root of a monorepo whose real one is two directories
+# down — harmless today (its `{"expo": {}}` merges to nothing over package.json,
+# verified) and exactly the kind of shadow that stops being harmless the first
+# time a tool globs `app.json` from the root.
+/app.json
+
+# Generated by scripts/copy-maplibre-worker.ts on prebuild/predev.
+# Copies of files that live in node_modules; committing them would create a
+# second source of truth that drifts silently on the next bump.
+/public/maplibre/

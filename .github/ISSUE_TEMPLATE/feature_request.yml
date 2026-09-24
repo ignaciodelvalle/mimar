@@ -1,0 +1,55 @@
+name: Feature request
+description: Propose a new feature, capability, or behavior change.
+title: "[feat] "
+labels: ["type:feat"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening: **does a spec under `docs/superpowers/` already cover this?** If yes, link it. If not, this issue is the place to argue *whether* the feature should exist; the spec is the place to argue *how*. See `CONTRIBUTING.md` → "Spec-first culture."
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: User-facing problem, not the solution. Who is hurt and how, today?
+      placeholder: Vets can't see ongoing medications when reading a libreta share — they end up calling the owner to check.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed direction
+      description: Rough shape of the change. Not a final design.
+    validations:
+      required: true
+
+  - type: input
+    id: spec
+    attributes:
+      label: Linked spec under `docs/superpowers/specs/`
+      description: Path to an existing spec, OR write "needed — will draft after this issue is triaged".
+      placeholder: docs/superpowers/specs/2026-MM-DD-<feature>-design.md
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Primary code area
+      options:
+        - "auth / profile"
+        - "adoption"
+        - "foster"
+        - "cases (transfer / dispute / welfare)"
+        - "events / projections"
+        - "libreta / share"
+        - "admin"
+        - "govt (jurisdiction)"
+        - "infra / DB / RLS"
+        - "other"
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Constraints, deadlines, dependencies, prior art, anything that shapes the design.

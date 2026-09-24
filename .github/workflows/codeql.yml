@@ -1,0 +1,69 @@
+# CodeQL static analysis (SAST) — Wave 5 Item 30.
+# Scans the JS/TS sources for security vulnerabilities and surfaces findings in
+# the repo's Security tab. CodeQL extracts JS/TS directly — no build step needed.
+#
+# Repo-settings prerequisite (owner-gated, one-time): enable Code scanning in
+# Settings → Code security and analysis. On a private repo this requires GitHub
+# Advanced Security. See SECURITY.md.
+name: CodeQL
+#
+# WHY THIS IS THE ONE SCHEDULED WORKFLOW WITHOUT AN EXPLICIT `ref:`
+# ---------------------------------------------------------------------------
+# Every other scheduled fence here pins `ref: integration/all-*`, because a
+# `schedule:` event fires from — and checks out — the DEFAULT branch, which was
+# measured 3876 commits behind the deployed app on 2026-08-27. CodeQL is the
+# deliberate exception, and the reason is attribution, not stale code.
+#
+# `github/codeql-action/analyze` uploads its SARIF against the ref that TRIGGERED
+# the run. On a schedule that ref is `refs/heads/main`. Check out an integration
+# branch there and every finding is filed against `main` for code that is not in
+# `main` — poisoning the default-branch baseline the Security tab is built on,
+# and leaving alerts that can never be closed by a fix because the vulnerable
+# line does not exist on the ref they claim. The weekly scan is a DEFAULT-BRANCH
+# scan by design; it should keep scanning the default branch.
+#
+# The real hole was a different one: the live tree was never scanned at all,
+# because `push:` only listed main and develop and all the work happens on
+# `integration/**`. That is fixed the correct way below — scan on push, where
+# `github.ref` IS the integration branch and attribution is right. It is the same
+# fix, for the same reason, that ci.yml already carries in its own header.
+#
+# `pnpm lint:sched-refs` encodes this exemption with this reason, and fails if
+# somebody later adds a `ref:` here without revisiting the argument above.
+
+on:
+  push:
+    branches: [main, develop, "integration/**"]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Weekly full scan (Mondays 04:23 UTC) to catch advisories in code that
+    # hasn't changed since the last push. Runs the DEFAULT branch — see above.
+    - cron: "23 4 * * 1"
+
+jobs:
+  analyze:
+    name: Analyze (JavaScript/TypeScript)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          # security-extended adds higher-recall security queries on top of the
+          # default set (more findings, slightly noisier — appropriate for a
+          # pre-government-integration hardening posture).
+          queries: security-extended
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"

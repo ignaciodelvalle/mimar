@@ -1,0 +1,19 @@
+# Enforce LF line endings for all text files (Linux CI runs biome strictly).
+# Without this, Windows clones with core.autocrlf=true commit CRLF that fails
+# biome format on Linux CI.
+* text=auto eol=lf
+
+# Explicit binary files (no diff, no line-ending conversion)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.gz binary

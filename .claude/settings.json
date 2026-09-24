@@ -1,0 +1,76 @@
+{
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(pnpm verify)",
+      "Bash(pnpm verify:mobile)",
+      "Bash(pnpm test:verified)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm canon:render)",
+      "Bash(npx tsc *)",
+      "Bash(npx biome check *)",
+      "Bash(pnpm biome check *)",
+      "Bash(npx eas-cli@latest whoami)",
+      "Bash(npx eas-cli@latest build:list *)",
+      "Bash(npx eas-cli@latest build:view *)",
+      "Bash(npx eas-cli@latest env:list production)",
+      "Bash(npx eas-cli@latest env:list preview)",
+      "Bash(npx eas-cli whoami)",
+      "Bash(npx eas-cli env:list *)",
+      "Bash(npx eas-cli update:list *)",
+      "Bash(npx eas-cli update:view *)",
+      "Bash(npx eas-cli fingerprint:compare *)",
+      "Bash(npx expo export *)",
+      "Bash(fnm current)",
+      "Bash(fnm list)",
+      "Bash(fnm env *)",
+      "Bash(fnm use *)",
+      "Bash(pnpm vitest *)",
+      "Bash(pnpm --filter mimar test)",
+      "Bash(pnpm --filter mimar test *)",
+      "Bash(pnpm --filter mimar typecheck)",
+      "Bash(pnpm --filter mimar exec jest *)",
+      "Bash(pnpm --filter mimar exec expo config *)",
+      "Bash(git fetch *)"
+    ],
+    "deny": [
+      "Bash(npx biome check *--write*)",
+      "Bash(pnpm biome check *--write*)",
+      "Bash(pnpm exec biome check *--write*)",
+      "Bash(npx biome check --write*)",
+      "Bash(pnpm biome check --write*)",
+      "Bash(npx biome check *--fix*)",
+      "Bash(pnpm biome check *--fix*)",
+      "Bash(pnpm exec biome check *--fix*)",
+      "Bash(npx biome check --fix*)",
+      "Bash(pnpm biome check --fix*)",
+      "Bash(npx biome check *--unsafe*)",
+      "Bash(pnpm biome check *--unsafe*)",
+      "Bash(pnpm exec biome check *--unsafe*)",
+      "Bash(npx biome check --unsafe*)",
+      "Bash(pnpm biome check --unsafe*)",
+      "Bash(npx biome check *--apply*)",
+      "Bash(pnpm biome check *--apply*)",
+      "Bash(pnpm exec biome check *--apply*)",
+      "Bash(npx biome check --apply*)",
+      "Bash(pnpm biome check --apply*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/biome-fix.mjs"
+          }
+        ]
+      }
+    ]
+  }
+}

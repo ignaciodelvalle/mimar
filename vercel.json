@@ -1,0 +1,22 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/refresh-cube",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/daily",
+      "schedule": "0 4 * * *"
+    }
+  ],
+  "functions": {
+    "app/api/cron/*/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/cron/refresh-cube/route.ts": {
+      "maxDuration": 300
+    }
+  },
+  "regions": ["gru1"]
+}
