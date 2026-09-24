@@ -48,75 +48,31 @@ function walk(dir: string): string[] {
 }
 
 /**
- * Source with every comment blanked out — block comments first (so a `//`
- * inside one is not mistaken for a line comment start), then line comments,
- * tracked char-by-char so a `//` inside a STRING (none today, but a future
- * URL) is not stripped as if it started a comment.
+ * Matches, as ONE alternative each: a block comment, a line comment, or a
+ * quoted string (any of the three JS quote styles, backslash escapes
+ * respected). Order matters — at any position the leftmost alternative that
+ * matches wins, so a `"` that opens a string is never mistaken for the start
+ * of a comment and a `//` that opens a comment is never re-parsed as code.
+ */
+const COMMENT_OR_STRING =
+  /\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g;
+
+/**
+ * Source with every comment blanked out and every string left exactly as it
+ * was. A single regex pass rather than a hand-rolled scanner: `COMMENT_OR_STRING`
+ * finds the next comment OR string as one token — whichever starts first — and
+ * this only decides what to do with the token it found, which is either
+ * "blank it" (a comment) or "keep it" (a string, so a hex literal genuinely IN
+ * CODE is never lost). Plain code between tokens is untouched automatically,
+ * since `replace` only rewrites what it matched.
  *
- * Comments are replaced with spaces, not deleted, so column/line positions —
- * and therefore nothing downstream that might slice by index — never shift.
+ * A comment's newlines are preserved (only non-newline characters become
+ * spaces) so column/line positions never shift.
  */
 function stripComments(source: string): string {
-  let out = "";
-  let i = 0;
-  let inLineComment = false;
-  let inBlockComment = false;
-  let quote: '"' | "'" | "`" | null = null;
-  while (i < source.length) {
-    const ch = source[i];
-    const next = source[i + 1];
-    if (inLineComment) {
-      if (ch === "\n") inLineComment = false;
-      out += ch === "\n" ? "\n" : " ";
-      i += 1;
-      continue;
-    }
-    if (inBlockComment) {
-      if (ch === "*" && next === "/") {
-        inBlockComment = false;
-        out += "  ";
-        i += 2;
-        continue;
-      }
-      out += ch === "\n" ? "\n" : " ";
-      i += 1;
-      continue;
-    }
-    if (quote) {
-      out += ch;
-      if (ch === "\\") {
-        // Preserve the escaped character verbatim, including a `"`/`'`/`` ` ``
-        // that would otherwise end the string one character early.
-        if (next !== undefined) {
-          out += next;
-          i += 2;
-          continue;
-        }
-      } else if (ch === quote) {
-        quote = null;
-      }
-      i += 1;
-      continue;
-    }
-    if (ch === "/" && next === "/") {
-      inLineComment = true;
-      out += "  ";
-      i += 2;
-      continue;
-    }
-    if (ch === "/" && next === "*") {
-      inBlockComment = true;
-      out += "  ";
-      i += 2;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === "`") {
-      quote = ch;
-    }
-    out += ch;
-    i += 1;
-  }
-  return out;
+  return source.replace(COMMENT_OR_STRING, (token) =>
+    token.startsWith("/*") || token.startsWith("//") ? token.replace(/[^\n]/g, " ") : token,
+  );
 }
 
 const HEX_COLOR = /#[0-9a-fA-F]{3,8}\b/g;
@@ -154,7 +110,8 @@ describe("no raw hex colour outside the design system", () => {
 
   it("still finds the one allowlisted hex — proves the scan reaches that file at all", () => {
     const qrFile = FILES.find(
-      (file) => path.relative(SRC_ROOT, file).split(path.sep).join("/") === "credential/CredentialQr.tsx",
+      (file) =>
+        path.relative(SRC_ROOT, file).split(path.sep).join("/") === "credential/CredentialQr.tsx",
     );
     expect(qrFile).toBeDefined();
     const code = stripComments(readFileSync(qrFile as string, "utf8"));
