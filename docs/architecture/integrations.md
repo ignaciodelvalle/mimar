@@ -209,9 +209,18 @@ one of its recipients (to/cc/bcc, lowercased, `+tag` stripped) is a mailbox in
 `CONTACT_EMAILS` (`lib/ui/contact.ts`: `hola@`, `privacidad@`, `contacto@`).
 Everything else — spam to invented local parts — is dropped with a 200.
 
+- **Keys (least privilege):** `RESEND_INBOUND_API_KEY` (full access) is used
+  ONLY for `emails.receiving.get`, which also yields the signed raw-download
+  URL; the forward itself (`emails.send`) keeps using the sending-only
+  `RESEND_API_KEY`. A sending-only key is refused by the receiving API — the
+  first staging test proved it. Unset in production, the route reports an
+  error and answers 200 without calling Resend; outside production it falls
+  back to `RESEND_API_KEY`. A 401/403 (or permission-type error) from the
+  receiving API is reported as a configuration error; only a genuine 404 is
+  logged as `not-found`.
 - **Trust:** the body is read for `type` and `data.email_id` only; the email is
-  re-fetched from Resend with the server's `RESEND_API_KEY`, so a forged id
-  404s and does nothing. `RESEND_WEBHOOK_SECRET`, when set, adds Svix
+  re-fetched from Resend with the server's own key, so a forged id 404s and
+  does nothing. `RESEND_WEBHOOK_SECRET`, when set, adds Svix
   signature verification (401 on failure). Unset, it fails CLOSED when
   `VERCEL_ENV=production` (forged ids would burn the Resend API rate limit
   shared with signup and password-reset mail) and warns once elsewhere. The

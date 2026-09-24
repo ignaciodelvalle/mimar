@@ -15,6 +15,8 @@ import { type MockInstance, afterEach, beforeEach, describe, expect, it, vi } fr
 
 const receivingGet = vi.fn();
 const emailsSend = vi.fn();
+/** Which API key each network call was made with: `${operation}:${key}`. */
+const keyUsed = vi.fn<(call: string) => void>();
 
 // Only the network calls are faked. `webhooks.verify` is the REAL Svix check,
 // so the signature test proves the wiring and not a mock's opinion of it.
@@ -22,12 +24,24 @@ vi.mock("resend", async (importOriginal) => {
   const actual = await importOriginal<typeof import("resend")>();
   class FakeResend {
     readonly webhooks: InstanceType<typeof actual.Resend>["webhooks"];
-    readonly emails = {
-      receiving: { get: (...args: unknown[]) => receivingGet(...args) },
-      send: (...args: unknown[]) => emailsSend(...args),
+    readonly emails: {
+      receiving: { get: (...args: unknown[]) => unknown };
+      send: (...args: unknown[]) => unknown;
     };
     constructor(key: string) {
       this.webhooks = new actual.Resend(key).webhooks;
+      this.emails = {
+        receiving: {
+          get: (...args: unknown[]) => {
+            keyUsed(`get:${key}`);
+            return receivingGet(...args);
+          },
+        },
+        send: (...args: unknown[]) => {
+          keyUsed(`send:${key}`);
+          return emailsSend(...args);
+        },
+      };
     }
   }
   return { ...actual, Resend: FakeResend };
@@ -105,6 +119,8 @@ beforeEach(() => {
   __resetInboundMailStateForTests();
   receivingGet.mockReset();
   emailsSend.mockReset();
+  keyUsed.mockReset();
+  vi.stubEnv("RESEND_INBOUND_API_KEY", "re_inbound_key");
   reportError.mockReset();
   emailsSend.mockResolvedValue({ data: { id: "sent_1" }, error: null, headers: null });
   vi.stubEnv("RESEND_API_KEY", "re_test_key");
@@ -479,6 +495,53 @@ describe("hardening (security review of 086e293ab)", () => {
     expect(isOnInboundDomain(`a@mail.${PRIMARY_MAIL_DOMAIN}`)).toBe(true);
     expect(isOnInboundDomain(`a@evil${PRIMARY_MAIL_DOMAIN}`)).toBe(false);
     expect(isOnInboundDomain("a@example.net")).toBe(false);
+  });
+});
+
+describe("two keys: full-access for receiving, sending-only for the forward", () => {
+  it("reads with RESEND_INBOUND_API_KEY and sends with RESEND_API_KEY", async () => {
+    receivingGet.mockResolvedValue(fetchedEmail([CONTACT_EMAILS.general]));
+    await POST(post(event()));
+    expect(keyUsed.mock.calls.map((c) => c[0])).toEqual(["get:re_inbound_key", "send:re_test_key"]);
+  });
+
+  it("unset inbound key in production: no Resend call, error reported, 200", async () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("RESEND_WEBHOOK_SECRET", SECRET);
+    vi.stubEnv("RESEND_INBOUND_API_KEY", "");
+    const raw = event();
+    const res = await POST(post(raw, signed(raw)));
+    expect(res.status).toBe(200);
+    expect(keyUsed).not.toHaveBeenCalled();
+    expect(reportError).toHaveBeenCalledTimes(1);
+    expect(String(reportError.mock.calls[0][1])).toContain("RESEND_INBOUND_API_KEY");
+  });
+
+  it("a 403 from the receiving API is reported as a config error, not logged as not-found", async () => {
+    receivingGet.mockResolvedValue({
+      data: null,
+      error: { name: "restricted_api_key", message: "sending access only", statusCode: 403 },
+      headers: null,
+    });
+    const res = await POST(post(event("em_real")));
+    expect(res.status).toBe(200);
+    expect(emailsSend).not.toHaveBeenCalled();
+    expect(reportError).toHaveBeenCalledTimes(1);
+    expect(String(reportError.mock.calls[0][1])).toContain("RESEND_INBOUND_API_KEY");
+    const logged = info.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(logged).not.toContain("not-found");
+    expect(logged).toContain("misconfigured");
+  });
+
+  it("a genuine 404 is still not-found and is not reported", async () => {
+    receivingGet.mockResolvedValue({
+      data: null,
+      error: { name: "not_found", message: "Email not found", statusCode: 404 },
+      headers: null,
+    });
+    await POST(post(event("em_forged")));
+    expect(reportError).not.toHaveBeenCalled();
+    expect(info.mock.calls.map((c) => String(c[0])).join("\n")).toContain("not-found");
   });
 });
 

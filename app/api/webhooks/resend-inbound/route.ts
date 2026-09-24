@@ -448,6 +448,82 @@ async function sendForward(
   }
 }
 
+/**
+ * The client for the RECEIVING API (`receiving.get`, which also yields the
+ * signed raw-download URL). It uses RESEND_INBOUND_API_KEY, a separate
+ * full-access key, so that key never touches the send path and the send path
+ * keeps RESEND_API_KEY's sending-only scope (least privilege). The first
+ * staging test proved the split is required: a sending-only key is refused by
+ * the receiving API.
+ *
+ * Unset in production: reported, and null (the webhook answers 200; a retry
+ * does not cure configuration). Outside production it falls back to the
+ * sending key so local and preview stay testable with one key.
+ */
+function resolveInboundClient(sendingKey: string): Resend | null {
+  const inboundKey = (process.env.RESEND_INBOUND_API_KEY ?? "").trim();
+  if (inboundKey.length > 0) return new Resend(inboundKey);
+  if (process.env.VERCEL_ENV === "production") {
+    reportError(
+      LOG_CONTEXT,
+      new Error("RESEND_INBOUND_API_KEY is not set; inbound mail cannot be read or forwarded"),
+    );
+    return null;
+  }
+  return new Resend(sendingKey);
+}
+
+/** Auth/permission failures of the receiving API: configuration, never "not found". */
+const RECEIVING_AUTH_ERRORS = new Set([
+  "restricted_api_key",
+  "invalid_api_key",
+  "missing_api_key",
+  "invalid_access",
+]);
+
+/**
+ * Re-fetches the email by id with the receiving client. Returns the email, or
+ * the webhook's answer when there is none. Only a genuine 404 is `not-found`:
+ * a 401/403 or permission-type error is REPORTED as a configuration error —
+ * logging it as not-found is exactly how the sending-only key hid on staging.
+ */
+async function fetchInboundEmail(
+  inbound: Resend,
+  emailId: string,
+): Promise<GetReceivingEmailResponseSuccess | NextResponse> {
+  const fetched = await inbound.emails.receiving.get(emailId);
+  if (!fetched.error && fetched.data) return fetched.data;
+  const status = fetched.error?.statusCode;
+  const name = fetched.error?.name ?? "";
+  if (status === 401 || status === 403 || RECEIVING_AUTH_ERRORS.has(name)) {
+    reportError(
+      LOG_CONTEXT,
+      new Error(
+        "Resend receiving API refused the inbound key (401/403); RESEND_INBOUND_API_KEY needs full access",
+      ),
+      { emailId, statusCode: status ?? null, errorName: name },
+    );
+    logOutcome("misconfigured", emailId);
+    return ok();
+  }
+  if (status === 404 || name === "not_found") {
+    logOutcome("not-found", emailId);
+    return ok();
+  }
+  if (isTransient(status)) {
+    logOutcome("transient", emailId);
+    return retryLater(503);
+  }
+  // Any other 4xx: not retryable, not a missing email. Reported, not hidden.
+  reportError(LOG_CONTEXT, new Error("Resend receiving API rejected the lookup"), {
+    emailId,
+    statusCode: status ?? null,
+    errorName: name,
+  });
+  logOutcome("misconfigured", emailId);
+  return ok();
+}
+
 // @no-auth-required: Resend lo llama desde afuera, sin sesión, y no hay usuario
 // al que autorizar. La confianza no sale del pedido: la firma Svix se verifica
 // cuando RESEND_WEBHOOK_SECRET está (y en producción, sin secreto, se rechaza
@@ -483,6 +559,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 
+  const inbound = resolveInboundClient(apiKey);
+  if (inbound === null) {
+    logOutcome("misconfigured", null);
+    return ok();
+  }
+
   const event = readEvent(raw);
   if (event === null || (event.type === "email.received" && event.emailId === null)) {
     logOutcome("bad-payload", null);
@@ -498,16 +580,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return ok();
   }
 
-  const fetched = await resend.emails.receiving.get(emailId);
-  if (fetched.error || !fetched.data) {
-    if (isTransient(fetched.error?.statusCode)) {
-      logOutcome("transient", emailId);
-      return retryLater(503);
-    }
-    logOutcome("not-found", emailId);
-    return ok();
-  }
-  const email = fetched.data;
+  const fetched = await fetchInboundEmail(inbound, emailId);
+  if (fetched instanceof NextResponse) return fetched;
+  const email = fetched;
 
   // Our own forward arriving back (a misrouted MAIL_FORWARD_TO, an auto-reply
   // chain): never forward it again.
