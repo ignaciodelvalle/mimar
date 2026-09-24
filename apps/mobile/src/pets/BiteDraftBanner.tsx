@@ -33,9 +33,15 @@ export function BiteDraftBanner({ onPress }: { onPress: () => void }) {
           Quedó guardada en este teléfono, pero todavía no la enviaste. Las ventanas de observación
           de rabia corren desde el hecho, no desde que la registrás.
         </Text>
+        <Text style={styles.body}>Si ya no es tu mascota, abrila y descartá el borrador.</Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Terminar de enviar la mordedura"
+          // NO `accessibilityLabel` (WCAG 2.5.3, label-in-name): the accessible
+          // name has to START WITH the visible text so a voice-control user
+          // saying what they read on screen gets a match. The extra context
+          // ("de la mordedura") goes in `accessibilityHint`, which is spoken
+          // AFTER the name and never substitutes for it.
+          accessibilityHint="Abre el formulario y recupera lo que ya habías escrito sobre la mordedura."
           onPress={onPress}
           style={(state) => [styles.cta, pressedOpacity(state)]}
         >

@@ -19,6 +19,7 @@ import {
   eventDraftKey,
   forgetAllEventDrafts,
   forgetEventDraft,
+  listEventDrafts,
   pruneExpiredEventDrafts,
   readEventDraft,
   writeEventDraft,
@@ -289,6 +290,65 @@ describe("pruneExpiredEventDrafts — what is KEPT, not only what is offered", (
     await pruneExpiredEventDrafts(NOW);
 
     expect(await AsyncStorage.getAllKeys()).toEqual(["mimar.credential.v1.DIM-PAMP-0001"]);
+  });
+});
+
+describe("listEventDrafts — how it tells one kind's key from another's", () => {
+  it("does not let 'note1' answer for 'note' — the suffix match is exact", async () => {
+    const real = eventDraftKey({
+      ownerId: OWNER,
+      publicToken: TOKEN,
+      kind: "note",
+      sourceEventId: null,
+    });
+    // A SYNTHETIC key, hand-built rather than through `eventDraftKey` — no real
+    // kind's name extends another's, so this pins the ALGORITHM itself
+    // (`key.endsWith(".${kind}")`) rather than a case a typed caller could ever
+    // produce.
+    const impostor = `${real}1`;
+    await writeEventDraft(real, typed(), NOW);
+    await writeEventDraft(impostor, typed(), NOW);
+
+    const found = await listEventDrafts({ ownerId: OWNER, kind: "note", now: NOW });
+
+    expect(found).toHaveLength(1);
+    expect(found[0]?.publicToken).toBe(TOKEN);
+  });
+
+  it("does not surface another kind's draft for the same owner and pet", async () => {
+    await writeEventDraft(
+      eventDraftKey({ ownerId: OWNER, publicToken: TOKEN, kind: "weight", sourceEventId: null }),
+      typed(),
+      NOW,
+    );
+    await writeEventDraft(
+      eventDraftKey({ ownerId: OWNER, publicToken: TOKEN, kind: "note", sourceEventId: null }),
+      typed(),
+      NOW,
+    );
+
+    const found = await listEventDrafts({ ownerId: OWNER, kind: "note", now: NOW });
+
+    expect(found).toHaveLength(1);
+  });
+
+  it("does not count a key written under an older, unversioned prefix", async () => {
+    await writeEventDraft(
+      eventDraftKey({ ownerId: OWNER, publicToken: TOKEN, kind: "note", sourceEventId: null }),
+      typed(),
+      NOW,
+    );
+    // THE SAME SHAPE `pruneExpiredEventDrafts` sweeps: a `v0` key this build has
+    // never written. Sharing the owner, the pet and the kind must not be enough
+    // — only `KEY_VERSION_PREFIX` says "current shape, safe to read".
+    await AsyncStorage.setItem(
+      `mimar.eventDraft.${OWNER}.${TOKEN}.note`,
+      JSON.stringify({ savedAt: NOW, values: typed() }),
+    );
+
+    const found = await listEventDrafts({ ownerId: OWNER, kind: "note", now: NOW });
+
+    expect(found).toHaveLength(1);
   });
 });
 

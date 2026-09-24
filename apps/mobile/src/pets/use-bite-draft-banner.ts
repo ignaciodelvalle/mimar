@@ -46,6 +46,15 @@ export function useBiteDraftBanner(): UseBiteDraftBanner {
       return;
     }
     const found = await listEventDrafts({ ownerId: session.user.id, kind: "bite" });
+    // ASKED AGAIN, AFTER THE SCAN. `getAllKeys` plus a `readEventDraft` per
+    // candidate is several awaits deep, and a sign-out (or a switch to
+    // somebody else on the same phone) can land inside that window. Without
+    // this check, the answer computed for the OLD owner would still be handed
+    // to `setBanner` — exactly the cross-account leak the id check above
+    // exists to prevent, just reached through a stale closure instead of a
+    // stale read.
+    const after = getSessionState();
+    if (after.phase !== "signed-in" || after.user.id !== session.user.id) return;
     setBanner(found[0] ?? null);
   }, []);
 

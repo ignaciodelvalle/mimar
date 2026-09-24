@@ -177,4 +177,18 @@ describe("the bite-draft banner on Mis mascotas", () => {
     expect(mockPush).toHaveBeenCalledTimes(1);
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/asentar?kind=bite`);
   });
+
+  it("names the CTA starting with its VISIBLE text — WCAG 2.5.3, label in name", async () => {
+    // A voice-control user says what they READ. The accessible name has to
+    // start with "Terminar de enviarla" — the label on the button — or a
+    // command built from the visible text finds nothing. The extra context
+    // ("de la mordedura") belongs in `accessibilityHint`, spoken AFTER the
+    // name, never inside it.
+    await seedBiteDraft(OWNER, TOKEN, Date.now());
+    render(<MisMascotasScreen />);
+    await screen.findByText(BANNER_TITLE);
+
+    const cta = screen.getByRole("button", { name: CTA_LABEL });
+    expect(cta.props.accessibilityLabel).toBeUndefined();
+  });
 });
