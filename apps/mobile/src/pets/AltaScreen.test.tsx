@@ -379,4 +379,72 @@ describe("AltaScreen — M4, decision 10A: el aviso se pide en el momento correc
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/mascotas/DIM-PAMP-0001"));
     await expect(readPushPrimingDismissed(SIGNED_IN_A)).resolves.toBe(true);
   });
+
+  it("a back press while the priming card is up shows no discard dialog and goes to the credential", async () => {
+    // BEFORE THE FIX: the pet already exists on the server by the time this
+    // card is showing, but the discard guard did not know that — a back press
+    // opened "¿Salir del alta? … se pierde" for a wizard with nothing left to
+    // lose, and confirming it popped the screen instead of finishing the trip
+    // to the credential.
+    const alert = jest.spyOn(Alert, "alert");
+    setPushPort(portWithPeek(async () => ({ outcome: "undetermined" })));
+    await seed(SIGNED_IN_A, VALID_DRAFT, CONFIRM_STEP);
+    mockRegisterPet.mockResolvedValue({
+      outcome: "ok",
+      payload: { publicToken: "DIM-PAMP-0001", wasDuplicate: false },
+    });
+
+    render(<AltaScreen />);
+    await waitFor(() => expect(screen.getByText("Registrar mascota")).toBeOnTheScreen());
+    await act(async () => {
+      fireEvent.press(screen.getByText("Registrar mascota"));
+    });
+    await waitFor(() => expect(screen.getByText("Sí, avisame")).toBeOnTheScreen());
+
+    mockNav.pressBack();
+
+    expect(alert).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/mascotas/DIM-PAMP-0001"));
+    alert.mockRestore();
+  });
+
+  it("guards the priming card against a double tap — the request and the navigation each run once", async () => {
+    setPushPort(portWithPeek(async () => ({ outcome: "undetermined" })));
+    await seed(SIGNED_IN_A, VALID_DRAFT, CONFIRM_STEP);
+    mockRegisterPet.mockResolvedValue({
+      outcome: "ok",
+      payload: { publicToken: "DIM-PAMP-0001", wasDuplicate: false },
+    });
+    // Held open deliberately: the whole point is to press again WHILE
+    // `requestPushPermissionAndRegister` is still in flight, the exact window
+    // the bug lived in.
+    let resolveRequest: (value: unknown) => void = () => undefined;
+    mockRequestPushPermissionAndRegister.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRequest = resolve;
+        }),
+    );
+
+    render(<AltaScreen />);
+    await waitFor(() => expect(screen.getByText("Registrar mascota")).toBeOnTheScreen());
+    await act(async () => {
+      fireEvent.press(screen.getByText("Registrar mascota"));
+    });
+    await waitFor(() => expect(screen.getByText("Sí, avisame")).toBeOnTheScreen());
+
+    // Three taps: a straight double tap on "Sí", plus "Ahora no" for good
+    // measure — none of the three may fire after the first.
+    fireEvent.press(screen.getByText("Sí, avisame"));
+    fireEvent.press(screen.getByText("Sí, avisame"));
+    fireEvent.press(screen.getByText("Ahora no"));
+
+    await act(async () => {
+      resolveRequest({ outcome: "registered" });
+    });
+
+    expect(mockRequestPushPermissionAndRegister).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledTimes(1));
+    await expect(readPushPrimingDismissed(SIGNED_IN_A)).resolves.toBe(false);
+  });
 });

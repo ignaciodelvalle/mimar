@@ -229,24 +229,47 @@ describe("registerThisDeviceForPush", () => {
   // only through the peek's own mapping in `expo-push-adapter.test.ts`.
   // -------------------------------------------------------------------------
 
-  it("never calls requestPermission — the silent path only ever peeks", async () => {
-    const mockRequestPermission = jest.fn<() => Promise<{ outcome: "granted" }>>(async () => ({
-      outcome: "granted",
-    }));
-    setPushPort(workingPort({ requestPermission: mockRequestPermission }));
+  it("never calls requestPermission — the silent path only ever peeks, whatever the peek answers", async () => {
+    // BOTH shapes, not just the port's default `granted`: with `granted` this
+    // assertion cannot fail no matter what the code does, because nothing in
+    // `registerThisDeviceForPush` would have a reason to call `requestPermission`
+    // on that branch either way. `undetermined` is the branch this whole
+    // decision is about — it is the one case where a future regression could
+    // plausibly reach for the prompting call — and `denied` is the other
+    // settled-but-not-granted shape, checked for the same reason.
+    for (const outcome of ["undetermined", "denied"] as const) {
+      const mockRequestPermission = jest.fn<() => Promise<{ outcome: "granted" }>>(async () => ({
+        outcome: "granted",
+      }));
+      setPushPort(
+        workingPort({
+          requestPermission: mockRequestPermission,
+          getPermissionStatus: async () => ({ outcome }),
+        }),
+      );
 
-    await registerThisDeviceForPush(session);
+      await registerThisDeviceForPush(session);
 
-    expect(mockRequestPermission).not.toHaveBeenCalled();
+      expect(mockRequestPermission).not.toHaveBeenCalled();
+    }
   });
 
   it("answers `not-asked` — not a failure — when nobody has decided yet, and spends nothing on it", async () => {
-    setPushPort(workingPort({ getPermissionStatus: async () => ({ outcome: "undetermined" }) }));
+    const mockRequestPermission = jest.fn<() => Promise<{ outcome: "granted" }>>(async () => ({
+      outcome: "granted",
+    }));
+    setPushPort(
+      workingPort({
+        getPermissionStatus: async () => ({ outcome: "undetermined" }),
+        requestPermission: mockRequestPermission,
+      }),
+    );
 
     expect(await registerThisDeviceForPush(session)).toEqual({ outcome: "not-asked" });
     // Neither a token read nor an API call: this is exactly the moment where
     // asking would have been the whole point, and this path is not allowed to.
     expect(mockApiRequest).not.toHaveBeenCalled();
+    expect(mockRequestPermission).not.toHaveBeenCalled();
   });
 
   it("keeps registering with no prompt for an account that already granted permission", async () => {

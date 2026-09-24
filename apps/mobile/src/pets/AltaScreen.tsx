@@ -41,7 +41,7 @@
 import { PET_COLOR_MAX, PET_NAME_MAX } from "@dim/contract/input";
 import { breedsForSpecies } from "@dim/contract/reference";
 import { useNavigation, useRouter } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { apiFailureMessage } from "../api/client";
@@ -214,6 +214,12 @@ export function AltaScreen() {
         const offerPriming = userId !== null && (await shouldOfferPushPriming(userId));
 
         if (offerPriming) {
+          // THE PET IS ALREADY REGISTERED — there is nothing left for the
+          // discard guard to protect, and its "¿Salir del alta? … se pierde"
+          // dialog would be a straight lie on this card. Called here, BEFORE
+          // the render that shows the card, so a back press on the very first
+          // frame of "priming" is never a race against this flip.
+          allowLeave();
           setSubmission({ phase: "priming", publicToken: result.payload.publicToken });
           return;
         }
@@ -233,7 +239,7 @@ export function AltaScreen() {
         message: apiFailureMessage(result) ?? "No pudimos completar el registro.",
       });
     },
-    [draft, altaDraft, goToCredential],
+    [draft, altaDraft, goToCredential, allowLeave],
   );
 
   // "Sí, avisame": THIS is the one tap in this whole screen allowed to trigger
@@ -259,6 +265,24 @@ export function AltaScreen() {
     },
     [goToCredential],
   );
+
+  // ANY WAY OF LEAVING WHILE THE PRIMING CARD IS UP — the Android back
+  // gesture, the header arrow, an iOS swipe — must land on the credential,
+  // not on whichever screen alta was entered from. `allowLeave()` above
+  // stops the discard guard's OWN listener from showing its dialog, but a
+  // beforeRemove nobody prevents still runs react-navigation's DEFAULT
+  // action, which is an ordinary pop — the pet's new credential is not on
+  // that path at all. This second listener is what actually redirects: it
+  // owns `preventDefault()` for every attempt made while `submission.phase`
+  // is `"priming"`, and sends the same place either button already does.
+  useEffect(() => {
+    if (submission.phase !== "priming") return undefined;
+    const publicToken = submission.publicToken;
+    return navigation.addListener("beforeRemove", (event: { preventDefault: () => void }) => {
+      event.preventDefault();
+      goToCredential(publicToken);
+    });
+  }, [navigation, submission, goToCredential]);
 
   const isLast = stepIndex === WIZARD_STEPS.length - 1;
   // "priming" counts as busy too: the pet is already registered and the last
@@ -571,14 +595,38 @@ function PushPrimingDialog({
   onAccept: () => void;
   onDecline: () => void;
 }) {
+  // BOTH BUTTONS GUARDED AGAINST A SECOND TAP, and against EACH OTHER. Neither
+  // handler is synchronous — `acceptPriming` awaits `requestPushPermissionAndRegister`,
+  // `declinePriming` awaits a storage write — so between the first tap and the
+  // navigation it ends in, both buttons sit here still enabled with nothing
+  // else disabling them (unlike the wizard's own `busy`, which only covers the
+  // step below this card). A double tap on "Sí", or "Sí" immediately followed
+  // by "Ahora no", would otherwise run `requestPushPermissionAndRegister`
+  // twice and call `router.replace` twice.
+  //
+  // A REF, NOT ONLY STATE, because the guard has to be true on the SAME tick
+  // as the first press — `disabled` from a `useState` would not repaint until
+  // after this render, leaving exactly the window a fast double tap fits in.
+  // `answered` still drives the visible `disabled` prop, so the second tap is
+  // ALSO refused visually, not only logically.
+  const answered = useRef(false);
+  const [locked, setLocked] = useState(false);
+
+  const guard = useCallback((action: () => void) => {
+    if (answered.current) return;
+    answered.current = true;
+    setLocked(true);
+    action();
+  }, []);
+
   return (
     <Card title="Antes de irnos">
       <Body>
         ¿Querés que te avisemos las vacunas que vencen y si alguien encuentra a tu mascota?
       </Body>
       <View style={styles.dialogActions}>
-        <PrimaryButton label="Sí, avisame" onPress={onAccept} />
-        <SecondaryButton label="Ahora no" onPress={onDecline} />
+        <PrimaryButton label="Sí, avisame" disabled={locked} onPress={() => guard(onAccept)} />
+        <SecondaryButton label="Ahora no" disabled={locked} onPress={() => guard(onDecline)} />
       </View>
     </Card>
   );

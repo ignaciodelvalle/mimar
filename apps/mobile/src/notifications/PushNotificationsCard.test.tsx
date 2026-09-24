@@ -6,6 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { AppState, type AppStateStatus, Linking } from "react-native";
 
 const mockRequestPushPermissionAndRegister = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 jest.mock("./push-registration", () => ({
@@ -28,6 +29,22 @@ function portWithPeek(outcome: PushPort["getPermissionStatus"]): PushPort {
     onTap: () => () => undefined,
     ensureNotificationChannel: async () => undefined,
   };
+}
+
+/**
+ * SPIED ON THE PUBLIC API and left calling through — same idiom
+ * `AltaScreen.test.tsx`'s `appStateListener` uses. The point is only to get
+ * hold of the "change" listener this card registered.
+ */
+const appStateListener = jest.spyOn(AppState, "addEventListener");
+
+/** Take the app out of, or back into, the foreground. */
+function emitAppState(next: AppStateStatus): void {
+  const listener = appStateListener.mock.calls.at(-1)?.[1] as
+    | ((state: AppStateStatus) => void)
+    | undefined;
+  if (listener === undefined) throw new Error("the card registered no AppState listener");
+  act(() => listener(next));
 }
 
 beforeEach(() => {
@@ -100,5 +117,65 @@ describe("PushNotificationsCard", () => {
     });
 
     await waitFor(() => expect(toJSON()).toBeNull());
+  });
+
+  it("'Abrir ajustes del teléfono' opens the OS notification settings, not the in-app request", async () => {
+    setPushPort(portWithPeek(async () => ({ outcome: "denied" })));
+    const openSettings = jest.spyOn(Linking, "openSettings").mockResolvedValue(undefined);
+
+    render(<PushNotificationsCard />);
+    await waitFor(() => expect(screen.getByText("Abrir ajustes del teléfono")).toBeOnTheScreen());
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Abrir ajustes del teléfono"));
+    });
+
+    expect(openSettings).toHaveBeenCalledTimes(1);
+    // The denied state must never reach the in-app dialog: the OS will not
+    // show it any more, and a call here would either no-op or look like a
+    // failed attempt.
+    expect(mockRequestPushPermissionAndRegister).not.toHaveBeenCalled();
+    openSettings.mockRestore();
+  });
+
+  it("re-peeks when the app returns to the foreground, and updates once the OS grant changed underneath it", async () => {
+    // THE SCENARIO THIS EXISTS FOR: denied → "Abrir ajustes del teléfono" →
+    // the person flips the switch in system settings → back to miMAR. Nothing
+    // inside this app observes that switch directly; the only signal is the
+    // app itself coming back to `active`.
+    let grantedNow = false;
+    setPushPort(portWithPeek(async () => ({ outcome: grantedNow ? "granted" : "denied" })));
+
+    render(<PushNotificationsCard />);
+    await waitFor(() => expect(screen.getByText("Abrir ajustes del teléfono")).toBeOnTheScreen());
+
+    grantedNow = true;
+    emitAppState("background");
+    emitAppState("active");
+
+    await waitFor(() => expect(screen.queryByText("Abrir ajustes del teléfono")).toBeNull());
+  });
+
+  it("does NOT re-peek on a change that never left `active`", async () => {
+    // The negative case for the guard above: without it, EVERY AppState
+    // "change" event — including ones that never left the foreground — would
+    // re-run the peek, which is a wasted read on every such event.
+    let peekCount = 0;
+    setPushPort(
+      portWithPeek(async () => {
+        peekCount += 1;
+        return { outcome: "undetermined" };
+      }),
+    );
+
+    render(<PushNotificationsCard />);
+    await waitFor(() => expect(screen.getByText("Activar avisos")).toBeOnTheScreen());
+    const afterMount = peekCount;
+
+    emitAppState("active");
+
+    // Flush any microtask a stray peek would have scheduled.
+    await act(async () => undefined);
+    expect(peekCount).toBe(afterMount);
   });
 });
