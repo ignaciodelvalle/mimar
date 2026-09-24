@@ -89,6 +89,16 @@ export const COLORS = {
   okBorder: LN_COLORS.okBorder,
   okInk: LN_COLORS.ok,
 
+  /**
+   * White foreground on the credential band's dark navy gradient — the state
+   * chip's icon and label, the flip control's icon. Not `surface`: that name
+   * means "a card's background", and this is ink sitting on an ACCENT
+   * background, the opposite role. Reuses `LN_COLORS.card` rather than
+   * inventing a value — the literal is already `#ffffff`, this only gives it
+   * a name for the role it plays here.
+   */
+  onDark: LN_COLORS.card,
+
   /** The `prenada` credential band's tint (T4-M6, 2026-09-22). */
   rosa: LN_COLORS.rosa,
   rosaBorder: LN_COLORS.rosaBorder,

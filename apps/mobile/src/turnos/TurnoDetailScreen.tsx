@@ -296,7 +296,9 @@ const styles = StyleSheet.create({
     // TRUE WHITE, not the canvas. A scanner wants maximum contrast, and the
     // quiet zone around the modules is part of the symbol — the same reason
     // `CredentialQr` paints true black rather than the design system's ink.
-    backgroundColor: "#ffffff",
+    // Unlike that black (no token is that dark), true white already IS
+    // `COLORS.surface` — reusing it changes no pixel.
+    backgroundColor: COLORS.surface,
   },
   token: {
     alignSelf: "center",

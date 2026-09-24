@@ -414,7 +414,7 @@ export function DocumentChromeNative({
             by a few pixels and is the one anybody tests with. */}
         {situation === null ? null : (
           <View style={styles.bandChip}>
-            <Icon name={situation.icon} size="sm" color="#fff" />
+            <Icon name={situation.icon} size="sm" color={COLORS.onDark} />
             <Text
               maxFontSizeMultiplier={BAND_MAX_FONT_SCALE}
               style={styles.bandChipText}
@@ -442,7 +442,7 @@ export function DocumentChromeNative({
               reader announces; the visible text was the least precise of the
               three and the one competing with a title, a subtitle and the
               state chip inside the band's height budget. */}
-          <Icon name="girar" size="sm" color="#fff" />
+          <Icon name="girar" size="sm" color={COLORS.onDark} />
         </Pressable>
       </View>
 
@@ -547,7 +547,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 10 * LABEL_TRACKING_EM,
     textTransform: "uppercase",
-    color: "#fff",
+    color: COLORS.onDark,
   },
   /**
    * The flip control: a CENTRED SQUARE, since 2026-09-03.
