@@ -803,6 +803,21 @@ export type ButtonTone = "primary" | "seal";
  * when disabled, and a grey fill reads as a DIFFERENT button rather than as
  * this one being unavailable. `accessibilityState` carries the fact to a
  * screen reader, which opacity cannot.
+ *
+ * A-3 (M7 accessibility pass). Fading the WHOLE button toward the page at 60%
+ * opacity is exactly the anti-pattern `globals.css`'s own hover-trio comment
+ * names for the web ("Opacity fades the ELEMENT: the white label lightens
+ * toward the page along with the fill"): white text and `COLORS.accent` fill
+ * both lighten together, so the ratio BETWEEN them — not either one's distance
+ * from the page — is what collapses. Measured composited over the app's real
+ * surfaces (white card, cream canvas) it lands at 2.94–2.99:1, under the
+ * 3:1 floor for a UI component (WCAG 1.4.11). `buttonPrimaryDisabledFill`
+ * swaps the disabled PRIMARY fill for `COLORS.accentPressed` (the same
+ * azul-700 the web already uses for its pressed/hover state, not a new
+ * value) before the opacity is applied: a darker starting fill composites to
+ * a still-legible ~3.47:1 at the same 60% fade.
+ * `apps/mobile/src/ui/button-disabled-contrast.test.ts` computes the ratio
+ * from these tokens.
  */
 export function PrimaryButton({
   label,
@@ -824,6 +839,7 @@ export function PrimaryButton({
       style={(state) => [
         styles.button,
         tone === "seal" ? styles.buttonSeal : styles.buttonPrimary,
+        disabled && tone === "primary" ? styles.buttonPrimaryDisabledFill : null,
         disabled ? styles.buttonDisabled : pressedOpacity(state),
       ]}
     >
@@ -1060,6 +1076,13 @@ const styles = StyleSheet.create({
     paddingVertical: SPACE.sm + 2,
   },
   buttonPrimary: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
+  /** A-3: the disabled PRIMARY fill, composited under `buttonDisabled`'s 60%
+   *  opacity — see `PrimaryButton`'s docblock for why this is `accentPressed`
+   *  and not `accent`. */
+  buttonPrimaryDisabledFill: {
+    backgroundColor: COLORS.accentPressed,
+    borderColor: COLORS.accentPressed,
+  },
   buttonSeal: { backgroundColor: COLORS.seal, borderColor: COLORS.seal },
   buttonGhost: { backgroundColor: COLORS.surface, borderColor: COLORS.borderStrong },
   // ListRow. Lifted verbatim from OwnerFace's private `MoreRow`, because a
