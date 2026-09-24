@@ -57,6 +57,14 @@ const control = vi.hoisted(() => ({
   limiterThrows: null as null | (() => never),
   /** What `signUp` was handed, in order. */
   signUpArgs: [] as unknown[],
+  /** What the service-role consent recorder was handed, in order. */
+  recorded: [] as Array<[string, string]>,
+}));
+
+vi.mock("@/src/modules/auth/application/consent-version-recorder", () => ({
+  recordConsentVersionWithAdmin: async (userId: string, version: string) => {
+    control.recorded.push([userId, version]);
+  },
 }));
 
 vi.mock("@/lib/supabase/anon", () => ({
@@ -526,24 +534,25 @@ describe("POST /api/v1/auth/signup", () => {
     tosAccepted: true,
   };
 
-  // The version the native bundle DISPLAYED reaches GoTrue's user_metadata;
+  // The version the native bundle DISPLAYED reaches the SERVER-ONLY recorder
+  // (app_metadata), and nothing rides in signUp's user-writable user_metadata;
   // a bundle from before the field sends none and is recorded as the previous
-  // sentence (review of 1c1ac9f82, 2026-09-24). Written-out expectations.
+  // sentence (reviews of 1c1ac9f82 and 2cac7c2ff). Written-out expectations.
   it.each([
     ["a current bundle", { legalVersion: "2026-09-24" }, "2026-09-24"],
     ["a bundle built before the field", {}, "2026-07-23"],
-  ])("forwards the consent version of %s to signup metadata", async (_label, extra, expected) => {
+  ])("records the consent version of %s server-side", async (_label, extra, expected) => {
+    const userId = randomUUID();
     control.answer = {
-      data: { user: { id: randomUUID() }, session: GOTRUE_SESSION },
+      data: { user: { id: userId }, session: GOTRUE_SESSION },
       error: null,
     };
     control.signUpArgs = [];
+    control.recorded = [];
     const res = await signupRoute(post("/auth/signup", { ...VALID, ...extra }));
     expect(res.status).toBe(201);
-    expect(control.signUpArgs).toHaveLength(1);
-    expect((control.signUpArgs[0] as { options?: { data?: unknown } }).options?.data).toEqual({
-      tos_version: expected,
-    });
+    expect(control.signUpArgs).toEqual([{ email: VALID.email, password: VALID.password }]);
+    expect(control.recorded).toEqual([[userId, expected]]);
   });
 
   it("answers 201 with the session for a genuine new account", async () => {

@@ -46,9 +46,19 @@ export interface CronAlert {
 
 const ALERT_TIMEOUT_MS = 5_000;
 
-/** Every string in `value`, at any depth, through `redactText`. */
+/**
+ * Every string in `value`, at any depth, through `redactText` — and every
+ * NUMBER whose digits `redactText` would catch (7+ in a row: a DNI or a phone
+ * passed as a number), which then goes out as the redaction string. Smaller
+ * numbers (counters, statuses, durations) pass through as numbers.
+ */
 function scrubDeep(value: unknown): unknown {
   if (typeof value === "string") return redactText(value);
+  if (typeof value === "number") {
+    const text = String(value);
+    const scrubbed = redactText(text);
+    return scrubbed === text ? value : scrubbed;
+  }
   if (Array.isArray(value)) return value.map(scrubDeep);
   if (value !== null && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, scrubDeep(v)]));

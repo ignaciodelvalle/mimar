@@ -33,7 +33,8 @@ import type { AuthSessionV1 } from "@dim/contract/api";
 import { MIN_PASSWORD_LENGTH } from "@dim/contract/input";
 
 import { RateLimitError, enforceRateLimit } from "@/lib/infra/rate-limit";
-import { resolveAcceptedLegalVersion } from "@/lib/reference/legal-version";
+import { reportError } from "@/lib/infra/report-error";
+import { type LegalVersion, resolveAcceptedLegalVersion } from "@/lib/reference/legal-version";
 
 import { type SignupAuthPort, toAuthSessionV1 } from "./gotrue-port";
 import { SIGNUP_IP_LIMIT } from "./signup-limits";
@@ -61,6 +62,14 @@ export type SignupInput = {
 export type SignupDeps = {
   /** Built only after validation and the rate-limit budget pass. See LoginDeps. */
   auth: () => Promise<SignupAuthPort>;
+  /**
+   * Records the legal version this signup DISPLAYED where only the server can
+   * write it (app_metadata — see `./consent-version-recorder.ts`). Both adapters
+   * pass `recordConsentVersionWithAdmin`. Absent, or failing, nothing is
+   * recorded and step 2 stamps the PREVIOUS version: an under-claim, never an
+   * over-claim.
+   */
+  recordConsentVersion?: (userId: string, version: LegalVersion) => Promise<void>;
 };
 
 export type SignupErrorCode =
@@ -174,19 +183,10 @@ export async function signup(input: SignupInput, deps: SignupDeps): Promise<Sign
   // display_name from the email local-part and completeIdentityAction overwrites
   // it with the real "First Last" in the happy path.
   //
-  // THE CONSENT VERSION TRAVELS FROM HERE TO STEP 2 IN user_metadata. Step 1 is
-  // where the sentence is ticked and step 2 (`completeIdentityForUser`) is where
-  // `profiles.tos_version` is written, possibly from another bundle or another
-  // deploy. Carrying what THIS step displayed is what makes the record true; the
-  // step-2 writer re-validates it against the known list, because user_metadata
-  // is client-writable. An existing address is masqueraded below and GoTrue
-  // writes no metadata for it — nothing is recorded for an act that created
-  // nothing.
-  const { data, error } = await auth.signUp({
-    email,
-    password,
-    options: { data: { tos_version: resolveAcceptedLegalVersion(input.legalVersion) } },
-  });
+  // NO METADATA ON signUp. The consent version used to ride here in
+  // user_metadata, which the user can rewrite; it is now written to
+  // app_metadata after the account exists (below).
+  const { data, error } = await auth.signUp({ email, password });
 
   if (error) {
     // Account enumeration defense (audit 28-#3, pilot MED).
@@ -282,6 +282,22 @@ export async function signup(input: SignupInput, deps: SignupDeps): Promise<Sign
       "signup_failed",
       "No pudimos completar el registro. Revisá tus datos e intentá de nuevo.",
     );
+  }
+
+  // THE CONSENT VERSION TRAVELS FROM HERE TO STEP 2 IN app_metadata. Step 1 is
+  // where the sentence is ticked and step 2 (`completeIdentityForUser`) is where
+  // `profiles.tos_version` is written, possibly from another bundle or another
+  // deploy. Carrying what THIS step displayed is what makes the record true.
+  // Only reached on a success: an existing address was masqueraded above and
+  // nothing is recorded for an act that created nothing. A failed write is
+  // reported, not fatal — step 2 then records the PREVIOUS version.
+  const userId = data.user?.id;
+  if (userId && deps.recordConsentVersion) {
+    try {
+      await deps.recordConsentVersion(userId, resolveAcceptedLegalVersion(input.legalVersion));
+    } catch (err) {
+      reportError("auth/signup/consent-version", err, { userId });
+    }
   }
 
   // Do NOT redirect. The inline signup flow uses this success signal to

@@ -47,6 +47,7 @@ import { apiV1Error, apiV1Json } from "@/lib/infra/api-v1";
 import { DbBudgetExceededError, withDbBudgetOrThrow } from "@/lib/infra/db-budget";
 import { callerIp } from "@/lib/infra/rate-limit";
 import { createAnonClient } from "@/lib/supabase/anon";
+import { recordConsentVersionWithAdmin } from "@/src/modules/auth/application/consent-version-recorder";
 import { signup } from "@/src/modules/auth/application/signup";
 
 export const dynamic = "force-dynamic";
@@ -90,7 +91,10 @@ export async function POST(request: Request) {
           legalVersion: parsed.data.legalVersion,
           callerIp: callerIp(request.headers),
         },
-        { auth: async () => createAnonClient().auth },
+        {
+          auth: async () => createAnonClient().auth,
+          recordConsentVersion: recordConsentVersionWithAdmin,
+        },
       ),
       SIGNUP_BUDGET_MS,
       "api-v1-auth-signup",

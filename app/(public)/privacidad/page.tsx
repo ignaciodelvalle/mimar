@@ -164,7 +164,7 @@ export default function PrivacidadPage() {
           substantive revision, and tos_version is how a profile proves which
           text it accepted. The bump only changes what NEW acceptances record,
           and only for a client that DISPLAYED this version: signup step 1 puts
-          the version the client showed in user_metadata, and
+          the version the client showed in app_metadata (server-only), and
           complete-identity-for-user.ts stamps it (known versions only; absent
           = 2026-07-23, e.g. an old Android bundle). Nothing compares a stored
           version against the current one, so existing accounts keep theirs and

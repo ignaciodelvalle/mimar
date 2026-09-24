@@ -1193,24 +1193,33 @@ describe("erase_subject_data — deletes push subscriptions (0166)", () => {
 
 describe("consent persistence (art. 5)", () => {
   // THE VERSION RECORDED IS THE ONE SIGNUP STEP 1 DISPLAYED (review of
-  // 1c1ac9f82, 2026-09-24). Step 1 leaves it in raw_user_meta_data.tos_version;
-  // step 2 stamps it only if it is a known version, and otherwise stamps the
-  // pre-2026-09-24 one — never the server's current. Real SQL, real auth.users:
-  // the subquery is exactly what a mock could not check.
-  async function setSignupVersionMeta(value: string | null) {
+  // 1c1ac9f82, 2026-09-24). Step 1 leaves it in raw_app_meta_data.tos_version
+  // with the service-role key; step 2 stamps it only if it is a known version,
+  // and otherwise stamps the pre-2026-09-24 one — never the server's current.
+  // raw_user_meta_data is user-writable (auth.updateUser) and must be IGNORED
+  // (review of 2cac7c2ff). Real SQL, real auth.users: the subquery is exactly
+  // what a mock could not check.
+  type MetaColumn = "raw_app_meta_data" | "raw_user_meta_data";
+
+  async function setVersionMeta(column: MetaColumn, value: string | null) {
+    const col = sql.raw(column);
     await db.execute(
       value === null
-        ? sql`UPDATE auth.users SET raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) - 'tos_version' WHERE id = ${otherUserId}::uuid`
-        : sql`UPDATE auth.users SET raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) || jsonb_build_object('tos_version', ${value}::text) WHERE id = ${otherUserId}::uuid`,
+        ? sql`UPDATE auth.users SET ${col} = COALESCE(${col}, '{}'::jsonb) - 'tos_version' WHERE id = ${otherUserId}::uuid`
+        : sql`UPDATE auth.users SET ${col} = COALESCE(${col}, '{}'::jsonb) || jsonb_build_object('tos_version', ${value}::text) WHERE id = ${otherUserId}::uuid`,
     );
   }
 
-  async function completeWithSignupVersion(meta: string | null): Promise<string | null> {
+  async function completeWithMeta(meta: {
+    app?: string | null;
+    user?: string | null;
+  }): Promise<string | null> {
     await db
       .update(profiles)
       .set({ tosAcceptedAt: null, tosVersion: null, updatedAt: new Date() })
       .where(eq(profiles.id, otherUserId));
-    await setSignupVersionMeta(meta);
+    await setVersionMeta("raw_app_meta_data", meta.app ?? null);
+    await setVersionMeta("raw_user_meta_data", meta.user ?? null);
     try {
       setMockUserId(otherUserId);
       const fd = new FormData();
@@ -1225,23 +1234,32 @@ describe("consent persistence (art. 5)", () => {
       expect(row.tosAcceptedAt).not.toBeNull();
       return row.tosVersion;
     } finally {
-      await setSignupVersionMeta(null);
+      await setVersionMeta("raw_app_meta_data", null);
+      await setVersionMeta("raw_user_meta_data", null);
     }
   }
 
   it("records the version step 1 displayed when it is a known one", async () => {
-    expect(await completeWithSignupVersion("2026-09-24")).toBe("2026-09-24");
-    expect(await completeWithSignupVersion("2026-07-23")).toBe("2026-07-23");
+    expect(await completeWithMeta({ app: "2026-09-24" })).toBe("2026-09-24");
+    expect(await completeWithMeta({ app: "2026-07-23" })).toBe("2026-07-23");
     // The current constant is among the known ones (written out above).
     expect(LEGAL_VERSION).toBe("2026-09-24");
   });
 
   it("records the PREVIOUS version when step 1 left none (old bundle, pre-change signup)", async () => {
-    expect(await completeWithSignupVersion(null)).toBe("2026-07-23");
+    expect(await completeWithMeta({})).toBe("2026-07-23");
   });
 
-  it("records the PREVIOUS version for a forged or unknown one (user_metadata is client-writable)", async () => {
-    expect(await completeWithSignupVersion("2099-01-01")).toBe("2026-07-23");
+  it("records the PREVIOUS version for an unknown one", async () => {
+    expect(await completeWithMeta({ app: "2099-01-01" })).toBe("2026-07-23");
+  });
+
+  it("IGNORES a user_metadata version — the user can write that one", async () => {
+    // The forgery the review found: sign up on the old sentence, then
+    // auth.updateUser({ data: { tos_version: "2026-09-24" } }) before step 2.
+    expect(await completeWithMeta({ user: "2026-09-24" })).toBe("2026-07-23");
+    // And it cannot DOWNGRADE a server-written one either.
+    expect(await completeWithMeta({ app: "2026-09-24", user: "2026-07-23" })).toBe("2026-09-24");
   });
 
   it("completeIdentityAction on retry preserves the original consent timestamp (COALESCE)", async () => {

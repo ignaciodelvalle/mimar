@@ -274,8 +274,10 @@ describe("login — refusals are not an oracle", () => {
 // signup
 // ---------------------------------------------------------------------------
 
-// THE CONSENT VERSION STEP 1 DISPLAYED rides to step 2 in user_metadata
-// (review of 1c1ac9f82, 2026-09-24). Expected values are written out.
+// THE CONSENT VERSION STEP 1 DISPLAYED rides to step 2 in app_metadata,
+// written by the injected server-side recorder — never in signUp's
+// user_metadata, which the user can rewrite (reviews of 1c1ac9f82 and
+// 2cac7c2ff, 2026-09-24). Expected values are written out.
 describe("signup — records the legal version the CLIENT displayed", () => {
   const BASE = {
     email: "nueva@example.com",
@@ -285,31 +287,73 @@ describe("signup — records the legal version the CLIENT displayed", () => {
     callerIp: IP,
   };
 
-  async function sentMetadata(legalVersion: string | undefined): Promise<unknown> {
-    const seen: unknown[] = [];
-    await signup(
+  async function run(
+    legalVersion: string | undefined,
+    recorder: (userId: string, version: string) => Promise<void>,
+  ) {
+    const credentials: unknown[] = [];
+    const result = await signup(
       { ...BASE, ...(legalVersion === undefined ? {} : { legalVersion }) },
-      deps({
-        signUp: async (credentials: unknown) => {
-          seen.push(credentials);
-          return { data: { user: { id: "u1" }, session: GOTRUE_SESSION }, error: null };
-        },
-      }),
+      {
+        ...deps({
+          signUp: async (c: unknown) => {
+            credentials.push(c);
+            return { data: { user: { id: "u1" }, session: GOTRUE_SESSION }, error: null };
+          },
+        }),
+        recordConsentVersion: recorder,
+      },
     );
-    expect(seen).toHaveLength(1);
-    return (seen[0] as { options?: { data?: unknown } }).options?.data;
+    return { result, credentials };
   }
 
-  it("passes a known version through (the current web form, a current bundle)", async () => {
-    expect(await sentMetadata("2026-09-24")).toEqual({ tos_version: "2026-09-24" });
+  async function recorded(legalVersion: string | undefined) {
+    const calls: Array<[string, string]> = [];
+    const { credentials } = await run(legalVersion, async (id, v) => {
+      calls.push([id, v]);
+    });
+    // Nothing rides in signUp itself: user_metadata is user-writable.
+    expect(credentials).toEqual([{ email: "nueva@example.com", password: "supersecreta" }]);
+    return calls;
+  }
+
+  it("records a known version for the new user (the current web form, a current bundle)", async () => {
+    expect(await recorded("2026-09-24")).toEqual([["u1", "2026-09-24"]]);
   });
 
   it("records the PREVIOUS version when the client sent none (a bundle from before the field)", async () => {
-    expect(await sentMetadata(undefined)).toEqual({ tos_version: "2026-07-23" });
+    expect(await recorded(undefined)).toEqual([["u1", "2026-07-23"]]);
   });
 
   it("records the PREVIOUS version for a version this server does not know", async () => {
-    expect(await sentMetadata("2099-01-01")).toEqual({ tos_version: "2026-07-23" });
+    expect(await recorded("2099-01-01")).toEqual([["u1", "2026-07-23"]]);
+  });
+
+  it("a failed record is reported and the signup still succeeds (step 2 then under-claims)", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { result } = await run("2026-09-24", async () => {
+        throw new Error("admin api down");
+      });
+      expect(result.ok).toBe(true);
+      expect(logged.mock.calls.map((c) => String(c[0])).join(" ")).toContain(
+        "auth/signup/consent-version",
+      );
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  it("records nothing for a masqueraded duplicate", async () => {
+    const calls: unknown[] = [];
+    const result = await signup(BASE, {
+      ...deps(signupPort({ error: { message: "User already registered" } })),
+      recordConsentVersion: async (...a) => {
+        calls.push(a);
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(calls).toEqual([]);
   });
 });
 

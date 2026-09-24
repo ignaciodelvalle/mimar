@@ -53,6 +53,25 @@ describe("sendCronAlert — nothing personal reaches the webhook", () => {
     });
   });
 
+  it("scrubs a DNI passed as a NUMBER and keeps small counters as numbers", async () => {
+    vi.stubEnv("CRON_ALERT_WEBHOOK", "https://hooks.example.test/alert");
+    const { bodies } = captureBody();
+
+    await sendCronAlert({
+      job: "case-sweep",
+      details: { dni: 30123456, nested: [{ phone: 1145678901 }], processed: 42, status: 500 },
+    });
+
+    const body = bodies[0] as { details: unknown };
+    expect(JSON.stringify(body)).not.toContain("30123456");
+    expect(body.details).toEqual({
+      dni: "[redacted:digits]",
+      nested: [{ phone: "[redacted:digits]" }],
+      processed: 42,
+      status: 500,
+    });
+  });
+
   it("stays a no-op without the webhook", async () => {
     vi.stubEnv("CRON_ALERT_WEBHOOK", "");
     const { bodies } = captureBody();

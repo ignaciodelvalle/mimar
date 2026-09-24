@@ -39,6 +39,7 @@ import { callerIp } from "@/lib/infra/rate-limit";
 import { LEGAL_VERSION } from "@/lib/reference/legal-version";
 import { createClient } from "@/lib/supabase/server";
 
+import { recordConsentVersionWithAdmin } from "./application/consent-version-recorder";
 import { login } from "./application/login";
 import { requestPasswordReset } from "./application/password-reset/request-password-reset";
 import type { PasswordResetRequestState } from "./application/password-reset/types";
@@ -100,7 +101,7 @@ export async function signupAction(
       legalVersion: LEGAL_VERSION,
       callerIp: callerIp(await headers()),
     },
-    { auth: cookieAuth },
+    { auth: cookieAuth, recordConsentVersion: recordConsentVersionWithAdmin },
   );
 
   if (!result.ok) return { error: result.error.message, email };

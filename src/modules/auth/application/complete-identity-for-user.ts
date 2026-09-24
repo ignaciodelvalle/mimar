@@ -33,7 +33,7 @@
 //                      (original instant, NEW version): a row asserting that
 //                      somebody accepted a document that did not yet exist.
 //                      The version itself is the one step 1 DISPLAYED, carried
-//                      in user_metadata (2026-09-24) — see the UPDATE below.
+//                      in app_metadata (2026-09-24) — see the UPDATE below.
 //
 // One statement, because they are one act. Splitting the DNI out would mean a
 // second UPDATE on the same row from the same request, and a window in which the
@@ -124,7 +124,7 @@ function acceptedVersionFromStep1(userId: string) {
     KNOWN_LEGAL_VERSIONS.map((v) => sql`${v}`),
     sql`, `,
   );
-  return sql`COALESCE((SELECT u.raw_user_meta_data->>'tos_version' FROM auth.users u WHERE u.id = ${userId}::uuid AND u.raw_user_meta_data->>'tos_version' IN (${known})), ${PREVIOUS_LEGAL_VERSION})`;
+  return sql`COALESCE((SELECT u.raw_app_meta_data->>'tos_version' FROM auth.users u WHERE u.id = ${userId}::uuid AND u.raw_app_meta_data->>'tos_version' IN (${known})), ${PREVIOUS_LEGAL_VERSION})`;
 }
 
 export async function completeIdentityForUser(
@@ -216,11 +216,12 @@ export async function completeIdentityForUser(
           //
           // AND THE VERSION IS THE ONE STEP 1 DISPLAYED, not this server's
           // current one (review of 1c1ac9f82, 2026-09-24). Step 1 writes it to
-          // `raw_user_meta_data.tos_version` (signup.ts); an old Android bundle,
-          // or a signup from before that field existed, left none, and those
-          // people saw the PREVIOUS sentence. user_metadata is client-writable,
-          // so only a KNOWN version is taken; anything else records the previous
-          // one. The user id is a bound parameter, NOT `profiles.id`: inside the
+          // `raw_app_meta_data.tos_version` with the service-role key
+          // (consent-version-recorder.ts); an old Android bundle, or a signup
+          // from before that existed, left none, and those people saw the
+          // PREVIOUS sentence. `raw_user_meta_data` is NEVER read: the user can
+          // rewrite it (review of 2cac7c2ff). Only a KNOWN version is taken;
+          // anything else records the previous one. The user id is a bound parameter, NOT `profiles.id`: inside the
           // subquery an unqualified "id" would bind to `auth.users` itself and
           // match every row.
           tosVersion: sql`CASE WHEN ${profiles.tosAcceptedAt} IS NULL THEN ${acceptedVersionFromStep1(input.userId)} ELSE ${profiles.tosVersion} END`,
