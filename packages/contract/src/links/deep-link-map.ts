@@ -208,14 +208,17 @@ export const DEEP_LINK_MAP = {
    * this destination really did drift, in two files that never met. Recording
    * the drift here is the first step to closing it.
    *
-   * AND IT IS THE ONE ENTRY WHOSE `appPath` NAMES NO SCREEN. Every other value
-   * in this column is a claim the app can honour, checked against
-   * `apps/mobile/app/` by the fitness test. This one is a QR PAYLOAD for a
-   * front-desk reader that does not exist yet, and it is kept byte-for-byte
-   * because changing the string would break whatever eventually reads it. The
-   * test names it as the single exception rather than weakening the rule for
-   * everything; a phone that follows it today lands on `+not-found`, which says
-   * so in words.
+   * IT NAMED NO SCREEN UNTIL F-8. `apps/mobile/app/appointment/[appointmentToken]
+   * .tsx` now resolves it — NOT to the turno's own detail screen
+   * (`/turnos/{token}`, which still refuses this path on purpose, see
+   * `ui/routes.ts`'s `turnoRoute`), but to a generic, session-free "this code is
+   * for the front desk" screen. That closes the narrow real gap (a phone
+   * following the link landed on `+not-found`) without closing the wider debt
+   * this comment still names: there is still no reader that DOES anything with
+   * the token, because the one that would is a front-desk device that does not
+   * exist yet. `APP_PATH_NAMES_NO_SCREEN` is empty today for exactly that
+   * reason — the claim "a screen exists" is true again, the claim "a reader
+   * exists" still is not, and only the first one is this table's job to check.
    */
   appointment: {
     webPath: "/mis-turnos/:appointmentToken",
@@ -357,18 +360,20 @@ export type DeepLinkName = keyof typeof DEEP_LINK_MAP;
 /**
  * Destinations whose `appPath` names NO SCREEN in `apps/mobile/app/`.
  *
- * There is exactly one and its reason is written out on `appointment` above: it
- * is a QR PAYLOAD for a front-desk reader that does not exist yet, kept
- * byte-for-byte, not a route the app can open. A phone that follows it lands on
- * `+not-found`.
+ * EMPTY TODAY. `appointment` was its one member until F-8 — see that entry's
+ * comment for what closed and what is still open — and the fitness test's
+ * `.each` (`__tests__/deep-link-map.test.ts`) now checks every `appPath`
+ * against `apps/mobile/app/` with no exception to skip. This set is not
+ * retired: a future `appPath` added as a placeholder ahead of its screen
+ * belongs here, named with the same reasoning `appointment`'s entry carried.
  *
  * IT LIVES HERE RATHER THAN IN THE FITNESS TEST, where it used to, because it is
- * now load-bearing at RUNTIME as well as in CI: `appRoutePath` has to refuse this
- * destination, and a second copy of "the one exception" is exactly the kind of
- * pair that agrees on the day it is written and disagrees a year later.
+ * load-bearing at RUNTIME as well as in CI: `appRoutePath` refuses every name in
+ * it, and a second copy of the exception list is exactly the kind of pair that
+ * agrees on the day it is written and disagrees a year later.
  * `__tests__/deep-link-map.test.ts` still pins the contents.
  */
-export const APP_PATH_NAMES_NO_SCREEN: ReadonlySet<DeepLinkName> = new Set(["appointment"]);
+export const APP_PATH_NAMES_NO_SCREEN: ReadonlySet<DeepLinkName> = new Set([]);
 
 /**
  * The `:name` placeholders of a path pattern, as a union of string literals.

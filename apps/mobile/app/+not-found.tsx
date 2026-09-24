@@ -3,9 +3,11 @@
 // IT EXISTS BECAUSE LINKS NOW ARRIVE. Until `DEEP_LINK_MAP` had `appPath`
 // values (WU-O) almost nothing could open this app from outside, so expo-router's
 // default unmatched screen was a corner nobody reached. Now a notification, an
-// invitation e-mail and a check-in QR can all hand this app a path, and one of
-// them — `mimar://appointment/{token}`, the front-desk payload whose reader does
-// not exist yet — resolves to no screen ON PURPOSE.
+// invitation e-mail and a check-in QR can all hand this app a path. One of them
+// — `mimar://appointment/{token}`, the front-desk payload whose READER does not
+// exist yet — used to resolve to no SCREEN either, landing right here; since F-8
+// it has its own generic fallback (`app/appointment/[appointmentToken].tsx`), so
+// this page is reached today only by a genuinely unrecognised link.
 //
 // The default screen is an English "Unmatched Route" with a developer's stack
 // hint. That is the right answer for a developer and the wrong one for the

@@ -3,10 +3,13 @@
 // NOT A DEEP-LINK DESTINATION, and that is worth saying at the top because this
 // screen renders the very QR that looks like one. `DEEP_LINK_MAP.appointment`
 // carries `appPath: "appointment/:appointmentToken"` — a payload for a front-desk
-// reader that does not exist yet, kept byte-for-byte, and the single member of
-// `APP_PATH_NAMES_NO_SCREEN`. It does NOT resolve here and must not be pointed
-// here by hand: changing that string changes the code the web already prints on
-// every check-in QR. The debt is declared; closing it is the reader's work unit.
+// reader that does not exist yet, kept byte-for-byte. It does NOT resolve here
+// and must not be pointed here by hand: changing that string changes the code the
+// web already prints on every check-in QR. Since F-8 it resolves to
+// `app/appointment/[appointmentToken].tsx` instead — a generic, session-free
+// fallback, not this screen and not the reader. The debt of an actual reader is
+// still declared and still open; only "a phone that follows the link lands on
+// +not-found" is closed.
 //
 // THE PARAMETER IS VALIDATED, not trusted. `useLocalSearchParams` is typed
 // `string | string[]` because a path segment can legally repeat, and an empty

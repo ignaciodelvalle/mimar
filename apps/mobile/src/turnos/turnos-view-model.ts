@@ -24,15 +24,18 @@
 // formatting of `startsAt`/`endsAt`, which is a different thing: presenting an
 // instant the server sent is not deciding anything about it.
 //
-// THE CHECK-IN QR PAYLOAD IS THE WEB'S, BYTE FOR BYTE, AND IT POINTS NOWHERE
+// THE CHECK-IN QR PAYLOAD IS THE WEB'S, BYTE FOR BYTE, AND A READER STILL
+// DOES NOT EXIST (F-8 narrowed the debt; it did not close it)
 // ---------------------------------------------------------------------------
 // `checkInQrValue` returns `deepLinkAppUrl("appointment", …)`, which is exactly
 // what `/mis-turnos/[appointmentToken]/page.tsx` encodes. That string is a
-// KNOWN, DECLARED DEBT and this file does not fix it: `DEEP_LINK_MAP.appointment`
-// is the one entry whose `appPath` names no screen in `apps/mobile/app/`
-// (`APP_PATH_NAMES_NO_SCREEN`), because it is a placeholder payload for a
-// front-desk reader that does not exist yet. A phone that FOLLOWED it would land
-// on `+not-found`.
+// KNOWN, DECLARED DEBT and this file does not fix it: the value is a placeholder
+// payload for a front-desk reader that does not exist yet. What changed is only
+// what happens if a PHONE follows it anyway —
+// `apps/mobile/app/appointment/[appointmentToken].tsx` now resolves it, to a
+// generic, session-free "this code is for the front desk" screen rather than
+// `+not-found`. It answers nobody's question about this turno; it exists only so
+// a QR somebody was shown does not open onto a page about routing.
 //
 // Producing a different string here would be worse than the debt, not better: it
 // would mean the browser and the phone print two different codes for the same

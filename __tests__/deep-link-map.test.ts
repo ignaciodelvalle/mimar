@@ -163,18 +163,20 @@ const ACCESS_NOT_DERIVABLE: DeepLinkName[] = ["libretaShare", "orgInvitation"];
 const MIN_APP_SCREENS = 8;
 
 /**
- * The one destination whose `mimar://` form names no screen, with its reason.
+ * Destinations whose `mimar://` form names no screen, with their reason.
  *
- * `appointment` is a QR PAYLOAD for a front-desk reader that does not exist yet
- * — see the entry's own comment. It is an exception rather than a reason to
- * weaken the rule, because the rule is what stops the next `appPath` from being
- * a link that opens the app onto nothing.
+ * EMPTY TODAY (F-8). `appointment` was the one member — a QR PAYLOAD for a
+ * front-desk reader that does not exist yet — until a generic fallback screen
+ * landed for it; see the map entry's own comment for what that screen does and
+ * does not close. The set stays imported rather than retired: it is what stops
+ * the NEXT `appPath` added ahead of its screen from opening the app onto
+ * nothing, silently.
  *
  * IT USED TO BE DECLARED HERE and is now IMPORTED, because WU-Q-1 made it
- * load-bearing at runtime too: `appRoutePath` has to refuse this destination, and
- * a fence holding its own private copy of "the one exception" would agree with
- * the contract on the day it was written and not afterwards. The pinning test
- * below is unchanged and is what keeps the imported set honest.
+ * load-bearing at runtime too: `appRoutePath` has to refuse every destination in
+ * it, and a fence holding its own private copy of the exception list would agree
+ * with the contract on the day it was written and not afterwards. The pinning
+ * test below is unchanged in shape and is what keeps the imported set honest.
  */
 const APP_PATH_EXCEPTIONS = APP_PATH_NAMES_NO_SCREEN;
 
@@ -302,11 +304,13 @@ describe("the table is unambiguous", () => {
 
   // The exception list is a list of DECISIONS, not a place to park failures, so
   // it is pinned. Growing it is a visible edit next to the reason.
-  it("has exactly one destination claiming a screen that does not exist", () => {
-    expect([...APP_PATH_EXCEPTIONS]).toEqual(["appointment"]);
-    // …and it is the QR payload for a reader that does not exist yet. Kept
-    // byte-for-byte because changing the string would break whatever eventually
-    // reads it. See the entry's own comment.
+  it("has no destination claiming a screen that does not exist (F-8)", () => {
+    // `appointment` was the one member until its generic fallback screen landed
+    // (`apps/mobile/app/appointment/[appointmentToken].tsx`) — see the map
+    // entry's own comment for what closed and what is still open.
+    expect([...APP_PATH_EXCEPTIONS]).toEqual([]);
+    // The QR payload itself is UNCHANGED — kept byte-for-byte because changing
+    // the string would break whatever a real front-desk reader eventually reads.
     expect(DEEP_LINK_MAP.appointment.appPath).toBe("appointment/:appointmentToken");
   });
 
@@ -603,12 +607,20 @@ describe("appRoutePath", () => {
     // Rooted, and shorter than the web's: the native route is `mascotas/…`.
     expect(appRoutePath("pet", { publicToken: "DIM-PAMP-0001" })).toBe("/mascotas/DIM-PAMP-0001");
     expect(appRoutePath("petTransfer", { transferToken: "PTR-9" })).toBe("/transferencias/PTR-9");
+    // F-8: `appointment` used to be the one member of `APP_PATH_NAMES_NO_SCREEN`
+    // (a screen now resolves it — see the map entry's comment for what that
+    // screen is and is not) — this is the positive half of that fix.
+    expect(appRoutePath("appointment", { appointmentToken: "APT-123" })).toBe(
+      "/appointment/APT-123",
+    );
   });
 
   it("answers null when the app has no screen for the destination", () => {
-    // Two different reasons, one answer — see the function's docblock.
+    // The one reason left with any members today: no `mimar://` form at all.
+    // `APP_PATH_NAMES_NO_SCREEN`'s own reason (a screen this claims but does not
+    // have) is currently empty — see its docblock.
     expect(appRoutePath("credential", { publicToken: "DIM-PAMP-0001" })).toBe(null);
-    expect(appRoutePath("appointment", { appointmentToken: "APT-123" })).toBe(null);
+    expect(appRoutePath("orgInvitation", { invitationToken: "INV-1" })).toBe(null);
   });
 
   it("answers non-null for exactly the destinations the app can open", () => {
