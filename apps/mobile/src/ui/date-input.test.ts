@@ -1,6 +1,6 @@
 // `date-input` — the mask's reversibility and the conversion's honesty.
 
-import { describe, expect, it } from "@jest/globals";
+import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 
 import {
   dateInputToIso,
@@ -81,6 +81,20 @@ describe("isoToDateInput — pre-filling today", () => {
 });
 
 describe("the native picker's crossing — Date in, the same masked strings out", () => {
+  // PINNED TO ARGENTINA, so the 23:59 case below is 02:59 of the NEXT day in
+  // UTC. On a UTC runner an implementation reading `getUTCDate()` would pass
+  // unpinned; here it cannot. Restored after, because jest reuses a worker
+  // across files and the zone is process-wide.
+  const savedTz = process.env.TZ;
+  beforeAll(() => {
+    process.env.TZ = "America/Argentina/Buenos_Aires";
+  });
+  afterAll(() => {
+    // Not `= undefined`: process.env stringifies it to the zone "undefined".
+    if (savedTz === undefined) Reflect.deleteProperty(process.env, "TZ");
+    else process.env.TZ = savedTz;
+  });
+
   it("reads a typed or ISO day as a local noon Date, and refuses a day that does not exist", () => {
     const d = dateInputToLocalDate("05/08/2026");
     expect(d === null ? null : [d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()]).toEqual([
@@ -94,6 +108,8 @@ describe("the native picker's crossing — Date in, the same masked strings out"
 
   it("writes a picked day exactly as the mask draws the same eight digits", () => {
     const picked = new Date(2026, 7, 5, 23, 59);
+    // The pin is live: in UTC this instant is already the 6th.
+    expect(picked.getUTCDate()).toBe(6);
     expect(localDateToDateInput(picked)).toBe(maskDateInput("05082026"));
     expect(localDateToDateInput(picked)).toBe("05/08/2026");
   });

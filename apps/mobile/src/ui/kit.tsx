@@ -50,6 +50,7 @@ import { createContext, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   type GestureResponderEvent,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -618,13 +619,16 @@ export type DateFieldProps = MaskedFieldProps & {
  * change does not make.
  */
 function useNativePickerAvailable(): boolean {
-  const [screenReader, setScreenReader] = useState(false);
+  // UNKNOWN UNTIL ANSWERED, and unknown means the typed mask. Starting at
+  // `false` drew the picker for one frame with TalkBack on — the wrong control,
+  // announced first. A query that fails leaves it unknown, which is the safe arm.
+  const [screenReader, setScreenReader] = useState<boolean | null>(null);
   useEffect(() => {
     if (Platform.OS !== "android") return;
     let alive = true;
     AccessibilityInfo.isScreenReaderEnabled()
       .then((enabled) => {
-        if (alive && enabled) setScreenReader(true);
+        if (alive) setScreenReader(enabled);
       })
       .catch(() => {});
     const subscription = AccessibilityInfo.addEventListener("screenReaderChanged", (enabled) => {
@@ -635,8 +639,16 @@ function useNativePickerAvailable(): boolean {
       subscription?.remove();
     };
   }, []);
-  return Platform.OS === "android" && !screenReader;
+  return Platform.OS === "android" && screenReader === false;
 }
+
+/**
+ * The vertical slop that grows "Escribir la fecha" to a full `TOUCH_TARGET` —
+ * `LinkText`'s arithmetic, over this link's smaller type. The link's
+ * `marginTop` is the same number, so the grown target ends where the input
+ * begins instead of stealing the bottom of its tap area.
+ */
+const FIELD_ACTION_SLOP = Math.ceil((TOUCH_TARGET - TYPE.sm * LEADING.sm) / 2);
 
 /** Hand one TextInput to both the caller's ref and the field's own. */
 function assignRef<T>(ref: Ref<T> | undefined, value: T | null) {
@@ -657,8 +669,15 @@ function clampDate(date: Date, min: Date | undefined, max: Date | undefined): Da
  * caller's tests — unchanged: the accessible name, the value, `onChangeText`,
  * `inputRef` and the return-key chain all land on the same `TextInput` as
  * before. What the picker mode changes is only what a TAP does: the soft
- * keyboard is suppressed (`showSoftInputOnFocus={false}`) and `onPressIn`
- * opens the dialog instead. A selection is written through the same
+ * keyboard is suppressed (`showSoftInputOnFocus={false}`) and `onPress`
+ * opens the dialog instead — a completed tap, never `onPressIn`, which fired
+ * on the first touch of a SCROLL that happened to start on a date field.
+ *
+ * FOCUS THAT ARRIVES WITHOUT A TAP closes the keyboard and opens nothing. The
+ * return-key chain ("Siguiente" on the field above) focuses this input with
+ * the keyboard still up; with the soft input suppressed and the caret hidden,
+ * that left a keyboard typing into a field showing no cursor. A dialog popping
+ * open on a key press would be the other wrong answer, so it waits for a tap. A selection is written through the same
  * `onChangeText` the typed path uses, as the same masked string, so the
  * caller's state cannot tell which door the value came through. A cancel
  * writes nothing.
@@ -747,9 +766,13 @@ function PickerMaskedField({
               showSoftInputOnFocus: false,
               caretHidden: true,
               accessibilityHint: `Abre el ${mode === "date" ? "calendario" : "reloj"}`,
-              onPressIn: (e: GestureResponderEvent) => {
-                rest.onPressIn?.(e);
+              onPress: (e: GestureResponderEvent) => {
+                rest.onPress?.(e);
                 if (editable) openPicker();
+              },
+              onFocus: (e: Parameters<NonNullable<TextInputProps["onFocus"]>>[0]) => {
+                Keyboard.dismiss();
+                rest.onFocus?.(e);
               },
             }
           : {})}
@@ -757,7 +780,12 @@ function PickerMaskedField({
       {pickerAvailable && editable ? (
         <Pressable
           accessibilityRole="button"
-          hitSlop={{ top: SPACE.sm, bottom: SPACE.sm, left: SPACE.sm, right: SPACE.sm }}
+          hitSlop={{
+            top: FIELD_ACTION_SLOP,
+            bottom: FIELD_ACTION_SLOP,
+            left: SPACE.sm,
+            right: SPACE.sm,
+          }}
           onPress={() => {
             if (typing) {
               setTyping(false);
@@ -1229,7 +1257,7 @@ const styles = StyleSheet.create({
   },
 
   field: { alignSelf: "stretch" },
-  fieldAction: { alignSelf: "flex-start", marginTop: SPACE.xs },
+  fieldAction: { alignSelf: "flex-start", marginTop: FIELD_ACTION_SLOP },
   fieldActionText: {
     fontFamily: FONTS.sansMedium,
     fontSize: TYPE.sm,

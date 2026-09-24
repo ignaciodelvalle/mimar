@@ -36,6 +36,7 @@ import { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import {
   AccessibilityInfo,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
@@ -54,7 +55,7 @@ import {
   keyboardAvoidingBehavior,
   pullToRefresh,
 } from "./kit";
-import { COLORS } from "./theme";
+import { COLORS, TOUCH_TARGET } from "./theme";
 
 /**
  * The nearest HOST `View` above a node.
@@ -300,6 +301,17 @@ describe("DateField / TimeField — the native Android picker in front of the ma
     return call[0];
   };
 
+  /**
+   * The field in picker mode. It starts as the typed mask until the screen-
+   * reader query answers, so every picker test waits for that answer first.
+   */
+  async function pickerField(label: string) {
+    await waitFor(() =>
+      expect(screen.getByLabelText(label).props.showSoftInputOnFocus).toBe(false),
+    );
+    return screen.getByLabelText(label);
+  }
+
   beforeEach(() => {
     open.mockClear();
     jest.replaceProperty(Platform, "OS", "android");
@@ -308,11 +320,10 @@ describe("DateField / TimeField — the native Android picker in front of the ma
     jest.restoreAllMocks();
   });
 
-  it("opens the native calendar on a tap, with the keyboard suppressed", () => {
+  it("opens the native calendar on a completed tap, with the keyboard suppressed", async () => {
     render(<DateField label="Fecha" value="20/08/2026" onChangeText={() => {}} />);
-    const input = screen.getByLabelText("Fecha");
-    expect(input.props.showSoftInputOnFocus).toBe(false);
-    fireEvent(input, "pressIn");
+    const input = await pickerField("Fecha");
+    fireEvent.press(input);
     expect(open).toHaveBeenCalledTimes(1);
     const params = lastOpen();
     expect(params.mode).toBe("date");
@@ -322,10 +333,27 @@ describe("DateField / TimeField — the native Android picker in front of the ma
     ]);
   });
 
-  it("writes a selection as the SAME masked string the typed field produces", () => {
+  it("does NOT open on the first touch of a gesture — a scroll starting on the field", async () => {
+    render(<DateField label="Fecha" value="" onChangeText={() => {}} />);
+    fireEvent(await pickerField("Fecha"), "pressIn");
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("closes the keyboard when focus arrives without a tap, and opens nothing", async () => {
+    // The return-key chain focuses the next field with the keyboard still up.
+    const dismiss = jest.spyOn(Keyboard, "dismiss");
+    const onFocus = jest.fn();
+    render(<DateField label="Fecha" value="" onChangeText={() => {}} onFocus={onFocus} />);
+    fireEvent(await pickerField("Fecha"), "focus");
+    expect(dismiss).toHaveBeenCalled();
+    expect(onFocus).toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("writes a selection as the SAME masked string the typed field produces", async () => {
     const onChangeText = jest.fn();
     render(<DateField label="Fecha" value="" onChangeText={onChangeText} />);
-    fireEvent(screen.getByLabelText("Fecha"), "pressIn");
+    fireEvent.press(await pickerField("Fecha"));
     act(() => {
       lastOpen().onValueChange?.({ type: "set" }, new Date(2026, 7, 5, 12));
     });
@@ -333,17 +361,17 @@ describe("DateField / TimeField — the native Android picker in front of the ma
     expect(onChangeText).toHaveBeenCalledWith("05/08/2026");
   });
 
-  it("leaves the value alone when the dialog is cancelled", () => {
+  it("leaves the value alone when the dialog is cancelled", async () => {
     const onChangeText = jest.fn();
     render(<DateField label="Fecha" value="20/08/2026" onChangeText={onChangeText} />);
-    fireEvent(screen.getByLabelText("Fecha"), "pressIn");
+    fireEvent.press(await pickerField("Fecha"));
     act(() => {
       lastOpen().onDismiss?.();
     });
     expect(onChangeText).not.toHaveBeenCalled();
   });
 
-  it("passes the caller's bounds to the calendar, and clamps where it opens", () => {
+  it("passes the caller's bounds to the calendar, and clamps where it opens", async () => {
     const min = new Date(2026, 8, 1, 12);
     const max = new Date(2026, 8, 24, 12);
     render(
@@ -355,17 +383,17 @@ describe("DateField / TimeField — the native Android picker in front of the ma
         onChangeText={() => {}}
       />,
     );
-    fireEvent(screen.getByLabelText("Fecha"), "pressIn");
+    fireEvent.press(await pickerField("Fecha"));
     const params = lastOpen();
     expect(params.minimumDate).toBe(min);
     expect(params.maximumDate).toBe(max);
     expect(params.value.getTime()).toBe(max.getTime());
   });
 
-  it("opens a 24-hour clock for a time and writes HH:MM", () => {
+  it("opens a 24-hour clock for a time and writes HH:MM", async () => {
     const onChangeText = jest.fn();
     render(<TimeField label="Hora" value="" onChangeText={onChangeText} />);
-    fireEvent(screen.getByLabelText("Hora"), "pressIn");
+    fireEvent.press(await pickerField("Hora"));
     const params = lastOpen();
     expect(params.mode).toBe("time");
     expect(params.is24Hour).toBe(true);
@@ -375,19 +403,20 @@ describe("DateField / TimeField — the native Android picker in front of the ma
     expect(onChangeText).toHaveBeenCalledWith("08:05");
   });
 
-  it("does not open on a field the caller disabled", () => {
+  it("does not open on a field the caller disabled", async () => {
     render(<DateField label="Fecha" value="" editable={false} onChangeText={() => {}} />);
-    fireEvent(screen.getByLabelText("Fecha"), "pressIn");
+    fireEvent.press(await pickerField("Fecha"));
     expect(open).not.toHaveBeenCalled();
   });
 
-  it("offers the typed mask as a fallback, one tap away", () => {
+  it("offers the typed mask as a fallback, one tap away", async () => {
     const onChangeText = jest.fn();
     render(<DateField label="Fecha" value="" onChangeText={onChangeText} />);
+    await pickerField("Fecha");
     fireEvent.press(screen.getByRole("button", { name: "Escribir la fecha" }));
     const input = screen.getByLabelText("Fecha");
     expect(input.props.showSoftInputOnFocus).toBeUndefined();
-    fireEvent(input, "pressIn");
+    fireEvent.press(input);
     expect(open).not.toHaveBeenCalled();
     fireEvent.changeText(input, "20082026");
     expect(onChangeText).toHaveBeenCalledWith("20/08/2026");
@@ -396,22 +425,44 @@ describe("DateField / TimeField — the native Android picker in front of the ma
     expect(open).toHaveBeenCalledTimes(1);
   });
 
+  it("gives the fallback link a full touch target that stops where the input starts", async () => {
+    render(<DateField label="Fecha" value="" onChangeText={() => {}} />);
+    await pickerField("Fecha");
+    const link = screen.getByRole("button", { name: "Escribir la fecha" });
+    const slop = link.props.hitSlop as { top: number; bottom: number };
+    const text = screen.getByText("Escribir la fecha");
+    const lineHeight = StyleSheet.flatten(text.props.style).lineHeight as number;
+    expect(slop.top + slop.bottom + lineHeight).toBeGreaterThanOrEqual(TOUCH_TARGET);
+    // The top slop fits inside the gap above the link, so it never overlaps the input.
+    const marginTop = StyleSheet.flatten(link.props.style).marginTop as number;
+    expect(marginTop).toBeGreaterThanOrEqual(slop.top);
+  });
+
   it("with TalkBack on, the field is the typed mask only", async () => {
     jest.spyOn(AccessibilityInfo, "isScreenReaderEnabled").mockResolvedValue(true);
     render(<DateField label="Fecha" value="" onChangeText={() => {}} />);
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "Escribir la fecha" })).toBeNull(),
-    );
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: "Escribir la fecha" })).toBeNull();
     const input = screen.getByLabelText("Fecha");
     expect(input.props.showSoftInputOnFocus).toBeUndefined();
-    fireEvent(input, "pressIn");
+    fireEvent.press(input);
     expect(open).not.toHaveBeenCalled();
+  });
+
+  it("stays the typed mask until the screen-reader answer arrives", () => {
+    // Never answers: the field must not guess "no screen reader".
+    jest
+      .spyOn(AccessibilityInfo, "isScreenReaderEnabled")
+      .mockReturnValue(new Promise<boolean>(() => {}));
+    render(<DateField label="Fecha" value="" onChangeText={() => {}} />);
+    expect(screen.getByLabelText("Fecha").props.showSoftInputOnFocus).toBeUndefined();
+    expect(screen.queryByRole("button", { name: "Escribir la fecha" })).toBeNull();
   });
 
   it("stays the typed mask off Android", () => {
     jest.replaceProperty(Platform, "OS", "ios");
     render(<DateField label="Fecha" value="" onChangeText={() => {}} />);
-    fireEvent(screen.getByLabelText("Fecha"), "pressIn");
+    fireEvent.press(screen.getByLabelText("Fecha"));
     expect(open).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Escribir la fecha" })).toBeNull();
   });
