@@ -179,7 +179,7 @@ jobs:
         # `failure()` is false for a cancelled job — so the one run that most
         # needs a forensic artifact is the one that would upload nothing.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mobile-export-android
           path: apps/mobile/dist/

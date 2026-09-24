@@ -1023,7 +1023,7 @@ jobs:
         # died before writing one, or setup never reached vitest) uploads
         # nothing, and the merge verdict lists its files as never reported.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vitest-blob-${{ matrix.shard }}
           path: .vitest-reports/
@@ -1273,7 +1273,7 @@ jobs:
         # the suite had got to. The report is the only forensic artifact this
         # job produces; upload it whatever the outcome.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: playwright-report/
