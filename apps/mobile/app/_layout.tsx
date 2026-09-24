@@ -521,6 +521,9 @@ function RootLayout() {
               asimetría es la decisión, no un descuido. */}
         <Stack.Screen name="mascotas/[publicToken]/perdida" options={{ title: "Modo perdida" }} />
         <Stack.Screen name="turnos/[appointmentToken]" options={{ title: "Turno" }} />
+        {/* The check-in QR's front-desk fallback (M8/F-8): same noun as the
+            owner's turno screen above, the one title this surface already has. */}
+        <Stack.Screen name="appointment/[appointmentToken]" options={{ title: "Turno" }} />
         <Stack.Screen name="cuidado/[grantToken]" options={{ title: "Cuidado temporal" }} />
         {/* LA CUARTA, decidida por el PO el 11/09 — la pregunta tambien vivio en
             TITLE_PENDING y se respondio por la lectura (b):
