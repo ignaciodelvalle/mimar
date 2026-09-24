@@ -498,6 +498,11 @@ function RootLayout() {
             tránsito") without the plural this app's single hub does not
             have — see `ROUTES.transito`'s own note. */}
         <Stack.Screen name="cuenta/transito" options={{ title: "Tránsito" }} />
+        {/* CASOS (M11). "Mis casos" is the screen's own title and the web's
+            widget's default heading; "Caso" is the singular the detail
+            screen falls back to while its case kind is still loading. */}
+        <Stack.Screen name="casos/index" options={{ title: "Mis casos" }} />
+        <Stack.Screen name="casos/[publicCode]" options={{ title: "Caso" }} />
         <Stack.Screen name="recuperar" options={{ title: "Recuperar contraseña" }} />
         <Stack.Screen name="mascotas/[publicToken]/compartir" options={{ title: "Compartir" }} />
         <Stack.Screen

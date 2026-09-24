@@ -44,7 +44,7 @@
 // `useCallback`, which is what makes that memoization worth anything: a
 // memoized component with a fresh callback prop every render defeats itself.
 
-import type { MyPetsV1 } from "@dim/contract/api";
+import type { MyCasesV1, MyPetsV1 } from "@dim/contract/api";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
@@ -54,6 +54,9 @@ import { apiFailureMessage } from "../../src/api/client";
 import { fetchMyPets } from "../../src/api/endpoints";
 import { sessionPort } from "../../src/auth/session-store";
 import { useGate } from "../../src/auth/useGate";
+import { OpenCasesBlock } from "../../src/cases/OpenCasesBlock";
+import { hasOpenCases } from "../../src/cases/cases-view-model";
+import { useOpenCases } from "../../src/cases/use-open-cases";
 import { BiteDraftBanner } from "../../src/pets/BiteDraftBanner";
 import { PetRow } from "../../src/pets/PetRow";
 import {
@@ -126,11 +129,21 @@ export default function MisMascotasScreen() {
   const { banner: biteDraft, refresh: refreshBiteDraft } = useBiteDraftBanner();
   useFocusEffect(useCallback(() => void refreshBiteDraft(), [refreshBiteDraft]));
 
+  // CASOS ABIERTOS (M11). Its own read, on every focus including the first, for
+  // the bite-draft banner's reason: a case closed elsewhere must leave this
+  // screen the next time somebody comes back to it. A failure is quiet — see
+  // `use-open-cases.ts` — because the pets are what this screen is for.
+  const { cases: openCases, refresh: refreshCases } = useOpenCases();
+  useFocusEffect(useCallback(() => void refreshCases(), [refreshCases]));
+
   // WHEN THE NETWORK COMES BACK, TRY AGAIN (B-05). The offline banner already
   // clears itself on this exact event; the list used to sit broken beside it
   // until somebody pressed a button. A refresh and not an initial read: whatever
   // is on screen stays there while it happens.
-  useReconnect(() => void load("refresh"));
+  useReconnect(() => {
+    void load("refresh");
+    void refreshCases();
+  });
 
   // STABLE ACROSS RENDERS, ON PURPOSE (M3 / R-1). Every `PetRow` in the
   // visible window receives `handleOpenPet` as its `onPress`, and `PetRow` is
@@ -154,6 +167,12 @@ export default function MisMascotasScreen() {
   const handleOpenBiteDraft = useCallback((publicToken: string) => {
     routerRef.current.push(recordEventRoute(publicToken, { kind: "bite" }));
   }, []);
+  // A case row's route is an IN-APP path the server resolved through the
+  // deep-link table — the same kind of value the inbox pushes for a CTA.
+  const handleOpenCaseRoute = useCallback((route: string) => {
+    routerRef.current.push(route as Parameters<typeof router.push>[0]);
+  }, []);
+  const handleOpenCases = useCallback(() => routerRef.current.push(ROUTES.casos), []);
 
   if (!gate.allowed) return gate.element;
 
@@ -184,11 +203,17 @@ export default function MisMascotasScreen() {
       view={state.view}
       staleFailure={state.staleFailure}
       biteDraft={biteDraft}
+      openCases={openCases}
       refreshing={refreshing}
-      onRefresh={() => void load("refresh")}
+      onRefresh={() => {
+        void load("refresh");
+        void refreshCases();
+      }}
       onOpen={handleOpenPet}
       onRegister={handleRegister}
       onOpenBiteDraft={handleOpenBiteDraft}
+      onOpenCaseRoute={handleOpenCaseRoute}
+      onOpenCases={handleOpenCases}
     />
   );
 }
@@ -201,20 +226,26 @@ function PetListScreen({
   view,
   staleFailure,
   biteDraft,
+  openCases,
   refreshing,
   onRefresh,
   onOpen,
   onRegister,
   onOpenBiteDraft,
+  onOpenCaseRoute,
+  onOpenCases,
 }: {
   view: MyPetsV1;
   staleFailure: string | null;
   biteDraft: BiteDraftInfo | null;
+  openCases: MyCasesV1 | null;
   refreshing: boolean;
   onRefresh: () => void;
   onOpen: (publicToken: string) => void;
   onRegister: () => void;
   onOpenBiteDraft: (publicToken: string) => void;
+  onOpenCaseRoute: (route: string) => void;
+  onOpenCases: () => void;
 }) {
   const { pets, total, truncated } = view;
 
@@ -232,6 +263,9 @@ function PetListScreen({
             onRefresh={onRefresh}
             biteDraft={biteDraft}
             onOpenBiteDraft={onOpenBiteDraft}
+            openCases={openCases}
+            onOpenCaseRoute={onOpenCaseRoute}
+            onOpenCases={onOpenCases}
           />
         }
         ListEmptyComponent={
@@ -269,28 +303,37 @@ function PetListScreen({
 /**
  * Everything that sits ABOVE the pets themselves, now the `FlatList`'s
  * `ListHeaderComponent` so it renders once — same reasoning as `ListFooter`
- * below. Two banners can coexist here: a stale read and an unsent bite draft
- * are unrelated facts about the account, and neither one being true says
- * anything about the other.
+ * below. Two banners and one block can coexist here: a stale read, an unsent
+ * bite draft and an open case are unrelated facts about the account, and none
+ * of them being true says anything about the others. The banners come first —
+ * they are about THIS screen's state — and the casos block after them.
  */
 function ListHeader({
   staleFailure,
   onRefresh,
   biteDraft,
   onOpenBiteDraft,
+  openCases,
+  onOpenCaseRoute,
+  onOpenCases,
 }: {
   staleFailure: string | null;
   onRefresh: () => void;
   biteDraft: BiteDraftInfo | null;
   onOpenBiteDraft: (publicToken: string) => void;
+  openCases: MyCasesV1 | null;
+  onOpenCaseRoute: (route: string) => void;
+  onOpenCases: () => void;
 }) {
-  if (staleFailure === null && biteDraft === null) return null;
+  const showCases = hasOpenCases(openCases);
+  if (staleFailure === null && biteDraft === null && !showCases) return null;
   return (
     <View style={styles.headerGap}>
       {staleFailure === null ? null : <StaleNotice message={staleFailure} onRetry={onRefresh} />}
       {biteDraft === null ? null : (
         <BiteDraftBanner onPress={() => onOpenBiteDraft(biteDraft.publicToken)} />
       )}
+      <OpenCasesBlock cases={openCases} onOpenRoute={onOpenCaseRoute} onOpenAll={onOpenCases} />
     </View>
   );
 }

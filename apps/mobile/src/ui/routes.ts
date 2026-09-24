@@ -46,6 +46,12 @@ export const ROUTES = {
   recuperar: "/recuperar",
   identidadPendiente: "/identidad-pendiente",
   misMascotas: "/mascotas",
+  /**
+   * The owner's casos — every open cycle plus the recent history, the web's
+   * `/mis-mascotas#inbox` "Casos abiertos" + "Historial" (M11). Its own screen
+   * because the Mis mascotas block shows only the open ones.
+   */
+  casos: "/casos",
   altaMascota: "/alta",
   ajustes: "/ajustes",
   /**
@@ -596,6 +602,16 @@ export function caretakerGrantRoute(grantToken: string): `/cuidado/${string}` {
   return `/cuidado/${encodeURIComponent(grantToken)}`;
 }
 
+/**
+ * One case — `/casos/{publicCode}`, the WEB's path, and for the reason
+ * `/transferencias` keeps its own: a notification's `cta_url` names the web
+ * form, and keeping the two identical is what lets the deep-link table map one
+ * onto the other without a translation that could drift.
+ */
+export function caseRoute(publicCode: string): `/casos/${string}` {
+  return `/casos/${encodeURIComponent(publicCode)}`;
+}
+
 export type AppRoute =
   | (typeof ROUTES)[keyof typeof ROUTES]
   | ReturnType<typeof credentialRoute>
@@ -614,5 +630,6 @@ export type AppRoute =
   | ReturnType<typeof transferPetRoute>
   | ReturnType<typeof caretakerPetRoute>
   | ReturnType<typeof caretakerGrantRoute>
+  | ReturnType<typeof caseRoute>
   | ReturnType<typeof turnoRoute>
   | ReturnType<typeof buscarOfferingRoute>;

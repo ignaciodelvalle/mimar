@@ -47,6 +47,18 @@ jest.mock("expo-router", () => ({
 
 jest.mock("../api/endpoints", () => ({
   fetchMyPets: (...args: unknown[]) => mockFetchMyPets(...args),
+  // The casos block (M11) reads on every focus. No open cases: the block is
+  // not drawn, and nothing this file asserts about the list moves.
+  fetchMyCases: async () => ({
+    outcome: "ok",
+    payload: {
+      payloadVersion: 1,
+      issuedAt: "2026-09-24T00:00:00.000Z",
+      staleAfter: "2026-09-24T00:01:00.000Z",
+      open: [],
+      history: { rows: [], hasMore: false },
+    },
+  }),
 }));
 
 jest.mock("@react-native-community/netinfo", () => ({

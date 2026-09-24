@@ -70,6 +70,8 @@ import {
   MY_ADOPTION_APPLICATIONS_PAYLOAD_VERSION,
   MY_APPOINTMENTS_PAYLOAD_VERSION,
   MY_CARETAKER_GRANTS_PAYLOAD_VERSION,
+  MY_CASES_PAYLOAD_VERSION,
+  MY_CASE_DETAIL_PAYLOAD_VERSION,
   MY_FOSTER_PAYLOAD_VERSION,
   MY_NOTIFICATIONS_PAYLOAD_VERSION,
   MY_PETS_PAYLOAD_VERSION,
@@ -80,6 +82,8 @@ import {
   type MyAdoptionApplicationsV1,
   type MyAppointmentsV1,
   type MyCaretakerGrantsV1,
+  type MyCaseDetailV1,
+  type MyCasesV1,
   type MyFosterV1,
   type MyNotificationsV1,
   type MyPetsV1,
@@ -921,6 +925,38 @@ export function sendCaretakerCommand(
 export function fetchMyFoster(session: SessionPort): Promise<ApiResult<MyFosterV1>> {
   return apiRequest<MyFosterV1>(
     { path: "/api/v1/me/foster", expectedPayloadVersion: MY_FOSTER_PAYLOAD_VERSION },
+    session,
+  );
+}
+
+/**
+ * `GET /me/cases` — the owner's casos: every open cycle plus the most recent
+ * closed ones, the web's "Casos abiertos" and "Historial" blocks.
+ *
+ * Each row carries the in-app `route` the server resolved for it, or `null`
+ * when the app has no screen for it. The client never derives one from `kind`.
+ */
+export function fetchMyCases(session: SessionPort): Promise<ApiResult<MyCasesV1>> {
+  return apiRequest<MyCasesV1>(
+    { path: "/api/v1/me/cases", expectedPayloadVersion: MY_CASES_PAYLOAD_VERSION },
+    session,
+  );
+}
+
+/**
+ * `GET /me/cases/{publicCode}` — one case, as the web's `/casos/{publicCode}`
+ * shows it to this signed-in person. A case they may not read is `not_found`,
+ * the same answer as a code that does not exist.
+ */
+export function fetchMyCase(
+  publicCode: string,
+  session: SessionPort,
+): Promise<ApiResult<MyCaseDetailV1>> {
+  return apiRequest<MyCaseDetailV1>(
+    {
+      path: `/api/v1/me/cases/${encodeURIComponent(publicCode)}`,
+      expectedPayloadVersion: MY_CASE_DETAIL_PAYLOAD_VERSION,
+    },
     session,
   );
 }
