@@ -25,11 +25,13 @@
 import { describe, expect, it } from "@jest/globals";
 import { StyleSheet, type TextStyle, type ViewStyle } from "react-native";
 
+import { TOUCH_TARGET } from "../ui/theme";
 import {
   BAND_CHIP_BORDER,
   BAND_CHIP_PAD_V,
   BAND_CHIP_TOP,
   BAND_H,
+  BAND_MAX_FONT_SCALE,
   FACE_SECTION_PAD_V,
   ICON_SM,
   IDENTITY_POKE_OUT,
@@ -52,17 +54,20 @@ const MIN_CLEARANCE = 8;
 
 describe("the band's height is a budget the numbers actually add up to", () => {
   it("puts the chip's bottom and the frames' top where the docblock says", () => {
-    expect(chipBottom).toBe(92);
-    expect(frameTop).toBe(100);
+    expect(chipBottom).toBe(102);
+    expect(frameTop).toBe(116);
   });
 
   it("leaves the state chip clear of the frames that rise into the band", () => {
     expect(frameTop - chipBottom).toBeGreaterThanOrEqual(MIN_CLEARANCE);
   });
 
-  it("puts the chip's line below the flip control and below a two-line title", () => {
-    // The flip control is a TOUCH_TARGET square at top 14, so it ends at 58.
-    expect(BAND_CHIP_TOP).toBeGreaterThanOrEqual(58);
+  it("puts the chip's line below the flip control (A-1: a TOUCH_TARGET square at top 14)", () => {
+    const FLIP_TOP = 14;
+    expect(BAND_CHIP_TOP).toBeGreaterThanOrEqual(FLIP_TOP + TOUCH_TARGET);
+  });
+
+  it("puts the chip's line below a two-line title, unscaled", () => {
     // The title wraps to two lines at 360dp: top 16 + 2 × 13.0 + 3 marginTop +
     // the 10.4 subtitle line. The chip must clear that too.
     expect(BAND_CHIP_TOP).toBeGreaterThanOrEqual(16 + 2 * 13 + 3 + Math.ceil(1.3 * 8));
@@ -109,3 +114,84 @@ describe("the StyleSheets carry the constants the docblock quotes", () => {
 // The flip control's own square is pinned where it is RENDERED
 // (PetDocumentScreen.test.tsx), not here: what matters about it is that the
 // style reaches the control, which a StyleSheet read cannot see.
+
+// ---------------------------------------------------------------------------
+// A-2 (2026-09-24, M7 accessibility pass, PO decision 17A / "membrete").
+// ---------------------------------------------------------------------------
+//
+// EVERYTHING ABOVE THIS LINE IS ARITHMETIC AT THE UNSCALED FONT. That was the
+// exact gap the PO's report exposed: the title and the chip both carry
+// `maxFontSizeMultiplier={BAND_MAX_FONT_SCALE}` and DO grow, up to that cap,
+// with the reader's system font size — the layout budget above never asked
+// what happens at the cap itself. jest still has no Yoga (see the file
+// header), so this cannot render a wrapped title either; what it CAN do is
+// the same thing the rest of this file does — recompute the two quantities
+// that actually move with scale (the title's line height, and the chip's
+// tallest child) from IBM Plex Mono's own stated metrics, and assert the
+// budget holds at the reader's EFFECTIVE scale, capped exactly where the
+// component itself caps it.
+const TITLE_TOP = 16;
+const TITLE_MARGIN_TO_SUBTITLE = 3;
+const TITLE_FONT_SIZE = 10;
+const SUBTITLE_FONT_SIZE = 8;
+const CHIP_TEXT_FONT_SIZE = 10;
+/** IBM Plex Mono's shipped line-height coefficient — the same 1.3 every other
+ *  derivation in this file and `BAND_H`'s own docblock uses. */
+const LINE_HEIGHT_EM = 1.3;
+
+function scaledLineHeight(fontSize: number, systemFontScale: number): number {
+  const effectiveScale = Math.min(systemFontScale, BAND_MAX_FONT_SCALE);
+  return Math.ceil(LINE_HEIGHT_EM * fontSize * effectiveScale);
+}
+
+/** Where the title block's last line (the subtitle) ends, at this system
+ *  font scale — the quantity `BAND_CHIP_TOP` has to clear. */
+function titleBottomAt(systemFontScale: number): number {
+  const titleLine = scaledLineHeight(TITLE_FONT_SIZE, systemFontScale);
+  const subtitleLine = scaledLineHeight(SUBTITLE_FONT_SIZE, systemFontScale);
+  return TITLE_TOP + 2 * titleLine + TITLE_MARGIN_TO_SUBTITLE + subtitleLine;
+}
+
+/** The chip's bottom edge at this system font scale — the icon is the
+ *  tallest child only below the cap; the chip's OWN capped text overtakes it
+ *  once scaled, which the unscaled arithmetic above cannot see. */
+function chipBottomAt(systemFontScale: number): number {
+  const tallestChild = Math.max(ICON_SM, scaledLineHeight(CHIP_TEXT_FONT_SIZE, systemFontScale));
+  return BAND_CHIP_TOP + 2 * BAND_CHIP_BORDER + 2 * BAND_CHIP_PAD_V + tallestChild;
+}
+
+describe("A-2: the title and the chip do not collide at any system font scale", () => {
+  // 1.0 (no scaling), 1.3 (exactly the cap), 2.0 (past the cap — must render
+  // IDENTICALLY to 1.3, since BAND_MAX_FONT_SCALE clamps both nodes there).
+  // The PO's report was specifically about 1.3; 2.0 is in the task because a
+  // clamp that were ever implemented per-node instead of via one shared
+  // constant could still diverge between the title and the chip above it.
+  const SCALES = [1.0, 1.3, 2.0];
+
+  for (const scale of SCALES) {
+    // jest's `expect` takes no assertion-message argument (unlike vitest's) —
+    // the `it` title carries the scale, a red here means the title overran
+    // the chip's own line at that scale.
+    it(`title ends before the chip begins, at system font scale ${scale}`, () => {
+      expect(BAND_CHIP_TOP).toBeGreaterThanOrEqual(titleBottomAt(scale));
+    });
+
+    it(`the chip still clears the frames rising into the band, at system font scale ${scale}`, () => {
+      expect(frameTop - chipBottomAt(scale)).toBeGreaterThanOrEqual(MIN_CLEARANCE);
+    });
+  }
+
+  it("1.3 and 2.0 land on the identical budget — the cap is doing the clamping, not luck", () => {
+    expect(titleBottomAt(1.3)).toBe(titleBottomAt(2.0));
+    expect(chipBottomAt(1.3)).toBe(chipBottomAt(2.0));
+  });
+
+  it("non-vacuity: scaling past the cap actually changes the numbers versus unscaled", () => {
+    // If this ever equalled titleBottomAt(1.0), either BAND_MAX_FONT_SCALE
+    // broke or this helper stopped reading it — either way the assertions
+    // above would be checking the same budget three times over, not three
+    // different scales.
+    expect(titleBottomAt(1.3)).toBeGreaterThan(titleBottomAt(1.0));
+    expect(chipBottomAt(1.3)).toBeGreaterThan(chipBottomAt(1.0));
+  });
+});

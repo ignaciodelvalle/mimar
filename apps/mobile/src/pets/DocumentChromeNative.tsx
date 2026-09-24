@@ -203,21 +203,24 @@ function BandBackground({ situationKey }: { situationKey: string | undefined }) 
  * Four things share this strip and three of them are absolutely positioned, so
  * the number has to be derived rather than picked. Every row below is
  * band-relative y on a 360dp card, measured from the face's content box (inside
- * the 1px border), with IBM Plex Mono at its shipped 1.30em line height:
+ * the 1px border), with IBM Plex Mono at its shipped 1.30em line height, AT THE
+ * DEVICE'S UNSCALED FONT (system font scale 1.0 — see the A-2 note below for
+ * why the scaled case needs its own row):
  *
  *   | Element        | Derivation                                        | y       |
  *   |----------------|---------------------------------------------------|---------|
- *   | Title block    | top 16; the 26-char title needs 218pt at 55% of    | [16,~55]|
+ *   | Title block    | top 16; the 26-char title needs 218pt at 55% of    | [16,~56]|
  *   |                | 310 = 170 available, so it WRAPS: 2 × 13.0 lines,  |         |
  *   |                | + 3 marginTop + the 10.4 subtitle line             |         |
- *   | Flip control   | top 14; a TOUCH_TARGET square                      | [14,58] |
- *   | Situation chip | top BAND_CHIP_TOP; 2×1 border + 2×6 padding +      | [62,92] |
+ *   | Flip control   | top 14; a TOUCH_TARGET square (48 since A-1)       | [14,62] |
+ *   | Situation chip | top BAND_CHIP_TOP; 2×1 border + 2×6 padding +      | [72,102]|
  *   |                | max(icon 16, text 13) — the 16px ICON_SM is the    |         |
- *   |                | tallest child, NOT the 10px text                   |         |
- *   | Frames enter   | BAND_H + FACE_SECTION_PAD_V − IDENTITY_POKE_OUT    | 100     |
+ *   |                | tallest child at THIS scale, NOT the 10px text     |         |
+ *   | Frames enter   | BAND_H + FACE_SECTION_PAD_V − IDENTITY_POKE_OUT    | 116     |
  *
  * So the clearance between the chip's bottom and the frames' white ring is
- * `BAND_H + 20 − 56 − 92` = 8 points at BAND_H 136, and that 8 is the budget.
+ * `BAND_H + 20 − 56 − 102` = 14 points at BAND_H 152, and that 14 is the budget
+ * (the geometry test still only requires 8; the extra 6 is A-2's margin, below).
  *
  * WHAT THE PREVIOUS VERSION OF THIS DOCBLOCK GOT WRONG, because the numbers it
  * quoted are still quoted elsewhere in this repo. It said the title ended at
@@ -235,32 +238,75 @@ function BandBackground({ situationKey }: { situationKey: string | undefined }) 
  * HISTORY. It was 120 until 2026-09-03, with the chip at top:82: that put the
  * frames at 84 while the chip ran [82,112], so 28 of the chip's 30 points were
  * under the photo — the occlusion described at the chip. Raising it to 152
- * fixed that and left 24 points of unplanned slack; 136 is the same fix with
- * the slack spent, keeping the 8-point clearance the geometry test pins.
+ * fixed that and left 24 points of unplanned slack; 136 was the same fix with
+ * the slack spent, keeping the 8-point clearance the geometry test pinned.
+ *
+ * A-2 (2026-09-24, M7 accessibility pass, PO decision 17A). The table above —
+ * and the geometry test that mirrored it — was arithmetic for the UNSCALED
+ * title only. It never asked what happens at the font-scale CAP this file
+ * already imposes (`BAND_MAX_FONT_SCALE`, 1.3): at that cap the title's own
+ * fontSize is 10 × 1.3 = 13, its line height ~1.3 × 13 ≈ 17 (not the unscaled
+ * 13), and the chip's text — capped the same way — grows past `ICON_SM` (16)
+ * to ~17 as well, so the chip's OWN tallest child changes at that scale too.
+ * Recomputed at the cap: the title's two lines + margin + subtitle end at
+ * `16 + 2×17 + 3 + 14` = 67, and the chip (tallest child 17 now, not 16) runs
+ * `[BAND_CHIP_TOP, BAND_CHIP_TOP + 2×1 + 2×6 + 17]`. The OLD `BAND_CHIP_TOP`
+ * of 62 was measured to clear only the UNSCALED title (ends at 56) — 6 points
+ * of margin that the SCALED title (ends at 67) ate entirely and then some: the
+ * title overran the chip's own line by 5 points at scale 1.3, which is what a
+ * reader on a Samsung J7 at system font "Grande" actually saw. Compounding it,
+ * A-1's `TOUCH_TARGET` move (44 → 48) pushed the flip control's own bottom
+ * edge from 58 to 62 — no longer clear of the old chip top at all. Both fixed
+ * the same way this file has fixed the class before: `BAND_CHIP_TOP` moved to
+ * 72 (5 points clear of the scaled title's 67, 10 clear of the flip control's
+ * 62) and `BAND_H` moved back to 152 to keep the frame clearance at its
+ * 8-point floor once the chip sits 10 points lower. The title's own font-scale
+ * CAP stays exactly where it was — a letterhead is allowed to stop growing;
+ * see `BAND_MAX_FONT_SCALE`'s own docblock for why. What changed is that this
+ * budget now accounts for the scale IT ITSELF ALLOWS, up to that cap, instead
+ * of pretending every reader is at 1.0.
+ * `DocumentChromeNative.geometry.test.ts` computes both the unscaled and the
+ * capped-scale case from these exported constants.
  *
  * Anything that lowers this constant, deepens the poke-out, moves the chip or
  * changes the section padding has to redo this arithmetic — and does not have
  * to redo it by hand: `DocumentChromeNative.geometry.test.ts` computes it from
- * the exported constants and fails when the clearance goes under 8.
+ * the exported constants and fails when either clearance goes under budget.
  */
-export const BAND_H = 136;
+export const BAND_H = 152;
 
 /**
  * The one place in this app that caps text scaling, and why it is this one.
+ *
+ * DECISION 17A — MEMBRETE (PO): this cap is a letterhead, not body copy, and
+ * it stays. A credential's engraved wordmark does not grow past a fixed point
+ * just because the reader's system font does — a printed document has the
+ * same constraint for the same reason. This docblock is about the cap ITSELF,
+ * which A-2 (below) leaves untouched; A-2 fixed a LAYOUT bug the cap exposed,
+ * not the cap.
  *
  * B-06 / A6-cuenta-resiliencia-15, MEASURED on the shipped build 10 at the
  * system font size "Máximo" (scale 1.5, shot 146 vs 142): "LIBRETA SANITARIA
  * NACIONAL" wrapped to three lines inside a `maxWidth: 55%` box positioned
  * absolutely at top 16, ran past the band's fixed `height: BAND_H`, and cut
  * "CREDENCIAL · FRENTE" in half. The chip's label overprinted at the same
- * scale. Clean at 1.3.
+ * scale.
+ *
+ * NOT ACTUALLY "clean at 1.3", which is what this line claimed until A-2
+ * (2026-09-24). The three-line overrun this cap exists to stop was gone at
+ * 1.3 — but the cap only bounds how far the TITLE can grow; it says nothing
+ * about whether the band's OTHER absolutely-positioned children (the chip)
+ * left it room, and at the cap they did not: `BAND_H`'s own docblock has the
+ * arithmetic for the 5-point overlap this measured. The cap was doing its one
+ * job correctly the whole time — the budget around it was the part that had
+ * not caught up.
  *
  * WHY A CAP AND NOT A CONTENT-DRIVEN HEIGHT. `BAND_H` is not a spacing
  * preference — it is one term in a published budget (the identity frames' -56
  * poke-out, `FACE_SECTION_PAD_V`, `BAND_CHIP_TOP`) that
- * `DocumentChromeNative.geometry.test.ts` recomputes and fences at 8 points of
- * clearance. A `minHeight` here would move the band's floor at runtime and
- * every one of those absolute positions with it, silently, per device.
+ * `DocumentChromeNative.geometry.test.ts` recomputes and fences. A
+ * `minHeight` here would move the band's floor at runtime and every one of
+ * those absolute positions with it, silently, per device.
  *
  * WHY IT IS DEFENSIBLE HERE AND NOWHERE ELSE. These three are 8-10pt uppercase
  * mono CHROME — the engraved wordmark on a document, not its content. The
@@ -277,8 +323,9 @@ export const IDENTITY_POKE_OUT = 56;
  *  the old band arithmetic omitted. See BAND_H. */
 export const FACE_SECTION_PAD_V = 20;
 
-/** The situation chip's own line in the band. See BAND_H. */
-export const BAND_CHIP_TOP = 62;
+/** The situation chip's own line in the band. See BAND_H — raised 62 → 72 by
+ *  A-2 to clear the title at the `BAND_MAX_FONT_SCALE` cap, not just unscaled. */
+export const BAND_CHIP_TOP = 72;
 export const BAND_CHIP_PAD_V = 6;
 export const BAND_CHIP_BORDER = 1;
 
@@ -490,7 +537,8 @@ const styles = StyleSheet.create({
    * nothing, the padding off-centre by 3 points, and a 47-wide target for a
    * 16-point glyph. `TOUCH_TARGET` on both axes with the icon centred is what
    * the control has actually been since the text went: the height it already
-   * had, and 44 rather than 47 across, with the glyph at exactly (22,22).
+   * had, and 48 rather than 47 across (44 before A-1 raised the floor), with
+   * the glyph at exactly (24,24).
    */
   turn: {
     position: "absolute",
