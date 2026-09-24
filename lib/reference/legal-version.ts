@@ -17,9 +17,20 @@
 // label on app/privacidad + app/terminos. Re-acceptance on policy change (asking
 // existing users to accept the new version) is a follow-up feature; for v1 we
 // record the version accepted at signup.
+//
+// HISTORY
+//   2026-07-23 — first recorded version.
+//   2026-09-24 — /privacidad names every provider that processes data, with its
+//                country, and discloses the international transfer (Brazil,
+//                US) under Ley 25.326 art. 12; the signup sentence consents to
+//                that transfer by name (finding S-2, PO decision 6A).
+//                Existing profiles keep "2026-07-23": nothing compares a stored
+//                version against this one, so they are not re-prompted — and
+//                their stored version truthfully says they never accepted the
+//                transfer clause. Closing that needs the re-acceptance flow.
 
-export const LEGAL_VERSION = "2026-07-23";
+export const LEGAL_VERSION = "2026-09-24";
 
 // Human-facing label rendered on the legal pages. Kept next to the machine
 // version so they are bumped together.
-export const LEGAL_VERSION_LABEL = "julio 2026";
+export const LEGAL_VERSION_LABEL = "septiembre 2026";

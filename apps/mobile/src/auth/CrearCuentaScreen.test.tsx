@@ -33,8 +33,11 @@ jest.mock("./session-store", () => ({
 
 import { CrearCuentaScreen } from "./CrearCuentaScreen";
 
+// Written out, not imported: the consent sentence is a legal text, and a test
+// that derived it from the screen's own constant would agree with any edit.
+// The transfer clause is Ley 25.326 art. 12 (PO decision 6A, 2026-09-24).
 const TOS_LABEL =
-  "Leí y acepto los Términos y condiciones y la Política de privacidad, obligatorio";
+  "Leí y acepto los Términos y condiciones y la Política de privacidad, incluida la transferencia de mis datos fuera de la Argentina a los proveedores que se detallan en ella, obligatorio";
 
 const noop = () => {};
 
@@ -117,6 +120,17 @@ describe("the legal checkbox", () => {
 
     fireEvent.press(box);
     expect(screen.getByLabelText(TOS_LABEL).props.accessibilityState.checked).toBe(true);
+  });
+
+  it("names the international transfer in the VISIBLE sentence, not only the spoken one", () => {
+    renderScreen();
+    // A sighted person consents to what they read. Ley 25.326 art. 12 needs
+    // the transfer in the sentence they tick, not only in the policy it links.
+    expect(
+      screen.getByText(
+        "Leí y acepto los Términos y condiciones y la Política de privacidad, incluida la transferencia de mis datos fuera de la Argentina a los proveedores que se detallan en ella.",
+      ),
+    ).toBeTruthy();
   });
 });
 

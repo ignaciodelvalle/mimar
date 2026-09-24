@@ -131,6 +131,115 @@ export default function PrivacidadPage() {
           </ul>
         </section>
 
+        {/*
+          PROVIDERS AND THE INTERNATIONAL TRANSFER — finding S-2, PO decision 6A
+          (2026-09-24). Ley 25.326 art. 6 requires telling the holder who
+          receives the data; art. 12 forbids a transfer to a country without
+          adequate protection unless the holder consents expressly. Brazil and
+          the US are not on the AAIP adequacy list (Disposición 60/2016). Google
+          Play's Data safety form must also match this list.
+
+          EVERY LINE WAS CHECKED AGAINST THE CODE, and each is scoped to what the
+          code sends, not to what the vendor could in principle receive:
+            · Sentry is the ANDROID app only. The web's client errors go to this
+              app's own /api/telemetry/client-error (components/
+              ErrorSinkBootstrap.tsx), i.e. to Vercel, never to Sentry. What
+              Sentry gets is scrubbed on the phone (apps/mobile/src/
+              observability/redact.ts); sendDefaultPii and attachScreenshot are
+              off (./sentry.ts), and nothing calls Sentry.setUser.
+            · Expo / FCM see a push token and a lock-screen text that names no
+              person and no pet (LOCK_SCREEN_SAFE_NOTIFICATION_TYPES and the
+              generic fallback in lib/infra/expo-push.ts), plus data.url.
+            · Web Push is end-to-end encrypted to the browser (lib/infra/
+              web-push.ts), so the browser vendor's push service cannot read it.
+            · OpenStreetMap: tiles are fetched by the BROWSER (middleware.ts CSP,
+              components/LocationMap.tsx) — it sees the IP; geocoding is a
+              SERVER-side proxy (lib/infra/geocoding.ts) — it sees the query only.
+          No contract, certification or standard clause is claimed, because
+          none is on file in this repo. Do not add one without the document.
+
+          WHY LEGAL_VERSION WAS BUMPED FOR THIS (and not for the deletion section
+          below): this section discloses a sharing and a transfer the page never
+          named, and the signup sentence now consents to it by name. That is a
+          substantive revision, and tos_version is how a profile proves which
+          text it accepted. The bump only changes what NEW acceptances record
+          (complete-identity-for-user.ts writes it when tos_accepted_at IS
+          NULL); nothing compares a stored version against the current one, so
+          existing accounts keep theirs and are not asked anything.
+        */}
+        <section id="proveedores" className="space-y-3 scroll-mt-6">
+          <h2 className="text-base font-semibold text-[var(--color-ln-ink)]">
+            Proveedores que procesan datos por cuenta de miMAR
+          </h2>
+          <p className="text-sm text-[var(--color-ln-ink-2)] leading-relaxed">
+            miMAR funciona sobre servicios de otras empresas. Procesan tus datos solamente para
+            prestarle su servicio a miMAR, y varias están fuera de la Argentina. Estas son todas,
+            con lo que hace cada una, qué datos recibe y dónde está:
+          </p>
+          <ul className="text-sm text-[var(--color-ln-ink-2)] leading-relaxed space-y-2 list-disc list-inside">
+            <li>
+              <strong>Supabase</strong> — Brasil (región São Paulo). Base de datos, inicio de sesión
+              y almacenamiento de archivos. Guarda todo lo que cargás en miMAR: tu cuenta, tus
+              mascotas, sus eventos y las fotos y documentos que subís.
+            </li>
+            <li>
+              <strong>Vercel</strong> — empresa de Estados Unidos; los servidores de miMAR corren en
+              São Paulo, Brasil. Aloja el sitio web: por ahí pasa cada pedido que hace tu navegador
+              o la app, con tu dirección IP, y quedan sus registros técnicos, incluidos los reportes
+              de error del sitio. Su red de distribución entrega las páginas desde nodos en
+              distintos países.
+            </li>
+            <li>
+              <strong>Sentry</strong> — Estados Unidos. Reportes de fallas de la app de Android (el
+              sitio web no le envía nada). Recibe el error, el modelo del teléfono, la versión de
+              Android y de la app, y los pasos previos dentro de la app. Antes de que el reporte
+              salga del teléfono le quitamos correos, números de DNI y de teléfono, códigos de
+              credencial y claves de acceso; no se envían capturas de pantalla ni tu cuenta de
+              usuario.
+            </li>
+            <li>
+              <strong>Expo</strong> (650 Industries) — Estados Unidos. Entrega las notificaciones de
+              la app y sus actualizaciones. Recibe el identificador de notificaciones de tu teléfono
+              y el texto del aviso, que no nombra a personas ni a mascotas, más un enlace interno de
+              la app. Para actualizarse, la app le consulta a Expo si hay una versión nueva.
+            </li>
+            <li>
+              <strong>Google Firebase Cloud Messaging</strong> — Estados Unidos. Es el canal por el
+              que Android recibe esas notificaciones: recibe el mismo identificador y el mismo
+              aviso.
+            </li>
+            <li>
+              <strong>Resend</strong> — Estados Unidos. Envía los correos del servicio: los de tu
+              cuenta (confirmación, recuperación de contraseña, avisos de seguridad), el seguimiento
+              de denuncias y los resúmenes para funcionarios. Recibe la dirección de destino y el
+              contenido del correo.
+            </li>
+            <li>
+              <strong>OpenStreetMap Foundation</strong> — Reino Unido. Mapas y búsqueda de
+              direcciones. Cuando un formulario te muestra un mapa, tu navegador descarga las
+              imágenes del mapa directamente de OpenStreetMap, que ve tu dirección IP y la zona que
+              mirás. Cuando buscás una dirección o marcás un punto, nuestro servidor le consulta ese
+              texto o esas coordenadas, sin tu IP ni tu identidad.
+            </li>
+            <li>
+              <strong>El servicio de notificaciones de tu navegador</strong> — Google, Mozilla o
+              Apple, según el navegador que uses; las tres son empresas de Estados Unidos. Solo si
+              activás las notificaciones del sitio web: el aviso viaja cifrado y ese servicio no
+              puede leer su contenido.
+            </li>
+          </ul>
+          <p className="text-sm text-[var(--color-ln-ink-2)] leading-relaxed">
+            <strong>Transferencia internacional.</strong> Brasil y Estados Unidos no figuran entre
+            los países que la Agencia de Acceso a la Información Pública considera con un nivel de
+            protección adecuado (Disposición AAIP 60/2016). Por eso, el envío de tus datos a estos
+            proveedores se apoya en tu consentimiento expreso, que das al crear tu cuenta (art. 12
+            de la Ley 25.326). Si usás miMAR sin cuenta —por ejemplo, para escanear un código QR o
+            hacer una denuncia anónima—, lo que envíes también pasa por estos proveedores. En todos
+            los casos seguís pudiendo ejercer tus derechos ante miMAR, como se explica a
+            continuación.
+          </p>
+        </section>
+
         <section className="space-y-3">
           <h2 className="text-base font-semibold text-[var(--color-ln-ink)]">
             Tus derechos (Art. 14 Ley 25.326)
@@ -173,7 +282,9 @@ export default function PrivacidadPage() {
           whole value is that there is one, so this section says the same thing
           in the same terms and links onward for the rest.
 
-          WHY LEGAL_VERSION IS NOT BUMPED. It records WHAT a user consented to,
+          WHY LEGAL_VERSION WAS NOT BUMPED FOR THIS SECTION (the providers
+          section above WAS a bump, 2026-09-24 — its comment says why the two
+          differ). It records WHAT a user consented to,
           and there is no re-acceptance flow (lib/reference/legal-version.ts).
           This section adds no collection, no sharing and no retention — it
           documents a right the page already granted and a mechanism that already

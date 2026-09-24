@@ -110,6 +110,21 @@ import {
  * instead of inline inside it. That is a deliberate divergence from the web,
  * where an inline `<a>` inside a `<label>` works and here it does not.
  */
+/**
+ * The consent sentence, once, so the visible label and the screen-reader name
+ * cannot say two different things.
+ *
+ * The transfer clause (Ley 25.326 art. 12, PO decision 6A, 2026-09-24): Brazil
+ * and the US are not on the AAIP adequacy list (Disposición 60/2016), so the
+ * international transfer to the providers the privacy policy lists rests on
+ * express consent, and a consent the sentence does not NAME is not express. It
+ * is the same words as the web form (app/(auth)/registro/SignupForm.tsx) —
+ * change one, change both. The policy link below opens the page the clause
+ * refers to.
+ */
+const TOS_SENTENCE =
+  "Leí y acepto los Términos y condiciones y la Política de privacidad, incluida la transferencia de mis datos fuera de la Argentina a los proveedores que se detallan en ella";
+
 function TosCheckbox({
   checked,
   onToggle,
@@ -123,7 +138,7 @@ function TosCheckbox({
     <View style={styles.tos}>
       <Pressable
         accessibilityRole="checkbox"
-        accessibilityLabel="Leí y acepto los Términos y condiciones y la Política de privacidad, obligatorio"
+        accessibilityLabel={`${TOS_SENTENCE}, obligatorio`}
         accessibilityState={{ checked, disabled }}
         disabled={disabled}
         hitSlop={SPACE.sm}
@@ -137,9 +152,7 @@ function TosCheckbox({
             {checked ? "✓" : ""}
           </Text>
         </View>
-        <Text style={styles.tosLabel}>
-          Leí y acepto los Términos y condiciones y la Política de privacidad.
-        </Text>
+        <Text style={styles.tosLabel}>{TOS_SENTENCE}.</Text>
       </Pressable>
       <View style={styles.tosLinks}>
         <LinkText

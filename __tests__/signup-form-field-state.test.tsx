@@ -221,3 +221,23 @@ describe("SignupForm — step 2 (identity) field state", () => {
     expect(lastName.value).toBe("Gómez");
   });
 });
+
+// The consent sentence is a legal text (Ley 25.326 arts. 5 and 12). The transfer
+// clause was added by PO decision 6A (2026-09-24): Brazil and the US are not on
+// the AAIP adequacy list, so the international transfer rests on the express
+// consent this box records, and a consent the sentence does not name is not
+// express. Written out here, not derived from the component, and kept word for
+// word equal to the mobile twin (apps/mobile/src/auth/CrearCuentaScreen.test.tsx).
+describe("SignupForm — the consent sentence", () => {
+  it("names the international transfer and links to the provider list", () => {
+    const view = renderForm();
+    const tos = view.container.querySelector('input[name="tosAccepted"]') as HTMLInputElement;
+    const label = tos.labels?.[0] ?? null;
+    expect(label, "the terms checkbox has no <label>").not.toBeNull();
+    expect(label?.textContent?.replace(/\s+/g, " ").trim()).toBe(
+      "Leí y acepto los Términos y condiciones y la Política de privacidad, incluida la transferencia de mis datos fuera de la Argentina a los proveedores que se detallan en ella.",
+    );
+    const hrefs = Array.from(label?.querySelectorAll("a") ?? []).map((a) => a.getAttribute("href"));
+    expect(hrefs).toEqual(["/terminos", "/privacidad", "/privacidad#proveedores"]);
+  });
+});

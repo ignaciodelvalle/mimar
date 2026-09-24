@@ -328,6 +328,15 @@ export function SignupForm({
               in their life.
               PO-gated if anybody wants it changed: this is a legal posture, not
               an ergonomics call. */}
+          {/* THE TRANSFER CLAUSE (Ley 25.326 art. 12, PO decision 6A,
+              2026-09-24). Brazil and the US are not on the AAIP adequacy list
+              (Disposición 60/2016), so the international transfer to the
+              providers listed on /privacidad#proveedores rests on express
+              consent — and a consent the sentence does not NAME is not express.
+              It rides on this same box rather than a second one: the act is the
+              same (accepting the policy that discloses the transfer), and the
+              mobile twin (apps/mobile/src/auth/CrearCuentaScreen.tsx) says the
+              same words. Change one, change both. */}
           <LnCheckbox id="tosAccepted" name="tosAccepted" required>
             Leí y acepto los{" "}
             <Link
@@ -344,6 +353,14 @@ export function SignupForm({
               className="font-medium text-[var(--color-ln-azul)] underline underline-offset-2"
             >
               Política de privacidad
+            </Link>
+            , incluida la transferencia de mis datos fuera de la Argentina a los{" "}
+            <Link
+              href="/privacidad#proveedores"
+              target="_blank"
+              className="font-medium text-[var(--color-ln-azul)] underline underline-offset-2"
+            >
+              proveedores que se detallan en ella
             </Link>
             .
           </LnCheckbox>
