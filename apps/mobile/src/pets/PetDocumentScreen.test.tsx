@@ -595,7 +595,7 @@ describe("PetDocumentScreen — a failure is never drawn as an absence", () => {
     await screen.findByText("Pampa");
 
     expect(screen.queryByText("República Argentina")).toBeNull();
-    expect(screen.getByText("Libreta Sanitaria Nacional · Palermo, CABA")).toBeOnTheScreen();
+    expect(screen.getByText("Libreta Sanitaria · Palermo, CABA")).toBeOnTheScreen();
     expect(screen.getByText("Consultada el 03/09/2026")).toBeOnTheScreen();
     // NOT "Emitida": the envelope stamp is when the server composed THIS READ,
     // not when the libreta was issued (A3-documento-credencial-06).
@@ -612,7 +612,7 @@ describe("PetDocumentScreen — a failure is never drawn as an absence", () => {
       payload: payload({ identity: UNAVAILABLE }),
     });
     render(<PetDocumentScreen publicToken={TOKEN} />);
-    await screen.findByText("Libreta Sanitaria Nacional");
+    await screen.findByText("Libreta Sanitaria");
 
     expect(screen.queryByText("República Argentina")).toBeNull();
     expect(screen.getByText("Consultada el 03/09/2026")).toBeOnTheScreen();
@@ -658,7 +658,7 @@ describe("PetDocumentScreen — a failure is never drawn as an absence", () => {
     // the exact overrun it was written for. What the cap has to be is BOUNDED,
     // and what the nodes have to be is CAPPED AT ALL.
     expect(BAND_MAX_FONT_SCALE).toBeLessThanOrEqual(1.3);
-    for (const text of ["Libreta Sanitaria Nacional", "Credencial · frente", "Perdida"]) {
+    for (const text of ["Libreta Sanitaria", "Credencial · frente", "Perdida"]) {
       const node = screen.getByText(text, { includeHiddenElements: true });
       expect(node.props.maxFontSizeMultiplier).toBeLessThanOrEqual(1.3);
     }
@@ -672,7 +672,7 @@ describe("PetDocumentScreen — a failure is never drawn as an absence", () => {
     render(<PetDocumentScreen publicToken={TOKEN} />);
     // "Pampa" never renders in this arm; the document's foot is the marker its
     // sibling test above already uses.
-    await screen.findByText("Libreta Sanitaria Nacional");
+    await screen.findByText("Libreta Sanitaria");
     const frame = screen.getByLabelText("Ver credencial pública");
     // The rise and the stacking belong to the flanking ROW, where the band is
     // above the frame. Below a refusal box there is no band to rise into —

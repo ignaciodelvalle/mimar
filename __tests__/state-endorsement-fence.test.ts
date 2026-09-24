@@ -97,6 +97,23 @@ const GOB_AR_HOST = /\b[a-z0-9][a-z0-9.-]*\.gob\.ar\b/gi;
 /** This project's own names — a `.gob.ar` host carrying one claims delegation. */
 const OUR_NAME = /\b(?:mimar|dim)\b/i;
 
+/**
+ * PO 2026-09-24: "Nacional" beside the credential's own name reads as State
+ * issuance — Play checks for exactly that pattern — the same class of claim
+ * this whole file exists to ban, just spelled inside the document's OWN NAME
+ * rather than in a sentence about who operates it. "Libreta Sanitaria
+ * Nacional" became "Libreta Sanitaria" on both the phone (DocumentChromeNative
+ * .tsx's band title, OwnerFace.tsx's issuing foot) and the web
+ * (components/pet-profile/DocumentChrome.tsx's band title).
+ *
+ * Scoped to apps/mobile/src ONLY, per that decision — this is a ban on the
+ * credential's OWN printed name, not a general sweep of the citizen-facing
+ * corpus the rest of this file already covers. `STATE_BODY` above still
+ * governs prose elsewhere; this catches a title even when it never forms a
+ * "sentence" `sentencesIn` would tokenise.
+ */
+const NACIONAL_IN_CREDENTIAL_NAME = /\bSanitaria\s+Nacional\b|\bLibreta\s+Nacional\b/i;
+
 function stripComments(source: string): string {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -247,8 +264,25 @@ describe("the disclaimers that replaced the claims are actually shipped", () => 
 
   it("the phone credential's foot names no issuing authority", () => {
     const source = stripComments(readFileSync("apps/mobile/src/pets/OwnerFace.tsx", "utf8"));
-    expect(source).toContain("Libreta Sanitaria Nacional");
+    expect(source).toContain("Libreta Sanitaria");
     expect(source).not.toMatch(/footAuthority/);
+  });
+
+  it("no rendered mobile string carries 'Nacional' beside the credential's own name", () => {
+    // PRESENCE-of-absence, same shape as the disclaimer checks above: a fence
+    // that only asserted absence would pass the day the whole file went blind.
+    // Non-vacuity for THIS check lives in "still finds state bodies to
+    // classify" below (FILES itself must be non-empty), and in the FLAGS
+    // control in the vacuity block, which proves the regex still catches the
+    // exact banned string.
+    const mobileFiles = FILES.filter((f) => f.replace(/\\/g, "/").includes("apps/mobile/src/"));
+    const offenders = mobileFiles.filter((f) =>
+      NACIONAL_IN_CREDENTIAL_NAME.test(toProse(readFileSync(f, "utf8"))),
+    );
+    expect(
+      offenders,
+      `'Nacional' beside the credential's own name reads as State issuance (PO 2026-09-24):\n  ${offenders.join("\n  ")}`,
+    ).toEqual([]);
   });
 });
 
@@ -295,6 +329,15 @@ describe("the fence is not vacuous", () => {
     expect(violationsIn("<p>Un programa del Ministerio de Agricultura</p>")).not.toEqual([]);
     expect(violationsIn("<span>argentina.gob.ar/salud</span>")).not.toEqual([]);
     expect(violationsIn('const base = "https://datos.mimar.gob.ar";')).not.toEqual([]);
+  });
+
+  it("FLAGS the reintroduced credential name — 'Libreta Sanitaria Nacional' itself", () => {
+    // Hand-written, never derived from the corpus (same rule the other
+    // controls in this block follow) — proves the regex still matches the
+    // EXACT string this decision removed, not just the general shape.
+    expect(NACIONAL_IN_CREDENTIAL_NAME.test(toProse("Libreta Sanitaria Nacional"))).toBe(true);
+    expect(NACIONAL_IN_CREDENTIAL_NAME.test(toProse("Tokens Libreta Nacional"))).toBe(true);
+    expect(NACIONAL_IN_CREDENTIAL_NAME.test(toProse("Libreta Sanitaria"))).toBe(false);
   });
 
   it("PASSES a norm citation — naming the author of a law is not a claim", () => {

@@ -207,6 +207,15 @@ function BandBackground({ situationKey }: { situationKey: string | undefined }) 
  * DEVICE'S UNSCALED FONT (system font scale 1.0 — see the A-2 note below for
  * why the scaled case needs its own row):
  *
+ * THE TITLE ROW BELOW STILL DESCRIBES "Libreta Sanitaria Nacional" — the
+ * string this chrome rendered until the PO dropped "Nacional" on 2026-09-24
+ * (it read as State issuance; see the render call below). That is the
+ * WORST-CASE 26-char title the 2-line wrap and the whole clearance budget
+ * were sized against; "Libreta Sanitaria" is 9 characters shorter and can
+ * only wrap LESS, never more. The budget stays exactly where it is on
+ * purpose — a shorter title only helps, and re-deriving a tighter one from a
+ * title the PO could still shorten again buys nothing.
+ *
  *   | Element        | Derivation                                        | y       |
  *   |----------------|---------------------------------------------------|---------|
  *   | Title block    | top 16; the 26-char title needs 218pt at 55% of    | [16,~56]|
@@ -367,7 +376,7 @@ export function DocumentChromeNative({
         <BandBackground situationKey={situation?.key} />
         <View style={styles.bandTitle} accessibilityElementsHidden importantForAccessibility="no">
           <Text maxFontSizeMultiplier={BAND_MAX_FONT_SCALE} style={styles.bandTitleText}>
-            Libreta Sanitaria Nacional
+            Libreta Sanitaria
           </Text>
           <Text maxFontSizeMultiplier={BAND_MAX_FONT_SCALE} style={styles.bandSubtitleText}>
             {bandSubtitle}

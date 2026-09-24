@@ -262,8 +262,9 @@ export function PetDocumentScreen({
     >
       {/* The "Ficha del dueño" eyebrow was deleted on 2026-09-03: an ALL-CAPS
           mono label floating above the document with no heading under it,
-          saying what the band says two lines lower ("Libreta Sanitaria
-          Nacional / Credencial · frente").
+          saying what the band says two lines lower ("Libreta Sanitaria /
+          Credencial · frente" — "Nacional" dropped from the title itself,
+          PO 2026-09-24, see DocumentChromeNative.tsx).
           The viewer line — a caretaker or a foster reading this document needs
           to know WHY some things are missing from it; an unexplained gap reads
           as a bug. It is ABSENT for a titular, whose document is missing

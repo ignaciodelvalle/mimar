@@ -63,7 +63,12 @@ export function DocumentChrome({
       <div className="ln-frame" aria-hidden />
       <div className="ln-band" aria-hidden>
         <p className="ln-band-title">
-          Libreta Sanitaria Nacional
+          {/* "Nacional" dropped (PO, 2026-09-24): it reads as State issuance —
+              Play checks for exactly that pattern, and no convenio exists with
+              any state body. "Libreta Sanitaria" names the document without
+              claiming who issued it. Mirrored on the mobile chrome
+              (DocumentChromeNative.tsx) and the issuing foot (OwnerFace.tsx). */}
+          Libreta Sanitaria
           <small>{bandSubtitle}</small>
         </p>
       </div>

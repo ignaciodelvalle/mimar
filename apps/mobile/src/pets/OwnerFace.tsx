@@ -291,8 +291,14 @@ function IssuingFoot({ view }: { view: OwnerFaceView }) {
     // so the line was not a design flourish, it was a false attribution — and
     // the one Play reads as government impersonation. It is gone; the document
     // names only itself.
+    //
+    // "NACIONAL" DROPPED FROM THE NAME ITSELF (PO, 2026-09-24) for the same
+    // reason: "Libreta Sanitaria Nacional" reads as a State-issued document —
+    // Play checks for exactly that pattern — and the same false attribution
+    // the line above already removed once. "Libreta Sanitaria" names what the
+    // document is without claiming who issued it.
     <View style={styles.foot}>
-      <Text style={styles.footLine}>Libreta Sanitaria Nacional{place ? ` · ${place}` : ""}</Text>
+      <Text style={styles.footLine}>Libreta Sanitaria{place ? ` · ${place}` : ""}</Text>
       {readOn === "—" ? null : <Text style={styles.footLine}>Consultada el {readOn}</Text>}
     </View>
   );
