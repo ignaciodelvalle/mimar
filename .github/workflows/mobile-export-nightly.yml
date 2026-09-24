@@ -92,7 +92,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # The branch staging is deployed from — NOT the default branch this
           # schedule fires on. See the header. Kept in sync by
@@ -216,7 +216,7 @@ jobs:
       issues: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # Local composite actions resolve from the checked-out tree, so this
           # job needs the same pin as the one above — otherwise the alert would
