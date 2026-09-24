@@ -421,7 +421,7 @@ time; do not hardcode one from a plan.
 
 ## Service-role call sites
 
-<!-- fact:service_role_call_sites -->44<!-- /fact --> call sites invoke the
+<!-- fact:service_role_call_sites -->45<!-- /fact --> call sites invoke the
 service-role client factory across `app/`, `src/`, `lib/` and `scripts/`.
 **Every one of them bypasses RLS by design.** The factory itself lives in
 `lib/supabase/admin.ts` and is excluded from the count.
