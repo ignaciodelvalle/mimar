@@ -55,7 +55,18 @@ export const CONTACT_EMAILS = {
   general: `hola@${PRIMARY_MAIL_DOMAIN}`,
   /** Ley 25.326 rights of the data subject — access, rectification, erasure. */
   privacy: `privacidad@${PRIMARY_MAIL_DOMAIN}`,
+  /**
+   * Municipalities asking about a pilot. Not printed on any page yet — it is
+   * the destination the future /municipios form will name — but it is listed
+   * here NOW because this object is also the inbound allowlist: the Resend
+   * inbound webhook (app/api/webhooks/resend-inbound) forwards mail addressed
+   * to these mailboxes and drops everything else. A mailbox missing from this
+   * object is a mailbox whose mail nobody ever sees.
+   */
+  pilots: `contacto@${PRIMARY_MAIL_DOMAIN}`,
 } as const;
+
+export type ContactMailboxKey = keyof typeof CONTACT_EMAILS;
 
 /**
  * Builds a `mailto:` href with a correctly percent-encoded subject and body.

@@ -222,7 +222,9 @@ export default function PrivacidadPage() {
               <strong>Resend</strong> — Estados Unidos. Envía los correos del servicio: los de tu
               cuenta (confirmación, recuperación de contraseña, avisos de seguridad), el seguimiento
               de denuncias y los resúmenes para funcionarios. Recibe la dirección de destino y el
-              contenido del correo.
+              contenido del correo. También recibe los correos que nos escribís a nuestras casillas
+              (como la de privacidad), con tu dirección y lo que escribiste, para hacérnoslos
+              llegar.
             </li>
             <li>
               <strong>OpenStreetMap Foundation</strong> — Reino Unido. Mapas y búsqueda de

@@ -976,8 +976,8 @@ describe("listRouteHandlerFiles", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("the intentionally-public handlers are exactly the fifteen documented ones", () => {
-    // A FIFTEENTH opt-out appearing here is a decision, not a detail: it means
+  it("the intentionally-public handlers are exactly the sixteen documented ones", () => {
+    // A SEVENTEENTH opt-out appearing here is a decision, not a detail: it means
     // an endpoint was made public and this list is where that shows up in review.
     //
     // The seventh arrived on 2026-08-21 with the first `/api/v1` endpoint. It is
@@ -1143,6 +1143,12 @@ describe("listRouteHandlerFiles", () => {
       "app/api/v1/auth/signup/route.ts",
       "app/api/v1/localities/route.ts",
       "app/api/v1/pets/[publicToken]/credential/route.ts",
+      // The Resend inbound webhook (2026-09-24): called by Resend, no session
+      // exists. Trust comes from the optional Svix signature plus an
+      // authoritative re-fetch of the email by id with the server's own key;
+      // it forwards only mail addressed to a published mailbox, to one fixed
+      // configured destination, and answers nothing but `{ ok }`.
+      "app/api/webhooks/resend-inbound/route.ts",
       "app/auth/callback/route.ts",
       "app/auth/miarg/callback/route.ts",
     ]);
