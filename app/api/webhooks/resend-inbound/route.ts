@@ -20,11 +20,19 @@
 // The only fields read from the webhook body are `type` and `data.email_id`.
 // Everything the decision depends on — recipients, subject, body — comes from
 // the AUTHORITATIVE re-fetch. A forged event can therefore name only an id; an
-// id Resend does not know 404s and nothing happens. That is why the Svix
-// signature (RESEND_WEBHOOK_SECRET) is defence in depth rather than the only
-// line: without it, the worst a stranger can do is ask us to forward, to our
-// own operator, a real email that was already addressed to one of our own
-// published mailboxes — which is what happens anyway.
+// id Resend does not know 404s and nothing is forwarded.
+//
+// That does NOT make the signature optional in production. Every forged id
+// still costs one call against the Resend API rate limit, and that limit is
+// SHARED with signup confirmation and password-reset mail: an unsigned
+// endpoint is a lever anyone can pull to starve those. So with no
+// RESEND_WEBHOOK_SECRET and VERCEL_ENV=production the route fails CLOSED
+// (401, before any Resend call). Elsewhere it warns once and proceeds, which
+// keeps preview and local testable.
+//
+// The body is capped BEFORE it is read (MAX_WEBHOOK_BODY_BYTES): a webhook
+// event is a few hundred bytes, and an uncapped `req.text()` lets a stranger
+// make the function buffer whatever they send.
 //
 // WHY THERE IS NO RATE LIMIT
 // ---------------------------------------------------------------------------
@@ -42,9 +50,22 @@
 // `from` with no Reply-To, so the forwarded copy does not even say who wrote,
 // and "wrapped" buries the sender in an attachment. A rights request whose
 // author the operator cannot answer is not delivered in any sense that
-// matters. So this route builds the send itself: the original text/html,
-// Reply-To set to the original sender, and the original message attached as
-// .eml (attachments and headers survive there).
+// matters. So this route builds the send itself.
+//
+// WHY THE FORWARD IS PLAIN TEXT WE WROTE
+// ---------------------------------------------------------------------------
+// The forward leaves from OUR domain, DKIM-aligned. Re-sending a stranger's
+// HTML inside it would launder a phishing page into a message the operator's
+// mail client trusts as ours (the Resend receiving log already holds a fake
+// "tribunal" notice). So the body is plain text generated here: a banner that
+// names the mailbox and the original sender and says to verify before
+// clicking, then the original TEXT part, truncated. The original HTML exists
+// only inside the attached .eml, where the client presents it as a foreign
+// message. Reply-To is the original sender, so answering still works.
+//
+// The .eml is capped (MAX_EML_BYTES, headroom for base64 under Resend's send
+// limit). An oversized original, or one Resend refuses as an attachment, is
+// forwarded WITHOUT it, and the text says so and where to find it.
 //
 // PRIVACY OF THE LOGS
 // ---------------------------------------------------------------------------
@@ -61,11 +82,13 @@ import { Resend } from "resend";
 import {
   FORWARD_SENDER,
   alreadyHandled,
+  isForwardSender,
   isOnInboundDomain,
   markHandled,
   matchPublishedMailbox,
   normalizeMailbox,
   releaseHandled,
+  sanitizeHeaderText,
   shouldWarnUnsigned,
 } from "@/lib/infra/inbound-mail";
 import { reportError } from "@/lib/infra/report-error";
@@ -76,16 +99,33 @@ export const dynamic = "force-dynamic";
 
 const LOG_CONTEXT = "webhooks/resend-inbound";
 
+/** A Resend webhook event is a few hundred bytes; anything near this is not one. */
+const MAX_WEBHOOK_BODY_BYTES = 256 * 1024;
+
+/**
+ * Cap on the attached original. Resend's send limit is 40 MB AFTER base64
+ * (which inflates by 4/3), so 15 MB of raw message leaves ample headroom.
+ */
+const MAX_EML_BYTES = 15 * 1024 * 1024;
+
+/** How much of the original text part is quoted in the forward body. */
+const MAX_QUOTED_TEXT_CHARS = 20_000;
+
 /** How long the raw-message download may take before it counts as transient. */
 const RAW_DOWNLOAD_TIMEOUT_MS = 10_000;
+
+const WHERE_THE_ORIGINAL_IS = "Resend → Emails → Receiving";
 
 type Outcome =
   | "ignored-type"
   | "bad-payload"
+  | "too-large"
   | "not-found"
   | "dropped-unlisted"
+  | "dropped-loop"
   | "duplicate"
   | "forwarded"
+  | "forwarded-without-eml"
   | "misconfigured"
   | "rejected"
   | "transient";
@@ -117,9 +157,46 @@ function isTransient(statusCode: number | null | undefined): boolean {
   return statusCode === null || statusCode === undefined || statusCode === 429 || statusCode >= 500;
 }
 
+/**
+ * Reads a body without ever holding more than `cap` bytes of it. Null when the
+ * declared or the actual length exceeds the cap.
+ */
+async function readCapped(
+  body: ReadableStream<Uint8Array> | null,
+  declaredLength: string | null,
+  cap: number,
+): Promise<Uint8Array | null> {
+  const declared = declaredLength === null ? Number.NaN : Number(declaredLength);
+  if (Number.isFinite(declared) && declared > cap) {
+    await body?.cancel().catch(() => {});
+    return null;
+  }
+  if (body === null) return new Uint8Array(0);
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > cap) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
 /** Reads `type` and `data.email_id` and nothing else from the untrusted body. */
-function readEvent(body: unknown): { type: unknown; emailId: string | null } {
-  if (typeof body !== "object" || body === null) return { type: undefined, emailId: null };
+function readEvent(raw: string): { type: unknown; emailId: string | null } | null {
+  let body: unknown;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof body !== "object" || body === null) return null;
   const { type, data } = body as { type?: unknown; data?: unknown };
   const emailId =
     typeof data === "object" && data !== null
@@ -131,59 +208,92 @@ function readEvent(body: unknown): { type: unknown; emailId: string | null } {
   };
 }
 
-/**
- * Builds the forward. Null when the raw message could not be downloaded — a
- * transient condition (the signed URL is fresh on the next re-fetch).
- */
-async function buildForward(
-  email: GetReceivingEmailResponseSuccess,
-  mailbox: ContactMailboxKey,
-  to: string,
-): Promise<CreateEmailOptions | null> {
-  const attachments: { filename: string; content: string; contentType: string }[] = [];
-  if (email.raw?.download_url) {
-    try {
-      const res = await fetch(email.raw.download_url, {
-        signal: AbortSignal.timeout(RAW_DOWNLOAD_TIMEOUT_MS),
-      });
-      if (!res.ok) return null;
-      attachments.push({
-        filename: "mensaje-original.eml",
-        content: Buffer.from(await res.arrayBuffer()).toString("base64"),
-        contentType: "message/rfc822",
-      });
-    } catch {
-      return null;
-    }
+type EmlResult =
+  | { kind: "ok"; base64: string }
+  | { kind: "absent" }
+  | { kind: "too-large" }
+  | { kind: "failed" };
+
+/** Downloads the raw original under MAX_EML_BYTES. `failed` is transient. */
+async function downloadEml(email: GetReceivingEmailResponseSuccess): Promise<EmlResult> {
+  const url = email.raw?.download_url;
+  if (!url) return { kind: "absent" };
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(RAW_DOWNLOAD_TIMEOUT_MS) });
+    if (!res.ok) return { kind: "failed" };
+    const bytes = await readCapped(res.body, res.headers.get("content-length"), MAX_EML_BYTES);
+    if (bytes === null) return { kind: "too-large" };
+    return { kind: "ok", base64: Buffer.from(bytes).toString("base64") };
+  } catch {
+    return { kind: "failed" };
   }
-  const tag = CONTACT_EMAILS[mailbox].split("@")[0];
-  const base = {
-    from: FORWARD_SENDER,
-    to: [to],
-    replyTo: email.reply_to && email.reply_to.length > 0 ? email.reply_to : [email.from],
-    subject: `[${tag}] ${email.subject || "(sin asunto)"}`,
-    ...(attachments.length > 0 ? { attachments } : {}),
-  };
-  if (email.html) {
-    return { ...base, html: email.html, ...(email.text ? { text: email.text } : {}) };
-  }
-  return { ...base, text: email.text ?? "(El mensaje original no tiene cuerpo.)" };
 }
 
 /**
- * Svix signature check. True when the request may proceed: either the secret
- * is set and the signature verifies, or the secret is unset (warned once).
+ * The forward, as plain text we wrote. `emlNote` is the line explaining why
+ * the original is not attached, when it is not.
+ */
+function composeForward(
+  email: GetReceivingEmailResponseSuccess,
+  mailbox: ContactMailboxKey,
+  to: string,
+  emlBase64: string | null,
+  emlNote: string | null,
+): CreateEmailOptions {
+  const address = CONTACT_EMAILS[mailbox];
+  const tag = address.split("@")[0];
+  const subject = sanitizeHeaderText(email.subject ?? "") || "(sin asunto)";
+  const from = sanitizeHeaderText(email.from);
+  const original = email.text ?? "";
+  const quoted =
+    original.length > MAX_QUOTED_TEXT_CHARS
+      ? `${original.slice(0, MAX_QUOTED_TEXT_CHARS)}\n\n[… texto recortado; el mensaje completo va en el adjunto .eml]`
+      : original;
+  const lines = [
+    `Correo externo recibido en ${address}. Remitente original: ${from}. Verificá antes de hacer clic.`,
+    ...(emlNote ? [emlNote] : []),
+    "",
+    "----------------------------------------",
+    "",
+    quoted.trim().length > 0
+      ? quoted
+      : "(El mensaje original no tiene parte de texto. Abrí el original para verlo.)",
+  ];
+  return {
+    from: FORWARD_SENDER,
+    to: [to],
+    replyTo: email.reply_to && email.reply_to.length > 0 ? email.reply_to : [email.from],
+    subject: `[${tag}] ${subject}`,
+    text: lines.join("\n"),
+    ...(emlBase64
+      ? {
+          attachments: [
+            {
+              filename: "mensaje-original.eml",
+              content: emlBase64,
+              contentType: "message/rfc822",
+            },
+          ],
+        }
+      : {}),
+  };
+}
+
+/**
+ * Svix signature check. True when the request may proceed. With no secret it
+ * fails CLOSED in production (see the header) and warns once elsewhere.
  */
 function signatureAccepted(req: NextRequest, raw: string, resend: Resend): boolean {
   const secret = (process.env.RESEND_WEBHOOK_SECRET ?? "").trim();
   if (secret.length === 0) {
+    if (process.env.VERCEL_ENV === "production") return false;
     if (shouldWarnUnsigned()) {
       console.warn(
         JSON.stringify({
           level: "warn",
           context: LOG_CONTEXT,
           message:
-            "RESEND_WEBHOOK_SECRET is not set; signatures are not verified (the authoritative re-fetch still applies)",
+            "RESEND_WEBHOOK_SECRET is not set; signatures are not verified (outside production only)",
           ts: new Date().toISOString(),
         }),
       );
@@ -234,7 +344,34 @@ function resolveForwardTo(emailId: string, mailbox: ContactMailboxKey): string |
   return forwardTo;
 }
 
-/** Builds and sends the forward, mapping every result to the webhook's answer. */
+type SendResult = "sent" | "transient" | "rejected";
+
+async function trySend(
+  resend: Resend,
+  forward: CreateEmailOptions,
+  idempotencyKey: string,
+  emailId: string,
+  mailbox: ContactMailboxKey,
+): Promise<SendResult> {
+  const sent = await resend.emails.send(forward, { idempotencyKey });
+  if (!sent.error) return "sent";
+  if (isTransient(sent.error.statusCode)) return "transient";
+  reportError(LOG_CONTEXT, new Error(`forward rejected: ${sent.error.name}`), {
+    emailId,
+    mailbox,
+    statusCode: sent.error.statusCode,
+    withEml: "attachments" in forward && forward.attachments !== undefined,
+  });
+  return "rejected";
+}
+
+/**
+ * Builds and sends the forward, mapping every result to the webhook's answer.
+ *
+ * A 4xx on a send that carried the .eml is retried ONCE without it — the
+ * attachment is the likeliest cause, and a forward without it still reaches
+ * the operator. Every 4xx is reported; none is marked done silently.
+ */
 async function sendForward(
   resend: Resend,
   email: GetReceivingEmailResponseSuccess,
@@ -246,33 +383,58 @@ async function sendForward(
   // on this instance reads as a duplicate instead of racing to a second send.
   markHandled(emailId, "inflight");
   try {
-    const forward = await buildForward(email, mailbox, forwardTo);
-    if (forward === null) {
+    const eml = await downloadEml(email);
+    if (eml.kind === "failed") {
       releaseHandled(emailId);
       logOutcome("transient", emailId, mailbox);
       return retryLater(502);
     }
-    const sent = await resend.emails.send(forward, {
-      idempotencyKey: `inbound-forward/${emailId}`,
-    });
-    if (sent.error && isTransient(sent.error.statusCode)) {
+    const note =
+      eml.kind === "too-large"
+        ? `El mensaje original supera el tamaño que se puede adjuntar y no va adjunto: está en ${WHERE_THE_ORIGINAL_IS} (id ${emailId}).`
+        : eml.kind === "absent"
+          ? `El mensaje original no está disponible como adjunto: está en ${WHERE_THE_ORIGINAL_IS} (id ${emailId}).`
+          : null;
+    const first = await trySend(
+      resend,
+      composeForward(email, mailbox, forwardTo, eml.kind === "ok" ? eml.base64 : null, note),
+      `inbound-forward/${emailId}`,
+      emailId,
+      mailbox,
+    );
+    let result = first;
+    if (first === "rejected" && eml.kind === "ok") {
+      result = await trySend(
+        resend,
+        composeForward(
+          email,
+          mailbox,
+          forwardTo,
+          null,
+          `El proveedor rechazó el mensaje original como adjunto y no va adjunto: está en ${WHERE_THE_ORIGINAL_IS} (id ${emailId}).`,
+        ),
+        `inbound-forward/${emailId}/sin-adjunto`,
+        emailId,
+        mailbox,
+      );
+    }
+    if (result === "transient") {
       releaseHandled(emailId);
       logOutcome("transient", emailId, mailbox);
       return retryLater(502);
     }
     markHandled(emailId, "done");
-    if (sent.error) {
-      // A 4xx fails identically on every retry (oversized message, rejected
-      // sender): report it once and stop. The email stays readable in Resend.
-      reportError(LOG_CONTEXT, new Error(`forward rejected: ${sent.error.name}`), {
-        emailId,
-        mailbox,
-        statusCode: sent.error.statusCode,
-      });
+    if (result === "rejected") {
+      // Reported inside trySend. A retry would fail identically; the email
+      // stays readable in Resend.
       logOutcome("misconfigured", emailId, mailbox);
       return ok();
     }
-    logOutcome("forwarded", emailId, mailbox);
+    logOutcome(
+      eml.kind === "ok" && first === "sent" ? "forwarded" : "forwarded-without-eml",
+      emailId,
+      mailbox,
+    );
     return ok();
   } catch (err) {
     releaseHandled(emailId);
@@ -287,14 +449,24 @@ async function sendForward(
 }
 
 // @no-auth-required: Resend lo llama desde afuera, sin sesión, y no hay usuario
-// al que autorizar. La confianza no sale del pedido: si RESEND_WEBHOOK_SECRET
-// está, la firma Svix se verifica y un fallo es 401; y en todos los casos del
-// cuerpo se lee solo `type` y `data.email_id`, y el correo se vuelve a pedir a
-// Resend con nuestra propia clave. Un id inventado da 404 y no pasa nada; un id
-// real solo se reenvía si iba dirigido a una casilla publicada, y a un único
-// destino fijo por configuración. No devuelve datos: siempre `{ ok }`.
+// al que autorizar. La confianza no sale del pedido: la firma Svix se verifica
+// cuando RESEND_WEBHOOK_SECRET está (y en producción, sin secreto, se rechaza
+// todo con 401); del cuerpo, acotado en tamaño, se lee solo `type` y
+// `data.email_id`, y el correo se vuelve a pedir a Resend con nuestra propia
+// clave. Un id inventado da 404 y no pasa nada; un id real solo se reenvía si
+// iba dirigido a una casilla publicada, y a un único destino fijo por
+// configuración. No devuelve datos: siempre `{ ok }`.
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const raw = await req.text();
+  const bytes = await readCapped(
+    req.body,
+    req.headers.get("content-length"),
+    MAX_WEBHOOK_BODY_BYTES,
+  );
+  if (bytes === null) {
+    logOutcome("too-large", null);
+    return NextResponse.json({ ok: false }, { status: 413 });
+  }
+  const raw = Buffer.from(bytes).toString("utf8");
 
   const apiKey = (process.env.RESEND_API_KEY ?? "").trim();
   if (apiKey.length === 0) {
@@ -311,23 +483,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 
-  let body: unknown;
-  try {
-    body = JSON.parse(raw);
-  } catch {
+  const event = readEvent(raw);
+  if (event === null || (event.type === "email.received" && event.emailId === null)) {
     logOutcome("bad-payload", null);
     return ok();
   }
-
-  const { type, emailId } = readEvent(body);
-  if (type !== "email.received") {
+  if (event.type !== "email.received" || event.emailId === null) {
     logOutcome("ignored-type", null);
     return ok();
   }
-  if (emailId === null) {
-    logOutcome("bad-payload", null);
-    return ok();
-  }
+  const emailId = event.emailId;
   if (alreadyHandled(emailId)) {
     logOutcome("duplicate", emailId);
     return ok();
@@ -343,6 +508,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return ok();
   }
   const email = fetched.data;
+
+  // Our own forward arriving back (a misrouted MAIL_FORWARD_TO, an auto-reply
+  // chain): never forward it again.
+  if (isForwardSender(email.from)) {
+    logOutcome("dropped-loop", emailId);
+    return ok();
+  }
 
   const mailbox = matchPublishedMailbox([...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])]);
   if (mailbox === null) {

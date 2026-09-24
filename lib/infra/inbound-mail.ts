@@ -54,9 +54,33 @@ export function matchPublishedMailbox(
   return null;
 }
 
-/** True when an address is on the inbound domain itself (forwarding there loops). */
+/**
+ * True when an address is on the inbound domain or any subdomain of it
+ * (forwarding there loops back through the webhook).
+ */
 export function isOnInboundDomain(normalizedAddress: string): boolean {
-  return normalizedAddress.endsWith(`@${PRIMARY_MAIL_DOMAIN}`);
+  const domain = normalizedAddress.slice(normalizedAddress.lastIndexOf("@") + 1);
+  return domain === PRIMARY_MAIL_DOMAIN || domain.endsWith(`.${PRIMARY_MAIL_DOMAIN}`);
+}
+
+/** True when a From: is our own forward sender — the mail is one of our forwards coming back. */
+export function isForwardSender(from: string): boolean {
+  const sender = normalizeMailbox(from);
+  return sender !== null && sender === normalizeMailbox(FORWARD_SENDER);
+}
+
+/** Longest subject/sender fragment we copy into a header or the banner. */
+const MAX_HEADER_TEXT_CHARS = 300;
+
+/**
+ * Makes attacker-controlled header text safe to reuse: every control
+ * character (CR/LF included, so no header injection or fake second line)
+ * becomes a space, runs collapse, and the result is bounded.
+ */
+export function sanitizeHeaderText(value: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point.
+  const cleaned = value.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/\s{2,}/g, " ");
+  return cleaned.trim().slice(0, MAX_HEADER_TEXT_CHARS);
 }
 
 // --- per-instance duplicate guard ------------------------------------------

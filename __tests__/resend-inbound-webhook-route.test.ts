@@ -39,7 +39,12 @@ vi.mock("@/lib/infra/report-error", () => ({
 }));
 
 import { POST } from "@/app/api/webhooks/resend-inbound/route";
-import { __resetInboundMailStateForTests, matchPublishedMailbox } from "@/lib/infra/inbound-mail";
+import {
+  FORWARD_SENDER,
+  __resetInboundMailStateForTests,
+  isOnInboundDomain,
+  matchPublishedMailbox,
+} from "@/lib/infra/inbound-mail";
 import { CONTACT_EMAILS, PRIMARY_MAIL_DOMAIN } from "@/lib/ui/contact";
 
 const SENDER = "Vecina Preocupada <vecina.secreta@example.org>";
@@ -105,6 +110,7 @@ beforeEach(() => {
   vi.stubEnv("RESEND_API_KEY", "re_test_key");
   vi.stubEnv("RESEND_WEBHOOK_SECRET", "");
   vi.stubEnv("MAIL_FORWARD_TO", FORWARD_TO);
+  vi.stubEnv("VERCEL_ENV", "");
   info = vi.spyOn(console, "info").mockImplementation(() => {});
   warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   error = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -197,7 +203,7 @@ describe("allowlist", () => {
     expect(payload.subject).toBe(`[${tag}] ${SUBJECT}`);
     // The original sender stays answerable.
     expect(payload.replyTo).toEqual([SENDER]);
-    expect(payload.text).toBe("Hola, soy la duena de Firulais.");
+    expect(payload.text).toContain("Hola, soy la duena de Firulais.");
     expect(options).toEqual({ idempotencyKey: "inbound-forward/em_1" });
   });
 
@@ -321,6 +327,158 @@ describe("failure modes", () => {
     const [payload] = emailsSend.mock.calls[0];
     expect(payload.attachments).toHaveLength(1);
     expect(payload.attachments[0].contentType).toBe("message/rfc822");
+  });
+});
+
+const RAW = { download_url: "https://raw.example/em_1", expires_at: "2026-09-25T00:00:00Z" };
+
+describe("hardening (security review of 086e293ab)", () => {
+  it("fails closed in production with no webhook secret, before any Resend call", async () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    const res = await POST(post(event()));
+    expect(res.status).toBe(401);
+    expect(receivingGet).not.toHaveBeenCalled();
+    expect(emailsSend).not.toHaveBeenCalled();
+  });
+
+  it("still proceeds unsigned outside production", async () => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    receivingGet.mockResolvedValue(fetchedEmail([CONTACT_EMAILS.privacy]));
+    const res = await POST(post(event()));
+    expect(res.status).toBe(200);
+    expect(emailsSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a declared body over the cap with 413 before reading it", async () => {
+    const res = await POST(post(event(), { "content-length": String(10 * 1024 * 1024) }));
+    expect(res.status).toBe(413);
+    expect(receivingGet).not.toHaveBeenCalled();
+  });
+
+  it("refuses an actual body over the cap with 413 even without a declared length", async () => {
+    const huge = JSON.stringify({
+      type: "email.received",
+      data: { email_id: "x".repeat(300_000) },
+    });
+    const res = await POST(post(huge));
+    expect(res.status).toBe(413);
+    expect(receivingGet).not.toHaveBeenCalled();
+  });
+
+  it("the forward is plain text we wrote: no html, a banner naming the original From", async () => {
+    receivingGet.mockResolvedValue(
+      fetchedEmail([CONTACT_EMAILS.privacy], {
+        html: '<a href="https://phish.example">Tribunal</a>',
+      }),
+    );
+    await POST(post(event()));
+    const [payload] = emailsSend.mock.calls[0];
+    expect(payload).not.toHaveProperty("html");
+    expect(payload.text.split("\n")[0]).toBe(
+      `Correo externo recibido en ${CONTACT_EMAILS.privacy}. Remitente original: ${SENDER}. Verificá antes de hacer clic.`,
+    );
+    expect(payload.text).not.toContain("phish.example");
+  });
+
+  it("truncates a very long original text part", async () => {
+    receivingGet.mockResolvedValue(
+      fetchedEmail([CONTACT_EMAILS.privacy], { text: "a".repeat(100_000) }),
+    );
+    await POST(post(event()));
+    const [payload] = emailsSend.mock.calls[0];
+    expect(payload.text.length).toBeLessThan(21_000);
+    expect(payload.text).toContain("texto recortado");
+  });
+
+  it("strips CR/LF and control characters from the subject before tagging", async () => {
+    receivingGet.mockResolvedValue(
+      fetchedEmail([CONTACT_EMAILS.privacy], { subject: "Hola\r\nBcc: x@evil.test\u0000 fin" }),
+    );
+    await POST(post(event()));
+    const [payload] = emailsSend.mock.calls[0];
+    expect(payload.subject).toBe("[privacidad] Hola Bcc: x@evil.test fin");
+  });
+
+  it("an .eml declared over 15 MB is left out, and the text says where the original is", async () => {
+    const rawFetch = vi.fn(
+      async () => new Response("x", { headers: { "content-length": String(16 * 1024 * 1024) } }),
+    );
+    vi.stubGlobal("fetch", rawFetch);
+    receivingGet.mockResolvedValue(fetchedEmail([CONTACT_EMAILS.privacy], { raw: RAW }));
+    const res = await POST(post(event()));
+    expect(res.status).toBe(200);
+    const [payload] = emailsSend.mock.calls[0];
+    expect(payload).not.toHaveProperty("attachments");
+    expect(payload.text).toContain("Resend → Emails → Receiving");
+  });
+
+  it("an .eml that overruns the cap while streaming (no declared length) is left out", async () => {
+    const chunk = new Uint8Array(4 * 1024 * 1024);
+    let sent = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent >= 5) {
+          controller.close();
+          return;
+        }
+        sent += 1;
+        controller.enqueue(chunk);
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(stream)),
+    );
+    receivingGet.mockResolvedValue(fetchedEmail([CONTACT_EMAILS.privacy], { raw: RAW }));
+    await POST(post(event()));
+    const [payload] = emailsSend.mock.calls[0];
+    expect(payload).not.toHaveProperty("attachments");
+    expect(payload.text).toContain("Resend → Emails → Receiving");
+  });
+
+  it("a 4xx on a send with the .eml is reported and retried once without it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("From: x\r\n\r\nbody")),
+    );
+    receivingGet.mockResolvedValue(fetchedEmail([CONTACT_EMAILS.privacy], { raw: RAW }));
+    emailsSend.mockResolvedValueOnce({
+      data: null,
+      error: { name: "validation_error", message: "attachment", statusCode: 422 },
+      headers: null,
+    });
+    const res = await POST(post(event()));
+    expect(res.status).toBe(200);
+    expect(reportError).toHaveBeenCalledTimes(1);
+    expect(emailsSend).toHaveBeenCalledTimes(2);
+    const [retry, retryOptions] = emailsSend.mock.calls[1];
+    expect(retry).not.toHaveProperty("attachments");
+    expect(retry.text).toContain("Resend → Emails → Receiving");
+    expect(retryOptions).toEqual({ idempotencyKey: "inbound-forward/em_1/sin-adjunto" });
+  });
+
+  it("drops our own forward coming back (From is the forward sender)", async () => {
+    receivingGet.mockResolvedValue(
+      fetchedEmail([CONTACT_EMAILS.privacy], { from: FORWARD_SENDER }),
+    );
+    const res = await POST(post(event()));
+    expect(res.status).toBe(200);
+    expect(emailsSend).not.toHaveBeenCalled();
+  });
+
+  it("refuses MAIL_FORWARD_TO on a subdomain of the inbound domain", async () => {
+    vi.stubEnv("MAIL_FORWARD_TO", `buzon@sub.${PRIMARY_MAIL_DOMAIN}`);
+    receivingGet.mockResolvedValue(fetchedEmail([CONTACT_EMAILS.privacy]));
+    await POST(post(event()));
+    expect(emailsSend).not.toHaveBeenCalled();
+    expect(reportError).toHaveBeenCalledTimes(1);
+  });
+
+  it("isOnInboundDomain matches the domain and its subdomains, not lookalikes", () => {
+    expect(isOnInboundDomain(`a@${PRIMARY_MAIL_DOMAIN}`)).toBe(true);
+    expect(isOnInboundDomain(`a@mail.${PRIMARY_MAIL_DOMAIN}`)).toBe(true);
+    expect(isOnInboundDomain(`a@evil${PRIMARY_MAIL_DOMAIN}`)).toBe(false);
+    expect(isOnInboundDomain("a@example.net")).toBe(false);
   });
 });
 

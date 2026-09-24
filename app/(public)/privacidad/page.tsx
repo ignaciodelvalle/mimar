@@ -224,7 +224,7 @@ export default function PrivacidadPage() {
               de denuncias y los resúmenes para funcionarios. Recibe la dirección de destino y el
               contenido del correo. También recibe los correos que nos escribís a nuestras casillas
               (como la de privacidad), con tu dirección y lo que escribiste, para hacérnoslos
-              llegar.
+              llegar: una copia se reenvía a la casilla de la persona que atiende tu consulta.
             </li>
             <li>
               <strong>OpenStreetMap Foundation</strong> — Reino Unido. Mapas y búsqueda de

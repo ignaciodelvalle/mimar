@@ -212,12 +212,21 @@ Everything else — spam to invented local parts — is dropped with a 200.
 - **Trust:** the body is read for `type` and `data.email_id` only; the email is
   re-fetched from Resend with the server's `RESEND_API_KEY`, so a forged id
   404s and does nothing. `RESEND_WEBHOOK_SECRET`, when set, adds Svix
-  signature verification (401 on failure); unset, it warns once per instance.
+  signature verification (401 on failure). Unset, it fails CLOSED when
+  `VERCEL_ENV=production` (forged ids would burn the Resend API rate limit
+  shared with signup and password-reset mail) and warns once elsewhere. The
+  request body is capped at 256 KB before it is read (413).
 - **Forward shape:** built with `emails.send`, not the SDK's
   `receiving.forward`, because neither of that helper's modes keeps the
-  original sender answerable. Reply-To is the original sender, the subject is
-  tagged `[privacidad]` / `[hola]` / `[contacto]`, and the original message
-  rides along as an `.eml` attachment.
+  original sender answerable. The body is PLAIN TEXT written by us — a
+  "verify before clicking" banner naming the mailbox and original sender,
+  then the original text part, truncated — never the sender's HTML, which
+  would ride on our DKIM-aligned domain. Reply-To is the original sender, the
+  subject (control characters stripped) is tagged `[privacidad]` / `[hola]` /
+  `[contacto]`, and the original rides along as an `.eml` capped at 15 MB;
+  over the cap, or refused by Resend as an attachment (retried once without
+  it), the text says the original is in Resend → Emails → Receiving. Mail
+  whose From is the forward sender itself is dropped (loop guard).
 - **Retries:** 5xx only on a transient Resend error (429/5xx/network);
   misconfiguration (`MAIL_FORWARD_TO` unset, or pointing back at the inbound
   domain) is reported and answered 200. Duplicates are bounded by a
