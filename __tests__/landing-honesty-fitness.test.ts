@@ -22,14 +22,25 @@
 //
 // This is a DIFFERENT concern from state-endorsement-fence.test.ts (which
 // polices claims of Argentine STATE backing) and is not the natural home for
-// it: these five terms are about overclaiming the PRODUCT's own capabilities
-// — permanence, national reach, live data, licensing — independent of who
-// runs it. A single sentence can fail this fence while naming no state body
-// at all ("historial inmutable"), and a sentence can pass the state-body fence
+// it: these terms are about overclaiming the PRODUCT's own capabilities —
+// permanence, national reach, live data, licensing — independent of who runs
+// it. A single sentence can fail this fence while naming no state body at
+// all ("historial inmutable"), and a sentence can pass the state-body fence
 // while failing this one ("el registro nacional de mascotas" — "nacional"
 // alone is not a STATE_BODY match there). Kept separate rather than merged so
 // neither fence's exemptions (norm citations, pending markers) leak into a
 // class of claim they were never designed for.
+//
+// CORRECTED 2026-09-24 (fresh review): this fence's OWN first draft blessed
+// "nada se reescribe" as an honest replacement for "inmutable" — it is not.
+// Límites honestos A.1 documents an AUDITED SUPPRESSION EXCEPTION (art. 16
+// Ley 25.326), and /privacidad documents that account erasure replaces the
+// user's free text with a notice — a rewrite. "Nada se reescribe" / "nunca se
+// borra" / "nada se borra" all deny that exception exists, which is exactly
+// the overclaim shape A.1 exists to catch. A.1's own wording — "una
+// corrección es un asiento nuevo, nunca una edición" — describes the
+// append-only DEFAULT without denying the exception, so it is what "inmutable"
+// gets replaced with instead.
 //
 // SCOPE — narrower than state-endorsement-fence.test.ts on purpose: only the
 // landing itself and its `/municipios` door (WU4), not the whole citizen
@@ -78,6 +89,18 @@ const BANNED_TERMS: Array<{ re: RegExp; label: string }> = [
     re: /\bc[oó]digo\s+abierto\b|\bopen[\s-]source\b/gi,
     label: "código abierto / open source (LICENSE is proprietary — inspection/audit only)",
   },
+  {
+    re: /\bnada\s+se\s+reescribe\b/gi,
+    label: "nada se reescribe (denies the A.1 audited suppression exception)",
+  },
+  {
+    re: /\bnunca\s+se\s+borra\b/gi,
+    label: "nunca se borra (denies the A.1 audited suppression exception)",
+  },
+  {
+    re: /\bnada\s+se\s+borra\b/gi,
+    label: "nada se borra (denies the A.1 audited suppression exception)",
+  },
 ];
 
 const ROOTS = ["components/landing", "app/(public)/municipios"];
@@ -116,7 +139,7 @@ const SCAN: Violation[] = FILES.flatMap((file) => {
 });
 
 describe("landing copy does not overclaim (WU1 honesty pass)", () => {
-  it("bans inmutable / registro nacional / Ministerio / en tiempo real / código abierto·open source", () => {
+  it("bans inmutable / registro nacional / Ministerio / en tiempo real / código abierto·open source / nada se reescribe·borra / nunca se borra", () => {
     expect(
       SCAN,
       `overclaiming copy found on the landing or /municipios:\n${SCAN.map(
@@ -142,15 +165,25 @@ describe("the fence is not vacuous", () => {
     expect(violationsIn("<p>la cobertura se mide en tiempo real.</p>")).not.toEqual([]);
     expect(violationsIn("<p>Repositorio de código abierto.</p>")).not.toEqual([]);
     expect(violationsIn("<p>This project is open source.</p>")).not.toEqual([]);
+    // Corrected 2026-09-24 (fresh review): the fence's own FIRST draft
+    // blessed this phrase — see the PASSES probe below, which no longer does.
+    expect(violationsIn("<p>Su historial solo se agrega: nada se reescribe.</p>")).not.toEqual([]);
+    expect(violationsIn("<p>…y toda su historia, nunca se borra.</p>")).not.toEqual([]);
+    expect(violationsIn("<p>La línea de vida es de Pampa: nada se borra.</p>")).not.toEqual([]);
   });
 
   it("PASSES the honest replacements this WU shipped", () => {
-    expect(violationsIn("<p>Su historial solo se agrega: nada se reescribe.</p>")).toEqual([]);
+    expect(
+      violationsIn(
+        "<p>Su historial solo se agrega: una corrección es un asiento nuevo, nunca una edición.</p>",
+      ),
+    ).toEqual([]);
     expect(
       violationsIn(
         "<p>La libreta sanitaria de tu mascota en el teléfono, con una credencial QR.</p>",
       ),
     ).toEqual([]);
-    expect(violationsIn("<p>La cobertura se actualiza una vez por día.</p>")).toEqual([]);
+    expect(violationsIn("<p>…y toda su historia, asiento por asiento.</p>")).toEqual([]);
+    expect(violationsIn("<p>La cobertura se actualiza sola, sin planillas.</p>")).toEqual([]);
   });
 });

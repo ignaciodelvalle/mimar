@@ -278,9 +278,18 @@ export const LIBRETA_EVENTS: LibretaEvent[] = [
     month: "jun",
     tone: "navy",
     title: "Refuerzo antirrábico",
+    // "Campaña oficial" checked against the code (fresh review 2026-09-24):
+    // real, accurate — lib/analytics/campaign-metrics.ts + /gob/campanas
+    // track municipality-organized vaccination campaigns. What WAS an
+    // overclaim was the `by` below: no writer authorizes "govt"/"Estado" as
+    // the actor on vaccination_administered (event-schemas.ts has no
+    // actor_role on this event; professional writes require
+    // `role === "vet" && matriculaVerified`, per
+    // app/api/v1/pets/[publicToken]/events/writers.ts). Estado's real role
+    // here is what chapter 5 already shows: it watches, a vet signs.
     meta: "Campaña oficial · Comuna 13",
     type: "vaccination_administered",
-    by: "Campaña · Estado",
+    by: "Vet. de campaña · vet",
     stamp: "ok",
   },
 ];
@@ -370,11 +379,14 @@ export const LIFE_MOMENTS: LifeMoment[] = [
   {
     icon: "vacuna",
     title: "Hay campaña en mi barrio",
-    // Honesty pass (WU1): the panorama choropleth is served from panorama_cube,
-    // which refreshes once a day (vercel.json cron "0 3 * * *", see
-    // app/api/cron/refresh-cube and src/modules/panorama/domain/cube-freshness.ts).
-    // Not "en tiempo real" and not literally per-constancia — a daily snapshot.
-    body: "Las vacunaciones masivas cargan constancias solas; la cobertura se actualiza una vez por día.",
+    // Honesty pass (WU1; corrected 2026-09-24 review): "una vez por día" was
+    // ALSO wrong — panorama_cube (daily cron) is a DIFFERENT surface from the
+    // KPI this life-moment describes. rabies_coverage_dogs_12m
+    // (lib/metrics/kpi-catalog.ts:375-389, fetcherName "fetchRabiesCoverage")
+    // is computed straight from pets/pet_events, cadence "recomputed on every
+    // render" — live, not daily. Rewritten to make no cadence claim at all:
+    // just that it is automatic, not a spreadsheet.
+    body: "Las vacunaciones masivas cargan constancias solas; la cobertura se actualiza sola, sin planillas.",
   },
   {
     icon: "candado",

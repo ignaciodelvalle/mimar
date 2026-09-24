@@ -343,7 +343,9 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                       </span>
                       <span className="lp-hcard-libstamp">FIRMADA</span>
                     </div>
-                    <div className="lp-hcard-libfoot">…y toda su historia, sin reescribir.</div>
+                    <div className="lp-hcard-libfoot">
+                      …y toda su historia, asiento por asiento.
+                    </div>
                   </div>
                 </div>
               </div>
@@ -397,16 +399,21 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
               <br />
               en una sola libreta.
             </h1>
-            {/* Honesty pass (WU1, landing redesign 2026-09-24): "registro
-                nacional" and "inmutable" both overclaimed — there is no
-                convenio with any state body (see state-endorsement-fence),
-                and art. 16 de la Ley 25.326 requires an audited suppression
-                exception over the event log (límites honestos A.1). Replaced
-                with what the product actually is and actually guarantees. */}
+            {/* Honesty pass (WU1, landing redesign 2026-09-24; corrected
+                2026-09-24 review): "registro nacional" and "inmutable" both
+                overclaimed — there is no convenio with any state body (see
+                state-endorsement-fence), and art. 16 de la Ley 25.326
+                requires an audited suppression exception over the event log
+                (límites honestos A.1). "Nada se reescribe" ALSO overclaimed —
+                /privacidad documents that account erasure replaces the
+                user's free text with a notice, which is a rewrite. Now uses
+                A.1's own wording: "una corrección es un asiento nuevo, nunca
+                una edición" describes the append-only DEFAULT without
+                denying the audited exception. */}
             <p className="lp-lead lp-reveal mt-6" data-d="2">
               La libreta sanitaria de tu mascota en el teléfono, con una credencial QR que
-              cualquiera puede escanear si se pierde. Su historial solo se agrega: nada se
-              reescribe.
+              cualquiera puede escanear si se pierde. Su historial solo se agrega: una corrección es
+              un asiento nuevo, nunca una edición.
             </p>
             <div className="lp-hero-cta lp-reveal" data-d="3">
               {/* The primary "Crear tu miMAR" CTA that used to live here was

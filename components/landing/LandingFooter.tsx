@@ -36,12 +36,19 @@ export function LandingFooter() {
                 celeste-and-white stripe, the "Estado" chapter and (once WU5
                 ships) a "para municipios" page read together as an official
                 signature — enough that Play's listing review could read it as
-                implied government affiliation. This short line, plus the
-                longer disclaimer below, forecloses that reading without
-                claiming anything about who runs miMAR beyond "not the
-                State". */}
+                implied government affiliation. This line forecloses that
+                reading without claiming anything about who runs miMAR beyond
+                "not the State".
+                Corrected 2026-09-24 (fresh review): this used to duplicate
+                the disclaimer that lived in .lp-foot-legal below, with a
+                different noun ("proyecto" here, "servicio" there) — two
+                sentences saying almost the same thing in two places. Merged
+                into ONE line, kept here (near the brand, above the fold of
+                the footer) because it is more visible than the small-print
+                legal row; state-endorsement-fence.test.ts still pins this
+                exact substring's presence in THIS file. */}
             <p className="mt-2 text-md leading-relaxed text-[var(--color-ln-mute)]">
-              miMAR es un proyecto independiente.
+              miMAR es un proyecto independiente: no es un sitio oficial del Estado argentino.
             </p>
           </div>
           {FOOTER_NAV.map(([heading, items]) => (
@@ -59,16 +66,13 @@ export function LandingFooter() {
         </div>
         {/* This line used to open with "Ministerio de Salud · República
             Argentina" and the ministry's own domain, which stated an
-            endorsement that does not exist. What replaces it is the inverse
-            claim — stated plainly, because a visitor arriving at a page in
-            gob.ar's visual language will otherwise assume it. Citing the laws
-            miMAR complies with stays: a norm citation claims nothing about who
-            backs the product. */}
+            endorsement that does not exist. The independence disclaimer that
+            replaced it lived here too, duplicating the brand-block line
+            above with a different noun ("servicio" vs "proyecto") — merged
+            into that one line above (fresh review, 2026-09-24). What's left
+            here is a norm citation, which claims nothing about who backs the
+            product. */}
         <div className="lp-foot-legal">
-          <span>
-            miMAR es un servicio independiente: no es un sitio oficial del Estado argentino.
-          </span>
-          <span className="lp-spacer" />
           <span>
             miMAR opera bajo la Ley 14.346 (protección animal) y la Ley 25.326 (protección de datos
             personales).

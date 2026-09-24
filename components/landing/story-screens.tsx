@@ -322,8 +322,14 @@ export function LibretaScreen() {
           </div>
         ))}
       </div>
+      {/* Honesty pass (WU1; caught by the fence's extended ban list,
+          2026-09-24 review): "nada se edita, nada se borra" was a second
+          instance of the same A.1 overclaim already fixed on
+          CHAPTERS.libreta.lead — missed here because it lives in the phone
+          mock's own badge, not the chapter copy. Same A.1 wording. */}
       <div className="lp-lib-lock">
-        <Icon name="candado" size="sm" decorative /> append-only — nada se edita, nada se borra
+        <Icon name="candado" size="sm" decorative /> append-only — una corrección es un asiento
+        nuevo, nunca una edición
       </div>
     </>
   );
@@ -375,16 +381,23 @@ export function EstadoConsole() {
         <div>
           <p className="lp-eyebrow">Vista · Estado</p>
           <h3 className="lp-display lp-h-sub mt-3">Tendencias, no planillas.</h3>
-          {/* Honesty pass (WU1, landing redesign 2026-09-24): dropped "del
-              país" (no jurisdiction has onboarded the whole country) and "en
-              tiempo real" (the choropleth is served from panorama_cube, a
-              once-a-day snapshot — vercel.json cron "0 3 * * *", see
-              app/api/cron/refresh-cube and
-              src/modules/panorama/domain/cube-freshness.ts; live-served
-              layers exist too, but nothing here is continuous/real-time). */}
+          {/* Honesty pass (WU1, landing redesign 2026-09-24; corrected
+              2026-09-24 review): dropped "del país" (no jurisdiction has
+              onboarded the whole country) and "en tiempo real". The first
+              draft's replacement — "actualizadas todos los días" — was ALSO
+              wrong: panorama_cube (the daily cron) only serves 5 CHOROPLETH
+              layers {cobertura, esterilizacion, microchip, ppp, mortalidad}
+              to ADMIN actors on a COMPLETE national/province slice
+              (src/modules/panorama/application/load-layer-features-cube.ts).
+              A municipio/provincia's own scoped view — what this chapter
+              speaks to — "stays live in v1" per that same file, and the
+              zoonotic-signals KPI itself (active_zoonosis_signals,
+              lib/metrics/kpi-catalog.ts:576-585, fetcherName
+              "fetchActiveZoonosis") is a live "'now' snapshot", not a daily
+              batch. No cadence claim now — just automatic vs. manual. */}
           <p className="lp-lead mt-3.5 text-lg">
-            Cada libreta suma a la foto sanitaria de tu jurisdicción. La consola llega prefiltrada:
-            señales zoonóticas, actualizadas todos los días.
+            Cada libreta suma a la foto sanitaria de cada jurisdicción. La consola llega
+            prefiltrada: señales zoonóticas, sin planillas.
           </p>
         </div>
         <div className="lp-kicks">
