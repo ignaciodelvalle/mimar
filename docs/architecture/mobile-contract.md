@@ -354,7 +354,7 @@ executed.
 
 ## 8. Tests
 
-<!-- fact:mobile_jest_files -->122<!-- /fact --> test files under
+<!-- fact:mobile_jest_files -->124<!-- /fact --> test files under
 `apps/mobile/src`, run by `jest-expo` through `apps/mobile/jest.config.js`. Three
 things about that config are decisions, not defaults:
 

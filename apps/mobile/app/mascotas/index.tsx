@@ -17,25 +17,48 @@
 // ONE READ PER MOUNT, PLUS PULL-TO-REFRESH. No focus-refetch and no timer: the
 // endpoint runs a 120/min per-user limiter, and a list that re-reads every time
 // it comes back into view spends that on nothing.
+//
+// FLATLIST, NOT SCROLLVIEW (M3 / R-1). A real Samsung J7 2016 (Android 8,
+// Exynos 7580, 2 GB RAM) measured this screen as janky well above the 25%
+// target with many pets on the account. A `ScrollView` mounts every row up
+// front — the whole list, its photos and all — no matter how many are
+// off-screen; `FlatList` only mounts a window around what is visible. The
+// `loaded` arm below is the one place that changed: `loading` and `failed`
+// have nothing to virtualize and stay on the shared `Screen` (a `ScrollView`).
+// A `FlatList` may not be nested inside that `ScrollView` — React Native warns
+// about it for good reason, since a VirtualizedList measures against its own
+// scroll container, not one two levels up — so the loaded arm renders its own
+// `SafeAreaView` instead of reusing `Screen`.
+//
+// THE PER-ROW BITMAP CAUSE (see `PetRow.tsx` for the full evidence): no
+// `elevation`/`shadow*` and no `Animated` loop touch this list while it is on
+// screen, so the classic "shadow forces an offscreen layer redrawn every
+// frame" path is not in play here. What the code DID show is every row's
+// `<Image source={{uri: ...}}>` being rebuilt from a fresh object literal on
+// every render of this screen — including the two `setRefreshing` calls a
+// single pull-to-refresh makes — because neither the row component nor its
+// `onPress` callback was memoized. `PetRow` is now `React.memo`, its photo
+// `source` is `useMemo`'d, and `handleOpenPet` below is a stable
+// `useCallback`, which is what makes that memoization worth anything: a
+// memoized component with a fresh callback prop every render defeats itself.
 
-import type { MyPetsV1, MyPetsV1Item } from "@dim/contract/api";
+import type { MyPetsV1 } from "@dim/contract/api";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Image, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { FlatList, StyleSheet, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { apiFailureMessage } from "../../src/api/client";
 import { fetchMyPets } from "../../src/api/endpoints";
 import { sessionPort } from "../../src/auth/session-store";
 import { useGate } from "../../src/auth/useGate";
-import { petStatusLabel } from "../../src/credential/credential-view-model";
-import { speciesLabel } from "../../src/pets/species";
+import { PetRow } from "../../src/pets/PetRow";
 import { TOP_LEVEL_DESTINATIONS } from "../../src/ui/TopLevelNavMenu";
 import { Body, Card, EmptyState, ErrorNotice, Loading, StaleNotice } from "../../src/ui/components";
-import { FONTS } from "../../src/ui/fonts";
-import { PrimaryButton, Screen, SecondaryButton } from "../../src/ui/kit";
+import { PrimaryButton, Screen, SecondaryButton, pullToRefresh } from "../../src/ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../../src/ui/reload-state";
 import { ROUTES, credentialRoute } from "../../src/ui/routes";
-import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "../../src/ui/theme";
+import { COLORS, SPACE } from "../../src/ui/theme";
 import { useReconnect } from "../../src/ui/use-reconnect";
 
 type ListState = { phase: "loading" } | ReadyState<MyPetsV1> | { phase: "failed"; message: string };
@@ -94,39 +117,152 @@ export default function MisMascotasScreen() {
   // is on screen stays there while it happens.
   useReconnect(() => void load("refresh"));
 
+  // STABLE ACROSS RENDERS, ON PURPOSE (M3 / R-1). Every `PetRow` in the
+  // visible window receives `handleOpenPet` as its `onPress`, and `PetRow` is
+  // `React.memo`'d specifically so a re-render of THIS screen — pull-to-
+  // refresh's `setRefreshing`, a focus re-read — does not force every row to
+  // re-render. That only holds if `handleOpenPet` itself never changes
+  // identity. `useCallback(..., [router])` is NOT enough: `expo-router`'s
+  // `useRouter()` is not documented to return the same object every render,
+  // and under test it measurably does not (`MisMascotasList.test.tsx` caught
+  // this — depending on `[router]` made every pull-to-refresh recreate the
+  // callback and re-render every row regardless of `React.memo`). `router` is
+  // read through a ref instead, so the callback's identity depends on nothing
+  // that changes per render.
+  const routerRef = useRef(router);
+  routerRef.current = router;
+  const handleOpenPet = useCallback(
+    (publicToken: string) => routerRef.current.push(credentialRoute(publicToken)),
+    [],
+  );
+  const handleRegister = useCallback(() => routerRef.current.push(ROUTES.altaMascota), []);
+
   if (!gate.allowed) return gate.element;
 
+  if (state.phase !== "ready") {
+    return (
+      <Screen refreshControl={pullToRefresh(() => void load("refresh"), refreshing)}>
+        {state.phase === "loading" ? (
+          <Loading label="Buscando tus mascotas…" />
+        ) : (
+          // NOT an empty list. See the header. Only the FIRST read reaches this:
+          // once there are animals on screen they stay.
+          <ErrorNotice message={state.message} onRetry={() => void load("initial")} />
+        )}
+      </Screen>
+    );
+  }
+
   return (
-    <Screen
-      refreshControl={
-        // Pull-to-refresh stays, and the spinner is tinted: the platform default
-        // is a grey that reads as chrome from another app on a cream page.
-        <RefreshControl
-          colors={[COLORS.accent]}
-          onRefresh={() => void load("refresh")}
-          refreshing={refreshing}
-          tintColor={COLORS.accent}
-        />
-      }
-    >
-      {state.phase === "loading" ? (
-        <Loading label="Buscando tus mascotas…" />
-      ) : state.phase === "failed" ? (
-        // NOT an empty list. See the header. Only the FIRST read reaches this:
-        // once there are animals on screen they stay.
-        <ErrorNotice message={state.message} onRetry={() => void load("initial")} />
-      ) : (
-        <>
-          {state.staleFailure === null ? null : (
-            <StaleNotice message={state.staleFailure} onRetry={() => void load("refresh")} />
-          )}
-          <ListBody
-            view={state.view}
-            onOpen={(token) => router.push(credentialRoute(token))}
-            onRegister={() => router.push(ROUTES.altaMascota)}
+    <PetListScreen
+      view={state.view}
+      staleFailure={state.staleFailure}
+      refreshing={refreshing}
+      onRefresh={() => void load("refresh")}
+      onOpen={handleOpenPet}
+      onRegister={handleRegister}
+    />
+  );
+}
+
+/**
+ * The `ready` arm, on its own `FlatList` — see the header for why it cannot
+ * share `Screen`'s `ScrollView`.
+ */
+function PetListScreen({
+  view,
+  staleFailure,
+  refreshing,
+  onRefresh,
+  onOpen,
+  onRegister,
+}: {
+  view: MyPetsV1;
+  staleFailure: string | null;
+  refreshing: boolean;
+  onRefresh: () => void;
+  onOpen: (publicToken: string) => void;
+  onRegister: () => void;
+}) {
+  const { pets, total, truncated } = view;
+
+  return (
+    <SafeAreaView style={styles.screen} edges={["bottom"]}>
+      <FlatList
+        data={pets}
+        keyExtractor={(pet) => pet.publicToken}
+        renderItem={({ item }) => <PetRow pet={item} onPress={onOpen} />}
+        contentContainerStyle={styles.listContent}
+        refreshControl={pullToRefresh(onRefresh, refreshing)}
+        ListHeaderComponent={
+          staleFailure === null ? null : <StaleNotice message={staleFailure} onRetry={onRefresh} />
+        }
+        ListEmptyComponent={
+          <EmptyState
+            headline="Todavía no registraste ninguna mascota"
+            body="Registrala una vez y su credencial queda disponible para siempre: un QR que cualquiera puede escanear si se pierde."
+            actionLabel="Registrar una mascota"
+            onAction={onRegister}
           />
+        }
+        ListFooterComponent={
+          <ListFooter
+            hasPets={pets.length > 0}
+            onRegister={onRegister}
+            total={total}
+            truncated={truncated}
+            visibleCount={pets.length}
+          />
+        }
+        // LOW-END ANDROID TUNING (M3 / R-1, aimed at the J7's 2 GB). A smaller
+        // initial window means less work before the first frame; a smaller
+        // `windowSize` bounds how much stays mounted while scrolling; cards are
+        // NOT fixed-height (a long name can grow the row per `petText`'s
+        // comment above), so `getItemLayout` is deliberately not supplied —
+        // giving it a wrong estimate would misplace rows, which is worse than
+        // the layout pass FlatList already does.
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={5}
+        removeClippedSubviews
+      />
+    </SafeAreaView>
+  );
+}
+
+/**
+ * Everything the old `ListBody` rendered AFTER the pets themselves, now the
+ * `FlatList`'s `ListFooterComponent` so it renders once, however many rows are
+ * mounted, instead of once per row the way an item inside `data` would.
+ */
+function ListFooter({
+  hasPets,
+  onRegister,
+  total,
+  truncated,
+  visibleCount,
+}: {
+  hasPets: boolean;
+  onRegister: () => void;
+  total: number;
+  truncated: boolean;
+  visibleCount: number;
+}) {
+  const router = useRouter();
+  return (
+    <View style={styles.footerGap}>
+      {hasPets ? (
+        <>
+          {truncated ? (
+            <Card title="La lista está incompleta">
+              <Body>
+                {`Estamos mostrando ${visibleCount} de ${total}. Todavía no hay paginado en la app: para ver el resto entrá desde la web.`}
+              </Body>
+            </Card>
+          ) : null}
+          <PrimaryButton label="Registrar otra mascota" onPress={onRegister} />
         </>
-      )}
+      ) : null}
 
       {/* THE FOOTER RENDERS FROM `TOP_LEVEL_DESTINATIONS` (`src/ui/
           TopLevelNavMenu.tsx`), not from hand-written buttons any more. That
@@ -164,133 +300,16 @@ export default function MisMascotasScreen() {
           ),
         )}
       </View>
-    </Screen>
-  );
-}
-
-function ListBody({
-  view,
-  onOpen,
-  onRegister,
-}: {
-  view: MyPetsV1;
-  onOpen: (publicToken: string) => void;
-  onRegister: () => void;
-}) {
-  const { pets, total, truncated } = view;
-
-  if (pets.length === 0) {
-    return (
-      <EmptyState
-        headline="Todavía no registraste ninguna mascota"
-        body="Registrala una vez y su credencial queda disponible para siempre: un QR que cualquiera puede escanear si se pierde."
-        actionLabel="Registrar una mascota"
-        onAction={onRegister}
-      />
-    );
-  }
-
-  return (
-    <>
-      {pets.map((pet) => (
-        <PetRow key={pet.publicToken} pet={pet} onPress={() => onOpen(pet.publicToken)} />
-      ))}
-
-      {truncated ? (
-        <Card title="La lista está incompleta">
-          <Body>
-            {`Estamos mostrando ${pets.length} de ${total}. Todavía no hay paginado en la app: para ver el resto entrá desde la web.`}
-          </Body>
-        </Card>
-      ) : null}
-
-      <PrimaryButton label="Registrar otra mascota" onPress={onRegister} />
-    </>
-  );
-}
-
-function PetRow({ pet, onPress }: { pet: MyPetsV1Item; onPress: () => void }) {
-  // A photo the server HAS and this phone could not fetch (S-1 / VT-2). RN's
-  // <Image> draws nothing on a failed load — a blank box the size of the frame,
-  // which reads as "this animal has no photo" and is a different claim.
-  const [photoFailed, setPhotoFailed] = useState(false);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${pet.name}, ${speciesLabel(pet.species)}, ${petStatusLabel(pet.status)}`}
-      onPress={onPress}
-      style={styles.petRow}
-    >
-      {pet.photoUrl === null || photoFailed ? (
-        // A placeholder that says WHAT is missing. A grey square says nothing.
-        //
-        // THE SERVER SIDE OF THE UPLOAD NOW EXISTS — `POST /pets/{token}/photo`
-        // and the three calls in `api/endpoints.ts` that drive it
-        // (`requestPetPhotoTicket` → `uploadPetPhotoBytes` → `confirmPetPhoto`).
-        // What is still missing on THIS side is the picker: choosing an image
-        // needs a native module this build does not carry, so it is a screen and
-        // an `expo install` rather than a protocol. The placeholder stays until
-        // then, and it is no longer describing a blocked path — only an unbuilt
-        // one.
-        <View style={styles.photoFallback}>
-          {/* TWO DIFFERENT ABSENCES, TWO DIFFERENT WORDS (S-1 / VT-2). "Sin
-              foto" is a fact about the animal's record; a photo that was
-              uploaded and would not LOAD is a fact about this phone's last ten
-              seconds, and drawing the same square for both told an owner their
-              photo was gone. */}
-          <Text style={styles.photoFallbackText}>
-            {photoFailed ? "Foto no disponible" : "Sin foto"}
-          </Text>
-        </View>
-      ) : (
-        <Image
-          source={{ uri: pet.photoUrl }}
-          style={styles.photo}
-          accessibilityIgnoresInvertColors
-          onError={() => setPhotoFailed(true)}
-        />
-      )}
-
-      {/* ONE LINE EACH (S-6). The row is a photo, a text column and a status
-          chip in a fixed-height row; `pets.name` is unbounded `text` with no cap
-          anywhere in the web's writer (see PetProfileEditScreen's header), so a
-          long name wrapped to three lines, pushed the species under the chip and
-          left the list looking broken for the one owner who has such a name. The
-          full name is still on the row's accessibilityLabel above, and one tap
-          away on the document. */}
-      <View style={styles.petText}>
-        <Text numberOfLines={1} style={styles.petName}>
-          {pet.name}
-        </Text>
-        <Text numberOfLines={1} style={styles.petSpecies}>
-          {speciesLabel(pet.species)}
-        </Text>
-      </View>
-
-      <StatusChip status={pet.status} />
-    </Pressable>
-  );
-}
-
-/**
- * The status chip.
- *
- * "Perdida" and "Fallecida" are not decorated the same way as "Activa", and that
- * is not styling: a lost animal is the state the whole product exists for, and a
- * list where it reads like every other row buries the one row that matters.
- */
-function StatusChip({ status }: { status: MyPetsV1Item["status"] }) {
-  const tone = status === "lost" ? styles.chipAlert : styles.chipQuiet;
-  const label = status === "lost" ? styles.chipAlertLabel : styles.chipQuietLabel;
-  return (
-    <View style={[styles.chip, tone]}>
-      <Text style={[styles.chipLabel, label]}>{petStatusLabel(status)}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: COLORS.canvas },
+  // Mirrors `Screen`'s own `scroll` style (padding + gap) so the loaded arm
+  // reads identically to the loading/failed arms it replaces.
+  listContent: { padding: SPACE.xl2, gap: SPACE.lg },
+  footerGap: { gap: SPACE.lg },
   footer: { marginTop: SPACE.lg, gap: SPACE.sm },
   // The one break in the footer's uniform `gap`, and it carries an argument
   // rather than a taste: "Denunciar maltrato" opens a criminal allegation about
@@ -299,62 +318,4 @@ const styles = StyleSheet.create({
   // sits at twice the distance of any other pair — the smallest amount of layout
   // that makes a mis-tap cost a deliberate correction instead of a case file.
   civicAction: { marginTop: SPACE.sm },
-  petRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACE.md,
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.control,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACE.md,
-    // The 44dp floor, stated (CA-3). A row with a 52pt photo clears it today by
-    // accident, and the day somebody renders a row for a pet with no photo and
-    // a one-line name it stops clearing it silently. The a11y fence now walks
-    // `app/` too, and this is the discipline it asks every pressable file for.
-    minHeight: TOUCH_TARGET,
-  },
-  photo: { width: 52, height: 52, borderRadius: RADIUS.control, backgroundColor: COLORS.stripe },
-  photoFallback: {
-    width: 52,
-    height: 52,
-    borderRadius: RADIUS.control,
-    backgroundColor: COLORS.stripe,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  photoFallbackText: {
-    fontFamily: FONTS.mono,
-    fontSize: TYPE.xs,
-    letterSpacing: TYPE.xs * TRACKING.wide,
-    color: COLORS.inkFaint,
-  },
-  petText: { flex: 1, gap: 2 },
-  // Serif, because a pet's name is the display element of this row — the same
-  // role the web gives it on the credential document.
-  petName: {
-    fontFamily: FONTS.serif,
-    fontSize: TYPE.lg,
-    lineHeight: TYPE.lg * LEADING.lg,
-    color: COLORS.ink,
-  },
-  petSpecies: { fontFamily: FONTS.sans, fontSize: TYPE.md, color: COLORS.inkMuted },
-  chip: {
-    borderRadius: RADIUS.chip,
-    borderWidth: 1,
-    paddingHorizontal: SPACE.sm,
-    paddingVertical: SPACE.xs,
-  },
-  chipQuiet: { backgroundColor: COLORS.stripe, borderColor: COLORS.border },
-  chipAlert: { backgroundColor: COLORS.dangerSurface, borderColor: COLORS.dangerBorder },
-  chipLabel: {
-    fontFamily: FONTS.monoSemibold,
-    fontSize: TYPE.xs,
-    letterSpacing: TYPE.xs * TRACKING.wider,
-    textTransform: "uppercase",
-  },
-  chipQuietLabel: { color: COLORS.inkMuted },
-  chipAlertLabel: { color: COLORS.danger },
 });
