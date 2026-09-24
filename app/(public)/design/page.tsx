@@ -149,9 +149,9 @@ export default function DesignPage() {
       {/* Header */}
       <header className="mb-12 border-b border-ln-line pb-6">
         <p className="text-sm uppercase tracking-wide text-ln-mute">miMAR · Sistema de diseño</p>
-        <h1 className="mt-1 text-4xl font-bold font-ln-serif">Tokens Libreta Nacional</h1>
+        <h1 className="mt-1 text-4xl font-bold font-ln-serif">Tokens del sistema de diseño</h1>
         <p className="lead mt-2 text-ln-ink-2">
-          Paleta, tipografía e íconos del sistema Libreta Nacional portados a Next.js + Tailwind v4.
+          Paleta, tipografía e íconos del sistema de diseño portados a Next.js + Tailwind v4.
         </p>
       </header>
 
@@ -185,7 +185,7 @@ export default function DesignPage() {
 
       {/* Paleta warm */}
       <section className="mb-12">
-        <h2 className="mb-1 text-2xl font-bold">Paleta — Libreta Nacional (warm tier)</h2>
+        <h2 className="mb-1 text-2xl font-bold">Paleta — sistema de diseño (warm tier)</h2>
         <p className="mb-4 text-sm text-ln-mute">
           Consumir vía utilidades Tailwind (<code>bg-ln-azul</code>) o variables CSS.
         </p>

@@ -8,7 +8,8 @@ import { LnStatusFlag } from "./StatusFlag";
  *
  * Structure:
  *  - Azul-900 → azul → celeste diagonal gradient band (86px tall) with
- *    diagonal texture overlay and "LIBRETA SANITARIA NACIONAL" watermark
+ *    diagonal texture overlay and "LIBRETA SANITARIA" watermark ("Nacional"
+ *    dropped, PO 2026-09-24 — it read as State issuance)
  *  - Photo (132px, radius-6) overlapping the band by 50px
  *  - Name (serif 32px) + status flag
  *  - Breed text
@@ -72,9 +73,11 @@ export function LnHero({
         }}
         aria-hidden="true"
       >
-        {/* Watermark */}
+        {/* Watermark. "Nacional" dropped (PO, 2026-09-24): "Libreta Sanitaria
+            Nacional" reads as State issuance and no convenio exists with any
+            state body — same fix as DocumentChrome.tsx's band title. */}
         <span className="absolute bottom-[8px] right-[16px] font-ln-mono text-xs uppercase tracking-[.24em] text-white/60">
-          LIBRETA SANITARIA NACIONAL
+          LIBRETA SANITARIA
         </span>
       </div>
 

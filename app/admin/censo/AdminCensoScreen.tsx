@@ -333,7 +333,7 @@ export async function AdminCensoScreen({
             <LnEmptyState
               icon="heart"
               title="Sin datos de identificación"
-              description="No hay mascotas en el registro nacional."
+              description="No hay mascotas registradas."
             />
           ) : (
             // Q2: role="img" flattens the whole subtree to a single opaque

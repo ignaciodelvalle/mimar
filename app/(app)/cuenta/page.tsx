@@ -571,7 +571,7 @@ export default async function CuentaPage() {
       {/* Footer */}
       <div className="mt-8 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-[var(--color-ln-line-2)] pt-3.5 font-ln-mono text-sm uppercase tracking-[.04em] text-[var(--color-ln-faint)]">
         <span>Documento sincronizado</span>
-        <span>miMAR · Registro Nacional de Mascotas</span>
+        <span>miMAR</span>
       </div>
 
       {/* Sheet mounter */}

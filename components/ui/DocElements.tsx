@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
  *
  * LnGuilloche — 4px passport security band (repeating horizontal stripes)
  * LnDocCode   — mono metadata label (right side of sub-bar)
- * LnSeal      — rotated -9° "Registro Nacional" circle stamp
+ * LnSeal      — rotated -9° "miMAR" circle stamp
  * LnLabel     — mono uppercase hairline label (used inside cards)
  */
 
@@ -53,19 +53,15 @@ export function LnDocCode({ children, className = "" }: LnDocCodeProps) {
 // ---------- Seal ----------------------------------------------------------
 
 export type LnSealProps = {
-  /** Main text inside the circle (defaults to "Registro Nacional") */
+  /** Main text inside the circle (defaults to "miMAR" — "Registro Nacional"
+   *  read as State issuance, PO 2026-09-24, and no convenio grants it). */
   line1?: string;
   line2?: string;
   size?: number;
   className?: string;
 };
 
-export function LnSeal({
-  line1 = "Registro",
-  line2 = "Nacional",
-  size = 54,
-  className = "",
-}: LnSealProps) {
+export function LnSeal({ line1 = "miMAR", line2, size = 54, className = "" }: LnSealProps) {
   return (
     <div
       aria-hidden="true"

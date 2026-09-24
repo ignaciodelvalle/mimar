@@ -98,21 +98,44 @@ const GOB_AR_HOST = /\b[a-z0-9][a-z0-9.-]*\.gob\.ar\b/gi;
 const OUR_NAME = /\b(?:mimar|dim)\b/i;
 
 /**
- * PO 2026-09-24: "Nacional" beside the credential's own name reads as State
- * issuance — Play checks for exactly that pattern — the same class of claim
- * this whole file exists to ban, just spelled inside the document's OWN NAME
- * rather than in a sentence about who operates it. "Libreta Sanitaria
- * Nacional" became "Libreta Sanitaria" on both the phone (DocumentChromeNative
- * .tsx's band title, OwnerFace.tsx's issuing foot) and the web
- * (components/pet-profile/DocumentChrome.tsx's band title).
+ * PO 2026-09-24: "Nacional" beside miMAR's own credential/registry naming
+ * reads as State issuance — Play checks for exactly that pattern — the same
+ * class of claim this whole file exists to ban, just spelled inside a NAME
+ * ("Libreta Sanitaria Nacional", "Registro Nacional de Mascotas") rather than
+ * a sentence about who operates the product. Three spellings shipped:
  *
- * Scoped to apps/mobile/src ONLY, per that decision — this is a ban on the
- * credential's OWN printed name, not a general sweep of the citizen-facing
- * corpus the rest of this file already covers. `STATE_BODY` above still
- * governs prose elsewhere; this catches a title even when it never forms a
- * "sentence" `sentencesIn` would tokenise.
+ *   - "Libreta Sanitaria Nacional" → "Libreta Sanitaria" (the credential's
+ *     title — DocumentChromeNative.tsx / OwnerFace.tsx on the phone,
+ *     DocumentChrome.tsx / Hero.tsx on the web).
+ *   - "Registro Nacional de Mascotas" / "Registro Nacional" → dropped, or
+ *     "miMAR" where a name was needed (the public credential footer, the
+ *     refugios directory, LnSeal's default stamp text).
+ *   - "Libreta Nacional" naming the DESIGN SYSTEM in RENDERED copy (the
+ *     `/design` tokens page) → "sistema de diseño". `Libreta Nacional` naming
+ *     the design system in a CODE COMMENT is unaffected — see
+ *     `NACIONAL_CLAIM_ROOTS` below, which only ever reads rendered prose.
+ *
+ * `STATE_BODY` above still governs prose elsewhere; this catches a NAME even
+ * when it never forms a "sentence" `sentencesIn` would tokenise.
  */
-const NACIONAL_IN_CREDENTIAL_NAME = /\bSanitaria\s+Nacional\b|\bLibreta\s+Nacional\b/i;
+const NACIONAL_CLAIM = /\bRegistro\s+Nacional\b|\bSanitaria\s+Nacional\b|\bLibreta\s+Nacional\b/i;
+
+/**
+ * Where `NACIONAL_CLAIM` is enforced — wider than `ROOTS` above on purpose.
+ * `ROOTS` is the pre-login citizen corpus `STATE_BODY` cares about; this ban
+ * is about miMAR's own naming and applies to the whole product surface: the
+ * signed-in app (`app/(app)`), the operator/admin screens (`app/admin`,
+ * `app/gob`), every component, and the phone app. `components/landing` is
+ * EXCLUDED — a second writer owns that directory in a parallel worktree and
+ * its own `landing-honesty-fitness` test already covers this exact class of
+ * claim there; scanning it here would race that writer's edits.
+ */
+const NACIONAL_CLAIM_ROOTS = ["app", "components", "apps/mobile/src"];
+const LANDING_DIR = /(?:^|[\\/])components[\\/]landing(?:[\\/]|$)/;
+
+function collectNacionalClaimFiles(): string[] {
+  return NACIONAL_CLAIM_ROOTS.flatMap(collect).filter((f) => !LANDING_DIR.test(f));
+}
 
 function stripComments(source: string): string {
   return source
@@ -218,6 +241,13 @@ const SCAN = FILES.map((file) => {
   };
 });
 
+/** The wider corpus `NACIONAL_CLAIM` is checked against — see its own comment. */
+const NACIONAL_CLAIM_FILES = collectNacionalClaimFiles();
+
+const NACIONAL_CLAIM_OFFENDERS = NACIONAL_CLAIM_FILES.filter((f) =>
+  NACIONAL_CLAIM.test(toProse(readFileSync(f, "utf8"))),
+).map((f) => f.replace(/\\/g, "/"));
+
 // ---------------------------------------------------------------------------
 
 describe("no citizen-facing copy claims the Argentine State backs miMAR", () => {
@@ -268,20 +298,15 @@ describe("the disclaimers that replaced the claims are actually shipped", () => 
     expect(source).not.toMatch(/footAuthority/);
   });
 
-  it("no rendered mobile string carries 'Nacional' beside the credential's own name", () => {
+  it("no rendered string in app/, components/ (excluding landing/) or the phone app carries a 'Nacional' claim", () => {
     // PRESENCE-of-absence, same shape as the disclaimer checks above: a fence
     // that only asserted absence would pass the day the whole file went blind.
-    // Non-vacuity for THIS check lives in "still finds state bodies to
-    // classify" below (FILES itself must be non-empty), and in the FLAGS
-    // control in the vacuity block, which proves the regex still catches the
-    // exact banned string.
-    const mobileFiles = FILES.filter((f) => f.replace(/\\/g, "/").includes("apps/mobile/src/"));
-    const offenders = mobileFiles.filter((f) =>
-      NACIONAL_IN_CREDENTIAL_NAME.test(toProse(readFileSync(f, "utf8"))),
-    );
+    // Non-vacuity for THIS check lives in "scans a wide corpus for the
+    // Nacional claim" and the FLAGS control below, which prove the walk and
+    // the regex both still work.
     expect(
-      offenders,
-      `'Nacional' beside the credential's own name reads as State issuance (PO 2026-09-24):\n  ${offenders.join("\n  ")}`,
+      NACIONAL_CLAIM_OFFENDERS,
+      `'Nacional' beside miMAR's own naming reads as State issuance (PO 2026-09-24):\n  ${NACIONAL_CLAIM_OFFENDERS.join("\n  ")}`,
     ).toEqual([]);
   });
 });
@@ -297,6 +322,18 @@ describe("the fence is not vacuous", () => {
   // exactly like a clean tree.
   it("scans the citizen-facing corpus — at least 180 files", () => {
     expect(FILES.length).toBeGreaterThanOrEqual(180);
+  });
+
+  it("scans a wide corpus for the Nacional claim — app/, components/, and the phone app", () => {
+    // Measured 2026-09-24 against the tree this ban landed on: over a
+    // thousand files across app/, components/ (minus landing/) and
+    // apps/mobile/src. A walk that silently lost a root would still pass
+    // "offenders is empty" — this floor is what makes that failure visible.
+    expect(NACIONAL_CLAIM_FILES.length).toBeGreaterThanOrEqual(500);
+    // And landing/ is actually excluded, not just absent from a broken walk —
+    // components/landing/LandingHero.tsx names the class this ban targets
+    // ("registro nacional") on purpose, owned by the other writer's fence.
+    expect(NACIONAL_CLAIM_FILES.some((f) => LANDING_DIR.test(f.replace(/\\/g, "/")))).toBe(false);
   });
 
   it("still finds state bodies to classify — at least 4, in at least 4 files", () => {
@@ -331,13 +368,32 @@ describe("the fence is not vacuous", () => {
     expect(violationsIn('const base = "https://datos.mimar.gob.ar";')).not.toEqual([]);
   });
 
-  it("FLAGS the reintroduced credential name — 'Libreta Sanitaria Nacional' itself", () => {
+  it("FLAGS every 'Nacional' spelling this decision removed, and clears the words it kept", () => {
     // Hand-written, never derived from the corpus (same rule the other
     // controls in this block follow) — proves the regex still matches the
-    // EXACT string this decision removed, not just the general shape.
-    expect(NACIONAL_IN_CREDENTIAL_NAME.test(toProse("Libreta Sanitaria Nacional"))).toBe(true);
-    expect(NACIONAL_IN_CREDENTIAL_NAME.test(toProse("Tokens Libreta Nacional"))).toBe(true);
-    expect(NACIONAL_IN_CREDENTIAL_NAME.test(toProse("Libreta Sanitaria"))).toBe(false);
+    // EXACT strings this decision removed, not just one of the three shapes.
+    expect(NACIONAL_CLAIM.test(toProse("Libreta Sanitaria Nacional"))).toBe(true);
+    expect(NACIONAL_CLAIM.test(toProse("Registro Nacional de Mascotas"))).toBe(true);
+    expect(NACIONAL_CLAIM.test(toProse("Tokens Libreta Nacional"))).toBe(true);
+    expect(NACIONAL_CLAIM.test(toProse("Libreta Sanitaria"))).toBe(false);
+    expect(NACIONAL_CLAIM.test(toProse("miMAR"))).toBe(false);
+  });
+
+  it("FLAGS the Nacional claim inside app/ and components/, and CLEARS it inside components/landing/", () => {
+    // The walk-level control for the exclusion above: NACIONAL_CLAIM itself
+    // does not know about directories, so this proves the FILTER does — a
+    // regex-only control could not catch a regression that stopped excluding
+    // landing/ while the regex kept matching fine.
+    const offender = collectNacionalClaimFiles().find((f) =>
+      f.replace(/\\/g, "/").endsWith("app/(public)/refugios/page.tsx"),
+    );
+    expect(
+      offender,
+      "app/(public)/refugios/page.tsx should be in the scanned corpus",
+    ).toBeDefined();
+    expect(
+      NACIONAL_CLAIM_FILES.some((f) => f.replace(/\\/g, "/").includes("components/landing/")),
+    ).toBe(false);
   });
 
   it("PASSES a norm citation — naming the author of a law is not a claim", () => {

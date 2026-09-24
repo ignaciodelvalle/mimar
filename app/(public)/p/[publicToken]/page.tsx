@@ -993,8 +993,10 @@ export default async function PublicCredentialPage({
             {/* "· República Argentina" used to close this line. On a card
                 composed as an identity document it named the State as the
                 issuing authority, which no convenio grants. The token stands
-                on its own; the product's own name is already above it. */}
-            CREDENCIAL PÚBLICA · miMAR · Registro Nacional de Mascotas
+                on its own; the product's own name is already above it.
+                "· Registro Nacional de Mascotas" is gone the same way (PO,
+                2026-09-24): it named a national registry nobody delegated. */}
+            CREDENCIAL PÚBLICA · miMAR
             <br />
             {pet.publicToken.toUpperCase()}
           </div>
