@@ -98,6 +98,8 @@ describe("the two running states read as the web's callouts", () => {
     expect(copy.title).toBe("Pedido enviado a Refugio Padrino");
     expect(copy.body).toContain("Pampa sigue con vos");
     expect(copy.reference).toBe("Solicitud CAS-0001");
+    // The web's link, with the web's words, to the app's own case screen (M11).
+    expect(copy.caseLink).toEqual({ label: "Ver la solicitud", casePublicCode: "CAS-0001" });
   });
 
   it("active: who accompanies, what that means, and the expediente only when one is open", () => {
@@ -108,12 +110,13 @@ describe("the two running states read as the web's callouts", () => {
     expect(copy.title).toBe("Refugio Padrino acompaña la adopción de Pampa");
     expect(copy.body).toContain("sigue viviendo con vos");
     expect(copy.reference).toBe("Expediente CAS-0002");
-    expect(
-      activeCopy(
-        { kind: "active", orgDisplayName: "Refugio Padrino", listingCasePublicCode: null },
-        "Pampa",
-      ).reference,
-    ).toBeNull();
+    expect(copy.caseLink).toEqual({ label: "Ver el expediente", casePublicCode: "CAS-0002" });
+    const none = activeCopy(
+      { kind: "active", orgDisplayName: "Refugio Padrino", listingCasePublicCode: null },
+      "Pampa",
+    );
+    expect(none.reference).toBeNull();
+    expect(none.caseLink).toBeNull();
   });
 
   it("the two exits confirm with the web's own explanation of what each does", () => {

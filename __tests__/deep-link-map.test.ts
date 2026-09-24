@@ -25,6 +25,7 @@ import {
   APP_SCHEME,
   DEEP_LINK_MAP,
   type DeepLinkAccess,
+  type DeepLinkDestination,
   type DeepLinkName,
   appRoutePath,
   deepLinkAppUrl,
@@ -306,6 +307,42 @@ describe("the table is unambiguous", () => {
       ).toBe(true);
     },
   );
+
+  // `signedInAppPath` is a claim that a screen exists too — the one a signed-in
+  // phone opens for a web-path match (M11). Checked against the same tree.
+  it.each(
+    NAMES.filter((n) => (DEEP_LINK_MAP[n] as DeepLinkDestination).signedInAppPath !== undefined),
+  )("%s's signedInAppPath names a screen the app actually has", (name) => {
+    const path = (DEEP_LINK_MAP[name] as DeepLinkDestination).signedInAppPath as string;
+    expect(APP_SCREENS.has(eraseParams(`/${path}`)), `${name}.signedInAppPath "${path}"`).toBe(
+      true,
+    );
+  });
+
+  // M11 — the case screen. A push or inbox CTA naming `/casos/CAS-…` opens the
+  // app's case screen for a signed-in reader, and the destination STILL has no
+  // `mimar://` form: a case code on a poster must never become a custom-scheme
+  // link, which is the public-destination rule above, unchanged.
+  it("resolves a case CTA to the app's case screen without inventing a mimar:// form", () => {
+    const match = matchWebPath("/casos/CAS-ABCD-2345");
+    expect(match).toEqual({ name: "welfareCase", params: { publicCode: "CAS-ABCD-2345" } });
+    expect(appRoutePath("welfareCase", { publicCode: "CAS-ABCD-2345" })).toBe(
+      "/casos/CAS-ABCD-2345",
+    );
+    expect(DEEP_LINK_MAP.welfareCase.appPath).toBe(null);
+    expect(() => deepLinkAppUrl("welfareCase", { publicCode: "CAS-ABCD-2345" })).toThrow(
+      /no mimar:\/\/ form/,
+    );
+  });
+
+  // Only the one row argued for carries the field. A second is a decision to
+  // make next to its reason, not something to slip in.
+  it("carries signedInAppPath on exactly the destinations argued for", () => {
+    const carrying = NAMES.filter(
+      (n) => (DEEP_LINK_MAP[n] as DeepLinkDestination).signedInAppPath !== undefined,
+    );
+    expect(carrying).toEqual(["welfareCase"]);
+  });
 
   // The exception list is a list of DECISIONS, not a place to park failures, so
   // it is pinned. Growing it is a visible edit next to the reason.
@@ -650,7 +687,9 @@ describe("appRoutePath", () => {
     for (const name of NAMES) {
       const { appPath, webPath } = DEEP_LINK_MAP[name];
       const params = Object.fromEntries(pathParamNames(webPath).map((p) => [p, "x"]));
-      const openable = appPath !== null && !APP_PATH_EXCEPTIONS.has(name);
+      const { signedInAppPath } = DEEP_LINK_MAP[name] as DeepLinkDestination;
+      const openable =
+        (appPath !== null || signedInAppPath !== undefined) && !APP_PATH_EXCEPTIONS.has(name);
       expect(resolve(name, params) === null, name).toBe(!openable);
     }
   });

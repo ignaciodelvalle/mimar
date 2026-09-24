@@ -289,6 +289,9 @@ describe("RehomeScreen — the two exits", () => {
     render(<RehomeScreen publicToken={TOKEN} />);
     await screen.findByText("Pedido enviado a Refugio Padrino");
     expect(screen.getByText("Solicitud CAS-0001")).toBeOnTheScreen();
+    // M11 — where the web links to the case, so does the app, to its own screen.
+    fireEvent.press(screen.getByText("Ver la solicitud"));
+    expect(mockPush).toHaveBeenCalledWith("/casos/CAS-0001");
 
     fireEvent.press(screen.getByText("Cancelar el pedido"));
     expect(mockSend).not.toHaveBeenCalled();

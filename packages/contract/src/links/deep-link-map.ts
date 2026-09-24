@@ -114,6 +114,25 @@ export type DeepLinkDestination = {
    */
   readonly appPath: string | null;
   readonly access: DeepLinkAccess;
+  /**
+   * The in-app screen a SIGNED-IN phone opens when a stored web path matches
+   * this row — and NOTHING ELSE. Only for a destination whose `appPath` must
+   * stay `null` because it is a public link handed to a stranger (the rule
+   * `appPath` states above), yet which the app can also show to its own
+   * signed-in reader.
+   *
+   * WHY IT IS A SEPARATE FIELD AND NOT A NON-NULL `appPath`. `appPath` is also
+   * the `mimar://` form `deepLinkAppUrl` hands out, and a case code on a poster
+   * must never become a custom-scheme link. This field is read by exactly one
+   * function, `appRoutePath`, whose two callers (`push-tap.ts`,
+   * `.../notifications/payload.ts`) and the casos payload only ever resolve a
+   * `cta_url` for a person already inside the app. `deepLinkAppUrl` ignores it
+   * and keeps throwing, so no `mimar://` form of the destination exists.
+   *
+   * The screen it names still has to exist — the fitness test checks it
+   * against `apps/mobile/app/` exactly as it checks `appPath`.
+   */
+  readonly signedInAppPath?: string;
 };
 
 /**
@@ -148,8 +167,22 @@ export const DEEP_LINK_MAP = {
   /** An organization's public profile. */
   shelter: { webPath: "/refugios/:orgToken", appPath: null, access: "public" },
 
-  /** A welfare case by its public code — the citizen-facing view. */
-  welfareCase: { webPath: "/casos/:publicCode", appPath: null, access: "public" },
+  /**
+   * A case by its public code — the citizen-facing view.
+   *
+   * `appPath` STAYS `null` (a case code is a link handed to strangers), and
+   * `signedInAppPath` is what lets a notification CTA naming `/casos/CAS-…`
+   * open the app's own case screen (M11) for the person the notification was
+   * sent to. The screen asks the server, which runs the web page's own
+   * `readCaseForViewer`, so a stranger's phone that somehow reaches it gets the
+   * same 404 the web gives them.
+   */
+  welfareCase: {
+    webPath: "/casos/:publicCode",
+    appPath: null,
+    access: "public",
+    signedInAppPath: "casos/:publicCode",
+  },
 
   /** A welfare report tracked by the reference code handed to the reporter. */
   welfareReport: { webPath: "/denuncias/codigo/:referenceCode", appPath: null, access: "public" },
@@ -672,8 +705,10 @@ function matchPattern(pattern: string[], segments: string[]): Record<string, str
  * which reach it through `matchWebPath` and never with a literal name a
  * developer typed:
  *
- *   · the destination has no `mimar://` form at all (most of the table — every
- *     public one, forever) — there is genuinely nowhere to send a phone;
+ *   · the destination has neither a `mimar://` form nor a `signedInAppPath`
+ *     (most of the table) — there is genuinely nowhere to send a phone. A
+ *     public one-subject link resolves here ONLY through `signedInAppPath`
+ *     (today: `welfareCase`), never through `appPath`;
  *   · its name is in `APP_PATH_NAMES_NO_SCREEN`, which — since F-8 — no longer
  *     means "no screen exists". `appointment`'s screen exists AND must still be
  *     refused here, because the ONLY thing this function's two callers do with
@@ -689,10 +724,12 @@ export function appRoutePath<N extends DeepLinkName>(
   name: N,
   params: DeepLinkParams<N>,
 ): string | null {
-  const { appPath } = DEEP_LINK_MAP[name];
-  if (appPath === null) return null;
+  // `signedInAppPath` is consulted HERE and nowhere else — see its docblock.
+  const entry: DeepLinkDestination = DEEP_LINK_MAP[name];
+  const path = entry.appPath ?? entry.signedInAppPath ?? null;
+  if (path === null) return null;
   if (APP_PATH_NAMES_NO_SCREEN.has(name)) return null;
-  return `/${fillPattern(appPath, params as Record<string, string>, name)}`;
+  return `/${fillPattern(path, params as Record<string, string>, name)}`;
 }
 
 /**

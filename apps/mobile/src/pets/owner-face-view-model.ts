@@ -455,8 +455,7 @@ export function caseStatusLabel(status: OwnerPetCaseV1["status"]): string {
  *
  * The SAME three fields in the SAME order as the web's `CaseBadge`, because
  * this line exists so a person can read the code back to whoever asks for it.
- * It is not a link: this app has no case screen yet, and a row that looks
- * tappable and is not would be a worse answer than a line of text.
+ * The screen draws it as the link to the app's own case screen (M11).
  */
 export function caseLine(item: OwnerPetCaseV1): string {
   return `${item.casePublicCode} · ${caseKindLabel(item.kind)} · ${caseStatusLabel(item.status)}`;

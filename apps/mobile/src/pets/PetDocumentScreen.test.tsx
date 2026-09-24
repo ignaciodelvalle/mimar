@@ -755,6 +755,10 @@ describe("PetDocumentScreen — a failure is never drawn as an absence", () => {
       screen.getByText("CAS-7788-9900 · Mordedura / observación rábica · Abierto"),
     ).toBeOnTheScreen();
     expect(screen.getByText("CAS-1122-3344 · Custodia temporal · Escalado")).toBeOnTheScreen();
+
+    // M11 — each line opens the app's own case screen, the web's `/casos/{code}`.
+    fireEvent.press(screen.getByText("CAS-7788-9900 · Mordedura / observación rábica · Abierto"));
+    expect(mockPush).toHaveBeenCalledWith("/casos/CAS-7788-9900");
   });
 
   it("says the whole read failed inside the card, and keeps the turn usable", async () => {

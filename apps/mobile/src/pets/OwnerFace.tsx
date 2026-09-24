@@ -38,9 +38,10 @@ import { CredentialQr } from "../credential/CredentialQr";
 import { Icon } from "../ui/Icon";
 import { Body, Card, Row, Unavailable } from "../ui/components";
 import { FONTS } from "../ui/fonts";
-import { Callout, ListRow, SecondaryButton, pressedOpacity } from "../ui/kit";
+import { Callout, LinkText, ListRow, SecondaryButton, pressedOpacity } from "../ui/kit";
 import {
   caretakerPetRoute,
+  caseRoute,
   editPetRoute,
   lostModeRoute,
   petPhotoRoute,
@@ -1035,6 +1036,7 @@ function RemindersCard({ view }: { view: OwnerFaceView["reminders"] }) {
  * credencial").
  */
 export function OwnerExtraSections({ view }: { view: OwnerFaceView }) {
+  const router = useRouter();
   return (
     <>
       {/* REMINDERS ------------------------------------------------------- */}
@@ -1092,19 +1094,21 @@ export function OwnerExtraSections({ view }: { view: OwnerFaceView }) {
           a receipt you can only see once is not a receipt, which is why the
           code arrives on this READ and not on the write's answer.
 
-          `selectable` is the whole affordance. There is no case screen in this
-          build and no clipboard button (expo-clipboard is a native dep on the
-          D2 batch), so long-press-to-copy is what a code is FOR here, and the
-          same idiom TurnoDetailScreen already set for its token. A row styled
-          like a link that navigated nowhere would be the worse answer. */}
+          Each line now OPENS its case (M11), the app's own screen for the
+          web's `/casos/{code}` — and the line still prints the code, so it can
+          be read back to whoever asks for it. Whether this reader may see the
+          case is the server's answer on that screen, not this line's. */}
       <Section view={view.cases} title="Trámites" isEmpty={(cases) => cases.openCount === 0}>
         {(cases) => (
           <>
             <Body>{casesLine(cases)}</Body>
             {cases.items.map((item) => (
-              <Body key={item.casePublicCode} selectable>
+              <LinkText
+                key={item.casePublicCode}
+                onPress={() => router.push(caseRoute(item.casePublicCode))}
+              >
                 {caseLine(item)}
-              </Body>
+              </LinkText>
             ))}
           </>
         )}

@@ -55,9 +55,9 @@ import { fetchPetRehome, sendRehomeCommand } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, Loading, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
-import { Callout, PrimaryButton, Screen, SecondaryButton, Title } from "../ui/kit";
+import { Callout, LinkText, PrimaryButton, Screen, SecondaryButton, Title } from "../ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../ui/reload-state";
-import { editPetRoute } from "../ui/routes";
+import { caseRoute, editPetRoute } from "../ui/routes";
 import { COLORS, SPACE, TYPE } from "../ui/theme";
 import { useScrollToError } from "../ui/use-scroll-to-error";
 
@@ -65,6 +65,8 @@ import { createAttemptSession } from "./idempotency";
 import {
   type ExitCopy,
   PICKER_FOOTNOTE,
+  type RehomeCaseLink,
+  type RehomeStateCopy,
   ackMessage,
   activeCopy,
   buildRequestSponsorship,
@@ -256,6 +258,7 @@ export function RehomeScreen({ publicToken }: { publicToken: string }) {
       {view.state.kind === "pending" ? (
         <StateCard
           copy={pendingCopy(view.state, petName)}
+          onOpenCase={(code) => router.push(caseRoute(code))}
           exit={
             view.capabilities.canWithdrawRequest
               ? {
@@ -272,6 +275,7 @@ export function RehomeScreen({ publicToken }: { publicToken: string }) {
       {view.state.kind === "active" ? (
         <StateCard
           copy={activeCopy(view.state, petName)}
+          onOpenCase={(code) => router.push(caseRoute(code))}
           exit={
             view.capabilities.canWithdrawSponsorship
               ? {
@@ -356,10 +360,12 @@ function OrgPicker({
  */
 function StateCard({
   copy,
+  onOpenCase,
   exit,
   disabled,
 }: {
-  copy: { title: string; body: string; reference: string | null };
+  copy: RehomeStateCopy;
+  onOpenCase: (casePublicCode: string) => void;
   exit: { copy: ExitCopy; busy: boolean; onRun: () => void } | null;
   disabled: boolean;
 }) {
@@ -369,6 +375,12 @@ function StateCard({
       <Callout tone="neutral" title={copy.title}>
         <Body>{copy.body}</Body>
         {copy.reference ? <Text style={styles.reference}>{copy.reference}</Text> : null}
+        {/* The web's own link, to the app's own case screen (M11). */}
+        {copy.caseLink === null ? null : (
+          <LinkText onPress={() => onOpenCase((copy.caseLink as RehomeCaseLink).casePublicCode)}>
+            {copy.caseLink.label}
+          </LinkText>
+        )}
       </Callout>
       {exit === null ? null : confirming ? (
         <Card>

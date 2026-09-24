@@ -6,10 +6,10 @@
 // to a `RehomeCommandInput`. Nothing here touches the network.
 //
 // THE COPY IS THE WEB'S, TRANSCRIBED. Every sentence below is
-// `TitularRehomePanel.tsx`'s or `buscar-hogar/page.tsx`'s, with one
-// substitution the phone forces: where the web links to `/casos/{code}` ("Ver
-// la solicitud", "Ver el expediente") this app has no casos screen, so it shows
-// the code as a fact the person can quote. Nothing is invented.
+// `TitularRehomePanel.tsx`'s or `buscar-hogar/page.tsx`'s. Where the web links
+// to `/casos/{code}` ("Ver la solicitud", "Ver el expediente") this app now
+// links to its own case screen (M11) with the same words, and still prints the
+// code as a fact the person can quote. Nothing is invented.
 //
 // THE CAPABILITIES ARE THE SERVER'S AND THIS FILE NEVER RECOMPUTES THEM. A lever
 // is offered when its flag is true and not otherwise; `state.kind` says what is
@@ -105,27 +105,43 @@ export function emptyPickerReason(
   };
 }
 
-/** The pending state's callout: title, body, and the code the web would link. */
+/**
+ * A callout's link to its case: the web's words and the code the link opens.
+ * `null` when no case is open to link to.
+ */
+export type RehomeCaseLink = { label: string; casePublicCode: string };
+
+export type RehomeStateCopy = {
+  title: string;
+  body: string;
+  reference: string | null;
+  caseLink: RehomeCaseLink | null;
+};
+
+/** The pending state's callout: title, body, the code, and the web's link to it. */
 export function pendingCopy(
   view: Extract<PetRehomeV1["state"], { kind: "pending" }>,
   petName: string,
-): { title: string; body: string; reference: string } {
+): RehomeStateCopy {
   return {
     title: `Pedido enviado a ${view.orgDisplayName}`,
     body: `Todavía no respondió. Mientras tanto nada cambia: ${petName} sigue con vos y no hay ninguna publicación.`,
     reference: `Solicitud ${view.requestCasePublicCode}`,
+    caseLink: { label: "Ver la solicitud", casePublicCode: view.requestCasePublicCode },
   };
 }
 
-/** The active state's callout. `reference` is null when no expediente is open. */
+/** The active state's callout. `reference` and `caseLink` are null when no expediente is open. */
 export function activeCopy(
   view: Extract<PetRehomeV1["state"], { kind: "active" }>,
   petName: string,
-): { title: string; body: string; reference: string | null } {
+): RehomeStateCopy {
+  const code = view.listingCasePublicCode;
   return {
     title: `${view.orgDisplayName} acompaña la adopción de ${petName}`,
     body: `${petName} sigue viviendo con vos. ${view.orgDisplayName} lo publica en la búsqueda de hogar y evalúa a quienes se postulan; cuando haya una adopción, te lo van a avisar.`,
-    reference: view.listingCasePublicCode ? `Expediente ${view.listingCasePublicCode}` : null,
+    reference: code ? `Expediente ${code}` : null,
+    caseLink: code ? { label: "Ver el expediente", casePublicCode: code } : null,
   };
 }
 
