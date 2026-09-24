@@ -33,9 +33,12 @@ export function FaqSection() {
           {/* Was "Operado por la autoridad sanitaria nacional" — no sanitary
               authority operates miMAR. The slot wants a trust claim the
               product can back: the event spine is append-only, which is the
-              first invariant of the system. */}
+              first invariant of the system.
+              WU1 honesty pass (2026-09-24): "Historial inmutable" also
+              overclaimed — art. 16 de la Ley 25.326 requires an audited
+              suppression exception over the log (límites honestos A.1). */}
           <span>
-            <Icon name="candado" size="sm" decorative /> Historial inmutable
+            <Icon name="candado" size="sm" decorative /> Historial que solo se agrega
           </span>
           <span>
             <Icon name="chart-line" size="sm" decorative /> Datos abiertos

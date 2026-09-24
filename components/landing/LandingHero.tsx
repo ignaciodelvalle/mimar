@@ -343,7 +343,7 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                       </span>
                       <span className="lp-hcard-libstamp">FIRMADA</span>
                     </div>
-                    <div className="lp-hcard-libfoot">…y toda su historia, inmutable.</div>
+                    <div className="lp-hcard-libfoot">…y toda su historia, sin reescribir.</div>
                   </div>
                 </div>
               </div>
@@ -395,11 +395,18 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
             <h1 className="lp-display lp-h-hero lp-reveal mt-4" data-d="1">
               Toda una vida,
               <br />
-              en una sola miMAR.
+              en una sola libreta.
             </h1>
+            {/* Honesty pass (WU1, landing redesign 2026-09-24): "registro
+                nacional" and "inmutable" both overclaimed — there is no
+                convenio with any state body (see state-endorsement-fence),
+                and art. 16 de la Ley 25.326 requires an audited suppression
+                exception over the event log (límites honestos A.1). Replaced
+                with what the product actually is and actually guarantees. */}
             <p className="lp-lead lp-reveal mt-6" data-d="2">
-              miMAR es el registro nacional de mascotas: una identidad pública y un historial
-              inmutable, compartido por todas las manos que la cuidan.
+              La libreta sanitaria de tu mascota en el teléfono, con una credencial QR que
+              cualquiera puede escanear si se pierde. Su historial solo se agrega: nada se
+              reescribe.
             </p>
             <div className="lp-hero-cta lp-reveal" data-d="3">
               {/* The primary "Crear tu miMAR" CTA that used to live here was

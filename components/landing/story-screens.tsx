@@ -375,9 +375,16 @@ export function EstadoConsole() {
         <div>
           <p className="lp-eyebrow">Vista · Estado</p>
           <h3 className="lp-display lp-h-sub mt-3">Tendencias, no planillas.</h3>
+          {/* Honesty pass (WU1, landing redesign 2026-09-24): dropped "del
+              país" (no jurisdiction has onboarded the whole country) and "en
+              tiempo real" (the choropleth is served from panorama_cube, a
+              once-a-day snapshot — vercel.json cron "0 3 * * *", see
+              app/api/cron/refresh-cube and
+              src/modules/panorama/domain/cube-freshness.ts; live-served
+              layers exist too, but nothing here is continuous/real-time). */}
           <p className="lp-lead mt-3.5 text-lg">
-            Cada miMAR suma a la foto sanitaria del país. La consola llega prefiltrada: señales
-            zoonóticas por jurisdicción, en tiempo real.
+            Cada libreta suma a la foto sanitaria de tu jurisdicción. La consola llega prefiltrada:
+            señales zoonóticas, actualizadas todos los días.
           </p>
         </div>
         <div className="lp-kicks">
