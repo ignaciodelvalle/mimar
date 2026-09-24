@@ -163,14 +163,19 @@ const ACCESS_NOT_DERIVABLE: DeepLinkName[] = ["libretaShare", "orgInvitation"];
 const MIN_APP_SCREENS = 8;
 
 /**
- * Destinations whose `mimar://` form names no screen, with their reason.
+ * Destinations `appRoutePath` must always refuse — not always because no
+ * screen exists for them any more.
  *
- * EMPTY TODAY (F-8). `appointment` was the one member — a QR PAYLOAD for a
- * front-desk reader that does not exist yet — until a generic fallback screen
- * landed for it; see the map entry's own comment for what that screen does and
- * does not close. The set stays imported rather than retired: it is what stops
- * the NEXT `appPath` added ahead of its screen from opening the app onto
- * nothing, silently.
+ * `appointment` IS THE ONE MEMBER, for a reason that changed shape twice.
+ * F-8 gave it a real screen (`apps/mobile/app/appointment/
+ * [appointmentToken].tsx`) and, in the same change, removed it from this set —
+ * which made `appRoutePath("appointment", …)` non-null. A fresh review
+ * (2026-09-24) caught what that broke: `push-tap.ts` and `.../notifications/
+ * payload.ts` reach `appRoutePath` by matching a stored WEB path — an
+ * appointment REMINDER's own `cta_url` — against this table, and handing that
+ * caller the front-desk fallback screen is wrong. `appointment` went back into
+ * this set for THAT reason, not for the original one. See the map entry's own
+ * comment for the two-callers story in full.
  *
  * IT USED TO BE DECLARED HERE and is now IMPORTED, because WU-Q-1 made it
  * load-bearing at runtime too: `appRoutePath` has to refuse every destination in
@@ -304,14 +309,20 @@ describe("the table is unambiguous", () => {
 
   // The exception list is a list of DECISIONS, not a place to park failures, so
   // it is pinned. Growing it is a visible edit next to the reason.
-  it("has no destination claiming a screen that does not exist (F-8)", () => {
-    // `appointment` was the one member until its generic fallback screen landed
-    // (`apps/mobile/app/appointment/[appointmentToken].tsx`) — see the map
-    // entry's own comment for what closed and what is still open.
-    expect([...APP_PATH_EXCEPTIONS]).toEqual([]);
+  it("has exactly one destination `appRoutePath` must always refuse", () => {
+    expect([...APP_PATH_EXCEPTIONS]).toEqual(["appointment"]);
     // The QR payload itself is UNCHANGED — kept byte-for-byte because changing
     // the string would break whatever a real front-desk reader eventually reads.
     expect(DEEP_LINK_MAP.appointment.appPath).toBe("appointment/:appointmentToken");
+  });
+
+  // THE SCREEN IS REAL EVEN THOUGH THE `.each` ABOVE SKIPS IT (F-8, narrowed
+  // 2026-09-24). `appointment` sits in `APP_PATH_EXCEPTIONS` for a reason that
+  // is no longer "no screen exists" — see that set's own comment — so this is
+  // the positive half the skip would otherwise leave unchecked: the QR's OWN
+  // form really does resolve, on disk, to a real screen.
+  it("the front-desk fallback screen genuinely exists, exception or not", () => {
+    expect(APP_SCREENS.has(eraseParams(`/${DEEP_LINK_MAP.appointment.appPath}`))).toBe(true);
   });
 
   // Non-vacuity for the second corpus. A glob that stops matching would make
@@ -607,20 +618,24 @@ describe("appRoutePath", () => {
     // Rooted, and shorter than the web's: the native route is `mascotas/…`.
     expect(appRoutePath("pet", { publicToken: "DIM-PAMP-0001" })).toBe("/mascotas/DIM-PAMP-0001");
     expect(appRoutePath("petTransfer", { transferToken: "PTR-9" })).toBe("/transferencias/PTR-9");
-    // F-8: `appointment` used to be the one member of `APP_PATH_NAMES_NO_SCREEN`
-    // (a screen now resolves it — see the map entry's comment for what that
-    // screen is and is not) — this is the positive half of that fix.
-    expect(appRoutePath("appointment", { appointmentToken: "APT-123" })).toBe(
-      "/appointment/APT-123",
-    );
   });
 
   it("answers null when the app has no screen for the destination", () => {
-    // The one reason left with any members today: no `mimar://` form at all.
-    // `APP_PATH_NAMES_NO_SCREEN`'s own reason (a screen this claims but does not
-    // have) is currently empty — see its docblock.
+    // No `mimar://` form at all — genuinely nowhere to send a phone.
     expect(appRoutePath("credential", { publicToken: "DIM-PAMP-0001" })).toBe(null);
     expect(appRoutePath("orgInvitation", { invitationToken: "INV-1" })).toBe(null);
+  });
+
+  it("refuses `appointment` even though its own screen exists (fresh review 2026-09-24)", () => {
+    // THE REGRESSION F-8 SHIPPED AND THIS PINS SHUT. `push-tap.ts` and
+    // `.../notifications/payload.ts` reach this function by matching a stored
+    // WEB path — an appointment REMINDER's `cta_url`, `/mis-turnos/{token}` —
+    // against this table, which resolves to the name `appointment`. Answering
+    // anything but `null` here would send that citizen to the front-desk
+    // fallback instead of opening the app at their own turno. See
+    // `APP_PATH_NAMES_NO_SCREEN`'s comment for why the screen existing does not
+    // change this answer. `push-tap.test.ts` proves the same thing end to end.
+    expect(appRoutePath("appointment", { appointmentToken: "APT-123" })).toBe(null);
   });
 
   it("answers non-null for exactly the destinations the app can open", () => {

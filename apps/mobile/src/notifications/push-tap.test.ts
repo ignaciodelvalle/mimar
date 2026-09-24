@@ -111,6 +111,23 @@ describe("appRouteForPushUrl", () => {
     expect(appRouteForPushUrl("/p/DIM-PAMP-0001")).toBeNull();
   });
 
+  it("does NOT open the front-desk fallback for a turno reminder's own link", () => {
+    // THE REGRESSION A FRESH REVIEW CAUGHT (2026-09-24), pinned here at the
+    // level it actually breaks. `DEEP_LINK_MAP.appointment.webPath` is
+    // `/mis-turnos/:appointmentToken` — an appointment REMINDER notification's
+    // own `cta_url` — and its `appPath` now resolves (since F-8) to
+    // `apps/mobile/app/appointment/[appointmentToken].tsx`, a generic
+    // "show this at the front desk" screen meant only for the raw
+    // `mimar://appointment/{token}` QR link. If this matched through, a citizen
+    // tapping "tu turno es mañana" would land on a sentence about a mostrador
+    // instead of their own turno. `appRoutePath` refuses this by name
+    // (`APP_PATH_NAMES_NO_SCREEN` still carries `appointment` — see its
+    // comment); the tap opens the app, at whatever the gate decides, and the
+    // person finds the turno in Mis turnos — same as any other destination this
+    // build will not navigate to.
+    expect(appRouteForPushUrl("/mis-turnos/APT-123")).toBeNull();
+  });
+
   it("answers null for an absolute URL, without matching it against our table", () => {
     // `cta_url` also holds external links. Matching another origin's path
     // against this table is how a notification from somewhere else opens one of
@@ -171,6 +188,18 @@ describe("usePushTapNavigation — a tap on a running app", () => {
 
     act(() => {
       for (const listener of listeners) listener({ url: "/p/DIM-PAMP-0001" });
+    });
+
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("stays put for a turno reminder — never opens the front-desk fallback", async () => {
+    // End to end for `appRouteForPushUrl`'s own dedicated test above: a running
+    // app must not navigate a tapped reminder onto the QR fallback either.
+    await mount();
+
+    act(() => {
+      for (const listener of listeners) listener({ url: "/mis-turnos/APT-123" });
     });
 
     expect(mockPush).not.toHaveBeenCalled();

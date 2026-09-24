@@ -208,17 +208,32 @@ export const DEEP_LINK_MAP = {
    * this destination really did drift, in two files that never met. Recording
    * the drift here is the first step to closing it.
    *
-   * IT NAMED NO SCREEN UNTIL F-8. `apps/mobile/app/appointment/[appointmentToken]
-   * .tsx` now resolves it — NOT to the turno's own detail screen
-   * (`/turnos/{token}`, which still refuses this path on purpose, see
-   * `ui/routes.ts`'s `turnoRoute`), but to a generic, session-free "this code is
-   * for the front desk" screen. That closes the narrow real gap (a phone
-   * following the link landed on `+not-found`) without closing the wider debt
-   * this comment still names: there is still no reader that DOES anything with
-   * the token, because the one that would is a front-desk device that does not
-   * exist yet. `APP_PATH_NAMES_NO_SCREEN` is empty today for exactly that
-   * reason — the claim "a screen exists" is true again, the claim "a reader
-   * exists" still is not, and only the first one is this table's job to check.
+   * A REAL SCREEN EXISTS SINCE F-8 (`apps/mobile/app/appointment/
+   * [appointmentToken].tsx`) AND `appPath` STILL NAMES NO SCREEN — both true at
+   * once, because this row means two different things depending on who is
+   * asking, and only one of them may resolve through `appRoutePath`.
+   *
+   *   · A PHONE THAT RECEIVES THE RAW `mimar://appointment/{token}` LINK — the
+   *     QR, followed by whatever device is holding it — is routed by
+   *     expo-router's OWN file-system resolution, straight to that screen. This
+   *     never goes through `appRoutePath` or this table at all, so it works
+   *     whether or not `appointment` is in `APP_PATH_NAMES_NO_SCREEN`.
+   *   · `appRoutePath("appointment", …)` IS THE OTHER CALLER, and it is reached
+   *     a completely different way: `push-tap.ts` and `.../notifications/
+   *     payload.ts` resolve a stored `cta_url` — a WEB path — through
+   *     `matchWebPath`, which matches THIS row by its `webPath`
+   *     (`/mis-turnos/:appointmentToken`, an appointment REMINDER's own link),
+   *     and then ask `appRoutePath` what native screen answers it. There is no
+   *     honest answer: the owner's real turno screen
+   *     (`apps/mobile/app/turnos/[appointmentToken].tsx`) refuses to be a
+   *     deep-link target on purpose (see `ui/routes.ts`'s `turnoRoute`), and the
+   *     front-desk fallback is the WRONG screen for "your turno is tomorrow" —
+   *     a citizen tapping that notification must not land on "show this at the
+   *     mostrador". F-8 first removed `appointment` from
+   *     `APP_PATH_NAMES_NO_SCREEN` to make the QR form resolve, and a fresh
+   *     review (2026-09-24) caught that this ALSO made `appRoutePath` hand the
+   *     front-desk screen to a reminder push — so it went back in.
+   *     `__tests__/deep-link-map.test.ts` and `push-tap.test.ts` both pin this.
    */
   appointment: {
     webPath: "/mis-turnos/:appointmentToken",
@@ -358,14 +373,25 @@ export const DEEP_LINK_MAP = {
 export type DeepLinkName = keyof typeof DEEP_LINK_MAP;
 
 /**
- * Destinations whose `appPath` names NO SCREEN in `apps/mobile/app/`.
+ * Destinations `appRoutePath` must always refuse, whether or not a screen
+ * exists for their `appPath`.
  *
- * EMPTY TODAY. `appointment` was its one member until F-8 — see that entry's
- * comment for what closed and what is still open — and the fitness test's
- * `.each` (`__tests__/deep-link-map.test.ts`) now checks every `appPath`
- * against `apps/mobile/app/` with no exception to skip. This set is not
- * retired: a future `appPath` added as a placeholder ahead of its screen
- * belongs here, named with the same reasoning `appointment`'s entry carried.
+ * `appointment` IS THE MEMBER, and — since F-8 — the reason is no longer "no
+ * screen exists": `apps/mobile/app/appointment/[appointmentToken].tsx` does.
+ * It is here because `appRoutePath` has exactly one caller shape that matters
+ * for safety: `push-tap.ts` and `.../notifications/payload.ts` match a stored
+ * WEB path (`cta_url`) against this table's `webPath`s and ask `appRoutePath`
+ * for the native screen that answers it. For `appointment` that web path is an
+ * appointment REMINDER's own link, and the only native screen this table could
+ * hand back for it — the front-desk fallback — is the wrong one to open for a
+ * citizen tapping "tu turno es mañana". The QR itself never goes through this
+ * function at all: expo-router resolves `mimar://appointment/{token}` by its
+ * own file-system match, straight to the screen, with this table uninvolved.
+ * See the entry's own comment for the full two-callers story.
+ *
+ * A future member may earn its place either way — a genuine placeholder ahead
+ * of its screen, or (like `appointment`) a screen that exists but must not
+ * answer a web-path match — and either reason belongs here, spelled out.
  *
  * IT LIVES HERE RATHER THAN IN THE FITNESS TEST, where it used to, because it is
  * load-bearing at RUNTIME as well as in CI: `appRoutePath` refuses every name in
@@ -373,7 +399,7 @@ export type DeepLinkName = keyof typeof DEEP_LINK_MAP;
  * agrees on the day it is written and disagrees a year later.
  * `__tests__/deep-link-map.test.ts` still pins the contents.
  */
-export const APP_PATH_NAMES_NO_SCREEN: ReadonlySet<DeepLinkName> = new Set([]);
+export const APP_PATH_NAMES_NO_SCREEN: ReadonlySet<DeepLinkName> = new Set(["appointment"]);
 
 /**
  * The `:name` placeholders of a path pattern, as a union of string literals.
@@ -632,19 +658,32 @@ function matchPattern(pattern: string[], segments: string[]): Record<string, str
 }
 
 /**
- * The IN-APP route for a destination — a path the native router can push — or
- * `null` when the app has no screen for it.
+ * The IN-APP route for a WEB-PATH-MATCHED destination — a path the native
+ * router can push — or `null` when this function must refuse to send a caller
+ * there.
  *
  * It is `appPath` with a leading slash, which is not a cosmetic difference:
  * `appPath` is the part AFTER `mimar://`, and expo-router addresses its screens
  * from the root. Two callers building that slash by hand is one of them
  * forgetting it.
  *
- * NULL IN TWO CASES, and they mean the same thing to a caller: the destination
- * has no `mimar://` form at all (most of the table — every public one, forever),
- * or its `appPath` names no screen (`APP_PATH_NAMES_NO_SCREEN` — exactly one).
- * Both mean "do not send a phone here"; a caller that distinguished them would be
- * deciding to open a link that resolves to a blank stack.
+ * NULL IN TWO CASES, for two different reasons — see `push-tap.ts` and
+ * `.../notifications/payload.ts`, this function's only two callers, both of
+ * which reach it through `matchWebPath` and never with a literal name a
+ * developer typed:
+ *
+ *   · the destination has no `mimar://` form at all (most of the table — every
+ *     public one, forever) — there is genuinely nowhere to send a phone;
+ *   · its name is in `APP_PATH_NAMES_NO_SCREEN`, which — since F-8 — no longer
+ *     means "no screen exists". `appointment`'s screen exists AND must still be
+ *     refused here, because the ONLY thing this function's two callers do with
+ *     a non-null answer is push a citizen onto it for a WEB-PATH match (an
+ *     appointment reminder's own link), and the front-desk fallback the QR's
+ *     OWN `appPath` resolves to is the wrong screen for that. See
+ *     `APP_PATH_NAMES_NO_SCREEN`'s own comment.
+ *
+ * Both still mean "this function will not send a phone here"; they no longer
+ * both mean "no screen exists to send it to".
  */
 export function appRoutePath<N extends DeepLinkName>(
   name: N,
