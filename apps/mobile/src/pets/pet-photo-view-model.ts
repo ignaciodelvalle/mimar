@@ -26,8 +26,7 @@
 
 import { PET_PHOTO_CONTENT_TYPES, type PetPhotoContentType } from "@dim/contract/input";
 
-import type { ApiResult } from "../api/client";
-import { apiErrorMessage } from "../api/error-copy";
+import { type ApiResult, apiFailureMessage } from "../api/client";
 import type { ImagePickResult } from "../native/image-picker-port";
 
 /**
@@ -155,26 +154,27 @@ export type PetPhotoUploadFailure =
   | { stage: "put"; kind: "expired" | "rejected" | "failed"; detail: string }
   | { stage: "confirm"; result: Exclude<ApiResult<never>, { outcome: "ok" }> };
 
-/** The transport arms every bearer call shares — the ClaimScreen sentences. */
+/**
+ * The transport arms every bearer call shares.
+ *
+ * `apiFailureMessage` (`../api/client`) and not a local switch — this file
+ * used to carry its own copy of the same four sentences, which is exactly the
+ * shape `A6-cuenta-resiliencia-14` migrated every screen off of (M8/F-6): a
+ * local copy neither prints the correlation code (OBS-3) nor honours a
+ * `Retry-After` countdown on `rate_limited`. Nothing here is photo-specific —
+ * every arm was already the shared sentence — so there is no branch worth
+ * keeping over the helper's.
+ */
 function transportMessage(result: Exclude<ApiResult<never>, { outcome: "ok" }>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer esta respuesta. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-  }
+  return apiFailureMessage(result) ?? "No pudimos completar la operación.";
 }
 
 /**
  * The es-AR sentence for each failure. Every arm ends in an instruction, and
  * every instruction is honest about what retrying does:
  *
- *   · ticket refused    — the server's own sentence (`apiErrorMessage`), or the
- *                         transport's. Nothing was uploaded.
+ *   · ticket refused    — the server's own sentence (`apiFailureMessage`), or
+ *                         the transport's. Nothing was uploaded.
  *   · PUT expired       — the RETRY IS THE FIX: the screen re-runs the whole
  *                         flow, which mints a fresh ticket. The sentence says a
  *                         new permission is asked for so "volvé a intentar"

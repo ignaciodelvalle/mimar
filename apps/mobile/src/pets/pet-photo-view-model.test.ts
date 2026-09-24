@@ -171,11 +171,15 @@ describe("the upload copy — three failures, three different instructions", () 
         result: { outcome: "unreachable", detail: "offline" },
       }),
     ).toContain("conexión");
+    // `apiFailureMessage` (client.ts) honours `Retry-After` when the server
+    // sets it — a countdown the old local switch here could not give, because
+    // it called `apiErrorMessage(code)` directly and never looked at
+    // `retryAfterSeconds` at all.
     expect(
       petPhotoFailureMessage({
         stage: "ticket",
         result: { outcome: "api-error", code: "rate_limited", retryAfterSeconds: 30 },
       }),
-    ).toContain("Esperá");
+    ).toContain("en 30 segundos");
   });
 });
