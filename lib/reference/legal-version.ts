@@ -1,36 +1,15 @@
-// Single source of truth for the legal-document versions a user accepts at
-// signup. Ley 25.326 art. 5 requires consent to be informed, express, AND
-// PROVABLE — to demonstrate WHAT a user agreed to we must record the exact
-// version of the Terms + Privacy Policy in force at the moment of acceptance.
+// The legal-document version constants now live in the contract package
+// (`packages/contract/src/reference/legal-version.ts`), because the native app
+// must be able to say which consent sentence it DISPLAYED — see the header
+// there for why the server stopped stamping its own current version.
 //
-// Versioning approach (documented decision):
-//   - We use ONE shared version string covering BOTH the Terms of Service and
-//     the Privacy Policy. In this product the two documents always change
-//     together (same "Última actualización" date), so a single field keeps the
-//     stored proof unambiguous and avoids drift between two near-identical
-//     dates. If the documents ever diverge on their own cadence, split this
-//     into TOS_VERSION / PRIVACY_VERSION and add a second profiles column.
-//   - Format: ISO date (YYYY-MM-DD) of the last substantive revision. A date is
-//     human-auditable in legal/DNPDP contexts and sorts naturally.
-//
-// When the legal text changes, bump this constant AND the "Última actualización"
-// label on app/privacidad + app/terminos. Re-acceptance on policy change (asking
-// existing users to accept the new version) is a follow-up feature; for v1 we
-// record the version accepted at signup.
-//
-// HISTORY
-//   2026-07-23 — first recorded version.
-//   2026-09-24 — /privacidad names every provider that processes data, with its
-//                country, and discloses the international transfer (Brazil,
-//                US) under Ley 25.326 art. 12; the signup sentence consents to
-//                that transfer by name (finding S-2, PO decision 6A).
-//                Existing profiles keep "2026-07-23": nothing compares a stored
-//                version against this one, so they are not re-prompted — and
-//                their stored version truthfully says they never accepted the
-//                transfer clause. Closing that needs the re-acceptance flow.
-
-export const LEGAL_VERSION = "2026-09-24";
-
-// Human-facing label rendered on the legal pages. Kept next to the machine
-// version so they are bumped together.
-export const LEGAL_VERSION_LABEL = "septiembre 2026";
+// This module is kept as the web's import path so the legal pages and the
+// server writers do not each learn a second one.
+export {
+  KNOWN_LEGAL_VERSIONS,
+  LEGAL_VERSION,
+  LEGAL_VERSION_LABEL,
+  type LegalVersion,
+  PREVIOUS_LEGAL_VERSION,
+  resolveAcceptedLegalVersion,
+} from "@dim/contract/reference";

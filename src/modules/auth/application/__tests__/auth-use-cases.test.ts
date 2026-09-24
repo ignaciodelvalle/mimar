@@ -274,6 +274,45 @@ describe("login — refusals are not an oracle", () => {
 // signup
 // ---------------------------------------------------------------------------
 
+// THE CONSENT VERSION STEP 1 DISPLAYED rides to step 2 in user_metadata
+// (review of 1c1ac9f82, 2026-09-24). Expected values are written out.
+describe("signup — records the legal version the CLIENT displayed", () => {
+  const BASE = {
+    email: "nueva@example.com",
+    password: "supersecreta",
+    confirmPassword: "supersecreta",
+    tosAccepted: true,
+    callerIp: IP,
+  };
+
+  async function sentMetadata(legalVersion: string | undefined): Promise<unknown> {
+    const seen: unknown[] = [];
+    await signup(
+      { ...BASE, ...(legalVersion === undefined ? {} : { legalVersion }) },
+      deps({
+        signUp: async (credentials: unknown) => {
+          seen.push(credentials);
+          return { data: { user: { id: "u1" }, session: GOTRUE_SESSION }, error: null };
+        },
+      }),
+    );
+    expect(seen).toHaveLength(1);
+    return (seen[0] as { options?: { data?: unknown } }).options?.data;
+  }
+
+  it("passes a known version through (the current web form, a current bundle)", async () => {
+    expect(await sentMetadata("2026-09-24")).toEqual({ tos_version: "2026-09-24" });
+  });
+
+  it("records the PREVIOUS version when the client sent none (a bundle from before the field)", async () => {
+    expect(await sentMetadata(undefined)).toEqual({ tos_version: "2026-07-23" });
+  });
+
+  it("records the PREVIOUS version for a version this server does not know", async () => {
+    expect(await sentMetadata("2099-01-01")).toEqual({ tos_version: "2026-07-23" });
+  });
+});
+
 describe("signup — gates, in order", () => {
   const VALID = {
     email: "nueva@example.com",

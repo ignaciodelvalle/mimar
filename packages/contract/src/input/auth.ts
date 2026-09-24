@@ -118,6 +118,16 @@ export const signupInputSchema = z
      * describes the boolean.
      */
     tosAccepted: z.boolean(),
+    /**
+     * The legal version whose consent sentence the client DISPLAYED
+     * (`@dim/contract/reference` → `LEGAL_VERSION` at the client's build).
+     * Optional on purpose: bundles built before 2026-09-24 do not send it, and
+     * the server must still accept them — it records `PREVIOUS_LEGAL_VERSION`
+     * for them via `resolveAcceptedLegalVersion`, never its own current one.
+     * Not validated against the known list HERE, so a newer client talking to
+     * an older server is recorded conservatively instead of refused.
+     */
+    legalVersion: z.string().max(32).optional(),
   })
   .refine((v) => v.password === v.confirmPassword, { error: "PASSWORD_MISMATCH" })
   .refine((v) => v.tosAccepted, { error: "TOS_NOT_ACCEPTED" });

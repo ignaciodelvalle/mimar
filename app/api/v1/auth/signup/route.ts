@@ -85,6 +85,9 @@ export async function POST(request: Request) {
           password: parsed.data.password,
           confirmPassword: parsed.data.confirmPassword,
           tosAccepted: parsed.data.tosAccepted,
+          // What the native bundle displayed; absent on bundles built before
+          // 2026-09-24, which the use-case records as the previous version.
+          legalVersion: parsed.data.legalVersion,
           callerIp: callerIp(request.headers),
         },
         { auth: async () => createAnonClient().auth },

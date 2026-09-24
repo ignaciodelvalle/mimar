@@ -159,7 +159,7 @@ describe("validation before the network", () => {
 });
 
 describe("sending", () => {
-  it("hands the store exactly the four fields the endpoint takes", async () => {
+  it("hands the store exactly the five fields the endpoint takes", async () => {
     mockSignUp.mockResolvedValue({ ok: true, signedIn: true });
     renderScreen();
     fill();
@@ -171,6 +171,7 @@ describe("sending", () => {
       password: "unaClaveLarga",
       confirmPassword: "unaClaveLarga",
       tosAccepted: true,
+      legalVersion: "2026-09-24",
     });
   });
 

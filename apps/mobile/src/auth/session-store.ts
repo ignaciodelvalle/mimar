@@ -952,6 +952,8 @@ export async function signUp(input: {
   password: string;
   confirmPassword: string;
   tosAccepted: boolean;
+  /** The legal version whose consent sentence this bundle displayed. */
+  legalVersion?: string;
 }): Promise<SignUpResult> {
   const client = authClient();
   if (client === null) {

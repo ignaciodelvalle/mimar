@@ -245,9 +245,9 @@ const LOCK_SCREEN_SAFE_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
  *
  * "miMAR" is the public brand, and the casing the whole product is fenced on
  * (scripts/check-brand-casing.ts). The web leg's service worker falls back to
- * the same word for a payload with no title (public/sw.js:37) — though it still
- * spells it "MiMAR", which is a pre-existing casing bug in a file the fence's
- * globs do not reach, and NOT a licence to copy it here.
+ * the same word for a payload with no title (public/sw.js:37), now in the same
+ * casing — it spelled it "MiMAR" until 2026-09-24, in a file the fence's globs
+ * do not reach.
  */
 const GENERIC_PUSH_TITLE = "miMAR";
 const GENERIC_PUSH_BODY = "Tenés un aviso nuevo";

@@ -50,6 +50,9 @@ describe("the happy path", () => {
       password: "unaClaveLarga",
       confirmPassword: "unaClaveLarga",
       tosAccepted: true,
+      // Written out: the version whose consent sentence this bundle displays
+      // (the transfer clause, 2026-09-24). Bumping it is a deliberate edit here.
+      legalVersion: "2026-09-24",
     });
   });
 

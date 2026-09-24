@@ -210,6 +210,8 @@ export async function signup(input: {
   password: string;
   confirmPassword: string;
   tosAccepted: boolean;
+  /** The legal version whose consent sentence this bundle displayed. */
+  legalVersion?: string;
 }): Promise<ApiResult<SignupV1>> {
   const raw = await performRequest({
     path: "/api/v1/auth/signup",

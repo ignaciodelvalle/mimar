@@ -85,7 +85,12 @@ export type LoginAuthPort = {
 
 /** What `signup` needs. */
 export type SignupAuthPort = {
-  signUp(credentials: { email: string; password: string }): Promise<GoTrueAuthResponse>;
+  signUp(credentials: {
+    email: string;
+    password: string;
+    /** Lands in `auth.users.raw_user_meta_data` — CLIENT-WRITABLE later; never trust it for authority. */
+    options?: { data?: Record<string, string> };
+  }): Promise<GoTrueAuthResponse>;
 };
 
 /**

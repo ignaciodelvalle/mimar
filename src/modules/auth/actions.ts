@@ -36,6 +36,7 @@
 import { headers } from "next/headers";
 
 import { callerIp } from "@/lib/infra/rate-limit";
+import { LEGAL_VERSION } from "@/lib/reference/legal-version";
 import { createClient } from "@/lib/supabase/server";
 
 import { login } from "./application/login";
@@ -93,6 +94,10 @@ export async function signupAction(
       // contract package describes a boolean, because a native client has no
       // checkboxes to encode.
       tosAccepted: formData.get("tosAccepted") === "on",
+      // EXPLICIT, not defaulted: this form is server-rendered, so the sentence
+      // the person ticked is the one this deploy carries. The use-case would
+      // record the PREVIOUS version for an absent field (an old native bundle).
+      legalVersion: LEGAL_VERSION,
       callerIp: callerIp(await headers()),
     },
     { auth: cookieAuth },

@@ -28,6 +28,14 @@ export {
   SPECIAL_BREED_OPTIONS,
   breedsForSpecies,
 } from "./breeds.ts";
+export {
+  KNOWN_LEGAL_VERSIONS,
+  LEGAL_VERSION,
+  LEGAL_VERSION_LABEL,
+  type LegalVersion,
+  PREVIOUS_LEGAL_VERSION,
+  resolveAcceptedLegalVersion,
+} from "./legal-version.ts";
 export { pluralizeEs } from "./pluralize-es.ts";
 export { PROVINCES, type ReferenceProvince } from "./provinces.ts";
 export {

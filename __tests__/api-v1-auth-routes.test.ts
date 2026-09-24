@@ -55,6 +55,8 @@ const control = vi.hoisted(() => ({
   limitConfigs: [] as unknown[],
   /** When set, the limiter throws it. */
   limiterThrows: null as null | (() => never),
+  /** What `signUp` was handed, in order. */
+  signUpArgs: [] as unknown[],
 }));
 
 vi.mock("@/lib/supabase/anon", () => ({
@@ -66,8 +68,9 @@ vi.mock("@/lib/supabase/anon", () => ({
           control.calls.push("signInWithPassword");
           return control.answer;
         },
-        signUp: async () => {
+        signUp: async (credentials: unknown) => {
           control.calls.push("signUp");
+          control.signUpArgs.push(credentials);
           return control.answer;
         },
         signOut: async () => {
@@ -522,6 +525,26 @@ describe("POST /api/v1/auth/signup", () => {
     confirmPassword: "supersecreta",
     tosAccepted: true,
   };
+
+  // The version the native bundle DISPLAYED reaches GoTrue's user_metadata;
+  // a bundle from before the field sends none and is recorded as the previous
+  // sentence (review of 1c1ac9f82, 2026-09-24). Written-out expectations.
+  it.each([
+    ["a current bundle", { legalVersion: "2026-09-24" }, "2026-09-24"],
+    ["a bundle built before the field", {}, "2026-07-23"],
+  ])("forwards the consent version of %s to signup metadata", async (_label, extra, expected) => {
+    control.answer = {
+      data: { user: { id: randomUUID() }, session: GOTRUE_SESSION },
+      error: null,
+    };
+    control.signUpArgs = [];
+    const res = await signupRoute(post("/auth/signup", { ...VALID, ...extra }));
+    expect(res.status).toBe(201);
+    expect(control.signUpArgs).toHaveLength(1);
+    expect((control.signUpArgs[0] as { options?: { data?: unknown } }).options?.data).toEqual({
+      tos_version: expected,
+    });
+  });
 
   it("answers 201 with the session for a genuine new account", async () => {
     control.answer = {

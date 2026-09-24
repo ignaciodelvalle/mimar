@@ -32,6 +32,8 @@
 //                      second call after a LEGAL_VERSION bump therefore recorded
 //                      (original instant, NEW version): a row asserting that
 //                      somebody accepted a document that did not yet exist.
+//                      The version itself is the one step 1 DISPLAYED, carried
+//                      in user_metadata (2026-09-24) — see the UPDATE below.
 //
 // One statement, because they are one act. Splitting the DNI out would mean a
 // second UPDATE on the same row from the same request, and a window in which the
@@ -73,7 +75,7 @@ import { eq, sql } from "drizzle-orm";
 import { db, profiles } from "@/db";
 import { isIdentityPending, toMeV1User } from "@/lib/domain/identity-completeness";
 import { writeAuditLog } from "@/lib/infra/audit-log";
-import { LEGAL_VERSION } from "@/lib/reference/legal-version";
+import { KNOWN_LEGAL_VERSIONS, PREVIOUS_LEGAL_VERSION } from "@/lib/reference/legal-version";
 import { dniLast4, hashDni } from "@/lib/utils/dni-hash";
 import type { MeV1User } from "@dim/contract/api";
 import {
@@ -111,6 +113,19 @@ export type CompleteIdentityForUserResult =
   | { ok: false; error: "STILL_PROVISIONAL" }
   /** No `profiles` row matched, or the driver refused. */
   | { ok: false; error: "WRITE_FAILED" };
+
+/**
+ * The consent version signup step 1 recorded for this user, if it is one this
+ * build knows; otherwise `PREVIOUS_LEGAL_VERSION`. SQL, so it is evaluated in
+ * the same UPDATE that stamps it.
+ */
+function acceptedVersionFromStep1(userId: string) {
+  const known = sql.join(
+    KNOWN_LEGAL_VERSIONS.map((v) => sql`${v}`),
+    sql`, `,
+  );
+  return sql`COALESCE((SELECT u.raw_user_meta_data->>'tos_version' FROM auth.users u WHERE u.id = ${userId}::uuid AND u.raw_user_meta_data->>'tos_version' IN (${known})), ${PREVIOUS_LEGAL_VERSION})`;
+}
 
 export async function completeIdentityForUser(
   input: CompleteIdentityForUserInput,
@@ -198,7 +213,17 @@ export async function completeIdentityForUser(
           // Re-acceptance is a product decision with its own screen, not a side
           // effect of somebody correcting their surname.
           tosAcceptedAt: sql`COALESCE(${profiles.tosAcceptedAt}, now())`,
-          tosVersion: sql`CASE WHEN ${profiles.tosAcceptedAt} IS NULL THEN ${LEGAL_VERSION} ELSE ${profiles.tosVersion} END`,
+          //
+          // AND THE VERSION IS THE ONE STEP 1 DISPLAYED, not this server's
+          // current one (review of 1c1ac9f82, 2026-09-24). Step 1 writes it to
+          // `raw_user_meta_data.tos_version` (signup.ts); an old Android bundle,
+          // or a signup from before that field existed, left none, and those
+          // people saw the PREVIOUS sentence. user_metadata is client-writable,
+          // so only a KNOWN version is taken; anything else records the previous
+          // one. The user id is a bound parameter, NOT `profiles.id`: inside the
+          // subquery an unqualified "id" would bind to `auth.users` itself and
+          // match every row.
+          tosVersion: sql`CASE WHEN ${profiles.tosAcceptedAt} IS NULL THEN ${acceptedVersionFromStep1(input.userId)} ELSE ${profiles.tosVersion} END`,
           updatedAt: new Date(),
         })
         .where(eq(profiles.id, input.userId))

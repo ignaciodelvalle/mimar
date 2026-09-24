@@ -33,6 +33,7 @@ import type { AuthSessionV1 } from "@dim/contract/api";
 import { MIN_PASSWORD_LENGTH } from "@dim/contract/input";
 
 import { RateLimitError, enforceRateLimit } from "@/lib/infra/rate-limit";
+import { resolveAcceptedLegalVersion } from "@/lib/reference/legal-version";
 
 import { type SignupAuthPort, toAuthSessionV1 } from "./gotrue-port";
 import { SIGNUP_IP_LIMIT } from "./signup-limits";
@@ -46,6 +47,14 @@ export type SignupInput = {
   password: string;
   confirmPassword: string;
   tosAccepted: boolean;
+  /**
+   * The legal version whose consent sentence the CLIENT displayed. The web
+   * action passes its own `LEGAL_VERSION` explicitly (it renders the sentence
+   * it is running); the native app sends the one its bundle carries; an old
+   * bundle sends nothing. Resolved by `resolveAcceptedLegalVersion` — unknown
+   * or absent records the pre-2026-09-24 version, never the server's current.
+   */
+  legalVersion?: string;
   callerIp: string;
 };
 
@@ -164,7 +173,20 @@ export async function signup(input: SignupInput, deps: SignupDeps): Promise<Sign
   // display_name metadata is supplied here; the trigger derives a provisional
   // display_name from the email local-part and completeIdentityAction overwrites
   // it with the real "First Last" in the happy path.
-  const { data, error } = await auth.signUp({ email, password });
+  //
+  // THE CONSENT VERSION TRAVELS FROM HERE TO STEP 2 IN user_metadata. Step 1 is
+  // where the sentence is ticked and step 2 (`completeIdentityForUser`) is where
+  // `profiles.tos_version` is written, possibly from another bundle or another
+  // deploy. Carrying what THIS step displayed is what makes the record true; the
+  // step-2 writer re-validates it against the known list, because user_metadata
+  // is client-writable. An existing address is masqueraded below and GoTrue
+  // writes no metadata for it — nothing is recorded for an act that created
+  // nothing.
+  const { data, error } = await auth.signUp({
+    email,
+    password,
+    options: { data: { tos_version: resolveAcceptedLegalVersion(input.legalVersion) } },
+  });
 
   if (error) {
     // Account enumeration defense (audit 28-#3, pilot MED).

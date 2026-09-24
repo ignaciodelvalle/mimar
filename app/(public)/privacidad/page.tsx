@@ -162,10 +162,13 @@ export default function PrivacidadPage() {
           below): this section discloses a sharing and a transfer the page never
           named, and the signup sentence now consents to it by name. That is a
           substantive revision, and tos_version is how a profile proves which
-          text it accepted. The bump only changes what NEW acceptances record
-          (complete-identity-for-user.ts writes it when tos_accepted_at IS
-          NULL); nothing compares a stored version against the current one, so
-          existing accounts keep theirs and are not asked anything.
+          text it accepted. The bump only changes what NEW acceptances record,
+          and only for a client that DISPLAYED this version: signup step 1 puts
+          the version the client showed in user_metadata, and
+          complete-identity-for-user.ts stamps it (known versions only; absent
+          = 2026-07-23, e.g. an old Android bundle). Nothing compares a stored
+          version against the current one, so existing accounts keep theirs and
+          are not asked anything — see the PO-DECISION note below.
         */}
         <section id="proveedores" className="space-y-3 scroll-mt-6">
           <h2 className="text-base font-semibold text-[var(--color-ln-ink)]">
@@ -194,7 +197,7 @@ export default function PrivacidadPage() {
               sitio web no le envía nada). Recibe el error, el modelo del teléfono, la versión de
               Android y de la app, y los pasos previos dentro de la app. Antes de que el reporte
               salga del teléfono le quitamos correos, números de DNI y de teléfono, códigos de
-              credencial y claves de acceso; no se envían capturas de pantalla ni tu cuenta de
+              credencial y tokens de sesión; no se envían capturas de pantalla ni tu cuenta de
               usuario.
             </li>
             <li>
@@ -205,9 +208,16 @@ export default function PrivacidadPage() {
             </li>
             <li>
               <strong>Google Firebase Cloud Messaging</strong> — Estados Unidos. Es el canal por el
-              que Android recibe esas notificaciones: recibe el mismo identificador y el mismo
-              aviso.
+              que Android recibe esas notificaciones: recibe el identificador que Firebase le asigna
+              a tu teléfono y el mismo aviso.
             </li>
+            {/* Account mail (confirmation, password recovery) is GoTrue's, and
+                it goes out through Resend because the HOSTED Supabase project's
+                Auth SMTP settings point at Resend — a dashboard setting, NOT
+                `supabase/config.toml`, whose [auth.email.smtp] block is the
+                commented-out local default. Verified by the orchestrator
+                2026-09-24. The rest (MFA notice, denuncia follow-up, operator
+                digest, exports) calls the `resend` SDK directly. */}
             <li>
               <strong>Resend</strong> — Estados Unidos. Envía los correos del servicio: los de tu
               cuenta (confirmación, recuperación de contraseña, avisos de seguridad), el seguimiento
@@ -231,13 +241,28 @@ export default function PrivacidadPage() {
           <p className="text-sm text-[var(--color-ln-ink-2)] leading-relaxed">
             <strong>Transferencia internacional.</strong> Brasil y Estados Unidos no figuran entre
             los países que la Agencia de Acceso a la Información Pública considera con un nivel de
-            protección adecuado (Disposición AAIP 60/2016). Por eso, el envío de tus datos a estos
-            proveedores se apoya en tu consentimiento expreso, que das al crear tu cuenta (art. 12
-            de la Ley 25.326). Si usás miMAR sin cuenta —por ejemplo, para escanear un código QR o
-            hacer una denuncia anónima—, lo que envíes también pasa por estos proveedores. En todos
-            los casos seguís pudiendo ejercer tus derechos ante miMAR, como se explica a
-            continuación.
+            protección adecuado (Disposición AAIP 60/2016). Por eso pedimos tu consentimiento
+            expreso para enviar tus datos a estos proveedores (art. 12 de la Ley 25.326): lo das al
+            crear tu cuenta, cuando aceptás esta versión de la política. Si usás miMAR sin cuenta
+            —por ejemplo, para escanear un código QR o hacer una denuncia anónima—, lo que envíes
+            también pasa por estos proveedores. En todos los casos podés ejercer tus derechos ante
+            miMAR, como se explica a continuación.
           </p>
+          {/* PO-DECISION: the express consent above exists ONLY for accounts
+              whose signup sentence named the transfer (profiles.tos_version >=
+              2026-09-24). Three groups have NO art. 12 consent on record and the
+              page must not pretend otherwise: (1) accounts created before
+              2026-09-24 (tos_version 2026-07-23 or NULL); (2) institutional
+              accounts an admin creates (create-institutional-account.ts), which
+              never see a consent sentence; (3) people using miMAR without an
+              account (QR scans, anonymous denuncias, sightings), whose data still
+              reaches Vercel, Supabase and OpenStreetMap. Options: (a) a
+              re-consent step at next login for (1) and (2) — a screen and a
+              write that do not exist yet; (b) a different legal basis for some
+              or all of the flows (e.g. art. 12.2 exceptions, or processors bound
+              by a contract with adequate safeguards — none is on file in this
+              repo); (c) both. Until the PO decides, the public text names the
+              consent only for new accounts and promises no flow. */}
         </section>
 
         <section className="space-y-3">

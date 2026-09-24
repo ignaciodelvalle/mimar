@@ -1,4 +1,4 @@
-// MiMAR service worker — Web Push delivery only (PWA push v1).
+// miMAR service worker — Web Push delivery only (PWA push v1).
 //
 // Hand-written on purpose (no next-pwa or workbox): the whole file must stay
 // small enough to audit line by line. There is NO caching / offline layer here
@@ -34,7 +34,7 @@ self.addEventListener("push", (event) => {
     payload = { title: event.data.text() };
   }
 
-  const title = payload.title || "MiMAR";
+  const title = payload.title || "miMAR";
   const options = {
     body: payload.body || undefined,
     icon: `/icons/icon-192.png?v=${SW_VERSION}`,
@@ -54,7 +54,7 @@ self.addEventListener("notificationclick", (event) => {
 
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-      // Reuse an open MiMAR tab when there is one; otherwise open a new one.
+      // Reuse an open miMAR tab when there is one; otherwise open a new one.
       for (const client of clientList) {
         if ("focus" in client) {
           client.navigate(url);

@@ -1192,29 +1192,56 @@ describe("erase_subject_data — deletes push subscriptions (0166)", () => {
 // the original consent timestamp.
 
 describe("consent persistence (art. 5)", () => {
-  it("completeIdentityAction writes tos_accepted_at + tos_version = LEGAL_VERSION", async () => {
-    // Ensure the profile starts with NULL consent so the first call sets it.
+  // THE VERSION RECORDED IS THE ONE SIGNUP STEP 1 DISPLAYED (review of
+  // 1c1ac9f82, 2026-09-24). Step 1 leaves it in raw_user_meta_data.tos_version;
+  // step 2 stamps it only if it is a known version, and otherwise stamps the
+  // pre-2026-09-24 one — never the server's current. Real SQL, real auth.users:
+  // the subquery is exactly what a mock could not check.
+  async function setSignupVersionMeta(value: string | null) {
+    await db.execute(
+      value === null
+        ? sql`UPDATE auth.users SET raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) - 'tos_version' WHERE id = ${otherUserId}::uuid`
+        : sql`UPDATE auth.users SET raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) || jsonb_build_object('tos_version', ${value}::text) WHERE id = ${otherUserId}::uuid`,
+    );
+  }
+
+  async function completeWithSignupVersion(meta: string | null): Promise<string | null> {
     await db
       .update(profiles)
       .set({ tosAcceptedAt: null, tosVersion: null, updatedAt: new Date() })
       .where(eq(profiles.id, otherUserId));
+    await setSignupVersionMeta(meta);
+    try {
+      setMockUserId(otherUserId);
+      const fd = new FormData();
+      fd.set("firstName", "Test");
+      fd.set("lastName", "Consent");
+      const result = await completeIdentityAction({ error: null }, fd);
+      expect(result.error).toBeNull();
+      const [row] = await db
+        .select({ tosAcceptedAt: profiles.tosAcceptedAt, tosVersion: profiles.tosVersion })
+        .from(profiles)
+        .where(eq(profiles.id, otherUserId));
+      expect(row.tosAcceptedAt).not.toBeNull();
+      return row.tosVersion;
+    } finally {
+      await setSignupVersionMeta(null);
+    }
+  }
 
-    setMockUserId(otherUserId);
-    const fd = new FormData();
-    fd.set("firstName", "Test");
-    fd.set("lastName", "Consent");
-    const result = await completeIdentityAction({ error: null }, fd);
-    expect(result.error).toBeNull();
+  it("records the version step 1 displayed when it is a known one", async () => {
+    expect(await completeWithSignupVersion("2026-09-24")).toBe("2026-09-24");
+    expect(await completeWithSignupVersion("2026-07-23")).toBe("2026-07-23");
+    // The current constant is among the known ones (written out above).
+    expect(LEGAL_VERSION).toBe("2026-09-24");
+  });
 
-    const [row] = await db
-      .select({ tosAcceptedAt: profiles.tosAcceptedAt, tosVersion: profiles.tosVersion })
-      .from(profiles)
-      .where(eq(profiles.id, otherUserId));
+  it("records the PREVIOUS version when step 1 left none (old bundle, pre-change signup)", async () => {
+    expect(await completeWithSignupVersion(null)).toBe("2026-07-23");
+  });
 
-    expect(row.tosAcceptedAt).not.toBeNull();
-    expect(row.tosVersion).toBe(LEGAL_VERSION);
-    // The constant must be a non-empty ISO-date-shaped version string.
-    expect(LEGAL_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  it("records the PREVIOUS version for a forged or unknown one (user_metadata is client-writable)", async () => {
+    expect(await completeWithSignupVersion("2099-01-01")).toBe("2026-07-23");
   });
 
   it("completeIdentityAction on retry preserves the original consent timestamp (COALESCE)", async () => {

@@ -41,6 +41,7 @@ import {
   firstInputCode,
   signupInputSchema,
 } from "@dim/contract/input";
+import { LEGAL_VERSION } from "@dim/contract/reference";
 
 /** What the form holds: strings and one boolean, because that is what it has. */
 export type SignupDraft = {
@@ -97,6 +98,11 @@ export function toSignupInput(draft: SignupDraft): SignupDraftVerdict {
     password: draft.password,
     confirmPassword: draft.confirmPassword,
     tosAccepted: draft.tosAccepted,
+    // THE VERSION THIS BUNDLE DISPLAYS, not one the server picks. The consent
+    // sentence on CrearCuentaScreen ships inside this bundle; the server records
+    // what the phone showed, and a bundle that sends nothing is recorded as the
+    // pre-2026-09-24 sentence (see @dim/contract/reference/legal-version.ts).
+    legalVersion: LEGAL_VERSION,
   });
 
   if (parsed.success) return { ok: true, input: parsed.data };
