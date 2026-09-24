@@ -31,9 +31,17 @@
 // jest has no Yoga, so nothing here measures a pixel. What it asserts is the
 // style CONTRACT — the properties layout is computed from.
 
-import { describe, expect, it, jest } from "@jest/globals";
-import { fireEvent, render, screen } from "@testing-library/react-native";
-import { KeyboardAvoidingView, RefreshControl, StyleSheet, Text } from "react-native";
+import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import {
+  AccessibilityInfo,
+  KeyboardAvoidingView,
+  Platform,
+  RefreshControl,
+  StyleSheet,
+  Text,
+} from "react-native";
 
 import {
   DateField,
@@ -269,6 +277,143 @@ describe("DateField / TimeField — a number pad and a mask", () => {
     expect(input.props.inputMode).toBe("numeric");
     fireEvent.changeText(input, "0800");
     expect(onChangeText).toHaveBeenCalledWith("08:00");
+  });
+});
+
+describe("DateField / TimeField — the native Android picker in front of the mask (M18)", () => {
+  // `DateTimePickerAndroid` is the spy from jest.setup.js. The test plays the
+  // dialog: it reads the params the field handed to `open` and calls their
+  // `onValueChange` (a selection) or `onDismiss` (a cancel).
+  type OpenParams = {
+    mode: "date" | "time";
+    value: Date;
+    is24Hour?: boolean;
+    minimumDate?: Date;
+    maximumDate?: Date;
+    onValueChange?: (event: unknown, date?: Date) => void;
+    onDismiss?: () => void;
+  };
+  const open = DateTimePickerAndroid.open as unknown as jest.Mock<(params: OpenParams) => void>;
+  const lastOpen = (): OpenParams => {
+    const call = open.mock.calls.at(-1);
+    if (call === undefined) throw new Error("the picker was never opened");
+    return call[0];
+  };
+
+  beforeEach(() => {
+    open.mockClear();
+    jest.replaceProperty(Platform, "OS", "android");
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("opens the native calendar on a tap, with the keyboard suppressed", () => {
+    render(<DateField label="Fecha" value="20/08/2026" onChangeText={() => {}} />);
+    const input = screen.getByLabelText("Fecha");
+    expect(input.props.showSoftInputOnFocus).toBe(false);
+    fireEvent(input, "pressIn");
+    expect(open).toHaveBeenCalledTimes(1);
+    const params = lastOpen();
+    expect(params.mode).toBe("date");
+    // The field's own value is where the calendar opens.
+    expect([params.value.getDate(), params.value.getMonth(), params.value.getFullYear()]).toEqual([
+      20, 7, 2026,
+    ]);
+  });
+
+  it("writes a selection as the SAME masked string the typed field produces", () => {
+    const onChangeText = jest.fn();
+    render(<DateField label="Fecha" value="" onChangeText={onChangeText} />);
+    fireEvent(screen.getByLabelText("Fecha"), "pressIn");
+    act(() => {
+      lastOpen().onValueChange?.({ type: "set" }, new Date(2026, 7, 5, 12));
+    });
+    // Typing 05082026 yields exactly this — one string, whichever door it used.
+    expect(onChangeText).toHaveBeenCalledWith("05/08/2026");
+  });
+
+  it("leaves the value alone when the dialog is cancelled", () => {
+    const onChangeText = jest.fn();
+    render(<DateField label="Fecha" value="20/08/2026" onChangeText={onChangeText} />);
+    fireEvent(screen.getByLabelText("Fecha"), "pressIn");
+    act(() => {
+      lastOpen().onDismiss?.();
+    });
+    expect(onChangeText).not.toHaveBeenCalled();
+  });
+
+  it("passes the caller's bounds to the calendar, and clamps where it opens", () => {
+    const min = new Date(2026, 8, 1, 12);
+    const max = new Date(2026, 8, 24, 12);
+    render(
+      <DateField
+        label="Fecha"
+        value="30/12/2026"
+        minimumDate={min}
+        maximumDate={max}
+        onChangeText={() => {}}
+      />,
+    );
+    fireEvent(screen.getByLabelText("Fecha"), "pressIn");
+    const params = lastOpen();
+    expect(params.minimumDate).toBe(min);
+    expect(params.maximumDate).toBe(max);
+    expect(params.value.getTime()).toBe(max.getTime());
+  });
+
+  it("opens a 24-hour clock for a time and writes HH:MM", () => {
+    const onChangeText = jest.fn();
+    render(<TimeField label="Hora" value="" onChangeText={onChangeText} />);
+    fireEvent(screen.getByLabelText("Hora"), "pressIn");
+    const params = lastOpen();
+    expect(params.mode).toBe("time");
+    expect(params.is24Hour).toBe(true);
+    act(() => {
+      params.onValueChange?.({ type: "set" }, new Date(2026, 7, 20, 8, 5));
+    });
+    expect(onChangeText).toHaveBeenCalledWith("08:05");
+  });
+
+  it("does not open on a field the caller disabled", () => {
+    render(<DateField label="Fecha" value="" editable={false} onChangeText={() => {}} />);
+    fireEvent(screen.getByLabelText("Fecha"), "pressIn");
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("offers the typed mask as a fallback, one tap away", () => {
+    const onChangeText = jest.fn();
+    render(<DateField label="Fecha" value="" onChangeText={onChangeText} />);
+    fireEvent.press(screen.getByRole("button", { name: "Escribir la fecha" }));
+    const input = screen.getByLabelText("Fecha");
+    expect(input.props.showSoftInputOnFocus).toBeUndefined();
+    fireEvent(input, "pressIn");
+    expect(open).not.toHaveBeenCalled();
+    fireEvent.changeText(input, "20082026");
+    expect(onChangeText).toHaveBeenCalledWith("20/08/2026");
+    // And back again.
+    fireEvent.press(screen.getByRole("button", { name: "Elegir en el calendario" }));
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it("with TalkBack on, the field is the typed mask only", async () => {
+    jest.spyOn(AccessibilityInfo, "isScreenReaderEnabled").mockResolvedValue(true);
+    render(<DateField label="Fecha" value="" onChangeText={() => {}} />);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Escribir la fecha" })).toBeNull(),
+    );
+    const input = screen.getByLabelText("Fecha");
+    expect(input.props.showSoftInputOnFocus).toBeUndefined();
+    fireEvent(input, "pressIn");
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("stays the typed mask off Android", () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    render(<DateField label="Fecha" value="" onChangeText={() => {}} />);
+    fireEvent(screen.getByLabelText("Fecha"), "pressIn");
+    expect(open).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Escribir la fecha" })).toBeNull();
   });
 });
 

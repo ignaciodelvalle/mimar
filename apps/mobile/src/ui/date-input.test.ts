@@ -2,7 +2,17 @@
 
 import { describe, expect, it } from "@jest/globals";
 
-import { dateInputToIso, isoToDateInput, maskDateInput, maskTimeInput } from "./date-input";
+import {
+  dateInputToIso,
+  dateInputToLocalDate,
+  isoDayToLocalDate,
+  isoToDateInput,
+  localDateToDateInput,
+  localDateToTimeInput,
+  maskDateInput,
+  maskTimeInput,
+  timeInputToLocalDate,
+} from "./date-input";
 
 describe("maskDateInput — DD/MM/AAAA off a number pad", () => {
   it("lays eight digits out as a date, and drops what does not fit", () => {
@@ -67,5 +77,33 @@ describe("isoToDateInput — pre-filling today", () => {
   it("leaves anything else alone rather than mangling it", () => {
     expect(isoToDateInput("06/09/2026")).toBe("06/09/2026");
     expect(isoToDateInput("")).toBe("");
+  });
+});
+
+describe("the native picker's crossing — Date in, the same masked strings out", () => {
+  it("reads a typed or ISO day as a local noon Date, and refuses a day that does not exist", () => {
+    const d = dateInputToLocalDate("05/08/2026");
+    expect(d === null ? null : [d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()]).toEqual([
+      2026, 7, 5, 12,
+    ]);
+    expect(isoDayToLocalDate("2026-08-05")?.getTime()).toBe(d?.getTime());
+    expect(dateInputToLocalDate("31/02/2026")).toBeNull();
+    expect(dateInputToLocalDate("20/0")).toBeNull();
+    expect(dateInputToLocalDate("")).toBeNull();
+  });
+
+  it("writes a picked day exactly as the mask draws the same eight digits", () => {
+    const picked = new Date(2026, 7, 5, 23, 59);
+    expect(localDateToDateInput(picked)).toBe(maskDateInput("05082026"));
+    expect(localDateToDateInput(picked)).toBe("05/08/2026");
+  });
+
+  it("round-trips a time on a 24-hour clock, and refuses one that is not a time", () => {
+    const base = new Date(2026, 7, 5, 12);
+    const t = timeInputToLocalDate("08:05", base);
+    expect(t === null ? null : localDateToTimeInput(t)).toBe("08:05");
+    expect(localDateToTimeInput(new Date(2026, 7, 5, 21, 30))).toBe("21:30");
+    expect(timeInputToLocalDate("24:00", base)).toBeNull();
+    expect(timeInputToLocalDate("8", base)).toBeNull();
   });
 });

@@ -89,6 +89,7 @@ import {
   recoverPendingPickSafely,
 } from "../native/image-picker-port";
 import { Body, Card } from "../ui/components";
+import { isoDayToLocalDate } from "../ui/date-input";
 import {
   Callout,
   Choice,
@@ -165,6 +166,7 @@ import {
   sterilizationProcedureLabel,
   symptomSeverityLabel,
   tattooLocationLabel,
+  todayInAr,
   validateDraft,
   vetContactLabel,
   yesNoLabel,
@@ -1268,13 +1270,17 @@ function Fields({
   let slot = 0;
   const link = () => chain(slot++);
 
-  // A MASKED TEXT FIELD AND NOT A CALENDAR, deliberately and temporarily. The
-  // kit has no date picker and adding a native one is a dependency decision
-  // that does not belong inside this change. The field asks for `DD/MM/AAAA`
-  // over a number pad, is pre-filled with today in ARGENTINE time, and the
-  // view-model converts to the wire's `AAAA-MM-DD` before the contract judges
-  // it — which still refuses a day that does not exist rather than rolling it
-  // over.
+  // The kit's `DateField`: the native calendar on Android, the `DD/MM/AAAA`
+  // mask as its typed fallback (M18). Pre-filled with today in ARGENTINE time;
+  // the view-model converts to the wire's `AAAA-MM-DD` before the contract
+  // judges it — which still refuses a day that does not exist rather than
+  // rolling it over.
+  //
+  // THE CALENDAR STOPS AT TODAY for `occurredAt` and `onsetAt`, because the
+  // server already refuses a future day for both (`event_date_future`, and the
+  // onset rule in record-event.ts: "not in the future"). `nextDueAt` is a
+  // future day by nature and gets no bound.
+  const today = isoDayToLocalDate(todayInAr()) ?? undefined;
   const dateField = (
     label: string,
     field: "occurredAt" | "nextDueAt" | "onsetAt",
@@ -1286,6 +1292,7 @@ function Fields({
       value={draft[field]}
       invalid={invalid.has(field)}
       onChangeText={(value) => set(field, value)}
+      maximumDate={field === "nextDueAt" ? undefined : today}
       {...link()}
     />
   );

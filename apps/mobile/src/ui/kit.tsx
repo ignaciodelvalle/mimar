@@ -44,9 +44,12 @@
 // never registered renders Regular, silently. Every style here names a face
 // (`FONTS.sansSemibold`) and no style sets `fontWeight`. See fonts.ts.
 
+import { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import type { ReactNode, Ref, RefObject } from "react";
-import { createContext, useRef, useState } from "react";
+import { createContext, useEffect, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
+  type GestureResponderEvent,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -63,7 +66,14 @@ import {
 import { type Edge, SafeAreaView } from "react-native-safe-area-context";
 
 import { Icon } from "./Icon";
-import { maskDateInput, maskTimeInput } from "./date-input";
+import {
+  dateInputToLocalDate,
+  localDateToDateInput,
+  localDateToTimeInput,
+  maskDateInput,
+  maskTimeInput,
+  timeInputToLocalDate,
+} from "./date-input";
 import { FONTS } from "./fonts";
 import {
   COLORS,
@@ -581,51 +591,247 @@ type MaskedFieldProps = Omit<
   onChangeText: (value: string) => void;
 };
 
+export type DateFieldProps = MaskedFieldProps & {
+  /**
+   * The earliest day the native calendar offers. Pass it only where the SERVER
+   * already refuses earlier days — the picker mirrors a rule, it never invents
+   * one. The typed fallback is not bounded by it; the contract still judges.
+   */
+  minimumDate?: Date;
+  /** The latest day the native calendar offers. Same discipline as `minimumDate`. */
+  maximumDate?: Date;
+};
+
 /**
- * A calendar day typed as `DD/MM/AAAA`, off a number pad.
+ * Whether the native dialog is the field's primary entry right now: Android,
+ * and no screen reader running.
  *
- * THE FIELD IS A MASK, NOT A CALENDAR, and the reason is unchanged from the
- * text field it replaces: the kit has no date picker and adding a native one is
- * a dependency decision that does not belong in a hotfix. What changed
- * (forms-F1/F2, 2026-09-05 audit) is the format and the keyboard. The old field
- * asked for the WIRE format, `AAAA-MM-DD`, over `numbers-and-punctuation` — a
- * keyboard type iOS has and Android does not, so an Android phone opened
- * QWERTY. This one asks for the date the way every Argentine form does, opens a
- * number pad, and inserts the slashes itself; `dateInputToIso` in
- * `date-input.ts` converts at the view-model boundary and the server never
- * learns the difference.
+ * TALKBACK GETS THE TYPED FIELD, NOT THE DIALOG. The masked number-pad entry is
+ * the one path this kit has proven accessible — a labelled text input with a
+ * spoken value — and it is what every screen had before the picker existed. A
+ * modal calendar is a detour for a screen-reader user, so with TalkBack on the
+ * field behaves exactly as it did before M18. The listener keeps that true when
+ * TalkBack is switched on or off with the form already open.
+ *
+ * iOS keeps the typed field too: the app ships Android first, and iOS's picker
+ * is an inline control rather than a dialog, which is a layout decision this
+ * change does not make.
+ */
+function useNativePickerAvailable(): boolean {
+  const [screenReader, setScreenReader] = useState(false);
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    let alive = true;
+    AccessibilityInfo.isScreenReaderEnabled()
+      .then((enabled) => {
+        if (alive && enabled) setScreenReader(true);
+      })
+      .catch(() => {});
+    const subscription = AccessibilityInfo.addEventListener("screenReaderChanged", (enabled) => {
+      if (alive) setScreenReader(enabled);
+    });
+    return () => {
+      alive = false;
+      subscription?.remove();
+    };
+  }, []);
+  return Platform.OS === "android" && !screenReader;
+}
+
+/** Hand one TextInput to both the caller's ref and the field's own. */
+function assignRef<T>(ref: Ref<T> | undefined, value: T | null) {
+  if (typeof ref === "function") ref(value);
+  else if (ref !== null && ref !== undefined) (ref as { current: T | null }).current = value;
+}
+
+function clampDate(date: Date, min: Date | undefined, max: Date | undefined): Date {
+  if (min !== undefined && date.getTime() < min.getTime()) return new Date(min.getTime());
+  if (max !== undefined && date.getTime() > max.getTime()) return new Date(max.getTime());
+  return date;
+}
+
+/**
+ * The masked text field, with the native Android dialog in front of it.
+ *
+ * ONE TEXT INPUT IN BOTH MODES, and that is what keeps the API — and every
+ * caller's tests — unchanged: the accessible name, the value, `onChangeText`,
+ * `inputRef` and the return-key chain all land on the same `TextInput` as
+ * before. What the picker mode changes is only what a TAP does: the soft
+ * keyboard is suppressed (`showSoftInputOnFocus={false}`) and `onPressIn`
+ * opens the dialog instead. A selection is written through the same
+ * `onChangeText` the typed path uses, as the same masked string, so the
+ * caller's state cannot tell which door the value came through. A cancel
+ * writes nothing.
+ *
+ * THE TYPED PATH IS ONE TAP AWAY, always: "Escribir la fecha" under the field
+ * flips it back to the number-pad mask for this field, and "Elegir en el
+ * calendario" flips it forward again. Somebody whose birthday list lives in
+ * their head types faster than they scroll a calendar back forty years.
+ */
+function PickerMaskedField({
+  mode,
+  onChangeText,
+  mask,
+  placeholder,
+  maxLength,
+  minimumDate,
+  maximumDate,
+  inputRef,
+  ...rest
+}: MaskedFieldProps & {
+  mode: "date" | "time";
+  mask: (text: string) => string;
+  placeholder: string;
+  maxLength: number;
+  minimumDate?: Date;
+  maximumDate?: Date;
+}) {
+  const pickerAvailable = useNativePickerAvailable();
+  const [typing, setTyping] = useState(false);
+  const ownRef = useRef<TextInput | null>(null);
+  const picking = pickerAvailable && !typing;
+  const editable = rest.editable !== false;
+
+  const openPicker = () => {
+    const now = new Date();
+    const current =
+      mode === "date"
+        ? dateInputToLocalDate(rest.value ?? "")
+        : timeInputToLocalDate(rest.value ?? "", now);
+    const fallback =
+      mode === "date" ? new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12) : now;
+    DateTimePickerAndroid.open({
+      mode,
+      value:
+        mode === "date"
+          ? clampDate(current ?? fallback, minimumDate, maximumDate)
+          : (current ?? fallback),
+      is24Hour: true,
+      ...(mode === "date" && minimumDate !== undefined ? { minimumDate } : {}),
+      ...(mode === "date" && maximumDate !== undefined ? { maximumDate } : {}),
+      // Monday first, as an Argentine calendar prints it. Month and day names
+      // come from the DEVICE locale: Android's dialog takes no locale of its own.
+      ...(mode === "date" ? { firstDayOfWeek: 1 as const } : {}),
+      positiveButton: { label: "Aceptar" },
+      negativeButton: { label: "Cancelar" },
+      // A dialog that cannot open (no activity, a vendor ROM refusing it) must
+      // not leave the field unusable: drop to the typed mask.
+      onError: () => setTyping(true),
+      onValueChange: (_event, selected) => {
+        if (selected === undefined) return;
+        onChangeText(
+          mode === "date" ? localDateToDateInput(selected) : localDateToTimeInput(selected),
+        );
+      },
+    });
+  };
+
+  const noun = mode === "date" ? "la fecha" : "la hora";
+  return (
+    <View style={styles.field}>
+      <TextField
+        mono
+        inputMode="numeric"
+        placeholder={placeholder}
+        maxLength={maxLength}
+        autoCapitalize="none"
+        autoCorrect={false}
+        onChangeText={(text) => onChangeText(mask(text))}
+        {...rest}
+        inputRef={(node: TextInput | null) => {
+          ownRef.current = node;
+          assignRef(inputRef, node);
+        }}
+        {...(picking
+          ? {
+              showSoftInputOnFocus: false,
+              caretHidden: true,
+              accessibilityHint: `Abre el ${mode === "date" ? "calendario" : "reloj"}`,
+              onPressIn: (e: GestureResponderEvent) => {
+                rest.onPressIn?.(e);
+                if (editable) openPicker();
+              },
+            }
+          : {})}
+      />
+      {pickerAvailable && editable ? (
+        <Pressable
+          accessibilityRole="button"
+          hitSlop={{ top: SPACE.sm, bottom: SPACE.sm, left: SPACE.sm, right: SPACE.sm }}
+          onPress={() => {
+            if (typing) {
+              setTyping(false);
+              ownRef.current?.blur();
+              openPicker();
+            } else {
+              setTyping(true);
+              // After the re-render that turns the keyboard back on.
+              setTimeout(() => ownRef.current?.focus(), 0);
+            }
+          }}
+          style={(s) => [styles.fieldAction, pressedOpacity(s)]}
+        >
+          <Text style={styles.fieldActionText}>
+            {typing
+              ? `Elegir en el ${mode === "date" ? "calendario" : "reloj"}`
+              : `Escribir ${noun}`}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * A calendar day, stored as `DD/MM/AAAA` — picked from the native Android
+ * calendar, or typed off a number pad.
+ *
+ * THE NATIVE PICKER ARRIVED IN M18 (native build of 2026-10-01), behind the
+ * same props. This comment used to say the kit had no date picker because
+ * "adding a native one is a dependency decision that does not belong in a
+ * hotfix"; that decision has now been made, as a native release rather than a
+ * hotfix, with `@react-native-community/datetimepicker` at the version SDK 57
+ * pins. On Android with no screen reader, tapping the field opens the
+ * calendar; "Escribir la fecha" under it returns to the typed mask, and with
+ * TalkBack on the field is the typed mask only (see `useNativePickerAvailable`).
+ *
+ * THE STORED STRING DID NOT CHANGE. Both paths hand `onChangeText` the same
+ * `DD/MM/AAAA` (forms-F1/F2, 2026-09-05 audit: the format every Argentine form
+ * asks for, not the wire's `AAAA-MM-DD`), and `dateInputToIso` in
+ * `date-input.ts` still converts at the view-model boundary. The contract
+ * remains the judge; `minimumDate`/`maximumDate` only keep the calendar from
+ * OFFERING a day the server would refuse.
  *
  * The mask is applied on the way IN (`onChangeText`), so the caller's state and
  * the field's `value` agree — a caller that stored the unmasked keystrokes would
  * render a field that fights its own controlled value.
  */
-export function DateField({ onChangeText, ...rest }: MaskedFieldProps) {
+export function DateField({ minimumDate, maximumDate, ...rest }: DateFieldProps) {
   return (
-    <TextField
-      mono
-      inputMode="numeric"
+    <PickerMaskedField
+      mode="date"
+      mask={maskDateInput}
       placeholder="DD/MM/AAAA"
       maxLength={10}
-      autoCapitalize="none"
-      autoCorrect={false}
-      onChangeText={(text) => onChangeText(maskDateInput(text))}
+      minimumDate={minimumDate}
+      maximumDate={maximumDate}
       {...rest}
     />
   );
 }
 
-/** A wall-clock time typed as `HH:MM`. Same mask discipline as `DateField`. */
-export function TimeField({ onChangeText, ...rest }: MaskedFieldProps) {
+/**
+ * A wall-clock time stored as `HH:MM` — the native 24-hour clock, or typed.
+ * Same two paths and the same fallback discipline as `DateField`.
+ */
+export function TimeField(props: MaskedFieldProps) {
   return (
-    <TextField
-      mono
-      inputMode="numeric"
+    <PickerMaskedField
+      mode="time"
+      mask={maskTimeInput}
       placeholder="HH:MM"
       maxLength={5}
-      autoCapitalize="none"
-      autoCorrect={false}
-      onChangeText={(text) => onChangeText(maskTimeInput(text))}
-      {...rest}
+      {...props}
     />
   );
 }
@@ -1023,6 +1229,14 @@ const styles = StyleSheet.create({
   },
 
   field: { alignSelf: "stretch" },
+  fieldAction: { alignSelf: "flex-start", marginTop: SPACE.xs },
+  fieldActionText: {
+    fontFamily: FONTS.sansMedium,
+    fontSize: TYPE.sm,
+    lineHeight: TYPE.sm * LEADING.sm,
+    color: COLORS.accent,
+    textDecorationLine: "underline",
+  },
 
   // Choice — the chip row, moved here with the component (WU-O).
   choiceField: { alignSelf: "stretch", gap: SPACE.xs },

@@ -101,3 +101,27 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
     },
   },
 }));
+
+// The native date/time picker (M18), as a spy.
+//
+// `DateField`/`TimeField` open the Android dialog imperatively, through
+// `DateTimePickerAndroid.open`, and the real module reaches for a native
+// TurboModule that does not exist under Jest. GLOBAL for the reason every entry
+// above is global: the kit renders these fields on a dozen screens, and a
+// screen test that forgot a `jest.mock` line would crash in the kit, three
+// frames from the screen it was testing.
+//
+// A SPY AND NOT A FAKE DIALOG. The test drives the outcome itself — it reads the
+// params the field passed (`mock.calls[0][0]`) and calls their `onValueChange`
+// or `onDismiss` — so "the person picked 20 August" and "the person cancelled"
+// are both one line, and the bounds the field asked for are inspectable.
+// Jest-expo renders as iOS, where the field stays the typed mask, so no screen
+// test opens it unless it sets `Platform.OS` to "android" on purpose.
+jest.mock("@react-native-community/datetimepicker", () => {
+  const DateTimePickerAndroid = { open: jest.fn(), dismiss: jest.fn() };
+  return {
+    __esModule: true,
+    default: () => null,
+    DateTimePickerAndroid,
+  };
+});

@@ -50,7 +50,7 @@ import { fetchMyCaretakerGrants, sendCaretakerCommand } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
 import { caretakerGrantPageUrl } from "../config/api";
 import { Body, Card, Loading, Row } from "../ui/components";
-import { isoToDateInput } from "../ui/date-input";
+import { dateInputToLocalDate, isoToDateInput } from "../ui/date-input";
 import {
   Callout,
   DateField,
@@ -435,6 +435,21 @@ function DesignateForm({
   // against what this form actually started with, which is that pre-filled day.
   useDraftDiscardGuard(useIsDirty({ email, startsAt, endsAt, note }));
 
+  // The "Hasta" calendar offers exactly the window the server accepts: from the
+  // start day through start + (CARETAKER_WINDOW_DAYS - 1), because the start day
+  // counts as day 1 — the web's `caretakerEndDateBounds`, same arithmetic. With
+  // no readable start there is no bound; the contract still judges what is sent.
+  const endMin = dateInputToLocalDate(startsAt) ?? undefined;
+  const endMax =
+    endMin === undefined
+      ? undefined
+      : new Date(
+          endMin.getFullYear(),
+          endMin.getMonth(),
+          endMin.getDate() + CARETAKER_WINDOW_DAYS - 1,
+          12,
+        );
+
   const submit = useCallback(() => {
     // The CONTRACT's schema, run locally first, so a bad address or an impossible
     // day gets a field sentence instead of a round trip that answers
@@ -504,6 +519,8 @@ function DesignateForm({
         editable={!busy}
         invalid={invalidCode === "DATE_INVALID"}
         label="Hasta"
+        maximumDate={endMax}
+        minimumDate={endMin}
         onChangeText={(value) => {
           setEndsAt(value);
           clearInvalid();

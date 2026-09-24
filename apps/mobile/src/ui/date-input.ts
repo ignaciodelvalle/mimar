@@ -102,3 +102,70 @@ export function isoToDateInput(iso: string): string {
   const [year, month, day] = trimmed.split("-");
   return `${day}/${month}/${year}`;
 }
+
+// ---------- The native picker's side of the same strings ---------------------
+//
+// The picker (`DateField`/`TimeField` in kit.tsx, M18) speaks `Date`; the
+// caller's state speaks the SAME masked strings the typed field produces. These
+// four functions are the whole crossing, and they read and write LOCAL calendar
+// components on purpose: the dialog shows the device's calendar, so the day the
+// person tapped is the day `getDate()` answers — never a UTC day that can be
+// one off after 21:00 in Argentina.
+//
+// NOON, NOT MIDNIGHT. A `Date` built for a calendar day sits at 12:00 local, so
+// no timezone or DST shift can push it across a day boundary before it reaches
+// the dialog.
+
+const AR_DAY_PARTS_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const TIME_PARTS_RE = /^(\d{1,2}):(\d{2})$/;
+
+/**
+ * `YYYY-MM-DD` → a local `Date` at noon on that day, or `null` when the string
+ * is not a real calendar day (`2026-02-31` is `null`, not 3 March).
+ */
+export function isoDayToLocalDate(iso: string): Date | null {
+  const match = AR_DAY_PARTS_RE.exec(iso.trim());
+  if (match === null) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return null;
+  }
+  return date;
+}
+
+/** What the date field holds (`DD/MM/AAAA` or ISO) → a local noon `Date`, or `null`. */
+export function dateInputToLocalDate(text: string): Date | null {
+  return isoDayToLocalDate(dateInputToIso(text));
+}
+
+/** A picked `Date` → `DD/MM/AAAA`, exactly what the mask draws for the same day. */
+export function localDateToDateInput(date: Date): string {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return maskDateInput(`${day}${month}${String(date.getFullYear()).padStart(4, "0")}`);
+}
+
+/**
+ * What the time field holds (`HH:MM`) → a local `Date` on `base`'s day at that
+ * time, or `null` when it is not a wall-clock time.
+ */
+export function timeInputToLocalDate(text: string, base: Date): Date | null {
+  const match = TIME_PARTS_RE.exec(text.trim());
+  if (match === null) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  const date = new Date(base.getTime());
+  date.setHours(hours, minutes, 0, 0);
+  return date;
+}
+
+/** A picked `Date` → `HH:MM` on a 24-hour clock, what the mask draws. */
+export function localDateToTimeInput(date: Date): string {
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return maskTimeInput(`${hours}${minutes}`);
+}
