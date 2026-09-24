@@ -84,9 +84,21 @@ const CODE_LENGTH = 6;
 
 type Step = "ask" | "redeem";
 
-export function RecuperarScreen({ onGoToSignIn }: { onGoToSignIn: () => void }) {
+export function RecuperarScreen({
+  onGoToSignIn,
+  initialEmail,
+}: {
+  onGoToSignIn: () => void;
+  /**
+   * Prefilled from the sign-in screen's own field (U-3, native review) via
+   * `recuperarRoute`. `undefined` (a deep link, a bare `/recuperar`, or an
+   * empty typed address — `recuperarRoute` omits the query for those) leaves
+   * the field exactly as it always started: empty, and typed here.
+   */
+  initialEmail?: string;
+}) {
   const [step, setStep] = useState<Step>("ask");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail ?? "");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");

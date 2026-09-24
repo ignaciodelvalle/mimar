@@ -119,4 +119,21 @@ describe("IngresoScreen", () => {
     fireEvent.press(screen.getByText("Crear cuenta"));
     expect(mockPush).toHaveBeenCalledTimes(2);
   });
+
+  it("shows the recovery link before anything is typed, and no email travels with it (U-3)", () => {
+    render(<IngresoScreen />);
+    expect(screen.getByText("¿Olvidaste tu contraseña?")).toBeOnTheScreen();
+    fireEvent.press(screen.getByText("¿Olvidaste tu contraseña?"));
+    expect(mockPush).toHaveBeenCalledWith("/recuperar");
+  });
+
+  it("carries the typed email into password recovery (U-3, PO decision 21A)", () => {
+    render(<IngresoScreen />);
+    fireEvent.changeText(
+      screen.getByLabelText("Correo electrónico, obligatorio"),
+      "ana@example.com",
+    );
+    fireEvent.press(screen.getByText("¿Olvidaste tu contraseña?"));
+    expect(mockPush).toHaveBeenCalledWith("/recuperar?email=ana%40example.com");
+  });
 });

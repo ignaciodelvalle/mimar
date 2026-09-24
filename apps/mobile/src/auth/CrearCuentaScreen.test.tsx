@@ -219,7 +219,14 @@ describe("the 201 that carries no session", () => {
     // Two facts and no cause: READY, and the door is IN THIS APP. A panel that
     // only said "ya podés ingresar" read as a rejection after "Crear cuenta",
     // and the week's stale bundle was already sending testers to a browser.
-    expect(screen.getByText(/Ya podés ingresar desde esta misma app/)).toBeTruthy();
+    //
+    // U-3 (PO decision 21A): the old copy told an existing-account email to use
+    // "tu contraseña" ambiguously, which read as the one just typed on THIS
+    // form and made the very next sign-in fail. The exact sentence below never
+    // implies which password.
+    expect(
+      screen.getByText("Si ese correo ya tenía cuenta, entrá con tu contraseña de siempre."),
+    ).toBeTruthy();
 
     // THE ORACLE CHECK. `session: null` means "the email already has an
     // account" OR "a new one is waiting to be confirmed", and the server keeps

@@ -227,6 +227,23 @@ export const ROUTES = {
 } as const;
 
 /**
+ * `/recuperar`, with the address already typed elsewhere carried along.
+ *
+ * U-3 (native review, PO decision 21A): the sign-in screen's "¿Olvidaste tu
+ * contraseña?" used to open `ROUTES.recuperar` bare, so an address already
+ * typed into the email field had to be re-typed on the very next screen.
+ * `email` is OPTIONAL and OMITTED WHEN EMPTY, the way `credentialRoute`'s
+ * `face` is: recovery reached with no email typed (e.g. a deep link, were one
+ * ever added) must still open the plain ask-step form rather than a URL
+ * carrying `email=`.
+ */
+export function recuperarRoute(email?: string): "/recuperar" | `/recuperar?email=${string}` {
+  const trimmed = email?.trim();
+  if (!trimmed) return "/recuperar";
+  return `/recuperar?email=${encodeURIComponent(trimmed)}`;
+}
+
+/**
  * One turno.
  *
  * NOT A DEEP-LINK DESTINATION, and the distinction matters here more than

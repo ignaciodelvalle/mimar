@@ -91,7 +91,7 @@ import {
   TextField,
   Title,
 } from "../ui/kit";
-import { ROUTES } from "../ui/routes";
+import { ROUTES, recuperarRoute } from "../ui/routes";
 import { SPACE } from "../ui/theme";
 import { returnHref } from "./return-to";
 import { sessionEndMessage, signIn } from "./session-store";
@@ -192,9 +192,17 @@ export function IngresoScreen() {
             replace, unlike the two `router.replace` calls elsewhere in this
             flow: somebody who taps this by accident, or who remembers the
             password on the way, must be able to come back with the gesture
-            their phone already gives them. */}
+            their phone already gives them.
+
+            ALWAYS RENDERED (U-3, native review) — not conditioned on `email`
+            or on `failure`, so it is there before a wrong password is even
+            typed. And the address already typed here travels with it
+            (`recuperarRoute`): recovery is the very next screen somebody
+            reaches for after a failed sign-in, and re-typing an email they
+            just typed is the same tax `RecuperarScreen` already refuses to
+            charge twice between its own two steps. */}
         <View style={styles.forgot}>
-          <LinkText onPress={() => router.push(ROUTES.recuperar)}>
+          <LinkText onPress={() => router.push(recuperarRoute(email))}>
             ¿Olvidaste tu contraseña?
           </LinkText>
         </View>

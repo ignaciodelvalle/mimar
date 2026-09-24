@@ -234,8 +234,18 @@ export function CrearCuentaScreen({ onGoToSignIn }: { onGoToSignIn: () => void }
               bundle was sending testers to the browser to sign in again, and
               the GoTrue log filled with invalid-credential attempts and
               duplicate signups. Two facts, no cause: the account is ready, and
-              the next step is the sign-in screen IN THIS APP. */}
-          <Body>Ya podés ingresar desde esta misma app con ese correo y tu contraseña.</Body>
+              the next step is the sign-in screen IN THIS APP.
+
+              U-3 (PO decision 21A, native review): "Ya podés ingresar desde
+              esta misma app con ese correo y tu contraseña" read, for an
+              email that already had an account, as an instruction to use the
+              PASSWORD JUST TYPED — which is not the account's password, so the
+              very next sign-in attempt failed. The sentence below says the
+              same two facts without implying which password: it never says
+              "esa cuenta ya existe" (the oracle this screen must not become),
+              and it now points at "tu contraseña de siempre" instead of the
+              one on this form. */}
+          <Body>Si ese correo ya tenía cuenta, entrá con tu contraseña de siempre.</Body>
         </Card>
         <PrimaryButton label="Ir a iniciar sesión" onPress={onGoToSignIn} />
       </Screen>

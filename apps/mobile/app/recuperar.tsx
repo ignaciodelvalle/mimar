@@ -22,7 +22,7 @@
 // `ROUTES.recuperar` for why a `mimar://` url in front of account recovery would
 // be worse than no native flow at all.
 
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 
 import { RecuperarScreen } from "../src/auth/RecuperarScreen";
 import { useSession } from "../src/auth/useSession";
@@ -31,11 +31,16 @@ import { ROUTES } from "../src/ui/routes";
 export default function RecuperarRoute() {
   const session = useSession();
   const router = useRouter();
+  // `email` arrives from `recuperarRoute` when the sign-in screen's
+  // "¿Olvidaste tu contraseña?" already had one typed (U-3, native review).
+  const params = useLocalSearchParams<{ email?: string | string[] }>();
+  const email = Array.isArray(params.email) ? params.email[0] : params.email;
 
   if (session.phase === "signed-in") return <Redirect href={ROUTES.root} />;
 
   return (
     <RecuperarScreen
+      initialEmail={email}
       // REPLACE, not push. Somebody who gives up on recovery does not want a
       // half-filled reset form behind the back gesture — and the code in it is
       // one that may already have been spent.

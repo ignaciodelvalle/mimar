@@ -299,6 +299,20 @@ describe("the browser bridge", () => {
   });
 });
 
+describe("the prefilled address (U-3, native review)", () => {
+  it("starts the email field with the address the sign-in screen already had typed", () => {
+    render(<RecuperarScreen onGoToSignIn={noop} initialEmail="ana@example.com" />);
+    expect(screen.getByLabelText("Correo electrónico, obligatorio").props.value).toBe(
+      "ana@example.com",
+    );
+  });
+
+  it("starts empty when nothing was handed over, same as before U-3", () => {
+    renderScreen();
+    expect(screen.getByLabelText("Correo electrónico, obligatorio").props.value).toBe("");
+  });
+});
+
 describe("the code input does not refuse a longer code (A1-refuter-M3)", () => {
   it("carries no maxLength, so a raised otp_length is not silently truncated", async () => {
     // `CODE_LENGTH`'s own docblock says the number is used "never to refuse a
