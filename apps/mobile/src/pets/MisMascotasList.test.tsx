@@ -40,6 +40,41 @@ import MisMascotasScreen from "../../app/mascotas/index";
 import { TOP_LEVEL_DESTINATIONS } from "../ui/TopLevelNavMenu";
 import { getPetRowRenderCountForTests, resetPetRowRenderCountForTests } from "./PetRow";
 
+/**
+ * Every string rendered inside one node, in tree order. Copied from
+ * `MisMascotasFooter.test.tsx` (see that file's own docblock for why walking
+ * the instance rather than stringifying props): `PetRow`'s `Pressable`
+ * carries an explicit `accessibilityLabel`, but `SecondaryButton`/
+ * `PrimaryButton` do not — their accessible name is their child `Text` — so a
+ * single helper needs both paths.
+ */
+function textOf(node: { children: Array<unknown> }): string {
+  const parts: string[] = [];
+  const walk = (child: unknown): void => {
+    if (typeof child === "string") {
+      parts.push(child);
+      return;
+    }
+    if (
+      child &&
+      typeof child === "object" &&
+      Array.isArray((child as { children?: unknown[] }).children)
+    ) {
+      for (const grand of (child as { children: unknown[] }).children) walk(grand);
+    }
+  };
+  for (const child of node.children) walk(child);
+  return parts.join(" ");
+}
+
+function accessibleName(node: {
+  children: Array<unknown>;
+  props?: { accessibilityLabel?: unknown };
+}): string {
+  const explicit = node.props?.accessibilityLabel;
+  return typeof explicit === "string" ? explicit : textOf(node);
+}
+
 function twoPets() {
   return {
     outcome: "ok" as const,
@@ -84,6 +119,37 @@ describe("the /mascotas list (FlatList)", () => {
     // The footer is now a `ListFooterComponent`, not a sibling `View` in the
     // same `ScrollView` — this is the assertion that it still shows up, and
     // still after the rows, not swallowed by the switch to `FlatList`.
+    for (const destination of TOP_LEVEL_DESTINATIONS) {
+      expect(screen.getByRole("button", { name: destination.label })).toBeTruthy();
+    }
+
+    // AND STILL AFTER THE ROWS, BY POSITION — the assertion above only proves
+    // presence, and `ListFooterComponent`/`data` could in principle land in
+    // either order in the rendered tree. `getAllByRole("button")` returns
+    // matches in tree order, so the last pet row's index must be BELOW the
+    // first destination's.
+    const names = screen.getAllByRole("button").map(accessibleName);
+    const lastPetIndex = Math.max(
+      names.findIndex((name) => name.startsWith("Firulais")),
+      names.findIndex((name) => name.startsWith("Michi")),
+    );
+    const firstDestinationIndex = names.findIndex((name) =>
+      TOP_LEVEL_DESTINATIONS.some((destination) => name === destination.label),
+    );
+    expect(lastPetIndex).toBeGreaterThanOrEqual(0);
+    expect(firstDestinationIndex).toBeGreaterThan(lastPetIndex);
+  });
+
+  it("keeps the destinations footer reachable when the FIRST read fails", async () => {
+    // THE GAP THE REVIEW CAUGHT: the loading/failed arms used to render on
+    // `Screen` with nothing after the `ErrorNotice` — a person offline on
+    // first open had no way out of this screen but the hardware back button,
+    // even though the loaded arm always offered all eight destinations.
+    mockFetchMyPets.mockResolvedValueOnce({ outcome: "unreachable", detail: "sin red" });
+    render(<MisMascotasScreen />);
+
+    await screen.findByText("No pudimos conectarnos. Revisá tu conexión.");
+
     for (const destination of TOP_LEVEL_DESTINATIONS) {
       expect(screen.getByRole("button", { name: destination.label })).toBeTruthy();
     }

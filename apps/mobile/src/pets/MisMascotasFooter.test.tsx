@@ -228,9 +228,17 @@ describe("the /mascotas footer", () => {
     //
     // MUTATION, APPLIED: point the button at `ROUTES.adoptar`. Red.
     render(<MisMascotasScreen />);
-    const button = await screen.findByText("Denunciar maltrato");
+    await screen.findByText("Denunciar maltrato");
 
-    fireEvent.press(button);
+    // RE-QUERIED, NOT THE `findByText` HANDLE (2026-09-24 review fix). The
+    // destinations footer now renders in the LOADING phase too (see
+    // `index.tsx` and `TopLevelNavMenu.tsx`'s `DestinationsFooter`), so
+    // "Denunciar maltrato" is on screen before `fetchMyPets` resolves and
+    // `findByText` was returning a handle into that transient tree — which
+    // React then unmounted wholesale when the screen swapped to its `ready`
+    // arm, so pressing the stale handle hit nothing. `getByText` right before
+    // the press reads the CURRENT tree instead, same as the loop two tests up.
+    fireEvent.press(screen.getByText("Denunciar maltrato"));
 
     expect(mockPush).toHaveBeenCalledTimes(1);
     expect(mockPush).toHaveBeenCalledWith("/denunciar");

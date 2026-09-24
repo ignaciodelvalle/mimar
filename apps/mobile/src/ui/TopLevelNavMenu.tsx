@@ -47,7 +47,7 @@ import {
 
 import { useGate } from "../auth/useGate";
 import { FONTS } from "./fonts";
-import { pressedOpacity } from "./kit";
+import { SecondaryButton, pressedOpacity } from "./kit";
 import { ROUTES } from "./routes";
 import { COLORS, LABEL_TRACKING_EM, RADIUS, SPACE, TYPE } from "./theme";
 
@@ -258,7 +258,51 @@ export function HeaderMenuButton() {
   );
 }
 
+/**
+ * THE SECOND, SCROLL-BOUND DOOR (see the file header): the footer that lists
+ * every `TOP_LEVEL_DESTINATIONS` entry as a full-width button, one stacked
+ * per row. Lives here — beside the array it renders — rather than in
+ * `app/mascotas/index.tsx`, because `MisMascotasScreen` (2026-09-24, M3 / R-1
+ * review) needs it TWICE: once inside the loaded arm's `FlatList` footer, and
+ * once in the loading/failed arms, which render on the shared `Screen`
+ * instead. Those two arms used to only get this footer in the loaded case —
+ * a person offline on first open saw an `ErrorNotice` and NOTHING ELSE, no
+ * way out of the screen but the hardware back button, which is exactly the
+ * gap this component's own header menu exists to close on the OTHER two
+ * screens. One component used in both places means a destination added here
+ * cannot silently reach only one of them.
+ */
+export function DestinationsFooter() {
+  const router = useRouter();
+  return (
+    <View style={styles.footer}>
+      {TOP_LEVEL_DESTINATIONS.map((destination) =>
+        destination.civicAction ? (
+          <View key={destination.route} style={styles.civicAction}>
+            <SecondaryButton
+              accessibilityHint={destination.accessibilityHint}
+              label={destination.label}
+              onPress={() => router.push(destination.route)}
+            />
+          </View>
+        ) : (
+          <SecondaryButton
+            key={destination.route}
+            accessibilityHint={destination.accessibilityHint}
+            label={destination.label}
+            onPress={() => router.push(destination.route)}
+          />
+        ),
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  // `DestinationsFooter`'s own layout. `civicAction` carries the WHY: see
+  // `TopLevelDestination.civicAction`'s docblock above.
+  footer: { marginTop: SPACE.lg, gap: SPACE.sm },
+  civicAction: { marginTop: SPACE.sm },
   trigger: {
     minWidth: HEADER_TOUCH_TARGET,
     minHeight: HEADER_TOUCH_TARGET,

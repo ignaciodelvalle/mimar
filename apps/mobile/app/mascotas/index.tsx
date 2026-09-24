@@ -14,9 +14,11 @@
 // the honest answer is to say how many are missing and where to see them, not to
 // pretend the page is the set.
 //
-// ONE READ PER MOUNT, PLUS PULL-TO-REFRESH. No focus-refetch and no timer: the
-// endpoint runs a 120/min per-user limiter, and a list that re-reads every time
-// it comes back into view spends that on nothing.
+// ONE READ PER MOUNT, PLUS PULL-TO-REFRESH, PLUS ONE REFETCH ON FOCUS AFTER
+// THE FIRST (see the `mounted` ref below — the first focus coincides with the
+// mount's own read and must not double it). No timer: the endpoint runs a
+// 120/min per-user limiter, and a list that re-reads on a fixed interval
+// spends that budget on nothing anybody asked for.
 //
 // FLATLIST, NOT SCROLLVIEW (M3 / R-1). A real Samsung J7 2016 (Android 8,
 // Exynos 7580, 2 GB RAM) measured this screen as janky well above the 25%
@@ -53,9 +55,9 @@ import { fetchMyPets } from "../../src/api/endpoints";
 import { sessionPort } from "../../src/auth/session-store";
 import { useGate } from "../../src/auth/useGate";
 import { PetRow } from "../../src/pets/PetRow";
-import { TOP_LEVEL_DESTINATIONS } from "../../src/ui/TopLevelNavMenu";
+import { DestinationsFooter } from "../../src/ui/TopLevelNavMenu";
 import { Body, Card, EmptyState, ErrorNotice, Loading, StaleNotice } from "../../src/ui/components";
-import { PrimaryButton, Screen, SecondaryButton, pullToRefresh } from "../../src/ui/kit";
+import { PrimaryButton, Screen, pullToRefresh } from "../../src/ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../../src/ui/reload-state";
 import { ROUTES, credentialRoute } from "../../src/ui/routes";
 import { COLORS, SPACE } from "../../src/ui/theme";
@@ -149,6 +151,14 @@ export default function MisMascotasScreen() {
           // once there are animals on screen they stay.
           <ErrorNotice message={state.message} onRetry={() => void load("initial")} />
         )}
+        {/* THE FOOTER STAYS, EVEN HERE (review fix, 2026-09-24). It used to
+            render only from the loaded arm's `ListFooterComponent` below —
+            which meant a person offline on first open, or hitting a real
+            server failure, saw an `ErrorNotice` and no way out of the screen
+            but the hardware back button. `DestinationsFooter` is the SAME
+            component the loaded arm uses (`src/ui/TopLevelNavMenu.tsx`), not
+            a second copy, so the two arms cannot drift apart again. */}
+        <DestinationsFooter />
       </Screen>
     );
   }
@@ -224,7 +234,6 @@ function PetListScreen({
         initialNumToRender={8}
         maxToRenderPerBatch={8}
         windowSize={5}
-        removeClippedSubviews
       />
     </SafeAreaView>
   );
@@ -248,7 +257,6 @@ function ListFooter({
   truncated: boolean;
   visibleCount: number;
 }) {
-  const router = useRouter();
   return (
     <View style={styles.footerGap}>
       {hasPets ? (
@@ -264,42 +272,12 @@ function ListFooter({
         </>
       ) : null}
 
-      {/* THE FOOTER RENDERS FROM `TOP_LEVEL_DESTINATIONS` (`src/ui/
-          TopLevelNavMenu.tsx`), not from hand-written buttons any more. That
-          file carries the WHY for each destination and each position — why
-          Tránsito sits beside Transferencias, why Reclamar is not beside
-          "Registrar otra mascota", why Denunciar runs last — none of it
-          repeated here, because a footer and a header menu built from two
-          separately-maintained lists is exactly how the two go on to
-          disagree about what "the top level" even is.
-
-          `civicAction` IS THE ONE THING THIS FOOTER DOES THAT THE MENU
-          DOESN'T: wrap "Denunciar maltrato" in extra top margin, stacked on
-          `styles.footer`'s own uniform `gap`, so a button that files a
-          criminal allegation against a named person is not reachable by a
-          thumb aiming at the one above it. That is a property of eight
-          stacked full-width buttons, not of a short sheet row list, which is
-          why the header menu ignores the flag. */}
-      <View style={styles.footer}>
-        {TOP_LEVEL_DESTINATIONS.map((destination) =>
-          destination.civicAction ? (
-            <View key={destination.route} style={styles.civicAction}>
-              <SecondaryButton
-                accessibilityHint={destination.accessibilityHint}
-                label={destination.label}
-                onPress={() => router.push(destination.route)}
-              />
-            </View>
-          ) : (
-            <SecondaryButton
-              key={destination.route}
-              accessibilityHint={destination.accessibilityHint}
-              label={destination.label}
-              onPress={() => router.push(destination.route)}
-            />
-          ),
-        )}
-      </View>
+      {/* THE SHARED FOOTER (`src/ui/TopLevelNavMenu.tsx`'s
+          `DestinationsFooter`) — see that file for why Tránsito sits beside
+          Transferencias, why Reclamar is not beside "Registrar otra mascota",
+          why Denunciar runs last, and why this is now the SAME component the
+          loading/failed arms render above, not a second copy. */}
+      <DestinationsFooter />
     </View>
   );
 }
@@ -310,12 +288,4 @@ const styles = StyleSheet.create({
   // reads identically to the loading/failed arms it replaces.
   listContent: { padding: SPACE.xl2, gap: SPACE.lg },
   footerGap: { gap: SPACE.lg },
-  footer: { marginTop: SPACE.lg, gap: SPACE.sm },
-  // The one break in the footer's uniform `gap`, and it carries an argument
-  // rather than a taste: "Denunciar maltrato" opens a criminal allegation about
-  // a named third party, and every other child of this View is an act on the
-  // reader's own records. `marginTop` STACKS on the parent's gap, so the button
-  // sits at twice the distance of any other pair — the smallest amount of layout
-  // that makes a mis-tap cost a deliberate correction instead of a case file.
-  civicAction: { marginTop: SPACE.sm },
 });
