@@ -2295,10 +2295,10 @@
 }
 .lp .lp-role-card[data-tone="gob"] .lp-ric {
   background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  color: var(--color-ln-card);
 }
 .lp .lp-role-card[data-tone="gob"] h3 {
-  color: #fff;
+  color: var(--color-ln-card);
 }
 .lp .lp-role-card[data-tone="gob"] p {
   color: var(--lp-navy-ink);
@@ -2308,8 +2308,8 @@
   border-color: var(--lp-navy-line);
 }
 .lp .lp-role-card[data-tone="gob"] .lp-btn--ghost:hover {
-  border-color: #fff;
-  color: #fff;
+  border-color: var(--color-ln-card);
+  color: var(--color-ln-card);
 }
 
 /* ============ footer ====================================================== */
