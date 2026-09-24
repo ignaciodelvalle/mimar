@@ -17,9 +17,10 @@
 //      Checked PER BLOCK (opening tag scan), not per file: a file with two
 //      pressables and one role passes a per-file count and still ships an
 //      unnamed control.
-//   2. EVERY PRESSABLE FILE MINDS THE 44dp TARGET. A file that renders a
-//      `<Pressable` must reference `TOUCH_TARGET` or `hitSlop` at least
-//      once. Deliberately file-grained — static analysis cannot resolve
+//   2. EVERY PRESSABLE FILE MINDS THE 48dp TARGET (raised from 44dp, A-1,
+//      M7 accessibility pass — `TOUCH_TARGET` in theme.ts is now 48). A file
+//      that renders a `<Pressable` must reference `TOUCH_TARGET` or `hitSlop`
+//      at least once. Deliberately file-grained — static analysis cannot resolve
 //      which style object lands on which control — so this catches the
 //      CLASS (a new interactive surface built with no target discipline;
 //      PhoneRow shipped exactly that way the morning this fence was
@@ -254,7 +255,7 @@ describe("mobile a11y fences (C3)", () => {
       .map((f) => f.rel);
     expect(
       undisciplined,
-      `Pressable files with no touch-target discipline (44dp, theme.ts TOUCH_TARGET):\n${undisciplined.join("\n")}`,
+      `Pressable files with no touch-target discipline (48dp since A-1, theme.ts TOUCH_TARGET):\n${undisciplined.join("\n")}`,
     ).toEqual([]);
   });
 

@@ -186,8 +186,18 @@ export const PRESSED_OPACITY = 0.9;
 /**
  * The touch-target floor, in px. WCAG 2.5.5.
  *
- * The web applies it to form controls (`min-h-[44px]` in `LN_CONTROL_CLASS`)
- * and file triggers, fenced by `lint:ui`. On a phone it applies to everything
- * tappable, which is why it lives here and not in one component.
+ * RAISED 44 → 48 (A-1, M7 accessibility pass, target device Samsung J7 2016 /
+ * Android 8). WCAG 2.5.5's own floor is 44px; 48dp is Android's stronger
+ * Material convention, and this app had already been drifting there in
+ * practice — `HeaderBackButton.tsx` and `TopLevelNavMenu.tsx`'s header button
+ * both carried their OWN local `48` rather than reading this constant, and
+ * `BiteDraftBanner.tsx`'s CTA did too, each with a comment explaining why it
+ * needed "the stronger convention" this constant did not provide. Raising the
+ * floor here and pointing all three at this constant closes that split: one
+ * number, no more locally-duplicated 48s to keep in sync by hand.
+ *
+ * The web keeps its own `44px` floor (`min-h-[44px]` in `LN_CONTROL_CLASS`,
+ * fenced by `lint:ui`) — a mouse/trackpad surface has no Android convention to
+ * match, and this app's mapping is the phone's floor, not the web's.
  */
-export const TOUCH_TARGET = 44;
+export const TOUCH_TARGET = 48;

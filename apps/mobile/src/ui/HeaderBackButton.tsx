@@ -56,9 +56,7 @@ import { useNavigation } from "expo-router";
 import { ChevronLeft } from "lucide-react-native";
 import { type ColorValue, Pressable, StyleSheet } from "react-native";
 
-import { COLORS } from "./theme";
-
-const TOUCH_TARGET = 48;
+import { COLORS, TOUCH_TARGET } from "./theme";
 
 export function HeaderBackButton({
   canGoBack,

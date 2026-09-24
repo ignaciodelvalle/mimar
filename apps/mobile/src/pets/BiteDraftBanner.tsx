@@ -6,17 +6,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { FONTS } from "../ui/fonts";
 import { Callout, pressedOpacity } from "../ui/kit";
-import { COLORS, LEADING, RADIUS, SPACE, TYPE } from "../ui/theme";
-
-/**
- * Android's stronger 48dp convention, the same one `TopLevelNavMenu.tsx`
- * reserves for its persistent header button (`HEADER_TOUCH_TARGET`) rather
- * than the 44dp form-control floor (`TOUCH_TARGET` in `theme.ts`). This CTA
- * gets the same headroom: it is the one control on "Mis mascotas" that
- * reopens a form about a still-open rabies observation window, not an
- * ordinary list action.
- */
-const CTA_TOUCH_TARGET = 48;
+import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TYPE } from "../ui/theme";
 
 /**
  * `accessibilityRole="alert"` with a POLITE live region — `StaleNotice`'s
@@ -61,7 +51,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACE.sm,
   },
   cta: {
-    minHeight: CTA_TOUCH_TARGET,
+    minHeight: TOUCH_TARGET,
     alignSelf: "flex-start",
     alignItems: "center",
     justifyContent: "center",

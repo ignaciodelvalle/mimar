@@ -49,7 +49,7 @@ import { useGate } from "../auth/useGate";
 import { FONTS } from "./fonts";
 import { SecondaryButton, pressedOpacity } from "./kit";
 import { ROUTES } from "./routes";
-import { COLORS, LABEL_TRACKING_EM, RADIUS, SPACE, TYPE } from "./theme";
+import { COLORS, LABEL_TRACKING_EM, RADIUS, SPACE, TOUCH_TARGET, TYPE } from "./theme";
 
 export type TopLevelDestination = {
   label: string;
@@ -114,14 +114,6 @@ export const TOP_LEVEL_DESTINATIONS: readonly TopLevelDestination[] = [
   },
   { label: "Ajustes", route: ROUTES.ajustes },
 ];
-
-/**
- * Material's toolbar-icon touch-target floor. `TOUCH_TARGET` (44, in
- * `theme.ts`) is the WCAG 2.5.5 floor this app applies to form controls and
- * cards; a persistent header button gets the stronger 48dp Android convention
- * instead, since it is the one control present on every top-level screen.
- */
-const HEADER_TOUCH_TARGET = 48;
 
 /** Three bars — see the file header for why this is not `Icon name="ellipsis"`. */
 function HamburgerGlyph() {
@@ -304,8 +296,8 @@ const styles = StyleSheet.create({
   footer: { marginTop: SPACE.lg, gap: SPACE.sm },
   civicAction: { marginTop: SPACE.sm },
   trigger: {
-    minWidth: HEADER_TOUCH_TARGET,
-    minHeight: HEADER_TOUCH_TARGET,
+    minWidth: TOUCH_TARGET,
+    minHeight: TOUCH_TARGET,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -341,7 +333,7 @@ const styles = StyleSheet.create({
     paddingBottom: SPACE.xs,
   },
   row: {
-    minHeight: HEADER_TOUCH_TARGET,
+    minHeight: TOUCH_TARGET,
     justifyContent: "center",
     borderTopWidth: 1,
     borderTopColor: COLORS.borderSoft,
