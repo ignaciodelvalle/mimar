@@ -95,6 +95,7 @@ import {
   expoProjectId,
   expoPush,
   interpretPermission,
+  interpretPermissionPeek,
   interpretTokenFailure,
   tapFromResponse,
 } from "./expo-push-adapter";
@@ -205,6 +206,64 @@ describe("interpretPermission — every status shape the module can return", () 
     );
     expect(result.outcome).toBe("failed");
     expect(result).toMatchObject({ detail: expect.stringContaining("undetermined") as never });
+  });
+});
+
+describe("interpretPermissionPeek — the never-prompts reading (decision 10A, M-1)", () => {
+  it("maps a plain grant to granted", () => {
+    expect(interpretPermissionPeek(status({ granted: true, canAskAgain: false }) as never)).toEqual(
+      { outcome: "granted" },
+    );
+  });
+
+  it("maps a permanent refusal to denied", () => {
+    expect(
+      interpretPermissionPeek(status({ granted: false, canAskAgain: false }) as never),
+    ).toEqual({ outcome: "denied" });
+  });
+
+  it("maps 'nobody has been asked yet' to undetermined, NOT to failed", () => {
+    // This is the one member `interpretPermission` cannot answer honestly — that
+    // function must ask before it can say anything useful, so it maps the same
+    // shape to `failed`. This function never asks, so `undetermined` is a real
+    // answer here rather than a diagnostic.
+    const result = interpretPermissionPeek(
+      status({ granted: false, canAskAgain: true, status: "undetermined" }) as never,
+    );
+    expect(result).toEqual({ outcome: "undetermined" });
+  });
+});
+
+describe("getPermissionStatus — the peek, never a prompt", () => {
+  it("never calls requestPermissionsAsync, however it reads", async () => {
+    // THE LOAD-BEARING ASSERTION FOR THE WHOLE FUNCTION. An automatic caller
+    // (every sign-in, every restored session) must never trigger the OS dialog.
+    mockGetPermissionsAsync.mockResolvedValue(
+      status({ granted: false, canAskAgain: true, status: "undetermined" }) as never,
+    );
+
+    expect(await expoPush.getPermissionStatus()).toEqual({ outcome: "undetermined" });
+    expect(mockRequestPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  it("answers granted and denied the same way requestPermission's read would", async () => {
+    mockGetPermissionsAsync.mockResolvedValue(
+      status({ granted: true, canAskAgain: false }) as never,
+    );
+    expect(await expoPush.getPermissionStatus()).toEqual({ outcome: "granted" });
+
+    mockGetPermissionsAsync.mockResolvedValue(
+      status({ granted: false, canAskAgain: false }) as never,
+    );
+    expect(await expoPush.getPermissionStatus()).toEqual({ outcome: "denied" });
+  });
+
+  it("maps a throwing read to failed, naming the call", async () => {
+    mockGetPermissionsAsync.mockRejectedValue(coded("ERR_X", "no permissions module") as never);
+
+    const result = await expoPush.getPermissionStatus();
+    expect(result.outcome).toBe("failed");
+    expect(result).toMatchObject({ detail: expect.stringContaining("getPermissions") as never });
   });
 });
 

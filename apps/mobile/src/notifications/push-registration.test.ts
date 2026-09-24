@@ -54,18 +54,25 @@ import {
   PUSH_TARGETS_PATH,
   currentPushPlatform,
   registerThisDeviceForPush,
+  requestPushPermissionAndRegister,
   revokeThisDeviceForPush,
 } from "./push-registration";
 
 const DEVICE_ID = "0f2b1f3c-4d5e-4a6b-8c7d-9e0f1a2b3c4d";
 const TOKEN = "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]";
 
-/** A port that works, unless told otherwise. */
+/**
+ * A port that works, unless told otherwise. `getPermissionStatus` (the PEEK)
+ * defaults to `granted`, same as `requestPermission` (the PROMPT) — most tests
+ * below do not care which of the two paths they are driving, only that a
+ * granted install registers.
+ */
 function workingPort(over: Partial<PushPort> = {}): PushPort {
   return {
     name: "fake",
     available: true,
     requestPermission: async () => ({ outcome: "granted" }),
+    getPermissionStatus: async () => ({ outcome: "granted" }),
     getExpoPushToken: async () => ({ outcome: "token", expoPushToken: TOKEN }),
     // The presentation half of the port. Nothing in THIS file exercises it —
     // registration is about delivery, not about drawing — but a port is a whole
@@ -130,10 +137,10 @@ describe("registerThisDeviceForPush", () => {
     expect(mockGetOrCreateInstallDeviceId).not.toHaveBeenCalled();
   });
 
-  it("reads the install id BEFORE it asks for permission", async () => {
+  it("reads the install id BEFORE it peeks at permission", async () => {
     // THE ORDER IS THE TEST. A phone whose keychain will not answer cannot
-    // register at all, and asking it for notification permission first would
-    // spend the one prompt iOS ever gives on a registration that cannot happen.
+    // register at all, and reading permission first would be work spent on a
+    // registration that cannot happen either way.
     const order: string[] = [];
     mockGetOrCreateInstallDeviceId.mockImplementation(async () => {
       order.push("install-id");
@@ -141,7 +148,7 @@ describe("registerThisDeviceForPush", () => {
     });
     setPushPort(
       workingPort({
-        requestPermission: async () => {
+        getPermissionStatus: async () => {
           order.push("permission");
           return { outcome: "granted" };
         },
@@ -164,7 +171,7 @@ describe("registerThisDeviceForPush", () => {
   });
 
   it("carries a refusal through as denied, and spends no request on it", async () => {
-    setPushPort(workingPort({ requestPermission: async () => ({ outcome: "denied" }) }));
+    setPushPort(workingPort({ getPermissionStatus: async () => ({ outcome: "denied" }) }));
 
     expect(await registerThisDeviceForPush(session)).toEqual({ outcome: "denied" });
     expect(mockApiRequest).not.toHaveBeenCalled();
@@ -182,7 +189,7 @@ describe("registerThisDeviceForPush", () => {
 
   it("names which step failed, so a breadcrumb says permission or token", async () => {
     setPushPort(
-      workingPort({ requestPermission: async () => ({ outcome: "failed", detail: "boom" }) }),
+      workingPort({ getPermissionStatus: async () => ({ outcome: "failed", detail: "boom" }) }),
     );
     expect(await registerThisDeviceForPush(session)).toEqual({
       outcome: "failed",
@@ -203,7 +210,7 @@ describe("registerThisDeviceForPush", () => {
     // proof that this call path goes through them rather than around them.
     setPushPort(
       workingPort({
-        requestPermission: async () => {
+        getPermissionStatus: async () => {
           throw new Error("adapter broke its promise");
         },
       }),
@@ -214,6 +221,42 @@ describe("registerThisDeviceForPush", () => {
     expect(result).toMatchObject({
       detail: expect.stringContaining("adapter broke its promise") as never,
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // Decision 10A (finding M-1): the automatic path must NEVER show the OS
+  // dialog. These are the tests that pin that promise directly, rather than
+  // only through the peek's own mapping in `expo-push-adapter.test.ts`.
+  // -------------------------------------------------------------------------
+
+  it("never calls requestPermission — the silent path only ever peeks", async () => {
+    const mockRequestPermission = jest.fn<() => Promise<{ outcome: "granted" }>>(async () => ({
+      outcome: "granted",
+    }));
+    setPushPort(workingPort({ requestPermission: mockRequestPermission }));
+
+    await registerThisDeviceForPush(session);
+
+    expect(mockRequestPermission).not.toHaveBeenCalled();
+  });
+
+  it("answers `not-asked` — not a failure — when nobody has decided yet, and spends nothing on it", async () => {
+    setPushPort(workingPort({ getPermissionStatus: async () => ({ outcome: "undetermined" }) }));
+
+    expect(await registerThisDeviceForPush(session)).toEqual({ outcome: "not-asked" });
+    // Neither a token read nor an API call: this is exactly the moment where
+    // asking would have been the whole point, and this path is not allowed to.
+    expect(mockApiRequest).not.toHaveBeenCalled();
+  });
+
+  it("keeps registering with no prompt for an account that already granted permission", async () => {
+    // THE EXISTING-USER CASE. Someone who granted before this change (or whose
+    // OS-level grant predates the app asking at all) must keep working exactly
+    // as before: no prompt, no priming, straight to a registered row.
+    setPushPort(workingPort({ getPermissionStatus: async () => ({ outcome: "granted" }) }));
+
+    expect(await registerThisDeviceForPush(session)).toEqual({ outcome: "registered" });
+    expect(mockApiRequest).toHaveBeenCalledTimes(1);
   });
 
   it("reports an API failure as failed rather than as a registration", async () => {
@@ -253,6 +296,128 @@ describe("registerThisDeviceForPush", () => {
     // would lose the row over triage metadata.
     const sent = (mockApiRequest.mock.calls[0]?.[0] as { body: { appVersion: string } }).body;
     expect(sent.appVersion).toHaveLength(64);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `requestPushPermissionAndRegister` — the ONLY function in this seam allowed
+// to show the OS dialog. Its two callers are `AltaScreen`'s priming line
+// ("Sí, avisame") and the entry point in Ajustes: both are a direct response
+// to a tap, which is the one context decision 10A permits a prompt in.
+// ---------------------------------------------------------------------------
+
+describe("requestPushPermissionAndRegister", () => {
+  it("sends the register command with the install id, the token and the platform", async () => {
+    setPushPort(workingPort());
+
+    expect(await requestPushPermissionAndRegister(session)).toEqual({ outcome: "registered" });
+    expect(mockApiRequest).toHaveBeenCalledWith(
+      {
+        path: "/api/v1/me/push-targets",
+        method: "POST",
+        body: {
+          command: "register",
+          deviceId: DEVICE_ID,
+          expoPushToken: TOKEN,
+          platform: "android",
+          appVersion: "1.4.2",
+        },
+      },
+      session,
+    );
+  });
+
+  it("DOES go through requestPermission — the prompting call — unlike the silent path", async () => {
+    const mockRequestPermission = jest.fn<() => Promise<{ outcome: "granted" }>>(async () => ({
+      outcome: "granted",
+    }));
+    setPushPort(workingPort({ requestPermission: mockRequestPermission }));
+
+    await requestPushPermissionAndRegister(session);
+
+    expect(mockRequestPermission).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT ask a build that cannot receive — the honest default stops it", async () => {
+    expect(await requestPushPermissionAndRegister(session)).toEqual({ outcome: "unavailable" });
+    expect(mockApiRequest).not.toHaveBeenCalled();
+    expect(mockGetOrCreateInstallDeviceId).not.toHaveBeenCalled();
+  });
+
+  it("does not register an id it could not persist", async () => {
+    mockGetOrCreateInstallDeviceId.mockResolvedValue(null as never);
+    setPushPort(workingPort());
+
+    expect(await requestPushPermissionAndRegister(session)).toEqual({
+      outcome: "failed",
+      detail: "no install id",
+    });
+    expect(mockApiRequest).not.toHaveBeenCalled();
+  });
+
+  it("carries a refusal through as denied, and spends no request on it", async () => {
+    setPushPort(workingPort({ requestPermission: async () => ({ outcome: "denied" }) }));
+
+    expect(await requestPushPermissionAndRegister(session)).toEqual({ outcome: "denied" });
+    expect(mockApiRequest).not.toHaveBeenCalled();
+  });
+
+  it("keeps denied and unavailable apart when the TOKEN read is what refuses", async () => {
+    setPushPort(workingPort({ getExpoPushToken: async () => ({ outcome: "denied" }) }));
+    expect(await requestPushPermissionAndRegister(session)).toEqual({ outcome: "denied" });
+
+    setPushPort(workingPort({ getExpoPushToken: async () => ({ outcome: "unavailable" }) }));
+    expect(await requestPushPermissionAndRegister(session)).toEqual({ outcome: "unavailable" });
+
+    expect(mockApiRequest).not.toHaveBeenCalled();
+  });
+
+  it("names which step failed, so a breadcrumb says permission or token", async () => {
+    setPushPort(
+      workingPort({ requestPermission: async () => ({ outcome: "failed", detail: "boom" }) }),
+    );
+    expect(await requestPushPermissionAndRegister(session)).toEqual({
+      outcome: "failed",
+      detail: "permission: boom",
+    });
+
+    setPushPort(
+      workingPort({ getExpoPushToken: async () => ({ outcome: "failed", detail: "kaboom" }) }),
+    );
+    expect(await requestPushPermissionAndRegister(session)).toEqual({
+      outcome: "failed",
+      detail: "token: kaboom",
+    });
+  });
+
+  it("survives a port that THROWS, because the seam's wrapper catches it", async () => {
+    setPushPort(
+      workingPort({
+        requestPermission: async () => {
+          throw new Error("adapter broke its promise");
+        },
+      }),
+    );
+
+    const result = await requestPushPermissionAndRegister(session);
+    expect(result.outcome).toBe("failed");
+    expect(result).toMatchObject({
+      detail: expect.stringContaining("adapter broke its promise") as never,
+    });
+  });
+
+  it("reports an API failure as failed rather than as a registration", async () => {
+    mockApiRequest.mockResolvedValue({
+      outcome: "api-error",
+      code: "rate_limited",
+      retryAfterSeconds: 30,
+    } as never);
+    setPushPort(workingPort());
+
+    expect(await requestPushPermissionAndRegister(session)).toEqual({
+      outcome: "failed",
+      detail: "api: api-error",
+    });
   });
 });
 

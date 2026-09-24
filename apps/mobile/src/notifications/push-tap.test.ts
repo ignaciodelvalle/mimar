@@ -42,6 +42,7 @@ function receivingPort(over: Partial<PushPort> = {}): PushPort {
     name: "fake-push",
     available: true,
     requestPermission: async () => ({ outcome: "granted" }),
+    getPermissionStatus: async () => ({ outcome: "granted" }),
     getExpoPushToken: async () => ({ outcome: "token", expoPushToken: "ExponentPushToken[x]" }),
     lastTap: async () => launchTap,
     onTap: (listener) => {

@@ -61,7 +61,13 @@ import {
   PUSH_ANDROID_HEALTH_CHANNEL_ID,
 } from "@dim/contract/input";
 
-import type { PushPermissionResult, PushPort, PushTap, PushTokenResult } from "./push-port";
+import type {
+  PushPermissionPeek,
+  PushPermissionResult,
+  PushPort,
+  PushTap,
+  PushTokenResult,
+} from "./push-port";
 
 /**
  * WHAT HAPPENS WHEN A NOTIFICATION ARRIVES WHILE THE APP IS OPEN.
@@ -162,6 +168,7 @@ export const expoPush: PushPort = {
   name: "expo-notifications",
   available: true,
   requestPermission,
+  getPermissionStatus,
   getExpoPushToken,
   lastTap,
   onTap,
@@ -354,6 +361,45 @@ async function requestPermission(): Promise<PushPermissionResult> {
   }
 
   return interpretPermission(answered);
+}
+
+/**
+ * Read the current permission state WITHOUT ever prompting — the priming flow's
+ * instrument (decision 10A, M-1). It exists so the automatic registration that
+ * runs on every sign-in can tell "already decided" from "never asked" without
+ * spending the one dialog iOS ever shows, or surprising somebody with an Android
+ * system prompt before they have seen the in-app priming line.
+ *
+ * ONE CALL, NO BRANCH ON `canAskAgain` THAT LEADS TO A REQUEST — that branch is
+ * `requestPermission`'s alone. This function only ever reads.
+ */
+async function getPermissionStatus(): Promise<PushPermissionPeek> {
+  let current: Notifications.NotificationPermissionsStatus;
+  try {
+    current = await Notifications.getPermissionsAsync();
+  } catch (error) {
+    return { outcome: "failed", detail: `getPermissions: ${failureDetail(error)}` };
+  }
+  return interpretPermissionPeek(current);
+}
+
+/**
+ * One permissions status, as a member of the PEEK union.
+ *
+ * EXPORTED FOR THE SAME REASON `interpretPermission` IS: a mapping this small is
+ * worth testing as a mapping. The one member `interpretPermission` cannot answer
+ * honestly is exactly the one this function exists to add: `canAskAgain: true`
+ * and not yet granted is "nobody has been asked", which `interpretPermission`
+ * maps to `failed` because that caller MUST ask before it can say anything
+ * useful. This caller never asks, so it can say `undetermined` instead —
+ * a real, unremarkable answer, not a diagnostic.
+ */
+export function interpretPermissionPeek(
+  status: Notifications.NotificationPermissionsStatus,
+): PushPermissionPeek {
+  if (status.granted) return { outcome: "granted" };
+  if (!status.canAskAgain) return { outcome: "denied" };
+  return { outcome: "undetermined" };
 }
 
 /**

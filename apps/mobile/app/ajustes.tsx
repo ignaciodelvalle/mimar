@@ -46,6 +46,7 @@ import { AccountDeletionCard } from "../src/account/AccountDeletionCard";
 import { signOut, signOutEverywhere } from "../src/auth/session-store";
 import { useGate } from "../src/auth/useGate";
 import { API_BASE_URL } from "../src/config/api";
+import { PushNotificationsCard } from "../src/notifications/PushNotificationsCard";
 import { Body, Card, ErrorNotice, Row } from "../src/ui/components";
 import { FONTS } from "../src/ui/fonts";
 import { PrimaryButton, Screen, SecondaryButton } from "../src/ui/kit";
@@ -203,6 +204,13 @@ export default function AjustesScreen() {
           />
         ) : null}
       </View>
+
+      {/* M4, decision 10A: the door back in for whoever tapped "Ahora no" on
+          the alta priming line, or who registered their only pet before this
+          feature shipped and so was never offered it. Renders nothing once
+          permission is already settled favourably or the build has no push
+          module — see `PushNotificationsCard.tsx`'s header. */}
+      <PushNotificationsCard />
 
       <AccountDeletionCard />
 

@@ -142,6 +142,24 @@ describe("startPushRegistration", () => {
     expect(mockRegister).toHaveBeenCalledTimes(1);
   });
 
+  it("retries after 'not-asked' too — decision 10A: nobody being asked yet is not settled", async () => {
+    // Mirrors "retries after a failure": `not-asked` means the silent path
+    // reached an undetermined permission and correctly did NOT prompt — but
+    // that is not a decision the way `denied` is, so the next transition (or a
+    // priming acceptance elsewhere) must still get a chance to register.
+    mockRegister.mockResolvedValue({ outcome: "not-asked" } as never);
+    mockSessionState = signedIn("user-1");
+    startPushRegistration();
+    await flush();
+    expect(mockRegister).toHaveBeenCalledTimes(1);
+
+    mockRegister.mockResolvedValue({ outcome: "registered" } as never);
+    mockListener?.();
+    await flush();
+
+    expect(mockRegister).toHaveBeenCalledTimes(2);
+  });
+
   it("does not treat 'unavailable' as a reason to keep trying either", async () => {
     mockRegister.mockResolvedValue({ outcome: "unavailable" } as never);
     mockSessionState = signedIn("user-1");

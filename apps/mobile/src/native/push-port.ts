@@ -41,6 +41,29 @@ export type PushPermissionResult =
   | { outcome: "unavailable" }
   | { outcome: "failed"; detail: string };
 
+/**
+ * A READ of the current permission state — never a prompt.
+ *
+ * WHY THIS EXISTS SEPARATELY FROM `PushPermissionResult`. `requestPermission()`
+ * is allowed to show the OS dialog when nobody has answered yet, and that is
+ * exactly right for a person who just tapped "Sí, avisame" — but it is exactly
+ * wrong for the automatic registration that runs on every sign-in and every
+ * restored session (decision 10A, M-1): that path must never surprise somebody
+ * with a system dialog before they have a reason to say yes. `undetermined` is
+ * the member `PushPermissionResult` has no room for: it is not `denied` (nobody
+ * refused), not `granted`, and asking for it must cost nothing — no dialog, no
+ * network round trip.
+ */
+export type PushPermissionPeek =
+  | { outcome: "granted" }
+  /** A refusal, ours or a policy's. Not retryable — same meaning as `denied` above. */
+  | { outcome: "denied" }
+  /** Nobody has been asked yet. The only member that makes priming worth doing. */
+  | { outcome: "undetermined" }
+  /** The module is not in this build. */
+  | { outcome: "unavailable" }
+  | { outcome: "failed"; detail: string };
+
 /** What one token read produced. */
 export type PushTokenResult =
   | { outcome: "token"; expoPushToken: string }
@@ -78,6 +101,13 @@ export type PushPort = {
    */
   readonly available: boolean;
   requestPermission(): Promise<PushPermissionResult>;
+  /**
+   * The same underlying state `requestPermission` would read, but NEVER a
+   * prompt — see `PushPermissionPeek`'s header for why the automatic
+   * registration path needs this and `requestPermission` is the wrong call for
+   * it.
+   */
+  getPermissionStatus(): Promise<PushPermissionPeek>;
   getExpoPushToken(): Promise<PushTokenResult>;
   /**
    * The tap that STARTED this process, if one did. `null` otherwise.
@@ -122,6 +152,7 @@ export const moduleMissingPush: PushPort = {
   name: "module-missing",
   available: false,
   requestPermission: async () => ({ outcome: "unavailable" }),
+  getPermissionStatus: async () => ({ outcome: "unavailable" }),
   getExpoPushToken: async () => ({ outcome: "unavailable" }),
   // No module means no notification ever arrived, so there is no tap to have
   // launched this process and none can arrive later. `null` and an unsubscribe
@@ -168,6 +199,22 @@ export async function requestPushPermissionSafely(): Promise<PushPermissionResul
       outcome: "failed",
       // Diagnostic, never shown. The prefix names the port so a breadcrumb says
       // WHICH implementation broke its promise.
+      detail: `${activePort.name} threw: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * One permission PEEK, with the same enforcement — and the one this app's
+ * automatic registration must use instead of `requestPushPermissionSafely`,
+ * because that one is allowed to show the dialog and this one never may.
+ */
+export async function getPushPermissionStatusSafely(): Promise<PushPermissionPeek> {
+  try {
+    return await activePort.getPermissionStatus();
+  } catch (error) {
+    return {
+      outcome: "failed",
       detail: `${activePort.name} threw: ${error instanceof Error ? error.message : String(error)}`,
     };
   }

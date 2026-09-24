@@ -66,7 +66,13 @@ export function startPushRegistration(): () => void {
       // transition retry — and since every step of the registration is itself
       // idempotent, a retry costs nothing it should not cost. `denied` is NOT
       // cleared: the person decided, and the port's contract forbids re-asking.
-      if (outcome.outcome === "failed") registeredFor = null;
+      //
+      // `not-asked` (decision 10A, M-1) IS cleared, for the same reason
+      // `failed` is: this silent path never prompts, so "nobody has decided
+      // yet" is not a settled fact the way `denied` is — a later transition
+      // (or the priming flow registering directly) may well find it granted,
+      // and this must not have given up on checking again.
+      if (outcome.outcome === "failed" || outcome.outcome === "not-asked") registeredFor = null;
     });
   };
 

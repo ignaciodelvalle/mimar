@@ -75,6 +75,7 @@ function matchingMarker(now: number = Date.now()): ImagePickMarker {
 import {
   type PushPort,
   getExpoPushTokenSafely,
+  getPushPermissionStatusSafely,
   getPushPort,
   moduleMissingPush,
   requestPushPermissionSafely,
@@ -286,6 +287,7 @@ describe("the push seam", () => {
       name: "fake",
       available: true,
       requestPermission: async () => ({ outcome: "granted" }),
+      getPermissionStatus: async () => ({ outcome: "granted" }),
       getExpoPushToken: async () => ({ outcome: "token", expoPushToken: "ExponentPushToken[x]" }),
       lastTap: async () => null,
       onTap: () => () => undefined,
@@ -304,6 +306,9 @@ describe("the push seam", () => {
       name: "exploding",
       available: true,
       requestPermission: async () => {
+        throw new Error("native module gone");
+      },
+      getPermissionStatus: async () => {
         throw new Error("native module gone");
       },
       getExpoPushToken: async () => {
@@ -331,6 +336,7 @@ describe("the push seam", () => {
       requestPermission: async () => {
         throw "just a string";
       },
+      getPermissionStatus: async () => ({ outcome: "unavailable" }),
       getExpoPushToken: async () => ({ outcome: "unavailable" }),
       lastTap: async () => null,
       onTap: () => () => undefined,
@@ -350,6 +356,7 @@ describe("the push seam", () => {
       name: "declined",
       available: true,
       requestPermission: async () => ({ outcome: "denied" }),
+      getPermissionStatus: async () => ({ outcome: "denied" }),
       getExpoPushToken: async () => ({ outcome: "denied" }),
       lastTap: async () => null,
       onTap: () => () => undefined,
@@ -357,5 +364,52 @@ describe("the push seam", () => {
     });
     await expect(requestPushPermissionSafely()).resolves.toEqual({ outcome: "denied" });
     await expect(getExpoPushTokenSafely()).resolves.toEqual({ outcome: "denied" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `getPushPermissionStatusSafely` — the PEEK, never a prompt (decision 10A,
+// M-1). The automatic registration that runs on every sign-in reads through
+// this, never through `requestPushPermissionSafely`.
+// ---------------------------------------------------------------------------
+
+describe("`getPushPermissionStatusSafely` — the never-prompts half", () => {
+  it("defaults to `unavailable`, the same honest default the prompting half gives", async () => {
+    await expect(getPushPermissionStatusSafely()).resolves.toEqual({ outcome: "unavailable" });
+  });
+
+  it("passes a well-behaved port's peek through untouched", async () => {
+    setPushPort({
+      name: "fake",
+      available: true,
+      requestPermission: async () => ({ outcome: "granted" }),
+      getPermissionStatus: async () => ({ outcome: "undetermined" }),
+      getExpoPushToken: async () => ({ outcome: "unavailable" }),
+      lastTap: async () => null,
+      onTap: () => () => undefined,
+      ensureNotificationChannel: async () => undefined,
+    });
+
+    await expect(getPushPermissionStatusSafely()).resolves.toEqual({ outcome: "undetermined" });
+  });
+
+  it("turns a peek that THROWS into `failed`, naming which port broke", async () => {
+    setPushPort({
+      name: "exploding",
+      available: true,
+      requestPermission: async () => ({ outcome: "granted" }),
+      getPermissionStatus: async () => {
+        throw new Error("native module gone");
+      },
+      getExpoPushToken: async () => ({ outcome: "unavailable" }),
+      lastTap: async () => null,
+      onTap: () => () => undefined,
+      ensureNotificationChannel: async () => undefined,
+    });
+
+    const result = await getPushPermissionStatusSafely();
+    expect(result.outcome).toBe("failed");
+    expect(result.outcome === "failed" && result.detail).toContain("exploding");
+    expect(result.outcome === "failed" && result.detail).toContain("native module gone");
   });
 });

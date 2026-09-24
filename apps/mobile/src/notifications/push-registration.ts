@@ -31,6 +31,7 @@ import { PUSH_APP_VERSION_MAX_LENGTH, type PushPlatform } from "@dim/contract/in
 import { type SessionPort, apiRequest } from "../api/client";
 import {
   getExpoPushTokenSafely,
+  getPushPermissionStatusSafely,
   getPushPort,
   requestPushPermissionSafely,
 } from "../native/push-port";
@@ -54,6 +55,15 @@ export type PushRegistrationOutcome =
   | { outcome: "denied" }
   /** No push in this build, on this platform, or on this device. */
   | { outcome: "unavailable" }
+  /**
+   * NOBODY HAS BEEN ASKED YET, and this call was not the one allowed to ask.
+   * Only `registerThisDeviceForPush` — the SILENT, automatic path run on every
+   * sign-in — can answer this; decision 10A (M-1) forbids that path from
+   * showing the OS dialog. It is not a failure: the priming line in
+   * `AltaScreen` or the entry point in Ajustes is what turns this into a real
+   * `requestPushPermissionAndRegister` call, later, on a tap.
+   */
+  | { outcome: "not-asked" }
   | { outcome: "failed"; detail: string };
 
 /**
@@ -90,44 +100,20 @@ export function currentPushPlatform(): PushPlatform | null {
 }
 
 /**
- * Ask for permission if needed, read the token, and register this install.
+ * The shared tail of both registration paths: read the token — permission is
+ * already known to be granted by the time either caller reaches this — and
+ * upsert the row.
  *
- * IDEMPOTENT AND SAFE TO CALL ON EVERY SIGN-IN. The endpoint upserts on
- * `device_id`, so a second call with a rotated token updates one row rather than
- * adding one, and a call for a DIFFERENT person flips that row's owner — which
- * is the shared-phone case, handled by design rather than by accident.
- *
- * THE ORDER IS DELIBERATE and each step refuses before the next costs anything:
- * the build check is free, the install id is a keychain read, the permission is
- * a dialog, and the token is a network round trip to Expo. Nothing asks a person
- * for permission that this build could not honour anyway.
+ * IDEMPOTENT AND SAFE TO CALL REPEATEDLY. The endpoint upserts on `device_id`,
+ * so a second call with a rotated token updates one row rather than adding one,
+ * and a call for a DIFFERENT person flips that row's owner — which is the
+ * shared-phone case, handled by design rather than by accident.
  */
-export async function registerThisDeviceForPush(
+async function completeTokenRegistration(
   session: SessionPort,
+  deviceId: string,
+  platform: PushPlatform,
 ): Promise<PushRegistrationOutcome> {
-  // THE BUILD ON PLAY TODAY LANDS HERE AND STOPS. It was cut without
-  // `expo-notifications`, so `moduleMissingPush` is its port and asking it
-  // anything would spend a permission prompt on a build that cannot receive.
-  if (!getPushPort().available) return { outcome: "unavailable" };
-
-  const platform = currentPushPlatform();
-  if (platform === null) return { outcome: "unavailable" };
-
-  const deviceId = await getOrCreateInstallDeviceId();
-  if (deviceId === null) {
-    // The keychain refused both a read and a write. Registering under an id
-    // that was not persisted would leave one live, undeliverable row per app
-    // start — see `install-identity.ts`.
-    return { outcome: "failed", detail: "no install id" };
-  }
-
-  const permission = await requestPushPermissionSafely();
-  if (permission.outcome === "denied") return { outcome: "denied" };
-  if (permission.outcome === "unavailable") return { outcome: "unavailable" };
-  if (permission.outcome === "failed") {
-    return { outcome: "failed", detail: `permission: ${permission.detail}` };
-  }
-
   const token = await getExpoPushTokenSafely();
   if (token.outcome === "denied") return { outcome: "denied" };
   if (token.outcome === "unavailable") return { outcome: "unavailable" };
@@ -156,6 +142,91 @@ export async function registerThisDeviceForPush(
     return { outcome: "failed", detail: `api: ${result.outcome}` };
   }
   return { outcome: "registered" };
+}
+
+/**
+ * The build check, platform check and install id read every registration path
+ * shares — refused before either the OS dialog or the token round trip could
+ * cost anything.
+ */
+async function preflight(): Promise<
+  { ok: true; platform: PushPlatform; deviceId: string } | PushRegistrationOutcome
+> {
+  // THE BUILD ON PLAY TODAY LANDS HERE AND STOPS. It was cut without
+  // `expo-notifications`, so `moduleMissingPush` is its port and asking it
+  // anything would spend a permission prompt on a build that cannot receive.
+  if (!getPushPort().available) return { outcome: "unavailable" };
+
+  const platform = currentPushPlatform();
+  if (platform === null) return { outcome: "unavailable" };
+
+  const deviceId = await getOrCreateInstallDeviceId();
+  if (deviceId === null) {
+    // The keychain refused both a read and a write. Registering under an id
+    // that was not persisted would leave one live, undeliverable row per app
+    // start — see `install-identity.ts`.
+    return { outcome: "failed", detail: "no install id" };
+  }
+
+  return { ok: true, platform, deviceId };
+}
+
+/**
+ * Register this install WITHOUT EVER PROMPTING — the automatic path, run from
+ * `push-session-binding.ts` on every sign-in and every restored session.
+ *
+ * DECISION 10A (finding M-1): the system dialog used to land here, before
+ * anybody had a reason to say yes. It no longer can — this reads the CURRENT
+ * permission state (`getPushPermissionStatusSafely`, never a prompt) rather
+ * than asking, and answers `not-asked` when nobody has decided yet. Only an
+ * explicit, in-app tap (`requestPushPermissionAndRegister`, below) may cross
+ * into a prompt.
+ *
+ * STILL IDEMPOTENT AND SAFE TO CALL ON EVERY SIGN-IN for exactly the reason it
+ * always was — see `completeTokenRegistration`'s header — and an account that
+ * already granted permission (or has a live token) keeps registering here with
+ * no prompt at all, which is what keeps existing installs working unchanged.
+ */
+export async function registerThisDeviceForPush(
+  session: SessionPort,
+): Promise<PushRegistrationOutcome> {
+  const pre = await preflight();
+  if (!("ok" in pre)) return pre;
+
+  const permission = await getPushPermissionStatusSafely();
+  if (permission.outcome === "denied") return { outcome: "denied" };
+  if (permission.outcome === "unavailable") return { outcome: "unavailable" };
+  if (permission.outcome === "undetermined") return { outcome: "not-asked" };
+  if (permission.outcome === "failed") {
+    return { outcome: "failed", detail: `permission: ${permission.detail}` };
+  }
+
+  return completeTokenRegistration(session, pre.deviceId, pre.platform);
+}
+
+/**
+ * Ask for permission — THIS is the call allowed to show the OS dialog — and
+ * register on a grant.
+ *
+ * THE ONLY TWO CALLERS: the priming line's "Sí, avisame" in `AltaScreen`, after
+ * the first successful alta, and the entry point in Ajustes for somebody who
+ * dismissed it earlier or was never offered it. Both are a direct response to a
+ * tap, which is the one context decision 10A allows a prompt in.
+ */
+export async function requestPushPermissionAndRegister(
+  session: SessionPort,
+): Promise<PushRegistrationOutcome> {
+  const pre = await preflight();
+  if (!("ok" in pre)) return pre;
+
+  const permission = await requestPushPermissionSafely();
+  if (permission.outcome === "denied") return { outcome: "denied" };
+  if (permission.outcome === "unavailable") return { outcome: "unavailable" };
+  if (permission.outcome === "failed") {
+    return { outcome: "failed", detail: `permission: ${permission.detail}` };
+  }
+
+  return completeTokenRegistration(session, pre.deviceId, pre.platform);
 }
 
 /**

@@ -46,7 +46,10 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { apiFailureMessage } from "../api/client";
 import { registerPet } from "../api/endpoints";
-import { sessionPort } from "../auth/session-store";
+import { getSessionState, sessionPort } from "../auth/session-store";
+import { shouldOfferPushPriming } from "../notifications/push-priming";
+import { writePushPrimingDismissed } from "../notifications/push-priming-preference";
+import { requestPushPermissionAndRegister } from "../notifications/push-registration";
 import { Body, Card, ErrorNotice, Row } from "../ui/components";
 import { FONTS } from "../ui/fonts";
 import { hapticError, hapticSuccess } from "../ui/haptics";
@@ -98,7 +101,14 @@ type Submission =
   | { phase: "sending" }
   | { phase: "failed"; message: string }
   /** The server says this looks like a pet the owner already has. */
-  | { phase: "duplicate" };
+  | { phase: "duplicate" }
+  /**
+   * M4, decision 10A: the pet is already registered — `altaDraft.forgetOnSuccess()`
+   * has already run — and this is the moment to offer the notification priming
+   * line, before leaving for the credential. Carries the token because THAT is
+   * where either button ends up going.
+   */
+  | { phase: "priming"; publicToken: string };
 
 export function AltaScreen() {
   const router = useRouter();
@@ -156,6 +166,17 @@ export function AltaScreen() {
     setDraft((current) => ({ ...current, ...fields }));
   }, []);
 
+  // THE ACTUAL EXIT, common to every path out of a successful registration —
+  // straight through, or after the priming card answers. Separated from `send`
+  // so the priming buttons below can call it without re-running the request.
+  const goToCredential = useCallback(
+    (publicToken: string) => {
+      allowLeave();
+      router.replace(credentialRoute(publicToken));
+    },
+    [allowLeave, router],
+  );
+
   const send = useCallback(
     async (overrideDuplicate: boolean) => {
       const nextDraft = overrideDuplicate ? { ...draft, duplicateOverride: true } : draft;
@@ -177,10 +198,27 @@ export function AltaScreen() {
         hapticSuccess();
         // THE SERVER ACCEPTED IT: the only ordinary reason this draft is ever
         // deleted. Before `allowLeave()`, so a write racing the navigation
-        // still finds the hook sealed.
+        // still finds the hook sealed — this runs regardless of what the
+        // priming check below decides, because the wizard's job is done either
+        // way.
         altaDraft.forgetOnSuccess();
-        allowLeave();
-        router.replace(credentialRoute(result.payload.publicToken));
+
+        // M4, decision 10A: offer the priming line HERE, after the first
+        // successful alta — never earlier, never as a system dialog by
+        // itself. `shouldOfferPushPriming` is the honest gate: it peeks at
+        // permission (never prompts) and reads the per-account dismissal, so
+        // an already-granted, already-denied, or already-dismissed account
+        // falls straight through exactly as it did before this feature.
+        const session = getSessionState();
+        const userId = session.phase === "signed-in" ? session.user.id : null;
+        const offerPriming = userId !== null && (await shouldOfferPushPriming(userId));
+
+        if (offerPriming) {
+          setSubmission({ phase: "priming", publicToken: result.payload.publicToken });
+          return;
+        }
+
+        goToCredential(result.payload.publicToken);
         return;
       }
 
@@ -195,11 +233,38 @@ export function AltaScreen() {
         message: apiFailureMessage(result) ?? "No pudimos completar el registro.",
       });
     },
-    [draft, router, allowLeave, altaDraft],
+    [draft, altaDraft, goToCredential],
+  );
+
+  // "Sí, avisame": THIS is the one tap in this whole screen allowed to trigger
+  // the OS dialog — `requestPushPermissionAndRegister` is the seam's only
+  // function that may prompt. Whatever it answers, the destination is still
+  // the credential: a refusal or a failure here must not strand the person who
+  // just registered a pet on this card.
+  const acceptPriming = useCallback(
+    async (publicToken: string) => {
+      await requestPushPermissionAndRegister(sessionPort);
+      goToCredential(publicToken);
+    },
+    [goToCredential],
+  );
+
+  // "Ahora no": remembered per account (decision 10A) so this account is not
+  // asked again except from Ajustes.
+  const declinePriming = useCallback(
+    async (publicToken: string) => {
+      const session = getSessionState();
+      if (session.phase === "signed-in") await writePushPrimingDismissed(session.user.id);
+      goToCredential(publicToken);
+    },
+    [goToCredential],
   );
 
   const isLast = stepIndex === WIZARD_STEPS.length - 1;
-  const busy = submission.phase === "sending";
+  // "priming" counts as busy too: the pet is already registered and the last
+  // step's button re-enabling under the priming card would let a second tap
+  // fire a second `send()` for an animal that already exists.
+  const busy = submission.phase === "sending" || submission.phase === "priming";
   const blocked = advanceBlockedReason(step, draft);
 
   return (
@@ -221,6 +286,13 @@ export function AltaScreen() {
             setSubmission({ phase: "idle" });
             router.back();
           }}
+        />
+      ) : null}
+
+      {submission.phase === "priming" ? (
+        <PushPrimingDialog
+          onAccept={() => void acceptPriming(submission.publicToken)}
+          onDecline={() => void declinePriming(submission.publicToken)}
         />
       ) : null}
 
@@ -476,6 +548,37 @@ function DuplicateDialog({
           onPress={onConfirm}
         />
         <SecondaryButton label="Cancelar" disabled={busy} onPress={onCancel} />
+      </View>
+    </Card>
+  );
+}
+
+/**
+ * The priming line — M4, decision 10A (finding M-1).
+ *
+ * IN-APP FIRST, THE SYSTEM DIALOG ONLY ON "SÍ". This card is the whole reason
+ * the OS permission prompt is no longer requested at sign-in: it gives the
+ * person a REASON before the one dialog Android 13+ will show only once
+ * (canAskAgain flips to false after a refusal) and iOS shows only once ever.
+ * "Ahora no" must not look like a refusal to the OS at all — it never reaches
+ * `requestPermission`, only the in-app dismissal store, so the real dialog is
+ * still available whenever this account visits Ajustes.
+ */
+function PushPrimingDialog({
+  onAccept,
+  onDecline,
+}: {
+  onAccept: () => void;
+  onDecline: () => void;
+}) {
+  return (
+    <Card title="Antes de irnos">
+      <Body>
+        ¿Querés que te avisemos las vacunas que vencen y si alguien encuentra a tu mascota?
+      </Body>
+      <View style={styles.dialogActions}>
+        <PrimaryButton label="Sí, avisame" onPress={onAccept} />
+        <SecondaryButton label="Ahora no" onPress={onDecline} />
       </View>
     </Card>
   );
