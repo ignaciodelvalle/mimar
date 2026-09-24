@@ -1031,6 +1031,18 @@ describe("Android hardening (N1)", () => {
       "android.permission.WRITE_SETTINGS",
     ]);
   });
+
+  it("paints the status bar the same paper ground as the canvas, with dark icons", () => {
+    // A default (light-content) status bar puts white icons over this app's
+    // light `#fbfaf5` canvas — invisible on the flagship device. barStyle and
+    // backgroundColor are restated here, not imported from COLORS.canvas,
+    // because app.json is read as bytes (see the file header) and must match
+    // the same literal the splash plugin and adaptive icon already pin.
+    expect(resolved.androidStatusBar).toEqual({
+      barStyle: "dark-content",
+      backgroundColor: "#fbfaf5",
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
