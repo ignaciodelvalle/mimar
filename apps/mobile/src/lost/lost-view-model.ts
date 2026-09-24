@@ -65,12 +65,18 @@ export function foundAdjective(sex: string | null): string {
 }
 
 /**
- * "marcado" / "marcada" / "marcado/a" — the same call for the past participle
+ * "marcado" / "marcada" / "marcada/o" — the same call for the past participle
  * of "marcar", which `commandUnchangedLabel`'s `mark_found` case needs beside
  * `foundAdjective`. Kept separate from that one rather than reused: they agree
  * by coincidence of both being feminine-by-default Spanish adjectives, not
  * because one derives from the other, and a future adjective this sex needs
  * (a third participle) must not have to squeeze into either name.
+ *
+ * THE UNKNOWN-SEX FORM MATCHES `foundAdjective`'S OWN ORDER (fresh-review
+ * follow-up): the two always print side by side ("marcada/o como
+ * encontrada/o"), and "marcado/a … encontrada/o" — masculine-first beside
+ * feminine-first in the same sentence — read like two different rules
+ * disagreeing rather than one rule applied twice.
  */
 export function markedAdjective(sex: string | null): string {
   switch (sex) {
@@ -79,7 +85,7 @@ export function markedAdjective(sex: string | null): string {
     case "female":
       return "marcada";
     default:
-      return "marcado/a";
+      return "marcada/o";
   }
 }
 

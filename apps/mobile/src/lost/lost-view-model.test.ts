@@ -388,8 +388,11 @@ describe("the copy every branch owes", () => {
     expect(commandUnchangedLabel("mark_found", "female")).toBe(
       "Ya estaba marcada como encontrada.",
     );
+    // Both slash forms in the SAME order (fresh-review follow-up) — see
+    // `markedAdjective`'s own comment on why "marcado/a" beside "encontrada/o"
+    // read like two rules disagreeing.
     expect(commandUnchangedLabel("mark_found", null)).toBe(
-      "Ya estaba marcado/a como encontrada/o.",
+      "Ya estaba marcada/o como encontrada/o.",
     );
   });
 
