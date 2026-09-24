@@ -81,7 +81,10 @@ export function DeactivateGovtActions({
 
 function DeactivateGovtForm({
   target,
-  onDone,
+  // Kept in the props contract for a non-navigating success path, if one is
+  // ever added (see the comment on the submit success branch below); unused
+  // today because the only success path always navigates.
+  onDone: _onDone,
   onCancel,
 }: {
   target: Target;
@@ -128,8 +131,17 @@ function DeactivateGovtForm({
         // Full document reload so the SSR institutional list reflects the
         // change immediately (router.refresh() is banned - see
         // lib/ui/full-page-action-nav.ts).
+        //
+        // Deliberately NOT calling onDone() here (fresh review, 2026-09-24;
+        // same fix as DeactivateAdminForm.tsx): navigateAfterActionSuccess()
+        // is a full window.location.assign(), which discards this whole
+        // React tree anyway. Calling onDone() triggered a setMode("done")
+        // re-render of the parent a beat before the browser actually
+        // unloaded — a stray render of a stale tree, visible as a flash
+        // right before the full reload replaces it. onDone stays in the
+        // props contract for a non-navigating success path, if one is ever
+        // added; there isn't one today.
         navigateAfterActionSuccess(window.location.href);
-        onDone();
       }
     });
   }
