@@ -207,20 +207,24 @@ function BandBackground({ situationKey }: { situationKey: string | undefined }) 
  * DEVICE'S UNSCALED FONT (system font scale 1.0 — see the A-2 note below for
  * why the scaled case needs its own row):
  *
- * THE TITLE ROW BELOW STILL DESCRIBES "Libreta Sanitaria Nacional" — the
- * string this chrome rendered until the PO dropped "Nacional" on 2026-09-24
- * (it read as State issuance; see the render call below). That is the
- * WORST-CASE 26-char title the 2-line wrap and the whole clearance budget
- * were sized against; "Libreta Sanitaria" is 9 characters shorter and can
- * only wrap LESS, never more. The budget stays exactly where it is on
- * purpose — a shorter title only helps, and re-deriving a tighter one from a
- * title the PO could still shorten again buys nothing.
+ * THE TITLE IS "Libreta Sanitaria" NOW — 17 characters, "Nacional" dropped by
+ * the PO on 2026-09-24 (it read as State issuance; see the render call
+ * below). THE ROW BELOW STILL SIZES THE BUDGET AGAINST THE OLD 26-char
+ * "Libreta Sanitaria Nacional" ON PURPOSE: that was the WORST CASE the 2-line
+ * wrap and the whole clearance budget were derived from, and 17 characters
+ * can only need LESS width and wrap LESS, never more. The budget stays where
+ * it is rather than being re-derived tighter from a title the PO could still
+ * shorten again — a shorter title only helps, so there is nothing to buy by
+ * chasing it.
  *
  *   | Element        | Derivation                                        | y       |
  *   |----------------|---------------------------------------------------|---------|
- *   | Title block    | top 16; the 26-char title needs 218pt at 55% of    | [16,~56]|
- *   |                | 310 = 170 available, so it WRAPS: 2 × 13.0 lines,  |         |
- *   |                | + 3 marginTop + the 10.4 subtitle line             |         |
+ *   | Title block    | top 16; sized against the OLD 26-char "…Nacional"  | [16,~56]|
+ *   |                | title, which needs 218pt at 55% of 310 = 170       |         |
+ *   |                | available and so WRAPS: 2 × 13.0 lines + 3         |         |
+ *   |                | marginTop + the 10.4 subtitle line. The CURRENT    |         |
+ *   |                | 17-char title fits in less and is not the binding  |         |
+ *   |                | case — see the paragraph above.                    |         |
  *   | Flip control   | top 14; a TOUCH_TARGET square (48 since A-1)       | [14,62] |
  *   | Situation chip | top BAND_CHIP_TOP; 2×1 border + 2×6 padding +      | [72,102]|
  *   |                | max(icon 16, text 13) — the 16px ICON_SM is the    |         |
@@ -228,8 +232,13 @@ function BandBackground({ situationKey }: { situationKey: string | undefined }) 
  *   | Frames enter   | BAND_H + FACE_SECTION_PAD_V − IDENTITY_POKE_OUT    | 116     |
  *
  * So the clearance between the chip's bottom and the frames' white ring is
- * `BAND_H + 20 − 56 − 102` = 14 points at BAND_H 152, and that 14 is the budget
- * (the geometry test still only requires 8; the extra 6 is A-2's margin, below).
+ * `BAND_H + 20 − 56 − 102` = 14 points at BAND_H 152 — 6 points ABOVE the
+ * geometry test's 8-point floor (`MIN_CLEARANCE`), not AT it: the floor is
+ * the minimum the test accepts, the 14 is what this budget actually leaves.
+ * The floor is exactly what it was before this pass; only the margin above
+ * it changed, because raising `BAND_CHIP_TOP` for A-2 (below) pushed the chip
+ * 10 points lower and `BAND_H` had to rise to keep the frames' entry point
+ * 10 points below it too.
  *
  * WHAT THE PREVIOUS VERSION OF THIS DOCBLOCK GOT WRONG, because the numbers it
  * quoted are still quoted elsewhere in this repo. It said the title ended at
@@ -268,8 +277,12 @@ function BandBackground({ situationKey }: { situationKey: string | undefined }) 
  * edge from 58 to 62 — no longer clear of the old chip top at all. Both fixed
  * the same way this file has fixed the class before: `BAND_CHIP_TOP` moved to
  * 72 (5 points clear of the scaled title's 67, 10 clear of the flip control's
- * 62) and `BAND_H` moved back to 152 to keep the frame clearance at its
- * 8-point floor once the chip sits 10 points lower. The title's own font-scale
+ * 62) and `BAND_H` moved back to 152 to keep the frame clearance ABOVE its
+ * unchanged 8-point floor (`MIN_CLEARANCE` in the geometry test) once the
+ * chip sits 10 points lower — the floor itself never moved, `BAND_H` rose by
+ * the same 10 points the chip did, which is why the margin above the floor
+ * (14 unscaled, 13 at the cap — see the table above) reads close to what it
+ * was before rather than shrinking. The title's own font-scale
  * CAP stays exactly where it was — a letterhead is allowed to stop growing;
  * see `BAND_MAX_FONT_SCALE`'s own docblock for why. What changed is that this
  * budget now accounts for the scale IT ITSELF ALLOWS, up to that cap, instead

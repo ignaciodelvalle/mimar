@@ -7573,17 +7573,17 @@
       "rule": "Every `<Pressable` block in `apps/mobile/src` must declare an `accessibilityRole`, and every file rendering a `<Pressable>` must reference `TOUCH_TARGET` or `hitSlop`; the `EmptyState` primitive must keep at least 4 consumer files.",
       "scope": "mobile",
       "sources": [
-        "__tests__/mobile-a11y-fences.test.ts:1-27,79-121"
+        "__tests__/mobile-a11y-fences.test.ts:1-34,186-350"
       ],
       "enforcer": [
-        "__tests__/mobile-a11y-fences.test.ts:87-98,102-108,112-119"
+        "__tests__/mobile-a11y-fences.test.ts:237-250,252-260,342-350"
       ],
       "enforcementKind": "vitest",
       "wired": "test:verified",
       "status": "ENFORCED",
       "clause": "R1",
-      "statusBasis": "__tests__/mobile-a11y-fences.test.ts:44 walks the whole apps/mobile/src tree; :87-99 fails on any <Pressable opening tag without accessibilityRole (per block, brace-depth scan :54-72), :102-109 on any pressable file lacking TOUCH_TARGET/hitSlop, :112-119 EmptyState consumers >= 4. :79-85 is an explicit non-vacuity floor (files > 80, pressableFiles >= 15).",
-      "notes": "Live floor is 4 (:119), matching the rule text.",
+      "statusBasis": "Re-anchored 2026-09-24 (prior citations drifted ~150 lines stale after the CA-3/rule-5 growth this file's own header describes). __tests__/mobile-a11y-fences.test.ts:63 walks the whole apps/mobile/src tree; :237-250 fails on any <Pressable opening tag without accessibilityRole (per block, brace-depth scan :137-155), :252-260 on any pressable file lacking TOUCH_TARGET/hitSlop, :342-350 EmptyState consumers >= 4. :187-196 is an explicit non-vacuity floor (files > 80, pressableFiles >= 15).",
+      "notes": "Live floor is 4 (:349), matching the rule text.",
       "confidence": 0.85,
       "numberKey": "minimum EmptyState consumer files",
       "verifiedAt": "d7dbf25f7"
