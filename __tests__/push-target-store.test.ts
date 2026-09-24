@@ -17,7 +17,7 @@
 // device_id is not enough to silence somebody else's phone.
 
 import { createClient } from "@supabase/supabase-js";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { db, pushTargets } from "@/db";
@@ -46,6 +46,19 @@ const SHARED_DEVICE = "device-push-target-store-shared";
 
 /** A second install for the same person — "todos los dispositivos" needs two. */
 const SECOND_DEVICE = "device-push-target-store-second";
+
+/** Extra installs for the F-11 live-target cap, cleaned up the same way. */
+const CAP_DEVICE_1 = "device-push-target-store-cap-1";
+const CAP_DEVICE_2 = "device-push-target-store-cap-2";
+const CAP_DEVICE_3 = "device-push-target-store-cap-3";
+const CAP_DEVICE_4 = "device-push-target-store-cap-4";
+const CAP_DEVICES = [CAP_DEVICE_1, CAP_DEVICE_2, CAP_DEVICE_3, CAP_DEVICE_4];
+
+/** `created_at` is the cap's only recency signal — space registrations out so
+ *  two inserts never race for the same instant and the ranking is unambiguous. */
+async function tick(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 15));
+}
 
 let userA: string;
 let userB: string;
@@ -102,6 +115,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.delete(pushTargets).where(eq(pushTargets.deviceId, SHARED_DEVICE));
   await db.delete(pushTargets).where(eq(pushTargets.deviceId, SECOND_DEVICE));
+  await db.delete(pushTargets).where(inArray(pushTargets.deviceId, CAP_DEVICES));
 });
 
 describe("registerPushTarget — the conflict target is device_id", () => {
@@ -179,6 +193,173 @@ describe("registerPushTarget — the conflict target is device_id", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].revokedAt).toBeNull();
     expect(await activePushTargetsForUser(userA)).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// registerPushTarget — the live-install cap (F-11)
+//
+// A reinstall mints a brand-new device_id (install-identity.ts), so the row
+// from the PREVIOUS install had no way to notice it was replaced and stayed
+// live — and reachable by the send path — forever. registerPushTarget now
+// caps live rows per user+platform at MAX_LIVE_TARGETS_PER_USER_PLATFORM (2),
+// revoking the oldest OTHER installs once a new one pushes past it. See the
+// tradeoff comment on the constant in push-target-store.ts.
+// ---------------------------------------------------------------------------
+
+describe("registerPushTarget — caps live installs per user + platform (F-11)", () => {
+  it("revokes the oldest OTHER install once a third registers, keeping the newest two", async () => {
+    await registerPushTarget({
+      userId: userA,
+      deviceId: CAP_DEVICE_1,
+      expoPushToken: "ExponentPushToken[cap-1]",
+      platform: "android",
+    });
+    await tick();
+    await registerPushTarget({
+      userId: userA,
+      deviceId: CAP_DEVICE_2,
+      expoPushToken: "ExponentPushToken[cap-2]",
+      platform: "android",
+    });
+    await tick();
+    await registerPushTarget({
+      userId: userA,
+      deviceId: CAP_DEVICE_3,
+      expoPushToken: "ExponentPushToken[cap-3]",
+      platform: "android",
+    });
+
+    const rows = await db
+      .select({ deviceId: pushTargets.deviceId, revokedAt: pushTargets.revokedAt })
+      .from(pushTargets)
+      .where(inArray(pushTargets.deviceId, CAP_DEVICES));
+    const byDevice = new Map(rows.map((row) => [row.deviceId, row.revokedAt]));
+
+    // CAP_DEVICE_1 registered first — it is the one beyond the cap of two.
+    expect(byDevice.get(CAP_DEVICE_1)).not.toBeNull();
+    expect(byDevice.get(CAP_DEVICE_2)).toBeNull();
+    expect(byDevice.get(CAP_DEVICE_3)).toBeNull();
+    expect(await activePushTargetsForUser(userA)).toHaveLength(2);
+  });
+
+  it("never revokes the install that is registering right now, even refreshing the OLDEST one", async () => {
+    await registerPushTarget({
+      userId: userA,
+      deviceId: CAP_DEVICE_1,
+      expoPushToken: "ExponentPushToken[cap-1]",
+      platform: "android",
+    });
+    await tick();
+    await registerPushTarget({
+      userId: userA,
+      deviceId: CAP_DEVICE_2,
+      expoPushToken: "ExponentPushToken[cap-2]",
+      platform: "android",
+    });
+    await tick();
+
+    // A plain token refresh on the OLDEST install — not a new install, and its
+    // own created_at does not move. A cap that ranked by "last registered"
+    // rather than excluding the caller outright would revoke it right here,
+    // which is the "punish whoever asks second" bug the store's comment warns
+    // about.
+    await registerPushTarget({
+      userId: userA,
+      deviceId: CAP_DEVICE_1,
+      expoPushToken: "ExponentPushToken[cap-1-refreshed]",
+      platform: "android",
+    });
+
+    expect(await activePushTargetsForUser(userA)).toHaveLength(2);
+
+    await tick();
+    // NOW a genuinely third install shows up. CAP_DEVICE_1 is still the
+    // globally oldest of the OTHERS (its created_at never moved), so it is
+    // the one the cap finally revokes — not CAP_DEVICE_2, and not the new
+    // CAP_DEVICE_3 registering right now.
+    await registerPushTarget({
+      userId: userA,
+      deviceId: CAP_DEVICE_3,
+      expoPushToken: "ExponentPushToken[cap-3]",
+      platform: "android",
+    });
+
+    const rows = await db
+      .select({ deviceId: pushTargets.deviceId, revokedAt: pushTargets.revokedAt })
+      .from(pushTargets)
+      .where(inArray(pushTargets.deviceId, CAP_DEVICES));
+    const byDevice = new Map(rows.map((row) => [row.deviceId, row.revokedAt]));
+    expect(byDevice.get(CAP_DEVICE_1)).not.toBeNull();
+    expect(byDevice.get(CAP_DEVICE_2)).toBeNull();
+    expect(byDevice.get(CAP_DEVICE_3)).toBeNull();
+  });
+
+  it("counts the cap separately per platform — an iOS install never evicts an Android one", async () => {
+    await registerPushTarget({
+      userId: userA,
+      deviceId: CAP_DEVICE_1,
+      expoPushToken: "ExponentPushToken[cap-1]",
+      platform: "android",
+    });
+    await tick();
+    await registerPushTarget({
+      userId: userA,
+      deviceId: CAP_DEVICE_2,
+      expoPushToken: "ExponentPushToken[cap-2]",
+      platform: "android",
+    });
+    await tick();
+    // A THIRD live device overall, but the first on iOS — must not trip the
+    // Android cap.
+    await registerPushTarget({
+      userId: userA,
+      deviceId: CAP_DEVICE_3,
+      expoPushToken: "ExponentPushToken[cap-3-ios]",
+      platform: "ios",
+    });
+
+    const rows = await db
+      .select({ deviceId: pushTargets.deviceId, revokedAt: pushTargets.revokedAt })
+      .from(pushTargets)
+      .where(inArray(pushTargets.deviceId, CAP_DEVICES));
+    for (const row of rows) expect(row.revokedAt).toBeNull();
+    expect(await activePushTargetsForUser(userA)).toHaveLength(3);
+  });
+
+  it("never touches another person's installs while enforcing the cap", async () => {
+    await registerPushTarget({
+      userId: userB,
+      deviceId: CAP_DEVICE_4,
+      expoPushToken: "ExponentPushToken[other-person]",
+      platform: "android",
+    });
+    await tick();
+
+    await registerPushTarget({
+      userId: userA,
+      deviceId: CAP_DEVICE_1,
+      expoPushToken: "ExponentPushToken[cap-1]",
+      platform: "android",
+    });
+    await tick();
+    await registerPushTarget({
+      userId: userA,
+      deviceId: CAP_DEVICE_2,
+      expoPushToken: "ExponentPushToken[cap-2]",
+      platform: "android",
+    });
+    await tick();
+    await registerPushTarget({
+      userId: userA,
+      deviceId: CAP_DEVICE_3,
+      expoPushToken: "ExponentPushToken[cap-3]",
+      platform: "android",
+    });
+
+    // B's install predates all of A's and would be the "oldest" by created_at
+    // alone — proving the cap is scoped by user_id and not just platform.
+    expect(await activePushTargetsForUser(userB)).toHaveLength(1);
   });
 });
 

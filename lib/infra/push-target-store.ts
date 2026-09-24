@@ -1,7 +1,7 @@
 import "server-only";
 
 import { db, pushTargets } from "@/db";
-import { and, asc, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 
 /**
  * Reads and writes for `push_targets` — the native (Expo) push destinations.
@@ -77,6 +77,75 @@ export async function registerPushTarget(input: PushTargetRegistration): Promise
         revokedAt: null,
       },
     });
+
+  await revokeExcessPushTargets(input.userId, input.deviceId, input.platform);
+}
+
+/**
+ * How many install rows stay live for one person on one platform (F-11).
+ *
+ * WHY THIS EXISTS. `install-identity.ts` mints a brand-new `device_id` on
+ * every install by design, so a reinstall never reuses the old row — it just
+ * adds a new one and leaves the old row live forever, its Expo token now dead
+ * (the app that would answer `DeviceNotRegistered` no longer exists to be
+ * asked). Nothing else in this file ever revoked it: `revokePushTarget` needs
+ * the OLD install's own credentials to call, which a reinstalled phone does
+ * not have. So the row survived every sign-out, every purge cycle it was too
+ * recent for, silently costing one wasted send per notification, forever.
+ *
+ * THE MULTI-DEVICE TRADEOFF, ACCEPTED RATHER THAN SOLVED. Capping live rows
+ * fixes the common case (a phone reinstalled, or a phone plus a tablet) at
+ * the cost of the genuine two-Android-phones household: alternate between two
+ * phones for long enough, then install a third (or reinstall one of the two),
+ * and whichever of the original two registered LONGEST AGO stops receiving
+ * pushes — even if it is the one used every day. That is because "recency"
+ * here can only be `created_at`, the install's first-seen time, unmoved by an
+ * ordinary token refresh on that same install; there is no "last opened the
+ * app" signal in this table to rank by instead. A correct ranking needs one,
+ * and adding it is out of scope here. Between "the truly rare third phone
+ * loses pushes on the least-recently-installed one" and "every reinstalled
+ * phone leaks a dead row forever", this file picks the former.
+ */
+const MAX_LIVE_TARGETS_PER_USER_PLATFORM = 2;
+
+/**
+ * Revoke this user's live rows on this platform beyond the newest
+ * `MAX_LIVE_TARGETS_PER_USER_PLATFORM`, NEVER touching `keepDeviceId` — the
+ * install that just registered, whatever its own `created_at` says. Without
+ * that exclusion, an old install refreshing its OWN token could revoke
+ * itself the moment a newer install also registered, which is not "cap the
+ * device count", it is "punish whoever asks second".
+ */
+async function revokeExcessPushTargets(
+  userId: string,
+  keepDeviceId: string,
+  platform: string,
+): Promise<void> {
+  const others = await db
+    .select({ id: pushTargets.id })
+    .from(pushTargets)
+    .where(
+      and(
+        eq(pushTargets.userId, userId),
+        eq(pushTargets.platform, platform),
+        isNull(pushTargets.revokedAt),
+        ne(pushTargets.deviceId, keepDeviceId),
+      ),
+    )
+    .orderBy(desc(pushTargets.createdAt));
+
+  const toRevoke = others.slice(MAX_LIVE_TARGETS_PER_USER_PLATFORM - 1);
+  if (toRevoke.length === 0) return;
+
+  await db
+    .update(pushTargets)
+    .set({ revokedAt: new Date() })
+    .where(
+      inArray(
+        pushTargets.id,
+        toRevoke.map((row) => row.id),
+      ),
+    );
 }
 
 /**
