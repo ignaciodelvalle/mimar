@@ -371,13 +371,26 @@ describe("the copy every branch owes", () => {
       "report_content",
     ] as const) {
       expect(commandDoneLabel(command, "female").length).toBeGreaterThan(0);
-      expect(commandUnchangedLabel(command).length).toBeGreaterThan(0);
+      expect(commandUnchangedLabel(command, "female").length).toBeGreaterThan(0);
     }
   });
 
   it("says the animal came home in the right gender", () => {
     expect(commandDoneLabel("mark_found", "male")).toContain("encontrado");
     expect(commandDoneLabel("mark_found", "female")).toContain("encontrada");
+    expect(commandDoneLabel("mark_found", null)).toContain("encontrada/o");
+  });
+
+  it("says the no-op the same way, gendered, for a mark_found replay", () => {
+    // The same bug the button label and the success sentence had: a fixed
+    // feminine "marcada... encontrada" regardless of the animal's own sex.
+    expect(commandUnchangedLabel("mark_found", "male")).toBe("Ya estaba marcado como encontrado.");
+    expect(commandUnchangedLabel("mark_found", "female")).toBe(
+      "Ya estaba marcada como encontrada.",
+    );
+    expect(commandUnchangedLabel("mark_found", null)).toBe(
+      "Ya estaba marcado/a como encontrada/o.",
+    );
   });
 
   it("says SOMETHING even when the contract named nothing", () => {
@@ -496,7 +509,7 @@ describe("lost-view-model — reportar un mensaje", () => {
       REPORT_INTRO,
       ...REPORT_CATEGORY_OPTIONS.map(reportCategoryLabel),
       commandDoneLabel("report_content", "female"),
-      commandUnchangedLabel("report_content"),
+      commandUnchangedLabel("report_content", "female"),
     ];
     for (const text of strings) expect(text.toLowerCase()).not.toContain("denunci");
   });

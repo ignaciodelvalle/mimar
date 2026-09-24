@@ -567,6 +567,31 @@ describe("LostScreen — marcar encontrada is a two-step", () => {
     fireEvent.press(screen.getByText("Sí, la encontré"));
     expect(await screen.findByText(/como encontrada/)).toBeOnTheScreen();
   });
+
+  it("gender-agrees the button itself, not only the sentence after pressing it", async () => {
+    // The bug the button label carried: a fixed feminine "Marcar como
+    // encontrada" regardless of the animal, while the sentence after the tap
+    // was already gendered correctly.
+    mockFetch.mockResolvedValue(ok(searching({ petSex: "male" })));
+    render(<LostScreen publicToken={TOKEN} />);
+    expect(await screen.findByText("Marcar como encontrado")).toBeOnTheScreen();
+    expect(screen.queryByText("Marcar como encontrada")).toBeNull();
+  });
+
+  it("names neither gender when the sex is not on record", async () => {
+    mockFetch.mockResolvedValue(ok(searching({ petSex: null })));
+    render(<LostScreen publicToken={TOKEN} />);
+    expect(await screen.findByText("Marcar como encontrada/o")).toBeOnTheScreen();
+  });
+
+  it("says the no-op sentence in the animal's own gender on a replay", async () => {
+    mockFetch.mockResolvedValue(ok(searching({ petSex: "male" })));
+    mockSend.mockResolvedValue(ack("mark_found", false, "active"));
+    render(<LostScreen publicToken={TOKEN} />);
+    fireEvent.press(await screen.findByText("Marcar como encontrado"));
+    fireEvent.press(screen.getByText("Sí, la encontré"));
+    expect(await screen.findByText("Ya estaba marcado como encontrado.")).toBeOnTheScreen();
+  });
 });
 
 describe("LostScreen — the feed and the poster", () => {

@@ -109,6 +109,7 @@ import {
   feedItemReportable,
   feedItemTitle,
   feedTruncationNote,
+  foundAdjective,
   lostAdjective,
   noContactWarning,
   noWayToReachYou,
@@ -260,7 +261,7 @@ export function LostScreen({ publicToken }: { publicToken: string }) {
       setNotice(
         result.payload.changed
           ? { tone: "ok", message: commandDoneLabel(result.payload.command, petSex) }
-          : { tone: "warn", message: commandUnchangedLabel(result.payload.command) },
+          : { tone: "warn", message: commandUnchangedLabel(result.payload.command, petSex) },
       );
       setPane("overview");
       // A REFRESH: the command already succeeded and its notice is on screen.
@@ -423,7 +424,10 @@ function Overview({
           </Callout>
         ) : (
           <SecondaryButton
-            label="Marcar como encontrada"
+            // Gender-agreed with the pet's own sex (U-6/gender review), same
+            // as "Marcar como {lostAdjective}" above: this label used to be a
+            // fixed feminine "encontrada" regardless of the animal.
+            label={`Marcar como ${foundAdjective(view.petSex)}`}
             disabled={busy}
             onPress={() => {
               // The confirm haptic marks the WEIGHT of what just armed, not an

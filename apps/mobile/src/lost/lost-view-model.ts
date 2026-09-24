@@ -65,6 +65,25 @@ export function foundAdjective(sex: string | null): string {
 }
 
 /**
+ * "marcado" / "marcada" / "marcado/a" — the same call for the past participle
+ * of "marcar", which `commandUnchangedLabel`'s `mark_found` case needs beside
+ * `foundAdjective`. Kept separate from that one rather than reused: they agree
+ * by coincidence of both being feminine-by-default Spanish adjectives, not
+ * because one derives from the other, and a future adjective this sex needs
+ * (a third participle) must not have to squeeze into either name.
+ */
+export function markedAdjective(sex: string | null): string {
+  switch (sex) {
+    case "male":
+      return "marcado";
+    case "female":
+      return "marcada";
+    default:
+      return "marcado/a";
+  }
+}
+
+/**
  * The one-line headline for the animal's current situation.
  *
  * SAYS WHICH OF THE THREE STATES IT IS, including the one people find
@@ -602,7 +621,7 @@ export function commandDoneLabel(command: LostCommandInput["command"], petSex: s
  * different facts and telling somebody they just did something they did not is
  * how an interface teaches people to distrust it.
  */
-export function commandUnchangedLabel(command: LostCommandInput["command"]) {
+export function commandUnchangedLabel(command: LostCommandInput["command"], petSex: string | null) {
   switch (command) {
     case "mark_lost":
       // Unreachable: the server refuses an animal already lost rather than
@@ -613,7 +632,11 @@ export function commandUnchangedLabel(command: LostCommandInput["command"]) {
     case "report_last_seen":
       return "Este avistaje ya estaba registrado — no se duplicó.";
     case "mark_found":
-      return "Ya estaba marcada como encontrada.";
+      // Gender-agreed with the pet's own sex (gender review), the same as
+      // `commandDoneLabel`'s "La marcamos como encontrada/o" — this sentence
+      // used to be a fixed feminine "marcada... encontrada" regardless of the
+      // animal.
+      return `Ya estaba ${markedAdjective(petSex)} como ${foundAdjective(petSex)}.`;
     case "reactivate_search":
       return "La búsqueda ya estaba activa.";
     case "set_disclosure":
