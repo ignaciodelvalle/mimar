@@ -54,12 +54,17 @@ import { apiFailureMessage } from "../../src/api/client";
 import { fetchMyPets } from "../../src/api/endpoints";
 import { sessionPort } from "../../src/auth/session-store";
 import { useGate } from "../../src/auth/useGate";
+import { BiteDraftBanner } from "../../src/pets/BiteDraftBanner";
 import { PetRow } from "../../src/pets/PetRow";
+import {
+  type BiteDraftBanner as BiteDraftInfo,
+  useBiteDraftBanner,
+} from "../../src/pets/use-bite-draft-banner";
 import { DestinationsFooter } from "../../src/ui/TopLevelNavMenu";
 import { Body, Card, EmptyState, ErrorNotice, Loading, StaleNotice } from "../../src/ui/components";
 import { PrimaryButton, Screen, pullToRefresh } from "../../src/ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../../src/ui/reload-state";
-import { ROUTES, credentialRoute } from "../../src/ui/routes";
+import { ROUTES, credentialRoute, recordEventRoute } from "../../src/ui/routes";
 import { COLORS, SPACE } from "../../src/ui/theme";
 import { useReconnect } from "../../src/ui/use-reconnect";
 
@@ -113,6 +118,14 @@ export default function MisMascotasScreen() {
     }, [load]),
   );
 
+  // THE BITE-DRAFT BANNER (M5 / Re-1). Its own read, on EVERY focus including
+  // the first — unlike the pets list above, there is no double-read to guard
+  // against: `listEventDrafts` is one cheap `getAllKeys` pass, and the banner
+  // is exactly what must disappear the moment somebody comes back here having
+  // sent or discarded the draft it pointed at.
+  const { banner: biteDraft, refresh: refreshBiteDraft } = useBiteDraftBanner();
+  useFocusEffect(useCallback(() => void refreshBiteDraft(), [refreshBiteDraft]));
+
   // WHEN THE NETWORK COMES BACK, TRY AGAIN (B-05). The offline banner already
   // clears itself on this exact event; the list used to sit broken beside it
   // until somebody pressed a button. A refresh and not an initial read: whatever
@@ -138,6 +151,9 @@ export default function MisMascotasScreen() {
     [],
   );
   const handleRegister = useCallback(() => routerRef.current.push(ROUTES.altaMascota), []);
+  const handleOpenBiteDraft = useCallback((publicToken: string) => {
+    routerRef.current.push(recordEventRoute(publicToken, { kind: "bite" }));
+  }, []);
 
   if (!gate.allowed) return gate.element;
 
@@ -167,10 +183,12 @@ export default function MisMascotasScreen() {
     <PetListScreen
       view={state.view}
       staleFailure={state.staleFailure}
+      biteDraft={biteDraft}
       refreshing={refreshing}
       onRefresh={() => void load("refresh")}
       onOpen={handleOpenPet}
       onRegister={handleRegister}
+      onOpenBiteDraft={handleOpenBiteDraft}
     />
   );
 }
@@ -182,17 +200,21 @@ export default function MisMascotasScreen() {
 function PetListScreen({
   view,
   staleFailure,
+  biteDraft,
   refreshing,
   onRefresh,
   onOpen,
   onRegister,
+  onOpenBiteDraft,
 }: {
   view: MyPetsV1;
   staleFailure: string | null;
+  biteDraft: BiteDraftInfo | null;
   refreshing: boolean;
   onRefresh: () => void;
   onOpen: (publicToken: string) => void;
   onRegister: () => void;
+  onOpenBiteDraft: (publicToken: string) => void;
 }) {
   const { pets, total, truncated } = view;
 
@@ -205,7 +227,12 @@ function PetListScreen({
         contentContainerStyle={styles.listContent}
         refreshControl={pullToRefresh(onRefresh, refreshing)}
         ListHeaderComponent={
-          staleFailure === null ? null : <StaleNotice message={staleFailure} onRetry={onRefresh} />
+          <ListHeader
+            staleFailure={staleFailure}
+            onRefresh={onRefresh}
+            biteDraft={biteDraft}
+            onOpenBiteDraft={onOpenBiteDraft}
+          />
         }
         ListEmptyComponent={
           <EmptyState
@@ -236,6 +263,35 @@ function PetListScreen({
         windowSize={5}
       />
     </SafeAreaView>
+  );
+}
+
+/**
+ * Everything that sits ABOVE the pets themselves, now the `FlatList`'s
+ * `ListHeaderComponent` so it renders once — same reasoning as `ListFooter`
+ * below. Two banners can coexist here: a stale read and an unsent bite draft
+ * are unrelated facts about the account, and neither one being true says
+ * anything about the other.
+ */
+function ListHeader({
+  staleFailure,
+  onRefresh,
+  biteDraft,
+  onOpenBiteDraft,
+}: {
+  staleFailure: string | null;
+  onRefresh: () => void;
+  biteDraft: BiteDraftInfo | null;
+  onOpenBiteDraft: (publicToken: string) => void;
+}) {
+  if (staleFailure === null && biteDraft === null) return null;
+  return (
+    <View style={styles.headerGap}>
+      {staleFailure === null ? null : <StaleNotice message={staleFailure} onRetry={onRefresh} />}
+      {biteDraft === null ? null : (
+        <BiteDraftBanner onPress={() => onOpenBiteDraft(biteDraft.publicToken)} />
+      )}
+    </View>
   );
 }
 
@@ -287,5 +343,6 @@ const styles = StyleSheet.create({
   // Mirrors `Screen`'s own `scroll` style (padding + gap) so the loaded arm
   // reads identically to the loading/failed arms it replaces.
   listContent: { padding: SPACE.xl2, gap: SPACE.lg },
+  headerGap: { gap: SPACE.lg },
   footerGap: { gap: SPACE.lg },
 });

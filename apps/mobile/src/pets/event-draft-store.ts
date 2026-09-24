@@ -333,3 +333,68 @@ export async function pruneExpiredEventDrafts(now: number = Date.now()): Promise
     // refuses an expired draft on its own.
   }
 }
+
+/** One draft found by `listEventDrafts`, identified by the pet it belongs to. */
+export type FoundEventDraft = {
+  publicToken: string;
+  /** Device clock at write time, ms since epoch. Newest sorts first. */
+  savedAt: number;
+};
+
+/**
+ * Every non-expired draft this owner holds for one `kind`, newest first.
+ *
+ * BUILT FOR "MIS MASCOTAS" (M5 / Re-1, PO decision 3): the "Tenés una
+ * mordedura sin enviar" banner has to find a bite draft WITHOUT already
+ * knowing which pet it belongs to — every other reader in this file is
+ * handed a full `EventDraftIdentity` by the form that is about to restore
+ * one draft it already knows the key for. This one scans instead.
+ *
+ * SCOPED TO ONE OWNER AND ONE KIND BY CONSTRUCTION, not by filtering
+ * afterward: the candidate keys are narrowed to `${prefix}${ownerId}.` before
+ * anything is read, so this can never surface another signed-in account's
+ * text — the same fence `eventDraftKey` draws. Only kinds whose
+ * `sourceEventId` is always `null` are meaningful callers today (a bite
+ * report never has one), so that segment is not exposed here; a kind that
+ * DOES carry one, like `medication_end`, would need its key's `~source` tail
+ * split out before this could tell two treatments apart.
+ *
+ * EVERY CANDIDATE GOES THROUGH `readEventDraft`, not a raw parse of what
+ * `getAllKeys` returned: that is what makes "too old", "malformed" and "an
+ * old key version" the same three refusals every other reader gets, rather
+ * than a second copy of `isTooOld` and `narrowStoredDraft` that could drift
+ * from the first. A draft `readEventDraft` refuses is deleted by it too, so
+ * this sweep is also hygiene, same as `pruneExpiredEventDrafts` reasons for
+ * itself above.
+ */
+export async function listEventDrafts({
+  ownerId,
+  kind,
+  now = Date.now(),
+}: {
+  ownerId: string;
+  kind: WritableKind;
+  now?: number;
+}): Promise<FoundEventDraft[]> {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const prefix = `${KEY_VERSION_PREFIX}${ownerId}.`;
+    const suffix = `.${kind}`;
+    const candidates = keys.filter((key) => key.startsWith(prefix) && key.endsWith(suffix));
+    const found: FoundEventDraft[] = [];
+    for (const key of candidates) {
+      const stored = await readEventDraft(key, now);
+      if (stored === null) continue;
+      found.push({
+        publicToken: key.slice(prefix.length, key.length - suffix.length),
+        savedAt: stored.savedAt,
+      });
+    }
+    found.sort((a, b) => b.savedAt - a.savedAt);
+    return found;
+  } catch {
+    // Best effort — see every other reader in this file. A scan that cannot
+    // run is a banner that does not show, not a crash on "Mis mascotas".
+    return [];
+  }
+}
