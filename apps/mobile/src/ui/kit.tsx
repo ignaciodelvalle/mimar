@@ -798,26 +798,41 @@ export type ButtonTone = "primary" | "seal";
  * `tone="seal"` is the destructive twin — `LnButton`'s `seal` variant, which is
  * the red the web reserves for actions that end something.
  *
- * DISABLED IS THE SAME BUTTON AT 60%, which is `LnButton`'s
- * `disabled:opacity-60` and is deliberate: the old native button turned grey
- * when disabled, and a grey fill reads as a DIFFERENT button rather than as
- * this one being unavailable. `accessibilityState` carries the fact to a
- * screen reader, which opacity cannot.
+ * A-3 (M7 accessibility pass, fresh-review follow-up 2026-09-24). DISABLED
+ * USED TO BE "the same button at 60% opacity" — `LnButton`'s
+ * `disabled:opacity-60`, deliberately not grey, because a grey fill read as a
+ * DIFFERENT button. That was wrong twice over, not once. First measured: white
+ * text and `COLORS.accent` fill composited to 2.94–2.99:1 on the app's real
+ * surfaces, under the 3:1 floor for a UI component (WCAG 1.4.11) — opacity
+ * fades the WHOLE element, so the RATIO between text and fill collapses even
+ * though neither colour is individually hard to see (the same lesson
+ * `globals.css`'s hover-trio comment already recorded for the web). The first
+ * fix (darkening the fill to `accentPressed` before fading) treated that as
+ * the whole bug. It was not: on ANDROID, RN only composites a `View`'s
+ * children as one unit when `needsOffscreenAlphaCompositing` is set on it,
+ * which this control never did — absent that, the platform applies `opacity`
+ * PER CHILD instead of to the rendered result, so the white label and the blue
+ * fill each fade toward the page INDEPENDENTLY rather than together. Measured
+ * that way the label can land near 2.2:1, further under floor than the
+ * un-offset math predicted, and no amount of choosing a darker STARTING fill
+ * fixes a per-child composite — the opacity itself is the defect.
  *
- * A-3 (M7 accessibility pass). Fading the WHOLE button toward the page at 60%
- * opacity is exactly the anti-pattern `globals.css`'s own hover-trio comment
- * names for the web ("Opacity fades the ELEMENT: the white label lightens
- * toward the page along with the fill"): white text and `COLORS.accent` fill
- * both lighten together, so the ratio BETWEEN them — not either one's distance
- * from the page — is what collapses. Measured composited over the app's real
- * surfaces (white card, cream canvas) it lands at 2.94–2.99:1, under the
- * 3:1 floor for a UI component (WCAG 1.4.11). `buttonPrimaryDisabledFill`
- * swaps the disabled PRIMARY fill for `COLORS.accentPressed` (the same
- * azul-700 the web already uses for its pressed/hover state, not a new
- * value) before the opacity is applied: a darker starting fill composites to
- * a still-legible ~3.47:1 at the same 60% fade.
- * `apps/mobile/src/ui/button-disabled-contrast.test.ts` computes the ratio
- * from these tokens.
+ * DISABLED NOW HAS NO OPACITY AT ALL. `buttonPrimaryDisabled` is an EXPLICIT
+ * fill/text pair, both fully opaque: `COLORS.celeste` (the design system's
+ * own lighter, less saturated blue — "links and informational accents", never
+ * invented for this) under the SAME white label the enabled button wears.
+ * Still visibly blue, so it reads as THIS button rather than a different one;
+ * visibly SOFTER than `COLORS.accent`, so it reads as unavailable without
+ * fading anything. Measured: white-on-celeste 3.15:1, celeste-on-white-card
+ * 3.15:1, celeste-on-cream-canvas 3.01:1 — every pairing this control can
+ * actually sit on clears 3:1 on its own, with nothing left to composite.
+ * `accessibilityState` still carries the fact to a screen reader.
+ *
+ * `tone="seal"` keeps the old opacity-60 disabled treatment — untouched here;
+ * it was not in scope for this pass.
+ * `apps/mobile/src/ui/button-disabled-contrast.test.ts` renders the actual
+ * disabled control and computes the ratio from ITS OWN resolved styles, not
+ * from the tokens in isolation, so a regression back to opacity fails it.
  */
 export function PrimaryButton({
   label,
@@ -839,8 +854,9 @@ export function PrimaryButton({
       style={(state) => [
         styles.button,
         tone === "seal" ? styles.buttonSeal : styles.buttonPrimary,
-        disabled && tone === "primary" ? styles.buttonPrimaryDisabledFill : null,
-        disabled ? styles.buttonDisabled : pressedOpacity(state),
+        disabled && tone === "primary" ? styles.buttonPrimaryDisabled : null,
+        disabled && tone === "seal" ? styles.buttonDisabled : null,
+        disabled ? null : pressedOpacity(state),
       ]}
     >
       <Text style={styles.buttonLabelOnFill}>{label}</Text>
@@ -1076,12 +1092,14 @@ const styles = StyleSheet.create({
     paddingVertical: SPACE.sm + 2,
   },
   buttonPrimary: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
-  /** A-3: the disabled PRIMARY fill, composited under `buttonDisabled`'s 60%
-   *  opacity — see `PrimaryButton`'s docblock for why this is `accentPressed`
-   *  and not `accent`. */
-  buttonPrimaryDisabledFill: {
-    backgroundColor: COLORS.accentPressed,
-    borderColor: COLORS.accentPressed,
+  /** A-3: the disabled PRIMARY state, fully opaque — no `opacity`, see
+   *  `PrimaryButton`'s docblock for why (Android composites `opacity` per
+   *  child without `needsOffscreenAlphaCompositing`, so a faded fill and a
+   *  faded label do not fade TOGETHER). `COLORS.celeste` clears 3:1 against
+   *  both the white label on it and the app's surfaces under it, on its own. */
+  buttonPrimaryDisabled: {
+    backgroundColor: COLORS.celeste,
+    borderColor: COLORS.celeste,
   },
   buttonSeal: { backgroundColor: COLORS.seal, borderColor: COLORS.seal },
   buttonGhost: { backgroundColor: COLORS.surface, borderColor: COLORS.borderStrong },
