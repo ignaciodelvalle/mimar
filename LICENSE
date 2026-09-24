@@ -1,0 +1,29 @@
+Copyright (c) 2026 Ignacio Del Valle. All rights reserved.
+
+This is not an open-source license. The source code is published so that
+anyone can see how the system works.
+
+You may, without asking:
+
+- read the code, and view and fork it on GitHub as GitHub's Terms of
+  Service allow;
+- download it, run it and modify it on your own computer, only to evaluate
+  or audit it, to research its security, or to prepare a report about it.
+
+You may not, without prior written permission from the copyright holder:
+
+- use it in production, or run it as a service for anyone;
+- run, modify or evaluate it on behalf of a third party (a client, an
+  employer, a government body or any other organization);
+- copy, publish, distribute, sublicense or sell it, or a modified version
+  of it.
+
+All other rights are reserved. The code is provided "as is", without
+warranty of any kind.
+
+Outside pull requests are not accepted at this time. Security reports are
+welcome: see SECURITY.md.
+
+Open data published by this system at /transparencia is licensed
+separately under Creative Commons Attribution 4.0 International (CC BY 4.0),
+as indicated on that surface.

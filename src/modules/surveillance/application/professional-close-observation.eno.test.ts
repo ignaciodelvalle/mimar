@@ -1,0 +1,331 @@
+// Integration: a POSITIVE rabies close creates the ENO record (PO decision 1A).
+//
+// The defect this pins: closing an observation with `positive_rabies` wrote the
+// `rabies_observation_ended` event and paged the authorities in-app, but left
+// NOTHING in `event_notification_outbox` — the table /gob/outbox reads for its
+// "Cola ENO" and legal SLA. A rabies `disease_diagnosis` lands there; a rabies
+// case confirmed by observation, the same notifiable disease, did not. And the
+// veterinarian's close screen already promised the authority would be notified.
+//
+// What is asserted, against the real database and the real repository:
+//   - positive → exactly ONE outbox row, bound for the ENO preset, SLA = the
+//     catalog's rabies window measured from the event itself, jurisdiction
+//     snapshot of the pet, and the disease readable by the Cola ENO row.
+//   - negative / dead → none.
+//   - a second close → refused, still one row.
+//   - a retried write of the same event (same idempotency key) → still one row.
+//   - the row is atomic with the event: it is written inside the close's tx.
+//
+// No host clock is compared against a `defaultNow()` column: the SLA is checked
+// against the ended event's `occurred_at`, which is the value the close wrote.
+
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import {
+  db,
+  enoProcessingQueue,
+  eventNotificationOutbox,
+  notifications,
+  organizations,
+  ownerships,
+  petEvents,
+  pets,
+  profiles,
+} from "@/db";
+import { describeEnoNotification } from "@/lib/infra/outbox-list";
+import { ENO_PRESET_TARGET_KINDS } from "@/lib/infra/outbox-query";
+import { generatePublicToken } from "@/lib/infra/publicToken";
+import { withMutationOverride } from "../../../../__tests__/_helpers/db-overrides";
+import { getEnoDisease } from "../domain/eno-catalog";
+import type { RabiesObservationOutcome } from "../domain/rabies-observation";
+import { SurveillanceRepository } from "../infrastructure/surveillance-repository";
+import { professionalCloseObservation } from "./professional-close-observation";
+
+const GOVT_ID = "e40a0000-0000-4000-8000-00000000a001";
+const VET_ID = "e40a0000-0000-4000-8000-00000000a002";
+const PROFILE_IDS = [GOVT_ID, VET_ID];
+const ORG_TOKEN = "ENO-RABIES-CLOSE-CLINIC";
+
+const PROVINCE = "Buenos Aires";
+const LOCALITY = "La Plata";
+
+const repo = new SurveillanceRepository();
+const createdPetIds: string[] = [];
+let clinicOrgId: string;
+
+async function cleanupFixtures() {
+  const leftover = await db
+    .select({ id: pets.id })
+    .from(pets)
+    .where(sql`${pets.name} = 'EnoRabiesClosePet'`);
+  const petIds = [...new Set([...createdPetIds, ...leftover.map((p) => p.id)])];
+  if (petIds.length > 0) {
+    await db.delete(notifications).where(inArray(notifications.relatedPetId, petIds));
+    await db
+      .delete(enoProcessingQueue)
+      .where(
+        inArray(
+          enoProcessingQueue.petEventId,
+          db.select({ id: petEvents.id }).from(petEvents).where(inArray(petEvents.petId, petIds)),
+        ),
+      );
+    // Outbox rows cascade from pet_events (ON DELETE CASCADE).
+    await withMutationOverride(async (tx) => {
+      await tx.delete(petEvents).where(inArray(petEvents.petId, petIds));
+      await tx.delete(ownerships).where(inArray(ownerships.petId, petIds));
+      await tx.delete(pets).where(inArray(pets.id, petIds));
+    });
+  }
+  createdPetIds.length = 0;
+  await db.delete(notifications).where(inArray(notifications.userId, PROFILE_IDS));
+  await db.execute(sql`DELETE FROM organizations WHERE public_token = ${ORG_TOKEN}`);
+  await db.delete(profiles).where(inArray(profiles.id, PROFILE_IDS));
+}
+
+beforeAll(async () => {
+  await cleanupFixtures();
+  await db.insert(profiles).values([
+    { id: GOVT_ID, displayName: "eno-rabies-close-govt", role: "govt" },
+    { id: VET_ID, displayName: "eno-rabies-close-vet", role: "vet" },
+  ]);
+  const [org] = await db
+    .insert(organizations)
+    .values({
+      publicToken: ORG_TOKEN,
+      legalName: "Clínica ENO Rabia SRL",
+      displayName: "Clínica ENO Rabia",
+      orgType: "clinic",
+      email: "clinic@eno-rabies-close.test",
+      verified: true,
+    })
+    .returning({ id: organizations.id });
+  clinicOrgId = org.id;
+});
+
+afterAll(async () => {
+  await cleanupFixtures();
+});
+
+/** A pet with an OPEN observation (in_progress + its started event). */
+async function makeObservedPet(): Promise<{ id: string; publicToken: string }> {
+  const [pet] = await db
+    .insert(pets)
+    .values({
+      publicToken: generatePublicToken(),
+      name: "EnoRabiesClosePet",
+      species: "dog",
+      sex: "male",
+      potentiallyDangerousBreed: false,
+      rabiesObservationStatus: "in_progress",
+      jurisdictionProvince: PROVINCE,
+      jurisdictionLocality: LOCALITY,
+    })
+    .returning();
+  createdPetIds.push(pet.id);
+
+  const startedAt = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+  await withMutationOverride(async (tx) => {
+    await tx.insert(petEvents).values({
+      petId: pet.id,
+      eventType: "rabies_observation_started",
+      occurredAt: startedAt,
+      recordedAt: startedAt,
+      recordedByUserId: GOVT_ID,
+      authorRole: "govt",
+      payload: {
+        payload_version: 1,
+        bite_event_id: crypto.randomUUID(),
+        incident_severity: "low",
+        observation_started_role: "govt",
+        closure_target_role: "vet",
+        observation_until: new Date(startedAt.getTime() + 10 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+    });
+  });
+  return { id: pet.id, publicToken: pet.publicToken };
+}
+
+const deps = {
+  repo,
+  closeCase: async () => {},
+  transaction: db.transaction.bind(db) as <T>(cb: (tx: unknown) => Promise<T>) => Promise<T>,
+};
+
+function closeAsGovt(publicToken: string, outcome: RabiesObservationOutcome) {
+  return professionalCloseObservation(
+    {
+      petPublicToken: publicToken,
+      outcome,
+      closureNotes: "Notas clínicas que no deben salir en el aviso a la autoridad",
+      actor: {
+        profile: { id: GOVT_ID, role: "govt" },
+        jurisdictions: [{ province: PROVINCE, locality: LOCALITY }],
+      },
+    },
+    deps,
+  );
+}
+
+async function outboxRowsFor(petId: string) {
+  return db
+    .select({
+      sourceEventId: eventNotificationOutbox.sourceEventId,
+      targetKind: eventNotificationOutbox.targetKind,
+      province: eventNotificationOutbox.targetJurisdictionProvince,
+      locality: eventNotificationOutbox.targetJurisdictionLocality,
+      slaDueAt: eventNotificationOutbox.slaDueAt,
+      status: eventNotificationOutbox.status,
+      payloadSnapshot: eventNotificationOutbox.payloadSnapshot,
+      eventOccurredAt: petEvents.occurredAt,
+      eventType: petEvents.eventType,
+    })
+    .from(eventNotificationOutbox)
+    .innerJoin(petEvents, eq(petEvents.id, eventNotificationOutbox.sourceEventId))
+    .where(eq(petEvents.petId, petId));
+}
+
+describe("professionalCloseObservation → ENO outbox (PO 1A)", () => {
+  it("positive_rabies (State path) → exactly one Cola ENO row with the rabies SLA", async () => {
+    const pet = await makeObservedPet();
+    const result = await closeAsGovt(pet.publicToken, "positive_rabies");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const rows = await outboxRowsFor(pet.id);
+    expect(rows).toHaveLength(1);
+    const [row] = rows;
+    expect(row.sourceEventId).toBe(result.value.endedEventId);
+    expect(row.eventType).toBe("rabies_observation_ended");
+    expect(ENO_PRESET_TARGET_KINDS).toContain(row.targetKind);
+    expect(row.status).toBe("pending");
+    expect(row.province).toBe(PROVINCE);
+    expect(row.locality).toBe(LOCALITY);
+
+    const legalHours = getEnoDisease("rabies")?.notifyHours ?? Number.NaN;
+    expect(row.slaDueAt.getTime() - row.eventOccurredAt.getTime()).toBe(
+      legalHours * 60 * 60 * 1000,
+    );
+    expect(describeEnoNotification(row.payloadSnapshot)).toEqual({
+      diseaseLabel: "Rabia",
+      legalHours,
+    });
+    expect(JSON.stringify(row.payloadSnapshot)).not.toContain("Notas clínicas");
+  });
+
+  it("positive_rabies (veterinary Atender path) → exactly one Cola ENO row", async () => {
+    const pet = await makeObservedPet();
+    const result = await professionalCloseObservation(
+      {
+        petPublicToken: pet.publicToken,
+        outcome: "positive_rabies",
+        closureNotes: null,
+        actor: {
+          profile: { id: VET_ID, role: "vet" },
+          jurisdictions: [],
+          organizationId: clinicOrgId,
+          organizationName: "Clínica ENO Rabia",
+        },
+      },
+      deps,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const rows = await outboxRowsFor(pet.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].sourceEventId).toBe(result.value.endedEventId);
+    expect(describeEnoNotification(rows[0].payloadSnapshot)?.diseaseLabel).toBe("Rabia");
+  });
+
+  it.each(["negative", "dead"] as const)(
+    "%s → no ENO record (not a notifiable case)",
+    async (outcome) => {
+      const pet = await makeObservedPet();
+      const result = await closeAsGovt(pet.publicToken, outcome);
+      expect(result.ok).toBe(true);
+      expect(await outboxRowsFor(pet.id)).toHaveLength(0);
+    },
+  );
+
+  it("a second close is refused and does not enqueue again", async () => {
+    const pet = await makeObservedPet();
+    const first = await closeAsGovt(pet.publicToken, "positive_rabies");
+    expect(first.ok).toBe(true);
+    const second = await closeAsGovt(pet.publicToken, "positive_rabies");
+    expect(second.ok).toBe(false);
+    expect(await outboxRowsFor(pet.id)).toHaveLength(1);
+  });
+
+  it("a retried write of the same ended event (same idempotency key) → still one row", async () => {
+    const pet = await makeObservedPet();
+    const values = {
+      petId: pet.id,
+      eventType: "rabies_observation_ended" as const,
+      occurredAt: new Date(),
+      recordedAt: new Date(),
+      recordedByUserId: GOVT_ID,
+      authorRole: "govt" as const,
+      clientIdempotencyKey: crypto.randomUUID(),
+      payload: {
+        bite_event_id: null,
+        observation_started_event_id: crypto.randomUUID(),
+        outcome: "positive_rabies",
+        closed_by_role: "govt",
+        closure_notes: null,
+        death_event_id: null,
+      },
+    } as Parameters<typeof repo.insertObservationEnded>[0];
+
+    const a = await db.transaction((tx) => repo.insertObservationEnded(values, tx));
+    const b = await db.transaction((tx) => repo.insertObservationEnded(values, tx));
+    expect(b.id).toBe(a.id);
+    expect(await outboxRowsFor(pet.id)).toHaveLength(1);
+  });
+
+  it("the ENO row is atomic with the event: a rolled-back close leaves neither", async () => {
+    const pet = await makeObservedPet();
+    const values = {
+      petId: pet.id,
+      eventType: "rabies_observation_ended" as const,
+      occurredAt: new Date(),
+      recordedAt: new Date(),
+      recordedByUserId: GOVT_ID,
+      authorRole: "govt" as const,
+      payload: {
+        bite_event_id: null,
+        observation_started_event_id: crypto.randomUUID(),
+        outcome: "positive_rabies",
+        closed_by_role: "govt",
+        closure_notes: null,
+        death_event_id: null,
+      },
+    } as Parameters<typeof repo.insertObservationEnded>[0];
+
+    await expect(
+      db.transaction(async (tx) => {
+        await repo.insertObservationEnded(values, tx);
+        throw new Error("rollback on purpose");
+      }),
+    ).rejects.toThrow("rollback on purpose");
+
+    const ended = await db
+      .select({ id: petEvents.id })
+      .from(petEvents)
+      .where(and(eq(petEvents.petId, pet.id), eq(petEvents.eventType, "rabies_observation_ended")));
+    expect(ended).toHaveLength(0);
+    expect(await outboxRowsFor(pet.id)).toHaveLength(0);
+  });
+
+  it("does not ALSO fan out through eno_processing_queue (the close already pages the authority)", async () => {
+    const pet = await makeObservedPet();
+    const result = await closeAsGovt(pet.publicToken, "positive_rabies");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const queued = await db
+      .select({ id: enoProcessingQueue.id })
+      .from(enoProcessingQueue)
+      .where(eq(enoProcessingQueue.petEventId, result.value.endedEventId));
+    expect(queued).toHaveLength(0);
+  });
+});

@@ -1,0 +1,11 @@
+# Keep AI/agent indexing on the CANONICAL checkout only.
+#
+# .claude/worktrees/ holds git worktrees from past Claude Code sessions —
+# full snapshots of the repo at OLDER commits. An external agent that indexes
+# them reads a stale codebase and reports it as current (this happened:
+# the 2026-07-03 antipattern audit measured file sizes and routes from a
+# months-old worktree and produced 3-5x wrong numbers). Git already ignores
+# .claude/ via .gitignore; this file extends that to Cursor's indexer.
+.claude/
+.next/
+node_modules/

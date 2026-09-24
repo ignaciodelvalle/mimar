@@ -1,0 +1,136 @@
+name: Supabase local env
+description: >-
+  Export the running local Supabase stack's credentials into $GITHUB_ENV, so
+  every later step in the job authenticates against PostgREST/GoTrue with the
+  REAL keys instead of a placeholder.
+
+# WHY THIS IS A COMPOSITE ACTION AND NOT A COPY-PASTED `run:` BLOCK
+# -----------------------------------------------------------------
+# It used to be an inline script in the `e2e` job only. The `test` (vitest) job
+# never got it and hardcoded `NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy_anon_key`
+# instead — so the two jobs disagreed about what "the anon key" is, and the RLS
+# matrix's `anon` cells were the ones that paid for it (see below). GitHub
+# Actions cannot share a `step` between jobs; a composite action is the only way
+# to have ONE implementation. Add nothing here that is job-specific.
+#
+# WHY THE QUOTE STRIPPING (do not remove)
+# ---------------------------------------
+# `supabase status -o env` emits shell-quoted values:
+#
+#     ANON_KEY="eyJhbGciOiJIUzI1NiIs..."
+#
+# `$GITHUB_ENV` is NOT shell — it takes the line verbatim, quotes included. The
+# previous inline version piped that straight through, so the exported key was
+# `"eyJ..."` WITH the quotes. Measured against the local stack (supabase-cli
+# 2.98.2, the version this repo pins):
+#
+#     GoTrue    /auth/v1/token   quoted key -> 200   (the gateway does not
+#                                                     validate `apikey` at all)
+#     PostgREST /rest/v1/pets    quoted key -> 401
+#                                {"code":"PGRST301",
+#                                 "message":"JWT cryptographic operation failed"}
+#
+# i.e. sign-in kept working and every PostgREST read silently 401'd. That is the
+# worst possible failure shape: it looks like "the row isn't there", which is
+# indistinguishable from "RLS denied it".
+#
+# WHY A FAKE KEY WAS NOT HARMLESS IN THE VITEST JOB
+# -------------------------------------------------
+# Same root cause, opposite direction. Because GoTrue ignores `apikey`, a
+# dummy key still produced a REAL session for owner/other_user/admin, so those
+# matrix rows did probe RLS. The `anon` role has no session, so supabase-js sent
+# `Authorization: Bearer dummy_anon_key` — PostgREST rejected it before RLS was
+# ever consulted (`PGRST301: Expected 3 parts in JWT; got 1`), returning null
+# data, which the harness scored as "0 rows == deny". Every anon cell passed
+# without the anon policy being evaluated once. With the real key the same
+# request is authenticated as role `anon` and returns `200 []` — a real denial.
+
+# WHY EVERY `grep` HERE IS WRAPPED IN `{ ...; || true; }` (do not unwrap)
+# -----------------------------------------------------------------------
+# Measured 2026-08-30. Under `set -euo pipefail`, a command substitution in an
+# assignment carries the pipeline's exit status, and `grep` exits 1 when it
+# matches NOTHING — which is precisely the "the stack is down" case. So
+#
+#     ANON=$(echo "$CLEAN" | grep '^ANON_KEY=' | cut -d= -f2-)
+#     if [ -z "$ANON" ]; then echo "::error::...is the stack up?"; exit 1; fi
+#
+# killed the step ONE LINE ABOVE its own guard: the annotation was dead code and
+# had never been emitted once in this repo's history. The step still went red,
+# but with an empty log — no annotation, no reason, nothing to read. That is how
+# a reader ends up quoting these `::error::` strings off the runner's own echo
+# of this script (GitHub prints the whole `run:` block under `##[group]Run`, in
+# GREEN jobs too) and concluding the stack failed to start when it did not.
+# Measured over the 45 most recent CI runs: the e2e job failed 42 times inside
+# `Run Playwright e2e suite`, twice in `Build Next.js app` and once in
+# `Start Supabase local stack` — the stack was UP in 44 of 45.
+#
+# `supabase status` exiting non-zero, and the `CLEAN` extraction matching no
+# lines, had the same silent shape. All three now report before exiting.
+#
+# The `|| true` is scoped to the `grep` alone — a brace group, not the whole
+# pipeline — so `sed` and `cut` failures stay fatal under `pipefail`. "Matched
+# nothing" is a legitimate data outcome for grep and must be handled by the
+# guard below; anything else is still a bug that must abort.
+#
+# Note the asymmetry with the sibling `supabase-start` action, which had to be
+# taught to SURVIVE errexit: here errexit is wanted, and the bug was a guard
+# placed where errexit could never let it run.
+
+inputs:
+  working-directory:
+    description: >-
+      Where the repository checkout is (package.json, supabase/config.toml).
+      Defaults to the workspace root, where every job in this repository checks
+      out. A workflow that checks this repository out into a subdirectory — the
+      private companion's panorama nightly puts it in `code/` — passes that path.
+    required: false
+    default: "."
+
+runs:
+  using: composite
+  steps:
+    - name: Export Supabase credentials to $GITHUB_ENV
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        # 2>/dev/null drops the pnpm "[WARN] ..." stderr line; the grep keeps
+        # only KEY=VALUE lines so nothing non-env pollutes $GITHUB_ENV (the
+        # warning line previously broke the file command with "Invalid format").
+        #
+        # The status is taken explicitly instead of letting `set -e` abort on
+        # the assignment: a stopped stack must SAY so, not exit silently.
+        STATUS_RC=0
+        STATUS_ENV=$(pnpm exec supabase status -o env 2>/dev/null) || STATUS_RC=$?
+        if [ "$STATUS_RC" -ne 0 ]; then
+          echo "::error::\`supabase status -o env\` exited ${STATUS_RC} — the local Supabase stack is not running. Check the \`supabase start\` step above."
+          exit 1
+        fi
+
+        # Strip ONE layer of surrounding double quotes from each value. The
+        # `"(.*)"` form only matches fully-quoted values, so an unquoted value
+        # (a future CLI may stop quoting) passes through untouched.
+        CLEAN=$({ echo "$STATUS_ENV" | grep -E '^[A-Z_][A-Z0-9_]*=' || true; } \
+          | sed -E 's/^([A-Z_][A-Z0-9_]*)="(.*)"$/\1=\2/')
+        if [ -z "$CLEAN" ]; then
+          echo "::error::supabase status -o env produced no KEY=VALUE lines — is the stack up?"
+          exit 1
+        fi
+
+        echo "$CLEAN" >> "$GITHUB_ENV"
+
+        # Alias ANON_KEY -> NEXT_PUBLIC_SUPABASE_ANON_KEY (the CLI uses a raw
+        # name; Next.js and every supabase-js client in the test suites read the
+        # NEXT_PUBLIC_* form).
+        ANON=$({ echo "$CLEAN" | grep '^ANON_KEY=' || true; } | cut -d= -f2-)
+        if [ -z "$ANON" ]; then
+          echo "::error::supabase status -o env produced no ANON_KEY — is the stack up?"
+          exit 1
+        fi
+        # Fail here rather than let a malformed key reach a test, where it
+        # reads as a denial. A JWT has three dot-separated parts.
+        if [ "$(echo "$ANON" | tr -cd '.' | wc -c)" -ne 2 ]; then
+          echo "::error::ANON_KEY is not a well-formed JWT (expected 3 dot-separated parts)"
+          exit 1
+        fi
+        echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON}" >> "$GITHUB_ENV"

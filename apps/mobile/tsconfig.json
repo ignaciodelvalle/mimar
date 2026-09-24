@@ -1,0 +1,45 @@
+{
+  // `expo/tsconfig.base` carries the React Native lib/jsx/module settings that
+  // match whatever Metro will actually do with these files. Extending it rather
+  // than restating it is what keeps this app honest across an SDK bump.
+  //
+  // This tsconfig is DELIBERATELY not reachable from the repo root program: the
+  // root `tsconfig.json` excludes `apps`, because typechecking React Native
+  // sources against the web app's `lib: ["dom", ...]` would report hundreds of
+  // failures that mean nothing. The two programs are checked separately —
+  // `pnpm typecheck` at the root, `pnpm --filter mimar typecheck` here — and
+  // `packages/contract` is the one thing inside BOTH, which is precisely the
+  // drift detector the package boundary exists to provide.
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    // The contract is consumed as source through its `exports` map, so the
+    // resolver has to be the one that reads `exports` (`bundler` — matching how
+    // Metro resolves it). `node16`/`node10` would look at `main` and miss the
+    // subpath entries entirely.
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    // `@dim/contract` is compiled from source by this program too, and its
+    // relative imports carry an explicit `.ts` extension (see
+    // packages/contract/tsconfig.json for why Node's resolver forces it).
+    // Without this flag every contract barrel is an error HERE, in the one
+    // program whose job is to prove the contract compiles under React Native.
+    "allowImportingTsExtensions": true,
+    "noUncheckedIndexedAccess": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  // DO NOT ADD `.expo/types/**/*.ts` OR `expo-env.d.ts` HERE. Typed routes are
+  // off (`app.config.ts` never sets `experiments.typedRoutes`), so neither
+  // file exists in this project. Every `expo start` runs a doctor that, for a
+  // project with typed routes off, force-REMOVES those two strings from
+  // `include` if it finds them (`getTSConfigRemoveUpdates` in
+  // `@expo/cli/build/src/start/server/type-generation/tsconfig.js`) — and
+  // that removal is a full `JSON.stringify` rewrite of this whole file, which
+  // is what was stripping every comment above and reformatting `paths` onto
+  // multiple lines. The filter is a no-op when there is nothing to remove,
+  // which is what keeps this file untouched: leave the two entries out.
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", "dist", ".expo"]
+}

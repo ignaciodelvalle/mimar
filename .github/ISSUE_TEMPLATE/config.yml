@@ -1,0 +1,9 @@
+# Issues are public. Security reports never go through them.
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability (private)
+    url: https://github.com/ignaciodelvalle/mimar/security/advisories/new
+    about: Use GitHub's private vulnerability reporting. Do not open a public issue — see SECURITY.md.
+  - name: Security policy
+    url: https://github.com/ignaciodelvalle/mimar/blob/main/SECURITY.md
+    about: Scope, what not to do (never test a deployed environment), and what to expect.

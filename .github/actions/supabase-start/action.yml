@@ -1,0 +1,174 @@
+name: Supabase local stack (with retry)
+description: >-
+  Bring the local Supabase stack up, retrying a transient start failure after
+  tearing the half-started stack down. The LAST attempt's failure is the step's
+  failure — this wrapper never converts a red start into a green one.
+
+# WHY A RETRY, AND WHY IT IS DELIBERATELY SMALL
+# ---------------------------------------------------------------------------
+# Measured 2026-08-30 over the 45 most recent `ci.yml` runs: 90 executions of a
+# "Start Supabase local stack" step, 1 non-success. That one (run 33197145055,
+# 2026-08-28, the e2e job) was:
+#
+#   failed to start docker container "supabase_db_DIM": ... failed to bind host
+#   port for 0.0.0.0:54322:172.18.0.2:5432/tcp: address already in use
+#
+# — a half-started stack holding the port, which is exactly what a retry that
+# runs `supabase stop` first can clear.
+#
+# So this is HARDENING, not the cure for a red job. In the same 45 runs the e2e
+# job failed 42 times inside `Run Playwright e2e suite` and twice in
+# `Build Next.js app`. Anyone reading this action as "the fix for the red E2E"
+# has the wrong file: the suite is failing on its own assertions.
+#
+# WHY THE INVOCATION IS `|| RC=$?` AND NOT A BARE CALL (do not simplify)
+# ---------------------------------------------------------------------------
+# The first cut of this action opened with `set -uo pipefail` and a comment
+# saying "no `set -e`: a failing attempt is a value this loop reads". That was
+# false, and it cost the whole feature. GitHub does not run a `shell: bash`
+# step as bare bash — it runs
+#
+#     bash --noprofile --norc -e -o pipefail {0}
+#
+# so errexit is ON before the first line executes, and a script cannot assume
+# otherwise by staying silent about it. A bare
+#
+#     pnpm exec supabase start --exclude ...
+#     RC=$?
+#
+# therefore killed the step on the FIRST failed attempt: `RC=$?`, the retry, the
+# two `::warning::`s and the `::error::` below were all unreachable in CI. The
+# action retried exactly zero times in the environment it was written for.
+#
+# Two things now hold that line down, and they are independent on purpose:
+#
+#   1. `set -euo pipefail` is DECLARED here. The regime this script runs under
+#      is written down instead of inherited and mis-remembered.
+#   2. The invocation survives errexit LOCALLY — `cmd || RC=$?` puts the call on
+#      the left of an AND-OR list, which POSIX exempts from errexit, and `$?` is
+#      read at the `||` so it is unambiguously the child's status. This works
+#      identically whether or not the caller set `-e`, which a `set +e` around
+#      the call would not: `set +e` is a GLOBAL switch, and re-arming it
+#      afterwards guesses at a state the script does not know. It would also
+#      make every later typo in this loop non-fatal, which is the opposite of
+#      what a start step needs.
+#
+# `__tests__/supabase-start-action.test.ts` runs this script under the runner's
+# own argv, and additionally runs it under bare `bash` and asserts the two agree
+# — a script whose retry depends on the caller's flags is the defect above,
+# restated.
+#
+# WHAT THIS IS *NOT* A MITIGATION FOR (read before adding a registry login)
+# ---------------------------------------------------------------------------
+# `toomanyrequests: Rate exceeded` does appear in these logs, and it is NOT
+# Docker Hub. Re-measured 2026-08-30 over runs 33273180809 / 33269256483 /
+# 33260290131: every throttle line is immediately followed by the CLI's own
+# `Retrying after Ns: public.ecr.aws/supabase/<image>`, and every Supabase image
+# resolves to `public.ecr.aws/supabase/*` (postgres, postgres-meta, gotrue,
+# kong, postgrest, storage-api, realtime, logflare, vector, mailpit). The only
+# `docker.io` reference in any of those runs is `library/postgres:16`, a service
+# container that is not part of this stack. A `docker/login-action` with Docker
+# Hub credentials would therefore change NOTHING about the throttling. ECR
+# Public throttles anonymous pulls by source IP; raising that ceiling needs an
+# AWS account to authenticate against, which is a PO decision, not a repo edit.
+#
+# The Supabase CLI already retries a throttled PULL on its own — the same runs
+# log `Retrying after 4s: ...` and then succeed. This wrapper deliberately does
+# not duplicate that; it retries the START, which the CLI does not.
+#
+# THE INVARIANT THIS FILE MUST NEVER LOSE
+# ---------------------------------------------------------------------------
+# The final attempt's exit status is the step's exit status. A retry wrapper
+# that ends in `|| true`, or that swallows the last failure, is the same lie as
+# a `continue-on-error:` — a gate that cannot go red. Guarded by
+# __tests__/supabase-start-action.test.ts, which runs this script against a
+# stubbed `pnpm` that always fails and asserts the step still dies.
+
+inputs:
+  exclude:
+    description: >-
+      Comma-separated services to skip, passed through to `supabase start
+      --exclude` verbatim. Both jobs skip the same set; a retry that brought up
+      a DIFFERENT set would change what the job is testing.
+
+      Since this default replaced the two inline `--exclude` lists it is the
+      ONLY place the set is written down, so `__tests__/supabase-start-action.test.ts`
+      pins it exactly AND checks every name against the CLI's own accepted
+      list — a name the CLI does not recognise is only a WARNING, so a typo
+      here silently starts a service nobody meant to start.
+
+      That is not hypothetical. The list carried `inbucket` until 2026-08-30 and
+      run 33260290131 answered it with:
+
+        WARNING: The following container names are not valid to exclude: inbucket
+        Valid containers to exclude are: edge-runtime, gotrue, imgproxy, kong,
+        logflare, mailpit, postgres-meta, postgrest, realtime, storage-api,
+        studio, supavisor, vector
+
+      `inbucket` was renamed `mailpit` upstream, so the mail catcher had been
+      starting on every run for as long as the rename is old. The dead name is
+      dropped here rather than translated: dropping it changes NOTHING about
+      which containers come up (the CLI was already ignoring it), while writing
+      `mailpit` would newly exclude a service on two jobs that no lane has
+      measured. Excluding it is worth doing — it is one fewer anonymous ECR
+      Public pull on a stack throttled by pull volume — but it is a behaviour
+      change to CI and belongs to whoever can watch the job, not to the commit
+      that merely noticed the typo.
+    required: false
+    default: studio,imgproxy,edge-runtime,realtime
+  attempts:
+    description: How many times to try `supabase start` before giving up.
+    required: false
+    default: "3"
+  backoff-seconds:
+    description: Seconds to wait after the first failure; doubled each retry.
+    required: false
+    default: "15"
+
+runs:
+  using: composite
+  steps:
+    - name: Start the stack, retrying a transient failure
+      shell: bash
+      env:
+        SUPABASE_EXCLUDE: ${{ inputs.exclude }}
+        SUPABASE_ATTEMPTS: ${{ inputs.attempts }}
+        SUPABASE_BACKOFF: ${{ inputs.backoff-seconds }}
+      run: |
+        # Declared, not inherited. The runner already applies `-e -o pipefail`
+        # to every `shell: bash` step; saying so here is what stops the next
+        # reader from believing a failing command is a value this loop reads.
+        set -euo pipefail
+
+        BACKOFF="${SUPABASE_BACKOFF}"
+        attempt=1
+        while [ "$attempt" -le "${SUPABASE_ATTEMPTS}" ]; do
+          # The ONLY errexit-safe form of "run it and keep the status": the left
+          # of `||` is exempt, and `$?` here is unambiguously the child's.
+          RC=0
+          pnpm exec supabase start --exclude "${SUPABASE_EXCLUDE}" || RC=$?
+          if [ "$RC" -eq 0 ]; then
+            exit 0
+          fi
+
+          if [ "$attempt" -ge "${SUPABASE_ATTEMPTS}" ]; then
+            # THE load-bearing line. The last failure is the step's failure.
+            echo "::error::\`supabase start\` failed on all ${SUPABASE_ATTEMPTS} attempt(s); last exit ${RC}. This is the stack itself refusing to come up — check the Docker output above for a port collision (\`address already in use\`) or a registry error."
+            exit "$RC"
+          fi
+
+          echo "::warning::\`supabase start\` attempt ${attempt}/${SUPABASE_ATTEMPTS} failed (exit ${RC}). Tearing the half-started stack down and retrying in ${BACKOFF}s."
+          # The teardown is the point of retrying at all: the one measured
+          # failure was a container still holding 54322. Its own failure is
+          # ignored on purpose — there may be nothing to stop.
+          pnpm exec supabase stop --no-backup >/dev/null 2>&1 || true
+          sleep "${BACKOFF}"
+          BACKOFF=$((BACKOFF * 2))
+          attempt=$((attempt + 1))
+        done
+
+        # Unreachable: the loop either exits 0 or exits RC on the last attempt.
+        # If control ever arrives here the loop bound is wrong, and falling
+        # through with 0 would be the silent-green this action exists to avoid.
+        echo "::error::supabase-start fell through its retry loop without a verdict — SUPABASE_ATTEMPTS was '${SUPABASE_ATTEMPTS}'."
+        exit 1

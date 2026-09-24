@@ -1,0 +1,9 @@
+{
+  "_meta": {
+    "generatedAt": "2026-07-21",
+    "description": "Hand-rolled *Icon-named components/functions that render a raw <svg> (Rule A), grandfathered at their current count. The 5 nav-chrome files migrated to <Icon> in the 2026-07-21 icon-registry fence change (components/layout/AppCitizenMasthead.tsx, AppShellDrawer.tsx, HeaderNav.tsx, ContextSwitcher.tsx, components/ui/dashboard/OpMobileDrawer.tsx) are deliberately NOT listed here — 0 allowed, so this exact duplication (menu/close/chevron re-hand-rolled instead of using the registry) can never quietly return to them. Files listed here (e.g. CitizenTabBar's TabIcon) are bespoke glyphs with no registry equivalent, not registry duplicates. New violations, or counts above baseline, fail lint:icons."
+  },
+  "files": {
+    "components/layout/CitizenTabBar.tsx": 1
+  }
+}

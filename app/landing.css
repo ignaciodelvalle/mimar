@@ -1,0 +1,2336 @@
+/* =============================================================================
+   app/landing.css — the lp-* layer, split out of globals.css (2026-08-19)
+
+   WHY THIS IS ITS OWN FILE. globals.css is imported by the ROOT layout, so
+   every route in the product shipped and parsed this block: a funcionario
+   opening /gob/panorama was downloading the whole landing stylesheet. At 2.3k
+   lines it was roughly half of globals.css and none of it applied. Importing
+   it from app/page.tsx instead scopes the cost to the one route that renders
+   the landing.
+
+   WHY THE SPLIT IS SAFE, and what would make it unsafe again:
+     - Every rule here is scoped under `.lp` (295 of 311 selectors), with two
+       `!important` in the whole file. Nothing leaks out, nothing outside
+       depends on it. Verified 2026-08-19: the only consumers are app/page.tsx
+       and components/landing/*. The `lp-` strings elsewhere in the repo are
+       aria-labelledby ids on the lost-pet cards and prose in comments, not
+       class hooks.
+     - It is plain CSS: no @apply, no theme(), no Tailwind directive. The
+       var(--color-ln-*) tokens resolve from the @theme block in globals.css
+       through :root inheritance, which does not care which file a rule lives
+       in.
+     - The global prefers-reduced-motion blanket in globals.css still reaches
+       these transitions for the same reason.
+   If a non-landing surface ever wants an lp-* class, promote the rule into
+   globals.css rather than importing this file somewhere else — a second
+   importer silently restores the cost this split removed.
+
+   The design-token ratchet follows the file: the baseline key moved from
+   `app/globals.css#lp` to `app/landing.css#lp`, same counts, no debt
+   forgiven. scripts/check-design-tokens.ts discovers it by glob.
+   ============================================================================= */
+
+/* =============================================================================
+   Landing pública (miMAR) — lp-* layer
+   Layout glue ported from docs/design_handoff_landing (theme.css / v2.css /
+   story.css), remapped onto the repo's ln-* tokens (repo tokens win over the
+   handoff hex values). Scoped under .lp so nothing leaks into the app.
+   Motion contract:
+     - Scroll-reveal is FAIL-OPEN: .lp-reveal is only hidden while the root
+       carries .lp-motion, which RevealManager adds AFTER marking in-viewport
+       elements as .in — no JS (or reduced motion) → everything visible.
+     - GPU-friendly transforms only (translate / rotate / opacity).
+     - prefers-reduced-motion collapses all transitions via the global rule
+       above; the halo pulse + flip get explicit kills too.
+   ============================================================================= */
+
+.lp {
+  /* local aliases so the ported layout reads like the handoff */
+  --lp-serif: var(--font-ln-serif);
+  --lp-sans: var(--font-sans);
+  --lp-mono: var(--font-ln-mono);
+  --lp-navy: var(--color-ln-op-navy);
+  --lp-navy-line: rgba(255, 255, 255, 0.12);
+  --lp-navy-ink: var(--color-ln-op-rail-text);
+  --lp-navy-mute: var(--color-ln-op-rail-mute);
+  --lp-seal-bg: #fbf1e6; /* warm seal tint — no ln-* token yet (handoff value) */
+  background: var(--color-ln-paper);
+  color: var(--color-ln-ink);
+  font-family: var(--lp-sans);
+  font-size: 17px;
+  line-height: 1.6;
+}
+.lp .lp-wrap {
+  max-width: 1120px;
+  margin-inline: auto;
+  padding-inline: clamp(18px, 4vw, 32px);
+}
+.lp .lp-wrap-wide {
+  max-width: 1280px;
+  margin-inline: auto;
+  padding-inline: clamp(18px, 4vw, 32px);
+}
+
+.lp .lp-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-ln-mute);
+}
+.lp .lp-eyebrow--blue {
+  color: var(--color-ln-azul);
+}
+.lp .lp-eyebrow--dot {
+  display: inline-flex;
+  /* flex-start + a first-line offset, not `center`: when the eyebrow wraps to
+     two lines (hero at ~390px), `center` floated the dot between the lines
+     (critique 2026-07-27, J3). 0.55em centers the 6px dot on the first line
+     box (12px × 1.6 line-height → (19.2 − 6) / 2 ≈ 6.6px), so the single-line
+     rendering is unchanged. */
+  align-items: flex-start;
+  gap: 9px;
+}
+.lp .lp-eyebrow--dot::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  margin-top: 0.55em;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.7;
+}
+
+.lp .lp-display {
+  font-family: var(--lp-serif);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.03;
+  color: var(--color-ln-ink);
+  text-wrap: balance;
+  margin: 0;
+}
+.lp .lp-h-hero {
+  font-size: clamp(42px, 7.2vw, 92px);
+  letter-spacing: -0.035em;
+}
+.lp .lp-h-sec {
+  font-size: clamp(32px, 4.6vw, 58px);
+}
+.lp .lp-h-sub {
+  font-size: clamp(23px, 2.6vw, 34px);
+  letter-spacing: -0.02em;
+}
+.lp .lp-lead {
+  font-size: clamp(17px, 1.7vw, 21px);
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--color-ln-ink-2);
+  max-width: 60ch;
+  text-wrap: pretty;
+  margin: 0;
+}
+
+/* buttons — landing layout glue */
+.lp .lp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--lp-sans);
+  font-weight: 600;
+  font-size: 15px;
+  padding: 13px 22px;
+  /* Canon D.1: citizen surfaces are pills, operator surfaces are 6px. This was
+     var(--radius-lg) (8px) until 2026-07-31 — the exact value e23ebca1 named in
+     its own message ("LnButton shipped 3px, the landing 8px and the operator
+     6px. Four surfaces, one compliant") and then did not change, because the
+     fence it added reads `rounded-*` utilities in JSX and .lp-btn is CSS. The
+     result: "Crear cuenta" was a rectangle while /signup, one click away, was
+     all pills. Not an exemption — the commit's own "NOT IN THIS COMMIT" list
+     never mentioned the landing, and this layer's header states it is
+     "remapped onto the repo's ln-* tokens". */
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  transition: background var(--motion-fast), border-color var(--motion-fast), color
+    var(--motion-fast), transform var(--motion-fast);
+}
+.lp .lp-btn:active {
+  transform: translateY(1px);
+}
+.lp .lp-btn--primary {
+  background: var(--color-ln-azul);
+  color: #fff;
+}
+.lp .lp-btn--primary:hover {
+  background: var(--color-ln-azul-700);
+}
+.lp .lp-btn--ghost {
+  background: transparent;
+  color: var(--color-ln-ink);
+  border-color: var(--color-ln-line-strong);
+}
+.lp .lp-btn--ghost:hover {
+  border-color: var(--color-ln-ink);
+}
+.lp .lp-btn .lp-ar {
+  transition: transform var(--motion-base);
+}
+.lp .lp-btn:hover .lp-ar {
+  transform: translateX(3px);
+}
+.lp .lp-btn--compact {
+  font-size: 14px;
+  padding: 11px 18px;
+}
+.lp .lp-btn--nav {
+  font-size: 14px;
+  padding: 9px 16px;
+  /* 9px + 9px + a 14px line box rendered 42px tall — two pixels under the 44px
+     touch target, at every width, on the two controls that carry the whole
+     landing's conversion and re-entry (live review 2026-07-28 measured several
+     sub-44px controls on this page; these were the ones that mattered most).
+     min-height rather than more padding so the visual weight is unchanged. */
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.lp .lp-maxw-sec {
+  max-width: 760px;
+}
+
+/* sections */
+.lp .lp-section {
+  padding-block: clamp(84px, 11vw, 160px);
+  position: relative;
+}
+.lp .lp-section--paper {
+  background: var(--color-ln-paper);
+}
+.lp .lp-section--card {
+  background: var(--color-ln-card);
+}
+.lp .lp-section--stripe {
+  background: var(--color-ln-stripe);
+}
+
+/* reveal-on-scroll — fail-open (hidden ONLY under .lp-motion) */
+.lp.lp-motion .lp-reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity var(--motion-deliberate) var(--ease-editorial), transform
+    var(--motion-deliberate) var(--ease-editorial);
+}
+.lp.lp-motion .lp-reveal.in {
+  opacity: 1;
+  transform: none;
+}
+/* CSS-7 (panorama/CSS audit 2026-08-04): six hardcoded `transition-delay`
+ * rules (0.08s * data-d, data-d 1..6 — life-moment cards 1..6, FAQ items
+ * 1..5, the hero/empezar/bond-band beats) unified into one 80ms-per-step
+ * formula. `--d` is set per step (still keyed off the existing `data-d`
+ * attribute the 13 JSX call sites already render — none of them change);
+ * the multiplier now lives in exactly one place instead of six. A plain
+ * `attr(data-d type(<number>))` read straight into the calc() would delete
+ * these six lines too, but that CSS Values 5 feature is not reliably
+ * supported across this product's target browsers yet — not worth the
+ * gamble for a change the audit itself scores as zero visual difference. */
+.lp.lp-motion .lp-reveal[data-d="1"] {
+  --d: 1;
+}
+.lp.lp-motion .lp-reveal[data-d="2"] {
+  --d: 2;
+}
+.lp.lp-motion .lp-reveal[data-d="3"] {
+  --d: 3;
+}
+.lp.lp-motion .lp-reveal[data-d="4"] {
+  --d: 4;
+}
+.lp.lp-motion .lp-reveal[data-d="5"] {
+  --d: 5;
+}
+.lp.lp-motion .lp-reveal[data-d="6"] {
+  --d: 6;
+}
+.lp.lp-motion .lp-reveal {
+  transition-delay: calc(var(--d, 0) * 80ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp.lp-motion .lp-reveal {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* ============ milestone "Continuar ↓" CTA ==================================
+   The one interactive element of the progressive-reveal choreography
+   (components/landing/MilestoneNav.tsx). Placement is load-bearing:
+   FIXED BOTTOM-RIGHT, because the sticky nav owns the TOP of the viewport at
+   every width — the 320–561px sign-in guarantee
+   (e2e/landing-signin-reachable.spec.ts) means the nav's /login and /signup
+   CTAs may occupy up to two wrapped rows up there, and a bottom-anchored pill
+   can never intersect them. Right-anchored + fixed adds no width, so it can
+   never introduce the horizontal scroll that same spec forbids. Sober by
+   design (card bg, hairline border): a government service's "next" affordance,
+   not a product-tour bubble. Hidden past the last milestone (the component
+   unmounts it). */
+.lp .lp-milestone-cta {
+  position: fixed;
+  right: 18px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: var(--z-stripe);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px; /* touch target — same floor as the nav CTAs */
+  padding: 10px 18px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-ln-line-strong);
+  background: var(--color-ln-card);
+  color: var(--color-ln-ink);
+  font-family: var(--lp-sans);
+  font-size: var(--text-md);
+  font-weight: 600;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
+}
+.lp .lp-milestone-cta:hover {
+  border-color: var(--color-ln-ink);
+  box-shadow: var(--shadow-lg);
+}
+.lp .lp-milestone-cta:focus-visible {
+  outline: 2px solid var(--color-ln-azul);
+  outline-offset: 2px;
+}
+.lp .lp-milestone-cta .lp-milestone-ar {
+  transition: transform var(--motion-base);
+}
+.lp .lp-milestone-cta:hover .lp-milestone-ar {
+  transform: translateY(2px);
+}
+
+/* ============ nav (sticky, ABOVE the gob stripe — intentional order) ======= */
+.lp-nav {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+  background: rgba(251, 250, 245, 0.82);
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--motion-base);
+}
+.lp-nav.scrolled {
+  border-bottom-color: var(--color-ln-line);
+}
+.lp-nav .lp-nav-in {
+  max-width: 1280px;
+  margin-inline: auto;
+  padding: 12px clamp(18px, 4vw, 32px);
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+.lp .lp-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  text-decoration: none;
+  color: inherit;
+}
+.lp .lp-brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--color-ln-azul);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+.lp .lp-brand-name {
+  display: block;
+  font-family: var(--lp-serif);
+  font-weight: 600;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+}
+.lp .lp-brand-sub {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ln-mute);
+  margin-top: 1px;
+}
+.lp-nav .lp-nav-links {
+  display: flex;
+  gap: 4px;
+  margin-left: 12px;
+}
+.lp-nav .lp-nav-link {
+  padding: 8px 13px;
+  border-radius: 7px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-ln-ink-2);
+  text-decoration: none;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.lp-nav .lp-nav-link:hover {
+  background: var(--color-ln-stripe);
+  color: var(--color-ln-ink);
+}
+.lp .lp-spacer {
+  flex: 1;
+}
+@media (max-width: 860px) {
+  .lp-nav .lp-nav-links {
+    display: none;
+  }
+}
+/* Phones: the brand + two CTAs overflow the no-wrap nav row.
+ *
+ * This used to read `display: none` on the secondary, with a comment promising
+ * "sign-in stays reachable from the footer and the hero". The footer half was
+ * true. The hero half was not: measured on the live landing at 375px, the
+ * nearest /login sat at y = 12.260px — about fifteen screenfuls down — and
+ * LandingNav has no hamburger at ANY width, so the nav did not collapse, it
+ * lost its entry point (live review 2026-07-28, D.7). A returning user on a
+ * phone had no way in.
+ *
+ * The row overflowed because of the button's CHROME — padding, border,
+ * background — not because of the word "Ingresar". So the chrome goes and the
+ * entry point stays: a compact text link, still a full 44px tall to touch. */
+@media (max-width: 560px) {
+  .lp-nav .lp-nav-in {
+    gap: 12px;
+  }
+  /* At 320px (SE-class devices) brand + both CTAs still exceed the line even
+     stripped of chrome, and the row was pushing the document into horizontal
+     scroll. Let it wrap onto a second line: two rows is a layout, a sideways
+     scrollbar on a landing page is a defect. The spacer collapses so the CTAs
+     stay together rather than being flung apart across the wrap. */
+  .lp-nav .lp-nav-in {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .lp .lp-spacer {
+    flex-basis: 0;
+  }
+  .lp-nav .lp-btn--nav-secondary {
+    padding-inline: 2px;
+    border-color: transparent;
+    background: transparent;
+    font-size: var(--text-sm);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    /* One line. Wrapped to "Iniciar / sesión" it rendered 43px wide and 58px
+       tall — a two-line link inside a nav row reads as breakage, which is its
+       own reason not to be found. */
+    white-space: nowrap;
+    /* Visually slimmer, NOT smaller to hit: the same review measured several
+       sub-44px controls on this page. Shedding chrome must not create another. */
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+/* ============ hero ========================================================= */
+.lp .lp-hero {
+  padding-top: clamp(48px, 7vw, 96px);
+}
+.lp .lp-hero-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: clamp(32px, 5vw, 72px);
+  align-items: center;
+}
+/* Hero order — INVERTED 2026-08-10 (PO decision).
+ *
+ * The photo block goes FIRST in the DOM now, and desktop reorders instead of
+ * mobile. Before, `order: -1` under 900px put the photo on top visually while it
+ * sat second in source — and that block is not decoration: it holds the link to
+ * the demo credential and a `role="toolbar"` of states. Visually first, in tab
+ * last, which is WCAG 2.4.3 (Focus Order).
+ *
+ * Someone pays either way: reordering is what creates the mismatch, and one of
+ * the two breakpoints has to carry it. Mobile carries the traffic of a citizen
+ * product and is where the mismatch was live, so desktop pays. Above 900px the
+ * copy moves left and the photo right, exactly as before — nothing changes on
+ * screen, only which side the reorder happens on.
+ */
+@media (min-width: 901px) {
+  .lp .lp-hero-photo {
+    order: 2;
+  }
+}
+@media (max-width: 900px) {
+  .lp .lp-hero-grid {
+    grid-template-columns: 1fr;
+  }
+  .lp .lp-hero-photo {
+    justify-content: flex-start;
+  }
+}
+.lp .lp-hero-cta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 30px;
+}
+.lp .lp-hero-kill {
+  margin-top: 16px;
+  font-size: 13.5px;
+  color: var(--color-ln-mute);
+  letter-spacing: 0.01em;
+}
+.lp .lp-hero-kill b {
+  color: var(--color-ln-ink);
+  font-weight: 600;
+}
+.lp .lp-hero-photo {
+  display: flex;
+  justify-content: center;
+}
+
+/* ============ hero credential — "credencial viva" ==========================
+   A mini DNI-style credential card that auto-cycles through the states a real
+   pet moves through over a life (PO redesign 2026-07-04). It replaces the old
+   photo-with-halo motif. The WHOLE card tints per state via data-tone →
+   --htone / --htone-soft / --htone-bd (token map below); the front carries ONE
+   contextual row, the back is a mini libreta. The turn is edge-on (LandingHero
+   drives rotateY imperatively; same single-painted-face mechanic as FlipCard /
+   .ln-doc-turn). Motion — cycle, turn, lost-pulse — is gated on .lp-motion. */
+
+/* per-state token tint (landing-local; two states — watch/ppp — have no shared
+   LnPetStatus equivalent, which is why the tint lives here, not in that type) */
+.lp .lp-hcard[data-tone="ok"] {
+  --htone: var(--color-ln-ok);
+  --htone-soft: var(--color-ln-ok-bg);
+  --htone-bd: var(--color-ln-ok-100);
+}
+.lp .lp-hcard[data-tone="lost"] {
+  --htone: var(--color-ln-err);
+  --htone-soft: var(--color-ln-err-050);
+  --htone-bd: var(--color-ln-err-100);
+}
+.lp .lp-hcard[data-tone="watch"] {
+  --htone: var(--color-ln-azul-700);
+  --htone-soft: var(--color-ln-celeste-050);
+  --htone-bd: var(--color-ln-celeste-100);
+}
+.lp .lp-hcard[data-tone="sick"] {
+  --htone: var(--color-ln-warn);
+  --htone-soft: var(--color-ln-warn-050);
+  --htone-bd: var(--color-ln-warn-100);
+}
+.lp .lp-hcard[data-tone="ppp"] {
+  --htone: var(--color-ln-violeta);
+  --htone-soft: var(--color-ln-violeta-050);
+  --htone-bd: var(--color-ln-violeta-100);
+}
+
+.lp .lp-hcardwrap {
+  perspective: 1200px;
+  width: min(400px, 92vw);
+  /* Deliberate one-time entrance for the credential card (landing choreography
+     2026-08-02). CSS-only via @starting-style, which keeps it fail-open by
+     construction: no JS involved, it always resolves to the visible state, and
+     the repo's global prefers-reduced-motion rule collapses the transition to
+     an instant render. Lives on the WRAP, not .lp-hcard — the card's own
+     transform channel belongs to the imperative edge-on flip. */
+  transition: opacity var(--motion-deliberate) var(--ease-editorial), transform
+    var(--motion-deliberate) var(--ease-editorial);
+}
+@starting-style {
+  .lp .lp-hcardwrap {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+.lp .lp-hcard {
+  position: relative;
+  width: 100%;
+  border-radius: 14px;
+  background: var(--color-ln-card);
+  border: 1.5px solid var(--htone, var(--color-ln-celeste-100));
+  box-shadow: var(--shadow-lg);
+  transition: transform var(--motion-slow) var(--ease-standard), border-color
+    var(--motion-deliberate);
+  transform-style: flat;
+  overflow: hidden;
+}
+/* lost keeps a subtle border pulse (the old halo's data-status="lost" wink) */
+.lp.lp-motion .lp-hcard[data-tone="lost"] {
+  animation: lp-hcard-lost var(--motion-ambient) ease-in-out infinite;
+}
+@keyframes lp-hcard-lost {
+  0%,
+  100% {
+    box-shadow: var(--shadow-lg), 0 0 0 0 var(--color-ln-err-100);
+  }
+  50% {
+    box-shadow: var(--shadow-lg), 0 0 0 4px var(--color-ln-err-050);
+  }
+}
+
+/* single-painted-face swap (mirrors FlipCard) — back hidden until data-face */
+.lp .lp-hcard-back {
+  display: none;
+}
+.lp .lp-hcard[data-face="back"] .lp-hcard-front {
+  display: none;
+}
+.lp .lp-hcard[data-face="back"] .lp-hcard-back {
+  display: block;
+}
+
+/* trim bar — subtly tinted by state tone */
+.lp .lp-hcard-trim {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 16px;
+  background: linear-gradient(90deg, var(--htone-soft, var(--color-ln-ok-bg)), transparent 70%);
+  border-bottom: 1px solid var(--color-ln-line);
+  transition: background var(--motion-deliberate);
+}
+.lp .lp-hcard-trim-r {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lp .lp-hcard-brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--color-ln-ink);
+}
+.lp .lp-hcard-brand i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-ln-celeste);
+  border: 2px solid var(--color-ln-azul);
+}
+.lp .lp-hcard-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--htone-bd, var(--color-ln-ok-100));
+  /* Was `999px` — un desvío de GRAFÍA, no de geometría: rinde idéntico a la
+     píldora. Es el único de los seis radios de la familia de chips que se podía
+     converger sin decidir nada de diseño. Los otros cinco (6px, 5px crudo, 4px,
+     3px crudo, 2px) sí son geometrías distintas y quedan como decisión del PO —
+     ver E-2 en dim-interno:docs/plans/PENDIENTES.md. */
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+  font: 700 10px / 1 var(--font-ln-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--htone, var(--color-ln-ok));
+  background: var(--htone-soft, var(--color-ln-ok-bg));
+  transition: color var(--motion-deliberate), background var(--motion-deliberate), border-color
+    var(--motion-deliberate);
+  animation: lp-hbadge-in var(--motion-slow) ease both;
+}
+.lp .lp-hcard-flip {
+  width: 26px;
+  height: 26px;
+  position: relative;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-ln-line-strong);
+  background: var(--color-ln-card);
+  color: var(--color-ln-mute);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transition: transform var(--motion-base), color var(--motion-base), border-color
+    var(--motion-base);
+}
+.lp .lp-hcard-flip:hover {
+  color: var(--color-ln-ink);
+  border-color: var(--color-ln-azul);
+  transform: rotate(180deg);
+}
+.lp .lp-hcard-flip:focus-visible {
+  outline: 2px solid var(--color-ln-azul);
+  outline-offset: 2px;
+}
+/* Hit-area extension (critique 2026-07-27, A2): the flip trigger measured
+   26×26 — under the 44px touch floor on the control that turns the whole
+   credential. The visual stays 26px; the invisible ::after pads the target to
+   44×44 (26 + 9 + 9). Nothing interactive sits within 9px of it — the badge
+   beside it is read-only — so the bigger target can't shadow a neighbor. */
+.lp .lp-hcard-flip::after {
+  content: "";
+  position: absolute;
+  inset: -9px;
+  border-radius: 50%;
+}
+
+/* body: photo · id · qr */
+.lp .lp-hcard-body {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+}
+.lp .lp-hcard-photo {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2.5px solid var(--htone, var(--color-ln-ok));
+  transition: border-color var(--motion-deliberate);
+}
+.lp .lp-hcard-photo img {
+  object-fit: cover;
+}
+.lp .lp-hcard-id {
+  min-width: 0;
+}
+.lp .lp-hcard-name {
+  display: block;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+  text-transform: uppercase;
+  color: var(--color-ln-ink);
+}
+.lp .lp-hcard-token {
+  display: block;
+  font-family: var(--font-ln-mono);
+  font-size: 12.5px;
+  color: var(--color-ln-mute);
+  letter-spacing: 0.04em;
+}
+.lp .lp-hcard-qr {
+  /* Enlarged from 58px so the real, scannable hero QR reads comfortably from a
+     phone camera off-screen (PO: 58px was too small to scan). The card body is
+     a `64px 1fr auto` grid, so the wider QR just grows its own `auto` column. */
+  width: 96px;
+  height: 96px;
+  border-radius: 8px;
+  border: 1px solid var(--color-ln-line);
+  background: #fff;
+  padding: 6px;
+  display: block;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.lp .lp-hcard-qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* one contextual read-only row, tinted, morphing per state */
+.lp .lp-hcard-ctx {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 16px 12px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  background: var(--htone-soft, var(--color-ln-ok-bg));
+  color: var(--htone, var(--color-ln-ok));
+  font-weight: 700;
+  font-size: 13.5px;
+  min-height: 38px;
+  transition: background var(--motion-deliberate), color var(--motion-deliberate);
+  animation: lp-hstate-in var(--motion-slow) ease both;
+}
+.lp .lp-hcard-ctx-chev {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* MRZ line — the DNI wink, decorative, built from the real token */
+.lp .lp-hcard-mrz {
+  font-family: var(--font-ln-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  color: var(--color-ln-mute);
+  border-top: 1px dashed var(--color-ln-line);
+  padding: 8px 16px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  opacity: 0.85;
+  /* The 44-char ICAO line is wider than the card below ~400px, and a glyph cut
+     mid-stroke at the edge read as breakage (critique 2026-07-27, J4). The
+     line is decorative filler (aria-hidden `<<<<`), so fade the clip edge out
+     instead of resizing type the token scale has no step for. */
+  mask-image: linear-gradient(to right, black calc(100% - 28px), transparent);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent);
+}
+
+/* back — the mini libreta */
+.lp .lp-hcard-libhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-ln-line);
+  background: linear-gradient(90deg, var(--color-ln-ok-bg), transparent 70%);
+}
+.lp .lp-hcard-libhead b {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--color-ln-ink);
+}
+.lp .lp-hcard-libmeta {
+  font-size: 11px;
+  color: var(--color-ln-mute);
+}
+.lp .lp-hcard-librow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--color-ln-line);
+  font-size: 13.5px;
+}
+.lp .lp-hcard-libwhat {
+  display: block;
+  font-weight: 700;
+  color: var(--color-ln-ink);
+}
+.lp .lp-hcard-libwho {
+  display: block;
+  font-size: 11.5px;
+  color: var(--color-ln-mute);
+}
+.lp .lp-hcard-libstamp {
+  flex-shrink: 0;
+  color: var(--color-ln-ok);
+  font-weight: 800;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.lp .lp-hcard-libfoot {
+  padding: 11px 16px 13px;
+  font-size: 12px;
+  color: var(--color-ln-mute);
+  font-style: italic;
+}
+
+/* curiosity-hook microcopy — sits between the credential and the state dots,
+   pointing at the same real QR the card already renders (PO-locked wording,
+   landing microcopy train). */
+.lp .lp-hcard-hint {
+  margin: 14px 0 0;
+  font-family: var(--font-ln-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--color-ln-mute);
+  text-align: center;
+}
+
+/* state dots — tap one to take control of the cycle.
+   Hit areas (critique 2026-07-27, A1 / WCAG 2.5.8): the dots stay 12px visual,
+   but each ::after pads the target to 24×24 (12 + 6 + 6). The gap moved
+   9px → 12px so adjacent 24px targets meet edge-to-edge (24px pitch) instead
+   of overlapping — an overlapping target is an ambiguous tap, which is the
+   defect 2.5.8 exists to prevent. */
+.lp .lp-hdots {
+  display: flex;
+  gap: 12px;
+  margin-top: 22px;
+}
+.lp .lp-hdot {
+  width: 12px;
+  height: 12px;
+  position: relative;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-ln-mute);
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform var(--motion-base), background var(--motion-base), border-color
+    var(--motion-base);
+}
+.lp .lp-hdot::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+}
+.lp .lp-hdot[data-tone="ok"] {
+  --dtone: var(--color-ln-ok);
+}
+.lp .lp-hdot[data-tone="lost"] {
+  --dtone: var(--color-ln-err);
+}
+.lp .lp-hdot[data-tone="watch"] {
+  --dtone: var(--color-ln-azul-700);
+}
+.lp .lp-hdot[data-tone="sick"] {
+  --dtone: var(--color-ln-warn);
+}
+.lp .lp-hdot[data-tone="ppp"] {
+  --dtone: var(--color-ln-violeta);
+}
+.lp .lp-hdot[data-on="true"] {
+  background: var(--dtone, var(--color-ln-azul));
+  border-color: var(--dtone, var(--color-ln-azul));
+  transform: scale(1.25);
+}
+.lp .lp-hdot:focus-visible {
+  outline: 2px solid var(--color-ln-azul);
+  outline-offset: 2px;
+}
+
+@keyframes lp-hbadge-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lp-hstate-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp .lp-hcard,
+  .lp .lp-hcard-trim,
+  .lp .lp-hcard-badge,
+  .lp .lp-hcard-photo,
+  .lp .lp-hcard-ctx {
+    transition: none;
+    animation: none;
+  }
+  .lp .lp-hcard-flip:hover {
+    transform: none;
+  }
+}
+
+/* vet screen — the real credential (LnHero) embedded in the phone; strip its
+   trailing margin so it sits in the phone's padded flex column. */
+.lp .lp-cred-embed > div {
+  margin-bottom: 0;
+}
+
+/* ============ crisis band (L1) ============================================ */
+.lp .lp-crisis {
+  background: var(--color-ln-card);
+  border-top: 1px solid var(--color-ln-line);
+  border-bottom: 1px solid var(--color-ln-line);
+  padding-block: 20px;
+}
+/* Three peer cards, so the track count is derived, not counted. This grid used
+   to be `1fr 1fr 1.15fr` with a `1fr` override at 940px: two consequences we
+   measured on 2026-08-19. Adding a card meant editing the CSS (which is what
+   made the third door a layout question instead of a copy question), and the
+   collapse was binary — three columns straight to one, with no two-column
+   state for the tablet widths where it actually runs out of room.
+
+   `min(100%, 260px)` rather than a bare `260px`: below 260px a fixed minimum
+   track is wider than its container and the grid overflows the viewport. */
+.lp .lp-crisis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+.lp .lp-crisis-card {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+  border: 1px solid var(--color-ln-line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
+}
+.lp .lp-crisis-card:hover {
+  border-color: var(--color-ln-ink);
+  box-shadow: var(--shadow-md);
+}
+.lp .lp-crisis-card .lp-cic {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.lp .lp-crisis-card[data-t="perdi"] .lp-cic {
+  background: var(--color-ln-err-050);
+  color: var(--color-ln-err);
+}
+.lp .lp-crisis-card[data-t="encontre"] .lp-cic {
+  background: var(--color-ln-celeste-050);
+  color: var(--color-ln-azul);
+}
+.lp .lp-crisis-card[data-t="maltrato"] .lp-cic {
+  background: var(--color-ln-warn-025);
+  color: var(--color-ln-warn);
+}
+.lp .lp-crisis-card b {
+  display: block;
+  font-size: 15px;
+  color: var(--color-ln-ink);
+}
+.lp .lp-crisis-card .lp-crisis-sub {
+  font-size: 12.5px;
+  color: var(--color-ln-mute);
+  line-height: 1.4;
+  display: block;
+}
+.lp .lp-crisis-card .lp-ar {
+  margin-left: auto;
+  color: var(--color-ln-faint);
+  transition: transform var(--motion-fast), color var(--motion-fast);
+}
+.lp .lp-crisis-card:hover .lp-ar {
+  transform: translateX(3px);
+  color: var(--color-ln-azul);
+}
+/* ============ bond band — full-bleed emotional bridge ===================== */
+/* The one bold, full-bleed moment: the human–animal bond the product exists to
+   protect. Photo bleeds edge-to-edge; the copy respects the page's content
+   column (lp-wrap-wide). A warm scrim keeps the light text legible over sun. */
+.lp .lp-bond {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: flex-end;
+  min-height: clamp(430px, 62vh, 600px);
+  overflow: hidden;
+  background: var(--color-ln-ink);
+}
+.lp .lp-bond-media {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.lp .lp-bond-img {
+  object-fit: cover;
+  /* keep the two touching noses + both faces in frame across crops */
+  object-position: 60% 40%;
+}
+.lp .lp-bond-scrim {
+  position: absolute;
+  inset: 0;
+  /* warm brown-black to harmonize with the golden light, not pure black */
+  background: linear-gradient(
+      100deg,
+      rgba(26, 18, 12, 0.74) 0%,
+      rgba(26, 18, 12, 0.46) 34%,
+      rgba(26, 18, 12, 0) 62%
+    ), linear-gradient(to top, rgba(26, 18, 12, 0.6) 0%, rgba(26, 18, 12, 0) 46%);
+}
+.lp .lp-bond-inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  padding-block: clamp(30px, 5vw, 56px);
+}
+.lp .lp-bond-copy {
+  max-width: 30ch;
+}
+.lp .lp-bond-eyebrow {
+  color: rgba(255, 255, 255, 0.82);
+}
+.lp .lp-bond-title {
+  color: #fff;
+  font-size: clamp(30px, 4.4vw, 54px);
+  margin-top: 12px;
+  text-shadow: 0 1px 30px rgba(26, 18, 12, 0.4);
+}
+.lp .lp-bond-sub {
+  margin-top: 14px;
+  font-size: clamp(15px, 1.5vw, 18px);
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.9);
+}
+@media (max-width: 640px) {
+  .lp .lp-bond {
+    min-height: 76vh;
+  }
+  .lp .lp-bond-img {
+    object-position: 62% 34%;
+  }
+}
+
+/* ============ cast — fila editorial (PO-locked variant) =================== */
+.lp .lp-castfila {
+  display: flex;
+  gap: clamp(20px, 4vw, 44px);
+  align-items: center;
+  max-width: 880px;
+  margin-inline: auto;
+}
+.lp .lp-castfila-pet {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.lp .lp-castfila-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--color-ln-line);
+}
+.lp .lp-castfila-hands {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  flex: 1;
+}
+.lp .lp-castfila-hand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  background: var(--color-ln-card);
+  border: 1px solid var(--color-ln-line);
+  border-radius: 12px;
+  padding: 13px 15px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
+}
+.lp .lp-castfila-hand:hover {
+  border-color: var(--color-ln-ink);
+  box-shadow: var(--shadow-md);
+}
+.lp .lp-role-ic {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: var(--color-ln-celeste-050);
+  color: var(--color-ln-azul);
+  flex-shrink: 0;
+}
+.lp [data-tone="warm"] .lp-role-ic {
+  background: var(--lp-seal-bg);
+  color: var(--color-ln-seal);
+}
+.lp [data-tone="official"] .lp-role-ic {
+  background: var(--color-ln-azul-900);
+  color: #fff;
+}
+.lp .lp-castfila-hand b {
+  display: block;
+  font-size: 14px;
+  color: var(--color-ln-ink);
+}
+.lp .lp-castfila-hand .lp-hand-sub {
+  font-size: 12px;
+  color: var(--color-ln-mute);
+  line-height: 1.35;
+  display: block;
+}
+.lp .lp-castfila-hand .lp-ar {
+  margin-left: auto;
+  color: var(--color-ln-faint);
+}
+@media (max-width: 780px) {
+  .lp .lp-castfila {
+    flex-direction: column;
+  }
+  .lp .lp-castfila-sep {
+    display: none;
+  }
+  .lp .lp-castfila-hands {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+}
+
+/* ============ story — rail + chapters ===================================== */
+.lp .lp-story-wrap {
+  display: grid;
+  grid-template-columns: 216px 1fr;
+  gap: clamp(24px, 4vw, 60px);
+  align-items: start;
+}
+.lp .lp-chapters {
+  min-width: 0;
+}
+.lp .lp-rail {
+  position: sticky;
+  top: 92px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.lp .lp-rail-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 10px 14px;
+}
+.lp .lp-rail-name {
+  font-family: var(--lp-serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-ln-ink);
+  line-height: 1.1;
+}
+.lp .lp-rail-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+  transition: background var(--motion-fast), border-color var(--motion-fast), box-shadow
+    var(--motion-fast);
+}
+.lp .lp-rail-step .lp-rn {
+  font-family: var(--lp-mono);
+  font-size: 9.5px;
+  color: var(--color-ln-faint);
+  width: 15px;
+  flex-shrink: 0;
+}
+.lp .lp-rail-step .lp-rname {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-ln-ink-2);
+  flex: 1;
+}
+.lp .lp-rail-step .lp-rdot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-ln-line-strong);
+  flex-shrink: 0;
+}
+.lp .lp-rail-step[data-s="registered"] .lp-rdot {
+  background: var(--color-ln-azul);
+}
+.lp .lp-rail-step[data-s="ok"] .lp-rdot {
+  background: var(--color-ln-ok);
+}
+.lp .lp-rail-step[data-s="lost"] .lp-rdot {
+  background: var(--color-ln-err);
+}
+.lp .lp-rail-step[data-s="navy"] .lp-rdot {
+  background: var(--color-ln-azul-900);
+}
+.lp .lp-rail-step:hover {
+  background: var(--color-ln-card);
+}
+.lp .lp-rail-step.on {
+  background: var(--color-ln-card);
+  border-color: var(--color-ln-line);
+  box-shadow: var(--shadow-md);
+}
+.lp .lp-rail-step.on .lp-rname {
+  color: var(--color-ln-ink);
+}
+.lp .lp-rail-step.on .lp-rn {
+  color: var(--color-ln-azul);
+}
+@media (max-width: 940px) {
+  .lp .lp-story-wrap {
+    grid-template-columns: 1fr;
+  }
+  .lp .lp-rail {
+    position: sticky;
+    top: 58px;
+    z-index: var(--z-stripe);
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    background: rgba(251, 250, 245, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 10px 6px;
+    margin-inline: -6px;
+    border-bottom: 1px solid var(--color-ln-line);
+  }
+  .lp .lp-rail-head {
+    display: none;
+  }
+  .lp .lp-rail-step {
+    width: auto;
+    padding: 10px 12px;
+    border-radius: var(--radius-pill);
+    border-color: var(--color-ln-line);
+    background: var(--color-ln-card);
+    flex-shrink: 0;
+  }
+  .lp .lp-rail-step .lp-rn {
+    display: none;
+  }
+  .lp .lp-rail-step .lp-rname {
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
+}
+
+.lp .lp-chapter {
+  min-height: 74vh;
+  display: flex;
+  align-items: center;
+  padding: clamp(30px, 4vw, 52px) 0;
+  scroll-margin-top: 96px;
+}
+.lp .lp-chapter + .lp-chapter {
+  border-top: 1px solid var(--color-ln-line-2);
+}
+.lp .lp-chapter-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(28px, 4vw, 64px);
+  align-items: center;
+  width: 100%;
+}
+.lp .lp-chapter[data-side="l"] .lp-ch-device {
+  order: -1;
+}
+.lp .lp-chapter[data-full="1"] {
+  display: block;
+}
+.lp .lp-ch-device {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  /* below-the-fold device frames render lazily (native, no JS) */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 640px;
+}
+.lp .lp-ch-num {
+  font-family: var(--lp-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-ln-azul);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.lp .lp-ch-num::after {
+  content: "";
+  width: 34px;
+  height: 1px;
+  background: var(--color-ln-line-strong);
+}
+.lp .lp-ch-title {
+  margin-top: 12px;
+}
+.lp .lp-ch-lead {
+  margin-top: 14px;
+  font-size: 17.5px;
+}
+@media (max-width: 940px) {
+  .lp .lp-chapter {
+    min-height: 0;
+  }
+  .lp .lp-chapter-grid {
+    grid-template-columns: 1fr;
+  }
+  .lp .lp-chapter[data-side="l"] .lp-ch-device {
+    order: 0;
+  }
+}
+
+/* ============ phone frame + app screens =================================== */
+.lp .lp-phone {
+  width: min(340px, 88vw);
+  border-radius: 40px;
+  overflow: hidden;
+  position: relative;
+  background: var(--color-ln-paper);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+.lp .lp-phone-island {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 104px;
+  height: 30px;
+  border-radius: 20px;
+  background: #000;
+  z-index: 5;
+}
+.lp .lp-phone-home {
+  position: absolute;
+  bottom: 7px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 5;
+  pointer-events: none;
+}
+.lp .lp-scr {
+  height: 640px;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-ln-paper);
+  font-family: var(--lp-sans);
+  overflow: hidden;
+  padding-bottom: 18px;
+}
+.lp .lp-scr--tall {
+  height: 760px;
+}
+.lp .lp-scr-top {
+  height: 52px;
+  flex-shrink: 0;
+}
+.lp .lp-app-head {
+  padding: 4px 18px 12px;
+  background: var(--color-ln-card);
+  border-bottom: 1px solid var(--color-ln-line-2);
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.lp .lp-app-head .lp-ah-t {
+  font-family: var(--lp-serif);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-ln-ink);
+  line-height: 1.1;
+}
+.lp .lp-app-head .lp-ah-s {
+  font-size: 11px;
+  color: var(--color-ln-mute);
+  margin-top: 1px;
+}
+.lp .lp-app-body {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* libreta feed */
+.lp .lp-lib-feed {
+  padding-top: 4px;
+  position: relative;
+}
+.lp .lp-lib-row {
+  display: grid;
+  grid-template-columns: 44px 14px 1fr;
+  gap: 8px;
+  padding: 6px 14px 6px 12px;
+  position: relative;
+  align-items: start;
+}
+.lp .lp-lib-when {
+  text-align: right;
+  padding-top: 2px;
+}
+.lp .lp-lib-y {
+  font-family: var(--lp-mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--color-ln-ink-2);
+}
+.lp .lp-lib-m {
+  font-family: var(--lp-mono);
+  font-size: 9px;
+  color: var(--color-ln-faint);
+  text-transform: uppercase;
+}
+.lp .lp-lib-spine {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+.lp .lp-lib-spine::before {
+  content: "";
+  position: absolute;
+  top: -10px;
+  bottom: -10px;
+  width: 1px;
+  background: var(--color-ln-line);
+}
+.lp .lp-lib-row:first-child .lp-lib-spine::before {
+  top: 6px;
+}
+.lp .lp-lib-row:last-of-type .lp-lib-spine::before {
+  bottom: auto;
+  height: 16px;
+}
+.lp .lp-lib-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-ln-azul);
+  border: 2px solid var(--color-ln-paper);
+  position: relative;
+  z-index: 1;
+  margin-top: 4px;
+}
+.lp .lp-lib-dot[data-t="ok"] {
+  background: var(--color-ln-ok);
+}
+.lp .lp-lib-dot[data-t="warn"] {
+  background: var(--color-ln-warn);
+}
+.lp .lp-lib-dot[data-t="err"] {
+  background: var(--color-ln-err);
+}
+.lp .lp-lib-dot[data-t="warm"] {
+  background: var(--color-ln-seal);
+}
+.lp .lp-lib-dot[data-t="navy"] {
+  background: var(--color-ln-azul-900);
+}
+.lp .lp-lib-t {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ln-ink);
+  line-height: 1.25;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.lp .lp-lib-meta {
+  font-size: 11px;
+  color: var(--color-ln-ink-2);
+  line-height: 1.4;
+  margin-top: 1px;
+}
+.lp .lp-lib-foot {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+.lp .lp-lib-type {
+  font-family: var(--lp-mono);
+  font-size: 8.5px;
+  color: var(--color-ln-faint);
+  background: var(--color-ln-stripe);
+  border: 1px solid var(--color-ln-line-2);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+.lp .lp-lib-by {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-ln-mute);
+}
+.lp .lp-lib-lock {
+  margin-top: auto;
+  padding: 10px 16px 12px;
+  border-top: 1px dashed var(--color-ln-line);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-family: var(--lp-mono);
+  font-size: 9.5px;
+  color: var(--color-ln-mute);
+  background: var(--color-ln-stripe);
+}
+
+/* generic phone padding block */
+.lp .lp-ph-pad {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+}
+.lp .lp-ph-note {
+  font-size: 11.5px;
+  color: var(--color-ln-mute);
+  line-height: 1.5;
+}
+.lp .lp-ph-card {
+  background: var(--color-ln-card);
+  border: 1px solid var(--color-ln-line);
+  border-radius: 12px;
+  padding: 14px 15px;
+}
+.lp .lp-ph-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ln-mute);
+  margin-bottom: 8px;
+}
+.lp .lp-ph-ok {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: var(--color-ln-ok-bg);
+  border: 1px solid var(--color-ln-ok-100);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.lp .lp-ph-ok .lp-t {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-ln-ok);
+}
+.lp .lp-ph-ok .lp-s {
+  font-size: 11.5px;
+  color: var(--color-ln-ink-2);
+  margin-top: 2px;
+  line-height: 1.45;
+}
+.lp .lp-ph-caps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.lp .lp-ph-cap {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-ln-ink-2);
+  background: var(--color-ln-card);
+  border: 1px solid var(--color-ln-line);
+  border-radius: 9px;
+  padding: 9px 10px;
+}
+.lp .lp-ph-cap svg {
+  color: var(--color-ln-ok);
+}
+
+/* lost public credential screen (cap-anon) */
+.lp .lp-lostb {
+  background: var(--color-ln-err);
+  color: #fff;
+  text-align: center;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.lp .lp-lostb small {
+  display: block;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.85;
+  margin-top: 2px;
+  font-size: 11px;
+}
+.lp .lp-scr--lost {
+  background: #fdf4f2; /* lost paper tint — handoff value, no ln-* token */
+}
+.lp .lp-lost-hero {
+  text-align: center;
+  padding: 18px 18px 6px;
+}
+.lp .lp-lh-name {
+  font-family: var(--lp-serif);
+  font-size: 25px;
+  font-weight: 600;
+  color: var(--color-ln-ink);
+  margin-top: 12px;
+  letter-spacing: -0.015em;
+}
+.lp .lp-lh-sub {
+  font-size: 12.5px;
+  color: var(--color-ln-ink-2);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+.lp .lp-lost-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 14px 16px 4px;
+}
+.lp .lp-lost-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  /* Canon D.1 again, same fence-blindness as .lp-btn above: this was a raw 10px
+     while the CTA one screen up is a pill. Not a second exemption — the same
+     PO decision (X2-S2, 2026-07-29), the same stylesheet, and nothing looked at
+     stylesheets until check-raw-buttons.mjs learned to read .css (2026-08-05). */
+  border-radius: var(--radius-pill);
+  padding: 12px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+.lp .lp-lost-btn--call {
+  background: var(--color-ln-ok);
+}
+.lp .lp-lost-btn--found {
+  background: var(--color-ln-azul);
+}
+.lp .lp-lost-hero--map {
+  padding-bottom: 12px;
+}
+
+/* last-seen mini-map (cap-anon) — a faithful, lightweight echo of the app's
+   LocationMap (rounded OSM panel + red marker) without loading maplibre-gl on
+   the landing. The pin is exact; a coordinate line reinforces the precision. */
+.lp .lp-minimap {
+  position: relative;
+  margin: 6px 16px 0;
+  height: 152px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--color-ln-line);
+  background: #e9eee6;
+}
+.lp .lp-minimap-tiles {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+      0deg,
+      transparent 0 27px,
+      rgba(90, 110, 90, 0.1) 27px 28px
+    ), repeating-linear-gradient(90deg, transparent 0 32px, rgba(90, 110, 90, 0.1) 32px 33px),
+    linear-gradient(118deg, transparent 0 39%, #d7e0d0 39% 41%, transparent 41%),
+    linear-gradient(28deg, transparent 0 63%, #d7e0d0 63% 65%, transparent 65%),
+    radial-gradient(circle at 74% 30%, rgba(160, 200, 150, 0.55) 0 16%, transparent 17%),
+    radial-gradient(circle at 20% 78%, rgba(150, 190, 215, 0.5) 0 13%, transparent 14%);
+}
+.lp .lp-minimap-pin {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--color-ln-err);
+  border: 2px solid #fff;
+  box-shadow: 0 3px 9px rgba(192, 57, 43, 0.45);
+}
+.lp .lp-minimap-pin::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 2px solid rgba(192, 57, 43, 0.4);
+  animation: lp-pin-pulse var(--motion-ambient) ease-out infinite;
+}
+@keyframes lp-pin-pulse {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+.lp .lp-minimap-cap {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--color-ln-line);
+  font-size: 11px;
+  color: var(--color-ln-ink-2);
+}
+.lp .lp-minimap-cap b {
+  font-size: 12px;
+  color: var(--color-ln-ink);
+}
+.lp .lp-minimap-coord {
+  font-family: var(--font-ln-mono);
+  font-size: 10px;
+  color: var(--color-ln-mute);
+  letter-spacing: 0.02em;
+}
+
+/* org intake mini-rows (cap-refugio) */
+.lp .lp-intake-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 0;
+}
+.lp .lp-intake-row + .lp-intake-row {
+  border-top: 1px solid var(--color-ln-line-2);
+}
+.lp .lp-intake-row .lp-iic {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: var(--color-ln-celeste-050);
+  color: var(--color-ln-azul);
+}
+.lp .lp-intake-row[data-t="ok"] .lp-iic {
+  background: var(--color-ln-ok-bg);
+  color: var(--color-ln-ok);
+}
+.lp .lp-intake-row b {
+  display: block;
+  font-size: 12.5px;
+  color: var(--color-ln-ink);
+}
+.lp .lp-intake-row .lp-intake-sub {
+  display: block;
+  font-size: 11px;
+  color: var(--color-ln-ink-2);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* ============ estado — navy console + celeste silhouette cartogram ======== */
+.lp .lp-estado {
+  background: radial-gradient(
+    120% 90% at 80% 0%,
+    color-mix(in srgb, var(--lp-navy) 82%, var(--color-ln-celeste)) 0%,
+    var(--lp-navy) 55%
+  );
+  border-radius: 22px;
+  padding: clamp(24px, 4vw, 48px);
+  color: var(--lp-navy-ink);
+}
+.lp .lp-estado .lp-display {
+  color: #fff;
+}
+.lp .lp-estado .lp-lead {
+  color: var(--lp-navy-ink);
+}
+.lp .lp-estado .lp-eyebrow {
+  color: var(--color-ln-op-celeste);
+}
+.lp .lp-estado-head {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: clamp(24px, 4vw, 56px);
+  align-items: end;
+  margin-bottom: clamp(26px, 4vw, 44px);
+}
+@media (max-width: 860px) {
+  .lp .lp-estado-head {
+    grid-template-columns: 1fr;
+  }
+}
+.lp .lp-kick {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.lp .lp-kick .lp-kic {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-ln-op-celeste);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.lp .lp-kick b {
+  display: block;
+  font-size: 14.5px;
+  color: #fff;
+}
+.lp .lp-kick .lp-kick-sub {
+  font-size: 13.5px;
+  color: var(--lp-navy-ink);
+  line-height: 1.5;
+}
+.lp .lp-kicks {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* mac-ish console window */
+.lp .lp-mac {
+  border-radius: 18px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--lp-navy) 88%, black);
+  border: 1px solid var(--lp-navy-line);
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.35);
+}
+.lp .lp-mac-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--lp-navy-line);
+}
+.lp .lp-mac-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+}
+.lp .lp-mac-title {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--lp-navy-mute);
+}
+.lp .lp-con {
+  display: flex;
+  flex-direction: column;
+  color: var(--lp-navy-ink);
+}
+.lp .lp-con-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--lp-navy-line);
+  flex-wrap: wrap;
+}
+.lp .lp-con-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin-right: 6px;
+}
+.lp .lp-con-title svg {
+  color: var(--color-ln-op-celeste);
+}
+.lp .lp-fpill {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--lp-navy-ink);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--lp-navy-line);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.lp .lp-con-body {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  gap: 12px;
+  padding: 12px 16px 16px;
+}
+@media (max-width: 760px) {
+  .lp .lp-con-body {
+    grid-template-columns: 1fr;
+  }
+}
+.lp .lp-con-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lp .lp-con-railnote {
+  margin-top: auto;
+  font-family: var(--lp-mono);
+  font-size: 9px;
+  color: var(--lp-navy-mute);
+  line-height: 1.5;
+}
+.lp .lp-navy-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--lp-navy-line);
+  border-radius: 10px;
+  padding: 4px;
+}
+.lp .lp-con-map {
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--lp-navy-line);
+  border-radius: 12px;
+  padding: 12px;
+}
+.lp .lp-con-map-h {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.lp .lp-con-map-h b {
+  font-size: 11.5px;
+  color: #fff;
+  font-weight: 700;
+}
+.lp .lp-con-map-h .lp-con-map-sub {
+  font-size: 10px;
+  color: var(--lp-navy-mute);
+}
+
+/* cartogram — SILHOUETTE layout tinted CELESTE (PO decision #5: single hue) */
+.lp .lp-map-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(10, minmax(30px, 1fr));
+  gap: 4px;
+  min-height: 340px;
+}
+.lp .lp-mtile {
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--color-ln-celeste) 28%, transparent);
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: #fff;
+}
+.lp .lp-mtile .lp-ab {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.lp .lp-mtile .lp-mv {
+  font-family: var(--lp-mono);
+  font-size: 9.5px;
+  opacity: 0.9;
+}
+.lp .lp-mtile[data-q="0"] {
+  background: color-mix(in srgb, var(--color-ln-celeste) 12%, transparent);
+  color: var(--lp-navy-mute);
+}
+.lp .lp-mtile[data-q="1"] {
+  background: color-mix(in srgb, var(--color-ln-celeste) 28%, transparent);
+  color: var(--color-ln-celeste-100);
+}
+.lp .lp-mtile[data-q="2"] {
+  background: color-mix(in srgb, var(--color-ln-celeste) 48%, transparent);
+}
+.lp .lp-mtile[data-q="3"] {
+  background: color-mix(in srgb, var(--color-ln-celeste) 70%, transparent);
+}
+.lp .lp-mtile[data-q="4"] {
+  background: var(--color-ln-celeste);
+  border-color: var(--color-ln-celeste-100);
+}
+.lp .lp-legend {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+  font-size: 9.5px;
+  color: var(--lp-navy-mute);
+  flex-wrap: wrap;
+}
+.lp .lp-legend .lp-lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.lp .lp-legend .lp-sw {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+.lp .lp-con-note {
+  margin-top: 18px;
+  font-size: 12px;
+  font-family: var(--lp-mono);
+  text-align: center;
+  color: var(--lp-navy-mute);
+}
+
+/* ============ features — life moments ===================================== */
+.lp .lp-featband-h {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: clamp(24px, 3vw, 36px);
+}
+/* Six peer cards, so the column count follows the room available instead of a
+   hand-counted 3. The old pair (repeat(3,1fr) + a 1fr override at 900px) went
+   from three columns straight to one, skipping the two-column state that is
+   the natural shape for six cards on a tablet.
+
+   The 300px minimum is DERIVED, not picked. The container is .lp-wrap's 1120px
+   less its padding = 1056px, with a 16px gap:
+     four tracks would need 4 × 300 + 48 = 1248 > 1056  → never fits
+     three tracks need     3 × 300 + 32 =  932 ≤ 1056  → fits
+   So the grid tops out at three across, which is the rhythm six cards were
+   designed for — measured 2026-08-19, when a 250px minimum silently produced
+   four columns and a ragged 4+2. If .lp-wrap's width ever changes, re-run that
+   arithmetic; with auto-fit the column count follows the container by design. */
+.lp .lp-feat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
+}
+.lp .lp-feat {
+  background: var(--color-ln-card);
+  border: 1px solid var(--color-ln-line);
+  border-radius: 14px;
+  padding: 26px 24px;
+  display: flex;
+  flex-direction: column;
+}
+.lp .lp-feat .lp-fic {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: var(--color-ln-celeste-050);
+  color: var(--color-ln-azul);
+  display: grid;
+  place-items: center;
+  margin-bottom: 16px;
+}
+.lp .lp-feat h3 {
+  font-family: var(--lp-serif);
+  font-size: 21px;
+  font-weight: 600;
+  margin: 0 0 9px;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.lp .lp-feat p {
+  font-size: 14.5px;
+  color: var(--color-ln-ink-2);
+  line-height: 1.55;
+  flex: 1;
+  margin: 0;
+}
+/* quiet "what turns on in your locality" line under the feature grid */
+.lp .lp-feat-more {
+  margin-top: clamp(20px, 3vw, 30px);
+  text-align: center;
+  font-size: 14px;
+  color: var(--color-ln-mute);
+}
+.lp .lp-feat-more a {
+  color: var(--color-ln-azul);
+  font-weight: 600;
+  text-decoration: none;
+}
+.lp .lp-feat-more a:hover {
+  text-decoration: underline;
+}
+
+/* ============ FAQ + trust row ============================================= */
+.lp .lp-faq {
+  max-width: 760px;
+  margin-inline: auto;
+}
+.lp .lp-faq details {
+  border-bottom: 1px solid var(--color-ln-line);
+}
+.lp .lp-faq summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 4px;
+  font-weight: 600;
+  font-size: 16.5px;
+  color: var(--color-ln-ink);
+}
+.lp .lp-faq summary::-webkit-details-marker {
+  display: none;
+}
+.lp .lp-faq summary::after {
+  content: "+";
+  margin-left: auto;
+  font-family: var(--lp-serif);
+  font-size: 22px;
+  color: var(--color-ln-azul);
+  font-weight: 500;
+}
+.lp .lp-faq details[open] summary::after {
+  content: "−";
+}
+.lp .lp-faq .lp-faq-a {
+  padding: 0 4px 18px;
+  font-size: 14.5px;
+  color: var(--color-ln-ink-2);
+  line-height: 1.6;
+  max-width: 62ch;
+  margin: 0;
+}
+.lp .lp-trust-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 34px;
+  justify-content: center;
+  margin-top: clamp(40px, 5vw, 64px);
+  padding-top: 26px;
+  border-top: 1px solid var(--color-ln-line);
+}
+.lp .lp-trust-row > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  color: var(--color-ln-mute);
+}
+.lp .lp-trust-row svg {
+  color: var(--color-ln-azul);
+}
+
+/* ============ empezar — 2 doors =========================================== */
+/* Two peer doors. Same reason as .lp-feat-grid: the breakpoint was restating
+   what the content already implies. Capped at 880px, so a door never exceeds
+   ~430px and the minimum only bites on small screens. */
+.lp .lp-role-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 16px;
+  max-width: 880px;
+  margin-inline: auto;
+}
+.lp .lp-role-card {
+  background: var(--color-ln-card);
+  border: 1px solid var(--color-ln-line);
+  border-radius: var(--radius-card);
+  padding: 30px 28px;
+  display: flex;
+  flex-direction: column;
+}
+.lp .lp-role-card .lp-ric {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 18px;
+}
+.lp .lp-role-card[data-tone="dueno"] .lp-ric {
+  background: var(--lp-seal-bg);
+  color: var(--color-ln-seal);
+}
+.lp .lp-role-card[data-tone="org"] .lp-ric {
+  background: var(--color-ln-celeste-050);
+  color: var(--color-ln-azul);
+}
+.lp .lp-role-card h3 {
+  font-family: var(--lp-serif);
+  font-size: 25px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+.lp .lp-role-card p {
+  font-size: 14.5px;
+  color: var(--color-ln-ink-2);
+  line-height: 1.55;
+  flex: 1;
+  margin: 0 0 18px;
+}
+
+/* ============ footer ====================================================== */
+.lp .lp-foot {
+  background: var(--color-ln-card);
+  border-top: 1px solid var(--color-ln-line);
+  padding-top: 52px;
+}
+.lp .lp-foot-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 36px;
+}
+@media (max-width: 820px) {
+  .lp .lp-foot-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+  }
+}
+.lp .lp-foot h4 {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-ln-mute);
+  margin: 0 0 12px;
+}
+.lp .lp-foot ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lp .lp-foot ul a {
+  font-size: 14px;
+  color: var(--color-ln-ink-2);
+  text-decoration: none;
+}
+.lp .lp-foot ul a:hover {
+  color: var(--color-ln-azul);
+}
+.lp .lp-foot-legal {
+  margin-top: 34px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-ln-line-2);
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 12.5px;
+  color: var(--color-ln-mute);
+  padding-bottom: 30px;
+}

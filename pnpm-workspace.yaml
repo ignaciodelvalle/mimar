@@ -1,0 +1,164 @@
+# pnpm workspace root.
+#
+# The `packages:` key is what makes this repo an actual workspace. Before
+# 2026-08-20 this file declared only `allowBuilds`, so `packages/*` was not
+# linked into node_modules and a bare `@dim/contract` specifier resolved to
+# nothing. Adding the key is the precondition for every native-readiness item
+# that depends on a framework-free package boundary (native-readiness T1.1).
+#
+# The Next.js app itself stays at the repo root — this is a "root app +
+# packages/* + apps/*" layout, not a full turborepo. Nothing here needs a build
+# orchestrator: `packages/contract` ships TypeScript source and is compiled by
+# whatever consumer imports it (Next's SWC loader, Vitest's esbuild, tsx, and
+# now Metro's babel transformer).
+#
+# `apps/*` joined on 2026-08-25 with `apps/mobile` — the Expo client (native
+# M1). It is a SECOND consumer of `packages/contract`, which is the entire point
+# of the package boundary: the wire types the route handler emits and the types
+# the phone parses are the same declarations, so the two cannot drift without a
+# compile error. The web app deliberately does NOT move under `apps/` — that
+# would be a repo-wide path rewrite with no payoff for a client that only needs
+# to be able to `import` the contract.
+packages:
+  - packages/*
+  - apps/*
+
+allowBuilds:
+  '@biomejs/biome': true
+  # true: its postinstall downloads the sentry-cli binary that uploads
+  # sourcemaps during EAS builds — without it a crash report shows minified
+  # frames, which defeats the reason the SDK is here at all.
+  '@sentry/cli': true
+  core-js-pure: false
+  esbuild: true
+  sharp: true
+  supabase: true
+
+# ===========================================================================
+# virtualStoreDirMaxLength — pinned because a HASH depends on it
+# ===========================================================================
+# This is the maximum length of a directory name inside `node_modules/.pnpm`.
+# pnpm builds those names as `<pkg>@<version>_<peer-suffix>`, and when the
+# result is longer than this it truncates the middle and appends a 32-character
+# hash of the full suffix, so uniqueness survives but the VISIBLE part does not:
+#
+#   60:  @expo+dom-webview@57.0.1_ex_0f048bff0e42b7ac3ac0bc1ac9518370
+#   120: @expo+dom-webview@57.0.1_expo@57.0.16_react-native@0.86.2_@ba…_0f048bff0e42b7ac3ac0bc1ac9518370
+#
+# WHY IT IS PINNED AT ALL. pnpm's default is PLATFORM-DEPENDENT. Read out of
+# pnpm 11.1.1's own source on 2026-08-26:
+#
+#   "virtual-store-dir-max-length": isWindows() ? 60 : 120
+#
+# — 60 on Windows because of its 260-character path limit, 120 everywhere else.
+# So the same lockfile, installed from the same commit, produces DIFFERENT
+# directory names on the PO's Windows machine and on EAS Build's Linux workers.
+#
+# That would be invisible if nothing hashed those paths. Something does:
+# `apps/mobile/app.config.ts` sets `runtimeVersion: { policy: "fingerprint" }`,
+# and @expo/fingerprint hashes the native dependency set BY PATH. EAS Build
+# recomputes the fingerprint on its own worker and refuses to build when it
+# disagrees with the one eas-cli computed locally. Build
+# 9900114a-c134-41cf-af38-6aaf789d2942 (2026-08-26, production, Android) died
+# exactly there, with ~150 entries in the printed diff that were all the same
+# package under two spellings of its own directory name.
+#
+# WHY 60 AND NOT 120. 60 is what Windows already does, so pinning it changes
+# nothing on the PO's daily machine — the store was measured before the pin and
+# its longest directory name was exactly 60 characters. Pinning 120 would
+# instead push every Windows checkout 60 characters deeper for the first time,
+# against a 260-character ceiling that `C:\dev\dim\node_modules\.pnpm\…` already
+# spends part of. Trading a broken build for a broken checkout is not a fix.
+# The truncated names are not ambiguous: the 32-character hash that survives
+# truncation is taken from the FULL peer suffix.
+#
+# CHANGING THIS VALUE INVALIDATES node_modules. pnpm records the value it
+# installed with in `node_modules/.modules.yaml` and refuses to reuse a tree
+# built with a different one (`ERR_PNPM_VIRTUAL_STORE_DIR_MAX_LENGTH_DIFF`,
+# "Run pnpm install to recreate the modules directory"). It also changes the
+# mobile fingerprint, which means the next OTA update is published under a new
+# runtime version — see docs/mobile/eas-build-profiles.md.
+virtualStoreDirMaxLength: 60
+
+# ===========================================================================
+# overrides — versiones parcheadas para dependencias TRANSITIVAS
+# ===========================================================================
+# Ninguno de estos siete es una dependencia directa: los siete llegan arrastrados
+# y sus padres fijan una version con una vulnerabilidad abierta, asi que
+# `pnpm update` no los alcanza (medido: no movio ninguno).
+#
+# Las alertas los llaman a todos "alta". Lo que decide cuanto cuidado merece
+# cada uno no es esa etiqueta sino DONDE corre la copia vulnerable:
+#
+#   sharp   — la fija next@15.5 para optimizar imagenes: corre en PRODUCCION.
+#             La app ya declara 0.35.4 por su cuenta, asi que esto UNIFICA en
+#             la version que el repo ya eligio, no introduce una nueva.
+#   undici  — la traen expo-server-sdk (el camino de notificaciones push, que
+#             corre en produccion) y jsdom (tests).
+#   postcss — la fija next para procesar CSS en tiempo de build. La app ya usa
+#             8.5.26; misma unificacion que sharp.
+#   js-yaml — herramientas de desarrollo: la config de cobertura de tests y el
+#             formateador de salida de builds de Expo. El CVE es agotamiento de
+#             CPU parseando YAML; explotarlo pide un YAML hostil en este mismo
+#             repositorio.
+#   esbuild — la linea 0.28 la traen tsx y vite. El aviso es lectura de archivos
+#             arbitraria desde el servidor de desarrollo de esbuild sobre
+#             Windows; 0.28.0 -> 0.28.2 es un parche. La clave lleva version
+#             (`esbuild@0.28`) a proposito: el arbol tiene otras dos lineas de
+#             esbuild y ninguna de las dos debe moverse por esto.
+#   tar     — la trae el CLI de supabase para desempaquetar sus binarios. Dos
+#             avisos: confusion de tipos numericos PAX (cuelga el parser) y un
+#             diferencial de interpretacion que permite contrabandear archivos.
+#             7.5.13 -> 7.5.22 se queda dentro de la misma minor.
+#
+# ===========================================================================
+# VITE NO ESTA EN ESTA LISTA, Y NO ES PORQUE NO SE ARREGLE
+# ===========================================================================
+# Su aviso era la ultima "alta" abierta del repositorio. Esta cerrado — pero
+# NO con un override, porque sobre vite un override no surte efecto. Eso ya
+# estaba medido; lo que faltaba era la causa, y la causa cambia el arreglo:
+#
+# vite es una PEER dependency de @vitejs/plugin-react, de vitest y de
+# @vitest/mocker. pnpm 11.1.1 aplica el override al RANGO DECLARADO — el
+# lockfile muestra `vite: ^8.0.16` dentro de los peerDependencies de
+# @vitejs/plugin-react — pero NO vuelve a resolver un peer ya resuelto para
+# satisfacer el rango que acaba de reescribir. Queda 8.0.13, violando el rango
+# que el propio override escribio. Un override ahi es una afirmacion falsa con
+# forma de arreglo, y por eso se saco de la lista en vez de dejarlo puesto.
+#
+# EL ARREGLO ES DECLARARLO DIRECTO. `vite` es ahora devDependency de la raiz en
+# `~8.0.16`. Deja de ser un peer que nadie eligio y pasa a ser una version que
+# este repo elige — que es lo que era de hecho, porque toda su verificacion
+# corre sobre el bundler de vitest. El rango es `~` y no `^` a proposito: con
+# `^` pnpm resolvia 8.3.0, dos minors de cambio sin relacion con el aviso
+# dentro de la herramienta que compila cada test. `~` toma el parche que cierra
+# el aviso y nada mas. Medido: el arbol tiene UNA sola copia, 8.0.16.
+#
+# CORRECCION A LO QUE AFIRMABA ESTE MISMO ARCHIVO, que es la parte que importa
+# para la proxima vez: decia que el arreglo llegaba con el bump de vitest del
+# PR #790, "que es quien fija el rango". Las dos mitades eran falsas. Vitest
+# 4.1.11 declara `^6.0.0 || ^7.0.0 || ^8.0.0`, o sea no fija nada; y la rama del
+# PR, medida, sigue resolviendo 8.0.13. Mergear #790 no habria cerrado el aviso.
+# La leccion es la de siempre en este archivo: razonar correctamente sobre la
+# propiedad equivocada. "Quien lo trae" no es "quien lo fija".
+#
+# ===========================================================================
+# LO QUE QUEDA ABIERTO A PROPOSITO
+# ===========================================================================
+#   esbuild 0.18.20 — llega por @esbuild-kit/core-utils <- @esbuild-kit/esm-loader
+#     <- drizzle-kit. El aviso (<= 0.24.2) es del modo `serve` de esbuild, que
+#     drizzle-kit no usa: lo usa para transpilar archivos de configuracion. Ir
+#     de 0.18 a 0.25 atraviesa siete minors dentro de un paquete ABANDONADO
+#     (@esbuild-kit se fusiono en tsx) para cerrar un camino que no se ejecuta.
+#     Se cierra solo el dia que drizzle-kit suelte esm-loader.
+#
+# Se arreglan igual los que se pueden. La distincion de arriba cambia cuanto
+# cuidado merece verificar cada uno, no si se arregla.
+overrides:
+  sharp: ^0.35.4
+  undici: ^7.29.0
+  postcss: ^8.5.26
+  js-yaml@3: ^3.15.2
+  js-yaml@4: ^4.3.2
+  esbuild@0.28: ^0.28.1
+  tar: ^7.5.18

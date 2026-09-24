@@ -1,0 +1,504 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.0/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "ignore": [
+      ".next",
+      "node_modules",
+      "dist",
+      "out",
+      "supabase/.temp",
+      "supabase/.branches",
+      "apps/mobile/android",
+      "apps/mobile/ios",
+      "docs/architecture/conventions-canon.json",
+      "docs/architecture/facts.json"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "a11y": {
+        "recommended": true,
+        "noBlankTarget": "error",
+        "noLabelWithoutControl": "error",
+        "noNoninteractiveTabindex": "error",
+        "noPositiveTabindex": "error",
+        "useAltText": "error",
+        "useAriaPropsForRole": "error",
+        "useButtonType": "error",
+        "useFocusableInteractive": "error",
+        "useHtmlLang": "error",
+        "useIframeTitle": "error",
+        "useKeyWithClickEvents": "error",
+        "useSemanticElements": "error",
+        "useValidAriaProps": "error",
+        "useValidAriaValues": "error",
+        "useValidLang": "error"
+      },
+      "complexity": {
+        "noExcessiveCognitiveComplexity": {
+          "level": "error",
+          "options": {
+            "maxAllowedComplexity": 25
+          }
+        }
+      },
+      "correctness": {
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "include": ["src/modules/*/domain/**"],
+      "linter": {
+        "rules": {
+          "nursery": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@/db": "Domain layer must not import @/db. Use the repository interface injected by the application layer.",
+                  "drizzle-orm": "Domain layer must not import drizzle-orm. Database access belongs in infrastructure.",
+                  "next": "Domain layer must not import next. Framework dependencies belong in the actions layer.",
+                  "next/cache": "Domain layer must not import next/cache. Framework dependencies belong in the actions layer.",
+                  "next/navigation": "Domain layer must not import next/navigation. Framework dependencies belong in the actions layer.",
+                  "next/headers": "Domain layer must not import next/headers. Framework dependencies belong in the actions layer.",
+                  "server-only": "Domain layer must not import server-only. This marker belongs in infrastructure or actions.",
+                  "@/lib/supabase/server": "Domain layer must not import @/lib/supabase/server. That factory reads next/headers cookies(), so importing it is framework coupling wearing an alias."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "include": ["src/modules/*/application/**"],
+      "linter": {
+        "rules": {
+          "nursery": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "next": "Application layer must not import next. Framework dependencies belong in the actions layer (ADR 2026-07-18 native-readiness, Decision 1).",
+                  "next/cache": "Application layer must not import next/cache. Revalidation belongs in the actions layer (ADR 2026-07-18 native-readiness, Decision 1).",
+                  "next/navigation": "Application layer must not import next/navigation. Redirects belong in the actions layer (ADR 2026-07-18 native-readiness, Decision 1).",
+                  "next/headers": "Application layer must not import next/headers. Request context belongs in the actions layer (ADR 2026-07-18 native-readiness, Decision 1).",
+                  "server-only": "Application layer must not import server-only. This marker belongs in infrastructure or actions (ADR 2026-07-18 native-readiness, Decision 1).",
+                  "@/lib/supabase/server": "Application layer must not import @/lib/supabase/server. That factory calls next/headers cookies(), so it is next/headers behind an alias — the one path the fence left open. Take the authenticated identity (or a SupabaseClient) as a parameter from the actions layer instead (native-readiness T1.3)."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "include": [
+        "src/modules/adoption/application/apply-intent/dismiss-apply-intent.ts",
+        "src/modules/adoption/application/apply-intent/start-apply-intent.ts",
+        "src/modules/adoption/application/bulk-adoption-actions/bulk-approve-adoption-applications.ts",
+        "src/modules/adoption/application/bulk-adoption-actions/bulk-reject-adoption-applications.ts",
+        "src/modules/auth/application/complete-identity.ts",
+        "src/modules/auth/application/logout.ts",
+        "src/modules/auth/application/password-reset/update-password.ts",
+        "src/modules/auth/application/subject-rights/erase-subject-data.ts",
+        "src/modules/auth/application/subject-rights/export-subject-data.ts",
+        "src/modules/events/application/amendment/amend-event.ts",
+        "src/modules/localities/application/geocoding/geocoding.ts",
+        "src/modules/notifications/application/notification-actions.ts",
+        "src/modules/organizations/application/bulk-actions/bulk-approve-requests.ts",
+        "src/modules/organizations/application/bulk-actions/bulk-reject-requests.ts",
+        "src/modules/organizations/application/bulk-actions/bulk-revoke.ts",
+        "src/modules/panorama/application/load-layer-features-cached.ts",
+        "src/modules/panorama/application/load-panorama-kpis.ts",
+        "src/modules/pets/application/lost-mode/set-pet-disclosure-prefs.ts",
+        "src/modules/pets/application/physical-tag-interest/toggle-physical-tag-interest.ts",
+        "src/modules/pets/application/public-lookup/lookup-pet-for-denuncia.ts",
+        "src/modules/pets/application/public/notify-owner-of-found-pet.ts",
+        "src/modules/pets/application/scans/log-scan.ts",
+        "src/modules/pets/application/service-dog/retire-service-dog.ts",
+        "src/modules/pets/application/service-dog/revoke-service-dog-credential.ts",
+        "src/modules/pets/application/service-dog/set-service-dog-visibility.ts",
+        "src/modules/pets/application/service-dog/submit-verification-request.ts",
+        "src/modules/pets/application/service-dog/upsert-service-dog.ts",
+        "src/modules/pets/application/sighting/report-pet-sighting.ts",
+        "src/modules/pets/application/stub-claim/claim-stub-profile.ts",
+        "src/modules/pets/application/tier2-public/enable-tier2-public.ts",
+        "src/modules/pets/application/tier2-public/revoke-tier2-public.ts",
+        "src/modules/service-offerings/application/slot-materialization/block-slot.ts",
+        "src/modules/service-offerings/application/slot-materialization/materialize-offering-now.ts"
+      ],
+      "linter": {
+        "rules": {
+          "nursery": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    },
+    {
+      "include": [
+        "src/modules/*/application/**/__tests__/**",
+        "src/modules/*/application/**/*.test.ts",
+        "src/modules/*/application/**/*.test.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "nursery": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    },
+    {
+      "include": ["__tests__/**", "scripts/**", "**/*.test.ts", "**/*.test.tsx"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
+          },
+          "complexity": {
+            "noForEach": "off"
+          },
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    },
+    {
+      "include": ["e2e/**", "playwright.config.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
+          },
+          "complexity": {
+            "noForEach": "off"
+          },
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    },
+    {
+      "include": ["app/_components/attendance-forms/**"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noLabelWithoutControl": "off"
+          }
+        }
+      }
+    },
+    {
+      "include": [
+        "components/ui/dashboard/OpOmnibox.tsx",
+        "components/ui/LnCombobox.tsx",
+        "app/gob/disputas/[disputeToken]/AddPartyForm.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useSemanticElements": "off",
+            "useFocusableInteractive": "off",
+            "noNoninteractiveElementToInteractiveRole": "off"
+          }
+        }
+      }
+    },
+    {
+      "include": [
+        "__tests__/event-upcaster-coverage.test.ts",
+        "__tests__/notification-cta-fitness.test.ts",
+        "__tests__/server-actions-auth-coverage.test.ts",
+        "app/(app)/cuenta/ofrecerme-como-transito/FosterVolunteerWizard.tsx",
+        "app/(app)/cuenta/page.tsx",
+        "app/(app)/mis-mascotas/[publicToken]/SheetMounter.tsx",
+        "app/(app)/mis-mascotas/[publicToken]/devolucion/page.tsx",
+        "app/(app)/mis-mascotas/[publicToken]/page.tsx",
+        "app/(app)/mis-mascotas/page.tsx",
+        "app/(app)/turnos/buscar/page.tsx",
+        "app/(public)/adoptar/[petToken]/page.tsx",
+        "app/(public)/denuncias/nueva/DenunciaWizard.tsx",
+        "app/(public)/denuncias/nueva/WelfareReportForm.tsx",
+        "app/(public)/denuncias/nueva/_components/Step5Contact.tsx",
+        "app/(public)/p/[publicToken]/Tier2MedicalView.tsx",
+        "app/(public)/p/[publicToken]/encontre/action.ts",
+        "app/(public)/p/[publicToken]/encontre/page.tsx",
+        "app/(public)/p/[publicToken]/page.tsx",
+        "src/modules/pets/application/read/load-public-credential.ts",
+        "app/actions/decomiso.ts",
+        "app/admin/adopciones/page.tsx",
+        "app/admin/auditoria/page.tsx",
+        "app/admin/casos/page.tsx",
+        "app/admin/censo/AdminCensoScreen.tsx",
+        "app/admin/govts/GovtsScreen.tsx",
+        "app/admin/inteligencia/page.tsx",
+        "app/admin/moderacion/page.tsx",
+        "app/admin/outbox/page.tsx",
+        "app/admin/panorama/page.tsx",
+        "app/admin/programa/page.tsx",
+        "app/api/cron/auto-expire-approvals/route.ts",
+        "app/api/cron/cron-health/route.ts",
+        "app/api/cron/drain-outbox/route.ts",
+        "app/api/cron/reconcile-pet-status/route.ts",
+        "app/api/panorama/[layer]/route.ts",
+        "app/gob/adopciones/page.tsx",
+        "app/gob/analytics/export/actions.ts",
+        "app/gob/campanas/CampanasScreen.tsx",
+        "app/gob/censo/CensoScreen.tsx",
+        "app/gob/decomisos/nuevo/_components/DecomisoForm.tsx",
+        "app/gob/historial/page.tsx",
+        "app/gob/maltrato/[id]/page.tsx",
+        "app/gob/moderacion/[id]/page.tsx",
+        "app/gob/moderacion/page.tsx",
+        "app/gob/mortalidad/page.tsx",
+        "app/gob/outbox/page.tsx",
+        "app/gob/page.tsx",
+        "app/gob/panorama/page.tsx",
+        "app/gob/poblacion/PoblacionScreen.tsx",
+        "app/gob/programa/ProgramaResumenScreen.tsx",
+        "app/gob/servicios/[offeringToken]/page.tsx",
+        "app/gob/sistema/page.tsx",
+        "app/gob/vigilancia/page.tsx",
+        "app/org/[orgToken]/atender/actions.ts",
+        "app/org/[orgToken]/mascotas/OrgMascotasBulkList.tsx",
+        "app/org/[orgToken]/mascotas/[publicToken]/adoptar/AdoptionListingForm.tsx",
+        "app/org/[orgToken]/mascotas/[publicToken]/page.tsx",
+        "app/org/[orgToken]/mascotas/page.tsx",
+        "app/org/[orgToken]/mordedura/nuevo/OrgBiteForm.tsx",
+        "app/org/[orgToken]/page.tsx",
+        "app/org/[orgToken]/servicios/[offeringToken]/page.tsx",
+        "app/org/[orgToken]/transferencias/recibidas/page.tsx",
+        "components/LocationFields.tsx",
+        "components/PetForm.tsx",
+        "components/casos/CaseDetailView.tsx",
+        "components/charts/MapChoropleth.tsx",
+        "components/panorama/CabaInset.tsx",
+        "components/panorama/DetailDrawer.tsx",
+        "components/panorama/FiltroPanel.tsx",
+        "components/panorama/LayerPanel.tsx",
+        "components/panorama/PanoramaConsole.tsx",
+        "components/panorama/SituationalMap.tsx",
+        "components/panorama/TimeScrubber.tsx",
+        "components/panorama/calendar-heatmap-grid.ts",
+        "components/pet-profile/LostScanFeed.tsx",
+        "components/pet-profile/PublicLostSections.tsx",
+        "components/pet-profile/asiento-fields.ts",
+        "lib/analytics/dashboards/analytics.ts",
+        "lib/analytics/dashboards/welfare.ts",
+        "lib/analytics/ppp-exports.ts",
+        "lib/domain/libreta-health-status.ts",
+        "lib/domain/rule-types-registry.ts",
+        "packages/contract/src/events/event-capture-matcher.ts",
+        "lib/events/events.ts",
+        "lib/infra/backfill-eno-trigger-helpers.ts",
+        "lib/infra/business-rules-reeval.ts",
+        "lib/infra/case-access.ts",
+        "lib/infra/case-cron.ts",
+        "lib/infra/lost-mode.ts",
+        "lib/infra/notifications.ts",
+        "lib/infra/welfare-inspector-detail.ts",
+        "lib/metrics/reunification-rollups.ts",
+        "lib/projections/pet-compliance.ts",
+        "lib/projections/travel-compliance.ts",
+        "scripts/check-authz-guards.ts",
+        "scripts/check-design-tokens.ts",
+        "scripts/check-event-payload-parity.ts",
+        "scripts/check-ui-invariants.ts",
+        "scripts/cursor-val-deep-c.ts",
+        "scripts/deploy-provision.ts",
+        "scripts/import-indec-localities.ts",
+        "scripts/migrate.ts",
+        "scripts/qa-routes.ts",
+        "scripts/qa-timing.ts",
+        "scripts/rls-smoke.ts",
+        "scripts/seed-coverage.ts",
+        "scripts/seed-demo-polish.ts",
+        "scripts/seed-demo.ts",
+        "scripts/seed-panorama.ts",
+        "scripts/seed-perf.ts",
+        "src/modules/adoption/application/finalize-adoption.ts",
+        "src/modules/custody-disputes/application/resolve-dispute.ts",
+        "src/modules/decomiso/application/execute-decomiso.ts",
+        "src/modules/events/actions.ts",
+        "src/modules/events/actions-medical.ts",
+        "src/modules/events/application/attendance/mark-appointment-attended.ts",
+        "src/modules/events/application/lifecycle/death-record-use-case.ts",
+        "src/modules/events/application/lifecycle/set-pet-lost-use-case.ts",
+        "src/modules/foster/domain/matching-rules.ts",
+        "src/modules/lost/infrastructure/lost-listing-read.ts",
+        "src/modules/organizations/application/admin-institutional/create-institutional-account.ts",
+        "src/modules/organizations/application/update-organization.ts",
+        "src/modules/panorama/application/build-features.ts",
+        "src/modules/panorama/application/get-panorama-kpis.ts",
+        "src/modules/panorama/domain/bivariate.ts",
+        "components/panorama/situational-map-config.ts",
+        "src/modules/panorama/infrastructure/__tests__/choropleth-by-level.test.ts",
+        "src/modules/panorama/infrastructure/repository-history.ts",
+        "src/modules/panorama/infrastructure/repository.ts",
+        "src/modules/pets/actions.ts",
+        "src/modules/pets/application/intake/create-intake.ts",
+        "src/modules/pets/application/microchip/replace-microchip.ts",
+        "src/modules/pets/application/sighting/report-pet-sighting.ts",
+        "src/modules/pets/application/stub-claim/claim-stub-profile.ts",
+        "src/modules/pets/domain/pet-form.ts",
+        "src/modules/return-to-owner/application/owner-accept-return.ts",
+        "src/modules/return-to-owner/application/owner-propose-return-to-org.ts",
+        "src/modules/surveillance/actions.ts",
+        "src/modules/surveillance/application/close-eligible-observations.ts",
+        "src/modules/surveillance/application/professional-close-observation.ts",
+        "src/modules/welfare/actions.ts",
+        "src/modules/welfare/application/create-org-welfare-report.ts",
+        "src/modules/welfare/application/create-welfare-report.ts"
+      ],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noExcessiveCognitiveComplexity": {
+              "level": "error",
+              "options": {
+                "maxAllowedComplexity": 160
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "include": [
+        "app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/peso/WeightForm.tsx",
+        "app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/tatuaje/TattooForm.tsx",
+        "components/panorama/PanoramaConsole.tsx",
+        "components/panorama/SituationalMap.tsx",
+        "components/panorama/situational-map-utils.ts"
+      ],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedImports": "off"
+          }
+        }
+      }
+    },
+    {
+      "include": [
+        "__tests__/a11y-structural.test.tsx",
+        "__tests__/admin-filters-tables.test.ts",
+        "__tests__/admin-institutional.test.ts",
+        "__tests__/admin-revocations.test.ts",
+        "__tests__/case-closers.test.ts",
+        "__tests__/checkin-action.test.ts",
+        "__tests__/create-clinic-wizard.test.ts",
+        "__tests__/decomiso-execute-action.test.ts",
+        "__tests__/decomiso-handoff.test.ts",
+        "__tests__/decomiso-unowned-animal.test.ts",
+        "__tests__/finder-in-possession-action.test.ts",
+        "__tests__/govt-dashboards.test.ts",
+        "__tests__/jurisdiction-pair-clause.test.ts",
+        "__tests__/lost-found-schema.test.ts",
+        "__tests__/microchip-replaced-form.test.ts",
+        "__tests__/notifications.test.ts",
+        "__tests__/org-casos-queue.test.tsx",
+        "__tests__/org-coverage.test.ts",
+        "__tests__/org-dashboard.test.ts",
+        "__tests__/org-memberships.test.ts",
+        "__tests__/scan-retention.test.ts",
+        "__tests__/scheduling-attendance.test.ts",
+        "__tests__/subject-rights-rpcs.test.ts",
+        "__tests__/vaccine-due-scan.test.ts",
+        "app/(app)/mis-mascotas/[publicToken]/SheetMounter.tsx",
+        "app/(app)/mis-mascotas/[publicToken]/_share-libreta/ShareLibretaSheet.tsx",
+        "app/(app)/mis-mascotas/[publicToken]/eventos/[eventId]/AmendEventForm.tsx",
+        "app/(app)/mis-mascotas/[publicToken]/page.tsx",
+        "app/(app)/transferencias/page.tsx",
+        "app/(auth)/registro/SignupForm.tsx",
+        "app/(public)/denuncias/nueva/_components/Step3Where.tsx",
+        "app/_components/attendance-forms/DewormingAttendanceForm.tsx",
+        "app/_components/attendance-forms/GenericAttendanceForm.tsx",
+        "app/_components/attendance-forms/MicrochipAttendanceForm.tsx",
+        "app/_components/attendance-forms/SterilizationAttendanceForm.tsx",
+        "app/_components/attendance-forms/VaccinationAttendanceForm.tsx",
+        "app/admin/adopciones/page.tsx",
+        "app/gob/censo/CensoScreen.tsx",
+        "app/gob/maltrato/[id]/page.tsx",
+        "app/gob/organizaciones/RevokeOrgActions.tsx",
+        "app/gob/usuarios/ProposeUserActions.tsx",
+        "app/gob/usuarios/RevokeUserActions.tsx",
+        "app/org/[orgToken]/mascotas/OrgMascotasPipelineBoard.tsx",
+        "app/org/[orgToken]/miembros/RevokeButton.tsx",
+        "components/AdoptionQueueList.tsx",
+        "components/panorama/PanoramaConsole.test.tsx",
+        "components/panorama/SituationalMap.tsx",
+        "e2e/cross-tenant-isolation.spec.ts",
+        "e2e/executive-smoke.spec.ts",
+        "lib/analytics/jurisdiction-scope.test.ts",
+        "lib/domain/vaccine-reminder-state.ts",
+        "lib/infra/notification-service.ts",
+        "lib/infra/notifications.ts",
+        "lib/infra/org-setup-checklist.ts",
+        "scripts/codemod-status-tints.cjs",
+        "scripts/cursor-genesis.ts",
+        "scripts/cursor-val-deep-c.ts",
+        "scripts/qa-panorama-chaos.ts",
+        "scripts/qa-routes.ts",
+        "scripts/seed-coverage.ts",
+        "scripts/seed-demo-scenario.ts",
+        "scripts/seed-owner-demo.ts",
+        "scripts/seed-panorama.ts",
+        "scripts/seed-perf.ts",
+        "src/modules/adoption/infrastructure/__tests__/adoption-repository.test.ts",
+        "src/modules/adoption/infrastructure/adoption-repository.ts",
+        "src/modules/auth/application/complete-identity.ts",
+        "src/modules/decomiso/application/__tests__/use-cases.test.ts",
+        "src/modules/events/application/lifecycle/death-record-use-case.test.ts",
+        "src/modules/events/application/surveillance/symptom-observed-use-case.test.ts",
+        "src/modules/foster/infrastructure/__tests__/foster-repository.test.ts",
+        "src/modules/organizations/__tests__/authz-resolver.test.ts",
+        "src/modules/panorama/application/load-layer-features-cube.ts",
+        "src/modules/panorama/domain/__tests__/view-projection.characterization.test.ts",
+        "src/modules/service-offerings/application/schedule-rules/create-schedule-rule.ts",
+        "src/modules/service-offerings/application/schedule-rules/delete-schedule-rule.ts",
+        "src/modules/service-offerings/application/schedule-rules/update-schedule-rule.ts",
+        "src/modules/transfers/application/__tests__/use-cases.test.ts",
+        "src/modules/welfare/application/__tests__/create-org-welfare-report.test.ts"
+      ],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedVariables": "off"
+          }
+        }
+      }
+    }
+  ],
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all"
+    }
+  },
+  "organizeImports": {
+    "enabled": true
+  }
+}

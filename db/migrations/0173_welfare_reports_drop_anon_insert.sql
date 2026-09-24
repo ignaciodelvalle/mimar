@@ -1,0 +1,62 @@
+-- Migration 0173 — welfare_reports: eliminar la policy de INSERT anónimo.
+-- (Segunda pasada de auditoría sobre b3d152a3, hallazgo #2, 2026-08-12.)
+--
+-- EL HUECO
+-- --------
+-- La migración 0086 dejó viva esta policy:
+--
+--   create policy "Anyone can insert welfare report"
+--     on public.welfare_reports for insert to anon, authenticated
+--     with check (true);
+--
+-- `with check (true)`, sin restricción de columnas ni de rol, y sin trigger que
+-- valide o normalice en INSERT. Toda la defensa anti-abuso de las denuncias
+-- anónimas se computa app-side y post-commit (computeFlagReasons → setFlagged,
+-- create-welfare-report.ts): rate-limit, honeypot, dwell-time, strip de EXIF y
+-- auto-flag. Un INSERT directo por PostgREST con la anon key —que viaja en el
+-- bundle del cliente— no ejecuta nada de eso.
+--
+-- Qué habilitaba, concretamente:
+--   · Elegir `status`, `severity`, `jurisdiction_*`, `description` y `subject_*`
+--     a gusto. La fila entra con `flagged_at = NULL`, así que PASA el gate de
+--     moderación que sí atraviesa una denuncia legítima, y con
+--     `severity='critical'` ordena al tope de la cola de triage de la autoridad
+--     (Ley 14.346) en la jurisdicción elegida.
+--   · Spoofear `reporter_user_id` al UUID de otra persona: la denuncia forjada
+--     le aparece a esa persona en "Mis denuncias". Fabricar un registro
+--     cuasi-legal atribuido a alguien es el daño que más pesa acá, más que el
+--     ruido en la cola.
+--
+-- POR QUÉ ELIMINARLA NO ROMPE LAS DENUNCIAS ANÓNIMAS
+-- ---------------------------------------------------
+-- La app NUNCA usa este camino. El insert real corre por Drizzle
+-- (welfare-repository.ts:120), cuya conexión es el rol de aplicación con
+-- BYPASSRLS — verificado antes de escribir esta migración. La policy sólo
+-- habilitaba al cliente PostgREST, que el producto no usa para esta tabla.
+-- Una denuncia anónima sigue funcionando exactamente igual: el formulario
+-- público llama a la server action, que valida, aplica rate-limit y modera.
+--
+-- PRECEDENTE EN EL PROPIO REPO
+-- ----------------------------
+-- La migración 0099_welfare_attachments_rls_scope.sql reconoció ESTA MISMA
+-- CLASE (`with check (true)`) en la tabla hermana `welfare_report_attachments`
+-- y la cerró. `welfare_reports` quedó sin el mismo tratamiento: el patrón
+-- "clase reconocida, barrida a medias" que ya nos había pasado con los buckets
+-- de storage (0164 cerró uno, 0172 los otros cinco).
+--
+-- El riesgo estaba registrado como aceptado en el ledger tier2 (R4, "nuisance;
+-- app inserts via Drizzle"). La segunda mitad de esa frase es cierta y es
+-- justamente por qué la policy sobraba; la primera —"nuisance"— no lo era.
+--
+-- No se crea policy de reemplazo. Con RLS habilitado y sin policy de INSERT
+-- para anon/authenticated, la respuesta es deny, que es lo que corresponde a
+-- una tabla que sólo escribe el servidor.
+--
+-- Forward-only e idempotente: DROP POLICY IF EXISTS es no-op al re-correr.
+-- Espejado en db/welfare_rls.sql (la copia de referencia) en el mismo commit.
+
+BEGIN;
+
+DROP POLICY IF EXISTS "Anyone can insert welfare report" ON public.welfare_reports;
+
+COMMIT;

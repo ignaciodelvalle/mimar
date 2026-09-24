@@ -1,0 +1,16 @@
+{
+  "_meta": {
+    "generatedAt": "2026-07-22",
+    "description": "Wave 2 state-coverage fence baseline. minLoadingSegments is a FLOOR (only raise it, via --write-baseline, after adding new segment loading.tsx files — never lower it by hand). emptyStateGaps grandfathers list-shaped pages (OpFilterBar signal) with no EmptyState signal in their own directory; curing a gap lets its entry be removed — new gaps not in this list fail lint:states. epistemicNatureGaps (C4, 2026-07-22) grandfathers files under app/gob/vigilancia/** and app/admin/observaciones/** where an LnEmptyState/OpCallout renders something other than a data empty-state (nature classification doesn't apply) — new un-classified surveillance empty-states not in this list fail lint:states."
+  },
+  "minLoadingSegments": 157,
+  "emptyStateGaps": [
+    "app/admin/alertas/page.tsx",
+    "app/admin/casos/page.tsx",
+    "app/gob/sistema/page.tsx"
+  ],
+  "epistemicNatureGaps": [
+    "app/admin/observaciones/[publicToken]/microchip/reemplazar/page.tsx",
+    "app/admin/observaciones/[publicToken]/page.tsx"
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "app/admin/admins/AdminsScreen.tsx": {
+    "reason": "Deuda anotada, no exencion. Pantalla de operador con barra de filtros sobre lecturas sin presupuesto (select de profiles + buildAuthEmailMap); con el pooler degradado queda en el esqueleto para siempre. Existia antes de que esta reja contara las pantallas sin envoltorio (T1-L6, 2026-09-18) y quedo fuera de ese item, que cubrio casos, Actividad e historial de gob. Sacarla de aca en el mismo commit que la envuelva.",
+    "chrome": ["budget-wrapper"]
+  },
+  "app/admin/auditoria/AuditoriaScreen.tsx": {
+    "reason": "Chrome atrapado bajo un padre contaminado, no una omision. El <OpFilterBar> depende legitimamente de la carga: su eje `actor` se arma con `actorOptions`, que sale de `load.value`. <DateRangeFilterFields> es hijo de esa barra y NO depende de nada — `fromValid`/`toValid` salen de searchParams — pero no se puede conservar sin extraerlo del padre. Vale arreglarlo: un operador cuyo log de auditoria expira pierde justo el filtro de fecha que habria abaratado la consulta. Es refactor (partir la barra en ejes limpios + eje contaminado), no izado, asi que queda documentado en vez de hecho a las apuradas.",
+    "chrome": ["DateRangeFilterFields"]
+  },
+  "app/admin/govts/GovtsScreen.tsx": {
+    "reason": "Deuda anotada, no exencion. Pantalla de operador con barra de filtros sobre lecturas sin presupuesto (buildAuthEmailMap + dos selects); con el pooler degradado queda en el esqueleto para siempre. Existia antes de que esta reja contara las pantallas sin envoltorio (T1-L6, 2026-09-18) y quedo fuera de ese item, que cubrio casos, Actividad e historial de gob. Sacarla de aca en el mismo commit que la envuelva.",
+    "chrome": ["budget-wrapper"]
+  },
+  "app/admin/libro/page.tsx": {
+    "reason": "Deuda anotada, no exencion. Pantalla de operador con barra de filtros sobre lecturas sin presupuesto (fetchEventLedger); con el pooler degradado queda en el esqueleto para siempre. Existia antes de que esta reja contara las pantallas sin envoltorio (T1-L6, 2026-09-18) y quedo fuera de ese item, que cubrio casos, Actividad e historial de gob. Sacarla de aca en el mismo commit que la envuelva.",
+    "chrome": ["budget-wrapper"]
+  },
+  "app/admin/observaciones/page.tsx": {
+    "reason": "Deuda anotada, no exencion. Pantalla de operador con barra de filtros sobre lecturas sin presupuesto (fetchObservaciones + tres selects de eventos y duenos); con el pooler degradado queda en el esqueleto para siempre. Existia antes de que esta reja contara las pantallas sin envoltorio (T1-L6, 2026-09-18) y quedo fuera de ese item, que cubrio casos, Actividad e historial de gob. Sacarla de aca en el mismo commit que la envuelva.",
+    "chrome": ["budget-wrapper"]
+  },
+  "app/admin/outbox/page.tsx": {
+    "reason": "Deuda anotada, no exencion. Pantalla de operador con barra de filtros sobre lecturas sin presupuesto (select del outbox + countOutboxBreaches); con el pooler degradado queda en el esqueleto para siempre. Existia antes de que esta reja contara las pantallas sin envoltorio (T1-L6, 2026-09-18) y quedo fuera de ese item, que cubrio casos, Actividad e historial de gob. Sacarla de aca en el mismo commit que la envuelva.",
+    "chrome": ["budget-wrapper"]
+  },
+  "app/gob/acciones/page.tsx": {
+    "reason": "Exencion real: el presupuesto vive en el loader. La pagina llama loadWorklist, y app/gob/acciones/_lib/worklist-io.ts acota cada dominio con withDbBudget; ese archivo esta registrado en DASHBOARD_PAGES de check-db-budget.ts, que exige la llamada. Esta reja lee un archivo por vez y no sigue la delegacion.",
+    "chrome": ["budget-wrapper"]
+  },
+  "app/gob/moderacion/ModeracionQueueScreen.tsx": {
+    "reason": "Deuda anotada, no exencion. Pantalla de operador con barra de filtros sobre lecturas sin presupuesto (select de la cola de moderacion); con el pooler degradado queda en el esqueleto para siempre. Existia antes de que esta reja contara las pantallas sin envoltorio (T1-L6, 2026-09-18) y quedo fuera de ese item, que cubrio casos, Actividad e historial de gob. Sacarla de aca en el mismo commit que la envuelva.",
+    "chrome": ["budget-wrapper"]
+  },
+  "app/gob/organizaciones/OrganizacionesScreen.tsx": {
+    "reason": "Deuda anotada, no exencion. Pantalla de operador con barra de filtros sobre lecturas sin presupuesto (searchOrganizations + logPiiReadSafely); con el pooler degradado queda en el esqueleto para siempre. Existia antes de que esta reja contara las pantallas sin envoltorio (T1-L6, 2026-09-18) y quedo fuera de ese item, que cubrio casos, Actividad e historial de gob. Sacarla de aca en el mismo commit que la envuelva.",
+    "chrome": ["budget-wrapper"]
+  },
+  "app/gob/outbox/page.tsx": {
+    "reason": "Deuda anotada, no exencion. Pantalla de operador con barra de filtros sobre lecturas sin presupuesto (select del outbox); con el pooler degradado queda en el esqueleto para siempre. Existia antes de que esta reja contara las pantallas sin envoltorio (T1-L6, 2026-09-18) y quedo fuera de ese item, que cubrio casos, Actividad e historial de gob. Sacarla de aca en el mismo commit que la envuelva.",
+    "chrome": ["budget-wrapper"]
+  },
+  "app/gob/reglas/AdminReglasLens.tsx": {
+    "reason": "Deuda anotada, no exencion. Pantalla de operador con barra de filtros sobre lecturas sin presupuesto (select de reglas); con el pooler degradado queda en el esqueleto para siempre. Existia antes de que esta reja contara las pantallas sin envoltorio (T1-L6, 2026-09-18) y quedo fuera de ese item, que cubrio casos, Actividad e historial de gob. Sacarla de aca en el mismo commit que la envuelva.",
+    "chrome": ["budget-wrapper"]
+  },
+  "app/gob/rupga/CredencialesScreen.tsx": {
+    "reason": "Deuda anotada, no exencion. Pantalla de operador con barra de filtros sobre lecturas sin presupuesto (searchServiceDogCredentials); con el pooler degradado queda en el esqueleto para siempre. Existia antes de que esta reja contara las pantallas sin envoltorio (T1-L6, 2026-09-18) y quedo fuera de ese item, que cubrio casos, Actividad e historial de gob. Sacarla de aca en el mismo commit que la envuelva.",
+    "chrome": ["budget-wrapper"]
+  },
+  "app/gob/suscripciones/page.tsx": {
+    "reason": "Deuda anotada, no exencion. Pantalla de operador con barra de filtros sobre lecturas sin presupuesto (evaluateAlertSubscriptions); con el pooler degradado queda en el esqueleto para siempre. Existia antes de que esta reja contara las pantallas sin envoltorio (T1-L6, 2026-09-18) y quedo fuera de ese item, que cubrio casos, Actividad e historial de gob. Sacarla de aca en el mismo commit que la envuelva.",
+    "chrome": ["budget-wrapper"]
+  },
+  "app/gob/usuarios/UsuariosScreen.tsx": {
+    "reason": "Deuda anotada, no exencion. Pantalla de operador con barra de filtros sobre lecturas sin presupuesto (searchUsers + buildAuthEmailMap + fetchChipReplacementSignal); con el pooler degradado queda en el esqueleto para siempre. Existia antes de que esta reja contara las pantallas sin envoltorio (T1-L6, 2026-09-18) y quedo fuera de ese item, que cubrio casos, Actividad e historial de gob. Sacarla de aca en el mismo commit que la envuelva.",
+    "chrome": ["budget-wrapper"]
+  },
+  "app/gob/vigilancia/investigaciones/page.tsx": {
+    "reason": "Deuda anotada, no exencion. Pantalla de operador con barra de filtros sobre lecturas sin presupuesto (listOutbreakInvestigationsForGovt); con el pooler degradado queda en el esqueleto para siempre. Existia antes de que esta reja contara las pantallas sin envoltorio (T1-L6, 2026-09-18) y quedo fuera de ese item, que cubrio casos, Actividad e historial de gob. Sacarla de aca en el mismo commit que la envuelva.",
+    "chrome": ["budget-wrapper"]
+  }
+}

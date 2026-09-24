@@ -1,0 +1,51 @@
+-- dim:no-transaction
+-- (Tiene que estar en las primeras cinco líneas: así lo lee migrate.ts.)
+--
+-- Migración 0177 — una mascota no puede tener DOS turnos VIVOS en el mismo slot.
+--
+-- QUÉ PASÓ
+-- --------
+-- Clickthrough de staging, 2026-08-13: el agente reservó el mismo slot dos veces
+-- para la misma mascota y el sistema confirmó las dos, sin aviso. En una campaña
+-- gratuita con 6 lugares, el doble click ansioso se come un cupo que otro vecino
+-- no va a conseguir.
+--
+-- La causa: src/modules/events/application/booking/book-slot.ts protege la
+-- CAPACIDAD con lock consultivo + el CHECK `slot_bookings_within_capacity`, y no
+-- protege la IDENTIDAD. Con capacidad 6, dos reservas de la misma mascota entran
+-- sin violar nada. La invariante existía en la cabeza de quien lo escribió, no en
+-- la base.
+--
+-- Y no alcanza con un guard de UI: de los tres pares duplicados medidos en
+-- staging, DOS los generó el seed (PANO-APT-HIST-000622/623, PANO-APT-00634/637).
+-- Cualquier escritor que no pase por el formulario los sigue creando.
+--
+-- POR QUÉ "VIVOS" Y NO "TODOS"
+-- ----------------------------
+-- La invariante correcta no es "esta mascota nunca tuvo dos filas para este
+-- slot" — es "no puede tener dos turnos VIGENTES a la vez". Un turno cancelado y
+-- otro nuevo para el mismo slot es un caso legítimo: me arrepentí y volví a
+-- reservar. Y un `no_show` seguido de otro intento es historia, no conflicto.
+--
+-- Esa distinción es además lo que deja aplicar esta migración HOY sin tocar un
+-- solo dato. Los tres pares que ya existen son:
+--
+--   cancelled_by_owner + attended
+--   no_show            + no_show
+--   attended           + no_show
+--
+-- Ninguno tiene dos filas en estado 'confirmed', así que el índice parcial entra
+-- limpio. La alternativa —borrar historia para que pase un índice— es justo lo
+-- que un sistema append-only no hace.
+--
+-- 'confirmed' es el único estado vivo: los otros cuatro del CHECK
+-- `appointment_status_valid` (attended, no_show, cancelled_by_owner,
+-- cancelled_by_org) son terminales.
+--
+-- CONCURRENTLY: la tabla tiene tráfico y este índice no debe tomar un lock de
+-- escritura. Por eso el archivo va sin transacción (ver el directive arriba) y
+-- con IF NOT EXISTS — si una corrida falla a la mitad, la siguiente lo retoma.
+
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS appointments_one_live_per_pet_slot
+  ON appointments (pet_id, slot_id)
+  WHERE status = 'confirmed';

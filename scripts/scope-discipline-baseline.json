@@ -1,0 +1,71 @@
+{
+  "lib/analytics/admin-metrics.ts": {
+    "reason": "MIXED — 1 direct call + 5 template matches, of which 4 are real and 1 is a false positive. REAL: the jurisdictionPairClause() at L163 with its operands (L165-166), deliberately sharing the predicate with /gob/cola's visibleRequestsClause so the aging COUNTER and the queue can never show different populations (L157-162) — a good reason to share, not to hand-roll; and the admin drill-down templates at L175/L177. FALSE POSITIVE: L396 `count(distinct (${govtAssignments.jurisdictionProvince}, ${govtAssignments.jurisdictionLocality}))` is an AGGREGATE over already-scoped rows — it counts how many distinct jurisdictions a govt user was assigned. It restricts nothing. The regex cannot tell a SELECT-list aggregate from a WHERE predicate; this is the documented limitation, recorded here rather than special-cased.",
+    "counts": {
+      "direct-pair-clause-call": 1,
+      "raw-template-predicate": 5
+    }
+  },
+  "lib/analytics/analytics-ranking.ts": {
+    "reason": "REAL DEBT — same duplicated shape as govt-home-kpis.ts, for `pets` instead of `cases` (L75-93): a non-govt admin drill-down branch built from raw eq() pairs, and a govt branch that correctly delegates to jurisdictionPairClause for whole-province subsumption. Correct today; it is a third copy of a predicate that has a reviewed single home. Migrate to a dashboards/_scope.ts export.",
+    "counts": {
+      "direct-pair-clause-call": 1,
+      "raw-eq-predicate": 3,
+      "raw-template-predicate": 2
+    }
+  },
+  "lib/analytics/campaign-metrics.ts": {
+    "reason": "REAL DEBT — the same shape again for `serviceOfferings` (L191-224). The govt branch goes through jurisdictionPairClause (comment at L215-217 credits the 2026-07-22 authz-subsumption fence for finding this exact bug class, commit 68501bb4), and the admin branch pushes raw eq() pairs. Correct today, duplicated by construction. Migrate to a dashboards/_scope.ts export.",
+    "counts": {
+      "direct-pair-clause-call": 1,
+      "raw-eq-predicate": 2,
+      "raw-template-predicate": 2
+    }
+  },
+  "lib/analytics/compliance-metrics.ts": {
+    "reason": "FALSE POSITIVE, both occurrences — NOT scope debt. L183 and L373 are `sql`${pets.jurisdictionProvince} IS NOT NULL`` : a PRESENCE check that drops rows with no province recorded before a per-province rollup, so the denominator is not polluted by unlocated pets. It compares the column against no operand and therefore cannot restrict WHICH jurisdiction a viewer sees — the actual viewer scope is AND-ed alongside it. Baselined rather than special-cased in the regex, because an exclusion for `IS NOT NULL` would also swallow a line that mixed a real predicate with a null check, and a fence that can be defeated by adding six characters is worse than one that over-reports into an audited list.",
+    "counts": {
+      "raw-template-predicate": 2
+    }
+  },
+  "lib/analytics/dashboards/surveillance.ts": {
+    "reason": "TWO audited non-scope references, both re-audited 2026-07-26 when C3 (ONE VIEWSCOPE) migrated the other 52 into dashboards/_scope.ts. (1) fetchCasesPerSubregion's `eq(cases.jurisdictionProvince, provinceDisplayName)` — the MAP's SUBJECT selector (which province's subregions to render), not a viewer-scope gate: the real scope is casesScopeClause(actor, jurisdictions, adminProvince, adminLocality), AND-ed alongside it in the same conditions array, so this predicate can only ever NARROW. Routing it through a scope helper would be wrong: for govt the helper ignores an admin drill by design, and this filter must apply to govt too. (2) fetchCasesPerCapita's `eq(jurisdictionsCensus.provinceName, cases.jurisdictionProvince)` — a column-to-column LEFT JOIN key against the census table, with no literal operand and no row-visibility effect at all (a linter false-positive class the regex cannot distinguish from a predicate).",
+    "counts": {
+      "raw-eq-predicate": 2
+    }
+  },
+  "lib/analytics/govt-home-kpis.ts": {
+    "reason": "REAL DEBT — the worst instance the H.6 glob widening exposed. This file defines its own `casesScopeClause` (L44) and `welfareReportsScopeClause` (L91): same NAME, same job, and the same three-branch shape as the reviewed helpers in dashboards/_scope.ts. The file's own comment at L58-60 records that this duplication ALREADY drifted once — \"the inline exact-pair build here was NOT covered by 7a17ec97's subsumption fix\" — i.e. a whole-province operator stopped seeing barrio-tagged rows in this KPI while the dashboards saw them correctly. Both local clauses are correct TODAY (they route the govt branch through jurisdictionPairClause for subsumption, and the eq() pairs are the admin drill-down branch, which narrows an already-universal scope). The debt is that the next subsumption fix has to be applied in two places by someone who knows both exist. MIGRATION: export these from dashboards/_scope.ts and delete the local copies. Not done in H.6, whose scope was the fence's territory, not a refactor of the callers.",
+    "counts": {
+      "direct-pair-clause-call": 2,
+      "raw-eq-predicate": 6,
+      "raw-template-predicate": 6
+    }
+  },
+  "lib/analytics/senasa-export-query.ts": {
+    "reason": "REAL DEBT, low risk — one direct jurisdictionPairClause() call (L46) plus its two operand templates. Correct and deliberate: L40-44 records that without subsumption a whole-province operator's SENASA export silently dropped every barrio-tagged sanitary event in their own province. Same migration as the others: route through a _scope.ts export.",
+    "counts": {
+      "direct-pair-clause-call": 1,
+      "raw-template-predicate": 2
+    }
+  },
+  "lib/analytics/surveillance-metrics.ts": {
+    "reason": "REAL DEBT, low risk — two direct jurisdictionPairClause() call sites (L95, L356) with their operand templates. Both are CORRECT uses (L90-94 documents the SLA tile that read \"sin entregas\" before subsumption was applied), and L356 is inside a per-jurisdiction loop that resolves a different business rule per jurisdiction — a shape no current _scope.ts wrapper offers. Flagged because rule 1 bans direct calls outright; needs either a new wrapper that takes a single jurisdiction, or a documented exemption.",
+    "counts": {
+      "direct-pair-clause-call": 2,
+      "raw-template-predicate": 2
+    }
+  },
+  "lib/analytics/territorial-data-quality.ts": {
+    "reason": "FALSE POSITIVE — NOT scope debt. L188 is `COUNT(*) FILTER (WHERE ${pets.jurisdictionLocality} IS NULL)`: this module MEASURES territorial data quality, so the missing-locality count is the metric itself, not a visibility gate. A FILTER clause inside a SELECT-list aggregate changes what is counted, never which rows the viewer may see. Same reasoning as compliance-metrics.ts above.",
+    "counts": {
+      "raw-template-predicate": 1
+    }
+  },
+  "lib/analytics/welfare-exports.ts": {
+    "reason": "FALSE POSITIVE — NOT SQL AT ALL. L185 is a plain JavaScript template literal building a display label: `Unidad Fiscal de Maltrato Animal — ${report.jurisdictionProvince}`. `report` is an already-fetched row, not a Drizzle table, and the string is prose for a human, not a query. Rule 3 matches any `${IDENT.jurisdictionProvince}` interpolation and cannot distinguish a sql`` tag from an ordinary template — the documented per-line heuristic limitation. Recorded, not special-cased: narrowing rule 3 to sql`` tags only would need real parsing, and would create a hiding place.",
+    "counts": {
+      "raw-template-predicate": 1
+    }
+  }
+}

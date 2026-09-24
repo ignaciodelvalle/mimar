@@ -1,0 +1,72 @@
+/* operator-print-escape.css — let an operator print surface reach page 2.
+   ------------------------------------------------------------------------
+   THE BUG THIS FIXES (PRN-3, print-surfaces audit 2026-08-04 🔴-1/🔴-2;
+   reproduced by the PO on a real maltrato expediente).
+
+   AppShell's operator variant is four nested clipping boxes:
+
+     .op-shell-root    fixed inset-0 … overflow-hidden   ← positioned ancestor
+       .op-shell-row   flex min-h-0 flex-1 overflow-hidden
+         .op-shell-main  flex … overflow-hidden
+           .op-shell-scroll  min-h-0 flex-1 overflow-auto   ← the real scroller
+
+   Every /gob document renders at the bottom of that chain. The two print
+   sheets in this codebase both tried to ESCAPE it with the classic
+   "print one region" recipe — `body * { visibility: hidden }` plus a
+   `position: absolute` print root lifted to the page origin. That recipe
+   cannot work here, twice over:
+
+     · `position: absolute` resolves against the nearest POSITIONED ancestor,
+       and `.op-shell-root` is `position: fixed`. The print root never left
+       the box.
+     · `visibility: hidden` changes paint, never layout or overflow. All four
+       `overflow` clips stayed in force during print.
+
+   Result: the printed artifact was cut at roughly one viewport, with no
+   indication anything was missing — the worst failure mode for a Ley 14.346
+   instrument.
+
+   THE FIX. Neutralise the shell instead of tunnelling out of it: put the four
+   boxes back in normal flow under print media, then take the CHROME out of
+   flow with `display: none` (which `visibility: hidden` never did — the rail
+   and topbar were still reserving their boxes). The document then grows to its
+   real height and pages normally.
+
+   Import this from a surface's page/component ALONGSIDE its own print sheet.
+   It is deliberately NOT in globals.css: it changes what Ctrl+P does on a
+   route, and that belongs to surfaces that have decided what their paper
+   artifact is — not to every operator screen by default.
+
+   Targets `.op-shell-*`, never `.op-surface`: the latter is the operator SKIN
+   selector and is also worn by non-shell cards (components/landing/
+   story-screens.tsx), which must not be blanked when they print. */
+
+@media print {
+  .op-shell-root,
+  .op-shell-row,
+  .op-shell-main,
+  .op-shell-scroll {
+    position: static !important;
+    display: block !important;
+    overflow: visible !important;
+    inset: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+
+  /* The scroll area's 24px/22px gutters are screen ergonomics; on paper the
+     printer margin (and the surface's own padding) owns the edge. */
+  .op-shell-scroll {
+    padding: 0 !important;
+  }
+
+  /* Collapse the chrome OUT OF FLOW. Structural rather than named, so this
+     keeps working when the rail/topbar/banner components are replaced: the
+     only children that survive are the ones on the path to the content. */
+  .op-shell-root > :not(.op-shell-row),
+  .op-shell-row > :not(.op-shell-main),
+  .op-shell-main > :not(.op-shell-scroll) {
+    display: none !important;
+  }
+}

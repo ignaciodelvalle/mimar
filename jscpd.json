@@ -1,0 +1,18 @@
+{
+  "path": ["app", "components", "lib", "src"],
+  "ignore": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/__tests__/**",
+    "**/__fixtures__/**",
+    "**/__mocks__/**",
+    "**/node_modules/**",
+    "**/.next/**"
+  ],
+  "minTokens": 50,
+  "threshold": 7,
+  "reporters": ["json"],
+  "silent": true
+}

@@ -1,0 +1,82 @@
+{
+  "_comment": "Cutover smoke — the surfaces a staging promotion is most likely to break, driven in a real browser. Run BEFORE promoting (against local) and AFTER (against staging, via --base). Read every PNG: a 200 response proves the route resolved, not that the screen is usable. Usage: pnpm exec tsx scripts/qa-vis.ts --steps=scripts/qa-vis-cutover.json [--base=https://dim-staging.vercel.app]",
+  "_exit": "`assert` steps decide the exit code: 0 only if every step ran and every assert held. `eval` steps only print — they are for reading, and several checks here CANNOT be asserted from text (see the _why notes). A green run means the asserted floor holds, not that the screens are good. Read the PNGs.",
+  "out": "tmp/qa-vis/cutover",
+  "tag": "cutover",
+  "steps": [
+    { "do": "goto", "url": "/admin/panorama" },
+    { "do": "sleep", "ms": 14000 },
+    { "do": "shot", "name": "01-panorama-default" },
+    {
+      "_why": "The flagship. canvas>0 proves maplibre initialised; a 200 with canvas 0 is the clobbered-build signature (BUILD_ID rewritten under a running server: chunks 400, nothing hydrates).",
+      "do": "assert",
+      "expr": "document.querySelectorAll('canvas').length > 0",
+      "why": "maplibre did not initialise — the clobbered-build signature (chunks 400, nothing hydrates)"
+    },
+    {
+      "do": "assert",
+      "expr": "document.body.innerText.indexOf('No encontramos') >= 0",
+      "expected": false,
+      "why": "the flagship route rendered a not-found body"
+    },
+    {
+      "do": "eval",
+      "expr": "JSON.stringify({h1: (document.querySelector('h1')||{}).innerText})"
+    },
+    { "do": "goto", "url": "/admin/panorama?preset=mortalidad" },
+    { "do": "sleep", "ms": 14000 },
+    { "do": "shot", "name": "02-mortalidad-legend" },
+    {
+      "_why": "Legend honesty. The ramp must describe the DATA, not the classifier: this view once painted values 1..63 under a legend reading '2 ... 6', on an EXPORTABLE surface. That claim cannot be asserted from text — read the PNG. What IS assertable is that the surface rendered at all.",
+      "do": "assert",
+      "expr": "document.querySelectorAll('canvas').length > 0",
+      "why": "the mortalidad preset did not render a map"
+    },
+    {
+      "_why": "The k-anon chip. Read this rather than assert it: whether 'protegido' appears depends on whether any cell in the current data falls under the k threshold, so pinning it would go red on a reseed for a reason that is not a defect.",
+      "do": "eval",
+      "expr": "JSON.stringify({protegido: document.body.innerText.indexOf('protegido')>=0})"
+    },
+    { "do": "goto", "url": "/gob" },
+    { "do": "sleep", "ms": 8000 },
+    { "do": "shot", "name": "03-gob-panel" },
+    {
+      "_why": "es-AR thousands separator. A government panel printing 1507 beside 3.541 reads like two systems talking. Do NOT pin a literal figure -- a reseed changes it and the check silently stops biting. rawFourDigit counts bare 4+ digit runs with no separator. It is NOT expected to be 0: law and decree numbers legitimately carry none (measured baseline on /gob = 2, samples ['5470','4078'] -- Ley CABA 5470, Decreto 4078). Read `samples`: a figure that is a COUNT and not a legal citation is the defect. Re-baseline this number when the copy changes rather than letting it drift silently. Stays an eval BECAUSE of that: an assert here would be the brittle kind the guide warns about.",
+      "do": "eval",
+      "expr": "(function(){var t=document.body.innerText.split(/[^0-9.]+/).filter(function(x){return x.length>=4&&x.indexOf('.')<0&&!isNaN(Number(x))});return JSON.stringify({h1:(document.querySelector('h1')||{}).innerText, rawFourDigit:t.length, samples:t.slice(0,5)})})()"
+    },
+    {
+      "do": "assert",
+      "expr": "((document.querySelector('h1')||{}).innerText||'').trim().length > 0",
+      "why": "/gob rendered without an h1 — the page shell did not resolve"
+    },
+    { "do": "goto", "url": "/gob/vigilancia" },
+    { "do": "sleep", "ms": 8000 },
+    { "do": "shot", "name": "04-vigilancia-semaforo" },
+    {
+      "_why": "Semaphore honesty. 'Cumplimiento observacion 10d' is painted against a STATUTORY target of 100 (Ord. CABA 41.831 art. 9 / Decreto 4669/1973 PBA). A failing rate must never render in the ok tone. Read the PNG: the TONE cannot be asserted from text. The tile's PRESENCE can — if it vanishes, nobody is reading a semaphore at all.",
+      "do": "assert",
+      "expr": "document.body.innerText.toLowerCase().indexOf('cumplimiento observaci') >= 0",
+      "why": "the compliance tile is absent from /gob/vigilancia — there is no semaphore to judge"
+    },
+    { "do": "goto", "url": "/admin" },
+    { "do": "sleep", "ms": 6000 },
+    { "do": "shot", "name": "05-admin-panel" },
+    {
+      "_why": "Anonymous surface. With an active session /login redirects to the panel, so an h1 check there reads 'Briefing de administracion' and proves nothing. `anon` drops the session -- new context, no cookies, no storage state -- so the steps below exercise what an unauthenticated citizen hits first, and reveal a missing NEXT_PUBLIC_SITE_URL or a broken CSP nonce. Before 2026-07-27 this requirement lived only in a comment and the runner ignored it.",
+      "do": "anon"
+    },
+    { "do": "goto", "url": "/login" },
+    { "do": "sleep", "ms": 4000 },
+    { "do": "shot", "name": "06-login-anonymous" },
+    {
+      "do": "assert",
+      "expr": "location.pathname.indexOf('/login') === 0",
+      "why": "signed out, /login redirected away — the anonymous entry point is not reachable"
+    },
+    {
+      "do": "eval",
+      "expr": "JSON.stringify({h1: (document.querySelector('h1')||{}).innerText, path: location.pathname})"
+    }
+  ]
+}

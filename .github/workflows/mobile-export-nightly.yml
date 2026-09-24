@@ -1,0 +1,232 @@
+name: Mobile export nightly (Metro bundle)
+
+# Bundles the Expo client the way a release would, every night, so a bundling
+# regression is found on a schedule instead of at the moment somebody needs a
+# build.
+#
+# Cron is UTC: 45 07 UTC = 04:45 in Argentina (UTC-3, no DST). Deliberately
+# after e2e-nightly (06:00) and panorama-qa-nightly (06:30; both scheduled from
+# dim-interno since 2026-09-24) rather than alongside them — three jobs racing for runners at the same minute makes a slow
+# night look like a broken one.
+#
+# ONE THING THIS FILE NEEDS THAT IS NOT IN THIS FILE
+# ---------------------------------------------------------------------------
+# (1) IS DONE — 2026-08-28. This workflow needed to reach `main`, because a
+#    `schedule:` trigger is read ONLY from the repository's default branch: a
+#    scheduled workflow living on a feature or integration branch has no schedule
+#    at all — it is not late, it does not exist. Written 2026-08-27, it had run
+#    ZERO times for exactly that reason. `main` was then moved to the integration
+#    tip (`a3ec504c5`), which is the only thing that could fix it; no `ref:`
+#    could. Its first scheduled run is the confirmation, not this comment.
+# 2. THE `ref:` BELOW MUST TRACK WHATEVER BRANCH STAGING DEPLOYS FROM, not the
+#    default branch by assumption. Staging deployed from `integration/all-*`
+#    until 2026-09-01, when the PO repointed Vercel's Production Branch to
+#    `main` (`scripts/check-scheduled-fence-refs.ts:76-83`) — the two now
+#    happen to be the same branch, which is why `ref: main` below is correct
+#    today, but the pin stays so the next divergence is a one-line fix here
+#    instead of a silent regrade of stale mobile sources.
+#
+# The branch name is a LITERAL on purpose: `${{ vars.X }}` resolves to the empty
+# string when unset, and an empty `ref:` silently falls back to the default
+# branch — reintroducing the bug with no signal.
+on:
+  schedule:
+    - cron: "45 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# ---------------------------------------------------------------------------
+# WHAT THIS CATCHES THAT `pnpm verify:mobile` DOES NOT
+# ---------------------------------------------------------------------------
+# The `Mobile` step in ci.yml runs three things — tsc, Jest, and `expo config
+# --type public` — and every one of them is blind to the bundler:
+#
+#   tsc          type-checks the source. Metro does not type-check, and tsc does
+#                not resolve modules the way Metro does. A dependency that
+#                exists for tsc's `moduleResolution` and not for Metro's
+#                resolver typechecks clean and cannot be bundled.
+#   Jest         runs under jest-expo with its own transform and its own module
+#                map. Passing there says nothing about a Metro build.
+#   expo config  proves the config file LOADS. It never opens a source file.
+#
+# So the entire question "does this app still turn into a bundle" was answered
+# nowhere. That is a bad question to first ask on the day the PO wants an APK
+# for 12 testers, because a Metro resolution failure is rarely a one-line fix —
+# it is usually a dependency that has to change.
+#
+# WHY NIGHTLY AND NOT IN ci.yml, MEASURED RATHER THAN ASSUMED
+# ---------------------------------------------------------------------------
+# The honest objection to a nightly is that it finds the breakage a day late.
+# The honest objection to putting it in `check` is that it taxes every web
+# change. Measured locally 2026-08-26: Metro bundles 1611 modules in ~14s, on a
+# warm cache, with the install already done — genuinely cheap, and the argument
+# for hoisting it into ci.yml is therefore real.
+#
+# It is nightly anyway, for one reason: `expo export` is the most
+# environment-sensitive command in this repo. It resolves native modules through
+# autolinking, it depends on a Metro cache, and its failures are frequently
+# about the machine rather than the code. Making it a merge gate means a flaky
+# resolver blocks a database migration, and the repo has already paid for that
+# shape once — see the `&&`-chain note in ci.yml, where one red fence starved
+# 13k tests for 13 consecutive pushes.
+#
+# So: nightly, loud, with the bundle kept as an artifact. If a year of runs
+# shows it is stable, move it into `check` and delete this paragraph.
+
+jobs:
+  export:
+    name: expo export (android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # No secrets and no services. `apps/mobile/src/config/api.ts` defaults the
+    # API origin to staging and refuses to guess the auth origin, so a bundle
+    # built with no `EXPO_PUBLIC_*` variables is a bundle that would point at
+    # staging and fail to refresh a token — which is fine, because nobody runs
+    # this artifact. What is being tested is that Metro can produce it.
+    #
+    # `apps/mobile/.env` is gitignored, so a CI checkout genuinely has none of
+    # them and this job exercises the no-env path on purpose.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The branch staging is deployed from — NOT the default branch this
+          # schedule fires on. See the header. Kept in sync by
+          # `pnpm lint:sched-refs`, which names every file to change when the
+          # branch is renamed or merged.
+          ref: main
+
+      - name: Setup pnpm
+        # No `version:` input on purpose. The version comes from the
+        # `packageManager` field in the root package.json, which is the
+        # single place this repo pins pnpm — and this action FAILS when
+        # both are set and the strings differ ("11" is not "11.1.1").
+        # See docs/mobile/eas-build-profiles.md, "One pnpm, everywhere".
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Export the Android bundle
+        # NOT `pnpm -C apps/mobile export`, and the difference is the whole
+        # reason this step is worth having.
+        #
+        # That command resolves `expo` through `node_modules/.bin`, and pnpm's
+        # bin shim is a generated script whose first act is to export NODE_PATH
+        # pointing at `node_modules/.pnpm/expo@<version>_<hash>/node_modules` —
+        # the virtual-store directory holding expo's OWN dependencies. Node
+        # folds NODE_PATH into `Module.globalPaths` and appends it to every bare
+        # lookup, so anything expo depends on becomes resolvable by bare name
+        # from anywhere, declared or not.
+        #
+        # EAS's Gradle bundle task runs `node` directly ("Process 'command
+        # 'node'' finished with non-zero exit value 1"), with no shim and no
+        # NODE_PATH. Build e2a89561-910b-4ad7-97fa-ab0f2a481db8 died there on
+        # `Cannot find module 'babel-preset-expo'` — an undeclared dependency
+        # that `pnpm export` had never once failed to resolve. Measured on that
+        # exact pre-fix tree: this job's old command exited 0 and bundled 1617
+        # modules. The fence existed and could not see the defect.
+        #
+        # There is no way to fix that with the environment: the shim OVERWRITES
+        # an empty NODE_PATH and PREPENDS to a non-empty one, so the only way
+        # out is to skip the shim. `node_modules/expo/bin/cli` is exactly what
+        # the shim execs, minus the NODE_PATH line.
+        #
+        # This is a strictly stronger environment than the developer path — what
+        # bundles here bundles under `pnpm export` too — so nothing is lost by
+        # testing the harsher one. See docs/mobile/eas-build-profiles.md, "The
+        # third failure".
+        working-directory: apps/mobile
+        run: node node_modules/expo/bin/cli export --platform android
+
+      - name: Assert a bundle was actually written
+        # NOT redundant with the step above, and this repo does not take a zero
+        # exit code as evidence — the Definition of Done in CLAUDE.md is three
+        # paragraphs about commands whose exit codes lie. An `expo export` that
+        # emitted no Hermes bytecode and exited 0 is exactly the false green
+        # this job exists to prevent, and it costs one `find` to rule out.
+        run: |
+          BUNDLE=$(find apps/mobile/dist/_expo/static/js/android -name '*.hbc' -type f 2>/dev/null | head -1)
+          if [[ -z "$BUNDLE" ]]; then
+            echo "::error::expo export exited 0 but wrote no Android bundle under apps/mobile/dist/"
+            find apps/mobile/dist -type f 2>/dev/null | head -50
+            exit 1
+          fi
+          SIZE=$(stat -c%s "$BUNDLE")
+          echo "::notice::Bundle $BUNDLE — $((SIZE / 1024)) KiB"
+          # A bundle far below a megabyte is not a bundle, whatever the exit
+          # code said. The real one measured 4.4MB on 2026-08-26; 512 KiB is a
+          # floor low enough to never fire on legitimate shrinkage and high
+          # enough to catch a truncated or near-empty emit.
+          if (( SIZE < 524288 )); then
+            echo "::error::Bundle is $((SIZE / 1024)) KiB — implausibly small for this app."
+            exit 1
+          fi
+
+      - name: Upload the export
+        # `always()` rather than `failure()`, for the reason the e2e job
+        # documents: a job killed by timeout-minutes is CANCELLED, and
+        # `failure()` is false for a cancelled job — so the one run that most
+        # needs a forensic artifact is the one that would upload nothing.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-export-android
+          path: apps/mobile/dist/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Make a permanently-red fence audible — and this workflow is the worst case
+  # for the mechanism it replaces.
+  #
+  # GitHub's failed-workflow email fires on the green -> red TRANSITION. This
+  # workflow has NEVER RUN (the API is blunt about it: `gh run list --workflow
+  # mobile-export-nightly.yml` answers `HTTP 404: workflow not found on the
+  # default branch`, measured 2026-08-28), so its first run on `main` has no
+  # green to transition from. If that first run is red — likely, for a job whose
+  # command has never executed in CI — nothing would be sent to anybody. That is
+  # the 20-silent-nights disease, pre-installed.
+  #
+  # The alert keys on the STREAK instead, which is >= 1 on the first red whether
+  # or not a green ever preceded it.
+  # ---------------------------------------------------------------------------
+  alert:
+    name: Alert on a red streak
+    needs: export
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # Reading the workflow's own run history is what turns one red run into a
+      # streak; writing the issue is the alert itself. Both come from the per-run
+      # GITHUB_TOKEN — no secret to provision, so nothing to forget.
+      actions: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Local composite actions resolve from the checked-out tree, so this
+          # job needs the same pin as the one above — otherwise the alert would
+          # run the default branch's copy of the action.
+          ref: main
+
+      - name: Open or update the alert issue
+        uses: ./.github/actions/red-streak-alert
+        with:
+          workflow: mobile-export-nightly.yml
+          outcome: ${{ needs.export.result }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: "[nightly] Mobile export (Metro bundle) is failing"

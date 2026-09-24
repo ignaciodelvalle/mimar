@@ -1,0 +1,73 @@
+/* expediente-print.css — sober print layout for the maltrato expediente
+   detail (Lote Q, Q6). Same *-print.css mechanism as libreta/cartel/chapita:
+   a route-scoped @media print sheet imported by the page, triggered by an
+   on-screen button through deferPrint (lib/infra/defer-print.ts).
+
+   NOTE: @page rule deliberately absent — same convention as cartel-print.css
+   (see its header comment); default printer margins are right for an A4
+   expediente.
+
+   ISOLATION: this detail renders inside the /gob operator shell (rail,
+   topbar, omnibox). The visibility flip below prints ONLY the expediente
+   content: visibility (unlike display) cascades and can be re-enabled on a
+   subtree, which is the standard way to print one region without knowing the
+   shell's DOM. It stays as the catch-all for anything OUTSIDE the shell
+   (Toaster, body-level portals).
+
+   PAGING (PRN-3, fixed 2026-08-05): the flip alone is not enough, and the
+   `position: absolute` root that used to sit below was actively wrong — the
+   shell's root is `position: fixed`, so "absolute" resolved INSIDE the very
+   box it meant to escape and the expediente printed as one clipped page. The
+   shell's four clipping boxes are now neutralised by
+   components/layout/operator-print-escape.css (imported by page.tsx next to
+   this sheet), which also drops the rail/topbar out of flow; the root below
+   therefore prints in normal flow and the document pages properly. */
+
+@media print {
+  html,
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .expediente-print-root,
+  .expediente-print-root * {
+    visibility: visible;
+  }
+
+  /* Normal flow — NOT absolute. See the PAGING note in the header: a
+     positioned root re-enters the shell's clipping context and truncates the
+     expediente to one page. */
+  .expediente-print-root {
+    position: static;
+    width: 100%;
+    margin: 0;
+    padding: 1rem;
+  }
+
+  /* Interactive chrome is meaningless on paper: action buttons (tomar /
+     triage / derivar / imprimir itself), every link (breadcrumb, attachment
+     signed URLs — which expire anyway — and map links), and the derivation
+     form controls. In-page anchors (#) are kept, matching libreta-print. */
+  .expediente-print-root button,
+  .expediente-print-root a[href]:not([href^="#"]),
+  .expediente-print-root form,
+  .expediente-print-root input,
+  .expediente-print-root select,
+  .expediente-print-root textarea {
+    display: none !important;
+  }
+
+  /* Each card/section of the expediente stays whole across page breaks. */
+  .expediente-print-root > * {
+    break-inside: avoid;
+  }
+
+  li {
+    break-inside: avoid;
+  }
+}

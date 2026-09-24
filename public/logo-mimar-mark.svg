@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="miMAR" style="color:#0E5A99">
+  <title>miMAR — Mi Mascota Argentina</title>
+  <!--
+    The mark: a QR finder pattern with chamfered corners, holding a paw.
+
+    Why this shape. The three corner squares of a QR code are the pattern a
+    camera hunts for before it can read anything else, so they are engineered to
+    survive bad focus, low light and small sizes. Borrowing that outline means
+    the mark is legible at 16px by construction rather than by luck — the size
+    at which the previous mark (a photographic fingerprint scan) turned to mud.
+
+    Why chamfered and not rounded. A cut corner is the language of an engraved
+    plaque and a struck seal; a large corner radius is the language of a phone
+    app. The product is a registry, so the corners are cut. Frame thickness is a
+    uniform 14 units on the straights AND on the diagonals — the inner octagon's
+    chamfer sits at 31.8 rather than the 33 a naive inset would give, because a
+    naive inset makes the diagonal 14.85 and the frame reads uneven.
+
+    Why the paw is built from true circles. Four exact circles on the vertical
+    axis, mirrored, over a symmetrical pad. The earlier drawing rotated its toes
+    at unequal angles, which reads organic and warm; this reads constructed,
+    which is what an institution's mark has to read as.
+
+    Colour. `currentColor` throughout, with the brand blue as the root default,
+    so an inline <svg> inherits the surrounding colour (knockout on dark grounds
+    costs nothing) while an <img src> still renders in brand blue. The blue is
+    the primary colour token from app/globals.css (its CSS custom-property
+    name cannot be written here: XML forbids a doubled hyphen inside a comment);
+    it is restated below as a literal
+    because an asset in public/ cannot import a token.
+
+    Deliberately NOT species-specific. The concept recorded in
+    dim-interno:docs/plans/PENDIENTES.md required two distinguishable silhouettes, a dog and
+    a cat. That constraint was retired by the PO on 2026-09-03: it is in direct
+    conflict with the 16px constraint in the same list, and a paw is common to
+    both species. One shape, both animals, legible small.
+  -->
+  <g fill="currentColor">
+    <path fill-rule="evenodd" d="M26 5H74L95 26V74L74 95H26L5 74V26ZM31.8 19H68.2L81 31.8V68.2L68.2 81H31.8L19 68.2V31.8Z"/>
+    <g transform="translate(50 50) scale(0.5) translate(-50 -55)">
+      <circle cx="20.5" cy="40" r="9.6"/>
+      <circle cx="39.5" cy="26.5" r="9.6"/>
+      <circle cx="60.5" cy="26.5" r="9.6"/>
+      <circle cx="79.5" cy="40" r="9.6"/>
+      <path d="M50 54C64.9 54 77 61.6 77 72C77 83.6 64.9 93 50 93C35.1 93 23 83.6 23 72C23 61.6 35.1 54 50 54Z"/>
+    </g>
+  </g>
+</svg>

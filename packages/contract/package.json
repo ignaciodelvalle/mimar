@@ -1,0 +1,28 @@
+{
+  "name": "@dim/contract",
+  "version": "0.0.0",
+  "description": "Framework-free DIM domain contract — event-type source of truth and visualization scales. Installable by a React Native app.",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./api": "./src/api/index.ts",
+    "./events": "./src/events/index.ts",
+    "./icons": "./src/icons/index.ts",
+    "./input": "./src/input/index.ts",
+    "./links": "./src/links/index.ts",
+    "./notifications": "./src/notifications/index.ts",
+    "./reference": "./src/reference/index.ts",
+    "./tokens": "./src/tokens/index.ts",
+    "./viz": "./src/viz/index.ts",
+    "./package.json": "./package.json"
+  },
+  "files": ["src"],
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}

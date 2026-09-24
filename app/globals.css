@@ -1,0 +1,2578 @@
+@import "tailwindcss";
+
+/* =============================================================================
+   MiMAR — Tokens visuales basados en Poncho (gob.ar)
+   Referencia: https://argob.github.io/poncho/
+   La paleta está calibrada para accesibilidad (WCAG AA) respecto del manual
+   de identidad de Presidencia.
+   ============================================================================= */
+
+/* ---- Fuentes — Libreta Nacional (IBM Plex family + Caveat via CSS vars) ---- */
+/* next/font/google injects them in app/layout.tsx; the CSS vars are wired in
+   @theme so Tailwind utilities like font-ln-serif work everywhere. */
+
+/* ---- Fuentes oficiales (Encode Sans — gob portals) ------------------------ */
+/* Encode Sans is loaded via next/font/google in app/layout.tsx (self-hosted by
+   Next at build time) and exposed as the --encode-sans-font CSS var, wired to
+   --font-sans below. The previous @font-face blocks pointed at
+   /fonts/encode-sans/*.ttf — files that were never committed, so every page
+   404'd on them and fell back to system fonts. The old icono-arg webfont
+   @font-face was removed for the same reason: its files were never committed and
+   <Icon> renders lucide-react SVGs (components/Icon.tsx), so the family was dead. */
+
+/* ---- Tokens ---------------------------------------------------------------- */
+
+@theme {
+  /* ---- Tipografía --------------------------------------------------------- */
+
+  /* Encode Sans — gob portals (loaded via next/font in app/layout.tsx) */
+  --font-sans: var(--encode-sans-font, "Encode Sans"), -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+
+  /* Libreta Nacional font stack (CSS vars injected by next/font in layout.tsx) */
+  --font-ln-serif: var(--a-serif-font, "IBM Plex Serif"), Georgia, serif;
+  --font-ln-sans: var(--a-sans-font, "IBM Plex Sans"), system-ui, sans-serif;
+  --font-ln-mono: var(--a-mono-font, "IBM Plex Mono"), "Menlo", monospace;
+  --font-ln-caveat: var(--a-caveat-font, "Caveat"), cursive;
+
+  /* ---- Paleta Libreta Nacional -------------------------------------------- */
+  /* Exact values from design_handoff_owner_libreta_nacional/redesign-a.css */
+
+  --color-ln-azul: #0e5a99;
+  --color-ln-azul-700: #0a4576;
+  --color-ln-azul-900: #0a3556;
+  --color-ln-celeste: #4e97d1;
+  --color-ln-celeste-100: #dcebf7;
+  --color-ln-celeste-050: #eff6fc;
+
+  --color-ln-ink: #1b2a33;
+  --color-ln-ink-2: #3c4b55;
+  /* QR ink — deliberately NOT --color-ln-ink (#1b2a33, the document's reading
+     ink) and deliberately true black. A QR is read by a CAMERA, not a person:
+     scanners threshold the dark modules against the quiet zone, and anything
+     lighter than #000 costs contrast on a dim screen or a faded print. Only
+     components/ui/CredentialQr.tsx may use it; it is not a text colour. Exists
+     as a token so the component stops reaching for `text-black`, which
+     lint:tokens cannot see (no numeric shade) and nobody could audit. */
+  --color-qr-ink: #000000;
+  --color-ln-mute: #616e77; /* darkened from #6e7b84 — 5.02:1 on ln-paper (was 4.16:1, WCAG AA-normal fail) */
+  /* Darkened twice. #9aa4ab -> #67747d fixed it against ln-paper (2.54 -> 4.60)
+     but left it at 4.37 on ln-stripe, the cream the credential card uses, where
+     the photo markers live (adversarial review 2026-08-08, S7-F03). #646f78
+     clears every surface: 5.14 card / 4.92 paper / 4.67 stripe.
+     The band is narrow ON PURPOSE — it must stay LIGHTER than ln-mute (4.76 on
+     stripe) or the hierarchy inverts and "faint" reads stronger than "mute".
+     __tests__/token-contrast.test.ts holds both ends. */
+  --color-ln-faint: #646f78;
+
+  --color-ln-paper: #fbfaf5;
+  /* Paper's slightly-darker sibling — the QUIET NEUTRAL GROUND. Four call sites
+     across three files referenced it while it was declared NOWHERE, so in
+     Tailwind v4 they emitted no CSS and drew with no background at all: both
+     neutral notices on the login (motivo=turno, motivo=sesiones-cerradas), the
+     "sin confirmar" vaccine badge, and the session-row hover in
+     RevokeSessionsDialog. `bg-[var(--token)]` is a blessed form, so lint:tokens
+     could not see the dangle; the reference-resolves rule added alongside this
+     declaration can (it found two more, ln-rule and ln-canvas).
+     THE VALUE is the arithmetic midpoint of paper (#fbfaf5) and stripe
+     (#f6f4ed) — (248,247,241). Deliberately its own step rather than an alias of
+     stripe: stripe is the credential card's cream BAND and is one step warmer
+     still, while all four sites above want a ground that barely lifts off the
+     page. It keeps the paper family's warm axis (R-B = 7, between paper's 6 and
+     stripe's 9), so it reads as neutral next to the chromatic status tints
+     (warn-025, err-050, ok-050) rather than as a fifth colour. */
+  --color-ln-paper-2: #f8f7f1;
+  --color-ln-card: #ffffff;
+  --color-ln-stripe: #f6f4ed;
+  --color-ln-line: #e4dfd3;
+  --color-ln-line-2: #eeeae0;
+  --color-ln-line-strong: #cfc8b8;
+
+  --color-ln-seal: #a23a2c;
+  /* Darkened from #2e7d4f: it cleared white/paper/stripe but sat at 4.44:1 on
+     its OWN tint, --color-ln-ok-bg, where two real surfaces print it as small
+     text — the "verified" provenance stamp (.ln-prov, 8.5px uppercase mono) and
+     .lp-ph-ok (13px bold, which is not WCAG "large text"). The status tokens
+     live on the tinted status backgrounds; a fence that only checked the page
+     surfaces was green over both. #2b7449 → 4.99 on ok-bg, 5.68 on white, and
+     white-on-ok improves to 5.68 for the solid chips. */
+  --color-ln-ok: #2b7449;
+  --color-ln-warn: #96600e; /* darkened from #b0771a — 5.28:1 on white (was 3.82:1, WCAG AA fail) */
+
+  /* THE HOVER TRIO — the filled variants' pressed/hover fill, so they darken
+     instead of fading. `primary` already had one (--color-ln-azul-700); `seal`,
+     `ok` and `warn` did not, and the absence is why LnButton fell back to
+     `hover:opacity-90` on exactly those three.
+     Opacity fades the ELEMENT: the white label lightens toward the page along
+     with the fill, so hover LOWERS contrast on the controls that carry the most
+     consequence. Measured on #fbfaf5 — seal 6.61 → 5.39, ok 5.68 → 4.63, and
+     warn 5.28 → 4.35, which is UNDER the 4.5:1 AA floor. The comment one line
+     above records that warn was darkened on purpose to clear that floor; the
+     hover was quietly undoing that work.
+     Derived with the ratio the one existing pair already chose (azul #0e5a99 →
+     azul-700 #0a4576, ≈0.76 per channel) rather than picked by eye, so the five
+     filled variants darken by the same amount. All three RISE: 9.44, 8.35 and
+     7.86 on white. */
+  --color-ln-seal-700: #7b2c21;
+  --color-ln-ok-700: #215837;
+  --color-ln-warn-700: #72490b;
+  --color-ln-err: #c0392b;
+  --color-ln-rosa: #b5497e;
+  --color-ln-violeta: #6b4ea8; /* medication / violeta tone */
+
+  /* Status tint surfaces — bg/border pairs for ok/warn/err/seal callouts */
+  --color-ln-ok-050: #eef6f0; /* ok tint bg */
+  --color-ln-ok-100: #c8e2d2; /* ok tint border */
+  --color-ln-ok-bg: #e8f3ec; /* ok status flag bg (slightly warmer than ok-050) */
+  --color-ln-warn-025: #fdf6ea; /* warn soft tint bg (due-soon, callout) */
+  --color-ln-warn-050: #fdf2e0; /* warn tint bg */
+  --color-ln-warn-100: #f0dcb4; /* warn tint border */
+  --color-ln-err-050: #fbe9e6; /* err/seal tint bg */
+  --color-ln-err-100: #f1c6bf; /* err/seal tint border */
+  --color-ln-err-bg: #fcefed; /* err vstamp over bg (slightly lighter than err-050) */
+
+  /* Violeta tints — medication category */
+  --color-ln-violeta-050: #f0ecf8; /* violeta tint bg */
+  --color-ln-violeta-100: #ddd2f0; /* violeta tint border */
+
+  /* Rosa tints — pregnancy / rosa category */
+  --color-ln-rosa-050: #fbe8f2; /* rosa sheet icon bg */
+  --color-ln-rosa-100: #efbdd8; /* rosa sheet icon border */
+  --color-ln-rosa-bg: #fbe9f1; /* rosa status flag bg */
+  --color-ln-rosa-bd: #f1c8dd; /* rosa status flag border */
+
+  /* Memorial / sepia scale — deceased pet views. wave-3 D14 (design-system
+     audit 2026-07-02) removed 5 orphan tokens (-bg/-ink/bare/-faint/-note,
+     0 usages outside this file) — only the ones actually consumed remain. */
+  --color-ln-memorial-sepia: #5d5240; /* warm-brown text (between ink-2 and mute) */
+  --color-ln-memorial-chip-bg: #f0ead9; /* "En memoria" chip background */
+  --color-ln-memorial-chip-bd: #e0d4b8; /* "En memoria" chip border */
+  --color-ln-memorial-chip-text: #6a5a3f; /* "En memoria" chip text */
+
+  /* Generic semantic tokens consumed by the app — repointed to Libreta Nacional. */
+  --color-background: #fbfaf5; /* → ln-paper */
+  --color-foreground: #1b2a33; /* → ln-ink */
+  --color-muted: #616e77; /* → ln-mute (darkened for WCAG AA-normal) */
+  --color-muted-foreground: #3c4b55; /* → ln-ink-2 */
+  --color-accent: #0e5a99; /* → ln-azul */
+  --color-primary: #0e5a99; /* → ln-azul */
+  --color-success: #2b7449; /* → ln-ok (keep in step: this alias drifted once already) */
+  --color-danger: #a23a2c; /* → ln-seal */
+  --color-warning: #e0a93e; /* warm amber */
+  --color-info: #4e97d1; /* → ln-celeste */
+  --color-border: #e4dfd3; /* → ln-line */
+  /* Focus ring — Libreta Nacional azul (#0e5a99). Contrast vs #fff is ~4.9:1
+   * (AA), and the 3px outline + 2px offset geometry remains a non-color cue
+   * for SC 1.4.11. Audit: docs/a11y/contrast-audit.md. */
+  --color-ring: #0e5a99;
+
+  /* Focus ring tokens (compliance PR 2 / Poncho PR-F). Decomposed into
+   * color/width/offset so themes can tweak one axis. */
+  --focus-ring-color: var(--color-ring);
+  --focus-ring-width: 3px;
+  --focus-ring-offset: 2px;
+
+  /* Radius scale (Poncho PR-F). Aligned with Poncho _forms.scss (10px for
+   * inputs / framed fieldsets) and _buttons.scss + DIM cards (16px for
+   * panels/sheets/modals). Existing rounded-* utilities continue to work; use
+   * these tokens for new code so themes can resize the scale globally.
+   *
+   * BUTTON RADIUS — two rules, and only two (X2-S2, PO decision 2026-07-29).
+   * This comment used to claim the pill was canonical "for buttons and badges"
+   * while LnButton shipped 3px, the landing 8px and the operator 6px: four
+   * surfaces, one of which complied, and nothing in CI to notice. A rule that
+   * lives only in a comment is not a rule, so both of these are now written in
+   * exactly one place each and fenced by scripts/check-raw-buttons.mjs.
+   *
+   *   citizen  → --radius-pill    (components/ui/Button.tsx)
+   *   operator → --radius-op-btn  (components/ui/dashboard/OpButton.tsx)
+   *
+   * Pill for the citizen tier is a MAINTENANCE choice: 9999px is
+   * scale-invariant, so it stays correct at every button height. A fixed px
+   * radius is coupled to size, and that coupling is precisely how four values
+   * accumulated — each added by someone whose new button size made the old
+   * value look wrong. The operator tier keeps its 6px institutional rect for
+   * dense admin tables. */
+  --radius-input: 10px;
+  --radius-card: 16px;
+  --radius-pill: 9999px;
+  /* Operator-tier button radius — 6px, matching the rounded-md (6px) that
+   * both OpSubmitButton and OpBulkBar action buttons already use. Defined here
+   * so the value ratchets down via a single token if the design updates. */
+  --radius-op-btn: 6px;
+  /* Operator-tier CHIP radius — 3px, tighter than the button because a status
+   * chip sits inside dense table rows where a 6px corner reads as a second
+   * button. OpStatusPill has declared "ONE geometry: rounded-[3px]" in its own
+   * header since it was written; this token exists so the value ratchets from
+   * one place instead of four hand-typed `rounded-[3px]`, for the same reason
+   * --radius-op-btn exists (E-2, 2026-08-10).
+   *
+   * NOT ON THE 2/4/6/8 SCALE, and deliberately: the scale is for surfaces, and
+   * an operator chip is smaller than the smallest surface. Rounding it to 4px
+   * to "fit" would be changing a decided geometry to satisfy a table. */
+  --radius-op-chip: 3px;
+
+  /* Z-index scale (Poncho PR-F). Explicit values prevent silent z-index
+   * wars between overlays. Layered: stripe (chrome) < header < drawer <
+   * sheet < toast < tooltip. */
+  --z-stripe: 30;
+  --z-header: 40;
+  --z-drawer: 45;
+  --z-sheet: 50;
+  --z-toast: 60;
+  --z-tooltip: 70;
+
+  /* =========================================================================
+     Motion scale (MOT-1, motion audit 2026-08-04 §3.3)
+
+     The audit counted 18 distinct feedback durations and 8 easing curves in
+     use with ZERO tokens to point at — including the one curve that rides
+     ~433 Tailwind utilities, which nobody chose and nobody wrote down.
+
+     These five steps are not invented: each role is won by the value that
+     ALREADY had the most instances, so adoption is mostly deletion. Near-miss
+     values collapse into the role that owns them (the "replaces" column),
+     which is why this migration is imperceptible rather than a redesign.
+
+       token               value    replaces                role
+       --motion-fast       150ms    120, 140, 150, 160      micro-interaction
+       --motion-base       180ms    180, 200                drawer / dock entry
+       --motion-slow       300ms    280, 400, 450           deliberate reveal
+       --motion-deliberate 600ms    500, 600, 700, 800      value tween, document
+       --motion-ambient    1500ms   1.5s, 1.6s, 1.8s        infinite loops only
+
+     --motion-base is also the value the panorama v2C handoff specifies for
+     the dock (dim-interno:docs/design/handoffs/2026-07-11-panorama-v2C/README.md:157):
+     code and design already agreed here before either was written down.
+
+     NOT tokenized on purpose:
+      - the 0.01ms prefers-reduced-motion floor below — that is the OFF switch,
+        not a step on the scale;
+      - the 80ms `.lp-reveal` stagger cadence — a delay per step, not a
+        duration;
+      - JS-side durations (FlipCard, useCountUp, DIVISION_FADE_MS, the map
+        camera moves). A setTimeout cannot read a CSS custom property, so
+        pointing them here would be a comment pretending to be a dependency.
+        The one place a JS timer must track a CSS duration is the landing hero
+        flip, and that coupling is spelled out at both ends.
+     ========================================================================= */
+  --motion-fast: 150ms;
+  --motion-base: 180ms;
+  --motion-slow: 300ms;
+  --motion-deliberate: 600ms;
+  --motion-ambient: 1500ms;
+
+  /* Easing. Two curves, and the split is by REGISTER, not by taste.
+   *
+   * --ease-standard is what the app already does ~433 times over: it is
+   * Tailwind v4's default `transition-*` curve, so every `transition-colors`
+   * in the repo is already on it. Naming it means a hand-authored rule can
+   * agree with the utilities on purpose instead of by accident.
+   *
+   * --ease-editorial is the landing's curve (4 deliberate, documented uses:
+   * the scroll reveal, the hero, the ranking hovertip, the credential
+   * document reveal). It should never appear in an operator console.
+   *
+   * `linear` stays a RULE rather than a token: infinite loops (spinner,
+   * skeleton sweep) need it, because an eased loop stutters at the seam.
+   *
+   * Deliberately NOT migrated: the bare `ease` / `ease-out` / `ease-in-out`
+   * keywords elsewhere in this sheet. The audit recommends folding them into
+   * --ease-standard for consistency, and it is right that they disagree with
+   * the utilities today — but `ease-out` on the entry animations
+   * (.op-drawer-enter, .op-fade-in, .op-panel-enter, .op-dock) is a
+   * DECELERATION curve on elements that are arriving, which is the correct
+   * shape for that motion and the reason the audit calls those the reference
+   * implementations. Swapping ~26 rules onto a different curve is a
+   * perceptible change that wants a visual pass, not a token migration. */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-editorial: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* =========================================================================
+     Typography scale
+     Maps 24 arbitrary text-[Npx] values in the codebase to ~7 named steps.
+     Raw px → token:
+       9–10px  → --text-xs   (10px)   micro labels, badge counters
+       11–12px → --text-sm   (12px)   secondary labels, table cells, chips
+       13–14px → --text-md   (14px)   body secondary, form help, nav items
+       15–16px → --text-base (16px)   primary body (also guards iOS zoom)
+       17–18px → --text-lg   (18px)   lead text, card headings
+       19–20px → --text-xl   (20px)   section headings, modal titles
+       22–24px → --text-2xl  (24px)   page headings, KPI values
+     Half-px values (9.5/10.5/11.5/12.5/13.5) consolidate to the step above.
+     ========================================================================= */
+  --text-xs: 10px;
+  --text-sm: 12px;
+  --text-md: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  /* Semantic page-title size: the de-facto h1 size across every admin/gob page.
+     Sits between --text-xl (20) and --text-2xl (24); named semantically because
+     it doesn't fall on the numeric scale. Use for page <h1> titles. */
+  --text-title: 22px;
+  --text-2xl: 24px;
+
+  /* DISPLAY steps (D.1, 2026-07-29). The scale above stopped at 24px, so every
+   * heading larger than that was untokenized BY CONSTRUCTION — 67 hand-written
+   * sizes on serif headings across 57 files, in ten distinct values from 26 to
+   * 72. The design-token ratchet could only grandfather them; there was nothing
+   * to point them at.
+   *
+   * The steps come from what the app actually uses, measured rather than
+   * invented. 26/27/28/30 collapse into ONE step: 54 of those 57 files use a
+   * single display size, and in the only two files where 28 and 30 coexist they
+   * differ by 2px, which nobody perceives at that size. Three barely-different
+   * values doing one job is the definition of the drift this replaces — it was
+   * never a hierarchy. Real two-tier hierarchies survive (OrgHero's 38/26
+   * becomes 5xl/3xl). */
+  --text-3xl: 28px; /* page + card headings — the dominant display size */
+  --text-4xl: 34px; /* section heroes */
+  --text-5xl: 40px; /* landing / org heroes */
+  --text-hero: 72px; /* the single largest mark (adoption hero) */
+
+  /* "Sin foto" diagonal-stripe motif. The same 135° pattern is hardcoded at
+     ~8 call sites with THREE near-identical hex pairs (#f2efe6 / #f1eee5 /
+     #f3f0e7) and five stripe widths — Chip.tsx, RegRow.tsx, Sheet.tsx,
+     adoptar/*, mis-mascotas. Named here so those can converge on one motif;
+     the credential placeholder is the first user. Migrating the rest is a
+     separate cleanup, flagged in dim-interno:docs/reviews/results/2026-07-27-critique-craft.md. */
+  --pattern-no-photo-a: #e7e2d6;
+  --pattern-no-photo-b: #f1eee5;
+
+  /* Leading (line-height) scale — paired with text-* steps */
+  --leading-xs: 1.4; /* tight for micro labels */
+  --leading-sm: 1.4; /* tight for secondary labels */
+  --leading-md: 1.45; /* slightly relaxed for body secondary */
+  --leading-base: 1.5; /* primary body */
+  --leading-lg: 1.35; /* heading-ish lead text */
+  --leading-xl: 1.3; /* section headings */
+  --leading-2xl: 1.2; /* page headings */
+
+  /* Tracking (letter-spacing) scale */
+  --tracking-tight: -0.01em; /* headings, KPI values */
+  --tracking-normal: 0em; /* body text */
+  --tracking-wide: 0.02em; /* badges, chips, micro labels */
+  --tracking-wider: 0.05em; /* allcaps labels */
+
+  /* =========================================================================
+     Radius scale (extended)
+     Maps 7 raw rounded-[Npx] values to 4 named steps (additive — existing
+     --radius-input/card/pill/op-btn tokens are kept).
+     Raw px → token:
+       1–2px  → --radius-xs   (2px)    hairline corners, avatar/icon pills
+       3–4px  → --radius-sm   (4px)    small chips, tight cards
+       5–6px  → --radius-md   (6px)    operator buttons (alias --radius-op-btn)
+       7–8px  → --radius-lg   (8px)    panels, callout boxes
+     Larger values covered by existing --radius-input (10px) / --radius-card (16px).
+     ========================================================================= */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px; /* matches --radius-op-btn */
+  --radius-lg: 8px;
+
+  /* =========================================================================
+     Spacing scale (decision: NO parallel --space-* scale)
+     Tailwind's default spacing scale already names every step the de-facto
+     rhythm needs — this is deliberate, not an oversight; it is NOT duplicated
+     with redundant custom properties.
+     The off-grid arbitrary values found in the audit (3,5,7,9,11,13px) are
+     all 1px below an existing Tailwind step and round UP to it (same
+     round-up convention as the text/radius scales above) — e.g.
+     py-[13px] → py-3.5, NOT a new token:
+       3px  → p-1    (4px)
+       5px  → p-1.5  (6px)
+       7px  → p-2    (8px)
+       9px  → p-2.5  (10px)
+       11px → p-3    (12px)
+       13px → p-3.5  (14px)
+     One exception: 18px recurs as a genuine, deliberate value — LnSheet's
+     header/body/footer gutter (components/ui/Card.tsx) — with no Tailwind
+     step between p-4 (16px) and p-5 (20px). Named semantically below, same
+     precedent as --text-title.
+     ========================================================================= */
+  --space-sheet: 18px; /* LnSheet gutter — px-[18px]/py-[18px] in Card.tsx */
+
+  /* =========================================================================
+     Shadow scale
+     Three standard elevations for the operator and citizen surfaces.
+     Uses var() so future theming can swap without touching utilities.
+     ========================================================================= */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 2px 6px 0 rgba(0, 0, 0, 0.09), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 4px 16px 0 rgba(0, 0, 0, 0.1), 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+
+  /* =========================================================================
+     Libreta Nacional · Tier Operador (gob + admin)
+     Tokens derivados 1:1 de design_handoff_gob_admin_operador/redesign-a-gob.css
+     Naming: --color-ln-op-* for navy tier, --color-ln-tl-* for org teal.
+     ========================================================================= */
+
+  /* Rail / chrome — navy */
+  --color-ln-op-navy: #0a3556;
+  --color-ln-op-navy-2: #0c2f4a;
+  --color-ln-op-azul: #0e5a99;
+  --color-ln-op-azul-700: #0a4576;
+  --color-ln-op-celeste: #4e97d1;
+  --color-ln-op-celeste-100: #dcebf7;
+  --color-ln-op-celeste-050: #eff6fc;
+
+  /* Page canvas */
+  --color-ln-op-page: #eef1f4;
+  --color-ln-op-card: #ffffff;
+  --color-ln-op-stripe: #f7f9fb;
+  --color-ln-op-line: #dbe1e7;
+  --color-ln-op-line-2: #e8ecf0;
+
+  /* Text */
+  --color-ln-op-ink: #16252f;
+  --color-ln-op-ink-2: #36454f;
+  --color-ln-op-mute: #616c76; /* darkened from #66727c — 4.73:1 on #eef1f4 (was 4.35:1, WCAG AA fail on the k-anon chip / muted meta) */
+  --color-ln-op-faint: #646f79; /* darkened from #6a7580 — 4.53:1 on the #eef1f4 page canvas (prev 4.14:1 failed AA there; 5.13:1 on #fff). Still lighter than mute (#616c76) so the mute→faint hierarchy holds. */
+
+  /* Rail text (on navy background) */
+  --color-ln-op-rail-text: #dce6f1;
+  --color-ln-op-rail-mute: #93a8bf; /* lightened from #7c93ac — 5.19:1 on the #0a3556 navy rail (was 4.00:1, WCAG AA fail on 9-10px section/role labels) */
+
+  /* Semantic status */
+  --color-ln-op-danger: #b71c1c;
+  --color-ln-op-danger-bg: #fce7e8;
+  --color-ln-op-danger-bd: #f2c4c6;
+  --color-ln-op-warn: #96600e; /* darkened from #9c6700 — 4.83:1 on #fff4da (was 4.41:1, WCAG AA fail) */
+  --color-ln-op-warn-bg: #fff4da;
+  --color-ln-op-warn-bd: #f1da9c;
+  --color-ln-op-ok: #1e7a3e;
+  --color-ln-op-ok-bg: #e5f4eb;
+  --color-ln-op-ok-bd: #c2e2cd;
+
+  /* OpButton's hover fills, the operator half of the trio declared beside
+     --color-ln-seal-700 in the citizen block above; the reasoning lives there
+     and is not repeated. Measured on the operator card (#ffffff): danger
+     6.57 → 5.66 under opacity-90 and ok 5.37 → 4.44, which is under the AA
+     floor — the same shape as the citizen `warn`, on the button an operator
+     presses to close a case. Darkened they read 9.48 and 7.94.
+     NOT declared in @dim/contract/tokens: no `--color-ln-op-*` token is, because
+     the operator skin has no native counterpart. The citizen trio is, because
+     its sibling --color-ln-azul-700 is. Following the split the repo already
+     made rather than inventing a third rule. */
+  --color-ln-op-danger-700: #8b1515;
+  --color-ln-op-ok-700: #175d2f;
+  --color-ln-op-viol: #6a4c93;
+  --color-ln-op-viol-bg: #ece5f5;
+  --color-ln-op-viol-bd: #d8c9ec;
+  --color-ln-op-blue-bg: #eaf3fb;
+  --color-ln-op-blue-bd: #cadff0;
+
+  /* Severity scale */
+  --color-ln-op-sev-crit: #b71c1c;
+  --color-ln-op-sev-high: #dc6e16;
+  --color-ln-op-sev-med: #96600e; /* kept in sync with ln-op-warn darkening */
+  --color-ln-op-sev-low: #1e7a3e;
+
+  /* =========================================================================
+     Semantic status indirection layer — --color-st-*
+     These tokens carry the STATUS signal independent of skin tier.
+     The NAME is unified; the VALUE is remapped per context:
+       - warm/citizen default (below): resolves to the ln-* palette
+       - operator surfaces (.op-surface): overridden to ln-op-* values (see
+         the .op-surface block in globals.css — below the @theme block)
+     This eliminates the 8-hex hand-maintenance problem (4 states × 2 skins)
+     without any visual diff on either surface.
+
+     Violet decision: ln-violeta (#6b4ea8, citizen) and ln-op-viol (#6a4c93,
+     operator) are deliberately DIFFERENT values — both pass WCAG AA, and
+     the operator value was independently set for the cool-tone navy palette.
+     They share the st-info NAME per skin context; a single shared hex would
+     regress the contrast calibration already won. The names are unified;
+     the values are not. See docs/a11y/contrast-audit.md for ratios.
+     ========================================================================= */
+
+  /* Default (warm/citizen) mapping — operator surfaces override via .op-surface */
+  --color-st-ok: var(--color-ln-ok);
+  --color-st-ok-bg: var(--color-ln-ok-bg);
+  --color-st-ok-bd: var(--color-ln-ok-100);
+  --color-st-warn: var(--color-ln-warn);
+  --color-st-warn-bg: var(--color-ln-warn-050);
+  --color-st-warn-bd: var(--color-ln-warn-100);
+  --color-st-err: var(--color-ln-err);
+  --color-st-err-bg: var(--color-ln-err-050);
+  --color-st-err-bd: var(--color-ln-err-100);
+  --color-st-info: var(--color-ln-violeta);
+  --color-st-info-bg: var(--color-ln-violeta-050);
+  --color-st-info-bd: var(--color-ln-violeta-100);
+
+  /* Skin-neutral indirection — --color-sk-*
+     Same philosophy as st-* above, for the NEUTRALS a shared component needs
+     (ink/mute/faint/line). Born from the LnEmptyState finding (token audit
+     2026-08-06): the component hardcoded citizen ln-* neutrals and rendered
+     them on 41 operator screens. Components meant to live on BOTH skins
+     consume sk-*; single-skin components keep using their palette directly.
+     sk-warn-wash exists because the C4 no-signal treatment deliberately uses
+     the extra-light ln-warn-025 (not st-warn-bg's ln-warn-050) on citizen —
+     the indirection preserves that calibration while op remaps to its own
+     warn wash. */
+  --color-sk-ink: var(--color-ln-ink);
+  --color-sk-mute: var(--color-ln-mute);
+  --color-sk-faint: var(--color-ln-faint);
+  --color-sk-line-strong: var(--color-ln-line-strong);
+  --color-sk-warn-wash: var(--color-ln-warn-025);
+
+  /* Org teal override (redesign-a-org.css: .gob.is-org) */
+  --color-ln-tl-rail: #0b3b42;
+  --color-ln-tl-accent: #5fd0b0;
+}
+
+/* Dark mode desactivado en el redesign Poncho.
+ * El DS oficial gob.ar es light-only. Las 325+ classes `dark:*` legacy quedan
+ * inertes: la directiva `@variant dark` redefine el matcher a una class manual
+ * `.dark` que nunca se monta, así que `dark:bg-neutral-950` etc. nunca aplican.
+ * Para reactivar dark mode en el futuro: poner `<html class="dark">` o cambiar
+ * el `@variant` a la default media-query strategy. */
+@variant dark (&:where(.dark, .dark *));
+
+/* ---- Operator surface — st-* token remap ---------------------------------- */
+/* The .op-surface class is applied to the OperatorShell root div in
+ * AppShell.tsx. It cascades down to all operator children, overriding the
+ * default (warm/citizen) --color-st-* values with their ln-op-* equivalents.
+ * Because the st-* utilities are CSS custom properties, the rendered color on
+ * operator status components (OpPill, OpStateBadge, CaseStatusBadge, OpKpi)
+ * is IDENTICAL to what ln-op-ok/warn/danger/viol produced directly — zero
+ * visual diff. The citizen skin never sees .op-surface and keeps its defaults. */
+.op-surface {
+  --color-st-ok: var(--color-ln-op-ok);
+  --color-st-ok-bg: var(--color-ln-op-ok-bg);
+  --color-st-ok-bd: var(--color-ln-op-ok-bd);
+  --color-st-warn: var(--color-ln-op-warn);
+  --color-st-warn-bg: var(--color-ln-op-warn-bg);
+  --color-st-warn-bd: var(--color-ln-op-warn-bd);
+  --color-st-err: var(--color-ln-op-danger);
+  --color-st-err-bg: var(--color-ln-op-danger-bg);
+  --color-st-err-bd: var(--color-ln-op-danger-bd);
+  --color-st-info: var(--color-ln-op-viol);
+  --color-st-info-bg: var(--color-ln-op-viol-bg);
+  --color-st-info-bd: var(--color-ln-op-viol-bd);
+
+  /* sk-* neutrals (see the @theme block). NOT resolved at use-time: a custom
+   * property whose value contains var() is substituted at COMPUTED-VALUE time
+   * on the element that DECLARES it — here, the .op-surface root. Descendants
+   * inherit the already-substituted color, so a descendant that re-maps
+   * --color-ln-op-ink does NOT re-resolve --color-sk-ink. That is exactly why
+   * the st-* block below is REDECLARED inside [data-theme="situation-room"]
+   * instead of being inherited from here, and the sk-* set is redeclared there
+   * for the same reason. Add a token here ⇒ add it there too. */
+  --color-sk-ink: var(--color-ln-op-ink);
+  --color-sk-mute: var(--color-ln-op-mute);
+  --color-sk-faint: var(--color-ln-op-faint);
+  --color-sk-line-strong: var(--color-ln-op-line);
+  --color-sk-warn-wash: var(--color-ln-op-warn-bg);
+}
+
+/* ---- Situation Room — route-scoped DARK operator theme --------------------- */
+/* ARCHETYPE A (Centro de Situación). The panorama route (/admin/panorama,
+ * /gob/panorama) renders dark END-TO-END so the dark MapLibre canvas
+ * (COLOR_CANVAS #0b1020) is the surface, not a lit BI card floating over it.
+ *
+ * The ln-op-* tokens are a GLOBAL LIGHT palette shared across every gob/admin
+ * operator surface — they can't be flipped in place. Instead this data-theme
+ * wrapper (applied to the panorama shell only) RE-MAPS the whole token set to a
+ * cohesive dark palette keyed off the map canvas. Because every ln-op-*
+ * utility (bg-ln-op-card, text-ln-op-ink, border-ln-op-line, …) resolves the
+ * CSS variable at use-time, re-declaring the variables here cascades to every
+ * KPI card, chip, accordion, drawer, and legend inside the wrapper with ZERO
+ * component forks. The st-* status tokens are re-remapped too (this block wins
+ * under .op-surface) so OpPill/OpKpi tints track the dark skin.
+ *
+ * Contrast: ink/ink-2/mute verified ≥ 4.5:1 on card/page; every status tint is
+ * a dark-surface pairing (light text on a deep tinted panel). */
+[data-theme="situation-room"] {
+  /* Page canvas — page sits just under the map canvas (#0b1020) so the map
+     edge reads as a seam, not a jump; card floats one step lighter. */
+  --color-ln-op-page: #0a0f1c;
+  --color-ln-op-card: #111a2b;
+  --color-ln-op-stripe: #16233a;
+  --color-ln-op-line: #26374f;
+  --color-ln-op-line-2: #1d2c42;
+
+  /* Text — near-white ink down to a legible faint. */
+  --color-ln-op-ink: #e9eef6;
+  --color-ln-op-ink-2: #bccadb;
+  --color-ln-op-mute: #8698ab;
+  --color-ln-op-faint: #647688;
+
+  /* Accent — the light-tier azul (#0e5a99) is far too dark on a dark panel;
+     lift links/active states to a legible celeste. */
+  --color-ln-op-azul: #5aa9e6;
+  --color-ln-op-azul-700: #7cbcee;
+  --color-ln-op-celeste: #7cbcee;
+  --color-ln-op-celeste-100: #1c2f49;
+  --color-ln-op-celeste-050: #16243a;
+
+  /* Semantic status — light text on deep tinted panels. */
+  --color-ln-op-danger: #f4a19d;
+  --color-ln-op-danger-bg: #2a1417;
+  --color-ln-op-danger-bd: #56272b;
+  --color-ln-op-warn: #f0c274;
+  --color-ln-op-warn-bg: #2a2112;
+  --color-ln-op-warn-bd: #574521;
+  --color-ln-op-ok: #74d494;
+  --color-ln-op-ok-bg: #10261a;
+  --color-ln-op-ok-bd: #235438;
+  --color-ln-op-viol: #c4aff0;
+  --color-ln-op-viol-bg: #1e1830;
+  --color-ln-op-viol-bd: #3b3059;
+  --color-ln-op-blue-bg: #14243a;
+  --color-ln-op-blue-bd: #294263;
+
+  /* Severity — brightened for the dark skin. */
+  --color-ln-op-sev-crit: #f4a19d;
+  --color-ln-op-sev-high: #f0a868;
+  --color-ln-op-sev-med: #f0c274;
+  --color-ln-op-sev-low: #74d494;
+
+  /* st-* re-remap (wins under .op-surface) so status components track dark. */
+  --color-st-ok: var(--color-ln-op-ok);
+  --color-st-ok-bg: var(--color-ln-op-ok-bg);
+  --color-st-ok-bd: var(--color-ln-op-ok-bd);
+  --color-st-warn: var(--color-ln-op-warn);
+  --color-st-warn-bg: var(--color-ln-op-warn-bg);
+  --color-st-warn-bd: var(--color-ln-op-warn-bd);
+  --color-st-err: var(--color-ln-op-danger);
+  --color-st-err-bg: var(--color-ln-op-danger-bg);
+  --color-st-err-bd: var(--color-ln-op-danger-bd);
+  --color-st-info: var(--color-ln-op-viol);
+  --color-st-info-bg: var(--color-ln-op-viol-bg);
+  --color-st-info-bd: var(--color-ln-op-viol-bd);
+
+  /* sk-* re-remap, for the same reason the st-* set above is repeated: the
+     .op-surface declarations were already substituted against the LIGHT
+     ln-op-* values on that ancestor, so without these five a revived dark skin
+     would paint dark-on-dark neutrals (ink #21272b on card #111a2b). Declared
+     here they resolve against the dark values above. */
+  --color-sk-ink: var(--color-ln-op-ink);
+  --color-sk-mute: var(--color-ln-op-mute);
+  --color-sk-faint: var(--color-ln-op-faint);
+  --color-sk-line-strong: var(--color-ln-op-line);
+  --color-sk-warn-wash: var(--color-ln-op-warn-bg);
+}
+
+/* ---- Base ------------------------------------------------------------------ */
+
+html {
+  color-scheme: light;
+}
+html,
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  /* Poncho v2 usa weight default (400) en body. El medium queda para .lead
+   * y labels (handoff PR-F decision). */
+  font-weight: 400;
+  line-height: var(--leading-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Headings sin margin global. El margin se aplica por slot/contexto.
+   Esto evita choques con clases utilitarias de Tailwind (mt-, mb-). */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.lead {
+  font-size: 1.125rem; /* 18px */
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+/* ---- Focus visible global (WCAG 2.1 AA) ------------------------------------ */
+
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: 2px;
+}
+
+/* Card-style radios hide their input with .sr-only and let a <label> carry the
+   whole visual. The rule above still fires — onto a 1×1 clipped box — so the
+   ring is drawn where nobody can see it and the card shows NOTHING on keyboard
+   focus (adversarial review 2026-08-08, S7-F01, measured: outline/box-shadow/
+   border all identical before and after focus).
+   Fixed here rather than in the component because EIGHT files share the shape
+   (pinned by name in __tests__/sr-only-radio-focus-ring.test.ts): the four
+   denuncia steps, BiteForm, OrgBiteForm, ApplicationForm and RulesWizard.
+   Ley 26.653 — and the denuncia flow is the anonymous one, the most exposed.
+
+   Only reaches inputs NESTED inside the label. The sibling shape this repo also
+   uses (input outside the label, `peer-focus-visible`) carries its own focus
+   treatment and is not covered here. */
+label:has(input.sr-only:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* ---- Utilidades de movimiento --------------------------------------------- */
+
+/* LOAD-BEARING COUPLING (degraded-states 2026-08-06): this rule zeroes
+ * animation-duration and transition-duration but deliberately NOT
+ * animation-delay. The `.degraded-reveal` escalation (skeleton section below +
+ * components/ui/DegradedFallback.tsx) depends on exactly that: its inline
+ * animation-delay keeps counting under reduced motion, so the waiting text and
+ * the degraded card still wait their full delay and simply POP into view
+ * instead of fading. Adding animation-delay here would make the degraded card
+ * appear INSTANTLY over every fresh skeleton for reduced-motion users. The
+ * coupling is documented at both ends and pinned by
+ * components/ui/DegradedFallback.test.tsx. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---- Panorama console: entrance micro-motion (A2 / A5 / A6) --------------- */
+/* Plain CSS transitions, so the prefers-reduced-motion block above already
+ * collapses these to ~0ms — no separate JS floor needed (unlike the MapLibre
+ * paint transitions, which run inside imperative handlers the media query
+ * can't reach). @starting-style + transition-behavior:allow-discrete lets a
+ * newly-displayed element (a <dialog> opening, a conditionally-rendered
+ * panel) transition FROM its pre-render state instead of popping in. */
+
+/* A2 — DetailDrawer: native <dialog> slides in from the right edge it is
+ * anchored to (ml-auto), with its ::backdrop fading in alongside. Scoped to
+ * this class, not the bare `dialog` selector — other native dialogs in the
+ * app (ConfirmDialog, etc.) keep their current behavior. */
+.op-drawer-enter {
+  transition:
+    transform var(--motion-base) ease-out,
+    opacity var(--motion-base) ease-out,
+    overlay var(--motion-base) ease-out allow-discrete,
+    display var(--motion-base) ease-out allow-discrete;
+}
+.op-drawer-enter[open] {
+  transform: translateX(0);
+  opacity: 1;
+}
+@starting-style {
+  .op-drawer-enter[open] {
+    transform: translateX(12px);
+    opacity: 0;
+  }
+}
+.op-drawer-enter::backdrop {
+  transition: opacity var(--motion-base) ease-out, overlay var(--motion-base) ease-out
+    allow-discrete, display var(--motion-base) ease-out allow-discrete;
+}
+.op-drawer-enter[open]::backdrop {
+  opacity: 1;
+}
+@starting-style {
+  .op-drawer-enter[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+/* A5 / A6 — streamed Suspense sections and conditional console panels. Fade
+ * only (no layout-affecting property); A6 adds an 8px settle via translateY.
+ *
+ * MOT-2 (motion audit 2026-08-04, Gap 2) widened the caller set: every route
+ * skeleton now carries `.op-fade-in` too, so a navigation no longer hard-cuts
+ * from the outgoing page into a shimmering placeholder.
+ *
+ * The `op-` prefix is HISTORICAL, not a skin scope. Unlike
+ * `.skeleton-shimmer` / `.op-skeleton-shimmer` — which are a genuine pair
+ * because they read different colour tokens — this rule declares no colour at
+ * all. There is nothing here to fork per skin, so citizen and public skeletons
+ * use the same class rather than getting an `.ln-fade-in` twin that would be a
+ * byte-for-byte copy. Renaming it would touch 19 proven call sites to say the
+ * same thing.
+ *
+ * NOT applied to page CONTENT roots, deliberately — see the audit §5.7: a
+ * route body that starts at opacity 0 adds the fade's duration to
+ * time-to-legible-text. Skeletons have no legible text to delay, which is
+ * exactly why they are the safe half of this. */
+/* ---- Operator hit-area extension ------------------------------------------ *
+ * Pads a small inline control's TOUCH target to 24×24 without changing what is
+ * drawn. Same technique as .lp .lp-hcard-flip::after in app/landing.css; written as
+ * plain CSS rather than Tailwind `after:` utilities because nothing else in
+ * this codebase uses that variant, and a utility that silently fails to
+ * generate would leave the target at its original size with no visual change
+ * to catch in review.
+ *
+ * Sized for a 14px glyph (14 + 5 + 5 = 24) — the ⓘ disclosure on every KPI
+ * tile, which a 390px sweep found repeated across 58 sub-24px targets.
+ *
+ * DELIBERATELY 24 AND NOT THIS PROJECT'S 44px FLOOR. That floor is for primary
+ * controls standing alone. This one is a disclosure nested INSIDE a tile that
+ * is itself a link on /gob/programa, so a 44×44 target would carve a large
+ * region out of the tile where an operator aiming at the card gets a tooltip
+ * instead of navigating. Requires a positioning context on the element. */
+.op-hit-24 {
+  position: relative;
+}
+.op-hit-24::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
+
+.op-fade-in {
+  transition: opacity var(--motion-fast) ease-out;
+  opacity: 1;
+}
+@starting-style {
+  .op-fade-in {
+    opacity: 0;
+  }
+}
+.op-panel-enter {
+  transition: transform var(--motion-fast) ease-out, opacity var(--motion-fast) ease-out;
+  transform: translateY(0);
+  opacity: 1;
+}
+@starting-style {
+  .op-panel-enter {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+}
+
+/* ---- Confirm dialogs: entry only (MOT-4a, motion audit 2026-08-04 Gap 3) ---
+ * The app's default modal for irreversible actions — revocations, transfers,
+ * custody handoffs, decomisos, ~20 call sites — appeared with no transition at
+ * all, while the working entry pattern sat 100 lines up in this same file. Its
+ * whole design intent is to make the user STOP AND READ, and a box that is
+ * simply THERE is easier to dismiss reflexively than one that arrives.
+ *
+ * ENTRY ONLY, and that asymmetry is the point (audit §5.4). `overlay` and
+ * `display` are deliberately ABSENT from the transition list — the two
+ * properties `.op-drawer-enter` includes precisely so it can animate OUT.
+ * Without them, `display` flips discretely: the dialog is rendered on the
+ * frame it opens (so @starting-style has something to transition FROM) and is
+ * gone on the frame it closes. An exit animation here would delay the result
+ * of an action the user is already waiting on, which is the one thing a
+ * confirm dialog must never do.
+ *
+ * Scale rather than slide: the dialog is centred with `m-auto` and belongs to
+ * no edge, so there is no direction for it to come from. 0.97 → 1 is small
+ * enough to read as "arrived", not as a zoom. */
+.op-dialog-enter {
+  transition: opacity var(--motion-fast) ease-out, transform var(--motion-fast) ease-out;
+}
+.op-dialog-enter[open] {
+  opacity: 1;
+  transform: scale(1);
+}
+@starting-style {
+  .op-dialog-enter[open] {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.op-dialog-enter::backdrop {
+  transition: opacity var(--motion-fast) ease-out;
+}
+.op-dialog-enter[open]::backdrop {
+  opacity: 1;
+}
+@starting-style {
+  .op-dialog-enter[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+/* ---- Disclosures: the panel, not just the chevron (MOT-4b, Gap 4) ---------
+ * Nine `<details>` surfaces animate their CHEVRON and teleport their PANEL.
+ * The half-done state is worse than either endpoint: a rotating chevron
+ * PROMISES a smooth expand, so the pop reads as a bug rather than a choice —
+ * and on a phone the content below jumps by the panel's height with no
+ * warning, which is the classic "I lost my scroll position" moment.
+ *
+ * `grid-template-rows: 0fr → 1fr` is the whole trick, and it is chosen for
+ * what it does NOT require. The obvious alternative, `interpolate-size:
+ * allow-keywords`, is banned repo-wide: it is a `:root`-level opt-in that
+ * changes how `auto` interpolates for the ENTIRE document, so turning it on to
+ * fix one accordion silently rewrites the animation semantics of every other
+ * height:auto surface in the app. A global behaviour change bought for a local
+ * problem. The grid ratio animates auto-height with no platform opt-in at all.
+ *
+ * `::details-content` is what makes it reachable: a `<details>` hides its own
+ * non-summary children, so a wrapper <div> inside is not rendered while closed
+ * and has nothing to transition from. The pseudo-element IS that wrapper, and
+ * `content-visibility` with allow-discrete keeps it rendered while it
+ * collapses.
+ *
+ * DEGRADES TO TODAY: a browser without `::details-content` cannot parse the
+ * selector and drops the whole rule, leaving the current instant open/close.
+ * Nothing to detect, nothing to polyfill, no broken intermediate state — which
+ * is why this is safe to apply to nine surfaces at once.
+ *
+ * KNOWN COST — `overflow: hidden` stays on while OPEN, because the expand
+ * needs it and the property cannot be timed to the animation. Native controls
+ * are unaffected (a `<select>` popup renders in the top layer and ignores
+ * ancestor overflow), which is why the form accordions are safe. Do NOT put a
+ * custom absolutely-positioned popover inside an `.op-disclosure` — it will be
+ * clipped. `OverlayDisclosure` is exactly that shape, and it deliberately uses
+ * `.op-panel-enter` instead.
+ *
+ * prefers-reduced-motion is handled by the global rule above. */
+.op-disclosure::details-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  transition: grid-template-rows var(--motion-base) ease-out, content-visibility var(--motion-base)
+    ease-out allow-discrete;
+}
+.op-disclosure[open]::details-content {
+  grid-template-rows: 1fr;
+}
+/* Grid items default to `min-height: auto`, which refuses to shrink below the
+ * content's intrinsic height — the 0fr row would never actually close. */
+.op-disclosure > :not(summary) {
+  min-block-size: 0;
+}
+
+/* ---- Panorama dock: open/close transition (CSS-2, panorama audit 2026-08-04) */
+/* v2C handoff specifies "dock height .18s ease"
+ * (dim-interno:docs/design/handoffs/2026-07-11-panorama-v2C/README.md:157) — the
+ * operator's most-touched control was teleporting between its collapsed bar
+ * and its expanded height with no transition. The COLLAPSED length lives
+ * here as an explicit value (2.5rem `h-10` bar + its own 2px border) rather
+ * than PanoramaDock's previous `undefined`: a `height` transition needs two
+ * resolvable lengths on both ends, and "auto" is not one. The EXPANDED
+ * heights stay inline in PanoramaDock.tsx (unchanged) — they are runtime
+ * `min()`/`calc()` expressions, and the ratchet only permits those as inline
+ * style, never as a new arbitrary Tailwind value (PanoramaDock.tsx:133-135).
+ * Reduced motion needs no extra code: the global rule above already collapses
+ * this transition's duration for every prefers-reduced-motion user.
+ *
+ * Risk accepted (documented at the call site too): the "Línea de tiempo" pane
+ * sizes itself with `height: auto` because its content is conditional —
+ * `auto` cannot transition, so opening/closing the dock WHILE that tab is
+ * active does not animate. `max-height` on that same branch DOES transition
+ * (the playing/not-playing swap), so it isn't inert, just narrower than the
+ * other three tabs. `interpolate-size` is deliberately not used — it is a
+ * repo-wide ban, since it would silently change every other height:auto
+ * disclosure in the app. */
+.op-dock {
+  height: calc(2.5rem + 2px);
+  transition: height var(--motion-base) ease-out, max-height var(--motion-base) ease-out;
+}
+
+/* ---- Skeleton shimmer (Wave 2 Item 8) ------------------------------------- */
+/* Base: --color-ln-line / --color-ln-card for owner/public surfaces.
+ * Operator surfaces override via .op-surface wrapper or utility class swap.
+ * prefers-reduced-motion is handled globally above (animation collapses to
+ * 0.01ms, leaving a static placeholder). */
+
+@keyframes skeleton-sweep {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-ln-line) 0%,
+    var(--color-ln-card) 50%,
+    var(--color-ln-line) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-sweep var(--motion-ambient) linear infinite;
+}
+
+.op-skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-ln-op-line) 0%,
+    var(--color-ln-op-card) 50%,
+    var(--color-ln-op-line) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-sweep var(--motion-ambient) linear infinite;
+}
+
+/* ---- Degraded-states reveal (degraded-states 2026-08-06) ------------------ */
+/* Timed escalation for stalled Suspense fallbacks (components/ui/
+ * DegradedFallback.tsx). SSR'd pure CSS: the hidden blocks ship in the
+ * fallback HTML and reveal after their inline animation-delay (waiting text,
+ * then degraded card — constants in lib/ui/degraded-states.ts). No JS timer is
+ * involved on purpose, so the escalation still fires when hydration itself is
+ * what stalled. `backwards` fill keeps the `from` frame applied during the
+ * delay; visibility:hidden in `from` also keeps the pending block out of the
+ * accessibility tree until it reveals.
+ * Reduced motion: the global rule above zeroes animation-duration but NOT
+ * animation-delay — the reveal still waits its full delay and pops instead of
+ * fading (guard comment at that rule; pinned by DegradedFallback.test.tsx). */
+
+@keyframes degraded-reveal {
+  from {
+    opacity: 0;
+    visibility: hidden;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.degraded-reveal {
+  /* animation-delay arrives inline from lib/ui/degraded-states.ts constants */
+  animation: degraded-reveal var(--motion-slow) ease-out backwards;
+}
+
+/* ---- Mobile input zoom guard (sprint 6 PR-050) ---------------------------- *
+ * iOS Safari zooms into any input whose computed font-size is below 16px when
+ * it takes focus. That hijacks layout, breaks sticky CTAs, and traps users in
+ * an awkward zoom state until they pinch out. Enforce 16px on every form
+ * control so the zoom never triggers, then let Tailwind's text-* utilities
+ * override on desktop where the zoom doesn't happen. */
+@media (max-width: 767px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+/* ---- Native touch feel (native-mobile audit 2026-07-04 §3–4) --------------- *
+ * The default mobile tap flash reads webby; press feedback comes from the
+ * active: states on the interactive primitives instead. Overscroll containment
+ * stops the whole document rubber-banding in the installed PWA — inner scroll
+ * containers ([data-scroll-reset]) keep their own momentum scroll. */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+html,
+body {
+  overscroll-behavior-y: contain;
+}
+[data-scroll-reset] {
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---- Safe-area utilities (native-mobile audit 2026-07-04) ------------------ *
+ * Extend the one existing exemplar (adoptar ApplyButton's
+ * `pb-[max(0.75rem,env(safe-area-inset-bottom))]`) into reusable utilities for
+ * the masthead, sticky sheet footers and the bottom tab bar. Declared OUTSIDE
+ * any @layer on purpose: unlayered author styles beat Tailwind's layered
+ * utilities, so `pb-safe` can override the bottom half of a py-* utility. */
+.pt-safe {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+.pb-safe {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+/* ---- Operator rail scrollbar (PR-1 V2) ------------------------------------ */
+/* Thin, translucent scrollbar that reads against the navy rail instead of the
+   OS default light track. Applied to the rail nav + the mobile drawers. */
+.op-scroll {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-gutter: stable; /* no layout jump when the bar appears/disappears */
+}
+.op-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.op-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+}
+.op-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+.op-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---- Long capped operator lists: lazy row containment (CSS-8, panorama/CSS
+   audit 2026-08-04) -------------------------------------------------------- */
+/* No virtualization library exists in the repo (verified against
+ * package.json), so admin/observaciones, gob/vigilancia/brotes and
+ * gob/perdidas (capped at 500 rows — PO-confirmed real, not theoretical:
+ * /gob/perdidas with the "todas" filter genuinely renders all 500) and
+ * org/mascotas and gob/cola (capped at 200) lay out and paint every row on
+ * first render, even the ones below the fold. `content-visibility: auto`
+ * skips layout/paint work for off-screen rows — the same pattern already
+ * proven in production at `.lp-ch-device` (app/landing.css).
+ *
+ * TABLE ROWS ARE EXCLUDED ON PURPOSE: CSS containment does not reliably apply
+ * to `<tr>`/`<tbody>` internals, so this is scoped to block-level `<li>` rows
+ * only (MapDataTable / PanoramaDataTable use `table-layout: fixed` instead —
+ * CSS-5). `auto` (never `hidden`) keeps skipped rows fully reachable by
+ * in-page find (Ctrl+F), `id` anchors and `Element.scrollIntoView()` — the
+ * UA is specified to un-skip a row on demand for exactly those operations,
+ * which is what the OutbreakSignalRow `?signalId=` deep-link relies on.
+ *
+ * `contain-intrinsic-size: auto <estimate>px` only sizes the FIRST paint's
+ * placeholder — `auto` means the browser remembers each row's real height
+ * after it is first rendered, so a rough estimate only affects the initial
+ * scrollbar length, never a persistent number. Two estimates: the compact
+ * 2-3 line rows (observaciones / brotes / perdidas / cola) and the taller
+ * org/mascotas card (checkbox + name + badges + meta + a CTA row). */
+.op-lazy-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 110px;
+}
+.op-lazy-row-lg {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 190px;
+}
+
+/* =============================================================================
+   Landing pública (miMAR) — lp-* layer → MOVED to app/landing.css (2026-08-19)
+
+   It lived here and therefore shipped on every route, because globals.css is
+   imported by the root layout. It is imported by app/page.tsx now. See that
+   file's header for why the split is safe and what would undo it.
+   ============================================================================= */
+
+/* =========================================================================
+   Pet profile — "Una sola libreta" document chrome
+   -------------------------------------------------------------------------
+   The owner pet-profile reads as ONE physical two-sided credential, not a
+   stack of panels. This layer encodes the document language from the design
+   handoff (dim-interno:docs/design/handoffs/perfil-mascota-una-libreta) mapped 1:1 onto
+   LN tokens — with OUR deliberately-darkened accessible --color-ln-mute /
+   --color-ln-faint / --color-ln-warn (the mockup's originals fail WCAG AA).
+   Lives in globals.css (unlinted CSS) so the exact document metrics stay out
+   of the token-ratcheted TSX. Scoped under .ln-doc-root to avoid leakage.
+   ========================================================================= */
+
+.ln-doc-root {
+  --ln-note-ink: #5a4a1f; /* handwritten-note ink — no token equivalent */
+}
+
+/* (The segmented Credencial/Libreta control above the card was removed —
+   tarjeta-todo, re-affirming PO decision #645: the band's .ln-turn button is
+   the single flip control, promoted below.) */
+
+/* ---- The document (one two-sided sheet + peeking back pages) -------------- */
+.ln-doc-stage {
+  perspective: 1700px;
+}
+.ln-doc-wrap {
+  position: relative;
+}
+/* No fixed back-edge on the wrapper: it does NOT rotate with .ln-doc-turn, so a
+   peeking ::after edge stayed put while the face flipped and read as a fixed
+   outer border (PO QA). The credential is now ONE sheet that turns as a whole —
+   its depth comes from the .ln-face box-shadow, which rotates with it. */
+/* B3 (panorama map plan) — the ranking hover-preview card's entrance. Short on
+   purpose: a preview that trails the pointer reads as lag, not polish, so 140ms
+   where the document reveal takes 600ms. Gated on no-preference (the project's
+   idiom, same as ln-doc-in) rather than leaning on the global reduced-motion
+   reset — under `reduce` the card simply appears. */
+@keyframes ln-hovertip-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ln-hovertip-in {
+    animation: ln-hovertip-in var(--motion-fast) var(--ease-editorial) both;
+  }
+}
+
+@keyframes ln-doc-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ln-doc-wrap {
+    animation: ln-doc-in var(--motion-deliberate) var(--ease-editorial) both;
+  }
+}
+/* The rotating sheet. Holds ONE painted face at a time (the inactive face is
+   display:none) — never two faces in a preserve-3d/backface context, which
+   failed to composite in Chromium and left the credential an empty frame.
+   FlipCard drives the edge-on-swap turn imperatively (rotateY 0→87°, swap the
+   shown face at edge-on, jump to -87°, →0°) so the transition is set per-phase
+   in JS, not here. Sits above the peeking back-pages (z-index). */
+.ln-doc-turn {
+  position: relative;
+  z-index: 1;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+/* The single framed sheet (one per face). */
+.ln-face {
+  position: relative;
+  width: 100%;
+  background: var(--color-ln-card);
+  border: 1px solid var(--color-ln-line);
+  border-radius: var(--radius-card);
+  box-shadow: 0 22px 50px -26px rgba(20, 16, 10, 0.5);
+  overflow: hidden;
+}
+/* certificate inner hairline — ties the whole sheet together as one document */
+.ln-frame {
+  position: absolute;
+  inset: 7px;
+  border: 1px solid var(--color-ln-line-2);
+  border-radius: 9px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* ---- Blue band ----------------------------------------------------------- */
+.ln-band {
+  position: relative;
+  height: 120px;
+  overflow: hidden;
+  background: repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.5) 0 1px,
+      transparent 1px 11px
+    ),
+    linear-gradient(
+      118deg,
+      var(--color-ln-azul-900),
+      var(--color-ln-azul) 58%,
+      var(--color-ln-celeste)
+    );
+}
+/* Top-LEFT of the band (mirrors the turn button top-right). It used to sit
+   bottom-right, where the QR card — which pokes up into the band like the
+   photo — covered it on the credential face ("LIBRETA SANI…", PO QA 2026-07-15).
+   Top-left is structurally free on BOTH faces: photo/QR are bottom-anchored
+   and the turn button owns the top-right. max-width keeps it clear of the
+   button on narrow viewports (wrapping is fine, clipping is not). */
+.ln-band-title {
+  position: absolute;
+  left: 22px;
+  top: 16px;
+  max-width: calc(100% - 190px);
+  text-align: left;
+  font-family: var(--font-ln-mono);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 500;
+}
+.ln-band-title small {
+  display: block;
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 3px;
+}
+/* The SINGLE flip control (tarjeta-todo — the segmented switcher above the
+   card is gone), promoted accordingly: a larger hit target (~40px tall, up
+   from ~34) and a stronger fill/border so the affordance reads without any
+   supporting text. */
+.ln-turn {
+  position: absolute;
+  right: 16px;
+  top: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  color: #fff;
+  padding: 10px 16px 10px 13px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-ln-sans);
+  font-weight: 600;
+  font-size: var(--text-md);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  transition: background var(--motion-base) ease;
+}
+.ln-turn:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+.ln-turn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+.ln-turn svg {
+  transition: transform var(--motion-deliberate) ease;
+}
+.ln-turn:hover svg {
+  transform: rotate(180deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ln-turn svg {
+    transition: none;
+  }
+}
+
+/* Pet switcher nav (PO correction 2026-07-18, reversing the tarjeta-todo
+   dots-in-band placement — ".ln-band-dots" is gone): "El carousel lo quiero
+   FUERA de la credencial. No tiene nada que ver la navegación en la app con
+   la credencial digital de una mascota." PetSwitcherDots now mounts in
+   page.tsx ABOVE the credential card, in the page's own space — app chrome,
+   not credential content. Centered, with clearance below it so it never
+   reads as touching the card's frame/band. */
+.ln-pet-switcher {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 18px;
+}
+
+/* ---- Body + labeled hairline dividers ------------------------------------ */
+.ln-body {
+  position: relative;
+  z-index: 2;
+}
+.ln-sec {
+  padding: 22px 28px;
+}
+.ln-divider {
+  position: relative;
+  border-top: 1px solid var(--color-ln-line-2);
+  margin: 0 16px;
+}
+.ln-divider-label {
+  position: absolute;
+  top: -8px;
+  left: 12px;
+  background: var(--color-ln-card);
+  padding: 0 10px;
+  font-family: var(--font-ln-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-ln-mute);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.ln-divider-label svg {
+  color: var(--color-ln-faint);
+}
+
+/* ---- Identity row -------------------------------------------------------- */
+/* 3b craft (improvement A): a SYMMETRIC credential — the photo and the public
+   QR are equal-weight side elements that BOTH poke up out of the blue band,
+   with the identity centered between them. This reads as a real government
+   credential (balanced, the QR elevated to identity weight) rather than a photo
+   with a small QR bolted to the side. Both frames share the same white ring +
+   shadow and the same negative margin-top so the poke-out is exactly mirrored. */
+.ln-idrow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  justify-items: center;
+}
+.ln-photo {
+  width: 84px;
+  height: 84px;
+  margin-top: -56px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 0 0 4px #fff, 0 10px 24px -12px rgba(20, 16, 10, 0.5);
+  background: var(--color-ln-stripe);
+}
+.ln-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ln-photo-empty {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--color-ln-faint);
+}
+/* Owner-only tap target over the credential photo: opens the same edit sheet
+   the page already mounts (?sheet=editar-mascota) — add when empty, change
+   when present. Only rendered when addPhotoHref is passed (owner viewers). */
+.ln-photo-link {
+  display: block;
+  width: 100%;
+  height: 100%;
+  color: inherit;
+}
+.ln-photo-link:focus-visible {
+  outline: 2px solid var(--color-ln-azul);
+  outline-offset: 2px;
+}
+.ln-photo-add-plus {
+  font-size: var(--text-title);
+  line-height: 1;
+  font-weight: 600;
+}
+.ln-photo-add {
+  font-family: var(--font-ln-mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 2px;
+}
+.ln-photo-link:hover .ln-photo-empty {
+  color: var(--color-ln-ink-2);
+  background: var(--color-ln-stripe);
+}
+.ln-idmeta {
+  min-width: 0;
+  padding-top: 2px;
+  text-align: center;
+}
+.ln-idname {
+  font-family: var(--font-ln-serif);
+  font-weight: 600;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  line-height: 1.06;
+  color: var(--color-ln-ink);
+}
+.ln-badge-reg {
+  font-family: var(--font-ln-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ln-azul);
+  background: var(--color-ln-celeste-050);
+  border: 1px solid var(--color-ln-celeste-100);
+  padding: 5px 10px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---- Pet SITUATION skin (state-language, #42) ---------------------------- */
+/* A pet's SITUATION (perdida, observación antirrábica, en tratamiento, preñada,
+   en adopción / tránsito) is a separate axis from compliance. When active, the
+   credential ADOPTS the situation skin: the band gets a bottom accent + the face
+   border tints, ONE status line carries it, and "Registrada" is demoted to a
+   quiet mono marker. Each tone pairs color with the ribbon's icon + label, so
+   the state never rests on color alone (WCAG). */
+.ln-cred {
+  position: relative;
+}
+
+/* Band variants (pet-state-header) — the masthead band is the carrier of the
+   pet's situation on EVERY surface. `data-situation` is stamped on .ln-face by
+   DocumentChrome (explicit prop chain: page → PetDetailTabsPanel → FlipCard →
+   DocumentChrome), so BOTH faces recolor — the old
+   `:has(.ln-cred[data-situation])` scoping structurally never reached the back
+   face (LibretaFace renders no .ln-cred) and the flip lost the state.
+   Every variant KEEPS the white pinstripe overlay (the document's identity);
+   only the gradient underneath changes. Tokens only — no new color literals. */
+.ln-face[data-situation="perdida"] {
+  border-color: var(--color-ln-err-100);
+}
+.ln-face[data-situation="perdida"] .ln-band {
+  background: repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.5) 0 1px,
+      transparent 1px 11px
+    ), linear-gradient(135deg, var(--color-ln-seal), var(--color-ln-err));
+}
+/* Custody + treatment share the warn/amber family (PO direction — custody is
+   an official intervention, not an emergency). The chip's icon + label keep
+   the two distinguishable (never color alone). */
+.ln-face[data-situation="custodia-oficial"],
+.ln-face[data-situation="en-tratamiento"] {
+  border-color: var(--color-ln-warn-100);
+}
+.ln-face[data-situation="custodia-oficial"] .ln-band,
+.ln-face[data-situation="en-tratamiento"] .ln-band {
+  background: repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.5) 0 1px,
+      transparent 1px 11px
+    ), linear-gradient(135deg, var(--color-ln-warn), var(--color-ln-warn));
+}
+/* Celeste-DOMINANT stops — deliberately distinct from the default band's
+   azul-900→azul→celeste navy read; the chip disambiguates further. */
+.ln-face[data-situation="observacion-antirrabica"] {
+  border-color: var(--color-ln-celeste-100);
+}
+.ln-face[data-situation="observacion-antirrabica"] .ln-band {
+  background: repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.5) 0 1px,
+      transparent 1px 11px
+    ), linear-gradient(135deg, var(--color-ln-azul), var(--color-ln-celeste) 55%);
+}
+.ln-face[data-situation="prenada"] {
+  border-color: var(--color-ln-rosa-bd);
+}
+.ln-face[data-situation="prenada"] .ln-band {
+  background: repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.5) 0 1px,
+      transparent 1px 11px
+    ), linear-gradient(135deg, var(--color-ln-rosa), var(--color-ln-rosa));
+}
+.ln-face[data-situation="en-adopcion"],
+.ln-face[data-situation="en-transito"] {
+  border-color: var(--color-ln-line-strong);
+}
+.ln-face[data-situation="en-adopcion"] .ln-band,
+.ln-face[data-situation="en-transito"] .ln-band {
+  background: repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.5) 0 1px,
+      transparent 1px 11px
+    ), linear-gradient(135deg, var(--color-ln-ink), var(--color-ln-ink-2));
+}
+/* Memorial (sepia) band — chrome-owned; the face BODY keeps its own memorial
+   skin contract (the two never stack: CredentialFace gets situation=null). */
+.ln-face[data-situation="fallecida"] {
+  border-color: var(--color-ln-memorial-chip-bd);
+}
+.ln-face[data-situation="fallecida"] .ln-band {
+  background: repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.5) 0 1px,
+      transparent 1px 11px
+    ), linear-gradient(135deg, var(--color-ln-memorial-sepia), var(--color-ln-memorial-chip-text));
+}
+
+/* The band state chip — white-on-band, icon + label (WCAG: never color alone).
+   Bottom-CENTER of the band: the title owns top-left, the turn button
+   top-right, and the photo/QR poke up into the bottom corners on the front
+   face. Mirrors the turn button's translucent treatment so it reads as part
+   of the document chrome. */
+.ln-band-chip {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  /* Anchored to the BAND (120px tall), not the card. The chip is a sibling of
+     .ln-band inside the relatively-positioned .ln-face, so `bottom` resolved
+     against the whole card and dropped the chip onto the action row at the
+     card's foot (PO QA 2026-08-02 "se superpone"). `top` lands it in the band
+     like .ln-band-title / .ln-turn — ~12px above the band's lower edge. */
+  top: 82px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: calc(100% - 220px);
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  color: #fff;
+  font-family: var(--font-ln-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ln-band-chip svg {
+  flex-shrink: 0;
+}
+
+/* ---- Public credential masthead (pet-state-header D2) -------------------- */
+/* The /p card deliberately MIRRORS the owner chrome (it is NOT DocumentChrome:
+   the public QR landing is server-rendered and LCP-critical, with no faces).
+   It keys off the SAME `data-situation` attribute + situation module, limited
+   to the PUBLIC-SAFE set (perdida / custodia-oficial / observacion-antirrabica
+   / fallecida — spec R3.3): medical/household states never tint this surface.
+   Parity with .ln-face[data-situation] is guarded by
+   public-token-landing-structure.test.tsx. */
+.pc-strip {
+  background: repeating-linear-gradient(90deg, var(--color-ln-azul) 0 2px, transparent 2px 4px),
+    var(--color-ln-celeste);
+}
+.pc-cred[data-situation="perdida"] .pc-strip {
+  background: repeating-linear-gradient(90deg, var(--color-ln-seal) 0 2px, transparent 2px 4px),
+    var(--color-ln-err);
+}
+.pc-cred[data-situation="custodia-oficial"] .pc-strip {
+  background: repeating-linear-gradient(90deg, var(--color-ln-warn) 0 2px, transparent 2px 4px),
+    var(--color-ln-warn-100);
+}
+.pc-cred[data-situation="observacion-antirrabica"] .pc-strip {
+  background: repeating-linear-gradient(90deg, var(--color-ln-azul) 0 2px, transparent 2px 4px),
+    var(--color-ln-celeste-100);
+}
+.pc-cred[data-situation="fallecida"] .pc-strip {
+  background: repeating-linear-gradient(
+      90deg,
+      var(--color-ln-memorial-sepia) 0 2px,
+      transparent 2px 4px
+    ), var(--color-ln-memorial-chip-bg);
+}
+
+/* Header row tint per situation. */
+.pc-cred[data-situation="perdida"] .pc-head {
+  background: var(--color-ln-err-050);
+  border-bottom-color: var(--color-ln-err-100);
+}
+.pc-cred[data-situation="custodia-oficial"] .pc-head {
+  background: var(--color-ln-warn-050);
+  border-bottom-color: var(--color-ln-warn-100);
+}
+.pc-cred[data-situation="observacion-antirrabica"] .pc-head {
+  background: var(--color-ln-celeste-050);
+  border-bottom-color: var(--color-ln-celeste-100);
+}
+.pc-cred[data-situation="fallecida"] .pc-head {
+  background: var(--color-ln-memorial-chip-bg);
+  border-bottom-color: var(--color-ln-memorial-chip-bd);
+}
+
+/* The masthead state chip — icon + label (+ recency), never color alone. */
+.pc-sit-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font-family: var(--font-ln-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  /* The chip wraps to the next header line as ONE unit. Without this, "PERDIDA
+     · hace 1 mes" breaks between the label and the recency at narrow widths and
+     the chip's pill background renders as two ragged stacked rows. */
+  white-space: nowrap;
+}
+.pc-sit-chip svg {
+  flex-shrink: 0;
+}
+/* Credential "sin foto" placeholder — shown when the pet has no photo AND when
+   a stored photo URL fails to load at runtime (CredentialPhoto's onError). It
+   lives here rather than inline because the 56px display letter has no --text-*
+   token (the scale tops out at 24px) and an inline gradient would carry raw hex
+   into a style prop — the two things the design-token ratchet rejects. */
+.pc-photo-placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--pattern-no-photo-a) 0 11px,
+    var(--pattern-no-photo-b) 11px 22px
+  );
+}
+.pc-photo-placeholder-initial {
+  font-family: var(--font-ln-serif);
+  font-size: 56px;
+  font-weight: 600;
+  color: var(--color-ln-mute);
+}
+.pc-sit-chip-recency {
+  font-weight: 500;
+  opacity: 0.85;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+/* Perdida is solid (urgent, white-on-red); the rest are quiet tinted chips. */
+.pc-cred[data-situation="perdida"] .pc-sit-chip {
+  background: var(--color-ln-err);
+  border-color: var(--color-ln-err);
+  color: #fff;
+}
+.pc-cred[data-situation="custodia-oficial"] .pc-sit-chip {
+  background: var(--color-ln-warn-050);
+  border-color: var(--color-ln-warn-100);
+  color: var(--color-ln-warn);
+}
+.pc-cred[data-situation="observacion-antirrabica"] .pc-sit-chip {
+  background: var(--color-ln-celeste-050);
+  border-color: var(--color-ln-celeste-100);
+  color: var(--color-ln-azul);
+}
+.pc-cred[data-situation="fallecida"] .pc-sit-chip {
+  background: var(--color-ln-memorial-chip-bg);
+  border-color: var(--color-ln-memorial-chip-bd);
+  color: var(--color-ln-memorial-chip-text);
+}
+
+/* The `.pc-dot` name-bar status dot was REMOVED (UI review, PO 2026-08-06)
+   along with its four per-situation retints: an unlabeled colour with no
+   legend, on a page whose masthead chip already carries the same state as icon
+   + label + recency. Its rules are gone rather than left dangling so the next
+   reader does not go hunting for the element they style. */
+
+/* The `.ln-sit` status line was removed (pet-state standardization,
+   PO 2026-07-16): the masthead band chip (DocumentChrome) is the single
+   textual carrier of the situation; the face keeps only its
+   `data-situation` tint. */
+
+/* Demoted registration marker — quiet mono footnote when a situation is active,
+   replacing the prominent "Registrada" badge next to the name. */
+.ln-reg-quiet {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  font-family: var(--font-ln-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ln-mute);
+}
+.ln-reg-quiet svg {
+  color: var(--color-ln-faint);
+}
+
+.ln-idsub {
+  color: var(--color-ln-mute);
+  font-size: 14px;
+  margin-top: 7px;
+}
+.ln-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.ln-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--text-md);
+  font-weight: 500;
+  color: var(--color-ln-ink-2);
+  background: var(--color-ln-stripe);
+  border: 1px solid var(--color-ln-line);
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+}
+.ln-chip svg {
+  color: var(--color-ln-mute);
+}
+
+/* ---- QR block ------------------------------------------------------------ */
+/* 3b craft (improvement A): the QR is a mirror of the photo — same white ring +
+   shadow, same negative margin-top so it pokes out of the band by the same
+   amount. It IS the credential (the public, verifiable face), so it carries
+   equal identity weight, one on each side of the centered name. */
+.ln-qr {
+  text-align: center;
+}
+.ln-qr-frame {
+  display: inline-block;
+  border-radius: 12px;
+  padding: 4px;
+  background: #fff;
+  margin-top: -56px;
+  box-shadow: 0 0 0 4px #fff, 0 10px 24px -12px rgba(20, 16, 10, 0.5);
+  transition: transform var(--motion-base) ease, box-shadow var(--motion-base) ease;
+}
+.ln-qr-frame svg {
+  width: 76px;
+  height: 76px;
+  display: block;
+  border-radius: 6px;
+}
+a.ln-qr-link:hover .ln-qr-frame {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 4px #fff, 0 12px 22px -10px rgba(20, 16, 10, 0.55);
+}
+a.ln-qr-link:focus-visible .ln-qr-frame {
+  outline: 2px solid var(--color-ln-azul);
+  outline-offset: 3px;
+}
+.ln-qr-cap {
+  font-family: var(--font-ln-mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-ln-mute);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+.ln-qr-cap b {
+  color: var(--color-ln-azul);
+  font-weight: 600;
+  display: block;
+}
+
+/* Desktop has the room to give the symmetric photo + QR more presence: larger
+   frames, a bigger name, and a deeper poke into the band. The two side frames
+   stay exactly mirrored (same size + same margin-top). Breakpoint matches the
+   Tailwind `md` (768px) used for the compliance disclosure below. */
+@media (min-width: 768px) {
+  .ln-idrow {
+    gap: 24px;
+  }
+  .ln-photo {
+    width: 116px;
+    height: 116px;
+    margin-top: -68px;
+  }
+  .ln-idname {
+    font-size: 30px;
+  }
+  .ln-qr-frame {
+    margin-top: -68px;
+  }
+  .ln-qr-frame svg {
+    width: 104px;
+    height: 104px;
+  }
+}
+
+/* ---- Disclosure list (3b improvement B) ---------------------------------- */
+/* DiscList / DiscRow — a thin progressive-disclosure primitive. On mobile the
+   front face collapses the always-expanded compliance grid into a single
+   glanceable summary row that expands inline to the SAME provenance-gated
+   ComplianceObligationsPanel (integrity untouched — it is literally the same
+   component behind a native <details>). Native <details>/<summary> keeps it
+   keyboard-operable (Enter/Space toggles, summary is focusable) with no JS. */
+.ln-disc-list {
+  display: flex;
+  flex-direction: column;
+}
+.ln-disc + .ln-disc {
+  border-top: 1px solid var(--color-ln-line-2);
+}
+.ln-disc-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 11px 2px;
+  cursor: pointer;
+  list-style: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.ln-disc-row::-webkit-details-marker {
+  display: none;
+}
+.ln-disc-row:focus-visible {
+  outline: 2px solid var(--color-ln-azul);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.ln-disc-ic {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-ln-celeste-100);
+  background: var(--color-ln-celeste-050);
+  color: var(--color-ln-azul);
+}
+.ln-disc-txt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+}
+.ln-disc-txt b {
+  font-family: var(--font-ln-sans);
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.2;
+  color: var(--color-ln-ink);
+}
+.ln-disc-txt span {
+  font-family: var(--font-ln-sans);
+  font-size: var(--text-md);
+  line-height: 1.3;
+  color: var(--color-ln-mute);
+}
+.ln-disc-chev {
+  flex-shrink: 0;
+  color: var(--color-ln-faint);
+  transition: transform var(--motion-base) ease;
+}
+.ln-disc[open] .ln-disc-chev {
+  transform: rotate(180deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ln-disc-chev {
+    transition: none;
+  }
+}
+.ln-disc-body {
+  padding: 2px 0 12px;
+}
+
+/* The `.ln-comply-head` bare-mode header was removed (cumplimiento dedup,
+   PO 2026-07-18): the sheet's "Cumplimiento" divider owns the section label
+   and the caller's summary row owns the "N de M al día" counter. */
+
+/* ---- Back face · Libreta ledger ------------------------------------------ */
+.ln-lib-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ln-lib-head h2 {
+  font-family: var(--font-ln-serif);
+  font-weight: 600;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--color-ln-ink);
+}
+.ln-lib-head .ln-lib-code {
+  font-family: var(--font-ln-mono);
+  font-size: var(--text-sm);
+  color: var(--color-ln-mute);
+  letter-spacing: 0.03em;
+}
+.ln-lib-head .ln-lib-titular {
+  font-size: 12px;
+  color: var(--color-ln-faint);
+  margin-left: auto;
+}
+.ln-ledlbl {
+  font-family: var(--font-ln-mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-ln-mute);
+  margin: 20px 0 10px;
+}
+.ln-hoy {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-ln-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-ln-faint);
+  margin: 16px 0;
+}
+.ln-hoy::before,
+.ln-hoy::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--color-ln-line);
+}
+
+/* ---- Rich asiento record cards ------------------------------------------- */
+.ln-asientos {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.ln-asiento {
+  border: 1px solid var(--color-ln-line);
+  border-radius: 11px;
+  background: var(--color-ln-card);
+  overflow: hidden;
+}
+.ln-asiento-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 15px 12px;
+}
+.ln-asiento-ic {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+.ln-asiento-h {
+  flex: 1;
+  min-width: 0;
+}
+.ln-asiento-kind {
+  font-family: var(--font-ln-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-ln-faint);
+}
+.ln-asiento-title {
+  font-family: var(--font-ln-serif);
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+  color: var(--color-ln-ink);
+  margin-top: 2px;
+  line-height: 1.15;
+}
+.ln-asiento-when {
+  font-family: var(--font-ln-mono);
+  font-size: var(--text-xs);
+  color: var(--color-ln-faint);
+  white-space: nowrap;
+  text-align: right;
+  line-height: 1.55;
+  flex-shrink: 0;
+}
+.ln-asiento-facts {
+  padding: 13px 15px;
+  border-top: 1px solid var(--color-ln-line-2);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 13px 22px;
+}
+.ln-fact {
+  min-width: 0;
+}
+.ln-fact .ln-k {
+  font-family: var(--font-ln-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-ln-mute);
+}
+/* overflow-wrap: anywhere — the values here are unbounded free text at the
+   schema level (batch, brand, administered_by, chip_number and the generic
+   payload fallback are all plain strings with no max length), and `.ln-asiento`
+   above them is `overflow: hidden`. Without a break rule a 15-digit microchip
+   number, a spaceless lot code or a pasted URL does not wrap: it runs past the
+   card and gets clipped, which on an entry of the medical record reads as a
+   shorter value rather than as a truncated one. */
+.ln-fact .ln-v {
+  font-size: 13px;
+  color: var(--color-ln-ink);
+  font-weight: 500;
+  margin-top: 4px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.ln-fact .ln-v.ln-mono {
+  font-family: var(--font-ln-mono);
+  font-size: var(--text-md);
+  letter-spacing: 0.02em;
+}
+.ln-fact .ln-v.ln-miss {
+  color: var(--color-ln-faint);
+  font-weight: 400;
+}
+.ln-fact--full {
+  grid-column: 1 / -1;
+}
+.ln-note-hand {
+  font-family: var(--font-ln-caveat);
+  font-size: 21px;
+  color: var(--ln-note-ink);
+  line-height: 1.35;
+}
+.ln-spark {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ln-spark svg {
+  width: 130px;
+  height: 34px;
+  display: block;
+  flex-shrink: 0;
+}
+.ln-spark .ln-trend {
+  font-size: 12px;
+  color: var(--color-ln-mute);
+  font-variant-numeric: tabular-nums;
+}
+.ln-spark .ln-trend b {
+  color: var(--color-ln-ink);
+  font-family: var(--font-ln-serif);
+  font-weight: 600;
+  font-size: 15px;
+}
+.ln-asiento-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 11px 15px;
+  border-top: 1px dashed var(--color-ln-line);
+  flex-wrap: wrap;
+}
+.ln-asiento-foot .ln-warnnote {
+  font-size: var(--text-sm);
+  color: var(--color-ln-warn);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ln-fspace {
+  flex: 1;
+}
+
+/* ---- Provenance stamps --------------------------------------------------- */
+.ln-prov {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-ln-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 4px 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid;
+}
+.ln-prov[data-k="verified"] {
+  background: var(--color-ln-ok-bg);
+  color: var(--color-ln-ok);
+  border-color: var(--color-ln-ok-100);
+}
+.ln-prov[data-k="self"] {
+  background: var(--color-ln-stripe);
+  color: var(--color-ln-ink-2);
+  border-color: var(--color-ln-line-strong);
+}
+
+/* ---- Event icon tints (shared by ledger rows + asiento heads) ------------ */
+.ln-ic-warn {
+  background: var(--color-ln-warn-050);
+  color: var(--color-ln-warn);
+}
+.ln-ic-azul {
+  background: var(--color-ln-celeste-050);
+  color: var(--color-ln-azul);
+}
+.ln-ic-verde {
+  background: var(--color-ln-ok-bg);
+  color: var(--color-ln-ok);
+}
+.ln-ic-rosa {
+  background: var(--color-ln-rosa-050);
+  color: var(--color-ln-rosa);
+}
+.ln-ic-violeta {
+  background: var(--color-ln-violeta-050);
+  color: var(--color-ln-violeta);
+}
+.ln-ic-gris {
+  background: var(--color-ln-stripe);
+  color: var(--color-ln-ink-2);
+}
+.ln-ic-amarillo {
+  background: #fbf3dc;
+  color: #8a6d10;
+}
+
+/* ---- Immutability note + footer ------------------------------------------ */
+.ln-immut {
+  font-size: var(--text-sm);
+  color: var(--color-ln-mute);
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  line-height: 1.5;
+  margin-top: 20px;
+}
+.ln-immut svg {
+  margin-top: 2px;
+  color: var(--color-ln-faint);
+  flex-shrink: 0;
+}
+.ln-libfoot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-ln-line-2);
+  flex-wrap: wrap;
+}
+
+/* ---- Action bar — labeled buttons (handoff .actionbar) -------------------- */
+.ln-actionbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.ln-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px; /* WCAG touch target */
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--color-ln-line-strong);
+  background: var(--color-ln-card);
+  color: var(--color-ln-ink-2);
+  font-family: var(--font-ln-sans);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color var(--motion-base) ease, border-color var(--motion-base) ease, background
+    var(--motion-base) ease;
+}
+.ln-act svg {
+  color: var(--color-ln-mute);
+}
+.ln-act:hover {
+  border-color: var(--color-ln-azul);
+  color: var(--color-ln-azul);
+  background: var(--color-ln-celeste-050);
+}
+.ln-act:hover svg {
+  color: var(--color-ln-azul);
+}
+.ln-act:focus-visible {
+  outline: 2px solid var(--color-ln-azul);
+  outline-offset: 2px;
+}
+.ln-act--danger {
+  color: var(--color-ln-seal);
+  border-color: #e6c3bc;
+}
+.ln-act--danger svg {
+  color: var(--color-ln-seal);
+}
+.ln-act--danger:hover {
+  border-color: var(--color-ln-seal);
+  color: var(--color-ln-seal);
+  background: var(--color-ln-err-050);
+}
+.ln-act--danger:hover svg {
+  color: var(--color-ln-seal);
+}
+.ln-act-spacer {
+  flex: 1;
+}
+
+/* ---- Vaccination drill-down (interactive Estado de vacunación) ------------ */
+.ln-vac-badge {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius-md);
+  border: 1px solid;
+  padding: 10px 12px;
+  text-align: center;
+  cursor: pointer;
+  font-family: var(--font-ln-sans);
+  background: transparent;
+  transition: filter var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
+}
+.ln-vac-badge:hover {
+  filter: brightness(0.98);
+}
+.ln-vac-badge:focus-visible {
+  outline: 2px solid var(--color-ln-azul);
+  outline-offset: 2px;
+}
+.ln-vac-badge[aria-expanded="true"] {
+  box-shadow: 0 0 0 2px var(--color-ln-celeste-100);
+}
+.ln-vac-badge-count {
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.ln-vac-badge-label {
+  margin-top: 2px;
+  font-family: var(--font-ln-mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.ln-vac-caret {
+  transition: transform var(--motion-fast) ease;
+}
+.ln-vac-badge[aria-expanded="true"] .ln-vac-caret {
+  transform: rotate(90deg);
+}
+.ln-vac-list {
+  margin-top: 10px;
+  border: 1px solid var(--color-ln-line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+/* The drill-down row: vaccine name on the left, its state on the right.
+   flex-wrap + min-width:0 on BOTH children, because the right-hand text is not
+   always short. The "unconfirmed" state's meta is a full sentence — "Sin
+   confirmar — hay una dosis registrada que no pudimos identificar" — and it
+   used to be `white-space: nowrap` inside `.ln-vac-list`'s `overflow: hidden`.
+   A nowrap flex child's minimum width is its whole unwrapped run, so on a 390px
+   phone the sentence ran past the card and was silently cut off mid-word: the
+   one row an official reading an ambiguous vaccine record most needs whole.
+   The short metas ("Próxima 12 mar 2026", "Al día") get a full line to
+   themselves long before they would ever need to wrap internally. */
+.ln-vac-list-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 9px 13px;
+  border-top: 1px solid var(--color-ln-line-2);
+}
+.ln-vac-list-item:first-child {
+  border-top: 0;
+}
+.ln-vac-list-name {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-ln-ink);
+}
+.ln-vac-list-meta {
+  min-width: 0;
+  font-family: var(--font-ln-mono);
+  font-size: var(--text-xs);
+  color: var(--color-ln-mute);
+}
+
+/* ---- Prominent "Marcar como encontrada" (lost pet, owner) ----------------- */
+.ln-found-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--color-ln-ok);
+  background: var(--color-ln-ok);
+  color: #fff;
+  font-family: var(--font-ln-sans);
+  font-weight: 700;
+  font-size: 15px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: filter var(--motion-base) ease;
+}
+.ln-found-cta:hover {
+  filter: brightness(1.06);
+}
+.ln-found-cta:focus-visible {
+  outline: 2px solid var(--color-ln-ok);
+  outline-offset: 2px;
+}
+
+/* ---- Responsive ---------------------------------------------------------- */
+@media (max-width: 720px) {
+  .ln-sec {
+    padding: 20px 18px;
+  }
+  .ln-idrow {
+    flex-wrap: wrap;
+  }
+  /* A touch smaller so the name + "Registrada" badge breathe beside the photo
+     on a narrow screen. */
+  .ln-idname {
+    font-size: 26px;
+  }
+  /* The QR takes its OWN full-width row below the identity, centered like a
+     stamp. Without flex-basis:100% the QR stayed on row 1 and the flex:1
+     idmeta collapsed to nothing, so the 32px name overflowed *under* the QR
+     (the reported overlap). Full-basis forces the wrap; width:100% overrides
+     the 118px desktop column so the centered frame sits in the middle. */
+  .ln-qr {
+    order: 3;
+    flex-basis: 100%;
+    width: 100%;
+    margin-top: 14px;
+  }
+  .ln-asiento-facts {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Panorama situational-map popups (map-polish cursor #12, v2C light) ---- */
+/* v2C retired the dark situation-room skin — the popups now match the LIGHT
+   operator card (white surface, ink text, line border), mirroring the
+   .mapchoropleth-popup values below. The .panorama-popup class is set on the
+   Popup at construction (SituationalMap). */
+.panorama-popup .maplibregl-popup-content {
+  background: #ffffff;
+  color: #36454f;
+  border: 1px solid #dbe1e7;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 6px 10px;
+}
+.panorama-popup .maplibregl-popup-content strong {
+  color: #16252f;
+}
+/* Recolor the tip triangle per anchor so only the visible edge is tinted (the
+   other three borders stay transparent — tinting all would square the tip). */
+.panorama-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.panorama-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.panorama-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: #ffffff;
+}
+.panorama-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.panorama-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.panorama-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: #ffffff;
+}
+.panorama-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: #ffffff;
+}
+.panorama-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: #ffffff;
+}
+/* Pinned popup (popup-as-document): a persistent, SELECTABLE card. Its text is
+   user-selectable so an operator can copy the value/place (the old hover
+   tooltip could not be copied). */
+.panorama-popup-pinned .maplibregl-popup-content {
+  padding: 8px 12px;
+  user-select: text;
+}
+.panorama-popup .maplibregl-popup-close-button {
+  color: #66727c;
+  font-size: 16px;
+  padding: 0 6px;
+}
+.panorama-popup .maplibregl-popup-close-button:hover {
+  background: transparent;
+  color: #16252f;
+}
+.pano-pin-title {
+  font-weight: 600;
+  color: #16252f;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.pano-pin-readouts {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.pano-pin-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.pano-pin-layer {
+  color: #66727c;
+  font-size: 12px;
+}
+.pano-pin-value {
+  font-weight: 600;
+  color: #16252f;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.pano-pin-meta,
+.pano-pin-muted {
+  color: #95a0a8;
+  font-size: 11px;
+}
+.pano-pin-context {
+  margin-top: 6px;
+  color: #95a0a8;
+  font-size: 11px;
+}
+.pano-pin-detail {
+  margin-top: 8px;
+  display: inline-block;
+  color: #0e5a99;
+  font-size: 12px;
+  font-weight: 500;
+  background: transparent;
+  border: 0;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.pano-pin-detail:hover {
+  color: #0a4576;
+  text-decoration: underline;
+}
+.pano-pin-detail:focus-visible {
+  outline: 2px solid #0e5a99;
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* v2C fixed console: the zoom column (NavigationControl) docks bottom-right,
+   lifted above the floating data dock's collapsed bar (40px bar + 14px inset
+   + gap). Scoped to the panorama map only via the data attribute. */
+[data-pano-map] .maplibregl-ctrl-bottom-right {
+  bottom: 66px;
+  right: 6px;
+}
+
+/* ---- MapChoropleth cartography popups (keeper-map panorama form) ---------- */
+/* Opt-in `cartography="panorama"` keeper maps (gob/vigilancia, gob/poblacion)
+   mirror the panorama popup STRUCTURE on the LIGHT gob dashboard surface: a
+   polished white card with a slate border + shadow, instead of the plain v1
+   tooltip. Self-sufficient (MapChoropleth does not import the base maplibre
+   popup CSS), so these rules provide the full card box on their own. */
+.mapchoropleth-popup .maplibregl-popup-content {
+  background: #ffffff;
+  color: #334155;
+  border: 1px solid rgba(100, 116, 139, 0.25);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 6px 10px;
+}
+.mapchoropleth-popup .maplibregl-popup-content strong {
+  color: #0f172a;
+}
+/* Tint the tip triangle white per anchor so it reads as part of the card (the
+   default maplibre tip is only present when the base popup CSS is loaded; these
+   rules are harmless no-ops otherwise). */
+.mapchoropleth-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.mapchoropleth-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.mapchoropleth-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: #ffffff;
+}
+.mapchoropleth-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.mapchoropleth-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.mapchoropleth-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: #ffffff;
+}
+.mapchoropleth-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: #ffffff;
+}
+.mapchoropleth-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: #ffffff;
+}

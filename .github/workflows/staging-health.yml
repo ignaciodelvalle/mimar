@@ -1,0 +1,80 @@
+# Staging health — the detection layer's "nervous system".
+#
+# WHY (PO ask 2026-07-10 — detect staging outage / degradation automatically
+# instead of only when someone looks): a scheduled probe that runs EXTERNALLY
+# to the app, so it fires even when the app itself is down. A failed workflow
+# run emails the repo owner — that email IS the alert. No new infra to operate.
+#
+#   health-poll — every ~15 min: curl the cheap /api/health endpoint and fail
+#                 the run if HTTP != 200 or status != "ok". Catches outage,
+#                 DB-down, slow pooler, and stuck-backend saturation (the task
+#                 #74 death spiral) within ~15 min of onset.
+#
+# The deeper DAILY probe that used to be job (b) here — the synthetic monitor,
+# e2e/synthetic-monitor.spec.ts driving the 4 critical flows — moved to the
+# private companion repository on 2026-09-24, with the other staging-facing
+# nightlies (dim-interno:.github/workflows/staging-synthetic.yml). It signs in
+# on a remote origin, so it needs E2E_STAGING_PASSWORD, and a job that holds
+# that secret does not run from a public repository. This file keeps only what
+# is safe in public: no checkout, no code, no secret — curl + jq against a
+# public URL.
+#
+# CONFIGURATION
+#   - Repository VARIABLE  STAGING_HEALTH_URL  (optional) — overrides the default
+#     https://www.mimar.com.ar/api/health if the public origin moves. The poll
+#     watches the PUBLIC domain on purpose (pilot T1-P6): municipalities reach
+#     the app through www.mimar.com.ar, so a broken domain, DNS record or
+#     certificate is an outage even while the Vercel alias still answers.
+#
+# THE SCHEDULED-FENCE RULE (scripts/check-scheduled-fence-refs.ts)
+#   A `schedule:` event fires from — and checks out — the DEFAULT branch. The
+#   health poll has NO checkout at all: it carries no copy of the app's code,
+#   so there is no stale tree to run and nothing to pin. It is in the fence's
+#   ALERT_EXEMPT list for the reason written there.
+
+name: Staging health
+
+on:
+  schedule:
+    # Every 15 minutes — the liveness poll. GitHub may delay scheduled runs
+    # under load; ~15 min detection latency is the design target, not a SLA.
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {} # allow manual runs.
+
+# Never let two health runs overlap — a backed-up queue polling in lockstep
+# would spam duplicate alerts.
+concurrency:
+  group: staging-health
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Liveness poll — runs on the schedule and on manual dispatch. Cheap: no
+  # checkout, no toolchain, just curl + jq (both preinstalled on ubuntu-latest).
+  # ---------------------------------------------------------------------------
+  health-poll:
+    name: Health poll (/api/health)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      STAGING_HEALTH_URL: ${{ vars.STAGING_HEALTH_URL || 'https://www.mimar.com.ar/api/health' }}
+    steps:
+      - name: Curl /api/health and assert healthy
+        run: |
+          set -uo pipefail
+          echo "Polling ${STAGING_HEALTH_URL}"
+          HTTP=$(curl -sS -m 20 -o body.json -w '%{http_code}' "${STAGING_HEALTH_URL}" || echo "000")
+          echo "HTTP ${HTTP}"
+          echo "--- body ---"
+          cat body.json 2>/dev/null || echo "(no body)"
+          echo ""
+          echo "------------"
+          STATUS=$(jq -r '.status // "missing"' body.json 2>/dev/null || echo "missing")
+          if [ "${HTTP}" != "200" ] || [ "${STATUS}" != "ok" ]; then
+            echo "::error::Staging health check FAILED — http=${HTTP} status=${STATUS}. See body above; check the Vercel deploy + Supabase pooler."
+            exit 1
+          fi
+          echo "Staging healthy (http=200 status=ok)."

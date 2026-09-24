@@ -1,0 +1,26 @@
+{
+  "_comment": "Client-router router.push()/router.replace() call sites (nav burn-down N2). This is DEBT, not approval: Next.js 15.5.x can drop the transition and the user sees nothing happen. Counts may only go DOWN. Regenerate after a migration with: pnpm tsx scripts/check-router-refresh.ts --write-baseline",
+  "files": {
+    "app/(app)/cuenta/desactivar/GovtSelfDeactivateForm.tsx": 1,
+    "app/(app)/cuenta/renunciar/VetSelfResignForm.tsx": 1,
+    "app/(app)/mis-mascotas/_components/PetSearchInput.tsx": 1,
+    "app/(app)/mis-mascotas/nueva/match/[matchedPetToken]/MatchConfirmationCardVecino.tsx": 3,
+    "app/(auth)/recuperar/actualizar/UpdatePasswordForm.tsx": 1,
+    "app/(auth)/registro/SignupForm.tsx": 2,
+    "app/(public)/denuncias/buscar/SearchForm.tsx": 1,
+    "app/gob/decomisos/nuevo/_components/DecomisoForm.tsx": 1,
+    "app/gob/reglas/LocalityRuleDrilldown.tsx": 1,
+    "app/gob/reglas/nueva/RulesWizard.tsx": 1,
+    "app/org/[orgToken]/adopciones/[appEventId]/ReviewButtons.tsx": 1,
+    "app/org/[orgToken]/atender/[publicToken]/AtenderQuickCapture.tsx": 1,
+    "app/org/[orgToken]/intake/match/[matchedPetToken]/MatchConfirmationCard.tsx": 1,
+    "app/org/[orgToken]/mascotas/OrgMascotasFilterBar.tsx": 1,
+    "app/org/[orgToken]/mascotas/[publicToken]/eligibility/EligibilityForm.tsx": 1,
+    "app/org/[orgToken]/miembros/LeaveOrgButton.tsx": 1,
+    "app/r/invite/[token]/AcceptButton.tsx": 1,
+    "components/landing/CrisisBand.tsx": 2,
+    "components/pet-profile/PetCredentialCarousel.tsx": 1,
+    "components/pet-profile/PetSwitcherAvatars.tsx": 1,
+    "components/ui/dashboard/OpOmnibox.tsx": 1
+  }
+}

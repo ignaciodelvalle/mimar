@@ -1,0 +1,111 @@
+/* Print styles for the self-print chapita sheet (task #43).
+ *
+ * Real-world millimetre sizing: the cut-outs must match physical tag
+ * holders when printed at 100% scale (no fit-to-page). Screen shows a
+ * paper-like preview; print strips the chrome and keeps only the sheet.
+ */
+
+@media print {
+  /* Hide the app shell + on-screen controls. */
+  header,
+  nav,
+  aside,
+  .chapita-no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+  }
+
+  .chapita-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 10mm !important;
+    max-width: none !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+}
+
+/* Cut-out formats — mm units so 100%-scale printing is true to size. */
+.chapita-circle {
+  width: 30mm;
+  height: 30mm;
+  border-radius: 50%;
+}
+
+.chapita-tag {
+  width: 50mm;
+  height: 30mm;
+  border-radius: 3mm;
+}
+
+.chapita-card {
+  width: 85.6mm;
+  height: 54mm;
+  border-radius: 3mm;
+}
+
+.chapita-cut {
+  border: 0.4mm dashed var(--color-ln-line-strong);
+  background: white;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.chapita-qr svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Cut-out interior typography — physical print scale, deliberately px-fixed
+ * (token scale is for SCREEN hierarchy; these sizes are chosen to fit the
+ * millimetre formats above at 100% print scale). */
+.chapita-tag-name {
+  font-family: var(--font-ln-sans);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  line-height: 1.15;
+}
+.chapita-tag-token {
+  font-family: var(--font-ln-mono);
+  font-size: 7px;
+  line-height: 1.2;
+  color: var(--color-ln-ink-2);
+}
+.chapita-tag-hint {
+  font-size: 7px;
+  line-height: 1.2;
+  color: var(--color-ln-mute);
+}
+.chapita-card-brand {
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-ln-mute);
+}
+.chapita-card-name {
+  font-family: var(--font-ln-serif);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.15;
+}
+.chapita-card-token {
+  font-family: var(--font-ln-mono);
+  font-size: 9px;
+  color: var(--color-ln-ink-2);
+}
+.chapita-card-hint {
+  font-size: 8px;
+  line-height: 1.35;
+  color: var(--color-ln-mute);
+}

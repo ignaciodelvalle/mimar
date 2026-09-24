@@ -1,0 +1,176 @@
+// Use-case: review an adoption application — approve or reject.
+//
+// Both actions share loadPendingApplication (via repo.findApplicationForReview).
+// Auth (adoption.review capability) is handled by the caller (thin action).
+//
+// Orchestrates:
+//   1. Load + validate the application (not already resolved, pet not finalized)
+//   2. Atomic: insert adoption_application_resolved event (inside tx)
+//   3. Return notification payload for best-effort flush by the action
+
+import type { ReviewInput } from "../domain/types";
+import type { AdoptionRepository } from "../infrastructure/adoption-repository";
+import type { NewNotification, UseCaseResult } from "./set-adoption-eligibility";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type Actor = {
+  user: { id: string };
+  organization: {
+    id: string;
+    publicToken: string;
+    verified: boolean;
+    displayName: string;
+  };
+};
+
+type Deps = {
+  repo: typeof AdoptionRepository;
+  actor: Actor;
+  transaction: <T>(cb: (tx: unknown) => Promise<T>) => Promise<T>;
+};
+
+// ---------------------------------------------------------------------------
+// Shared loader
+// ---------------------------------------------------------------------------
+
+async function loadPendingApplication(
+  input: ReviewInput,
+  deps: Deps,
+): Promise<
+  | {
+      application: { id: string; applicantUserId: string | null };
+      pet: { id: string; name: string; publicToken: string };
+    }
+  | { error: string }
+> {
+  const { repo, actor } = deps;
+  const loaded = await repo.findApplicationForReview(
+    input.applicationEventId,
+    actor.organization.id,
+  );
+  if ("error" in loaded) return loaded;
+  return {
+    application: {
+      id: loaded.application.id,
+      applicantUserId: loaded.application.applicantUserId,
+    },
+    pet: {
+      id: loaded.pet.id,
+      name: loaded.pet.name,
+      publicToken: loaded.pet.publicToken,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// approveAdoptionApplication
+// ---------------------------------------------------------------------------
+
+export async function approveAdoptionApplication(
+  input: ReviewInput,
+  deps: Deps,
+): Promise<UseCaseResult<void>> {
+  const { repo, actor, transaction } = deps;
+  const { user, organization } = actor;
+
+  const loaded = await loadPendingApplication(input, deps);
+  if ("error" in loaded) return { ok: false, error: loaded.error };
+  const { application, pet } = loaded;
+
+  const notes = input.notes?.trim() || null;
+  const now = new Date();
+  const pendingNotifications: NewNotification[] = [];
+
+  await transaction(async (tx) => {
+    await repo.resolveApplication(
+      {
+        petId: pet.id,
+        applicationEventId: application.id,
+        outcome: "approved",
+        reviewerUserId: user.id,
+        orgId: organization.id,
+        orgVerified: organization.verified,
+        notes,
+        now,
+      },
+      tx as Parameters<typeof repo.resolveApplication>[1],
+    );
+
+    const { applicantUserId } = application;
+    if (applicantUserId) {
+      pendingNotifications.push({
+        userId: applicantUserId,
+        notificationType: "adoption_application_approved",
+        category: "adoption",
+        title: `Tu postulación para ${pet.name} fue aprobada`,
+        body: `${organization.displayName} quiere avanzar con tu postulación. Te van a contactar por email para coordinar los próximos pasos.`,
+        severity: "success",
+        ctaLabel: "Ver mi postulación",
+        ctaUrl: "/mis-mascotas/postulaciones",
+        relatedPetId: pet.id,
+        relatedEventId: application.id,
+      });
+    }
+  });
+
+  return { ok: true, notifications: pendingNotifications };
+}
+
+// ---------------------------------------------------------------------------
+// rejectAdoptionApplication
+// ---------------------------------------------------------------------------
+
+export async function rejectAdoptionApplication(
+  input: ReviewInput,
+  deps: Deps,
+): Promise<UseCaseResult<void>> {
+  const { repo, actor, transaction } = deps;
+  const { user, organization } = actor;
+
+  const loaded = await loadPendingApplication(input, deps);
+  if ("error" in loaded) return { ok: false, error: loaded.error };
+  const { application, pet } = loaded;
+
+  const notes = input.notes?.trim() || null;
+  const now = new Date();
+  const pendingNotifications: NewNotification[] = [];
+
+  await transaction(async (tx) => {
+    await repo.resolveApplication(
+      {
+        petId: pet.id,
+        applicationEventId: application.id,
+        outcome: "rejected",
+        reviewerUserId: user.id,
+        orgId: organization.id,
+        orgVerified: organization.verified,
+        reason: notes ?? "manual_rejection",
+        autoGenerated: false,
+        notes,
+        now,
+      },
+      tx as Parameters<typeof repo.resolveApplication>[1],
+    );
+
+    const { applicantUserId } = application;
+    if (applicantUserId) {
+      pendingNotifications.push({
+        userId: applicantUserId,
+        notificationType: "adoption_application_rejected",
+        category: "adoption",
+        title: `Tu postulación para ${pet.name} no avanzó`,
+        body: `${organization.displayName} no avanzó con tu postulación esta vez. Hay otras mascotas buscando hogar.`,
+        severity: "info",
+        ctaLabel: "Ver otras en adopción",
+        ctaUrl: "/adoptar",
+        relatedPetId: pet.id,
+        relatedEventId: application.id,
+      });
+    }
+  });
+
+  return { ok: true, notifications: pendingNotifications };
+}

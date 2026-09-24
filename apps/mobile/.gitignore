@@ -1,0 +1,43 @@
+# apps/mobile — the native projects, ignored so that they stay GENERATED.
+#
+# WHY THIS FILE EXISTS HERE AND NOT IN THE ROOT .gitignore
+# ---------------------------------------------------------------------------
+# Two rules, and the harder half is the location.
+#
+# `android/` and `ios/` are Continuous Native Generation output: `expo prebuild`
+# writes them from `app.json` + `app.config.ts` + the installed native modules,
+# EAS Build runs that prebuild on every build, and nothing in this repo ever
+# needs to read them. They are not absent because the decision was deferred —
+# they are absent because they are derived, and this file is that decision
+# written down.
+#
+# It has to live in `apps/mobile/` rather than in the root .gitignore because of
+# how @expo/fingerprint decides whether a project is CNG ("managed") or has
+# hand-maintained native projects ("generic"). From
+# `@expo/fingerprint/build/ProjectWorkflow.js`, read on 2026-08-26:
+#
+#   · it looks for `android/app/build.gradle` and the AndroidManifest;
+#   · if either EXISTS and is not ignored, the project is `generic`;
+#   · `generic` means `android/**/*` is NOT added to the fingerprint's ignore
+#     list, so the whole prebuild output gets hashed into the runtime version;
+#   · to answer "is it ignored" it needs a VCS client, and when `git rev-parse
+#     --show-toplevel` fails it falls back to a NoVCSClient that globs
+#     `**/.gitignore` FROM THE PROJECT ROOT — i.e. from `apps/mobile`.
+#
+# An EAS worker unpacks an archive, not a git clone, so it takes that second
+# path and a rule in the repo root's .gitignore is out of its reach. The same
+# rule here is seen by both: `git check-ignore` locally resolves it against the
+# repo root the normal way, and the NoVCSClient finds this file directly.
+#
+# WHAT IT COST TO LEARN. Build 9900114a-c134-41cf-af38-6aaf789d2942 (2026-08-26)
+# failed on a runtime-version mismatch whose diff carried, alongside ~150 pnpm
+# path entries, one line nobody had a story for:
+#
+#   {"op":"added","addedSource":{"type":"dir","filePath":"android",
+#    "reasons":["bareNativeDir"]}}
+#
+# EAS's own prebuild had created `android/`, nothing ignored it, so the worker
+# fingerprinted a directory the local machine does not have. See
+# docs/mobile/eas-build-profiles.md, "Two ways to break a fingerprint".
+/android/
+/ios/

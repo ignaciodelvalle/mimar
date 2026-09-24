@@ -1,0 +1,7 @@
+{
+  "_meta": {
+    "totalViolations": 0,
+    "description": "Baseline of wrong-cased brand literals (MiMAR/Mimar/MIMAR) outside comments, in app/**+components/**. Files listed here are grandfathered up to their count. New violations (new files, or counts above these) fail lint:brand. Regenerate only after a deliberate, reviewed grandfather decision — the canonical casing is \"miMAR\"."
+  },
+  "files": {}
+}

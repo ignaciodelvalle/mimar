@@ -1,0 +1,276 @@
+name: Red-streak alert
+description: >-
+  Make a permanently-red scheduled fence audible. Opens ONE GitHub issue while a
+  workflow is failing on a consecutive-failure STREAK, keeps its body current on
+  every later red run, and closes it when the fence goes green again.
+
+# WHY A STREAK AND NOT A TRANSITION
+# ---------------------------------------------------------------------------
+# GitHub's built-in notification for a scheduled workflow is an email on the
+# green -> red TRANSITION. A fence whose very FIRST run was red never transitions,
+# so it never mails anybody. Measured 2026-08-27, both of this repo's staging
+# fences were in exactly that state and nobody had been told once:
+#
+#   e2e-nightly.yml        20 runs, 20 failures  (2026-08-08 -> 2026-08-27)
+#   db-doctor-staging.yml  12 runs, 12 failures  (2026-08-17 -> 2026-08-27)
+#
+# Neither had any notification step at all; e2e-nightly's only `if: failure()`
+# step uploaded an HTML report to an artifact nobody opened. So the trigger here
+# is the STREAK LENGTH, which is >= 1 on the first red whether or not there was
+# ever a green before it. A never-green fence alerts on night one.
+#
+# WHY AN ISSUE AND NOT A WEBHOOK
+# ---------------------------------------------------------------------------
+# A Slack/Discord webhook needs a secret this repo does not have, and a secret
+# that is absent turns the alerting step into another silent no-op — the same
+# disease. `GITHUB_TOKEN` is minted for every run and needs no configuration, so
+# the alert cannot rot for want of a secret. The issue is also the artifact with
+# the longest half-life: it survives the 14-day artifact retention, it carries the
+# streak in its title-adjacent body, and closing it is the recovery signal.
+#
+# A `$GITHUB_STEP_SUMMARY` block is written FIRST and unconditionally, so the
+# streak is visible on the run page even if the API call below fails.
+#
+# THE THIRD STATE: "SUCCEEDED" IS NOT "AUDITED" (added 2026-08-28)
+# ---------------------------------------------------------------------------
+# A job whose every step is `if:`-skipped by a guard SUCCEEDS. `needs.<job>.result`
+# is then `success`, and until this input existed that closed the open alert with
+# "Green again — the workflow passed". db-doctor-staging.yml is exactly that
+# shape: with `STAGING_DATABASE_URL` absent, it audits nothing, reports success,
+# and would have declared the database healthy on the strength of never having
+# looked at it. An audit that ran nothing read as a passing audit — the same
+# absence-of-red-as-presence-of-green this action was written to kill, arriving
+# through the action itself.
+#
+# The `audited` input is the fix, and it is deliberately asymmetric:
+#   · outcome=failure   -> ALWAYS alerts, whatever `audited` says. A red is a red;
+#                          a guard-skipped job cannot produce one anyway, so the
+#                          flag can never suppress a real failure.
+#   · outcome=success   -> closes the alert ONLY when audited == "true". Anything
+#                          else (false, empty, unset-by-a-broken-output) leaves
+#                          the issue exactly as it is and says so. Failing safe
+#                          here means leaving an alert OPEN, which costs a human
+#                          one glance; the other direction costs a silent month.
+#
+# Why an input rather than making the job report `skipped`: `secrets` is not in
+# the context available to a job-level `if:`, so "skip the job when the secret is
+# absent" cannot be expressed — which is why the guard-step pattern exists in the
+# first place. And making the guard FAIL instead would open a red-streak issue
+# every night about a configuration state the workflow documents as safe.
+
+inputs:
+  workflow:
+    description: Workflow file name, e.g. "e2e-nightly.yml".
+    required: true
+  outcome:
+    description: >-
+      Result of the job being watched — pass `needs.<job>.result`
+      (success | failure | cancelled | skipped).
+    required: true
+  token:
+    description: Token used to read run history and write the issue. Pass secrets.GITHUB_TOKEN.
+    required: true
+  audited:
+    description: >-
+      Did the watched job actually PERFORM its audit? Pass "false" (or a job
+      output that resolves to "false") when the job no-op-skipped — a missing
+      secret, a guard step, a matrix filter. Only "true" lets a `success` close
+      an open alert. Defaults to "true" so workflows with no guard need not pass
+      it; see the THIRD STATE block below for why this input exists at all.
+    required: false
+    default: "true"
+  title:
+    description: >-
+      STABLE issue title. It must not embed the streak count, or find-or-create
+      would open a new issue every night.
+    required: true
+  label:
+    description: Label applied to the alert issue (created on demand).
+    required: false
+    default: nightly-red
+  min-streak:
+    description: Consecutive failures required before the issue is opened.
+    required: false
+    default: "1"
+
+runs:
+  using: composite
+  steps:
+    - name: Compute the red streak and alert
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        WORKFLOW: ${{ inputs.workflow }}
+        OUTCOME: ${{ inputs.outcome }}
+        AUDITED: ${{ inputs.audited }}
+        TITLE: ${{ inputs.title }}
+        LABEL: ${{ inputs.label }}
+        MIN_STREAK: ${{ inputs.min-streak }}
+        REPO: ${{ github.repository }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        set -uo pipefail
+
+        # ---- 1. Prior completed runs of THIS workflow, newest first. ---------
+        # `status=completed` excludes the in-flight run we are part of, so the
+        # current outcome is added separately below and never double-counted.
+        PRIOR=$(gh api \
+          "repos/${REPO}/actions/workflows/${WORKFLOW}/runs?status=completed&per_page=60" \
+          --jq '.workflow_runs[].conclusion' 2>/dev/null)
+        API_RC=$?
+
+        STREAK=0
+        if [ "${OUTCOME}" = "failure" ]; then
+          STREAK=1
+          if [ "${API_RC}" -eq 0 ]; then
+            while IFS= read -r CONCLUSION; do
+              case "${CONCLUSION}" in
+                success) break ;;
+                failure|timed_out|startup_failure) STREAK=$((STREAK + 1)) ;;
+                # cancelled / skipped / neutral say nothing about the code under
+                # test: neither extend the streak nor end it.
+                *) : ;;
+              esac
+            done <<< "${PRIOR}"
+          fi
+        fi
+
+        # ---- 2. Step summary. Written before any write API call, so the number
+        # is on the run page even if the issue write below fails. -------------
+        {
+          echo "## ${WORKFLOW} — red streak"
+          echo ""
+          echo "| | |"
+          echo "|---|---|"
+          echo "| This run | \`${OUTCOME}\` |"
+          echo "| Audit actually ran | \`${AUDITED:-(unset)}\` |"
+          echo "| Consecutive failures | **${STREAK}** |"
+          echo "| Alert threshold | ${MIN_STREAK} |"
+          if [ "${API_RC}" -ne 0 ]; then
+            echo "| Prior runs | **unreadable** — the run-history API call failed |"
+          fi
+        } >> "${GITHUB_STEP_SUMMARY}"
+
+        if [ "${API_RC}" -ne 0 ]; then
+          echo "::error::Could not read run history for ${WORKFLOW}. The streak alert cannot tell green from red, which is the failure it exists to prevent — fix the token scope (needs actions: read) rather than ignoring this."
+          exit 1
+        fi
+
+        # ---- 2b. The third state, before any WRITE. --------------------------
+        # A job that audited nothing carries no information about the code, so it
+        # must neither open an alert nor close one. Placed AFTER the API_RC guard
+        # on purpose: that guard is the action checking its own health, and a
+        # workflow that skips every night for a month would otherwise hide a
+        # broken token scope behind an early exit. It is placed before every
+        # write, so nothing can be created, edited or closed from here on.
+        if [ "${AUDITED}" != "true" ] && [ "${OUTCOME}" != "failure" ]; then
+          echo "::warning::${WORKFLOW} reported \`${OUTCOME}\` WITHOUT auditing anything (audited=${AUDITED:-unset}) — a guard-skipped job succeeds. Any open alert is left exactly as it is: an absence of red is not the presence of green."
+          exit 0
+        fi
+
+        # ---- 3. Find the open alert issue by EXACT title. --------------------
+        # Listing + exact match on purpose: `gh issue list --search` reads a
+        # search index that lags by minutes, and a stale miss would open a
+        # duplicate issue every single night.
+        gh label create "${LABEL}" \
+          --color B60205 \
+          --description "A scheduled fence has been failing for consecutive runs" \
+          --force >/dev/null 2>&1 || true
+
+        # `env.TITLE` rather than string interpolation: jq reads the exported
+        # variable directly, so a quote or backslash in the title cannot break
+        # out of the filter.
+        EXISTING=$(gh issue list --repo "${REPO}" --state open --label "${LABEL}" \
+          --limit 100 --json number,title \
+          --jq 'map(select(.title == env.TITLE) | .number) | .[0] // empty')
+        if [ $? -ne 0 ]; then
+          echo "::error::Could not list issues on ${REPO}. The alert cannot be delivered; the job's GITHUB_TOKEN needs issues: write."
+          exit 1
+        fi
+
+        # ---- 4. Recovery. ONLY an AUDITED `success` closes the issue. --------
+        # `cancelled` is what a job killed by `timeout-minutes` reports, and
+        # `skipped` is what a job skipped by a job-level `if:` reports. Neither
+        # says the fence passed. Treating "not failure" as recovery would let a
+        # 60-minute timeout — the most alarming outcome there is — silently close
+        # the alert, which is the same class of bug as the one this action exists
+        # to fix: an absence of red read as the presence of green.
+        #
+        # `success` is NOT sufficient either, and that was the hole: a job whose
+        # steps are all skipped by a guard reports `success`, not `skipped`. Step
+        # 2b above has already exited for that case, so reaching this line means
+        # the audit ran AND passed.
+        if [ "${OUTCOME}" = "success" ]; then
+          if [ -n "${EXISTING}" ]; then
+            if ! gh issue close "${EXISTING}" --repo "${REPO}" --reason completed \
+              --comment "Green again — \`${WORKFLOW}\` passed. Run: ${RUN_URL}"; then
+              echo "::error::Failed to close alert issue #${EXISTING}."
+              exit 1
+            fi
+            echo "Closed alert issue #${EXISTING} — ${WORKFLOW} is green."
+          else
+            echo "${WORKFLOW} is green; no open alert to close."
+          fi
+          exit 0
+        fi
+
+        if [ "${OUTCOME}" != "failure" ]; then
+          # cancelled / skipped / neutral: no information about the code. Leave
+          # any open alert exactly as it is and say so on the run page.
+          echo "::warning::${WORKFLOW} outcome=${OUTCOME} — neither pass nor fail, so the alert state is left untouched."
+          exit 0
+        fi
+
+        if [ "${STREAK}" -lt "${MIN_STREAK}" ]; then
+          echo "Streak ${STREAK} < threshold ${MIN_STREAK} — not alerting yet."
+          exit 0
+        fi
+
+        # The body goes through a FILE, not a shell variable. An unquoted
+        # heredoc would run every backtick in the markdown as a command
+        # substitution, and its terminator cannot be indented — both are easy to
+        # get wrong in a YAML block scalar. `--body-file` sidesteps both.
+        BODY_FILE="${RUNNER_TEMP:-/tmp}/red-streak-body.md"
+        {
+          printf '**`%s` has failed %s consecutive run(s).**\n\n' "${WORKFLOW}" "${STREAK}"
+          printf 'Latest run: %s\n\n' "${RUN_URL}"
+          printf 'This issue is written by `.github/actions/red-streak-alert`. Its body is\n'
+          printf 'rewritten on every red run, so the number above is current, and it closes\n'
+          printf 'itself when the workflow goes green.\n\n'
+          printf 'Before assuming the application code regressed, rule out the two causes\n'
+          printf 'that were the real ones the last time this was investigated:\n\n'
+          printf '1. **Is the fence checking out the right tree?** A `schedule:` event fires\n'
+          printf '   from — and checks out — the DEFAULT branch, while staging deploys from an\n'
+          printf '   integration branch. Every scheduled workflow here should carry an explicit\n'
+          printf '   `ref:`; `pnpm lint:sched-refs` is the fence that checks that it does.\n'
+          printf '2. **Is this staging DATA rather than code?** One stale row — an org\n'
+          printf '   membership that reroutes a seed account after login, a missing seed —\n'
+          printf '   fails many specs at once and reads exactly like a regression.\n'
+        } > "${BODY_FILE}"
+
+        # Every write below is checked: `set -e` is deliberately NOT on (the
+        # streak arithmetic needs non-zero statuses), so a silent `gh` failure
+        # would leave this step green and the fence unannounced — which is the
+        # exact shape of the bug this action exists to close.
+        if [ -n "${EXISTING}" ]; then
+          if ! gh issue edit "${EXISTING}" --repo "${REPO}" --body-file "${BODY_FILE}" >/dev/null; then
+            echo "::error::Failed to update alert issue #${EXISTING}."
+            exit 1
+          fi
+          # Comment sparingly: once on creation (below) and then weekly. A daily
+          # comment on a fence that stays red for a month is noise, and noise is
+          # what trains people to mute the issue.
+          if [ $((STREAK % 7)) -eq 0 ]; then
+            gh issue comment "${EXISTING}" --repo "${REPO}" \
+              --body "Still red — ${STREAK} consecutive failures. Run: ${RUN_URL}"
+          fi
+          echo "::warning::${WORKFLOW} is red for ${STREAK} consecutive run(s) — see issue #${EXISTING}."
+        else
+          NUMBER=$(gh issue create --repo "${REPO}" \
+            --title "${TITLE}" --label "${LABEL}" --body-file "${BODY_FILE}")
+          if [ $? -ne 0 ] || [ -z "${NUMBER}" ]; then
+            echo "::error::Failed to open the alert issue for ${WORKFLOW}."
+            exit 1
+          fi
+          echo "::warning::${WORKFLOW} is red for ${STREAK} consecutive run(s) — opened ${NUMBER}."
+        fi

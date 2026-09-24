@@ -1,0 +1,33 @@
+-- 0122 — composite (event_type, occurred_at) index for province-scale
+-- analytics scans (perf/scale review 2026-07-04, P0 "Missing analytics index").
+--
+-- WHY
+-- ---
+-- Jurisdiction dashboards and panorama parity queries filter pet_events by
+-- event_type AND a time window WITHOUT pet_id, e.g. the rabies-coverage KPI
+-- (lib/analytics/govt-home-kpis.ts):
+--
+--   WHERE event_type = 'vaccination_administered'
+--     AND occurred_at >= <since12m>
+--
+-- Existing indexes cannot serve this shape efficiently:
+--   - pet_events_pet_id_occurred_at_idx leads with pet_id (absent here);
+--   - pet_events_event_type_idx covers event_type only, so at province scale
+--     (~1M+ events) the planner reads every vaccination row ever recorded and
+--     filters the 12-month window row by row (or bitmap-ANDs two weak indexes).
+--
+-- A composite (event_type, occurred_at) turns the KPI scan into a single
+-- bounded index range: descend to the event_type group, then range-scan the
+-- time window. Plain ASC ordering is deliberate — btree ranges serve both
+-- ASC and DESC scans, and these queries aggregate (COUNT / COUNT DISTINCT),
+-- so index direction is irrelevant.
+--
+-- The single-column pet_events_event_type_idx is intentionally kept: dropping
+-- indexes is a separate, Ignacio-gated decision (forward-only migrations).
+--
+-- IDEMPOTENCY
+-- -----------
+-- CREATE INDEX IF NOT EXISTS is safe to replay (same pattern as 0112/0118/0119).
+
+CREATE INDEX IF NOT EXISTS pet_events_event_type_occurred_at_idx
+  ON public.pet_events (event_type, occurred_at);

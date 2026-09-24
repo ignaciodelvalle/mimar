@@ -1,0 +1,114 @@
+-- Migration 0172 — remove every `TO authenticated` storage SELECT policy whose
+-- predicate is a bucket name and nothing else. (Cowork audit of 5bee0f27,
+-- finding #1, plus two siblings found while fixing it, 2026-08-12.)
+--
+-- Buckets covered:
+--   · welfare-exports / ppp-exports / travel-exports — INSERT + SELECT dropped
+--     (the audit's finding #1)
+--   · event-attachments — SELECT dropped, INSERT/UPDATE/DELETE kept
+--   · revocations       — SELECT dropped, INSERT kept
+--
+-- The last two are NOT in the audit. They carry the identical predicate and the
+-- identical (false) justifying comment, so shipping a lockdown migration that
+-- closed three of five buckets would have left the same door open next to the
+-- one being welded shut.
+--
+-- THE HOLE
+-- --------
+-- db/exports_storage.sql shipped three private export buckets with two policies
+-- on storage.objects, both `TO authenticated`:
+--
+--   INSERT: with check (bucket_id in ('welfare-exports','ppp-exports','travel-exports'))
+--   SELECT: using      (bucket_id in ('welfare-exports','ppp-exports','travel-exports'))
+--
+-- The SELECT predicate is the bucket name and nothing else. It never mentions
+-- the caller, so it is TRUE for every object in those buckets by construction.
+-- The file's header claimed discovery was "gated by the SSR layer that renders
+-- the URLs" and that "the private bucket means a raw object GET without a
+-- signed URL is still refused". Both halves are false:
+--
+--   · POST /storage/v1/object/list/{bucket} is a direct REST endpoint filtered
+--     by this policy, not by any SSR layer — so paths were never unguessable.
+--   · A private bucket refuses an ANONYMOUS GET. With a valid authenticated
+--     JWT, /object/authenticated/{bucket}/{path} evaluates this same permissive
+--     policy and passes. The signed URL is a red herring: the attack is
+--     list + authenticated download, and signs nothing.
+--
+-- Owner signup is self-serve and free, so the practical bar was "register an
+-- account". What was reachable: the national corpus of MPF prosecution bundles
+-- (reporter display name, exact incident address and coordinates, full
+-- description, and signed links to the scene evidence — see
+-- generate-mpf-export.ts), the PPP registry (Ley CABA 4078) with owner PII, and
+-- the cross-border travel bundles. It also walked straight through the
+-- government jurisdiction fence: a CABA account could read Mendoza files. For a
+-- cruelty complaint, exposing the reporter's identity has physical consequences.
+--
+-- Migration 0164 closed exactly this class for the sibling `welfare-evidence`
+-- bucket. These three were left out of that sweep; this is the sweep finishing.
+--
+-- WHY DROPPING BOTH DOES NOT BREAK THE PRODUCT
+-- --------------------------------------------
+-- Nothing in the browser touches these buckets. Both legs run server-side:
+--   · WRITE — uploadExportToStorage / uploadTravelExportToStorage, called from
+--     generateMpfExportAction, generatePppExport and generateTravelExport.
+--   · READ  — createSignedExportUrl / createSignedTravelExportUrl, called from
+--     the same three flows to mint a 24 h signed URL.
+-- Every one of those has ALREADY authorized the caller before it asks for a
+-- URL: requireAdminOrGovtOrRedirect + loadAndVerifyScopeFor (jurisdiction fence,
+-- per row) for the MPF export, and strict `ownerships` membership for PPP and
+-- travel. The paired commit repoints all four helpers at the service-role
+-- client, which bypasses RLS, and removes the caller-client parameter entirely
+-- so no future call site can reintroduce an authenticated-client upload.
+--
+-- Signed URLs are redeemed against the token embedded in the URL, not against
+-- storage RLS, so every existing and future download link keeps working.
+--
+-- No replacement policy is created. storage.objects keeps RLS enabled, and with
+-- no policy for anon/authenticated on these buckets the answer is deny.
+-- (storage.objects is not in the public schema, so check-rls-coverage.ts's
+-- "≥1 policy per table" rule does not apply — and, as the audit noted, neither
+-- that script nor rls-smoke.ts sweeps the storage schema at all, which is why a
+-- fully green gate never saw this. The paired commit adds a storage-bucket
+-- policy fence so the next one is caught.)
+--
+-- Forward-only and idempotent: DROP POLICY IF EXISTS is a no-op on re-run.
+-- Mirrored into db/exports_storage.sql (the bootstrap copy) in the same commit.
+
+-- THE TWO SIBLINGS
+-- ----------------
+-- `event_attachments_authenticated_read` (db/storage.sql) and
+-- `revocations_authenticated_read` (db/revocations_storage.sql) are the same
+-- shape: `for select to authenticated using (bucket_id = '<name>')`. Both
+-- carried the same "discovery is gated by the SSR layer" comment, which is
+-- false for the same reason. What each exposed to any signed-up account:
+--
+--   · event-attachments — every pet's vaccine cards, vet receipts, weight-scale
+--     photos and note photos, nationally. Tier-3 owner-only data. Reads move to
+--     the service-role signer in lib/infra/storage.ts, behind callers that have
+--     already run requirePetAccess. INSERT/UPDATE/DELETE are UNTOUCHED — an
+--     insert-only grant cannot enumerate, update/delete are `auth.uid() = owner`,
+--     and ~30 upload sites legitimately run as the signed-in user.
+--   · revocations — disciplinary evidence attached to named admin/govt
+--     operators. Its SELECT policy had NO consumer at all: nothing in the repo
+--     ever minted a signed URL for this bucket, so the "needed for the evidence
+--     viewer" justification described a viewer that does not exist. Pure
+--     exposure, dropped with no code change. INSERT stays (the acting operator
+--     uploads client-side via lib/ui/use-evidence-upload.ts).
+--
+-- NOT COVERED — analytics-exports
+-- ------------------------------
+-- app/gob/analytics/export/actions.ts uploads and signs in `analytics-exports`
+-- with the caller's client, but that bucket has NO db/*.sql coverage at all: it
+-- is a manual dashboard step, so whatever policies it carries in each
+-- environment are unknown to this repo and cannot be dropped from here. Left
+-- for the ops sweep that gives it a declaration file; noted so the omission is
+-- a decision on the record rather than a bucket nobody remembered.
+
+BEGIN;
+
+DROP POLICY IF EXISTS "export_buckets_authenticated_upload" ON storage.objects;
+DROP POLICY IF EXISTS "export_buckets_authenticated_read" ON storage.objects;
+DROP POLICY IF EXISTS "event_attachments_authenticated_read" ON storage.objects;
+DROP POLICY IF EXISTS "revocations_authenticated_read" ON storage.objects;
+
+COMMIT;

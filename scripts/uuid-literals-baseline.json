@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "generatedAt": "2026-07-18",
+    "description": "Files with hardcoded UUID literals, grandfathered at the recorded count. New files, or counts above baseline, fail lint:uuid — hardcoded IDs couple code to one environment's rows. Curing a file lets its entry be removed; the ratchet only tightens."
+  },
+  "files": {
+    "app/gob/disputas/[disputeToken]/ResolveDisputeForm.tsx": 1,
+    "lib/infra/gob-pet-subview.ts": 1
+  }
+}

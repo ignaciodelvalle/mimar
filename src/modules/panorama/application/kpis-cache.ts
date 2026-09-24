@@ -1,0 +1,166 @@
+// Short-TTL, in-memory server cache for the Panorama KPI strip.
+//
+// WHY (overnight QA, free-tier micro DB): every /api/panorama/kpis reload
+// recomputes the ~11-query KPI fan-out. On a warm-cold micro DB the 20s route
+// budget trips on ~1 of 3 reloads, so the honest degraded strip ("No pudimos
+// cargar los indicadores") shows far too often for the funcionarios demo. A
+// 60s cache collapses a burst of reloads onto ONE computation per scope+period.
+//
+// WHY A PLAIN Map (not unstable_cache): the KPI route is `force-dynamic` and its
+// value must be keyed by the caller's FULL AUTHORIZATION SCOPE, and — critically
+// — degraded (budget-exhausted) results must NEVER be cached. unstable_cache
+// keys off the wrapped function's arguments and offers no clean "don't cache
+// this particular result" hook (you'd have to throw, which defeats the budget's
+// graceful degrade). A module-level Map with an explicit key, an explicit TTL,
+// and an explicit `shouldCache` predicate gives us exact control over both. The
+// deployment is single-region, so a per-lambda in-memory cache is acceptable
+// (each warm lambda amortizes its own scope's fan-out).
+//
+// SECURITY — the cache key IS the isolation boundary. Two operators with
+// different scopes (role, jurisdiction set, admin drill-down, or period) MUST
+// map to different keys, or one would read the other's numbers. kpiCacheKey
+// composes every scope dimension; the scope-isolation unit test pins this.
+
+import type { DashboardActor, DashboardJurisdiction } from "@/lib/metrics";
+
+import type { PanoramaKpis } from "./get-panorama-kpis";
+
+/** Default cache TTL: 60s. Short enough to stay fresh, long enough to absorb a reload burst. */
+export const KPIS_CACHE_TTL_MS = 60_000;
+
+// TTL ↔ bucket consistency (panorama v+1 audit, 2026-07-09): the key-time
+// bucket (see `bucket`) and the entry expiry are BOTH `KPIS_CACHE_TTL_MS` — a
+// single knob, so they are aligned by construction. `bucket` floors `since`/
+// `until` to wall-clock-aligned 60s windows (stabilizing the key), while the
+// entry expiry is a sliding `now + TTL`. The interaction is bounded and
+// intentional: an entry created near a bucket boundary is reused for the
+// remainder of that bucket only, so worst-case staleness never exceeds one TTL
+// (and KPI windows are day-granular — sub-minute jitter changes no number).
+// DECISION: leave both at 60s. Widening the bucket beyond the TTL would serve a
+// key whose entry has already expired (guaranteed miss); widening the TTL beyond
+// the bucket would let a stale entry outlive its key (never read). No evidence
+// supports changing either — do NOT widen without a measured cache-miss problem.
+
+/** The full authorization + query scope that uniquely determines a KPI result. */
+export type KpiCacheScope = {
+  role: DashboardActor["role"];
+  /** The ALREADY-NARROWED jurisdictions (govt) — for admin this is empty. */
+  jurisdictions: DashboardJurisdiction[];
+  /** Resolved period window (not the raw preset string). */
+  since: Date;
+  until: Date;
+  /** Admin drill-down province/locality (undefined for govt). */
+  adminProvince?: string;
+  adminLocality?: string;
+  /**
+   * Temporal-scrub cutoff (coherence hybrid H1). Distinct as-of frames must map
+   * to distinct keys — the temporal KPIs (mordeduras/zoonosis/denuncias) differ
+   * per cutoff — or a scrubbed frame would read a live cache entry (or vice
+   * versa). Null/undefined = live (parked at "ahora"), the default keyed frame.
+   */
+  asOf?: Date | null;
+};
+
+/**
+ * Floor a timestamp to the TTL bucket.
+ *
+ * Preset periods ("3y", "30d", …) resolve `until` to `Date.now()`, so `until`
+ * (and `since`, which trails it) advance on EVERY request. Keying on the raw
+ * millisecond would guarantee a cache miss on every reload. Flooring both
+ * endpoints to the TTL bucket makes the key stable within a bucket while
+ * bounding staleness to the TTL — and the KPI metrics use day-granularity
+ * windows, so a sub-minute jitter in the endpoints changes no number.
+ */
+function bucket(ms: number, ttlMs: number): number {
+  return Math.floor(ms / ttlMs) * ttlMs;
+}
+
+/**
+ * Compose the cache key from the FULL scope. Jurisdictions are normalized to a
+ * SORTED, order-independent list so `[BA/La Plata, SF/Rosario]` and
+ * `[SF/Rosario, BA/La Plata]` share an entry, while any difference in the set
+ * (or in role / admin drill-down / period bucket) yields a distinct key.
+ *
+ * `JSON.stringify` of the pair is the separator (2026-08-17). This used to join
+ * on a literal NUL, chosen because no province or locality name can contain
+ * one — sound as an anti-aliasing argument, and the reason it had to go is
+ * unrelated: a raw NUL byte in the source makes git classify the WHOLE FILE as
+ * binary. No inline diff, no `--numstat` line counts, no review of a module
+ * that decides what a government dashboard caches and for how long. A JSON
+ * tuple gives the same guarantee (the encoder escapes any delimiter that
+ * appears inside a name) while the file stays text.
+ */
+export function kpiCacheKey(scope: KpiCacheScope, ttlMs: number = KPIS_CACHE_TTL_MS): string {
+  const jurisdictions = scope.jurisdictions
+    .map((j) => JSON.stringify([j.province, j.locality]))
+    .sort()
+    .join(";");
+  return [
+    `role=${scope.role}`,
+    `juris=${jurisdictions}`,
+    `since=${bucket(scope.since.getTime(), ttlMs)}`,
+    `until=${bucket(scope.until.getTime(), ttlMs)}`,
+    `adminP=${scope.adminProvince ?? ""}`,
+    `adminL=${scope.adminLocality ?? ""}`,
+    // Temporal-scrub frame (H1): a day-granular cutoff — bucket it like the
+    // window endpoints so a burst of identical-frame reads still collapse.
+    `asOf=${scope.asOf ? bucket(scope.asOf.getTime(), ttlMs) : ""}`,
+  ].join("|");
+}
+
+type CacheEntry = { expiresAt: number; value: PanoramaKpis };
+
+/** Module-level store — one per warm lambda. */
+const store = new Map<string, CacheEntry>();
+
+export type CachedKpisResult = { value: PanoramaKpis; cacheHit: boolean };
+
+export type GetCachedOptions = {
+  ttlMs?: number;
+  /**
+   * Guard deciding whether a freshly-computed result may be cached. Degraded
+   * results (budget-exhausted empty strips) MUST return false so one bad load
+   * never poisons the next TTL window.
+   */
+  shouldCache: (value: PanoramaKpis) => boolean;
+  /** Clock injection for deterministic tests. Defaults to Date.now. */
+  now?: () => number;
+};
+
+/**
+ * Return a cached KPI result for `key` when a fresh one exists, otherwise run
+ * `compute`, cache it iff `shouldCache` allows, and return it. Never caches a
+ * result `shouldCache` rejects (degraded strips).
+ */
+export async function getCachedPanoramaKpis(
+  key: string,
+  compute: () => Promise<PanoramaKpis>,
+  opts: GetCachedOptions,
+): Promise<CachedKpisResult> {
+  const ttlMs = opts.ttlMs ?? KPIS_CACHE_TTL_MS;
+  const now = (opts.now ?? Date.now)();
+
+  const existing = store.get(key);
+  if (existing && existing.expiresAt > now) {
+    return { value: existing.value, cacheHit: true };
+  }
+
+  const value = await compute();
+  if (opts.shouldCache(value)) {
+    store.set(key, { expiresAt: now + ttlMs, value });
+  }
+  pruneExpired(now);
+  return { value, cacheHit: false };
+}
+
+/** Drop expired entries so the map can't grow unbounded across scopes/buckets. */
+function pruneExpired(now: number): void {
+  for (const [key, entry] of store) {
+    if (entry.expiresAt <= now) store.delete(key);
+  }
+}
+
+/** Test-only: clear the module-level store between cases. */
+export function __resetKpisCache(): void {
+  store.clear();
+}
