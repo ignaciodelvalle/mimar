@@ -1038,7 +1038,28 @@ describe("/api/v1 rate-limit families — the numbers the derivation committed t
     //                                     15.684
     //
     // and 14.964 + 600 + 120 = 15.684 agrees.
-    expect(API_V1_CGNAT_FAMILY_IP_CEILING_PER_MINUTE).toBe(15_684);
+    //
+    // 16.884 WITH THE CASOS DOOR (`me/cases` and `me/cases/{publicCode}`, M11).
+    // Two routes, both GET-only, so two READ buckets and no write: the owner's
+    // case list and one case detail are ordinary authenticated reads of what the
+    // web already shows them. Hand-summed per family over the map as this lane
+    // leaves it, and NOT read off the `reduce` this assertion compares against:
+    //
+    //   authenticated-read     22 × 600 = 13.200
+    //   authenticated-write    15 × 120 =  1.800
+    //   account-security        2 ×  60 =    120
+    //   public-reference        1 × 600 =    600
+    //   inbox-state             1 × 240 =    240
+    //   pet-disclosure-write    2 × 180 =    360
+    //   pet-record-write        1 × 240 =    240
+    //   pet-registration        1 × 120 =    120
+    //   media-upload            1 × 144 =    144
+    //   adoption-application    1 ×  60 =     60
+    //                          ── 47 buckets ─────────
+    //                                     16.884
+    //
+    // and 15.684 + 2 × 600 = 16.884 agrees.
+    expect(API_V1_CGNAT_FAMILY_IP_CEILING_PER_MINUTE).toBe(16_884);
   });
 
   it("keeps pet-disclosure-write at N callers on BOTH windows", () => {

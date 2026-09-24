@@ -158,6 +158,24 @@ export {
   type NotificationPetV1,
 } from "./my-notifications.ts";
 export {
+  MY_CASES_HISTORY_LIMIT,
+  MY_CASES_PAYLOAD_VERSION,
+  MY_CASES_STALE_AFTER_MS,
+  MY_CASE_DETAIL_PAYLOAD_VERSION,
+  MY_CASE_ROW_KINDS_V1,
+  type MyCaseCaretakerOnlyV1,
+  type MyCaseDetailV1,
+  type MyCaseNormativeV1,
+  type MyCasePartyV1,
+  type MyCaseReadableV1,
+  type MyCaseRowKindV1,
+  type MyCaseRowV1,
+  type MyCasesV1,
+  type MyCaseStatusV1,
+  type MyCaseSubjectV1,
+  type MyCaseTimelineEntryV1,
+} from "./my-cases.ts";
+export {
   MY_PRIVACY_PAYLOAD_VERSION,
   MY_PRIVACY_STALE_AFTER_MS,
   type MySubjectDataExportV1,

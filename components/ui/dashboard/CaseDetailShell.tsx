@@ -98,7 +98,7 @@ export interface CaseDetailShellProps {
 // Party role labels (es-AR)
 // ---------------------------------------------------------------------------
 
-const PARTY_ROLE_LABEL: Record<CaseParty["role"], string> = {
+export const PARTY_ROLE_LABEL: Record<CaseParty["role"], string> = {
   opener: "Abrió",
   closer: "Cerró",
   organization: "Organización",
@@ -207,9 +207,7 @@ export function CaseDetailShell({
             Jurisdicción
           </h2>
           <p className="mt-2 text-md text-ln-op-ink">
-            {jurisdictionLocality && jurisdictionProvince
-              ? `${jurisdictionLocality}, ${jurisdictionProvince}`
-              : (jurisdictionProvince ?? "Sin especificar")}
+            {caseJurisdictionLabel(jurisdictionProvince, jurisdictionLocality) ?? "Sin especificar"}
           </p>
         </section>
 
@@ -275,6 +273,32 @@ export function CaseDetailShell({
 }
 
 // ---------------------------------------------------------------------------
+// Plain-text helpers — shared with `/api/v1/me/cases/{publicCode}`, so the app
+// prints the web's words instead of a second copy of them.
+// ---------------------------------------------------------------------------
+
+/** "Localidad, Provincia", the province alone, or `null` when unspecified. */
+export function caseJurisdictionLabel(
+  province: string | null | undefined,
+  locality: string | null | undefined,
+): string | null {
+  if (locality && province) return `${locality}, ${province}`;
+  return province ?? null;
+}
+
+/** The one-line descriptor for a subject that is not a registered pet. */
+export function nonPetSubjectDescription(
+  subject: Pick<CaseSubjectDescriptor, "kind" | "locationLabel">,
+): string {
+  if (subject.kind === "unowned_animal") return "Animal sin identificar (no registrado en miMAR)";
+  if (subject.kind === "location" && subject.locationLabel) {
+    return `Ubicación: ${subject.locationLabel}`;
+  }
+  if (subject.kind === "location") return "Ubicación específica";
+  return "Caso general (sin sujeto identificado)";
+}
+
+// ---------------------------------------------------------------------------
 // SubjectCard
 // ---------------------------------------------------------------------------
 
@@ -327,16 +351,7 @@ export function SubjectCard({ subject }: { subject: CaseSubjectDescriptor }) {
   }
 
   // Unowned animal, location, or general — degrade gracefully.
-  let descriptor: string;
-  if (subject.kind === "unowned_animal") {
-    descriptor = "Animal sin identificar (no registrado en miMAR)";
-  } else if (subject.kind === "location" && subject.locationLabel) {
-    descriptor = `Ubicación: ${subject.locationLabel}`;
-  } else if (subject.kind === "location") {
-    descriptor = "Ubicación específica";
-  } else {
-    descriptor = "Caso general (sin sujeto identificado)";
-  }
+  const descriptor = nonPetSubjectDescription(subject);
 
   return (
     <section

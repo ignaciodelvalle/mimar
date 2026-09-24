@@ -40,15 +40,13 @@ import {
 import { db } from "@/db";
 import { getNormativesForCase } from "@/lib/domain/case-normatives";
 import { caseTimelineSummary } from "@/lib/events/events";
-import { canReadCase, holdsActiveCaretakerRow } from "@/lib/infra/case-access";
-import { getCaseDetailByPublicCode } from "@/lib/infra/case-queries";
-import { getJurisdictionsCached, getProfileCached } from "@/lib/infra/request-cache";
+import { caseViewerFromProfile, readCaseForViewer } from "@/lib/infra/case-read";
+import { getProfileCached } from "@/lib/infra/request-cache";
 import { petPhotoUrl } from "@/lib/infra/storage";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime, sexLabel, speciesLabel } from "@/lib/utils/format";
 import { findOpenSponsorship } from "@/src/modules/adoption/infrastructure/rehome-sponsorship-writer";
 import { availableCaseActions } from "@/src/modules/cases/domain/available-actions";
-import { logPiiReadSafely } from "@/src/modules/organizations/application/admin-proposals/log-pii-query";
 import {
   getActiveMemberships,
   getGrantedCapabilities,
@@ -66,63 +64,35 @@ interface CaseDetailViewProps {
 }
 
 export async function CaseDetailView({ publicCode, casosHref }: CaseDetailViewProps) {
-  const detail = await getCaseDetailByPublicCode(publicCode);
-  if (!detail) notFound();
-
   // Resolve session (optional — anonymous viewers reach the public branch).
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const viewer = await caseViewerFromProfile(user ? await getProfileCached(user.id) : null);
 
-  let viewerRole: "owner" | "vet" | "govt" | "admin" | "national" | null = null;
-  let viewerUserId: string | null = null;
-  let jurisdictions: Array<{ province: string; locality: string }> = [];
-
-  if (user) {
-    const profile = await getProfileCached(user.id);
-    if (profile) {
-      viewerRole = profile.role;
-      viewerUserId = profile.id;
-      if (profile.role === "govt") {
-        jurisdictions = await getJurisdictionsCached(profile.id);
-      }
-    }
-  }
-
-  const allowed = await canReadCase(
-    detail,
-    viewerUserId && viewerRole ? { userId: viewerUserId, role: viewerRole, jurisdictions } : null,
-  );
-  if (!allowed) {
+  // The read decision — canReadCase, the caretaker distinction, the authority
+  // PII trail and the dispute-tip filter — lives in lib/infra/case-read.ts,
+  // shared with `/api/v1/me/cases/{publicCode}` so the app and the web cannot
+  // answer "who reads this case" differently.
+  const read = await readCaseForViewer(publicCode, viewer);
+  if (read.kind === "not_found") notFound();
+  if (read.kind === "caretaker_only") {
     // custodia-temporal T9.11/T9.12 — the ONE denial that must not be a 404.
-    //
-    // Cases are titular-only in v1 (design F2): the subject-pet branch of
-    // canReadCase requires `role='owner'`. A CARETAKER is denied by that rule
-    // and yet sees the links — LostCaseBlock and the open-case badges render on
-    // the pet they are looking after — so every one of them landed here and
-    // 404'd. Telling the person currently caring for an animal that its case
-    // does not exist is false, unrecoverable, and reads as a broken product.
-    //
-    // Case existence still never leaks: this branch requires a LIVE caretaker
-    // ownership row on this exact pet. Everyone else keeps the 404.
-    if (await holdsActiveCaretakerRow(detail.pet?.id, viewerUserId)) {
-      return (
-        <CaseNotForCaretaker
-          petPublicToken={detail.pet?.publicToken ?? null}
-          petName={detail.pet?.name ?? null}
-        />
-      );
-    }
-    notFound();
+    // Cases are titular-only in v1 (design F2), yet a CARETAKER sees the case
+    // links on the pet they look after; telling them the case does not exist
+    // would be false. `readCaseForViewer` requires a LIVE caretaker row on
+    // this exact pet, so case existence still never leaks to anyone else.
+    return (
+      <CaseNotForCaretaker
+        petPublicToken={read.pet?.publicToken ?? null}
+        petName={read.pet?.name ?? null}
+      />
+    );
   }
-
-  // Lote B3 — an AUTHORITY reading a case detail is a PII read and leaves a
-  // pii_queried trail. Gated to admin/govt only: this same component renders
-  // the public and owner views, which must never log self-views. Fail-soft.
-  if ((viewerRole === "admin" || viewerRole === "govt") && viewerUserId) {
-    await logPiiReadSafely(viewerUserId, publicCode, 1, "case_detail");
-  }
+  const { detail, isAuthorityViewer, timelineEvents } = read;
+  const viewerRole = viewer?.role ?? null;
+  const viewerUserId = viewer?.userId ?? null;
 
   // Anonymous viewers see a redacted view: no opener/closer names, no
   // event notes, generic "Ver perfil público" pet link instead of the
@@ -223,17 +193,8 @@ export async function CaseDetailView({ publicCode, casosHref }: CaseDetailViewPr
   // rendered. Privacy gate: institutional viewers only (govt/admin) — a
   // case's primary location can be a denounced address, so it is never
   // surfaced to anonymous, owner or vet viewers (data minimisation).
-  // Dispute-safe finder tips (PO 2026-07-24): a "finder_tip" case entry is
-  // written from the public credential of a custody-disputed pet FOR the
-  // reviewing authority ONLY (report-dispute-tip.ts). The disputing parties
-  // (subject owner, registered dispute parties) pass canReadCase for this
-  // case kind, so the filter lives here: tips render — title, payload AND
-  // notes — exclusively for govt/admin viewers. Everyone else must not even
-  // learn a tip exists.
-  const isAuthorityViewer = viewerRole === "govt" || viewerRole === "admin";
-  const timelineEvents = detail.events.filter(
-    (e) => e.eventType !== "finder_tip" || isAuthorityViewer,
-  );
+  // Dispute-safe finder tips (PO 2026-07-24): `timelineEvents` already has
+  // them removed for every viewer but govt/admin — see readCaseForViewer.
 
   const caseLat = detail.primaryLocationLat !== null ? Number(detail.primaryLocationLat) : null;
   const caseLng = detail.primaryLocationLng !== null ? Number(detail.primaryLocationLng) : null;

@@ -940,6 +940,12 @@ export const API_V1_IP_BUCKET_FAMILIES: Readonly<Record<string, ApiV1IpFamily>> 
   api_v1_me_notifications_read_ip: "authenticated-read",
   api_v1_me_notifications_write_ip: "inbox-state",
 
+  // Added by M11 with the owner's casos in the native app. Both are ordinary
+  // authenticated reads — the list the web's bandeja shows and one case detail —
+  // so both join the read family; there is no write on this surface.
+  api_v1_me_cases_read_ip: "authenticated-read",
+  api_v1_me_case_detail_ip: "authenticated-read",
+
   // Push target registration, landed with the native push channel. It BORROWS
   // `authenticated-write` rather than getting a family of its own, and that is
   // a deliberate choice in the conservative direction: the family's ceiling was
