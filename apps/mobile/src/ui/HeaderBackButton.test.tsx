@@ -64,7 +64,8 @@ describe("HeaderBackButton", () => {
     // onto it (unlike `style`, asserted above, which it does forward).
     render(<HeaderBackButton canGoBack />);
     const [outermost] = screen.UNSAFE_getAllByProps({ accessibilityLabel: "Volver" });
-    expect(outermost.props.android_ripple).toEqual({ borderless: true, radius: 24 });
+    expect(outermost).toBeDefined();
+    expect(outermost?.props.android_ripple).toEqual({ borderless: true, radius: 24 });
   });
 });
 
