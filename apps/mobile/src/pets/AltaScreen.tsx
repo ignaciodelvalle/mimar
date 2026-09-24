@@ -42,7 +42,7 @@ import { PET_COLOR_MAX, PET_NAME_MAX } from "@dim/contract/input";
 import { breedsForSpecies } from "@dim/contract/reference";
 import { useNavigation, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { apiFailureMessage } from "../api/client";
 import { registerPet } from "../api/endpoints";
@@ -700,7 +700,15 @@ function BreedPicker({
           <Pressable
             accessibilityRole="button"
             key={breed}
-            onPress={() => patch({ breed })}
+            onPress={() => {
+              // U-6 (native review): the keyboard the search field opened
+              // stayed up after a row was tapped, covering the confirmation
+              // this same picker draws for a chosen breed (the block above,
+              // `if (draft.breed)`) on a phone short enough that the two
+              // overlapped.
+              Keyboard.dismiss();
+              patch({ breed });
+            }}
             style={styles.option}
           >
             <Text style={styles.optionLabel}>{breed}</Text>

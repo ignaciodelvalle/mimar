@@ -19,7 +19,7 @@
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
-import { Alert } from "react-native";
+import { Alert, Keyboard } from "react-native";
 
 import { createNavigationFake } from "../ui/navigation-fake";
 
@@ -376,6 +376,20 @@ describe("PetProfileEditScreen — the breed picker does not dump the catalog (B
 
     expect(screen.getByLabelText("Raza")).toBeOnTheScreen();
     expect(screen.queryByLabelText("Buscar raza")).toBeNull();
+  });
+
+  it("dismisses the keyboard when a breed is picked from the list (U-6)", async () => {
+    // The keyboard the search field opened used to stay up after a row was
+    // tapped, covering the chosen-breed chip this picker draws right above
+    // the list it was just picked from.
+    const dismiss = jest.spyOn(Keyboard, "dismiss");
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    await screen.findByDisplayValue("Pampa");
+
+    fireEvent.changeText(screen.getByLabelText("Raza"), "akita");
+    fireEvent.press(screen.getByText("Akita Inu"));
+
+    expect(dismiss).toHaveBeenCalled();
   });
 });
 

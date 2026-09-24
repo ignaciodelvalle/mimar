@@ -40,7 +40,7 @@
 
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { PetProfileEditV1 } from "@dim/contract/api";
 import { PET_SPECIES, type PetProfileCommandInput, type PetSpecies } from "@dim/contract/input";
@@ -506,7 +506,13 @@ function BreedPicker({
           <Pressable
             accessibilityRole="button"
             key={breed}
-            onPress={() => onSelect(breed)}
+            onPress={() => {
+              // U-6 (native review): the search field's keyboard stayed open
+              // after a row was tapped, covering the chosen-breed chip this
+              // picker draws right above the list.
+              Keyboard.dismiss();
+              onSelect(breed);
+            }}
             style={styles.option}
           >
             <Text style={styles.optionLabel}>{breed}</Text>

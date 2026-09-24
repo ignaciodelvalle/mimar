@@ -24,7 +24,7 @@
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
-import { Alert, AppState, type AppStateStatus } from "react-native";
+import { Alert, AppState, type AppStateStatus, Keyboard } from "react-native";
 
 import { createNavigationFake } from "../ui/navigation-fake";
 
@@ -158,6 +158,23 @@ describe("AltaScreen — F-4, el resumen muestra el nombre de la provincia", () 
 
     await waitFor(() => expect(screen.getByText("Santa Fe")).toBeOnTheScreen());
     expect(screen.queryByText("AR-S")).toBeNull();
+  });
+});
+
+describe("AltaScreen — U-6, native review: el picker de raza cierra el teclado", () => {
+  it("dismisses the keyboard when a breed is picked from the list", async () => {
+    // The keyboard the search field opened used to stay up after a row was
+    // tapped, covering the chosen-breed confirmation this same picker draws
+    // (the `if (draft.breed)` chip) right where the tapped row had been.
+    const dismiss = jest.spyOn(Keyboard, "dismiss");
+    await seed(SIGNED_IN_A, { ...EMPTY_DRAFT, name: "Pampa", species: "dog" }, 2);
+
+    render(<AltaScreen />);
+    await screen.findByLabelText("Buscar raza");
+    fireEvent.changeText(screen.getByLabelText("Buscar raza"), "labrador");
+    fireEvent.press(screen.getByText("Labrador"));
+
+    expect(dismiss).toHaveBeenCalled();
   });
 });
 
