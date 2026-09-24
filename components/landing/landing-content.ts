@@ -163,7 +163,10 @@ export const CHAPTERS: LandingChapter[] = [
     state: "ok",
     side: "r",
     title: "Todo quedó escrito.",
-    lead: "Cuatro manos, una sola historia. La línea de vida es de Pampa: inmutable — nada se edita, nada se borra.",
+    // Honesty pass (WU1, landing redesign 2026-09-24): "inmutable" overclaimed —
+    // art. 16 de la Ley 25.326 exige una excepción auditada de supresión sobre
+    // el asiento (límites honestos A.1). Lo que sí se sostiene: solo agrega.
+    lead: "Cuatro manos, una sola historia. Cada vacuna, cada consulta, cada vuelta a casa se suma a la libreta de Pampa. Solo se agrega: una corrección es un asiento nuevo, nunca una edición.",
   },
 ];
 
@@ -367,7 +370,11 @@ export const LIFE_MOMENTS: LifeMoment[] = [
   {
     icon: "vacuna",
     title: "Hay campaña en mi barrio",
-    body: "Las vacunaciones masivas cargan constancias solas; la cobertura se mide en tiempo real.",
+    // Honesty pass (WU1): the panorama choropleth is served from panorama_cube,
+    // which refreshes once a day (vercel.json cron "0 3 * * *", see
+    // app/api/cron/refresh-cube and src/modules/panorama/domain/cube-freshness.ts).
+    // Not "en tiempo real" and not literally per-constancia — a daily snapshot.
+    body: "Las vacunaciones masivas cargan constancias solas; la cobertura se actualiza una vez por día.",
   },
   {
     icon: "candado",
@@ -417,11 +424,17 @@ export const FAQS: Array<[string, string]> = [
 ];
 
 // ---------------------------------------------------------------------------
-// Empezar — 2 doors ONLY (owner + organization; gov/admin are invite-only)
+// Empezar — 3 doors (owner + organization + municipio/provincia, WU4).
+//
+// The third door does NOT reverse "gov/admin accounts are invite-only": it
+// leads to /municipios, a PUBLIC information page about the offering, never
+// to sign-up. Institutional accounts stay invite-only; this door only lets a
+// funcionario learn what miMAR offers before anyone invites them (landing
+// redesign 2026-09-24, WU4).
 // ---------------------------------------------------------------------------
 
 export type LandingRole = {
-  tone: "dueno" | "org";
+  tone: "dueno" | "org" | "gob";
   icon: IconName;
   eyebrow: string;
   title: string;
@@ -453,6 +466,17 @@ export const ROLES: LandingRole[] = [
     cta: "Solicitar acceso",
     ctaHref: "/registro",
     cta2: "Ya tengo cuenta",
+    cta2Href: "/iniciar-sesion",
+  },
+  {
+    tone: "gob",
+    icon: "edificio",
+    eyebrow: "Soy municipio o provincia",
+    title: "miMAR para tu jurisdicción",
+    body: "Zoonosis y bienestar animal: coordiná campañas y respondé con datos de origen, no planillas.",
+    cta: "Conocer miMAR para municipios",
+    ctaHref: "/municipios",
+    cta2: "Ya tengo cuenta institucional",
     cta2Href: "/iniciar-sesion",
   },
 ];
@@ -498,6 +522,7 @@ export const FOOTER_NAV: Array<[string, Array<[string, string]>]> = [
   [
     "Institucional",
     [
+      ["Para municipios", "/municipios"],
       ["Acerca de miMAR", "/acerca"],
       ["Transparencia y datos", "/transparencia"],
       ["Funcionalidades", "/funcionalidades"],

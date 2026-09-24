@@ -23,10 +23,25 @@ export function LandingFooter() {
                 — the opposite of "pública" as in open. No state body operates
                 or endorses miMAR, so the sentence is replaced by two claims
                 the product can actually back: it is free, and its aggregate
-                data is published under CC BY at /transparencia. */}
+                data is published under CC BY at /transparencia.
+                WU1 honesty pass (2026-09-24): "registro nacional" also
+                overclaimed (no convenio with any state body — see
+                state-endorsement-fence.test.ts). Replaced with the libreta
+                framing used across the rest of the honesty pass. */}
             <p className="max-w-xs text-md leading-relaxed text-[var(--color-ln-mute)]">
-              El registro nacional de identidad y salud de las mascotas de la Argentina. Gratis y
-              con datos abiertos.
+              La libreta sanitaria digital de las mascotas de Argentina, con historial que solo se
+              agrega. Gratis y con datos abiertos.
+            </p>
+            {/* PO decision, orchestrator review 2026-09-24 (reverses D7): the
+                celeste-and-white stripe, the "Estado" chapter and (once WU5
+                ships) a "para municipios" page read together as an official
+                signature — enough that Play's listing review could read it as
+                implied government affiliation. This short line, plus the
+                longer disclaimer below, forecloses that reading without
+                claiming anything about who runs miMAR beyond "not the
+                State". */}
+            <p className="mt-2 text-md leading-relaxed text-[var(--color-ln-mute)]">
+              miMAR es un proyecto independiente.
             </p>
           </div>
           {FOOTER_NAV.map(([heading, items]) => (
