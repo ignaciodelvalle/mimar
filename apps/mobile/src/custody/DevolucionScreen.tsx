@@ -33,9 +33,8 @@ import { View } from "react-native";
 import type { PetReturnV1 } from "@dim/contract/api";
 import { RETURN_NOTES_MAX, RETURN_REJECT_REASON_MAX } from "@dim/contract/input";
 
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { fetchPetReturn, sendPetReturnCommand } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, Loading } from "../ui/components";
 import {
@@ -62,21 +61,6 @@ import {
  * One sentence per failure arm. No arm falls through to a generic shrug, and
  * none of them quotes anything the server sent.
  */
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede abrir esta pantalla. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos abrir la devolución.";
-  }
-}
-
 type ScreenState =
   | { phase: "loading" }
   | { phase: "failed"; message: string }
@@ -98,7 +82,10 @@ export function DevolucionScreen({ publicToken }: { publicToken: string }) {
     setState({ phase: "loading" });
     const result = await fetchPetReturn(sessionPort, publicToken);
     if (result.outcome !== "ok") {
-      setState({ phase: "failed", message: failureMessage(result) });
+      setState({
+        phase: "failed",
+        message: apiFailureMessage(result) ?? "No pudimos abrir la devolución.",
+      });
       return;
     }
     setState({ phase: "ready", view: result.payload });
@@ -119,7 +106,10 @@ export function DevolucionScreen({ publicToken }: { publicToken: string }) {
       const result = await sendPetReturnCommand(sessionPort, publicToken, built.input);
       setBusy(false);
       if (result.outcome !== "ok") {
-        setNotice({ tone: "err", message: failureMessage(result) });
+        setNotice({
+          tone: "err",
+          message: apiFailureMessage(result) ?? "No pudimos abrir la devolución.",
+        });
         // A REFUSAL IS STILL A REASON TO RE-READ. `return_no_proposal` and
         // `return_already_pending` both mean the state moved under this screen,
         // and leaving the old buttons up would invite the same refusal again.

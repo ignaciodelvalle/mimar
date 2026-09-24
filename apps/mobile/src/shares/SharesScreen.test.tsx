@@ -322,4 +322,27 @@ describe("failures", () => {
 
     await waitFor(() => expect(screen.getByText("Veterinaria Norte")).toBeTruthy());
   });
+
+  it("prints the correlation code on a reported failure (apiFailureMessage, OBS-3)", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "api-error",
+      code: "temporarily_unavailable",
+      retryAfterSeconds: null,
+      correlationId: "mno56789",
+    });
+    render(<SharesScreen publicToken={TOKEN} />);
+
+    await waitFor(() => expect(screen.getByText(/Código: mno56789/)).toBeTruthy());
+  });
+
+  it("shows the Retry-After countdown on a rate-limited refusal", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "api-error",
+      code: "rate_limited",
+      retryAfterSeconds: 20,
+    });
+    render(<SharesScreen publicToken={TOKEN} />);
+
+    await waitFor(() => expect(screen.getByText(/en 20 segundos/)).toBeTruthy());
+  });
 });

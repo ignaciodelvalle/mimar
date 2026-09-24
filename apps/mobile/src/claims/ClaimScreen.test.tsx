@@ -309,8 +309,12 @@ describe("the failures", () => {
     render(<ClaimScreen onOpenPet={jest.fn()} />);
     await search();
 
+    // The shared `apiFailureMessage` sentence (client.ts), not the screen's own
+    // — this migrated off its local switch onto the shared helper.
     await waitFor(() =>
-      expect(screen.getByText("La respuesta del servidor no se pudo leer.")).toBeTruthy(),
+      expect(
+        screen.getByText("El servidor respondió algo que no pudimos leer. Volvé a intentar."),
+      ).toBeTruthy(),
     );
   });
 
@@ -320,6 +324,31 @@ describe("the failures", () => {
     await search();
 
     await waitFor(() => expect(screen.getByText(/Revisá tu conexión/)).toBeTruthy());
+  });
+
+  it("prints the correlation code on a reported failure (apiFailureMessage, OBS-3)", async () => {
+    mockSend.mockResolvedValue({
+      outcome: "api-error",
+      code: "temporarily_unavailable",
+      retryAfterSeconds: null,
+      correlationId: "jkl34567",
+    });
+    render(<ClaimScreen onOpenPet={jest.fn()} />);
+    await search();
+
+    await waitFor(() => expect(screen.getByText(/Código: jkl34567/)).toBeTruthy());
+  });
+
+  it("shows the Retry-After countdown on a rate-limited refusal", async () => {
+    mockSend.mockResolvedValue({
+      outcome: "api-error",
+      code: "rate_limited",
+      retryAfterSeconds: 45,
+    });
+    render(<ClaimScreen onOpenPet={jest.fn()} />);
+    await search();
+
+    await waitFor(() => expect(screen.getByText(/en 45 segundos/)).toBeTruthy());
   });
 });
 

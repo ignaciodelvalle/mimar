@@ -109,6 +109,29 @@ beforeEach(() => {
   });
 });
 
+describe("RehomeScreen — the initial read's failure copy", () => {
+  it("prints the correlation code on a reported failure (apiFailureMessage, OBS-3)", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "api-error",
+      code: "temporarily_unavailable",
+      retryAfterSeconds: null,
+      correlationId: "pqr78901",
+    });
+    render(<RehomeScreen publicToken={TOKEN} />);
+    expect(await screen.findByText(/Código: pqr78901/)).toBeOnTheScreen();
+  });
+
+  it("shows the Retry-After countdown on a rate-limited refusal", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "api-error",
+      code: "rate_limited",
+      retryAfterSeconds: 8,
+    });
+    render(<RehomeScreen publicToken={TOKEN} />);
+    expect(await screen.findByText(/en 8 segundos/)).toBeOnTheScreen();
+  });
+});
+
 describe("RehomeScreen — the ask", () => {
   it("posts request_sponsorship with the org's PUBLIC token and no key, without confirming", async () => {
     mockSend.mockResolvedValue({

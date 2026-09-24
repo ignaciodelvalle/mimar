@@ -45,9 +45,8 @@ import {
   type CaretakerCommandInputCode,
 } from "@dim/contract/input";
 
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { fetchMyCaretakerGrants, sendCaretakerCommand } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { caretakerGrantPageUrl } from "../config/api";
 import { Body, Card, Loading, Row } from "../ui/components";
@@ -79,21 +78,6 @@ import {
   grantForPet,
   todayInAr,
 } from "./caretakers-view-model";
-
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer esta pantalla. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos leer el cuidado de esta mascota.";
-  }
-}
 
 /**
  * One sentence per command, for the line above the card.
@@ -148,7 +132,10 @@ export function CaretakerPetScreen({
     setState({ phase: "loading" });
     const result = await fetchMyCaretakerGrants(sessionPort);
     if (result.outcome !== "ok") {
-      setState({ phase: "failed", message: failureMessage(result) });
+      setState({
+        phase: "failed",
+        message: apiFailureMessage(result) ?? "No pudimos leer el cuidado de esta mascota.",
+      });
       return;
     }
     setState({ phase: "ready", grant: grantForPet(result.payload, publicToken) });
@@ -170,7 +157,7 @@ export function CaretakerPetScreen({
         // can actually meet them from here (A3-documento-credencial-05,
         // A4-custodia-06). `caretaker_forbidden` on a `revoke` is a different
         // fact — you did not grant this one — and must keep the shared copy.
-        const shared = failureMessage(result);
+        const shared = apiFailureMessage(result) ?? "No pudimos leer el cuidado de esta mascota.";
         setNotice({
           tone: "err",
           message:

@@ -35,9 +35,8 @@ import { View } from "react-native";
 
 import { MOVE_REASON_MAX } from "@dim/contract/input";
 
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { fetchOwnerPetDetail, sendPetMoveCommand } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { LocalityPicker } from "../pets/LocalityPicker";
 import { Body, Card, Loading } from "../ui/components";
@@ -60,21 +59,6 @@ import {
  * One sentence per failure arm. No arm falls through to a generic shrug, and
  * none of them quotes anything the server sent.
  */
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede registrar la mudanza. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos registrar la mudanza.";
-  }
-}
-
 type LoadState =
   | { phase: "loading" }
   | { phase: "failed"; message: string }
@@ -103,7 +87,10 @@ export function MudanzaScreen({ publicToken }: { publicToken: string }) {
     setState({ phase: "loading" });
     const result = await fetchOwnerPetDetail(sessionPort, publicToken);
     if (result.outcome !== "ok") {
-      setState({ phase: "failed", message: failureMessage(result) });
+      setState({
+        phase: "failed",
+        message: apiFailureMessage(result) ?? "No pudimos registrar la mudanza.",
+      });
       return;
     }
     setState({
@@ -132,7 +119,10 @@ export function MudanzaScreen({ publicToken }: { publicToken: string }) {
     const result = await sendPetMoveCommand(sessionPort, publicToken, built.input);
     setBusy(false);
     if (result.outcome !== "ok") {
-      setNotice({ tone: "err", message: failureMessage(result) });
+      setNotice({
+        tone: "err",
+        message: apiFailureMessage(result) ?? "No pudimos registrar la mudanza.",
+      });
       return;
     }
     // THE ACK'S OWN PAIR, not the draft: what was stored is the catalog's

@@ -162,6 +162,27 @@ describe("DevolucionScreen — the controls are the server's", () => {
     expect(await screen.findByText(/No pudimos conectarnos/)).toBeOnTheScreen();
     expect(screen.getByText("Reintentar")).toBeOnTheScreen();
   });
+
+  it("prints the correlation code on a reported failure (apiFailureMessage, OBS-3)", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "api-error",
+      code: "temporarily_unavailable",
+      retryAfterSeconds: null,
+      correlationId: "abc12345",
+    });
+    render(<DevolucionScreen publicToken={TOKEN} />);
+    expect(await screen.findByText(/Código: abc12345/)).toBeOnTheScreen();
+  });
+
+  it("shows the Retry-After countdown on a rate-limited refusal", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "api-error",
+      code: "rate_limited",
+      retryAfterSeconds: 30,
+    });
+    render(<DevolucionScreen publicToken={TOKEN} />);
+    expect(await screen.findByText(/en 30 segundos/)).toBeOnTheScreen();
+  });
 });
 
 describe("DevolucionScreen — answering", () => {

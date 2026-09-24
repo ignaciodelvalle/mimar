@@ -25,10 +25,9 @@ import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
-import type { EventAttachmentV1, PetEventDetailV1 } from "@dim/contract/api";
-import type { ApiResult } from "../api/client";
+import type { EventAttachmentV1 } from "@dim/contract/api";
+import { apiFailureMessage } from "../api/client";
 import { amendPetEvent, fetchPetEventDetail } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, ErrorNotice, Loading, Row, Unavailable } from "../ui/components";
 import { FONTS } from "../ui/fonts";
@@ -71,21 +70,6 @@ type ScreenState =
   | { phase: "ready"; view: EventDetailView }
   | { phase: "failed"; message: string };
 
-function failureMessage(result: ApiResult<PetEventDetailV1>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer este registro. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos leer este registro.";
-  }
-}
-
 export function EventDetailScreen({
   publicToken,
   eventId,
@@ -105,7 +89,10 @@ export function EventDetailScreen({
       setState({ phase: "ready", view: buildEventDetailView(result.payload) });
       return;
     }
-    setState({ phase: "failed", message: failureMessage(result) });
+    setState({
+      phase: "failed",
+      message: apiFailureMessage(result) ?? "No pudimos leer este registro.",
+    });
   }, [publicToken, eventId]);
 
   useEffect(() => {
@@ -550,11 +537,7 @@ function AmendForm({
       onDone();
       return;
     }
-    setError(
-      result.outcome === "api-error"
-        ? apiErrorMessage(result.code)
-        : "No pudimos guardar la corrección. Volvé a intentar.",
-    );
+    setError(apiFailureMessage(result) ?? "No pudimos guardar la corrección. Volvé a intentar.");
   }
 
   return (

@@ -71,16 +71,15 @@ import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
 
-import type { EventRecordedV1, OwnerPetPppRegistryV1 } from "@dim/contract/api";
+import type { OwnerPetPppRegistryV1 } from "@dim/contract/api";
 import {
   DEATH_CAUSES,
   DISPOSITION_METHODS,
   OWNER_MICROCHIP_REPLACE_REASONS,
   VET_CONTACT_VALUES,
 } from "@dim/contract/input";
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { fetchOwnerPetDetail, recordPetEvent } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { getSessionState, sessionPort } from "../auth/session-store";
 import { ASYNC_IMAGE_PICK_MARKER_STORE } from "../native/image-pick-marker-store";
 import {
@@ -174,21 +173,6 @@ import { DISCARD_COPY, confirmDiscard } from "./use-discard-guard";
 import { useEventDraft } from "./use-event-draft";
 
 /** One sentence per failure arm. No arm may fall through to a generic shrug. */
-function failureMessage(result: ApiResult<EventRecordedV1>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede registrar asientos. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos guardar el registro.";
-  }
-}
-
 /**
  * The signed-in person's id, or `null` when nobody is — read fresh rather
  * than subscribed to, the same choice `use-event-draft.ts`'s own
@@ -862,7 +846,7 @@ function EventForm({
       setState({ phase: "confirming-same-day" });
       return;
     }
-    setError(failureMessage(result));
+    setError(apiFailureMessage(result) ?? "No pudimos guardar el registro.");
     setState({ phase: "editing" });
   }
 

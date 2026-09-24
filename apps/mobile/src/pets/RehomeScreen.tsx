@@ -50,9 +50,8 @@ import { StyleSheet, Text, View } from "react-native";
 import type { PetRehomeOrgV1, PetRehomeV1 } from "@dim/contract/api";
 import type { RehomeCommandInput } from "@dim/contract/input";
 
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { fetchPetRehome, sendRehomeCommand } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, Loading, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
@@ -84,21 +83,6 @@ import {
  * One sentence per failure arm. No arm falls through to a generic shrug, and
  * none of them quotes anything the server sent.
  */
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede manejar el acompañamiento de adopción. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos completar la acción.";
-  }
-}
-
 type ScreenState =
   | { phase: "loading" }
   | ReadyState<PetRehomeV1>
@@ -145,7 +129,13 @@ export function RehomeScreen({ publicToken }: { publicToken: string }) {
         setState(loaded(result.payload));
         return true;
       }
-      setState((current) => reloadFailed(current, result, failureMessage(result)));
+      setState((current) =>
+        reloadFailed(
+          current,
+          result,
+          apiFailureMessage(result) ?? "No pudimos completar la acción.",
+        ),
+      );
       return false;
     },
     [publicToken],
@@ -169,10 +159,18 @@ export function RehomeScreen({ publicToken }: { publicToken: string }) {
         // stale banner under it now carries the retry the sentence asks for.
         if (result.outcome === "api-error" && isLookAgainRefusal(result.code)) {
           const landed = await load("refresh");
-          if (!landed) setNotice({ tone: "err", message: failureMessage(result) });
+          if (!landed) {
+            setNotice({
+              tone: "err",
+              message: apiFailureMessage(result) ?? "No pudimos completar la acción.",
+            });
+          }
           return false;
         }
-        setNotice({ tone: "err", message: failureMessage(result) });
+        setNotice({
+          tone: "err",
+          message: apiFailureMessage(result) ?? "No pudimos completar la acción.",
+        });
         return false;
       }
       const message = ackMessage(result.payload);

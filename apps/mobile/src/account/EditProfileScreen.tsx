@@ -42,9 +42,8 @@ import {
   DISPLAY_NAME_MIN_LENGTH,
 } from "@dim/contract/input";
 
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { fetchMyProfile, saveMyProfile } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, Loading, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
@@ -61,21 +60,6 @@ import { type ProfileDraft, draftFrom, looksLikeArPhone, toEditInput } from "./p
  * One sentence per failure arm. No arm falls through to a generic shrug, and
  * none of them quotes anything the server sent.
  */
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer esta pantalla. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos abrir tus datos.";
-  }
-}
-
 type ScreenState =
   | { phase: "loading" }
   | ReadyState<MyProfileV1>
@@ -129,7 +113,9 @@ export function EditProfileScreen() {
     // server has the new values — so a full-screen "no pudimos abrir tus datos"
     // over it reads as if the save had failed, which is the opposite of what
     // happened.
-    setState((current) => reloadFailed(current, result, failureMessage(result)));
+    setState((current) =>
+      reloadFailed(current, result, apiFailureMessage(result) ?? "No pudimos abrir tus datos."),
+    );
   }, []);
 
   useEffect(() => {
@@ -143,7 +129,10 @@ export function EditProfileScreen() {
       const result = await saveMyProfile(sessionPort, toEditInput(submitted));
       setBusy(false);
       if (result.outcome !== "ok") {
-        setNotice({ tone: "err", message: failureMessage(result) });
+        setNotice({
+          tone: "err",
+          message: apiFailureMessage(result) ?? "No pudimos abrir tus datos.",
+        });
         return;
       }
       // THE WRITE LANDED, SO THE FORM IS CLEAN — whatever the re-read then does.

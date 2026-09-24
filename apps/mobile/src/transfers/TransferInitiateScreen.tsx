@@ -29,9 +29,8 @@ import { View } from "react-native";
 import type { OwnerTransferReason, TransferCommandInputCode } from "@dim/contract/input";
 import { TRANSFER_NOTE_MAX } from "@dim/contract/input";
 
-import type { ApiResult } from "../api/client";
+import { type ApiResult, apiFailureMessage } from "../api/client";
 import { sendTransferCommand } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card } from "../ui/components";
 import { Callout, Choice, PrimaryButton, Screen, TextField, Title } from "../ui/kit";
@@ -49,21 +48,14 @@ import {
 const REASON_VALUES: readonly OwnerTransferReason[] = TRANSFER_REASON_CHOICES.map((c) => c.reason);
 
 function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      // The screen's own sentence first, the shared one otherwise. Only
-      // `transfer_forbidden` is overridden, and only here — on the DETAIL screen
-      // the shared answer-time copy is exactly right.
-      return transferInitiateRefusalMessage(result.code) ?? apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede enviar esta propuesta. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos enviar la propuesta.";
+  // The screen's own sentence first, the shared helper otherwise. Only
+  // `transfer_forbidden` is overridden, and only here — on the DETAIL screen
+  // the shared answer-time copy is exactly right.
+  if (result.outcome === "api-error") {
+    const specific = transferInitiateRefusalMessage(result.code);
+    if (specific !== null) return specific;
   }
+  return apiFailureMessage(result) ?? "No pudimos enviar la propuesta.";
 }
 
 type Notice = { tone: "ok" | "err"; message: string } | null;

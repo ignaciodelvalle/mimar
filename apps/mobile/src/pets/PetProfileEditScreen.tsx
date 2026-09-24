@@ -45,9 +45,8 @@ import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 import type { PetProfileEditV1 } from "@dim/contract/api";
 import { PET_SPECIES, type PetProfileCommandInput, type PetSpecies } from "@dim/contract/input";
 
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { fetchPetProfileEdit, sendPetProfileCommand } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, Loading } from "../ui/components";
 import { FONTS } from "../ui/fonts";
@@ -90,21 +89,6 @@ import { speciesLabel } from "./species";
  * One sentence per failure arm. No arm falls through to a generic shrug, and
  * none of them quotes anything the server sent.
  */
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer esta pantalla. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos abrir los datos de la mascota.";
-  }
-}
-
 type ScreenState =
   | { phase: "loading" }
   | { phase: "ready"; view: PetProfileEditV1 }
@@ -164,7 +148,10 @@ export function PetProfileEditScreen({ publicToken }: { publicToken: string }) {
       setSpecies(speciesDraftFrom(result.payload));
       return;
     }
-    setState({ phase: "failed", message: failureMessage(result) });
+    setState({
+      phase: "failed",
+      message: apiFailureMessage(result) ?? "No pudimos abrir los datos de la mascota.",
+    });
   }, [publicToken]);
 
   useEffect(() => {
@@ -178,7 +165,10 @@ export function PetProfileEditScreen({ publicToken }: { publicToken: string }) {
       const result = await sendPetProfileCommand(sessionPort, publicToken, input);
       setBusy(false);
       if (result.outcome !== "ok") {
-        setNotice({ tone: "err", message: failureMessage(result) });
+        setNotice({
+          tone: "err",
+          message: apiFailureMessage(result) ?? "No pudimos abrir los datos de la mascota.",
+        });
         return;
       }
       setNotice({

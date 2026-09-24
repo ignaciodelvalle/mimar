@@ -45,9 +45,8 @@ import type { PetClaimLookupAckV1 } from "@dim/contract/api";
 import type { PetClaimIdentifierKind } from "@dim/contract/input";
 import { PET_CLAIM_IDENTIFIER_KINDS } from "@dim/contract/input";
 
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { sendPetClaimCommand } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { API_BASE_URL } from "../config/api";
 import { getChipScannerPort } from "../native/chip-scanner-port";
@@ -79,22 +78,6 @@ import {
   claimVariantHeadline,
   claimVariantTone,
 } from "./claim-view-model";
-
-/** One sentence per failure arm. No arm falls through to a generic shrug. */
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer esta respuesta. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos completar la búsqueda.";
-  }
-}
 
 type ScreenState =
   | { phase: "asking"; error: string | null }
@@ -134,7 +117,7 @@ export function ClaimScreen({ onOpenPet }: { onOpenPet: (publicToken: string) =>
       const result = await sendPetClaimCommand(sessionPort, draft.input);
 
       if (result.outcome !== "ok") {
-        const message = failureMessage(result);
+        const message = apiFailureMessage(result) ?? "No pudimos completar la búsqueda.";
         // BACK TO THE FORM, not to a dead screen: whatever failed, the person
         // still holds the number and the next thing they will do is try again.
         setState({ phase: "asking", error: message });

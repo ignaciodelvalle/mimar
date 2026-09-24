@@ -143,6 +143,27 @@ describe("finding the proposal", () => {
     render(<TransferDetailScreen transferToken={TOKEN} onAccepted={noop} />);
     await waitFor(() => expect(screen.getByText(/No pudimos conectarnos/)).toBeTruthy());
   });
+
+  it("prints the correlation code on a reported failure (apiFailureMessage, OBS-3)", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "api-error",
+      code: "temporarily_unavailable",
+      retryAfterSeconds: null,
+      correlationId: "def45678",
+    });
+    render(<TransferDetailScreen transferToken={TOKEN} onAccepted={noop} />);
+    await waitFor(() => expect(screen.getByText(/Código: def45678/)).toBeTruthy());
+  });
+
+  it("shows the Retry-After countdown on a rate-limited refusal", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "api-error",
+      code: "rate_limited",
+      retryAfterSeconds: 12,
+    });
+    render(<TransferDetailScreen transferToken={TOKEN} onAccepted={noop} />);
+    await waitFor(() => expect(screen.getByText(/en 12 segundos/)).toBeTruthy());
+  });
 });
 
 describe("the controls come from capabilities, and the three are independent", () => {

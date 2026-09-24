@@ -35,14 +35,13 @@
 // household's other animals) is a different privacy class and none of that
 // reasoning carries over. A failed read says so and offers a retry.
 
-import type { OwnerPetDetailV1, OwnerPetSituationV1 } from "@dim/contract/api";
+import type { OwnerPetSituationV1 } from "@dim/contract/api";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import { BackHandler, StyleSheet, Text, View } from "react-native";
 
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { fetchOwnerPetDetail } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, Loading, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
@@ -62,21 +61,6 @@ type OwnerState =
   | { phase: "failed"; message: string };
 
 /** One sentence per failure arm. No arm may fall through to a generic shrug. */
-function failureMessage(result: ApiResult<OwnerPetDetailV1>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer los datos de esta mascota. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos leer esta mascota.";
-  }
-}
-
 /** The band chip's payload, read off the view — null when the read failed or
  *  the situation is the default (no pill rather than a green one). */
 function situationOf(view: OwnerFaceView | null): OwnerPetSituationV1 | null {
@@ -216,7 +200,9 @@ export function PetDocumentScreen({
       // face and every section — with a refusal, on a screen somebody may have
       // opened precisely because they are standing in front of a vet with no
       // signal. The document that was already read is still the document.
-      setOwner((current) => reloadFailed(current, result, failureMessage(result)));
+      setOwner((current) =>
+        reloadFailed(current, result, apiFailureMessage(result) ?? "No pudimos leer esta mascota."),
+      );
     },
     [publicToken],
   );

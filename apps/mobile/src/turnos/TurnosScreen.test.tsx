@@ -133,6 +133,27 @@ describe("a failed read", () => {
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
   });
 
+  it("prints the correlation code on a reported failure (apiFailureMessage, OBS-3)", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "api-error",
+      code: "temporarily_unavailable",
+      retryAfterSeconds: null,
+      correlationId: "ghi90123",
+    });
+    render(<TurnosScreen onOpen={jest.fn()} onSearch={jest.fn()} />);
+    await waitFor(() => expect(screen.getByText(/Código: ghi90123/)).toBeTruthy());
+  });
+
+  it("shows the Retry-After countdown on a rate-limited refusal", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "api-error",
+      code: "rate_limited",
+      retryAfterSeconds: 5,
+    });
+    render(<TurnosScreen onOpen={jest.fn()} onSearch={jest.fn()} />);
+    await waitFor(() => expect(screen.getByText(/en 5 segundos/)).toBeTruthy());
+  });
+
   it("tells an out-of-date build to update instead of blaming the network", async () => {
     mockFetch.mockResolvedValue({ outcome: "unsupported-version", received: 2 });
     render(<TurnosScreen onOpen={jest.fn()} onSearch={jest.fn()} />);

@@ -44,9 +44,8 @@ import { Share, StyleSheet, Text, View } from "react-native";
 import type { MySubjectDataExportV1 } from "@dim/contract/api";
 import { ERASURE_REASON_MAX_LENGTH, ERASURE_REASON_MIN_LENGTH } from "@dim/contract/input";
 
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { fetchMySubjectDataExport } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { eraseAccount, sessionPort } from "../auth/session-store";
 import { ACCOUNT_DELETION_URL } from "../config/api";
 import { Body, Card, Row } from "../ui/components";
@@ -61,21 +60,6 @@ import { type ExportSection, exportSections, exportShareText } from "./subject-d
  * One sentence per failure arm. No arm falls through to a generic shrug, and
  * none of them quotes anything the server sent.
  */
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer esta pantalla. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos pedir tus datos.";
-  }
-}
-
 type ExportState =
   | { phase: "idle" }
   | { phase: "loading" }
@@ -104,7 +88,10 @@ export function PrivacyScreen() {
       });
       return;
     }
-    setExportState({ phase: "failed", message: failureMessage(result) });
+    setExportState({
+      phase: "failed",
+      message: apiFailureMessage(result) ?? "No pudimos pedir tus datos.",
+    });
   }, []);
 
   const shareExport = useCallback(async (view: MySubjectDataExportV1) => {

@@ -42,9 +42,8 @@ import type { MyTransferV1, MyTransfersV1, TransferCommandAckV1 } from "@dim/con
 import { TRANSFER_NOTE_MAX } from "@dim/contract/input";
 import type { TransferCommandInput } from "@dim/contract/input";
 
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { fetchMyTransfers, sendTransferCommand } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { KEEP_DESTINATION_ON_SIGN_OUT } from "../auth/return-to";
 import { sessionPort, signOut } from "../auth/session-store";
 import { Body, Card, Loading, Row } from "../ui/components";
@@ -63,21 +62,6 @@ import {
   transferReasonLabel,
   transferStatusLabel,
 } from "./transfers-view-model";
-
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer esta pantalla. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos leer esta propuesta.";
-  }
-}
 
 /** One sentence per command, for the line above the card. */
 function ackLabel(ack: TransferCommandAckV1): string {
@@ -124,7 +108,10 @@ export function TransferDetailScreen({
     setState({ phase: "loading" });
     const result = await fetchMyTransfers(sessionPort);
     if (result.outcome !== "ok") {
-      setState({ phase: "failed", message: failureMessage(result) });
+      setState({
+        phase: "failed",
+        message: apiFailureMessage(result) ?? "No pudimos leer esta propuesta.",
+      });
       return;
     }
     const found = findTransfer(result.payload as MyTransfersV1, transferToken);
@@ -145,7 +132,10 @@ export function TransferDetailScreen({
       setConfirmingCancel(false);
       setRejecting(false);
       if (result.outcome !== "ok") {
-        setNotice({ tone: "err", message: failureMessage(result) });
+        setNotice({
+          tone: "err",
+          message: apiFailureMessage(result) ?? "No pudimos leer esta propuesta.",
+        });
         // RE-READ ON FAILURE, ALWAYS. Without an idempotency key, a refusal
         // after a timeout may mean the first attempt landed. The list is the
         // only thing that can say which.

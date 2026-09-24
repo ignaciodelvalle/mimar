@@ -51,9 +51,8 @@ import type { PetSharesV1, ShareCommandAckV1 } from "@dim/contract/api";
 import { LIBRETA_SHARE_LABEL_MAX } from "@dim/contract/input";
 import type { ShareCommandInput, Tier2Window } from "@dim/contract/input";
 
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { fetchPetShares, sendShareCommand } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { API_BASE_URL } from "../config/api";
 import { Body, Card, StaleNotice } from "../ui/components";
@@ -93,21 +92,6 @@ import {
  * none of them quotes anything the server sent — see the header on why an error
  * message is a place a credential must never reach.
  */
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer esta pantalla. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos leer los compartidos.";
-  }
-}
-
 type ScreenState =
   | { phase: "loading" }
   | ReadyState<PetSharesV1>
@@ -170,7 +154,13 @@ export function SharesScreen({ publicToken }: { publicToken: string }) {
       // KEEPING WHAT IS ON SCREEN (S-2). This panel holds live share links and
       // the Tier-2 window; a failed refresh that deleted them would leave
       // somebody unable to revoke a link that is still public.
-      setState((current) => reloadFailed(current, result, failureMessage(result)));
+      setState((current) =>
+        reloadFailed(
+          current,
+          result,
+          apiFailureMessage(result) ?? "No pudimos leer los compartidos.",
+        ),
+      );
     },
     [publicToken],
   );
@@ -186,7 +176,10 @@ export function SharesScreen({ publicToken }: { publicToken: string }) {
       const result = await sendShareCommand(sessionPort, publicToken, input);
       setBusy(false);
       if (result.outcome !== "ok") {
-        setNotice({ tone: "err", message: failureMessage(result) });
+        setNotice({
+          tone: "err",
+          message: apiFailureMessage(result) ?? "No pudimos leer los compartidos.",
+        });
         return null;
       }
       setNotice({ tone: "ok", message: ackLabel(result.payload) });

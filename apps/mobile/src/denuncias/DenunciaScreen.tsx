@@ -52,9 +52,8 @@ import {
   WELFARE_REPORT_SUBJECT_KINDS,
 } from "@dim/contract/input";
 
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { sendWelfareReportCommand } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { API_BASE_URL } from "../config/api";
 import { Body } from "../ui/components";
@@ -89,22 +88,6 @@ import {
   denunciaSubjectPlaceholder,
   missingDenunciaFields,
 } from "./denuncia-view-model";
-
-/** One sentence per failure arm. No arm falls through to a generic shrug. */
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer esta respuesta. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos enviar la denuncia.";
-  }
-}
 
 const EMPTY: DenunciaFormValues = {
   kind: null,
@@ -157,7 +140,10 @@ export function DenunciaScreen() {
     setSearching(false);
 
     if (result.outcome !== "ok") {
-      setPhase({ name: "form", error: failureMessage(result) });
+      setPhase({
+        name: "form",
+        error: apiFailureMessage(result) ?? "No pudimos enviar la denuncia.",
+      });
       return;
     }
     if (result.payload.command !== "resolve_location") {
@@ -190,7 +176,10 @@ export function DenunciaScreen() {
     const result = await sendWelfareReportCommand(sessionPort, draft.input);
 
     if (result.outcome !== "ok") {
-      setPhase({ name: "form", error: failureMessage(result) });
+      setPhase({
+        name: "form",
+        error: apiFailureMessage(result) ?? "No pudimos enviar la denuncia.",
+      });
       return;
     }
     if (result.payload.command !== "file") {

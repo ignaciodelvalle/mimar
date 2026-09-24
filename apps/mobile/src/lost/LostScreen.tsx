@@ -56,9 +56,8 @@ import type { LostCommandAckV1, LostFeedItemV1, PetLostV1 } from "@dim/contract/
 import type { ContentReportCategory } from "@dim/contract/events";
 import type { LostCommandInput } from "@dim/contract/input";
 
-import type { ApiResult } from "../api/client";
+import { type ApiResult, apiFailureMessage } from "../api/client";
 import { fetchPetLostMode, sendLostCommand } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { publicCredentialPageUrl } from "../config/api";
 import { LocalityPicker } from "../pets/LocalityPicker";
@@ -137,21 +136,6 @@ async function shareSearch(view: PetLostV1): Promise<void> {
 }
 
 /** One sentence per failure arm. No arm may fall through to a generic shrug. */
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer el modo perdida. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos leer el modo perdida.";
-  }
-}
-
 type ScreenState =
   | { phase: "loading" }
   | ReadyState<PetLostV1>
@@ -205,7 +189,13 @@ export function LostScreen({ publicToken }: { publicToken: string }) {
         setState(loaded(result.payload));
         return;
       }
-      setState((current) => reloadFailed(current, result, failureMessage(result)));
+      setState((current) =>
+        reloadFailed(
+          current,
+          result,
+          apiFailureMessage(result) ?? "No pudimos leer el modo perdida.",
+        ),
+      );
     },
     [publicToken],
   );
@@ -250,7 +240,7 @@ export function LostScreen({ publicToken }: { publicToken: string }) {
       setBusy(false);
       if (result.outcome !== "ok") {
         hapticError();
-        setError(failureMessage(result));
+        setError(apiFailureMessage(result) ?? "No pudimos leer el modo perdida.");
         return;
       }
       // The haptic tracks `changed` the way the copy does: a replay that

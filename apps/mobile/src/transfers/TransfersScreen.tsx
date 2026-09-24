@@ -28,9 +28,8 @@ import type {
   MyTransfersV1,
 } from "@dim/contract/api";
 
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { fetchMyCaretakerGrants, fetchMyTransfers } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, EmptyState, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
@@ -53,21 +52,6 @@ import {
 } from "./transfers-view-model";
 
 /** One sentence per failure arm. No arm falls through to a generic shrug. */
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer esta pantalla. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos leer tus transferencias.";
-  }
-}
-
 /**
  * The hub's two reads, combined into one view.
  *
@@ -124,7 +108,13 @@ export function TransfersScreen({
     // KEEPING WHAT IS ON SCREEN (S-2). A failed re-read of a hub whose rows are
     // already drawn must not delete them: the proposals are still pending and
     // still expiring, and the network is not the subject of this screen.
-    setState((current) => reloadFailed(current, failed, failureMessage(failed)));
+    setState((current) =>
+      reloadFailed(
+        current,
+        failed,
+        apiFailureMessage(failed) ?? "No pudimos leer tus transferencias.",
+      ),
+    );
   }, []);
 
   // ON FOCUS, NOT ONLY ON MOUNT (native QA batch 3, C4). Opening a proposal

@@ -34,9 +34,8 @@ import { View } from "react-native";
 
 import type { OwnerPetReminderV1 } from "@dim/contract/api";
 
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { fetchOwnerPetDetail, sendVaccineReminderCommand } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, Loading, Row, Unavailable } from "../ui/components";
 import {
@@ -68,21 +67,6 @@ import {
  * One sentence per failure arm. No arm falls through to a generic shrug, and
  * none of them quotes anything the server sent.
  */
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede manejar recordatorios. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos guardar el recordatorio.";
-  }
-}
-
 /**
  * The list, as three distinct states plus its own loading.
  *
@@ -119,7 +103,10 @@ export function VacunasScreen({ publicToken }: { publicToken: string }) {
     setList({ kind: "loading" });
     const result = await fetchOwnerPetDetail(sessionPort, publicToken);
     if (result.outcome !== "ok") {
-      setList({ kind: "unavailable", message: failureMessage(result) });
+      setList({
+        kind: "unavailable",
+        message: apiFailureMessage(result) ?? "No pudimos guardar el recordatorio.",
+      });
       return;
     }
     const { identity, reminders } = result.payload;
@@ -153,7 +140,10 @@ export function VacunasScreen({ publicToken }: { publicToken: string }) {
     const result = await sendVaccineReminderCommand(sessionPort, publicToken, built.input);
     setBusy(null);
     if (result.outcome !== "ok") {
-      setNotice({ tone: "err", message: failureMessage(result) });
+      setNotice({
+        tone: "err",
+        message: apiFailureMessage(result) ?? "No pudimos guardar el recordatorio.",
+      });
       return;
     }
     setNotice({ tone: "ok", message: reminderScheduledMessage(draft.vaccineName) });
@@ -176,7 +166,10 @@ export function VacunasScreen({ publicToken }: { publicToken: string }) {
       );
       setBusy(null);
       if (result.outcome !== "ok") {
-        setNotice({ tone: "err", message: failureMessage(result) });
+        setNotice({
+          tone: "err",
+          message: apiFailureMessage(result) ?? "No pudimos guardar el recordatorio.",
+        });
         return;
       }
       const ack = result.payload;

@@ -47,8 +47,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { AppointmentSearchV1, BookableOfferingV1 } from "@dim/contract/api";
 
-import type { ApiResult } from "../api/client";
-import { apiErrorMessage } from "../api/error-copy";
+import { apiFailureMessage } from "../api/client";
 import { sessionPort } from "../auth/session-store";
 import { Body, EmptyState, Loading } from "../ui/components";
 import { FONTS } from "../ui/fonts";
@@ -70,21 +69,6 @@ import {
 import { appointmentProviderLabel } from "./turnos-view-model";
 
 /** One sentence per failure arm. No arm falls through to a generic shrug. */
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer esta pantalla. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos buscar turnos.";
-  }
-}
-
 type ScreenState =
   | { phase: "loading" }
   | { phase: "ready"; view: AppointmentSearchV1 }
@@ -128,7 +112,10 @@ export function BuscarTurnoScreen({
       setState({ phase: "ready", view: result.payload });
       return;
     }
-    setState({ phase: "failed", message: failureMessage(result) });
+    setState({
+      phase: "failed",
+      message: apiFailureMessage(result) ?? "No pudimos buscar turnos.",
+    });
   }, []);
 
   useEffect(() => {

@@ -40,7 +40,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 
-import { type ApiResult, apiFailureMessage } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { fetchMyNotifications, sendNotificationCommand } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, EmptyState, StaleNotice } from "../ui/components";
@@ -141,11 +141,12 @@ export function NotificationsScreen({
       // is "lo último que pudimos leer", and holding the whole inbox under a
       // Custodia tab makes that sentence say something false about WHICH rows
       // these are. There is nothing to keep for a tab that has never loaded.
-      setState((current) =>
-        current.phase === "ready" && current.category !== cat
-          ? { phase: "failed", message: failureMessage(result) }
-          : reloadFailed(current, result, failureMessage(result)),
-      );
+      setState((current) => {
+        const message = apiFailureMessage(result) ?? "No pudimos leer tus notificaciones.";
+        return current.phase === "ready" && current.category !== cat
+          ? { phase: "failed", message }
+          : reloadFailed(current, result, message);
+      });
     },
     [],
   );
@@ -197,7 +198,7 @@ export function NotificationsScreen({
       const result = await sendNotificationCommand(sessionPort, command.input);
       setBusy(false);
       if (result.outcome !== "ok") {
-        setActionError(failureMessage(result));
+        setActionError(apiFailureMessage(result) ?? "No pudimos leer tus notificaciones.");
         return;
       }
       await load(category, "refresh");
@@ -318,11 +319,6 @@ export function NotificationsScreen({
       )}
     </Screen>
   );
-}
-
-/** One sentence per failure arm. No arm falls through to a generic shrug. */
-function failureMessage(result: ApiResult<unknown>): string {
-  return apiFailureMessage(result) ?? "No pudimos leer tus notificaciones.";
 }
 
 function CategoryChip({

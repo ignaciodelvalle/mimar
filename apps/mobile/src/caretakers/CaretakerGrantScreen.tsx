@@ -44,9 +44,8 @@ import { StyleSheet, View } from "react-native";
 import type { CaretakerCommandAckV1, MyCaretakerGrantV1 } from "@dim/contract/api";
 import type { CaretakerCommandInput } from "@dim/contract/input";
 
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { fetchMyCaretakerGrants, sendCaretakerCommand } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { KEEP_DESTINATION_ON_SIGN_OUT } from "../auth/return-to";
 import { sessionPort, signOut } from "../auth/session-store";
 import { Body, Card, Loading, Row } from "../ui/components";
@@ -62,21 +61,6 @@ import {
   caretakerStatusLabel,
   findCaretakerGrant,
 } from "./caretakers-view-model";
-
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer esta pantalla. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos leer esta invitación.";
-  }
-}
 
 /** Exhaustive over the contract's union, including the three this screen never sends. */
 function ackLabel(ack: CaretakerCommandAckV1): string {
@@ -127,7 +111,10 @@ export function CaretakerGrantScreen({
     setState({ phase: "loading" });
     const result = await fetchMyCaretakerGrants(sessionPort);
     if (result.outcome !== "ok") {
-      setState({ phase: "failed", message: failureMessage(result) });
+      setState({
+        phase: "failed",
+        message: apiFailureMessage(result) ?? "No pudimos leer esta invitación.",
+      });
       return;
     }
     const found = findCaretakerGrant(result.payload, grantToken);
@@ -147,7 +134,10 @@ export function CaretakerGrantScreen({
       setConfirmingAccept(false);
       setConfirmingReject(false);
       if (result.outcome !== "ok") {
-        setNotice({ tone: "err", message: failureMessage(result) });
+        setNotice({
+          tone: "err",
+          message: apiFailureMessage(result) ?? "No pudimos leer esta invitación.",
+        });
         // RE-READ ON FAILURE, ALWAYS. Without an idempotency key, a refusal after
         // a timeout may mean the first attempt landed.
         await load();

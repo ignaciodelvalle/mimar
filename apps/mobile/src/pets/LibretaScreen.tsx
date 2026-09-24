@@ -29,10 +29,9 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import type { LibretaEntryV1, PetLibretaV1 } from "@dim/contract/api";
-import type { ApiResult } from "../api/client";
+import type { LibretaEntryV1 } from "@dim/contract/api";
+import { apiFailureMessage } from "../api/client";
 import { fetchPetLibreta } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, Loading, Row, StaleNotice, Unavailable } from "../ui/components";
 import { FONTS } from "../ui/fonts";
@@ -65,21 +64,6 @@ type ScreenState =
   | { phase: "failed"; message: string };
 
 /** One sentence per failure arm. No arm may fall through to a generic shrug. */
-function failureMessage(result: ApiResult<PetLibretaV1>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer la libreta de esta mascota. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos leer esta libreta.";
-  }
-}
-
 export function LibretaScreen({
   publicToken,
   deceased = false,
@@ -136,7 +120,9 @@ export function LibretaScreen({
       // KEEPING THE LEDGER (S-2). A vet with one bar reading a vaccination
       // history must not lose it because the re-read on focus failed: the
       // asientos are already on the phone and every one of them is still true.
-      setState((current) => reloadFailed(current, result, failureMessage(result)));
+      setState((current) =>
+        reloadFailed(current, result, apiFailureMessage(result) ?? "No pudimos leer esta libreta."),
+      );
     },
     [publicToken],
   );

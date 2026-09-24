@@ -166,12 +166,18 @@ describe("a default: arm may not print the value it did not recognise", () => {
   // failure mode every fence in this repo is required to close.
   it("actually walks the app and finds the arms it judges", () => {
     // Measured at 2026-09-07 on the widened scope: 105 non-test source files,
-    // 40 `default:` arms, across 36 distinct files. The floors sit just under
-    // the census so ordinary churn does not trip them and a COLLAPSE — a walk
-    // that stopped recursing, a parser that stopped matching — does.
-    expect(FILES.length).toBeGreaterThanOrEqual(90);
-    expect(ARMS_SEEN.length).toBeGreaterThanOrEqual(30);
-    expect(new Set(ARMS_SEEN).size).toBeGreaterThanOrEqual(25);
+    // 40 `default:` arms, across 36 distinct files. RE-MEASURED 2026-09-24 after
+    // F-6 (M8) deleted 25 screens' hand-rolled `failureMessage` switches — each
+    // had exactly one `default:` arm, none of them an offender (they called
+    // `apiErrorMessage(result.code)`, never `String(...)`/`${…}`) — in favour of
+    // the shared `apiFailureMessage`: 142 non-test source files, 25 `default:`
+    // arms, across 18 distinct files. The floors sit just under THAT census, for
+    // the same reason as before: ordinary churn must not trip them, and a
+    // COLLAPSE — a walk that stopped recursing, a parser that stopped matching —
+    // must.
+    expect(FILES.length).toBeGreaterThanOrEqual(120);
+    expect(ARMS_SEEN.length).toBeGreaterThanOrEqual(20);
+    expect(new Set(ARMS_SEEN).size).toBeGreaterThanOrEqual(15);
   });
 
   it("reaches SCREENS and not only view models, which is where two offenders were", () => {

@@ -47,9 +47,8 @@ import { StyleSheet, Text, View } from "react-native";
 
 import type { MyAppointmentV1, MyAppointmentsV1 } from "@dim/contract/api";
 
-import type { ApiResult } from "../api/client";
+import { apiFailureMessage } from "../api/client";
 import { fetchMyAppointments, sendAppointmentCommand } from "../api/endpoints";
-import { apiErrorMessage } from "../api/error-copy";
 import { sessionPort } from "../auth/session-store";
 import { CredentialQr } from "../credential/CredentialQr";
 import { Body, Card, Loading, Row } from "../ui/components";
@@ -74,21 +73,6 @@ import {
 /** Rendered pixel size of the check-in QR. Matches the web's 180. */
 const QR_SIZE = 180;
 
-function failureMessage(result: ApiResult<unknown>): string {
-  switch (result.outcome) {
-    case "api-error":
-      return apiErrorMessage(result.code);
-    case "unsupported-version":
-      return "Esta versión de la app no puede leer esta pantalla. Actualizá la app.";
-    case "malformed":
-      return "La respuesta del servidor no se pudo leer.";
-    case "unreachable":
-      return "No pudimos conectarnos. Revisá tu conexión.";
-    default:
-      return "No pudimos leer este turno.";
-  }
-}
-
 type ScreenState =
   | { phase: "loading" }
   | { phase: "ready"; appointment: MyAppointmentV1 }
@@ -107,7 +91,10 @@ export function TurnoDetailScreen({ appointmentToken }: { appointmentToken: stri
     setState({ phase: "loading" });
     const result = await fetchMyAppointments(sessionPort);
     if (result.outcome !== "ok") {
-      setState({ phase: "failed", message: failureMessage(result) });
+      setState({
+        phase: "failed",
+        message: apiFailureMessage(result) ?? "No pudimos leer este turno.",
+      });
       return;
     }
     const found = findAppointment(result.payload as MyAppointmentsV1, appointmentToken);
@@ -130,7 +117,10 @@ export function TurnoDetailScreen({ appointmentToken }: { appointmentToken: stri
     setBusy(false);
     setConfirmingCancel(false);
     if (result.outcome !== "ok") {
-      setNotice({ tone: "err", message: failureMessage(result) });
+      setNotice({
+        tone: "err",
+        message: apiFailureMessage(result) ?? "No pudimos leer este turno.",
+      });
       // RE-READ ON FAILURE, ALWAYS. See the header: without an idempotency key a
       // refusal after a timeout may mean the first attempt landed.
       await load();
