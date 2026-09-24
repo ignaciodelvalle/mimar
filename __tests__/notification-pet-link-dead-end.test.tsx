@@ -103,7 +103,10 @@ describe("PET_LINK_DEAD_FOR_RECIPIENT — every entry names a real writer", () =
       orphaned,
       `These types are on the denylist but no writer emits them any more — either they were renamed (update the denylist) or removed (drop them):\n  ${orphaned.join("\n  ")}`,
     ).toEqual([]);
-  });
+    // A cold walk of src/, lib/ and app/ took 12.9s under a loaded machine
+    // (gate gB1, 2026-09-24) against vitest's 5s default — a timeout, not a
+    // regression. The scan is the point of the test, so it gets real headroom.
+  }, 60_000);
 
   it("is not vacuous — the writer scan finds types", () => {
     // A broken walk would return an empty set and make the assertion above

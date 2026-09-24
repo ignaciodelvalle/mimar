@@ -232,7 +232,10 @@ describe("story — CastFila + 6 chapters + rail", () => {
     expect(html).not.toContain("pet_registered");
     expect(html).not.toContain("vaccination_administered");
     expect(html).not.toContain("shelter_intake_recorded");
-    expect(html).toContain("append-only — nada se edita, nada se borra");
+    // Límites honestos A.1 wording (2026-09-24): "nada se edita, nada se borra"
+    // overclaimed — account erasure replaces the user's own free text.
+    expect(html).toContain("append-only — una corrección es un asiento");
+    expect(html).not.toContain("nada se borra");
   });
 });
 
@@ -263,15 +266,20 @@ describe("life moments + FAQ + trust row", () => {
   });
 });
 
-describe("empezar — two doors only", () => {
-  it("renders EXACTLY 2 role cards: dueño (primary) + organización — no government door", () => {
+describe("empezar — three doors", () => {
+  // Landing redesign WU4 (PO, 2026-09-24) reverses the old "no government
+  // door" rule: the third door leads to /municipios, a PUBLIC information page,
+  // never to sign-up — institutional accounts stay invite-only.
+  it("renders EXACTLY 3 role cards: dueño, organización, municipio — none signs a government up", () => {
     const html = renderToStaticMarkup(<EmpezarSection />);
     // The cards carry entrance-choreography classes (lp-reveal + data-d) since
     // 2026-08-02, so match on the class NAME, not the exact attribute value.
     const cards = html.match(/class="lp-role-card[^"]*"/g) ?? [];
-    expect(cards.length).toBe(2);
+    expect(cards.length).toBe(3);
     expect(html).toContain("Soy dueño");
     expect(html).toContain("Soy organización");
+    expect(html).toContain("Soy municipio o provincia");
+    expect(html).toContain('href="/municipios"');
     expect(html).not.toContain("Soy gobierno");
     expect(html).toContain('href="/registro"');
   });
