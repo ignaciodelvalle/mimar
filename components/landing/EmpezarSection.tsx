@@ -1,7 +1,10 @@
-// Empezar — EXACTLY two doors (PO-locked): owner (primary CTA) + organization.
-// Government/admin do NOT appear (invite-only, implicit). PO landing feedback:
-// heading trimmed to just "Empezar"; the eyebrow + "antes del día que se
-// pierda" lead were removed so the two doors carry the section.
+// Empezar — 3 doors: owner (primary CTA) + organization + municipio/provincia
+// (WU4, landing redesign 2026-09-24). The third door leads to /municipios, a
+// PUBLIC information page — institutional accounts stay invite-only, this
+// only lets a funcionario learn about the offering before being invited. PO
+// landing feedback: heading trimmed to just "Empezar"; the eyebrow +
+// "antes del día que se pierda" lead were removed so the doors carry the
+// section.
 
 import { Icon } from "@/components/Icon";
 import { ROLES } from "@/components/landing/landing-content";

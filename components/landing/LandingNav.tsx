@@ -10,6 +10,11 @@ const NAV_LINKS: Array<[string, string]> = [
   ["La historia", "#idea"],
   ["Qué hace", "#features"],
   ["Empezar", "#empezar"],
+  // WU4 (landing redesign 2026-09-24): the door to /municipios. NOTE: this is
+  // the only nav-links list LandingNav renders at any width — `.lp-nav-links`
+  // is CSS-hidden below 860px (app/landing.css) with no hamburger/mobile-menu
+  // replacement, so "desktop and mobile" both mean this one array.
+  ["Para municipios", "/municipios"],
 ];
 
 export function LandingNav() {

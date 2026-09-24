@@ -2281,6 +2281,37 @@
   margin: 0 0 18px;
 }
 
+/* Third door (WU4, landing redesign 2026-09-24): "Soy municipio o
+   provincia", navy card — the same --lp-navy surface as the chapter 5
+   "estado" console, so the institutional door reads as one family with the
+   chapter that precedes it. */
+.lp .lp-role-card[data-tone="gob"] {
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--lp-navy) 90%, var(--color-ln-celeste)) 0%,
+    color-mix(in srgb, var(--lp-navy) 88%, black) 100%
+  );
+  border-color: var(--lp-navy-line);
+}
+.lp .lp-role-card[data-tone="gob"] .lp-ric {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+.lp .lp-role-card[data-tone="gob"] h3 {
+  color: #fff;
+}
+.lp .lp-role-card[data-tone="gob"] p {
+  color: var(--lp-navy-ink);
+}
+.lp .lp-role-card[data-tone="gob"] .lp-btn--ghost {
+  color: var(--lp-navy-ink);
+  border-color: var(--lp-navy-line);
+}
+.lp .lp-role-card[data-tone="gob"] .lp-btn--ghost:hover {
+  border-color: #fff;
+  color: #fff;
+}
+
 /* ============ footer ====================================================== */
 .lp .lp-foot {
   background: var(--color-ln-card);
