@@ -233,8 +233,14 @@ export function advanceBlockedReason(step: WizardStep, draft: PetDraft): string 
   switch (step) {
     case "nombre":
       return "Escribí el nombre para seguir.";
+    // U-7 (native review): this used to say "Elegí si es perro o gato", which
+    // named two of the six species `SPECIES_OPTIONS` actually offers (perro,
+    // gato, conejo, cobayo, hurón, otro) and read as a refusal to anyone
+    // registering the other four. "La especie" names the field without
+    // naming a species this sentence would then have to keep in sync with
+    // `@dim/contract`'s own list.
     case "especie":
-      return "Elegí si es perro o gato para seguir.";
+      return "Elegí la especie para seguir.";
     case "lugar":
       return "Elegí la localidad donde vive para seguir.";
     // THE SCHEMA'S OWN SENTENCE, not a guess at which field is missing.

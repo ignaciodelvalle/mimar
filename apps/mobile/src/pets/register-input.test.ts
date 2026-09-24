@@ -179,9 +179,9 @@ describe("advanceBlockedReason — the disabled button stops being mute (CA-M5)"
     // The button was disabled and silent: a screen reader announces "atenuado"
     // and nothing else, so nobody was told which field was holding the wizard.
     expect(advanceBlockedReason("nombre", EMPTY_DRAFT)).toBe("Escribí el nombre para seguir.");
-    expect(advanceBlockedReason("especie", EMPTY_DRAFT)).toBe(
-      "Elegí si es perro o gato para seguir.",
-    );
+    // U-7 (native review): the old sentence named two of the six species the
+    // picker actually offers.
+    expect(advanceBlockedReason("especie", EMPTY_DRAFT)).toBe("Elegí la especie para seguir.");
     expect(advanceBlockedReason("lugar", EMPTY_DRAFT)).toBe(
       "Elegí la localidad donde vive para seguir.",
     );
