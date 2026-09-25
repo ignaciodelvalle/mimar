@@ -70,6 +70,13 @@ describe("/privacidad — providers and the international transfer", () => {
     expect(sentry).toContain("no se envían capturas de pantalla");
   });
 
+  it("discloses the /municipios contact form: sent by mail through Resend, not stored", () => {
+    const body = text(providersSection());
+    expect(body).toContain(
+      "Formulario de contacto para organismos. Si completás el formulario de /municipios, tu nombre, organismo, cargo, correo y, si lo das, tu teléfono, se envían por correo electrónico a nuestro equipo a través de Resend (Estados Unidos). No los guardamos en nuestra base de datos; los usamos solo para responderte.",
+    );
+  });
+
   it("rests the transfer on express consent under art. 12, without claiming adequacy", () => {
     const body = text(providersSection());
     expect(body).toContain("Disposición AAIP 60/2016");
