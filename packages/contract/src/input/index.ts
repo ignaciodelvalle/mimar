@@ -353,6 +353,15 @@ export {
   welfareReportResolveLocationInputSchema,
 } from "./welfare-report.ts";
 export {
+  GEOCODING_INPUT_CODES,
+  GEOCODING_QUERY_MAX_LENGTH,
+  GEOCODING_QUERY_MIN_LENGTH,
+  type GeocodingCommandInput,
+  type GeocodingInputCode,
+  firstGeocodingInputCode,
+  geocodingCommandInputSchema,
+} from "./geocoding.ts";
+export {
   FOSTER_COMMAND_INPUT_CODES,
   FOSTER_REJECTION_REASONS,
   FOSTER_RESPONSE_NOTES_MAX,

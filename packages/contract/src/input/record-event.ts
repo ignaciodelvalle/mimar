@@ -251,6 +251,7 @@ export const RECORD_EVENT_INPUT_CODES = [
   "BITE_VICTIM_KIND_INVALID",
   "BITE_SEVERITY_INVALID",
   "BITE_JURISDICTION_INCOMPLETE",
+  "BITE_COORDS_INVALID",
   "TATTOO_CODE_REQUIRED",
   "TATTOO_LOCATION_INVALID",
   "TATTOO_PHOTO_REQUIRED",
@@ -1007,10 +1008,13 @@ const postAdoptionCheckin = z.object({
  * that names no real place, on the record a jurisdiction acts on. The rule is
  * in `refineBite`.
  *
- * NO COORDINATES, deliberately. The web captures them from a map pin; this app
- * has no map and asking for GPS would be asking for a permission to write a
- * libreta entry. The writer takes null coords and the bite then counts into the
- * "sin ubicacion exacta" residual — never a faked centroid dot.
+ * COORDINATES FROM A PIN, NEVER FROM GPS (M17). The web captures them from a
+ * map pin, and since M17 so does this app: the person finds the address and
+ * drags the map under a pin. `locationSource` says which of the two the point
+ * is — `pin_manual` (moved by hand) or `geocodificada` (a search result
+ * accepted as is); `gps` is refused, because this product reads no device
+ * location (PO, 2026-09-24). Absent coords are still valid and the bite then
+ * counts into the "sin ubicacion exacta" residual — never a faked centroid dot.
  *
  * THE APP SENDS A PROVINCE CODE AND AN INDEC ID, not display names, and that is
  * STRICTER than the web's own path. The web reverse-geocodes a pin into free
@@ -1034,6 +1038,22 @@ const bite = z.object({
   localityName: optionalText,
   /** Disambiguates the 68 (province, name) collisions the INDEC catalogue ships. */
   localityIndecId: optionalText,
+  locationLat: z
+    .number({ error: "BITE_COORDS_INVALID" })
+    .min(-90, { error: "BITE_COORDS_INVALID" })
+    .max(90, { error: "BITE_COORDS_INVALID" })
+    .nullish()
+    .transform((v) => v ?? null),
+  locationLng: z
+    .number({ error: "BITE_COORDS_INVALID" })
+    .min(-180, { error: "BITE_COORDS_INVALID" })
+    .max(180, { error: "BITE_COORDS_INVALID" })
+    .nullish()
+    .transform((v) => v ?? null),
+  locationSource: z
+    .enum(["pin_manual", "geocodificada"], { error: "BITE_COORDS_INVALID" })
+    .nullish()
+    .transform((v) => v ?? null),
   notes: optionalText,
 });
 

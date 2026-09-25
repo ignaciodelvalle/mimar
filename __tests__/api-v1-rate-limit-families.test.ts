@@ -1065,7 +1065,11 @@ describe("/api/v1 rate-limit families — the numbers the derivation committed t
     // cockpit just loaded. M11 and M13 landed in the same integration batch, so
     // the family becomes 23 × 600 = 13.800, 48 buckets, and
     // 16.884 + 600 = 17.484.
-    expect(API_V1_CGNAT_FAMILY_IP_CEILING_PER_MINUTE).toBe(17_484);
+    //
+    // 17.604 WITH THE MAP DOOR TOO (`geocoding`, M17): POST only, one bucket, in
+    // `authenticated-write` — a POST, like the welfare door's resolve_location.
+    // 16 × 120 = 1.920 for that family, 49 buckets, and 17.484 + 120 = 17.604.
+    expect(API_V1_CGNAT_FAMILY_IP_CEILING_PER_MINUTE).toBe(17_604);
   });
 
   it("keeps pet-disclosure-write at N callers on BOTH windows", () => {

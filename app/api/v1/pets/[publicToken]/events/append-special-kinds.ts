@@ -657,11 +657,16 @@ export async function appendBite(
       clientIdempotencyKey: ctx.idempotencyKey,
       eventJurisdictionProvince: eventProvince,
       eventJurisdictionLocality: eventLocality,
-      // See the header: no map, so no pin, so no dot. Null is the honest value
-      // and the loader already knows what to do with it.
-      locationLat: null,
-      locationLng: null,
-      locationSource: null,
+      // The pin the person placed on the app's map (M17), both halves or
+      // neither — a half pair is no point. Never a GPS fix: the contract
+      // refuses that source. Absent stays null, the "sin ubicacion exacta"
+      // residual the loader already handles.
+      locationLat:
+        input.locationLat !== null && input.locationLng !== null ? input.locationLat : null,
+      locationLng:
+        input.locationLat !== null && input.locationLng !== null ? input.locationLng : null,
+      locationSource:
+        input.locationLat !== null && input.locationLng !== null ? input.locationSource : null,
     },
     {
       repo: surveillanceRepo,

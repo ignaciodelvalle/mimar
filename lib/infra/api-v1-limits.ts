@@ -975,6 +975,12 @@ export const API_V1_IP_BUCKET_FAMILIES: Readonly<Record<string, ApiV1IpFamily>> 
   // Landed with the native lost-pet poster (M13). A read of the same animal the
   // lost cockpit just loaded, tapped from that screen — so the same family.
   api_v1_pet_poster_ip: "authenticated-read",
+  // Landed with the app's map (M17): address search and pin reverse-geocoding.
+  // A POST (an address must not ride in a URL), so a write family by this
+  // file's direction rule — the one the welfare door's `resolve_location`, the
+  // same act, already spends. What reaches Nominatim is bounded again by the
+  // shared per-IP `geocode_public` bucket, which is the tighter of the two.
+  api_v1_geocoding_ip: "authenticated-write",
   api_v1_amend_ip: "authenticated-write",
   api_v1_shares_write_ip: "pet-disclosure-write",
   api_v1_lost_write_ip: "pet-disclosure-write",

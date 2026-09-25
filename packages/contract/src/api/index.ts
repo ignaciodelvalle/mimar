@@ -115,6 +115,14 @@ export {
   type PetLostV1,
 } from "./pet-lost.ts";
 export {
+  GEOCODING_PAYLOAD_VERSION,
+  type GeocodingAckV1,
+  type GeocodingJurisdictionV1,
+  type GeocodingMatchV1,
+  type GeocodingReverseV1,
+  type GeocodingSearchV1,
+} from "./geocoding.ts";
+export {
   PET_POSTER_PAGE_POINTS,
   PET_POSTER_PAYLOAD_VERSION,
   type PetPosterV1,
