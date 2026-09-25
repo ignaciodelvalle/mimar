@@ -1,8 +1,17 @@
 "use client";
 
 // LibretaFeed — chapter 6 "the libreta fills up" animation (WU3, PO-approved
-// landing plan). Reveals the 10 real event types one by one, newest on top,
-// once the chapter is ~40% in view. Plays ONCE, then stays settled.
+// landing plan). Reveals the 10 real event types one by one, once the chapter
+// is ~40% in view. Plays ONCE, then stays settled.
+//
+// ORDER (PO, 2026-09-25): chronological, the way a libreta fills. `events`
+// arrives in DISPLAY order — newest on top (story-screens.tsx reverses the
+// chronological constant) — and the reveal walks it from the END: the oldest
+// entry appears first, alone at the top; each newer one then enters ABOVE it
+// and pushes the earlier ones down, until the settled list is the same
+// newest-on-top list SSR renders. The DOM order never changes: an unrevealed
+// row is collapsed to zero height (.lp-lib-row--pending) and an entering row
+// expands in place, so the push-down is the rows below it moving.
 //
 // Fail-open contract (mirrors RevealManager.tsx / CountUp.tsx):
 //  - SSR renders every entry visible, with no hiding class — a no-JS visitor
@@ -25,9 +34,12 @@
 //    catches an observer that is broken or unsupported, never a chapter that
 //    is simply still off-screen.
 //
-// The phone screen keeps a fixed height (.lp-scr--tall) and clips overflow —
-// entries are always present in the DOM, only opacity/transform change, so
-// nothing here ever reflows the page or shifts layout.
+// The phone screen keeps a fixed height (.lp-scr--tall) and clips overflow,
+// and the feed itself reserves its FINAL height before it collapses anything:
+// the full list's height is measured pre-paint and pinned as min-height, so
+// rows collapsing and expanding inside it never move anything outside it (no
+// CLS). The pin is released once the last row has settled — from then on the
+// list is its own height again, and a later resize reflows it naturally.
 
 import { PAMPA } from "@/components/landing/landing-content";
 import type { LibretaEvent } from "@/components/landing/landing-content";
@@ -42,6 +54,12 @@ const STEP_MS = 700;
 const FAIL_OPEN_MS = 1400;
 /** "About 40% in view" — measured against the chapter section, not just the phone mock. */
 const VIEW_THRESHOLD = 0.4;
+/**
+ * How long one row takes to expand — mirrors --motion-deliberate, the token
+ * .lp-lib-row--in transitions on. Only used to know when the last row has
+ * settled, so the reserved height can be released.
+ */
+const ROW_SETTLE_MS = 600;
 
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
@@ -60,6 +78,11 @@ export function LibretaFeed({ events }: { events: LibretaEvent[] }) {
   useLayoutEffect(() => {
     if (prefersReducedMotion()) return;
     if (typeof IntersectionObserver === "undefined") return;
+    // Reserve the settled list's height BEFORE collapsing any row (still
+    // pre-paint), so the page below never moves. Written through the CSSOM,
+    // not a `style` prop: nothing about it belongs in the SSR markup.
+    const el = containerRef.current;
+    if (el) el.style.minHeight = `${el.offsetHeight}px`;
     setAnimate(true);
     setPlayedCount(0);
   }, []);
@@ -81,6 +104,9 @@ export function LibretaFeed({ events }: { events: LibretaEvent[] }) {
     // observer leaves it false.
     let fired = false;
     const timers: number[] = [];
+    const releaseReservedHeight = () => {
+      el.style.minHeight = "";
+    };
     // Normal path: the chapter crossed the threshold — stage the entries in
     // one by one, ~STEP_MS apart. May fire well after the fallback window if
     // the visitor simply hasn't scrolled there yet — that is expected, not a
@@ -95,6 +121,9 @@ export function LibretaFeed({ events }: { events: LibretaEvent[] }) {
           }, i * STEP_MS),
         );
       }
+      timers.push(
+        window.setTimeout(releaseReservedHeight, (events.length - 1) * STEP_MS + ROW_SETTLE_MS),
+      );
     };
     // Fail-open path: the observer itself never reported back at all — show
     // every entry AT ONCE, exactly like RevealManager's own revealAll() (no
@@ -103,6 +132,7 @@ export function LibretaFeed({ events }: { events: LibretaEvent[] }) {
       if (played) return;
       played = true;
       setPlayedCount(events.length);
+      releaseReservedHeight();
     };
 
     const io = new IntersectionObserver(
@@ -143,7 +173,9 @@ export function LibretaFeed({ events }: { events: LibretaEvent[] }) {
   return (
     <div className="lp-app-body lp-lib-feed" ref={containerRef}>
       {events.map((e, i) => {
-        const played = i < playedCount;
+        // Revealed from the END of the display order: the oldest (last) row
+        // plays first, the newest (first) row plays last.
+        const played = i >= events.length - playedCount;
         const rowClass = [
           "lp-lib-row",
           animate && (played ? "lp-lib-row--in" : "lp-lib-row--pending"),
