@@ -55,6 +55,7 @@ Runnable scripts invoked via `pnpm` commands. All TypeScript unless noted.
 |---|---|
 | `import-indec-localities.ts` | Imports INDEC CPPDyL locality dataset into `ar_localities`. |
 | `import-caba-barrios.ts` | Imports the 48 CABA barrios (Ley 1.777 / Comunas 2005) into `ar_localities`. |
+| `seed-authority-units.ts` | Seeds the draft authority units from the catalogue (one per INDEC department, CABA as one city, one per province) and lists partial grants without widening them. Additive and idempotent; runs in `db:bootstrap` (`pnpm seed:authority-units`, `--dry-run`). |
 
 ## QA / Verification
 

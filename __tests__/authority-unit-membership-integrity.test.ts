@@ -9,8 +9,9 @@
 // national admins without a trace (R2 of the 2026-09-25 audit).
 //
 // C1 (migration 0253) creates `authority_units` + `authority_unit_localities`
-// EMPTY; the structural block below pins what the tables refuse. The sweep
-// stays a known failure until C2 (the seed) fills the membership.
+// EMPTY; the structural block below pins what the tables refuse. C2
+// (scripts/seed-authority-units.ts, run by db:bootstrap) fills the membership,
+// and the sweep at the end holds it whole.
 //
 // Everything that writes runs inside a transaction that is rolled back: the
 // local database is shared, and a membership row can never be deleted.
@@ -19,6 +20,7 @@ import { TransactionRollbackError, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { db } from "@/db";
+import { isGovernableLocality } from "@/lib/place/authority-units-plan";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -76,6 +78,23 @@ async function newUnit(
   return (row as { id: string }).id;
 }
 
+/** Close the locality's active memberships, so a test can place it itself. */
+async function freeLocality(tx: Tx, localityId: string): Promise<void> {
+  await tx.execute(sql`
+    update public.authority_unit_localities set valid_to = now()
+     where locality_id = ${localityId}::uuid and valid_to is null
+  `);
+}
+
+/** The province's provincial unit: the seeded one, or a new one if absent. */
+async function provincialUnit(tx: Tx, provinceCode: string): Promise<string> {
+  const rows = (await tx.execute(sql`
+    select id::text as id from public.authority_units
+     where province_code = ${provinceCode} and kind = 'provincia'
+  `)) as unknown as Array<{ id: string }>;
+  return rows[0]?.id ?? newUnit(tx, "provincia", "provincial", provinceCode, "fence provincia");
+}
+
 // Villa María, Buenos Aires (partido Alberti) and Villa María, Córdoba: the
 // cross-province homonym pair the whole change is fenced with.
 const VILLA_MARIA_BA = "06021060";
@@ -100,6 +119,7 @@ describe("authority unit tables (C1, migration 0253)", () => {
   it("a locality has at most one ACTIVE membership per level", async () => {
     await inRolledBackTx(async (tx) => {
       const loc = await localityByIndecId(tx, VILLA_MARIA_BA);
+      await freeLocality(tx, loc);
       const a = await newUnit(tx, "municipio", "municipal", "AR-B", "fence A");
       const b = await newUnit(tx, "municipio", "municipal", "AR-B", "fence B");
       expect(
@@ -136,7 +156,8 @@ describe("authority unit tables (C1, migration 0253)", () => {
   it("a provincial unit covers its province implicitly and takes no explicit member", async () => {
     await inRolledBackTx(async (tx) => {
       const loc = await localityByIndecId(tx, VILLA_MARIA_BA);
-      const unit = await newUnit(tx, "provincia", "provincial", "AR-B", "fence provincia");
+      await freeLocality(tx, loc);
+      const unit = await provincialUnit(tx, "AR-B");
       expect(
         await errorOf(
           tx,
@@ -150,6 +171,7 @@ describe("authority unit tables (C1, migration 0253)", () => {
   it("the membership level is the unit's, whatever the caller sends", async () => {
     await inRolledBackTx(async (tx) => {
       const loc = await localityByIndecId(tx, VILLA_MARIA_BA);
+      await freeLocality(tx, loc);
       const unit = await newUnit(tx, "municipio", "municipal", "AR-B", "fence level");
       const [row] = (await tx.execute(sql`
         insert into public.authority_unit_localities (unit_id, locality_id, level)
@@ -175,6 +197,7 @@ describe("authority unit tables (C1, migration 0253)", () => {
   it("a membership is closed, never rewritten, deleted or truncated", async () => {
     await inRolledBackTx(async (tx) => {
       const loc = await localityByIndecId(tx, VILLA_MARIA_BA);
+      await freeLocality(tx, loc);
       const a = await newUnit(tx, "municipio", "municipal", "AR-B", "fence close A");
       const b = await newUnit(tx, "municipio", "municipal", "AR-B", "fence close B");
       const [m] = (await tx.execute(sql`
@@ -236,26 +259,56 @@ describe("authority unit tables (C1, migration 0253)", () => {
   });
 });
 
+// Catalogue rows OTHER test files create and delete while the suite runs. The
+// suite runs files in parallel, so the sweep below would see them live and in
+// no unit. Each marker is the one its owning file documents as impossible
+// upstream; none can name a real INDEC or CABA row:
+//   - department code ending in 999 (import-indec-localities, ar-localidades:
+//     "INDEC assigns department 999 nowhere");
+//   - source 'bahra' (department-drill; the catalogue has no BAHRA rows);
+//   - slug prefix 'schematest-' (ar-localities-schema).
+const SYNTHETIC_FIXTURE = sql`(
+  coalesce(l.department_code, '') like '%999'
+  or l.source = 'bahra'
+  or l.locality_slug like 'schematest-%'
+)`;
+
 describe("authority unit membership", () => {
-  it("the catalogue this fence will sweep is populated", async () => {
-    const rows = (await db.execute(sql`
-      select count(*)::int as n from public.ar_localities where removed_at is null
-    `)) as unknown as Array<{ n: number }>;
-    expect(rows[0]?.n).toBeGreaterThan(100);
+  it("the catalogue this fence will sweep is populated, and so is the membership", async () => {
+    const [row] = (await db.execute(sql`
+      select (select count(*)::int from public.ar_localities where removed_at is null) as live,
+             (select count(*)::int from public.authority_unit_localities where valid_to is null) as members
+    `)) as unknown as Array<{ live: number; members: number }>;
+    expect(row?.live).toBeGreaterThan(100);
+    expect(row?.members).toBeGreaterThan(100);
   });
 
-  // Known failure until work unit C2 (localidades-por-id): flip to `it` there.
-  it.fails("every live locality is in exactly one active municipal-level unit", async () => {
+  // Flipped at C2: scripts/seed-authority-units.ts runs in db:bootstrap after
+  // the catalogue import. A red here means a live locality nobody governs (a
+  // re-import added it: re-run the seed, or place it in /admin/localidades)
+  // or one governed twice.
+  it("every live locality is in exactly one active municipal-level unit", async () => {
     const rows = (await db.execute(sql`
-      select l.id::text as id, count(m.unit_id)::int as units
+      select l.id::text as id, l.province_code as "provinceCode", l.locality_name as "localityName",
+             l.department_code as "departmentCode", l.source, count(m.unit_id)::int as units
         from public.ar_localities l
         left join public.authority_unit_localities m
           on m.locality_id = l.id and m.valid_to is null and m.level = 'municipal'
        where l.removed_at is null
+         and not ${SYNTHETIC_FIXTURE}
        group by l.id
       having count(m.unit_id) <> 1
-       limit 20
-    `)) as unknown as Array<{ id: string; units: number }>;
-    expect(rows).toEqual([]);
+    `)) as unknown as Array<{
+      id: string;
+      provinceCode: string;
+      localityName: string;
+      departmentCode: string | null;
+      source: string;
+      units: number;
+    }>;
+    // A row the catalogue guard drops (whole-province aggregate, superseded
+    // source) governs nothing by design — the same predicate the seed uses.
+    const offenders = rows.filter((r) => isGovernableLocality({ ...r, departmentName: null }));
+    expect(offenders.slice(0, 20)).toEqual([]);
   });
 });

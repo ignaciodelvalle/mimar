@@ -37,7 +37,8 @@
  *      in step 2) as the single source of truth. The loose db/*rls*.sql files
  *      remain as readable reference only.
  *   4. Seed reference data + test users via the existing import scripts:
- *      import-indec-localities, import-caba-barrios, seed-test-users.
+ *      import-indec-localities, import-caba-barrios, seed-authority-units,
+ *      seed-test-users.
  *
  * Usage:
  *   pnpm db:bootstrap                  # full bootstrap (1+2+3+4)
@@ -622,6 +623,12 @@ const SEEDS: { path: string; label: string }[] = [
     label: "INDEC localities (~4k rows)",
   },
   { path: "scripts/import-caba-barrios.ts", label: "CABA barrios (48 rows)" },
+  // After the catalogue, which it reads: the authority units (localidades-por-id
+  // C2). A migration cannot do this — ar_localities is imported after them.
+  {
+    path: "scripts/seed-authority-units.ts",
+    label: "Authority units (draft, from INDEC departments)",
+  },
   {
     path: "scripts/seed-test-users.ts",
     label: "Test users (admin/owner/vet/orgadmin/govt)",

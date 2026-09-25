@@ -115,6 +115,7 @@
     "seed:demo": "node --import ./scripts/register-server-only-stub.mjs --import tsx scripts/seed-demo.ts",
     "seed:coverage": "node --import ./scripts/register-server-only-stub.mjs --import tsx scripts/seed-coverage.ts",
     "seed:panorama": "node --import ./scripts/register-server-only-stub.mjs --import tsx scripts/seed-panorama.ts",
+    "seed:authority-units": "node --import ./scripts/register-server-only-stub.mjs --import tsx scripts/seed-authority-units.ts",
     "redistribute:caba-barrios": "node --import ./scripts/register-server-only-stub.mjs --import tsx scripts/redistribute-caba-barrios.ts",
     "seed:pet-photos": "tsx scripts/seed-pet-photos.ts",
     "seed:demo-polish": "tsx scripts/seed-demo-polish.ts",
