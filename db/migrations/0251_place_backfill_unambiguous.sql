@@ -38,7 +38,77 @@
 -- nothing new. The NOTICE lines are the before/after inventory per table.
 -- ROLLBACK (forward): UPDATE <table> SET locality_id = NULL, place_method =
 -- NULL WHERE place_method = 'legacy_unique_name'.
+--
+-- THE REPAIR'S PRE-IMAGE (security review of stage B). The repair script may
+-- rewrite or clear an id the old backfill wrote; `place_resolutions` (0250)
+-- cannot hold the OLD id (its CHECK ties method to the new one), so every
+-- change the repair makes is first recorded here — table, row, old id, new
+-- id, verdict, reason, run — append-only like the resolutions themselves.
+-- The ids carry no FK on purpose: a pre-image must outlive any catalogue row.
 -- ────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.place_repair_preimages (
+  id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_id          uuid        NOT NULL,
+  subject_table   text        NOT NULL CHECK (subject_table IN ('pets', 'cases', 'welfare_reports')),
+  subject_id      uuid        NOT NULL,
+  old_locality_id uuid,
+  new_locality_id uuid,
+  verdict         text        NOT NULL CHECK (verdict IN ('rewrite', 'clear')),
+  reason          text        NOT NULL CHECK (length(reason) <= 1000),
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS place_repair_preimages_subject_idx
+  ON public.place_repair_preimages (subject_table, subject_id);
+
+ALTER TABLE public.place_repair_preimages ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "place_repair_preimages select by admin" ON public.place_repair_preimages;
+CREATE POLICY "place_repair_preimages select by admin"
+  ON public.place_repair_preimages
+  FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE (p.id = (select auth.uid()))
+        AND (p.role = 'admin'::user_role)
+        AND (p.account_type = 'institutional'::text)
+        AND (p.deactivated_at IS NULL)
+        AND (p.deleted_at IS NULL)
+    )
+  );
+
+DROP POLICY IF EXISTS "institutional sessions require aal2" ON public.place_repair_preimages;
+CREATE POLICY "institutional sessions require aal2" ON public.place_repair_preimages
+  AS RESTRICTIVE FOR SELECT TO authenticated
+  USING ((select public.caller_meets_institutional_aal()));
+
+CREATE OR REPLACE FUNCTION public.enforce_place_repair_preimages_append_only()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RAISE EXCEPTION 'place_repair_preimages is append-only: % refused.', TG_OP
+    USING ERRCODE = 'restrict_violation';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS place_repair_preimages_append_only ON public.place_repair_preimages;
+CREATE TRIGGER place_repair_preimages_append_only
+  BEFORE UPDATE OR DELETE ON public.place_repair_preimages
+  FOR EACH ROW
+  EXECUTE FUNCTION public.enforce_place_repair_preimages_append_only();
+
+DROP TRIGGER IF EXISTS place_repair_preimages_no_truncate ON public.place_repair_preimages;
+CREATE TRIGGER place_repair_preimages_no_truncate
+  BEFORE TRUNCATE ON public.place_repair_preimages
+  FOR EACH STATEMENT
+  EXECUTE FUNCTION public.enforce_place_repair_preimages_append_only();
+
+COMMENT ON TABLE public.place_repair_preimages IS
+  'Append-only pre-image of every id scripts/place-repair-homonym-ids.ts rewrote or cleared (localidades-por-id B5, R7).';
 
 DO $$
 DECLARE

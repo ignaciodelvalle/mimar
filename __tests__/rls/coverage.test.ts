@@ -89,6 +89,8 @@ const RLS_REQUIRED: ReadonlyArray<string> = [
   // reason). Platform-admin SELECT only, aal2-restricted.
   "event_places",
   "place_resolutions",
+  // 0251: the R7 repair's append-only pre-images. Admin SELECT only, aal2.
+  "place_repair_preimages",
   // share_telemetry lived here until migration 0167 dropped the table (TEL-1,
   // PO 2026-08-04): collected per-view viewer data that nothing ever read.
   // Alert inbox + triage — deny-all backstop in migration 0111 (Paquete K).

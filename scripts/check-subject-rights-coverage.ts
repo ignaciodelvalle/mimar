@@ -328,6 +328,11 @@ export const CLASSIFICATION: Readonly<Record<string, Classification>> = {
   pet_tags: BOTH_COVERED,
   pet_transfers: BOTH_COVERED,
   pets: BOTH_COVERED,
+  // 0251: the R7 repair's pre-images — row ids, catalogue ids, a verdict and a
+  // script-written reason. Nothing about a natural person.
+  place_repair_preimages: bothExempt(
+    "Pre-image of each place id the R7 repair rewrote: subject row id, old and new catalogue ids, verdict and a script-generated reason.",
+  ),
   // 0250: append-only — a row cannot be anonymised in place.
   place_resolutions: bothGap(
     "`actor_user_id` (the platform admin who resolved a place) and the free-text `reason` they wrote; append-only, so the erasure cannot touch it.",

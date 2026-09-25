@@ -18,9 +18,9 @@
 //   - `resolveBackfillPlace({ province, locality })` gives a historical NAME an
 //     id only when it names exactly one live row — `{ localityId: null }` for
 //     a homonym;
-//   - `decideRepair` audits an id already stored against what the record says
-//     (the spine, the case's own events, the denuncia's `place_entered`), and
-//     never trusts the old id as ground truth.
+//   - `decideRepair` audits an id already stored against what the record says,
+//     and clears only the old script's own fingerprint (see
+//     __tests__/place-repair-homonym-ids.test.ts).
 
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -81,35 +81,5 @@ describe("the historical backfill and a within-province homonym", () => {
   });
 });
 
-describe("the repair of ids the old backfill already wrote", () => {
-  const ALBERTI = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-  const BRAGADO = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-
-  type RepairEntry = {
-    decideRepair: (
-      storedId: string | null,
-      recorded: string | null | undefined,
-    ) => { verdict: string; localityId: string | null };
-  };
-
-  async function decide(storedId: string | null, recorded: string | null | undefined) {
-    const entry = (await import(/* @vite-ignore */ B5_ENTRY)) as RepairEntry;
-    return entry.decideRepair(storedId, recorded);
-  }
-
-  it("keeps an id the record agrees with", async () => {
-    expect(await decide(BRAGADO, BRAGADO)).toEqual({ verdict: "keep", localityId: BRAGADO });
-  });
-
-  it("rewrites Alberti's guessed id to the Bragado row the record names", async () => {
-    expect(await decide(ALBERTI, BRAGADO)).toEqual({ verdict: "rewrite", localityId: BRAGADO });
-  });
-
-  it("rewrites to no row when the record says nothing resolved", async () => {
-    expect(await decide(ALBERTI, null)).toEqual({ verdict: "rewrite", localityId: null });
-  });
-
-  it("clears a guessed id the record is silent about — never trusts it", async () => {
-    expect(await decide(ALBERTI, undefined)).toEqual({ verdict: "clear", localityId: null });
-  });
-});
+// The repair of ids the old backfill already wrote, with its safeguards, is
+// pinned in __tests__/place-repair-homonym-ids.test.ts.

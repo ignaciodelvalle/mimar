@@ -64,6 +64,9 @@ export const FROZEN_CALLERS: Readonly<Record<string, number>> = {
   "lib/infra/jurisdiction-from-text.ts": 2,
   "lib/infra/public-listing-metadata.ts": 1,
   "lib/outreach/pilot-request.ts": 1,
+  // The R7 repair reproduces the deleted backfill's guess to RECOGNISE it
+  // (its fingerprint), never to write it.
+  "scripts/place-repair-homonym-ids.ts": 1,
   "scripts/seed-demo-scenario.ts": 1,
   "scripts/seed-demo-spine.ts": 1,
   "scripts/seed-demo.ts": 1,

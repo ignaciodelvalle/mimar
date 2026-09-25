@@ -346,7 +346,7 @@ inventory.
   with `BYPASSRLS`. `auth.uid()` is NULL there and RLS never fires. **App-layer
   guards are the only defense on this path.**
 - **Layer 2 — RLS, over PostgREST only.**
-  <!-- fact:rls_enabled_tables -->60<!-- /fact --> tables are DECLARED with
+  <!-- fact:rls_enabled_tables -->61<!-- /fact --> tables are DECLARED with
   `ENABLE ROW LEVEL SECURITY` across `db/rls.sql` and `db/migrations`; the live
   catalog reading lives in `__tests__/rls` and is the only authority on a running
   database. <!-- fact:security_definer_functions -->12<!-- /fact --> functions are
