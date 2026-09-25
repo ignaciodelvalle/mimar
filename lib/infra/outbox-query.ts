@@ -33,7 +33,7 @@
 //                              jurisdiction predicate iff scope is provided"
 //                              assertion this contract implies.
 
-import { type SQL, and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
+import { type SQL, and, asc, desc, eq, inArray, lt, ne, sql } from "drizzle-orm";
 
 import { eventNotificationOutbox } from "@/db";
 import type { OutboxStatus, OutboxTargetKind } from "@/db";
@@ -48,7 +48,7 @@ export const VALID_PROVINCE_NAMES = new Set<string>(PROVINCES.map((p) => p.name)
 /** Page size for both /admin/outbox and /gob/outbox. */
 export const OUTBOX_PAGE_LIMIT = 200;
 
-const VALID_STATUS_VALUES: readonly string[] = ["pending", "delivered", "failed"];
+const VALID_STATUS_VALUES: readonly string[] = ["pending", "delivered", "failed", "merged"];
 const VALID_TARGET_KIND_VALUES: readonly string[] = [
   "govt_webhook",
   "eno_authority",
@@ -184,6 +184,9 @@ export function buildOutboxWhere(
   // answer to "show me audit exports inside the legal queue".
   if (filters.preset === "eno") {
     conditions.push(inArray(eventNotificationOutbox.targetKind, [...ENO_PRESET_TARGET_KINDS]));
+    // A merged legacy duplicate is not a legal notice of its own: its content
+    // lives on the case record it points at (migration 0247).
+    conditions.push(ne(eventNotificationOutbox.status, "merged"));
   }
   // Province: only push condition when the value is a known canonical province name.
   if (filters.province && VALID_PROVINCE_NAMES.has(filters.province)) {

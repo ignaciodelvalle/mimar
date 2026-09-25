@@ -29,7 +29,7 @@
 // same pets-join path for consistency. A7 scopes on the outbox row's own
 // target_jurisdiction_province/locality snapshot.
 
-import { and, count, eq, gte, lte, sql } from "drizzle-orm";
+import { and, count, eq, gte, lte, ne, sql } from "drizzle-orm";
 
 // POOL: analyticsDb (session pooler), NOT the OLTP transaction pooler — these are
 // read-only multi-statement dashboard aggregates (fetchEnoSla feeds /admin/programa +
@@ -158,6 +158,9 @@ export async function fetchEnoSla(ctx: ProjectionContext): Promise<EnoSlaMetric>
     eq(eventNotificationOutbox.targetKind, "eno_authority"),
     gte(eventNotificationOutbox.createdAt, since),
     lte(eventNotificationOutbox.createdAt, until),
+    // A merged legacy duplicate (migration 0247) is not a notification of its
+    // own — counting it would inflate `total` with a row nobody sends.
+    ne(eventNotificationOutbox.status, "merged"),
   ];
   if (scope) periodConditions.push(sql`(${scope})`);
 

@@ -4718,7 +4718,15 @@ export const outboxTargetKindEnum = pgEnum("outbox_target_kind", [
   "internal_dashboard",
 ]);
 
-export const outboxStatusEnum = pgEnum("outbox_status", ["pending", "delivered", "failed"]);
+// 'merged' (migration 0247): a legacy duplicate folded into the case record
+// named by merged_into_id. Kept for audit, never delivered (not pending), never
+// counted as delivered or in the on-time period total.
+export const outboxStatusEnum = pgEnum("outbox_status", [
+  "pending",
+  "delivered",
+  "failed",
+  "merged",
+]);
 
 export type OutboxTargetKind = (typeof outboxTargetKindEnum.enumValues)[number];
 export type OutboxStatus = (typeof outboxStatusEnum.enumValues)[number];
@@ -4768,6 +4776,11 @@ export const eventNotificationOutbox = pgTable(
     // linked_at, payload_snapshot, previous_status, previous_delivered_at }.
     // Append-only by construction (the enqueue only ever concatenates).
     linkedSources: jsonb("linked_sources").notNull().default(sql`'[]'::jsonb`),
+    // Set only on a row the legacy backfill folded into a case record
+    // (status 'merged'): the record that now carries its content.
+    mergedIntoId: uuid("merged_into_id").references((): AnyPgColumn => eventNotificationOutbox.id, {
+      onDelete: "set null",
+    }),
   },
   (table) => ({
     // The DB-level guarantee behind enoCaseKey: two writers racing for one

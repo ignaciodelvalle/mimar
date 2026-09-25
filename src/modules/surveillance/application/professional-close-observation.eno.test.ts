@@ -19,10 +19,11 @@
 // No host clock is compared against a `defaultNow()` column: the SLA is checked
 // against the ended event's `occurred_at`, which is the value the close wrote.
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  cases,
   db,
   enoProcessingQueue,
   eventNotificationOutbox,
@@ -35,6 +36,7 @@ import {
 } from "@/db";
 import { enqueueOutboxForEvent } from "@/lib/events/event-outbox-enqueue";
 import { rabiesEnoCaseKey } from "@/lib/events/event-outbox-rules";
+import { buildDeliveryAuditPayload, markOutboxDelivered } from "@/lib/infra/outbox-drainer";
 import { describeEnoNotification } from "@/lib/infra/outbox-list";
 import { ENO_PRESET_TARGET_KINDS } from "@/lib/infra/outbox-query";
 import { generatePublicToken } from "@/lib/infra/publicToken";
@@ -42,6 +44,7 @@ import { recordDiseaseDiagnosisWriter } from "@/src/modules/events/application/w
 import { withMutationOverride } from "../../../../__tests__/_helpers/db-overrides";
 import { getEnoDisease } from "../domain/eno-catalog";
 import type { RabiesObservationOutcome } from "../domain/rabies-observation";
+import { applyEnoCaseBackfill, planEnoCaseBackfill } from "../infrastructure/eno-case-backfill";
 import { SurveillanceRepository } from "../infrastructure/surveillance-repository";
 import { professionalCloseObservation } from "./professional-close-observation";
 
@@ -363,7 +366,7 @@ async function enoRecordsFor(petId: string) {
       slaDueAt: eventNotificationOutbox.slaDueAt,
     })
     .from(eventNotificationOutbox)
-    .where(eq(eventNotificationOutbox.enoCaseKey, rabiesEnoCaseKey(petId)));
+    .where(like(eventNotificationOutbox.enoCaseKey, `rabies:pet:${petId}:%`));
 }
 
 async function diagnoseRabies(pet: { id: string }) {
@@ -482,6 +485,8 @@ describe("one ENO record per rabies case (PO 2026-09-25)", () => {
     const [record] = await enoRecordsFor(pet.id);
     expect(record.id).toBe(first.id);
     expect(record.status).toBe("pending");
+    // The EARLIEST deadline wins even on a re-open: a legal clock never moves later.
+    expect(record.slaDueAt.getTime()).toBe(first.slaDueAt.getTime());
     const closeLink = (record.linkedSources as LinkedSource[]).find(
       (l) => l.source_event_id === close.value.endedEventId,
     );
@@ -497,8 +502,387 @@ describe("one ENO record per rabies case (PO 2026-09-25)", () => {
         sourceEventId: record.sourceEventId,
         targetKind: "govt_webhook",
         slaDueAt: new Date(),
-        enoCaseKey: rabiesEnoCaseKey(pet.id),
+        enoCaseKey: record.enoCaseKey,
       }),
     ).rejects.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIX-25 review: ROUTING. A bite counts WHERE IT HAPPENED — the ENO row follows
+// the bite case's own jurisdiction, never the pet's current registration, and
+// the case key is per (animal, target jurisdiction).
+// ---------------------------------------------------------------------------
+
+const CABA = { province: "CABA", locality: "Palermo" };
+const CORDOBA = { province: "Córdoba", locality: "Córdoba" };
+
+/** A pet registered in Córdoba (its HOME). */
+async function makeCordobaPet(): Promise<{ id: string; publicToken: string }> {
+  const [pet] = await db
+    .insert(pets)
+    .values({
+      publicToken: generatePublicToken(),
+      name: "EnoRabiesClosePet",
+      species: "dog",
+      sex: "male",
+      potentiallyDangerousBreed: false,
+      rabiesObservationStatus: "in_progress",
+      jurisdictionProvince: CORDOBA.province,
+      jurisdictionLocality: CORDOBA.locality,
+    })
+    .returning();
+  createdPetIds.push(pet.id);
+  return { id: pet.id, publicToken: pet.publicToken };
+}
+
+/** A bite case opened WHERE THE BITE HAPPENED, with its observation-started event. */
+async function openBiteCase(
+  petId: string,
+  where: { province: string; locality: string },
+  opts: { closed?: boolean } = {},
+) {
+  const [biteCase] = await db
+    .insert(cases)
+    .values({
+      publicCode: `CAS-T${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+      caseKind: "bite_incident",
+      primarySubjectKind: "registered_pet",
+      primaryPetId: petId,
+      jurisdictionProvince: where.province,
+      jurisdictionLocality: where.locality,
+      // One OPEN bite case per animal (cases_open_per_pet_kind_idx): an earlier
+      // bite is a closed case by the time the next one opens.
+      ...(opts.closed ? { status: "closed" as const, closedAt: new Date() } : {}),
+    })
+    .returning({ id: cases.id });
+  const startedAt = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+  const [started] = await withMutationOverride(async (tx) =>
+    tx
+      .insert(petEvents)
+      .values({
+        petId,
+        eventType: "rabies_observation_started",
+        occurredAt: startedAt,
+        recordedAt: startedAt,
+        recordedByUserId: GOVT_ID,
+        authorRole: "govt",
+        caseId: biteCase.id,
+        payload: {
+          payload_version: 1,
+          bite_event_id: crypto.randomUUID(),
+          incident_severity: "low",
+          observation_started_role: "govt",
+          closure_target_role: "vet",
+          observation_until: new Date(startedAt.getTime() + 10 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+      })
+      .returning({ id: petEvents.id }),
+  );
+  return { caseId: biteCase.id, startedEventId: started.id };
+}
+
+/** A positive close of ONE observation, written through the repository (the ENO writer). */
+async function closePositive(petId: string, bite: { caseId: string; startedEventId: string }) {
+  return db.transaction((tx) =>
+    repo.insertObservationEnded(
+      {
+        petId,
+        eventType: "rabies_observation_ended",
+        occurredAt: new Date(),
+        recordedAt: new Date(),
+        recordedByUserId: GOVT_ID,
+        authorRole: "govt",
+        caseId: bite.caseId,
+        payload: {
+          bite_event_id: null,
+          observation_started_event_id: bite.startedEventId,
+          outcome: "positive_rabies",
+          closed_by_role: "govt",
+          closure_notes: null,
+          death_event_id: null,
+        },
+      } as Parameters<typeof repo.insertObservationEnded>[0],
+      tx,
+    ),
+  );
+}
+
+async function targetsFor(petId: string) {
+  const rows = await enoRecordsFor(petId);
+  const full = await db
+    .select({
+      id: eventNotificationOutbox.id,
+      province: eventNotificationOutbox.targetJurisdictionProvince,
+      locality: eventNotificationOutbox.targetJurisdictionLocality,
+    })
+    .from(eventNotificationOutbox)
+    .where(
+      inArray(
+        eventNotificationOutbox.id,
+        rows.map((r) => r.id),
+      ),
+    );
+  return full;
+}
+
+describe("ENO routing follows the bite, not the pet (PO: a bite counts where it happened)", () => {
+  it("a CABA bite by a Córdoba-home pet → the ENO row is bound for CABA", async () => {
+    const pet = await makeCordobaPet();
+    const bite = await openBiteCase(pet.id, CABA);
+    await closePositive(pet.id, bite);
+
+    const targets = await targetsFor(pet.id);
+    expect(targets).toHaveLength(1);
+    expect(targets[0].province).toBe(CABA.province);
+    expect(targets[0].locality).toBe(CABA.locality);
+  });
+
+  it("diagnosis + positive close of a bite in ONE jurisdiction → one row, bound there", async () => {
+    const pet = await makeCordobaPet();
+    const bite = await openBiteCase(pet.id, CABA);
+    await diagnoseRabies(pet);
+    await closePositive(pet.id, bite);
+
+    const targets = await targetsFor(pet.id);
+    expect(targets).toHaveLength(1);
+    expect(targets[0].province).toBe(CABA.province);
+    expect(await outboxRowsFor(pet.id)).toHaveLength(1);
+  });
+
+  it("bites in TWO jurisdictions → two rows, one per authority, each deduplicated", async () => {
+    const pet = await makeCordobaPet();
+    const inCaba = await openBiteCase(pet.id, CABA, { closed: true });
+    const inCordoba = await openBiteCase(pet.id, CORDOBA);
+    await closePositive(pet.id, inCaba);
+    await closePositive(pet.id, inCordoba);
+    // Replays stay within their own record.
+    await closePositive(pet.id, inCaba);
+
+    const targets = await targetsFor(pet.id);
+    expect(targets.map((t) => t.province).sort()).toEqual([CABA.province, CORDOBA.province].sort());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIX-25 review: THE DRAINER RACE. The drain cron claims a row, delivers it
+// outside any transaction, then marks it delivered. A close that links into
+// the row while delivery is in flight was marked delivered along with the
+// stale copy — the confirmation was never sent. The success write is now
+// conditional on the link count the drainer claimed; a miss re-queues now.
+// ---------------------------------------------------------------------------
+
+describe("drain-outbox: a link that lands mid-delivery is re-sent, not lost", () => {
+  async function claimedCopy(petId: string) {
+    const [record] = await enoRecordsFor(petId);
+    const [row] = await db
+      .select()
+      .from(eventNotificationOutbox)
+      .where(eq(eventNotificationOutbox.id, record.id));
+    return row;
+  }
+
+  it("a close linked after the claim → NOT marked delivered; due again now", async () => {
+    const pet = await makeObservedPet();
+    await diagnoseRabies(pet);
+    // The drainer claims the row (its in-memory copy), and delivery begins…
+    const claimed = await claimedCopy(pet.id);
+    // …while the positive close links into the same record.
+    const close = await closeAsGovt(pet.publicToken, "positive_rabies");
+    expect(close.ok).toBe(true);
+
+    const marked = await markOutboxDelivered(claimed);
+    expect(marked).toBe(false);
+
+    const [row] = await db
+      .select({
+        status: eventNotificationOutbox.status,
+        deliveredAt: eventNotificationOutbox.deliveredAt,
+        nextRetryAt: eventNotificationOutbox.nextRetryAt,
+      })
+      .from(eventNotificationOutbox)
+      .where(eq(eventNotificationOutbox.id, claimed.id));
+    expect(row.status).toBe("pending");
+    expect(row.deliveredAt).toBeNull();
+    // Compared against the host only as an upper bound with the DB's own clock:
+    // the re-queue sets next_retry_at to the database's now().
+    const [{ dbNow }] = await db.execute<{ dbNow: Date }>(sql`select now() as "dbNow"`);
+    expect(new Date(row.nextRetryAt).getTime()).toBeLessThanOrEqual(new Date(dbNow).getTime());
+  });
+
+  it("no concurrent link → the claimed copy is marked delivered", async () => {
+    const pet = await makeObservedPet();
+    await diagnoseRabies(pet);
+    const claimed = await claimedCopy(pet.id);
+    expect(await markOutboxDelivered(claimed)).toBe(true);
+    const [row] = await db
+      .select({ status: eventNotificationOutbox.status })
+      .from(eventNotificationOutbox)
+      .where(eq(eventNotificationOutbox.id, claimed.id));
+    expect(row.status).toBe("delivered");
+  });
+
+  it("the delivery audit payload names every linked source", async () => {
+    const pet = await makeObservedPet();
+    const diagnosis = await diagnoseRabies(pet);
+    const claimed = await claimedCopy(pet.id);
+    const payload = buildDeliveryAuditPayload(claimed);
+    expect(payload.source_event_id).toBe(diagnosis.diagnosisEventId);
+    expect(payload.linked_source_event_ids).toEqual([diagnosis.signalEventId]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIX-25 review: THE LEGACY BACKFILL (scripts/backfill-eno-case-merge.ts →
+// eno-case-backfill.ts). Scoped to this file's animals through `petIds`: the
+// local database is shared.
+// ---------------------------------------------------------------------------
+
+async function legacyEvent(
+  petId: string,
+  eventType: "clinical_info_logged" | "rabies_observation_ended",
+  payload: Record<string, unknown>,
+) {
+  const [row] = await withMutationOverride(async (tx) =>
+    tx
+      .insert(petEvents)
+      .values({
+        petId,
+        eventType,
+        occurredAt: new Date(),
+        recordedAt: new Date(),
+        recordedByUserId: GOVT_ID,
+        authorRole: "govt",
+        payload,
+      })
+      .returning({ id: petEvents.id }),
+  );
+  return row.id;
+}
+
+const LEGACY_DIAGNOSIS = {
+  sub_kind: "disease_diagnosis",
+  title: "Diagnóstico: Rabia",
+  disease_code: "rabies_confirmed",
+};
+const LEGACY_CLOSE = {
+  bite_event_id: null,
+  observation_started_event_id: crypto.randomUUID(),
+  outcome: "positive_rabies",
+  closed_by_role: "govt",
+  closure_notes: null,
+  death_event_id: null,
+};
+
+/** An outbox row as the pre-0247 enqueue wrote it: no key, no links. */
+async function legacyRow(
+  sourceEventId: string,
+  opts: { status: "pending" | "delivered"; slaDueAt: Date; createdAt: Date },
+) {
+  const [row] = await db
+    .insert(eventNotificationOutbox)
+    .values({
+      sourceEventId,
+      targetKind: "govt_webhook",
+      targetJurisdictionProvince: PROVINCE,
+      targetJurisdictionLocality: LOCALITY,
+      payloadSnapshot: { disease_code: "rabies" },
+      slaDueAt: opts.slaDueAt,
+      status: opts.status,
+      deliveredAt: opts.status === "delivered" ? opts.createdAt : null,
+      createdAt: opts.createdAt,
+    })
+    .returning();
+  return row;
+}
+
+describe("legacy backfill: key, merge (never delete), then enqueue orphan closures", () => {
+  it("keys a singleton legacy rabies row", async () => {
+    const pet = await makeObservedPet();
+    const diag = await legacyEvent(pet.id, "clinical_info_logged", LEGACY_DIAGNOSIS);
+    const row = await legacyRow(diag, {
+      status: "delivered",
+      slaDueAt: new Date(Date.now() - 60_000),
+      createdAt: new Date(Date.now() - 120_000),
+    });
+
+    const plan = await planEnoCaseBackfill({ petIds: [pet.id] });
+    expect(plan.singletons).toHaveLength(1);
+    await applyEnoCaseBackfill(plan);
+
+    const [after] = await db
+      .select({ enoCaseKey: eventNotificationOutbox.enoCaseKey })
+      .from(eventNotificationOutbox)
+      .where(eq(eventNotificationOutbox.id, row.id));
+    expect(after.enoCaseKey).toBe(
+      rabiesEnoCaseKey(pet.id, { jurisdictionProvince: PROVINCE, jurisdictionLocality: LOCALITY }),
+    );
+  });
+
+  it("merges a duplicate WITHOUT deleting it: marked merged, pointed at the record, earliest deadline", async () => {
+    const pet = await makeObservedPet();
+    const diag = await legacyEvent(pet.id, "clinical_info_logged", LEGACY_DIAGNOSIS);
+    const close = await legacyEvent(pet.id, "rabies_observation_ended", LEGACY_CLOSE);
+    const earliest = new Date(Date.now() - 10 * 60_000);
+    const keeper = await legacyRow(diag, {
+      status: "delivered",
+      slaDueAt: earliest,
+      createdAt: new Date(Date.now() - 20 * 60_000),
+    });
+    const dup = await legacyRow(close, {
+      status: "pending",
+      slaDueAt: new Date(Date.now() + 60 * 60_000),
+      createdAt: new Date(Date.now() - 5 * 60_000),
+    });
+
+    await applyEnoCaseBackfill(await planEnoCaseBackfill({ petIds: [pet.id] }));
+
+    const rows = await db
+      .select()
+      .from(eventNotificationOutbox)
+      .where(inArray(eventNotificationOutbox.id, [keeper.id, dup.id]));
+    expect(rows).toHaveLength(2); // nothing deleted
+    const record = rows.find((r) => r.id === keeper.id);
+    const merged = rows.find((r) => r.id === dup.id);
+    expect(merged?.status).toBe("merged");
+    expect(merged?.mergedIntoId).toBe(keeper.id);
+    expect(merged?.enoCaseKey).toBeNull();
+
+    expect(record?.status).toBe("pending"); // a member was still pending
+    expect(record?.slaDueAt.getTime()).toBe(earliest.getTime());
+    const [link] = record?.linkedSources as Record<string, unknown>[];
+    expect(link.source_event_id).toBe(close);
+    // The RECORD's own delivery before the re-open is kept, like the live link.
+    expect(link.previous_status).toBe("delivered");
+    expect(link.previous_delivered_at).toBe(keeper.deliveredAt?.toISOString());
+    expect(link.merged_row_status).toBe("pending");
+  });
+
+  it("an orphan positive close links into the legacy record keyed in the same run", async () => {
+    const pet = await makeObservedPet();
+    const diag = await legacyEvent(pet.id, "clinical_info_logged", LEGACY_DIAGNOSIS);
+    const keeper = await legacyRow(diag, {
+      status: "delivered",
+      slaDueAt: new Date(Date.now() - 60_000),
+      createdAt: new Date(Date.now() - 120_000),
+    });
+    const orphan = await legacyEvent(pet.id, "rabies_observation_ended", LEGACY_CLOSE);
+
+    const plan = await planEnoCaseBackfill({ petIds: [pet.id] });
+    expect(plan.orphanClosures.map((c) => c.id)).toEqual([orphan]);
+    await applyEnoCaseBackfill(plan);
+
+    const records = await enoRecordsFor(pet.id);
+    expect(records).toHaveLength(1);
+    expect(records[0].id).toBe(keeper.id);
+    expect((records[0].linkedSources as LinkedSource[]).map((l) => l.source_event_id)).toEqual([
+      orphan,
+    ]);
+
+    // Re-running finds nothing left to do.
+    const again = await planEnoCaseBackfill({ petIds: [pet.id] });
+    expect(again.singletons).toHaveLength(0);
+    expect(again.duplicates).toHaveLength(0);
+    expect(again.orphanClosures).toHaveLength(0);
   });
 });

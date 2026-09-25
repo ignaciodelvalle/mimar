@@ -18,14 +18,23 @@
 -- WHAT
 -- ----
 --   eno_case_key   text, NULL for every rule that cannot name a case (all rules
---                  but rabies today). Rabies is keyed per ANIMAL
---                  ('rabies:pet:<pet uuid>'): the disease is fatal, so one
---                  animal carries at most one rabies case. The key is computed
+--                  but rabies today). Rabies is keyed per (ANIMAL, TARGET
+--                  JURISDICTION) ('rabies:pet:<pet uuid>:<province>|<locality>'):
+--                  the disease is fatal, so one animal carries at most one
+--                  rabies case, and a bite counts where it happened, so each
+--                  authority that must be told gets its own record. The row is
+--                  routed by the bite case's jurisdiction, not the pet's
+--                  (lib/events/eno-target-jurisdiction.ts). The key is computed
 --                  in lib/events/event-outbox-rules.ts, never here.
 --   linked_sources jsonb array. The second writer of a case APPENDS its source
 --                  event (id, type, time, snapshot, and the row's status before
 --                  the link) instead of inserting a row. This is the audit trail
 --                  of the merge.
+--   merged_into_id uuid, and outbox_status gains 'merged': a LEGACY duplicate
+--                  the backfill folded into a record is kept (audit, on-time
+--                  history), marked merged and pointed at its record — never
+--                  deleted. 'merged' is not pending (never delivered again) and
+--                  not delivered (never counted on time).
 --   outbox_eno_case_unique  UNIQUE (target_kind, eno_case_key) WHERE the key
 --                  is not null — the enqueue's ON CONFLICT target, so two
 --                  writers racing for one case cannot both insert.
@@ -38,17 +47,26 @@
 -- -----------
 -- Existing rows keep eno_case_key NULL, so this migration cannot fail on
 -- today's duplicates. scripts/backfill-eno-case-merge.ts (dry-run by default)
--- lists duplicate groups and positive closures with no ENO row, and with
--- --apply keys, merges and creates per the same rule.
+-- keys every case row, marks duplicates merged, and enqueues positive closures
+-- that never got an ENO row, per the same rule.
+--
+-- ADD VALUE runs inside the runner's transaction (PostgreSQL 12+); nothing in
+-- this file uses 'merged', which is what that requires.
 --
 -- Additive, idempotent (IF NOT EXISTS).
 -- ────────────────────────────────────────────────────────────────────────────
+
+ALTER TYPE outbox_status ADD VALUE IF NOT EXISTS 'merged';
 
 ALTER TABLE event_notification_outbox
   ADD COLUMN IF NOT EXISTS eno_case_key text;
 
 ALTER TABLE event_notification_outbox
   ADD COLUMN IF NOT EXISTS linked_sources jsonb NOT NULL DEFAULT '[]'::jsonb;
+
+ALTER TABLE event_notification_outbox
+  ADD COLUMN IF NOT EXISTS merged_into_id uuid
+  REFERENCES event_notification_outbox (id) ON DELETE SET NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS outbox_eno_case_unique
   ON event_notification_outbox (target_kind, eno_case_key)

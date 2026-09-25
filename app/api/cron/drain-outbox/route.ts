@@ -29,7 +29,12 @@ import { and, eq, inArray, lte } from "drizzle-orm";
 import { cronRuns, db, eventNotificationOutbox } from "@/db";
 import { authorizeCronRequest } from "@/lib/domain/cron-auth";
 import { effectiveDeadlineMs } from "@/lib/infra/cron-dispatcher";
-import { MAX_ATTEMPTS, computeNextRetryAt, deliverOutboxRow } from "@/lib/infra/outbox-drainer";
+import {
+  MAX_ATTEMPTS,
+  computeNextRetryAt,
+  deliverOutboxRow,
+  markOutboxDelivered,
+} from "@/lib/infra/outbox-drainer";
 
 export const dynamic = "force-dynamic";
 
@@ -158,16 +163,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         const result = await deliverOutboxRow(row);
 
         if (result.ok) {
-          await db
-            .update(eventNotificationOutbox)
-            .set({
-              status: "delivered",
-              deliveredAt: new Date(),
-              lastAttemptAt: new Date(),
-              attempts: row.attempts + 1,
-            })
-            .where(eq(eventNotificationOutbox.id, row.id));
-          delivered += 1;
+          // Conditional on the link count this run claimed: a case record that
+          // gained a link mid-delivery (a positive close landing on a diagnosis
+          // in flight) is NOT marked delivered from the stale copy — it stays
+          // pending, due now, and the next pass sends the whole record.
+          if (await markOutboxDelivered(row)) {
+            delivered += 1;
+          } else {
+            retried += 1;
+          }
         } else {
           const newAttempts = row.attempts + 1;
           const isExhausted = newAttempts >= MAX_ATTEMPTS;

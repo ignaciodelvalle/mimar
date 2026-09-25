@@ -45,7 +45,7 @@ export const OUTBOX_TARGET_KIND_VALUES = [
   "internal_dashboard",
 ] as const;
 
-export const OUTBOX_STATUS_VALUES = ["pending", "delivered", "failed"] as const;
+export const OUTBOX_STATUS_VALUES = ["pending", "delivered", "failed", "merged"] as const;
 
 type PillTone = "ok" | "neutral" | "danger" | "escalated";
 
@@ -54,6 +54,7 @@ const BREACH_PILL_TONE: Record<BreachCue, PillTone> = {
   ok: "neutral",
   breach: "danger",
   failed: "escalated",
+  merged: "neutral",
 };
 
 const BREACH_PILL_LABEL: Record<BreachCue, string> = {
@@ -61,6 +62,7 @@ const BREACH_PILL_LABEL: Record<BreachCue, string> = {
   ok: "En SLA",
   breach: "Incumplimiento",
   failed: "Fallido",
+  merged: "Unificado",
 };
 
 /**

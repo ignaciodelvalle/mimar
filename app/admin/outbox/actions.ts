@@ -27,13 +27,19 @@ export async function retryOutboxRowAction(
   await requireAdminOrRedirect();
 
   const [row] = await db
-    .select({ id: eventNotificationOutbox.id })
+    .select({ id: eventNotificationOutbox.id, status: eventNotificationOutbox.status })
     .from(eventNotificationOutbox)
     .where(eq(eventNotificationOutbox.id, rowId))
     .limit(1);
 
   if (!row) {
     return { error: "Fila de outbox no encontrada." };
+  }
+  // A merged legacy duplicate (migration 0247) lives on its case record now;
+  // re-opening it would send the same notice twice. The page hides the button
+  // (canRetry); this refuses the hand-posted call too.
+  if (row.status === "merged") {
+    return { error: "Esta fila está unificada en otro registro y no se reenvía." };
   }
 
   const payload = buildRetryPayload();

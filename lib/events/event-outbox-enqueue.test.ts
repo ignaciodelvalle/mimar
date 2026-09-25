@@ -20,7 +20,14 @@ function makeMockTx() {
   // src/modules/surveillance/application/professional-close-observation.eno.test.ts.
   const upserted: InsertedRow[] = [];
 
+  // A case-keyed row reads its bite case to route (eno-target-jurisdiction.ts).
+  // No case here: every read answers nothing, so the row falls back to PET.
+  const chain: Record<string, unknown> = {};
+  for (const m of ["from", "where", "orderBy"]) chain[m] = vi.fn(() => chain);
+  chain.limit = vi.fn(() => Promise.resolve([]));
+
   const tx = {
+    select: vi.fn(() => chain),
     insert: vi.fn().mockReturnValue({
       values: vi.fn().mockImplementation((row: InsertedRow) => {
         inserted.push(row);
@@ -167,7 +174,7 @@ describe("enqueueOutboxForEvent", () => {
       PET,
       NOW,
     );
-    expect(inserted[0].enoCaseKey).toBe("rabies:pet:pet-1");
+    expect(inserted[0].enoCaseKey).toBe("rabies:pet:pet-1:AR-B|La Plata");
     expect(upserted).toHaveLength(1);
   });
 
@@ -191,6 +198,6 @@ describe("enqueueOutboxForEvent", () => {
       PET,
       NOW,
     );
-    expect(b.inserted[0].enoCaseKey).toBe("rabies:pet:pet-1");
+    expect(b.inserted[0].enoCaseKey).toBe("rabies:pet:pet-1:AR-B|La Plata");
   });
 });

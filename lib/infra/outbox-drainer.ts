@@ -8,7 +8,9 @@
 //
 // Spec: docs/superpowers/plans/2026-05-22-event-trust-tier-1.md §4 C.4, C.6, C.7
 
-import { type EventNotificationOutbox, auditLog, db } from "@/db";
+import { and, eq, sql } from "drizzle-orm";
+
+import { type EventNotificationOutbox, auditLog, db, eventNotificationOutbox } from "@/db";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -86,17 +88,7 @@ export async function deliverOutboxRow(row: EventNotificationOutbox): Promise<De
           await db.insert(auditLog).values({
             actorUserId: systemActor.id,
             action: "eno_notification_emitted",
-            payload: {
-              outbox_row_id: row.id,
-              target_kind: row.targetKind,
-              source_event_id: row.sourceEventId,
-              target_jurisdiction_province: row.targetJurisdictionProvince,
-              target_jurisdiction_locality: row.targetJurisdictionLocality,
-              sla_due_at: row.slaDueAt?.toISOString(),
-              would_send: true,
-              v1_noop: true,
-              note: `outbox.${row.targetKind}.would_send — real receiver not yet implemented`,
-            },
+            payload: buildDeliveryAuditPayload(row),
           });
         }
 
@@ -114,6 +106,78 @@ export async function deliverOutboxRow(row: EventNotificationOutbox): Promise<De
       error: err instanceof Error ? err.message : "unknown delivery error",
     };
   }
+}
+
+/** The event ids linked into a case record (migration 0247), in link order. */
+function linkedSourceEventIds(row: Pick<EventNotificationOutbox, "linkedSources">): string[] {
+  const links = Array.isArray(row.linkedSources) ? row.linkedSources : [];
+  return links
+    .map((l) => (l as { source_event_id?: unknown }).source_event_id)
+    .filter((id): id is string => typeof id === "string");
+}
+
+/**
+ * The audit payload of one delivery. Names EVERY source event the record
+ * carries — its own and each one linked into the same case — so the trail
+ * says which facts the authority was actually sent.
+ */
+export function buildDeliveryAuditPayload(row: EventNotificationOutbox) {
+  return {
+    outbox_row_id: row.id,
+    target_kind: row.targetKind,
+    source_event_id: row.sourceEventId,
+    linked_source_event_ids: linkedSourceEventIds(row),
+    target_jurisdiction_province: row.targetJurisdictionProvince,
+    target_jurisdiction_locality: row.targetJurisdictionLocality,
+    sla_due_at: row.slaDueAt?.toISOString(),
+    would_send: true,
+    v1_noop: true,
+    note: `outbox.${row.targetKind}.would_send — real receiver not yet implemented`,
+  };
+}
+
+/**
+ * Mark a claimed row delivered — ONLY if it is still the row that was sent.
+ *
+ * The drain claims a batch, then delivers each row OUTSIDE any transaction
+ * (see the route). A case record can gain a link in that window (a positive
+ * close landing on a diagnosis already in flight, enqueueOutboxForEvent). An
+ * unconditional success write marked the record delivered from the stale copy
+ * and the confirmation was never sent. So the write is conditional on the
+ * link count the drainer claimed; when it misses, the record is left pending
+ * and due NOW, and the next pass delivers the whole record, links included.
+ *
+ * @returns true when marked delivered; false when re-queued.
+ */
+export async function markOutboxDelivered(
+  row: Pick<EventNotificationOutbox, "id" | "attempts" | "linkedSources">,
+  deliveredAt: Date = new Date(),
+): Promise<boolean> {
+  const claimedLinks = Array.isArray(row.linkedSources) ? row.linkedSources.length : 0;
+  const updated = await db
+    .update(eventNotificationOutbox)
+    .set({
+      status: "delivered",
+      deliveredAt,
+      lastAttemptAt: deliveredAt,
+      attempts: row.attempts + 1,
+    })
+    .where(
+      and(
+        eq(eventNotificationOutbox.id, row.id),
+        sql`jsonb_array_length(${eventNotificationOutbox.linkedSources}) = ${claimedLinks}`,
+      ),
+    )
+    .returning({ id: eventNotificationOutbox.id });
+  if (updated.length > 0) return true;
+
+  await db
+    .update(eventNotificationOutbox)
+    .set({ nextRetryAt: sql`now()`, lastAttemptAt: deliveredAt })
+    .where(
+      and(eq(eventNotificationOutbox.id, row.id), eq(eventNotificationOutbox.status, "pending")),
+    );
+  return false;
 }
 
 // ---------------------------------------------------------------------------

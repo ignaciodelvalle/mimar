@@ -11,7 +11,7 @@ import { diseaseCodeToEnoCode, getEnoDisease } from "@/src/modules/surveillance/
 // Types
 // ---------------------------------------------------------------------------
 
-export type BreachCue = "delivered" | "ok" | "breach" | "failed";
+export type BreachCue = "delivered" | "ok" | "breach" | "failed" | "merged";
 
 /** What the legal queue shows per row beside the deadline: which disease, and the statutory window. */
 export type EnoNotificationDetail = {
@@ -173,6 +173,9 @@ export function buildStatusLabel(status: OutboxStatus, targetKind?: string): str
       return "Fallido";
     case "pending":
       return "Pendiente";
+    // A legacy duplicate folded into its case record (migration 0247).
+    case "merged":
+      return "Unificado en otro registro";
     default: {
       const _exhaustive: never = status;
       return String(_exhaustive);
@@ -195,6 +198,8 @@ export function buildBreachCue(status: OutboxStatus, slaDueAt: Date): BreachCue 
       return "delivered";
     case "failed":
       return "failed";
+    case "merged":
+      return "merged";
     case "pending":
       return isSlaBreached(status, slaDueAt) ? "breach" : "ok";
     default: {

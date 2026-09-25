@@ -87,6 +87,7 @@ describe("GET /api/cron/drain-outbox", () => {
     pendingRows: { id: string; attempts: number; nextRetryAt: Date; status: string }[],
     deliverResults: Array<{ ok: boolean; error: string }>,
     maxAttempts = 5,
+    markResults: boolean[] = [],
   ) {
     const built = buildDbMock(pendingRows);
     const { dbMock } = built;
@@ -106,13 +107,23 @@ describe("GET /api/cron/drain-outbox", () => {
 
     const computeNextRetryAtMock = vi.fn().mockReturnValue(new Date(Date.now() + 60_000));
 
+    // The conditional success write (markOutboxDelivered): true = marked
+    // delivered, false = the record gained a link mid-delivery and was re-queued.
+    let markCallIndex = 0;
+    const markDeliveredMock = vi.fn().mockImplementation(() => {
+      const marked = markResults[markCallIndex] ?? true;
+      markCallIndex += 1;
+      return Promise.resolve(marked);
+    });
+
     vi.doMock("@/lib/infra/outbox-drainer", () => ({
       MAX_ATTEMPTS: maxAttempts,
       deliverOutboxRow: deliverMock,
       computeNextRetryAt: computeNextRetryAtMock,
+      markOutboxDelivered: markDeliveredMock,
     }));
 
-    return { deliverMock, ...built };
+    return { deliverMock, markDeliveredMock, ...built };
   }
 
   async function callRoute(headers: Record<string, string>) {
@@ -159,6 +170,20 @@ describe("GET /api/cron/drain-outbox", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toMatchObject({ ok: true, processed: 1, delivered: 1, failed: 0, retried: 0 });
+  });
+
+  it("a row that gained a link mid-delivery is not counted delivered — it is re-queued", async () => {
+    const now = new Date();
+    const { markDeliveredMock } = mockDeps(
+      [{ id: "row-1", attempts: 0, nextRetryAt: now, status: "pending" }],
+      [{ ok: true, error: "" }],
+      5,
+      [false],
+    );
+    const res = await callRoute({ "x-cron-secret": "test-secret" });
+    const body = await res.json();
+    expect(markDeliveredMock).toHaveBeenCalledTimes(1);
+    expect(body).toMatchObject({ processed: 1, delivered: 0, retried: 1 });
   });
 
   it("returns 200 with retried:1 when one row fails delivery but attempts < MAX_ATTEMPTS", async () => {
