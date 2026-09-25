@@ -35,7 +35,7 @@ export const REQUIRED_COLUMNS: readonly RequiredColumn[] = [
 
 /**
  * The required columns absent from `present`, as `table.column`, in list order.
- * Pure: `present` is whatever `information_schema.columns` answered.
+ * Pure: `present` is whatever the catalogue answered.
  */
 export function missingRequiredColumns(
   present: ReadonlyArray<{ table: string; column: string }>,
@@ -48,17 +48,27 @@ export function missingRequiredColumns(
 type SqlExecutor = { execute: (query: ReturnType<typeof sql>) => Promise<unknown> };
 
 /**
- * Ask the database which required columns it lacks. Reads only
- * `information_schema.columns` for the `public` schema; a table that does not
+ * Ask the database which required columns it lacks. Reads the system catalogue
+ * (`pg_attribute` / `pg_class`) for the `public` schema; a table that does not
  * exist at all reports every required column on it as missing.
+ *
+ * NOT `information_schema.columns`: that view lists only the columns the
+ * current role holds a privilege on, so a health check running as a role
+ * without a grant on a guarded table would report present columns as missing
+ * and answer a false 503. The catalogue is readable by every role.
  */
 export async function findMissingRequiredColumns(executor: SqlExecutor): Promise<string[]> {
   const tables = [...new Set(REQUIRED_COLUMNS.map((c) => c.table))];
   const rows = (await executor.execute(sql`
-    select table_name as "table", column_name as "column"
-      from information_schema.columns
-     where table_schema = 'public'
-       and table_name in (${sql.join(
+    select c.relname as "table", a.attname as "column"
+      from pg_catalog.pg_attribute a
+      join pg_catalog.pg_class c on c.oid = a.attrelid
+      join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public'
+       and c.relkind in ('r', 'p')
+       and a.attnum > 0
+       and not a.attisdropped
+       and c.relname in (${sql.join(
          tables.map((t) => sql`${t}`),
          sql`, `,
        )})

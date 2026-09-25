@@ -14,6 +14,7 @@
 //     `/api/health` runs (lib/infra/schema-guard.ts), so a migration that
 //     never reached local is caught here before it is caught on staging.
 
+import { TransactionRollbackError, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { db } from "@/db";
@@ -52,5 +53,27 @@ describe("missingRequiredColumns (pure)", () => {
 describe("findMissingRequiredColumns (local database)", () => {
   it("finds every required column in the local schema", async () => {
     expect(await findMissingRequiredColumns(db)).toEqual([]);
+  });
+
+  // Stage A review: `information_schema.columns` only lists columns the CURRENT
+  // role holds a privilege on. /api/health running as a role with no grant on
+  // a guarded table would read "column missing" and answer a false 503. The
+  // catalogue (`pg_attribute`) answers regardless of privileges. The role switch
+  // lives inside a transaction that is always rolled back.
+  it("does not depend on the caller's privileges on the guarded tables", async () => {
+    let missing: string[] | null = null;
+    await db
+      .transaction(async (tx) => {
+        // `authenticator` (PostgREST's login role) holds no grant on any
+        // public table. Do NOT create a role here: GRANT <role> TO
+        // current_user crashes the local Supabase backend (supautils).
+        await tx.execute(sql`set local role authenticator`);
+        missing = await findMissingRequiredColumns(tx);
+        tx.rollback();
+      })
+      .catch((e: unknown) => {
+        if (!(e instanceof TransactionRollbackError)) throw e;
+      });
+    expect(missing).toEqual([]);
   });
 });
