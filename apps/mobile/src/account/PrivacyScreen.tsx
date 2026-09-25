@@ -10,15 +10,18 @@
 // are gone now: the erasure is a bearer call, and its 200 is what drops the
 // session here.
 //
-// One cost is NOT gone and this screen says so rather than hiding it: THERE IS
-// NO WAY TO SAVE A FILE TO THE PHONE. `expo-file-system` and `expo-sharing` are
-// not dependencies of this app, and adding either means a native module, which
-// means an EAS build — the pipeline that cost six builds and five distinct root
-// causes for the pet photo, and which the board explicitly rules out as a first
-// task. So art. 14 is served two ways that need no module: the file is SHOWN
-// (that is the access right, literally) and handed to the OS share sheet
-// (`react-native`'s own `Share`, core, no dependency). Somebody who wants a
-// `.json` on disk still has the web page, which is why the link stays.
+// THE EXPORT IS A REAL FILE NOW (M13, native build of 2026-10-01). It used to
+// go out as the TEXT of a `Share.share` message, and that had two costs: a
+// JSON document pasted into a chat is not a file anything can import, and a
+// person who dismissed the sheet lost it without a word. Now the bytes are
+// written to `mimar-mis-datos-<fecha>.json` and that file goes to the share
+// sheet — "Guardar en Archivos", Drive, a mail to themselves
+// (`native/file-share.ts`, which also says why `expo-file-system` is safe here).
+//
+// THE SHEET CANNOT SAY WHETHER ANYTHING WAS SAVED. `shareAsync` resolves the
+// same way for "saved to Drive" and "backed out", so this screen does not claim
+// either: when the sheet closes it says, in plain words, that if they closed it
+// without choosing a place the file was not saved, and the button stays.
 //
 // WHY THE EXPORT IS NOT RENDERED IN FULL
 // ---------------------------------------------------------------------------
@@ -39,7 +42,7 @@
 // under a thumb that was aiming at something else.
 
 import { useCallback, useState } from "react";
-import { Share, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import type { MySubjectDataExportV1 } from "@dim/contract/api";
 import { ERASURE_REASON_MAX_LENGTH, ERASURE_REASON_MIN_LENGTH } from "@dim/contract/input";
@@ -48,13 +51,21 @@ import { apiFailureMessage } from "../api/client";
 import { fetchMySubjectDataExport } from "../api/endpoints";
 import { eraseAccount, sessionPort } from "../auth/session-store";
 import { ACCOUNT_DELETION_URL } from "../config/api";
+import { shareTextFile } from "../native/file-share";
 import { Body, Card, Row } from "../ui/components";
 import { FONTS } from "../ui/fonts";
 import { Callout, PrimaryButton, Screen, SecondaryButton, TextField, Title } from "../ui/kit";
 import { ROUTES } from "../ui/routes";
 import { COLORS, LEADING, SPACE, TYPE } from "../ui/theme";
 
-import { type ExportSection, exportSections, exportShareText } from "./subject-data-summary";
+import {
+  EXPORT_FILE_SHEET_CLOSED,
+  type ExportSection,
+  exportFileFailureMessage,
+  exportFileName,
+  exportSections,
+  exportShareText,
+} from "./subject-data-summary";
 
 /**
  * One sentence per failure arm. No arm falls through to a generic shrug, and
@@ -66,6 +77,13 @@ type ExportState =
   | { phase: "ready"; view: MySubjectDataExportV1; sections: ExportSection[] }
   | { phase: "failed"; message: string };
 
+/** How the last attempt to hand the file over went. */
+type FileState =
+  | { phase: "idle" }
+  | { phase: "working" }
+  | { phase: "closed" }
+  | { phase: "failed"; message: string };
+
 type EraseState =
   | { phase: "idle" }
   | { phase: "confirming" }
@@ -74,11 +92,13 @@ type EraseState =
 
 export function PrivacyScreen() {
   const [exportState, setExportState] = useState<ExportState>({ phase: "idle" });
+  const [fileState, setFileState] = useState<FileState>({ phase: "idle" });
   const [erase, setErase] = useState<EraseState>({ phase: "idle" });
   const [reason, setReason] = useState("");
 
   const requestExport = useCallback(async () => {
     setExportState({ phase: "loading" });
+    setFileState({ phase: "idle" });
     const result = await fetchMySubjectDataExport(sessionPort);
     if (result.outcome === "ok") {
       setExportState({
@@ -95,14 +115,17 @@ export function PrivacyScreen() {
   }, []);
 
   const shareExport = useCallback(async (view: MySubjectDataExportV1) => {
-    // BEST-EFFORT AND SILENT ON REFUSAL. `Share.share` rejects when the user
-    // dismisses the sheet, which is not an error and must not be reported as
-    // one — the file is still on the screen behind it.
-    try {
-      await Share.share({ message: exportShareText(view) });
-    } catch {
-      // Dismissed, or no share target. Nothing to say.
-    }
+    setFileState({ phase: "working" });
+    const result = await shareTextFile(exportShareText(view), exportFileName(view.issuedAt), {
+      mimeType: "application/json",
+      UTI: "public.json",
+      dialogTitle: "Guardar mis datos",
+    });
+    setFileState(
+      result.outcome === "closed"
+        ? { phase: "closed" }
+        : { phase: "failed", message: exportFileFailureMessage(result.outcome) },
+    );
   }, []);
 
   const confirmErase = useCallback(async () => {
@@ -163,12 +186,27 @@ export function PrivacyScreen() {
               <Row key={section.key} label={section.label} value={section.summary} />
             ))}
             <Body>
-              Para guardar el archivo completo, compartilo con vos mismo — por correo, o a la app de
-              archivos de tu teléfono.
+              Para guardar el archivo completo, elegí dónde: la app de archivos de tu teléfono,
+              Drive, o un correo a vos mismo.
             </Body>
+            {fileState.phase === "closed" ? (
+              <Callout tone="warn">
+                <Text style={styles.calloutText}>{EXPORT_FILE_SHEET_CLOSED}</Text>
+              </Callout>
+            ) : null}
+            {fileState.phase === "failed" ? (
+              <Callout tone="err">
+                <Text style={styles.calloutText}>{fileState.message}</Text>
+              </Callout>
+            ) : null}
             <View style={styles.actions}>
               <PrimaryButton
-                label="Compartir el archivo"
+                label={
+                  fileState.phase === "working"
+                    ? "Preparando el archivo…"
+                    : "Guardar o compartir el archivo"
+                }
+                disabled={fileState.phase === "working"}
                 onPress={() => void shareExport(exportState.view)}
               />
               <SecondaryButton label="Volver a pedirlo" onPress={() => void requestExport()} />
@@ -247,14 +285,11 @@ export function PrivacyScreen() {
       </Card>
 
       {/* THE WEB LINK STAYS, AS A SECONDARY AFFORDANCE — the same shape
-          `PASSWORD_RECOVERY_URL` took when `/recuperar` went native. It is not
-          dead weight while it sits here: it is the only way to get a real
-          `.json` file onto a device today, and a Play reviewer can still read
-          the destination the Data safety form names. Delete it on the day this
-          app can write a file, and not before. */}
-      <Text style={styles.footnote}>
-        También podés hacer todo esto desde la web, donde el export se descarga como archivo:
-      </Text>
+          `PASSWORD_RECOVERY_URL` took when `/recuperar` went native. This app
+          writes the file itself now (M13), so the link no longer carries the
+          download; it stays because it is the account-deletion URL the Play
+          Data safety form names, and a reviewer must be able to read it here. */}
+      <Text style={styles.footnote}>También podés hacer todo esto desde la web:</Text>
       <Text selectable style={styles.url}>
         {ACCOUNT_DELETION_URL}
       </Text>

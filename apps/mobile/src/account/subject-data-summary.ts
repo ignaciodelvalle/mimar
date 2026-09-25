@@ -51,3 +51,28 @@ export {
 export function exportShareText(view: { subject: Record<string, unknown> }): string {
   return JSON.stringify(view.subject, null, 2);
 }
+
+/**
+ * The export's file name: `mimar-mis-datos-<AAAA-MM-DD>.json`, dated by the
+ * envelope's own `issuedAt` (the day the server minted it, not the day it was
+ * shared). A malformed date falls back to the bare name rather than to
+ * `Invalid Date` in somebody's Drive.
+ */
+export function exportFileName(issuedAt: string): string {
+  const day = /^\d{4}-\d{2}-\d{2}/.exec(issuedAt)?.[0];
+  return day === undefined ? "mimar-mis-datos.json" : `mimar-mis-datos-${day}.json`;
+}
+
+/**
+ * After the share sheet closes. It cannot tell a saved file from a dismissed
+ * sheet, so this says what to do in the second case instead of claiming the first.
+ */
+export const EXPORT_FILE_SHEET_CLOSED =
+  "Si cerraste sin elegir dónde guardarlo, el archivo no se guardó. Podés volver a intentarlo con el mismo botón.";
+
+/** The two ways handing the file over can fail, in words a person can act on. */
+export function exportFileFailureMessage(outcome: "unavailable" | "failed"): string {
+  return outcome === "unavailable"
+    ? "Este teléfono no tiene ninguna app para guardar o compartir el archivo. Podés descargarlo desde la web."
+    : "No pudimos preparar el archivo. Probá de nuevo.";
+}

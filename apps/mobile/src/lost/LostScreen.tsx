@@ -86,7 +86,10 @@ import {
   type LostDraft,
   NO_CONTACT_TITLE,
   NO_CONTACT_TITLE_READ_ONLY,
-  POSTER_UNAVAILABLE_NOTE,
+  POSTER_BUTTON_LABEL,
+  POSTER_CARD_BODY,
+  POSTER_NO_PHOTO_WARNING,
+  POSTER_SHEET_CLOSED,
   REPORT_ACTION_LABEL,
   REPORT_CATEGORY_OPTIONS,
   REPORT_INTRO,
@@ -112,10 +115,12 @@ import {
   lostAdjective,
   noContactWarning,
   noWayToReachYou,
+  posterNotLost,
   reportCategoryLabel,
   shareSearchMessage,
   situationHeadline,
 } from "./lost-view-model";
+import { sharePoster } from "./poster-share";
 
 /**
  * Hand the search to the OS share sheet — the 2 a.m. action this screen exists
@@ -494,12 +499,73 @@ function Overview({
           ))}
       </Card>
 
-      <Card title="Cartel para imprimir">
-        <Body>{POSTER_UNAVAILABLE_NOTE}</Body>
-      </Card>
+      {/* GATED ON `status`, WHICH THE HEADER FORBIDS FOR COMMANDS — and this is
+          not one. It is a READ the server re-checks (`available: false` when the
+          animal is not lost), so a stale status here costs one honest sentence,
+          not a 403. The web's cartel page draws the poster on the same fact. */}
+      {view.status === "lost" ? (
+        <PosterCard publicToken={view.publicToken} petSex={view.petSex} disabled={busy} />
+      ) : null}
 
       <SecondaryButton label="Actualizar" disabled={busy} onPress={onReload} />
     </>
+  );
+}
+
+type PosterState =
+  | { phase: "idle" }
+  | { phase: "working" }
+  | { phase: "closed"; hasPhoto: boolean }
+  | { phase: "failed"; message: string };
+
+/**
+ * "Cartel para imprimir" — the poster as a PDF, into the share sheet (M13).
+ *
+ * Shown only while the animal is lost, as the web's cartel page is. What the
+ * poster says is decided by the server (see `poster-share.ts`); this card only
+ * reports how the attempt went, in words that do not over-claim: the share
+ * sheet cannot tell a sent PDF from a dismissed one, so "closed" never says
+ * "enviado".
+ */
+function PosterCard({
+  publicToken,
+  petSex,
+  disabled,
+}: {
+  publicToken: string;
+  petSex: string | null;
+  disabled: boolean;
+}) {
+  const [state, setState] = useState<PosterState>({ phase: "idle" });
+  const onShare = useCallback(async () => {
+    setState({ phase: "working" });
+    const result = await sharePoster(sessionPort, publicToken);
+    if (result.kind === "closed") setState({ phase: "closed", hasPhoto: result.hasPhoto });
+    else if (result.kind === "not_lost")
+      setState({ phase: "failed", message: posterNotLost(petSex) });
+    else setState({ phase: "failed", message: result.message });
+  }, [petSex, publicToken]);
+
+  return (
+    <Card title="Cartel para imprimir">
+      <Body>{POSTER_CARD_BODY}</Body>
+      {state.phase === "failed" ? (
+        <Callout tone="err">
+          <Body>{state.message}</Body>
+        </Callout>
+      ) : null}
+      {state.phase === "closed" && !state.hasPhoto ? (
+        <Callout tone="warn">
+          <Body>{POSTER_NO_PHOTO_WARNING}</Body>
+        </Callout>
+      ) : null}
+      {state.phase === "closed" ? <Body>{POSTER_SHEET_CLOSED}</Body> : null}
+      <SecondaryButton
+        label={state.phase === "working" ? "Armando el cartel…" : POSTER_BUTTON_LABEL}
+        disabled={disabled || state.phase === "working"}
+        onPress={() => void onShare()}
+      />
+    </Card>
   );
 }
 

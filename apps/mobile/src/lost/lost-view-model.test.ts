@@ -12,7 +12,7 @@ import { CONTENT_REPORT_CATEGORIES } from "@dim/contract/events";
 
 import {
   DISCLOSURE_TITULAR_ONLY_NOTE,
-  POSTER_UNAVAILABLE_NOTE,
+  POSTER_NO_PHOTO_WARNING,
   REPORT_ACTION_LABEL,
   REPORT_CATEGORY_OPTIONS,
   REPORT_INTRO,
@@ -34,6 +34,7 @@ import {
   foundAdjective,
   lostAdjective,
   lostInputCodeMessage,
+  posterNotLost,
   reportCategoryLabel,
   shareSearchMessage,
   situationHeadline,
@@ -400,11 +401,18 @@ describe("the copy every branch owes", () => {
     expect(lostInputCodeMessage(null).length).toBeGreaterThan(0);
   });
 
-  it("explains where the poster lives instead of leaving a gap", () => {
-    // The cartel resolves the titular's own name and phone with a query narrower
-    // than this screen's guard and embeds a server-generated QR; a native copy
-    // would be a second implementation of a privacy filter.
-    expect(POSTER_UNAVAILABLE_NOTE).toContain("web");
+  it("says the poster is gone in the animal's own gender", () => {
+    expect(posterNotLost("female")).toContain("perdida,");
+    expect(posterNotLost("male")).toContain("perdido,");
+    // Unknown sex takes the app's one neutral spelling, as every lost label does.
+    expect(posterNotLost(null)).toContain(lostAdjective(null));
+  });
+
+  it("repeats the web's no-photo warning word for word", () => {
+    // PosterPreview.tsx on the web; a poster without a photo barely works.
+    expect(POSTER_NO_PHOTO_WARNING).toBe(
+      "Sin foto, el cartel pierde casi todo su valor — agregá una antes de imprimir.",
+    );
   });
 });
 

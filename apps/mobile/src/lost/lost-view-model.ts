@@ -656,14 +656,30 @@ export function commandUnchangedLabel(command: LostCommandInput["command"], petS
 }
 
 /**
- * THE POSTER, and why it is not here.
+ * THE POSTER, from the phone (M13).
  *
- * Not an apology and not a TODO: the printable cartel resolves the TITULAR's own
- * name and phone with a query narrower than this screen's guard, filters them
- * through the disclosure preferences, and embeds a server-generated QR — none of
- * which is exposed as JSON. A native copy would be a second implementation of a
- * privacy filter, which is the one kind of duplication this codebase never
- * accepts. Shown to the person rather than left as a gap they hunt for.
+ * It used to live only on the web, and this note said why: the cartel resolves
+ * the TITULAR's own name and phone with a query narrower than this screen's
+ * guard, filters them through the disclosure preferences, and embeds a
+ * server-generated QR — and a native copy would be a second implementation of a
+ * privacy filter. That reason still holds, and it is why the phone now asks the
+ * server for the FINISHED poster (`GET /api/v1/pets/{token}/poster`, the web's
+ * own resolver) and only prints it. See `poster-share.ts`.
  */
-export const POSTER_UNAVAILABLE_NOTE =
-  "El cartel para imprimir se arma desde la web, en el perfil de tu mascota. Todavía no se puede generar desde la app.";
+export const POSTER_CARD_BODY =
+  "Un PDF tamaño A4 con su foto, los datos que elegiste mostrar y el QR de su credencial. Mandalo por WhatsApp o imprimilo.";
+
+export const POSTER_BUTTON_LABEL = "Compartir o imprimir el cartel";
+
+/** After the share sheet closes. It cannot know whether something was sent. */
+export const POSTER_SHEET_CLOSED =
+  "Si cerraste sin elegir una app, podés volver a compartirlo cuando quieras.";
+
+/** The web's pre-print warning, word for word. */
+export const POSTER_NO_PHOTO_WARNING =
+  "Sin foto, el cartel pierde casi todo su valor — agregá una antes de imprimir.";
+
+/** The server says the animal is not lost (any more) — so there is no poster. */
+export function posterNotLost(sex: string | null): string {
+  return `Ya no figura como ${lostAdjective(sex)}, así que no hay cartel para armar. Actualizá la pantalla.`;
+}

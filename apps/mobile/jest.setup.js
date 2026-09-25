@@ -125,3 +125,54 @@ jest.mock("@react-native-community/datetimepicker", () => {
     DateTimePickerAndroid,
   };
 });
+
+// The three file modules behind the poster PDF and the art. 14 export (M13):
+// `expo-print`, `expo-sharing`, `expo-file-system`. Spies, for the reason the
+// date picker above is one — each reaches a native module that does not exist
+// under Jest — and GLOBAL, because `native/file-share.ts` imports all three at
+// the top and every screen test that renders LostScreen or PrivacyScreen would
+// otherwise crash on the import.
+//
+// The defaults are the HAPPY path (a PDF is written, a share target exists, the
+// sheet closes), so a test only states the failure it is about. `File` is a
+// tiny in-memory stand-in: it records what was written so a test can prove the
+// bytes that reached the sheet are the export, not a summary of it.
+jest.mock("expo-print", () => ({
+  printToFileAsync: jest.fn(async () => ({
+    uri: "file:///cache/print-0001.pdf",
+    numberOfPages: 1,
+  })),
+  printAsync: jest.fn(async () => undefined),
+}));
+jest.mock("expo-sharing", () => ({
+  isAvailableAsync: jest.fn(async () => true),
+  shareAsync: jest.fn(async () => undefined),
+}));
+jest.mock("expo-file-system", () => {
+  const written = new Map();
+  class File {
+    constructor(...parts) {
+      this.uri = parts.map((part) => (typeof part === "string" ? part : part.uri)).join("/");
+    }
+    get exists() {
+      return written.has(this.uri);
+    }
+    create() {
+      written.set(this.uri, "");
+    }
+    write(content) {
+      written.set(this.uri, content);
+    }
+    delete() {
+      written.delete(this.uri);
+    }
+    async copy(destination) {
+      written.set(destination.uri, written.get(this.uri) ?? "");
+    }
+  }
+  return {
+    File,
+    Paths: { cache: { uri: "file:///cache" } },
+    __written: written,
+  };
+});

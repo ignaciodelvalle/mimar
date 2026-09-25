@@ -24,6 +24,7 @@ import { createNavigationFake } from "../ui/navigation-fake";
 const mockPush = jest.fn();
 const mockFetch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockSend = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockPoster = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
 /**
  * Every focus callback currently mounted, so a test can fire a RE-focus.
@@ -60,6 +61,7 @@ jest.mock("expo-router", () => ({
 jest.mock("../api/endpoints", () => ({
   fetchPetLostMode: (...args: unknown[]) => mockFetch(...args),
   sendLostCommand: (...args: unknown[]) => mockSend(...args),
+  fetchPetPoster: (...args: unknown[]) => mockPoster(...args),
 }));
 
 jest.mock("../auth/session-store", () => ({ sessionPort: {} }));
@@ -645,10 +647,115 @@ describe("LostScreen — the feed and the poster", () => {
     render(<LostScreen publicToken={TOKEN} />);
     expect(await screen.findByText(/Todavía no hay avistajes/)).toBeOnTheScreen();
   });
+});
 
-  it("says where the printable poster lives instead of leaving a gap", async () => {
+describe("LostScreen — the poster, as a PDF from the phone (M13)", () => {
+  // The file modules are the global spies from jest.setup.js; their defaults
+  // are the happy path (a PDF is written, a share target exists).
+  const Print = require("expo-print") as {
+    printToFileAsync: jest.Mock<(options: unknown) => Promise<{ uri: string }>>;
+  };
+  const Sharing = require("expo-sharing") as {
+    shareAsync: jest.Mock<(uri: string, options?: unknown) => Promise<void>>;
+    isAvailableAsync: jest.Mock<() => Promise<boolean>>;
+  };
+  const POSTER = {
+    payloadVersion: 1,
+    publicToken: TOKEN,
+    available: true,
+    petName: "Pampa",
+    hasPhoto: true,
+    html: "<!doctype html><html><body><h1>Pampa</h1></body></html>",
+  };
+
+  beforeEach(() => {
+    mockPoster.mockReset();
+    mockPoster.mockResolvedValue(ok(POSTER));
+    Print.printToFileAsync.mockClear();
+    Sharing.shareAsync.mockReset();
+    Sharing.shareAsync.mockResolvedValue(undefined);
+    Sharing.isAvailableAsync.mockResolvedValue(true);
+    mockFetch.mockResolvedValue(ok(searching()));
+  });
+
+  async function pressPoster() {
     render(<LostScreen publicToken={TOKEN} />);
-    expect(await screen.findByText(/cartel para imprimir se arma desde la web/i)).toBeOnTheScreen();
+    fireEvent.press(await screen.findByText("Compartir o imprimir el cartel"));
+  }
+
+  it("is not offered for an animal that is not lost — the web draws it on the same fact", async () => {
+    mockFetch.mockResolvedValue(ok(payload()));
+    render(<LostScreen publicToken={TOKEN} />);
+    expect(await screen.findByText("Marcar como perdida")).toBeOnTheScreen();
+    expect(screen.queryByText("Compartir o imprimir el cartel")).toBeNull();
+    // And the old "desde la web" apology is gone.
+    expect(screen.queryByText(/se arma desde la web/)).toBeNull();
+  });
+
+  it("prints the SERVER's poster to an A4 PDF and shares that file", async () => {
+    await pressPoster();
+    await waitFor(() => expect(Sharing.shareAsync).toHaveBeenCalledTimes(1));
+    expect(mockPoster).toHaveBeenCalledWith(expect.anything(), TOKEN);
+    expect(Print.printToFileAsync).toHaveBeenCalledWith({
+      html: POSTER.html,
+      width: 595,
+      height: 842,
+    });
+    const [uri, options] = Sharing.shareAsync.mock.calls[0] as [string, { mimeType: string }];
+    expect(uri).toBe("file:///cache/cartel-pampa.pdf");
+    expect(options.mimeType).toBe("application/pdf");
+    // The sheet cannot say whether it was sent; the card says what to do if not.
+    expect(await screen.findByText(/podés volver a compartirlo/)).toBeOnTheScreen();
+    expect(screen.queryByText(/Sin foto/)).toBeNull();
+  });
+
+  it("names the PDF after the animal, accents folded, so it is findable in WhatsApp", async () => {
+    mockPoster.mockResolvedValue(ok({ ...POSTER, petName: "Ñandú Pérez" }));
+    await pressPoster();
+    await waitFor(() => expect(Sharing.shareAsync).toHaveBeenCalledTimes(1));
+    expect(Sharing.shareAsync.mock.calls[0]?.[0]).toBe("file:///cache/cartel-nandu-perez.pdf");
+  });
+
+  it("repeats the web's no-photo warning when the poster has no photo", async () => {
+    mockPoster.mockResolvedValue(ok({ ...POSTER, hasPhoto: false }));
+    await pressPoster();
+    expect(
+      await screen.findByText(/Sin foto, el cartel pierde casi todo su valor/),
+    ).toBeOnTheScreen();
+  });
+
+  it("says why when the PDF cannot be rendered, and shares nothing", async () => {
+    Print.printToFileAsync.mockRejectedValueOnce(new Error("webview gone"));
+    await pressPoster();
+    expect(
+      await screen.findByText("No pudimos armar el PDF del cartel. Probá de nuevo."),
+    ).toBeOnTheScreen();
+    expect(Sharing.shareAsync).not.toHaveBeenCalled();
+  });
+
+  it("says so when the phone has no app to share or print with", async () => {
+    Sharing.isAvailableAsync.mockResolvedValue(false);
+    await pressPoster();
+    expect(
+      await screen.findByText(/no tiene ninguna app para compartir o imprimir/),
+    ).toBeOnTheScreen();
+  });
+
+  it("reports a failed read in the app's own words, not as a closed sheet", async () => {
+    mockPoster.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
+    await pressPoster();
+    expect(await screen.findByText(/Revisá tu conexión/)).toBeOnTheScreen();
+    expect(Print.printToFileAsync).not.toHaveBeenCalled();
+    expect(screen.queryByText(/podés volver a compartirlo/)).toBeNull();
+  });
+
+  it("says the search is over when the server has no poster any more", async () => {
+    mockPoster.mockResolvedValue(
+      ok({ payloadVersion: 1, publicToken: TOKEN, available: false, petName: "Pampa" }),
+    );
+    await pressPoster();
+    expect(await screen.findByText(/Ya no figura como perdida/)).toBeOnTheScreen();
+    expect(Print.printToFileAsync).not.toHaveBeenCalled();
   });
 });
 

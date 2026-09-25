@@ -28,7 +28,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react-nativ
 
 const mockFetchExport = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockEraseAccount = jest.fn<(...args: unknown[]) => Promise<unknown>>();
-const mockShare = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
 jest.mock("../api/endpoints", () => ({
   fetchMySubjectDataExport: (...args: unknown[]) => mockFetchExport(...args),
@@ -39,14 +38,20 @@ jest.mock("../auth/session-store", () => ({
   sessionPort: { accessToken: async () => "t" },
 }));
 
-// SPIED, NOT `jest.mock`ed. `Share` is a namespace object on the `react-native`
-// barrel and the module that backs it has moved between RN versions; a path
-// mock silently stops intercepting on an upgrade and the case would go green
-// against the real share sheet doing nothing under test. Replacing the method on
-// the object the screen actually imports cannot miss.
-import { Share } from "react-native";
+// The file modules are the global spies from jest.setup.js (M13). The export
+// now leaves as a FILE: `__written` is the in-memory file system's record of
+// what was written where, so the case below can prove the bytes on disk are the
+// export itself.
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 
 import { PrivacyScreen } from "./PrivacyScreen";
+
+const shareAsync = Sharing.shareAsync as unknown as jest.Mock<
+  (uri: string, options?: unknown) => Promise<void>
+>;
+const isAvailableAsync = Sharing.isAvailableAsync as unknown as jest.Mock<() => Promise<boolean>>;
+const written = () => (FileSystem as unknown as { __written: Map<string, string> }).__written;
 
 const READY_EXPORT = {
   payloadVersion: 1 as const,
@@ -58,9 +63,10 @@ const READY_EXPORT = {
 beforeEach(() => {
   mockFetchExport.mockReset();
   mockEraseAccount.mockReset();
-  mockShare.mockReset();
-  mockShare.mockResolvedValue({ action: "sharedAction" });
-  (Share as unknown as { share: unknown }).share = mockShare;
+  shareAsync.mockClear();
+  shareAsync.mockResolvedValue(undefined);
+  isAvailableAsync.mockResolvedValue(true);
+  written().clear();
 });
 
 describe("art. 14 — descargar mis datos", () => {
@@ -138,19 +144,55 @@ describe("art. 14 — descargar mis datos", () => {
     });
   });
 
-  it("hands the raw JSON to the OS share sheet, unaltered", async () => {
+  async function openFileSheet() {
     mockFetchExport.mockResolvedValue({ outcome: "ok", payload: READY_EXPORT });
     render(<PrivacyScreen />);
-
     fireEvent.press(screen.getByText("Pedir mis datos"));
-    await waitFor(() => expect(screen.getByText("Compartir el archivo")).toBeTruthy());
-    fireEvent.press(screen.getByText("Compartir el archivo"));
+    await waitFor(() => expect(screen.getByText("Guardar o compartir el archivo")).toBeTruthy());
+    fireEvent.press(screen.getByText("Guardar o compartir el archivo"));
+  }
+
+  it("writes the raw JSON to a dated .json FILE and hands that file to the sheet", async () => {
+    await openFileSheet();
+
+    await waitFor(() => expect(shareAsync).toHaveBeenCalledTimes(1));
+    const [uri, options] = shareAsync.mock.calls[0] as [string, { mimeType: string }];
+    expect(uri).toBe("file:///cache/mimar-mis-datos-2026-08-29.json");
+    expect(options.mimeType).toBe("application/json");
+    // The bytes on disk are the export, unaltered — not a message, not a summary.
+    expect(written().get(uri)).toBe(JSON.stringify(READY_EXPORT.subject, null, 2));
+  });
+
+  it("says, after the sheet closes, that closing it without a choice saved nothing", async () => {
+    // The sheet cannot tell a saved file from a dismissed one; the screen must
+    // not stay silent (the old Share.share path lost the export without a word).
+    await openFileSheet();
 
     await waitFor(() => {
-      expect(mockShare).toHaveBeenCalledWith({
-        message: JSON.stringify(READY_EXPORT.subject, null, 2),
-      });
+      expect(screen.getByText(/el archivo no se guardó/)).toBeTruthy();
     });
+    // And the way back is still there.
+    expect(screen.getByText("Guardar o compartir el archivo")).toBeTruthy();
+  });
+
+  it("says so when the phone has nowhere to send a file", async () => {
+    isAvailableAsync.mockResolvedValue(false);
+    await openFileSheet();
+
+    await waitFor(() => {
+      expect(screen.getByText(/no tiene ninguna app para guardar o compartir/)).toBeTruthy();
+    });
+    expect(shareAsync).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed hand-over as a failure, not as a closed sheet", async () => {
+    shareAsync.mockRejectedValue(new Error("activity gone"));
+    await openFileSheet();
+
+    await waitFor(() => {
+      expect(screen.getByText("No pudimos preparar el archivo. Probá de nuevo.")).toBeTruthy();
+    });
+    expect(screen.queryByText(/el archivo no se guardó/)).toBeNull();
   });
 
   it("says why it failed instead of leaving the button spinning", async () => {

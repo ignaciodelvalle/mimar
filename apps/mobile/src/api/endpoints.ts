@@ -97,6 +97,7 @@ import {
   PET_EVENT_DETAIL_PAYLOAD_VERSION,
   PET_LIBRETA_PAYLOAD_VERSION,
   PET_LOST_PAYLOAD_VERSION,
+  PET_POSTER_PAYLOAD_VERSION,
   PET_PROFILE_EDIT_PAYLOAD_VERSION,
   PET_REHOME_PAYLOAD_VERSION,
   PET_RETURN_PAYLOAD_VERSION,
@@ -109,6 +110,7 @@ import {
   type PetMoveRecordedV1,
   type PetPhotoTicketV1,
   type PetPhotoUpdatedV1,
+  type PetPosterV1,
   type PetProfileEditAckV1,
   type PetProfileEditV1,
   type PetRegisteredV1,
@@ -365,6 +367,27 @@ export function fetchPetLibreta(
     {
       path: `/api/v1/pets/${encodeURIComponent(publicToken)}/libreta`,
       expectedPayloadVersion: PET_LIBRETA_PAYLOAD_VERSION,
+    },
+    session,
+  );
+}
+
+/**
+ * `GET /pets/{publicToken}/poster` — the printable lost-pet poster (M13).
+ *
+ * FINISHED HTML, NOT FIELDS. The server resolves the titular's contact through
+ * the disclosure filter the web's cartel page uses and lays the poster out;
+ * this app only turns it into a PDF (`lost/poster-share.ts`). `available:
+ * false` means the animal is not marked lost — a state, not a failure.
+ */
+export function fetchPetPoster(
+  session: SessionPort,
+  publicToken: string,
+): Promise<ApiResult<PetPosterV1>> {
+  return apiRequest<PetPosterV1>(
+    {
+      path: `/api/v1/pets/${encodeURIComponent(publicToken)}/poster`,
+      expectedPayloadVersion: PET_POSTER_PAYLOAD_VERSION,
     },
     session,
   );
