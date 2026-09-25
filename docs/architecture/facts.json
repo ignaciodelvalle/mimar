@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-09-25",
-  "sha": "0946fe4a9",
+  "sha": "f24c40eef",
   "facts": {
     "event_types": {
       "value": 55,
@@ -8,17 +8,17 @@
       "method": "EVENT_TYPES.length, imported. `db/schema.ts:289` re-exports the same array from `@dim/contract/events`, and that re-export is what `__tests__/event-catalog-count.test.ts` imports — so this is the identical array the catalog fence counts, reached without pulling Drizzle into this script."
     },
     "verify_fences": {
-      "value": 78,
+      "value": 79,
       "source": "package.json (the `verify` script string)",
       "method": "distinct `pnpm lint:<key>` tokens matched by /pnpm (lint:[\\w-]+)/g inside the `verify` script string. Counts the fence STEPS only: `pnpm lint` (Biome), `pnpm typecheck`, `pnpm verify:mobile` and `pnpm build` are also in the chain and are not counted here."
     },
     "lint_scripts": {
-      "value": 78,
+      "value": 79,
       "source": "package.json (`scripts`)",
       "method": "keys in `scripts` starting with `lint:`. Compare against `verify_fences`: a lint key that exists but is absent from `verify` is a fence nothing runs — `pnpm lint:ci-parity` is what keeps the two in step."
     },
     "check_scripts": {
-      "value": 85,
+      "value": 86,
       "source": "scripts/check-*.ts",
       "method": "files in `scripts/` matching /^check-.*\\.ts$/. Three sibling fences are written in plain JS (`check-raw-buttons.mjs`, `check-raw-select.mjs`, `check-op-controls.mjs`) and are deliberately NOT in this count, which is about the TypeScript fence corpus."
     },
@@ -88,7 +88,7 @@
       "method": "files ending in `.yml` under `.github/workflows/`. There are no `.yaml` files at this snapshot; if one is added it will not be counted until this method changes."
     },
     "vitest_files": {
-      "value": 1685,
+      "value": 1686,
       "source": "vitest.config.ts -> __tests__/db-reachability.ts",
       "method": "discoverTestFiles().length, imported from the SAME module `vitest.config.ts` feeds into its `include` globs via computeTestPartition(). It walks the repo for /\\.test\\.tsx?$/ skipping node_modules, .next, .git, .claude, apps and e2e — so this is exactly the file set Vitest runs, not an independent glob that could drift from it."
     },
@@ -158,12 +158,12 @@
       "method": "literal occurrences of the service-role factory's name followed by `(` in `.ts`/`.tsx` files under those four trees, excluding the factory's own module. The trailing paren is what makes this a CALL count and not an import count — an `import { … } from` line has no paren. The needle is concatenated at runtime so this generator does not match itself. Every one of these bypasses RLS by design."
     },
     "canon_rows": {
-      "value": 526,
+      "value": 527,
       "source": "docs/architecture/conventions-canon.json",
       "method": "total rows — counted over `rows[]` in the canon JSON, which is the source of truth its markdown is rendered from. The same four numbers appear as `fact:` markers in `docs/architecture/conventions-canon.md` and are cross-checked there by `__tests__/conventions-canon-parity.test.ts`."
     },
     "canon_enforced": {
-      "value": 184,
+      "value": 185,
       "source": "docs/architecture/conventions-canon.json",
       "method": "rows with status ENFORCED — counted over `rows[]` in the canon JSON, which is the source of truth its markdown is rendered from. The same four numbers appear as `fact:` markers in `docs/architecture/conventions-canon.md` and are cross-checked there by `__tests__/conventions-canon-parity.test.ts`."
     },
