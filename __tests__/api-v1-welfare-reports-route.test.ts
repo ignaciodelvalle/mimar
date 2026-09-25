@@ -1332,6 +1332,35 @@ describe("the jurisdiction is resolved the way both of the web's intakes resolve
     });
   });
 
+  // localidades-por-id B1 (P2): a denuncia about an animal that is not
+  // registered writes no event, so the ROW keeps the place as entered and how
+  // it resolved — a homonym typed here survives even though it routes nowhere
+  // below the province.
+  it("stores the place as entered and how it resolved on the row", async () => {
+    const place = {
+      entered: { province: "Buenos Aires", locality: "Mechita", indec_id: null },
+      resolved: null,
+    };
+    control.jurisdiction = {
+      province: "Buenos Aires",
+      locality: null,
+      localityId: null,
+      unverified: true,
+      place,
+      placeMethod: "unresolved",
+    };
+    await post({
+      command: "file",
+      contactMode: "anonymous",
+      ...FACTS,
+      locationProvince: "Buenos Aires",
+      locationLocality: "Mechita",
+    });
+
+    expect(control.inserted[0].placeEntered).toEqual(place);
+    expect(control.inserted[0].placeMethod).toBe("unresolved");
+  });
+
   it("keeps the province canonical on a locality the catalog does not know — soft, like the web", async () => {
     // "soft" is the web's mode for both denuncia intakes: an unknown locality
     // is not a refusal (the person is reporting an animal, not filling a

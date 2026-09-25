@@ -69,6 +69,7 @@ function row(indecId: string): Row {
 /** Where it is routed — without the entered-place record, pinned on its own below. */
 function routing({
   place: _place,
+  placeMethod: _method,
   ...routed
 }: Awaited<ReturnType<typeof resolveDenunciaJurisdiction>>) {
   return routed;
@@ -173,6 +174,41 @@ describe("resolveDenunciaJurisdiction", () => {
   });
 });
 
+// localidades-por-id B1: the denuncia row records HOW its locality_id was
+// decided (welfare_reports.place_method, migration 0248) — the resolver's own
+// method when it named the row, and a unique-name recovery from the form text
+// otherwise. A row with no id says `unresolved`, never a method it did not use.
+describe("how the place was decided is recorded", () => {
+  it("an INDEC id the client resolved is recorded as such", async () => {
+    const out = await resolveDenunciaJurisdiction(
+      loc({
+        provinceCode: "AR-X",
+        locality: "Villa María",
+        localityIndecId: VILLA_MARIA_CORDOBA,
+        ...pinAt(VILLA_MARIA_CORDOBA),
+      }),
+    );
+    expect(out.placeMethod).toBe("indec_id");
+  });
+
+  it("a homonym resolves to no row, and says so", async () => {
+    const out = await resolveDenunciaJurisdiction(
+      loc({ provinceCode: "AR-B", locality: "Mechita", ...pinAt(MECHITA_BRAGADO) }),
+    );
+    expect(out.localityId).toBeNull();
+    expect(out.placeMethod).toBe("unresolved");
+  });
+
+  it("a unique name recovered from the form text is a name match, not the resolver's", async () => {
+    const out = await resolveDenunciaJurisdiction(
+      loc({ address: "Calle 10, Villa María, Córdoba" }),
+    );
+    expect(out.localityId).toBe(row(VILLA_MARIA_CORDOBA).id);
+    expect(out.place.resolved).toBeNull();
+    expect(out.placeMethod).toBe("folded_name_unique");
+  });
+});
+
 describe("the long-form province a geocoder echoes", () => {
   it("is filed under its catalogue name, with the row it names", async () => {
     // Nominatim spells every point inside CABA "Ciudad Autónoma de Buenos
@@ -233,6 +269,10 @@ describe("every denuncia door uses this composition", () => {
     expect(source).not.toMatch(/normalizeLocationForWrite\(loc, \{\s*locality: "soft"/);
     // …and hands the entered place to the use-case (P2).
     expect(source.match(/eventPlace: routable\.place/g)).toHaveLength(2);
+    // …and stores it on the row itself, with how it resolved (B1, 0248): a
+    // denuncia about an unregistered animal has no event to hold it.
+    expect(source.match(/placeEntered: routable\.place,/g)).toHaveLength(2);
+    expect(source.match(/placeMethod: routable\.placeMethod,/g)).toHaveLength(2);
   });
 
   it("POST /api/v1/welfare-reports", () => {
@@ -241,5 +281,7 @@ describe("every denuncia door uses this composition", () => {
     expect(source).not.toMatch(/resolveRoutableJurisdiction\(/);
     expect(source).toMatch(/localityIndecId: input\.locationLocalityIndecId/);
     expect(source.match(/eventPlace: routable\.place/g)).toHaveLength(1);
+    expect(source.match(/placeEntered: routable\.place,/g)).toHaveLength(1);
+    expect(source.match(/placeMethod: routable\.placeMethod,/g)).toHaveLength(1);
   });
 });

@@ -6,8 +6,8 @@
 // later reader tell an INDEC id the person picked from a name that happened to
 // be unique, and both from a place that never resolved at all.
 //
-// The full list is the design's `place_method` CHECK (stage B adds the column);
-// stage A writers only produce the first five. Never add a method that picks
+// The full list is the `place_method` CHECK of migration 0248, in the same
+// order (__tests__/place-columns.test.ts compares them). Never add a method that picks
 // among homonyms: there is no such method, by construction (P1).
 
 export const PLACE_METHODS = [
@@ -21,6 +21,12 @@ export const PLACE_METHODS = [
   "folded_name_unique",
   /** A pin's reverse-geocoded name named ONE row, and the pin corroborates it. */
   "geocode_unique",
+  /**
+   * The pin named no row with certainty, so the person was shown the catalogue
+   * rows near it ("¿Es acá?", homonyms labelled with their department) and
+   * picked one. Explicit, by id — never inferred from the point alone.
+   */
+  "user_picked",
   /** Re-derived from the event spine (a registration or a move that carried the id). */
   "spine_rederived",
   /** Historical backfill of a (province, name) pair that is unique in the catalogue. */

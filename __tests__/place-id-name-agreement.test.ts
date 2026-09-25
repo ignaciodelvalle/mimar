@@ -15,8 +15,9 @@
 //   - the GATE: what `normalizeLocationForWrite` returns with an id is that
 //     id's own name and province, for both modes that honour ids.
 //
-// Stage B (localidades-por-id B1) adds `locality_id` to eight more tables;
-// they join the sweep list there.
+// Stage B (localidades-por-id B1, migration 0248) added `locality_id` and
+// `place_method` to nine more tables; they are in the sweep. A third half
+// checks the method against the id: `unresolved` exactly when there is none.
 
 import { sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -25,8 +26,26 @@ import { db } from "@/db";
 import { normalizeLocationForWrite } from "@/lib/domain/location-normalize";
 import { PROVINCES } from "@/lib/reference/ar-provincias";
 
-/** Tables that carry both the display pair and `locality_id` today. */
-const TABLES_WITH_ID = ["pets", "welfare_reports", "cases", "govt_assignments"] as const;
+/** Tables that carry both the display pair and `locality_id`. */
+const TABLES_WITH_ID = [
+  "pets",
+  "welfare_reports",
+  "cases",
+  "govt_assignments",
+  // migration 0248
+  "organizations",
+  "organization_coverage",
+  "service_offerings",
+  "govt_business_rules",
+  "alert_subscriptions",
+  "alert_firings",
+  "foster_volunteers",
+  "approval_requests",
+  "custody_disputes",
+] as const;
+
+/** Tables that also record HOW the id was decided (0248). */
+const TABLES_WITH_METHOD = TABLES_WITH_ID.filter((t) => t !== "govt_assignments");
 
 type Disagreement = {
   id: string;
@@ -64,6 +83,21 @@ describe("live sweep: a stored id and its stored pair name the same place", () =
   for (const table of TABLES_WITH_ID) {
     it(`${table}: no row's id disagrees with its (province, locality)`, async () => {
       expect(await disagreements(table)).toEqual([]);
+    });
+  }
+});
+
+describe("live sweep: a recorded method agrees with the id", () => {
+  for (const table of TABLES_WITH_METHOD) {
+    it(`${table}: 'unresolved' exactly when there is no id`, async () => {
+      const rows = (await db.execute(sql`
+        select t.id::text as id, t.locality_id::text as locality_id, t.place_method
+          from ${sql.identifier(table)} t
+         where t.place_method is not null
+           and (t.place_method = 'unresolved') = (t.locality_id is not null)
+         limit 20
+      `)) as unknown as Array<Record<string, string | null>>;
+      expect(rows).toEqual([]);
     });
   }
 });

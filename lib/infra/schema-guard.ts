@@ -31,6 +31,8 @@ export const REQUIRED_COLUMNS: readonly RequiredColumn[] = [
   { table: "welfare_reports", column: "locality_id", migration: "0147" },
   { table: "cases", column: "locality_id", migration: "0147" },
   { table: "govt_assignments", column: "locality_id", migration: "0246" },
+  { table: "welfare_reports", column: "place_method", migration: "0248" },
+  { table: "welfare_reports", column: "place_entered", migration: "0248" },
 ];
 
 /**

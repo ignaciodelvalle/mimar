@@ -48,6 +48,15 @@ describe("missingRequiredColumns (pure)", () => {
       ]),
     );
   });
+
+  // localidades-por-id B1: the three denuncia doors write the place as
+  // entered and how it resolved (migration 0248).
+  it("guards the place columns the denuncia doors write since 0248", () => {
+    const from0248 = REQUIRED_COLUMNS.filter((c) => c.migration === "0248").map(
+      (c) => `${c.table}.${c.column}`,
+    );
+    expect(from0248).toEqual(["welfare_reports.place_method", "welfare_reports.place_entered"]);
+  });
 });
 
 describe("findMissingRequiredColumns (local database)", () => {

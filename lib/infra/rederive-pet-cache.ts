@@ -88,6 +88,12 @@
 //     field. At that point the work is extending replayPetJurisdiction (which
 //     returns the three text values today) to carry the id through, not
 //     extending this note.
+//   - placeMethod → HOW locality_id was decided (migration 0248,
+//     localidades-por-id B1). The spine records the method only on events
+//     written since A8 (`place.resolved.method`), and a backfilled id carries
+//     `legacy_unique_name`, which no event says.
+//     REVISIT IF: the method starts feeding a decision (the unresolved queue
+//     reads `unresolved` from the tables, not from pets alone).
 //
 // jurisdictionCountry / _Province / _Locality WERE in neither list until
 // 2026-08-12 — they fell through the gap in silence, which is exactly the
@@ -299,6 +305,9 @@ export const EXCLUDED_CACHE_COLUMNS: Readonly<Record<string, ExcludedCacheColumn
   discloseConditionsPublicly: "projection_pending",
   acquisitionMethod: "projection_pending",
   localityId: "projection_pending",
+  // HOW locality_id was decided (migration 0248). No projection yet: the spine
+  // records the method only on events written since localidades-por-id A8.
+  placeMethod: "projection_pending",
 };
 
 /**

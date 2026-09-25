@@ -1020,6 +1020,10 @@ export async function createWelfareReportAction(
         jurisdictionProvince,
         jurisdictionLocality,
         localityId: jurisdictionLocalityId,
+        // The place as entered and how it resolved (0248, P2): a denuncia
+        // about an unregistered animal writes no event to hold it.
+        placeEntered: routable.place,
+        placeMethod: routable.placeMethod,
         jurisdictionUnverified,
         locationLat,
         locationLng,
@@ -1277,6 +1281,10 @@ export async function createOrgWelfareReportAction(
         jurisdictionProvince,
         jurisdictionLocality,
         localityId: jurisdictionLocalityId,
+        // The place as entered and how it resolved (0248, P2): a denuncia
+        // about an unregistered animal writes no event to hold it.
+        placeEntered: routable.place,
+        placeMethod: routable.placeMethod,
         jurisdictionUnverified,
         locationLat,
         locationLng,

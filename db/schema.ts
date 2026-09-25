@@ -555,7 +555,10 @@ export const pets = pgTable(
     // rows; NULL when the locality does not resolve (centroid fallback keeps it
     // visible). References the uuid PK — not indec_id — so CABA barrios (null
     // indec_id) are attributable too.
-    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "set null" }),
+    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    // HOW locality_id was decided (lib/domain/place.ts; CHECK in migration 0248).
+    // NULL = not recorded. localidades-por-id B1.
+    placeMethod: text("place_method"),
     // Internal seed-provenance marker (migration 0160). NULL for every real pet
     // registration; set ONLY by scripts/seed-*.ts to the generating script's tag
     // ('panorama', 'panorama-hist', 'perf'). Mirrors welfare_reports.seed_tag
@@ -835,6 +838,10 @@ export const organizations = pgTable(
     jurisdictionCountry: text("jurisdiction_country").notNull().default("AR"),
     jurisdictionProvince: text("jurisdiction_province"),
     jurisdictionLocality: text("jurisdiction_locality"),
+    // Which catalogue row, and how (migration 0248, localidades-por-id B1).
+    // Unread until stage D; the name pair above is still the scope key.
+    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    placeMethod: text("place_method"),
     status: orgStatusEnum("status").notNull().default("active"),
     // Public-profile fields (handoff P1-1). Surfaced on /refugios/[orgToken]
     // for verified shelter / rescue_network orgs. Free-form description
@@ -962,6 +969,10 @@ export const organizationCoverage = pgTable(
     // NOT NULL added in migration 0073 (verified zero null rows before applying).
     jurisdictionProvince: text("jurisdiction_province").notNull(),
     jurisdictionLocality: text("jurisdiction_locality"),
+    // Which catalogue row, and how (migration 0248, localidades-por-id B1).
+    // Unread until stage D; the name pair above is still the scope key.
+    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    placeMethod: text("place_method"),
     isPrimary: boolean("is_primary").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1976,7 +1987,14 @@ export const welfareReports = pgTable(
     jurisdictionLocality: text("jurisdiction_locality"),
     // Structural locality-attribution FK (migration 0147). Nullable + additive —
     // mirrors pets.localityId. References the ar_localities uuid PK.
-    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "set null" }),
+    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    // HOW locality_id was decided (lib/domain/place.ts; CHECK in migration 0248).
+    // NULL = not recorded. localidades-por-id B1.
+    placeMethod: text("place_method"),
+    // The place AS ENTERED and AS RESOLVED (lib/events/place-payload.ts). A
+    // denuncia about an unregistered animal writes no event, so this is the
+    // only record of a typed locality that did not resolve (P2). Migration 0248.
+    placeEntered: jsonb("place_entered"),
     // Low-confidence routing mark (migration 0162, PO decision D.11).
     // TRUE = the geocoder was unreachable and the (province, locality) above was
     // read out of the FORM TEXT instead. The report is routed on a GUESS, so the
@@ -2233,7 +2251,7 @@ export const govtAssignments = pgTable(
     // admin picked, so a within-province homonym is not re-resolved to the
     // alphabetically first department. NULL for a whole-province grant and for
     // legacy rows whose name is ambiguous inside their province.
-    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "set null" }),
+    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
     grantedByUserId: uuid("granted_by_user_id").references(() => profiles.id, {
       onDelete: "set null",
     }),
@@ -2314,6 +2332,10 @@ export const approvalRequests = pgTable(
     jurisdictionCountry: text("jurisdiction_country").notNull().default("AR"),
     jurisdictionProvince: text("jurisdiction_province").notNull(),
     jurisdictionLocality: text("jurisdiction_locality").notNull(),
+    // Which catalogue row, and how (migration 0248, localidades-por-id B1).
+    // Unread until stage D; the name pair above is still the scope key.
+    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    placeMethod: text("place_method"),
     payload: jsonb("payload").notNull().default({}),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     decidedByUserId: uuid("decided_by_user_id").references(() => profiles.id, {
@@ -2906,6 +2928,10 @@ export const govtBusinessRules = pgTable(
     jurisdictionCountry: text("jurisdiction_country").notNull().default("AR"),
     jurisdictionProvince: text("jurisdiction_province"),
     jurisdictionLocality: text("jurisdiction_locality"),
+    // Which catalogue row, and how (migration 0248, localidades-por-id B1).
+    // Unread until stage D; the name pair above is still the scope key.
+    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    placeMethod: text("place_method"),
     ruleType: text("rule_type").notNull().$type<GovtBusinessRuleType>(),
     rulePayload: jsonb("rule_payload").notNull(),
     notes: text("notes"),
@@ -3013,6 +3039,10 @@ export const serviceOfferings = pgTable(
     jurisdictionCountry: text("jurisdiction_country").notNull().default("AR"),
     jurisdictionProvince: text("jurisdiction_province"),
     jurisdictionLocality: text("jurisdiction_locality"),
+    // Which catalogue row, and how (migration 0248, localidades-por-id B1).
+    // Unread until stage D; the name pair above is still the scope key.
+    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    placeMethod: text("place_method"),
 
     serviceKind: text("service_kind").notNull(),
     displayName: text("display_name").notNull(),
@@ -3440,6 +3470,10 @@ export const fosterVolunteers = pgTable(
 
     jurisdictionProvince: text("jurisdiction_province"),
     jurisdictionLocality: text("jurisdiction_locality"),
+    // Which catalogue row, and how (migration 0248, localidades-por-id B1).
+    // Unread until stage D; the name pair above is still the scope key.
+    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    placeMethod: text("place_method"),
 
     acceptsDogs: boolean("accepts_dogs").notNull().default(false),
     acceptsCats: boolean("accepts_cats").notNull().default(false),
@@ -3658,6 +3692,10 @@ export const alertSubscriptions = pgTable(
     threshold: numeric("threshold").notNull(),
     jurisdictionProvince: text("jurisdiction_province"),
     jurisdictionLocality: text("jurisdiction_locality"),
+    // Which catalogue row, and how (migration 0248, localidades-por-id B1).
+    // Unread until stage D; the name pair above is still the scope key.
+    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    placeMethod: text("place_method"),
     label: text("label"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -3744,6 +3782,10 @@ export const alertFirings = pgTable(
     observedValue: numeric("observed_value").notNull(),
     jurisdictionProvince: text("jurisdiction_province"),
     jurisdictionLocality: text("jurisdiction_locality"),
+    // Which catalogue row, and how (migration 0248, localidades-por-id B1).
+    // Unread until stage D; the name pair above is still the scope key.
+    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    placeMethod: text("place_method"),
     status: text("status").notNull().default("disparada").$type<AlertFiringStatus>(),
     firedAt: timestamp("fired_at", { withTimezone: true }).notNull().defaultNow(),
     acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
@@ -3868,6 +3910,10 @@ export const custodyDisputes = pgTable(
     jurisdictionCountry: text("jurisdiction_country").notNull().default("AR"),
     jurisdictionProvince: text("jurisdiction_province").notNull(),
     jurisdictionLocality: text("jurisdiction_locality").notNull(),
+    // Which catalogue row, and how (migration 0248, localidades-por-id B1).
+    // Unread until stage D; the name pair above is still the scope key.
+    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    placeMethod: text("place_method"),
     status: text("status").notNull().default("open").$type<DisputeStatus>(),
     resolution: text("resolution").$type<DisputeResolution | null>(),
     resolutionSummary: text("resolution_summary"),
@@ -4338,7 +4384,10 @@ export const cases = pgTable(
     jurisdictionLocality: text("jurisdiction_locality"),
     // Structural locality-attribution FK (migration 0147). Nullable + additive —
     // mirrors pets.localityId. References the ar_localities uuid PK.
-    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "set null" }),
+    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    // HOW locality_id was decided (lib/domain/place.ts; CHECK in migration 0248).
+    // NULL = not recorded. localidades-por-id B1.
+    placeMethod: text("place_method"),
 
     openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
     openedByUserId: uuid("opened_by_user_id").references(() => profiles.id, {
@@ -4746,6 +4795,11 @@ export const eventNotificationOutbox = pgTable(
     // Jurisdiction snapshot at enqueue time — used for webhook routing in v2.
     targetJurisdictionProvince: text("target_jurisdiction_province"),
     targetJurisdictionLocality: text("target_jurisdiction_locality"),
+    // The target place by id, snapshotted at event time (migration 0248).
+    targetLocalityId: uuid("target_locality_id").references(() => arLocalities.id, {
+      onDelete: "restrict",
+    }),
+    targetPlaceMethod: text("target_place_method"),
 
     // Snapshot of the source event payload at enqueue time — decoupled from
     // the live event row so the drainer never needs to re-join pet_events.

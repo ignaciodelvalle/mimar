@@ -24,6 +24,7 @@
 //      pair recovered by the D.11 gate from form text is not a resolution.
 
 import type { LocationValue } from "@/lib/domain/location-value";
+import type { PlaceMethod } from "@/lib/domain/place";
 import type { EventPlace } from "@/lib/events/place-payload";
 import {
   type RoutableJurisdiction,
@@ -43,8 +44,14 @@ const ALWAYS_MARKED: ReadonlySet<UnresolvedReason> = new Set([
 ]);
 
 export type DenunciaJurisdiction = RoutableJurisdiction & {
-  /** The place as entered and as resolved, for the denuncia's event record. */
+  /**
+   * The place as entered and as resolved — for the denuncia's event record
+   * and, since migration 0248, for the row itself (`welfare_reports.
+   * place_entered`): a denuncia about an unregistered animal has no event.
+   */
   place: EventPlace;
+  /** HOW `localityId` was decided (`welfare_reports.place_method`). */
+  placeMethod: PlaceMethod;
 };
 
 export async function resolveDenunciaJurisdiction(
@@ -60,5 +67,26 @@ export async function resolveDenunciaJurisdiction(
     lng: loc.lng,
   });
   const marked = place.unresolvedReason !== null && ALWAYS_MARKED.has(place.unresolvedReason);
-  return { ...routable, unverified: routable.unverified || marked, place: toEventPlace(place) };
+  return {
+    ...routable,
+    unverified: routable.unverified || marked,
+    place: toEventPlace(place),
+    placeMethod: methodOf(place.localityId, place.method, routable.localityId),
+  };
+}
+
+/**
+ * The method behind the id the row stores. The place resolver's own when it
+ * named the row; otherwise an id can only have come from the D.11 recovery of
+ * the form text, which accepts a name only when it names ONE row of its
+ * province (jurisdiction-from-text.ts) — a folded-name match. No id: no method.
+ */
+function methodOf(
+  resolverId: string | null,
+  resolverMethod: PlaceMethod,
+  storedId: string | null,
+): PlaceMethod {
+  if (storedId === null) return "unresolved";
+  if (storedId === resolverId) return resolverMethod;
+  return "folded_name_unique";
 }

@@ -391,6 +391,10 @@ async function fileWelfareReport(userId: string, input: WelfareReportInput) {
         jurisdictionProvince: routable.province,
         jurisdictionLocality: routable.locality,
         localityId: routable.localityId,
+        // The place as entered and how it resolved (0248, P2): a denuncia
+        // about an unregistered animal writes no event to hold it.
+        placeEntered: routable.place,
+        placeMethod: routable.placeMethod,
         jurisdictionUnverified: routable.unverified,
         locationLat: point.locationLat,
         locationLng: point.locationLng,
