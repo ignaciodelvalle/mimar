@@ -66,7 +66,12 @@ export default function PrivacidadPage() {
               >
                 solicitar la eliminación de tu cuenta y sus datos asociados
               </Link>{" "}
-              en cualquier momento (ver &quot;Tus derechos&quot; más abajo).
+              en cualquier momento (ver &quot;Tus derechos&quot; más abajo). Cuando alguien escanea
+              el código QR de una mascota, se registra el escaneo con una zona aproximada (ciudad,
+              provincia y país) que se deduce de la conexión, y si quien escanea tenía la sesión
+              iniciada; no se guarda su dirección IP ni la ubicación de su dispositivo, y el
+              registro no identifica a esa persona. Esos registros se borran automáticamente a los
+              90 días.
             </li>
             <li>
               <strong>Denuncias anónimas:</strong> las denuncias de maltrato pueden enviarse sin
