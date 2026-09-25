@@ -1793,9 +1793,11 @@
   padding-bottom: 12px;
 }
 
-/* last-seen mini-map (cap-anon) — a faithful, lightweight echo of the app's
-   LocationMap (rounded OSM panel + red marker) without loading maplibre-gl on
-   the landing. The pin is exact; a coordinate line reinforces the precision. */
+/* last-seen panel (cap-anon) — the public page's last-seen block for a lost
+   report with a place name and NO coordinates, which is Pampa's case in the
+   seed: a plain panel, a location marker, the place, and "Sin punto exacto en
+   el mapa". It used to draw street tiles, an exact pin and a coordinate pair
+   the seed does not have. */
 .lp .lp-minimap {
   position: relative;
   margin: 6px 16px 0;
@@ -1804,19 +1806,6 @@
   overflow: hidden;
   border: 1px solid var(--color-ln-line);
   background: #e9eee6;
-}
-.lp .lp-minimap-tiles {
-  position: absolute;
-  inset: 0;
-  background-image: repeating-linear-gradient(
-      0deg,
-      transparent 0 27px,
-      rgba(90, 110, 90, 0.1) 27px 28px
-    ), repeating-linear-gradient(90deg, transparent 0 32px, rgba(90, 110, 90, 0.1) 32px 33px),
-    linear-gradient(118deg, transparent 0 39%, #d7e0d0 39% 41%, transparent 41%),
-    linear-gradient(28deg, transparent 0 63%, #d7e0d0 63% 65%, transparent 65%),
-    radial-gradient(circle at 74% 30%, rgba(160, 200, 150, 0.55) 0 16%, transparent 17%),
-    radial-gradient(circle at 20% 78%, rgba(150, 190, 215, 0.5) 0 13%, transparent 14%);
 }
 .lp .lp-minimap-pin {
   position: absolute;

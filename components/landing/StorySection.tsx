@@ -25,7 +25,7 @@ import {
   EstadoConsole,
   LibretaScreen,
   OrgIntakeScreen,
-  VetTurnoScreen,
+  VetVaccineScreen,
 } from "@/components/landing/story-screens";
 import { LnPetPhoto } from "@/components/ui/RegRow";
 import { LnStatusFlag } from "@/components/ui/StatusFlag";
@@ -42,7 +42,7 @@ function chapterDevice(key: string) {
     case "vet":
       return (
         <PhoneFrame>
-          <VetTurnoScreen />
+          <VetVaccineScreen />
         </PhoneFrame>
       );
     case "anon":
@@ -234,8 +234,9 @@ export function StorySection() {
             Muchas manos.
           </h2>
           <p className="lp-lead lp-reveal mx-auto mt-4" data-d="2">
-            Alrededor de Pampa están su dueño, su veterinaria, un refugio y el Estado — todos
-            escriben en la misma miMAR. Esta es su historia, capítulo por capítulo.
+            Alrededor de Pampa están su dueño, su veterinaria, un refugio y el Estado. Los tres
+            primeros escriben en su libreta; el Estado ve el agregado. Esta es su historia,
+            capítulo por capítulo.
           </p>
         </div>
 

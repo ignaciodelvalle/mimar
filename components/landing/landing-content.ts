@@ -289,31 +289,36 @@ export const CHAPTERS: LandingChapter[] = [
     state: "registered",
     side: "r",
     title: "Empieza en casa.",
-    lead: "Martín registra a Pampa: identidad pública con QR y un historial listo para escribirse. Gratuito, en cinco minutos.",
+    lead: `${OWNER_NAME} registra a Pampa: identidad pública con QR y un historial listo para escribirse. Gratuito, en cinco minutos.`,
   },
   {
     key: "vet",
     hand: "Veterinaria",
     state: "ok",
     side: "l",
-    title: "El turno salió de la app.",
-    lead: "Martín reservó por miMAR. La Dra. Romero — matrícula verificada — la vacunó y firmó el evento. Dato fiable, de origen.",
+    // Pampa's libreta has no appointment: what the vet chapter can truthfully
+    // show is the 2022 rabies dose being signed.
+    title: "La vacuna queda firmada.",
+    lead: `La ${VET_SHORT_NAME} — matrícula verificada — le aplica la antirrábica y firma el asiento. Dato fiable, de origen.`,
   },
   {
     key: "anon",
     hand: "Anónimo",
     state: "lost",
     side: "r",
-    title: "Un martes, se pierde.",
-    lead: "Alguien la encuentra en la plaza y escanea su QR. Sin cuenta y sin app: ve lo justo para ayudar y avisa.",
+    // 2024-03-09, the day the seed marks her lost, was a Saturday; the seed's
+    // last_seen_context is "Se soltó en la plaza durante un paseo".
+    title: "Un sábado, se suelta en la plaza.",
+    lead: `${OWNER_NAME} la marca como perdida. Al día siguiente, alguien escanea su QR: sin cuenta y sin app, ve lo justo para ayudar y puede avisar.`,
   },
   {
     key: "refugio",
     hand: "Refugio",
     state: "ok",
     side: "l",
-    title: "La recibe el refugio más cercano.",
-    lead: "Verifican el chip, miMAR dice quién es, y Martín ya está en camino. Custodia devuelta — y registrada.",
+    // The return home is authored by the owner (2024-03-13), not the shelter.
+    title: "La recibe un refugio.",
+    lead: `Leen su chip y miMAR detecta la coincidencia: el refugio confirma que es la misma mascota y registra el ingreso. Dos días después, ${OWNER_NAME} la marca como encontrada.`,
   },
   { key: "estado", hand: "Estado", state: "navy", full: true },
   {
@@ -353,6 +358,31 @@ export const LIBRETA_EVENTS: LibretaEvent[] = PAMPA_EVENTS.flatMap((e) => {
   const { year, month } = splitDate(e.date);
   return [{ year, month, type: e.eventType, by: AUTHOR_BY_ROLE[e.authorRole], ...copy }];
 });
+
+/**
+ * The hero card's back face — a mini libreta: the three newest entries a vet
+ * signed, newest first ("Dra. Marrone · 06/2026"). The rows used to name a
+ * "Vet. M.N. 12.345", a deworming and a "Clínica Recoleta" that are nowhere in
+ * Pampa's record.
+ */
+export const HERO_LIBRETA_ROWS: Array<{ what: string; who: string }> = PAMPA_EVENTS.filter(
+  (e) => e.authorRole === "vet" && e.authorVerified,
+)
+  .slice(-3)
+  .reverse()
+  .map((e) => {
+    const [year = "", month = ""] = e.date.split("-");
+    const p = e.payload;
+    const what =
+      e.eventType === "vaccination_administered"
+        ? str(p.vaccine_name)
+        : e.eventType === "clinical_info_logged"
+          ? str(p.title)
+          : e.eventType === "sterilization_performed"
+            ? "Castración"
+            : "Microchip";
+    return { what, who: `${VET_SHORT_NAME} · ${month}/${year}` };
+  });
 
 // ---------------------------------------------------------------------------
 // Estado console — 24-jurisdiction cartogram (silhouette layout, celeste tint)

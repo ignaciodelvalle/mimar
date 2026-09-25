@@ -53,7 +53,7 @@
 // (PO decision: keep it, make the page around it calmer). Don't "fix" it back
 // to a Poncho display font.
 
-import { PAMPA } from "@/components/landing/landing-content";
+import { HERO_LIBRETA_ROWS, PAMPA } from "@/components/landing/landing-content";
 import { lostThirdPersonPhrase } from "@/lib/utils/format";
 import Image from "next/image";
 import Link from "next/link";
@@ -322,27 +322,17 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                       </span>
                     </div>
 
-                    <div className="lp-hcard-librow">
-                      <span>
-                        <span className="lp-hcard-libwhat">Antirrábica</span>
-                        <span className="lp-hcard-libwho">Vet. M.N. 12.345 · 03/2026</span>
-                      </span>
-                      <span className="lp-hcard-libstamp">FIRMADA</span>
-                    </div>
-                    <div className="lp-hcard-librow">
-                      <span>
-                        <span className="lp-hcard-libwhat">Desparasitación</span>
-                        <span className="lp-hcard-libwho">Vet. M.N. 12.345 · 01/2026</span>
-                      </span>
-                      <span className="lp-hcard-libstamp">FIRMADA</span>
-                    </div>
-                    <div className="lp-hcard-librow">
-                      <span>
-                        <span className="lp-hcard-libwhat">Control anual</span>
-                        <span className="lp-hcard-libwho">Clínica Recoleta · 11/2025</span>
-                      </span>
-                      <span className="lp-hcard-libstamp">FIRMADA</span>
-                    </div>
+                    {/* The three newest vet-signed entries of Pampa's
+                        libreta, from the seed's data module. */}
+                    {HERO_LIBRETA_ROWS.map((row) => (
+                      <div className="lp-hcard-librow" key={`${row.what}-${row.who}`}>
+                        <span>
+                          <span className="lp-hcard-libwhat">{row.what}</span>
+                          <span className="lp-hcard-libwho">{row.who}</span>
+                        </span>
+                        <span className="lp-hcard-libstamp">FIRMADA</span>
+                      </div>
+                    ))}
                     <div className="lp-hcard-libfoot">
                       …y toda su historia, asiento por asiento.
                     </div>

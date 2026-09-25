@@ -43,7 +43,12 @@ export function CrisisBand() {
           </span>
           <span>
             <b>Perdí una mascota</b>
-            <span className="lp-crisis-sub">Activá el modo perdido y alertá a los vecinos.</span>
+            {/* No neighbours are alerted: marking a pet lost notifies the
+                verified orgs whose coverage matches its jurisdiction
+                (lib/infra/lost-pet-broadcast.ts). */}
+            <span className="lp-crisis-sub">
+              Activá el modo perdido: avisamos a las organizaciones verificadas de tu zona.
+            </span>
           </span>
           <span className="lp-ar" aria-hidden="true">
             →
