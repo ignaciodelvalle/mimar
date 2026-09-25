@@ -23,9 +23,12 @@ import {
   profiles,
 } from "@/db";
 import { canDecideRequest } from "@/lib/infra/approval-scope";
+import { generateApprovalRequestToken, generatePublicToken } from "@/lib/infra/publicToken";
+import { generateUniqueToken } from "@/lib/infra/unique-token";
 import { assertTwoPersonRule } from "@/src/modules/organizations/domain/two-person-rule";
 
 import { ctaForApplicant, loadActorAuthority } from "./helpers";
+import { type VetPracticeTokens, provisionVetPractice } from "./provision-vet-practice";
 import type { DecisionResult } from "./types";
 
 export async function approveRequestForAuthority(
@@ -90,9 +93,28 @@ export async function approveRequestForAuthority(
   type PendingNotification = typeof notifications.$inferInsert;
   const pendingNotifications: PendingNotification[] = [];
 
+  // W6 — the tokens a vet's individual practice would need, minted OUTSIDE the
+  // transaction like create-organization.ts does (generateUniqueToken probes
+  // the table). Unused when the vet already has somewhere to write.
+  const practiceTokens: VetPracticeTokens | null =
+    request.type === "role_upgrade_vet"
+      ? {
+          orgPublicToken: await generateUniqueToken(
+            organizations,
+            organizations.publicToken,
+            generatePublicToken,
+          ),
+          verificationPublicToken: await generateUniqueToken(
+            approvalRequests,
+            approvalRequests.publicToken,
+            generateApprovalRequestToken,
+          ),
+        }
+      : null;
+
   try {
     await db.transaction(async (tx) => {
-      const mutationSummary = await applyApprovalMutation(tx, request, actorUserId);
+      const mutationSummary = await applyApprovalMutation(tx, request, actorUserId, practiceTokens);
 
       // GUARDA DE ESTADO EN EL PROPIO UPDATE, y no solo en la lectura previa.
       //
@@ -177,10 +199,14 @@ async function applyApprovalMutation(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   request: ApprovalRequest,
   actorUserId: string,
+  practiceTokens: VetPracticeTokens | null,
 ): Promise<Record<string, unknown>> {
   switch (request.type) {
     case "role_upgrade_vet": {
       if (!request.targetUserId) throw new Error("role_upgrade_vet requires target_user_id.");
+      if (!practiceTokens) throw new Error("role_upgrade_vet requires practice tokens.");
+      // This UPDATE also takes the profile's row lock for the rest of the
+      // transaction — provisionVetPractice relies on it (see its header).
       await tx
         .update(profiles)
         .set({
@@ -189,7 +215,19 @@ async function applyApprovalMutation(
           updatedAt: new Date(),
         })
         .where(eq(profiles.id, request.targetUserId));
-      return { kind: "role_upgrade_vet", target_user_id: request.targetUserId };
+      // W6 / decision 15 — the approved vet gets somewhere to attend, in the
+      // SAME transaction: if the approval rolls back, so does the practice.
+      const practice = await provisionVetPractice(tx, {
+        vetUserId: request.targetUserId,
+        actorUserId,
+        request,
+        tokens: practiceTokens,
+      });
+      return {
+        kind: "role_upgrade_vet",
+        target_user_id: request.targetUserId,
+        practice,
+      };
     }
 
     case "organization_verification": {

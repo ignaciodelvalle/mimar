@@ -6,7 +6,7 @@
 // status flip, the audit_log entry, and the applicant notification.
 
 import { createClient } from "@supabase/supabase-js";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { composeMatriculaApprovalNotes } from "@/app/gob/cola/_lib/matricula-verification";
@@ -100,7 +100,11 @@ async function deleteTestUser(email: string) {
       .select({ orgId: organizationMemberships.organizationId })
       .from(organizationMemberships)
       .where(
-        and(eq(organizationMemberships.userId, uid), eq(organizationMemberships.role, "admin")),
+        and(
+          eq(organizationMemberships.userId, uid),
+          // vet_individual: the practice a matrícula approval provisions (W6).
+          inArray(organizationMemberships.role, ["admin", "vet_individual"]),
+        ),
       );
     for (const { orgId } of adminRows) {
       await db.transaction(async (tx) => {
