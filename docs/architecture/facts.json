@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-09-25",
-  "sha": "db48dc253",
+  "sha": "612e271df",
   "facts": {
     "event_types": {
       "value": 55,
@@ -43,12 +43,12 @@
       "method": "files named exactly `layout.tsx` anywhere under `app/`."
     },
     "migrations": {
-      "value": 248,
+      "value": 249,
       "source": "db/migrations/*.sql",
       "method": "files ending in `.sql` under `db/migrations/`. Migrations are forward-only and immutable, so this only ever grows."
     },
     "tables": {
-      "value": 55,
+      "value": 57,
       "source": "db/schema.ts",
       "method": "literal occurrences of `pgTable(` in `db/schema.ts`. A call-site count, not an import: Drizzle table objects are not collected into any exported registry, so there is nothing to take `.length` of."
     },
@@ -58,12 +58,12 @@
       "method": "literal occurrences of `pgEnum(` in `db/schema.ts`. Same caveat as `tables` — a call-site count for want of a registry."
     },
     "rls_enabled_tables": {
-      "value": 58,
+      "value": 60,
       "source": "db/*.sql + db/migrations/*.sql (declared); the LIVE truth is `__tests__/rls/*`, which reads `pg_class.relrowsecurity`",
       "method": "distinct table names matched by /ALTER TABLE … ENABLE ROW LEVEL SECURITY/i over the whole SQL surface with comments stripped, minus any later DISABLE (there are none at this snapshot). This is the DECLARED count. It is not the number of tables — a table can exist without RLS — and it is not a live catalog reading."
     },
     "security_definer_functions": {
-      "value": 10,
+      "value": 12,
       "source": "db/*.sql + db/migrations/*.sql (declared); the LIVE truth is `__tests__/rls/*`",
       "method": "distinct function names whose `CREATE [OR REPLACE] FUNCTION … $$` header carries `SECURITY DEFINER`, over the whole SQL surface with comments stripped, minus any `DROP FUNCTION` by name. Declared, not read from `pg_proc`."
     },
@@ -88,7 +88,7 @@
       "method": "files ending in `.yml` under `.github/workflows/`. There are no `.yaml` files at this snapshot; if one is added it will not be counted until this method changes."
     },
     "vitest_files": {
-      "value": 1714,
+      "value": 1715,
       "source": "vitest.config.ts -> __tests__/db-reachability.ts",
       "method": "discoverTestFiles().length, imported from the SAME module `vitest.config.ts` feeds into its `include` globs via computeTestPartition(). It walks the repo for /\\.test\\.tsx?$/ skipping node_modules, .next, .git, .claude, apps and e2e — so this is exactly the file set Vitest runs, not an independent glob that could drift from it."
     },

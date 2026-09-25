@@ -3412,6 +3412,61 @@ export const arLocalities = pgTable(
 export type ArgentineLocality = typeof arLocalities.$inferSelect;
 export type NewArgentineLocality = typeof arLocalities.$inferInsert;
 
+// Where each place-bearing event happened, by catalogue id (migration 0250,
+// localidades-por-id B4). A DECLARED PROJECTION of pet_events.payload->place,
+// written by trigger in the event's transaction and rebuildable from the spine
+// with public.project_event_place. Never written by application code.
+export const eventPlaces = pgTable(
+  "event_places",
+  {
+    eventId: uuid("event_id")
+      .primaryKey()
+      .references(() => petEvents.id, { onDelete: "cascade" }),
+    petId: uuid("pet_id")
+      .notNull()
+      .references(() => pets.id, { onDelete: "cascade" }),
+    provinceCode: text("province_code"),
+    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    method: text("method").notNull(),
+    entered: jsonb("entered").notNull(),
+    projectedAt: timestamp("projected_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    localityIdIdx: index("event_places_locality_id_idx")
+      .on(table.localityId)
+      .where(sql`${table.localityId} IS NOT NULL`),
+    provinceCodeIdx: index("event_places_province_code_idx").on(table.provinceCode),
+    petIdIdx: index("event_places_pet_id_idx").on(table.petId),
+  }),
+);
+
+// The one way a place is resolved after the fact (admin queue, catalogue
+// repair) — append-only, UPDATE/DELETE/TRUNCATE refused by trigger (migration
+// 0250). A correction is a new row that supersedes the old one.
+export const placeResolutions = pgTable(
+  "place_resolutions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    subjectTable: text("subject_table").notNull(),
+    subjectId: uuid("subject_id").notNull(),
+    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    method: text("method").notNull(),
+    actorUserId: uuid("actor_user_id"),
+    reason: text("reason"),
+    supersedesId: uuid("supersedes_id").references((): AnyPgColumn => placeResolutions.id, {
+      onDelete: "restrict",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    subjectIdx: index("place_resolutions_subject_idx").on(
+      table.subjectTable,
+      table.subjectId,
+      table.createdAt.desc(),
+    ),
+  }),
+);
+
 // Traceability of every import script execution. Used to debug imports and to
 // surface "last successful sync" on a future admin dashboard.
 export const arLocalitiesImportRuns = pgTable(

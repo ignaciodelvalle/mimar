@@ -84,6 +84,11 @@ const RLS_REQUIRED: ReadonlyArray<string> = [
   "eno_processing_queue",
   "event_notification_outbox",
   "notification_dead_letter", // deny-all, migration 0125 (PII payload recovery surface)
+  // localidades-por-id B4 (0250): the place of each event (a projection of the
+  // spine) and the append-only after-the-fact resolutions (admin actor +
+  // reason). Platform-admin SELECT only, aal2-restricted.
+  "event_places",
+  "place_resolutions",
   // share_telemetry lived here until migration 0167 dropped the table (TEL-1,
   // PO 2026-08-04): collected per-view viewer data that nothing ever read.
   // Alert inbox + triage — deny-all backstop in migration 0111 (Paquete K).

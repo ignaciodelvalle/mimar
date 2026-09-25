@@ -71,9 +71,9 @@
 // WHY "gap" EXISTS AT ALL
 // ---------------------------------------------------------------------------
 // The gap state is the point. A design without it forces every uncovered
-// table into EXEMPT, and there are sixteen tables here that hold real
+// table into EXEMPT, and there are seventeen tables here that hold real
 // subject data the RPCs do not touch. Writing "exempt" next to each of them
-// would be sixteen false statements in the one file whose whole job is to
+// would be seventeen false statements in the one file whose whole job is to
 // stop a false statement about coverage. KNOWN_GAP names the debt, prints it on
 // every run, and still fails on a table with no classification — so the NEXT
 // pet_caretaker_grants cannot arrive unnoticed, and the existing ones cannot be
@@ -84,7 +84,8 @@
 // lowered), and AGENTS.md §6b was still reading "21" on 2026-08-29, forty-six
 // lines above a §7 that already said 17. 0208 closed operator_feed_watermarks,
 // physical_tag_interest and organization_invitations, and 0226 closed
-// notification_dead_letter, so it is sixteen. The
+// notification_dead_letter; 0250 added place_resolutions (append-only, so
+// the erasure cannot reach it), so it is seventeen. The
 // number the CI line prints has always been computed from the list; what used
 // to be maintained by hand — these sentences — is now fenced against it too.
 //
@@ -238,6 +239,16 @@ export const CLASSIFICATION: Readonly<Record<string, Classification>> = {
   eno_processing_queue: bothExempt(
     "Work queue keyed on pet_event_id — status, retries, last error.",
   ),
+  // 0250: projection of pet_events.payload->place, a compliance fact the
+  // erasure keeps (lib/events/payload-privacy.ts classes `place` CF).
+  event_places: {
+    export: gap(
+      "The catalogue place of each of the subject's pets' events, projected from pet_events (which the export does cover); not listed as its own section.",
+    ),
+    erase: exempt(
+      "Compliance fact kept on erasure, exactly as the `place` key of the pet_events payload it projects: province, catalogue locality and the locality name as entered.",
+    ),
+  },
   event_notification_outbox: bothGap(
     "`payload_snapshot` carries a copy of the source event's payload, and `linked_sources` (0247) a copy of every later event linked into the same case.",
   ),
@@ -317,6 +328,10 @@ export const CLASSIFICATION: Readonly<Record<string, Classification>> = {
   pet_tags: BOTH_COVERED,
   pet_transfers: BOTH_COVERED,
   pets: BOTH_COVERED,
+  // 0250: append-only — a row cannot be anonymised in place.
+  place_resolutions: bothGap(
+    "`actor_user_id` (the platform admin who resolved a place) and the free-text `reason` they wrote; append-only, so the erasure cannot touch it.",
+  ),
   // 0208: DELETED. `user_id` is NOT NULL, so the row cannot be anonymised in
   // place — a demand signal is not a lawful basis for keeping a named row.
   physical_tag_interest: BOTH_COVERED,
