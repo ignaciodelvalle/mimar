@@ -3542,6 +3542,38 @@ export const authorityUnits = pgTable(
       .on(table.provinceCode)
       .where(sql`${table.kind} = 'provincia'`),
     provinceIdx: index("authority_units_province_idx").on(table.provinceCode),
+    // Every CHECK of migrations 0253/0254, by the same name: db:bootstrap
+    // pushes this file BEFORE replaying migrations, so on a fresh database
+    // 0253's CREATE TABLE IF NOT EXISTS is skipped and only what is declared
+    // here lands (fenced in __tests__/authority-unit-membership-integrity).
+    kindValid: check(
+      "authority_units_kind_check",
+      sql`${table.kind} IN ('provincia', 'region', 'municipio', 'ciudad', 'comuna', 'departamento')`,
+    ),
+    levelValid: check(
+      "authority_units_level_check",
+      sql`${table.level} IN ('provincial', 'regional', 'municipal', 'submunicipal')`,
+    ),
+    provinceValid: check(
+      "authority_units_province_code_check",
+      sql`${table.provinceCode} ~ '^AR-[A-Z]$'`,
+    ),
+    nameValid: check(
+      "authority_units_name_check",
+      sql`length(btrim(${table.name})) BETWEEN 1 AND 200`,
+    ),
+    statusValid: check(
+      "authority_units_status_check",
+      sql`${table.status} IN ('draft', 'confirmed')`,
+    ),
+    provinciaIsRoot: check(
+      "authority_units_provincia_is_root",
+      sql`${table.kind} <> 'provincia' OR ${table.parentUnitId} IS NULL`,
+    ),
+    confirmedHasDate: check(
+      "authority_units_confirmed_has_date",
+      sql`(${table.status} = 'confirmed') = (${table.confirmedAt} IS NOT NULL)`,
+    ),
     kindLevel: check(
       "authority_units_kind_level",
       sql`(${table.kind} = 'provincia') = (${table.level} = 'provincial') AND (${table.kind} = 'region') = (${table.level} = 'regional')`,
@@ -3579,6 +3611,15 @@ export const authorityUnitLocalities = pgTable(
       .on(table.localityId)
       .where(sql`${table.validTo} IS NULL`),
     unitIdx: index("authority_unit_localities_unit_idx").on(table.unitId),
+    // Same reason as authority_units: declared here by the migrations' names.
+    levelValid: check(
+      "authority_unit_localities_level_check",
+      sql`${table.level} IN ('regional', 'municipal', 'submunicipal')`,
+    ),
+    validRange: check(
+      "authority_unit_localities_check",
+      sql`${table.validTo} IS NULL OR ${table.validTo} >= ${table.validFrom}`,
+    ),
   }),
 );
 

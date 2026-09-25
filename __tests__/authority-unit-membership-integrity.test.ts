@@ -17,9 +17,10 @@
 // local database is shared, and a membership row can never be deleted.
 
 import { TransactionRollbackError, sql } from "drizzle-orm";
+import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
-import { db } from "@/db";
+import { authorityUnitLocalities, authorityUnits, db } from "@/db";
 import { isGovernableLocality } from "@/lib/place/authority-units-plan";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -247,6 +248,32 @@ describe("authority unit tables (C1, migration 0253)", () => {
         ),
       ).toBeNull();
     });
+  });
+
+  // db:bootstrap runs `drizzle-kit push` BEFORE replaying the migrations, so on
+  // a fresh database (CI) 0253's CREATE TABLE IF NOT EXISTS is skipped and its
+  // inline CHECKs never land. Every CHECK the live table carries must also be
+  // declared in db/schema.ts, by the same name.
+  it("every CHECK on the two tables is declared in db/schema.ts", async () => {
+    const live = (await db.execute(sql`
+      select conrelid::regclass::text as tbl, conname
+        from pg_catalog.pg_constraint
+       where contype = 'c'
+         and conrelid in ('public.authority_units'::regclass,
+                          'public.authority_unit_localities'::regclass)
+       order by 1, 2
+    `)) as unknown as Array<{ tbl: string; conname: string }>;
+    const declared = [
+      ...getTableConfig(authorityUnitLocalities).checks.map((c) => ({
+        tbl: "authority_unit_localities",
+        conname: c.name,
+      })),
+      ...getTableConfig(authorityUnits).checks.map((c) => ({
+        tbl: "authority_units",
+        conname: c.name,
+      })),
+    ].sort((a, b) => (a.tbl + a.conname < b.tbl + b.conname ? -1 : 1));
+    expect(declared).toEqual(live);
   });
 
   it("a unit is never deleted", async () => {
