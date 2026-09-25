@@ -199,10 +199,10 @@ export const ROUTES = {
    * the first path in this file to diverge for a reason other than shortening.
    * The web nests the form under the public denuncia section because that section
    * has other pages — `/denuncias`, `/denuncias/buscar`, `/denuncias/codigo/…`,
-   * `/denuncias/seguimiento` — and this app has none of them: it can file one and
-   * it can do nothing else with one, because following a denuncia needs the
-   * reporter-session cookie a bearer client has no jar for. A `/denuncias/nueva`
-   * here would be a "nueva" with nothing to be new AMONG.
+   * `/denuncias/seguimiento` — and this app has none of those public pages. It
+   * does have `misDenuncias` below (M16), which is the SIGNED-IN author's list,
+   * not a denuncia section: a form beside it is still the act, not a "nueva"
+   * among them.
    *
    * Nothing deep-links here and nothing may. `DEEP_LINK_MAP.welfareReport` names
    * the CONSTANCIA (`/denuncias/codigo/:referenceCode`) with `appPath: null`,
@@ -211,6 +211,18 @@ export const ROUTES = {
    * a form that files a criminal allegation.
    */
   denunciar: "/denunciar",
+  /**
+   * MIS DENUNCIAS (M16) — the denuncias this person filed under their account,
+   * and the status of each: the web's `/denuncias/mias`.
+   *
+   * THE PATH SHORTENS THE WEB'S, the way `/mascotas` shortens `/mis-mascotas`:
+   * in an app that only ever shows you your own, "mías" is a word the URL does
+   * not need. The web's `/denuncias` is its PUBLIC section landing, which this
+   * app does not have, so nothing competes for the segment. Nothing deep-links
+   * here: a notification about a denuncia names the case (`/casos/…`), and the
+   * constancia (`DEEP_LINK_MAP.welfareReport`) stays web-only.
+   */
+  misDenuncias: "/denuncias",
   /**
    * TRÁNSITO — proposals awaiting a volunteer's answer, plus the fosters that
    * came of one. THE FOURTH TOP-LEVEL SCREEN THAT IS NOT ONE PET'S, for
@@ -284,6 +296,17 @@ export function turnoRoute(appointmentToken: string): `/turnos/${string}` {
  */
 export function buscarOfferingRoute(offeringToken: string): `/turnos/buscar/${string}` {
   return `/turnos/buscar/${encodeURIComponent(offeringToken)}`;
+}
+
+/**
+ * One of "Mis denuncias", by its `DEN-XXXX-XXXX` reference code — the key the
+ * author already holds on the receipt. Not the web's `/denuncias/{uuid}`: the
+ * uuid is operator-side and never crosses `/api/v1`. The parent segment
+ * `denuncias` is not a capability segment, but the code itself is caught by the
+ * `DEN-` credential rule in `lib/observability/redact.ts`.
+ */
+export function myReportRoute(referenceCode: string): `/denuncias/${string}` {
+  return `/denuncias/${encodeURIComponent(referenceCode)}`;
 }
 
 /**

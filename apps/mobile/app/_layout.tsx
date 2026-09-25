@@ -510,6 +510,12 @@ function RootLayout() {
             screen falls back to while its case kind is still loading. */}
         <Stack.Screen name="casos/index" options={{ title: "Mis casos" }} />
         <Stack.Screen name="casos/[publicCode]" options={{ title: "Caso" }} />
+        {/* MIS DENUNCIAS (M16). "Mis denuncias" is the web page's own heading
+            (`/denuncias/mias`); "Denuncia" is the singular the detail falls
+            back to before its kind label loads. Unregistered, the headers
+            would read "denuncias/index" and "denuncias/[referenceCode]". */}
+        <Stack.Screen name="denuncias/index" options={{ title: "Mis denuncias" }} />
+        <Stack.Screen name="denuncias/[referenceCode]" options={{ title: "Denuncia" }} />
         <Stack.Screen name="recuperar" options={{ title: "Recuperar contraseña" }} />
         <Stack.Screen name="mascotas/[publicToken]/compartir" options={{ title: "Compartir" }} />
         <Stack.Screen

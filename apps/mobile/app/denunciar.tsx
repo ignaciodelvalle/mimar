@@ -9,11 +9,15 @@
 // The route is a thin shell: it refuses to render without a session and hands
 // off. Every rule about what may be sent lives in the contract and on the server.
 
+import { useRouter } from "expo-router";
+
 import { useGate } from "../src/auth/useGate";
 import { DenunciaScreen } from "../src/denuncias/DenunciaScreen";
+import { ROUTES } from "../src/ui/routes";
 
 export default function DenunciarRoute() {
   const gate = useGate();
+  const router = useRouter();
   if (!gate.allowed) return gate.element;
-  return <DenunciaScreen />;
+  return <DenunciaScreen onOpenMyReports={() => router.push(ROUTES.misDenuncias)} />;
 }

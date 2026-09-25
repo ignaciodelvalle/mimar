@@ -79,6 +79,8 @@ import {
   MY_PRIVACY_PAYLOAD_VERSION,
   MY_PROFILE_PAYLOAD_VERSION,
   MY_TRANSFERS_PAYLOAD_VERSION,
+  MY_WELFARE_REPORTS_PAYLOAD_VERSION,
+  MY_WELFARE_REPORT_DETAIL_PAYLOAD_VERSION,
   type MeV1,
   type MyAdoptionApplicationsV1,
   type MyAppointmentsV1,
@@ -92,6 +94,8 @@ import {
   type MyProfileV1,
   type MySubjectDataExportV1,
   type MyTransfersV1,
+  type MyWelfareReportDetailV1,
+  type MyWelfareReportsV1,
   type NotificationCommandAckV1,
   OWNER_PET_DETAIL_PAYLOAD_VERSION,
   type OwnerPetDetailV1,
@@ -1025,6 +1029,46 @@ export function fetchMyCase(
     {
       path: `/api/v1/me/cases/${encodeURIComponent(publicCode)}`,
       expectedPayloadVersion: MY_CASE_DETAIL_PAYLOAD_VERSION,
+    },
+    session,
+  );
+}
+
+/**
+ * `GET /me/welfare-reports` — "Mis denuncias": the denuncias this person filed
+ * under their account, newest first, the web's `/denuncias/mias`. One filed
+ * anonymously is not linked to any account and never appears here.
+ *
+ * `cursor` IS OPAQUE AND OPTIONAL: omit it for page one, and pass back exactly
+ * the `nextCursor` the previous page returned.
+ */
+export function fetchMyWelfareReports(
+  session: SessionPort,
+  cursor?: string | null,
+): Promise<ApiResult<MyWelfareReportsV1>> {
+  const suffix = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+  return apiRequest<MyWelfareReportsV1>(
+    {
+      path: `/api/v1/me/welfare-reports${suffix}`,
+      expectedPayloadVersion: MY_WELFARE_REPORTS_PAYLOAD_VERSION,
+    },
+    session,
+  );
+}
+
+/**
+ * `GET /me/welfare-reports/{referenceCode}` — one denuncia, as the web shows it
+ * to its author. Somebody else's, an anonymous one and a code that does not
+ * exist are all the same `not_found`.
+ */
+export function fetchMyWelfareReport(
+  referenceCode: string,
+  session: SessionPort,
+): Promise<ApiResult<MyWelfareReportDetailV1>> {
+  return apiRequest<MyWelfareReportDetailV1>(
+    {
+      path: `/api/v1/me/welfare-reports/${encodeURIComponent(referenceCode)}`,
+      expectedPayloadVersion: MY_WELFARE_REPORT_DETAIL_PAYLOAD_VERSION,
     },
     session,
   );

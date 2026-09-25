@@ -69,9 +69,11 @@ export type TopLevelDestination = {
 };
 
 /**
- * THE EIGHT TOP-LEVEL DESTINATIONS, in the order `app/mascotas/index.tsx`'s
- * footer has always used — see that file for why Denunciar sits last and
- * Tránsito sits beside Transferencias. This is the ONE array both the footer
+ * THE TOP-LEVEL DESTINATIONS (nine since M16 added Mis denuncias), in the order
+ * `app/mascotas/index.tsx`'s footer has always used — see that file for why
+ * Denunciar sits last and Tránsito sits beside Transferencias. Mis denuncias
+ * sits right above Denunciar: the list of what you filed beside the act of
+ * filing, and `civicAction`'s extra space still falls between the two. This is the ONE array both the footer
  * and this menu render from now; a destination added here appears in both
  * without anyone remembering to copy it twice.
  */
@@ -105,6 +107,11 @@ export const TOP_LEVEL_DESTINATIONS: readonly TopLevelDestination[] = [
     label: "Adoptar",
     route: ROUTES.adoptar,
     accessibilityHint: "Mascotas publicadas por refugios verificados.",
+  },
+  {
+    label: "Mis denuncias",
+    route: ROUTES.misDenuncias,
+    accessibilityHint: "Las denuncias que enviaste con tu cuenta, y en qué estado está cada una.",
   },
   {
     label: "Denunciar maltrato",
@@ -182,7 +189,7 @@ export function HeaderMenuButton() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Abrir menú de navegación"
-        accessibilityHint="Lista Transferencias, Tránsito, Notificaciones, Mis turnos, Reclamar, Adoptar, Denunciar y Ajustes."
+        accessibilityHint="Lista Transferencias, Tránsito, Notificaciones, Mis turnos, Reclamar, Adoptar, Mis denuncias, Denunciar y Ajustes."
         onPress={openMenu}
         style={styles.trigger}
       >

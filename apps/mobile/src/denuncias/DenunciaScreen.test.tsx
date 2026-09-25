@@ -559,6 +559,34 @@ describe("the receipt", () => {
     expect(screen.queryByText(/Abierta|En curso|caso/)).toBeNull();
   });
 
+  it("offers Mis denuncias for a denuncia filed with contact (M16)", async () => {
+    const onOpenMyReports = jest.fn();
+    render(<DenunciaScreen onOpenMyReports={onOpenMyReports} />);
+    await searchAddress();
+    fireEvent.press(screen.getByText(PLACE_LABEL));
+    fillFacts();
+    fireEvent.press(screen.getByText("Con mi contacto"));
+    fireEvent.changeText(screen.getByLabelText("Correo"), "vecina@example.com");
+    mockSend.mockResolvedValueOnce(FILED_ACK);
+    fireEvent.press(screen.getByText("Enviar la denuncia"));
+    await waitFor(() => expect(screen.getByText("DEN-9KSC-MRMZ")).toBeTruthy());
+
+    fireEvent.press(screen.getByText("Ver mis denuncias"));
+    expect(onOpenMyReports).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT offer Mis denuncias for an anonymous one — it will never appear there", async () => {
+    render(<DenunciaScreen onOpenMyReports={jest.fn()} />);
+    await searchAddress();
+    fireEvent.press(screen.getByText(PLACE_LABEL));
+    fillFacts();
+    mockSend.mockResolvedValueOnce(FILED_ACK);
+    fireEvent.press(screen.getByText("Enviar la denuncia"));
+    await waitFor(() => expect(screen.getByText("DEN-9KSC-MRMZ")).toBeTruthy());
+
+    expect(screen.queryByText("Ver mis denuncias")).toBeNull();
+  });
+
   it("opens the constancia in the browser with the URL the server built", async () => {
     render(<DenunciaScreen />);
     await searchAddress();

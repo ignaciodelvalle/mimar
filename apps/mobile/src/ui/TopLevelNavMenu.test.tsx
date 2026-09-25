@@ -35,7 +35,7 @@ jest.mock("../auth/useGate", () => ({ useGate: () => mockGate.current }));
 import { HeaderMenuButton, TOP_LEVEL_DESTINATIONS } from "./TopLevelNavMenu";
 
 /**
- * THE SAME EIGHT `app/mascotas/index.tsx`'s footer renders, in its own
+ * THE SAME NINE `app/mascotas/index.tsx`'s footer renders, in its own
  * order — copied here (not imported from that screen) so a change to EITHER
  * side has to pass through a human reading both, the same non-vacuity
  * argument `MisMascotasFooter.test.tsx` makes for its own `FOOTER_LABELS`.
@@ -47,12 +47,13 @@ const EXPECTED_DESTINATIONS = [
   { label: "Mis turnos", route: "/turnos" },
   { label: "Reclamar una mascota", route: "/reclamar" },
   { label: "Adoptar", route: "/adoptar" },
+  { label: "Mis denuncias", route: "/denuncias" },
   { label: "Denunciar maltrato", route: "/denunciar" },
   { label: "Ajustes", route: "/ajustes" },
 ];
 
 describe("TOP_LEVEL_DESTINATIONS", () => {
-  it("is the footer's own eight destinations, in the footer's own order (non-vacuity)", () => {
+  it("is the footer's own nine destinations, in the footer's own order (non-vacuity)", () => {
     expect(TOP_LEVEL_DESTINATIONS.map((d) => ({ label: d.label, route: d.route }))).toEqual(
       EXPECTED_DESTINATIONS,
     );
@@ -106,7 +107,7 @@ describe("HeaderMenuButton", () => {
       expect(buttons).toContain(destination.label);
     }
     // The trigger and the backdrop are buttons too, but not sheet ROWS —
-    // eight rows plus those two is the honest count, not "at least eight".
+    // nine rows plus those two is the honest count, not "at least nine".
     expect(buttons).toHaveLength(EXPECTED_DESTINATIONS.length + 2);
   });
 

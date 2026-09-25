@@ -212,7 +212,7 @@ describe("the /mascotas footer", () => {
     // It now MAPS over that array, so this asserts the map is faithful rather
     // than asserting the array against itself — every label, hint and route
     // is read off the RENDERED tree and compared to the shared constant, and
-    // every one of the eight is pressed.
+    // every one of them is pressed.
     //
     // MUTATION, APPLIED: change a label, a route or a hint in
     // `TOP_LEVEL_DESTINATIONS` without touching this file — or change what

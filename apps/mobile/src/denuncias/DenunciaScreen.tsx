@@ -112,7 +112,19 @@ type Phase =
   | { name: "working" }
   | { name: "filed"; referenceCode: string; followUpUrl: string };
 
-export function DenunciaScreen() {
+export function DenunciaScreen({
+  onOpenMyReports,
+}: {
+  /**
+   * Opens Mis denuncias (M16). Offered on the receipt ONLY for a denuncia filed
+   * with contact — that is the one the account can see again. An anonymous one
+   * is not linked to the account, so pointing at a list it will never appear
+   * in would be a promise the server does not keep. The decision reads the
+   * form the person just sent, which the screen already holds; the ack itself
+   * is identical for both modes by design and says nothing about it.
+   */
+  onOpenMyReports?: () => void;
+} = {}) {
   const [values, setValues] = useState<DenunciaFormValues>(EMPTY);
   const [phase, setPhase] = useState<Phase>({ name: "form", error: null });
   // `scrollRef` and not the context: this component RENDERS the Screen, so it
@@ -236,21 +248,7 @@ export function DenunciaScreen() {
           Con ese código podés confirmar que la denuncia está registrada y pedir acceso al
           seguimiento. Es un número de constancia: por sí solo no muestra nada de la denuncia.
         </Subtitle>
-        {values.anonymous ? (
-          <Callout tone="warn" title="La enviaste de forma anónima">
-            <Body>
-              No guardamos ningún dato tuyo, así que no tenemos a dónde escribirte. El código es lo
-              único que te vincula con la denuncia: si lo perdés, no vas a poder seguirla.
-            </Body>
-          </Callout>
-        ) : (
-          <Callout tone="neutral" title="Para seguir la denuncia">
-            <Body>
-              Te vamos a pedir el correo que dejaste. El enlace de acceso se envía sólo a esa
-              dirección.
-            </Body>
-          </Callout>
-        )}
+        <ReceiptFollowUp anonymous={values.anonymous} onOpenMyReports={onOpenMyReports} />
         <LinkText
           accessibilityHint="Se abre en el navegador"
           onPress={() => void Linking.openURL(phase.followUpUrl)}
@@ -545,6 +543,45 @@ export function DenunciaScreen() {
         onPress={() => void send()}
       />
     </Screen>
+  );
+}
+
+/**
+ * How the person follows what they just filed — which depends on the ONE choice
+ * the receipt itself must not state (see `WelfareReportFiledV1`): the screen
+ * reads it off the form it still holds. Anonymous: the code is the only thread
+ * back. With contact: the e-mailed link, and Mis denuncias (M16), where only a
+ * denuncia linked to the account can ever appear.
+ */
+function ReceiptFollowUp({
+  anonymous,
+  onOpenMyReports,
+}: {
+  anonymous: boolean;
+  onOpenMyReports?: () => void;
+}) {
+  if (anonymous) {
+    return (
+      <Callout tone="warn" title="La enviaste de forma anónima">
+        <Body>
+          No guardamos ningún dato tuyo, así que no tenemos a dónde escribirte. El código es lo
+          único que te vincula con la denuncia: si lo perdés, no vas a poder seguirla.
+        </Body>
+      </Callout>
+    );
+  }
+  return (
+    <>
+      <Callout tone="neutral" title="Para seguir la denuncia">
+        <Body>
+          Te vamos a pedir el correo que dejaste. El enlace de acceso se envía sólo a esa dirección.
+          También la ves, con su estado, en Mis denuncias.
+        </Body>
+      </Callout>
+      {onOpenMyReports === undefined ? null : (
+        <SecondaryButton label="Ver mis denuncias" onPress={onOpenMyReports} />
+      )}
+    </>
   );
 }
 
