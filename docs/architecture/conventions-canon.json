@@ -3893,7 +3893,7 @@
         "scripts/check-audit-log-coverage.ts:14-18",
         "package.json:20 lint:audit-log",
         "scripts/check-audit-log-actions-declared.ts",
-        "db/schema.ts:2549"
+        "db/schema.ts:2571"
       ],
       "enforcementKind": "lint-script",
       "wired": "verify",
@@ -9876,6 +9876,30 @@
     }
   ],
   "unmapped": [
+    {
+      "kind": "lint-key",
+      "id": "lint:place-resolver",
+      "path": "package.json",
+      "note": "Runs scripts/check-place-resolver-single-entry.ts (stage B, localidades-por-id); canon row with stage E."
+    },
+    {
+      "kind": "lint-key",
+      "id": "lint:province-map",
+      "path": "package.json",
+      "note": "Runs scripts/check-province-map-single-source.ts (stage B, localidades-por-id); canon row with stage E."
+    },
+    {
+      "kind": "check-script",
+      "id": "scripts/check-place-resolver-single-entry.ts",
+      "path": "scripts/check-place-resolver-single-entry.ts",
+      "note": "Stage B of the SDD change localidades-por-id (2026-09-25): every place is resolved through lib/place/resolve-place.ts, one entry point. Its canon row lands with the change's stage E, when the name path is retired."
+    },
+    {
+      "kind": "check-script",
+      "id": "scripts/check-province-map-single-source.ts",
+      "path": "scripts/check-province-map-single-source.ts",
+      "note": "Stage B of the SDD change localidades-por-id (2026-09-25): the province name/code map has one source (ar_province_code / ar_province_name). Its canon row lands with the change's stage E."
+    },
     {
       "kind": "fence-test",
       "id": "__tests__/lost-routing-web-mobile-parity.test.ts",

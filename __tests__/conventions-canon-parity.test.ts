@@ -107,7 +107,12 @@ const canon: Canon = loadCanon(REPO_ROOT);
 // (stage A of the SDD change localidades-por-id). Its rule — web and app route
 // a lost report to the same authority — gets its canon row with the change's
 // stage E; until then it waits here, on purpose.
-const UNMAPPED_COUNT = 9;
+//
+// 9 -> 13 on 2026-09-25: `scripts/check-place-resolver-single-entry.ts`,
+// `scripts/check-province-map-single-source.ts` and their `lint:place-resolver`
+// / `lint:province-map` keys (stage B of the same change). Same reason: their
+// canon rows land with stage E.
+const UNMAPPED_COUNT = 13;
 
 /**
  * Enforcement the filename glob below cannot see.
