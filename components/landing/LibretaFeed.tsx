@@ -1,7 +1,7 @@
 "use client";
 
 // LibretaFeed — chapter 6 "the libreta fills up" animation (WU3, PO-approved
-// landing plan). Reveals the 10 real event types one by one, once the chapter
+// landing plan). Reveals Pampa's libreta entries one by one, once the chapter
 // is ~40% in view. Plays ONCE, then stays settled.
 //
 // ORDER (PO, 2026-09-25): chronological, the way a libreta fills. `events`

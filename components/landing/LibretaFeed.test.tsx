@@ -63,7 +63,7 @@ afterEach(() => {
 });
 
 describe("<LibretaFeed> — SSR / no-JS", () => {
-  it("server markup shows all 10 entries, visible, with no hiding class", () => {
+  it("server markup shows every entry, visible, with no hiding class", () => {
     const html = renderToStaticMarkup(<LibretaFeed events={LIBRETA_EVENTS} />);
     for (const e of LIBRETA_EVENTS) {
       expect(html).toContain(e.title);
@@ -76,7 +76,7 @@ describe("<LibretaFeed> — SSR / no-JS", () => {
 });
 
 describe("<LibretaFeed> — prefers-reduced-motion", () => {
-  it("renders all 10 entries with no animation class, statically", () => {
+  it("renders every entry with no animation class, statically", () => {
     setMatchMedia(true);
     render(<LibretaFeed events={LIBRETA_EVENTS} />);
 

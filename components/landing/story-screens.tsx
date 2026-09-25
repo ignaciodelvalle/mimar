@@ -287,7 +287,7 @@ export function OrgIntakeScreen() {
 }
 
 // ---------------------------------------------------------------------------
-// Cap 5 · La libreta — the 10 real events, append-only
+// La libreta — the seed's entries (minus the purged scan), append-only
 // ---------------------------------------------------------------------------
 
 export function LibretaScreen() {

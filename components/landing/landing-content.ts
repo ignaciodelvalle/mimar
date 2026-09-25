@@ -21,6 +21,165 @@
 // set no longer matches what ships here.
 
 import type { IconName } from "@/components/Icon";
+import {
+  OWNER_NAME,
+  PAMPA_EVENTS,
+  PAMPA_PET,
+  type PampaAuthorRole,
+  type PampaSeedEvent,
+  VET_CLINIC,
+  VET_LICENSE,
+  VET_NAME,
+} from "@/scripts/flagship-pampa-data";
+
+// ---------------------------------------------------------------------------
+// Pampa's facts — derived from the flagship seed's data module
+// ---------------------------------------------------------------------------
+
+// Every Pampa fact on the landing — dates, batches, brands, the vet, the
+// authors — is read from scripts/flagship-pampa-data.ts, the module the
+// flagship seed writes from. The landing's own copy of this story drifted from the pet its hero QR
+// opens (a vet the seed never created, a neighbours' alert the product never
+// sends); __tests__/flagship-pampa-consistency.test.ts now fences it.
+
+const MONTHS_ES = [
+  "ene",
+  "feb",
+  "mar",
+  "abr",
+  "may",
+  "jun",
+  "jul",
+  "ago",
+  "sep",
+  "oct",
+  "nov",
+  "dic",
+] as const;
+
+/** "2022-04-12" → { year: "2022", month: "abr", day: 12 }. */
+function splitDate(date: string): { year: string; month: string; day: number } {
+  const [year = "", month = "1", day = "1"] = date.split("-");
+  return { year, month: MONTHS_ES[Number(month) - 1] ?? "", day: Number(day) };
+}
+
+/** "2022-04-12" → "12 abr 2022". */
+export function landingDate(date: string): string {
+  const { year, month, day } = splitDate(date);
+  return `${day} ${month} ${year}`;
+}
+
+/** "941000100000001" → "941 000 100 000 001". */
+export function formatChip(chip: string): string {
+  return chip.replace(/(\d{3})(?=\d)/g, "$1 ");
+}
+
+/** "Dra. Lilian Marrone" → "Dra. Marrone" (title + surname, as the story names her). */
+export const VET_SHORT_NAME = (() => {
+  const parts = VET_NAME.split(" ");
+  return `${parts[0]} ${parts[parts.length - 1]}`;
+})();
+
+export const PAMPA_VET = {
+  name: VET_NAME,
+  shortName: VET_SHORT_NAME,
+  license: VET_LICENSE,
+  clinic: VET_CLINIC,
+} as const;
+
+export const PAMPA_OWNER_NAME = OWNER_NAME;
+
+/** "Caniche · hembra · nacimiento estimado nov 2021" — the sign-up facts. */
+export const PAMPA_SIGNUP_LINE = (() => {
+  const dob = splitDate(PAMPA_PET.dateOfBirth);
+  const sex = PAMPA_PET.sex === "female" ? "hembra" : "macho";
+  const born = PAMPA_PET.birthDateIsEstimated ? "nacimiento estimado" : "nacimiento";
+  return `${PAMPA_PET.breed} · ${sex} · ${born} ${dob.month} ${dob.year}`;
+})();
+
+const AUTHOR_BY_ROLE: Record<PampaAuthorRole, string> = {
+  owner: `${OWNER_NAME} · dueño`,
+  vet: `${VET_SHORT_NAME} · vet`,
+  shelter: "Refugio · org",
+  scanner: "Anónimo · vía QR",
+};
+
+function str(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
+function lowerFirst(v: string): string {
+  return v.charAt(0).toLowerCase() + v.slice(1);
+}
+
+/** Looks one seed event up by type (and, for status changes, target status). */
+export function pampaEvent(eventType: string, toStatus?: string): PampaSeedEvent {
+  const hit = PAMPA_EVENTS.find(
+    (e) => e.eventType === eventType && (toStatus === undefined || e.payload.to_status === toStatus),
+  );
+  if (!hit) throw new Error(`flagship-pampa-data has no ${eventType} ${toStatus ?? ""}`);
+  return hit;
+}
+
+/** The seed's LAST vaccination — the Comuna 13 campaign dose. */
+export const PAMPA_CAMPAIGN_DOSE = PAMPA_EVENTS.filter(
+  (e) => e.eventType === "vaccination_administered",
+).at(-1) as PampaSeedEvent;
+
+/** The seed's FIRST vaccination — the one chapter 2 shows being signed. */
+export const PAMPA_FIRST_DOSE = pampaEvent("vaccination_administered");
+
+type LibretaCopy = Pick<LibretaEvent, "tone" | "title" | "meta" | "flag" | "stamp">;
+
+function libretaCopy(e: PampaSeedEvent): LibretaCopy | null {
+  const p = e.payload;
+  switch (e.eventType) {
+    case "pet_registered":
+      return { tone: "warm", title: "Alta en el registro", meta: PAMPA_SIGNUP_LINE };
+    case "microchip_implanted":
+      return {
+        tone: "",
+        title: "Microchip implantado",
+        meta: `${formatChip(str(p.chip_number))} · ${str(p.location_on_body)}`,
+      };
+    case "vaccination_administered": {
+      const campaign = str(p.administered_by).startsWith("Campaña");
+      return {
+        tone: campaign ? "navy" : "ok",
+        title: `Vacunación: ${lowerFirst(str(p.vaccine_name))}`,
+        meta: `${str(p.brand)} · lote ${str(p.batch)} · ${str(p.administered_by)}`,
+        stamp: "ok",
+      };
+    }
+    case "sterilization_performed":
+      return { tone: "ok", title: "Castración", meta: str(p.clinic) };
+    case "status_changed": {
+      if (p.to_status === "lost") {
+        const lost = (p.lost_description ?? {}) as Record<string, unknown>;
+        return {
+          tone: "err",
+          title: "Reportada perdida",
+          meta: `${str(p.location_description)} · ${lowerFirst(str(lost.accessories_when_lost))}`,
+          flag: "lost",
+        };
+      }
+      return { tone: "ok", title: "Volvió a casa", meta: "Devuelta a su dueño", flag: "ok" };
+    }
+    case "shelter_intake_recorded":
+      return { tone: "", title: "Ingresó a un refugio", meta: str(p.intake_condition) };
+    case "clinical_info_logged":
+      return {
+        tone: "warn",
+        title: "Diagnóstico registrado",
+        meta: `${str(p.title)} · ${lowerFirst(str(p.details))}`,
+        flag: "sick",
+      };
+    // credential_scanned is NOT a libreta row: scanner-role scans are purged
+    // after 90 days (lib/infra/scan-retention.ts).
+    default:
+      return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Narrative pet
@@ -166,7 +325,7 @@ export const CHAPTERS: LandingChapter[] = [
     // Honesty pass (WU1, landing redesign 2026-09-24): "inmutable" overclaimed —
     // art. 16 de la Ley 25.326 exige una excepción auditada de supresión sobre
     // el asiento (límites honestos A.1). Lo que sí se sostiene: solo agrega.
-    lead: "Cuatro manos, una sola historia. Cada vacuna, cada consulta, cada vuelta a casa se suma a la libreta de Pampa. Solo se agrega: una corrección es un asiento nuevo, nunca una edición.",
+    lead: `${OWNER_NAME}, la ${VET_SHORT_NAME} y el refugio escribieron en la misma libreta. Cada vacuna, cada consulta, cada vuelta a casa se suma a la de Pampa. Solo se agrega: una corrección es un asiento nuevo, nunca una edición.`,
   },
 ];
 
@@ -187,112 +346,13 @@ export type LibretaEvent = {
   stamp?: "ok";
 };
 
-export const LIBRETA_EVENTS: LibretaEvent[] = [
-  {
-    year: "2022",
-    month: "mar",
-    tone: "warm",
-    title: "Alta en el registro",
-    meta: "Registrada por Martín · adopción particular",
-    type: "pet_registered",
-    by: "Martín · dueño",
-  },
-  {
-    year: "2022",
-    month: "abr",
-    tone: "",
-    title: "Microchip implantado",
-    meta: "941 000 100 000 001 · interescapular",
-    type: "microchip_implanted",
-    by: "Dra. Romero · vet",
-  },
-  {
-    year: "2022",
-    month: "abr",
-    tone: "ok",
-    title: "Vacunación: antirrábica",
-    meta: "Lote AR-2214 · refuerzo anual",
-    type: "vaccination_administered",
-    by: "Dra. Romero · vet",
-    stamp: "ok",
-  },
-  {
-    year: "2023",
-    month: "feb",
-    tone: "ok",
-    title: "Castración",
-    meta: "Sin complicaciones · Vet. Belgrano",
-    type: "sterilization_performed",
-    by: "Dra. Romero · vet",
-  },
-  {
-    year: "2024",
-    month: "mar",
-    tone: "err",
-    title: "Reportada perdida",
-    meta: "Barrancas de Belgrano · alerta a vecinos en 1 km",
-    type: "status_changed",
-    by: "Martín · dueño",
-    flag: "lost",
-  },
-  {
-    year: "2024",
-    month: "mar",
-    tone: "",
-    title: "Credencial escaneada",
-    meta: "Un vecino escaneó su QR y avisó",
-    type: "credential_scanned",
-    by: "Anónimo · vía QR",
-  },
-  {
-    year: "2024",
-    month: "mar",
-    tone: "",
-    title: "Ingresó a un refugio",
-    meta: "Refugio Patitas del Barrio · chip verificado",
-    type: "shelter_intake_recorded",
-    by: "Refugio · org",
-  },
-  {
-    year: "2024",
-    month: "mar",
-    tone: "ok",
-    title: "Volvió a casa",
-    meta: "Custodia devuelta a su dueño",
-    type: "status_changed",
-    by: "Refugio · org",
-    flag: "ok",
-  },
-  {
-    year: "2024",
-    month: "ago",
-    tone: "warn",
-    title: "Diagnóstico registrado",
-    meta: "Dermatitis atópica · plan de tratamiento",
-    type: "clinical_info_logged",
-    by: "Dra. Romero · vet",
-    flag: "sick",
-  },
-  {
-    year: "2026",
-    month: "jun",
-    tone: "navy",
-    title: "Refuerzo antirrábico",
-    // "Campaña oficial" checked against the code (fresh review 2026-09-24):
-    // real, accurate — lib/analytics/campaign-metrics.ts + /gob/campanas
-    // track municipality-organized vaccination campaigns. What WAS an
-    // overclaim was the `by` below: no writer authorizes "govt"/"Estado" as
-    // the actor on vaccination_administered (event-schemas.ts has no
-    // actor_role on this event; professional writes require
-    // `role === "vet" && matriculaVerified`, per
-    // app/api/v1/pets/[publicToken]/events/writers.ts). Estado's real role
-    // here is what chapter 5 already shows: it watches, a vet signs.
-    meta: "Campaña oficial · Comuna 13",
-    type: "vaccination_administered",
-    by: "Vet. de campaña · vet",
-    stamp: "ok",
-  },
-];
+/** Pampa's libreta, chronological (oldest → newest), straight from the seed. */
+export const LIBRETA_EVENTS: LibretaEvent[] = PAMPA_EVENTS.flatMap((e) => {
+  const copy = libretaCopy(e);
+  if (!copy) return [];
+  const { year, month } = splitDate(e.date);
+  return [{ year, month, type: e.eventType, by: AUTHOR_BY_ROLE[e.authorRole], ...copy }];
+});
 
 // ---------------------------------------------------------------------------
 // Estado console — 24-jurisdiction cartogram (silhouette layout, celeste tint)
