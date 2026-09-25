@@ -138,7 +138,7 @@ describe("landing hero — the credential is miMAR's own document", () => {
   it("carries the issuing line and the identity fields the public credential prints", () => {
     const html = renderHero();
     expect(html).toContain("Credencial miMAR");
-    for (const label of ["Especie y raza", "Sexo", "Nacimiento estimado", "Microchip"]) {
+    for (const label of ["Especie y raza", "Sexo", "Edad", "Microchip"]) {
       expect(html, label).toContain(`<dt>${label}</dt>`);
     }
   });

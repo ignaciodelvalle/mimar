@@ -22,7 +22,7 @@
 
 import type { IconName } from "@/components/Icon";
 import { BRANDING } from "@/lib/ui/branding";
-import { sexLabel, speciesLabel } from "@/lib/utils/format";
+import { ageFromDateOfBirth, sexLabel, speciesLabel } from "@/lib/utils/format";
 import {
   OWNER_NAME,
   PAMPA_EVENTS,
@@ -209,14 +209,16 @@ export const PAMPA = {
    * the repo inflects species by sex.
    */
   speciesNoun: "perra",
-  age: "4 años",
+  /**
+   * Derived from the seed's date of birth with the app's own helper, not a
+   * literal: a typed "4 años" goes stale the day Pampa has a birthday.
+   */
+  age: ageFromDateOfBirth(PAMPA_PET.dateOfBirth) ?? "",
 } as const;
 
 // ---------------------------------------------------------------------------
 // Hero credential — the card the QR's own page prints, in miniature
 // ---------------------------------------------------------------------------
-
-const PAMPA_BIRTH = splitDate(PAMPA_PET.dateOfBirth);
 
 /**
  * The hero card's identity fields. Same labels and the same words as the
@@ -224,16 +226,13 @@ const PAMPA_BIRTH = splitDate(PAMPA_PET.dateOfBirth);
  * builds its breed line from speciesLabel + breed and its sex from sexLabel,
  * and prints "Microchip · Sí/No"), all read from the seed's pet row and
  * libreta — so the card and the page it links to cannot disagree about Pampa.
- * The birth date carries the seed's `birthDateIsEstimated` flag into the label
- * rather than printing an estimate as if it were a known date.
+ * Age rather than the birth date (PO, 2026-09-25): computed from the seed's
+ * date of birth, so the card stays true as Pampa gets older.
  */
 export const HERO_CREDENTIAL_FIELDS: ReadonlyArray<{ label: string; value: string }> = [
   { label: "Especie y raza", value: `${speciesLabel(PAMPA_PET.species)} · ${PAMPA_PET.breed}` },
   { label: "Sexo", value: sexLabel(PAMPA_PET.sex) },
-  {
-    label: PAMPA_PET.birthDateIsEstimated ? "Nacimiento estimado" : "Nacimiento",
-    value: `${PAMPA_BIRTH.month}${NBSP}${PAMPA_BIRTH.year}`,
-  },
+  { label: "Edad", value: PAMPA.age },
   {
     label: "Microchip",
     value: PAMPA_EVENTS.some((e) => e.eventType === "microchip_implanted") ? "Sí" : "No",

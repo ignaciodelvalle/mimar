@@ -41,6 +41,7 @@ import {
   SHELTER_SEQUENCE,
   VET_SEQUENCE,
 } from "@/components/landing/story-sequences";
+import { ageFromDateOfBirth } from "@/lib/utils/format";
 import {
   OWNER_NAME,
   PAMPA_CHIP,
@@ -390,9 +391,11 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
     const byLabel = Object.fromEntries(HERO_CREDENTIAL_FIELDS.map((f) => [f.label, f.value]));
     expect(byLabel["Especie y raza"]).toContain(PAMPA_PET.breed);
     expect(byLabel.Sexo).toBe(PAMPA_PET.sex === "female" ? "Hembra" : "Macho");
-    // The seed marks the birth date as estimated, and the card says so.
-    expect(PAMPA_PET.birthDateIsEstimated).toBe(true);
-    expect(flat(byLabel["Nacimiento estimado"] ?? "")).toContain(PAMPA_PET.dateOfBirth.slice(0, 4));
+    // The card shows the AGE (PO, 2026-09-25), derived from the seed's date of
+    // birth with the app's helper — never a typed number that goes stale.
+    expect(byLabel.Edad).toBe(ageFromDateOfBirth(PAMPA_PET.dateOfBirth));
+    expect(byLabel.Edad).toMatch(/^\d+ (año|años|mes|meses)$/);
+    expect(byLabel).not.toHaveProperty("Nacimiento estimado");
     // Pampa's libreta has a chip implant, so the card may say "Sí".
     expect(PAMPA_EVENTS.some((e) => e.eventType === "microchip_implanted")).toBe(true);
     expect(byLabel.Microchip).toBe("Sí");
