@@ -256,6 +256,15 @@ function PetListScreen({
         keyExtractor={(pet) => pet.publicToken}
         renderItem={({ item }) => <PetRow pet={item} onPress={onOpen} />}
         contentContainerStyle={styles.listContent}
+        // Native-feel audit (M10, 2026-09-24): this screen has no text input of
+        // its own, but a keyboard can still be open when it's reached — coming
+        // back from a search-driven picker, or from a deep link that lands here
+        // after a screen with a field. `Screen`'s own ScrollView already sets
+        // both (this list intentionally does NOT use `Screen` — see the header
+        // on FLATLIST vs SCROLLVIEW), so the two are set here too rather than
+        // leaving this the one scroll container in the app without them.
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
         refreshControl={pullToRefresh(onRefresh, refreshing)}
         ListHeaderComponent={
           <ListHeader

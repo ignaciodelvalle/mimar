@@ -40,22 +40,58 @@ import {
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
+  processColor,
 } from "react-native";
 
 import {
+  Choice,
   DateField,
   FieldLabel,
+  LinkText,
   ListRow,
   PasswordField,
+  PrimaryButton,
+  RIPPLE,
+  RIPPLE_BORDERLESS,
+  RIPPLE_ON_FILL,
   Screen,
+  SecondaryButton,
   TextField,
   TimeField,
   keyboardAvoidingBehavior,
   pullToRefresh,
 } from "./kit";
 import { COLORS, TOUCH_TARGET } from "./theme";
+
+/**
+ * Runs `fn` with `Platform.OS` forced to `"android"`, then restores whatever
+ * it was.
+ *
+ * WHY THIS IS THE ONLY WAY TO SEE `android_ripple` FROM A TEST. `Pressable`
+ * destructures the prop OUT and never forwards it — `useAndroidRippleForView`
+ * (react-native's own hook backing it) only turns it into `nativeBackgroundAndroid`
+ * / `nativeForegroundAndroid` on the host view it renders when
+ * `Platform.OS === "android"`; on any other platform the prop is simply
+ * dropped, by design. jest's default platform here is iOS (there is no
+ * `.android.js` variant of this app's own files, so nothing else in this suite
+ * depends on the value), so a ripple assertion has to force the branch the
+ * prop only takes on the platform it is FOR.
+ */
+function withAndroid<T>(fn: () => T): T {
+  const original = Platform.OS;
+  // @ts-expect-error `OS` is typed read-only; RN's jest mock backs it with a
+  // plain, reassignable property, and nothing here touches a real native module.
+  Platform.OS = "android";
+  try {
+    return fn();
+  } finally {
+    // @ts-expect-error see above
+    Platform.OS = original;
+  }
+}
 
 /**
  * The nearest HOST `View` above a node.
@@ -144,6 +180,159 @@ describe("ListRow — the inert row says why", () => {
     // direction lives one level up, on the Pressable.
     const style = StyleSheet.flatten(column.props.style) as { flexDirection?: string };
     expect(style.flexDirection).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M10 — native-feel audit (2026-09-24): keyboard dismiss on selection, and
+// android_ripple next to pressedOpacity, both in the SHARED primitives so
+// every screen gets them without copying the same lines in per screen (the
+// two BreedPickers already did the keyboard half locally, M6 — see
+// AltaScreen.test.tsx's "el picker de raza cierra el teclado").
+// ---------------------------------------------------------------------------
+
+describe("ListRow — closes the keyboard on press (M10)", () => {
+  it("dismisses the keyboard when a live row is pressed", () => {
+    const dismiss = jest.spyOn(Keyboard, "dismiss");
+    render(<ListRow label="Credencial pública" onPress={() => {}} />);
+    fireEvent.press(screen.getByText("Credencial pública"));
+    expect(dismiss).toHaveBeenCalled();
+    dismiss.mockRestore();
+  });
+
+  it("never throws on the inert row — there is no onPress to wrap", () => {
+    const dismiss = jest.spyOn(Keyboard, "dismiss");
+    render(<ListRow label={LABEL} caption={CAPTION} />);
+    // The inert row's Pressable renders with no onPress at all; firing press on
+    // a disabled Pressable is a no-op in RNTL, and this only pins that the
+    // wrapping did not turn "no handler" into "a handler that dismisses".
+    fireEvent.press(screen.getByText(LABEL));
+    expect(dismiss).not.toHaveBeenCalled();
+    dismiss.mockRestore();
+  });
+
+  it("still calls the caller's onPress — dismissing must not swallow the action", () => {
+    const onPress = jest.fn();
+    render(<ListRow label="Credencial pública" onPress={onPress} />);
+    fireEvent.press(screen.getByText("Credencial pública"));
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it("clips its ripple to the row's own bounds, in the same tint the kit uses for 'active'", () => {
+    withAndroid(() => {
+      render(<ListRow label="Credencial pública" onPress={() => {}} />);
+      expect(screen.getByRole("button").props.nativeBackgroundAndroid).toMatchObject({
+        color: processColor(RIPPLE.color),
+        borderless: false,
+      });
+    });
+  });
+});
+
+describe("Choice — closes the keyboard on selection (M10)", () => {
+  const OPTIONS = ["si", "no"] as const;
+
+  it("dismisses the keyboard AND selects, in that order surviving even if onSelect throws nothing", () => {
+    const dismiss = jest.spyOn(Keyboard, "dismiss");
+    const onSelect = jest.fn();
+    render(
+      <Choice
+        label="¿Falleció en una veterinaria?"
+        options={OPTIONS}
+        selected={null}
+        optionLabel={(v) => (v === "si" ? "Sí" : "No")}
+        onSelect={onSelect}
+      />,
+    );
+    fireEvent.press(screen.getByText("Sí"));
+    expect(dismiss).toHaveBeenCalled();
+    expect(onSelect).toHaveBeenCalledWith("si");
+    dismiss.mockRestore();
+  });
+
+  it("gives every chip a bounded ripple, not the icon-button borderless one", () => {
+    withAndroid(() => {
+      render(
+        <Choice
+          label="¿Falleció en una veterinaria?"
+          options={OPTIONS}
+          selected={null}
+          optionLabel={(v) => (v === "si" ? "Sí" : "No")}
+          onSelect={() => {}}
+        />,
+      );
+      const chips = screen.getAllByRole("radio");
+      expect(chips).toHaveLength(OPTIONS.length);
+      for (const chip of chips) {
+        expect(chip.props.nativeBackgroundAndroid).toMatchObject({
+          color: processColor(RIPPLE.color),
+          borderless: false,
+        });
+      }
+    });
+  });
+});
+
+describe("android_ripple — bounded, borderless and on-fill land on the right controls (M10)", () => {
+  it("PrimaryButton gets the translucent-white ripple, for a saturated fill", () => {
+    withAndroid(() => {
+      render(<PrimaryButton label="Guardar" onPress={() => {}} />);
+      expect(screen.getByRole("button").props.nativeBackgroundAndroid).toMatchObject({
+        color: processColor(RIPPLE_ON_FILL.color),
+        borderless: false,
+      });
+    });
+  });
+
+  it("SecondaryButton gets the bounded kit ripple, like a row — its fill is the light surface", () => {
+    withAndroid(() => {
+      render(<SecondaryButton label="Cancelar" onPress={() => {}} />);
+      expect(screen.getByRole("button").props.nativeBackgroundAndroid).toMatchObject({
+        color: processColor(RIPPLE.color),
+        borderless: false,
+      });
+    });
+  });
+
+  it("LinkText and the password-reveal toggle get the BORDERLESS ripple — neither has its own background", () => {
+    withAndroid(() => {
+      render(<LinkText onPress={() => {}}>¿Olvidaste tu contraseña?</LinkText>);
+      expect(screen.getByRole("link").props.nativeBackgroundAndroid).toMatchObject({
+        color: processColor(RIPPLE_BORDERLESS.color),
+        borderless: true,
+      });
+      screen.unmount();
+
+      render(<PasswordField label="Contraseña" value="" onChangeText={() => {}} />);
+      expect(
+        screen.getByLabelText("Mostrar contraseña").props.nativeBackgroundAndroid,
+      ).toMatchObject({
+        color: processColor(RIPPLE_BORDERLESS.color),
+        borderless: true,
+      });
+    });
+  });
+
+  it("keeps the two shapes visually distinct — one clips, the other does not", () => {
+    expect(RIPPLE.borderless).not.toBe(true);
+    expect(RIPPLE_BORDERLESS.borderless).toBe(true);
+    // Same tint on both — only the SHAPE differs, not which "state" it means.
+    expect(RIPPLE_BORDERLESS.color).toBe(RIPPLE.color);
+  });
+});
+
+describe("Screen — dismisses the keyboard on a drag, not just on a tap (M10)", () => {
+  it("sets keyboardDismissMode on-drag alongside the existing keyboardShouldPersistTaps", () => {
+    render(
+      <Screen>
+        <Text>contenido</Text>
+      </Screen>,
+    );
+    const scrollView = screen.UNSAFE_getByType(ScrollView);
+    expect(scrollView.props.keyboardDismissMode).toBe("on-drag");
+    // NOT relaxed by this change — a tap on a button inside the scroll view
+    // must still fire the button and not only close the keyboard.
+    expect(scrollView.props.keyboardShouldPersistTaps).toBe("handled");
   });
 });
 

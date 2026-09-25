@@ -54,6 +54,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  type PressableAndroidRippleConfig,
   type PressableStateCallbackType,
   RefreshControl,
   ScrollView,
@@ -228,6 +229,14 @@ export function Screen({
     <ScrollView
       ref={scrollRef}
       contentContainerStyle={[styles.scroll, { gap }]}
+      // Native-feel audit (M10, 2026-09-24): tapping empty space or dragging
+      // the list must close the keyboard, the way every native app on the
+      // phone already does. `keyboardShouldPersistTaps="handled"` was already
+      // here (so a tap that LANDS ON a button still fires the button instead
+      // of only closing the keyboard — a tap the RN docs call "handled" is one
+      // a child view's own responder claims); `keyboardDismissMode="on-drag"`
+      // is the other half, for the gesture a tap can't cover.
+      keyboardDismissMode="on-drag"
       keyboardShouldPersistTaps="handled"
       refreshControl={refreshControl}
     >
@@ -353,6 +362,7 @@ export function LinkText({
     <Pressable
       accessibilityRole="link"
       accessibilityHint={accessibilityHint}
+      android_ripple={RIPPLE_BORDERLESS}
       hitSlop={{ top: slop, bottom: slop, left: SPACE.sm, right: SPACE.sm }}
       onPress={onPress}
       style={pressedOpacity}
@@ -530,6 +540,14 @@ export function TextField({
  * lockout on a pilot where mail recovery is days old. Visibility is per-field
  * local state — revealing one field never reveals its sibling — and the
  * control owns `secureTextEntry`, so a caller cannot half-wire it.
+ *
+ * `inputRef` REACHES THE INPUT since M10 (2026-09-24) — it did not before.
+ * The prop was already in the type (`Omit<TextFieldProps, …>` keeps it), so it
+ * silently fell into `...rest` and landed on the `TextInput` as an unknown
+ * prop instead of its `ref`. Harmless until `useReturnKeyChain` needed to
+ * focus INTO a password field from the one before it — a login or signup form
+ * chaining email → password could not, because there was nowhere for the
+ * chain to send focus.
  */
 export function PasswordField({
   label,
@@ -537,6 +555,7 @@ export function PasswordField({
   invalid = false,
   onBlur,
   onFocus,
+  inputRef,
   accessibilityLabel,
   ...rest
 }: Omit<TextFieldProps, "mono" | "secureTextEntry">) {
@@ -547,6 +566,7 @@ export function PasswordField({
       <FieldLabel required={required}>{label}</FieldLabel>
       <View style={[styles.ring, focused ? styles.ringOn : null, styles.passwordRow]}>
         <TextInput
+          ref={inputRef}
           accessibilityLabel={accessibleName(label, accessibilityLabel, required)}
           placeholderTextColor={COLORS.inkFaint}
           submitBehavior="submit"
@@ -570,6 +590,7 @@ export function PasswordField({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
+          android_ripple={RIPPLE_BORDERLESS}
           onPress={() => setVisible((v) => !v)}
           style={({ pressed }) => [
             styles.passwordEye,
@@ -921,8 +942,17 @@ export function Choice<T extends string>({
               key={option}
               accessibilityRole="radio"
               accessibilityState={{ checked: active, disabled }}
+              android_ripple={RIPPLE}
               disabled={disabled}
-              onPress={() => onSelect(option)}
+              onPress={() => {
+                // M10 (native-feel audit, 2026-09-24): picking a chip must
+                // close the keyboard the same way the two BreedPickers already
+                // did locally (M6) — here ONCE, in the shared primitive, so
+                // every screen with a `Choice` (and every future one) gets it
+                // for free instead of copying the same three lines in again.
+                Keyboard.dismiss();
+                onSelect(option);
+              }}
               style={[styles.chip, active ? styles.chipActive : null]}
             >
               <Text style={active ? styles.chipLabelActive : styles.chipLabel}>
@@ -957,6 +987,43 @@ export function Choice<T extends string>({
 export function pressedOpacity({ pressed }: PressableStateCallbackType) {
   return pressed ? { opacity: PRESSED_OPACITY } : null;
 }
+
+/**
+ * Android's OWN press feedback, next to `pressedOpacity`'s iOS-flavoured fade
+ * (Native-feel audit, 2026-09-24). `pressedOpacity` already renders on
+ * Android — `Pressable` applies whatever `style` returns on either platform —
+ * but a fade is not what Android calls acknowledging a touch: Material's own
+ * affordance is a ripple, drawn by the platform itself the moment
+ * `android_ripple` is set, and ignored outright on iOS, so passing it
+ * everywhere costs iOS nothing.
+ *
+ * BOUNDED vs BORDERLESS is not a look, it is what the finger is actually on.
+ * `RIPPLE` clips to the pressable's own box — right for anything with a
+ * visible edge of its own: a row, a chip, a bordered button. `RIPPLE_BORDERLESS`
+ * draws past those bounds in a soft circle — right for a control with NO
+ * background of its own, like an icon toggle or an inline link, where a
+ * clipped ripple would look like a rectangle bitten out of the icon's corner.
+ * `RIPPLE_ON_FILL` is the same shape as `RIPPLE`, translucent WHITE instead —
+ * for a control whose own fill is already a saturated colour (`PrimaryButton`),
+ * where the pale tint the other two reuse would vanish into it.
+ *
+ * COLOUR IS A TOKEN, not an invented value. `RIPPLE`/`RIPPLE_BORDERLESS` reuse
+ * `COLORS.focusRing` — the same fill `chipActive` and the focused field's ring
+ * already wear for "this is the active/selected one" — so Android's own
+ * built-in feedback is drawn in the same palette as everything else in this
+ * kit that already means the same thing. `RIPPLE_ON_FILL`'s white cannot be:
+ * no token IS a translucent colour (every one of them is an opaque hex), and a
+ * ripple is the one place this file needs partial opacity to read as a ripple
+ * rather than a flash — the same reasoning `TopLevelNavMenu`'s dim overlay and
+ * `DocumentChromeNative`'s band-chip fill already argue for their own derived
+ * `rgba(...)` literals.
+ */
+export const RIPPLE: PressableAndroidRippleConfig = { color: COLORS.focusRing };
+export const RIPPLE_BORDERLESS: PressableAndroidRippleConfig = {
+  color: COLORS.focusRing,
+  borderless: true,
+};
+export const RIPPLE_ON_FILL: PressableAndroidRippleConfig = { color: "rgba(255, 255, 255, 0.28)" };
 
 /**
  * A row that is a destination, or a row that explains why it is not one.
@@ -994,13 +1061,25 @@ export function ListRow({
   onPress?: () => void;
 }) {
   const isInert = onPress === undefined;
+  // M10 (native-feel audit, 2026-09-24): a row is a destination — tapping one
+  // must not leave a keyboard open over wherever it goes next. Dismissing here,
+  // once, is the shared-primitive half of the same fix `Choice` gets below;
+  // `Keyboard.dismiss()` is a no-op when nothing is up, so this costs nothing
+  // on the rows that never had a keyboard to begin with.
+  const handlePress = isInert
+    ? undefined
+    : () => {
+        Keyboard.dismiss();
+        onPress();
+      };
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: isInert }}
+      android_ripple={RIPPLE}
       disabled={isInert}
-      onPress={onPress}
+      onPress={handlePress}
       style={(state) => [styles.listRow, pressedOpacity(state)]}
     >
       {/* LABEL ABOVE CAPTION, always in a column — see `listRowText`. The
@@ -1083,6 +1162,7 @@ export function PrimaryButton({
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled }}
+      android_ripple={RIPPLE_ON_FILL}
       disabled={disabled}
       onPress={onPress}
       style={(state) => [
@@ -1133,6 +1213,7 @@ export function SecondaryButton({
       accessibilityRole="button"
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: isInert }}
+      android_ripple={RIPPLE}
       disabled={isInert}
       onPress={onPress}
       style={(state) => [

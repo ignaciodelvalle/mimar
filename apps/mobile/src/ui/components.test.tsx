@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { fireEvent, render, screen } from "@testing-library/react-native";
+import { Platform, processColor } from "react-native";
 
 // Resolved by default: the component chains `.catch()` off the return value,
 // and an unmocked `jest.fn()` resolves that call against `undefined`, not a
@@ -14,6 +15,7 @@ const mockOpenURL = jest.fn<(url: string) => Promise<unknown>>().mockResolvedVal
 jest.mock("expo-linking", () => ({ openURL: (url: string) => mockOpenURL(url) }));
 
 import { Alert, ContactRow, ErrorNotice, StaleNotice } from "./components";
+import { RIPPLE } from "./kit";
 
 // The mock is module-scoped, so without this every `toHaveBeenCalledWith`
 // assertion below is satisfied by ANY earlier test's press. That is not
@@ -106,6 +108,30 @@ describe("unlinkable value", () => {
     render(<ContactRow label="Contacto" value="abc / def" />);
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.getByText("abc / def")).toBeOnTheScreen();
+  });
+});
+
+describe("a linkable row ripples on Android (M10)", () => {
+  it("carries the kit's bounded ripple, the same as a ListRow", () => {
+    // `android_ripple` never reaches a rendered node's own props — Pressable
+    // consumes it and only translates it into `nativeBackgroundAndroid` on
+    // `Platform.OS === "android"` (see kit.test.tsx's `withAndroid`, the
+    // longer version of this note).
+    const original = Platform.OS;
+    // @ts-expect-error `OS` is typed read-only; RN's jest mock backs it with a
+    // plain, reassignable property.
+    Platform.OS = "android";
+    try {
+      render(<ContactRow label="Contacto" value="juan@example.com" />);
+      const link = screen.getByRole("link", { name: /^escribir a juan@example\.com$/i });
+      expect(link.props.nativeBackgroundAndroid).toMatchObject({
+        color: processColor(RIPPLE.color),
+        borderless: false,
+      });
+    } finally {
+      // @ts-expect-error see above
+      Platform.OS = original;
+    }
   });
 });
 

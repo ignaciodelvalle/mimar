@@ -29,7 +29,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 
 import { type ContactLink, contactLink, contactParts } from "./contact-link";
 import { FONTS } from "./fonts";
-import { PrimaryButton, SecondaryButton } from "./kit";
+import { PrimaryButton, RIPPLE, SecondaryButton } from "./kit";
 import { COLORS, LABEL_TRACKING_EM, LEADING, RADIUS, SPACE, TOUCH_TARGET, TYPE } from "./theme";
 
 /**
@@ -127,6 +127,7 @@ function ContactPartRow({
     <Pressable
       accessibilityRole="link"
       accessibilityLabel={link.label}
+      android_ripple={RIPPLE}
       onPress={() => void Linking.openURL(link.href).catch(() => {})}
       style={({ pressed }) => [styles.row, styles.contactRow, pressed ? { opacity: 0.6 } : null]}
     >

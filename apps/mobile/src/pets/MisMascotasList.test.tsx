@@ -14,7 +14,7 @@
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { fireEvent, render, screen } from "@testing-library/react-native";
-import { RefreshControl } from "react-native";
+import { FlatList, RefreshControl } from "react-native";
 
 const mockPush = jest.fn<(path: string) => void>();
 const mockFetchMyPets = jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -185,5 +185,23 @@ describe("the /mascotas list (FlatList)", () => {
     await screen.findByText("No pudimos actualizar");
 
     expect(getPetRowRenderCountForTests()).toBe(rendersAfterMount);
+  });
+
+  it("dismisses the keyboard on a drag or a tap on empty space (M10)", async () => {
+    // This screen has no text field of its own, but it is reachable with one
+    // still open — back from a search-driven picker, or a deep link landing
+    // here past a screen with a field — and `Screen`'s own ScrollView (used by
+    // every OTHER screen) already carries both props. This FlatList is the one
+    // scroll container in the app that does NOT go through `Screen` (see the
+    // file header on why), so it needs the same two set directly rather than
+    // being the one screen that silently lacks them.
+    mockFetchMyPets.mockResolvedValue(twoPets());
+    render(<MisMascotasScreen />);
+    // The FlatList only mounts on the LOADED arm — the loading arm renders a
+    // plain `Screen`/`ScrollView` instead (see the file header).
+    await screen.findByText("Firulais");
+    const list = screen.UNSAFE_getByType(FlatList);
+    expect(list.props.keyboardDismissMode).toBe("on-drag");
+    expect(list.props.keyboardShouldPersistTaps).toBe("handled");
   });
 });
