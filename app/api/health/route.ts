@@ -12,7 +12,7 @@
 // budget (withDbBudget) plus a fail-open catch, so a degraded DB makes the probe
 // REPORT degradation quickly instead of hanging with it. It requires NO auth
 // (a poller can't authenticate) and returns NO sensitive data:
-//   { status, db: { ok, pingMs }, stuckBackends, degraded, ts }
+//   { status, db: { ok, pingMs }, stuckBackends, missingRequiredColumns, degraded, ts }
 
 import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
@@ -21,6 +21,7 @@ import { db } from "@/db";
 import { withDbBudget } from "@/lib/infra/db-budget";
 import { evaluateHealth } from "@/lib/infra/health-status";
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
+import { findMissingRequiredColumns } from "@/lib/infra/schema-guard";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs"; // postgres-js needs the Node runtime, not edge.
@@ -29,6 +30,7 @@ export const runtime = "nodejs"; // postgres-js needs the Node runtime, not edge
 const PING_BUDGET_MS = 2500;
 const STUCK_BUDGET_MS = 2000;
 const RATE_LIMIT_BUDGET_MS = 1500;
+const SCHEMA_BUDGET_MS = 1500;
 
 // Read-only twin of public.reap_stuck_app_backends() (migration 0136): counts
 // the currently-stuck Supavisor backends WITHOUT terminating any, so the endpoint
@@ -119,10 +121,36 @@ export async function GET(request: Request): Promise<NextResponse> {
       ).catch(() => null)
     : null;
 
-  const { status, degraded, httpStatus } = evaluateHealth({ dbOk, pingMs, stuckBackends });
+  // (c) Code ahead of its schema (lib/infra/schema-guard.ts, R9 of the
+  // localities audit): a column the writers insert into that this database
+  // lacks. Same shape as (b) — only when the ping succeeded, degrading to null
+  // (unknown) on any failure. Reported as a COUNT: the probe is public, and the
+  // names of the missing columns are for the deploy log, not for a scanner.
+  const missingRequiredColumns = dbOk
+    ? await withDbBudget<number | null>(
+        (async () => (await findMissingRequiredColumns(db)).length)(),
+        SCHEMA_BUDGET_MS,
+        "GET /api/health schema-guard",
+        null,
+      ).catch(() => null)
+    : null;
+
+  const { status, degraded, httpStatus } = evaluateHealth({
+    dbOk,
+    pingMs,
+    stuckBackends,
+    missingRequiredColumns,
+  });
 
   return NextResponse.json(
-    { status, db: { ok: dbOk, pingMs }, stuckBackends, degraded, ts: new Date().toISOString() },
+    {
+      status,
+      db: { ok: dbOk, pingMs },
+      stuckBackends,
+      missingRequiredColumns,
+      degraded,
+      ts: new Date().toISOString(),
+    },
     { status: httpStatus, headers: { "cache-control": "no-store" } },
   );
 }

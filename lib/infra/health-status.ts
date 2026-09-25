@@ -24,6 +24,14 @@ export type HealthInputs = {
    * probe couldn't run.
    */
   stuckBackends: number | null;
+  /**
+   * How many columns the code writes are absent from the database
+   * (lib/infra/schema-guard.ts), or null/absent when the check could not run.
+   * Unknown never marks the service degraded on its own, same rule as
+   * `stuckBackends`. Any positive count does: code ahead of its schema fails
+   * every write that touches the missing column (R9, localities audit).
+   */
+  missingRequiredColumns?: number | null;
 };
 
 export type HealthStatus = "ok" | "degraded" | "down";
@@ -40,14 +48,23 @@ export type HealthEvaluation = {
  *
  *   - db ping failed / timed out              → "down"     (503)
  *   - ping ok but slow (> DEGRADED_PING_MS)
- *     OR stuck backends present (> 0)          → "degraded" (503)
+ *     OR stuck backends present (> 0)
+ *     OR a required column missing (> 0)       → "degraded" (503)
  *   - otherwise                                → "ok"       (200)
  */
-export function evaluateHealth({ dbOk, pingMs, stuckBackends }: HealthInputs): HealthEvaluation {
+export function evaluateHealth({
+  dbOk,
+  pingMs,
+  stuckBackends,
+  missingRequiredColumns = null,
+}: HealthInputs): HealthEvaluation {
   if (!dbOk) {
     return { status: "down", degraded: true, httpStatus: 503 };
   }
-  const degraded = pingMs > DEGRADED_PING_MS || (stuckBackends !== null && stuckBackends > 0);
+  const degraded =
+    pingMs > DEGRADED_PING_MS ||
+    (stuckBackends !== null && stuckBackends > 0) ||
+    (missingRequiredColumns !== null && missingRequiredColumns > 0);
   return degraded
     ? { status: "degraded", degraded: true, httpStatus: 503 }
     : { status: "ok", degraded: false, httpStatus: 200 };
