@@ -5,25 +5,34 @@
 // own practice" is:
 //
 //   · endMatriculaPractices — when the matrícula is REVOKED (revoke-vet-role.ts),
-//     the practice must not keep writing clinical events on its strength. Every
-//     ACTIVE membership the vet holds in an org they created with
-//     `autoVerifiedViaMatricula` is ended (whatever its role), each with an
-//     `org_member_removed` audit row, and the org is un-verified. The resolver
-//     independently refuses vet_individual's implicit caps to a non-vet
-//     (domain/capabilities.ts) — this is the layer that removes the row itself.
+//     the practice must not keep writing clinical events, nor keep reading as
+//     verified, on its strength:
+//       - every ACTIVE membership the vet holds in an org they created with
+//         `autoVerifiedViaMatricula` is ended (whatever its role), each with an
+//         `org_member_removed` audit row;
+//       - every such org that is still verified is un-verified, WHETHER OR NOT
+//         it has co-admins, each with an `org_unverified` audit row. The flag is
+//         only ever set by the matrícula paths (create-organization.ts solo vet,
+//         provisioning here) and never by a formal verification, so an org that
+//         carries it has no basis for being verified other than the matrícula
+//         just revoked. A co-admin the vet appointed is not independent
+//         governance; the way back is a formal organization_verification.
+//       The general D4 cascade in revoke-vet-role.ts (sole-admin clinics) is
+//       left as it is; this is the stricter rule for the vet's OWN practices.
+//     The resolver independently refuses vet_individual's implicit caps to a
+//     non-vet (domain/capabilities.ts) — this is the layer that removes the rows.
 //
 //   · findReusablePractice / reactivatePractice — when the same person is
 //     approved again, their old practice is reopened (membership reactivated,
-//     org re-verified, audited) instead of leaving it an orphan and creating a
-//     second one.
+//     org re-verified, both audited) instead of leaving it an orphan and
+//     creating a second one.
 //
-// Both write only to audit_log for their record, like every membership change
-// in this module (remove-member.ts, leave-organization.ts). The reuse lookup
-// READS that record back: the `how: "vet_revocation"` removal row is what marks
-// a practice as closed by the matrícula (the D4 cascade clears
-// autoVerifiedViaMatricula, so the org's own flag cannot say it afterwards).
+// Everything is recorded in audit_log, like every membership and verification
+// change in this module. The reuse lookup READS that record back: the
+// `how: "vet_revocation"` removal row is what marks a practice as closed by the
+// matrícula (the flag is cleared on revocation, so the org cannot say it).
 
-import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
 import { auditLog, type db, organizationMemberships, organizations } from "@/db";
 import { OrgRepository } from "@/src/modules/organizations/infrastructure/org-repository";
@@ -38,16 +47,20 @@ export type MatriculaPracticeMembership = {
   role: string;
 };
 
+export type MatriculaPractices = {
+  /** The vet's ACTIVE memberships in the orgs they created on the matrícula. */
+  memberships: MatriculaPracticeMembership[];
+  /** Those orgs (by creator + flag, membership or not) that are still verified. */
+  verifiedOrgs: { id: string; displayName: string }[];
+};
+
 /**
- * The vet's ACTIVE memberships in orgs they created that are verified through
- * the matrícula. Read it BEFORE anything in the same transaction clears
- * `autoVerifiedViaMatricula` (revoke-vet-role's sole-admin cascade does).
+ * What a revocation of `userId`'s matrícula has to close. Read it BEFORE
+ * anything in the same transaction clears `autoVerifiedViaMatricula`
+ * (revoke-vet-role's D4 cascade does).
  */
-export async function findMatriculaPracticeMemberships(
-  tx: Tx,
-  userId: string,
-): Promise<MatriculaPracticeMembership[]> {
-  return tx
+export async function findMatriculaPractices(tx: Tx, userId: string): Promise<MatriculaPractices> {
+  const memberships = await tx
     .select({
       membershipId: organizationMemberships.id,
       organizationId: organizationMemberships.organizationId,
@@ -63,16 +76,28 @@ export async function findMatriculaPracticeMemberships(
         eq(organizations.autoVerifiedViaMatricula, true),
       ),
     );
+  // Membership-independent: a practice the vet already stepped out of (a
+  // co-admin runs it) is still verified on the vet's matrícula alone.
+  const verifiedOrgs = await tx
+    .select({ id: organizations.id, displayName: organizations.displayName })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.createdByUserId, userId),
+        eq(organizations.autoVerifiedViaMatricula, true),
+        eq(organizations.verified, true),
+      ),
+    );
+  return { memberships, verifiedOrgs };
 }
 
 /**
- * End those memberships, un-verify their orgs, and audit each removal.
- * `reason` names what caused it; `reasonAuditLogId` points at the revocation's
- * own audit row when there is one.
+ * End those memberships, un-verify those orgs, and audit every change.
+ * `reasonAuditLogId` points at the revocation's own audit row.
  */
 export async function endMatriculaPractices(
   tx: Tx,
-  practices: readonly MatriculaPracticeMembership[],
+  practices: MatriculaPractices,
   input: {
     userId: string;
     actorUserId: string;
@@ -80,11 +105,10 @@ export async function endMatriculaPractices(
     reasonAuditLogId: string | null;
   },
 ): Promise<void> {
-  if (practices.length === 0) return;
   const now = new Date();
   const repo = new OrgRepository();
 
-  for (const p of practices) {
+  for (const p of practices.memberships) {
     await tx
       .update(organizationMemberships)
       .set({ leftAt: now })
@@ -108,34 +132,38 @@ export async function endMatriculaPractices(
     });
   }
 
-  // Un-verify the practices left with NO active admin. One that still has a
-  // co-admin keeps its verification — the same governance rule as the D4
-  // cascade in revoke-vet-role.ts, which runs first and handles the sole-admin
-  // case; this covers the rest (e.g. a practice whose only member held the
-  // vet_individual role).
-  for (const orgId of new Set(practices.map((p) => p.organizationId))) {
-    const [admin] = await tx
-      .select({ id: organizationMemberships.id })
-      .from(organizationMemberships)
-      .where(
-        and(
-          eq(organizationMemberships.organizationId, orgId),
-          eq(organizationMemberships.role, "admin"),
-          isNull(organizationMemberships.leftAt),
-        ),
-      )
-      .limit(1);
-    if (admin) continue;
-    await tx
-      .update(organizations)
-      .set({
-        verified: false,
-        verifiedAt: null,
-        verifiedByUserId: null,
-        autoVerifiedViaMatricula: false,
-        updatedAt: now,
-      })
-      .where(eq(organizations.id, orgId));
+  if (practices.verifiedOrgs.length === 0) return;
+  // Idempotent over the D4 cascade, which may already have flipped the
+  // sole-admin ones earlier in this transaction; the audit row is written per
+  // org read as verified at the start, so each carries exactly one.
+  await tx
+    .update(organizations)
+    .set({
+      verified: false,
+      verifiedAt: null,
+      verifiedByUserId: null,
+      autoVerifiedViaMatricula: false,
+      updatedAt: now,
+    })
+    .where(
+      inArray(
+        organizations.id,
+        practices.verifiedOrgs.map((o) => o.id),
+      ),
+    );
+  for (const org of practices.verifiedOrgs) {
+    await tx.insert(auditLog).values({
+      actorUserId: input.actorUserId,
+      action: "org_unverified",
+      targetUserId: input.userId,
+      targetOrganizationId: org.id,
+      payload: {
+        org_id: org.id,
+        org_display_name: org.displayName,
+        reason: "creator_matricula_revoked",
+        reason_audit_log_id: input.reasonAuditLogId,
+      },
+    });
   }
 }
 
@@ -204,7 +232,16 @@ export async function findReusablePractice(
   return null;
 }
 
-/** Reopen it: the membership back as admin, the org re-verified through the matrícula. */
+/**
+ * Reopen it: the membership back as admin, the org re-verified through the
+ * matrícula, each audited.
+ *
+ * `joined_at` is left as it was: the row's first join is history, and the
+ * schema has no reactivation column (adding one would take a migration for a
+ * fact the audit trail already holds — the `org_member_removed` row with
+ * `how: "vet_revocation"` and the `org_member_added` row with
+ * `how: "vet_approval_reactivation"` bracket the gap exactly).
+ */
 export async function reactivatePractice(
   tx: Tx,
   practice: { organizationId: string; membershipId: string },
@@ -213,10 +250,10 @@ export async function reactivatePractice(
   const now = new Date();
   await tx
     .update(organizationMemberships)
-    .set({ leftAt: null, role: "admin", joinedAt: now })
+    .set({ leftAt: null, role: "admin" })
     .where(eq(organizationMemberships.id, practice.membershipId));
   await syncEventWriteMirror(new OrgRepository(), practice.membershipId, tx);
-  await tx
+  const [org] = await tx
     .update(organizations)
     .set({
       verified: true,
@@ -225,7 +262,8 @@ export async function reactivatePractice(
       autoVerifiedViaMatricula: true,
       updatedAt: now,
     })
-    .where(eq(organizations.id, practice.organizationId));
+    .where(eq(organizations.id, practice.organizationId))
+    .returning({ displayName: organizations.displayName });
   await tx.insert(auditLog).values({
     actorUserId: input.actorUserId,
     action: "org_member_added",
@@ -237,6 +275,18 @@ export async function reactivatePractice(
       role: "admin",
       how: "vet_approval_reactivation",
       approval_request_id: input.approvalRequestId,
+    },
+  });
+  await tx.insert(auditLog).values({
+    actorUserId: input.actorUserId,
+    action: "org_verified",
+    targetUserId: input.userId,
+    targetOrganizationId: practice.organizationId,
+    approvalRequestId: input.approvalRequestId,
+    payload: {
+      org_id: practice.organizationId,
+      org_display_name: org?.displayName ?? null,
+      how: "vet_approval_reactivation",
     },
   });
 }

@@ -10,7 +10,7 @@
 //      b. Cascade un-verify clinic orgs auto-verified via this vet's matrícula
 //      c. INSERT audit_log RETURNING id
 //      c2. End the vet's memberships in the practices they created on the
-//          matrícula (any role), audit each, un-verify the admin-less ones
+//          matrícula (any role) and un-verify all of them, auditing each
 //      c3. Re-derive the event.write mirror of the memberships left elsewhere
 //      d. Claim attachments (UPDATE WHERE uploaded_by_user_id=actor)
 //      e. Collect notification to target
@@ -36,7 +36,7 @@ import { validateMotivoAndAttachments } from "@/lib/domain/revocation-validation
 
 import {
   endMatriculaPractices,
-  findMatriculaPracticeMemberships,
+  findMatriculaPractices,
 } from "@/src/modules/organizations/application/matricula-practices";
 import { syncEventWriteMirror } from "@/src/modules/organizations/application/set-member-event-write";
 import { OrgRepository } from "@/src/modules/organizations/infrastructure/org-repository";
@@ -108,7 +108,7 @@ export async function revokeVetRoleForAuthority(
       // matrícula. Read NOW, before the D4 cascade below clears
       // autoVerifiedViaMatricula; ended after the revocation's audit row exists
       // so each removal can point at it.
-      const matriculaPractices = await findMatriculaPracticeMemberships(tx, input.targetUserId);
+      const matriculaPractices = await findMatriculaPractices(tx, input.targetUserId);
 
       // D4: Cascade — un-verify any clinic org that was auto-verified via this
       // vet's matrícula AND where the revoked user is still the sole active admin.
@@ -205,7 +205,8 @@ export async function revokeVetRoleForAuthority(
         .returning({ id: auditLog.id });
 
       // b2. End every membership in those practices (whatever the role) and
-      //     un-verify them — a revoked vet keeps no clinical write through them.
+      //     un-verify every one still verified, co-admins or not — a revoked
+      //     vet's own practice keeps neither clinical write nor verified status.
       await endMatriculaPractices(tx, matriculaPractices, {
         userId: input.targetUserId,
         actorUserId,

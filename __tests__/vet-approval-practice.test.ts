@@ -45,6 +45,7 @@ import {
 import { generatePublicToken } from "@/lib/infra/publicToken";
 import { approveRequestForAuthority } from "@/src/modules/organizations/application/admin-decisions/approve-request";
 import { provisionVetPractice } from "@/src/modules/organizations/application/admin-decisions/provision-vet-practice";
+import { verifyOrgForAuthority } from "@/src/modules/organizations/application/admin-org-verification/verify-org";
 import { revokeVetRoleForAuthority } from "@/src/modules/organizations/application/revocations/revoke-vet-role";
 import { syncEventWriteMirror } from "@/src/modules/organizations/application/set-member-event-write";
 import { requestVetUpgradeForUser } from "@/src/modules/organizations/application/upgrade/request-vet-upgrade";
@@ -466,6 +467,18 @@ describe("revocation closes the practice; re-approval reopens the same one (W6 r
       .from(organizations)
       .where(eq(organizations.id, practiceId));
     expect(org.verified).toBe(false);
+
+    const unverified = await db
+      .select({ payload: auditLog.payload })
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.targetOrganizationId, practiceId), eq(auditLog.action, "org_unverified")),
+      );
+    expect(unverified).toHaveLength(1);
+    expect(unverified[0].payload).toMatchObject({
+      reason: "creator_matricula_revoked",
+      reason_audit_log_id: revocation.id,
+    });
   });
 
   it("the revoked vet can no longer open the atender context of the practice", async () => {
@@ -519,11 +532,25 @@ describe("revocation closes the practice; re-approval reopens the same one (W6 r
         ),
       );
 
+    const [before] = await db
+      .select({ joinedAt: organizationMemberships.joinedAt })
+      .from(organizationMemberships)
+      .where(
+        and(
+          eq(organizationMemberships.organizationId, practiceId),
+          eq(organizationMemberships.userId, ids.fresh),
+        ),
+      );
+
     const secondRequestId = await approveVet(ids.fresh, "MN-W6-0004");
 
     expect(await orgIdsTouching(ids.fresh)).toEqual([practiceId]);
     const [m] = await db
-      .select({ leftAt: organizationMemberships.leftAt, role: organizationMemberships.role })
+      .select({
+        leftAt: organizationMemberships.leftAt,
+        role: organizationMemberships.role,
+        joinedAt: organizationMemberships.joinedAt,
+      })
       .from(organizationMemberships)
       .where(
         and(
@@ -533,6 +560,8 @@ describe("revocation closes the practice; re-approval reopens the same one (W6 r
       );
     expect(m.leftAt).toBeNull();
     expect(m.role).toBe("admin");
+    // History kept: the first join stays; the gap lives in the audit trail.
+    expect(m.joinedAt).toEqual(before.joinedAt);
     const [org] = await db
       .select({ verified: organizations.verified, auto: organizations.autoVerifiedViaMatricula })
       .from(organizations)
@@ -552,7 +581,104 @@ describe("revocation closes the practice; re-approval reopens the same one (W6 r
     ]);
     expect(payloads.some((p) => p.approval_request_id === secondRequestId)).toBe(true);
 
+    const reverified = await db
+      .select({ approvalRequestId: auditLog.approvalRequestId, payload: auditLog.payload })
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.targetOrganizationId, practiceId), eq(auditLog.action, "org_verified")),
+      );
+    expect(reverified).toHaveLength(1);
+    expect(reverified[0].approvalRequestId).toBe(secondRequestId);
+    expect(reverified[0].payload).toMatchObject({ how: "vet_approval_reactivation" });
+
     live.userId = ids.fresh;
     expect((await resolveAtenderContext(practiceToken)).ok).toBe(true);
+  });
+});
+
+describe("a co-admin the vet appointed does not keep the practice verified (W6 re-review)", () => {
+  // ids.foster was approved above with nowhere to write, so they run a
+  // provisioned practice. ids.member plays the accomplice: appointed co-admin.
+  let practiceId: string;
+
+  beforeAll(async () => {
+    [practiceId] = await orgIdsTouching(ids.foster);
+    await db
+      .insert(organizationMemberships)
+      .values({ organizationId: practiceId, userId: ids.member, role: "admin" });
+
+    const [evidence] = await db
+      .insert(attachments)
+      .values({
+        uploadedByUserId: ids.approver,
+        storagePath: `revocations/${ids.approver}/w6-coadmin-evidence.jpg`,
+        mimeType: "image/jpeg",
+        fileSize: 1234,
+      })
+      .returning({ id: attachments.id });
+    const revoked = await revokeVetRoleForAuthority(ids.approver, {
+      targetUserId: ids.foster,
+      motivo: "Matrícula dada de baja por el colegio profesional (prueba W6 co-admin).",
+      attachmentIds: [evidence.id],
+    });
+    expect(revoked).toEqual(expect.objectContaining({ ok: true }));
+  });
+
+  it("un-verifies the practice although a co-admin remains, and audits it", async () => {
+    const [org] = await db
+      .select({ verified: organizations.verified, auto: organizations.autoVerifiedViaMatricula })
+      .from(organizations)
+      .where(eq(organizations.id, practiceId));
+    expect(org).toEqual({ verified: false, auto: false });
+
+    const unverified = await db
+      .select({ payload: auditLog.payload })
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.targetOrganizationId, practiceId), eq(auditLog.action, "org_unverified")),
+      );
+    expect(unverified).toHaveLength(1);
+    expect(unverified[0].payload).toMatchObject({ reason: "creator_matricula_revoked" });
+
+    const rows = await db
+      .select({ userId: organizationMemberships.userId, leftAt: organizationMemberships.leftAt })
+      .from(organizationMemberships)
+      .where(eq(organizationMemberships.organizationId, practiceId));
+    // The revoked vet is out; the co-admin's own seat is not the revocation's to end.
+    expect(rows.find((r) => r.userId === ids.foster)?.leftAt).not.toBeNull();
+    expect(rows.find((r) => r.userId === ids.member)?.leftAt).toBeNull();
+  });
+
+  it("the co-admin cannot put the verification back", async () => {
+    const attempt = await verifyOrgForAuthority(ids.member, { organizationId: practiceId });
+    expect(attempt).toEqual({ error: "CAPABILITY_DENIED" });
+    const [org] = await db
+      .select({ verified: organizations.verified })
+      .from(organizations)
+      .where(eq(organizations.id, practiceId));
+    expect(org.verified).toBe(false);
+  });
+
+  it("re-approving the vet does not reopen a practice someone else now administers", async () => {
+    await db
+      .update(organizationMemberships)
+      .set({ leftAt: new Date() })
+      .where(
+        and(
+          eq(organizationMemberships.userId, ids.foster),
+          inArray(organizationMemberships.organizationId, extraOrgIds),
+        ),
+      );
+    await approveVet(ids.foster, "MN-W6-0005");
+
+    const [org] = await db
+      .select({ verified: organizations.verified })
+      .from(organizations)
+      .where(eq(organizations.id, practiceId));
+    expect(org.verified).toBe(false);
+    // A fresh practice of their own instead.
+    const created = await orgIdsTouching(ids.foster);
+    expect(created).toHaveLength(2);
+    expect(created).toContain(practiceId);
   });
 });
