@@ -7855,14 +7855,14 @@
         "docs/mobile/eas-build-profiles.md#what-guards-it-now"
       ],
       "enforcer": [
-        "apps/mobile/src/release/release-config.test.ts:1370"
+        "apps/mobile/src/release/release-config.test.ts:1400"
       ],
       "enforcementKind": "jest",
       "wired": "test:verified",
       "status": "PARTIAL",
       "partialShape": "subset",
       "clause": "R4",
-      "statusBasis": "release-config.test.ts:1370 is the line that FAILS when the rule is broken — `expect(named.filter((name) => !declared.has(name))).toEqual([])`, with a non-vacuity floor at :1376. The citation was `:931` until 2026-09-04; that line had drifted onto an unrelated assertion in the workflow-pin test, the icon work of that day shifted it onto a comment (`:1189`), which is what the canon-parity fence (b) reported, and the feature-graphic tests added later that day moved it once more; the Android-hardening tests (N1, 2026-09-24) moved it from :1326 to :1370. The test requires ../../babel.config.js, CALLS it, and derives package names from presets+plugins against apps/mobile/package.json's deps+devDeps — babel.config.js ONLY. The rule says 'every package a mobile config file imports by name': apps/mobile/metro.config.js:25 requires \"expo/metro-config\" and jest.config.js:54/:97 require \"@react-native/jest-preset\" and \"jest-expo/jest-preset\", none of them swept.",
+      "statusBasis": "release-config.test.ts:1400 is the line that FAILS when the rule is broken — `expect(named.filter((name) => !declared.has(name))).toEqual([])`, with a non-vacuity floor at :1406. The citation was `:931` until 2026-09-04; that line had drifted onto an unrelated assertion in the workflow-pin test, the icon work of that day shifted it onto a comment (`:1189`), which is what the canon-parity fence (b) reported, and the feature-graphic tests added later that day moved it once more; the Android-hardening tests (N1, 2026-09-24) moved it from :1326 to :1370. The test requires ../../babel.config.js, CALLS it, and derives package names from presets+plugins against apps/mobile/package.json's deps+devDeps — babel.config.js ONLY. The rule says 'every package a mobile config file imports by name': apps/mobile/metro.config.js:25 requires \"expo/metro-config\" and jest.config.js:54/:97 require \"@react-native/jest-preset\" and \"jest-expo/jest-preset\", none of them swept. The M17 location-permission pin (2026-09-25) moved it from :1370 to :1400.",
       "notes": "Independently reached the judge's conclusion, and jest.config.js is a second uncovered config file the judge's note did not name. The derivation-not-hardcoding half of the rule is genuinely honoured (standardizeBabelName at :1208).",
       "confidence": 0.85,
       "verifiedAt": "d7dbf25f7"
@@ -7875,13 +7875,13 @@
         "docs/mobile/eas-build-profiles.md#what-guards-it-now"
       ],
       "enforcer": [
-        "apps/mobile/src/release/release-config.test.ts:1517-1537"
+        "apps/mobile/src/release/release-config.test.ts:1547-1567"
       ],
       "enforcementKind": "jest",
       "wired": "test:verified",
       "status": "ENFORCED",
       "clause": "R1",
-      "statusBasis": "release-config.test.ts:1393-1395 reads expo/bundledNativeModules.json; :1409-1412 parses pnpm-lock.yaml's packages: section (the LOCKFILE, not declarations); :1517-1532 asserts every resolution of every bundled name satisfies the SDK pin, with a non-vacuity floor `checked >= MIN_BUNDLED_NAMES_CHECKED` at :1537. The two exempt web-owned names are re-pinned at :1540-1559. Citations re-anchored 2026-09-24: they had drifted onto the pnpm-pin test before N1 shifted the file again.",
+      "statusBasis": "release-config.test.ts:1423-1425 reads expo/bundledNativeModules.json; :1439-1442 parses pnpm-lock.yaml's packages: section (the LOCKFILE, not declarations); :1547-1562 asserts every resolution of every bundled name satisfies the SDK pin, with a non-vacuity floor `checked >= MIN_BUNDLED_NAMES_CHECKED` at :1567. The two exempt web-owned names are re-pinned at :1570-1589. Citations re-anchored 2026-09-24: they had drifted onto the pnpm-pin test before N1 shifted the file again. Re-anchored again 2026-09-25 (+30) after the M17 location-permission pin.",
       "notes": "The exemption (react, react-dom) is closed by a compensating assertion: whatever apps/mobile itself declares for an exempt name must equal the SDK pin (:1551), plus an exemption-list non-vacuity check (:1556-1558).",
       "confidence": 0.85,
       "verifiedAt": "d7dbf25f7"
