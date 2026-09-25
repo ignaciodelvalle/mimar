@@ -1022,11 +1022,29 @@ describe("Android hardening (N1)", () => {
     expect(blocked).not.toContain("android.permission.WRITE_EXTERNAL_STORAGE");
   });
 
-  it("names exactly the two blocked permissions this decision covers, no more", () => {
+  it("blocks every device-location permission — no GPS in this product (PO, 2026-09-24)", () => {
+    // M17 brought a map, and MapLibre's own AndroidManifest.xml requests
+    // ACCESS_FINE_LOCATION and ACCESS_COARSE_LOCATION for a location engine
+    // this app never starts. Blocking them is what makes "no device location"
+    // true of the INSTALLED app and of the Play Data Safety answer, not only of
+    // the code: the manifest merger removes them, so no build can ask.
+    expect(resolved.android?.blockedPermissions).toEqual(
+      expect.arrayContaining([
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+      ]),
+    );
+  });
+
+  it("names exactly the blocked permissions these decisions cover, no more", () => {
     // A list of things that must not be there can only ever catch the ones
     // somebody thought of — this pins the set so an unrelated future addition
     // gets noticed here instead of discovered in a build.
     expect((resolved.android?.blockedPermissions ?? []).slice().sort()).toEqual([
+      "android.permission.ACCESS_BACKGROUND_LOCATION",
+      "android.permission.ACCESS_COARSE_LOCATION",
+      "android.permission.ACCESS_FINE_LOCATION",
       "android.permission.SYSTEM_ALERT_WINDOW",
       "android.permission.WRITE_SETTINGS",
     ]);
