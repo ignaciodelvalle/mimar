@@ -1,6 +1,7 @@
 "use client";
 
-// Pilot-request form on /municipios (WU6). Posts to requestPilotAction, which
+// Contact form on /municipios (WU6; "Contactate con el equipo" since the PO
+// review of 2026-09-25). Posts to requestPilotAction, which
 // mails our own pilots mailbox with Reply-To set to the requester. Nothing is
 // stored. Rules and copy of the refusals live in lib/outreach/pilot-request.ts.
 //
@@ -44,7 +45,7 @@ export function PilotRequestForm() {
   // a screen reader announces both outcomes: the success line and the
   // refusal summary. A region that appears together with its text is not
   // reliably announced.
-  const announcement = state.status === "sent" ? "Recibimos tu pedido." : (failure ?? "");
+  const announcement = state.status === "sent" ? "Recibimos tu mensaje." : (failure ?? "");
 
   return (
     <>
@@ -53,7 +54,7 @@ export function PilotRequestForm() {
       </p>
       {state.status === "sent" ? (
         <div className="lp-mun-sent">
-          <h3 className="lp-display lp-h-sub">Recibimos tu pedido.</h3>
+          <h3 className="lp-display lp-h-sub">Recibimos tu mensaje.</h3>
           <p>
             Te escribimos al correo que dejaste para coordinar una demo de cinco minutos sobre tu
             territorio. Te respondemos a la brevedad.
@@ -297,7 +298,7 @@ function PilotFields({ formAction, isPending, failure, errors, kept, keptChecked
           invalid={Boolean(errors.consent)}
           required
         >
-          Acepto que miMAR use estos datos solo para responder este pedido. Viajan por correo a
+          Acepto que miMAR use estos datos solo para responder este mensaje. Viajan por correo a
           través de Resend, un proveedor de Estados Unidos, como explica la{" "}
           <Link href="/privacidad#proveedores" className="underline">
             política de privacidad
@@ -314,7 +315,7 @@ function PilotFields({ formAction, isPending, failure, errors, kept, keptChecked
       {failure ? <p className="lp-mun-failure mt-5">{failure}</p> : null}
 
       <LnButton type="submit" size="lg" loading={isPending} disabled={isPending} className="mt-5">
-        {isPending ? "Enviando pedido…" : "Solicitar un piloto"}
+        {isPending ? "Enviando…" : "Enviar"}
       </LnButton>
     </form>
   );

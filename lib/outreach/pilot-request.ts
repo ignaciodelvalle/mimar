@@ -263,7 +263,7 @@ export function buildPilotMail(request: PilotRequest): PilotMail {
   const message = request.message ?? "(sin mensaje)";
 
   const text = [
-    "Pedido de piloto enviado desde miMAR para municipios.",
+    "Mensaje enviado desde miMAR para municipios.",
     "",
     ...rows.map(([label, value]) => `${label}: ${value}`),
     "",
@@ -274,7 +274,7 @@ export function buildPilotMail(request: PilotRequest): PilotMail {
   ].join("\n");
 
   const html = `
-    <p>Pedido de piloto enviado desde miMAR para municipios.</p>
+    <p>Mensaje enviado desde miMAR para municipios.</p>
     <table cellpadding="4" cellspacing="0">
       ${rows
         .map(
@@ -291,7 +291,7 @@ export function buildPilotMail(request: PilotRequest): PilotMail {
   return {
     to: CONTACT_EMAILS.pilots,
     replyTo: request.email,
-    subject: sanitizeHeaderText(`Pedido de piloto: ${request.organismName} (${jurisdiction})`),
+    subject: sanitizeHeaderText(`Contacto de municipio: ${request.organismName} (${jurisdiction})`),
     text,
     html,
   };
@@ -318,9 +318,9 @@ export type PilotRequestDeps = {
 };
 
 export const PILOT_RATE_LIMITED_MESSAGE =
-  "Ya recibimos varios pedidos desde tu conexión. Esperá un rato y volvé a intentar.";
+  "Ya recibimos varios mensajes desde tu conexión. Esperá un rato y volvé a intentar.";
 
-export const PILOT_UNAVAILABLE_MESSAGE = `No pudimos enviar tu pedido. Probá de nuevo en unos minutos, o escribinos a ${CONTACT_EMAILS.pilots}.`;
+export const PILOT_UNAVAILABLE_MESSAGE = `No pudimos enviar tu mensaje. Probá de nuevo en unos minutos, o escribinos a ${CONTACT_EMAILS.pilots}.`;
 
 export async function submitPilotRequest(
   formData: FormData,

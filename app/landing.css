@@ -2497,130 +2497,37 @@
   }
 }
 
-/* Where the data comes from: a chain that hands off to the office. A real
-   flow, so it is drawn as one line with stops on it. */
-.lp .lp-mun-chain {
+/* What it solves: a two-column register of capabilities, title over one
+   line of body, on hairlines like the questions above. Not numbered — it is
+   an inventory, not a sequence. */
+.lp .lp-mun-caps {
   list-style: none;
   padding: 0;
   margin: clamp(32px, 4vw, 48px) 0 0;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: clamp(28px, 5vw, 64px);
+  border-top: 1px solid var(--color-ln-line);
 }
-.lp .lp-mun-chain li {
-  position: relative;
-  padding-top: 26px;
-  border-top: 2px solid var(--color-ln-line);
+.lp .lp-mun-caps li {
+  padding-block: 20px;
+  border-bottom: 1px solid var(--color-ln-line);
 }
-.lp .lp-mun-chain li::before {
-  content: "";
-  position: absolute;
-  top: -7px;
-  left: 0;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--color-ln-card);
-  border: 2px solid var(--color-ln-azul);
-}
-.lp .lp-mun-chain li:last-child {
-  border-top-color: var(--color-ln-azul);
-}
-.lp .lp-mun-chain li:last-child::before {
-  background: var(--color-ln-azul);
-}
-.lp .lp-mun-chain-who {
-  margin: 0 0 6px;
+.lp .lp-mun-cap-h {
+  margin: 0 0 4px;
+  font-size: var(--text-lg);
   font-weight: 700;
   color: var(--color-ln-ink);
 }
-.lp .lp-mun-chain-what {
+.lp .lp-mun-cap-b {
   margin: 0;
-  font-size: var(--text-base);
-  line-height: 1.55;
+  max-width: 48ch;
   color: var(--color-ln-ink-2);
-}
-@media (max-width: 860px) {
-  .lp .lp-mun-chain {
-    grid-template-columns: 1fr;
-    gap: 0;
-  }
-  .lp .lp-mun-chain li {
-    border-top: 0;
-    border-left: 2px solid var(--color-ln-line);
-    padding: 0 0 24px 22px;
-  }
-  .lp .lp-mun-chain li::before {
-    top: 4px;
-    left: -7px;
-  }
-  .lp .lp-mun-chain li:last-child {
-    border-left-color: var(--color-ln-azul);
-    padding-bottom: 0;
-  }
-}
-
-.lp .lp-mun-prose {
-  margin: 18px 0 0;
-  font-size: var(--text-lg);
-  line-height: 1.65;
-  color: var(--color-ln-ink-2);
-  max-width: 64ch;
-}
-
-/* Today vs not yet: two lists, the second visibly quieter. */
-.lp .lp-mun-today {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: clamp(28px, 5vw, 64px);
-  margin-top: clamp(32px, 4vw, 48px);
 }
 @media (max-width: 760px) {
-  .lp .lp-mun-today {
+  .lp .lp-mun-caps {
     grid-template-columns: 1fr;
   }
-}
-.lp .lp-mun-col-h {
-  margin: 0 0 14px;
-  font-size: var(--text-lg);
-  font-weight: 700;
-  color: var(--color-ln-ink);
-}
-.lp .lp-mun-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.lp .lp-mun-list li {
-  position: relative;
-  padding-left: 26px;
-  line-height: 1.5;
-  color: var(--color-ln-ink);
-}
-.lp .lp-mun-list li::before {
-  content: "";
-  position: absolute;
-  left: 2px;
-  top: 0.45em;
-  width: 12px;
-  height: 7px;
-  border-left: 2px solid var(--color-ln-ok);
-  border-bottom: 2px solid var(--color-ln-ok);
-  transform: rotate(-45deg);
-}
-.lp .lp-mun-list--pending li {
-  color: var(--color-ln-ink-2);
-}
-.lp .lp-mun-list--pending li::before {
-  width: 10px;
-  height: 10px;
-  top: 0.4em;
-  border: 2px solid var(--color-ln-mute);
-  border-radius: 50%;
-  transform: none;
 }
 
 /* The pilot: a real three-step sequence, so it carries numbers. */
@@ -2682,12 +2589,6 @@
   font-size: var(--text-lg);
   line-height: 1.55;
   color: var(--lp-navy-ink);
-  max-width: 40ch;
-}
-.lp .lp-mun-request-note {
-  margin: 14px 0 0;
-  font-size: var(--text-base);
-  color: var(--lp-navy-mute);
   max-width: 40ch;
 }
 .lp .lp-mun-form-card {

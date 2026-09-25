@@ -128,7 +128,9 @@ describe("buildPilotMail — the mail goes to our own inbox, answered to the req
     const mail = buildPilotMail(parsed.value);
     expect(mail.to).toBe(CONTACT_EMAILS.pilots);
     expect(mail.replyTo).toBe("ana.perez@municipio.example");
-    expect(mail.subject).toBe("Pedido de piloto: Dirección de Zoonosis (La Plata, Buenos Aires)");
+    expect(mail.subject).toBe(
+      "Contacto de municipio: Dirección de Zoonosis (La Plata, Buenos Aires)",
+    );
     expect(mail.text).toContain("Cargo: Directora");
   });
 
