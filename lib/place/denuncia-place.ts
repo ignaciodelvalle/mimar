@@ -18,12 +18,18 @@
 //      triage queue's "sin verificar" is how an operator learns a report may be
 //      province-level or re-read from the pin (spec: unresolved cases keep
 //      `jurisdiction_unverified`).
+//   4. The place as ENTERED is returned too (`place`), whatever it resolved to
+//      — a homonym, or nothing — so the typed locality is never lost (stage A
+//      review, P2). `resolved` names only a row the place resolver named; a
+//      pair recovered by the D.11 gate from form text is not a resolution.
 
 import type { LocationValue } from "@/lib/domain/location-value";
+import type { EventPlace } from "@/lib/events/place-payload";
 import {
   type RoutableJurisdiction,
   resolveRoutableJurisdiction,
 } from "@/lib/infra/jurisdiction-from-text";
+import { toEventPlace } from "@/lib/place/event-place";
 import { type UnresolvedReason, resolveMapFormPlace } from "@/lib/place/reported-place";
 
 /** Outcomes that are never "verified", whatever the coordinates say. */
@@ -36,9 +42,14 @@ const ALWAYS_MARKED: ReadonlySet<UnresolvedReason> = new Set([
   "pin_only",
 ]);
 
+export type DenunciaJurisdiction = RoutableJurisdiction & {
+  /** The place as entered and as resolved, for the denuncia's event record. */
+  place: EventPlace;
+};
+
 export async function resolveDenunciaJurisdiction(
   loc: LocationValue,
-): Promise<RoutableJurisdiction> {
+): Promise<DenunciaJurisdiction> {
   const place = await resolveMapFormPlace(loc);
   const routable = await resolveRoutableJurisdiction({
     province: place.province,
@@ -49,5 +60,5 @@ export async function resolveDenunciaJurisdiction(
     lng: loc.lng,
   });
   const marked = place.unresolvedReason !== null && ALWAYS_MARKED.has(place.unresolvedReason);
-  return { ...routable, unverified: routable.unverified || marked };
+  return { ...routable, unverified: routable.unverified || marked, place: toEventPlace(place) };
 }

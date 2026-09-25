@@ -31,6 +31,7 @@
 //   6. Return redirect target.
 
 import { validateEventPayload } from "@/lib/events/event-schemas";
+import type { EventPlace } from "@/lib/events/place-payload";
 import type { OpenedReason } from "@/src/modules/cases/domain/opened-reason";
 import { MALTREATMENT_KINDS, derivePrimarySubjectKind } from "../domain/report-classification";
 import type { WelfareRepository } from "../infrastructure/welfare-repository";
@@ -84,6 +85,11 @@ export type CreateOrgWelfareReportInput = {
   locationAddress: string | null;
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
+  /**
+   * The place as entered and as resolved (lib/place/denuncia-place.ts). Rides
+   * the pet-event bridge so the typed locality is never lost.
+   */
+  eventPlace?: EventPlace | null;
   /** Drizzle numeric() columns serialize as strings. */
   locationLat: string | null;
   locationLng: string | null;
@@ -156,6 +162,7 @@ export async function createOrgWelfareReport(
     orgMember,
     orgToken,
     clientIdempotencyKey,
+    eventPlace,
   } = input;
 
   // OA2: severity ALWAYS forced to 'critical' (server authoritative).
@@ -225,6 +232,7 @@ export async function createOrgWelfareReport(
             welfare_report_id: reportId,
             reporter_role: "witness",
             description,
+            ...(eventPlace ? { place: eventPlace } : {}),
           });
           await repo.insertPetEventIdempotent(
             {
@@ -250,6 +258,7 @@ export async function createOrgWelfareReport(
             description,
             severity,
             kind,
+            ...(eventPlace ? { place: eventPlace } : {}),
           });
           await repo.insertPetEventIdempotent(
             {

@@ -548,6 +548,8 @@ export const PAYLOAD_PRIVACY: Record<EventType, Record<string, PrivacyEntry>> = 
     welfare_report_id: CF,
     reporter_role: CF,
     description: paGated("Welfare description: an inspection record when an official wrote it."),
+    // Catalogue place, as entered and as resolved (lib/events/place-payload.ts).
+    place: CF,
   },
   maltreatment_reported: {
     payload_version: CF,
@@ -556,6 +558,8 @@ export const PAYLOAD_PRIVACY: Record<EventType, Record<string, PrivacyEntry>> = 
     description: paGated("Welfare description: an inspection record when an official wrote it."),
     severity: CF,
     kind: CF,
+    // Catalogue place, as entered and as resolved (lib/events/place-payload.ts).
+    place: CF,
   },
 
   // --- Custody / adoption ----------------------------------------------------

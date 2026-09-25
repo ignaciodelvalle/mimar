@@ -438,6 +438,7 @@ async function fileWelfareReport(userId: string, input: WelfareReportInput) {
       locationAddress: input.locationAddress,
       jurisdictionProvince: routable.province,
       jurisdictionLocality: routable.locality,
+      eventPlace: routable.place,
       locationLat: point.locationLat,
       locationLng: point.locationLng,
       occurredAt: input.occurredAt ? new Date(input.occurredAt) : null,

@@ -66,6 +66,14 @@ function row(indecId: string): Row {
   return r;
 }
 
+/** Where it is routed — without the entered-place record, pinned on its own below. */
+function routing({
+  place: _place,
+  ...routed
+}: Awaited<ReturnType<typeof resolveDenunciaJurisdiction>>) {
+  return routed;
+}
+
 function loc(overrides: Partial<LocationValue>): LocationValue {
   return {
     province: null,
@@ -88,7 +96,7 @@ describe("resolveDenunciaJurisdiction", () => {
     const out = await resolveDenunciaJurisdiction(
       loc({ provinceCode: "AR-X", locality: "Villa María", ...pinAt(VILLA_MARIA_CORDOBA) }),
     );
-    expect(out).toEqual({
+    expect(routing(out)).toEqual({
       province: "Córdoba",
       locality: "Villa María",
       localityId: row(VILLA_MARIA_CORDOBA).id,
@@ -113,7 +121,7 @@ describe("resolveDenunciaJurisdiction", () => {
     const out = await resolveDenunciaJurisdiction(
       loc({ provinceCode: "AR-B", locality: "Mechita", ...pinAt(MECHITA_BRAGADO) }),
     );
-    expect(out).toEqual({
+    expect(routing(out)).toEqual({
       province: "Buenos Aires",
       locality: null,
       localityId: null,
@@ -130,7 +138,7 @@ describe("resolveDenunciaJurisdiction", () => {
     const out = await resolveDenunciaJurisdiction(
       loc({ address: "Villa María", ...pinAt(VILLA_MARIA_CORDOBA) }),
     );
-    expect(out).toEqual({
+    expect(routing(out)).toEqual({
       province: "Córdoba",
       locality: "Villa María",
       localityId: row(VILLA_MARIA_CORDOBA).id,
@@ -144,7 +152,7 @@ describe("resolveDenunciaJurisdiction", () => {
     const out = await resolveDenunciaJurisdiction(
       loc({ address: "Villa María", ...pinAt(VILLA_MARIA_CORDOBA) }),
     );
-    expect(out).toEqual({
+    expect(routing(out)).toEqual({
       province: "Córdoba",
       locality: null,
       localityId: null,
@@ -156,7 +164,7 @@ describe("resolveDenunciaJurisdiction", () => {
     const out = await resolveDenunciaJurisdiction(
       loc({ address: "Calle 10, Mechita, Buenos Aires" }),
     );
-    expect(out).toEqual({
+    expect(routing(out)).toEqual({
       province: "Buenos Aires",
       locality: null,
       localityId: null,
@@ -178,6 +186,42 @@ describe("the long-form province a geocoder echoes", () => {
   });
 });
 
+// Stage A review (P2 — the place of origin is never lost): the locality the
+// person typed is kept as ENTERED, whatever it resolved to — a homonym, or
+// nothing at all. It rides the denuncia's event record (`place`), never
+// rewritten by the resolution.
+describe("the entered place is never lost", () => {
+  it("keeps a homonym exactly as typed and resolves it to no row", async () => {
+    const out = await resolveDenunciaJurisdiction(
+      loc({ province: "Buenos Aires", locality: "Mechita" }),
+    );
+    expect(out.place).toEqual({
+      entered: { province: "Buenos Aires", locality: "Mechita", indec_id: null },
+      resolved: null,
+    });
+  });
+
+  it("keeps a locality the catalogue does not know, exactly as typed", async () => {
+    const out = await resolveDenunciaJurisdiction(
+      loc({ province: "Córdoba", locality: "Pueblo Que No Existe" }),
+    );
+    expect(out.place?.entered).toEqual({
+      province: "Córdoba",
+      locality: "Pueblo Que No Existe",
+      indec_id: null,
+    });
+    expect(out.place?.resolved).toBeNull();
+  });
+
+  it("names the row it resolved to next to what was typed", async () => {
+    const out = await resolveDenunciaJurisdiction(
+      loc({ province: "Buenos Aires", locality: "Mechita", localityIndecId: MECHITA_BRAGADO }),
+    );
+    expect(out.place?.entered.locality).toBe("Mechita");
+    expect(out.place?.resolved?.locality_id).toBe(row(MECHITA_BRAGADO).id);
+  });
+});
+
 // A source pin, because the doors need a session (web) or a bearer (API) to
 // run: every denuncia intake resolves its place through this ONE composition,
 // and none of them reaches the name gate or the D.11 gate on its own again.
@@ -187,6 +231,8 @@ describe("every denuncia door uses this composition", () => {
     expect(source.match(/await resolveDenunciaJurisdiction\(loc\)/g)).toHaveLength(2);
     expect(source).not.toMatch(/resolveRoutableJurisdiction\(/);
     expect(source).not.toMatch(/normalizeLocationForWrite\(loc, \{\s*locality: "soft"/);
+    // …and hands the entered place to the use-case (P2).
+    expect(source.match(/eventPlace: routable\.place/g)).toHaveLength(2);
   });
 
   it("POST /api/v1/welfare-reports", () => {
@@ -194,5 +240,6 @@ describe("every denuncia door uses this composition", () => {
     expect(source.match(/await resolveDenunciaJurisdiction\(/g)).toHaveLength(1);
     expect(source).not.toMatch(/resolveRoutableJurisdiction\(/);
     expect(source).toMatch(/localityIndecId: input\.locationLocalityIndecId/);
+    expect(source.match(/eventPlace: routable\.place/g)).toHaveLength(1);
   });
 });

@@ -1017,6 +1017,10 @@ const welfareCore = {
   welfare_report_id: z.string().uuid(),
   reporter_role: z.enum(["owner", "witness"]),
   description: z.string(),
+  // The place as entered and as resolved (localidades-por-id, stage A review
+  // P2: the locality the person typed is never lost). Optional: earlier
+  // events validate as-is.
+  place: eventPlaceSchema.optional(),
 };
 
 const abandonmentReported = z.object(withVersion(welfareCore)).strict();

@@ -443,3 +443,38 @@ describe("createWelfareReport — attachments", () => {
     expect(repo.insertAttachments).not.toHaveBeenCalled();
   });
 });
+
+// Stage A review (P2 — the place of origin is never lost): the locality the
+// person typed rides the denuncia's event record, as entered, even when it
+// resolved to no row (a homonym here).
+const ENTERED_HOMONYM = {
+  entered: { province: "Buenos Aires", locality: "Mechita", indec_id: null },
+  resolved: null,
+};
+
+describe("createWelfareReport — the entered place rides the bridge event", () => {
+  it.each([
+    ["abandonment", "abandonment_reported"],
+    ["neglect", "maltreatment_reported"],
+  ])("%s: the %s payload carries the place as entered", async (kind, eventType) => {
+    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
+    await createWelfareReport(
+      {
+        ...BASE_INPUT,
+        kind,
+        subjectKind: "registered_pet",
+        subjectPetId: PET_ID,
+        isOwnerOfSubjectPet: false,
+        subjectDescription: null,
+        eventPlace: ENTERED_HOMONYM,
+      },
+      { repo, openCase, computeFlagReasons, signal, transaction },
+    );
+    const call = (repo.insertPetEventIdempotent as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => (c[0] as { eventType: string }).eventType === eventType,
+    );
+    expect((call?.[0] as { payload: Record<string, unknown> }).payload.place).toEqual(
+      ENTERED_HOMONYM,
+    );
+  });
+});

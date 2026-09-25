@@ -500,3 +500,29 @@ describe("createOrgWelfareReport — signal", () => {
     expect(signalCall).toMatchObject({ hasContact: true, severity: "critical" });
   });
 });
+
+// Stage A review (P2 — the place of origin is never lost): the locality the
+// org typed rides the denuncia's event record, as entered.
+describe("createOrgWelfareReport — the entered place rides the bridge event", () => {
+  it("a registered pet's maltreatment_reported carries the place as entered", async () => {
+    const place = {
+      entered: { province: "Buenos Aires", locality: "Mechita", indec_id: null },
+      resolved: null,
+    };
+    const { repo, openCase, findGovtRecipients, signal, transaction } = makeDeps();
+    await createOrgWelfareReport(
+      {
+        ...BASE_INPUT,
+        subjectKind: "registered_pet",
+        subjectPetId: "d4e5f6a7-b8c9-4444-bdfe-444444444444",
+        subjectDescription: null,
+        eventPlace: place,
+      },
+      { repo, openCase, findGovtRecipients, signal, transaction },
+    );
+    const call = (repo.insertPetEventIdempotent as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => (c[0] as { eventType: string }).eventType === "maltreatment_reported",
+    );
+    expect((call?.[0] as { payload: Record<string, unknown> }).payload.place).toEqual(place);
+  });
+});

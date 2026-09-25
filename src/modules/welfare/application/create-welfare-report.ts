@@ -25,6 +25,7 @@
 // (Verified against original — no insertAudit call here.)
 
 import { validateEventPayload } from "@/lib/events/event-schemas";
+import type { EventPlace } from "@/lib/events/place-payload";
 import type { OpenedReason, OpenedReasonParams } from "@/src/modules/cases/domain/opened-reason";
 import {
   MALTREATMENT_KINDS,
@@ -85,6 +86,11 @@ export type CreateWelfareReportInput = {
   locationAddress: string | null;
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
+  /**
+   * The place as entered and as resolved (lib/place/denuncia-place.ts). Rides
+   * the pet-event bridge so the typed locality is never lost.
+   */
+  eventPlace?: EventPlace | null;
   /** Drizzle numeric() columns serialize as strings. */
   locationLat: string | null;
   locationLng: string | null;
@@ -155,6 +161,7 @@ export async function createWelfareReport(
     dwellTimeMs,
     honeypotValue,
     clientIdempotencyKey,
+    eventPlace,
   } = input;
 
   // Derive roles from pre-resolved ownership
@@ -228,6 +235,7 @@ export async function createWelfareReport(
             welfare_report_id: reportId,
             reporter_role: reporterRole,
             description,
+            ...(eventPlace ? { place: eventPlace } : {}),
           });
           await repo.insertPetEventIdempotent(
             {
@@ -254,6 +262,7 @@ export async function createWelfareReport(
             description,
             severity,
             kind,
+            ...(eventPlace ? { place: eventPlace } : {}),
           });
           await repo.insertPetEventIdempotent(
             {
