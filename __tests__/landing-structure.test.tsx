@@ -44,7 +44,7 @@ import { FeaturesSection } from "@/components/landing/FeaturesSection";
 import { LandingFooter } from "@/components/landing/LandingFooter";
 import { LandingHero } from "@/components/landing/LandingHero";
 import { StorySection } from "@/components/landing/StorySection";
-import { CHAPTERS } from "@/components/landing/landing-content";
+import { ACTORS, CHAPTERS } from "@/components/landing/landing-content";
 
 const QR_SVG = '<svg data-qr="demo"><path d="M0 0h1v1H0z"/></svg>';
 // A render fixture, not a seed dependency: nothing here touches a database.
@@ -209,6 +209,27 @@ describe("story — CastFila + 6 chapters + rail", () => {
     expect(html).toContain('data-section="story-rail"');
     // The anon chapter drives the red rail state via data-s="lost".
     expect(html).toContain('data-s="lost"');
+  });
+
+  it("tells Pampa's life in order and closes on the Estado bridge (PO, 2026-09-25)", () => {
+    expect(CHAPTERS.map((c) => c.key)).toEqual([
+      "dueno",
+      "vet",
+      "anon",
+      "refugio",
+      "libreta",
+      "estado",
+    ]);
+    const html = renderToStaticMarkup(<StorySection />);
+    // Anchors render in that order, and the rail numbers follow them.
+    const anchors = [...html.matchAll(/id="cap-([a-z]+)"/g)].map((m) => m[1]);
+    expect(anchors).toEqual(CHAPTERS.map((c) => c.key));
+    expect(html).toContain("Capítulo 6 · Estado");
+    expect(html).toContain("Esa dosis de campaña es una más en la cobertura de su comuna.");
+    // Every cast shortcut points at a chapter that exists.
+    for (const a of ACTORS) {
+      expect(CHAPTERS.some((c) => c.key === a.chapter)).toBe(true);
+    }
   });
 
   it("estado console renders the celeste silhouette cartogram (24 tiles, single hue)", () => {

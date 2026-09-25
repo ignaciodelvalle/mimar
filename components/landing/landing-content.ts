@@ -271,17 +271,15 @@ export type LandingChapter = {
   lead?: string;
 };
 
-// Order note (calmer/institutional pass 2026-07-21): "estado" was chapter 6
-// (dead last, after "libreta"). Promoted to chapter 5 — right after Pampa's
-// personal arc resolves (refugio) and before the closing "Todo quedó
-// escrito" beat — so the institutional credibility signal (the cartogram)
-// lands before the section's last word, not buried past it. This also reads
-// better: "Cuatro manos, una sola historia" now truly closes the story once
-// all four hands (dueño, vet, org, Estado) have appeared. Moving it any
-// earlier (e.g. right after the "se pierde" crisis chapter) was considered
-// and rejected: it would drop a cold institutional dashboard in the middle
-// of the lost-pet urgency, undercutting the emotional beat the story needs
-// there. Position/side data only — StorySection.tsx renders in array order.
+// Order note (PO, 2026-09-25): Pampa's life in order — 1 Dueño · 2 Veterinaria
+// · 3 Se pierde · 4 Refugio · 5 La libreta · 6 Estado. This supersedes the
+// 2026-07-21 order, which put "estado" before "libreta" so the institutional
+// signal landed before the closing beat: /municipios now carries the
+// institutional pitch, and the story ends where the libreta's last entry
+// points — the 2026-06-15 Comuna 13 campaign dose, signed by a verified vet,
+// which is one more dose in that jurisdiction's coverage. The "estado" lead
+// is that bridge. Position/side data only — StorySection.tsx renders in array
+// order.
 export const CHAPTERS: LandingChapter[] = [
   {
     key: "dueno",
@@ -320,7 +318,6 @@ export const CHAPTERS: LandingChapter[] = [
     title: "La recibe un refugio.",
     lead: `Leen su chip y miMAR detecta la coincidencia: el refugio confirma que es la misma mascota y registra el ingreso. Dos días después, ${OWNER_NAME} la marca como encontrada.`,
   },
-  { key: "estado", hand: "Estado", state: "navy", full: true },
   {
     key: "libreta",
     hand: "miMAR",
@@ -331,6 +328,15 @@ export const CHAPTERS: LandingChapter[] = [
     // art. 16 de la Ley 25.326 exige una excepción auditada de supresión sobre
     // el asiento (límites honestos A.1). Lo que sí se sostiene: solo agrega.
     lead: `${OWNER_NAME}, la ${VET_SHORT_NAME} y el refugio escribieron en la misma libreta. Cada vacuna, cada consulta, cada vuelta a casa se suma a la de Pampa. Solo se agrega: una corrección es un asiento nuevo, nunca una edición.`,
+  },
+  {
+    key: "estado",
+    hand: "Estado",
+    state: "navy",
+    full: true,
+    // Bridge from the libreta's last entry. True under both coverage lenses:
+    // the dose is a vaccination_administered signed by a verified vet.
+    lead: "Esa dosis de campaña es una más en la cobertura de su comuna.",
   },
 ];
 

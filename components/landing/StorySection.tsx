@@ -178,6 +178,7 @@ function Chapter({ chapter, index }: { chapter: LandingChapter; index: number })
           <div className="lp-ch-num">
             Capítulo {index + 1} · {chapter.hand}
           </div>
+          {chapter.lead && <p className="lp-lead lp-ch-lead">{chapter.lead}</p>}
           <div className="mt-4">
             <EstadoConsole />
           </div>
