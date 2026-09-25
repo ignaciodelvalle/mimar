@@ -21,7 +21,11 @@
 //                         pin / geocoder yields a NAME, never an id — a
 //                         writer normalising with locality "soft" resolves
 //                         the id server-side, e.g. the bite writers) or when
-//                         L1 user typed free text.
+//                         L1 user typed free text. The ONE exception (L2,
+//                         localidades-por-id B6): the id of the row the person
+//                         picked from the "¿Es acá?" candidates.
+//   localityPicked      — "1" when that pick happened (the server records
+//                         the row as `user_picked`); empty otherwise.
 //   locationLat         — decimal latitude (L2 only).
 //   locationLng         — decimal longitude (L2 only).
 //   locationAddress     — address text (L2 only). MarkLost can override
@@ -31,6 +35,7 @@
 //
 import {
   type GeocodeResult,
+  type ReversePinAnswer,
   geocodeAddressAction,
   geocodeAddressPublicAction,
   reverseGeocodeAction,
@@ -83,7 +88,22 @@ export type LocationFieldsChange = {
   // legacy value in lib/events/event-schemas.ts (old events, append-only)
   // but no writer here emits it any more.
   source: "pin_manual" | "geocodificada" | null;
+  /** INDEC id of the row the person picked from the "¿Es acá?" candidates (B6). */
+  localityIndecId?: string | null;
+  /** True when that pick happened — the server records it as `user_picked`. */
+  localityPicked?: boolean;
 };
+
+/** A catalogue row a pin could be in, as the reverse action offers it (B6). */
+type PlaceCandidate = ReversePinAnswer["place"]["candidates"][number];
+
+/** "Mechita (Bragado), Buenos Aires" — the department tells two homonyms apart. */
+export function candidateLabel(c: PlaceCandidate): string {
+  const department = c.departmentName ? ` (${c.departmentName})` : "";
+  return `${c.localityName}${department}, ${c.provinceName}`;
+}
+
+const NONE_OF_THESE = "Ninguna de estas / no sé";
 
 const FORWARD_DEBOUNCE_MS = 600;
 const MIN_QUERY_LENGTH = 3;
@@ -197,6 +217,14 @@ export function LocationFields({
   const [pickedLocality, setPickedLocality] = useState<string | null>(
     defaultValue?.localityName ?? null,
   );
+  // "¿Es acá?" (localidades-por-id B6, design addendum #1). The catalogue has
+  // centroids, not boundaries, so a pin alone never names a locality: when the
+  // reverse answer names no row, or a name two rows share, the candidates are
+  // shown and the PERSON picks — never the form. `candidates` is what the last
+  // pin offered; `pickedCandidate` what the person chose ("none" = declined).
+  const [candidates, setCandidates] = useState<PlaceCandidate[]>([]);
+  const [pickedCandidate, setPickedCandidate] = useState<PlaceCandidate | "none" | null>(null);
+  const pickedRow = pickedCandidate !== null && pickedCandidate !== "none" ? pickedCandidate : null;
 
   // L2 address text + autocomplete state.
   const [addressText, setAddressText] = useState<string>(
@@ -321,14 +349,19 @@ export function LocationFields({
       lng: point?.lng ?? null,
       address: isL2 ? addressText.trim() || null : null,
       source: point ? locationSource : null,
+      localityIndecId: pickedRow?.localityIndecId ?? null,
+      localityPicked: pickedRow !== null,
     });
-  }, [pickedProvince, pickedLocality, point, addressText, locationSource, isL2]);
+  }, [pickedProvince, pickedLocality, point, addressText, locationSource, isL2, pickedCandidate]);
 
   // Reverse geocoding (coords → address + jurisdiction). Fires on a map
   // click/drag gesture — the only way a point can be set by hand now.
   async function handlePointChange(newPoint: { lat: number; lng: number }) {
     setPoint(newPoint);
     setLocationSource("pin_manual");
+    // A new pin is a new question: what the last one offered no longer holds.
+    setCandidates([]);
+    setPickedCandidate(null);
     if (!isL2) return;
     setGeocodeLoading("reverse");
     setGeocodeMessage(null);
@@ -341,6 +374,7 @@ export function LocationFields({
         applyJurisdictionFromResult(r);
         setGeocodeResults([]);
         setGeocodeFoundLabel(null);
+        setCandidates(r.place?.status === "resolved" ? [] : (r.place?.candidates ?? []));
       } else {
         setGeocodeMessage("empty");
       }
@@ -363,7 +397,22 @@ export function LocationFields({
     setPickedLocality(r.locality ?? null);
   }
 
+  /** The person's answer to "¿Es acá?": a candidate row, or none of them. */
+  function pickCandidate(choice: PlaceCandidate | "none") {
+    setPickedCandidate(choice);
+    if (choice === "none") {
+      // Province-level: the place is kept, the locality left to the queue.
+      setPickedLocality(null);
+      return;
+    }
+    const province = provinceByName(choice.provinceName);
+    setPickedProvince(province ? { code: province.code, name: province.name } : null);
+    setPickedLocality(choice.localityName);
+  }
+
   function pickResult(result: GeocodeResult) {
+    setCandidates([]);
+    setPickedCandidate(null);
     skipNextForward.current = true;
     setAddressText(result.display_name);
     setPoint({ lat: result.lat, lng: result.lng });
@@ -554,12 +603,53 @@ export function LocationFields({
             )}
           </div>
 
+          {candidates.length > 0 && (
+            <fieldset className="space-y-2" aria-describedby="place-candidates-hint">
+              <legend className="block text-sm font-medium text-ln-ink">
+                ¿En qué localidad fue?
+              </legend>
+              <p id="place-candidates-hint" className="text-xs text-ln-mute ">
+                Con el punto del mapa no alcanza para saberlo. Elegí la localidad que corresponde.
+              </p>
+              <div role="radiogroup" aria-label="¿En qué localidad fue?" className="space-y-1.5">
+                {candidates.map((c) => (
+                  <label
+                    key={`${c.provinceCode}-${c.localityIndecId ?? c.localityName}-${c.departmentName ?? ""}`}
+                    className="flex items-center gap-2 text-sm text-ln-ink"
+                  >
+                    <input
+                      type="radio"
+                      name="placeCandidate"
+                      checked={pickedRow === c}
+                      onChange={() => pickCandidate(c)}
+                    />
+                    {candidateLabel(c)}
+                  </label>
+                ))}
+                <label className="flex items-center gap-2 text-sm text-ln-ink">
+                  <input
+                    type="radio"
+                    name="placeCandidate"
+                    checked={pickedCandidate === "none"}
+                    onChange={() => pickCandidate("none")}
+                  />
+                  {NONE_OF_THESE}
+                </label>
+              </div>
+            </fieldset>
+          )}
+
           {/* L2 hidden inputs — jurisdiction derived from autocomplete pick
               or map-drag reverse-geocoding; lat/lng from the pin. */}
           <input type="hidden" name="provinceCode" value={pickedProvince?.code ?? ""} />
           <input type="hidden" name="provinceName" value={pickedProvince?.name ?? ""} />
           <input type="hidden" name="localityName" value={pickedLocality ?? ""} />
-          <input type="hidden" name="localityNameIndecId" value="" />
+          <input
+            type="hidden"
+            name="localityNameIndecId"
+            value={pickedRow?.localityIndecId ?? ""}
+          />
+          <input type="hidden" name="localityPicked" value={pickedRow ? "1" : ""} />
           <input type="hidden" name={latInputName} value={point ? String(point.lat) : ""} />
           <input type="hidden" name={lngInputName} value={point ? String(point.lng) : ""} />
           {/* panorama-event-points Slice 1: coordinate-capture origin. Only

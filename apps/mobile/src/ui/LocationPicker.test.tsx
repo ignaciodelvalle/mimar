@@ -377,3 +377,77 @@ describe("no device location, anywhere in the app", () => {
     expect(deps.filter((name) => /location|geolocation/i.test(name))).toEqual([]);
   });
 });
+
+// localidades-por-id B6 (design addendum #1): a pin whose name two rows of the
+// province share (Mechita: partido Alberti and partido Bragado) — or that the
+// geocoder could not name — comes back with NO jurisdiction and the candidate
+// rows. The person picks one; nothing is chosen for them.
+describe("¿Es acá? — the candidate localities", () => {
+  const ALBERTI = {
+    provinceCode: "AR-B",
+    provinceName: "Buenos Aires",
+    localityName: "Mechita",
+    localityIndecId: "06021030",
+    departmentName: "Alberti",
+  };
+  const BRAGADO = { ...ALBERTI, localityIndecId: "06112080", departmentName: "Bragado" };
+
+  async function dragOntoMechita() {
+    const onChange = renderPicker();
+    fireEvent.press(screen.getByText(LOCATION_PICKER_COPY.open));
+    const map = await screen.findByTestId("maplibre-map");
+    mockGeocode.mockResolvedValueOnce({
+      outcome: "ok",
+      payload: {
+        command: "reverse",
+        version: 1,
+        label: "Mechita, Buenos Aires",
+        jurisdiction: null,
+        place: { status: "ambiguous", candidates: [ALBERTI, BRAGADO] },
+      },
+    });
+    await act(async () => {
+      fireEvent(map, "regionDidChange", {
+        nativeEvent: { center: [-60.4, -35.07], zoom: 15, userInteraction: true },
+      });
+    });
+    await waitFor(() => expect(screen.getByText("Mechita (Bragado), Buenos Aires")).toBeTruthy());
+    return onChange;
+  }
+
+  it("lists both rows by department and picks neither", async () => {
+    await dragOntoMechita();
+    expect(screen.getByText(LOCATION_PICKER_COPY.whichLocality)).toBeTruthy();
+    expect(screen.getByText("Mechita (Alberti), Buenos Aires")).toBeTruthy();
+    expect(
+      screen.getByLabelText("Mechita (Bragado), Buenos Aires").props.accessibilityState,
+    ).toMatchObject({ checked: false });
+  });
+
+  it("the row the person picks is what the form gets, by id, marked as picked", async () => {
+    const onChange = await dragOntoMechita();
+    fireEvent.press(screen.getByText("Mechita (Bragado), Buenos Aires"));
+    fireEvent.press(screen.getByText(LOCATION_PICKER_COPY.confirm));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jurisdiction: {
+          provinceCode: "AR-B",
+          provinceName: "Buenos Aires",
+          localityName: "Mechita",
+          localityIndecId: "06112080",
+        },
+        localityPicked: true,
+      }),
+    );
+  });
+
+  it("declining keeps the point with no locality", async () => {
+    const onChange = await dragOntoMechita();
+    fireEvent.press(screen.getByText("Mechita (Bragado), Buenos Aires"));
+    fireEvent.press(screen.getByText(LOCATION_PICKER_COPY.noneOfThese));
+    fireEvent.press(screen.getByText(LOCATION_PICKER_COPY.confirm));
+    const picked = onChange.mock.calls.at(-1)?.[0];
+    expect(picked?.jurisdiction).toBeNull();
+    expect(picked?.localityPicked).toBeUndefined();
+  });
+});

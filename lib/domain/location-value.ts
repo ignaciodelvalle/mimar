@@ -12,6 +12,8 @@
 //   locationLat         — WGS-84 latitude, decimal string
 //   locationLng         — WGS-84 longitude, decimal string
 //   locationAddress     — free-text address label
+//   localityPicked      — "1" when the person PICKED the locality from the
+//                         "¿Es acá?" candidates (localidades-por-id B6)
 
 export type LocationValue = {
   /** Display name from the `provinceName` wire field. */
@@ -26,6 +28,12 @@ export type LocationValue = {
   lng: number | null;
   /** Free-text address from the `locationAddress` wire field. */
   address: string | null;
+  /**
+   * True when the person PICKED the locality from the candidate rows a pin
+   * offered ("¿Es acá?", localidades-por-id B6): the write gate then records
+   * the row as `user_picked`. Absent otherwise.
+   */
+  localityPicked?: boolean;
 };
 
 function parseString(value: unknown): string | null {
@@ -57,6 +65,7 @@ export function parseLocationFromFormData(fd: FormData): LocationValue {
     lat: parseCoord(latRaw || null),
     lng: parseCoord(lngRaw || null),
     address: parseString(fd.get("locationAddress")),
+    ...(String(fd.get("localityPicked") ?? "").trim() === "1" ? { localityPicked: true } : {}),
   };
 }
 

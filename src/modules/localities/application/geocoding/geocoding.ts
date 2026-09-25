@@ -24,6 +24,27 @@ import {
   reverseGeocode,
 } from "@/lib/infra/geocoding";
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
+import { placeForClient } from "@/lib/place/place-for-client";
+import { resolveGeocodedPin } from "@/lib/place/resolve-place";
+import type { GeocodingPlaceV1 } from "@dim/contract/api";
+
+/**
+ * The web map's reverse answer: the geocoder's, plus how the point resolves
+ * against the catalogue (localidades-por-id B6). When nothing names ONE row —
+ * a name two rows share, or no name — `place` carries the candidate rows for
+ * the person to pick ("¿Es acá?"); nothing is picked for them.
+ */
+export type ReversePinAnswer = ReverseGeocodeResult & { place: GeocodingPlaceV1 };
+
+async function withPlace(
+  lat: number,
+  lng: number,
+  reversed: ReverseGeocodeResult | null,
+): Promise<ReversePinAnswer | null> {
+  if (!reversed) return null;
+  const place = await resolveGeocodedPin({ lat, lng }, reversed);
+  return { ...reversed, place: placeForClient(place) };
+}
 
 // ---------------------------------------------------------------------------
 // Authed variants — auth guard enforced by the calling shim
@@ -39,8 +60,8 @@ export async function geocodeAddressAction(
 export async function reverseGeocodeAction(
   lat: number,
   lng: number,
-): Promise<ReverseGeocodeResult | null> {
-  return reverseGeocode(lat, lng);
+): Promise<ReversePinAnswer | null> {
+  return withPlace(lat, lng, await reverseGeocode(lat, lng));
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +165,7 @@ export async function reverseGeocodePublicOrThrow(
 export async function reverseGeocodePublicAction(
   lat: number,
   lng: number,
-): Promise<ReverseGeocodeResult | null> {
+): Promise<ReversePinAnswer | null> {
   const ip = await callerIpAddress();
   try {
     await enforceRateLimit("geocode_public", ip, PUBLIC_GEOCODING_LIMIT);
@@ -152,5 +173,5 @@ export async function reverseGeocodePublicAction(
     if (err instanceof RateLimitError) return null;
     throw err;
   }
-  return reverseGeocode(lat, lng);
+  return withPlace(lat, lng, await reverseGeocode(lat, lng));
 }

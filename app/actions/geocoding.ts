@@ -24,6 +24,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export type { GeocodeBias, GeocodeResult, ReverseGeocodeResult } from "@/lib/infra/geocoding";
+export type { ReversePinAnswer } from "@/src/modules/localities/application/geocoding/geocoding";
 
 // ---------------------------------------------------------------------------
 // Action wrappers — auth-gated variants: guard here, module does the work

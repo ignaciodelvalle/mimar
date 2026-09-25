@@ -21,6 +21,11 @@
 //      re-read from the point (reverse geocoding) every time it settles.
 //   4. "¿Es acá?" → "Sí, es acá". Nothing reaches the form before this tap:
 //      an unconfirmed point is a guess, and a guess routes a case.
+//      When the point names no locality with certainty — no name, or a name
+//      two rows of the province share (Mechita: partido Alberti and partido
+//      Bragado) — the server sends the candidate rows and the PERSON picks
+//      one, each labelled with its department (localidades-por-id B6). Nothing
+//      is picked for them; "Ninguna de estas" keeps the point with no locality.
 //
 // LAZY AND SINGLE. The native map VIEW mounts only while the step is open (the
 // JS module is imported normally; it is the GL surface that costs), and one
@@ -35,7 +40,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import type { GeocodingJurisdictionV1, GeocodingMatchV1 } from "@dim/contract/api";
+import type {
+  GeocodingCandidateV1,
+  GeocodingJurisdictionV1,
+  GeocodingMatchV1,
+} from "@dim/contract/api";
 
 import { apiFailureMessage } from "../api/client";
 import { sendGeocodingCommand } from "../api/endpoints";
@@ -56,7 +65,15 @@ export type PickedLocation = {
   source: "pin_manual" | "geocodificada";
   /** Derived on the server from the point, as the web derives it. */
   jurisdiction: GeocodingJurisdictionV1 | null;
+  /** True when the person picked `jurisdiction` from the candidates (B6). */
+  localityPicked?: boolean;
 };
+
+/** "Mechita (Bragado), Buenos Aires" — the department tells two homonyms apart. */
+export function candidateLabel(c: GeocodingCandidateV1): string {
+  const department = c.departmentName ? ` (${c.departmentName})` : "";
+  return `${c.localityName}${department}, ${c.provinceName}`;
+}
 
 /** Argentina, whole — where the map opens when the screen knows nothing. */
 const COUNTRY_CENTER: MapPoint = { lat: -38.4, lng: -63.6 };
@@ -74,6 +91,8 @@ export const LOCATION_PICKER_COPY = {
   resolving: "Buscando la dirección de ese punto…",
   noAddress: "No encontramos una dirección para ese punto, pero el lugar queda marcado.",
   confirmQuestion: "¿Es acá?",
+  whichLocality: "¿En qué localidad fue? Con el punto no alcanza para saberlo.",
+  noneOfThese: "Ninguna de estas / no sé",
   confirm: "Sí, es acá",
   cancel: "Cancelar",
   mapFailed:
@@ -137,7 +156,12 @@ export function LocationPicker({
  * connection) — shown INSTEAD of "no address here", which is a claim about the
  * place the server never made. The point itself stays placed and confirmable.
  */
-type Pending = PickedLocation & { resolving: boolean; failure?: string | null };
+type Pending = PickedLocation & {
+  resolving: boolean;
+  failure?: string | null;
+  /** The rows the point could be in, when it named none with certainty. */
+  candidates?: GeocodingCandidateV1[];
+};
 
 function PickerStep({
   value,
@@ -251,6 +275,7 @@ function PickerStep({
     const answer =
       result.outcome === "ok" && result.payload.command === "reverse" ? result.payload : null;
     const failure = result.outcome === "ok" ? null : apiFailureMessage(result);
+    const place = answer?.place;
     setPending({
       lat: point.lat,
       lng: point.lng,
@@ -259,6 +284,27 @@ function PickerStep({
       jurisdiction: answer?.jurisdiction ?? null,
       resolving: false,
       failure,
+      candidates: place && place.status !== "resolved" ? place.candidates : [],
+    });
+  };
+
+  /** The person's answer to "¿en qué localidad fue?": a row, or none. */
+  const pickCandidate = (c: GeocodingCandidateV1 | null) => {
+    setPending((current) => {
+      if (current === null) return current;
+      const { localityPicked: _was, ...rest } = current;
+      return c === null
+        ? { ...rest, jurisdiction: null }
+        : {
+            ...rest,
+            jurisdiction: {
+              provinceCode: c.provinceCode,
+              provinceName: c.provinceName,
+              localityName: c.localityName,
+              localityIndecId: c.localityIndecId,
+            },
+            localityPicked: true,
+          };
     });
   };
 
@@ -330,7 +376,40 @@ function PickerStep({
               ? LOCATION_PICKER_COPY.resolving
               : (pending.address ?? pending.failure ?? LOCATION_PICKER_COPY.noAddress)}
           </Text>
-          {pending.jurisdiction ? (
+          {pending.candidates && pending.candidates.length > 0 ? (
+            <View style={styles.matches} accessibilityRole="radiogroup">
+              <Text style={styles.hint}>{LOCATION_PICKER_COPY.whichLocality}</Text>
+              {pending.candidates.map((c) => {
+                const label = candidateLabel(c);
+                const checked =
+                  pending.localityPicked === true &&
+                  pending.jurisdiction?.localityName === c.localityName &&
+                  pending.jurisdiction?.localityIndecId === c.localityIndecId &&
+                  pending.jurisdiction?.provinceCode === c.provinceCode;
+                return (
+                  <Pressable
+                    key={`${c.provinceCode},${c.localityIndecId ?? c.localityName},${c.departmentName ?? ""}`}
+                    accessibilityRole="radio"
+                    accessibilityLabel={label}
+                    accessibilityState={{ checked }}
+                    onPress={() => pickCandidate(c)}
+                    style={[styles.match, checked ? styles.matchActive : null]}
+                  >
+                    <Text style={styles.matchLabel}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityLabel={LOCATION_PICKER_COPY.noneOfThese}
+                accessibilityState={{ checked: pending.localityPicked !== true }}
+                onPress={() => pickCandidate(null)}
+                style={styles.match}
+              >
+                <Text style={styles.matchLabel}>{LOCATION_PICKER_COPY.noneOfThese}</Text>
+              </Pressable>
+            </View>
+          ) : pending.jurisdiction ? (
             <Text style={styles.summaryMeta}>
               {pending.jurisdiction.localityName}, {pending.jurisdiction.provinceName}
             </Text>
@@ -339,7 +418,12 @@ function PickerStep({
             label={LOCATION_PICKER_COPY.confirm}
             disabled={pending.resolving}
             onPress={() => {
-              const { resolving: _resolving, failure: _failure, ...picked } = pending;
+              const {
+                resolving: _resolving,
+                failure: _failure,
+                candidates: _candidates,
+                ...picked
+              } = pending;
               onConfirm(picked);
             }}
           />

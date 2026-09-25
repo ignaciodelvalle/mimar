@@ -178,3 +178,26 @@ describe("parseLocationFromObject", () => {
     expect(loc.lng).toBeNull();
   });
 });
+
+// localidades-por-id B6: a locality the person PICKED from the "¿Es acá?"
+// candidates arrives marked, so the write gate records it as `user_picked`.
+// Absent unless marked — every existing parse keeps its exact shape.
+describe("parseLocationFromFormData — a picked locality", () => {
+  it("marks the locality as picked when the form says so", () => {
+    const fd = new FormData();
+    fd.set("provinceCode", "AR-B");
+    fd.set("localityName", "Mechita");
+    fd.set("localityNameIndecId", "06112080");
+    fd.set("localityPicked", "1");
+    const loc = parseLocationFromFormData(fd);
+    expect(loc.localityIndecId).toBe("06112080");
+    expect(loc.localityPicked).toBe(true);
+  });
+
+  it("carries no mark at all when the form did not pick", () => {
+    const fd = new FormData();
+    fd.set("localityName", "Mechita");
+    fd.set("localityPicked", "");
+    expect("localityPicked" in parseLocationFromFormData(fd)).toBe(false);
+  });
+});

@@ -143,10 +143,19 @@ export async function normalizeLocationForWrite(
   // in the jurisdiction review, still open). Every caller passed null, so the id
   // path is new behaviour for whoever starts sending one and a no-op for the rest.
   const indecId = loc.localityIndecId?.trim() || null;
+  // A row the person PICKED from the candidates a pin offered ("¿Es acá?",
+  // localidades-por-id B6) is recorded as such, whichever way it resolves.
+  const picked = loc.localityPicked === true;
   if (localityMode !== "none" && indecId) {
     const byId = await resolveByIndecId(indecId, province, localityMode);
     if (byId !== null) {
-      return { ...byId, placeMethod: "indec_id", lat, lng, address: loc.address };
+      return {
+        ...byId,
+        placeMethod: recordedMethod(picked, "indec_id", true),
+        lat,
+        lng,
+        address: loc.address,
+      };
     }
   }
 
@@ -167,7 +176,7 @@ export async function normalizeLocationForWrite(
         locality: canonical.locality.localityName,
         localityCanonical: true,
         localityId: canonical.locality.id,
-        placeMethod: canonical.method,
+        placeMethod: recordedMethod(picked, canonical.method, true),
         lat,
         lng,
         address: loc.address,
@@ -217,7 +226,7 @@ export async function normalizeLocationForWrite(
         locality: resolved.locality || rawLocality || null,
         localityCanonical: resolved.canonical,
         localityId: resolved.localityId,
-        placeMethod: resolved.method,
+        placeMethod: recordedMethod(picked, resolved.method, resolved.localityId !== null),
         lat,
         lng,
         address: loc.address,
@@ -246,6 +255,15 @@ export async function normalizeLocationForWrite(
     lng,
     address: loc.address,
   };
+}
+
+/**
+ * A row the person PICKED from the "¿Es acá?" candidates is recorded as
+ * `user_picked` whichever way it resolved (localidades-por-id B6); a pick that
+ * resolved to no row records nothing it did not do.
+ */
+function recordedMethod(picked: boolean, method: PlaceMethod, resolved: boolean): PlaceMethod {
+  return picked && resolved ? "user_picked" : method;
 }
 
 /**

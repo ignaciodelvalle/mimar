@@ -276,3 +276,36 @@ describe("a border pin with no geocoder answer", () => {
     expect(place.candidateIds).toEqual([]);
   });
 });
+
+// localidades-por-id B6 (design addendum #1). A pin that named no row with
+// certainty offered the person the candidate rows ("¿Es acá?"); the one they
+// PICKED travels back as its INDEC id marked as picked, and is what the report
+// keeps — by id, recorded as `user_picked`, still corroborated by the pin.
+describe("a locality the person picked from the candidates", () => {
+  it("is kept by id and recorded as picked", async () => {
+    const place = await resolveReportedPlace(
+      loc({
+        provinceCode: "AR-B",
+        locality: "Mechita",
+        localityIndecId: MECHITA_BRAGADO,
+        localityPicked: true,
+        lat: row(MECHITA_BRAGADO).lat,
+        lng: row(MECHITA_BRAGADO).lng,
+      }),
+      { pair: "soft" },
+    );
+    expect(place).toMatchObject({
+      localityId: row(MECHITA_BRAGADO).id,
+      method: "user_picked",
+      mismatch: false,
+    });
+  });
+
+  it("the same id NOT marked as picked is an INDEC id a client sent", async () => {
+    const place = await resolveReportedPlace(
+      loc({ provinceCode: "AR-B", locality: "Mechita", localityIndecId: MECHITA_BRAGADO }),
+      { pair: "soft" },
+    );
+    expect(place).toMatchObject({ localityId: row(MECHITA_BRAGADO).id, method: "indec_id" });
+  });
+});

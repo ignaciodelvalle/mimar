@@ -333,7 +333,10 @@ export function DenunciaWizard() {
       formData.set("provinceCode", loc.provinceCode ?? "");
       formData.set("provinceName", loc.provinceName ?? "");
       formData.set("localityName", loc.localityName ?? "");
-      formData.set("localityNameIndecId", "");
+      // The row the person picked from the "¿Es acá?" candidates, by id and
+      // marked as picked (localidades-por-id B6); empty otherwise.
+      formData.set("localityNameIndecId", loc.localityIndecId ?? "");
+      formData.set("localityPicked", loc.localityPicked ? "1" : "");
       formData.set("locationAddress", loc.address ?? "");
       formData.set("locationLat", loc.lat != null ? String(loc.lat) : "");
       formData.set("locationLng", loc.lng != null ? String(loc.lng) : "");
