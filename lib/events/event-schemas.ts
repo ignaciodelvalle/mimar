@@ -97,6 +97,9 @@ const petRegistered = z
       // at all. Absent means "this writer recorded no row", which is the honest
       // reading for both.
       jurisdiction_locality_id: z.string().uuid().nullable().optional(),
+      // As entered and as resolved (localidades-por-id A8,
+      // lib/events/place-payload.ts). Optional: earlier events validate as-is.
+      place: eventPlaceSchema.optional(),
       potentially_dangerous_breed: z.boolean(),
       acquisition_method: z
         .enum(["adopted", "purchased", "found_stray", "gift", "born_in_litter", "other"])
@@ -171,6 +174,9 @@ const statusChanged = z
         })
         .nullable()
         .optional(),
+      // As entered and as resolved (localidades-por-id A8,
+      // lib/events/place-payload.ts). Optional: earlier events validate as-is.
+      place: eventPlaceSchema.optional(),
     }),
   )
   .strict();
@@ -372,6 +378,9 @@ const vetVisitLogged = z
       // pet's jurisdiction when omitted (no behavior change for legacy rows).
       jurisdiction_province: z.string().nullable().optional(),
       jurisdiction_locality: z.string().nullable().optional(),
+      // As entered and as resolved (localidades-por-id A8,
+      // lib/events/place-payload.ts). Optional: earlier events validate as-is.
+      place: eventPlaceSchema.optional(),
     }),
   )
   .strict()
@@ -433,6 +442,9 @@ const clinicalInfoLogged = z
       // L1 jurisdiction (optional). Sprint 4 PR-034 / doc 09 §3.A.
       jurisdiction_province: z.string().nullable().optional(),
       jurisdiction_locality: z.string().nullable().optional(),
+      // As entered and as resolved (localidades-por-id A8,
+      // lib/events/place-payload.ts). Optional: earlier events validate as-is.
+      place: eventPlaceSchema.optional(),
     }),
   )
   .strict()
@@ -990,6 +1002,9 @@ const incidentReported = z
       // OPTIONAL/nullable so every pre-existing incident validates unchanged
       // (forward-only, no backfill).
       location_source: z.enum(["gps", "pin_manual", "geocodificada"]).nullable().optional(),
+      // As entered and as resolved (localidades-por-id A8,
+      // lib/events/place-payload.ts). Optional: earlier events validate as-is.
+      place: eventPlaceSchema.optional(),
     }),
   )
   .strict();
@@ -1097,6 +1112,9 @@ const outbreakSignal = z
       // with an open observation. Optional for back-compat with historical
       // rows written before the bite-rabies-observation feature landed.
       bite_observation_active: z.boolean().optional(),
+      // As entered and as resolved (localidades-por-id A8,
+      // lib/events/place-payload.ts). Optional: earlier events validate as-is.
+      place: eventPlaceSchema.optional(),
     }),
   )
   .strict()

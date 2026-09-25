@@ -30,6 +30,8 @@
 //     home jurisdiction ("no lo sé" is a real answer).
 
 import { JurisdictionValidationError } from "@/lib/domain/location-normalize";
+import type { EventPlace } from "@/lib/events/place-payload";
+import { toEventPlaceOrNull } from "@/lib/place/event-place";
 import { type ReportedPlace, resolveReportedPlace } from "@/lib/place/reported-place";
 
 export type BiteJurisdiction =
@@ -39,6 +41,8 @@ export type BiteJurisdiction =
       locality: string | null;
       /** `ar_localities` id of the one resolved row, else null. */
       localityId: string | null;
+      /** As entered and as resolved, for the incident's payload (A8); null when nothing was entered. */
+      place: EventPlace | null;
     }
   | { ok: false; code: "invalid_request" | "bite_location_mismatch" };
 
@@ -73,12 +77,15 @@ export async function resolveBiteJurisdiction(input: {
   }
 
   if (place.mismatch) return { ok: false, code: "bite_location_mismatch" };
-  if (place.province === null)
-    return { ok: true, province: null, locality: null, localityId: null };
+  const eventPlace = toEventPlaceOrNull(place);
+  if (place.province === null) {
+    return { ok: true, province: null, locality: null, localityId: null, place: eventPlace };
+  }
   return {
     ok: true,
     province: place.province,
     locality: place.locality,
     localityId: place.localityId,
+    place: eventPlace,
   };
 }

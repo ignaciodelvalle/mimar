@@ -112,6 +112,7 @@ import { findSameOwnerDuplicatePet } from "@/lib/infra/owner-pet-dedupe";
 import { resolvePppClassificationForJurisdiction } from "@/lib/infra/ppp-classification";
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { reportError } from "@/lib/infra/report-error";
+import { eventPlaceFromGate } from "@/lib/place/event-place";
 import { createClientFromBearer } from "@/lib/supabase/bearer";
 import { registerPet } from "@/src/modules/pets/application/register-pet";
 import type { NewNotification, ParsedPet } from "@/src/modules/pets/domain/types";
@@ -605,21 +606,19 @@ async function resolvePreWrite(
     localityIndecId: string | null;
   },
 ): Promise<PreWriteResolution> {
-  const normalized = await normalizeLocationForWrite(
-    {
-      province: parsed.jurisdictionProvince,
-      provinceCode: null,
-      locality: parsed.jurisdictionLocality,
-      // A2-alta-asentar-03. When the client sends the id of the row it showed
-      // the person, THAT row is what gets stored — not the alphabetically first
-      // department among the homonyms sharing the name.
-      localityIndecId: ctx.localityIndecId,
-      lat: null,
-      lng: null,
-      address: null,
-    },
-    { locality: "strict" },
-  );
+  const enteredLoc = {
+    province: parsed.jurisdictionProvince,
+    provinceCode: null,
+    locality: parsed.jurisdictionLocality,
+    // A2-alta-asentar-03. When the client sends the id of the row it showed
+    // the person, THAT row is what gets stored — not the alphabetically first
+    // department among the homonyms sharing the name.
+    localityIndecId: ctx.localityIndecId,
+    lat: null,
+    lng: null,
+    address: null,
+  };
+  const normalized = await normalizeLocationForWrite(enteredLoc, { locality: "strict" });
 
   const resolved: ParsedPet = {
     ...parsed,
@@ -627,6 +626,8 @@ async function resolvePreWrite(
     jurisdictionLocality: normalized.locality,
     // Structural locality-attribution FK (migration 0147).
     localityId: normalized.localityId,
+    // As entered and as resolved, on pet_registered (localidades-por-id A8).
+    place: eventPlaceFromGate(enteredLoc, normalized),
   };
 
   if (!ctx.duplicateOverride) {

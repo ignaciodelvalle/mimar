@@ -28,7 +28,7 @@ import {
   requireTitularAccess,
 } from "@/lib/infra/pet-access";
 import { uploadAttachmentIfPresent } from "@/lib/infra/uploads";
-import { toEventPlaceOrNull } from "@/lib/place/event-place";
+import { eventPlaceFromGate, toEventPlaceOrNull } from "@/lib/place/event-place";
 import { resolveMapFormPlace } from "@/lib/place/reported-place";
 import { findDisease } from "@/lib/reference/diseases";
 import { checkboxOn } from "@/lib/ui/form-checkbox";
@@ -404,10 +404,10 @@ export async function createVetVisitAction(
   const notes = String(formData.get("notes") ?? "").trim() || null;
   const clientIdempotencyKey = String(formData.get("clientIdempotencyKey") ?? "").trim() || null;
   const loc = parseLocationFromFormData(formData);
-  // locality:"none" — canonicalize province only (vet_visit behavior unchanged).
+  // "soft", not "none": keep the picker's INDEC id and the place (localidades-por-id A8).
   let normalizedLoc: Awaited<ReturnType<typeof normalizeLocationForWrite>>;
   try {
-    normalizedLoc = await normalizeLocationForWrite(loc, { locality: "none" });
+    normalizedLoc = await normalizeLocationForWrite(loc, { locality: "soft" });
   } catch (err) {
     if (err instanceof CoordError) {
       return { error: err.message };
@@ -449,6 +449,7 @@ export async function createVetVisitAction(
         notes,
         eventJurisdictionProvince,
         eventJurisdictionLocality,
+        eventPlace: eventPlaceFromGate(loc, normalizedLoc),
         uploadedPath: upload.uploadedPath,
         uploadedMimeType: upload.mimeType ?? null,
         uploadedSize: upload.size ?? null,
@@ -491,10 +492,10 @@ export async function createClinicalInfoAction(
   const notes = String(formData.get("notes") ?? "").trim() || null;
   const clientIdempotencyKey = String(formData.get("clientIdempotencyKey") ?? "").trim() || null;
   const loc = parseLocationFromFormData(formData);
-  // locality:"none" — canonicalize province only (clinical_info behavior unchanged).
+  // locality:"soft" (localidades-por-id A8) — see createVetVisitAction.
   let normalizedLoc: Awaited<ReturnType<typeof normalizeLocationForWrite>>;
   try {
-    normalizedLoc = await normalizeLocationForWrite(loc, { locality: "none" });
+    normalizedLoc = await normalizeLocationForWrite(loc, { locality: "soft" });
   } catch (err) {
     if (err instanceof CoordError) {
       return { error: err.message };
@@ -540,6 +541,7 @@ export async function createClinicalInfoAction(
         notes,
         eventJurisdictionProvince,
         eventJurisdictionLocality,
+        eventPlace: eventPlaceFromGate(loc, normalizedLoc),
         uploadedPath: upload.uploadedPath,
         uploadedMimeType: upload.mimeType ?? null,
         uploadedSize: upload.size ?? null,
@@ -1086,6 +1088,7 @@ export async function setPetLostAction(
       eventJurisdictionProvince: lostPlace.province,
       eventJurisdictionLocality: lostPlace.province !== null ? lostPlace.locality : null,
       eventLocalityId: lostPlace.province !== null ? lostPlace.localityId : null,
+      eventPlace: toEventPlaceOrNull(lostPlace), // origin kept even on a home fallback (A8)
       reason,
       disclosurePrefs,
       enrichedDescription,

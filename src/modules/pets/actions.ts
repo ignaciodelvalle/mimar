@@ -44,6 +44,7 @@ import {
 import { fetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
 import { resolvePppClassificationForJurisdiction } from "@/lib/infra/ppp-classification";
 import { uploadAttachmentIfPresent } from "@/lib/infra/uploads";
+import { eventPlaceFromGate } from "@/lib/place/event-place";
 
 /**
  * Parses the domain layer's `estimatedWeightKg: string | null` into the
@@ -139,28 +140,28 @@ export async function createPetAction(
   // locality:"strict" — resolveCanonicalJurisdiction (createPet behavior unchanged).
   if (parsed.jurisdictionProvince && parsed.jurisdictionLocality) {
     try {
-      const normalizedLoc = await normalizeLocationForWrite(
-        {
-          province: parsed.jurisdictionProvince,
-          provinceCode: null,
-          locality: parsed.jurisdictionLocality,
-          // The row the picker wrote into the form. Passing null here — which
-          // this call did until L2-8 — made the web alta settle a (province,
-          // locality) homonym alphabetically, while the bearer registration and
-          // the mudanza, which both send the id, settled it correctly: two doors
-          // onto `pets.locality_id` disagreeing about the same animal.
-          localityIndecId: parsed.localityIndecId ?? null,
-          lat: null,
-          lng: null,
-          address: null,
-        },
-        { locality: "strict" },
-      );
+      const enteredLoc = {
+        province: parsed.jurisdictionProvince,
+        provinceCode: null,
+        locality: parsed.jurisdictionLocality,
+        // The row the picker wrote into the form. Passing null here — which
+        // this call did until L2-8 — made the web alta settle a (province,
+        // locality) homonym alphabetically, while the bearer registration and
+        // the mudanza, which both send the id, settled it correctly: two doors
+        // onto `pets.locality_id` disagreeing about the same animal.
+        localityIndecId: parsed.localityIndecId ?? null,
+        lat: null,
+        lng: null,
+        address: null,
+      };
+      const normalizedLoc = await normalizeLocationForWrite(enteredLoc, { locality: "strict" });
       parsed.jurisdictionProvince = normalizedLoc.province;
       parsed.jurisdictionLocality = normalizedLoc.locality;
       // Structural locality-attribution FK (migration 0147) — threaded into the
       // pets insert via the RegisterPet use-case.
       parsed.localityId = normalizedLoc.localityId;
+      // As entered and as resolved, on pet_registered (localidades-por-id A8).
+      parsed.place = eventPlaceFromGate(enteredLoc, normalizedLoc);
     } catch (err) {
       if (err instanceof JurisdictionValidationError) {
         return { error: err.message };
@@ -752,11 +753,13 @@ export async function recordPostAdoptionCheckinAction(
   // that every other jurisdiction_province write stores. Without this, the raw
   // ISO code landed in the JSONB payload and govt-dashboard aggregation that
   // filters on display names silently missed check-in events.
-  // locality:"none" — canonicalize province only, no catalog lookup.
+  // locality:"soft" (localidades-por-id A8). It was "none", which discarded
+  // the INDEC id the picker posts; the place is now resolved against the
+  // catalogue (never refused, a homonym never guessed) and kept on the event.
   const loc = parseLocationFromFormData(formData);
   let normalizedLoc: Awaited<ReturnType<typeof normalizeLocationForWrite>>;
   try {
-    normalizedLoc = await normalizeLocationForWrite(loc, { locality: "none" });
+    normalizedLoc = await normalizeLocationForWrite(loc, { locality: "soft" });
   } catch (err) {
     if (err instanceof CoordError) {
       return { error: err.message };
@@ -775,6 +778,7 @@ export async function recordPostAdoptionCheckinAction(
       notes,
       eventJurisdictionProvince: normalizedLoc.province,
       eventJurisdictionLocality: normalizedLoc.locality,
+      eventPlace: eventPlaceFromGate(loc, normalizedLoc),
       clientIdempotencyKey,
       uploadedPath: upload.uploadedPath,
       uploadedMimeType: upload.mimeType,

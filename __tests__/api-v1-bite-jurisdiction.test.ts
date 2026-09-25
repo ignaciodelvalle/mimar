@@ -110,6 +110,10 @@ describe("a pin AND a locality trio", () => {
       province: "Córdoba",
       locality: "Córdoba",
       localityId: "id-Córdoba",
+      place: {
+        entered: { province: "AR-X", locality: "Córdoba", indec_id: "14014010" },
+        resolved: { locality_id: "id-Córdoba", province_code: "AR-X", method: "indec_id" },
+      },
     });
   });
 
@@ -127,6 +131,7 @@ describe("a pin AND a locality trio", () => {
       province: "Buenos Aires",
       locality: null,
       localityId: null,
+      place: { entered: { province: "AR-B", locality: "Mechita", indec_id: null }, resolved: null },
     });
   });
 
@@ -157,6 +162,10 @@ describe("a pin and NO trio — derived from the pin, never the pet's home", () 
       province: "Córdoba",
       locality: "Córdoba",
       localityId: "id-Córdoba",
+      place: {
+        entered: { province: null, locality: null, indec_id: null },
+        resolved: { locality_id: "id-Córdoba", province_code: "AR-X", method: "geocode_unique" },
+      },
     });
   });
 
@@ -169,7 +178,13 @@ describe("a pin and NO trio — derived from the pin, never the pet's home", () 
       locationLat: CORDOBA.lat,
       locationLng: CORDOBA.lng,
     });
-    expect(result).toEqual({ ok: true, province: "Córdoba", locality: null, localityId: null });
+    expect(result).toEqual({
+      ok: true,
+      province: "Córdoba",
+      locality: null,
+      localityId: null,
+      place: { entered: { province: null, locality: null, indec_id: null }, resolved: null },
+    });
   });
 
   it("near a border, with no geocoder answer, not even the province is guessed", async () => {
@@ -184,7 +199,13 @@ describe("a pin and NO trio — derived from the pin, never the pet's home", () 
       locationLat: CORDOBA.lat,
       locationLng: CORDOBA.lng,
     });
-    expect(result).toEqual({ ok: true, province: null, locality: null, localityId: null });
+    expect(result).toEqual({
+      ok: true,
+      province: null,
+      locality: null,
+      localityId: null,
+      place: { entered: { province: null, locality: null, indec_id: null }, resolved: null },
+    });
   });
 });
 
@@ -197,7 +218,13 @@ describe("no pin — unchanged", () => {
       locationLat: null,
       locationLng: null,
     });
-    expect(result).toEqual({ ok: true, province: null, locality: null, localityId: null });
+    expect(result).toEqual({
+      ok: true,
+      province: null,
+      locality: null,
+      localityId: null,
+      place: null,
+    });
     expect(control.corroborateCalls).toEqual([]);
   });
 
@@ -214,6 +241,10 @@ describe("no pin — unchanged", () => {
       province: "Buenos Aires",
       locality: "La Plata",
       localityId: "id-La Plata",
+      place: {
+        entered: { province: "AR-B", locality: "La Plata", indec_id: "06441030" },
+        resolved: { locality_id: "id-La Plata", province_code: "AR-B", method: "indec_id" },
+      },
     });
     expect(control.corroborateCalls).toEqual([]);
   });

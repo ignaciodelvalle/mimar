@@ -72,26 +72,25 @@ describe("sanity: the probe sees an unknown key", () => {
 });
 
 describe("place-bearing families accept place: { entered, resolved }", () => {
-  // Known failure until work unit A8 (localidades-por-id): flip each to `it` there.
-  it.fails("pet_registered", () => {
+  it("pet_registered", () => {
     expect(refusesPlaceKey("pet_registered", { place: RESOLVED_PLACE })).toBe(false);
   });
-  it.fails("status_changed (lost report)", () => {
+  it("status_changed (lost report)", () => {
     expect(refusesPlaceKey("status_changed", { place: RESOLVED_PLACE })).toBe(false);
   });
-  it.fails("incident_reported (bite)", () => {
+  it("incident_reported (bite)", () => {
     expect(refusesPlaceKey("incident_reported", { place: UNRESOLVED_PLACE })).toBe(false);
   });
-  it.fails("outbreak_signal", () => {
+  it("outbreak_signal", () => {
     expect(refusesPlaceKey("outbreak_signal", { place: RESOLVED_PLACE })).toBe(false);
   });
-  it.fails("vet_visit_logged", () => {
+  it("vet_visit_logged", () => {
     expect(refusesPlaceKey("vet_visit_logged", { place: RESOLVED_PLACE })).toBe(false);
   });
-  it.fails("clinical_info_logged", () => {
+  it("clinical_info_logged", () => {
     expect(refusesPlaceKey("clinical_info_logged", { place: RESOLVED_PLACE })).toBe(false);
   });
-  it.fails("post_adoption_checkin", () => {
+  it("post_adoption_checkin", () => {
     expect(refusesPlaceKey("post_adoption_checkin", { place: RESOLVED_PLACE })).toBe(false);
   });
 

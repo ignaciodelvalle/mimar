@@ -21,6 +21,7 @@
 import { writePoint } from "@/lib/domain/location";
 import { validateMicrochipId } from "@/lib/domain/microchip-validation";
 import { validateEventPayload } from "@/lib/events/event-schemas";
+import type { EventPlace } from "@/lib/events/place-payload";
 import { openCase } from "@/lib/infra/case-helpers";
 import { fetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
 import { normalizeTattooCode } from "@/lib/infra/tattoo-lookup";
@@ -110,6 +111,11 @@ export type SetPetLostWriterParams = {
    * the case routes to the incident's place — a home fallback gets no id here.
    */
   eventLocalityId?: string | null;
+  /**
+   * Where it was lost, as entered and as resolved (localidades-por-id A8,
+   * lib/events/place-payload.ts) — kept on the status_changed event.
+   */
+  eventPlace?: EventPlace | null;
   reason: string | null;
   disclosurePrefs: DisclosurePrefsInput;
   enrichedDescription?: EnrichedLostDescriptionInput | null;
@@ -171,6 +177,7 @@ export async function setPetLostWriter(
     eventJurisdictionProvince = null,
     eventJurisdictionLocality = null,
     eventLocalityId = null,
+    eventPlace = null,
     reason,
     disclosurePrefs,
     enrichedDescription = null,
@@ -280,6 +287,7 @@ export async function setPetLostWriter(
         reason,
         disclosure_prefs_snapshot: disclosurePrefsSnapshot,
         ...(lostDescription !== null ? { lost_description: lostDescription } : {}),
+        ...(eventPlace !== null ? { place: eventPlace } : {}),
       });
 
       await deps.repo.insertEvent(

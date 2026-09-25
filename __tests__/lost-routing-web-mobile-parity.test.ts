@@ -222,6 +222,32 @@ describe("lost routing: same pin, same place, any channel", () => {
   });
 });
 
+// localidades-por-id A8: the status_changed event keeps the place — as each
+// door entered it, and resolved to the same catalogue row.
+describe("the lost event keeps its place (A8)", () => {
+  function eventPlaceHanded(): Record<string, unknown> {
+    expect(mocks.setPetLostWriter).toHaveBeenCalledTimes(1);
+    const [params] = mocks.setPetLostWriter.mock.calls[0] as [{ eventPlace?: unknown }];
+    return (params.eventPlace ?? {}) as Record<string, unknown>;
+  }
+
+  it("web: the pair as entered, resolved to Córdoba's Villa María", async () => {
+    await viaWeb();
+    expect(eventPlaceHanded()).toEqual({
+      entered: { province: "AR-X", locality: "Villa María", indec_id: null },
+      resolved: { locality_id: cordobaRow.id, province_code: "AR-X", method: "exact_name_unique" },
+    });
+  });
+
+  it("app: the picker's trio as entered, resolved by its id to the same row", async () => {
+    await viaApp();
+    expect(eventPlaceHanded()).toEqual({
+      entered: { province: "AR-X", locality: "Villa María", indec_id: VILLA_MARIA_CORDOBA },
+      resolved: { locality_id: cordobaRow.id, province_code: "AR-X", method: "indec_id" },
+    });
+  });
+});
+
 describe("the app door (localidades-por-id A3)", () => {
   it("the case carries the catalogue row the picker resolved", async () => {
     expect(await viaApp()).toEqual({

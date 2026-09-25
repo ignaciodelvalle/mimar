@@ -1,6 +1,7 @@
 // Plain DTOs and value-shapes for the pets domain layer.
 // Zero external imports — this file must not pull in Drizzle, Next.js, or @/db.
 
+import type { EventPlace } from "@/lib/events/place-payload";
 import type { PermanentCondition } from "@/lib/reference/permanent-conditions";
 
 // ---------------------------------------------------------------------------
@@ -56,6 +57,12 @@ export type ParsedPet = {
    * about which homonym a pet belongs to (L2-8).
    */
   localityIndecId?: string | null;
+  /**
+   * Where the animal was registered, as entered and as resolved
+   * (localidades-por-id A8, lib/events/place-payload.ts). Set at the action
+   * edge from the write gate's answer; kept on the pet_registered event.
+   */
+  place?: EventPlace | null;
   acquisitionMethod: AcquisitionMethod | null;
   emergencyInfoVisible: boolean;
   permanentConditions: PermanentCondition[];

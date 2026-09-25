@@ -36,6 +36,7 @@ import { parseLocationFromFormData } from "@/lib/domain/location-value";
 import { chipImplantSiteFromLocation } from "@/lib/domain/microchip-implant-site";
 import { validateMicrochipId } from "@/lib/domain/microchip-validation";
 import { EventPayloadValidationError, validateEventPayload } from "@/lib/events/event-schemas";
+import type { EventPlace } from "@/lib/events/place-payload";
 import { checkOccurredAtPlausible } from "@/lib/events/plausibility";
 import { openCase } from "@/lib/infra/case-helpers";
 import { lookupByChip } from "@/lib/infra/chip-lookup";
@@ -46,6 +47,7 @@ import { generatePublicToken } from "@/lib/infra/publicToken";
 import { generateTattooAckToken, validateTattooAckToken } from "@/lib/infra/tattoo-ack-token";
 import { lookupByTattoo, normalizeTattooCode } from "@/lib/infra/tattoo-lookup";
 import { generateUniqueToken } from "@/lib/infra/unique-token";
+import { eventPlaceFromGate } from "@/lib/place/event-place";
 import { provinceByCode } from "@/lib/reference/ar-provincias";
 import { parseDateInput } from "@/lib/utils/format";
 import {
@@ -240,6 +242,8 @@ export async function createIntake(
   // Structural locality-attribution FK (migration 0147). Resolved from the
   // strict canonicalization below; stays null when there's no locality to resolve.
   let jurisdictionLocalityId: string | null = null;
+  // As entered and as resolved, on pet_registered (localidades-por-id A8).
+  let registeredPlace: EventPlace | null = null;
 
   // Canonicalize the pet's jurisdiction strictly against the INDEC catalog.
   // The intake form uses LocationFields (forces a catalog selection); this
@@ -248,19 +252,18 @@ export async function createIntake(
   // locality:"strict" — resolveCanonicalJurisdiction (intake behavior unchanged).
   if (parsed.jurisdictionProvince && parsed.jurisdictionLocality) {
     try {
-      const normalizedLoc = await normalizeLocationForWrite(
-        {
-          province: parsed.jurisdictionProvince,
-          provinceCode: null,
-          locality: parsed.jurisdictionLocality,
-          // See the field's note in `parseIntakeForm` (L2-8).
-          localityIndecId: parsed.localityIndecId ?? null,
-          lat: null,
-          lng: null,
-          address: null,
-        },
-        { locality: "strict" },
-      );
+      const enteredLoc = {
+        province: parsed.jurisdictionProvince,
+        provinceCode: null,
+        locality: parsed.jurisdictionLocality,
+        // See the field's note in `parseIntakeForm` (L2-8).
+        localityIndecId: parsed.localityIndecId ?? null,
+        lat: null,
+        lng: null,
+        address: null,
+      };
+      const normalizedLoc = await normalizeLocationForWrite(enteredLoc, { locality: "strict" });
+      registeredPlace = eventPlaceFromGate(enteredLoc, normalizedLoc);
       parsed.jurisdictionProvince = normalizedLoc.province;
       parsed.jurisdictionLocality = normalizedLoc.locality;
       jurisdictionLocalityId = normalizedLoc.localityId;
@@ -467,6 +470,7 @@ export async function createIntake(
         insurance_policy_number: null,
         jurisdiction_province: parsed.jurisdictionProvince,
         jurisdiction_locality: parsed.jurisdictionLocality,
+        ...(registeredPlace ? { place: registeredPlace } : {}),
         // The catalogue ROW the two names resolved to — the same value written
         // into `pets.locality_id` below, so the spine can reproduce it (L2-3).
         jurisdiction_locality_id: jurisdictionLocalityId,

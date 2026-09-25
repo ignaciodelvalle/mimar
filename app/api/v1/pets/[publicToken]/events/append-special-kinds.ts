@@ -651,6 +651,8 @@ export async function appendBite(
       // The catalogue row the place resolved to (localidades-por-id A4); the
       // writer stamps it on the case only when the case routes there.
       eventLocalityId,
+      // As entered and as resolved, on the incident (localidades-por-id A8).
+      eventPlace: jurisdiction.place,
       // The pin the person placed on the app's map (M17), both halves or
       // neither. The SOURCE is the server's word, not the client's: always
       // `pin_manual` (see this function's header on provenance).

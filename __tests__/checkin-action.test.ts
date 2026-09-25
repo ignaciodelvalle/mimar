@@ -100,6 +100,14 @@ vi.mock("@/lib/events/event-idempotency", () => ({
 // Mock: @/lib/event-schemas — pass through the payload as-is.
 // ---------------------------------------------------------------------------
 
+// The check-in's place is resolved "soft" since localidades-por-id A8; this
+// file's fake client answers catalogue queries with other rows, so the
+// catalogue here is empty — every name is a soft miss, kept as typed.
+vi.mock("@/lib/infra/ar-localidades", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/infra/ar-localidades")>();
+  return { ...actual, localitiesByName: async () => [] };
+});
+
 vi.mock("@/lib/events/event-schemas", () => ({
   validateEventPayload: (_eventType: string, payload: unknown) => payload,
 }));
@@ -525,6 +533,33 @@ describe("recordPostAdoptionCheckinAction", () => {
     // "AR-C" must be resolved to the canonical display name "CABA", not stored raw.
     expect(payload.jurisdiction_province).toBe("CABA");
     expect(payload.jurisdiction_locality).toBe("Palermo");
+  });
+
+  // localidades-por-id A8: the check-in keeps its place, as entered and as
+  // resolved (here the fake catalogue knows no row, so resolved is null).
+  it("keeps the check-in's place on the event payload", async () => {
+    vi.resetModules();
+    mockRequirePetAccess.mockResolvedValue(makePetAccessSuccess());
+    setupMockDb();
+    mockInsertEventIdempotent.mockResolvedValue({
+      event: { id: INSERTED_EVENT_ID },
+      wasNoop: false,
+    });
+
+    const { recordPostAdoptionCheckinAction } = await import("@/app/actions/checkin");
+    const fd = makeFormData({ ...BASE_FORM, provinceCode: "AR-C", localityName: "Palermo" });
+    try {
+      await recordPostAdoptionCheckinAction(PUBLIC_TOKEN, PREVIOUS_STATE, fd);
+    } catch {
+      // redirect
+    }
+
+    const [insertValues] = mockInsertEventIdempotent.mock.calls[0] as [Record<string, unknown>];
+    const payload = insertValues.payload as Record<string, unknown>;
+    expect(payload.place).toEqual({
+      entered: { province: "AR-C", locality: "Palermo", indec_id: null },
+      resolved: null,
+    });
   });
 
   it("stores null for unrecognized province codes (guards raw write regression)", async () => {

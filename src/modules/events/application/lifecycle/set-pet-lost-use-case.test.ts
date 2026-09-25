@@ -303,6 +303,38 @@ describe("setPetLostWriter", () => {
       expect(lastLocation).toEqual({ province: "Córdoba", locality: "Villa Carlos Paz" });
     });
 
+    // localidades-por-id A8: the status_changed event keeps where it was lost,
+    // as entered and as resolved — the case's pair alone says neither.
+    it("keeps the incident's place on the status_changed payload", async () => {
+      const repo = makeRepo();
+      const place = {
+        entered: { province: "AR-X", locality: "Villa María", indec_id: "14042170" },
+        resolved: {
+          locality_id: "00000000-0000-4000-8000-0000000014e2",
+          province_code: "AR-X",
+          method: "indec_id" as const,
+        },
+      };
+      await setPetLostWriter(
+        {
+          ...baseParams,
+          eventJurisdictionProvince: "Córdoba",
+          eventJurisdictionLocality: "Villa María",
+          eventPlace: place,
+        } as typeof baseParams,
+        {
+          repo: repo as unknown as Pick<
+            EventsRepository,
+            "insertEvent" | "updatePetLostProjection" | "insertIdentification"
+          >,
+          transaction: makeTransaction(),
+          broadcastLostPet: mockBroadcastLostPet,
+        },
+      );
+      const [insertArg] = repo.insertEvent.mock.calls[0] as [{ payload: Record<string, unknown> }];
+      expect(insertArg.payload.place).toEqual(place);
+    });
+
     it("never falls back field by field", async () => {
       // THE ASSERTION THAT EARNS ITS KEEP. A province with no locality must not
       // produce (Córdoba, La Plata) — a place that does not exist, on a record

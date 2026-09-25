@@ -174,6 +174,9 @@ const PLACE_PROSE = "A free-text place description tied to a person's home or ro
 export const PAYLOAD_PRIVACY: Record<EventType, Record<string, PrivacyEntry>> = {
   // --- Lifecycle -------------------------------------------------------------
   pet_registered: {
+    // Catalogue place, as entered and as resolved (lib/events/place-payload.ts):
+    // no point, no address — those stay on the row and its own keys.
+    place: CF,
     payload_version: CF,
     name: CF,
     species: CF,
@@ -210,6 +213,9 @@ export const PAYLOAD_PRIVACY: Record<EventType, Record<string, PrivacyEntry>> = 
     photo_replaced: CF,
   },
   status_changed: {
+    // Catalogue place, as entered and as resolved (lib/events/place-payload.ts):
+    // no point, no address — those stay on the row and its own keys.
+    place: CF,
     payload_version: CF,
     from_status: CF,
     to_status: CF,
@@ -294,6 +300,9 @@ export const PAYLOAD_PRIVACY: Record<EventType, Record<string, PrivacyEntry>> = 
 
   // --- Clinical --------------------------------------------------------------
   vet_visit_logged: {
+    // Catalogue place, as entered and as resolved (lib/events/place-payload.ts):
+    // no point, no address — those stay on the row and its own keys.
+    place: CF,
     payload_version: CF,
     reason: paGated(CLINICAL_PROSE),
     diagnosis: paGated(CLINICAL_PROSE),
@@ -309,6 +318,9 @@ export const PAYLOAD_PRIVACY: Record<EventType, Record<string, PrivacyEntry>> = 
     kg: CF,
   },
   clinical_info_logged: {
+    // Catalogue place, as entered and as resolved (lib/events/place-payload.ts):
+    // no point, no address — those stay on the row and its own keys.
+    place: CF,
     payload_version: CF,
     sub_kind: CF,
     title: paGated(CLINICAL_PROSE),
@@ -349,6 +361,9 @@ export const PAYLOAD_PRIVACY: Record<EventType, Record<string, PrivacyEntry>> = 
     onset_at: CF,
   },
   outbreak_signal: {
+    // Catalogue place, as entered and as resolved (lib/events/place-payload.ts):
+    // no point, no address — those stay on the row and its own keys.
+    place: CF,
     payload_version: CF,
     source_symptom_event_id: CF,
     source_disease_diagnosis_event_id: CF,
@@ -484,6 +499,9 @@ export const PAYLOAD_PRIVACY: Record<EventType, Record<string, PrivacyEntry>> = 
     scan_accuracy_m: pd("drop", "Accuracy of the scanner's GPS fix; only meaningful with it."),
   },
   incident_reported: {
+    // Catalogue place, as entered and as resolved (lib/events/place-payload.ts):
+    // no point, no address — those stay on the row and its own keys.
+    place: CF,
     payload_version: CF,
     incident_type: CF,
     severity: CF,
@@ -631,6 +649,9 @@ export const PAYLOAD_PRIVACY: Record<EventType, Record<string, PrivacyEntry>> = 
     ]),
   },
   post_adoption_checkin: {
+    // Catalogue place, as entered and as resolved (lib/events/place-payload.ts):
+    // no point, no address — those stay on the row and its own keys.
+    place: CF,
     payload_version: CF,
     related_organization_id: CF,
     photo_attachment_ids: CF,

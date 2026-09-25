@@ -204,3 +204,30 @@ describe("org bite (catalogue picker + optional pin)", () => {
     });
   });
 });
+
+// localidades-por-id A8: the append-only incident keeps the place as entered
+// and as resolved, from both web doors.
+describe("the incident keeps its place (A8)", () => {
+  const EXPECTED = {
+    entered: { province: "AR-X", locality: "Villa María", indec_id: null },
+    resolved: { locality_id: "loc-vm-cba", province_code: "AR-X", method: "exact_name_unique" },
+  };
+
+  function eventPlaceHandedTo(writer: ReturnType<typeof vi.fn>) {
+    expect(writer).toHaveBeenCalledTimes(1);
+    const [input] = writer.mock.calls[0] as [{ eventPlace?: unknown }];
+    return input.eventPlace;
+  }
+
+  it("owner", async () => {
+    await reportBiteAction("tok-1", { error: null }, biteForm()).catch(() => {});
+    expect(eventPlaceHandedTo(mocks.reportBite)).toEqual(EXPECTED);
+  });
+
+  it("org", async () => {
+    const fd = biteForm();
+    fd.set("petPublicToken", "tok-1");
+    await reportBiteFromOrgAction("org-tok", { error: null }, fd).catch(() => {});
+    expect(eventPlaceHandedTo(mocks.reportBiteFromOrg)).toEqual(EXPECTED);
+  });
+});

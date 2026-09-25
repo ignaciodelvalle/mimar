@@ -15,6 +15,7 @@
 
 import type { CoverageArea } from "@/lib/domain/org-coverage";
 import { validateEventPayload } from "@/lib/events/event-schemas";
+import type { EventPlace } from "@/lib/events/place-payload";
 import { AR_TIME_ZONE, speciesLabel } from "@/lib/utils/format";
 
 import type { OpenedReason } from "@/src/modules/cases/domain/opened-reason";
@@ -70,6 +71,11 @@ export type ReportBiteFromOrgInput = {
   vetInvolved: boolean;
   eventJurisdictionProvince: string | null;
   eventJurisdictionLocality: string | null;
+  /**
+   * Where the bite happened, as entered and as resolved (localidades-por-id
+   * A8, lib/events/place-payload.ts) — kept on the append-only incident.
+   */
+  eventPlace?: EventPlace | null;
   /**
    * ar_localities id of the incident locality when it resolved against the
    * catalog (the web writers normalise with locality "soft"). Stamped on the
@@ -312,6 +318,7 @@ export async function reportBiteFromOrg(
         reporter_role: reporterRole,
         jurisdiction_province: input.eventJurisdictionProvince,
         jurisdiction_locality: input.eventJurisdictionLocality,
+        ...(input.eventPlace ? { place: input.eventPlace } : {}),
         location_source: input.locationSource,
       });
 

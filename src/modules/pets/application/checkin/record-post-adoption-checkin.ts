@@ -109,6 +109,7 @@ export async function recordPostAdoptionCheckin(
         notes,
         jurisdiction_province: input.eventJurisdictionProvince,
         jurisdiction_locality: input.eventJurisdictionLocality,
+        ...(input.eventPlace ? { place: input.eventPlace } : {}),
       });
       const now = input.now ?? new Date();
       const { event, wasNoop: checkinNoop } = await insertEventIdempotent(

@@ -441,6 +441,8 @@ async function markLost(
       eventJurisdictionProvince: eventProvince,
       eventJurisdictionLocality: eventLocality,
       eventLocalityId: lostPlace.province !== null ? lostPlace.localityId : null,
+      // As entered and as resolved, on the event (localidades-por-id A8).
+      eventPlace: toEventPlaceOrNull(lostPlace),
       reason: input.reason,
       disclosurePrefs: input.disclosure,
       enrichedDescription: input.enrichedDescription ?? null,

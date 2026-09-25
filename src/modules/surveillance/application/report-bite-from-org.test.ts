@@ -608,3 +608,31 @@ describe("reportBiteFromOrg — the reporting org must be verified AND connected
     expect(deps.repo.insertAuditLog).not.toHaveBeenCalled();
   });
 });
+
+// localidades-por-id A8: the append-only incident keeps where the bite
+// happened, as entered and as resolved.
+describe("reportBiteFromOrg — the incident keeps its place (A8)", () => {
+  it("writes the place onto incident_reported", async () => {
+    const deps = makeDeps();
+    const place = {
+      entered: { province: "AR-X", locality: "Villa María", indec_id: "14042170" },
+      resolved: {
+        locality_id: "00000000-0000-4000-8000-0000000014e2",
+        province_code: "AR-X",
+        method: "indec_id" as const,
+      },
+    };
+    await reportBiteFromOrg(
+      {
+        ...BASE_INPUT,
+        eventJurisdictionProvince: "Córdoba",
+        eventJurisdictionLocality: "Villa María",
+        eventPlace: place,
+      },
+      deps,
+    );
+    const call = (deps.repo.insertIncidentEventIdempotent as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as { payload: Record<string, unknown> };
+    expect(call.payload.place).toEqual(place);
+  });
+});

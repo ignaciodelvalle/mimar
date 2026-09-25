@@ -10,6 +10,7 @@
 //   - No outbox. No audit_log.
 
 import { validateEventPayload } from "@/lib/events/event-schemas";
+import type { EventPlace } from "@/lib/events/place-payload";
 
 import type { EventsRepository } from "../../infrastructure/events-repository";
 import type { RecordedEvent, UseCaseResult } from "../types";
@@ -34,6 +35,8 @@ export type CreateVetVisitInput = {
   notes: string | null;
   eventJurisdictionProvince: string | null;
   eventJurisdictionLocality: string | null;
+  /** As entered and as resolved (localidades-por-id A8, lib/events/place-payload.ts). */
+  eventPlace?: EventPlace | null;
   uploadedPath: string | null;
   uploadedMimeType: string | null;
   uploadedSize: number | null;
@@ -80,6 +83,7 @@ export async function createVetVisit(
       clinic,
       jurisdiction_province: eventJurisdictionProvince,
       jurisdiction_locality: eventJurisdictionLocality,
+      ...(input.eventPlace ? { place: input.eventPlace } : {}),
     });
 
     const { event, wasNoop } = await repo.insertEventIdempotent(

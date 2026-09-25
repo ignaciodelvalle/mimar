@@ -264,6 +264,7 @@ export const PetsRepository = {
       // The catalogue ROW behind those two names, so the spine can reproduce
       // `pets.locality_id` instead of re-resolving a homonym by name (L2-3).
       jurisdiction_locality_id: parsed.localityId ?? null,
+      ...(parsed.place ? { place: parsed.place } : {}),
       potentially_dangerous_breed: potentiallyDangerousBreed,
       acquisition_method: parsed.acquisitionMethod,
       has_photo: uploadedPath !== null,

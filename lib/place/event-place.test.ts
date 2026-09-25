@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { toEventPlace, toEventPlaceOrNull } from "@/lib/place/event-place";
+import { eventPlaceFromGate, toEventPlace, toEventPlaceOrNull } from "@/lib/place/event-place";
 import type { ReportedPlace } from "@/lib/place/reported-place";
 
 const RESOLVED: ReportedPlace = {
@@ -89,5 +89,81 @@ describe("toEventPlaceOrNull", () => {
         entered: { province: null, locality: null, indecId: null },
       }),
     ).toEqual({ entered: { province: null, locality: null, indec_id: null }, resolved: null });
+  });
+});
+
+// localidades-por-id A8: the writers that resolve through the write gate
+// (registration, vet visit, clinical info, check-in) build the same object
+// from what was entered and what the gate answered.
+describe("eventPlaceFromGate", () => {
+  const entered = {
+    province: "Buenos Aires",
+    provinceCode: "AR-B",
+    locality: "Mechita",
+    localityIndecId: "06112080",
+    lat: null,
+    lng: null,
+    address: null,
+  };
+
+  it("an id the gate honoured is a resolved place, named by that id", () => {
+    expect(
+      eventPlaceFromGate(entered, {
+        province: "Buenos Aires",
+        locality: "Mechita",
+        localityCanonical: true,
+        localityId: "00000000-0000-4000-8000-00000000b4a9",
+        placeMethod: "indec_id",
+        lat: null,
+        lng: null,
+        address: null,
+      }),
+    ).toEqual({
+      entered: { province: "AR-B", locality: "Mechita", indec_id: "06112080" },
+      resolved: {
+        locality_id: "00000000-0000-4000-8000-00000000b4a9",
+        province_code: "AR-B",
+        method: "indec_id",
+      },
+    });
+  });
+
+  it("a gate answer with no row is resolved: null, and what was entered survives", () => {
+    expect(
+      eventPlaceFromGate(
+        { ...entered, localityIndecId: null },
+        {
+          province: "Buenos Aires",
+          locality: null,
+          localityCanonical: false,
+          localityId: null,
+          placeMethod: "unresolved",
+          lat: null,
+          lng: null,
+          address: null,
+        },
+      ),
+    ).toEqual({
+      entered: { province: "AR-B", locality: "Mechita", indec_id: null },
+      resolved: null,
+    });
+  });
+
+  it("nothing entered records no place", () => {
+    expect(
+      eventPlaceFromGate(
+        { ...entered, province: null, provinceCode: null, locality: null, localityIndecId: null },
+        {
+          province: null,
+          locality: null,
+          localityCanonical: false,
+          localityId: null,
+          placeMethod: "unresolved",
+          lat: null,
+          lng: null,
+          address: null,
+        },
+      ),
+    ).toBeNull();
   });
 });

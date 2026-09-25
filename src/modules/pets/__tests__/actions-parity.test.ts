@@ -426,6 +426,24 @@ describe("createPetAction", () => {
       );
     });
 
+    // localidades-por-id A8: the registration event keeps where the animal was
+    // registered, as entered and as resolved.
+    it("hands registerPet the registration's place, as entered and as resolved", async () => {
+      const { registerPet } = await import("@/src/modules/pets/application/register-pet");
+      await createPetAction({ error: null }, makeCreateFormData({ localityNameIndecId: "060658" }));
+      expect(registerPet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parsed: expect.objectContaining({
+            place: {
+              entered: { province: "Buenos Aires", locality: "La Plata", indec_id: "060658" },
+              resolved: { locality_id: "loc-BY-ID", province_code: "AR-B", method: "indec_id" },
+            },
+          }),
+        }),
+        expect.anything(),
+      );
+    });
+
     it("L2-8: still resolves by NAME when the form sent no id", async () => {
       // NON-VACUITY: the two resolvers really are distinguishable here, so the
       // assertion above is about which one ran and not about the mock.

@@ -31,6 +31,7 @@ import { PetsRepository } from "../pets-repository";
 const USER_TOKEN = "DIMTEST-PETS-REPO-USER";
 const PET_TOKEN_1 = "DIMTEST-PETS-REPO-P1";
 const PET_TOKEN_2 = "DIMTEST-PETS-REPO-P2";
+const PET_TOKEN_PLACE = "DIMTEST-PETS-REPO-P3";
 
 let userId: string;
 
@@ -97,7 +98,7 @@ beforeAll(async () => {
 
   // Clean up any stale fixture pets.
   await withMutationOverride(async (tx) => {
-    for (const token of [PET_TOKEN_1, PET_TOKEN_2]) {
+    for (const token of [PET_TOKEN_1, PET_TOKEN_2, PET_TOKEN_PLACE]) {
       const stale = await tx.select({ id: pets.id }).from(pets).where(eq(pets.publicToken, token));
       for (const { id } of stale) {
         await tx.delete(pets).where(eq(pets.id, id));
@@ -109,7 +110,7 @@ beforeAll(async () => {
 afterAll(async () => {
   // Clean up all pets created by this suite (cascades into events, ownerships, etc.).
   await withMutationOverride(async (tx) => {
-    for (const token of [PET_TOKEN_1, PET_TOKEN_2]) {
+    for (const token of [PET_TOKEN_1, PET_TOKEN_2, PET_TOKEN_PLACE]) {
       const rows = await tx.select({ id: pets.id }).from(pets).where(eq(pets.publicToken, token));
       for (const { id } of rows) {
         await tx.delete(pets).where(eq(pets.id, id));
@@ -193,6 +194,36 @@ describe("PetsRepository.insertPetRegistered — no chip", () => {
       .where(and(eq(petEvents.petId, petId), eq(petEvents.eventType, "pet_registered")));
     expect(event).toBeDefined();
     expect(event.id).toBe(eventId);
+  });
+
+  // localidades-por-id A8: the registration event keeps where the animal was
+  // registered, as entered and as resolved.
+  it("writes the registration's place onto pet_registered", async () => {
+    const place = {
+      entered: { province: "AR-X", locality: "Villa María", indec_id: "14042170" },
+      resolved: {
+        locality_id: "00000000-0000-4000-8000-0000000014e2",
+        province_code: "AR-X",
+        method: "indec_id" as const,
+      },
+    };
+    const result = await db.transaction(async (tx) =>
+      PetsRepository.insertPetRegistered(
+        {
+          publicToken: PET_TOKEN_PLACE,
+          parsed: makeParsedBase({ place }),
+          potentiallyDangerousBreed: false,
+          uploadedPath: null,
+          uploadMimeType: null,
+          uploadSize: null,
+          userId,
+          now: new Date(),
+        },
+        tx,
+      ),
+    );
+    const [event] = await db.select().from(petEvents).where(eq(petEvents.id, result.eventId));
+    expect((event.payload as Record<string, unknown>).place).toEqual(place);
   });
 
   it("sets ownership role to shelter_custody for foster_in_transit custody", async () => {

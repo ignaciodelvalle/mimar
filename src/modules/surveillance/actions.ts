@@ -55,6 +55,7 @@ import {
 import { requireAlivePetAccess } from "@/lib/infra/pet-access";
 import { reportError } from "@/lib/infra/report-error";
 import { resolveSignerProvenance } from "@/lib/infra/signer-provenance";
+import { toEventPlaceOrNull } from "@/lib/place/event-place";
 import { resolveMapFormPlace, resolveReportedPlace } from "@/lib/place/reported-place";
 import { checkboxOn } from "@/lib/ui/form-checkbox";
 import { parseDateInput } from "@/lib/utils/format";
@@ -307,6 +308,8 @@ export async function reportBiteAction(
       eventJurisdictionProvince,
       eventJurisdictionLocality,
       eventLocalityId: bitePlace.localityId,
+      // As entered and as resolved, on the incident (localidades-por-id A8).
+      eventPlace: toEventPlaceOrNull(bitePlace),
       // panorama-event-points Slice 2: the map-pin coordinate (may be null).
       locationLat: loc.lat,
       locationLng: loc.lng,
@@ -500,6 +503,8 @@ export async function reportBiteFromOrgAction(
       eventJurisdictionProvince,
       eventJurisdictionLocality,
       eventLocalityId: bitePlace.localityId,
+      // As entered and as resolved, on the incident (localidades-por-id A8).
+      eventPlace: toEventPlaceOrNull(bitePlace),
       // panorama-event-points Slice 2: the map-pin coordinate (may be null).
       locationLat: loc.lat,
       locationLng: loc.lng,

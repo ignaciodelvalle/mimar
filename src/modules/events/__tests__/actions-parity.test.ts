@@ -897,3 +897,63 @@ describe("createDiseaseReportedAction — vet-only, matrícula-only (#759)", () 
     expect(result.error).toBe("Mascota no encontrada.");
   });
 });
+
+// localidades-por-id A8: a vet visit's place is resolved against the catalogue
+// (soft — never refused) and kept on the event as entered and as resolved. It
+// used to be canonicalised with locality "none", which discarded the INDEC id
+// the cascade picker posted.
+describe("createVetVisitAction — the visit keeps its place (A8)", () => {
+  it("resolves soft and hands the use-case the place, as entered and as resolved", async () => {
+    vi.clearAllMocks();
+    mockRequireAlivePetAccess.mockResolvedValue(makeAliveAccess());
+    mockUploadAttachmentIfPresent.mockResolvedValue({
+      uploadedPath: null,
+      mimeType: null,
+      size: null,
+      error: null,
+    });
+    const { parseLocationFromFormData } = await import("@/lib/domain/location-value");
+    (parseLocationFromFormData as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      province: null,
+      provinceCode: "AR-B",
+      locality: "La Plata",
+      localityIndecId: "06441030",
+      lat: null,
+      lng: null,
+      address: null,
+    });
+    const { normalizeLocationForWrite } = await import("@/lib/domain/location-normalize");
+    (normalizeLocationForWrite as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      province: "Buenos Aires",
+      locality: "La Plata",
+      localityCanonical: true,
+      localityId: "00000000-0000-4000-8000-00000000a1a1",
+      placeMethod: "indec_id",
+      lat: null,
+      lng: null,
+      address: null,
+    });
+    const { createVetVisit } = await import("../application/clinical/vet-visit-use-case");
+    const { createVetVisitAction } = await import("../actions");
+
+    const fd = new FormData();
+    fd.set("reason", "Control anual");
+    fd.set("occurredAt", "2026-01-10");
+    await createVetVisitAction("DIM-TEST-0001", { error: null }, fd).catch(() => {});
+
+    expect(normalizeLocationForWrite).toHaveBeenCalledWith(expect.anything(), { locality: "soft" });
+    expect(createVetVisit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventPlace: {
+          entered: { province: "AR-B", locality: "La Plata", indec_id: "06441030" },
+          resolved: {
+            locality_id: "00000000-0000-4000-8000-00000000a1a1",
+            province_code: "AR-B",
+            method: "indec_id",
+          },
+        },
+      }),
+      expect.anything(),
+    );
+  });
+});

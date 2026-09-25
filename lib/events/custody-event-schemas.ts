@@ -34,6 +34,7 @@
 import { z } from "zod";
 
 import { withVersion } from "./payload-version";
+import { eventPlaceSchema } from "./place-payload";
 
 // ---------------------------------------------------------------------------
 // Custody & adoption (refugio portal)
@@ -608,6 +609,9 @@ export const postAdoptionCheckin = z
       // L1 jurisdiction (optional). Sprint 4 PR-034 / doc 09 §3.A.
       jurisdiction_province: z.string().nullable().optional(),
       jurisdiction_locality: z.string().nullable().optional(),
+      // As entered and as resolved (localidades-por-id A8,
+      // lib/events/place-payload.ts). Optional: earlier events validate as-is.
+      place: eventPlaceSchema.optional(),
     }),
   )
   .strict();

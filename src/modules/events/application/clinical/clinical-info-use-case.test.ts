@@ -98,3 +98,20 @@ describe("createClinicalInfo", () => {
     expect(result).toMatchObject({ ok: true, notifications: [] });
   });
 });
+
+describe("createClinicalInfo — the entry keeps its place (localidades-por-id A8)", () => {
+  it("writes the place onto clinical_info_logged", async () => {
+    const repo = makeRepo();
+    const place = {
+      entered: { province: "AR-X", locality: "Villa María", indec_id: "14042170" },
+      resolved: {
+        locality_id: "00000000-0000-4000-8000-0000000014e2",
+        province_code: "AR-X",
+        method: "indec_id" as const,
+      },
+    };
+    await createClinicalInfo({ ...BASE_INPUT, eventPlace: place }, { repo, transaction: makeTx() });
+    const [insertArg] = (repo.insertEventIdempotent as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(insertArg.payload.place).toEqual(place);
+  });
+});

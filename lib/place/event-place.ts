@@ -3,6 +3,8 @@
 // localidades-por-id A5/A8. See lib/events/place-payload.ts for what the object
 // is and why it holds no point and no address.
 
+import type { NormalizedLocation } from "@/lib/domain/location-normalize";
+import type { LocationValue } from "@/lib/domain/location-value";
 import type { EventPlace } from "@/lib/events/place-payload";
 import type { ReportedPlace } from "@/lib/place/reported-place";
 import { provinceByName } from "@/lib/reference/ar-provincias";
@@ -27,6 +29,34 @@ export function toEventPlace(place: ReportedPlace): EventPlace {
     resolved:
       place.localityId && provinceCode
         ? { locality_id: place.localityId, province_code: provinceCode, method: place.method }
+        : null,
+  };
+}
+
+/**
+ * The same object for a writer that resolved through the write gate
+ * (`normalizeLocationForWrite`): `entered` is the LocationValue the form sent,
+ * `resolved` the row the gate answered with and how. `null` when nothing was
+ * entered — an event that says nothing about where records no place.
+ */
+export function eventPlaceFromGate(
+  loc: LocationValue,
+  normalized: NormalizedLocation,
+): EventPlace | null {
+  const enteredProvince = loc.provinceCode ?? loc.province ?? null;
+  const enteredLocality = loc.locality ?? null;
+  const indecId = loc.localityIndecId?.trim() || null;
+  if (!enteredProvince && !enteredLocality && !indecId) return null;
+  const provinceCode = provinceByName(normalized.province)?.code ?? null;
+  return {
+    entered: { province: enteredProvince, locality: enteredLocality, indec_id: indecId },
+    resolved:
+      normalized.localityId && provinceCode
+        ? {
+            locality_id: normalized.localityId,
+            province_code: provinceCode,
+            method: normalized.placeMethod,
+          }
         : null,
   };
 }

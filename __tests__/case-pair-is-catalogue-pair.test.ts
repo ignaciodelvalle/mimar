@@ -92,7 +92,13 @@ describe("the bite API never files an ambiguous pair under a homonym", () => {
       locationLat: null,
       locationLng: null,
     });
-    expect(out).toEqual({ ok: true, province: "Buenos Aires", locality: null, localityId: null });
+    expect(out).toMatchObject({
+      ok: true,
+      province: "Buenos Aires",
+      locality: null,
+      localityId: null,
+      place: { resolved: null },
+    });
   });
 
   it("the id picks the row: Bragado's Mechita stays Bragado's", async () => {

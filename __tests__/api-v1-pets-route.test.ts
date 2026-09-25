@@ -301,6 +301,16 @@ describe("POST /api/v1/pets — Idempotency-Key", () => {
     expect(control.limits).toEqual([]);
   });
 
+  // localidades-por-id A8: the registration event keeps its place.
+  it("hands registerPet the registration's place, resolved to the gate's row", async () => {
+    const res = await POST(post(VALID_BODY));
+    expect(res.status).toBe(201);
+    const parsed = control.registerCalls[0].parsed as { place?: Record<string, unknown> };
+    expect(parsed.place).toMatchObject({
+      resolved: { locality_id: LOCALITY_ID, province_code: "AR-C" },
+    });
+  });
+
   it("hands the key to registerPet as the client idempotency key", async () => {
     const key = randomUUID();
     await POST(post(VALID_BODY, { idempotencyKey: key }));

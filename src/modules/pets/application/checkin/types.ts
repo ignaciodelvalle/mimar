@@ -1,5 +1,7 @@
 // Post-adoption check-in use-case types.
 
+import type { EventPlace } from "@/lib/events/place-payload";
+
 export type CheckinFormState = {
   error: string | null;
   /**
@@ -38,6 +40,8 @@ export type RecordPostAdoptionCheckinInput = {
   notes: string | null;
   eventJurisdictionProvince: string | null;
   eventJurisdictionLocality: string | null;
+  /** As entered and as resolved (localidades-por-id A8, lib/events/place-payload.ts). */
+  eventPlace?: EventPlace | null;
   clientIdempotencyKey: string | null;
   uploadedPath: string | null;
   uploadedMimeType: string | null;
