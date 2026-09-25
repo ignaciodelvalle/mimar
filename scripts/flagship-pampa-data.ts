@@ -25,8 +25,14 @@ export const PAMPA_TOKEN = "DIM-PAMP-0001";
 export const PAMPA_CHIP = "941000100000001";
 
 export const OWNER_EMAIL = "owner@dim.test";
-/** The owner's display name — the narrative "Martín". */
-export const OWNER_NAME = "Dueño Demo CABA";
+/**
+ * The owner's display name. It used to be "Dueño Demo CABA", so the public
+ * credential the hero QR opens read "Lo busca Dueño" while the landing told
+ * the story of Martín (PO, 2026-09-25). Changing it here only affects the NEXT
+ * seed run on a fresh database: an environment that was already seeded keeps
+ * its profile until someone renames it by hand — never by re-running a seed.
+ */
+export const OWNER_NAME = "Martín";
 
 export const VET_EMAIL = "lilian@dim.test";
 export const VET_NAME = "Dra. Lilian Marrone";
