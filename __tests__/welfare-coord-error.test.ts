@@ -1,7 +1,7 @@
 // Unit test: createWelfareReportAction — CoordError hardening (P2).
 //
 // Before this fix, out-of-range coordinates submitted via the anonymous
-// denuncia map pin caused normalizeLocationForWrite to throw CoordError,
+// denuncia map pin caused the location gate to throw CoordError,
 // which propagated as an uncaught 500. This test verifies that the action
 // now catches CoordError and returns the site's existing friendly-error
 // shape — { error: string } — instead of letting it propagate.
@@ -12,7 +12,8 @@
 //   3. Valid in-range coords → does NOT return a coord-range error.
 //
 // Auth + rate-limit are short-circuited by mocking supabase/rate-limit.
-// normalizeLocationForWrite runs for real (same as set-pet-lost-coord-range.test.ts).
+// The coordinate check (`assertLocationCoords`) runs for real (same as
+// set-pet-lost-coord-range.test.ts).
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -106,6 +107,18 @@ vi.mock("@/db", () => {
     notifications: {},
   };
 });
+
+// The denuncia's place (localidades-por-id A6) is resolved by one composition,
+// pinned against the real catalogue in lib/place/denuncia-place.test.ts; this
+// file's fake client cannot answer it, and nothing here is about placement.
+vi.mock("@/lib/place/denuncia-place", () => ({
+  resolveDenunciaJurisdiction: vi.fn(async () => ({
+    province: null,
+    locality: null,
+    localityId: null,
+    unverified: true,
+  })),
+}));
 
 vi.mock("@/lib/infra/case-helpers", () => ({
   openCase: vi.fn(),

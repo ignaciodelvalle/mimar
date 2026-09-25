@@ -75,7 +75,7 @@ const control = vi.hoisted(() => ({
   flagged: [] as Array<unknown[]>,
   /** What `signalWelfareReport` was handed. */
   signals: [] as Array<Record<string, unknown>>,
-  /** What `resolveRoutableJurisdiction` was handed, and what it answers. */
+  /** What `resolveDenunciaJurisdiction` was handed, and what it answers. */
   jurisdictionInputs: [] as Array<Record<string, unknown>>,
   jurisdiction: {
     province: "Río Negro",
@@ -264,8 +264,12 @@ vi.mock("@/lib/infra/case-helpers", () => ({
   },
 }));
 
-vi.mock("@/lib/infra/jurisdiction-from-text", () => ({
-  resolveRoutableJurisdiction: async (input: Record<string, unknown>) => {
+// The one composition both denuncia doors use (localidades-por-id A6). What it
+// decides is pinned in lib/place/denuncia-place.test.ts against the real
+// catalogue; this file pins what THIS door hands it and what it does with the
+// answer.
+vi.mock("@/lib/place/denuncia-place", () => ({
+  resolveDenunciaJurisdiction: async (input: Record<string, unknown>) => {
     control.jurisdictionInputs.push(input);
     return control.jurisdiction;
   },
@@ -1230,11 +1234,12 @@ describe("the jurisdiction is resolved the way both of the web's intakes resolve
 
     expect(control.jurisdictionInputs[0]).toEqual({
       province: null,
+      provinceCode: null,
       locality: null,
-      localityId: null,
-      addressText: FACTS.locationAddress,
+      localityIndecId: null,
       lat: FACTS.locationLat,
       lng: FACTS.locationLng,
+      address: FACTS.locationAddress,
     });
     expect(control.inserted[0].jurisdictionProvince).toBe("Río Negro");
     expect(control.inserted[0].jurisdictionLocality).toBe("San Carlos de Bariloche");
@@ -1266,35 +1271,25 @@ describe("the jurisdiction is resolved the way both of the web's intakes resolve
 
     expect(control.jurisdictionInputs[0]).toEqual({
       province: "CABA",
+      provinceCode: null,
       locality: "Palermo",
-      localityId: null,
-      addressText: FACTS.locationAddress,
+      localityIndecId: null,
       lat: FACTS.locationLat,
       lng: FACTS.locationLng,
+      address: FACTS.locationAddress,
     });
     // And the row honors the gate's VERIFIED answer — the inference mark is for
     // rows whose pair really did come out of text, which this one did not.
     expect(control.inserted[0].jurisdictionUnverified).toBe(false);
   });
 
-  it("canonicalizes the geocoder's long-form province BEFORE the gate's verified pass-through", async () => {
-    // The case above pins the wiring with "CABA" — a spelling the phone never
-    // sends. `resolve_location` echoes `address.state` as Nominatim spells it,
-    // and for every point inside CABA that is the long form below; the catalog
-    // and the CHECK on `welfare_reports.jurisdiction_province` (migration 0055)
-    // hold "CABA". The gate's verified arm is a byte-identical pass-through, so
-    // a raw echo would reach the insert as the long form and fail the CHECK —
-    // a 500 on the one channel this phone has for a denuncia. The web runs the
-    // same normalizer before the same gate; so does this door now.
-    //
-    // Kill it by handing `input.locationProvince ?? null` straight to the gate.
-    // Applied: the gate sees the long form and the lookup never runs.
-    control.localityAnswer = {
-      province: "CABA",
-      locality: "Palermo",
-      canonical: true,
-      localityId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-    };
+  it("hands the geocoder's long-form province to the resolver, and files its canonical answer", async () => {
+    // `resolve_location` echoes `address.state` as Nominatim spells it — for
+    // every point inside CABA the long form below — while the catalog and the
+    // CHECK on `welfare_reports.jurisdiction_province` (migration 0055) hold
+    // "CABA". Canonicalising is the resolver's job (the same one the web runs;
+    // pinned in lib/place/denuncia-place.test.ts); this door must hand it the
+    // echo untouched and write what it answers, FK included.
     control.jurisdiction = {
       province: "CABA",
       locality: "Palermo",
@@ -1309,21 +1304,32 @@ describe("the jurisdiction is resolved the way both of the web's intakes resolve
       locationLocality: "Palermo",
     });
 
-    // The catalog lookup already receives the canonical province — the
-    // normalizer resolves the name before it asks for the locality row.
-    expect(control.localityLookups).toEqual([{ rawProvince: "CABA", rawLocality: "Palermo" }]);
-    // And the gate receives the catalog pair WITH its FK, which the hardcoded
-    // `localityId: null` of the previous wiring threw away.
-    expect(control.jurisdictionInputs[0]).toEqual({
-      province: "CABA",
+    expect(control.jurisdictionInputs[0]).toMatchObject({
+      province: "Ciudad Autónoma de Buenos Aires",
       locality: "Palermo",
-      localityId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-      addressText: FACTS.locationAddress,
-      lat: FACTS.locationLat,
-      lng: FACTS.locationLng,
     });
     expect(control.inserted[0].jurisdictionProvince).toBe("CABA");
     expect(control.inserted[0].localityId).toBe("cccccccc-cccc-4ccc-8ccc-cccccccccccc");
+  });
+
+  // localidades-por-id A6 ("Denuncia — org/API"): this door hardcoded
+  // `localityIndecId: null`, so an id a client HAD resolved could never decide
+  // between two same-named localities.
+  it("keeps the INDEC id the client resolved", async () => {
+    await post({
+      command: "file",
+      contactMode: "anonymous",
+      ...FACTS,
+      locationProvince: "Córdoba",
+      locationLocality: "Villa María",
+      locationLocalityIndecId: "14042170",
+    });
+
+    expect(control.jurisdictionInputs[0]).toMatchObject({
+      province: "Córdoba",
+      locality: "Villa María",
+      localityIndecId: "14042170",
+    });
   });
 
   it("keeps the province canonical on a locality the catalog does not know — soft, like the web", async () => {
@@ -1331,8 +1337,8 @@ describe("the jurisdiction is resolved the way both of the web's intakes resolve
     // is not a refusal (the person is reporting an animal, not filling a
     // census), so the raw locality text passes through with no FK — but the
     // province is canonical regardless, because THAT is what the CHECK and the
-    // scoped queues compare. Kill it by passing `{ locality: "strict" }`.
-    // Applied: nothing reaches the gate; the request fails instead.
+    // scoped queues compare. The soft resolution itself is pinned in
+    // lib/place/denuncia-place.test.ts; here, nothing is refused at the door.
     control.jurisdiction = {
       province: "CABA",
       locality: "Barrio inexistente",
@@ -1347,13 +1353,10 @@ describe("the jurisdiction is resolved the way both of the web's intakes resolve
       locationLocality: "Barrio inexistente",
     });
 
-    expect(control.jurisdictionInputs[0]).toEqual({
-      province: "CABA",
+    // Nothing refused at the door: the resolver is soft, and the report is filed.
+    expect(control.jurisdictionInputs[0]).toMatchObject({
+      province: "Ciudad Autónoma de Buenos Aires",
       locality: "Barrio inexistente",
-      localityId: null,
-      addressText: FACTS.locationAddress,
-      lat: FACTS.locationLat,
-      lng: FACTS.locationLng,
     });
     expect(control.inserted[0].jurisdictionProvince).toBe("CABA");
     expect(control.inserted[0].localityId).toBeNull();

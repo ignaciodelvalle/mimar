@@ -78,6 +78,9 @@ vi.mock("@/lib/domain/location-normalize", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/domain/location-normalize")>();
   return {
     ...actual,
+    // The pin is not this file's subject: its range and presence are pinned in
+    // welfare-coord-error.test.ts.
+    assertLocationCoords: vi.fn(),
     normalizeLocationForWrite: vi.fn().mockResolvedValue({
       address: null,
       province: null,
@@ -87,6 +90,18 @@ vi.mock("@/lib/domain/location-normalize", async (importOriginal) => {
     }),
   };
 });
+
+// The denuncia's place (localidades-por-id A6) is resolved by one composition,
+// pinned against the real catalogue in lib/place/denuncia-place.test.ts; this
+// file's fake client cannot answer it, and nothing here is about placement.
+vi.mock("@/lib/place/denuncia-place", () => ({
+  resolveDenunciaJurisdiction: vi.fn(async () => ({
+    province: null,
+    locality: null,
+    localityId: null,
+    unverified: true,
+  })),
+}));
 
 vi.mock("@/lib/infra/rate-limit", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/infra/rate-limit")>();

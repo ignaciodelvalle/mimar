@@ -289,6 +289,15 @@ const factsShape = {
   locationProvince: optionalText(WELFARE_JURISDICTION_MAX_LENGTH),
   locationLocality: optionalText(WELFARE_JURISDICTION_MAX_LENGTH),
   /**
+   * The INDEC id of the catalogue row the client resolved for the pair above,
+   * when it resolved one — optional and nullable. A NAME cannot tell two
+   * same-named localities of one province apart (Mechita is in partido Alberti
+   * and in partido Bragado); the id can, and the server keeps it
+   * (localidades-por-id A6). Absent, the pair is resolved by name, and a name
+   * two localities share is filed at province level, never under either.
+   */
+  locationLocalityIndecId: optionalText(WELFARE_JURISDICTION_MAX_LENGTH),
+  /**
    * What the reporter observed on the animal, verbatim — optional.
    *
    * THIS FIELD WAS ABSENT FOR A WHILE, AND ITS ABSENCE WAS A REPAIR. The

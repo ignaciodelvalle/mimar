@@ -105,10 +105,9 @@ vi.mock("@/lib/infra/auth-guards", () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Mock: location — parseLocationFromFormData reads raw form fields;
-// normalizeLocationForWrite / resolveRoutableJurisdiction run FOR REAL (same
-// as welfare-coord-error.test.ts), using the @/db mock below for the D.11
-// locality fallback.
+// Mock: location — parseLocationFromFormData reads raw form fields; the
+// coordinate check runs FOR REAL (same as welfare-coord-error.test.ts), the
+// place resolution is stubbed below.
 // ---------------------------------------------------------------------------
 vi.mock("@/lib/domain/location-value", () => ({
   parseLocationFromFormData: vi.fn().mockImplementation((fd: FormData) => ({
@@ -195,6 +194,18 @@ vi.mock("drizzle-orm", () => ({
 // Mock: the rest of actions.ts's module graph — irrelevant to these tests
 // since every case here refuses BEFORE any of it would be reached.
 // ---------------------------------------------------------------------------
+// The denuncia's place (localidades-por-id A6) is resolved by one composition,
+// pinned against the real catalogue in lib/place/denuncia-place.test.ts; this
+// file's fake client cannot answer it, and nothing here is about placement.
+vi.mock("@/lib/place/denuncia-place", () => ({
+  resolveDenunciaJurisdiction: vi.fn(async () => ({
+    province: null,
+    locality: null,
+    localityId: null,
+    unverified: true,
+  })),
+}));
+
 vi.mock("@/lib/infra/case-helpers", () => ({
   openCase: vi.fn(),
   closeCase: vi.fn(),

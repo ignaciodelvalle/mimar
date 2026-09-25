@@ -11,9 +11,10 @@
 //   • the per-user rate-limit budget is `welfare_auth`, the SAME bucket and the
 //     SAME 10/hr the browser spends. A ceiling a caller escapes by opening a
 //     browser is not a ceiling.
-//   • the jurisdiction is resolved through `resolveRoutableJurisdiction`, so a
-//     phone denuncia lands in the same queue with the same `unverified` mark the
-//     web's D.11 geocoder-down fallback produces.
+//   • the jurisdiction is resolved through `resolveDenunciaJurisdiction`
+//     (lib/place/denuncia-place.ts) — the ONE composition both of the web's
+//     intakes call — so a phone denuncia lands in the same queue with the same
+//     `unverified` mark the web produces.
 //   • no `audit_log` row. Spec R1: the public create writes none, on either
 //     door, and this one does not become the exception because it authenticated.
 //   • the geocoder's three throwing paths are CAUGHT, which is what
@@ -99,11 +100,9 @@
 import { db } from "@/db";
 import { signalWelfareReport } from "@/lib/domain/authority";
 import { writePoint } from "@/lib/domain/location";
-import { CoordError, normalizeLocationForWrite } from "@/lib/domain/location-normalize";
 import { apiV1Error, apiV1Json } from "@/lib/infra/api-v1";
 import { API_V1_MEDIA_UPLOAD_USER_LIMIT } from "@/lib/infra/api-v1-limits";
 import { openCase } from "@/lib/infra/case-helpers";
-import { resolveRoutableJurisdiction } from "@/lib/infra/jurisdiction-from-text";
 import { RateLimitError, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { reportError } from "@/lib/infra/report-error";
 import {
@@ -113,6 +112,7 @@ import {
 } from "@/lib/infra/welfare-evidence-staging";
 import { computeFlagReasons } from "@/lib/infra/welfare-moderation";
 import { prepareWelfareEvidence, uploadPreparedWelfareEvidence } from "@/lib/infra/welfare-uploads";
+import { resolveDenunciaJurisdiction } from "@/lib/place/denuncia-place";
 import { geocodeAddressPublicOrThrow } from "@/src/modules/localities/application/geocoding/geocoding";
 import { createWelfareReport } from "@/src/modules/welfare/application/create-welfare-report";
 import { generateReferenceCode } from "@/src/modules/welfare/domain/reference-code";
@@ -350,43 +350,26 @@ async function fileWelfareReport(userId: string, input: WelfareReportInput) {
   // address no geocoder confirmed — the inference path below earns the mark
   // honestly.
   //
-  // THE ECHO IS RAW NOMINATIM AND THE GATE'S VERIFIED ARM IS A PASS-THROUGH.
-  // `resolve_location` hands the phone `address.state` as the geocoder spells
-  // it — "Ciudad Autónoma de Buenos Aires" for every point inside CABA — while
-  // the catalog, and the 24-name CHECK on `welfare_reports.jurisdiction_province`
-  // (migration 0055), hold "CABA". The web never hands the gate a raw pair:
-  // both of its intakes run `normalizeLocationForWrite` first, which resolves
-  // the province to its catalog name and the locality to its catalog row —
-  // with the FK a hardcoded `localityId: null` here used to discard. Same
-  // normalizer, same gate, same order. Without it a CABA denuncia from the
-  // phone would not even land unrouted: it would fail the CHECK and answer 500.
-  let normalizedLoc: Awaited<ReturnType<typeof normalizeLocationForWrite>>;
-  try {
-    normalizedLoc = await normalizeLocationForWrite(
-      {
-        province: input.locationProvince ?? null,
-        provinceCode: null,
-        locality: input.locationLocality ?? null,
-        localityIndecId: null,
-        lat: input.locationLat,
-        lng: input.locationLng,
-        address: input.locationAddress,
-      },
-      { locality: "soft" },
-    );
-  } catch (err) {
-    // Under "soft" only the coordinate range can throw, and the schema already
-    // bounds it — this is the same rule read twice, not a second rule.
-    if (err instanceof CoordError) return apiV1Error("invalid_request", 400);
-    throw err;
-  }
-  const routable = await resolveRoutableJurisdiction({
-    province: normalizedLoc.province,
-    locality: normalizedLoc.locality,
-    localityId: normalizedLoc.localityId,
-    addressText: input.locationAddress,
-    lat: normalizedLoc.lat,
-    lng: normalizedLoc.lng,
+  // THE ECHO IS RAW NOMINATIM. `resolve_location` hands the phone
+  // `address.state` as the geocoder spells it — "Ciudad Autónoma de Buenos
+  // Aires" for every point inside CABA — while the catalog, and the 24-name
+  // CHECK on `welfare_reports.jurisdiction_province` (migration 0055), hold
+  // "CABA". The resolver canonicalises it exactly as it does for the web's two
+  // intakes: the same composition, the same order. The coordinate range needs
+  // no second check here — the schema already bounds it.
+  //
+  // THE INDEC ID A CLIENT RESOLVED IS KEPT (localidades-por-id A6). This door
+  // hardcoded `localityIndecId: null`, so an id could never decide between two
+  // same-named localities. The phone does not send one yet (its candidates are
+  // geocoder names); a client that does is now heard.
+  const routable = await resolveDenunciaJurisdiction({
+    province: input.locationProvince ?? null,
+    provinceCode: null,
+    locality: input.locationLocality ?? null,
+    localityIndecId: input.locationLocalityIndecId ?? null,
+    lat: input.locationLat,
+    lng: input.locationLng,
+    address: input.locationAddress,
   });
 
   let inserted: { id: string; referenceCode: string };

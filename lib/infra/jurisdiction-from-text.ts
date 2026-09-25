@@ -38,7 +38,7 @@
 
 import { isWholeProvinceLocality } from "@/lib/domain/jurisdiction-canonical";
 import {
-  localityByName,
+  localitiesByName,
   localityDistanceKm,
   nearestLocalities,
   searchLocalities,
@@ -115,6 +115,11 @@ export function addressSegments(text: string | null | undefined): string[] {
  *      across all provinces ("Quilmes" alone) — accepted only when every match
  *      agrees on the province, so an ambiguous name never picks a municipality
  *      by coin flip.
+ *
+ * A NAME TWO LOCALITIES OF ONE PROVINCE SHARE (Mechita: partido Alberti and
+ * partido Bragado) recovers its PROVINCE and nothing more, in both 2 and 3
+ * (localidades-por-id A6). This used to go through `localityByName`, which
+ * settles such a name on the alphabetically first department.
  */
 export async function inferJurisdictionFromText(
   text: string | null | undefined,
@@ -129,14 +134,16 @@ export async function inferJurisdictionFromText(
 
     // 2. Locality within that province, from the segments to its left.
     for (let j = i - 1; j >= 0; j--) {
-      const locality = await localityByName(province.code as ProvinceCode, segments[j]);
-      if (locality) {
+      const matches = await localitiesByName(province.code as ProvinceCode, segments[j]);
+      if (matches.length === 1) {
         return {
           province: province.name,
-          locality: locality.localityName,
-          localityId: locality.id,
+          locality: matches[0].localityName,
+          localityId: matches[0].id,
         };
       }
+      // A homonym: this segment IS the locality, and it names two places.
+      if (matches.length > 1) break;
     }
     return { province: province.name, locality: null, localityId: null };
   }
@@ -155,14 +162,14 @@ export async function inferJurisdictionFromText(
     const province = provinceByName(exact[0].provinceName);
     if (!province) continue;
 
-    // Re-read through localityByName so the returned row is the SAME
-    // deterministic pick the verified path would have produced (search orders
-    // by relevance/category; localityByName orders by department).
-    const locality = await localityByName(province.code as ProvinceCode, exact[0].localityName);
+    // Re-read through the catalogue so a within-province homonym is seen as
+    // one (search ranks and truncates; this answers every row the name names).
+    const rows = await localitiesByName(province.code as ProvinceCode, exact[0].localityName);
+    if (rows.length !== 1) return { province: province.name, locality: null, localityId: null };
     return {
       province: province.name,
-      locality: locality?.localityName ?? exact[0].localityName,
-      localityId: locality?.id ?? null,
+      locality: rows[0].localityName,
+      localityId: rows[0].id,
     };
   }
 

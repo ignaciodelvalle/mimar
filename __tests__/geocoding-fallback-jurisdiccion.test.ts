@@ -124,6 +124,25 @@ const CATALOG: CatalogRow[] = [
     lat: -34.8667,
     lng: -58.05,
   },
+  // A WITHIN-province homonym (localidades-por-id A6): Mechita is a locality of
+  // partido Alberti AND of partido Bragado, both in Buenos Aires. No ordering
+  // makes either one "the" Mechita.
+  {
+    id: "loc-mechita-alberti",
+    provinceCode: "AR-B",
+    provinceName: "Buenos Aires",
+    localityName: "Mechita",
+    lat: -35.07,
+    lng: -60.4,
+  },
+  {
+    id: "loc-mechita-bragado",
+    provinceCode: "AR-B",
+    provinceName: "Buenos Aires",
+    localityName: "Mechita",
+    lat: -35.07,
+    lng: -60.39,
+  },
   // Ten settlements around Salta city, so a pin there has ten nearer catalog
   // rows than any in CABA — the province arm of the corroboration check.
   ...Array.from({ length: 10 }, (_, i) => ({
@@ -153,6 +172,12 @@ function fold(s: string): string {
 }
 
 vi.mock("@/lib/infra/ar-localidades", () => ({
+  localitiesByName: vi.fn(async (provinceCode: string, name: string | null | undefined) => {
+    if (!name) return [];
+    return CATALOG.filter(
+      (r) => r.provinceCode === provinceCode && fold(r.localityName) === fold(name),
+    ).map((row) => ({ ...row, indecId: row.id, localitySlug: fold(row.localityName) }));
+  }),
   localityByName: vi.fn(async (provinceCode: string, name: string | null | undefined) => {
     if (!name) return null;
     const row = CATALOG.find(
@@ -379,6 +404,25 @@ describe("inferJurisdictionFromText", () => {
       province: "Buenos Aires",
       locality: "Quilmes",
       localityId: "loc-quilmes",
+    });
+  });
+
+  // localidades-por-id A6: the text path used `localityByName`, which settles a
+  // homonym on the alphabetically first department — so a denuncia whose form
+  // text said "Mechita" was routed to Alberti whichever Mechita it came from.
+  it("keeps a within-province homonym at PROVINCE level, never the first department", async () => {
+    expect(await inferJurisdictionFromText("Calle 10, Mechita, Buenos Aires")).toEqual({
+      province: "Buenos Aires",
+      locality: null,
+      localityId: null,
+    });
+  });
+
+  it("a bare within-province homonym recovers its province and nothing more", async () => {
+    expect(await inferJurisdictionFromText("Mechita")).toEqual({
+      province: "Buenos Aires",
+      locality: null,
+      localityId: null,
     });
   });
 

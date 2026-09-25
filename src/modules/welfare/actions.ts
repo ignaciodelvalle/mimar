@@ -32,11 +32,7 @@ import {
 } from "@/lib/analytics/welfare-exports";
 import { signalWelfareReport } from "@/lib/domain/authority";
 import { writePoint } from "@/lib/domain/location";
-import {
-  CoordError,
-  JurisdictionValidationError,
-  normalizeLocationForWrite,
-} from "@/lib/domain/location-normalize";
+import { CoordError, assertLocationCoords } from "@/lib/domain/location-normalize";
 import { parseLocationFromFormData } from "@/lib/domain/location-value";
 import { SYNTHETIC_PET_WRITE_REFUSED, isSyntheticPet } from "@/lib/domain/synthetic-pet";
 import { findAuthoritiesForJurisdiction } from "@/lib/infra/approval-routing";
@@ -49,7 +45,6 @@ import {
 import { resolveBusinessRule } from "@/lib/infra/business-rules-resolver";
 import { closeCase, openCase } from "@/lib/infra/case-helpers";
 import { mintFreshReporterSession } from "@/lib/infra/denuncia-reporter-token";
-import { resolveRoutableJurisdiction } from "@/lib/infra/jurisdiction-from-text";
 import { resolveOptionalLiveUser } from "@/lib/infra/live-user";
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { welfareAttachmentSignedUrl } from "@/lib/infra/storage";
@@ -59,6 +54,7 @@ import {
   removeWelfareEvidence,
   uploadPreparedWelfareEvidence,
 } from "@/lib/infra/welfare-uploads";
+import { resolveDenunciaJurisdiction } from "@/lib/place/denuncia-place";
 import { parseDateInput } from "@/lib/utils/format";
 import { canReceiveDerivedWelfare } from "@/src/modules/welfare/domain/derivation-eligibility";
 import { generateReferenceCode } from "@/src/modules/welfare/domain/reference-code";
@@ -886,16 +882,9 @@ export async function createWelfareReportAction(
   // any direct/legacy caller. Reverse-geocode of the point fills province/locality
   // (soft); if that lookup is thin the row may still land locality-less — those
   // residual rows are surfaced to whole-province operators by lib/metrics/scope.ts.
-  let normalizedLoc: Awaited<ReturnType<typeof normalizeLocationForWrite>>;
   try {
-    normalizedLoc = await normalizeLocationForWrite(loc, {
-      locality: "soft",
-      requireCoords: true,
-    });
+    assertLocationCoords(loc, { requireCoords: true });
   } catch (err) {
-    if (err instanceof JurisdictionValidationError) {
-      return { error: err.message };
-    }
     if (err instanceof CoordError) {
       return {
         error:
@@ -906,31 +895,29 @@ export async function createWelfareReportAction(
     }
     throw err;
   }
-  const locationAddress = normalizedLoc.address;
-  // D.11 (PO, 2026-07-31) — GEOCODER-DOWN FALLBACK. The (province, locality)
-  // above is derived CLIENT-side by LocationFields from a geocoder result. When
-  // nominatim is unreachable those hidden inputs arrive empty and the row lands
-  // with jurisdiction_province NULL — invisible to every govt queue, because
-  // every branch of jurisdictionPairClause tests province equality. Rather than
-  // lose the denuncia, recover the jurisdiction from the address text the
-  // citizen typed and MARK IT UNVERIFIED. The mark is not bookkeeping: the
-  // triage row renders it (WelfareDenunciaRow), which is the condition the PO
-  // attached to accepting the mis-routing risk.
-  const routable = await resolveRoutableJurisdiction({
-    province: normalizedLoc.province,
-    locality: normalizedLoc.locality,
-    localityId: normalizedLoc.localityId,
-    addressText: locationAddress,
-    lat: normalizedLoc.lat,
-    lng: normalizedLoc.lng,
-  });
+  const locationAddress = loc.address;
+  // WHERE IT IS ROUTED (localidades-por-id A6) — the ONE composition every
+  // denuncia door uses (lib/place/denuncia-place.ts): the pair to ONE catalogue
+  // row or to none (a homonym is never filed under the first department), the
+  // pin re-read when it contradicts the pair, the pin before any form text.
+  //
+  // D.11 (PO, 2026-07-31) — GEOCODER-DOWN FALLBACK, inside it. The (province,
+  // locality) is derived CLIENT-side by LocationFields from a geocoder result.
+  // When nominatim is unreachable those hidden inputs arrive empty and the row
+  // would land with jurisdiction_province NULL — invisible to every govt queue,
+  // because every branch of jurisdictionPairClause tests province equality.
+  // Rather than lose the denuncia, the jurisdiction is recovered (from the pin,
+  // else the address text the citizen typed) and MARKED UNVERIFIED. The mark is
+  // not bookkeeping: the triage row renders it (WelfareDenunciaRow), which is
+  // the condition the PO attached to accepting the mis-routing risk.
+  const routable = await resolveDenunciaJurisdiction(loc);
   const jurisdictionProvince: string | null = routable.province;
   const jurisdictionLocality: string | null = routable.locality;
   // Structural locality-attribution FK (migration 0147) for the welfare_reports row.
   const jurisdictionLocalityId: string | null = routable.localityId;
   const jurisdictionUnverified = routable.unverified;
-  const locationLatRaw = normalizedLoc.lat !== null ? String(normalizedLoc.lat) : "";
-  const locationLngRaw = normalizedLoc.lng !== null ? String(normalizedLoc.lng) : "";
+  const locationLatRaw = loc.lat !== null ? String(loc.lat) : "";
+  const locationLngRaw = loc.lng !== null ? String(loc.lng) : "";
   const occurredAtRaw = String(formData.get("occurredAt") ?? "").trim();
   const reporterContactEmail = String(formData.get("reporterContactEmail") ?? "").trim() || null;
   const reporterContactPhone = String(formData.get("reporterContactPhone") ?? "").trim() || null;
@@ -1197,41 +1184,30 @@ export async function createOrgWelfareReportAction(
   const subjectPetToken = String(formData.get("subjectPetToken") ?? "").trim() || null;
   const subjectDescription = String(formData.get("subjectDescription") ?? "").trim() || null;
   const loc = parseLocationFromFormData(formData);
-  // locality:"soft" — same rationale as the public report: never hard-block an
-  // org welfare report on a geocoder locality that isn't catalog-canonical. Soft
-  // passes raw locality through; routing uses province + coords + address.
-  let normalizedLoc: Awaited<ReturnType<typeof normalizeLocationForWrite>>;
+  // Same rationale as the public report: an org welfare report is never
+  // hard-blocked on a geocoder locality that isn't catalog-canonical. Only the
+  // pin's range can refuse here.
   try {
-    normalizedLoc = await normalizeLocationForWrite(loc, { locality: "soft" });
+    assertLocationCoords(loc);
   } catch (err) {
-    if (err instanceof JurisdictionValidationError) {
-      return { error: err.message };
-    }
     if (err instanceof CoordError) {
       return { error: err.message };
     }
     throw err;
   }
-  const locationAddress = normalizedLoc.address;
-  // D.11 geocoder-down fallback — same gate as the public intake above. An org
-  // report reaches the SAME jurisdiction-scoped triage queue, so a null province
-  // makes it just as invisible; there is no reason the professional path should
-  // be the one that silently loses reports.
-  const routable = await resolveRoutableJurisdiction({
-    province: normalizedLoc.province,
-    locality: normalizedLoc.locality,
-    localityId: normalizedLoc.localityId,
-    addressText: locationAddress,
-    lat: normalizedLoc.lat,
-    lng: normalizedLoc.lng,
-  });
+  const locationAddress = loc.address;
+  // The same composition as the public intake above (localidades-por-id A6),
+  // D.11 fallback included. An org report reaches the SAME jurisdiction-scoped
+  // triage queue, so a null province makes it just as invisible; there is no
+  // reason the professional path should be the one that silently loses reports.
+  const routable = await resolveDenunciaJurisdiction(loc);
   const jurisdictionProvince: string | null = routable.province;
   const jurisdictionLocality: string | null = routable.locality;
   // Structural locality-attribution FK (migration 0147) for the welfare_reports row.
   const jurisdictionLocalityId: string | null = routable.localityId;
   const jurisdictionUnverified = routable.unverified;
-  const locationLatRaw = normalizedLoc.lat !== null ? String(normalizedLoc.lat) : "";
-  const locationLngRaw = normalizedLoc.lng !== null ? String(normalizedLoc.lng) : "";
+  const locationLatRaw = loc.lat !== null ? String(loc.lat) : "";
+  const locationLngRaw = loc.lng !== null ? String(loc.lng) : "";
   const occurredAtRaw = String(formData.get("occurredAt") ?? "").trim();
   const observedSymptoms = String(formData.get("observedSymptoms") ?? "").trim() || null;
   const orgClientIdempotencyKey = String(formData.get("clientIdempotencyKey") ?? "").trim() || null;
