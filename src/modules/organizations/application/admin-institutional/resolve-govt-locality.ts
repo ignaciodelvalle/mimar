@@ -14,14 +14,14 @@
 //   - with no id, the name is accepted ONLY when it names exactly one live
 //     catalogue row in that province. An ambiguous name is refused: guessing a
 //     department on the screen that hands out authority is the defect itself.
+//     Since localidades-por-id A9 the write gate itself refuses it
+//     (AMBIGUOUS_LOCALITY) for every strict writer; this file keeps its own
+//     wording for the admin forms.
 //
 // Returns the canonical names (still the display source and the scope key) plus
 // the ar_localities uuid PK, which govt_assignments.locality_id records
 // (migration 0246).
 
-import { and, count, eq, isNull } from "drizzle-orm";
-
-import { arLocalities, db } from "@/db";
 import {
   CoordError,
   JurisdictionValidationError,
@@ -56,6 +56,11 @@ export async function resolveGovtLocality(input: {
       { locality: "strict" },
     );
   } catch (err) {
+    if (err instanceof JurisdictionValidationError && err.code === "AMBIGUOUS_LOCALITY") {
+      return {
+        error: `VALIDATION_ERROR: Hay más de una localidad llamada ${input.locality.trim()} en ${input.province.trim()}. Elegila de la lista para indicar cuál.`,
+      };
+    }
     if (err instanceof JurisdictionValidationError) return { error: err.message };
     if (err instanceof CoordError) return { error: err.message };
     throw err;
@@ -70,32 +75,5 @@ export async function resolveGovtLocality(input: {
     return { error: "VALIDATION_ERROR: Elegí la localidad de la lista." };
   }
 
-  if (!indecId && (await homonymCount(localityId)) > 1) {
-    return {
-      error: `VALIDATION_ERROR: Hay más de una localidad llamada ${locality} en ${province}. Elegila de la lista para indicar cuál.`,
-    };
-  }
-
   return { province, locality, localityId };
-}
-
-/** Live catalogue rows sharing the resolved row's (province, name). */
-async function homonymCount(localityId: string): Promise<number> {
-  const [row] = await db
-    .select({ provinceCode: arLocalities.provinceCode, localityName: arLocalities.localityName })
-    .from(arLocalities)
-    .where(eq(arLocalities.id, localityId))
-    .limit(1);
-  if (!row) return 0;
-  const [{ n }] = await db
-    .select({ n: count() })
-    .from(arLocalities)
-    .where(
-      and(
-        eq(arLocalities.provinceCode, row.provinceCode),
-        eq(arLocalities.localityName, row.localityName),
-        isNull(arLocalities.removedAt),
-      ),
-    );
-  return n;
 }

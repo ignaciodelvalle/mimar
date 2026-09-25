@@ -251,7 +251,13 @@ async function refreshJurisdiction(tx: Tx, petId: string, overlaid: OverlaidStre
       { locality: "soft" },
     );
     province = normalized.province;
-    locality = normalized.locality;
+    // A within-province homonym comes back from "soft" with NO locality
+    // (localidades-por-id A9: a name two municipalities share is not a place).
+    // The text column keeps the event's own spelling, exactly as
+    // `rederivePetCache` falls back to it (`normalized.locality ?? raw`) — so
+    // the two sides of the drift check stay identical — and the ROW, which the
+    // name cannot tell, comes only from the event's id in step (2).
+    locality = normalized.locality ?? toLocality;
     localityId = normalized.localityId;
   }
 

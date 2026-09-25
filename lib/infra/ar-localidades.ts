@@ -88,7 +88,8 @@ export async function localityByIndecId(indecId: string): Promise<Locality | nul
 // Find a single locality by free-text name within a province. INDEC ships
 // ambiguous (province, name) pairs in 68 cases — when this happens we return
 // the first row deterministically (ordered by department to keep test
-// stability). Callers that need to disambiguate should use searchLocalities
+// stability). Callers that need to disambiguate should use localitiesByName
+// (every row the pair names) or searchLocalities
 // and present alternatives.
 export async function localityByName(
   provinceCode: ProvinceCode,
@@ -127,6 +128,37 @@ export async function localityByName(
     .orderBy(arLocalities.departmentName)
     .limit(1);
   return byNameCi ? rowToLocality(byNameCi) : null;
+}
+
+/**
+ * EVERY live catalogue row a (province, name) pair can name — the same two
+ * matches `localityByName` tries (slug, then case-insensitive name), WITHOUT
+ * settling a homonym. Ordered by department for stable output.
+ *
+ * One row means the name identifies a place. Two or more means it does not:
+ * Mechita is in partido Alberti and in partido Bragado, both in Buenos Aires,
+ * and no ordering rule makes either one "the" Mechita (P1 of
+ * localidades-por-id — never confuse places). Zero means the catalogue does not
+ * know the name in that province.
+ */
+export async function localitiesByName(
+  provinceCode: ProvinceCode,
+  name: string | null | undefined,
+): Promise<Locality[]> {
+  if (!name?.trim()) return [];
+  const slugCandidate = normalize(name).replace(/\s+/g, "-");
+  const rows = await db
+    .select()
+    .from(arLocalities)
+    .where(
+      and(
+        eq(arLocalities.provinceCode, provinceCode),
+        isNull(arLocalities.removedAt),
+        sql`(${arLocalities.localitySlug} = ${slugCandidate} OR lower(${arLocalities.localityName}) = lower(${name}))`,
+      ),
+    )
+    .orderBy(arLocalities.departmentName, arLocalities.id);
+  return rows.map(rowToLocality);
 }
 
 export async function isCanonicalLocality(

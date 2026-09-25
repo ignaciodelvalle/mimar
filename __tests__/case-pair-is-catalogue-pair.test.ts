@@ -71,24 +71,16 @@ describe("the write gate never picks a homonym", () => {
     expect(out.localityId).toBe(rowIdByIndec.get(MECHITA_ALBERTI));
   });
 
-  // Known failure until work unit A9 (localidades-por-id): flip to `it` there.
-  it.fails(
-    "soft: an ambiguous name with no id keeps the province and stores no locality",
-    async () => {
-      const out = await normalizeLocationForWrite(mechita(null), { locality: "soft" });
-      expect(out).toMatchObject({ province: "Buenos Aires", locality: null, localityId: null });
-    },
-  );
+  it("soft: an ambiguous name with no id keeps the province and stores no locality", async () => {
+    const out = await normalizeLocationForWrite(mechita(null), { locality: "soft" });
+    expect(out).toMatchObject({ province: "Buenos Aires", locality: null, localityId: null });
+  });
 
-  // Known failure until work unit A9 (localidades-por-id): flip to `it` there.
-  it.fails(
-    "strict: an ambiguous name with no id is refused, never filed under Alberti",
-    async () => {
-      await expect(
-        normalizeLocationForWrite(mechita(null), { locality: "strict" }),
-      ).rejects.toThrow(/más de una localidad llamada Mechita/);
-    },
-  );
+  it("strict: an ambiguous name with no id is refused, never filed under Alberti", async () => {
+    await expect(normalizeLocationForWrite(mechita(null), { locality: "strict" })).rejects.toThrow(
+      /más de una localidad llamada Mechita/,
+    );
+  });
 });
 
 describe("the bite API never files an ambiguous pair under a homonym", () => {

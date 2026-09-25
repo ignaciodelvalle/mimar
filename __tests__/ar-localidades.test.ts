@@ -9,6 +9,7 @@ import { arLocalities, db } from "@/db";
 import {
   isCanonicalLocality,
   listLocalitiesByProvince,
+  localitiesByName,
   localityByIndecId,
   localityByName,
   searchLocalities,
@@ -317,5 +318,31 @@ describe("ar-localidades — Villa María cross-province homonym (C2)", () => {
     expect(loc?.departmentCode).not.toBeNull();
     const listed = await listLocalitiesByProvince("AR-X");
     expect(listed.some((l) => l.slug === "villa-maria")).toBe(true);
+  });
+});
+
+// localidades-por-id A9 — the lookup that does NOT settle a homonym. Mechita is
+// in partido Alberti (06021030) and partido Bragado (06112080), both in Buenos
+// Aires: `localityByName` answers the first department, `localitiesByName`
+// answers both, so a writer can tell "one row" from "ask which one".
+describe("ar-localidades — localitiesByName (within-province homonym)", () => {
+  it("answers BOTH Mechitas, by name and by any spelling localityByName accepts", async () => {
+    if (!catalogPopulated) return;
+    for (const spelling of ["Mechita", "mechita", "MECHITA"]) {
+      const rows = await localitiesByName("AR-B", spelling);
+      expect(rows.map((r) => r.indecId).sort(), spelling).toEqual(["06021030", "06112080"]);
+    }
+  });
+
+  it("answers exactly one row for a name that is unique in its province", async () => {
+    if (!catalogPopulated) return;
+    const rows = await localitiesByName("AR-X", "Villa Maria");
+    expect(rows.map((r) => r.indecId)).toEqual([VILLA_MARIA_CBA_INDEC_ID]);
+  });
+
+  it("answers no row for a name the province does not have, and for an empty one", async () => {
+    if (!catalogPopulated) return;
+    expect(await localitiesByName("AR-B", "Narnia")).toEqual([]);
+    expect(await localitiesByName("AR-B", "")).toEqual([]);
   });
 });

@@ -7,8 +7,10 @@
 // preserve the SAME effective behavior each site had before P2.
 //
 // Design contract:
-//  - "strict"  → resolveCanonicalJurisdiction (throws JurisdictionValidationError)
-//  - "soft"    → tryResolveCanonicalJurisdiction (pass-through on miss)
+//  - "strict"  → resolveUniqueJurisdiction (throws JurisdictionValidationError,
+//                including AMBIGUOUS_LOCALITY for a within-province homonym)
+//  - "soft"    → tryResolveCanonicalJurisdiction (pass-through on miss; an
+//                ambiguous name is stored at PROVINCE level, locality null)
 //  - "none"    → canonicalProvinceNameForStorage only; raw locality passed through
 //  - requireCoords: true → reject when lat/lng are absent or out-of-range.
 //    Only pass for sites that already required coords before P2.
@@ -22,10 +24,11 @@
 
 import { canonicalProvinceNameForStorage } from "@/lib/domain/jurisdiction-canonical";
 import type { LocationValue } from "@/lib/domain/location-value";
+import type { PlaceMethod } from "@/lib/domain/place";
 import {
   JurisdictionValidationError,
-  resolveCanonicalJurisdiction,
   resolveCanonicalJurisdictionById,
+  resolveUniqueJurisdiction,
   tryResolveCanonicalJurisdiction,
 } from "@/lib/infra/jurisdiction-validation";
 
@@ -34,8 +37,10 @@ export type LocalityValidation = "strict" | "soft" | "none";
 export type NormalizeOpts = {
   /**
    * Controls locality validation:
-   * - "strict": resolveCanonicalJurisdiction — throws on unknown locality.
-   * - "soft":   tryResolveCanonicalJurisdiction — passes raw text on miss.
+   * - "strict": resolveUniqueJurisdiction — throws on an unknown locality AND on
+   *             a name that names two catalogue rows (AMBIGUOUS_LOCALITY).
+   * - "soft":   tryResolveCanonicalJurisdiction — passes raw text on miss; an
+   *             ambiguous name comes back with locality null (province-level).
    * - "none":   no locality lookup; raw locality is passed through as-is.
    *
    * REQUIRED, with no default (L0·1 of the locality plan, 2026-09-08). It used
@@ -71,6 +76,13 @@ export type NormalizedLocation = {
    * on a passthrough (province or locality absent), and on a "soft" miss.
    */
   localityId: string | null;
+  /**
+   * HOW the locality resolved (lib/domain/place.ts): `indec_id` when the id
+   * decided it, `exact_name_unique` / `folded_name_unique` when the name named
+   * exactly one row, `unresolved` for everything else — "none" mode, a
+   * passthrough, a soft miss and an ambiguous name alike.
+   */
+  placeMethod: PlaceMethod;
   lat: number | null;
   lng: number | null;
   address: string | null;
@@ -134,15 +146,19 @@ export async function normalizeLocationForWrite(
   if (localityMode !== "none" && indecId) {
     const byId = await resolveByIndecId(indecId, province, localityMode);
     if (byId !== null) {
-      return { ...byId, lat, lng, address: loc.address };
+      return { ...byId, placeMethod: "indec_id", lat, lng, address: loc.address };
     }
   }
 
   if (localityMode === "strict") {
     if (province && rawLocality) {
-      // Throws JurisdictionValidationError on unknown (province, locality).
-      // Callers catch and map to their action error shape — same as before P2.
-      const canonical = await resolveCanonicalJurisdiction({
+      // Throws JurisdictionValidationError on an unknown (province, locality)
+      // and on a NAME that names two catalogue rows in the province
+      // (AMBIGUOUS_LOCALITY, localidades-por-id A9): a person who picked from
+      // the catalogue can pick the row, and filing the pair under the
+      // alphabetically first department is the defect this replaces. Callers
+      // catch and map to their action error shape — same as before P2.
+      const canonical = await resolveUniqueJurisdiction({
         rawProvince: province,
         rawLocality,
       });
@@ -151,6 +167,7 @@ export async function normalizeLocationForWrite(
         locality: canonical.locality.localityName,
         localityCanonical: true,
         localityId: canonical.locality.id,
+        placeMethod: canonical.method,
         lat,
         lng,
         address: loc.address,
@@ -162,6 +179,7 @@ export async function normalizeLocationForWrite(
       locality: rawLocality || null,
       localityCanonical: false,
       localityId: null,
+      placeMethod: "unresolved",
       lat,
       lng,
       address: loc.address,
@@ -174,11 +192,32 @@ export async function normalizeLocationForWrite(
         rawProvince: province,
         rawLocality,
       });
+      if (resolved.ambiguous) {
+        // A NAME TWO MUNICIPALITIES SHARE IS NOT A PLACE (localidades-por-id
+        // A9). Soft must never block a report, and it must never pick a
+        // homonym either. Keeping the raw name would be worse than it looks:
+        // scope and routing still match by name, so "Mechita" would be read by
+        // BOTH Mechitas' operators. With the locality NULL the row is exactly
+        // what `jurisdictionPairClause` calls province-level — the province's
+        // own authority sees it, neither municipality is widened. What the
+        // person typed survives in the caller's own record of the entry.
+        return {
+          province: resolved.province || province,
+          locality: null,
+          localityCanonical: false,
+          localityId: null,
+          placeMethod: "unresolved",
+          lat,
+          lng,
+          address: loc.address,
+        };
+      }
       return {
         province: resolved.province || province,
         locality: resolved.locality || rawLocality || null,
         localityCanonical: resolved.canonical,
         localityId: resolved.localityId,
+        placeMethod: resolved.method,
         lat,
         lng,
         address: loc.address,
@@ -189,6 +228,7 @@ export async function normalizeLocationForWrite(
       locality: rawLocality || null,
       localityCanonical: false,
       localityId: null,
+      placeMethod: "unresolved",
       lat,
       lng,
       address: loc.address,
@@ -201,6 +241,7 @@ export async function normalizeLocationForWrite(
     locality: rawLocality || null,
     localityCanonical: false,
     localityId: null,
+    placeMethod: "unresolved",
     lat,
     lng,
     address: loc.address,

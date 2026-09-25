@@ -272,13 +272,16 @@ describe("recordMovementWriter — the homonym the edge already decided (L2-2)",
     expect(await fetchLocalityId(resolved.id)).toBe(personTapped.id);
 
     // THE CONTROL, and the half that makes the assertion above mean something:
-    // the SAME names with no resolved id still go down the name path and land
-    // on the other department. If these two ever agree, the catalogue stopped
-    // colliding and this test stopped testing the defect.
+    // the SAME names with no resolved id go down the name path, and the name
+    // path no longer picks a department at all (localidades-por-id A9 — it
+    // used to land on `nameWouldPick`, the alphabetically first one). The move
+    // is still recorded; the animal's locality is province-level and no row id
+    // is invented for it.
     const byName = await insertTestPet("HOMONYM-NAME");
     const withoutId = await recordMovementWriter({ ...baseParams(byName), movement });
     expect(withoutId.ok).toBe(true);
-    expect(await fetchLocalityId(byName.id)).toBe(nameWouldPick.id);
+    expect(await fetchLocalityId(byName.id)).toBeNull();
+    expect(nameWouldPick.id).not.toBe(personTapped.id);
   });
 });
 

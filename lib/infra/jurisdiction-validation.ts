@@ -14,7 +14,13 @@
 // should prefer `resolveCanonicalJurisdictionById` for a single-query path
 // that skips the name-based fallback.
 
-import { type Locality, localityByIndecId, localityByName } from "@/lib/infra/ar-localidades";
+import type { NamePlaceMethod } from "@/lib/domain/place";
+import {
+  type Locality,
+  localitiesByName,
+  localityByIndecId,
+  localityByName,
+} from "@/lib/infra/ar-localidades";
 import { type Province, provinceByCode, provinceByName } from "@/lib/reference/ar-provincias";
 
 export type CanonicalJurisdiction = {
@@ -22,15 +28,34 @@ export type CanonicalJurisdiction = {
   locality: Locality;
 };
 
+/**
+ * - INVALID_PROVINCE: the province names no province.
+ * - INVALID_LOCALITY: the catalogue has no such locality there (or no such id).
+ * - AMBIGUOUS_LOCALITY: the NAME names two or more catalogue rows in that
+ *   province (a within-province homonym) and no id said which one.
+ */
+export type JurisdictionValidationCode =
+  | "INVALID_PROVINCE"
+  | "INVALID_LOCALITY"
+  | "AMBIGUOUS_LOCALITY";
+
 export class JurisdictionValidationError extends Error {
-  readonly code: "INVALID_PROVINCE" | "INVALID_LOCALITY";
-  constructor(code: "INVALID_PROVINCE" | "INVALID_LOCALITY", message: string) {
+  readonly code: JurisdictionValidationCode;
+  constructor(code: JurisdictionValidationCode, message: string) {
     super(message);
     this.name = "JurisdictionValidationError";
     this.code = code;
   }
 }
 
+/**
+ * LEGACY — settles a within-province homonym by taking the alphabetically first
+ * department (`localityByName`). No write path may use it: the write gate
+ * (`normalizeLocationForWrite`) resolves names through
+ * {@link resolveUniqueJurisdiction}. Its remaining callers are the seed
+ * scripts, the geocoding route (localidades-por-id B3) and the historical
+ * backfill (B5), each named in that plan.
+ */
 export async function resolveCanonicalJurisdiction(input: {
   rawProvince: string;
   rawLocality: string;
@@ -55,6 +80,58 @@ export async function resolveCanonicalJurisdiction(input: {
   return { province, locality };
 }
 
+export type UniqueJurisdiction = CanonicalJurisdiction & {
+  /** Whether the text matched the catalogue's own spelling or a folded variant. */
+  method: NamePlaceMethod;
+};
+
+/**
+ * Resolve a (province, locality NAME) pair ONLY when the name names exactly one
+ * live catalogue row in that province (localidades-por-id A9, P1).
+ *
+ * @throws {JurisdictionValidationError} INVALID_PROVINCE, INVALID_LOCALITY (no
+ *   row), or AMBIGUOUS_LOCALITY (two or more rows — Mechita in Alberti and in
+ *   Bragado). The caller that can ask the person which one refuses; the caller
+ *   that must not block a report stores the place at province level.
+ */
+export async function resolveUniqueJurisdiction(input: {
+  rawProvince: string;
+  rawLocality: string;
+}): Promise<UniqueJurisdiction> {
+  const province = provinceByCode(input.rawProvince) ?? provinceByName(input.rawProvince);
+  if (!province) {
+    throw new JurisdictionValidationError(
+      "INVALID_PROVINCE",
+      `Provincia '${input.rawProvince}' no es válida.`,
+    );
+  }
+  const candidates = await localitiesByName(
+    province.code as Locality["provinceCode"],
+    input.rawLocality,
+  );
+  if (candidates.length === 0) {
+    throw new JurisdictionValidationError(
+      "INVALID_LOCALITY",
+      `Localidad '${input.rawLocality}' no figura en el catálogo INDEC para ${province.name}.`,
+    );
+  }
+  if (candidates.length > 1) {
+    throw new JurisdictionValidationError(
+      "AMBIGUOUS_LOCALITY",
+      `Hay más de una localidad llamada ${candidates[0].localityName} en ${province.name}. Elegila de la lista para indicar cuál.`,
+    );
+  }
+  const [locality] = candidates;
+  return {
+    province,
+    locality,
+    method:
+      locality.localityName === input.rawLocality.trim()
+        ? "exact_name_unique"
+        : "folded_name_unique",
+  };
+}
+
 export async function resolveCanonicalJurisdictionById(input: {
   indecId: string;
 }): Promise<CanonicalJurisdiction> {
@@ -76,8 +153,11 @@ export async function resolveCanonicalJurisdictionById(input: {
   return { province, locality };
 }
 
-// Soft variant — returns canonical names when the input resolves cleanly,
-// otherwise falls back to trimmed input as-is.
+// Soft variant — returns canonical names when the input names exactly ONE
+// catalogue row, otherwise falls back to trimmed input as-is. An ambiguous name
+// (a within-province homonym) is a miss here too, flagged `ambiguous: true` so
+// the caller can store the place at province level instead of the raw name
+// every same-named municipality's grant would match (localidades-por-id A9).
 //
 // NOTE: Most server-side callers have been migrated to `resolveCanonicalJurisdiction`
 // (the strict path). `tryResolveCanonicalJurisdiction` is kept for callers where
@@ -98,21 +178,37 @@ export async function tryResolveCanonicalJurisdiction(input: {
   /** ar_localities uuid PK when the pair resolved, else null. Structural
    * locality-attribution FK value (migration 0147). */
   localityId: string | null;
+  /** True when the name named two or more rows in the province. */
+  ambiguous: boolean;
+  method: NamePlaceMethod | "unresolved";
 }> {
   const rawProvince = input.rawProvince.trim();
   const rawLocality = input.rawLocality.trim();
-  if (!rawProvince || !rawLocality) {
-    return { province: rawProvince, locality: rawLocality, canonical: false, localityId: null };
-  }
+  const miss = {
+    province: rawProvince,
+    locality: rawLocality,
+    canonical: false,
+    localityId: null,
+    ambiguous: false,
+    method: "unresolved" as const,
+  };
+  if (!rawProvince || !rawLocality) return miss;
   try {
-    const resolved = await resolveCanonicalJurisdiction({ rawProvince, rawLocality });
+    const resolved = await resolveUniqueJurisdiction({ rawProvince, rawLocality });
     return {
       province: resolved.province.name,
       locality: resolved.locality.localityName,
       canonical: true,
       localityId: resolved.locality.id,
+      ambiguous: false,
+      method: resolved.method,
     };
-  } catch {
-    return { province: rawProvince, locality: rawLocality, canonical: false, localityId: null };
+  } catch (err) {
+    if (err instanceof JurisdictionValidationError && err.code === "AMBIGUOUS_LOCALITY") {
+      // The province is real (the resolver checked it before counting rows).
+      const province = provinceByCode(rawProvince) ?? provinceByName(rawProvince);
+      return { ...miss, province: province?.name ?? rawProvince, ambiguous: true };
+    }
+    return miss;
   }
 }

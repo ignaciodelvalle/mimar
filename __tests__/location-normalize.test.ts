@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // ---------------------------------------------------------------------------
 
 const mockResolveCanonicalJurisdiction = vi.hoisted(() => vi.fn());
+const mockResolveUniqueJurisdiction = vi.hoisted(() => vi.fn());
 const mockResolveCanonicalJurisdictionById = vi.hoisted(() => vi.fn());
 const mockTryResolveCanonicalJurisdiction = vi.hoisted(() => vi.fn());
 const MockJurisdictionValidationError = vi.hoisted(
@@ -33,6 +34,7 @@ const MockJurisdictionValidationError = vi.hoisted(
 
 vi.mock("@/lib/infra/jurisdiction-validation", () => ({
   resolveCanonicalJurisdiction: mockResolveCanonicalJurisdiction,
+  resolveUniqueJurisdiction: mockResolveUniqueJurisdiction,
   resolveCanonicalJurisdictionById: mockResolveCanonicalJurisdictionById,
   tryResolveCanonicalJurisdiction: mockTryResolveCanonicalJurisdiction,
   JurisdictionValidationError: MockJurisdictionValidationError,
@@ -122,11 +124,13 @@ describe("normalizeLocationForWrite", () => {
       expect(mockResolveCanonicalJurisdictionById).toHaveBeenCalledWith({ indecId: "500098" });
       // THE NAME LOOKUP MUST NOT RUN. It is the one that picks the wrong row.
       expect(mockResolveCanonicalJurisdiction).not.toHaveBeenCalled();
+      expect(mockResolveUniqueJurisdiction).not.toHaveBeenCalled();
       expect(result).toMatchObject({
         province: "Mendoza",
         locality: "San Martín",
         localityCanonical: true,
         localityId: "uuid-mendoza",
+        placeMethod: "indec_id",
       });
     });
 
@@ -191,22 +195,23 @@ describe("normalizeLocationForWrite", () => {
           { locality: "strict" },
         ),
       ).rejects.toThrow(JurisdictionValidationError);
-      expect(mockResolveCanonicalJurisdiction).not.toHaveBeenCalled();
+      expect(mockResolveUniqueJurisdiction).not.toHaveBeenCalled();
     });
 
     it("ignores a blank id and every id under locality:none", async () => {
       // NON-VACUITY: the id path must not have taken over the two cases that
       // were working. A blank string is what an older client's draft holds.
-      mockResolveCanonicalJurisdiction.mockResolvedValue({
+      mockResolveUniqueJurisdiction.mockResolvedValue({
         province: { name: "Buenos Aires" },
         locality: { id: "uuid-ba", localityName: "San Martín" },
+        method: "exact_name_unique",
       });
 
       await normalizeLocationForWrite(
         makeLocationValue({ provinceCode: "AR-B", locality: "San Martín", localityIndecId: "  " }),
         { locality: "strict" },
       );
-      expect(mockResolveCanonicalJurisdiction).toHaveBeenCalled();
+      expect(mockResolveUniqueJurisdiction).toHaveBeenCalled();
       expect(mockResolveCanonicalJurisdictionById).not.toHaveBeenCalled();
 
       const none = await normalizeLocationForWrite(
@@ -251,16 +256,18 @@ describe("normalizeLocationForWrite", () => {
       );
       expect(result.locality).toBe("La Plata");
       expect(result.localityCanonical).toBe(false);
-      expect(mockResolveCanonicalJurisdiction).not.toHaveBeenCalled();
+      expect(result.placeMethod).toBe("unresolved");
+      expect(mockResolveUniqueJurisdiction).not.toHaveBeenCalled();
       expect(mockTryResolveCanonicalJurisdiction).not.toHaveBeenCalled();
     });
   });
 
   describe('locality:"strict"', () => {
     it("returns canonical locality + the resolved locality id on successful resolution", async () => {
-      mockResolveCanonicalJurisdiction.mockResolvedValue({
+      mockResolveUniqueJurisdiction.mockResolvedValue({
         province: { name: "Buenos Aires" },
         locality: { localityName: "La Plata", id: "loc-la-plata-uuid" },
+        method: "folded_name_unique",
       });
 
       const result = await normalizeLocationForWrite(
@@ -274,6 +281,9 @@ describe("normalizeLocationForWrite", () => {
       // Thread-B: the resolved catalog id (the new FK value every write site
       // persists) is returned, not discarded.
       expect(result.localityId).toBe("loc-la-plata-uuid");
+      // HOW it resolved travels with it: "la plata" is not the catalogue's
+      // spelling, so this is a folded match, not an exact one.
+      expect(result.placeMethod).toBe("folded_name_unique");
     });
 
     it("returns a null locality id when the locality does not resolve to the catalog", async () => {
@@ -284,7 +294,7 @@ describe("normalizeLocationForWrite", () => {
     });
 
     it("throws JurisdictionValidationError on unknown locality", async () => {
-      mockResolveCanonicalJurisdiction.mockRejectedValue(
+      mockResolveUniqueJurisdiction.mockRejectedValue(
         new MockJurisdictionValidationError("INVALID_LOCALITY", "Localidad no encontrada."),
       );
 
@@ -300,7 +310,44 @@ describe("normalizeLocationForWrite", () => {
         locality: "strict",
       });
       expect(result.locality).toBeNull();
+      expect(mockResolveUniqueJurisdiction).not.toHaveBeenCalled();
+    });
+
+    // localidades-por-id A9 — the NAME path resolves only a name that names ONE
+    // catalogue row. `resolveCanonicalJurisdiction` settles a homonym by taking
+    // the alphabetically first department; the gate must never reach it.
+    it("resolves names through the unique resolver, never the first-department one", async () => {
+      mockResolveUniqueJurisdiction.mockResolvedValue({
+        province: { name: "Buenos Aires" },
+        locality: { localityName: "La Plata", id: "loc-la-plata-uuid" },
+        method: "exact_name_unique",
+      });
+      await normalizeLocationForWrite(
+        makeLocationValue({ provinceCode: "AR-B", locality: "La Plata" }),
+        { locality: "strict" },
+      );
+      expect(mockResolveUniqueJurisdiction).toHaveBeenCalledWith({
+        rawProvince: "Buenos Aires",
+        rawLocality: "La Plata",
+      });
       expect(mockResolveCanonicalJurisdiction).not.toHaveBeenCalled();
+    });
+
+    it("refuses an ambiguous name instead of filing it under either homonym", async () => {
+      mockResolveUniqueJurisdiction.mockRejectedValue(
+        new MockJurisdictionValidationError(
+          "AMBIGUOUS_LOCALITY",
+          "Hay más de una localidad llamada Mechita en Buenos Aires.",
+        ),
+      );
+      await expect(
+        normalizeLocationForWrite(
+          makeLocationValue({ provinceCode: "AR-B", locality: "Mechita" }),
+          {
+            locality: "strict",
+          },
+        ),
+      ).rejects.toMatchObject({ code: "AMBIGUOUS_LOCALITY" });
     });
   });
 
@@ -310,6 +357,9 @@ describe("normalizeLocationForWrite", () => {
         province: "Buenos Aires",
         locality: "La Plata",
         canonical: true,
+        localityId: "loc-la-plata-uuid",
+        ambiguous: false,
+        method: "folded_name_unique",
       });
 
       const result = await normalizeLocationForWrite(
@@ -319,6 +369,35 @@ describe("normalizeLocationForWrite", () => {
 
       expect(result.locality).toBe("La Plata");
       expect(result.localityCanonical).toBe(true);
+      expect(result.placeMethod).toBe("folded_name_unique");
+    });
+
+    // localidades-por-id A9 — soft must never block a report, and must never
+    // pick a homonym either. An ambiguous name keeps the PROVINCE and stores
+    // no locality: a province-level place the province's authority sees, and
+    // not a name every same-named municipality's grant would match.
+    it("stores an ambiguous name as a province-level place, never either homonym", async () => {
+      mockTryResolveCanonicalJurisdiction.mockResolvedValue({
+        province: "Buenos Aires",
+        locality: "Mechita",
+        canonical: false,
+        localityId: null,
+        ambiguous: true,
+        method: "unresolved",
+      });
+
+      const result = await normalizeLocationForWrite(
+        makeLocationValue({ provinceCode: "AR-B", locality: "Mechita" }),
+        { locality: "soft" },
+      );
+
+      expect(result).toMatchObject({
+        province: "Buenos Aires",
+        locality: null,
+        localityCanonical: false,
+        localityId: null,
+        placeMethod: "unresolved",
+      });
     });
 
     it("falls back to raw locality when catalog miss", async () => {
@@ -326,6 +405,9 @@ describe("normalizeLocationForWrite", () => {
         province: "Buenos Aires",
         locality: "Localidad Rara",
         canonical: false,
+        localityId: null,
+        ambiguous: false,
+        method: "unresolved",
       });
 
       const result = await normalizeLocationForWrite(
@@ -335,6 +417,7 @@ describe("normalizeLocationForWrite", () => {
 
       expect(result.locality).toBe("Localidad Rara");
       expect(result.localityCanonical).toBe(false);
+      expect(result.placeMethod).toBe("unresolved");
     });
   });
 

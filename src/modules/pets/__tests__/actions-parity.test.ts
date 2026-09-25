@@ -104,9 +104,11 @@ vi.mock("@/lib/infra/uploads", () => ({
 // resolvers therefore answer with the same NAMES and different ROWS.
 vi.mock("@/lib/infra/jurisdiction-validation", () => ({
   JurisdictionValidationError: class JurisdictionValidationError extends Error {},
-  resolveCanonicalJurisdiction: vi.fn().mockResolvedValue({
+  // The gate's NAME path (localidades-por-id A9): only a name that names ONE row.
+  resolveUniqueJurisdiction: vi.fn().mockResolvedValue({
     province: { name: "Buenos Aires" },
     locality: { localityName: "La Plata", id: "loc-BY-NAME" },
+    method: "exact_name_unique",
   }),
   resolveCanonicalJurisdictionById: vi.fn().mockResolvedValue({
     province: { name: "Buenos Aires" },
@@ -237,11 +239,12 @@ describe("createPetAction", () => {
     (await import("@/lib/infra/chip-lookup")).lookupByChip = vi.fn().mockResolvedValue(null);
     // The two resolvers answer with the SAME names and DIFFERENT rows — see the
     // module mock's note. `id` is the value that reaches `pets.locality_id`.
-    (await import("@/lib/infra/jurisdiction-validation")).resolveCanonicalJurisdiction = vi
+    (await import("@/lib/infra/jurisdiction-validation")).resolveUniqueJurisdiction = vi
       .fn()
       .mockResolvedValue({
         province: { name: "Buenos Aires" },
         locality: { localityName: "La Plata", id: "loc-BY-NAME" },
+        method: "exact_name_unique",
       });
     (await import("@/lib/infra/jurisdiction-validation")).resolveCanonicalJurisdictionById = vi
       .fn()
@@ -540,11 +543,12 @@ describe("updatePetAction", () => {
     });
     // The two resolvers answer with the SAME names and DIFFERENT rows — see the
     // module mock's note. `id` is the value that reaches `pets.locality_id`.
-    (await import("@/lib/infra/jurisdiction-validation")).resolveCanonicalJurisdiction = vi
+    (await import("@/lib/infra/jurisdiction-validation")).resolveUniqueJurisdiction = vi
       .fn()
       .mockResolvedValue({
         province: { name: "Buenos Aires" },
         locality: { localityName: "La Plata", id: "loc-BY-NAME" },
+        method: "exact_name_unique",
       });
     (await import("@/lib/infra/jurisdiction-validation")).resolveCanonicalJurisdictionById = vi
       .fn()
