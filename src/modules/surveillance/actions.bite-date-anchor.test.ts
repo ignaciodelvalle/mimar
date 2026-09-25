@@ -44,6 +44,7 @@ vi.mock("./application/report-bite-from-org", () => ({
 
 vi.mock("@/lib/domain/location-normalize", () => ({
   CoordError: class extends Error {},
+  assertLocationCoords: vi.fn(),
   normalizeLocationForWrite: vi
     .fn()
     .mockResolvedValue({ province: null, locality: null, lat: null, lng: null }),
@@ -52,6 +53,21 @@ vi.mock("@/lib/domain/location-normalize", () => ({
 vi.mock("@/lib/domain/location-value", () => ({
   parseLocationFromFormData: vi.fn().mockReturnValue({}),
 }));
+
+// The place resolver (localidades-por-id A2) is pinned in
+// actions.bite-place.test.ts; here it answers "nothing entered".
+vi.mock("@/lib/place/reported-place", () => {
+  const nothing = async () => ({
+    province: null,
+    locality: null,
+    localityId: null,
+    method: "unresolved",
+    unresolvedReason: "none_entered",
+    mismatch: false,
+    entered: { province: null, locality: null, indecId: null },
+  });
+  return { resolveMapFormPlace: vi.fn(nothing), resolveReportedPlace: vi.fn(nothing) };
+});
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({

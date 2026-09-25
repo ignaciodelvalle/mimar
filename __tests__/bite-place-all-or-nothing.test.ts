@@ -149,18 +149,14 @@ function casePair(deps: ReturnType<typeof makeDeps>): OpenCaseCall {
 }
 
 describe("owner bite writer: the case place is one source", () => {
-  // Known failure until work unit A2 (localidades-por-id): flip to `it` there.
-  it.fails(
-    "a province-only incident place is a province-level case, never the pet's home locality",
-    async () => {
-      const deps = makeDeps();
-      await reportBite({ ...OWNER_INPUT, eventJurisdictionProvince: "San Juan" }, deps);
-      expect(casePair(deps)).toEqual({
-        jurisdictionProvince: "San Juan",
-        jurisdictionLocality: null,
-      });
-    },
-  );
+  it("a province-only incident place is a province-level case, never the pet's home locality", async () => {
+    const deps = makeDeps();
+    await reportBite({ ...OWNER_INPUT, eventJurisdictionProvince: "San Juan" }, deps);
+    expect(casePair(deps)).toEqual({
+      jurisdictionProvince: "San Juan",
+      jurisdictionLocality: null,
+    });
+  });
 
   it("no incident place at all falls back to the pet's home pair, whole", async () => {
     const deps = makeDeps();
@@ -173,18 +169,14 @@ describe("owner bite writer: the case place is one source", () => {
 });
 
 describe("org bite writer: the case place is one source", () => {
-  // Known failure until work unit A2 (localidades-por-id): flip to `it` there.
-  it.fails(
-    "a province-only incident place is a province-level case, never the pet's home locality",
-    async () => {
-      const deps = makeDeps();
-      await reportBiteFromOrg({ ...ORG_INPUT, eventJurisdictionProvince: "San Juan" }, deps);
-      expect(casePair(deps)).toEqual({
-        jurisdictionProvince: "San Juan",
-        jurisdictionLocality: null,
-      });
-    },
-  );
+  it("a province-only incident place is a province-level case, never the pet's home locality", async () => {
+    const deps = makeDeps();
+    await reportBiteFromOrg({ ...ORG_INPUT, eventJurisdictionProvince: "San Juan" }, deps);
+    expect(casePair(deps)).toEqual({
+      jurisdictionProvince: "San Juan",
+      jurisdictionLocality: null,
+    });
+  });
 
   it("no incident place at all falls back to the pet's home pair, whole", async () => {
     const deps = makeDeps();

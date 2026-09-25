@@ -178,8 +178,20 @@ export async function reportBiteFromOrg(
   // fan-out below — a bite is the incident authority's problem, not the home
   // registry's. Falls back to pet home only when no incident location was
   // captured.
-  const caseProvince = input.eventJurisdictionProvince ?? pet.jurisdictionProvince;
-  const caseLocality = input.eventJurisdictionLocality ?? pet.jurisdictionLocality;
+  //
+  // ONE SOURCE, NEVER FIELD BY FIELD (localidades-por-id A2, R3 of the
+  // localities audit). The fallback used to be per field —
+  // `event.province ?? pet.province` and `event.locality ?? pet.locality` — so
+  // a report that knew only the incident PROVINCE was filed under (incident
+  // province, the pet's HOME locality): a pair nobody entered, which names a
+  // real municipality whenever the name exists in both provinces (San Martín
+  // is in Mendoza and in San Juan), and which then picks that municipality's
+  // operator and rabies rule. Now: a province from the event takes the event's
+  // locality with it, null included (a province-level case the province's
+  // authority sees); no event province means the pet's home pair, whole.
+  const hasEventPlace = input.eventJurisdictionProvince !== null;
+  const caseProvince = hasEventPlace ? input.eventJurisdictionProvince : pet.jurisdictionProvince;
+  const caseLocality = hasEventPlace ? input.eventJurisdictionLocality : pet.jurisdictionLocality;
 
   // 0. AUTHORITY GATE (H1, 2026-08-22) — verified AND connected to the animal.
   //
@@ -265,7 +277,9 @@ export async function reportBiteFromOrg(
           // The id names the INCIDENT locality, so it travels only when the
           // case routes there (no field-by-field fallback to the pet's home).
           localityId:
-            input.eventJurisdictionLocality !== null ? (input.eventLocalityId ?? null) : null,
+            hasEventPlace && input.eventJurisdictionLocality !== null
+              ? (input.eventLocalityId ?? null)
+              : null,
           openedByUserId: user.id,
           openedByOrganizationId: organization.id,
           openedReason: {

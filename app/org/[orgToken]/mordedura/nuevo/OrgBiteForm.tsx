@@ -25,6 +25,8 @@ import { useIdempotencyKey } from "@/lib/ui/use-idempotency-key";
 import { formatDate, todayIsoInAr } from "@/lib/utils/format";
 import type { ReportBiteFromOrgFormState } from "@/src/modules/surveillance/actions";
 
+import { buildOrgBiteFormData } from "./org-bite-form-data";
+
 type FormAction = (
   prev: ReportBiteFromOrgFormState,
   formData: FormData,
@@ -70,6 +72,8 @@ export function OrgBiteForm({ action, orgToken }: { action: FormAction; orgToken
   const [provinceCode, setProvinceCode] = useState("");
   const [provinceName, setProvinceName] = useState("");
   const [localityName, setLocalityName] = useState("");
+  // The INDEC id of the row picked — what tells two same-named localities apart.
+  const [localityIndecId, setLocalityIndecId] = useState("");
   const [victimKind, setVictimKind] = useState<"human" | "animal" | "unknown">("human");
   const [victimContactName, setVictimContactName] = useState("");
   const [victimContactPhone, setVictimContactPhone] = useState("");
@@ -89,30 +93,27 @@ export function OrgBiteForm({ action, orgToken }: { action: FormAction; orgToken
 
   function submit() {
     setState({ error: null });
-    const fd = new FormData();
-    fd.set("clientIdempotencyKey", idempotencyKeyRef.current);
-    fd.set("petPublicToken", petPublicToken.trim());
-    fd.set("occurredAt", occurredAt);
-    if (locationDescription) fd.set("locationDescription", locationDescription);
-    if (provinceCode) fd.set("provinceCode", provinceCode);
-    if (provinceName) fd.set("provinceName", provinceName);
-    if (localityName) fd.set("localityName", localityName);
-    fd.set("victimKind", victimKind);
-    if (victimContactName) fd.set("victimContactName", victimContactName);
-    if (victimContactPhone) fd.set("victimContactPhone", victimContactPhone);
-    if (victimAgeEstimate) fd.set("victimAgeEstimate", victimAgeEstimate);
-    fd.set("severity", severity);
-    if (injuriesSummary) fd.set("injuriesSummary", injuriesSummary);
-    if (vetInvolved) fd.set("vetInvolved", "on");
-    if (context) fd.set("context", context);
-    if (confirmObservation) fd.set("confirmObservation", "on");
-    // panorama-event-points Slice 2: persist the incident map pin when set.
-    if (point) {
-      fd.set("locationLat", String(point.lat));
-      fd.set("locationLng", String(point.lng));
-      if (locationSource) fd.set("locationSource", locationSource);
-    }
-    fd.set("noRedirect", "1");
+    const fd = buildOrgBiteFormData({
+      clientIdempotencyKey: idempotencyKeyRef.current,
+      petPublicToken,
+      occurredAt,
+      locationDescription,
+      provinceCode,
+      provinceName,
+      localityName,
+      localityIndecId,
+      victimKind,
+      victimContactName,
+      victimContactPhone,
+      victimAgeEstimate,
+      severity,
+      injuriesSummary,
+      vetInvolved,
+      context,
+      confirmObservation,
+      point,
+      locationSource,
+    });
     startTransition(async () => {
       const result = await action({ error: null }, fd);
       if (result.ok) {
@@ -258,11 +259,13 @@ export function OrgBiteForm({ action, orgToken }: { action: FormAction; orgToken
               setProvinceCode(result?.provinceCode ?? "");
               setProvinceName(result?.provinceName ?? "");
               setLocalityName(result?.localityName ?? "");
+              setLocalityIndecId(result?.indecId ?? "");
             }}
             onDeselect={() => {
               setProvinceCode("");
               setProvinceName("");
               setLocalityName("");
+              setLocalityIndecId("");
             }}
           />
           <p className="mt-1 text-sm text-ln-op-mute">

@@ -249,6 +249,20 @@ export async function normalizeLocationForWrite(
 }
 
 /**
+ * The gate's coordinate rules on their own, for a caller that resolves the
+ * PLACE elsewhere (the report resolver, lib/place/reported-place.ts) and must
+ * not ask this gate for a locality it would discard.
+ *
+ * @throws {CoordError} exactly as `normalizeLocationForWrite` does.
+ */
+export function assertLocationCoords(
+  loc: Pick<LocationValue, "lat" | "lng">,
+  opts: { requireCoords?: boolean } = {},
+): void {
+  assertCoords(loc.lat, loc.lng, opts.requireCoords ?? false);
+}
+
+/**
  * The coordinate rules, unchanged and moved out of the gate's body so the
  * locality branches read as the three cases they are.
  *

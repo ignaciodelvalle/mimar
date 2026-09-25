@@ -160,8 +160,20 @@ export async function reportBite(input: ReportBiteInput, deps: Deps): Promise<Re
   // via map pin + reverse-geocoding into eventJurisdictionProvince/Locality;
   // fall back to the pet's home jurisdiction only when the reporter dropped
   // no pin. Mirrors reportBiteFromOrg's caseProvince/caseLocality pattern.
-  const caseProvince = input.eventJurisdictionProvince ?? pet.jurisdictionProvince;
-  const caseLocality = input.eventJurisdictionLocality ?? pet.jurisdictionLocality;
+  //
+  // ONE SOURCE, NEVER FIELD BY FIELD (localidades-por-id A2, R3 of the
+  // localities audit). The fallback used to be per field —
+  // `event.province ?? pet.province` and `event.locality ?? pet.locality` — so
+  // a report that knew only the incident PROVINCE was filed under (incident
+  // province, the pet's HOME locality): a pair nobody entered, which names a
+  // real municipality whenever the name exists in both provinces (San Martín
+  // is in Mendoza and in San Juan), and which then picks that municipality's
+  // operator and rabies rule. Now: a province from the event takes the event's
+  // locality with it, null included (a province-level case the province's
+  // authority sees); no event province means the pet's home pair, whole.
+  const hasEventPlace = input.eventJurisdictionProvince !== null;
+  const caseProvince = hasEventPlace ? input.eventJurisdictionProvince : pet.jurisdictionProvince;
+  const caseLocality = hasEventPlace ? input.eventJurisdictionLocality : pet.jurisdictionLocality;
   // A1 — the statutory window comes from the rules engine (same jurisdiction
   // the case routes to), not a hardcoded constant the dashboard disagrees with.
   const rabiesWindow = await resolveObservationWindow({
@@ -197,7 +209,9 @@ export async function reportBite(input: ReportBiteInput, deps: Deps): Promise<Re
           // The id names the INCIDENT locality, so it travels only when the
           // case routes there (no field-by-field fallback to the pet's home).
           localityId:
-            input.eventJurisdictionLocality !== null ? (input.eventLocalityId ?? null) : null,
+            hasEventPlace && input.eventJurisdictionLocality !== null
+              ? (input.eventLocalityId ?? null)
+              : null,
           openedByUserId: user.id,
           openedReason: {
             code: "bite_reported_owner",

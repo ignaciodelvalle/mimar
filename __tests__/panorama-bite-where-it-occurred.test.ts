@@ -184,16 +184,21 @@ describe("the bite writers' location gate — locality 'soft'", () => {
     expect(cat?.name).toBe("Río Cuarto");
   });
 
-  it("both web bite writers use 'soft' (never 'strict', never 'none') and carry the id", () => {
+  it("both web bite writers resolve the place through the report resolver and carry the id", () => {
     // The owner writer and the org writer. A source pin, because the actions
-    // need a session to run; the gate's behaviour itself is proven above/below.
+    // need a session to run; the resolver's behaviour is proven in
+    // lib/place/reported-place.test.ts and the door wiring in
+    // src/modules/surveillance/actions.bite-place.test.ts.
+    //
+    // localidades-por-id A2 replaced the bare 'soft' gate here: the gate never
+    // checked the pair against the pin sent with it, and a name it resolved was
+    // only as good as the name. The resolver never blocks a report either
+    // (soft), and neither door may reach the name gate directly again.
     const source = readFileSync("src/modules/surveillance/actions.ts", "utf8");
-    const gates = source.match(/normalizeLocationForWrite\(loc, \{ locality: "(\w+)" \}\)/g) ?? [];
-    expect(gates).toEqual([
-      'normalizeLocationForWrite(loc, { locality: "soft" })',
-      'normalizeLocationForWrite(loc, { locality: "soft" })',
-    ]);
-    expect(source.match(/eventLocalityId: normalizedLoc\.localityId/g)).toHaveLength(2);
+    expect(source.match(/await resolveMapFormPlace\(loc\)/g)).toHaveLength(1);
+    expect(source.match(/await resolveReportedPlace\(loc, \{ pair: "soft" \}\)/g)).toHaveLength(1);
+    expect(source).not.toMatch(/normalizeLocationForWrite\(/);
+    expect(source.match(/eventLocalityId: bitePlace\.localityId/g)).toHaveLength(2);
   });
 
   it("a pin whose locality is NOT in the catalog still saves — raw name, no id, no throw", async () => {

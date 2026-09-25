@@ -454,14 +454,22 @@ describe("reportBite — incident locality id (T1-G2)", () => {
     );
   });
 
-  it("never stamps an incident id on a case that fell back to the pet's home locality", async () => {
+  it("never stamps an incident id on a case that carries no incident locality", async () => {
+    // A province-only incident place is a PROVINCE-LEVEL case since
+    // localidades-por-id A2 — never (Córdoba, the pet's home locality), the
+    // chimera the field-by-field fallback used to write. With no locality on
+    // the case there is no row for an id to name.
     const deps = makeDeps();
     await reportBite(
       { ...BASE_INPUT, eventJurisdictionProvince: "Córdoba", eventLocalityId: LOCALITY_ID },
       deps,
     );
     expect(deps.openCase).toHaveBeenCalledWith(
-      expect.objectContaining({ jurisdictionLocality: "Lomas de Zamora", localityId: null }),
+      expect.objectContaining({
+        jurisdictionProvince: "Córdoba",
+        jurisdictionLocality: null,
+        localityId: null,
+      }),
       "fake-tx",
     );
   });

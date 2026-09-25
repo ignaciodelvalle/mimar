@@ -430,13 +430,19 @@ describe("reportBiteFromOrg — incident jurisdiction overrides pet home jurisdi
       expect.objectContaining({ jurisdictionLocality: "Río Cuarto", localityId: LOCALITY_ID }),
       "fake-tx",
     );
-    const fallback = makeDeps();
+    // A province-only incident place is a PROVINCE-LEVEL case (localidades-por-id
+    // A2) — never (CABA, the pet's home barrio) — and carries no row id.
+    const provinceOnly = makeDeps();
     await reportBiteFromOrg(
       { ...BASE_INPUT, eventJurisdictionProvince: "CABA", eventLocalityId: LOCALITY_ID },
-      fallback,
+      provinceOnly,
     );
-    expect(fallback.openCase).toHaveBeenLastCalledWith(
-      expect.objectContaining({ jurisdictionLocality: "Palermo", localityId: null }),
+    expect(provinceOnly.openCase).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        jurisdictionProvince: "CABA",
+        jurisdictionLocality: null,
+        localityId: null,
+      }),
       "fake-tx",
     );
   });

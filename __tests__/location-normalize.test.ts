@@ -62,6 +62,7 @@ vi.mock("@/lib/domain/jurisdiction-canonical", () => ({
 import {
   CoordError,
   JurisdictionValidationError,
+  assertLocationCoords,
   normalizeLocationForWrite,
 } from "@/lib/domain/location-normalize";
 import type { LocationValue } from "@/lib/domain/location-value";
@@ -495,6 +496,25 @@ describe("normalizeLocationForWrite", () => {
       // @ts-expect-error — no mode: the caller must decide strict / soft / none.
       const result = await normalizeLocationForWrite(makeLocationValue(), {});
       expect(result.localityCanonical).toBe(false);
+    });
+  });
+
+  // localidades-por-id A2: callers that resolve the PLACE elsewhere (the
+  // report resolver) still need the gate's coordinate rules, without asking it
+  // to resolve a locality they will not use.
+  describe("assertLocationCoords", () => {
+    it("accepts in-range and absent coordinates", () => {
+      expect(() => assertLocationCoords({ lat: -32.41, lng: -63.24 })).not.toThrow();
+      expect(() => assertLocationCoords({ lat: null, lng: null })).not.toThrow();
+    });
+
+    it("refuses out-of-range coordinates, and absent ones when they are required", () => {
+      expect(() => assertLocationCoords({ lat: 91, lng: 0 })).toThrow(
+        expect.objectContaining({ code: "COORD_OUT_OF_RANGE" }),
+      );
+      expect(() => assertLocationCoords({ lat: null, lng: null }, { requireCoords: true })).toThrow(
+        expect.objectContaining({ code: "COORD_REQUIRED" }),
+      );
     });
   });
 

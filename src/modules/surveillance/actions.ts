@@ -39,7 +39,7 @@ import { revalidatePath } from "next/cache";
 
 import { db, type notifications } from "@/db";
 import { notifyOutbreakInvestigationOpened } from "@/lib/domain/authority";
-import { CoordError, normalizeLocationForWrite } from "@/lib/domain/location-normalize";
+import { CoordError, assertLocationCoords } from "@/lib/domain/location-normalize";
 import { parseLocationFromFormData } from "@/lib/domain/location-value";
 import { serverLocationSource } from "@/lib/domain/provenance";
 import { assertOccurredAtPlausible } from "@/lib/events/plausibility";
@@ -55,6 +55,7 @@ import {
 import { requireAlivePetAccess } from "@/lib/infra/pet-access";
 import { reportError } from "@/lib/infra/report-error";
 import { resolveSignerProvenance } from "@/lib/infra/signer-provenance";
+import { resolveMapFormPlace, resolveReportedPlace } from "@/lib/place/reported-place";
 import { checkboxOn } from "@/lib/ui/form-checkbox";
 import { parseDateInput } from "@/lib/utils/format";
 import { requireCapabilityForOrgToken } from "@/src/modules/organizations/infrastructure/authz-resolver";
@@ -98,7 +99,7 @@ function serverBiteLocationSource(loc: {
   lat: number | null;
   lng: number | null;
 }): "pin_manual" | "geocodificada" | null {
-  return serverLocationSource({ hasPoint: loc.lat !== null && loc.lng !== null });
+  return serverLocationSource({ hasPoint: loc.lat != null && loc.lng != null });
 }
 
 /**
@@ -261,24 +262,28 @@ export async function reportBiteAction(
   const victimAgeEstimate = String(formData.get("victimAgeEstimate") ?? "").trim() || null;
   const clientIdempotencyKey = String(formData.get("clientIdempotencyKey") ?? "").trim() || null;
   const loc = parseLocationFromFormData(formData);
-  // locality:"soft" (localidad plan L2·1, PO 2026-09-08). The locality is
-  // resolved against the INDEC catalog: a match stores the canonical name AND
-  // its ar_localities id (carried onto the bite case below, even when the
-  // capture came from the map pin, which has a name but no id); a miss keeps
-  // the raw text and still saves. NEVER "strict" — a bite report must not be
-  // blocked by how a geocoder spells a place.
-  let normalizedLoc: Awaited<ReturnType<typeof normalizeLocationForWrite>>;
+  // The gate's coordinate rules only: the PLACE is resolved below, by the
+  // resolver every report uses. A bite report is never blocked by how a
+  // geocoder spells a place — the range check on the pin is all that can
+  // refuse here.
   try {
-    normalizedLoc = await normalizeLocationForWrite(loc, { locality: "soft" });
+    assertLocationCoords(loc);
   } catch (err) {
     if (err instanceof CoordError) {
       return { error: err.message };
     }
     throw err;
   }
-  const eventJurisdictionProvince = normalizedLoc.province;
-  const eventJurisdictionLocality = normalizedLoc.locality;
-  const locationSource = serverBiteLocationSource(normalizedLoc);
+  // WHERE IT HAPPENED (localidades-por-id A2). The pair resolves to ONE
+  // catalogue row or to none — a homonym is a province-level place, never the
+  // alphabetically first department — and it is checked against the pin sent
+  // with it (lib/place/reported-place.ts).
+  // The owner form is a map (LocationFields l2): its pair is the client's
+  // reverse geocode of the SAME pin, so a disagreement re-reads the pin.
+  const bitePlace = await resolveMapFormPlace(loc);
+  const eventJurisdictionProvince = bitePlace.province;
+  const eventJurisdictionLocality = bitePlace.locality;
+  const locationSource = serverBiteLocationSource(loc);
 
   // 4. Call use-case.
   const result = await reportBite(
@@ -301,10 +306,10 @@ export async function reportBiteAction(
       clientIdempotencyKey,
       eventJurisdictionProvince,
       eventJurisdictionLocality,
-      eventLocalityId: normalizedLoc.localityId,
+      eventLocalityId: bitePlace.localityId,
       // panorama-event-points Slice 2: the map-pin coordinate (may be null).
-      locationLat: normalizedLoc.lat,
-      locationLng: normalizedLoc.lng,
+      locationLat: loc.lat,
+      locationLng: loc.lng,
       locationSource,
     },
     {
@@ -439,24 +444,29 @@ export async function reportBiteFromOrgAction(
   const vetInvolved = checkboxOn(formData, "vetInvolved");
   const clientIdempotencyKey = String(formData.get("clientIdempotencyKey") ?? "").trim() || null;
   const loc = parseLocationFromFormData(formData);
-  // locality:"soft" (localidad plan L2·1, PO 2026-09-08). The locality is
-  // resolved against the INDEC catalog: a match stores the canonical name AND
-  // its ar_localities id (carried onto the bite case below, even when the
-  // capture came from the map pin, which has a name but no id); a miss keeps
-  // the raw text and still saves. NEVER "strict" — a bite report must not be
-  // blocked by how a geocoder spells a place.
-  let normalizedLoc: Awaited<ReturnType<typeof normalizeLocationForWrite>>;
+  // The gate's coordinate rules only: the PLACE is resolved below, by the
+  // resolver every report uses. A bite report is never blocked by how a
+  // geocoder spells a place — the range check on the pin is all that can
+  // refuse here.
   try {
-    normalizedLoc = await normalizeLocationForWrite(loc, { locality: "soft" });
+    assertLocationCoords(loc);
   } catch (err) {
     if (err instanceof CoordError) {
       return { error: err.message };
     }
     throw err;
   }
-  const eventJurisdictionProvince = normalizedLoc.province;
-  const eventJurisdictionLocality = normalizedLoc.locality;
-  const locationSource = serverBiteLocationSource(normalizedLoc);
+  // WHERE IT HAPPENED (localidades-por-id A2). The pair resolves to ONE
+  // catalogue row or to none — a homonym is a province-level place, never the
+  // alphabetically first department — and it is checked against the pin sent
+  // with it (lib/place/reported-place.ts).
+  // The org form's pair comes from a catalogue picker (INDEC id included), a
+  // source independent of its optional pin: a disagreement leaves the place
+  // province-level rather than trusting either one.
+  const bitePlace = await resolveReportedPlace(loc, { pair: "soft" });
+  const eventJurisdictionProvince = bitePlace.province;
+  const eventJurisdictionLocality = bitePlace.locality;
+  const locationSource = serverBiteLocationSource(loc);
   const noRedirect = String(formData.get("noRedirect") ?? "") === "1";
 
   // 4. Call use-case.
@@ -489,10 +499,10 @@ export async function reportBiteFromOrgAction(
       clientIdempotencyKey,
       eventJurisdictionProvince,
       eventJurisdictionLocality,
-      eventLocalityId: normalizedLoc.localityId,
+      eventLocalityId: bitePlace.localityId,
       // panorama-event-points Slice 2: the map-pin coordinate (may be null).
-      locationLat: normalizedLoc.lat,
-      locationLng: normalizedLoc.lng,
+      locationLat: loc.lat,
+      locationLng: loc.lng,
       locationSource,
       noRedirect,
       orgToken,
