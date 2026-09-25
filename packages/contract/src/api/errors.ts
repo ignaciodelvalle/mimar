@@ -791,6 +791,19 @@
  * - `profile_failed`    — the write itself failed. 500. RETRYING IS SAFE: an
  *                         identity edit is a value, not an append, and a no-op
  *                         repeat appends no event at all.
+ * - `service_dog_refused`
+ *                       — D3 (2026-09-25): one of the four owner service-dog
+ *                         use-cases refused the command — the animal is not a
+ *                         dog, there is no designation yet, it is already
+ *                         verified or already retired, a verification request
+ *                         is already pending, or the use-case's own write failed
+ *                         and it reported that as a refusal. 409, and ONE code
+ *                         for all of them on `adoption_application_refused`'s
+ *                         bar: the use-cases answer es-AR prose, and mapping
+ *                         sentences onto codes would be parsing copy. The read
+ *                         pays it down — the screen offers only the acts the
+ *                         designation's state allows — and the instruction is
+ *                         the same in every case: re-read, then try again.
  * - `adoption_application_refused`
  *                       — the adoption use-case refused the submission. 409,
  *                         and ONE code for every one of its refusals rather
@@ -1267,6 +1280,7 @@ export const API_V1_ERROR_CODES = [
   "profile_forbidden",
   "profile_breed_invalid",
   "profile_failed",
+  "service_dog_refused",
   "erasure_reason_required",
   "export_failed",
   "erasure_failed",

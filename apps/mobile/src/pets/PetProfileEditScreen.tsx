@@ -175,7 +175,10 @@ export function PetProfileEditScreen({ publicToken }: { publicToken: string }) {
       // arm (`toggle_physical_tag_interest` lives on `PhysicalTagInterestScreen`)
       // — but `sendPetProfileCommand`'s return type does not know that, so the
       // narrowing is here rather than a cast.
-      if (result.payload.command === "toggle_physical_tag_interest") {
+      // D3 widened it again with the four service-dog acks, which this screen
+      // never sends either (`ServiceDogScreen` does): `"changed" in` narrows to
+      // the three arms this screen does send.
+      if (!("changed" in result.payload)) {
         setNotice({ tone: "err", message: "La respuesta del servidor no se pudo leer." });
         return;
       }

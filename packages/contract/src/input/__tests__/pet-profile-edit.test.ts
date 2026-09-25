@@ -182,3 +182,50 @@ describe("petIdentityFieldCap — the cap a control may truncate at", () => {
     expect(petIdentityFieldCap(PET_NAME_MAX, LONG_NAME)).toBe(LONG_NAME.length);
   });
 });
+
+describe("the service-dog commands (D3)", () => {
+  const SAVE = {
+    command: "save_service_dog",
+    serviceType: "guia",
+    trainingCenter: "Bocalan Argentina",
+    trainingCertDate: null,
+    rupgaCredential: null,
+    credentialIssueDate: null,
+    credentialExpiryDate: null,
+    notes: null,
+  };
+
+  function firstCode(wire: unknown) {
+    const parsed = petProfileCommandInputSchema.safeParse(wire);
+    return parsed.success ? null : firstPetProfileCommandInputCode(parsed.error);
+  }
+
+  it("accepts the web form's shape, blanks folded to null", () => {
+    const parsed = petProfileCommandInputSchema.parse({
+      ...SAVE,
+      rupgaCredential: "  ",
+      notes: "",
+    });
+    expect(parsed).toMatchObject({ rupgaCredential: null, notes: null });
+  });
+
+  it("names the training centre when it is blank — the use-case's own first refusal", () => {
+    expect(firstCode({ ...SAVE, trainingCenter: "   " })).toBe("TRAINING_CENTER_REQUIRED");
+  });
+
+  it("refuses a day that does not exist, and a type the table does not know", () => {
+    expect(firstCode({ ...SAVE, credentialExpiryDate: "2026-02-31" })).toBe("DATE_INVALID");
+    expect(firstCode({ ...SAVE, serviceType: "terapia" })).toBe("SERVICE_TYPE_INVALID");
+  });
+
+  it("drops a visibility riding on the save — the banner has its own command", () => {
+    const parsed = petProfileCommandInputSchema.parse({ ...SAVE, publicVisibility: "full_banner" });
+    expect(parsed).not.toHaveProperty("publicVisibility");
+  });
+
+  it("refuses a visibility outside the two the table admits", () => {
+    expect(firstCode({ command: "set_service_dog_visibility", publicVisibility: "public" })).toBe(
+      "VISIBILITY_INVALID",
+    );
+  });
+});

@@ -30,6 +30,9 @@ import {
   PET_COLOR_MAX,
   PET_NAME_MAX,
   PET_SPECIES,
+  SERVICE_DOG_NOTES_MAX,
+  SERVICE_DOG_RUPGA_MAX,
+  SERVICE_DOG_TRAINING_CENTER_MAX,
   firstPetProfileCommandInputCode,
   petIdentityFieldCap,
   petProfileCommandInputSchema,
@@ -190,7 +193,8 @@ export type CommandResult =
   | { ok: true; input: PetProfileCommandInput }
   | { ok: false; message: string; code: PetProfileCommandInputCode | null };
 
-function validated(wire: unknown): CommandResult {
+/** Exported for the sibling screens that post to the same endpoint (D3's service dog). */
+export function validated(wire: unknown): CommandResult {
   const parsed = petProfileCommandInputSchema.safeParse(wire);
   if (parsed.success) return { ok: true, input: parsed.data };
   const code = firstPetProfileCommandInputCode(parsed.error);
@@ -287,6 +291,22 @@ export function petProfileInputCodeMessage(code: PetProfileCommandInputCode | nu
     case "SPECIES_INVALID":
       // The web form's own sentence for the same refusal.
       return "Elegí una especie válida.";
+    // D3 — the service-dog form.
+    case "SERVICE_TYPE_INVALID":
+      return "Elegí el tipo de servicio.";
+    case "TRAINING_CENTER_REQUIRED":
+      // The web use-case's own sentence for the same refusal.
+      return "Indicá el centro de entrenamiento.";
+    case "TRAINING_CENTER_TOO_LONG":
+      return `El centro de entrenamiento es demasiado largo (máximo ${SERVICE_DOG_TRAINING_CENTER_MAX} caracteres).`;
+    case "RUPGA_TOO_LONG":
+      return `El número RUPGA es demasiado largo (máximo ${SERVICE_DOG_RUPGA_MAX} caracteres).`;
+    case "NOTES_TOO_LONG":
+      return `Las notas son demasiado largas (máximo ${SERVICE_DOG_NOTES_MAX} caracteres).`;
+    case "DATE_INVALID":
+      return "Revisá las fechas: escribilas como DD/MM/AAAA y que el día exista.";
+    case "VISIBILITY_INVALID":
+      return "La app no pudo armar la acción. Volvé a intentar.";
   }
 }
 
@@ -320,6 +340,14 @@ export function savedLabel(command: PetProfileCommandInput["command"], changed: 
     // here only because the switch is exhaustive over every command this
     // contract knows.
     case "toggle_physical_tag_interest":
+      return "Listo.";
+    // UNREACHABLE VIA THIS FUNCTION for the same reason: the four service-dog
+    // acts live on `ServiceDogScreen`, whose acks carry no `changed`, and it
+    // reads `serviceDogSavedLabel` instead.
+    case "save_service_dog":
+    case "request_service_dog_verification":
+    case "set_service_dog_visibility":
+    case "retire_service_dog":
       return "Listo.";
   }
 }

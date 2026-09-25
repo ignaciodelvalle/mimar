@@ -21,11 +21,13 @@ import { apiV1Envelope } from "@/lib/infra/api-v1";
 import { type PetHolderAccess, isTitularHolder } from "@/lib/infra/pet-access";
 import type { PhysicalTagInterestState } from "@/lib/infra/physical-tag-interest";
 import type { OwnerPetViewerContactsRead } from "@/src/modules/pets/application/read/owner-pet-detail-queries";
+import type { ServiceDogDesignationRow } from "@/src/modules/pets/application/service-dog/read-service-dog";
 import {
   PET_PROFILE_EDIT_PAYLOAD_VERSION,
   PET_PROFILE_EDIT_STALE_AFTER_MS,
   type PetProfileEditCapabilitiesV1,
   type PetProfileEditV1,
+  type ServiceDogDesignationV1,
 } from "@dim/contract/api";
 
 /** The `pets` columns this payload reads. Structural — the row satisfies it. */
@@ -72,6 +74,12 @@ export type ResolvedProfileAccess = Exclude<PetHolderAccess, { kind: "none" }>;
  *     predicate denies a caretaker, and the web action never drew that line for
  *     this placeholder — a caretaker passes it exactly as a co-owner or a
  *     foster does. The one and only holder this excludes is the org path.
+ *   · THE SERVICE DOG (D3) is the LEGAL OWNER alone — the contacts rule, and
+ *     for the web's own two reasons: `AsistenciaPage` renders the form only when
+ *     `accessRow.role === "owner"` (everybody else gets `FriendlyOwnerOnlyPage`),
+ *     and `loadOwnedPetWithServiceDog`, which all four owner use-cases resolve
+ *     the pet through, joins `ownerships.role = 'owner'`. The org path, a
+ *     co-owner, a foster and a caretaker are all outside it.
  */
 export function petProfileCapabilities(
   access: ResolvedProfileAccess,
@@ -89,6 +97,7 @@ export function petProfileCapabilities(
     // its own so the two can part ways without a client noticing the wrong one.
     canCorrectSpecies: titular,
     canTogglePhysicalTagInterest: access.kind === "owner",
+    canManageServiceDog: access.kind === "owner" && access.holderRole === "owner",
   };
 }
 
@@ -110,6 +119,12 @@ export type BuildPetProfileEditInput = {
    * an org member already asked is nobody's business but the owner's.
    */
   physicalTagInterest: PhysicalTagInterestState | null;
+  /**
+   * D3 — the animal's `pet_service_dog` row, or `null` when there is none OR
+   * when it was not read. Not read at all for a caller `canManageServiceDog`
+   * denies: the row says the owner has a disability (Ley 25.326 Art. 7).
+   */
+  serviceDog: ServiceDogDesignationRow | null;
   now: Date;
 };
 
@@ -118,6 +133,7 @@ export function buildPetProfileEditV1({
   access,
   accountContacts,
   physicalTagInterest,
+  serviceDog,
   now,
 }: BuildPetProfileEditInput): PetProfileEditV1 {
   const capabilities = petProfileCapabilities(access);
@@ -160,6 +176,28 @@ export function buildPetProfileEditV1({
           requestedAt: physicalTagInterest?.requestedAt?.toISOString() ?? null,
         }
       : null,
+    serviceDog: capabilities.canManageServiceDog
+      ? { designation: serviceDog === null ? null : serviceDogDesignation(serviceDog) }
+      : null,
     capabilities,
+  };
+}
+
+/** The row → the wire. Named fields, never a spread: ids and audit columns stay home. */
+function serviceDogDesignation(row: ServiceDogDesignationRow): ServiceDogDesignationV1 {
+  return {
+    serviceType: row.serviceType,
+    credentialStatus: row.credentialStatus,
+    inService: row.inService,
+    publicVisibility: row.publicVisibility,
+    trainingCenter: row.trainingCenter,
+    trainingCertDate: row.trainingCertDate,
+    rupgaCredential: row.rupgaCredential,
+    credentialIssueDate: row.credentialIssueDate,
+    credentialExpiryDate: row.credentialExpiryDate,
+    notes: row.notes,
+    // The web page shows the reason only under a revoked status; carried under
+    // the same condition so a stale reason on a re-verified row never leaks.
+    revocationReason: row.credentialStatus === "revocada" ? row.revocationReason : null,
   };
 }

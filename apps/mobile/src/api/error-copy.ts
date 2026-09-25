@@ -374,6 +374,11 @@ export function apiErrorMessage(code: ApiV1ErrorCode): string {
       // Retrying IS safe: an edit is a value, not an append, and repeating one
       // that already landed appends nothing at all.
       return "No pudimos guardar los cambios. Volvé a intentar.";
+    case "service_dog_refused":
+      // ONE code for every refusal of the four service-dog acts (see the
+      // contract), so the sentence names none of them and sends the person to
+      // look at the current state — which is what each of them needs.
+      return "No se pudo completar. Puede que ya haya una solicitud pendiente o que el estado de la credencial haya cambiado. Actualizá la pantalla y probá de nuevo.";
     // Privacidad — los dos derechos de la Ley 25.326 desde el teléfono.
     case "erasure_reason_required":
       // The screen already disables its button below five characters, so this

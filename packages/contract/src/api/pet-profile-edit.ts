@@ -53,6 +53,12 @@
 //   · INTERNAL IDs, for the reason `owner-pet-detail.ts` states: this is what a
 //     stolen access token buys. `publicToken` is the animal's identity here.
 
+import type {
+  ServiceDogStatusV1,
+  ServiceDogTypeV1,
+  ServiceDogVisibilityV1,
+} from "../input/service-dog.ts";
+
 export const PET_PROFILE_EDIT_PAYLOAD_VERSION = 1;
 
 /**
@@ -138,6 +144,21 @@ export type PetProfileEditCapabilitiesV1 = {
    * drew that finer line for this placeholder.
    */
   canTogglePhysicalTagInterest: boolean;
+  /**
+   * D3 (2026-09-25) — the service-dog designation (Ley 26.858). THE LEGAL OWNER
+   * ALONE, the same rule as `canEditEmergencyContacts` and for the web's own
+   * reasons, twice over: the page (`AsistenciaPage`) renders the form only for
+   * `ownerships.role === "owner"` and shows everybody else a "solo bajo dueño
+   * legal permanente" notice, and every owner use-case behind
+   * `app/actions/service-dog.ts` resolves the pet through
+   * `loadOwnedPetWithServiceDog`, which joins `role = 'owner'`. A co-owner, a
+   * foster, a caretaker and the whole org path are outside it.
+   *
+   * NOT GATED ON SPECIES. The web page serves a non-dog too (with a callout
+   * that the law is dog-only) and the refusal lives in the upsert use-case; the
+   * designation block tells a client the species through `species` above.
+   */
+  canManageServiceDog: boolean;
 };
 
 export type PetProfileEditV1 = {
@@ -169,7 +190,39 @@ export type PetProfileEditV1 = {
    * whether SOMEBODY ELSE already asked, not an empty or a false one.
    */
   physicalTagInterest: PhysicalTagInterestDraftV1 | null;
+  /**
+   * D3 — `null` when `capabilities.canManageServiceDog` is false: the fact that
+   * an animal is an assistance dog reveals its owner's disability, a sensitive
+   * datum under Ley 25.326 Art. 7, and nobody but the legal owner gets it here.
+   * For the owner it is `{ designation: null }` when nothing was ever saved.
+   */
+  serviceDog: ServiceDogSectionV1 | null;
   capabilities: PetProfileEditCapabilitiesV1;
+};
+
+/**
+ * D3 — the owner's view of the service-dog row, the fields the web page and
+ * its form (`AsistenciaPage`, `ServiceDogForm`) read off `pet_service_dog`.
+ */
+export type ServiceDogSectionV1 = {
+  designation: ServiceDogDesignationV1 | null;
+};
+
+export type ServiceDogDesignationV1 = {
+  serviceType: ServiceDogTypeV1;
+  credentialStatus: ServiceDogStatusV1;
+  /** `false` once retired from service — the banner never shows again. */
+  inService: boolean;
+  publicVisibility: ServiceDogVisibilityV1;
+  trainingCenter: string;
+  /** `YYYY-MM-DD` or null — the column is a `date`. */
+  trainingCertDate: string | null;
+  rupgaCredential: string | null;
+  credentialIssueDate: string | null;
+  credentialExpiryDate: string | null;
+  notes: string | null;
+  /** Set only when `credentialStatus` is `revocada`; the web shows it to the owner. */
+  revocationReason: string | null;
 };
 
 /**
@@ -205,4 +258,15 @@ export type PhysicalTagInterestDraftV1 = {
  */
 export type PetProfileEditAckV1 =
   | { command: "edit_identity" | "set_emergency_contacts" | "correct_species"; changed: boolean }
-  | { command: "toggle_physical_tag_interest"; state: "interested" | "cancelled" };
+  | { command: "toggle_physical_tag_interest"; state: "interested" | "cancelled" }
+  /**
+   * D3 — the three service-dog writes that answer nothing but success, which
+   * is all their use-cases report (`{ ok: true }`). A client re-reads the GET
+   * for the new state, as the web form reloads its page.
+   */
+  | { command: "save_service_dog" | "set_service_dog_visibility" | "retire_service_dog" }
+  /**
+   * D3 — the verification request answers the approval request's public
+   * token, the `APR-…` the web form prints in its confirmation.
+   */
+  | { command: "request_service_dog_verification"; approvalRequestPublicToken: string };

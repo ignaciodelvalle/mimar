@@ -50,6 +50,14 @@ const control = vi.hoisted(() => ({
   },
   /** D2: what `togglePhysicalTagInterest` answers. */
   toggleResult: { ok: true, state: "interested" } as Record<string, unknown>,
+  /** D3: the `pet_service_dog` row `readServiceDogDesignation` answers. */
+  serviceDogRow: null as null | Record<string, unknown>,
+  /** D3: how many times the service-dog row was read. */
+  serviceDogReads: 0,
+  /** D3: what each service-dog use-case answers. */
+  serviceDogResult: { ok: true } as Record<string, unknown>,
+  /** D3: when set, the service-dog use-case throws instead of answering. */
+  serviceDogThrows: false,
   /** Every writer call. Empty means nothing was written. */
   writes: [] as Array<{ command: string; input: Record<string, unknown> }>,
   /** Every row handed to the canonical notification service. */
@@ -151,6 +159,37 @@ vi.mock(
     },
   }),
 );
+
+// D3 — the read side: the SAME single-row read `AsistenciaPage` makes inline,
+// lifted into a module the route calls.
+vi.mock("@/src/modules/pets/application/service-dog/read-service-dog", () => ({
+  readServiceDogDesignation: async () => {
+    control.serviceDogReads += 1;
+    return control.serviceDogRow;
+  },
+}));
+
+// D3 — the four OWNER use-cases, mocked at the modules `app/actions/service-dog.ts`
+// ALSO imports: one module, two doors. What reaches each is asserted below.
+const serviceDogUseCase = vi.hoisted(
+  () => (command: string) => async (userId: string, input: Record<string, unknown>) => {
+    control.writes.push({ command, input: { userId, ...input } });
+    if (control.serviceDogThrows) throw new Error("connection terminated");
+    return control.serviceDogResult;
+  },
+);
+vi.mock("@/src/modules/pets/application/service-dog/upsert-service-dog", () => ({
+  upsertServiceDog: serviceDogUseCase("save_service_dog"),
+}));
+vi.mock("@/src/modules/pets/application/service-dog/submit-verification-request", () => ({
+  submitServiceDogVerificationRequest: serviceDogUseCase("request_service_dog_verification"),
+}));
+vi.mock("@/src/modules/pets/application/service-dog/set-service-dog-visibility", () => ({
+  setServiceDogVisibility: serviceDogUseCase("set_service_dog_visibility"),
+}));
+vi.mock("@/src/modules/pets/application/service-dog/retire-service-dog", () => ({
+  retireServiceDog: serviceDogUseCase("retire_service_dog"),
+}));
 
 // The CANONICAL write path, mocked so its rows can be read. `commands.ts` uses
 // it instead of the raw `db.insert(notifications)` the cookie door beside it
@@ -257,6 +296,10 @@ beforeEach(() => {
   control.speciesResult = { ok: true, changed: true };
   control.physicalTagInterest = { interested: false, requestedAt: null };
   control.toggleResult = { ok: true, state: "interested" };
+  control.serviceDogRow = null;
+  control.serviceDogReads = 0;
+  control.serviceDogResult = { ok: true };
+  control.serviceDogThrows = false;
   control.writes = [];
   control.notified = [];
   control.notifyThrows = false;
@@ -321,6 +364,9 @@ describe("GET — what the form pre-fills with", () => {
       // D2: person-path, not the legal owner alone — the web action's own
       // check (`accessPath !== "owner"`) admits a co-owner.
       canTogglePhysicalTagInterest: true,
+      // D3: the legal owner alone — `AsistenciaPage` and
+      // `loadOwnedPetWithServiceDog` both say `role = 'owner'`.
+      canManageServiceDog: false,
     });
     // NULL, not an empty draft: these are the titular's own numbers.
     expect(body.emergencyContacts).toBeNull();
@@ -346,6 +392,7 @@ describe("GET — what the form pre-fills with", () => {
       // D2: `togglePhysicalTagInterestAction` never drew this finer line — a
       // caretaker passes its own check exactly as a co-owner does.
       canTogglePhysicalTagInterest: true,
+      canManageServiceDog: false,
     });
   });
 
@@ -710,6 +757,185 @@ describe("POST — D2, alternar interés en la chapa física", () => {
     const response = await send(TOGGLE);
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: "profile_failed" });
+  });
+});
+
+describe("GET — D3, la designación de perro de asistencia", () => {
+  const ROW = {
+    id: "33333333-3333-4333-8333-333333333333",
+    petId: PET_ID,
+    serviceType: "guia",
+    credentialStatus: "vigente",
+    rupgaCredential: "RUPGA-123",
+    trainingCenter: "Bocalan Argentina",
+    trainingCertDate: "2025-03-10",
+    credentialIssueDate: "2025-04-01",
+    credentialExpiryDate: null,
+    inService: true,
+    publicVisibility: "private_only",
+    notes: null,
+    verifiedAt: new Date("2025-04-01T12:00:00Z"),
+    verifiedByUserId: "44444444-4444-4444-8444-444444444444",
+    revokedAt: null,
+    revokedByUserId: null,
+    revocationReason: "stale reason from a previous revocation",
+    createdAt: new Date("2025-03-01T12:00:00Z"),
+    updatedAt: new Date("2025-04-01T12:00:00Z"),
+  };
+
+  it("gives the legal owner the row's own fields — named, never the ids or the verifier", async () => {
+    control.serviceDogRow = ROW;
+    const body = await (await read()).json();
+    expect(body.capabilities.canManageServiceDog).toBe(true);
+    expect(body.serviceDog).toEqual({
+      designation: {
+        serviceType: "guia",
+        credentialStatus: "vigente",
+        inService: true,
+        publicVisibility: "private_only",
+        trainingCenter: "Bocalan Argentina",
+        trainingCertDate: "2025-03-10",
+        rupgaCredential: "RUPGA-123",
+        credentialIssueDate: "2025-04-01",
+        credentialExpiryDate: null,
+        notes: null,
+        // The web shows a reason only under `revocada`; a leftover one on a
+        // re-verified row stays home.
+        revocationReason: null,
+      },
+    });
+  });
+
+  it("carries the reason under a revoked status, as the web page shows it", async () => {
+    control.serviceDogRow = { ...ROW, credentialStatus: "revocada", revocationReason: "Motivo." };
+    const body = await (await read()).json();
+    expect(body.serviceDog.designation.revocationReason).toBe("Motivo.");
+  });
+
+  it("answers `{ designation: null }` to an owner who never registered one", async () => {
+    const body = await (await read()).json();
+    expect(body.serviceDog).toEqual({ designation: null });
+  });
+
+  it("withholds it ENTIRELY, and never reads the row, for every holder but the legal owner", async () => {
+    for (const access of [asRole("co_owner"), asRole("foster"), asRole("caretaker"), asOrg()]) {
+      control.access = access;
+      control.serviceDogRow = ROW;
+      control.serviceDogReads = 0;
+      const body = await (await read()).json();
+      expect(body.capabilities.canManageServiceDog).toBe(false);
+      expect(body.serviceDog).toBeNull();
+      expect(control.serviceDogReads).toBe(0);
+    }
+  });
+
+  it("the contract's enums are the table's — a CHECK value added on one side fails here", async () => {
+    const db = await import("@/db/schema");
+    const contract = await import("@dim/contract/input");
+    expect([...contract.SERVICE_DOG_TYPES]).toEqual([...db.SERVICE_DOG_TYPES]);
+    expect([...contract.SERVICE_DOG_STATUSES]).toEqual([...db.SERVICE_DOG_STATUSES]);
+    expect([...contract.SERVICE_DOG_VISIBILITIES]).toEqual([...db.SERVICE_DOG_VISIBILITIES]);
+    expect([...contract.SERVICE_DOG_BANNER_TYPES]).toEqual([...db.SERVICE_DOG_BANNER_TYPES]);
+  });
+});
+
+describe("POST — D3, perro de asistencia", () => {
+  const SAVE = {
+    command: "save_service_dog",
+    serviceType: "asistencia_tea",
+    trainingCenter: "  Bocalan Argentina  ",
+    trainingCertDate: "2025-03-10",
+    rupgaCredential: "",
+    credentialIssueDate: "",
+    credentialExpiryDate: null,
+    notes: null,
+  };
+
+  it("reaches upsertServiceDog with the web form's fields and never a visibility", async () => {
+    const response = await send({ ...SAVE, publicVisibility: "full_banner" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ command: "save_service_dog" });
+    expect(control.writes).toEqual([
+      {
+        command: "save_service_dog",
+        input: {
+          userId: OWNER_ID,
+          petPublicToken: TOKEN,
+          serviceType: "asistencia_tea",
+          trainingCenter: "Bocalan Argentina",
+          trainingCertDate: "2025-03-10",
+          rupgaCredential: null,
+          credentialIssueDate: null,
+          credentialExpiryDate: null,
+          notes: null,
+        },
+      },
+    ]);
+  });
+
+  it("refuses a day that does not exist, before any use-case runs", async () => {
+    const response = await send({ ...SAVE, trainingCertDate: "2025-02-31" });
+    expect(response.status).toBe(400);
+    expect(control.writes).toHaveLength(0);
+  });
+
+  it("answers the approval request's token on a verification request", async () => {
+    control.serviceDogResult = { approvalRequestPublicToken: "APR-ABCD-1234" };
+    const response = await send({ command: "request_service_dog_verification" });
+    expect(await response.json()).toEqual({
+      command: "request_service_dog_verification",
+      approvalRequestPublicToken: "APR-ABCD-1234",
+    });
+    expect(control.writes[0].input).toEqual({ userId: OWNER_ID, petPublicToken: TOKEN });
+  });
+
+  it("reaches the visibility and the retire use-cases with the web action's inputs", async () => {
+    await send({ command: "set_service_dog_visibility", publicVisibility: "full_banner" });
+    await send({ command: "retire_service_dog" });
+    expect(control.writes).toEqual([
+      {
+        command: "set_service_dog_visibility",
+        input: { userId: OWNER_ID, petPublicToken: TOKEN, publicVisibility: "full_banner" },
+      },
+      { command: "retire_service_dog", input: { userId: OWNER_ID, petPublicToken: TOKEN } },
+    ]);
+  });
+
+  it("refuses every holder but the legal owner with the caller's code, and writes nothing", async () => {
+    for (const access of [asRole("co_owner"), asRole("foster"), asRole("caretaker"), asOrg()]) {
+      control.access = access;
+      for (const body of [
+        SAVE,
+        { command: "request_service_dog_verification" },
+        { command: "set_service_dog_visibility", publicVisibility: "full_banner" },
+        { command: "retire_service_dog" },
+      ]) {
+        const response = await send(body);
+        expect(response.status).toBe(403);
+        expect(await response.json()).toEqual({ error: "profile_forbidden" });
+      }
+    }
+    expect(control.writes).toHaveLength(0);
+  });
+
+  it("answers a use-case refusal with ONE code and never echoes its sentence", async () => {
+    control.serviceDogResult = { error: "El perro ya está retirado del servicio." };
+    const response = await send({ command: "retire_service_dog" });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "service_dog_refused" });
+  });
+
+  it("answers 500 when the use-case throws", async () => {
+    control.serviceDogThrows = true;
+    const response = await send({ command: "retire_service_dog" });
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "profile_failed" });
+  });
+
+  it("never offers the admin revocation — no such command on this door", async () => {
+    const response = await send({ command: "revoke_service_dog", motivo: "x".repeat(40) });
+    expect(response.status).toBe(400);
+    expect(control.writes).toHaveLength(0);
   });
 });
 

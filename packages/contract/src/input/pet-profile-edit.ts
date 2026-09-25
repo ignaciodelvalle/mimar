@@ -75,6 +75,15 @@ import { z } from "zod";
 // schemas at module-evaluation time, where a cycle turns the other side's
 // constants into `undefined`. See `pet-species.ts`.
 import { PET_SPECIES } from "./pet-species.ts";
+import {
+  SERVICE_DOG_NOTES_MAX,
+  SERVICE_DOG_RUPGA_MAX,
+  SERVICE_DOG_TRAINING_CENTER_MAX,
+  SERVICE_DOG_TYPES,
+  SERVICE_DOG_VISIBILITIES,
+  optionalServiceDogDay,
+  optionalServiceDogText,
+} from "./service-dog.ts";
 import { isWritableName } from "./writable-name.ts";
 
 /**
@@ -122,6 +131,14 @@ export const PET_PROFILE_COMMAND_INPUT_CODES = [
   "CONTACT_NAME_TOO_LONG",
   "CONTACT_PHONE_TOO_LONG",
   "SPECIES_INVALID",
+  // D3 — the service-dog form's own five.
+  "SERVICE_TYPE_INVALID",
+  "TRAINING_CENTER_REQUIRED",
+  "TRAINING_CENTER_TOO_LONG",
+  "RUPGA_TOO_LONG",
+  "NOTES_TOO_LONG",
+  "DATE_INVALID",
+  "VISIBILITY_INVALID",
 ] as const;
 export type PetProfileCommandInputCode = (typeof PET_PROFILE_COMMAND_INPUT_CODES)[number];
 
@@ -295,11 +312,66 @@ const togglePhysicalTagInterest = z.object({
   command: z.literal("toggle_physical_tag_interest"),
 });
 
+/**
+ * D3 (2026-09-25) — GUARDAR LOS DATOS DEL PERRO DE ASISTENCIA, reaching the
+ * IDENTICAL use-case `upsertServiceDogAction` reaches (`upsertServiceDog`,
+ * `src/modules/pets/application/service-dog/`).
+ *
+ * THE FIELDS ARE THE WEB FORM'S, and every key is REQUIRED with a nullable
+ * value — the form posts all seven on every save, and the use-case writes all
+ * seven (`value || null`) on update, so an omitted key would have to mean
+ * either "leave it" or "clear it" and the writer only knows the second.
+ *
+ * `publicVisibility` IS NOT A FIELD, although the use-case's input type has
+ * one: the web form never sends it, so on the web an upsert keeps the stored
+ * visibility (or `private_only` for a new row). The banner has its own command
+ * below, gated in the UI on a vigente, in-service credential — exposing it here
+ * too would be a second, ungated way to turn on a public disclosure of the
+ * owner's disability (Ley 25.326 Art. 7).
+ */
+const saveServiceDog = z.object({
+  command: z.literal("save_service_dog"),
+  serviceType: z.enum(SERVICE_DOG_TYPES, { error: "SERVICE_TYPE_INVALID" }),
+  trainingCenter: z
+    .string({ error: "TRAINING_CENTER_REQUIRED" })
+    .trim()
+    .min(1, { error: "TRAINING_CENTER_REQUIRED" })
+    .max(SERVICE_DOG_TRAINING_CENTER_MAX, { error: "TRAINING_CENTER_TOO_LONG" }),
+  trainingCertDate: optionalServiceDogDay,
+  rupgaCredential: optionalServiceDogText(SERVICE_DOG_RUPGA_MAX, "RUPGA_TOO_LONG"),
+  credentialIssueDate: optionalServiceDogDay,
+  credentialExpiryDate: optionalServiceDogDay,
+  notes: optionalServiceDogText(SERVICE_DOG_NOTES_MAX, "NOTES_TOO_LONG"),
+});
+
+/**
+ * D3 — SOLICITAR VERIFICACIÓN: `submitServiceDogVerificationRequestAction`'s
+ * use-case. No fields: the request is built server-side from the stored row.
+ */
+const requestServiceDogVerification = z.object({
+  command: z.literal("request_service_dog_verification"),
+});
+
+/** D3 — the public banner on/off: `setServiceDogVisibilityAction`'s use-case. */
+const setServiceDogVisibility = z.object({
+  command: z.literal("set_service_dog_visibility"),
+  publicVisibility: z.enum(SERVICE_DOG_VISIBILITIES, { error: "VISIBILITY_INVALID" }),
+});
+
+/** D3 — retirar del servicio: `retireServiceDogAction`'s use-case. */
+const retireServiceDog = z.object({
+  command: z.literal("retire_service_dog"),
+});
+
 export const petProfileCommandInputSchema = z.discriminatedUnion("command", [
   editIdentity,
   setEmergencyContacts,
   correctSpecies,
   togglePhysicalTagInterest,
+  saveServiceDog,
+  requestServiceDogVerification,
+  setServiceDogVisibility,
+  retireServiceDog,
 ]);
 
 export type PetProfileCommandInput = z.infer<typeof petProfileCommandInputSchema>;

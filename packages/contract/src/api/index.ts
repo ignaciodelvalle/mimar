@@ -311,6 +311,8 @@ export {
   type PetProfileEditAckV1,
   type PetProfileEditCapabilitiesV1,
   type PetProfileEditV1,
+  type ServiceDogDesignationV1,
+  type ServiceDogSectionV1,
 } from "./pet-profile-edit.ts";
 export {
   PUBLIC_CREDENTIAL_PAYLOAD_VERSION,

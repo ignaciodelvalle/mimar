@@ -282,6 +282,18 @@ export {
   resolvePetIdentityLengths,
 } from "./pet-profile-edit.ts";
 export {
+  SERVICE_DOG_BANNER_TYPES,
+  SERVICE_DOG_NOTES_MAX,
+  SERVICE_DOG_RUPGA_MAX,
+  SERVICE_DOG_STATUSES,
+  SERVICE_DOG_TRAINING_CENTER_MAX,
+  SERVICE_DOG_TYPES,
+  SERVICE_DOG_VISIBILITIES,
+  type ServiceDogStatusV1,
+  type ServiceDogTypeV1,
+  type ServiceDogVisibilityV1,
+} from "./service-dog.ts";
+export {
   EXPO_PUSH_TOKEN_PREFIX,
   PUSH_ANDROID_CHANNEL_ID,
   PUSH_ANDROID_HEALTH_CHANNEL_ID,

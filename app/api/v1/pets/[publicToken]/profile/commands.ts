@@ -16,6 +16,9 @@
 //   contactos          `updateEmergencyContactsForPet`  …/profile/update-emergency-contacts.ts
 //   corregir especie   `correctPetSpeciesAction`        src/modules/pets/actions.ts
 //                      `CorrectSpeciesPage`             …/[publicToken]/corregir-especie/page.tsx
+//   perro de asistencia `upsertServiceDogAction` and its three siblings
+//                      app/actions/service-dog.ts
+//                      `AsistenciaPage`                 …/[publicToken]/asistencia/page.tsx
 //
 // THE SPECIES CORRECTION CLOSES `unjoined:correctPetSpeciesAction` in
 // `scripts/check-owner-surface-parity.ts`: the web action used to run its
@@ -79,6 +82,10 @@ import { reportError } from "@/lib/infra/report-error";
 import { togglePhysicalTagInterest } from "@/src/modules/pets/application/physical-tag-interest/toggle-physical-tag-interest";
 import { correctPetSpecies } from "@/src/modules/pets/application/profile/correct-species";
 import { updateEmergencyContactsForPet } from "@/src/modules/pets/application/profile/update-emergency-contacts";
+import { retireServiceDog } from "@/src/modules/pets/application/service-dog/retire-service-dog";
+import { setServiceDogVisibility } from "@/src/modules/pets/application/service-dog/set-service-dog-visibility";
+import { submitServiceDogVerificationRequest } from "@/src/modules/pets/application/service-dog/submit-verification-request";
+import { upsertServiceDog } from "@/src/modules/pets/application/service-dog/upsert-service-dog";
 import { updatePet } from "@/src/modules/pets/application/update-pet";
 import { diffPet } from "@/src/modules/pets/domain/pet-diff";
 import { composePetIdentityEdit } from "@/src/modules/pets/domain/pet-identity-edit";
@@ -150,6 +157,16 @@ export async function runPetProfileCommand(ctx: CommandContext) {
     return runToggle(ctx, access);
   }
 
+  if (
+    ctx.input.command === "save_service_dog" ||
+    ctx.input.command === "request_service_dog_verification" ||
+    ctx.input.command === "set_service_dog_visibility" ||
+    ctx.input.command === "retire_service_dog"
+  ) {
+    if (!capabilities.canManageServiceDog) return apiV1Error("profile_forbidden", 403);
+    return runServiceDogCommand(ctx, ctx.input);
+  }
+
   if (!capabilities.canEditEmergencyContacts) return apiV1Error("profile_forbidden", 403);
   return setEmergencyContacts(ctx, access, ctx.input);
 }
@@ -182,6 +199,91 @@ async function runToggle(ctx: CommandContext, access: ResolvedProfileAccess) {
     return apiV1Error("profile_failed", 500);
   }
   return ack({ command: "toggle_physical_tag_interest", state: result.state });
+}
+
+type ServiceDogCommandInput = Extract<
+  PetProfileCommandInput,
+  {
+    command:
+      | "save_service_dog"
+      | "request_service_dog_verification"
+      | "set_service_dog_visibility"
+      | "retire_service_dog";
+  }
+>;
+
+/**
+ * D3 — THE SERVICE-DOG DESIGNATION, through the web's four owner use-cases
+ * verbatim (`app/actions/service-dog.ts`: `upsertServiceDogAction`,
+ * `submitServiceDogVerificationRequestAction`, `setServiceDogVisibilityAction`,
+ * `retireServiceDogAction`). Each of those is `requireUserOrRedirect` + the
+ * use-case; this door's `requireLiveUser` is the first half and
+ * `canManageServiceDog` a stricter restatement of what the second half checks
+ * again on its own (`loadOwnedPetWithServiceDog`, `role = 'owner'`).
+ * `revokeServiceDogCredentialAction` is admin/govt and is not reachable here.
+ *
+ * ONE CODE FOR EVERY DOMAIN REFUSAL — `service_dog_refused`, 409 — on the bar
+ * `adoption_application_refused` set: the use-cases answer es-AR PROSE ("El
+ * perro ya está retirado del servicio.", "Ya tenés una solicitud pendiente…"),
+ * written for the web form's inline error, and a route that mapped sentences
+ * onto codes would be parsing copy. The sentence is not forwarded either. Two
+ * of those `{ error }` arms are infrastructure failures the use-case caught
+ * itself (the upsert's and the request's own `try`), and they arrive under the
+ * same code — the client's instruction for both is the same: re-read, try
+ * again. A THROWN failure (the visibility and retire writes have no `try`) is
+ * `profile_failed`, 500.
+ *
+ * NO `Idempotency-Key`: the upsert and the visibility are values; a replayed
+ * retire meets "ya está retirado" and a replayed request meets the use-case's
+ * own duplicate-pending refusal, so neither can double-append.
+ */
+async function runServiceDogCommand(ctx: CommandContext, input: ServiceDogCommandInput) {
+  const petPublicToken = ctx.publicToken;
+  let result: { ok: true } | { approvalRequestPublicToken: string } | { error: string };
+  try {
+    switch (input.command) {
+      case "save_service_dog":
+        // THE FIELDS THE WEB FORM POSTS, and not `publicVisibility` — see the
+        // contract's `saveServiceDog`: on the web an upsert keeps the stored
+        // visibility, and so does this.
+        result = await upsertServiceDog(ctx.userId, {
+          petPublicToken,
+          serviceType: input.serviceType,
+          trainingCenter: input.trainingCenter,
+          trainingCertDate: input.trainingCertDate,
+          rupgaCredential: input.rupgaCredential,
+          credentialIssueDate: input.credentialIssueDate,
+          credentialExpiryDate: input.credentialExpiryDate,
+          notes: input.notes,
+        });
+        break;
+      case "request_service_dog_verification":
+        result = await submitServiceDogVerificationRequest(ctx.userId, { petPublicToken });
+        break;
+      case "set_service_dog_visibility":
+        result = await setServiceDogVisibility(ctx.userId, {
+          petPublicToken,
+          publicVisibility: input.publicVisibility,
+        });
+        break;
+      case "retire_service_dog":
+        result = await retireServiceDog(ctx.userId, { petPublicToken });
+        break;
+    }
+  } catch (err) {
+    reportError(`api-v1-profile/${input.command}`, err, { userId: ctx.userId });
+    return apiV1Error("profile_failed", 500);
+  }
+
+  if ("error" in result) return apiV1Error("service_dog_refused", 409);
+  if (input.command === "request_service_dog_verification") {
+    if (!("approvalRequestPublicToken" in result)) return apiV1Error("profile_failed", 500);
+    return ack({
+      command: "request_service_dog_verification",
+      approvalRequestPublicToken: result.approvalRequestPublicToken,
+    });
+  }
+  return ack({ command: input.command });
 }
 
 /**

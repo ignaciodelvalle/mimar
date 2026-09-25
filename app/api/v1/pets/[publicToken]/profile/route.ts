@@ -4,9 +4,10 @@
 // GET reads what a form needs to pre-fill itself — the three identity fields,
 // the pet-level emergency-contact override, the account defaults each of those
 // falls back to when cleared, and which of the commands this caller may send.
-// POST runs one of four: editar los datos, guardar los contactos, corregir la
-// especie (the FULL-LOCK correction, added 2026-09-10), or toggle the interest
-// in a physical tag (D2, 2026-09-25) — `./commands.ts`.
+// POST runs one of eight: editar los datos, guardar los contactos, corregir la
+// especie (the FULL-LOCK correction, added 2026-09-10), toggle the interest in a
+// physical tag (D2, 2026-09-25), or one of the four owner acts on the
+// service-dog designation (D3, 2026-09-25) — `./commands.ts`.
 //
 // WHY THIS IS NOT ON THE EVENTS ENDPOINT, and why it is not two endpoints
 // ---------------------------------------------------------------------------
@@ -55,6 +56,7 @@ import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-lim
 import { reportError } from "@/lib/infra/report-error";
 import { createClientFromBearer } from "@/lib/supabase/bearer";
 import { readViewerContacts } from "@/src/modules/pets/application/read/owner-pet-detail-queries";
+import { readServiceDogDesignation } from "@/src/modules/pets/application/service-dog/read-service-dog";
 import { petProfileCommandInputSchema } from "@dim/contract/input";
 
 import { runPetProfileCommand, unavailable } from "./commands";
@@ -157,52 +159,52 @@ export async function GET(
   // tokens are real.
   if (access.kind === "none") return apiV1Error("not_found", 404);
 
-  // THE ACCOUNT DEFAULTS ARE READ ONLY FOR SOMEBODY WHO MAY SEE THEM. They are
-  // the CALLER's own vet and emergency contact, and for a caller who cannot edit
-  // the pet-level override the payload drops them — so reading them would be a
-  // query whose only possible use is to be discarded.
-  let accountContacts: Awaited<ReturnType<typeof readViewerContacts>> = null;
-  if (petProfileCapabilities(access).canEditEmergencyContacts) {
-    try {
-      accountContacts = await withDbBudgetOrThrow(
-        readViewerContacts(live.user.id),
-        ACCESS_BUDGET_MS,
-        "api-v1-profile-account-contacts",
-      );
-    } catch (err) {
-      // NOT a silent null. A read that failed and an account with no defaults
-      // are different facts, and a form that said "si lo dejás vacío no
-      // mostramos nada" over a pooler outage would be lying about what clearing
-      // a field does.
-      if (err instanceof DbBudgetExceededError) return unavailable();
-      throw err;
-    }
-  }
-
-  // D2 — SAME SHAPE AS THE CONTACTS READ ABOVE, and for the same reason: this
-  // caller's own §4.20 row is read only for somebody `canTogglePhysicalTagInterest`
-  // admits. Reading it for an org member would be a query whose only possible
-  // use is to be discarded, on a fact that is nobody's business but the owner's.
-  let physicalTagInterest: Awaited<ReturnType<typeof getPhysicalTagInterest>> | null = null;
-  if (petProfileCapabilities(access).canTogglePhysicalTagInterest) {
-    try {
-      physicalTagInterest = await withDbBudgetOrThrow(
-        getPhysicalTagInterest(access.pet.id, live.user.id),
-        ACCESS_BUDGET_MS,
-        "api-v1-profile-physical-tag-interest",
-      );
-    } catch (err) {
-      if (err instanceof DbBudgetExceededError) return unavailable();
-      throw err;
-    }
-  }
+  // THREE READS, EACH ONLY FOR SOMEBODY WHO MAY SEE WHAT IT RETURNS, and each
+  // through `gatedRead` below so a budget overrun answers 503 rather than a
+  // silent null:
+  //
+  //   · THE ACCOUNT DEFAULTS are the CALLER's own vet and emergency contact; for
+  //     a caller who cannot edit the pet-level override the payload drops them,
+  //     so reading them would be a query whose only possible use is to be
+  //     discarded. NOT a silent null on failure: a read that failed and an
+  //     account with no defaults are different facts, and a form that said "si
+  //     lo dejás vacío no mostramos nada" over a pooler outage would be lying
+  //     about what clearing a field does.
+  //   · D2 — the caller's own §4.20 row, only for `canTogglePhysicalTagInterest`:
+  //     reading it for an org member would be a query whose only possible use is
+  //     to be discarded, on a fact that is nobody's business but the owner's.
+  //   · D3 — the service-dog row says the OWNER has a disability (Ley 25.326
+  //     Art. 7); it is read only for `canManageServiceDog`, the legal owner, who
+  //     is who the web page shows it to. A failed read is not "no designation"
+  //     either: that one invites a person to fill in a form over a row they
+  //     already have.
+  const capabilities = petProfileCapabilities(access);
+  const contactsRead = await gatedRead(
+    capabilities.canEditEmergencyContacts,
+    () => readViewerContacts(live.user.id),
+    "api-v1-profile-account-contacts",
+  );
+  if (!contactsRead.ok) return unavailable();
+  const tagRead = await gatedRead(
+    capabilities.canTogglePhysicalTagInterest,
+    () => getPhysicalTagInterest(access.pet.id, live.user.id),
+    "api-v1-profile-physical-tag-interest",
+  );
+  if (!tagRead.ok) return unavailable();
+  const serviceDogRead = await gatedRead(
+    capabilities.canManageServiceDog,
+    () => readServiceDogDesignation(access.pet.id),
+    "api-v1-profile-service-dog",
+  );
+  if (!serviceDogRead.ok) return unavailable();
 
   return apiV1Json(
     buildPetProfileEditV1({
       pet: access.pet,
       access,
-      accountContacts,
-      physicalTagInterest,
+      accountContacts: contactsRead.value,
+      physicalTagInterest: tagRead.value,
+      serviceDog: serviceDogRead.value,
       now: new Date(),
     }),
     { status: 200 },
@@ -274,6 +276,26 @@ export async function POST(
     userId: live.user.id,
     input: parsed.data,
   });
+}
+
+/**
+ * One capability-gated read: skipped entirely (`value: null`) when the caller
+ * may not see what it returns, budgeted when they may. `ok: false` is a budget
+ * overrun, which the handler answers with 503 — never a silent null. Any other
+ * failure throws, as the inline reads it replaced did.
+ */
+async function gatedRead<T>(
+  allowed: boolean,
+  read: () => Promise<T>,
+  label: string,
+): Promise<{ ok: true; value: T | null } | { ok: false }> {
+  if (!allowed) return { ok: true, value: null };
+  try {
+    return { ok: true, value: await withDbBudgetOrThrow(read(), ACCESS_BUDGET_MS, label) };
+  } catch (err) {
+    if (err instanceof DbBudgetExceededError) return { ok: false };
+    throw err;
+  }
 }
 
 /**
