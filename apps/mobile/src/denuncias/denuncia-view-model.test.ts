@@ -28,8 +28,8 @@ import {
 
 import {
   DENUNCIA_ANONYMOUS_CAVEAT,
+  DENUNCIA_EVIDENCE_NOTE,
   DENUNCIA_FIELD_ORDER,
-  DENUNCIA_NO_ATTACHMENTS_CAVEAT,
   type DenunciaFormValues,
   buildFileDenunciaCommand,
   buildResolveLocationCommand,
@@ -61,6 +61,7 @@ const FILLED: DenunciaFormValues = {
   anonymous: true,
   contactEmail: "",
   contactPhone: "",
+  evidence: [],
 };
 
 describe("every vocabulary has words, and none of them is the enum value", () => {
@@ -276,21 +277,15 @@ describe("the two builders", () => {
 });
 
 describe("the two caveats say the true thing", () => {
-  it("does not promise that evidence can be added later, because it cannot", () => {
-    // THE DEFECT THIS CAUGHT ON THE WAY IN. The first draft of this string read
-    // "sumalas desde la web con el código que te damos al final" — a promise the
-    // product cannot keep: no surface accepts evidence for an existing
-    // denuncia. The copy has to send somebody to the browser BEFORE they fill
-    // anything in.
-    //
-    // The count in this comment was WRONG and is corrected rather than dropped:
-    // `uploadWelfareEvidence` has THREE call sites, not two. The two denuncia
-    // ones are the CREATE actions; the third, `submit-claim-dispute.ts`, is a
-    // custody dispute and is also a creation path. The conclusion survives, the
-    // arithmetic did not. See `denuncia-view-model.ts` for the full note.
-    expect(DENUNCIA_NO_ATTACHMENTS_CAVEAT).toContain("no se pueden sumar después");
-    expect(DENUNCIA_NO_ATTACHMENTS_CAVEAT).toContain("desde el navegador");
-    expect(DENUNCIA_NO_ATTACHMENTS_CAVEAT).not.toContain("al final");
+  it("says photos are now or never, lose their location, and that video is not here", () => {
+    // M12 replaced the send-them-to-the-browser caveat: photos travel from the
+    // app now. What survives from the old copy is the fact it was built on —
+    // no surface adds evidence to an existing denuncia — so the note still says
+    // it, and it must not point anybody at the browser for photos any more.
+    expect(DENUNCIA_EVIDENCE_NOTE).toContain("después no se pueden agregar");
+    expect(DENUNCIA_EVIDENCE_NOTE).toContain("quitamos la ubicación");
+    expect(DENUNCIA_EVIDENCE_NOTE).toContain("videos no");
+    expect(DENUNCIA_EVIDENCE_NOTE).not.toContain("navegador");
   });
 
   it("does not claim the request itself is anonymous, only the record", () => {
@@ -314,6 +309,7 @@ describe("an empty form is answered in FIELD ORDER, not in schema order (B-07)",
     anonymous: true,
     contactEmail: "",
     contactPhone: "",
+    evidence: [],
   };
 
   it("names the place FIRST, because it is the first heading on the screen", () => {

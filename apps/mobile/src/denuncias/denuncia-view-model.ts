@@ -171,6 +171,15 @@ export function denunciaInputMessage(code: WelfareReportInputCode | null): strin
       return "La fecha del hecho no es válida.";
     case "CONTACT_REQUIRED":
       return "Dejá un correo o un teléfono, o elegí enviarla de forma anónima.";
+    // The three evidence codes (M12). The screen stops the sixth pick and only
+    // ever sends keys the server minted, so these are backstops — and still
+    // sentences.
+    case "EVIDENCE_TOO_MANY":
+      return "Podés adjuntar hasta 5 fotos. Quitá alguna y volvé a enviar.";
+    case "EVIDENCE_INVALID":
+      return "Una de las fotos no se subió bien. Quitala y volvé a agregarla.";
+    case "CONTENT_TYPE_INVALID":
+      return "Esa foto tiene que ser JPG, PNG o WebP.";
   }
 }
 
@@ -345,6 +354,8 @@ export type DenunciaFormValues = {
   anonymous: boolean;
   contactEmail: string;
   contactPhone: string;
+  /** Staged keys of the photos already uploaded (M12), in the order added. */
+  evidence: readonly string[];
 };
 
 /**
@@ -362,6 +373,9 @@ export type DenunciaFormValues = {
 export function buildFileDenunciaCommand(values: DenunciaFormValues): DenunciaDraft {
   const facts = {
     command: "file" as const,
+    // The staged photo keys (M12). The schema turns an absent list into [],
+    // and a server that predates the field strips it — both read as "none".
+    evidence: [...values.evidence],
     kind: values.kind,
     severity: values.severity,
     description: values.description,
@@ -466,31 +480,20 @@ export const DENUNCIA_ANONYMOUS_CAVEAT =
   "Anónima significa que no guardamos ningún dato tuyo en la denuncia: ni tu cuenta, ni tu nombre, ni tu contacto. Como estás usando la app, iniciaste sesión para llegar hasta acá. Si necesitás que ni siquiera eso quede registrado, podés denunciar desde el navegador sin iniciar sesión.";
 
 /**
- * What the phone tells somebody who has a photo and nowhere to put it.
+ * What the evidence block says (M12).
  *
- * IT SENDS THEM TO THE WEB BEFORE THEY START, AND THE FIRST DRAFT OF THIS STRING
- * DID NOT — it said "sumalas desde la web con el código que te damos al final",
- * which is a promise this product cannot keep. Evidence can ONLY be attached at
- * CREATION, and there is no "add evidence later" path on any surface — not on
- * `/denuncias/codigo`, not on `/denuncias/seguimiento`, not for an authenticated
- * reporter. `addReporterCommentAction` adds TEXT to the case and nothing else.
+ * IT REPLACES A CAVEAT THAT SENT PEOPLE TO THE BROWSER. Until M12 this app could
+ * not carry a photo, and because evidence is only ever accepted at CREATION —
+ * no surface adds it to an existing denuncia — the honest instruction was to
+ * file from the web before starting. Photos now travel from here, through the
+ * web's own gate on the server, so that instruction is gone. Two facts remain
+ * for the person, and both are here: it is now or never (nothing can be added
+ * later), and the location inside a photo is removed before it is kept.
  *
- * `uploadWelfareEvidence` has THREE call sites in the repo, and this docblock
- * said two until the count was actually run. The two denuncia ones are
- * `createWelfareReportAction` and `createOrgWelfareReportAction` in
- * `welfare/actions.ts`; the third is
- * `src/modules/pets/application/claim/submit-claim-dispute.ts`, which predates
- * this screen and uploads under `claims/{reportId}` for a CUSTODY DISPUTE rather
- * than a denuncia. The miscount does not move the conclusion — the third is also
- * a creation path, and it is not a denuncia at all — but the sentence above is
- * the reason this screen's copy exists, so it does not get to be approximately
- * true. Re-derive it with `rg uploadWelfareEvidence` rather than trusting this
- * number.
- *
- * So the honest instruction is to file from the browser in the first place, and
- * the copy has to arrive BEFORE somebody spends five minutes filling in a form
- * whose evidence they cannot attach afterwards. This string is rendered at the
- * top of the screen for that reason, not at the end.
+ * PHOTOS ONLY, SAID OUT LOUD. The web also takes video, stored with its
+ * metadata until a neutraliser lands — which can include where it was shot, the
+ * device location this product decided not to keep (PO, 2026-09-24). See the
+ * contract's `WELFARE_EVIDENCE_CONTENT_TYPES`.
  */
-export const DENUNCIA_NO_ATTACHMENTS_CAVEAT =
-  "Todavía no se pueden adjuntar fotos ni videos desde la app, y no se pueden sumar después: las pruebas se adjuntan sólo al momento de denunciar. Si tenés fotos o videos, hacé la denuncia desde el navegador.";
+export const DENUNCIA_EVIDENCE_NOTE =
+  "Podés sumar hasta 5 fotos (JPG, PNG o WebP). Se adjuntan ahora o nunca: después no se pueden agregar. Antes de guardarlas les quitamos la ubicación y los datos de la cámara. Por ahora, videos no.";

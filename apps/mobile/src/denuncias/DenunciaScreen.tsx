@@ -38,7 +38,7 @@
 
 import * as Linking from "expo-linking";
 import { useCallback, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { WelfareLocationMatchV1 } from "@dim/contract/api";
 import type {
@@ -47,6 +47,7 @@ import type {
   WelfareReportSubjectKind,
 } from "@dim/contract/input";
 import {
+  WELFARE_EVIDENCE_MAX_FILES,
   WELFARE_REPORT_CITIZEN_SEVERITIES,
   WELFARE_REPORT_KINDS,
   WELFARE_REPORT_SUBJECT_KINDS,
@@ -55,7 +56,9 @@ import {
 import { apiFailureMessage } from "../api/client";
 import { sendWelfareReportCommand } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
-import { API_BASE_URL } from "../config/api";
+import { ASYNC_IMAGE_PICK_MARKER_STORE } from "../native/image-pick-marker-store";
+import { getImagePickerPort, pickImageSafely } from "../native/image-picker-port";
+import { type AcceptedImage, acceptPickedImage } from "../pets/pet-photo-view-model";
 import { Body } from "../ui/components";
 import {
   Callout,
@@ -75,7 +78,7 @@ import { useScrollToError } from "../ui/use-scroll-to-error";
 
 import {
   DENUNCIA_ANONYMOUS_CAVEAT,
-  DENUNCIA_NO_ATTACHMENTS_CAVEAT,
+  DENUNCIA_EVIDENCE_NOTE,
   DENUNCIA_NO_MATCHES,
   type DenunciaFormValues,
   buildFileDenunciaCommand,
@@ -89,6 +92,7 @@ import {
   denunciaSubjectPlaceholder,
   missingDenunciaFields,
 } from "./denuncia-view-model";
+import { type StagedEvidence, stageDenunciaPhoto } from "./evidence-flow";
 
 const EMPTY: DenunciaFormValues = {
   kind: null,
@@ -100,7 +104,18 @@ const EMPTY: DenunciaFormValues = {
   anonymous: true,
   contactEmail: "",
   contactPhone: "",
+  evidence: [],
 };
+
+/**
+ * The evidence block's own state (M12). `failed` KEEPS the picked image, so
+ * "Reintentar" re-uploads the same photo instead of making the person find it
+ * again — and the form stays sendable without it.
+ */
+type EvidenceState =
+  | { name: "idle"; message: string | null }
+  | { name: "uploading" }
+  | { name: "failed"; message: string; image: AcceptedImage };
 
 type Phase =
   | { name: "form"; error: string | null }
@@ -119,6 +134,9 @@ export function DenunciaScreen() {
   const [addressText, setAddressText] = useState("");
   const [matches, setMatches] = useState<WelfareLocationMatchV1[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  // Bumped by "Hacer otra denuncia" so the photo block starts empty again.
+  const [evidenceEpoch, setEvidenceEpoch] = useState(0);
   // THE BACK GESTURE MAY NOT DISCARD A TYPED DENUNCIA (critic gap 2). This is
   // the longest thing a citizen writes in this app and the only one that cannot
   // be re-read from the server afterwards. `filed` clears the guard: the
@@ -248,6 +266,7 @@ export function DenunciaScreen() {
             setValues(EMPTY);
             setAddressText("");
             setMatches(null);
+            setEvidenceEpoch((epoch) => epoch + 1);
             setPhase({ name: "form", error: null });
           }}
         />
@@ -264,20 +283,6 @@ export function DenunciaScreen() {
         La denuncia va a la autoridad de la zona donde ocurre. Es un trámite con consecuencias
         legales (Ley 14.346): una vez enviada, no se puede borrar.
       </Subtitle>
-
-      {/* BEFORE THE FORM, not after it. Somebody with a photo has to know now
-          that this app cannot carry it and that the web cannot take it later
-          either — evidence is only accepted at the moment of denouncing. */}
-      <Callout tone="warn" title="Si tenés fotos o videos">
-        <Body>{DENUNCIA_NO_ATTACHMENTS_CAVEAT}</Body>
-        <View style={styles.spacer} />
-        <LinkText
-          accessibilityHint="Se abre en el navegador"
-          onPress={() => void Linking.openURL(`${API_BASE_URL}/denuncias/nueva`)}
-        >
-          Denunciar desde la web
-        </LinkText>
-      </Callout>
 
       {/* ---- 1. El lugar ------------------------------------------------- */}
 
@@ -475,6 +480,14 @@ export function DenunciaScreen() {
         </>
       )}
 
+      {/* ---- Fotos (M12) ------------------------------------------------ */}
+      <EvidenceSection
+        key={evidenceEpoch}
+        disabled={working}
+        onChange={(evidence) => patch({ evidence })}
+        onBusyChange={setUploadingPhoto}
+      />
+
       {phase.name === "form" && phase.error !== null ? (
         // Anchored for useScrollToError — same rationale as RecordEventScreen:
         // this form is long enough for the refusal to land out of view.
@@ -487,10 +500,122 @@ export function DenunciaScreen() {
 
       <PrimaryButton
         label={working ? "Enviando…" : "Enviar la denuncia"}
-        disabled={working || searching}
+        // Not while a photo is mid-upload: sending then would file without it.
+        disabled={working || searching || uploadingPhoto}
         onPress={() => void send()}
       />
     </Screen>
+  );
+}
+
+/**
+ * The photo block (M12), as its own component so the screen stays readable:
+ * pick → stage → list, with its own failure and retry. It reports the staged
+ * keys up (`onChange`) and whether an upload is in flight (`onBusyChange`), so
+ * the send button waits for a photo instead of filing without it.
+ */
+function EvidenceSection({
+  disabled,
+  onChange,
+  onBusyChange,
+}: {
+  disabled: boolean;
+  onChange: (evidence: string[]) => void;
+  onBusyChange: (busy: boolean) => void;
+}) {
+  const [photos, setPhotos] = useState<StagedEvidence[]>([]);
+  const [evidenceState, setEvidenceState] = useState<EvidenceState>({
+    name: "idle",
+    message: null,
+  });
+  const working = disabled;
+
+  const setPhotoList = useCallback(
+    (next: StagedEvidence[]) => {
+      setPhotos(next);
+      onChange(next.map((photo) => photo.stagedPath));
+    },
+    [onChange],
+  );
+
+  const uploadPhoto = useCallback(
+    async (image: AcceptedImage) => {
+      setEvidenceState({ name: "uploading" });
+      onBusyChange(true);
+      const staged = await stageDenunciaPhoto(sessionPort, image);
+      onBusyChange(false);
+      if (staged.outcome === "failed") {
+        setEvidenceState({ name: "failed", message: staged.message, image });
+        return;
+      }
+      setPhotoList([...photos, staged.evidence]);
+      setEvidenceState({ name: "idle", message: null });
+    },
+    [onBusyChange, photos, setPhotoList],
+  );
+
+  const addPhoto = useCallback(async () => {
+    // NO RECOVERY MARKER (`null`): the pet-photo and tattoo screens can resume a
+    // pick an Android process death interrupted, and this one does not try —
+    // a stray photo landing on a legal filing after a restart is worse than
+    // asking again.
+    const picked = acceptPickedImage(await pickImageSafely(null, ASYNC_IMAGE_PICK_MARKER_STORE));
+    if (!picked.ok) {
+      setEvidenceState({ name: "idle", message: picked.message });
+      return;
+    }
+    await uploadPhoto(picked.image);
+  }, [uploadPhoto]);
+
+  const removePhoto = (stagedPath: string) =>
+    setPhotoList(photos.filter((photo) => photo.stagedPath !== stagedPath));
+
+  return (
+    <>
+      <Subtitle>Fotos (opcional)</Subtitle>
+      <Body>{DENUNCIA_EVIDENCE_NOTE}</Body>
+
+      {photos.map((photo, index) => (
+        <View key={photo.stagedPath} style={styles.photoRow}>
+          {photo.previewUri ? (
+            <Image
+              source={{ uri: photo.previewUri }}
+              style={styles.photoThumb}
+              accessibilityIgnoresInvertColors
+            />
+          ) : null}
+          <Text style={styles.photoLabel}>Foto {index + 1}</Text>
+          <LinkText onPress={() => removePhoto(photo.stagedPath)}>Quitar</LinkText>
+        </View>
+      ))}
+
+      {evidenceState.name === "failed" ? (
+        <Callout tone="err">
+          <Body>{evidenceState.message}</Body>
+          <View style={styles.spacer} />
+          <LinkText onPress={() => void uploadPhoto(evidenceState.image)}>Reintentar</LinkText>
+        </Callout>
+      ) : null}
+      {evidenceState.name === "idle" && evidenceState.message !== null ? (
+        <Callout tone="warn">
+          <Body>{evidenceState.message}</Body>
+        </Callout>
+      ) : null}
+
+      {/* THE CONTROL IS DRAWN ONLY WHEN IT CAN WORK — the picker port's rule:
+          a build without the module gets a sentence, not a dead button. */}
+      {getImagePickerPort().available ? (
+        photos.length < WELFARE_EVIDENCE_MAX_FILES ? (
+          <SecondaryButton
+            label={evidenceState.name === "uploading" ? "Subiendo la foto…" : "Agregar una foto"}
+            disabled={working || evidenceState.name === "uploading"}
+            onPress={() => void addPhoto()}
+          />
+        ) : null
+      ) : (
+        <Body>En esta versión de la app todavía no se pueden sumar fotos.</Body>
+      )}
+    </>
   );
 }
 
@@ -510,4 +635,7 @@ const styles = StyleSheet.create({
   matchActive: { borderColor: COLORS.accent, backgroundColor: COLORS.stripe },
   matchLabel: { fontSize: TYPE.sm, color: COLORS.inkSoft },
   matchLabelActive: { fontSize: TYPE.sm, color: COLORS.ink },
+  photoRow: { flexDirection: "row", alignItems: "center", gap: SPACE.md },
+  photoThumb: { width: TOUCH_TARGET, height: TOUCH_TARGET, borderRadius: RADIUS.control },
+  photoLabel: { flex: 1, fontSize: TYPE.sm, color: COLORS.ink },
 });

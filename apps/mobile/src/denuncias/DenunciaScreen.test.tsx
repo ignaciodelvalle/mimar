@@ -14,10 +14,10 @@
 //   3. CHANGING THE ADDRESS INVALIDATES THE CHOSEN POINT. The dangerous state is
 //      a denuncia filed against the previous street because somebody retyped the
 //      address and did not re-tap.
-//   4. THE SCREEN SAYS WHAT IT CANNOT DO, BEFORE THE FORM. No attachments — and
-//      not "not yet in this session": evidence is only ever accepted at
-//      creation, so somebody with a photo has to be sent to the browser BEFORE
-//      they spend five minutes typing.
+//   4. PHOTOS TRAVEL FROM HERE (M12). Pick → stage → the key rides on `file`;
+//      a refused file and a failed upload each get a sentence and a way on
+//      (retry, or send without it), and an anonymous denuncia carries its photos
+//      and still nothing about the reporter.
 //   5. THE RECEIPT IS A CODE AND A DOOR. Not a case id, not a status, and — for
 //      an anonymous reporter — a warning that the code is the only thread back.
 //
@@ -33,6 +33,7 @@ import { createNavigationFake } from "../ui/navigation-fake";
 
 const mockSend = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockOpenURL = jest.fn<(url: string) => Promise<unknown>>();
+const mockUpload = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
 jest.mock("expo-linking", () => ({ openURL: (url: string) => mockOpenURL(url) }));
 
@@ -50,11 +51,50 @@ jest.mock("expo-router", () => ({
 
 jest.mock("../api/endpoints", () => ({
   sendWelfareReportCommand: (...args: unknown[]) => mockSend(...args),
+  uploadPetPhotoBytes: (...args: unknown[]) => mockUpload(...args),
 }));
 
 jest.mock("../auth/session-store", () => ({ sessionPort: {} }));
 
+import {
+  type ImagePickResult,
+  resetImagePickerPort,
+  setImagePickerPort,
+} from "../native/image-picker-port";
 import { DenunciaScreen } from "./DenunciaScreen";
+
+const STAGED = "welfare/0b6f1c1e-2c3d-4e5f-8a9b-0c1d2e3f4a5b.jpg";
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+
+const TICKET_ACK = {
+  outcome: "ok" as const,
+  payload: {
+    command: "request_evidence_ticket",
+    version: 1,
+    uploadUrl: "https://storage.test/upload?token=t",
+    token: "t",
+    stagedPath: STAGED,
+    bucket: "uploads-staging",
+    validForSeconds: 7200,
+  },
+};
+
+/** A picker that answers `result` once per pick. */
+function installPicker(result: ImagePickResult) {
+  setImagePickerPort({
+    name: "test-picker",
+    available: true,
+    pickImage: async () => result,
+    recoverPendingPick: async () => null,
+  } as never);
+}
+
+const PICKED_JPEG: ImagePickResult = {
+  outcome: "picked",
+  bytes: JPEG,
+  contentType: "image/jpeg",
+  previewUri: null,
+};
 
 const ADDRESS = "Av. Bustillo 1200";
 const PLACE_LABEL = "Avenida Bustillo 1200, San Carlos de Bariloche, Río Negro, Argentina";
@@ -117,6 +157,9 @@ beforeEach(() => {
   mockNav.reset();
   mockSend.mockReset();
   mockOpenURL.mockReset();
+  mockUpload.mockReset();
+  mockUpload.mockResolvedValue({ outcome: "ok" });
+  resetImagePickerPort();
 });
 
 describe("what the screen says before it asks anything", () => {
@@ -126,23 +169,12 @@ describe("what the screen says before it asks anything", () => {
     expect(screen.getByText(/no se puede borrar/)).toBeTruthy();
   });
 
-  it("tells somebody with a photo to use the browser BEFORE they fill anything in", () => {
-    // NOT "you can add them later": no surface accepts evidence for an existing
-    // denuncia. Copy that said otherwise would cost somebody their evidence and
-    // five minutes.
-    //
-    // This comment used to say `uploadWelfareEvidence` has two call sites. It
-    // has THREE — the third is `submit-claim-dispute.ts`, a custody dispute
-    // rather than a denuncia, and also a creation path. Corrected in place; see
-    // `denuncia-view-model.ts`.
-    //
-    // THE MUTATION: move this Callout below the send button. Applied: the block
-    // still renders, so this test is about the WORDS, and the words are what a
-    // person can act on — "hacé la denuncia desde el navegador" is only useful
-    // before they start.
+  it("no longer sends somebody with a photo to the browser (M12)", () => {
+    // Evidence is still now-or-never — no surface adds it to an existing
+    // denuncia — so the note says that; what it no longer says is "use the web".
     render(<DenunciaScreen />);
-    expect(screen.getByText(/no se pueden sumar después/)).toBeTruthy();
-    expect(screen.getByText("Denunciar desde la web")).toBeTruthy();
+    expect(screen.getByText(/después no se pueden agregar/)).toBeTruthy();
+    expect(screen.queryByText("Denunciar desde la web")).toBeNull();
   });
 
   it("says what anónima buys and what it does not", () => {
@@ -345,6 +377,120 @@ describe("return-key chains (M10)", () => {
     // key — only "Enviar la denuncia" calls `send`. The one call on record
     // here is still the ADDRESS search from `searchAddress()`.
     expect(mockSend).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("evidence photos (M12)", () => {
+  async function addPhoto() {
+    fireEvent.press(screen.getByText("Agregar una foto"));
+  }
+
+  it("picks, stages as a Uint8Array, and sends the staged key with an ANONYMOUS filing", async () => {
+    installPicker(PICKED_JPEG);
+    mockSend.mockResolvedValueOnce(TICKET_ACK);
+    render(<DenunciaScreen />);
+
+    await addPhoto();
+    await waitFor(() => expect(screen.getByText("Foto 1")).toBeTruthy());
+    expect(bodyOf(0)).toEqual({ command: "request_evidence_ticket", contentType: "image/jpeg" });
+    // The bytes go to the ticket's URL as the picker's Uint8Array — never a Blob.
+    expect(mockUpload.mock.calls[0]?.[1]).toBe(JPEG);
+    expect(mockUpload.mock.calls[0]?.[2]).toBe("image/jpeg");
+
+    await searchAddress();
+    fireEvent.press(screen.getByText(PLACE_LABEL));
+    fillFacts();
+    mockSend.mockResolvedValueOnce(FILED_ACK);
+    fireEvent.press(screen.getByText("Enviar la denuncia"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(3));
+
+    expect(bodyOf(2)).toMatchObject({ contactMode: "anonymous", evidence: [STAGED] });
+    expect(bodyOf(2)).not.toHaveProperty("reporterContactEmail");
+    expect(bodyOf(2)).not.toHaveProperty("reporterContactPhone");
+  });
+
+  it("refuses a HEIC before any upload, with the sentence that says how to fix it", async () => {
+    installPicker({ ...PICKED_JPEG, contentType: "image/heic" } as ImagePickResult);
+    render(<DenunciaScreen />);
+
+    await addPhoto();
+    await waitFor(() => expect(screen.getByText(/formato HEIC/)).toBeTruthy());
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(mockUpload).not.toHaveBeenCalled();
+  });
+
+  it("says a file the bucket refused (type/size) cannot be cured by retrying the same one", async () => {
+    installPicker(PICKED_JPEG);
+    mockSend.mockResolvedValueOnce(TICKET_ACK);
+    mockUpload.mockResolvedValueOnce({ outcome: "rejected", detail: "too big" });
+    render(<DenunciaScreen />);
+
+    await addPhoto();
+    await waitFor(() => expect(screen.getByText(/hasta 5 MB/)).toBeTruthy());
+    expect(screen.queryByText("Foto 1")).toBeNull();
+  });
+
+  it("offers a retry after a failed upload — and the retry attaches the same photo", async () => {
+    installPicker(PICKED_JPEG);
+    mockSend.mockResolvedValueOnce({ outcome: "unreachable", detail: "offline" });
+    render(<DenunciaScreen />);
+
+    await addPhoto();
+    await waitFor(() => expect(screen.getByText("Reintentar")).toBeTruthy());
+    expect(screen.getByText(/Revisá tu conexión/)).toBeTruthy();
+    // Still sendable without it: the send button is not held hostage.
+    expect(screen.getByText("Enviar la denuncia")).toBeTruthy();
+
+    mockSend.mockResolvedValueOnce(TICKET_ACK);
+    fireEvent.press(screen.getByText("Reintentar"));
+    await waitFor(() => expect(screen.getByText("Foto 1")).toBeTruthy());
+    expect(mockUpload.mock.calls[0]?.[1]).toBe(JPEG);
+  });
+
+  it("lets a photo be removed before sending, and then sends none", async () => {
+    installPicker(PICKED_JPEG);
+    mockSend.mockResolvedValueOnce(TICKET_ACK);
+    render(<DenunciaScreen />);
+    await addPhoto();
+    await waitFor(() => expect(screen.getByText("Foto 1")).toBeTruthy());
+    fireEvent.press(screen.getByText("Quitar"));
+    expect(screen.queryByText("Foto 1")).toBeNull();
+
+    await searchAddress();
+    fireEvent.press(screen.getByText(PLACE_LABEL));
+    fillFacts();
+    mockSend.mockResolvedValueOnce(FILED_ACK);
+    fireEvent.press(screen.getByText("Enviar la denuncia"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(3));
+    expect(bodyOf(2)).toMatchObject({ evidence: [] });
+  });
+
+  it("says, in its own words, when the server's gate refused a photo — nothing was filed", async () => {
+    installPicker(PICKED_JPEG);
+    mockSend.mockResolvedValueOnce(TICKET_ACK);
+    render(<DenunciaScreen />);
+    await addPhoto();
+    await waitFor(() => expect(screen.getByText("Foto 1")).toBeTruthy());
+
+    await searchAddress();
+    fireEvent.press(screen.getByText(PLACE_LABEL));
+    fillFacts();
+    mockSend.mockResolvedValueOnce({
+      outcome: "api-error",
+      code: "welfare_evidence_refused",
+      retryAfterSeconds: null,
+      correlationId: null,
+    });
+    fireEvent.press(screen.getByText("Enviar la denuncia"));
+    await waitFor(() => expect(screen.getByText(/No se envió nada/)).toBeTruthy());
+    // The photo is still listed, so the person can remove it and send again.
+    expect(screen.getByText("Foto 1")).toBeTruthy();
+  });
+
+  it("draws no pick control in a build without the module — a sentence instead", () => {
+    render(<DenunciaScreen />);
+    expect(screen.queryByText("Agregar una foto")).toBeNull();
+    expect(screen.getByText(/todavía no se pueden sumar fotos/)).toBeTruthy();
   });
 });
 
