@@ -316,7 +316,9 @@ export const CHAPTERS: LandingChapter[] = [
   {
     key: "refugio",
     hand: "Refugio",
-    state: "ok",
+    // Still lost here: the shelter takes her in on 2024-03-11; Martín marks
+    // her found on 2024-03-13, at the end of this chapter.
+    state: "lost",
     side: "l",
     // The return home is authored by the owner (2024-03-13), not the shelter.
     title: "La recibe un refugio.",

@@ -3033,10 +3033,122 @@ html:has([data-landing-root]) {
   transition-delay: calc(var(--row, 0) * 40ms);
 }
 
+/* ---------------------------------------------------------------------------
+   Rail progress (PS10)
+   --------------------------------------------------------------------------- */
+.lp .lp-rail-shell {
+  position: sticky;
+  top: 92px;
+}
+.lp .lp-rail-shell .lp-rail {
+  position: static;
+}
+.lp .lp-rail-steps {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+/* The track runs through the dots' centre: 10px step padding + 4px half-dot. */
+.lp .lp-rail-track {
+  position: absolute;
+  top: 22px;
+  bottom: 22px;
+  right: 13px;
+  width: 2px;
+  background: var(--color-ln-line);
+  pointer-events: none;
+}
+.lp .lp-rail-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--color-ln-azul);
+  transform-origin: top;
+  transition: transform var(--motion-base) var(--ease-editorial);
+}
+.lp .lp-rail-step .lp-rdot {
+  position: relative;
+  z-index: 1;
+}
+.lp .lp-rail-step[data-state="next"] .lp-rdot {
+  background: var(--color-ln-card);
+  box-shadow: inset 0 0 0 2px var(--color-ln-line-strong);
+}
+.lp .lp-rail-step[data-state="current"] .lp-rdot {
+  background: var(--color-ln-card);
+  box-shadow: 0 0 0 2px var(--color-ln-azul), 0 0 0 6px
+    color-mix(in srgb, var(--color-ln-azul) 18%, transparent);
+}
+.lp .lp-rail-progress {
+  display: none;
+}
+@supports (animation-timeline: view()) {
+  .lp .lp-story-wrap {
+    timeline-scope: --lp-story;
+  }
+  .lp .lp-chapters {
+    view-timeline-name: --lp-story;
+  }
+  .lp .lp-rail-fill {
+    animation: lp-rail-fill-y linear both;
+    animation-timeline: --lp-story;
+    animation-range: contain 0% contain 100%;
+  }
+  .lp .lp-rail-progress-fill {
+    animation: lp-rail-fill-x linear both;
+    animation-timeline: --lp-story;
+    animation-range: contain 0% contain 100%;
+  }
+}
+@keyframes lp-rail-fill-y {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes lp-rail-fill-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@media (max-width: 940px) {
+  .lp .lp-rail-shell {
+    top: 58px;
+    z-index: var(--z-stripe);
+  }
+  .lp .lp-rail-steps {
+    flex-direction: row;
+    flex-shrink: 0;
+    gap: 6px;
+  }
+  .lp .lp-rail-track {
+    display: none;
+  }
+  .lp .lp-rail-progress {
+    display: block;
+    position: relative;
+    height: 3px;
+    background: var(--color-ln-line);
+  }
+  .lp .lp-rail-progress-fill {
+    position: absolute;
+    inset: 0;
+    background: var(--color-ln-azul);
+    transform-origin: left;
+    transition: transform var(--motion-base) var(--ease-editorial);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .lp .lp-seq-in {
     animation: none;
   }
+  .lp .lp-rail-fill,
+  .lp .lp-rail-progress-fill,
   .lp .lp-map-grid--in .lp-mtile,
   .lp .lp-vf-submit {
     transition: none;

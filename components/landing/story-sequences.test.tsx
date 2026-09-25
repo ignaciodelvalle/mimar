@@ -266,3 +266,18 @@ describe("Estado — the map fills in once (PS9)", () => {
     expect(tile?.style.getPropertyValue("--row")).not.toBe("");
   });
 });
+
+describe("rail — progress (PS10)", () => {
+  it("SSR: a track and a mobile bar, the first chapter current and PERDIDA only on 3 and 4", () => {
+    const html = renderToStaticMarkup(<StorySection />);
+    expect(html).toContain("lp-rail-track");
+    expect(html).toContain("lp-rail-progress");
+    expect(html).toContain("scaleY(0)");
+    const rail = html.slice(html.indexOf('data-section="story-rail"'));
+    expect(rail.indexOf('aria-current="step"')).toBeLessThan(rail.indexOf("Veterinaria"));
+    expect(CHAPTERS.filter((c) => c.state === "lost").map((c) => c.key)).toEqual([
+      "anon",
+      "refugio",
+    ]);
+  });
+});

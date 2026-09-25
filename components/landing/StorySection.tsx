@@ -24,7 +24,8 @@ import { DuenoScreen, EstadoConsole, LibretaScreen } from "@/components/landing/
 import { SequenceChapter, hasSequence } from "@/components/landing/story-sequences";
 import { LnPetPhoto } from "@/components/ui/RegRow";
 import { LnStatusFlag } from "@/components/ui/StatusFlag";
-import { useEffect, useState } from "react";
+import type React from "react";
+import { useEffect, useRef, useState } from "react";
 
 function chapterDevice(key: string) {
   switch (key) {
@@ -102,43 +103,99 @@ function CastFila() {
 }
 
 // ---------------------------------------------------------------------------
-// Rail — sticky chapter nav with scroll-spy
+// Rail — sticky chapter nav with scroll-spy and a progress track
 // ---------------------------------------------------------------------------
 
+// PS10 (PO, 2026-09-25). Desktop: a 2px track joins the chapter dots and fills
+// in azul from the first dot down to where the reader is; past dots are
+// filled, the current one is white with a halo. Mobile (<=940px): the sticky
+// pill bar gets a 3px progress bar under it, and the active pill scrolls
+// itself into view.
+//
+// The fill is a CSS scroll-driven animation where the browser has one
+// (animation-timeline on the chapters' view timeline, app/landing.css); the
+// inline transform below is the fallback everywhere else — the scroll-spy's
+// chapter index, as a fraction. A running CSS animation outranks the inline
+// style, so the two never fight.
+//
+// Pampa's flag reads PERDIDA through chapters 3 and 4 (she is lost from
+// 2024-03-09 until Martín marks her found on 2024-03-13) and AL DÍA otherwise.
+
 function Rail({ active }: { active: string }) {
-  const current = CHAPTERS.find((c) => c.key === active) ?? CHAPTERS[0];
+  const index = Math.max(
+    0,
+    CHAPTERS.findIndex((c) => c.key === active),
+  );
+  const current = CHAPTERS[index] ?? CHAPTERS[0];
   const lost = current?.state === "lost";
+  const progress = CHAPTERS.length > 1 ? index / (CHAPTERS.length - 1) : 1;
+  const navRef = useRef<HTMLElement>(null);
+
+  // Mobile: keep the active pill in view inside the horizontally scrolling
+  // bar. Only when the bar actually scrolls sideways (desktop's column never
+  // does), and only the bar itself moves — never the page.
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav || nav.scrollWidth <= nav.clientWidth) return;
+    const pill = nav.querySelectorAll<HTMLElement>(".lp-rail-step")[index];
+    if (!pill) return;
+    const left = pill.offsetLeft - (nav.clientWidth - pill.offsetWidth) / 2;
+    const reduce =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (typeof nav.scrollTo === "function") {
+      nav.scrollTo({ left: Math.max(0, left), behavior: reduce ? "auto" : "smooth" });
+    }
+  }, [index]);
+
   return (
-    <nav className="lp-rail" aria-label="Capítulos" data-section="story-rail">
-      <div className="lp-rail-head">
-        {/* Same Pampa photo as the hero + CastFila (J2 — narrative continuity). */}
-        <LnPetPhoto
-          src="/landing/pampa-hero.jpg"
-          alt={PAMPA.name}
-          status={lost ? "lost" : "ok"}
-          size={44}
-        />
-        <span>
-          <span className="lp-rail-name">{PAMPA.name}</span>
-          <span className="mt-1 block">
-            <LnStatusFlag status={lost ? "lost" : "ok"} sex={PAMPA.sexEnum} />
+    <div className="lp-rail-shell" data-section="story-rail-shell">
+      <nav className="lp-rail" aria-label="Capítulos" data-section="story-rail" ref={navRef}>
+        <div className="lp-rail-head">
+          {/* Same Pampa photo as the hero + CastFila (J2 — narrative continuity). */}
+          <LnPetPhoto
+            src="/landing/pampa-hero.jpg"
+            alt={PAMPA.name}
+            status={lost ? "lost" : "ok"}
+            size={44}
+          />
+          <span>
+            <span className="lp-rail-name">{PAMPA.name}</span>
+            <span className="mt-1 block">
+              <LnStatusFlag status={lost ? "lost" : "ok"} sex={PAMPA.sexEnum} />
+            </span>
           </span>
-        </span>
-      </div>
-      {CHAPTERS.map((c, i) => (
-        <StepButton
-          key={c.key}
-          data-s={c.state}
-          className="lp-rail-step"
-          active={active === c.key}
-          onSelect={() => scrollToChapter(c.key)}
-        >
-          <span className="lp-rn">{String(i + 1).padStart(2, "0")}</span>
-          <span className="lp-rname">{c.hand}</span>
-          <span className="lp-rdot" aria-hidden="true" />
-        </StepButton>
-      ))}
-    </nav>
+        </div>
+        <div className="lp-rail-steps">
+          <span className="lp-rail-track" aria-hidden="true">
+            <span
+              className="lp-rail-fill"
+              style={{ transform: `scaleY(${progress})` } as React.CSSProperties}
+            />
+          </span>
+          {CHAPTERS.map((c, i) => (
+            <StepButton
+              key={c.key}
+              data-s={c.state}
+              data-state={i < index ? "past" : i === index ? "current" : "next"}
+              className="lp-rail-step"
+              active={active === c.key}
+              onSelect={() => scrollToChapter(c.key)}
+            >
+              <span className="lp-rn">{String(i + 1).padStart(2, "0")}</span>
+              <span className="lp-rname">{c.hand}</span>
+              <span className="lp-rdot" aria-hidden="true" />
+            </StepButton>
+          ))}
+        </div>
+      </nav>
+      <span className="lp-rail-progress" aria-hidden="true">
+        <span
+          className="lp-rail-progress-fill"
+          style={{ transform: `scaleX(${progress})` } as React.CSSProperties}
+        />
+      </span>
+    </div>
   );
 }
 
