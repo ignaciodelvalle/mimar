@@ -15,13 +15,31 @@
 //
 // RED UNTIL WORK UNIT B5 of localidades-por-id, which deletes the name-based
 // backfill, re-derives ids from the spine and repairs what the old script
-// wrote. The known failure below reads the resolver the script calls today.
+// wrote. The known failure below is a PLACEHOLDER aimed at B5's entry point,
+// `scripts/place-repair-homonym-ids.ts`, and states the contract B5 must meet:
+//   - the old name-based `scripts/backfill-locality-id.ts` is gone;
+//   - the new script exists and exports `resolveBackfillPlace({ province,
+//     locality })`, which answers `{ localityId: null }` for an ambiguous pair.
+// Every step is an assertion, so today it fails on "the entry point does not
+// exist yet", never on an import error. B5 flips it to `it`.
 
+import { existsSync } from "node:fs";
+import path from "node:path";
+
+import { sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { db } from "@/db";
-import { resolveCanonicalJurisdiction } from "@/lib/infra/jurisdiction-validation";
-import { sql } from "drizzle-orm";
+
+const OLD_SCRIPT = path.join(process.cwd(), "scripts", "backfill-locality-id.ts");
+const B5_ENTRY = path.join(process.cwd(), "scripts", "place-repair-homonym-ids.ts");
+
+type BackfillEntry = {
+  resolveBackfillPlace?: (pair: {
+    province: string;
+    locality: string;
+  }) => Promise<{ localityId: string | null }>;
+};
 
 beforeAll(async () => {
   const rows = (await db.execute(sql`
@@ -33,11 +51,27 @@ beforeAll(async () => {
   expect(rows[0]?.n).toBe(2);
 });
 
-describe("backfill-locality-id's resolver and a within-province homonym", () => {
+describe("the historical backfill and a within-province homonym", () => {
   // Known failure until work unit B5 (localidades-por-id): flip to `it` there.
-  it.fails("refuses to name one of the two Mechitas from the name alone", async () => {
-    await expect(
-      resolveCanonicalJurisdiction({ rawProvince: "Buenos Aires", rawLocality: "Mechita" }),
-    ).rejects.toThrow();
+  it.fails(
+    "B5's backfill refuses to name one of the two Mechitas from the name alone",
+    async () => {
+      expect(existsSync(OLD_SCRIPT), "the name-based backfill is deleted").toBe(false);
+      expect(existsSync(B5_ENTRY), "B5's entry point exists").toBe(true);
+      const entry = (await import(/* @vite-ignore */ B5_ENTRY)) as BackfillEntry;
+      expect(typeof entry.resolveBackfillPlace).toBe("function");
+      const place = await entry.resolveBackfillPlace?.({
+        province: "Buenos Aires",
+        locality: "Mechita",
+      });
+      expect(place?.localityId).toBeNull();
+    },
+  );
+
+  // Pins why the placeholder is red today: the old script is still here and
+  // B5's entry point is not. Delete this at B5.
+  it("today the name-based backfill still exists and B5's entry point does not", () => {
+    expect(existsSync(OLD_SCRIPT)).toBe(true);
+    expect(existsSync(B5_ENTRY)).toBe(false);
   });
 });
