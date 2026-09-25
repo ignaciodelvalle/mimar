@@ -7,7 +7,8 @@
 // and a free-text box that never persists). A phone's print engine has
 // neither Tailwind nor a React tree, so this file lays out the same blocks, in
 // the same order, with the same words, from the same `LostPosterData` — and
-// `__tests__/lost-poster-parity.test.ts` renders both and compares their text,
+// the parity block in `app/(app)/mis-mascotas/[publicToken]/cartel/PosterPreview.test.tsx`
+// renders both and compares their text, the photo and the QR,
 // so the two cannot drift into saying different things.
 //
 // WHAT IS NOT HERE, ON PURPOSE: the web's controls (print, B&W, back link),

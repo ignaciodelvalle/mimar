@@ -53,17 +53,6 @@ export function exportShareText(view: { subject: Record<string, unknown> }): str
 }
 
 /**
- * The export's file name: `mimar-mis-datos-<AAAA-MM-DD>.json`, dated by the
- * envelope's own `issuedAt` (the day the server minted it, not the day it was
- * shared). A malformed date falls back to the bare name rather than to
- * `Invalid Date` in somebody's Drive.
- */
-export function exportFileName(issuedAt: string): string {
-  const day = /^\d{4}-\d{2}-\d{2}/.exec(issuedAt)?.[0];
-  return day === undefined ? "mimar-mis-datos.json" : `mimar-mis-datos-${day}.json`;
-}
-
-/**
  * After the share sheet closes. It cannot tell a saved file from a dismissed
  * sheet, so this says what to do in the second case instead of claiming the first.
  */

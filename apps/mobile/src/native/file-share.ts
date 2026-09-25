@@ -30,6 +30,22 @@
 // who picked WhatsApp and one who backed out are indistinguishable. So the
 // outcome here is `closed`, never "sent", and the screens word it that way —
 // the file is kept and one tap re-opens the sheet.
+//
+// WHERE THE FILES LIVE, AND WHEN THEY GO (M13 security review)
+// ---------------------------------------------------------------------------
+// Both files are personal data: the export is the person's whole record, and a
+// poster carries the owner's first name and phone. So they are written to ONE
+// directory, `<cache>/compartidos`, under FIXED names where the name
+// does not need to vary — a second export overwrites the first instead of
+// piling up beside it — and `forgetSharedFiles()` deletes the whole directory.
+// That sweep runs on every deliberate exit (sign-out, sign-out everywhere,
+// account erasure, a deactivated or erased account; `session-store.ts`) and
+// once at app start, which is the first moment nothing can still be reading a
+// file handed over in the previous run.
+//
+// NOT right after `shareAsync` resolves: on Android the receiving app may
+// still be reading the file through the content URI when the sheet closes, and
+// deleting it then would hand WhatsApp a file that vanishes mid-upload.
 
 import * as FileSystem from "expo-file-system";
 import * as Print from "expo-print";
@@ -42,6 +58,32 @@ export type ShareFileOutcome =
   | { outcome: "unavailable" }
   /** Writing, rendering or opening the sheet threw. */
   | { outcome: "failed"; detail: string };
+
+/** The one cache subdirectory every shared file lives in. */
+export const SHARED_DIR_NAME = "compartidos";
+
+/** The art. 14 export's one file name. A new export overwrites the last. */
+export const EXPORT_FILE_NAME = "mimar-mis-datos.json";
+
+function sharedDir(): FileSystem.Directory {
+  const dir = new FileSystem.Directory(FileSystem.Paths.cache, SHARED_DIR_NAME);
+  if (!dir.exists) dir.create({ intermediates: true, idempotent: true });
+  return dir;
+}
+
+/**
+ * Delete every file this module ever handed to the share sheet. Never throws:
+ * it runs on sign-out and erasure, and a storage error must not keep somebody
+ * signed in or turn a completed supresión into an error message.
+ */
+export function forgetSharedFiles(): void {
+  try {
+    const dir = new FileSystem.Directory(FileSystem.Paths.cache, SHARED_DIR_NAME);
+    if (dir.exists) dir.delete();
+  } catch {
+    // Best-effort, like every other local sweep on these paths.
+  }
+}
 
 function detailOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -86,8 +128,9 @@ async function openSheet(
 }
 
 /**
- * Write `text` to a named file in the cache and share it. Overwrites a previous
- * file of the same name — the cache holds the latest export, not a history.
+ * Write `text` to a named file in the shared directory and share it.
+ * Overwrites a previous file of the same name — the directory holds the latest
+ * export, not a history.
  */
 export async function shareTextFile(
   text: string,
@@ -96,7 +139,7 @@ export async function shareTextFile(
 ): Promise<ShareFileOutcome> {
   let uri: string;
   try {
-    const file = new FileSystem.File(FileSystem.Paths.cache, fileName);
+    const file = new FileSystem.File(sharedDir(), fileName);
     file.create({ overwrite: true });
     file.write(text);
     uri = file.uri;
@@ -111,7 +154,9 @@ export async function shareTextFile(
  *
  * The rename is best-effort: `printToFileAsync` writes a random name, and a
  * failure to copy it to a readable one still shares the PDF rather than
- * failing the whole act over a file name.
+ * failing the whole act over a file name. After a successful copy the random
+ * original is deleted — it holds the same personal data, outside the directory
+ * the sweep knows about.
  */
 export async function sharePdfFromHtml(
   html: string,
@@ -126,10 +171,17 @@ export async function sharePdfFromHtml(
     return { outcome: "failed", detail: detailOf(err) };
   }
   try {
-    const named = new FileSystem.File(FileSystem.Paths.cache, fileName);
+    const printed = new FileSystem.File(uri);
+    const named = new FileSystem.File(sharedDir(), fileName);
     if (named.exists) named.delete();
-    await new FileSystem.File(uri).copy(named);
+    await printed.copy(named);
     uri = named.uri;
+    try {
+      printed.delete();
+    } catch {
+      // The named copy is what gets shared; a leftover original is swept at
+      // the next app start with the rest of the cache the OS reclaims.
+    }
   } catch {
     // Keep the random name; the PDF itself is fine.
   }

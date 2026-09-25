@@ -14,8 +14,8 @@
 // go out as the TEXT of a `Share.share` message, and that had two costs: a
 // JSON document pasted into a chat is not a file anything can import, and a
 // person who dismissed the sheet lost it without a word. Now the bytes are
-// written to `mimar-mis-datos-<fecha>.json` and that file goes to the share
-// sheet — "Guardar en Archivos", Drive, a mail to themselves
+// written to ONE fixed file, `mimar-mis-datos.json`, and that file goes to the
+// share sheet — "Guardar en Archivos", Drive, a mail to themselves
 // (`native/file-share.ts`, which also says why `expo-file-system` is safe here).
 //
 // THE SHEET CANNOT SAY WHETHER ANYTHING WAS SAVED. `shareAsync` resolves the
@@ -51,7 +51,7 @@ import { apiFailureMessage } from "../api/client";
 import { fetchMySubjectDataExport } from "../api/endpoints";
 import { eraseAccount, sessionPort } from "../auth/session-store";
 import { ACCOUNT_DELETION_URL } from "../config/api";
-import { shareTextFile } from "../native/file-share";
+import { EXPORT_FILE_NAME, shareTextFile } from "../native/file-share";
 import { Body, Card, Row } from "../ui/components";
 import { FONTS } from "../ui/fonts";
 import { Callout, PrimaryButton, Screen, SecondaryButton, TextField, Title } from "../ui/kit";
@@ -62,7 +62,6 @@ import {
   EXPORT_FILE_SHEET_CLOSED,
   type ExportSection,
   exportFileFailureMessage,
-  exportFileName,
   exportSections,
   exportShareText,
 } from "./subject-data-summary";
@@ -116,7 +115,7 @@ export function PrivacyScreen() {
 
   const shareExport = useCallback(async (view: MySubjectDataExportV1) => {
     setFileState({ phase: "working" });
-    const result = await shareTextFile(exportShareText(view), exportFileName(view.issuedAt), {
+    const result = await shareTextFile(exportShareText(view), EXPORT_FILE_NAME, {
       mimeType: "application/json",
       UTI: "public.json",
       dialogTitle: "Guardar mis datos",

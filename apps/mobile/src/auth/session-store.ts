@@ -74,6 +74,7 @@ import {
 } from "../api/endpoints";
 import { planesLookCrossed } from "../config/api";
 import { forgetAllCachedCredentials } from "../credential/credential-cache";
+import { forgetSharedFiles } from "../native/file-share";
 import {
   type PushRevocationOutcome,
   registerThisDeviceForPush,
@@ -1361,6 +1362,10 @@ function sweepDraftsOnDeliberateExit(): void {
   draftSweeps += 1;
   void forgetAllEventDrafts().catch(() => undefined);
   void forgetAllAltaDrafts().catch(() => undefined);
+  // The files handed to the share sheet (M13): the art. 14 export is the whole
+  // record, a lost-pet poster carries the owner's phone. Same exits, same
+  // reasoning as the drafts — see `native/file-share.ts`. Never throws.
+  forgetSharedFiles();
 }
 
 /**

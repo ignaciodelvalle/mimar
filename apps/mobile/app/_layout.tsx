@@ -53,6 +53,7 @@ import {
 // THE SECOND SUCH MODULE, and the same rule applies to it for the same reason:
 // `expo-notifications` touches the native runtime at import time.
 import { expoPush } from "../src/native/expo-push-adapter";
+import { forgetSharedFiles } from "../src/native/file-share";
 import { setImagePickerPort } from "../src/native/image-picker-port";
 import { ensureNotificationChannelSafely, setPushPort } from "../src/native/push-port";
 import { startPushRegistration } from "../src/notifications/push-session-binding";
@@ -94,6 +95,12 @@ setImagePickerPort(expoImagePicker);
 // evaluation. By the time `PetPhotoScreen` or the tatuaje branch of
 // `RecordEventScreen` mount and ask for it, the answer is usually already in.
 warmPendingImagePickRecovery();
+// THE SHARED-FILES SWEEP, ONCE PER PROCESS START (M13 security review). A
+// poster PDF or the art. 14 export handed to the share sheet in the previous
+// run is safe to delete now: whatever app received it has had a whole process
+// lifetime to read it. Sign-out and erasure sweep too; this catches the person
+// who never signs out. Synchronous and never throws.
+forgetSharedFiles();
 
 // THE PUSH SEAM, FLIPPED THE SAME WAY AND IN THE SAME PLACE — but note what is
 // NOT true of it. Nothing reads `available` during render, because this unit

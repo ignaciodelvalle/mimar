@@ -148,6 +148,15 @@ jest.mock("../pets/alta-draft-store", () => ({
   forgetAllAltaDrafts: () => mockForgetAllAltaDrafts(),
 }));
 
+/**
+ * The THIRD sweep on the same exits (M13 security review): the files handed to
+ * the share sheet — the art. 14 export and the lost-pet poster PDFs.
+ */
+const mockForgetSharedFiles = jest.fn<() => void>();
+jest.mock("../native/file-share", () => ({
+  forgetSharedFiles: () => mockForgetSharedFiles(),
+}));
+
 import {
   SESSION_SERVER_UNAVAILABLE_MESSAGE,
   SESSION_UNREACHABLE_MESSAGE,
@@ -1315,6 +1324,39 @@ describe("signOutEverywhere — stopping delivery before stopping the session", 
 // keep NOT sweeping: an auth blip mid-form must not destroy what somebody was
 // writing.
 // ---------------------------------------------------------------------------
+
+describe("every deliberate exit sweeps the shared files (the export, the poster PDFs)", () => {
+  beforeEach(() => {
+    mockForgetSharedFiles.mockClear();
+  });
+
+  it("signOut sweeps them", async () => {
+    await signOut("/ajustes");
+    expect(mockForgetSharedFiles).toHaveBeenCalledTimes(1);
+  });
+
+  it("signOutEverywhere sweeps them when the revocation lands", async () => {
+    await signOutEverywhere("/ajustes");
+    expect(mockForgetSharedFiles).toHaveBeenCalledTimes(1);
+  });
+
+  it("eraseAccount sweeps them when the erasure completes", async () => {
+    await expect(eraseAccount("ya no la uso", "/ajustes")).resolves.toEqual({ ok: true });
+    expect(mockForgetSharedFiles).toHaveBeenCalledTimes(1);
+  });
+
+  for (const reason of ["account_erased", "account_deactivated"] as const) {
+    it(`a server-ended session (${reason}) sweeps them`, async () => {
+      await sessionPort.endSession(reason);
+      expect(mockForgetSharedFiles).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  it("a server-reported auth_expired does NOT sweep them — an auth blip is not an exit", async () => {
+    await sessionPort.endSession("auth_expired");
+    expect(mockForgetSharedFiles).not.toHaveBeenCalled();
+  });
+});
 
 describe("every deliberate exit sweeps the event drafts", () => {
   const REFUSED = {

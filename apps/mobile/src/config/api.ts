@@ -303,12 +303,11 @@ export const PRIVACY_URL = `${API_BASE_URL}/privacidad`;
  *   1. THE DATA SAFETY FORM NAMES THIS URL. Play asks for a web address a
  *      reviewer can open without installing anything, and that requirement did
  *      not go away when the in-app route got better.
- *   2. IT IS THE ONLY WAY TO GET A REAL `.json` ONTO A DEVICE. The native screen
- *      SHOWS the export and hands it to the OS share sheet; writing a file needs
- *      `expo-file-system`, which is a native module, which is an EAS build. The
- *      web page downloads one. `PrivacyScreen` says so and offers this link
- *      underneath.
- * Delete the affordance on the day this app can write a file — and not before.
+ *   2. IT WAS THE ONLY WAY TO GET A REAL `.json` ONTO A DEVICE, and since M13
+ *      (native build of 2026-10-01) it is not: `PrivacyScreen` writes the export
+ *      to a file and hands THAT to the share sheet (`native/file-share.ts`). The
+ *      link stays for reason 1 alone, and `PrivacyScreen` no longer presents it
+ *      as the download path.
  *
  * ON THE ORIGIN. Derived from API_BASE_URL like TERMS_URL and PRIVACY_URL,
  * because in this deployment the API and the web app ARE one origin — the same

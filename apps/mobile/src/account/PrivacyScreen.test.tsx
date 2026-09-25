@@ -45,6 +45,7 @@ jest.mock("../auth/session-store", () => ({
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 
+import { forgetSharedFiles } from "../native/file-share";
 import { PrivacyScreen } from "./PrivacyScreen";
 
 const shareAsync = Sharing.shareAsync as unknown as jest.Mock<
@@ -152,15 +153,38 @@ describe("art. 14 — descargar mis datos", () => {
     fireEvent.press(screen.getByText("Guardar o compartir el archivo"));
   }
 
-  it("writes the raw JSON to a dated .json FILE and hands that file to the sheet", async () => {
+  it("writes the raw JSON to ONE fixed .json FILE and hands that file to the sheet", async () => {
     await openFileSheet();
 
     await waitFor(() => expect(shareAsync).toHaveBeenCalledTimes(1));
     const [uri, options] = shareAsync.mock.calls[0] as [string, { mimeType: string }];
-    expect(uri).toBe("file:///cache/mimar-mis-datos-2026-08-29.json");
+    // One fixed name in the swept directory: a second export overwrites the
+    // first rather than leaving the person's whole record twice in the cache.
+    expect(uri).toBe("file:///cache/compartidos/mimar-mis-datos.json");
     expect(options.mimeType).toBe("application/json");
     // The bytes on disk are the export, unaltered — not a message, not a summary.
     expect(written().get(uri)).toBe(JSON.stringify(READY_EXPORT.subject, null, 2));
+  });
+
+  it("a second export overwrites the first — never a pile of dated copies", async () => {
+    await openFileSheet();
+    await waitFor(() => expect(shareAsync).toHaveBeenCalledTimes(1));
+    fireEvent.press(screen.getByText("Guardar o compartir el archivo"));
+    await waitFor(() => expect(shareAsync).toHaveBeenCalledTimes(2));
+
+    expect(shareAsync.mock.calls[1]?.[0]).toBe(shareAsync.mock.calls[0]?.[0]);
+    const exports = [...written().keys()].filter((key) => key.includes("mimar-mis-datos"));
+    expect(exports).toEqual(["file:///cache/compartidos/mimar-mis-datos.json"]);
+  });
+
+  it("leaves nothing behind once the sign-out/erasure sweep runs", async () => {
+    await openFileSheet();
+    await waitFor(() => expect(shareAsync).toHaveBeenCalledTimes(1));
+    expect(written().size).toBe(1);
+
+    forgetSharedFiles();
+
+    expect(written().size).toBe(0);
   });
 
   it("says, after the sheet closes, that closing it without a choice saved nothing", async () => {

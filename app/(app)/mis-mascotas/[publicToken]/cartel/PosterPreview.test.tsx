@@ -213,13 +213,35 @@ describe("<PosterPreview> ⇄ renderLostPosterHtml — the app prints the same p
     ["no color, no señas", { color: null, distinguishingFeatures: null }],
   ];
 
+  /** The poster body's image: its src and alt, or null when there is none. */
+  function posterImage(html: string): { src: string; alt: string } | null {
+    const body = html.slice(html.indexOf("<main"), html.indexOf("</main>"));
+    const tag = /<img\b[^>]*>/.exec(body)?.[0];
+    if (tag === undefined) return null;
+    const attr = (name: string) =>
+      (new RegExp(`\\b${name}="([^"]*)"`).exec(tag)?.[1] ?? "").replace(/&amp;/g, "&");
+    return { src: attr("src"), alt: attr("alt") };
+  }
+
+  /** Whether the poster body carries the server's QR SVG, verbatim. */
+  function carriesQr(html: string, qrSvg: string): boolean {
+    const body = html.slice(html.indexOf("<main"), html.indexOf("</main>"));
+    return body.includes(qrSvg);
+  }
+
   for (const [name, overrides] of variants) {
     it(`says the same thing — ${name}`, () => {
       const props = { ...BASE_PROPS, ...overrides };
-      const web = posterText(render(<PosterPreview {...props} />));
-      const app = posterText(renderLostPosterHtml(props));
-      expect(app).toBe(web);
+      const webHtml = render(<PosterPreview {...props} />);
+      const appHtml = renderLostPosterHtml(props);
+      const app = posterText(appHtml);
+      expect(app).toBe(posterText(webHtml));
       expect(app.length).toBeGreaterThan(0);
+      // The same photo (or the same absence of one), described the same way…
+      expect(posterImage(appHtml)).toEqual(posterImage(webHtml));
+      // …and the same QR, on both.
+      expect(carriesQr(webHtml, props.qrSvg)).toBe(true);
+      expect(carriesQr(appHtml, props.qrSvg)).toBe(true);
     });
   }
 

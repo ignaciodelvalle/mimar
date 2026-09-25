@@ -702,7 +702,7 @@ describe("LostScreen — the poster, as a PDF from the phone (M13)", () => {
       height: 842,
     });
     const [uri, options] = Sharing.shareAsync.mock.calls[0] as [string, { mimeType: string }];
-    expect(uri).toBe("file:///cache/cartel-pampa.pdf");
+    expect(uri).toBe("file:///cache/compartidos/cartel-pampa.pdf");
     expect(options.mimeType).toBe("application/pdf");
     // The sheet cannot say whether it was sent; the card says what to do if not.
     expect(await screen.findByText(/podés volver a compartirlo/)).toBeOnTheScreen();
@@ -713,7 +713,19 @@ describe("LostScreen — the poster, as a PDF from the phone (M13)", () => {
     mockPoster.mockResolvedValue(ok({ ...POSTER, petName: "Ñandú Pérez" }));
     await pressPoster();
     await waitFor(() => expect(Sharing.shareAsync).toHaveBeenCalledTimes(1));
-    expect(Sharing.shareAsync.mock.calls[0]?.[0]).toBe("file:///cache/cartel-nandu-perez.pdf");
+    expect(Sharing.shareAsync.mock.calls[0]?.[0]).toBe(
+      "file:///cache/compartidos/cartel-nandu-perez.pdf",
+    );
+  });
+
+  it("deletes the random-named PDF the print engine wrote once it is copied", async () => {
+    // It holds the owner's phone, outside the directory the sign-out sweep knows.
+    const written = (require("expo-file-system") as { __written: Map<string, string> }).__written;
+    written.set("file:///cache/print-0001.pdf", "%PDF");
+    await pressPoster();
+    await waitFor(() => expect(Sharing.shareAsync).toHaveBeenCalledTimes(1));
+    expect(written.has("file:///cache/print-0001.pdf")).toBe(false);
+    expect(written.get("file:///cache/compartidos/cartel-pampa.pdf")).toBe("%PDF");
   });
 
   it("repeats the web's no-photo warning when the poster has no photo", async () => {

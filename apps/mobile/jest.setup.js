@@ -150,9 +150,12 @@ jest.mock("expo-sharing", () => ({
 }));
 jest.mock("expo-file-system", () => {
   const written = new Map();
+  const dirs = new Set(["file:///cache"]);
+  const join = (parts) =>
+    parts.map((part) => (typeof part === "string" ? part : part.uri)).join("/");
   class File {
     constructor(...parts) {
-      this.uri = parts.map((part) => (typeof part === "string" ? part : part.uri)).join("/");
+      this.uri = join(parts);
     }
     get exists() {
       return written.has(this.uri);
@@ -170,9 +173,27 @@ jest.mock("expo-file-system", () => {
       written.set(destination.uri, written.get(this.uri) ?? "");
     }
   }
+  class Directory {
+    constructor(...parts) {
+      this.uri = join(parts);
+    }
+    get exists() {
+      return dirs.has(this.uri);
+    }
+    create() {
+      dirs.add(this.uri);
+    }
+    delete() {
+      dirs.delete(this.uri);
+      for (const key of [...written.keys()]) {
+        if (key.startsWith(`${this.uri}/`)) written.delete(key);
+      }
+    }
+  }
   return {
     File,
-    Paths: { cache: { uri: "file:///cache" } },
+    Directory,
+    Paths: { cache: new Directory("file:///cache") },
     __written: written,
   };
 });
