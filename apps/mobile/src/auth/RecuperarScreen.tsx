@@ -70,6 +70,7 @@ import {
   Title,
 } from "../ui/kit";
 import { SPACE } from "../ui/theme";
+import { useReturnKeyChain } from "../ui/use-return-key-chain";
 import { requestPasswordReset, resetPasswordWithCode } from "./session-store";
 
 /**
@@ -146,6 +147,13 @@ export function RecuperarScreen({
     // second submit here would spend a code that no longer exists.
   }
 
+  // Return-key advance (M10, native-feel audit) — ONE chain per step, since
+  // the two render mutually exclusively and each already floors at its own
+  // field count. Declared unconditionally (both, every render), same as any
+  // other hook: which branch is ON SCREEN cannot decide which hook runs.
+  const askChain = useReturnKeyChain(1, () => void ask());
+  const redeemChain = useReturnKeyChain(3, () => void redeem());
+
   return (
     <Screen edges={["top", "bottom"]} keyboardAvoiding gap={SPACE.xl}>
       {/* Centred heading block — `text-center space-y-2` on the web, and the
@@ -160,6 +168,7 @@ export function RecuperarScreen({
       {step === "ask" ? (
         <View style={styles.form}>
           <TextField
+            {...askChain(0)}
             autoCapitalize="none"
             autoComplete="email"
             autoCorrect={false}
@@ -168,10 +177,8 @@ export function RecuperarScreen({
             invalid={failure !== null}
             label="Correo electrónico"
             onChangeText={setEmail}
-            onSubmitEditing={() => void ask()}
             placeholder="tu@email.com"
             required
-            returnKeyType="go"
             value={email}
           />
 
@@ -196,6 +203,7 @@ export function RecuperarScreen({
           </Callout>
 
           <TextField
+            {...redeemChain(0)}
             autoCapitalize="none"
             // `one-time-code` is what tells iOS and Android to offer the code
             // straight off the notification, which is the difference between
@@ -218,6 +226,7 @@ export function RecuperarScreen({
           />
 
           <PasswordField
+            {...redeemChain(1)}
             autoCapitalize="none"
             // `new-password`, not `current-password`: it tells a password manager
             // to OFFER one rather than look one up, and the one it would look up
@@ -232,14 +241,13 @@ export function RecuperarScreen({
           <Body>Mínimo 8 caracteres.</Body>
 
           <PasswordField
+            {...redeemChain(2)}
             autoCapitalize="none"
             autoComplete="new-password"
             editable={!busy}
             label="Repetir contraseña"
             onChangeText={setConfirmPassword}
-            onSubmitEditing={() => void redeem()}
             required
-            returnKeyType="go"
             value={confirmPassword}
           />
 

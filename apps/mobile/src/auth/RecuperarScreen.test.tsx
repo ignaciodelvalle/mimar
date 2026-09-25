@@ -330,3 +330,40 @@ describe("the code input does not refuse a longer code (A1-refuter-M3)", () => {
     expect(screen.getByLabelText("Código, obligatorio").props.value).toBe("12345678");
   });
 });
+
+describe("return-key chains — one per step (M10)", () => {
+  it("the ask step's single field says 'done' and submits it", () => {
+    mockRequestPasswordReset.mockResolvedValue({ ok: true });
+    renderScreen();
+    expect(screen.getByLabelText("Correo electrónico, obligatorio").props.returnKeyType).toBe(
+      "done",
+    );
+    fireEvent.changeText(screen.getByLabelText("Correo electrónico, obligatorio"), "ana@x.ar");
+    fireEvent(screen.getByLabelText("Correo electrónico, obligatorio"), "submitEditing");
+    expect(mockRequestPasswordReset).toHaveBeenCalledWith("ana@x.ar");
+  });
+
+  it("the redeem step moves next → next → done across código, nueva y repetir", async () => {
+    renderScreen();
+    await reachCodeStep();
+    expect(screen.getByLabelText("Código, obligatorio").props.returnKeyType).toBe("next");
+    expect(screen.getByLabelText("Nueva contraseña, obligatorio").props.returnKeyType).toBe("next");
+    expect(screen.getByLabelText("Repetir contraseña, obligatorio").props.returnKeyType).toBe(
+      "done",
+    );
+  });
+
+  it("submits the redemption ONLY from the last field's return key", async () => {
+    mockResetPasswordWithCode.mockResolvedValue({ ok: true });
+    renderScreen();
+    await reachCodeStep();
+    fillRedemption();
+
+    fireEvent(screen.getByLabelText("Código, obligatorio"), "submitEditing");
+    fireEvent(screen.getByLabelText("Nueva contraseña, obligatorio"), "submitEditing");
+    expect(mockResetPasswordWithCode).not.toHaveBeenCalled();
+
+    fireEvent(screen.getByLabelText("Repetir contraseña, obligatorio"), "submitEditing");
+    expect(mockResetPasswordWithCode).toHaveBeenCalledTimes(1);
+  });
+});
