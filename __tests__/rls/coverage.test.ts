@@ -91,6 +91,10 @@ const RLS_REQUIRED: ReadonlyArray<string> = [
   "place_resolutions",
   // 0251: the R7 repair's append-only pre-images. Admin SELECT only, aal2.
   "place_repair_preimages",
+  // localidades-por-id C1 (0253): who governs which localities. Institutional
+  // (admin + govt) SELECT, aal2-restricted; written only by the server.
+  "authority_units",
+  "authority_unit_localities",
   // share_telemetry lived here until migration 0167 dropped the table (TEL-1,
   // PO 2026-08-04): collected per-view viewer data that nothing ever read.
   // Alert inbox + triage — deny-all backstop in migration 0111 (Paquete K).

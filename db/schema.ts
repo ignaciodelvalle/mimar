@@ -3467,6 +3467,87 @@ export const placeResolutions = pgTable(
   }),
 );
 
+// Who governs which localities (migration 0253, localidades-por-id C1). A unit
+// is DATA, seeded as draft from INDEC departments by
+// scripts/seed-authority-units.ts and confirmed by a platform admin. `level`
+// is the cascade position; `kind` what the unit is (a Santa Fe comuna is
+// municipal, a CABA comuna submunicipal). Never deleted (trigger).
+export const AUTHORITY_UNIT_KINDS = [
+  "provincia",
+  "municipio",
+  "ciudad",
+  "comuna",
+  "departamento",
+] as const;
+export type AuthorityUnitKind = (typeof AUTHORITY_UNIT_KINDS)[number];
+export const AUTHORITY_UNIT_LEVELS = ["provincial", "municipal", "submunicipal"] as const;
+export type AuthorityUnitLevel = (typeof AUTHORITY_UNIT_LEVELS)[number];
+
+export const authorityUnits = pgTable(
+  "authority_units",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kind: text("kind").notNull().$type<AuthorityUnitKind>(),
+    level: text("level").notNull().$type<AuthorityUnitLevel>(),
+    provinceCode: text("province_code").notNull(),
+    name: text("name").notNull(),
+    indecDepartmentCode: text("indec_department_code"),
+    parentUnitId: uuid("parent_unit_id").references((): AnyPgColumn => authorityUnits.id, {
+      onDelete: "restrict",
+    }),
+    status: text("status").notNull().default("draft").$type<"draft" | "confirmed">(),
+    confirmedBy: uuid("confirmed_by"),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    seedKey: text("seed_key").unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    oneProvincia: uniqueIndex("authority_units_one_provincia")
+      .on(table.provinceCode)
+      .where(sql`${table.kind} = 'provincia'`),
+    provinceIdx: index("authority_units_province_idx").on(table.provinceCode),
+    kindLevel: check(
+      "authority_units_kind_level",
+      sql`(${table.kind} = 'provincia') = (${table.level} = 'provincial')`,
+    ),
+  }),
+);
+
+export type AuthorityUnit = typeof authorityUnits.$inferSelect;
+
+// Which catalogue localities a unit governs, dated (migration 0253). Opened
+// and CLOSED, never rewritten or deleted (trigger): the rows are their own
+// audit trail. One active membership per (locality, level); a provincial unit
+// has no explicit members.
+export const authorityUnitLocalities = pgTable(
+  "authority_unit_localities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    unitId: uuid("unit_id")
+      .notNull()
+      .references(() => authorityUnits.id, { onDelete: "restrict" }),
+    localityId: uuid("locality_id")
+      .notNull()
+      .references(() => arLocalities.id, { onDelete: "restrict" }),
+    level: text("level").notNull().$type<Exclude<AuthorityUnitLevel, "provincial">>(),
+    validFrom: timestamp("valid_from", { withTimezone: true }).notNull().defaultNow(),
+    validTo: timestamp("valid_to", { withTimezone: true }),
+    addedBy: uuid("added_by"),
+    endedBy: uuid("ended_by"),
+  },
+  (table) => ({
+    activeUnique: uniqueIndex("authority_unit_localities_active_unique")
+      .on(table.localityId, table.level)
+      .where(sql`${table.validTo} IS NULL`),
+    localityActiveIdx: index("authority_unit_localities_locality_active_idx")
+      .on(table.localityId)
+      .where(sql`${table.validTo} IS NULL`),
+    unitIdx: index("authority_unit_localities_unit_idx").on(table.unitId),
+  }),
+);
+
+export type AuthorityUnitLocality = typeof authorityUnitLocalities.$inferSelect;
+
 // Traceability of every import script execution. Used to debug imports and to
 // surface "last successful sync" on a future admin dashboard.
 export const arLocalitiesImportRuns = pgTable(

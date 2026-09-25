@@ -8,8 +8,9 @@
 // the old ON DELETE SET NULL did silently: each referencing row gets its
 // locality id (and the method next to it) set to NULL, `event_places` rows —
 // a rebuildable projection — are deleted, and only then the catalogue rows go.
-// A `place_resolutions` row is append-only and cannot be detached: the helper
-// refuses loudly rather than leave a half-cleaned catalogue.
+// A `place_resolutions` row is append-only and an `authority_unit_localities`
+// row is never deleted, so neither can be detached: the helper refuses loudly
+// rather than leave a half-cleaned catalogue.
 //
 // The referencing columns are read from pg_constraint, so a future FK into the
 // catalogue is covered without editing this file.
@@ -42,12 +43,14 @@ export async function deleteCatalogRows(where: SQL | undefined): Promise<number>
   for (const ref of refs) {
     const table = sql.raw(ref.tbl);
     const col = sql.identifier(ref.col);
-    if (ref.tbl.endsWith("place_resolutions")) {
+    // Neither is ever deleted or rewritten (0250, 0253): a fixture that a
+    // resolution or an authority-unit membership names cannot be detached.
+    if (ref.tbl.endsWith("place_resolutions") || ref.tbl.endsWith("authority_unit_localities")) {
       const [held] = (await db.execute(
         sql`select count(*)::int as n from ${table} where ${col} in (${list})`,
       )) as unknown as Array<{ n: number }>;
       if ((held?.n ?? 0) > 0) {
-        throw new Error("deleteCatalogRows: a place_resolutions row (append-only) names a fixture");
+        throw new Error(`deleteCatalogRows: a ${ref.tbl} row (never deleted) names a fixture`);
       }
       continue;
     }

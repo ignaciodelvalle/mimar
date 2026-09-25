@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-09-25",
-  "sha": "2bcdaaae8",
+  "sha": "1e4f02c11",
   "facts": {
     "event_types": {
       "value": 55,
@@ -43,12 +43,12 @@
       "method": "files named exactly `layout.tsx` anywhere under `app/`."
     },
     "migrations": {
-      "value": 251,
+      "value": 252,
       "source": "db/migrations/*.sql",
       "method": "files ending in `.sql` under `db/migrations/`. Migrations are forward-only and immutable, so this only ever grows."
     },
     "tables": {
-      "value": 57,
+      "value": 59,
       "source": "db/schema.ts",
       "method": "literal occurrences of `pgTable(` in `db/schema.ts`. A call-site count, not an import: Drizzle table objects are not collected into any exported registry, so there is nothing to take `.length` of."
     },
@@ -58,7 +58,7 @@
       "method": "literal occurrences of `pgEnum(` in `db/schema.ts`. Same caveat as `tables` — a call-site count for want of a registry."
     },
     "rls_enabled_tables": {
-      "value": 61,
+      "value": 63,
       "source": "db/*.sql + db/migrations/*.sql (declared); the LIVE truth is `__tests__/rls/*`, which reads `pg_class.relrowsecurity`",
       "method": "distinct table names matched by /ALTER TABLE … ENABLE ROW LEVEL SECURITY/i over the whole SQL surface with comments stripped, minus any later DISABLE (there are none at this snapshot). This is the DECLARED count. It is not the number of tables — a table can exist without RLS — and it is not a live catalog reading."
     },

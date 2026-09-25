@@ -217,6 +217,15 @@ export const CLASSIFICATION: Readonly<Record<string, Classification>> = {
     },
   },
   audit_log: BOTH_COVERED,
+  // 0253 (localidades-por-id C1): who governs which localities. The why of a
+  // membership change is written to audit_log, not here, so neither table
+  // holds free text about a person.
+  authority_unit_localities: bothExempt(
+    "Which catalogue localities an authority unit governs, dated. added_by / ended_by are actor FKs of an official act (a platform admin editing membership); the reason lives in audit_log.",
+  ),
+  authority_units: bothExempt(
+    "An authority unit (provincia, municipio, ciudad, comuna, departamento) and its status; confirmed_by is the actor FK of an official act.",
+  ),
   // 0130/0208: erase redacts the subject's own reporter_comment notes; the export
   // has never returned a case_events section.
   case_events: {
