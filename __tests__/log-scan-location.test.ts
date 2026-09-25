@@ -3,10 +3,10 @@
 // Contract under test (logScanAction → logScan use-case):
 //   (a) Every scanner-role scan records `scan_ip_area` (coarse, city precision)
 //       with recordedByUserId = NULL — even for authenticated non-owner viewers.
-//   (b) Precise GPS (`scan_coords` + `scan_accuracy_m`) is stored ONLY when the
-//       pet is lost AND coords were passed (explicit browser grant). The lost
-//       check is server-side: coords on a non-lost pet are dropped. Invalid
-//       coords are dropped. Self-scans never carry any location field.
+//   (b) No device GPS anywhere (W8, PO 2026-09-24): logScanAction takes no
+//       coordinate parameter at all any more; a scan never writes scan_coords
+//       or scan_accuracy_m, lost pet or not. Self-scans never carry any
+//       location field either.
 //   (c) No read path exposes scanner identity: the owner-timeline detail
 //       renderer emits zero rows for credential_scanned payloads, and the
 //       written event carries no identity-linking field.
@@ -133,9 +133,9 @@ vi.mock("@/db", () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function runScan(coords?: { lat: number; lng: number; accuracyM?: number }) {
+async function runScan() {
   const { logScanAction } = await import("@/app/actions/scans");
-  await logScanAction(PUBLIC_TOKEN, coords);
+  await logScanAction(PUBLIC_TOKEN);
 }
 
 function payloadOf(insert: Record<string, unknown> | null): Record<string, unknown> {
@@ -228,40 +228,43 @@ describe("logScanAction — scan-location capture (Task #45)", () => {
     expect(JSON.stringify(capturedInsert)).not.toContain("203.0.113.9");
   });
 
-  // --- (b) precise GPS only when lost + granted ---
+  // --- (b) no device GPS anywhere (W8, PO 2026-09-24) ---
 
-  it("stores scan_coords + scan_accuracy_m when the pet is lost and coords were granted", async () => {
+  it("never writes scan_coords/scan_accuracy_m for a lost pet — logScanAction takes no coordinate", async () => {
     petRow = { id: PET_ID, status: "lost" };
 
-    await runScan({ lat: -34.9205, lng: -57.9536, accuracyM: 24.6 });
-
-    const payload = payloadOf(capturedInsert);
-    expect(payload.scan_coords).toEqual({ lat: -34.9205, lng: -57.9536 });
-    expect(payload.scan_accuracy_m).toBe(25); // rounded server-side
-    expect(payload.scan_ip_area).toEqual({ city: "La Plata", region: "B", country: "AR" });
-    expect(capturedInsert?.recordedByUserId).toBeNull();
-  });
-
-  it("DROPS coords when the pet is NOT lost (server-side enforcement)", async () => {
-    petRow = { id: PET_ID, status: "active" };
-
-    await runScan({ lat: -34.9205, lng: -57.9536, accuracyM: 10 });
+    await runScan();
 
     const payload = payloadOf(capturedInsert);
     expect(payload).not.toHaveProperty("scan_coords");
     expect(payload).not.toHaveProperty("scan_accuracy_m");
-    // The scan itself is still recorded (coarse floor).
+    // The coarse IP-area floor still records.
     expect(payload.scan_ip_area).toEqual({ city: "La Plata", region: "B", country: "AR" });
   });
 
-  it("DROPS out-of-range coords but still records the scan", async () => {
-    petRow = { id: PET_ID, status: "lost" };
+  it("never writes scan_coords/scan_accuracy_m for an active (not-lost) pet", async () => {
+    petRow = { id: PET_ID, status: "active" };
 
-    await runScan({ lat: 999, lng: -57.9536 });
+    await runScan();
 
     const payload = payloadOf(capturedInsert);
     expect(payload).not.toHaveProperty("scan_coords");
+    expect(payload).not.toHaveProperty("scan_accuracy_m");
     expect(capturedInsert?.eventType).toBe("credential_scanned");
+  });
+
+  it("ignores a coordinate smuggled in as an extra argument (hand-crafted action call)", async () => {
+    petRow = { id: PET_ID, status: "lost" };
+    const { logScanAction } = await import("@/app/actions/scans");
+    // A server action is an HTTP endpoint: a stale tab or a forged request can
+    // still send the pre-W8 second argument. It must land nowhere.
+    const forged = logScanAction as unknown as (...args: unknown[]) => Promise<void>;
+    await forged(PUBLIC_TOKEN, { lat: -34.9205, lng: -57.9536, accuracyM: 12 });
+
+    const payload = payloadOf(capturedInsert);
+    expect(payload).not.toHaveProperty("scan_coords");
+    expect(payload).not.toHaveProperty("scan_accuracy_m");
+    expect(payload.scan_ip_area).toEqual({ city: "La Plata", region: "B", country: "AR" });
   });
 
   // --- self-scans: identity-linked rows never carry location ---
@@ -271,7 +274,7 @@ describe("logScanAction — scan-location capture (Task #45)", () => {
     viewerIsOwner = true;
     mockGetUser.mockResolvedValue({ data: { user: { id: OWNER_USER_ID } }, error: null });
 
-    await runScan({ lat: -34.9205, lng: -57.9536, accuracyM: 10 });
+    await runScan();
 
     const payload = payloadOf(capturedInsert);
     expect(payload.is_self_scan).toBe(true);
@@ -287,6 +290,9 @@ describe("logScanAction — scan-location capture (Task #45)", () => {
   // --- (c) read path: owner-timeline detail renderer leaks nothing ---
 
   it("eventPayloadDetails renders ZERO rows for a fully-loaded scan payload", async () => {
+    // scan_coords/scan_accuracy_m below simulate a LEGACY pre-W8 event (the
+    // schema still accepts them so old rows keep validating) — no writer
+    // produces them any more, but the read path must still never surface them.
     const { eventPayloadDetails } = await import("@/lib/events/events");
     const rows = eventPayloadDetails("credential_scanned", {
       payload_version: 1,

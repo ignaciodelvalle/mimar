@@ -11,8 +11,10 @@
 //     - viewer_authenticated: boolean
 //     - scan_ip_area: coarse city-precision area from platform geo headers
 //       (or null) — NEVER the raw IP (lib/infra/scan-geo.ts)
-//     - scan_coords / scan_accuracy_m: precise GPS, ONLY when the pet was lost
-//       AND the scanner explicitly granted browser geolocation
+//     - scan_coords / scan_accuracy_m: LEGACY ONLY — precise GPS that events
+//       from before W8 (PO 2026-09-24) may carry, captured when the pet was
+//       lost AND the scanner granted browser geolocation. No writer emits
+//       them any more; this purge is what still bounds the old ones.
 //   Scanner-role rows carry recorded_by_user_id = NULL (no identity link) —
 //   see src/modules/pets/application/scans/log-scan.ts.
 //   After TTL_DAYS the event is purged, which is what bounds retention of ALL

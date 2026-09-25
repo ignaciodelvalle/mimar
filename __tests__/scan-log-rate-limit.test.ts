@@ -7,11 +7,13 @@
 // These tests exercise the REAL enforceRateLimit + dedupe wiring against an
 // in-memory rate_limit_buckets store (a faithful stand-in for the DB-backed
 // atomic UPSERT). Contract:
-//   - A burst of base scans from one (token, IP) records only ONE scan
-//     (per-minute dedupe collapses the same person's re-renders).
+//   - A burst of scans from one (token, IP) records only ONE scan (per-minute
+//     dedupe collapses the same person's re-renders).
 //   - A single legitimate scan still records.
-//   - A lost-pet GPS follow-up is EXEMPT from dedupe, so the base scan + the
-//     just-granted fix both record.
+//   - Dedupe is unconditional since W8 (PO, 2026-09-24): logScanAction takes
+//     no coordinate, so there is no longer a distinct GPS-follow-up scan that
+//     needs to bypass it — a second scan on a lost pet within the same minute
+//     dedupes exactly like any other.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -92,9 +94,9 @@ vi.mock("@/db", () => {
 
 const TOKEN = "DIM-SCAN-RL-0001";
 
-async function scan(coords?: { lat: number; lng: number; accuracyM?: number }) {
+async function scan() {
   const { logScanAction } = await import("@/app/actions/scans");
-  await logScanAction(TOKEN, coords);
+  await logScanAction(TOKEN);
 }
 
 describe("logScan — WAVE D4 rate limit + dedupe", () => {
@@ -119,14 +121,12 @@ describe("logScan — WAVE D4 rate limit + dedupe", () => {
     expect(h.petEventInserts[0].eventType).toBe("credential_scanned");
   });
 
-  it("a lost-pet GPS follow-up is exempt from dedupe: base + fix both record", async () => {
+  it("a second scan on a lost pet within the same minute dedupes like any other (no GPS exemption)", async () => {
     h.state.petStatus = "lost";
-    await scan(); // base scan (no coords)
-    await scan({ lat: -34.9205, lng: -57.9536, accuracyM: 12 }); // granted GPS fix
-    expect(h.petEventInserts).toHaveLength(2);
-    const withCoords = h.petEventInserts.find(
-      (r) => (r.payload as Record<string, unknown>).scan_coords,
-    );
-    expect(withCoords).toBeDefined();
+    await scan();
+    await scan();
+    expect(h.petEventInserts).toHaveLength(1);
+    // Neither scan ever carries GPS — logScanAction accepts no coordinate.
+    expect(h.petEventInserts[0].payload).not.toHaveProperty("scan_coords");
   });
 });

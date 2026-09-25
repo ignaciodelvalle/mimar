@@ -14,11 +14,11 @@
 //     recorded_by_user_id → display name (e.g. the gov welfare timeline in
 //     lib/analytics/govt-dashboards.ts) must never be able to identify a
 //     scanner. `viewer_authenticated` keeps the boolean signal without the link.
-//   - Precise GPS (`scan_coords` + `scan_accuracy_m`) is stored ONLY when the
-//     pet is currently lost AND the caller passed coords, which the client
-//     collects exclusively through an explicit browser-geolocation grant with
-//     visible consent copy (ScanLogger.tsx). The lost check happens HERE so a
-//     forged client call cannot attach coords to a non-lost pet.
+//   - No device GPS (W8, PO 2026-09-24): this use-case does not accept a
+//     client coordinate at all any more — `scan_coords` / `scan_accuracy_m`
+//     stay in the credential_scanned schema ONLY so pre-existing events (from
+//     before this change) keep validating; nothing here writes them again.
+//     scan_ip_area (above) is the only location signal a scan ever carries.
 //   - Self-scans (owner viewing their own pet) keep recorded_by_user_id (it is
 //     the owner's own history) but carry NO location fields: owner-role rows
 //     are exempt from the 90-day purge, and indefinitely-retained location
@@ -43,12 +43,13 @@ import { and, eq, isNull } from "drizzle-orm";
 // number of scans, inflating a pet's public scan count. Two per-(token, IP)
 // controls sit in front of the insert:
 //
-//   1. SCAN_LOG_LIMIT — a hard abuse cap. Generous enough that the legitimate
-//      lost-pet flow (base scan + one GPS follow-up) plus a handful of refreshes
-//      always passes; tight enough that trivial inflation is bounded.
-//   2. Dedupe (maxPerMinute: 1) — collapses the same person's page re-renders in
-//      a given minute into a single counted scan. The lost-pet GPS follow-up is
-//      the one event exempt from dedupe (it is a distinct, just-granted fix).
+//   1. SCAN_LOG_LIMIT — a hard abuse cap. Generous enough that a handful of
+//      legitimate refreshes always passes; tight enough that trivial inflation
+//      is bounded.
+//   2. Dedupe (maxPerMinute: 1) — collapses the same person's page re-renders
+//      in a given minute into a single counted scan. Unconditional since W8
+//      (PO, 2026-09-24): there is no longer a distinct GPS-follow-up scan to
+//      exempt from it (this use-case accepts no client coordinate at all).
 //
 // Best-effort telemetry: on RateLimitError we DROP the scan silently; on any
 // other (infra) error we fail open so a rate-limiter outage never loses a real
@@ -57,33 +58,7 @@ const SCAN_LOG_ENDPOINT = "scan_log";
 const SCAN_LOG_DEDUPE_ENDPOINT = "scan_log_dedupe";
 const SCAN_LOG_LIMIT = { maxPerMinute: 10, maxPerHour: 60 } as const;
 
-/** GPS fix passed by the client after an explicit geolocation grant. */
-export type ScanCoords = {
-  lat: number;
-  lng: number;
-  /** GeolocationCoordinates.accuracy, meters. */
-  accuracyM?: number;
-};
-
-/**
- * Server-side coords validation — never trust the client. Returns null (drop
- * coords, still log the scan) on any out-of-range or non-finite value.
- */
-function sanitizeCoords(
-  coords: ScanCoords | undefined,
-): { lat: number; lng: number; accuracyM: number | null } | null {
-  if (!coords) return null;
-  const { lat, lng, accuracyM } = coords;
-  if (typeof lat !== "number" || !Number.isFinite(lat) || lat < -90 || lat > 90) return null;
-  if (typeof lng !== "number" || !Number.isFinite(lng) || lng < -180 || lng > 180) return null;
-  const accuracy =
-    typeof accuracyM === "number" && Number.isFinite(accuracyM) && accuracyM >= 0
-      ? Math.min(Math.round(accuracyM), 1_000_000)
-      : null;
-  return { lat, lng, accuracyM: accuracy };
-}
-
-export async function logScan(publicToken: string, opts?: { coords?: ScanCoords }): Promise<void> {
+export async function logScan(publicToken: string): Promise<void> {
   if (!publicToken) return;
 
   // Resolve request headers once — reused for both rate limiting (trusted IP)
@@ -110,7 +85,7 @@ export async function logScan(publicToken: string, opts?: { coords?: ScanCoords 
   // live person about scan activity on a pet civil surfaces call never-existed.
   // Filtering deleted_at makes `if (!pet) return;` short-circuit the erased pet.
   const [pet] = await db
-    .select({ id: pets.id, status: pets.status, name: pets.name })
+    .select({ id: pets.id, name: pets.name })
     .from(pets)
     .where(and(eq(pets.publicToken, publicToken), isNull(pets.deletedAt)))
     .limit(1);
@@ -139,23 +114,15 @@ export async function logScan(publicToken: string, opts?: { coords?: ScanCoords 
     isSelfScan = !!ownership;
   }
 
-  // Precise GPS is stored ONLY for a lost pet, never on self-scans, and only
-  // when the client passed a valid fix (server-side re-validation). Computing it
-  // here also determines whether this scan is exempt from dedupe below.
-  const storedCoords = !isSelfScan && pet.status === "lost" ? sanitizeCoords(opts?.coords) : null;
-
-  // Short-window dedupe (WAVE D4): a base scan (no stored GPS) from the same
-  // (token, IP) within the same minute is almost always the same person
-  // re-rendering — count it once. The GPS follow-up on a lost pet is the sole
-  // exemption: it is a distinct, just-granted fix that must always record.
-  if (!storedCoords) {
-    try {
-      await enforceRateLimit(SCAN_LOG_DEDUPE_ENDPOINT, `${publicToken}:${ip}`, {
-        maxPerMinute: 1,
-      });
-    } catch (err) {
-      if (err instanceof RateLimitError) return;
-    }
+  // Short-window dedupe (WAVE D4): a scan from the same (token, IP) within the
+  // same minute is almost always the same person re-rendering — count it
+  // once. Unconditional since W8 (no more GPS-follow-up exemption to make).
+  try {
+    await enforceRateLimit(SCAN_LOG_DEDUPE_ENDPOINT, `${publicToken}:${ip}`, {
+      maxPerMinute: 1,
+    });
+  } catch (err) {
+    if (err instanceof RateLimitError) return;
   }
 
   const payload: Record<string, unknown> = {
@@ -166,12 +133,8 @@ export async function logScan(publicToken: string, opts?: { coords?: ScanCoords 
   if (!isSelfScan) {
     // Guaranteed floor: coarse IP-area on every external scan (null when the
     // platform geo headers are absent, e.g. local dev). Never the raw IP.
+    // The only location signal a scan carries — no device GPS (W8).
     payload.scan_ip_area = ipAreaFromHeaders(reqHeaders);
-
-    if (storedCoords) {
-      payload.scan_coords = { lat: storedCoords.lat, lng: storedCoords.lng };
-      if (storedCoords.accuracyM !== null) payload.scan_accuracy_m = storedCoords.accuracyM;
-    }
   }
 
   const now = new Date();

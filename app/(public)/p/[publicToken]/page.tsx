@@ -482,9 +482,10 @@ export default async function PublicCredentialPage({
   return (
     // Landing shell (AppShell variant=landing) owns #main-content + min-height.
     <div className="min-h-screen bg-ln-paper font-ln-sans">
-      {/* Passive scan floor only — no on-load location prompt (PO 2026-07-24,
-          Option A: precise finder GPS is captured intent-driven inside the
-          sighting flow, not "antes de tiempo" on scan). */}
+      {/* Passive scan floor only — no location prompt of any kind. The scan
+          carries just the coarse IP-derived area computed server-side; W8
+          (PO 2026-09-24) retired device location everywhere, so a finder's
+          sighting point is placed by hand in the sighting flow. */}
       <ScanLogger publicToken={publicToken} />
 
       {/* Guilloché band — LN security stripe */}

@@ -4,12 +4,11 @@
 // credential page mounts. The guaranteed, coarse IP-area floor is captured
 // server-side on that call (Task #45) — no browser permission, no UI.
 //
-// Precise finder GPS is NOT collected here. Intent-driven capture (PO
-// 2026-07-24, Option A): the finder's precise location is requested ONLY when
-// they take an explicit sighting action ("La vi cerca de acá" → PetSightingForm),
-// where they place the point on the map or tap "usar mi ubicación actual". A
-// bare scan never prompts for GPS "antes de tiempo" — privacy-by-design ties
-// the location ask to the moment its purpose (reporting a sighting) is engaged.
+// No device GPS anywhere (W8, PO 2026-09-24). A finder who wants to report a
+// sighting ("La vi cerca de acá" → PetSightingForm) places the point by hand
+// on the map (address search + draggable pin, components/LocationFields.tsx)
+// — never a browser-geolocation prompt. A bare scan never asks for a location
+// at all; scan_ip_area (coarse, IP-derived) is the only signal it carries.
 
 import { logScanAction } from "@/app/actions/scans";
 import { useEffect, useRef } from "react";
