@@ -14,6 +14,7 @@ import {
   runImport,
 } from "@/scripts/import-indec-localities";
 
+import { deleteCatalogRows } from "./_helpers/delete-catalog-rows";
 import { restoreIndecCatalog } from "./_helpers/restore-indec-catalog";
 
 const FIXTURE_PATH = join(
@@ -185,9 +186,11 @@ function syntheticFeed(rowCount: number): string {
 async function cleanupFixtureRows() {
   // Synthetic ids: safe to delete outright — upstream cannot mint a `999`
   // department, so there is no live row wearing one of these ids to destroy.
-  await db
-    .delete(arLocalities)
-    .where(inArray(arLocalities.indecId, [...SYNTHETIC_FIXTURE_IDS, ...PLANTED_STALE_IDS]));
+  // deleteCatalogRows detaches what points at a fixture first: every FK into
+  // the catalogue is ON DELETE RESTRICT since 0248.
+  await deleteCatalogRows(
+    inArray(arLocalities.indecId, [...SYNTHETIC_FIXTURE_IDS, ...PLANTED_STALE_IDS]),
+  );
   // REAL ids: only rows this file wrote, identified by the marker version. A
   // live AR-C row (if a future import ever wrote one) carries a real date here
   // and survives — which is the whole point, since deleting one is precisely
@@ -208,17 +211,15 @@ async function cleanupFixtureRows() {
   // exactly what the next import recreates, so dropping it costs nothing, while
   // a LIVE row (removedAt IS NULL) is still untouchable — the protection above
   // is narrowed, not removed.
-  await db
-    .delete(arLocalities)
-    .where(
-      and(
-        inArray(arLocalities.indecId, [...FIXTURE_CABA_IDS]),
-        or(
-          inArray(arLocalities.sourceVersion, FIXTURE_SOURCE_VERSIONS),
-          isNotNull(arLocalities.removedAt),
-        ),
+  await deleteCatalogRows(
+    and(
+      inArray(arLocalities.indecId, [...FIXTURE_CABA_IDS]),
+      or(
+        inArray(arLocalities.sourceVersion, FIXTURE_SOURCE_VERSIONS),
+        isNotNull(arLocalities.removedAt),
       ),
-    );
+    ),
+  );
   // Un-soft-delete real catalog rows the soft-delete subtest may have stamped.
   // The script's soft-delete pass marks any indec_cppdyl row that isn't in the
   // current CSV as removed; running with a fixture CSV obliterates the live

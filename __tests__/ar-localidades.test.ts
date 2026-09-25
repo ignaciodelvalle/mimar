@@ -2,10 +2,10 @@
 // by scripts/import-indec-localities.ts. If the catalog is empty (the import
 // hasn't run yet), the tests skip with a clear message instead of failing.
 
-import { count as countFn, inArray, isNull } from "drizzle-orm";
+import { count as countFn, eq, inArray, isNull } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { arLocalities, db } from "@/db";
+import { arLocalities, db, pets } from "@/db";
 import {
   isCanonicalLocality,
   listLocalitiesByProvince,
@@ -15,6 +15,7 @@ import {
   searchLocalities,
 } from "@/lib/infra/ar-localidades";
 
+import { deleteCatalogRows } from "./_helpers/delete-catalog-rows";
 import { restoreIndecCatalog } from "./_helpers/restore-indec-catalog";
 
 // INDEC IDs from the import-indec-localities fixture CSV. If a prior test run
@@ -48,7 +49,7 @@ beforeAll(async () => {
   // Purge any stale fixture rows so catalogPopulated and province-scoped
   // queries reflect only real catalog data. Safe to hard-delete: every id above
   // names a department INDEC does not assign, so none can hit a live row.
-  await db.delete(arLocalities).where(inArray(arLocalities.indecId, [...INDEC_FIXTURE_IDS]));
+  await deleteCatalogRows(inArray(arLocalities.indecId, [...INDEC_FIXTURE_IDS]));
   // Restore any soft-deleted indec_cppdyl rows the import fixture may have
   // stamped so the live catalog count is accurate. The shared helper also
   // re-drops whole-province aggregate rows a blanket restore would resurrect
@@ -344,5 +345,54 @@ describe("ar-localidades — localitiesByName (within-province homonym)", () => 
     if (!catalogPopulated) return;
     expect(await localitiesByName("AR-B", "Narnia")).toEqual([]);
     expect(await localitiesByName("AR-B", "")).toEqual([]);
+  });
+});
+
+// Stage B review (RESTRICT, migration 0248): a catalogue row a place row points
+// at can no longer be hard-deleted from under it, so a teardown that deletes
+// fixture rows must detach what references them first — exactly what the old
+// ON DELETE SET NULL did silently. `deleteCatalogRows` is that teardown.
+describe("deleteCatalogRows — fixture teardown under ON DELETE RESTRICT", () => {
+  const TEARDOWN_FIXTURE = "06999090"; // AR-B, dept 06999 — impossible upstream
+
+  it("detaches a place row that points at the fixture, then deletes it", async () => {
+    const [loc] = await db
+      .insert(arLocalities)
+      .values({
+        provinceCode: "AR-B",
+        departmentName: "Departamento 999",
+        departmentCode: "06999",
+        localityName: "Teardown Fixture",
+        localitySlug: "teardown-fixture",
+        indecId: TEARDOWN_FIXTURE,
+        category: "localidad",
+        source: "indec_cppdyl",
+      })
+      .returning({ id: arLocalities.id });
+    const [pet] = await db
+      .insert(pets)
+      .values({
+        publicToken: `TEARDOWN-${Date.now()}`,
+        name: "TeardownFixture",
+        species: "dog",
+        sex: "female",
+        status: "active",
+        localityId: loc?.id,
+        placeMethod: "indec_id",
+      })
+      .returning({ id: pets.id });
+    try {
+      const removed = await deleteCatalogRows(inArray(arLocalities.indecId, [TEARDOWN_FIXTURE]));
+      expect(removed).toBe(1);
+      const [after] = await db
+        .select({ localityId: pets.localityId, placeMethod: pets.placeMethod })
+        .from(pets)
+        .where(eq(pets.id, pet?.id ?? ""));
+      expect(after).toEqual({ localityId: null, placeMethod: null });
+      expect(await localityByIndecId(TEARDOWN_FIXTURE)).toBeNull();
+    } finally {
+      await db.delete(pets).where(eq(pets.id, pet?.id ?? ""));
+      await deleteCatalogRows(inArray(arLocalities.indecId, [TEARDOWN_FIXTURE]));
+    }
   });
 });
