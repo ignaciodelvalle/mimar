@@ -21,6 +21,7 @@ import { resolveSiteUrl } from "@/lib/infra/site-url";
 import { formatDate } from "@/lib/utils/format";
 // Aliased — this file already has a local `capRows` (capability grant rows).
 import { capRows as capListRows } from "@/lib/utils/list-pagination";
+import { resolveGrantedCaps } from "@/src/modules/organizations/domain/capabilities";
 import { getGrantedCapabilities } from "@/src/modules/organizations/infrastructure/authz-resolver";
 
 import { ChangeRoleSelect } from "./ChangeRoleSelect";
@@ -85,8 +86,7 @@ export default async function MiembrosPage({
   // column is deprecated (mirrors only; not used here for display).
   //
   // We fetch all approved `event.write` grants for this org in one query.
-  // Admin and vet_individual have `event.write` implicitly (resolveGrantedCaps)
-  // and are treated as always having it regardless of explicit grant rows.
+  // Implicit baselines are added below with the resolver's own rule.
   const eventWriteSet = new Set<string>(); // membershipId → has event.write capability
   const capRows = await db
     .select({ membershipId: organizationCapabilityGrants.membershipId })
@@ -99,11 +99,15 @@ export default async function MiembrosPage({
       ),
     );
   for (const r of capRows) eventWriteSet.add(r.membershipId);
-  // Admin and vet_individual have event.write implicitly (resolveGrantedCaps).
+  // Implicit baselines through the resolver's own rule (resolveGrantedCaps):
+  // admin always; vet_individual only while the member is a vet with a verified
+  // matrícula (W6 review) — a revoked vet must not read as able to write.
   for (const m of members) {
-    if (m.membership.role === "admin" || m.membership.role === "vet_individual") {
-      eventWriteSet.add(m.membership.id);
-    }
+    const explicit = eventWriteSet.has(m.membership.id) ? ["event.write"] : [];
+    const effective = resolveGrantedCaps(m.membership.role, explicit, {
+      vetCredentialValid: m.profile.role === "vet" && m.profile.matriculaVerified === true,
+    }).has("event.write");
+    if (effective) eventWriteSet.add(m.membership.id);
   }
 
   // Count active admins — needed to determine isLastAdmin for the self-leave button.
