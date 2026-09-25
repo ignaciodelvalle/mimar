@@ -15,8 +15,15 @@
 //    hidden "pending" state and starts the staggered reveal. That flip
 //    happens in useLayoutEffect (pre-paint), the same trick CountUp uses to
 //    avoid a flash of the full list before it hides.
-//  - If the chapter never reports ~40% in view within ~1.4s (RevealManager's
-//    own fallback window), every entry reveals immediately.
+//  - If the observer never calls back AT ALL within ~1.4s (RevealManager's
+//    own fallback window), every entry reveals immediately. A callback that
+//    reports NOT intersecting still counts as "the observer is alive" — the
+//    reveal then waits for a later callback that DOES report intersecting,
+//    however long that takes. IntersectionObserver always delivers an
+//    initial callback right after observe() even when not intersecting
+//    (same "fired" flag RevealManager.tsx uses), so this fallback only ever
+//    catches an observer that is broken or unsupported, never a chapter that
+//    is simply still off-screen.
 //
 // The phone screen keeps a fixed height (.lp-scr--tall) and clips overflow —
 // entries are always present in the DOM, only opacity/transform change, so
@@ -66,9 +73,18 @@ export function LibretaFeed({ events }: { events: LibretaEvent[] }) {
     const chapter = el.closest<HTMLElement>('[id^="cap-"]') ?? el;
 
     let played = false;
+    // Set on the observer's FIRST callback, intersecting or not — mirrors
+    // RevealManager.tsx's own `fired` flag. IntersectionObserver always
+    // delivers that initial callback right after observe(), so this becomes
+    // true almost immediately whenever the observer actually works, long
+    // before the fallback timer below could ever fire. Only a broken/absent
+    // observer leaves it false.
+    let fired = false;
     const timers: number[] = [];
     // Normal path: the chapter crossed the threshold — stage the entries in
-    // one by one, ~STEP_MS apart.
+    // one by one, ~STEP_MS apart. May fire well after the fallback window if
+    // the visitor simply hasn't scrolled there yet — that is expected, not a
+    // failure the fallback needs to catch.
     const playStaggered = () => {
       if (played) return;
       played = true;
@@ -80,9 +96,9 @@ export function LibretaFeed({ events }: { events: LibretaEvent[] }) {
         );
       }
     };
-    // Fail-open path: the observer never reported intersecting — show every
-    // entry AT ONCE, exactly like RevealManager's own revealAll() (no further
-    // staggering once the safety net has to catch it).
+    // Fail-open path: the observer itself never reported back at all — show
+    // every entry AT ONCE, exactly like RevealManager's own revealAll() (no
+    // further staggering once the safety net has to catch it).
     const revealAllNow = () => {
       if (played) return;
       played = true;
@@ -91,6 +107,7 @@ export function LibretaFeed({ events }: { events: LibretaEvent[] }) {
 
     const io = new IntersectionObserver(
       (entries) => {
+        fired = true;
         for (const entry of entries) {
           if (entry.isIntersecting) {
             playStaggered();
@@ -102,11 +119,16 @@ export function LibretaFeed({ events }: { events: LibretaEvent[] }) {
     );
     io.observe(chapter);
 
-    // Fail-open rule 2 (RevealManager.tsx): the observer never fired within
-    // ~1.4s → reveal everything immediately.
+    // Fail-open rule 2 (RevealManager.tsx): the observer never called back at
+    // all within ~1.4s → reveal everything immediately. A chapter that is
+    // merely still off-screen already got its (not-intersecting) callback and
+    // set `fired`, so it is NOT affected by this timer — it waits for the
+    // real intersecting callback, whenever that comes.
     const fallback = window.setTimeout(() => {
-      revealAllNow();
-      io.disconnect();
+      if (!fired) {
+        revealAllNow();
+        io.disconnect();
+      }
     }, FAIL_OPEN_MS);
     timers.push(fallback);
 

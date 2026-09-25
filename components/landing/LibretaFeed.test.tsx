@@ -7,8 +7,11 @@
 //   - prefers-reduced-motion renders every entry visible, no animation class;
 //   - motion allowed → entries start pending and reveal one by one, staggered
 //     ~700ms apart, once the chapter is reported ~40% in view;
-//   - if the observer never fires, the same ~1.4s fallback RevealManager uses
-//     reveals everything anyway.
+//   - the ~1.4s fallback RevealManager uses only reveals everything when the
+//     observer never calls back AT ALL (broken/unsupported) — a callback that
+//     reports NOT intersecting still counts as "alive" and disarms it, so a
+//     chapter that is merely off-screen for longer than 1.4s still waits for
+//     the real intersecting callback instead of skipping the stagger.
 
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -120,16 +123,56 @@ describe("<LibretaFeed> — staged reveal (motion allowed)", () => {
     expect(document.querySelectorAll(".lp-lib-row--pending").length).toBe(0);
   });
 
-  it("fails open ~1.4s after mount if the chapter never reports intersecting", () => {
+  it("fails open ~1.4s after mount if the observer NEVER calls back at all", () => {
     vi.useFakeTimers();
     render(<LibretaFeed events={LIBRETA_EVENTS} />);
     expect(document.querySelectorAll(".lp-lib-row--pending").length).toBe(LIBRETA_EVENTS.length);
 
+    // No callback is ever delivered on this observer instance — a broken or
+    // unsupported observer, not merely an off-screen chapter (see the next
+    // test for that distinction).
     act(() => {
       vi.advanceTimersByTime(1400);
     });
     expect(document.querySelectorAll(".lp-lib-row--in").length).toBe(LIBRETA_EVENTS.length);
     expect(document.querySelectorAll(".lp-lib-row--pending").length).toBe(0);
+  });
+
+  it("does NOT fail open once the observer has reported back, even as not-intersecting", () => {
+    // Regression guard: the fallback used to fire unconditionally at ~1.4s
+    // regardless of whether the observer was alive, so any visitor slower
+    // than 1.4s to scroll down saw the whole list at once and the staggered
+    // play-in never happened. IntersectionObserver always delivers an
+    // initial callback right after observe() — even when NOT intersecting —
+    // and that alone must disarm the fallback.
+    vi.useFakeTimers();
+    render(<LibretaFeed events={LIBRETA_EVENTS} />);
+
+    const io = FakeIntersectionObserver.instances[0];
+    act(() => {
+      io.callback([{ isIntersecting: false }]); // the observer's initial callback
+    });
+
+    // Five seconds pass — well past the ~1.4s fallback window — with the
+    // chapter still out of view. Nothing may reveal.
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(document.querySelectorAll(".lp-lib-row--pending").length).toBe(LIBRETA_EVENTS.length);
+    expect(document.querySelectorAll(".lp-lib-row--in").length).toBe(0);
+
+    // The chapter finally scrolls into view — the stagger starts now, from
+    // scratch, however late.
+    act(() => {
+      io.callback([{ isIntersecting: true }]);
+    });
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+    expect(document.querySelectorAll(".lp-lib-row--in").length).toBe(1);
+    expect(document.querySelectorAll(".lp-lib-row--pending").length).toBe(
+      LIBRETA_EVENTS.length - 1,
+    );
   });
 
   it("stamps vaccination entries FIRMADO with the overshoot class once played", () => {
