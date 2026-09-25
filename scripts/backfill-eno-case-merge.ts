@@ -59,6 +59,14 @@ async function main(): Promise<void> {
       `      ${g.targetKind} ${g.caseKey}: ${g.rows.map((r) => `${r.eventType}/${r.status}`).join(", ")}`,
     );
   }
+  console.log(`  (a) re-routes to the authority of the bite (reopened): ${plan.reroutes.length}`);
+  const where = (x: {
+    jurisdictionProvince?: string | null;
+    jurisdictionLocality?: string | null;
+  }) => `${x.jurisdictionProvince ?? "-"}/${x.jurisdictionLocality ?? "-"}`;
+  for (const r of plan.reroutes) {
+    console.log(`      row=${r.rowId} ${where(r.from)} -> ${where(r.to)}`);
+  }
   console.log(`  (b) positive closures without an ENO row: ${plan.orphanClosures.length}`);
   for (const c of plan.orphanClosures) {
     console.log(`      event=${c.id} pet=${c.petId} recorded_at=${c.recordedAt.toISOString()}`);

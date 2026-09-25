@@ -7,11 +7,20 @@
 // (lib/events/event-outbox-enqueue.ts). Rows written before it are handled
 // here, in this order:
 //
-//   1. KEY EVERY CASE ROW, singletons included. Each un-keyed row a rule puts in
-//      a case family gets its case key — built from the row's OWN target
-//      jurisdiction (a legacy row is not re-routed after the fact; it stays
-//      bound for the authority it was bound for). Keying first is what lets the
-//      closure pass below link into an existing record instead of creating one.
+//   1. KEY EVERY CASE ROW, singletons included, UNDER ITS CORRECT TARGET. A
+//      legacy row was routed to the pet's home; the live path routes to the
+//      bite case's jurisdiction. Keying a legacy row off its stored target would
+//      give a later event of the same case a DIFFERENT key — two live records
+//      for one case, and the right authority never told. So each un-keyed row
+//      is resolved with the SAME resolveEnoTargetJurisdiction the live enqueue
+//      uses (its stored target is the fallback) and keyed there. When that
+//      differs from the stored target the row is RE-ROUTED: its target is
+//      rewritten, a { event: "rerouted", previous_target_*, previous_status,
+//      previous_delivered_at } entry is appended to linked_sources (history is
+//      never dropped), and it is reopened as pending — the authority it now
+//      names has not received it. The dry-run lists every re-route.
+//      Keying first is what lets the closure pass below link into an existing
+//      record instead of creating one.
 //   2. MERGE DUPLICATES. When two or more rows share a key, the record is the
 //      row the live enqueue already keyed, else the oldest. The others are NOT
 //      deleted — the outbox is retained for audit and read by the on-time
@@ -36,8 +45,9 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db, eventNotificationOutbox, petEvents, pets } from "@/db";
+import { resolveEnoTargetJurisdiction } from "@/lib/events/eno-target-jurisdiction";
 import { enqueueOutboxForEvent } from "@/lib/events/event-outbox-enqueue";
-import { OUTBOX_RULES, enoCaseKey } from "@/lib/events/event-outbox-rules";
+import { type EnoTarget, OUTBOX_RULES, enoCaseKey } from "@/lib/events/event-outbox-rules";
 
 export type BackfillRow = {
   id: string;
@@ -54,7 +64,11 @@ export type BackfillRow = {
   petId: string;
   eventType: string;
   eventPayload: Record<string, unknown>;
+  /** Where the row SHOULD be bound — the live path's routing. */
+  correctTarget: EnoTarget;
 };
+
+export type Reroute = { rowId: string; from: EnoTarget; to: EnoTarget };
 
 export type CaseGroup = { targetKind: string; caseKey: string; rows: BackfillRow[] };
 
@@ -64,6 +78,8 @@ export type EnoCaseBackfillPlan = {
   singletons: CaseGroup[];
   /** Groups of two or more rows: merged into one record. */
   duplicates: CaseGroup[];
+  /** Legacy rows whose stored target is not the authority of the bite. */
+  reroutes: Reroute[];
   orphanClosures: {
     id: string;
     petId: string;
@@ -73,18 +89,40 @@ export type EnoCaseBackfillPlan = {
   }[];
 };
 
-/** The case a row belongs to under TODAY's rules, keyed by the row's own target. */
+function storedTarget(row: {
+  targetJurisdictionProvince: string | null;
+  targetJurisdictionLocality: string | null;
+}): EnoTarget {
+  return {
+    jurisdictionProvince: row.targetJurisdictionProvince,
+    jurisdictionLocality: row.targetJurisdictionLocality,
+  };
+}
+
+function sameTarget(a: EnoTarget, b: EnoTarget): boolean {
+  return (
+    (a.jurisdictionProvince ?? null) === (b.jurisdictionProvince ?? null) &&
+    (a.jurisdictionLocality ?? null) === (b.jurisdictionLocality ?? null)
+  );
+}
+
+function caseFamilyForRow(row: Omit<BackfillRow, "correctTarget">) {
+  const rules = OUTBOX_RULES[row.eventType as keyof typeof OUTBOX_RULES] ?? [];
+  for (const rule of rules) {
+    if (rule.target_kind !== row.targetKind || !rule.caseFamily) continue;
+    const family = rule.caseFamily(row.eventPayload);
+    if (family) return family;
+  }
+  return null;
+}
+
+/** The case a row belongs to under TODAY's rules, keyed under its correct target. */
 export function caseKeyForRow(row: BackfillRow): string | null {
   const rules = OUTBOX_RULES[row.eventType as keyof typeof OUTBOX_RULES] ?? [];
   for (const rule of rules) {
     if (rule.target_kind !== row.targetKind || !rule.caseFamily) continue;
     const family = rule.caseFamily(row.eventPayload);
-    if (family) {
-      return enoCaseKey(family, row.petId, {
-        jurisdictionProvince: row.targetJurisdictionProvince,
-        jurisdictionLocality: row.targetJurisdictionLocality,
-      });
-    }
+    if (family) return enoCaseKey(family, row.petId, row.correctTarget);
   }
   return null;
 }
@@ -118,11 +156,28 @@ export async function planEnoCaseBackfill(
 
   const live = loaded.filter((r) => r.status !== "merged");
   const groups = new Map<string, CaseGroup>();
+  const reroutes: Reroute[] = [];
   for (const r of live) {
-    const row: BackfillRow = {
-      ...r,
-      eventPayload: (r.eventPayload ?? {}) as Record<string, unknown>,
-    };
+    const base = { ...r, eventPayload: (r.eventPayload ?? {}) as Record<string, unknown> };
+    const stored = storedTarget(r);
+    // A row the live enqueue already keyed was routed by the live rule.
+    const correctTarget =
+      r.enoCaseKey === null && caseFamilyForRow(base)
+        ? await resolveEnoTargetJurisdiction(
+            db,
+            {
+              id: r.sourceEventId,
+              petId: r.petId,
+              eventType: r.eventType,
+              payload: base.eventPayload,
+            },
+            stored,
+          )
+        : stored;
+    const row: BackfillRow = { ...base, correctTarget };
+    if (!sameTarget(stored, correctTarget)) {
+      reroutes.push({ rowId: r.id, from: stored, to: correctTarget });
+    }
     const caseKey = row.enoCaseKey ?? caseKeyForRow(row);
     if (!caseKey) continue;
     const id = `${row.targetKind}|${caseKey}`;
@@ -165,22 +220,69 @@ export async function planEnoCaseBackfill(
     scanned: loaded.length,
     singletons: all.filter((g) => g.rows.length === 1 && g.rows[0].enoCaseKey === null),
     duplicates: all.filter((g) => g.rows.length > 1),
+    reroutes,
     orphanClosures: closures.filter((c) => !onARecord.has(c.id)),
   };
 }
 
+/**
+ * The re-route of a record whose stored target is not the bite's authority:
+ * the new target and the trail entry that keeps the old one. Null when the row
+ * is already bound for the right authority.
+ */
+function reroute(row: BackfillRow) {
+  const stored = storedTarget(row);
+  if (sameTarget(stored, row.correctTarget)) return null;
+  return {
+    trail: {
+      event: "rerouted",
+      rerouted_at: new Date().toISOString(),
+      previous_target_province: stored.jurisdictionProvince ?? null,
+      previous_target_locality: stored.jurisdictionLocality ?? null,
+      previous_status: row.status,
+      previous_delivered_at: row.deliveredAt?.toISOString() ?? null,
+      rerouted_by: "scripts/backfill-eno-case-merge.ts",
+    },
+    target: {
+      targetJurisdictionProvince: row.correctTarget.jurisdictionProvince ?? null,
+      targetJurisdictionLocality: row.correctTarget.jurisdictionLocality ?? null,
+    },
+  };
+}
+
+/** Reopen: the authority now named has not received the record. */
+const REOPEN = {
+  status: "pending" as const,
+  nextRetryAt: sql`now()`,
+  deliveredAt: null,
+  attempts: 0,
+  lastError: null,
+};
+
 async function keySingleton(group: CaseGroup): Promise<void> {
+  const row = group.rows[0];
+  const moved = reroute(row);
   await db
     .update(eventNotificationOutbox)
-    .set({ enoCaseKey: group.caseKey })
-    .where(eq(eventNotificationOutbox.id, group.rows[0].id));
+    .set({
+      enoCaseKey: group.caseKey,
+      ...(moved
+        ? {
+            ...moved.target,
+            linkedSources: sql`${eventNotificationOutbox.linkedSources} || ${JSON.stringify([moved.trail])}::jsonb`,
+            ...REOPEN,
+          }
+        : {}),
+    })
+    .where(eq(eventNotificationOutbox.id, row.id));
 }
 
 async function mergeGroup(group: CaseGroup): Promise<void> {
   const keeper = group.rows.find((r) => r.enoCaseKey !== null) ?? group.rows[0];
   const others = group.rows.filter((r) => r.id !== keeper.id);
   const anyPending = group.rows.some((r) => r.status === "pending");
-  const reopen = anyPending && keeper.status !== "pending";
+  const moved = reroute(keeper);
+  const reopen = moved !== null || (anyPending && keeper.status !== "pending");
   const earliestSla = new Date(Math.min(...group.rows.map((r) => r.slaDueAt.getTime())));
   const linkedAt = new Date().toISOString();
   const links = others.map((r) => ({
@@ -196,6 +298,8 @@ async function mergeGroup(group: CaseGroup): Promise<void> {
     merged_from_outbox_row_id: r.id,
     merged_row_status: r.status,
     merged_row_delivered_at: r.deliveredAt?.toISOString() ?? null,
+    merged_row_target_province: r.targetJurisdictionProvince,
+    merged_row_target_locality: r.targetJurisdictionLocality,
     merged_by: "scripts/backfill-eno-case-merge.ts",
   }));
 
@@ -215,17 +319,10 @@ async function mergeGroup(group: CaseGroup): Promise<void> {
       .update(eventNotificationOutbox)
       .set({
         enoCaseKey: group.caseKey,
-        linkedSources: sql`${eventNotificationOutbox.linkedSources} || ${JSON.stringify(links)}::jsonb`,
+        ...(moved ? moved.target : {}),
+        linkedSources: sql`${eventNotificationOutbox.linkedSources} || ${JSON.stringify([...(moved ? [moved.trail] : []), ...links])}::jsonb`,
         slaDueAt: earliestSla,
-        ...(reopen
-          ? {
-              status: "pending" as const,
-              nextRetryAt: sql`now()`,
-              deliveredAt: null,
-              attempts: 0,
-              lastError: null,
-            }
-          : {}),
+        ...(reopen ? REOPEN : {}),
       })
       .where(eq(eventNotificationOutbox.id, keeper.id));
   });

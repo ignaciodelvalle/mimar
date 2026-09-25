@@ -777,15 +777,20 @@ const LEGACY_CLOSE = {
 /** An outbox row as the pre-0247 enqueue wrote it: no key, no links. */
 async function legacyRow(
   sourceEventId: string,
-  opts: { status: "pending" | "delivered"; slaDueAt: Date; createdAt: Date },
+  opts: {
+    status: "pending" | "delivered";
+    slaDueAt: Date;
+    createdAt: Date;
+    target?: { province: string; locality: string };
+  },
 ) {
   const [row] = await db
     .insert(eventNotificationOutbox)
     .values({
       sourceEventId,
       targetKind: "govt_webhook",
-      targetJurisdictionProvince: PROVINCE,
-      targetJurisdictionLocality: LOCALITY,
+      targetJurisdictionProvince: opts.target?.province ?? PROVINCE,
+      targetJurisdictionLocality: opts.target?.locality ?? LOCALITY,
       payloadSnapshot: { disease_code: "rabies" },
       slaDueAt: opts.slaDueAt,
       status: opts.status,
@@ -884,5 +889,92 @@ describe("legacy backfill: key, merge (never delete), then enqueue orphan closur
     expect(again.singletons).toHaveLength(0);
     expect(again.duplicates).toHaveLength(0);
     expect(again.orphanClosures).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIX-25 verification: a LEGACY row was routed to the pet's home. The backfill
+// resolves its correct target with the same resolver the live path uses, keys
+// it there, and re-routes it — keeping the old target and delivery in the
+// trail and reopening it so the right authority actually receives it.
+// ---------------------------------------------------------------------------
+
+describe("legacy backfill re-routes a row to the authority of the bite", () => {
+  it("a pet-home legacy row for a CABA bite by a Córdoba pet → re-keyed to CABA; a later CABA event merges in", async () => {
+    const pet = await makeCordobaPet();
+    const bite = await openBiteCase(pet.id, CABA);
+    const diag = await legacyEvent(pet.id, "clinical_info_logged", LEGACY_DIAGNOSIS);
+    const delivered = new Date(Date.now() - 60 * 60_000);
+    const row = await legacyRow(diag, {
+      status: "delivered",
+      slaDueAt: new Date(Date.now() - 30 * 60_000),
+      createdAt: delivered,
+      target: CORDOBA,
+    });
+
+    const plan = await planEnoCaseBackfill({ petIds: [pet.id] });
+    expect(plan.reroutes).toEqual([
+      {
+        rowId: row.id,
+        from: { jurisdictionProvince: CORDOBA.province, jurisdictionLocality: CORDOBA.locality },
+        to: { jurisdictionProvince: CABA.province, jurisdictionLocality: CABA.locality },
+      },
+    ]);
+    await applyEnoCaseBackfill(plan);
+
+    const [after] = await db
+      .select()
+      .from(eventNotificationOutbox)
+      .where(eq(eventNotificationOutbox.id, row.id));
+    expect(after.targetJurisdictionProvince).toBe(CABA.province);
+    expect(after.targetJurisdictionLocality).toBe(CABA.locality);
+    expect(after.enoCaseKey).toBe(
+      rabiesEnoCaseKey(pet.id, {
+        jurisdictionProvince: CABA.province,
+        jurisdictionLocality: CABA.locality,
+      }),
+    );
+    // Reopened: the right authority was never told.
+    expect(after.status).toBe("pending");
+    expect(after.deliveredAt).toBeNull();
+    // The history is kept, not dropped.
+    const [trail] = after.linkedSources as Record<string, unknown>[];
+    expect(trail).toMatchObject({
+      event: "rerouted",
+      previous_target_province: CORDOBA.province,
+      previous_target_locality: CORDOBA.locality,
+      previous_status: "delivered",
+      previous_delivered_at: delivered.toISOString(),
+    });
+
+    // A post-deploy event of the same case lands on the SAME record.
+    await closePositive(pet.id, bite);
+    const records = await enoRecordsFor(pet.id);
+    expect(records).toHaveLength(1);
+    expect(records[0].id).toBe(row.id);
+  });
+
+  it("a legacy row already on the right target is not re-routed or reopened", async () => {
+    const pet = await makeObservedPet(); // no bite case: its target is the one stored
+    const diag = await legacyEvent(pet.id, "clinical_info_logged", LEGACY_DIAGNOSIS);
+    const row = await legacyRow(diag, {
+      status: "delivered",
+      slaDueAt: new Date(Date.now() - 30 * 60_000),
+      createdAt: new Date(Date.now() - 60 * 60_000),
+    });
+
+    const plan = await planEnoCaseBackfill({ petIds: [pet.id] });
+    expect(plan.reroutes).toEqual([]);
+    await applyEnoCaseBackfill(plan);
+
+    const [after] = await db
+      .select()
+      .from(eventNotificationOutbox)
+      .where(eq(eventNotificationOutbox.id, row.id));
+    expect(after.targetJurisdictionProvince).toBe(PROVINCE);
+    expect(after.targetJurisdictionLocality).toBe(LOCALITY);
+    expect(after.status).toBe("delivered");
+    expect(after.deliveredAt?.getTime()).toBe(row.deliveredAt?.getTime());
+    expect(after.linkedSources).toEqual([]);
   });
 });
