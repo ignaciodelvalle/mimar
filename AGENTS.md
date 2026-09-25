@@ -677,7 +677,7 @@ A conditional whose justification NAMES a specific flow becomes wrong the day th
 - `app/gob/layout.tsx` swapped the ADMIN rail in for an admin viewer, because an admin used to arrive via `/admin/moderacion`'s **redirect**. The F1 fusion (2026-07-22) removed that redirect. What was left: the switcher offered "Ir a Gobierno" and the layout then served 19 links back to `/admin`, so the sections never changed and every click bounced. A door the product opened and then refused.
 - `lib/ui/shell-nav.ts` pointed the operator's "Volver a mi app" at `/mis-mascotas`, calling it a "personal escape hatch" — while `app/(app)/layout.tsx` redirects govt→`/gob` and admin→`/admin` before that page renders. The link advertised a destination the product refuses to serve.
 
-**The rule**: when you delete or reroute a flow, `rg` its name (route, redirect, entry point) across **comments**, not just code. The justification for someone else's `if` is written in prose, so it will not show up in a type error, a test, or any of the <!-- fact:verify_fences -->78<!-- /fact --> fences.
+**The rule**: when you delete or reroute a flow, `rg` its name (route, redirect, entry point) across **comments**, not just code. The justification for someone else's `if` is written in prose, so it will not show up in a type error, a test, or any of the <!-- fact:verify_fences -->79<!-- /fact --> fences.
 
 **The tell**: two pieces of the product disagreeing about whether a state is reachable. One offers it, the other denies it. When you find that, one of the two is stale — establish which before picking a side. Both bugs above also had the correct helper sitting in the same file (`roleHome()`), already used by a sibling branch.
 
@@ -1044,9 +1044,10 @@ inserts a `credential_scanned` event into `pet_events`.
 > **The payload contract lives in one place — Privacidad §5 (`#privacidad-y-manejo-de-datos`).**
 > This section used to state "no IP address and no geolocation are ever stored", which
 > Task #45 (scan-location capture, PO decision obs #733) superseded: scanner rows now
-> carry a COARSE `scan_ip_area` (city precision max, never the raw IP) and, only when the
-> pet is lost AND the scanner explicitly granted browser geolocation, `scan_coords` /
-> `scan_accuracy_m`. Privacidad §5 has the full rule table with enforcement sites; do not
+> carry a COARSE `scan_ip_area` (city precision max, never the raw IP). They used to add
+> `scan_coords` / `scan_accuracy_m` when the pet was lost and the scanner granted browser
+> geolocation; W8 (PO 2026-09-24, no device location anywhere) retired that — only pre-W8
+> events still carry them, until the 90-day purge. Privacidad §5 has the full rule table with enforcement sites; do not
 > re-derive it here — one of the two copies will drift, and this is the copy that did.
 
 Author role assignment:
@@ -1539,7 +1540,7 @@ All migrations use `IF EXISTS` / `IF NOT EXISTS` guards — do not remove them.
 
 ### Fences (the `pnpm verify` chain)
 
-`pnpm verify` is `typecheck && lint` + **every `lint:*` fence in package.json** (<!-- fact:verify_fences -->78<!-- /fact --> — counted out of the `verify` script itself by `pnpm facts:write`; package.json remains the source of truth and this marker is regenerated from it) + `build`, in
+`pnpm verify` is `typecheck && lint` + **every `lint:*` fence in package.json** (<!-- fact:verify_fences -->79<!-- /fact --> — counted out of the `verify` script itself by `pnpm facts:write`; package.json remains the source of truth and this marker is regenerated from it) + `build`, in
 that order (`package.json` → `verify` script is the literal source of truth —
 read it before assuming this list, it grows). Each fence is a standalone
 `pnpm lint:<name>` script so it can be run in isolation while iterating.
@@ -1661,7 +1662,7 @@ Updated by Task #45 (scan-location capture, PO decision obs #733): scans now car
 |---|---|
 | Scanner-role payload = `{ is_self_scan, viewer_authenticated, scan_ip_area, scan_coords?, scan_accuracy_m? }`. Never the raw IP. | `src/modules/pets/application/scans/log-scan.ts` |
 | `scan_ip_area` is coarse (city precision max), derived from platform geo headers only — the raw IP is never read into the payload | `lib/infra/scan-geo.ts` |
-| `scan_coords`/`scan_accuracy_m` ONLY when the pet is lost AND the scanner explicitly granted browser geolocation; `pet.status='lost'` re-checked server-side | `src/modules/pets/application/scans/log-scan.ts` |
+| `scan_coords`/`scan_accuracy_m` are NEVER written (W8, PO 2026-09-24: no device location anywhere) — the scan action takes no coordinate; the schema keeps them only for pre-W8 events | `src/modules/pets/application/scans/log-scan.ts` + `scripts/check-no-device-gps.ts` |
 | Scanner-role rows are hard-anonymized: `recorded_by_user_id = NULL` always (no scanner identity link, even when authenticated) | `src/modules/pets/application/scans/log-scan.ts` |
 | Self-scans (`author_role='owner'`) carry NO location fields — they are identity-linked and exempt from the purge | `src/modules/pets/application/scans/log-scan.ts` |
 | `author_role='scanner'` events purged after 90 days — this bounds retention of ALL scan-location fields | `lib/infra/scan-retention.ts` + cron `/api/cron/purge-scan-events` |

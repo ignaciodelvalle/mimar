@@ -309,9 +309,9 @@ The privacy contract is at `src/modules/pets/application/scans/log-scan.ts:7-27`
   identity link.
 - `scan_ip_area` is a coarse, city-precision area from platform geo headers
   (`lib/infra/scan-geo.ts`). The raw IP never enters the payload.
-- Precise GPS is stored ONLY when the pet is currently lost AND the scanner granted
-  browser geolocation. The lost check runs server-side so a forged client call
-  cannot attach coordinates to a pet that is not lost.
+- No device location (W8, PO 2026-09-24): the scan action takes no coordinate, so
+  `scan_coords` / `scan_accuracy_m` are never written any more. They stay in the
+  schema only so events recorded before W8 keep validating until the purge.
 - Self-scans (owner viewing their own pet) keep the identity and carry **no**
   location fields, because owner-role rows are never purged.
 

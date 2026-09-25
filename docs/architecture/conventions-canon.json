@@ -31,10 +31,10 @@
     ]
   },
   "stats": {
-    "rows": 526,
+    "rows": 527,
     "byStatus": {
       "UNENFORCED": 248,
-      "ENFORCED": 184,
+      "ENFORCED": 185,
       "PARTIAL": 94
     },
     "byScopeStatus": {
@@ -55,7 +55,7 @@
       },
       "web": {
         "UNENFORCED": 41,
-        "ENFORCED": 89,
+        "ENFORCED": 90,
         "PARTIAL": 39
       },
       "mobile": {
@@ -76,7 +76,7 @@
     "wired": {
       "none": 247,
       "ci": 10,
-      "verify": 138,
+      "verify": 139,
       "test:verified": 111,
       "manual": 6,
       "db": 14
@@ -2823,20 +2823,20 @@
     },
     {
       "id": "CANON-174",
-      "rule": "scan_coords/scan_accuracy_m may be captured only when the pet is lost and the scanner explicitly granted browser geolocation, re-checked server-side.",
+      "rule": "No scan writer may capture scan_coords/scan_accuracy_m (W8, PO 2026-09-24: no device location anywhere); the fields stay in the schema only so pre-W8 scan events keep validating until the 90-day purge.",
       "scope": "db",
       "sources": [
         "AGENTS.md:1652"
       ],
       "enforcer": [
-        "__tests__/log-scan-location.test.ts:233,245,257"
+        "__tests__/log-scan-location.test.ts:233,245,256"
       ],
       "enforcementKind": "vitest",
       "wired": "test:verified",
       "status": "ENFORCED",
       "clause": "R1",
-      "statusBasis": "__tests__/log-scan-location.test.ts:233-243 drives logScanAction with petRow.status='lost' + coords and asserts payload.scan_coords/scan_accuracy_m are stored (rounded server-side); :245-255 sets status='active', passes the same coords and asserts the payload has NEITHER property; :257-265 drops out-of-range coords; :202-203 the no-coords case. Real writer, captured insert.",
-      "notes": "The 'granted' half is structural — coords only exist in the payload when the browser granted them; the fenced half is the server-side status re-check.",
+      "statusBasis": "__tests__/log-scan-location.test.ts:233-243 drives logScanAction on a lost pet and asserts the payload has NEITHER scan_coords nor scan_accuracy_m; :245-254 the same on an active pet; :256-270 smuggles a coordinate in as an extra argument to the action (a forged call) and asserts it lands nowhere. Real writer, captured insert.",
+      "notes": "Structural half: logScanAction/logScan take no coordinate parameter since W8, and scripts/check-no-device-gps.ts (lint:no-device-gps) bans the browser Geolocation API across the web tree.",
       "confidence": 0.8,
       "verifiedAt": "d7dbf25f7"
     },
@@ -2849,14 +2849,14 @@
       ],
       "enforcer": [
         "__tests__/log-scan-location.test.ts:192,206",
-        "src/modules/pets/application/scans/log-scan.ts:186"
+        "src/modules/pets/application/scans/log-scan.ts:149"
       ],
       "enforcementKind": "vitest",
       "wired": "test:verified",
       "status": "PARTIAL",
       "partialShape": "subset",
       "clause": "R4",
-      "statusBasis": "__tests__/log-scan-location.test.ts:197,206-218 pins recordedByUserId null + authorRole 'scanner' + no visitor id anywhere, for the scan writer (log-scan.ts:186-187). The basis calls that 'the single writer'; it is not — src/modules/pets/application/sighting/report-pet-sighting.ts:277-278 also emits authorRole 'scanner' with a bare recordedByUserId: null literal that no test asserts (sighting tests hold only a fixture, lost-mode-sightings.test.ts:109) and no DB CHECK covers.",
+      "statusBasis": "__tests__/log-scan-location.test.ts:197,206-218 pins recordedByUserId null + authorRole 'scanner' + no visitor id anywhere, for the scan writer (log-scan.ts:149-150). The basis calls that 'the single writer'; it is not — src/modules/pets/application/sighting/report-pet-sighting.ts:277-278 also emits authorRole 'scanner' with a bare recordedByUserId: null literal that no test asserts (sighting tests hold only a fixture, lost-mode-sightings.test.ts:109) and no DB CHECK covers.",
       "notes": "rg '\"scanner\"' over non-test source finds exactly two producers; both comply today, one is fenced.",
       "confidence": 0.6,
       "verifiedAt": "d7dbf25f7"
@@ -9607,6 +9607,30 @@
       "confidence": 0.9,
       "numberKey": 539,
       "verifiedAt": "01546a80b"
+    },
+    {
+      "id": "CANON-540",
+      "rule": "No surface may read the device's location (W8, PO 2026-09-24): no navigator.geolocation in any spelling, no Geolocation API method, no MapLibre GeolocateControl, no geolocation permission query and no 'Usar mi ubicación'-style control on the web; no native location module, dependency or OS location permission in apps/mobile; and next.config.ts must send Permissions-Policy geolocation=(). Places are entered by address search or the map pin; the credential scan keeps only the server-side IP-derived area.",
+      "scope": "web",
+      "sources": [
+        "scripts/check-no-device-gps.ts:1-39"
+      ],
+      "enforcer": [
+        "scripts/check-no-device-gps.ts:52-81",
+        "scripts/check-no-device-gps.ts:191-204",
+        "package.json:86 lint:no-device-gps",
+        "__tests__/check-no-device-gps.test.ts:31-126",
+        "__tests__/check-no-device-gps.test.ts:128-144"
+      ],
+      "enforcementKind": "lint-script",
+      "wired": "verify",
+      "status": "ENFORCED",
+      "clause": "R1",
+      "statusBasis": "scripts/check-no-device-gps.ts scans comment-stripped web source (app/, components/, lib/, src/, packages/*/src) and mobile source (apps/mobile/app, apps/mobile/src) against WEB_RULES/MOBILE_RULES (:52-81), checks the mobile manifest and package.json for location permissions and modules, and requires Permissions-Policy geolocation=() in next.config.ts (:191-204); it fails below MIN_WEB_FILES/MIN_MOBILE_FILES. __tests__/check-no-device-gps.test.ts:31-126 plants a sample for every rule (dot, optional-chaining and bracket access, destructured methods, GeolocateControl, permission query, copy with and without accent, each native module, manifest permissions, the header) and pins the look-alikes it must spare (comments, MapLibre locale keys, the legacy 'gps' enum value); :128-144 runs the real tree. lint:no-device-gps is in the verify chain and in .github/workflows/ci.yml (lint:ci-parity holds the pairing).",
+      "notes": "Legacy values stay valid by design: location_source 'gps' and scan_coords/scan_accuracy_m remain in lib/events/event-schemas.ts so pre-W8 events keep validating (append-only). Writers no longer accept 'gps' from form input (src/modules/surveillance/actions.ts, src/modules/pets/application/sighting/report-pet-sighting.ts). Companion to CANON-174.",
+      "confidence": 0.9,
+      "numberKey": 540,
+      "verifiedAt": "71442466c"
     }
   ],
   "recommendations": [

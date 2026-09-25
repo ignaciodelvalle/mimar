@@ -68,7 +68,7 @@ framework — is in [`AGENTS.md`](./AGENTS.md) (start with its slim index) and
 | Web | Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS |
 | Mobile | Expo / React Native (`apps/mobile/`), sharing a typed contract (`packages/contract/`) |
 | Data | Postgres on Supabase (Auth, Storage, Row Level Security), Drizzle ORM |
-| Quality | Biome, Vitest, Playwright, and <!-- fact:verify_fences -->78<!-- /fact --> repository fences (`pnpm verify`) |
+| Quality | Biome, Vitest, Playwright, and <!-- fact:verify_fences -->79<!-- /fact --> repository fences (`pnpm verify`) |
 | Hosting (staging) | Vercel + Supabase Cloud |
 | Locale | Spanish (es-AR) UI, English code |
 
