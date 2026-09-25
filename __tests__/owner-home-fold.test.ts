@@ -117,8 +117,16 @@ describe("/mis-mascotas is the index + inbox (decisions 3, 4, 6)", () => {
     // The property that used to be visible as two adjacent queries in the page.
     // Now it is the door's, and it is the thing that makes "mostrando N de M"
     // honest precisely when someone is searching.
-    expect(listDoorSrc).toContain("deps.countRows(where)");
-    expect(listDoorSrc).toContain("deps.fetchRows(where, limit)");
+    // D5 (cursor pagination): the rows add ONLY the page's keyset condition on
+    // top of the counted predicate — so "de M" still counts exactly what the
+    // search selects, and a later page never changes the total.
+    expect(listDoorSrc).toContain("deps.countRows(baseWhere)");
+    expect(listDoorSrc).toContain("deps.fetchRows(pagedWhere, limit + 1)");
+    expect(listDoorSrc).toMatch(
+      /const pagedWhere = cursorCondition \? and\(baseWhere, cursorCondition\) : baseWhere;/,
+    );
+    // The search filter lives in the COUNTED predicate, not only in the rows'.
+    expect(listDoorSrc).toMatch(/const baseWhere = and\([^;]*nameFilter,\s*\);/s);
   });
 
   it("keeps deceased pets in In memoriam ONLY (decision 6)", () => {

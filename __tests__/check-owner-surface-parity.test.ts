@@ -214,15 +214,24 @@ describe("the join — a web door the app lacks is named", () => {
 });
 
 describe("the declarations — explicit, reasoned, live", () => {
+  // Any LIVE declared key will do for the two substitution tests below. It is
+  // taken from the list itself rather than named: a named key goes stale the
+  // day its divergence closes (it happened twice — reportBiteAction on
+  // 2026-09-10, togglePhysicalTagInterestAction with D2 on 2026-09-25), and a
+  // key the scan no longer finds makes these tests fail — or pass — for the
+  // wrong reason. "refuses a declaration the scan no longer finds" is what
+  // keeps every declared key live.
+  const LIVE_KEY = Object.keys(DECLARED_DIVERGENCES)[0] as string;
+
+  it("has at least one live declaration to substitute", () => {
+    expect(LIVE_KEY).toBeDefined();
+    expect(evaluate(live, DECLARED_DIVERGENCES).failures).toEqual([]);
+  });
+
   it("refuses an entry without a reason or without what would close it", () => {
     const hollow: Record<string, DeclaredDivergence> = {
       ...DECLARED_DIVERGENCES,
-      // Any LIVE key does; this one asserts the hollow-entry refusal, not the
-      // key. It used to be `read:reportBiteAction.casePublicCode`, which closed
-      // on 2026-09-10 — a key the scan no longer finds would have made this
-      // test pass for the wrong reason (a stale-declaration failure alongside
-      // the one it counts).
-      "write:togglePhysicalTagInterestAction→togglePhysicalTagInterest": {
+      [LIVE_KEY]: {
         reason: "  ",
         closes: "",
       },
@@ -246,13 +255,9 @@ describe("the declarations — explicit, reasoned, live", () => {
     // Same substitution as above, and for the same reason: this needs a
     // divergence the scan STILL finds, so that dropping its declaration is what
     // produces the failure.
-    const { "write:togglePhysicalTagInterestAction→togglePhysicalTagInterest": _dropped, ...rest } =
-      DECLARED_DIVERGENCES;
+    const { [LIVE_KEY]: _dropped, ...rest } = DECLARED_DIVERGENCES;
     const failures = evaluate(live, rest).failures;
-    const named = failuresMatching(
-      failures,
-      "divergence not declared: write:togglePhysicalTagInterestAction→togglePhysicalTagInterest",
-    );
+    const named = failuresMatching(failures, `divergence not declared: ${LIVE_KEY}`);
     expect(named).toHaveLength(1);
     expect(named[0]).toContain("DECLARED_DIVERGENCES");
   });
