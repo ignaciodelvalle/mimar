@@ -53,7 +53,7 @@
 -- columns so /api/health answers 503 on a database without this migration.
 --
 -- Idempotent-safe (IF NOT EXISTS; the FK swap drops by catalogue lookup and
--- re-adds under a fixed name). Forward-only. Rollback: the columns are unread —
+-- re-adds under a fixed name, NOT VALID, then validates in section 5). Forward-only. Rollback: the columns are unread —
 -- revert the writers; a forward migration may drop them.
 -- ────────────────────────────────────────────────────────────────────────────
 
@@ -159,7 +159,7 @@ BEGIN
     END LOOP;
     EXECUTE format(
       'ALTER TABLE public.%I ADD CONSTRAINT %I FOREIGN KEY (%I) '
-      'REFERENCES public.ar_localities (id) ON DELETE RESTRICT',
+      'REFERENCES public.ar_localities (id) ON DELETE RESTRICT NOT VALID',
       t.tbl, t.tbl || '_' || t.id_col || '_restrict_fk', t.id_col
     );
 
@@ -178,6 +178,31 @@ BEGIN
         t.tbl, t.tbl || '_' || t.method_col || '_known', t.method_col, t.method_col, methods
       );
     END IF;
+  END LOOP;
+END
+$$;
+
+-- 5. validate the foreign keys ------------------------------------------------
+-- Added NOT VALID above (no scan, a brief lock) and validated here, one
+-- statement per constraint: VALIDATE CONSTRAINT scans the table under SHARE
+-- UPDATE EXCLUSIVE, which does not block reads or writes. The runner still
+-- wraps the file in one transaction, so at today's table sizes the scans run
+-- back to back inside it — acceptable here (security review of stage B); a
+-- table that grows past that would move its VALIDATE to a later migration.
+
+DO $$
+DECLARE
+  c record;
+BEGIN
+  FOR c IN
+    SELECT con.conrelid::regclass::text AS tbl, con.conname
+      FROM pg_constraint con
+     WHERE con.contype = 'f'
+       AND con.confrelid = 'public.ar_localities'::regclass
+       AND con.conname LIKE '%\_restrict\_fk'
+       AND NOT con.convalidated
+  LOOP
+    EXECUTE format('ALTER TABLE %s VALIDATE CONSTRAINT %I', c.tbl, c.conname);
   END LOOP;
 END
 $$;

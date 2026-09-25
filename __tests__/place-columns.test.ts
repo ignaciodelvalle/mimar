@@ -13,6 +13,8 @@
 //      writer cannot store a method the vocabulary does not have, and the
 //      vocabulary cannot grow on one side only.
 
+import { readFileSync } from "node:fs";
+
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
@@ -57,6 +59,31 @@ describe("every place table can say which row and how", () => {
 
   it("welfare_reports keeps the place as entered, for denuncias that write no event", async () => {
     expect((await columnsOf("welfare_reports")).has("place_entered")).toBe(true);
+  });
+});
+
+// Security review of stage B: re-adding fourteen FKs validated inline scans
+// every place table while holding its lock. The FK is added NOT VALID (no scan,
+// brief lock) and validated in a separate statement.
+describe("0248 adds its foreign keys without a validating scan under lock", () => {
+  const source = readFileSync("db/migrations/0248_place_columns.sql", "utf8");
+
+  it("every FK it adds is NOT VALID, and each is validated separately", () => {
+    const adds = source.match(/ADD CONSTRAINT %I FOREIGN KEY[^;]*/g) ?? [];
+    expect(adds).toHaveLength(1);
+    expect(adds[0]).toMatch(/NOT VALID/);
+    expect(source).toMatch(/VALIDATE CONSTRAINT %I/);
+  });
+
+  it("the live constraints end validated", async () => {
+    const rows = (await db.execute(sql`
+      select count(*)::int as unvalidated
+        from pg_catalog.pg_constraint c
+       where c.contype = 'f'
+         and c.confrelid = 'public.ar_localities'::regclass
+         and not c.convalidated
+    `)) as unknown as Array<{ unvalidated: number }>;
+    expect(rows[0]?.unvalidated).toBe(0);
   });
 });
 
