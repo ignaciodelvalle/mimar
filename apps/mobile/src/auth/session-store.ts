@@ -409,12 +409,13 @@ export const sessionPort: SessionPort = {
   },
 
   async endSession(reason) {
-    // A DEACTIVATION DOES NOT END THE SESSION ANY MORE (D4). The account may be
-    // the person's own to switch back on, and doing that needs these tokens —
-    // see the `account-deactivated` phase. The drafts still go, for the reason
-    // below: a deactivation is somebody saying they are done, and a draft of a
-    // bite holds a third party's name and phone.
-    if (reason === "account_deactivated") {
+    // A SELF-REVERSIBLE DEACTIVATION DOES NOT END THE SESSION (D4): switching
+    // the account back on needs these tokens — see the `account-deactivated`
+    // phase and `deactivationIsSelfReversible`. Every other deactivation ends
+    // it exactly as before D4, because the server does NOT revoke the sessions
+    // of an operator-deactivated account and this teardown is the only thing
+    // that drops its refresh token from the phone. The drafts go either way.
+    if (reason === "account_deactivated" && deactivationIsSelfReversible()) {
       sweepDraftsOnDeliberateExit();
       setState({ phase: "account-deactivated" });
       return;
@@ -428,12 +429,38 @@ export const sessionPort: SessionPort = {
     // waiting, so they are swept like the deliberate exits. Every OTHER reason
     // here — above all `auth_expired`, a refresh that failed — keeps them: see
     // `sweepDraftsOnDeliberateExit` for why an ordinary session end must not.
-    if (reason === "account_erased") {
+    if (reason === "account_erased" || reason === "account_deactivated") {
       sweepDraftsOnDeliberateExit();
     }
     setState({ phase: "signed-out", reason });
   },
 };
+
+/**
+ * May THIS session's account be switched back on by the person holding it?
+ *
+ * Only a PERSONAL account, and the reason is the schema, not a guess: every
+ * server-side writer of `deactivated_at` except the personal self-deactivation
+ * (`deactivate-govt`, `deactivate-admin`, `reset-institutional-credentials`,
+ * `govt-self-deactivate`) requires an institutional account, so a deactivated
+ * personal account was deactivated by its owner. `accountType` is the server's
+ * own answer about the caller's own account (login or `/me`), so no new field
+ * travels and nothing about any other account is revealed.
+ *
+ * NOT KNOWN → NOT REVERSIBLE. A cold start whose first `/me` is the refusal has
+ * no user yet; it ends the session as before D4, and the next sign-in hands
+ * back the `accountType` this needs. Already in the phase → stays reversible,
+ * so a stray request refused mid-screen does not tear the screen down.
+ */
+function deactivationIsSelfReversible(): boolean {
+  if (state.phase === "account-deactivated") return true;
+  // The `profilePending` arm carries no account type, so it answers "not known".
+  return (
+    state.phase === "signed-in" &&
+    "accountType" in state.user &&
+    state.user.accountType === "personal"
+  );
+}
 
 /**
  * The refresh itself. Wrapped by the port above, which is where the breadcrumb
@@ -1569,15 +1596,19 @@ export type ReactivateResult = { ok: true } | { ok: false; message: string };
  * account usable now" — so a reactivation that did not really take shows up as
  * the deactivated screen again instead of as a shell whose every request fails.
  *
- * A REFUSAL KEEPS THE PHASE. `account_deactivated` from this call means the
- * deactivation is not the person's to undo; `apiRequest` routes it back through
- * `endSession`, which leaves the phase where it is, and the sentence below says
- * who can help. `account_erased` ends the session through the same policy.
+ * `account_deactivated` FROM THIS CALL ENDS THE SESSION: the deactivation is not
+ * the person's to undo, so the kept tokens are dropped. `account_erased` ends it
+ * through `apiRequest`'s ordinary policy. Any other refusal keeps the phase.
  */
 export async function reactivateAccount(): Promise<ReactivateResult> {
   const result = await reactivateMyAccount(sessionPort);
   if (result.outcome !== "ok") {
     if (result.outcome === "api-error" && result.code === "account_deactivated") {
+      // THE SERVER SAID THIS DEACTIVATION IS NOT THE PERSON'S TO UNDO, so the
+      // tokens this phase kept buy nothing and must not stay on the phone: the
+      // session ends exactly as it did before D4.
+      await clearSession();
+      setState({ phase: "signed-out", reason: "account_deactivated" });
       return {
         ok: false,
         message:

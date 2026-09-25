@@ -1459,9 +1459,39 @@ describe("every deliberate exit sweeps the event drafts", () => {
     expect(mockForgetAllEventDrafts).toHaveBeenCalledTimes(1);
   });
 
-  // D4: a deactivation still sweeps — the person said they were done — but it
-  // no longer ends the session, because switching the account back on needs it.
-  it("a server-reported account_deactivated sweeps them and KEEPS the tokens", async () => {
+  // D4: an INSTITUTIONAL deactivation is an operator's act, not the person's to
+  // undo, and the server does not revoke its sessions — so the app still drops
+  // the tokens, exactly as before D4.
+  it("an INSTITUTIONAL account_deactivated sweeps them and CLEARS the tokens", async () => {
+    mockLogin.mockResolvedValue({
+      ...LOGIN_OK,
+      payload: {
+        ...LOGIN_OK.payload,
+        user: { ...LOGIN_OK.payload.user, role: "govt", accountType: "institutional" },
+      },
+    });
+    await signIn("ana@dim.test", "hunter2");
+    mockDropLocalSession.mockClear();
+
+    await sessionPort.endSession("account_deactivated");
+
+    expect(getSessionState()).toEqual({ phase: "signed-out", reason: "account_deactivated" });
+    expect(mockForgetAllEventDrafts).toHaveBeenCalledTimes(1);
+    expect(mockDropLocalSession).toHaveBeenCalled();
+  });
+
+  it("an account_deactivated with no known account type CLEARS the tokens", async () => {
+    // A cold start whose first `/me` is the refusal: no user yet, so nothing
+    // says the deactivation is reversible.
+    await sessionPort.endSession("account_deactivated");
+
+    expect(getSessionState()).toEqual({ phase: "signed-out", reason: "account_deactivated" });
+    expect(mockDropLocalSession).toHaveBeenCalled();
+  });
+
+  // D4: a PERSONAL deactivation still sweeps — the person said they were done —
+  // but keeps the session, because switching the account back on needs it.
+  it("a PERSONAL account_deactivated sweeps them and KEEPS the tokens", async () => {
     await signIn("ana@dim.test", "hunter2");
     mockDropLocalSession.mockClear();
 
@@ -1537,7 +1567,9 @@ describe("reactivateAccount (D4) — the way out of a deactivation", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.message).toContain("no la desactivaste vos");
-    expect(getSessionState()).toEqual({ phase: "account-deactivated" });
+    // The kept tokens buy nothing now: dropped, as before D4.
+    expect(getSessionState()).toEqual({ phase: "signed-out", reason: "account_deactivated" });
+    expect(mockDropLocalSession).toHaveBeenCalled();
   });
 
   it("says the server's own sentence for any other refusal, and keeps the phase", async () => {
