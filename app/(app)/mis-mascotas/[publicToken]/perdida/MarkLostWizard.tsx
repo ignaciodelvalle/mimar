@@ -287,7 +287,6 @@ export function MarkLostWizard({
               mode="l2"
               biasProvince={petJurisdictionProvince}
               biasLocality={petJurisdictionLocality}
-              useMyLocationVariant="primary"
             />
 
             {/* R5.2: the "Última ubicación" disclosure toggle, surfaced where

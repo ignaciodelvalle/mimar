@@ -85,12 +85,16 @@ const repo = new SurveillanceRepository();
 /**
  * panorama-event-points Slice 2: read the coordinate-capture origin from the bite
  * form (`locationSource` hidden field emitted by LocationFields l2 / the org map
- * picker). Only the three known enum values are honored; anything else (absent /
+ * picker). Only the two hand-entered origins are honored; anything else (absent /
  * legacy form) → null so the schema's nullable-optional passes.
+ *
+ * W8 (PO, 2026-09-24): no device location anywhere. "gps" stays valid in the
+ * event schema for OLD events only; a request that still claims it (a stale
+ * tab, a hand-crafted POST) is recorded as unknown, never as a device fix.
  */
-function parseLocationSource(fd: FormData): "gps" | "pin_manual" | "geocodificada" | null {
+function parseLocationSource(fd: FormData): "pin_manual" | "geocodificada" | null {
   const raw = String(fd.get("locationSource") ?? "").trim();
-  return raw === "gps" || raw === "pin_manual" || raw === "geocodificada" ? raw : null;
+  return raw === "pin_manual" || raw === "geocodificada" ? raw : null;
 }
 
 /**

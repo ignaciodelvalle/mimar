@@ -84,7 +84,10 @@ import { stripComments } from "./lib/strip-comments.mjs";
  *  focus rings, and loading/disabled states). */
 // 2026-07-31: counting moved onto comment-stripped source. 55 → 54; the one
 // that vanished was never shipped chrome, only prose naming a `<button`.
-const OPERATOR_BASELINE = 54;
+// 2026-09-25 (W8, no device location): 54 → 53. OrgBiteForm.tsx's "usar mi
+// ubicación" text-link (the one flagged for PO design sign-off above) is gone
+// with the feature it triggered.
+const OPERATOR_BASELINE = 53;
 const OPERATOR_SCAN_GLOB = "{app/gob,app/admin,app/org}/**/*.tsx";
 const OPERATOR_LABEL = "operator (app/gob, app/admin, app/org)";
 
@@ -136,7 +139,12 @@ const OPERATOR_LABEL = "operator (app/gob, app/admin, app/org)";
 // directory-based and everything under components/ lands here. That is a
 // measurement artifact, not a claim about the surface.
 // If a second disclosure pill appears, extract OpDisclosurePill and fold both.
-const CITIZEN_BASELINE = 307;
+// 2026-09-25 (W8, no device location): 307 → 304. Two are this change —
+// LocationFields.tsx's primary "Usar mi ubicación actual" button and its inline
+// "Usar mi ubicación" link. The third was already gone on main when W8 was
+// measured (306 at the branch point); its source was not located, and it is
+// banked here only because the ratchet should hold what the tree really has.
+const CITIZEN_BASELINE = 304;
 const CITIZEN_SCAN_GLOB = "{components,app/(app),app/(public),app/(auth)}/**/*.tsx";
 const CITIZEN_LABEL = "citizen (components/**, app/(app), app/(public), app/(auth))";
 
@@ -418,7 +426,9 @@ const OPERATOR_RADIUS_BASELINE = 18;
 // time, and the first version hid it inside a hoisted class string where this
 // scanner cannot see it. Toggle.tsx now writes it in the opening tag on
 // purpose, so the count is honest at 101.
-const CITIZEN_RADIUS_BASELINE = 101;
+// 2026-09-25 (W8): 101 → 100 — LocationFields.tsx's primary "Usar mi ubicación
+// actual" button carried a hand-written `rounded-xl`; it left with the button.
+const CITIZEN_RADIUS_BASELINE = 100;
 
 function scanRadii({ label, glob, baseline, scriptName }) {
   const files = globSync(glob, { exclude: (p) => /\.test\.tsx$/.test(p) });

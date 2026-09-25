@@ -66,7 +66,8 @@ export type ReportBiteInput = {
   // never a faked centroid dot.
   locationLat: number | null;
   locationLng: number | null;
-  locationSource: "gps" | "pin_manual" | "geocodificada" | null;
+  // W8: hand-entered origins only — "gps" is a legacy value old events carry.
+  locationSource: "pin_manual" | "geocodificada" | null;
 };
 
 type Deps = {

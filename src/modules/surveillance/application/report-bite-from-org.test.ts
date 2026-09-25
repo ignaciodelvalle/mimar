@@ -192,7 +192,7 @@ describe("reportBiteFromOrg (org path)", () => {
   it("persists the incident map-pin coordinate columnar + location_source in payload", async () => {
     const deps = makeDeps();
     await reportBiteFromOrg(
-      { ...BASE_INPUT, locationLat: -31.42, locationLng: -64.18, locationSource: "gps" },
+      { ...BASE_INPUT, locationLat: -31.42, locationLng: -64.18, locationSource: "pin_manual" },
       deps,
     );
     const call = (deps.repo.insertIncidentEventIdempotent as ReturnType<typeof vi.fn>).mock
@@ -203,7 +203,7 @@ describe("reportBiteFromOrg (org path)", () => {
     };
     expect(call.locationLat).toBe("-31.42");
     expect(call.locationLng).toBe("-64.18");
-    expect(call.payload.location_source).toBe("gps");
+    expect(call.payload.location_source).toBe("pin_manual");
   });
 
   it("maps shelter orgType to reporter_role=shelter", async () => {

@@ -768,7 +768,11 @@ const noteAdded = z
       photoStoragePath: z.string().nullable().optional(),
       // panorama-event-points Slice 1 (PO-approved): how the sighting coordinate
       // was captured, so the map dot can show a subtle precision hint —
-      //   gps           — device geolocation (navigator.geolocation)
+      //   gps           — LEGACY ONLY (device geolocation). W8 (PO,
+      //                   2026-09-24): no device GPS anywhere on the web — no
+      //                   writer may emit "gps" any more. Kept in the enum
+      //                   only so pre-existing events keep validating
+      //                   (append-only history, forward-only change).
       //   pin_manual    — the finder dropped/dragged a point on the map
       //   geocodificada — derived from a typed address (forward geocode)
       // OPTIONAL/nullable so every pre-existing note (and non-sighting note)
@@ -804,9 +808,12 @@ const noteAdded = z
 //     absent. NEVER contains the raw IP. Self-scans (author_role='owner') do
 //     NOT carry it: those rows are identity-linked and exempt from the 90-day
 //     purge, so no location may accumulate on them.
-//   - scan_coords / scan_accuracy_m: precise GPS, present ONLY when the pet is
-//     lost AND the scanner explicitly granted browser geolocation (server
-//     re-checks pet.status — the client cannot force coords onto a non-lost pet).
+//   - scan_coords / scan_accuracy_m: LEGACY ONLY. W8 (PO, 2026-09-24): no
+//     device GPS anywhere on the web — src/modules/pets/application/scans/log-scan.ts
+//     no longer accepts a client coordinate at all, so no writer emits these
+//     any more. Kept optional in the schema only so pre-existing scan events
+//     (recorded when the pet was lost and the scanner had granted browser
+//     geolocation) keep validating.
 //   - Scanner identity: scanner-role rows are written with
 //     recorded_by_user_id = NULL (src/modules/pets/application/scans/log-scan.ts);
 //     no payload field may ever identify the scanner.
@@ -971,9 +978,12 @@ const incidentReported = z
       // panorama-event-points Slice 2 (PO-approved 2026-07-08): how the incident
       // coordinate was captured, so the mordeduras map dot can show a subtle
       // precision hint — gps | pin_manual | geocodificada. Same enum as the
-      // note_added sighting field. The exact coordinate itself lives on the
-      // columnar location_lat/lng (not here). OPTIONAL/nullable so every
-      // pre-existing incident validates unchanged (forward-only, no backfill).
+      // note_added sighting field, including the same W8 (PO, 2026-09-24)
+      // note: "gps" is LEGACY ONLY — no writer may emit it any more, kept
+      // solely so pre-existing incidents keep validating. The exact
+      // coordinate itself lives on the columnar location_lat/lng (not here).
+      // OPTIONAL/nullable so every pre-existing incident validates unchanged
+      // (forward-only, no backfill).
       location_source: z.enum(["gps", "pin_manual", "geocodificada"]).nullable().optional(),
     }),
   )

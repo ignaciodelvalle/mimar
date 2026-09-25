@@ -6,6 +6,7 @@ import { leftSignIn } from "./_sign-in-route";
 import {
   ACCOUNTS,
   DEMO_PHOTOS,
+  PALERMO_POINT,
   USHUAIA_JURISDICTION,
   USHUAIA_POINT,
   assertRealPage,
@@ -14,6 +15,7 @@ import {
   fileDenunciaAt,
   loginAs,
   pickCard,
+  placePointByAddress,
   uniqueIp,
 } from "./demo/_helpers";
 
@@ -346,13 +348,11 @@ test.describe(`synthetic monitor @ ${STAGING ?? "suite baseURL"}`, () => {
     await pickCard(page, "occurredAtOption", "today_yesterday");
     // jurisdiction-compliance (2026-07-03): the denuncia now needs a precise
     // map point so it routes to the authority for that zone ("necesita un
-    // punto preciso para llegar a la autoridad de esa zona"). Grant a
-    // deterministic geolocation (CABA centre) and use the in-form control to
-    // drop the pin; without it, Continuar stays gated on step 3.
-    await page.context().grantPermissions(["geolocation"]);
-    await page.context().setGeolocation({ latitude: -34.6037, longitude: -58.3816 });
-    await page.getByRole("button", { name: /usar mi ubicación actual/i }).click();
-    // Let the picker place the pin and reverse-geocode before advancing.
+    // punto preciso para llegar a la autoridad de esa zona"). Place it the way a
+    // person does — address search, map tap as the fallback (W8 removed
+    // device location); without it, Continuar stays gated on step 3.
+    await placePointByAddress(page, PALERMO_POINT);
+    // Let the picker settle and reverse-geocode before advancing.
     await page.waitForTimeout(1_500);
     await advanceTo(page.locator('label:has(input[name="subjectKindCard"])').first());
 

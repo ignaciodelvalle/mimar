@@ -80,15 +80,15 @@ export async function reportPetSighting(
   const sightedAtIso = String(formData.get("sightedAt") ?? "").trim();
 
   // panorama-event-points Slice 1: how the coordinate was captured (LocationFields
-  // emits a `locationSource` hidden field). Only the three known enum values are
+  // emits a `locationSource` hidden field). Only the two hand-entered origins are
   // honored; anything else (absent / legacy form) leaves it undefined so the zod
-  // optional passes and the payload simply omits it.
+  // optional passes and the payload simply omits it. W8 (PO, 2026-09-24): no
+  // device location anywhere — "gps" is valid in the schema for OLD events
+  // only, so a request still claiming it is recorded without a source.
   const rawLocationSource = String(formData.get("locationSource") ?? "").trim();
   const locationSource =
-    rawLocationSource === "gps" ||
-    rawLocationSource === "pin_manual" ||
-    rawLocationSource === "geocodificada"
-      ? (rawLocationSource as "gps" | "pin_manual" | "geocodificada")
+    rawLocationSource === "pin_manual" || rawLocationSource === "geocodificada"
+      ? rawLocationSource
       : undefined;
 
   const clientIdempotencyKey = String(formData.get("clientIdempotencyKey") ?? "").trim() || null;

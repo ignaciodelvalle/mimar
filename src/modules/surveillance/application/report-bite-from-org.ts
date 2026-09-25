@@ -87,7 +87,8 @@ export type ReportBiteFromOrgInput = {
   // plot it. Null when no pin was dropped (counted into the residual, never faked).
   locationLat: number | null;
   locationLng: number | null;
-  locationSource: "gps" | "pin_manual" | "geocodificada" | null;
+  // W8: hand-entered origins only — "gps" is a legacy value old events carry.
+  locationSource: "pin_manual" | "geocodificada" | null;
 };
 
 type Deps = {

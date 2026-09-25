@@ -47,10 +47,11 @@ export default function LocationPicker({ value, onChange, defaultCenter = null }
   onChangeRef.current = onChange;
   // `latestValueRef` is updated on every render so the init IIFE — which
   // resolves asynchronously after the maplibre import — can read the most
-  // recent parent state when it finally runs. Without this, a user who taps
-  // "Usar mi ubicación" between mount and the import settling would have
-  // their pin silently dropped (the sync effect's `if (!map) return` guard
-  // would fire early, and `[value]` wouldn't change again afterwards).
+  // recent parent state when it finally runs. Without this, a value set by
+  // the parent (e.g. a geocoded address) between mount and the import
+  // settling would have its pin silently dropped (the sync effect's
+  // `if (!map) return` guard would fire early, and `[value]` wouldn't change
+  // again afterwards).
   const latestValueRef = useRef(value);
   latestValueRef.current = value;
   // Same pattern for defaultCenter: read at async-init time without making it
@@ -68,7 +69,7 @@ export default function LocationPicker({ value, onChange, defaultCenter = null }
       const maplibregl = await loadMapLibre();
       if (cancelled || !containerRef.current) return;
       // Read the LATEST value at this moment — the parent may have called
-      // setPoint while the import was resolving (e.g. via "Usar mi ubicación"
+      // setPoint while the import was resolving (e.g. a geocoded address
       // resolving faster than the maplibre chunk fetch).
       const initial = latestValueRef.current;
       const center = initial ?? defaultCenterRef.current ?? DEFAULT_CENTER;
@@ -138,8 +139,8 @@ export default function LocationPicker({ value, onChange, defaultCenter = null }
     };
   }, []);
 
-  // Sync: when the parent's value changes externally (e.g. "Usar mi ubicación"
-  // button below the map fills the inputs), move the marker to match.
+  // Sync: when the parent's value changes externally (e.g. an address pick or
+  // reverse-geocode fills the inputs), move the marker to match.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;

@@ -81,7 +81,6 @@ export function UpdateLastSeenForm({
             }}
             biasProvince={petJurisdictionProvince}
             biasLocality={petJurisdictionLocality}
-            useMyLocationVariant="primary"
           />
 
           <LnField label="Novedades">

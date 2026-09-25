@@ -867,7 +867,7 @@ export async function discoverOwnerPii(page: Page, email: string): Promise<Owner
  */
 export async function fileDenunciaAt(
   browser: Browser,
-  coords: { latitude: number; longitude: number },
+  coords: { latitude: number; longitude: number; address: string },
   /**
    * The jurisdiction the caller CHOSE by picking the pin. When provided and
    * the server-side Nominatim geocode flaked (routine on CI runners), the
@@ -1187,8 +1187,45 @@ export async function pickLocality(
  * USHUAIA_POINT for that one. Both accounts come from scripts/seed-test-users.ts
  * and exist on any freshly bootstrapped database.
  */
-export const PALERMO_POINT = { latitude: -34.578, longitude: -58.424 };
-export const USHUAIA_POINT = { latitude: -54.8019, longitude: -68.303 };
+export const PALERMO_POINT = {
+  latitude: -34.578,
+  longitude: -58.424,
+  address: "Plaza Italia, Palermo, Ciudad Autónoma de Buenos Aires",
+};
+export const USHUAIA_POINT = {
+  latitude: -54.8019,
+  longitude: -68.303,
+  address: "San Martín 600, Ushuaia, Tierra del Fuego",
+};
+
+/**
+ * Put a precise point on a LocationFields (l2) map the way a person does:
+ * type the address and let the forward geocode drop the pin.
+ *
+ * W8 (PO, 2026-09-24) removed "Usar mi ubicación" — the product never reads
+ * the device's location, and `Permissions-Policy: geolocation=()` makes the
+ * browser refuse it anyway, so granting + faking geolocation is no longer a
+ * way in. The forward geocode goes through the same server-side Nominatim call
+ * the jurisdiction already depends on. When it flakes, the fallback taps the
+ * map canvas (MapLibre fires `click` without tiles, so it works headless): the
+ * point then sits on the map's default centre, and the reverse geocode that
+ * would have named its jurisdiction has most likely failed with the forward
+ * one — the NULL jurisdiction ensureDenunciaJurisdiction repairs.
+ */
+export async function placePointByAddress(page: Page, place: { address: string }): Promise<void> {
+  const lat = page.locator('input[name="locationLat"]');
+  await page.locator("#locationAddress").fill(place.address);
+  try {
+    await expect(lat).not.toHaveValue("", { timeout: 15_000 });
+    return;
+  } catch {
+    // Geocoder unavailable — fall through to the map tap.
+  }
+  const canvas = page.locator('[aria-label^="Mapa. Tocá para marcar"] canvas').first();
+  await expect(canvas, "location map canvas").toBeVisible({ timeout: 15_000 });
+  await canvas.click();
+  await expect(lat, "map tap dropped a precise point").not.toHaveValue("", { timeout: 15_000 });
+}
 /** The jurisdiction USHUAIA_POINT resolves to — exact strings from
  *  scripts/seed-test-users.ts's govt@dim.test coverage. Pass alongside
  *  USHUAIA_POINT to fileDenunciaAt so a flaked Nominatim call cannot strand
@@ -1200,7 +1237,7 @@ export async function walkDenunciaWizard(
   opts?: {
     triggerModerationFlag?: boolean;
     /** Where the reported animal is — decides which authority receives it. */
-    coords?: { latitude: number; longitude: number };
+    coords?: { latitude: number; longitude: number; address: string };
   },
 ): Promise<string> {
   const coords = opts?.coords ?? PALERMO_POINT;
@@ -1235,16 +1272,9 @@ export async function walkDenunciaWizard(
   // copy of this flow was updated at the time; the shared helper was not, and
   // the divergence stayed invisible until the e2e job started reporting.
   //
-  // Geolocation is granted+faked rather than clicking the map: it needs no tile
-  // server, so it works in a headless CI browser with no reachable map host.
-  await page.context().grantPermissions(["geolocation"]);
-  await page.context().setGeolocation(coords);
-  await page.getByRole("button", { name: /usar mi ubicación actual/i }).click();
-  // The hidden inputs are what the action reads; wait on them, not on a timer.
-  await expect(
-    page.locator('input[name="locationLat"]'),
-    "geolocation dropped a precise point",
-  ).not.toHaveValue("", { timeout: 15_000 });
+  // The point is placed by address search (map tap as the fallback) — see
+  // placePointByAddress; the hidden inputs it waits on are what the action reads.
+  await placePointByAddress(page, coords);
   await fullScroll(page);
   await clickContinuar(page, 4);
 

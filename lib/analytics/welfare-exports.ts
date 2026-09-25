@@ -179,9 +179,11 @@ export function knowledgeGapLabel(occurredAt: Date | null, createdAt: Date): str
  *   4 decimals  ~11 m
  *   3 decimals  ~111 m
  *
- * WHERE THE NUMBER COMES FROM: the browser Geolocation API or a pin the
- * denunciante drops on a map. Consumer GPS lands within roughly 5-50 m in the
- * open and worse among buildings; a dropped pin is a human's aim. Seven
+ * WHERE THE NUMBER COMES FROM: a pin the denunciante drops on a map or an
+ * address they searched for (W8, PO 2026-09-24, retired device location; older
+ * denuncias may still carry a browser Geolocation fix). Consumer GPS lands
+ * within roughly 5-50 m in the open and worse among buildings; a dropped pin
+ * is a human's aim. Seven
  * decimals asserted centimetre accuracy on top of that — on an instrument
  * filed with a fiscal, where every printed figure reads as evidence, that is a
  * false claim about the quality of the evidence.

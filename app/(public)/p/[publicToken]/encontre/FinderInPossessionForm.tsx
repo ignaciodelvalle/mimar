@@ -294,7 +294,6 @@ export function FinderInPossessionForm({
             mode="l2"
             biasProvince={biasProvince}
             biasLocality={biasLocality}
-            useMyLocationVariant="primary"
             allowAnonymous
           />
         </div>

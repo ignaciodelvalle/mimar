@@ -37,7 +37,6 @@ import {
   reverseGeocodePublicAction,
 } from "@/app/actions/geocoding";
 import { searchLocalitiesPublicAction } from "@/app/actions/localities";
-import { Icon } from "@/components/Icon";
 import { LocalityPickerAcross } from "@/components/LocalityPickerAcross";
 import { LnInput, LnSelect } from "@/components/ui/Field";
 import { PROVINCES, type Province, provinceByName } from "@/lib/reference/ar-provincias";
@@ -80,7 +79,10 @@ export type LocationFieldsChange = {
   lat: number | null;
   lng: number | null;
   address: string | null;
-  source: "gps" | "pin_manual" | "geocodificada" | null;
+  // W8 (PO, 2026-09-24): no device GPS on the web — "gps" stays a valid
+  // legacy value in lib/events/event-schemas.ts (old events, append-only)
+  // but no writer here emits it any more.
+  source: "pin_manual" | "geocodificada" | null;
 };
 
 const FORWARD_DEBOUNCE_MS = 600;
@@ -92,7 +94,6 @@ export function LocationFields({
   biasProvince = null,
   biasLocality = null,
   inputNames,
-  useMyLocationVariant = "secondary",
   allowAnonymous = false,
   onLocationPresenceChange,
   onPointPresenceChange,
@@ -131,9 +132,6 @@ export function LocationFields({
   // inputs. Retained for flexibility; no current consumer overrides these
   // (the lastKnownLocation alias was retired by critique §5).
   inputNames?: { lat?: string; lng?: string; description?: string };
-  // "primary" renders a big leading "Usar mi ubicación actual" button
-  // (PetSighting, denuncia step 3). "secondary" keeps the inline link.
-  useMyLocationVariant?: "primary" | "secondary";
   // True for anonymous public flows (PetSightingForm, DenunciaWizard).
   // Routes geocoding calls through the IP-rate-limited public actions.
   allowAnonymous?: boolean;
@@ -172,16 +170,15 @@ export function LocationFields({
       ? { lat: defaultValue.lat, lng: defaultValue.lng }
       : null,
   );
-  const [geoError, setGeoError] = useState<string | null>(null);
-  const [geoLoading, setGeoLoading] = useState(false);
   // panorama-event-points Slice 1: how the CURRENT coordinate was captured, so
   // consumers (the sighting writer) can record a precision hint. Set on each
-  // coordinate origin: device geolocation → 'gps', a map gesture → 'pin_manual',
-  // a typed-address geocode → 'geocodificada'. Emitted as a hidden `locationSource`
-  // field; forms that don't read it simply ignore the extra field.
-  const [locationSource, setLocationSource] = useState<
-    "gps" | "pin_manual" | "geocodificada" | null
-  >(null);
+  // coordinate origin: a map gesture → 'pin_manual', a typed-address geocode →
+  // 'geocodificada'. Emitted as a hidden `locationSource` field; forms that
+  // don't read it simply ignore the extra field.
+  // W8 (PO, 2026-09-24): no device GPS anywhere on the web — 'gps' is no
+  // longer an origin this component can produce. It stays a valid legacy
+  // value in lib/events/event-schemas.ts for OLD events (append-only).
+  const [locationSource, setLocationSource] = useState<"pin_manual" | "geocodificada" | null>(null);
 
   // Picked jurisdiction (L2 only) — driven by Nominatim result selection or
   // map-drag reverse geocoding. The hidden inputs read from here. Defaults
@@ -327,15 +324,11 @@ export function LocationFields({
     });
   }, [pickedProvince, pickedLocality, point, addressText, locationSource, isL2]);
 
-  // Reverse geocoding (coords → address + jurisdiction). Fires on map gesture.
-  // `source` records the coordinate origin (default 'pin_manual' — a map click/
-  // drag; handleUseMyLocation passes 'gps').
-  async function handlePointChange(
-    newPoint: { lat: number; lng: number },
-    source: "gps" | "pin_manual" = "pin_manual",
-  ) {
+  // Reverse geocoding (coords → address + jurisdiction). Fires on a map
+  // click/drag gesture — the only way a point can be set by hand now.
+  async function handlePointChange(newPoint: { lat: number; lng: number }) {
     setPoint(newPoint);
-    setLocationSource(source);
+    setLocationSource("pin_manual");
     if (!isL2) return;
     setGeocodeLoading("reverse");
     setGeocodeMessage(null);
@@ -383,49 +376,8 @@ export function LocationFields({
     setGeocodeFoundLabel(null);
   }
 
-  function handleUseMyLocation() {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setGeoError("Tu navegador no soporta geolocalización.");
-      return;
-    }
-    setGeoError(null);
-    setGeoLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        // Treat as a pin move so we reverse-geocode and fill the address, but
-        // record the true origin: device GPS.
-        handlePointChange({ lat: pos.coords.latitude, lng: pos.coords.longitude }, "gps");
-        setGeoLoading(false);
-      },
-      (err) => {
-        setGeoError(
-          err.code === err.PERMISSION_DENIED
-            ? "Permiso de ubicación denegado. Podés tocar el mapa para marcar el punto."
-            : "No se pudo obtener tu ubicación. Tocá el mapa para marcarla.",
-        );
-        setGeoLoading(false);
-      },
-      { enableHighAccuracy: true, timeout: 10_000 },
-    );
-  }
-
-  const showPrimaryLocateButton = isL2 && useMyLocationVariant === "primary";
-
   return (
     <div className="space-y-4">
-      {showPrimaryLocateButton && (
-        <button
-          type="button"
-          onClick={handleUseMyLocation}
-          disabled={geoLoading}
-          aria-label="Usar mi ubicación actual"
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-ln-azul text-white font-semibold text-sm hover:opacity-90 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ln-azul focus-visible:ring-offset-2 transition-colors"
-        >
-          <Icon name="ubicacion" size="sm" decorative />
-          {geoLoading ? "Obteniendo ubicación…" : "Usar mi ubicación actual"}
-        </button>
-      )}
-
       {/* L1 (single input) — cross-province locality autocomplete. Province is
           derived from the chosen locality. */}
       {!isL2 && !cascade && (
@@ -586,33 +538,15 @@ export function LocationFields({
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="block text-sm font-medium text-ln-ink">Ajuste fino</p>
-              {showPrimaryLocateButton ? null : (
-                <button
-                  type="button"
-                  onClick={handleUseMyLocation}
-                  disabled={geoLoading}
-                  className="text-xs text-ln-ink-2  underline underline-offset-4 hover:text-ln-ink  disabled:opacity-50"
-                >
-                  {geoLoading ? "Obteniendo…" : "Usar mi ubicación"}
-                </button>
-              )}
-            </div>
+            <p className="block text-sm font-medium text-ln-ink">Ajuste fino</p>
             <p className="text-xs text-ln-mute ">
-              Tocá el mapa para marcar el punto, arrastrá el pin para ajustarlo, o usá el botón si
-              estás en el lugar.
+              Tocá el mapa para marcar el punto o arrastrá el pin para ajustarlo.
             </p>
             <LocationPicker
               value={point}
               onChange={handlePointChange}
               defaultCenter={defaultCenter}
             />
-            {geoError && (
-              <p className="text-xs text-ln-warn " role="alert">
-                {geoError}
-              </p>
-            )}
             {point && (
               <p className="text-xs text-ln-mute  font-ln-mono">
                 {point.lat.toFixed(6)}, {point.lng.toFixed(6)}

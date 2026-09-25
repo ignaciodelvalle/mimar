@@ -80,23 +80,12 @@ export function OrgBiteForm({ action, orgToken }: { action: FormAction; orgToken
   const [context, setContext] = useState("");
   const [confirmObservation, setConfirmObservation] = useState(false);
   // panorama-event-points Slice 2: the optional incident map pin + how it was set.
+  // W8 (PO, 2026-09-24): no device GPS anywhere on the web — the pin is always
+  // placed by hand, never prefilled from navigator.geolocation. "gps" stays a
+  // valid value in lib/events/event-schemas.ts for OLD events (append-only),
+  // but no writer emits it any more.
   const [point, setPoint] = useState<{ lat: number; lng: number } | null>(null);
-  const [locationSource, setLocationSource] = useState<"gps" | "pin_manual" | null>(null);
-  const [geoLoading, setGeoLoading] = useState(false);
-
-  function useMyLocation() {
-    if (typeof navigator === "undefined" || !navigator.geolocation) return;
-    setGeoLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setPoint({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setLocationSource("gps");
-        setGeoLoading(false);
-      },
-      () => setGeoLoading(false),
-      { enableHighAccuracy: true, timeout: 10_000 },
-    );
-  }
+  const [locationSource, setLocationSource] = useState<"pin_manual" | null>(null);
 
   function submit() {
     setState({ error: null });
@@ -286,19 +275,9 @@ export function OrgBiteForm({ action, orgToken }: { action: FormAction; orgToken
             the coordinate is persisted so the mordeduras near-zoom dot can plot
             the incident inside the operator's jurisdiction. */}
         <div className="space-y-1.5">
-          <div className="flex items-baseline justify-between gap-3">
-            <p className="block text-xs font-medium text-ln-op-ink-2">
-              Ubicación en el mapa (opcional)
-            </p>
-            <button
-              type="button"
-              onClick={useMyLocation}
-              disabled={geoLoading}
-              className="text-xs text-ln-op-ink-2 underline underline-offset-4 hover:text-ln-op-ink disabled:opacity-50"
-            >
-              {geoLoading ? "Obteniendo…" : "Usar mi ubicación"}
-            </button>
-          </div>
+          <p className="block text-xs font-medium text-ln-op-ink-2">
+            Ubicación en el mapa (opcional)
+          </p>
           <p className="text-sm text-ln-op-mute">
             Tocá el mapa para marcar dónde ocurrió. Ubica el incidente en el panorama de vigilancia.
           </p>
