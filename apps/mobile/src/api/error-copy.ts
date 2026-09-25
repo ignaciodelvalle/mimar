@@ -106,7 +106,7 @@ export function apiErrorMessage(code: ApiV1ErrorCode): string {
     case "invalid_credentials":
       return "El email o la contraseña no coinciden.";
     case "account_deactivated":
-      return "Esta cuenta está desactivada. Si la desactivaste vos, podés volver a activarla desde Mi cuenta en la web; si la desactivó tu organización, hablá con ella.";
+      return "Esta cuenta está desactivada. Si la desactivaste vos, podés reactivarla desde la app; si la desactivó tu organización, hablá con ella.";
     case "account_erased":
       return "Esta cuenta ya no existe.";
     // B9. Deliberately NOT the `auth_expired` sentence, even though both are

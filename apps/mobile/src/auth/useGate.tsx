@@ -20,6 +20,9 @@
 //                         have.
 //   signed-out          → sign-in, carrying the reason it ended AND where they
 //                         were going. See below.
+//   account-deactivated → the reactivation screen (D4). The tokens are still
+//                         here on purpose: switching the account back on needs
+//                         them, and a sign-in screen would loop.
 //   profilePending      → the identity gate. They ARE signed in; what is missing
 //                         is signup step 2 — and since 2026-09-05 that screen
 //                         COLLECTS it (`POST /api/v1/me/identity`) rather than
@@ -50,15 +53,15 @@
 
 import type { MeV1User } from "@dim/contract/api";
 import { Redirect, usePathname, useRouter } from "expo-router";
-import type { ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { Body, Card, ErrorNotice, Loading } from "../ui/components";
-import { Screen, SecondaryButton, Title } from "../ui/kit";
+import { PrimaryButton, Screen, SecondaryButton, Title } from "../ui/kit";
 import { ROUTES } from "../ui/routes";
 import { SPACE } from "../ui/theme";
 import { pendingIdentityHref, signedOutHref } from "./return-to";
-import { bootstrapSession, signOut } from "./session-store";
+import { bootstrapSession, reactivateAccount, signOut } from "./session-store";
 import { useSession } from "./useSession";
 
 export type Gate = { allowed: true; user: MeV1User } | { allowed: false; element: ReactElement };
@@ -98,6 +101,9 @@ export function useGate(options: { allowPendingIdentity?: boolean } = {}): Gate 
           />
         ),
       };
+
+    case "account-deactivated":
+      return { allowed: false, element: <DeactivatedScreen pathname={pathname} /> };
 
     case "signed-in":
       if (state.user.profilePending && options.allowPendingIdentity !== true) {
@@ -204,6 +210,62 @@ function UnverifiedScreen({ message, pathname }: { message: string; pathname: st
             void (async () => {
               // The path is passed so the gate knows which screen must not be
               // re-opened at the next sign-in, and only that one.
+              await signOut(pathname);
+              router.replace(ROUTES.root);
+            })();
+          }}
+        />
+      </View>
+    </Screen>
+  );
+}
+
+/**
+ * The account is switched off (D4). The server decides whether THIS person may
+ * switch it back on — only a personal account they deactivated themselves — so
+ * the screen offers the button to everyone and says plainly who it is for.
+ */
+function DeactivatedScreen({ pathname }: { pathname: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  async function reactivate() {
+    setBusy(true);
+    setFailure(null);
+    const result = await reactivateAccount();
+    // On success the store moves on its own and this screen unmounts.
+    if (!result.ok) setFailure(result.message);
+    setBusy(false);
+  }
+
+  return (
+    <Screen edges={["top", "bottom"]}>
+      <Title>Tu cuenta está desactivada</Title>
+      {failure !== null ? <ErrorNotice message={failure} /> : null}
+      <Card>
+        <Body>
+          Si la desactivaste vos, podés reactivarla ahora. Vuelve a funcionar como antes: tus
+          mascotas, sus registros y tus datos siguen como estaban. La reactivación queda registrada
+          en tu cuenta.
+        </Body>
+        <Body>
+          Si la desactivó tu organización o el equipo de miMAR, no se puede reactivar desde acá:
+          hablá con ellos.
+        </Body>
+      </Card>
+      <View style={styles.footer}>
+        <PrimaryButton
+          label={busy ? "Reactivando…" : "Reactivar mi cuenta"}
+          disabled={busy}
+          onPress={() => void reactivate()}
+        />
+        <SecondaryButton
+          label="Cerrar sesión"
+          disabled={busy}
+          onPress={() => {
+            // Awaited, then routed — the UnverifiedScreen's reason, below.
+            void (async () => {
               await signOut(pathname);
               router.replace(ROUTES.root);
             })();

@@ -20,7 +20,7 @@
 
 import type { MeV1User } from "@dim/contract/api";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { render } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { ReactElement } from "react";
 
 import type { SessionState } from "./session-store";
@@ -38,9 +38,13 @@ jest.mock("expo-router", () => ({
 
 jest.mock("./useSession", () => ({ useSession: () => mockSession.state }));
 
+const mockReactivateAccount =
+  jest.fn<() => Promise<{ ok: true } | { ok: false; message: string }>>();
+
 jest.mock("./session-store", () => ({
   bootstrapSession: () => Promise.resolve(),
   signOut: () => Promise.resolve(),
+  reactivateAccount: () => mockReactivateAccount(),
 }));
 
 import { ROUTES } from "../ui/routes";
@@ -136,5 +140,38 @@ describe("useDisplayOnlyGate — the offline cache is reachable (A6-cuenta-resil
       user: USER,
       unverifiedMessage: null,
     });
+  });
+});
+
+describe("useGate — a deactivated account gets the way back, not a sign-in (D4)", () => {
+  beforeEach(() => {
+    mockReactivateAccount.mockReset();
+    mockSession.state = { phase: "account-deactivated" };
+  });
+
+  it("refuses the protected screen and offers 'Reactivar mi cuenta'", () => {
+    const gate = readGate(() => useGate());
+    expect(gate.allowed).toBe(false);
+    if (gate.allowed) return;
+
+    render(gate.element);
+
+    expect(screen.getByText("Tu cuenta está desactivada")).toBeTruthy();
+    expect(screen.getByText("Reactivar mi cuenta")).toBeTruthy();
+    expect(screen.getByText("Cerrar sesión")).toBeTruthy();
+    // No hand-off to the web any more: the fix is on this screen.
+    expect(screen.queryByText(/en la web/)).toBeNull();
+  });
+
+  it("runs the reactivation and shows the server's refusal when it does not take", async () => {
+    mockReactivateAccount.mockResolvedValue({ ok: false, message: "No la desactivaste vos." });
+    const gate = readGate(() => useGate());
+    if (gate.allowed) throw new Error("expected a refusal");
+    render(gate.element);
+
+    fireEvent.press(screen.getByText("Reactivar mi cuenta"));
+
+    await waitFor(() => expect(screen.getByText("No la desactivaste vos.")).toBeTruthy());
+    expect(mockReactivateAccount).toHaveBeenCalledTimes(1);
   });
 });

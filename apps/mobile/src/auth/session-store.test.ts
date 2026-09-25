@@ -117,6 +117,7 @@ jest.mock("@sentry/react-native", () => ({
  */
 const mockRevokeAllSessions: AsyncMock = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockEraseMyAccount: AsyncMock = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockReactivateMyAccount: AsyncMock = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
 jest.mock("../api/endpoints", () => ({
   login: (...args: unknown[]) => mockLogin(...args),
@@ -125,6 +126,7 @@ jest.mock("../api/endpoints", () => ({
   signup: (...args: unknown[]) => mockSignup(...args),
   revokeAllSessions: (...args: unknown[]) => mockRevokeAllSessions(...args),
   eraseMyAccount: (...args: unknown[]) => mockEraseMyAccount(...args),
+  reactivateMyAccount: (...args: unknown[]) => mockReactivateMyAccount(...args),
 }));
 
 /**
@@ -165,6 +167,7 @@ import {
   draftSweepEpoch,
   eraseAccount,
   getSessionState,
+  reactivateAccount,
   sessionPort,
   signIn,
   signOut,
@@ -201,6 +204,7 @@ beforeEach(() => {
   mockRegisterThisDeviceForPush.mockResolvedValue({ outcome: "registered" });
   mockRevokeAllSessions.mockResolvedValue({ outcome: "ok", payload: { revoked: true } });
   mockEraseMyAccount.mockResolvedValue({ outcome: "ok", payload: { erased: true } });
+  mockReactivateMyAccount.mockResolvedValue({ outcome: "ok", payload: { reactivated: true } });
   mockForgetAllEventDrafts.mockResolvedValue(undefined);
   mockForgetAllAltaDrafts.mockResolvedValue(undefined);
   mockLogin.mockResolvedValue(LOGIN_OK);
@@ -1446,16 +1450,27 @@ describe("every deliberate exit sweeps the event drafts", () => {
   // `account_deactivated`. Neither is a blip that the person will sign back
   // into with their draft waiting — the account is gone or locked — so a bite
   // victim's name and phone must not outlive them in a draft.
-  for (const reason of ["account_erased", "account_deactivated"] as const) {
-    it(`a server-reported ${reason} sweeps them`, async () => {
-      await signIn("ana@dim.test", "hunter2");
+  it("a server-reported account_erased sweeps them", async () => {
+    await signIn("ana@dim.test", "hunter2");
 
-      await sessionPort.endSession(reason);
+    await sessionPort.endSession("account_erased");
 
-      expect(getSessionState()).toEqual({ phase: "signed-out", reason });
-      expect(mockForgetAllEventDrafts).toHaveBeenCalledTimes(1);
-    });
-  }
+    expect(getSessionState()).toEqual({ phase: "signed-out", reason: "account_erased" });
+    expect(mockForgetAllEventDrafts).toHaveBeenCalledTimes(1);
+  });
+
+  // D4: a deactivation still sweeps — the person said they were done — but it
+  // no longer ends the session, because switching the account back on needs it.
+  it("a server-reported account_deactivated sweeps them and KEEPS the tokens", async () => {
+    await signIn("ana@dim.test", "hunter2");
+    mockDropLocalSession.mockClear();
+
+    await sessionPort.endSession("account_deactivated");
+
+    expect(getSessionState()).toEqual({ phase: "account-deactivated" });
+    expect(mockForgetAllEventDrafts).toHaveBeenCalledTimes(1);
+    expect(mockDropLocalSession).not.toHaveBeenCalled();
+  });
 
   it("a server-reported auth_expired ends the session WITHOUT sweeping them", async () => {
     // What `apiRequest` calls when the refresh after a 401 fails. The person
@@ -1487,5 +1502,79 @@ describe("every deliberate exit sweeps the event drafts", () => {
     await signIn("ana@dim.test", "hunter2");
     await signOut("/ajustes");
     expect(draftSweepEpoch()).toBe(before + 2);
+  });
+});
+
+describe("reactivateAccount (D4) — the way out of a deactivation", () => {
+  async function deactivatedSession() {
+    await signIn("ana@dim.test", "hunter2");
+    await sessionPort.endSession("account_deactivated");
+    expect(getSessionState()).toEqual({ phase: "account-deactivated" });
+  }
+
+  it("re-reads /me after the server reactivates, and lands signed in", async () => {
+    await deactivatedSession();
+    mockFetchMe.mockClear();
+
+    await expect(reactivateAccount()).resolves.toEqual({ ok: true });
+
+    expect(mockReactivateMyAccount).toHaveBeenCalledTimes(1);
+    expect(mockFetchMe).toHaveBeenCalledTimes(1);
+    expect(getSessionState()).toEqual({ phase: "signed-in", user: LOGIN_OK.payload.user });
+  });
+
+  it("keeps the phase and names who can help when the deactivation is not the person's", async () => {
+    await deactivatedSession();
+    mockReactivateMyAccount.mockResolvedValue({
+      outcome: "api-error",
+      code: "account_deactivated",
+      retryAfterSeconds: null,
+      correlationId: null,
+    });
+
+    const result = await reactivateAccount();
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain("no la desactivaste vos");
+    expect(getSessionState()).toEqual({ phase: "account-deactivated" });
+  });
+
+  it("says the server's own sentence for any other refusal, and keeps the phase", async () => {
+    await deactivatedSession();
+    mockReactivateMyAccount.mockResolvedValue({
+      outcome: "api-error",
+      code: "rate_limited",
+      retryAfterSeconds: null,
+      correlationId: null,
+    });
+
+    const result = await reactivateAccount();
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain("Demasiadas consultas. Esperá un momento y volvé a intentar.");
+    expect(getSessionState()).toEqual({ phase: "account-deactivated" });
+  });
+
+  it("hands over to the unverified screen when /me cannot be read after a success", async () => {
+    await deactivatedSession();
+    mockFetchMe.mockResolvedValue({ outcome: "unreachable", detail: "timeout" });
+
+    await expect(reactivateAccount()).resolves.toEqual({ ok: true });
+
+    expect(getSessionState().phase).toBe("session-unverified");
+  });
+
+  it("does not let an unreachable-token blip hide the deactivated screen", async () => {
+    await deactivatedSession();
+    mockAuth.getSession.mockResolvedValue({
+      data: { session: null },
+      error: new AuthRetryableFetchError("fetch failed", 0),
+    });
+
+    await sessionPort.accessToken();
+
+    expect(getSessionState()).toEqual({ phase: "account-deactivated" });
   });
 });

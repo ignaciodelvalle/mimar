@@ -68,6 +68,7 @@ import {
   eraseMyAccount,
   fetchMe,
   login,
+  reactivateMyAccount,
   requestPasswordReset as requestPasswordResetRequest,
   revokeAllSessions,
   signup as signupRequest,
@@ -110,6 +111,15 @@ export type SessionState =
   | { phase: "signed-out"; reason: SessionEndReason | null; endedAt?: string }
   /** Tokens on the device, identity unconfirmed — see the header. */
   | { phase: "session-unverified"; message: string }
+  /**
+   * The server answered `account_deactivated` (D4). The tokens are KEPT, and
+   * that is the whole reason this is a phase and not a `signed-out` reason: the
+   * one way out — `POST /me/reactivate` — needs the very session the old
+   * teardown threw away, and a person told "podés reactivarla" at a sign-in
+   * screen would sign in, be refused again, and be signed out again, forever.
+   * Nothing but `reactivateAccount` and "Cerrar sesión" leaves it.
+   */
+  | { phase: "account-deactivated" }
   | { phase: "signed-in"; user: MeV1User };
 
 let state: SessionState = { phase: "starting" };
@@ -261,7 +271,9 @@ function authUnverifiedMessage(error: unknown): string {
  * cannot work.
  */
 function markSessionUnverified(message: string): void {
-  if (state.phase === "signed-out") return;
+  // `account-deactivated` too: the server has already said what is wrong, and
+  // "no pudimos verificar" would hide the one screen that can fix it.
+  if (state.phase === "signed-out" || state.phase === "account-deactivated") return;
   setState({ phase: "session-unverified", message });
 }
 
@@ -397,6 +409,16 @@ export const sessionPort: SessionPort = {
   },
 
   async endSession(reason) {
+    // A DEACTIVATION DOES NOT END THE SESSION ANY MORE (D4). The account may be
+    // the person's own to switch back on, and doing that needs these tokens —
+    // see the `account-deactivated` phase. The drafts still go, for the reason
+    // below: a deactivation is somebody saying they are done, and a draft of a
+    // bite holds a third party's name and phone.
+    if (reason === "account_deactivated") {
+      sweepDraftsOnDeliberateExit();
+      setState({ phase: "account-deactivated" });
+      return;
+    }
     await clearSession();
     // THE SERVER CAN END A SESSION FOR GOOD, and on those two answers the
     // drafts go too (A2b). `account_erased` arrives when the account was erased
@@ -406,7 +428,7 @@ export const sessionPort: SessionPort = {
     // waiting, so they are swept like the deliberate exits. Every OTHER reason
     // here — above all `auth_expired`, a refresh that failed — keeps them: see
     // `sweepDraftsOnDeliberateExit` for why an ordinary session end must not.
-    if (reason === "account_erased" || reason === "account_deactivated") {
+    if (reason === "account_erased") {
       sweepDraftsOnDeliberateExit();
     }
     setState({ phase: "signed-out", reason });
@@ -739,7 +761,8 @@ function applyMeResult(result: ApiResult<{ user: MeV1User }>): void {
   }
   if (result.outcome === "api-error") {
     // Already ended, WITH ITS REASON, by `apiRequest`. See the note above.
-    if (state.phase === "signed-out") return;
+    // A deactivation lands in its own phase the same way, and is kept.
+    if (state.phase === "signed-out" || state.phase === "account-deactivated") return;
     // NOT EVERY REFUSAL IS A DEAD SESSION, and this arm used to answer all of
     // them with the sign-in screen (A1-entrada-02). A 503 from a deploy and a
     // 429 from the limiter say nothing whatsoever about the tokens on the
@@ -1531,6 +1554,61 @@ export async function eraseAccount(reason: string, endedAt: string): Promise<Era
   return { ok: true };
 }
 
+export type ReactivateResult = { ok: true } | { ok: false; message: string };
+
+/**
+ * "Reactivar mi cuenta" (D4) — the way out of the `account-deactivated` phase.
+ *
+ * The web's reactivation, through `POST /me/reactivate`: the server runs the
+ * same use-case /cuenta runs, so what is allowed here is exactly what is allowed
+ * there — a PERSONAL account the person switched off themselves. It lives here
+ * for `eraseAccount`'s reason: the call and the session transition are one act.
+ *
+ * ON SUCCESS THE SESSION IS RE-READ, not assumed. `/me` is what draws the
+ * signed-in shell everywhere else, and it is the server's own answer to "is this
+ * account usable now" — so a reactivation that did not really take shows up as
+ * the deactivated screen again instead of as a shell whose every request fails.
+ *
+ * A REFUSAL KEEPS THE PHASE. `account_deactivated` from this call means the
+ * deactivation is not the person's to undo; `apiRequest` routes it back through
+ * `endSession`, which leaves the phase where it is, and the sentence below says
+ * who can help. `account_erased` ends the session through the same policy.
+ */
+export async function reactivateAccount(): Promise<ReactivateResult> {
+  const result = await reactivateMyAccount(sessionPort);
+  if (result.outcome !== "ok") {
+    if (result.outcome === "api-error" && result.code === "account_deactivated") {
+      return {
+        ok: false,
+        message:
+          "No podemos reactivar esta cuenta desde la app: no la desactivaste vos. Si la desactivó tu organización o el equipo de miMAR, hablá con ellos.",
+      };
+    }
+    return { ok: false, message: apiFailureMessage(result) ?? "No pudimos reactivar tu cuenta." };
+  }
+  const me = await fetchMe(sessionPort);
+  if (me.outcome === "ok") {
+    setState({ phase: "signed-in", user: me.payload.user });
+    return { ok: true };
+  }
+  // A SESSION-ENDING ANSWER HAS ALREADY MOVED THE PHASE, through `apiRequest`:
+  // `account_deactivated` back here (so the reactivation did not take, and the
+  // person is told so), anything else to `signed-out` with its reason.
+  if (me.outcome === "api-error" && SESSION_ENDING_CODES.has(me.code)) {
+    return state.phase === "account-deactivated"
+      ? { ok: false, message: "No pudimos confirmar la reactivación. Probá de nuevo." }
+      : { ok: true };
+  }
+  // The account is back and `/me` could not be read. That is the unverified
+  // screen's case exactly: tokens here, server not answering, a retry that
+  // re-reads `/me`. Drawing the deactivated screen again would be false.
+  setState({
+    phase: "session-unverified",
+    message: apiFailureMessage(me) ?? SESSION_UNREACHABLE_MESSAGE,
+  });
+  return { ok: true };
+}
+
 /** es-AR copy for why the sign-in screen is showing. Exhaustive. */
 export function sessionEndMessage(reason: SessionEndReason | null): string | null {
   if (reason === null) return null;
@@ -1542,7 +1620,7 @@ export function sessionEndMessage(reason: SessionEndReason | null): string | nul
     case "auth_required":
       return "Tu sesión ya no es válida en el servidor. Iniciá sesión de nuevo.";
     case "account_deactivated":
-      return "Esta cuenta está desactivada. Si la desactivaste vos, podés volver a activarla desde Mi cuenta en la web; si la desactivó tu organización, hablá con ella.";
+      return "Esta cuenta está desactivada. Si la desactivaste vos, iniciá sesión y vas a poder reactivarla desde la app; si la desactivó tu organización, hablá con ella.";
     case "account_erased":
       return "Esta cuenta ya no existe.";
     case "revoked_all":

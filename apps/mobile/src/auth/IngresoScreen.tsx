@@ -117,6 +117,9 @@ export function IngresoScreen() {
   // the "cerrar sesión en todos los dispositivos" flow bounces through here, and
   // since WU-O so does a deep link that found an expired session.
   if (session.phase === "signed-in") return <Redirect href={returnHref(params.next)} />;
+  // A deactivated account is signed in too — its tokens are kept so it can be
+  // switched back on (D4) — and the screen that does that sits behind the gate.
+  if (session.phase === "account-deactivated") return <Redirect href={ROUTES.root} />;
 
   // Why the person is looking at this screen, when we know. `null` for a
   // deliberate sign-out: telling somebody "cerraste sesión" right after they

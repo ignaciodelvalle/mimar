@@ -589,6 +589,23 @@ export function revokeAllSessions(session: SessionPort): Promise<ApiResult<{ rev
 }
 
 /**
+ * `POST /me/reactivate` (D4) — undo the person's OWN deactivation.
+ *
+ * `reactivated: false` is a success, not a refusal: the account was already
+ * active (a retried tap, or a 200 lost on the way back). A deactivation that is
+ * not the person's to undo answers `account_deactivated`, an erased account
+ * `account_erased` — both through `apiRequest`'s ordinary session policy.
+ */
+export function reactivateMyAccount(
+  session: SessionPort,
+): Promise<ApiResult<{ reactivated: boolean }>> {
+  return apiRequest<{ reactivated: boolean }>(
+    { path: "/api/v1/me/reactivate", method: "POST" },
+    session,
+  );
+}
+
+/**
  * `GET /me/profile` — what the "Editar mis datos" form pre-fills with.
  *
  * NOT A RICHER `/me`. That endpoint is the shell every cold launch fetches and
