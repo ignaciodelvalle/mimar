@@ -93,14 +93,23 @@ export type SetPetLostWriterParams = {
    * (0105_rls_defense_in_depth.sql), so an incident-jurisdiction official can
    * hold a case whose animal they cannot read.
    *
-   * BOTH OR NEITHER. The fallback is a PAIR and not two independent defaults:
-   * a province with no locality would route the case to (new province, pet's
-   * locality), which names nowhere. `refineEventJurisdiction` in the contract
-   * refuses the partial trio upstream; this is the same rule at the writer,
-   * where a caller that never reads the contract still lands.
+   * ONE SOURCE, NEVER FIELD BY FIELD. The fallback is a PAIR and not two
+   * independent defaults: (new province, pet's locality) names nowhere. When
+   * the caller gives a PROVINCE, the event's place is used whole — with a null
+   * locality that is a province-level case (localidades-por-id A1: the web map
+   * resolves where the animal went missing, and a place whose locality cannot
+   * be named honestly — a homonym, a geocoder that answered only the province —
+   * still says which province's authority it belongs to). Only when there is no
+   * province does the animal's home pair apply, whole.
    */
   eventJurisdictionProvince?: string | null;
   eventJurisdictionLocality?: string | null;
+  /**
+   * `ar_localities` id of the incident place when it resolved to ONE catalogue
+   * row. Stamped on the case (`cases.locality_id`, migration 0147) only when
+   * the case routes to the incident's place — a home fallback gets no id here.
+   */
+  eventLocalityId?: string | null;
   reason: string | null;
   disclosurePrefs: DisclosurePrefsInput;
   enrichedDescription?: EnrichedLostDescriptionInput | null;
@@ -161,19 +170,21 @@ export async function setPetLostWriter(
     locationLng,
     eventJurisdictionProvince = null,
     eventJurisdictionLocality = null,
+    eventLocalityId = null,
     reason,
     disclosurePrefs,
     enrichedDescription = null,
     now = new Date(),
   } = params;
 
-  // THE PAIR, resolved once. See the note on the two input fields: the fallback
-  // is all-or-nothing, so a caller that knows only the province gets the
-  // animal's home pair rather than a province glued to somebody else's locality.
-  const hasEventJurisdiction =
-    eventJurisdictionProvince !== null && eventJurisdictionLocality !== null;
+  // THE PAIR, resolved once. See the note on the input fields: it comes whole
+  // from ONE source. A province from the event takes the event's locality with
+  // it, null included (a province-level case); no province means the animal's
+  // home pair — never a province glued to somebody else's locality.
+  const hasEventJurisdiction = eventJurisdictionProvince !== null;
   const caseProvince = hasEventJurisdiction ? eventJurisdictionProvince : petJurisdictionProvince;
   const caseLocality = hasEventJurisdiction ? eventJurisdictionLocality : petJurisdictionLocality;
+  const caseLocalityId = hasEventJurisdiction ? eventLocalityId : null;
 
   if (petStatus === "lost") return { error: "Esta mascota ya está marcada como perdida." };
   if (petStatus === "deceased")
@@ -246,6 +257,7 @@ export async function setPetLostWriter(
           // in the system claimed to have happened at the animal's address.
           jurisdictionProvince: caseProvince,
           jurisdictionLocality: caseLocality,
+          localityId: caseLocalityId,
           openedByUserId: recordedByUserId,
           openedReason: {
             code: "pet_marked_lost",

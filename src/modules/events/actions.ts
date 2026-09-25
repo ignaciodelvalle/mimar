@@ -28,6 +28,7 @@ import {
   requireTitularAccess,
 } from "@/lib/infra/pet-access";
 import { uploadAttachmentIfPresent } from "@/lib/infra/uploads";
+import { resolveMapFormPlace } from "@/lib/place/reported-place";
 import { findDisease } from "@/lib/reference/diseases";
 import { checkboxOn } from "@/lib/ui/form-checkbox";
 import { parseDateInput } from "@/lib/utils/format";
@@ -1055,6 +1056,17 @@ export async function setPetLostAction(
   const disclosurePrefs = parseDisclosurePrefsFromForm(formData);
   const enrichedDescription = parseEnrichedDescriptionFromForm(formData);
 
+  // WHERE IT WAS LOST (localidades-por-id A1, R4 of the localities audit). The
+  // wizard's map reverse-geocodes the pin into the same hidden
+  // provinceCode/localityName fields every L2 form posts, and this action used
+  // to read only the pin and the address text — so every web lost case fell
+  // back to the animal's HOME while the app filed the same pin where it was
+  // lost. The place is resolved the way every map form now resolves it: the
+  // pair, corroborated by the pin, a homonym never guessed, the pin re-read on
+  // the server when the two disagree. No place at all ("no lo sé") leaves the
+  // three fields null and the writer's home fallback applies, as before.
+  const lostPlace = await resolveMapFormPlace(parseLocationFromFormData(formData));
+
   const repo = new EventsRepository();
 
   const { broadcastLostPet } = await import("@/lib/infra/lost-pet-broadcast");
@@ -1078,6 +1090,9 @@ export async function setPetLostAction(
       locationDescription,
       locationLat: locationLatRaw,
       locationLng: locationLngRaw,
+      eventJurisdictionProvince: lostPlace.province,
+      eventJurisdictionLocality: lostPlace.province !== null ? lostPlace.locality : null,
+      eventLocalityId: lostPlace.province !== null ? lostPlace.localityId : null,
       reason,
       disclosurePrefs,
       enrichedDescription,

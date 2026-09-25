@@ -233,6 +233,7 @@ describe("setPetLostWriter", () => {
       return {
         province: caseArg.jurisdictionProvince,
         locality: caseArg.jurisdictionLocality,
+        localityId: caseArg.localityId ?? null,
       };
     }
 
@@ -242,13 +243,35 @@ describe("setPetLostWriter", () => {
           eventJurisdictionProvince: "Córdoba",
           eventJurisdictionLocality: "Villa Carlos Paz",
         }),
-      ).toEqual({ province: "Córdoba", locality: "Villa Carlos Paz" });
+      ).toEqual({ province: "Córdoba", locality: "Villa Carlos Paz", localityId: null });
+    });
+
+    // localidades-por-id A1: the catalogue row travels with the place it names.
+    it("stamps the case with the incident's catalogue row, and only with it", async () => {
+      expect(
+        await run({
+          eventJurisdictionProvince: "Córdoba",
+          eventJurisdictionLocality: "Villa Carlos Paz",
+          eventLocalityId: "loc-vcp",
+        }),
+      ).toEqual({ province: "Córdoba", locality: "Villa Carlos Paz", localityId: "loc-vcp" });
+      mockOpenCase.mockClear();
+      // The home fallback carries no id from here: the id names the INCIDENT.
+      expect(await run({ eventLocalityId: "loc-vcp" })).toEqual({
+        province: "Buenos Aires",
+        locality: "La Plata",
+        localityId: null,
+      });
     });
 
     it("falls back to the animal's home jurisdiction when nobody said", async () => {
       // "No sé exactamente dónde" is a real answer from somebody in a panic, and
       // the fallback is defined behaviour rather than a hole.
-      expect(await run({})).toEqual({ province: "Buenos Aires", locality: "La Plata" });
+      expect(await run({})).toEqual({
+        province: "Buenos Aires",
+        locality: "La Plata",
+        localityId: null,
+      });
     });
 
     it("sends the ALERT to where it was lost, not to where the animal lives", async () => {
@@ -280,20 +303,28 @@ describe("setPetLostWriter", () => {
       expect(lastLocation).toEqual({ province: "Córdoba", locality: "Villa Carlos Paz" });
     });
 
-    it("falls back as a PAIR, never field by field", async () => {
+    it("never falls back field by field", async () => {
       // THE ASSERTION THAT EARNS ITS KEEP. A province with no locality must not
       // produce (Córdoba, La Plata) — a place that does not exist, on a record
-      // an authority acts on, that nothing downstream would notice. The
-      // contract refuses the partial trio upstream; this is the writer refusing
-      // it for the callers that never read a contract.
+      // an authority acts on, that nothing downstream would notice.
+      //
+      // Since localidades-por-id A1 it is a PROVINCE-LEVEL case instead: the
+      // web's map now resolves where the animal went missing, and a pin whose
+      // locality cannot be named honestly (a homonym, a geocoder that said only
+      // the province) still says which province. Córdoba's authority sees it;
+      // the animal's home is not where it was lost.
       expect(await run({ eventJurisdictionProvince: "Córdoba" })).toEqual({
-        province: "Buenos Aires",
-        locality: "La Plata",
+        province: "Córdoba",
+        locality: null,
+        localityId: null,
       });
       mockOpenCase.mockClear();
+      // A locality with no province names nowhere to route: the home pair,
+      // whole — never (home province, Villa Carlos Paz).
       expect(await run({ eventJurisdictionLocality: "Villa Carlos Paz" })).toEqual({
         province: "Buenos Aires",
         locality: "La Plata",
+        localityId: null,
       });
     });
   });

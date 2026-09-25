@@ -172,16 +172,14 @@ describe("lost routing: same pin, same place, any channel", () => {
     });
   });
 
-  // Known failure until work unit A1 (localidades-por-id): flip to `it` there.
-  it.fails("the web files the case where the animal went missing, not at its home", async () => {
+  it("the web files the case where the animal went missing, not at its home", async () => {
     expect(await viaWeb()).toEqual({
       eventJurisdictionProvince: "Córdoba",
       eventJurisdictionLocality: "Villa María",
     });
   });
 
-  // Known failure until work unit A1 (localidades-por-id): flip to `it` there.
-  it.fails("both doors hand the writer the identical place", async () => {
+  it("both doors hand the writer the identical place", async () => {
     const web = await viaWeb();
     vi.clearAllMocks();
     mocks.setPetLostWriter.mockResolvedValue({ error: null });

@@ -130,6 +130,22 @@ vi.mock("next/navigation", () => ({
   redirect: vi.fn(),
 }));
 
+// The place resolver (localidades-por-id A1) reads the INDEC catalogue and the
+// reverse geocoder, neither of which this file's fake client can answer. The
+// coordinate rules under test run BEFORE it; what it decides is pinned in
+// lib/place/reported-place.test.ts and the lost-routing parity fence.
+vi.mock("@/lib/place/reported-place", () => ({
+  resolveMapFormPlace: vi.fn(async () => ({
+    province: null,
+    locality: null,
+    localityId: null,
+    method: "unresolved",
+    unresolvedReason: "pin_only",
+    mismatch: false,
+    entered: { province: null, locality: null, indecId: null },
+  })),
+}));
+
 // next/cache — setPetLostAction revalidates the owner page, the public
 // credential and the pet list on success (T1-C1, 2026-09-18), and the real
 // revalidatePath throws outside a Next request.
