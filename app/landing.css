@@ -2365,6 +2365,352 @@
   color: var(--color-ln-card);
 }
 
+/* ============ /municipios (WU5) ============================================
+   The page for Zoonosis offices. It borrows the chapter 5 navy console for
+   the two surfaces that speak TO the office (hero, request) and keeps every
+   explanatory section on paper, so the navy reads as "this is for you", not
+   as decoration. One bold move: the serif hero line. Everything else is
+   quiet type on hairlines. */
+.lp .lp-mun-hero,
+.lp .lp-mun-request {
+  background: radial-gradient(
+    120% 90% at 85% 0%,
+    color-mix(in srgb, var(--lp-navy) 80%, var(--color-ln-celeste)) 0%,
+    var(--lp-navy) 60%
+  );
+  color: var(--lp-navy-ink);
+}
+.lp .lp-mun-hero {
+  padding-block: clamp(72px, 10vw, 136px) clamp(64px, 9vw, 120px);
+}
+.lp .lp-mun-kicker {
+  margin: 0 0 18px;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-ln-op-celeste);
+}
+.lp .lp-mun-title {
+  color: var(--color-ln-card);
+  font-size: clamp(40px, 6.4vw, 80px);
+  letter-spacing: -0.03em;
+  max-width: 15ch;
+  margin: 0;
+}
+.lp .lp-mun-hero-lead {
+  margin: clamp(22px, 3vw, 30px) 0 0;
+  max-width: 58ch;
+  font-size: clamp(17px, 1.7vw, 20px);
+  line-height: 1.55;
+  color: var(--lp-navy-ink);
+}
+.lp .lp-mun-hero-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: clamp(28px, 4vw, 40px);
+}
+.lp .lp-mun-hero-cta .lp-btn {
+  min-height: 44px;
+}
+.lp .lp-mun-btn--line {
+  background: transparent;
+  color: var(--color-ln-card);
+  border-color: var(--lp-navy-line);
+}
+.lp .lp-mun-btn--line:hover {
+  border-color: var(--color-ln-card);
+}
+
+.lp .lp-mun-section {
+  padding-block: clamp(64px, 8vw, 112px);
+}
+.lp .lp-mun-h {
+  max-width: 20ch;
+  margin: 0;
+}
+.lp .lp-mun-narrow {
+  max-width: 760px;
+}
+.lp .lp-mun-sublead {
+  margin-top: 18px;
+}
+
+/* The four questions: a ledger. Question left in the display serif, the
+   screen that answers it right. Not numbered — they are not a sequence. */
+.lp .lp-mun-questions {
+  list-style: none;
+  padding: 0;
+  margin: clamp(32px, 4vw, 48px) 0 0;
+  border-top: 1px solid var(--color-ln-line);
+}
+.lp .lp-mun-question {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: clamp(12px, 4vw, 56px);
+  padding-block: clamp(22px, 3vw, 32px);
+  border-bottom: 1px solid var(--color-ln-line);
+}
+.lp .lp-mun-q {
+  margin: 0;
+  font-family: var(--lp-serif);
+  font-weight: 600;
+  font-size: clamp(22px, 2.4vw, 30px);
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  color: var(--color-ln-ink);
+}
+.lp .lp-mun-screen {
+  margin: 0 0 6px;
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--color-ln-azul);
+}
+.lp .lp-mun-a {
+  margin: 0;
+  max-width: 52ch;
+  color: var(--color-ln-ink-2);
+}
+@media (max-width: 760px) {
+  .lp .lp-mun-question {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Where the data comes from: a chain that hands off to the office. A real
+   flow, so it is drawn as one line with stops on it. */
+.lp .lp-mun-chain {
+  list-style: none;
+  padding: 0;
+  margin: clamp(32px, 4vw, 48px) 0 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 24px;
+}
+.lp .lp-mun-chain li {
+  position: relative;
+  padding-top: 26px;
+  border-top: 2px solid var(--color-ln-line);
+}
+.lp .lp-mun-chain li::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-ln-card);
+  border: 2px solid var(--color-ln-azul);
+}
+.lp .lp-mun-chain li:last-child {
+  border-top-color: var(--color-ln-azul);
+}
+.lp .lp-mun-chain li:last-child::before {
+  background: var(--color-ln-azul);
+}
+.lp .lp-mun-chain-who {
+  margin: 0 0 6px;
+  font-weight: 700;
+  color: var(--color-ln-ink);
+}
+.lp .lp-mun-chain-what {
+  margin: 0;
+  font-size: var(--text-base);
+  line-height: 1.55;
+  color: var(--color-ln-ink-2);
+}
+@media (max-width: 860px) {
+  .lp .lp-mun-chain {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .lp .lp-mun-chain li {
+    border-top: 0;
+    border-left: 2px solid var(--color-ln-line);
+    padding: 0 0 24px 22px;
+  }
+  .lp .lp-mun-chain li::before {
+    top: 4px;
+    left: -7px;
+  }
+  .lp .lp-mun-chain li:last-child {
+    border-left-color: var(--color-ln-azul);
+    padding-bottom: 0;
+  }
+}
+
+.lp .lp-mun-prose {
+  margin: 18px 0 0;
+  font-size: var(--text-lg);
+  line-height: 1.65;
+  color: var(--color-ln-ink-2);
+  max-width: 64ch;
+}
+
+/* Today vs not yet: two lists, the second visibly quieter. */
+.lp .lp-mun-today {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(28px, 5vw, 64px);
+  margin-top: clamp(32px, 4vw, 48px);
+}
+@media (max-width: 760px) {
+  .lp .lp-mun-today {
+    grid-template-columns: 1fr;
+  }
+}
+.lp .lp-mun-col-h {
+  margin: 0 0 14px;
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-ln-ink);
+}
+.lp .lp-mun-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lp .lp-mun-list li {
+  position: relative;
+  padding-left: 26px;
+  line-height: 1.5;
+  color: var(--color-ln-ink);
+}
+.lp .lp-mun-list li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.45em;
+  width: 12px;
+  height: 7px;
+  border-left: 2px solid var(--color-ln-ok);
+  border-bottom: 2px solid var(--color-ln-ok);
+  transform: rotate(-45deg);
+}
+.lp .lp-mun-list--pending li {
+  color: var(--color-ln-ink-2);
+}
+.lp .lp-mun-list--pending li::before {
+  width: 10px;
+  height: 10px;
+  top: 0.4em;
+  border: 2px solid var(--color-ln-mute);
+  border-radius: 50%;
+  transform: none;
+}
+
+/* The pilot: a real three-step sequence, so it carries numbers. */
+.lp .lp-mun-steps {
+  list-style: none;
+  counter-reset: mun-step;
+  padding: 0;
+  margin: clamp(32px, 4vw, 48px) 0 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(20px, 3vw, 40px);
+}
+.lp .lp-mun-steps li {
+  counter-increment: mun-step;
+  color: var(--color-ln-ink-2);
+  line-height: 1.55;
+}
+.lp .lp-mun-steps li::before {
+  content: counter(mun-step);
+  display: block;
+  margin-bottom: 10px;
+  font-family: var(--lp-serif);
+  font-weight: 600;
+  font-size: var(--text-5xl);
+  line-height: 1;
+  color: var(--color-ln-azul);
+}
+@media (max-width: 760px) {
+  .lp .lp-mun-steps {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* The request: navy, with the form on a paper card. */
+.lp .lp-mun-request {
+  padding-block: clamp(64px, 8vw, 112px);
+  scroll-margin-top: 72px;
+}
+.lp .lp-mun-request .lp-display {
+  color: var(--color-ln-card);
+  margin: 0;
+}
+.lp .lp-mun-request .lp-mun-form-card .lp-display {
+  color: var(--color-ln-ink);
+}
+.lp .lp-mun-request-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: clamp(28px, 5vw, 64px);
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .lp .lp-mun-request-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.lp .lp-mun-request-lead {
+  margin: 18px 0 0;
+  font-size: var(--text-lg);
+  line-height: 1.55;
+  color: var(--lp-navy-ink);
+  max-width: 40ch;
+}
+.lp .lp-mun-request-note {
+  margin: 14px 0 0;
+  font-size: var(--text-base);
+  color: var(--lp-navy-mute);
+  max-width: 40ch;
+}
+.lp .lp-mun-form-card {
+  position: relative;
+  background: var(--color-ln-card);
+  color: var(--color-ln-ink);
+  border-radius: var(--radius-card);
+  padding: clamp(20px, 3.5vw, 36px);
+}
+.lp .lp-mun-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 20px;
+}
+@media (max-width: 640px) {
+  .lp .lp-mun-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.lp .lp-mun-hp {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.lp .lp-mun-failure {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-input);
+  border: 1px solid var(--color-ln-err);
+  background: var(--color-ln-err-050);
+  color: var(--color-ln-err);
+  font-size: var(--text-base);
+}
+.lp .lp-mun-sent h3 {
+  margin: 0 0 10px;
+}
+.lp .lp-mun-sent p {
+  margin: 0;
+  color: var(--color-ln-ink-2);
+}
+
 /* ============ footer ====================================================== */
 .lp .lp-foot {
   background: var(--color-ln-card);
