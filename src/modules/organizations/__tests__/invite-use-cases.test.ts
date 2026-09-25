@@ -289,9 +289,12 @@ describe("acceptInvitation", () => {
     findAccepterDisplayName: vi.fn().mockResolvedValue("Test User"),
     insertAuditLog: vi.fn().mockResolvedValue(undefined),
     // The legacy-column mirror reads the derived state (set-member-event-write.ts).
-    readEventWriteState: vi
-      .fn()
-      .mockResolvedValue({ role: "member", approvedCapabilities: ["event.write"] }),
+    readEventWriteState: vi.fn().mockResolvedValue({
+      role: "member",
+      approvedCapabilities: ["event.write"],
+      vetCredentialValid: false,
+      active: true,
+    }),
     setEventWrite: vi.fn().mockResolvedValue(undefined),
   });
 

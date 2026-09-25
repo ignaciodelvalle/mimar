@@ -109,6 +109,8 @@ export default async function PermisosPage({
         userId: organizationMemberships.userId,
         role: organizationMemberships.role,
         displayName: profiles.displayName,
+        profileRole: profiles.role,
+        matriculaVerified: profiles.matriculaVerified,
       })
       .from(organizationMemberships)
       .innerJoin(profiles, eq(profiles.id, organizationMemberships.userId))
@@ -147,7 +149,11 @@ export default async function PermisosPage({
   // Resolve implicit caps per member using pure domain function (no extra DB calls).
   const matrixMembers: MatrixMember[] = activeMembers.map((m) => {
     const explicitGrants = grantsByMembership.get(m.membershipId) ?? {};
-    const resolvedSet = resolveGrantedCaps(m.role, Object.keys(explicitGrants));
+    // Same credential condition the resolver enforces (vet_individual caps ride
+    // on the member's live vet matrícula, not on the role name).
+    const resolvedSet = resolveGrantedCaps(m.role, Object.keys(explicitGrants), {
+      vetCredentialValid: m.profileRole === "vet" && m.matriculaVerified === true,
+    });
     // Implicit = in resolvedSet but NOT an explicit grant row.
     const implicitCaps = new Set<string>();
     for (const cap of resolvedSet) {

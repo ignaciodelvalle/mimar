@@ -178,6 +178,12 @@ beforeAll(async () => {
   // Create users
   adminUserId = await createTestUser(ADMIN_EMAIL);
   vetUserId = await createTestUser(VET_EMAIL);
+  // vet_individual's implicit caps ride on the member's live vet credential
+  // (W6 review), so the fixture vet has to actually be one.
+  await db
+    .update(profiles)
+    .set({ role: "vet", matriculaVerified: true })
+    .where(eq(profiles.id, vetUserId));
   coordinatorUserId = await createTestUser(COORDINATOR_EMAIL);
   memberUserId = await createTestUser(MEMBER_EMAIL);
   multiUserId = await createTestUser(MULTI_EMAIL);
@@ -290,6 +296,24 @@ describe("getGrantedCapabilities", () => {
     const granted = await getGrantedCapabilities(vetMembership!.membership);
     for (const cap of VET_INDIVIDUAL_IMPLICIT_CAPS) {
       expect(granted.has(cap)).toBe(true);
+    }
+  });
+
+  it("vet_individual withholds the implicit caps once the member is no longer a verified vet", async () => {
+    await db
+      .update(profiles)
+      .set({ role: "owner", matriculaVerified: false })
+      .where(eq(profiles.id, vetUserId));
+    try {
+      const granted = await getGrantedCapabilities({ id: vetMembershipId, role: "vet_individual" });
+      for (const cap of VET_INDIVIDUAL_IMPLICIT_CAPS) {
+        expect(granted.has(cap)).toBe(false);
+      }
+    } finally {
+      await db
+        .update(profiles)
+        .set({ role: "vet", matriculaVerified: true })
+        .where(eq(profiles.id, vetUserId));
     }
   });
 

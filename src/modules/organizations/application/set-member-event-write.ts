@@ -54,7 +54,11 @@ export async function syncEventWriteMirror(
 ): Promise<boolean> {
   const state = await repo.readEventWriteState(membershipId, e);
   if (!state) return false;
-  const effective = resolveGrantedCaps(state.role, state.approvedCapabilities).has("event.write");
+  const effective =
+    state.active &&
+    resolveGrantedCaps(state.role, state.approvedCapabilities, {
+      vetCredentialValid: state.vetCredentialValid,
+    }).has("event.write");
   await repo.setEventWrite(membershipId, effective, e);
   return effective;
 }

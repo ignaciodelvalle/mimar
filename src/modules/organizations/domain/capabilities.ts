@@ -206,9 +206,23 @@ export const COORDINATOR_IMPLICIT_CAPS: readonly OrganizationCapability[] = [
 // This is called by infrastructure/authz-resolver.getGrantedCapabilities.
 // ---------------------------------------------------------------------------
 
+/**
+ * What the implicit `vet_individual` baseline is conditioned on (W6 review).
+ *
+ * The role name alone is not a credential. `vetCredentialValid` is true only
+ * when the MEMBER's profile says `role = 'vet'` AND `matricula_verified`. A
+ * vet whose matrícula was revoked, or who resigned it, keeps the membership
+ * row until something ends it — and without this check that row alone kept
+ * vaccines, bites, rabies closes and controlled meds open to them. Absent or
+ * false → the implicit clinical caps are withheld (default deny); explicit
+ * approved grants still apply, since an org admin decided those.
+ */
+export type ResolveGrantedCapsContext = { vetCredentialValid?: boolean };
+
 export function resolveGrantedCaps(
   role: string,
   approvedRows: readonly string[],
+  context: ResolveGrantedCapsContext = {},
 ): Set<OrganizationCapability> {
   if (role === "admin") {
     return new Set<OrganizationCapability>(ORGANIZATION_CAPABILITIES);
@@ -223,7 +237,9 @@ export function resolveGrantedCaps(
 
   // Add role-based implicit baselines
   if (role === "vet_individual") {
-    for (const cap of VET_INDIVIDUAL_IMPLICIT_CAPS) set.add(cap);
+    if (context.vetCredentialValid === true) {
+      for (const cap of VET_INDIVIDUAL_IMPLICIT_CAPS) set.add(cap);
+    }
   } else if (role === "coordinator") {
     for (const cap of COORDINATOR_IMPLICIT_CAPS) set.add(cap);
   }

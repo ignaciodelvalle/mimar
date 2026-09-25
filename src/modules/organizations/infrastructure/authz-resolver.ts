@@ -68,6 +68,7 @@ import {
   organizationCapabilityGrants,
   organizationMemberships,
   organizations,
+  profiles,
 } from "@/db";
 import { type LiveUserFailureReason, requireLiveUser } from "@/lib/infra/live-user";
 import { OPERATOR_SHIFT_EXPIRED_MESSAGE, isOperatorShiftExpired } from "@/lib/infra/operator-shift";
@@ -248,6 +249,17 @@ export async function getActiveMemberships(userId: string): Promise<ActiveMember
 // than remembered.
 // ---------------------------------------------------------------------------
 
+/** Does the member behind this membership hold `role='vet'` with a verified matrícula? */
+async function memberHoldsVetCredential(membershipId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ role: profiles.role, matriculaVerified: profiles.matriculaVerified })
+    .from(organizationMemberships)
+    .innerJoin(profiles, eq(profiles.id, organizationMemberships.userId))
+    .where(eq(organizationMemberships.id, membershipId))
+    .limit(1);
+  return row?.role === "vet" && row.matriculaVerified === true;
+}
+
 export async function getGrantedCapabilities(
   membership: Pick<OrganizationMembership, "id" | "role">,
 ): Promise<Set<OrganizationCapability>> {
@@ -269,8 +281,13 @@ export async function getGrantedCapabilities(
 
   const approvedCapStrings = rows.map((r) => r.capability);
 
+  // vet_individual's implicit clinical caps ride on the MEMBER's live vet
+  // credential, not on the role name (W6 review) — see ResolveGrantedCapsContext.
+  const vetCredentialValid =
+    membership.role === "vet_individual" ? await memberHoldsVetCredential(membership.id) : false;
+
   // Delegate baseline + validation to pure domain function
-  return resolveGrantedCaps(membership.role, approvedCapStrings);
+  return resolveGrantedCaps(membership.role, approvedCapStrings, { vetCredentialValid });
 }
 
 // ---------------------------------------------------------------------------

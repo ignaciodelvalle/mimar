@@ -224,16 +224,36 @@ describe("resolveGrantedCaps — admin", () => {
   });
 });
 
+/** A member whose profile is a vet with a verified matrícula (W6 review). */
+const VET_OK = { vetCredentialValid: true } as const;
+
 describe("resolveGrantedCaps — vet_individual", () => {
+  it("withholds the implicit clinical caps when the member's vet credential is not valid", () => {
+    // Revoked or resigned matrícula, or a role that is not vet: the membership
+    // row alone is not a credential. Default (no context) is the same deny.
+    for (const granted of [
+      resolveGrantedCaps("vet_individual", [], { vetCredentialValid: false }),
+      resolveGrantedCaps("vet_individual", []),
+    ]) {
+      for (const cap of VET_INDIVIDUAL_IMPLICIT_CAPS) expect(granted.has(cap)).toBe(false);
+    }
+    // An explicit grant an org admin approved still applies.
+    expect(
+      resolveGrantedCaps("vet_individual", ["event.write"], { vetCredentialValid: false }).has(
+        "event.write",
+      ),
+    ).toBe(true);
+  });
+
   it("vet_individual gets VET_INDIVIDUAL_IMPLICIT_CAPS when no approved rows", () => {
-    const granted = resolveGrantedCaps("vet_individual", []);
+    const granted = resolveGrantedCaps("vet_individual", [], VET_OK);
     for (const cap of VET_INDIVIDUAL_IMPLICIT_CAPS) {
       expect(granted.has(cap)).toBe(true);
     }
   });
 
   it("vet_individual with approved grant gets that grant PLUS the implicit caps", () => {
-    const granted = resolveGrantedCaps("vet_individual", ["foster.assign"]);
+    const granted = resolveGrantedCaps("vet_individual", ["foster.assign"], VET_OK);
     expect(granted.has("foster.assign")).toBe(true);
     expect(granted.has("pet.read_held")).toBe(true);
     expect(granted.has("event.write")).toBe(true);
@@ -241,13 +261,13 @@ describe("resolveGrantedCaps — vet_individual", () => {
   });
 
   it("vet_individual does NOT get capabilities outside implicit + approved", () => {
-    const granted = resolveGrantedCaps("vet_individual", []);
+    const granted = resolveGrantedCaps("vet_individual", [], VET_OK);
     expect(granted.has("capability.grant")).toBe(false);
     expect(granted.has("member.invite")).toBe(false);
   });
 
   it("vet_individual filters out invalid capabilities from approved rows", () => {
-    const granted = resolveGrantedCaps("vet_individual", ["bad.cap" as string]);
+    const granted = resolveGrantedCaps("vet_individual", ["bad.cap" as string], VET_OK);
     expect(granted.has("bad.cap" as OrganizationCapability)).toBe(false);
     // implicit caps still present
     expect(granted.has("pet.read_held")).toBe(true);
@@ -307,7 +327,11 @@ describe("resolveGrantedCaps — member/volunteer/foster", () => {
 
   it("grant precedence: approved rows union with implicit caps — no cap is dropped", () => {
     // vet_individual + explicit foster.assign grant
-    const granted = resolveGrantedCaps("vet_individual", ["foster.assign", "adoption.review"]);
+    const granted = resolveGrantedCaps(
+      "vet_individual",
+      ["foster.assign", "adoption.review"],
+      VET_OK,
+    );
     // Has all implicit
     expect(granted.has("pet.read_held")).toBe(true);
     expect(granted.has("event.write")).toBe(true);

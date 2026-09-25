@@ -204,10 +204,22 @@ export class OrgRepository {
   async readEventWriteState(
     membershipId: string,
     e: Exec = db,
-  ): Promise<{ role: OrganizationMembership["role"]; approvedCapabilities: string[] } | null> {
+  ): Promise<{
+    role: OrganizationMembership["role"];
+    approvedCapabilities: string[];
+    vetCredentialValid: boolean;
+    /** `left_at IS NULL` — an ended membership writes nothing, whatever its role. */
+    active: boolean;
+  } | null> {
     const [membership] = await e
-      .select({ role: organizationMemberships.role })
+      .select({
+        role: organizationMemberships.role,
+        leftAt: organizationMemberships.leftAt,
+        profileRole: profiles.role,
+        matriculaVerified: profiles.matriculaVerified,
+      })
       .from(organizationMemberships)
+      .innerJoin(profiles, eq(profiles.id, organizationMemberships.userId))
       .where(eq(organizationMemberships.id, membershipId))
       .limit(1);
     if (!membership) return null;
@@ -220,7 +232,13 @@ export class OrgRepository {
           eq(organizationCapabilityGrants.status, "approved"),
         ),
       );
-    return { role: membership.role, approvedCapabilities: grants.map((g) => g.capability) };
+    return {
+      role: membership.role,
+      approvedCapabilities: grants.map((g) => g.capability),
+      // Same condition the resolver applies (authz-resolver memberHoldsVetCredential).
+      vetCredentialValid: membership.profileRole === "vet" && membership.matriculaVerified === true,
+      active: membership.leftAt === null,
+    };
   }
 
   /**
