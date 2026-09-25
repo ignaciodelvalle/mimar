@@ -125,7 +125,7 @@ describe("app/sitemap.ts — every read is bounded", () => {
     expect((sitemapModule as Record<string, unknown>).revalidate).toBeUndefined();
   });
 
-  it("fails the route when the reads miss their deadline, instead of shipping four URLs", async () => {
+  it("fails the route when the reads miss their deadline, instead of shipping five URLs", async () => {
     // A crawler that gets a 5xx keeps the sitemap it already has; one that gets
     // a 200 with only the static entries takes it as the new truth.
     vi.useFakeTimers();
@@ -150,8 +150,8 @@ describe("app/sitemap.ts — every read is bounded", () => {
     expect(urls).toContain("https://mimar.example.ar/adoptar/DIM-ADPT-2345");
     expect(urls).toContain("https://mimar.example.ar/p/DIM-LOST-2345");
     expect(urls).toContain("https://mimar.example.ar/refugios/ORG-REFU-2345");
-    // Four static entries plus one per row.
-    expect(entries).toHaveLength(7);
+    // Five static entries plus one per row.
+    expect(entries).toHaveLength(8);
 
     // lastModified survives as the same instant whether it arrived as a Date
     // (a cache miss) or as the JSON string a cache hit returns.
