@@ -85,6 +85,9 @@ describe("the landing story passes Pampa's sex", () => {
   const content = read("components", "landing", "landing-content.ts");
   const rail = read("components", "landing", "StorySection.tsx");
   const screens = read("components", "landing", "story-screens.tsx");
+  // WU3 moved the libreta (the entries that carry `flag: "lost"`) out of
+  // story-screens.tsx into its own animated component.
+  const libreta = read("components", "landing", "LibretaFeed.tsx");
 
   it("declares Pampa's sex in a form the components can inflect on", () => {
     // The display field is "Hembra", which normalizeSex() reads as unknown.
@@ -98,6 +101,16 @@ describe("the landing story passes Pampa's sex", () => {
     // reported against.
     expect(content).toContain('flag: "lost"');
     expect(rail).toMatch(/<LnStatusFlag[^>]*sex=\{PAMPA\.sexEnum\}/);
-    expect(screens).toMatch(/<LnStatusFlag[^>]*sex=\{PAMPA\.sexEnum\}/);
+    expect(libreta).toMatch(/<LnStatusFlag[^>]*sex=\{PAMPA\.sexEnum\}/);
+  });
+
+  it("leaves no flag in the story screens that could render lost without a sex", () => {
+    // Every flag still in story-screens.tsx must be a literal "ok" (no
+    // gendered label to get wrong) or carry Pampa's sex.
+    const flags = screens.match(/<LnStatusFlag\b[^>]*>/g) ?? [];
+    expect(flags.length).toBeGreaterThan(0);
+    for (const flag of flags) {
+      expect(flag.includes('status="ok"') || /sex=\{PAMPA\.sexEnum\}/.test(flag)).toBe(true);
+    }
   });
 });
