@@ -303,3 +303,28 @@ describe("the accessible names — CA-M1 / finding A1-entrada-07", () => {
     expect(screen.queryByLabelText("Correo electrónico")).toBeNull();
   });
 });
+
+describe("return-key chain across the three fields (M10)", () => {
+  it("moves next → next → done across correo, contraseña, repetir contraseña", () => {
+    renderScreen();
+    expect(screen.getByLabelText("Correo electrónico, obligatorio").props.returnKeyType).toBe(
+      "next",
+    );
+    expect(screen.getByLabelText("Contraseña, obligatorio").props.returnKeyType).toBe("next");
+    expect(screen.getByLabelText("Repetir contraseña, obligatorio").props.returnKeyType).toBe(
+      "done",
+    );
+  });
+
+  it("submits ONLY from the last field's return key, not from the two before it", () => {
+    mockSignUp.mockResolvedValue({ ok: true, signedIn: true });
+    renderScreen();
+    fill();
+    fireEvent(screen.getByLabelText("Correo electrónico, obligatorio"), "submitEditing");
+    fireEvent(screen.getByLabelText("Contraseña, obligatorio"), "submitEditing");
+    expect(mockSignUp).not.toHaveBeenCalled();
+
+    fireEvent(screen.getByLabelText("Repetir contraseña, obligatorio"), "submitEditing");
+    expect(mockSignUp).toHaveBeenCalledTimes(1);
+  });
+});

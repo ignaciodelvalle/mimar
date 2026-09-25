@@ -86,6 +86,7 @@ import {
   Title,
 } from "../ui/kit";
 import { COLORS, LEADING, RADIUS, SPACE, TYPE } from "../ui/theme";
+import { useReturnKeyChain } from "../ui/use-return-key-chain";
 import { signUp } from "./session-store";
 import {
   EMPTY_SIGNUP_DRAFT,
@@ -216,6 +217,12 @@ export function CrearCuentaScreen({ onGoToSignIn }: { onGoToSignIn: () => void }
     // first, and a second submit here would answer with the masquerade.
   }, [busy, draft]);
 
+  // Return-key advance across the three single-line fields (M10, native-feel
+  // audit): correo → contraseña → repetir contraseña, "done" on the last one
+  // submitting — the shared chain instead of this screen's own
+  // `returnKeyType="go"` + `onSubmitEditing` on just the last field.
+  const chain = useReturnKeyChain(3, () => void submit());
+
   if (needsSignIn) {
     return (
       <Screen edges={["top", "bottom"]} gap={SPACE.xl}>
@@ -270,6 +277,7 @@ export function CrearCuentaScreen({ onGoToSignIn }: { onGoToSignIn: () => void }
 
       <View style={styles.form}>
         <TextField
+          {...chain(0)}
           accessibilityLabel="Correo electrónico"
           autoCapitalize="none"
           autoComplete="email"
@@ -285,6 +293,7 @@ export function CrearCuentaScreen({ onGoToSignIn }: { onGoToSignIn: () => void }
         />
 
         <PasswordField
+          {...chain(1)}
           accessibilityLabel="Contraseña"
           autoCapitalize="none"
           // `new-password`, not `current-password`: it is what tells a password
@@ -300,15 +309,14 @@ export function CrearCuentaScreen({ onGoToSignIn }: { onGoToSignIn: () => void }
         <Body>Mínimo 8 caracteres.</Body>
 
         <PasswordField
+          {...chain(2)}
           accessibilityLabel="Repetir contraseña"
           autoCapitalize="none"
           autoComplete="new-password"
           editable={!busy}
           label="Repetir contraseña"
           onChangeText={(confirmPassword) => patch({ confirmPassword })}
-          onSubmitEditing={() => void submit()}
           required
-          returnKeyType="go"
           value={draft.confirmPassword}
         />
 
