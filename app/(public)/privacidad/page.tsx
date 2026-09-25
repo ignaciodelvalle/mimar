@@ -374,6 +374,16 @@ export default function PrivacidadPage() {
           </p>
         </section>
 
+        <section id="responsable" className="space-y-3 scroll-mt-6">
+          <h2 className="text-base font-semibold text-[var(--color-ln-ink)]">
+            Responsable de los datos
+          </h2>
+          <p className="text-sm text-[var(--color-ln-ink-2)] leading-relaxed">
+            El responsable de las bases de datos de miMAR es Ignacio Del Valle, con domicilio en Av.
+            Raúl Scalabrini Ortiz 1270, Ciudad Autónoma de Buenos Aires (Ley 25.326, art. 6).
+          </p>
+        </section>
+
         <section className="space-y-3">
           <h2 className="text-base font-semibold text-[var(--color-ln-ink)]">Contacto</h2>
           <p className="text-sm text-[var(--color-ln-ink-2)] leading-relaxed">
