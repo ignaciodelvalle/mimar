@@ -480,6 +480,10 @@ export function apiErrorMessage(code: ApiV1ErrorCode): string {
       // answered — `/denuncias/buscar`, the web's own lookup by reference code
       // — rather than inviting a blind re-send that files a second denuncia.
       return "No pudimos enviar la denuncia. Volvé a intentar en un momento; si ya te dimos un código antes, buscalo en la web antes de mandarla de nuevo.";
+    case "bite_location_mismatch":
+      // Both answers are the person's own; the copy names the two and lets
+      // them pick which one to fix. Nothing was written.
+      return "El lugar del mapa y la localidad elegida no coinciden. Mové el punto o cambiá la localidad, y volvé a registrarla.";
     case "welfare_evidence_refused":
       // NOTHING WAS FILED — the photos are checked before the row exists — so the
       // copy can say so plainly and offer the two moves that work.

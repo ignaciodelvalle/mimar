@@ -116,6 +116,29 @@ export async function geocodeAddressPublicOrThrow(
   return geocodeAddress(query, bias);
 }
 
+/**
+ * The reverse twin of `geocodeAddressPublicOrThrow`, for the same reason (M17
+ * security review): the app's map asks "what is at this pin?" as a request a
+ * person is waiting on, and a spent budget answered as `null` reads on the
+ * phone as "no address here" — an infrastructure refusal in the costume of an
+ * answer about the place. Same act, same bucket, same IP; a spent budget
+ * THROWS `RateLimitError` and the route answers 429.
+ *
+ * Residual, stated: `reverseGeocode` itself still answers `null` when its own
+ * per-instance token bucket (the Nominatim courtesy limit) is empty; that arm
+ * cannot be told apart from "no address" without changing the shared helper.
+ */
+// @no-auth-required: anonymous reverse geocoding, same bucket as
+// `reverseGeocodePublicAction`; the caller maps the refusal to a status code.
+export async function reverseGeocodePublicOrThrow(
+  lat: number,
+  lng: number,
+): Promise<ReverseGeocodeResult | null> {
+  const ip = await callerIpAddress();
+  await enforceRateLimit("geocode_public", ip, PUBLIC_GEOCODING_LIMIT);
+  return reverseGeocode(lat, lng);
+}
+
 // @no-auth-required: anonymous reverse-geocoding on public surfaces. Returns
 // null on rate-limit so the caller falls back to plain lat/lng without errors.
 export async function reverseGeocodePublicAction(

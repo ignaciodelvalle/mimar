@@ -7,7 +7,7 @@
 //   · `reverse` — the point under the pin → a readable address.
 //
 // THE WEB'S OWN HELPERS, ON THE WEB'S OWN BUDGET. `geocodeAddressPublicOrThrow`
-// and `reverseGeocodePublicAction` are what `components/LocationFields.tsx` and
+// and `reverseGeocodePublicOrThrow` are what `components/LocationFields.tsx` and
 // the denuncia door already call; both spend the shared per-IP `geocode_public`
 // bucket, so the phone gets no allowance of its own. Nominatim is called from
 // the server: the person's IP never reaches it.
@@ -41,7 +41,7 @@ import { reportError } from "@/lib/infra/report-error";
 import { createClientFromBearer } from "@/lib/supabase/bearer";
 import {
   geocodeAddressPublicOrThrow,
-  reverseGeocodePublicAction,
+  reverseGeocodePublicOrThrow,
 } from "@/src/modules/localities/application/geocoding/geocoding";
 import {
   GEOCODING_PAYLOAD_VERSION,
@@ -131,8 +131,11 @@ export async function POST(request: Request) {
 
   let reversed: ReverseGeocodeResult | null;
   try {
-    reversed = await reverseGeocodePublicAction(input.lat, input.lng);
+    reversed = await reverseGeocodePublicOrThrow(input.lat, input.lng);
   } catch (err) {
+    // The shared budget spent is a 429, never "no address here" — see the
+    // helper's docblock (A5-ciudadanas-04, one door further along).
+    if (err instanceof RateLimitError) return apiV1Error("rate_limited", 429);
     reportError("api-v1-geocoding/reverse", err);
     return unavailable();
   }

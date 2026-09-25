@@ -942,6 +942,15 @@
  *                         is identical either way: try again, and check
  *                         `/denuncias/buscar` if in doubt.
  *
+ * - `bite_location_mismatch`
+ *                       — a bite report (`POST /pets/{token}/events`, kind `bite`)
+ *                         sent a map pin AND a (province, locality) pair the pin
+ *                         does not corroborate (M17). 422, nothing written.
+ *                         Refused rather than corrected because both answers
+ *                         came from the person and only they know which one is
+ *                         wrong; the fix is to move the pin or change the
+ *                         locality.
+ *
  * - `welfare_evidence_refused`
  *                       — one of the staged evidence photos could not be used
  *                         (M12): missing or expired from staging, not an image
@@ -1240,6 +1249,7 @@ export const API_V1_ERROR_CODES = [
   "adoption_application_failed",
   "welfare_report_failed",
   "welfare_evidence_refused",
+  "bite_location_mismatch",
   "booking_slot_taken",
   "booking_pet_not_bookable",
   "booking_already_in_offering",

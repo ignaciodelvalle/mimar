@@ -37,7 +37,6 @@
 // El router se quedo del otro lado y ahora es lo que dice ser: los despachos
 // tempranos, un chequeo de dia, y el switch.
 
-import { normalizeLocationForWrite } from "@/lib/domain/location-normalize";
 import { findExistingByKey } from "@/lib/events/event-idempotency";
 import { apiV1Error, apiV1Json } from "@/lib/infra/api-v1";
 import { findAuthoritiesForJurisdiction } from "@/lib/infra/approval-routing";
@@ -78,6 +77,7 @@ import { SurveillanceRepository } from "@/src/modules/surveillance/infrastructur
 import type { EventRecordedV1 } from "@dim/contract/api";
 import type { RecordEventInput } from "@dim/contract/input";
 
+import { resolveBiteJurisdiction } from "./bite-jurisdiction";
 import { type WriteContext, parseWireDay } from "./write-context";
 
 /**
@@ -573,10 +573,14 @@ export async function appendPregnancy(
  * in the safe direction; the parity fence will want it stated, and this is the
  * statement.
  *
- * NO COORDINATES. The writer takes them nullable and a bite with none counts
- * into the "sin ubicacion exacta" residual rather than being drawn at a faked
- * centroid. Asking for GPS to write a libreta entry is a permission this form
- * has no business requesting.
+ * COORDINATES FROM A PIN (M17), NEVER GPS. When the phone sends a map pin, the
+ * jurisdiction is checked against it or derived from it — `bite-jurisdiction.ts`
+ * says which and why. Its SOURCE is stored as `pin_manual` whatever the client
+ * claims: a phone can say "geocodificada" for a pin it moved by hand, and
+ * `lib/domain/provenance.ts` ranks that source "verificado" for officials, so
+ * the server stores only what it can stand behind — a point a person placed.
+ * No pin still counts into the "sin ubicacion exacta" residual rather than
+ * being drawn at a faked centroid.
  *
  * THE CASE CODE IS DROPPED, and it is the one real parity gap this kind ships
  * with. `reportBite` returns `casePublicCode` — the CAS-XXXX-XXXX a reporter
@@ -597,38 +601,24 @@ export async function appendBite(
   if (!occurredAt) return apiV1Error("invalid_request", 400);
 
   // The contract already refused a partial trio, so these three are all present
-  // or all absent. Absent means "no lo se", and the writer's own fallback to the
-  // animal's home jurisdiction is the defined behaviour for it.
-  let eventProvince: string | null = null;
-  let eventLocality: string | null = null;
-  if (input.provinceCode !== null) {
-    try {
-      const normalised = await normalizeLocationForWrite(
-        {
-          provinceCode: input.provinceCode,
-          // `province` is the display-name half of the same field and the app
-          // never sends one — the CODE is what a client may assert; the display
-          // name is the catalogue's to decide.
-          province: null,
-          locality: input.localityName,
-          localityIndecId: input.localityIndecId,
-          // No map, no pin. See this function's header.
-          lat: null,
-          lng: null,
-          address: null,
-        },
-        { locality: "strict" },
-      );
-      eventProvince = normalised.province;
-      eventLocality = normalised.locality;
-    } catch {
-      // `strict` throws on a (province, locality) pair the INDEC catalogue does
-      // not hold. That is a request problem and not an animal problem, so it is
-      // a 400 rather than one of the 409s — the caller sent a place that does
-      // not exist.
-      return apiV1Error("invalid_request", 400);
-    }
+  // or all absent. WHERE IT HAPPENED, reconciled with the pin when there is one
+  // — see `bite-jurisdiction.ts`. A pair the catalogue does not hold is a 400;
+  // a pair the pin contradicts is a 422 the person can act on.
+  const hasPin = input.locationLat !== null && input.locationLng !== null;
+  const jurisdiction = await resolveBiteJurisdiction({
+    provinceCode: input.provinceCode,
+    localityName: input.localityName,
+    localityIndecId: input.localityIndecId,
+    locationLat: hasPin ? input.locationLat : null,
+    locationLng: hasPin ? input.locationLng : null,
+  });
+  if (!jurisdiction.ok) {
+    return jurisdiction.code === "bite_location_mismatch"
+      ? apiV1Error("bite_location_mismatch", 422)
+      : apiV1Error("invalid_request", 400);
   }
+  const eventProvince = jurisdiction.province;
+  const eventLocality = jurisdiction.locality;
 
   const surveillanceRepo = new SurveillanceRepository();
 
@@ -658,15 +648,11 @@ export async function appendBite(
       eventJurisdictionProvince: eventProvince,
       eventJurisdictionLocality: eventLocality,
       // The pin the person placed on the app's map (M17), both halves or
-      // neither — a half pair is no point. Never a GPS fix: the contract
-      // refuses that source. Absent stays null, the "sin ubicacion exacta"
-      // residual the loader already handles.
-      locationLat:
-        input.locationLat !== null && input.locationLng !== null ? input.locationLat : null,
-      locationLng:
-        input.locationLat !== null && input.locationLng !== null ? input.locationLng : null,
-      locationSource:
-        input.locationLat !== null && input.locationLng !== null ? input.locationSource : null,
+      // neither. The SOURCE is the server's word, not the client's: always
+      // `pin_manual` (see this function's header on provenance).
+      locationLat: hasPin ? input.locationLat : null,
+      locationLng: hasPin ? input.locationLng : null,
+      locationSource: hasPin ? "pin_manual" : null,
     },
     {
       repo: surveillanceRepo,

@@ -1010,9 +1010,10 @@ const postAdoptionCheckin = z.object({
  *
  * COORDINATES FROM A PIN, NEVER FROM GPS (M17). The web captures them from a
  * map pin, and since M17 so does this app: the person finds the address and
- * drags the map under a pin. `locationSource` says which of the two the point
- * is — `pin_manual` (moved by hand) or `geocodificada` (a search result
- * accepted as is); `gps` is refused, because this product reads no device
+ * drags the map under a pin. `locationSource` is what the CLIENT says the
+ * point is — `pin_manual` or `geocodificada` — and the API STORES
+ * `pin_manual` regardless: `lib/domain/provenance.ts` ranks "geocodificada"
+ * verificado, and a client's word cannot earn that (M17 review). `gps` is refused, because this product reads no device
  * location (PO, 2026-09-24). Absent coords are still valid and the bite then
  * counts into the "sin ubicacion exacta" residual — never a faked centroid dot.
  *

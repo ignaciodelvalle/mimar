@@ -26,6 +26,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const control = vi.hoisted(() => ({
+  /** M17: does the bite's pin corroborate its (province, locality) trio? */
+  pinAgrees: true,
   live: null as null | (() => unknown),
   limits: [] as Array<{ endpoint: string; identifier: string }>,
   access: null as null | (() => unknown),
@@ -387,6 +389,12 @@ vi.mock("@/lib/infra/business-rules-resolver", () => ({
   resolveBusinessRule: async () => ({ payload: { days: 10 } }),
 }));
 
+// M17: the bite's pin is checked against its trio with the denuncia's own
+// corroboration. `control.pinAgrees` is what that check answers.
+vi.mock("@/lib/infra/jurisdiction-from-text", () => ({
+  coordinatesCorroborateJurisdiction: async () => control.pinAgrees,
+}));
+
 vi.mock("@/lib/domain/location-normalize", () => ({
   normalizeLocationForWrite: async (loc: unknown, opts: unknown) => {
     control.normalizeCalls.push({ loc, opts });
@@ -545,6 +553,7 @@ beforeEach(() => {
   control.biteResult = null;
   control.flushed = [];
   control.normalized = { province: "Cordoba", locality: "Villa Carlos Paz" };
+  control.pinAgrees = true;
   control.normalizeCalls = [];
   control.tattooResult = null;
   control.claimResult = null;
@@ -2105,14 +2114,38 @@ describe("POST .../events — mordedura, y la jurisdiccion es la del hecho", () 
     expect(control.writes).toHaveLength(0);
   });
 
-  it("NEVER sends coordinates, so a bite with no pin lands in the residual", async () => {
-    // La app no tiene mapa y pedir GPS para escribir una libreta es pedir un
-    // permiso que este formulario no necesita. Null es el valor honesto y el
+  it("sends no coordinates when no pin was placed, so the bite lands in the residual", async () => {
+    // Nunca GPS: sin pin puesto por la persona, null es el valor honesto y el
     // cargador de puntos ya sabe que hacer con el.
     await call(WITH_PLACE);
     expect(control.writes[0].input.locationLat).toBeNull();
     expect(control.writes[0].input.locationLng).toBeNull();
     expect(control.writes[0].input.locationSource).toBeNull();
+  });
+
+  it("stores a pin as pin_manual even when the client CLAIMS geocodificada (M17 review)", async () => {
+    // provenance.ts ranks "geocodificada" as verificado for officials; a phone
+    // can claim it for a pin it moved by hand. The server stores what it can
+    // stand behind: a point a person placed.
+    control.pinAgrees = true;
+    await call({
+      ...WITH_PLACE,
+      locationLat: -31.42,
+      locationLng: -64.19,
+      locationSource: "geocodificada",
+    });
+    expect(control.writes[0].input.locationLat).toBe(-31.42);
+    expect(control.writes[0].input.locationSource).toBe("pin_manual");
+  });
+
+  it("refuses a pin the (province, locality) pair contradicts, WITHOUT writing (M17 review)", async () => {
+    // Una mordedura cuenta donde ocurrio: un pin en Cordoba con codigos de
+    // Buenos Aires no se archiva en ninguno de los dos — la persona elige.
+    control.pinAgrees = false;
+    const res = await call({ ...WITH_PLACE, locationLat: -31.42, locationLng: -64.19 });
+    expect(res.status).toBe(422);
+    await expect(res.json()).resolves.toEqual({ error: "bite_location_mismatch" });
+    expect(control.writes).toHaveLength(0);
   });
 
   it("wires the authority fan-out and the per-jurisdiction observation window", async () => {

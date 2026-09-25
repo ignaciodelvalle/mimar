@@ -15,6 +15,7 @@ const control = vi.hoisted(() => ({
   reverseCalls: [] as Array<[number, number]>,
   reverseResult: null as null | Record<string, unknown>,
   resolvable: true,
+  reverseRateLimited: false,
 }));
 
 vi.mock("@/lib/infra/live-user", async (importOriginal) => {
@@ -60,8 +61,9 @@ vi.mock("@/src/modules/localities/application/geocoding/geocoding", async () => 
       if (control.searchThrows === "provider") throw new Error("provider_error");
       return control.searchResult;
     },
-    reverseGeocodePublicAction: async (lat: number, lng: number) => {
+    reverseGeocodePublicOrThrow: async (lat: number, lng: number) => {
       control.reverseCalls.push([lat, lng]);
+      if (control.reverseRateLimited) throw new RateLimitError(new Date(), "geocode_public");
       return control.reverseResult;
     },
   };
@@ -109,6 +111,7 @@ beforeEach(() => {
     locality: "Santa Rosa",
   };
   control.resolvable = true;
+  control.reverseRateLimited = false;
 });
 
 describe("POST /api/v1/geocoding — the door", () => {
@@ -184,6 +187,13 @@ describe("reverse", () => {
       label: null,
       jurisdiction: null,
     });
+  });
+
+  it("answers 429 when the shared budget is spent — not 'no address here'", async () => {
+    control.reverseRateLimited = true;
+    const response = await post({ command: "reverse", lat: -36.62, lng: -64.29 });
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ error: "rate_limited" });
   });
 
   it("refuses a point off the planet", async () => {
