@@ -67,7 +67,7 @@ count and the `lint:*` count are close but not identical by construction).
 `verify:mobile` is a nested chain, not a single check: `pnpm --filter mimar
 typecheck && pnpm --filter mimar test && pnpm --filter mimar exec expo config
 --type public` — the Expo app's own `tsc`, its own Jest suite
-(<!-- fact:mobile_jest_files -->137<!-- /fact --> files, §4), and a config
+(<!-- fact:mobile_jest_files -->138<!-- /fact --> files, §4), and a config
 resolution smoke check.
 
 ### Fence categories (representative, not exhaustive)
@@ -165,11 +165,11 @@ gate as evidence of anything.
 
 ## 4. What the suite actually covers
 
-- <!-- fact:vitest_files -->1677<!-- /fact --> files Vitest discovers
+- <!-- fact:vitest_files -->1680<!-- /fact --> files Vitest discovers
   (`vitest.config.ts` → `__tests__/db-reachability.ts`'s
   `discoverTestFiles()` — the exact set Vitest runs, not an independent glob
   that could drift from it).
-- <!-- fact:mobile_jest_files -->137<!-- /fact --> files under
+- <!-- fact:mobile_jest_files -->138<!-- /fact --> files under
   `apps/mobile/src/**/*.test.ts(x)`, run by a **separate** runner
   (jest-expo, via `verify:mobile`) — `db-reachability.ts` skips `apps/` for
   exactly that reason, so these are never double-counted with the vitest
