@@ -64,6 +64,7 @@ import {
 } from "../ui/kit";
 import { credentialRoute } from "../ui/routes";
 import { COLORS, RADIUS, SPACE, TOUCH_TARGET, TYPE } from "../ui/theme";
+import { useReturnKeyChain } from "../ui/use-return-key-chain";
 import { LocalityPicker } from "./LocalityPicker";
 import { createAttemptSession } from "./idempotency";
 import {
@@ -370,6 +371,17 @@ function StepBody({
   draft: PetDraft;
   patch: (fields: Partial<PetDraft>) => void;
 }) {
+  // Return-key chains (M10, native-feel audit) — ONE per step that has more
+  // than a stray field, declared unconditionally (every render of THIS
+  // component, whichever `step` it was given) since hooks may not sit inside
+  // the `switch` below. Neither chain auto-advances the wizard: "Continuar"
+  // already exists as its own explicit tap, and `canAdvance` gates it on
+  // rules ("nombre" alone is not enough on "detalles") a keyboard key has no
+  // way to check. The breed search field further down is its OWN case — a
+  // live filter, not a sequence — and keeps the local `Keyboard.dismiss()` it
+  // already had (M6).
+  const nombreChain = useReturnKeyChain(1);
+  const detallesChain = useReturnKeyChain(4);
   switch (step) {
     case "nombre":
       return (
@@ -383,6 +395,7 @@ function StepBody({
         // `maxLength` under it silently rewrites the animal's name. This form
         // starts empty.
         <TextField
+          {...nombreChain(0)}
           autoFocus
           label="Nombre"
           maxLength={PET_NAME_MAX}
@@ -446,6 +459,7 @@ function StepBody({
           <View style={styles.pair}>
             <View style={styles.pairCell}>
               <TextField
+                {...detallesChain(0)}
                 accessibilityLabel="Años"
                 inputMode="numeric"
                 label="Años"
@@ -456,6 +470,7 @@ function StepBody({
             </View>
             <View style={styles.pairCell}>
               <TextField
+                {...detallesChain(1)}
                 accessibilityLabel="Meses"
                 inputMode="numeric"
                 label="Meses"
@@ -466,6 +481,7 @@ function StepBody({
             </View>
           </View>
           <TextField
+            {...detallesChain(2)}
             accessibilityLabel="Color"
             label="Color"
             maxLength={PET_COLOR_MAX}
@@ -490,6 +506,7 @@ function StepBody({
               dot, and an example with a point would be teaching the wrong habit
               for the sake of the database. */}
           <TextField
+            {...detallesChain(3)}
             accessibilityLabel="Peso aproximado en kilos"
             inputMode="decimal"
             label="Peso aproximado (kg)"

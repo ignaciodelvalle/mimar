@@ -465,3 +465,51 @@ describe("AltaScreen — M4, decision 10A: el aviso se pide en el momento correc
     await expect(readPushPrimingDismissed(SIGNED_IN_A)).resolves.toBe(false);
   });
 });
+
+describe("AltaScreen — return-key chains (M10, native-feel audit)", () => {
+  it("'Nombre' says 'done', and its return key does NOT advance past the step", async () => {
+    await seed(SIGNED_IN_A, EMPTY_DRAFT, 0);
+    render(<AltaScreen />);
+
+    const name = await screen.findByLabelText("Nombre, obligatorio");
+    expect(name.props.returnKeyType).toBe("done");
+
+    fireEvent.changeText(name, "Pampa");
+    fireEvent(name, "submitEditing");
+    // Only "Continuar" — gated on `canAdvance`, which this single keystroke
+    // has not satisfied for every step — may move the wizard forward.
+    expect(screen.getByText("¿Cómo se llama?")).toBeOnTheScreen();
+    expect(screen.queryByText("¿Qué animal es?")).toBeNull();
+  });
+
+  it("chains Años → Meses → Color → Peso with next/next/next/done on 'detalles'", async () => {
+    await seed(SIGNED_IN_A, VALID_DRAFT, 4);
+    render(<AltaScreen />);
+
+    const years = await screen.findByLabelText("Años");
+    const months = screen.getByLabelText("Meses");
+    const color = screen.getByLabelText("Color");
+    const weight = screen.getByLabelText("Peso aproximado en kilos");
+
+    expect(years.props.returnKeyType).toBe("next");
+    expect(months.props.returnKeyType).toBe("next");
+    expect(color.props.returnKeyType).toBe("next");
+    expect(weight.props.returnKeyType).toBe("done");
+
+    // The whole point of "opcional" on this step's own subtitle: the last
+    // field's return key must not try to register the pet by itself either.
+    fireEvent(weight, "submitEditing");
+    expect(mockRegisterPet).not.toHaveBeenCalled();
+  });
+
+  it("keeps the breed search field OUT of any chain — it is a live filter, not a sequence", async () => {
+    await seed(SIGNED_IN_A, { ...EMPTY_DRAFT, name: "Pampa", species: "dog" }, 2);
+    render(<AltaScreen />);
+
+    const search = await screen.findByLabelText("Buscar raza");
+    // Unchained: RN's own default for a single-line field, not the chain's
+    // "next"/"done" — the field still closes the keyboard on a ROW tap (M6,
+    // pinned in the describe above), which is a different mechanism.
+    expect(search.props.returnKeyType).toBeUndefined();
+  });
+});
