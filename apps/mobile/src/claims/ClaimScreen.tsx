@@ -1,6 +1,6 @@
 // RECLAMAR UNA MASCOTA — decir "esta es mía" desde el teléfono.
 //
-// TWO STEPS AND NOT THREE, and the missing one is the whole design.
+// THE WEB WIZARD'S THREE STEPS.
 //
 //   1. CONFIRMAR EL CHIP. Somebody enters the microchip or the tattoo code, the
 //      server answers which animal it resolves to, and this screen shows a card
@@ -8,17 +8,15 @@
 //      in front of you and at what miMAR thinks of it, before you assert
 //      anything about it.
 //   2. RECLAMAR. Only when the server said `canClaim`.
-//
-// The web has a third — iniciar una disputa when the animal already has a
-// custody — and it is NOT missing here, it is refused. That writer requires at
-// least one evidence FILE and refuses without one, absolutely, because raising a
-// dispute notifies the registered owner, appends an uneditable row to their
-// animal's spine, flips `pets.in_custody_dispute` (which strips the owner's
-// phone and the finder form off the public credential, on exactly the animals a
-// finder needs to reach) and opens a case a local authority must adjudicate.
-// This build has no image picker, so it cannot attach anything — and a form that
-// took two hundred characters of explanation and then always failed would be
-// worse than a sentence naming the browser.
+//   3. INICIAR UNA DISPUTA. Only when the server said `canDispute` — the web's
+//      variant-B panel. It used to be a link to the browser, because the writer
+//      requires at least one evidence FILE and this app could not attach one;
+//      with the image picker in the build (M12) it is a form here (D6): an
+//      explanation with a live count, and one to five photos staged through the
+//      claim door's own ticket. The gate is absolute for a reason — a dispute
+//      notifies whoever holds the animal, appends an uneditable row to its
+//      spine, flips `pets.in_custody_dispute` and opens a case an authority
+//      must adjudicate — so the send stays disabled until both halves are there.
 //
 // THE CAMERA IS BEHIND A SEAM, and this screen reads the seam instead of
 // assuming either answer. Reading a chip's barcode off a vet's sticker needs
@@ -64,11 +62,11 @@ import {
 } from "../ui/kit";
 import { SPACE } from "../ui/theme";
 
+import { DisputeForm, DisputeSent } from "./DisputeForm";
 import {
   SCAN_NOT_A_CHIP_MESSAGE,
   buildClaimCommand,
   chipCodeFromScan,
-  claimDisputeUrl,
   claimIdentifierFieldLabel,
   claimIdentifierKindLabel,
   claimIdentifierPlaceholder,
@@ -85,7 +83,10 @@ type ScreenState =
   | { phase: "scanning" }
   | { phase: "working" }
   | { phase: "result"; ack: PetClaimLookupAckV1; error: string | null }
-  | { phase: "claimed"; petToken: string; petName: string };
+  | { phase: "claimed"; petToken: string; petName: string }
+  /** The dispute form. `ack` is kept so "Cancelar" returns to the same card. */
+  | { phase: "dispute"; ack: PetClaimLookupAckV1 }
+  | { phase: "disputed"; petName: string; disputeToken: string };
 
 export function ClaimScreen({ onOpenPet }: { onOpenPet: (publicToken: string) => void }) {
   // NOTHING IS PRESELECTED for the kind — `Choice`'s own rule, and the web's
@@ -95,7 +96,6 @@ export function ClaimScreen({ onOpenPet }: { onOpenPet: (publicToken: string) =>
   const [kind, setKind] = useState<PetClaimIdentifierKind>("microchip");
   const [value, setValue] = useState("");
   const [state, setState] = useState<ScreenState>({ phase: "asking", error: null });
-
   // THE IDENTIFIER LIVES IN THIS COMPONENT AND NOWHERE ELSE. It is not written
   // to AsyncStorage, not logged, and not carried in a route param: the 15-digit
   // chip is the evidence that authorizes a claim, and `/p/{token}` deliberately
@@ -128,6 +128,12 @@ export function ClaimScreen({ onOpenPet }: { onOpenPet: (publicToken: string) =>
         setState({ phase: "result", ack: result.payload, error: null });
         return;
       }
+      if (result.payload.command !== "claim_free") {
+        // The server answered a command this call did not send. Unreachable,
+        // and still a sentence: a screen that renders nothing gets tapped twice.
+        setState({ phase: "asking", error: "No pudimos completar la búsqueda." });
+        return;
+      }
       setState({
         phase: "claimed",
         // THE TOKEN THE WRITER RESOLVED, never one this screen was holding —
@@ -152,6 +158,25 @@ export function ClaimScreen({ onOpenPet }: { onOpenPet: (publicToken: string) =>
         </Callout>
         <PrimaryButton label={`Ver a ${state.petName}`} onPress={() => onOpenPet(state.petToken)} />
       </Screen>
+    );
+  }
+
+  if (state.phase === "disputed") {
+    return <DisputeSent petName={state.petName} disputeToken={state.disputeToken} />;
+  }
+
+  if (state.phase === "dispute") {
+    const { ack } = state;
+    return (
+      <DisputeForm
+        kind={kind}
+        value={value}
+        ack={ack}
+        onCancel={() => setState({ phase: "result", ack, error: null })}
+        onDisputed={(disputeToken) =>
+          setState({ phase: "disputed", petName: ack.petName ?? "la mascota", disputeToken })
+        }
+      />
     );
   }
 
@@ -193,27 +218,13 @@ export function ClaimScreen({ onOpenPet }: { onOpenPet: (publicToken: string) =>
           </View>
         )}
 
-        {ack.variant === "active_owner" ? (
-          <View style={styles.secondary}>
-            <LinkText
-              accessibilityHint="Se abre en el navegador"
-              onPress={() => void Linking.openURL(claimDisputeUrl(API_BASE_URL))}
-            >
-              Iniciar una disputa desde la web
-            </LinkText>
-            {/* SAYS THE BROWSER IS SIGNED OUT, in the identity screen's own
-                words (A4-custodia-08). The web resolves a visitor from a COOKIE
-                and this app holds a bearer token, so the link opens a login page
-                with no explanation — a person who has just been told the animal
-                "ya tiene dueño/a" reads that as the app breaking. The page now
-                carries a `returnTo` back to Reclamar, so signing in lands on the
-                wizard instead of on Mis mascotas; this sentence is what stops the
-                login screen looking like a dead end before they get there. */}
-            <Body>
-              Vas a tener que ingresar de nuevo con el mismo correo: el navegador no comparte la
-              sesión de esta app. Después te lleva directo a Reclamar.
-            </Body>
-          </View>
+        {/* THE DISPUTE, IN THE APP (D6) — drawn on the SERVER'S `canDispute`,
+            never on this screen's reading of the variant. */}
+        {ack.canDispute ? (
+          <PrimaryButton
+            label="Iniciar una disputa"
+            onPress={() => setState({ phase: "dispute", ack })}
+          />
         ) : null}
 
         {/* CLEARS THE FIELD, like the web's own "Volver" (which resets the

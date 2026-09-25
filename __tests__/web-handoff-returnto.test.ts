@@ -135,7 +135,11 @@ describe("web pages the app hands off to carry a returnTo", () => {
   // write the floor first and the check second.
   it("finds the web paths the app really hands people", () => {
     expect(HANDOFF_PATHS.length).toBeGreaterThanOrEqual(5);
-    expect(HANDOFF_PATHS).toContain("/mis-mascotas/reclamar");
+    // `/mis-mascotas/reclamar` USED TO BE PINNED HERE — it was the handoff this
+    // file was written for. D6 (2026-09-25) moved the disputa into the app and
+    // retired the link, so the derived corpus no longer finds it: the
+    // derivation working, not the corpus shrinking. The page keeps its
+    // `returnTo`; it is simply no longer a page the app sends anybody to.
     expect(HANDOFF_PATHS).toContain("/cuenta/privacidad");
     // The deepLinkUrl arm resolves through the contract table, not through a
     // literal — this is the one that proves it ran.

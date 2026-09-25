@@ -1,12 +1,12 @@
 // `petClaimCommandInputSchema` — what a client may send to
 // `POST /me/pet-claims`.
 //
-// THE CASE A REVIEWER SHOULD READ FIRST is `refuses `dispute``. It is the scope
-// of this whole slice expressed as an assertion, and unlike the appointments
-// schema's `book` it is a REFUSAL rather than a scope line: raising a custody
-// dispute requires at least one evidence file, server-side and absolutely, and
-// this transport carries JSON. A `dispute` member would be a command the server
-// must refuse on every single call.
+// THE CASE A REVIEWER SHOULD READ FIRST is the `dispute` block. The member was
+// a REFUSAL until D6 (2026-09-25) — a dispute requires at least one evidence
+// file and this app could not attach one — and it landed the day the app could
+// stage a photo. What the block pins is that the web's rules travel with it:
+// 20-2000 characters of reason, at least one and at most five staged keys, and
+// nothing but a key the server minted.
 //
 // THE SECOND is `never carries a pet token`. Both writers resolve the animal FROM
 // the private identifier and consult no caller-supplied token anywhere; a token
@@ -15,6 +15,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CLAIM_EVIDENCE_MAX_FILES,
   PET_CLAIM_COMMAND_INPUT_CODES,
   firstPetClaimCommandInputCode,
   petClaimCommandInputSchema,
@@ -37,23 +38,6 @@ describe("petClaimCommandInputSchema — the command discriminator", () => {
     expect(
       codeFor({ command: "claim_free", identifierKind: "microchip", identifierValue: CHIP }),
     ).toBe(null);
-  });
-
-  it("refuses `dispute`, and that one is a RULE rather than scope", () => {
-    // `submitClaimDisputeForUser` refuses when no file with `size > 0` survives
-    // the filter (PO decision 2026-07-30), because a dispute notifies the
-    // registered owner, appends an uneditable row to the animal's spine, flips
-    // `pets.in_custody_dispute` and opens a case for an authority. A JSON body
-    // cannot carry a file, so this member would be a command that is always
-    // refused — and a client would draw the control anyway.
-    expect(
-      codeFor({
-        command: "dispute",
-        identifierKind: "microchip",
-        identifierValue: CHIP,
-        reason: "x".repeat(40),
-      }),
-    ).toBe("COMMAND_REQUIRED");
   });
 
   it("names a missing command rather than falling through to null", () => {
@@ -107,7 +91,9 @@ describe("petClaimCommandInputSchema — the identifier is the authorization", (
       identifierValue: `  ${CHIP}\n`,
     });
     expect(parsed.success).toBe(true);
-    if (parsed.success) expect(parsed.data.identifierValue).toBe(CHIP);
+    if (parsed.success && parsed.data.command === "lookup") {
+      expect(parsed.data.identifierValue).toBe(CHIP);
+    }
   });
 });
 
@@ -160,5 +146,67 @@ describe("firstPetClaimCommandInputCode", () => {
       const code = codeFor(body);
       expect(code === null || PET_CLAIM_COMMAND_INPUT_CODES.includes(code as never)).toBe(true);
     }
+  });
+});
+
+describe("petClaimCommandInputSchema — the dispute carries the web's rules", () => {
+  const KEY = (n: number) => `welfare/${String(n).repeat(8)}-1111-4111-8111-111111111111.jpg`;
+  const DISPUTE = {
+    command: "dispute",
+    identifierKind: "microchip",
+    identifierValue: CHIP,
+    reason: "Es mi perra, la perdí en marzo y tengo la libreta.",
+    evidence: [KEY(1)],
+  };
+
+  it("accepts a dispute with a reason and one staged photo", () => {
+    expect(codeFor(DISPUTE)).toBe(null);
+  });
+
+  it("refuses a dispute with NO evidence — the web's absolute gate, said before the round trip", () => {
+    expect(codeFor({ ...DISPUTE, evidence: [] })).toBe("EVIDENCE_REQUIRED");
+    const { evidence: _dropped, ...noEvidence } = DISPUTE;
+    expect(codeFor(noEvidence)).toBe("EVIDENCE_REQUIRED");
+  });
+
+  it("counts the reason TRIMMED, as the use-case does: 20 to 2000", () => {
+    expect(codeFor({ ...DISPUTE, reason: `   ${"x".repeat(19)}   ` })).toBe("REASON_TOO_SHORT");
+    expect(codeFor({ ...DISPUTE, reason: "x".repeat(20) })).toBe(null);
+    expect(codeFor({ ...DISPUTE, reason: "x".repeat(2000) })).toBe(null);
+    expect(codeFor({ ...DISPUTE, reason: "x".repeat(2001) })).toBe("REASON_TOO_LONG");
+  });
+
+  it("takes at most the web's five photos, and no key twice", () => {
+    expect(CLAIM_EVIDENCE_MAX_FILES).toBe(5);
+    expect(codeFor({ ...DISPUTE, evidence: [1, 2, 3, 4, 5].map(KEY) })).toBe(null);
+    expect(codeFor({ ...DISPUTE, evidence: [1, 2, 3, 4, 5, 6].map(KEY) })).toBe(
+      "EVIDENCE_TOO_MANY",
+    );
+    expect(codeFor({ ...DISPUTE, evidence: [KEY(1), KEY(1)] })).toBe("EVIDENCE_INVALID");
+  });
+
+  it("refuses any key the staging ticket could not have minted", () => {
+    for (const key of ["claims/x.jpg", "welfare/../x.jpg", `${KEY(1)}.heic`, "welfare/abc.jpg"]) {
+      expect(codeFor({ ...DISPUTE, evidence: [key] }), key).toBe("EVIDENCE_INVALID");
+    }
+  });
+
+  it("still checks the fifteen digits on a dispute", () => {
+    expect(codeFor({ ...DISPUTE, identifierValue: "1234" })).toBe("MICROCHIP_MUST_BE_15_DIGITS");
+  });
+
+  it("never carries a pet token on a dispute either", () => {
+    const parsed = petClaimCommandInputSchema.parse({ ...DISPUTE, petToken: "DIM-EVIL-TOKN" });
+    expect("petToken" in parsed).toBe(false);
+  });
+
+  it("mints tickets for photos only — no video, no HEIC", () => {
+    expect(codeFor({ command: "request_evidence_ticket", contentType: "image/jpeg" })).toBe(null);
+    expect(codeFor({ command: "request_evidence_ticket", contentType: "video/mp4" })).toBe(
+      "CONTENT_TYPE_INVALID",
+    );
+    expect(codeFor({ command: "request_evidence_ticket", contentType: "image/heic" })).toBe(
+      "CONTENT_TYPE_INVALID",
+    );
   });
 });

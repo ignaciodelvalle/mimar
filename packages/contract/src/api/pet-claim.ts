@@ -28,23 +28,23 @@
 // a pet token, and why the one this file returns is deliberately narrow (see
 // `petToken` below).
 //
-// THE DISPUTE IS NOT ON THIS SURFACE, AND THAT IS A REFUSAL RATHER THAN SCOPE
+// THE DISPUTE IS ON THIS SURFACE SINCE D6 (2026-09-25)
 // ---------------------------------------------------------------------------
 // When the animal already has an active custody, the web offers a THIRD step:
-// `submitClaimDisputeAction`, which raises a `custody_dispute` against the
-// registered owner. That writer requires at least one evidence FILE — the gate is
-// server-side and absolute (`evidenceFiles.length === 0` refuses, PO decision
-// 2026-07-30), because a dispute notifies the registered owner that a stranger
-// claims their animal, appends an uneditable row to their spine, flips
-// `pets.in_custody_dispute` — which strips the owner's contact channel off the
-// public credential — and opens a case a local authority must adjudicate.
+// `submitClaimDisputeAction`, which raises a `custody_dispute` against whoever
+// holds it. That writer requires at least one evidence FILE — the gate is
+// server-side and absolute (PO decision 2026-07-30), because a dispute notifies
+// the holder that a stranger claims their animal, appends an uneditable row to
+// its spine, flips `pets.in_custody_dispute` — which strips the owner's contact
+// channel off the public credential — and opens a case a local authority must
+// adjudicate.
 //
-// This app cannot attach a file. Choosing an image needs a native module, which
-// needs an EAS build (the same wall the pet photo and the art. 14 export ran
-// into). So the input union has NO `dispute` member: a JSON command carrying a
-// reason and no files would be a command the server must refuse 100% of the
-// time, which is worse than not offering it. A client meeting `active_owner`
-// says so and points at the browser.
+// This surface used to refuse the step, because the app could not attach a
+// file and a dispute without one is refused 100% of the time. The app now has
+// an image picker, so the step is here, as TWO commands: `request_evidence_ticket`
+// stages one photo in the private staging bucket, and `dispute` names the staged
+// keys. The server runs the SAME use-case the web does, over the SAME evidence
+// gate, EXIF/GPS strip included.
 //
 // PII: WHAT THIS CARRIES, AND THE ONE THING IT DOES NOT
 // ---------------------------------------------------------------------------
@@ -150,6 +150,14 @@ export type PetClaimLookupAckV1 = {
   ownerInitials: string | null;
   /** Whether `command: "claim_free"` would be accepted. See the type's docblock. */
   canClaim: boolean;
+  /**
+   * Whether this client should offer `command: "dispute"` — true exactly where
+   * the web wizard offers "Iniciar disputa" (its variant-B panel). THE SERVER'S,
+   * for `canClaim`'s reason: a HINT, not the gate. The writer re-resolves the
+   * animal and refuses a caller who already holds it, an animal already in
+   * dispute and a deceased one, whatever this said.
+   */
+  canDispute: boolean;
 };
 
 /**
@@ -180,5 +188,51 @@ export type PetClaimFreeAckV1 = {
   petName: string;
 };
 
-/** Either command's answer, discriminated by the command that produced it. */
-export type PetClaimCommandAckV1 = PetClaimLookupAckV1 | PetClaimFreeAckV1;
+/**
+ * What `command: "request_evidence_ticket"` answers — a one-shot URL to PUT ONE
+ * evidence photo to.
+ *
+ * The denuncia's ticket shape (`WelfareEvidenceTicketV1`), field for field,
+ * because it is the same capability over the same private staging bucket; the
+ * key is `welfare/{uuid}.{ext}` and names nobody. `stagedPath` is what
+ * `dispute` names in `evidence`.
+ */
+export type PetClaimEvidenceTicketV1 = {
+  command: "request_evidence_ticket";
+  uploadUrl: string;
+  token: string;
+  stagedPath: string;
+  bucket: string;
+  validForSeconds: number;
+};
+
+/**
+ * What `command: "dispute"` answers on success.
+ *
+ * `disputeToken` IS THE WEB'S "Referencia" — the wizard prints it on its
+ * "Reclamo enviado" receipt, and the phone prints the same line. It names the
+ * dispute, not the animal: the claimant is a party to it.
+ *
+ * NO PET TOKEN, and that is one step tighter than the web's action, which hands
+ * its own page the resolved token for a `revalidatePath`. A phone has nothing to
+ * revalidate and no page for an animal the caller does not hold — the same rule
+ * `PetClaimLookupAckV1.petToken` applies to `active_owner`.
+ *
+ * `changed` IS ALWAYS TRUE, for `PetClaimFreeAckV1.changed`'s reason: a replay
+ * is refused, not absorbed. A retry naming the same staged keys finds them
+ * already used and answers `claim_evidence_refused`; one with fresh photos finds
+ * the animal already in dispute and answers `claim_not_disputable`. Neither
+ * files a second dispute.
+ */
+export type PetClaimDisputeAckV1 = {
+  command: "dispute";
+  changed: boolean;
+  disputeToken: string;
+};
+
+/** Every command's answer, discriminated by the command that produced it. */
+export type PetClaimCommandAckV1 =
+  | PetClaimLookupAckV1
+  | PetClaimFreeAckV1
+  | PetClaimEvidenceTicketV1
+  | PetClaimDisputeAckV1;

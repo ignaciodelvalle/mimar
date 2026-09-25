@@ -4,9 +4,8 @@
 // WHAT THESE HAVE TO PROVE, beyond "it returns a string"
 // ---------------------------------------------------------------------------
 //   1. NO SENTENCE IN THIS FILE INVITES A CLAIM ON AN ANIMAL SOMEBODY HOLDS.
-//      `canClaim` is the server's, and the copy for `active_owner` has to send a
-//      person to the browser rather than to a button — because the disputa the
-//      web offers there needs an evidence file this build cannot attach.
+//      `canClaim` is the server's, and the copy for `active_owner` offers the
+//      disputa — which is a form in this app since D6 — and never the browser.
 //   2. THE DRAFT BUILDER USES THE CONTRACT'S SCHEMA AND RETURNS ITS PARSE, so
 //      the value that reaches the server is the trimmed one the fifteen-digit
 //      rule was checked against — not the raw text from the field.
@@ -26,8 +25,8 @@ import { PET_CLAIM_COMMAND_INPUT_CODES } from "@dim/contract/input";
 import {
   SCAN_NOT_A_CHIP_MESSAGE,
   buildClaimCommand,
+  buildDisputeCommand,
   chipCodeFromScan,
-  claimDisputeUrl,
   claimIdentifierFieldLabel,
   claimIdentifierKindLabel,
   claimIdentifierPlaceholder,
@@ -36,6 +35,7 @@ import {
   claimVariantBody,
   claimVariantHeadline,
   claimVariantTone,
+  disputeReasonCount,
 } from "./claim-view-model";
 
 const CHIP = "982000123456789";
@@ -49,6 +49,7 @@ function anAck(over: Partial<PetClaimLookupAckV1> = {}): PetClaimLookupAckV1 {
     petToken: null,
     ownerInitials: null,
     canClaim: true,
+    canDispute: false,
     ...over,
   };
 }
@@ -151,15 +152,12 @@ describe("the `active_owner` copy — the one that must not offer what this app 
     expect(withoutInitials).toContain("custodia");
   });
 
-  it("names the browser instead of leaving a dead end at the disputa", () => {
-    // THE ASSERTION THIS DESCRIBE BLOCK IS FOR. The web's third step needs at
-    // least one evidence file — the server refuses without one, absolutely — and
-    // this build has no image picker. A screen that just said "no se puede"
-    // would be hiding a capability the person actually has, one browser away.
+  it("offers the disputa in the app's own words, and no longer names the browser", () => {
+    // D6: the disputa is a form here now. A sentence that still said "desde la
+    // web" would send the person away from the button right under it.
     const body = claimVariantBody(anAck({ variant: "active_owner", canClaim: false }));
-    expect(body).toContain("web");
     expect(body.toLowerCase()).toContain("disputa");
-    expect(body.toLowerCase()).toMatch(/foto|video/);
+    expect(body.toLowerCase()).not.toContain("web");
   });
 
   it("sends a lost animal to an avistaje rather than to a claim", () => {
@@ -181,10 +179,6 @@ describe("the links out", () => {
 
   it("percent-encodes a token rather than pasting it into a path", () => {
     expect(claimSightingUrl(ORIGIN, "DIM/../evil")).not.toContain("/../");
-  });
-
-  it("does not double a slash when the origin carries a trailing one", () => {
-    expect(claimDisputeUrl(`${ORIGIN}/`)).toBe(`${ORIGIN}/mis-mascotas/reclamar`);
   });
 });
 
@@ -231,5 +225,52 @@ describe("chipCodeFromScan — the camera and the keyboard share one door", () =
 
   it("has a sentence for the refusal that names the keyboard as the way forward", () => {
     expect(SCAN_NOT_A_CHIP_MESSAGE).toContain("a mano");
+  });
+});
+
+describe("buildDisputeCommand — the web's rules, from the contract's schema", () => {
+  const KEY = "welfare/11111111-1111-4111-8111-111111111111.jpg";
+  const REASON = "Es mi perra, la perdí en marzo y tengo su libreta.";
+
+  it("returns the PARSED dispute — trimmed identifier and trimmed reason", () => {
+    const draft = buildDisputeCommand("microchip", ` ${CHIP} `, `  ${REASON}  `, [KEY]);
+    expect(draft).toEqual({
+      ok: true,
+      input: {
+        command: "dispute",
+        identifierKind: "microchip",
+        identifierValue: CHIP,
+        reason: REASON,
+        evidence: [KEY],
+      },
+    });
+  });
+
+  it("refuses without a photo, and with a reason under twenty characters", () => {
+    expect(buildDisputeCommand("microchip", CHIP, REASON, [])).toEqual({
+      ok: false,
+      code: "EVIDENCE_REQUIRED",
+    });
+    expect(buildDisputeCommand("microchip", CHIP, "es mía", [KEY])).toEqual({
+      ok: false,
+      code: "REASON_TOO_SHORT",
+    });
+  });
+});
+
+describe("disputeReasonCount — counted the way the server counts", () => {
+  it("counts TRIMMED and says how many are missing below the minimum", () => {
+    const short = disputeReasonCount(`   ${"x".repeat(15)}   `);
+    expect(short.enough).toBe(false);
+    expect(short.label).toBe("15 de 2000 caracteres · faltan 5 para el mínimo");
+  });
+
+  it("is enough at twenty and too long past two thousand", () => {
+    expect(disputeReasonCount("x".repeat(20))).toEqual({
+      label: "20 de 2000 caracteres",
+      enough: true,
+      tooLong: false,
+    });
+    expect(disputeReasonCount("x".repeat(2001)).tooLong).toBe(true);
   });
 });

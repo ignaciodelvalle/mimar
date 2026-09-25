@@ -1,8 +1,10 @@
 // `/api/v1/me/pet-claims` — RECLAMAR UNA MASCOTA, from the phone.
 //
-// POST runs the two commands of the web's claim wizard that a phone can honestly
-// run: `lookup` (which animal does this chip or tattoo resolve to, and may I
-// claim it) and `claim_free` (take it, if nobody holds it).
+// POST runs the web claim wizard's three writes: `lookup` (which animal does
+// this chip or tattoo resolve to, and may I claim it), `claim_free` (take it, if
+// nobody holds it) and `dispute` (raise a custody dispute against whoever holds
+// it, with evidence) — plus `request_evidence_ticket`, which stages one evidence
+// photo for the dispute to name.
 //
 // WHY THIS HANGS OFF `/me` AND NOT OFF A PET
 // ---------------------------------------------------------------------------
@@ -19,23 +21,34 @@
 // derives from evidence. A `/pets/{token}/claim` route would be a route whose
 // own shape invites the bug.
 //
-// TWO COMMANDS, AND THE THIRD IS REFUSED RATHER THAN DEFERRED
+// THE DISPUTE, WHICH THIS DOOR REFUSED UNTIL THE APP COULD CARRY A PHOTO (D6)
 // ---------------------------------------------------------------------------
-// The web's wizard has a third step: raise a `custody_dispute` when the animal
-// already has a custody. It is not here and it is not "a later work unit" the
-// way booking is missing from `/me/appointments`. `submitClaimDisputeForUser`
-// requires at least one evidence FILE and refuses without one — a gate that
-// exists because a dispute notifies the registered owner, appends an uneditable
-// row to their animal's spine, flips `pets.in_custody_dispute` (which strips the
-// owner's phone and the finder form off the public credential) and opens a case
-// for a local authority. This app cannot attach a file: an image picker is a
-// native module, which is an EAS build, which is the same wall the pet photo and
-// the art. 14 export ran into.
+// `submitClaimDisputeForUser` requires at least one evidence FILE and refuses
+// without one — a gate that exists because a dispute notifies whoever holds the
+// animal, appends an uneditable row to its spine, flips `pets.in_custody_dispute`
+// (which strips the owner's phone and the finder form off the public credential)
+// and opens a case for a local authority. While the app had no image picker, a
+// `dispute` command would have been refused on every call, so this door did not
+// offer one and the app sent the person to the browser.
 //
-// A `dispute` command over JSON would therefore be a command the server refuses
-// on every call, and a client would draw the control anyway. The contract's
-// input union has two members for exactly that reason, and a client meeting
-// `variant: "active_owner"` sends the person to the browser.
+// The app has a picker now, and the dispute runs here over the SAME use-case the
+// web's `submitClaimDisputeAction` calls, with the SAME files argument: the
+// photos are staged through the denuncia's ticket (the same private bucket and
+// the same `welfare/{uuid}.{ext}` key, because the evidence ends in the same
+// `welfare-evidence` bucket through the same gate), claimed single-use, and
+// handed over as `File`s. `commands.ts` has the order and the cleanup.
+//
+// A STAGED KEY IS NOT BOUND TO A DOOR, and that is safe rather than an
+// oversight: a key is 122 random bits handed to exactly one caller, it names
+// nobody, and whichever door names it first moves it away. A photo staged from
+// the denuncia form and named in a dispute is the caller's own photo, judged by
+// the same gate.
+//
+// THE WEB'S AUTHORIZATION, EXACTLY, PLUS ONE STRICTER STEP. The web action is
+// `requireUserOrRedirect()` then the use-case (`app/actions/pet-claim.ts`,
+// `submitClaimDisputeAction`); the use-case's own authorization is the private
+// identifier. This door runs `requireLiveUser` then the same use-case — the
+// deactivated-account divergence the next section records, and nothing else.
 //
 // WHAT THIS DOOR IS STRICTER ABOUT THAN THE BROWSER, SAID OUT LOUD
 // ---------------------------------------------------------------------------
@@ -51,9 +64,10 @@
 //
 // THE BUDGETS, AND THE ONE THAT IS DELIBERATELY NOT HERE
 // ---------------------------------------------------------------------------
-// ONE per-IP bucket for the whole route, and NO per-user bucket at the route.
+// ONE per-IP bucket for the whole route, and NO per-user bucket at the route for
+// the three writes — the ticket's is the one exception, argued at the end.
 //
-// The per-user ceiling for this act already exists, inside both use-cases:
+// The per-user ceiling for this act already exists, inside all three use-cases:
 // `claim_lookup`, 30/min + 200/hr, keyed on the caller and spent by the lookup
 // and the claim TOGETHER so a burst of probes counts as one. That is the budget
 // the WEB spends through the same use-cases. Adding this surface's generic
@@ -67,11 +81,21 @@
 // `/api/v1` door takes one BEFORE the GoTrue round-trip, so a caller with a
 // well-formed but invalid token cannot spend `auth.getUser()` calls unbounded.
 //
-// ONE BUCKET FOR BOTH COMMANDS, not one per command. The two share a per-user
-// budget precisely so that alternating between them buys nothing; splitting the
-// per-IP counter would hand a prober two.
+// ONE BUCKET FOR EVERY COMMAND, not one per command. Lookup, claim and dispute
+// share a per-user budget precisely so that alternating between them buys
+// nothing; splitting the per-IP counter would hand a prober three.
 //
-// THE CEILING IT SPENDS IS TIGHTER THAN THIS ACT'S OWN DERIVATION, AND THAT IS
+// THE TICKET IS THE ONE PER-USER BUCKET AT THE ROUTE, and it is not
+// `claim_lookup`: a ticket probes nothing — it is a capability to write 5 MB
+// into a private bucket. It spends the media family's per-user anchor under its
+// own key, `api_v1_me_pet_claims_evidence_user`, the same act (staging one
+// image) under the same ceiling the pet photo and the denuncia evidence spend,
+// and it FAILS CLOSED where every other limiter here fails open: a limiter
+// outage that let tickets through unbounded would be free storage for anybody
+// with a session, and refusing one costs the person a retry. Spent in the
+// handler body so `api-v1-rate-limit-families.test.ts` reads it.
+//
+// THE PER-IP CEILING IS TIGHTER THAN THIS ACT'S OWN DERIVATION, AND THAT IS
 // A KNOWN, DECLARED GAP. `api-v1-limits.ts`'s rule is that a per-IP ceiling is
 // `API_V1_SIMULTANEOUS_CALLERS` (12) times the per-user anchor, which for
 // `claim_lookup`'s 30/min + 200/hr would be 360/min + 2 400/hr — a `pet-claim`
@@ -94,9 +118,18 @@
 // claimed the animal in between, and the client's move is to look, not to
 // re-send. `@dim/contract/api`'s `pet-claim.ts` states that where a client author
 // reads it.
+//
+// The dispute is the same shape: `submitClaimDisputeForUser` takes no key
+// either. A retry naming the SAME staged keys finds them already claimed and
+// answers `claim_evidence_refused` before the use-case runs; a retry with
+// fresh photos finds the animal already `in_custody_dispute` and answers
+// `claim_not_disputable`. Neither files a second dispute.
 
 import { apiV1Error } from "@/lib/infra/api-v1";
-import { API_V1_AUTHENTICATED_WRITE_IP_LIMIT } from "@/lib/infra/api-v1-limits";
+import {
+  API_V1_AUTHENTICATED_WRITE_IP_LIMIT,
+  API_V1_MEDIA_UPLOAD_USER_LIMIT,
+} from "@/lib/infra/api-v1-limits";
 import { DbBudgetExceededError, withDbBudgetOrThrow } from "@/lib/infra/db-budget";
 import { type LiveUserFailureReason, requireLiveUser } from "@/lib/infra/live-user";
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
@@ -164,6 +197,21 @@ export async function POST(request: Request) {
   // which is why it carries no field detail — the envelope is one key.
   const parsed = petClaimCommandInputSchema.safeParse(body);
   if (!parsed.success) return apiV1Error("invalid_request", 400);
+
+  // The ticket's per-user media budget — FAILS CLOSED, see the header.
+  if (parsed.data.command === "request_evidence_ticket") {
+    try {
+      await enforceRateLimit(
+        "api_v1_me_pet_claims_evidence_user",
+        live.user.id,
+        API_V1_MEDIA_UPLOAD_USER_LIMIT,
+      );
+    } catch (err) {
+      if (err instanceof RateLimitError) return apiV1Error("rate_limited", 429);
+      reportError("api-v1-me-pet-claims/evidence-limiter", err);
+      return unavailable();
+    }
+  }
 
   return runPetClaimCommand({ userId: live.user.id, input: parsed.data });
 }

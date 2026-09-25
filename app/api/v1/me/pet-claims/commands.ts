@@ -1,4 +1,4 @@
-// The two claim commands, and the translation of their refusals.
+// The four claim commands, and the translation of their refusals.
 //
 // THERE IS NO PET-ACCESS GUARD IN THIS FILE, AND ITS ABSENCE IS THE DESIGN
 // ---------------------------------------------------------------------------
@@ -56,13 +56,27 @@
 
 import { apiV1Error, apiV1Json } from "@/lib/infra/api-v1";
 import { DbBudgetExceededError } from "@/lib/infra/db-budget";
+import {
+  loadStagedWelfareEvidence,
+  mintWelfareEvidenceTicket,
+  removeStagedWelfareEvidence,
+} from "@/lib/infra/welfare-evidence-staging";
 import { lookupForClaimForUser } from "@/src/modules/pets/application/claim/lookup-for-claim";
+import { submitClaimDisputeForUser } from "@/src/modules/pets/application/claim/submit-claim-dispute";
 import { submitFreeClaimForUser } from "@/src/modules/pets/application/claim/submit-free-claim";
 import type { ClaimFailureCode } from "@/src/modules/pets/application/claim/types";
 import type { PetClaimCommandAckV1 } from "@dim/contract/api";
-import type { PetClaimCommandInput } from "@dim/contract/input";
+import type {
+  ClaimEvidenceContentType,
+  PetClaimCommandInput,
+  PetClaimDisputeInput,
+} from "@dim/contract/input";
 
-import { buildPetClaimLookupAck } from "./payload";
+import {
+  buildPetClaimDisputeAck,
+  buildPetClaimEvidenceTicketAck,
+  buildPetClaimLookupAck,
+} from "./payload";
 
 const UNAVAILABLE_RETRY_AFTER_SECONDS = 5;
 
@@ -113,11 +127,117 @@ export function petClaimRefusal(code: ClaimFailureCode) {
       return apiV1Error("claim_not_claimable", 409);
     case "failed":
       return apiV1Error("claim_failed", 500);
+    // The two DISPUTE-ONLY codes. Neither lookup nor claim_free produces them;
+    // they are mapped here because the switch is exhaustive over the whole
+    // vocabulary, and a mapping is safer than a throw on a path somebody may
+    // one day reach.
+    case "reason_invalid":
+      return apiV1Error("invalid_request", 400);
+    case "evidence_refused":
+      return apiV1Error("claim_evidence_refused", 422);
     default: {
       const unhandled: never = code;
       throw new Error(`Unhandled claim failure code: ${JSON.stringify(unhandled)}`);
     }
   }
+}
+
+/**
+ * A DISPUTE refusal, as a response — its own table for one reason: the claim's
+ * `not_claimable` and `failed` carry copy about claiming a FREE animal, and a
+ * person refused a dispute must not read that (`claim_not_disputable` and
+ * `claim_dispute_failed` in `@dim/contract/api`'s errors). Exhaustive with no
+ * `default`, like `petClaimRefusal`.
+ */
+export function petClaimDisputeRefusal(code: ClaimFailureCode) {
+  switch (code) {
+    case "rate_limited":
+      // The SHARED `claim_lookup` budget: a dispute spends it exactly as the
+      // web's does, together with every lookup the same person ran.
+      return apiV1Error("rate_limited", 429);
+    case "identifier_invalid":
+    case "reason_invalid":
+      // Both are rules the contract's schema already checked; reaching this arm
+      // means the two copies disagree, and the server's reading governs.
+      return apiV1Error("invalid_request", 400);
+    case "not_found":
+      return apiV1Error("not_found", 404);
+    case "not_claimable":
+      return apiV1Error("claim_not_disputable", 409);
+    case "evidence_refused":
+      return apiV1Error("claim_evidence_refused", 422);
+    case "failed":
+      return apiV1Error("claim_dispute_failed", 500);
+    default: {
+      const unhandled: never = code;
+      throw new Error(`Unhandled claim failure code: ${JSON.stringify(unhandled)}`);
+    }
+  }
+}
+
+/**
+ * One upload URL for one evidence photo — the denuncia's ticket, minted by the
+ * same function into the same private staging bucket.
+ *
+ * THE BUDGET IS NOT SPENT HERE. The per-user media ceiling is spent by the
+ * route, in the handler body, where `api-v1-rate-limit-families.test.ts` can
+ * read it; this function only mints.
+ */
+async function mintEvidenceTicket(contentType: ClaimEvidenceContentType) {
+  const ticket = await mintWelfareEvidenceTicket(contentType);
+  if (ticket === null) return unavailable();
+  return ack(buildPetClaimEvidenceTicketAck(ticket));
+}
+
+/**
+ * Raise the dispute — the WEB'S use-case, over the staged photos.
+ *
+ * THE ORDER, AND WHAT EACH STEP OWES THE NEXT:
+ *
+ *   1. CLAIM every staged key (a move, so each photo is used by one request and
+ *      one only) and download it as a `File` — `loadStagedWelfareEvidence`, the
+ *      denuncia's loader. A missing, already-used, empty or oversized object
+ *      refuses the WHOLE dispute: the authority either sees every photo the
+ *      person chose or nothing is filed, never a silent subset.
+ *   2. Hand those files to `submitClaimDisputeForUser` — the exact function the
+ *      web's `submitClaimDisputeAction` calls, with the exact `files` argument it
+ *      takes. Every rule is the use-case's: the 20–2000 reason, the evidence
+ *      requirement, the `claim_lookup` budget, the identifier as the only
+ *      authorization, the holder refusals, and `uploadWelfareEvidence` — the
+ *      web's evidence gate, EXIF/GPS strip included, failing closed — before the
+ *      transaction, with its own rollback.
+ *   3. DISCARD the claimed copies in EVERY outcome. On success the use-case has
+ *      stored its own stripped copies under `claims/{id}` in `welfare-evidence`;
+ *      on a refusal nothing references them. `finally`, so a throw from the
+ *      use-case cannot strand them either.
+ *
+ * No device location reaches the record: the phone's adapter re-encodes and
+ * drops EXIF before the PUT, and the server's strip is the guarantee.
+ */
+async function raiseDispute(userId: string, input: PetClaimDisputeInput) {
+  const loaded = await loadStagedWelfareEvidence(input.evidence);
+  if (!loaded.ok) {
+    await removeStagedWelfareEvidence([...input.evidence, ...loaded.claimed]);
+    return apiV1Error("claim_evidence_refused", 422);
+  }
+
+  let result: Awaited<ReturnType<typeof submitClaimDisputeForUser>>;
+  try {
+    result = await submitClaimDisputeForUser(
+      userId,
+      {
+        identifierKind: input.identifierKind,
+        identifierValue: input.identifierValue,
+        reason: input.reason,
+      },
+      loaded.files,
+    );
+  } finally {
+    await removeStagedWelfareEvidence(loaded.claimed);
+  }
+
+  if ("code" in result) return petClaimDisputeRefusal(result.code);
+  return ack(buildPetClaimDisputeAck(result.disputeToken));
 }
 
 export async function runPetClaimCommand(ctx: PetClaimCommandContext) {
@@ -149,6 +269,10 @@ export async function runPetClaimCommand(ctx: PetClaimCommandContext) {
           petName: result.petName,
         });
       }
+      case "request_evidence_ticket":
+        return mintEvidenceTicket(ctx.input.contentType);
+      case "dispute":
+        return raiseDispute(ctx.userId, ctx.input);
       default: {
         const unhandled: never = ctx.input;
         throw new Error(`Unhandled claim command: ${JSON.stringify(unhandled)}`);

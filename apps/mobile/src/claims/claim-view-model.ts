@@ -22,22 +22,31 @@
 // animal somebody else holds is an interface promising custody of a stranger's
 // dog.
 //
-// WHAT THIS APP CANNOT DO, AND SAYS SO IN WORDS INSTEAD OF HIDING
+// THE DISPUTE, WHICH USED TO BE A LINK TO THE WEB (D6)
 // ---------------------------------------------------------------------------
 // The web's wizard has a third step for `active_owner`: iniciar una disputa. It
 // requires at least one evidence FILE — a rule the server enforces absolutely —
-// and this app cannot attach one, because an image picker is a native module and
-// that is an EAS build. So `activeOwnerBody` names the browser rather than
-// leaving a dead end, and there is no `dispute` anything in this file. The day
-// this app can carry bytes, the copy and the contract change together.
+// and until this app had an image picker it could not attach one, so this file
+// sent the person to the browser. The picker landed (M12), and the dispute is
+// now a form here: `buildDisputeCommand` validates it against the contract's
+// schema, and the words for its answers live below with everything else. The
+// OFFER is the server's `canDispute`, read and never derived — the same rule as
+// `canClaim`.
 
 import type { PetClaimLookupAckV1, PetClaimVariantV1 } from "@dim/contract/api";
 import type {
   PetClaimCommandInput,
   PetClaimCommandInputCode,
+  PetClaimDisputeInput,
   PetClaimIdentifierKind,
 } from "@dim/contract/input";
-import { firstPetClaimCommandInputCode, petClaimCommandInputSchema } from "@dim/contract/input";
+import {
+  CLAIM_DISPUTE_REASON_MAX_LENGTH,
+  CLAIM_DISPUTE_REASON_MIN_LENGTH,
+  CLAIM_EVIDENCE_MAX_FILES,
+  firstPetClaimCommandInputCode,
+  petClaimCommandInputSchema,
+} from "@dim/contract/input";
 import { deepLinkUrl } from "@dim/contract/links";
 
 /** The web wizard's own two labels for the radio pair. */
@@ -72,7 +81,7 @@ export type ClaimCommandDraft =
   | { ok: false; code: PetClaimCommandInputCode | null };
 
 export function buildClaimCommand(
-  command: PetClaimCommandInput["command"],
+  command: "lookup" | "claim_free",
   kind: PetClaimIdentifierKind,
   value: string,
 ): ClaimCommandDraft {
@@ -109,7 +118,87 @@ export function claimInputMessage(code: PetClaimCommandInputCode | null): string
       // The number, in words, because a person counting digits on a vet's
       // sticker needs to know what to count to.
       return "El microchip tiene que tener exactamente 15 dígitos.";
+    case "REASON_TOO_SHORT":
+      return `Contanos por qué creés que es tuya, con al menos ${CLAIM_DISPUTE_REASON_MIN_LENGTH} caracteres.`;
+    case "REASON_TOO_LONG":
+      return `La explicación no puede superar los ${CLAIM_DISPUTE_REASON_MAX_LENGTH} caracteres.`;
+    case "EVIDENCE_REQUIRED":
+      return "Agregá al menos una foto como prueba: sin evidencia no se puede abrir la disputa.";
+    case "EVIDENCE_TOO_MANY":
+      return `Podés adjuntar hasta ${CLAIM_EVIDENCE_MAX_FILES} fotos. Quitá alguna para seguir.`;
+    case "EVIDENCE_INVALID":
+      // A key this app never holds unless the server minted it; reaching this
+      // means the list got out of step. Starting the photos over fixes it.
+      return "Hay una foto que no pudimos usar. Quitala y volvé a agregarla.";
+    case "CONTENT_TYPE_INVALID":
+      return "Esa foto tiene que ser JPG, PNG o WebP. Probá con otra.";
   }
+}
+
+/**
+ * Build and validate the DISPUTE, with the contract's schema — the same door
+ * as `buildClaimCommand`, so the 20–2000 rule and the one-to-five photos are
+ * checked against exactly what the server will check.
+ */
+export type DisputeCommandDraft =
+  | { ok: true; input: PetClaimDisputeInput }
+  | { ok: false; code: PetClaimCommandInputCode | null };
+
+export function buildDisputeCommand(
+  kind: PetClaimIdentifierKind,
+  value: string,
+  reason: string,
+  evidence: readonly string[],
+): DisputeCommandDraft {
+  const parsed = petClaimCommandInputSchema.safeParse({
+    command: "dispute",
+    identifierKind: kind,
+    identifierValue: value,
+    reason,
+    evidence: [...evidence],
+  });
+  if (parsed.success && parsed.data.command === "dispute") return { ok: true, input: parsed.data };
+  if (parsed.success) return { ok: false, code: "COMMAND_REQUIRED" };
+  return { ok: false, code: firstPetClaimCommandInputCode(parsed.error) };
+}
+
+/**
+ * The live count under the explanation — counted TRIMMED, the way the server
+ * counts, so the moment the minimum is met here is the moment the server
+ * accepts it.
+ */
+export function disputeReasonCount(reason: string): {
+  label: string;
+  enough: boolean;
+  tooLong: boolean;
+} {
+  const length = reason.trim().length;
+  const enough = length >= CLAIM_DISPUTE_REASON_MIN_LENGTH;
+  const tooLong = length > CLAIM_DISPUTE_REASON_MAX_LENGTH;
+  const count = `${length} de ${CLAIM_DISPUTE_REASON_MAX_LENGTH} caracteres`;
+  const label = enough
+    ? count
+    : `${count} · faltan ${CLAIM_DISPUTE_REASON_MIN_LENGTH - length} para el mínimo`;
+  return { label, enough, tooLong };
+}
+
+/** What the dispute form says before the person writes anything — the web's own paragraph. */
+export const DISPUTE_INTRO =
+  "Tu reclamo va a la autoridad local para que lo revise y le avisa a quien figura con la mascota. Contanos por qué creés que es tuya y adjuntá al menos una prueba: una foto de la libreta sanitaria, del chip escaneado o tuya con el animal.";
+
+/** The note over the photo block. Photos only, and it says why no video. */
+export const DISPUTE_EVIDENCE_NOTE = `Al menos una foto y hasta ${CLAIM_EVIDENCE_MAX_FILES}, en JPG, PNG o WebP. Guardamos la foto sin la ubicación del teléfono.`;
+
+/**
+ * Said after a failed send that reached the server: it uses each staged photo
+ * once, and a refused dispute has already spent them, so the list starts over.
+ */
+export const DISPUTE_PHOTOS_SPENT =
+  "Por seguridad cada foto se usa una sola vez: volvé a agregarlas antes de enviar de nuevo.";
+
+/** The receipt, in the web's words ("Reclamo enviado"). */
+export function disputeSentBody(petName: string): string {
+  return `Una autoridad local va a revisar tu reclamo por ${petName}. Te vamos a avisar cuando haya una resolución.`;
 }
 
 /**
@@ -151,11 +240,9 @@ export function claimVariantBody(ack: PetClaimLookupAckV1): string {
     case "free":
       return "Podés reclamarla ahora: queda registrada a tu nombre y le emitimos la credencial.";
     case "active_owner":
-      // THE ONE SENTENCE IN THIS FILE THAT NAMES A LIMIT OF THIS APP. The web
-      // offers a disputa here; it needs a foto or a video as evidence and this
-      // build cannot attach one. Saying where the flow continues is the
-      // difference between a screen that is honest and a dead end.
-      return "Si creés que es tuya podés iniciar una disputa, pero hace falta adjuntar una foto o un video como prueba y eso todavía se hace desde la web.";
+      // The web's own sentence for variant B. The disputa is a form in this app
+      // now (D6), so the copy no longer names the browser.
+      return "Si creés que es tuya podés iniciar una disputa. Una autoridad local va a revisar la evidencia y decidir.";
     case "lost":
       return "Si la encontraste, avisale a quien la está buscando con un reporte de avistaje en lugar de reclamarla.";
     case "deceased":
@@ -195,19 +282,6 @@ export function claimVariantTone(variant: PetClaimVariantV1): "neutral" | "ok" |
  */
 export function claimSightingUrl(origin: string, petToken: string): string {
   return deepLinkUrl(origin, "credentialSighting", { publicToken: petToken });
-}
-
-/**
- * The web page where the disputa this app cannot run is started.
- *
- * THROUGH THE SHARED TABLE, LIKE `claimSightingUrl` ABOVE (T4-M6, 2026-09-22).
- * This used to interpolate `${origin}/mis-mascotas/reclamar` by hand — the one
- * function in this file that did not follow the rule its own neighbour states:
- * a rename of the web route is now a compile error here, not a link that goes
- * quietly 404 for whoever taps it.
- */
-export function claimDisputeUrl(origin: string): string {
-  return deepLinkUrl(origin, "claimDispute", {});
 }
 
 /**

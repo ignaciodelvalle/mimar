@@ -54,7 +54,12 @@ import { RateLimitError, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { removeWelfareEvidence, uploadWelfareEvidence } from "@/lib/infra/welfare-uploads";
 import { openDisputeFromEvent } from "@/src/modules/custody-disputes/application/open-dispute";
 
-import type { ClaimDisputeInput, ClaimDisputeResult } from "./types";
+import type {
+  ClaimDisputeInput,
+  ClaimDisputeResult,
+  ClaimFailureCode,
+  ClaimRefusal,
+} from "./types";
 
 const MICROCHIP_PATTERN = /^\d{15}$/;
 
@@ -91,16 +96,23 @@ const MEMBER_NOTIFICATION_RANK = sql`case ${organizationMemberships.role} when '
  */
 const HOLDER_ROLE_RANK = sql`case ${ownerships.role} when 'owner' then 0 when 'co_owner' then 1 when 'shelter_custody' then 2 when 'foster' then 3 when 'caretaker' then 4 else 5 end`;
 
-export async function submitClaimDisputeForUser(
-  userId: string,
-  input: ClaimDisputeInput,
-  files: File[],
-): Promise<ClaimDisputeResult> {
+/**
+ * The refusals that need no database and no budget: the reason's length and
+ * the identifier's shape. Hoisted out of the writer so its body stays readable;
+ * the sentences and the order are unchanged.
+ */
+function refuseMalformedInput(input: ClaimDisputeInput): ClaimRefusal | null {
   if (input.reason.trim().length < 20) {
-    return { error: "Contanos por qué creés que es tuya (al menos 20 caracteres)." };
+    return {
+      error: "Contanos por qué creés que es tuya (al menos 20 caracteres).",
+      code: "reason_invalid",
+    };
   }
   if (input.reason.length > 2000) {
-    return { error: "La explicación no puede superar los 2000 caracteres." };
+    return {
+      error: "La explicación no puede superar los 2000 caracteres.",
+      code: "reason_invalid",
+    };
   }
 
   // Evidence gate — mirrors submitFreeClaimForUser. An empty value (or a
@@ -108,11 +120,35 @@ export async function submitClaimDisputeForUser(
   // a rate-limit token or uploading anything.
   const identifierValue = input.identifierValue.trim();
   if (!identifierValue) {
-    return { error: "Ingresá el número de microchip o el código del tatuaje." };
+    return {
+      error: "Ingresá el número de microchip o el código del tatuaje.",
+      code: "identifier_invalid",
+    };
   }
   if (input.identifierKind === "microchip" && !MICROCHIP_PATTERN.test(identifierValue)) {
-    return { error: "El microchip debe tener exactamente 15 dígitos." };
+    return { error: "El microchip debe tener exactamente 15 dígitos.", code: "identifier_invalid" };
   }
+  return null;
+}
+
+/**
+ * Which code an evidence upload refusal carries. `refusedBy` tells the evidence
+ * (the person attaches another file) from the bucket (a retry) without reading
+ * the sentence. A result without the field is read as the evidence's fault —
+ * every gate refusal sets it, and so does every storage failure.
+ */
+function uploadRefusalCode(refusedBy: "gate" | "storage" | undefined): ClaimFailureCode {
+  return refusedBy === "storage" ? "failed" : "evidence_refused";
+}
+
+export async function submitClaimDisputeForUser(
+  userId: string,
+  input: ClaimDisputeInput,
+  files: File[],
+): Promise<ClaimDisputeResult> {
+  const invalid = refuseMalformedInput(input);
+  if (invalid) return invalid;
+  const identifierValue = input.identifierValue.trim();
 
   // Evidence gate (PO decision 2026-07-30). Raising a dispute is not a request
   // — it is a permanent, third-party-visible accusation: it notifies the
@@ -139,6 +175,7 @@ export async function submitClaimDisputeForUser(
     return {
       error:
         "Adjuntá al menos una foto o un video como prueba. Una disputa le avisa a la persona registrada como dueña y queda asentada de forma permanente, así que la autoridad necesita ver algo concreto para poder revisarla.",
+      code: "evidence_refused",
     };
   }
 
@@ -147,7 +184,7 @@ export async function submitClaimDisputeForUser(
     await enforceRateLimit("claim_lookup", userId, { maxPerMinute: 30, maxPerHour: 200 });
   } catch (err) {
     if (err instanceof RateLimitError) {
-      return { error: "Demasiados intentos. Probá en unos minutos." };
+      return { error: "Demasiados intentos. Probá en unos minutos.", code: "rate_limited" };
     }
     throw err;
   }
@@ -190,12 +227,12 @@ export async function submitClaimDisputeForUser(
       ),
     )
     .limit(1);
-  if (!pet) return { error: "No encontramos la mascota." };
+  if (!pet) return { error: "No encontramos la mascota.", code: "not_found" };
   if (pet.status === "deceased") {
-    return { error: "Esta mascota figura como fallecida en miMAR." };
+    return { error: "Esta mascota figura como fallecida en miMAR.", code: "not_claimable" };
   }
   if (pet.inCustodyDispute) {
-    return { error: "Ya hay una disputa abierta para esta mascota." };
+    return { error: "Ya hay una disputa abierta para esta mascota.", code: "not_claimable" };
   }
 
   // THE ACTIVE HOLDER, WHATEVER ROLE HOLDS — not `role = 'owner'`.
@@ -239,7 +276,9 @@ export async function submitClaimDisputeForUser(
   // Copy unchanged: this is still the answer for an animal nobody holds, and
   // `__tests__/pet-claim.test.ts` pins it as the ERASED-pet oracle it must not
   // become.
-  if (holders.length === 0) return { error: "Esta mascota no tiene dueño activo registrado." };
+  if (holders.length === 0) {
+    return { error: "Esta mascota no tiene dueño activo registrado.", code: "not_claimable" };
+  }
 
   // NOBODY DISPUTES THEMSELVES — AND "THEMSELVES" INCLUDES THEIR REFUGIO.
   //
@@ -273,6 +312,7 @@ export async function submitClaimDisputeForUser(
         ownRow.role === "owner" || ownRow.role === "co_owner"
           ? "Esta mascota ya está registrada a tu nombre."
           : "Ya tenés la custodia activa de esta mascota.",
+      code: "not_claimable",
     };
   }
   // A THIRD sentence, because it states a third fact. Either sentence above
@@ -286,7 +326,10 @@ export async function submitClaimDisputeForUser(
     // `left_at IS NULL` is what "member" means across every org-party branch of
     // canReadCase, and a private copy here is how the two definitions drift.
     if (await isActiveOrgMember(orgId, userId)) {
-      return { error: "Tu organización ya tiene la custodia de esta mascota." };
+      return {
+        error: "Tu organización ya tiene la custodia de esta mascota.",
+        code: "not_claimable",
+      };
     }
   }
 
@@ -315,7 +358,7 @@ export async function submitClaimDisputeForUser(
   // Evidence upload — happens BEFORE the tx so failures don't dangle.
   const reportId = crypto.randomUUID();
   const upload = await uploadWelfareEvidence(`claims/${reportId}`, evidenceFiles);
-  if (upload.error) return { error: upload.error };
+  if (upload.error) return { error: upload.error, code: uploadRefusalCode(upload.refusedBy) };
 
   let disputeToken = "";
   try {
@@ -527,7 +570,7 @@ export async function submitClaimDisputeForUser(
     // Roll back uploaded files if the tx failed.
     await removeWelfareEvidence(upload.uploadedPaths);
     const message = err instanceof Error ? err.message : "Error desconocido.";
-    return { error: `No se pudo enviar el reclamo: ${message}` };
+    return { error: `No se pudo enviar el reclamo: ${message}`, code: "failed" };
   }
 
   return { disputeToken, petToken: pet.publicToken };

@@ -683,7 +683,10 @@ describe("submitClaimDisputeAction", () => {
       },
       [evidenceFile()],
     );
-    expect(result).toEqual({ error: "Esta mascota ya está registrada a tu nombre." });
+    expect(result).toEqual({
+      error: "Esta mascota ya está registrada a tu nombre.",
+      code: "not_claimable",
+    });
   });
 
   // ART. 16 — THE SIBLING HOLE THE FREE-CLAIM FIX MISSED, found by the
@@ -712,7 +715,7 @@ describe("submitClaimDisputeAction", () => {
 
     // ONE answer, the one that says nothing — not the deceased leak, not the
     // no-active-owner leak, and above all not a disputeToken.
-    expect(result).toEqual({ error: "No encontramos la mascota." });
+    expect(result).toEqual({ error: "No encontramos la mascota.", code: "not_found" });
 
     // And the accusation machinery never ran: no case, no spine event, no flag.
     const disputes = await db
@@ -754,7 +757,7 @@ describe("submitClaimDisputeAction", () => {
       [evidenceFile()],
     );
 
-    expect(result).toEqual({ error: "No encontramos la mascota." });
+    expect(result).toEqual({ error: "No encontramos la mascota.", code: "not_found" });
   });
 
   it("rejects raising a second dispute while one is already open", async () => {
@@ -872,7 +875,7 @@ describe("dispute authorization — the identifier binds, the token is gone", ()
       [evidenceFile()],
     );
 
-    expect(result).toEqual({ error: "No encontramos la mascota." });
+    expect(result).toEqual({ error: "No encontramos la mascota.", code: "not_found" });
     await assertUntouched(victimId);
   });
 
@@ -899,6 +902,7 @@ describe("dispute authorization — the identifier binds, the token is gone", ()
     // asserts. assertUntouched below still pins the security property itself.
     expect(result).toEqual({
       error: "Ingresá el número de microchip o el código del tatuaje.",
+      code: "identifier_invalid",
     });
     await assertUntouched(victimId);
   });
@@ -919,6 +923,7 @@ describe("dispute authorization — the identifier binds, the token is gone", ()
 
     expect(result).toEqual({
       error: "Ingresá el número de microchip o el código del tatuaje.",
+      code: "identifier_invalid",
     });
     await assertUntouched(victimId);
   });
@@ -944,7 +949,7 @@ describe("dispute authorization — the identifier binds, the token is gone", ()
       [evidenceFile()],
     );
 
-    expect(result).toEqual({ error: "No encontramos la mascota." });
+    expect(result).toEqual({ error: "No encontramos la mascota.", code: "not_found" });
     await assertUntouched(victimId);
   });
 
@@ -1019,7 +1024,7 @@ describe("dispute evidence gate — the accusation needs proof", () => {
     // here would be satisfied by every other rejection in this writer — the
     // reason gate, the identifier gate, "no encontramos la mascota" — so it
     // would survive deleting the evidence gate entirely.
-    expect(result).toEqual({ error: NO_EVIDENCE_ERROR });
+    expect(result).toEqual({ error: NO_EVIDENCE_ERROR, code: "evidence_refused" });
 
     // The gate sits BEFORE enforceRateLimit, matching the convention the rest
     // of this codebase follows: a submission rejected on validation alone must
@@ -1052,7 +1057,7 @@ describe("dispute evidence gate — the accusation needs proof", () => {
       [new File([], "vacio.jpg", { type: "image/jpeg" })],
     );
 
-    expect(result).toEqual({ error: NO_EVIDENCE_ERROR });
+    expect(result).toEqual({ error: NO_EVIDENCE_ERROR, code: "evidence_refused" });
     await assertUntouched(petId);
   });
 
@@ -1243,7 +1248,10 @@ describe("dispute against an org-held animal (D4)", () => {
       },
       [evidenceFile()],
     );
-    expect(result).toEqual({ error: "Esta mascota no tiene dueño activo registrado." });
+    expect(result).toEqual({
+      error: "Esta mascota no tiene dueño activo registrado.",
+      code: "not_claimable",
+    });
 
     const disputes = await db
       .select({ id: custodyDisputes.id })
@@ -1274,7 +1282,10 @@ describe("dispute against an org-held animal (D4)", () => {
       },
       [evidenceFile()],
     );
-    expect(result).toEqual({ error: "Ya tenés la custodia activa de esta mascota." });
+    expect(result).toEqual({
+      error: "Ya tenés la custodia activa de esta mascota.",
+      code: "not_claimable",
+    });
     expect(result).not.toEqual({ error: "Esta mascota ya está registrada a tu nombre." });
 
     const disputes = await db
@@ -1332,7 +1343,10 @@ describe("nobody disputes themselves — and that includes their refugio", () =>
 
     // Its own sentence: the two existing refusals both claim a PERSONAL
     // relationship this caller does not have — no row here carries their name.
-    expect(result).toEqual({ error: "Tu organización ya tiene la custodia de esta mascota." });
+    expect(result).toEqual({
+      error: "Tu organización ya tiene la custodia de esta mascota.",
+      code: "not_claimable",
+    });
 
     // Nothing written: no dispute, and the flag that blocks the shelter's own
     // adoption pipeline was never flipped.
@@ -1374,7 +1388,10 @@ describe("nobody disputes themselves — and that includes their refugio", () =>
 
     // A foster holds without owning, so "registrada a tu nombre" would be the
     // lie the caretaker case above already refuses to tell.
-    expect(result).toEqual({ error: "Ya tenés la custodia activa de esta mascota." });
+    expect(result).toEqual({
+      error: "Ya tenés la custodia activa de esta mascota.",
+      code: "not_claimable",
+    });
 
     const disputes = await db
       .select({ id: custodyDisputes.id })

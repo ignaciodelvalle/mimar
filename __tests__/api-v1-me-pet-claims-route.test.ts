@@ -38,7 +38,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const control = vi.hoisted(() => ({
   cookieDoorTouched: false,
-  limiterThrows: null as null | (() => never),
+  limiterThrows: null as null | ((endpoint: string) => void),
   limits: [] as Array<{ endpoint: string; identifier: string }>,
   /** The CEILING each call spent, kept apart so `limits` stays comparable. */
   ceilings: [] as unknown[],
@@ -89,7 +89,7 @@ vi.mock("@/lib/infra/rate-limit", async (importOriginal) => {
     enforceRateLimit: async (endpoint: string, identifier: string, limit: unknown) => {
       control.limits.push({ endpoint, identifier });
       control.ceilings.push(limit);
-      control.limiterThrows?.();
+      control.limiterThrows?.(endpoint);
     },
   };
 });
@@ -108,7 +108,28 @@ vi.mock("@/src/modules/pets/application/claim/submit-free-claim", () => ({
   submitFreeClaimForUser: (...args: unknown[]) => mockClaim(...args),
 }));
 
-import { API_V1_AUTHENTICATED_WRITE_IP_LIMIT } from "@/lib/infra/api-v1-limits";
+const staging = vi.hoisted(() => ({
+  mint: vi.fn(),
+  load: vi.fn(),
+  removed: [] as string[][],
+}));
+vi.mock("@/lib/infra/welfare-evidence-staging", () => ({
+  mintWelfareEvidenceTicket: (...args: unknown[]) => staging.mint(...args),
+  loadStagedWelfareEvidence: (...args: unknown[]) => staging.load(...args),
+  removeStagedWelfareEvidence: async (paths: readonly string[]) => {
+    staging.removed.push([...paths]);
+  },
+}));
+
+const mockDispute = vi.fn();
+vi.mock("@/src/modules/pets/application/claim/submit-claim-dispute", () => ({
+  submitClaimDisputeForUser: (...args: unknown[]) => mockDispute(...args),
+}));
+
+import {
+  API_V1_AUTHENTICATED_WRITE_IP_LIMIT,
+  API_V1_MEDIA_UPLOAD_USER_LIMIT,
+} from "@/lib/infra/api-v1-limits";
 import { RateLimitError } from "@/lib/infra/rate-limit";
 
 import { POST } from "@/app/api/v1/me/pet-claims/route";
@@ -120,6 +141,17 @@ const CHIP = "982000123456789";
 
 const LOOKUP_BODY = { command: "lookup", identifierKind: "microchip", identifierValue: CHIP };
 const CLAIM_BODY = { command: "claim_free", identifierKind: "microchip", identifierValue: CHIP };
+const STAGED_A = "welfare/11111111-1111-4111-8111-111111111111.jpg";
+const STAGED_B = "welfare/22222222-2222-4222-8222-222222222222.png";
+const REASON = "Es mi perro Rocky, lo perdí en marzo y tengo su libreta sanitaria.";
+const DISPUTE_BODY = {
+  command: "dispute",
+  identifierKind: "microchip",
+  identifierValue: CHIP,
+  reason: REASON,
+  evidence: [STAGED_A, STAGED_B],
+};
+const TICKET_BODY = { command: "request_evidence_ticket", contentType: "image/jpeg" };
 
 function postRequest(body: unknown, authorization: string | null = `Bearer ${TOKEN}`) {
   return new Request("http://localhost:3000/api/v1/me/pet-claims", {
@@ -144,6 +176,10 @@ beforeEach(() => {
   control.live = { ok: true, user: { id: SUBJECT }, profile: {} };
   mockLookup.mockReset();
   mockClaim.mockReset();
+  mockDispute.mockReset();
+  staging.mint.mockReset();
+  staging.load.mockReset();
+  staging.removed = [];
 });
 
 afterEach(() => {
@@ -224,6 +260,32 @@ describe("the lookup ack — what a client may draw", () => {
     }
   });
 
+  it('offers `canDispute` ONLY where the web offers "Iniciar disputa" — `active_owner`', async () => {
+    // The web wizard's variant-B panel is the only one with the dispute button.
+    // The server says so rather than letting the phone read the variant.
+    const cases = [
+      { variant: { variant: "free", petToken: "DIM-A", petName: "Rocky" }, canDispute: false },
+      {
+        variant: {
+          variant: "active_owner",
+          petToken: "DIM-B",
+          petName: "Rocky",
+          ownerInitials: null,
+        },
+        canDispute: true,
+      },
+      { variant: { variant: "lost", petToken: "DIM-C", petName: "Rocky" }, canDispute: false },
+      { variant: { variant: "deceased", petName: "Rocky" }, canDispute: false },
+      { variant: { variant: "not_found" }, canDispute: false },
+    ];
+
+    for (const { variant, canDispute } of cases) {
+      mockLookup.mockResolvedValue(variant);
+      const response = await POST(postRequest(LOOKUP_BODY));
+      expect((await bodyOf(response)).canDispute, variant.variant).toBe(canDispute);
+    }
+  });
+
   it("hands back a pet token ONLY for `lost`, and never for the animal somebody else holds", async () => {
     // One step tighter than the web's own action, which returns a token for
     // `free` and `active_owner` too. A token opens `/p/{token}`; it travels only
@@ -277,6 +339,7 @@ describe("the lookup ack — what a client may draw", () => {
       petToken: null,
       ownerInitials: null,
       canClaim: false,
+      canDispute: false,
     });
   });
 });
@@ -470,5 +533,210 @@ describe("the rate-limit budget", () => {
 
     expect(response.status).toBe(403);
     expect(mockClaim).not.toHaveBeenCalled();
+  });
+});
+
+describe("request_evidence_ticket — one staged photo, on the media anchor", () => {
+  it("mints the denuncia's ticket and spends the media per-user bucket keyed on the CALLER", async () => {
+    staging.mint.mockResolvedValue({
+      uploadUrl: "https://storage.test/upload",
+      token: "t",
+      stagedPath: STAGED_A,
+      bucket: "uploads-staging",
+      validForSeconds: 7200,
+    });
+
+    const response = await POST(postRequest(TICKET_BODY));
+
+    expect(response.status).toBe(200);
+    expect(await bodyOf(response)).toEqual({
+      command: "request_evidence_ticket",
+      uploadUrl: "https://storage.test/upload",
+      token: "t",
+      stagedPath: STAGED_A,
+      bucket: "uploads-staging",
+      validForSeconds: 7200,
+    });
+    expect(staging.mint).toHaveBeenCalledWith("image/jpeg");
+    expect(control.limits).toEqual([
+      { endpoint: "api_v1_me_pet_claims_ip", identifier: CALLER_IP },
+      { endpoint: "api_v1_me_pet_claims_evidence_user", identifier: SUBJECT },
+    ]);
+    expect(control.ceilings[1]).toBe(API_V1_MEDIA_UPLOAD_USER_LIMIT);
+  });
+
+  it("answers 429 when the caller's media budget is spent, without minting", async () => {
+    control.limiterThrows = (endpoint) => {
+      if (endpoint === "api_v1_me_pet_claims_evidence_user") {
+        throw new RateLimitError(new Date(), "too many");
+      }
+    };
+
+    const response = await POST(postRequest(TICKET_BODY));
+
+    expect(response.status).toBe(429);
+    expect(staging.mint).not.toHaveBeenCalled();
+  });
+
+  it("FAILS CLOSED when the limiter is broken — a ticket is a storage capability", async () => {
+    control.limiterThrows = () => {
+      throw new Error("rate_limit_buckets is unavailable");
+    };
+
+    const response = await POST(postRequest(TICKET_BODY));
+
+    expect(response.status).toBe(503);
+    expect(staging.mint).not.toHaveBeenCalled();
+  });
+
+  it("answers 503 when no upload URL could be minted", async () => {
+    staging.mint.mockResolvedValue(null);
+
+    const response = await POST(postRequest(TICKET_BODY));
+
+    expect(response.status).toBe(503);
+  });
+
+  it("refuses a video content type — photos only", async () => {
+    const response = await POST(postRequest({ ...TICKET_BODY, contentType: "video/mp4" }));
+
+    expect(response.status).toBe(400);
+    expect(staging.mint).not.toHaveBeenCalled();
+  });
+});
+
+describe("dispute — the web's use-case, over single-use staged photos", () => {
+  const FILES = [new File([new Uint8Array([1])], "evidencia-1.jpg", { type: "image/jpeg" })];
+  const CLAIMED = ["welfare-claimed/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.jpg"];
+
+  it("hands the SAME use-case the web calls the caller, the identifier, the reason and the files", async () => {
+    staging.load.mockResolvedValue({ ok: true, files: FILES, claimed: CLAIMED });
+    mockDispute.mockResolvedValue({ disputeToken: "DSP-1234", petToken: "DIM-REAL-TOKN" });
+
+    const response = await POST(
+      postRequest({ ...DISPUTE_BODY, petToken: "DIM-EVIL-TOKN", userId: "someone-else" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(staging.load).toHaveBeenCalledWith([STAGED_A, STAGED_B]);
+    expect(mockDispute.mock.calls[0]).toEqual([
+      SUBJECT,
+      { identifierKind: "microchip", identifierValue: CHIP, reason: REASON },
+      FILES,
+    ]);
+  });
+
+  it("answers the web's Referencia and NEVER the resolved pet token", async () => {
+    staging.load.mockResolvedValue({ ok: true, files: FILES, claimed: CLAIMED });
+    mockDispute.mockResolvedValue({ disputeToken: "DSP-1234", petToken: "DIM-REAL-TOKN" });
+
+    const response = await POST(postRequest(DISPUTE_BODY));
+    const raw = await response.text();
+
+    expect(JSON.parse(raw)).toEqual({
+      command: "dispute",
+      changed: true,
+      disputeToken: "DSP-1234",
+    });
+    expect(raw).not.toContain("DIM-REAL-TOKN");
+    expect(raw).not.toContain(CHIP);
+  });
+
+  it("discards the claimed copies after a success", async () => {
+    staging.load.mockResolvedValue({ ok: true, files: FILES, claimed: CLAIMED });
+    mockDispute.mockResolvedValue({ disputeToken: "DSP-1234", petToken: "DIM-REAL-TOKN" });
+
+    await POST(postRequest(DISPUTE_BODY));
+
+    expect(staging.removed).toEqual([CLAIMED]);
+  });
+
+  it("refuses the whole dispute when a staged photo cannot be used, and discards everything", async () => {
+    staging.load.mockResolvedValue({ ok: false, claimed: CLAIMED });
+
+    const response = await POST(postRequest(DISPUTE_BODY));
+
+    expect(response.status).toBe(422);
+    expect(await bodyOf(response)).toEqual({ error: "claim_evidence_refused" });
+    expect(mockDispute).not.toHaveBeenCalled();
+    expect(staging.removed).toEqual([[STAGED_A, STAGED_B, ...CLAIMED]]);
+  });
+
+  it("maps every `ClaimFailureCode` to the DISPUTE's own code, and discards on every refusal", async () => {
+    const cases = [
+      { code: "rate_limited", status: 429, error: "rate_limited" },
+      { code: "identifier_invalid", status: 400, error: "invalid_request" },
+      { code: "reason_invalid", status: 400, error: "invalid_request" },
+      { code: "not_found", status: 404, error: "not_found" },
+      { code: "not_claimable", status: 409, error: "claim_not_disputable" },
+      { code: "evidence_refused", status: 422, error: "claim_evidence_refused" },
+      { code: "failed", status: 500, error: "claim_dispute_failed" },
+    ];
+
+    for (const { code, status, error } of cases) {
+      staging.removed = [];
+      staging.load.mockResolvedValue({ ok: true, files: FILES, claimed: CLAIMED });
+      mockDispute.mockResolvedValue({
+        error: "Ya hay una disputa abierta para esta mascota.",
+        code,
+      });
+      const response = await POST(postRequest(DISPUTE_BODY));
+      expect(response.status, code).toBe(status);
+      const raw = await response.text();
+      expect(JSON.parse(raw), code).toEqual({ error });
+      expect(raw, code).not.toContain("disputa abierta");
+      expect(staging.removed, code).toEqual([CLAIMED]);
+    }
+  });
+
+  it("discards the claimed copies even when the use-case throws", async () => {
+    staging.load.mockResolvedValue({ ok: true, files: FILES, claimed: CLAIMED });
+    mockDispute.mockRejectedValue(new Error("connection reset"));
+
+    await expect(POST(postRequest(DISPUTE_BODY))).rejects.toThrow("connection reset");
+    expect(staging.removed).toEqual([CLAIMED]);
+  });
+
+  it("refuses a dispute with no evidence, a short reason or a foreign key, before touching storage", async () => {
+    const bodies = [
+      { ...DISPUTE_BODY, evidence: [] },
+      { ...DISPUTE_BODY, reason: "es mío" },
+      { ...DISPUTE_BODY, reason: "x".repeat(2001) },
+      { ...DISPUTE_BODY, evidence: ["claims/../secret.jpg"] },
+      { ...DISPUTE_BODY, evidence: [STAGED_A, STAGED_A] },
+      {
+        ...DISPUTE_BODY,
+        evidence: [1, 2, 3, 4, 5, 6].map(
+          (n) => `welfare/${String(n).repeat(8)}-1111-4111-8111-111111111111.jpg`,
+        ),
+      },
+    ];
+
+    for (const body of bodies) {
+      const response = await POST(postRequest(body));
+      expect(response.status).toBe(400);
+    }
+    expect(staging.load).not.toHaveBeenCalled();
+    expect(mockDispute).not.toHaveBeenCalled();
+  });
+
+  it("refuses a DEACTIVATED account, like every other command on this door", async () => {
+    control.live = { ok: false, reason: "DEACTIVATED" };
+
+    const response = await POST(postRequest(DISPUTE_BODY));
+
+    expect(response.status).toBe(403);
+    expect(staging.load).not.toHaveBeenCalled();
+  });
+
+  it("spends only the shared per-IP bucket — the per-user budget is the use-case's `claim_lookup`", async () => {
+    staging.load.mockResolvedValue({ ok: true, files: FILES, claimed: CLAIMED });
+    mockDispute.mockResolvedValue({ disputeToken: "DSP-1234", petToken: "DIM-REAL-TOKN" });
+
+    await POST(postRequest(DISPUTE_BODY));
+
+    expect(control.limits).toEqual([
+      { endpoint: "api_v1_me_pet_claims_ip", identifier: CALLER_IP },
+    ]);
   });
 });

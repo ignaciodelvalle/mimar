@@ -1,6 +1,6 @@
-// The lookup's answer, as the wire carries it.
+// The claim commands' answers, as the wire carries them.
 //
-// ONE FUNCTION, AND ITS WHOLE JOB IS TO DROP THINGS. `ClaimLookupVariant` is a
+// THE LOOKUP'S BUILDER'S WHOLE JOB IS TO DROP THINGS. `ClaimLookupVariant` is a
 // discriminated union where each arm carries only the fields that arm has; the
 // wire shape is FLAT, because a native client switching on `variant` should not
 // also have to narrow a union to find out whether `petName` exists. Flattening
@@ -8,9 +8,45 @@
 // is a disclosure decision, which is why it lives in its own file with the
 // reasons written next to it rather than inline in a handler.
 
-import type { PetClaimLookupAckV1 } from "@dim/contract/api";
+import type {
+  PetClaimDisputeAckV1,
+  PetClaimEvidenceTicketV1,
+  PetClaimLookupAckV1,
+} from "@dim/contract/api";
 
 import type { ClaimLookupVariant } from "@/src/modules/pets/application/claim/types";
+
+/**
+ * The staging ticket, field for field — the denuncia's ticket shape, because it
+ * is the same capability over the same bucket (`welfare-evidence-staging.ts`).
+ */
+export function buildPetClaimEvidenceTicketAck(ticket: {
+  uploadUrl: string;
+  token: string;
+  stagedPath: string;
+  bucket: string;
+  validForSeconds: number;
+}): PetClaimEvidenceTicketV1 {
+  return {
+    command: "request_evidence_ticket",
+    uploadUrl: ticket.uploadUrl,
+    token: ticket.token,
+    stagedPath: ticket.stagedPath,
+    bucket: ticket.bucket,
+    validForSeconds: ticket.validForSeconds,
+  };
+}
+
+/**
+ * The dispute's receipt: the reference the web prints, and nothing else.
+ *
+ * TAKES ONLY THE TOKEN, so the resolved `petToken` the use-case also returns
+ * (for the web's `revalidatePath`) cannot be widened onto the wire by a later
+ * edit without changing a signature somebody has to look at.
+ */
+export function buildPetClaimDisputeAck(disputeToken: string): PetClaimDisputeAckV1 {
+  return { command: "dispute", changed: true, disputeToken };
+}
 
 /**
  * Turn the use-case's variant into the flat ack.
@@ -24,6 +60,13 @@ import type { ClaimLookupVariant } from "@/src/modules/pets/application/claim/ty
  * `SELECT … FOR UPDATE` inside the claiming transaction, plus three status
  * gates. A client deriving the affordance would be keeping a second copy of a
  * rule it cannot see, on the most consequential act on this surface.
+ *
+ * `canDispute` IS `variant === "active_owner"`, AND IS COMPUTED HERE FOR THE
+ * SAME REASON. It is the web wizard's own rule — its variant-B panel is the only
+ * one that offers "Iniciar disputa" — and the writer (`submitClaimDisputeForUser`)
+ * re-resolves the animal and re-runs every refusal, so it is a hint and not the
+ * gate. A client that drew the dispute form from its own reading of the variant
+ * would be the second copy of a rule the paragraph above refuses to let it keep.
  *
  * `petToken` TRAVELS ONLY FOR `lost`, and that is one step TIGHTER than the
  * web's own action, which hands a token back for `free` and `active_owner` too.
@@ -53,6 +96,7 @@ export function buildPetClaimLookupAck(variant: ClaimLookupVariant): PetClaimLoo
         petToken: null,
         ownerInitials: null,
         canClaim: false,
+        canDispute: false,
       };
     case "free":
       return {
@@ -62,6 +106,7 @@ export function buildPetClaimLookupAck(variant: ClaimLookupVariant): PetClaimLoo
         petToken: null,
         ownerInitials: null,
         canClaim: true,
+        canDispute: false,
       };
     case "lost":
       return {
@@ -71,6 +116,7 @@ export function buildPetClaimLookupAck(variant: ClaimLookupVariant): PetClaimLoo
         petToken: variant.petToken,
         ownerInitials: null,
         canClaim: false,
+        canDispute: false,
       };
     case "deceased":
       return {
@@ -80,6 +126,7 @@ export function buildPetClaimLookupAck(variant: ClaimLookupVariant): PetClaimLoo
         petToken: null,
         ownerInitials: null,
         canClaim: false,
+        canDispute: false,
       };
     case "active_owner":
       return {
@@ -89,6 +136,7 @@ export function buildPetClaimLookupAck(variant: ClaimLookupVariant): PetClaimLoo
         petToken: null,
         ownerInitials: variant.ownerInitials,
         canClaim: false,
+        canDispute: true,
       };
     default: {
       // A sixth variant added to the use-case reaches this line rather than

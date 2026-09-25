@@ -32,6 +32,22 @@
  *                         an open custody dispute, or already held by somebody
  *                         under a custody of ANY role.
  * - `failed`            — the transaction itself failed. Nothing is half written.
+ *                         On the dispute it also covers the evidence STORAGE
+ *                         leg failing (the service-role bucket was unreachable):
+ *                         nothing was written and a retry is the move.
+ * - `reason_invalid`    — DISPUTE ONLY. The explanation is under 20 characters
+ *                         (trimmed) or over 2000. Refused before any budget.
+ * - `evidence_refused`  — DISPUTE ONLY. No usable evidence file survived, or the
+ *                         web's own evidence gate refused one (type, size,
+ *                         HEIC, or the EXIF/GPS strip that fails closed). The
+ *                         person's move is to attach a different file, which is
+ *                         why it is not folded into `failed`.
+ *
+ * ON THE DISPUTE, `not_claimable` MEANS "NOT DISPUTABLE BY THIS CALLER": the
+ * animal is deceased, already under an open dispute, held by nobody, or held by
+ * the caller or the caller's own organisation. Same move for every one of them —
+ * look the identifier up again — which is the bar `claim_not_claimable` already
+ * applies to its four situations.
  *
  * THE ART. 16 CLAIM ABOVE HOLDS FOR `lookupForClaimForUser` AND NOT FOR
  * `submitFreeClaimForUser`. Recorded here, in the file that makes the claim,
@@ -66,6 +82,8 @@ export const CLAIM_FAILURE_CODES = [
   "not_found",
   "not_claimable",
   "failed",
+  "reason_invalid",
+  "evidence_refused",
 ] as const;
 
 export type ClaimFailureCode = (typeof CLAIM_FAILURE_CODES)[number];
@@ -97,6 +115,11 @@ export type ClaimDisputeInput = {
 
 // `petToken` is the token RESOLVED from the identifier server-side — callers
 // revalidate with this, never with a caller-supplied value.
-export type ClaimDisputeResult = { disputeToken: string; petToken: string } | { error: string };
+//
+// The refusal carries a `code` since D6 (2026-09-25), the same additive repair
+// `FreeClaimResult` got: the browser still reads `error` and nothing else, and
+// the bearer door (`POST /api/v1/me/pet-claims`, command `dispute`) maps the
+// code to a status instead of matching the sentence.
+export type ClaimDisputeResult = { disputeToken: string; petToken: string } | ClaimRefusal;
 
 export type FreeClaimResult = { petToken: string; petName: string } | ClaimRefusal;

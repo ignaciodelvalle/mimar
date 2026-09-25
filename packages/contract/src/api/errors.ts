@@ -917,6 +917,37 @@
  *                         written; a retry is safe and will either succeed or
  *                         answer `claim_not_claimable`.
  *
+ * THE DISPUTE CODES (D6, 2026-09-25). `command: "dispute"` runs the web's
+ * `submitClaimDisputeForUser`, and its refusals get THREE codes of their own
+ * rather than the claim's two, because the copy for those two talks about
+ * claiming a free animal, and a person refused a dispute would read a sentence
+ * about an act they did not attempt.
+ *
+ * - `claim_not_disputable`
+ *                       — the animal cannot be disputed by this caller: it is
+ *                         deceased, already under an open dispute, held by
+ *                         nobody, or held by the caller or the caller's own
+ *                         organisation. 409. One code for all of them, by
+ *                         `claim_not_claimable`'s bar: the move is identical —
+ *                         look the identifier up again. It is also what a
+ *                         REPLAY looks like: a second dispute finds the first.
+ * - `claim_evidence_refused`
+ *                       — the evidence could not be used: a staged photo was
+ *                         missing, already used, empty or over the ceiling, or
+ *                         the web's own gate refused it (type, HEIC, the EXIF/GPS
+ *                         strip that fails closed). 422, and NOTHING WAS FILED.
+ * - `claim_dispute_failed`
+ *                       — the dispute transaction, or the evidence storage leg
+ *                         before it, failed. 500. Nothing is half written: the
+ *                         stored evidence is removed when the transaction rolls
+ *                         back.
+ *
+ *                         FOR EVERY DISPUTE REFUSAL AFTER THE ENVELOPE, the
+ *                         staged photos the request named are SPENT — each is
+ *                         claimed (single use) before the use-case runs and
+ *                         discarded when it refuses. A client attaches them
+ *                         again before retrying.
+ *
  * THE DENUNCIA CODE (WU-T). One, and the shortness is again the interesting
  * part: `POST /api/v1/welfare-reports` has no vocabulary of refusals because it
  * has no rules a client can violate beyond the shape of the body. There is no
@@ -1245,6 +1276,9 @@ export const API_V1_ERROR_CODES = [
   "appointment_failed",
   "claim_not_claimable",
   "claim_failed",
+  "claim_not_disputable",
+  "claim_evidence_refused",
+  "claim_dispute_failed",
   "adoption_application_refused",
   "adoption_application_failed",
   "welfare_report_failed",

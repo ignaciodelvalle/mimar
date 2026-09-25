@@ -75,8 +75,11 @@ vi.mock("@/db", () => ({
       return body(tx);
     },
   },
+  attachments: {},
   auditLog: {},
   notifications: {},
+  organizationMemberships: {},
+  organizations: {},
   ownerships: {},
   petEvents: {},
   petIdentifications: {},
@@ -95,6 +98,30 @@ vi.mock("@/lib/infra/rate-limit", async (importOriginal) => {
   };
 });
 
+// The dispute's collaborators — stubbed so an arm is chosen by the ROWS queued,
+// exactly as for the two writers above. The upload stub answers whatever the
+// case set, which is how the evidence and storage arms are reached.
+const dispute = vi.hoisted(() => ({
+  upload: { error: null, uploaded: [], uploadedPaths: [] } as {
+    error: string | null;
+    uploaded: unknown[];
+    uploadedPaths: string[];
+    refusedBy?: "gate" | "storage";
+  },
+}));
+vi.mock("@/lib/infra/welfare-uploads", () => ({
+  uploadWelfareEvidence: async () => dispute.upload,
+  removeWelfareEvidence: async () => {},
+}));
+vi.mock("@/lib/infra/case-access", () => ({ isActiveOrgMember: async () => false }));
+vi.mock("@/lib/infra/case-helpers", () => ({ openCase: async () => ({ id: "case-1" }) }));
+vi.mock("@/lib/events/event-schemas", () => ({
+  validateEventPayload: (_type: string, payload: unknown) => payload,
+}));
+vi.mock("@/src/modules/custody-disputes/application/open-dispute", () => ({
+  openDisputeFromEvent: async () => ({ publicToken: "DSP-TEST" }),
+}));
+
 vi.mock("@/lib/infra/chip-lookup", () => ({
   lookupByChip: async () => null,
   attemptedChipMatchesPet: async () => false,
@@ -103,6 +130,7 @@ vi.mock("@/lib/infra/chip-lookup", () => ({
 import { RateLimitError } from "@/lib/infra/rate-limit";
 
 import { lookupForClaimForUser } from "@/src/modules/pets/application/claim/lookup-for-claim";
+import { submitClaimDisputeForUser } from "@/src/modules/pets/application/claim/submit-claim-dispute";
 import { submitFreeClaimForUser } from "@/src/modules/pets/application/claim/submit-free-claim";
 import { CLAIM_FAILURE_CODES } from "@/src/modules/pets/application/claim/types";
 
@@ -127,7 +155,9 @@ beforeEach(() => {
 afterEach(() => {
   // Every refusal this file produces must name a declared code. A typo would
   // otherwise reach the route's exhaustive switch as an unhandled value.
-  expect(CLAIM_FAILURE_CODES.length).toBe(5);
+  // Seven since D6: `reason_invalid` and `evidence_refused` are the dispute's
+  // own two, mapped by `petClaimDisputeRefusal` in the route's commands.
+  expect(CLAIM_FAILURE_CODES.length).toBe(7);
 });
 
 describe("submitFreeClaimForUser — the identifier arm runs before any budget", () => {
@@ -267,5 +297,108 @@ describe("lookupForClaimForUser — the same two codes, on the read half", () =>
     const result = await lookupForClaimForUser(USER, { kind: "tattoo", value: "   " });
     expect(codeOf(result)).toBe(null);
     expect(result).toEqual({ variant: "not_found" });
+  });
+});
+
+describe("submitClaimDisputeForUser — the D6 codes, so the bearer door maps a status and not a sentence", () => {
+  const PHOTO = new File([new Uint8Array([0xff, 0xd8, 0xff])], "a.jpg", { type: "image/jpeg" });
+  const INPUT = {
+    identifierKind: "microchip" as const,
+    identifierValue: CHIP,
+    reason: "Es mi perra, la perdí en marzo y tengo la libreta.",
+  };
+  const PET = {
+    id: "pet-1",
+    publicToken: "DIM-AAAA-BBBB",
+    name: "Luna",
+    status: "active",
+    inCustodyDispute: false,
+    jurisdictionProvince: "CABA",
+    jurisdictionLocality: "CABA",
+  };
+  const OTHER_HOLDER = {
+    ownerUserId: "22222222-2222-4222-8222-222222222222",
+    ownerOrganizationId: null,
+    role: "owner",
+    orgPublicToken: null,
+  };
+
+  beforeEach(() => {
+    dispute.upload = { error: null, uploaded: [], uploadedPaths: [] };
+  });
+
+  it("answers `reason_invalid` for a short or long reason, before any budget", async () => {
+    const short = await submitClaimDisputeForUser(USER, { ...INPUT, reason: "  es mía  " }, [
+      PHOTO,
+    ]);
+    const long = await submitClaimDisputeForUser(USER, { ...INPUT, reason: "x".repeat(2001) }, [
+      PHOTO,
+    ]);
+    expect(codeOf(short)).toBe("reason_invalid");
+    expect(codeOf(long)).toBe("reason_invalid");
+    expect(control.limiterCalls).toEqual([]);
+  });
+
+  it("answers `evidence_refused` with no file, or only empty ones, before any budget", async () => {
+    const none = await submitClaimDisputeForUser(USER, INPUT, []);
+    const empty = await submitClaimDisputeForUser(USER, INPUT, [new File([], "x.jpg")]);
+    expect(codeOf(none)).toBe("evidence_refused");
+    expect(codeOf(empty)).toBe("evidence_refused");
+    expect(control.limiterCalls).toEqual([]);
+  });
+
+  it("answers `rate_limited` on the SAME `claim_lookup` bucket the web spends", async () => {
+    control.limiterThrows = () => {
+      throw new RateLimitError(new Date(), "too many");
+    };
+    const result = await submitClaimDisputeForUser(USER, INPUT, [PHOTO]);
+    expect(codeOf(result)).toBe("rate_limited");
+    expect(control.limiterCalls).toEqual([{ endpoint: "claim_lookup", identifier: USER }]);
+  });
+
+  it("answers `not_found` when the identifier resolves to nothing", async () => {
+    control.rows = [[]];
+    expect(codeOf(await submitClaimDisputeForUser(USER, INPUT, [PHOTO]))).toBe("not_found");
+  });
+
+  it("answers `not_claimable` for deceased, already-disputed, unheld and self-held animals", async () => {
+    const cases: unknown[][][] = [
+      [[{ ...PET, status: "deceased" }]],
+      [[{ ...PET, inCustodyDispute: true }]],
+      [[PET], []],
+      [[PET], [{ ...OTHER_HOLDER, ownerUserId: USER }]],
+    ];
+    for (const rows of cases) {
+      control.rows = rows;
+      expect(codeOf(await submitClaimDisputeForUser(USER, INPUT, [PHOTO]))).toBe("not_claimable");
+    }
+  });
+
+  it("tells a GATE refusal (`evidence_refused`) from a STORAGE failure (`failed`) by `refusedBy`", async () => {
+    control.rows = [[PET], [OTHER_HOLDER]];
+    dispute.upload = {
+      error: "Tipo no soportado",
+      uploaded: [],
+      uploadedPaths: [],
+      refusedBy: "gate",
+    };
+    expect(codeOf(await submitClaimDisputeForUser(USER, INPUT, [PHOTO]))).toBe("evidence_refused");
+
+    control.rows = [[PET], [OTHER_HOLDER]];
+    dispute.upload = {
+      error: "bucket caído",
+      uploaded: [],
+      uploadedPaths: [],
+      refusedBy: "storage",
+    };
+    expect(codeOf(await submitClaimDisputeForUser(USER, INPUT, [PHOTO]))).toBe("failed");
+  });
+
+  it("answers `failed` when the transaction throws", async () => {
+    control.rows = [[PET], [OTHER_HOLDER]];
+    control.transactionThrows = () => {
+      throw new Error("deadlock");
+    };
+    expect(codeOf(await submitClaimDisputeForUser(USER, INPUT, [PHOTO]))).toBe("failed");
   });
 });

@@ -89,6 +89,17 @@ export type WelfareUploadResult = {
   // Paths to clean up if the calling code decides to roll back (e.g., the
   // attachments row insert fails).
   uploadedPaths: string[];
+  /**
+   * WHICH LEG refused, when `error` is set: `gate` is the evidence itself
+   * (count, type, size, HEIC, the fail-closed EXIF strip) and `storage` is the
+   * bucket. OPTIONAL and additive — the sentence in `error` is unchanged — so a
+   * caller that only prints the sentence is untouched. It exists for the one
+   * caller with a second door (`submit-claim-dispute.ts`, whose bearer door
+   * answers 422 for the first and 500 for the second): the person's move
+   * differs, and matching the Spanish to tell them apart is the thing
+   * `ClaimFailureCode` was introduced to stop.
+   */
+  refusedBy?: "gate" | "storage";
 };
 
 /** Service-role storage handle for the private welfare-evidence bucket. */
@@ -283,6 +294,7 @@ export async function uploadPreparedWelfareEvidence(
       error: "No se pudo guardar la evidencia. Intentá de nuevo en unos minutos.",
       uploaded: [],
       uploadedPaths: [],
+      refusedBy: "storage",
     };
   }
 
@@ -302,6 +314,7 @@ export async function uploadPreparedWelfareEvidence(
         error: `No se pudo subir "${p.file.name}": ${error.message}`,
         uploaded: [],
         uploadedPaths: [],
+        refusedBy: "storage",
       };
     }
     uploaded.push({
@@ -332,7 +345,7 @@ export async function uploadWelfareEvidence(
   if (real.length === 0) return { error: null, uploaded: [], uploadedPaths: [] };
 
   const prep = await prepareWelfareEvidence(real);
-  if (prep.error) return { error: prep.error, uploaded: [], uploadedPaths: [] };
+  if (prep.error) return { error: prep.error, uploaded: [], uploadedPaths: [], refusedBy: "gate" };
 
   return uploadPreparedWelfareEvidence(reportId, prep.prepared);
 }

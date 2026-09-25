@@ -746,7 +746,8 @@ export function titularOnlyRowCaption(gates: OwnerFaceGates): string | null {
  * surface handing off to another, which is the case the table's header
  * explicitly declines ("putting 400 routes in this table would make it a
  * second, worse copy of the file system router"). `claimDisputeUrl` in
- * `claims/claim-view-model.ts` is the precedent: same shape, same reason.
+ * `claims/claim-view-model.ts` was the precedent until D6 moved the disputa
+ * into the app and retired it.
  *
  * TRAILING SLASHES ARE STRIPPED because `API_BASE_URL` is the one the caller
  * passes and an origin from the environment may carry one.

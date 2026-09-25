@@ -551,8 +551,16 @@ function collectUserBucketSites(): IpBucketSite[] {
  * `collectUserBucketSites()` on this tree, not incremented — the paragraph on
  * `MIN_IP_BUCKETS` above has the full argument for why an incremented floor
  * eventually lies.
+ *
+ * 38 → 44 with the dispute door (D6, 2026-09-25), and the jump is not six new
+ * buckets: it is ONE (`api_v1_me_pet_claims_evidence_user`, the ticket's media
+ * anchor) on a tree that had already grown to 43 call sites while the floor sat
+ * at 38. RECOUNTED by running `collectUserBucketSites()`'s own regex over
+ * `app/api/v1/**\/route.ts` on this worktree — 43 before the change, 44 after —
+ * not obtained by adding one to 38, which would have left the floor five below
+ * the surface and the non-vacuity check correspondingly blunter.
  */
-const MIN_USER_BUCKETS = 38;
+const MIN_USER_BUCKETS = 44;
 
 describe("/api/v1 per-user rate-limit buckets — every call site maps to a declared family", () => {
   const sites = collectUserBucketSites();
@@ -1069,6 +1077,34 @@ describe("/api/v1 rate-limit families — the numbers the derivation committed t
     // 17.604 WITH THE MAP DOOR TOO (`geocoding`, M17): POST only, one bucket, in
     // `authenticated-write` — a POST, like the welfare door's resolve_location.
     // 16 × 120 = 1.920 for that family, 49 buckets, and 17.484 + 120 = 17.604.
+    //
+    // 17.604 UNCHANGED WITH THE DISPUTE DOOR (D6, 2026-09-25), and that is the
+    // entry worth reading here, because a door landed and this pin did NOT move.
+    // `command: "dispute"` and `command: "request_evidence_ticket"` ride the
+    // EXISTING `me/pet-claims` POST and spend its existing per-IP bucket,
+    // `api_v1_me_pet_claims_ip` (`authenticated-write`) — one per-IP counter for
+    // every claim command, so alternating between them buys a prober nothing.
+    // The one bucket D6 adds is PER-USER (`api_v1_me_pet_claims_evidence_user`,
+    // `API_V1_MEDIA_UPLOAD_USER_LIMIT`), which this sum does not see and must
+    // not: it is keyed on an account, not on a carrier gateway. Hand-summed per
+    // family over the map as this lane leaves it, and NOT read off the `reduce`
+    // this assertion compares against:
+    //
+    //   authenticated-read     23 × 600 = 13.800
+    //   authenticated-write    16 × 120 =  1.920
+    //   account-security        2 ×  60 =    120
+    //   public-reference        1 × 600 =    600
+    //   inbox-state             1 × 240 =    240
+    //   pet-disclosure-write    2 × 180 =    360
+    //   pet-record-write        1 × 240 =    240
+    //   pet-registration        1 × 120 =    120
+    //   media-upload            1 × 144 =    144
+    //   adoption-application    1 ×  60 =     60
+    //                          ── 49 buckets ─────────
+    //                                     17.604
+    //
+    // and 17.604 + 0 = 17.604 agrees. The per-user half is counted where it
+    // lives: `MIN_USER_BUCKETS`, 43 → 44 call sites on this tree.
     expect(API_V1_CGNAT_FAMILY_IP_CEILING_PER_MINUTE).toBe(17_604);
   });
 

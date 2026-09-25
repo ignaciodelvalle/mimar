@@ -95,12 +95,18 @@ export {
   lostCommandInputSchema,
 } from "./lost-mode.ts";
 export {
+  CLAIM_DISPUTE_REASON_MAX_LENGTH,
+  CLAIM_DISPUTE_REASON_MIN_LENGTH,
+  CLAIM_EVIDENCE_CONTENT_TYPES,
+  CLAIM_EVIDENCE_MAX_FILES,
+  type ClaimEvidenceContentType,
   MICROCHIP_DIGITS,
   PET_CLAIM_COMMAND_INPUT_CODES,
   PET_CLAIM_IDENTIFIER_KINDS,
   type PetClaimCommand,
   type PetClaimCommandInput,
   type PetClaimCommandInputCode,
+  type PetClaimDisputeInput,
   type PetClaimIdentifierKind,
   firstPetClaimCommandInputCode,
   petClaimCommandInputSchema,

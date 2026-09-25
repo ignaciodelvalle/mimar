@@ -449,6 +449,19 @@ export function apiErrorMessage(code: ApiV1ErrorCode): string {
       // still answer `claim_not_claimable` because the first attempt landed. So
       // the instruction is to look before re-tapping, not to re-tap.
       return "No pudimos completar el reclamo. Buscá el identificador de nuevo para ver si quedó registrado.";
+    // Disputas (D6). Their own three, because the two above are about claiming
+    // a FREE animal and a person refused a dispute must not read that.
+    case "claim_not_disputable":
+      // Deceased, already disputed, held by nobody, or held by the caller or
+      // their organisation — and a retry of a dispute that DID land. The copy
+      // is true in every one of them and sends the person to look.
+      return "No se puede iniciar una disputa por esta mascota: puede que ya haya una abierta. Buscá el identificador de nuevo para ver cómo está.";
+    case "claim_evidence_refused":
+      // NOTHING WAS FILED, and the photos are spent (each one is used once), so
+      // the instruction is to attach them again, not to re-tap.
+      return "No pudimos usar una de las fotos y no se envió la disputa. Volvé a agregar las fotos (probá con otra si alguna falla) y enviala de nuevo.";
+    case "claim_dispute_failed":
+      return "No pudimos enviar la disputa y no quedó registrada. Volvé a agregar las fotos y probá de nuevo en un momento.";
     case "adoption_application_refused":
       // ONE SENTENCE FOR EVERY DOMAIN REFUSAL, because that is what the code is:
       // the use-case returns es-AR prose rather than a discriminated reason, so

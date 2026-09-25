@@ -130,6 +130,8 @@ export {
 export {
   PET_CLAIM_VARIANTS_V1,
   type PetClaimCommandAckV1,
+  type PetClaimDisputeAckV1,
+  type PetClaimEvidenceTicketV1,
   type PetClaimFreeAckV1,
   type PetClaimLookupAckV1,
   type PetClaimVariantV1,
