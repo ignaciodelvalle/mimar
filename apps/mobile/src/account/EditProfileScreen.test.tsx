@@ -251,6 +251,19 @@ describe("saving", () => {
 
     expect(mockSave).not.toHaveBeenCalled();
   });
+
+  it("offers the nickname autofill source, not the legal-name one (M14)", async () => {
+    // The field stores `displayName` and its own placeholder says "Tu nombre
+    // o apodo" — an informal, publicly-shown handle, not the legal first/last
+    // name `IdentidadPendienteScreen` collects. Offering that source here
+    // would suggest the wrong value on a field that explicitly invites either.
+    render(<EditProfileScreen />);
+    await waitFor(() => expect(screen.getByText("Guardar cambios")).toBeTruthy());
+
+    const name = screen.getByLabelText("Nombre, obligatorio");
+    expect(name.props.autoComplete).toBe("nickname");
+    expect(name.props.textContentType).toBe("nickname");
+  });
 });
 
 describe("the phone hint", () => {

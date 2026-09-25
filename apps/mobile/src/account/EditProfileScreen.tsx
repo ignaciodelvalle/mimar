@@ -220,6 +220,16 @@ export function EditProfileScreen() {
       <Card title="Cómo te mostramos">
         <TextField
           {...chain(0)}
+          // `nickname`, not `given-name`/`name` (M14, native-feel audit): this
+          // field's own placeholder says "Tu nombre o apodo" and stores under
+          // `displayName` — an informal, publicly-shown handle, not the legal
+          // name `IdentidadPendienteScreen`'s `firstName`/`lastName` collect.
+          // Apple's own docs name `nickname` for exactly this case ("a name
+          // that a person might want to use in place of their real name"),
+          // and offering the real-name autofill source here would suggest the
+          // wrong value on a field that explicitly invites either.
+          autoComplete="nickname"
+          textContentType="nickname"
           label="Nombre"
           required
           value={draft.displayName}
