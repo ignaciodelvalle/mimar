@@ -25,6 +25,7 @@ const mockPush = jest.fn();
 const mockFetch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockSend = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockPoster = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockGeocode = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
 /**
  * Every focus callback currently mounted, so a test can fire a RE-focus.
@@ -62,6 +63,7 @@ jest.mock("../api/endpoints", () => ({
   fetchPetLostMode: (...args: unknown[]) => mockFetch(...args),
   sendLostCommand: (...args: unknown[]) => mockSend(...args),
   fetchPetPoster: (...args: unknown[]) => mockPoster(...args),
+  sendGeocodingCommand: (...args: unknown[]) => mockGeocode(...args),
 }));
 
 jest.mock("../auth/session-store", () => ({ sessionPort: {} }));
@@ -410,6 +412,63 @@ describe("LostScreen — the privacy rows", () => {
     // The instruction, and the second person, do not.
     expect(screen.queryByText("Nadie va a poder contactarte")).toBeNull();
     expect(screen.queryByText(/Te recomendamos habilitar/)).toBeNull();
+  });
+});
+
+/** M17: the map picker's server, in the shape `POST /geocoding` answers. */
+const PICKED_JURISDICTION = {
+  provinceCode: "AR-L",
+  provinceName: "La Pampa",
+  localityName: "Santa Rosa",
+  localityIndecId: "42021010",
+};
+
+async function pickOnMap(openLabel: string, label = "Av. San Martín 100, Santa Rosa") {
+  fireEvent.press(screen.getByText(openLabel));
+  mockGeocode.mockResolvedValueOnce({
+    outcome: "ok",
+    payload: {
+      command: "search",
+      version: 1,
+      matches: [{ label, lat: -36.62, lng: -64.29, jurisdiction: PICKED_JURISDICTION }],
+    },
+  });
+  fireEvent.changeText(screen.getByLabelText("Buscar la dirección"), "San Martín 100");
+  fireEvent.press(screen.getByText("Buscar"));
+  fireEvent.press(await screen.findByText(label));
+  fireEvent.press(screen.getByText("Sí, es acá"));
+}
+
+describe("LostScreen — the last-seen point on a map (M17)", () => {
+  it("sends the confirmed point and the jurisdiction the server derived from it", async () => {
+    mockSend.mockResolvedValue(ack("mark_lost", true));
+    render(<LostScreen publicToken={TOKEN} />);
+    fireEvent.press(await screen.findByText("Marcar como perdida"));
+
+    await pickOnMap("Marcar el lugar en el mapa");
+    // The words were empty, so the pin's address fills them — still editable.
+    expect(screen.getByDisplayValue("Av. San Martín 100, Santa Rosa")).toBeTruthy();
+
+    fireEvent.press(screen.getByText("Marcar como perdida"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+    expect(sentBody()).toMatchObject({
+      command: "mark_lost",
+      locationLat: -36.62,
+      locationLng: -64.29,
+      provinceCode: "AR-L",
+      localityName: "Santa Rosa",
+      localityIndecId: "42021010",
+    });
+  });
+
+  it("sends no point when none was placed — the words alone are still a report", async () => {
+    mockSend.mockResolvedValue(ack("mark_lost", true));
+    render(<LostScreen publicToken={TOKEN} />);
+    fireEvent.press(await screen.findByText("Marcar como perdida"));
+    fireEvent.changeText(screen.getByLabelText("Dónde la viste por última vez"), "La plaza");
+    fireEvent.press(screen.getByText("Marcar como perdida"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+    expect(sentBody()).toMatchObject({ locationLat: null, locationLng: null });
   });
 });
 

@@ -59,6 +59,7 @@ import { sessionPort } from "../auth/session-store";
 import { ASYNC_IMAGE_PICK_MARKER_STORE } from "../native/image-pick-marker-store";
 import { getImagePickerPort, pickImageSafely } from "../native/image-picker-port";
 import { type AcceptedImage, acceptPickedImage } from "../pets/pet-photo-view-model";
+import { LocationPicker } from "../ui/LocationPicker";
 import { Body } from "../ui/components";
 import {
   Callout,
@@ -353,6 +354,45 @@ export function DenunciaScreen() {
           })}
         </View>
       ) : null}
+
+      {/* EL PUNTO EXACTO, EN UN MAPA (M17). The list above names a candidate;
+          the map lets the person put the pin where it is actually happening —
+          the back of the lot, not the front door the geocoder returned — and
+          re-reads the address from the point. It opens on the chosen place.
+          Never the phone's own location: this app reads none. */}
+      <LocationPicker
+        label={values.place === null ? "O marcalo en el mapa" : "Ajustá el punto en el mapa"}
+        value={
+          values.place === null
+            ? null
+            : {
+                lat: values.place.lat,
+                lng: values.place.lng,
+                address: values.place.label,
+                source: "geocodificada",
+                jurisdiction: null,
+              }
+        }
+        startQuery={addressText.trim().length >= 3 ? addressText.trim() : null}
+        disabled={working}
+        onChange={(picked) => {
+          if (picked === null) return;
+          const label = picked.address ?? values.place?.label ?? "Punto marcado en el mapa";
+          patch({
+            place: {
+              label,
+              lat: picked.lat,
+              lng: picked.lng,
+              province: picked.jurisdiction?.provinceName ?? values.place?.province ?? null,
+              locality: picked.jurisdiction?.localityName ?? values.place?.locality ?? null,
+            },
+          });
+          // The address box now says what the pin says, so the "a retyped
+          // address drops the point" rule keeps meaning the right thing.
+          setAddressText(label);
+          setMatches(null);
+        }}
+      />
 
       {/* ---- 2. Qué pasó ------------------------------------------------- */}
 

@@ -275,9 +275,16 @@ describe("buildMarkLost — the five toggles are STATED, never inherited", () =>
     expect(built.ok && built.input).toMatchObject({ locationDescription: null, reason: null });
   });
 
-  it("sends NO coordinates at all — this build has no map", () => {
+  it("sends no point unless a person placed one on the map (M17)", () => {
     const built = buildMarkLost({ ...emptyLostDraft(), locationDescription: "Plaza" });
-    expect(built.ok && built.input).not.toHaveProperty("locationLat");
+    expect(built.ok && built.input).toMatchObject({ locationLat: null, locationLng: null });
+  });
+
+  it("sends the placed point, both halves or neither", () => {
+    const placed = buildMarkLost({ ...emptyLostDraft(), pointLat: "-36.62", pointLng: "-64.29" });
+    expect(placed.ok && placed.input).toMatchObject({ locationLat: -36.62, locationLng: -64.29 });
+    const half = buildMarkLost({ ...emptyLostDraft(), pointLat: "-36.62", pointLng: "" });
+    expect(half.ok && half.input).toMatchObject({ locationLat: null, locationLng: null });
   });
 });
 
@@ -292,8 +299,9 @@ describe("buildReportLastSeen", () => {
       command: "report_last_seen",
       locationDescription: "Cerca de la plaza",
       note: "La vio un vecino",
-      locationLat: undefined,
-      locationLng: undefined,
+      // No point placed on the map (M17): stated as null, never omitted.
+      locationLat: null,
+      locationLng: null,
     });
   });
 

@@ -745,6 +745,14 @@ export type EventDraft = {
   biteProvinceCode: string;
   biteLocalityName: string;
   biteLocalityIndecId: string;
+  /**
+   * The pin the person placed on the map (M17), as strings like every other
+   * draft field; empty = no point. Never a GPS fix — the app reads none.
+   */
+  biteLat: string;
+  biteLng: string;
+  /** `pin_manual` or `geocodificada`; empty with no point. */
+  biteLocationSource: string;
   // tatuaje — el unico asiento que exige un archivo. La FOTO NO ESTA ACA: el
   // borrador es texto serializable que `useIsDirty` compara, y los bytes de una
   // imagen no son ninguna de las dos cosas. Viven en el estado de la pantalla,
@@ -829,6 +837,9 @@ export function emptyDraft(now: Date = new Date()): EventDraft {
     biteProvinceCode: "",
     biteLocalityName: "",
     biteLocalityIndecId: "",
+    biteLat: "",
+    biteLng: "",
+    biteLocationSource: "",
     tattooCode: "",
     // NULL Y NO "other": "otro lugar" es una respuesta que alguien elige, no la
     // que le queda a quien no contesto. El valor viaja a la columna canonica
@@ -1077,6 +1088,7 @@ function draftToWire(
         provinceCode: orNull(draft.biteProvinceCode),
         localityName: orNull(draft.biteLocalityName),
         localityIndecId: orNull(draft.biteLocalityIndecId),
+        ...bitePoint(draft),
         notes: orNull(draft.notes),
       };
     case "tattoo":
@@ -1374,6 +1386,9 @@ export function inputCodeMessage(code: RecordEventInputCode | null): string {
       return "Elegí a quién mordió.";
     case "BITE_SEVERITY_INVALID":
       return "Elegí qué tan grave fue.";
+    case "BITE_COORDS_INVALID":
+      // Solo llega por un borrador a medio armar: el mapa entrega el par entero.
+      return "Volvé a marcar el lugar en el mapa, o sacalo para mandarla sin punto exacto.";
     case "BITE_JURISDICTION_INCOMPLETE":
       // NOMBRA EL ARREGLO Y NO EL ERROR. La persona no eligio mandar media
       // ubicacion — el selector devuelve las tres juntas — asi que este codigo
@@ -1509,12 +1524,36 @@ export function invalidFields(code: RecordEventInputCode | null): ReadonlySet<ke
       case "BITE_JURISDICTION_INCOMPLETE":
         return ["biteLocalityName"];
       case "CHECKIN_PHOTO_INVALID":
-        // NINGUN CAMPO DEL BORRADOR, misma razon que `TATTOO_PHOTO_REQUIRED`:
-        // la foto vive en el estado de la pantalla, no en el borrador.
+      case "BITE_COORDS_INVALID":
+        // NO DRAFT FIELD, for the same reason as `TATTOO_PHOTO_REQUIRED`: the
+        // check-in photo lives in screen state and the bite pin in the map
+        // picker, not in the draft.
         return [];
     }
   })();
   return new Set(fields);
+}
+
+/**
+ * The bite's map point (M17), both halves or neither. A draft string that is
+ * not a finite number sends no point rather than a broken one.
+ */
+function bitePoint(draft: EventDraft): {
+  locationLat: number | null;
+  locationLng: number | null;
+  locationSource: "pin_manual" | "geocodificada" | null;
+} {
+  const lat = Number.parseFloat(draft.biteLat);
+  const lng = Number.parseFloat(draft.biteLng);
+  const source = draft.biteLocationSource;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { locationLat: null, locationLng: null, locationSource: null };
+  }
+  return {
+    locationLat: lat,
+    locationLng: lng,
+    locationSource: source === "pin_manual" || source === "geocodificada" ? source : null,
+  };
 }
 
 /** The sentence shown after a successful append. */

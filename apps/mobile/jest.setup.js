@@ -197,3 +197,37 @@ jest.mock("expo-file-system", () => {
     __written: written,
   };
 });
+
+// MapLibre (M17), as a host View a test can drive.
+//
+// The native map does not exist under Jest. `Map` renders a plain View with
+// testID "maplibre-map" and passes its props through, so a test fires the map's
+// own events by name — `fireEvent(map, "regionDidChange", { nativeEvent })` is
+// the person letting go of the map with the pin on a new point, and
+// `fireEvent(map, "didFailLoadingMap")` is the tiles failing. `Camera` records
+// the imperative moves (`easeTo`, `zoomTo`) on `__cameraCalls` so a test can
+// assert the map flew to a search result or zoomed from the 48dp buttons.
+// GLOBAL for the reason every entry here is: the picker renders on three
+// screens, and a screen test that forgot the line would crash in the kit.
+jest.mock("@maplibre/maplibre-react-native", () => {
+  const React = require("react");
+  const { View } = require("react-native");
+  const cameraCalls = [];
+  const MapView = (props) => React.createElement(View, { testID: "maplibre-map", ...props });
+  const Camera = React.forwardRef((_props, ref) => {
+    React.useImperativeHandle(ref, () => ({
+      easeTo: (options) => cameraCalls.push({ method: "easeTo", options }),
+      zoomTo: (zoom, options) => cameraCalls.push({ method: "zoomTo", zoom, options }),
+      jumpTo: (options) => cameraCalls.push({ method: "jumpTo", options }),
+      flyTo: (options) => cameraCalls.push({ method: "flyTo", options }),
+    }));
+    return null;
+  });
+  return {
+    __esModule: true,
+    Map: MapView,
+    Camera,
+    TransformRequestManager: { addHeader: jest.fn(() => "h") },
+    __cameraCalls: cameraCalls,
+  };
+});

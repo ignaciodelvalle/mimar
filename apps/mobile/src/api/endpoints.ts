@@ -61,6 +61,7 @@ import {
   type EventAmendedV1,
   type EventRecordedV1,
   type FosterCommandAckV1,
+  type GeocodingAckV1,
   type IdentityCompletedV1,
   LOCALITIES_PAYLOAD_VERSION,
   type LocalitiesV1,
@@ -133,6 +134,7 @@ import type {
   CaretakerCommandInput,
   CompleteIdentityInput,
   FosterCommandInput,
+  GeocodingCommandInput,
   LostCommandInput,
   MyProfileEditInput,
   NotificationCommandInput,
@@ -380,6 +382,21 @@ export function fetchPetLibreta(
       path: `/api/v1/pets/${encodeURIComponent(publicToken)}/libreta`,
       expectedPayloadVersion: PET_LIBRETA_PAYLOAD_VERSION,
     },
+    session,
+  );
+}
+
+/**
+ * `POST /geocoding` — find an address, or name the point under the map pin
+ * (M17). Server-side Nominatim on the web's own shared budget; the phone never
+ * talks to the geocoder and never reads a device location.
+ */
+export function sendGeocodingCommand(
+  session: SessionPort,
+  input: GeocodingCommandInput,
+): Promise<ApiResult<GeocodingAckV1>> {
+  return apiRequest<GeocodingAckV1>(
+    { path: "/api/v1/geocoding", method: "POST", body: input },
     session,
   );
 }

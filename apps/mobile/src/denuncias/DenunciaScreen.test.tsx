@@ -34,6 +34,7 @@ import { createNavigationFake } from "../ui/navigation-fake";
 const mockSend = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockOpenURL = jest.fn<(url: string) => Promise<unknown>>();
 const mockUpload = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockGeocode = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
 jest.mock("expo-linking", () => ({ openURL: (url: string) => mockOpenURL(url) }));
 
@@ -52,6 +53,7 @@ jest.mock("expo-router", () => ({
 jest.mock("../api/endpoints", () => ({
   sendWelfareReportCommand: (...args: unknown[]) => mockSend(...args),
   uploadPetPhotoBytes: (...args: unknown[]) => mockUpload(...args),
+  sendGeocodingCommand: (...args: unknown[]) => mockGeocode(...args),
 }));
 
 jest.mock("../auth/session-store", () => ({ sessionPort: {} }));
@@ -285,6 +287,49 @@ describe("the place comes from a tap, never from this app", () => {
       expect(screen.getByText(/No pudimos encontrar esa dirección/)).toBeTruthy(),
     );
     expect(screen.queryByText(/no existe/)).toBeNull();
+  });
+});
+
+/** M17: the map picker's server, in the shape `POST /geocoding` answers. */
+const PICKED_JURISDICTION = {
+  provinceCode: "AR-L",
+  provinceName: "La Pampa",
+  localityName: "Santa Rosa",
+  localityIndecId: "42021010",
+};
+
+async function pickOnMap(openLabel: string, label = "Av. San Martín 100, Santa Rosa") {
+  fireEvent.press(screen.getByText(openLabel));
+  mockGeocode.mockResolvedValueOnce({
+    outcome: "ok",
+    payload: {
+      command: "search",
+      version: 1,
+      matches: [{ label, lat: -36.62, lng: -64.29, jurisdiction: PICKED_JURISDICTION }],
+    },
+  });
+  fireEvent.changeText(screen.getByLabelText("Buscar la dirección"), "San Martín 100");
+  fireEvent.press(screen.getByText("Buscar"));
+  fireEvent.press(await screen.findByText(label));
+  fireEvent.press(screen.getByText("Sí, es acá"));
+}
+
+describe("the point on a map (M17)", () => {
+  it("files the point the person confirmed on the map, with its address", async () => {
+    render(<DenunciaScreen />);
+    await pickOnMap("Marcar el lugar en el mapa", "Av. Bustillo 1500, Bariloche");
+    fillFacts();
+
+    mockSend.mockResolvedValueOnce(FILED_ACK);
+    fireEvent.press(screen.getByText("Enviar la denuncia"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+    expect(bodyOf(0)).toMatchObject({
+      locationLat: -36.62,
+      locationLng: -64.29,
+      locationAddress: "Av. Bustillo 1500, Bariloche",
+      locationProvince: "La Pampa",
+      locationLocality: "Santa Rosa",
+    });
   });
 });
 

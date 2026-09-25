@@ -375,6 +375,12 @@ export type LostDraft = {
   /** Where the animal was last seen, in words. */
   locationDescription: string;
   /**
+   * The point placed on the map (M17), as strings like every draft field;
+   * empty = none. A person placed it — the app reads no device location.
+   */
+  pointLat: string;
+  pointLng: string;
+  /**
    * WHERE IT WENT MISSING, from the INDEC catalogue — the case is routed on it.
    *
    * Not the same fact as `locationDescription`, which is prose a finder reads.
@@ -420,6 +426,8 @@ export type LostDraft = {
 export function emptyLostDraft(): LostDraft {
   return {
     locationDescription: "",
+    pointLat: "",
+    pointLng: "",
     provinceCode: "",
     localityName: "",
     localityIndecId: "",
@@ -507,6 +515,7 @@ export function buildMarkLost(draft: LostDraft): CommandResult {
   return validated({
     command: "mark_lost",
     locationDescription: orNull(draft.locationDescription),
+    ...pointOf(draft),
     ...jurisdictionTrio(draft),
     reason: orNull(draft.note),
     disclosure: draft.disclosure,
@@ -518,11 +527,21 @@ export function buildMarkLost(draft: LostDraft): CommandResult {
   });
 }
 
+/** The map point, both halves or neither (the contract refuses a half pair). */
+function pointOf(draft: LostDraft): { locationLat: number | null; locationLng: number | null } {
+  const lat = Number.parseFloat(draft.pointLat);
+  const lng = Number.parseFloat(draft.pointLng);
+  return Number.isFinite(lat) && Number.isFinite(lng)
+    ? { locationLat: lat, locationLng: lng }
+    : { locationLat: null, locationLng: null };
+}
+
 /** ACTUALIZAR EL AVISTAJE, from the draft. */
 export function buildReportLastSeen(draft: LostDraft): CommandResult {
   return validated({
     command: "report_last_seen",
     locationDescription: orNull(draft.locationDescription),
+    ...pointOf(draft),
     note: orNull(draft.note),
   });
 }

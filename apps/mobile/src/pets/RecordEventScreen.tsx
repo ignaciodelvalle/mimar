@@ -91,6 +91,7 @@ import {
   pickImageSafely,
   recoverPendingPickSafely,
 } from "../native/image-picker-port";
+import { LocationPicker } from "../ui/LocationPicker";
 import { Body, Card } from "../ui/components";
 import { isoDayToLocalDate } from "../ui/date-input";
 import {
@@ -116,6 +117,7 @@ import { useReturnKeyChain } from "../ui/use-return-key-chain";
 import { useScrollToError } from "../ui/use-scroll-to-error";
 import { LocalityPicker } from "./LocalityPicker";
 import { QuickCaptureBox } from "./QuickCaptureBox";
+import { bitePickedLocation } from "./bite-location";
 import {
   type AcceptedImage,
   acceptPickedImage,
@@ -422,21 +424,25 @@ function useOwnerPetFacts(kind: WritableKind, publicToken: string) {
   const [registries, setRegistries] = useState<readonly OwnerPetPppRegistryV1[]>([]);
   const [species, setSpecies] = useState<string | null>(null);
   const [petName, setPetName] = useState<string | null>(null);
+  // M17: where the bite map opens — the animal's own locality, by search.
+  const [petPlace, setPetPlace] = useState<string | null>(null);
 
   useEffect(() => {
-    // FOUR KINDS ASK, and one read answers all of them: the PPP form needs
+    // FIVE KINDS ASK, and one read answers all of them: the PPP form needs
     // the jurisdiction's registries, the death form needs the animal's
-    // SPECIES to filter the disease catalog, and tattoo and check-in (D7)
-    // need the animal's NAME for their recovered-photo confirmation. Every
-    // other form would be paying for a pet-detail round trip it has no field
-    // for.
+    // SPECIES to filter the disease catalog, tattoo and check-in (D7) need the
+    // animal's NAME for their recovered-photo confirmation, and the bite map
+    // (M17) opens on the animal's own locality. Every other form would be
+    // paying for a pet-detail round trip it has no field for.
     if (
       kind !== "dangerous_breed_attestation" &&
       kind !== "death" &&
       kind !== "tattoo" &&
-      kind !== "post_adoption_checkin"
-    )
+      kind !== "post_adoption_checkin" &&
+      kind !== "bite"
+    ) {
       return;
+    }
     let alive = true;
     void (async () => {
       const result = await fetchOwnerPetDetail(sessionPort, publicToken);
@@ -452,6 +458,10 @@ function useOwnerPetFacts(kind: WritableKind, publicToken: string) {
       if (result.payload.identity.status === "ok") {
         setSpecies(result.payload.identity.data.species);
         setPetName(result.payload.identity.data.name);
+        const { jurisdictionLocality, jurisdictionProvince } = result.payload.identity.data;
+        setPetPlace(
+          [jurisdictionLocality, jurisdictionProvince].filter((part) => part).join(", ") || null,
+        );
       }
       const section = result.payload.pppRegistries;
       // `unavailable` is a read that did not answer and `null` is an animal
@@ -465,7 +475,7 @@ function useOwnerPetFacts(kind: WritableKind, publicToken: string) {
     };
   }, [kind, publicToken]);
 
-  return { registries, species, petName };
+  return { registries, species, petName, petPlace };
 }
 
 /**
@@ -523,7 +533,12 @@ function EventForm({
   onBack: (() => void) | null;
 }) {
   const router = useRouter();
-  const { registries: pppRegistries, species, petName } = useOwnerPetFacts(kind, publicToken);
+  const {
+    registries: pppRegistries,
+    species,
+    petName,
+    petPlace,
+  } = useOwnerPetFacts(kind, publicToken);
   // EL PREFILL ENTRA EN EL INICIALIZADOR, Y ESO ES TODO LO QUE HACE FALTA PARA
   // QUE LOS DOS GUARDIANES DE ESTA PANTALLA SIGAN DICIENDO LA VERDAD.
   //
@@ -1017,6 +1032,7 @@ function EventForm({
         invalid={invalid}
         pppRegistries={pppRegistries}
         species={species}
+        petPlace={petPlace}
       />
 
       {/* D7: EL BOTON, NO EL FORMULARIO ENTERO, DESAPARECE SIN EL PUERTO.
@@ -1311,6 +1327,7 @@ function Fields({
   invalid,
   pppRegistries = [],
   species = null,
+  petPlace = null,
 }: {
   kind: WritableKind;
   draft: EventDraft;
@@ -1329,6 +1346,8 @@ function Fields({
   pppRegistries?: readonly OwnerPetPppRegistryV1[];
   /** The animal's species, for the death form's disease picker. `null` = unknown. */
   species?: string | null;
+  /** "Localidad, Provincia" of the animal — where the bite map opens (M17). */
+  petPlace?: string | null;
 }) {
   // The return key walks the single-line fields in draw order. `link()` hands
   // out the next slot each time it is called, and it is called in JSX order.
@@ -1841,6 +1860,29 @@ function Fields({
             onSelect={(value) => set("biteSeverity", value)}
           />
           {dateField("Fecha de la mordedura", "occurredAt", true)}
+          {/* EL PUNTO, EN UN MAPA (M17). Donde OCURRIÓ la mordedura, puesto por
+              la persona — nunca el GPS del teléfono. Confirmar llena la
+              jurisdicción de abajo cuando el catálogo INDEC reconoce el punto,
+              y el texto "Dónde pasó" si estaba vacío; los dos siguen editables. */}
+          <LocationPicker
+            label="Marcá dónde pasó"
+            startQuery={petPlace}
+            value={bitePickedLocation(draft)}
+            onChange={(picked) => {
+              set("biteLat", picked ? String(picked.lat) : "");
+              set("biteLng", picked ? String(picked.lng) : "");
+              set("biteLocationSource", picked ? picked.source : "");
+              if (picked?.address && draft.locationDescription.trim() === "") {
+                set("locationDescription", picked.address);
+              }
+              const j = picked?.jurisdiction;
+              if (j?.localityIndecId) {
+                set("biteProvinceCode", j.provinceCode);
+                set("biteLocalityName", j.localityName);
+                set("biteLocalityIndecId", j.localityIndecId);
+              }
+            }}
+          />
           <TextField
             label="Dónde pasó"
             value={draft.locationDescription}

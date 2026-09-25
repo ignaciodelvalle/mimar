@@ -62,6 +62,7 @@ import { sessionPort } from "../auth/session-store";
 import { publicCredentialPageUrl } from "../config/api";
 import { LocalityPicker } from "../pets/LocalityPicker";
 import { createAttemptSession } from "../pets/idempotency";
+import { LocationPicker, type PickedLocation } from "../ui/LocationPicker";
 import { Body, Card, ContactRow, Loading, Row, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
 import { hapticConfirm, hapticError, hapticSuccess } from "../ui/haptics";
@@ -326,7 +327,12 @@ export function LostScreen({ publicToken }: { publicToken: string }) {
       ) : null}
 
       {state.phase === "ready" && pane === "report" ? (
-        <ReportForm busy={busy} onCancel={() => setPane("overview")} onRun={run} />
+        <ReportForm
+          busy={busy}
+          onCancel={() => setPane("overview")}
+          onRun={run}
+          startQuery={state.view.episode?.jurisdictionLocality ?? null}
+        />
       ) : null}
 
       {state.phase === "ready" && pane === "report-content" && reporting !== null ? (
@@ -740,6 +746,13 @@ function MarkLostForm({
           referencia, y que esto puede volverse público. No promete que se
           publique: el interruptor está más abajo y arranca apagado
           (consentimiento afirmativo), así que la frase dice "si activás". */}
+      <LostPointPicker
+        label="Marcá dónde la viste por última vez"
+        draft={draft}
+        setDraft={setDraft}
+        startQuery={view.episode?.jurisdictionLocality ?? null}
+        fillJurisdiction
+      />
       <TextField
         label="Dónde la viste por última vez"
         value={draft.locationDescription}
@@ -874,14 +887,76 @@ function MarkLostForm({
   );
 }
 
+/**
+ * The lost forms' map point (M17): where the animal was seen, placed by a
+ * person on a map — never the phone's own position. Confirming fills the point,
+ * the words (if still empty) and, on marcar perdida, the jurisdiction trio when
+ * the INDEC catalogue recognises the point. All three stay editable below.
+ */
+function LostPointPicker({
+  label,
+  draft,
+  setDraft,
+  startQuery,
+  fillJurisdiction,
+}: {
+  label: string;
+  draft: LostDraft;
+  setDraft: (update: (current: LostDraft) => LostDraft) => void;
+  startQuery: string | null;
+  fillJurisdiction: boolean;
+}) {
+  const lat = Number.parseFloat(draft.pointLat);
+  const lng = Number.parseFloat(draft.pointLng);
+  const value: PickedLocation | null =
+    Number.isFinite(lat) && Number.isFinite(lng)
+      ? {
+          lat,
+          lng,
+          address: draft.locationDescription.trim() || null,
+          source: "pin_manual",
+          jurisdiction: null,
+        }
+      : null;
+  return (
+    <LocationPicker
+      label={label}
+      value={value}
+      startQuery={startQuery}
+      onChange={(picked) =>
+        setDraft((current) => {
+          const next = {
+            ...current,
+            pointLat: picked ? String(picked.lat) : "",
+            pointLng: picked ? String(picked.lng) : "",
+          };
+          if (picked?.address && current.locationDescription.trim() === "") {
+            next.locationDescription = picked.address;
+          }
+          const j = picked?.jurisdiction;
+          if (fillJurisdiction && j?.localityIndecId) {
+            next.provinceCode = j.provinceCode;
+            next.localityName = j.localityName;
+            next.localityIndecId = j.localityIndecId;
+          }
+          return next;
+        })
+      }
+    />
+  );
+}
+
 function ReportForm({
   busy,
   onCancel,
   onRun,
+  startQuery,
 }: {
   busy: boolean;
   onCancel: () => void;
   onRun: RunFn;
+  /** The case's locality, where the map opens (M17). */
+  startQuery: string | null;
 }) {
   const [draft, setDraft] = useState<LostDraft>(() => emptyLostDraft());
   const [message, setMessage] = useState<string | null>(null);
@@ -908,6 +983,13 @@ function ReportForm({
         </Body>
       </Card>
 
+      <LostPointPicker
+        label="Marcá dónde la vieron"
+        draft={draft}
+        setDraft={setDraft}
+        startQuery={startQuery}
+        fillJurisdiction={false}
+      />
       <TextField
         label="Dónde"
         value={draft.locationDescription}

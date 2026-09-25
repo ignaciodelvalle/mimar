@@ -476,3 +476,32 @@ describe("restoredDraftNote — where the recovered text came from", () => {
     }
   });
 });
+
+describe("the bite's map point (M17)", () => {
+  const bite = (overrides: Partial<ReturnType<typeof emptyDraft>> = {}) =>
+    draft({ victimKind: "human", biteSeverity: "minor", ...overrides });
+
+  it("sends the pin the person placed, with how it was placed", () => {
+    const result = validateDraft(
+      "bite",
+      bite({ biteLat: "-36.62", biteLng: "-64.29", biteLocationSource: "pin_manual" }),
+    );
+    expect(result.ok && result.input).toMatchObject({
+      kind: "bite",
+      locationLat: -36.62,
+      locationLng: -64.29,
+      locationSource: "pin_manual",
+    });
+  });
+
+  it("sends no point at all when none was placed, or half of one", () => {
+    for (const overrides of [{}, { biteLat: "-36.62", biteLng: "" }]) {
+      const result = validateDraft("bite", bite(overrides));
+      expect(result.ok && result.input).toMatchObject({
+        locationLat: null,
+        locationLng: null,
+        locationSource: null,
+      });
+    }
+  });
+});
