@@ -1582,26 +1582,45 @@
  * reduced-motion always render the plain .lp-lib-row (this block never
  * fires). The @media rule below is the same belt-and-suspenders redundancy
  * app/landing.css already uses for .lp-reveal (line ~263): a second, CSS-only
- * guarantee in case the JS check is ever bypassed. */
+ * guarantee in case the JS check is ever bypassed.
+ *
+ * Chronological fill (PO, 2026-09-25): the oldest row plays first and each
+ * newer one enters ABOVE it. An unplayed row takes NO height, so a row that
+ * enters expands in place and visibly pushes the earlier ones down. The feed
+ * reserves its settled height from JS (min-height, released once settled),
+ * so the expansion happens inside a box that never changes size (no CLS).
+ * The DOM order never changes — only these two states. */
 .lp .lp-lib-row--pending {
+  max-height: 0;
+  padding-block: 0;
   opacity: 0;
-  transform: translateY(14px);
+  overflow: hidden;
 }
 .lp .lp-lib-row--in {
   /* ~550ms in the brief rounds to the token scale's nearest step — the same
    * --motion-deliberate/--ease-editorial pair .lp-reveal already uses above,
-   * so the entrance reads as the same motion language, not a new one. */
+   * so the entrance reads as the same motion language, not a new one.
+   * max-height caps well above the tallest row (title + flag + meta + foot);
+   * it only exists so the height can be animated from 0. */
+  overflow: hidden;
   animation: lp-lib-row-in var(--motion-deliberate) var(--ease-editorial) both;
 }
 @keyframes lp-lib-row-in {
   from {
+    max-height: 0;
+    padding-block: 0;
     opacity: 0;
-    transform: translateY(14px);
   }
   to {
+    max-height: 9rem;
+    padding-block: 6px;
     opacity: 1;
-    transform: none;
   }
+}
+/* While older rows are still collapsed above it, the topmost played row is
+ * the visual first row: start its spine at the dot, as :first-child does. */
+.lp .lp-lib-row--pending + .lp-lib-row--in .lp-lib-spine::before {
+  top: 6px;
 }
 /* Vaccination stamp overshoot — plays alongside its row's own entrance. */
 .lp .lp-lib-stamp--in {
@@ -1623,8 +1642,10 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .lp .lp-lib-row--pending {
+    max-height: none;
+    padding-block: 6px;
     opacity: 1;
-    transform: none;
+    overflow: visible;
   }
   .lp .lp-lib-row--in,
   .lp .lp-lib-stamp--in {

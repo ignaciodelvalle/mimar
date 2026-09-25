@@ -5,8 +5,12 @@
 // MilestoneNav.test.tsx's style):
 //   - SSR / no-JS renders every entry visible, no hiding class;
 //   - prefers-reduced-motion renders every entry visible, no animation class;
-//   - motion allowed → entries start pending and reveal one by one, staggered
-//     ~700ms apart, once the chapter is reported ~40% in view;
+//   - motion allowed → entries start pending (collapsed) and reveal one by
+//     one, staggered ~700ms apart, once the chapter is reported ~40% in view —
+//     OLDEST FIRST: the bottom row of the newest-on-top list plays first and
+//     each newer row enters above it (PO, 2026-09-25);
+//   - the feed reserves the settled list's height while rows are collapsed,
+//     so nothing outside it moves (no CLS), and releases it once settled;
 //   - the ~1.4s fallback RevealManager uses only reveals everything when the
 //     observer never calls back AT ALL (broken/unsupported) — a callback that
 //     reports NOT intersecting still counts as "alive" and disarms it, so a
@@ -173,6 +177,89 @@ describe("<LibretaFeed> — staged reveal (motion allowed)", () => {
     expect(document.querySelectorAll(".lp-lib-row--pending").length).toBe(
       LIBRETA_EVENTS.length - 1,
     );
+  });
+
+  it("reveals chronologically: the oldest (bottom) row first, each newer one above it", () => {
+    // Production passes the list newest-first (story-screens.tsx), so the
+    // LAST row is the oldest entry. It must be the first to appear, and each
+    // later reveal must be the row directly above the previous one.
+    const newestFirst = [...LIBRETA_EVENTS].reverse();
+    vi.useFakeTimers();
+    render(<LibretaFeed events={newestFirst} />);
+
+    const io = FakeIntersectionObserver.instances[0];
+    act(() => {
+      io.callback([{ isIntersecting: true }]);
+    });
+    const rowStates = () =>
+      Array.from(document.querySelectorAll(".lp-lib-row")).map((row) =>
+        row.classList.contains("lp-lib-row--in"),
+      );
+
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+    const afterFirst = rowStates();
+    expect(afterFirst.at(-1)).toBe(true);
+    expect(afterFirst.slice(0, -1).every((played) => !played)).toBe(true);
+    const firstTitle = document.querySelector(".lp-lib-row--in .lp-lib-t")?.textContent ?? "";
+    expect(firstTitle.startsWith(LIBRETA_EVENTS[0].title)).toBe(true);
+
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+    const afterSecond = rowStates();
+    expect(afterSecond.slice(-2)).toEqual([true, true]);
+    expect(afterSecond.slice(0, -2).every((played) => !played)).toBe(true);
+
+    // Settled: the same newest-on-top order SSR renders, every row played.
+    act(() => {
+      vi.advanceTimersByTime(700 * newestFirst.length);
+    });
+    expect(rowStates().every(Boolean)).toBe(true);
+    const settledTitles = Array.from(document.querySelectorAll(".lp-lib-t")).map(
+      (el) => el.textContent ?? "",
+    );
+    newestFirst.forEach((e, i) => {
+      expect(settledTitles[i]?.startsWith(e.title)).toBe(true);
+    });
+  });
+
+  it("reserves the settled list's height before collapsing rows, and releases it once settled", () => {
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(612);
+    vi.useFakeTimers();
+    const { container } = render(<LibretaFeed events={LIBRETA_EVENTS} />);
+    const feed = container.querySelector<HTMLElement>(".lp-lib-feed");
+
+    // Rows are collapsed, and the feed still holds the full list's height.
+    expect(document.querySelectorAll(".lp-lib-row--pending").length).toBe(LIBRETA_EVENTS.length);
+    expect(feed?.style.minHeight).toBe("612px");
+
+    const io = FakeIntersectionObserver.instances[0];
+    act(() => {
+      io.callback([{ isIntersecting: true }]);
+    });
+    act(() => {
+      vi.advanceTimersByTime(700 * (LIBRETA_EVENTS.length - 1));
+    });
+    // The last row has only just started entering: still reserved.
+    expect(feed?.style.minHeight).toBe("612px");
+
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(feed?.style.minHeight).toBe("");
+  });
+
+  it("the fail-open path releases the reserved height along with the full list", () => {
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(612);
+    vi.useFakeTimers();
+    const { container } = render(<LibretaFeed events={LIBRETA_EVENTS} />);
+    act(() => {
+      vi.advanceTimersByTime(1400);
+    });
+    expect(document.querySelectorAll(".lp-lib-row--in").length).toBe(LIBRETA_EVENTS.length);
+    expect(container.querySelector<HTMLElement>(".lp-lib-feed")?.style.minHeight).toBe("");
   });
 
   it("stamps vaccination entries FIRMADO with the overshoot class once played", () => {
