@@ -102,7 +102,12 @@ const canon: Canon = loadCanon(REPO_ROOT);
 // repo, dim-interno:docs/handoff/rumbo-al-piloto.md),
 // which the d7dbf25f7 snapshot does not harvest, so it joins the list for the
 // same mechanical reason as the clock fence above.
-const UNMAPPED_COUNT = 8;
+//
+// 8 -> 9 on 2026-09-25: `__tests__/lost-routing-web-mobile-parity.test.ts`
+// (stage A of the SDD change localidades-por-id). Its rule — web and app route
+// a lost report to the same authority — gets its canon row with the change's
+// stage E; until then it waits here, on purpose.
+const UNMAPPED_COUNT = 9;
 
 /**
  * Enforcement the filename glob below cannot see.
