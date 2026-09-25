@@ -21,30 +21,57 @@
 // instead, by rendering the real page: see
 // __tests__/denuncia-reporter-view-contract.test.tsx, "integration-pending banner".
 // That is a strictly stronger test than the scan it replaced.
+//
+// M16 (2026-09-25) moved the author's banner out of the page into ONE shared
+// function, `welfareReportReporterNotice` (src/modules/welfare/domain/types.ts),
+// used by both the web page and GET /api/v1/me/welfare-reports/{code}. The
+// guard is now a real function, so it is pinned BEHAVIOURALLY — every status in
+// the catalogue — and each surface is pinned to call it rather than re-deciding.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const BANNER_MARKER = "integración con los";
+import {
+  WELFARE_REPORT_STATUSES,
+  welfareReportReporterNotice,
+} from "@/src/modules/welfare/domain/types";
 
-const FILES = [join(process.cwd(), "app", "(app)", "denuncias", "[id]", "page.tsx")];
+const BANNER_MARKER = "integración con los";
+const TERMINAL = ["closed", "invalid", "duplicate"] as const;
+
+const SURFACES = [
+  join(process.cwd(), "app", "(app)", "denuncias", "[id]", "page.tsx"),
+  join(process.cwd(), "app", "api", "v1", "me", "welfare-reports", "payload.ts"),
+];
 
 describe("integration-pending banner gating (UI-7 B7)", () => {
-  for (const file of FILES) {
-    it(`${file} guards the banner behind a terminal-status check`, () => {
+  it("shows the pending-integration banner for an open report (non-vacuity)", () => {
+    expect(welfareReportReporterNotice("open")?.text).toContain(BANNER_MARKER);
+  });
+
+  it.each(TERMINAL)("shows no banner at all on a terminal status: %s", (status) => {
+    expect(WELFARE_REPORT_STATUSES).toContain(status);
+    expect(welfareReportReporterNotice(status)).toBeNull();
+  });
+
+  it("never shows the pending-integration copy on any status but open", () => {
+    for (const status of WELFARE_REPORT_STATUSES) {
+      if (status === "open") continue;
+      expect([status, welfareReportReporterNotice(status)?.text ?? ""]).not.toEqual([
+        status,
+        expect.stringContaining(BANNER_MARKER),
+      ]);
+    }
+  });
+
+  for (const file of SURFACES) {
+    it(`${file} takes its banner from the shared function`, () => {
       const src = readFileSync(file, "utf8");
-
-      // The banner copy must still exist (non-vacuity).
-      expect(src).toContain(BANNER_MARKER);
-
-      // A terminal-status predicate must be defined and referenced.
-      expect(src).toMatch(/isTerminal\w*Status/);
-      // The predicate must cover all three terminal statuses.
-      expect(src).toContain('"closed"');
-      expect(src).toContain('"invalid"');
-      expect(src).toContain('"duplicate"');
+      expect(src).toContain("welfareReportReporterNotice(");
+      // …and does not carry its own copy of the banner to drift from it.
+      expect(src).not.toContain(BANNER_MARKER);
     });
   }
 });
