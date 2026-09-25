@@ -288,6 +288,11 @@ describe("acceptInvitation", () => {
     insertGrant: vi.fn().mockResolvedValue({ id: "grant-new" }),
     findAccepterDisplayName: vi.fn().mockResolvedValue("Test User"),
     insertAuditLog: vi.fn().mockResolvedValue(undefined),
+    // The legacy-column mirror reads the derived state (set-member-event-write.ts).
+    readEventWriteState: vi
+      .fn()
+      .mockResolvedValue({ role: "member", approvedCapabilities: ["event.write"] }),
+    setEventWrite: vi.fn().mockResolvedValue(undefined),
   });
 
   it("returns error when invite not found (inside tx)", async () => {

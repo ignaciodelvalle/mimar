@@ -45,7 +45,6 @@ export interface InsertMembershipInput {
   role: OrganizationMembership["role"];
   joinedAt?: Date;
   invitedByUserId?: string | null;
-  canWritePetEvents?: boolean;
 }
 
 export interface InsertCoverageInput {
@@ -197,7 +196,37 @@ export class OrgRepository {
   }
 
   /**
-   * Update canWritePetEvents on a membership.
+   * What the `event.write` decision reads for one membership: its role (for the
+   * implicit baselines) and its APPROVED grant capabilities. `null` when the
+   * membership does not exist. Read inside the caller's transaction so the
+   * legacy-column mirror sees the grant/role write that same transaction made.
+   */
+  async readEventWriteState(
+    membershipId: string,
+    e: Exec = db,
+  ): Promise<{ role: OrganizationMembership["role"]; approvedCapabilities: string[] } | null> {
+    const [membership] = await e
+      .select({ role: organizationMemberships.role })
+      .from(organizationMemberships)
+      .where(eq(organizationMemberships.id, membershipId))
+      .limit(1);
+    if (!membership) return null;
+    const grants = await e
+      .select({ capability: organizationCapabilityGrants.capability })
+      .from(organizationCapabilityGrants)
+      .where(
+        and(
+          eq(organizationCapabilityGrants.membershipId, membershipId),
+          eq(organizationCapabilityGrants.status, "approved"),
+        ),
+      );
+    return { role: membership.role, approvedCapabilities: grants.map((g) => g.capability) };
+  }
+
+  /**
+   * Write the legacy canWritePetEvents column. Called ONLY by
+   * `syncEventWriteMirror` (application/set-member-event-write.ts), which
+   * derives the value from the real grant state — never pass a caller's intent.
    */
   async setEventWrite(
     membershipId: string,
@@ -242,7 +271,9 @@ export class OrgRepository {
         role: values.role,
         joinedAt: values.joinedAt ?? new Date(),
         invitedByUserId: values.invitedByUserId ?? null,
-        canWritePetEvents: values.canWritePetEvents ?? false,
+        // canWritePetEvents is NOT written here: it is a mirror of the real
+        // `event.write` state, set by syncEventWriteMirror once the role and
+        // any grant exist (application/set-member-event-write.ts).
       })
       .returning({ id: organizationMemberships.id });
     if (!row) throw new Error("insertMembership: no row returned");

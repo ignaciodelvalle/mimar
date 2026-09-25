@@ -19,6 +19,7 @@ import type {
   Exec,
   OrgRepository,
 } from "@/src/modules/organizations/infrastructure/org-repository";
+import { syncEventWriteMirror } from "./set-member-event-write";
 import type { UseCaseResult } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -41,7 +42,12 @@ export type ChangeOrganizationMemberRoleInput = {
 
 type RepoDeps = Pick<
   OrgRepository,
-  "findActiveMembership" | "lockActiveAdmins" | "setRole" | "insertAuditLog"
+  | "findActiveMembership"
+  | "lockActiveAdmins"
+  | "setRole"
+  | "insertAuditLog"
+  | "readEventWriteState"
+  | "setEventWrite"
 >;
 
 type Deps = {
@@ -113,6 +119,9 @@ export async function changeOrganizationMemberRole(
           input.newRole as Parameters<typeof repo.setRole>[1],
           e,
         );
+        // A role change moves the implicit baseline (admin / vet_individual
+        // hold event.write by role), so the legacy column follows it.
+        await syncEventWriteMirror(repo, input.membershipId, e);
         await repo.insertAuditLog(
           {
             actorUserId: input.actor.userId,

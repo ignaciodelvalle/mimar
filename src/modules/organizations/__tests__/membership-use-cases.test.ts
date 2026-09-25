@@ -191,6 +191,11 @@ describe("removeMember", () => {
     lockActiveAdmins: vi.fn(),
     softLeave: vi.fn().mockResolvedValue(undefined),
     insertAuditLog: vi.fn().mockResolvedValue(undefined),
+    // The legacy-column mirror reads the derived state (set-member-event-write.ts).
+    readEventWriteState: vi
+      .fn()
+      .mockResolvedValue({ role: "member", approvedCapabilities: ["event.write"] }),
+    setEventWrite: vi.fn().mockResolvedValue(undefined),
   });
 
   it("returns error when target membership not found", async () => {
@@ -378,6 +383,11 @@ describe("changeOrganizationMemberRole", () => {
     lockActiveAdmins: vi.fn(),
     setRole: vi.fn().mockResolvedValue(undefined),
     insertAuditLog: vi.fn().mockResolvedValue(undefined),
+    // The legacy-column mirror reads the derived state (set-member-event-write.ts).
+    readEventWriteState: vi
+      .fn()
+      .mockResolvedValue({ role: "member", approvedCapabilities: ["event.write"] }),
+    setEventWrite: vi.fn().mockResolvedValue(undefined),
   });
 
   it("returns error for invalid new role", async () => {
@@ -546,6 +556,10 @@ describe("setMemberEventWrite", () => {
     findActiveMembership: vi.fn(),
     setEventWrite: vi.fn().mockResolvedValue(undefined),
     insertAuditLog: vi.fn().mockResolvedValue(undefined),
+    // The legacy-column mirror reads the derived state (set-member-event-write.ts).
+    readEventWriteState: vi
+      .fn()
+      .mockResolvedValue({ role: "member", approvedCapabilities: ["event.write"] }),
     insertGrant: vi.fn().mockResolvedValue({ id: "grant-1" }),
     findApprovedGrant: vi.fn().mockResolvedValue(null),
     setGrantStatus: vi.fn().mockResolvedValue(undefined),
@@ -816,6 +830,11 @@ describe("leaveOrganization", () => {
     lockActiveAdmins: vi.fn(),
     softLeave: vi.fn().mockResolvedValue(undefined),
     insertAuditLog: vi.fn().mockResolvedValue(undefined),
+    // The legacy-column mirror reads the derived state (set-member-event-write.ts).
+    readEventWriteState: vi
+      .fn()
+      .mockResolvedValue({ role: "member", approvedCapabilities: ["event.write"] }),
+    setEventWrite: vi.fn().mockResolvedValue(undefined),
   });
 
   it("returns error when user is not active member", async () => {

@@ -828,56 +828,48 @@ async function provisionMemberships(
     user: UserKey;
     role: string;
     title: string;
-    canWritePetEvents: boolean;
   }> = [
     {
       org: "patitas-del-norte",
       user: "alejo",
       role: "admin",
       title: "Coordinador general",
-      canWritePetEvents: true,
     },
     {
       org: "clinica-recoleta",
       user: "alejo",
       role: "admin",
       title: "Director administrativo",
-      canWritePetEvents: false,
     },
     {
       org: "rescate-puerto-madero",
       user: "alejo",
       role: "admin",
       title: "Coordinador",
-      canWritePetEvents: true,
     },
     {
       org: "mascotas-ba-centro",
       user: "alejo",
       role: "admin",
       title: "Operador",
-      canWritePetEvents: false,
     },
     {
       org: "clinica-recoleta",
       user: "lilian",
       role: "vet_individual",
       title: "Vet de planta",
-      canWritePetEvents: true,
     },
     {
       org: "patitas-del-norte",
       user: "noeli",
       role: "foster",
       title: "Voluntaria de tránsito",
-      canWritePetEvents: true,
     },
     {
       org: "patitas-del-norte",
       user: "graciela",
       role: "foster",
       title: "Voluntaria de tránsito",
-      canWritePetEvents: true,
     },
   ];
   for (const m of memberships) {
@@ -901,7 +893,12 @@ async function provisionMemberships(
       userId: userIds[m.user],
       role: m.role,
       title: m.title,
-      canWritePetEvents: m.canWritePetEvents,
+      // The legacy column is a MIRROR of effective event.write (W6 — see
+      // syncEventWriteMirror in set-member-event-write.ts). This seed inserts no
+      // grant rows, so the truth is the role baseline alone. It used to be
+      // hand-typed per member, and two tránsito volunteers said `true` while the
+      // resolver refused them: the exact drift finding F-9 tripped over.
+      canWritePetEvents: m.role === "admin" || m.role === "vet_individual",
     });
     log("OK", `${m.user} @ ${m.org} (${m.role})`);
   }

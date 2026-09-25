@@ -11,6 +11,7 @@ import type {
   Exec,
   OrgRepository,
 } from "@/src/modules/organizations/infrastructure/org-repository";
+import { syncEventWriteMirror } from "./set-member-event-write";
 import type { NewNotification, UseCaseResult } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -23,6 +24,8 @@ export interface DecideCapabilityRepo {
   setGrantStatus: OrgRepository["setGrantStatus"];
   findGrantMemberUserId: OrgRepository["findGrantMemberUserId"];
   insertAuditLog: OrgRepository["insertAuditLog"];
+  readEventWriteState: OrgRepository["readEventWriteState"];
+  setEventWrite: OrgRepository["setEventWrite"];
 }
 
 // ---------------------------------------------------------------------------
@@ -169,6 +172,11 @@ export async function decideCapability(
           },
           e,
         );
+      }
+
+      // The legacy column follows the real grant (see set-member-event-write.ts).
+      if (capability === "event.write") {
+        await syncEventWriteMirror(repo, grant.membershipId, e);
       }
 
       // Lote B1 — every capability decision is answerable in audit_log

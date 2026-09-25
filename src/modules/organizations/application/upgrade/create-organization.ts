@@ -35,7 +35,9 @@ import { findAuthoritiesForJurisdiction } from "@/lib/infra/approval-routing";
 import { pgError } from "@/lib/infra/db-errors";
 import { generateApprovalRequestToken, generatePublicToken } from "@/lib/infra/publicToken";
 import { generateUniqueToken } from "@/lib/infra/unique-token";
+import { syncEventWriteMirror } from "@/src/modules/organizations/application/set-member-event-write";
 import { getActiveMemberships } from "@/src/modules/organizations/infrastructure/authz-resolver";
+import { OrgRepository } from "@/src/modules/organizations/infrastructure/org-repository";
 
 import type { CreateOrganizationInput, UpgradeFormState } from "./types";
 
@@ -227,12 +229,13 @@ export async function createOrganizationForUser(
         })
         .returning();
 
-      await tx.insert(organizationMemberships).values({
-        organizationId: newOrg.id,
-        userId,
-        role: "admin",
-        canWritePetEvents: true,
-      });
+      const [creatorMembership] = await tx
+        .insert(organizationMemberships)
+        .values({ organizationId: newOrg.id, userId, role: "admin" })
+        .returning({ id: organizationMemberships.id });
+      // Legacy column derived from the real grant state (admin → every
+      // capability), through the single writer in set-member-event-write.ts.
+      await syncEventWriteMirror(new OrgRepository(), creatorMembership.id, tx);
 
       // Audit: org creator is auto-added as admin at org creation.
       await tx.insert(auditLog).values({

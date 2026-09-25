@@ -494,7 +494,8 @@ async function ensureGovtSanitaryMembership(govtUserId: string): Promise<string 
       userId: govtUserId,
       role: "admin",
       title: "Operador autoridad sanitaria CABA",
-      canWritePetEvents: false,
+      // Mirror of effective event.write (W6): an admin holds every capability.
+      canWritePetEvents: true,
     });
     log("OK", "  govt@ → mascotas-ba-centro membership created");
   } else {

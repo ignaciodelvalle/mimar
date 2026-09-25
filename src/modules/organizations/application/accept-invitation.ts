@@ -17,6 +17,7 @@ import type {
   Exec,
   OrgRepository,
 } from "@/src/modules/organizations/infrastructure/org-repository";
+import { syncEventWriteMirror } from "./set-member-event-write";
 import type { NewNotification, UseCaseResult } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -32,6 +33,8 @@ export interface AcceptInvitationRepo {
   insertGrant: OrgRepository["insertGrant"];
   findAccepterDisplayName: OrgRepository["findAccepterDisplayName"];
   insertAuditLog: OrgRepository["insertAuditLog"];
+  readEventWriteState: OrgRepository["readEventWriteState"];
+  setEventWrite: OrgRepository["setEventWrite"];
 }
 
 // Roles that receive event.write implicitly via authz-resolver (no grant row needed).
@@ -132,7 +135,6 @@ export async function acceptInvitation(
           organizationId: validInvite.organizationId,
           userId: input.userId,
           role: validInvite.invitedRole,
-          canWritePetEvents: validInvite.canWritePetEvents,
           invitedByUserId: validInvite.invitedByUserId,
           joinedAt: now,
         },
@@ -159,6 +161,11 @@ export async function acceptInvitation(
           e,
         );
       }
+
+      // Legacy column: derived from the role + grant just written, never copied
+      // from the invitation's checkbox (a vet_individual invited with it off
+      // still holds event.write implicitly).
+      await syncEventWriteMirror(repo, newMembershipId, e);
 
       // Mark accepted.
       await repo.markInviteAccepted(validInvite.id, input.userId, e);

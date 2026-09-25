@@ -19,6 +19,7 @@ import type {
   Exec,
   OrgRepository,
 } from "@/src/modules/organizations/infrastructure/org-repository";
+import { syncEventWriteMirror } from "./set-member-event-write";
 import type { NewNotification, UseCaseResult } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -31,6 +32,8 @@ export interface GrantCapabilityRepo {
   updateGrant: OrgRepository["updateGrant"];
   findGrantMemberUserId: OrgRepository["findGrantMemberUserId"];
   insertAuditLog: OrgRepository["insertAuditLog"];
+  readEventWriteState: OrgRepository["readEventWriteState"];
+  setEventWrite: OrgRepository["setEventWrite"];
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +190,11 @@ export async function grantCapability(
         },
         e,
       );
+
+      // The legacy column follows the real grant (see set-member-event-write.ts).
+      if (capability === "event.write") {
+        await syncEventWriteMirror(repo, input.membershipId, e);
+      }
 
       // Lote B1 — a direct grant is answerable in audit_log like any other
       // capability decision.

@@ -10,14 +10,54 @@
 //   4. Grant or revoke the `event.write` CAPABILITY (authoritative enforcement path).
 //      The legacy `canWritePetEvents` column is mirrored for backward compat
 //      but is deprecated — enforcement reads the capability, not the column.
-//   5. setEventWrite (deprecated mirror) + capability mutation + audit_log (same tx).
+//   5. capability mutation + syncEventWriteMirror + audit_log (same tx).
+//
+// THE ONE WRITER OF THE LEGACY COLUMN (W6 / F-9). `can_write_pet_events` used
+// to be written by five paths, each with its own idea of the value: the org
+// creator set `true`, an invitation copied the inviter's checkbox (even for a
+// vet_individual whose permission is implicit), and this toggle wrote the
+// caller's INTENT. None of them read the grant table, which is what enforcement
+// reads (authz-resolver → resolveGrantedCaps). So the column could say "yes"
+// on a membership that is refused — exactly what the TN-10 rehearsal hit.
+//
+// `syncEventWriteMirror` below is now the only function that writes it, and it
+// writes the DERIVED value: role baseline + approved grants, through the same
+// `resolveGrantedCaps` the resolver uses. Every path that changes either input
+// (this toggle, invitation accept, direct grant, grant decision, role change,
+// org creation, the vet-approval practice) calls it inside its own transaction.
+// The column is kept, not dropped: nothing enforces on it any more, and
+// dropping it is a separate, migration-bearing decision.
 
+import { resolveGrantedCaps } from "@/src/modules/organizations/domain/capabilities";
 import { ROLE_RANK } from "@/src/modules/organizations/domain/role-rules";
 import type {
   Exec,
   OrgRepository,
 } from "@/src/modules/organizations/infrastructure/org-repository";
 import type { UseCaseResult } from "./types";
+
+// ---------------------------------------------------------------------------
+// syncEventWriteMirror — the single writer of the legacy column
+// ---------------------------------------------------------------------------
+
+export type EventWriteMirrorRepo = Pick<OrgRepository, "readEventWriteState" | "setEventWrite">;
+
+/**
+ * Recompute whether `membershipId` effectively holds `event.write` and write
+ * that into the legacy column. Returns the value written. Call it in the SAME
+ * transaction as the role/grant change, after the change.
+ */
+export async function syncEventWriteMirror(
+  repo: EventWriteMirrorRepo,
+  membershipId: string,
+  e: Exec,
+): Promise<boolean> {
+  const state = await repo.readEventWriteState(membershipId, e);
+  if (!state) return false;
+  const effective = resolveGrantedCaps(state.role, state.approvedCapabilities).has("event.write");
+  await repo.setEventWrite(membershipId, effective, e);
+  return effective;
+}
 
 // ---------------------------------------------------------------------------
 // Input / Deps
@@ -40,6 +80,7 @@ export type SetMemberEventWriteInput = {
 type RepoDeps = Pick<
   OrgRepository,
   | "findActiveMembership"
+  | "readEventWriteState"
   | "setEventWrite"
   | "insertAuditLog"
   | "insertGrant"
@@ -87,6 +128,7 @@ export async function setMemberEventWrite(
   // organizationCapabilityGrants, NOT the canWritePetEvents column).
   // The legacy column is kept for backward compat and marked deprecated.
   let revokedGrant: Awaited<ReturnType<OrgRepository["findApprovedGrant"]>> = null;
+  let mirrored = input.canWrite;
   await transaction(async (tx) => {
     const e = tx as Exec;
 
@@ -122,8 +164,9 @@ export async function setMemberEventWrite(
       }
     }
 
-    // Mirror to legacy column (deprecated — do NOT rely on this for enforcement).
-    await repo.setEventWrite(input.membershipId, input.canWrite, e);
+    // Mirror to legacy column — DERIVED from the grant just written plus the
+    // role baseline, never the caller's intent (see the header).
+    mirrored = await syncEventWriteMirror(repo, input.membershipId, e);
 
     await repo.insertAuditLog(
       {
@@ -135,7 +178,7 @@ export async function setMemberEventWrite(
           org_id: input.organizationId,
           member_user_id: target.userId,
           can_write_pet_events_before: target.canWritePetEvents,
-          can_write_pet_events_after: input.canWrite,
+          can_write_pet_events_after: mirrored,
           // Lote B1 — the revoked grant's provenance, now that the row itself
           // keeps the original approver instead of being overwritten.
           ...(revokedGrant

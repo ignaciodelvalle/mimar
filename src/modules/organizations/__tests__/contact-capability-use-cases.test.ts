@@ -315,6 +315,11 @@ describe("decideCapability", () => {
       setGrantStatus: vi.fn().mockResolvedValue(undefined),
       findGrantMemberUserId: vi.fn().mockResolvedValue("user-requester"),
       insertAuditLog: vi.fn().mockResolvedValue(undefined),
+      // The legacy-column mirror reads the derived state (set-member-event-write.ts).
+      readEventWriteState: vi
+        .fn()
+        .mockResolvedValue({ role: "member", approvedCapabilities: ["event.write"] }),
+      setEventWrite: vi.fn().mockResolvedValue(undefined),
       ...overrides,
     };
   }
@@ -586,6 +591,11 @@ describe("grantCapability", () => {
       updateGrant: vi.fn().mockResolvedValue(undefined),
       findGrantMemberUserId: vi.fn().mockResolvedValue("user-target"),
       insertAuditLog: vi.fn().mockResolvedValue(undefined),
+      // The legacy-column mirror reads the derived state (set-member-event-write.ts).
+      readEventWriteState: vi
+        .fn()
+        .mockResolvedValue({ role: "member", approvedCapabilities: ["event.write"] }),
+      setEventWrite: vi.fn().mockResolvedValue(undefined),
       ...overrides,
     };
   }
@@ -780,6 +790,11 @@ describe("H2 — self-grant is refused on the server, not only in the browser", 
       setGrantStatus: vi.fn().mockResolvedValue(undefined),
       findGrantMemberUserId: vi.fn().mockResolvedValue(memberUserId),
       insertAuditLog: vi.fn().mockResolvedValue(undefined),
+      // The legacy-column mirror reads the derived state (set-member-event-write.ts).
+      readEventWriteState: vi
+        .fn()
+        .mockResolvedValue({ role: "member", approvedCapabilities: ["event.write"] }),
+      setEventWrite: vi.fn().mockResolvedValue(undefined),
     };
   }
 
@@ -812,6 +827,11 @@ describe("H2 — self-grant is refused on the server, not only in the browser", 
       updateGrant: vi.fn().mockResolvedValue(undefined),
       findGrantMemberUserId: vi.fn().mockResolvedValue(targetUserId),
       insertAuditLog: vi.fn().mockResolvedValue(undefined),
+      // The legacy-column mirror reads the derived state (set-member-event-write.ts).
+      readEventWriteState: vi
+        .fn()
+        .mockResolvedValue({ role: "member", approvedCapabilities: ["event.write"] }),
+      setEventWrite: vi.fn().mockResolvedValue(undefined),
     };
   }
 
