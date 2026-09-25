@@ -278,7 +278,7 @@ jobs:
         run: >-
           pnpm lint:select && pnpm lint:op-controls && pnpm lint:tablist && pnpm lint:eyebrow &&
           pnpm lint:states && pnpm lint:empty-states && pnpm lint:screens &&
-          pnpm lint:icons && pnpm lint:mobile-icons && pnpm lint:owner-parity && pnpm lint:maplibre && pnpm lint:maplibre-worker && pnpm lint:hard-nav && pnpm lint:kept-fields
+          pnpm lint:icons && pnpm lint:mobile-icons && pnpm lint:owner-parity && pnpm lint:maplibre && pnpm lint:maplibre-worker && pnpm lint:hard-nav && pnpm lint:kept-fields && pnpm lint:no-device-gps
 
       - name: Lint (copy, brand, and identifiers)
         run: >-

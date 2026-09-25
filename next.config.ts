@@ -45,7 +45,10 @@ const nextConfig: NextConfig = {
             key: "Strict-Transport-Security",
             value: "max-age=63072000; includeSubDomains; preload",
           },
-          { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(self)" },
+          // geolocation=() — W8 (PO, 2026-09-24): no device location anywhere.
+          // The browser refuses the Geolocation API on every page, whatever
+          // script asks (scripts/check-no-device-gps.ts holds this in place).
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
         ],
       },
       {
