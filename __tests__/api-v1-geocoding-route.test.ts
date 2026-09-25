@@ -3,7 +3,9 @@
 // Pinned: the door (bearer, the route's own IP bucket), the two commands over
 // the WEB's own geocoding helpers, the server-side jurisdiction derivation, and
 // that a geocoder failure is a 503 — never an empty list that reads as "that
-// street does not exist".
+// street does not exist". Since localidades-por-id B3 the derivation is the one
+// place resolver's: a jurisdiction only for exactly ONE row, and a name two rows
+// share comes back `ambiguous`, with the rows as candidates — never the first.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,7 +16,10 @@ const control = vi.hoisted(() => ({
   searchThrows: null as null | "rate" | "provider",
   reverseCalls: [] as Array<[number, number]>,
   reverseResult: null as null | Record<string, unknown>,
-  resolvable: true,
+  /** What the place resolver answers: one row, two homonyms, or nothing. */
+  answer: "resolved" as "resolved" | "ambiguous" | "unresolved",
+  /** The pin each reverse resolution was asked about, and the geocoder's answer. */
+  pinResolutions: [] as Array<{ point: unknown; reversed: unknown }>,
   reverseRateLimited: false,
 }));
 
@@ -69,13 +74,63 @@ vi.mock("@/src/modules/localities/application/geocoding/geocoding", async () => 
   };
 });
 
-vi.mock("@/lib/infra/jurisdiction-validation", () => ({
-  resolveCanonicalJurisdiction: async (input: { rawProvince: string; rawLocality: string }) => {
-    if (!control.resolvable) throw new Error("INVALID_LOCALITY");
+const MECHITA_ALBERTI = {
+  localityId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  indecId: "06021030",
+  provinceCode: "AR-B",
+  localityName: "Mechita",
+  departmentName: "Alberti",
+};
+const MECHITA_BRAGADO = {
+  localityId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  indecId: "06112080",
+  provinceCode: "AR-B",
+  localityName: "Mechita",
+  departmentName: "Bragado",
+};
+
+function answerFor(locality: string | null) {
+  const base = { reason: null, indecId: null, localityId: null, method: "unresolved" };
+  if (control.answer === "resolved" && locality) {
     return {
-      province: { code: "AR-L", name: "La Pampa" },
-      locality: { localityName: input.rawLocality, indecId: "42021010" },
+      ...base,
+      status: "resolved",
+      provinceCode: "AR-L",
+      province: "La Pampa",
+      locality,
+      localityId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      indecId: "42021010",
+      method: "exact_name_unique",
+      candidates: [],
     };
+  }
+  if (control.answer === "ambiguous") {
+    return {
+      ...base,
+      status: "ambiguous",
+      reason: "ambiguous",
+      provinceCode: "AR-B",
+      province: "Buenos Aires",
+      locality: null,
+      candidates: [MECHITA_ALBERTI, MECHITA_BRAGADO],
+    };
+  }
+  return {
+    ...base,
+    status: "unresolved",
+    reason: "not_in_catalogue",
+    provinceCode: null,
+    province: null,
+    locality: null,
+    candidates: [],
+  };
+}
+
+vi.mock("@/lib/place/resolve-place", () => ({
+  resolveName: async (_code: string, locality: string) => answerFor(locality),
+  resolveGeocodedPin: async (point: unknown, reversed: { locality: string | null } | null) => {
+    control.pinResolutions.push({ point, reversed });
+    return answerFor(reversed?.locality ?? null);
   },
 }));
 
@@ -110,7 +165,8 @@ beforeEach(() => {
     province: "La Pampa",
     locality: "Santa Rosa",
   };
-  control.resolvable = true;
+  control.answer = "resolved";
+  control.pinResolutions = [];
   control.reverseRateLimited = false;
 });
 
@@ -146,13 +202,14 @@ describe("search", () => {
             localityName: "Santa Rosa",
             localityIndecId: "42021010",
           },
+          place: { status: "resolved", candidates: [] },
         },
       ],
     });
   });
 
   it("carries no jurisdiction when the pair does not resolve — no guess", async () => {
-    control.resolvable = false;
+    control.answer = "unresolved";
     const body = (await (await post({ command: "search", query: "Calle 1" })).json()) as {
       matches: Array<{ jurisdiction: unknown }>;
     };
@@ -174,18 +231,63 @@ describe("reverse", () => {
       command: "reverse",
       label: "Avenida San Martín 120, Santa Rosa, La Pampa",
       jurisdiction: { provinceCode: "AR-L", localityName: "Santa Rosa" },
+      place: { status: "resolved", candidates: [] },
     });
     expect(control.reverseCalls).toEqual([[-36.62, -64.29]]);
+    // The PIN is what is resolved, with the geocoder's answer for it: the door
+    // does not spend a second geocoder call.
+    expect(control.pinResolutions).toEqual([
+      {
+        point: { lat: -36.62, lng: -64.29 },
+        reversed: expect.objectContaining({ locality: "Santa Rosa" }),
+      },
+    ]);
+  });
+
+  // localidades-por-id B3 (P1): the old derivation took the alphabetically
+  // first department of a homonym; an app pin in Bragado's Mechita came back
+  // as Alberti's.
+  it("a name two rows share is ambiguous: no jurisdiction, both rows by department", async () => {
+    control.answer = "ambiguous";
+    control.reverseResult = {
+      display_name: "Mechita, Buenos Aires",
+      province: "Buenos Aires",
+      locality: "Mechita",
+    };
+    const body = (await (await post({ command: "reverse", lat: -35.07, lng: -60.4 })).json()) as {
+      jurisdiction: unknown;
+      place: { status: string; candidates: Array<Record<string, unknown>> };
+    };
+    expect(body.jurisdiction).toBeNull();
+    expect(body.place.status).toBe("ambiguous");
+    expect(body.place.candidates).toEqual([
+      {
+        provinceCode: "AR-B",
+        provinceName: "Buenos Aires",
+        localityName: "Mechita",
+        localityIndecId: "06021030",
+        departmentName: "Alberti",
+      },
+      {
+        provinceCode: "AR-B",
+        provinceName: "Buenos Aires",
+        localityName: "Mechita",
+        localityIndecId: "06112080",
+        departmentName: "Bragado",
+      },
+    ]);
   });
 
   it("says it has no address rather than inventing one", async () => {
     control.reverseResult = null;
+    control.answer = "unresolved";
     const response = await post({ command: "reverse", lat: -36.62, lng: -64.29 });
     expect(await response.json()).toEqual({
       command: "reverse",
       version: 1,
       label: null,
       jurisdiction: null,
+      place: { status: "unresolved", candidates: [] },
     });
   });
 

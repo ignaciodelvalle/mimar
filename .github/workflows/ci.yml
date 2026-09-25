@@ -265,6 +265,12 @@ jobs:
         # historical migrations are frozen file by file. Static, no DB.
         run: pnpm lint:province-map
 
+      - name: "Fence: places resolve through lib/place (lint:place-resolver)"
+        # localidades-por-id B3. A (province, NAME) pair is resolved by the one
+        # resolver (an id first, a name only when it names one row, never the
+        # first homonym). Callers of the name lookups outside lib/place are
+        # frozen file by file; stage E drives the list to zero. Static, no DB.
+        run: pnpm lint:place-resolver
 
       - name: Lint (jurisdiction scope + authorization derivation)
         # The scope layer's offline fences. Every one of these ran in `pnpm

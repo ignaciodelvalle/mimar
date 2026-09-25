@@ -52,9 +52,9 @@ export class JurisdictionValidationError extends Error {
  * LEGACY — settles a within-province homonym by taking the alphabetically first
  * department (`localityByName`). No write path may use it: the write gate
  * (`normalizeLocationForWrite`) resolves names through
- * {@link resolveUniqueJurisdiction}. Its remaining callers are the seed
- * scripts, the geocoding route (localidades-por-id B3) and the historical
- * backfill (B5), each named in that plan.
+ * {@link resolveUniqueJurisdiction}. Its remaining callers are frozen by
+ * lint:place-resolver (scripts/check-place-resolver-single-entry.ts); the
+ * geocoding route moved to lib/place/resolve-place.ts in localidades-por-id B3.
  */
 export async function resolveCanonicalJurisdiction(input: {
   rawProvince: string;

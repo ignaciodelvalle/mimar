@@ -7,7 +7,7 @@
 // Every read filters by removed_at IS NULL so soft-deleted rows from past
 // import runs never bleed into UI or validation paths.
 
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { type ArgentineLocality, arLocalities, db } from "@/db";
 import { type ProvinceCode, provinceByCode, provinceByName } from "@/lib/reference/ar-provincias";
@@ -83,6 +83,25 @@ export async function localityByIndecId(indecId: string): Promise<Locality | nul
     .from(arLocalities)
     .where(and(eq(arLocalities.indecId, indecId), isNull(arLocalities.removedAt)));
   return row ? rowToLocality(row) : null;
+}
+
+/** A live catalogue row by its uuid PK (server-internal; CABA barrios included). */
+export async function localityById(id: string): Promise<Locality | null> {
+  const [row] = await db
+    .select()
+    .from(arLocalities)
+    .where(and(eq(arLocalities.id, id), isNull(arLocalities.removedAt)));
+  return row ? rowToLocality(row) : null;
+}
+
+/** Live catalogue rows by uuid PK, in no particular order. */
+export async function localitiesByIds(ids: readonly string[]): Promise<Locality[]> {
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(arLocalities)
+    .where(and(inArray(arLocalities.id, [...ids]), isNull(arLocalities.removedAt)));
+  return rows.map(rowToLocality);
 }
 
 // Find a single locality by free-text name within a province. INDEC ships

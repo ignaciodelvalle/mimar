@@ -16,9 +16,14 @@
 // 2026-09-24). This door never receives a GPS fix because the app never reads
 // one, and it stores nothing: nothing here writes a row.
 //
-// THE JURISDICTION IS DERIVED HERE, as the web's map derives it: the geocoder's
-// province name to its ISO code, the locality against the INDEC catalogue.
-// A pair that does not resolve is `null`, not a guess.
+// THE JURISDICTION IS DERIVED HERE, through the one place resolver
+// (lib/place/resolve-place.ts, localidades-por-id B3): the geocoder's province
+// name to its ISO code, the locality against the INDEC catalogue to exactly ONE
+// row. A pair that does not resolve is `null`, not a guess — and a name two
+// rows of the province share (Mechita) is `ambiguous`, never the
+// alphabetically first department: `place` carries the rows, labelled with
+// their departments, for the person to pick from. A reverse answer the pin does
+// not corroborate stays `unresolved`, with the nearby rows as candidates.
 //
 // ITS IP BUCKET IS IN THE WRITE FAMILY, and not because it writes: this repo
 // files every POST handler under a write family (the direction check in
@@ -34,10 +39,12 @@ import { apiV1Error, apiV1Json } from "@/lib/infra/api-v1";
 import { API_V1_AUTHENTICATED_WRITE_IP_LIMIT } from "@/lib/infra/api-v1-limits";
 import { DbBudgetExceededError, withDbBudgetOrThrow } from "@/lib/infra/db-budget";
 import type { ReverseGeocodeResult } from "@/lib/infra/geocoding";
-import { resolveCanonicalJurisdiction } from "@/lib/infra/jurisdiction-validation";
 import { type LiveUserFailureReason, requireLiveUser } from "@/lib/infra/live-user";
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { reportError } from "@/lib/infra/report-error";
+import { placeForClient } from "@/lib/place/place-for-client";
+import { type ResolvedPlace, resolveGeocodedPin, resolveName } from "@/lib/place/resolve-place";
+import { provinceByName } from "@/lib/reference/ar-provincias";
 import { createClientFromBearer } from "@/lib/supabase/bearer";
 import {
   geocodeAddressPublicOrThrow,
@@ -118,12 +125,16 @@ export async function POST(request: Request) {
       command: "search",
       version: GEOCODING_PAYLOAD_VERSION,
       matches: await Promise.all(
-        matches.slice(0, MAX_MATCHES).map(async (match) => ({
-          label: match.display_name,
-          lat: match.lat,
-          lng: match.lng,
-          jurisdiction: await deriveJurisdiction(match.province, match.locality),
-        })),
+        matches.slice(0, MAX_MATCHES).map(async (match) => {
+          const place = await placeOfName(match.province, match.locality);
+          return {
+            label: match.display_name,
+            lat: match.lat,
+            lng: match.lng,
+            jurisdiction: jurisdictionOf(place),
+            place: placeForClient(place),
+          };
+        }),
       ),
     };
     return apiV1Json(payload, { status: 200 });
@@ -139,35 +150,40 @@ export async function POST(request: Request) {
     reportError("api-v1-geocoding/reverse", err);
     return unavailable();
   }
+  // The pin is the question: its geocoded name counts only when the pin
+  // corroborates it, and an unnamed pin offers the rows near it.
+  const place = await resolveGeocodedPin({ lat: input.lat, lng: input.lng }, reversed);
   const payload: GeocodingReverseV1 = {
     command: "reverse",
     version: GEOCODING_PAYLOAD_VERSION,
     label: reversed?.display_name ?? null,
-    jurisdiction: reversed ? await deriveJurisdiction(reversed.province, reversed.locality) : null,
+    jurisdiction: jurisdictionOf(place),
+    place: placeForClient(place),
   };
   return apiV1Json(payload, { status: 200 });
 }
 
-/** Province name + locality name → ISO code + INDEC row, or `null`. */
-async function deriveJurisdiction(
+/** A search match's own (province, locality) names, resolved to one row or none. */
+async function placeOfName(
   province: string | null,
   locality: string | null,
-): Promise<GeocodingJurisdictionV1 | null> {
-  if (!province || !locality) return null;
-  try {
-    const resolved = await resolveCanonicalJurisdiction({
-      rawProvince: province,
-      rawLocality: locality,
-    });
-    return {
-      provinceCode: resolved.province.code,
-      provinceName: resolved.province.name,
-      localityName: resolved.locality.localityName,
-      localityIndecId: resolved.locality.indecId,
-    };
-  } catch {
+): Promise<ResolvedPlace | null> {
+  const code = provinceByName(province)?.code;
+  if (!code || !locality) return null;
+  return resolveName(code, locality);
+}
+
+/** The ONE row a place resolved to, or `null` — never a homonym. */
+function jurisdictionOf(place: ResolvedPlace | null): GeocodingJurisdictionV1 | null {
+  if (place?.status !== "resolved" || !place.provinceCode || !place.province || !place.locality) {
     return null;
   }
+  return {
+    provinceCode: place.provinceCode,
+    provinceName: place.province,
+    localityName: place.locality,
+    localityIndecId: place.indecId,
+  };
 }
 
 function unavailable() {

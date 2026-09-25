@@ -117,8 +117,11 @@ export {
 export {
   GEOCODING_PAYLOAD_VERSION,
   type GeocodingAckV1,
+  type GeocodingCandidateV1,
   type GeocodingJurisdictionV1,
   type GeocodingMatchV1,
+  type GeocodingPlaceStatusV1,
+  type GeocodingPlaceV1,
   type GeocodingReverseV1,
   type GeocodingSearchV1,
 } from "./geocoding.ts";
