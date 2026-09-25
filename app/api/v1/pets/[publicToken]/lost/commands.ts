@@ -397,6 +397,8 @@ async function markLost(
         province: null,
         locality: input.localityName,
         localityIndecId: input.localityIndecId,
+        // The app's "¿Es acá?" pick (localidades-por-id B6) → `user_picked`.
+        ...(input.localityPicked === true ? { localityPicked: true } : {}),
         lat: input.locationLat ?? null,
         lng: input.locationLng ?? null,
         address: null,

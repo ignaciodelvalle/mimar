@@ -1361,6 +1361,25 @@ describe("the jurisdiction is resolved the way both of the web's intakes resolve
     expect(control.inserted[0].placeMethod).toBe("unresolved");
   });
 
+  // Security review of stage B: the app's "¿Es acá?" pick arrives marked, so
+  // the door hands the resolver `localityPicked` and the row records
+  // `user_picked`, as the web's does.
+  it("hands the resolver a locality the person picked, marked as picked", async () => {
+    await post({
+      command: "file",
+      contactMode: "anonymous",
+      ...FACTS,
+      locationProvince: "Buenos Aires",
+      locationLocality: "Mechita",
+      locationLocalityIndecId: "06112080",
+      locationLocalityPicked: true,
+    });
+    expect(control.jurisdictionInputs[0]).toMatchObject({
+      localityIndecId: "06112080",
+      localityPicked: true,
+    });
+  });
+
   it("keeps the province canonical on a locality the catalog does not know — soft, like the web", async () => {
     // "soft" is the web's mode for both denuncia intakes: an unknown locality
     // is not a refusal (the person is reporting an animal, not filling a

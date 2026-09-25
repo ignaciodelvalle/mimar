@@ -367,6 +367,8 @@ async function fileWelfareReport(userId: string, input: WelfareReportInput) {
     provinceCode: null,
     locality: input.locationLocality ?? null,
     localityIndecId: input.locationLocalityIndecId ?? null,
+    // The app's "¿Es acá?" pick (localidades-por-id B6) → `user_picked`.
+    ...(input.locationLocalityPicked === true ? { localityPicked: true } : {}),
     lat: input.locationLat,
     lng: input.locationLng,
     address: input.locationAddress,

@@ -350,6 +350,9 @@ export type DenunciaFormValues = {
     lng: number;
     province: string | null;
     locality: string | null;
+    /** The row the person picked on the map's "¿Es acá?" list (B6). */
+    localityIndecId?: string | null;
+    localityPicked?: boolean;
   } | null;
   anonymous: boolean;
   contactEmail: string;
@@ -393,6 +396,16 @@ export function buildFileDenunciaCommand(values: DenunciaFormValues): DenunciaDr
     // the row unverified — which is then true.
     locationProvince: values.place?.province,
     locationLocality: values.place?.locality,
+    // The row the person picked on the map's "¿Es acá?" list, by id and marked
+    // (localidades-por-id B6): the server records it as user_picked.
+    ...(values.place?.localityPicked === true
+      ? {
+          locationLocalityPicked: true,
+          ...(values.place.localityIndecId
+            ? { locationLocalityIndecId: values.place.localityIndecId }
+            : {}),
+        }
+      : {}),
   };
 
   if (values.anonymous) {

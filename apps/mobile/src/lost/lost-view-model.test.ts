@@ -541,3 +541,20 @@ describe("lost-view-model — reportar un mensaje", () => {
     expect(REPORT_INTRO).toContain("ningún aviso");
   });
 });
+
+// Security review of stage B (localidades-por-id B6): a locality the person
+// PICKED on the map's "¿Es acá?" list travels marked, so the server records
+// `user_picked` like the web; a locality from the picker cascade does not.
+describe("a locality picked from the map's candidates", () => {
+  const trio = { provinceCode: "AR-B", localityName: "Mechita", localityIndecId: "06112080" };
+
+  it("travels marked as picked with the trio", () => {
+    const built = buildMarkLost({ ...emptyLostDraft(), ...trio, localityPicked: true });
+    expect(built.ok && built.input).toMatchObject({ ...trio, localityPicked: true });
+  });
+
+  it("carries no mark when nobody picked from the list", () => {
+    const built = buildMarkLost({ ...emptyLostDraft(), ...trio });
+    expect(built.ok && "localityPicked" in built.input).toBe(false);
+  });
+});

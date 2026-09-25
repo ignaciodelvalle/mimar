@@ -394,6 +394,8 @@ export type LostDraft = {
   localityName: string;
   /** Which of the 68 homonyms. Without it the server picks one nobody chose. */
   localityIndecId: string;
+  /** True when the locality came from the map's "¿Es acá?" candidates (B6). */
+  localityPicked?: boolean;
   /** The owner's own note — the reason on marcar perdida, the note on avistaje. */
   note: string;
   /** The incident snapshot the web's wizard collects on its later steps. */
@@ -481,9 +483,12 @@ function jurisdictionTrio(draft: LostDraft) {
   const localityName = orNull(draft.localityName);
   const localityIndecId = orNull(draft.localityIndecId);
   const complete = provinceCode !== null && localityName !== null && localityIndecId !== null;
-  return complete
-    ? { provinceCode, localityName, localityIndecId }
-    : { provinceCode: null, localityName: null, localityIndecId: null };
+  if (!complete) return { provinceCode: null, localityName: null, localityIndecId: null };
+  // Picked by the person on the map's "¿Es acá?" list: the server records it
+  // as user_picked (localidades-por-id B6).
+  return draft.localityPicked === true
+    ? { provinceCode, localityName, localityIndecId, localityPicked: true }
+    : { provinceCode, localityName, localityIndecId };
 }
 
 /**

@@ -791,6 +791,7 @@ function MarkLostForm({
           // y cae en el primero alfabéticamente, así que el caso llega a una
           // autoridad que nadie eligió.
           set("localityIndecId", selection.localityIndecId);
+          set("localityPicked", false);
         }}
       />
       <Body>Si la dejás vacía, la búsqueda cuenta donde vive tu mascota.</Body>
@@ -938,6 +939,7 @@ function LostPointPicker({
             next.provinceCode = j.provinceCode;
             next.localityName = j.localityName;
             next.localityIndecId = j.localityIndecId;
+            next.localityPicked = picked?.localityPicked === true;
           }
           return next;
         })

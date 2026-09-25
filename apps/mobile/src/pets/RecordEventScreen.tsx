@@ -1880,6 +1880,7 @@ function Fields({
                 set("biteProvinceCode", j.provinceCode);
                 set("biteLocalityName", j.localityName);
                 set("biteLocalityIndecId", j.localityIndecId);
+                set("biteLocalityPicked", picked?.localityPicked === true);
               }
             }}
           />
@@ -1914,6 +1915,7 @@ function Fields({
               // nombre y cae en el departamento alfabéticamente primero, así que
               // el caso se rutea a una autoridad que nadie eligió.
               set("biteLocalityIndecId", selection.localityIndecId);
+              set("biteLocalityPicked", false);
             }}
           />
           <Body>Si la dejás vacía, la mordedura cuenta donde vive tu mascota.</Body>

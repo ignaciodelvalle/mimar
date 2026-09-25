@@ -208,6 +208,12 @@ const eventJurisdiction = {
   localityName: optionalText,
   /** Disambiguates the 68 (province, name) collisions the INDEC catalogue ships. */
   localityIndecId: optionalText,
+  /**
+   * True when the person PICKED this locality from the candidate rows the map
+   * offered ("¿Es acá?", localidades-por-id B6): the server records it as
+   * `user_picked`. Absent otherwise.
+   */
+  localityPicked: z.boolean().optional(),
 };
 
 /**

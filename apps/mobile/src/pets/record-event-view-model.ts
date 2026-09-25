@@ -745,6 +745,8 @@ export type EventDraft = {
   biteProvinceCode: string;
   biteLocalityName: string;
   biteLocalityIndecId: string;
+  /** True when the locality came from the map's "¿Es acá?" candidates (B6). */
+  biteLocalityPicked?: boolean;
   /**
    * The pin the person placed on the map (M17), as strings like every other
    * draft field; empty = no point. Never a GPS fix — the app reads none.
@@ -1088,6 +1090,11 @@ function draftToWire(
         provinceCode: orNull(draft.biteProvinceCode),
         localityName: orNull(draft.biteLocalityName),
         localityIndecId: orNull(draft.biteLocalityIndecId),
+        // Elegida por la persona en la lista "¿Es acá?" del mapa: el servidor
+        // la registra como user_picked (localidades-por-id B6).
+        ...(draft.biteLocalityPicked === true && orNull(draft.biteLocalityIndecId) !== null
+          ? { localityPicked: true }
+          : {}),
         ...bitePoint(draft),
         notes: orNull(draft.notes),
       };

@@ -379,6 +379,12 @@ export function DenunciaScreen({
               lng: picked.lng,
               province: picked.jurisdiction?.provinceName ?? values.place?.province ?? null,
               locality: picked.jurisdiction?.localityName ?? values.place?.locality ?? null,
+              ...(picked.localityPicked === true
+                ? {
+                    localityIndecId: picked.jurisdiction?.localityIndecId ?? null,
+                    localityPicked: true,
+                  }
+                : {}),
             },
           });
           // The address box now says what the pin says, so the "a retyped

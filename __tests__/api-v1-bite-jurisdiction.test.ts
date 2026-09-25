@@ -23,6 +23,7 @@ const control = vi.hoisted(() => ({
   reverse: null as null | { display_name: string; province: string; locality: string },
   nearest: [] as Array<{ id: string; provinceCode: string; localityName: string }>,
   corroborateCalls: [] as Array<Record<string, unknown>>,
+  gateInputs: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("@/lib/domain/location-normalize", () => {
@@ -40,6 +41,7 @@ vi.mock("@/lib/domain/location-normalize", () => {
       provinceCode: string;
       locality: string | null;
     }) => {
+      control.gateInputs.push(loc);
       const names: Record<string, string> = { "AR-B": "Buenos Aires", "AR-X": "Córdoba" };
       const province = names[loc.provinceCode];
       if (!province) throw new JurisdictionValidationError("INVALID_PROVINCE", "no such province");
@@ -256,5 +258,22 @@ describe("no pin — unchanged", () => {
       },
     });
     expect(control.corroborateCalls).toEqual([]);
+  });
+});
+
+// Security review of stage B: the app's "¿Es acá?" pick reaches the write
+// gate marked, which records it as `user_picked`.
+describe("a locality the person picked", () => {
+  it("reaches the write gate marked as picked", async () => {
+    control.gateInputs.length = 0;
+    await resolveBiteJurisdiction({
+      provinceCode: "AR-X",
+      localityName: "Villa María",
+      localityIndecId: "14042170",
+      localityPicked: true,
+      locationLat: null,
+      locationLng: null,
+    });
+    expect(control.gateInputs[0]).toMatchObject({ localityPicked: true });
   });
 });

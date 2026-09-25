@@ -298,6 +298,12 @@ const factsShape = {
    */
   locationLocalityIndecId: optionalText(WELFARE_JURISDICTION_MAX_LENGTH),
   /**
+   * True when the person PICKED this locality from the candidate rows the map
+   * offered ("¿Es acá?", localidades-por-id B6): the server records it as
+   * `user_picked`. Absent otherwise.
+   */
+  locationLocalityPicked: z.boolean().optional(),
+  /**
    * What the reporter observed on the animal, verbatim — optional.
    *
    * THIS FIELD WAS ABSENT FOR A WHILE, AND ITS ABSENCE WAS A REPAIR. The

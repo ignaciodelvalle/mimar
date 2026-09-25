@@ -414,3 +414,25 @@ describe("an empty form is answered in FIELD ORDER, not in schema order (B-07)",
     expect(missingDenunciaFields(withPhone)).toEqual([]);
   });
 });
+
+// Security review of stage B (localidades-por-id B6): the locality the person
+// picked on the map's "¿Es acá?" list travels by id and marked as picked.
+describe("a denuncia's locality picked from the map's candidates", () => {
+  it("sends its INDEC id marked as picked", () => {
+    const draft = buildFileDenunciaCommand({
+      ...FILLED,
+      place: { ...PLACE, localityIndecId: "62042030", localityPicked: true },
+    });
+    expect(draft.ok && draft.input).toMatchObject({
+      locationLocalityIndecId: "62042030",
+      locationLocalityPicked: true,
+    });
+  });
+
+  it("sends neither when nobody picked from the list", () => {
+    const draft = buildFileDenunciaCommand(FILLED);
+    expect(draft.ok && "locationLocalityPicked" in draft.input).toBe(false);
+    // The contract normalises an absent id to null: no id travels.
+    expect(draft.ok && draft.input).toMatchObject({ locationLocalityIndecId: null });
+  });
+});

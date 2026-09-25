@@ -505,3 +505,28 @@ describe("the bite's map point (M17)", () => {
     }
   });
 });
+
+// Security review of stage B (localidades-por-id B6): the bite's picked
+// locality travels marked, so the server records `user_picked`.
+describe("the bite's locality picked from the map's candidates", () => {
+  const bite = (overrides: Partial<ReturnType<typeof emptyDraft>> = {}) =>
+    draft({ victimKind: "human", biteSeverity: "minor", ...overrides });
+  const trio = {
+    biteProvinceCode: "AR-B",
+    biteLocalityName: "Mechita",
+    biteLocalityIndecId: "06112080",
+  };
+
+  it("travels marked as picked", () => {
+    const result = validateDraft("bite", bite({ ...trio, biteLocalityPicked: true }));
+    expect(result.ok && result.input).toMatchObject({
+      localityIndecId: "06112080",
+      localityPicked: true,
+    });
+  });
+
+  it("carries no mark otherwise", () => {
+    const result = validateDraft("bite", bite(trio));
+    expect(result.ok && "localityPicked" in result.input).toBe(false);
+  });
+});

@@ -975,3 +975,23 @@ describe("POST /lost — report_content", () => {
     ]);
   });
 });
+
+// Security review of stage B (localidades-por-id B6): a locality the person
+// PICKED on the app's "¿Es acá?" list reaches the server marked, so the case
+// records `user_picked` exactly as the web's picker does.
+describe("POST .../lost — a locality the person picked is recorded as picked", () => {
+  it("records user_picked for a picked id, indec_id without the mark", async () => {
+    const trio = { provinceCode: "AR-B", localityName: "Mechita", localityIndecId: "06112080" };
+    await post({ ...MARK_LOST, ...trio, localityPicked: true });
+    const picked = control.writes.at(-1)?.input as {
+      eventPlace?: { resolved?: { method?: string } };
+    };
+    expect(picked?.eventPlace?.resolved?.method).toBe("user_picked");
+
+    await post({ ...MARK_LOST, ...trio });
+    const plain = control.writes.at(-1)?.input as {
+      eventPlace?: { resolved?: { method?: string } };
+    };
+    expect(plain?.eventPlace?.resolved?.method).toBe("indec_id");
+  });
+});

@@ -609,6 +609,7 @@ export async function appendBite(
     provinceCode: input.provinceCode,
     localityName: input.localityName,
     localityIndecId: input.localityIndecId,
+    localityPicked: input.localityPicked === true,
     locationLat: hasPin ? input.locationLat : null,
     locationLng: hasPin ? input.locationLng : null,
   });

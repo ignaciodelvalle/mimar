@@ -50,6 +50,8 @@ export async function resolveBiteJurisdiction(input: {
   provinceCode: string | null;
   localityName: string | null;
   localityIndecId: string | null;
+  /** The person picked the locality from the map's candidates (B6). */
+  localityPicked?: boolean;
   locationLat: number | null;
   locationLng: number | null;
 }): Promise<BiteJurisdiction> {
@@ -63,6 +65,7 @@ export async function resolveBiteJurisdiction(input: {
         province: null,
         locality: input.localityName,
         localityIndecId: input.localityIndecId,
+        ...(input.localityPicked === true ? { localityPicked: true } : {}),
         lat: input.locationLat,
         lng: input.locationLng,
         address: null,
