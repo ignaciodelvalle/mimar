@@ -351,6 +351,8 @@ const NOT_MEASURED: Record<string, string> = {
     "needs a pet the probe ACCOUNT holds; discovery only finds PUBLIC tokens, and a " +
     "token the account does not hold answers 404 — which would time a refusal, not a read",
   "app/api/v1/pets/[publicToken]/libreta/route.ts": "same fixture gap as the pet detail read",
+  "app/api/v1/pets/[publicToken]/poster/route.ts":
+    "same fixture gap, and it only answers a poster for a pet the account holds AND has marked lost",
   "app/api/v1/pets/[publicToken]/events/route.ts":
     "GET has the same fixture gap; POST writes an event",
   "app/api/v1/pets/[publicToken]/events/[eventId]/route.ts": "needs an event id under a held pet",

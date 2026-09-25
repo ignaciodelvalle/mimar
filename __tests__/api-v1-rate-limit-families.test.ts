@@ -1059,7 +1059,13 @@ describe("/api/v1 rate-limit families — the numbers the derivation committed t
     //                                     16.884
     //
     // and 15.684 + 2 × 600 = 16.884 agrees.
-    expect(API_V1_CGNAT_FAMILY_IP_CEILING_PER_MINUTE).toBe(16_884);
+    //
+    // 17.484 WITH THE POSTER DOOR TOO (`pets/{token}/poster`, M13): GET only,
+    // one bucket, in `authenticated-read` — a read of the animal the lost
+    // cockpit just loaded. M11 and M13 landed in the same integration batch, so
+    // the family becomes 23 × 600 = 13.800, 48 buckets, and
+    // 16.884 + 600 = 17.484.
+    expect(API_V1_CGNAT_FAMILY_IP_CEILING_PER_MINUTE).toBe(17_484);
   });
 
   it("keeps pet-disclosure-write at N callers on BOTH windows", () => {

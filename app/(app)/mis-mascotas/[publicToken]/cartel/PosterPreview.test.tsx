@@ -9,6 +9,11 @@ import type React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import {
+  type LostPosterData,
+  renderLostPosterHtml,
+} from "@/src/modules/lost/application/lost-poster-html";
+
 import { PosterPreview } from "./PosterPreview";
 
 function render(node: React.ReactElement): string {
@@ -16,7 +21,7 @@ function render(node: React.ReactElement): string {
 }
 
 // Minimal base props used across most tests.
-const BASE_PROPS = {
+const BASE_PROPS: LostPosterData = {
   publicToken: "DIM-TEST-1234",
   petName: "Luna",
   species: "Perro",
@@ -164,5 +169,69 @@ describe("<PosterPreview> — missing-photo pre-print warning (tester fix #3b)",
     expect(html).toContain(
       "bg-[var(--color-ln-azul)] text-white hover:bg-[var(--color-ln-azul-700)]",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Parity with the native app's poster (M13)
+// ---------------------------------------------------------------------------
+//
+// The app prints `renderLostPosterHtml` — a plain-HTML twin of this component,
+// served by `GET /api/v1/pets/{token}/poster`. Two layouts of one poster can
+// only be trusted if they SAY the same thing, so these render both from the same
+// props and compare the visible text of the poster body, block for block. A
+// field added to one and not the other, or a disclosure gate that differs, turns
+// this red.
+
+/** The poster body's visible text, tags dropped and whitespace collapsed. */
+function posterText(html: string): string {
+  const start = html.indexOf("<main");
+  const end = html.indexOf("</main>");
+  const body = html.slice(start, end);
+  return body
+    .replace(/<svg[\s\S]*?<\/svg>/g, " ")
+    .replace(/<textarea[\s\S]*?<\/textarea>/g, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&#x27;|&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+describe("<PosterPreview> ⇄ renderLostPosterHtml — the app prints the same poster", () => {
+  const variants: Array<[string, Partial<LostPosterData>]> = [
+    ["everything disclosed", {}],
+    ["with a photo", { photoUrl: "https://cdn.test/luna.jpg" }],
+    ["location not disclosed", { locationDisclosed: false }],
+    ["no contact disclosed", { ownerFirstName: null, ownerPhone: null }],
+    ["phone only", { ownerFirstName: null }],
+    ["first name only", { ownerPhone: null }],
+    ["male, no breed, no age", { sex: "Macho", sexRaw: "male", breed: null, age: null }],
+    ["unknown sex", { sex: "No especificado", sexRaw: "unknown" }],
+    ["no episode", { placeName: null, lastSeenAt: null }],
+    ["no color, no señas", { color: null, distinguishingFeatures: null }],
+  ];
+
+  for (const [name, overrides] of variants) {
+    it(`says the same thing — ${name}`, () => {
+      const props = { ...BASE_PROPS, ...overrides };
+      const web = posterText(render(<PosterPreview {...props} />));
+      const app = posterText(renderLostPosterHtml(props));
+      expect(app).toBe(web);
+      expect(app.length).toBeGreaterThan(0);
+    });
+  }
+
+  it("carries the server QR and the photo into the app's document", () => {
+    const html = renderLostPosterHtml({ ...BASE_PROPS, photoUrl: "https://cdn.test/luna.jpg" });
+    expect(html).toContain('data-testid="qr"');
+    expect(html).toContain('src="https://cdn.test/luna.jpg"');
+  });
+
+  it("escapes what the owner typed — a pet name is not markup", () => {
+    const html = renderLostPosterHtml({ ...BASE_PROPS, petName: '<img src=x onerror="1">' });
+    expect(html).not.toContain("<img src=x");
+    expect(html).toContain("&lt;img src=x");
   });
 });

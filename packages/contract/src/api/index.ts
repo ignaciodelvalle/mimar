@@ -115,6 +115,11 @@ export {
   type PetLostV1,
 } from "./pet-lost.ts";
 export {
+  PET_POSTER_PAGE_POINTS,
+  PET_POSTER_PAYLOAD_VERSION,
+  type PetPosterV1,
+} from "./pet-poster.ts";
+export {
   PET_CLAIM_VARIANTS_V1,
   type PetClaimCommandAckV1,
   type PetClaimFreeAckV1,
