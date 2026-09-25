@@ -273,27 +273,34 @@ export function mordedurasEventPredicate(): SQL {
 // Both bite writers (report-bite.ts, report-bite-from-org.ts) stamp the
 // incident's own place into the `incident_reported` payload as
 // `jurisdiction_province` / `jurisdiction_locality` (event-schemas.ts), and open
-// the bite case there, falling back to the pet's home jurisdiction FIELD BY
-// FIELD (`input.eventJurisdictionProvince ?? pet.jurisdictionProvince`, and the
-// same for the locality) when the reporter dropped no pin. These expressions
-// are the SQL spelling of exactly that fallback — COALESCE is `??` — so the map
-// and the case queue agree about where a bite happened. A CABA dog that bites
-// in Córdoba is Córdoba's bite, in the case AND on the map.
+// the bite case there. The place is ONE PAIR, never mixed field by field
+// (localidades-por-id A2 + stage A review): a province with no locality is a
+// province-level bite; a pin that names no province is an unresolved bite (the
+// payload carries `place`, jurisdiction null); only a bite whose report carried
+// no place at all (no incident province and no `place`) falls back to the pet's
+// home pair, whole. These expressions are the SQL spelling of exactly that
+// rule, so the map and the case queue agree about where a bite happened. A CABA
+// dog that bites in Córdoba is Córdoba's bite, in the case AND on the map.
 //
 // Used by loadBiteEvents and loadMordedurassByUnit; `pets` must be in FROM (the
 // fallback half, and the synthetic-row exclusion, read it).
 // ---------------------------------------------------------------------------
 
+/** Did the bite's report carry a place of its own (a province, or a `place`)? */
+function biteCarriesItsPlaceSql(): SQL<boolean> {
+  return sql<boolean>`((${petEvents.payload}->>'jurisdiction_province') IS NOT NULL OR (${petEvents.payload} ? 'place'))`;
+}
+
 export function biteIncidentProvinceSql(): SQL<string | null> {
-  return sql<
-    string | null
-  >`COALESCE((${petEvents.payload}->>'jurisdiction_province'), ${pets.jurisdictionProvince})`;
+  return sql<string | null>`(CASE WHEN ${biteCarriesItsPlaceSql()}
+    THEN (${petEvents.payload}->>'jurisdiction_province')
+    ELSE ${pets.jurisdictionProvince} END)`;
 }
 
 export function biteIncidentLocalitySql(): SQL<string | null> {
-  return sql<
-    string | null
-  >`COALESCE((${petEvents.payload}->>'jurisdiction_locality'), ${pets.jurisdictionLocality})`;
+  return sql<string | null>`(CASE WHEN ${biteCarriesItsPlaceSql()}
+    THEN (${petEvents.payload}->>'jurisdiction_locality')
+    ELSE ${pets.jurisdictionLocality} END)`;
 }
 
 /**

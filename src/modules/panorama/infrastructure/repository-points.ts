@@ -58,8 +58,9 @@ export async function loadBiteEvents(
   if (asOf) base.push(lte(tcol, asOf));
   // A bite counts where it OCCURRED: incident_reported carries the incident's own
   // jurisdiction_province/_locality in its payload (event-schemas.ts), and the
-  // scope reads it, falling back to the pet's home field by field exactly like the
-  // bite case does (biteIncidentScope, repository-scope.ts). NOT petEventsScope —
+  // scope reads it as ONE pair, falling back to the pet's home pair only when the
+  // report carried no place, exactly like the bite case (biteIncidentScope,
+  // repository-scope.ts). NOT petEventsScope —
   // that one reads outbreak_signal's pet_jurisdiction_* snapshot, which this event
   // never carries, and filtered out every real bite for scoped govt users.
   // PRIVACY (Slice 2): this scope binding is the operator-jurisdiction gate — a govt

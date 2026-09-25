@@ -5,8 +5,8 @@
 //
 // 1. PANORAMA. A dog registered in CABA bites five times in Córdoba (the bite
 //    writers stamp the incident's place into the incident_reported payload) and
-//    once with no place captured (the writers then fall back to the pet's home,
-//    field by field — and so must the map). The Córdoba operator must see the
+//    once with no place captured (the writers then fall back to the pet's home
+//    pair, whole — and so must the map). The Córdoba operator must see the
 //    five, as a VISIBLE cell of five (k=5), and the CABA operator must see only
 //    the fallback bite. Before T1-G2 the loaders joined the pet's home, so all
 //    six counted in CABA and Córdoba saw none — while the bite CASES were
@@ -207,5 +207,112 @@ describe("the bite writers' location gate — locality 'soft'", () => {
     expect(out.locality).toBe("Paraje Inventado G2");
     expect(out.localityId).toBeNull();
     expect(out.province).toBe("Córdoba");
+  });
+});
+
+// Stage A review of localidades-por-id, BLOCKER 1 — the map never REBUILDS a
+// pair nobody entered. Since stage A a bite's place is written whole: a
+// province with no locality is a province-level bite, and a pin that names no
+// province is an unresolved one (the payload keeps `place`, jurisdiction
+// null). The loaders used to fall back FIELD BY FIELD
+// (`COALESCE(payload locality, pets locality)`), which turned the first into
+// (incident province, the dog's HOME locality) and the second into the dog's
+// home. Neither may count for the home locality's operator.
+describe("panorama — a bite's place is read whole, never field by field", () => {
+  const TOKEN_WHOLE = "DIM-G2-WHOLE";
+  const HOME_WHOLE = { province: "Córdoba", locality: "SYNTH-G2-HOME-WHOLE" };
+  const HOME_OPERATOR: DashboardJurisdiction[] = [HOME_WHOLE];
+  let wholePetId = "";
+  const ids: string[] = [];
+
+  async function cleanupWhole(): Promise<void> {
+    await withMutationOverride(async (tx) => {
+      await tx.execute(
+        sql`DELETE FROM pet_events WHERE pet_id IN (SELECT id FROM pets WHERE public_token = ${TOKEN_WHOLE})`,
+      );
+      await tx.execute(sql`DELETE FROM pets WHERE public_token = ${TOKEN_WHOLE}`);
+    });
+  }
+
+  async function insertWholeBite(payloadPlace: Record<string, unknown>): Promise<string> {
+    const [row] = await db
+      .insert(petEvents)
+      .values({
+        petId: wholePetId,
+        eventType: "incident_reported",
+        occurredAt: OCCURRED_AT,
+        payload: validateEventPayload("incident_reported", {
+          incident_type: "bite_inflicted",
+          severity: "moderate",
+          injuries_summary: null,
+          vet_involved: null,
+          ...payloadPlace,
+        }) as Record<string, unknown>,
+        authorRole: "owner",
+        recordedByUserId: null,
+        locationLat: "-38.9366557",
+        locationLng: "-68.0399008",
+      })
+      .returning({ id: petEvents.id });
+    return row.id;
+  }
+
+  beforeAll(async () => {
+    await cleanupWhole();
+    const [pet] = await db
+      .insert(pets)
+      .values({
+        publicToken: TOKEN_WHOLE,
+        name: "Mordedor Entero",
+        species: "dog",
+        sex: "male",
+        status: "active",
+        jurisdictionProvince: HOME_WHOLE.province,
+        jurisdictionLocality: HOME_WHOLE.locality,
+      })
+      .returning({ id: pets.id });
+    wholePetId = pet.id;
+    // Province-level: the incident's province, no locality.
+    ids.push(
+      await insertWholeBite({
+        jurisdiction_province: "Córdoba",
+        jurisdiction_locality: null,
+        place: { entered: { province: "AR-X", locality: null, indec_id: null }, resolved: null },
+      }),
+    );
+    // Unresolved: a pin that names no province.
+    ids.push(
+      await insertWholeBite({
+        jurisdiction_province: null,
+        jurisdiction_locality: null,
+        place: { entered: { province: null, locality: null, indec_id: null }, resolved: null },
+      }),
+    );
+  }, 60_000);
+
+  afterAll(cleanupWhole, 60_000);
+
+  it("the home locality's operator counts neither the province-level nor the unresolved bite", async () => {
+    const res = await loadBiteEvents(GOVT, HOME_OPERATOR, SINCE);
+    const seen = res.rows.map((r) => r.id);
+    for (const id of ids) expect(seen).not.toContain(id);
+  });
+
+  it("an admin drilled into the home locality does not find them either", async () => {
+    const res = await loadBiteEvents(
+      { role: "admin" },
+      [],
+      SINCE,
+      undefined,
+      HOME_WHOLE.province,
+      HOME_WHOLE.locality,
+    );
+    const seen = res.rows.map((r) => r.id);
+    for (const id of ids) expect(seen).not.toContain(id);
+  });
+
+  it("the province-level bite still counts for the whole province", async () => {
+    const res = await loadBiteEvents(GOVT, [{ province: "Córdoba", locality: "" }], SINCE);
+    expect(res.rows.map((r) => r.id)).toContain(ids[0]);
   });
 });
