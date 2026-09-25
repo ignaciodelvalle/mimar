@@ -7,7 +7,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const store = vi.hoisted(() => ({ objects: new Map<string, Uint8Array>() }));
+const store = vi.hoisted(() => ({ objects: new Map<string, Uint8Array<ArrayBuffer>>() }));
 
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({
