@@ -93,20 +93,26 @@
 // `trivial_description`, `critical_without_evidence` and `duplicate_within_24h`,
 // all derived from the submission itself. `critical_without_evidence` fires on
 // every `critical` denuncia from this door, since `attachmentCount` is
-// structurally 0 — that is correct rather than a false positive: a critical
-// report with no evidence IS the thing that rule flags for a human to look at,
-// and the phone genuinely cannot attach any.
+// no longer structurally 0: since M12 the phone attaches photos, and the rule
+// reads the real count exactly as it does for the web.
 
 import { db } from "@/db";
 import { signalWelfareReport } from "@/lib/domain/authority";
 import { writePoint } from "@/lib/domain/location";
 import { CoordError, normalizeLocationForWrite } from "@/lib/domain/location-normalize";
 import { apiV1Error, apiV1Json } from "@/lib/infra/api-v1";
+import { API_V1_MEDIA_UPLOAD_USER_LIMIT } from "@/lib/infra/api-v1-limits";
 import { openCase } from "@/lib/infra/case-helpers";
 import { resolveRoutableJurisdiction } from "@/lib/infra/jurisdiction-from-text";
 import { RateLimitError, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { reportError } from "@/lib/infra/report-error";
+import {
+  loadStagedWelfareEvidence,
+  mintWelfareEvidenceTicket,
+  removeStagedWelfareEvidence,
+} from "@/lib/infra/welfare-evidence-staging";
 import { computeFlagReasons } from "@/lib/infra/welfare-moderation";
+import { prepareWelfareEvidence, uploadPreparedWelfareEvidence } from "@/lib/infra/welfare-uploads";
 import { geocodeAddressPublicOrThrow } from "@/src/modules/localities/application/geocoding/geocoding";
 import { createWelfareReport } from "@/src/modules/welfare/application/create-welfare-report";
 import { generateReferenceCode } from "@/src/modules/welfare/domain/reference-code";
@@ -114,7 +120,11 @@ import { WELFARE_REPORT_KINDS } from "@/src/modules/welfare/domain/types";
 import { WelfareRepository } from "@/src/modules/welfare/infrastructure/welfare-repository";
 import type { WelfareReportCommandInput, WelfareReportInput } from "@dim/contract/input";
 
-import { buildWelfareLocationResolvedAck, buildWelfareReportFiledAck } from "./payload";
+import {
+  buildWelfareEvidenceTicketAck,
+  buildWelfareLocationResolvedAck,
+  buildWelfareReportFiledAck,
+} from "./payload";
 
 const UNAVAILABLE_RETRY_AFTER_SECONDS = 5;
 
@@ -227,7 +237,51 @@ export async function runWelfareReportCommand(ctx: WelfareReportCommandContext) 
       status: 200,
     });
   }
+  if (ctx.input.command === "request_evidence_ticket") {
+    return mintEvidenceTicket(ctx.userId, ctx.input.contentType);
+  }
   return fileWelfareReport(ctx.userId, ctx.input);
+}
+
+/**
+ * One upload URL for one evidence photo (M12).
+ *
+ * NOT ON `welfare_auth`: that budget is ten DENUNCIAS an hour, and a denuncia
+ * with five photos is one denuncia. The ticket spends the pet photo's own
+ * per-user media budget instead — the same act (staging one image) under the
+ * same ceiling — plus the route's per-IP bucket that already ran. Keyed on the
+ * user id like `welfare_auth`, which is the same residual channel that
+ * function's docblock names below; the staged KEY itself carries no identity.
+ */
+async function mintEvidenceTicket(
+  userId: string,
+  contentType: "image/jpeg" | "image/png" | "image/webp",
+) {
+  try {
+    await enforceRateLimit("api_v1_welfare_evidence_user", userId, API_V1_MEDIA_UPLOAD_USER_LIMIT);
+  } catch (err) {
+    if (err instanceof RateLimitError) return apiV1Error("rate_limited", 429);
+    reportError("api-v1-welfare-reports/evidence-limiter", err);
+  }
+  const ticket = await mintWelfareEvidenceTicket(contentType);
+  if (ticket === null) return unavailable();
+  return apiV1Json(buildWelfareEvidenceTicketAck(ticket), { status: 200 });
+}
+
+/**
+ * The staged photos through the WEB's gate, before any row exists.
+ * `null` = refused (nothing written, staged copies discarded).
+ */
+async function prepareStagedEvidence(stagedPaths: readonly string[]) {
+  if (stagedPaths.length === 0) return [];
+  const loaded = await loadStagedWelfareEvidence(stagedPaths);
+  const prep = loaded.ok ? await prepareWelfareEvidence(loaded.files) : null;
+  if (prep === null || prep.error !== null) {
+    // The staged objects are useless now: the person retakes or drops them.
+    await removeStagedWelfareEvidence(stagedPaths);
+    return null;
+  }
+  return prep.prepared;
 }
 
 /**
@@ -260,6 +314,14 @@ async function fileWelfareReport(userId: string, input: WelfareReportInput) {
     input.contactMode === "with_contact" ? input.reporterContactEmail : null;
   const reporterContactPhone =
     input.contactMode === "with_contact" ? input.reporterContactPhone : null;
+
+  // EVIDENCE BEFORE THE ROW, in the web action's order (Fix A, 2026-09-18): the
+  // web's own gate — count, type, size, HEIC, and the EXIF/GPS strip that fails
+  // closed — runs over every staged photo here, so a refusal leaves NOTHING
+  // behind: no report row, no case. 422 with its own code, because the person's
+  // move (retake, or send without it) differs from a failed filing's.
+  const prepared = await prepareStagedEvidence(input.evidence);
+  if (prepared === null) return apiV1Error("welfare_evidence_refused", 422);
 
   const point = writePoint({ lat: input.locationLat, lng: input.locationLng });
 
@@ -356,6 +418,16 @@ async function fileWelfareReport(userId: string, input: WelfareReportInput) {
     return apiV1Error("welfare_report_failed", 500);
   }
 
+  // The already-stripped bodies, to the web's own path `{reportId}/{uuid}{ext}`
+  // in `welfare-evidence`. Pure storage I/O that rolls itself back on a partial
+  // failure; the row exists by now, exactly as on the web.
+  const uploaded =
+    prepared.length === 0 ? null : await uploadPreparedWelfareEvidence(inserted.id, prepared);
+  if (uploaded?.error) {
+    reportError("api-v1-welfare-reports/evidence-upload", new Error("evidence upload failed"));
+    return apiV1Error("welfare_report_failed", 500);
+  }
+
   const result = await createWelfareReport(
     {
       reportId: inserted.id,
@@ -382,9 +454,15 @@ async function fileWelfareReport(userId: string, input: WelfareReportInput) {
       // never passes — so forwarding it here changes no event, and the honest
       // value beats a hardcoded null that would read as "this door has none".
       observedSymptoms: input.observedSymptoms,
-      // NO ATTACHMENTS. Not "none were sent" — none can be. See the contract.
-      attachments: [],
-      uploadedPaths: [],
+      // The photos the web's gate already stripped, stored under the report's
+      // id. The original names were replaced by `evidencia-N` on the way in.
+      attachments: (uploaded?.uploaded ?? []).map((u) => ({
+        storagePath: u.storagePath,
+        mimeType: u.mimeType,
+        fileSize: u.fileSize,
+        originalFilename: u.originalFilename,
+      })),
+      uploadedPaths: uploaded?.uploadedPaths ?? [],
       reporterUserId,
       // The two browser instruments this transport refuses to fake.
       dwellTimeMs: undefined,
@@ -413,6 +491,9 @@ async function fileWelfareReport(userId: string, input: WelfareReportInput) {
     reportError("api-v1-welfare-reports/case", new Error("welfare case tx failed"));
     return apiV1Error("welfare_report_failed", 500);
   }
+
+  // Filed: the staged copies have served. Best-effort, never blocks the ack.
+  await removeStagedWelfareEvidence(input.evidence);
 
   // THE ACK IS BUILT FROM THE REFERENCE CODE AND NOTHING ELSE, and the builder
   // takes no other argument so a later edit cannot widen it without changing a

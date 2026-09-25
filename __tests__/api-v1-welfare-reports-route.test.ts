@@ -113,7 +113,70 @@ const control = vi.hoisted(() => ({
   geocodeThrowsRateLimit: false,
   /** Make the case transaction fail, to exercise the other 500 arm. */
   txThrows: false,
+  /** M12 — the staging half: tickets minted, keys loaded, keys removed. */
+  ticketsMinted: [] as string[],
+  stagedLoaded: [] as string[][],
+  stagedRemoved: [] as string[][],
+  /** Make the web's own evidence gate refuse (a strip that failed closed). */
+  evidenceRefused: false,
+  /** What `uploadPreparedWelfareEvidence` was handed: the report id. */
+  evidenceUploads: [] as string[],
 }));
+
+vi.mock("@/lib/infra/welfare-evidence-staging", () => ({
+  mintWelfareEvidenceTicket: async (contentType: string) => {
+    control.ticketsMinted.push(contentType);
+    return {
+      uploadUrl: "https://storage.test/upload?token=t",
+      token: "t",
+      stagedPath: "welfare/0b6f1c1e-2c3d-4e5f-8a9b-0c1d2e3f4a5b.jpg",
+      bucket: "uploads-staging",
+      validForSeconds: 7200,
+    };
+  },
+  loadStagedWelfareEvidence: async (paths: string[]) => {
+    control.stagedLoaded.push(paths);
+    return {
+      ok: true,
+      files: paths.map((_, i) => new File([new Uint8Array([1])], `evidencia-${i + 1}.jpg`)),
+    };
+  },
+  removeStagedWelfareEvidence: async (paths: string[]) => {
+    control.stagedRemoved.push([...paths]);
+  },
+}));
+
+vi.mock("@/lib/infra/welfare-uploads", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/infra/welfare-uploads")>();
+  return {
+    ...actual,
+    prepareWelfareEvidence: async (files: File[]) =>
+      control.evidenceRefused
+        ? { error: "No se pudieron quitar los metadatos.", prepared: [] }
+        : {
+            error: null,
+            prepared: files.map((file) => ({
+              file,
+              uploadBody: file,
+              storedSize: 1,
+              mimeType: "image/jpeg",
+            })),
+          },
+    uploadPreparedWelfareEvidence: async (
+      reportId: string,
+      prepared: Array<{ file: File; mimeType: string }>,
+    ) => {
+      control.evidenceUploads.push(reportId);
+      const uploaded = prepared.map((p, i) => ({
+        storagePath: `${reportId}/evid-${i}.jpg`,
+        mimeType: p.mimeType,
+        fileSize: 1,
+        originalFilename: p.file.name,
+      }));
+      return { error: null, uploaded, uploadedPaths: uploaded.map((u) => u.storagePath) };
+    },
+  };
+});
 
 vi.mock("@/lib/infra/live-user", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/infra/live-user")>();
@@ -365,6 +428,11 @@ beforeEach(() => {
   control.localityAnswer = null;
   control.errors = [];
   control.txThrows = false;
+  control.ticketsMinted = [];
+  control.stagedLoaded = [];
+  control.stagedRemoved = [];
+  control.evidenceRefused = false;
+  control.evidenceUploads = [];
   control.geocodeQueries = [];
   control.geocodeResults = [];
   control.geocodeThrows = null;
@@ -830,10 +898,93 @@ describe("the named denuncia attaches the account, and only then", () => {
   });
 });
 
-describe("no attachments, and no way to pretend otherwise", () => {
+const STAGED = "welfare/0b6f1c1e-2c3d-4e5f-8a9b-0c1d2e3f4a5b.jpg";
+
+describe("evidence photos (M12) — the web's gate, the web's storage path, nobody's name", () => {
+  it("mints a ticket on the media budget, NOT on the ten-denuncias-an-hour one", async () => {
+    const response = await post({ command: "request_evidence_ticket", contentType: "image/jpeg" });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.command).toBe("request_evidence_ticket");
+    expect(body.stagedPath).toBe(STAGED);
+    expect(control.spent.map((s) => s.endpoint)).toContain("api_v1_welfare_evidence_user");
+    expect(control.spent.map((s) => s.endpoint)).not.toContain("welfare_auth");
+    expect(control.inserted).toEqual([]);
+  });
+
+  it("refuses to stage a video — photos only, where the GPS strip reaches", async () => {
+    const response = await post({ command: "request_evidence_ticket", contentType: "video/mp4" });
+    expect(response.status).toBe(400);
+    expect(control.ticketsMinted).toEqual([]);
+  });
+
+  it("files an ANONYMOUS denuncia with its photo: stripped, stored under the report, no reporter", async () => {
+    const response = await post({
+      command: "file",
+      contactMode: "anonymous",
+      ...FACTS,
+      evidence: [STAGED],
+    });
+
+    expect(response.status).toBe(201);
+    expect(control.stagedLoaded).toEqual([[STAGED]]);
+    expect(control.evidenceUploads).toEqual(["report-uuid"]);
+    expect(control.attachments).toHaveLength(1);
+    expect(control.flagInputs[0].attachmentCount).toBe(1);
+    expect(control.inserted[0].reporterUserId).toBeNull();
+    // The staged copy is discarded once filed…
+    expect(control.stagedRemoved).toEqual([[STAGED]]);
+    // …and the caller's id reaches no stored value.
+    expect(JSON.stringify({ i: control.inserted, a: control.attachments })).not.toContain(ME);
+  });
+
+  it("refuses the WHOLE filing when the web's gate refuses a photo — nothing written", async () => {
+    control.evidenceRefused = true;
+    const response = await post({
+      command: "file",
+      contactMode: "with_contact",
+      reporterContactEmail: CONTACT_EMAIL,
+      ...FACTS,
+      evidence: [STAGED],
+    });
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ error: "welfare_evidence_refused" });
+    expect(control.inserted).toEqual([]);
+    expect(control.cases).toEqual([]);
+    expect(control.stagedRemoved).toEqual([[STAGED]]);
+  });
+
+  it("refuses a key the server never minted, and a sixth photo", async () => {
+    const foreign = await post({
+      command: "file",
+      contactMode: "anonymous",
+      ...FACTS,
+      evidence: ["../pets/other.jpg"],
+    });
+    expect(foreign.status).toBe(400);
+
+    const six = Array.from(
+      { length: 6 },
+      (_, i) => `welfare/0b6f1c1e-2c3d-4e5f-8a9b-0c1d2e3f4a5${i}.jpg`,
+    );
+    const tooMany = await post({
+      command: "file",
+      contactMode: "anonymous",
+      ...FACTS,
+      evidence: six,
+    });
+    expect(tooMany.status).toBe(400);
+    expect(control.stagedLoaded).toEqual([]);
+    expect(control.inserted).toEqual([]);
+  });
+});
+
+describe("no evidence sent: none stored, and no way to pretend otherwise", () => {
   it("inserts no attachment rows and tells the moderation heuristics there are none", async () => {
-    // `critical_without_evidence` fires on every critical denuncia from this
-    // door, and that is correct rather than a false positive — see commands.ts.
+    // `critical_without_evidence` fires on a critical denuncia sent WITHOUT
+    // photos, and that is correct rather than a false positive — see commands.ts.
     //
     // Kill it by passing `attachmentCount: 1` in `createWelfareReport`'s
     // `computeFlagReasons` call. Applied: this fails on the 0.

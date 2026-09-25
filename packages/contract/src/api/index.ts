@@ -325,6 +325,7 @@ export {
 } from "./public-credential.ts";
 export {
   WELFARE_REPORT_PAYLOAD_VERSION,
+  type WelfareEvidenceTicketV1,
   type WelfareLocationMatchV1,
   type WelfareLocationResolvedV1,
   type WelfareReportCommandAckV1,

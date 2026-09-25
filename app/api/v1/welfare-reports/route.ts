@@ -43,10 +43,16 @@
 // person in es-AR, because a privacy property a user is wrong about is worse
 // than one they do not have.
 //
-// NO ATTACHMENTS, AND NO PARALLEL PATH TO GET AROUND IT
+// EVIDENCE, AND STILL NO PARALLEL PATH (M12)
 // ---------------------------------------------------------------------------
-// Evidence lands in a private bucket through a signed upload — a picker, a
-// native module, an EAS build. This door takes JSON and no bytes at all.
+// This door still takes JSON and no bytes. A photo goes through the pet
+// photo's two-step over the same private staging bucket
+// (`request_evidence_ticket`, then a PUT, then `file` naming the staged keys),
+// and every staged photo is then judged by the WEB's helper — see
+// `lib/infra/welfare-evidence-staging.ts` and the paragraph below. Photos only:
+// the contract's `WELFARE_EVIDENCE_CONTENT_TYPES` says why video is not here.
+//
+// What the original paragraph argued still stands:
 //
 // The temptation is a second upload route "just for denuncia photos". Two
 // reasons not to, and the second is the sharper one. First, this repo already

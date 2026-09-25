@@ -16,6 +16,7 @@ import type { GeocodeResult } from "@/lib/infra/geocoding";
 import { resolveSiteUrl } from "@/lib/infra/site-url";
 import {
   WELFARE_REPORT_PAYLOAD_VERSION,
+  type WelfareEvidenceTicketV1,
   type WelfareLocationResolvedV1,
   type WelfareReportFiledV1,
 } from "@dim/contract/api";
@@ -52,6 +53,25 @@ export function buildWelfareReportFiledAck(referenceCode: string): WelfareReport
  * string in this exchange that is theirs rather than the gazetteer's, spec D10
  * forbids logging it, and a client already holds it.
  */
+/** `request_evidence_ticket`'s answer: the capability, and nothing about the caller. */
+export function buildWelfareEvidenceTicketAck(ticket: {
+  uploadUrl: string;
+  token: string;
+  stagedPath: string;
+  bucket: string;
+  validForSeconds: number;
+}): WelfareEvidenceTicketV1 {
+  return {
+    command: "request_evidence_ticket",
+    version: WELFARE_REPORT_PAYLOAD_VERSION,
+    uploadUrl: ticket.uploadUrl,
+    token: ticket.token,
+    stagedPath: ticket.stagedPath,
+    bucket: ticket.bucket,
+    validForSeconds: ticket.validForSeconds,
+  };
+}
+
 export function buildWelfareLocationResolvedAck(
   matches: readonly GeocodeResult[],
 ): WelfareLocationResolvedV1 {

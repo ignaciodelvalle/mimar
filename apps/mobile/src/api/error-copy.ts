@@ -480,6 +480,10 @@ export function apiErrorMessage(code: ApiV1ErrorCode): string {
       // answered — `/denuncias/buscar`, the web's own lookup by reference code
       // — rather than inviting a blind re-send that files a second denuncia.
       return "No pudimos enviar la denuncia. Volvé a intentar en un momento; si ya te dimos un código antes, buscalo en la web antes de mandarla de nuevo.";
+    case "welfare_evidence_refused":
+      // NOTHING WAS FILED — the photos are checked before the row exists — so the
+      // copy can say so plainly and offer the two moves that work.
+      return "No pudimos usar una de las fotos. No se envió nada: sacala de la lista o probá con otra, y volvé a enviar.";
     // Mudanza. Las cuatro terminan en instrucciones DISTINTAS y por eso son
     // cuatro códigos: una manda a pedirle a otra persona, otra a corregir la
     // localidad, otra a no hacer nada, y sólo la última a reintentar.

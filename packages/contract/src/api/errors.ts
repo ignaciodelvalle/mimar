@@ -942,6 +942,17 @@
  *                         is identical either way: try again, and check
  *                         `/denuncias/buscar` if in doubt.
  *
+ * - `welfare_evidence_refused`
+ *                       — one of the staged evidence photos could not be used
+ *                         (M12): missing or expired from staging, not an image
+ *                         by its bytes, over the size ceiling, or refused by the
+ *                         web's own EXIF/GPS strip, which fails CLOSED. 422, and
+ *                         NOTHING WAS FILED — the check runs before the report
+ *                         row exists, exactly as the web's action orders it.
+ *                         Its own code because the person's move differs from
+ *                         `welfare_report_failed`: take the photo again, or send
+ *                         the denuncia without it.
+ *
  * THE BOOKING CODES (WU-S). `command: "book"` on `POST /api/v1/me/appointments`
  * landed folded onto four existing codes because this file was another lane's
  * territory in that window. The fold met this file's only bar — the client's
@@ -1228,6 +1239,7 @@ export const API_V1_ERROR_CODES = [
   "adoption_application_refused",
   "adoption_application_failed",
   "welfare_report_failed",
+  "welfare_evidence_refused",
   "booking_slot_taken",
   "booking_pet_not_bookable",
   "booking_already_in_offering",

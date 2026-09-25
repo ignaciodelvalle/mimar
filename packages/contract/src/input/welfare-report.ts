@@ -63,6 +63,8 @@
 
 import { z } from "zod";
 
+import { PET_PHOTO_CONTENT_TYPES } from "./pet-photo.ts";
+
 /**
  * The per-field codes a client can act on locally.
  *
@@ -85,6 +87,9 @@ export const WELFARE_REPORT_INPUT_CODES = [
   "CONTACT_REQUIRED",
   "COMMAND_REQUIRED",
   "ADDRESS_REQUIRED",
+  "EVIDENCE_TOO_MANY",
+  "EVIDENCE_INVALID",
+  "CONTENT_TYPE_INVALID",
 ] as const;
 
 export type WelfareReportInputCode = (typeof WELFARE_REPORT_INPUT_CODES)[number];
@@ -190,6 +195,41 @@ export const WELFARE_SUBJECT_DESCRIPTION_MAX_LENGTH = 1_000;
 export const WELFARE_ADDRESS_MAX_LENGTH = 300;
 export const WELFARE_JURISDICTION_MAX_LENGTH = 120;
 export const WELFARE_SYMPTOMS_MAX_LENGTH = 1_000;
+
+/**
+ * How many evidence files one denuncia may carry — the WEB's number
+ * (`MAX_FILES` in `lib/infra/welfare-uploads.ts`), repeated here so a client can
+ * stop the sixth pick before any upload. The server re-checks it with the web's
+ * own helper, which is the copy that governs.
+ */
+export const WELFARE_EVIDENCE_MAX_FILES = 5;
+
+/**
+ * The content types a phone may stage as evidence: PHOTOS ONLY, the three the
+ * staging bucket admits (migration 0206) and the server strips of EXIF/GPS.
+ *
+ * NOT THE WEB'S FULL LIST, and the gap is deliberate (M12): the web also takes
+ * GIF and video, and video is stored WITH its metadata until the D4b
+ * neutraliser lands — a phone video can carry where it was shot, which is the
+ * device-location data the PO decided on 2026-09-24 this product stores
+ * nowhere. Video also exceeds the staging bucket's 5 MB ceiling, so matching
+ * the web would need a migration as well as a decision. Photos only, said so on
+ * the screen.
+ */
+export const WELFARE_EVIDENCE_CONTENT_TYPES = PET_PHOTO_CONTENT_TYPES;
+export type WelfareEvidenceContentType = (typeof WELFARE_EVIDENCE_CONTENT_TYPES)[number];
+
+/**
+ * The only shape a staged evidence key has: `welfare/{uuid}.{jpg|png|webp}`.
+ *
+ * THE KEY NAMES NOBODY. Unlike the pet photo's `{petId}/…`, nothing in it is
+ * derived from the caller — an anonymous denuncia's evidence must not sit in
+ * storage under the reporter's id, even for the minutes between the upload and
+ * the filing. What makes a key usable is possessing it: the server minted it
+ * with 122 random bits and handed it to exactly one caller.
+ */
+export const WELFARE_EVIDENCE_STAGED_PATH_RE =
+  /^welfare\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|webp)$/;
 
 const optionalText = (max: number) =>
   z
@@ -303,6 +343,17 @@ const factsShape = {
     .nullable()
     .optional()
     .transform((value) => (value ? value : null)),
+  /**
+   * Photos already staged through `request_evidence_ticket`, by key. Optional;
+   * absent and empty both mean "no evidence". The server downloads each one and
+   * runs the WEB's own gate over it (`prepareWelfareEvidence`: count, type,
+   * size, HEIC refusal, EXIF/GPS strip — fail closed) before the row exists.
+   */
+  evidence: z
+    .array(z.string().regex(WELFARE_EVIDENCE_STAGED_PATH_RE, { error: "EVIDENCE_INVALID" }))
+    .max(WELFARE_EVIDENCE_MAX_FILES, { error: "EVIDENCE_TOO_MANY" })
+    .optional()
+    .transform((value) => [...new Set(value ?? [])]),
 } as const;
 
 /**
@@ -416,6 +467,20 @@ export const welfareReportResolveLocationInputSchema = z.object({
 });
 
 /**
+ * ¿TENÉS FOTOS? — mint a one-shot upload URL for ONE evidence photo.
+ *
+ * The same two-step the pet photo uses (`pets/{token}/photo`): the phone PUTs
+ * the bytes to a private staging bucket, and `file` names the staged keys. No
+ * bytes ever travel through `/api/v1` itself, so the 5 MB photo does not meet
+ * the function body limit, and nothing is believed about a staged object until
+ * the server has downloaded, sniffed and stripped it.
+ */
+export const welfareReportEvidenceTicketInputSchema = z.object({
+  command: z.literal("request_evidence_ticket"),
+  contentType: z.enum(WELFARE_EVIDENCE_CONTENT_TYPES, { message: "CONTENT_TYPE_INVALID" }),
+});
+
+/**
  * A PLAIN UNION AND NOT A `discriminatedUnion("command")`, and the reason is a
  * shape rather than a preference: `file` is ITSELF a discriminated union (on
  * `contactMode`), so `command` cannot be the sole discriminator without
@@ -439,6 +504,7 @@ export const welfareReportResolveLocationInputSchema = z.object({
  */
 export const welfareReportCommandInputSchema = z.union([
   welfareReportResolveLocationInputSchema,
+  welfareReportEvidenceTicketInputSchema,
   welfareReportFileInputSchema,
 ]);
 

@@ -146,4 +146,24 @@ export type WelfareLocationResolvedV1 = {
  * thing it asked for rather than on the presence of a field. Same instrument as
  * `PetClaimCommandAckV1`.
  */
-export type WelfareReportCommandAckV1 = WelfareLocationResolvedV1 | WelfareReportFiledV1;
+/**
+ * `request_evidence_ticket` — a one-shot URL to PUT ONE evidence photo to (M12).
+ *
+ * The pet photo's ticket shape (`PetPhotoTicketV1`), because it is the same
+ * capability over the same private staging bucket; `stagedPath` is what `file`
+ * names in `evidence`. The key is `welfare/{uuid}.{ext}` and names nobody.
+ */
+export type WelfareEvidenceTicketV1 = {
+  command: "request_evidence_ticket";
+  version: typeof WELFARE_REPORT_PAYLOAD_VERSION;
+  uploadUrl: string;
+  token: string;
+  stagedPath: string;
+  bucket: string;
+  validForSeconds: number;
+};
+
+export type WelfareReportCommandAckV1 =
+  | WelfareLocationResolvedV1
+  | WelfareEvidenceTicketV1
+  | WelfareReportFiledV1;

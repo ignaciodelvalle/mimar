@@ -352,7 +352,7 @@ inventory.
   database. <!-- fact:security_definer_functions -->10<!-- /fact --> functions are
   declared `SECURITY DEFINER`.
 
-<!-- fact:service_role_call_sites -->45<!-- /fact --> call sites construct the
+<!-- fact:service_role_call_sites -->46<!-- /fact --> call sites construct the
 service-role client. **Every one of them bypasses RLS by design** — that is what
 the role is for — which is why the count is generated rather than argued about.
 
