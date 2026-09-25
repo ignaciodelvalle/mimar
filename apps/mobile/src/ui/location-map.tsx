@@ -13,8 +13,8 @@
 // NO DEVICE LOCATION. The library ships a location engine and its manifest asks
 // for ACCESS_FINE/COARSE_LOCATION; this app blocks both permissions in
 // `app.json` and never mounts `UserLocation` or tracks the user — the PO decided
-// on 2026-09-24 that no GPS is read or stored anywhere. A fence in
-// `location-picker-fences.test.ts` keeps it that way.
+// on 2026-09-24 that no GPS is read or stored anywhere. A fence at the
+// end of `LocationPicker.test.tsx` keeps it that way.
 //
 // THE PIN IS FIXED AT THE CENTRE AND THE MAP MOVES UNDER IT. That is the
 // "draggable pin" on a phone: a pin dragged by a thumb hides the very spot it is

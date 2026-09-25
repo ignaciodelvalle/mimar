@@ -185,6 +185,25 @@ describe("dragging the map under the pin", () => {
     expect(screen.queryByText("El punto viejo")).toBeNull();
   });
 
+  it("says the server is busy, not 'no address here', when the reverse lookup is rate-limited", async () => {
+    renderPicker();
+    fireEvent.press(screen.getByText(LOCATION_PICKER_COPY.open));
+    const map = await screen.findByTestId("maplibre-map");
+    mockGeocode.mockResolvedValueOnce({
+      outcome: "api-error",
+      code: "rate_limited",
+      retryAfterSeconds: null,
+      correlationId: null,
+    });
+    await act(async () => {
+      fireEvent(map, "regionDidChange", {
+        nativeEvent: { center: [-64.3, -36.63], zoom: 17, userInteraction: true },
+      });
+    });
+    await waitFor(() => expect(screen.getByText(/Demasiadas/)).toBeTruthy());
+    expect(screen.queryByText(LOCATION_PICKER_COPY.noAddress)).toBeNull();
+  });
+
   it("zooms from the 48dp buttons", async () => {
     renderPicker();
     fireEvent.press(screen.getByText(LOCATION_PICKER_COPY.open));
@@ -255,39 +274,86 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/**
+ * The SUBJECT that is banned — reading the device's position — as patterns
+ * over code with comments stripped. Each entry names a way in, not one
+ * spelling: the package in ANY import form (static, `require`, dynamic
+ * `import()`, re-export), every user-location API the map library or React
+ * Native exposes, and a runtime permission request for any LOCATION
+ * permission.
+ */
+const DEVICE_LOCATION_PATTERNS: ReadonlyArray<[string, RegExp]> = [
+  ["expo-location, in any import form", /["'`]expo-location(?:\/[^"'`]*)?["'`]/],
+  [
+    "a geolocation package",
+    /["'`](?:@react-native-community\/geolocation|react-native-geolocation-service|react-native-location)["'`]/,
+  ],
+  ["a user-location layer", /\b(?:Native)?UserLocation\b/],
+  ["follow/show user location", /\b(?:follow|show|track)UserLocation\b/i],
+  ["the map's location manager", /\blocationManager\b/i],
+  [
+    "a current-position hook or call",
+    /\b(?:useCurrentPosition|getCurrentPosition|watchPosition|getLastKnownPosition)\b/,
+  ],
+  ["the browser geolocation API", /\bgeolocation\b/i],
+  ["a LOCATION permission request", /PermissionsAndroid[\s\S]{0,300}?LOCATION/],
+  ["a LOCATION permission name", /ACCESS_(?:FINE|COARSE|BACKGROUND)_LOCATION/],
+];
+
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+}
+
+function offendersIn(code: string): string[] {
+  return DEVICE_LOCATION_PATTERNS.filter(([, re]) => re.test(code)).map(([name]) => name);
+}
+
 describe("no device location, anywhere in the app", () => {
-  it("imports no location module and mounts no user-location layer", () => {
+  it("has teeth: every banned form is caught on a planted sample", () => {
+    // Non-vacuity for the PATTERNS, not only the walk: a pattern that could
+    // not match its own subject would pass over any tree.
+    const planted = [
+      'import * as Location from "expo-location";',
+      'const L = require("expo-location");',
+      'const L = await import("expo-location");',
+      'export { getForegroundPermissionsAsync } from "expo-location";',
+      'import Geolocation from "@react-native-community/geolocation";',
+      "<UserLocation visible />",
+      "<Camera followUserLocation />",
+      "<Map showUserLocation />",
+      "LocationManager.start();",
+      "const p = useCurrentPosition();",
+      "navigator.geolocation.getCurrentPosition(cb);",
+      "PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);",
+    ];
+    for (const sample of planted) {
+      expect([sample, offendersIn(stripComments(sample)).length > 0]).toEqual([sample, true]);
+    }
+    // And a comment that NAMES the subject is not code.
+    expect(offendersIn(stripComments("// never import expo-location here"))).toEqual([]);
+  });
+
+  it("finds none of them in the app's source, and no such dependency", () => {
     const files = [
       ...sourceFiles(path.join(MOBILE_ROOT, "src")),
       ...sourceFiles(path.join(MOBILE_ROOT, "app")),
     ];
-    // Non-vacuity: the walk found the tree, including the map itself.
+    // Non-vacuity for the WALK: it found the tree, including the map itself.
     expect(files.length).toBeGreaterThan(100);
     expect(files.some((f) => f.endsWith("location-map.tsx"))).toBe(true);
 
-    const banned = [
-      /from\s+["']expo-location["']/,
-      /require\(\s*["']expo-location["']\s*\)/,
-      /\bUserLocation\b/,
-      /\bNativeUserLocation\b/,
-      /\buseCurrentPosition\b/,
-      /\bLocationManager\b/,
-      /\btrackUserLocation\b/,
-      /navigator\.geolocation/,
-    ];
-    const offenders = files.flatMap((file) => {
-      // Comments may NAME what is banned (this fence's own docblocks do);
-      // only code is judged.
-      const code = readFileSync(file, "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/\/\/.*$/gm, "");
-      return banned.filter((re) => re.test(code)).map((re) => `${path.basename(file)}: ${re}`);
-    });
+    const offenders = files.flatMap((file) =>
+      offendersIn(stripComments(readFileSync(file, "utf8"))).map(
+        (name) => `${path.relative(MOBILE_ROOT, file)}: ${name}`,
+      ),
+    );
     expect(offenders).toEqual([]);
 
     const pkg = JSON.parse(readFileSync(path.join(MOBILE_ROOT, "package.json"), "utf8")) as {
-      dependencies: Record<string, string>;
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
     };
-    expect(pkg.dependencies["expo-location"]).toBeUndefined();
+    const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
+    expect(deps.filter((name) => /location|geolocation/i.test(name))).toEqual([]);
   });
 });

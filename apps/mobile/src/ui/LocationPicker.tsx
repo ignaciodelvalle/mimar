@@ -132,7 +132,12 @@ export function LocationPicker({
   );
 }
 
-type Pending = PickedLocation & { resolving: boolean };
+/**
+ * `failure`: why the address of the point could not be read (a rate limit, no
+ * connection) — shown INSTEAD of "no address here", which is a claim about the
+ * place the server never made. The point itself stays placed and confirmable.
+ */
+type Pending = PickedLocation & { resolving: boolean; failure?: string | null };
 
 function PickerStep({
   value,
@@ -245,6 +250,7 @@ function PickerStep({
     if (seq !== reverseSeq.current) return;
     const answer =
       result.outcome === "ok" && result.payload.command === "reverse" ? result.payload : null;
+    const failure = result.outcome === "ok" ? null : apiFailureMessage(result);
     setPending({
       lat: point.lat,
       lng: point.lng,
@@ -252,6 +258,7 @@ function PickerStep({
       source: "pin_manual",
       jurisdiction: answer?.jurisdiction ?? null,
       resolving: false,
+      failure,
     });
   };
 
@@ -321,7 +328,7 @@ function PickerStep({
           <Text style={styles.address} accessibilityLiveRegion="polite">
             {pending.resolving
               ? LOCATION_PICKER_COPY.resolving
-              : (pending.address ?? LOCATION_PICKER_COPY.noAddress)}
+              : (pending.address ?? pending.failure ?? LOCATION_PICKER_COPY.noAddress)}
           </Text>
           {pending.jurisdiction ? (
             <Text style={styles.summaryMeta}>
@@ -332,7 +339,7 @@ function PickerStep({
             label={LOCATION_PICKER_COPY.confirm}
             disabled={pending.resolving}
             onPress={() => {
-              const { resolving: _resolving, ...picked } = pending;
+              const { resolving: _resolving, failure: _failure, ...picked } = pending;
               onConfirm(picked);
             }}
           />
