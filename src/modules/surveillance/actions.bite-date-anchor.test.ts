@@ -192,16 +192,28 @@ describe("reportBiteFromOrgAction — bite date anchored on the reporter's AR ca
 // path. A client-sent "geocodificada" is ranked "verificado" for officials by
 // lib/domain/provenance.ts, so the server never stores the client's claim: a
 // point the client sent is `pin_manual`, no point is null.
+/** A parsed form location with (or without) a point and no pair. */
+function withPoint(lat: number | null, lng: number | null) {
+  return {
+    province: null,
+    provinceCode: null,
+    locality: null,
+    localityIndecId: null,
+    lat,
+    lng,
+    address: null,
+  };
+}
+
 describe("bite actions — a client-claimed location source is never stored (provenance parity)", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
-    const { normalizeLocationForWrite } = await import("@/lib/domain/location-normalize");
-    (normalizeLocationForWrite as ReturnType<typeof vi.fn>).mockResolvedValue({
-      province: null,
-      locality: null,
-      lat: -34.6,
-      lng: -58.4,
-    });
+    // The point reaches the action through the parsed form (localidades-por-id
+    // A2: the bite actions no longer read coordinates back from the gate).
+    const { parseLocationFromFormData } = await import("@/lib/domain/location-value");
+    (parseLocationFromFormData as ReturnType<typeof vi.fn>).mockReturnValue(
+      withPoint(-34.6, -58.4),
+    );
     reportBiteMock.mockResolvedValue({
       ok: true,
       value: { casePublicCode: "CAS-AAAA-BBBB" },
@@ -248,13 +260,8 @@ describe("bite actions — a client-claimed location source is never stored (pro
   });
 
   it("a forged 'geocodificada' with NO point stores no source at all", async () => {
-    const { normalizeLocationForWrite } = await import("@/lib/domain/location-normalize");
-    (normalizeLocationForWrite as ReturnType<typeof vi.fn>).mockResolvedValue({
-      province: null,
-      locality: null,
-      lat: null,
-      lng: null,
-    });
+    const { parseLocationFromFormData } = await import("@/lib/domain/location-value");
+    (parseLocationFromFormData as ReturnType<typeof vi.fn>).mockReturnValue(withPoint(null, null));
     const fd = biteFormData("2026-07-01");
     fd.set("locationSource", "geocodificada");
     await reportBiteAction("tok-1", { error: null }, fd).catch(() => {});

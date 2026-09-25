@@ -2,8 +2,11 @@
 //
 // PO rule: a bite counts WHERE IT HAPPENED. The bite_incident case already
 // carries that jurisdiction (report-bite.ts / report-bite-from-org.ts open it
-// with the incident's province/locality, falling back to the pet's home only
-// when the reporter dropped no pin). The ENO row follows the case, never the
+// with the incident's place taken WHOLE — a province with no locality is a
+// province-level case, and a pin no province could be read from is an
+// unresolved case with no jurisdiction — never field by field; the pet's home
+// pair is used only when the report carried no place and no pin at all,
+// localidades-por-id A2). The ENO row follows the case, never the
 // pet's CURRENT registration: a CABA bite by a Córdoba pet notifies CABA.
 //
 // Resolution, for an event of animal P:
