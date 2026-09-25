@@ -118,7 +118,8 @@ function lowerFirst(v: string): string {
 /** Looks one seed event up by type (and, for status changes, target status). */
 export function pampaEvent(eventType: string, toStatus?: string): PampaSeedEvent {
   const hit = PAMPA_EVENTS.find(
-    (e) => e.eventType === eventType && (toStatus === undefined || e.payload.to_status === toStatus),
+    (e) =>
+      e.eventType === eventType && (toStatus === undefined || e.payload.to_status === toStatus),
   );
   if (!hit) throw new Error(`flagship-pampa-data has no ${eventType} ${toStatus ?? ""}`);
   return hit;

@@ -17,16 +17,11 @@
 
 import { Icon } from "@/components/Icon";
 import { PhoneFrame } from "@/components/landing/PhoneFrame";
+import { StepButton } from "@/components/landing/StepButton";
 import { ACTORS, CHAPTERS, PAMPA } from "@/components/landing/landing-content";
 import type { LandingChapter } from "@/components/landing/landing-content";
-import {
-  AnonLostScreen,
-  DuenoScreen,
-  EstadoConsole,
-  LibretaScreen,
-  OrgIntakeScreen,
-  VetVaccineScreen,
-} from "@/components/landing/story-screens";
+import { DuenoScreen, EstadoConsole, LibretaScreen } from "@/components/landing/story-screens";
+import { SequenceChapter, hasSequence } from "@/components/landing/story-sequences";
 import { LnPetPhoto } from "@/components/ui/RegRow";
 import { LnStatusFlag } from "@/components/ui/StatusFlag";
 import { useEffect, useState } from "react";
@@ -37,24 +32,6 @@ function chapterDevice(key: string) {
       return (
         <PhoneFrame>
           <DuenoScreen />
-        </PhoneFrame>
-      );
-    case "vet":
-      return (
-        <PhoneFrame>
-          <VetVaccineScreen />
-        </PhoneFrame>
-      );
-    case "anon":
-      return (
-        <PhoneFrame lost>
-          <AnonLostScreen />
-        </PhoneFrame>
-      );
-    case "refugio":
-      return (
-        <PhoneFrame>
-          <OrgIntakeScreen />
         </PhoneFrame>
       );
     case "libreta":
@@ -149,18 +126,17 @@ function Rail({ active }: { active: string }) {
         </span>
       </div>
       {CHAPTERS.map((c, i) => (
-        <button
-          type="button"
+        <StepButton
           key={c.key}
           data-s={c.state}
-          className={`lp-rail-step${active === c.key ? " on" : ""}`}
-          onClick={() => scrollToChapter(c.key)}
-          aria-current={active === c.key ? "step" : undefined}
+          className="lp-rail-step"
+          active={active === c.key}
+          onSelect={() => scrollToChapter(c.key)}
         >
           <span className="lp-rn">{String(i + 1).padStart(2, "0")}</span>
           <span className="lp-rname">{c.hand}</span>
           <span className="lp-rdot" aria-hidden="true" />
-        </button>
+        </StepButton>
       ))}
     </nav>
   );
@@ -171,6 +147,8 @@ function Rail({ active }: { active: string }) {
 // ---------------------------------------------------------------------------
 
 function Chapter({ chapter, index }: { chapter: LandingChapter; index: number }) {
+  // Vet, lost and shelter chapters play a sequence (story-sequences.tsx).
+  if (hasSequence(chapter.key)) return <SequenceChapter chapter={chapter} index={index} />;
   if (chapter.full) {
     return (
       <div className="lp-chapter" data-full="1" id={`cap-${chapter.key}`}>
@@ -236,8 +214,8 @@ export function StorySection() {
           </h2>
           <p className="lp-lead lp-reveal mx-auto mt-4" data-d="2">
             Alrededor de Pampa están su dueño, su veterinaria, un refugio y el Estado. Los tres
-            primeros escriben en su libreta; el Estado ve el agregado. Esta es su historia,
-            capítulo por capítulo.
+            primeros escriben en su libreta; el Estado ve el agregado. Esta es su historia, capítulo
+            por capítulo.
           </p>
         </div>
 

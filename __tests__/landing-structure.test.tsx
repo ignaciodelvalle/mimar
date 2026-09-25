@@ -211,12 +211,16 @@ describe("story — CastFila + 6 chapters + rail", () => {
     expect(html).toContain('data-s="lost"');
   });
 
-  it("the lost chapter's pin pulses three times, then stops (WCAG 2.2.2)", () => {
+  it("the story's sequences never loop (WCAG 2.2.2)", () => {
+    // The lost chapter's pin used to pulse forever; it was capped at three
+    // (dddee51a4) and then removed with the map it sat on — Pampa's lost
+    // report has no coordinates, so her public page draws no map. What stays
+    // true is the rule: nothing the story animates on its own repeats.
     const css = readFileSync(join(process.cwd(), "app", "landing.css"), "utf8");
-    const rule = css.match(/\.lp \.lp-minimap-pin::after \{[^}]*\}/)?.[0] ?? "";
-    expect(rule).toContain("lp-pin-pulse");
-    expect(rule).toMatch(/animation:[^;]*\b3\b/);
-    expect(rule).not.toContain("infinite");
+    expect(css).not.toContain("lp-minimap");
+    const storyRules = css.match(/\.lp \.lp-(seq|rail|map-grid|vf)[^{]*\{[^}]*\}/g) ?? [];
+    expect(storyRules.length).toBeGreaterThan(5);
+    for (const rule of storyRules) expect(rule).not.toContain("infinite");
   });
 
   it("tells Pampa's life in order and closes on the Estado bridge (PO, 2026-09-25)", () => {

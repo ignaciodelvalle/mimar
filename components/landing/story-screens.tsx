@@ -1,3 +1,5 @@
+"use client";
+
 // Story device screens — illustrative renders of the real product surfaces,
 // built from the shipped DS components (LnRegistry/LnRegRow/LnBadge/
 // LnStatusFlag/LnVstamp/LnPetPhoto). Ported from the handoff prototype
@@ -23,31 +25,17 @@ import {
   LIBRETA_EVENTS,
   MAP_TILES,
   PAMPA,
-  PAMPA_FIRST_DOSE,
-  PAMPA_OWNER_NAME,
   PAMPA_SIGNUP_LINE,
-  PAMPA_VET,
-  formatChip,
   landingDate,
   mapTintStep,
   pampaEvent,
 } from "@/components/landing/landing-content";
-import { LnBadge } from "@/components/ui/Badge";
-import { LnHero } from "@/components/ui/Hero";
 import { LnPetPhoto, LnRegRow, LnRegistry } from "@/components/ui/RegRow";
-import { LnStatusFlag, LnVstamp } from "@/components/ui/StatusFlag";
+import { LnStatusFlag } from "@/components/ui/StatusFlag";
 import { OpKpiSm } from "@/components/ui/dashboard/OpKpiSm";
-import { publicPlaceReference } from "@/lib/domain/public-place-reference";
-import { lostTimeLabel } from "@/lib/infra/lost-listing";
-import {
-  eventTypeLabel,
-  formatRate,
-  foundPossessivePhrase,
-  lastSeenHeadingLabel,
-  lostBannerHeadline,
-} from "@/lib/utils/format";
+import { formatRate } from "@/lib/utils/format";
 import { speciesLabel } from "@/lib/utils/species";
-import { PAMPA_CHIP, PAMPA_PET } from "@/scripts/flagship-pampa-data";
+import { PAMPA_PET } from "@/scripts/flagship-pampa-data";
 import type { ReactNode } from "react";
 
 // Newest first (WU3 — "the libreta fills up" animation): the feed reads as an
@@ -61,7 +49,7 @@ const LIBRETA_EVENTS_NEWEST_FIRST = [...LIBRETA_EVENTS].reverse();
 // Shared bits
 // ---------------------------------------------------------------------------
 
-function AppHead({
+export function AppHead({
   title,
   sub,
   photo,
@@ -127,192 +115,8 @@ export function DuenoScreen() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Veterinaria — the 2022-04-12 rabies dose, signed with a verified license
-// ---------------------------------------------------------------------------
-
-// The vet chapter leans on the SAME credential object the app ships (LnHero,
-// the identity face of CredentialFace) plus the real vaccination stamp
-// (LnVstamp). Every fact is the seed's: the vet, her license and clinic, and
-// the first dose's brand, batch and next due date. The chip tag is true on
-// this date (implanted 2022-04-05); a "vigente" tag is not a product string.
-export function VetVaccineScreen() {
-  const dose = PAMPA_FIRST_DOSE.payload;
-  return (
-    <>
-      <div className="lp-scr-top" />
-      <AppHead
-        title={PAMPA_VET.name}
-        sub={
-          <>
-            <span className="whitespace-nowrap">{PAMPA_VET.license}</span> · {PAMPA_VET.clinic}
-          </>
-        }
-        right={<LnBadge variant="success">Matrícula verificada</LnBadge>}
-      />
-      <div className="lp-app-body lp-ph-pad">
-        <div className="lp-cred-embed">
-          <LnHero
-            name={PAMPA.name}
-            status="ok"
-            photoSrc="/landing/pampa-hero.jpg"
-            tags={[
-              {
-                key: "chip",
-                label: "Microchip",
-                icon: <Icon name="microchip" size="sm" decorative />,
-              },
-            ]}
-          />
-        </div>
-
-        <div className="lp-ph-ok">
-          <Icon name="vacuna" size="sm" decorative className="mt-0.5 text-[var(--color-ln-ok)]" />
-          <div className="min-w-0 flex-1">
-            <div className="lp-t">
-              {String(dose.vaccine_name)} · {String(dose.brand)}
-            </div>
-            <div className="lp-lib-meta">
-              Lote {String(dose.batch)} · próxima {landingDate(String(dose.next_due_at))}
-            </div>
-            <div className="lp-lib-foot mt-1">
-              <span className="lp-lib-type">{eventTypeLabel("vaccination_administered")}</span>
-              <span className="lp-lib-by">
-                {PAMPA_VET.shortName} ·{" "}
-                <span className="whitespace-nowrap">{PAMPA_VET.license}</span>
-              </span>
-            </div>
-          </div>
-          <LnVstamp variant="ok" />
-        </div>
-      </div>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Se pierde — the public credential in lost mode, as a neighbour sees it
-// ---------------------------------------------------------------------------
-
-// The finder's view the day after she got loose (the seed's anonymous scan is
-// 2024-03-10, one day after the lost report). Every string is one the public
-// page (app/(public)/p/[publicToken] + components/pet-profile/
-// PublicLostSections.tsx) renders for Pampa: the name alone as the heading,
-// "Lo busca Martín.", "Llamar" (her phone is disclosed in the seed) and the
-// finder's "La tengo conmigo". The seed's lost report carries a place name but
-// NO coordinates, so the public page shows no pinned map, only the place and
-// "Sin punto exacto en el mapa". The panel below says exactly that.
-const LOST = pampaEvent("status_changed", "lost");
-const SCANNED = pampaEvent("credential_scanned");
-
-function noonUtc(date: string): Date {
-  return new Date(`${date}T12:00:00Z`);
-}
-
-export function AnonLostScreen() {
-  const place = publicPlaceReference(String(LOST.payload.location_description));
-  return (
-    <>
-      <div className="lp-scr-top" />
-      <div className="lp-lostb">
-        {lostBannerHeadline(PAMPA.sexEnum)}
-        <small>{lostTimeLabel(noonUtc(LOST.date), noonUtc(SCANNED.date))}</small>
-      </div>
-      <div className="lp-lost-hero lp-lost-hero--map">
-        <div className="lp-lh-name">{PAMPA.name}</div>
-        <div className="lp-lh-sub">Lo busca {PAMPA_OWNER_NAME}.</div>
-      </div>
-
-      {/* Last-seen panel: the place name, no pinned map (the seed's lost
-          report has no coordinates). A lightweight static panel, so the
-          landing never pulls the maplibre-gl runtime for a decorative frame. */}
-      <figure className="lp-minimap" aria-hidden="true">
-        <span className="lp-minimap-pin">
-          <Icon name="ubicacion" size="sm" decorative />
-        </span>
-        <figcaption className="lp-minimap-cap">
-          <b>{lastSeenHeadingLabel(PAMPA.sexEnum)}</b>
-          <span>{place}</span>
-          <span className="lp-minimap-coord">Sin punto exacto en el mapa</span>
-        </figcaption>
-      </figure>
-
-      <div className="lp-lost-actions">
-        <span className="lp-lost-btn lp-lost-btn--call">
-          <Icon name="telefono" size="sm" decorative /> Llamar
-        </span>
-        <span className="lp-lost-btn lp-lost-btn--found">
-          <Icon name="ubicacion" size="sm" decorative /> {foundPossessivePhrase(PAMPA.sexEnum)}
-        </span>
-      </div>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Refugio — the chip match and the intake the shelter signs
-// ---------------------------------------------------------------------------
-
-// The shelter's own portal (so its name may show here; Pampa's libreta entry
-// carries none). Two real steps: the org intake's chip match card
-// ("Posible coincidencia detectada" → "Es la misma mascota",
-// app/org/[orgToken]/intake/match) and the intake it records. The return home
-// is NOT a shelter action: Martín marks her found two days later.
-const INTAKE = pampaEvent("shelter_intake_recorded");
-
-export function OrgIntakeScreen() {
-  return (
-    <>
-      <div className="lp-scr-top" />
-      <AppHead
-        title="Refugio Patitas del Barrio"
-        sub="Panel de ingresos"
-        right={<LnBadge variant="info">Verificada</LnBadge>}
-      />
-      <div className="lp-app-body lp-ph-pad">
-        <div className="lp-ph-card">
-          <div className="lp-intake-row">
-            <span className="lp-iic">
-              <Icon name="microchip" size="sm" decorative />
-            </span>
-            <div className="min-w-0">
-              <b>Posible coincidencia detectada</b>
-              <span className="lp-intake-sub">
-                Microchip {formatChip(PAMPA_CHIP)}: es <strong>{PAMPA.name}</strong>.
-              </span>
-              <span className="lp-intake-sub">
-                <span className="lp-lib-type">Es la misma mascota</span>
-              </span>
-            </div>
-          </div>
-          <div className="lp-intake-row" data-t="ok">
-            <span className="lp-iic">
-              <Icon name="casa" size="sm" decorative />
-            </span>
-            <div className="min-w-0">
-              <b>{eventTypeLabel("shelter_intake_recorded")}</b>
-              <span className="lp-intake-sub">
-                {String(INTAKE.payload.intake_condition)} · {landingDate(INTAKE.date)}
-              </span>
-            </div>
-          </div>
-        </div>
-        <p className="lp-ph-note">
-          Refugio, veterinaria o municipio: el acceso llega por solicitud verificada. El público ve
-          un solo sello.
-        </p>
-        <div className="lp-ph-caps mt-auto">
-          <span className="lp-ph-cap">
-            <Icon name="check" size="sm" decorative /> Custodia trazable
-          </span>
-          <span className="lp-ph-cap">
-            <Icon name="check" size="sm" decorative /> Adopciones y tránsitos
-          </span>
-        </div>
-      </div>
-    </>
-  );
-}
+// The vet, lost and shelter chapters are animated sequences: see
+// story-sequences.tsx.
 
 // ---------------------------------------------------------------------------
 // La libreta — the seed's entries (minus the purged scan), append-only

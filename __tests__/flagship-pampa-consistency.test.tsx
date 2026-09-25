@@ -33,9 +33,15 @@ import { LandingHero } from "@/components/landing/LandingHero";
 import { StorySection } from "@/components/landing/StorySection";
 import { LIBRETA_EVENTS, formatChip } from "@/components/landing/landing-content";
 import {
+  LOST_SEQUENCE,
+  SHELTER_SEQUENCE,
+  VET_SEQUENCE,
+} from "@/components/landing/story-sequences";
+import {
   OWNER_NAME,
   PAMPA_CHIP,
   PAMPA_EVENTS,
+  PAMPA_PET,
   VET_CLINIC,
   VET_LICENSE,
   VET_NAME,
@@ -203,7 +209,7 @@ describe("flagship Pampa — the seed's output survives the extraction", () => {
   it("the module is pure: it imports nothing", () => {
     const source = readFileSync("scripts/flagship-pampa-data.ts", "utf8");
     expect(source).not.toMatch(/^\s*import\s/m);
-    expect(source).not.toMatch(/require\(|await import\(/);
+    expect(source).not.toMatch(/require\(|await import\(/);
   });
 
   it("events are chronological", () => {
@@ -250,7 +256,13 @@ const MODULE_ONLY_FACTS: string[] = (() => {
   ]);
   for (const e of PAMPA_EVENTS) {
     facts.add(e.date);
-    for (const key of ["brand", "batch", "next_due_at", "location_description", "administered_by"]) {
+    for (const key of [
+      "brand",
+      "batch",
+      "next_due_at",
+      "location_description",
+      "administered_by",
+    ]) {
       const v = e.payload[key];
       if (typeof v === "string") facts.add(v);
     }
@@ -318,7 +330,12 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
   });
 
   it("the story renders the seed's vet, doses and lost report", () => {
-    const html = flat(renderToStaticMarkup(<StorySection />));
+    // SSR shows each animated chapter's FINAL step; every other step is only
+    // one click (or one play-through) away, so all of them are checked.
+    const steps = [VET_SEQUENCE, LOST_SEQUENCE, SHELTER_SEQUENCE].flatMap((spec) =>
+      Array.from({ length: spec.total }, (_, i) => renderToStaticMarkup(spec.device(i, false))),
+    );
+    const html = flat([renderToStaticMarkup(<StorySection />), ...steps].join(" "));
     expect(html).toContain(VET_NAME);
     expect(html).toContain(VET_LICENSE);
     expect(html).toContain(VET_CLINIC);
@@ -326,7 +343,7 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       expect(html).toContain(String(e.payload.batch));
       expect(html).toContain(String(e.payload.brand));
     }
-    expect(html).toContain(formatChip(PAMPA_CHIP));
+    expect(html).toContain(flat(formatChip(PAMPA_CHIP)));
     expect(html).toContain(`Lo busca ${OWNER_NAME}.`);
     expect(html).toContain("Sin punto exacto en el mapa");
     // No screen claims a current rabies vaccine: the only dated screen that
@@ -340,6 +357,29 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
     expect(html).toContain("La tengo conmigo");
     expect(html).not.toContain("¡Hola! Soy");
     expect(html).not.toContain("Custodia devuelta");
+    // The real product labels of the animated chapters.
+    for (const label of [
+      "Marca / laboratorio",
+      "Lote / número de batch",
+      "Administrado por",
+      "Próxima dosis (fecha)",
+      "Marcar asistencia",
+      "FIRMADO",
+      "Marcar como perdida",
+      "Compartir o imprimir el cartel",
+      "Llamar",
+      "Escanearon su QR",
+      "Identificación",
+      `Encontraron a ${PAMPA_PET.name}`,
+      "detectó a Pampa por su microchip. Coordiná la devolución.",
+      "Sí, la encontré",
+    ]) {
+      expect(html, label).toContain(label);
+    }
+    // No map, no pin, no street for a scan.
+    expect(html).not.toMatch(/lp-minimap|−?\d{2}\.\d{3,}, −?\d{2}\.\d{3,}/);
+    expect(html).not.toContain("vecinos");
+    expect(html).not.toContain("EN CASA");
   });
 
   it("the hero's libreta face lists vet-signed entries from the seed", () => {

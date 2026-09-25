@@ -1805,87 +1805,6 @@
 .lp .lp-lost-btn--found {
   background: var(--color-ln-azul);
 }
-.lp .lp-lost-hero--map {
-  padding-bottom: 12px;
-}
-
-/* last-seen panel (cap-anon) — the public page's last-seen block for a lost
-   report with a place name and NO coordinates, which is Pampa's case in the
-   seed: a plain panel, a location marker, the place, and "Sin punto exacto en
-   el mapa". It used to draw street tiles, an exact pin and a coordinate pair
-   the seed does not have. */
-.lp .lp-minimap {
-  position: relative;
-  margin: 6px 16px 0;
-  height: 152px;
-  border-radius: 12px;
-  overflow: hidden;
-  border: 1px solid var(--color-ln-line);
-  background: #e9eee6;
-}
-.lp .lp-minimap-pin {
-  position: absolute;
-  left: 50%;
-  top: 44%;
-  transform: translate(-50%, -50%);
-  z-index: 2;
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  color: #fff;
-  background: var(--color-ln-err);
-  border: 2px solid #fff;
-  box-shadow: 0 3px 9px rgba(192, 57, 43, 0.45);
-}
-.lp .lp-minimap-pin::after {
-  content: "";
-  position: absolute;
-  inset: -8px;
-  border-radius: 50%;
-  border: 2px solid rgba(192, 57, 43, 0.4);
-  /* Three pulses, then still (WCAG 2.2.2 Pause, Stop, Hide: motion that
-     starts on its own and lasts more than 5 s must stop). It used to loop
-     forever. `forwards` keeps the last frame — the ring faded out. */
-  animation: lp-pin-pulse var(--motion-ambient) ease-out 3 forwards;
-}
-@keyframes lp-pin-pulse {
-  0% {
-    transform: scale(0.55);
-    opacity: 0.85;
-  }
-  100% {
-    transform: scale(1.5);
-    opacity: 0;
-  }
-}
-.lp .lp-minimap-cap {
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 10px;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 8px 10px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid var(--color-ln-line);
-  font-size: 11px;
-  color: var(--color-ln-ink-2);
-}
-.lp .lp-minimap-cap b {
-  font-size: 12px;
-  color: var(--color-ln-ink);
-}
-.lp .lp-minimap-coord {
-  font-family: var(--font-ln-mono);
-  font-size: 10px;
-  color: var(--color-ln-mute);
-  letter-spacing: 0.02em;
-}
 
 /* org intake mini-rows (cap-refugio) */
 .lp .lp-intake-row {
@@ -2772,4 +2691,341 @@
 }
 html:has([data-landing-root]) {
   scrollbar-gutter: stable;
+}
+
+/* ---------------------------------------------------------------------------
+   Story sequences — vet, lost, shelter (PS6–PS8, PO 2026-09-25)
+   Fail-open (use-chapter-sequence.ts): these classes only ever appear on the
+   client, with motion allowed, while an observer is alive. Transform and
+   opacity only, inside the fixed-height .lp-scr, so nothing outside the
+   phone moves.
+   --------------------------------------------------------------------------- */
+.lp .lp-seq-pending {
+  opacity: 0;
+}
+.lp .lp-seq-in {
+  animation: lp-seq-in var(--motion-deliberate) var(--ease-editorial) both;
+}
+@keyframes lp-seq-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.lp .lp-seq-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.lp .lp-seq-device {
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.lp .lp-seq-who {
+  font-family: var(--lp-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ln-mute);
+}
+
+/* The step list: real buttons (StepButton), one per step, jump on click. */
+.lp .lp-seq-steps {
+  list-style: none;
+  margin: 22px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lp .lp-seq-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-input);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-md);
+  color: var(--color-ln-ink-2);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-fast), border-color var(--motion-fast);
+}
+.lp .lp-seq-step.on {
+  background: var(--color-ln-card);
+  border-color: var(--color-ln-line);
+  color: var(--color-ln-ink);
+}
+@media (hover: hover) {
+  .lp .lp-seq-step:hover {
+    background: var(--color-ln-card);
+  }
+}
+.lp .lp-seq-step:active {
+  opacity: 0.75;
+}
+.lp .lp-seq-n {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-ln-line-strong);
+  font-family: var(--lp-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.lp .lp-seq-step[data-state="on"] .lp-seq-n {
+  border-color: var(--color-ln-azul);
+  color: var(--color-ln-azul);
+}
+.lp .lp-seq-step[data-state="done"] .lp-seq-n {
+  border-color: var(--color-ln-ok);
+  background: var(--color-ln-ok);
+  color: var(--color-ln-card);
+}
+
+/* Form-like rows (the vet's attendance form, the intake's chip field). */
+.lp .lp-vf-pet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: var(--text-md);
+}
+.lp .lp-vf-tag {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-ln-ok);
+}
+.lp .lp-vf-form {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.lp .lp-vf {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.lp .lp-vf-l {
+  font-size: var(--text-xs);
+  color: var(--color-ln-mute);
+}
+.lp .lp-vf-i {
+  display: block;
+  min-height: 30px;
+  padding: 6px 9px;
+  border: 1px solid var(--color-ln-line);
+  border-radius: var(--radius-md);
+  background: var(--color-ln-card);
+  font-size: var(--text-sm);
+  color: var(--color-ln-ink);
+  font-variant-numeric: tabular-nums;
+}
+.lp .lp-vf-submit {
+  display: block;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--color-ln-azul);
+  color: var(--color-ln-card);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-align: center;
+  transition: transform var(--motion-fast);
+}
+.lp .lp-vf-submit--pressed {
+  transform: scale(0.97);
+}
+.lp .lp-vf-submit--lost {
+  background: var(--color-ln-err);
+}
+.lp .lp-vf-done {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  font-size: var(--text-sm);
+  color: var(--color-ln-ink-2);
+}
+
+/* Key/value cards (the owner app's "Situación", the lost form). */
+.lp .lp-kv-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-ln-ink);
+  margin-bottom: 6px;
+}
+.lp .lp-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 0;
+  font-size: var(--text-sm);
+}
+.lp .lp-kv + .lp-kv {
+  border-top: 1px solid var(--color-ln-line-2);
+}
+.lp .lp-kv span {
+  font-size: var(--text-xs);
+  color: var(--color-ln-mute);
+}
+
+/* The poster. */
+.lp .lp-poster {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--color-ln-line);
+  border-radius: var(--radius-input);
+  background: var(--color-ln-card);
+}
+.lp .lp-poster-name {
+  font-family: var(--lp-serif);
+  font-size: var(--text-2xl);
+}
+.lp .lp-poster-qr {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-sm);
+  background: repeating-linear-gradient(90deg, var(--color-ln-ink) 0 4px, transparent 4px 8px),
+    repeating-linear-gradient(0deg, var(--color-ln-ink) 0 4px, transparent 4px 8px);
+  opacity: 0.8;
+}
+.lp .lp-poster-hint {
+  font-size: var(--text-xs);
+  color: var(--color-ln-ink-2);
+}
+
+/* The public page's last-seen block, no map (Pampa's report has no point). */
+.lp .lp-lost-seen {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 12px 16px 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-ln-line-2);
+  font-size: var(--text-sm);
+}
+.lp .lp-lost-seen-h {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ln-mute);
+}
+.lp .lp-lost-seen-none {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-ln-mute);
+}
+.lp .lp-lost-sight {
+  margin: 12px 16px 0;
+  text-align: center;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-ln-ink-2);
+}
+
+/* The owner's feed row. */
+.lp .lp-feed-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: var(--text-sm);
+}
+.lp .lp-feed-row span {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--color-ln-mute);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The chip match card, the intake notice, the notification, the confirm. */
+.lp .lp-match-breach,
+.lp .lp-match-ok,
+.lp .lp-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+}
+.lp .lp-match-breach {
+  background: var(--color-ln-err-050);
+  border: 1px solid var(--color-ln-err-100);
+}
+.lp .lp-match-ok {
+  background: var(--color-ln-ok-050);
+  border: 1px solid var(--color-ln-line);
+}
+.lp .lp-confirm {
+  background: var(--color-ln-warn-050);
+  border: 1px solid var(--color-ln-line);
+}
+.lp .lp-match-name {
+  display: block;
+  font-size: var(--text-base);
+}
+.lp .lp-match-sub {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--color-ln-ink-2);
+}
+.lp .lp-match-pill {
+  display: inline-block;
+  margin: 4px 0;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-ln-err);
+  color: var(--color-ln-card);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+.lp .lp-notif {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 40px;
+  padding: 12px 14px;
+  border-radius: var(--radius-card);
+  background: var(--color-ln-card);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-sm);
+}
+.lp .lp-notif-app {
+  font-family: var(--lp-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ln-mute);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp .lp-seq-in {
+    animation: none;
+  }
+  .lp .lp-vf-submit {
+    transition: none;
+  }
 }
