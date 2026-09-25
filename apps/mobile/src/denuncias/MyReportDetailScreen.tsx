@@ -34,7 +34,7 @@ import {
 } from "../ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../ui/reload-state";
 import { ListSkeleton } from "../ui/skeleton";
-import { COLORS, LEADING, RADIUS, SPACE, TYPE } from "../ui/theme";
+import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TYPE } from "../ui/theme";
 import { useReconnect } from "../ui/use-reconnect";
 
 import { StatusBadge } from "./StatusBadge";
@@ -45,7 +45,9 @@ type ScreenState =
   | ReadyState<MyWelfareReportDetailV1>
   | { phase: "failed"; message: string };
 
-const THUMB_SIZE = 96;
+// Each thumbnail is itself the tap target: two touch targets wide keeps a photo
+// legible and well clear of the 48dp floor.
+const THUMB_SIZE = TOUCH_TARGET * 2;
 
 export function MyReportDetailScreen({
   referenceCode,
