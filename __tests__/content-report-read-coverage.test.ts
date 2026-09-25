@@ -123,6 +123,11 @@ const PREDICATE_BUILDERS: readonly string[] = [
  * think about again.
  */
 const NOT_A_LOST_NOTE_READ: readonly string[] = [
+  // ENO routing (fixes-25, 2026-09-25): it reads `pet_events.case_id` for ONE
+  // event id to find its bite case, and `cases` jurisdiction columns. It selects
+  // no `payload` text and never returns a note_added row — the owner's lost-feed
+  // sentence cannot pass through it.
+  "lib/events/eno-target-jurisdiction.ts",
   // `note_added` here is kind='adoption_info_requested' — the shelter asking an
   // applicant for more information. Never a lost-feed message.
   "app/(app)/mis-mascotas/postulaciones/page.tsx",
