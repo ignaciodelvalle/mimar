@@ -310,10 +310,10 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
           ? `${vetShort} · vet`
           : "Refugio · org",
     );
-    expect(LIBRETA_EVENTS.map((e) => e.by)).toEqual(expectedBy);
+    expect(LIBRETA_EVENTS.map((e) => flat(e.by))).toEqual(expectedBy);
     // The last dose: signed by the vet, at the Comuna 13 campaign.
     const last = LIBRETA_EVENTS.at(-1);
-    expect(last?.by).toBe(`${vetShort} · vet`);
+    expect(flat(last?.by ?? "")).toBe(`${vetShort} · vet`);
     expect(last?.meta).toContain("Comuna 13");
   });
 

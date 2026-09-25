@@ -63,25 +63,28 @@ function splitDate(date: string): { year: string; month: string; day: number } {
   return { year, month: MONTHS_ES[Number(month) - 1] ?? "", day: Number(day) };
 }
 
-/** "2022-04-12" → "12 abr 2022". */
+/** No-break space: a date, a chip number or "Dra. Marrone" never splits across lines. */
+const NBSP = "\u00a0";
+
+/** "2022-04-12" → "12 abr 2022" (joined by no-break spaces). */
 export function landingDate(date: string): string {
   const { year, month, day } = splitDate(date);
-  return `${day} ${month} ${year}`;
+  return [day, month, year].join(NBSP);
 }
 
-/** "941000100000001" → "941 000 100 000 001". */
+/** "941000100000001" → "941 000 100 000 001" (groups joined by no-break spaces). */
 export function formatChip(chip: string): string {
-  return chip.replace(/(\d{3})(?=\d)/g, "$1 ");
+  return chip.replace(/(\d{3})(?=\d)/g, `$1${NBSP}`);
 }
 
 /** "Dra. Lilian Marrone" → "Dra. Marrone" (title + surname, as the story names her). */
 export const VET_SHORT_NAME = (() => {
   const parts = VET_NAME.split(" ");
-  return `${parts[0]} ${parts[parts.length - 1]}`;
+  return `${parts[0]}${NBSP}${parts[parts.length - 1]}`;
 })();
 
 export const PAMPA_VET = {
-  name: VET_NAME,
+  name: VET_NAME.replace(" ", NBSP),
   shortName: VET_SHORT_NAME,
   license: VET_LICENSE,
   clinic: VET_CLINIC,
@@ -94,7 +97,7 @@ export const PAMPA_SIGNUP_LINE = (() => {
   const dob = splitDate(PAMPA_PET.dateOfBirth);
   const sex = PAMPA_PET.sex === "female" ? "hembra" : "macho";
   const born = PAMPA_PET.birthDateIsEstimated ? "nacimiento estimado" : "nacimiento";
-  return `${PAMPA_PET.breed} · ${sex} · ${born} ${dob.month} ${dob.year}`;
+  return `${PAMPA_PET.breed} · ${sex} · ${born} ${dob.month}${NBSP}${dob.year}`;
 })();
 
 const AUTHOR_BY_ROLE: Record<PampaAuthorRole, string> = {

@@ -4,6 +4,7 @@ import { and, eq, isNull } from "drizzle-orm";
 // globals.css, which the root layout imports, so every route in the product
 // paid for ~2.3k lines of landing CSS it never used. See app/landing.css.
 import "./landing.css";
+import type { Viewport } from "next";
 import { redirect } from "next/navigation";
 import QRCode from "qrcode";
 
@@ -49,6 +50,13 @@ import { createClient } from "@/lib/supabase/server";
 // ABOVE the institutional stripe, which no shell variant provides. The page
 // still renders the single <main id="main-content"> that the root layout's
 // skip-link targets.
+
+// The landing's top chrome is paper (--color-ln-paper), not the app's navy
+// masthead, so the browser bar matches it here. The value has to be a literal:
+// a meta tag cannot read a CSS custom property.
+export const viewport: Viewport = {
+  themeColor: "#fbfaf5",
+};
 
 export default async function Home() {
   const supabase = await createClient();

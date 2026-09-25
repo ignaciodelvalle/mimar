@@ -260,6 +260,9 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                           }
                           fill
                           sizes="64px"
+                          // The hero credential's photo is above the fold on
+                          // every visit: fetch it ahead of lower images.
+                          fetchPriority="high"
                           className="object-cover"
                         />
                       </span>

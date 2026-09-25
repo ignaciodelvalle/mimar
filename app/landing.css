@@ -165,22 +165,28 @@
   background: var(--color-ln-azul);
   color: #fff;
 }
-.lp .lp-btn--primary:hover {
-  background: var(--color-ln-azul-700);
+@media (hover: hover) {
+  .lp .lp-btn--primary:hover {
+    background: var(--color-ln-azul-700);
+  }
 }
 .lp .lp-btn--ghost {
   background: transparent;
   color: var(--color-ln-ink);
   border-color: var(--color-ln-line-strong);
 }
-.lp .lp-btn--ghost:hover {
-  border-color: var(--color-ln-ink);
+@media (hover: hover) {
+  .lp .lp-btn--ghost:hover {
+    border-color: var(--color-ln-ink);
+  }
 }
 .lp .lp-btn .lp-ar {
   transition: transform var(--motion-base);
 }
-.lp .lp-btn:hover .lp-ar {
-  transform: translateX(3px);
+@media (hover: hover) {
+  .lp .lp-btn:hover .lp-ar {
+    transform: translateX(3px);
+  }
 }
 .lp .lp-btn--compact {
   font-size: 14px;
@@ -300,19 +306,19 @@
   cursor: pointer;
   transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
-.lp .lp-milestone-cta:hover {
-  border-color: var(--color-ln-ink);
-  box-shadow: var(--shadow-lg);
-}
-.lp .lp-milestone-cta:focus-visible {
-  outline: 2px solid var(--color-ln-azul);
-  outline-offset: 2px;
+@media (hover: hover) {
+  .lp .lp-milestone-cta:hover {
+    border-color: var(--color-ln-ink);
+    box-shadow: var(--shadow-lg);
+  }
 }
 .lp .lp-milestone-cta .lp-milestone-ar {
   transition: transform var(--motion-base);
 }
-.lp .lp-milestone-cta:hover .lp-milestone-ar {
-  transform: translateY(2px);
+@media (hover: hover) {
+  .lp .lp-milestone-cta:hover .lp-milestone-ar {
+    transform: translateY(2px);
+  }
 }
 
 /* ============ nav (sticky, ABOVE the gob stripe — intentional order) ======= */
@@ -384,9 +390,11 @@
   text-decoration: none;
   transition: background var(--motion-fast), color var(--motion-fast);
 }
-.lp-nav .lp-nav-link:hover {
-  background: var(--color-ln-stripe);
-  color: var(--color-ln-ink);
+@media (hover: hover) {
+  .lp-nav .lp-nav-link:hover {
+    background: var(--color-ln-stripe);
+    color: var(--color-ln-ink);
+  }
 }
 .lp .lp-spacer {
   flex: 1;
@@ -665,14 +673,12 @@
   transition: transform var(--motion-base), color var(--motion-base), border-color
     var(--motion-base);
 }
-.lp .lp-hcard-flip:hover {
-  color: var(--color-ln-ink);
-  border-color: var(--color-ln-azul);
-  transform: rotate(180deg);
-}
-.lp .lp-hcard-flip:focus-visible {
-  outline: 2px solid var(--color-ln-azul);
-  outline-offset: 2px;
+@media (hover: hover) {
+  .lp .lp-hcard-flip:hover {
+    color: var(--color-ln-ink);
+    border-color: var(--color-ln-azul);
+    transform: rotate(180deg);
+  }
 }
 /* Hit-area extension (critique 2026-07-27, A2): the flip trigger measured
    26×26 — under the 44px touch floor on the control that turns the whole
@@ -698,6 +704,7 @@
   position: relative;
   width: 64px;
   height: 64px;
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
   overflow: hidden;
   border: 2.5px solid var(--htone, var(--color-ln-ok));
@@ -898,10 +905,6 @@
   border-color: var(--dtone, var(--color-ln-azul));
   transform: scale(1.25);
 }
-.lp .lp-hdot:focus-visible {
-  outline: 2px solid var(--color-ln-azul);
-  outline-offset: 2px;
-}
 
 @keyframes lp-hbadge-in {
   from {
@@ -977,9 +980,11 @@
   color: inherit;
   transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
-.lp .lp-crisis-card:hover {
-  border-color: var(--color-ln-ink);
-  box-shadow: var(--shadow-md);
+@media (hover: hover) {
+  .lp .lp-crisis-card:hover {
+    border-color: var(--color-ln-ink);
+    box-shadow: var(--shadow-md);
+  }
 }
 .lp .lp-crisis-card .lp-cic {
   width: 42px;
@@ -1017,9 +1022,11 @@
   color: var(--color-ln-faint);
   transition: transform var(--motion-fast), color var(--motion-fast);
 }
-.lp .lp-crisis-card:hover .lp-ar {
-  transform: translateX(3px);
-  color: var(--color-ln-azul);
+@media (hover: hover) {
+  .lp .lp-crisis-card:hover .lp-ar {
+    transform: translateX(3px);
+    color: var(--color-ln-azul);
+  }
 }
 /* ============ bond band — full-bleed emotional bridge ===================== */
 /* The one bold, full-bleed moment: the human–animal bond the product exists to
@@ -1128,9 +1135,11 @@
   color: inherit;
   transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
-.lp .lp-castfila-hand:hover {
-  border-color: var(--color-ln-ink);
-  box-shadow: var(--shadow-md);
+@media (hover: hover) {
+  .lp .lp-castfila-hand:hover {
+    border-color: var(--color-ln-ink);
+    box-shadow: var(--shadow-md);
+  }
 }
 .lp .lp-role-ic {
   width: 36px;
@@ -1256,8 +1265,10 @@
 .lp .lp-rail-step[data-s="navy"] .lp-rdot {
   background: var(--color-ln-azul-900);
 }
-.lp .lp-rail-step:hover {
-  background: var(--color-ln-card);
+@media (hover: hover) {
+  .lp .lp-rail-step:hover {
+    background: var(--color-ln-card);
+  }
 }
 .lp .lp-rail-step.on {
   background: var(--color-ln-card);
@@ -1307,6 +1318,11 @@
   .lp .lp-rail-step .lp-rname {
     font-size: 12.5px;
     white-space: nowrap;
+  }
+  /* Below 940px the rail is a sticky pill bar under the nav (58px + ~62px):
+     an anchor jump has to clear both, not just the nav. */
+  .lp .lp-chapter {
+    scroll-margin-top: 124px;
   }
 }
 
@@ -2231,8 +2247,10 @@
   font-weight: 600;
   text-decoration: none;
 }
-.lp .lp-feat-more a:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .lp .lp-feat-more a:hover {
+    text-decoration: underline;
+  }
 }
 
 /* ============ FAQ + trust row ============================================= */
@@ -2373,9 +2391,11 @@
   color: var(--lp-navy-ink);
   border-color: var(--lp-navy-line);
 }
-.lp .lp-role-card[data-tone="gob"] .lp-btn--ghost:hover {
-  border-color: var(--color-ln-card);
-  color: var(--color-ln-card);
+@media (hover: hover) {
+  .lp .lp-role-card[data-tone="gob"] .lp-btn--ghost:hover {
+    border-color: var(--color-ln-card);
+    color: var(--color-ln-card);
+  }
 }
 
 /* ============ /municipios (WU5) ============================================
@@ -2430,8 +2450,10 @@
   color: var(--color-ln-card);
   border-color: var(--lp-navy-line);
 }
-.lp .lp-mun-btn--line:hover {
-  border-color: var(--color-ln-card);
+@media (hover: hover) {
+  .lp .lp-mun-btn--line:hover {
+    border-color: var(--color-ln-card);
+  }
 }
 
 .lp .lp-mun-section {
@@ -2663,8 +2685,10 @@
   color: var(--color-ln-ink-2);
   text-decoration: none;
 }
-.lp .lp-foot ul a:hover {
-  color: var(--color-ln-azul);
+@media (hover: hover) {
+  .lp .lp-foot ul a:hover {
+    color: var(--color-ln-azul);
+  }
 }
 .lp .lp-foot-legal {
   margin-top: 34px;
@@ -2677,4 +2701,75 @@
   font-size: 12.5px;
   color: var(--color-ln-mute);
   padding-bottom: 30px;
+}
+
+/* ---------------------------------------------------------------------------
+   Front-end polish (PS11, PO 2026-09-25)
+   --------------------------------------------------------------------------- */
+
+/* Numbers that sit in columns or change in place — dates, batches, chip and
+   credential tokens, license numbers, the console's counters — keep one width
+   per digit, so a CountUp or a stacked list never jitters. */
+.lp .lp-lib-when,
+.lp .lp-lib-meta,
+.lp .lp-lib-by,
+.lp .lp-hcard-token,
+.lp .lp-hcard-libwho,
+.lp .lp-intake-sub,
+.lp .lp-lostb small,
+.lp .lp-ah-s,
+.lp .lp-mv {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Headings break into even lines; paragraphs avoid a one-word last line.
+   Progressive: a browser without text-wrap simply wraps as before. */
+.lp :is(h1, h2, h3, .lp-display) {
+  text-wrap: balance;
+}
+.lp :is(p, .lp-lead) {
+  text-wrap: pretty;
+}
+
+/* One focus ring across the landing layer: the product's ring width, in the
+   landing's accent. */
+.lp :is(a, button, summary, [tabindex]):focus-visible {
+  outline: var(--focus-ring-width) solid var(--color-ln-azul);
+  outline-offset: 2px;
+}
+
+/* Press feedback where there is no hover (touch): the hover styles above only
+   exist under (hover: hover), so a tap needs its own acknowledgement. */
+.lp .lp-btn:active,
+.lp .lp-milestone-cta:active,
+.lp .lp-crisis-card:active,
+.lp .lp-castfila-hand:active,
+.lp .lp-rail-step:active,
+.lp .lp-mun-btn--line:active {
+  transform: translateY(1px);
+}
+.lp .lp-hcard-flip:active,
+.lp .lp-hdot:active,
+.lp-nav .lp-nav-link:active {
+  opacity: 0.75;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp .lp-btn:active,
+  .lp .lp-milestone-cta:active,
+  .lp .lp-crisis-card:active,
+  .lp .lp-castfila-hand:active,
+  .lp .lp-rail-step:active,
+  .lp .lp-mun-btn--line:active {
+    transform: none;
+  }
+}
+
+/* Brand details: selection in celeste, and a gutter that never shifts the
+   page when the scrollbar comes and goes. */
+.lp ::selection {
+  background: color-mix(in srgb, var(--color-ln-celeste) 40%, transparent);
+  color: var(--color-ln-ink);
+}
+html:has([data-landing-root]) {
+  scrollbar-gutter: stable;
 }

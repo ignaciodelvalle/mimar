@@ -68,7 +68,7 @@ function AppHead({
   right,
 }: {
   title: string;
-  sub?: string;
+  sub?: ReactNode;
   photo?: ReactNode;
   right?: ReactNode;
 }) {
@@ -143,7 +143,11 @@ export function VetVaccineScreen() {
       <div className="lp-scr-top" />
       <AppHead
         title={PAMPA_VET.name}
-        sub={`${PAMPA_VET.license} · ${PAMPA_VET.clinic}`}
+        sub={
+          <>
+            <span className="whitespace-nowrap">{PAMPA_VET.license}</span> · {PAMPA_VET.clinic}
+          </>
+        }
         right={<LnBadge variant="success">Matrícula verificada</LnBadge>}
       />
       <div className="lp-app-body lp-ph-pad">
@@ -174,7 +178,8 @@ export function VetVaccineScreen() {
             <div className="lp-lib-foot mt-1">
               <span className="lp-lib-type">{eventTypeLabel("vaccination_administered")}</span>
               <span className="lp-lib-by">
-                {PAMPA_VET.shortName} · {PAMPA_VET.license}
+                {PAMPA_VET.shortName} ·{" "}
+                <span className="whitespace-nowrap">{PAMPA_VET.license}</span>
               </span>
             </div>
           </div>
