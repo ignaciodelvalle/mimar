@@ -239,6 +239,7 @@ export async function createSymptomObservedWriter(
           tx as Parameters<typeof deps.repo.enqueueOutbox>[0],
           {
             id: signalEvent.id,
+            petId,
             eventType: "outbreak_signal",
             payload: signalPayload as Record<string, unknown>,
           },

@@ -151,6 +151,7 @@ export async function recordDiseaseDiagnosisWriter(
         tx as Parameters<typeof deps.repo.enqueueOutbox>[0],
         {
           id: diagnosisEvent.id,
+          petId: params.petId,
           eventType: "clinical_info_logged",
           payload: diagnosisPayload as Record<string, unknown>,
         },
@@ -218,6 +219,7 @@ export async function recordDiseaseDiagnosisWriter(
           tx as Parameters<typeof deps.repo.enqueueOutbox>[0],
           {
             id: signalEvent.id,
+            petId: params.petId,
             eventType: "outbreak_signal",
             payload: signalPayload as Record<string, unknown>,
           },

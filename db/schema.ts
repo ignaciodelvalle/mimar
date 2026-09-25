@@ -4756,8 +4756,25 @@ export const eventNotificationOutbox = pgTable(
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+
+    // ONE RECORD PER CASE (migration 0247, PO 2026-09-25: "A Case may not be
+    // duplicated"). The case this row notifies, when a rule can name one
+    // (lib/events/event-outbox-rules.ts `caseKey`) — today only rabies, keyed
+    // per animal. NULL = a row with no case identity (every other rule), which
+    // keeps the old one-row-per-event behaviour.
+    enoCaseKey: text("eno_case_key"),
+    // Every LATER source event that belongs to the same case, appended by the
+    // second writer instead of a second row: { source_event_id, event_type,
+    // linked_at, payload_snapshot, previous_status, previous_delivered_at }.
+    // Append-only by construction (the enqueue only ever concatenates).
+    linkedSources: jsonb("linked_sources").notNull().default(sql`'[]'::jsonb`),
   },
   (table) => ({
+    // The DB-level guarantee behind enoCaseKey: two writers racing for one
+    // case cannot both insert (the enqueue's ON CONFLICT targets this index).
+    enoCaseUnique: uniqueIndex("outbox_eno_case_unique")
+      .on(table.targetKind, table.enoCaseKey)
+      .where(sql`${table.enoCaseKey} IS NOT NULL`),
     // Drainer: pending rows due for processing.
     drainableIdx: index("outbox_drainable_idx")
       .on(table.nextRetryAt)

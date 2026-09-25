@@ -239,7 +239,7 @@ export const CLASSIFICATION: Readonly<Record<string, Classification>> = {
     "Work queue keyed on pet_event_id — status, retries, last error.",
   ),
   event_notification_outbox: bothGap(
-    "`payload_snapshot` carries a copy of the source event's payload.",
+    "`payload_snapshot` carries a copy of the source event's payload, and `linked_sources` (0247) a copy of every later event linked into the same case.",
   ),
   foster_proposals: bothGap(
     "volunteer_user_id plus `proposed_notes`, `response_notes`, `cancellation_reason` — free text about the volunteer.",

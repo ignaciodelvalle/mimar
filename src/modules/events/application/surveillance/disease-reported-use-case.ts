@@ -237,6 +237,7 @@ export async function createDiseaseReported(
         tx as Parameters<typeof deps.repo.enqueueOutbox>[0],
         {
           id: event.id,
+          petId: pet.id,
           eventType: "disease_reported",
           payload: payload as Record<string, unknown>,
         },

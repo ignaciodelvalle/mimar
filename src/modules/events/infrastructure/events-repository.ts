@@ -498,7 +498,7 @@ export class EventsRepository {
    */
   async enqueueOutbox(
     executor: DbOrTx,
-    event: { id: string; eventType: string; payload: Record<string, unknown> },
+    event: { id: string; petId: string; eventType: string; payload: Record<string, unknown> },
     pet: { jurisdictionProvince?: string | null; jurisdictionLocality?: string | null },
     now?: Date,
   ): Promise<void> {

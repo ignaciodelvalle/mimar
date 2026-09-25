@@ -54,6 +54,41 @@ export interface OutboxRule {
    * enqueueOutboxForEvent stores the full event payload as-is.
    */
   buildSnapshot?: (payload: Record<string, unknown>) => Record<string, unknown>;
+
+  /**
+   * Optional: the CASE this row notifies, or null when the rule cannot name
+   * one. Rows sharing a (target_kind, case key) are ONE record: the second
+   * writer links its event into the existing row instead of inserting
+   * (enqueueOutboxForEvent; unique index outbox_eno_case_unique, migration
+   * 0247). PO, 2026-09-25: "A Case may not be duplicated; all information
+   * related to a single event must be concentrated in a single record."
+   */
+  caseKey?: (payload: Record<string, unknown>, ctx: { petId: string }) => string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Case keys
+// ---------------------------------------------------------------------------
+
+const RABIES_ENO_CODE = "rabies";
+
+/**
+ * The rabies case key — ONE per animal. Rabies is fatal: an animal carries at
+ * most one rabies case, so the diagnosis, the outbreak signal it derives and
+ * the positive close of that animal's observation are the same case whatever
+ * order they arrive in, and whether or not the diagnosis names a bite case.
+ * Keying per animal (not per bite case) is what lets a diagnosis written with
+ * no case id meet the close that has one.
+ *
+ * Every other ENO disease stays unkeyed on purpose: a dog can have
+ * leptospirosis twice, and a per-animal key would fold two episodes into one.
+ */
+export function rabiesEnoCaseKey(petId: string): string {
+  return `${RABIES_ENO_CODE}:pet:${petId}`;
+}
+
+function isRabiesDiseaseCode(diseaseCode: unknown): boolean {
+  return typeof diseaseCode === "string" && diseaseCodeToEnoCode(diseaseCode) === RABIES_ENO_CODE;
 }
 
 // ---------------------------------------------------------------------------
@@ -79,6 +114,10 @@ const clinicalInfoLoggedGovtWebhook: OutboxRule = {
     if (!disease) return null;
     return disease.notifyHours;
   },
+  caseKey(payload, { petId }) {
+    if (payload.sub_kind !== "disease_diagnosis") return null;
+    return isRabiesDiseaseCode(payload.disease_code) ? rabiesEnoCaseKey(petId) : null;
+  },
 };
 
 /**
@@ -102,6 +141,13 @@ const outbreakSignalGovtWebhook: OutboxRule = {
     // Outbreak signals from ENO diseases always warrant 24h govt notification.
     return 24;
   },
+  // Only the signal a DIAGNOSIS derives is the diagnosis's case — it is the
+  // same act restated (source_disease_diagnosis_event_id). A symptom-cluster
+  // signal is a suspicion about a population, not a case, and stays unkeyed.
+  caseKey(payload, { petId }) {
+    if (payload.triggered_by !== "direct_diagnosis") return null;
+    return isRabiesDiseaseCode(payload.disease_code) ? rabiesEnoCaseKey(petId) : null;
+  },
 };
 
 /**
@@ -124,8 +170,6 @@ const outbreakSignalGovtWebhook: OutboxRule = {
  * it), and `closure_notes` is dropped — it is PA-gated clinical prose
  * (payload-privacy.ts) and this payload is bound for an external authority.
  */
-const RABIES_ENO_CODE = "rabies";
-
 const rabiesObservationEndedGovtWebhook: OutboxRule = {
   target_kind: "govt_webhook",
   slaHours(payload) {
@@ -141,6 +185,9 @@ const rabiesObservationEndedGovtWebhook: OutboxRule = {
       bite_event_id: payload.bite_event_id ?? null,
       death_event_id: payload.death_event_id ?? null,
     };
+  },
+  caseKey(payload, { petId }) {
+    return payload.outcome === "positive_rabies" ? rabiesEnoCaseKey(petId) : null;
   },
 };
 

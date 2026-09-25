@@ -129,6 +129,7 @@
     "materialize:slots": "tsx scripts/materialize-slots.ts",
     "close:rabies-observations": "tsx scripts/close-rabies-observations.ts",
     "backfill:eno": "node --conditions=react-server --import tsx scripts/backfill-eno-trigger.ts",
+    "backfill:eno-case": "node --conditions=react-server --import tsx scripts/backfill-eno-case-merge.ts",
     "probe:load": "tsx scripts/load-probe.ts",
     "probe:load:v1": "tsx scripts/load-probe-api-v1.ts",
     "test": "vitest run",

@@ -33,9 +33,12 @@ import {
   pets,
   profiles,
 } from "@/db";
+import { enqueueOutboxForEvent } from "@/lib/events/event-outbox-enqueue";
+import { rabiesEnoCaseKey } from "@/lib/events/event-outbox-rules";
 import { describeEnoNotification } from "@/lib/infra/outbox-list";
 import { ENO_PRESET_TARGET_KINDS } from "@/lib/infra/outbox-query";
 import { generatePublicToken } from "@/lib/infra/publicToken";
+import { recordDiseaseDiagnosisWriter } from "@/src/modules/events/application/writers";
 import { withMutationOverride } from "../../../../__tests__/_helpers/db-overrides";
 import { getEnoDisease } from "../domain/eno-catalog";
 import type { RabiesObservationOutcome } from "../domain/rabies-observation";
@@ -327,5 +330,175 @@ describe("professionalCloseObservation → ENO outbox (PO 1A)", () => {
       .from(enoProcessingQueue)
       .where(eq(enoProcessingQueue.petEventId, result.value.endedEventId));
     expect(queued).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIX-25 #3 (PO, 2026-09-25): ONE ENO RECORD PER CASE.
+// "A Case may not be duplicated; all information related to a single event
+// must be concentrated in a single record for consistency."
+//
+// Before: a rabies diagnosis wrote a Cola ENO row for itself AND for the
+// outbreak_signal it derives, and the positive close of the same animal wrote
+// a third. Now every rabies row carries the per-animal case key and the later
+// writers link into the first (lib/events/event-outbox-enqueue.ts, unique
+// index outbox_eno_case_unique from migration 0247). Real database throughout.
+// ---------------------------------------------------------------------------
+
+type LinkedSource = {
+  source_event_id: string;
+  event_type: string;
+  previous_status: string;
+  payload_snapshot: Record<string, unknown>;
+};
+
+async function enoRecordsFor(petId: string) {
+  return db
+    .select({
+      id: eventNotificationOutbox.id,
+      sourceEventId: eventNotificationOutbox.sourceEventId,
+      enoCaseKey: eventNotificationOutbox.enoCaseKey,
+      linkedSources: eventNotificationOutbox.linkedSources,
+      status: eventNotificationOutbox.status,
+      slaDueAt: eventNotificationOutbox.slaDueAt,
+    })
+    .from(eventNotificationOutbox)
+    .where(eq(eventNotificationOutbox.enoCaseKey, rabiesEnoCaseKey(petId)));
+}
+
+async function diagnoseRabies(pet: { id: string }) {
+  const result = await recordDiseaseDiagnosisWriter({
+    petId: pet.id,
+    petName: "EnoRabiesClosePet",
+    petSpecies: "dog",
+    petJurisdictionCountry: "AR",
+    petJurisdictionProvince: PROVINCE,
+    petJurisdictionLocality: LOCALITY,
+    vetUserId: VET_ID,
+    vetDisplayName: "Dra. Caso Unico",
+    diseaseCode: "rabies_confirmed",
+    confirmedByLab: true,
+    labName: "INPPAZ",
+    labReportReference: "LAB-CASO-UNICO",
+    diagnosisDate: new Date(),
+    notes: null,
+  });
+  if (!result.ok) throw new Error(`diagnosis failed: ${result.error}`);
+  return result;
+}
+
+describe("one ENO record per rabies case (PO 2026-09-25)", () => {
+  it("diagnosis then positive close → exactly ONE record, the close linked into it", async () => {
+    const pet = await makeObservedPet();
+    const diagnosis = await diagnoseRabies(pet);
+    const close = await closeAsGovt(pet.publicToken, "positive_rabies");
+    expect(close.ok).toBe(true);
+    if (!close.ok) return;
+
+    // Every Cola ENO row whose source is this animal's event: one.
+    expect(await outboxRowsFor(pet.id)).toHaveLength(1);
+    const records = await enoRecordsFor(pet.id);
+    expect(records).toHaveLength(1);
+    const [record] = records;
+    expect(record.sourceEventId).toBe(diagnosis.diagnosisEventId);
+    const linked = record.linkedSources as LinkedSource[];
+    expect(linked.map((l) => l.source_event_id).sort()).toEqual(
+      [diagnosis.signalEventId, close.value.endedEventId].sort(),
+    );
+    const closeLink = linked.find((l) => l.source_event_id === close.value.endedEventId);
+    expect(closeLink?.event_type).toBe("rabies_observation_ended");
+    expect(closeLink?.payload_snapshot.outcome).toBe("positive_rabies");
+    // The close's clinical prose still never reaches the authority's record.
+    expect(JSON.stringify(record.linkedSources)).not.toContain("Notas clínicas");
+    expect(record.status).toBe("pending");
+  });
+
+  it("positive close then diagnosis → exactly ONE record, the diagnosis linked into it", async () => {
+    const pet = await makeObservedPet();
+    const close = await closeAsGovt(pet.publicToken, "positive_rabies");
+    expect(close.ok).toBe(true);
+    if (!close.ok) return;
+    const diagnosis = await diagnoseRabies(pet);
+
+    expect(await outboxRowsFor(pet.id)).toHaveLength(1);
+    const [record] = await enoRecordsFor(pet.id);
+    expect(record.sourceEventId).toBe(close.value.endedEventId);
+    expect((record.linkedSources as LinkedSource[]).map((l) => l.source_event_id).sort()).toEqual(
+      [diagnosis.diagnosisEventId, diagnosis.signalEventId].sort(),
+    );
+  });
+
+  it("replaying the enqueue for events already on the record changes nothing", async () => {
+    const pet = await makeObservedPet();
+    const diagnosis = await diagnoseRabies(pet);
+    const close = await closeAsGovt(pet.publicToken, "positive_rabies");
+    expect(close.ok).toBe(true);
+    const [before] = await enoRecordsFor(pet.id);
+
+    const events = await db
+      .select({
+        id: petEvents.id,
+        petId: petEvents.petId,
+        eventType: petEvents.eventType,
+        payload: petEvents.payload,
+      })
+      .from(petEvents)
+      .where(eq(petEvents.petId, pet.id));
+    // Twice over every event of the animal: the source and every link.
+    for (let round = 0; round < 2; round++) {
+      await db.transaction(async (tx) => {
+        for (const e of events) {
+          await enqueueOutboxForEvent(
+            tx,
+            { ...e, payload: e.payload as Record<string, unknown> },
+            { jurisdictionProvince: PROVINCE, jurisdictionLocality: LOCALITY },
+          );
+        }
+      });
+    }
+
+    const after = await enoRecordsFor(pet.id);
+    expect(after).toHaveLength(1);
+    expect(after[0].id).toBe(before.id);
+    expect(after[0].linkedSources).toEqual(before.linkedSources);
+    expect(after[0].slaDueAt.getTime()).toBe(before.slaDueAt.getTime());
+    expect(await outboxRowsFor(pet.id)).toHaveLength(1);
+    expect(after[0].sourceEventId).toBe(diagnosis.diagnosisEventId);
+  });
+
+  it("a record already DELIVERED is re-opened by the close, and the delivery is kept in the trail", async () => {
+    const pet = await makeObservedPet();
+    await diagnoseRabies(pet);
+    const [first] = await enoRecordsFor(pet.id);
+    await db
+      .update(eventNotificationOutbox)
+      .set({ status: "delivered", deliveredAt: new Date(), attempts: 1 })
+      .where(eq(eventNotificationOutbox.id, first.id));
+
+    const close = await closeAsGovt(pet.publicToken, "positive_rabies");
+    expect(close.ok).toBe(true);
+    if (!close.ok) return;
+
+    const [record] = await enoRecordsFor(pet.id);
+    expect(record.id).toBe(first.id);
+    expect(record.status).toBe("pending");
+    const closeLink = (record.linkedSources as LinkedSource[]).find(
+      (l) => l.source_event_id === close.value.endedEventId,
+    );
+    expect(closeLink?.previous_status).toBe("delivered");
+  });
+
+  it("the database itself refuses a second row for the same case", async () => {
+    const pet = await makeObservedPet();
+    await diagnoseRabies(pet);
+    const [record] = await enoRecordsFor(pet.id);
+    await expect(
+      db.insert(eventNotificationOutbox).values({
+        sourceEventId: record.sourceEventId,
+        targetKind: "govt_webhook",
+        slaDueAt: new Date(),
+        enoCaseKey: rabiesEnoCaseKey(pet.id),
+      }),
+    ).rejects.toThrow();
   });
 });

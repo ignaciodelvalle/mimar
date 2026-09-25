@@ -15,17 +15,27 @@ type InsertedRow = Record<string, unknown>;
 
 function makeMockTx() {
   const inserted: InsertedRow[] = [];
+  // Rows written through ON CONFLICT (a keyed case) — the SQL itself is
+  // exercised against the real database in
+  // src/modules/surveillance/application/professional-close-observation.eno.test.ts.
+  const upserted: InsertedRow[] = [];
 
   const tx = {
     insert: vi.fn().mockReturnValue({
       values: vi.fn().mockImplementation((row: InsertedRow) => {
         inserted.push(row);
-        return Promise.resolve();
+        const done = Promise.resolve();
+        return Object.assign(done, {
+          onConflictDoUpdate: vi.fn().mockImplementation(() => {
+            upserted.push(row);
+            return Promise.resolve();
+          }),
+        });
       }),
     }),
   };
 
-  return { tx, inserted };
+  return { tx, inserted, upserted };
 }
 
 // ---------------------------------------------------------------------------
@@ -37,6 +47,7 @@ const NOW = new Date("2026-05-22T12:00:00.000Z");
 function makeDiseaseDiagnosisEvent(diseaseCode: string) {
   return {
     id: "evt-ddx-1",
+    petId: "pet-1",
     eventType: "clinical_info_logged" as const,
     payload: {
       sub_kind: "disease_diagnosis",
@@ -49,6 +60,7 @@ function makeDiseaseDiagnosisEvent(diseaseCode: string) {
 function makeOutbreakSignalEvent(diseaseCode: string) {
   return {
     id: "evt-signal-1",
+    petId: "pet-1",
     eventType: "outbreak_signal" as const,
     payload: {
       disease_code: diseaseCode,
@@ -127,6 +139,7 @@ describe("enqueueOutboxForEvent", () => {
     const { tx, inserted } = makeMockTx();
     const event = {
       id: "evt-vax-1",
+      petId: "pet-1",
       eventType: "vaccination_administered" as const,
       payload: { vaccine_name: "Rabia", lot_number: "L001" },
     };
@@ -143,5 +156,41 @@ describe("enqueueOutboxForEvent", () => {
     await enqueueOutboxForEvent(tx as never, event, PET, NOW);
 
     expect(inserted[0].payloadSnapshot).toEqual(event.payload);
+  });
+
+  // FIX-25 #3 (PO 2026-09-25): one ENO record per case.
+  it("a rabies diagnosis names the per-animal case and goes through ON CONFLICT", async () => {
+    const { tx, inserted, upserted } = makeMockTx();
+    await enqueueOutboxForEvent(
+      tx as never,
+      makeDiseaseDiagnosisEvent("rabies_confirmed"),
+      PET,
+      NOW,
+    );
+    expect(inserted[0].enoCaseKey).toBe("rabies:pet:pet-1");
+    expect(upserted).toHaveLength(1);
+  });
+
+  it("leptospirosis stays unkeyed (a second episode is a second case) — plain insert", async () => {
+    const { tx, inserted, upserted } = makeMockTx();
+    await enqueueOutboxForEvent(tx as never, makeDiseaseDiagnosisEvent("leptospirosis"), PET, NOW);
+    expect(inserted[0].enoCaseKey).toBeNull();
+    expect(upserted).toHaveLength(0);
+  });
+
+  it("a symptom-cluster rabies signal is not the case; the diagnosis-derived one is", async () => {
+    const symptom = makeOutbreakSignalEvent("rabies_suspected");
+    const a = makeMockTx();
+    await enqueueOutboxForEvent(a.tx as never, symptom, PET, NOW);
+    expect(a.inserted[0].enoCaseKey).toBeNull();
+
+    const b = makeMockTx();
+    await enqueueOutboxForEvent(
+      b.tx as never,
+      { ...symptom, payload: { ...symptom.payload, triggered_by: "direct_diagnosis" } },
+      PET,
+      NOW,
+    );
+    expect(b.inserted[0].enoCaseKey).toBe("rabies:pet:pet-1");
   });
 });

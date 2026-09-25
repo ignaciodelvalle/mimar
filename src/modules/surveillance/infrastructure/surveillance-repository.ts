@@ -396,6 +396,7 @@ export class SurveillanceRepository {
         executor as Parameters<typeof enqueueOutboxForEvent>[0],
         {
           id: event.id,
+          petId: event.petId,
           eventType: event.eventType,
           payload: event.payload as Record<string, unknown>,
         },
