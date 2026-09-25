@@ -252,8 +252,14 @@ export const V1_ROUTE_GLOB = "app/api/v1/**/route.ts";
  * title from `pets/{token}/` and its nine — the arrangement this floor exists
  * for, since one directory rename would take all ten out together and nothing
  * but this number would say so.
+ *
+ * FORTY-THREE with the reactivation door (`me/reactivate`, D4). RECOUNTED, and
+ * the jump is the lesson again: the floor had sat at 34 while the tree grew to
+ * 42, so nine routes could have left the glob with this fence still green.
+ * `listV1RouteFiles().length` on this worktree is 43 with the route present —
+ * equal, not merely satisfied.
  */
-export const MIN_V1_ROUTE_FILES = 34;
+export const MIN_V1_ROUTE_FILES = 43;
 
 export const HELPER_MODULE = "@/lib/infra/api-v1";
 

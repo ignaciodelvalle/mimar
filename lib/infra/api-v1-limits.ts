@@ -588,7 +588,9 @@ export const API_V1_AUTHENTICATED_WRITE_USER_LIMIT: RateLimitConfig = {
 };
 
 /**
- * Account-security writes, per IP. `/me/revoke-sessions` only: 12× its
+ * Account-security writes, per IP. `/me/revoke-sessions`, the `/me/privacy`
+ * write and `/me/reactivate` (D4, whose per-user half is
+ * `API_V1_ACCOUNT_SECURITY_USER_LIMIT` below). Derived for the first: 12× its
  * use-case's per-user ceiling (5/min + 20/hr) — 60 = 12 × 5 and 240 = 12 × 20,
  * flat on both windows — and an order of magnitude below the read family
  * because the act really is rare.
@@ -608,6 +610,38 @@ export const API_V1_AUTHENTICATED_WRITE_USER_LIMIT: RateLimitConfig = {
 export const API_V1_ACCOUNT_SECURITY_IP_LIMIT: RateLimitConfig = {
   maxPerMinute: 60,
   maxPerHour: 240,
+};
+
+/**
+ * Account-security writes, per user — for the ONE member of the family whose
+ * per-user half lives at the route: `POST /me/reactivate` (D4).
+ *
+ * THE SAME NUMBERS AS `REVOKE_SESSIONS_USER_LIMIT` (5/min · 20/hr · 40/day), so
+ * the family has one per-user anchor and the IP ceiling above is 12× it on both
+ * windows for every route in it. `revokeAllSessions` keeps its own copy inside
+ * the use-case; this one is here because the reactivation use-case is the WEB's
+ * (`selfReactivatePersonalAccountForUser`, reached from /cuenta), reused
+ * unchanged, and it holds no limiter of its own.
+ *
+ * WHY THE ROUTE AND NOT THE USE-CASE, given that `revoke-sessions.ts` records
+ * the lesson "a ceiling that belongs to the transport is a ceiling a caller
+ * escapes by using the other door". That lesson is about a control whose abuse
+ * is the act itself (a stolen token signing somebody out, repeatedly). A
+ * reactivation is bounded by construction: the first success makes every later
+ * call a no-op, so the only thing a flood of them can buy is counter writes —
+ * which is what the per-IP half bounds before authentication. Moving a limiter
+ * into the web's use-case would change the web's behaviour (and its fail
+ * direction) in a change whose brief is to reuse it as-is.
+ *
+ * FAILS CLOSED at the route, unlike `revoke-sessions`: refusing a reactivation
+ * for a few seconds costs the person nothing irreversible, while the endpoint is
+ * the one door on this surface that deliberately runs for an account
+ * `requireLiveUser` refuses.
+ */
+export const API_V1_ACCOUNT_SECURITY_USER_LIMIT: RateLimitConfig = {
+  maxPerMinute: 5,
+  maxPerHour: 20,
+  maxPerDay: 40,
 };
 
 /**
@@ -925,6 +959,11 @@ export const API_V1_IP_BUCKET_FAMILIES: Readonly<Record<string, ApiV1IpFamily>> 
   api_v1_me_transfers_write_ip: "authenticated-write",
   api_v1_me_caretaker_grants_write_ip: "authenticated-write",
   api_v1_me_revoke_sessions_ip: "account-security",
+  // Added by D4 with `POST /me/reactivate`: undoing your own deactivation from
+  // the app. The family's shape exactly — rare, deliberate, on your own
+  // account, and its failure mode is "you cannot get back into your account".
+  // Its per-user half is spent at the route (API_V1_ACCOUNT_SECURITY_USER_LIMIT).
+  api_v1_me_reactivate_ip: "account-security",
 
   // Added by T4-M5 with the foster surface in the native app. Both buckets join
   // the general authenticated families: reading the foster state is an ordinary

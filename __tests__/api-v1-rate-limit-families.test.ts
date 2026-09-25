@@ -76,6 +76,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   API_V1_ACCOUNT_SECURITY_IP_LIMIT,
+  API_V1_ACCOUNT_SECURITY_USER_LIMIT,
   API_V1_AUTHENTICATED_READ_IP_LIMIT,
   API_V1_AUTHENTICATED_WRITE_IP_LIMIT,
   API_V1_AUTHENTICATED_WRITE_USER_LIMIT,
@@ -187,8 +188,15 @@ const ROUTE_GLOB = "app/api/v1/**/route.ts";
  * RECOUNTED on this worktree, `Object.keys(API_V1_IP_BUCKET_FAMILIES).length` is
  * 39, and not obtained by adding one to the 38 above — the instruction this
  * comment has now survived six doors saying.
+ *
+ * 39 → 50 with the REACTIVATION door (D4, `POST /me/reactivate`), and ten of
+ * those eleven are not this door's: the floor had sat at 39 while the map grew
+ * to 49 (foster, cases, poster, map, profile, rehome, reminders…), which is the
+ * exact silent loosening this comment exists to name. D4 adds ONE bucket,
+ * `api_v1_me_reactivate_ip`. RECOUNTED on this worktree —
+ * `Object.keys(API_V1_IP_BUCKET_FAMILIES).length` is 50 — not 39 + 1.
  */
-const MIN_IP_BUCKETS = 39;
+const MIN_IP_BUCKETS = 50;
 
 /**
  * Collects `enforceRateLimit`-style bucket literals from a route's source and
@@ -478,6 +486,7 @@ describe("/api/v1 per-IP buckets — every one is filed under the RIGHT family",
  * TEXT a route passes rather than about a value already known to be right.
  */
 const FAMILY_OF_USER_CEILING: Readonly<Record<string, ApiV1IpFamily>> = {
+  API_V1_ACCOUNT_SECURITY_USER_LIMIT: "account-security",
   API_V1_AUTHENTICATED_READ_USER_LIMIT: "authenticated-read",
   API_V1_AUTHENTICATED_WRITE_USER_LIMIT: "authenticated-write",
   API_V1_INBOX_STATE_USER_LIMIT: "inbox-state",
@@ -492,11 +501,13 @@ const FAMILY_OF_USER_CEILING: Readonly<Record<string, ApiV1IpFamily>> = {
  * each decision already documented at the place that owns it, restated here
  * so this file does not have to guess at an absence:
  *
- *   - `account-security` — `me/revoke-sessions/route.ts`'s own docblock: the
- *     per-user pair (5/min · 20/hr) is spent INSIDE `revokeAllSessions`
- *     (`REVOKE_SESSIONS_USER_BUCKET`, `src/modules/auth/application/
- *     revoke-sessions.ts:123,210`), by the write family's 12× rule, so the
- *     route only ever sees the per-IP half.
+ *   - `account-security` USED TO BE HERE and left with D4
+ *     (`POST /me/reactivate`), which spends `API_V1_ACCOUNT_SECURITY_USER_LIMIT`
+ *     at the route — so the family is now SEEN spent and the non-vacuity check
+ *     below would call the entry stale. `revoke-sessions` still spends its
+ *     per-user pair inside `revokeAllSessions` (`REVOKE_SESSIONS_USER_BUCKET`),
+ *     with the same numbers; the two are one anchor held in two places, pinned
+ *     equal by "keeps account-security's two per-user anchors identical" below.
  *   - `adoption-application` — `adoptions/[petToken]/route.ts`'s own
  *     docblock: the per-user anchor is spent INSIDE
  *     `submitAdoptionApplication` (`ADOPTION_APPLICATION_USER_LIMIT`,
@@ -507,7 +518,6 @@ const FAMILY_OF_USER_CEILING: Readonly<Record<string, ApiV1IpFamily>> = {
  *     bucket on.
  */
 const USER_HALF_IN_USE_CASE_LAYER: ReadonlySet<ApiV1IpFamily> = new Set([
-  "account-security",
   "adoption-application",
   "public-reference",
 ]);
@@ -559,8 +569,11 @@ function collectUserBucketSites(): IpBucketSite[] {
  * `app/api/v1/**\/route.ts` on this worktree — 43 before the change, 44 after —
  * not obtained by adding one to 38, which would have left the floor five below
  * the surface and the non-vacuity check correspondingly blunter.
+ *
+ * 44 → 45 with the reactivation door (D4): `api_v1_me_reactivate_user`.
+ * RECOUNTED with `collectUserBucketSites()`'s regex on this worktree, 45.
  */
-const MIN_USER_BUCKETS = 44;
+const MIN_USER_BUCKETS = 45;
 
 describe("/api/v1 per-user rate-limit buckets — every call site maps to a declared family", () => {
   const sites = collectUserBucketSites();
@@ -654,6 +667,25 @@ describe("/api/v1 rate-limit families — the numbers the derivation committed t
     // family's rule" in its docblock cannot silently become a third multiple.
     expect(API_V1_ACCOUNT_SECURITY_IP_LIMIT.maxPerMinute).toBe(60);
     expect(API_V1_ACCOUNT_SECURITY_IP_LIMIT.maxPerHour).toBe(240);
+    // D4 gave the family a per-user constant at the route, so the 12× is now a
+    // relationship this file can hold rather than only two literals.
+    expect(API_V1_ACCOUNT_SECURITY_IP_LIMIT.maxPerMinute).toBe(
+      (API_V1_ACCOUNT_SECURITY_USER_LIMIT.maxPerMinute ?? 0) * API_V1_SIMULTANEOUS_CALLERS,
+    );
+    expect(API_V1_ACCOUNT_SECURITY_IP_LIMIT.maxPerHour).toBe(
+      (API_V1_ACCOUNT_SECURITY_USER_LIMIT.maxPerHour ?? 0) * API_V1_SIMULTANEOUS_CALLERS,
+    );
+  });
+
+  it("keeps account-security's two per-user anchors identical", async () => {
+    // One family, one anchor, held in two places: the route-level constant
+    // `/me/reactivate` spends and the use-case-level one `revokeAllSessions`
+    // spends. If they drift, the 12× above is true of one member and false of
+    // the other, and nothing else would say so.
+    const { REVOKE_SESSIONS_USER_LIMIT } = await import(
+      "@/src/modules/auth/application/revoke-sessions"
+    );
+    expect(API_V1_ACCOUNT_SECURITY_USER_LIMIT).toEqual(REVOKE_SESSIONS_USER_LIMIT);
   });
 
   it("keeps account-security an order of magnitude below the read family", () => {
@@ -1105,7 +1137,31 @@ describe("/api/v1 rate-limit families — the numbers the derivation committed t
     //
     // and 17.604 + 0 = 17.604 agrees. The per-user half is counted where it
     // lives: `MIN_USER_BUCKETS`, 43 → 44 call sites on this tree.
-    expect(API_V1_CGNAT_FAMILY_IP_CEILING_PER_MINUTE).toBe(17_604);
+    //
+    // 17.664 WITH THE REACTIVATION DOOR (D4, `POST /me/reactivate`): POST only,
+    // one bucket, `api_v1_me_reactivate_ip`, in `account-security` — the
+    // family's third member after `revoke-sessions` and the `me/privacy`
+    // write, and the same act in every respect it was derived for: rare,
+    // deliberate, on your own account. Its per-user bucket
+    // (`api_v1_me_reactivate_user`) is keyed on an account and is not in this
+    // sum. Hand-summed per family over the map as this lane leaves it, and NOT
+    // read off the `reduce` this assertion compares against:
+    //
+    //   authenticated-read     23 × 600 = 13.800
+    //   authenticated-write    16 × 120 =  1.920
+    //   account-security        3 ×  60 =    180
+    //   public-reference        1 × 600 =    600
+    //   inbox-state             1 × 240 =    240
+    //   pet-disclosure-write    2 × 180 =    360
+    //   pet-record-write        1 × 240 =    240
+    //   pet-registration        1 × 120 =    120
+    //   media-upload            1 × 144 =    144
+    //   adoption-application    1 ×  60 =     60
+    //                          ── 50 buckets ─────────
+    //                                     17.664
+    //
+    // and 17.604 + 60 = 17.664 agrees.
+    expect(API_V1_CGNAT_FAMILY_IP_CEILING_PER_MINUTE).toBe(17_664);
   });
 
   it("keeps pet-disclosure-write at N callers on BOTH windows", () => {

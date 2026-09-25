@@ -346,6 +346,9 @@ const NOT_MEASURED: Record<string, string> = {
   "app/api/v1/auth/signup/route.ts": "creates accounts",
   "app/api/v1/me/revoke-sessions/route.ts":
     "kills every session for the account, including this probe's own bearer token",
+  "app/api/v1/me/reactivate/route.ts":
+    "a live account answers a no-op without reaching the write, so a probe would time " +
+    "the guard and two counter writes — and the per-user bucket (5/min) would refuse it",
   "app/api/v1/pets/route.ts": "registers an animal in the national registry",
   "app/api/v1/pets/[publicToken]/route.ts":
     "needs a pet the probe ACCOUNT holds; discovery only finds PUBLIC tokens, and a " +
