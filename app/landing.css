@@ -3021,10 +3021,23 @@ html:has([data-landing-root]) {
   color: var(--color-ln-mute);
 }
 
+/* ---------------------------------------------------------------------------
+   Estado — the map fills in north to south (PS9)
+   --------------------------------------------------------------------------- */
+.lp .lp-map-grid--pending .lp-mtile {
+  opacity: 0.12;
+}
+.lp .lp-map-grid--in .lp-mtile {
+  opacity: 1;
+  transition: opacity var(--motion-deliberate) var(--ease-editorial);
+  transition-delay: calc(var(--row, 0) * 40ms);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lp .lp-seq-in {
     animation: none;
   }
+  .lp .lp-map-grid--in .lp-mtile,
   .lp .lp-vf-submit {
     transition: none;
   }

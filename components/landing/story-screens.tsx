@@ -30,12 +30,14 @@ import {
   mapTintStep,
   pampaEvent,
 } from "@/components/landing/landing-content";
+import { useChapterSequence } from "@/components/landing/use-chapter-sequence";
 import { LnPetPhoto, LnRegRow, LnRegistry } from "@/components/ui/RegRow";
 import { LnStatusFlag } from "@/components/ui/StatusFlag";
 import { OpKpiSm } from "@/components/ui/dashboard/OpKpiSm";
 import { formatRate } from "@/lib/utils/format";
 import { speciesLabel } from "@/lib/utils/species";
 import { PAMPA_PET } from "@/scripts/flagship-pampa-data";
+import type React from "react";
 import type { ReactNode } from "react";
 
 // Newest first (WU3 — "the libreta fills up" animation): the feed reads as an
@@ -150,15 +152,35 @@ export function LibretaScreen() {
 // Cap 6 · Estado — navy console with the celeste silhouette cartogram
 // ---------------------------------------------------------------------------
 
+// PS9 (PO, 2026-09-25): the map fills in once, north to south — each row of
+// tiles fades up ~40ms after the one above it, as the chapter's counters run.
+// Fail-open through useChapterSequence: SSR, no-JS and reduced motion get the
+// tinted map with no animation class; only a live observer, with motion
+// allowed, dims the tiles first. Opacity only (the tint is the tile's own
+// background, which never animates).
+const WAVE_STEP_MS = 80;
+
 function ConsoleCartogram() {
+  const { ref, step, animate } = useChapterSequence(2, WAVE_STEP_MS);
+  const waveClass = animate
+    ? step >= 1
+      ? "lp-map-grid lp-map-grid--in"
+      : "lp-map-grid lp-map-grid--pending"
+    : "lp-map-grid";
   return (
-    <div className="lp-map-grid">
+    <div className={waveClass} ref={ref} data-section="estado-map">
       {MAP_TILES.map((t) => (
         <div
           key={t.ab}
           className="lp-mtile"
           data-q={mapTintStep(t.v)}
-          style={{ gridColumn: t.c + 1, gridRow: t.r + 1 }}
+          style={
+            {
+              gridColumn: t.c + 1,
+              gridRow: t.r + 1,
+              "--row": t.r,
+            } as React.CSSProperties
+          }
           title={`${t.name} · ${formatRate(t.v)} /100k`}
         >
           <span className="lp-ab">{t.ab}</span>

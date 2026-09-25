@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StorySection } from "./StorySection";
 import { CHAPTERS } from "./landing-content";
+import { EstadoConsole } from "./story-screens";
 import { LOST_SEQUENCE, SHELTER_SEQUENCE, SequenceChapter, VET_SEQUENCE } from "./story-sequences";
 import { resetChapterSequencesForTests } from "./use-chapter-sequence";
 
@@ -231,5 +232,37 @@ describe("story sequences — motion allowed", () => {
     );
     fireEvent.click(buttons[4] as HTMLButtonElement);
     expect(container.querySelector(".lp-seq-who")?.textContent).toMatch(/^App de /);
+  });
+});
+
+describe("Estado — the map fills in once (PS9)", () => {
+  it("SSR and reduced motion: the tinted map, no wave class", () => {
+    expect(renderToStaticMarkup(<EstadoConsole />)).not.toMatch(ANIMATION_CLASSES);
+    setMatchMedia(true);
+    const { container } = render(<EstadoConsole />);
+    expect(container.innerHTML).not.toMatch(ANIMATION_CLASSES);
+  });
+
+  it("motion allowed: dimmed until in view, then the wave, each tile keyed to its row", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <div id="cap-estado">
+        <EstadoConsole />
+      </div>,
+    );
+    const grid = container.querySelector('[data-section="estado-map"]');
+    expect(grid).toHaveClass("lp-map-grid--pending");
+    // CountUp tiles observe themselves too; the wave observes the chapter.
+    const io = FakeIntersectionObserver.instances.find(
+      (o) => (o.observe.mock.calls[0]?.[0] as HTMLElement | undefined)?.id === "cap-estado",
+    );
+    expect(io).toBeDefined();
+    act(() => io?.callback([{ isIntersecting: true }]));
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(grid).toHaveClass("lp-map-grid--in");
+    const tile = container.querySelector<HTMLElement>(".lp-mtile");
+    expect(tile?.style.getPropertyValue("--row")).not.toBe("");
   });
 });
