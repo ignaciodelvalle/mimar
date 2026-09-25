@@ -89,7 +89,9 @@ vi.mock("resend", () => ({
 
 import { solicitarAccesoDenunciaAction } from "@/app/(public)/denuncias/codigo/[code]/actions";
 
-const MATCHING_EMAIL = "denunciante@example.test";
+// A deliverable-shaped address: a reserved TLD like `.test` is dropped before
+// the send by `isDeliverableAddress`, which would hide the branch under test.
+const MATCHING_EMAIL = "denunciante@correo.com.ar";
 const CODE = "DEN-KB98-RXVH";
 
 function form(code: string, email: string): FormData {
@@ -164,7 +166,7 @@ describe("solicitarAccesoDenunciaAction — the clock must not leak the branch",
     const sendsAfterUnknown = sendCallCount;
 
     dbRow = matching;
-    const wrongEmail = await callAction(CODE, "vecino@example.test");
+    const wrongEmail = await callAction(CODE, "vecino@correo.com.ar");
     await flushDeferred();
     const sendsAfterWrongEmail = sendCallCount;
 

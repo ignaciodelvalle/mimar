@@ -23,6 +23,7 @@
 // mail that cannot go out returns false, and the admin panel then shows the
 // link to forward by hand (that surface is already built for it).
 
+import { isDeliverableAddress } from "@/lib/infra/deliverable-address";
 import { resolveMailSender } from "@/lib/infra/outbound-channels";
 import { escapeHtml } from "@/lib/utils/escape-html";
 
@@ -33,6 +34,8 @@ export async function mailInstitutionalAccessLink(input: {
 }): Promise<boolean> {
   const apiKey = (process.env.RESEND_API_KEY ?? "").trim();
   if (!apiKey) return false;
+  // A reserved-TLD address (seed accounts) would only bounce — see deliverable-address.ts.
+  if (!isDeliverableAddress(input.to)) return false;
   try {
     const { Resend } = await import("resend");
     const { error } = await new Resend(apiKey).emails.send({

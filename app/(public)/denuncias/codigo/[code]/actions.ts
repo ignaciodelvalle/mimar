@@ -35,6 +35,7 @@
 // which branch was taken — response body, status, and time to respond alike.
 
 import { db, welfareReports } from "@/db";
+import { isDeliverableAddress } from "@/lib/infra/deliverable-address";
 import { generateReporterToken, reporterAccessRevoked } from "@/lib/infra/denuncia-reporter-token";
 import { resolveMailSender } from "@/lib/infra/outbound-channels";
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
@@ -155,6 +156,9 @@ async function sendAccessLink(to: string, code: string, url: string): Promise<vo
     console.warn(`[denuncias] RESEND_API_KEY not set — access link for ${code}: ${url}`);
     return;
   }
+  // A reserved-TLD address would only bounce — see lib/infra/deliverable-address.ts.
+  // Silent on purpose: the caller answers the same neutral message either way.
+  if (!isDeliverableAddress(to)) return;
   const { Resend } = await import("resend");
   const { error } = await new Resend(apiKey).emails.send({
     from: resolveMailSender(process.env),

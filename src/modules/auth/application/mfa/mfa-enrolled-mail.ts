@@ -16,6 +16,7 @@
 // at GoTrue and is audited (`mfa_factor_enrolled`); a mail outage must not turn
 // it into an error the person cannot act on.
 
+import { isDeliverableAddress } from "@/lib/infra/deliverable-address";
 import { resolveMailSender } from "@/lib/infra/outbound-channels";
 import { formatDateTime } from "@/lib/utils/format";
 
@@ -41,6 +42,8 @@ export async function mailMfaFactorEnrolled(input: {
     console.info("[mfa] enrolment notice skipped: RESEND_API_KEY is not configured");
     return false;
   }
+  // A reserved-TLD address (seed accounts) would only bounce — see deliverable-address.ts.
+  if (!isDeliverableAddress(input.to)) return false;
   try {
     const { Resend } = await import("resend");
     const { error } = await new Resend(apiKey).emails.send({

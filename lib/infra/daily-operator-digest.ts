@@ -90,6 +90,7 @@ import {
 } from "@/lib/digest/daily-operator-digest-composer";
 import type { GobReadRole } from "@/lib/domain/jurisdiction-canonical";
 import { countVisiblePendingRequests } from "@/lib/infra/approval-scope";
+import { isDeliverableAddress } from "@/lib/infra/deliverable-address";
 import { generateDigestUnsubscribeToken } from "@/lib/infra/digest-unsubscribe-token";
 import { deriveOutboundChannels, resolveMailSender } from "@/lib/infra/outbound-channels";
 import { resolveSiteUrl } from "@/lib/infra/site-url";
@@ -114,6 +115,13 @@ export type DailyOperatorDigestResult = {
   sent: number;
   alreadySentToday: number;
   skippedNoEmail: number;
+  /**
+   * Recipients whose address is on a reserved, never-deliverable TLD (`.test`,
+   * `.example`, `.invalid`, `.localhost` — seed accounts on staging). Never
+   * claimed and never handed to Resend: the mail would only bounce and cost the
+   * sending domain reputation. See lib/infra/deliverable-address.ts.
+   */
+  skippedUndeliverable: number;
   /** Recipients not reached because the deadline hit — they go out next run. */
   deferredByDeadline: number;
   errors: number;
@@ -303,6 +311,20 @@ async function lookupEmail(userId: string): Promise<string | null> {
   return data?.user?.email || null;
 }
 
+/**
+ * The address to mail, or which skip counter the recipient lands in. A missing
+ * address and a reserved-TLD one (`@dim.test` seeds — lib/infra/deliverable-
+ * address.ts) are both "do not send", counted apart so a run says which.
+ */
+async function mailableEmail(
+  userId: string,
+): Promise<{ email: string } | { skip: "skippedNoEmail" | "skippedUndeliverable" }> {
+  const email = await lookupEmail(userId);
+  if (!email) return { skip: "skippedNoEmail" };
+  if (!isDeliverableAddress(email)) return { skip: "skippedUndeliverable" };
+  return { email };
+}
+
 type Claim = { claimed: true; previous: string | null } | { claimed: false };
 
 /**
@@ -368,6 +390,7 @@ export async function runDailyOperatorDigest(
     sent: 0,
     alreadySentToday: 0,
     skippedNoEmail: 0,
+    skippedUndeliverable: 0,
     deferredByDeadline: 0,
     errors: 0,
     mailChannel,
@@ -423,11 +446,13 @@ export async function runDailyOperatorDigest(
       if (sections.length === 0) continue;
       result.candidates += 1;
 
-      const email = await lookupEmail(recipient.userId);
-      if (!email) {
-        result.skippedNoEmail += 1;
+      // Before the claim, so a seed account never marks itself "sent today".
+      const address = await mailableEmail(recipient.userId);
+      if ("skip" in address) {
+        result[address.skip] += 1;
         continue;
       }
+      const { email } = address;
 
       const unsubscribeUrl = `${siteUrl}/api/digest/unsubscribe?u=${recipient.userId}&t=${generateDigestUnsubscribeToken(recipient.userId)}`;
       const input: ComposeDigestInput = {

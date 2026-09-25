@@ -24,6 +24,7 @@ import {
 } from "@/lib/analytics/govt-exports";
 import { resolveJurisdictionScope } from "@/lib/analytics/jurisdiction-scope";
 import { requireAdminOrGovtOrRedirect } from "@/lib/infra/auth-guards";
+import { isDeliverableAddress } from "@/lib/infra/deliverable-address";
 import { resolveMailSender } from "@/lib/infra/outbound-channels";
 import { UnknownExportPeriodError, resolveExportPeriod } from "./export-period";
 
@@ -230,7 +231,9 @@ export async function generateExportAction(formData: FormData): Promise<Generate
 
     let emailSent = false;
     const resendKey = process.env.RESEND_API_KEY;
-    if (resendKey && recipientEmail) {
+    // A reserved-TLD address (seed accounts) would only bounce — see
+    // lib/infra/deliverable-address.ts. The signed URL is still returned.
+    if (resendKey && recipientEmail && isDeliverableAddress(recipientEmail)) {
       try {
         const resend = new Resend(resendKey);
         const { error: emailError } = await resend.emails.send({

@@ -331,6 +331,27 @@ describe("runDailyOperatorDigest", () => {
     expect(row?.lastSent).toBe(arCalendarDay());
   });
 
+  it("never mails a seed account on a reserved TLD, and never claims its day", async () => {
+    // Otherwise fully eligible: live, subscribed, a pending queue in scope.
+    // Only the address differs — `@dim.test` is a staging seed mailbox that
+    // bounces at Resend and costs the sending domain reputation.
+    const seed = await makeGovtProfile();
+    emailMapRef.current.set(seed, `${seed}@dim.test`);
+    const locality = `${LOCALITY}-SEED`;
+    await assignJurisdiction(seed, locality);
+    await seedPendingVetRequest(seed, locality);
+
+    const result = await runDailyOperatorDigest();
+
+    expect(sentToAddresses()).not.toContain(`${seed}@dim.test`);
+    expect(result.skippedUndeliverable).toBeGreaterThanOrEqual(1);
+    const [row] = await db
+      .select({ lastSent: profiles.dailyDigestLastSentOn })
+      .from(profiles)
+      .where(eq(profiles.id, seed));
+    expect(row?.lastSent).toBeNull();
+  });
+
   it("never sends to a deactivated govt account, even with a pending queue", async () => {
     const deactivated = await makeGovtProfile({ deactivated: true });
     await assignJurisdiction(deactivated);
