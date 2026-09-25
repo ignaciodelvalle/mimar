@@ -3893,7 +3893,7 @@
         "scripts/check-audit-log-coverage.ts:14-18",
         "package.json:20 lint:audit-log",
         "scripts/check-audit-log-actions-declared.ts",
-        "db/schema.ts:2516"
+        "db/schema.ts:2549"
       ],
       "enforcementKind": "lint-script",
       "wired": "verify",
