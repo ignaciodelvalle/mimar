@@ -82,13 +82,12 @@ import { COLORS, TOUCH_TARGET } from "./theme";
  */
 function withAndroid<T>(fn: () => T): T {
   const original = Platform.OS;
-  // @ts-expect-error `OS` is typed read-only; RN's jest mock backs it with a
-  // plain, reassignable property, and nothing here touches a real native module.
+  // `OS` reads as a plain, reassignable property under jest's own mock of
+  // `Platform` — nothing here touches a real native module.
   Platform.OS = "android";
   try {
     return fn();
   } finally {
-    // @ts-expect-error see above
     Platform.OS = original;
   }
 }
@@ -222,7 +221,7 @@ describe("ListRow — closes the keyboard on press (M10)", () => {
     withAndroid(() => {
       render(<ListRow label="Credencial pública" onPress={() => {}} />);
       expect(screen.getByRole("button").props.nativeBackgroundAndroid).toMatchObject({
-        color: processColor(RIPPLE.color),
+        color: processColor(RIPPLE.color as string),
         borderless: false,
       });
     });
@@ -265,7 +264,7 @@ describe("Choice — closes the keyboard on selection (M10)", () => {
       expect(chips).toHaveLength(OPTIONS.length);
       for (const chip of chips) {
         expect(chip.props.nativeBackgroundAndroid).toMatchObject({
-          color: processColor(RIPPLE.color),
+          color: processColor(RIPPLE.color as string),
           borderless: false,
         });
       }
@@ -278,7 +277,7 @@ describe("android_ripple — bounded, borderless and on-fill land on the right c
     withAndroid(() => {
       render(<PrimaryButton label="Guardar" onPress={() => {}} />);
       expect(screen.getByRole("button").props.nativeBackgroundAndroid).toMatchObject({
-        color: processColor(RIPPLE_ON_FILL.color),
+        color: processColor(RIPPLE_ON_FILL.color as string),
         borderless: false,
       });
     });
@@ -288,7 +287,7 @@ describe("android_ripple — bounded, borderless and on-fill land on the right c
     withAndroid(() => {
       render(<SecondaryButton label="Cancelar" onPress={() => {}} />);
       expect(screen.getByRole("button").props.nativeBackgroundAndroid).toMatchObject({
-        color: processColor(RIPPLE.color),
+        color: processColor(RIPPLE.color as string),
         borderless: false,
       });
     });
@@ -298,7 +297,7 @@ describe("android_ripple — bounded, borderless and on-fill land on the right c
     withAndroid(() => {
       render(<LinkText onPress={() => {}}>¿Olvidaste tu contraseña?</LinkText>);
       expect(screen.getByRole("link").props.nativeBackgroundAndroid).toMatchObject({
-        color: processColor(RIPPLE_BORDERLESS.color),
+        color: processColor(RIPPLE_BORDERLESS.color as string),
         borderless: true,
       });
       screen.unmount();
@@ -307,7 +306,7 @@ describe("android_ripple — bounded, borderless and on-fill land on the right c
       expect(
         screen.getByLabelText("Mostrar contraseña").props.nativeBackgroundAndroid,
       ).toMatchObject({
-        color: processColor(RIPPLE_BORDERLESS.color),
+        color: processColor(RIPPLE_BORDERLESS.color as string),
         borderless: true,
       });
     });

@@ -118,18 +118,16 @@ describe("a linkable row ripples on Android (M10)", () => {
     // `Platform.OS === "android"` (see kit.test.tsx's `withAndroid`, the
     // longer version of this note).
     const original = Platform.OS;
-    // @ts-expect-error `OS` is typed read-only; RN's jest mock backs it with a
-    // plain, reassignable property.
+    // `OS` reads as a plain, reassignable property under jest's own mock.
     Platform.OS = "android";
     try {
       render(<ContactRow label="Contacto" value="juan@example.com" />);
       const link = screen.getByRole("link", { name: /^escribir a juan@example\.com$/i });
       expect(link.props.nativeBackgroundAndroid).toMatchObject({
-        color: processColor(RIPPLE.color),
+        color: processColor(RIPPLE.color as string),
         borderless: false,
       });
     } finally {
-      // @ts-expect-error see above
       Platform.OS = original;
     }
   });
