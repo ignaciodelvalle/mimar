@@ -19,11 +19,6 @@ import { z } from "zod/v4";
 
 import { auditLog, db, govtAssignments, notifications, profiles } from "@/db";
 import { canCreateInstitutional } from "@/lib/domain/institutional-scope";
-import {
-  CoordError,
-  JurisdictionValidationError,
-  normalizeLocationForWrite,
-} from "@/lib/domain/location-normalize";
 import { resolveSiteUrl } from "@/lib/infra/site-url";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -33,6 +28,7 @@ import {
 
 import { mailInstitutionalAccessLink } from "./access-link-mail";
 import { databaseNow, loadActorProfile } from "./helpers";
+import { resolveGovtLocality } from "./resolve-govt-locality";
 import type { CreateInstitutionalResult } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -42,6 +38,9 @@ import type { CreateInstitutionalResult } from "./types";
 const localitySchema = z.object({
   province: z.string().min(1, "Province is required"),
   locality: z.string().min(1, "Locality is required"),
+  // INDEC id of the row the admin picked (C2b). Without it a name is accepted
+  // only when it names exactly one catalogue row in the province.
+  localityIndecId: z.string().nullish(),
 });
 
 const createInstitutionalSchema = z.object({
@@ -75,7 +74,7 @@ export async function createInstitutionalAccountForAuthority(
     role: "govt" | "admin" | "national";
     email: string;
     displayName: string;
-    initialLocalities: { province: string; locality: string }[];
+    initialLocalities: { province: string; locality: string; localityIndecId?: string | null }[];
   },
 ): Promise<CreateInstitutionalResult> {
   // 1. Validate inputs
@@ -95,36 +94,30 @@ export async function createInstitutionalAccountForAuthority(
   // 1.5 Resolve each initial locality through the canonical catalog before
   // touching auth or the DB. Bad data fails fast with a clear message — no
   // orphan auth users to compensate for. The catalog returns the canonical
-  // (Province name, Locality name) pair, which is what we persist.
-  // locality:"strict" — resolveCanonicalJurisdiction per locality (admin-institutional behavior unchanged).
-  const canonicalLocalities: { province: string; locality: string }[] = [];
+  // (Province name, Locality name) pair, which is what we persist, plus the
+  // ar_localities row the admin picked (C2b): by INDEC id when the picker sent
+  // one, and an ambiguous name without it is refused (resolveGovtLocality).
+  const canonicalLocalities: { province: string; locality: string; locality_id: string }[] = [];
   for (const l of initialLocalities) {
-    try {
-      const normalizedLoc = await normalizeLocationForWrite(
-        {
-          province: l.province,
-          provinceCode: null,
-          locality: l.locality,
-          localityIndecId: null,
-          lat: null,
-          lng: null,
-          address: null,
-        },
-        { locality: "strict" },
-      );
-      canonicalLocalities.push({
-        province: normalizedLoc.province ?? l.province,
-        locality: normalizedLoc.locality ?? l.locality,
-      });
-    } catch (err) {
-      if (err instanceof JurisdictionValidationError) {
-        return { error: err.message };
-      }
-      if (err instanceof CoordError) {
-        return { error: err.message };
-      }
-      throw err;
+    const resolved = await resolveGovtLocality(l);
+    if ("error" in resolved) return { error: resolved.error };
+    // Two rows naming the same (province, name) would collide on the active
+    // unique index and surface as DB_TX_FAILED after the auth user exists.
+    // Same row twice is a harmless repeat; two homonyms is a real conflict.
+    const clash = canonicalLocalities.find(
+      (c) => c.province === resolved.province && c.locality === resolved.locality,
+    );
+    if (clash) {
+      if (clash.locality_id === resolved.localityId) continue;
+      return {
+        error: `VALIDATION_ERROR: Elegiste dos localidades llamadas ${resolved.locality} en ${resolved.province}. Asigná una sola.`,
+      };
     }
+    canonicalLocalities.push({
+      province: resolved.province,
+      locality: resolved.locality,
+      locality_id: resolved.localityId,
+    });
   }
 
   // 2. Load actor + capability check
@@ -210,6 +203,7 @@ export async function createInstitutionalAccountForAuthority(
             userId: authUserId,
             jurisdictionProvince: l.province,
             jurisdictionLocality: l.locality,
+            localityId: l.locality_id,
             grantedByUserId: actorUserId,
           })),
         );

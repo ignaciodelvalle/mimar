@@ -20,14 +20,10 @@ import {
   WHOLE_PROVINCE_SENTINEL,
   canonicalProvinceNameForStorage,
 } from "@/lib/domain/jurisdiction-canonical";
-import {
-  CoordError,
-  JurisdictionValidationError,
-  normalizeLocationForWrite,
-} from "@/lib/domain/location-normalize";
 import { writeAuditLog } from "@/lib/infra/audit-log";
 
 import { loadActorProfile } from "./helpers";
+import { resolveGovtLocality } from "./resolve-govt-locality";
 import type { AssignGovtLocalityResult } from "./types";
 
 // D3 (PO 2026-08-04): a whole-province mandate is now assignable for ANY
@@ -39,6 +35,9 @@ const assignLocalitySchema = z.object({
   targetUserId: z.string().min(1, "targetUserId is required"),
   province: z.string().min(1, "Province is required"),
   locality: z.string(),
+  // INDEC id of the row the admin picked (C2b). Optional for the whole-province
+  // sentinel; a named locality without it is accepted only when unambiguous.
+  localityIndecId: z.string().nullish(),
 });
 
 // Canonical (province, locality) resolution for an assignment write.
@@ -54,10 +53,14 @@ const assignLocalitySchema = z.object({
 // Only the EXACT sentinel ("") grants the whole province. A whitespace-only
 // locality is an input mistake, not a mandate — trimming it into the sentinel
 // would silently promote a typo to province-wide standing.
+//
+// LOCALITY branch (C2b): the INDEC id the picker resolved wins, and a name
+// that is ambiguous inside its province is refused — see resolveGovtLocality.
 async function resolveAssignmentJurisdiction(
   rawProvince: string,
   rawLocality: string,
-): Promise<{ province: string; locality: string } | { error: string }> {
+  localityIndecId: string | null,
+): Promise<{ province: string; locality: string; localityId: string | null } | { error: string }> {
   const wholeProvince = rawLocality === WHOLE_PROVINCE_SENTINEL;
   if (!wholeProvince && rawLocality.trim() === "") {
     return { error: "VALIDATION_ERROR: Locality is required (or use the whole-province option)" };
@@ -65,35 +68,19 @@ async function resolveAssignmentJurisdiction(
   if (wholeProvince) {
     const province = canonicalProvinceNameForStorage(rawProvince);
     if (!province) return { error: `VALIDATION_ERROR: Provincia desconocida: ${rawProvince}` };
-    return { province, locality: WHOLE_PROVINCE_SENTINEL };
+    return { province, locality: WHOLE_PROVINCE_SENTINEL, localityId: null };
   }
-  try {
-    const normalizedLoc = await normalizeLocationForWrite(
-      {
-        province: rawProvince,
-        provinceCode: null,
-        locality: rawLocality,
-        localityIndecId: null,
-        lat: null,
-        lng: null,
-        address: null,
-      },
-      { locality: "strict" },
-    );
-    return {
-      province: normalizedLoc.province ?? rawProvince,
-      locality: normalizedLoc.locality ?? rawLocality,
-    };
-  } catch (err) {
-    if (err instanceof JurisdictionValidationError) return { error: err.message };
-    if (err instanceof CoordError) return { error: err.message };
-    throw err;
-  }
+  return resolveGovtLocality({ province: rawProvince, locality: rawLocality, localityIndecId });
 }
 
 export async function assignGovtLocalityForAuthority(
   actorUserId: string,
-  input: { targetUserId: string; province: string; locality: string },
+  input: {
+    targetUserId: string;
+    province: string;
+    locality: string;
+    localityIndecId?: string | null;
+  },
 ): Promise<AssignGovtLocalityResult> {
   // 1. Validate input
   const parsed = assignLocalitySchema.safeParse(input);
@@ -101,14 +88,24 @@ export async function assignGovtLocalityForAuthority(
     const firstError = parsed.error.issues[0];
     return { error: `VALIDATION_ERROR: ${firstError.message}` };
   }
-  const { targetUserId, province: rawProvince, locality: rawLocality } = parsed.data;
+  const {
+    targetUserId,
+    province: rawProvince,
+    locality: rawLocality,
+    localityIndecId,
+  } = parsed.data;
 
   // 1.5 Resolve through the canonical catalog. We only persist canonical names.
-  // locality:"strict" — resolveCanonicalJurisdiction (govt assignment behavior unchanged).
-  const resolved = await resolveAssignmentJurisdiction(rawProvince, rawLocality);
+  // locality:"strict", by INDEC id when the picker sent one (C2b).
+  const resolved = await resolveAssignmentJurisdiction(
+    rawProvince,
+    rawLocality,
+    localityIndecId ?? null,
+  );
   if ("error" in resolved) return { error: resolved.error };
   const canonicalProvince = resolved.province;
   const canonicalLocality = resolved.locality;
+  const localityId = resolved.localityId;
   const wholeProvince = canonicalLocality === WHOLE_PROVINCE_SENTINEL;
 
   // 2. Load actor + capability check
@@ -136,7 +133,7 @@ export async function assignGovtLocalityForAuthority(
 
   // 4. Check for duplicate active assignment (UNIQUE: user_id + province + locality WHERE revoked_at IS NULL)
   const [existing] = await db
-    .select({ id: govtAssignments.id })
+    .select({ id: govtAssignments.id, localityId: govtAssignments.localityId })
     .from(govtAssignments)
     .where(
       and(
@@ -149,6 +146,15 @@ export async function assignGovtLocalityForAuthority(
     .limit(1);
 
   if (existing) {
+    // A DIFFERENT row with the same name (a within-province homonym, C2b). The
+    // name-only check used to answer noOp here, and the admin read "assigned"
+    // for a locality that was never granted. While scope is matched by name the
+    // two would be the same scope twice, so this is refused, not inserted.
+    if (existing.localityId !== null && localityId !== null && existing.localityId !== localityId) {
+      return {
+        error: `VALIDATION_ERROR: Este operador ya tiene asignada otra localidad llamada ${canonicalLocality} en ${canonicalProvince}. Revocala antes de asignar esta.`,
+      };
+    }
     return { ok: true, assignmentId: existing.id, noOp: true };
   }
 
@@ -166,6 +172,7 @@ export async function assignGovtLocalityForAuthority(
         userId: targetUserId,
         jurisdictionProvince: canonicalProvince,
         jurisdictionLocality: canonicalLocality,
+        localityId,
         grantedByUserId: actorUserId,
       })
       .returning({ id: govtAssignments.id });
@@ -178,6 +185,7 @@ export async function assignGovtLocalityForAuthority(
       payload: {
         province: canonicalProvince,
         locality: canonicalLocality,
+        locality_id: localityId,
         govt_assignment_id: assignment.id,
       },
       // A grant has no prior state — the duplicate-assignment check above

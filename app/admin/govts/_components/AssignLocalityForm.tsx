@@ -31,6 +31,9 @@ export function AssignLocalityForm({
   // by LocalityPickerAcross when the user picks a result.
   const [provinceName, setProvinceName] = useState("");
   const [locality, setLocality] = useState("");
+  // INDEC id of the picked row (C2b). The server resolves by it, so a
+  // same-named locality in the same province cannot be granted in its place.
+  const [indecId, setIndecId] = useState("");
   // D3 (PO 2026-08-04): any province can be assigned as a whole, not just CABA.
   // Kept as an explicit choice rather than an empty locality box, so nobody
   // grants a province-wide mandate by leaving a field blank.
@@ -57,6 +60,7 @@ export function AssignLocalityForm({
             setMode("idle");
             setProvinceName("");
             setLocality("");
+            setIndecId("");
             setWholeProvince(false);
             setLastAssigned(null);
           }}
@@ -84,6 +88,7 @@ export function AssignLocalityForm({
                 setWholeProvince(e.target.checked);
                 setProvinceName("");
                 setLocality("");
+                setIndecId("");
               }}
               className="h-4 w-4"
             />
@@ -130,12 +135,14 @@ export function AssignLocalityForm({
               onSelect={(r) => {
                 setProvinceName(r?.provinceName ?? "");
                 setLocality(r?.localityName ?? "");
+                setIndecId(r?.indecId ?? "");
               }}
               // Typing over a pick drops it here too, so "Confirmar asignación"
               // can never submit a locality the admin already wrote over (L3·1).
               onDeselect={() => {
                 setProvinceName("");
                 setLocality("");
+                setIndecId("");
               }}
             />
             {provinceName && <p className="text-xs text-ln-op-mute">Provincia: {provinceName}</p>}
@@ -184,6 +191,7 @@ export function AssignLocalityForm({
         targetUserId,
         province: provinceName,
         locality: localityTrimmed,
+        localityIndecId: wholeProvince ? null : indecId || null,
       });
 
       if ("error" in result) {

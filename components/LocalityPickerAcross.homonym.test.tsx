@@ -18,6 +18,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { AssignLocalityForm } from "@/app/admin/govts/_components/AssignLocalityForm";
+import { CreateGovtForm } from "@/app/admin/govts/new/CreateGovtForm";
 import { LocalityPickerAcross } from "@/components/LocalityPickerAcross";
 import type { LocalitySearchResult } from "@/lib/infra/ar-localidades";
 
@@ -26,8 +27,12 @@ vi.mock("@/app/actions/localities", () => ({
 }));
 
 const assignGovtLocalityAction = vi.fn(async (_input: unknown) => ({ ok: true }));
+const createInstitutionalAccountAction = vi.fn(async (_input: unknown) => ({
+  error: "stop here — the test only reads what was sent",
+}));
 vi.mock("@/app/actions/admin-institutional", () => ({
   assignGovtLocalityAction: (input: unknown) => assignGovtLocalityAction(input),
+  createInstitutionalAccountAction: (input: unknown) => createInstitutionalAccountAction(input),
 }));
 
 beforeAll(() => {
@@ -135,7 +140,7 @@ describe("LocalityPickerAcross — Villa María cross-province homonym (C2)", ()
 });
 
 describe("AssignLocalityForm — assigning Villa María, Córdoba names the right province (C2)", () => {
-  it("confirms 'Córdoba' after picking the componente row, and submits that pair", async () => {
+  it("confirms 'Córdoba' after picking the componente row, and submits that row's INDEC id", async () => {
     vi.useFakeTimers();
     const { searchLocalitiesAction } = await import("@/app/actions/localities");
     vi.mocked(searchLocalitiesAction).mockResolvedValue({
@@ -158,8 +163,54 @@ describe("AssignLocalityForm — assigning Villa María, Córdoba names the righ
       fireEvent.click(screen.getByRole("button", { name: "Confirmar asignación" }));
     });
 
+    // C2b: the INDEC id of the TAPPED row travels to the action — the server
+    // resolves by it instead of re-resolving the name.
     expect(assignGovtLocalityAction).toHaveBeenCalledWith(
-      expect.objectContaining({ province: "Córdoba", locality: "Villa María" }),
+      expect.objectContaining({
+        province: "Córdoba",
+        locality: "Villa María",
+        localityIndecId: "14042170",
+      }),
+    );
+  });
+});
+
+describe("CreateGovtForm — the initial locality carries the picked row's INDEC id (C2b)", () => {
+  it("submits Villa María, Buenos Aires with the Alberti row's INDEC id", async () => {
+    vi.useFakeTimers();
+    const { searchLocalitiesAction } = await import("@/app/actions/localities");
+    vi.mocked(searchLocalitiesAction).mockResolvedValue({
+      results: [VILLA_MARIA_BA, VILLA_MARIA_CBA],
+    });
+    render(<CreateGovtForm />);
+    fireEvent.change(screen.getByLabelText(/^Email/), {
+      target: { value: "operador@municipio.gob.ar" },
+    });
+    fireEvent.change(screen.getByLabelText(/Escribí el correo de nuevo/), {
+      target: { value: "operador@municipio.gob.ar" },
+    });
+    fireEvent.change(screen.getByLabelText(/Nombre de display/), {
+      target: { value: "Municipalidad de Alberti" },
+    });
+
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "Villa María" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    fireEvent.focus(input);
+    fireEvent.mouseDown(screen.getByText(/Alberti, Buenos Aires/));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Crear cuenta de gobierno" }));
+    });
+
+    expect(createInstitutionalAccountAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialLocalities: [
+          { province: "Buenos Aires", locality: "Villa María", localityIndecId: "06021060" },
+        ],
+      }),
     );
   });
 });

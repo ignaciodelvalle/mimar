@@ -43,7 +43,7 @@ export async function createInstitutionalAccountAction(input: {
   role: "govt" | "admin" | "national";
   email: string;
   displayName: string;
-  initialLocalities: { province: string; locality: string }[];
+  initialLocalities: { province: string; locality: string; localityIndecId?: string | null }[];
 }) {
   const { user } = await requireAdminOrRedirect();
   const result = await _createInstitutional(user.id, input);
@@ -113,6 +113,7 @@ export async function assignGovtLocalityAction(input: {
   targetUserId: string;
   province: string;
   locality: string;
+  localityIndecId?: string | null;
 }) {
   const { user } = await requireAdminOrRedirect();
   const result = await _assignGovtLocality(user.id, input);

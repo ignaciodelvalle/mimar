@@ -165,7 +165,7 @@ gate as evidence of anything.
 
 ## 4. What the suite actually covers
 
-- <!-- fact:vitest_files -->1687<!-- /fact --> files Vitest discovers
+- <!-- fact:vitest_files -->1688<!-- /fact --> files Vitest discovers
   (`vitest.config.ts` → `__tests__/db-reachability.ts`'s
   `discoverTestFiles()` — the exact set Vitest runs, not an independent glob
   that could drift from it).

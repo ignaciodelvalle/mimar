@@ -2228,6 +2228,12 @@ export const govtAssignments = pgTable(
     jurisdictionCountry: text("jurisdiction_country").notNull().default("AR"),
     jurisdictionProvince: text("jurisdiction_province").notNull(),
     jurisdictionLocality: text("jurisdiction_locality").notNull(),
+    // WHICH catalogue row was granted (migration 0246, C2b). The name pair above
+    // stays the display source and the scope key; this records the exact row the
+    // admin picked, so a within-province homonym is not re-resolved to the
+    // alphabetically first department. NULL for a whole-province grant and for
+    // legacy rows whose name is ambiguous inside their province.
+    localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "set null" }),
     grantedByUserId: uuid("granted_by_user_id").references(() => profiles.id, {
       onDelete: "set null",
     }),
@@ -2250,6 +2256,9 @@ export const govtAssignments = pgTable(
     localityIdx: index("govt_assignments_locality_idx")
       .on(table.jurisdictionProvince, table.jurisdictionLocality)
       .where(sql`${table.revokedAt} IS NULL`),
+    localityIdIdx: index("govt_assignments_locality_id_idx")
+      .on(table.localityId)
+      .where(sql`${table.localityId} IS NOT NULL`),
     govtAssignmentsJurisdictionProvinceCanonical: check(
       "govt_assignments_jurisdiction_province_canonical",
       sql`${table.jurisdictionProvince} is null or ${table.jurisdictionProvince} in ${CANONICAL_PROVINCE_SQL_LIST}`,

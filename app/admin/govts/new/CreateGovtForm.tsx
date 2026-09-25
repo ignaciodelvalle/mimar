@@ -20,11 +20,14 @@ import { UNKNOWN_ERROR_FALLBACK } from "@/lib/ui/error-fallback";
 
 // One row per assigned locality. provinceName is the canonical display
 // name from ar_provincias (resolved via LocalityPickerAcross), passed to
-// the server action verbatim.
+// the server action verbatim. indecId is the INDEC id of the row the admin
+// picked (C2b): the server resolves by it, so a same-named locality in the
+// same province is never swapped for the alphabetically first one.
 type LocalityEntry = {
   id: number;
   provinceName: string;
   locality: string;
+  indecId: string;
 };
 
 /** The two roles this screen creates, with the copy that explains each. */
@@ -59,7 +62,7 @@ export function CreateGovtForm() {
   const [emailConfirmation, setEmailConfirmation] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [localities, setLocalities] = useState<LocalityEntry[]>([
-    { id: 0, provinceName: "", locality: "" },
+    { id: 0, provinceName: "", locality: "", indecId: "" },
   ]);
   const nextId = useRef(1);
   const [error, setError] = useState<string | null>(null);
@@ -69,15 +72,17 @@ export function CreateGovtForm() {
   function addLocality() {
     const id = nextId.current;
     nextId.current += 1;
-    setLocalities((prev) => [...prev, { id, provinceName: "", locality: "" }]);
+    setLocalities((prev) => [...prev, { id, provinceName: "", locality: "", indecId: "" }]);
   }
 
   function removeLocality(id: number) {
     setLocalities((prev) => prev.filter((l) => l.id !== id));
   }
 
-  function setLocalityPick(id: number, provinceName: string, locality: string) {
-    setLocalities((prev) => prev.map((l) => (l.id === id ? { ...l, provinceName, locality } : l)));
+  function setLocalityPick(id: number, provinceName: string, locality: string, indecId: string) {
+    setLocalities((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, provinceName, locality, indecId } : l)),
+    );
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -92,9 +97,10 @@ export function CreateGovtForm() {
 
     const validLocalities = localities
       .filter((l) => l.provinceName && l.locality.trim())
-      .map(({ provinceName, locality }) => ({
+      .map(({ provinceName, locality, indecId }) => ({
         province: provinceName,
         locality,
+        localityIndecId: indecId || null,
       }));
 
     try {
@@ -133,7 +139,7 @@ export function CreateGovtForm() {
     setEmail("");
     setEmailConfirmation("");
     setDisplayName("");
-    setLocalities([{ id: 0, provinceName: "", locality: "" }]);
+    setLocalities([{ id: 0, provinceName: "", locality: "", indecId: "" }]);
     nextId.current = 1;
     setError(null);
   }
@@ -262,11 +268,17 @@ export function CreateGovtForm() {
                       defaultValue={{
                         provinceName: l.provinceName || null,
                         localityName: l.locality || null,
+                        indecId: l.indecId || null,
                       }}
                       onSelect={(r) =>
-                        setLocalityPick(l.id, r?.provinceName ?? "", r?.localityName ?? "")
+                        setLocalityPick(
+                          l.id,
+                          r?.provinceName ?? "",
+                          r?.localityName ?? "",
+                          r?.indecId ?? "",
+                        )
                       }
-                      onDeselect={() => setLocalityPick(l.id, "", "")}
+                      onDeselect={() => setLocalityPick(l.id, "", "", "")}
                     />
                   </div>
                   {localities.length > 1 && (
