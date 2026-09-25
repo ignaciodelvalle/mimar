@@ -197,13 +197,19 @@ export async function findReusablePractice(
         eq(organizations.createdByUserId, userId),
         eq(organizations.orgType, "clinic"),
         eq(organizations.status, "active"),
+        // Drizzle-interpolated columns, not a raw `a.payload` alias: this reads
+        // an AUDIT row, and lint:events cannot tell a raw alias of audit_log
+        // from a pet_events one (see the surveillance.ts entry in
+        // scripts/event-parity-baseline.json). Unaliased on purpose — the
+        // outer query has no audit_log in scope, so the reference is not
+        // ambiguous.
         sql`(
-          select a.payload ->> 'how'
-          from ${auditLog} a
-          where a.action = 'org_member_removed'
-            and a.target_organization_id = ${organizations.id}
-            and a.target_user_id = ${userId}
-          order by a.performed_at desc
+          select ${auditLog.payload} ->> 'how'
+          from ${auditLog}
+          where ${auditLog.action} = 'org_member_removed'
+            and ${auditLog.targetOrganizationId} = ${organizations.id}
+            and ${auditLog.targetUserId} = ${userId}
+          order by ${auditLog.performedAt} desc
           limit 1
         ) = 'vet_revocation'`,
         sql`not exists (
