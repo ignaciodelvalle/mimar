@@ -312,23 +312,43 @@ describe("no device location, anywhere in the app", () => {
   it("has teeth: every banned form is caught on a planted sample", () => {
     // Non-vacuity for the PATTERNS, not only the walk: a pattern that could
     // not match its own subject would pass over any tree.
-    const planted = [
-      'import * as Location from "expo-location";',
-      'const L = require("expo-location");',
-      'const L = await import("expo-location");',
-      'export { getForegroundPermissionsAsync } from "expo-location";',
-      'import Geolocation from "@react-native-community/geolocation";',
-      "<UserLocation visible />",
-      "<Camera followUserLocation />",
-      "<Map showUserLocation />",
-      "LocationManager.start();",
-      "const p = useCurrentPosition();",
-      "navigator.geolocation.getCurrentPosition(cb);",
-      "PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);",
+    // Each sample names the pattern it must trip, and THAT pattern is tested —
+    // not "any pattern". Several samples trip more than one rule
+    // ("@react-native-community/geolocation" also contains the bare word
+    // `geolocation`), so an any-match check would let a broken rule hide
+    // behind a neighbour.
+    const planted: ReadonlyArray<[string, string]> = [
+      ["expo-location, in any import form", 'import * as Location from "expo-location";'],
+      ["expo-location, in any import form", 'const L = require("expo-location");'],
+      ["expo-location, in any import form", 'const L = await import("expo-location");'],
+      [
+        "expo-location, in any import form",
+        'export { getForegroundPermissionsAsync } from "expo-location";',
+      ],
+      ["a geolocation package", 'import Geolocation from "@react-native-community/geolocation";'],
+      ["a geolocation package", 'require("react-native-location");'],
+      ["a user-location layer", "<UserLocation visible />"],
+      ["follow/show user location", "<Camera followUserLocation />"],
+      ["follow/show user location", "<Map showUserLocation />"],
+      ["the map's location manager", "LocationManager.start();"],
+      ["a current-position hook or call", "const p = useCurrentPosition();"],
+      ["the browser geolocation API", "const g = navigator.geolocation;"],
+      [
+        "a LOCATION permission request",
+        "PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);",
+      ],
+      ["a LOCATION permission name", '"android.permission.ACCESS_COARSE_LOCATION"'],
     ];
-    for (const sample of planted) {
-      expect([sample, offendersIn(stripComments(sample)).length > 0]).toEqual([sample, true]);
+    for (const [name, sample] of planted) {
+      const rule = DEVICE_LOCATION_PATTERNS.find(([n]) => n === name);
+      expect([name, rule !== undefined]).toEqual([name, true]);
+      expect([sample, rule?.[1].test(stripComments(sample))]).toEqual([sample, true]);
     }
+    // Every rule has at least one sample of its own.
+    const covered = new Set(planted.map(([name]) => name));
+    expect(DEVICE_LOCATION_PATTERNS.map(([name]) => name).filter((n) => !covered.has(n))).toEqual(
+      [],
+    );
     // And a comment that NAMES the subject is not code.
     expect(offendersIn(stripComments("// never import expo-location here"))).toEqual([]);
   });
