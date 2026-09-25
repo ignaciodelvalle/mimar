@@ -167,6 +167,37 @@ describe("updateLostLastSeen", () => {
     expect(payload.text).toBe("El dueño actualizó la última ubicación conocida.");
   });
 
+  // localidades-por-id A5 (spec: "Last-seen update — update links, does not
+  // rewrite"). The new pin is resolved like any report and its place travels
+  // on the NEW note, linked to the case by id. The use-case has no dependency
+  // that could touch the case or the original lost report: its only write is
+  // the insert asserted here.
+  it("stores the update's own resolved place on the new note, linked to the open case", async () => {
+    const repo = makeRepo();
+    const place = {
+      entered: { province: "AR-X", locality: "Villa María", indec_id: null },
+      resolved: {
+        locality_id: "00000000-0000-4000-8000-0000000014e2",
+        province_code: "AR-X",
+        method: "geocode_unique" as const,
+      },
+    };
+    await updateLostLastSeen({ ...baseParams, place }, makeDeps(repo));
+
+    expect(repo.insertEventIdempotent).toHaveBeenCalledOnce();
+    const [insertArg] = repo.insertEventIdempotent.mock.calls[0] as [Record<string, unknown>];
+    expect(insertArg.caseId).toBe(caseId);
+    expect((insertArg.payload as Record<string, unknown>).place).toEqual(place);
+  });
+
+  it("writes no place at all when the update carried none", async () => {
+    const repo = makeRepo();
+    await updateLostLastSeen({ ...baseParams, place: null }, makeDeps(repo));
+
+    const [insertArg] = repo.insertEventIdempotent.mock.calls[0] as [Record<string, unknown>];
+    expect(insertArg.payload as Record<string, unknown>).not.toHaveProperty("place");
+  });
+
   it("passes null location through when the owner does not drop a pin", async () => {
     const repo = makeRepo();
     await updateLostLastSeen(

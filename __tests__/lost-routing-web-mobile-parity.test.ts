@@ -22,6 +22,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   setPetLostWriter: vi.fn(),
+  updateLostLastSeen: vi.fn(),
   requirePetAccess: vi.fn(),
   resolvePetHolderAccess: vi.fn(),
   reverseGeocode: vi.fn(),
@@ -42,6 +43,16 @@ vi.mock("@/src/modules/events/application/lifecycle/set-pet-lost-use-case", () =
   setPetLostWriter: mocks.setPetLostWriter,
 }));
 
+vi.mock("@/src/modules/events/application/lifecycle/update-lost-last-seen-use-case", () => ({
+  updateLostLastSeen: mocks.updateLostLastSeen,
+}));
+
+// The app's last-seen door probes the open episode before it writes.
+vi.mock("@/lib/infra/case-helpers", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/infra/case-helpers")>();
+  return { ...actual, findOpenCaseForPetAndKind: async () => ({ id: "case-1" }) };
+});
+
 vi.mock("@/lib/infra/lost-pet-broadcast", () => ({ broadcastLostPet: vi.fn() }));
 
 // No network: each test says what the geocoder answers for its pin.
@@ -55,7 +66,7 @@ vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 
 import { runLostCommand } from "@/app/api/v1/pets/[publicToken]/lost/commands";
 import { arLocalities, db } from "@/db";
-import { setPetLostAction } from "@/src/modules/events/actions";
+import { setPetLostAction, updateLostLastSeenAction } from "@/src/modules/events/actions";
 import { lostCommandInputSchema } from "@dim/contract/input";
 
 const TOKEN = "DIM-TEST-0004";
@@ -116,6 +127,7 @@ function geocoderAnswers(province: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.setPetLostWriter.mockResolvedValue({ error: null });
+  mocks.updateLostLastSeen.mockResolvedValue({ error: null, wasDuplicate: false });
   mocks.requirePetAccess.mockResolvedValue({
     ok: true,
     user: { id: "user-1" },
@@ -242,5 +254,66 @@ describe("the app door (localidades-por-id A3)", () => {
     });
     expect(parsed.success).toBe(false);
     expect(parsed.error?.issues.map((i) => i.message)).toContain("LOST_JURISDICTION_INCOMPLETE");
+  });
+});
+
+// localidades-por-id A5 (spec: "Last-seen update — update links, does not
+// rewrite"). An update is resolved like any report and its place travels on
+// the NEW note — never written back onto the case or the original report.
+describe("last-seen updates keep their own place (A5)", () => {
+  function placeHandedToUpdate(): Record<string, unknown> {
+    expect(mocks.updateLostLastSeen).toHaveBeenCalledTimes(1);
+    const [params] = mocks.updateLostLastSeen.mock.calls[0] as [
+      { place?: Record<string, unknown> },
+    ];
+    return params.place ?? {};
+  }
+
+  it("the web update resolves its pair against its pin", async () => {
+    const lostPet = { ...PET, status: "lost" };
+    mocks.requirePetAccess.mockResolvedValue({
+      ok: true,
+      user: { id: "user-1" },
+      pet: lostPet,
+      eventAuthorship: { authorRole: "owner", authorOrganizationId: null, authorVerified: false },
+    });
+    const fd = new FormData();
+    fd.set("provinceCode", "AR-X");
+    fd.set("localityName", "Villa María");
+    fd.set("locationLat", String(pin.lat));
+    fd.set("locationLng", String(pin.lng));
+    fd.set("locationAddress", "Plaza Independencia");
+    const res = await updateLostLastSeenAction(TOKEN, { error: null }, fd);
+    expect(res.error).toBeNull();
+    expect(placeHandedToUpdate()).toEqual({
+      entered: { province: "AR-X", locality: "Villa María", indec_id: null },
+      resolved: { locality_id: cordobaRow.id, province_code: "AR-X", method: "exact_name_unique" },
+    });
+  });
+
+  it("the app update resolves its pin, and lands on the same row", async () => {
+    const lostPet = { ...PET, status: "lost" };
+    mocks.resolvePetHolderAccess.mockResolvedValue({
+      kind: "owner",
+      pet: lostPet,
+      holderRole: "owner",
+    });
+    const input = lostCommandInputSchema.parse({
+      command: "report_last_seen",
+      locationLat: pin.lat,
+      locationLng: pin.lng,
+      locationDescription: "Plaza Independencia",
+    });
+    const res = await runLostCommand({
+      publicToken: TOKEN,
+      userId: "user-1",
+      idempotencyKey: "key-1",
+      input,
+    });
+    expect(res.status).toBe(200);
+    expect(placeHandedToUpdate()).toEqual({
+      entered: { province: null, locality: null, indec_id: null },
+      resolved: { locality_id: cordobaRow.id, province_code: "AR-X", method: "geocode_unique" },
+    });
   });
 });

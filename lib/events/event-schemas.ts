@@ -34,6 +34,7 @@ import {
 
 import { caretakerDesignated, caretakerEnded } from "./caretaker-event-schemas";
 import { withVersion } from "./payload-version";
+import { eventPlaceSchema } from "./place-payload";
 import { rehomeSponsorshipEnded, rehomeSponsorshipStarted } from "./rehome-event-schemas";
 import { tagActivated, tagRevoked } from "./tag-event-schemas";
 
@@ -784,6 +785,10 @@ const noteAdded = z
       // overlay it as the episode's current placeName. OPTIONAL/nullable so
       // every pre-existing note validates unchanged; forward-only, no backfill.
       location_description: z.string().nullable().optional(),
+      // Where the sighting / last-seen update happened, as entered and as
+      // resolved (localidades-por-id A5, lib/events/place-payload.ts).
+      // Optional: every earlier note validates unchanged.
+      place: eventPlaceSchema.optional(),
       // P0e finder-in-possession extended fields. Optional so that plain notes
       // and sighting notes continue to validate without changes. kind=finder_in_possession
       // rows MUST include these; enforcement is at the action layer (server-side checks).

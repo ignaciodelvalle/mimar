@@ -264,6 +264,23 @@ vi.mock("@/db", async () => {
   return { ...schema, db: mockDb };
 });
 
+// The sighting's place (localidades-por-id A5). The resolver reads the
+// catalogue and the reverse geocoder, which this file's fake client cannot
+// answer; it is pinned against the real catalogue in
+// lib/place/reported-place.test.ts. Here it answers a resolved pin.
+const mockResolveMapFormPlace = vi.hoisted(() =>
+  vi.fn(async () => ({
+    province: "Buenos Aires",
+    locality: "La Plata",
+    localityId: "00000000-0000-4000-8000-00000000a1a1",
+    method: "geocode_unique",
+    unresolvedReason: null,
+    mismatch: false,
+    entered: { province: null, locality: null, indecId: null },
+  })),
+);
+vi.mock("@/lib/place/reported-place", () => ({ resolveMapFormPlace: mockResolveMapFormPlace }));
+
 // Silence drizzle-orm helpers — the action uses `and`, `eq`, `isNull`.
 vi.mock("drizzle-orm", async (importOriginal) => {
   const actual = await importOriginal();
@@ -325,6 +342,33 @@ describe("reportPetSightingAction — P0d payload fields", () => {
     expect(payload?.finderContact).toBe("11-1234-5678");
     expect(payload?.photoStoragePath).toBe("abc123.jpg");
     expect(payload?.kind).toBe("sighting");
+  });
+
+  // localidades-por-id A5 (spec: "Public sighting — boundary pin stays
+  // honest"): the pin is resolved like any report and the note keeps the
+  // place it resolved to — or `resolved: null`, never a guessed row.
+  it("keeps where it was seen, as entered and as resolved", async () => {
+    const { reportPetSightingAction } = await import("@/app/actions/pet-sighting");
+
+    const result = await reportPetSightingAction(
+      PUBLIC_TOKEN,
+      PREVIOUS_STATE,
+      makeFormData({ ...BASE_LOCATION }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(mockResolveMapFormPlace).toHaveBeenCalledWith(
+      expect.objectContaining({ lat: -34.9214, lng: -57.9545 }),
+    );
+    const payload = capturedPetEventInsert?.payload as Record<string, unknown> | undefined;
+    expect(payload?.place).toEqual({
+      entered: { province: null, locality: null, indec_id: null },
+      resolved: {
+        locality_id: "00000000-0000-4000-8000-00000000a1a1",
+        province_code: "AR-B",
+        method: "geocode_unique",
+      },
+    });
   });
 
   it("omits finderName/finderContact/photoStoragePath when none provided (back-compat)", async () => {

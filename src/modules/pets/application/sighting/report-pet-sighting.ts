@@ -63,6 +63,8 @@ import { resolveLostPetAlertRecipients } from "@/lib/infra/pet-alert-recipients"
 import { publicPetByToken } from "@/lib/infra/public-pet-lookup";
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { uploadAttachmentIfPresent } from "@/lib/infra/uploads";
+import { toEventPlace } from "@/lib/place/event-place";
+import { resolveMapFormPlace } from "@/lib/place/reported-place";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DISPUTE_TIP_NOTICE } from "@/lib/ui/dispute-copy";
 import { parseArDatetimeLocal } from "@/lib/utils/format";
@@ -257,10 +259,19 @@ export async function reportPetSighting(
     }
   }
 
+  // WHERE IT WAS SEEN (localidades-por-id A5). The pin is resolved like any
+  // report: a reverse-geocoded name that names ONE catalogue row and that the
+  // pin corroborates, else a province-level place — never a guessed homonym,
+  // never the pet's home. It runs HERE, after every refusal and after the
+  // limiter, because it reads the catalogue and may ask the reverse geocoder:
+  // an anonymous endpoint must not spend either before it has spent its budget.
+  const sightingPlace = toEventPlace(await resolveMapFormPlace(loc));
+
   const payload = validateEventPayload("note_added", {
     category: "otro" as const,
     text: noteText,
     kind: "sighting" as const,
+    place: sightingPlace,
     finderName: finderName ?? undefined,
     finderContact: finderContact ?? undefined,
     photoStoragePath: photoStoragePath ?? undefined,

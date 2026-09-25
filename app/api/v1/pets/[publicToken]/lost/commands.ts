@@ -105,6 +105,7 @@ import {
   resolvePetHolderAccess,
 } from "@/lib/infra/pet-access";
 import { reportError } from "@/lib/infra/report-error";
+import { toEventPlaceOrNull } from "@/lib/place/event-place";
 import { type ReportedPlace, resolveMapFormPlace } from "@/lib/place/reported-place";
 import { reactivateLostSearch } from "@/src/modules/cases/application/reactivate-lost-search";
 import {
@@ -529,6 +530,21 @@ async function reportLastSeen(
     throw err;
   }
 
+  // WHERE THIS UPDATE HAPPENED (localidades-por-id A5): the pin resolved the
+  // way the web resolves the same pin, kept on the NEW note — never written
+  // back onto the case or the original report. No pin, no place.
+  const lastSeenPlace = toEventPlaceOrNull(
+    await resolveMapFormPlace({
+      province: null,
+      provinceCode: null,
+      locality: null,
+      localityIndecId: null,
+      lat: normalized.lat,
+      lng: normalized.lng,
+      address: input.locationDescription,
+    }),
+  );
+
   // The web composes ONE `text` out of the address and the note, because
   // `note_added` has a single required `text` field. The address ALSO travels
   // separately as `location_description`, which is what the read model overlays
@@ -545,6 +561,7 @@ async function reportLastSeen(
       locationDescription: input.locationDescription,
       locationLat: normalized.lat != null ? String(normalized.lat) : null,
       locationLng: normalized.lng != null ? String(normalized.lng) : null,
+      place: lastSeenPlace,
       clientIdempotencyKey: ctx.idempotencyKey,
     },
     { repo: new EventsRepository(), transaction: makeTransaction() },

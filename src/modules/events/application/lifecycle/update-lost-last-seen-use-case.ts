@@ -32,6 +32,7 @@
 // use-case re-checks server-side rather than trusting the caller.
 
 import { validateEventPayload } from "@/lib/events/event-schemas";
+import type { EventPlace } from "@/lib/events/place-payload";
 import { findOpenCaseForPetAndKind } from "@/lib/infra/case-helpers";
 
 import type { EventsRepository } from "../../infrastructure/events-repository";
@@ -55,6 +56,12 @@ export type UpdateLostLastSeenParams = {
   locationDescription: string | null;
   locationLat: string | null;
   locationLng: string | null;
+  /**
+   * Where THIS update happened, resolved like any report (localidades-por-id
+   * A5). Kept on the new note, never written back onto the case or the
+   * original lost report: an update is a new fact layered on top.
+   */
+  place?: EventPlace | null;
   clientIdempotencyKey: string | null;
   now?: Date;
 };
@@ -110,6 +117,7 @@ export async function updateLostLastSeen(
     locationDescription,
     locationLat,
     locationLng,
+    place = null,
     clientIdempotencyKey,
     now = new Date(),
   } = params;
@@ -135,6 +143,7 @@ export async function updateLostLastSeen(
     text: noteText,
     kind: "sighting",
     location_description: locationDescription?.trim() || null,
+    ...(place !== null ? { place } : {}),
   });
 
   const { wasNoop } = await deps.transaction((tx) =>

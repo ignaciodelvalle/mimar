@@ -451,6 +451,10 @@ export const PAYLOAD_PRIVACY: Record<EventType, Record<string, PrivacyEntry>> = 
     location_source: CF,
     location_description: pd("sentinel", PLACE_PROSE),
     location: CF,
+    // Catalogue place — province, locality name, INDEC id, row id, method
+    // (lib/events/place-payload.ts). Deliberately holds no point and no
+    // address; those stay on the row and in location_description.
+    place: CF,
     petCondition: CF,
     canKeepUntil: pd(
       "drop",

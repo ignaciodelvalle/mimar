@@ -48,6 +48,13 @@ const control = vi.hoisted(() => ({
   },
 }));
 
+// No network: the place resolver may reverse-geocode a pin (localidades-por-id);
+// this file is not about where, so the geocoder answers nothing.
+vi.mock("@/lib/infra/geocoding", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/infra/geocoding")>();
+  return { ...actual, reverseGeocode: async () => null };
+});
+
 vi.mock("@/lib/infra/live-user", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/infra/live-user")>();
   return {

@@ -28,6 +28,7 @@ import {
   requireTitularAccess,
 } from "@/lib/infra/pet-access";
 import { uploadAttachmentIfPresent } from "@/lib/infra/uploads";
+import { toEventPlaceOrNull } from "@/lib/place/event-place";
 import { resolveMapFormPlace } from "@/lib/place/reported-place";
 import { findDisease } from "@/lib/reference/diseases";
 import { checkboxOn } from "@/lib/ui/form-checkbox";
@@ -1056,17 +1057,9 @@ export async function setPetLostAction(
   const disclosurePrefs = parseDisclosurePrefsFromForm(formData);
   const enrichedDescription = parseEnrichedDescriptionFromForm(formData);
 
-  // WHERE IT WAS LOST (localidades-por-id A1, R4 of the localities audit). The
-  // wizard's map reverse-geocodes the pin into the same hidden
-  // provinceCode/localityName fields every L2 form posts, and this action used
-  // to read only the pin and the address text — so every web lost case fell
-  // back to the animal's HOME while the app filed the same pin where it was
-  // lost. The place is resolved the way every map form now resolves it: the
-  // pair, corroborated by the pin, a homonym never guessed, the pin re-read on
-  // the server when the two disagree. No place at all ("no lo sé") leaves the
-  // three fields null and the writer's home fallback applies, as before.
+  // WHERE IT WAS LOST (localidades-por-id A1, audit R4): the pair the map posts,
+  // checked against its pin — never the animal's home. No place: home fallback.
   const lostPlace = await resolveMapFormPlace(parseLocationFromFormData(formData));
-
   const repo = new EventsRepository();
 
   const { broadcastLostPet } = await import("@/lib/infra/lost-pet-broadcast");
@@ -1156,6 +1149,8 @@ export async function updateLostLastSeenAction(
     throw err;
   }
 
+  // Where THIS update happened, kept on the new note only (localidades-por-id A5).
+  const lastSeenPlace = toEventPlaceOrNull(await resolveMapFormPlace(loc));
   // Compose the note text from the address/reference + free-text note — the
   // note_added payload has a single required `text` field (no separate
   // location_description like status_changed has).
@@ -1177,6 +1172,7 @@ export async function updateLostLastSeenAction(
       locationDescription,
       locationLat: normalizedLoc.lat != null ? String(normalizedLoc.lat) : null,
       locationLng: normalizedLoc.lng != null ? String(normalizedLoc.lng) : null,
+      place: lastSeenPlace,
       clientIdempotencyKey,
     },
     { repo, transaction: makeTransaction() },

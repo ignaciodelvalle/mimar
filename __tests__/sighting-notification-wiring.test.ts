@@ -24,6 +24,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 // each anonymous submission can present a fresh caller IP to the REAL
 // DB-backed rate limiter (1/min per IP+token).
 const { headerState } = vi.hoisted(() => ({ headerState: { ip: "203.0.113.1" } }));
+// No network: the place resolver may reverse-geocode a pin (localidades-por-id);
+// this file is not about where, so the geocoder answers nothing.
+vi.mock("@/lib/infra/geocoding", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/infra/geocoding")>();
+  return { ...actual, reverseGeocode: async () => null };
+});
+
 vi.mock("next/headers", () => ({
   headers: vi.fn(async () => ({
     get: (key: string) => (key === "x-real-ip" ? headerState.ip : null),

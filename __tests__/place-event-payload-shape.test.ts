@@ -95,8 +95,7 @@ describe("place-bearing families accept place: { entered, resolved }", () => {
     expect(refusesPlaceKey("post_adoption_checkin", { place: RESOLVED_PLACE })).toBe(false);
   });
 
-  // Known failure until work unit A5 (localidades-por-id): flip to `it` there.
-  it.fails("note_added (last-seen update, sighting)", () => {
+  it("note_added (last-seen update, sighting)", () => {
     expect(refusesPlaceKey("note_added", { place: UNRESOLVED_PLACE })).toBe(false);
   });
 });
