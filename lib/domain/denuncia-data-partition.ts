@@ -153,6 +153,12 @@ export const CASE_RECORD_COLUMNS: readonly DenunciaColumn[] = [
   { property: "jurisdictionProvince", column: "jurisdiction_province" },
   { property: "jurisdictionLocality", column: "jurisdiction_locality" },
   { property: "localityId", column: "locality_id" },
+  // 0248: the place as the reporter entered it (province, locality name, INDEC
+  // id) and how it was resolved. Locality-level, never a point or an address:
+  // the same class as the jurisdiction pair above, and kept exactly as the
+  // `place` key of an event payload is (lib/events/payload-privacy.ts, CF).
+  { property: "placeEntered", column: "place_entered" },
+  { property: "placeMethod", column: "place_method" },
   { property: "jurisdictionUnverified", column: "jurisdiction_unverified" },
   { property: "occurredAt", column: "occurred_at" },
   { property: "createdAt", column: "created_at" },

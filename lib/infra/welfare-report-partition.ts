@@ -71,6 +71,8 @@ export const DENUNCIA_CONTENT_SELECT = {
   jurisdictionProvince: welfareReports.jurisdictionProvince,
   jurisdictionLocality: welfareReports.jurisdictionLocality,
   localityId: welfareReports.localityId,
+  placeEntered: welfareReports.placeEntered,
+  placeMethod: welfareReports.placeMethod,
   jurisdictionUnverified: welfareReports.jurisdictionUnverified,
   occurredAt: welfareReports.occurredAt,
   createdAt: welfareReports.createdAt,

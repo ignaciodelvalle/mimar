@@ -217,6 +217,9 @@ describe("the one-sided debt is written down, and pinned", () => {
   const EXPORT_SIDE_GAPS_OUTSIDE_KNOWN_GAP = [
     "attachments",
     "case_events",
+    // 0250: a projection of pet_events.payload->place; the export returns the
+    // events themselves, place included, but not this index as its own section.
+    "event_places",
     "libreta_share_tokens",
     "notification_dead_letter",
   ];
@@ -238,8 +241,9 @@ describe("the one-sided debt is written down, and pinned", () => {
     expect(CLASSIFICATION.attachments.erase.state).toBe("covered_outside_sql");
   });
 
-  it("EXEMPT holds fourteen tables, every one exempt on BOTH sides", () => {
-    expect(Object.keys(EXEMPT)).toHaveLength(14);
+  // 0251 added place_repair_preimages (row ids, catalogue ids, a verdict).
+  it("EXEMPT holds fifteen tables, every one exempt on BOTH sides", () => {
+    expect(Object.keys(EXEMPT)).toHaveLength(15);
     for (const t of Object.keys(EXEMPT)) {
       expect(CLASSIFICATION[t].export.state, t).toBe("exempt");
       expect(CLASSIFICATION[t].erase.state, t).toBe("exempt");
@@ -271,7 +275,9 @@ describe("the debt register is not empty, says so, and may not grow quietly", ()
   // trail), so it ratchets 20 -> 17.
   // 0226 moved out notification_dead_letter (every dead letter addressed to the
   // subject loses its payload and is resolved), so it ratchets 17 -> 16.
-  const KNOWN_GAP_CEILING = 16;
+  // 0250 added place_resolutions: append-only, so erasure cannot anonymise the
+  // admin actor or the reason they typed in place. Raised 16 -> 17 on purpose.
+  const KNOWN_GAP_CEILING = 17;
 
   it("does not grow past the declared ceiling without someone raising it on purpose", () => {
     expect(
