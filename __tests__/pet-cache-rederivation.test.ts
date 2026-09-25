@@ -1001,6 +1001,128 @@ describe("pet-cache jurisdiction — derived from the spine", () => {
 });
 
 // ---------------------------------------------------------------------------
+// localidades-por-id B5: the locality ID is checked against the spine
+// ---------------------------------------------------------------------------
+//
+// `localityId` used to be excluded ("projection_pending"): the spine did not
+// record which catalogue row a registration or a move meant, so nothing could
+// catch the one drift that matters most for P1 — the name-based backfill (R7)
+// giving a Bragado pet named "Mechita" Alberti's id. The spine records it now
+// (`jurisdiction_locality_id`, `place.resolved`, `to_locality_id`), and an event
+// that predates the field is "nothing to compare", not drift.
+describe("pet-cache locality id — derived from the spine", () => {
+  let alberti = "";
+  let bragado = "";
+
+  beforeAll(async () => {
+    const rows = (await db.execute(sql`
+      select id::text as id, indec_id from public.ar_localities
+       where province_code = 'AR-B' and locality_name = 'Mechita' and removed_at is null
+       order by department_name
+    `)) as unknown as Array<{ id: string; indec_id: string }>;
+    expect(rows, "Mechita is a within-province homonym in the local catalogue").toHaveLength(2);
+    bragado = rows.find((r) => r.indec_id === "06112080")?.id ?? "";
+    alberti = rows.find((r) => r.indec_id !== "06112080")?.id ?? "";
+    expect(bragado).not.toBe("");
+    expect(alberti).not.toBe("");
+  });
+
+  async function register(pet: { id: string }, localityIdKey: Record<string, unknown>) {
+    await db.insert(petEvents).values({
+      petId: pet.id,
+      eventType: "pet_registered",
+      occurredAt: new Date("2026-01-01T12:00:00Z"),
+      recordedAt: new Date("2026-01-01T12:00:00Z"),
+      payload: {
+        name: "RederivePetLocalityId",
+        species: "dog",
+        sex: "female",
+        jurisdiction_province: "Buenos Aires",
+        jurisdiction_locality: "Mechita",
+        ...localityIdKey,
+      },
+      authorRole: "owner",
+      recordedByUserId: ownerUserId,
+    });
+  }
+
+  async function cacheOn(pet: { id: string }, localityId: string) {
+    await db
+      .update(pets)
+      .set({
+        jurisdictionProvince: "Buenos Aires",
+        jurisdictionLocality: "Mechita",
+        localityId,
+      })
+      .where(eq(pets.id, pet.id));
+  }
+
+  it("DETECTS the old backfill's guess: the cache holds Alberti, the spine says Bragado", async () => {
+    const pet = await insertTestPet("LOCID-R7");
+    await register(pet, { jurisdiction_locality_id: bragado });
+    await cacheOn(pet, alberti);
+
+    const report = await rederivePetCache(pet.id);
+
+    expect(report.localityId.matches).toBe(false);
+    expect(report.localityId.stored).toBe(alberti);
+    expect(report.localityId.derived).toBe(bragado);
+  });
+
+  it("no drift when the cache holds the row the registration recorded", async () => {
+    const pet = await insertTestPet("LOCID-CLEAN");
+    await register(pet, { jurisdiction_locality_id: bragado });
+    await cacheOn(pet, bragado);
+
+    const report = await rederivePetCache(pet.id);
+
+    expect(report.localityId.matches).toBe(true);
+    expect(report.localityId.derived).toBe(bragado);
+  });
+
+  it("a later move's to_locality_id wins over the registration", async () => {
+    const pet = await insertTestPet("LOCID-MOVE");
+    await register(pet, { jurisdiction_locality_id: alberti });
+    await db.insert(petEvents).values({
+      petId: pet.id,
+      eventType: "movement_recorded",
+      occurredAt: new Date("2026-06-01T12:00:00Z"),
+      recordedAt: new Date("2026-06-01T12:00:00Z"),
+      payload: {
+        payload_version: 1,
+        sub_kind: "jurisdiction_changed",
+        from_country: "AR",
+        from_province: "Buenos Aires",
+        from_locality: "Mechita",
+        from_locality_id: alberti,
+        to_country: "AR",
+        to_province: "Buenos Aires",
+        to_locality: "Mechita",
+        to_locality_id: bragado,
+      },
+      authorRole: "owner",
+      recordedByUserId: ownerUserId,
+    });
+    await cacheOn(pet, alberti);
+
+    const report = await rederivePetCache(pet.id);
+
+    expect(report.localityId.derived).toBe(bragado);
+    expect(report.localityId.matches).toBe(false);
+  });
+
+  it("is skipped, not flagged, when the latest event predates the field", async () => {
+    const pet = await insertTestPet("LOCID-LEGACY");
+    await register(pet, {});
+    await cacheOn(pet, alberti);
+
+    const report = await rederivePetCache(pet.id);
+
+    expect(report.localityId.matches).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Fecha de implante: stored y derived tienen que hablar el mismo modelo
 // (2a pasada de auditoría, hallazgo #5, 2026-08-12)
 // ---------------------------------------------------------------------------

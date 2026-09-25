@@ -57,7 +57,12 @@
 //     discloseConditionsPublicly is the closest to that line already: it gates
 //     what the public credential shows. At that point the work is writing the
 //     projections, not extending this note.
-//   - localityId → the denormalized FK twin of jurisdictionLocality.
+//   - localityId → CHECKED since localidades-por-id B5, against the id the
+//     latest jurisdiction-bearing event RECORDED (replayPetLocalityId); an
+//     event that predates the field is skipped, never drift. What follows
+//     is why it was excluded until then — kept, because the reasons are
+//     the ones the check now answers. The denormalized FK twin of
+//     jurisdictionLocality.
 //     THE JUSTIFICATION THAT USED TO STAND HERE WAS FALSE, and it is the same
 //     failure mode as the H7 correction above: it was written as a REASON TO
 //     SKIP THE CHECK rather than as an observation, and it would have authorised
@@ -124,6 +129,7 @@ import { replayPetAdoptionEligibility } from "@/lib/projections/pet-adoption-eli
 import {
   type PetJurisdictionProjection,
   replayPetJurisdiction,
+  replayPetLocalityId,
 } from "@/lib/projections/pet-jurisdiction";
 import { replayPetMicrochip } from "@/lib/projections/pet-microchip";
 import { replayPetPregnancy } from "@/lib/projections/pet-pregnancy";
@@ -205,6 +211,10 @@ const CHECKED_COLUMNS: Record<string, CompareKind> = {
   jurisdictionCountry: "strict",
   jurisdictionProvince: "strict",
   jurisdictionLocality: "strict",
+  // The catalogue row (localidades-por-id B5): the id the latest
+  // jurisdiction-bearing event recorded — never re-resolved from the name,
+  // which is exactly how the R7 backfill filed Bragado pets under Alberti.
+  localityId: "strict",
   // custody dispute (custody_disputes table — NOT events). In-dispute is a
   // TWO-state predicate (open OR escalated) — disputeHoldsCustodyLock().
   inCustodyDispute: "boolean",
@@ -304,7 +314,6 @@ export const EXCLUDED_CACHE_COLUMNS: Readonly<Record<string, ExcludedCacheColumn
   permanentConditionsOther: "projection_pending",
   discloseConditionsPublicly: "projection_pending",
   acquisitionMethod: "projection_pending",
-  localityId: "projection_pending",
   // HOW locality_id was decided (migration 0248). No projection yet: the spine
   // records the method only on events written since localidades-por-id A8.
   placeMethod: "projection_pending",
@@ -565,6 +574,15 @@ export async function rederivePetCache(
           | null,
       };
 
+  // localidades-por-id B5: the locality ID the latest jurisdiction-bearing
+  // event RECORDED. An event that predates the field is "nothing to compare"
+  // (skip by matching, like the jurisdiction above), never drift.
+  const recordedLocality = replayPetLocalityId(events);
+  const derivedLocalityId =
+    recordedLocality === null
+      ? ((pet as Record<string, unknown>).localityId as string | null)
+      : recordedLocality.localityId;
+
   const derived = {
     ...replayPetStatus(events),
     ...replayPetWeight(events),
@@ -574,6 +592,7 @@ export async function rederivePetCache(
     ...replayPetRabiesObservation(events),
     ...replayPetAdoptionEligibility(events),
     ...derivedJurisdiction,
+    localityId: derivedLocalityId,
     inCustodyDispute: openDisputeRows.length > 0,
   } as Record<string, unknown>;
 

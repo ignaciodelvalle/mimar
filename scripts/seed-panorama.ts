@@ -443,9 +443,11 @@ const SEED_TAG_PANORAMA_HIST = "panorama-hist";
  * Memoized (province, locality) → ar_localities.id resolution.
  *
  * Uses resolveCanonicalJurisdiction — the SAME resolver the write path uses via
- * normalizeLocationForWrite, and the same one scripts/backfill-locality-id.ts
- * uses. Resolving per DISTINCT pair rather than per pet keeps this to a few
- * hundred queries instead of one per pet.
+ * normalizeLocationForWrite (the name-based scripts/backfill-locality-id.ts
+ * that also used it was deleted in localidades-por-id B5: a homonym settles on
+ * the alphabetically first department, see scripts/place-repair-homonym-ids.ts).
+ * Resolving per DISTINCT pair rather than per pet keeps this to a few hundred
+ * queries instead of one per pet.
  *
  * A miss caches `null`: the pet keeps its free-text jurisdiction columns and a
  * NULL FK, exactly like a real registration whose locality is not in the INDEC

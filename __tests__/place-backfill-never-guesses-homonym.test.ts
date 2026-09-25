@@ -13,15 +13,14 @@
 // The spec (place-identity, "Ambiguous historical row stays unresolved"):
 // backfill leaves an ambiguous pair with `locality_id` NULL and queues it.
 //
-// RED UNTIL WORK UNIT B5 of localidades-por-id, which deletes the name-based
-// backfill, re-derives ids from the spine and repairs what the old script
-// wrote. The known failure below is a PLACEHOLDER aimed at B5's entry point,
-// `scripts/place-repair-homonym-ids.ts`, and states the contract B5 must meet:
-//   - the old name-based `scripts/backfill-locality-id.ts` is gone;
-//   - the new script exists and exports `resolveBackfillPlace({ province,
-//     locality })`, which answers `{ localityId: null }` for an ambiguous pair.
-// Every step is an assertion, so today it fails on "the entry point does not
-// exist yet", never on an import error. B5 flips it to `it`.
+// Work unit B5 of localidades-por-id deleted the name-based backfill and put
+// its replacement at `scripts/place-repair-homonym-ids.ts`:
+//   - `resolveBackfillPlace({ province, locality })` gives a historical NAME an
+//     id only when it names exactly one live row — `{ localityId: null }` for
+//     a homonym;
+//   - `decideRepair` audits an id already stored against what the record says
+//     (the spine, the case's own events, the denuncia's `place_entered`), and
+//     never trusts the old id as ground truth.
 
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -52,26 +51,65 @@ beforeAll(async () => {
 });
 
 describe("the historical backfill and a within-province homonym", () => {
-  // Known failure until work unit B5 (localidades-por-id): flip to `it` there.
-  it.fails(
-    "B5's backfill refuses to name one of the two Mechitas from the name alone",
-    async () => {
-      expect(existsSync(OLD_SCRIPT), "the name-based backfill is deleted").toBe(false);
-      expect(existsSync(B5_ENTRY), "B5's entry point exists").toBe(true);
-      const entry = (await import(/* @vite-ignore */ B5_ENTRY)) as BackfillEntry;
-      expect(typeof entry.resolveBackfillPlace).toBe("function");
-      const place = await entry.resolveBackfillPlace?.({
-        province: "Buenos Aires",
-        locality: "Mechita",
-      });
-      expect(place?.localityId).toBeNull();
-    },
-  );
+  it("B5's backfill refuses to name one of the two Mechitas from the name alone", async () => {
+    expect(existsSync(OLD_SCRIPT), "the name-based backfill is deleted").toBe(false);
+    expect(existsSync(B5_ENTRY), "B5's entry point exists").toBe(true);
+    const entry = (await import(/* @vite-ignore */ B5_ENTRY)) as BackfillEntry;
+    expect(typeof entry.resolveBackfillPlace).toBe("function");
+    const place = await entry.resolveBackfillPlace?.({
+      province: "Buenos Aires",
+      locality: "Mechita",
+    });
+    expect(place?.localityId).toBeNull();
+  });
 
-  // Pins why the placeholder is red today: the old script is still here and
-  // B5's entry point is not. Delete this at B5.
-  it("today the name-based backfill still exists and B5's entry point does not", () => {
-    expect(existsSync(OLD_SCRIPT)).toBe(true);
-    expect(existsSync(B5_ENTRY)).toBe(false);
+  it("a name that names ONE row is given that row, and says how", async () => {
+    const entry = (await import(/* @vite-ignore */ B5_ENTRY)) as BackfillEntry & {
+      resolveBackfillPlace: (pair: { province: string; locality: string }) => Promise<{
+        localityId: string | null;
+        method: string;
+      }>;
+    };
+    const rows = (await db.execute(sql`
+      select id::text as id from public.ar_localities
+       where indec_id = '14042170' and removed_at is null
+    `)) as unknown as Array<{ id: string }>;
+    expect(rows).toHaveLength(1);
+    expect(
+      await entry.resolveBackfillPlace({ province: "Córdoba", locality: "Villa María" }),
+    ).toEqual({ localityId: rows[0]?.id, method: "legacy_unique_name" });
+  });
+});
+
+describe("the repair of ids the old backfill already wrote", () => {
+  const ALBERTI = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const BRAGADO = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+  type RepairEntry = {
+    decideRepair: (
+      storedId: string | null,
+      recorded: string | null | undefined,
+    ) => { verdict: string; localityId: string | null };
+  };
+
+  async function decide(storedId: string | null, recorded: string | null | undefined) {
+    const entry = (await import(/* @vite-ignore */ B5_ENTRY)) as RepairEntry;
+    return entry.decideRepair(storedId, recorded);
+  }
+
+  it("keeps an id the record agrees with", async () => {
+    expect(await decide(BRAGADO, BRAGADO)).toEqual({ verdict: "keep", localityId: BRAGADO });
+  });
+
+  it("rewrites Alberti's guessed id to the Bragado row the record names", async () => {
+    expect(await decide(ALBERTI, BRAGADO)).toEqual({ verdict: "rewrite", localityId: BRAGADO });
+  });
+
+  it("rewrites to no row when the record says nothing resolved", async () => {
+    expect(await decide(ALBERTI, null)).toEqual({ verdict: "rewrite", localityId: null });
+  });
+
+  it("clears a guessed id the record is silent about — never trusts it", async () => {
+    expect(await decide(ALBERTI, undefined)).toEqual({ verdict: "clear", localityId: null });
   });
 });

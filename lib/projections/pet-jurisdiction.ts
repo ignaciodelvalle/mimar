@@ -66,6 +66,42 @@ export function replayPetJurisdiction(
   return null;
 }
 
+/**
+ * The catalogue row the pet's LATEST jurisdiction-bearing event recorded
+ * (localidades-por-id B5) — `pet_registered.jurisdiction_locality_id`, or its
+ * `place.resolved.locality_id`, or a move's `to_locality_id`.
+ *
+ * `null` = NOT COMPARABLE: no jurisdiction-bearing event, or the latest one
+ * predates the field (the key is absent, which is not the same statement as
+ * "recorded no row"). `{ localityId: null }` = the event recorded that no row
+ * was resolved. The same latest-by-occurredAt rule as `replayPetJurisdiction`,
+ * so the id and the names always come from the same event.
+ */
+export function replayPetLocalityId(
+  events: AmendmentOverlaid<ProjectionEvent>,
+): { localityId: string | null } | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    const payload = (e.payload ?? {}) as Record<string, unknown>;
+
+    if (e.eventType === "movement_recorded") {
+      if (payload.sub_kind !== "jurisdiction_changed") continue;
+      if (!("to_locality_id" in payload)) return null;
+      return { localityId: str(payload.to_locality_id) };
+    }
+
+    if (e.eventType === "pet_registered") {
+      const place = payload.place as { resolved?: { locality_id?: unknown } | null } | undefined;
+      if (place && typeof place === "object" && "resolved" in place) {
+        return { localityId: str(place.resolved?.locality_id) };
+      }
+      if (!("jurisdiction_locality_id" in payload)) return null;
+      return { localityId: str(payload.jurisdiction_locality_id) };
+    }
+  }
+  return null;
+}
+
 function str(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
 }

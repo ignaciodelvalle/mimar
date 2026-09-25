@@ -64,7 +64,6 @@ export const FROZEN_CALLERS: Readonly<Record<string, number>> = {
   "lib/infra/jurisdiction-from-text.ts": 2,
   "lib/infra/public-listing-metadata.ts": 1,
   "lib/outreach/pilot-request.ts": 1,
-  "scripts/backfill-locality-id.ts": 1,
   "scripts/seed-demo-scenario.ts": 1,
   "scripts/seed-demo-spine.ts": 1,
   "scripts/seed-demo.ts": 1,
