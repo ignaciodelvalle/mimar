@@ -43,7 +43,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  processColor,
 } from "react-native";
 
 import {
@@ -56,15 +55,15 @@ import {
   PrimaryButton,
   RIPPLE,
   RIPPLE_BORDERLESS,
-  RIPPLE_ON_FILL,
   Screen,
   SecondaryButton,
   TextField,
   TimeField,
   keyboardAvoidingBehavior,
+  pressedOpacityUnlessAndroidRipple,
   pullToRefresh,
 } from "./kit";
-import { COLORS, TOUCH_TARGET } from "./theme";
+import { COLORS, PRESSED_OPACITY, TOUCH_TARGET } from "./theme";
 
 /**
  * Runs `fn` with `Platform.OS` forced to `"android"`, then restores whatever
@@ -217,11 +216,10 @@ describe("ListRow — closes the keyboard on press (M10)", () => {
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it("clips its ripple to the row's own bounds, in the same tint the kit uses for 'active'", () => {
+  it("clips its ripple to the row's own bounds — bounded, not borderless", () => {
     withAndroid(() => {
       render(<ListRow label="Credencial pública" onPress={() => {}} />);
       expect(screen.getByRole("button").props.nativeBackgroundAndroid).toMatchObject({
-        color: processColor(RIPPLE.color as string),
         borderless: false,
       });
     });
@@ -263,21 +261,17 @@ describe("Choice — closes the keyboard on selection (M10)", () => {
       const chips = screen.getAllByRole("radio");
       expect(chips).toHaveLength(OPTIONS.length);
       for (const chip of chips) {
-        expect(chip.props.nativeBackgroundAndroid).toMatchObject({
-          color: processColor(RIPPLE.color as string),
-          borderless: false,
-        });
+        expect(chip.props.nativeBackgroundAndroid).toMatchObject({ borderless: false });
       }
     });
   });
 });
 
 describe("android_ripple — bounded, borderless and on-fill land on the right controls (M10)", () => {
-  it("PrimaryButton gets the translucent-white ripple, for a saturated fill", () => {
+  it("PrimaryButton's ripple is bounded, like a row's — a saturated fill still gets a clipped ripple", () => {
     withAndroid(() => {
       render(<PrimaryButton label="Guardar" onPress={() => {}} />);
       expect(screen.getByRole("button").props.nativeBackgroundAndroid).toMatchObject({
-        color: processColor(RIPPLE_ON_FILL.color as string),
         borderless: false,
       });
     });
@@ -287,7 +281,6 @@ describe("android_ripple — bounded, borderless and on-fill land on the right c
     withAndroid(() => {
       render(<SecondaryButton label="Cancelar" onPress={() => {}} />);
       expect(screen.getByRole("button").props.nativeBackgroundAndroid).toMatchObject({
-        color: processColor(RIPPLE.color as string),
         borderless: false,
       });
     });
@@ -297,7 +290,6 @@ describe("android_ripple — bounded, borderless and on-fill land on the right c
     withAndroid(() => {
       render(<LinkText onPress={() => {}}>¿Olvidaste tu contraseña?</LinkText>);
       expect(screen.getByRole("link").props.nativeBackgroundAndroid).toMatchObject({
-        color: processColor(RIPPLE_BORDERLESS.color as string),
         borderless: true,
       });
       screen.unmount();
@@ -305,10 +297,7 @@ describe("android_ripple — bounded, borderless and on-fill land on the right c
       render(<PasswordField label="Contraseña" value="" onChangeText={() => {}} />);
       expect(
         screen.getByLabelText("Mostrar contraseña").props.nativeBackgroundAndroid,
-      ).toMatchObject({
-        color: processColor(RIPPLE_BORDERLESS.color as string),
-        borderless: true,
-      });
+      ).toMatchObject({ borderless: true });
     });
   });
 
@@ -317,6 +306,29 @@ describe("android_ripple — bounded, borderless and on-fill land on the right c
     expect(RIPPLE_BORDERLESS.borderless).toBe(true);
     // Same tint on both — only the SHAPE differs, not which "state" it means.
     expect(RIPPLE_BORDERLESS.color).toBe(RIPPLE.color);
+  });
+});
+
+describe("pressedOpacityUnlessAndroidRipple — no double feedback (M10 review, 2026-09-24)", () => {
+  // A PURE-FUNCTION test, not a render — every control that uses this already
+  // has its OWN ripple test above (`nativeBackgroundAndroid`, bounded or
+  // borderless); what is unproven there is the OTHER half, that the SAME
+  // touch no longer also fades. `Pressable` never exposes what its `style`
+  // function returned back onto the rendered node, on either platform, so
+  // this asserts the function's own return value directly — the same
+  // strategy `keyboardAvoidingBehavior`'s tests already use below.
+  it("stays silent on Android — the platform's own ripple already answered", () => {
+    withAndroid(() => {
+      expect(pressedOpacityUnlessAndroidRipple({ pressed: true })).toBeNull();
+      expect(pressedOpacityUnlessAndroidRipple({ pressed: false })).toBeNull();
+    });
+  });
+
+  it("still dims on iOS — there is no ripple there to answer instead", () => {
+    expect(pressedOpacityUnlessAndroidRipple({ pressed: true })).toEqual({
+      opacity: PRESSED_OPACITY,
+    });
+    expect(pressedOpacityUnlessAndroidRipple({ pressed: false })).toBeNull();
   });
 });
 

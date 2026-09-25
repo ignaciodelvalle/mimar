@@ -3,6 +3,9 @@ import "server-only";
 import { db, pushTargets } from "@/db";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 
+/** A drizzle transaction handle — see `registerPushTarget`'s own use of it. */
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 /**
  * Reads and writes for `push_targets` — the native (Expo) push destinations.
  *
@@ -58,27 +61,46 @@ export type ActivePushTarget = {
  * and never speak again.
  */
 export async function registerPushTarget(input: PushTargetRegistration): Promise<void> {
-  await db
-    .insert(pushTargets)
-    .values({
-      userId: input.userId,
-      deviceId: input.deviceId,
-      expoPushToken: input.expoPushToken,
-      platform: input.platform,
-      appVersion: input.appVersion ?? null,
-    })
-    .onConflictDoUpdate({
-      target: pushTargets.deviceId,
-      set: {
+  // ONE TRANSACTION, review follow-up on F-11 (2026-09-24). Two separate
+  // autocommits meant a crash or a thrown error between them could leave a
+  // NEW row inserted with the cap never re-checked against it — a live
+  // install this file's own invariant does not know about. One transaction
+  // makes the pair atomic: either both land, or neither does, and
+  // `revokeExcessPushTargets`'s read always sees this call's own write.
+  //
+  // NOT A FULL FIX FOR TWO CALLS RACING. Postgres's default READ COMMITTED
+  // isolation re-snapshots per STATEMENT, not per transaction, so two
+  // registrations for the same user+platform truly overlapping — both past
+  // their own INSERT, neither committed yet — can each read the table before
+  // the other's row exists, each conclude "still under cap", and both commit.
+  // The rare result is 3 live rows for one call, not the usual 2, and it
+  // self-heals on the NEXT registration for that user+platform, which is why
+  // this stops at a transaction rather than reaching for an advisory lock —
+  // real overlap on ONE person's OWN devices registering in the same instant
+  // is rare enough that this is a narrowed window, not a promise closed.
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(pushTargets)
+      .values({
         userId: input.userId,
+        deviceId: input.deviceId,
         expoPushToken: input.expoPushToken,
         platform: input.platform,
         appVersion: input.appVersion ?? null,
-        revokedAt: null,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: pushTargets.deviceId,
+        set: {
+          userId: input.userId,
+          expoPushToken: input.expoPushToken,
+          platform: input.platform,
+          appVersion: input.appVersion ?? null,
+          revokedAt: null,
+        },
+      });
 
-  await revokeExcessPushTargets(input.userId, input.deviceId, input.platform);
+    await revokeExcessPushTargets(tx, input.userId, input.deviceId, input.platform);
+  });
 }
 
 /**
@@ -115,13 +137,18 @@ const MAX_LIVE_TARGETS_PER_USER_PLATFORM = 2;
  * that exclusion, an old install refreshing its OWN token could revoke
  * itself the moment a newer install also registered, which is not "cap the
  * device count", it is "punish whoever asks second".
+ *
+ * TAKES `tx`, NOT THE MODULE-LEVEL `db` — this must run inside the SAME
+ * transaction as the upsert that called it, so its read of "how many others
+ * are live" sees that upsert's own write. See `registerPushTarget`'s comment.
  */
 async function revokeExcessPushTargets(
+  tx: Tx,
   userId: string,
   keepDeviceId: string,
   platform: string,
 ): Promise<void> {
-  const others = await db
+  const others = await tx
     .select({ id: pushTargets.id })
     .from(pushTargets)
     .where(
@@ -137,7 +164,7 @@ async function revokeExcessPushTargets(
   const toRevoke = others.slice(MAX_LIVE_TARGETS_PER_USER_PLATFORM - 1);
   if (toRevoke.length === 0) return;
 
-  await db
+  await tx
     .update(pushTargets)
     .set({ revokedAt: new Date() })
     .where(

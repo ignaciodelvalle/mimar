@@ -365,7 +365,7 @@ export function LinkText({
       android_ripple={RIPPLE_BORDERLESS}
       hitSlop={{ top: slop, bottom: slop, left: SPACE.sm, right: SPACE.sm }}
       onPress={onPress}
-      style={pressedOpacity}
+      style={pressedOpacityUnlessAndroidRipple}
     >
       <Text style={styles.link}>{children}</Text>
     </Pressable>
@@ -592,10 +592,7 @@ export function PasswordField({
           accessibilityLabel={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
           android_ripple={RIPPLE_BORDERLESS}
           onPress={() => setVisible((v) => !v)}
-          style={({ pressed }) => [
-            styles.passwordEye,
-            pressed ? { opacity: PRESSED_OPACITY } : null,
-          ]}
+          style={(state) => [styles.passwordEye, pressedOpacityUnlessAndroidRipple(state)]}
         >
           <Icon name={visible ? "ocultar" : "ver"} size="md" color={COLORS.inkFaint} />
         </Pressable>
@@ -983,6 +980,10 @@ export function Choice<T extends string>({
  *
  * Pass it straight to `style`, and add the static styles in the returned
  * array: `style={(s) => [styles.thing, pressedOpacity(s)]}`.
+ *
+ * ALSO GIVEN `android_ripple`? Use `pressedOpacityUnlessAndroidRipple` below
+ * instead — the two together double up on Android, one drawn by the platform
+ * and one by this function, at once.
  */
 export function pressedOpacity({ pressed }: PressableStateCallbackType) {
   return pressed ? { opacity: PRESSED_OPACITY } : null;
@@ -1024,6 +1025,31 @@ export const RIPPLE_BORDERLESS: PressableAndroidRippleConfig = {
   borderless: true,
 };
 export const RIPPLE_ON_FILL: PressableAndroidRippleConfig = { color: "rgba(255, 255, 255, 0.28)" };
+
+/**
+ * `pressedOpacity`, WITHHELD ON ANDROID — for a Pressable that also carries
+ * one of the `RIPPLE*` configs above (M10 review, 2026-09-24). Without this,
+ * every control this kit gave a ripple to answered one touch TWICE on
+ * Android: the platform's own ripple, drawn by `android_ripple`, and the
+ * 0.9-opacity fade `pressedOpacity` still applied underneath it — two
+ * acknowledgements stacking into a visibly darker, muddier press than either
+ * effect alone. iOS has no ripple at all, so it keeps exactly the fade it
+ * always had; this only changes what happens on the platform that now has
+ * its own answer.
+ *
+ * NOT A REPLACEMENT FOR `pressedOpacity` ITSELF. The screens outside this kit
+ * that call `pressedOpacity` directly (`TopLevelNavMenu`, `OwnerFace`,
+ * `LocalityPicker`, `BiteDraftBanner`) carry no `android_ripple` — on Android
+ * the fade is the ONLY acknowledgement those controls have, and withholding
+ * it there would leave them silent under a thumb again, the exact defect
+ * `pressedOpacity`'s own docblock was written to close. This helper exists
+ * for the controls that already have a ripple to fall back on; `pressedOpacity`
+ * keeps its old, unconditional behaviour for everything else.
+ */
+export function pressedOpacityUnlessAndroidRipple({ pressed }: PressableStateCallbackType) {
+  if (Platform.OS === "android") return null;
+  return pressed ? { opacity: PRESSED_OPACITY } : null;
+}
 
 /**
  * A row that is a destination, or a row that explains why it is not one.
@@ -1080,7 +1106,7 @@ export function ListRow({
       android_ripple={RIPPLE}
       disabled={isInert}
       onPress={handlePress}
-      style={(state) => [styles.listRow, pressedOpacity(state)]}
+      style={(state) => [styles.listRow, pressedOpacityUnlessAndroidRipple(state)]}
     >
       {/* LABEL ABOVE CAPTION, always in a column — see `listRowText`. The
           column is rendered whether or not there is a caption so the row's
@@ -1170,7 +1196,7 @@ export function PrimaryButton({
         tone === "seal" ? styles.buttonSeal : styles.buttonPrimary,
         disabled && tone === "primary" ? styles.buttonPrimaryDisabled : null,
         disabled && tone === "seal" ? styles.buttonDisabled : null,
-        disabled ? null : pressedOpacity(state),
+        disabled ? null : pressedOpacityUnlessAndroidRipple(state),
       ]}
     >
       <Text style={styles.buttonLabelOnFill}>{label}</Text>
@@ -1219,7 +1245,7 @@ export function SecondaryButton({
       style={(state) => [
         styles.button,
         styles.buttonGhost,
-        isInert ? styles.buttonGhostDisabled : pressedOpacity(state),
+        isInert ? styles.buttonGhostDisabled : pressedOpacityUnlessAndroidRipple(state),
       ]}
     >
       <Text style={isInert ? styles.buttonLabelMuted : styles.buttonLabelInk}>{label}</Text>
