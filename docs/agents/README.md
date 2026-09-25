@@ -15,6 +15,7 @@ short role docs in this repo were followed on first use).
 | A read-only auditor / critique agent | `dim-interno:docs/design/handoffs/README.md` |
 | A QA or data agent that MUTATES the local DB | `docs/agents/qa-mutation-contract.md` |
 | A subagent spawned by the main agent | `docs/agents/subagent-card.md` |
+| A subagent that WRITES code in its own git worktree, in parallel with the integrator | `docs/agents/worktree-writer-card.md` — read after the subagent card; the brief then carries only the task and three machine values (worktree, gate flag, Node path) |
 | A collaborating agent joining to WRITE code | `docs/agents/collaborating-writer.md` — ten rules, then a reading order and a first task. The board it points at (milestones, open work, declared debts, what is PO-gated) is `dim-interno:docs/agents/open-work.md` |
 | A human newcomer | `/README.md` → `AGENTS.md` slim index |
 | Anyone (human or agent) writing a file to this repo | `docs/agents/public-private-boundary.md` — what is public, what goes to `dim-interno`, and how `pnpm lint:public-boundary` enforces it. Every contract below that writes files cites it |
