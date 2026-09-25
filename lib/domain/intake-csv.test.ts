@@ -347,3 +347,26 @@ describe("export value mappers are the exact inverse of the import maps", () => 
     expect(weightToIntakeCsvValue("no-es-un-numero")).toBe("");
   });
 });
+
+describe("a __proto__ header stays inert with the import's own options", () => {
+  // The org intake import parses an UPLOADED file with `columns: true`, the
+  // option family of GHSA-8cw4-87c7-c6xx (fixed in csv-parse 7.0.2). That
+  // advisory's reproduction also needs `group_columns_by_name`, which the import
+  // does not set — so this does not reproduce the CVE; it pins that, with the
+  // exact options of app/org/[orgToken]/intake/importar/actions.ts, a hostile
+  // header neither replaces a record's prototype nor leaks onto Object.prototype.
+  it("keeps __proto__ as a plain key and leaves Object.prototype alone", () => {
+    const records = parse("__proto__;nombre\nhacked;Pampa\n", {
+      columns: true,
+      delimiter: ";",
+      skip_empty_lines: true,
+      trim: true,
+      relax_column_count: true,
+    }) as Record<string, unknown>[];
+    expect(records).toHaveLength(1);
+    expect(records[0]?.nombre).toBe("Pampa");
+    expect(Object.getPrototypeOf(records[0])).not.toBe("hacked");
+    expect(({} as Record<string, unknown>).nombre).toBeUndefined();
+    expect(Object.prototype).not.toHaveProperty("nombre");
+  });
+});
