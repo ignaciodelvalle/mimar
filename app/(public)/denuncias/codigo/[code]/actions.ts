@@ -158,7 +158,11 @@ async function sendAccessLink(to: string, code: string, url: string): Promise<vo
   }
   // A reserved-TLD address would only bounce — see lib/infra/deliverable-address.ts.
   // Silent on purpose: the caller answers the same neutral message either way.
-  if (!isDeliverableAddress(to)) return;
+  if (!isDeliverableAddress(to)) {
+    // The reason only — never the address, never the code.
+    console.warn("[denuncias] access link skipped: undeliverable reserved TLD");
+    return;
+  }
   const { Resend } = await import("resend");
   const { error } = await new Resend(apiKey).emails.send({
     from: resolveMailSender(process.env),

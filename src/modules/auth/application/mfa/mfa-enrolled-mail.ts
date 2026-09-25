@@ -12,7 +12,9 @@
 // signs anybody in. It is a notice, not a credential.
 //
 // DEGRADES, NEVER BLOCKS. No RESEND_API_KEY (local, preview) → a logged skip and
-// `false`. A provider refusal → logged, `false`. The enrolment already happened
+// `false`. An address on a reserved, undeliverable TLD (seed accounts on
+// `@dim.test` — lib/infra/deliverable-address.ts) → a logged skip and `false`;
+// the log names the reason, never the address. A provider refusal → logged, `false`. The enrolment already happened
 // at GoTrue and is audited (`mfa_factor_enrolled`); a mail outage must not turn
 // it into an error the person cannot act on.
 
@@ -43,7 +45,10 @@ export async function mailMfaFactorEnrolled(input: {
     return false;
   }
   // A reserved-TLD address (seed accounts) would only bounce — see deliverable-address.ts.
-  if (!isDeliverableAddress(input.to)) return false;
+  if (!isDeliverableAddress(input.to)) {
+    console.warn("[mfa] enrolment notice skipped: undeliverable reserved TLD");
+    return false;
+  }
   try {
     const { Resend } = await import("resend");
     const { error } = await new Resend(apiKey).emails.send({

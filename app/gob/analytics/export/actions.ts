@@ -233,7 +233,11 @@ export async function generateExportAction(formData: FormData): Promise<Generate
     const resendKey = process.env.RESEND_API_KEY;
     // A reserved-TLD address (seed accounts) would only bounce — see
     // lib/infra/deliverable-address.ts. The signed URL is still returned.
-    if (resendKey && recipientEmail && isDeliverableAddress(recipientEmail)) {
+    const deliverable = isDeliverableAddress(recipientEmail);
+    if (resendKey && recipientEmail && !deliverable) {
+      console.warn("[analytics-export] mail skipped: undeliverable reserved TLD");
+    }
+    if (resendKey && recipientEmail && deliverable) {
       try {
         const resend = new Resend(resendKey);
         const { error: emailError } = await resend.emails.send({

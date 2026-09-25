@@ -35,7 +35,10 @@ export async function mailInstitutionalAccessLink(input: {
   const apiKey = (process.env.RESEND_API_KEY ?? "").trim();
   if (!apiKey) return false;
   // A reserved-TLD address (seed accounts) would only bounce — see deliverable-address.ts.
-  if (!isDeliverableAddress(input.to)) return false;
+  if (!isDeliverableAddress(input.to)) {
+    console.warn("institutional access mail skipped: undeliverable reserved TLD");
+    return false;
+  }
   try {
     const { Resend } = await import("resend");
     const { error } = await new Resend(apiKey).emails.send({
