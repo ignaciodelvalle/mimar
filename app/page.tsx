@@ -4,7 +4,7 @@ import { and, eq, isNull } from "drizzle-orm";
 // globals.css, which the root layout imports, so every route in the product
 // paid for ~2.3k lines of landing CSS it never used. See app/landing.css.
 import "./landing.css";
-import type { Viewport } from "next";
+import type { Metadata, Viewport } from "next";
 import { redirect } from "next/navigation";
 import QRCode from "qrcode";
 
@@ -33,6 +33,7 @@ import {
 } from "@/lib/infra/role-landing";
 import { resolveSiteUrl } from "@/lib/infra/site-url";
 import { createClient } from "@/lib/supabase/server";
+import { BRANDING } from "@/lib/ui/branding";
 
 // Public landing — "una mascota, muchas manos" (design handoff
 // docs/design_handoff_landing, benchmark L1–L8). Replaces the P4-1 hero /
@@ -56,6 +57,23 @@ import { createClient } from "@/lib/supabase/server";
 // a meta tag cannot read a CSS custom property.
 export const viewport: Viewport = {
   themeColor: "#fbfaf5",
+};
+
+// Share + canonical metadata (review finding L-4: the credential had a share
+// preview and the front door did not). Every URL here is RELATIVE on purpose:
+// the root layout's `metadataBase` resolves them against NEXT_PUBLIC_SITE_URL,
+// the one origin every other surface uses, so no domain is written here. Title
+// and description are inherited from the root layout into og:/twitter: by
+// Next; the image is app/opengraph-image.tsx.
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: BRANDING.appName,
+    locale: "es_AR",
+  },
+  twitter: { card: "summary_large_image" },
 };
 
 export default async function Home() {

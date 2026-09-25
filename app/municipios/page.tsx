@@ -18,13 +18,20 @@ export const metadata: Metadata = {
   title: "miMAR para municipios y provincias",
   description:
     "Para oficinas de Zoonosis y bienestar animal: padrón sanitario, cobertura por localidad, campañas, mordeduras, denuncias y mascotas perdidas de tu jurisdicción, en un solo tablero.",
+  // Relative on purpose: resolved against the root layout's metadataBase
+  // (NEXT_PUBLIC_SITE_URL), never a hardcoded origin. The image is the
+  // sibling opengraph-image.tsx.
   alternates: { canonical: "/municipios" },
   openGraph: {
     title: "miMAR para municipios y provincias",
     description:
       "Padrón sanitario, cobertura por localidad, campañas y vigilancia de tu jurisdicción, en un solo tablero.",
     type: "website",
+    url: "/municipios",
+    siteName: "miMAR",
+    locale: "es_AR",
   },
+  twitter: { card: "summary_large_image" },
 };
 
 // Outside the (public) group nothing here reads the request, so Next would
