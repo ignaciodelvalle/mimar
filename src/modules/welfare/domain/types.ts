@@ -155,6 +155,32 @@ export function welfareReportStatusLabel(status: WelfareReportStatus | string): 
   }
 }
 
+/**
+ * The banner a denuncia's AUTHOR sees under its status, or `null` when there is
+ * none. One definition for `/denuncias/{id}` and `GET /api/v1/me/welfare-reports/
+ * {code}`, so the phone cannot say "en revisión" where the web says "aún no se
+ * envió".
+ *
+ * "Aún no se envió" is honest ONLY for a report that genuinely has not been
+ * routed ("open"); a funcionario triaging or working it gets the progress line
+ * instead (state-honesty audit). Allow-listing "open" means a future status
+ * defaults to NOT claiming the report is unsent. The terminal statuses (closed,
+ * duplicate, invalid) get no banner at all — it would contradict the badge
+ * (UI-7 B7).
+ */
+export function welfareReportReporterNotice(
+  status: WelfareReportStatus | string,
+): { tone: "warn" | "info"; text: string } | null {
+  if (status === "open") {
+    return {
+      tone: "warn",
+      text: "Esta denuncia aún no fue enviada a la herramienta gubernamental — la integración con los canales oficiales de la Ley 14.346 está en desarrollo. Tu reporte queda guardado y será enviado cuando la integración esté disponible.",
+    };
+  }
+  if (status === "closed" || status === "duplicate" || status === "invalid") return null;
+  return { tone: "info", text: "En revisión por la autoridad." };
+}
+
 // ---------------------------------------------------------------------------
 // Assignment display
 // ---------------------------------------------------------------------------

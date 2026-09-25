@@ -144,6 +144,7 @@ export const CAPABILITY_PATH_SEGMENTS: readonly string[] = [
   "observaciones", // /gob|/admin/observaciones/[publicToken]
   "casos", // /casos|/gob/casos|/admin/casos/[publicCode]
   "cases", // /api/v1/me/cases/[publicCode] — the API twin of `casos` (M11)
+  "welfare-reports", // /api/v1/me/welfare-reports/[referenceCode] — the DEN- code (M16)
   "decomisos", // /gob/decomisos/[publicCode]
   "disputas", // /gob/disputas/[disputeToken]
   "investigaciones", // /gob/vigilancia/investigaciones/[caseCode]

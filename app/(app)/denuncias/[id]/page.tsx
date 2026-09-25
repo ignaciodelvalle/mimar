@@ -8,8 +8,6 @@ import { notFound, redirect } from "next/navigation";
 
 import { LnCard, LnCardBody, LnCardHead } from "@/components/ui/Card";
 import { LnCallout } from "@/components/ui/DocElements";
-import { db, pets, welfareReportAttachments, welfareReports } from "@/db";
-import { caseEvents, cases } from "@/db/schema";
 import { readPoint } from "@/lib/domain/location";
 import { welfareAttachmentSignedUrl } from "@/lib/infra/storage";
 import { createClient } from "@/lib/supabase/server";
@@ -17,11 +15,12 @@ import { formatDate, formatDateTime } from "@/lib/utils/format";
 import { addReporterCommentAction } from "@/src/modules/welfare/actions";
 import {
   welfareReportKindLabel,
+  welfareReportReporterNotice,
   welfareReportSeverityCitizenLabel,
   welfareReportStatusLabel,
   welfareReportSubjectKindLabel,
 } from "@/src/modules/welfare/domain/types";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { getReporterWelfareReport } from "@/src/modules/welfare/infrastructure/reporter-reports-read";
 import { type CommentFormState, ReporterCommentForm } from "./_components/ReporterCommentForm";
 
 const LocationMap = dynamic(() => import("@/components/LocationMap"), {
@@ -29,28 +28,6 @@ const LocationMap = dynamic(() => import("@/components/LocationMap"), {
     <div className="w-full h-[240px] rounded-[var(--radius-sm)] border border-[var(--color-ln-line)] bg-[var(--color-ln-stripe)] animate-pulse" />
   ),
 });
-
-// Terminal statuses where the "integration pending" banner contradicts the
-// status badge and should be hidden (UI-7 B7).
-function isTerminalReportStatus(status: string): boolean {
-  return status === "closed" || status === "invalid" || status === "duplicate";
-}
-
-// The "aún no se envió al gobierno" banner is only honest for a report that
-// genuinely hasn't been routed yet. It used to show for ANY non-terminal
-// status — including triaged/in_progress, where a funcionario is already
-// working the case (state-honesty audit). Allow-listing "open" (rather than
-// just excluding the terminal statuses) also means any future status defaults
-// to NOT showing the pending banner.
-function isPendingReportStatus(status: string): boolean {
-  return status === "open";
-}
-
-// Statuses where the report was routed but isn't closed yet — shown as an
-// honest progress line instead of the "not sent yet" banner.
-function isInProgressReportStatus(status: string): boolean {
-  return !isTerminalReportStatus(status) && !isPendingReportStatus(status);
-}
 
 // LN status badge class mapping.
 function statusBadgeClass(status: string): string {
@@ -95,65 +72,21 @@ export default async function WelfareReportDetailPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/iniciar-sesion");
 
-  const [report] = await db
-    .select()
-    .from(welfareReports)
-    .where(and(eq(welfareReports.id, id), eq(welfareReports.reporterUserId, user.id)))
-    .limit(1);
-  if (!report) notFound();
-
-  let subjectPet: { publicToken: string; name: string } | null = null;
-  if (report.subjectPetId) {
-    const [petRow] = await db
-      .select({ publicToken: pets.publicToken, name: pets.name })
-      .from(pets)
-      // Art. 16 (Ley 25.326): the reporter is a live third party (the report is
-      // scoped to reporterUserId, not the pet's owner), so an erased subject pet
-      // must read as never registered — no name, no token, no working link.
-      .where(and(eq(pets.id, report.subjectPetId), isNull(pets.deletedAt)))
-      .limit(1);
-    subjectPet = petRow ?? null;
-  }
-
-  const attachmentRows = await db
-    .select()
-    .from(welfareReportAttachments)
-    .where(eq(welfareReportAttachments.welfareReportId, report.id));
+  // The same reader `GET /api/v1/me/welfare-reports/{code}` runs — scoped to
+  // the verified reporter, subject pet filtered for erasure (art. 16), and only
+  // the reporter's OWN comments from the case timeline.
+  const detail = await getReporterWelfareReport({ reporterUserId: user.id, lookup: { id } });
+  if (!detail) notFound();
+  const { report, subjectPet, reporterComments, casePublicCode } = detail;
 
   const attachments = await Promise.all(
-    attachmentRows.map(async (a) => ({
+    detail.attachments.map(async (a) => ({
       ...a,
       signedUrl: await welfareAttachmentSignedUrl(a.storagePath),
     })),
   );
 
-  let reporterComments: Array<{
-    id: string;
-    notes: string | null;
-    occurredAt: Date;
-  }> = [];
-  let casePublicCode: string | null = null;
-
-  if (report.caseId) {
-    const [caseRow, commentRows] = await Promise.all([
-      db
-        .select({ publicCode: cases.publicCode })
-        .from(cases)
-        .where(eq(cases.id, report.caseId))
-        .limit(1)
-        .then((rows) => rows[0] ?? null),
-      db
-        .select({ id: caseEvents.id, notes: caseEvents.notes, occurredAt: caseEvents.occurredAt })
-        .from(caseEvents)
-        .where(
-          and(eq(caseEvents.caseId, report.caseId), eq(caseEvents.entryType, "reporter_comment")),
-        )
-        .orderBy(desc(caseEvents.occurredAt)),
-    ]);
-    casePublicCode = caseRow?.publicCode ?? null;
-    reporterComments = commentRows;
-  }
-
+  const notice = welfareReportReporterNotice(report.status);
   const locationPoint = readPoint(report);
   const hasLocation =
     report.locationAddress ||
@@ -231,28 +164,13 @@ export default async function WelfareReportDetailPage({
         )}
       </div>
 
-      {/* Integration-pending notice — ONLY while the report is genuinely
-          un-routed ("open"). Showing "aún no se envió" while a funcionario is
-          already triaging/working the case would contradict reality
-          (state-honesty audit) — those statuses get the progress line below
-          instead. On closed / invalid / duplicate neither notice applies
-          (UI-7 B7). */}
-      {isPendingReportStatus(report.status) && (
+      {/* The author's status banner — `welfareReportReporterNotice` decides
+          it (and the API serves the same one): "aún no se envió" only while
+          the report is genuinely un-routed, a progress line while a
+          funcionario works it, nothing once it is closed. */}
+      {notice && (
         <div className="mb-6">
-          <LnCallout tone="warn">
-            Esta denuncia aún no fue enviada a la herramienta gubernamental — la integración con los
-            canales oficiales de la Ley 14.346 está en desarrollo. Tu reporte queda guardado y será
-            enviado cuando la integración esté disponible.
-          </LnCallout>
-        </div>
-      )}
-
-      {/* Honest progress line for triaged/in_progress — the report WAS
-          routed and a funcionario is already working it, which is a
-          materially different (better) state than "not sent yet". */}
-      {isInProgressReportStatus(report.status) && (
-        <div className="mb-6">
-          <LnCallout tone="azul">En revisión por la autoridad.</LnCallout>
+          <LnCallout tone={notice.tone === "warn" ? "warn" : "azul"}>{notice.text}</LnCallout>
         </div>
       )}
 

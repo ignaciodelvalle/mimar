@@ -195,8 +195,12 @@ const ROUTE_GLOB = "app/api/v1/**/route.ts";
  * exact silent loosening this comment exists to name. D4 adds ONE bucket,
  * `api_v1_me_reactivate_ip`. RECOUNTED on this worktree —
  * `Object.keys(API_V1_IP_BUCKET_FAMILIES).length` is 50 — not 39 + 1.
+ *
+ * 50 → 52 with the MIS DENUNCIAS door (M16): `api_v1_me_welfare_reports_read_ip`
+ * and `api_v1_me_welfare_report_detail_ip`. RECOUNTED on this worktree —
+ * `Object.keys(API_V1_IP_BUCKET_FAMILIES).length` is 52.
  */
-const MIN_IP_BUCKETS = 50;
+const MIN_IP_BUCKETS = 52;
 
 /**
  * Collects `enforceRateLimit`-style bucket literals from a route's source and
@@ -572,8 +576,11 @@ function collectUserBucketSites(): IpBucketSite[] {
  *
  * 44 → 45 with the reactivation door (D4): `api_v1_me_reactivate_user`.
  * RECOUNTED with `collectUserBucketSites()`'s regex on this worktree, 45.
+ *
+ * 45 → 47 with the mis denuncias door (M16): `api_v1_me_welfare_reports_read_user`
+ * and `api_v1_me_welfare_report_detail_user`. RECOUNTED with the same regex, 47.
  */
-const MIN_USER_BUCKETS = 45;
+const MIN_USER_BUCKETS = 47;
 
 describe("/api/v1 per-user rate-limit buckets — every call site maps to a declared family", () => {
   const sites = collectUserBucketSites();
@@ -1161,7 +1168,30 @@ describe("/api/v1 rate-limit families — the numbers the derivation committed t
     //                                     17.664
     //
     // and 17.604 + 60 = 17.664 agrees.
-    expect(API_V1_CGNAT_FAMILY_IP_CEILING_PER_MINUTE).toBe(17_664);
+    //
+    // 18.864 WITH THE MIS DENUNCIAS DOOR (`me/welfare-reports` and
+    // `me/welfare-reports/{referenceCode}`, M16). Two routes, both GET-only, so
+    // two READ buckets and no write — the same shape the casos door added: the
+    // author's list and one denuncia are ordinary authenticated reads of what
+    // `/denuncias/mias` already shows them. Hand-summed per family over the map
+    // as this lane leaves it, and NOT read off the `reduce` this assertion
+    // compares against:
+    //
+    //   authenticated-read     25 × 600 = 15.000
+    //   authenticated-write    16 × 120 =  1.920
+    //   account-security        3 ×  60 =    180
+    //   public-reference        1 × 600 =    600
+    //   inbox-state             1 × 240 =    240
+    //   pet-disclosure-write    2 × 180 =    360
+    //   pet-record-write        1 × 240 =    240
+    //   pet-registration        1 × 120 =    120
+    //   media-upload            1 × 144 =    144
+    //   adoption-application    1 ×  60 =     60
+    //                          ── 52 buckets ─────────
+    //                                     18.864
+    //
+    // and 17.664 + 2 × 600 = 18.864 agrees.
+    expect(API_V1_CGNAT_FAMILY_IP_CEILING_PER_MINUTE).toBe(18_864);
   });
 
   it("keeps pet-disclosure-write at N callers on BOTH windows", () => {

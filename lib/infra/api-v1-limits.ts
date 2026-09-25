@@ -985,6 +985,12 @@ export const API_V1_IP_BUCKET_FAMILIES: Readonly<Record<string, ApiV1IpFamily>> 
   api_v1_me_cases_read_ip: "authenticated-read",
   api_v1_me_case_detail_ip: "authenticated-read",
 
+  // Added by M16 with "Mis denuncias" in the native app. Both ordinary
+  // authenticated reads of what `/denuncias/mias` and `/denuncias/{id}` already
+  // show the author — a list and one detail — so both join the read family.
+  api_v1_me_welfare_reports_read_ip: "authenticated-read",
+  api_v1_me_welfare_report_detail_ip: "authenticated-read",
+
   // Push target registration, landed with the native push channel. It BORROWS
   // `authenticated-write` rather than getting a family of its own, and that is
   // a deliberate choice in the conservative direction: the family's ceiling was

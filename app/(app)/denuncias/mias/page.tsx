@@ -6,7 +6,6 @@ import Link from "next/link";
 import { LnButton } from "@/components/ui/Button";
 import { LnCallout } from "@/components/ui/DocElements";
 import { LnEmptyState } from "@/components/ui/EmptyState";
-import { db, welfareReports } from "@/db";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime, pluralizeEs } from "@/lib/utils/format";
 import {
@@ -14,7 +13,7 @@ import {
   welfareReportSeverityCitizenLabel,
   welfareReportStatusLabel,
 } from "@/src/modules/welfare/domain/types";
-import { and, desc, eq } from "drizzle-orm";
+import { listReporterWelfareReports } from "@/src/modules/welfare/infrastructure/reporter-reports-read";
 
 // Status badge class mapping using LN tokens.
 function statusBadgeClass(status: string): string {
@@ -55,12 +54,10 @@ export default async function MisDenunciasPage() {
     );
   }
 
-  const reports = await db
-    .select()
-    .from(welfareReports)
-    .where(and(eq(welfareReports.reporterUserId, user.id)))
-    .orderBy(desc(welfareReports.createdAt))
-    .limit(50);
+  // The same reader `GET /api/v1/me/welfare-reports` runs: one definition of
+  // "your denuncias" (anonymous ones are never linked to an account). The web
+  // shows its first page only, as it always has.
+  const { rows: reports } = await listReporterWelfareReports({ reporterUserId: user.id });
 
   return (
     <div className="mx-auto max-w-2xl px-8 py-7 pb-12">

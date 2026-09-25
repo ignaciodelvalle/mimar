@@ -1017,7 +1017,7 @@ export function listOperatorRouteFiles(): string[] {
 //
 // KNOWN GAP, stated rather than hidden: a FUNCTION-scoped `"use server"` inside
 // a component or page (one occurrence today — app/(app)/denuncias/[id]/page.tsx
-// :164) is also a server action, but it is a closure, not an exported module
+// :103) is also a server action, but it is a closure, not an exported module
 // function, so the `export async function` analysis every rule here performs has
 // nothing to bind to. Covering inline actions needs a different rule shape, not
 // a wider glob.

@@ -191,6 +191,17 @@ export {
   type MyCaseTimelineEntryV1,
 } from "./my-cases.ts";
 export {
+  MY_WELFARE_REPORTS_PAYLOAD_VERSION,
+  MY_WELFARE_REPORTS_STALE_AFTER_MS,
+  MY_WELFARE_REPORT_DETAIL_PAYLOAD_VERSION,
+  MY_WELFARE_REPORT_STATUSES_V1,
+  type MyWelfareReportDetailV1,
+  type MyWelfareReportNoticeV1,
+  type MyWelfareReportRowV1,
+  type MyWelfareReportStatusV1,
+  type MyWelfareReportsV1,
+} from "./my-welfare-reports.ts";
+export {
   MY_PRIVACY_PAYLOAD_VERSION,
   MY_PRIVACY_STALE_AFTER_MS,
   type MySubjectDataExportV1,

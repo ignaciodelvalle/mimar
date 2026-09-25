@@ -1638,7 +1638,10 @@ describe("every app/(app) citizen read of `pets` carries the soft-delete filter 
     expect(rels).toContain("app/(app)/mis-turnos/page.tsx");
     expect(rels).toContain("app/(app)/mis-turnos/[appointmentToken]/page.tsx");
     expect(rels).toContain("app/(app)/cuenta/chapas/page.tsx");
-    expect(rels).toContain("app/(app)/denuncias/[id]/page.tsx");
+    // `denuncias/[id]` IS NO LONGER ONE OF THEM: its subject-pet read moved to
+    // `src/modules/welfare/infrastructure/reporter-reports-read.ts` (M16) so the
+    // bearer door reads it the same way, and the anchor followed it — see "the
+    // welfare reporter reader that left app/(app)" below.
     expect(rels).toContain("app/(app)/mis-mascotas/[publicToken]/asistencia/page.tsx");
     expect(rels).toContain("app/(app)/mis-mascotas/[publicToken]/buscar-hogar/page.tsx");
     expect(rels).toContain("app/(app)/mis-mascotas/[publicToken]/devolucion/page.tsx");
@@ -1683,6 +1686,25 @@ describe("every app/(app) citizen read of `pets` carries the soft-delete filter 
     expect(
       guards,
       `${rel} reads pets without the art. 16 guard — an erased pet's name would render to the applicant, who is a third party`,
+    ).toBeGreaterThanOrEqual(reads);
+  });
+
+  // The welfare reporter reader that left app/(app) (M16, 2026-09-25). The
+  // subject-pet read of `/denuncias/{id}` moved to src/ so that
+  // `GET /api/v1/me/welfare-reports/{code}` and the web page read one query.
+  // The reporter is a live THIRD PARTY to the subject pet's owner, so an erased
+  // pet must read as never registered to them — same pin-by-path reasoning as
+  // the applications reader above.
+  it("keeps the guard on the welfare reporter reader after it moved to src/", () => {
+    const rel = "src/modules/welfare/infrastructure/reporter-reports-read.ts";
+    const source = readFileSync(resolve(ROOT, rel), "utf8");
+    const { reads, guards } = countPetsAccess(source);
+    expect(reads, `${rel} no longer reads pets — this pin is describing nothing`).toBeGreaterThan(
+      0,
+    );
+    expect(
+      guards,
+      `${rel} reads pets without the art. 16 guard — an erased pet's name would render to the reporter, who is a third party`,
     ).toBeGreaterThanOrEqual(reads);
   });
 
