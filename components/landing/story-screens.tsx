@@ -309,8 +309,6 @@ export function EstadoConsole() {
                     <span className="lp-sw" style={{ background: LEGEND_TINT[q] }} /> {label}
                   </span>
                 ))}
-                <span className="flex-1" />
-                <span>actualizado hoy · 07:00</span>
               </div>
             </div>
           </div>
