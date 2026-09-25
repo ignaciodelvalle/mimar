@@ -143,6 +143,7 @@ export const CAPABILITY_PATH_SEGMENTS: readonly string[] = [
   "cola", // /gob|/admin/cola/[publicToken]
   "observaciones", // /gob|/admin/observaciones/[publicToken]
   "casos", // /casos|/gob/casos|/admin/casos/[publicCode]
+  "cases", // /api/v1/me/cases/[publicCode] — the API twin of `casos` (M11)
   "decomisos", // /gob/decomisos/[publicCode]
   "disputas", // /gob/disputas/[disputeToken]
   "investigaciones", // /gob/vigilancia/investigaciones/[caseCode]
