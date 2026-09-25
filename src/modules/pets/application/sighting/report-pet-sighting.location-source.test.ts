@@ -41,6 +41,22 @@ vi.mock("@/lib/domain/location-normalize", () => ({
     .mockResolvedValue({ province: null, locality: null, lat: -34.6, lng: -58.4 }),
 }));
 
+// Stage A of localidades-por-id: the sighting also resolves its own place
+// through the catalogue. This file is about the stored SOURCE, not the place,
+// so the resolver answers "nothing resolved" and never touches the database.
+vi.mock("@/lib/place/reported-place", () => ({
+  resolveMapFormPlace: vi.fn(async () => ({
+    province: null,
+    locality: null,
+    localityId: null,
+    method: "none",
+    unresolvedReason: "none_entered",
+    mismatch: false,
+    entered: { province: null, locality: null, indecId: null },
+    candidateIds: [],
+  })),
+}));
+
 vi.mock("@/lib/domain/location-value", () => ({
   parseLocationFromFormData: vi.fn().mockReturnValue({}),
 }));
