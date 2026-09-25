@@ -32,7 +32,13 @@ export function LandingNav() {
   return (
     <header className={`lp-nav${scrolled ? " scrolled" : ""}`} data-section="landing-nav">
       <div className="lp-nav-in">
-        <a className="lp-brand" href="/#top" aria-label="miMAR — inicio">
+        {/* ONE NAME, FROM WHAT IS ON SCREEN (review L-5, WCAG 2.5.3). This link
+            used to carry aria-label="miMAR — inicio", which REPLACED the
+            visible "miMAR / Mi Mascota Argentina" — so a voice user saying what
+            they see had no match. The name now comes from the wordmark text
+            itself; the mark is decorative (alt="" inside an aria-hidden tile),
+            the same rule AppCitizenMasthead states for its brand link. */}
+        <a className="lp-brand" href="/#top">
           <span className="lp-brand-mark" aria-hidden="true">
             <img src="/logo-mimar-mark.svg" alt="" width={26} height={26} />
           </span>

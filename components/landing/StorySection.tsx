@@ -83,14 +83,20 @@ function CastFila() {
             className="lp-castfila-hand"
             data-tone={a.tone}
             onClick={() => scrollToChapter(a.chapter)}
-            aria-label={`Ir al capítulo: ${a.name}`}
           >
+            {/* Named by its visible text plus a screen-reader-only purpose, not
+                an aria-label: the old label ("Ir al capítulo: …") replaced
+                the visible role and sentence, which axe reports as
+                label-content-name-mismatch (WCAG 2.5.3) — the same audit as the
+                nav's brand link (review L-5). */}
             <span className="lp-role-ic" aria-hidden="true">
               <Icon name={a.icon} size="sm" decorative />
             </span>
             <span>
-              <b>{a.name}</b>
-              <span className="lp-hand-sub">{a.does}</span>
+              {/* The space keeps "Dueño" and its sentence two words in the
+                  computed name; both are display:block, so it never renders. */}
+              <b>{a.name}</b> <span className="lp-hand-sub">{a.does}</span>
+              <span className="sr-only">, ir al capítulo</span>
             </span>
             <span className="lp-ar" aria-hidden="true">
               →

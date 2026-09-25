@@ -204,7 +204,8 @@ const LEGEND_TINT: Record<number, string> = {
   1: "color-mix(in srgb, var(--color-ln-celeste) 28%, transparent)",
   2: "color-mix(in srgb, var(--color-ln-celeste) 48%, transparent)",
   3: "color-mix(in srgb, var(--color-ln-celeste) 70%, transparent)",
-  4: "var(--color-ln-celeste)",
+  // Same fill as .lp-mtile[data-q="4"] in app/landing.css (see its contrast note).
+  4: "color-mix(in srgb, var(--color-ln-celeste) 55%, var(--color-ln-celeste-100))",
 };
 
 export function EstadoConsole() {
