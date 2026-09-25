@@ -41,6 +41,13 @@
 // separate bounded fan-out that is allowed to fail softly, and a JSON field that
 // is present when that fan-out worked and absent when it did not is the exact
 // "a blank section reads as no findings" defect RN-8 #6 closed.
+//
+// D5 — CURSOR PAGINATION, BACKWARD-COMPATIBLE. `?cursor=` is optional; absent
+// or malformed, it decodes to `null` and this is page one, byte-identical to
+// the response before D5. `decodeCursor`/`encodeCursor`
+// (`lib/utils/keyset-pagination.ts`) are the SAME codec `/adoptions` and
+// `/me/notifications` use — one cursor format across every PERF-5 surface,
+// not a fourth one invented here.
 
 import { MY_PETS_PAYLOAD_VERSION, MY_PETS_STALE_AFTER_MS, type MyPetsV1 } from "@dim/contract/api";
 
@@ -54,6 +61,7 @@ import { requireLiveUser } from "@/lib/infra/live-user";
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { petPhotoUrl } from "@/lib/infra/storage";
 import { createClientFromBearer } from "@/lib/supabase/bearer";
+import { decodeCursor, encodeCursor } from "@/lib/utils/keyset-pagination";
 import { listOwnerPets } from "@/src/modules/pets/application/read/list-owner-pets";
 
 export const dynamic = "force-dynamic";
@@ -179,10 +187,15 @@ export async function GET(request: Request) {
     console.error("[api-v1-me-pets] user rate limiter unavailable, failing open:", err);
   }
 
+  // Absent or malformed → `null`, which `listOwnerPets` treats as page one —
+  // the same tolerance `/adoptions`'s `?cursor=` and `/me/notifications`'s
+  // `?cat=` already give a client one release behind.
+  const cursor = decodeCursor(new URL(request.url).searchParams.get("cursor"));
+
   let list: Awaited<ReturnType<typeof listOwnerPets>>;
   try {
     list = await withDbBudgetOrThrow(
-      listOwnerPets({ ownerUserId: live.user.id }),
+      listOwnerPets({ ownerUserId: live.user.id, cursor }),
       LIST_BUDGET_MS,
       "api-v1-me-pets-list",
     );
@@ -218,6 +231,8 @@ export async function GET(request: Request) {
     // Derived, not assumed: a client must not have to know the server's cap to
     // tell a complete list from a capped one.
     truncated: list.rows.length < list.total,
+    // `null` when this page reached the end of the caller's own pets.
+    nextCursor: list.nextCursor ? encodeCursor(list.nextCursor.ts, list.nextCursor.id) : null,
   };
 
   return apiV1Json(payload, { status: 200 });

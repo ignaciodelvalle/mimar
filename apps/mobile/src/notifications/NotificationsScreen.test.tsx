@@ -20,6 +20,7 @@
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { FlatList } from "react-native";
 
 const mockFetch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockSend = jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -95,6 +96,7 @@ function payload(over: Partial<MyNotificationsV1> = {}): MyNotificationsV1 {
     unreadCount: 0,
     total: 0,
     truncated: false,
+    nextCursor: null,
     ...over,
   };
 }
@@ -203,14 +205,66 @@ describe("NotificationsScreen — reading", () => {
     const rendered = screen.getAllByText(/Avistaje de Pampa|Un aviso cualquiera/);
     expect(rendered[0]?.props.children).toBe("Avistaje de Pampa");
   });
+});
 
-  it("says the list is incomplete rather than looking complete", async () => {
+describe("NotificationsScreen — cursor pagination (D5)", () => {
+  it("never shows the retired 'entrá desde la web' copy, even with more pages behind it", async () => {
     mockFetch.mockResolvedValue({
       outcome: "ok",
-      payload: payload({ total: 240, truncated: true, notifications: [aNotification()] }),
+      payload: payload({
+        total: 240,
+        truncated: true,
+        notifications: [aNotification()],
+        nextCursor: "cursor-1",
+      }),
     });
     renderScreen();
-    await waitFor(() => expect(screen.getByText("La lista está incompleta")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Avistaje de Pampa")).toBeTruthy());
+    expect(screen.queryByText("La lista está incompleta")).toBeNull();
+    expect(screen.queryByText(/entrá desde la web/i)).toBeNull();
+  });
+
+  it("appends the next page onto what is on screen, and asks with the right cursor", async () => {
+    mockFetch.mockResolvedValueOnce({
+      outcome: "ok",
+      payload: payload({
+        total: 2,
+        notifications: [aNotification({ id: "n-1", title: "Primera" })],
+        nextCursor: "cursor-1",
+      }),
+    });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText("Primera")).toBeTruthy());
+
+    mockFetch.mockResolvedValueOnce({
+      outcome: "ok",
+      payload: payload({
+        total: 2,
+        notifications: [aNotification({ id: "n-2", title: "Segunda" })],
+        nextCursor: null,
+      }),
+    });
+    const list = screen.UNSAFE_getByType(FlatList);
+    fireEvent(list, "endReached");
+
+    await waitFor(() => expect(screen.getByText("Segunda")).toBeTruthy());
+    // The first row is STILL there — a growing list, not a swap.
+    expect(screen.getByText("Primera")).toBeTruthy();
+    expect(mockFetch).toHaveBeenNthCalledWith(2, {}, null, "cursor-1");
+  });
+
+  it("does nothing on endReached once nextCursor is null — no page to ask for", async () => {
+    mockFetch.mockResolvedValueOnce({
+      outcome: "ok",
+      payload: payload({ notifications: [aNotification()], nextCursor: null }),
+    });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText("Avistaje de Pampa")).toBeTruthy());
+
+    const list = screen.UNSAFE_getByType(FlatList);
+    fireEvent(list, "endReached");
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
 

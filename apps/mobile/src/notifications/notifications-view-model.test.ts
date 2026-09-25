@@ -14,9 +14,10 @@
 //   3. THE EMPTY SENTENCES ARE DIFFERENT. "You have no notifications" and
 //      "nobody has reported seeing your lost dog" are different facts, and the
 //      second is what somebody is on this screen for.
-//   4. THE TRUNCATION IS DECLARED. There is no cursor on this surface and the
-//      web has one; a phone that drew a complete-looking list would be hiding
-//      the gap rather than not having it.
+//   4. D5 — A PAGE APPENDS, IT DOES NOT REPLACE. `appendNotificationsPage`
+//      concatenates the rows and takes every aggregate from the NEW page —
+//      summing `total`/`unreadCount` across pages would double-count what the
+//      first page already reported about the whole inbox.
 
 import {
   type MyNotificationV1,
@@ -26,6 +27,7 @@ import {
 import { describe, expect, it } from "@jest/globals";
 
 import {
+  appendNotificationsPage,
   buildArchive,
   buildMarkAllRead,
   buildMarkRead,
@@ -37,7 +39,6 @@ import {
   notificationsForDisplay,
   rowsOf,
   severityLabel,
-  truncationNote,
 } from "./notifications-view-model";
 
 function aNotification(over: Partial<MyNotificationV1> = {}): MyNotificationV1 {
@@ -67,6 +68,7 @@ function payload(over: Partial<MyNotificationsV1> = {}): MyNotificationsV1 {
     unreadCount: 0,
     total: 0,
     truncated: false,
+    nextCursor: null,
     ...over,
   };
 }
@@ -210,15 +212,6 @@ describe("copy", () => {
     expect(severityLabel("una-severidad-futura")).toBe("Info");
   });
 
-  it("says how many rows are missing, and where the rest are", () => {
-    expect(truncationNote(payload({ truncated: false, total: 3 }))).toBe(null);
-    const note = truncationNote(
-      payload({ truncated: true, total: 240, notifications: [aNotification()] }),
-    );
-    expect(note).toMatch(/1 de 240/);
-    expect(note).toMatch(/web/);
-  });
-
   it("never prints an unreadable date as Invalid Date", () => {
     expect(notificationDateLabel("2026-08-20T10:00:00.000Z")).toMatch(/2026/);
     expect(notificationDateLabel("no es una fecha")).toBe("fecha desconocida");
@@ -244,5 +237,29 @@ describe("the empty state does not say the same thing twice (S-4)", () => {
     expect(emptyBody("health")).toContain("en esta categoría");
     expect(emptyBody("health")).toContain("Las otras pueden tener novedades");
     expect(emptyBody(null)).not.toContain("Las otras");
+  });
+});
+
+describe("appendNotificationsPage — D5, a page appends and does not replace", () => {
+  it("concatenates the rows, first page's then the new one's", () => {
+    const first = payload({ notifications: [aNotification({ id: "n-1" })] });
+    const second = payload({ notifications: [aNotification({ id: "n-2" })] });
+
+    const merged = appendNotificationsPage(first, second);
+
+    expect(merged.notifications.map((n) => n.id)).toEqual(["n-1", "n-2"]);
+  });
+
+  it("takes every aggregate from the NEW page — summing would double-count the whole inbox", () => {
+    const first = payload({ total: 240, unreadCount: 5, nextCursor: "cursor-1" });
+    const second = payload({ total: 240, unreadCount: 5, nextCursor: null });
+
+    const merged = appendNotificationsPage(first, second);
+
+    expect(merged.total).toBe(240);
+    expect(merged.unreadCount).toBe(5);
+    // The SECOND page's cursor wins — it is the one that actually answers
+    // "is there anything past what is now on screen".
+    expect(merged.nextCursor).toBeNull();
   });
 });

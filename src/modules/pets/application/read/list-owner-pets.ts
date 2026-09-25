@@ -31,6 +31,7 @@
 
 import { attachments, db, ownerships, pets } from "@/db";
 import { PET_CARD_PHOTO_SELECT, PET_CARD_SELECT } from "@/lib/infra/pet-projections";
+import { keysetWhere } from "@/lib/utils/keyset-pagination";
 import { likeContains } from "@/lib/utils/like-helpers";
 import { type SQL, and, count, desc, eq, isNull, sql } from "drizzle-orm";
 
@@ -70,6 +71,14 @@ export const OWNER_PET_LIST_LIMIT = 200;
  * load. `pets.id` then `ownerships.id` make the key unique (a person could in
  * principle hold two open roles on one pet), so the page is a function of the
  * data. `__tests__/owner-pet-list-order.test.ts` pins it.
+ *
+ * `petCreatedAt` RIDES OUTSIDE `PET_CARD_SELECT` (D5, cursor pagination) —
+ * every OTHER consumer of that projection has no use for it, and widening a
+ * shared projection for one caller's cursor is how a "card" shape drifts into
+ * carrying columns nothing on a card shows. It is the keyset's first column,
+ * read back so `listOwnerPets` can hand the caller a `nextCursor` built from
+ * the LAST row of the page it actually returned — never from a value the
+ * caller sent back to it.
  */
 function ownerPetRowsQuery(where: SQL | undefined, limit: number) {
   return db
@@ -77,6 +86,7 @@ function ownerPetRowsQuery(where: SQL | undefined, limit: number) {
       pet: PET_CARD_SELECT,
       photo: PET_CARD_PHOTO_SELECT,
       ownershipRole: ownerships.role,
+      petCreatedAt: pets.createdAt,
     })
     .from(pets)
     .innerJoin(ownerships, eq(ownerships.petId, pets.id))
@@ -89,20 +99,33 @@ function ownerPetRowsQuery(where: SQL | undefined, limit: number) {
 /**
  * One row of the caller's list: the card projection (8 columns of the 68 on
  * `pets`), the primary photo's storage path (null when the join found nothing),
- * and the caller's custody role on that pet.
+ * the caller's custody role on that pet, and the raw `created_at` the cursor is
+ * built from.
  */
 export type OwnerPetListRow = Awaited<ReturnType<typeof ownerPetRowsQuery>>[number];
 
+/** A decoded keyset cursor over `(pets.created_at, pets.id)` — see `keyset-pagination.ts`. */
+export type OwnerPetListCursor = { ts: string; id: string };
+
 export type OwnerPetList = {
-  /** At most `OWNER_PET_LIST_LIMIT` rows, newest registration first. */
+  /** At most `limit` rows, newest registration first. */
   rows: OwnerPetListRow[];
   /**
-   * How many pets match, ignoring the cap. Counted under the SAME predicate as
-   * the rows — including the name filter — so "showing N of M" reads honestly
-   * whether or not a search is active. A count over a DIFFERENT predicate is a
-   * notice that lies precisely when someone is searching.
+   * How many pets match, ignoring the cap — the FULL count under the base
+   * predicate, not "how many remain after this cursor". Counted under the SAME
+   * predicate the rows are (MINUS the cursor condition, which narrows a page,
+   * not the set) — including the name filter — so "showing N of M" reads
+   * honestly whether or not a search is active. A count over a DIFFERENT
+   * predicate is a notice that lies precisely when someone is searching.
    */
   total: number;
+  /**
+   * The cursor for the NEXT page, or `null` when this page reached the end of
+   * the result set (not the cap — the actual end). Built from the last row
+   * THIS call returned, per `keyset-pagination.ts`'s contract: the client
+   * never constructs one, only echoes back what the server minted.
+   */
+  nextCursor: OwnerPetListCursor | null;
 };
 
 export type ListOwnerPetsDeps = {
@@ -119,6 +142,24 @@ export type ListOwnerPetsDeps = {
  * makes a completed transfer disappear from the previous holder's list, and it
  * is the only thing that does — so it is not optional, and it is why this
  * predicate is written once.
+ *
+ * D5 — CURSOR PAGINATION. `cursor` narrows the ROWS predicate only; `total` is
+ * still counted under the base predicate (cursor absent), so the "N of M"
+ * figure names the whole set on every page, not a shrinking remainder. Rows are
+ * fetched `limit + 1` deep so a next page can be detected without a second
+ * COUNT — the same trick `listNotificationsForUser` and the adoption catalogue
+ * already use.
+ *
+ * THE CURSOR IS TWO COLUMNS (`created_at`, `pets.id`), NOT THREE. The ORDER BY
+ * keeps `ownerships.id` as a third tiebreak for the rare case of one caller
+ * holding two open ownership rows on the SAME pet — but a keyset predicate
+ * compares row VALUES, and two rows sharing an identical (created_at, pet id)
+ * pair are indistinguishable to it regardless of which ownership row backs
+ * them. The residual: if a page boundary fell exactly between two such
+ * duplicate-pet rows, the second would not reappear on the next page. Accepted
+ * rather than solved — it needs both a genuine tie AND a boundary landing
+ * inside it, on data this rare — over widening `keyset-pagination.ts`'s shared
+ * two-column contract for one caller's edge case.
  */
 export async function listOwnerPets(
   input: {
@@ -126,11 +167,14 @@ export async function listOwnerPets(
     /** Optional case-insensitive name filter. Empty/absent → no filter. */
     query?: string;
     limit?: number;
+    /** A decoded keyset cursor, or `null`/absent for the first page. */
+    cursor?: OwnerPetListCursor | null;
   },
   deps: ListOwnerPetsDeps = { fetchRows: defaultFetchRows, countRows: defaultCountRows },
 ): Promise<OwnerPetList> {
   const trimmedQuery = input.query?.trim() ?? "";
   const limit = input.limit ?? OWNER_PET_LIST_LIMIT;
+  const cursor = input.cursor ?? null;
 
   // Server-side name filter with an explicit ESCAPE clause — parity with
   // lib/infra/omnibox-search.ts. `likeContains()` backslash-escapes % and _ in
@@ -142,15 +186,30 @@ export async function listOwnerPets(
     ? sql`${pets.name} ILIKE ${likeContains(trimmedQuery)} ESCAPE '\\'`
     : undefined;
 
-  const where = and(
+  const baseWhere = and(
     eq(ownerships.ownerUserId, input.ownerUserId),
     isNull(ownerships.endedAt),
     nameFilter,
   );
 
-  const [rows, total] = await Promise.all([deps.fetchRows(where, limit), deps.countRows(where)]);
+  // `keysetWhere` returns `undefined` for a null cursor, and `and(baseWhere,
+  // undefined)` is `baseWhere` itself — so the first-page predicate stays the
+  // SAME object the count runs against, byte-identical to the pre-D5 query.
+  const cursorCondition = keysetWhere(pets.createdAt, pets.id, cursor);
+  const pagedWhere = cursorCondition ? and(baseWhere, cursorCondition) : baseWhere;
 
-  return { rows, total };
+  const [rows, total] = await Promise.all([
+    deps.fetchRows(pagedWhere, limit + 1),
+    deps.countRows(baseWhere),
+  ]);
+
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  const lastRow = page.at(-1);
+  const nextCursor: OwnerPetListCursor | null =
+    hasMore && lastRow ? { ts: lastRow.petCreatedAt.toISOString(), id: lastRow.pet.id } : null;
+
+  return { rows: page, total, nextCursor };
 }
 
 /** Default row fetch — the builder above, awaited. */

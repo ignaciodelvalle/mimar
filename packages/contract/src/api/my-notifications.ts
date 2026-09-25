@@ -220,6 +220,17 @@ export type MyNotificationsV1 = {
    * not have to know the cap to tell a complete list from a capped one.
    */
   truncated: boolean;
+  /**
+   * D5 — BACKWARD-COMPATIBLE ADDITIVE, like `MyPetsV1`'s field of the same
+   * name. Opaque; pass back as `?cursor=` to fetch the next page. Mint it
+   * under the SAME `?cat=` it was issued for — the server applies both
+   * conditions together, so carrying a cursor across a tab switch silently
+   * skips whatever the OTHER tab had already scrolled past, rather than
+   * refusing outright. `null` when this page reached the end of the view. A
+   * client on an older build that has never heard of this field keeps getting
+   * exactly the payload it always did and simply never asks for a second page.
+   */
+  nextCursor: string | null;
 };
 
 /**

@@ -9,9 +9,14 @@
 // IT MIRRORS THE WEB'S `/notificaciones` IN WHAT IT LETS SOMEBODY DO, which is
 // how parity is measured on this programme: the tabs, "marcar todas como
 // leídas", the notification's own CTA, "Ver {nombre}", "marcar como leída",
-// "archivar", the group expander, and the empty state's way out. What it does NOT
-// bring across is stated where it matters rather than left as a silence — see
-// `truncationNote` for the missing pagination.
+// "archivar", the group expander, and the empty state's way out.
+//
+// D5 — REAL PAGINATION, NOT A SENTENCE POINTING AT THE WEB. The list used to
+// cap at one page and say so under a card ("Todavía no hay paginado en la
+// app…"); it is now a `FlatList` (the same move `app/mascotas/index.tsx`
+// made for the same reason — a `ScrollView` cannot grow past what fits, a
+// `FlatList` can), and `onEndReached` asks for the next page whenever
+// `view.nextCursor` says there is one.
 //
 // THE ORDER IS NOT THIS SCREEN'S. `notificationsForDisplay` calls the SAME two
 // functions the web page calls, out of `@dim/contract/notifications`. A list that
@@ -38,12 +43,13 @@ import type {
 } from "@dim/contract/api";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useRef, useState } from "react";
-import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { apiFailureMessage } from "../api/client";
 import { fetchMyNotifications, sendNotificationCommand } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
-import { Body, Card, EmptyState, StaleNotice } from "../ui/components";
+import { Body, EmptyState, Loading, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
 import { Callout, Screen, SecondaryButton, Title } from "../ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../ui/reload-state";
@@ -55,6 +61,7 @@ import { useReconnect } from "../ui/use-reconnect";
 import {
   ALL_CATEGORIES_LABEL,
   type NotificationEntry,
+  appendNotificationsPage,
   buildArchive,
   buildMarkAllRead,
   buildMarkRead,
@@ -66,7 +73,6 @@ import {
   notificationsForDisplay,
   rowsOf,
   severityLabel,
-  truncationNote,
 } from "./notifications-view-model";
 
 /**
@@ -151,6 +157,38 @@ export function NotificationsScreen({
     [],
   );
 
+  // D5 — one page beyond the first, appended. `loadingMoreRef` (not state)
+  // guards against `onEndReached` firing more than once for the same page —
+  // FlatList can call it repeatedly while the list settles. `generation` is
+  // the SAME race guard `load` already uses, and `current.category === cat`
+  // is a second belt: a tab switch already bumps `generation`, but checking
+  // the category too is what keeps a slow "more" request from ever merging
+  // into a DIFFERENT tab's rows even in a reordering `generation` alone would
+  // not catch.
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadingMoreRef = useRef(false);
+  const loadMore = useCallback(() => {
+    if (state.phase !== "ready") return;
+    const cursor = state.view.nextCursor;
+    if (!cursor || loadingMoreRef.current) return;
+    const cat = state.category;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    const mine = generation.current;
+    void (async () => {
+      const result = await fetchMyNotifications(sessionPort, cat, cursor);
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+      if (mine !== generation.current) return;
+      if (result.outcome !== "ok") return;
+      setState((current) =>
+        current.phase === "ready" && current.category === cat
+          ? { ...loaded(appendNotificationsPage(current.view, result.payload)), category: cat }
+          : current,
+      );
+    })();
+  }, [state]);
+
   // ON FOCUS, NOT ON MOUNT (NAV-3, the fix `TransfersScreen` and `TurnosScreen`
   // already carry). Every row here leads somewhere that CHANGES the row: opening
   // a transfer proposal, accepting a caretaker invitation. Coming back does not
@@ -226,98 +264,115 @@ export function NotificationsScreen({
   }
 
   const view = state.view;
-  const entries = notificationsForDisplay(view);
-  const truncation = truncationNote(view);
+  // D5 — nothing while a NEW category is loading: the skeleton is drawn from
+  // `ListEmptyComponent` below, and rendering the PREVIOUS tab's rows behind
+  // it (FlatList's `data`) would be exactly the F4 mislabelling this screen's
+  // own header already argues against.
+  const entries = listReloading ? [] : notificationsForDisplay(view);
 
   return (
-    <Screen
-      refreshControl={
-        <RefreshControl
-          colors={[COLORS.accent]}
-          onRefresh={() => void load(category, "refresh")}
-          refreshing={refreshing}
-          tintColor={COLORS.accent}
-        />
-      }
-    >
-      <View style={styles.header}>
-        <Title>Notificaciones</Title>
-        <Body>{inboxSummary(view)}</Body>
-      </View>
-
-      {/* The tabs. Only categories that HAVE rows are drawn — an empty tab is
-          furniture, and the web hides it too. The counts are the whole inbox's,
-          so the bar does not move when a filter is on. */}
-      {view.categories.length > 0 && (
-        <View style={styles.tabs} accessibilityRole="radiogroup">
-          <CategoryChip
-            label={ALL_CATEGORIES_LABEL}
-            count={null}
-            active={category === null}
-            onPress={() => setCategory(null)}
-          />
-          {view.categories.map(({ category: value, count }) => (
-            <CategoryChip
-              key={value}
-              label={categoryLabel(value)}
-              count={count}
-              active={category === value}
-              onPress={() => setCategory(value)}
-            />
-          ))}
-        </View>
-      )}
-
-      {view.unreadCount > 0 && (
-        <SecondaryButton
-          label="Marcar todas como leídas"
-          accessibilityHint="Marca como leída toda la bandeja, no solo la pestaña que estás viendo."
-          disabled={busy}
-          onPress={() => void run(buildMarkAllRead())}
-        />
-      )}
-
-      {actionError !== null && (
-        <Callout tone="err">
-          <Body>{actionError}</Body>
-        </Callout>
-      )}
-
-      {/* The failed RE-read, over the rows it could not replace (S-2). */}
-      {state.staleFailure !== null && (
-        <StaleNotice message={state.staleFailure} onRetry={() => void load(category, "refresh")} />
-      )}
-
-      {listReloading ? (
-        <ListSkeleton rows={4} label="Cargando notificaciones…" />
-      ) : entries.length === 0 ? (
-        <EmptyState
-          headline={emptyTitle(category)}
-          body={emptyBody(category)}
-          // Passive surface — nothing to "create" here, but a dead end is still a
-          // dead end. Point the owner back at their animals.
-          actionLabel="Ver mis mascotas"
-          onAction={onOpenPets}
-        />
-      ) : (
-        entries.map((entry) => (
+    <SafeAreaView style={styles.screen} edges={["bottom"]}>
+      <FlatList
+        data={entries}
+        keyExtractor={(entry) => rowsOf(entry)[0]?.id ?? "sin-id"}
+        renderItem={({ item }) => (
           <NotificationEntryCard
-            key={rowsOf(entry)[0]?.id}
-            entry={entry}
+            entry={item}
             busy={busy}
             onOpenRoute={onOpenRoute}
             onMarkRead={(ids) => void run(buildMarkRead(ids))}
             onArchive={(id) => void run(buildArchive(id))}
           />
-        ))
-      )}
+        )}
+        contentContainerStyle={styles.listContent}
+        // Native-feel audit (M10) — this list does not go through `Screen`
+        // (a `FlatList` cannot nest inside its `ScrollView`), so the same two
+        // props `Screen` sets are set here directly instead of this being the
+        // one scroll container in the app without them.
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            colors={[COLORS.accent]}
+            onRefresh={() => void load(category, "refresh")}
+            refreshing={refreshing}
+            tintColor={COLORS.accent}
+          />
+        }
+        // D5 — a no-op once `view.nextCursor` is `null`; see `loadMore`.
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        ListHeaderComponent={
+          <View style={styles.headerGap}>
+            <View style={styles.header}>
+              <Title>Notificaciones</Title>
+              <Body>{inboxSummary(view)}</Body>
+            </View>
 
-      {truncation !== null && (
-        <Card title="La lista está incompleta">
-          <Body>{truncation}</Body>
-        </Card>
-      )}
-    </Screen>
+            {/* The tabs. Only categories that HAVE rows are drawn — an empty tab
+                is furniture, and the web hides it too. The counts are the whole
+                inbox's, so the bar does not move when a filter is on. */}
+            {view.categories.length > 0 && (
+              <View style={styles.tabs} accessibilityRole="radiogroup">
+                <CategoryChip
+                  label={ALL_CATEGORIES_LABEL}
+                  count={null}
+                  active={category === null}
+                  onPress={() => setCategory(null)}
+                />
+                {view.categories.map(({ category: value, count }) => (
+                  <CategoryChip
+                    key={value}
+                    label={categoryLabel(value)}
+                    count={count}
+                    active={category === value}
+                    onPress={() => setCategory(value)}
+                  />
+                ))}
+              </View>
+            )}
+
+            {view.unreadCount > 0 && (
+              <SecondaryButton
+                label="Marcar todas como leídas"
+                accessibilityHint="Marca como leída toda la bandeja, no solo la pestaña que estás viendo."
+                disabled={busy}
+                onPress={() => void run(buildMarkAllRead())}
+              />
+            )}
+
+            {actionError !== null && (
+              <Callout tone="err">
+                <Body>{actionError}</Body>
+              </Callout>
+            )}
+
+            {/* The failed RE-read, over the rows it could not replace (S-2). */}
+            {state.staleFailure !== null && (
+              <StaleNotice
+                message={state.staleFailure}
+                onRetry={() => void load(category, "refresh")}
+              />
+            )}
+          </View>
+        }
+        ListEmptyComponent={
+          listReloading ? (
+            <ListSkeleton rows={4} label="Cargando notificaciones…" />
+          ) : (
+            <EmptyState
+              headline={emptyTitle(category)}
+              body={emptyBody(category)}
+              // Passive surface — nothing to "create" here, but a dead end is
+              // still a dead end. Point the owner back at their animals.
+              actionLabel="Ver mis mascotas"
+              onAction={onOpenPets}
+            />
+          )
+        }
+        ListFooterComponent={loadingMore ? <Loading label="Cargando más notificaciones…" /> : null}
+      />
+    </SafeAreaView>
   );
 }
 
@@ -545,6 +600,12 @@ function severityTone(severity: string) {
 }
 
 const styles = StyleSheet.create({
+  // D5 — mirrors `Screen`'s own ground colour and scroll padding/gap
+  // (`app/mascotas/index.tsx`'s `styles.screen`/`listContent`), so this list
+  // reads identically to the `Screen`-based loading/failed arms above it.
+  screen: { flex: 1, backgroundColor: COLORS.canvas },
+  listContent: { padding: SPACE.xl2, gap: SPACE.lg },
+  headerGap: { gap: SPACE.lg },
   header: { gap: SPACE.xs },
   tabs: { flexDirection: "row", flexWrap: "wrap", gap: SPACE.xs },
   chip: {

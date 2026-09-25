@@ -6,13 +6,12 @@
 //               the right to make it. That confusion is the single most likely
 //               way this screen could lie, because both states draw nothing.
 //   empty     — an invitation, not a statement of absence.
-//   loaded    — the pets, plus an honest note when the server TRUNCATED the list.
+//   loaded    — the pets, growing on its own as the list scrolls (D5).
 //
-// `truncated` DESERVES ITS OWN NOTE. The payload carries `total` and a boolean
-// saying the array is shorter than it; a client that ignores both shows a
-// complete-looking list that is not complete. There is no pagination in v1, so
-// the honest answer is to say how many are missing and where to see them, not to
-// pretend the page is the set.
+// `truncated`/`total` STILL RIDE THE PAYLOAD (D5 kept them, additive), but this
+// screen no longer reads them to draw a "no hay paginado, entrá desde la web"
+// notice — `nextCursor` is the authoritative signal now: non-null means
+// `onEndReached` has somewhere to go, and the list simply keeps growing.
 //
 // ONE READ PER MOUNT, PLUS PULL-TO-REFRESH, PLUS ONE REFETCH ON FOCUS AFTER
 // THE FIRST (see the `mounted` ref below — the first focus coincides with the
@@ -64,7 +63,7 @@ import {
   useBiteDraftBanner,
 } from "../../src/pets/use-bite-draft-banner";
 import { DestinationsFooter } from "../../src/ui/TopLevelNavMenu";
-import { Body, Card, EmptyState, ErrorNotice, Loading, StaleNotice } from "../../src/ui/components";
+import { EmptyState, ErrorNotice, Loading, StaleNotice } from "../../src/ui/components";
 import { PrimaryButton, Screen, pullToRefresh } from "../../src/ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../../src/ui/reload-state";
 import { ROUTES, credentialRoute, recordEventRoute } from "../../src/ui/routes";
@@ -102,6 +101,41 @@ export default function MisMascotasScreen() {
       );
     setRefreshing(false);
   }, []);
+
+  // D5 — one page beyond the first, appended rather than replacing what is on
+  // screen. `loadingMoreRef` (not state) guards against `onEndReached` firing
+  // more than once for the same page — FlatList can call it repeatedly while
+  // the list settles near the bottom, before a state update has a chance to
+  // disable it. `generation` is the SAME race guard `load` already uses: a
+  // pull-to-refresh landing while a "more" request is in flight must win, and
+  // checking it before applying the appended page is what makes that so.
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadingMoreRef = useRef(false);
+  const loadMore = useCallback(() => {
+    // `!cursor` rather than `=== null`: a fixture or an older cached payload
+    // that never carried `nextCursor` at all reads as `undefined`, and that
+    // must stop here exactly like an explicit `null` does — not fall through
+    // and re-fetch page one under `onEndReached`.
+    const cursor = state.phase === "ready" ? state.view.nextCursor : null;
+    if (!cursor || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    const mine = generation.current;
+    void (async () => {
+      const result = await fetchMyPets(sessionPort, cursor);
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+      // A refresh or a fresh initial read superseded this request — its own
+      // page already replaced whatever this one would have appended to.
+      if (mine !== generation.current) return;
+      if (result.outcome !== "ok") return;
+      setState((current) =>
+        current.phase === "ready"
+          ? loaded({ ...result.payload, pets: [...current.view.pets, ...result.payload.pets] })
+          : current,
+      );
+    })();
+  }, [state]);
 
   useEffect(() => {
     void load("initial");
@@ -205,10 +239,12 @@ export default function MisMascotasScreen() {
       biteDraft={biteDraft}
       openCases={openCases}
       refreshing={refreshing}
+      loadingMore={loadingMore}
       onRefresh={() => {
         void load("refresh");
         void refreshCases();
       }}
+      onEndReached={loadMore}
       onOpen={handleOpenPet}
       onRegister={handleRegister}
       onOpenBiteDraft={handleOpenBiteDraft}
@@ -228,7 +264,9 @@ function PetListScreen({
   biteDraft,
   openCases,
   refreshing,
+  loadingMore,
   onRefresh,
+  onEndReached,
   onOpen,
   onRegister,
   onOpenBiteDraft,
@@ -240,14 +278,18 @@ function PetListScreen({
   biteDraft: BiteDraftInfo | null;
   openCases: MyCasesV1 | null;
   refreshing: boolean;
+  /** D5 — a "more" request is in flight; drives the footer spinner. */
+  loadingMore: boolean;
   onRefresh: () => void;
+  /** D5 — a no-op when `view.nextCursor` is already `null`. */
+  onEndReached: () => void;
   onOpen: (publicToken: string) => void;
   onRegister: () => void;
   onOpenBiteDraft: (publicToken: string) => void;
   onOpenCaseRoute: (route: string) => void;
   onOpenCases: () => void;
 }) {
-  const { pets, total, truncated } = view;
+  const { pets } = view;
 
   return (
     <SafeAreaView style={styles.screen} edges={["bottom"]}>
@@ -266,6 +308,13 @@ function PetListScreen({
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
         refreshControl={pullToRefresh(onRefresh, refreshing)}
+        // D5 — 0.5: fire while the list still has about half a screen of
+        // unseen rows below, so the next page is usually in hand before
+        // anyone reaches the bottom. `onEndReached` itself is idempotent
+        // (`loadMore` no-ops without a `nextCursor` or while one is already
+        // in flight), so a second call before the first settles costs nothing.
+        onEndReached={onEndReached}
+        onEndReachedThreshold={0.5}
         ListHeaderComponent={
           <ListHeader
             staleFailure={staleFailure}
@@ -286,13 +335,7 @@ function PetListScreen({
           />
         }
         ListFooterComponent={
-          <ListFooter
-            hasPets={pets.length > 0}
-            onRegister={onRegister}
-            total={total}
-            truncated={truncated}
-            visibleCount={pets.length}
-          />
+          <ListFooter hasPets={pets.length > 0} onRegister={onRegister} loadingMore={loadingMore} />
         }
         // LOW-END ANDROID TUNING (M3 / R-1, aimed at the J7's 2 GB). A smaller
         // initial window means less work before the first frame; a smaller
@@ -351,31 +394,27 @@ function ListHeader({
  * Everything the old `ListBody` rendered AFTER the pets themselves, now the
  * `FlatList`'s `ListFooterComponent` so it renders once, however many rows are
  * mounted, instead of once per row the way an item inside `data` would.
+ *
+ * D5 — the "La lista está incompleta … entrá desde la web" card is GONE. It
+ * existed because there was nowhere else to go for the rest of the list;
+ * `onEndReached` is that somewhere now, and `loadingMore` is this footer's own
+ * small spinner while the next page is in flight — the only thing left to say
+ * about pagination that a growing list does not already say by growing.
  */
 function ListFooter({
   hasPets,
   onRegister,
-  total,
-  truncated,
-  visibleCount,
+  loadingMore,
 }: {
   hasPets: boolean;
   onRegister: () => void;
-  total: number;
-  truncated: boolean;
-  visibleCount: number;
+  loadingMore: boolean;
 }) {
   return (
     <View style={styles.footerGap}>
       {hasPets ? (
         <>
-          {truncated ? (
-            <Card title="La lista está incompleta">
-              <Body>
-                {`Estamos mostrando ${visibleCount} de ${total}. Todavía no hay paginado en la app: para ver el resto entrá desde la web.`}
-              </Body>
-            </Card>
-          ) : null}
+          {loadingMore ? <Loading label="Cargando más mascotas…" /> : null}
           <PrimaryButton label="Registrar otra mascota" onPress={onRegister} />
         </>
       ) : null}

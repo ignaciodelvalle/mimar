@@ -31,11 +31,13 @@ const control = vi.hoisted(() => ({
   live: null as null | (() => unknown),
   limiterThrows: null as null | ((endpoint: string) => void),
   limits: [] as Array<{ endpoint: string; identifier: string }>,
-  list: null as null | (() => unknown),
+  list: null as null | ((input: unknown) => unknown),
   counts: null as null | (() => unknown),
   unread: null as null | (() => unknown),
   writes: [] as Array<{ fn: string; args: unknown[] }>,
   writeResult: { changed: 0 } as { changed: number },
+  /** D5 — what the route actually handed `listNotificationsForUser`. */
+  lastListInput: null as unknown,
 }));
 
 vi.mock("@/lib/infra/live-user", async (importOriginal) => {
@@ -69,8 +71,10 @@ vi.mock(
       >();
     return {
       ...actual,
-      listNotificationsForUser: async () =>
-        control.list ? control.list() : { rows: [], hasMore: false },
+      listNotificationsForUser: async (input: unknown) => {
+        control.lastListInput = input;
+        return control.list ? control.list(input) : { rows: [], hasMore: false };
+      },
     };
   },
 );
@@ -176,6 +180,7 @@ beforeEach(() => {
   control.unread = null;
   control.writes = [];
   control.writeResult = { changed: 0 };
+  control.lastListInput = null;
 });
 
 // ---------------------------------------------------------------------------
@@ -609,5 +614,57 @@ describe("/api/v1/me/notifications — rate limiting", () => {
     control.live = () => ({ ok: false, reason: "NO_SESSION" });
     await POST(postReq({ command: "mark_all_read" }));
     expect(control.limits.map((l) => l.endpoint)).toEqual(["api_v1_me_notifications_write_ip"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D5 — cursor pagination, backward-compatible
+// ---------------------------------------------------------------------------
+
+describe("GET /api/v1/me/notifications — cursor pagination (D5)", () => {
+  it("decodes NO cursor to null — an older client's request is unchanged", async () => {
+    await GET(req());
+    expect(control.lastListInput).toMatchObject({ cursor: null });
+  });
+
+  it("ignores a malformed ?cursor= rather than 400ing — same tolerance as ?cat=", async () => {
+    await GET(
+      req({ url: "http://localhost:3000/api/v1/me/notifications?cursor=not-a-real-cursor" }),
+    );
+    expect(control.lastListInput).toMatchObject({ cursor: null });
+  });
+
+  it("decodes a well-formed ?cursor= and hands the pair to listNotificationsForUser", async () => {
+    const { encodeCursor } = await import("@/lib/utils/keyset-pagination");
+    const cursor = encodeCursor(new Date("2026-08-19T00:00:00.000Z"), NOTIF_ID);
+
+    await GET(
+      req({
+        url: `http://localhost:3000/api/v1/me/notifications?cursor=${encodeURIComponent(cursor)}`,
+      }),
+    );
+
+    expect(control.lastListInput).toMatchObject({
+      cursor: { ts: "2026-08-19T00:00:00.000Z", id: NOTIF_ID },
+    });
+  });
+
+  it("carries nextCursor forward, opaque, when the door says there is another page", async () => {
+    control.list = () => ({ rows: [row()], hasMore: true });
+
+    const body = (await (await GET(req())).json()) as Record<string, unknown>;
+
+    expect(typeof body.nextCursor).toBe("string");
+    const { decodeCursor } = await import("@/lib/utils/keyset-pagination");
+    expect(decodeCursor(body.nextCursor as string)).toEqual({
+      ts: "2026-08-20T10:00:00.000Z",
+      id: NOTIF_ID,
+    });
+  });
+
+  it("reports nextCursor: null when the door found no next page", async () => {
+    control.list = () => ({ rows: [row()], hasMore: false });
+    const body = (await (await GET(req())).json()) as Record<string, unknown>;
+    expect(body.nextCursor).toBeNull();
   });
 });

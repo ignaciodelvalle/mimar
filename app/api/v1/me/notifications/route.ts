@@ -54,6 +54,7 @@ import { type LiveUserFailureReason, requireLiveUser } from "@/lib/infra/live-us
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { reportError } from "@/lib/infra/report-error";
 import { createClientFromBearer } from "@/lib/supabase/bearer";
+import { decodeCursor, encodeCursor } from "@/lib/utils/keyset-pagination";
 
 import { readInbox, runNotificationCommand, unavailable } from "./commands";
 import { buildMyNotificationsV1 } from "./payload";
@@ -129,9 +130,17 @@ export async function GET(request: Request) {
     return apiV1Error("rate_limited", 429);
   }
 
+  // D5 — absent or malformed → null, which `readInbox` treats as page one,
+  // the same tolerance `?cat=` already gives a client one release behind.
+  const cursor = decodeCursor(new URL(request.url).searchParams.get("cursor"));
+
   let inbox: Awaited<ReturnType<typeof readInbox>>;
   try {
-    inbox = await readInbox({ userId: live.user.id, category: categoryParam(request.url) });
+    inbox = await readInbox({
+      userId: live.user.id,
+      category: categoryParam(request.url),
+      cursor,
+    });
   } catch (err) {
     // NOT an empty inbox. A read that failed and a person with nothing waiting
     // are different facts, and a client that rendered "tu bandeja está vacía"
@@ -147,6 +156,7 @@ export async function GET(request: Request) {
       countsByCategory: inbox.countsByCategory,
       unreadCount: inbox.unreadCount,
       total: inbox.total,
+      nextCursor: inbox.nextCursor ? encodeCursor(inbox.nextCursor.ts, inbox.nextCursor.id) : null,
     }),
     { status: 200 },
   );

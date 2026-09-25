@@ -33,10 +33,10 @@ function compile(predicate: SQL | undefined): { sql: string; params: unknown[] }
   return { sql, params };
 }
 
-function fakeRow(name: string): OwnerPetListRow {
+function fakeRow(name: string, opts: { id?: string; createdAt?: Date } = {}): OwnerPetListRow {
   return {
     pet: {
-      id: "22222222-2222-4222-8222-222222222222",
+      id: opts.id ?? "22222222-2222-4222-8222-222222222222",
       name,
       status: "active",
       species: "dog",
@@ -47,6 +47,7 @@ function fakeRow(name: string): OwnerPetListRow {
     },
     photo: null,
     ownershipRole: "owner",
+    petCreatedAt: opts.createdAt ?? new Date("2026-01-01T00:00:00.000Z"),
   } as OwnerPetListRow;
 }
 
@@ -74,16 +75,18 @@ describe("listOwnerPets", () => {
     expect(result.total).toBe(1);
   });
 
-  it("applies the door's cap when the caller names none", async () => {
+  it("applies the door's cap when the caller names none — fetching one extra row for D5's hasMore", async () => {
     const deps = harness([], 0);
     await listOwnerPets({ ownerUserId: OWNER }, deps);
-    expect(deps.fetchRows).toHaveBeenCalledWith(expect.anything(), OWNER_PET_LIST_LIMIT);
+    // `limit + 1`: the extra row is how `nextCursor` is derived without a
+    // second COUNT — see the docblock on `listOwnerPets`.
+    expect(deps.fetchRows).toHaveBeenCalledWith(expect.anything(), OWNER_PET_LIST_LIMIT + 1);
   });
 
   it("lets a caller narrow the cap — the web index passes its own", async () => {
     const deps = harness([], 0);
     await listOwnerPets({ ownerUserId: OWNER, limit: 5 }, deps);
-    expect(deps.fetchRows).toHaveBeenCalledWith(expect.anything(), 5);
+    expect(deps.fetchRows).toHaveBeenCalledWith(expect.anything(), 6);
   });
 
   it("counts under the SAME predicate the rows were fetched with", async () => {
@@ -163,5 +166,75 @@ describe("listOwnerPets", () => {
     // The count STARTED before the rows finished. If they were sequential the
     // rows promise would never be released and this would hang.
     expect(order).toEqual(["rows:start", "count:start", "rows:end"]);
+  });
+
+  describe("D5 — cursor pagination", () => {
+    it("answers nextCursor: null when the page did not fill past the cap", async () => {
+      const deps = harness([fakeRow("Pampa")], 1);
+      const result = await listOwnerPets({ ownerUserId: OWNER, limit: 5 }, deps);
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it("builds nextCursor from the LAST row of the page, when one more exists", async () => {
+      const rows = [
+        fakeRow("Uno", {
+          id: "11111111-1111-4111-8111-000000000001",
+          createdAt: new Date("2026-01-03"),
+        }),
+        fakeRow("Dos", {
+          id: "11111111-1111-4111-8111-000000000002",
+          createdAt: new Date("2026-01-02"),
+        }),
+        // The extra row past `limit` — proves the page is SLICED to `limit`,
+        // not returned whole with the cap ignored.
+        fakeRow("Tres", {
+          id: "11111111-1111-4111-8111-000000000003",
+          createdAt: new Date("2026-01-01"),
+        }),
+      ];
+      const deps = harness(rows, 3);
+
+      const result = await listOwnerPets({ ownerUserId: OWNER, limit: 2 }, deps);
+
+      expect(result.rows).toHaveLength(2);
+      expect(result.rows.map((r) => r.pet.name)).toEqual(["Uno", "Dos"]);
+      expect(result.nextCursor).toEqual({
+        ts: "2026-01-02T00:00:00.000Z",
+        id: "11111111-1111-4111-8111-000000000002",
+      });
+    });
+
+    it("never re-wraps the base predicate when there is no cursor — the count stays comparable", async () => {
+      // The property `owner-pet-list-order.test.ts`'s sibling assertion above
+      // depends on: no cursor means the rows predicate and the count predicate
+      // are the SAME object, not two `and()` calls that happen to compile to
+      // the same SQL.
+      const deps = harness([], 0);
+      await listOwnerPets({ ownerUserId: OWNER }, deps);
+      const rowsPredicate = deps.fetchRows.mock.calls[0][0];
+      const countPredicate = deps.countRows.mock.calls[0][0];
+      expect(countPredicate).toBe(rowsPredicate);
+    });
+
+    it("narrows the ROWS predicate with the cursor but leaves the COUNT predicate alone", async () => {
+      // `total` must keep naming the WHOLE set on every page, not "what is left
+      // after this cursor" — a shrinking total on page 2 would make "showing N
+      // of M" lie about M.
+      const deps = harness([], 0);
+      await listOwnerPets(
+        {
+          ownerUserId: OWNER,
+          cursor: { ts: "2026-01-02T00:00:00.000Z", id: "11111111-1111-4111-8111-000000000002" },
+        },
+        deps,
+      );
+      const rowsPredicate = deps.fetchRows.mock.calls[0][0];
+      const countPredicate = deps.countRows.mock.calls[0][0];
+      expect(countPredicate).not.toBe(rowsPredicate);
+      const rowsSql = compile(rowsPredicate).sql;
+      const countSql = compile(countPredicate).sql;
+      expect(rowsSql).not.toBe(countSql);
+      expect(rowsSql.length).toBeGreaterThan(countSql.length);
+    });
   });
 });

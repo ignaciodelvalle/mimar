@@ -190,16 +190,17 @@ export function emptyBody(category: NotificationCategoryV1 | null): string {
 }
 
 /**
- * The note under a capped list.
- *
- * SAYS HOW MANY ARE MISSING AND WHERE THEY ARE. There is no cursor on this
- * surface and the web has one, so a phone that drew a complete-looking list would
- * be hiding the shortfall rather than having none — the shape `MyPetsV1` settled
- * on for the same gap.
+ * D5 — one page appended onto what is already on screen. `notifications` is
+ * concatenated; every aggregate (`categories`, `unreadCount`, `total`,
+ * `truncated`, `nextCursor`) comes from the NEW page, because those describe
+ * the whole inbox (or whole category), not this page's own slice — summing
+ * them across pages would double-count what the first page already reported.
  */
-export function truncationNote(payload: MyNotificationsV1): string | null {
-  if (!payload.truncated) return null;
-  return `Estamos mostrando ${payload.notifications.length} de ${payload.total}. Todavía no hay paginado en la app: para ver el resto entrá desde la web.`;
+export function appendNotificationsPage(
+  current: MyNotificationsV1,
+  next: MyNotificationsV1,
+): MyNotificationsV1 {
+  return { ...next, notifications: [...current.notifications, ...next.notifications] };
 }
 
 // ---------------------------------------------------------------------------

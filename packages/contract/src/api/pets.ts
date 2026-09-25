@@ -141,6 +141,13 @@ export type MyPetsV1Item = {
  * 200 rows and says so on screen, and a native client that shows 200 of 340 pets
  * with no notice is worse than one that shows a notice. `truncated` is
  * `pets.length < total`, precomputed so a client does not have to know the cap.
+ *
+ * `nextCursor` (D5) IS BACKWARD-COMPATIBLE ADDITIVE, not a replacement for the
+ * pair above. A client on an older build that has never heard of it keeps
+ * getting the exact payload it always did — one page, `total`, `truncated` —
+ * and simply never asks for a second one. `nextCursor: null` means this page
+ * reached the end of the caller's OWN pets; it says nothing about `truncated`,
+ * which is still about the single-page cap a client that ignores cursors sees.
  */
 export type MyPetsV1 = {
   payloadVersion: typeof MY_PETS_PAYLOAD_VERSION;
@@ -153,4 +160,11 @@ export type MyPetsV1 = {
   total: number;
   /** True when the server returned fewer rows than `total`. */
   truncated: boolean;
+  /**
+   * Opaque. Pass back as `?cursor=` to fetch the next page; `null` when there
+   * is no next page. A client must never construct or parse this string —
+   * `encodeCursor`/`decodeCursor` (`lib/utils/keyset-pagination.ts`) are the
+   * server's own codec and the only thing that may change its shape.
+   */
+  nextCursor: string | null;
 };

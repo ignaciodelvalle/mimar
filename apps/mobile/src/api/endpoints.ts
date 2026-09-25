@@ -319,10 +319,22 @@ export function completeIdentity(
   );
 }
 
-/** `GET /me/pets` — the owner's list, possibly truncated. */
-export function fetchMyPets(session: SessionPort): Promise<ApiResult<MyPetsV1>> {
+/**
+ * `GET /me/pets` — the owner's list, possibly truncated.
+ *
+ * `cursor` (D5) IS OPAQUE AND OPTIONAL, same rule as `fetchMyNotifications`'s
+ * `cat`: omit it for page one, and pass back exactly the `nextCursor` string
+ * the previous page returned — never one this app constructs. A build that
+ * predates D5 simply never sends it and keeps seeing one page, `total`,
+ * `truncated`, same as always.
+ */
+export function fetchMyPets(
+  session: SessionPort,
+  cursor?: string | null,
+): Promise<ApiResult<MyPetsV1>> {
+  const suffix = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
   return apiRequest<MyPetsV1>(
-    { path: "/api/v1/me/pets", expectedPayloadVersion: MY_PETS_PAYLOAD_VERSION },
+    { path: `/api/v1/me/pets${suffix}`, expectedPayloadVersion: MY_PETS_PAYLOAD_VERSION },
     session,
   );
 }
@@ -1226,12 +1238,21 @@ export function sendPetClaimCommand(
  *
  * `cat` IS THE WEB'S OWN PARAMETER and an unknown value falls back to the whole
  * inbox rather than erroring — a filter is a view, not an assertion.
+ *
+ * `cursor` (D5) IS OPAQUE AND OPTIONAL, echoing exactly the `nextCursor` the
+ * previous call for this SAME `category` returned — see the contract's own
+ * note on why a cursor minted under one tab and replayed under another still
+ * answers (both conditions apply together) rather than refusing.
  */
 export function fetchMyNotifications(
   session: SessionPort,
   category?: string | null,
+  cursor?: string | null,
 ): Promise<ApiResult<MyNotificationsV1>> {
-  const suffix = category ? `?cat=${encodeURIComponent(category)}` : "";
+  const params = new URLSearchParams();
+  if (category) params.set("cat", category);
+  if (cursor) params.set("cursor", cursor);
+  const suffix = params.size > 0 ? `?${params.toString()}` : "";
   return apiRequest<MyNotificationsV1>(
     {
       path: `/api/v1/me/notifications${suffix}`,

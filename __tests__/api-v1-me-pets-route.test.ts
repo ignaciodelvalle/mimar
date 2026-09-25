@@ -30,7 +30,9 @@ const control = vi.hoisted(() => ({
   limiterThrows: null as null | (() => never),
   limits: [] as Array<{ endpoint: string; identifier: string }>,
   /** When set, replaces the door's answer; it may also throw. */
-  list: null as null | (() => unknown),
+  list: null as null | ((input: unknown) => unknown),
+  /** D5 — what the route actually handed `listOwnerPets`, most recent call. */
+  lastListInput: null as unknown,
 }));
 
 vi.mock("@/lib/infra/live-user", async (importOriginal) => {
@@ -60,7 +62,10 @@ vi.mock("@/src/modules/pets/application/read/list-owner-pets", async (importOrig
     await importOriginal<typeof import("@/src/modules/pets/application/read/list-owner-pets")>();
   return {
     ...actual,
-    listOwnerPets: async () => (control.list ? control.list() : { rows: [], total: 0 }),
+    listOwnerPets: async (input: unknown) => {
+      control.lastListInput = input;
+      return control.list ? control.list(input) : { rows: [], total: 0, nextCursor: null };
+    },
   };
 });
 
@@ -90,11 +95,14 @@ function row(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function req(authorization?: string | null) {
+function req(authorization?: string | null, query?: string) {
   const headers: Record<string, string> = { "x-real-ip": "203.0.113.22" };
   const value = authorization === undefined ? "Bearer test-token" : authorization;
   if (value) headers.authorization = value;
-  return new Request("http://localhost:3000/api/v1/me/pets", { headers });
+  const url = query
+    ? `http://localhost:3000/api/v1/me/pets?${query}`
+    : "http://localhost:3000/api/v1/me/pets";
+  return new Request(url, { headers });
 }
 
 beforeEach(() => {
@@ -102,6 +110,7 @@ beforeEach(() => {
   control.limiterThrows = null;
   control.limits = [];
   control.list = null;
+  control.lastListInput = null;
 });
 
 // ---------------------------------------------------------------------------
@@ -311,5 +320,60 @@ describe("GET /api/v1/me/pets — what a native client receives", () => {
     const res = await run();
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(res.headers.get("content-type")).toBe("application/json; charset=utf-8");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D5 — cursor pagination, backward-compatible
+// ---------------------------------------------------------------------------
+
+describe("GET /api/v1/me/pets — cursor pagination (D5)", () => {
+  it("decodes NO cursor to null — an older client's request is unchanged", async () => {
+    control.list = () => ({ rows: [], total: 0 });
+    await GET(req());
+    expect(control.lastListInput).toMatchObject({ cursor: null });
+  });
+
+  it("ignores a malformed ?cursor= rather than 400ing — same tolerance as ?cat=", async () => {
+    control.list = () => ({ rows: [], total: 0 });
+    await GET(req(undefined, "cursor=not-a-real-cursor"));
+    expect(control.lastListInput).toMatchObject({ cursor: null });
+  });
+
+  it("decodes a well-formed ?cursor= and hands the pair to listOwnerPets", async () => {
+    const { encodeCursor } = await import("@/lib/utils/keyset-pagination");
+    const cursor = encodeCursor(new Date("2026-01-02T00:00:00.000Z"), PET_ID);
+    control.list = () => ({ rows: [], total: 0 });
+
+    await GET(req(undefined, `cursor=${encodeURIComponent(cursor)}`));
+
+    expect(control.lastListInput).toMatchObject({
+      cursor: { ts: "2026-01-02T00:00:00.000Z", id: PET_ID },
+    });
+  });
+
+  it("carries nextCursor forward, opaque, when the door says there is another page", async () => {
+    control.list = () => ({
+      rows: [row()],
+      total: 340,
+      nextCursor: { ts: "2026-01-01T00:00:00.000Z", id: PET_ID },
+    });
+
+    const body = (await (await GET(req())).json()) as Record<string, unknown>;
+
+    expect(typeof body.nextCursor).toBe("string");
+    // Opaque to the ROUTE too — it must not hand-format the pair itself, only
+    // pass it through the shared codec.
+    const { decodeCursor } = await import("@/lib/utils/keyset-pagination");
+    expect(decodeCursor(body.nextCursor as string)).toEqual({
+      ts: "2026-01-01T00:00:00.000Z",
+      id: PET_ID,
+    });
+  });
+
+  it("reports nextCursor: null when the door found no next page", async () => {
+    control.list = () => ({ rows: [row()], total: 1, nextCursor: null });
+    const body = (await (await GET(req())).json()) as Record<string, unknown>;
+    expect(body.nextCursor).toBeNull();
   });
 });

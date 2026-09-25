@@ -72,6 +72,13 @@ export type InboxRead = {
   countsByCategory: Record<NotificationCategoryV1, number>;
   unreadCount: number;
   total: number;
+  /**
+   * D5 — a decoded keyset cursor for the NEXT page, or `null` when this page
+   * reached the end of the (possibly filtered) view. Built from the LAST row
+   * `listNotificationsForUser` actually returned, never from anything a
+   * caller sent — same contract as `keyset-pagination.ts`'s header.
+   */
+  nextCursor: { ts: string; id: string } | null;
 };
 
 /**
@@ -89,6 +96,8 @@ export type InboxRead = {
 export async function readInbox(args: {
   userId: string;
   category: NotificationCategoryV1 | null;
+  /** D5 — a decoded keyset cursor, or `null`/absent for the first page. */
+  cursor?: { ts: string; id: string } | null;
 }): Promise<InboxRead> {
   const [page, counts, unreadCount] = await withDbBudgetOrThrow(
     Promise.all([
@@ -96,6 +105,7 @@ export async function readInbox(args: {
         userId: args.userId,
         category: args.category,
         limit: MY_NOTIFICATIONS_PAGE_LIMIT,
+        cursor: args.cursor ?? null,
       }),
       fetchNotificationCategoryCounts(args.userId),
       fetchUnreadNotificationCount(args.userId, args.category ?? undefined),
@@ -113,6 +123,10 @@ export async function readInbox(args: {
     admin: counts.admin,
   };
 
+  const lastRow = page.rows.at(-1)?.notification ?? null;
+  const nextCursor =
+    page.hasMore && lastRow ? { ts: lastRow.createdAt.toISOString(), id: lastRow.id } : null;
+
   return {
     rows: page.rows,
     countsByCategory,
@@ -123,6 +137,7 @@ export async function readInbox(args: {
     // incomplete. `counts.all` is the unfiltered figure and includes rows with no
     // category at all, which is what the web's "en total" shows.
     total: args.category === null ? counts.all : countsByCategory[args.category],
+    nextCursor,
   };
 }
 

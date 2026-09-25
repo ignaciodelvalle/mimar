@@ -204,4 +204,69 @@ describe("the /mascotas list (FlatList)", () => {
     expect(list.props.keyboardDismissMode).toBe("on-drag");
     expect(list.props.keyboardShouldPersistTaps).toBe("handled");
   });
+
+  describe("D5 — cursor pagination", () => {
+    function pageWithCursor(nextCursor: string | null) {
+      const page = twoPets();
+      return { ...page, payload: { ...page.payload, nextCursor } };
+    }
+
+    it("appends the next page onto what is on screen, rather than replacing it", async () => {
+      mockFetchMyPets.mockResolvedValueOnce(pageWithCursor("cursor-1"));
+      render(<MisMascotasScreen />);
+      await screen.findByText("Firulais");
+
+      mockFetchMyPets.mockResolvedValueOnce({
+        outcome: "ok",
+        payload: {
+          version: 1,
+          pets: [
+            {
+              publicToken: "DIM-CCCC-0003",
+              name: "Rocky",
+              species: "dog",
+              status: "active",
+              photoUrl: null,
+            },
+          ],
+          total: 3,
+          truncated: false,
+          nextCursor: null,
+        },
+      });
+      const list = screen.UNSAFE_getByType(FlatList);
+      fireEvent(list, "endReached");
+
+      await screen.findByText("Rocky");
+      // The first two are STILL there — this is a growing list, not a swap.
+      expect(screen.getByText("Firulais")).toBeOnTheScreen();
+      expect(screen.getByText("Michi")).toBeOnTheScreen();
+      // And the second call carried exactly the cursor the first page minted.
+      expect(mockFetchMyPets).toHaveBeenNthCalledWith(2, {}, "cursor-1");
+    });
+
+    it("does nothing on endReached once nextCursor is null — no page to ask for", async () => {
+      mockFetchMyPets.mockResolvedValueOnce(pageWithCursor(null));
+      render(<MisMascotasScreen />);
+      await screen.findByText("Firulais");
+
+      const list = screen.UNSAFE_getByType(FlatList);
+      fireEvent(list, "endReached");
+
+      // No second call — nothing to await, so a synchronous check is honest.
+      expect(mockFetchMyPets).toHaveBeenCalledTimes(1);
+    });
+
+    it("never shows the retired 'entrá desde la web' copy, even with more pages behind it", async () => {
+      // D5's whole point: the follow-up is real pagination, not a sentence
+      // pointing at the browser. A regression back to that copy is a
+      // regression back to the gap it closed.
+      mockFetchMyPets.mockResolvedValueOnce(pageWithCursor("cursor-1"));
+      render(<MisMascotasScreen />);
+      await screen.findByText("Firulais");
+
+      expect(screen.queryByText(/no hay paginado en la app/i)).toBeNull();
+      expect(screen.queryByText("La lista está incompleta")).toBeNull();
+    });
+  });
 });

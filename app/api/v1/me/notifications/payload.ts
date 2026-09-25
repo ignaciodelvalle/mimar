@@ -112,6 +112,8 @@ export function buildMyNotificationsV1(input: {
   unreadCount: number;
   /** Non-archived across the whole inbox, by the list's own predicate. */
   total: number;
+  /** D5 — opaque, already encoded; `null` when this page is the last one. */
+  nextCursor: string | null;
   now?: Date;
 }): MyNotificationsV1 {
   const categories: NotificationCategoryCountV1[] = NOTIFICATION_CATEGORIES_V1.filter(
@@ -133,5 +135,6 @@ export function buildMyNotificationsV1(input: {
     // Derived, not assumed: a client must not have to know the server's cap to
     // tell a complete list from a capped one.
     truncated: input.rows.length < input.total,
+    nextCursor: input.nextCursor,
   };
 }
