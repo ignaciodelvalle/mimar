@@ -84,8 +84,7 @@ describe("the write gate never picks a homonym", () => {
 });
 
 describe("the bite API never files an ambiguous pair under a homonym", () => {
-  // Known failure until work unit A4 (localidades-por-id): flip to `it` there.
-  it.fails("an ambiguous pair with no id and no pin is a province-level bite", async () => {
+  it("an ambiguous pair with no id and no pin is a province-level bite", async () => {
     const out = await resolveBiteJurisdiction({
       provinceCode: "AR-B",
       localityName: "Mechita",
@@ -93,7 +92,7 @@ describe("the bite API never files an ambiguous pair under a homonym", () => {
       locationLat: null,
       locationLng: null,
     });
-    expect(out).toEqual({ ok: true, province: "Buenos Aires", locality: null });
+    expect(out).toEqual({ ok: true, province: "Buenos Aires", locality: null, localityId: null });
   });
 
   it("the id picks the row: Bragado's Mechita stays Bragado's", async () => {

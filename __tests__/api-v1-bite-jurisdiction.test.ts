@@ -5,8 +5,12 @@
 //   · a pin in Córdoba next to codes for Buenos Aires is REFUSED — never filed
 //     under Buenos Aires, never silently "corrected";
 //   · a pin with no codes DERIVES the jurisdiction from the pin — never the
-//     pet's home — via reverse geocoding when it corroborates, else the nearest
-//     catalogued locality;
+//     pet's home — via reverse geocoding when it corroborates; otherwise the
+//     place is PROVINCE-level: the nearest catalogued centroid is never taken
+//     for the locality (localidades-por-id A4 — the catalogue has centroids,
+//     not boundaries, and a border pin sits nearer the neighbour's centre);
+//   · a name two localities of one province share, with no id, is a
+//     province-level bite — never either homonym (A4);
 //   · no pin keeps the old behaviour (the trio, or the home fallback).
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -21,25 +25,40 @@ const control = vi.hoisted(() => ({
   corroborateCalls: [] as Array<Record<string, unknown>>,
 }));
 
-vi.mock("@/lib/domain/location-normalize", () => ({
-  normalizeLocationForWrite: async (loc: {
-    provinceCode: string;
-    locality: string | null;
-  }) => {
-    const names: Record<string, string> = { "AR-B": "Buenos Aires", "AR-X": "Córdoba" };
-    const province = names[loc.provinceCode];
-    if (!province) throw new Error("INVALID_PROVINCE");
-    return {
-      province,
-      locality: loc.locality,
-      localityCanonical: true,
-      localityId: `id-${loc.locality}`,
-      lat: null,
-      lng: null,
-      address: null,
-    };
-  },
-}));
+vi.mock("@/lib/domain/location-normalize", () => {
+  class JurisdictionValidationError extends Error {
+    constructor(
+      readonly code: string,
+      message: string,
+    ) {
+      super(message);
+    }
+  }
+  return {
+    JurisdictionValidationError,
+    normalizeLocationForWrite: async (loc: {
+      provinceCode: string;
+      locality: string | null;
+    }) => {
+      const names: Record<string, string> = { "AR-B": "Buenos Aires", "AR-X": "Córdoba" };
+      const province = names[loc.provinceCode];
+      if (!province) throw new JurisdictionValidationError("INVALID_PROVINCE", "no such province");
+      if (loc.locality === "Mechita") {
+        throw new JurisdictionValidationError("AMBIGUOUS_LOCALITY", "two Mechitas");
+      }
+      return {
+        province,
+        locality: loc.locality,
+        localityCanonical: true,
+        localityId: `id-${loc.locality}`,
+        placeMethod: "indec_id",
+        lat: null,
+        lng: null,
+        address: null,
+      };
+    },
+  };
+});
 
 vi.mock("@/lib/infra/jurisdiction-from-text", () => ({
   coordinatesCorroborateJurisdiction: async (input: { province: string }) => {
@@ -86,7 +105,29 @@ describe("a pin AND a locality trio", () => {
       locationLat: CORDOBA.lat,
       locationLng: CORDOBA.lng,
     });
-    expect(result).toEqual({ ok: true, province: "Córdoba", locality: "Córdoba" });
+    expect(result).toEqual({
+      ok: true,
+      province: "Córdoba",
+      locality: "Córdoba",
+      localityId: "id-Córdoba",
+    });
+  });
+
+  it("files an ambiguous name with no id at PROVINCE level, never either homonym", async () => {
+    control.pinProvince = "Buenos Aires";
+    const result = await resolveBiteJurisdiction({
+      provinceCode: "AR-B",
+      localityName: "Mechita",
+      localityIndecId: null,
+      locationLat: CORDOBA.lat,
+      locationLng: CORDOBA.lng,
+    });
+    expect(result).toEqual({
+      ok: true,
+      province: "Buenos Aires",
+      locality: null,
+      localityId: null,
+    });
   });
 
   it("still refuses a pair the catalogue does not hold", async () => {
@@ -111,10 +152,15 @@ describe("a pin and NO trio — derived from the pin, never the pet's home", () 
       locationLat: CORDOBA.lat,
       locationLng: CORDOBA.lng,
     });
-    expect(result).toEqual({ ok: true, province: "Córdoba", locality: "Córdoba" });
+    expect(result).toEqual({
+      ok: true,
+      province: "Córdoba",
+      locality: "Córdoba",
+      localityId: "id-Córdoba",
+    });
   });
 
-  it("falls back to the nearest catalogued locality when the geocoder has nothing", async () => {
+  it("with no geocoder answer the bite is PROVINCE-level — the nearest centroid is not a locality", async () => {
     control.nearest = [{ id: "n1", provinceCode: "AR-X", localityName: "Villa Allende" }];
     const result = await resolveBiteJurisdiction({
       provinceCode: null,
@@ -123,7 +169,22 @@ describe("a pin and NO trio — derived from the pin, never the pet's home", () 
       locationLat: CORDOBA.lat,
       locationLng: CORDOBA.lng,
     });
-    expect(result).toEqual({ ok: true, province: "Córdoba", locality: "Villa Allende" });
+    expect(result).toEqual({ ok: true, province: "Córdoba", locality: null, localityId: null });
+  });
+
+  it("near a border, with no geocoder answer, not even the province is guessed", async () => {
+    control.nearest = [
+      { id: "n1", provinceCode: "AR-X", localityName: "Villa María" },
+      { id: "n2", provinceCode: "AR-B", localityName: "Villa María" },
+    ];
+    const result = await resolveBiteJurisdiction({
+      provinceCode: null,
+      localityName: null,
+      localityIndecId: null,
+      locationLat: CORDOBA.lat,
+      locationLng: CORDOBA.lng,
+    });
+    expect(result).toEqual({ ok: true, province: null, locality: null, localityId: null });
   });
 });
 
@@ -136,7 +197,7 @@ describe("no pin — unchanged", () => {
       locationLat: null,
       locationLng: null,
     });
-    expect(result).toEqual({ ok: true, province: null, locality: null });
+    expect(result).toEqual({ ok: true, province: null, locality: null, localityId: null });
     expect(control.corroborateCalls).toEqual([]);
   });
 
@@ -148,7 +209,12 @@ describe("no pin — unchanged", () => {
       locationLat: null,
       locationLng: null,
     });
-    expect(result).toEqual({ ok: true, province: "Buenos Aires", locality: "La Plata" });
+    expect(result).toEqual({
+      ok: true,
+      province: "Buenos Aires",
+      locality: "La Plata",
+      localityId: "id-La Plata",
+    });
     expect(control.corroborateCalls).toEqual([]);
   });
 });

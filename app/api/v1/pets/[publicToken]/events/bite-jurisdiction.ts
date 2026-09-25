@@ -8,30 +8,38 @@
 // in Buenos Aires; a pin with no codes fell back to the pet's HOME. Both route
 // the case to the wrong authority.
 //
-// THE CHOICE, per case:
+// The place is resolved by the resolver every report uses
+// (lib/place/reported-place.ts, localidades-por-id A4). THE CHOICE, per case:
 //
-//   · PIN + TRIO → the trio is CHECKED against the pin with the resolver the
-//     denuncia intakes already use (`coordinatesCorroborateJurisdiction`: the
-//     province must be among the nearest catalogued localities, the locality
-//     within 25 km or among the nearest three). A mismatch is REFUSED
-//     (`bite_location_mismatch`), not corrected: both answers came from the
-//     person, and only they know which one is wrong — silently picking one
-//     would write a jurisdiction nobody chose into a record an authority acts on.
-//   · PIN, NO TRIO → the jurisdiction is DERIVED from the pin: the web's own
-//     derivation first (server-side reverse geocoding → canonical catalogue
-//     pair, kept only if the pin corroborates it), else the nearest catalogued
-//     locality. Never the pet's home when a pin says otherwise.
-//   · NO PIN → unchanged: the trio if given, else the writer's fallback to the
-//     animal's home jurisdiction ("no lo sé" is a real answer).
+//   · PIN + TRIO → the trio is CHECKED against the pin
+//     (`coordinatesCorroborateJurisdiction`: the province must be among the
+//     nearest catalogued localities, the locality within 25 km or among the
+//     nearest three). A mismatch is REFUSED (`bite_location_mismatch`), not
+//     corrected: both answers came from the person, and only they know which
+//     one is wrong — silently picking one would write a jurisdiction nobody
+//     chose into a record an authority acts on.
+//   · PIN, NO TRIO → derived from the pin: a reverse-geocoded NAME that names
+//     one catalogue row and that the pin corroborates. Otherwise the bite is
+//     PROVINCE-level — the nearest catalogued centroid is NOT a locality (it
+//     used to be: a border pin sits nearer the neighbour's centre, and that
+//     picked the neighbour's authority and rabies rule). Never the pet's home.
+//   · A NAME TWO LOCALITIES OF ONE PROVINCE SHARE, with no id, is a
+//     province-level bite — never either homonym. (The contract refuses a
+//     trio without its id, so this is the belt behind that brace.)
+//   · NO PIN → the trio if given, else the writer's fallback to the animal's
+//     home jurisdiction ("no lo sé" is a real answer).
 
-import { normalizeLocationForWrite } from "@/lib/domain/location-normalize";
-import { nearestLocalities } from "@/lib/infra/ar-localidades";
-import { reverseGeocode } from "@/lib/infra/geocoding";
-import { coordinatesCorroborateJurisdiction } from "@/lib/infra/jurisdiction-from-text";
-import { provinceByName } from "@/lib/reference/ar-provincias";
+import { JurisdictionValidationError } from "@/lib/domain/location-normalize";
+import { type ReportedPlace, resolveReportedPlace } from "@/lib/place/reported-place";
 
 export type BiteJurisdiction =
-  | { ok: true; province: string | null; locality: string | null }
+  | {
+      ok: true;
+      province: string | null;
+      locality: string | null;
+      /** `ar_localities` id of the one resolved row, else null. */
+      localityId: string | null;
+    }
   | { ok: false; code: "invalid_request" | "bite_location_mismatch" };
 
 export async function resolveBiteJurisdiction(input: {
@@ -41,87 +49,36 @@ export async function resolveBiteJurisdiction(input: {
   locationLat: number | null;
   locationLng: number | null;
 }): Promise<BiteJurisdiction> {
-  const point =
-    input.locationLat !== null && input.locationLng !== null
-      ? { lat: input.locationLat, lng: input.locationLng }
-      : null;
-
-  if (input.provinceCode !== null) {
-    let normalised: Awaited<ReturnType<typeof normalizeLocationForWrite>>;
-    try {
-      normalised = await normalizeLocationForWrite(
-        {
-          provinceCode: input.provinceCode,
-          province: null,
-          locality: input.localityName,
-          localityIndecId: input.localityIndecId,
-          lat: null,
-          lng: null,
-          address: null,
-        },
-        { locality: "strict" },
-      );
-    } catch {
-      // `strict` throws on a pair the INDEC catalogue does not hold: a request
-      // problem, not an animal problem.
-      return { ok: false, code: "invalid_request" };
-    }
-    if (point !== null && normalised.province !== null) {
-      const agrees = await coordinatesCorroborateJurisdiction({
-        province: normalised.province,
-        locality: normalised.locality,
-        localityId: normalised.localityId,
-        lat: point.lat,
-        lng: point.lng,
-      });
-      if (!agrees) return { ok: false, code: "bite_location_mismatch" };
-    }
-    return { ok: true, province: normalised.province, locality: normalised.locality };
+  let place: ReportedPlace;
+  try {
+    place = await resolveReportedPlace(
+      {
+        // The CODE is what a client may assert; the display name is the
+        // catalogue's to decide.
+        provinceCode: input.provinceCode,
+        province: null,
+        locality: input.localityName,
+        localityIndecId: input.localityIndecId,
+        lat: input.locationLat,
+        lng: input.locationLng,
+        address: null,
+      },
+      { pair: "strict" },
+    );
+  } catch (err) {
+    // `strict` throws on a pair the INDEC catalogue does not hold: a request
+    // problem, not an animal problem.
+    if (err instanceof JurisdictionValidationError) return { ok: false, code: "invalid_request" };
+    throw err;
   }
 
-  if (point === null) return { ok: true, province: null, locality: null };
-  return deriveFromPin(point);
-}
-
-/** The pin's own jurisdiction: reverse geocoding if it corroborates, else nearest. */
-async function deriveFromPin(point: { lat: number; lng: number }): Promise<BiteJurisdiction> {
-  const reversed = await reverseGeocode(point.lat, point.lng).catch(() => null);
-  const code = provinceByName(reversed?.province ?? null)?.code ?? null;
-  if (code !== null && reversed?.locality) {
-    const pair = await canonicalPair(code, reversed.locality);
-    if (pair.province !== null) {
-      const agrees = await coordinatesCorroborateJurisdiction({
-        province: pair.province,
-        locality: pair.locality,
-        localityId: pair.localityId,
-        lat: point.lat,
-        lng: point.lng,
-      });
-      if (agrees) return { ok: true, province: pair.province, locality: pair.locality };
-    }
-  }
-  const [nearest] = await nearestLocalities({ ...point, limit: 1 });
-  if (!nearest) return { ok: true, province: null, locality: null };
-  const pair = await canonicalPair(nearest.provinceCode, nearest.localityName);
-  return { ok: true, province: pair.province, locality: pair.locality };
-}
-
-async function canonicalPair(provinceCode: string, locality: string) {
-  const normalised = await normalizeLocationForWrite(
-    {
-      provinceCode,
-      province: null,
-      locality,
-      localityIndecId: null,
-      lat: null,
-      lng: null,
-      address: null,
-    },
-    { locality: "soft" },
-  );
+  if (place.mismatch) return { ok: false, code: "bite_location_mismatch" };
+  if (place.province === null)
+    return { ok: true, province: null, locality: null, localityId: null };
   return {
-    province: normalised.province,
-    locality: normalised.locality,
-    localityId: normalised.localityId,
+    ok: true,
+    province: place.province,
+    locality: place.locality,
+    localityId: place.localityId,
   };
 }

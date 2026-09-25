@@ -619,6 +619,7 @@ export async function appendBite(
   }
   const eventProvince = jurisdiction.province;
   const eventLocality = jurisdiction.locality;
+  const eventLocalityId = jurisdiction.localityId;
 
   const surveillanceRepo = new SurveillanceRepository();
 
@@ -647,6 +648,9 @@ export async function appendBite(
       clientIdempotencyKey: ctx.idempotencyKey,
       eventJurisdictionProvince: eventProvince,
       eventJurisdictionLocality: eventLocality,
+      // The catalogue row the place resolved to (localidades-por-id A4); the
+      // writer stamps it on the case only when the case routes there.
+      eventLocalityId,
       // The pin the person placed on the app's map (M17), both halves or
       // neither. The SOURCE is the server's word, not the client's: always
       // `pin_manual` (see this function's header on provenance).

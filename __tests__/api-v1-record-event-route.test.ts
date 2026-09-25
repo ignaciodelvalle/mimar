@@ -395,16 +395,29 @@ vi.mock("@/lib/infra/jurisdiction-from-text", () => ({
   coordinatesCorroborateJurisdiction: async () => control.pinAgrees,
 }));
 
-vi.mock("@/lib/domain/location-normalize", () => ({
-  normalizeLocationForWrite: async (loc: unknown, opts: unknown) => {
-    control.normalizeCalls.push({ loc, opts });
-    // `strict` LEVANTA sobre un par que el catalogo INDEC no tiene. Ese es el
-    // caso que este stub reproduce con `normalized: null`.
-    if (control.normalized === null) throw new Error("locality not in catalog");
-    return control.normalized;
-  },
-  CoordError: class extends Error {},
-}));
+vi.mock("@/lib/domain/location-normalize", () => {
+  class JurisdictionValidationError extends Error {
+    constructor(
+      readonly code: string,
+      message: string,
+    ) {
+      super(message);
+    }
+  }
+  return {
+    normalizeLocationForWrite: async (loc: unknown, opts: unknown) => {
+      control.normalizeCalls.push({ loc, opts });
+      // `strict` LEVANTA sobre un par que el catalogo INDEC no tiene. Ese es el
+      // caso que este stub reproduce con `normalized: null`.
+      if (control.normalized === null) {
+        throw new JurisdictionValidationError("INVALID_LOCALITY", "locality not in catalog");
+      }
+      return control.normalized;
+    },
+    CoordError: class extends Error {},
+    JurisdictionValidationError,
+  };
+});
 
 vi.mock("@/lib/infra/report-error", () => ({
   reportError: (scope: string) => {
