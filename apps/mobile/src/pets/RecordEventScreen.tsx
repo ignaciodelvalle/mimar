@@ -1035,12 +1035,12 @@ function EventForm({
         petPlace={petPlace}
       />
 
-      {/* D7: EL BOTON, NO EL FORMULARIO ENTERO, DESAPARECE SIN EL PUERTO.
-          Tattoo bloquea la pantalla completa unas líneas arriba porque no
-          tiene nada que mandar sin una foto; check-in SÍ tiene algo que mandar
-          — el texto — así que cuando el puerto no está disponible esta
-          sección simplemente no se dibuja, sin callout: la persona puede
-          seguir enviando el check-in con o sin foto en cualquier build. */}
+      {/* D7: THE BUTTON, NOT THE WHOLE FORM, DISAPPEARS WITHOUT THE PORT.
+          Tattoo blocks the whole screen a few lines above because it has
+          nothing to send without a photo; the check-in DOES have something to
+          send — the text — so when the port is unavailable this section is
+          simply not drawn, with no callout: the check-in can still be sent,
+          with or without a photo, on any build. */}
       {photoScreen !== null && getImagePickerPort().available ? (
         <TattooPhotoField
           kind={photoScreen}
