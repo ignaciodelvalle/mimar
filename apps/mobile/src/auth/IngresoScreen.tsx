@@ -93,6 +93,7 @@ import {
 } from "../ui/kit";
 import { ROUTES, recuperarRoute } from "../ui/routes";
 import { SPACE } from "../ui/theme";
+import { useReturnKeyChain } from "../ui/use-return-key-chain";
 import { returnHref } from "./return-to";
 import { sessionEndMessage, signIn } from "./session-store";
 import { useSession } from "./useSession";
@@ -105,6 +106,12 @@ export function IngresoScreen() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  // Return-key advance across the two fields (M10, native-feel audit):
+  // "next" moves correo → contraseña, "done" on the last one dismisses the
+  // keyboard AND submits — folding in what the field's own `returnKeyType="go"`
+  // used to do by hand, so the whole app moves through single-line fields the
+  // same way instead of this screen having its own dialect of the same idea.
+  const chain = useReturnKeyChain(2, () => void submit());
 
   // Already in. Reached when a session arrives while this screen is mounted —
   // the "cerrar sesión en todos los dispositivos" flow bounces through here, and
@@ -155,6 +162,7 @@ export function IngresoScreen() {
 
       <View style={styles.form}>
         <TextField
+          {...chain(0)}
           accessibilityLabel="Correo electrónico"
           autoCapitalize="none"
           autoComplete="email"
@@ -176,15 +184,14 @@ export function IngresoScreen() {
         />
 
         <PasswordField
+          {...chain(1)}
           accessibilityLabel="Contraseña"
           autoCapitalize="none"
           autoComplete="current-password"
           editable={!busy}
           label="Contraseña"
           onChangeText={setPassword}
-          onSubmitEditing={() => void submit()}
           required
-          returnKeyType="go"
           value={password}
         />
 

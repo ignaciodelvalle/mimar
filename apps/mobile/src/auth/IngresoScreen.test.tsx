@@ -136,4 +136,40 @@ describe("IngresoScreen", () => {
     fireEvent.press(screen.getByText("¿Olvidaste tu contraseña?"));
     expect(mockPush).toHaveBeenCalledWith("/recuperar?email=ana%40example.com");
   });
+
+  // M10 (native-feel audit, 2026-09-24): both fields now run through the
+  // shared `useReturnKeyChain` rather than the field's own hand-set
+  // `returnKeyType="go"` + `onSubmitEditing` — one dialect, app-wide, instead
+  // of this screen's own.
+  describe("return-key chain (M10)", () => {
+    it("moves correo → contraseña with 'next', and contraseña says 'done'", () => {
+      render(<IngresoScreen />);
+      expect(screen.getByLabelText("Correo electrónico, obligatorio").props.returnKeyType).toBe(
+        "next",
+      );
+      expect(screen.getByLabelText("Contraseña, obligatorio").props.returnKeyType).toBe("done");
+    });
+
+    it("submitting from the email field does NOT sign in — it only advances focus", () => {
+      render(<IngresoScreen />);
+      fireEvent.changeText(
+        screen.getByLabelText("Correo electrónico, obligatorio"),
+        "ana@example.com",
+      );
+      fireEvent(screen.getByLabelText("Correo electrónico, obligatorio"), "submitEditing");
+      expect(mockSignIn).not.toHaveBeenCalled();
+    });
+
+    it("submitting from the LAST field signs in, folding in what returnKeyType='go' used to do", async () => {
+      mockSignIn.mockResolvedValue({ ok: true });
+      render(<IngresoScreen />);
+      fireEvent.changeText(
+        screen.getByLabelText("Correo electrónico, obligatorio"),
+        "ana@example.com",
+      );
+      fireEvent.changeText(screen.getByLabelText("Contraseña, obligatorio"), "hunter2");
+      fireEvent(screen.getByLabelText("Contraseña, obligatorio"), "submitEditing");
+      await waitFor(() => expect(mockSignIn).toHaveBeenCalledWith("ana@example.com", "hunter2"));
+    });
+  });
 });
