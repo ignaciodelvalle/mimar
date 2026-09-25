@@ -555,6 +555,14 @@ function RootLayout() {
             surface disagrees, so this is a straight transcription and not a
             TITLE_PENDING question. */}
         <Stack.Screen name="mascotas/[publicToken]/chapita" options={{ title: "Chapa física" }} />
+        {/* PERRO DE ASISTENCIA (D3, 2026-09-25). Transcribed from the row that
+            opens it (`OwnerFace.tsx`) and from the web page's own heading
+            (`AsistenciaPage`, "Perro de asistencia · {nombre}") minus the name,
+            which the screen's own title carries. */}
+        <Stack.Screen
+          name="mascotas/[publicToken]/asistencia"
+          options={{ title: "Perro de asistencia" }}
+        />
         {/* LA RUTA NO RECONOCIDA (NAV-M1). Sin registrar, el encabezado sale del
             nombre del archivo: "+not-found", en inglés y con un signo más, sobre
             la única pantalla que por definición ve alguien que llegó desde

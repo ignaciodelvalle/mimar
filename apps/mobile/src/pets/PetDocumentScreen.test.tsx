@@ -217,7 +217,10 @@ function payload(overrides: Partial<Record<string, unknown>> = {}): OwnerPetDeta
     viewer: { role: "owner", isTitular: true },
     identity: OK({
       name: "Pampa",
-      species: "Perro",
+      // THE WIRE CODE, not the label: `identity.species` is `pet.species`
+      // (`load-owner-pet-detail.ts`), and D3's "Perro de asistencia" gate reads
+      // it as the code the web's own row compares against.
+      species: "dog",
       sex: "female",
       breed: "Mestiza",
       breedLine: "Mestiza · Hembra · 2 años · Perro",
@@ -844,16 +847,16 @@ describe("PetDocumentScreen — controls with no native destination are drawn ho
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/editar`);
 
     mockPush.mockClear();
-    // ONE web-only row left for a titular now (Perro de asistencia): Chapa
-    // física went live on 2026-09-25 (D2) the same way Acompañamiento de
-    // adopción did on 2026-09-10, and it navigates below — no more "Se pide
-    // desde la web" caption anywhere in this sheet.
-    //
-    // U-5 (native review): the web's own "Más" sheet lists Perro de asistencia
-    // beside "Buscar hogar" and "Chapa física" — still an inert row here, same
-    // pattern, own caption.
-    expect(screen.getByText("Perro de asistencia")).toBeOnTheScreen();
-    expect(screen.getByText("Se hace desde la web")).toBeOnTheScreen();
+    // NO web-only row left for a titular: Chapa física went live on 2026-09-25
+    // (D2) and Perro de asistencia the same day (D3), the way Acompañamiento de
+    // adopción did on 2026-09-10 — no "Se hace desde la web" caption anywhere
+    // in a titular's sheet.
+    expect(screen.queryByText("Se hace desde la web")).toBeNull();
+    // PERRO DE ASISTENCIA NOW NAVIGATES (D3) to its own screen, which reaches
+    // the web's four owner use-cases through `POST /pets/{token}/profile`.
+    fireEvent.press(screen.getByText("Perro de asistencia"));
+    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/asistencia`);
+    mockPush.mockClear();
     // Viaje is disabled on the WEB too, with the web's own badge, and it is
     // the one row in this sheet that is still legitimately inert: "Próximamente"
     // promises nothing, so there is nowhere to send anybody.
@@ -961,8 +964,8 @@ describe("PetDocumentScreen — the face reads petStatus and the role (A3-docume
     // there for a deceased animal, so "Disponible en la web" was sending
     // somebody to a browser to look for a page that is not on it either.
     expect(screen.queryByText("Chapa física")).toBeNull();
-    // U-5: "Perro de asistencia" shares `showWebOnlyRows` with "Chapa física",
-    // so it disappears with it here.
+    // D3: "Perro de asistencia" follows the web row, which sits after the
+    // sheet's deceased early-return — gone here too.
     expect(screen.queryByText("Perro de asistencia")).toBeNull();
     expect(screen.queryByText("Acompañamiento de adopción")).toBeNull();
     expect(screen.queryByText("Viaje y movilidad")).toBeNull();
@@ -1098,9 +1101,10 @@ describe("PetDocumentScreen — the face reads petStatus and the role (A3-docume
     fireEvent.press(screen.getByText("Buscar hogar"));
     expect(mockOpenURL).not.toHaveBeenCalled();
     expect(mockPush).not.toHaveBeenCalled();
-    // getAllByText, not getByText: "Perro de asistencia" (U-5) shares this
-    // exact caption and is not gated by role, so a foster sees both.
-    expect(screen.getAllByText("Se hace desde la web").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Se hace desde la web")).toBeOnTheScreen();
+    // D3: a foster is not the legal owner, and the web row gates on
+    // `ownershipRole === "owner"` — no "Perro de asistencia" at all.
+    expect(screen.queryByText("Perro de asistencia")).toBeNull();
   });
 
   it("keeps Modo perdida on a LOST animal while the titular-only rows go inert", async () => {

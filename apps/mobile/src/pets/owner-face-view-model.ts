@@ -574,9 +574,8 @@ export type OwnerFaceGates = {
   canTransfer: boolean;
   canDesignateCaretaker: boolean;
   canOpenReturn: boolean;
-  /** The "Disponible en la web" / "Próximamente" rows, which the web hides on a
-   *  deceased animal — its `chapita` row sits AFTER the deceased early-return,
-   *  and page.tsx nulls the data behind it. */
+  /** The "Próximamente" row, which the web hides on a deceased animal — its
+   *  sheet's deceased early-return prunes it. */
   showWebOnlyRows: boolean;
   /**
    * "Reportar fallecimiento" — the terminal asiento, from the ⋯ Más list.
@@ -624,6 +623,16 @@ export type OwnerFaceGates = {
    * component serves both viewer paths.
    */
   canRequestPhysicalTag: boolean;
+  /**
+   * D3 (2026-09-25) — "Perro de asistencia". The web's own row condition,
+   * `MasSheet.helpers.ts`: `pet.species === "dog" && ownershipRole === "owner"`,
+   * placed after that helper's deceased early-return — so a DOG, the LEGAL
+   * OWNER, and not deceased. The owner half is also the server's
+   * `canManageServiceDog`; the species half is read off the identity section
+   * and, like every sibling gate, an unread section is "no fact" and leaves the
+   * row offered (the screen itself says when the law does not apply).
+   */
+  canManageServiceDog: boolean;
 };
 
 export function ownerFaceGates(view: {
@@ -631,6 +640,8 @@ export function ownerFaceGates(view: {
   isTitular: boolean;
   status: SectionView<OwnerPetStatusSection>;
   pppRegistries: SectionView<OwnerPetPppRegistriesSection>;
+  /** Optional so callers that gate nothing on species need not build one. */
+  identity?: SectionView<OwnerPetIdentitySection>;
 }): OwnerFaceGates {
   // `null` = the section did not load. Every gate below reads it as "no fact",
   // never as "not active": the permissive direction is the correct one here
@@ -639,6 +650,7 @@ export function ownerFaceGates(view: {
   const isDeceased = petStatus === "deceased";
   const isNotActive = petStatus !== null && petStatus !== "active";
   const isCaretaker = view.viewerRole === "caretaker";
+  const species = view.identity?.state === "ok" ? view.identity.data.species : null;
   return {
     isDeceased,
     isNotActive,
@@ -657,6 +669,8 @@ export function ownerFaceGates(view: {
     canAttestDangerousBreed:
       !isDeceased && view.pppRegistries.state === "ok" && view.pppRegistries.data !== null,
     canRequestPhysicalTag: !isDeceased && view.viewerRole !== "org_member",
+    canManageServiceDog:
+      !isDeceased && view.viewerRole === "owner" && (species === null || species === "dog"),
   };
 }
 

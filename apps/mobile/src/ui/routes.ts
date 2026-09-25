@@ -631,6 +631,16 @@ export function physicalTagInterestRoute(publicToken: string): `/mascotas/${stri
   return `/mascotas/${encodeURIComponent(publicToken)}/chapita`;
 }
 
+/**
+ * SERVICE DOG — D3 (2026-09-25): the Ley 26.858 designation, the same four acts
+ * the web's `/mis-mascotas/{token}/asistencia` page offers. Nested under the pet
+ * and named with the web's own path segment, for the reasons
+ * `physicalTagInterestRoute` gives.
+ */
+export function serviceDogRoute(publicToken: string): `/mascotas/${string}/asistencia` {
+  return `/mascotas/${encodeURIComponent(publicToken)}/asistencia`;
+}
+
 export type AppRoute =
   | (typeof ROUTES)[keyof typeof ROUTES]
   | ReturnType<typeof credentialRoute>
@@ -651,5 +661,6 @@ export type AppRoute =
   | ReturnType<typeof caretakerGrantRoute>
   | ReturnType<typeof caseRoute>
   | ReturnType<typeof physicalTagInterestRoute>
+  | ReturnType<typeof serviceDogRoute>
   | ReturnType<typeof turnoRoute>
   | ReturnType<typeof buscarOfferingRoute>;

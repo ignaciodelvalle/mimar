@@ -3,6 +3,7 @@ import type {
   OwnerPetBannersSection,
   OwnerPetCasesSection,
   OwnerPetComplianceSection,
+  OwnerPetIdentitySection,
   OwnerPetPppRegistriesSection,
   OwnerPetStatusSection,
 } from "@dim/contract/api";
@@ -515,5 +516,53 @@ describe("ownerFaceGates — D2's canRequestPhysicalTag", () => {
       pppRegistries: noPpp,
     });
     expect(gates.canRequestPhysicalTag).toBe(true);
+  });
+});
+
+describe("ownerFaceGates — D3's canManageServiceDog", () => {
+  // The web row's own condition (`MasSheet.helpers.ts`): a dog, the legal
+  // owner, and after the sheet's deceased early-return.
+  const okStatus = (petStatus: string): { state: "ok"; data: OwnerPetStatusSection } => ({
+    state: "ok",
+    data: { petStatus } as OwnerPetStatusSection,
+  });
+  const noPpp: { state: "ok"; data: OwnerPetPppRegistriesSection } = { state: "ok", data: null };
+  const identity = (species: string): { state: "ok"; data: OwnerPetIdentitySection } => ({
+    state: "ok",
+    data: { species } as OwnerPetIdentitySection,
+  });
+  const gatesFor = (over: {
+    viewerRole?: "owner" | "co_owner" | "foster" | "caretaker" | "org_member";
+    petStatus?: string;
+    species?: string | null;
+  }) =>
+    ownerFaceGates({
+      viewerRole: over.viewerRole ?? "owner",
+      isTitular: (over.viewerRole ?? "owner") === "owner",
+      status: okStatus(over.petStatus ?? "active"),
+      pppRegistries: noPpp,
+      identity:
+        over.species === null
+          ? { state: "unavailable", message: SECTION_UNAVAILABLE_MESSAGE }
+          : identity(over.species ?? "dog"),
+    });
+
+  it("is offered to the legal owner of a living dog", () => {
+    expect(gatesFor({}).canManageServiceDog).toBe(true);
+  });
+
+  it("is refused to every other holder — the web row gates on role 'owner'", () => {
+    for (const viewerRole of ["co_owner", "foster", "caretaker", "org_member"] as const) {
+      expect(gatesFor({ viewerRole }).canManageServiceDog).toBe(false);
+    }
+  });
+
+  it("is not offered for a cat, nor for a deceased dog", () => {
+    expect(gatesFor({ species: "cat" }).canManageServiceDog).toBe(false);
+    expect(gatesFor({ petStatus: "deceased" }).canManageServiceDog).toBe(false);
+  });
+
+  it("stays offered while the identity read has not answered — permissive, like its siblings", () => {
+    expect(gatesFor({ species: null }).canManageServiceDog).toBe(true);
   });
 });

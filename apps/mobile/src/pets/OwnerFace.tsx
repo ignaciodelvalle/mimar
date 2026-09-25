@@ -50,6 +50,7 @@ import {
   recordEventRoute,
   rehomeRoute,
   returnPetRoute,
+  serviceDogRoute,
   sharesRoute,
   transferPetRoute,
   vaccineRemindersRoute,
@@ -775,14 +776,17 @@ function MoreList({
           onPress={() => router.push(physicalTagInterestRoute(view.publicToken))}
         />
       ) : null}
-      {/* U-5 (native review): the web's own "Más" sheet lists this beside
-          "Buscar hogar" and "Chapa física" (`MasSheet.tsx`'s own header
-          comment) — `/mis-mascotas/{token}/asistencia`, the assistance-dog
-          designation. Same pattern as "Chapa física" above: inert with a
-          caption naming where it lives, not a browser tab, for the reason
-          this whole block's header gives. */}
-      {gates.showWebOnlyRows ? (
-        <MoreRow label="Perro de asistencia" caption="Se hace desde la web" />
+      {/* D3 (2026-09-25): "Perro de asistencia" IS A DOOR NOW, like "Chapa
+          física" above — `POST /pets/{token}/profile` reaches the web's four
+          owner use-cases (`app/actions/service-dog.ts`), so there is no web to
+          send anybody to. Gated on `canManageServiceDog`, the web row's own
+          condition (a dog, the legal owner, not deceased). */}
+      {gates.canManageServiceDog ? (
+        <MoreRow
+          label="Perro de asistencia"
+          accessibilityHint="Registrar o gestionar la credencial de perro de asistencia (Ley 26.858)."
+          onPress={() => router.push(serviceDogRoute(view.publicToken))}
+        />
       ) : null}
       {/* ONE DESTINATION, TWO LABELS, TWO AUDIENCES — AND NOT AN `else`
             (finding F2, review 2026-09-07). The else arm here covered `owner`
