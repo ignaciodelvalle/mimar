@@ -347,14 +347,11 @@
 .lp .lp-brand-mark {
   width: 34px;
   height: 34px;
+  flex-shrink: 0;
   border-radius: 9px;
-  background: var(--color-ln-azul);
-  color: #fff;
+  background: var(--color-ln-paper);
   display: grid;
   place-items: center;
-  font-weight: 700;
-  font-size: 15px;
-  letter-spacing: 0.02em;
 }
 .lp .lp-brand-name {
   display: block;

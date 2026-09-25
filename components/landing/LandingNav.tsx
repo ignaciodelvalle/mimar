@@ -6,15 +6,17 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+// Root-relative anchors: this nav also renders on /municipios, where a bare
+// "#idea" points at nothing. On `/` they stay same-document scrolls.
 const NAV_LINKS: Array<[string, string]> = [
-  ["La historia", "#idea"],
-  ["Qué hace", "#features"],
-  ["Empezar", "#empezar"],
+  ["La historia", "/#idea"],
+  ["Qué hace", "/#features"],
+  ["Empezar", "/#empezar"],
   // WU4 (landing redesign 2026-09-24): the door to /municipios. NOTE: this is
   // the only nav-links list LandingNav renders at any width — `.lp-nav-links`
   // is CSS-hidden below 860px (app/landing.css) with no hamburger/mobile-menu
   // replacement, so "desktop and mobile" both mean this one array.
-  ["Para municipios", "/municipios"],
+  ["Municipios", "/municipios"],
 ];
 
 export function LandingNav() {
@@ -30,9 +32,9 @@ export function LandingNav() {
   return (
     <header className={`lp-nav${scrolled ? " scrolled" : ""}`} data-section="landing-nav">
       <div className="lp-nav-in">
-        <a className="lp-brand" href="#top" aria-label="miMAR — inicio">
+        <a className="lp-brand" href="/#top" aria-label="miMAR — inicio">
           <span className="lp-brand-mark" aria-hidden="true">
-            M
+            <img src="/logo-mimar-mark.svg" alt="" width={26} height={26} />
           </span>
           <span>
             <span className="lp-brand-name">miMAR</span>

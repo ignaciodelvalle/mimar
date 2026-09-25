@@ -12,7 +12,7 @@ export function LandingFooter() {
           <div>
             <div className="lp-brand mb-3">
               <span className="lp-brand-mark" aria-hidden="true">
-                M
+                <img src="/logo-mimar-mark.svg" alt="" width={26} height={26} />
               </span>
               <span>
                 <span className="lp-brand-name">miMAR</span>
