@@ -258,6 +258,14 @@ jobs:
         # __tests__/locality-name-match-live-inventory.test.ts. Static, no DB.
         run: pnpm lint:locality-name-join
 
+      - name: "Fence: one province name/code map (lint:province-map)"
+        # localidades-por-id B2 (audit R12). PROVINCES (packages/contract) is
+        # the one list; SQL reads it through public.ar_province_code /
+        # ar_province_name (0249). A hand-written copy anywhere else fails here;
+        # historical migrations are frozen file by file. Static, no DB.
+        run: pnpm lint:province-map
+
+
       - name: Lint (jurisdiction scope + authorization derivation)
         # The scope layer's offline fences. Every one of these ran in `pnpm
         # verify` and none had ever run in CI — see the parity note on the

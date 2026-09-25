@@ -20,6 +20,7 @@ import {
   withoutSyntheticRows,
 } from "@/lib/metrics";
 import { windows } from "@/lib/metrics/period";
+import { PROVINCES } from "@/lib/reference/ar-provincias";
 import { PROVINCE_REPRESENTATIVE_POINTS } from "@/src/modules/panorama/domain/geo-representative-points";
 import type { TimeBasis } from "@/src/modules/panorama/domain/time-scrub";
 
@@ -357,35 +358,11 @@ export function provinceIsoMapSql(provinceCol: SQL): SQL {
   return sql`(CASE ${sql.join(pairs, sql` `)} ELSE '' END)`;
 }
 
-// Canonical province display name → ISO 3166-2:AR code (mirrors the map in
-// lib/govt-dashboards.ts; duplicated locally to keep this module self-contained
-// and free of a govt-dashboards import cycle).
-export const PROVINCE_ISO: Record<string, string> = {
-  "Buenos Aires": "AR-B",
-  CABA: "AR-C",
-  Catamarca: "AR-K",
-  Chaco: "AR-H",
-  Chubut: "AR-U",
-  Córdoba: "AR-X",
-  Corrientes: "AR-W",
-  "Entre Ríos": "AR-E",
-  Formosa: "AR-P",
-  Jujuy: "AR-Y",
-  "La Pampa": "AR-L",
-  "La Rioja": "AR-F",
-  Mendoza: "AR-M",
-  Misiones: "AR-N",
-  Neuquén: "AR-Q",
-  "Río Negro": "AR-R",
-  Salta: "AR-A",
-  "San Juan": "AR-J",
-  "San Luis": "AR-D",
-  "Santa Cruz": "AR-Z",
-  "Santa Fe": "AR-S",
-  "Santiago del Estero": "AR-G",
-  "Tierra del Fuego": "AR-V",
-  Tucumán: "AR-T",
-};
+// Canonical province display name → ISO 3166-2:AR code, DERIVED from the one
+// list (lib/reference/ar-provincias.ts; lint:province-map refuses a copy).
+export const PROVINCE_ISO: Record<string, string> = Object.fromEntries(
+  PROVINCES.map((p) => [p.name, p.code]),
+);
 
 /**
  * Representative point for a province-level aggregated marker, resolved from

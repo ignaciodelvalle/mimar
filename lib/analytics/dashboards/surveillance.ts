@@ -19,7 +19,7 @@ import type {
   SuppressedCells,
 } from "@/lib/metrics";
 import { complementarySuppress, suppressSmallCells, suppressedMetric } from "@/lib/metrics";
-import { provinceByCode } from "@/lib/reference/ar-provincias";
+import { PROVINCES, provinceByCode } from "@/lib/reference/ar-provincias";
 import { findDisease } from "@/lib/reference/diseases";
 import { parseArDateStartOfDay } from "@/lib/utils/date-input-ar";
 import { isoDateInAr } from "@/lib/utils/format";
@@ -278,64 +278,46 @@ export type VigilanciaMetrics = {
 
 // Canonical list of Argentine provinces for /gob/* dashboard pages.
 // Admin pages use all 24; govt pages derive a subset from their jurisdictions.
-// Keep code/name aligned with PROVINCE_ISO_MAP and ar-provincias.ts.
-export const GOB_ALL_PROVINCES: Array<{ code: string; name: string }> = [
-  { code: "AR-C", name: "CABA" },
-  { code: "AR-B", name: "Buenos Aires" },
-  { code: "AR-X", name: "Córdoba" },
-  { code: "AR-S", name: "Santa Fe" },
-  { code: "AR-M", name: "Mendoza" },
-  { code: "AR-T", name: "Tucumán" },
-  { code: "AR-E", name: "Entre Ríos" },
-  { code: "AR-A", name: "Salta" },
-  { code: "AR-N", name: "Misiones" },
-  { code: "AR-H", name: "Chaco" },
-  { code: "AR-W", name: "Corrientes" },
-  { code: "AR-K", name: "Catamarca" },
-  { code: "AR-U", name: "Chubut" },
-  { code: "AR-P", name: "Formosa" },
-  { code: "AR-Y", name: "Jujuy" },
-  { code: "AR-L", name: "La Pampa" },
-  { code: "AR-F", name: "La Rioja" },
-  { code: "AR-Q", name: "Neuquén" },
-  { code: "AR-R", name: "Río Negro" },
-  { code: "AR-J", name: "San Juan" },
-  { code: "AR-D", name: "San Luis" },
-  { code: "AR-Z", name: "Santa Cruz" },
-  { code: "AR-G", name: "Santiago del Estero" },
-  { code: "AR-V", name: "Tierra del Fuego" },
-];
+// The ORDER is this page's own (largest first); the names come from the one
+// list (lib/reference/ar-provincias.ts; lint:province-map refuses a copy).
+const GOB_PROVINCE_ORDER = [
+  "AR-C",
+  "AR-B",
+  "AR-X",
+  "AR-S",
+  "AR-M",
+  "AR-T",
+  "AR-E",
+  "AR-A",
+  "AR-N",
+  "AR-H",
+  "AR-W",
+  "AR-K",
+  "AR-U",
+  "AR-P",
+  "AR-Y",
+  "AR-L",
+  "AR-F",
+  "AR-Q",
+  "AR-R",
+  "AR-J",
+  "AR-D",
+  "AR-Z",
+  "AR-G",
+  "AR-V",
+] as const;
 
-// Hardcoded province-name → ISO 3166-2:AR code map.
-// The cases table stores the canonical display name (migration 0055 + check
-// constraint enforcing the 24-enum). The GeoJSON uses ISO codes. Unknown
-// provinces return code: "" — should be impossible after migration 0055.
-export const PROVINCE_ISO_MAP: Record<string, string> = {
-  "Buenos Aires": "AR-B",
-  CABA: "AR-C",
-  Catamarca: "AR-K",
-  Chaco: "AR-H",
-  Chubut: "AR-U",
-  Córdoba: "AR-X",
-  Corrientes: "AR-W",
-  "Entre Ríos": "AR-E",
-  Formosa: "AR-P",
-  Jujuy: "AR-Y",
-  "La Pampa": "AR-L",
-  "La Rioja": "AR-F",
-  Mendoza: "AR-M",
-  Misiones: "AR-N",
-  Neuquén: "AR-Q",
-  "Río Negro": "AR-R",
-  Salta: "AR-A",
-  "San Juan": "AR-J",
-  "San Luis": "AR-D",
-  "Santa Cruz": "AR-Z",
-  "Santa Fe": "AR-S",
-  "Santiago del Estero": "AR-G",
-  "Tierra del Fuego": "AR-V",
-  Tucumán: "AR-T",
-};
+export const GOB_ALL_PROVINCES: Array<{ code: string; name: string }> = GOB_PROVINCE_ORDER.map(
+  (code) => ({ code, name: provinceByCode(code)?.name ?? code }),
+);
+
+// Province-name → ISO 3166-2:AR code, DERIVED from the one list. The cases
+// table stores the canonical display name (migration 0055 + check constraint
+// enforcing the 24-enum). The GeoJSON uses ISO codes. Unknown provinces return
+// code: "" — should be impossible after migration 0055.
+export const PROVINCE_ISO_MAP: Record<string, string> = Object.fromEntries(
+  PROVINCES.map((p) => [p.name, p.code]),
+);
 
 export async function fetchVigilanciaMetrics(
   actor: DashboardActor,
@@ -579,7 +561,7 @@ export type LocalityCaseCount = {
  * KIND-NARROWED (audit 2026-07-26, red #4) — see fetchCasesPerLocality's
  * docblock for the full reasoning; unchanged by the A06-1 split.
  *
- * Province code mapping: uses PROVINCE_ISO_MAP (hardcoded). The cases table
+ * Province code mapping: uses PROVINCE_ISO_MAP (derived from PROVINCES). The cases table
  * stores jurisdictionProvince as free-text; the GeoJSON uses ISO 3166-2:AR codes.
  * Cases in provinces not present in the map return code: "".
  */

@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-09-25",
-  "sha": "d74acd8d7",
+  "sha": "478f5fac2",
   "facts": {
     "event_types": {
       "value": 55,
@@ -8,17 +8,17 @@
       "method": "EVENT_TYPES.length, imported. `db/schema.ts:289` re-exports the same array from `@dim/contract/events`, and that re-export is what `__tests__/event-catalog-count.test.ts` imports — so this is the identical array the catalog fence counts, reached without pulling Drizzle into this script."
     },
     "verify_fences": {
-      "value": 79,
+      "value": 80,
       "source": "package.json (the `verify` script string)",
       "method": "distinct `pnpm lint:<key>` tokens matched by /pnpm (lint:[\\w-]+)/g inside the `verify` script string. Counts the fence STEPS only: `pnpm lint` (Biome), `pnpm typecheck`, `pnpm verify:mobile` and `pnpm build` are also in the chain and are not counted here."
     },
     "lint_scripts": {
-      "value": 79,
+      "value": 80,
       "source": "package.json (`scripts`)",
       "method": "keys in `scripts` starting with `lint:`. Compare against `verify_fences`: a lint key that exists but is absent from `verify` is a fence nothing runs — `pnpm lint:ci-parity` is what keeps the two in step."
     },
     "check_scripts": {
-      "value": 86,
+      "value": 87,
       "source": "scripts/check-*.ts",
       "method": "files in `scripts/` matching /^check-.*\\.ts$/. Three sibling fences are written in plain JS (`check-raw-buttons.mjs`, `check-raw-select.mjs`, `check-op-controls.mjs`) and are deliberately NOT in this count, which is about the TypeScript fence corpus."
     },
@@ -43,7 +43,7 @@
       "method": "files named exactly `layout.tsx` anywhere under `app/`."
     },
     "migrations": {
-      "value": 247,
+      "value": 248,
       "source": "db/migrations/*.sql",
       "method": "files ending in `.sql` under `db/migrations/`. Migrations are forward-only and immutable, so this only ever grows."
     },
@@ -88,7 +88,7 @@
       "method": "files ending in `.yml` under `.github/workflows/`. There are no `.yaml` files at this snapshot; if one is added it will not be counted until this method changes."
     },
     "vitest_files": {
-      "value": 1711,
+      "value": 1712,
       "source": "vitest.config.ts -> __tests__/db-reachability.ts",
       "method": "discoverTestFiles().length, imported from the SAME module `vitest.config.ts` feeds into its `include` globs via computeTestPartition(). It walks the repo for /\\.test\\.tsx?$/ skipping node_modules, .next, .git, .claude, apps and e2e — so this is exactly the file set Vitest runs, not an independent glob that could drift from it."
     },

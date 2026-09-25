@@ -11,6 +11,7 @@ import { PeriodPicker } from "@/components/gob/PeriodPicker";
 import { LnCard, LnCardBody, LnCardHead } from "@/components/ui/Card";
 import { OpKpi } from "@/components/ui/dashboard";
 import { requireUserOrRedirect } from "@/lib/infra/auth-guards";
+import { provinceByCode } from "@/lib/reference/ar-provincias";
 
 export const dynamic = "force-dynamic";
 
@@ -18,11 +19,12 @@ export const dynamic = "force-dynamic";
 // Datos sintéticos
 // ---------------------------------------------------------------------------
 
+// Names come from the one province list (lint:province-map refuses a copy).
 const SAMPLE_MAP_DATA = [
-  { code: "AR-C", value: 420, label: "Ciudad Autónoma de Buenos Aires" },
-  { code: "AR-B", value: 1240, label: "Buenos Aires" },
-  { code: "AR-X", value: 680, label: "Córdoba" },
-];
+  { code: "AR-C", value: 420 },
+  { code: "AR-B", value: 1240 },
+  { code: "AR-X", value: 680 },
+].map((d) => ({ ...d, label: provinceByCode(d.code)?.name ?? d.code }));
 
 const SAMPLE_TIMESERIES = [
   { x: "Ene", y: 85 },
@@ -39,11 +41,10 @@ const SAMPLE_TIMESERIES = [
   { x: "Dic", y: 210 },
 ];
 
-const SAMPLE_PROVINCES = [
-  { code: "AR-C", name: "CABA" },
-  { code: "AR-B", name: "Buenos Aires" },
-  { code: "AR-X", name: "Córdoba" },
-];
+const SAMPLE_PROVINCES = ["AR-C", "AR-B", "AR-X"].map((code) => ({
+  code,
+  name: provinceByCode(code)?.name ?? code,
+}));
 
 // ---------------------------------------------------------------------------
 // Page
