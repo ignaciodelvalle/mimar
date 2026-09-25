@@ -37,6 +37,8 @@ import {
 } from "@dim/contract/input";
 import { breedsForSpecies } from "@dim/contract/reference";
 
+import { AR_TIME_ZONE } from "./libreta-view-model";
+
 /** The identity form's fields, as strings — what a `TextInput` actually holds. */
 export type IdentityDraft = {
   name: string;
@@ -247,6 +249,15 @@ export function buildEmergencyContacts(draft: EmergencyDraft): CommandResult {
   });
 }
 
+/**
+ * D2 — ALTERNAR INTERÉS EN LA CHAPA FÍSICA. No fields: the direction the
+ * toggle takes is the server's own fact about the existing row, never
+ * something a client states — see the contract's own note on the command.
+ */
+export function buildTogglePhysicalTagInterest(): CommandResult {
+  return validated({ command: "toggle_physical_tag_interest" });
+}
+
 /** es-AR copy for each input code. Exhaustive: every code has a sentence. */
 export function petProfileInputCodeMessage(code: PetProfileCommandInputCode | null): string {
   if (code === null) {
@@ -303,5 +314,53 @@ export function savedLabel(command: PetProfileCommandInput["command"], changed: 
       return changed
         ? "Listo. La corrección queda registrada en la libreta."
         : "La especie es la misma; no hay nada que corregir.";
+    // UNREACHABLE VIA THIS FUNCTION — the toggle's ack carries `state`, never
+    // `changed` (see the contract's own note on `PetProfileEditAckV1`), and the
+    // screen that sends it reads `physicalTagInterestSavedLabel` instead. Kept
+    // here only because the switch is exhaustive over every command this
+    // contract knows.
+    case "toggle_physical_tag_interest":
+      return "Listo.";
   }
+}
+
+/**
+ * D2 — the sentence after a toggle lands, from the ack's own `state` and
+ * nothing else: the direction is the fact, and there is no `changed` to be
+ * "no-op" about — every successful call DOES change the row.
+ */
+export function physicalTagInterestSavedLabel(state: "interested" | "cancelled"): string {
+  return state === "interested"
+    ? "Quedaste anotado. Te vamos a escribir cuando haya un canal disponible en tu zona."
+    : "Cancelaste el interés.";
+}
+
+/**
+ * D2 — the title and body BEFORE a tap, from the payload's own section. The
+ * web sheet's own two sentences (`PhysicalTagInterestSheet.tsx`), read here
+ * instead of restated: "estamos midiendo interés, no se cobra todavía" is a
+ * product claim and this app must say the same thing the web does.
+ */
+export function physicalTagInterestTitle(petName: string, interested: boolean): string {
+  return interested ? "Chapa física — anotado" : `¿Querés una chapa física para ${petName}?`;
+}
+
+export function physicalTagInterestBody(petName: string, interested: boolean): string {
+  return interested
+    ? "Una chapita con el QR que cuelga del collar. Ya avisaste que te interesa."
+    : `Una chapita con el QR de ${petName} que cuelga del collar. Si alguien la encuentra, escanea y ve su libreta.`;
+}
+
+/** The date line under "anotado", or `null` when there is none to show. */
+export function physicalTagInterestRequestedAtLabel(requestedAt: string | null): string | null {
+  if (requestedAt === null) return null;
+  const date = new Date(requestedAt);
+  if (Number.isNaN(date.getTime())) return null;
+  const formatted = new Intl.DateTimeFormat("es-AR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: AR_TIME_ZONE,
+  }).format(date);
+  return `Anotado el ${formatted}.`;
 }

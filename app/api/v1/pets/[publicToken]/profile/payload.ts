@@ -19,6 +19,7 @@
 
 import { apiV1Envelope } from "@/lib/infra/api-v1";
 import { type PetHolderAccess, isTitularHolder } from "@/lib/infra/pet-access";
+import type { PhysicalTagInterestState } from "@/lib/infra/physical-tag-interest";
 import type { OwnerPetViewerContactsRead } from "@/src/modules/pets/application/read/owner-pet-detail-queries";
 import {
   PET_PROFILE_EDIT_PAYLOAD_VERSION,
@@ -65,6 +66,12 @@ export type ResolvedProfileAccess = Exclude<PetHolderAccess, { kind: "none" }>;
  *     form here, because this rule genuinely IS a single role and pretending
  *     otherwise would make the code read like the looser one beside it. There is
  *     no shared predicate to borrow: it is this endpoint's only.
+ *   · THE PHYSICAL-TAG TOGGLE (D2) is `access.kind === "owner"` alone —
+ *     `togglePhysicalTagInterestAction`'s own check (`accessPath !== "owner"`
+ *     refuses), which is the PERSON PATH as a whole. Not `isTitularHolder`: that
+ *     predicate denies a caretaker, and the web action never drew that line for
+ *     this placeholder — a caretaker passes it exactly as a co-owner or a
+ *     foster does. The one and only holder this excludes is the org path.
  */
 export function petProfileCapabilities(
   access: ResolvedProfileAccess,
@@ -81,6 +88,7 @@ export function petProfileCapabilities(
     // (`CorrectSpeciesPage`), so today this IS `canEditIdentity` — reported on
     // its own so the two can part ways without a client noticing the wrong one.
     canCorrectSpecies: titular,
+    canTogglePhysicalTagInterest: access.kind === "owner",
   };
 }
 
@@ -95,6 +103,13 @@ export type BuildPetProfileEditInput = {
    * whose only possible use is to be dropped.
    */
   accountContacts: OwnerPetViewerContactsRead;
+  /**
+   * D2 — THIS user's own §4.20 row for THIS pet, or `null` when it was not
+   * read. Not read at all for a caller `canTogglePhysicalTagInterest` denies —
+   * same rule the contacts read above follows, for the same reason: whether
+   * an org member already asked is nobody's business but the owner's.
+   */
+  physicalTagInterest: PhysicalTagInterestState | null;
   now: Date;
 };
 
@@ -102,6 +117,7 @@ export function buildPetProfileEditV1({
   pet,
   access,
   accountContacts,
+  physicalTagInterest,
   now,
 }: BuildPetProfileEditInput): PetProfileEditV1 {
   const capabilities = petProfileCapabilities(access);
@@ -136,6 +152,12 @@ export function buildPetProfileEditV1({
           preferredVetPhone: accountContacts?.preferredVetPhone ?? null,
           emergencyContactName: accountContacts?.emergencyContactName ?? null,
           emergencyContactPhone: accountContacts?.emergencyContactPhone ?? null,
+        }
+      : null,
+    physicalTagInterest: capabilities.canTogglePhysicalTagInterest
+      ? {
+          interested: physicalTagInterest?.interested ?? false,
+          requestedAt: physicalTagInterest?.requestedAt?.toISOString() ?? null,
         }
       : null,
     capabilities,

@@ -4,8 +4,9 @@
 // GET reads what a form needs to pre-fill itself — the three identity fields,
 // the pet-level emergency-contact override, the account defaults each of those
 // falls back to when cleared, and which of the commands this caller may send.
-// POST runs one of three: editar los datos, guardar los contactos, or corregir
-// la especie (the FULL-LOCK correction, added 2026-09-10 — `./commands.ts`).
+// POST runs one of four: editar los datos, guardar los contactos, corregir la
+// especie (the FULL-LOCK correction, added 2026-09-10), or toggle the interest
+// in a physical tag (D2, 2026-09-25) — `./commands.ts`.
 //
 // WHY THIS IS NOT ON THE EVENTS ENDPOINT, and why it is not two endpoints
 // ---------------------------------------------------------------------------
@@ -49,6 +50,7 @@ import {
 import { DbBudgetExceededError, withDbBudgetOrThrow } from "@/lib/infra/db-budget";
 import { type LiveUserFailureReason, requireLiveUser } from "@/lib/infra/live-user";
 import { resolvePetHolderAccess } from "@/lib/infra/pet-access";
+import { getPhysicalTagInterest } from "@/lib/infra/physical-tag-interest";
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { reportError } from "@/lib/infra/report-error";
 import { createClientFromBearer } from "@/lib/supabase/bearer";
@@ -177,8 +179,32 @@ export async function GET(
     }
   }
 
+  // D2 — SAME SHAPE AS THE CONTACTS READ ABOVE, and for the same reason: this
+  // caller's own §4.20 row is read only for somebody `canTogglePhysicalTagInterest`
+  // admits. Reading it for an org member would be a query whose only possible
+  // use is to be discarded, on a fact that is nobody's business but the owner's.
+  let physicalTagInterest: Awaited<ReturnType<typeof getPhysicalTagInterest>> | null = null;
+  if (petProfileCapabilities(access).canTogglePhysicalTagInterest) {
+    try {
+      physicalTagInterest = await withDbBudgetOrThrow(
+        getPhysicalTagInterest(access.pet.id, live.user.id),
+        ACCESS_BUDGET_MS,
+        "api-v1-profile-physical-tag-interest",
+      );
+    } catch (err) {
+      if (err instanceof DbBudgetExceededError) return unavailable();
+      throw err;
+    }
+  }
+
   return apiV1Json(
-    buildPetProfileEditV1({ pet: access.pet, access, accountContacts, now: new Date() }),
+    buildPetProfileEditV1({
+      pet: access.pet,
+      access,
+      accountContacts,
+      physicalTagInterest,
+      now: new Date(),
+    }),
     { status: 200 },
   );
 }

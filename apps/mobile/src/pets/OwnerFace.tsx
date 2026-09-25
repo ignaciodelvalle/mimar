@@ -45,6 +45,7 @@ import {
   editPetRoute,
   lostModeRoute,
   petPhotoRoute,
+  physicalTagInterestRoute,
   publicCredentialRoute,
   recordEventRoute,
   rehomeRoute,
@@ -757,8 +758,22 @@ function MoreList({
           `ListRow` renders an `onPress`-less row muted and announces
           `disabled`, and the caption says where it is — which is what makes
           this different from the silent dead rows those handlers replaced. */}
-      {gates.showWebOnlyRows ? (
-        <MoreRow label="Chapa física" caption="Se pide desde la web" />
+      {/* D2 (2026-09-25): LA FILA ES AHORA UNA PUERTA, no un rótulo inerte —
+            la misma reversión que "Buscar hogar" hizo más abajo, y por la
+            misma razón: `POST /pets/{token}/profile`'s `toggle_physical_tag_
+            interest` alcanza el MISMO use-case que la web
+            (`togglePhysicalTagInterestAction`), así que ya no hay una web a la
+            que mandar a nadie. `canRequestPhysicalTag` y no `showWebOnlyRows`
+            a secas: esa gate sólo conoce "fallecida o no" porque la página web
+            de la que viene es person-path únicamente por construcción, y esta
+            cara sirve TAMBIÉN al camino de organización — ver el comentario
+            del gate. */}
+      {gates.canRequestPhysicalTag ? (
+        <MoreRow
+          label="Chapa física"
+          accessibilityHint="Anotar interés en una chapita física con el QR de tu mascota."
+          onPress={() => router.push(physicalTagInterestRoute(view.publicToken))}
+        />
       ) : null}
       {/* U-5 (native review): the web's own "Más" sheet lists this beside
           "Buscar hogar" and "Chapa física" (`MasSheet.tsx`'s own header

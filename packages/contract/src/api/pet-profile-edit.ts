@@ -129,6 +129,15 @@ export type PetProfileEditCapabilitiesV1 = {
    * form moving with it.
    */
   canCorrectSpecies: boolean;
+  /**
+   * D2 (2026-09-25) — `togglePhysicalTagInterestAction`'s own rule, read
+   * verbatim: `access.accessPath !== "owner"` refuses. That is the PERSON PATH
+   * as a whole — owner, co-owner, foster and caretaker all pass, the org path
+   * alone does not. NOT `requireTitularAccess`: a caretaker is excluded from
+   * `canEditIdentity` above and included here, because the web action never
+   * drew that finer line for this placeholder.
+   */
+  canTogglePhysicalTagInterest: boolean;
 };
 
 export type PetProfileEditV1 = {
@@ -153,7 +162,24 @@ export type PetProfileEditV1 = {
   emergencyContacts: PetEmergencyDraftV1 | null;
   /** `null` under the same gate, for the same reason. */
   emergencyAccountDefault: PetEmergencyAccountDefaultV1 | null;
+  /**
+   * D2 — the §4.20 demand-signal placeholder, `null` when
+   * `capabilities.canTogglePhysicalTagInterest` is false. Same boundary the
+   * emergency block draws: a caretaker or an org member gets no fact about
+   * whether SOMEBODY ELSE already asked, not an empty or a false one.
+   */
+  physicalTagInterest: PhysicalTagInterestDraftV1 | null;
   capabilities: PetProfileEditCapabilitiesV1;
+};
+
+/**
+ * The §4.20 physical-tag interest state, exactly as `getPhysicalTagInterest`
+ * reads it — one row per (pet, user), active iff `cancelled_at IS NULL`.
+ */
+export type PhysicalTagInterestDraftV1 = {
+  interested: boolean;
+  /** ISO instant, set only when `interested` is true. */
+  requestedAt: string | null;
 };
 
 /**
@@ -171,8 +197,12 @@ export type PetProfileEditV1 = {
  * rather than reporting `true` because an UPDATE ran. The species correction
  * reports `false` when the animal already IS the species posted — the replay
  * rule its use-case states — and appends nothing in that case.
+ *
+ * D2 ADDED A FOURTH SHAPE, and it could not share `changed`: a toggle has no
+ * "did this change" question, because EVERY successful call changes the row —
+ * it is the DIRECTION that is the fact worth reporting, so the ack carries
+ * `state` instead, mirroring `TogglePhysicalTagInterestResult` verbatim.
  */
-export type PetProfileEditAckV1 = {
-  command: "edit_identity" | "set_emergency_contacts" | "correct_species";
-  changed: boolean;
-};
+export type PetProfileEditAckV1 =
+  | { command: "edit_identity" | "set_emergency_contacts" | "correct_species"; changed: boolean }
+  | { command: "toggle_physical_tag_interest"; state: "interested" | "cancelled" };

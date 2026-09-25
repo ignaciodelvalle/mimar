@@ -283,10 +283,23 @@ const correctSpecies = z.object({
   species: z.enum(PET_SPECIES, { error: "SPECIES_INVALID" }),
 });
 
+/**
+ * D2 (2026-09-25) — the §4.20 physical-tag interest toggle, reaching the
+ * IDENTICAL use-case `togglePhysicalTagInterestAction` reaches
+ * (`togglePhysicalTagInterest`, `src/modules/pets/application/
+ * physical-tag-interest/`). NO FIELDS: the web action takes only the pet's
+ * token, and the toggle's direction is a fact the SERVER holds (the existing
+ * row's `cancelled_at`), never something a client states.
+ */
+const togglePhysicalTagInterest = z.object({
+  command: z.literal("toggle_physical_tag_interest"),
+});
+
 export const petProfileCommandInputSchema = z.discriminatedUnion("command", [
   editIdentity,
   setEmergencyContacts,
   correctSpecies,
+  togglePhysicalTagInterest,
 ]);
 
 export type PetProfileCommandInput = z.infer<typeof petProfileCommandInputSchema>;

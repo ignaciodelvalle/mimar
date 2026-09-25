@@ -612,6 +612,18 @@ export type OwnerFaceGates = {
    * most animals" the same docblock refuses to build.
    */
   canAttestDangerousBreed: boolean;
+  /**
+   * D2 (2026-09-25) — the §4.20 physical-tag interest row. Mirrors
+   * `togglePhysicalTagInterestAction`'s own check (`accessPath !== "owner"`
+   * refuses) translated to this payload's viewer vocabulary: PERSON PATH, not
+   * the legal owner alone — owner, co-owner, foster and caretaker all pass,
+   * only the org path does not. This is the gate `showWebOnlyRows` (deceased
+   * alone) cannot express on its own: the web page this row's sheet lives on
+   * is person-path ONLY by construction, so the web's `!isDeceased` gate never
+   * had to also exclude an org member — this face does, because ONE
+   * component serves both viewer paths.
+   */
+  canRequestPhysicalTag: boolean;
 };
 
 export function ownerFaceGates(view: {
@@ -644,6 +656,7 @@ export function ownerFaceGates(view: {
     canRecordDeath: !isDeceased,
     canAttestDangerousBreed:
       !isDeceased && view.pppRegistries.state === "ok" && view.pppRegistries.data !== null,
+    canRequestPhysicalTag: !isDeceased && view.viewerRole !== "org_member",
   };
 }
 

@@ -43,6 +43,13 @@ const control = vi.hoisted(() => ({
   updateResult: { ok: true, notifications: [] } as Record<string, unknown>,
   /** What `correctPetSpecies` answers. */
   speciesResult: { ok: true, changed: true } as Record<string, unknown>,
+  /** D2: what `getPhysicalTagInterest` answers. */
+  physicalTagInterest: { interested: false, requestedAt: null } as {
+    interested: boolean;
+    requestedAt: Date | null;
+  },
+  /** D2: what `togglePhysicalTagInterest` answers. */
+  toggleResult: { ok: true, state: "interested" } as Record<string, unknown>,
   /** Every writer call. Empty means nothing was written. */
   writes: [] as Array<{ command: string; input: Record<string, unknown> }>,
   /** Every row handed to the canonical notification service. */
@@ -122,6 +129,28 @@ vi.mock("@/src/modules/pets/application/profile/update-emergency-contacts", () =
     return control.contactsResult;
   },
 }));
+
+// D2 — the read side. `getPhysicalTagInterest` is the SAME function
+// `page.tsx` calls for the web sheet's own initial state.
+vi.mock("@/lib/infra/physical-tag-interest", () => ({
+  getPhysicalTagInterest: async () => control.physicalTagInterest,
+}));
+
+// D2 — the write side, mocked at the module the web action ALSO imports. What
+// this file asserts is what reaches it (userId, petId, publicToken) and that it
+// is the ONLY thing this door calls — no parallel implementation.
+vi.mock(
+  "@/src/modules/pets/application/physical-tag-interest/toggle-physical-tag-interest",
+  () => ({
+    togglePhysicalTagInterest: async (userId: string, petId: string, publicToken: string) => {
+      control.writes.push({
+        command: "toggle_physical_tag_interest",
+        input: { userId, petId, publicToken },
+      });
+      return control.toggleResult;
+    },
+  }),
+);
 
 // The CANONICAL write path, mocked so its rows can be read. `commands.ts` uses
 // it instead of the raw `db.insert(notifications)` the cookie door beside it
@@ -226,6 +255,8 @@ beforeEach(() => {
   control.contactsResult = { ok: true };
   control.updateResult = { ok: true, notifications: [] };
   control.speciesResult = { ok: true, changed: true };
+  control.physicalTagInterest = { interested: false, requestedAt: null };
+  control.toggleResult = { ok: true, state: "interested" };
   control.writes = [];
   control.notified = [];
   control.notifyThrows = false;
@@ -287,6 +318,9 @@ describe("GET — what the form pre-fills with", () => {
       canEditIdentity: true,
       canEditEmergencyContacts: false,
       canCorrectSpecies: true,
+      // D2: person-path, not the legal owner alone — the web action's own
+      // check (`accessPath !== "owner"`) admits a co-owner.
+      canTogglePhysicalTagInterest: true,
     });
     // NULL, not an empty draft: these are the titular's own numbers.
     expect(body.emergencyContacts).toBeNull();
@@ -309,6 +343,9 @@ describe("GET — what the form pre-fills with", () => {
       canEditEmergencyContacts: false,
       // The web's `CorrectSpeciesPage` guards with `requireTitularAccess` too.
       canCorrectSpecies: false,
+      // D2: `togglePhysicalTagInterestAction` never drew this finer line — a
+      // caretaker passes its own check exactly as a co-owner does.
+      canTogglePhysicalTagInterest: true,
     });
   });
 
@@ -319,6 +356,43 @@ describe("GET — what the form pre-fills with", () => {
     // construction and requireTitularAccess is a no-op there.
     expect(body.capabilities.canEditIdentity).toBe(true);
     expect(body.capabilities.canEditEmergencyContacts).toBe(false);
+  });
+});
+
+describe("GET — D2, el estado de interés en la chapa física", () => {
+  it("reports NOT interested, with no date, for an owner who never asked", async () => {
+    const body = await (await read()).json();
+    expect(body.capabilities.canTogglePhysicalTagInterest).toBe(true);
+    expect(body.physicalTagInterest).toEqual({ interested: false, requestedAt: null });
+  });
+
+  it("reports interested, with the request's own date, in ISO", async () => {
+    control.physicalTagInterest = {
+      interested: true,
+      requestedAt: new Date("2026-09-01T12:00:00.000Z"),
+    };
+    const body = await (await read()).json();
+    expect(body.physicalTagInterest).toEqual({
+      interested: true,
+      requestedAt: "2026-09-01T12:00:00.000Z",
+    });
+  });
+
+  it("gives a CO-OWNER the same fact — the toggle's own rule is person-path, not the legal owner alone", async () => {
+    control.access = asRole("co_owner");
+    control.physicalTagInterest = { interested: true, requestedAt: new Date("2026-09-01") };
+    const body = await (await read()).json();
+    expect(body.physicalTagInterest).toEqual({
+      interested: true,
+      requestedAt: "2026-09-01T00:00:00.000Z",
+    });
+  });
+
+  it("withholds it ENTIRELY from the ORG path — null, not an empty or a false answer", async () => {
+    control.access = asOrg();
+    const body = await (await read()).json();
+    expect(body.capabilities.canTogglePhysicalTagInterest).toBe(false);
+    expect(body.physicalTagInterest).toBeNull();
   });
 });
 
@@ -577,6 +651,63 @@ describe("POST — corregir especie, the FULL-LOCK command", () => {
   it("answers 500 without echoing the writer's own sentence", async () => {
     control.speciesResult = { ok: false, code: "write_failed", error: "detalle interno" };
     const response = await send(SPECIES);
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "profile_failed" });
+  });
+});
+
+describe("POST — D2, alternar interés en la chapa física", () => {
+  // Closes `write:togglePhysicalTagInterestAction→togglePhysicalTagInterest`
+  // in check-owner-surface-parity.ts: the door reaches `togglePhysicalTagInterest`,
+  // the IDENTICAL function the web action reaches — no parallel implementation.
+  const TOGGLE = { command: "toggle_physical_tag_interest" };
+
+  it("reaches the use-case with the ids and reports the state it answered", async () => {
+    control.toggleResult = { ok: true, state: "interested" };
+    const response = await send(TOGGLE);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      command: "toggle_physical_tag_interest",
+      state: "interested",
+    });
+    expect(control.writes).toHaveLength(1);
+    expect(control.writes[0].command).toBe("toggle_physical_tag_interest");
+    expect(control.writes[0].input).toEqual({
+      userId: OWNER_ID,
+      petId: PET_ID,
+      publicToken: TOKEN,
+    });
+  });
+
+  it("reports the OTHER direction just as plainly — a second tap cancels", async () => {
+    control.toggleResult = { ok: true, state: "cancelled" };
+    const response = await send(TOGGLE);
+    expect(await response.json()).toEqual({
+      command: "toggle_physical_tag_interest",
+      state: "cancelled",
+    });
+  });
+
+  it("admits a CO-OWNER, a FOSTER and a CARETAKER — the web action's own check is person-path, not the legal owner alone", async () => {
+    for (const role of ["co_owner", "foster", "caretaker"]) {
+      control.writes = [];
+      control.access = asRole(role);
+      expect((await send(TOGGLE)).status).toBe(200);
+      expect(control.writes).toHaveLength(1);
+    }
+  });
+
+  it("refuses the ORG path with the caller's code, and writes nothing", async () => {
+    control.access = asOrg();
+    const response = await send(TOGGLE);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "profile_forbidden" });
+    expect(control.writes).toHaveLength(0);
+  });
+
+  it("answers 500 without echoing the use-case's own sentence, on its (unreachable in practice) error arm", async () => {
+    control.toggleResult = { error: "connection terminated" };
+    const response = await send(TOGGLE);
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: "profile_failed" });
   });

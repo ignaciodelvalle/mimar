@@ -549,6 +549,12 @@ function RootLayout() {
             hacia el original. La seccion de la web se renombro con ella, asi
             que las tres superficies vuelven a decir lo mismo. */}
         <Stack.Screen name="mascotas/[publicToken]/vacunas" options={{ title: "Recordatorios" }} />
+        {/* CHAPA FÍSICA (D2, 2026-09-25). TRANSCRIBED from the row that opens it
+            (`OwnerFace.tsx`'s own label) and from the web sheet's heading
+            (`PhysicalTagInterestSheet.tsx`, "Chapa física — anotado") — no
+            surface disagrees, so this is a straight transcription and not a
+            TITLE_PENDING question. */}
+        <Stack.Screen name="mascotas/[publicToken]/chapita" options={{ title: "Chapa física" }} />
         {/* LA RUTA NO RECONOCIDA (NAV-M1). Sin registrar, el encabezado sale del
             nombre del archivo: "+not-found", en inglés y con un signo más, sobre
             la única pantalla que por definición ve alguien que llegó desde

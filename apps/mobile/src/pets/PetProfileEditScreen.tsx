@@ -171,6 +171,14 @@ export function PetProfileEditScreen({ publicToken }: { publicToken: string }) {
         });
         return;
       }
+      // D2 WIDENED THE ACK INTO A UNION, and this screen never sends the new
+      // arm (`toggle_physical_tag_interest` lives on `PhysicalTagInterestScreen`)
+      // — but `sendPetProfileCommand`'s return type does not know that, so the
+      // narrowing is here rather than a cast.
+      if (result.payload.command === "toggle_physical_tag_interest") {
+        setNotice({ tone: "err", message: "La respuesta del servidor no se pudo leer." });
+        return;
+      }
       setNotice({
         tone: "ok",
         message: savedLabel(result.payload.command, result.payload.changed),

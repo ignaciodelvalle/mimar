@@ -3,6 +3,8 @@ import type {
   OwnerPetBannersSection,
   OwnerPetCasesSection,
   OwnerPetComplianceSection,
+  OwnerPetPppRegistriesSection,
+  OwnerPetStatusSection,
 } from "@dim/contract/api";
 import { describe, expect, it } from "@jest/globals";
 
@@ -22,6 +24,7 @@ import {
   complianceSummaryLabel,
   findHomeWebUrl,
   isAttestationDoorCard,
+  ownerFaceGates,
   petTagWebUrl,
   rehomeBannerLine,
   reminderCancelledMessage,
@@ -459,5 +462,58 @@ describe("isAttestationDoorCard — three card states (#753)", () => {
     expect(
       isAttestationDoorCard(rabies as Parameters<typeof isAttestationDoorCard>[0], gates),
     ).toBe(false);
+  });
+});
+
+describe("ownerFaceGates — D2's canRequestPhysicalTag", () => {
+  const okStatus = (petStatus: string): { state: "ok"; data: OwnerPetStatusSection } => ({
+    state: "ok",
+    data: { petStatus } as OwnerPetStatusSection,
+  });
+  const noPpp: { state: "ok"; data: OwnerPetPppRegistriesSection } = {
+    state: "ok",
+    data: null,
+  };
+
+  it("admits every PERSON-path role — owner, co-owner, foster and caretaker alike", () => {
+    for (const viewerRole of ["owner", "co_owner", "foster", "caretaker"] as const) {
+      const gates = ownerFaceGates({
+        viewerRole,
+        isTitular: viewerRole === "owner",
+        status: okStatus("active"),
+        pppRegistries: noPpp,
+      });
+      expect(gates.canRequestPhysicalTag).toBe(true);
+    }
+  });
+
+  it("is the ONE role togglePhysicalTagInterestAction's own check excludes: org", () => {
+    const gates = ownerFaceGates({
+      viewerRole: "org_member",
+      isTitular: false,
+      status: okStatus("active"),
+      pppRegistries: noPpp,
+    });
+    expect(gates.canRequestPhysicalTag).toBe(false);
+  });
+
+  it("hides on a DECEASED animal, same as the web's own chapita placement", () => {
+    const gates = ownerFaceGates({
+      viewerRole: "owner",
+      isTitular: true,
+      status: okStatus("deceased"),
+      pppRegistries: noPpp,
+    });
+    expect(gates.canRequestPhysicalTag).toBe(false);
+  });
+
+  it("stays offered while the status read has not answered — permissive, like every sibling gate", () => {
+    const gates = ownerFaceGates({
+      viewerRole: "owner",
+      isTitular: true,
+      status: { state: "unavailable", message: SECTION_UNAVAILABLE_MESSAGE },
+      pppRegistries: noPpp,
+    });
+    expect(gates.canRequestPhysicalTag).toBe(true);
   });
 });

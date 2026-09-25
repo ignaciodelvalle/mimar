@@ -844,17 +844,14 @@ describe("PetDocumentScreen — controls with no native destination are drawn ho
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/editar`);
 
     mockPush.mockClear();
-    // TWO web-only rows left for a titular now (Chapa física, and Perro de
-    // asistencia since U-5): the acompañamiento row went live on 2026-09-10
-    // and navigates below.
+    // ONE web-only row left for a titular now (Perro de asistencia): Chapa
+    // física went live on 2026-09-25 (D2) the same way Acompañamiento de
+    // adopción did on 2026-09-10, and it navigates below — no more "Se pide
+    // desde la web" caption anywhere in this sheet.
     //
-    // THE CAPTION CHANGED ON 2026-09-11 and the new words are the decision.
-    // "Disponible en la web" invites a tap that now does nothing; "Se pide
-    // desde la web" says where the thing lives, which is what an inert row owes
-    // the person reading it. See the note above the row in OwnerFace.tsx.
-    expect(screen.getAllByText("Se pide desde la web").length).toBeGreaterThanOrEqual(1);
-    // U-5 (native review): the web's own "Más" sheet lists this beside "Buscar
-    // hogar" and "Chapa física" — an inert row, same pattern, own caption.
+    // U-5 (native review): the web's own "Más" sheet lists Perro de asistencia
+    // beside "Buscar hogar" and "Chapa física" — still an inert row here, same
+    // pattern, own caption.
     expect(screen.getByText("Perro de asistencia")).toBeOnTheScreen();
     expect(screen.getByText("Se hace desde la web")).toBeOnTheScreen();
     // Viaje is disabled on the WEB too, with the web's own badge, and it is
@@ -862,13 +859,14 @@ describe("PetDocumentScreen — controls with no native destination are drawn ho
     // promises nothing, so there is nowhere to send anybody.
     expect(screen.getByText("Viaje y movilidad")).toBeOnTheScreen();
     expect(screen.getByText("Próximamente")).toBeOnTheScreen();
-    // The web-only row does not navigate IN THE APP — it hands off to the
-    // browser, which is a different mock. Before 2026-09-11 it did neither:
-    // it had no `onPress` at all and a tap was indistinguishable from a
-    // broken button.
+    // CHAPA FÍSICA NOW NAVIGATES (D2) — the same reversal Acompañamiento de
+    // adopción got on 2026-09-10, and for the same reason: the door reaches
+    // the identical use-case the web action reaches, so there is no longer a
+    // web to send anybody to.
     fireEvent.press(screen.getByText("Chapa física"));
-    expect(mockPush).not.toHaveBeenCalled();
-    // And the one that stopped being web-only does — to the titular's screen.
+    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/chapita`);
+
+    mockPush.mockClear();
     fireEvent.press(screen.getByText("Acompañamiento de adopción"));
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/buscar-hogar`);
   });
@@ -1048,14 +1046,16 @@ describe("PetDocumentScreen — the face reads petStatus and the role (A3-docume
   });
 
   // ===================================================================
-  // THE TWO WEB-ONLY ROWS SEND NOBODY TO A BROWSER. THESE TESTS ARE INVERTED
-  // FROM WHAT THEY ASSERTED THIS MORNING, AND THE INVERSION IS THE RECORD.
+  // THE REMAINING WEB-ONLY ROW SENDS NOBODY TO A BROWSER. THIS TEST WAS
+  // INVERTED FROM WHAT IT ASSERTED THIS MORNING, AND THE INVERSION IS THE
+  // RECORD.
   // ===================================================================
-  // Earlier on 2026-09-11 both rows were given `Linking.openURL` handlers, and
-  // these two tests pinned that they fired. The reasoning was about the ROW: a
-  // row that rendered with no `onPress` in a sheet where everything else
-  // navigates is indistinguishable from a broken button, and the caption was
-  // already promising something ("Disponible en la web").
+  // Earlier on 2026-09-11 this row (and Chapa física beside it, until D2 took
+  // it live on 2026-09-25) was given a `Linking.openURL` handler, and this
+  // test pinned that it fired. The reasoning was about the ROW: a row that
+  // rendered with no `onPress` in a sheet where everything else navigates is
+  // indistinguishable from a broken button, and the caption was already
+  // promising something ("Disponible en la web").
   //
   // The product owner's reasoning is about the PERSON, and it outranks it:
   // during a closed-testing pilot, a tester sent out to a browser mid-flow does
@@ -1063,25 +1063,22 @@ describe("PetDocumentScreen — the face reads petStatus and the role (A3-docume
   // A row that says where the thing lives costs a moment of mild
   // disappointment; a browser tab costs the session.
   //
-  // So the old assertions are not deleted, they are turned around, and the
-  // caption changed with them — "Se pide desde la web" states a fact instead of
-  // inviting a tap. `ListRow` renders an `onPress`-less row muted and announces
+  // So the old assertion is not deleted, it is turned around, and the caption
+  // changed with it — "Se hace desde la web" states a fact instead of inviting
+  // a tap. `ListRow` renders an `onPress`-less row muted and announces
   // `disabled`, which is what makes this different from the silent dead rows
-  // those handlers replaced.
+  // that handler replaced.
   //
-  // THE ASSERTION IS ON `mockOpenURL` NOT BEING CALLED AT ALL, for both roles,
-  // because that is the thing the decision is about: no path out of the app.
-  it("does NOT send the titular to a browser from Chapa física", async () => {
+  // THE ASSERTION IS ON `mockOpenURL` NOT BEING CALLED AT ALL, because that is
+  // the thing the decision is about: no path out of the app.
+  it("D2: Chapa física now navigates in-app, and never opens a browser", async () => {
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
     fireEvent.press(screen.getByText("Más"));
 
     fireEvent.press(screen.getByText("Chapa física"));
     expect(mockOpenURL).not.toHaveBeenCalled();
-    // And it does not silently navigate in-app either: the row is inert, and
-    // the caption is where the person finds out why.
-    expect(mockPush).not.toHaveBeenCalled();
-    expect(screen.getByText("Se pide desde la web")).toBeOnTheScreen();
+    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/chapita`);
   });
 
   it("does NOT send the FOSTER to a browser from Buscar hogar", async () => {

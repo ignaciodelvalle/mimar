@@ -76,6 +76,7 @@ import {
 import { fetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
 import { resolvePppClassificationForJurisdiction } from "@/lib/infra/ppp-classification";
 import { reportError } from "@/lib/infra/report-error";
+import { togglePhysicalTagInterest } from "@/src/modules/pets/application/physical-tag-interest/toggle-physical-tag-interest";
 import { correctPetSpecies } from "@/src/modules/pets/application/profile/correct-species";
 import { updateEmergencyContactsForPet } from "@/src/modules/pets/application/profile/update-emergency-contacts";
 import { updatePet } from "@/src/modules/pets/application/update-pet";
@@ -144,8 +145,43 @@ export async function runPetProfileCommand(ctx: CommandContext) {
     return correctSpecies(ctx, access, ctx.input);
   }
 
+  if (ctx.input.command === "toggle_physical_tag_interest") {
+    if (!capabilities.canTogglePhysicalTagInterest) return apiV1Error("profile_forbidden", 403);
+    return runToggle(ctx, access);
+  }
+
   if (!capabilities.canEditEmergencyContacts) return apiV1Error("profile_forbidden", 403);
   return setEmergencyContacts(ctx, access, ctx.input);
+}
+
+/**
+ * D2 — TOGGLE PHYSICAL-TAG INTEREST, through the web's own use-case verbatim.
+ *
+ * `togglePhysicalTagInterest` is the IDENTICAL function
+ * `togglePhysicalTagInterestAction` calls (`app/actions/physical-tag-interest.ts`)
+ * — this is the join `check-owner-surface-parity.ts` makes, and calling it
+ * unchanged is what closes that fence's `write:togglePhysicalTagInterestAction→
+ * togglePhysicalTagInterest` entry rather than moving the divergence one file
+ * over. It takes no input beyond the two ids: the toggle's direction (interested
+ * → cancelled → interested) is a fact the existing row holds, never something a
+ * client states, which is why the contract's `toggle_physical_tag_interest`
+ * command carries no fields.
+ *
+ * NO SEPARATE FAILURE CODE IS MAPPED. The use-case's `{ error }` arm exists in
+ * its type for the SHIM's own guard failures (the message this door already
+ * answers with `profile_forbidden` above) — reading the function itself, it
+ * never returns that arm on its own; an insert or an update failing is the same
+ * infrastructure failure `event_failed`-style codes on sibling commands answer.
+ */
+async function runToggle(ctx: CommandContext, access: ResolvedProfileAccess) {
+  const result = await togglePhysicalTagInterest(ctx.userId, access.pet.id, ctx.publicToken);
+  if ("error" in result) {
+    reportError("api-v1-profile/toggle_physical_tag_interest", new Error(result.error), {
+      userId: ctx.userId,
+    });
+    return apiV1Error("profile_failed", 500);
+  }
+  return ack({ command: "toggle_physical_tag_interest", state: result.state });
 }
 
 /**

@@ -25,12 +25,17 @@ import {
   buildCorrectSpecies,
   buildEmergencyContacts,
   buildIdentityEdit,
+  buildTogglePhysicalTagInterest,
   contactsBlockedReason,
   emergencyDraftFrom,
   identityBlockedReason,
   identityDraftFrom,
   identityFieldCaps,
   petProfileInputCodeMessage,
+  physicalTagInterestBody,
+  physicalTagInterestRequestedAtLabel,
+  physicalTagInterestSavedLabel,
+  physicalTagInterestTitle,
   savedLabel,
   speciesBlockedReason,
   speciesDraftFrom,
@@ -60,7 +65,9 @@ function view(over: Partial<PetProfileEditV1> = {}): PetProfileEditV1 {
       canEditIdentity: true,
       canEditEmergencyContacts: true,
       canCorrectSpecies: true,
+      canTogglePhysicalTagInterest: true,
     },
+    physicalTagInterest: { interested: false, requestedAt: null },
     ...over,
   } as PetProfileEditV1;
 }
@@ -91,6 +98,7 @@ describe("the two capabilities are two different refusals", () => {
         canEditIdentity: false,
         canEditEmergencyContacts: false,
         canCorrectSpecies: false,
+        canTogglePhysicalTagInterest: false,
       },
     });
     const identity = identityBlockedReason(blocked);
@@ -108,6 +116,7 @@ describe("the two capabilities are two different refusals", () => {
         canEditIdentity: true,
         canEditEmergencyContacts: false,
         canCorrectSpecies: true,
+        canTogglePhysicalTagInterest: true,
       },
       emergencyContacts: null,
       emergencyAccountDefault: null,
@@ -125,6 +134,7 @@ describe("the two capabilities are two different refusals", () => {
         canEditIdentity: true,
         canEditEmergencyContacts: false,
         canCorrectSpecies: false,
+        canTogglePhysicalTagInterest: true,
       },
     });
     expect(speciesBlockedReason(view())).toBeNull();
@@ -337,5 +347,47 @@ describe("every input code has a sentence, and a no-op is not a lie", () => {
     expect(savedLabel("correct_species", false)).toBe(
       "La especie es la misma; no hay nada que corregir.",
     );
+  });
+});
+
+describe("D2 — el interés en la chapa física", () => {
+  it("builds the toggle command with no fields", () => {
+    const built = buildTogglePhysicalTagInterest();
+    expect(built).toEqual({ ok: true, input: { command: "toggle_physical_tag_interest" } });
+  });
+
+  it("says the OPPOSITE thing before and after — obligatoria nunca aparece", () => {
+    // Unlike tattoo's callout, this one must never say the photo/tag is
+    // required: the contract accepts an absent one.
+    expect(physicalTagInterestTitle("Pampa", false)).toContain("¿Querés");
+    expect(physicalTagInterestTitle("Pampa", true)).toBe("Chapa física — anotado");
+  });
+
+  it("names the animal in the not-yet-interested body, and drops the name once anotado", () => {
+    expect(physicalTagInterestBody("Pampa", false)).toContain("Pampa");
+    // The body no longer needs to re-name the animal once the person already
+    // knows they asked about THIS one — the title already did.
+    expect(physicalTagInterestBody("Pampa", true)).not.toBe(
+      physicalTagInterestBody("Pampa", false),
+    );
+  });
+
+  it("reports each direction of the toggle in its own words", () => {
+    expect(physicalTagInterestSavedLabel("interested")).toContain("anotado");
+    expect(physicalTagInterestSavedLabel("cancelled")).toContain("Cancelaste");
+  });
+
+  it("renders no date line at all when there is none", () => {
+    expect(physicalTagInterestRequestedAtLabel(null)).toBeNull();
+  });
+
+  it("renders an unreadable date as no line, never as Invalid Date", () => {
+    expect(physicalTagInterestRequestedAtLabel("no es una fecha")).toBeNull();
+  });
+
+  it("renders a real ISO instant as an es-AR date line", () => {
+    const label = physicalTagInterestRequestedAtLabel("2026-09-01T12:00:00.000Z");
+    expect(label).toContain("Anotado el");
+    expect(label).toMatch(/2026/);
   });
 });

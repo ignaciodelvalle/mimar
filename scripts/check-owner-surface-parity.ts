@@ -188,12 +188,6 @@ export const DECLARED_DIVERGENCES: Record<string, DeclaredDivergence> = {
     closes:
       "Have lost/commands.ts read disclosureKeyRequiresTitular instead of its own copy of the key set; one predicate on both doors and this entry goes stale.",
   },
-  "write:togglePhysicalTagInterestAction→togglePhysicalTagInterest": {
-    reason:
-      "The §4.20 physical-tag interest toggle is a demand-signal placeholder on the web pet page; no v1 route or DTO carries it, so the app can neither show nor toggle it.",
-    closes:
-      "A boolean on OwnerPetDetailV1 and a `toggle_physical_tag_interest` command on POST /api/v1/pets/{token}/profile — or the PO retires the placeholder on the web too.",
-  },
 };
 
 // ---------------------------------------------------------------------------

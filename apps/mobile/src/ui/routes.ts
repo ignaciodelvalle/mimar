@@ -612,6 +612,25 @@ export function caseRoute(publicCode: string): `/casos/${string}` {
   return `/casos/${encodeURIComponent(publicCode)}`;
 }
 
+/**
+ * PHYSICAL TAG — D2 (2026-09-25): toggles interest in the §4.20
+ * demand-signal placeholder, the SAME toggle the web's sheet reaches
+ * (`PhysicalTagInterestSheet.tsx`).
+ *
+ * NESTED UNDER THE PET, for the same reason `cuidado` and `vacunas` are: the
+ * write is authorized against the animal (`canTogglePhysicalTagInterest`,
+ * derived from `POST /pets/{token}/profile`'s own access resolution) and "back"
+ * has to land on the pet somebody came from.
+ *
+ * THE PATH USES THE WEB'S WORD ("chapita"), not "chapa-fisica": the sheet's
+ * own query param is `?sheet=chapita` and the printable-QR sub-page is
+ * `/mis-mascotas/{token}/chapita` — one word, kept the same across both forms
+ * for the day a deep link needs it.
+ */
+export function physicalTagInterestRoute(publicToken: string): `/mascotas/${string}/chapita` {
+  return `/mascotas/${encodeURIComponent(publicToken)}/chapita`;
+}
+
 export type AppRoute =
   | (typeof ROUTES)[keyof typeof ROUTES]
   | ReturnType<typeof credentialRoute>
@@ -631,5 +650,6 @@ export type AppRoute =
   | ReturnType<typeof caretakerPetRoute>
   | ReturnType<typeof caretakerGrantRoute>
   | ReturnType<typeof caseRoute>
+  | ReturnType<typeof physicalTagInterestRoute>
   | ReturnType<typeof turnoRoute>
   | ReturnType<typeof buscarOfferingRoute>;
