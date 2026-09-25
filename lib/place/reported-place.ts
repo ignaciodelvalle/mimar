@@ -125,12 +125,18 @@ export async function resolveReportedPlace(
 }
 
 /**
- * The web's map forms: the pair on those forms is the client's reverse
- * geocode of the SAME pin, so when the two disagree the pin — the thing the
- * person actually placed — is re-read on the server instead.
+ * THE PIN WINS A DISAGREEMENT. For the web's map forms the pair is the
+ * client's reverse geocode of the SAME pin, so when the two disagree the pin —
+ * the thing the person actually placed — is re-read on the server. The app's
+ * lost report takes the same rule (`pair: "strict"`, its pair comes from the
+ * catalogue picker) so that the same pin files the same case from either door
+ * (localidades-por-id A3, "same pin, same unit, any channel").
  */
-export async function resolveMapFormPlace(loc: LocationValue): Promise<ReportedPlace> {
-  const place = await resolveReportedPlace(loc, { pair: "soft" });
+export async function resolveMapFormPlace(
+  loc: LocationValue,
+  opts: { pair: "strict" | "soft" } = { pair: "soft" },
+): Promise<ReportedPlace> {
+  const place = await resolveReportedPlace(loc, opts);
   const point = pointOf(loc);
   if (place.mismatch && point) return resolvePinPlace(point, place.entered);
   return place;

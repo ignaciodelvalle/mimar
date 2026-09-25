@@ -91,7 +91,11 @@
 //     `found-notification-audience.ts` and are shared with the web action, so the
 //     `role = 'owner'` filter that took months to find exists once.
 
-import { CoordError, normalizeLocationForWrite } from "@/lib/domain/location-normalize";
+import {
+  CoordError,
+  JurisdictionValidationError,
+  normalizeLocationForWrite,
+} from "@/lib/domain/location-normalize";
 import { apiV1Error, apiV1Json } from "@/lib/infra/api-v1";
 import { findOpenCaseForPetAndKind } from "@/lib/infra/case-helpers";
 import { DbBudgetExceededError, withDbBudgetOrThrow } from "@/lib/infra/db-budget";
@@ -101,6 +105,7 @@ import {
   resolvePetHolderAccess,
 } from "@/lib/infra/pet-access";
 import { reportError } from "@/lib/infra/report-error";
+import { type ReportedPlace, resolveMapFormPlace } from "@/lib/place/reported-place";
 import { reactivateLostSearch } from "@/src/modules/cases/application/reactivate-lost-search";
 import {
   findBroadcastRecipientUserIds,
@@ -367,41 +372,45 @@ async function markLost(
   // back to the animal's home jurisdiction, which is what every caller got
   // before this block existed.
   //
-  // `locality: "strict"`, the same choice `appendBite` made and for the same
+  // `pair: "strict"`, the same choice `appendBite` made and for the same
   // reason: the app picked from the INDEC catalogue, so the (province, locality)
   // pair can be VERIFIED, and a client that invents a locality is refused with a
   // 400 instead of writing a place that does not exist into a record a sanitary
-  // authority acts on. The web's own `setPetLostAction` still normalises with
-  // `locality: "none"` because a reverse-geocoded string is all a map pin gives
-  // it — the divergence is deliberate and in the safe direction.
-  let eventProvince: string | null = null;
-  let eventLocality: string | null = null;
-  if (input.provinceCode !== null) {
-    try {
-      const normalised = await normalizeLocationForWrite(
-        {
-          provinceCode: input.provinceCode,
-          // The CODE is what a client may assert; the display name is the
-          // catalogue's to decide.
-          province: null,
-          locality: input.localityName,
-          localityIndecId: input.localityIndecId,
-          // The pin is a separate field on this command and travels on its own.
-          lat: null,
-          lng: null,
-          address: null,
-        },
-        { locality: "strict" },
-      );
-      eventProvince = normalised.province;
-      eventLocality = normalised.locality;
-    } catch {
-      // `strict` throws on a pair the catalogue does not hold. That is a request
-      // problem rather than a fact about the animal, so it is a 400 and not one
-      // of the 409s.
-      return apiV1Error("invalid_request", 400);
-    }
+  // authority acts on.
+  //
+  // THE PIN IS CHECKED AGAINST THE PAIR, AND WINS (localidades-por-id A3). The
+  // pin used to travel on its own and never meet the pair; a pin in Buenos
+  // Aires' Villa María next to the picker's Córdoba id filed a Córdoba case.
+  // Now a disagreement re-reads the pin, which is exactly what the web's
+  // `setPetLostAction` does for the same pin — so the two doors file the same
+  // case. No trio and a pin: the pin alone decides, never the pet's home.
+  // No trio and no pin: nothing is resolved and the writer's home fallback
+  // applies, as before.
+  let lostPlace: ReportedPlace;
+  try {
+    lostPlace = await resolveMapFormPlace(
+      {
+        // The CODE is what a client may assert; the display name is the
+        // catalogue's to decide.
+        provinceCode: input.provinceCode,
+        province: null,
+        locality: input.localityName,
+        localityIndecId: input.localityIndecId,
+        lat: input.locationLat ?? null,
+        lng: input.locationLng ?? null,
+        address: null,
+      },
+      { pair: "strict" },
+    );
+  } catch (err) {
+    // `strict` throws on a pair the catalogue does not hold. That is a request
+    // problem rather than a fact about the animal, so it is a 400 and not one
+    // of the 409s.
+    if (err instanceof JurisdictionValidationError) return apiV1Error("invalid_request", 400);
+    throw err;
   }
+  const eventProvince = lostPlace.province;
+  const eventLocality = lostPlace.province !== null ? lostPlace.locality : null;
 
   const result = await setPetLostWriter(
     {
@@ -430,6 +439,7 @@ async function markLost(
       // animal's home jurisdiction is the defined behaviour for that.
       eventJurisdictionProvince: eventProvince,
       eventJurisdictionLocality: eventLocality,
+      eventLocalityId: lostPlace.province !== null ? lostPlace.localityId : null,
       reason: input.reason,
       disclosurePrefs: input.disclosure,
       enrichedDescription: input.enrichedDescription ?? null,

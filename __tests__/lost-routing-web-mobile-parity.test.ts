@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   setPetLostWriter: vi.fn(),
   requirePetAccess: vi.fn(),
   resolvePetHolderAccess: vi.fn(),
+  reverseGeocode: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -43,17 +44,10 @@ vi.mock("@/src/modules/events/application/lifecycle/set-pet-lost-use-case", () =
 
 vi.mock("@/lib/infra/lost-pet-broadcast", () => ({ broadcastLostPet: vi.fn() }));
 
-// No network: a pin this file sends is reverse-geocoded to the place it is in.
+// No network: each test says what the geocoder answers for its pin.
 vi.mock("@/lib/infra/geocoding", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/infra/geocoding")>();
-  return {
-    ...actual,
-    reverseGeocode: vi.fn(async () => ({
-      display_name: "Villa María, Córdoba, Argentina",
-      province: "Córdoba",
-      locality: "Villa María",
-    })),
-  };
+  return { ...actual, reverseGeocode: mocks.reverseGeocode };
 });
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }));
@@ -66,6 +60,7 @@ import { lostCommandInputSchema } from "@dim/contract/input";
 
 const TOKEN = "DIM-TEST-0004";
 const VILLA_MARIA_CORDOBA = "14042170";
+const VILLA_MARIA_BUENOS_AIRES = "06021060";
 
 /** A dog that lives in CABA. */
 const PET = {
@@ -89,16 +84,34 @@ const DISCLOSURE = {
   allowFinderFormWhenLost: true,
 };
 
+type Row = { id: string; lat: number; lng: number };
 let pin: { lat: number; lng: number };
+let cordobaRow: Row;
+let buenosAiresRow: Row;
+
+async function catalogueRow(indecId: string): Promise<Row> {
+  const [row] = await db
+    .select({ id: arLocalities.id, lat: arLocalities.latitude, lng: arLocalities.longitude })
+    .from(arLocalities)
+    .where(eq(arLocalities.indecId, indecId));
+  expect(row, `INDEC ${indecId} must be in the local catalogue`).toBeDefined();
+  return { id: row.id, lat: Number(row.lat), lng: Number(row.lng) };
+}
 
 beforeAll(async () => {
-  const [row] = await db
-    .select({ lat: arLocalities.latitude, lng: arLocalities.longitude })
-    .from(arLocalities)
-    .where(eq(arLocalities.indecId, VILLA_MARIA_CORDOBA));
-  expect(row, "Villa María (Córdoba) must be in the local catalogue").toBeDefined();
-  pin = { lat: Number(row.lat), lng: Number(row.lng) };
+  cordobaRow = await catalogueRow(VILLA_MARIA_CORDOBA);
+  buenosAiresRow = await catalogueRow(VILLA_MARIA_BUENOS_AIRES);
+  pin = { lat: cordobaRow.lat, lng: cordobaRow.lng };
 });
+
+/** The geocoder names the Villa María the pin is actually in. */
+function geocoderAnswers(province: string) {
+  mocks.reverseGeocode.mockResolvedValue({
+    display_name: `Villa María, ${province}, Argentina`,
+    province,
+    locality: "Villa María",
+  });
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -110,11 +123,13 @@ beforeEach(() => {
     eventAuthorship: { authorRole: "owner", authorOrganizationId: null, authorVerified: false },
   });
   mocks.resolvePetHolderAccess.mockResolvedValue({ kind: "owner", pet: PET, holderRole: "owner" });
+  geocoderAnswers("Córdoba");
 });
 
 type WriterPlace = {
   eventJurisdictionProvince?: string | null;
   eventJurisdictionLocality?: string | null;
+  eventLocalityId?: string | null;
 };
 
 function writerPlace(): WriterPlace {
@@ -123,6 +138,7 @@ function writerPlace(): WriterPlace {
   return {
     eventJurisdictionProvince: params.eventJurisdictionProvince ?? null,
     eventJurisdictionLocality: params.eventJurisdictionLocality ?? null,
+    eventLocalityId: params.eventLocalityId ?? null,
   };
 }
 
@@ -143,15 +159,15 @@ async function viaWeb(): Promise<WriterPlace> {
 }
 
 /** What the app posts: the picker's trio, INDEC id included, and the same pin. */
-async function viaApp(): Promise<WriterPlace> {
+async function viaApp(at: { lat: number; lng: number } = pin): Promise<WriterPlace> {
   const input = lostCommandInputSchema.parse({
     command: "mark_lost",
     disclosure: DISCLOSURE,
     provinceCode: "AR-X",
     localityName: "Villa María",
     localityIndecId: VILLA_MARIA_CORDOBA,
-    locationLat: pin.lat,
-    locationLng: pin.lng,
+    locationLat: at.lat,
+    locationLng: at.lng,
     locationDescription: "Plaza Independencia, Villa María",
   });
   const res = await runLostCommand({
@@ -166,7 +182,7 @@ async function viaApp(): Promise<WriterPlace> {
 
 describe("lost routing: same pin, same place, any channel", () => {
   it("the app files the case where the animal went missing", async () => {
-    expect(await viaApp()).toEqual({
+    expect(await viaApp()).toMatchObject({
       eventJurisdictionProvince: "Córdoba",
       eventJurisdictionLocality: "Villa María",
     });
@@ -176,6 +192,7 @@ describe("lost routing: same pin, same place, any channel", () => {
     expect(await viaWeb()).toEqual({
       eventJurisdictionProvince: "Córdoba",
       eventJurisdictionLocality: "Villa María",
+      eventLocalityId: cordobaRow.id,
     });
   });
 
@@ -190,5 +207,40 @@ describe("lost routing: same pin, same place, any channel", () => {
     });
     const app = await viaApp();
     expect(web).toEqual(app);
+  });
+});
+
+describe("the app door (localidades-por-id A3)", () => {
+  it("the case carries the catalogue row the picker resolved", async () => {
+    expect(await viaApp()).toEqual({
+      eventJurisdictionProvince: "Córdoba",
+      eventJurisdictionLocality: "Villa María",
+      eventLocalityId: cordobaRow.id,
+    });
+  });
+
+  it("a pin that contradicts the picker is re-read: the case goes where the pin is", async () => {
+    // The picker says Córdoba's Villa María; the pin sits on Buenos Aires' one.
+    // The two answers came from the same person and only the pin is a fact
+    // about the ground — and it is what the web would file for the same pin.
+    geocoderAnswers("Buenos Aires");
+    expect(await viaApp({ lat: buenosAiresRow.lat, lng: buenosAiresRow.lng })).toEqual({
+      eventJurisdictionProvince: "Buenos Aires",
+      eventJurisdictionLocality: "Villa María",
+      eventLocalityId: buenosAiresRow.id,
+    });
+  });
+
+  it("a pair without its INDEC id never reaches the writer, so no homonym is ever guessed", () => {
+    // The contract refuses a partial trio (LOST_JURISDICTION_INCOMPLETE) before
+    // any lookup: "Buenos Aires / Mechita" alone names two partidos.
+    const parsed = lostCommandInputSchema.safeParse({
+      command: "mark_lost",
+      disclosure: DISCLOSURE,
+      provinceCode: "AR-B",
+      localityName: "Mechita",
+    });
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues.map((i) => i.message)).toContain("LOST_JURISDICTION_INCOMPLETE");
   });
 });
