@@ -300,6 +300,54 @@ describe("the anonymous submission carries nothing about the reporter", () => {
   });
 });
 
+describe("return-key chains (M10)", () => {
+  it("the address field says 'done' and its return key searches, same as the button", async () => {
+    render(<DenunciaScreen />);
+    const address = screen.getByLabelText("¿Dónde está pasando?, obligatorio");
+    expect(address.props.returnKeyType).toBe("done");
+
+    mockSend.mockResolvedValueOnce(matchesAck([PLACE_LABEL]));
+    fireEvent.changeText(address, ADDRESS);
+    fireEvent(address, "submitEditing");
+    await waitFor(() => expect(screen.getByText(PLACE_LABEL)).toBeTruthy());
+  });
+
+  it("leaves the two multiline fields OUT of any chain — Enter must still type a newline", async () => {
+    render(<DenunciaScreen />);
+    await searchAddress();
+    const subject = screen.getByLabelText("¿Qué o a quién estás denunciando?, obligatorio");
+    const description = screen.getByLabelText("Contanos qué pasó, obligatorio");
+    // `multiline` floors `submitBehavior` at `undefined` (TextField's own
+    // rule) rather than the chain's "submit" — a chained multiline field is
+    // exactly the regression `use-return-key-chain.ts`'s header warns against.
+    expect(subject.props.returnKeyType).toBeUndefined();
+    expect(description.props.returnKeyType).toBeUndefined();
+    expect(subject.props.submitBehavior).toBeUndefined();
+    expect(description.props.submitBehavior).toBeUndefined();
+  });
+
+  it("chains correo → teléfono with 'next'/'done', and neither submits the denuncia", async () => {
+    render(<DenunciaScreen />);
+    await searchAddress();
+    fireEvent.press(screen.getByText(PLACE_LABEL));
+    fillFacts();
+    fireEvent.press(screen.getByText("Con mi contacto"));
+
+    const email = screen.getByLabelText("Correo");
+    const phone = screen.getByLabelText("Teléfono");
+    expect(email.props.returnKeyType).toBe("next");
+    expect(phone.props.returnKeyType).toBe("done");
+
+    fireEvent.changeText(email, "vecina@example.com");
+    fireEvent(email, "submitEditing");
+    fireEvent(phone, "submitEditing");
+    // A legal allegation that cannot be un-sent is not filed by a keyboard
+    // key — only "Enviar la denuncia" calls `send`. The one call on record
+    // here is still the ADDRESS search from `searchAddress()`.
+    expect(mockSend).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("the receipt", () => {
   it("shows the code and, for an anonymous reporter, that it is the only thread back", async () => {
     // An anonymous denuncia leaves the server no address to mint an access link

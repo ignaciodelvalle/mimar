@@ -70,6 +70,7 @@ import {
 } from "../ui/kit";
 import { COLORS, RADIUS, SPACE, TOUCH_TARGET, TYPE } from "../ui/theme";
 import { useDraftDiscardGuard } from "../ui/use-draft-discard-guard";
+import { useReturnKeyChain } from "../ui/use-return-key-chain";
 import { useScrollToError } from "../ui/use-scroll-to-error";
 
 import {
@@ -193,6 +194,19 @@ export function DenunciaScreen() {
     });
   }, [addressText, values]);
 
+  // Return-key advance (M10, native-feel audit) — TWO independent chains, not
+  // one across the whole form: the address field's own "next step" is the
+  // search button, not another field, and the two multiline fields between
+  // them (`subjectDescription`, `description`) keep the newline their return
+  // key has always typed — chaining THROUGH a multiline field is exactly what
+  // `useReturnKeyChain`'s own header says never to do. Neither chain
+  // auto-submits the denuncia itself: `send` needs an explicit tap, the same
+  // reason `EditProfileScreen`'s chain does not either — a legal allegation
+  // that "una vez enviada, no se puede borrar" is not something a keyboard key
+  // should file by accident.
+  const searchChain = useReturnKeyChain(1, () => void searchPlace());
+  const contactChain = useReturnKeyChain(2);
+
   if (phase.name === "filed") {
     return (
       <Screen>
@@ -268,6 +282,7 @@ export function DenunciaScreen() {
       {/* ---- 1. El lugar ------------------------------------------------- */}
 
       <TextField
+        {...searchChain(0)}
         label="¿Dónde está pasando?"
         required
         editable={!working && !searching}
@@ -436,6 +451,7 @@ export function DenunciaScreen() {
       ) : (
         <>
           <TextField
+            {...contactChain(0)}
             label="Correo"
             autoComplete="email"
             editable={!working}
@@ -447,6 +463,7 @@ export function DenunciaScreen() {
             onChangeText={(contactEmail) => patch({ contactEmail })}
           />
           <TextField
+            {...contactChain(1)}
             label="Teléfono"
             autoComplete="tel"
             editable={!working}
