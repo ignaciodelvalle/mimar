@@ -292,10 +292,11 @@ fence's `EXTRA_FENCES` (fences whose FILENAME hides them from that glob) is eith
 cited by a row's enforcer or listed here. The parity fence pins this list's length
 EXACTLY: growing it and shrinking it are both hand edits, and both are reviewable.
 
-8 unmapped.
+9 unmapped.
 
 | Kind | Item | Why it is unmapped |
 | --- | --- | --- |
+| fence-test | `__tests__/lost-routing-web-mobile-parity.test.ts` | Stage A of the SDD change localidades-por-id (2026-09-25): a lost report from the web and from the app routes to the same authority (where the pet was lost, never its home). The canon row for place-by-id lands with the change's stage E, when the name path is retired; until then this fence is listed here. |
 | fence-test | `__tests__/architecture-facts.test.ts` | Postdates the d7dbf25f7 snapshot; fences the facts markers, no canon row yet. Its filename carries none of fence/parity/coverage, so the census reaches it only through EXTRA_FENCES in __tests__/conventions-canon-parity.test.ts. |
 | fence-test | `__tests__/check-function-parity.test.ts` | Pins scripts/check-function-parity.ts, which no canon row cites either: the rule it guards (a SQL function declared in a migration must match the one the app calls) was never written down in prose, so extraction had nothing to harvest. |
 | fence-test | `__tests__/contact-email-domain-fence.test.tsx` | Postdates the d7dbf25f7 snapshot (added 2026-09-07 with lib/ui/contact.ts); no canon row can cite it without describing prose that did not exist when the canon was taken. It bans the class rather than a spelling: every email address a shipped file under app/ or components/ names must be at a domain in OWNED_MAIL_DOMAINS, with input placeholders and RFC 2606 example domains as the two structural exemptions. |
