@@ -32,7 +32,9 @@ function isImagePickMarker(value: unknown): value is ImagePickMarker {
   if (value === null || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
   return (
-    (candidate.screen === "pet-photo" || candidate.screen === "tattoo") &&
+    (candidate.screen === "pet-photo" ||
+      candidate.screen === "tattoo" ||
+      candidate.screen === "post_adoption_checkin") &&
     typeof candidate.publicToken === "string" &&
     typeof candidate.sessionUserId === "string" &&
     typeof candidate.launchedAt === "number"

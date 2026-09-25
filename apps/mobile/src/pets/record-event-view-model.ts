@@ -936,10 +936,11 @@ function draftToWire(
   sourceEventId: string | null,
   sameDayOverride: boolean,
   /**
-   * The staged object the photo already landed in, for the ONE kind that needs
-   * one. `null` while no photo has been uploaded yet — the contract then
-   * refuses with `TATTOO_PHOTO_REQUIRED`, which is the same refusal the web
-   * gives a form submitted with an empty file input.
+   * The staged object the photo already landed in, for the two kinds that
+   * carry one (D7 added the second). `null` while no photo has been uploaded
+   * yet — for `tattoo` the contract then refuses with `TATTOO_PHOTO_REQUIRED`,
+   * the same refusal the web gives a form submitted with an empty file input;
+   * for `post_adoption_checkin` `null` is simply "no photo", a valid answer.
    */
   stagedPath: string | null,
 ): unknown {
@@ -1166,10 +1167,11 @@ function draftToWire(
         onsetAt: dayOrNull(draft.onsetAt),
       };
     case "post_adoption_checkin":
-      // The smallest body on the endpoint: the text, or nothing. No date (the
-      // server stamps the moment of reporting, as the web action does), no
-      // refugio (read off the adoption), no photo (no module for one yet).
-      return { kind, notes: orNull(draft.notes) };
+      // D7: the text, or nothing, plus an OPTIONAL photo — unlike tattoo's,
+      // whose contract variant refuses a missing one. No date (the server
+      // stamps the moment of reporting, as the web action does), no refugio
+      // (read off the adoption).
+      return { kind, notes: orNull(draft.notes), stagedPath };
   }
 }
 
@@ -1216,7 +1218,7 @@ export function validateDraft(
   options: {
     sourceEventId?: string | null;
     sameDayOverride?: boolean;
-    /** The staged photo, for `tattoo`. Ignored by every other kind. */
+    /** The staged photo, for `tattoo` and `post_adoption_checkin` (D7). Ignored by every other kind. */
     stagedPath?: string | null;
   } = {},
 ): DraftResult {
@@ -1384,6 +1386,12 @@ export function inputCodeMessage(code: RecordEventInputCode | null): string {
       // sentence exists because the code does, and because the day that guard
       // is edited away this is what the person would read.
       return "La cantidad de crías solo va cuando nacieron con vida.";
+    case "CHECKIN_PHOTO_INVALID":
+      // D7: UNREACHABLE FROM A HEALTHY UPLOAD, the same posture as
+      // `TATTOO_PHOTO_REQUIRED` above — nobody types a `stagedPath`, the
+      // upload produces it. This checkin's is optional, so the code only
+      // fires on a malformed value, never a missing one.
+      return "Hubo un problema con la foto. Elegí otra o enviá el check-in sin foto.";
   }
 }
 
@@ -1500,6 +1508,10 @@ export function invalidFields(code: RecordEventInputCode | null): ReadonlySet<ke
         return ["biteSeverity"];
       case "BITE_JURISDICTION_INCOMPLETE":
         return ["biteLocalityName"];
+      case "CHECKIN_PHOTO_INVALID":
+        // NINGUN CAMPO DEL BORRADOR, misma razon que `TATTOO_PHOTO_REQUIRED`:
+        // la foto vive en el estado de la pantalla, no en el borrador.
+        return [];
     }
   })();
   return new Set(fields);

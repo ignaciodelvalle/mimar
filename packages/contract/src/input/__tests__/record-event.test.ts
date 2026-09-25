@@ -580,7 +580,7 @@ describe("recordEventInputSchema — seguimiento post-adopción", () => {
   it("normalizes a blank text to null, exactly as the web action reads it", () => {
     const parsed = recordEventInputSchema.safeParse({ kind: "post_adoption_checkin", notes: "  " });
     if (!parsed.success) throw new Error("expected the body to parse");
-    expect(parsed.data).toEqual({ kind: "post_adoption_checkin", notes: null });
+    expect(parsed.data).toEqual({ kind: "post_adoption_checkin", notes: null, stagedPath: null });
   });
 
   it("carries NO occurredAt: the writer stamps the moment of reporting", () => {
@@ -593,6 +593,48 @@ describe("recordEventInputSchema — seguimiento post-adopción", () => {
     });
     if (!parsed.success) throw new Error("expected the body to parse");
     expect("occurredAt" in parsed.data).toBe(false);
+  });
+
+  describe("D7 — the optional photo", () => {
+    /** The same shape a ticket mints for tattoo's — see that describe block. */
+    const A_STAGED_PATH =
+      "11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.jpg";
+
+    it("accepts NO photo at all — unlike tattoo's, this one is optional", () => {
+      expect(codeFor({ kind: "post_adoption_checkin" })).toBe(null);
+      expect(codeFor({ kind: "post_adoption_checkin", stagedPath: null })).toBe(null);
+    });
+
+    it("accepts a staged photo alongside the text", () => {
+      const parsed = recordEventInputSchema.safeParse({
+        kind: "post_adoption_checkin",
+        notes: "Comiendo bien",
+        stagedPath: A_STAGED_PATH,
+      });
+      if (!parsed.success) throw new Error("expected the body to parse");
+      expect(parsed.data).toEqual({
+        kind: "post_adoption_checkin",
+        notes: "Comiendo bien",
+        stagedPath: A_STAGED_PATH,
+      });
+    });
+
+    it("refuses a staged path that is not the shape a ticket mints, unlike a missing one", () => {
+      // Same regex as tattoo's, same reasoning: an obviously-malformed value is
+      // a 400 here rather than a Storage round trip. The difference from
+      // tattoo is that ABSENT and MALFORMED are not the same refusal —
+      // "no dijo nada" is fine, "dijo algo que no es un objeto en staging" is
+      // not.
+      expect(codeFor({ kind: "post_adoption_checkin", stagedPath: "" })).toBe(
+        "CHECKIN_PHOTO_INVALID",
+      );
+      expect(codeFor({ kind: "post_adoption_checkin", stagedPath: "../../etc/passwd" })).toBe(
+        "CHECKIN_PHOTO_INVALID",
+      );
+      expect(
+        codeFor({ kind: "post_adoption_checkin", stagedPath: `${A_STAGED_PATH}/deeper.jpg` }),
+      ).toBe("CHECKIN_PHOTO_INVALID");
+    });
   });
 });
 

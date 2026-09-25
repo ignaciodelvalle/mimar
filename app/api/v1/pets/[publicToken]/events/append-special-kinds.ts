@@ -753,6 +753,38 @@ export async function appendPostAdoptionCheckin(
 
   if (access.kind === "org") return apiV1Error("checkin_not_adopter", 403);
 
+  // D7 (2026-09-25) — THE SAME ORDER AS TATTOO, AND ONLY WHEN A PHOTO WAS
+  // STAGED. `claimStagedEventAttachment` deletes the staged object on its way
+  // out, so a retry whose first request already committed would 404 on the
+  // SECOND claim instead of reporting the duplicate — see `appendTattoo`'s own
+  // note above for the full argument. A check-in with no photo has nothing a
+  // claim could delete, so the writer's own replay handling
+  // (`recordPostAdoptionCheckin`'s check against the closed window) is enough
+  // on its own, exactly as before this change.
+  let uploadedPath: string | null = null;
+  let uploadedMimeType: string | null = null;
+  let uploadedSize: number | null = null;
+  let claimedPath: string | null = null;
+  if (input.stagedPath) {
+    const replayed = await findExistingByKey(pet.id, "post_adoption_checkin", ctx.idempotencyKey);
+    if (replayed) {
+      const replayPayload: EventRecordedV1 = { eventId: replayed.id, wasDuplicate: true };
+      return apiV1Json(replayPayload, { status: 201 });
+    }
+
+    const claimed = await claimStagedEventAttachment({
+      petId: pet.id,
+      stagedPath: input.stagedPath,
+    });
+    if (!claimed.ok) {
+      return apiV1Error(claimed.code, claimed.code === "photo_not_an_image" ? 400 : 500);
+    }
+    uploadedPath = claimed.attachment.path;
+    uploadedMimeType = claimed.attachment.mimeType;
+    uploadedSize = claimed.attachment.size;
+    claimedPath = claimed.attachment.path;
+  }
+
   const result = await recordPostAdoptionCheckin({
     pet: { id: pet.id, name: pet.name },
     user: { id: ctx.userId },
@@ -762,13 +794,13 @@ export async function appendPostAdoptionCheckin(
     eventJurisdictionProvince: null,
     eventJurisdictionLocality: null,
     clientIdempotencyKey: ctx.idempotencyKey,
-    // No native upload path exists yet — see the router's file header.
-    uploadedPath: null,
-    uploadedMimeType: null,
-    uploadedSize: null,
+    uploadedPath,
+    uploadedMimeType,
+    uploadedSize,
   });
 
   if (!result.ok) {
+    if (claimedPath) await discardClaimedAttachment(claimedPath);
     switch (result.notAllowed) {
       case "not_adopted":
         return apiV1Error("checkin_not_adopted", 409);
@@ -782,6 +814,12 @@ export async function appendPostAdoptionCheckin(
     reportError("api-v1-event", new Error(result.error), { userId: ctx.userId });
     return apiV1Error("event_failed", 500);
   }
+
+  // STILL HERE AFTER THE LEDGER CHECK ABOVE, for the same race `appendTattoo`
+  // guards against: two requests under one key in flight at once, where both
+  // read the ledger before either committed. The loser gets `wasDuplicate`,
+  // and its claimed bytes are a second copy nothing points at.
+  if (result.wasDuplicate && claimedPath) await discardClaimedAttachment(claimedPath);
 
   const payload: EventRecordedV1 = {
     eventId: result.eventId,

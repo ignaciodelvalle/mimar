@@ -254,6 +254,7 @@ export const RECORD_EVENT_INPUT_CODES = [
   "TATTOO_CODE_REQUIRED",
   "TATTOO_LOCATION_INVALID",
   "TATTOO_PHOTO_REQUIRED",
+  "CHECKIN_PHOTO_INVALID",
 ] as const;
 export type RecordEventInputCode = (typeof RECORD_EVENT_INPUT_CODES)[number];
 
@@ -936,21 +937,29 @@ const pregnancyEnd = z.object({
  * Seguimiento post-adopción — the adopter's answer to a window the refugio
  * opened.
  *
- * THE LAST OF THE EIGHTEEN, and the smallest body on this endpoint: an optional
- * text and nothing else. The web form (CheckinForm.tsx) has exactly one typed
- * field — "¿Cómo está?" — and its action reads `notes` off it and nothing more
- * (app/actions/checkin.ts). Everything else about the asiento is decided
- * server-side off the animal's own record:
+ * SMALL, and D7 (2026-09-25) made it one field smaller than it was: an
+ * optional text and an OPTIONAL photo. The web form (CheckinForm.tsx) has one
+ * typed field — "¿Cómo está?" — plus an `<AttachmentField />` with no
+ * `required`, and its action reads both off it (app/actions/checkin.ts).
+ * Everything else about the asiento is decided server-side off the animal's
+ * own record:
  *
  *   · NO `occurredAt`, as síntoma has none: the writer stamps the moment of
  *     reporting. A check-in is "how things are", not "what happened on a day".
  *   · NO ORGANIZATION. The refugio the check-in is addressed to is read from
  *     the latest `adoption_finalized` event; a client naming one would be a
  *     client choosing who gets notified.
- *   · NO ATTACHMENT. The web form takes a photo; this app has no photo module
- *     yet, so the variant carries none rather than pretending to.
  *   · NO LOCATION. The web offers an L1 capture; the app sends the pair of
  *     nulls an untouched form resolves to.
+ *
+ * THE PHOTO IS OPTIONAL, unlike tattoo's — the one other kind with a
+ * `stagedPath`. Tattoo's web action refuses a submission with no file; this
+ * one's does not, so `null`/absent is a valid answer here and
+ * `CHECKIN_PHOTO_INVALID` only fires on a MALFORMED value, never a missing
+ * one. Same staged-object shape as tattoo (`POST /pets/{token}/photo`'s
+ * ticket, confirmed by this very asiento) and the same server-side claim —
+ * see `appendPostAdoptionCheckin`'s own note on why the ledger is asked
+ * before the claim runs.
  *
  * THE THREE PRECONDITIONS ARE NOT HERE AND CANNOT BE: adopted through the
  * platform, by THIS user, with a follow-up window open. All three are facts
@@ -963,6 +972,22 @@ const pregnancyEnd = z.object({
 const postAdoptionCheckin = z.object({
   kind: z.literal("post_adoption_checkin"),
   notes: optionalText,
+  /**
+   * The staged object the upload ticket minted, same shape as tattoo's — see
+   * that variant's own note. `nullish()` and not required: an absent photo is
+   * a valid check-in, so this only ever refuses a value that does NOT match
+   * `{petId}/{uuid}.{ext}`, never a missing one.
+   */
+  stagedPath: z
+    .string({ error: "CHECKIN_PHOTO_INVALID" })
+    .trim()
+    .min(1, { error: "CHECKIN_PHOTO_INVALID" })
+    .max(200, { error: "CHECKIN_PHOTO_INVALID" })
+    .regex(/^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png|webp)$/, {
+      error: "CHECKIN_PHOTO_INVALID",
+    })
+    .nullish()
+    .transform((v) => v ?? null),
 });
 
 /**

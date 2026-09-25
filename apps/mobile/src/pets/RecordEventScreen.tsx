@@ -53,19 +53,22 @@
 // object in the body, and the server claims it into `event-attachments` inside
 // the same transaction that appends the event.
 //
-// SEVENTEEN OF THE EIGHTEEN STILL SEND NO ATTACHMENT, and that is unchanged:
-// their writers take `uploadedPath: null` and their web forms merely OFFER a
-// file. Tatuaje is the one whose web action REFUSES a submission without one, so
-// it is the one where a photo-less door would not be a smaller form but a
-// different rule. See the contract's `tattoo` variant.
+// SIXTEEN OF THE EIGHTEEN STILL SEND NO ATTACHMENT — D7 (2026-09-25) MOVED A
+// SECOND ONE OFF THAT LIST. Their writers take `uploadedPath: null` and their
+// web forms merely OFFER a file. Tatuaje's web action REFUSES a submission
+// without one; seguimiento post-adopción's does not — its photo is OPTIONAL,
+// same shape (`stagedPath`), same claim, but `null` is a valid answer rather
+// than a refusal. See the contract's `tattoo` and `post_adoption_checkin`
+// variants.
 //
-// WHICH MAKES THIS THE ONE FORM THAT CANNOT BE FILLED IN EVERY BUILD. Choosing
-// a photo needs `expo-image-picker`, a native module this build does not carry
-// (`src/native/image-picker-port.ts`), so where the port is unavailable this
-// form draws the callout `PetPhotoScreen` draws and NO submit button. A button
-// that could only ever refuse is the dead end the port's `available` flag exists
-// to prevent. The day the adapter ships, `setImagePickerPort()` runs at
-// bootstrap and this form lights up with no change here.
+// WHICH MAKES THESE TWO THE FORMS THAT CANNOT OFFER A PHOTO IN EVERY BUILD.
+// Choosing one needs `expo-image-picker`, a native module this build does not
+// carry (`src/native/image-picker-port.ts`). Tatuaje still draws NO submit
+// button at all where the port is unavailable — see the guard just below —
+// because it has nothing to send without one; check-in's photo is optional, so
+// its form still submits fine with just the text, and only the picker button
+// itself is missing. The day the adapter ships, `setImagePickerPort()` runs at
+// bootstrap and both light up with no change here.
 
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -408,11 +411,12 @@ type FormPhase =
  * ONLY FOR THE KINDS THAT ASK. Every other form on this screen would be
  * paying for a pet-detail read it has no field for.
  *
- * TATTOO'S NAME (T3-R4, 2026-09-22): the recovered-photo confirmation
- * (`TattooPhotoField`'s `review` phase) names the pet it is about to stage a
- * photo for, so a person is not asked to confirm a bare thumbnail with
- * nothing saying whose credential it is headed to. `petName` is the only
- * field that kind reads off this hook.
+ * THE TWO PHOTO KINDS' NAME (T3-R4, 2026-09-22; D7 added the second,
+ * 2026-09-25): the recovered-photo confirmation (`TattooPhotoField`'s
+ * `review` phase) names the pet it is about to stage a photo for, so a person
+ * is not asked to confirm a bare thumbnail with nothing saying whose
+ * credential — or whose check-in — it is headed to. `petName` is the only
+ * field either kind reads off this hook.
  */
 function useOwnerPetFacts(kind: WritableKind, publicToken: string) {
   const [registries, setRegistries] = useState<readonly OwnerPetPppRegistryV1[]>([]);
@@ -420,12 +424,19 @@ function useOwnerPetFacts(kind: WritableKind, publicToken: string) {
   const [petName, setPetName] = useState<string | null>(null);
 
   useEffect(() => {
-    // THREE KINDS ASK, and one read answers all of them: the PPP form needs
+    // FOUR KINDS ASK, and one read answers all of them: the PPP form needs
     // the jurisdiction's registries, the death form needs the animal's
-    // SPECIES to filter the disease catalog, and tattoo needs the animal's
-    // NAME for the recovered-photo confirmation. Every other form would be
-    // paying for a pet-detail round trip it has no field for.
-    if (kind !== "dangerous_breed_attestation" && kind !== "death" && kind !== "tattoo") return;
+    // SPECIES to filter the disease catalog, and tattoo and check-in (D7)
+    // need the animal's NAME for their recovered-photo confirmation. Every
+    // other form would be paying for a pet-detail round trip it has no field
+    // for.
+    if (
+      kind !== "dangerous_breed_attestation" &&
+      kind !== "death" &&
+      kind !== "tattoo" &&
+      kind !== "post_adoption_checkin"
+    )
+      return;
     let alive = true;
     void (async () => {
       const result = await fetchOwnerPetDetail(sessionPort, publicToken);
@@ -458,7 +469,10 @@ function useOwnerPetFacts(kind: WritableKind, publicToken: string) {
 }
 
 /**
- * Donde esta la foto del tatuaje, el unico archivo que este formulario manda.
+ * Donde esta la foto — del tatuaje, o (D7, 2026-09-25) del check-in — los
+ * unicos dos archivos que este formulario puede mandar. Un solo `useState`
+ * para los dos kinds: nunca coexisten, porque `EventForm` remonta con `key={kind}`
+ * al cambiar de tipo (ver el comentario de ese remount).
  *
  * FUERA DEL BORRADOR A PROPOSITO. `EventDraft` es texto serializable que
  * `useIsDirty` compara campo por campo, y un `Blob` no es ninguna de las dos
@@ -623,13 +637,22 @@ function EventForm({
   // clears a stale field error the moment the DRAFT changes, but the photo is
   // its own state — not a draft field, per `invalidFields`'s own comment on
   // `TATTOO_PHOTO_REQUIRED` — so nothing was watching it. Cleared only when
-  // the CURRENT message is exactly this one, so an unrelated refusal
-  // (`TATTOO_CODE_REQUIRED`, a same-day confirm, a server error) is never
-  // dismissed by a photo finishing in the background.
+  // the CURRENT message is exactly the ONE this kind's own refusal would show
+  // — `TATTOO_PHOTO_REQUIRED` for tattoo, `CHECKIN_PHOTO_INVALID` for check-in
+  // (D7) — so an unrelated refusal (`TATTOO_CODE_REQUIRED`, a same-day
+  // confirm, a server error) is never dismissed by a photo finishing in the
+  // background.
   useEffect(() => {
     if (photo.phase !== "ready") return;
-    setError((current) => (current === inputCodeMessage("TATTOO_PHOTO_REQUIRED") ? null : current));
-  }, [photo.phase]);
+    const photoRefusalMessage =
+      kind === "tattoo"
+        ? inputCodeMessage("TATTOO_PHOTO_REQUIRED")
+        : kind === "post_adoption_checkin"
+          ? inputCodeMessage("CHECKIN_PHOTO_INVALID")
+          : null;
+    if (photoRefusalMessage === null) return;
+    setError((current) => (current === photoRefusalMessage ? null : current));
+  }, [photo.phase, kind]);
   /** T4-M1 (2026-09-22): guards the recovery effect below against StrictMode's
    *  mount → unmount → mount. See that effect's own comment. */
   const startedRecovery = useRef(false);
@@ -648,6 +671,14 @@ function EventForm({
    * it's connected to.
    */
   const photoAttemptStarted = useRef(false);
+  // D7: LOS DOS KINDS QUE TIENEN FOTO, Y NADA MAS. `pickImageSafely`'s marker
+  // necesita saber CUAL de los dos pantallas esta pidiendo — antes solo existia
+  // "tattoo" — y este valor es lo unico que las funciones de abajo consultan
+  // para no repetir el chequeo `kind === "tattoo" || kind === "post_adoption_checkin"`
+  // en cada una. `null` en cualquier otro kind: esas funciones nunca corren
+  // ahi, porque el boton que las dispara solo se dibuja para estos dos.
+  const photoScreen: "tattoo" | "post_adoption_checkin" | null =
+    kind === "tattoo" || kind === "post_adoption_checkin" ? kind : null;
 
   // ELEGIR Y SUBIR SON UN SOLO GESTO PARA UNA ELECCION EN VIVO, y suben AHORA
   // y no al enviar. La persona se entera de que la subida fallo mientras
@@ -661,6 +692,9 @@ function EventForm({
   // `applyRecoveredTattooPhoto` — precisamente porque una foto recuperada no
   // tiene ningun toque detras que justifique subirla sola.
   async function pickTattooPhoto() {
+    // GUARDA DEFENSIVA: este boton solo se dibuja cuando `photoScreen` no es
+    // null (ver el JSX mas abajo), asi que esto nunca deberia disparar.
+    if (photoScreen === null) return;
     // SINCRONICO, ANTES DE CUALQUIER `await`: esto es lo que la recuperacion
     // de abajo revisa para saber si una eleccion en vivo ya la gano.
     photoAttemptStarted.current = true;
@@ -671,7 +705,7 @@ function EventForm({
     // mostrarse. Ver `image-picker-port.ts`.
     const sessionUserId = currentSessionUserId();
     const result = await pickImageSafely(
-      sessionUserId === null ? null : { screen: "tattoo", publicToken, sessionUserId },
+      sessionUserId === null ? null : { screen: photoScreen, publicToken, sessionUserId },
       ASYNC_IMAGE_PICK_MARKER_STORE,
     );
     // `pickImageSafely` y no `getImagePickerPort().pickImage()`: este await es
@@ -768,14 +802,14 @@ function EventForm({
   // este efecto ya trata igual que "nada que recuperar". Sin sesion no hay
   // con que atar la marca, asi que el llamado se salta en vez de adivinar.
   useEffect(() => {
-    if (kind !== "tattoo" || startedRecovery.current) return;
+    if (photoScreen === null || startedRecovery.current) return;
     startedRecovery.current = true;
     let cancelled = false;
     void (async () => {
       const sessionUserId = currentSessionUserId();
       if (sessionUserId === null) return;
       const recovered = await recoverPendingPickSafely(
-        { screen: "tattoo", publicToken, sessionUserId },
+        { screen: photoScreen, publicToken, sessionUserId },
         ASYNC_IMAGE_PICK_MARKER_STORE,
       );
       if (cancelled || recovered === null) return;
@@ -789,7 +823,7 @@ function EventForm({
     return () => {
       cancelled = true;
     };
-  }, [kind, publicToken, applyRecoveredTattooPhoto]);
+  }, [photoScreen, publicToken, applyRecoveredTattooPhoto]);
 
   function set<K extends keyof EventDraft>(field: K, value: EventDraft[K]) {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -805,9 +839,10 @@ function EventForm({
     const validated = validateDraft(kind, draft, {
       sourceEventId,
       sameDayOverride,
-      // NULL HASTA QUE LA FOTO ESTE ARRIBA, y el contrato lo refuta con
-      // `TATTOO_PHOTO_REQUIRED` — cuya copia nombra el paso que falta y no un
-      // campo del cuerpo, porque la persona nunca escribe un `stagedPath`.
+      // NULL HASTA QUE LA FOTO ESTE ARRIBA. En tattoo el contrato lo refuta
+      // con `TATTOO_PHOTO_REQUIRED`; en check-in (D7) `null` es una respuesta
+      // valida — la foto es opcional ahi. Ninguno de los dos campos lo escribe
+      // la persona: lo produce la subida.
       stagedPath: photo.phase === "ready" ? photo.stagedPath : null,
     });
     if (!validated.ok) {
@@ -984,8 +1019,15 @@ function EventForm({
         species={species}
       />
 
-      {kind === "tattoo" ? (
+      {/* D7: EL BOTON, NO EL FORMULARIO ENTERO, DESAPARECE SIN EL PUERTO.
+          Tattoo bloquea la pantalla completa unas líneas arriba porque no
+          tiene nada que mandar sin una foto; check-in SÍ tiene algo que mandar
+          — el texto — así que cuando el puerto no está disponible esta
+          sección simplemente no se dibuja, sin callout: la persona puede
+          seguir enviando el check-in con o sin foto en cualquier build. */}
+      {photoScreen !== null && getImagePickerPort().available ? (
         <TattooPhotoField
+          kind={photoScreen}
           state={photo}
           busy={busy}
           petName={petName}
@@ -1043,18 +1085,27 @@ function EventForm({
 }
 
 /**
- * LA FOTO DEL TATUAJE, dibujada.
+ * LA FOTO, dibujada — del tatuaje, o (D7) del check-in post-adopción.
  *
  * VIVE FUERA DE `Fields` porque `Fields` renderiza el BORRADOR y nada mas: le
  * llegan `draft` y `set`, y la foto no esta en ninguno de los dos. Meterla ahi
- * obligaria a pasarle tres props que dieciocho de los diecinueve kinds ignoran.
+ * obligaria a pasarle tres props que diecisiete de los diecinueve kinds
+ * ignoran.
  *
  * NO HAY ESTADO `unavailable` EN ESTA UNION. Cuando el puerto no puede elegir
- * una imagen el formulario entero no se dibuja — `EventForm` contesta antes con
- * el callout que nombra la web. Un estado mas aca seria un segundo lugar donde
- * decidir lo mismo.
+ * una imagen, tattoo no dibuja el formulario entero — `EventForm` contesta
+ * antes con el callout que nombra la web — y check-in simplemente no dibuja
+ * ESTA seccion, porque su foto es opcional y el resto del formulario sigue
+ * andando. Ningun estado mas aca decide lo mismo dos veces.
+ *
+ * `kind` ES LA UNICA DIFERENCIA DE COPIA entre los dos usos: tattoo dice que
+ * la foto es obligatoria porque lo es (el contrato la refuta si falta);
+ * check-in dice que es opcional porque lo es. Todo el resto del componente —
+ * los cinco estados, la recuperacion, la subida — es exactamente el mismo
+ * camino para los dos.
  */
 function TattooPhotoField({
+  kind,
   state,
   busy,
   petName,
@@ -1062,6 +1113,7 @@ function TattooPhotoField({
   onConfirmRecovered,
   onDiscardRecovered,
 }: {
+  kind: "tattoo" | "post_adoption_checkin";
   state: TattooPhotoState;
   /** El asiento se esta mandando: nada de cambiar la foto en el medio. */
   busy: boolean;
@@ -1075,7 +1127,11 @@ function TattooPhotoField({
   /** Descarta la foto recuperada sin subir nada. */
   onDiscardRecovered: () => void;
 }) {
+  const isTattoo = kind === "tattoo";
   const working = state.phase === "picking" || state.phase === "uploading";
+  const previewAccessibilityLabel = isTattoo
+    ? "Vista previa de la foto del tatuaje"
+    : "Vista previa de la foto del check-in";
   const label = (() => {
     switch (state.phase) {
       case "picking":
@@ -1087,18 +1143,21 @@ function TattooPhotoField({
       case "ready":
         return "Elegir otra foto";
       default:
-        return "Elegir la foto del tatuaje";
+        return isTattoo ? "Elegir la foto del tatuaje" : "Agregar una foto (opcional)";
     }
   })();
 
   return (
     <Card>
-      {/* POR QUE SE PIDE, y no solo que se pide. Es la misma frase con la que la
-          web refuta un formulario sin archivo: la foto es lo que hace que quien
-          encuentre al animal reconozca la marca. */}
+      {/* POR QUE SE PIDE (o se ofrece), y no solo que se pide. Tattoo repite la
+          misma frase con la que la web refuta un formulario sin archivo;
+          check-in dice lo contrario a proposito, porque ahi SÍ es opcional —
+          el contrato la acepta ausente y el mensaje no puede sugerir lo
+          contrario. */}
       <Body>
-        La foto es obligatoria: es la mejor forma de que quien encuentre a tu mascota reconozca el
-        tatuaje.
+        {isTattoo
+          ? "La foto es obligatoria: es la mejor forma de que quien encuentre a tu mascota reconozca el tatuaje."
+          : "Podés agregar una foto si querés — al refugio le sirve para ver cómo está. No hace falta para enviar el check-in."}
       </Body>
       {/* PO decision 20A (native review), same line `PetPhotoScreen` carries:
           this button opens the gallery (`launchImageLibraryAsync`) and has no
@@ -1115,7 +1174,7 @@ function TattooPhotoField({
           style={styles.tattooPreview}
           resizeMode="cover"
           accessibilityRole="image"
-          accessibilityLabel="Vista previa de la foto del tatuaje"
+          accessibilityLabel={previewAccessibilityLabel}
         />
       ) : null}
 
@@ -1141,14 +1200,21 @@ function TattooPhotoField({
               style={styles.tattooPreview}
               resizeMode="cover"
               accessibilityRole="image"
-              accessibilityLabel="Vista previa de la foto del tatuaje"
+              accessibilityLabel={previewAccessibilityLabel}
             />
           ) : null}
-          <Callout tone="neutral" title="¿Es esta la foto del tatuaje?">
+          <Callout
+            tone="neutral"
+            title={isTattoo ? "¿Es esta la foto del tatuaje?" : "¿Es esta la foto?"}
+          >
             <Body>
-              {petName === null
-                ? "Recuperamos una foto que habías elegido antes de que la app se cerrara. Confirmá que es la del tatuaje antes de subirla."
-                : `Recuperamos una foto que habías elegido antes de que la app se cerrara. Confirmá que es la del tatuaje de ${petName} antes de subirla.`}
+              {isTattoo
+                ? petName === null
+                  ? "Recuperamos una foto que habías elegido antes de que la app se cerrara. Confirmá que es la del tatuaje antes de subirla."
+                  : `Recuperamos una foto que habías elegido antes de que la app se cerrara. Confirmá que es la del tatuaje de ${petName} antes de subirla.`
+                : petName === null
+                  ? "Recuperamos una foto que habías elegido antes de que la app se cerrara. Confirmá que es la que querés mandar antes de subirla."
+                  : `Recuperamos una foto que habías elegido antes de que la app se cerrara. Confirmá que es la que querés mandar con el check-in de ${petName} antes de subirla.`}
             </Body>
           </Callout>
           <PrimaryButton label="Usar esta foto" onPress={() => onConfirmRecovered(state.image)} />
@@ -2132,14 +2198,11 @@ function Fields({
             onChangeText={(v) => set("notes", v)}
             placeholder="Salud, ánimo, adaptación al hogar… lo que el refugio querría saber."
           />
-          {/* SAYS WHAT THE WEB FORM HAS AND THIS ONE DOES NOT, before the
-              person looks for the button. The web takes a photo; there is no
-              photo module in this release, and a form that silently lacks an
-              affordance the same form has elsewhere reads as broken. */}
-          <Body>
-            Se envía sin fecha: queda con el momento en que lo mandás. Si querés adjuntar una foto,
-            por ahora se hace desde la web.
-          </Body>
+          {/* D7 (2026-09-25): ya no dice "la foto se hace desde la web" — el
+              boton de `TattooPhotoField` mas abajo (fuera de `Fields`, ver su
+              propio comentario) es esa affordance ahora. Lo unico que queda
+              por decir aca es lo que la foto no cambia: cuando se manda. */}
+          <Body>Se envía sin fecha: queda con el momento en que lo mandás.</Body>
         </>
       );
   }

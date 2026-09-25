@@ -1004,14 +1004,19 @@ describe("RecordEventScreen — síntoma", () => {
 
 describe("RecordEventScreen — check-in post-adopción, the eighteenth and last", () => {
   it("says who reads it and what it lacks BEFORE the form is filled", () => {
-    // Addressed to the refugio, sent without a date, and no photo on this
-    // release — three things a person is entitled to know while they can
-    // still decide, and the third is the one that would otherwise read as a
-    // broken form to somebody who used the web's.
+    // Addressed to the refugio, sent without a date — two things a person is
+    // entitled to know while they can still decide.
     render(<RecordEventScreen publicToken={TOKEN} initialKind="post_adoption_checkin" />);
     expect(screen.getByText(/refugio que pidió el seguimiento/i)).toBeOnTheScreen();
-    expect(screen.getByText(/foto, por ahora se hace desde la web/i)).toBeOnTheScreen();
     expect(screen.getByText(/no se editan ni se borran/i)).toBeOnTheScreen();
+  });
+
+  it("D7: offers an OPTIONAL photo, in the web's own words about what it's for", () => {
+    // Unlike tattoo's callout ("la foto es obligatoria"), this one says the
+    // opposite on purpose — the contract accepts an absent photo here.
+    render(<RecordEventScreen publicToken={TOKEN} initialKind="post_adoption_checkin" />);
+    expect(screen.getByText(/podés agregar una foto si querés/i)).toBeOnTheScreen();
+    expect(screen.getByText("Agregar una foto (opcional)")).toBeOnTheScreen();
   });
 
   it("sends the text alone — no date, no refugio, no attachment", async () => {
@@ -1023,6 +1028,9 @@ describe("RecordEventScreen — check-in post-adopción, the eighteenth and last
     expect(sentBody()).toEqual({
       kind: "post_adoption_checkin",
       notes: "Come bien y ya duerme en su cama.",
+      // D7: still `null` when nobody picked a photo — a valid answer here,
+      // unlike tattoo's, which the contract would refuse.
+      stagedPath: null,
     });
     // NO `occurredAt`, even though `emptyDraft` pre-fills one: the server
     // stamps the moment of reporting, as the web action does.
@@ -1037,7 +1045,45 @@ describe("RecordEventScreen — check-in post-adopción, the eighteenth and last
     fireEvent.press(submitControl());
 
     await waitFor(() => expect(mockRecordPetEvent).toHaveBeenCalledTimes(1));
-    expect(sentBody()).toEqual({ kind: "post_adoption_checkin", notes: null });
+    expect(sentBody()).toEqual({ kind: "post_adoption_checkin", notes: null, stagedPath: null });
+  });
+
+  it("D7: sends the staged photo's path once one was picked and uploaded", async () => {
+    setImagePickerPort({
+      name: "test-picks",
+      available: true,
+      pickImage: async () => ({
+        outcome: "picked",
+        bytes: new Uint8Array([0xff, 0xd8, 0xff]),
+        contentType: "image/jpeg",
+        previewUri: null,
+      }),
+      recoverPendingPick: async () => null,
+    });
+    render(<RecordEventScreen publicToken={TOKEN} initialKind="post_adoption_checkin" />);
+
+    await act(async () => {
+      fireEvent.press(screen.getByText("Agregar una foto (opcional)"));
+    });
+    expect(screen.getByText("Foto lista")).toBeOnTheScreen();
+
+    fireEvent.press(submitControl());
+
+    await waitFor(() => expect(mockRecordPetEvent).toHaveBeenCalledTimes(1));
+    expect(sentBody()).toMatchObject({ stagedPath: A_STAGED_PATH });
+  });
+
+  it("D7: hides the photo section when the picker port is unavailable, but still submits", async () => {
+    // Unlike tattoo — which blocks the WHOLE form without the port, because it
+    // has nothing to send without a photo — check-in still has the text, so
+    // only this section is missing.
+    setImagePickerPort({ ...availablePicker, available: false });
+    render(<RecordEventScreen publicToken={TOKEN} initialKind="post_adoption_checkin" />);
+    expect(screen.queryByText(/agregar una foto/i)).not.toBeOnTheScreen();
+
+    fireEvent.press(submitControl());
+    await waitFor(() => expect(mockRecordPetEvent).toHaveBeenCalledTimes(1));
+    expect(sentBody()).toMatchObject({ stagedPath: null });
   });
 
   it("shows the server's own reason when the window closed under the person", async () => {

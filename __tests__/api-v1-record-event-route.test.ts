@@ -496,6 +496,7 @@ const A_TATTOO = {
   occurredAt: A_PAST_DAY,
   stagedPath: A_STAGED_PATH,
 };
+const A_CHECKIN = { kind: "post_adoption_checkin", notes: "Come bien y ya duerme en su cama." };
 
 async function call(
   body: unknown = A_VACCINE,
@@ -1778,8 +1779,6 @@ describe("POST .../events — embarazo, y las tres negativas que no son la misma
 });
 
 describe("POST .../events — seguimiento post-adopción, the eighteenth and last", () => {
-  const A_CHECKIN = { kind: "post_adoption_checkin", notes: "Come bien y ya duerme en su cama." };
-
   it("appends the check-in and answers 201 with the asiento it wrote", async () => {
     const res = await call(A_CHECKIN);
     expect(res.status).toBe(201);
@@ -1794,11 +1793,11 @@ describe("POST .../events — seguimiento post-adopción, the eighteenth and las
     expect(control.writes[0].input.clientIdempotencyKey).toBe(KEY);
   });
 
-  it("hands the writer NO attachment and NO location — the two things the web form has and this app does not", async () => {
-    // THE SCOPE DECISION, asserted so it cannot drift silently: no photo module
-    // and no map on the phone, so the writer gets the three nulls and the two
-    // nulls, the same way every other kind on this endpoint does. A wire that
-    // grew an attachment field would have to change this test on purpose.
+  it("hands the writer NO attachment and NO location when none was staged — the app has no map yet", async () => {
+    // THE LOCATION HALF IS STILL A FIXED SCOPE DECISION: no map on the phone,
+    // so the writer always gets the two nulls, the same way every other kind on
+    // this endpoint does. THE ATTACHMENT HALF STOPPED BEING FIXED IN D7 — see
+    // the describe block below for what a STAGED photo hands the writer instead.
     await call(A_CHECKIN);
     const input = control.writes[0].input;
     expect(input.uploadedPath).toBeNull();
@@ -1907,6 +1906,123 @@ describe("POST .../events — seguimiento post-adopción, the eighteenth and las
     // into the body is dropped by the schema, never forwarded.
     await call({ ...A_CHECKIN, occurredAt: A_PAST_DAY });
     expect("occurredAt" in control.writes[0].input).toBe(false);
+  });
+});
+
+describe("POST .../events — seguimiento post-adopción, D7's optional photo", () => {
+  const WITH_PHOTO = { ...A_CHECKIN, stagedPath: A_STAGED_PATH };
+
+  it("claims the staged photo FIRST, then appends, and hands the writer what it claimed", async () => {
+    const response = await call(WITH_PHOTO);
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({ eventId: EVENT_ID, wasDuplicate: false });
+
+    expect(control.claims).toEqual([{ petId: PET_ID, stagedPath: A_STAGED_PATH }]);
+    const write = control.writes.find((w) => w.kind === "post_adoption_checkin");
+    expect(write?.input).toMatchObject({
+      // FROM THE CLAIM AND NOT FROM THE WIRE, same rule as tattoo's: nothing a
+      // client says about the bytes is believed.
+      uploadedPath: `${PET_ID}/claimed.jpg`,
+      uploadedMimeType: "image/jpeg",
+      uploadedSize: 4242,
+    });
+    expect(control.discarded).toEqual([]);
+  });
+
+  it("claims NOTHING when no photo was staged — there is nothing a claim could delete", async () => {
+    await call(A_CHECKIN);
+    expect(control.claims).toEqual([]);
+  });
+
+  it("refuses a staged object that is not an image with 400, and writes NOTHING", async () => {
+    control.claimResult = () => ({ ok: false, code: "photo_not_an_image" });
+    const response = await call(WITH_PHOTO);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: "photo_not_an_image" });
+    expect(control.writes.filter((w) => w.kind === "post_adoption_checkin")).toEqual([]);
+  });
+
+  it("answers 500 when the object store fails, and still writes nothing", async () => {
+    control.claimResult = () => ({ ok: false, code: "photo_failed" });
+    const response = await call(WITH_PHOTO);
+    expect(response.status).toBe(500);
+    expect(control.writes.filter((w) => w.kind === "post_adoption_checkin")).toEqual([]);
+  });
+
+  it("TAKES THE ATTACHMENT BACK when the append fails", async () => {
+    control.checkinResult = () => ({ ok: false, error: "no se pudo registrar el check-in" });
+    const response = await call(WITH_PHOTO);
+    expect(response.status).toBe(500);
+    expect(control.discarded).toEqual([`${PET_ID}/claimed.jpg`]);
+  });
+
+  it("TAKES THE ATTACHMENT BACK on a refused precondition too, not only on a server failure", async () => {
+    // `not_allowed` arms return before the generic 500 branch but still ran the
+    // claim — a photo claimed for a check-in the writer then refuses is just as
+    // orphaned as one behind a 500.
+    control.checkinResult = () => ({
+      ok: false,
+      error: "No sos el adoptante registrado para esta mascota.",
+      notAllowed: "not_adopter",
+    });
+    const response = await call(WITH_PHOTO);
+    expect(response.status).toBe(403);
+    expect(control.discarded).toEqual([`${PET_ID}/claimed.jpg`]);
+  });
+
+  it("ON A DUPLICATE FROM THE WRITER answers 201 and DISCARDS the redundant upload", async () => {
+    // The race the ledger check below cannot catch: two requests under one key
+    // in flight at once, both past the ledger read before either committed.
+    control.checkinResult = () => ({ ok: true, eventId: EVENT_ID, wasDuplicate: true });
+    const response = await call(WITH_PHOTO);
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({ eventId: EVENT_ID, wasDuplicate: true });
+    expect(control.discarded).toEqual([`${PET_ID}/claimed.jpg`]);
+  });
+});
+
+describe("POST .../events — seguimiento post-adopción, el replay que no puede volver a subir la foto", () => {
+  const WITH_PHOTO = { ...A_CHECKIN, stagedPath: A_STAGED_PATH };
+
+  it("ASKS THE LEDGER BEFORE THE CLAIM when a photo is staged, and answers the replay without touching Storage", async () => {
+    // Same fix as tattoo's, same reason: a successful first request deletes the
+    // staged object, so claiming first on a replay would 404 a checkin that
+    // already exists.
+    control.replayEvent = { id: EVENT_ID };
+
+    const response = await call(WITH_PHOTO);
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({ eventId: EVENT_ID, wasDuplicate: true });
+    expect(control.claims).toEqual([]);
+    expect(control.discarded).toEqual([]);
+    expect(control.writes.filter((w) => w.kind === "post_adoption_checkin")).toEqual([]);
+  });
+
+  it("does NOT ask the ledger up front when no photo was staged — the writer's own check is enough", async () => {
+    // The check-in writer already asks the ledger itself when its window has
+    // closed (`recordPostAdoptionCheckin`'s rule 3). Asking again here, for a
+    // request with nothing a claim could delete, would just be a second read
+    // for no reason.
+    control.replayEvent = { id: EVENT_ID };
+
+    const response = await call(A_CHECKIN);
+
+    expect(response.status).toBe(201);
+    // The write still ran — the endpoint's own pre-check only fires when
+    // `stagedPath` is present.
+    expect(control.writes.filter((w) => w.kind === "post_adoption_checkin")).toHaveLength(1);
+  });
+
+  it("does NOT short-circuit when the ledger has nothing under this key", async () => {
+    control.replayEvent = null;
+
+    const response = await call(WITH_PHOTO);
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({ eventId: EVENT_ID, wasDuplicate: false });
+    expect(control.claims).toHaveLength(1);
+    expect(control.writes.filter((w) => w.kind === "post_adoption_checkin")).toHaveLength(1);
   });
 });
 

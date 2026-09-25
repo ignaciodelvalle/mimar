@@ -274,7 +274,9 @@ export function resetImagePickerPort(): void {
 // disk by then). `recoverPendingPickSafely` reads it back and refuses to
 // deliver a recovered pick unless every field matches the screen asking for
 // it AND the marker is recent — `IMAGE_PICK_MARKER_MAX_AGE_MS` below.
-export type ImagePickScreen = "pet-photo" | "tattoo";
+// "post_adoption_checkin" ADDED BY D7 (2026-09-25): the check-in form's photo
+// is the SECOND event-attachment photo this port serves, alongside tattoo's.
+export type ImagePickScreen = "pet-photo" | "tattoo" | "post_adoption_checkin";
 
 /**
  * What was written to disk just before a real launch, so a recovery can be
