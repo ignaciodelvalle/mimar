@@ -67,6 +67,14 @@ const ibmPlexSerif = localFont({
   display: "swap",
 });
 
+// preload: false — this family (font-ln-sans / --a-sans-font) is not
+// rendered anywhere in app/landing.css or components/landing/** (verified by
+// grep; only globals.css and non-landing routes reference font-ln-sans), so
+// the root layout applying it to EVERY route (landing included) preloaded
+// it for a page that never paints it. The CSS variable stays wired on
+// <html> for every route — nothing that reads --a-sans-font/font-ln-sans
+// falls back to a system font — it's just fetched on demand instead of
+// eagerly preloaded (W5b landing LCP, 2026-09-24).
 const ibmPlexSans = localFont({
   src: [
     {
@@ -92,6 +100,7 @@ const ibmPlexSans = localFont({
   ],
   variable: "--a-sans-font",
   display: "swap",
+  preload: false,
 });
 
 const ibmPlexMono = localFont({
@@ -127,6 +136,8 @@ const ibmPlexMono = localFont({
   display: "swap",
 });
 
+// preload: false — same reasoning as ibmPlexSans above: font-ln-caveat is
+// not referenced by app/landing.css or components/landing/** (W5b landing LCP).
 const caveat = localFont({
   src: [
     { path: "./fonts/caveat/caveat-v23-latin-500.woff2", weight: "500", style: "normal" },
@@ -134,6 +145,7 @@ const caveat = localFont({
   ],
   variable: "--a-caveat-font",
   display: "swap",
+  preload: false,
 });
 
 const lnFontVars = [
