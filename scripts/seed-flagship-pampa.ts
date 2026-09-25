@@ -5,8 +5,8 @@
  * built around. The portada hero shows "Credencial de Pampa" and its scannable
  * QR points at /p/DIM-PAMP-0001, so portada name, QR target and public
  * credential must all resolve to the SAME real animal. This script makes Pampa
- * real, stable and coherent with components/landing/landing-content.ts (the
- * PAMPA const + LIBRETA_EVENTS narrative).
+ * real and stable. Its facts live in scripts/flagship-pampa-data.ts, the same
+ * pure module components/landing/landing-content.ts reads for the story.
  *
  * ─── IDENTITY ───────────────────────────────────────────────────────────────
  *   Token   : DIM-PAMP-0001  (fixed — survives re-seeds; same shape as the
@@ -66,6 +66,23 @@ import {
   seedPasswordForDisplay,
   shouldResetSeedPassword,
 } from "./_env-target";
+// Every Pampa fact lives in this pure data module (no DB, no env), which the
+// landing also reads — so the story the landing tells and the pet its QR
+// resolves to cannot drift apart.
+import {
+  OWNER_EMAIL,
+  OWNER_NAME,
+  PAMPA_CHIP,
+  PAMPA_EVENTS,
+  PAMPA_PET,
+  PAMPA_TOKEN,
+  VET_CLINIC,
+  VET_EMAIL,
+  VET_LICENSE,
+  VET_LICENSE_JURISDICTION,
+  VET_NAME,
+  buildPampaLibreta,
+} from "./flagship-pampa-data";
 
 loadEnv({ path: ".env.local" });
 loadEnv({ path: ".env" });
@@ -159,14 +176,7 @@ const { db, pets, ownerships, petEvents, attachments, petIdentifications, profil
 const SHARED_PASSWORD = resolveSeedPassword(IS_LOCAL, "seed:flagship");
 const PET_PHOTOS_BUCKET = "pet-photos";
 
-const PAMPA_TOKEN = "DIM-PAMP-0001";
-const OWNER_EMAIL = "owner@dim.test";
-const OWNER_NAME = "Dueño Demo CABA"; // narrative "Martín"
-const VET_EMAIL = "lilian@dim.test";
-const VET_NAME = "Dra. Lilian Marrone";
-
 const HERO_PHOTO_PATH = join(process.cwd(), "public", "landing", "pampa-hero.jpg");
-const PAMPA_CHIP = "941000100000001"; // ISO 15-digit: 941 · 0001 · 00000001
 
 type LogTag = "STEP" | "OK" | "SKIP" | "WARN" | "INFO" | "DONE" | "FAIL";
 function log(tag: LogTag, msg: string): void {
@@ -258,8 +268,8 @@ async function ensureVet(): Promise<string> {
       accountType: "personal",
       displayName: VET_NAME,
       matriculaVerified: true,
-      matriculaNumber: "V-99001-CABA",
-      matriculaJurisdiccion: "CABA",
+      matriculaNumber: VET_LICENSE,
+      matriculaJurisdiccion: VET_LICENSE_JURISDICTION,
       updatedAt: new Date(),
     })
     .where(eq(profiles.id, id));
@@ -298,19 +308,7 @@ async function ensurePampa(ownerId: string): Promise<{ id: string; created: bool
   const [pet] = await db
     .insert(pets)
     .values({
-      publicToken: PAMPA_TOKEN,
-      species: "dog",
-      breed: "Caniche",
-      name: "Pampa",
-      sex: "female",
-      dateOfBirth: "2021-11-20",
-      birthDateIsEstimated: true,
-      color: "blanco",
-      status: "active",
-      acquisitionMethod: "adopted",
-      jurisdictionCountry: "AR",
-      jurisdictionProvince: "CABA",
-      jurisdictionLocality: "Belgrano",
+      ...PAMPA_PET,
       // Owner opted the public medical summary in permanently so /p renders the
       // rich "Resumen médico vigente" (vacunas vigentes, esterilización).
       tier2PublicPermanent: true,
@@ -385,179 +383,8 @@ async function ensurePhoto(petId: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// 8. Libreta — the real system events matching LIBRETA_EVENTS (2022→2026)
+// 8. Libreta — the events of scripts/flagship-pampa-data.ts (2022→2026)
 // ---------------------------------------------------------------------------
-
-type SeedEvent = {
-  date: string;
-  eventType: string;
-  authorRole: "owner" | "vet" | "shelter" | "scanner";
-  authorVerified: boolean;
-  payload: Record<string, unknown>;
-};
-
-function buildLibreta(
-  ownerId: string,
-  vetId: string,
-): {
-  events: SeedEvent[];
-  recordedBy: Record<SeedEvent["authorRole"], string | null>;
-} {
-  const recordedBy: Record<SeedEvent["authorRole"], string | null> = {
-    owner: ownerId,
-    vet: vetId,
-    shelter: ownerId, // no org needed for the public credential
-    scanner: null, // anonymous QR scan
-  };
-
-  const events: SeedEvent[] = [
-    // 2022-03 — Alta en el registro (Martín · dueño)
-    {
-      date: "2022-03-14",
-      eventType: "pet_registered",
-      authorRole: "owner",
-      authorVerified: false,
-      payload: {
-        name: "Pampa",
-        species: "dog",
-        sex: "female",
-        breed: "Caniche",
-        date_of_birth: "2021-11-20",
-        birth_date_is_estimated: true,
-        color: "blanco",
-        acquisition_method: "adopted",
-        has_photo: true,
-        has_microchip: false,
-      },
-    },
-    // 2022-04 — Microchip implantado (Dra. Romero · vet)
-    {
-      date: "2022-04-05",
-      eventType: "microchip_implanted",
-      authorRole: "vet",
-      authorVerified: true,
-      payload: {
-        chip_number: PAMPA_CHIP,
-        country_code: "941",
-        implanted_by: "Veterinaria Belgrano",
-        location_on_body: "interescapular",
-        implant_date_known: true,
-      },
-    },
-    // 2022-04 — Vacunación antirrábica (vet-signed)
-    {
-      date: "2022-04-12",
-      eventType: "vaccination_administered",
-      authorRole: "vet",
-      authorVerified: true,
-      payload: {
-        vaccine_name: "Antirrábica",
-        brand: "Rabisin",
-        batch: "AR-2214",
-        administered_by: "Veterinaria Belgrano",
-        next_due_at: "2023-04-12",
-      },
-    },
-    // 2023-02 — Castración (esterilización)
-    {
-      date: "2023-02-18",
-      eventType: "sterilization_performed",
-      authorRole: "vet",
-      authorVerified: true,
-      payload: {
-        procedure: "spay",
-        performed_by: "Veterinaria Belgrano",
-        clinic: "Veterinaria Belgrano",
-      },
-    },
-    // 2024-03 — Reportada perdida (dueño)
-    {
-      date: "2024-03-09",
-      eventType: "status_changed",
-      authorRole: "owner",
-      authorVerified: false,
-      payload: {
-        from_status: "active",
-        to_status: "lost",
-        location_description: "Barrancas de Belgrano, CABA",
-        reason: null,
-        disclosure_prefs_snapshot: {
-          first_name: true,
-          phone: true,
-          email: false,
-          last_location: true,
-          finder_form: true,
-        },
-        lost_description: {
-          accessories_when_lost: "Collar celeste con chapita",
-          behavior_notes: null,
-          last_seen_context: "Se soltó en la plaza durante un paseo",
-        },
-      },
-    },
-    // 2024-03 — Credencial escaneada (anónimo · vía QR)
-    {
-      date: "2024-03-10",
-      eventType: "credential_scanned",
-      authorRole: "scanner",
-      authorVerified: false,
-      payload: { is_self_scan: false, viewer_authenticated: false },
-    },
-    // 2024-03 — Ingresó a un refugio (refugio · org)
-    {
-      date: "2024-03-11",
-      eventType: "shelter_intake_recorded",
-      authorRole: "shelter",
-      authorVerified: false,
-      payload: {
-        intake_reason: "stray_found",
-        intake_condition: "Sana, con chip verificado",
-        rescue_jurisdiction: "CABA",
-      },
-    },
-    // 2024-03 — Volvió a casa (recuperada)
-    {
-      date: "2024-03-13",
-      eventType: "status_changed",
-      authorRole: "owner",
-      authorVerified: false,
-      payload: {
-        from_status: "lost",
-        to_status: "active",
-        reason: "returned_to_owner",
-      },
-    },
-    // 2024-08 — Diagnóstico registrado (vet)
-    {
-      date: "2024-08-20",
-      eventType: "clinical_info_logged",
-      authorRole: "vet",
-      authorVerified: true,
-      payload: {
-        sub_kind: "other",
-        title: "Dermatitis atópica",
-        details: "Plan de tratamiento y control estacional",
-        performed_by: "Veterinaria Belgrano",
-      },
-    },
-    // 2026-06 — Refuerzo antirrábico (vet-signed, LATEST dose → verificada + al día)
-    {
-      date: "2026-06-15",
-      eventType: "vaccination_administered",
-      authorRole: "vet",
-      authorVerified: true,
-      payload: {
-        vaccine_name: "Antirrábica",
-        brand: "Nobivac Rabies",
-        batch: "CAMP-C13-2026",
-        administered_by: "Campaña antirrábica · Comuna 13",
-        next_due_at: "2027-06-15",
-      },
-    },
-  ];
-
-  return { events, recordedBy };
-}
 
 async function ensureLibreta(petId: string, ownerId: string, vetId: string): Promise<void> {
   log("STEP", "Seeding Pampa's libreta (append-only events)");
@@ -572,7 +399,7 @@ async function ensureLibreta(petId: string, ownerId: string, vetId: string): Pro
     return;
   }
 
-  const { events, recordedBy } = buildLibreta(ownerId, vetId);
+  const { events, recordedBy } = buildPampaLibreta(ownerId, vetId);
   for (const e of events) {
     await db.insert(petEvents).values({
       petId,
@@ -591,6 +418,13 @@ async function ensureLibreta(petId: string, ownerId: string, vetId: string): Pro
 // 9. Canonical microchip row (mirrors the microchip_implanted event)
 // ---------------------------------------------------------------------------
 
+/** The canonical row mirrors the microchip_implanted event's date. */
+function chipImplantDate(): string {
+  const implant = PAMPA_EVENTS.find((e) => e.eventType === "microchip_implanted");
+  if (!implant) throw new Error("flagship-pampa-data has no microchip_implanted event");
+  return implant.date;
+}
+
 async function ensureMicrochip(petId: string): Promise<void> {
   const [existing] = await db
     .select({ id: petIdentifications.id })
@@ -605,8 +439,8 @@ async function ensureMicrochip(petId: string): Promise<void> {
     petId,
     kind: "microchip_iso",
     code: PAMPA_CHIP,
-    recordedAt: "2022-04-05",
-    recordedByLabel: "Veterinaria Belgrano",
+    recordedAt: chipImplantDate(),
+    recordedByLabel: VET_CLINIC,
     implantationSite: "interescapular",
     isoCountryCode: PAMPA_CHIP.slice(0, 3),
     isoManufacturerCode: PAMPA_CHIP.slice(3, 7),
