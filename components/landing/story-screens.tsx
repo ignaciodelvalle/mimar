@@ -17,6 +17,7 @@
 
 import { Icon } from "@/components/Icon";
 import { CountUp } from "@/components/landing/CountUp";
+import { LibretaFeed } from "@/components/landing/LibretaFeed";
 import {
   CONSOLE_KPIS,
   LIBRETA_EVENTS,
@@ -29,9 +30,15 @@ import { LnHero } from "@/components/ui/Hero";
 import { LnPetPhoto, LnRegRow, LnRegistry } from "@/components/ui/RegRow";
 import { LnStatusFlag, LnVstamp } from "@/components/ui/StatusFlag";
 import { OpKpiSm } from "@/components/ui/dashboard/OpKpiSm";
-import type { EventType } from "@/db/schema";
 import { eventTypeLabel, formatRate } from "@/lib/utils/format";
 import type { ReactNode } from "react";
+
+// Newest first (WU3 — "the libreta fills up" animation): the feed reads as an
+// activity log, most recent entry on top, both statically and while it plays
+// in. LIBRETA_EVENTS itself stays chronological (oldest → newest) since that
+// is the natural authoring order in landing-content.ts; the reversal is a
+// presentation choice made once, here.
+const LIBRETA_EVENTS_NEWEST_FIRST = [...LIBRETA_EVENTS].reverse();
 
 // ---------------------------------------------------------------------------
 // Shared bits
@@ -293,35 +300,7 @@ export function LibretaScreen() {
         sub={`${PAMPA.sex} · ${PAMPA.age}`}
         right={<LnStatusFlag status="ok" />}
       />
-      <div className="lp-app-body lp-lib-feed">
-        {LIBRETA_EVENTS.map((e) => (
-          <div className="lp-lib-row" key={`${e.type}-${e.year}-${e.month}-${e.title}`}>
-            <div className="lp-lib-when">
-              <div className="lp-lib-y">{e.year}</div>
-              <div className="lp-lib-m">{e.month}</div>
-            </div>
-            <div className="lp-lib-spine">
-              <span className="lp-lib-dot" data-t={e.tone} />
-            </div>
-            <div>
-              <div className="lp-lib-t">
-                {e.title}
-                {e.flag && <LnStatusFlag status={e.flag} sex={PAMPA.sexEnum} />}
-                {e.stamp && (
-                  <span className="ml-auto">
-                    <LnVstamp variant={e.stamp} />
-                  </span>
-                )}
-              </div>
-              <div className="lp-lib-meta">{e.meta}</div>
-              <div className="lp-lib-foot">
-                <span className="lp-lib-type">{eventTypeLabel(e.type as EventType)}</span>
-                <span className="lp-lib-by">{e.by}</span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+      <LibretaFeed events={LIBRETA_EVENTS_NEWEST_FIRST} />
       {/* Honesty pass (WU1; caught by the fence's extended ban list,
           2026-09-24 review): "nada se edita, nada se borra" was a second
           instance of the same A.1 overclaim already fixed on

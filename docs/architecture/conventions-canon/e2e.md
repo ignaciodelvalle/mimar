@@ -1,7 +1,7 @@
 # Conventions canon — End-to-end (Playwright)
 
-> Snapshot: `d7dbf25f7` (`main`) · Facts: `docs/architecture/facts.json` generated 2026-09-24
-> Verified against code on 2026-09-24 by canon v4 + blind calibration · Status: reviewed
+> Snapshot: `d7dbf25f7` (`main`) · Facts: `docs/architecture/facts.json` generated 2026-09-25
+> Verified against code on 2026-09-25 by canon v4 + blind calibration · Status: reviewed
 > Numbers in this file are `<!-- fact:key -->` markers checked by `__tests__/architecture-facts.test.ts`.
 
 [← canon index](../conventions-canon.md) · scope `e2e` · 29 rules (2 ENFORCED, 2 PARTIAL, 25 UNENFORCED).

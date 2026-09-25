@@ -1579,6 +1579,62 @@
   background: var(--color-ln-stripe);
 }
 
+/* libreta feed — "fills up" entrance (WU3, components/landing/LibretaFeed.tsx).
+ * Fail-open: LibretaFeed only ever applies --pending/--in from a client
+ * effect, and only when prefers-reduced-motion allows it — SSR / no-JS /
+ * reduced-motion always render the plain .lp-lib-row (this block never
+ * fires). The @media rule below is the same belt-and-suspenders redundancy
+ * app/landing.css already uses for .lp-reveal (line ~263): a second, CSS-only
+ * guarantee in case the JS check is ever bypassed. */
+.lp .lp-lib-row--pending {
+  opacity: 0;
+  transform: translateY(14px);
+}
+.lp .lp-lib-row--in {
+  /* ~550ms in the brief rounds to the token scale's nearest step — the same
+   * --motion-deliberate/--ease-editorial pair .lp-reveal already uses above,
+   * so the entrance reads as the same motion language, not a new one. */
+  animation: lp-lib-row-in var(--motion-deliberate) var(--ease-editorial) both;
+}
+@keyframes lp-lib-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* Vaccination stamp overshoot — plays alongside its row's own entrance. */
+.lp .lp-lib-stamp--in {
+  animation: lp-lib-stamp-in var(--motion-deliberate) var(--ease-editorial) both;
+}
+@keyframes lp-lib-stamp-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp .lp-lib-row--pending {
+    opacity: 1;
+    transform: none;
+  }
+  .lp .lp-lib-row--in,
+  .lp .lp-lib-stamp--in {
+    animation: none;
+  }
+}
+
 /* generic phone padding block */
 .lp .lp-ph-pad {
   padding: 16px 18px;
