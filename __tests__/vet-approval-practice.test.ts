@@ -33,6 +33,7 @@ import { composeMatriculaApprovalNotes } from "@/app/gob/cola/_lib/matricula-ver
 import { resolveAtenderContext } from "@/app/org/[orgToken]/atender/atender-access";
 import {
   approvalRequests,
+  attachments,
   auditLog,
   db,
   notifications,
@@ -44,6 +45,7 @@ import {
 import { generatePublicToken } from "@/lib/infra/publicToken";
 import { approveRequestForAuthority } from "@/src/modules/organizations/application/admin-decisions/approve-request";
 import { provisionVetPractice } from "@/src/modules/organizations/application/admin-decisions/provision-vet-practice";
+import { revokeVetRoleForAuthority } from "@/src/modules/organizations/application/revocations/revoke-vet-role";
 import { syncEventWriteMirror } from "@/src/modules/organizations/application/set-member-event-write";
 import { requestVetUpgradeForUser } from "@/src/modules/organizations/application/upgrade/request-vet-upgrade";
 import { resolveGrantedCaps } from "@/src/modules/organizations/domain/capabilities";
@@ -98,6 +100,7 @@ async function deleteTestUser(email: string) {
   if (!found) return;
   const uid = found.id;
   await wipeOrgs(await orgIdsTouching(uid));
+  await db.delete(attachments).where(eq(attachments.uploadedByUserId, uid));
   await db.transaction(async (tx) => {
     await setAuditMutationGucs(tx);
     await tx
@@ -213,7 +216,7 @@ describe("approving a vet with nowhere to write (F-9)", () => {
     practiceToken = org.publicToken;
   });
 
-  it("provisions an individual practice with a vet_individual membership", async () => {
+  it("provisions an individual practice the vet administers (the solo-vet clinic shape)", async () => {
     const [org] = await db.select().from(organizations).where(eq(organizations.id, practiceId));
     expect(org.orgType).toBe("clinic");
     expect(org.verified).toBe(true);
@@ -222,7 +225,7 @@ describe("approving a vet with nowhere to write (F-9)", () => {
     // The login address is not published as the practice contact.
     expect(org.email).toBe("");
     const [m] = await activeMemberships(ids.fresh);
-    expect(m.role).toBe("vet_individual");
+    expect(m.role).toBe("admin");
     expect(m.canWritePetEvents).toBe(true);
   });
 
@@ -250,7 +253,7 @@ describe("approving a vet with nowhere to write (F-9)", () => {
     expect(added[0].payload).toMatchObject({
       how: "vet_approval_provisioning",
       approval_request_id: requestId,
-      role: "vet_individual",
+      role: "admin",
     });
 
     const [verification] = await db
@@ -327,7 +330,7 @@ describe("a vet who can already write somewhere", () => {
     const practice = rows.find((r) => r.organizationId !== shelterId);
     expect(foster?.role).toBe("foster");
     expect(foster?.canWritePetEvents).toBe(false);
-    expect(practice?.role).toBe("vet_individual");
+    expect(practice?.role).toBe("admin");
     const shelterGrants = await db
       .select({ id: organizationCapabilityGrants.id })
       .from(organizationCapabilityGrants)
@@ -368,7 +371,9 @@ describe("the legacy column follows the real grant (single writer)", () => {
       for (const row of await activeMemberships(uid)) {
         const state = await repo.readEventWriteState(row.id);
         const effective = state
-          ? resolveGrantedCaps(state.role, state.approvedCapabilities).has("event.write")
+          ? resolveGrantedCaps(state.role, state.approvedCapabilities, {
+              vetCredentialValid: state.vetCredentialValid,
+            }).has("event.write")
           : false;
         const [fresh] = await db
           .select({ c: organizationMemberships.canWritePetEvents })
@@ -377,5 +382,177 @@ describe("the legacy column follows the real grant (single writer)", () => {
         expect(fresh.c, `${row.role} in ${row.organizationId}`).toBe(effective);
       }
     }
+  });
+});
+
+describe("revocation closes the practice; re-approval reopens the same one (W6 review)", () => {
+  let practiceId: string;
+  let practiceToken: string;
+  let shelterId: string;
+
+  beforeAll(async () => {
+    [practiceId] = await orgIdsTouching(ids.fresh);
+    const [org] = await db
+      .select({ publicToken: organizations.publicToken })
+      .from(organizations)
+      .where(eq(organizations.id, practiceId));
+    practiceToken = org.publicToken;
+
+    // A seat in someone else's shelter, with the legacy column saying "writes"
+    // — the revocation does not end it (the vet did not create that org), so
+    // it is what the resolver's own credential check has to stop.
+    shelterId = await makeOrg("shelter", ids.approver);
+    await db.insert(organizationMemberships).values({
+      organizationId: shelterId,
+      userId: ids.fresh,
+      role: "vet_individual",
+      canWritePetEvents: true,
+    });
+
+    const [evidence] = await db
+      .insert(attachments)
+      .values({
+        uploadedByUserId: ids.approver,
+        storagePath: `revocations/${ids.approver}/w6-evidence.jpg`,
+        mimeType: "image/jpeg",
+        fileSize: 1234,
+      })
+      .returning({ id: attachments.id });
+    const revoked = await revokeVetRoleForAuthority(ids.approver, {
+      targetUserId: ids.fresh,
+      motivo: "Matrícula dada de baja por el colegio profesional (prueba W6).",
+      attachmentIds: [evidence.id],
+    });
+    expect(revoked).toEqual(expect.objectContaining({ ok: true }));
+  });
+
+  it("ends the practice membership, audits the removal against the revocation, un-verifies the org", async () => {
+    const [m] = await db
+      .select({
+        leftAt: organizationMemberships.leftAt,
+        column: organizationMemberships.canWritePetEvents,
+      })
+      .from(organizationMemberships)
+      .where(
+        and(
+          eq(organizationMemberships.organizationId, practiceId),
+          eq(organizationMemberships.userId, ids.fresh),
+        ),
+      );
+    expect(m.leftAt).not.toBeNull();
+    expect(m.column).toBe(false);
+
+    const [revocation] = await db
+      .select({ id: auditLog.id })
+      .from(auditLog)
+      .where(and(eq(auditLog.targetUserId, ids.fresh), eq(auditLog.action, "revocation_vet_role")));
+    const removed = await db
+      .select({ payload: auditLog.payload })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.targetOrganizationId, practiceId),
+          eq(auditLog.action, "org_member_removed"),
+        ),
+      );
+    expect(removed).toHaveLength(1);
+    expect(removed[0].payload).toMatchObject({
+      how: "vet_revocation",
+      reason_audit_log_id: revocation.id,
+    });
+
+    const [org] = await db
+      .select({ verified: organizations.verified })
+      .from(organizations)
+      .where(eq(organizations.id, practiceId));
+    expect(org.verified).toBe(false);
+  });
+
+  it("the revoked vet can no longer open the atender context of the practice", async () => {
+    live.userId = ids.fresh;
+    const atender = await resolveAtenderContext(practiceToken);
+    expect(atender.ok).toBe(false);
+    if (atender.ok) return;
+    // The membership itself is gone, which is stronger than a missing capability.
+    expect(atender.reason).toBe("NO_MEMBERSHIP");
+  });
+
+  it("a vet_individual seat the revocation left in place grants no clinical write", async () => {
+    // Belt and braces: the membership row survives (another org's), but the
+    // clinical baseline rides on the member's live matrícula, not on the role.
+    const [seat] = await db
+      .select({
+        leftAt: organizationMemberships.leftAt,
+        column: organizationMemberships.canWritePetEvents,
+      })
+      .from(organizationMemberships)
+      .where(
+        and(
+          eq(organizationMemberships.organizationId, shelterId),
+          eq(organizationMemberships.userId, ids.fresh),
+        ),
+      );
+    expect(seat.leftAt).toBeNull();
+    // The revocation re-derived the legacy column through its single writer.
+    expect(seat.column).toBe(false);
+
+    const [shelter] = await db
+      .select({ publicToken: organizations.publicToken })
+      .from(organizations)
+      .where(eq(organizations.id, shelterId));
+    live.userId = ids.fresh;
+    const atender = await resolveAtenderContext(shelter.publicToken);
+    expect(atender.ok).toBe(false);
+    if (atender.ok) return;
+    expect(atender.reason).toBe("NO_CAPABILITY");
+  });
+
+  it("approving the same person again reopens their practice instead of creating a second", async () => {
+    // Nothing else to write from: end the memberships the earlier cases added.
+    await db
+      .update(organizationMemberships)
+      .set({ leftAt: new Date() })
+      .where(
+        and(
+          eq(organizationMemberships.userId, ids.fresh),
+          inArray(organizationMemberships.organizationId, extraOrgIds),
+        ),
+      );
+
+    const secondRequestId = await approveVet(ids.fresh, "MN-W6-0004");
+
+    expect(await orgIdsTouching(ids.fresh)).toEqual([practiceId]);
+    const [m] = await db
+      .select({ leftAt: organizationMemberships.leftAt, role: organizationMemberships.role })
+      .from(organizationMemberships)
+      .where(
+        and(
+          eq(organizationMemberships.organizationId, practiceId),
+          eq(organizationMemberships.userId, ids.fresh),
+        ),
+      );
+    expect(m.leftAt).toBeNull();
+    expect(m.role).toBe("admin");
+    const [org] = await db
+      .select({ verified: organizations.verified, auto: organizations.autoVerifiedViaMatricula })
+      .from(organizations)
+      .where(eq(organizations.id, practiceId));
+    expect(org).toEqual({ verified: true, auto: true });
+
+    const added = await db
+      .select({ payload: auditLog.payload })
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.targetOrganizationId, practiceId), eq(auditLog.action, "org_member_added")),
+      );
+    const payloads = added.map((r) => r.payload as { how: string; approval_request_id?: string });
+    expect(payloads.map((p) => p.how).sort()).toEqual([
+      "vet_approval_provisioning",
+      "vet_approval_reactivation",
+    ]);
+    expect(payloads.some((p) => p.approval_request_id === secondRequestId)).toBe(true);
+
+    live.userId = ids.fresh;
+    expect((await resolveAtenderContext(practiceToken)).ok).toBe(true);
   });
 });

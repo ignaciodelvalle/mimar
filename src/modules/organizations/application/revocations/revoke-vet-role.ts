@@ -9,6 +9,9 @@
 //      a. Mutate target (anti-race WHERE + rowCount check)
 //      b. Cascade un-verify clinic orgs auto-verified via this vet's matrícula
 //      c. INSERT audit_log RETURNING id
+//      c2. End the vet's memberships in the practices they created on the
+//          matrícula (any role), audit each, un-verify the admin-less ones
+//      c3. Re-derive the event.write mirror of the memberships left elsewhere
 //      d. Claim attachments (UPDATE WHERE uploaded_by_user_id=actor)
 //      e. Collect notification to target
 //   6. Post-tx: flush pendingNotifications (§2.2 — NOT inside the tx)
@@ -30,6 +33,13 @@ import {
 import { canRevoke } from "@/lib/domain/revocation-scope";
 import type { RevocationTarget } from "@/lib/domain/revocation-scope";
 import { validateMotivoAndAttachments } from "@/lib/domain/revocation-validation";
+
+import {
+  endMatriculaPractices,
+  findMatriculaPracticeMemberships,
+} from "@/src/modules/organizations/application/matricula-practices";
+import { syncEventWriteMirror } from "@/src/modules/organizations/application/set-member-event-write";
+import { OrgRepository } from "@/src/modules/organizations/infrastructure/org-repository";
 
 import { claimAttachmentsForAudit, loadActorAuthority } from "./helpers";
 import type { RevocationResult } from "./types";
@@ -93,6 +103,12 @@ export async function revokeVetRoleForAuthority(
         // Lost the race — another concurrent revocation already ran
         throw new Error("RACE_CONDITION: target profile already updated");
       }
+
+      // W6 review — the practices that exist only on the strength of this
+      // matrícula. Read NOW, before the D4 cascade below clears
+      // autoVerifiedViaMatricula; ended after the revocation's audit row exists
+      // so each removal can point at it.
+      const matriculaPractices = await findMatriculaPracticeMemberships(tx, input.targetUserId);
 
       // D4: Cascade — un-verify any clinic org that was auto-verified via this
       // vet's matrícula AND where the revoked user is still the sole active admin.
@@ -187,6 +203,31 @@ export async function revokeVetRoleForAuthority(
           },
         })
         .returning({ id: auditLog.id });
+
+      // b2. End every membership in those practices (whatever the role) and
+      //     un-verify them — a revoked vet keeps no clinical write through them.
+      await endMatriculaPractices(tx, matriculaPractices, {
+        userId: input.targetUserId,
+        actorUserId,
+        how: "vet_revocation",
+        reasonAuditLogId: logRow.id,
+      });
+
+      // b3. The memberships the vet keeps elsewhere (a vet_individual seat in
+      //     someone else's clinic): the resolver already withholds their
+      //     implicit clinical caps from a non-vet; bring the legacy column in
+      //     line through its single writer so it does not claim otherwise.
+      const remaining = await tx
+        .select({ id: organizationMemberships.id })
+        .from(organizationMemberships)
+        .where(
+          and(
+            eq(organizationMemberships.userId, input.targetUserId),
+            isNull(organizationMemberships.leftAt),
+          ),
+        );
+      const repo = new OrgRepository();
+      for (const m of remaining) await syncEventWriteMirror(repo, m.id, tx);
 
       // c. Claim attachments
       await claimAttachmentsForAudit(tx, logRow.id, input.attachmentIds, actorUserId);

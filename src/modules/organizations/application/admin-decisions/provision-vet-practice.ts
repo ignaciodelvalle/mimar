@@ -14,10 +14,13 @@
 //     `event.write` is effective (admin, vet_individual, or an approved grant)
 //     → nothing is created. That covers a vet already attached to a clinic, and
 //     it is what makes a second approval a no-op instead of a second practice;
+//   · the vet had a practice of their own that a revocation closed → it is
+//     REOPENED (matricula-practices.ts reactivatePractice), never duplicated;
 //   · otherwise → an individual-practice organization (org_type `clinic`,
 //     auto-verified through the matrícula exactly like the solo-vet path of
-//     `upgrade/create-organization.ts`) and a `vet_individual` membership in it,
-//     which holds `event.write` implicitly (domain/capabilities.ts).
+//     `upgrade/create-organization.ts`) with the vet as its ADMIN — the same
+//     role that path gives, so they can set the practice's name and contact in
+//     Configuración and the revocation cascade covers it like any solo clinic.
 //
 // WHAT IT DELIBERATELY DOES NOT DO: grant `event.write` inside an organization
 // the vet merely belongs to (a shelter where they foster, a clinic where they
@@ -53,6 +56,10 @@ import {
   profiles,
 } from "@/db";
 import { validateApprovalPayload } from "@/lib/infra/approval-payloads";
+import {
+  findReusablePractice,
+  reactivatePractice,
+} from "@/src/modules/organizations/application/matricula-practices";
 import { syncEventWriteMirror } from "@/src/modules/organizations/application/set-member-event-write";
 import { resolveGrantedCaps } from "@/src/modules/organizations/domain/capabilities";
 import { OrgRepository } from "@/src/modules/organizations/infrastructure/org-repository";
@@ -68,6 +75,7 @@ export type VetPracticeTokens = {
 
 export type VetPracticeOutcome =
   | { kind: "existing"; organization_id: string; membership_id: string }
+  | { kind: "reactivated"; organization_id: string; membership_id: string }
   | { kind: "provisioned"; organization_id: string; membership_id: string };
 
 export async function provisionVetPractice(
@@ -99,7 +107,12 @@ export async function provisionVetPractice(
     );
   for (const m of memberships) {
     const state = await repo.readEventWriteState(m.id, tx);
-    if (state && resolveGrantedCaps(state.role, state.approvedCapabilities).has("event.write")) {
+    if (
+      state &&
+      resolveGrantedCaps(state.role, state.approvedCapabilities, {
+        vetCredentialValid: state.vetCredentialValid,
+      }).has("event.write")
+    ) {
       // Make the legacy column say what is true on the membership we rely on
       // (it may predate the single writer). Derived, so it can only correct.
       await syncEventWriteMirror(repo, m.id, tx);
@@ -107,7 +120,22 @@ export async function provisionVetPractice(
     }
   }
 
-  // 2. Provision the individual practice.
+  // 2. Their own earlier practice, closed by a revocation? Reopen it.
+  const reusable = await findReusablePractice(tx, input.vetUserId);
+  if (reusable) {
+    await reactivatePractice(tx, reusable, {
+      userId: input.vetUserId,
+      actorUserId: input.actorUserId,
+      approvalRequestId: input.request.id,
+    });
+    return {
+      kind: "reactivated",
+      organization_id: reusable.organizationId,
+      membership_id: reusable.membershipId,
+    };
+  }
+
+  // 3. Provision the individual practice.
   const [vet] = await tx
     .select({ displayName: profiles.displayName })
     .from(profiles)
@@ -140,10 +168,10 @@ export async function provisionVetPractice(
 
   const [membership] = await tx
     .insert(organizationMemberships)
-    .values({ organizationId: practice.id, userId: input.vetUserId, role: "vet_individual" })
+    .values({ organizationId: practice.id, userId: input.vetUserId, role: "admin" })
     .returning({ id: organizationMemberships.id });
 
-  // Legacy column through its single writer: vet_individual → true.
+  // Legacy column through its single writer: admin → true.
   await syncEventWriteMirror(repo, membership.id, tx);
 
   await tx.insert(auditLog).values({
@@ -154,7 +182,7 @@ export async function provisionVetPractice(
     payload: {
       org_id: practice.id,
       member_user_id: input.vetUserId,
-      role: "vet_individual",
+      role: "admin",
       how: "vet_approval_provisioning",
       approval_request_id: input.request.id,
     },
