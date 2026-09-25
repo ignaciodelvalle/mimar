@@ -1,10 +1,11 @@
 import { logoutAction } from "@/app/actions/auth";
+import { canExportPadronSanitario } from "@/app/gob/analytics/export/export-access";
 import { Icon } from "@/components/Icon";
 import { AppShell } from "@/components/layout/AppShell";
 import { AppShellDrawer } from "@/components/layout/AppShellDrawer";
 import { ContextSwitcher } from "@/components/layout/ContextSwitcher";
 import { GovtJurisdictionsChip } from "@/components/layout/GovtJurisdictionsChip";
-import { GOB_NAV_SECTIONS } from "@/components/layout/nav-presets";
+import { gobNavSectionsFor } from "@/components/layout/nav-presets";
 import { DemoModeBanner } from "@/components/ui/DemoModeBanner";
 import { OpMaintenanceScreen } from "@/components/ui/dashboard/OpMaintenanceScreen";
 import { OpOfflineBanner } from "@/components/ui/dashboard/OpOfflineBanner";
@@ -92,7 +93,13 @@ export default async function GobiernoLayout({ children }: { children: React.Rea
   // "You are an admin here" is still said, twice, by chrome that was already
   // role-aware and stays that way: the scope chip reads SUPERADMIN / Nacional,
   // and the switcher offers "Volver a Admin" from anywhere under /gob.
-  const navSections = GOB_NAV_SECTIONS;
+  //
+  // One rail per viewer: the padrón sanitario export entry is shown only to
+  // who the export page itself admits — the SAME predicate, not a copy
+  // (app/gob/analytics/export/export-access.ts).
+  const navSections = gobNavSectionsFor({
+    canExportPadronSanitario: canExportPadronSanitario(profile.role, jurisdictions),
+  });
   const brandSubtitle = "Gobierno";
 
   // getProfileCached is already warmed by requireAdminOrGovtOrRedirect above —

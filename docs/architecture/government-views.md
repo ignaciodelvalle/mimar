@@ -17,9 +17,9 @@ k-anonymity and export privacy live in `docs/architecture/privacy-controls.md`.
 ## 1. The sections
 
 Every `/gob` page passes through `app/gob/layout.tsx`, which calls
-`requireAdminOrGovtOrRedirect` at `app/gob/layout.tsx:54` and short-circuits on
+`requireAdminOrGovtOrRedirect` at `app/gob/layout.tsx:58` and short-circuits on
 the maintenance kill-switch before any auth or data fetch. The rail is
-`GOB_NAV_SECTIONS` (`components/layout/nav-presets.ts:440`), and it groups the
+`GOB_NAV_SECTIONS` (`components/layout/nav-presets.ts:443`), and it groups the
 surface into six bands:
 
 | Band | Entries | Route |

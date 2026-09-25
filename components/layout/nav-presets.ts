@@ -437,6 +437,9 @@ export function buildOrgNavFlat(orgToken: string, opts: OrgNavOptions = {}): Nav
 //  - /gob/sistema has no nav entry today (folded into /gob/programa,
 //    2026-07-09 audit; route survives only as a deep-link redirect) — nothing
 //    to regroup, so Profundidad's "Sistema" is a no-op here.
+/** The padrón sanitario export — the one /gob rail entry gated per viewer. */
+export const GOB_PADRON_EXPORT_HREF = "/gob/analytics/export";
+
 export const GOB_NAV_SECTIONS: NavSection[] = [
   // Unlabeled/top — the Briefing. This IS the Briefing's home now (PO decision
   // 2026-08-01): the label was "Panel", which read as a synonym of the
@@ -532,10 +535,12 @@ export const GOB_NAV_SECTIONS: NavSection[] = [
       // __tests__/state-endorsement-fence.test.ts forbids naming a state body
       // here outside a norm citation. The destination page (gob-only) still
       // names the SENASA format in its own heading.
+      //
+      // Shown only to who may export — see gobNavSectionsFor below.
       {
-        href: "/gob/analytics/export",
+        href: GOB_PADRON_EXPORT_HREF,
         label: "Exportar padrón sanitario",
-        matchPrefix: "/gob/analytics/export",
+        matchPrefix: GOB_PADRON_EXPORT_HREF,
       },
     ],
   },
@@ -625,6 +630,24 @@ export const GOB_NAV_SECTIONS: NavSection[] = [
     ],
   },
 ];
+
+/**
+ * The /gob rail for ONE viewer. GOB_NAV_SECTIONS is the full catalogue (the
+ * screen-manifest fence and the breadcrumbs read it); the rail a person sees
+ * drops the padrón sanitario export when they may not use it. The caller
+ * passes the verdict of the page's own predicate
+ * (app/gob/analytics/export/export-access.ts canExportPadronSanitario) — this
+ * module does not restate the rule. Before this, a govt official with no
+ * jurisdiction was offered an entry that led to a lock screen (PO, 2026-09-25).
+ * A section left empty is dropped.
+ */
+export function gobNavSectionsFor(viewer: { canExportPadronSanitario: boolean }): NavSection[] {
+  if (viewer.canExportPadronSanitario) return GOB_NAV_SECTIONS;
+  return GOB_NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => item.href !== GOB_PADRON_EXPORT_HREF),
+  })).filter((section) => section.items.length > 0);
+}
 
 /** Flat derived list — use where a NavItem[] is required (e.g. mobile drawer). */
 export const GOB_NAV_FLAT: NavItem[] = GOB_NAV_SECTIONS.flatMap((s) => s.items);

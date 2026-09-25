@@ -26,6 +26,7 @@ import { resolveJurisdictionScope } from "@/lib/analytics/jurisdiction-scope";
 import { requireAdminOrGovtOrRedirect } from "@/lib/infra/auth-guards";
 import { isDeliverableAddress } from "@/lib/infra/deliverable-address";
 import { resolveMailSender } from "@/lib/infra/outbound-channels";
+import { canExportPadronSanitario } from "./export-access";
 import { UnknownExportPeriodError, resolveExportPeriod } from "./export-period";
 
 export type GenerateExportResult =
@@ -46,8 +47,7 @@ export async function generateExportAction(formData: FormData): Promise<Generate
     const { profile, jurisdictions, user, supabase } = await requireAdminOrGovtOrRedirect();
     const actor = { role: profile.role } as const;
 
-    const hasAccess =
-      profile.role === "admin" || (profile.role === "govt" && jurisdictions.length > 0);
+    const hasAccess = canExportPadronSanitario(profile.role, jurisdictions);
     if (!hasAccess) {
       return { ok: false, error: "No tenés permisos para generar exports." };
     }

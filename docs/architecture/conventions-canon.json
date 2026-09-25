@@ -6327,7 +6327,7 @@
       "wired": "test:verified",
       "status": "ENFORCED",
       "clause": "R1",
-      "statusBasis": "__tests__/govt-exports.test.ts:353 asserts EXPORT_PRIVACY_NOTICE not.toMatch(/est[aá]n anonimizados/i), :350 demands 'fila por fila', :357-358 that it says el anonimato NO se aplica, :362-363 jurisdiccion + auditoria. The constant is the copy actually rendered: app/gob/analytics/export/page.tsx:104 body={EXPORT_PRIVACY_NOTICE}.",
+      "statusBasis": "__tests__/govt-exports.test.ts:353 asserts EXPORT_PRIVACY_NOTICE not.toMatch(/est[aá]n anonimizados/i), :350 demands 'fila por fila', :357-358 that it says el anonimato NO se aplica, :362-363 jurisdiccion + auditoria. The constant is the copy actually rendered: app/gob/analytics/export/page.tsx:105 body={EXPORT_PRIVACY_NOTICE}.",
       "notes": "The negative is one spelling ban; a rewrite to 'archivo anonimizado' would slip it, but the positive assertions (anonimato + no se aplica) carry the predicate. Basis agreed without the adoption check; page.tsx:104 confirms it.",
       "confidence": 0.75,
       "verifiedAt": "d7dbf25f7"

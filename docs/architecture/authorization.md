@@ -238,7 +238,7 @@ flowchart LR
 |---|:--:|:--:|:--:|:--:|---|
 | `app/(app)` — citizen surfaces | yes | yes | yes | yes | `requireUserOrRedirect` |
 | `app/org/[orgToken]` — org console | with membership | with membership | with membership | with membership | `requireOrgAccessByToken` + capability |
-| `app/gob` | no | no | scoped | universal | `requireAdminOrGovtOrRedirect` (`app/gob/layout.tsx:54`) |
+| `app/gob` | no | no | scoped | universal | `requireAdminOrGovtOrRedirect` (`app/gob/layout.tsx:58`) |
 | `app/admin` | no | no | no | yes | `requireAdminOrRedirect` |
 | `app/api/panorama` | no | no | scoped | universal | `resolveInstitutionalPanoramaActor` |
 | `app/libreta/compartir` — share link | anonymous holder of the token | — | — | — | capability token, no session |

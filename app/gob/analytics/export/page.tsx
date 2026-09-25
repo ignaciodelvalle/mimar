@@ -23,6 +23,7 @@ import { resolveJurisdictionScope } from "@/lib/analytics/jurisdiction-scope";
 import { requireAdminOrGovtOrRedirect } from "@/lib/infra/auth-guards";
 import { ExportFormClient } from "./ExportFormClient";
 import { SenasaExportLink } from "./SenasaExportLink";
+import { canExportPadronSanitario } from "./export-access";
 import { EXPORT_DEFAULT_PRESET } from "./export-period";
 import { EXPORT_PRIVACY_NOTICE } from "./privacy-notice";
 
@@ -41,9 +42,9 @@ export default async function GobAnalyticsExportPage({
 }) {
   const { profile, jurisdictions } = await requireAdminOrGovtOrRedirect();
 
-  // Capability guard: export = admin OR (govt AND has assignments).
-  const hasAccess =
-    profile.role === "admin" || (profile.role === "govt" && jurisdictions.length > 0);
+  // Capability guard: export = admin OR (govt AND has assignments). The same
+  // predicate hides the /gob rail entry (./export-access.ts).
+  const hasAccess = canExportPadronSanitario(profile.role, jurisdictions);
 
   if (!hasAccess) {
     return (
