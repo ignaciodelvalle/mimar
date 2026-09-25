@@ -46,6 +46,11 @@ export type ProfilePetRow = {
 /** The access record, minus the `none` arm the caller has already turned into a 404. */
 export type ResolvedProfileAccess = Exclude<PetHolderAccess, { kind: "none" }>;
 
+/** The person path, as the legal owner (`ownerships.role = 'owner'`). */
+export function isLegalOwner(access: ResolvedProfileAccess): boolean {
+  return access.kind === "owner" && access.holderRole === "owner";
+}
+
 /**
  * Who may run which command.
  *
@@ -79,7 +84,9 @@ export type ResolvedProfileAccess = Exclude<PetHolderAccess, { kind: "none" }>;
  *     `accessRow.role === "owner"` (everybody else gets `FriendlyOwnerOnlyPage`),
  *     and `loadOwnedPetWithServiceDog`, which all four owner use-cases resolve
  *     the pet through, joins `ownerships.role = 'owner'`. The org path, a
- *     co-owner, a foster and a caretaker are all outside it.
+ *     co-owner, a foster and a caretaker are all outside it. NOT for a DECEASED
+ *     animal either: `loadOwnedPetWithServiceDog` refuses one, and this flag
+ *     says so up front rather than offering a form that can only be refused.
  */
 export function petProfileCapabilities(
   access: ResolvedProfileAccess,
@@ -97,7 +104,7 @@ export function petProfileCapabilities(
     // its own so the two can part ways without a client noticing the wrong one.
     canCorrectSpecies: titular,
     canTogglePhysicalTagInterest: access.kind === "owner",
-    canManageServiceDog: access.kind === "owner" && access.holderRole === "owner",
+    canManageServiceDog: isLegalOwner(access) && access.pet.status !== "deceased",
   };
 }
 

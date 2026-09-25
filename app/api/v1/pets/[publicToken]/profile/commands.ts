@@ -94,7 +94,7 @@ import { PetsRepository } from "@/src/modules/pets/infrastructure/pets-repositor
 import type { PetProfileEditAckV1 } from "@dim/contract/api";
 import { type PetProfileCommandInput, resolvePetIdentityLengths } from "@dim/contract/input";
 
-import { type ResolvedProfileAccess, petProfileCapabilities } from "./payload";
+import { type ResolvedProfileAccess, isLegalOwner, petProfileCapabilities } from "./payload";
 
 /**
  * The pre-write reads: the access query, the canonical-chip probe, the PPP rule.
@@ -163,7 +163,14 @@ export async function runPetProfileCommand(ctx: CommandContext) {
     ctx.input.command === "set_service_dog_visibility" ||
     ctx.input.command === "retire_service_dog"
   ) {
-    if (!capabilities.canManageServiceDog) return apiV1Error("profile_forbidden", 403);
+    if (!capabilities.canManageServiceDog) {
+      // The legal owner of a DECEASED animal is not a stranger to it: what
+      // refuses them is the animal's state, not their role, so the answer is
+      // the use-cases' own refusal code rather than `profile_forbidden`.
+      return isLegalOwner(access)
+        ? apiV1Error("service_dog_refused", 409)
+        : apiV1Error("profile_forbidden", 403);
+    }
     return runServiceDogCommand(ctx, ctx.input);
   }
 

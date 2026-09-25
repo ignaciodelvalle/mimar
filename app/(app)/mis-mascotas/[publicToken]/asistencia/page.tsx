@@ -196,7 +196,16 @@ export default async function AsistenciaPage({
           credencial está vigente y elegís hacerlo visible.
         </LnCallout>
 
-        {pet.species === "dog" && (
+        {/* A DECEASED animal gets no form: `loadOwnedPetWithServiceDog`, which
+            every action behind it resolves the pet through, refuses one. */}
+        {pet.status === "deceased" && (
+          <LnCallout tone="warn">
+            {pet.name} figura como fallecido/a. La credencial de asistencia ya no se puede modificar
+            ni enviar a verificación.
+          </LnCallout>
+        )}
+
+        {pet.species === "dog" && pet.status !== "deceased" && (
           <ServiceDogForm petPublicToken={publicToken} initial={serviceDog ?? null} />
         )}
       </div>

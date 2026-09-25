@@ -829,6 +829,19 @@ describe("GET — D3, la designación de perro de asistencia", () => {
     }
   });
 
+  it("withholds it from the owner of a DECEASED dog, without reading the row", async () => {
+    control.access = () => ({
+      kind: "owner",
+      pet: petRow({ status: "deceased" }),
+      holderRole: "owner",
+    });
+    control.serviceDogRow = ROW;
+    const body = await (await read()).json();
+    expect(body.capabilities.canManageServiceDog).toBe(false);
+    expect(body.serviceDog).toBeNull();
+    expect(control.serviceDogReads).toBe(0);
+  });
+
   it("the contract's enums are the table's — a CHECK value added on one side fails here", async () => {
     const db = await import("@/db/schema");
     const contract = await import("@dim/contract/input");
@@ -914,6 +927,25 @@ describe("POST — D3, perro de asistencia", () => {
         expect(response.status).toBe(403);
         expect(await response.json()).toEqual({ error: "profile_forbidden" });
       }
+    }
+    expect(control.writes).toHaveLength(0);
+  });
+
+  it("refuses the owner of a DECEASED dog on all four commands, before any use-case runs", async () => {
+    control.access = () => ({
+      kind: "owner",
+      pet: petRow({ status: "deceased" }),
+      holderRole: "owner",
+    });
+    for (const body of [
+      SAVE,
+      { command: "request_service_dog_verification" },
+      { command: "set_service_dog_visibility", publicVisibility: "full_banner" },
+      { command: "retire_service_dog" },
+    ]) {
+      const response = await send(body);
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ error: "service_dog_refused" });
     }
     expect(control.writes).toHaveLength(0);
   });
