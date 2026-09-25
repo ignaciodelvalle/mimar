@@ -160,12 +160,31 @@ export function findMobileOffenses(): { offenses: Offense[]; scanned: number } {
   for (const manifest of MOBILE_MANIFESTS) {
     if (!existsSync(manifest)) continue;
     // JSON carries no comments; stripComments is a no-op on it anyway.
-    result.offenses.push(...scanSource(manifest, readFileSync(manifest, "utf8"), [MANIFEST_RULE]));
+    result.offenses.push(
+      ...scanSource(manifest, blankBlockedPermissions(readFileSync(manifest, "utf8")), [
+        MANIFEST_RULE,
+      ]),
+    );
   }
   result.offenses.push(
     ...findNativeLocationDependencies(readFileSync(MOBILE_PACKAGE_JSON, "utf8")),
   );
   return result;
+}
+
+/**
+ * The manifest with every `blockedPermissions` array blanked out, line count
+ * kept. A permission named THERE is the opposite of a request: Expo turns the
+ * list into `tools:node="remove"`, which strips it from the merged manifest even
+ * when a library (MapLibre, M17) brings it in. Listing the location permissions
+ * there is how the app keeps them out, and apps/mobile's release-config test
+ * pins that list; a location permission anywhere else in the manifest is still
+ * an offense.
+ */
+export function blankBlockedPermissions(source: string): string {
+  return source.replace(/"blockedPermissions"\s*:\s*\[[^\]]*\]/g, (block) =>
+    block.replace(/[^\n]/g, " "),
+  );
 }
 
 /** A native location module declared as a dependency of the app. */

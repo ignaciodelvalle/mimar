@@ -17,6 +17,7 @@ import {
   MIN_WEB_FILES,
   MOBILE_RULES,
   WEB_RULES,
+  blankBlockedPermissions,
   checkPermissionsPolicy,
   findMobileOffenses,
   findNativeLocationDependencies,
@@ -101,6 +102,28 @@ describe("check-no-device-gps — planted samples fire", () => {
 });
 
 describe("check-no-device-gps — planted look-alikes stay quiet", () => {
+  it("does not count a location permission the manifest BLOCKS as a request", () => {
+    // Expo turns android.blockedPermissions into tools:node="remove" — naming a
+    // permission there keeps it OUT of the merged manifest (M17's MapLibre
+    // brings them in). Line numbers survive the blanking.
+    const manifest = [
+      "{",
+      '  "android": {',
+      '    "blockedPermissions": [',
+      '      "android.permission.ACCESS_FINE_LOCATION",',
+      '      "android.permission.ACCESS_BACKGROUND_LOCATION"',
+      "    ],",
+      '    "permissions": ["android.permission.ACCESS_COARSE_LOCATION"]',
+      "  }",
+      "}",
+    ].join("\n");
+    const blanked = blankBlockedPermissions(manifest);
+    expect(blanked.split("\n")).toHaveLength(manifest.split("\n").length);
+    const hits = scanSource("app.json", blanked, [MANIFEST_RULE]);
+    // Only the REQUESTED one, on its own line, is an offense.
+    expect(hits.map((o) => [o.rule, o.line])).toEqual([["os-location-permission", 7]]);
+  });
+
   it("ignores comments naming the banned API", () => {
     const src = [
       "// never navigator.geolocation.getCurrentPosition here",
