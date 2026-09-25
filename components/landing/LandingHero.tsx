@@ -1,7 +1,13 @@
 "use client";
 
-// Landing hero — Pampa's "credencial viva": a mini DNI-style credential card
-// that plays ONCE through the states a real pet moves through over a life,
+// Landing hero — Pampa's "credencial viva": a miniature of the REAL public
+// credential the QR opens (app/(public)/p/[publicToken]/page.tsx and the owner
+// app's DocumentChrome band — PO 2026-09-25: "a credential similar to the
+// actually implemented one … clearly a type of credential or document"). It is
+// miMAR's document, never a State one: no escudo, no "República Argentina",
+// and the machine-readable strip is miMAR's own format (heroMrzLines), not the
+// "P<ARG" passport line it replaced. The card plays ONCE through the states a
+// real pet moves through over a life,
 // then settles for good on "AL DÍA" — the calm, done resting state (PO
 // landing redesign 2026-07-04; calmer/institutional pass 2026-07-21: this
 // used to loop forever, which read as a consumer-product demo reel — a
@@ -53,7 +59,12 @@
 // (PO decision: keep it, make the page around it calmer). Don't "fix" it back
 // to a Poncho display font.
 
-import { HERO_LIBRETA_ROWS, PAMPA } from "@/components/landing/landing-content";
+import {
+  HERO_CREDENTIAL_FIELDS,
+  HERO_LIBRETA_ROWS,
+  PAMPA,
+  heroMrzLines,
+} from "@/components/landing/landing-content";
 import { lostThirdPersonPhrase } from "@/lib/utils/format";
 import Image from "next/image";
 import Link from "next/link";
@@ -113,14 +124,6 @@ const TURN_MS = 300;
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
-/**
- * Decorative MRZ line (the DNI wink). Built from the real token by replacing
- * "-" with "<" and padding to the ICAO 44-char width. aria-hidden.
- */
-function buildMrz(token: string): string {
-  return `P<ARG${PAMPA.name.toUpperCase()}<<${token.replaceAll("-", "<")}`.padEnd(44, "<");
 }
 
 /**
@@ -217,7 +220,7 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
   // only supplies them together. Anything less renders the inert glyph.
   const scannable = qrSvg !== null && publicHref !== null;
   const displayToken = publicToken ?? PLACEHOLDER_TOKEN;
-  const mrz = buildMrz(displayToken);
+  const mrz = heroMrzLines(publicToken);
 
   return (
     <section className="lp-section lp-section--paper lp-hero" id="top" data-section="landing-hero">
@@ -234,20 +237,36 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                   data-face={face}
                   aria-label={`Credencial de ${PAMPA.name}`}
                 >
-                  {/* FRONT — the mini credential */}
+                  {/* FRONT — the credential the QR opens, in miniature: the
+                      guilloche band and issuing line, photo and QR rising out
+                      of the band, name and token between them, the identity
+                      fields the public page prints, the one state row, and
+                      miMAR's own machine-readable strip. */}
                   <div className="lp-hcard-front">
-                    <div className="lp-hcard-trim">
-                      <span className="lp-hcard-brand">
-                        <i />
-                        miMAR
+                    <div className="lp-hcard-band">
+                      <span className="lp-hcard-issuer">
+                        {/* The real mark, decorative: the issuing line beside
+                            it is the text. */}
+                        <span className="lp-hcard-mark" aria-hidden="true">
+                          <img src="/logo-mimar-mark.svg" alt="" width={18} height={18} />
+                        </span>
+                        <span>
+                          <span className="lp-hcard-issuer-name">Credencial miMAR</span>
+                          <span className="lp-hcard-issuer-sub">Libreta sanitaria · frente</span>
+                        </span>
                       </span>
                       <span className="lp-hcard-trim-r">
+                        {/* The status seal. `key` restarts its stamp-in on
+                            every state change. */}
                         <span key={index} className="lp-hcard-badge">
                           {state.badge}
                         </span>
                         <FlipButton label="Girar credencial" onFlip={flip} />
                       </span>
                     </div>
+                    {/* The per-state rule under the band — the public card's
+                        8px strip recolouring by situation, in miniature. */}
+                    <div className="lp-hcard-tone" aria-hidden="true" />
 
                     <div className="lp-hcard-body">
                       <span className="lp-hcard-photo">
@@ -259,7 +278,7 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                               : `${PAMPA.name}, ${PAMPA.speciesNoun}`
                           }
                           fill
-                          sizes="64px"
+                          sizes="76px"
                           // The hero credential's photo is above the fold on
                           // every visit: fetch it ahead of lower images.
                           fetchPriority="high"
@@ -301,6 +320,16 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                       )}
                     </div>
 
+                    {/* Identity fields — the public credential's own labels. */}
+                    <dl className="lp-hcard-fields">
+                      {HERO_CREDENTIAL_FIELDS.map((f) => (
+                        <div key={f.label}>
+                          <dt>{f.label}</dt>
+                          <dd>{f.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+
                     <div key={index} className="lp-hcard-ctx">
                       <span className="lp-hcard-ctx-chev" aria-hidden="true">
                         ▸
@@ -308,8 +337,13 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                       <span>{state.row}</span>
                     </div>
 
+                    {/* miMAR's own machine-readable strip (see heroMrzLines):
+                        decorative, so hidden from assistive tech — and still
+                        drawn at full contrast, because a low-vision reader
+                        can see it (review L-5). */}
                     <div className="lp-hcard-mrz" aria-hidden="true">
-                      {mrz}
+                      <span>{mrz[0]}</span>
+                      <span>{mrz[1]}</span>
                     </div>
                   </div>
 

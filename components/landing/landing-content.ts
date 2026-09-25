@@ -21,6 +21,8 @@
 // set no longer matches what ships here.
 
 import type { IconName } from "@/components/Icon";
+import { BRANDING } from "@/lib/ui/branding";
+import { sexLabel, speciesLabel } from "@/lib/utils/format";
 import {
   OWNER_NAME,
   PAMPA_EVENTS,
@@ -209,6 +211,83 @@ export const PAMPA = {
   speciesNoun: "perra",
   age: "4 años",
 } as const;
+
+// ---------------------------------------------------------------------------
+// Hero credential — the card the QR's own page prints, in miniature
+// ---------------------------------------------------------------------------
+
+const PAMPA_BIRTH = splitDate(PAMPA_PET.dateOfBirth);
+
+/**
+ * The hero card's identity fields. Same labels and the same words as the
+ * public credential the hero QR opens (app/(public)/p/[publicToken]/page.tsx
+ * builds its breed line from speciesLabel + breed and its sex from sexLabel,
+ * and prints "Microchip · Sí/No"), all read from the seed's pet row and
+ * libreta — so the card and the page it links to cannot disagree about Pampa.
+ * The birth date carries the seed's `birthDateIsEstimated` flag into the label
+ * rather than printing an estimate as if it were a known date.
+ */
+export const HERO_CREDENTIAL_FIELDS: ReadonlyArray<{ label: string; value: string }> = [
+  { label: "Especie y raza", value: `${speciesLabel(PAMPA_PET.species)} · ${PAMPA_PET.breed}` },
+  { label: "Sexo", value: sexLabel(PAMPA_PET.sex) },
+  {
+    label: PAMPA_PET.birthDateIsEstimated ? "Nacimiento estimado" : "Nacimiento",
+    value: `${PAMPA_BIRTH.month}${NBSP}${PAMPA_BIRTH.year}`,
+  },
+  {
+    label: "Microchip",
+    value: PAMPA_EVENTS.some((e) => e.eventType === "microchip_implanted") ? "Sí" : "No",
+  },
+];
+
+/** Width of each machine-readable line on the hero card. */
+export const HERO_MRZ_WIDTH = 30;
+
+/** Upper-case, accents stripped, every run of anything else folded to "<". */
+function mrzField(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{M}+/gu, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "<");
+}
+
+/**
+ * The hero card's machine-readable strip, in miMAR's OWN format.
+ *
+ * It used to be an ICAO passport line opening "P<ARG" — the document code and
+ * issuing-State code of an Argentine passport. On a card this product issues,
+ * that is the State signing something it never signed (the same overclaim the
+ * state-endorsement fence removed from the eyebrow and the footers). The strip
+ * keeps the document feel and says only what miMAR can say:
+ *
+ *   line 1 · issuer (the brand name in the strip's alphabet), the credential
+ *            token, the pet's name
+ *   line 2 · species, breed, sex (H/M), birth year and month
+ *
+ * With no demo pet to resolve (`token` null) the token segment is filler, the
+ * same masking the card applies to the printed token: a strip must not show a
+ * token as if it resolved when the QR beside it is inert.
+ */
+export function heroMrzLines(token: string | null): [string, string] {
+  // dim-codename-ok: the public DIM-XXXX-XXXX token prefix, kept while the rest is masked.
+  const tokenPart = token ? mrzField(token) : `DIM${"<".repeat(10)}`;
+  const sexCode = PAMPA_PET.sex === "female" ? "H" : PAMPA_PET.sex === "male" ? "M" : "X";
+  const [year = "", month = ""] = PAMPA_PET.dateOfBirth.split("-");
+  const fit = (line: string) => line.padEnd(HERO_MRZ_WIDTH, "<").slice(0, HERO_MRZ_WIDTH);
+  // The issuer code is the brand name put through the same A–Z/0–9 alphabet as
+  // every other field: a machine-readable line has no lower case, so it cannot
+  // spell "miMAR". Derived rather than typed, so the one upper-cased form of
+  // the brand in the product is visibly the strip's encoding of it and not a
+  // second spelling (lint:brand fences typed wrong-cased brand literals).
+  const issuer = mrzField(BRANDING.appName);
+  return [
+    fit(`${issuer}<${tokenPart}<<${mrzField(PAMPA_PET.name)}`),
+    fit(
+      `${mrzField(speciesLabel(PAMPA_PET.species))}<${mrzField(PAMPA_PET.breed)}<<${sexCode}<${year}<${month}`,
+    ),
+  ];
+}
 
 // ---------------------------------------------------------------------------
 // Cast — the four hands around the pet (CastFila, PO-locked variant)

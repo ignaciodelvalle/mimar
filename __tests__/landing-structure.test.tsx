@@ -44,7 +44,12 @@ import { FeaturesSection } from "@/components/landing/FeaturesSection";
 import { LandingFooter } from "@/components/landing/LandingFooter";
 import { LandingHero } from "@/components/landing/LandingHero";
 import { StorySection } from "@/components/landing/StorySection";
-import { ACTORS, CHAPTERS } from "@/components/landing/landing-content";
+import {
+  ACTORS,
+  CHAPTERS,
+  HERO_MRZ_WIDTH,
+  heroMrzLines,
+} from "@/components/landing/landing-content";
 
 const QR_SVG = '<svg data-qr="demo"><path d="M0 0h1v1H0z"/></svg>';
 // A render fixture, not a seed dependency: nothing here touches a database.
@@ -119,6 +124,48 @@ describe("landing hero — credential + lost demo", () => {
     // carry the badge strings, so absence is asserted on the row copy instead).
     expect(html).not.toContain("Requisito jurisdiccional");
     expect(html).not.toContain("Cierra sola en 8 días");
+  });
+});
+
+// The hero card mirrors the REAL credential the QR opens (PO 2026-09-25) and
+// is miMAR's document, never a State one. The passport line it used to carry
+// opened "P<ARG" — the document and issuing-State codes of an Argentine
+// passport — which is the state-endorsement overclaim in machine-readable form.
+describe("landing hero — the credential is miMAR's own document", () => {
+  // renderToStaticMarkup escapes "<"; read the strip back as text.
+  const asText = (html: string) => html.replaceAll("&lt;", "<");
+
+  it("carries the issuing line and the identity fields the public credential prints", () => {
+    const html = renderHero();
+    expect(html).toContain("Credencial miMAR");
+    for (const label of ["Especie y raza", "Sexo", "Nacimiento estimado", "Microchip"]) {
+      expect(html, label).toContain(`<dt>${label}</dt>`);
+    }
+  });
+
+  it("prints a machine-readable strip in miMAR's format, built from the real token", () => {
+    const [line1, line2] = heroMrzLines(DEMO_TOKEN);
+    expect(line1).toBe("MIMAR<DIM<PAMP<0001<<PAMPA<<<<");
+    expect(line2.startsWith("PERRO<CANICHE<<H<2021<11")).toBe(true);
+    expect(line1).toHaveLength(HERO_MRZ_WIDTH);
+    expect(line2).toHaveLength(HERO_MRZ_WIDTH);
+    const text = asText(renderHero());
+    expect(text).toContain(line1);
+    expect(text).toContain(line2);
+  });
+
+  it("never reads as a State document", () => {
+    for (const text of [asText(renderHero()), asText(renderHeroWithoutDemoPet())]) {
+      expect(text).not.toContain("P<ARG");
+      expect(text).not.toMatch(/Rep[uú]blica Argentina/i);
+      expect(text).not.toMatch(/escudo/i);
+    }
+  });
+
+  it("masks the token in the strip when there is no demo pet, as it does on the face", () => {
+    const text = asText(renderHeroWithoutDemoPet());
+    expect(text).toContain("MIMAR<DIM<<<<<<<<<<<<PAMPA");
+    expect(text).not.toContain("PAMP<0001");
   });
 });
 

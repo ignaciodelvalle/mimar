@@ -31,7 +31,11 @@ vi.mock("next/link", () => ({
 
 import { LandingHero } from "@/components/landing/LandingHero";
 import { StorySection } from "@/components/landing/StorySection";
-import { LIBRETA_EVENTS, formatChip } from "@/components/landing/landing-content";
+import {
+  HERO_CREDENTIAL_FIELDS,
+  LIBRETA_EVENTS,
+  formatChip,
+} from "@/components/landing/landing-content";
 import {
   LOST_SEQUENCE,
   SHELTER_SEQUENCE,
@@ -380,6 +384,18 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
     expect(html).not.toMatch(/lp-minimap|−?\d{2}\.\d{3,}, −?\d{2}\.\d{3,}/);
     expect(html).not.toContain("vecinos");
     expect(html).not.toContain("EN CASA");
+  });
+
+  it("the hero credential's identity fields are the seed's pet row", () => {
+    const byLabel = Object.fromEntries(HERO_CREDENTIAL_FIELDS.map((f) => [f.label, f.value]));
+    expect(byLabel["Especie y raza"]).toContain(PAMPA_PET.breed);
+    expect(byLabel.Sexo).toBe(PAMPA_PET.sex === "female" ? "Hembra" : "Macho");
+    // The seed marks the birth date as estimated, and the card says so.
+    expect(PAMPA_PET.birthDateIsEstimated).toBe(true);
+    expect(flat(byLabel["Nacimiento estimado"] ?? "")).toContain(PAMPA_PET.dateOfBirth.slice(0, 4));
+    // Pampa's libreta has a chip implant, so the card may say "Sí".
+    expect(PAMPA_EVENTS.some((e) => e.eventType === "microchip_implanted")).toBe(true);
+    expect(byLabel.Microchip).toBe("Sí");
   });
 
   it("the hero's libreta face lists vet-signed entries from the seed", () => {

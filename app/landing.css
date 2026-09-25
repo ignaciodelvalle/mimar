@@ -511,9 +511,12 @@
 }
 
 /* ============ hero credential — "credencial viva" ==========================
-   A mini DNI-style credential card that auto-cycles through the states a real
-   pet moves through over a life (PO redesign 2026-07-04). It replaces the old
-   photo-with-halo motif. The WHOLE card tints per state via data-tone →
+   A miniature of the REAL public credential the QR opens (PO 2026-09-25): the
+   guilloche band of the owner app's DocumentChrome (.ln-band) with the public
+   card's per-situation strip under it (.pc-strip), photo and QR rising out of
+   the band as in .ln-idrow, the identity fields /p prints, and a
+   machine-readable strip in miMAR's own format. It auto-cycles through the
+   states a real pet moves through over a life (PO redesign 2026-07-04). The WHOLE card tints per state via data-tone →
    --htone / --htone-soft / --htone-bd (token map below); the front carries ONE
    contextual row, the back is a mini libreta. The turn is edge-on (LandingHero
    drives rotateY imperatively; same single-painted-face mechanic as FlipCard /
@@ -550,6 +553,9 @@
 .lp .lp-hcardwrap {
   perspective: 1200px;
   width: min(400px, 92vw);
+  /* The card sizes its photo, QR and token from its OWN width (the @container
+     rule under .lp-hcard-qr), not the viewport's. */
+  container-type: inline-size;
   /* Deliberate one-time entrance for the credential card (landing choreography
      2026-08-02). CSS-only via @starting-style, which keeps it fail-open by
      construction: no JS involved, it always resolves to the visible state, and
@@ -568,7 +574,7 @@
 .lp .lp-hcard {
   position: relative;
   width: 100%;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--color-ln-card);
   border: 1.5px solid var(--htone, var(--color-ln-celeste-100));
   box-shadow: var(--shadow-lg);
@@ -602,55 +608,120 @@
   display: block;
 }
 
-/* trim bar — subtly tinted by state tone */
-.lp .lp-hcard-trim {
+/* ---- band: the document's guilloche head ---------------------------------
+   Same construction as the owner app's .ln-band (hairline diagonals over an
+   azul-900 → azul → celeste sweep), plus a rosette of fine concentric rings at
+   the right edge — the security-print motif, drawn in CSS, no image. The band
+   does NOT change colour with the state: the document is the same document
+   whatever happens to the pet. The state lives in the seal, the strip under
+   the band, the photo ring and the one state row. */
+.lp .lp-hcard-band {
+  position: relative;
+  /* Two rows: issuing line + turn button, then the seal on its own row at the
+     right. The seal is as wide as its state (AL DÍA … EN OBSERVACIÓN), and
+     sharing a row with the issuing line it overlapped it at phone widths;
+     alone on its row it can change width through the cycle without moving
+     anything else. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 10px;
+  row-gap: 6px;
+  align-items: start;
+  /* Bottom padding is the room the photo and QR rise into (.lp-hcard-body's
+     negative margin); change one, change the other. */
+  padding: 12px 14px 52px 16px;
+  background: repeating-radial-gradient(
+      circle at 108% 130%,
+      color-mix(in srgb, var(--color-ln-card) 16%, transparent) 0 1px,
+      transparent 1px 6px
+    ),
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-ln-card) 12%, transparent) 0 1px,
+      transparent 1px 11px
+    ),
+    linear-gradient(
+      118deg,
+      var(--color-ln-azul-900),
+      var(--color-ln-azul) 58%,
+      var(--color-ln-celeste)
+    );
+}
+.lp .lp-hcard-issuer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px 16px;
-  background: linear-gradient(90deg, var(--htone-soft, var(--color-ln-ok-bg)), transparent 70%);
-  border-bottom: 1px solid var(--color-ln-line);
-  transition: background var(--motion-deliberate);
+  gap: 9px;
+  min-width: 0;
 }
+/* The mark on a paper tile — the masthead's recipe (AppCitizenMasthead): the
+   asset paints brand blue and an <img> cannot recolour it, so it sits on paper
+   instead of vanishing into the navy. */
+.lp .lp-hcard-mark {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-ln-paper);
+}
+.lp .lp-hcard-issuer-name {
+  display: block;
+  font-family: var(--font-ln-serif);
+  font-weight: 600;
+  font-size: var(--text-md);
+  line-height: 1.15;
+  color: var(--color-ln-card);
+}
+/* celeste-100 on the band's dark end, not white at an opacity: the masthead's
+   own measurement (~10:1 on azul-900). The line sits over the left, darkest
+   part of the sweep at every card width. */
+.lp .lp-hcard-issuer-sub {
+  display: block;
+  margin-top: 1px;
+  font-family: var(--font-ln-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  color: var(--color-ln-celeste-100);
+  white-space: nowrap;
+}
+/* A layout-only wrapper (seal + turn button in source order); its children
+   are placed on the band grid directly. */
 .lp .lp-hcard-trim-r {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: contents;
 }
-.lp .lp-hcard-brand {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-weight: 800;
-  font-size: 13px;
-  letter-spacing: 0.02em;
-  color: var(--color-ln-ink);
+.lp .lp-hcard-band .lp-hcard-flip {
+  grid-row: 1;
+  grid-column: 2;
 }
-.lp .lp-hcard-brand i {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--color-ln-celeste);
-  border: 2px solid var(--color-ln-azul);
+.lp .lp-hcard-band .lp-hcard-badge {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  justify-self: end;
 }
+/* The status seal: a struck stamp, not a pill — solid tone-soft fill so its
+   text never depends on the band behind it, a double rule for the struck
+   edge, a quarter-turn of tilt at rest. */
 .lp .lp-hcard-badge {
   display: inline-flex;
   align-items: center;
-  border: 1px solid var(--htone-bd, var(--color-ln-ok-100));
-  /* Was `999px` — un desvío de GRAFÍA, no de geometría: rinde idéntico a la
-     píldora. Es el único de los seis radios de la familia de chips que se podía
-     converger sin decidir nada de diseño. Los otros cinco (6px, 5px crudo, 4px,
-     3px crudo, 2px) sí son geometrías distintas y quedan como decisión del PO —
-     ver E-2 en dim-interno:docs/plans/PENDIENTES.md. */
-  border-radius: var(--radius-pill);
-  padding: 3px 10px;
+  border: 1.5px solid var(--htone, var(--color-ln-ok));
+  outline: 1px solid var(--htone-soft, var(--color-ln-ok-bg));
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  /* 10px is --text-xs; spelled out because this shorthand is the one
+     __tests__/font-weight-contract.test.ts exists to read, and its parser takes
+     the first var() in the value as the family. */
   font: 700 10px / 1 var(--font-ln-mono);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
   color: var(--htone, var(--color-ln-ok));
   background: var(--htone-soft, var(--color-ln-ok-bg));
+  /* rotate, not transform: the stamp-in keyframes animate transform and end
+     on none, which would straighten a transform-based tilt. */
+  rotate: -2deg;
   transition: color var(--motion-deliberate), background var(--motion-deliberate), border-color
     var(--motion-deliberate);
   animation: lp-hbadge-in var(--motion-slow) ease both;
@@ -661,24 +732,28 @@
   position: relative;
   flex-shrink: 0;
   border-radius: 50%;
-  border: 1.5px solid var(--color-ln-line-strong);
-  background: var(--color-ln-card);
-  color: var(--color-ln-mute);
-  font-size: 14px;
+  border: 1.5px solid color-mix(in srgb, var(--color-ln-card) 55%, transparent);
+  background: color-mix(in srgb, var(--color-ln-card) 22%, transparent);
+  color: var(--color-ln-card);
+  font-size: var(--text-md);
   line-height: 1;
   cursor: pointer;
   display: grid;
   place-items: center;
   padding: 0;
-  transition: transform var(--motion-base), color var(--motion-base), border-color
+  transition: transform var(--motion-base), background var(--motion-base), border-color
     var(--motion-base);
 }
 @media (hover: hover) {
   .lp .lp-hcard-flip:hover {
-    color: var(--color-ln-ink);
-    border-color: var(--color-ln-azul);
+    background: color-mix(in srgb, var(--color-ln-card) 34%, transparent);
+    border-color: var(--color-ln-card);
     transform: rotate(180deg);
   }
+}
+.lp .lp-hcard-flip:focus-visible {
+  outline: 2px solid var(--color-ln-card);
+  outline-offset: 2px;
 }
 /* Hit-area extension (critique 2026-07-27, A2): the flip trigger measured
    26×26 — under the 44px touch floor on the control that turns the whole
@@ -692,55 +767,83 @@
   border-radius: 50%;
 }
 
-/* body: photo · id · qr */
+/* The per-state strip under the band — .pc-strip's per-situation recolour on
+   the public card, in miniature: hairline stripes of the tone over its soft
+   tint. */
+.lp .lp-hcard-tone {
+  height: 4px;
+  background: repeating-linear-gradient(
+      90deg,
+      var(--htone, var(--color-ln-ok)) 0 2px,
+      transparent 2px 4px
+    ), var(--htone-soft, var(--color-ln-ok-bg));
+  transition: background var(--motion-deliberate);
+}
+
+/* body: photo · name + token · QR, the photo and QR rising into the band
+   exactly as .ln-idrow does on the owner app's credential. */
 .lp .lp-hcard-body {
+  /* Positioned so it paints OVER the band (itself positioned), which it
+     overlaps by the negative margin. */
+  position: relative;
   display: grid;
-  grid-template-columns: 64px 1fr auto;
-  gap: 14px;
-  align-items: center;
-  padding: 16px;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  margin-top: -40px;
+  padding: 0 16px 12px;
 }
 .lp .lp-hcard-photo {
   position: relative;
-  width: 64px;
-  height: 64px;
-  aspect-ratio: 1 / 1;
-  border-radius: 50%;
+  width: 76px;
+  height: 76px;
+  border-radius: var(--radius-input);
   overflow: hidden;
-  border: 2.5px solid var(--htone, var(--color-ln-ok));
-  transition: border-color var(--motion-deliberate);
+  background: var(--color-ln-stripe);
+  /* White ring (the card), then the state's colour — the ring is what makes
+     the photo read as mounted on the document. */
+  border: 3px solid var(--color-ln-card);
+  outline: 2px solid var(--htone, var(--color-ln-ok));
+  transition: outline-color var(--motion-deliberate);
 }
 .lp .lp-hcard-photo img {
   object-fit: cover;
 }
 .lp .lp-hcard-id {
   min-width: 0;
+  /* Starts just below the band + strip (the 40px overlap, plus air), so the
+     name is always on white while photo and QR rise past it. */
+  margin-top: 48px;
+  text-align: center;
 }
 .lp .lp-hcard-name {
   display: block;
-  font-size: 21px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-  line-height: 1.1;
-  text-transform: uppercase;
+  font-family: var(--font-ln-serif);
+  font-weight: 600;
+  font-size: var(--text-title);
+  letter-spacing: -0.02em;
+  line-height: 1.06;
   color: var(--color-ln-ink);
 }
 .lp .lp-hcard-token {
   display: block;
+  margin-top: 4px;
   font-family: var(--font-ln-mono);
-  font-size: 12.5px;
-  color: var(--color-ln-mute);
+  font-size: var(--text-sm);
   letter-spacing: 0.04em;
+  color: var(--color-ln-ink-2);
+  white-space: nowrap;
 }
 .lp .lp-hcard-qr {
-  /* Enlarged from 58px so the real, scannable hero QR reads comfortably from a
-     phone camera off-screen (PO: 58px was too small to scan). The card body is
-     a `64px 1fr auto` grid, so the wider QR just grows its own `auto` column. */
+  /* 96px: the size the PO asked for so the real hero QR scans off a screen
+     (58px was too small). The card body's third column is `auto`, so the QR
+     sets its own width. */
   width: 96px;
   height: 96px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--color-ln-line);
-  background: #fff;
+  background: var(--color-ln-card);
+  outline: 3px solid var(--color-ln-card);
   padding: 6px;
   display: block;
   flex-shrink: 0;
@@ -751,6 +854,51 @@
   width: 100%;
   height: 100%;
 }
+/* Narrow cards (a 320-360px phone): photo, QR and token step down one size so
+   name and token keep their column. The QR stays at 80px, still scannable off
+   a screen at arm's length. */
+@container (max-width: 340px) {
+  .lp .lp-hcard-body {
+    grid-template-columns: 64px minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+  .lp .lp-hcard-photo {
+    width: 64px;
+    height: 64px;
+  }
+  .lp .lp-hcard-qr {
+    width: 80px;
+    height: 80px;
+    padding: 5px;
+  }
+  .lp .lp-hcard-token {
+    font-size: var(--text-xs);
+  }
+}
+
+/* Identity fields — the /p card's CredField grid: mono label over the value,
+   two columns, a hairline above. */
+.lp .lp-hcard-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px 14px;
+  margin: 0 16px;
+  padding: 11px 0 12px;
+  border-top: 1px solid var(--color-ln-line-2);
+}
+.lp .lp-hcard-fields dt {
+  font-family: var(--font-ln-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ln-mute);
+}
+.lp .lp-hcard-fields dd {
+  margin: 1px 0 0;
+  font-size: var(--text-md);
+  font-weight: 500;
+  color: var(--color-ln-ink);
+}
 
 /* one contextual read-only row, tinted, morphing per state */
 .lp .lp-hcard-ctx {
@@ -759,59 +907,73 @@
   gap: 9px;
   margin: 0 16px 12px;
   padding: 9px 12px;
-  border-radius: 9px;
+  border-radius: var(--radius-lg);
   background: var(--htone-soft, var(--color-ln-ok-bg));
   color: var(--htone, var(--color-ln-ok));
   font-weight: 700;
-  font-size: 13.5px;
+  font-size: var(--text-md);
+  /* Reserved: every state's row is one line, and the height is pinned so the
+     one-shot cycle never moves anything below the card. */
   min-height: 38px;
   transition: background var(--motion-deliberate), color var(--motion-deliberate);
   animation: lp-hstate-in var(--motion-slow) ease both;
 }
 .lp .lp-hcard-ctx-chev {
-  font-size: 11px;
-  opacity: 0.7;
+  font-size: var(--text-xs);
 }
 
-/* MRZ line — the DNI wink, decorative, built from the real token */
+/* miMAR's machine-readable strip — two lines of the card's own format (see
+   heroMrzLines in landing-content.ts), set like the foot of an identity
+   document: paper ground, dashed tear line, tracked mono. Full-strength ink-2:
+   it is decorative (aria-hidden) but visible, and review L-5 measured the old
+   faded passport line at 3.82:1. 30 characters fit the narrowest card (320px
+   viewport) without clipping, so there is no fade mask any more. */
 .lp .lp-hcard-mrz {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 16px 11px;
+  border-top: 1px dashed var(--color-ln-line-strong);
+  background: var(--color-ln-paper-2);
   font-family: var(--font-ln-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.18em;
-  color: var(--color-ln-mute);
-  border-top: 1px dashed var(--color-ln-line);
-  padding: 8px 16px 10px;
+  font-size: var(--text-xs);
+  line-height: 1.3;
+  letter-spacing: 0.14em;
+  color: var(--color-ln-ink-2);
   white-space: nowrap;
   overflow: hidden;
-  /* No opacity: mute at 0.85 measured 3.82:1 on the card (review L-5); at
-     full strength it is 5.24:1. aria-hidden does not exempt a line a
-     low-vision reader can still see. */
-  /* The 44-char ICAO line is wider than the card below ~400px, and a glyph cut
-     mid-stroke at the edge read as breakage (critique 2026-07-27, J4). The
-     line is decorative filler (aria-hidden `<<<<`), so fade the clip edge out
-     instead of resizing type the token scale has no step for. */
-  mask-image: linear-gradient(to right, black calc(100% - 28px), transparent);
-  -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent);
 }
 
-/* back — the mini libreta */
+/* back — the mini libreta: the same band, shorter, so the two faces read as
+   two sides of one document. */
 .lp .lp-hcard-libhead {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--color-ln-line);
-  background: linear-gradient(90deg, var(--color-ln-ok-bg), transparent 70%);
+  padding: 12px 14px 12px 16px;
+  background: repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-ln-card) 12%, transparent) 0 1px,
+      transparent 1px 11px
+    ),
+    linear-gradient(
+      118deg,
+      var(--color-ln-azul-900),
+      var(--color-ln-azul) 58%,
+      var(--color-ln-celeste)
+    );
 }
 .lp .lp-hcard-libhead b {
-  font-size: 13px;
-  letter-spacing: 0.02em;
-  color: var(--color-ln-ink);
+  font-family: var(--font-ln-serif);
+  font-weight: 600;
+  font-size: var(--text-md);
+  color: var(--color-ln-card);
 }
 .lp .lp-hcard-libmeta {
-  font-size: 11px;
-  color: var(--color-ln-mute);
+  font-family: var(--font-ln-mono);
+  font-size: var(--text-xs);
+  color: var(--color-ln-celeste-100);
 }
 .lp .lp-hcard-librow {
   display: flex;
@@ -820,7 +982,7 @@
   gap: 10px;
   padding: 11px 16px;
   border-bottom: 1px solid var(--color-ln-line);
-  font-size: 13.5px;
+  font-size: var(--text-md);
 }
 .lp .lp-hcard-libwhat {
   display: block;
@@ -829,19 +991,19 @@
 }
 .lp .lp-hcard-libwho {
   display: block;
-  font-size: 11.5px;
+  font-size: var(--text-sm);
   color: var(--color-ln-mute);
 }
 .lp .lp-hcard-libstamp {
   flex-shrink: 0;
   color: var(--color-ln-ok);
-  font-weight: 800;
-  font-size: 12px;
+  font-weight: 700;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 .lp .lp-hcard-libfoot {
   padding: 11px 16px 13px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-ln-mute);
   font-style: italic;
 }
@@ -931,7 +1093,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .lp .lp-hcard,
-  .lp .lp-hcard-trim,
+  .lp .lp-hcard-tone,
   .lp .lp-hcard-badge,
   .lp .lp-hcard-photo,
   .lp .lp-hcard-ctx {
