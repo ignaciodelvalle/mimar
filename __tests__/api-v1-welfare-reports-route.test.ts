@@ -121,6 +121,8 @@ const control = vi.hoisted(() => ({
   evidenceRefused: false,
   /** What `uploadPreparedWelfareEvidence` was handed: the report id. */
   evidenceUploads: [] as string[],
+  /** Another filing already claimed the staged key (the race the claim closes). */
+  stagedAlreadyClaimed: false,
 }));
 
 vi.mock("@/lib/infra/welfare-evidence-staging", () => ({
@@ -136,9 +138,11 @@ vi.mock("@/lib/infra/welfare-evidence-staging", () => ({
   },
   loadStagedWelfareEvidence: async (paths: string[]) => {
     control.stagedLoaded.push(paths);
+    if (control.stagedAlreadyClaimed) return { ok: false, claimed: [] };
     return {
       ok: true,
       files: paths.map((_, i) => new File([new Uint8Array([1])], `evidencia-${i + 1}.jpg`)),
+      claimed: paths.map((_, i) => `welfare-claimed/c${i}.jpg`),
     };
   },
   removeStagedWelfareEvidence: async (paths: string[]) => {
@@ -433,6 +437,7 @@ beforeEach(() => {
   control.stagedRemoved = [];
   control.evidenceRefused = false;
   control.evidenceUploads = [];
+  control.stagedAlreadyClaimed = false;
   control.geocodeQueries = [];
   control.geocodeResults = [];
   control.geocodeThrows = null;
@@ -933,8 +938,8 @@ describe("evidence photos (M12) — the web's gate, the web's storage path, nobo
     expect(control.attachments).toHaveLength(1);
     expect(control.flagInputs[0].attachmentCount).toBe(1);
     expect(control.inserted[0].reporterUserId).toBeNull();
-    // The staged copy is discarded once filed…
-    expect(control.stagedRemoved).toEqual([[STAGED]]);
+    // The CLAIMED copy is discarded once filed…
+    expect(control.stagedRemoved).toEqual([["welfare-claimed/c0.jpg"]]);
     // …and the caller's id reaches no stored value.
     expect(JSON.stringify({ i: control.inserted, a: control.attachments })).not.toContain(ME);
   });
@@ -953,7 +958,35 @@ describe("evidence photos (M12) — the web's gate, the web's storage path, nobo
     expect(await response.json()).toEqual({ error: "welfare_evidence_refused" });
     expect(control.inserted).toEqual([]);
     expect(control.cases).toEqual([]);
-    expect(control.stagedRemoved).toEqual([[STAGED]]);
+    expect(control.stagedRemoved).toEqual([[STAGED, "welfare-claimed/c0.jpg"]]);
+  });
+
+  it("refuses a filing whose photo another filing already claimed — one photo, one denuncia", async () => {
+    control.stagedAlreadyClaimed = true;
+    const response = await post({
+      command: "file",
+      contactMode: "anonymous",
+      ...FACTS,
+      evidence: [STAGED],
+    });
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ error: "welfare_evidence_refused" });
+    expect(control.inserted).toEqual([]);
+  });
+
+  it("mints NO ticket when the ticket limiter is broken — fails closed, unlike the filing", async () => {
+    control.limiterBroken.add("api_v1_welfare_evidence_user");
+    const response = await post({ command: "request_evidence_ticket", contentType: "image/jpeg" });
+
+    expect(response.status).toBe(503);
+    expect(control.ticketsMinted).toEqual([]);
+  });
+
+  it("still FILES when the denuncia limiter is broken — the policy the ticket does not share", async () => {
+    control.limiterBroken.add("welfare_auth");
+    const response = await post({ command: "file", contactMode: "anonymous", ...FACTS });
+    expect(response.status).toBe(201);
   });
 
   it("refuses a key the server never minted, and a sixth photo", async () => {

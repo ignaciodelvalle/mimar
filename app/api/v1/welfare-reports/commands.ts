@@ -257,11 +257,19 @@ async function mintEvidenceTicket(
   userId: string,
   contentType: "image/jpeg" | "image/png" | "image/webp",
 ) {
+  // FAILS CLOSED, unlike the filing's own budget (M12 security review). The
+  // filing fails OPEN because a limiter outage must not stand between a person
+  // and an authority (`spendUserBudget` below). A TICKET is not that act: it is
+  // a capability to write 5 MB into a private bucket, and a limiter outage that
+  // let tickets through unbounded would be free storage for anybody with a
+  // session. Refusing one costs the person a retry — the denuncia itself can
+  // still be sent without the photo.
   try {
     await enforceRateLimit("api_v1_welfare_evidence_user", userId, API_V1_MEDIA_UPLOAD_USER_LIMIT);
   } catch (err) {
     if (err instanceof RateLimitError) return apiV1Error("rate_limited", 429);
     reportError("api-v1-welfare-reports/evidence-limiter", err);
+    return unavailable();
   }
   const ticket = await mintWelfareEvidenceTicket(contentType);
   if (ticket === null) return unavailable();
@@ -269,19 +277,20 @@ async function mintEvidenceTicket(
 }
 
 /**
- * The staged photos through the WEB's gate, before any row exists.
- * `null` = refused (nothing written, staged copies discarded).
+ * The staged photos through the WEB's gate, before any row exists — each one
+ * CLAIMED first, so no photo can ride on two filings (see the staging module).
+ * `null` = refused (nothing written; staged and claimed copies discarded).
  */
 async function prepareStagedEvidence(stagedPaths: readonly string[]) {
-  if (stagedPaths.length === 0) return [];
+  if (stagedPaths.length === 0) return { prepared: [], claimed: [] as string[] };
   const loaded = await loadStagedWelfareEvidence(stagedPaths);
   const prep = loaded.ok ? await prepareWelfareEvidence(loaded.files) : null;
   if (prep === null || prep.error !== null) {
-    // The staged objects are useless now: the person retakes or drops them.
-    await removeStagedWelfareEvidence(stagedPaths);
+    // The objects are useless now: the person retakes or drops them.
+    await removeStagedWelfareEvidence([...stagedPaths, ...loaded.claimed]);
     return null;
   }
-  return prep.prepared;
+  return { prepared: prep.prepared, claimed: loaded.claimed };
 }
 
 /**
@@ -320,8 +329,9 @@ async function fileWelfareReport(userId: string, input: WelfareReportInput) {
   // closed — runs over every staged photo here, so a refusal leaves NOTHING
   // behind: no report row, no case. 422 with its own code, because the person's
   // move (retake, or send without it) differs from a failed filing's.
-  const prepared = await prepareStagedEvidence(input.evidence);
-  if (prepared === null) return apiV1Error("welfare_evidence_refused", 422);
+  const evidence = await prepareStagedEvidence(input.evidence);
+  if (evidence === null) return apiV1Error("welfare_evidence_refused", 422);
+  const { prepared, claimed } = evidence;
 
   const point = writePoint({ lat: input.locationLat, lng: input.locationLng });
 
@@ -415,6 +425,7 @@ async function fileWelfareReport(userId: string, input: WelfareReportInput) {
     // `reportError` is the shared sink; what it must never receive from this
     // file is the caller's id or their free text.
     reportError("api-v1-welfare-reports/insert", err);
+    await removeStagedWelfareEvidence(claimed);
     return apiV1Error("welfare_report_failed", 500);
   }
 
@@ -425,6 +436,7 @@ async function fileWelfareReport(userId: string, input: WelfareReportInput) {
     prepared.length === 0 ? null : await uploadPreparedWelfareEvidence(inserted.id, prepared);
   if (uploaded?.error) {
     reportError("api-v1-welfare-reports/evidence-upload", new Error("evidence upload failed"));
+    await removeStagedWelfareEvidence(claimed);
     return apiV1Error("welfare_report_failed", 500);
   }
 
@@ -489,11 +501,12 @@ async function fileWelfareReport(userId: string, input: WelfareReportInput) {
     // the tx, matching the web); what failed is the case that should have been
     // opened over it.
     reportError("api-v1-welfare-reports/case", new Error("welfare case tx failed"));
+    await removeStagedWelfareEvidence(claimed);
     return apiV1Error("welfare_report_failed", 500);
   }
 
-  // Filed: the staged copies have served. Best-effort, never blocks the ack.
-  await removeStagedWelfareEvidence(input.evidence);
+  // Filed: the claimed copies have served. Best-effort, never blocks the ack.
+  await removeStagedWelfareEvidence(claimed);
 
   // THE ACK IS BUILT FROM THE REFERENCE CODE AND NOTHING ELSE, and the builder
   // takes no other argument so a later edit cannot widen it without changing a

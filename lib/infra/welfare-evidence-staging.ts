@@ -77,7 +77,33 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   webp: "image/webp",
 };
 
-export type LoadedStagedEvidence = { ok: true; files: File[] } | { ok: false };
+/**
+ * What `loadStagedWelfareEvidence` hands back. `claimed` is every key it
+ * CLAIMED (moved under `welfare-claimed/`), in both arms — the caller removes
+ * them once the filing is done or refused.
+ */
+export type LoadedStagedEvidence =
+  | { ok: true; files: File[]; claimed: string[] }
+  | { ok: false; claimed: string[] };
+
+/**
+ * SINGLE USE, BY A MOVE (M12 security review). A staged key used to be READ,
+ * so two filings racing with the same key both attached the same photo. Now
+ * the first thing done with a key is to MOVE it to `welfare-claimed/{uuid}`:
+ * Storage implements a move as one conditional UPDATE of the object's name, so
+ * exactly one of two concurrent moves finds the source; the other gets "not
+ * found" and its filing is refused with `welfare_evidence_refused`, before any
+ * row exists. The claimed key is fresh random, never derived from the caller.
+ */
+async function claimStagedObject(
+  bucket: ReturnType<typeof stagingBucket>,
+  path: string,
+  ext: string,
+): Promise<string | null> {
+  const claimed = `welfare-claimed/${randomUUID()}.${ext}`;
+  const { error } = await bucket.move(path, claimed);
+  return error ? null : claimed;
+}
 
 /**
  * Download every staged key as a `File` the web's gate can judge.
@@ -94,31 +120,38 @@ export type LoadedStagedEvidence = { ok: true; files: File[] } | { ok: false };
 export async function loadStagedWelfareEvidence(
   stagedPaths: readonly string[],
 ): Promise<LoadedStagedEvidence> {
-  if (stagedPaths.length === 0) return { ok: true, files: [] };
+  if (stagedPaths.length === 0) return { ok: true, files: [], claimed: [] };
   const bucket = stagingBucket();
   const files: File[] = [];
+  const claimed: string[] = [];
   for (const [index, path] of stagedPaths.entries()) {
     const match = WELFARE_EVIDENCE_STAGED_PATH_RE.exec(path);
     const ext = match?.[1];
     const mime = ext === undefined ? undefined : MIME_BY_EXTENSION[ext];
-    if (mime === undefined) return { ok: false };
+    if (ext === undefined || mime === undefined) return { ok: false, claimed };
     try {
-      const { data, error } = await bucket.download(path);
-      if (error || !data) return { ok: false };
+      const mine = await claimStagedObject(bucket, path, ext);
+      // Already claimed by another filing, expired, or never uploaded.
+      if (mine === null) return { ok: false, claimed };
+      claimed.push(mine);
+      const { data, error } = await bucket.download(mine);
+      if (error || !data) return { ok: false, claimed };
       const bytes = new Uint8Array(await data.arrayBuffer());
-      if (bytes.byteLength === 0 || bytes.byteLength > MAX_IMAGE_BYTES) return { ok: false };
+      if (bytes.byteLength === 0 || bytes.byteLength > MAX_IMAGE_BYTES) {
+        return { ok: false, claimed };
+      }
       files.push(new File([bytes], `evidencia-${index + 1}.${ext}`, { type: mime }));
     } catch (err) {
       console.error("[welfare-evidence] could not read a staged object", {
         message: err instanceof Error ? err.message : String(err),
       });
-      return { ok: false };
+      return { ok: false, claimed };
     }
   }
-  return { ok: true, files };
+  return { ok: true, files, claimed };
 }
 
-/** Best-effort: the staged copies, once the filing has used (or refused) them. */
+/** Best-effort: staged or claimed copies, once the filing has used (or refused) them. */
 export async function removeStagedWelfareEvidence(stagedPaths: readonly string[]): Promise<void> {
   if (stagedPaths.length === 0) return;
   try {
