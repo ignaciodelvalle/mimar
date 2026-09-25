@@ -26,7 +26,10 @@
 //      province is corroborated, or every nearby catalogued locality lies in
 //      the same province.
 //   4. Nothing here ever reads the pet's home. A caller that has no place gets
-//      `none_entered` and decides its own fallback.
+//      `none_entered` and decides its own fallback. A pin that names no
+//      province is still a place: UNRESOLVED, with the nearby catalogue
+//      localities kept as `candidateIds` for the unresolved queue — never a
+//      reason to use the home pair (stage A review, BLOCKER 2).
 
 import { canonicalProvinceNameForStorage } from "@/lib/domain/jurisdiction-canonical";
 import {
@@ -79,11 +82,18 @@ export type ReportedPlace = {
   /** True when a pin was given and it contradicts the pair. */
   mismatch: boolean;
   entered: EnteredPlace;
+  /**
+   * Catalogue localities the POINT suggests, nearest first, when nothing
+   * resolved — kept for the unresolved queue, never chosen. Empty otherwise.
+   */
+  candidateIds: string[];
 };
 
 type Point = { lat: number; lng: number };
 
 const NEAREST_FOR_PROVINCE = 10;
+/** How many point-derived candidates an unresolved pin keeps. */
+const CANDIDATES_KEPT = 5;
 
 /**
  * Resolve a reported place from its pair and, when present, its pin.
@@ -180,12 +190,17 @@ export async function resolvePinPlace(
           unresolvedReason: null,
           mismatch: false,
           entered,
+          candidateIds: [],
         };
       }
     }
   }
 
-  return unresolved(await provinceOfPin(point, geocodedCode), "pin_only", entered);
+  const near = await nearestLocalities({ ...point, limit: NEAREST_FOR_PROVINCE });
+  return {
+    ...unresolved(await provinceOfPin(point, geocodedCode, near), "pin_only", entered),
+    candidateIds: near.slice(0, CANDIDATES_KEPT).map((n) => n.id),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +230,7 @@ function unresolved(
     unresolvedReason: reason,
     mismatch: false,
     entered,
+    candidateIds: [],
   };
 }
 
@@ -228,6 +244,7 @@ function fromNormalized(n: NormalizedLocation, entered: EnteredPlace): ReportedP
       unresolvedReason: null,
       mismatch: false,
       entered,
+      candidateIds: [],
     };
   }
   const typed = entered.locality?.trim() ?? "";
@@ -275,7 +292,11 @@ async function checkAgainstPin(place: ReportedPlace, point: Point | null): Promi
  * nearby catalogued locality shares. Near a border neither holds, and the
  * answer is null.
  */
-async function provinceOfPin(point: Point, geocodedCode: string | null): Promise<string | null> {
+async function provinceOfPin(
+  point: Point,
+  geocodedCode: string | null,
+  near: Awaited<ReturnType<typeof nearestLocalities>>,
+): Promise<string | null> {
   if (geocodedCode) {
     const name = provinceByCode(geocodedCode)?.name ?? null;
     if (
@@ -291,7 +312,6 @@ async function provinceOfPin(point: Point, geocodedCode: string | null): Promise
       return name;
     }
   }
-  const near = await nearestLocalities({ ...point, limit: NEAREST_FOR_PROVINCE });
   const codes = new Set(near.map((n) => n.provinceCode));
   if (codes.size !== 1) return null;
   const [code] = codes;

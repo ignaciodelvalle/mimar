@@ -188,9 +188,19 @@ export async function setPetLostWriter(
   // from ONE source. A province from the event takes the event's locality with
   // it, null included (a province-level case); no province means the animal's
   // home pair — never a province glued to somebody else's locality.
+  //
+  // A place was ENTERED but names no province (a pin nothing honest could read
+  // a province from): the case is UNRESOLVED — no jurisdiction — never the
+  // animal's home (stage A review, BLOCKER 2). The home pair is only for a
+  // report that carried no place at all.
   const hasEventJurisdiction = eventJurisdictionProvince !== null;
-  const caseProvince = hasEventJurisdiction ? eventJurisdictionProvince : petJurisdictionProvince;
-  const caseLocality = hasEventJurisdiction ? eventJurisdictionLocality : petJurisdictionLocality;
+  const usesEventPlace = hasEventJurisdiction || eventPlace !== null;
+  const caseProvince = usesEventPlace ? eventJurisdictionProvince : petJurisdictionProvince;
+  const caseLocality = usesEventPlace
+    ? hasEventJurisdiction
+      ? eventJurisdictionLocality
+      : null
+    : petJurisdictionLocality;
   const caseLocalityId = hasEventJurisdiction ? eventLocalityId : null;
 
   if (petStatus === "lost") return { error: "Esta mascota ya está marcada como perdida." };

@@ -20,16 +20,19 @@ export function toEventPlaceOrNull(place: ReportedPlace): EventPlace | null {
 
 export function toEventPlace(place: ReportedPlace): EventPlace {
   const provinceCode = provinceByName(place.province)?.code ?? null;
+  const resolved =
+    place.localityId && provinceCode
+      ? { locality_id: place.localityId, province_code: provinceCode, method: place.method }
+      : null;
+  const candidates = resolved === null ? (place.candidateIds ?? []) : [];
   return {
     entered: {
       province: place.entered.province,
       locality: place.entered.locality,
       indec_id: place.entered.indecId,
     },
-    resolved:
-      place.localityId && provinceCode
-        ? { locality_id: place.localityId, province_code: provinceCode, method: place.method }
-        : null,
+    resolved,
+    ...(candidates.length > 0 ? { candidates } : {}),
   };
 }
 

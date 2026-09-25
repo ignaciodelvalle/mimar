@@ -195,9 +195,17 @@ export async function reportBiteFromOrg(
   // operator and rabies rule. Now: a province from the event takes the event's
   // locality with it, null included (a province-level case the province's
   // authority sees); no event province means the pet's home pair, whole.
+  // A place ENTERED that names no province (a pin nothing honest could read a
+  // province from) is an UNRESOLVED case — no jurisdiction — never the pet's
+  // home (stage A review, BLOCKER 2).
   const hasEventPlace = input.eventJurisdictionProvince !== null;
-  const caseProvince = hasEventPlace ? input.eventJurisdictionProvince : pet.jurisdictionProvince;
-  const caseLocality = hasEventPlace ? input.eventJurisdictionLocality : pet.jurisdictionLocality;
+  const usesEventPlace = hasEventPlace || (input.eventPlace ?? null) !== null;
+  const caseProvince = usesEventPlace ? input.eventJurisdictionProvince : pet.jurisdictionProvince;
+  const caseLocality = usesEventPlace
+    ? hasEventPlace
+      ? input.eventJurisdictionLocality
+      : null
+    : pet.jurisdictionLocality;
 
   // 0. AUTHORITY GATE (H1, 2026-08-22) — verified AND connected to the animal.
   //

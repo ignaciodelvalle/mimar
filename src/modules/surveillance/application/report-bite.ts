@@ -177,9 +177,17 @@ export async function reportBite(input: ReportBiteInput, deps: Deps): Promise<Re
   // operator and rabies rule. Now: a province from the event takes the event's
   // locality with it, null included (a province-level case the province's
   // authority sees); no event province means the pet's home pair, whole.
+  // A place ENTERED that names no province (a pin nothing honest could read a
+  // province from) is an UNRESOLVED case — no jurisdiction — never the pet's
+  // home (stage A review, BLOCKER 2).
   const hasEventPlace = input.eventJurisdictionProvince !== null;
-  const caseProvince = hasEventPlace ? input.eventJurisdictionProvince : pet.jurisdictionProvince;
-  const caseLocality = hasEventPlace ? input.eventJurisdictionLocality : pet.jurisdictionLocality;
+  const usesEventPlace = hasEventPlace || (input.eventPlace ?? null) !== null;
+  const caseProvince = usesEventPlace ? input.eventJurisdictionProvince : pet.jurisdictionProvince;
+  const caseLocality = usesEventPlace
+    ? hasEventPlace
+      ? input.eventJurisdictionLocality
+      : null
+    : pet.jurisdictionLocality;
   // A1 — the statutory window comes from the rules engine (same jurisdiction
   // the case routes to), not a hardcoded constant the dashboard disagrees with.
   const rabiesWindow = await resolveObservationWindow({

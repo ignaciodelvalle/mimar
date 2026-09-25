@@ -19,6 +19,7 @@ const RESOLVED: ReportedPlace = {
   unresolvedReason: null,
   mismatch: false,
   entered: { province: "AR-X", locality: "Villa María", indecId: null },
+  candidateIds: [],
 };
 
 describe("toEventPlace", () => {
@@ -165,5 +166,29 @@ describe("eventPlaceFromGate", () => {
         },
       ),
     ).toBeNull();
+  });
+});
+
+describe("toEventPlace — candidates of an unresolved pin (review BLOCKER 2)", () => {
+  it("keeps the point-derived candidates when nothing resolved", () => {
+    expect(
+      toEventPlace({
+        ...RESOLVED,
+        province: null,
+        locality: null,
+        localityId: null,
+        method: "unresolved",
+        unresolvedReason: "pin_only",
+        entered: { province: null, locality: null, indecId: null },
+        candidateIds: [
+          "00000000-0000-4000-8000-0000000000c1",
+          "00000000-0000-4000-8000-0000000000c2",
+        ],
+      }),
+    ).toEqual({
+      entered: { province: null, locality: null, indec_id: null },
+      resolved: null,
+      candidates: ["00000000-0000-4000-8000-0000000000c1", "00000000-0000-4000-8000-0000000000c2"],
+    });
   });
 });

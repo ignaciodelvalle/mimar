@@ -101,8 +101,19 @@ export async function broadcastLostPet(
 ): Promise<BroadcastResult> {
   try {
     // 1. Require province (locality is optional — province-only rows cover the whole province).
-    const province = lastLocation?.province ?? pet.jurisdictionProvince ?? null;
-    const locality = lastLocation?.locality ?? pet.jurisdictionLocality ?? null;
+    //
+    // ONE PAIR, NEVER FIELD BY FIELD (localidades-por-id, stage A review). A
+    // `lastLocation` is used whole: a province with no locality alerts every
+    // org in that province (not the orgs of the pet's home locality), and a
+    // `lastLocation` with no province is an UNRESOLVED place, which alerts
+    // nobody rather than the animal's home. The pet's own pair is used only
+    // when the caller passed no location at all.
+    const area = lastLocation ?? {
+      province: pet.jurisdictionProvince,
+      locality: pet.jurisdictionLocality,
+    };
+    const province = area.province ?? null;
+    const locality = area.province ? (area.locality ?? null) : null;
 
     if (!province) {
       return { broadcastedToMemberIds: [], orgCount: 0, deadLetteredCount: 0 };

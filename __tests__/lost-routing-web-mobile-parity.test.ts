@@ -343,3 +343,68 @@ describe("last-seen updates keep their own place (A5)", () => {
     });
   });
 });
+
+// Stage A review, BLOCKER 2: a pin nothing honest can read a province from
+// (between Neuquén and Cipolletti, geocoder down) is handed to the writer as an
+// UNRESOLVED place — no province, the entered place and the point's candidates
+// kept — and the writer then opens a case with no jurisdiction instead of the
+// animal's home (set-pet-lost-use-case.test.ts). Never Córdoba for a Córdoba dog.
+describe("a border pin with the geocoder down (review BLOCKER 2)", () => {
+  const BORDER = { lat: -38.9366557, lng: -68.0399008 };
+  const CORDOBA_PET = {
+    ...PET,
+    jurisdictionProvince: "Córdoba",
+    jurisdictionLocality: "Villa María",
+  };
+
+  function handed() {
+    expect(mocks.setPetLostWriter).toHaveBeenCalledTimes(1);
+    return mocks.setPetLostWriter.mock.calls[0][0] as {
+      eventJurisdictionProvince: string | null;
+      eventJurisdictionLocality: string | null;
+      eventPlace: { resolved: unknown; candidates?: string[] } | null;
+    };
+  }
+
+  beforeEach(() => {
+    mocks.reverseGeocode.mockResolvedValue(null);
+    mocks.requirePetAccess.mockResolvedValue({
+      ok: true,
+      user: { id: "user-1" },
+      pet: CORDOBA_PET,
+      eventAuthorship: { authorRole: "owner", authorOrganizationId: null, authorVerified: false },
+    });
+    mocks.resolvePetHolderAccess.mockResolvedValue({
+      kind: "owner",
+      pet: CORDOBA_PET,
+      holderRole: "owner",
+    });
+  });
+
+  it("web: no province, an unresolved place with candidates — not the pet's home", async () => {
+    const fd = new FormData();
+    fd.set("locationLat", String(BORDER.lat));
+    fd.set("locationLng", String(BORDER.lng));
+    fd.set("noRedirect", "1");
+    await setPetLostAction(TOKEN, { error: null }, fd);
+    const params = handed();
+    expect(params.eventJurisdictionProvince).toBeNull();
+    expect(params.eventJurisdictionLocality).toBeNull();
+    expect(params.eventPlace?.resolved).toBeNull();
+    expect(params.eventPlace?.candidates?.length).toBeGreaterThan(0);
+  });
+
+  it("app: the same pin is the same unresolved place", async () => {
+    const input = lostCommandInputSchema.parse({
+      command: "mark_lost",
+      disclosure: DISCLOSURE,
+      locationLat: BORDER.lat,
+      locationLng: BORDER.lng,
+    });
+    await runLostCommand({ publicToken: TOKEN, userId: "user-1", idempotencyKey: null, input });
+    const params = handed();
+    expect(params.eventJurisdictionProvince).toBeNull();
+    expect(params.eventPlace?.resolved).toBeNull();
+    expect(params.eventPlace?.candidates?.length).toBeGreaterThan(0);
+  });
+});

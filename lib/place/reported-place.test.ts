@@ -240,3 +240,39 @@ describe("the pin alone, through resolveReportedPlace", () => {
     expect(place).toMatchObject({ province: "Córdoba", locality: "Villa María" });
   });
 });
+
+// A pin between Neuquén (AR-Q) and Cipolletti (AR-R): its nearby catalogued
+// localities span two provinces, so without a geocoder nothing honest names a
+// province. Midpoint of the two centroids in the local catalogue.
+const NEUQUEN_CIPOLLETTI_BORDER = { lat: -38.9366557, lng: -68.0399008 };
+
+// Stage A review, BLOCKER 2: a pin that names no province is UNRESOLVED — never
+// a reason to reach for anybody's home — and it keeps the point-derived
+// candidates so the unresolved queue can offer them.
+describe("a border pin with no geocoder answer", () => {
+  it("names no province, stays unresolved and keeps the nearby candidates", async () => {
+    const place = await resolvePinPlace(NEUQUEN_CIPOLLETTI_BORDER);
+    expect(place).toMatchObject({
+      province: null,
+      locality: null,
+      localityId: null,
+      method: "unresolved",
+      unresolvedReason: "pin_only",
+    });
+    const provinces = await db
+      .select({ code: arLocalities.provinceCode })
+      .from(arLocalities)
+      .where(inArray(arLocalities.id, place.candidateIds));
+    expect(new Set(provinces.map((r) => r.code))).toEqual(new Set(["AR-Q", "AR-R"]));
+  });
+
+  it("a resolved place carries no candidates", async () => {
+    geo.reverse.mockResolvedValue({
+      display_name: "Villa María, Córdoba",
+      province: "Córdoba",
+      locality: "Villa María",
+    });
+    const place = await resolvePinPlace(at(VILLA_MARIA_CORDOBA) as { lat: number; lng: number });
+    expect(place.candidateIds).toEqual([]);
+  });
+});

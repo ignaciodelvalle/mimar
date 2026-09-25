@@ -501,6 +501,66 @@ describe("broadcastLostPet — no location", () => {
   });
 });
 
+// Stage A review, BLOCKER 1/2 — the alert area is ONE pair. A lost report's
+// place is used whole (a province with no locality reaches every org in that
+// province), and an unresolved place (no province) alerts nobody rather than
+// the animal's home.
+describe("broadcastLostPet — the alert area is one pair, never field by field", () => {
+  it("a province-level place never borrows the pet's home locality", async () => {
+    const { orgId } = await insertVerifiedOrg({
+      suffix: "prov-level",
+      province: "La Pampa",
+      locality: "Broadcast-Pampa-Town",
+    });
+    await addMember(orgId, memberB3UserId);
+    const { petId, publicToken } = await insertActivePet({
+      suffix: "prov-level",
+      jurisdictionProvince: TEST_PROVINCE,
+      jurisdictionLocality: TEST_LOCALITY,
+    });
+
+    await broadcastLostPet(
+      db,
+      petForBroadcast(petId, publicToken, "prov-level"),
+      { id: ownerUserId, displayName: "Owner" },
+      { province: "La Pampa", locality: null },
+    );
+
+    const notified = await db
+      .select({ userId: notifications.userId })
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.notificationType, "lost_pet_broadcast"),
+          eq(notifications.relatedPetId, petId),
+        ),
+      );
+    expect(notified.map((n) => n.userId)).toContain(memberB3UserId);
+  });
+
+  it("an unresolved place (no province) alerts nobody — not the animal's home", async () => {
+    const { orgId } = await insertVerifiedOrg({
+      suffix: "unresolved-home",
+      province: TEST_PROVINCE,
+      locality: TEST_LOCALITY,
+    });
+    await addMember(orgId, memberB3UserId);
+    const { petId, publicToken } = await insertActivePet({
+      suffix: "unresolved",
+      jurisdictionProvince: TEST_PROVINCE,
+      jurisdictionLocality: TEST_LOCALITY,
+    });
+
+    const result = await broadcastLostPet(
+      db,
+      petForBroadcast(petId, publicToken, "unresolved"),
+      { id: ownerUserId, displayName: "Owner" },
+      { province: null, locality: null },
+    );
+    expect(result.broadcastedToMemberIds).toHaveLength(0);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 3. No matching orgs → return empty, no notifications inserted
 // ---------------------------------------------------------------------------

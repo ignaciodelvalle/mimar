@@ -568,3 +568,28 @@ describe("reportBite — the incident keeps its place (A8)", () => {
     expect(call.payload).not.toHaveProperty("place");
   });
 });
+
+// Stage A review, BLOCKER 2: a bite whose pin names no province is an
+// UNRESOLVED case — no jurisdiction — never the animal's home.
+describe("reportBite — an unresolved pin is never filed at the home pair", () => {
+  it("opens the case with no jurisdiction and keeps the place on the incident", async () => {
+    const deps = makeDeps();
+    const place = {
+      entered: { province: null, locality: null, indec_id: null },
+      resolved: null,
+      candidates: ["00000000-0000-4000-8000-0000000000c1"],
+    };
+    await reportBite({ ...BASE_INPUT, eventPlace: place }, deps);
+    const [caseArg] = (deps.openCase as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      Record<string, unknown>,
+    ];
+    expect(caseArg).toMatchObject({
+      jurisdictionProvince: null,
+      jurisdictionLocality: null,
+      localityId: null,
+    });
+    const call = (deps.repo.insertIncidentEventIdempotent as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as { payload: Record<string, unknown> };
+    expect(call.payload.place).toEqual(place);
+  });
+});

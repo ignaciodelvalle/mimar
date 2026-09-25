@@ -335,6 +335,27 @@ describe("setPetLostWriter", () => {
       expect(insertArg.payload.place).toEqual(place);
     });
 
+    // Stage A review, BLOCKER 2: a report that carried a pin no province could
+    // be read from is UNRESOLVED — the case has no jurisdiction and no alert
+    // goes to the animal's home.
+    it("an unresolved pin is never filed, or broadcast, at the animal's home", async () => {
+      expect(
+        await run({
+          eventPlace: {
+            entered: { province: null, locality: null, indec_id: null },
+            resolved: null,
+            candidates: ["00000000-0000-4000-8000-0000000000c1"],
+          },
+        }),
+      ).toEqual({
+        province: null,
+        locality: null,
+        localityId: null,
+      });
+      const lastLocation = mockBroadcastLostPet.mock.calls.at(-1)?.[3];
+      expect(lastLocation).toEqual({ province: null, locality: null });
+    });
+
     it("never falls back field by field", async () => {
       // THE ASSERTION THAT EARNS ITS KEEP. A province with no locality must not
       // produce (Córdoba, La Plata) — a place that does not exist, on a record

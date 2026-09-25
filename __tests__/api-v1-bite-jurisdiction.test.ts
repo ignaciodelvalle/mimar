@@ -183,7 +183,12 @@ describe("a pin and NO trio — derived from the pin, never the pet's home", () 
       province: "Córdoba",
       locality: null,
       localityId: null,
-      place: { entered: { province: null, locality: null, indec_id: null }, resolved: null },
+      // The point's nearby rows are kept as candidates, never chosen (review BLOCKER 2).
+      place: {
+        entered: { province: null, locality: null, indec_id: null },
+        resolved: null,
+        candidates: ["n1"],
+      },
     });
   });
 
@@ -204,7 +209,11 @@ describe("a pin and NO trio — derived from the pin, never the pet's home", () 
       province: null,
       locality: null,
       localityId: null,
-      place: { entered: { province: null, locality: null, indec_id: null }, resolved: null },
+      place: {
+        entered: { province: null, locality: null, indec_id: null },
+        resolved: null,
+        candidates: ["n1", "n2"],
+      },
     });
   });
 });

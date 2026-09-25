@@ -15,6 +15,9 @@
 //   resolved — the ONE `ar_localities` row it resolved to, its province code and
 //              HOW (lib/domain/place.ts), or `null` when nothing named exactly
 //              one row. Never a guessed homonym.
+//   candidates — only when `resolved` is null and a pin was given: the nearby
+//              catalogue rows the POINT suggests, nearest first. Suggestions for
+//              the unresolved queue, never a resolution.
 //
 // Optional on every schema that accepts it: events written before it existed
 // validate unchanged (append-only history, forward-only change).
@@ -40,6 +43,7 @@ export const eventPlaceSchema = z
       })
       .strict()
       .nullable(),
+    candidates: z.array(z.string().uuid()).max(10).optional(),
   })
   .strict();
 
