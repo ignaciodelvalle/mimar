@@ -972,6 +972,12 @@ export const organizationCoverage = pgTable(
     // Which catalogue row, and how (migration 0248, localidades-por-id B1).
     // Unread until stage D; the name pair above is still the scope key.
     localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    // The authority unit this row is scoped to (0255, localidades-por-id C3).
+    // NULL = the legacy name path; set = the unit path. Never both, never
+    // OR'd; unwritten and unread until stage D.
+    authorityUnitId: uuid("authority_unit_id").references((): AnyPgColumn => authorityUnits.id, {
+      onDelete: "restrict",
+    }),
     placeMethod: text("place_method"),
     isPrimary: boolean("is_primary").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -2252,6 +2258,12 @@ export const govtAssignments = pgTable(
     // alphabetically first department. NULL for a whole-province grant and for
     // legacy rows whose name is ambiguous inside their province.
     localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    // The authority unit this row is scoped to (0255, localidades-por-id C3).
+    // NULL = the legacy name path; set = the unit path. Never both, never
+    // OR'd; unwritten and unread until stage D.
+    authorityUnitId: uuid("authority_unit_id").references((): AnyPgColumn => authorityUnits.id, {
+      onDelete: "restrict",
+    }),
     grantedByUserId: uuid("granted_by_user_id").references(() => profiles.id, {
       onDelete: "set null",
     }),
@@ -2931,6 +2943,12 @@ export const govtBusinessRules = pgTable(
     // Which catalogue row, and how (migration 0248, localidades-por-id B1).
     // Unread until stage D; the name pair above is still the scope key.
     localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    // The authority unit this row is scoped to (0255, localidades-por-id C3).
+    // NULL = the legacy name path; set = the unit path. Never both, never
+    // OR'd; unwritten and unread until stage D.
+    authorityUnitId: uuid("authority_unit_id").references((): AnyPgColumn => authorityUnits.id, {
+      onDelete: "restrict",
+    }),
     placeMethod: text("place_method"),
     ruleType: text("rule_type").notNull().$type<GovtBusinessRuleType>(),
     rulePayload: jsonb("rule_payload").notNull(),
@@ -3042,6 +3060,12 @@ export const serviceOfferings = pgTable(
     // Which catalogue row, and how (migration 0248, localidades-por-id B1).
     // Unread until stage D; the name pair above is still the scope key.
     localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    // The authority unit this row is scoped to (0255, localidades-por-id C3).
+    // NULL = the legacy name path; set = the unit path. Never both, never
+    // OR'd; unwritten and unread until stage D.
+    authorityUnitId: uuid("authority_unit_id").references((): AnyPgColumn => authorityUnits.id, {
+      onDelete: "restrict",
+    }),
     placeMethod: text("place_method"),
 
     serviceKind: text("service_kind").notNull(),
@@ -3843,6 +3867,12 @@ export const alertSubscriptions = pgTable(
     // Which catalogue row, and how (migration 0248, localidades-por-id B1).
     // Unread until stage D; the name pair above is still the scope key.
     localityId: uuid("locality_id").references(() => arLocalities.id, { onDelete: "restrict" }),
+    // The authority unit this row is scoped to (0255, localidades-por-id C3).
+    // NULL = the legacy name path; set = the unit path. Never both, never
+    // OR'd; unwritten and unread until stage D.
+    authorityUnitId: uuid("authority_unit_id").references((): AnyPgColumn => authorityUnits.id, {
+      onDelete: "restrict",
+    }),
     placeMethod: text("place_method"),
     label: text("label"),
     isActive: boolean("is_active").notNull().default(true),
