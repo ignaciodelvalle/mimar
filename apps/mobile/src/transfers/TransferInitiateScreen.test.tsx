@@ -300,3 +300,19 @@ describe("a recipient who has no account", () => {
     expect(screen.queryByText("Esa persona todavía no tiene cuenta en miMAR")).toBeNull();
   });
 });
+
+describe("the return-key chain of one (M10)", () => {
+  it("says 'done' on the only single-line field, and its return key does NOT send the proposal", () => {
+    const onSent = jest.fn();
+    renderScreen(onSent);
+    expect(emailField().props.returnKeyType).toBe("done");
+
+    fireEvent.changeText(emailField(), "vecina@example.com");
+    fireEvent(emailField(), "submitEditing");
+    // Sending needs Motivo too, and — more to the point — a proposal that
+    // hands over an animal is never filed by a keyboard key. Only the
+    // "Enviar la propuesta" button calls the endpoint.
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(onSent).not.toHaveBeenCalled();
+  });
+});

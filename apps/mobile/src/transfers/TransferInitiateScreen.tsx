@@ -35,6 +35,7 @@ import { sessionPort } from "../auth/session-store";
 import { Body, Card } from "../ui/components";
 import { Callout, Choice, PrimaryButton, Screen, TextField, Title } from "../ui/kit";
 import { useDraftDiscardGuard } from "../ui/use-draft-discard-guard";
+import { useReturnKeyChain } from "../ui/use-return-key-chain";
 import { useScrollToError } from "../ui/use-scroll-to-error";
 
 import {
@@ -164,6 +165,15 @@ export function TransferInitiateScreen({
     onSent(result.payload.transferToken);
   }, [allowLeave, email, note, onSent, publicToken, reason]);
 
+  // Return-key chain of ONE (M10, native-feel audit): the only other field on
+  // this form is "Comentario", which is `multiline` and stays out of any
+  // chain, and between the two sits `Motivo`, a `Choice` rather than a text
+  // field. No `onDone`: "Motivo" is required and starts unselected, and a
+  // proposal that hands over an animal is not something a keyboard key
+  // should file — the same reasoning `send`'s own explicit-tap comment gives
+  // for `DenunciaScreen`.
+  const chain = useReturnKeyChain(1);
+
   const subject = petName ?? "esta mascota";
 
   if (sent !== null) {
@@ -202,6 +212,7 @@ export function TransferInitiateScreen({
       )}
 
       <TextField
+        {...chain(0)}
         accessibilityLabel="Email del receptor"
         autoCapitalize="none"
         autoComplete="email"
