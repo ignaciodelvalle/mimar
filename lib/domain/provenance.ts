@@ -104,6 +104,25 @@ export function provenanceTierFromLocationSource(
 }
 
 /**
+ * The `location_source` a SERVER write stores for a coordinate. A client's own
+ * claim about its source is never read: a browser or phone can say
+ * "geocodificada" for a pin it moved by hand, and
+ * `provenanceTierFromLocationSource` ranks that "verificado" for officials. The
+ * server stores only what it can stand behind:
+ *   - a point the client sent → `pin_manual` (a person placed it);
+ *   - a point the server geocoded itself, in the same request → `geocodificada`;
+ *   - no point → null.
+ * Mirrors the app/API path (`appendBite`, api/v1 events/append-special-kinds.ts).
+ */
+export function serverLocationSource(opts: {
+  hasPoint: boolean;
+  serverGeocoded?: boolean;
+}): "pin_manual" | "geocodificada" | null {
+  if (!opts.hasPoint) return null;
+  return opts.serverGeocoded === true ? "geocodificada" : "pin_manual";
+}
+
+/**
  * The provenance tier of a pet event.
  *
  * For a location-type event pass `{ location: true }` to read `location_source`

@@ -171,3 +171,79 @@ describe("reportBiteFromOrgAction — bite date anchored on the reporter's AR ca
     expect(requireCapabilityForOrgToken).toHaveBeenCalledWith("bite.report", "org-tok");
   });
 });
+
+// FIX-25 #1 (PO, 2026-09-25) — web location provenance parity with the app/API
+// path. A client-sent "geocodificada" is ranked "verificado" for officials by
+// lib/domain/provenance.ts, so the server never stores the client's claim: a
+// point the client sent is `pin_manual`, no point is null.
+describe("bite actions — a client-claimed location source is never stored (provenance parity)", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const { normalizeLocationForWrite } = await import("@/lib/domain/location-normalize");
+    (normalizeLocationForWrite as ReturnType<typeof vi.fn>).mockResolvedValue({
+      province: null,
+      locality: null,
+      lat: -34.6,
+      lng: -58.4,
+    });
+    reportBiteMock.mockResolvedValue({
+      ok: true,
+      value: { casePublicCode: "CAS-AAAA-BBBB" },
+      notifications: [],
+    });
+    reportBiteFromOrgMock.mockResolvedValue({
+      ok: true,
+      value: { casePublicCode: "CAS-AAAA-BBBB" },
+      notifications: [],
+    });
+    (requireAlivePetAccess as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      pet: FAKE_PET,
+      user: { id: "user-1" },
+      eventAuthorship: { authorRole: "owner", authorOrganizationId: null, authorVerified: false },
+    });
+    (requireCapabilityForOrgToken as ReturnType<typeof vi.fn>).mockResolvedValue({
+      error: null,
+      user: { id: "user-1" },
+      organization: { id: "org-1", displayName: "Refugio", orgType: "shelter", verified: true },
+    });
+    findPetByTokenMock.mockResolvedValue(FAKE_PET);
+  });
+
+  it("owner path: a forged 'geocodificada' with a point is stored as pin_manual", async () => {
+    const fd = biteFormData("2026-07-01");
+    fd.set("locationSource", "geocodificada");
+    await reportBiteAction("tok-1", { error: null }, fd).catch(() => {});
+
+    expect(reportBiteMock).toHaveBeenCalledTimes(1);
+    const input = reportBiteMock.mock.calls[0][0] as { locationSource: unknown };
+    expect(input.locationSource).toBe("pin_manual");
+  });
+
+  it("org path: a forged 'geocodificada' with a point is stored as pin_manual", async () => {
+    const fd = biteFormData("2026-07-01");
+    fd.set("petPublicToken", "tok-1");
+    fd.set("locationSource", "geocodificada");
+    await reportBiteFromOrgAction("org-tok", { error: null }, fd).catch(() => {});
+
+    expect(reportBiteFromOrgMock).toHaveBeenCalledTimes(1);
+    const input = reportBiteFromOrgMock.mock.calls[0][0] as { locationSource: unknown };
+    expect(input.locationSource).toBe("pin_manual");
+  });
+
+  it("a forged 'geocodificada' with NO point stores no source at all", async () => {
+    const { normalizeLocationForWrite } = await import("@/lib/domain/location-normalize");
+    (normalizeLocationForWrite as ReturnType<typeof vi.fn>).mockResolvedValue({
+      province: null,
+      locality: null,
+      lat: null,
+      lng: null,
+    });
+    const fd = biteFormData("2026-07-01");
+    fd.set("locationSource", "geocodificada");
+    await reportBiteAction("tok-1", { error: null }, fd).catch(() => {});
+
+    const input = reportBiteMock.mock.calls[0][0] as { locationSource: unknown };
+    expect(input.locationSource).toBeNull();
+  });
+});

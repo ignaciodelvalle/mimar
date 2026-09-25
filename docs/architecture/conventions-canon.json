@@ -2856,7 +2856,7 @@
       "status": "PARTIAL",
       "partialShape": "subset",
       "clause": "R4",
-      "statusBasis": "__tests__/log-scan-location.test.ts:197,206-218 pins recordedByUserId null + authorRole 'scanner' + no visitor id anywhere, for the scan writer (log-scan.ts:149-150). The basis calls that 'the single writer'; it is not — src/modules/pets/application/sighting/report-pet-sighting.ts:277-278 also emits authorRole 'scanner' with a bare recordedByUserId: null literal that no test asserts (sighting tests hold only a fixture, lost-mode-sightings.test.ts:109) and no DB CHECK covers.",
+      "statusBasis": "__tests__/log-scan-location.test.ts:197,206-218 pins recordedByUserId null + authorRole 'scanner' + no visitor id anywhere, for the scan writer (log-scan.ts:149-150). The basis calls that 'the single writer'; it is not — src/modules/pets/application/sighting/report-pet-sighting.ts:297-298 also emits authorRole 'scanner' with a bare recordedByUserId: null literal that no test asserts (sighting tests hold only a fixture, lost-mode-sightings.test.ts:109) and no DB CHECK covers.",
       "notes": "rg '\"scanner\"' over non-test source finds exactly two producers; both comply today, one is fenced.",
       "confidence": 0.6,
       "verifiedAt": "d7dbf25f7"

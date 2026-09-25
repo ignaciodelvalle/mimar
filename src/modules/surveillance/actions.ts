@@ -41,6 +41,7 @@ import { db, type notifications } from "@/db";
 import { notifyOutbreakInvestigationOpened } from "@/lib/domain/authority";
 import { CoordError, normalizeLocationForWrite } from "@/lib/domain/location-normalize";
 import { parseLocationFromFormData } from "@/lib/domain/location-value";
+import { serverLocationSource } from "@/lib/domain/provenance";
 import { assertOccurredAtPlausible } from "@/lib/events/plausibility";
 import { findAuthoritiesForJurisdiction } from "@/lib/infra/approval-routing";
 import { requireAdminOrGovtOrRedirect } from "@/lib/infra/auth-guards";
@@ -83,18 +84,21 @@ import { SurveillanceRepository } from "./infrastructure/surveillance-repository
 const repo = new SurveillanceRepository();
 
 /**
- * panorama-event-points Slice 2: read the coordinate-capture origin from the bite
- * form (`locationSource` hidden field emitted by LocationFields l2 / the org map
- * picker). Only the two hand-entered origins are honored; anything else (absent /
- * legacy form) → null so the schema's nullable-optional passes.
+ * The coordinate-capture origin stored on a bite event. The form's
+ * `locationSource` hidden field (LocationFields l2 / the org map picker) is NOT
+ * read: a client can claim "geocodificada" for a pin it moved by hand, and
+ * `lib/domain/provenance.ts` ranks that "verificado" for officials. A point the
+ * client sent is `pin_manual`; no point → null. This path never geocodes on the
+ * server. Same rule as the app/API path (`appendBite`).
  *
- * W8 (PO, 2026-09-24): no device location anywhere. "gps" stays valid in the
- * event schema for OLD events only; a request that still claims it (a stale
- * tab, a hand-crafted POST) is recorded as unknown, never as a device fix.
+ * W8 (PO, 2026-09-24): no device location anywhere — "gps" is never stored
+ * either, whatever a stale tab or a hand-crafted POST claims.
  */
-function parseLocationSource(fd: FormData): "pin_manual" | "geocodificada" | null {
-  const raw = String(fd.get("locationSource") ?? "").trim();
-  return raw === "pin_manual" || raw === "geocodificada" ? raw : null;
+function serverBiteLocationSource(loc: {
+  lat: number | null;
+  lng: number | null;
+}): "pin_manual" | "geocodificada" | null {
+  return serverLocationSource({ hasPoint: loc.lat !== null && loc.lng !== null });
 }
 
 /**
@@ -274,7 +278,7 @@ export async function reportBiteAction(
   }
   const eventJurisdictionProvince = normalizedLoc.province;
   const eventJurisdictionLocality = normalizedLoc.locality;
-  const locationSource = parseLocationSource(formData);
+  const locationSource = serverBiteLocationSource(normalizedLoc);
 
   // 4. Call use-case.
   const result = await reportBite(
@@ -452,7 +456,7 @@ export async function reportBiteFromOrgAction(
   }
   const eventJurisdictionProvince = normalizedLoc.province;
   const eventJurisdictionLocality = normalizedLoc.locality;
-  const locationSource = parseLocationSource(formData);
+  const locationSource = serverBiteLocationSource(normalizedLoc);
   const noRedirect = String(formData.get("noRedirect") ?? "") === "1";
 
   // 4. Call use-case.

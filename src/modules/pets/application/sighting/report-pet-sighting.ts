@@ -50,6 +50,7 @@ import { headers } from "next/headers";
 import { attachments, cases, db, pets } from "@/db";
 import { CoordError, normalizeLocationForWrite } from "@/lib/domain/location-normalize";
 import { parseLocationFromFormData } from "@/lib/domain/location-value";
+import { serverLocationSource } from "@/lib/domain/provenance";
 import { SYNTHETIC_PET_WRITE_REFUSED, isSyntheticPet } from "@/lib/domain/synthetic-pet";
 import { insertEventIdempotent } from "@/lib/events/event-idempotency";
 import { validateEventPayload } from "@/lib/events/event-schemas";
@@ -79,18 +80,6 @@ export async function reportPetSighting(
   const description = String(formData.get("description") ?? "").trim();
   const sightedAtIso = String(formData.get("sightedAt") ?? "").trim();
 
-  // panorama-event-points Slice 1: how the coordinate was captured (LocationFields
-  // emits a `locationSource` hidden field). Only the two hand-entered origins are
-  // honored; anything else (absent / legacy form) leaves it undefined so the zod
-  // optional passes and the payload simply omits it. W8 (PO, 2026-09-24): no
-  // device location anywhere — "gps" is valid in the schema for OLD events
-  // only, so a request still claiming it is recorded without a source.
-  const rawLocationSource = String(formData.get("locationSource") ?? "").trim();
-  const locationSource =
-    rawLocationSource === "pin_manual" || rawLocationSource === "geocodificada"
-      ? rawLocationSource
-      : undefined;
-
   const clientIdempotencyKey = String(formData.get("clientIdempotencyKey") ?? "").trim() || null;
 
   // P0d: optional finder identity + photo.
@@ -119,6 +108,14 @@ export async function reportPetSighting(
   }
   const lat = normalizedLoc.lat as number;
   const lng = normalizedLoc.lng as number;
+  // How the coordinate was captured is the SERVER's word, never the form's.
+  // The `locationSource` field LocationFields posts is not read: a hand-crafted
+  // POST could claim "geocodificada", which provenance ranks "verificado" for
+  // officials. The point came from the client, so it is `pin_manual` — same
+  // rule as the app/API path (lib/domain/provenance.ts serverLocationSource).
+  // This path never geocodes, and requireCoords guarantees a point. W8 (PO,
+  // 2026-09-24): "gps" is never stored either.
+  const locationSource = serverLocationSource({ hasPoint: true }) ?? undefined;
 
   // The sightedAt input is a datetime-local defaulted to AR wall clock — read
   // it back as AR wall clock (offset-less `new Date(...)` would parse it in
