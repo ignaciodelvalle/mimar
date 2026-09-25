@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-09-25",
-  "sha": "055c61be9",
+  "sha": "b5250430b",
   "facts": {
     "event_types": {
       "value": 55,
@@ -33,7 +33,7 @@
       "method": "files named exactly `page.tsx` anywhere under `app/`."
     },
     "route_handlers": {
-      "value": 96,
+      "value": 97,
       "source": "app/**/route.ts",
       "method": "files named exactly `route.ts` anywhere under `app/`."
     },
@@ -88,7 +88,7 @@
       "method": "files ending in `.yml` under `.github/workflows/`. There are no `.yaml` files at this snapshot; if one is added it will not be counted until this method changes."
     },
     "vitest_files": {
-      "value": 1680,
+      "value": 1682,
       "source": "vitest.config.ts -> __tests__/db-reachability.ts",
       "method": "discoverTestFiles().length, imported from the SAME module `vitest.config.ts` feeds into its `include` globs via computeTestPartition(). It walks the repo for /\\.test\\.tsx?$/ skipping node_modules, .next, .git, .claude, apps and e2e — so this is exactly the file set Vitest runs, not an independent glob that could drift from it."
     },
@@ -98,7 +98,7 @@
       "method": "files ending in `.spec.ts` under `e2e/`. Playwright's own `testIgnore` drops `demo/**` and `perf/**` at run time, so fewer than this actually run in the default project."
     },
     "mobile_jest_files": {
-      "value": 138,
+      "value": 139,
       "source": "apps/mobile/src/**/*.test.ts(x)",
       "method": "files matching /\\.test\\.tsx?$/ under `apps/mobile/src/`. A separate runner (jest-expo) from the Vitest corpus — `db-reachability.ts` skips `apps/` for exactly that reason."
     },
