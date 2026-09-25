@@ -15,6 +15,12 @@ export type VetUpgradeInput = {
   matriculaJurisdiccion: string;
   operationalProvince: string;
   operationalLocality: string;
+  /**
+   * INDEC id of the catalogue row the picker resolved for the locality above
+   * (localidades-por-id A7). A name two localities of one province share
+   * cannot be resolved without it; absent, the name alone is used.
+   */
+  operationalLocalityIndecId?: string | null;
   especialidad?: string | null;
   anosExperiencia?: number | null;
 };
@@ -28,6 +34,8 @@ export type CreateOrganizationInput = {
   phone?: string | null;
   jurisdictionProvince: string;
   jurisdictionLocality: string;
+  /** INDEC id of the picked catalogue row — see VetUpgradeInput's note. */
+  jurisdictionLocalityIndecId?: string | null;
   personeriaJuridicaNumber?: string | null;
 };
 

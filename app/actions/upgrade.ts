@@ -68,6 +68,8 @@ export async function requestVetUpgradeAction(
     operationalLocality:
       String(formData.get("localityName") ?? "").trim() ||
       String(formData.get("operationalLocality") ?? "").trim(),
+    // The row the cascade picker resolved (localidades-por-id A7).
+    operationalLocalityIndecId: String(formData.get("localityNameIndecId") ?? "").trim() || null,
     especialidad: String(formData.get("especialidad") ?? "").trim() || null,
     anosExperiencia: anos && Number.isFinite(anos) ? anos : null,
   });
@@ -101,6 +103,8 @@ export async function createOrganizationAction(
     jurisdictionLocality:
       String(formData.get("localityName") ?? "").trim() ||
       String(formData.get("jurisdictionLocality") ?? "").trim(),
+    // The row the cascade picker resolved (localidades-por-id A7).
+    jurisdictionLocalityIndecId: String(formData.get("localityNameIndecId") ?? "").trim() || null,
     personeriaJuridicaNumber: String(formData.get("personeriaJuridicaNumber") ?? "").trim() || null,
   };
 
@@ -136,6 +140,8 @@ export async function createClinicAction(
     jurisdictionLocality:
       String(formData.get("localityName") ?? "").trim() ||
       String(formData.get("jurisdictionLocality") ?? "").trim(),
+    // The row the cascade picker resolved (localidades-por-id A7).
+    jurisdictionLocalityIndecId: String(formData.get("localityNameIndecId") ?? "").trim() || null,
     personeriaJuridicaNumber: String(formData.get("personeriaJuridicaNumber") ?? "").trim() || null,
   };
 

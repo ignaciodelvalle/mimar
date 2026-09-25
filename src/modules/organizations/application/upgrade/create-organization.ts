@@ -160,7 +160,8 @@ export async function createOrganizationForUser(
   const cuit = input.cuit ? input.cuit.replace(/-/g, "") : null;
   // Canonicalize org jurisdiction strictly against the INDEC catalog.
   // validateOrgInput already guarantees both fields are non-empty (2-60 chars).
-  // locality:"strict" — resolveCanonicalJurisdiction (org create behavior unchanged).
+  // locality:"strict" — the INDEC id the picker resolved decides the row; with
+  // no id, a name two localities share is refused (localidades-por-id A7/A9).
   let province: string;
   let locality: string;
   try {
@@ -169,7 +170,7 @@ export async function createOrganizationForUser(
         province: input.jurisdictionProvince,
         provinceCode: null,
         locality: input.jurisdictionLocality,
-        localityIndecId: null,
+        localityIndecId: input.jurisdictionLocalityIndecId ?? null,
         lat: null,
         lng: null,
         address: null,

@@ -75,7 +75,8 @@ export async function requestVetUpgradeForUser(
   const matriculaJur = input.matriculaJurisdiccion.trim();
   // Canonicalize operational jurisdiction strictly against the INDEC catalog.
   // validateVetInput already guarantees both fields are non-empty (2-60 chars).
-  // locality:"strict" — resolveCanonicalJurisdiction (vet upgrade behavior unchanged).
+  // locality:"strict" — the INDEC id the picker resolved decides the row; with
+  // no id, a name two localities share is refused (localidades-por-id A7/A9).
   let opProvince: string;
   let opLocality: string;
   try {
@@ -84,7 +85,7 @@ export async function requestVetUpgradeForUser(
         province: input.operationalProvince,
         provinceCode: null,
         locality: input.operationalLocality,
-        localityIndecId: null,
+        localityIndecId: input.operationalLocalityIndecId ?? null,
         lat: null,
         lng: null,
         address: null,

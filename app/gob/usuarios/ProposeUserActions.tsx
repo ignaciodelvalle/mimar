@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useId, useState, useTransition } from "react";
 
 import { proposeVetUpgradeAction } from "@/app/actions/admin-proposals";
+import { LocalityPickerAcross } from "@/components/LocalityPickerAcross";
 import { OpButton, OpInput, OpTextarea } from "@/components/ui/dashboard";
 import { notifySaved } from "@/lib/ui/action-feedback";
 
@@ -65,6 +66,7 @@ export function ProposeUserActions({
 }
 
 function VetProposeForm({ target, onDone }: { target: Target; onDone: () => void }) {
+  const localityPickerId = useId();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
@@ -73,6 +75,9 @@ function VetProposeForm({ target, onDone }: { target: Target; onDone: () => void
     matriculaJurisdiccion: "",
     operationalProvince: "",
     operationalLocality: "",
+    // The catalogue row the picker resolved (localidades-por-id A7): the only
+    // thing that tells two same-named localities of one province apart.
+    operationalLocalityIndecId: "",
     especialidad: "",
     anosExperiencia: "",
   });
@@ -94,6 +99,7 @@ function VetProposeForm({ target, onDone }: { target: Target; onDone: () => void
         matriculaJurisdiccion: form.matriculaJurisdiccion,
         operationalProvince: form.operationalProvince,
         operationalLocality: form.operationalLocality,
+        operationalLocalityIndecId: form.operationalLocalityIndecId || null,
         especialidad: form.especialidad || null,
         anosExperiencia: form.anosExperiencia ? Number(form.anosExperiencia) : null,
       });
@@ -122,16 +128,34 @@ function VetProposeForm({ target, onDone }: { target: Target; onDone: () => void
           value={form.matriculaJurisdiccion}
           onChange={(v) => setForm({ ...form, matriculaJurisdiccion: v })}
         />
-        <Field
-          label="Provincia donde ejerce"
-          value={form.operationalProvince}
-          onChange={(v) => setForm({ ...form, operationalProvince: v })}
-        />
-        <Field
-          label="Localidad"
-          value={form.operationalLocality}
-          onChange={(v) => setForm({ ...form, operationalLocality: v })}
-        />
+        <div className="space-y-1 sm:col-span-2">
+          <label
+            htmlFor={`${localityPickerId}-input`}
+            className="block text-xs uppercase tracking-wider text-ln-op-mute"
+          >
+            Localidad donde ejerce
+          </label>
+          <LocalityPickerAcross
+            id={localityPickerId}
+            placeholder="Buscar la localidad en el catálogo…"
+            onSelect={(result) =>
+              setForm({
+                ...form,
+                operationalProvince: result?.provinceName ?? "",
+                operationalLocality: result?.localityName ?? "",
+                operationalLocalityIndecId: result?.indecId ?? "",
+              })
+            }
+            onDeselect={() =>
+              setForm({
+                ...form,
+                operationalProvince: "",
+                operationalLocality: "",
+                operationalLocalityIndecId: "",
+              })
+            }
+          />
+        </div>
         <Field
           label="Especialidad (opcional)"
           value={form.especialidad}

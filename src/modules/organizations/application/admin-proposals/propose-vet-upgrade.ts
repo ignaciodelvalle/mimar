@@ -56,6 +56,8 @@ export async function proposeVetUpgradeForUser(
     matriculaJurisdiccion: string;
     operationalProvince: string;
     operationalLocality: string;
+    /** INDEC id of the row picked in the form's locality picker (A7). */
+    operationalLocalityIndecId?: string | null;
     especialidad?: string | null;
     anosExperiencia?: number | null;
   },
@@ -76,7 +78,7 @@ export async function proposeVetUpgradeForUser(
         province: input.operationalProvince,
         provinceCode: null,
         locality: input.operationalLocality,
-        localityIndecId: null,
+        localityIndecId: input.operationalLocalityIndecId ?? null,
         lat: null,
         lng: null,
         address: null,
