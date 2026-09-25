@@ -3470,17 +3470,29 @@ export const placeResolutions = pgTable(
 // Who governs which localities (migration 0253, localidades-por-id C1). A unit
 // is DATA, seeded as draft from INDEC departments by
 // scripts/seed-authority-units.ts and confirmed by a platform admin. `level`
-// is the cascade position; `kind` what the unit is (a Santa Fe comuna is
-// municipal, a CABA comuna submunicipal). Never deleted (trigger).
+// is the cascade position (provincial > regional > municipal > submunicipal);
+// `kind` what the unit is (a Santa Fe comuna is municipal, a CABA comuna
+// submunicipal). A `region` (0254) groups localities, usually several partidos,
+// below its province and above the municipio — a región sanitaria, or a
+// province's oversight split across a few accounts. It is the only regional
+// kind, so a locality holds a municipal AND a regional membership at once; it
+// is created by an admin, never seeded; and an unresolved place never reaches
+// it (public.authority_units_for_place). Never deleted (trigger).
 export const AUTHORITY_UNIT_KINDS = [
   "provincia",
+  "region",
   "municipio",
   "ciudad",
   "comuna",
   "departamento",
 ] as const;
 export type AuthorityUnitKind = (typeof AUTHORITY_UNIT_KINDS)[number];
-export const AUTHORITY_UNIT_LEVELS = ["provincial", "municipal", "submunicipal"] as const;
+export const AUTHORITY_UNIT_LEVELS = [
+  "provincial",
+  "regional",
+  "municipal",
+  "submunicipal",
+] as const;
 export type AuthorityUnitLevel = (typeof AUTHORITY_UNIT_LEVELS)[number];
 
 export const authorityUnits = pgTable(
@@ -3508,7 +3520,7 @@ export const authorityUnits = pgTable(
     provinceIdx: index("authority_units_province_idx").on(table.provinceCode),
     kindLevel: check(
       "authority_units_kind_level",
-      sql`(${table.kind} = 'provincia') = (${table.level} = 'provincial')`,
+      sql`(${table.kind} = 'provincia') = (${table.level} = 'provincial') AND (${table.kind} = 'region') = (${table.level} = 'regional')`,
     ),
   }),
 );

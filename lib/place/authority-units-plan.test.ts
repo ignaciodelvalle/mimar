@@ -127,6 +127,11 @@ describe("planAuthorityUnits", () => {
     expect(plan.unplaced).toEqual([]);
   });
 
+  it("the seed never invents a region: regions have no INDEC source, an admin creates them", () => {
+    const plan = planAuthorityUnits(CATALOGUE);
+    expect(plan.units.filter((u) => u.kind === "region" || u.level === "regional")).toEqual([]);
+  });
+
   it("the plan is deterministic whatever order the catalogue arrives in", () => {
     const a = planAuthorityUnits(CATALOGUE);
     const b = planAuthorityUnits([...CATALOGUE].reverse());

@@ -259,6 +259,109 @@ describe("authority unit tables (C1, migration 0253)", () => {
   });
 });
 
+// A region groups localities (usually several partidos) BELOW its province and
+// ABOVE the municipio: the Province of Buenos Aires' regiones sanitarias, or a
+// province that splits its oversight across a few accounts. It sits at its OWN
+// level (migration 0254), so a locality holds one municipal AND one regional
+// membership at once, and the one-active-per-level rule keeps it in a single
+// region. Regions are created by an admin, never seeded.
+describe("region units (migration 0254)", () => {
+  async function activeUnitsOf(tx: Tx, localityId: string) {
+    return (await tx.execute(sql`
+      select level, count(*)::int as units from public.authority_unit_localities
+       where locality_id = ${localityId}::uuid and valid_to is null
+       group by level order by level
+    `)) as unknown as Array<{ level: string; units: number }>;
+  }
+
+  it("a locality holds a municipio AND a region at once; the municipal sweep still counts one", async () => {
+    await inRolledBackTx(async (tx) => {
+      const loc = await localityByIndecId(tx, VILLA_MARIA_BA);
+      await freeLocality(tx, loc);
+      const municipio = await newUnit(tx, "municipio", "municipal", "AR-B", "fence municipio");
+      const region = await newUnit(tx, "region", "regional", "AR-B", "fence región sanitaria");
+      for (const unit of [municipio, region]) {
+        expect(
+          await errorOf(
+            tx,
+            sql`insert into public.authority_unit_localities (unit_id, locality_id)
+                values (${unit}::uuid, ${loc}::uuid)`,
+          ),
+        ).toBeNull();
+      }
+      expect(await activeUnitsOf(tx, loc)).toEqual([
+        { level: "municipal", units: 1 },
+        { level: "regional", units: 1 },
+      ]);
+    });
+  });
+
+  it("a locality is in at most one active region", async () => {
+    await inRolledBackTx(async (tx) => {
+      const loc = await localityByIndecId(tx, VILLA_MARIA_BA);
+      const first = await newUnit(tx, "region", "regional", "AR-B", "fence región 1");
+      const second = await newUnit(tx, "region", "regional", "AR-B", "fence región 2");
+      expect(
+        await errorOf(
+          tx,
+          sql`insert into public.authority_unit_localities (unit_id, locality_id)
+              values (${first}::uuid, ${loc}::uuid)`,
+        ),
+      ).toBeNull();
+      expect(
+        await errorOf(
+          tx,
+          sql`insert into public.authority_unit_localities (unit_id, locality_id)
+              values (${second}::uuid, ${loc}::uuid)`,
+        ),
+      ).toMatch(/authority_unit_localities_active_unique|duplicate key/);
+    });
+  });
+
+  it("a region is regional and only a region is", async () => {
+    await inRolledBackTx(async (tx) => {
+      for (const [kind, level] of [
+        ["region", "municipal"],
+        ["municipio", "regional"],
+      ]) {
+        expect(
+          await errorOf(
+            tx,
+            sql`insert into public.authority_units (kind, level, province_code, name)
+                values (${kind}, ${level}, 'AR-B', 'fence mismatch')`,
+          ),
+        ).toMatch(/authority_units_kind_level|violates check constraint/);
+      }
+    });
+  });
+
+  it("an unresolved place reaches ONLY the provincial unit, never a region", async () => {
+    await inRolledBackTx(async (tx) => {
+      const loc = await localityByIndecId(tx, VILLA_MARIA_BA);
+      const provincia = await provincialUnit(tx, "AR-B");
+      const region = await newUnit(tx, "region", "regional", "AR-B", "fence región sanitaria");
+      await tx.execute(sql`
+        insert into public.authority_unit_localities (unit_id, locality_id)
+        values (${region}::uuid, ${loc}::uuid)
+      `);
+
+      const unresolved = (await tx.execute(sql`
+        select unit_id::text as unit_id, level
+          from public.authority_units_for_place(null, 'AR-B')
+      `)) as unknown as Array<{ unit_id: string; level: string }>;
+      expect(unresolved).toEqual([{ unit_id: provincia, level: "provincial" }]);
+
+      const resolved = (await tx.execute(sql`
+        select unit_id::text as unit_id, level
+          from public.authority_units_for_place(${loc}::uuid, 'AR-B')
+         order by level
+      `)) as unknown as Array<{ unit_id: string; level: string }>;
+      expect(resolved.map((r) => r.level)).toEqual(["municipal", "provincial", "regional"]);
+      expect(resolved.find((r) => r.level === "regional")?.unit_id).toBe(region);
+    });
+  });
+});
+
 // Catalogue rows OTHER test files create and delete while the suite runs. The
 // suite runs files in parallel, so the sweep below would see them live and in
 // no unit. Each marker is the one its owning file documents as impossible
