@@ -18,6 +18,12 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+// Outside the (public) group nothing here reads the request, so Next would
+// prerender it — and a prerendered page cannot carry the per-request CSP
+// nonce, so its scripts (the nav's scroll state) would arrive dead
+// (scripts/check-csp-prerender.ts).
+export const dynamic = "force-dynamic";
+
 /**
  * Minimal placeholder (WU4, landing redesign 2026-09-24).
  *

@@ -534,7 +534,7 @@ export const FOOTER_NAV: Array<[string, Array<[string, string]>]> = [
   [
     "Institucional",
     [
-      ["Para municipios", "/municipios"],
+      ["Municipios", "/municipios"],
       ["Acerca de miMAR", "/acerca"],
       ["Transparencia y datos", "/transparencia"],
       ["Funcionalidades", "/funcionalidades"],

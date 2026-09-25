@@ -103,7 +103,7 @@ const BANNED_TERMS: Array<{ re: RegExp; label: string }> = [
   },
 ];
 
-const ROOTS = ["components/landing", "app/(public)/municipios"];
+const ROOTS = ["components/landing", "app/municipios"];
 
 function collect(root: string): string[] {
   const out: string[] = [];
