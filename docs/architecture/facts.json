@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-09-25",
-  "sha": "2b85a0f92",
+  "sha": "59ac9ac42",
   "facts": {
     "event_types": {
       "value": 55,
@@ -28,7 +28,7 @@
       "method": "immediate subdirectories of `src/modules/`."
     },
     "pages": {
-      "value": 267,
+      "value": 269,
       "source": "app/**/page.tsx",
       "method": "files named exactly `page.tsx` anywhere under `app/`."
     },
@@ -43,7 +43,7 @@
       "method": "files named exactly `layout.tsx` anywhere under `app/`."
     },
     "migrations": {
-      "value": 254,
+      "value": 255,
       "source": "db/migrations/*.sql",
       "method": "files ending in `.sql` under `db/migrations/`. Migrations are forward-only and immutable, so this only ever grows."
     },
@@ -88,7 +88,7 @@
       "method": "files ending in `.yml` under `.github/workflows/`. There are no `.yaml` files at this snapshot; if one is added it will not be counted until this method changes."
     },
     "vitest_files": {
-      "value": 1720,
+      "value": 1722,
       "source": "vitest.config.ts -> __tests__/db-reachability.ts",
       "method": "discoverTestFiles().length, imported from the SAME module `vitest.config.ts` feeds into its `include` globs via computeTestPartition(). It walks the repo for /\\.test\\.tsx?$/ skipping node_modules, .next, .git, .claude, apps and e2e — so this is exactly the file set Vitest runs, not an independent glob that could drift from it."
     },

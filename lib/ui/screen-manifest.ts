@@ -550,6 +550,14 @@ const ADMIN_CUENTAS: ScreenManifestEntry = {
   decision: "¿Quién puede operar con privilegios (gobierno o admin), y con qué alcance?",
 };
 
+// Admin-only, no gob twin (localidades-por-id C4): which authority unit governs
+// each locality. Configuration of jurisdiction, same layer as Reglas/Cuentas.
+const ADMIN_LOCALIDADES: ScreenManifestEntry = {
+  route: "/admin/localidades",
+  layer: "profundidad",
+  decision: "¿Qué autoridad gobierna cada localidad, y quién lo cambió?",
+};
+
 const ADMIN_LIBRO: ScreenManifestEntry = {
   route: "/admin/libro",
   layer: "profundidad",
@@ -618,6 +626,7 @@ export const SCREEN_MANIFEST: readonly ScreenManifestEntry[] = [
   ADMIN_GOVTS,
   ADMIN_ADMINS,
   ADMIN_CUENTAS,
+  ADMIN_LOCALIDADES,
   ADMIN_ORGANIZACIONES,
   ADMIN_REGLAS,
   ADMIN_HISTORIAL,

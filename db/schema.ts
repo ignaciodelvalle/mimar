@@ -2469,6 +2469,16 @@ export const AUDIT_LOG_ACTIONS = [
   "mfa_factor_enrolled",
   "mfa_factors_reset_by_admin",
   "govt_locality_assigned",
+  // localidades-por-id C4 (migration 0256): the /admin/localidades unit editor.
+  // A membership change decides which authority sees a locality's history, so
+  // each act carries its reason and before/after (moved: from/to unit;
+  // removed: a regional or submunicipal membership closed; a municipal one
+  // only moves).
+  "authority_unit_created",
+  "authority_unit_renamed",
+  "authority_unit_confirmed",
+  "authority_unit_membership_moved",
+  "authority_unit_membership_removed",
   "institutional_create_orphan_auth_user", // compensating-delete failure leak log
   // Slice 3a: user self-service profile edits
   "profile_self_updated",

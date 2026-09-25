@@ -806,6 +806,14 @@ export const ADMIN_NAV_SECTIONS: NavSection[] = [
       // chrome. Only the renamed /admin/jurisdicciones bookmark still 308s
       // (to /admin/reglas).
       { href: "/admin/reglas", label: "Reglas", matchPrefix: "/admin/reglas" },
+      // localidades-por-id C4: who governs which localities (authority units,
+      // seeded as proposals from INDEC departments and confirmed here). Next to
+      // Reglas and Cuentas: the same admin-configures-jurisdiction layer.
+      {
+        href: "/admin/localidades",
+        label: "Unidades de autoridad",
+        matchPrefix: "/admin/localidades",
+      },
       // /admin/historial REMOVED from nav (audit-trail fusion, 2026-08-02):
       // absorbed into the Auditoría hub as the "Actividad" vista
       // (?vista=sensibles|actividad) — both admin surfaces queried the same

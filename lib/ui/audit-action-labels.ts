@@ -65,6 +65,12 @@ export const AUDIT_ACTION_LABELS = {
   institutional_admin_created: "Cuenta admin creada",
   institutional_national_created: "Observador nacional creado",
   govt_locality_assigned: "Localidad asignada a usuario gobierno",
+  // localidades-por-id C4 — the /admin/localidades unit editor.
+  authority_unit_created: "Unidad de autoridad creada",
+  authority_unit_renamed: "Unidad de autoridad renombrada",
+  authority_unit_confirmed: "Unidad de autoridad confirmada",
+  authority_unit_membership_moved: "Localidad movida de unidad de autoridad",
+  authority_unit_membership_removed: "Localidad quitada de una unidad de autoridad",
   // Profile / account
   profile_self_updated: "Perfil actualizado",
   profile_avatar_updated: "Avatar actualizado",

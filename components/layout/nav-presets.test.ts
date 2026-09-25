@@ -796,6 +796,11 @@ const ADMIN_HREF_SNAPSHOT = new Set([
   // screen-manifest.ts (layer "programa"), not from taste.
   // Mirrored in lib/ui/shell-nav-phase-b.test.ts's copy of this set.
   "/admin/chapas",
+  // ADDED 2026-09-25 (localidades-por-id C4). The authority-unit editor: which
+  // unit governs each locality decides who sees its history, and the only
+  // place a seeded draft is confirmed or a membership is moved (audited).
+  // Mirrored in lib/ui/shell-nav-phase-b.test.ts's copy of this set.
+  "/admin/localidades",
 ]);
 
 describe("ADMIN_NAV_SECTIONS — section invariants", () => {

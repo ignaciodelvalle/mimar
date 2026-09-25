@@ -11,6 +11,7 @@
     "/admin/cola/[publicToken]",
     "/admin/govts/[userId]",
     "/admin/govts/new",
+    "/admin/localidades/[unitId]",
     "/admin/mascotas/[token]",
     "/admin/moderacion/[id]",
     "/admin/observaciones/[publicToken]",

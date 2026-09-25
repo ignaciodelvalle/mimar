@@ -114,6 +114,9 @@ const ADMIN_HREF_SNAPSHOT = new Set([
   // ADDED 2026-08-20 — emisión de chapas físicas, previously reachable only by
   // typing the URL. Argued in full in nav-presets.test.ts's copy of this set.
   "/admin/chapas",
+  // ADDED 2026-09-25 — the authority-unit editor (localidades-por-id C4).
+  // Argued in nav-presets.test.ts's copy of this set.
+  "/admin/localidades",
 ]);
 
 // Every capability the org nav gates on — must track nav-presets.test.ts's
