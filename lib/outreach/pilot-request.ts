@@ -40,6 +40,12 @@ import { z } from "zod";
 import { sanitizeHeaderText } from "@/lib/infra/inbound-mail";
 import { provinceByCode } from "@/lib/reference/ar-provincias";
 import { CONTACT_EMAILS } from "@/lib/ui/contact";
+import { pluralizeEs } from "@/lib/utils/format";
+
+/** "1 carácter" / "N caracteres": the accent moves in the plural, so it is passed explicitly. */
+function charCount(n: number): string {
+  return `${n} ${pluralizeEs(n, "carácter", "caracteres")}`;
+}
 
 // ---------------------------------------------------------------------------
 // Contract
@@ -121,7 +127,7 @@ const pilotRequestSchema = z
       PILOT_LIMITS.organismName,
       2,
       "Indicá el nombre del organismo o del área.",
-      `Usá hasta ${PILOT_LIMITS.organismName} caracteres.`,
+      `Usá hasta ${charCount(PILOT_LIMITS.organismName)}.`,
     ),
     provinceCode: z
       .string()
@@ -129,19 +135,19 @@ const pilotRequestSchema = z
       .refine((code) => provinceByCode(code) !== null, "Elegí una provincia de la lista."),
     localityName: optionalTrimmed(
       PILOT_LIMITS.locality,
-      `Usá hasta ${PILOT_LIMITS.locality} caracteres.`,
+      `Usá hasta ${charCount(PILOT_LIMITS.locality)}.`,
     ),
     fullName: trimmed(
       PILOT_LIMITS.fullName,
       2,
       "Indicá tu nombre y apellido.",
-      `Usá hasta ${PILOT_LIMITS.fullName} caracteres.`,
+      `Usá hasta ${charCount(PILOT_LIMITS.fullName)}.`,
     ),
     role: trimmed(
       PILOT_LIMITS.role,
       2,
       "Indicá tu cargo.",
-      `Usá hasta ${PILOT_LIMITS.role} caracteres.`,
+      `Usá hasta ${charCount(PILOT_LIMITS.role)}.`,
     ),
     email: z
       .string()
@@ -151,14 +157,14 @@ const pilotRequestSchema = z
       .pipe(z.email("Revisá el correo: no parece una dirección válida.")),
     phone: optionalTrimmed(
       PILOT_LIMITS.phone,
-      `Usá hasta ${PILOT_LIMITS.phone} caracteres.`,
+      `Usá hasta ${charCount(PILOT_LIMITS.phone)}.`,
     ).refine(
       (v) => v === null || PHONE_PATTERN.test(v),
       "Revisá el teléfono: usá solo números, espacios, + y guiones.",
     ),
     message: optionalTrimmed(
       PILOT_LIMITS.message,
-      `El mensaje supera los ${PILOT_LIMITS.message} caracteres.`,
+      `El mensaje supera los ${charCount(PILOT_LIMITS.message)}.`,
     ),
     consent: z.literal(true, { error: "Necesitamos tu conformidad para responderte." }),
   })
