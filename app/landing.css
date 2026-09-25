@@ -1829,7 +1829,10 @@
   inset: -8px;
   border-radius: 50%;
   border: 2px solid rgba(192, 57, 43, 0.4);
-  animation: lp-pin-pulse var(--motion-ambient) ease-out infinite;
+  /* Three pulses, then still (WCAG 2.2.2 Pause, Stop, Hide: motion that
+     starts on its own and lasts more than 5 s must stop). It used to loop
+     forever. `forwards` keeps the last frame — the ring faded out. */
+  animation: lp-pin-pulse var(--motion-ambient) ease-out 3 forwards;
 }
 @keyframes lp-pin-pulse {
   0% {

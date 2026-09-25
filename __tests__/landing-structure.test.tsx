@@ -211,6 +211,14 @@ describe("story — CastFila + 6 chapters + rail", () => {
     expect(html).toContain('data-s="lost"');
   });
 
+  it("the lost chapter's pin pulses three times, then stops (WCAG 2.2.2)", () => {
+    const css = readFileSync(join(process.cwd(), "app", "landing.css"), "utf8");
+    const rule = css.match(/\.lp \.lp-minimap-pin::after \{[^}]*\}/)?.[0] ?? "";
+    expect(rule).toContain("lp-pin-pulse");
+    expect(rule).toMatch(/animation:[^;]*\b3\b/);
+    expect(rule).not.toContain("infinite");
+  });
+
   it("tells Pampa's life in order and closes on the Estado bridge (PO, 2026-09-25)", () => {
     expect(CHAPTERS.map((c) => c.key)).toEqual([
       "dueno",
