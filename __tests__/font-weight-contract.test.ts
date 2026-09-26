@@ -190,37 +190,38 @@ function scanTsx(): Request[] {
  * declaration it was written for sat unread in the other file. The
  * "scans a non-empty corpus" assertion below is what caught the move — keep it.
  */
-function scanCss(): Request[] {
+function scanCssText(css: string, label: string): Request[] {
   const found: Request[] = [];
   const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
 
-  for (const sheet of STYLESHEETS) {
-    const css = readFileSync(join(REPO_ROOT, ...sheet), "utf8");
-    const label = sheet.join("/");
+  for (const rule of css.matchAll(ruleRe)) {
+    const body = rule[2];
+    const line = css.slice(0, rule.index).split("\n").length;
 
-    for (const rule of css.matchAll(ruleRe)) {
-      const body = rule[2];
-      const line = css.slice(0, rule.index).split("\n").length;
-
-      const shorthand = /(?:^|[;\s])font:\s*(\d{3})\s+[^;]*?var\((--[a-z0-9-]+)\)/i.exec(body);
-      if (shorthand) {
-        const family = FAMILY_BY_CSS_VAR[shorthand[2]];
-        if (family) {
-          found.push({ family, weight: Number(shorthand[1]), where: `${label}:${line}` });
-        }
-        continue;
-      }
-
-      const familyDecl = /font-family:\s*var\((--[a-z0-9-]+)\)/i.exec(body);
-      const weightDecl = /font-weight:\s*(\d{3})/i.exec(body);
-      if (!familyDecl || !weightDecl) continue;
-      const family = FAMILY_BY_CSS_VAR[familyDecl[1]];
+    const shorthand = /(?:^|[;\s])font:\s*(\d{3})\s+[^;]*?var\((--[a-z0-9-]+)\)/i.exec(body);
+    if (shorthand) {
+      const family = FAMILY_BY_CSS_VAR[shorthand[2]];
       if (family) {
-        found.push({ family, weight: Number(weightDecl[1]), where: `${label}:${line}` });
+        found.push({ family, weight: Number(shorthand[1]), where: `${label}:${line}` });
       }
+      continue;
+    }
+
+    const familyDecl = /font-family:\s*var\((--[a-z0-9-]+)\)/i.exec(body);
+    const weightDecl = /font-weight:\s*(\d{3})/i.exec(body);
+    if (!familyDecl || !weightDecl) continue;
+    const family = FAMILY_BY_CSS_VAR[familyDecl[1]];
+    if (family) {
+      found.push({ family, weight: Number(weightDecl[1]), where: `${label}:${line}` });
     }
   }
   return found;
+}
+
+function scanCss(): Request[] {
+  return STYLESHEETS.flatMap((sheet) =>
+    scanCssText(readFileSync(join(REPO_ROOT, ...sheet), "utf8"), sheet.join("/")),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -279,11 +280,17 @@ describe("font-weight contract (app/layout.tsx ⊇ what the app requests)", () =
         .map(({ n }) => ({ file: label, n, where: `${label}:${n}` }));
     });
 
-    expect(
-      shorthandLines.length,
-      "no `font:` shorthand with a font-ln-*/lp-* family left in any stylesheet — " +
-        "this guard has nothing to protect; delete it or re-point it",
-    ).toBeGreaterThan(0);
+    // The badge that motivated this guard left the landing on 2026-09-26, and
+    // with it the last real shorthand. The branch still has to work for the
+    // next one, so it is proven against a stylesheet that holds ONLY a
+    // shorthand: with the branch dead, nothing in it is reported.
+    const synthetic = scanCssText(
+      ".x {\n  color: red;\n}\n.y {\n  font: 700 10px / 1 var(--font-ln-mono);\n}\n",
+      "synthetic.css",
+    );
+    expect(synthetic.map(({ family, weight }) => ({ family, weight }))).toEqual([
+      { family: "mono", weight: 700 },
+    ]);
 
     // Rule blocks are matched whole, so a shorthand's reported line is the line
     // of the SELECTOR, not of the declaration — accept the nearest reported
