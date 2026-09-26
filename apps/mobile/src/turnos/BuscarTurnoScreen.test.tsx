@@ -379,7 +379,7 @@ describe("choosing the zone", () => {
       locality: "El Bolsón",
     });
     // The typeahead itself was scoped to the province the person chose.
-    expect(mockLocalities).toHaveBeenCalledWith({ q: "Bolsón", province: "AR-R" });
+    expect(mockLocalities).toHaveBeenCalledWith({ q: "Bolsón", province: "AR-R", aliases: true });
   });
 
   it("keeps the chosen zone when the service changes", async () => {

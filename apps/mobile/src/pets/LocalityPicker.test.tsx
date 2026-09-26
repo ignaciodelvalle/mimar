@@ -64,7 +64,11 @@ describe("LocalityPicker — province first (L3·0)", () => {
     expect(screen.getByText("Provincia: Río Negro")).toBeTruthy();
     fireEvent.changeText(screen.getByLabelText("Ciudad, pueblo o barrio, obligatorio"), "Bols");
     await waitFor(() => expect(mockSearchLocalities).toHaveBeenCalled());
-    expect(mockSearchLocalities).toHaveBeenCalledWith({ q: "Bols", province: "AR-R" });
+    expect(mockSearchLocalities).toHaveBeenCalledWith({
+      q: "Bols",
+      province: "AR-R",
+      aliases: true,
+    });
   });
 
   it("goes back to the province step on «Cambiar provincia»", () => {

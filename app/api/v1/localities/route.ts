@@ -113,6 +113,11 @@ export async function GET(request: Request) {
   // asked for one province and got every province would render the wrong list
   // with no way to notice.
   const provinceCode = (url.searchParams.get("province") ?? "").trim();
+  // Alias rows are OPT-IN here. An alias row ("Banfield") repeats its target's
+  // indecId, and app builds that predate aliases key their result rows by that
+  // id — two rows with one key is a React reconciliation bug on a phone nobody
+  // can update from here. Only a client that says `aliases=1` knows the shape.
+  const includeAliases = url.searchParams.get("aliases") === "1";
 
   // Derived from the REQUEST, never from a middleware-stamped header: those
   // default silently when the matcher does not run, and a value the request
@@ -139,6 +144,7 @@ export async function GET(request: Request) {
       runLocalitySearch({
         query,
         ...(provinceCode ? { provinceCode } : {}),
+        includeAliases,
       }),
       LOCALITIES_BUDGET_MS,
       "api-v1-localities",
@@ -181,16 +187,20 @@ export async function GET(request: Request) {
     // FK) and a `matchKind` ranking signal; neither belongs on a wire. See
     // `LocalityV1` for why each omission is deliberate, and why `indecId` is the
     // one identifier that does travel.
-    results: result.results.map((row) => ({
-      indecId: row.indecId,
-      localityName: row.localityName,
-      localitySlug: row.localitySlug,
-      provinceCode: row.provinceCode,
-      provinceName: row.provinceName,
-      departmentName: row.departmentName,
-      // Display only — the row above is the alias's target (see LocalityV1).
-      ...(row.aliasName ? { aliasName: row.aliasName } : {}),
-    })),
+    // Belt to the search's own flag: an old client must get exactly the old
+    // payload even if a future search returned alias rows unasked.
+    results: result.results
+      .filter((row) => includeAliases || row.aliasName === undefined)
+      .map((row) => ({
+        indecId: row.indecId,
+        localityName: row.localityName,
+        localitySlug: row.localitySlug,
+        provinceCode: row.provinceCode,
+        provinceName: row.provinceName,
+        departmentName: row.departmentName,
+        // Display only — the row above is the alias's target (see LocalityV1).
+        ...(row.aliasName ? { aliasName: row.aliasName } : {}),
+      })),
   };
 
   return apiV1Json(payload, { status: 200 });

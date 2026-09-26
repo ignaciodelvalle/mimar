@@ -22,7 +22,7 @@ const control = vi.hoisted(() => ({
   limiterThrows: null as null | (() => never),
   limits: [] as Array<{ endpoint: string; identifier: string }>,
   /** Arguments the search received, in order. */
-  searches: [] as Array<{ query: string; provinceCode?: string }>,
+  searches: [] as Array<{ query: string; provinceCode?: string; includeAliases?: boolean }>,
   /** When set, replaces the search's answer. */
   search: null as null | (() => unknown),
 }));
@@ -45,7 +45,11 @@ vi.mock("@/src/modules/localities/application/search/search-localities", async (
     >();
   return {
     ...actual,
-    runLocalitySearch: async (input: { query: string; provinceCode?: string }) => {
+    runLocalitySearch: async (input: {
+      query: string;
+      provinceCode?: string;
+      includeAliases?: boolean;
+    }) => {
       control.searches.push(input);
       return control.search ? control.search() : { results: [] };
     },
@@ -86,17 +90,21 @@ beforeEach(() => {
 describe("GET /api/v1/localities — the query", () => {
   it("passes the trimmed q through to the search", async () => {
     await GET(req("?q=%20Villa%20Crespo%20"));
-    expect(control.searches[0]).toEqual({ query: "Villa Crespo" });
+    expect(control.searches[0]).toEqual({ query: "Villa Crespo", includeAliases: false });
   });
 
   it("passes an optional province narrowing through", async () => {
     await GET(req("?q=Villa&province=AR-C"));
-    expect(control.searches[0]).toEqual({ query: "Villa", provinceCode: "AR-C" });
+    expect(control.searches[0]).toEqual({
+      query: "Villa",
+      provinceCode: "AR-C",
+      includeAliases: false,
+    });
   });
 
   it("omits the province entirely when it is blank, rather than sending an empty string", async () => {
     await GET(req("?q=Villa&province="));
-    expect(control.searches[0]).toEqual({ query: "Villa" });
+    expect(control.searches[0]).toEqual({ query: "Villa", includeAliases: false });
   });
 
   it("answers 200 with an empty list for a query too short to search", async () => {
@@ -181,7 +189,7 @@ describe("GET /api/v1/localities — the wire shape", () => {
       ],
     });
 
-    const body = (await (await GET(req("?q=Banfield"))).json()) as {
+    const body = (await (await GET(req("?q=Banfield&aliases=1"))).json()) as {
       results: Array<Record<string, unknown>>;
     };
 
@@ -194,6 +202,37 @@ describe("GET /api/v1/localities — the wire shape", () => {
       departmentName: "Lomas de Zamora",
       aliasName: "Banfield",
     });
+  });
+
+  it("asks for alias rows only when the client opts in with aliases=1", async () => {
+    await GET(req("?q=Banfield"));
+    await GET(req("?q=Banfield&aliases=1"));
+    await GET(req("?q=Banfield&aliases=true"));
+    expect(control.searches.map((s) => s.includeAliases)).toEqual([false, true, false]);
+  });
+
+  it("serves an old client (no aliases param) exactly the old payload", async () => {
+    // Installed builds key rows by indecId; an alias row repeats its target's.
+    // Even if the search returned one unasked, it must not reach them.
+    control.search = () => ({
+      results: [
+        {
+          ...CATALOG_ROW,
+          indecId: "06490010",
+          localityName: "Lomas de Zamora",
+          aliasName: "Banfield",
+        },
+        CATALOG_ROW,
+      ],
+    });
+
+    const body = (await (await GET(req("?q=Villa"))).json()) as {
+      results: Array<Record<string, unknown>>;
+    };
+
+    expect(body.results).toHaveLength(1);
+    expect(body.results[0].indecId).toBe(CATALOG_ROW.indecId);
+    expect(JSON.stringify(body)).not.toContain("aliasName");
   });
 
   it("drops the ar_localities uuid and the matchKind ranking signal", async () => {

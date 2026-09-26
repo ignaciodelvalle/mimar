@@ -70,8 +70,10 @@ export type LocalityV1 = {
    * Present when the row was found through an ALIAS — a name people use that
    * the catalogue does not carry ("Banfield", whose row is Lomas de Zamora).
    * DISPLAY ONLY: render "Banfield (Lomas de Zamora)", send back the other
-   * fields exactly as for any row. Additive: absent on a direct match, and a
-   * client that ignores it still stores the right locality.
+   * fields exactly as for any row. Additive and OPT-IN: alias rows are only
+   * returned when the request carries `aliases=1` (an alias row repeats its
+   * target's `indecId`, which older clients use as a row key); absent on a
+   * direct match.
    */
   aliasName?: string;
 };

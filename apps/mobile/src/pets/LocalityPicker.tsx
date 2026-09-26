@@ -132,7 +132,8 @@ export function LocalityPicker({
     async (text: string) => {
       const mine = ++generation.current;
       setState({ phase: "searching" });
-      const result = await searchLocalities({ q: text, province });
+      // This picker renders alias rows (label and key), so it asks for them.
+      const result = await searchLocalities({ q: text, province, aliases: true });
       // A slower earlier request must not overwrite a faster later one — the
       // classic typeahead bug, where deleting a character brings back the results
       // for the longer query.

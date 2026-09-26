@@ -525,9 +525,16 @@ export function amendPetEvent(
 export async function searchLocalities(query: {
   q: string;
   province?: string;
+  /**
+   * Also return alias rows ("Banfield" → the Lomas de Zamora row, with
+   * `aliasName`). OPT-IN on the wire: an alias row repeats its target's
+   * `indecId`, and builds that key rows by it predate aliases.
+   */
+  aliases?: boolean;
 }): Promise<ApiResult<LocalitiesV1>> {
   const params = new URLSearchParams({ q: query.q });
   if (query.province) params.set("province", query.province);
+  if (query.aliases) params.set("aliases", "1");
 
   const raw = await performRequest({ path: `/api/v1/localities?${params.toString()}` });
   if (raw.transport === "unreachable") return { outcome: "unreachable", detail: raw.detail };

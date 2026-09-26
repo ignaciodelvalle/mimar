@@ -76,6 +76,13 @@ const SEARCH_LIMIT = 20;
 export async function runLocalitySearch(input: {
   provinceCode?: string;
   query: string;
+  /**
+   * Offer alias rows (Banfield → Lomas de Zamora). Default true: the web
+   * typeaheads render them. `GET /api/v1/localities` passes it explicitly —
+   * there it is opt-in, because an alias row repeats its target's indecId and
+   * installed native builds key their rows by it.
+   */
+  includeAliases?: boolean;
 }): Promise<SearchLocalitiesResult> {
   if (input.query.length < 2) return { results: [] };
 
@@ -92,7 +99,7 @@ export async function runLocalitySearch(input: {
     limit: SEARCH_LIMIT,
     // A person picks from this list, so the names they actually use (Banfield,
     // San Justo) are offered — each one selecting its catalogue row.
-    includeAliases: true,
+    includeAliases: input.includeAliases ?? true,
   });
 
   return { results };
