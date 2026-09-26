@@ -16,7 +16,7 @@
 // v1's stated behavior. Re-judging a past EVENT against the law in force on its
 // own date (historical re-judgment) stays deferred to v2.
 
-import { and, eq, gte, isNull, lte, or } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 
 import { type GovtBusinessRuleType, type RequirementLevel, db, govtBusinessRules } from "@/db";
 
@@ -25,13 +25,28 @@ import {
   type BusinessRulePayload,
   type BusinessRulePayloadByType,
 } from "@/lib/domain/business-rules-defaults";
+import { type PlaceReadMode, readPlaceFlag } from "@/lib/place/flags";
+import type { ShadowKind } from "@/lib/place/shadow";
+import { recordShadowDisagreement } from "@/lib/place/shadow-sink";
+import { provinceByName } from "@/lib/reference/ar-provincias";
 import { todayIsoInAr } from "@/lib/utils/format";
 
 export interface Jurisdiction {
   country?: string;
   province?: string | null;
   locality?: string | null;
+  /**
+   * The place's catalogue row (localidades-por-id D4). `null` = known and
+   * unresolved: on the id path it takes no locality-level ordinance. Absent =
+   * the caller has not been wired; that call keeps the name cascade.
+   */
+  localityId?: string | null;
 }
+
+export type ResolveRuleOptions = {
+  /** The parity sweep and the fences ask a path; production reads the flag. */
+  mode?: PlaceReadMode;
+};
 
 /**
  * Information about which row (if any) supplied the resolved rule and
@@ -62,6 +77,8 @@ export interface ResolvedRule<T extends GovtBusinessRuleType> {
     country: string;
     province: string | null;
     locality: string | null;
+    /** The unit the matched row is keyed to (id path), else null. */
+    authorityUnitId?: string | null;
   } | null;
 }
 
@@ -77,6 +94,203 @@ export async function resolveBusinessRule<T extends GovtBusinessRuleType>(
   ruleType: T,
   jurisdiction: Jurisdiction,
   executor: Executor = db,
+  options: ResolveRuleOptions = {},
+): Promise<ResolvedRule<T>> {
+  // A caller that does not pass the place's id cannot take the id path.
+  if (jurisdiction.localityId === undefined) {
+    return resolveByName(ruleType, jurisdiction, executor);
+  }
+  const mode = options.mode ?? (await readPlaceFlag("rules"));
+  if (mode === "name") return resolveByName(ruleType, jurisdiction, executor);
+  if (mode === "id") return resolveById(ruleType, jurisdiction, executor);
+
+  const byName = await resolveByName(ruleType, jurisdiction, executor);
+  const byId = await resolveById(ruleType, jurisdiction, executor);
+  if ((byName.matchedRow?.id ?? null) !== (byId.matchedRow?.id ?? null)) {
+    await recordShadowDisagreement({
+      consumer: "rules",
+      kind: rulesDisagreementKind(jurisdiction, byName, byId),
+      subjectTable: `rules:${ruleType}`,
+      subjectKey: `${jurisdiction.province ?? ""}|${jurisdiction.locality ?? ""}|${jurisdiction.localityId ?? "unresolved"}`,
+      nameResult: byName.matchedRow ?? [],
+      idResult: byId.matchedRow ?? [],
+    });
+  }
+  return byName;
+}
+
+/**
+ * Why the two cascades picked different rows. The name path matched a row the
+ * id path refused because the place is unresolved (unresolved_to_province), or
+ * because the row names a homonym (homonym_split); the id path found a unit
+ * ordinance the name path could not see (unit_widening, a person keyed it).
+ */
+function rulesDisagreementKind(
+  jurisdiction: Jurisdiction,
+  byName: ResolvedRule<GovtBusinessRuleType>,
+  byId: ResolvedRule<GovtBusinessRuleType>,
+): ShadowKind {
+  if (byName.source === "locality" && (jurisdiction.localityId ?? null) === null) {
+    return "unresolved_to_province";
+  }
+  if (byName.source === "locality" && byId.source !== "locality") return "homonym_split";
+  if (byId.matchedRow?.authorityUnitId) return "unit_widening";
+  return "other";
+}
+
+// ---------------------------------------------------------------------------
+// THE ID PATH (localidades-por-id D4, flag `rules`)
+//
+//   1. a row keyed to a unit governing the place, most specific level first
+//      (submunicipal > municipal > regional) — source "locality";
+//   2. a legacy locality row (unit NULL) by name, that recorded no catalogue
+//      row or recorded THIS one — source "locality";
+//   3. a row keyed to the place's provincial unit — source "province";
+//   4. a legacy province row — source "province";
+//   5. country, then the default — as on the name path.
+//
+// "Never both": a unit-keyed row is never matched by its name pair here, and
+// a legacy row never by a unit. An unresolved place (localityId null) skips
+// steps 1-2: no locality ordinance is chosen for a place that has no locality
+// (P1). With no unit-keyed rows and no recorded ids — every row today — this
+// is exactly the name cascade.
+// ---------------------------------------------------------------------------
+
+const LEVEL_ORDER = ["submunicipal", "municipal", "regional"] as const;
+
+async function resolveById<T extends GovtBusinessRuleType>(
+  ruleType: T,
+  jurisdiction: Jurisdiction,
+  executor: Executor,
+): Promise<ResolvedRule<T>> {
+  const country = jurisdiction.country ?? "AR";
+  const province = jurisdiction.province ?? null;
+  const locality = jurisdiction.locality ?? null;
+  const localityId = jurisdiction.localityId ?? null;
+  const provinceCode = province ? (provinceByName(province)?.code ?? null) : null;
+  const today = todayIsoInAr();
+  const inWindow = and(
+    or(isNull(govtBusinessRules.effectiveFrom), lte(govtBusinessRules.effectiveFrom, today)),
+    or(isNull(govtBusinessRules.effectiveUntil), gte(govtBusinessRules.effectiveUntil, today)),
+  );
+
+  const units = (await executor.execute(sql`
+    select unit_id::text as "unitId", level
+      from public.authority_units_for_place(${localityId}::uuid, ${provinceCode})
+  `)) as unknown as Array<{ unitId: string; level: string }>;
+
+  const byUnit = async (unitIds: string[]) => {
+    if (unitIds.length === 0) return [];
+    return executor
+      .select()
+      .from(govtBusinessRules)
+      .where(
+        and(
+          eq(govtBusinessRules.ruleType, ruleType),
+          inArray(govtBusinessRules.authorityUnitId, unitIds),
+          inWindow,
+        ),
+      );
+  };
+
+  // 1. unit ordinances below the province, most specific level first.
+  if (localityId !== null) {
+    const localUnits = units.filter((u) => u.level !== "provincial");
+    const rows = await byUnit(localUnits.map((u) => u.unitId));
+    for (const level of LEVEL_ORDER) {
+      const unitIds = new Set(localUnits.filter((u) => u.level === level).map((u) => u.unitId));
+      const row = rows.find((r) => r.authorityUnitId && unitIds.has(r.authorityUnitId));
+      if (row) return fromRow<T>(row, "locality");
+    }
+  }
+
+  // 2. a legacy locality row by name — only one that is not pinned to another row.
+  if (localityId !== null && province !== null && locality !== null) {
+    const [row] = await executor
+      .select()
+      .from(govtBusinessRules)
+      .where(
+        and(
+          eq(govtBusinessRules.ruleType, ruleType),
+          eq(govtBusinessRules.jurisdictionCountry, country),
+          eq(govtBusinessRules.jurisdictionProvince, province),
+          eq(govtBusinessRules.jurisdictionLocality, locality),
+          isNull(govtBusinessRules.authorityUnitId),
+          or(isNull(govtBusinessRules.localityId), eq(govtBusinessRules.localityId, localityId)),
+          inWindow,
+        ),
+      )
+      .limit(1);
+    if (row) return fromRow<T>(row, "locality");
+  }
+
+  // 3. the provincial unit's ordinance.
+  const provincial = units.filter((u) => u.level === "provincial").map((u) => u.unitId);
+  const [provincialRow] = await byUnit(provincial);
+  if (provincialRow) return fromRow<T>(provincialRow, "province");
+
+  // 4-5. legacy province, then country: the name cascade's own steps, legacy rows only.
+  const tail: { province: string | null; source: ResolvedRule<T>["source"] }[] = [
+    { province, source: "province" },
+    { province: null, source: "country" },
+  ];
+  for (const c of tail) {
+    if (c.source === "province" && c.province === null) continue;
+    const [row] = await executor
+      .select()
+      .from(govtBusinessRules)
+      .where(
+        and(
+          eq(govtBusinessRules.ruleType, ruleType),
+          eq(govtBusinessRules.jurisdictionCountry, country),
+          c.province === null
+            ? isNull(govtBusinessRules.jurisdictionProvince)
+            : eq(govtBusinessRules.jurisdictionProvince, c.province),
+          isNull(govtBusinessRules.jurisdictionLocality),
+          isNull(govtBusinessRules.authorityUnitId),
+          inWindow,
+        ),
+      )
+      .limit(1);
+    if (row) return fromRow<T>(row, c.source);
+  }
+
+  return {
+    payload: BUSINESS_RULES_DEFAULTS[ruleType] as BusinessRulePayloadByType[T],
+    source: "default",
+    matchedRow: null,
+  };
+}
+
+function fromRow<T extends GovtBusinessRuleType>(
+  row: typeof govtBusinessRules.$inferSelect,
+  source: ResolvedRule<T>["source"],
+): ResolvedRule<T> {
+  return {
+    payload: row.rulePayload as BusinessRulePayload<T>,
+    source,
+    requirementLevel: row.requirementLevel,
+    legalBasis: row.legalBasis,
+    authority: row.authority,
+    sourceUrl: row.sourceUrl,
+    effectiveFrom: row.effectiveFrom,
+    effectiveUntil: row.effectiveUntil,
+    baselineVersion: row.baselineVersion,
+    matchedRow: {
+      id: row.id,
+      country: row.jurisdictionCountry,
+      province: row.jurisdictionProvince,
+      locality: row.jurisdictionLocality,
+      authorityUnitId: row.authorityUnitId,
+    },
+  };
+}
+
+/** The name cascade — the only path before localidades-por-id D4. */
+async function resolveByName<T extends GovtBusinessRuleType>(
+  ruleType: T,
+  jurisdiction: Jurisdiction,
+  executor: Executor,
 ): Promise<ResolvedRule<T>> {
   const country = jurisdiction.country ?? "AR";
   const province = jurisdiction.province ?? null;
