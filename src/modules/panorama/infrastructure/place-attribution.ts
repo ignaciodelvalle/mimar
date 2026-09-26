@@ -19,10 +19,15 @@
 
 import { type SQL, sql } from "drizzle-orm";
 
-import { arLocalities } from "@/db";
+import { arLocalities, petEvents } from "@/db";
 import { readPlaceFlag } from "@/lib/place/flags";
 
-import { normNameSql, provinceIsoMapSql } from "./repository-scope";
+import {
+  type RollupRow,
+  normNameSql,
+  provinceIsoMapSql,
+  provinceRepresentativeCentroid,
+} from "./repository-scope";
 
 export const SIN_LOCALIDAD = "Sin localidad";
 const SIN_LOCALIDAD_SQL = `'${SIN_LOCALIDAD}'`;
@@ -59,7 +64,9 @@ export function catalogueJoin(
   mode: AttributionMode,
   grouped: { province: SQL; locality: SQL; localityId: SQL },
 ): SQL {
-  if (mode === "id") return sql`${arLocalities.id}::text = ${grouped.localityId}`;
+  // Both sides as text: a grouped id arrives as text from a subquery, a raw
+  // column as uuid.
+  if (mode === "id") return sql`${arLocalities.id}::text = (${grouped.localityId})::text`;
   return sql`${arLocalities.provinceCode} = ${provinceIsoMapSql(grouped.province)}
     AND ${arLocalities.localityNameNorm} = ${normNameSql(grouped.locality)}
     AND ${arLocalities.removedAt} IS NULL`;
@@ -68,4 +75,76 @@ export function catalogueJoin(
 /** A rollup key that keeps homonyms apart on the id path. */
 export function rollupKey(province: string, locality: string, localityId: string | null): string {
   return localityId ? `${province}|${locality}|${localityId}` : `${province}|${locality}`;
+}
+
+/**
+ * The catalogue row an EVENT happened at (event_places, migration 0250): the
+ * event's own resolved place, or its home per the spine for history
+ * (scripts/place-backfill-event-places.ts). NULL = never resolved.
+ */
+export function eventPlaceLocalityIdSql(): SQL {
+  return sql`(SELECT ep.locality_id FROM public.event_places ep WHERE ep.event_id = ${petEvents.id})`;
+}
+
+/**
+ * The locality-grain columns, catalogue join and grouping of a per-unit
+ * rollup (repository-by-unit.ts), on the path `mode` selects. The name path
+ * renders exactly what the loaders served before D6 (plus a constant NULL id
+ * in the grouping, which changes no group).
+ */
+export function localityRollupShape(mode: AttributionMode, cols: PlaceColumns) {
+  const locality = groupedLocality(mode, cols);
+  const localityId = groupedLocalityId(mode, cols);
+  return {
+    columns: {
+      province: sql<string | null>`${cols.province}`,
+      locality: sql<string | null>`${locality}`,
+      localityId: sql<string | null>`${localityId}`,
+      centroidLat: sql<string | null>`MIN(${arLocalities.latitude})`,
+      centroidLng: sql<string | null>`MIN(${arLocalities.longitude})`,
+      // Department roll-up keys (PO "Option A") — pinned deterministically via MIN.
+      departmentCode: sql<string | null>`MIN(${arLocalities.departmentCode})`,
+      departmentName: sql<string | null>`MIN(${arLocalities.departmentName})`,
+    },
+    join: catalogueJoin(mode, cols),
+    groupBy: [cols.province, locality, localityId],
+  };
+}
+
+/**
+ * Grouped rows → RollupRow. On the id path each homonym keeps its own key, and
+ * the per-province "Sin localidad" cell sits on the province's representative
+ * point (it has no catalogue row, so no centroid and no department).
+ */
+export function toLocalityRollupRows(
+  mode: AttributionMode,
+  rows: ReadonlyArray<{
+    province: string | null;
+    locality: string | null;
+    localityId: string | null;
+    centroidLat: string | null;
+    centroidLng: string | null;
+    departmentCode: string | null;
+    departmentName: string | null;
+    n: number;
+  }>,
+): RollupRow[] {
+  return rows
+    .filter((r) => r.province && r.locality)
+    .map((r) => {
+      const province = r.province as string;
+      const locality = r.locality as string;
+      const unresolved = mode === "id" && r.localityId === null;
+      return {
+        key: rollupKey(province, locality, r.localityId),
+        province,
+        locality,
+        ...(unresolved
+          ? provinceRepresentativeCentroid(province)
+          : { centroidLat: r.centroidLat, centroidLng: r.centroidLng }),
+        departmentCode: r.departmentCode,
+        departmentName: r.departmentName,
+        count: r.n,
+      };
+    });
 }

@@ -27,6 +27,12 @@ import type { TimeBasis } from "@/src/modules/panorama/domain/time-scrub";
 import type { AggregationLevel } from "@/src/modules/panorama/domain/types";
 
 import {
+  eventPlaceLocalityIdSql,
+  localityRollupShape,
+  panoramaAttributionMode,
+  toLocalityRollupRows,
+} from "./place-attribution";
+import {
   PER_LAYER_CAP,
   type RollupRow,
   biteIncidentLocalitySql,
@@ -35,11 +41,9 @@ import {
   eventWindowCol,
   jurisdictionColumnsScope,
   mordedurasEventPredicate,
-  normNameSql,
   perdidasEventPredicate,
   petEventsScope,
   petsScope,
-  provinceIsoMapSql,
   provinceRepresentativeCentroid,
   sightingEventPredicate,
 } from "./repository-scope";
@@ -255,43 +259,23 @@ export async function loadPerdidasByUnit(
   }
 
   // Locality level: group by (province, locality), left-join ar_localities for centroid.
+  // localidades-por-id D6 (flag `panorama`): the id path groups by catalogue
+  // row and puts an unresolved place in its province's "Sin localidad" cell.
+  const mode = await panoramaAttributionMode();
+  const shape = localityRollupShape(mode, {
+    province: sql`${pets.jurisdictionProvince}`,
+    locality: sql`${pets.jurisdictionLocality}`,
+    localityId: sql`${pets.localityId}`,
+  });
   const rows = await db
-    .select({
-      province: pets.jurisdictionProvince,
-      locality: pets.jurisdictionLocality,
-      centroidLat: sql<string | null>`MIN(${arLocalities.latitude})`,
-      centroidLng: sql<string | null>`MIN(${arLocalities.longitude})`,
-      // Department roll-up keys (PO "Option A") — pinned deterministically via MIN,
-      // same discipline as the centroid, so the fold matches the choropleth path.
-      departmentCode: sql<string | null>`MIN(${arLocalities.departmentCode})`,
-      departmentName: sql<string | null>`MIN(${arLocalities.departmentName})`,
-      n: countDistinct(petEvents.id),
-    })
+    .select({ ...shape.columns, n: countDistinct(petEvents.id) })
     .from(petEvents)
     .innerJoin(pets, eq(petEvents.petId, pets.id))
-    .leftJoin(
-      arLocalities,
-      and(
-        sql`${arLocalities.provinceCode} = ${provinceIsoMapSql(sql`${pets.jurisdictionProvince}`)}`,
-        sql`${arLocalities.localityNameNorm} = ${normNameSql(sql`${pets.jurisdictionLocality}`)}`,
-        sql`${arLocalities.removedAt} IS NULL`,
-      ),
-    )
+    .leftJoin(arLocalities, shape.join)
     .where(and(...conditions, isNotNull(pets.jurisdictionLocality)))
-    .groupBy(pets.jurisdictionProvince, pets.jurisdictionLocality)
+    .groupBy(...shape.groupBy)
     .limit(PER_LAYER_CAP);
-  const rollup: RollupRow[] = rows
-    .filter((r) => r.province && r.locality)
-    .map((r) => ({
-      key: `${r.province}|${r.locality}`,
-      province: r.province as string,
-      locality: r.locality as string,
-      centroidLat: r.centroidLat,
-      centroidLng: r.centroidLng,
-      departmentCode: r.departmentCode,
-      departmentName: r.departmentName,
-      count: r.n,
-    }));
+  const rollup: RollupRow[] = toLocalityRollupRows(mode, rows);
   // Events whose pet home jurisdiction has a province but NO locality — invisible at
   // the detail tier, counted at province level (WARNING 4 reconciliation). Same
   // predicate + scope as the rollup (conditions already pins isNotNull(province)).
@@ -474,43 +458,23 @@ export async function loadMordedurassByUnit(
     };
   }
 
+  // localidades-por-id D6 (flag `panorama`): the id path groups by catalogue
+  // row and puts an unresolved place in its province's "Sin localidad" cell.
+  const mode = await panoramaAttributionMode();
+  const shape = localityRollupShape(mode, {
+    province: provinceExpr,
+    locality: localityExpr,
+    localityId: eventPlaceLocalityIdSql(),
+  });
   const rows = await db
-    .select({
-      province: provinceExpr,
-      locality: localityExpr,
-      centroidLat: sql<string | null>`MIN(${arLocalities.latitude})`,
-      centroidLng: sql<string | null>`MIN(${arLocalities.longitude})`,
-      // Department roll-up keys (PO "Option A") — pinned deterministically via MIN,
-      // same discipline as the centroid, so the fold matches the choropleth path.
-      departmentCode: sql<string | null>`MIN(${arLocalities.departmentCode})`,
-      departmentName: sql<string | null>`MIN(${arLocalities.departmentName})`,
-      n: countDistinct(petEvents.id),
-    })
+    .select({ ...shape.columns, n: countDistinct(petEvents.id) })
     .from(petEvents)
     .innerJoin(pets, eq(petEvents.petId, pets.id))
-    .leftJoin(
-      arLocalities,
-      and(
-        sql`${arLocalities.provinceCode} = ${provinceIsoMapSql(provinceExpr)}`,
-        sql`${arLocalities.localityNameNorm} = ${normNameSql(localityExpr)}`,
-        sql`${arLocalities.removedAt} IS NULL`,
-      ),
-    )
+    .leftJoin(arLocalities, shape.join)
     .where(and(...conditions, sql`${localityExpr} IS NOT NULL`))
-    .groupBy(provinceExpr, localityExpr)
+    .groupBy(...shape.groupBy)
     .limit(PER_LAYER_CAP);
-  const rollup: RollupRow[] = rows
-    .filter((r) => r.province && r.locality)
-    .map((r) => ({
-      key: `${r.province}|${r.locality}`,
-      province: r.province as string,
-      locality: r.locality as string,
-      centroidLat: r.centroidLat,
-      centroidLng: r.centroidLng,
-      departmentCode: r.departmentCode,
-      departmentName: r.departmentName,
-      count: r.n,
-    }));
+  const rollup: RollupRow[] = toLocalityRollupRows(mode, rows);
   // Bites whose incident place has a province but NO locality — invisible at
   // the detail tier, counted at province level (WARNING 4 reconciliation). Same
   // predicate + scope as the rollup (conditions already pins isNotNull(province)).
@@ -596,43 +560,22 @@ export async function loadDenunciasByUnit(
     };
   }
 
+  // localidades-por-id D6 (flag `panorama`): the id path groups by catalogue
+  // row and puts an unresolved place in its province's "Sin localidad" cell.
+  const mode = await panoramaAttributionMode();
+  const shape = localityRollupShape(mode, {
+    province: sql`${welfareReports.jurisdictionProvince}`,
+    locality: sql`${welfareReports.jurisdictionLocality}`,
+    localityId: sql`${welfareReports.localityId}`,
+  });
   const rows = await db
-    .select({
-      province: welfareReports.jurisdictionProvince,
-      locality: welfareReports.jurisdictionLocality,
-      centroidLat: sql<string | null>`MIN(${arLocalities.latitude})`,
-      centroidLng: sql<string | null>`MIN(${arLocalities.longitude})`,
-      // countDistinct: homonymous localities (same normalized name within a
-      // province) make the arLocalities join fan out, so count() over-counts.
-      n: countDistinct(welfareReports.id),
-      // Department roll-up keys (PO "Option A") — pinned deterministically via MIN.
-      departmentCode: sql<string | null>`MIN(${arLocalities.departmentCode})`,
-      departmentName: sql<string | null>`MIN(${arLocalities.departmentName})`,
-    })
+    .select({ ...shape.columns, n: countDistinct(welfareReports.id) })
     .from(welfareReports)
-    .leftJoin(
-      arLocalities,
-      and(
-        sql`${arLocalities.provinceCode} = ${provinceIsoMapSql(sql`${welfareReports.jurisdictionProvince}`)}`,
-        sql`${arLocalities.localityNameNorm} = ${normNameSql(sql`${welfareReports.jurisdictionLocality}`)}`,
-        sql`${arLocalities.removedAt} IS NULL`,
-      ),
-    )
+    .leftJoin(arLocalities, shape.join)
     .where(and(...conditions, isNotNull(welfareReports.jurisdictionLocality)))
-    .groupBy(welfareReports.jurisdictionProvince, welfareReports.jurisdictionLocality)
+    .groupBy(...shape.groupBy)
     .limit(PER_LAYER_CAP);
-  const rollup: RollupRow[] = rows
-    .filter((r) => r.province && r.locality)
-    .map((r) => ({
-      key: `${r.province as string}|${r.locality as string}`,
-      province: r.province as string,
-      locality: r.locality as string,
-      centroidLat: r.centroidLat,
-      centroidLng: r.centroidLng,
-      departmentCode: r.departmentCode,
-      departmentName: r.departmentName,
-      count: r.n,
-    }));
+  const rollup: RollupRow[] = toLocalityRollupRows(mode, rows);
   // Reports with a province but NO locality — invisible at the detail tier, counted
   // at province level (WARNING 4 reconciliation). Same predicate + scope as the rollup.
   const [residual] = await db
@@ -768,44 +711,22 @@ export async function loadZoonosisByUnit(
     };
   }
 
+  // localidades-por-id D6 (flag `panorama`): the id path groups by catalogue
+  // row and puts an unresolved place in its province's "Sin localidad" cell.
+  const mode = await panoramaAttributionMode();
+  const shape = localityRollupShape(mode, {
+    province: sql`(${petEvents.payload}->>'pet_jurisdiction_province')`,
+    locality: sql`(${petEvents.payload}->>'pet_jurisdiction_locality')`,
+    localityId: eventPlaceLocalityIdSql(),
+  });
   const rows = await db
-    .select({
-      province: sql<string>`(${petEvents.payload}->>'pet_jurisdiction_province')`,
-      locality: sql<string>`(${petEvents.payload}->>'pet_jurisdiction_locality')`,
-      centroidLat: sql<string | null>`MIN(${arLocalities.latitude})`,
-      centroidLng: sql<string | null>`MIN(${arLocalities.longitude})`,
-      // Department roll-up keys (PO "Option A") — pinned deterministically via MIN.
-      departmentCode: sql<string | null>`MIN(${arLocalities.departmentCode})`,
-      departmentName: sql<string | null>`MIN(${arLocalities.departmentName})`,
-      n: countDistinct(petEvents.id),
-    })
+    .select({ ...shape.columns, n: countDistinct(petEvents.id) })
     .from(petEvents)
-    .leftJoin(
-      arLocalities,
-      and(
-        sql`${arLocalities.provinceCode} = ${provinceIsoMapSql(sql`(${petEvents.payload}->>'pet_jurisdiction_province')`)}`,
-        sql`${arLocalities.localityNameNorm} = ${normNameSql(sql`(${petEvents.payload}->>'pet_jurisdiction_locality')`)}`,
-        sql`${arLocalities.removedAt} IS NULL`,
-      ),
-    )
+    .leftJoin(arLocalities, shape.join)
     .where(and(...conditions, isNotNull(sql`(${petEvents.payload}->>'pet_jurisdiction_locality')`)))
-    .groupBy(
-      sql`(${petEvents.payload}->>'pet_jurisdiction_province')`,
-      sql`(${petEvents.payload}->>'pet_jurisdiction_locality')`,
-    )
+    .groupBy(...shape.groupBy)
     .limit(PER_LAYER_CAP);
-  const rollup: RollupRow[] = rows
-    .filter((r) => r.province && r.locality)
-    .map((r) => ({
-      key: `${r.province}|${r.locality}`,
-      province: r.province,
-      locality: r.locality,
-      centroidLat: r.centroidLat,
-      centroidLng: r.centroidLng,
-      departmentCode: r.departmentCode,
-      departmentName: r.departmentName,
-      count: r.n,
-    }));
+  const rollup: RollupRow[] = toLocalityRollupRows(mode, rows);
   // Signals whose payload jurisdiction snapshot has a province but NO locality —
   // invisible at the detail tier, counted at province level (WARNING 4).
   const [residual] = await db
@@ -941,42 +862,23 @@ export async function loadSintomasByUnit(
     };
   }
 
+  // localidades-por-id D6 (flag `panorama`): the id path groups by catalogue
+  // row and puts an unresolved place in its province's "Sin localidad" cell.
+  const mode = await panoramaAttributionMode();
+  const shape = localityRollupShape(mode, {
+    province: sql`${pets.jurisdictionProvince}`,
+    locality: sql`${pets.jurisdictionLocality}`,
+    localityId: sql`${pets.localityId}`,
+  });
   const rows = await db
-    .select({
-      province: pets.jurisdictionProvince,
-      locality: pets.jurisdictionLocality,
-      centroidLat: sql<string | null>`MIN(${arLocalities.latitude})`,
-      centroidLng: sql<string | null>`MIN(${arLocalities.longitude})`,
-      // Department roll-up keys (PO "Option A") — pinned deterministically via MIN.
-      departmentCode: sql<string | null>`MIN(${arLocalities.departmentCode})`,
-      departmentName: sql<string | null>`MIN(${arLocalities.departmentName})`,
-      n: countDistinct(petEvents.id),
-    })
+    .select({ ...shape.columns, n: countDistinct(petEvents.id) })
     .from(petEvents)
     .innerJoin(pets, eq(pets.id, petEvents.petId))
-    .leftJoin(
-      arLocalities,
-      and(
-        sql`${arLocalities.provinceCode} = ${provinceIsoMapSql(sql`${pets.jurisdictionProvince}`)}`,
-        sql`${arLocalities.localityNameNorm} = ${normNameSql(sql`${pets.jurisdictionLocality}`)}`,
-        sql`${arLocalities.removedAt} IS NULL`,
-      ),
-    )
+    .leftJoin(arLocalities, shape.join)
     .where(and(...conditions, isNotNull(pets.jurisdictionLocality)))
-    .groupBy(pets.jurisdictionProvince, pets.jurisdictionLocality)
+    .groupBy(...shape.groupBy)
     .limit(PER_LAYER_CAP);
-  const rollup: RollupRow[] = rows
-    .filter((r) => r.province && r.locality)
-    .map((r) => ({
-      key: `${r.province}|${r.locality}`,
-      province: r.province as string,
-      locality: r.locality as string,
-      centroidLat: r.centroidLat,
-      centroidLng: r.centroidLng,
-      departmentCode: r.departmentCode,
-      departmentName: r.departmentName,
-      count: r.n,
-    }));
+  const rollup: RollupRow[] = toLocalityRollupRows(mode, rows);
   // Events whose pet home jurisdiction has a province but NO locality — invisible at
   // the detail tier, counted at province level (WARNING 4 reconciliation). Same
   // predicate + scope as the rollup (conditions already pins isNotNull(province)).
