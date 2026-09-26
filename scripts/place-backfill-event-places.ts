@@ -25,7 +25,6 @@ import "./_load-env";
 import { TransactionRollbackError, asc, eq, sql } from "drizzle-orm";
 
 import { db, petEvents } from "@/db";
-import { overlayAmendments } from "@/lib/infra/amendment";
 import {
   type HistoricEventPlace,
   planHistoricEventPlaces,
@@ -82,7 +81,8 @@ async function planForPet(tx: Tx, petId: string): Promise<HistoricEventPlace[]> 
   const placed = (await tx.execute(sql`
     select event_id::text as id from public.event_places where pet_id = ${petId}::uuid
   `)) as unknown as Array<{ id: string }>;
-  return planHistoricEventPlaces(petId, overlayAmendments(raw), new Set(placed.map((p) => p.id)));
+  // Raw stream: the planner folds corrections itself, per prefix.
+  return planHistoricEventPlaces(petId, raw, new Set(placed.map((p) => p.id)));
 }
 
 async function knownLocalityIds(tx: Tx, ids: string[]): Promise<Set<string>> {

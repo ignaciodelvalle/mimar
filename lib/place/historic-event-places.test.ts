@@ -110,4 +110,33 @@ describe("planHistoricEventPlaces", () => {
       expect.objectContaining({ eventId: "vac", localityId: null, method: "unresolved" }),
     ]);
   });
+
+  it("folds corrections: an amended move places later events at the corrected row", () => {
+    const move = ev("move", "movement_recorded", "2026-03-01T00:00:00Z", {
+      sub_kind: "jurisdiction_changed",
+      to_country: "AR",
+      to_province: "Buenos Aires",
+      to_locality: "Mechita",
+      to_locality_id: "loc-alberti",
+    });
+    const correction = ev("fix", "event_amended", "2026-05-01T00:00:00Z", {
+      target_event_id: "move",
+      changes: [{ field: "to_locality_id", old: "loc-alberti", new: "loc-bragado" }],
+    });
+    const rows = planHistoricEventPlaces(
+      "pet-1",
+      [
+        registeredInAlberti,
+        move,
+        ev("vac", "vaccination_administered", "2026-04-01T00:00:00Z"),
+        correction,
+      ],
+      new Set(["reg"]),
+    );
+    const byEvent = new Map(rows.map((r) => [r.eventId, r]));
+    // The correction is later than the vaccination, and still governs it: an
+    // amendment says what the move always was.
+    expect(byEvent.get("vac")?.localityId).toBe("loc-bragado");
+    expect(byEvent.get("move")?.localityId).toBe("loc-bragado");
+  });
 });

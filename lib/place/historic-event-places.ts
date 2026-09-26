@@ -16,10 +16,15 @@
 // that reaches only its province; its name is kept in `entered`, never matched
 // to a catalogue row. P2: the events themselves are never touched.
 //
+// Corrections are folded HERE (overlayAmendments), on every prefix, with the
+// whole stream's amendments: an amendment says what an event always was, so a
+// correction recorded after an event still governs where that event happened.
+//
 // Pure. The writer is scripts/place-backfill-event-places.ts.
 
+import { overlayAmendments } from "@/lib/infra/amendment";
 import { replayPetJurisdiction, replayPetLocalityId } from "@/lib/projections/pet-jurisdiction";
-import type { AmendmentOverlaid, ProjectionEvent } from "@/lib/projections/types";
+import type { ProjectionEvent } from "@/lib/projections/types";
 import { provinceByName } from "@/lib/reference/ar-provincias";
 
 export type HistoricEventPlace = {
@@ -52,8 +57,8 @@ function spineEventId(events: readonly ProjectionEvent[]): string | null {
 }
 
 /**
- * Rows for `events` (one pet, ascending by occurredAt, recordedAt, id —
- * amendments already overlaid) that have none yet.
+ * Rows for `events` (one pet's RAW stream, ascending by occurredAt,
+ * recordedAt, id — amendments included, not yet overlaid) that have none yet.
  */
 export function planHistoricEventPlaces(
   petId: string,
@@ -61,15 +66,20 @@ export function planHistoricEventPlaces(
   alreadyPlaced: ReadonlySet<string>,
 ): HistoricEventPlace[] {
   const rows: HistoricEventPlace[] = [];
+  const amendments = events.filter((e) => e.eventType === "event_amended");
   for (let i = 0; i < events.length; i++) {
     const e = events[i] as ProjectionEvent;
     if (alreadyPlaced.has(e.id) || NOT_A_HAPPENING.has(e.eventType)) continue;
     const payload = (e.payload ?? {}) as Record<string, unknown>;
     if ("place" in payload) continue; // the trigger's job, from the event's own place
-    // The caller overlays amendments before planning (the writer does).
-    const prefix = events.slice(0, i + 1) as unknown as AmendmentOverlaid<ProjectionEvent>;
+    // The home as of this event, every correction folded (amendments pass
+    // through overlayAmendments untouched and no replay reads them).
+    const prefix = overlayAmendments([
+      ...events.slice(0, i + 1).filter((x) => x.eventType !== "event_amended"),
+      ...amendments,
+    ]);
     const home = replayPetJurisdiction(prefix);
-    const spineId = spineEventId(events.slice(0, i + 1));
+    const spineId = spineEventId(prefix);
     if (!home || !spineId) continue; // no spine yet: nothing honest to say
     const recorded = replayPetLocalityId(prefix);
     const localityId = recorded?.localityId ?? null;

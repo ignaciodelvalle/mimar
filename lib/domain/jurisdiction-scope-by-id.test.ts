@@ -34,9 +34,9 @@ describe("jurisdictionScopeContains — id path", () => {
       true,
     );
     // Its member locality is readable whatever name the row stored.
-    expect(jurisdictionScopeContains([bragadoUnit], "Buenos Aires", "Otro nombre", "loc-bragado")).toBe(
-      true,
-    );
+    expect(
+      jurisdictionScopeContains([bragadoUnit], "Buenos Aires", "Otro nombre", "loc-bragado"),
+    ).toBe(true);
   });
 
   it("an unresolved row reaches a provincial unit, never a municipal one", () => {
@@ -46,7 +46,9 @@ describe("jurisdictionScopeContains — id path", () => {
   });
 
   it("a legacy grant, or a caller that passes no row id, keeps the name rule", () => {
-    expect(jurisdictionScopeContains([legacy], "Buenos Aires", "Mechita", "loc-alberti")).toBe(true);
+    expect(jurisdictionScopeContains([legacy], "Buenos Aires", "Mechita", "loc-alberti")).toBe(
+      true,
+    );
     expect(jurisdictionScopeContains([bragadoUnit], "Buenos Aires", "Mechita")).toBe(true);
   });
 });
