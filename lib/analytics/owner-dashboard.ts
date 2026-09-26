@@ -367,8 +367,16 @@ export async function fetchOngoingMedications(userId: string): Promise<OngoingMe
   // corrected from one drug to another must show the CORRECTED value here,
   // not the raw payload one (see lib/analytics/surveillance-metrics.ts
   // fetchAmrDensity for the same class of fix on drug_code).
-  const drugName = amendedPayloadText("drug_name", { id: sql`e.id`, payload: sql`e.payload` });
-  const frequency = amendedPayloadText("frequency", { id: sql`e.id`, payload: sql`e.payload` });
+  const drugName = amendedPayloadText("drug_name", {
+    id: sql`e.id`,
+    payload: sql`e.payload`,
+    petId: sql`e.pet_id`,
+  });
+  const frequency = amendedPayloadText("frequency", {
+    id: sql`e.id`,
+    payload: sql`e.payload`,
+    petId: sql`e.pet_id`,
+  });
   const rows = await db.execute<{
     event_id: string;
     pet_name: string;

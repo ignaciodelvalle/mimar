@@ -132,7 +132,7 @@ const ALLOWLIST: Record<string, Classification> = {
     kind: "via",
     via: "am.event_type = 'event_amended'",
     reason:
-      "rabiesDoseQualifies is itself an inline twin of amendedPayloadText: one lateral over the latest event_amended per dose, read for vaccine_name and next_due_at",
+      "rabiesDoseQualifies is itself an inline twin of amendedPayloadText: one probe over every event_amended on the dose, read for vaccine_name and next_due_at (latest correction touching each field)",
   },
   // --- other-type ------------------------------------------------------------
   "lib/analytics/org-dashboard.ts": {

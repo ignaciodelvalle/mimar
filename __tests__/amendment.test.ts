@@ -138,7 +138,7 @@ describe("applyAmendments — projection helper", () => {
     expect(result.brand).toBe("Laboratorio X");
   });
 
-  it("applies only the LATEST amendment when multiple exist", () => {
+  it("the latest amendment wins when several change the SAME field", () => {
     const amendments = [
       {
         id: "am-1",
@@ -159,6 +159,33 @@ describe("applyAmendments — projection helper", () => {
     ];
     const result = applyAmendments(originalPayload, amendments);
     expect(result.vaccine_name).toBe("Triple felina");
+  });
+
+  // Custody audit C1 (2026-09-26): corrections carry only the fields they
+  // changed, so folding just the latest one erased the first correction.
+  it("keeps EVERY correction when later amendments change OTHER fields", () => {
+    const amendments = [
+      {
+        id: "am-1",
+        targetEventId: "ev-1",
+        occurredAt: new Date("2026-06-01"),
+        reason: "Nombre",
+        changes: [{ field: "vaccine_name", old: "Antirrábica", new: "Sextuple" }],
+        actorRole: "owner",
+      },
+      {
+        id: "am-2",
+        targetEventId: "ev-1",
+        occurredAt: new Date("2026-06-19"),
+        reason: "Vencimiento",
+        changes: [{ field: "next_due_at", old: "2027-06-01", new: "2027-09-01" }],
+        actorRole: "owner",
+      },
+    ];
+    const result = applyAmendments(originalPayload, amendments);
+    expect(result.vaccine_name).toBe("Sextuple");
+    expect(result.next_due_at).toBe("2027-09-01");
+    expect(result.brand).toBe("Laboratorio X");
   });
 
   it("does not mutate the original payload object", () => {

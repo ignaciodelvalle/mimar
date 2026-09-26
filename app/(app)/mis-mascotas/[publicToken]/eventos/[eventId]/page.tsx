@@ -20,7 +20,6 @@ import { requireOwnedPetByToken } from "@/lib/infra/pets";
 import { eventAttachmentSignedUrl } from "@/lib/infra/storage";
 import { eventTypeLabel, formatDateTime } from "@/lib/utils/format";
 import { readTitularTenures } from "@/src/modules/events/application/amendment/amend-authorship";
-import { fetchLatestAmendmentsForEvents } from "@/src/modules/events/application/amendment/fetch-latest-amendments";
 import { readAmendmentChain } from "@/src/modules/events/application/read/load-pet-event-detail";
 import { and, eq } from "drizzle-orm";
 import { AmendEventButton } from "./AmendEventButton";
@@ -63,20 +62,22 @@ export default async function EventDetailPage({
   // so a corrected vaccine name (etc.) showed its pre-correction value here
   // while the timeline correctly showed the amended one (owner post-impl
   // corrections handoff, clickthrough audit 2026-07-04).
-  const amendmentsMap = await fetchLatestAmendmentsForEvents(pet.id, [event.id]);
-  const latestAmendment = amendmentsMap.get(event.id) ?? null;
-  const correctedPayload = latestAmendment
-    ? applyAmendments(event.payload as Record<string, unknown>, [
-        {
-          id: latestAmendment.amendmentId,
-          targetEventId: latestAmendment.targetEventId,
-          occurredAt: latestAmendment.occurredAt,
-          reason: latestAmendment.reason,
-          actorRole: latestAmendment.actorRole,
-          changes: latestAmendment.changes,
-        },
-      ])
-    : (event.payload as Record<string, unknown>);
+  //
+  // EVERY correction folds, oldest → newest (custody audit C1, 2026-09-26): a
+  // correction carries only the fields it changed, so folding just the latest
+  // one showed the raw value of a field an earlier correction had fixed — and
+  // the AmendEventForm below diffs against this payload, so the next save would
+  // have been built on that stale value. The same chain feeds the authorship
+  // gate further down, so it is read once.
+  const amendmentChain = await readAmendmentChain(pet.id, event.id);
+  const latestAmendment = amendmentChain.at(-1) ?? null;
+  const correctedPayload =
+    amendmentChain.length > 0
+      ? applyAmendments(
+          event.payload as Record<string, unknown>,
+          amendmentChain.map((a) => ({ ...a, id: a.amendmentId, targetEventId: event.id })),
+        )
+      : (event.payload as Record<string, unknown>);
 
   const summary = eventPayloadSummary(event.eventType, correctedPayload);
   const heading = summary.primary ?? eventTypeLabel(eventType);
@@ -105,8 +106,7 @@ export default async function EventDetailPage({
   // org path is not, in v1). D3b (PO decision 3B): and only on a record this
   // viewer may correct — their own, never one a professional wrote or
   // corrected. The server action enforces the same rule; this only keeps the
-  // button from offering what the write would refuse. The chain is read only
-  // when the first gate passes.
+  // button from offering what the write would refuse.
   const canAmend =
     accessPath === "owner" &&
     amendAuthorshipRefusal(
@@ -122,7 +122,7 @@ export default async function EventDetailPage({
           recordedByUserId: event.recordedByUserId,
           recordedAt: event.recordedAt,
         },
-        ...(await readAmendmentChain(pet.id, event.id)),
+        ...amendmentChain,
       ],
     ) === null;
 

@@ -9458,7 +9458,8 @@
         "lib/projections/types.ts:31",
         "package.json:25 lint:amendment-overlay",
         "src/modules/events/infrastructure/events-repository.test.ts",
-        "__tests__/check-amendment-overlay.test.ts"
+        "__tests__/check-amendment-overlay.test.ts",
+        "__tests__/amendment-fold-sql-parity.test.ts"
       ],
       "enforcementKind": "lint-script",
       "wired": "verify",

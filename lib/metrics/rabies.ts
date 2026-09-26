@@ -104,10 +104,14 @@ export function rabiesCurrentlyValidCondition(
  * replaces was for one field, plus a raw read.
  *
  * Parity with lib/infra/amendment-sql.ts (the SQL twin of overlayAmendments) is
- * deliberate and must be kept: only the LATEST amendment applies, ordered by
- * (occurred_at, recorded_at); a field the latest amendment does not touch keeps
- * its raw payload value; and a `new` of JSON null falls back to raw (the same
- * accepted divergence documented there).
+ * deliberate and must be kept (custody audit C1, 2026-09-26): EVERY amendment
+ * on the event applies, so each field takes the LATEST amendment THAT TOUCHES
+ * it, ordered by (occurred_at, recorded_at, id) and, inside one amendment, by
+ * position in `changes`; a later correction of the name does not hide an
+ * earlier correction of the booster date. The amendment must be on the same
+ * pet as the dose. A field no amendment touches keeps its raw payload value,
+ * and a `new` of JSON null falls back to raw (the same accepted divergence
+ * documented there).
  *
  * @param refs   Column refs for the candidate event, under whatever alias the
  *               calling query uses (`pe_rabies.…` inside the EXISTS, the plain
@@ -115,7 +119,7 @@ export function rabiesCurrentlyValidCondition(
  * @param window Fixed window { since, until } (see rabiesCurrentlyValidCondition).
  */
 export function rabiesDoseQualifies(
-  refs: { id: SQL; payload: SQL; occurredAt: SQL },
+  refs: { id: SQL; payload: SQL; occurredAt: SQL; petId: SQL },
   window: { since: Date; until: Date },
 ): SQL {
   const amendedName = sql`amended.vaccine_name`;
@@ -125,32 +129,25 @@ export function rabiesDoseQualifies(
        AND ${rabiesCurrentlyValidCondition(refs.occurredAt, amendedNextDue, window)}
     FROM (
       SELECT
-        COALESCE(amended_name.value, (${refs.payload})->>'vaccine_name') AS vaccine_name,
-        COALESCE(amended_due.value, (${refs.payload})->>'next_due_at')   AS next_due_at
-      -- Single-row anchor so the lateral chain still yields exactly one row when
-      -- the event carries no amendment at all (LEFT JOIN → NULLs → COALESCE to
-      -- the raw payload). A CROSS JOIN here would drop the row instead.
-      FROM (SELECT 1) anchor
-      LEFT JOIN LATERAL (
-        SELECT am.payload AS changes_source
+        COALESCE(latest_amendment.name_value, (${refs.payload})->>'vaccine_name') AS vaccine_name,
+        COALESCE(latest_amendment.due_value, (${refs.payload})->>'next_due_at')    AS next_due_at
+      -- ONE probe of the spine for both fields. An aggregate with no input rows
+      -- still yields exactly one row (NULLs → COALESCE to the raw payload), so
+      -- an event with no amendment keeps its row. Each FILTER picks, per field,
+      -- the newest change entry that touches it: amendments ordered by
+      -- (occurred_at, recorded_at, id), entries by their position.
+      FROM (
+        SELECT
+          (array_agg(c.value->>'new' ORDER BY am.occurred_at DESC, am.recorded_at DESC NULLS LAST, am.id DESC, c.ord DESC)
+            FILTER (WHERE c.value->>'field' = 'vaccine_name'))[1] AS name_value,
+          (array_agg(c.value->>'new' ORDER BY am.occurred_at DESC, am.recorded_at DESC NULLS LAST, am.id DESC, c.ord DESC)
+            FILTER (WHERE c.value->>'field' = 'next_due_at'))[1] AS due_value
         FROM pet_events am
+        CROSS JOIN LATERAL jsonb_array_elements(am.payload->'changes') WITH ORDINALITY c(value, ord)
         WHERE am.event_type = 'event_amended'
           AND am.payload->>'target_event_id' = (${refs.id})::text
-        ORDER BY am.occurred_at DESC, am.recorded_at DESC
-        LIMIT 1
-      ) latest_amendment ON true
-      LEFT JOIN LATERAL (
-        SELECT c.value->>'new' AS value
-        FROM jsonb_array_elements(latest_amendment.changes_source->'changes') c
-        WHERE c.value->>'field' = 'vaccine_name'
-        LIMIT 1
-      ) amended_name ON true
-      LEFT JOIN LATERAL (
-        SELECT c.value->>'new' AS value
-        FROM jsonb_array_elements(latest_amendment.changes_source->'changes') c
-        WHERE c.value->>'field' = 'next_due_at'
-        LIMIT 1
-      ) amended_due ON true
+          AND am.pet_id = ${refs.petId}
+      ) latest_amendment
     ) amended
   )`;
 }
@@ -221,6 +218,7 @@ export function rabiesVaccinatedExists(
           id: sql`pe_rabies.id`,
           payload: sql`pe_rabies.payload`,
           occurredAt: sql`pe_rabies.occurred_at`,
+          petId: sql`pe_rabies.pet_id`,
         },
         window,
       )}${signedClause}

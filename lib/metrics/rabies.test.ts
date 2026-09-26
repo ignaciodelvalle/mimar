@@ -70,6 +70,7 @@ describe("rabiesDoseQualifies — name AND expiry read through the overlay", () 
     id: sql`pe.id`,
     payload: sql`pe.payload`,
     occurredAt: sql`pe.occurred_at`,
+    petId: sql`pe.pet_id`,
   };
 
   it("never reads next_due_at straight off the raw payload", () => {
@@ -81,17 +82,34 @@ describe("rabiesDoseQualifies — name AND expiry read through the overlay", () 
     expect(text).toContain("amended.vaccine_name");
   });
 
-  it("resolves the latest amendment ONCE — one probe, both fields", () => {
-    // This is the whole point of the lateral: it answers the performance
-    // objection that kept the raw read alive, instead of paying a second
-    // correlated sub-query on the hottest govt aggregate.
+  it("resolves the amendments ONCE — one probe, both fields", () => {
+    // This is the whole point of the single aggregate: it answers the
+    // performance objection that kept the raw read alive, instead of paying a
+    // second correlated sub-query on the hottest govt aggregate.
     const { sql: text } = render(rabiesDoseQualifies(REFS, WINDOW));
     const probes = text.match(/event_type = 'event_amended'/g) ?? [];
     expect(probes).toHaveLength(1);
-    expect(text).toContain("LEFT JOIN LATERAL");
     // Ordering parity with the SQL twin in lib/infra/amendment-sql.ts: latest by
-    // (occurred_at, recorded_at). Losing this makes the two disagree silently.
-    expect(text).toContain("ORDER BY am.occurred_at DESC, am.recorded_at DESC");
+    // (occurred_at, recorded_at, id), then position inside the amendment.
+    // Losing this makes the two disagree silently.
+    const order =
+      "ORDER BY am.occurred_at DESC, am.recorded_at DESC NULLS LAST, am.id DESC, c.ord DESC";
+    expect(text.split(order)).toHaveLength(3);
+  });
+
+  it("each field takes the latest amendment THAT TOUCHES it (custody audit C1)", () => {
+    // The old probe kept only the LATEST amendment, so correcting the name
+    // after correcting the booster date put the raw date back. The filter must
+    // sit on the field, not on the amendment.
+    const { sql: text } = render(rabiesDoseQualifies(REFS, WINDOW));
+    expect(text).not.toContain("LIMIT 1");
+    expect(text).toContain("FILTER (WHERE c.value->>'field' = 'vaccine_name')");
+    expect(text).toContain("FILTER (WHERE c.value->>'field' = 'next_due_at')");
+  });
+
+  it("only an amendment on the SAME pet corrects the dose", () => {
+    const { sql: text } = render(rabiesDoseQualifies(REFS, WINDOW));
+    expect(text).toContain("am.pet_id = pe.pet_id");
   });
 
   it("falls back to the raw payload when nothing was amended", () => {

@@ -11,6 +11,8 @@ type Row = {
   id: string;
   eventType: string;
   occurredAt: string;
+  recordedAt?: string;
+  petId?: string;
   payload: Record<string, unknown>;
 };
 
@@ -202,6 +204,100 @@ describe("overlayAmendments", () => {
     expect(out.find((r) => r.id === "v1")?.payload).toEqual({
       vaccine_name: "Antirrábica",
       next_due_at: "2027-02-01",
+    });
+  });
+
+  // Custody audit C1 (2026-09-26): the web form and the API v1 amend route diff
+  // against the ALREADY-corrected payload, so each correction carries only the
+  // fields it changed. Folding just the latest one erased the earlier ones.
+  describe("folds EVERY amendment, field by field (custody audit C1)", () => {
+    const vaccine = (): Row => ({
+      id: "v1",
+      eventType: "vaccination_administered",
+      occurredAt: "2026-01-01",
+      payload: { vaccine_name: "Polivalente", next_due_at: "2027-01-01", lot: "L1" },
+    });
+
+    it("two amendments on DIFFERENT fields: both corrections are visible", () => {
+      const out = overlayAmendments([
+        vaccine(),
+        amendment("a1", "v1", "2026-02-01", [
+          { field: "vaccine_name", old: "Polivalente", new: "Antirrábica" },
+        ]),
+        amendment("a2", "v1", "2026-03-01", [
+          { field: "next_due_at", old: "2027-01-01", new: "2027-06-01" },
+        ]),
+      ]);
+      const target = out.find((r) => r.id === "v1");
+      expect(target?.payload).toEqual({
+        vaccine_name: "Antirrábica",
+        next_due_at: "2027-06-01",
+        lot: "L1",
+      });
+      // The badge date is still the LATEST correction.
+      expect(target?.amendedAt).toBe("2026-03-01");
+    });
+
+    it("folds in (occurred_at, recorded_at, id) order, whatever the stream order", () => {
+      // Stream arrives newest-first; the fold must still apply oldest → newest.
+      const out = overlayAmendments([
+        amendment("a3", "v1", "2026-04-01", [{ field: "lot", old: "L2", new: "L3" }]),
+        amendment("a1", "v1", "2026-02-01", [
+          { field: "lot", old: "L1", new: "L2" },
+          { field: "vaccine_name", old: "Polivalente", new: "Antirrábica" },
+        ]),
+        vaccine(),
+      ]);
+      expect(out.find((r) => r.id === "v1")?.payload).toEqual({
+        vaccine_name: "Antirrábica",
+        next_due_at: "2027-01-01",
+        lot: "L3",
+      });
+    });
+
+    it("same occurred_at and recorded_at: the greater id is the later one", () => {
+      const tie = (id: string, lot: string): Row => ({
+        ...amendment(id, "v1", "2026-02-01", [{ field: "lot", old: "L1", new: lot }]),
+        recordedAt: "2026-02-01T10:00:00Z",
+      });
+      const out = overlayAmendments([vaccine(), tie("b", "from-b"), tie("a", "from-a")]);
+      expect((out.find((r) => r.id === "v1")?.payload as Record<string, unknown>).lot).toBe(
+        "from-b",
+      );
+    });
+
+    it("a field listed twice in ONE amendment takes its last entry (SQL parity)", () => {
+      const out = overlayAmendments([
+        vaccine(),
+        amendment("a1", "v1", "2026-02-01", [
+          { field: "lot", old: "L1", new: "L-first" },
+          { field: "lot", old: "L-first", new: "L-last" },
+        ]),
+      ]);
+      expect((out.find((r) => r.id === "v1")?.payload as Record<string, unknown>).lot).toBe(
+        "L-last",
+      );
+    });
+
+    it("an amendment on ANOTHER pet never corrects the record", () => {
+      const out = overlayAmendments([
+        { ...vaccine(), petId: "pet-a" },
+        {
+          ...amendment("a1", "v1", "2026-02-01", [
+            { field: "vaccine_name", old: "Polivalente", new: "Antirrábica" },
+          ]),
+          petId: "pet-a",
+        },
+        {
+          ...amendment("x1", "v1", "2026-03-01", [
+            { field: "vaccine_name", old: "Antirrábica", new: "Hijack" },
+          ]),
+          petId: "pet-b",
+        },
+      ]);
+      const target = out.find((r) => r.id === "v1");
+      expect((target?.payload as Record<string, unknown>).vaccine_name).toBe("Antirrábica");
+      expect(target?.amendedAt).toBe("2026-02-01");
     });
   });
 });

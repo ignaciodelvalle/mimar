@@ -230,7 +230,7 @@ export async function fetchOverdueRabiesVaccine(
       FROM pet_events pe
       WHERE
         pe.event_type = 'vaccination_administered'
-        AND lower(${amendedPayloadText("vaccine_name", { id: sql`pe.id`, payload: sql`pe.payload` })}) LIKE '%antirr%'
+        AND lower(${amendedPayloadText("vaccine_name", { id: sql`pe.id`, payload: sql`pe.payload`, petId: sql`pe.pet_id` })}) LIKE '%antirr%'
       GROUP BY pe.pet_id
     )
     SELECT
@@ -438,10 +438,12 @@ export async function fetchSterilizationVetRanking(
   const amendedPerformedBy = amendedPayloadText("performed_by", {
     id: sql`pe.id`,
     payload: sql`pe.payload`,
+    petId: sql`pe.pet_id`,
   });
   const amendedClinic = amendedPayloadText("clinic", {
     id: sql`pe.id`,
     payload: sql`pe.payload`,
+    petId: sql`pe.pet_id`,
   });
 
   const rows = await db.execute<{

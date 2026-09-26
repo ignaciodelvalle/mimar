@@ -97,7 +97,7 @@ export function canAmendEvent({ eventType, viewerCanWriteEvents }: AmendCapabili
 // professional" protects professional records; it does not wall off owner ones.
 //
 // THE SUBJECTS ARE THE RECORD AND EVERY CORRECTION ALREADY ON IT. Amendments
-// overlay the latest correction, so the value on screen may have been written
+// overlay their corrections, so the value on screen may have been written
 // by someone other than the root's author. An owner who wrote a weight that a
 // vet then corrected may not overwrite the vet's correction — that would be
 // correcting a professional record by another road. The caller passes the root
@@ -267,12 +267,23 @@ export function amendAuthorshipRefusal(
 }
 
 // ---------------------------------------------------------------------------
-// D2 — Projection: apply latest amendment to an event row
+// D2 — Projection: fold every amendment onto an event row
 // ---------------------------------------------------------------------------
 //
-// The libreta view applies the latest amendment overlay to the original event
-// so the "current value" is always displayed. The original event row is never
+// The libreta view projects the corrections onto the original event so the
+// "current value" is always displayed. The original event row is never
 // touched. In /historial the original is shown in full alongside the amendment.
+//
+// EVERY AMENDMENT APPLIES, IN ORDER, FIELD BY FIELD (custody audit C1,
+// 2026-09-26). A correction carries only the fields it changed: the web form
+// (AmendEventForm buildChanges) and the API v1 amend route both diff against
+// the ALREADY-corrected payload. So "only the latest amendment applies" made a
+// second correction on a different field silently erase the first one
+// everywhere — libreta, event detail, pet caches, rederivePetCache. The fold is
+// oldest → newest by (occurred_at, recorded_at, id); a field touched twice
+// keeps the latest value; a field no amendment touched keeps its raw value.
+// The SQL twins (lib/infra/amendment-sql.ts, lib/metrics/rabies.ts) implement
+// the same rule per field: the latest amendment THAT TOUCHES the field wins.
 
 export type ChangeEntry = {
   field: string;
@@ -289,31 +300,39 @@ export type AmendmentRow = {
   actorRole: string;
 };
 
+function foldChanges(
+  payload: Record<string, unknown>,
+  amendments: ReadonlyArray<{ changes: ReadonlyArray<ChangeEntry> }>,
+): Record<string, unknown> {
+  const result = { ...payload };
+  for (const amendment of amendments) {
+    for (const change of amendment.changes) {
+      result[change.field] = change.new;
+    }
+  }
+  return result;
+}
+
 /**
  * Given an event payload and a list of amendment rows (sorted oldest → newest),
- * returns the projected payload with the latest amendment applied.
+ * returns the projected payload with EVERY amendment applied in that order.
  *
- * Each change entry in the latest amendment overwrites the corresponding field.
- * Only the LAST amendment is applied — earlier amendments are still in the log
- * but the projection always shows the most-recent correction.
+ * Each change entry overwrites the corresponding field, so a field corrected
+ * twice ends on the latest value and a field corrected once keeps that
+ * correction even when a later amendment changed a different field.
  */
 export function applyAmendments(
   payload: Record<string, unknown>,
   amendments: AmendmentRow[],
 ): Record<string, unknown> {
   if (amendments.length === 0) return payload;
-  // Latest amendment wins.
-  const latest = amendments[amendments.length - 1];
-  const result = { ...payload };
-  for (const change of latest.changes) {
-    result[change.field] = change.new;
-  }
-  return result;
+  return foldChanges(payload, amendments);
 }
 
 /**
  * Returns the latest amendment for an event, or null if none.
- * Convenience wrapper for callers that only need the latest.
+ * Convenience wrapper for callers that only need the latest (the "Corregido"
+ * badge date) — NEVER for projecting a value: use applyAmendments for that.
  */
 export function latestAmendment(amendments: AmendmentRow[]): AmendmentRow | null {
   return amendments.length > 0 ? amendments[amendments.length - 1] : null;
@@ -332,15 +351,17 @@ type OverlayableEvent = {
   // Optional so minimal callers/tests still type-check; absent → treated as
   // oldest so a row that DOES carry recordedAt wins the tie.
   recordedAt?: Date | string;
+  // When BOTH the amendment and its target carry it, they must match: an
+  // amendment never corrects another animal's record (the SQL twin enforces
+  // the same with `am.pet_id`). Optional for streams that select no pet id.
+  petId?: string;
 };
 
 /**
  * EL-F3 tiebreaker parity with the SQL twin (amendment-sql.ts:
- * `ORDER BY occurred_at DESC, recorded_at DESC`). Returns true when `cand` is
- * the later amendment: newer occurred_at wins; on a tie the newer recorded_at
- * wins; on a further tie the greater id wins (deterministic). The old helpers
- * compared occurred_at only with strict `>`, so on a tie they kept the OLDEST
- * recorded_at — the opposite of the SQL "latest".
+ * `ORDER BY occurred_at DESC, recorded_at DESC NULLS LAST, id DESC`). Returns
+ * true when `cand` is the later amendment: newer occurred_at wins; on a tie the
+ * newer recorded_at wins; on a further tie the greater id wins (deterministic).
  */
 function amendmentIsLater(
   cand: { occurredAt: Date | string; recordedAt?: Date | string; id: string },
@@ -358,6 +379,14 @@ function amendmentIsLater(
   if (cr !== er) return cr > er;
   return cand.id > existing.id;
 }
+
+type PendingAmendment = {
+  occurredAt: Date | string;
+  recordedAt?: Date | string;
+  id: string;
+  petId?: string;
+  changes: ChangeEntry[];
+};
 
 /**
  * Project a fetched event stream so amended events carry their CORRECTED
@@ -377,35 +406,34 @@ function amendmentIsLater(
  *    overlayAmendments the single payload-access boundary that ALWAYS upcasts
  *    (WAVE D1 / finding 27-#11). The amendment correction is applied ON TOP of
  *    the upcast payload.
- *  - Targeted rows get `payload` projected via the LATEST amendment (chains
- *    are flattened by amend-event.ts: every amendment targets the original)
- *    and `amendedAt` set to that amendment's occurredAt.
+ *  - Targeted rows get `payload` projected by folding EVERY amendment on them,
+ *    oldest → newest (chains are flattened by amend-event.ts: every amendment
+ *    targets the original), and `amendedAt` set to the latest one's occurredAt.
  *  - Untargeted rows get `amendedAt: null`.
  */
 export function overlayAmendments<T extends OverlayableEvent>(
   events: T[],
 ): Array<T & { amendedAt: Date | string | null }> & AmendmentOverlaidBrand {
-  // Latest amendment per target — a single pass over the stream. "Latest" uses
-  // the (occurred_at, recorded_at, id) tiebreak that matches the SQL twin (EL-F3).
-  const latestByTarget = new Map<
-    string,
-    { occurredAt: Date | string; recordedAt?: Date | string; id: string; changes: ChangeEntry[] }
-  >();
+  // Every amendment per target — a single pass over the stream, then sorted
+  // with the (occurred_at, recorded_at, id) order that matches the SQL twin.
+  const byTarget = new Map<string, PendingAmendment[]>();
   for (const e of events) {
     if (e.eventType !== "event_amended") continue;
     const p = (e.payload ?? {}) as Record<string, unknown>;
     const targetId = typeof p.target_event_id === "string" ? p.target_event_id : null;
     if (!targetId) continue;
-    const existing = latestByTarget.get(targetId);
-    const candidate = { occurredAt: e.occurredAt, recordedAt: e.recordedAt, id: e.id };
-    if (!existing || amendmentIsLater(candidate, existing)) {
-      latestByTarget.set(targetId, {
-        occurredAt: e.occurredAt,
-        recordedAt: e.recordedAt,
-        id: e.id,
-        changes: Array.isArray(p.changes) ? (p.changes as ChangeEntry[]) : [],
-      });
-    }
+    const list = byTarget.get(targetId) ?? [];
+    list.push({
+      occurredAt: e.occurredAt,
+      recordedAt: e.recordedAt,
+      id: e.id,
+      petId: e.petId,
+      changes: Array.isArray(p.changes) ? (p.changes as ChangeEntry[]) : [],
+    });
+    byTarget.set(targetId, list);
+  }
+  for (const list of byTarget.values()) {
+    list.sort((a, b) => (amendmentIsLater(a, b) ? 1 : amendmentIsLater(b, a) ? -1 : 0));
   }
 
   // The brand is a compile-time marker only (A05-7): this is the one place
@@ -416,16 +444,18 @@ export function overlayAmendments<T extends OverlayableEvent>(
     if (e.eventType === "event_amended") return { ...e, amendedAt: null };
 
     // Upcast first so the reader always sees the latest payload shape, then
-    // layer the correction on top.
+    // layer the corrections on top.
     const upcast = upcastPayload(e.eventType as EventType, e.payload) as Record<string, unknown>;
-    const amendment = latestByTarget.get(e.id);
-    if (!amendment) return { ...e, payload: upcast, amendedAt: null };
+    const amendments = (byTarget.get(e.id) ?? []).filter(
+      (a) => a.petId == null || e.petId == null || a.petId === e.petId,
+    );
+    if (amendments.length === 0) return { ...e, payload: upcast, amendedAt: null };
 
-    const projected = { ...upcast };
-    for (const change of amendment.changes) {
-      projected[change.field] = change.new;
-    }
-    return { ...e, payload: projected, amendedAt: amendment.occurredAt };
+    return {
+      ...e,
+      payload: foldChanges(upcast, amendments),
+      amendedAt: amendments[amendments.length - 1].occurredAt,
+    };
   }) as Array<T & { amendedAt: Date | string | null }> & AmendmentOverlaidBrand;
 }
 

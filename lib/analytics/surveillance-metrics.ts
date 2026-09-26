@@ -472,6 +472,7 @@ export async function fetchAmrDensity(ctx: ProjectionContext): Promise<AmrDensit
   const drugCode = amendedPayloadText("drug_code", {
     id: sql`med.id`,
     payload: sql`med.payload`,
+    petId: sql`med.pet_id`,
   });
 
   const [rows, activePets] = await Promise.all([

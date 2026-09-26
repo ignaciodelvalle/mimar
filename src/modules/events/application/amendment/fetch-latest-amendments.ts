@@ -10,7 +10,11 @@ import type { AmendmentSummary } from "./types";
 
 /**
  * Returns the LATEST amendment for each target event ID in the provided set.
- * Used by the libreta and historial projections to show the "Corregido" badge.
+ * Good for the "Corregido" badge (when/why the record last changed) — NEVER for
+ * projecting a value: a correction carries only the fields it changed, so the
+ * latest one alone hides every earlier correction of another field (custody
+ * audit C1, 2026-09-26). Project through overlayAmendments / applyAmendments
+ * over the whole chain instead.
  *
  * Pure DB query — no auth (caller is responsible for scoping to pet.id from an already-authenticated context).
  */
