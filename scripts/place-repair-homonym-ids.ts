@@ -51,7 +51,7 @@
 
 import "./_load-env";
 
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, inArray, sql } from "drizzle-orm";
 
 import { db, petEvents } from "@/db";
 import type { PlaceMethod } from "@/lib/domain/place";
@@ -202,11 +202,18 @@ function uuidList(ids: string[]) {
  * own rule, over the amendment-overlaid stream (the same treatment
  * rederivePetCache gives it: a corrected place is the place).
  */
+const PET_CHUNK = 500;
+
 async function recordedForPets(executor: Executor, ids: string[]): Promise<Recorded> {
   const out: Recorded = new Map();
-  for (const petId of ids) {
+  // One query per chunk, not per pet: the suspect set is hundreds of pets on a
+  // seeded database, and a round trip each made the dry run (and its tests)
+  // scale with the seed.
+  for (let i = 0; i < ids.length; i += PET_CHUNK) {
+    const chunk = ids.slice(i, i + PET_CHUNK);
     const rows = await executor
       .select({
+        petId: petEvents.petId,
         id: petEvents.id,
         eventType: petEvents.eventType,
         occurredAt: petEvents.occurredAt,
@@ -214,10 +221,23 @@ async function recordedForPets(executor: Executor, ids: string[]): Promise<Recor
         payload: petEvents.payload,
       })
       .from(petEvents)
-      .where(eq(petEvents.petId, petId))
-      .orderBy(asc(petEvents.occurredAt), asc(petEvents.recordedAt), asc(petEvents.id));
-    const replay = replayPetLocalityId(overlayAmendments(rows));
-    out.set(petId, replay === null ? undefined : replay.localityId);
+      .where(inArray(petEvents.petId, chunk))
+      .orderBy(
+        asc(petEvents.petId),
+        asc(petEvents.occurredAt),
+        asc(petEvents.recordedAt),
+        asc(petEvents.id),
+      );
+    const byPet = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const list = byPet.get(row.petId);
+      if (list) list.push(row);
+      else byPet.set(row.petId, [row]);
+    }
+    for (const petId of chunk) {
+      const replay = replayPetLocalityId(overlayAmendments(byPet.get(petId) ?? []));
+      out.set(petId, replay === null ? undefined : replay.localityId);
+    }
   }
   return out;
 }
