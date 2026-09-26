@@ -383,7 +383,25 @@ const RNG_SEED = 0x4e415441; // "NATA" — fixed forever
 // The generator itself lives in seed-history-utils.ts (one definition): the
 // unit tests and this seed draw from the SAME algorithm, so they can never
 // disagree about a sequence.
-const rng = makeMulberry32(RNG_SEED);
+let activeRng = makeMulberry32(RNG_SEED);
+const rng = (): number => activeRng();
+
+/**
+ * Run one step on its own deterministic stream, then hand the main stream back
+ * exactly where it was. For a step whose draw count changed after the fact: the
+ * bite step drew nothing for years (its selector matched no pet), so letting it
+ * draw from the main stream now would shift every draw after it — the whole
+ * history seed included. The steps run sequentially, so the swap is safe.
+ */
+async function withOwnRng<T>(salt: number, step: () => Promise<T>): Promise<T> {
+  const main = activeRng;
+  activeRng = makeMulberry32((RNG_SEED ^ salt) >>> 0);
+  try {
+    return await step();
+  } finally {
+    activeRng = main;
+  }
+}
 
 function randInt(min: number, max: number): number {
   return min + Math.floor(rng() * (max - min + 1));
@@ -2576,47 +2594,58 @@ async function seedBiteEvents(
 ): Promise<number> {
   log("STEP", `Seeding ~${biteCount} additional bite/incident events…`);
 
-  // Fetch a sample of PANO pet IDs to attach bite events to
+  // The panorama cohort, by its seed_tag, ordered so the rng picks the same
+  // pets every run. This used to look for pet_registered events tagged
+  // payload.source = 'seed-panorama' — a key registerPet never writes, so the
+  // step matched nothing and silently skipped. Deceased pets are left out (no
+  // bite after a death), and each pet's registration instant comes along so no
+  // bite predates the credential.
   const sample = await db
-    .select({ id: petEvents.petId, petId: petEvents.petId })
-    .from(petEvents)
-    .where(
-      sql`${petEvents.eventType} = 'pet_registered' AND ${petEvents.payload}->>'source' = 'seed-panorama'`,
+    .select({
+      id: pets.id,
+      province: pets.jurisdictionProvince,
+      registeredAt: petEvents.occurredAt,
+    })
+    .from(pets)
+    .innerJoin(
+      petEvents,
+      and(eq(petEvents.petId, pets.id), eq(petEvents.eventType, "pet_registered")),
     )
-    .limit(biteCount * 3);
+    .where(and(eq(pets.seedTag, SEED_TAG_PANORAMA), sql`${pets.status} <> 'deceased'`))
+    .orderBy(pets.publicToken);
 
   if (sample.length === 0) {
-    log("WARN", "  No PANO pet_registered events found — skipping bite events");
+    log("WARN", "  No panorama pets found — skipping bite events");
     return 0;
   }
 
   const eventRows: Array<Record<string, unknown>> = [];
 
   for (let i = 0; i < biteCount; i++) {
-    // Pick a random pet from sample (weighted by population — approximate via index)
+    // A random pet of the cohort. The cohort is already spread by population
+    // (seedPets sizes each province by census), so a uniform pick is weighted.
     const petRow = sample[Math.floor(rng() * sample.length)];
     const petId = petRow.id;
 
-    // Pick a province weighted by population for geo
-    const totalPop = census.reduce((s, c) => s + c.population, 0);
-    let popR = rng() * totalPop;
-    let prov = census[census.length - 1];
-    for (const c of census) {
-      popR -= c.population;
-      if (popR <= 0) {
-        prov = c;
-        break;
-      }
-    }
-    const loc = pickLocality(prov.provinceName, localitiesByCode);
+    // The bite happens where the pet lives: a point in its own province, so
+    // the map and the jurisdiction scope agree about where it was.
+    const provinceName = petRow.province ?? census[census.length - 1].provinceName;
+    const loc = pickLocality(provinceName, localitiesByCode);
     const { lat, lng } = loc
       ? jitteredCoord(loc.lat, loc.lng, 0.03)
       : { lat: -34.6 + gaussianJitter(2), lng: -58.4 + gaussianJitter(4) };
 
+    // Inside the window, and never before the registration that created the
+    // credential (registrations reach further back than the window).
+    const drawnAt = randomWindowDate();
+    const occurredAt = new Date(
+      Math.min(Math.max(drawnAt.getTime(), petRow.registeredAt.getTime() + 3_600_000), ANCHOR_MS),
+    );
+
     eventRows.push({
       petId,
       eventType: "incident_reported" satisfies EventType,
-      occurredAt: randomWindowDate(),
+      occurredAt,
       recordedByUserId: ownerUserId,
       authorRole: "vet",
       authorVerified: false,
@@ -2626,7 +2655,7 @@ async function seedBiteEvents(
         severity: pick(["minor", "moderate", "severe"] as const),
         injuries_summary: `Mordedura sintética #${i + 1} (seed-panorama)`,
         vet_involved: rng() < 0.6,
-        location_description: `${loc?.localityName ?? prov.provinceName}`,
+        location_description: `${loc?.localityName ?? provinceName}`,
         rabies_vaccine_valid_at_incident: rng() < 0.5,
       },
       ...writePoint({ lat, lng }),
@@ -5268,7 +5297,11 @@ async function main(): Promise<void> {
 
   // Seed bite/incident events (~200 national)
   const biteCount = Math.round(totalPets * 0.004);
-  const insertedBites = await seedBiteEvents(ownerUserId, census, localitiesByCode, biteCount);
+  // On its own rng stream (withOwnRng): every draw after this step keeps the
+  // value it had while the step's selector matched nothing.
+  const insertedBites = await withOwnRng(0x42495445 /* "BITE" */, () =>
+    seedBiteEvents(ownerUserId, census, localitiesByCode, biteCount),
+  );
   eventCounts.incident_reported = (eventCounts.incident_reported ?? 0) + insertedBites;
 
   // Seed welfare reports (~300 national)
