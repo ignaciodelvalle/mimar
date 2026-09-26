@@ -92,7 +92,14 @@ describe("share page applies overlayAmendments before groupLibretaEvents", () =>
   const src = readFileSync(join(__dirname, "page.tsx"), "utf8");
 
   it("fetches event_amended rows alongside libreta entries", () => {
-    expect(src).toMatch(/event_amended/);
+    // The query moved to one shared loader (privacy W3: it also hides a
+    // denuncia's bridge events); the page must keep reading through it.
+    const loader = readFileSync(
+      join(__dirname, "..", "..", "..", "..", "lib", "infra", "libreta-share-events.ts"),
+      "utf8",
+    );
+    expect(src).toMatch(/loadSharedLibretaEvents\(/);
+    expect(loader).toMatch(/eq\(petEvents\.eventType, "event_amended"\)/);
   });
 
   it("wraps the event stream with overlayAmendments before grouping", () => {
