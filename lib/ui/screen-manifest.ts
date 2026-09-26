@@ -558,6 +558,14 @@ const ADMIN_LOCALIDADES: ScreenManifestEntry = {
   decision: "¿Qué autoridad gobierna cada localidad, y quién lo cambió?",
 };
 
+// localidades-por-id D9: places that did not resolve to one catalogue row,
+// waiting for an admin to pick the row. Same layer as the unit editor.
+const ADMIN_LOCALIDADES_PENDIENTES: ScreenManifestEntry = {
+  route: "/admin/localidades/pendientes",
+  layer: "profundidad",
+  decision: "¿Qué lugares no se pudieron asignar a una localidad, y a cuál corresponden?",
+};
+
 const ADMIN_LIBRO: ScreenManifestEntry = {
   route: "/admin/libro",
   layer: "profundidad",
@@ -627,6 +635,7 @@ export const SCREEN_MANIFEST: readonly ScreenManifestEntry[] = [
   ADMIN_ADMINS,
   ADMIN_CUENTAS,
   ADMIN_LOCALIDADES,
+  ADMIN_LOCALIDADES_PENDIENTES,
   ADMIN_ORGANIZACIONES,
   ADMIN_REGLAS,
   ADMIN_HISTORIAL,

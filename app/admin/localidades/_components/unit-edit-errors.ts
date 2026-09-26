@@ -18,6 +18,8 @@ const MESSAGES: Record<string, string> = {
     "Una concesión de toda la provincia pasa a la unidad provincial, no a una parte de la provincia.",
   PARTIAL_GRANT:
     "La unidad suma localidades que la concesión no tenía. Marcá cada localidad que se suma para confirmarlo.",
+  // localidades-por-id D9: the unresolved-place queue.
+  NOT_UNRESOLVED: "Ese lugar ya se resolvió a una localidad. Recargá la lista.",
 };
 
 export function unitEditErrorMessage(error: string): string {

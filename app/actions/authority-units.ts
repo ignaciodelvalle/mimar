@@ -16,6 +16,7 @@ import { revalidatePath } from "next/cache";
 
 import { db } from "@/db";
 import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
+import { type QueueSubjectTable, resolvePlaceFromQueue } from "@/lib/place/unresolved-queue";
 import { confirmGrantUnit } from "@/src/modules/organizations/application/authority-units/grant-unit";
 import {
   confirmAuthorityUnit,
@@ -93,5 +94,23 @@ export async function confirmGrantUnitAction(input: {
   const { user } = await requireAdminOrRedirect();
   const result = await confirmGrantUnit(db, user.id, input);
   if ("ok" in result) revalidateUnit(input.unitId);
+  return result;
+}
+
+/**
+ * Resolve one row of the unresolved-place queue to a catalogue locality of
+ * its own province (localidades-por-id D9). The use case re-checks the
+ * platform-admin capability and writes the place_resolutions row with the
+ * row's cache columns in one transaction.
+ */
+export async function resolvePlaceFromQueueAction(input: {
+  subjectTable: QueueSubjectTable;
+  subjectId: string;
+  localityId: string;
+  reason: string;
+}) {
+  const { user } = await requireAdminOrRedirect();
+  const result = await resolvePlaceFromQueue(db, user.id, input);
+  if ("ok" in result) revalidatePath("/admin/localidades/pendientes");
   return result;
 }

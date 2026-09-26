@@ -14,6 +14,11 @@ describe("unitEditErrorMessage", () => {
     expect(unitEditErrorMessage("NO_GRANTS")).toMatch(/concesión/);
   });
 
+  // localidades-por-id D9: the unresolved-place queue.
+  it("says a queued place was already resolved", () => {
+    expect(unitEditErrorMessage("NOT_UNRESOLVED")).toMatch(/ya se resolvió/);
+  });
+
   it("shows a validation message as written, without its code", () => {
     expect(unitEditErrorMessage("VALIDATION_ERROR: Contá por qué cambia la unidad.")).toBe(
       "Contá por qué cambia la unidad.",

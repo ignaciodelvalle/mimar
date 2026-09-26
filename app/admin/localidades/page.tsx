@@ -81,6 +81,15 @@ export default async function AdminLocalidadesPage({
         </OpButton>
       </form>
 
+      <p className="text-sm">
+        <Link
+          href={`/admin/localidades/pendientes?provincia=${provinceCode}`}
+          className="text-ln-op-azul underline underline-offset-4"
+        >
+          Lugares sin resolver de {province?.name ?? provinceCode}
+        </Link>
+      </p>
+
       <OpCard>
         <OpCardHead
           title={`${province?.name ?? provinceCode}: ${units.length} ${pluralizeEs(units.length, "unidad")}, ${drafts} sin confirmar`}
