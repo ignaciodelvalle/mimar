@@ -197,8 +197,9 @@ async function findProfileByEmail(email: string): Promise<{ id: string } | null>
 // -----------------------------------
 // ParsedPet has no distinguishing_features, no jurisdiction_country and no
 // notion of an organization holding the animal — registerPet always writes an
-// OWNER ownership. Shelter custody and curated identity trim are applied as
-// post-registration cache updates, the same dual-write discipline the
+// OWNER ownership. Shelter custody is a custody_transferred hand-off on the
+// spine with the rows it implies (handSpinePetToShelter); curated identity trim
+// is a post-registration cache update, the same dual-write discipline the
 // production writers use.
 // ---------------------------------------------------------------------------
 
@@ -312,6 +313,71 @@ async function registerSpinePet(spec: SpinePetSpec): Promise<string | null> {
   return (result.value as NonNullable<typeof result.value>).petId;
 }
 
+/**
+ * Hand a pet registerSpinePet just created from its registering operator to the
+ * refuge, on the spine. registerPet always opens an OWNER interval for the
+ * operator (pet_registered custody_kind owner); the org's custody has to be a
+ * fact too, or the shelter_custody row is one no event explains and
+ * lint:holder-drift fails on it. Same shape seed-panorama gives its shelter
+ * pets: a custody_transferred owner → shelter_custody (citizen_to_org_handoff)
+ * an hour after the registration, ending the operator's row and opening the
+ * org's at that instant. The intake asiento is dated at the hand-off too, so
+ * the replay opens the org's custody once, whichever of the two it reads first.
+ *
+ * Returns the hand-off instant.
+ */
+async function handSpinePetToShelter(args: {
+  petId: string;
+  orgId: string;
+  operatorId: string;
+  registeredAt: Date;
+}): Promise<Date> {
+  const { petId, orgId, operatorId, registeredAt } = args;
+  const handoffAt = new Date(registeredAt.getTime() + 3_600_000);
+
+  await db.insert(schemas.petEvents).values({
+    petId,
+    eventType: "custody_transferred",
+    occurredAt: handoffAt,
+    recordedByUserId: operatorId,
+    authorRole: "shelter",
+    authorOrganizationId: orgId,
+    authorVerified: true,
+    payload: validateEventPayload("custody_transferred", {
+      from_user_id: operatorId,
+      from_organization_id: null,
+      to_user_id: null,
+      to_organization_id: orgId,
+      from_role: "owner",
+      to_role: "shelter_custody",
+      reason: "citizen_to_org_handoff",
+      foster_ended_event_id: null,
+      notes: null,
+    }),
+  });
+
+  // End the operator's owner row BEFORE opening the org's, so the
+  // one-active-owner-per-pet index never sees two live holders.
+  await db
+    .update(schemas.ownerships)
+    .set({ endedAt: handoffAt })
+    .where(
+      and(
+        eq(schemas.ownerships.petId, petId),
+        eq(schemas.ownerships.role, "owner"),
+        isNull(schemas.ownerships.endedAt),
+      ),
+    );
+  await db.insert(schemas.ownerships).values({
+    petId,
+    ownerOrganizationId: orgId,
+    role: "shelter_custody",
+    startedAt: handoffAt,
+  });
+
+  return handoffAt;
+}
+
 // ---------------------------------------------------------------------------
 // 5. Asset 1 — Argo (stray dog at Patitas del Norte)
 // ---------------------------------------------------------------------------
@@ -396,17 +462,19 @@ async function seedArgo(): Promise<void> {
     .where(eq(schemas.pets.id, petId));
 
   // Shelter custody: registerPet always writes an OWNER ownership (it has no
-  // notion of an organization holding an animal), so the row is re-pointed at
-  // the refuge — the same correction seed-panorama applies to its shelter pets.
-  await db
-    .update(schemas.ownerships)
-    .set({ ownerUserId: null, ownerOrganizationId: orgId, role: "shelter_custody" })
-    .where(eq(schemas.ownerships.petId, petId));
+  // notion of an organization holding an animal), so the refuge takes him over
+  // on the spine — see handSpinePetToShelter.
+  const handoffAt = await handSpinePetToShelter({
+    petId,
+    orgId,
+    operatorId: operator.id,
+    registeredAt: intakeDate,
+  });
 
   const events = [
     {
       eventType: "shelter_intake_recorded",
-      occurredAt: intakeDate,
+      occurredAt: handoffAt,
       payload: {
         intake_kind: "stray",
         location_found: "Av. Santa Fe y Coronel Díaz, Palermo",
@@ -1208,18 +1276,20 @@ async function seedAdoptanteMora(): Promise<void> {
   });
   if (!petId) return;
 
-  // Shelter custody: same correction as Argo — registerPet always writes an
-  // OWNER ownership, so the row is re-pointed at the refuge.
-  await db
-    .update(schemas.ownerships)
-    .set({ ownerUserId: null, ownerOrganizationId: orgId, role: "shelter_custody" })
-    .where(eq(schemas.ownerships.petId, petId));
+  // Shelter custody: same hand-off as Argo — registerPet always writes an
+  // OWNER ownership, so the refuge takes her over on the spine.
+  const handoffAt = await handSpinePetToShelter({
+    petId,
+    orgId,
+    operatorId: operator.id,
+    registeredAt: intakeDate,
+  });
 
   // Intake asiento.
   await db.insert(schemas.petEvents).values({
     petId,
     eventType: "shelter_intake_recorded",
-    occurredAt: intakeDate,
+    occurredAt: handoffAt,
     authorRole: "shelter",
     authorOrganizationId: orgId,
     authorVerified: true,
