@@ -117,7 +117,11 @@ const canon: Canon = loadCanon(REPO_ROOT);
 // review of the same change): every live CHECK on the place and authority
 // tables is declared in db/schema.ts, because db:bootstrap pushes it before
 // replaying migrations. Same reason: its canon row lands with stage E.
-const UNMAPPED_COUNT = 14;
+//
+// 14 -> 15 on 2026-09-26: `__tests__/place-parity-sweep.test.ts` (stage D7 of
+// the same change): the flip gate for the scope consumer — name path vs id
+// path per govt user, every disagreement classified. Same reason.
+const UNMAPPED_COUNT = 15;
 
 /**
  * Enforcement the filename glob below cannot see.

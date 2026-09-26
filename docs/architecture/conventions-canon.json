@@ -998,7 +998,7 @@
       "enforcer": [
         "scripts/check-node-version.ts:87",
         "scripts/check-node-version.ts:171-219",
-        "package.json:193-195"
+        "package.json:194-196"
       ],
       "enforcementKind": "lint-script",
       "wired": "verify",
@@ -9959,6 +9959,12 @@
       "id": "__tests__/schema-check-parity.test.ts",
       "path": "__tests__/schema-check-parity.test.ts",
       "note": "Added 2026-09-26 with the stage C review of the SDD change localidades-por-id. db:bootstrap pushes db/schema.ts before replaying db/migrations, so on a fresh database a migration's CREATE TABLE IF NOT EXISTS is skipped for every table schema.ts declares, and a CHECK written only in the migration never lands. The fence compares, for the authority-unit and place tables (0250, 0253/0254), every live CHECK name with the ones db/schema.ts declares, and pins place_repair_preimages (0251) as migration-only, so it cannot be moved into schema.ts without its CHECKs. Its canon row lands with the change's stage E, alongside the other localidades-por-id fences listed here."
+    },
+    {
+      "kind": "fence-test",
+      "id": "__tests__/place-parity-sweep.test.ts",
+      "path": "__tests__/place-parity-sweep.test.ts",
+      "note": "Added 2026-09-26 with stage D (D7) of the SDD change localidades-por-id. It pins the flip gate for the scope consumer: lib/place/parity-sweep.ts asks the name path and the id path which pets, cases and welfare reports each govt user sees, through the same jurisdictionPairClause production uses, and classifies every disagreement (homonym split, unresolved to province, OTHER); a user with only legacy grants never disagrees, and an unexplained drop fails the gate. Its canon row lands with the change's stage E, alongside the other localidades-por-id fences listed here."
     }
   ]
 }
