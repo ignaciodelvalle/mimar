@@ -3,6 +3,7 @@
 // Mirrors finalize-adoption.test.ts's fake-repo pattern.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ADOPTER_NO_LONGER_HOLDS_ERROR, ReversalRefused } from "../../domain/reversal-rules";
 import type { AdoptionRepository } from "../../infrastructure/adoption-repository";
 import { reverseAdoption } from "../reverse-adoption";
 
@@ -45,6 +46,7 @@ function makeFakeRepo(
   const reversible = options.reversible ?? makeReversible();
 
   return {
+    acquirePetAdvisoryLock: vi.fn().mockResolvedValue(undefined),
     findPetByToken: vi.fn().mockResolvedValue(pet),
     findReversibleAdoption: vi.fn().mockResolvedValue(reversible),
     insertAdoptionReversed: vi.fn().mockResolvedValue({ eventId: "evt-reversed-1" }),
@@ -201,6 +203,64 @@ describe("reverseAdoption", () => {
     const error = (result as { ok: false; error: string }).error;
     expect(error).toMatch(/custodia de una organización/);
     expect(error).not.toMatch(/Failed query/);
+  });
+
+  // ---- Audit K, W1: the gate is re-run under the pet lock ----------------
+
+  it("takes the pet advisory lock inside the transaction, BEFORE re-running the gate on the tx", async () => {
+    const repo = makeFakeRepo();
+    const order: string[] = [];
+    (repo.acquirePetAdvisoryLock as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      order.push("lock");
+    });
+    (repo.findReversibleAdoption as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_petId: string, _orgId: string, tx?: unknown) => {
+        order.push(tx ? "gate:tx" : "gate:pre");
+        return makeReversible();
+      },
+    );
+    (repo.insertAdoptionReversed as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      order.push("write");
+      return { eventId: "evt-reversed-1" };
+    });
+
+    const result = await reverseAdoption(baseInput, { repo, actor, transaction: fakeTransaction });
+    expect(result).toMatchObject({ ok: true });
+    expect(repo.acquirePetAdvisoryLock).toHaveBeenCalledWith("pet-1", "fake-tx");
+    expect(repo.findReversibleAdoption).toHaveBeenLastCalledWith("pet-1", "org-1", "fake-tx");
+    expect(order).toEqual(["gate:pre", "lock", "gate:tx", "write"]);
+  });
+
+  it("refuses with the gate's own sentence when custody moved between the pre-read and the lock", async () => {
+    const repo = makeFakeRepo();
+    (repo.findReversibleAdoption as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(makeReversible())
+      .mockResolvedValueOnce({ ok: false, error: ADOPTER_NO_LONGER_HOLDS_ERROR });
+
+    const result = await reverseAdoption(baseInput, { repo, actor, transaction: fakeTransaction });
+    expect(result).toEqual({ ok: false, error: ADOPTER_NO_LONGER_HOLDS_ERROR });
+    expect(repo.insertAdoptionReversed).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the guarded close's refusal verbatim, not as an internal failure", async () => {
+    const repo = makeFakeRepo();
+    (repo.insertAdoptionReversed as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new ReversalRefused(ADOPTER_NO_LONGER_HOLDS_ERROR),
+    );
+    const result = await reverseAdoption(baseInput, { repo, actor, transaction: fakeTransaction });
+    expect(result).toEqual({ ok: false, error: ADOPTER_NO_LONGER_HOLDS_ERROR });
+  });
+
+  it("writes with the ownership row read UNDER the lock, not the pre-read one", async () => {
+    const repo = makeFakeRepo();
+    (repo.findReversibleAdoption as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(makeReversible({ adopterOwnershipId: "own-stale" }))
+      .mockResolvedValueOnce(makeReversible({ adopterOwnershipId: "own-locked" }));
+    await reverseAdoption(baseInput, { repo, actor, transaction: fakeTransaction });
+    expect(repo.insertAdoptionReversed).toHaveBeenCalledWith(
+      expect.objectContaining({ adopterOwnershipId: "own-locked" }),
+      "fake-tx",
+    );
   });
 
   // ---- Notifications (best-effort, returned not flushed) -----------------

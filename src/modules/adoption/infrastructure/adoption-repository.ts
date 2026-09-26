@@ -18,6 +18,7 @@ import {
 import { ORG_CUSTODY_TAKEN_ERROR, findLiveOrgShelterCustody } from "@/lib/infra/org-custody";
 import { unerasedPetByToken } from "@/lib/infra/public-pet-lookup";
 
+import { ADOPTER_NO_LONGER_HOLDS_ERROR, ReversalRefused } from "../domain/reversal-rules";
 import { consultAdopterAccountByDni } from "./adopter-dni-consult";
 import {
   type InsertAdoptionFinalizedArgs,
@@ -1250,7 +1251,7 @@ export const AdoptionRepository = {
       return { ok: false, error: "Esta adopción ya fue revertida." };
     }
 
-    const [ownerRow] = await client
+    const ownerQuery = client
       .select({ id: ownerships.id, ownerUserId: ownerships.ownerUserId, petName: pets.name })
       .from(ownerships)
       .innerJoin(pets, eq(pets.id, ownerships.petId))
@@ -1258,17 +1259,19 @@ export const AdoptionRepository = {
         and(eq(ownerships.petId, petId), eq(ownerships.role, "owner"), isNull(ownerships.endedAt)),
       )
       .limit(1);
+    // Inside the reversal transaction the adopter's row is read FOR UPDATE (of
+    // the ownership row only, never the joined pet): the answer is the one the
+    // guarded close below acts on, and a hand-off that closes it concurrently
+    // has to wait for this transaction instead of slipping in between. Outside
+    // a transaction (the ficha's UI gate) there is nothing to hold a lock for.
+    const [ownerRow] = tx ? await ownerQuery.for("update", { of: ownerships }) : await ownerQuery;
 
     if (
       !ownerRow ||
       !finalizeEvent.adopterUserId ||
       ownerRow.ownerUserId !== finalizeEvent.adopterUserId
     ) {
-      return {
-        ok: false,
-        error:
-          "La mascota ya no está bajo la custodia del adoptante de esta adopción — no se puede revertir.",
-      };
+      return { ok: false, error: ADOPTER_NO_LONGER_HOLDS_ERROR };
     }
 
     // One live ORG custody per pet (0195). The reversal restores THIS org's
@@ -1311,8 +1314,26 @@ export const AdoptionRepository = {
     const { petId, userId, orgId, orgVerified, adopterOwnershipId, finalizeEventId, reason, now } =
       args;
 
-    // Close the adopter's owner ownership row.
-    await tx.update(ownerships).set({ endedAt: now }).where(eq(ownerships.id, adopterOwnershipId));
+    // Close the adopter's owner ownership row — ONLY while it is still live
+    // and still an owner row (audit K, W1). Keyed on the id alone, a row some
+    // other hand-off had already closed was re-closed here: its `ended_at`
+    // rewritten to this instant, and a shelter_custody opened over whoever
+    // holds the pet now. Zero rows matched means the adopter no longer holds
+    // the pet, and the whole reversal is refused.
+    const closedAdopterRows = await tx
+      .update(ownerships)
+      .set({ endedAt: now })
+      .where(
+        and(
+          eq(ownerships.id, adopterOwnershipId),
+          eq(ownerships.role, "owner"),
+          isNull(ownerships.endedAt),
+        ),
+      )
+      .returning({ id: ownerships.id });
+    if (closedAdopterRows.length === 0) {
+      throw new ReversalRefused(ADOPTER_NO_LONGER_HOLDS_ERROR);
+    }
 
     // Restore shelter_custody ownership to the finalizing org.
     await tx.insert(ownerships).values({

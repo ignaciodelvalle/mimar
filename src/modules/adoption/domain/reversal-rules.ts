@@ -27,3 +27,22 @@ export function validateReversalInput(input: ReversalInput): ReversalValidationR
   }
   return { ok: true };
 }
+
+/**
+ * The sentence the org member reads when custody is no longer with the adopter
+ * of the adoption they are trying to reverse. One constant for the two places
+ * that can discover it: the reversibility gate (a read) and the guarded close
+ * of the adopter's owner row inside the reversal transaction (a write that
+ * matched nothing because another hand-off closed that row first).
+ */
+export const ADOPTER_NO_LONGER_HOLDS_ERROR =
+  "La mascota ya no está bajo la custodia del adoptante de esta adopción — no se puede revertir.";
+
+/**
+ * A refusal decided INSIDE the reversal transaction. The use-case surfaces its
+ * message verbatim instead of wrapping it in "No se pudo revertir…": it is an
+ * answer about the pet, not an internal failure, and retrying cannot change it.
+ */
+export class ReversalRefused extends Error {
+  readonly name = "ReversalRefused";
+}
