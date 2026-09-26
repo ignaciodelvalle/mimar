@@ -126,6 +126,7 @@ async function viewerReadsDecomiso(
       viewer.jurisdictions,
       detail.jurisdictionProvince,
       detail.jurisdictionLocality,
+      detail.localityId,
     );
   }
   return detail.receiverOrganization

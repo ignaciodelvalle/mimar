@@ -38,6 +38,8 @@ export async function rejectServiceOfferingForAuthority(
       offering: serviceOfferings,
       orgProvince: organizations.jurisdictionProvince,
       orgLocality: organizations.jurisdictionLocality,
+      // The org's catalogue row: the per-row gate compares rows on the id path.
+      orgLocalityId: organizations.localityId,
       // The notification CTA needs the org's PUBLIC token: /org/[orgToken] does
       // not resolve a uuid. `organizations` is already joined, so it is free.
       orgPublicToken: organizations.publicToken,
@@ -47,13 +49,13 @@ export async function rejectServiceOfferingForAuthority(
     .where(eq(serviceOfferings.publicToken, publicToken))
     .limit(1);
   if (!row) return { error: "Servicio no encontrado." };
-  const { offering, orgProvince, orgLocality, orgPublicToken } = row;
+  const { offering, orgProvince, orgLocality, orgLocalityId, orgPublicToken } = row;
 
   // Jurisdiction enforcement (before the status check, so an out-of-scope govt
   // learns nothing about the offering's state). Admin is universal.
   if (
     authority.role === "govt" &&
-    !jurisdictionScopeContains(authority.jurisdictions, orgProvince, orgLocality)
+    !jurisdictionScopeContains(authority.jurisdictions, orgProvince, orgLocality, orgLocalityId)
   ) {
     return { error: "Este servicio no está en tu jurisdicción asignada." };
   }

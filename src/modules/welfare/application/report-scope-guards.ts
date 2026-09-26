@@ -32,6 +32,9 @@ function inScope(row: WelfareReport, actor: ScopeActor, jurisdictions: Jurisdict
     jurisdictions,
     row.jurisdictionProvince,
     row.jurisdictionLocality,
+    // The report's catalogue row: on the id path a unit grant compares rows
+    // (localidades-por-id), so no mutation reaches a homonym's report.
+    row.localityId,
   );
 }
 

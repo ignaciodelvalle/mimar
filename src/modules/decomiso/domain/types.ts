@@ -38,6 +38,8 @@ export type GovtOrg = {
   displayName: string;
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
+  /** The org's catalogue row (localidades-por-id); absent = name rule. */
+  localityId?: string | null;
 };
 
 export type ReceiverOrg = {

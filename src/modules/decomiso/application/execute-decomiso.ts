@@ -169,6 +169,7 @@ export async function validateExecuteDecomiso(
         session.jurisdictions,
         pet.jurisdictionProvince,
         pet.jurisdictionLocality,
+        pet.localityId,
       );
       if (!inScope) {
         return { ok: false, error: "Esta mascota no está en tu jurisdicción asignada." };
@@ -193,6 +194,7 @@ export async function validateExecuteDecomiso(
         session.jurisdictions,
         govtOrg.jurisdictionProvince,
         govtOrg.jurisdictionLocality,
+        govtOrg.localityId,
       );
       if (!inScope) {
         return {

@@ -270,6 +270,8 @@ export async function professionalCloseObservation(
       actor.jurisdictions,
       pet.jurisdictionProvince,
       pet.jurisdictionLocality,
+      // The home's catalogue row (localidades-por-id): a homonym's pet is out.
+      pet.localityId,
     );
     if (!inScope) {
       return { ok: false, error: "Esta mascota no está dentro de tu cobertura asignada." };

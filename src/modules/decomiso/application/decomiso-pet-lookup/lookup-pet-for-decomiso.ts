@@ -43,6 +43,7 @@ export async function lookupPetForDecomiso(
       status: pets.status,
       jurisdictionProvince: pets.jurisdictionProvince,
       jurisdictionLocality: pets.jurisdictionLocality,
+      localityId: pets.localityId,
     })
     .from(pets)
     .where(eq(pets.publicToken, trimmed))
@@ -70,6 +71,9 @@ export async function lookupPetForDecomiso(
       session.jurisdictions,
       pet.jurisdictionProvince,
       pet.jurisdictionLocality,
+      // The row's catalogue row: on the id path a unit grant compares rows
+      // (localidades-por-id), so a homonym's record is out of scope.
+      pet.localityId,
     );
     if (!inScope) {
       return {

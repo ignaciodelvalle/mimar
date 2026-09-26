@@ -48,6 +48,7 @@ export async function revokeOrgVerificationForAuthority(
       verified: organizations.verified,
       jurisdictionProvince: organizations.jurisdictionProvince,
       jurisdictionLocality: organizations.jurisdictionLocality,
+      localityId: organizations.localityId,
       createdByUserId: organizations.createdByUserId,
     })
     .from(organizations)
@@ -66,6 +67,7 @@ export async function revokeOrgVerificationForAuthority(
     type: "org_verification",
     province: org.jurisdictionProvince ?? "",
     locality: org.jurisdictionLocality ?? "",
+    localityId: org.localityId,
   };
   if (!canRevoke(auth.profile, target, auth.jurisdictions)) {
     return { error: "CAPABILITY_DENIED" };

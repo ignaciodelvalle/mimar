@@ -47,6 +47,8 @@ export const PET_OBSERVATION_SELECT = {
   rabiesObservationStatus: pets.rabiesObservationStatus,
   jurisdictionProvince: pets.jurisdictionProvince,
   jurisdictionLocality: pets.jurisdictionLocality,
+  // The per-row gate compares catalogue rows on the id path (localidades-por-id).
+  localityId: pets.localityId,
 } as const;
 
 // ---------------------------------------------------------------------------

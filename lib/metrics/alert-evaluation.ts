@@ -115,10 +115,12 @@ export function intersectWithCallerScope(
   subProvince: string | null | undefined,
   subLocality: string | null | undefined,
   callerJurisdictions: readonly DashboardJurisdiction[],
+  /** The subscription's catalogue row (localidades-por-id); absent = name rule. */
+  subLocalityId?: string | null,
 ): DashboardJurisdiction[] {
   if (!subProvince) return [...callerJurisdictions];
   const locality = subLocality ?? "";
-  if (jurisdictionScopeContains(callerJurisdictions, subProvince, locality)) {
+  if (jurisdictionScopeContains(callerJurisdictions, subProvince, locality, subLocalityId)) {
     return [{ province: subProvince, locality }];
   }
   if (isWholeProvinceLocality(subProvince, locality)) {
@@ -200,6 +202,7 @@ export async function evaluateAlertSubscriptions(
         sub.jurisdictionProvince,
         sub.jurisdictionLocality,
         callerJurisdictions,
+        sub.localityId,
       );
       ctx = scoped.length > 0 ? buildProjectionContext(baseActor, scoped, period) : null;
     }

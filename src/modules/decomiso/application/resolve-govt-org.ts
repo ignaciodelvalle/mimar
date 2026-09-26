@@ -36,6 +36,7 @@ export async function resolveGovtOrgForUser(userId: string): Promise<{
   displayName: string;
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
+  localityId: string | null;
 } | null> {
   const [row] = await db
     .select({
@@ -43,6 +44,7 @@ export async function resolveGovtOrgForUser(userId: string): Promise<{
       displayName: organizations.displayName,
       jurisdictionProvince: organizations.jurisdictionProvince,
       jurisdictionLocality: organizations.jurisdictionLocality,
+      localityId: organizations.localityId,
     })
     .from(organizationMemberships)
     .innerJoin(organizations, eq(organizations.id, organizationMemberships.organizationId))

@@ -38,7 +38,10 @@ export const GOVT_DECIDABLE_TYPES: readonly ApprovalRequestType[] = [
 // appear in their queue under spec §6.
 export function canDecideRequest(
   profile: { role: "admin" | "govt" },
-  request: Pick<ApprovalRequest, "type" | "jurisdictionProvince" | "jurisdictionLocality">,
+  request: Pick<ApprovalRequest, "type" | "jurisdictionProvince" | "jurisdictionLocality"> & {
+    /** The request's catalogue row (localidades-por-id); absent = name rule. */
+    localityId?: string | null;
+  },
   jurisdictions: readonly AdminOrGovtJurisdiction[],
 ): boolean {
   if (profile.role === "admin") return true;
@@ -54,6 +57,7 @@ export function canDecideRequest(
     jurisdictions,
     request.jurisdictionProvince,
     request.jurisdictionLocality,
+    request.localityId,
   );
 }
 

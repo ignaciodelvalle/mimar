@@ -78,6 +78,9 @@ export default async function GobServicioDetailPage({
       jurisdictions,
       offering.jurisdictionProvince,
       offering.jurisdictionLocality,
+      // The row's catalogue row: on the id path a unit grant compares rows
+      // (localidades-por-id), so a homonym's record does not open by URL.
+      offering.localityId,
     );
     if (!covers) notFound();
   }

@@ -69,6 +69,9 @@ export default async function DisputeDetailPage({
       jurisdictions,
       dispute.jurisdictionProvince,
       dispute.jurisdictionLocality,
+      // The row's catalogue row: on the id path a unit grant compares rows
+      // (localidades-por-id), so a homonym's record does not open by URL.
+      dispute.localityId,
     );
     if (!inScope) notFound();
   }

@@ -105,6 +105,7 @@ export default async function NuevoDecomisoPage({ searchParams }: PageProps) {
               referenceCode: welfareReports.referenceCode,
               jurisdictionProvince: welfareReports.jurisdictionProvince,
               jurisdictionLocality: welfareReports.jurisdictionLocality,
+              localityId: welfareReports.localityId,
             })
             .from(welfareReports)
             .where(eq(welfareReports.id, welfareReportId))
@@ -118,6 +119,7 @@ export default async function NuevoDecomisoPage({ searchParams }: PageProps) {
         jurisdictions,
         linkedWelfareReport.jurisdictionProvince,
         linkedWelfareReport.jurisdictionLocality,
+        linkedWelfareReport.localityId,
       ))
       ? linkedWelfareReport.referenceCode
       : null;

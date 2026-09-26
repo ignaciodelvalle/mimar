@@ -67,7 +67,7 @@ type Session = {
 
 function isGovtInScope(
   jurisdictions: { province: string; locality: string }[],
-  dispute: Pick<CustodyDispute, "jurisdictionProvince" | "jurisdictionLocality">,
+  dispute: Pick<CustodyDispute, "jurisdictionProvince" | "jurisdictionLocality" | "localityId">,
 ): boolean {
   // Subsumption-aware: a whole-province assignment (e.g. whole-CABA) governs
   // every barrio in it; barrio assignments stay exact (never widens security).
@@ -75,6 +75,9 @@ function isGovtInScope(
     jurisdictions,
     dispute.jurisdictionProvince,
     dispute.jurisdictionLocality,
+    // The dispute's catalogue row: on the id path a unit grant compares rows
+    // (localidades-por-id), so no action reaches a homonym's dispute.
+    dispute.localityId,
   );
 }
 

@@ -58,6 +58,7 @@ const GOVT_WELFARE_MODERATION_SELECT = {
   locationAddress: welfareReports.locationAddress,
   jurisdictionProvince: welfareReports.jurisdictionProvince,
   jurisdictionLocality: welfareReports.jurisdictionLocality,
+  localityId: welfareReports.localityId,
   locationLat: welfareReports.locationLat,
   locationLng: welfareReports.locationLng,
   occurredAt: welfareReports.occurredAt,
@@ -117,6 +118,9 @@ export default async function GobModeracionDetailPage({
       jurisdictions,
       report.jurisdictionProvince,
       report.jurisdictionLocality,
+      // The row's catalogue row: on the id path a unit grant compares rows
+      // (localidades-por-id), so a homonym's record does not open by URL.
+      report.localityId,
     );
     if (!inScope) notFound();
   }

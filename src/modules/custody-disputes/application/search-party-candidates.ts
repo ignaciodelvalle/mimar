@@ -50,12 +50,15 @@ const MIN_QUERY_LENGTH = 2;
 
 function isGovtInScope(
   jurisdictions: { province: string; locality: string }[],
-  dispute: Pick<CustodyDispute, "jurisdictionProvince" | "jurisdictionLocality">,
+  dispute: Pick<CustodyDispute, "jurisdictionProvince" | "jurisdictionLocality" | "localityId">,
 ): boolean {
   return jurisdictionScopeContains(
     jurisdictions,
     dispute.jurisdictionProvince,
     dispute.jurisdictionLocality,
+    // The dispute's catalogue row: on the id path a unit grant compares rows
+    // (localidades-por-id), so no action reaches a homonym's dispute.
+    dispute.localityId,
   );
 }
 
@@ -74,6 +77,7 @@ export async function searchPartyCandidatesUseCase(
     .select({
       jurisdictionProvince: custodyDisputes.jurisdictionProvince,
       jurisdictionLocality: custodyDisputes.jurisdictionLocality,
+      localityId: custodyDisputes.localityId,
     })
     .from(custodyDisputes)
     .where(eq(custodyDisputes.publicToken, disputeToken))

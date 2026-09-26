@@ -39,6 +39,7 @@ export async function proposeOrgVerificationForOrg(
       verified: organizations.verified,
       jurisdictionProvince: organizations.jurisdictionProvince,
       jurisdictionLocality: organizations.jurisdictionLocality,
+      localityId: organizations.localityId,
       createdByUserId: organizations.createdByUserId,
     })
     .from(organizations)
@@ -47,7 +48,14 @@ export async function proposeOrgVerificationForOrg(
   if (!org) return { error: "Organización no encontrada." };
   // Scope first, so an out-of-mandate govt learns nothing about the org's
   // state. A govt facing an org with no jurisdiction fails closed here.
-  if (!canProposeInJurisdiction(auth, org.jurisdictionProvince, org.jurisdictionLocality)) {
+  if (
+    !canProposeInJurisdiction(
+      auth,
+      org.jurisdictionProvince,
+      org.jurisdictionLocality,
+      org.localityId,
+    )
+  ) {
     return { error: OUT_OF_JURISDICTION_PROPOSAL_ERROR };
   }
   if (org.verified) return { error: "Esta organización ya está verificada." };

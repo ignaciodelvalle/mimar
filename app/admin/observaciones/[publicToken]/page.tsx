@@ -50,6 +50,9 @@ export default async function ObservationDetailPage({
       jurisdictions,
       pet.jurisdictionProvince,
       pet.jurisdictionLocality,
+      // The row's catalogue row: on the id path a unit grant compares rows
+      // (localidades-por-id), so a homonym's record does not open by URL.
+      pet.localityId,
     );
     if (!inScope) notFound();
   }

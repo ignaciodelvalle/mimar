@@ -35,6 +35,8 @@ export type RevocationTarget =
       type: "org_verification";
       province: string;
       locality: string;
+      /** The org's catalogue row (localidades-por-id); absent = name rule. */
+      localityId?: string | null;
     }
   | {
       type: "govt_locality";
@@ -93,7 +95,12 @@ export function canRevoke(
   }
 
   if (target.type === "org_verification") {
-    return jurisdictionScopeContains(jurisdictions, target.province, target.locality);
+    return jurisdictionScopeContains(
+      jurisdictions,
+      target.province,
+      target.locality,
+      target.localityId,
+    );
   }
 
   if (target.type === "govt_locality") {

@@ -41,6 +41,8 @@ export type DecomisoActorScope = {
 export type CaseJurisdiction = {
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
+  /** The case's catalogue row (localidades-por-id); absent = name rule. */
+  localityId?: string | null;
 };
 
 /**
@@ -60,5 +62,6 @@ export function actorCoversCaseJurisdiction(
     actor.jurisdictions,
     caseRow.jurisdictionProvince,
     caseRow.jurisdictionLocality,
+    caseRow.localityId,
   );
 }

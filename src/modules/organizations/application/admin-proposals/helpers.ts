@@ -74,10 +74,12 @@ export function canProposeInJurisdiction(
   auth: ActorAuthority,
   province: string | null | undefined,
   locality: string | null | undefined,
+  /** The subject's catalogue row (localidades-por-id); absent = name rule. */
+  localityId?: string | null,
 ): boolean {
   if (auth.profile.role === "admin") return true;
   if (auth.profile.role !== "govt") return false;
-  return jurisdictionScopeContains(auth.jurisdictions, province, locality);
+  return jurisdictionScopeContains(auth.jurisdictions, province, locality, localityId);
 }
 
 export const OUT_OF_JURISDICTION_PROPOSAL_ERROR =

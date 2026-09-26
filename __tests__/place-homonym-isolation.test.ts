@@ -39,12 +39,15 @@ import {
   type ApprovalJurisdiction,
   findAuthoritiesForJurisdiction,
 } from "@/lib/infra/approval-routing";
+import { canDecideRequest } from "@/lib/infra/approval-scope";
 import { canReadCase } from "@/lib/infra/case-access";
 import type { CaseDetail } from "@/lib/infra/case-queries";
 import { loadOperatorPetSubView } from "@/lib/infra/gob-pet-subview";
 import { loadWelfareInspectorDetail } from "@/lib/infra/welfare-inspector-detail";
 import { jurisdictionPairClause } from "@/lib/metrics/scope";
 import { scopedGrants } from "@/lib/place/scope";
+import { loadAndVerifyScope } from "@/src/modules/welfare/application/report-scope-guards";
+import { WelfareRepository } from "@/src/modules/welfare/infrastructure/welfare-repository";
 import { withMutationOverride } from "./_helpers/db-overrides";
 import { createFreshTestUser, deleteTestUser } from "./_helpers/fresh-test-user";
 
@@ -340,5 +343,40 @@ describe("per-row gates (addendum c)", () => {
     };
     expect((await open(BRAGADO_OPERATOR)).ok).toBe(false);
     expect((await open(ALBERTI_OPERATOR)).ok).toBe(true);
+  });
+
+  // Stage D verify C1: the MUTATION guards too. Every welfare operator action
+  // (assign, triage, close, derive, MPF) goes through loadAndVerifyScope, and a
+  // request is decided through canDecideRequest; neither may act on a
+  // homonym's row by its public code.
+  it("the welfare mutation guard: Bragado's operator cannot act on Alberti's report", async () => {
+    const guard = async (email: string) => {
+      const id = operatorIdByEmail.get(email) as string;
+      return loadAndVerifyScope(
+        new WelfareRepository(),
+        rowReportId,
+        { id, role: "govt" },
+        await idPathJurisdictions(id),
+      );
+    };
+    expect("row" in (await guard(BRAGADO_OPERATOR))).toBe(false);
+    expect("row" in (await guard(ALBERTI_OPERATOR))).toBe(true);
+  });
+
+  it("the approval decision guard: a homonym's request is not Bragado's to decide", async () => {
+    const request = {
+      type: "organization_verification" as const,
+      jurisdictionProvince: "Buenos Aires",
+      jurisdictionLocality: "Mechita",
+      localityId: rowIdByIndec.get(MECHITA_ALBERTI) ?? null,
+    };
+    const decide = async (email: string) =>
+      canDecideRequest(
+        { role: "govt" },
+        request,
+        await idPathJurisdictions(operatorIdByEmail.get(email) as string),
+      );
+    expect(await decide(BRAGADO_OPERATOR)).toBe(false);
+    expect(await decide(ALBERTI_OPERATOR)).toBe(true);
   });
 });
