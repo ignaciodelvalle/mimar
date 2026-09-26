@@ -46,6 +46,9 @@ const ALBERTI_OPERATOR = "homonym-iso-alberti@dim-test.local";
 const BRAGADO_OPERATOR = "homonym-iso-bragado@dim-test.local";
 
 const rowIdByIndec = new Map<string, string>();
+// Units this file confirmed (they were drafts): put back to draft in afterAll.
+// Only a CONFIRMED unit governs anything (stage D review W1).
+const unitsConfirmedHere = new Set<string>();
 const operatorIdByEmail = new Map<string, string>();
 
 async function govtOperator(email: string, indecId: string): Promise<string> {
@@ -76,6 +79,12 @@ async function govtOperator(email: string, indecId: string): Promise<string> {
     unit,
     `Mechita ${indecId} must be in a municipal unit (seed:authority-units)`,
   ).toBeTruthy();
+  const confirmedNow = (await db.execute(sql`
+    update public.authority_units set status = 'confirmed', confirmed_at = now()
+     where id = ${unit?.unitId}::uuid and status = 'draft'
+    returning id::text as id
+  `)) as unknown as Array<{ id: string }>;
+  for (const r of confirmedNow) unitsConfirmedHere.add(r.id);
   await db.insert(govtAssignments).values({
     userId: id,
     jurisdictionProvince: "Buenos Aires",
@@ -102,6 +111,12 @@ afterAll(async () => {
   for (const [email, id] of operatorIdByEmail) {
     await db.delete(govtAssignments).where(eq(govtAssignments.userId, id));
     await deleteTestUser(adminSdk, db, email);
+  }
+  for (const id of unitsConfirmedHere) {
+    await db.execute(sql`
+      update public.authority_units set status = 'draft', confirmed_at = null, confirmed_by = null
+       where id = ${id}::uuid
+    `);
   }
 });
 

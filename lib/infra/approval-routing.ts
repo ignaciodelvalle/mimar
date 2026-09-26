@@ -93,7 +93,8 @@ export type ApprovalRoutingContext = {
 // public.authority_units_for_place: the provincial unit of the place's
 // province, plus every unit with an ACTIVE membership of its catalogue row. A
 // homonym's unit never does, and an unresolved place (localityId null) reaches
-// only the provincial unit (P1/P3). A LEGACY grant (authority_unit_id NULL)
+// only the provincial unit (P1/P3). Only a CONFIRMED unit pages anyone: a
+// draft is the seed's proposal (stage D review W1). A LEGACY grant (authority_unit_id NULL)
 // keeps the name match below, the same SQL on both paths. In `shadow` the name
 // path is served and any disagreement is recorded (lib/place/shadow-sink.ts).
 export async function findAuthoritiesForJurisdiction(
@@ -155,7 +156,8 @@ async function govtsById(jurisdiction: ApprovalJurisdiction, exec: Executor): Pr
                AND ${govtAssignments.jurisdictionProvince} = ${jurisdiction.province}
                AND ${inArray(govtAssignments.jurisdictionLocality, coveringLocalities)})
              OR ${govtAssignments.authorityUnitId} IN (
-               SELECT unit_id FROM public.authority_units_for_place(${localityId}::uuid, ${provinceCode})))`,
+               SELECT f.unit_id FROM public.authority_units_for_place(${localityId}::uuid, ${provinceCode}) f
+                 JOIN public.authority_units u ON u.id = f.unit_id AND u.status = 'confirmed'))`,
       ),
     );
   return Array.from(new Set(rows.map((r) => r.userId)));

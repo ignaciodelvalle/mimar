@@ -56,7 +56,7 @@ async function localityId(tx: Tx, indecId: string): Promise<string> {
   ).id;
 }
 
-async function municipalUnitOf(tx: Tx, locality: string): Promise<string> {
+async function draftMunicipalUnitOf(tx: Tx, locality: string): Promise<string> {
   return (
     await one<{ unit_id: string }>(
       tx,
@@ -66,7 +66,7 @@ async function municipalUnitOf(tx: Tx, locality: string): Promise<string> {
   ).unit_id;
 }
 
-async function provincialUnit(tx: Tx, code: string): Promise<string> {
+async function draftProvincialUnit(tx: Tx, code: string): Promise<string> {
   return (
     await one<{ id: string }>(
       tx,
@@ -111,6 +111,28 @@ async function scopeOf(tx: Tx, user: string, assignments: string[]): Promise<Sco
       from public.govt_scope(${user}::uuid)
   `)) as unknown as ScopeRow[];
   return rows.filter((r) => assignments.includes(r.assignment_id));
+}
+
+/**
+ * Stage D review W1: only a CONFIRMED unit governs anything (govt_scope,
+ * routing, rules, the confirm flow). The seed leaves every unit a draft, so a
+ * fixture confirms the one it uses — inside the rolled-back transaction.
+ */
+async function confirmed(tx: Tx, unitId: string): Promise<string> {
+  await tx.execute(sql`
+    update public.authority_units
+       set status = 'confirmed', confirmed_at = coalesce(confirmed_at, now())
+     where id = ${unitId}::uuid
+  `);
+  return unitId;
+}
+
+async function municipalUnitOf(tx: Tx, locality: string): Promise<string> {
+  return confirmed(tx, await draftMunicipalUnitOf(tx, locality));
+}
+
+async function provincialUnit(tx: Tx, code: string): Promise<string> {
+  return confirmed(tx, await draftProvincialUnit(tx, code));
 }
 
 const MECHITA_ALBERTI = "06021030";
@@ -181,6 +203,24 @@ describe("public.govt_scope", () => {
           jurisdiction_locality: null,
         },
       ]);
+    });
+  });
+
+  // Stage D review W1 (defense in depth, migration 0260): a grant pointing at a
+  // DRAFT unit — only a fixture can write one, the confirm flow refuses —
+  // covers nothing on the id path.
+  it("a grant on a draft unit yields no province or locality rows", async () => {
+    await inRolledBackTx(async (tx) => {
+      const user = await govtUser(tx);
+      const draftMunicipal = await draftMunicipalUnitOf(tx, await localityId(tx, MECHITA_ALBERTI));
+      const draftProvince = await draftProvincialUnit(tx, "AR-B");
+      await tx.execute(sql`
+        update public.authority_units set status = 'draft', confirmed_at = null
+         where id in (${draftMunicipal}::uuid, ${draftProvince}::uuid)
+      `);
+      const g1 = await grant(tx, user, "Buenos Aires", "Scope Fence Draft", draftMunicipal);
+      const g2 = await grant(tx, user, "Buenos Aires", "Scope Fence Draft Prov", draftProvince);
+      expect(await scopeOf(tx, user, [g1, g2])).toEqual([]);
     });
   });
 

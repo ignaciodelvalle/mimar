@@ -85,7 +85,7 @@ async function membersOf(tx: Tx, unitId: string): Promise<Array<{ id: string; na
   `)) as unknown as Array<{ id: string; name: string }>;
 }
 
-async function municipalUnitOf(tx: Tx, localityId: string): Promise<string> {
+async function draftMunicipalUnitOf(tx: Tx, localityId: string): Promise<string> {
   return (
     await first<{ unit_id: string }>(
       tx,
@@ -95,7 +95,7 @@ async function municipalUnitOf(tx: Tx, localityId: string): Promise<string> {
   ).unit_id;
 }
 
-async function unitOfKind(tx: Tx, code: string, kind: string): Promise<string> {
+async function draftUnitOfKind(tx: Tx, code: string, kind: string): Promise<string> {
   return (
     await first<{ id: string }>(
       tx,
@@ -129,6 +129,28 @@ async function unitOfGrant(tx: Tx, assignmentId: string): Promise<string | null>
       sql`select authority_unit_id::text as unit from public.govt_assignments where id = ${assignmentId}::uuid`,
     )
   ).unit;
+}
+
+/**
+ * Stage D review W1: only a CONFIRMED unit governs anything (govt_scope,
+ * routing, rules, the confirm flow). The seed leaves every unit a draft, so a
+ * fixture confirms the one it uses — inside the rolled-back transaction.
+ */
+async function confirmed(tx: Tx, unitId: string): Promise<string> {
+  await tx.execute(sql`
+    update public.authority_units
+       set status = 'confirmed', confirmed_at = coalesce(confirmed_at, now())
+     where id = ${unitId}::uuid
+  `);
+  return unitId;
+}
+
+async function municipalUnitOf(tx: Tx, localityId: string): Promise<string> {
+  return confirmed(tx, await draftMunicipalUnitOf(tx, localityId));
+}
+
+async function unitOfKind(tx: Tx, code: string, kind: string): Promise<string> {
+  return confirmed(tx, await draftUnitOfKind(tx, code, kind));
 }
 
 const MECHITA_ALBERTI = "06021030";
@@ -268,6 +290,34 @@ describe("confirmGrantUnit", () => {
       expect(mine?.grants).toEqual([{ assignmentId: only, locality: "Mechita" }]);
       expect(mine?.added.map((a) => a.localityId)).not.toContain(mechita.id);
       expect(mine?.added.length).toBe((await membersOf(tx, unit)).length - 1);
+    });
+  });
+
+  // Stage D review W1: a draft unit governs nothing, so no grant moves onto it.
+  it("refuses a draft unit and moves nothing", async () => {
+    await inRolledBackTx(async (tx) => {
+      const actor = await admin(tx);
+      const user = await newGovt(tx);
+      const mechita = await locality(tx, MECHITA_ALBERTI);
+      const draft = await draftMunicipalUnitOf(tx, mechita.id);
+      await tx.execute(sql`
+        update public.authority_units set status = 'draft', confirmed_at = null
+         where id = ${draft}::uuid
+      `);
+      const only = await grant(tx, user, "Buenos Aires", "Mechita", mechita.id);
+      expect(await planGrantUnit(tx, { userId: user, unitId: draft })).toEqual({
+        error: "UNIT_NOT_CONFIRMED",
+      });
+      expect(
+        await confirmGrantUnit(tx, actor, {
+          userId: user,
+          unitId: draft,
+          reason: "x",
+          acceptAdded: [],
+        }),
+      ).toEqual({ error: "UNIT_NOT_CONFIRMED" });
+      expect(await unitOfGrant(tx, only)).toBeNull();
+      expect(await listGrantCandidates(tx, draft)).toEqual([]);
     });
   });
 

@@ -19,6 +19,12 @@ describe("unitEditErrorMessage", () => {
     expect(unitEditErrorMessage("NOT_UNRESOLVED")).toMatch(/ya se resolvió/);
   });
 
+  it("asks to confirm a draft unit before moving grants onto it", () => {
+    expect(unitEditErrorMessage("UNIT_NOT_CONFIRMED")).toBe(
+      "Confirmá la unidad con la autoridad antes de pasarle concesiones.",
+    );
+  });
+
   it("shows a validation message as written, without its code", () => {
     expect(unitEditErrorMessage("VALIDATION_ERROR: Contá por qué cambia la unidad.")).toBe(
       "Contá por qué cambia la unidad.",

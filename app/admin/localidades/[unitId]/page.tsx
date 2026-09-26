@@ -87,7 +87,7 @@ export default async function AuthorityUnitPage({
   const provincial = unit.level === "provincial";
   const options = provincial ? [] : await localityOptions(unit.provinceCode, unit.level, unit.id);
   const province = provinceByCode(unit.provinceCode);
-  const candidates = await listGrantCandidates(db, unit.id);
+  const candidates = unit.status === "confirmed" ? await listGrantCandidates(db, unit.id) : [];
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
@@ -183,7 +183,14 @@ export default async function AuthorityUnitPage({
             provincial, toda la provincia). Desde ese momento cubre las localidades de la unidad por
             identificador, no por nombre.
           </p>
-          {candidates.length === 0 ? (
+          {unit.status !== "confirmed" ? (
+            // A draft is the seed's proposal and governs nothing (govt_scope,
+            // 0260): no grant moves onto it until it is confirmed.
+            <p className="text-sm text-ln-op-mute">
+              Confirmá la unidad con la autoridad antes de pasarle concesiones. Mientras sea una
+              propuesta no gobierna ninguna localidad.
+            </p>
+          ) : candidates.length === 0 ? (
             <p className="text-sm text-ln-op-mute">No hay concesiones por pasar a esta unidad.</p>
           ) : (
             candidates.map((c) => (

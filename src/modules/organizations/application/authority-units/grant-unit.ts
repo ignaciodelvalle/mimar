@@ -16,6 +16,8 @@
 //     whole-CABA grant therefore maps to the provincia AR-C unit — the one
 //     that also sees unresolved places — never to the ciudad unit (stage C
 //     verify follow-up, orchestrator decision).
+//   - only a CONFIRMED unit takes grants: a draft is the seed's proposal and
+//     governs nothing (stage D review W1; govt_scope enforces it too, 0260).
 //   - no silent widening (spec "Partial grants never auto-widen"): when the
 //     unit governs localities the user's grants do not, the admin must name
 //     every one of them (`acceptAdded`, the exact set). Until then the grants
@@ -42,10 +44,11 @@ export type GrantUnitError =
   | "NO_GRANTS"
   | "WHOLE_PROVINCE_GRANT"
   | "PARTIAL_GRANT"
+  | "UNIT_NOT_CONFIRMED"
   | `VALIDATION_ERROR: ${string}`;
 
 export type GrantUnitPlan = {
-  unit: { id: string; kind: string; name: string; provinceCode: string };
+  unit: { id: string; kind: string; name: string; provinceCode: string; status: string };
   /** The grants that would move onto the unit. */
   grants: Array<{ assignmentId: string; locality: string }>;
   /** Localities the unit governs that none of those grants holds. */
@@ -89,12 +92,17 @@ export async function planGrantUnit(
       kind: authorityUnits.kind,
       name: authorityUnits.name,
       provinceCode: authorityUnits.provinceCode,
+      status: authorityUnits.status,
     })
     .from(authorityUnits)
     .where(eq(authorityUnits.id, input.unitId))
     .limit(1);
   const province = unit ? provinceByCode(unit.provinceCode) : null;
   if (!unit || !province) return { error: "NOT_FOUND" };
+  // A draft unit is the seed's PROPOSAL: it governs nothing (govt_scope,
+  // 0260), so no grant moves onto it until an admin confirmed it with the
+  // authority (stage D review W1).
+  if (unit.status !== "confirmed") return { error: "UNIT_NOT_CONFIRMED" };
 
   const legacy = await exec
     .select({

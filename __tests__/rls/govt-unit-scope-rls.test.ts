@@ -36,6 +36,28 @@ import {
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+/**
+ * Stage D review W1: only a CONFIRMED unit governs anything (govt_scope,
+ * routing, rules, the confirm flow). The seed leaves every unit a draft, so a
+ * fixture confirms the one it uses — inside the rolled-back transaction.
+ */
+async function confirmed(tx: Tx, unitId: string): Promise<string> {
+  await tx.execute(sql`
+    update public.authority_units
+       set status = 'confirmed', confirmed_at = coalesce(confirmed_at, now())
+     where id = ${unitId}::uuid
+  `);
+  return unitId;
+}
+
+async function municipalUnitOf(tx: Tx, locality: string): Promise<string> {
+  return confirmed(tx, await draftMunicipalUnitOf(tx, locality));
+}
+
+async function provincialUnit(tx: Tx, code: string): Promise<string> {
+  return confirmed(tx, await draftProvincialUnit(tx, code));
+}
+
 const MECHITA_ALBERTI = "06021030";
 const MECHITA_BRAGADO = "06112080";
 
@@ -110,7 +132,7 @@ async function localityId(tx: Tx, indecId: string): Promise<string> {
   ).id;
 }
 
-async function municipalUnitOf(tx: Tx, locality: string): Promise<string> {
+async function draftMunicipalUnitOf(tx: Tx, locality: string): Promise<string> {
   return (
     await one<{ unit_id: string }>(
       tx,
@@ -120,7 +142,7 @@ async function municipalUnitOf(tx: Tx, locality: string): Promise<string> {
   ).unit_id;
 }
 
-async function provincialUnit(tx: Tx, code: string): Promise<string> {
+async function draftProvincialUnit(tx: Tx, code: string): Promise<string> {
   return (
     await one<{ id: string }>(
       tx,

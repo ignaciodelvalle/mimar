@@ -6,7 +6,7 @@
 
 `db/schema.ts` declares <!-- fact:tables -->61<!-- /fact --> tables and
 <!-- fact:enums -->22<!-- /fact --> enums, over
-<!-- fact:migrations -->258<!-- /fact --> forward-only SQL migrations under
+<!-- fact:migrations -->259<!-- /fact --> forward-only SQL migrations under
 `db/migrations`. This document is about the handful of them that carry the
 system's meaning, and about the one distinction the rest of the pack depends on:
 **which rows are the record, and which rows are a copy of the record kept for

@@ -149,6 +149,8 @@ function rulesDisagreementKind(
 //   4. a legacy province row — source "province";
 //   5. country, then the default — as on the name path.
 //
+// Only a CONFIRMED unit's ordinance governs: a draft is the seed's proposal
+// (stage D review W1).
 // "Never both": a unit-keyed row is never matched by its name pair here, and
 // a legacy row never by a unit. An unresolved place (localityId null) skips
 // steps 1-2: no locality ordinance is chosen for a place that has no locality
@@ -175,8 +177,9 @@ async function resolveById<T extends GovtBusinessRuleType>(
   );
 
   const units = (await executor.execute(sql`
-    select unit_id::text as "unitId", level
-      from public.authority_units_for_place(${localityId}::uuid, ${provinceCode})
+    select f.unit_id::text as "unitId", f.level
+      from public.authority_units_for_place(${localityId}::uuid, ${provinceCode}) f
+      join public.authority_units u on u.id = f.unit_id and u.status = 'confirmed'
   `)) as unknown as Array<{ unitId: string; level: string }>;
 
   const byUnit = async (unitIds: string[]) => {
