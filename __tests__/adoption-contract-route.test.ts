@@ -8,7 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { count, eq } from "drizzle-orm";
+import { and, count, eq, like } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { dniLast4, hashDni } from "@/lib/utils/dni-hash";
@@ -22,6 +22,7 @@ vi.mock("next/cache", () => ({
 }));
 
 import {
+  auditLog,
   db,
   notifications,
   organizationMemberships,
@@ -30,8 +31,10 @@ import {
   petEvents,
   pets,
   profiles,
+  rateLimitBuckets,
 } from "@/db";
 import { createClient } from "@/lib/supabase/server";
+import { ADOPTER_DNI_CHECK_LIMITS } from "@/src/modules/adoption/domain/dni-check-policy";
 import { withMutationOverride } from "./_helpers/db-overrides";
 import { createFreshTestUser } from "./_helpers/fresh-test-user";
 
@@ -287,7 +290,7 @@ describe("printable adoption contract route (POST /adoption/contrato)", () => {
     expect(absentRes.status).toBe(404);
   });
 
-  it("renders the contract for a registered adopter — placeholder terms verbatim, zero DB writes", async () => {
+  it("renders the contract for a registered adopter — placeholder terms verbatim, no write to the record", async () => {
     mockSessionAs(coordUserId);
     const eventsBefore = await totalEventCount();
     const profilesBefore = await totalProfileCount();
@@ -322,8 +325,61 @@ describe("printable adoption contract route (POST /adoption/contrato)", () => {
     // Print trigger — the browser produces the PDF, not the server.
     expect(html).toContain("window.print()");
 
-    // Stateless read (spec 3.5): printing wrote NOTHING anywhere.
+    // Stateless read (spec 3.5): printing wrote NOTHING to the record.
     expect(await totalEventCount()).toBe(eventsBefore);
     expect(await totalProfileCount()).toBe(profilesBefore);
+  });
+
+  // Privacy audit C2: this route consults the same DNI oracle as
+  // checkAdopterAccountAction, so it carries the same two guards — the hashed
+  // pii_queried trail (found or not) and the per-organization ceiling.
+  it("C2: every DNI consultation leaves a pii_queried trail with the HASHED dni", async () => {
+    mockSessionAs(coordUserId);
+    const rowsFor = async () =>
+      db
+        .select({ payload: auditLog.payload })
+        .from(auditLog)
+        .where(and(eq(auditLog.actorUserId, coordUserId), eq(auditLog.action, "pii_queried")));
+    const before = await rowsFor();
+    const { POST } = await loadRoute();
+    await POST(contractRequest({ adopterDni: REGISTERED_DNI }), routeParams());
+    await POST(contractRequest({ adopterDni: ABSENT_DNI }), routeParams());
+    const after = await rowsFor();
+    expect(after.length - before.length).toBe(2);
+    const fresh = after.slice(-2).map((r) => r.payload as Record<string, unknown>);
+    for (const p of fresh) {
+      expect(p.surface).toBe("adopter_dni_check");
+      expect(p.organization_id).toBe(orgId);
+    }
+    const queries = after.map((r) => (r.payload as Record<string, unknown>).query);
+    expect(queries).toContain(hashDni(REGISTERED_DNI));
+    expect(queries).toContain(hashDni(ABSENT_DNI));
+    expect(JSON.stringify(fresh)).not.toContain(REGISTERED_DNI);
+  });
+
+  // Same frozen-clock discipline as the action's limiter test
+  // (adoption-registered-adopter-finalize.test.ts): the limiter is fixed-window.
+  it("C2: the N+1-th consultation from one organization is refused with 429", async () => {
+    mockSessionAs(coordUserId);
+    const midMinute = Math.floor(Date.now() / 60_000) * 60_000 + 30_000;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(midMinute));
+    try {
+      await db
+        .delete(rateLimitBuckets)
+        .where(like(rateLimitBuckets.bucketKey, "adopter_dni_check:%"));
+      const { POST } = await loadRoute();
+      for (let i = 0; i < ADOPTER_DNI_CHECK_LIMITS.maxPerMinute; i++) {
+        const r = await POST(contractRequest({ adopterDni: ABSENT_DNI }), routeParams());
+        expect(r.status).toBe(404);
+      }
+      const over = await POST(contractRequest({ adopterDni: ABSENT_DNI }), routeParams());
+      expect(over.status).toBe(429);
+      await db
+        .delete(rateLimitBuckets)
+        .where(like(rateLimitBuckets.bucketKey, "adopter_dni_check:%"));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

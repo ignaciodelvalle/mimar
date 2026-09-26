@@ -25,8 +25,12 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db, petIdentifications } from "@/db";
+import { RateLimitError, enforceRateLimit } from "@/lib/infra/rate-limit";
+import { hashDni } from "@/lib/utils/dni-hash";
 import { formatDate, formatDateTimeLegal, sexLabel, speciesLabel } from "@/lib/utils/format";
+import { ADOPTER_DNI_CHECK_LIMITS } from "@/src/modules/adoption/domain/dni-check-policy";
 import { AdoptionRepository } from "@/src/modules/adoption/infrastructure/adoption-repository";
+import { logPiiQueryForAuthority } from "@/src/modules/organizations/application/admin-proposals/log-pii-query";
 import { requireCapabilityForOrgToken } from "@/src/modules/organizations/infrastructure/authz-resolver";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +54,32 @@ function htmlEscape(s: string | null | undefined): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * THE SAME DNI ORACLE AS checkAdopterAccountAction, SO THE SAME GUARDS
+ * (privacy audit C2): the per-organization ceiling BEFORE the read, and the
+ * hashed pii_queried trail AFTER it, found or not. Without them this route
+ * answered "does this DNI hold an account?" unmetered and unlogged — a sweep
+ * channel around the action's limiter. Keyed on the ORGANIZATION (the
+ * capability is the org's); a refusal is not logged (the bucket counts it).
+ */
+async function consultAdopterDni(organizationId: string, userId: string, adopterDni: string) {
+  try {
+    await enforceRateLimit("adopter_dni_check", organizationId, ADOPTER_DNI_CHECK_LIMITS);
+  } catch (err) {
+    if (err instanceof RateLimitError) return "too_many" as const;
+    throw err;
+  }
+  const account = await AdoptionRepository.findAdopterAccountByDni(adopterDni);
+  await logPiiQueryForAuthority(
+    userId,
+    hashDni(adopterDni),
+    account?.hasAuthAccount ? 1 : 0,
+    "adopter_dni_check",
+    { organization_id: organizationId },
+  );
+  return account;
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ orgToken: string; publicToken: string }> },
@@ -64,7 +94,7 @@ export async function POST(
   if (auth.error !== null) {
     return new NextResponse("No autorizado", { status: 403 });
   }
-  const { organization } = auth;
+  const { organization, user } = auth;
 
   // Custody gate: the pet must be under THIS org's active shelter custody.
   const pet = await AdoptionRepository.findShelterPet(publicToken, organization.id);
@@ -87,7 +117,14 @@ export async function POST(
   // Re-resolve the adopter server-side (never trust the form's found-state):
   // same registered-account contract as finalize — dniHash match + auth.users
   // row EXISTS. No match → 404-style refusal, nothing rendered.
-  const account = await AdoptionRepository.findAdopterAccountByDni(adopterDni);
+  const consulted = await consultAdopterDni(organization.id, user.id, adopterDni);
+  if (consulted === "too_many") {
+    return new NextResponse(
+      "Demasiadas consultas de DNI desde esta organización. Esperá unos minutos y volvé a intentar.",
+      { status: 429 },
+    );
+  }
+  const account = consulted;
   if (!account || !account.hasAuthAccount) {
     return new NextResponse("No encontrado", { status: 404 });
   }
