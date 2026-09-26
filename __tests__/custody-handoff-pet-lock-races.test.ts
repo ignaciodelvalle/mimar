@@ -24,7 +24,7 @@
 // the `pg_locks` poller would exhaust it.
 
 import { randomUUID } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -54,6 +54,7 @@ import { acceptPetTransfer } from "@/src/modules/transfers/application/accept-pe
 import { TransfersRepository } from "@/src/modules/transfers/infrastructure/transfers-repository";
 
 import { withMutationOverride } from "./_helpers/db-overrides";
+import { eraseAs, inRolledBackTx, seedPet, seedUser, rows as txRows } from "./_helpers/erasure-tx";
 
 // ---------------------------------------------------------------------------
 // Harness
@@ -518,8 +519,10 @@ describe("W4 — a P2P accept decides on guards read under the pet lock", () => 
 // accept ran straight through: the recipient got an owner row on a pet the
 // erasure had already soft-deleted.
 //
-// The SQL-side half — the RPC soft-deleting pets before it cancels transfers,
-// and taking no pet lock — is a migration, and is left as a follow-up.
+// The replay below keeps the PRE-0266 statement order on purpose: it pins the
+// accept's own share lock, which must hold against any erasure shape. The
+// SQL-side half — the RPC now takes the pet lock first and cancels pending
+// transfers before any pet goes dark (migration 0266) — is the next describe.
 
 /** Is some backend blocked on a row lock while reading `profiles` FOR SHARE? */
 async function someoneWaitsOnProfileShare(): Promise<boolean> {
@@ -558,7 +561,7 @@ describe("W5 — a P2P accept does not hand over a pet its sender's erasure is d
           "the accept never blocked on the sender's profile — it ran past the erasure",
         );
       }
-      // The pending-transfer cancel, last — as the RPC orders it.
+      // The pending-transfer cancel, last — as the RPC ordered it before 0266.
       await h`UPDATE pet_transfers SET status = 'cancelled', updated_at = now()
                WHERE public_token = ${f.transferToken} AND status = 'pending'`;
     });
@@ -580,6 +583,145 @@ describe("W5 — a P2P accept does not hand over a pet its sender's erasure is d
     const result = await f.accept();
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/ya no existe/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// W5, SQL side — the erasure RPC is a custody writer (migration 0266)
+// ---------------------------------------------------------------------------
+//
+// `erase_subject_data` now takes the pet advisory lock for every pet it can
+// touch before its first write, and cancels pending transfers before any pet
+// goes dark. Both races run on the real RPC: the lock is observed in
+// `pg_locks`, the same way the use-case races above are.
+
+/** erase_subject_data as the subject, in its own transaction on the app pool. */
+async function eraseSubject(subjectId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT set_config('request.jwt.claims', ${JSON.stringify({ sub: subjectId })}, true)`,
+    );
+    await tx.execute(
+      sql`SELECT public.erase_subject_data(${subjectId}::uuid, 'custody race test'::text)`,
+    );
+  });
+}
+
+describe("W5 — erase_subject_data serialises on the pet lock and cancels before it deletes", () => {
+  it("the erasure waits on the pet lock: a hand-off that commits first keeps the pet alive with its new owner", async () => {
+    const f = await offeredPet("EraseWaits");
+
+    await raceUnderHeldPetLock(
+      f.pet.id,
+      () => eraseSubject(f.senderId),
+      async (h) => {
+        await h`UPDATE pet_transfers
+                   SET status = 'accepted', responded_at = now(), updated_at = now()
+                 WHERE public_token = ${f.transferToken} AND status = 'pending'`;
+        await handOffTo(h, f.pet.id, f.senderRowId, f.recipientId);
+      },
+    );
+
+    const [pet] = await db
+      .select({ deletedAt: pets.deletedAt })
+      .from(pets)
+      .where(eq(pets.id, f.pet.id));
+    expect(pet.deletedAt).toBeNull();
+    expect(await liveHolders(f.pet.id)).toEqual([
+      expect.objectContaining({ role: "owner", ownerUserId: f.recipientId }),
+    ]);
+    const [transferRow] = await db
+      .select({ status: petTransfers.status })
+      .from(petTransfers)
+      .where(eq(petTransfers.publicToken, f.transferToken));
+    expect(transferRow.status).toBe("accepted");
+    // The erasure itself still ran to completion once the lock was free.
+    const [sender] = await db
+      .select({ deletedAt: profiles.deletedAt })
+      .from(profiles)
+      .where(eq(profiles.id, f.senderId));
+    expect(sender.deletedAt).not.toBeNull();
+  });
+
+  it("an accept started while the erasure holds the pet lock waits, then refuses", async () => {
+    const f = await offeredPet("EraseFirst");
+
+    let racing: ReturnType<typeof f.accept> | null = null;
+    await holder.begin(async (h) => {
+      await h`SELECT set_config('request.jwt.claims', ${JSON.stringify({ sub: f.senderId })}, true)`;
+      await h`SELECT public.erase_subject_data(${f.senderId}::uuid, 'custody race test'::text)`;
+
+      racing = f.accept();
+      racing.catch(() => undefined);
+      const deadline = Date.now() + 3000;
+      let waiting = false;
+      while (Date.now() < deadline) {
+        if (await someoneWaitsOnPetLock(f.pet.id)) {
+          waiting = true;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      if (!waiting) {
+        throw new Error("the accept never waited on the pet lock the erasure holds");
+      }
+    });
+    if (!racing) throw new Error("accept was never started");
+    const result = await (racing as ReturnType<typeof f.accept>);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/dada de baja/);
+    expect((await liveHolders(f.pet.id)).filter((r) => r.ownerUserId === f.recipientId)).toEqual(
+      [],
+    );
+    const [transferRow] = await db
+      .select({ status: petTransfers.status })
+      .from(petTransfers)
+      .where(eq(petTransfers.publicToken, f.transferToken));
+    expect(transferRow.status).toBe("cancelled");
+    expect(await eventTypes(f.pet.id)).not.toContain("custody_transferred");
+  });
+
+  it("cancels the pending transfer while the pet is still live — before the soft-delete", async () => {
+    // A probe trigger on pet_transfers records, at the instant the erasure
+    // cancels the transfer, whether the pet has already gone dark. Everything
+    // — fixtures, probe, erasure — lives in one transaction that rolls back.
+    const seen = await inRolledBackTx(async (tx) => {
+      const subject = await seedUser(tx, "erase-order");
+      const petId = await seedPet(tx, subject);
+      await tx.execute(sql`
+        INSERT INTO public.pet_transfers
+          (public_token, pet_id, from_owner_id, to_owner_email, status, expires_at)
+        VALUES (${`PTR-order-${randomUUID().slice(0, 10)}`}, ${petId}::uuid, ${subject}::uuid,
+                'erase-order-recipient@dim-test.local', 'pending', now() + interval '7 days')
+      `);
+      await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
+      await tx.execute(
+        sql`CREATE TEMP TABLE erase_order_seen (pet_deleted boolean) ON COMMIT DROP`,
+      );
+      await tx.execute(
+        sql.raw(`
+          CREATE FUNCTION public.erase_order_probe_0266() RETURNS trigger
+          LANGUAGE plpgsql AS $probe$
+          BEGIN
+            INSERT INTO pg_temp.erase_order_seen
+              SELECT p.deleted_at IS NOT NULL FROM public.pets p WHERE p.id = NEW.pet_id;
+            RETURN NEW;
+          END
+          $probe$`),
+      );
+      await tx.execute(sql`
+        CREATE TRIGGER erase_order_probe_0266
+          AFTER UPDATE OF status ON public.pet_transfers
+          FOR EACH ROW
+          WHEN (OLD.status = 'pending' AND NEW.status = 'cancelled')
+          EXECUTE FUNCTION public.erase_order_probe_0266()
+      `);
+      await eraseAs(tx, subject);
+      return txRows(tx, sql`SELECT pet_deleted FROM pg_temp.erase_order_seen`);
+    });
+    // Non-vacuous: the cancel happened (one row), and the pet was still live.
+    expect(seen).toEqual([{ pet_deleted: false }]);
   });
 });
 

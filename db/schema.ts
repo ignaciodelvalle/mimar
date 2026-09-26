@@ -1144,9 +1144,11 @@ export const ownerships = pgTable(
     petId: uuid("pet_id")
       .notNull()
       .references(() => pets.id, { onDelete: "cascade" }),
-    ownerUserId: uuid("owner_user_id").references(() => profiles.id, { onDelete: "cascade" }),
+    // RESTRICT, not CASCADE (0266, custody audit W7): a person or org hard
+    // delete must never silently erase the chain of custody it held.
+    ownerUserId: uuid("owner_user_id").references(() => profiles.id, { onDelete: "restrict" }),
     ownerOrganizationId: uuid("owner_organization_id").references(() => organizations.id, {
-      onDelete: "cascade",
+      onDelete: "restrict",
     }),
     role: ownershipRoleEnum("role").notNull().default("owner"),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1235,9 +1237,10 @@ export const petCaretakerGrants = pgTable(
     petId: uuid("pet_id")
       .notNull()
       .references(() => pets.id, { onDelete: "cascade" }),
+    // RESTRICT since 0266 (custody audit W7).
     grantedByUserId: uuid("granted_by_user_id")
       .notNull()
-      .references(() => profiles.id, { onDelete: "cascade" }),
+      .references(() => profiles.id, { onDelete: "restrict" }),
     // NULL until accept: the invitation may be addressed to someone who does
     // not have an account yet (the email below is the only handle we have).
     caretakerUserId: uuid("caretaker_user_id").references(() => profiles.id, {
@@ -5268,9 +5271,10 @@ export const petTransfers = pgTable(
     petId: uuid("pet_id")
       .notNull()
       .references(() => pets.id, { onDelete: "cascade" }),
+    // RESTRICT since 0266 (custody audit W7).
     fromOwnerId: uuid("from_owner_id")
       .notNull()
-      .references(() => profiles.id, { onDelete: "cascade" }),
+      .references(() => profiles.id, { onDelete: "restrict" }),
     toOwnerId: uuid("to_owner_id").references(() => profiles.id, { onDelete: "set null" }),
     toOwnerEmail: text("to_owner_email").notNull(),
     status: text("status").notNull().default("pending").$type<PetTransferStatus>(),

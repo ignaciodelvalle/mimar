@@ -847,8 +847,17 @@ describe("AdoptionRepository — reversal (findReversibleAdoption / insertAdopti
     // in. Restoring THIS org's shelter_custody would be a second live org
     // custody row: the gate says so in es-AR, and the index is the last line.
     const OTHER_ORG_TOKEN = "DIM-ADOPTREP-OTH";
-    // Leftovers from a crashed previous run — the token is hardcoded.
-    await db.delete(organizations).where(eq(organizations.publicToken, OTHER_ORG_TOKEN));
+    // Leftovers from a crashed previous run — the token is hardcoded. The
+    // custody rows go first: organizations → ownerships is ON DELETE RESTRICT
+    // since 0266, so an org that held a pet cannot be deleted from under it.
+    const leftovers = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.publicToken, OTHER_ORG_TOKEN));
+    for (const { id } of leftovers) {
+      await db.delete(ownerships).where(eq(ownerships.ownerOrganizationId, id));
+      await db.delete(organizations).where(eq(organizations.id, id));
+    }
     const [otherOrg] = await db
       .insert(organizations)
       .values({
@@ -905,8 +914,9 @@ describe("AdoptionRepository — reversal (findReversibleAdoption / insertAdopti
         .where(eq(ownerships.id, adopterRow[0].id));
       expect(stillOwner.endedAt).toBeNull();
     } finally {
-      // organizations → ownerships is ON DELETE CASCADE; the org delete takes
-      // the custody row with it.
+      // organizations → ownerships is ON DELETE RESTRICT (0266): the custody
+      // row this test planted goes first, then the org.
+      await db.delete(ownerships).where(eq(ownerships.ownerOrganizationId, otherOrg.id));
       await db.delete(organizations).where(eq(organizations.id, otherOrg.id));
     }
   });

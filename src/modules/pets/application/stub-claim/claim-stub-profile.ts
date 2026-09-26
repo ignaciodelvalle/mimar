@@ -33,6 +33,17 @@ import type { ClaimFormState } from "./types";
 // explanatory error; ClaimForm.tsx renders a "paused" notice in parallel.
 // The flag is typed as `boolean` (not the literal `false`) so the rest of
 // the function stays reachable for typecheck purposes.
+//
+// RE-ENABLING IS NO LONGER A ONE-LINE REVERT (custody audit K, W7, migration
+// 0266). The merge below rewrites `ownerships.owner_user_id` in place with no
+// spine event, then hard-deletes the stub profile. Since 0266 every foreign
+// key from profiles into custody history (ownerships, pet_transfers.from_owner_id,
+// pet_caretaker_grants.granted_by_user_id) is ON DELETE RESTRICT, so that
+// delete now FAILS whenever the stub still has an ended ownership row — which
+// is exactly the history the old CASCADE silently erased. Turning this on
+// requires emitting a custody event for the hand-over from stub to real user
+// and KEEPING the stub profile (soft-delete or mark it claimed), never
+// deleting it.
 const STUB_CLAIM_ENABLED: boolean = false;
 
 // Mirrors app/actions/adoption.ts → CHECKIN_WINDOWS_MONTHS. Kept inline
@@ -204,6 +215,8 @@ export async function claimStubProfile(
         remindersBackfilled = reminderRows.length;
       }
 
+      // Refused by ON DELETE RESTRICT (0266) while the stub has any ownership
+      // history left — see the note on STUB_CLAIM_ENABLED before enabling.
       await tx.delete(profiles).where(eq(profiles.id, stub.id));
 
       await tx
