@@ -65,6 +65,20 @@ export type QueueError =
 const QUEUE_LIMIT = 200;
 
 /**
+ * The provinces whose unresolved queue a govt user may READ (D9): those a
+ * provincial authority unit grant covers — the only grants an unresolved
+ * place reaches on the id path. A municipal or legacy grant reads none here.
+ */
+export function readableQueueProvinces(
+  scope: ReadonlyArray<{ source: string; provinceCode: string | null }>,
+): string[] {
+  const codes = scope
+    .filter((r) => r.source === "province" && r.provinceCode)
+    .map((r) => r.provinceCode as string);
+  return [...new Set(codes)].sort();
+}
+
+/**
  * The province's unresolved rows, oldest first, each with its candidates.
  * A row leaves the queue when its locality_id is set (by this queue or by a
  * later writer).

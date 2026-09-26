@@ -566,6 +566,14 @@ const ADMIN_LOCALIDADES_PENDIENTES: ScreenManifestEntry = {
   decision: "¿Qué lugares no se pudieron asignar a una localidad, y a cuál corresponden?",
 };
 
+// localidades-por-id D9: the same queue, read-only, for the holder of a
+// provincial authority unit — only their province.
+const GOB_LOCALIDADES_PENDIENTES: ScreenManifestEntry = {
+  route: "/gob/localidades/pendientes",
+  layer: "profundidad",
+  decision: "¿Qué casos y denuncias de mi provincia esperan que se resuelva su localidad?",
+};
+
 const ADMIN_LIBRO: ScreenManifestEntry = {
   route: "/admin/libro",
   layer: "profundidad",
@@ -636,6 +644,7 @@ export const SCREEN_MANIFEST: readonly ScreenManifestEntry[] = [
   ADMIN_CUENTAS,
   ADMIN_LOCALIDADES,
   ADMIN_LOCALIDADES_PENDIENTES,
+  GOB_LOCALIDADES_PENDIENTES,
   ADMIN_ORGANIZACIONES,
   ADMIN_REGLAS,
   ADMIN_HISTORIAL,
