@@ -189,6 +189,7 @@ describe("createSymptomObservedWriter — surveillance pipeline", () => {
     const result = await createSymptomObservedWriter({
       petId: pet.id,
       petPublicToken: pet.publicToken,
+      petName: pet.name,
       petSpecies: pet.species,
       petJurisdictionCountry: pet.jurisdictionCountry,
       petJurisdictionProvince: pet.jurisdictionProvince ?? null,
@@ -233,6 +234,7 @@ describe("createSymptomObservedWriter — surveillance pipeline", () => {
     const result = await createSymptomObservedWriter({
       petId: pet.id,
       petPublicToken: pet.publicToken,
+      petName: pet.name,
       petSpecies: pet.species,
       petJurisdictionCountry: pet.jurisdictionCountry,
       petJurisdictionProvince: pet.jurisdictionProvince ?? null,
@@ -299,6 +301,7 @@ describe("createSymptomObservedWriter — surveillance pipeline", () => {
     const result = await createSymptomObservedWriter({
       petId: pet.id,
       petPublicToken: pet.publicToken,
+      petName: pet.name,
       petSpecies: pet.species,
       petJurisdictionCountry: pet.jurisdictionCountry,
       petJurisdictionProvince: pet.jurisdictionProvince ?? null,

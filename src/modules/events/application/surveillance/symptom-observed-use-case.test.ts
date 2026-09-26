@@ -79,6 +79,7 @@ const userId = randomUUID();
 const baseParams = {
   petId,
   petPublicToken: "token-abc",
+  petName: "Firulais",
   petSpecies: "dog",
   petJurisdictionCountry: "AR",
   petJurisdictionProvince: "Buenos Aires",
@@ -202,8 +203,13 @@ describe("createSymptomObservedWriter", () => {
     // route called once
     expect(mockRouteOutbreakSignalNotifications).toHaveBeenCalledTimes(1);
 
-    // maybeNotify called
+    // maybeNotify called — with the pet's REAL name (health audit #13: it
+    // used to receive "", so the alert copy named nobody).
     expect(mockMaybeNotifyOwnersOfPublicAlert).toHaveBeenCalledTimes(1);
+    const alertInput = mockMaybeNotifyOwnersOfPublicAlert.mock.calls[0][0] as {
+      pet: { id: string; name: string };
+    };
+    expect(alertInput.pet).toEqual({ id: petId, name: "Firulais" });
   });
 
   it("pushes urgent owner notification when rabies escalation is active", async () => {

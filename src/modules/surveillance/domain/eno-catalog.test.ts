@@ -158,6 +158,13 @@ describe("diseaseCodeToEnoCode", () => {
     expect(diseaseCodeToEnoCode("hydatidosis")).toBe("hidatidosis");
   });
 
+  // Health audit #2: disease_reported emits "lepto"; without the bridge a
+  // future disease_reported outbox rule would never see it as ENO.
+  it("maps disease_reported's 'lepto' → 'leptospirosis', an ENO code", () => {
+    expect(diseaseCodeToEnoCode("lepto")).toBe("leptospirosis");
+    expect(isEnoCode(diseaseCodeToEnoCode("lepto"))).toBe(true);
+  });
+
   it("passes through an unknown code unchanged", () => {
     expect(diseaseCodeToEnoCode("parvovirus")).toBe("parvovirus");
   });

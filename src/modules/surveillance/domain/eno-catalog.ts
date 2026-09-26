@@ -111,6 +111,11 @@ const DISEASE_TO_ENO_CODE: Readonly<Record<string, string>> = {
   canine_brucellosis: "brucelosis_canina",
   visceral_leishmaniasis: "leishmaniasis",
   hydatidosis: "hidatidosis",
+  // disease_reported emits the short "lepto" (DISEASE_REPORTED_CODES). Inert
+  // today — no outbox rule reads disease_reported, and adding one is a PO
+  // decision — but without it that rule would silently miss leptospirosis
+  // (health audit #2, 2026-09-26).
+  lepto: "leptospirosis",
 };
 
 /**

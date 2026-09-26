@@ -956,6 +956,7 @@ export async function createSymptomObservedAction(
     {
       petId: pet.id,
       petPublicToken: pet.publicToken,
+      petName: pet.name,
       petSpecies: pet.species,
       petJurisdictionCountry: pet.jurisdictionCountry,
       petJurisdictionProvince: pet.jurisdictionProvince ?? null,

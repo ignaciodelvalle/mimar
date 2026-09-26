@@ -36,6 +36,8 @@ import type { NewNotification } from "../types";
 export type CreateSymptomObservedWriterParams = {
   petId: string;
   petPublicToken: string;
+  /** The animal's name, for the owner-facing public-health alert copy. */
+  petName: string;
   petSpecies: string;
   petJurisdictionCountry: string;
   petJurisdictionProvince: string | null;
@@ -108,6 +110,7 @@ export async function createSymptomObservedWriter(
   const {
     petId,
     petPublicToken,
+    petName,
     petSpecies,
     petJurisdictionCountry,
     petJurisdictionProvince,
@@ -294,7 +297,9 @@ export async function createSymptomObservedWriter(
         // Owner-side public-health alert (throttled 30 days per pet+disease).
         await maybeNotifyOwnersOfPublicAlert(
           {
-            pet: { id: petId, name: "" },
+            // The real name: an empty one rendered the alert about nobody
+            // (health audit #13, 2026-09-26).
+            pet: { id: petId, name: petName },
             diseaseCode: d.disease_code,
             triggerEventId: signalEvent.id,
           },
