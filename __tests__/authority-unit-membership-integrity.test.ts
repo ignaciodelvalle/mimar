@@ -338,6 +338,36 @@ describe("region units (migration 0254)", () => {
     });
   });
 
+  // DECIDED (orchestrator, P3, stage C review W1): authority_units_for_place
+  // does NOT filter out a locality the catalogue later soft-deletes
+  // (ar_localities.removed_at). An event resolved to that locality still
+  // happened in a governed place; dropping its membership would route it to
+  // nobody below the province. The membership stays active until an admin
+  // closes it explicitly — the stage E drift job lists memberships on removed
+  // localities after an INDEC import, it never auto-closes them.
+  it("a locality the catalogue later removes still reaches the unit that governs it", async () => {
+    await inRolledBackTx(async (tx) => {
+      const loc = await localityByIndecId(tx, VILLA_MARIA_BA);
+      const [municipal] = (await tx.execute(sql`
+        select unit_id::text as unit_id from public.authority_unit_localities
+         where locality_id = ${loc}::uuid and level = 'municipal' and valid_to is null
+      `)) as unknown as Array<{ unit_id: string }>;
+      expect(municipal, "the seed placed Villa María (BA) in a unit").toBeDefined();
+
+      await tx.execute(
+        sql`update public.ar_localities set removed_at = now() where id = ${loc}::uuid`,
+      );
+
+      const units = (await tx.execute(sql`
+        select unit_id::text as unit_id, level
+          from public.authority_units_for_place(${loc}::uuid, 'AR-B')
+         order by level
+      `)) as unknown as Array<{ unit_id: string; level: string }>;
+      expect(units.map((u) => u.level)).toEqual(["municipal", "provincial"]);
+      expect(units.find((u) => u.level === "municipal")?.unit_id).toBe(municipal?.unit_id);
+    });
+  });
+
   it("an unresolved place reaches ONLY the provincial unit, never a region", async () => {
     await inRolledBackTx(async (tx) => {
       const loc = await localityByIndecId(tx, VILLA_MARIA_BA);
