@@ -780,10 +780,16 @@ function MarkLostForm({
           renglones. Reportado por el PO el 2026-09-16 mirando la app en un
           teléfono. A quien está asustado y apurado, un asterisco lo manda a
           buscar el nombre de su localidad en vez de mandar el aviso. */}
+      {/* EL CHIP DE LA LOCALIDAD DE LA FICHA (PO, 2026-09-26): un toque, nunca
+          precargado. Viene del servidor ya resuelto por id, y sólo en el camino
+          del dueño; tocarlo es exactamente elegir esa fila de la lista. */}
       <LocalityPicker
         required={false}
         provinceCode={draft.provinceCode}
         localityName={draft.localityName}
+        suggestion={
+          view.homeLocality === null ? null : { locality: view.homeLocality, petName: view.petName }
+        }
         onSelect={(selection) => {
           set("provinceCode", selection.provinceCode);
           set("localityName", selection.localityName);

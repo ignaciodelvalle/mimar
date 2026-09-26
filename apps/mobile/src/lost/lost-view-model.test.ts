@@ -76,6 +76,7 @@ function view(overrides: Partial<PetLostV1> = {}): PetLostV1 {
       ],
     },
     feed: { items: [], truncated: false, totalScans: 0, totalSightings: 0 },
+    homeLocality: null,
     ...overrides,
   };
 }

@@ -71,8 +71,9 @@ import { fetchLostEpisodeForPet, fetchLostScanEvents } from "@/lib/infra/lost-mo
 import { resolvePetHolderAccess } from "@/lib/infra/pet-access";
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { reportError } from "@/lib/infra/report-error";
+import { homeLocalityRow } from "@/lib/place/home-suggestion";
 import { createClientFromBearer } from "@/lib/supabase/bearer";
-import { isValidIdempotencyKey } from "@dim/contract/api";
+import { type GeocodingCandidateV1, isValidIdempotencyKey } from "@dim/contract/api";
 import { lostCommandInputSchema } from "@dim/contract/input";
 
 import { runLostCommand, unavailable } from "./commands";
@@ -123,6 +124,37 @@ const LOST_BUDGET_MS = 8_000;
 // scanning for the guard — and said WITHOUT writing the opt-out marker, because
 // a comment that spells the marker in order to deny it still reads as one to a
 // scanner matching the token.
+/**
+ * The animal's registered row, as the "¿Es acá?" candidate shape — only on the
+ * person path and only while marcar perdida is available (`status: active`).
+ * `"unavailable"` when the read ran out of budget: a 503, never a missing chip
+ * dressed as "this animal has no locality".
+ */
+async function readHomeLocality(
+  personPath: boolean,
+  pet: { status: string; localityId?: string | null },
+): Promise<GeocodingCandidateV1 | null | "unavailable"> {
+  if (!personPath || pet.status !== "active" || !pet.localityId) return null;
+  try {
+    const row = await withDbBudgetOrThrow(
+      homeLocalityRow(pet.localityId),
+      LOST_BUDGET_MS,
+      "api-v1-lost-home",
+    );
+    if (!row) return null;
+    return {
+      provinceCode: row.provinceCode,
+      provinceName: row.provinceName,
+      localityName: row.localityName,
+      localityIndecId: row.indecId,
+      departmentName: row.departmentName,
+    };
+  } catch (err) {
+    if (err instanceof DbBudgetExceededError) return "unavailable";
+    throw err;
+  }
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ publicToken: string }> },
@@ -189,7 +221,7 @@ export async function GET(
   // tokens are real.
   if (access.kind === "none") return apiV1Error("not_found", 404);
 
-  const pet = access.pet as unknown as LostPetRow & { id: string };
+  const pet = access.pet as unknown as LostPetRow & { id: string; localityId?: string | null };
 
   // THE READS ARE SKIPPED for an animal that is not lost, exactly as
   // `readLostData` skips them: there is no episode and no feed to find, and two
@@ -221,10 +253,17 @@ export async function GET(
     }
   }
 
+  // THE HOME-LOCALITY CHIP (PO, 2026-09-26): one read, only where it is used —
+  // marcar perdida, on the person path. The web's page makes the same call
+  // (`app/(app)/mis-mascotas/[publicToken]/perdida/page.tsx`).
+  const homeLocality = await readHomeLocality(access.kind === "owner", pet);
+  if (homeLocality === "unavailable") return unavailable();
+
   const payload = buildPetLostV1({
     pet,
     episode,
     scans,
+    homeLocality,
     accessPath: access.kind === "owner" ? "owner" : "org",
     holderRole: access.kind === "owner" ? access.holderRole : null,
     now: new Date(),

@@ -27,6 +27,7 @@ import { apiV1Envelope } from "@/lib/infra/api-v1";
 import type { LostEpisode } from "@/lib/infra/lost-mode";
 import { LOST_SCAN_FEED_CAP } from "@/lib/infra/lost-mode";
 import type {
+  GeocodingCandidateV1,
   LostCapabilitiesV1,
   LostDisclosureV1,
   LostEpisodeV1,
@@ -60,6 +61,8 @@ export type BuildPetLostInput = {
   accessPath: "owner" | "org";
   /** The person-path ownership role, or `null` on the org path. */
   holderRole: string | null;
+  /** The home-locality chip's row; the route decides when there is one. */
+  homeLocality: GeocodingCandidateV1 | null;
   now: Date;
 };
 
@@ -211,5 +214,6 @@ export function buildPetLostV1(input: BuildPetLostInput): PetLostV1 {
     disclosure: toDisclosure(pet),
     capabilities: toCapabilities(input),
     feed: toFeed(scans, episode),
+    homeLocality: input.homeLocality,
   };
 }

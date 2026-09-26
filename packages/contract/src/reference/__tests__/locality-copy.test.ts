@@ -14,6 +14,9 @@ import {
   LOCALITY_FIELD_LABEL,
   LOCALITY_FIELD_PLACEHOLDER,
   describeChosenLocality,
+  homeLocalityChipLabel,
+  homeLocalityChipName,
+  homeLocalityChipReason,
   localityOptionLabel,
 } from "../locality-copy.ts";
 
@@ -59,6 +62,23 @@ describe("locality copy", () => {
     ],
   ])("describes the chosen place %#", (row, expected) => {
     expect(describeChosenLocality(row)).toBe(expected);
+  });
+});
+
+describe("home-locality suggestion chip", () => {
+  it("says the action, then why, in words with no gender to guess", () => {
+    expect(homeLocalityChipLabel(LOMAS)).toBe("Usar Lomas de Zamora");
+    expect(homeLocalityChipReason("Pampa")).toBe("donde vive Pampa");
+    expect(homeLocalityChipName(LOMAS, "Pampa")).toBe("Usar Lomas de Zamora, donde vive Pampa");
+  });
+
+  it("both surfaces build the chip from the shared copy", () => {
+    for (const file of [
+      "components/LocationFields.tsx",
+      "apps/mobile/src/pets/LocalityPicker.tsx",
+    ]) {
+      expect(read(file)).toContain("homeLocalityChipName(");
+    }
   });
 });
 

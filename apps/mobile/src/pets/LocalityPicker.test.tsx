@@ -145,3 +145,69 @@ describe("LocalityPicker — province first (L3·0)", () => {
     expect(screen.getByLabelText("Ciudad, pueblo o barrio, obligatorio")).toBeTruthy();
   });
 });
+
+describe("LocalityPicker — the home-locality chip (PO, 2026-09-26)", () => {
+  const BOLSON = {
+    provinceCode: "AR-R",
+    provinceName: "Río Negro",
+    localityName: "El Bolsón",
+    localityIndecId: "62007010",
+    departmentName: "Bariloche",
+  };
+  const CHIP = "Usar El Bolsón, donde vive Pampa";
+
+  function ChipHarness({
+    onSelect,
+    withSuggestion = true,
+  }: {
+    onSelect: (s: LocalitySelection) => void;
+    withSuggestion?: boolean;
+  }) {
+    const [sel, setSel] = useState({ provinceCode: "", localityName: "" });
+    return (
+      <LocalityPicker
+        required={false}
+        provinceCode={sel.provinceCode}
+        localityName={sel.localityName}
+        suggestion={withSuggestion ? { locality: BOLSON, petName: "Pampa" } : null}
+        onSelect={(s) => {
+          onSelect(s);
+          setSel({ provinceCode: s.provinceCode, localityName: s.localityName });
+        }}
+      />
+    );
+  }
+
+  it("shows no chip without a suggestion", () => {
+    render(<ChipHarness onSelect={jest.fn()} withSuggestion={false} />);
+    expect(screen.queryByLabelText(/donde vive/)).toBeNull();
+  });
+
+  it("offers the chip as a button and selects nothing until it is tapped", () => {
+    const onSelect = jest.fn<(s: LocalitySelection) => void>();
+    render(<ChipHarness onSelect={onSelect} />);
+    expect(screen.getByRole("button", { name: CHIP })).toBeTruthy();
+    expect(onSelect).not.toHaveBeenCalled();
+    // Still the province step: nothing chosen for the person.
+    expect(screen.getAllByRole("radio")).toHaveLength(24);
+  });
+
+  it("a tap hands back exactly what tapping the same row in the list does", async () => {
+    const viaChip = jest.fn<(s: LocalitySelection) => void>();
+    const first = render(<ChipHarness onSelect={viaChip} />);
+    fireEvent.press(screen.getByRole("button", { name: CHIP }));
+    // Collapsed to the chosen row, with its department, like a list pick.
+    expect(screen.getByText("El Bolsón")).toBeTruthy();
+    expect(screen.getByText("departamento Bariloche, Río Negro")).toBeTruthy();
+    first.unmount();
+
+    const viaList = jest.fn<(s: LocalitySelection) => void>();
+    render(<ChipHarness onSelect={viaList} withSuggestion={false} />);
+    fireEvent.press(screen.getByRole("radio", { name: "Río Negro" }));
+    fireEvent.changeText(screen.getByLabelText("Ciudad, pueblo o barrio"), "Bols");
+    fireEvent.press(await screen.findByText("El Bolsón", {}, { timeout: 3000 }));
+
+    expect(viaChip).toHaveBeenCalledTimes(1);
+    expect(viaChip.mock.calls[0]?.[0]).toEqual(viaList.mock.calls[0]?.[0]);
+  });
+});

@@ -36,6 +36,7 @@
 //     from these booleans would be a second implementation of that filter.
 
 import type { DisclosureKey, LostCommand } from "../input/lost-mode.ts";
+import type { GeocodingCandidateV1 } from "./geocoding.ts";
 
 export const PET_LOST_PAYLOAD_VERSION = 1;
 
@@ -249,6 +250,18 @@ export type PetLostV1 = {
   disclosure: LostDisclosureV1;
   capabilities: LostCapabilitiesV1;
   feed: LostFeedSectionV1;
+  /**
+   * The animal's REGISTERED locality, as a catalogue row the owner may pick
+   * with one tap on marcar perdida (PO, 2026-09-26) — never a value to prefill.
+   * Read from the stored `pets.locality_id`, never from a name.
+   *
+   * `null` when there is nothing to offer: the animal's locality never
+   * resolved to a row, the caller is on the ORG path (the chip is for the
+   * person who knows where the animal lives), or marcar perdida is not an
+   * available command right now. The same shape as a "¿Es acá?" candidate,
+   * because picking it is the same act.
+   */
+  homeLocality: GeocodingCandidateV1 | null;
 };
 
 /**

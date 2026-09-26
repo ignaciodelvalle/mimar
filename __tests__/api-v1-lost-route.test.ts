@@ -46,6 +46,27 @@ const control = vi.hoisted(() => ({
     error: string | null;
     alreadyReported: boolean;
   },
+  /** Every `locality_id` the home-locality read was asked about. */
+  homeReads: [] as string[],
+}));
+
+// The home-locality chip's row, read by id (lib/place/home-suggestion.ts).
+vi.mock("@/lib/place/home-suggestion", () => ({
+  homeLocalityRow: async (id: string) => {
+    control.homeReads.push(id);
+    return {
+      id,
+      indecId: "42021010",
+      provinceCode: "AR-L",
+      provinceName: "La Pampa",
+      departmentName: "Capital",
+      departmentCode: "021",
+      localityName: "Santa Rosa",
+      localitySlug: "santa-rosa",
+      category: "localidad",
+      matchKind: "exact",
+    };
+  },
 }));
 
 // No network: the place resolver may reverse-geocode a pin (localidades-por-id);
@@ -655,6 +676,47 @@ describe("POST .../lost — marcar encontrada and reactivar", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "invalid_request" });
     expect(control.writes).toEqual([]);
+  });
+});
+
+describe("GET .../lost — the home-locality chip's row", () => {
+  beforeEach(() => {
+    control.homeReads = [];
+  });
+
+  it("carries the animal's registered row, read by its stored id, to its owner", async () => {
+    control.access = ownerAccess({ localityId: "loc-santa-rosa" });
+    const body = (await (await get()).json()) as { homeLocality: unknown };
+    expect(control.homeReads).toEqual(["loc-santa-rosa"]);
+    expect(body.homeLocality).toEqual({
+      provinceCode: "AR-L",
+      provinceName: "La Pampa",
+      localityName: "Santa Rosa",
+      localityIndecId: "42021010",
+      departmentName: "Capital",
+    });
+  });
+
+  it("offers nothing for an animal whose locality never resolved to a row", async () => {
+    control.access = ownerAccess({ localityId: null });
+    const body = (await (await get()).json()) as { homeLocality: unknown };
+    expect(body.homeLocality).toBeNull();
+    expect(control.homeReads).toEqual([]);
+  });
+
+  it("offers nothing on the org path", async () => {
+    control.access = orgAccess({ localityId: "loc-santa-rosa" });
+    const body = (await (await get()).json()) as { homeLocality: unknown };
+    expect(body.homeLocality).toBeNull();
+    expect(control.homeReads).toEqual([]);
+  });
+
+  it("offers nothing once the animal is lost — marcar perdida is not available", async () => {
+    control.access = ownerAccess({ status: "lost", localityId: "loc-santa-rosa" });
+    control.episode = episodeRow();
+    const body = (await (await get()).json()) as { homeLocality: unknown };
+    expect(body.homeLocality).toBeNull();
+    expect(control.homeReads).toEqual([]);
   });
 });
 

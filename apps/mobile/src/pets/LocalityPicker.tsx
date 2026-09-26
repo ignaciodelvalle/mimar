@@ -24,13 +24,15 @@
 // because a round trip per keystroke burns a 60/min per-IP budget on a person
 // who has typed "Pa".
 
-import type { LocalityV1 } from "@dim/contract/api";
+import type { GeocodingCandidateV1, LocalityV1 } from "@dim/contract/api";
 import {
+  type DescribableLocality,
   LOCALITY_FIELD_LABEL,
   LOCALITY_FIELD_PLACEHOLDER,
   PROVINCES,
   chosenLocalityName,
   chosenLocalityParent,
+  homeLocalityChipName,
   localityOptionLabel,
 } from "@dim/contract/reference";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -88,11 +90,21 @@ export type LocalitySelection = {
   departmentName: string | null;
 };
 
+/**
+ * The animal's registered locality, offered as ONE tap (PO, 2026-09-26) — the
+ * web's `LocationFields` `suggestion`. NEVER a prefill: nothing reaches the
+ * parent until the person taps, and the tap hands back exactly what tapping the
+ * same row in the list does. The row is the server's (read from the stored
+ * `locality_id`), so the app forms no opinion about which row it is.
+ */
+export type LocalitySuggestion = { locality: GeocodingCandidateV1; petName: string };
+
 export function LocalityPicker({
   provinceCode,
   localityName,
   onSelect,
   required = true,
+  suggestion = null,
 }: {
   provinceCode: string;
   localityName: string;
@@ -110,6 +122,8 @@ export function LocalityPicker({
    * alone, in the one modality where the visible screen cannot correct it.
    */
   required?: boolean;
+  /** The home-locality chip. Owner screens only; absent = no chip. */
+  suggestion?: LocalitySuggestion | null;
 }) {
   // THE PROVINCE STEP. Seeded from the draft, so a screen that comes back with a
   // province already chosen lands on the locality search inside it; kept when
@@ -125,7 +139,7 @@ export function LocalityPicker({
   const [state, setState] = useState<SearchState>({ phase: "idle" });
   /** The row THIS picker last selected — its department and, when it was found
    * through an alias ("Banfield"), the name the person typed. See the chip. */
-  const [picked, setPicked] = useState<LocalityV1 | null>(null);
+  const [picked, setPicked] = useState<DescribableLocality | null>(null);
   const generation = useRef(0);
 
   const run = useCallback(
@@ -213,18 +227,44 @@ export function LocalityPicker({
     );
   }
 
+  // THE HOME CHIP, above whichever step is showing. A tap is a pick: the same
+  // selection a row in the list hands back, and the same collapse.
+  const homeChip =
+    suggestion === null ? null : (
+      <HomeChip
+        suggestion={suggestion}
+        onPick={() => {
+          const home = suggestion.locality;
+          setPicked(home);
+          generation.current += 1;
+          setQuery("");
+          setState({ phase: "idle" });
+          onSelect({
+            provinceCode: home.provinceCode,
+            provinceName: home.provinceName,
+            localityName: home.localityName,
+            localityIndecId: home.localityIndecId ?? "",
+            departmentName: home.departmentName,
+          });
+        }}
+      />
+    );
+
   if (province.length === 0) {
     // Step one: the province, as the kit's one-of-N chooser — radio chips a
     // screen reader announces as a set. Nothing is preselected.
     return (
-      <Choice
-        label="Provincia"
-        required={required}
-        options={PROVINCE_CODES}
-        selected={null}
-        optionLabel={(code) => PROVINCE_NAME.get(code) ?? code}
-        onSelect={(code) => setProvince(code)}
-      />
+      <>
+        {homeChip}
+        <Choice
+          label="Provincia"
+          required={required}
+          options={PROVINCE_CODES}
+          selected={null}
+          optionLabel={(code) => PROVINCE_NAME.get(code) ?? code}
+          onSelect={(code) => setProvince(code)}
+        />
+      </>
     );
   }
 
@@ -232,6 +272,7 @@ export function LocalityPicker({
 
   return (
     <>
+      {homeChip}
       {/* The chosen province, collapsed — a picker with a choice shows the
           choice, not the catalogue (same rule as the locality chip below). */}
       <Pressable
@@ -284,6 +325,27 @@ export function LocalityPicker({
         onRetry={() => void run(query.trim())}
       />
     </>
+  );
+}
+
+/** "Usar Santa Rosa, donde vive Pampa" — one button, its name its words. */
+function HomeChip({
+  suggestion,
+  onPick,
+}: {
+  suggestion: LocalitySuggestion;
+  onPick: () => void;
+}) {
+  const name = homeLocalityChipName(suggestion.locality, suggestion.petName);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={name}
+      onPress={onPick}
+      style={(pressState) => [styles.homeChip, pressedOpacity(pressState)]}
+    >
+      <Text style={styles.homeChipText}>{name}</Text>
+    </Pressable>
   );
 }
 
@@ -422,4 +484,18 @@ const styles = StyleSheet.create({
   },
   provinceRowText: { fontFamily: FONTS.sansSemibold, color: COLORS.ink, fontSize: TYPE.md },
   provinceRowAction: { fontFamily: FONTS.sansMedium, color: COLORS.accent, fontSize: TYPE.md },
+  // An outlined pill in the action blue: an offer, not yet a choice — the
+  // filled blue row above is what a choice looks like.
+  homeChip: {
+    minHeight: TOUCH_TARGET,
+    alignSelf: "flex-start",
+    justifyContent: "center",
+    borderRadius: RADIUS.button,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: SPACE.md,
+    paddingVertical: SPACE.sm,
+  },
+  homeChipText: { fontFamily: FONTS.sansMedium, color: COLORS.accent, fontSize: TYPE.md },
 });

@@ -111,6 +111,7 @@ function payload(overrides: Partial<PetLostV1> = {}): PetLostV1 {
       editableDisclosureKeys: [...ALL_KEYS],
     },
     feed: { items: [], truncated: false, totalScans: 0, totalSightings: 0 },
+    homeLocality: null,
     ...overrides,
   };
 }
@@ -1118,5 +1119,53 @@ describe("LostScreen — regaining focus", () => {
     });
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("LostScreen — the home-locality chip on marcar perdida (PO, 2026-09-26)", () => {
+  const HOME = {
+    provinceCode: "AR-L",
+    provinceName: "La Pampa",
+    localityName: "Santa Rosa",
+    localityIndecId: "42021010",
+    departmentName: "Capital",
+  };
+  const CHIP = "Usar Santa Rosa, donde vive Pampa";
+
+  it("shows no chip when the server sent no row", async () => {
+    render(<LostScreen publicToken={TOKEN} />);
+    fireEvent.press(await screen.findByText("Marcar como perdida"));
+    expect(screen.queryByLabelText(/donde vive/)).toBeNull();
+  });
+
+  it("never prefills: untouched, the report carries no locality", async () => {
+    mockFetch.mockResolvedValue(ok(payload({ homeLocality: HOME })));
+    mockSend.mockResolvedValue(ack("mark_lost", true));
+    render(<LostScreen publicToken={TOKEN} />);
+    fireEvent.press(await screen.findByText("Marcar como perdida"));
+    expect(screen.getByRole("button", { name: CHIP })).toBeTruthy();
+
+    fireEvent.press(screen.getByText("Marcar como perdida"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+    expect(sentBody()?.localityIndecId ?? null).toBeNull();
+    expect(sentBody()?.localityName ?? null).toBeNull();
+  });
+
+  it("a tap sends the row the way a list pick does — by id, not marked as a map pick", async () => {
+    mockFetch.mockResolvedValue(ok(payload({ homeLocality: HOME })));
+    mockSend.mockResolvedValue(ack("mark_lost", true));
+    render(<LostScreen publicToken={TOKEN} />);
+    fireEvent.press(await screen.findByText("Marcar como perdida"));
+    fireEvent.press(screen.getByRole("button", { name: CHIP }));
+
+    fireEvent.press(screen.getByText("Marcar como perdida"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+    expect(sentBody()).toMatchObject({
+      command: "mark_lost",
+      provinceCode: "AR-L",
+      localityName: "Santa Rosa",
+      localityIndecId: "42021010",
+    });
+    expect(sentBody()?.localityPicked).toBeUndefined();
   });
 });
