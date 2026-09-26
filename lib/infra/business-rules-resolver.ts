@@ -289,6 +289,21 @@ function fromRow<T extends GovtBusinessRuleType>(
   };
 }
 
+/**
+ * One row for a name, never a guess (P1). Since migration 0263 two homonyms
+ * may each carry a rule under the same name, keyed by catalogue row: the
+ * place's own row wins when the caller knows it, and with two candidates and
+ * no row to tell them apart the level is skipped. One candidate — every name
+ * before 0263 — answers exactly as before.
+ */
+function pickByName(
+  rows: ReadonlyArray<typeof govtBusinessRules.$inferSelect>,
+  localityId: string | null | undefined,
+): typeof govtBusinessRules.$inferSelect | undefined {
+  if (rows.length <= 1) return rows[0];
+  return localityId ? rows.find((r) => r.localityId === localityId) : undefined;
+}
+
 /** The name cascade — the only path before localidades-por-id D4. */
 async function resolveByName<T extends GovtBusinessRuleType>(
   ruleType: T,
@@ -320,7 +335,7 @@ async function resolveByName<T extends GovtBusinessRuleType>(
     if (c.source === "locality" && locality === null) continue;
     if (c.source === "province" && province === null) continue;
 
-    const [row] = await executor
+    const rows = await executor
       .select()
       .from(govtBusinessRules)
       .where(
@@ -333,6 +348,8 @@ async function resolveByName<T extends GovtBusinessRuleType>(
           c.locality === null
             ? isNull(govtBusinessRules.jurisdictionLocality)
             : eq(govtBusinessRules.jurisdictionLocality, c.locality),
+          // A unit's ordinance is never a name rule ("never both", D4).
+          isNull(govtBusinessRules.authorityUnitId),
           // Effective window (M2). NULL on either end means "no bound" — a row
           // with no dates always applies, which is every pre-0183 row. Both
           // bounds are INCLUSIVE: "vigente hasta el 31/12" governs the 31st.
@@ -343,7 +360,9 @@ async function resolveByName<T extends GovtBusinessRuleType>(
           ),
         ),
       )
-      .limit(1);
+      // Every homonym under the name (a handful at most), not just two.
+      .limit(16);
+    const row = pickByName(rows, jurisdiction.localityId);
     if (row) {
       return {
         payload: row.rulePayload as BusinessRulePayload<T>,

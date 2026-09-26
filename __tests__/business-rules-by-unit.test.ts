@@ -209,3 +209,71 @@ describe("resolveBusinessRule on the id path", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// The wizard can now key a rule to a catalogue row or a unit (migration 0263),
+// so two homonyms can each carry their own ordinance. The NAME path (the
+// default flag) must not guess between them, and must never read a
+// unit-keyed row as a name rule. With one row per name — every row before
+// 0263 — it answers exactly as before.
+// ---------------------------------------------------------------------------
+
+async function keyedMechitaRule(tx: Tx, localityRow: string, days: number): Promise<string> {
+  return (
+    await first<{ id: string }>(
+      tx,
+      sql`insert into public.govt_business_rules
+            (jurisdiction_country, jurisdiction_province, jurisdiction_locality,
+             locality_id, rule_type, rule_payload)
+          values ('AR', 'Buenos Aires', 'Mechita', ${localityRow}::uuid,
+                  'rabies_observation_window', ${JSON.stringify({ days })}::jsonb)
+          returning id::text as id`,
+    )
+  ).id;
+}
+
+describe("resolveBusinessRule on the name path, once homonyms carry their own rules", () => {
+  it("two keyed Mechita rules: the place's own row wins; with no row, no locality rule is guessed", async () => {
+    await inRolledBackTx(async (tx) => {
+      const alberti = await localityId(tx, MECHITA_ALBERTI);
+      const bragado = await localityId(tx, MECHITA_BRAGADO);
+      await tx.execute(sql`
+        delete from public.govt_business_rules
+         where rule_type = 'rabies_observation_window' and jurisdiction_province = 'Buenos Aires'
+           and jurisdiction_locality = 'Mechita'
+      `);
+      const albertiRule = await keyedMechitaRule(tx, alberti, 11);
+      const bragadoRule = await keyedMechitaRule(tx, bragado, 13);
+
+      const own = await resolveBusinessRule("rabies_observation_window", mechita(bragado), tx, {
+        mode: "name",
+      });
+      expect(own.matchedRow?.id).toBe(bragadoRule);
+
+      const nameOnly = await resolveBusinessRule(
+        "rabies_observation_window",
+        { country: "AR", province: "Buenos Aires", locality: "Mechita" },
+        tx,
+      );
+      expect([albertiRule, bragadoRule]).not.toContain(nameOnly.matchedRow?.id);
+      expect(nameOnly.source).not.toBe("locality");
+    });
+  });
+
+  it("a unit-keyed rule is never read as a province rule by name", async () => {
+    await inRolledBackTx(async (tx) => {
+      const bragado = await localityId(tx, MECHITA_BRAGADO);
+      const keyed = await rule(tx, {
+        locality: null,
+        unitId: await municipalUnitOf(tx, bragado),
+        days: 21,
+      });
+      const r = await resolveBusinessRule(
+        "rabies_observation_window",
+        { country: "AR", province: "Buenos Aires", locality: "Otra" },
+        tx,
+      );
+      expect(r.matchedRow?.id).not.toBe(keyed);
+    });
+  });
+});

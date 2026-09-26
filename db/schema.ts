@@ -3018,18 +3018,29 @@ export const govtBusinessRules = pgTable(
       "govt_business_rules_requirement_level_valid",
       sql`${table.requirementLevel} is null or ${table.requirementLevel} in ('mandatory', 'recommended', 'not_regulated', 'optional')`,
     ),
-    // One row per (rule_type, jurisdiction tuple) — NULLS NOT DISTINCT so
-    // country-level rows (province/locality NULL) deduplicate too. The
-    // baseline seed (scripts/seed-legal-baseline.ts) upserts on this
-    // constraint; the app writer's duplicate check predates it.
-    govtBusinessRulesTypeJurisdictionUnique: unique("govt_business_rules_type_jurisdiction_unique")
+    // One rule per place it names (migration 0263, localidades-por-id D4):
+    // a catalogue row, an authority unit, or — for rules keyed to neither
+    // (national, provincial, legacy) — the (country, province, locality)
+    // text with NULL coalesced to '' so country-level rows deduplicate too.
+    // Replaces 0183's name-only constraint, which refused a homonym's rule.
+    govtBusinessRulesTypeLocalityUnique: uniqueIndex("govt_business_rules_type_locality_unique")
+      .on(table.ruleType, table.localityId)
+      .where(sql`${table.localityId} IS NOT NULL`),
+    govtBusinessRulesTypeUnitUnique: uniqueIndex("govt_business_rules_type_unit_unique")
+      .on(table.ruleType, table.authorityUnitId)
+      .where(sql`${table.authorityUnitId} IS NOT NULL`),
+    govtBusinessRulesTypeNameUnique: uniqueIndex("govt_business_rules_type_name_unique")
       .on(
         table.ruleType,
         table.jurisdictionCountry,
-        table.jurisdictionProvince,
-        table.jurisdictionLocality,
+        sql`coalesce(${table.jurisdictionProvince}, '')`,
+        sql`coalesce(${table.jurisdictionLocality}, '')`,
       )
-      .nullsNotDistinct(),
+      .where(sql`${table.localityId} IS NULL AND ${table.authorityUnitId} IS NULL`),
+    govtBusinessRulesOnePlaceKey: check(
+      "govt_business_rules_one_place_key",
+      sql`${table.localityId} IS NULL OR ${table.authorityUnitId} IS NULL`,
+    ),
     govtBusinessRulesJurisdictionProvinceCanonical: check(
       "govt_business_rules_jurisdiction_province_canonical",
       sql`${table.jurisdictionProvince} is null or ${table.jurisdictionProvince} in ${CANONICAL_PROVINCE_SQL_LIST}`,

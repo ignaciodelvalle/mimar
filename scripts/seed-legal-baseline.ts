@@ -13,12 +13,14 @@
 //   Any refusal exits 1 before a single row is read or written.
 //
 // Write semantics (spec BD2/BD3/BD6):
-//   - Upsert keyed on the govt_business_rules_type_jurisdiction_unique
-//     constraint (rule_type, country, province, locality — NULLS NOT
-//     DISTINCT), so re-runs never duplicate rows.
+//   - Keyed on the rule's name tuple among the rules keyed to no catalogue
+//     row and no unit (govt_business_rules_type_name_unique, migration 0263:
+//     every baseline row is national or provincial). The row found is
+//     updated BY ID; none found is inserted — the unique index refuses a
+//     concurrent duplicate, so re-runs never duplicate rows.
 //   - Admin-authored rows (`baseline_version IS NULL`) are NEVER clobbered:
-//     the ON CONFLICT update carries an explicit
-//     `WHERE baseline_version IS NOT NULL` guard.
+//     the update carries an explicit `WHERE baseline_version IS NOT NULL`
+//     guard.
 //   - Seeded rows are stamped with `baseline_version` (origin badge).
 //   - Every insert/update writes the SAME audit_log row the console's server
 //     action writes (create-business-rule.ts / update-business-rule.ts), so
@@ -262,6 +264,10 @@ export async function seedLegalBaseline(
         j.locality === null
           ? isNull(govtBusinessRules.jurisdictionLocality)
           : eq(govtBusinessRules.jurisdictionLocality, j.locality),
+        // The name-keyed rules only (0263): a rule on a catalogue row or a
+        // unit is a place-specific override, never the baseline's row.
+        isNull(govtBusinessRules.localityId),
+        isNull(govtBusinessRules.authorityUnitId),
       );
 
       const [existing] = await tx.select().from(govtBusinessRules).where(tupleWhere).limit(1);
@@ -291,51 +297,44 @@ export async function seedLegalBaseline(
         continue;
       }
 
-      const [written] = await tx
-        .insert(govtBusinessRules)
-        .values({
-          jurisdictionCountry: j.country,
-          jurisdictionProvince: j.province,
-          jurisdictionLocality: j.locality,
-          ruleType: row.ruleKey,
-          rulePayload: row.rulePayload,
-          requirementLevel: row.requirementLevel,
-          legalBasis: row.legalBasis,
-          authority: row.authority,
-          sourceUrl: row.sourceUrl,
-          effectiveFrom: row.effectiveFrom,
-          effectiveUntil: null,
-          baselineVersion: dataset.version,
-          createdByUserId: actorUserId,
-          updatedByUserId: actorUserId,
-        })
-        .onConflictDoUpdate({
-          target: [
-            govtBusinessRules.ruleType,
-            govtBusinessRules.jurisdictionCountry,
-            govtBusinessRules.jurisdictionProvince,
-            govtBusinessRules.jurisdictionLocality,
-          ],
-          set: {
-            rulePayload: row.rulePayload,
-            requirementLevel: row.requirementLevel,
-            legalBasis: row.legalBasis,
-            authority: row.authority,
-            sourceUrl: row.sourceUrl,
-            effectiveFrom: row.effectiveFrom,
-            effectiveUntil: null,
-            baselineVersion: dataset.version,
-            updatedByUserId: actorUserId,
-            updatedAt: new Date(),
-          },
-          // Belt-and-braces vs a concurrent admin write between our SELECT and
-          // this statement: an admin-authored row never gets updated.
-          setWhere: sql`${govtBusinessRules.baselineVersion} is not null`,
-        })
-        .returning({ id: govtBusinessRules.id });
+      const legal = {
+        rulePayload: row.rulePayload,
+        requirementLevel: row.requirementLevel,
+        legalBasis: row.legalBasis,
+        authority: row.authority,
+        sourceUrl: row.sourceUrl,
+        effectiveFrom: row.effectiveFrom,
+        effectiveUntil: null,
+        baselineVersion: dataset.version,
+        updatedByUserId: actorUserId,
+      };
+      const [written] = existing
+        ? await tx
+            .update(govtBusinessRules)
+            .set({ ...legal, updatedAt: new Date() })
+            // Belt-and-braces vs a concurrent admin write between the SELECT
+            // and this statement: an admin-authored row is never updated.
+            .where(
+              and(
+                eq(govtBusinessRules.id, existing.id),
+                sql`${govtBusinessRules.baselineVersion} is not null`,
+              ),
+            )
+            .returning({ id: govtBusinessRules.id })
+        : await tx
+            .insert(govtBusinessRules)
+            .values({
+              jurisdictionCountry: j.country,
+              jurisdictionProvince: j.province,
+              jurisdictionLocality: j.locality,
+              ruleType: row.ruleKey,
+              ...legal,
+              createdByUserId: actorUserId,
+            })
+            .returning({ id: govtBusinessRules.id });
 
       if (!written) {
-        // Conflict landed on an admin row the setWhere guard protected.
+        // The row turned admin-authored between the SELECT and the update.
         summary.protectedRows.push(rowLabel(row));
         continue;
       }
