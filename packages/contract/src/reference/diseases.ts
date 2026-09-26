@@ -57,7 +57,18 @@ export const DISEASES: readonly DiseaseDef[] = [
   },
   { code: "tuberculosis", label: "Tuberculosis", species: ["dog", "cat"], reportable: true },
   { code: "anthrax", label: "Carbunclo (Ántrax)", species: ["dog", "cat"], reportable: true },
-  { code: "toxoplasmosis", label: "Toxoplasmosis", species: ["cat"], reportable: true },
+  // Res. CVPBA 05/2020 (PO legal research, 2026-09-26). Esporotricosis is a
+  // feline zoonosis spread by scratches; dirofilariosis is vet/lab only.
+  { code: "sporotrichosis", label: "Esporotricosis", species: ["dog", "cat"], reportable: true },
+  { code: "dirofilariasis", label: "Dirofilariosis", species: ["dog", "cat"], reportable: true },
+  // NOT reportable (PO legal research, 2026-09-26): no norm makes it notifiable
+  // in dogs or cats — Ley 15.465 / Manual ENO cover congenital and pregnancy
+  // HUMAN cases only, and Res. CVPBA 05/2020 does not list it.
+  { code: "toxoplasmosis", label: "Toxoplasmosis", species: ["cat"], reportable: false },
+  // Out of scope, recorded so nobody re-derives it: Res. CVPBA 05/2020 also
+  // lists clamidiosis aviar (the registry takes no birds — PET_SPECIES) and
+  // SARS-CoV-2 on clinical suspicion (pandemic-era; the PO confirms with the
+  // CVPBA whether it is still in force before it is added).
   // Common non-reportable (catalog completeness so owners can pick a real name)
   { code: "distemper", label: "Moquillo (Distemper canino)", species: ["dog"], reportable: false },
   { code: "parvovirus", label: "Parvovirus canino", species: ["dog"], reportable: false },

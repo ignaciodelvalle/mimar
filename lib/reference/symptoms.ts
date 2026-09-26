@@ -329,6 +329,36 @@ export const SYMPTOMS: readonly SymptomDef[] = [
       { disease_code: "ehrlichiosis", specificity: "medium" },
     ],
   },
+  // Esporotricosis (Res. CVPBA 05/2020; PO addendum 2026-09-26): a feline
+  // zoonosis spread by scratches. Each sign is MEDIUM — the lesion and the
+  // scratch together reach the alert threshold, either alone does not. The
+  // weights are part of the pending vet review (S12). Stigma-sensitive: the
+  // signal never becomes an automatic owner alert.
+  {
+    code: "non_healing_wounds",
+    label: "Heridas que no cicatrizan",
+    category: "dermatological",
+    species: ["dog", "cat"],
+    synonyms: [
+      "herida que no cura",
+      "heridas que no curan",
+      "herida que no cicatriza",
+      "heridas que no cicatrizan",
+      "heridas en la nariz",
+      "herida en la nariz",
+      "heridas en la cara",
+      "herida en la cara",
+    ],
+    related_diseases: [{ disease_code: "sporotrichosis", specificity: "medium" }],
+  },
+  {
+    code: "scratched_a_person",
+    label: "Rasguñó a una persona",
+    category: "behavioral",
+    species: ["dog", "cat"],
+    synonyms: ["rasguñó a alguien", "me rasguñó", "rasguñó a una persona", "arañó a alguien"],
+    related_diseases: [{ disease_code: "sporotrichosis", specificity: "medium" }],
+  },
 ];
 
 export function findSymptom(code: string): SymptomDef | null {

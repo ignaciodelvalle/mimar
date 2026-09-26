@@ -116,9 +116,11 @@ describe("enqueueOutboxForEvent", () => {
     expect(row.attempts).toBe(0);
   });
 
-  it("leptospirosis disease_diagnosis → 48h SLA", async () => {
+  // Hidatidosis keeps its 48 h (flagged "a confirmar") — the one window that
+  // is not 24 h, so it proves the SLA is read from the catalogue.
+  it("hydatidosis disease_diagnosis → 48h SLA", async () => {
     const { tx, inserted } = makeMockTx();
-    const event = makeDiseaseDiagnosisEvent("leptospirosis");
+    const event = makeDiseaseDiagnosisEvent("hydatidosis");
 
     await enqueueOutboxForEvent(tx as never, event, PET, NOW);
 
@@ -183,7 +185,7 @@ describe("enqueueOutboxForEvent", () => {
     it("a diagnosis entered five days late is already overdue: diagnosis_date + 48h", async () => {
       const { tx, inserted } = makeMockTx();
       const diagnosed = new Date(NOW.getTime() - 5 * 24 * HOUR);
-      const event = makeDiseaseDiagnosisEvent("leptospirosis");
+      const event = makeDiseaseDiagnosisEvent("hydatidosis");
       await enqueueOutboxForEvent(
         tx as never,
         { ...event, payload: { ...event.payload, diagnosis_date: diagnosed.toISOString() } },

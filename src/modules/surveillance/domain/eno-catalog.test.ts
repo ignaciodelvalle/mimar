@@ -14,65 +14,60 @@ import {
   isEnoCode,
 } from "./eno-catalog";
 
+/** Norms no longer in force: Res. SENASA 422/2003 (derogated, art. 22 Res. SENASA 153/2021). */
+const DEROGATED = /422\s*\/\s*2003/;
+
 // ---------------------------------------------------------------------------
 // ENO_DISEASES_AR catalog shape
 // ---------------------------------------------------------------------------
 
 describe("ENO_DISEASES_AR", () => {
-  it("contains exactly 6 diseases", () => {
-    expect(ENO_DISEASES_AR).toHaveLength(6);
+  // PO legal research (2026-09-26): Res. CVPBA 05/2020 says "inmediata" for its
+  // whole list, cited as 24 h (also SENASA 153/2021 Grupo I and Ley PBA 5325).
+  // The old 48 h / 72 h had no source. Hidatidosis is not on the CVPBA list:
+  // it keeps its window, flagged "a confirmar". Anthrax (SENASA 153/2021
+  // Grupo I, 24 h from suspicion) goes to SENASA, vet/lab only.
+  it.each([
+    ["rabies", 24, "critical", false, "sourced"],
+    ["leptospirosis", 24, "high", false, "sourced"],
+    ["hidatidosis", 48, "high", false, "a_confirmar"],
+    ["brucelosis_canina", 24, "high", true, "sourced"],
+    ["leishmaniasis", 24, "critical", true, "sourced"],
+    ["tuberculosis", 24, "high", false, "sourced"],
+    ["anthrax", 24, "critical", false, "sourced"],
+    ["esporotricosis", 24, "high", true, "sourced"],
+    ["dirofilariosis", 24, "high", false, "sourced"],
+  ] as const)("%s: %i h, %s, stigma=%s, plazo %s", (code, hours, severity, stigma, status) => {
+    const d = ENO_DISEASES_AR.find((x) => x.code === code);
+    expect(d).toBeDefined();
+    expect(d?.notifyHours).toBe(hours);
+    expect(d?.severity).toBe(severity);
+    expect(d?.stigmaSensitive).toBe(stigma);
+    expect(d?.deadline.status).toBe(status);
   });
 
-  // PO S6 (2026-09-26): tuberculosis enters the list under Res. CVPBA 05/2020
-  // ("micobacterias") + Ley PBA 6115. The norm names no hour count; the 24 h
-  // is the "<24 hs" the legal framework states for ENO in general.
-  it("contains tuberculosis, 24 h, citing Res. CVPBA 05/2020 and Ley PBA 6115", () => {
+  it("contains exactly the nine diseases above", () => {
+    expect(ENO_DISEASES_AR).toHaveLength(9);
+  });
+
+  it("tuberculosis cites Res. CVPBA 05/2020 and Ley PBA 6115", () => {
     const tb = ENO_DISEASES_AR.find((d) => d.code === "tuberculosis");
-    expect(tb).toBeDefined();
-    expect(tb?.notifyHours).toBe(24);
-    expect(tb?.stigmaSensitive).toBe(false);
     expect(tb?.legalAnchor).toContain("CVPBA 05/2020");
     expect(tb?.legalAnchor).toContain("6115");
   });
 
-  it("contains rabies with critical severity and stigmaSensitive=false", () => {
-    const rabies = ENO_DISEASES_AR.find((d) => d.code === "rabies");
-    expect(rabies).toBeDefined();
-    expect(rabies?.severity).toBe("critical");
-    expect(rabies?.stigmaSensitive).toBe(false);
-    expect(rabies?.notifyHours).toBe(24);
+  it("anthrax cites Res. SENASA 153/2021 Grupo I, goes to SENASA and only a vet or a lab raises it", () => {
+    const anthrax = ENO_DISEASES_AR.find((d) => d.code === "anthrax");
+    expect(anthrax?.legalAnchor).toContain("SENASA 153/2021");
+    expect(anthrax?.authority).toBe("senasa");
+    expect(anthrax?.vetOnly).toBe(true);
   });
 
-  it("contains leptospirosis with high severity and stigmaSensitive=false", () => {
-    const lepto = ENO_DISEASES_AR.find((d) => d.code === "leptospirosis");
-    expect(lepto).toBeDefined();
-    expect(lepto?.severity).toBe("high");
-    expect(lepto?.stigmaSensitive).toBe(false);
-    expect(lepto?.notifyHours).toBe(48);
-  });
-
-  it("contains hidatidosis with high severity and stigmaSensitive=false", () => {
-    const hida = ENO_DISEASES_AR.find((d) => d.code === "hidatidosis");
-    expect(hida).toBeDefined();
-    expect(hida?.severity).toBe("high");
-    expect(hida?.stigmaSensitive).toBe(false);
-    expect(hida?.notifyHours).toBe(48);
-  });
-
-  it("contains brucelosis_canina with high severity and stigmaSensitive=true", () => {
-    const bruc = ENO_DISEASES_AR.find((d) => d.code === "brucelosis_canina");
-    expect(bruc).toBeDefined();
-    expect(bruc?.severity).toBe("high");
-    expect(bruc?.stigmaSensitive).toBe(true);
-    expect(bruc?.notifyHours).toBe(72);
-  });
-
-  it("contains leishmaniasis with critical severity and stigmaSensitive=true", () => {
-    const leish = ENO_DISEASES_AR.find((d) => d.code === "leishmaniasis");
-    expect(leish).toBeDefined();
-    expect(leish?.severity).toBe("critical");
-    expect(leish?.stigmaSensitive).toBe(true);
-    expect(leish?.notifyHours).toBe(48);
+  it("dirofilariosis is vet/lab only; the CVPBA list goes to the municipal zoonosis centre", () => {
+    expect(getEnoDisease("dirofilariosis")?.vetOnly).toBe(true);
+    for (const code of ["rabies", "leptospirosis", "brucelosis_canina", "esporotricosis"]) {
+      expect(getEnoDisease(code)?.authority).toBe("zoonosis");
+    }
   });
 
   it("every disease has a non-empty code, label, and legalAnchor", () => {
@@ -80,6 +75,21 @@ describe("ENO_DISEASES_AR", () => {
       expect(disease.code.length).toBeGreaterThan(0);
       expect(disease.label.length).toBeGreaterThan(0);
       expect(disease.legalAnchor.length).toBeGreaterThan(0);
+    }
+  });
+
+  // Res. SENASA 422/2003 was derogated by art. 22 of Res. SENASA 153/2021.
+  it("no disease cites a derogated norm", () => {
+    for (const disease of ENO_DISEASES_AR) {
+      expect(disease.legalAnchor).not.toMatch(DEROGATED);
+      expect(disease.deadline.source).not.toMatch(DEROGATED);
+    }
+  });
+
+  it("every plazo is sourced or explicitly 'a confirmar', and says where it comes from", () => {
+    for (const disease of ENO_DISEASES_AR) {
+      expect(["sourced", "a_confirmar"]).toContain(disease.deadline.status);
+      expect(disease.deadline.source.length).toBeGreaterThan(0);
     }
   });
 });
@@ -231,10 +241,13 @@ describe("every reportable disease is in the ENO list or explicitly exempted", (
     expect(inList && exemption !== undefined).toBe(false);
   });
 
-  it("exempts exactly anthrax and toxoplasmosis, pending the PO's legal research", () => {
-    expect(Object.keys(ENO_EXEMPT_REPORTABLE).sort()).toEqual(["anthrax", "toxoplasmosis"]);
+  // PO legal research (2026-09-26): toxoplasmosis is no longer reportable (no
+  // norm backs it for dogs and cats; Ley 15.465 covers human cases) and
+  // anthrax entered the list — nothing is exempt today.
+  it("no reportable disease is exempt today; any exemption carries its reason", () => {
+    expect(Object.keys(ENO_EXEMPT_REPORTABLE)).toEqual([]);
     for (const reason of Object.values(ENO_EXEMPT_REPORTABLE)) {
-      expect(reason).toMatch(/PO/);
+      expect(reason.length).toBeGreaterThan(0);
     }
   });
 

@@ -39,7 +39,7 @@ const BRUCELLOSIS_DISEASE = {
   severity: "high" as const,
   notifyHours: 72,
   stigmaSensitive: true, // owner NOT notified
-  legalAnchor: "Res. SENASA 422/2003",
+  legalAnchor: "Res. CVPBA 05/2020 (PBA)",
 };
 
 const LEPTOSPIROSIS_DISEASE = {

@@ -93,9 +93,32 @@ const LEY_5325_PBA: LegalReference = {
 const RES_CVPBA_05: LegalReference = {
   id: "res_cvpba_05_2020",
   label: "Res. CVPBA 05 / 2020",
-  scope: "ENO en pequeños animales (PBA) — incluye lepto, brucelosis, leishmaniasis",
+  scope:
+    "ENO en pequeños animales (PBA), notificación inmediata al Centro de Zoonosis municipal: brucelosis canina, dirofilariosis, esporotricosis, leishmaniasis visceral, leptospirosis, micobacteriosis, rabia",
   jurisdiction: "province",
   appliesTo: { province: "Buenos Aires" },
+  fullTextUrl: "https://cvpba.org/wp-content/uploads/2022/03/ENO-05-2020-1.pdf",
+};
+
+// Res. SENASA 153/2021 — the animal-side national list. Its art. 22 derogated
+// Res. SENASA 422/2003. Grupo I: immediate notice, within 24 h of suspicion,
+// to SENASA. Grupo II: per the disease's specific norm.
+const RES_SENASA_153_G1: LegalReference = {
+  id: "res_senasa_153_2021_g1",
+  label: "Res. SENASA 153 / 2021 (Grupo I)",
+  scope: "Notificación inmediata a SENASA, dentro de las 24 h de la sospecha",
+  jurisdiction: "national",
+  fullTextUrl:
+    "https://www.argentina.gob.ar/normativa/nacional/resoluci%C3%B3n-153-2021-348400/texto",
+};
+
+const RES_SENASA_153_G2: LegalReference = {
+  id: "res_senasa_153_2021_g2",
+  label: "Res. SENASA 153 / 2021 (Grupo II)",
+  scope: "Notificación a SENASA según la norma específica de la enfermedad",
+  jurisdiction: "national",
+  fullTextUrl:
+    "https://www.argentina.gob.ar/normativa/nacional/resoluci%C3%B3n-153-2021-348400/texto",
 };
 
 const LEY_6115_PBA: LegalReference = {
@@ -107,15 +130,18 @@ const LEY_6115_PBA: LegalReference = {
 };
 
 export const DISEASE_LEGAL_ANCHORS: Record<string, readonly LegalReference[]> = {
-  rabies_confirmed: [LEY_15465, RES_MS_1144, DL_8056_PBA, ORD_CABA_41831],
-  rabies_suspected: [LEY_15465, RES_MS_1144, DL_8056_PBA, ORD_CABA_41831],
+  rabies_confirmed: [LEY_15465, RES_MS_1144, DL_8056_PBA, ORD_CABA_41831, RES_CVPBA_05],
+  rabies_suspected: [LEY_15465, RES_MS_1144, DL_8056_PBA, ORD_CABA_41831, RES_CVPBA_05],
   leptospirosis: [LEY_15465, RES_MS_1715, RES_CVPBA_05, LEY_5325_PBA],
   canine_brucellosis: [RES_CVPBA_05, LEY_6115_PBA],
   visceral_leishmaniasis: [RES_MS_1811, RES_CVPBA_05],
   hydatidosis: [RES_MS_1811, RES_MS_546, LEY_6115_PBA],
-  tuberculosis: [LEY_15465, LEY_6115_PBA],
-  anthrax: [LEY_15465],
-  toxoplasmosis: [LEY_15465],
+  tuberculosis: [RES_SENASA_153_G2, RES_CVPBA_05, LEY_6115_PBA],
+  // Animal side: SENASA Grupo I (Ley 15.465 obliges for HUMAN cases only).
+  anthrax: [RES_SENASA_153_G1],
+  sporotrichosis: [RES_CVPBA_05],
+  dirofilariasis: [RES_CVPBA_05],
+  // toxoplasmosis: none — not reportable (PO legal research, 2026-09-26).
 };
 
 /**

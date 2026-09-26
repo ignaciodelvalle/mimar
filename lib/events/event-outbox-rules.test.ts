@@ -30,13 +30,13 @@ describe("OUTBOX_RULES[clinical_info_logged]", () => {
     expect(slaHours).toBe(24);
   });
 
-  it("leptospirosis diagnosis → returns notifyHours (48) from ENO catalog (direct match)", () => {
+  it("leptospirosis diagnosis → notifyHours (24, CVPBA «inmediata») from ENO catalog (direct match)", () => {
     const rule = rules[0];
     const slaHours = rule.slaHours({
       sub_kind: "disease_diagnosis",
       disease_code: "leptospirosis",
     });
-    expect(slaHours).toBe(48);
+    expect(slaHours).toBe(24);
   });
 
   it("unknown_disease diagnosis → returns null (no rule fires)", () => {

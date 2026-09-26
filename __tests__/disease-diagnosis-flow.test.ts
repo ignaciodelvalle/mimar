@@ -269,7 +269,8 @@ describe("recordDiseaseDiagnosisWriter", () => {
       .from(eventNotificationOutbox)
       .where(eq(eventNotificationOutbox.sourceEventId, result.diagnosisEventId));
     expect(rows).toHaveLength(1);
-    expect(rows[0].slaDueAt.getTime()).toBe(diagnosisDate.getTime() + 48 * 60 * 60 * 1000);
+    // Leptospirosis: 24 h (Res. CVPBA 05/2020 «inmediata»).
+    expect(rows[0].slaDueAt.getTime()).toBe(diagnosisDate.getTime() + 24 * 60 * 60 * 1000);
     // Overdue against the DATABASE clock (no host-vs-container comparison).
     const [{ overdue }] = await db
       .select({ overdue: sql<boolean>`${rows[0].slaDueAt.toISOString()}::timestamptz < now()` })
