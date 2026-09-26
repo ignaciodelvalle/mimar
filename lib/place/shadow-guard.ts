@@ -8,9 +8,11 @@
 // (reportError, structured log) and the caller serves the name result as if
 // no comparison had been attempted.
 //
-// The id path runs in its own savepoint (`exec.transaction` on a transaction
-// is a nested SAVEPOINT in Drizzle), so a failed statement is rolled back to
-// it and never leaves the caller's transaction aborted.
+// The id path runs in its own savepoint when nested, otherwise its own
+// transaction: `exec.transaction` on a transaction is a nested SAVEPOINT in
+// Drizzle, on the pool it opens a fresh transaction. Either way a failed
+// statement is rolled back there and never leaves the caller's transaction
+// aborted.
 
 import type { db } from "@/db";
 import { reportError } from "@/lib/infra/report-error";
