@@ -254,7 +254,7 @@ export function OrgBiteForm({ action, orgToken }: { action: FormAction; orgToken
           </label>
           <LocalityPickerAcross
             id="bite-locality"
-            placeholder="Localidad o barrio del incidente…"
+            placeholder="Ciudad, pueblo o barrio del incidente…"
             onSelect={(result) => {
               setProvinceCode(result?.provinceCode ?? "");
               setProvinceName(result?.provinceName ?? "");

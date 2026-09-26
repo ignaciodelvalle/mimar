@@ -8,6 +8,7 @@
 // `province` hidden inputs that the server page reads via searchParams —
 // same wire contract as before.
 
+import { LOCALITY_FIELD_LABEL, LOCALITY_FIELD_PLACEHOLDER } from "@dim/contract/reference";
 import { useState } from "react";
 
 import { LocalityPickerAcross } from "@/components/LocalityPickerAcross";
@@ -83,7 +84,7 @@ export function SearchFiltersForm({
             inputs which are the names the BuscarTurnosPage searchParams expect. */}
         <div className="space-y-1">
           <label htmlFor="locality_picker" className="text-xs text-[var(--color-ln-mute)]">
-            Localidad
+            {LOCALITY_FIELD_LABEL}
           </label>
           <div className="w-64">
             <LocalityPickerAcross
@@ -92,7 +93,7 @@ export function SearchFiltersForm({
                 localityName: currentLocality || null,
                 provinceName: currentProvince || null,
               }}
-              placeholder="Ej: Palermo, La Plata…"
+              placeholder={LOCALITY_FIELD_PLACEHOLDER}
               onSelect={handleSelect}
               onQueryChange={handleQueryChange}
             />

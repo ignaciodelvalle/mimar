@@ -45,6 +45,7 @@ import { searchLocalitiesPublicAction } from "@/app/actions/localities";
 import { LocalityPickerAcross } from "@/components/LocalityPickerAcross";
 import { LnInput, LnSelect } from "@/components/ui/Field";
 import { PROVINCES, type Province, provinceByName } from "@/lib/reference/ar-provincias";
+import { LOCALITY_FIELD_LABEL, LOCALITY_FIELD_PLACEHOLDER } from "@dim/contract/reference";
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 
@@ -119,7 +120,7 @@ export function LocationFields({
   onPointPresenceChange,
   onChange,
   required = false,
-  l1Label = "Localidad",
+  l1Label = LOCALITY_FIELD_LABEL,
   cascade = false,
   defaultCenter = null,
 }: {
@@ -127,15 +128,16 @@ export function LocationFields({
   defaultValue?: LocationFieldsValue;
   biasProvince?: string | null;
   biasLocality?: string | null;
-  /** Renders the red-seal `*` on the L1 "Localidad" label, matching the
+  /** Renders the red-seal `*` on the L1 locality label, matching the
    * LnField required marker used by sibling fields (QA round 2 2026-07-03 #7:
    * the helper said "Requerido" but the label carried no asterisk). For L1 it is
    * also forwarded to the locality autocomplete, adding native `required` +
    * `aria-required` on the text input so an empty submit is blocked client-side. */
   required?: boolean;
-  /** Overrides the L1 field label. Defaults to "Localidad". Lets a caller name
-   * the field in context (e.g. "Localidad donde ejercés") WITHOUT rendering a
-   * second, redundant label above the picker (#43 item 4). */
+  /** Overrides the L1 field label. Defaults to LOCALITY_FIELD_LABEL ("Ciudad,
+   * pueblo o barrio" — the words a citizen uses, not INDEC's "Localidad"). Lets
+   * a caller name the field in context (e.g. "Ciudad o pueblo donde ejercés")
+   * WITHOUT rendering a second, redundant label above the picker (#43 item 4). */
   l1Label?: string;
   /** L1 only. When true, renders a province-first cascade: a Provincia <select>
    * gates the locality autocomplete, which stays disabled until a province is
@@ -494,7 +496,7 @@ export function LocationFields({
 
           <div className="space-y-1.5">
             <label htmlFor="localityName-input" className="block text-sm font-medium text-ln-ink">
-              {l1Label === "Localidad" ? "Localidad o barrio" : l1Label}
+              {l1Label}
               {required && (
                 <span className="ml-1 text-[var(--color-ln-seal)]" aria-hidden="true">
                   *
@@ -517,7 +519,7 @@ export function LocationFields({
                 localityName: defaultValue?.localityName ?? null,
               }}
               placeholder={
-                cascadeProvinceCode ? "Buscá tu localidad o barrio" : "Elegí primero la provincia"
+                cascadeProvinceCode ? LOCALITY_FIELD_PLACEHOLDER : "Elegí primero la provincia"
               }
               searchAction={allowAnonymous ? searchLocalitiesPublicAction : undefined}
             />

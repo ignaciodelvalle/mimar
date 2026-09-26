@@ -64,7 +64,7 @@ describe("MoveForm — cascade prefill from the pet's current jurisdiction", () 
     const province = screen.getByLabelText(/Provincia/) as HTMLSelectElement;
     expect(province.value).toBe("AR-B");
 
-    const locality = screen.getByLabelText(/Localidad o barrio/) as HTMLInputElement;
+    const locality = screen.getByLabelText(/Ciudad, pueblo o barrio/) as HTMLInputElement;
     expect(locality).not.toBeDisabled();
     expect(locality.value).toBe("Belgrano");
   });
@@ -82,7 +82,7 @@ describe("MoveForm — cascade prefill from the pet's current jurisdiction", () 
     const province = screen.getByLabelText(/Provincia/) as HTMLSelectElement;
     expect(province.value).toBe("");
 
-    const locality = screen.getByLabelText(/Localidad o barrio/) as HTMLInputElement;
+    const locality = screen.getByLabelText(/Ciudad, pueblo o barrio/) as HTMLInputElement;
     expect(locality).toBeDisabled();
   });
 });

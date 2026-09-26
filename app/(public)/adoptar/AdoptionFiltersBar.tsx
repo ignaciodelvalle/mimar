@@ -1,5 +1,6 @@
 "use client";
 
+import { LOCALITY_FIELD_LABEL, LOCALITY_FIELD_PLACEHOLDER } from "@dim/contract/reference";
 import { useState } from "react";
 
 import Link from "next/link";
@@ -165,7 +166,7 @@ export function AdoptionFiltersBar({ filters }: { filters: AdoptionListingFilter
               htmlFor="localidad-input"
               className="block font-ln-mono text-xs uppercase tracking-[0.1em] font-semibold text-[var(--color-ln-mute)] mb-1"
             >
-              Localidad
+              {LOCALITY_FIELD_LABEL}
             </label>
             <LocalityPickerAcross
               key={provinceCode ?? "all"}
@@ -177,7 +178,7 @@ export function AdoptionFiltersBar({ filters }: { filters: AdoptionListingFilter
                 localityName: filters.locality ?? null,
                 provinceName: provinceName || null,
               }}
-              placeholder={provinceName ? "Buscar localidad…" : "Elegí una provincia"}
+              placeholder={provinceName ? LOCALITY_FIELD_PLACEHOLDER : "Elegí una provincia"}
               searchAction={searchLocalitiesPublicAction}
             />
           </div>

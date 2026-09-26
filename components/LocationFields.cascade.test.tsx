@@ -79,7 +79,7 @@ describe("LocationFields cascade — province gates locality", () => {
   it("disables the locality picker until a province is chosen", () => {
     render(<LocationFields mode="l1" cascade required />);
 
-    const locality = screen.getByLabelText(/Localidad o barrio/) as HTMLInputElement;
+    const locality = screen.getByLabelText(/Ciudad, pueblo o barrio/) as HTMLInputElement;
     expect(locality).toBeDisabled();
     expect(locality).toHaveAttribute("placeholder", "Elegí primero la provincia");
   });
@@ -92,7 +92,7 @@ describe("LocationFields cascade — province gates locality", () => {
 
     fireEvent.change(screen.getByLabelText(/Provincia/), { target: { value: "AR-C" } });
 
-    const locality = screen.getByLabelText(/Localidad o barrio/) as HTMLInputElement;
+    const locality = screen.getByLabelText(/Ciudad, pueblo o barrio/) as HTMLInputElement;
     expect(locality).not.toBeDisabled();
 
     fireEvent.change(locality, { target: { value: "Pal" } });
@@ -111,7 +111,9 @@ describe("LocationFields cascade — wire contract", () => {
     const { container } = render(<LocationFields mode="l1" cascade required />);
 
     fireEvent.change(screen.getByLabelText(/Provincia/), { target: { value: "AR-C" } });
-    fireEvent.change(screen.getByLabelText(/Localidad o barrio/), { target: { value: "Pal" } });
+    fireEvent.change(screen.getByLabelText(/Ciudad, pueblo o barrio/), {
+      target: { value: "Pal" },
+    });
 
     const option = await screen.findByText("Palermo");
     fireEvent.mouseDown(option);
@@ -130,7 +132,7 @@ describe("LocationFields cascade — wire contract", () => {
     const { container } = render(<LocationFields mode="l1" cascade required />);
 
     fireEvent.change(screen.getByLabelText(/Provincia/), { target: { value: "AR-B" } });
-    fireEvent.change(screen.getByLabelText(/Localidad o barrio/), {
+    fireEvent.change(screen.getByLabelText(/Ciudad, pueblo o barrio/), {
       target: { value: "Villa Inventada" },
     });
 
@@ -147,7 +149,9 @@ describe("LocationFields cascade — wire contract", () => {
     const { container } = render(<LocationFields mode="l1" cascade required />);
 
     fireEvent.change(screen.getByLabelText(/Provincia/), { target: { value: "AR-C" } });
-    fireEvent.change(screen.getByLabelText(/Localidad o barrio/), { target: { value: "Pal" } });
+    fireEvent.change(screen.getByLabelText(/Ciudad, pueblo o barrio/), {
+      target: { value: "Pal" },
+    });
     fireEvent.mouseDown(await screen.findByText("Palermo"));
     expect(hiddenValue(container, "localityName")).toBe("Palermo");
     expect(hiddenValue(container, "provinceCode")).toBe("AR-C");
@@ -155,7 +159,7 @@ describe("LocationFields cascade — wire contract", () => {
     // Switch province → the Palermo/CABA pick must not survive.
     fireEvent.change(screen.getByLabelText(/Provincia/), { target: { value: "AR-B" } });
 
-    const locality = screen.getByLabelText(/Localidad o barrio/) as HTMLInputElement;
+    const locality = screen.getByLabelText(/Ciudad, pueblo o barrio/) as HTMLInputElement;
     expect(locality.value).toBe("");
     expect(hiddenValue(container, "localityName")).toBe("");
     expect(hiddenValue(container, "provinceCode")).toBe("");

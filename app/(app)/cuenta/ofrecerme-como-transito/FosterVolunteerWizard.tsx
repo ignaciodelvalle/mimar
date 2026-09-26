@@ -19,6 +19,7 @@
 // around; keeping them all here is simpler than the controlled-uncontrolled
 // hybrid that DenunciaWizard / MarkLostWizard use.
 
+import { LOCALITY_FIELD_LABEL } from "@dim/contract/reference";
 import { useState, useTransition } from "react";
 
 import { LocalityPickerAcross } from "@/components/LocalityPickerAcross";
@@ -259,7 +260,7 @@ export function FosterVolunteerWizard({ initial }: { initial: InitialState | nul
                 htmlFor="fv-locality"
                 className="block text-sm font-medium text-[var(--color-ln-ink)]"
               >
-                Localidad
+                {LOCALITY_FIELD_LABEL}
               </label>
               <LocalityPickerAcross
                 id="fv-locality"
@@ -278,7 +279,7 @@ export function FosterVolunteerWizard({ initial }: { initial: InitialState | nul
                 }}
               />
               <p className="mt-1 text-xs text-[var(--color-ln-mute)]">
-                La provincia se deduce de la localidad que elijas.
+                La provincia se deduce del lugar que elijas.
               </p>
             </div>
 

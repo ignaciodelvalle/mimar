@@ -19,6 +19,11 @@
 // via the `searchAction` prop (see LocationFields `allowAnonymous`). Without that,
 // the auth action redirects to /login the moment the user types.
 
+import {
+  LOCALITY_FIELD_PLACEHOLDER,
+  describeChosenLocality,
+  localityOptionLabel,
+} from "@dim/contract/reference";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import { searchLocalitiesAction } from "@/app/actions/localities";
@@ -103,7 +108,7 @@ export function LocalityPickerAcross({
   onSelect,
   onDeselect,
   onQueryChange,
-  placeholder = "Ej: Palermo, La Plata, Mendoza…",
+  placeholder = LOCALITY_FIELD_PLACEHOLDER,
   searchAction = searchLocalitiesAction,
 }: Props) {
   const [query, setQuery] = useState(defaultValue?.localityName ?? "");
@@ -189,7 +194,9 @@ export function LocalityPickerAcross({
   function handleSelect(r: LocalitySearchResult) {
     justPickedRef.current = true;
     setSelected(r);
-    setQuery(r.localityName);
+    // An alias pick shows the name the person typed ("Banfield"); the hidden
+    // inputs below still carry the catalogue row it selects (Lomas de Zamora).
+    setQuery(r.aliasName ?? r.localityName);
     setOpen(false);
     onSelect?.(r);
   }
@@ -247,8 +254,12 @@ export function LocalityPickerAcross({
         // pollute the results (see lib/ui/no-browser-autofill.ts).
         {...NO_BROWSER_AUTOFILL}
         items={results}
+        // An alias row shares its target's indecId with the direct row (and with
+        // other aliases of the same target), so the alias is part of the key.
         getItemKey={(r) =>
-          r.indecId ?? `${r.provinceCode}-${r.localitySlug}-${r.departmentName ?? "x"}`
+          `${r.indecId ?? `${r.provinceCode}-${r.localitySlug}-${r.departmentName ?? "x"}`}${
+            r.aliasName ? `~${r.aliasName}` : ""
+          }`
         }
         onSelect={handleSelect}
         open={open}
@@ -260,7 +271,7 @@ export function LocalityPickerAcross({
               active ? "bg-ln-stripe " : "hover:bg-ln-stripe "
             }`}
           >
-            <p className="text-sm text-ln-ink ">{r.localityName}</p>
+            <p className="text-sm text-ln-ink ">{localityOptionLabel(r)}</p>
             <p className="text-xs text-ln-mute ">
               {r.departmentName ? `${r.departmentName}, ` : ""}
               {r.provinceName}
@@ -286,8 +297,18 @@ export function LocalityPickerAcross({
       <LocalityFieldStatusLine
         status={status}
         query={query}
-        localityName={localityNameValue}
-        provinceName={provinceNameValue}
+        chosenLine={
+          selected
+            ? describeChosenLocality(selected)
+            : provinceNameValue && defaultValue?.provinceCode
+              ? describeChosenLocality({
+                  localityName: localityNameValue,
+                  provinceCode: defaultValue.provinceCode,
+                  provinceName: provinceNameValue,
+                  departmentName: null,
+                })
+              : ""
+        }
       />
 
       {errored && (
@@ -349,13 +370,12 @@ export function resolveLocalityFieldStatus(input: {
 function LocalityFieldStatusLine({
   status,
   query,
-  localityName,
-  provinceName,
+  chosenLine,
 }: {
   status: LocalityFieldStatus;
   query: string;
-  localityName: string;
-  provinceName: string;
+  /** "Banfield · partido de Lomas de Zamora, Buenos Aires" — see describeChosenLocality. */
+  chosenLine: string;
 }) {
   if (status === "searching") {
     return (
@@ -402,7 +422,7 @@ function LocalityFieldStatusLine({
     // pick had registered arrived at submit time, as a rejection.
     return (
       <p className="text-xs text-ln-ok mt-1">
-        Localidad confirmada{provinceName ? `: ${localityName}, ${provinceName}` : ""}
+        {chosenLine ? `Confirmado: ${chosenLine}` : "Confirmado"}
       </p>
     );
   }

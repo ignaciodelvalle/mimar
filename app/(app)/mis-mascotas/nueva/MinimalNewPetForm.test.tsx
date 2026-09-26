@@ -67,7 +67,7 @@ async function completeStep1() {
   fireEvent.click(screen.getByRole("button", { name: /^perro$/i }));
 
   fireEvent.change(screen.getByLabelText(/Provincia/), { target: { value: "AR-C" } });
-  fireEvent.change(screen.getByLabelText(/Localidad o barrio/), { target: { value: "Bel" } });
+  fireEvent.change(screen.getByLabelText(/Ciudad, pueblo o barrio/), { target: { value: "Bel" } });
   fireEvent.mouseDown(await screen.findByText("Belgrano"));
 }
 
@@ -109,7 +109,9 @@ describe("MinimalNewPetForm — paso 1 gating", () => {
     fireEvent.change(screen.getByLabelText(/Provincia/), { target: { value: "AR-C" } });
     // Type a locality but NEVER pick a suggestion → provinceCode stays empty, the
     // same "unresolved" signal the server rejects on. Step 1 must not advance.
-    fireEvent.change(screen.getByLabelText(/Localidad o barrio/), { target: { value: "Palermo" } });
+    fireEvent.change(screen.getByLabelText(/Ciudad, pueblo o barrio/), {
+      target: { value: "Palermo" },
+    });
 
     fireEvent.click(screen.getByRole("button", { name: /continuar/i }));
 
@@ -346,7 +348,7 @@ describe("MinimalNewPetForm — stale duplicatePrompt (PO bug 2026-07-18)", () =
 
     // The LnCombobox visible input still shows the pick; the hidden inputs still
     // carry the RESOLVED wire values the server's LOCALITY_UNRESOLVED guard reads.
-    expect(screen.getByLabelText(/Localidad o barrio/)).toHaveValue("Belgrano");
+    expect(screen.getByLabelText(/Ciudad, pueblo o barrio/)).toHaveValue("Belgrano");
     expect(container.querySelector<HTMLInputElement>('input[name="provinceCode"]')?.value).toBe(
       "AR-C",
     );

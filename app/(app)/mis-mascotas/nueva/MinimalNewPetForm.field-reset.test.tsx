@@ -64,7 +64,7 @@ async function completeStep1() {
   fireEvent.click(screen.getByRole("button", { name: /^perro$/i }));
 
   fireEvent.change(screen.getByLabelText(/Provincia/), { target: { value: "AR-C" } });
-  fireEvent.change(screen.getByLabelText(/Localidad o barrio/), { target: { value: "Bel" } });
+  fireEvent.change(screen.getByLabelText(/Ciudad, pueblo o barrio/), { target: { value: "Bel" } });
   fireEvent.mouseDown(await screen.findByText("Belgrano"));
 }
 
@@ -129,7 +129,9 @@ describe("<MinimalNewPetForm> — survives the React 19 post-error reset", () =>
     fireEvent.change(otherSpecies, { target: { value: "rabbit" } });
 
     fireEvent.change(screen.getByLabelText(/Provincia/), { target: { value: "AR-C" } });
-    fireEvent.change(screen.getByLabelText(/Localidad o barrio/), { target: { value: "Bel" } });
+    fireEvent.change(screen.getByLabelText(/Ciudad, pueblo o barrio/), {
+      target: { value: "Bel" },
+    });
     fireEvent.mouseDown(await screen.findByText("Belgrano"));
     fireEvent.click(screen.getByRole("button", { name: /continuar/i }));
 

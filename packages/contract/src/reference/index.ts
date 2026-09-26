@@ -36,6 +36,15 @@ export {
   PREVIOUS_LEGAL_VERSION,
   resolveAcceptedLegalVersion,
 } from "./legal-version.ts";
+export {
+  type DescribableLocality,
+  LOCALITY_FIELD_LABEL,
+  LOCALITY_FIELD_PLACEHOLDER,
+  chosenLocalityName,
+  chosenLocalityParent,
+  describeChosenLocality,
+  localityOptionLabel,
+} from "./locality-copy.ts";
 export { pluralizeEs } from "./pluralize-es.ts";
 export { PROVINCES, type ReferenceProvince } from "./provinces.ts";
 export {

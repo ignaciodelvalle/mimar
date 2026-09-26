@@ -118,7 +118,9 @@ describe("LocalityPickerAcross — Villa María cross-province homonym (C2)", ()
     expect(onSelect).toHaveBeenCalledWith(VILLA_MARIA_CBA);
     // The "confirmed" status line names the picked province — Córdoba, not the
     // Buenos Aires homonym — so the admin gets confirmation of WHICH one stuck.
-    expect(screen.getByText(/Localidad confirmada: Villa María, Córdoba/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Confirmado: Villa María · departamento General San Martín, Córdoba/),
+    ).toBeInTheDocument();
   });
 
   it("picking the Buenos Aires 'localidad' row resolves to the OTHER province, not Córdoba", async () => {
@@ -135,7 +137,59 @@ describe("LocalityPickerAcross — Villa María cross-province homonym (C2)", ()
     fireEvent.mouseDown(screen.getByText(/Alberti, Buenos Aires/));
 
     expect(onSelect).toHaveBeenCalledWith(VILLA_MARIA_BA);
-    expect(screen.getByText(/Localidad confirmada: Villa María, Buenos Aires/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Confirmado: Villa María · partido de Alberti, Buenos Aires/),
+    ).toBeInTheDocument();
+  });
+});
+
+// Aliases: "Banfield" is not a catalogue row — the Lomas de Zamora partido
+// component is. The search returns THAT row with aliasName set; picking it must
+// show the name the person typed and submit the catalogue row.
+const LOMAS = {
+  id: "11111111-1111-4111-8111-111111111111",
+  indecId: "06490010",
+  localityName: "Lomas de Zamora",
+  localitySlug: "lomas-de-zamora",
+  provinceCode: "AR-B",
+  provinceName: "Buenos Aires",
+  departmentName: "Lomas de Zamora",
+  category: "componente",
+} as LocalitySearchResult;
+const BANFIELD = { ...LOMAS, aliasName: "Banfield" } as LocalitySearchResult;
+
+describe("LocalityPickerAcross — an alias selects its catalogue row", () => {
+  it("offers 'Banfield (Lomas de Zamora)' and submits the Lomas de Zamora row", async () => {
+    const onSelect = vi.fn();
+    vi.useFakeTimers();
+    const searchAction = vi.fn(async () => ({ results: [BANFIELD, LOMAS] }));
+    const { container } = render(
+      <LocalityPickerAcross id="t" searchAction={searchAction} onSelect={onSelect} />,
+    );
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "Banfield" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    fireEvent.focus(input);
+
+    // Two rows for one target — distinct keys, both rendered.
+    const list = screen.getByRole("listbox");
+    expect(within(list).getByText("Banfield (Lomas de Zamora)")).toBeInTheDocument();
+    expect(within(list).getByText("Lomas de Zamora")).toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByText("Banfield (Lomas de Zamora)"));
+
+    expect(onSelect).toHaveBeenCalledWith(BANFIELD);
+    expect(input).toHaveValue("Banfield");
+    const hidden = (name: string) =>
+      (container.querySelector(`input[type="hidden"][name="${name}"]`) as HTMLInputElement).value;
+    expect(hidden("localityName")).toBe("Lomas de Zamora");
+    expect(hidden("localityNameIndecId")).toBe("06490010");
+    expect(hidden("provinceCode")).toBe("AR-B");
+    expect(
+      screen.getByText("Confirmado: Banfield · partido de Lomas de Zamora, Buenos Aires"),
+    ).toBeInTheDocument();
   });
 });
 

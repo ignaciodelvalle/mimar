@@ -15,7 +15,7 @@ import { loginAs } from "./demo/_helpers";
  * changed shape twice since the original test was written:
  *   - 38fb1f44 introduced the province-first cascade: LocationFields mode="l1"
  *     cascade renders a "Provincia" <select> that GATES a province-scoped
- *     "Localidad o barrio" autocomplete (disabled until a province is picked).
+ *     "Ciudad, pueblo o barrio" autocomplete (disabled until a province is picked).
  *   - f94ad6ff split the alta into two steps: paso 1 (identidad) with a
  *     "Continuar" button, then paso 2 (foto y más) with the final "Crear
  *     mascota" submit. Both steps stay mounted so all fields are in the single
@@ -26,7 +26,7 @@ import { loginAs } from "./demo/_helpers";
  *   - species  → chip button rotulado por `speciesLabel` sets hidden input name="species"
  *   - sex      → radio group, value "male"/"female"/"unknown"
  *   - province → <select> labelled "Provincia" (ISO 3166-2:AR value)
- *   - locality → LocalityPickerAcross labelled "Localidad o barrio", scoped to
+ *   - locality → LocalityPickerAcross labelled "Ciudad, pueblo o barrio", scoped to
  *                the chosen province → hidden input name="localityName"
  */
 
@@ -105,7 +105,7 @@ test("owner creates a pet with location and it appears in /mis-mascotas", async 
   // province <select> must come first.
   await page.getByLabel(/provincia/i).selectOption(PROVINCE_CODE);
 
-  const localityInput = page.getByLabel(/localidad o barrio/i);
+  const localityInput = page.getByLabel(/ciudad, pueblo o barrio/i);
   await expect(localityInput).toBeEnabled();
   await localityInput.fill("Palermo");
 

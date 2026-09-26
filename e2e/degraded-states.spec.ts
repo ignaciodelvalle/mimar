@@ -535,7 +535,7 @@ async function registerPet(page: Page, name: string): Promise<string> {
   await page.getByRole("radio", { name: /macho/i }).check();
 
   await page.getByLabel(/provincia/i).selectOption(PROVINCE_CODE);
-  const locality = page.getByLabel(/localidad o barrio/i);
+  const locality = page.getByLabel(/ciudad, pueblo o barrio/i);
   await expect(locality, "the locality field unlocks once a province is picked").toBeEnabled();
   await locality.fill("Palermo");
   await expect(

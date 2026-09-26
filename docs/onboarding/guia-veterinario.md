@@ -10,7 +10,7 @@ Cada consulta que atendés termina en una libreta de papel que el dueño pierde,
 
 - Tu **matrícula profesional** y la jurisdicción que la emitió (la matrícula es provincial/jurisdiccional, y así se registra).
 - Tu **DNI**, que vas a declarar en el sistema (se guarda protegido: nunca en texto plano).
-- La **localidad donde ejercés**: tu solicitud la revisa y aprueba la autoridad de esa localidad.
+- La **ciudad o pueblo donde ejercés**: tu solicitud la revisa y aprueba la autoridad de ese lugar.
 - Un correo electrónico. No hace falta instalar nada: miMAR funciona desde el navegador.
 
 ## Cómo entrás
@@ -19,7 +19,7 @@ Entrás solo, pero la habilitación profesional pasa por una revisión humana. E
 
 1. **Creá tu cuenta** desde la pantalla de registro, como cualquier persona. Al principio tu cuenta es una cuenta de dueño común (podés cargar tus propias mascotas si querés — eso no se mezcla con tu rol profesional).
 2. Andá a tu **Cuenta** y tocá **"Convertirme en profesional"** para registrar tu matrícula. Si todavía no declaraste tu DNI, el sistema te lo pide primero — es requisito para cualquier trámite profesional.
-3. Completá **número de matrícula, jurisdicción que la emitió y la localidad donde ejercés**, y enviá la solicitud.
+3. Completá **número de matrícula, jurisdicción que la emitió y la ciudad o pueblo donde ejercés**, y enviá la solicitud.
 4. Tu solicitud llega a la bandeja de aprobaciones de la **autoridad de la localidad que declaraste** (si tu localidad todavía no tiene un área de gobierno en miMAR, la revisa el equipo administrador). Podés seguir el estado en **Cuenta → "Mis solicitudes"**.
 5. Cuando te aprueban, tu perfil pasa a **veterinario/a con matrícula verificada**. Ojo: la aprobación es una decisión de la autoridad sobre la documentación que presentaste — miMAR no consulta automáticamente al colegio profesional.
 

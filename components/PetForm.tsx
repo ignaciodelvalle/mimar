@@ -44,6 +44,7 @@ import { useActionRedirect } from "@/lib/ui/use-action-redirect";
 import { useKeptFields } from "@/lib/ui/use-kept-fields";
 import { speciesLabel } from "@/lib/utils/format";
 import type { NewPetFormState } from "@/src/modules/pets/domain/types";
+import { LOCALITY_FIELD_LABEL } from "@dim/contract/reference";
 import { useActionState, useMemo, useRef, useState } from "react";
 import { LocationFields } from "./LocationFields";
 
@@ -394,7 +395,7 @@ export function PetForm({
           still validates the (unchanged) locality. Editable only at registration. */}
       {!compact && isEdit && (
         <LnReadOnlyField
-          label="Localidad"
+          label={LOCALITY_FIELD_LABEL}
           value={
             [existingPet?.jurisdictionLocality, existingPet?.jurisdictionProvince]
               .filter(Boolean)
@@ -432,7 +433,7 @@ export function PetForm({
       {!compact && !isEdit && (
         <div className="flex flex-col gap-1.5">
           {/* Create mode: no established pet yet, so the picker starts empty.
-              `required` renders the "Localidad *" label + adds native required /
+              `required` renders the "Ciudad, pueblo o barrio *" label + adds native required /
               aria-required on the input; the duplicate wrapper <p> was removed
               (parity with MinimalNewPetForm). */}
           <LocationFields
