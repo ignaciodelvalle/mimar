@@ -45,7 +45,10 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db, eventNotificationOutbox, petEvents, pets } from "@/db";
-import { resolveEnoTargetJurisdiction } from "@/lib/events/eno-target-jurisdiction";
+import {
+  type ResolvedEnoTarget,
+  resolveEnoTargetJurisdiction,
+} from "@/lib/events/eno-target-jurisdiction";
 import { enqueueOutboxForEvent } from "@/lib/events/event-outbox-enqueue";
 import { type EnoTarget, OUTBOX_RULES, enoCaseKey } from "@/lib/events/event-outbox-rules";
 
@@ -65,7 +68,7 @@ export type BackfillRow = {
   eventType: string;
   eventPayload: Record<string, unknown>;
   /** Where the row SHOULD be bound — the live path's routing. */
-  correctTarget: EnoTarget;
+  correctTarget: ResolvedEnoTarget;
 };
 
 export type Reroute = { rowId: string; from: EnoTarget; to: EnoTarget };
@@ -176,7 +179,15 @@ export async function planEnoCaseBackfill(
         : stored;
     const row: BackfillRow = { ...base, correctTarget };
     if (!sameTarget(stored, correctTarget)) {
-      reroutes.push({ rowId: r.id, from: stored, to: correctTarget });
+      reroutes.push({
+        rowId: r.id,
+        from: stored,
+        // The plan reports names; the case's catalogue row rides the write.
+        to: {
+          jurisdictionProvince: correctTarget.jurisdictionProvince,
+          jurisdictionLocality: correctTarget.jurisdictionLocality,
+        },
+      });
     }
     const caseKey = row.enoCaseKey ?? caseKeyForRow(row);
     if (!caseKey) continue;
@@ -246,6 +257,14 @@ function reroute(row: BackfillRow) {
     target: {
       targetJurisdictionProvince: row.correctTarget.jurisdictionProvince ?? null,
       targetJurisdictionLocality: row.correctTarget.jurisdictionLocality ?? null,
+      // localidades-por-id D3: a row re-routed to a bite case takes that
+      // case's catalogue row too, as the live enqueue does.
+      ...(row.correctTarget.place
+        ? {
+            targetLocalityId: row.correctTarget.place.localityId,
+            targetPlaceMethod: row.correctTarget.place.placeMethod,
+          }
+        : {}),
     },
   };
 }
