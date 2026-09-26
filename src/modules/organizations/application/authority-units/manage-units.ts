@@ -8,10 +8,16 @@
 //      added_by / ended_by, valid_from / valid_to) and the audit_log row (which
 //      carries WHY and before/after) commit together or not at all;
 //   3. a municipal membership is MOVED, never removed: every live locality
-//      stays in exactly one municipal unit (the membership fence). Regional and
-//      submunicipal memberships can be removed.
+//      stays in exactly one municipal unit (the membership fence). A regional
+//      membership can be removed.
 // A unit is never deleted and a provincial unit is never created by hand (the
 // seed owns one per province; it has no explicit members).
+//
+// DEFERRED ON PURPOSE: this editor cannot create a SUBMUNICIPAL unit. The
+// schema has the level (0253) for CABA's comunas under the ciudad unit, but no
+// kind maps to it here (LEVEL_OF_KIND below: `comuna` is the municipal-level
+// comuna of provinces like Santa Fe). CABA comunas as submunicipal units, with
+// editor support and a test, are a separate task, not a gap in this one.
 //
 // Every function takes its executor first — the module `db`, or a
 // transaction — so a caller can compose it and tests can roll it back. The
@@ -54,6 +60,7 @@ export const EDITABLE_UNIT_KINDS = [
   "departamento",
 ] as const satisfies readonly AuthorityUnitKind[];
 
+// No kind maps to `submunicipal` yet — see the deferral in the header.
 const LEVEL_OF_KIND: Record<(typeof EDITABLE_UNIT_KINDS)[number], AuthorityUnitLevel> = {
   region: "regional",
   municipio: "municipal",
@@ -191,7 +198,11 @@ export async function moveLocalityToUnit(
   });
 }
 
-/** Close a regional or submunicipal membership. A municipal one only moves. */
+/**
+ * Close a regional membership. A municipal one only moves. The submunicipal
+ * branch is reachable only once submunicipal units exist, which this editor
+ * cannot create yet (deferred: CABA comunas — see the header).
+ */
 export async function removeLocalityFromUnit(
   exec: UnitExecutor,
   actorUserId: string,

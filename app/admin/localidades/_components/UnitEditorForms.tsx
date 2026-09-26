@@ -121,7 +121,7 @@ export function MoveLocalityForm({
   );
 }
 
-/** Close a regional or submunicipal membership. */
+/** Close a regional membership (submunicipal units: deferred, see manage-units.ts). */
 export function RemoveMemberForm({
   unitId,
   localityId,
