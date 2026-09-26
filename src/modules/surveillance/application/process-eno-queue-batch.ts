@@ -122,6 +122,30 @@ export async function processEnoQueueBatch(deps: EnoBatchDeps): Promise<EnoBatch
 // Returns true when fanout was performed, false when the event is missing/ineligible.
 // ---------------------------------------------------------------------------
 
+/**
+ * Where the fan-out goes (PO S10): the event's own place when it names one
+ * (unresolved → its province), else the pet's home — names and row together.
+ */
+async function fanoutPlace(
+  payload: Record<string, unknown>,
+  petRow: NonNullable<Awaited<ReturnType<EnoBatchDeps["getPet"]>>>,
+  deps: EnoBatchDeps,
+): Promise<{ province: string; locality: string; localityId: string | null | undefined }> {
+  const occurred = await deps.getEventPlaceTarget(payload);
+  if (occurred) {
+    return {
+      province: occurred.jurisdictionProvince ?? "",
+      locality: occurred.jurisdictionLocality ?? "",
+      localityId: occurred.place?.localityId ?? null,
+    };
+  }
+  return {
+    province: petRow.jurisdictionProvince ?? "",
+    locality: petRow.jurisdictionLocality ?? "",
+    localityId: petRow.localityId,
+  };
+}
+
 async function processOne(petEventId: string, deps: EnoBatchDeps): Promise<boolean> {
   // 1. Load the event row.
   const eventRow = await deps.repo.findEnoEventRow(petEventId);
@@ -156,10 +180,7 @@ async function processOne(petEventId: string, deps: EnoBatchDeps): Promise<boole
   // 4. Govt fanout — to where the diagnosis OCCURRED when the event names a
   // place (PO S10), else the pet's home. The row travels with the names,
   // read from the same source.
-  const occurred = await deps.getEventPlaceTarget(payload);
-  const province = (occurred ? occurred.jurisdictionProvince : petRow.jurisdictionProvince) ?? "";
-  const locality = (occurred ? occurred.jurisdictionLocality : petRow.jurisdictionLocality) ?? "";
-  const localityId = occurred ? (occurred.place?.localityId ?? null) : petRow.localityId;
+  const { province, locality, localityId } = await fanoutPlace(payload, petRow, deps);
   const targets = await deps.getGovtTargets(province, locality, localityId);
   const targetsCount = targets.length;
 

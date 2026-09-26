@@ -148,7 +148,7 @@ const BASE_INPUT = {
 
 describe("createWelfareReport — successful create (anon)", () => {
   it("inserts report + opens case + links case + emits signal, returns redirect to code page", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
 
     const result = await createWelfareReport(BASE_INPUT, {
       repo,
@@ -169,7 +169,7 @@ describe("createWelfareReport — successful create (anon)", () => {
   });
 
   it("authenticated user: redirect goes to /denuncias/mias", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
 
     const result = await createWelfareReport(
       { ...BASE_INPUT, reporterUserId: "user-123" },
@@ -184,7 +184,7 @@ describe("createWelfareReport — successful create (anon)", () => {
 
 describe("createWelfareReport — audit_log absence (spec: public create writes NONE)", () => {
   it("does NOT call insertAudit for a public (anon) create", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
 
     const result = await createWelfareReport(BASE_INPUT, {
       repo,
@@ -200,7 +200,7 @@ describe("createWelfareReport — audit_log absence (spec: public create writes 
   });
 
   it("does NOT call insertAudit for an authenticated public create", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
 
     const result = await createWelfareReport(
       { ...BASE_INPUT, reporterUserId: "user-123" },
@@ -291,7 +291,7 @@ describe("createWelfareReport — reference-code retry (spec: 5 attempts on 2350
   // Here we just verify the use-case correctly uses the pre-inserted reportId/referenceCode.
 
   it("uses the pre-inserted reportId for openCase and returns matching referenceCode in redirect", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
 
     const result = await createWelfareReport(
       { ...BASE_INPUT, reportId: RPT_ID, referenceCode: "DEN-CUSTOM-99" },
@@ -305,7 +305,7 @@ describe("createWelfareReport — reference-code retry (spec: 5 attempts on 2350
   });
 
   it("linkCase is called with the pre-inserted reportId", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
 
     await createWelfareReport(BASE_INPUT, {
       repo,
@@ -326,7 +326,7 @@ describe("createWelfareReport — pet-event bridge (registered_pet)", () => {
   // The use-case receives pre-resolved subjectPetId + isOwnerOfSubjectPet.
 
   it("abandonment: emits abandonment_reported pet event in tx", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
 
     const result = await createWelfareReport(
       {
@@ -347,7 +347,7 @@ describe("createWelfareReport — pet-event bridge (registered_pet)", () => {
   });
 
   it("neglect (maltreatment): emits maltreatment_reported pet event", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
 
     const result = await createWelfareReport(
       {
@@ -446,7 +446,7 @@ describe("createWelfareReport — pet-event bridge (registered_pet)", () => {
   });
 
   it("kind=other: no bridge pet event emitted", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
 
     await createWelfareReport(
       {
@@ -464,7 +464,7 @@ describe("createWelfareReport — pet-event bridge (registered_pet)", () => {
   });
 
   it("owner reporter: authorRole=owner in event payload", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
 
     await createWelfareReport(
       {
@@ -486,7 +486,7 @@ describe("createWelfareReport — pet-event bridge (registered_pet)", () => {
 
 describe("createWelfareReport — attachments", () => {
   it("calls insertAttachments in tx when attachments provided", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
     const attachments = [
       {
         storagePath: "welfare-evidence/rpt-001/file.jpg",
@@ -505,7 +505,7 @@ describe("createWelfareReport — attachments", () => {
   });
 
   it("skips insertAttachments when no attachments", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
 
     await createWelfareReport(BASE_INPUT, {
       repo,
@@ -533,7 +533,7 @@ describe("createWelfareReport — the entered place rides the bridge event", () 
     ["abandonment", "abandonment_reported"],
     ["neglect", "maltreatment_reported"],
   ])("%s: the %s payload carries the place as entered", async (kind, eventType) => {
-    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
     await createWelfareReport(
       {
         ...BASE_INPUT,
