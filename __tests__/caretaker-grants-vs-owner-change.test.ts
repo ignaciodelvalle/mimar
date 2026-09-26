@@ -25,6 +25,13 @@
 //       a stranger's contact on the new owner's credential until `ends_at` —
 //       up to 180 days.
 //
+//   (d) Audit K, W2: two more hand-offs ended the titular's owner row by id
+//       and never looked at caretakers — an ADOPTION REVERSAL (custody back
+//       to the refugio) and an ORG ACCEPTING AN OWNER'S RETURN. Same leak as
+//       (c), deterministically, on two paths `closeOwnerOwnerships` does not
+//       cover. Both now call `endCaretakerArrangementsForPet` in the same
+//       transaction.
+//
 // WHY THIS HITS REAL POSTGRES (the `db` vitest project, serial)
 // ---------------------------------------------------------------------------
 // The claim is about what a transaction leaves behind across three tables
@@ -39,9 +46,22 @@ import { randomUUID } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { db, ownerships, petCaretakerGrants, petEvents, pets, profiles } from "@/db";
+import {
+  db,
+  notifications,
+  organizations,
+  ownerships,
+  petCaretakerGrants,
+  petEvents,
+  pets,
+  profiles,
+} from "@/db";
+import { validateEventPayload } from "@/lib/events/event-schemas";
 import { endAllLiveOwnerships } from "@/lib/infra/end-pet-ownerships";
 import { hashDni } from "@/lib/utils/dni-hash";
+import { reverseAdoption } from "@/src/modules/adoption/application/reverse-adoption";
+import { AdoptionRepository } from "@/src/modules/adoption/infrastructure/adoption-repository";
+import { orgAcceptOwnerReturnUseCase } from "@/src/modules/return-to-owner/application/org-accept-owner-return";
 import { TransfersRepository } from "@/src/modules/transfers/infrastructure/transfers-repository";
 
 import { withMutationOverride } from "./_helpers/db-overrides";
@@ -173,11 +193,21 @@ beforeAll(async () => {
   });
 });
 
+// Hand-off fixtures of part (d): generated tokens, tracked for teardown.
+const handoffPetIds: string[] = [];
+const handoffOrgIds: string[] = [];
+const handoffProfileIds: string[] = [];
+
 afterAll(async () => {
   await purge();
   await withMutationOverride(async (tx) => {
-    for (const id of [titularId, caretakerId]) {
-      if (id) await tx.delete(profiles).where(eq(profiles.id, id));
+    for (const id of handoffPetIds) await tx.delete(pets).where(eq(pets.id, id));
+    for (const id of handoffOrgIds) await tx.delete(organizations).where(eq(organizations.id, id));
+    for (const id of [titularId, caretakerId, ...handoffProfileIds]) {
+      if (!id) continue;
+      await tx.delete(notifications).where(eq(notifications.userId, id));
+      await tx.delete(ownerships).where(eq(ownerships.ownerUserId, id));
+      await tx.delete(profiles).where(eq(profiles.id, id));
     }
   });
 });
@@ -268,5 +298,211 @@ describe("a P2P transfer closes the caretaker arrangement (H4/c)", () => {
         ),
       );
     expect(pendingAfter.status).toBe("cancelled");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (d) Audit K, W2 — the reversal and the owner-return accept
+// ---------------------------------------------------------------------------
+
+/**
+ * A pet the TITULAR holds (owner row) with a live arrangement on it: an
+ * accepted caretaker grant (row + grant) AND a pending invitation — the two
+ * halves `endCaretakerArrangementsForPet` must both resolve.
+ */
+async function petWithArrangements(label: string) {
+  const [org] = await db
+    .insert(organizations)
+    .values({
+      publicToken: `DIM-CGOC-O${randomUUID().slice(0, 5).toUpperCase()}`,
+      legalName: `CGOC Refugio ${label}`,
+      displayName: `CGOC Refugio ${label}`,
+      orgType: "shelter",
+      email: `cgoc-${label.toLowerCase()}-${randomUUID().slice(0, 6)}@dim-test.local`,
+      verified: true,
+    })
+    .returning({ id: organizations.id });
+  handoffOrgIds.push(org.id);
+
+  const coordinatorId = randomUUID();
+  await db.insert(profiles).values({
+    id: coordinatorId,
+    displayName: `CGOC Coordinador ${label}`,
+    dniHash: hashDni(randomDni()),
+    dniVerified: true,
+    role: "owner",
+  });
+  handoffProfileIds.push(coordinatorId);
+
+  const [pet] = await db
+    .insert(pets)
+    .values({
+      publicToken: `DIM-CGOC-${randomUUID().slice(0, 6).toUpperCase()}`,
+      name: `Cgoc${label}`,
+      species: "dog",
+      sex: "male",
+      potentiallyDangerousBreed: false,
+      status: "active",
+    })
+    .returning({ id: pets.id, publicToken: pets.publicToken });
+  handoffPetIds.push(pet.id);
+
+  await db.insert(ownerships).values({ petId: pet.id, ownerUserId: titularId, role: "owner" });
+  const [careRow] = await db
+    .insert(ownerships)
+    .values({ petId: pet.id, ownerUserId: caretakerId, role: "caretaker" })
+    .returning({ id: ownerships.id });
+  const [accepted] = await db
+    .insert(petCaretakerGrants)
+    .values({
+      publicToken: `CG-cgoc-${randomUUID().slice(0, 8)}`,
+      petId: pet.id,
+      grantedByUserId: titularId,
+      caretakerUserId: caretakerId,
+      caretakerEmail: "cgoc-caretaker@dim-test.local",
+      status: "accepted",
+      ownershipId: careRow.id,
+      endsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    })
+    .returning({ id: petCaretakerGrants.id });
+  const [pending] = await db
+    .insert(petCaretakerGrants)
+    .values({
+      publicToken: `CG-cgoc-${randomUUID().slice(0, 8)}`,
+      petId: pet.id,
+      grantedByUserId: titularId,
+      caretakerEmail: `cgoc-${label.toLowerCase()}-invitee@dim-test.local`,
+      status: "pending",
+      endsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    })
+    .returning({ id: petCaretakerGrants.id });
+
+  return {
+    orgId: org.id,
+    coordinatorId,
+    pet,
+    careRowId: careRow.id,
+    acceptedGrantId: accepted.id,
+    pendingGrantId: pending.id,
+  };
+}
+
+type ArrangementFixture = Awaited<ReturnType<typeof petWithArrangements>>;
+
+async function expectArrangementsLive(f: ArrangementFixture): Promise<void> {
+  const grants = await db
+    .select({ id: petCaretakerGrants.id, status: petCaretakerGrants.status })
+    .from(petCaretakerGrants)
+    .where(eq(petCaretakerGrants.petId, f.pet.id));
+  const byId = new Map(grants.map((g) => [g.id, g.status]));
+  expect(byId.get(f.acceptedGrantId)).toBe("accepted");
+  expect(byId.get(f.pendingGrantId)).toBe("pending");
+}
+
+async function expectArrangementsClosed(f: ArrangementFixture): Promise<void> {
+  const [careRow] = await db
+    .select({ endedAt: ownerships.endedAt })
+    .from(ownerships)
+    .where(eq(ownerships.id, f.careRowId));
+  expect(careRow.endedAt).not.toBeNull();
+
+  const [accepted] = await db
+    .select({ status: petCaretakerGrants.status, endedReason: petCaretakerGrants.endedReason })
+    .from(petCaretakerGrants)
+    .where(eq(petCaretakerGrants.id, f.acceptedGrantId));
+  expect(accepted).toEqual({ status: "ended", endedReason: "ownership_transferred" });
+
+  const [pending] = await db
+    .select({ status: petCaretakerGrants.status })
+    .from(petCaretakerGrants)
+    .where(eq(petCaretakerGrants.id, f.pendingGrantId));
+  expect(pending.status).toBe("cancelled");
+
+  // Exactly one ending fact, signed by the refugio that made the hand-off —
+  // not by the titular, who did not end anything.
+  const ended = await db
+    .select({ authorRole: petEvents.authorRole, org: petEvents.authorOrganizationId })
+    .from(petEvents)
+    .where(and(eq(petEvents.petId, f.pet.id), eq(petEvents.eventType, "caretaker_ended")));
+  expect(ended).toEqual([{ authorRole: "shelter", org: f.orgId }]);
+}
+
+describe("an adoption reversal ends the caretaker arrangement (audit K, W2)", () => {
+  it("reverseAdoption ends the accepted grant, cancels the pending one, and signs as the refugio", async () => {
+    const f = await petWithArrangements("Rev");
+    const now = new Date();
+    await db.insert(petEvents).values({
+      petId: f.pet.id,
+      eventType: "adoption_finalized",
+      occurredAt: now,
+      recordedAt: now,
+      recordedByUserId: f.coordinatorId,
+      authorRole: "shelter",
+      authorOrganizationId: f.orgId,
+      payload: validateEventPayload("adoption_finalized", {
+        previous_owner_organization_id: f.orgId,
+        adopter_user_id: titularId,
+        foster_user_id: null,
+        contract_attachment_id: null,
+        post_adoption_followup_months: null,
+        notes: null,
+      }),
+    });
+    // NON-VACUITY CONTROL: both halves live going in.
+    await expectArrangementsLive(f);
+
+    const result = await reverseAdoption(
+      { petPublicToken: f.pet.publicToken, reason: null },
+      {
+        repo: AdoptionRepository,
+        actor: {
+          user: { id: f.coordinatorId },
+          organization: {
+            id: f.orgId,
+            publicToken: "unused",
+            verified: true,
+            displayName: "CGOC Refugio",
+          },
+        },
+        transaction: db.transaction.bind(db) as <T>(cb: (tx: unknown) => Promise<T>) => Promise<T>,
+      },
+    );
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    await expectArrangementsClosed(f);
+  });
+});
+
+describe("an org accepting an owner's return ends the caretaker arrangement (audit K, W2)", () => {
+  it("orgAcceptOwnerReturnUseCase ends the accepted grant, cancels the pending one, and signs as the refugio", async () => {
+    const f = await petWithArrangements("Ret");
+    const proposedAt = new Date(Date.now() - 1000);
+    await db.insert(petEvents).values({
+      petId: f.pet.id,
+      eventType: "custody_transfer_proposed",
+      occurredAt: proposedAt,
+      recordedAt: proposedAt,
+      recordedByUserId: titularId,
+      authorRole: "owner",
+      payload: validateEventPayload("custody_transfer_proposed", {
+        from_user_id: titularId,
+        from_organization_id: null,
+        to_user_id: null,
+        to_organization_id: f.orgId,
+        reason: "post_adoption_failed_return",
+        notes: null,
+        matched_against_pet_id: null,
+        proposed_at: proposedAt.toISOString(),
+      }),
+    });
+    await expectArrangementsLive(f);
+
+    const result = await orgAcceptOwnerReturnUseCase({
+      orgId: f.orgId,
+      orgDisplayName: "CGOC Refugio",
+      actingUserId: f.coordinatorId,
+      petPublicToken: f.pet.publicToken,
+    });
+    expect("error" in result ? result.error : null).toBeNull();
+    await expectArrangementsClosed(f);
   });
 });

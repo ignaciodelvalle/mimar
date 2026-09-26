@@ -3,6 +3,10 @@
 // Mirrors finalize-adoption.test.ts's fake-repo pattern.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/infra/end-pet-ownerships", () => ({ notifyCaretakersOfHandoff: vi.fn() }));
+
+import { notifyCaretakersOfHandoff } from "@/lib/infra/end-pet-ownerships";
 import { ADOPTER_NO_LONGER_HOLDS_ERROR, ReversalRefused } from "../../domain/reversal-rules";
 import type { AdoptionRepository } from "../../infrastructure/adoption-repository";
 import { reverseAdoption } from "../reverse-adoption";
@@ -49,7 +53,9 @@ function makeFakeRepo(
     acquirePetAdvisoryLock: vi.fn().mockResolvedValue(undefined),
     findPetByToken: vi.fn().mockResolvedValue(pet),
     findReversibleAdoption: vi.fn().mockResolvedValue(reversible),
-    insertAdoptionReversed: vi.fn().mockResolvedValue({ eventId: "evt-reversed-1" }),
+    insertAdoptionReversed: vi
+      .fn()
+      .mockResolvedValue({ eventId: "evt-reversed-1", endedCaretakerGrants: [] }),
   } as unknown as typeof AdoptionRepository;
 }
 
@@ -221,7 +227,7 @@ describe("reverseAdoption", () => {
     );
     (repo.insertAdoptionReversed as ReturnType<typeof vi.fn>).mockImplementation(async () => {
       order.push("write");
-      return { eventId: "evt-reversed-1" };
+      return { eventId: "evt-reversed-1", endedCaretakerGrants: [] };
     });
 
     const result = await reverseAdoption(baseInput, { repo, actor, transaction: fakeTransaction });
@@ -261,6 +267,40 @@ describe("reverseAdoption", () => {
       expect.objectContaining({ adopterOwnershipId: "own-locked" }),
       "fake-tx",
     );
+  });
+
+  // ---- Audit K, W2: caretakers whose arrangement ended are told ----------
+
+  it("tells the caretakers whose arrangement the reversal ended, after the commit", async () => {
+    const repo = makeFakeRepo();
+    const ended = [
+      {
+        grantId: "grant-1",
+        petId: "pet-1",
+        caretakerUserId: "caretaker-1",
+        grantedByUserId: "adopter-user-1",
+        endsAt: new Date("2026-10-01T00:00:00Z"),
+      },
+    ];
+    (repo.insertAdoptionReversed as ReturnType<typeof vi.fn>).mockResolvedValue({
+      eventId: "evt-reversed-1",
+      endedCaretakerGrants: ended,
+    });
+    const notify = vi.mocked(notifyCaretakersOfHandoff);
+    notify.mockClear();
+
+    const result = await reverseAdoption(baseInput, { repo, actor, transaction: fakeTransaction });
+    expect(result).toMatchObject({ ok: true });
+    expect(notify).toHaveBeenCalledWith(ended, { name: "Max", publicToken: "tok-1" });
+  });
+
+  it("tells nobody when the reversal rolled back", async () => {
+    const repo = makeFakeRepo();
+    (repo.insertAdoptionReversed as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("boom"));
+    const notify = vi.mocked(notifyCaretakersOfHandoff);
+    notify.mockClear();
+    await reverseAdoption(baseInput, { repo, actor, transaction: fakeTransaction });
+    expect(notify).not.toHaveBeenCalled();
   });
 
   // ---- Notifications (best-effort, returned not flushed) -----------------

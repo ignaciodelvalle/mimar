@@ -8,7 +8,7 @@
 //   2. Verify owner still holds active owner row.
 //   3. End any active foster row (fix 4).
 //   4. Emit custody_transferred (owner → org shelter_custody).
-//   5. End owner's ownership row.
+//   5. End the owner's caretaker arrangements, then the owner's ownership row.
 //   6. Open new shelter_custody ownership for the org.
 //   7. Notify the owner.
 
@@ -17,6 +17,11 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, notifications, ownerships, petEvents, pets } from "@/db";
 import { validateEventPayload } from "@/lib/events/event-schemas";
 import { findOpenCaseForPetAndKind } from "@/lib/infra/case-helpers";
+import {
+  type EndedCaretakerGrant,
+  endCaretakerArrangementsForPet,
+  notifyCaretakersOfHandoff,
+} from "@/lib/infra/end-pet-ownerships";
 import {
   ORG_CUSTODY_TAKEN_ERROR,
   findLiveOrgShelterCustody,
@@ -59,6 +64,8 @@ export async function orgAcceptOwnerReturnUseCase({
   const now = new Date();
   type PendingNotification = typeof notifications.$inferInsert;
   const pendingNotifications: PendingNotification[] = [];
+  // Filled inside the tx, told only after it commits (ARCH-P).
+  let endedGrants: EndedCaretakerGrant[] = [];
 
   try {
     await db.transaction(async (tx) => {
@@ -165,8 +172,27 @@ export async function orgAcceptOwnerReturnUseCase({
         })
         .returning({ id: petEvents.id });
 
-      // 2. End the owner's ownership row.
-      await tx.update(ownerships).set({ endedAt: now }).where(eq(ownerships.id, ownerOwnership.id));
+      // 2. End the owner's caretaker arrangements with the owner's title (audit
+      // K, W2) — accepted grants through the atomic three-step, pending
+      // invitations cancelled — then the owner's ownership row. Ending only
+      // the row left the caretaker with write access on a pet the refugio now
+      // holds, and their contact on its public credential.
+      const closedArrangements = await endCaretakerArrangementsForPet(
+        {
+          petId: pet.id,
+          outcome: "ownership_transferred",
+          actorUserId: actingUserId,
+          now,
+          authorRole: "shelter",
+          authorOrganizationId: orgId,
+        },
+        tx,
+      );
+      endedGrants = closedArrangements.endedCaretakerGrants;
+      await tx
+        .update(ownerships)
+        .set({ endedAt: now })
+        .where(and(eq(ownerships.id, ownerOwnership.id), isNull(ownerships.endedAt)));
 
       // 3. Open a new shelter_custody ownership for the org.
       await tx.insert(ownerships).values({
@@ -202,6 +228,12 @@ export async function orgAcceptOwnerReturnUseCase({
     return {
       error: `No se pudo procesar la devolución: ${err instanceof Error ? err.message : String(err)}`,
     };
+  }
+
+  // Same primitive and dedupe family as every other hand-off; dead-letters
+  // instead of throwing, so it cannot fail a return that already committed.
+  if (endedGrants.length > 0) {
+    await notifyCaretakersOfHandoff(endedGrants, { name: pet.name, publicToken: pet.publicToken });
   }
 
   if (pendingNotifications.length > 0) {

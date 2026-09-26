@@ -15,6 +15,10 @@ import {
   findOpenCaseForPetAndKind,
   openCase,
 } from "@/lib/infra/case-helpers";
+import {
+  type EndedCaretakerGrant,
+  endCaretakerArrangementsForPet,
+} from "@/lib/infra/end-pet-ownerships";
 import { ORG_CUSTODY_TAKEN_ERROR, findLiveOrgShelterCustody } from "@/lib/infra/org-custody";
 import { unerasedPetByToken } from "@/lib/infra/public-pet-lookup";
 
@@ -1310,7 +1314,7 @@ export const AdoptionRepository = {
   async insertAdoptionReversed(
     args: InsertAdoptionReversedArgs,
     tx: Tx,
-  ): Promise<{ eventId: string }> {
+  ): Promise<{ eventId: string; endedCaretakerGrants: EndedCaretakerGrant[] }> {
     const { petId, userId, orgId, orgVerified, adopterOwnershipId, finalizeEventId, reason, now } =
       args;
 
@@ -1334,6 +1338,25 @@ export const AdoptionRepository = {
     if (closedAdopterRows.length === 0) {
       throw new ReversalRefused(ADOPTER_NO_LONGER_HOLDS_ERROR);
     }
+
+    // The adopter's caretaker arrangements end with the adopter's title (audit
+    // K, W2): an accepted grant is ended through the atomic three-step and a
+    // pending invitation is cancelled — the shared primitive every hand-off
+    // uses. Closing only the owner row left the caretaker with write access
+    // and, with lost-mode disclosure on, their contact on a pet that is back
+    // with the refugio. Signed by the refugio that reversed, not the adopter.
+    const { endedCaretakerGrants } = await endCaretakerArrangementsForPet(
+      {
+        petId,
+        outcome: "ownership_transferred",
+        actorUserId: userId,
+        now,
+        authorRole: "shelter",
+        authorVerified: orgVerified,
+        authorOrganizationId: orgId,
+      },
+      tx,
+    );
 
     // Restore shelter_custody ownership to the finalizing org.
     await tx.insert(ownerships).values({
@@ -1371,6 +1394,6 @@ export const AdoptionRepository = {
       })
       .returning({ id: petEvents.id });
 
-    return { eventId: event.id };
+    return { eventId: event.id, endedCaretakerGrants };
   },
 };

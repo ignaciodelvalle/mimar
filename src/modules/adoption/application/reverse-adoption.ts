@@ -44,6 +44,10 @@
 //   - revalidatePath
 //   - Flushing pendingNotifications (post-tx, best-effort)
 
+import {
+  type EndedCaretakerGrant,
+  notifyCaretakersOfHandoff,
+} from "@/lib/infra/end-pet-ownerships";
 import { ORG_CUSTODY_TAKEN_ERROR, isOrgCustodyCollision } from "@/lib/infra/org-custody";
 
 import { ReversalRefused, validateReversalInput } from "../domain/reversal-rules";
@@ -106,6 +110,9 @@ export async function reverseAdoption(
   let eventId = "";
   // Who is told, and about which pet name: the answer read UNDER the lock.
   let reversed: { adopterUserId: string | null; petName: string } = reversible;
+  // Filled inside the tx, consumed only after it commits: a rolled-back
+  // reversal ended nobody's arrangement, so nobody may be told it did.
+  let endedGrants: EndedCaretakerGrant[] = [];
 
   // 4. Atomic transaction.
   try {
@@ -124,7 +131,7 @@ export async function reverseAdoption(
       if (!locked.ok) throw new ReversalRefused(locked.error);
       reversed = locked;
 
-      const { eventId: insertedEventId } = await repo.insertAdoptionReversed(
+      const { eventId: insertedEventId, endedCaretakerGrants } = await repo.insertAdoptionReversed(
         {
           petId: petRow.id,
           userId: user.id,
@@ -138,6 +145,7 @@ export async function reverseAdoption(
         tx as Parameters<typeof repo.insertAdoptionReversed>[1],
       );
       eventId = insertedEventId;
+      endedGrants = endedCaretakerGrants;
     });
   } catch (err) {
     // An answer decided under the lock (the adopter no longer holds the pet,
@@ -156,7 +164,18 @@ export async function reverseAdoption(
     };
   }
 
-  // 5. Post-tx: best-effort notification to the former adopter.
+  // 5. Post-tx: tell every caretaker whose arrangement the reversal ended —
+  // same primitive and dedupe family as finalize and the P2P accept.
+  // `createNotification` dead-letters instead of throwing, so this cannot fail
+  // a reversal that already committed.
+  if (endedGrants.length > 0) {
+    await notifyCaretakersOfHandoff(endedGrants, {
+      name: reversed.petName,
+      publicToken: input.petPublicToken,
+    });
+  }
+
+  // Best-effort notification to the former adopter.
   const pendingNotifications: NewNotification[] = [];
   if (reversed.adopterUserId) {
     pendingNotifications.push({

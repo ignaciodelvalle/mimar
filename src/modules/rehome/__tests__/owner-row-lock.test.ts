@@ -301,6 +301,8 @@ describe("rehome — every writer that ENDS custody takes the pet advisory lock 
   const LOCK_IS_THE_CALLERS_DUTY: Record<string, string> = {
     "lib/infra/end-pet-ownerships.ts":
       "The primitive itself. It runs INSIDE its caller's transaction, so a lock taken here would come after the caller's own row locks and would not be first. Every caller now takes it: finalize (before lockLiveCustodyRow), the three decomiso writers, the dispute resolution and both foster closers — pinned by the L-9 arm above and by finalize-custody-lock.test.ts.",
+    "src/modules/adoption/infrastructure/adoption-repository.ts":
+      "insertAdoptionReversed ends the adopter's caretaker arrangements (audit K, W2) and is always called from reverseAdoption's transaction, which takes acquirePetAdvisoryLock as its first statement — pinned by src/modules/adoption/application/__tests__/reverse-adoption.test.ts (call order) and __tests__/custody-handoff-pet-lock-races.test.ts (a real second connection). Listed here because the file DEFINES acquirePetAdvisoryLock above the call, which would satisfy the textual rule vacuously.",
     "src/modules/adoption/infrastructure/adoption-finalize-writer.ts":
       "Writer half of finalizeAdoption, always called from that use-case's transaction, which takes acquirePetAdvisoryLock before lockLiveCustodyRow. Pinned by src/modules/adoption/__tests__/finalize-custody-lock.test.ts.",
     "src/modules/transfers/infrastructure/transfers-repository.ts":
@@ -367,6 +369,9 @@ describe("rehome — every writer that ENDS custody takes the pet advisory lock 
     expect(rels).toContain("src/modules/foster/infrastructure/foster-convert-to-owner-writer.ts");
     expect(rels).toContain("src/modules/decomiso/application/execute-decomiso.ts");
     expect(rels).toContain("src/modules/custody-disputes/application/resolve-dispute.ts");
+    // Audit K, W2: the two hand-offs that used to end the owner row alone.
+    expect(rels).toContain("src/modules/adoption/infrastructure/adoption-repository.ts");
+    expect(rels).toContain("src/modules/return-to-owner/application/org-accept-owner-return.ts");
   });
 
   it("every allowlisted file still ends custody — no stale exemptions", () => {
