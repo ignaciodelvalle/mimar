@@ -98,6 +98,7 @@ export async function reevaluateOutboxAfterAmendment(
       payload: input.after,
       occurredAt: input.root.occurredAt,
       author: input.root.author,
+      actorUserId: input.actorUserId ?? null,
     };
 
     // A case family merges by its key (earliest deadline wins, the correction
@@ -171,6 +172,8 @@ async function auditReopenedRecords(tx: Tx, input: OutboxReevaluationInput): Pro
            lateral jsonb_array_elements(o.linked_sources) as l(link)
      where l.link->>'source_event_id' = ${input.amendmentEventId}
        and l.link->>'previous_status' in ('received', 'delivered')
+       -- A keyed CASE record is audited by the merge itself (enqueue).
+       and o.eno_case_key is null
   `)) as unknown as Array<{ id: string; sla_due_at: Date | string; link: Record<string, unknown> }>;
   for (const row of rows) {
     await writeAuditLog(tx as Parameters<typeof writeAuditLog>[0], {

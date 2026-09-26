@@ -189,6 +189,7 @@ export async function recordDiseaseDiagnosisWriter(
           eventType: "clinical_info_logged",
           payload: diagnosisPayload as Record<string, unknown>,
           occurredAt: params.diagnosisDate,
+          actorUserId: params.vetUserId,
         },
         homeSnapshot,
       );
@@ -258,6 +259,7 @@ export async function recordDiseaseDiagnosisWriter(
             // The signal restates the diagnosis: its clock is the diagnosis's
             // (PO S5), not the moment the signal row was written.
             occurredAt: params.diagnosisDate,
+            actorUserId: params.vetUserId,
           },
           homeSnapshot,
         );

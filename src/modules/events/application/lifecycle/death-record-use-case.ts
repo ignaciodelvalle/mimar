@@ -350,6 +350,7 @@ export async function createDeathRecord(
               authorRole: eventAuthorship.authorRole,
               authorVerified: eventAuthorship.authorVerified,
             },
+            actorUserId: recordedByUserId,
           },
           {
             jurisdictionProvince: pet.jurisdictionProvince,

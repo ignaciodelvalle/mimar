@@ -35,7 +35,9 @@ function makeMockTx(caseRows: Record<string, unknown>[] = []) {
         return Object.assign(done, {
           onConflictDoUpdate: vi.fn().mockImplementation(() => {
             upserted.push(row);
-            return Promise.resolve();
+            // The merge's RETURNING (its re-opening audit reads it): a fresh
+            // record, no link, nothing re-opened.
+            return { returning: vi.fn(() => Promise.resolve([])) };
           }),
         });
       }),

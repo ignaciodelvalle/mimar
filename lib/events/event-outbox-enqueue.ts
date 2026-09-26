@@ -48,6 +48,7 @@
 import { sql } from "drizzle-orm";
 
 import { eventNotificationOutbox } from "@/db/schema";
+import { writeAuditLog } from "@/lib/infra/audit-log";
 import { resolveEnoTargetJurisdiction } from "./eno-target-jurisdiction";
 import {
   type EventAuthor,
@@ -80,6 +81,12 @@ export type EventInput = {
   occurredAt?: Date | null;
   /** Who signed it (pet_events author_role / author_verified) — some rules require a vet. */
   author?: EventAuthor;
+  /**
+   * Who triggered the write (pet_events.recorded_by_user_id) — the actor of the
+   * audit row when this event RE-OPENS a case record the authority had already
+   * received. null = the system (a cron, a cascade).
+   */
+  actorUserId?: string | null;
 };
 
 // Column references for the ON CONFLICT clauses. Qualified by the table name,
@@ -205,7 +212,7 @@ export async function enqueueOutboxForEvent(
     }
 
     const wasPending = sql`${existing("status")} = 'pending'`;
-    await tx
+    const merged = await tx
       .insert(eventNotificationOutbox)
       .values(row)
       .onConflictDoUpdate({
@@ -238,6 +245,49 @@ export async function enqueueOutboxForEvent(
         setWhere: sql`${existing("source_event_id")} <> excluded.source_event_id
           AND NOT (${existing("linked_sources")} @> jsonb_build_array(
             jsonb_build_object('source_event_id', excluded.source_event_id)))`,
+      })
+      .returning({
+        id: eventNotificationOutbox.id,
+        linkedSources: eventNotificationOutbox.linkedSources,
+        slaDueAt: eventNotificationOutbox.slaDueAt,
       });
+    await auditCaseReopening(tx, event, merged[0]);
   }
+}
+
+/**
+ * A case merge that RE-OPENED a record the authority had already received (or
+ * a receiver delivered) — a positive observation close landing on a received
+ * rabies diagnosis, say — enters the audit register (PO review 2026-09-26):
+ * the record, the event that re-opened it, and the receipt it replaced. Read
+ * from the link this very statement appended, so a fresh insert or an
+ * idempotent replay (no link for this event) writes nothing.
+ */
+async function auditCaseReopening(
+  tx: DrizzleTx,
+  event: EventInput,
+  row: { id: string; linkedSources: unknown; slaDueAt: Date } | undefined,
+): Promise<void> {
+  if (!row || !Array.isArray(row.linkedSources)) return;
+  const link = (row.linkedSources as Record<string, unknown>[]).findLast(
+    (l) => l.source_event_id === event.id,
+  );
+  const previous = link?.previous_status;
+  if (previous !== "received" && previous !== "delivered") return;
+  await writeAuditLog(tx as Parameters<typeof writeAuditLog>[0], {
+    action: "eno_notification_reopened",
+    actorUserId: event.actorUserId ?? null,
+    payload: {
+      outbox_row_id: row.id,
+      reason: event.eventType === "event_amended" ? "diagnosis_amended_more_urgent" : "case_merged",
+      triggering_event_id: event.id,
+      triggering_event_type: event.eventType,
+      previous_received_at: link?.previous_received_at ?? null,
+      previous_received_by_user_id: link?.previous_received_by_user_id ?? null,
+      previous_delivered_at: link?.previous_delivered_at ?? null,
+      sla_due_at: new Date(row.slaDueAt).toISOString(),
+    },
+    before: { status: previous },
+    after: { status: "pending" },
+  });
 }

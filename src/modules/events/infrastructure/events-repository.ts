@@ -507,6 +507,8 @@ export class EventsRepository {
       occurredAt?: Date | null;
       /** Who signed it — some rules fire only for a matriculated vet (PO S4). */
       author?: { authorRole?: string | null; authorVerified?: boolean | null };
+      /** Who triggered it — the audit actor if it re-opens a received case (review 2026-09-26). */
+      actorUserId?: string | null;
     },
     pet: {
       jurisdictionProvince?: string | null;

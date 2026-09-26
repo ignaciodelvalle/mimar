@@ -508,6 +508,8 @@ describe("recordDiseaseDiagnosisWriter", () => {
   });
 });
 
+const HOUR_MS = 60 * 60 * 1000;
+
 // PO S4 (2026-09-26): a vet-recorded death from rabies joins the animal's
 // rabies case — ONE record, the earliest deadline; a leptospirosis death by
 // the owner, unconfirmed, is a declaration and mints no legal row.
@@ -592,6 +594,108 @@ describe("death_recorded → ENO (S4)", () => {
     );
     expect(linked).toContain(death.eventId);
     expect(rows[0].slaDueAt.getTime()).toBe(diagnosisDate.getTime() + 24 * 60 * 60 * 1000);
+  });
+
+  // PO review 2026-09-26: a MERGE that re-opens a received case — here a
+  // vet-recorded rabies death landing on a rabies diagnosis the authority had
+  // already marked received — is audited like a correction: actor = who
+  // triggered it, the triggering event, the receipt it replaced.
+  it("a merge into a RECEIVED rabies case re-opens it: receipt cleared, audited with its trigger", async () => {
+    const pet = await insertTestPet(ownerUserId, "MERGERCV");
+    const dx = await recordDiseaseDiagnosisWriter({
+      petId: pet.id,
+      petName: pet.name,
+      petSpecies: pet.species,
+      petJurisdictionCountry: pet.jurisdictionCountry,
+      petJurisdictionProvince: pet.jurisdictionProvince ?? null,
+      petJurisdictionLocality: pet.jurisdictionLocality ?? null,
+      vetUserId,
+      vetDisplayName: "Dr. Test Ddx",
+      diseaseCode: "rabies_confirmed",
+      confirmedByLab: true,
+      labName: "INPPAZ",
+      labReportReference: "LAB-MERGE",
+      diagnosisDate: new Date(Date.now() - HOUR_MS),
+      notes: null,
+    });
+    expect(dx.ok).toBe(true);
+    const caseRows = () =>
+      db
+        .select()
+        .from(eventNotificationOutbox)
+        .where(like(eventNotificationOutbox.enoCaseKey, `rabies:pet:${pet.id}:%`));
+    const [record] = await caseRows();
+    const received = await new OutboxReceiptRepository().markReceived({
+      rowId: record.id,
+      actorUserId: adminUserId,
+      actorRole: "admin",
+      scope: undefined,
+    });
+    expect(received.ok).toBe(true);
+
+    const death = await createDeathRecord(deathInput(pet, {}), deps());
+    expect(death.ok).toBe(true);
+    if (!death.ok) return;
+
+    const [after] = await caseRows();
+    expect(after.status).toBe("pending");
+    expect(after.receivedAt).toBeNull();
+    expect(after.receivedByUserId).toBeNull();
+
+    const audits = await db
+      .select({ actor: auditLog.actorUserId, payload: auditLog.payload })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, "eno_notification_reopened"),
+          sql`${auditLog.payload}->>'outbox_row_id' = ${record.id}`,
+        ),
+      );
+    expect(audits).toHaveLength(1);
+    expect(audits[0].actor).toBe(vetUserId);
+    expect(audits[0].payload).toMatchObject({
+      reason: "case_merged",
+      triggering_event_id: death.eventId,
+      triggering_event_type: "death_recorded",
+      previous_received_by_user_id: adminUserId,
+    });
+  });
+
+  it("a merge into a case still PENDING re-opens nothing and writes no audit row", async () => {
+    const pet = await insertTestPet(ownerUserId, "MERGEPND");
+    const dx = await recordDiseaseDiagnosisWriter({
+      petId: pet.id,
+      petName: pet.name,
+      petSpecies: pet.species,
+      petJurisdictionCountry: pet.jurisdictionCountry,
+      petJurisdictionProvince: pet.jurisdictionProvince ?? null,
+      petJurisdictionLocality: pet.jurisdictionLocality ?? null,
+      vetUserId,
+      vetDisplayName: "Dr. Test Ddx",
+      diseaseCode: "rabies_confirmed",
+      confirmedByLab: true,
+      labName: "INPPAZ",
+      labReportReference: "LAB-MERGE-P",
+      diagnosisDate: new Date(Date.now() - HOUR_MS),
+      notes: null,
+    });
+    expect(dx.ok).toBe(true);
+    const death = await createDeathRecord(deathInput(pet, {}), deps());
+    expect(death.ok).toBe(true);
+    const [record] = await db
+      .select()
+      .from(eventNotificationOutbox)
+      .where(like(eventNotificationOutbox.enoCaseKey, `rabies:pet:${pet.id}:%`));
+    const audits = await db
+      .select({ id: auditLog.id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, "eno_notification_reopened"),
+          sql`${auditLog.payload}->>'outbox_row_id' = ${record.id}`,
+        ),
+      );
+    expect(audits).toHaveLength(0);
   });
 
   it("an owner's unconfirmed leptospirosis death mints no legal row", async () => {

@@ -415,6 +415,8 @@ export class SurveillanceRepository {
           payload: event.payload as Record<string, unknown>,
           // PO S5: the legal clock starts when the close OCCURRED.
           occurredAt: event.occurredAt,
+          // Whoever closed it — the actor if this close re-opens a received case.
+          actorUserId: event.recordedByUserId ?? null,
         },
         pet ?? {},
         // Never later than the moment the close was recorded, not whenever
