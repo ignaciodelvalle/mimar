@@ -30,6 +30,7 @@ const MENTIONS: Readonly<Record<string, "writer" | "reader">> = {
   "lib/infra/request-cache.ts": "reader",
   "lib/place/scope.ts": "reader",
   "lib/place/govt-scope.ts": "reader",
+  "lib/place/parity-sweep.ts": "reader",
   "lib/place/shadow.ts": "reader",
 };
 
