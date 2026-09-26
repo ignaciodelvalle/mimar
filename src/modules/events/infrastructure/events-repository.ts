@@ -498,7 +498,14 @@ export class EventsRepository {
    */
   async enqueueOutbox(
     executor: DbOrTx,
-    event: { id: string; petId: string; eventType: string; payload: Record<string, unknown> },
+    event: {
+      id: string;
+      petId: string;
+      eventType: string;
+      payload: Record<string, unknown>;
+      /** When it happened — the legal clock starts here (PO S5). */
+      occurredAt?: Date | null;
+    },
     pet: {
       jurisdictionProvince?: string | null;
       jurisdictionLocality?: string | null;

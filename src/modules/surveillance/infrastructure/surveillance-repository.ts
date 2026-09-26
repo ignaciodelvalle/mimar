@@ -407,10 +407,12 @@ export class SurveillanceRepository {
           petId: event.petId,
           eventType: event.eventType,
           payload: event.payload as Record<string, unknown>,
+          // PO S5: the legal clock starts when the close OCCURRED.
+          occurredAt: event.occurredAt,
         },
         pet ?? {},
-        // The SLA runs from the moment the close was recorded, not from
-        // whenever this line happens to execute.
+        // Never later than the moment the close was recorded, not whenever
+        // this line happens to execute.
         event.recordedAt,
       );
     }

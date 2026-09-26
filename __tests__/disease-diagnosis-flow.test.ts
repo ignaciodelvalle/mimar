@@ -238,6 +238,45 @@ describe("recordDiseaseDiagnosisWriter", () => {
     expect(queueRows[0].status).toBe("pending");
   });
 
+  // PO S5 (2026-09-26): the legal clock starts at the diagnosis date, not at
+  // data entry. A diagnosis entered five days late lands already overdue —
+  // and so does the signal that restates it.
+  it("a diagnosis entered late lands overdue: sla = diagnosis date + legal window", async () => {
+    const pet = await insertTestPet(ownerUserId, "LATE");
+    const diagnosisDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+
+    const result = await recordDiseaseDiagnosisWriter({
+      petId: pet.id,
+      petName: pet.name,
+      petSpecies: pet.species,
+      petJurisdictionCountry: pet.jurisdictionCountry,
+      petJurisdictionProvince: pet.jurisdictionProvince ?? null,
+      petJurisdictionLocality: pet.jurisdictionLocality ?? null,
+      vetUserId,
+      vetDisplayName: "Dr. Test Ddx",
+      diseaseCode: "leptospirosis",
+      confirmedByLab: false,
+      labName: null,
+      labReportReference: null,
+      diagnosisDate,
+      notes: null,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const rows = await db
+      .select({ slaDueAt: eventNotificationOutbox.slaDueAt })
+      .from(eventNotificationOutbox)
+      .where(eq(eventNotificationOutbox.sourceEventId, result.diagnosisEventId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].slaDueAt.getTime()).toBe(diagnosisDate.getTime() + 48 * 60 * 60 * 1000);
+    // Overdue against the DATABASE clock (no host-vs-container comparison).
+    const [{ overdue }] = await db
+      .select({ overdue: sql<boolean>`${rows[0].slaDueAt.toISOString()}::timestamptz < now()` })
+      .from(sql`(select 1) as one`);
+    expect(overdue).toBe(true);
+  });
+
   it("non-reportable disease (parvovirus) → only diagnosis row, no signal", async () => {
     const pet = await insertTestPet(ownerUserId, "PARVO");
 

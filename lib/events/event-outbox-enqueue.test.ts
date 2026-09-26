@@ -171,6 +171,74 @@ describe("enqueueOutboxForEvent", () => {
     expect(inserted[0].payloadSnapshot).toEqual(event.payload);
   });
 
+  // -------------------------------------------------------------------------
+  // PO S5 (2026-09-26): the legal clock starts when the fact OCCURRED — the
+  // diagnosis date, the event's own date — not when somebody typed it in. A
+  // late entry is visibly overdue the moment it lands; a future date never
+  // pushes the clock past now.
+  // -------------------------------------------------------------------------
+  describe("the legal clock starts at the occurrence (S5)", () => {
+    const HOUR = 60 * 60 * 1000;
+
+    it("a diagnosis entered five days late is already overdue: diagnosis_date + 48h", async () => {
+      const { tx, inserted } = makeMockTx();
+      const diagnosed = new Date(NOW.getTime() - 5 * 24 * HOUR);
+      const event = makeDiseaseDiagnosisEvent("leptospirosis");
+      await enqueueOutboxForEvent(
+        tx as never,
+        { ...event, payload: { ...event.payload, diagnosis_date: diagnosed.toISOString() } },
+        PET,
+        NOW,
+      );
+      const due = inserted[0].slaDueAt as Date;
+      expect(due).toEqual(new Date(diagnosed.getTime() + 48 * HOUR));
+      expect(due.getTime()).toBeLessThan(NOW.getTime());
+    });
+
+    it("with no date in the payload, the event's own occurredAt starts the clock", async () => {
+      const { tx, inserted } = makeMockTx();
+      const occurred = new Date(NOW.getTime() - 3 * HOUR);
+      await enqueueOutboxForEvent(
+        tx as never,
+        { ...makeOutbreakSignalEvent("rabies_suspected"), occurredAt: occurred },
+        PET,
+        NOW,
+      );
+      expect(inserted[0].slaDueAt).toEqual(new Date(occurred.getTime() + 24 * HOUR));
+    });
+
+    it("a date in the future never moves the clock past now", async () => {
+      const { tx, inserted } = makeMockTx();
+      const event = makeDiseaseDiagnosisEvent("rabies_confirmed");
+      await enqueueOutboxForEvent(
+        tx as never,
+        {
+          ...event,
+          occurredAt: new Date(NOW.getTime() + 72 * HOUR),
+          payload: {
+            ...event.payload,
+            diagnosis_date: new Date(NOW.getTime() + 72 * HOUR).toISOString(),
+          },
+        },
+        PET,
+        NOW,
+      );
+      expect(inserted[0].slaDueAt).toEqual(new Date(NOW.getTime() + 24 * HOUR));
+    });
+
+    it("an unparseable diagnosis_date falls back to occurredAt, then now", async () => {
+      const { tx, inserted } = makeMockTx();
+      const event = makeDiseaseDiagnosisEvent("rabies_confirmed");
+      await enqueueOutboxForEvent(
+        tx as never,
+        { ...event, payload: { ...event.payload, diagnosis_date: "not a date" } },
+        PET,
+        NOW,
+      );
+      expect(inserted[0].slaDueAt).toEqual(new Date(NOW.getTime() + 24 * HOUR));
+    });
+  });
+
   // FIX-25 #3 (PO 2026-09-25): one ENO record per case.
   it("a rabies diagnosis names the per-animal case and goes through ON CONFLICT", async () => {
     const { tx, inserted, upserted } = makeMockTx();

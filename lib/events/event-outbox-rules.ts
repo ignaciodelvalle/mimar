@@ -66,6 +66,14 @@ export interface OutboxRule {
    * concentrated in a single record."
    */
   caseFamily?: (payload: Record<string, unknown>) => EnoCaseFamily | null;
+
+  /**
+   * Optional: WHEN the legal clock starts, read from the payload (PO S5,
+   * 2026-09-26: the deadline runs from the occurrence, not from data entry).
+   * Null/absent = the event's own `occurredAt`, else the enqueue instant. The
+   * enqueue never lets the start pass "now".
+   */
+  clockStartsAt?: (payload: Record<string, unknown>) => Date | null;
 }
 
 export type EnoCaseFamily = "rabies";
@@ -113,6 +121,13 @@ export function rabiesEnoCaseKey(petId: string, target: EnoTarget): string {
   return enoCaseKey(RABIES_ENO_CODE, petId, target);
 }
 
+/** A payload date field as a Date, or null when absent or unparseable. */
+function payloadDate(value: unknown): Date | null {
+  if (typeof value !== "string" || value.length === 0) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function isRabiesDiseaseCode(diseaseCode: unknown): boolean {
   return typeof diseaseCode === "string" && diseaseCodeToEnoCode(diseaseCode) === RABIES_ENO_CODE;
 }
@@ -144,6 +159,8 @@ const clinicalInfoLoggedGovtWebhook: OutboxRule = {
     if (payload.sub_kind !== "disease_diagnosis") return null;
     return isRabiesDiseaseCode(payload.disease_code) ? RABIES_ENO_CODE : null;
   },
+  // The diagnosis date — also what an amended diagnosis is re-evaluated from.
+  clockStartsAt: (payload) => payloadDate(payload.diagnosis_date),
 };
 
 /**

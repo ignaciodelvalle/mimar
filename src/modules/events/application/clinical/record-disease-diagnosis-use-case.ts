@@ -178,6 +178,7 @@ export async function recordDiseaseDiagnosisWriter(
           petId: params.petId,
           eventType: "clinical_info_logged",
           payload: diagnosisPayload as Record<string, unknown>,
+          occurredAt: params.diagnosisDate,
         },
         homeSnapshot,
       );
@@ -244,6 +245,9 @@ export async function recordDiseaseDiagnosisWriter(
             petId: params.petId,
             eventType: "outbreak_signal",
             payload: signalPayload as Record<string, unknown>,
+            // The signal restates the diagnosis: its clock is the diagnosis's
+            // (PO S5), not the moment the signal row was written.
+            occurredAt: params.diagnosisDate,
           },
           homeSnapshot,
         );

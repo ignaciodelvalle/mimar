@@ -48,7 +48,7 @@ import { sql } from "drizzle-orm";
 
 import { eventNotificationOutbox } from "@/db/schema";
 import { resolveEnoTargetJurisdiction } from "./eno-target-jurisdiction";
-import { OUTBOX_RULES, type TargetPlace, enoCaseKey } from "./event-outbox-rules";
+import { OUTBOX_RULES, type OutboxRule, type TargetPlace, enoCaseKey } from "./event-outbox-rules";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,6 +64,12 @@ type EventInput = {
   petId: string;
   eventType: string;
   payload: Record<string, unknown>;
+  /**
+   * When the fact happened (pet_events.occurred_at). The legal clock starts
+   * here unless the rule reads a more specific date from the payload (PO S5).
+   * Absent = the enqueue instant, the old behaviour.
+   */
+  occurredAt?: Date | null;
 };
 
 // Column references for the ON CONFLICT clauses. Qualified by the table name,
@@ -81,6 +87,17 @@ type PetInput = {
   localityId?: string | null;
   placeMethod?: string | null;
 };
+
+/**
+ * When the legal clock starts (PO S5, 2026-09-26): the rule's own date from
+ * the payload (a diagnosis date), else the event's occurrence, else `now` —
+ * and never later than `now`, so a future-dated entry cannot buy time. A late
+ * entry therefore lands with a deadline already in the past: visibly overdue.
+ */
+function clockStart(rule: OutboxRule, event: EventInput, now: Date): Date {
+  const start = rule.clockStartsAt?.(event.payload) ?? event.occurredAt ?? now;
+  return start.getTime() < now.getTime() ? start : now;
+}
 
 /**
  * The target place BY ID, from the same source as the target names: the bite
@@ -122,7 +139,9 @@ function targetPlace(
  * @param pet      — Pet jurisdiction snapshot: the routing of every row EXCEPT a
  *                   case-keyed one, which routes by its bite case (and falls
  *                   back to this only when the animal has no bite case).
- * @param now      — Optional: override "now" for deterministic tests (defaults to new Date()).
+ * @param now      — Optional: the enqueue instant (defaults to new Date()). The
+ *                   legal clock starts at the occurrence (clockStart), never
+ *                   later than this.
  */
 export async function enqueueOutboxForEvent(
   tx: DrizzleTx,
@@ -136,7 +155,7 @@ export async function enqueueOutboxForEvent(
     const slaHours = rule.slaHours(event.payload);
     if (slaHours === null) continue;
 
-    const slaDueAt = new Date(now.getTime() + slaHours * 60 * 60 * 1000);
+    const slaDueAt = new Date(clockStart(rule, event, now).getTime() + slaHours * 60 * 60 * 1000);
     const snapshot = rule.buildSnapshot ? rule.buildSnapshot(event.payload) : event.payload;
 
     const family = rule.caseFamily ? rule.caseFamily(event.payload) : null;
