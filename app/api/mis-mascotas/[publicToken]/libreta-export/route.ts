@@ -51,6 +51,7 @@ import {
   libretaSanitariaClause,
 } from "@/lib/infra/libreta-sanitaria";
 import { requireLiveUser } from "@/lib/infra/live-user";
+import { notHiddenFromSubjectClause } from "@/lib/infra/subject-hidden-events";
 import {
   eventTypeLabel,
   formatDate,
@@ -196,6 +197,9 @@ export async function GET(
         // `note_added` is a libreta type, so a reported lost-feed message would
         // otherwise be exported into the owner's own downloadable record.
         notReportedClause(),
+        // A denuncia's bridge symptom_observed is a libreta type too: the
+        // reporter's relato must not print in the owner's copy (audit W3).
+        notHiddenFromSubjectClause(),
       ),
     )
     .orderBy(desc(petEvents.occurredAt));

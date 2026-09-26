@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -7,11 +7,10 @@ import { LibretaIdentityHeader } from "@/app/(app)/mis-mascotas/[publicToken]/li
 import { LibretaSanitariaView } from "@/app/(app)/mis-mascotas/[publicToken]/libreta/LibretaSanitariaView";
 import { Icon } from "@/components/Icon";
 import { LnCallout } from "@/components/ui/DocElements";
-import { attachments, db, libretaShareTokens, petEvents, pets, profiles } from "@/db";
-import { excludeSelfScansClause } from "@/lib/events/events";
+import { attachments, db, libretaShareTokens, pets, profiles } from "@/db";
 import { overlayAmendments } from "@/lib/infra/amendment";
-import { notReportedClause } from "@/lib/infra/content-reports";
-import { groupLibretaEvents, libretaSanitariaClause } from "@/lib/infra/libreta-sanitaria";
+import { groupLibretaEvents } from "@/lib/infra/libreta-sanitaria";
+import { loadSharedLibretaEvents } from "@/lib/infra/libreta-share-events";
 import { validateShareToken } from "@/lib/infra/libreta-share-token";
 import { fetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
 import { PET_LIBRETA_SHARE_SELECT } from "@/lib/infra/pet-projections";
@@ -152,25 +151,9 @@ export default async function PublicLibretaPage({
 
   // Libreta events and canonical identifiers in parallel.
   const [events, identifications] = await Promise.all([
-    db
-      // full row deliberate: payload is rendered by LibretaSanitariaView per event type
-      .select()
-      .from(petEvents)
-      .where(
-        and(
-          eq(petEvents.petId, pet.id),
-          excludeSelfScansClause(),
-          // event_amended rows are fetched alongside libreta entries so
-          // overlayAmendments can project corrections below. They never render:
-          // groupLibretaEvents drops them (no libreta group).
-          or(libretaSanitariaClause(), eq(petEvents.eventType, "event_amended")),
-          // THE SHARE A VET OPENS. A message the owner reported as abusive must
-          // not ride along into a clinical document about their animal — and
-          // this link leaves the owner's control the moment it is sent.
-          notReportedClause(),
-        ),
-      )
-      .orderBy(desc(petEvents.occurredAt)),
+    // The shared read, with every clause it carries, lives in one loader so
+    // it can be tested (reported items, denuncia bridge events).
+    loadSharedLibretaEvents(pet.id),
     fetchActiveIdentifications(pet.id),
   ]);
 

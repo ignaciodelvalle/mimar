@@ -100,6 +100,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await withMutationOverride(async (tx) => {
     await tx.execute(sql`DELETE FROM pet_events WHERE pet_id = ${fixturePet.id}::uuid`);
+    await tx.execute(sql`DELETE FROM cases WHERE primary_pet_id = ${fixturePet.id}::uuid`);
     await tx.execute(sql`DELETE FROM ownerships WHERE pet_id = ${fixturePet.id}::uuid`);
     await tx.execute(sql`DELETE FROM pets WHERE id = ${fixturePet.id}::uuid`);
   });
@@ -225,6 +226,51 @@ describe("GET /api/mis-mascotas/[publicToken]/libreta-export", () => {
   // the "db" vitest project runs with fileParallelism:false, so no other file
   // observes the window, and the restore keeps the seed usable for the rest of
   // the suite even if the assertions fail.
+  // Privacy audit W3: a denuncia writes a bridge symptom_observed on the
+  // denounced animal carrying the denuncia's case id and the reporter's relato.
+  // symptom_observed is a libreta type, so without the hidden-case clause the
+  // relato printed in the owner's own export. The owner's own observation
+  // (no case) still prints.
+  it("never prints a denuncia's bridge symptom_observed; the owner's own one prints", async () => {
+    const [kase] = (await db.execute(sql`
+      INSERT INTO public.cases (public_code, case_kind, status, primary_subject_kind, primary_pet_id,
+                                opened_reason)
+      VALUES (${`CAS-W3${Date.now().toString(36).slice(-4).toUpperCase()}-LIBX`}, 'welfare_denuncia',
+              'open', 'registered_pet', ${fixturePet.id}::uuid, 'libreta export W3 fixture')
+      RETURNING id::text AS id
+    `)) as unknown as Array<{ id: string }>;
+    await db.insert(petEvents).values([
+      {
+        petId: fixturePet.id,
+        eventType: "symptom_observed",
+        occurredAt: new Date(),
+        recordedAt: new Date(),
+        recordedByUserId: ownerUserId,
+        authorRole: "owner",
+        caseId: (kase as { id: string }).id,
+        payload: { payload_version: 1, notes: "relato oculto del denunciante" },
+      },
+      {
+        petId: fixturePet.id,
+        eventType: "symptom_observed",
+        occurredAt: new Date(),
+        recordedAt: new Date(),
+        recordedByUserId: ownerUserId,
+        authorRole: "owner",
+        payload: { payload_version: 1, notes: "tos propia visible" },
+      },
+    ]);
+
+    mockAuthAs(ownerUserId);
+    const { GET } = await import("@/app/api/mis-mascotas/[publicToken]/libreta-export/route");
+    const res = await GET(buildRequest() as never, {
+      params: Promise.resolve({ publicToken: PET_TOKEN }),
+    });
+    const html = await res.text();
+    expect(html).toContain("tos propia visible");
+    expect(html).not.toContain("relato oculto del denunciante");
+  });
+
   it("refuses an ERASED owner holding a live session (401, and no libreta in the body)", async () => {
     await db.update(profiles).set({ deletedAt: new Date() }).where(eq(profiles.id, ownerUserId));
     try {

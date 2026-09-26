@@ -49,7 +49,7 @@ const ROOT = process.cwd();
 const MUST_SUBTRACT: readonly string[] = [
   "app/(app)/mis-mascotas/[publicToken]/eventos/[eventId]/page.tsx",
   "app/api/mis-mascotas/[publicToken]/libreta-export/route.ts",
-  "app/libreta/compartir/[shareToken]/page.tsx",
+  "lib/infra/libreta-share-events.ts", // the /libreta/compartir share read
   "lib/analytics/owner-dashboard.ts",
   "lib/infra/case-queries.ts",
   "lib/infra/lost-mode.ts",

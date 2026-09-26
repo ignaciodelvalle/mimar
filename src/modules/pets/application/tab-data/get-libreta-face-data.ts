@@ -22,7 +22,7 @@
 // summary read the PROJECTED stream, so a corrected dose date/name flows
 // into every derived view, not just a badge.
 
-import { and, asc, desc, eq, exists, gt, inArray, isNull, not, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 
 import { mergeFutureLedger } from "@/components/pet-profile/libreta-future.helpers";
 import {
@@ -30,7 +30,6 @@ import {
   type Pet,
   appointments,
   attachments,
-  cases,
   db,
   libretaShareTokens,
   organizations,
@@ -45,40 +44,17 @@ import { computeVaccinationSummary } from "@/lib/domain/libreta-health-status";
 import { excludeAuthorityOnlyClause, excludeSelfScansClause } from "@/lib/events/events";
 import { overlayAmendments } from "@/lib/infra/amendment";
 import { resolveBusinessRule } from "@/lib/infra/business-rules-resolver";
-import { HIDDEN_FROM_SUBJECT_CASE_KINDS } from "@/lib/infra/case-access";
 import { notReportedClause } from "@/lib/infra/content-reports";
 import { withholdUnreadableDecomisoEvidence } from "@/lib/infra/decomiso-evidence-access";
 import { viewerHoldsPetClause } from "@/lib/infra/pet-holder-clause";
 import { fetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
 import { eventAttachmentSignedUrl } from "@/lib/infra/storage";
+import { notHiddenFromSubjectClause } from "@/lib/infra/subject-hidden-events";
 import type { HistorialEventRow, LibretaFaceData } from "./types";
 
-// Owner-path guard against the welfare_denuncia bridge-event leak
-// (pet-document-redesign REQ-1.2/1.3): excludes any pet_events row whose
-// case_id belongs to a hidden-from-subject case. Filtered by caseId, NOT by
-// event_type, so it's future-proof against new welfare-bridge event types.
-// `symptom_observed` is emitted two ways: an owner/sanitaria observation with a
-// NULL case_id (stays visible), OR a welfare-denuncia bridge event that DOES
-// carry the denuncia's case_id (create-welfare-report.ts) — the latter is
-// correctly HIDDEN here when that case is hidden-from-subject. NULL case_id
-// events are NEVER touched — `not(exists(...))` correlates on
-// `cases.id = pet_events.case_id`, which never matches a NULL caseId, so
-// those rows always keep passing through.
-function notHiddenCaseClause() {
-  return not(
-    exists(
-      db
-        .select({ one: sql`1` })
-        .from(cases)
-        .where(
-          and(
-            eq(cases.id, petEvents.caseId),
-            inArray(cases.caseKind, [...HIDDEN_FROM_SUBJECT_CASE_KINDS]),
-          ),
-        ),
-    ),
-  );
-}
+// The owner-path guard against the welfare_denuncia bridge-event leak lives
+// in lib/infra/subject-hidden-events.ts (notHiddenFromSubjectClause), shared
+// with every other owner read of pet_events.
 
 // ---------------------------------------------------------------------------
 // Bounded reads (perf/scale review 2026-07-04, P0 "Unbounded libreta event
@@ -170,7 +146,7 @@ export async function getLibretaFaceData(
           excludeAuthorityOnlyClause(),
           // Owner-path only — org/vet viewers are never the investigation
           // subject, so the hidden-case filter doesn't apply to them.
-          accessPath === "owner" ? notHiddenCaseClause() : undefined,
+          accessPath === "owner" ? notHiddenFromSubjectClause() : undefined,
           // A lost-feed message the holder reported. `note_added` IS a libreta
           // type, so an abusive sighting was rendering here as
           // "Avistaje · {finderName}" with its full text — in the record a vet
@@ -196,7 +172,7 @@ export async function getLibretaFaceData(
           inArray(petEvents.eventType, [...VACCINATION_SUMMARY_EVENT_TYPES]),
           excludeSelfScansClause(),
           excludeAuthorityOnlyClause(),
-          accessPath === "owner" ? notHiddenCaseClause() : undefined,
+          accessPath === "owner" ? notHiddenFromSubjectClause() : undefined,
         ),
       )
       .orderBy(asc(petEvents.occurredAt)),
