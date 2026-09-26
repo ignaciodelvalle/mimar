@@ -345,7 +345,7 @@ describe("choosing the zone", () => {
     await waitFor(() => expect(screen.getByText("Elegir localidad")).toBeTruthy());
     // Province first (L3·0, PO decision 2026-09-08): the locality field only
     // exists inside a province.
-    expect(screen.queryByLabelText("Localidad")).toBeNull();
+    expect(screen.queryByLabelText("Ciudad, pueblo o barrio")).toBeNull();
     fireEvent.press(screen.getByRole("radio", { name: "Río Negro" }));
     // THE FIELD IS NOT ANNOUNCED AS OBLIGATORIA, and that is the assertion.
     // `LocalityPicker` is shared with the alta and the mudanza, where the
@@ -354,8 +354,8 @@ describe("choosing the zone", () => {
     // the server picks a default when they do. A screen reader reading
     // "obligatorio" here is the app telling somebody to fill in a field they
     // are free to leave alone.
-    expect(screen.getByLabelText("Localidad")).toBeTruthy();
-    expect(screen.queryByLabelText("Localidad, obligatorio")).toBeNull();
+    expect(screen.getByLabelText("Ciudad, pueblo o barrio")).toBeTruthy();
+    expect(screen.queryByLabelText("Ciudad, pueblo o barrio, obligatorio")).toBeNull();
   });
 
   it("searches again with the CHOSEN locality, and sends the province NAME", async () => {
@@ -368,7 +368,7 @@ describe("choosing the zone", () => {
     await waitFor(() => expect(screen.getByRole("radio", { name: "Río Negro" })).toBeTruthy());
     fireEvent.press(screen.getByRole("radio", { name: "Río Negro" }));
 
-    fireEvent.changeText(screen.getByLabelText("Localidad"), "Bolsón");
+    fireEvent.changeText(screen.getByLabelText("Ciudad, pueblo o barrio"), "Bolsón");
     await waitFor(() => expect(screen.getByText("El Bolsón")).toBeTruthy());
     fireEvent.press(screen.getByText("El Bolsón"));
 
@@ -389,7 +389,7 @@ describe("choosing the zone", () => {
     fireEvent.press(screen.getByText("Buscar cerca de: San Justo, Buenos Aires"));
     await waitFor(() => expect(screen.getByRole("radio", { name: "Río Negro" })).toBeTruthy());
     fireEvent.press(screen.getByRole("radio", { name: "Río Negro" }));
-    fireEvent.changeText(screen.getByLabelText("Localidad"), "Bolsón");
+    fireEvent.changeText(screen.getByLabelText("Ciudad, pueblo o barrio"), "Bolsón");
     await waitFor(() => expect(screen.getByText("El Bolsón")).toBeTruthy());
     fireEvent.press(screen.getByText("El Bolsón"));
 

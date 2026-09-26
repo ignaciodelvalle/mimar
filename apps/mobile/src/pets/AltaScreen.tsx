@@ -39,7 +39,7 @@
 // purpose rather than kept.
 
 import { PET_COLOR_MAX, PET_NAME_MAX } from "@dim/contract/input";
-import { breedsForSpecies } from "@dim/contract/reference";
+import { LOCALITY_FIELD_LABEL, breedsForSpecies } from "@dim/contract/reference";
 import { useNavigation, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
@@ -531,7 +531,7 @@ function StepBody({
           <Row label="Nombre" value={draft.name.trim() || "—"} />
           <Row label="Especie" value={draft.species ? speciesLabel(draft.species) : "—"} />
           <Row label="Raza" value={draft.breed.trim() || "Sin registrar"} />
-          <Row label="Localidad" value={draft.localityName || "—"} />
+          <Row label={LOCALITY_FIELD_LABEL} value={draft.localityName || "—"} />
           {/* F-4 (2026-09-24 review): showed the raw ISO code (`"AR-S"`) —
               what `POST /pets` carries on the wire, not what a person reads.
               `provinceLabel` is the same `@dim/contract/reference` catalog

@@ -55,14 +55,14 @@ describe("LocalityPicker — province first (L3·0)", () => {
   it("offers the 24 jurisdictions and NO locality field until a province is chosen", () => {
     render(<Harness />);
     expect(screen.getAllByRole("radio")).toHaveLength(24);
-    expect(screen.queryByLabelText("Localidad, obligatorio")).toBeNull();
+    expect(screen.queryByLabelText("Ciudad, pueblo o barrio, obligatorio")).toBeNull();
   });
 
   it("scopes the search to the chosen province", async () => {
     render(<Harness />);
     fireEvent.press(screen.getByRole("radio", { name: "Río Negro" }));
     expect(screen.getByText("Provincia: Río Negro")).toBeTruthy();
-    fireEvent.changeText(screen.getByLabelText("Localidad, obligatorio"), "Bols");
+    fireEvent.changeText(screen.getByLabelText("Ciudad, pueblo o barrio, obligatorio"), "Bols");
     await waitFor(() => expect(mockSearchLocalities).toHaveBeenCalled());
     expect(mockSearchLocalities).toHaveBeenCalledWith({ q: "Bols", province: "AR-R" });
   });
@@ -72,23 +72,72 @@ describe("LocalityPicker — province first (L3·0)", () => {
     fireEvent.press(screen.getByRole("radio", { name: "Río Negro" }));
     fireEvent.press(screen.getByLabelText("Provincia: Río Negro. Tocá para cambiarla."));
     expect(screen.getAllByRole("radio")).toHaveLength(24);
-    expect(screen.queryByLabelText("Localidad, obligatorio")).toBeNull();
+    expect(screen.queryByLabelText("Ciudad, pueblo o barrio, obligatorio")).toBeNull();
   });
 
   it("lands on the locality search when the draft already carries a province", () => {
     render(<Harness initialProvince="AR-R" />);
     expect(screen.queryAllByRole("radio")).toHaveLength(0);
     expect(screen.getByText("Provincia: Río Negro")).toBeTruthy();
-    expect(screen.getByLabelText("Localidad, obligatorio")).toBeTruthy();
+    expect(screen.getByLabelText("Ciudad, pueblo o barrio, obligatorio")).toBeTruthy();
+  });
+
+  it("offers an alias by the name people use and hands back its catalogue row", async () => {
+    const lomas = {
+      localityName: "Lomas de Zamora",
+      localitySlug: "lomas-de-zamora",
+      provinceCode: "AR-B",
+      provinceName: "Buenos Aires",
+      departmentName: "Lomas de Zamora",
+      indecId: "06490010",
+    };
+    mockSearchLocalities.mockResolvedValue({
+      outcome: "ok",
+      payload: {
+        payloadVersion: 1,
+        issuedAt: "2026-09-22T12:00:00.000Z",
+        staleAfter: "2026-09-22T12:05:00.000Z",
+        results: [{ ...lomas, aliasName: "Banfield" }, lomas],
+      },
+    });
+    const onSelect = jest.fn<(s: LocalitySelection) => void>();
+    function AliasHarness() {
+      const [sel, setSel] = useState({ provinceCode: "AR-B", localityName: "" });
+      return (
+        <LocalityPicker
+          provinceCode={sel.provinceCode}
+          localityName={sel.localityName}
+          onSelect={(s) => {
+            onSelect(s);
+            setSel({ provinceCode: s.provinceCode, localityName: s.localityName });
+          }}
+        />
+      );
+    }
+    render(<AliasHarness />);
+    fireEvent.changeText(screen.getByLabelText("Ciudad, pueblo o barrio, obligatorio"), "Banf");
+    fireEvent.press(await screen.findByText("Banfield (Lomas de Zamora)", {}, { timeout: 3000 }));
+
+    // The stored locality is the catalogue row — never the alias.
+    expect(onSelect).toHaveBeenCalledWith({
+      provinceCode: "AR-B",
+      provinceName: "Buenos Aires",
+      localityName: "Lomas de Zamora",
+      localityIndecId: "06490010",
+      departmentName: "Lomas de Zamora",
+    });
+    // The chip says it the way the person chose it, and which partido governs it.
+    expect(screen.getByText("Banfield")).toBeTruthy();
+    expect(screen.getByText("partido de Lomas de Zamora, Buenos Aires")).toBeTruthy();
   });
 
   it("keeps the province when the person changes the chosen locality", async () => {
     render(<Harness />);
     fireEvent.press(screen.getByRole("radio", { name: "Río Negro" }));
-    fireEvent.changeText(screen.getByLabelText("Localidad, obligatorio"), "Bols");
+    fireEvent.changeText(screen.getByLabelText("Ciudad, pueblo o barrio, obligatorio"), "Bols");
     fireEvent.press(await screen.findByText("El Bolsón", {}, { timeout: 3000 }));
     fireEvent.press(screen.getByText("Cambiar"));
     expect(screen.getByText("Provincia: Río Negro")).toBeTruthy();
-    expect(screen.getByLabelText("Localidad, obligatorio")).toBeTruthy();
+    expect(screen.getByLabelText("Ciudad, pueblo o barrio, obligatorio")).toBeTruthy();
   });
 });

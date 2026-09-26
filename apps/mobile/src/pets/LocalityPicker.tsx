@@ -25,7 +25,14 @@
 // who has typed "Pa".
 
 import type { LocalityV1 } from "@dim/contract/api";
-import { PROVINCES } from "@dim/contract/reference";
+import {
+  LOCALITY_FIELD_LABEL,
+  LOCALITY_FIELD_PLACEHOLDER,
+  PROVINCES,
+  chosenLocalityName,
+  chosenLocalityParent,
+  localityOptionLabel,
+} from "@dim/contract/reference";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -116,8 +123,9 @@ export function LocalityPicker({
   }, [provinceCode]);
   const [query, setQuery] = useState("");
   const [state, setState] = useState<SearchState>({ phase: "idle" });
-  /** The department of the row THIS picker last selected — see the chip below. */
-  const [pickedDepartment, setPickedDepartment] = useState<string | null>(null);
+  /** The row THIS picker last selected — its department and, when it was found
+   * through an alias ("Banfield"), the name the person typed. See the chip. */
+  const [picked, setPicked] = useState<LocalityV1 | null>(null);
   const generation = useRef(0);
 
   const run = useCallback(
@@ -154,7 +162,11 @@ export function LocalityPicker({
   }, [query, run]);
 
   const selected = provinceCode.length > 0 && localityName.length > 0;
-  const where = pickedDepartment === null ? provinceCode : `${pickedDepartment} · ${provinceCode}`;
+  // The chip names the place the way the person chose it ("Banfield") and the
+  // unit that governs it ("partido de Lomas de Zamora, Buenos Aires"); the row
+  // behind it — what the parent stores — is always the catalogue's.
+  const shownName = picked ? chosenLocalityName(picked) : localityName;
+  const where = picked ? chosenLocalityParent(picked) : provinceCode;
 
   // A PICKER WITH A CHOICE SHOWS THE CHOICE, NOT THE CATALOGUE. Reported from a
   // real Android on 2026-09-11, and the breed picker in `app/alta.tsx` had the
@@ -170,9 +182,9 @@ export function LocalityPicker({
     return (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Localidad elegida: ${localityName}, ${where}. Tocá para cambiarla.`}
+        accessibilityLabel={`${LOCALITY_FIELD_LABEL} elegido: ${shownName}, ${where}. Tocá para cambiarlo.`}
         onPress={() => {
-          setPickedDepartment(null);
+          setPicked(null);
           setProvince(provinceCode);
           onSelect({
             provinceCode: "",
@@ -185,7 +197,7 @@ export function LocalityPicker({
         style={styles.selected}
       >
         <View style={styles.selectedText}>
-          <Text style={styles.selectedName}>{localityName}</Text>
+          <Text style={styles.selectedName}>{shownName}</Text>
           {/* THE DEPARTMENT, when this picker is the one that chose the row
               (A2-alta-asentar-03). The list disambiguates homonyms by
               department and the chip then showed only the province code, so the
@@ -237,18 +249,18 @@ export function LocalityPicker({
       </Pressable>
 
       {/* NO explicit `accessibilityLabel` (CA-M2, WCAG 2.5.3 "Label in Name").
-          It said "Buscar localidad" while the visible label said "Localidad",
-          so a person driving the phone by voice who read the screen and said
-          "Localidad" named a control the system could not match. The kit
+          It once said "Buscar localidad" while the visible label said
+          "Localidad", so a person driving the phone by voice who read the
+          screen and said the label named a control the system could not match. The kit
           derives the name from the visible label and adds ", obligatorio" WHEN
           THE FIELD IS ONE; the verb the old name carried is in the placeholder,
           where it belongs. */}
       <TextField
         autoCapitalize="words"
         autoCorrect={false}
-        label="Localidad"
+        label={LOCALITY_FIELD_LABEL}
         onChangeText={setQuery}
-        placeholder={`Buscá tu localidad en ${provinceName}`}
+        placeholder={LOCALITY_FIELD_PLACEHOLDER}
         required={required}
         value={query}
       />
@@ -256,8 +268,8 @@ export function LocalityPicker({
       <SearchBody
         state={state}
         query={query}
-        onPick={(selection) => {
-          setPickedDepartment(selection.departmentName);
+        onPick={(selection, row) => {
+          setPicked(row);
           // COLLAPSE THE SEARCH. Without these three lines the rows stayed on
           // screen under the chip and pushed the form's next button out of
           // reach. Cancelling the generation matters as much as clearing the
@@ -282,7 +294,7 @@ function SearchBody({
 }: {
   state: SearchState;
   query: string;
-  onPick: (selection: LocalitySelection) => void;
+  onPick: (selection: LocalitySelection, row: LocalityV1) => void;
   onRetry: () => void;
 }) {
   switch (state.phase) {
@@ -290,7 +302,7 @@ function SearchBody({
       return (
         <Body>
           {query.trim().length === 0
-            ? "Escribí el nombre de la localidad o del barrio."
+            ? "Escribí el nombre de tu ciudad, pueblo o barrio."
             : "Escribí al menos dos letras."}
         </Body>
       );
@@ -304,8 +316,8 @@ function SearchBody({
       if (state.rows.length === 0) {
         return (
           <Body>
-            No encontramos ninguna localidad con ese nombre. Probá con menos letras o con el nombre
-            oficial.
+            No encontramos ningún lugar con ese nombre. Probá con menos letras o con el nombre del
+            partido o departamento.
           </Body>
         );
       }
@@ -318,21 +330,27 @@ function SearchBody({
               // slug — that is what makes them homonyms — so the old key
               // collided on exactly the rows this list exists to tell apart, and
               // React reconciled two different localities as one.
-              key={row.indecId ?? `${row.provinceCode}:${row.localitySlug}:${row.departmentName}`}
+              //
+              // Plus the ALIAS: "Banfield (Lomas de Zamora)" is the Lomas de
+              // Zamora row found by another name, so it shares that row's id.
+              key={`${row.indecId ?? `${row.provinceCode}:${row.localitySlug}:${row.departmentName}`}${row.aliasName ? `~${row.aliasName}` : ""}`}
               onPress={() =>
-                onPick({
-                  provinceCode: row.provinceCode,
-                  provinceName: row.provinceName,
-                  localityName: row.localityName,
-                  // `""` for a row whose catalogue id is null — the field is
-                  // nullable on the wire and the server falls back to the pair.
-                  localityIndecId: row.indecId ?? "",
-                  departmentName: row.departmentName,
-                })
+                onPick(
+                  {
+                    provinceCode: row.provinceCode,
+                    provinceName: row.provinceName,
+                    localityName: row.localityName,
+                    // `""` for a row whose catalogue id is null — the field is
+                    // nullable on the wire and the server falls back to the pair.
+                    localityIndecId: row.indecId ?? "",
+                    departmentName: row.departmentName,
+                  },
+                  row,
+                )
               }
               style={styles.option}
             >
-              <Text style={styles.optionName}>{row.localityName}</Text>
+              <Text style={styles.optionName}>{localityOptionLabel(row)}</Text>
               {/* The department disambiguates the many homonyms — there are
                   several "San Martín" in one province, and a picker that shows
                   only the name makes the user guess. */}

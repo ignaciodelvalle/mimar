@@ -44,6 +44,7 @@ import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { PetProfileEditV1 } from "@dim/contract/api";
 import { PET_SPECIES, type PetProfileCommandInput, type PetSpecies } from "@dim/contract/input";
+import { LOCALITY_FIELD_LABEL } from "@dim/contract/reference";
 
 import { apiFailureMessage } from "../api/client";
 import { fetchPetProfileEdit, sendPetProfileCommand } from "../api/endpoints";
@@ -347,7 +348,7 @@ export function PetProfileEditScreen({ publicToken }: { publicToken: string }) {
           formulario escribe, no la cara del animal — y pedir `/pets/{token}`
           desde acá sería un segundo round trip para un renglón. La pantalla de
           mudanza la muestra, que es donde hace falta para leer una negativa. */}
-      <Card title="Localidad">
+      <Card title={LOCALITY_FIELD_LABEL}>
         <View style={styles.stack}>
           <Body>La localidad se actualiza registrando un movimiento.</Body>
           <SecondaryButton

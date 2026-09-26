@@ -84,7 +84,7 @@ function detail(over: Record<string, unknown> = {}): OwnerPetDetailV1 {
 /** Walk the cascade: province first (L3·0), then type, let the debounce fire, tap the row. */
 async function pickBariloche() {
   fireEvent.press(screen.getByRole("radio", { name: "Río Negro" }));
-  fireEvent.changeText(screen.getByLabelText("Localidad, obligatorio"), "barilo");
+  fireEvent.changeText(screen.getByLabelText("Ciudad, pueblo o barrio, obligatorio"), "barilo");
   const row = await screen.findByText("San Carlos de Bariloche", {}, { timeout: 3000 });
   fireEvent.press(row);
 }
