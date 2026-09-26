@@ -31,11 +31,11 @@
     ]
   },
   "stats": {
-    "rows": 527,
+    "rows": 528,
     "byStatus": {
       "UNENFORCED": 248,
       "ENFORCED": 185,
-      "PARTIAL": 94
+      "PARTIAL": 95
     },
     "byScopeStatus": {
       "process": {
@@ -45,7 +45,7 @@
       },
       "db": {
         "ENFORCED": 51,
-        "PARTIAL": 21,
+        "PARTIAL": 22,
         "UNENFORCED": 30
       },
       "contract": {
@@ -77,7 +77,7 @@
       "none": 247,
       "ci": 10,
       "verify": 139,
-      "test:verified": 111,
+      "test:verified": 112,
       "manual": 6,
       "db": 14
     }
@@ -9632,6 +9632,28 @@
       "confidence": 0.9,
       "numberKey": 540,
       "verifiedAt": "71442466c"
+    },
+    {
+      "id": "CANON-541",
+      "rule": "No owner-facing read of an animal's pet_events may return a denuncia's bridge events (reporter, relato, exact point): every service-connection read carries the shared notHiddenFromSubjectClause, and the subject-rights export applies the same hide in SQL.",
+      "scope": "db",
+      "sources": [
+        "lib/infra/subject-hidden-events.ts:1-17",
+        "db/migrations/0262_export_hides_denuncia_events.sql"
+      ],
+      "enforcer": [
+        "__tests__/subject-hidden-event-read-coverage.test.ts:19-46",
+        "__tests__/subject-export-hides-denuncia-events.test.ts:48-98"
+      ],
+      "enforcementKind": "vitest",
+      "wired": "test:verified",
+      "status": "PARTIAL",
+      "clause": "R1",
+      "statusBasis": "__tests__/subject-hidden-event-read-coverage.test.ts:19-46 pins that the five known owner reads (event detail page and loader, libreta export, share link, libreta face) import and call the one shared clause, and __tests__/subject-export-hides-denuncia-events.test.ts:48-98 proves against the database that export_subject_data keeps the owner's own events and drops the bridge event. The list is enumerated: a NEW owner-facing pet_events read that omits the clause fails nothing.",
+      "notes": "Privacy audit C1/W3/S1 (localidades-por-id stage D). RLS (0115) already hides the rows from a user connection; these reads run on the service connection.",
+      "confidence": 0.85,
+      "numberKey": 541,
+      "verifiedAt": "a7aa1b8c9"
     }
   ],
   "recommendations": [

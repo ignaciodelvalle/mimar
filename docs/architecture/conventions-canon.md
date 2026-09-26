@@ -70,12 +70,12 @@ Adoption convention (from the blind calibration on CANON-479): a tested helper w
 
 ## Totals
 
-<!-- fact:canon_rows -->527<!-- /fact --> rules, of which <!-- fact:canon_enforced -->185<!-- /fact --> are ENFORCED, <!-- fact:canon_partial -->94<!-- /fact --> PARTIAL and <!-- fact:canon_unenforced -->248<!-- /fact --> UNENFORCED.
+<!-- fact:canon_rows -->528<!-- /fact --> rules, of which <!-- fact:canon_enforced -->185<!-- /fact --> are ENFORCED, <!-- fact:canon_partial -->95<!-- /fact --> PARTIAL and <!-- fact:canon_unenforced -->248<!-- /fact --> UNENFORCED.
 
 | Scope | Rules | ENFORCED | PARTIAL | UNENFORCED | Page |
 | --- | --- | --- | --- | --- | --- |
 | Contract (`packages/contract`) | 22 | 7 | 5 | 10 | [`contract.md`](./conventions-canon/contract.md) |
-| Database, RLS and the event spine | 102 | 51 | 21 | 30 | [`db.md`](./conventions-canon/db.md) |
+| Database, RLS and the event spine | 103 | 51 | 22 | 30 | [`db.md`](./conventions-canon/db.md) |
 | Documentation | 12 | 0 | 3 | 9 | [`docs.md`](./conventions-canon/docs.md) |
 | End-to-end (Playwright) | 29 | 2 | 2 | 25 | [`e2e.md`](./conventions-canon/e2e.md) |
 | Mobile (`apps/mobile`) | 39 | 15 | 4 | 20 | [`mobile.md`](./conventions-canon/mobile.md) |
