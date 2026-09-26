@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-09-26",
-  "sha": "4e735290f",
+  "sha": "26a5ba1b0",
   "facts": {
     "event_types": {
       "value": 55,
@@ -43,7 +43,7 @@
       "method": "files named exactly `layout.tsx` anywhere under `app/`."
     },
     "migrations": {
-      "value": 259,
+      "value": 261,
       "source": "db/migrations/*.sql",
       "method": "files ending in `.sql` under `db/migrations/`. Migrations are forward-only and immutable, so this only ever grows."
     },
@@ -88,7 +88,7 @@
       "method": "files ending in `.yml` under `.github/workflows/`. There are no `.yaml` files at this snapshot; if one is added it will not be counted until this method changes."
     },
     "vitest_files": {
-      "value": 1743,
+      "value": 1748,
       "source": "vitest.config.ts -> __tests__/db-reachability.ts",
       "method": "discoverTestFiles().length, imported from the SAME module `vitest.config.ts` feeds into its `include` globs via computeTestPartition(). It walks the repo for /\\.test\\.tsx?$/ skipping node_modules, .next, .git, .claude, apps and e2e — so this is exactly the file set Vitest runs, not an independent glob that could drift from it."
     },
@@ -158,7 +158,7 @@
       "method": "literal occurrences of the service-role factory's name followed by `(` in `.ts`/`.tsx` files under those four trees, excluding the factory's own module. The trailing paren is what makes this a CALL count and not an import count — an `import { … } from` line has no paren. The needle is concatenated at runtime so this generator does not match itself. Every one of these bypasses RLS by design."
     },
     "canon_rows": {
-      "value": 527,
+      "value": 528,
       "source": "docs/architecture/conventions-canon.json",
       "method": "total rows — counted over `rows[]` in the canon JSON, which is the source of truth its markdown is rendered from. The same four numbers appear as `fact:` markers in `docs/architecture/conventions-canon.md` and are cross-checked there by `__tests__/conventions-canon-parity.test.ts`."
     },
@@ -168,7 +168,7 @@
       "method": "rows with status ENFORCED — counted over `rows[]` in the canon JSON, which is the source of truth its markdown is rendered from. The same four numbers appear as `fact:` markers in `docs/architecture/conventions-canon.md` and are cross-checked there by `__tests__/conventions-canon-parity.test.ts`."
     },
     "canon_partial": {
-      "value": 94,
+      "value": 95,
       "source": "docs/architecture/conventions-canon.json",
       "method": "rows with status PARTIAL — counted over `rows[]` in the canon JSON, which is the source of truth its markdown is rendered from. The same four numbers appear as `fact:` markers in `docs/architecture/conventions-canon.md` and are cross-checked there by `__tests__/conventions-canon-parity.test.ts`."
     },
