@@ -15,7 +15,7 @@ import { type ShadowFacts, classifyShadow, flipGateVerdict, worstShadowKind } fr
 const agree: ShadowFacts = {
   namePath: true,
   idPath: true,
-  legacyOnly: false,
+  viaLegacyGrant: false,
   rowLocalityId: "loc-1",
   rowNameAmbiguous: false,
   rowNameFoldsToCatalogue: true,
@@ -29,10 +29,14 @@ describe("classifyShadow", () => {
   });
 
   it("any disagreement under legacy grants only is legacy_grant, whatever else is true", () => {
-    expect(classifyShadow({ ...agree, idPath: false, legacyOnly: true })).toBe("legacy_grant");
+    expect(classifyShadow({ ...agree, idPath: false, viaLegacyGrant: true })).toBe("legacy_grant");
     expect(
-      classifyShadow({ ...agree, namePath: false, legacyOnly: true, rowLocalityId: null }),
+      classifyShadow({ ...agree, namePath: false, viaLegacyGrant: true, rowLocalityId: null }),
     ).toBe("legacy_grant");
+  });
+
+  it("a legacy grant whose own answer moved is legacy_grant even when the totals agree", () => {
+    expect(classifyShadow({ ...agree, viaLegacyGrant: true })).toBe("legacy_grant");
   });
 
   it("a row only the name path reached, with no locality, is unresolved_to_province", () => {

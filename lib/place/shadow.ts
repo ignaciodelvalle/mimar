@@ -17,8 +17,11 @@
 //                           ACCEPTED.
 //   unit_widening           the id path reached a row outside every old grant
 //                           because a PERSON confirmed a unit wider than the
-//                           grant (the partial-grant confirm flow). Reported
-//                           with the list, never silent; not blocking.
+//                           grant (the partial-grant confirm flow) — or
+//                           because an admin LATER added a locality to that
+//                           unit (current membership decides visibility).
+//                           Reported with the list, never silent; not
+//                           blocking.
 //   legacy_grant            a grant with authority_unit_id NULL answered
 //                           differently on the two paths. By construction it
 //                           must not: BLOCKING.
@@ -51,8 +54,13 @@ export type ShadowFacts = {
   namePath: boolean;
   /** The id path's answer. */
   idPath: boolean;
-  /** Every grant (or rule) that took part is on the legacy name path. */
-  legacyOnly: boolean;
+  /**
+   * A LEGACY grant (authority_unit_id NULL) is involved and its own answer
+   * moved between the paths — judged per grant, never per holder: a legacy
+   * grant must answer identically whatever else its holder holds (stage D
+   * review W2). Always blocking, even when the holder's total answer agrees.
+   */
+  viaLegacyGrant: boolean;
   /** The row's catalogue locality, or null when its place never resolved. */
   rowLocalityId: string | null;
   /** The row's stored (province, locality) text names 2+ live catalogue rows. */
@@ -64,8 +72,8 @@ export type ShadowFacts = {
 };
 
 export function classifyShadow(facts: ShadowFacts): ShadowKind | null {
+  if (facts.viaLegacyGrant) return "legacy_grant";
   if (facts.namePath === facts.idPath) return null;
-  if (facts.legacyOnly) return "legacy_grant";
   if (facts.namePath) {
     // Only the name path reached it.
     if (facts.rowLocalityId === null) return "unresolved_to_province";

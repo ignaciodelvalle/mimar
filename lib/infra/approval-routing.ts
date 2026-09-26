@@ -176,13 +176,13 @@ async function recordRoutingShadow(
   );
   if (differing.length === 0) return;
   // The legacy branch is the same SQL on both paths, so a holder can only
-  // differ through a UNIT grant: legacyOnly is false by construction.
+  // differ through a UNIT grant: viaLegacyGrant is false by construction.
   const ambiguous = await nameIsAmbiguous(jurisdiction.province, jurisdiction.locality);
   const kinds = differing.flatMap((u) => {
     const kind = classifyShadow({
       namePath: nameSet.has(u),
       idPath: idSet.has(u),
-      legacyOnly: false,
+      viaLegacyGrant: false,
       rowLocalityId: jurisdiction.localityId ?? null,
       rowNameAmbiguous: ambiguous,
       // Reached only by the id path = a unit grant whose name pair did not

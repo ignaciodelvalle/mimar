@@ -143,6 +143,53 @@ describe("sweepScopeParity", () => {
     });
   });
 
+  // Stage D review W2: `legacy_grant` is judged PER GRANT. A legacy grant
+  // must answer identically on both paths whatever else its holder holds; a
+  // mixed user (legacy grant in one place, unit grant in another) whose
+  // legacy half regresses is legacy_grant, never an accepted kind.
+  it("a mixed user's legacy grant that regresses on the id path is legacy_grant", async () => {
+    await inRolledBackTx(async (tx) => {
+      const alberti = await localityId(tx, MECHITA_ALBERTI);
+      const villaMaria = await localityId(tx, VILLA_MARIA_BA);
+      const user = randomUUID();
+      await tx
+        .insert(profiles)
+        .values({
+          id: user,
+          displayName: "D7 mixed probe",
+          role: "govt",
+          accountType: "institutional",
+        });
+      // Legacy grant in A (Villa María, by name) + unit grant in B (Alberti's unit).
+      await tx.insert(govtAssignments).values([
+        { userId: user, jurisdictionProvince: "Buenos Aires", jurisdictionLocality: "Villa María" },
+        {
+          userId: user,
+          jurisdictionProvince: "Buenos Aires",
+          jurisdictionLocality: "Mechita",
+          authorityUnitId: await municipalUnitOf(tx, alberti),
+        },
+      ]);
+      const inA = await pet(tx, villaMaria, "Villa María");
+
+      // Healthy id path: the legacy grant answers the same, no disagreement on A.
+      const healthy = await sweepScopeParity(tx, { userIds: [user] });
+      expect(healthy.rows.some((r) => r.subjectId === inA)).toBe(false);
+
+      // Simulated regression: the id path renders the legacy grant wrongly.
+      const regressed = await sweepScopeParity(tx, {
+        userIds: [user],
+        idPathGrants: async (_userId, grants, scoped) =>
+          scoped.map((g, i) =>
+            grants[i]?.authorityUnitId === null ? { ...g, locality: "__regressed__" } : g,
+          ),
+      });
+      expect(regressed.rows.find((r) => r.subjectId === inA)?.kind).toBe("legacy_grant");
+      expect(regressed.verdict.pass).toBe(false);
+      expect(regressed.verdict.blocking.legacy_grant).toBeGreaterThanOrEqual(1);
+    });
+  });
+
   it("a resolved row a unit grant drops without a homonym is OTHER and fails the gate", async () => {
     await inRolledBackTx(async (tx) => {
       // Villa María names ONE row inside Buenos Aires (its homonym is in

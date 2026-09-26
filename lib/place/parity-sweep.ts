@@ -17,7 +17,7 @@ import { type SQL, and, eq, isNull, sql } from "drizzle-orm";
 
 import { cases, type db, govtAssignments, pets, welfareReports } from "@/db";
 import { jurisdictionPairClause } from "@/lib/metrics/scope";
-import { scopedGrants } from "@/lib/place/scope";
+import { type ScopedGrant, scopedGrants } from "@/lib/place/scope";
 import {
   type ShadowCounts,
   type ShadowKind,
@@ -55,6 +55,9 @@ type Diff = {
   localityId: string | null;
   byName: boolean;
   byId: boolean;
+  /** The user's LEGACY grants alone reach the row, on each path. */
+  legacyByName: boolean;
+  legacyById: boolean;
   ambiguous: boolean;
   folds: boolean | null;
 };
@@ -64,11 +67,15 @@ async function diffsFor(
   t: PlaceTable,
   nameClause: SQL,
   idClause: SQL,
+  legacyNameClause: SQL,
+  legacyIdClause: SQL,
 ): Promise<Diff[]> {
   return (await exec.execute(sql`
     select ${t.id}::text as id, ${t.localityId}::text as "localityId",
            coalesce(${nameClause}, false) as "byName",
            coalesce(${idClause}, false) as "byId",
+           coalesce(${legacyNameClause}, false) as "legacyByName",
+           coalesce(${legacyIdClause}, false) as "legacyById",
            (select count(*) from public.ar_localities l
              where l.province_code = public.ar_province_code(${t.jurisdictionProvince})
                and l.locality_name = ${t.jurisdictionLocality}
@@ -78,12 +85,24 @@ async function diffsFor(
               from public.ar_localities l where l.id = ${t.localityId}) as folds
       from ${t}
      where coalesce(${nameClause}, false) <> coalesce(${idClause}, false)
+        or coalesce(${legacyNameClause}, false) <> coalesce(${legacyIdClause}, false)
   `)) as unknown as Diff[];
 }
 
 export async function sweepScopeParity(
   exec: Executor,
-  opts: { userIds?: string[] } = {},
+  opts: {
+    userIds?: string[];
+    /**
+     * Test seam: rewrite the id-path grants (same order and length as
+     * `grants`) to simulate a regression. Production never passes it.
+     */
+    idPathGrants?: (
+      userId: string,
+      grants: ReadonlyArray<{ authorityUnitId: string | null }>,
+      scoped: ScopedGrant[],
+    ) => Promise<ScopedGrant[]>;
+  } = {},
 ): Promise<SweepReport> {
   const userIds =
     opts.userIds ??
@@ -107,10 +126,17 @@ export async function sweepScopeParity(
       .from(govtAssignments)
       .where(and(eq(govtAssignments.userId, userId), isNull(govtAssignments.revokedAt)));
     if (grants.length === 0) continue;
-    const legacyOnly = grants.every((g) => g.authorityUnitId === null);
     const grantRows = new Set(grants.map((g) => g.localityId).filter((v) => v !== null));
     const byName = await scopedGrants(userId, grants, { exec, mode: "name" });
-    const byId = await scopedGrants(userId, grants, { exec, mode: "id" });
+    const scopedById = await scopedGrants(userId, grants, { exec, mode: "id" });
+    const byId = opts.idPathGrants
+      ? await opts.idPathGrants(userId, grants, scopedById)
+      : scopedById;
+    // PER GRANT (stage D review W2): a legacy grant (authority_unit_id NULL)
+    // must answer identically on both paths whatever else its holder holds.
+    // scopedGrants keeps the input order, so the legacy subset is by index.
+    const isLegacy = grants.map((g) => g.authorityUnitId === null);
+    const legacyOf = (list: ScopedGrant[]) => list.filter((_, i) => isLegacy[i]);
 
     for (const { name, table } of TABLES) {
       // synthetic: exempt — an offline comparison of the two scope paths over
@@ -123,11 +149,22 @@ export async function sweepScopeParity(
           sql`${table.jurisdictionLocality}`,
           sql`${table.localityId}`,
         ) ?? sql`false`;
-      for (const d of await diffsFor(exec, table, clause(byName), clause(byId))) {
+      const diffs = await diffsFor(
+        exec,
+        table,
+        clause(byName),
+        clause(byId),
+        clause(legacyOf(byName)),
+        clause(legacyOf(byId)),
+      );
+      for (const d of diffs) {
+        // The disagreement is the legacy grant's when that grant's own answer
+        // moved, or when it reaches the row by name and the id path lost it.
+        const legacyGrantDiverged = d.legacyByName !== d.legacyById || (d.legacyByName && !d.byId);
         const kind = classifyShadow({
           namePath: d.byName,
           idPath: d.byId,
-          legacyOnly,
+          viaLegacyGrant: legacyGrantDiverged,
           rowLocalityId: d.localityId,
           rowNameAmbiguous: d.ambiguous,
           rowNameFoldsToCatalogue: d.folds === true,
