@@ -85,7 +85,7 @@ describe("GET /api/cron/drain-outbox", () => {
 
   function mockDeps(
     pendingRows: { id: string; attempts: number; nextRetryAt: Date; status: string }[],
-    deliverResults: Array<{ ok: boolean; error: string }>,
+    deliverResults: Array<{ ok: boolean; error: string; delivered?: boolean }>,
     maxAttempts = 5,
     markResults: boolean[] = [],
   ) {
@@ -116,14 +116,18 @@ describe("GET /api/cron/drain-outbox", () => {
       return Promise.resolve(marked);
     });
 
+    // PO S3: a v1 no-op pass (no real receiver) is RECORDED, never "delivered".
+    const markEmittedMock = vi.fn().mockResolvedValue(undefined);
+
     vi.doMock("@/lib/infra/outbox-drainer", () => ({
       MAX_ATTEMPTS: maxAttempts,
       deliverOutboxRow: deliverMock,
       computeNextRetryAt: computeNextRetryAtMock,
       markOutboxDelivered: markDeliveredMock,
+      markOutboxEmitted: markEmittedMock,
     }));
 
-    return { deliverMock, markDeliveredMock, ...built };
+    return { deliverMock, markDeliveredMock, markEmittedMock, ...built };
   }
 
   async function callRoute(headers: Record<string, string>) {
@@ -160,11 +164,27 @@ describe("GET /api/cron/drain-outbox", () => {
     expect(body).toMatchObject({ ok: true, processed: 0, delivered: 0, failed: 0, retried: 0 });
   });
 
-  it("returns 200 with delivered:1 when one row succeeds", async () => {
+  // PO S3 (2026-09-26): with no real receiver, the drainer's pass is a no-op
+  // and the row STAYS PENDING until a person of the authority marks it
+  // received. Marking it delivered defeated the breach indicator (audit #5).
+  it("a v1 no-op pass leaves the row pending: recorded as emitted, never delivered (S3)", async () => {
+    const now = new Date();
+    const { markDeliveredMock, markEmittedMock } = mockDeps(
+      [{ id: "row-1", attempts: 0, nextRetryAt: now, status: "pending" }],
+      [{ ok: true, error: "", delivered: false }],
+    );
+    const res = await callRoute({ "x-cron-secret": "test-secret" });
+    const body = await res.json();
+    expect(markDeliveredMock).not.toHaveBeenCalled();
+    expect(markEmittedMock).toHaveBeenCalledTimes(1);
+    expect(body).toMatchObject({ ok: true, processed: 1, delivered: 0, emitted: 1 });
+  });
+
+  it("returns 200 with delivered:1 when a real receiver acknowledged the row", async () => {
     const now = new Date();
     mockDeps(
       [{ id: "row-1", attempts: 0, nextRetryAt: now, status: "pending" }],
-      [{ ok: true, error: "" }],
+      [{ ok: true, error: "", delivered: true }],
     );
     const res = await callRoute({ "x-cron-secret": "test-secret" });
     expect(res.status).toBe(200);
@@ -176,7 +196,7 @@ describe("GET /api/cron/drain-outbox", () => {
     const now = new Date();
     const { markDeliveredMock } = mockDeps(
       [{ id: "row-1", attempts: 0, nextRetryAt: now, status: "pending" }],
-      [{ ok: true, error: "" }],
+      [{ ok: true, error: "", delivered: true }],
       5,
       [false],
     );

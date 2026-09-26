@@ -48,7 +48,13 @@ export const VALID_PROVINCE_NAMES = new Set<string>(PROVINCES.map((p) => p.name)
 /** Page size for both /admin/outbox and /gob/outbox. */
 export const OUTBOX_PAGE_LIMIT = 200;
 
-const VALID_STATUS_VALUES: readonly string[] = ["pending", "delivered", "failed", "merged"];
+const VALID_STATUS_VALUES: readonly string[] = [
+  "pending",
+  "delivered",
+  "failed",
+  "merged",
+  "received",
+];
 const VALID_TARGET_KIND_VALUES: readonly string[] = [
   "govt_webhook",
   "eno_authority",

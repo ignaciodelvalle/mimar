@@ -22,6 +22,7 @@ import {
   type EnoNotificationDetail,
   buildBreachCue,
   buildStatusLabel,
+  canMarkReceived,
   externalDeliveryNote,
   isPendingExternalTransmission,
 } from "@/lib/infra/outbox-list";
@@ -45,12 +46,19 @@ export const OUTBOX_TARGET_KIND_VALUES = [
   "internal_dashboard",
 ] as const;
 
-export const OUTBOX_STATUS_VALUES = ["pending", "delivered", "failed", "merged"] as const;
+export const OUTBOX_STATUS_VALUES = [
+  "pending",
+  "received",
+  "delivered",
+  "failed",
+  "merged",
+] as const;
 
 type PillTone = "ok" | "neutral" | "danger" | "escalated";
 
 const BREACH_PILL_TONE: Record<BreachCue, PillTone> = {
   delivered: "ok",
+  received: "ok",
   ok: "neutral",
   breach: "danger",
   failed: "escalated",
@@ -59,6 +67,7 @@ const BREACH_PILL_TONE: Record<BreachCue, PillTone> = {
 
 const BREACH_PILL_LABEL: Record<BreachCue, string> = {
   delivered: "Entregado",
+  received: "Recibido",
   ok: "En SLA",
   breach: "Incumplimiento",
   failed: "Fallido",
@@ -99,6 +108,8 @@ export interface OutboxTableRow {
   createdAt: Date;
   /** The enqueue-time payload snapshot — read by `enoDetailFor` (legal queue) only. */
   payloadSnapshot?: unknown;
+  /** When the receiving authority marked it received (PO S3); null otherwise. */
+  receivedAt?: Date | null;
 }
 
 export interface OutboxTableProps {
@@ -120,6 +131,12 @@ export interface OutboxTableProps {
    * on the whole-bandeja view, where most rows have no disease to name.
    */
   enoDetailFor?: (row: OutboxTableRow) => EnoNotificationDetail | null;
+  /**
+   * PO S3 (2026-09-26): renders the "Marcar recibido" control in the Acción
+   * cell for a row still awaiting receipt. Omitted where the viewer is not the
+   * receiving authority's surface.
+   */
+  receiptActionFor?: (row: OutboxTableRow) => React.ReactNode;
 }
 
 // ---------------------------------------------------------------------------
@@ -138,6 +155,7 @@ export function OutboxTable({
   petTokenBySourceEventId,
   detailHrefFor,
   enoDetailFor,
+  receiptActionFor,
 }: OutboxTableProps) {
   return (
     <div className="overflow-x-auto">
@@ -265,8 +283,14 @@ export function OutboxTable({
                 </td>
                 <td className="py-2 px-3 text-sm tabular-nums text-ln-op-mute whitespace-nowrap">
                   {formatDateTime(row.slaDueAt)}
+                  {row.receivedAt ? (
+                    <span className="block text-xs">Recibido {formatDateTime(row.receivedAt)}</span>
+                  ) : null}
                 </td>
                 <td className="py-2 px-3">
+                  {receiptActionFor && canMarkReceived(row.status) ? (
+                    <div className="mb-1">{receiptActionFor(row)}</div>
+                  ) : null}
                   {detailHref ? (
                     // Plain <a> (not next/link) — operator-trust T2. The row →
                     // detail click soft-nav-dropped on this dense list (Next 15.5

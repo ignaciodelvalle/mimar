@@ -310,9 +310,9 @@ Stated here so no diagram in the 2026-09 pack has to re-derive it.
 |---|---|---|
 | `pnpm verify` | <!-- fact:verify_fences -->81<!-- /fact --> `lint:*` fences plus `verify:mobile` and `build` | Structure, conventions, authorization scoping, brand casing |
 <<<<<<< HEAD
-| `pnpm test:verified` | `scripts/run-verified-suite.ts` over <!-- fact:vitest_files -->1767<!-- /fact --> vitest files | Behaviour, with a filesystem census that distrusts vitest's exit code in both directions |
+| `pnpm test:verified` | `scripts/run-verified-suite.ts` over <!-- fact:vitest_files -->1768<!-- /fact --> vitest files | Behaviour, with a filesystem census that distrusts vitest's exit code in both directions |
 =======
-| `pnpm test:verified` | `scripts/run-verified-suite.ts` over <!-- fact:vitest_files -->1767<!-- /fact --> vitest files | Behaviour, with a filesystem census that distrusts vitest's exit code in both directions |
+| `pnpm test:verified` | `scripts/run-verified-suite.ts` over <!-- fact:vitest_files -->1768<!-- /fact --> vitest files | Behaviour, with a filesystem census that distrusts vitest's exit code in both directions |
 >>>>>>> 4d45f53f1 (feat(custodia): el detector de deriva reconstruye titular, transito y custodia desde la columna de eventos)
 | Playwright | `dim-interno:.github/workflows/e2e-nightly.yml`, <!-- fact:e2e_specs -->45<!-- /fact --> specs | Browser flows — **not** part of `pnpm verify`; the nightly job is currently red for a missing-secrets reason recorded in `dim-interno:docs/agents/open-work.md` |
 | Mobile Jest | `apps/mobile/jest.config.js`, <!-- fact:mobile_jest_files -->144<!-- /fact --> files | The phone's own logic, no native modules |

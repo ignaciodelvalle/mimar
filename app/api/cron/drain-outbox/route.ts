@@ -5,7 +5,8 @@
 // and then delivered by deliverOutboxRow() outside that transaction. On success
 // the row moves to 'delivered'. On failure, attempts is incremented and
 // next_retry_at is advanced per the exponential backoff schedule, overwriting
-// the lease. After MAX_ATTEMPTS failures the row is marked 'failed'.
+// the lease. After MAX_ATTEMPTS failures the row is marked 'failed'. A v1 no-op
+// pass (no receiver) leaves the row pending — see markOutboxEmitted.
 //
 // THE CLAIM IS NOT DECORATION. Until 2026-09-09 the batch was selected with
 // FOR UPDATE SKIP LOCKED and then delivered with the transaction already
@@ -18,7 +19,11 @@
 // Schedule: runs DAILY, invoked in order by the single dispatcher
 // (/api/cron/daily, vercel.json "0 4 * * *") — see lib/infra/cron-dispatcher.ts.
 //
-// Returns: { ok: true, processed, delivered, failed, retried }
+// Returns: { ok: true, processed, delivered, failed, retried, emitted }
+//
+// PO S3 (2026-09-26): with no real receiver (v1), a pass is `emitted` — the
+// row stays PENDING until the receiving authority marks it received from
+// /gob/outbox. Only a real receiver's acknowledgement is `delivered`.
 //
 // Spec: docs/superpowers/plans/2026-05-22-event-trust-tier-1.md §4 C.1/C.4
 
@@ -34,6 +39,7 @@ import {
   computeNextRetryAt,
   deliverOutboxRow,
   markOutboxDelivered,
+  markOutboxEmitted,
 } from "@/lib/infra/outbox-drainer";
 
 export const dynamic = "force-dynamic";
@@ -85,6 +91,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   let delivered = 0;
   let failed = 0;
   let retried = 0;
+  let emitted = 0;
   let cronStatus: "ok" | "failed" = "ok";
   const errors: { id: string; reason: string }[] = [];
 
@@ -162,7 +169,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
         const result = await deliverOutboxRow(row);
 
-        if (result.ok) {
+        if (result.ok && !result.delivered) {
+          // PO S3 (2026-09-26): no real receiver — the pass is recorded and
+          // the row STAYS PENDING until the authority marks it received from
+          // its panel. Overdue rows therefore stay visible as overdue.
+          await markOutboxEmitted(row);
+          emitted += 1;
+        } else if (result.ok) {
           // Conditional on the link count this run claimed: a case record that
           // gained a link mid-delivery (a positive close landing on a diagnosis
           // in flight) is NOT marked delivered from the stale copy — it stays
@@ -228,7 +241,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   // cron dashboard flags it. Per-row `failed` (exhausted retries) is a terminal
   // row state, not a cron failure, so it does not flip cronStatus.
   return NextResponse.json(
-    { ok: cronStatus === "ok", processed, delivered, failed, retried },
+    { ok: cronStatus === "ok", processed, delivered, failed, retried, emitted },
     { status: cronStatus === "ok" ? 200 : 500 },
   );
 }

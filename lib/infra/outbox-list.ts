@@ -11,7 +11,7 @@ import { diseaseCodeToEnoCode, getEnoDisease } from "@/src/modules/surveillance/
 // Types
 // ---------------------------------------------------------------------------
 
-export type BreachCue = "delivered" | "ok" | "breach" | "failed" | "merged";
+export type BreachCue = "delivered" | "received" | "ok" | "breach" | "failed" | "merged";
 
 /** What the legal queue shows per row beside the deadline: which disease, and the statutory window. */
 export type EnoNotificationDetail = {
@@ -71,6 +71,11 @@ export function buildRetryPayload(): { nextRetryAt: Date; status: "pending" } {
 // ---------------------------------------------------------------------------
 // Pure predicates
 // ---------------------------------------------------------------------------
+
+/** A row a person of the receiving authority may still mark "recibido" (PO S3). */
+export function canMarkReceived(status: OutboxStatus): boolean {
+  return status === "pending" || status === "failed";
+}
 
 /**
  * Returns true when an outbox row is in SLA breach:
@@ -176,6 +181,9 @@ export function buildStatusLabel(status: OutboxStatus, targetKind?: string): str
     // A legacy duplicate folded into its case record (migration 0247).
     case "merged":
       return "Unificado en otro registro";
+    // The receiving authority confirmed receipt from its panel (PO S3, 0264).
+    case "received":
+      return "Recibido por la autoridad";
     default: {
       const _exhaustive: never = status;
       return String(_exhaustive);
@@ -200,6 +208,8 @@ export function buildBreachCue(status: OutboxStatus, slaDueAt: Date): BreachCue 
       return "failed";
     case "merged":
       return "merged";
+    case "received":
+      return "received";
     case "pending":
       return isSlaBreached(status, slaDueAt) ? "breach" : "ok";
     default: {

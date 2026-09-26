@@ -27,6 +27,8 @@
 //   addInvestigationNoteAction:          requireAdminOrGovtOrRedirect + isInScope (via use-case)
 //   escalateInvestigationAction:         requireAdminOrGovtOrRedirect + isInScope (via use-case)
 //   closeInvestigationAction:            requireAdminOrGovtOrRedirect + isInScope (via use-case)
+//   markOutboxReceivedAction:            requireAdminOrGovtOrRedirect + the row inside the
+//                                        actor's /gob/outbox scope (via use-case, PO S3)
 //
 // NO business logic. NO direct Drizzle queries (beyond db.transaction).
 // AUDIT_LOG: the ORG bite report writes `bite_reported_by_org` inside its tx
@@ -62,6 +64,7 @@ import { parseDateInput } from "@/lib/utils/format";
 import { requireCapabilityForOrgToken } from "@/src/modules/organizations/infrastructure/authz-resolver";
 
 import type { OpenedReason } from "@/src/modules/cases/domain/opened-reason";
+import { markOutboxReceived } from "./application/mark-outbox-received";
 import {
   type InvestigationNoteEntryType,
   addInvestigationNote,
@@ -77,6 +80,7 @@ import {
   type RabiesObservationOutcome,
   isObservationOpen,
 } from "./domain/rabies-observation";
+import { OutboxReceiptRepository } from "./infrastructure/outbox-receipt-repository";
 import { SurveillanceRepository } from "./infrastructure/surveillance-repository";
 
 // ---------------------------------------------------------------------------
@@ -797,5 +801,41 @@ export async function closeInvestigationAction(input: {
   );
 
   if (!result.ok) return { error: result.error };
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// ENO outbox — "Marcar recibido" (PO S3, 2026-09-26)
+// ---------------------------------------------------------------------------
+//
+// While no real receiver exists, the drainer never marks a row delivered: a
+// person of the receiving authority marks it received from /gob/outbox. The
+// use case refuses a row outside the actor's scope as if it did not exist, and
+// its repository writes `eno_notification_received` in the same transaction.
+
+const MARK_RECEIVED_REFUSAL: Record<string, string> = {
+  forbidden: "Tu rol no puede marcar avisos como recibidos.",
+  not_found: "No encontramos ese aviso en tu jurisdicción.",
+  merged: "Ese aviso está unificado en otro registro: marcá el registro del caso.",
+  already_received: "Ese aviso ya estaba marcado como recibido.",
+};
+
+export async function markOutboxReceivedAction(
+  rowId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  // Admin or govt: the read-only national role never writes (lint:authz).
+  const { user, profile, jurisdictions } = await requireAdminOrGovtOrRedirect();
+  const result = await markOutboxReceived(
+    {
+      rowId,
+      actor: { userId: user.id, role: profile.role, jurisdictions },
+    },
+    { repo: new OutboxReceiptRepository() },
+  );
+  if (!result.ok) {
+    return { ok: false, error: MARK_RECEIVED_REFUSAL[result.reason] ?? "No se pudo marcar." };
+  }
+  revalidatePath("/gob/outbox");
+  revalidatePath("/admin/outbox");
   return { ok: true };
 }

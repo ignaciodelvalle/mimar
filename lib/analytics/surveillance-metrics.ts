@@ -147,6 +147,10 @@ export type EnoSlaMetric = {
  * Period: `total`/`onTime`/median are computed over rows CREATED within
  * ctx.period; breachedOpen is a live "now" figure (any pending+overdue row).
  */
+/** A row whose notice reached the authority: delivered by a receiver, or received (PO S3). */
+const DONE = sql`${eventNotificationOutbox.status} IN ('delivered', 'received')`;
+const DONE_AT = sql`coalesce(${eventNotificationOutbox.deliveredAt}, ${eventNotificationOutbox.receivedAt})`;
+
 export async function fetchEnoSla(ctx: ProjectionContext): Promise<EnoSlaMetric> {
   if (hasNoScope(ctx)) {
     return { total: 0, onTime: 0, onTimePct: null, breachedOpen: 0, medianLatencyHours: null };
@@ -177,13 +181,15 @@ export async function fetchEnoSla(ctx: ProjectionContext): Promise<EnoSlaMetric>
     db
       .select({
         total: count(),
-        delivered: sql<number>`COUNT(*) FILTER (WHERE ${eventNotificationOutbox.status} = 'delivered')`,
-        onTime: sql<number>`COUNT(*) FILTER (WHERE ${eventNotificationOutbox.status} = 'delivered' AND ${eventNotificationOutbox.deliveredAt} <= ${eventNotificationOutbox.slaDueAt})`,
-        // Median latency in hours over delivered rows. percentile_cont ignores
-        // NULL inputs, so non-delivered rows contribute nothing.
+        // Done = a real receiver's delivery OR the authority's own receipt
+        // ('received', PO S3 2026-09-26 — the only way a v1 row leaves pending).
+        delivered: sql<number>`COUNT(*) FILTER (WHERE ${DONE})`,
+        onTime: sql<number>`COUNT(*) FILTER (WHERE ${DONE} AND ${DONE_AT} <= ${eventNotificationOutbox.slaDueAt})`,
+        // Median latency in hours over done rows. percentile_cont ignores
+        // NULL inputs, so rows not done contribute nothing.
         medianHours: sql<string | null>`percentile_cont(0.5) WITHIN GROUP (
-          ORDER BY EXTRACT(EPOCH FROM (${eventNotificationOutbox.deliveredAt} - ${eventNotificationOutbox.createdAt})) / 3600.0
-        ) FILTER (WHERE ${eventNotificationOutbox.status} = 'delivered')`,
+          ORDER BY EXTRACT(EPOCH FROM (${DONE_AT} - ${eventNotificationOutbox.createdAt})) / 3600.0
+        ) FILTER (WHERE ${DONE})`,
       })
       .from(eventNotificationOutbox)
       .where(and(...periodConditions)),

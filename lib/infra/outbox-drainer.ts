@@ -5,6 +5,7 @@
 //   - MAX_ATTEMPTS: max delivery attempts before marking failed
 //   - computeNextRetryAt(attempts, now): next retry timestamp
 //   - deliverOutboxRow(row): v1 no-op + audit-log delivery handler
+//   - markOutboxEmitted(row): record a no-op pass; the row stays pending (PO S3)
 //
 // Spec: docs/superpowers/plans/2026-05-22-event-trust-tier-1.md §4 C.4, C.6, C.7
 
@@ -46,14 +47,26 @@ export function computeNextRetryAt(attempts: number, now: Date = new Date()): Da
 // Delivery handler (v1 no-op)
 // ---------------------------------------------------------------------------
 
-export type DeliverResult = { ok: true } | { ok: false; error: string };
+/**
+ * `delivered: true` ONLY when a real receiver acknowledged the row. The v1
+ * no-op answers `delivered: false`: the pass is recorded (audit + lastAttemptAt)
+ * and the row stays PENDING until a person of the receiving authority marks it
+ * received from its panel (PO S3, 2026-09-26). Marking v1 rows 'delivered'
+ * defeated the breach indicator the morning after every row (health audit #5).
+ */
+export type DeliverResult = { ok: true; delivered: boolean } | { ok: false; error: string };
+
+/** Hours a pending row waits after a no-op pass before the drainer looks again. */
+export const NOOP_RECHECK_HOURS = 24;
 
 /**
  * Delivers an outbox row to its target.
  *
- * v1: all target_kind handlers are no-ops + audit-log entries per plan §4 C.6/C.7.
- * When a real HTTP receiver exists in a later version, the 'govt_webhook' case
- * gets the actual fetch call; nothing else in this file changes.
+ * v1: all target_kind handlers are no-ops. The first pass over a row writes
+ * the audit entry documenting what WOULD have been sent (plan §4 C.6/C.7);
+ * later passes write nothing (the daily re-check must not flood the register).
+ * When a real HTTP receiver exists, the 'govt_webhook' case gets the fetch and
+ * answers `delivered: true` on its acknowledgement.
  */
 export async function deliverOutboxRow(row: EventNotificationOutbox): Promise<DeliverResult> {
   try {
@@ -68,6 +81,7 @@ export async function deliverOutboxRow(row: EventNotificationOutbox): Promise<De
         // pattern (oldest active institutional admin) so the row carries a
         // meaningful actor when possible. If no admin exists (empty DB / test
         // env), we skip the audit row rather than blocking delivery.
+        if (row.lastAttemptAt !== null) return { ok: true, delivered: false };
         const { profiles } = await import("@/db");
         const { and, eq, isNull } = await import("drizzle-orm");
 
@@ -84,7 +98,7 @@ export async function deliverOutboxRow(row: EventNotificationOutbox): Promise<De
           .orderBy(profiles.createdAt)
           .limit(1);
 
-        if (systemActor) {
+        if (systemActor && row.lastAttemptAt === null) {
           await db.insert(auditLog).values({
             actorUserId: systemActor.id,
             action: "eno_notification_emitted",
@@ -92,7 +106,7 @@ export async function deliverOutboxRow(row: EventNotificationOutbox): Promise<De
           });
         }
 
-        return { ok: true };
+        return { ok: true, delivered: false };
       }
 
       default: {
@@ -178,6 +192,27 @@ export async function markOutboxDelivered(
       and(eq(eventNotificationOutbox.id, row.id), eq(eventNotificationOutbox.status, "pending")),
     );
   return false;
+}
+
+/**
+ * Record a v1 no-op pass over a claimed row: it STAYS PENDING (PO S3). The
+ * lease the claim set is replaced by the next daily re-check; attempts do not
+ * move — nothing was attempted against a receiver. Only a pending row is
+ * touched, so a receipt marked mid-pass is never undone.
+ */
+export async function markOutboxEmitted(
+  row: Pick<EventNotificationOutbox, "id">,
+  at: Date = new Date(),
+): Promise<void> {
+  await db
+    .update(eventNotificationOutbox)
+    .set({
+      lastAttemptAt: at,
+      nextRetryAt: new Date(at.getTime() + NOOP_RECHECK_HOURS * 60 * 60 * 1000),
+    })
+    .where(
+      and(eq(eventNotificationOutbox.id, row.id), eq(eventNotificationOutbox.status, "pending")),
+    );
 }
 
 // ---------------------------------------------------------------------------

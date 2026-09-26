@@ -2645,6 +2645,13 @@ export const AUDIT_LOG_ACTIONS = [
   // Payload: { disease_code, disease_severity, pet_id, targets_count,
   //            owner_was_notified, legal_anchor }.
   "eno_notification_emitted",
+  // The receiving authority marked an ENO outbox row "recibido" from its
+  // panel (PO S3, 2026-09-26: while no real receiver exists, a HUMAN confirms
+  // receipt — the drainer never does). Migration 0264.
+  // Payload: { outbox_row_id, target_kind, source_event_id, sla_due_at,
+  //            received_at, overdue, target_jurisdiction_province,
+  //            target_jurisdiction_locality }.
+  "eno_notification_received",
   // Owner-initiated custody dispute (chip/tatuaje claim wizard, P3-1).
   // Payload: { dispute_public_token, pet_id, attachments_count }.
   "claim_dispute_submitted",
@@ -5126,11 +5133,17 @@ export const outboxTargetKindEnum = pgEnum("outbox_target_kind", [
 // 'merged' (migration 0247): a legacy duplicate folded into the case record
 // named by merged_into_id. Kept for audit, never delivered (not pending), never
 // counted as delivered or in the on-time period total.
+// 'received' (migration 0264, PO S3 2026-09-26): the receiving authority
+// marked the row received from its panel — WHO in received_by_user_id, WHEN in
+// received_at, plus an audit_log row. While no real receiver exists this is
+// the only way a row leaves 'pending'; the drainer no longer marks anything
+// 'delivered' (that value is reserved for a real receiver's acknowledgement).
 export const outboxStatusEnum = pgEnum("outbox_status", [
   "pending",
   "delivered",
   "failed",
   "merged",
+  "received",
 ]);
 
 export type OutboxTargetKind = (typeof outboxTargetKindEnum.enumValues)[number];
@@ -5161,7 +5174,8 @@ export const eventNotificationOutbox = pgTable(
     // the live event row so the drainer never needs to re-join pet_events.
     payloadSnapshot: jsonb("payload_snapshot").notNull().default(sql`'{}'::jsonb`),
 
-    // Legal SLA deadline. Computed as now() + slaHours at enqueue time.
+    // Legal SLA deadline: the occurrence (diagnosis date / event date, PO S5)
+    // + the disease's window; never later than enqueue time + window.
     slaDueAt: timestamp("sla_due_at", { withTimezone: true }).notNull(),
 
     // Delivery lifecycle.
@@ -5172,6 +5186,11 @@ export const eventNotificationOutbox = pgTable(
     // Initial value is now() so the drainer picks up the row immediately.
     nextRetryAt: timestamp("next_retry_at", { withTimezone: true }).notNull().defaultNow(),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    // Receipt confirmed by a person of the receiving authority (migration 0264).
+    receivedAt: timestamp("received_at", { withTimezone: true }),
+    receivedByUserId: uuid("received_by_user_id").references(() => profiles.id, {
+      onDelete: "set null",
+    }),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 

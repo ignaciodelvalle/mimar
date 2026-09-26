@@ -142,6 +142,7 @@ export const AUDIT_ACTION_LABELS = {
   bite_reported_by_org: "Mordedura reportada por organización",
   // ENO
   eno_notification_emitted: "Notificación ENO emitida",
+  eno_notification_received: "Notificación ENO marcada como recibida",
   eno_backfill_run_completed: "Backfill ENO ejecutado",
   // Pet transfers
   pet_transfer_initiated: "Transferencia de mascota iniciada",

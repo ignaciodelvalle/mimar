@@ -56,6 +56,8 @@ import { describeNarrowedView } from "@/lib/ui/view-scope-caption";
 import { pluralizeEs } from "@/lib/utils/format";
 import { decodeCursor, newerHref, olderHref } from "@/lib/utils/keyset-pagination";
 
+import { MarkOutboxReceivedButton } from "./MarkOutboxReceivedButton";
+
 export default async function GobOutboxPage({
   searchParams,
 }: {
@@ -197,7 +199,7 @@ export default async function GobOutboxPage({
       {breachCount > 0 && (
         <OpBreach
           title={`${breachCount} ${pluralizeEs(breachCount, "envío", "envíos")} en incumplimiento de SLA`}
-          detail="Revisá los envíos marcados en rojo y reintentá si es necesario."
+          detail="Son avisos con el plazo legal vencido que nadie marcó como recibidos. Marcá los que ya llegaron; el resto sigue pendiente."
         />
       )}
 
@@ -261,6 +263,20 @@ export default async function GobOutboxPage({
             detailHrefFor={(row) => (profile.role === "admin" ? `/admin/outbox/${row.id}` : null)}
             enoDetailFor={
               preset === "eno" ? (row) => describeEnoNotification(row.payloadSnapshot) : undefined
+            }
+            // PO S3 (2026-09-26): with no real receiver, a notice leaves
+            // "pendiente" only when the authority marks it received here. The
+            // action re-checks the row against this same scope.
+            // The read-only national role sees the queue and marks nothing.
+            receiptActionFor={
+              profile.role === "national"
+                ? undefined
+                : (row) => (
+                    <MarkOutboxReceivedButton
+                      rowId={row.id}
+                      overdue={buildBreachCue(row.status, row.slaDueAt) === "breach"}
+                    />
+                  )
             }
           />
           {/* A preset view is deadline-ordered and renders ONE page: say so when
