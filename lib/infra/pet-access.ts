@@ -41,7 +41,7 @@ import {
 } from "@/lib/infra/live-user";
 import type { createClient } from "@/lib/supabase/server";
 import { getGrantedCapabilities } from "@/src/modules/organizations/infrastructure/authz-resolver";
-import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 
 export type PetAccessPath = "owner" | "org";
 
@@ -596,7 +596,10 @@ export async function findImmediateFormerOwnerOwnership(
         isNotNull(ownerships.endedAt),
       ),
     )
-    .orderBy(desc(ownerships.endedAt))
+    // A tie on ended_at (the owner and a caretaker closed by the same seizure)
+    // is broken for the titular, then by id: the answer never depends on the
+    // plan (custody audit S6).
+    .orderBy(desc(ownerships.endedAt), sql`(${ownerships.role} = 'owner') desc`, asc(ownerships.id))
     .limit(1);
   if (!row?.ownerUserId) return null;
   return { id: row.id, ownerUserId: row.ownerUserId };
