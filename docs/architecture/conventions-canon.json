@@ -3169,7 +3169,7 @@
         "AGENTS.md:425"
       ],
       "enforcer": [
-        "db/schema.ts:1117-1120"
+        "db/schema.ts:1116-1119"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3188,7 +3188,7 @@
         "AGENTS.md:426"
       ],
       "enforcer": [
-        "db/schema.ts:1121-1123"
+        "db/schema.ts:1120-1122"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3207,7 +3207,7 @@
         "AGENTS.md:435"
       ],
       "enforcer": [
-        "db/schema.ts:1129-1131"
+        "db/schema.ts:1128-1130"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3251,7 +3251,7 @@
         "AGENTS.md:446"
       ],
       "enforcer": [
-        "db/schema.ts:4515-4518"
+        "db/schema.ts:4514-4517"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3271,7 +3271,7 @@
         "AGENTS.md:474"
       ],
       "enforcer": [
-        "db/schema.ts:4841-4843"
+        "db/schema.ts:4840-4842"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3290,7 +3290,7 @@
         "AGENTS.md:487"
       ],
       "enforcer": [
-        "db/schema.ts:4929-4931"
+        "db/schema.ts:4928-4930"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3324,7 +3324,7 @@
         "CLAUDE.md:13"
       ],
       "enforcer": [
-        "db/schema.ts:463",
+        "db/schema.ts:462",
         "__tests__/public-token-in-url-invariant.test.ts:154"
       ],
       "enforcementKind": "db-constraint",
@@ -3893,7 +3893,7 @@
         "scripts/check-audit-log-coverage.ts:14-18",
         "package.json:20 lint:audit-log",
         "scripts/check-audit-log-actions-declared.ts",
-        "db/schema.ts:2612"
+        "db/schema.ts:2611"
       ],
       "enforcementKind": "lint-script",
       "wired": "verify",
@@ -4220,7 +4220,7 @@
       ],
       "enforcer": [
         "__tests__/event-schemas.test.ts:27-40",
-        "db/schema.ts:1327"
+        "db/schema.ts:1326"
       ],
       "enforcementKind": "vitest",
       "wired": "test:verified",
