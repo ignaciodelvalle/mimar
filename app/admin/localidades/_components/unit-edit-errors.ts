@@ -11,6 +11,13 @@ const MESSAGES: Record<string, string> = {
     "Una localidad no puede quedar sin municipio: movela a otra unidad desde esa unidad.",
   NOT_A_MEMBER: "Esa localidad ya no estaba en la unidad.",
   ALREADY_CONFIRMED: "La unidad ya estaba confirmada.",
+  // localidades-por-id D2: confirming a govt user's grants onto a unit.
+  NO_GRANTS:
+    "Esa persona no tiene una concesión que pase a esta unidad: ninguna registra una localidad de la unidad.",
+  WHOLE_PROVINCE_GRANT:
+    "Una concesión de toda la provincia pasa a la unidad provincial, no a una parte de la provincia.",
+  PARTIAL_GRANT:
+    "La unidad suma localidades que la concesión no tenía. Marcá cada localidad que se suma para confirmarlo.",
 };
 
 export function unitEditErrorMessage(error: string): string {

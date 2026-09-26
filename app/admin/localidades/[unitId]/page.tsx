@@ -22,7 +22,10 @@ import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
 import { requireUuidParam } from "@/lib/infra/route-params";
 import { provinceByCode } from "@/lib/reference/ar-provincias";
 import { formatDateShort, formatDateTimeNumericAr } from "@/lib/utils/format";
+import { listGrantCandidates } from "@/src/modules/organizations/application/authority-units/grant-unit";
 import { loadAuthorityUnitDetail } from "@/src/modules/organizations/application/authority-units/read-units";
+
+import { GrantUnitForm } from "../_components/GrantUnitForm";
 
 import {
   ConfirmUnitButton,
@@ -41,6 +44,7 @@ const CHANGE_LABELS: Record<string, string> = {
   authority_unit_confirmed: "Unidad confirmada",
   authority_unit_membership_moved: "Localidad sumada",
   authority_unit_membership_removed: "Localidad quitada",
+  govt_assignment_unit_confirmed: "Concesión de gobierno pasada a la unidad",
 };
 
 /** The province's live localities, labelled with the unit that holds them today. */
@@ -83,6 +87,7 @@ export default async function AuthorityUnitPage({
   const provincial = unit.level === "provincial";
   const options = provincial ? [] : await localityOptions(unit.provinceCode, unit.level, unit.id);
   const province = provinceByCode(unit.provinceCode);
+  const candidates = await listGrantCandidates(db, unit.id);
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
@@ -166,6 +171,31 @@ export default async function AuthorityUnitPage({
               options={options}
               levelLabel={unitLevelLabel(unit.level)}
             />
+          )}
+        </OpCardBody>
+      </OpCard>
+
+      <OpCard>
+        <OpCardHead title="Concesiones de gobierno por pasar a la unidad" />
+        <OpCardBody className="space-y-4">
+          <p className="text-sm text-ln-op-mute">
+            Una concesión pasa a la unidad cuando registra una de sus localidades (o, en la unidad
+            provincial, toda la provincia). Desde ese momento cubre las localidades de la unidad por
+            identificador, no por nombre.
+          </p>
+          {candidates.length === 0 ? (
+            <p className="text-sm text-ln-op-mute">No hay concesiones por pasar a esta unidad.</p>
+          ) : (
+            candidates.map((c) => (
+              <GrantUnitForm
+                key={c.userId}
+                unitId={unit.id}
+                userId={c.userId}
+                displayName={c.displayName}
+                grants={c.grants}
+                added={c.added}
+              />
+            ))
           )}
         </OpCardBody>
       </OpCard>

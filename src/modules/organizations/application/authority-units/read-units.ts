@@ -110,7 +110,7 @@ export async function loadAuthorityUnitDetail(
       left join public.ar_localities l on l.id::text = a.payload->>'locality_id'
      where a.action in ('authority_unit_created', 'authority_unit_renamed',
                         'authority_unit_confirmed', 'authority_unit_membership_moved',
-                        'authority_unit_membership_removed')
+                        'authority_unit_membership_removed', 'govt_assignment_unit_confirmed')
        and (a.payload->>'unit_id' = ${unitId} or a.payload->>'from_unit_id' = ${unitId})
      order by a.performed_at desc, a.id desc
      limit 200

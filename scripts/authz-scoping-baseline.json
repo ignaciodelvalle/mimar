@@ -5,7 +5,7 @@
   "app/actions/admin-revocations.ts": 2,
   "app/actions/alert-firings.ts": 6,
   "app/actions/alert-subscriptions.ts": 2,
-  "app/actions/authority-units.ts": 5,
+  "app/actions/authority-units.ts": 6,
   "app/actions/bulk-actions.ts": 1,
   "app/actions/bulk-adoption-actions.ts": 2,
   "app/actions/bulk-pet-events.ts": 3,

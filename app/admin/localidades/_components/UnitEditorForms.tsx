@@ -35,7 +35,7 @@ type ActionResult =
   | { ok: true; unitId: string }
   | { error: string };
 
-function useUnitAction() {
+export function useUnitAction() {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   function run(action: () => Promise<ActionResult>, onSuccessUrl: (r: ActionResult) => string) {

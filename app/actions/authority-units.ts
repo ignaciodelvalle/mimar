@@ -16,6 +16,7 @@ import { revalidatePath } from "next/cache";
 
 import { db } from "@/db";
 import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
+import { confirmGrantUnit } from "@/src/modules/organizations/application/authority-units/grant-unit";
 import {
   confirmAuthorityUnit,
   createAuthorityUnit,
@@ -74,6 +75,23 @@ export async function renameAuthorityUnitAction(input: { unitId: string; name: s
 export async function confirmAuthorityUnitAction(input: { unitId: string }) {
   const { user } = await requireAdminOrRedirect();
   const result = await confirmAuthorityUnit(db, user.id, input);
+  if ("ok" in result) revalidateUnit(input.unitId);
+  return result;
+}
+
+/**
+ * Move a govt user's grants onto this unit (localidades-por-id D2). The use
+ * case refuses unless `acceptAdded` names exactly the localities the unit
+ * adds to them.
+ */
+export async function confirmGrantUnitAction(input: {
+  userId: string;
+  unitId: string;
+  reason: string;
+  acceptAdded: string[];
+}) {
+  const { user } = await requireAdminOrRedirect();
+  const result = await confirmGrantUnit(db, user.id, input);
   if ("ok" in result) revalidateUnit(input.unitId);
   return result;
 }

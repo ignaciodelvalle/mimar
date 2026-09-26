@@ -71,6 +71,7 @@ export const AUDIT_ACTION_LABELS = {
   authority_unit_confirmed: "Unidad de autoridad confirmada",
   authority_unit_membership_moved: "Localidad movida de unidad de autoridad",
   authority_unit_membership_removed: "Localidad quitada de una unidad de autoridad",
+  govt_assignment_unit_confirmed: "Concesión de gobierno pasada a una unidad de autoridad",
   // Profile / account
   profile_self_updated: "Perfil actualizado",
   profile_avatar_updated: "Avatar actualizado",

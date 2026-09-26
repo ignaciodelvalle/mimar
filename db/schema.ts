@@ -2479,6 +2479,10 @@ export const AUDIT_LOG_ACTIONS = [
   "authority_unit_confirmed",
   "authority_unit_membership_moved",
   "authority_unit_membership_removed",
+  // localidades-por-id D2 (migration 0258): a platform admin confirmed a govt
+  // user's grants onto an authority unit (payload: unit, grants, every
+  // locality the unit adds, reason). The one writer of authority_unit_id.
+  "govt_assignment_unit_confirmed",
   "institutional_create_orphan_auth_user", // compensating-delete failure leak log
   // Slice 3a: user self-service profile edits
   "profile_self_updated",
