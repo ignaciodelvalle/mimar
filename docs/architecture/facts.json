@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-09-26",
-  "sha": "55eaae54f",
+  "sha": "0425fadb9",
   "facts": {
     "event_types": {
       "value": 55,
@@ -28,7 +28,7 @@
       "method": "immediate subdirectories of `src/modules/`."
     },
     "pages": {
-      "value": 270,
+      "value": 271,
       "source": "app/**/page.tsx",
       "method": "files named exactly `page.tsx` anywhere under `app/`."
     },
@@ -88,7 +88,7 @@
       "method": "files ending in `.yml` under `.github/workflows/`. There are no `.yaml` files at this snapshot; if one is added it will not be counted until this method changes."
     },
     "vitest_files": {
-      "value": 1757,
+      "value": 1759,
       "source": "vitest.config.ts -> __tests__/db-reachability.ts",
       "method": "discoverTestFiles().length, imported from the SAME module `vitest.config.ts` feeds into its `include` globs via computeTestPartition(). It walks the repo for /\\.test\\.tsx?$/ skipping node_modules, .next, .git, .claude, apps and e2e — so this is exactly the file set Vitest runs, not an independent glob that could drift from it."
     },

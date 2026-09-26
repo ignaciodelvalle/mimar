@@ -255,7 +255,7 @@ in its **layout**, before any page body runs.
 (private, underscore-prefixed so the router ignores them) are directories under
 `app/` that are **not** routes.
 
-Across the whole tree: <!-- fact:pages -->270<!-- /fact --> `page.tsx` files,
+Across the whole tree: <!-- fact:pages -->271<!-- /fact --> `page.tsx` files,
 <!-- fact:route_handlers -->100<!-- /fact --> `route.ts` handlers, and only
 <!-- fact:layouts -->11<!-- /fact --> `layout.tsx` files. That ratio is the shape
 to notice — the gate is concentrated in the layouts, not spread across the
@@ -309,7 +309,7 @@ Stated here so no diagram in the 2026-09 pack has to re-derive it.
 | Gate | Command | What it proves |
 |---|---|---|
 | `pnpm verify` | <!-- fact:verify_fences -->81<!-- /fact --> `lint:*` fences plus `verify:mobile` and `build` | Structure, conventions, authorization scoping, brand casing |
-| `pnpm test:verified` | `scripts/run-verified-suite.ts` over <!-- fact:vitest_files -->1757<!-- /fact --> vitest files | Behaviour, with a filesystem census that distrusts vitest's exit code in both directions |
+| `pnpm test:verified` | `scripts/run-verified-suite.ts` over <!-- fact:vitest_files -->1759<!-- /fact --> vitest files | Behaviour, with a filesystem census that distrusts vitest's exit code in both directions |
 | Playwright | `dim-interno:.github/workflows/e2e-nightly.yml`, <!-- fact:e2e_specs -->45<!-- /fact --> specs | Browser flows — **not** part of `pnpm verify`; the nightly job is currently red for a missing-secrets reason recorded in `dim-interno:docs/agents/open-work.md` |
 | Mobile Jest | `apps/mobile/jest.config.js`, <!-- fact:mobile_jest_files -->144<!-- /fact --> files | The phone's own logic, no native modules |
 | CI | <!-- fact:ci_workflows -->4<!-- /fact --> workflows under `.github/workflows` | `scripts/check-ci-lint-parity.ts` fails the build if a `verify` gate is missing from the workflow |
