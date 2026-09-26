@@ -282,6 +282,7 @@ export async function createSymptomObservedWriter(
           jurisdictionProvince: petJurisdictionProvince,
           jurisdictionLocality: petJurisdictionLocality,
           species: petSpecies,
+          ...(petLocalityId !== undefined ? { localityId: petLocalityId } : {}),
         };
 
         await routeOutbreakSignalNotifications(

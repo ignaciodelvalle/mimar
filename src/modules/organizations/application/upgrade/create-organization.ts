@@ -164,6 +164,8 @@ export async function createOrganizationForUser(
   // no id, a name two localities share is refused (localidades-por-id A7/A9).
   let province: string;
   let locality: string;
+  // The catalogue row strict normalization resolved (localidades-por-id D3).
+  let localityId: string | null = null;
   try {
     const normalizedOrg = await normalizeLocationForWrite(
       {
@@ -179,6 +181,7 @@ export async function createOrganizationForUser(
     );
     province = normalizedOrg.province ?? input.jurisdictionProvince;
     locality = normalizedOrg.locality ?? input.jurisdictionLocality;
+    localityId = normalizedOrg.localityId ?? null;
   } catch (err) {
     if (err instanceof JurisdictionValidationError) {
       return { error: err.message };
@@ -204,7 +207,7 @@ export async function createOrganizationForUser(
     };
   }
 
-  const authorityIds = await findAuthoritiesForJurisdiction({ province, locality });
+  const authorityIds = await findAuthoritiesForJurisdiction({ province, locality, localityId });
 
   try {
     const result = await db.transaction(async (tx) => {

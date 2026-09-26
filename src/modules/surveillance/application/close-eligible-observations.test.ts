@@ -223,6 +223,8 @@ describe("closeEligibleObservations — expired window, no professional closure"
     expect(deps.findAuthoritiesForJurisdiction).toHaveBeenCalledWith({
       province: "Santa Fe",
       locality: "Rosario",
+      // localidades-por-id D3: the fixture's pet has no catalogue row.
+      localityId: null,
     });
     const auth = allNotifications(deps).find((n) => n.userId === "auth-1");
     expect(auth?.notificationType).toBe("rabies_observation_pending_review");
@@ -290,6 +292,8 @@ describe("closeEligibleObservations — escalation path", () => {
     expect(deps.findAuthoritiesForJurisdiction).toHaveBeenCalledWith({
       province: "Santa Fe",
       locality: "Rosario",
+      // localidades-por-id D3: the fixture's pet has no catalogue row.
+      localityId: null,
     });
     const auth = allNotifications(deps).find((n) => n.userId === "auth-1");
     expect(auth?.severity).toBe("urgent");

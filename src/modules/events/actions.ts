@@ -1456,6 +1456,7 @@ export async function createDeathRecordAction(
         rabiesObservationStatus: pet.rabiesObservationStatus ?? null,
         jurisdictionProvince: pet.jurisdictionProvince ?? null,
         jurisdictionLocality: pet.jurisdictionLocality ?? null,
+        localityId: pet.localityId ?? null,
       },
       recordedByUserId: user.id,
       eventAuthorship: eventAuthorship as {

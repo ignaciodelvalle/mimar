@@ -38,6 +38,8 @@ export interface StaleWelfareCandidate {
   referenceCode: string | null;
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
+  /** The case's catalogue row (localidades-por-id D3); absent = name path. */
+  localityId?: string | null;
 }
 
 export async function findStaleWelfareCases(
@@ -56,6 +58,7 @@ export async function findStaleWelfareCases(
       referenceCode: welfareReports.referenceCode,
       jurisdictionProvince: cases.jurisdictionProvince,
       jurisdictionLocality: cases.jurisdictionLocality,
+      localityId: cases.localityId,
     })
     .from(cases)
     .leftJoin(welfareReports, eq(welfareReports.id, cases.welfareReportId))
@@ -92,6 +95,7 @@ export async function escalateStaleWelfareCase(
     {
       province: candidate.jurisdictionProvince ?? "",
       locality: candidate.jurisdictionLocality ?? "",
+      ...(candidate.localityId !== undefined ? { localityId: candidate.localityId } : {}),
     },
     { route: "welfare_denuncia_stale_govt" },
   );

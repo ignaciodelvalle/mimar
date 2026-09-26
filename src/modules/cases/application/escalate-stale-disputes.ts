@@ -36,6 +36,8 @@ export interface StaleDisputeCandidate {
   publicCode: string;
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
+  /** The case's catalogue row (localidades-por-id D3); absent = name path. */
+  localityId?: string | null;
 }
 
 export async function findStaleDisputes(
@@ -51,6 +53,7 @@ export async function findStaleDisputes(
       publicCode: cases.publicCode,
       jurisdictionProvince: cases.jurisdictionProvince,
       jurisdictionLocality: cases.jurisdictionLocality,
+      localityId: cases.localityId,
     })
     .from(cases)
     .where(
@@ -80,6 +83,7 @@ export async function escalateStaleDispute(
     {
       province: candidate.jurisdictionProvince ?? "",
       locality: candidate.jurisdictionLocality ?? "",
+      ...(candidate.localityId !== undefined ? { localityId: candidate.localityId } : {}),
     },
     { route: "custody_dispute_stale" },
   );

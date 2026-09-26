@@ -31,6 +31,8 @@ type WelfareReportRow = {
   orgInterventionStatus: string | null;
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
+  /** The report's catalogue row (localidades-por-id D3); absent = name path. */
+  localityId?: string | null;
 };
 
 type InsertCaseEventFn = (values: {
@@ -60,6 +62,8 @@ type Deps = {
     derivedByUserId: string | null;
     jurisdictionProvince: string | null;
     jurisdictionLocality: string | null;
+    /** The report's catalogue row (localidades-por-id D3); absent = name path. */
+    localityId?: string | null;
   }) => Promise<string[]>;
   actor: { userId: string; orgId: string; orgDisplayName: string };
 };
@@ -117,6 +121,7 @@ export async function takeDerivedReport(
     derivedByUserId: report.derivedByUserId,
     jurisdictionProvince: report.jurisdictionProvince,
     jurisdictionLocality: report.jurisdictionLocality,
+    ...(report.localityId !== undefined ? { localityId: report.localityId } : {}),
   });
 
   const ctaUrl = `/gob/maltrato/${report.id}`;

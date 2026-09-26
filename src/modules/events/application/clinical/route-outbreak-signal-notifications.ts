@@ -33,7 +33,10 @@ export type RouteSignalArgs = {
     | "jurisdictionCountry"
     | "species"
     | "publicToken"
-  >;
+  > & {
+    /** The home's catalogue row (localidades-por-id D3); absent = name path. */
+    localityId?: string | null;
+  };
   disease: {
     disease_code: string;
     disease_label: string;
@@ -70,7 +73,11 @@ export async function routeOutbreakSignalNotifications(
   const province = pet.jurisdictionProvince ?? "";
   const locality = pet.jurisdictionLocality ?? "";
 
-  const authorityIds = await findAuthoritiesForJurisdiction({ province, locality });
+  const authorityIds = await findAuthoritiesForJurisdiction({
+    province,
+    locality,
+    ...(pet.localityId !== undefined ? { localityId: pet.localityId } : {}),
+  });
 
   if (authorityIds.length === 0) {
     console.warn(

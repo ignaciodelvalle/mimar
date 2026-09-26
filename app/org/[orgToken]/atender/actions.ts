@@ -1093,6 +1093,7 @@ export async function atenderRecordDeathInObservationAction(
         rabiesObservationStatus: pet.rabiesObservationStatus,
         jurisdictionProvince: located.jurisdictionProvince ?? null,
         jurisdictionLocality: located.jurisdictionLocality ?? null,
+        localityId: located.localityId ?? null,
       },
       recordedByUserId: user.id,
       eventAuthorship: eventAuthorship as Authorship,

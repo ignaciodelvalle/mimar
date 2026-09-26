@@ -189,6 +189,8 @@ export async function contactAuthorityFiring(firingId: string): Promise<FiringAc
   const recipients = await findAuthoritiesForJurisdiction({
     province: firing.jurisdictionProvince,
     locality: firing.jurisdictionLocality,
+    // The firing's catalogue row (localidades-por-id D3).
+    localityId: firing.localityId ?? null,
   });
   if (recipients.length === 0) {
     return { error: "No encontramos autoridades para esta jurisdicción." };

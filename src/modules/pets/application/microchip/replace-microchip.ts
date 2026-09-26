@@ -401,6 +401,8 @@ export async function replaceMicrochipForUser(
           {
             province: pet.jurisdictionProvince ?? "",
             locality: pet.jurisdictionLocality ?? "",
+            // The home's catalogue row (localidades-por-id D3).
+            localityId: pet.localityId ?? null,
           },
           { route: "microchip_duplicate_detected" },
         );

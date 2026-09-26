@@ -60,6 +60,8 @@ export type SurveillancePet = {
   rabiesObservationStatus: string | null;
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
+  /** The home's catalogue row — routing on the id path (localidades-por-id D3). */
+  localityId: string | null;
 };
 
 // Shape returned by ENO queue finds.
@@ -88,6 +90,7 @@ export class SurveillanceRepository {
         rabiesObservationStatus: pets.rabiesObservationStatus,
         jurisdictionProvince: pets.jurisdictionProvince,
         jurisdictionLocality: pets.jurisdictionLocality,
+        localityId: pets.localityId,
       })
       .from(pets)
       .where(eq(pets.publicToken, publicToken))
@@ -248,6 +251,7 @@ export class SurveillanceRepository {
         rabiesObservationStatus: pets.rabiesObservationStatus,
         jurisdictionProvince: pets.jurisdictionProvince,
         jurisdictionLocality: pets.jurisdictionLocality,
+        localityId: pets.localityId,
       })
       .from(pets)
       .where(

@@ -63,6 +63,8 @@ type CaseRow = {
   /** Nullable en el esquema: un expediente puede no tener jurisdicción todavía. */
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
+  /** The case's catalogue row (localidades-por-id D3). */
+  localityId: string | null;
 };
 
 async function loadCase(publicCode: string): Promise<CaseRow | null> {
@@ -74,6 +76,7 @@ async function loadCase(publicCode: string): Promise<CaseRow | null> {
       publicCode: cases.publicCode,
       jurisdictionProvince: cases.jurisdictionProvince,
       jurisdictionLocality: cases.jurisdictionLocality,
+      localityId: cases.localityId,
     })
     .from(cases)
     .where(eq(cases.publicCode, publicCode))
@@ -332,6 +335,8 @@ export async function escalateCaseManually(input: {
     {
       province: row.jurisdictionProvince ?? "",
       locality: row.jurisdictionLocality ?? "",
+      // The case's catalogue row (localidades-por-id D3).
+      localityId: row.localityId ?? null,
     },
     // La etiqueta de ruta NO es decorativa: sin ella el resolver escribe su
     // propia traza de fan-out vacío como `approval_routing_unlabelled`, FUERA de

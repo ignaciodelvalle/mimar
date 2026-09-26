@@ -406,7 +406,8 @@ describe("atenderCloseRabiesObservationAction — the authority fan-out is durab
     await close("positive_rabies");
 
     expect(mocks.findAuthoritiesForJurisdiction).toHaveBeenCalledWith(
-      { province: "Buenos Aires", locality: "La Plata" },
+      // localidades-por-id D3: the pet's catalogue row (none in this fixture).
+      { province: "Buenos Aires", locality: "La Plata", localityId: null },
       { route: "rabies_observation_positive_authority" },
     );
     expect(mocks.createNotificationsBulk).toHaveBeenCalledTimes(1);
@@ -587,7 +588,8 @@ describe("atenderRecordDeathInObservationAction — PO D8", () => {
 
     // The authority: URGENT, durable, keyed on the death.
     expect(mocks.findAuthoritiesForJurisdiction).toHaveBeenCalledWith(
-      { province: "Buenos Aires", locality: "La Plata" },
+      // localidades-por-id D3: the located pet's catalogue row (none here).
+      { province: "Buenos Aires", locality: "La Plata", localityId: null },
       { route: "rabies_observation_completed_dead_authority" },
     );
     const authorityRows = mocks.createNotificationsBulk.mock.calls.flatMap(([rows]) => rows);

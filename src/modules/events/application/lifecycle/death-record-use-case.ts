@@ -82,6 +82,8 @@ export type CreateDeathRecordInput = {
     rabiesObservationStatus: string | null;
     jurisdictionProvince: string | null;
     jurisdictionLocality: string | null;
+    /** The home's catalogue row (localidades-por-id D3); absent = name path. */
+    localityId?: string | null;
   };
   recordedByUserId: string;
   eventAuthorship: {
@@ -637,6 +639,8 @@ export async function createDeathRecord(
         {
           province: pet.jurisdictionProvince ?? "",
           locality: pet.jurisdictionLocality ?? "",
+          // The home's catalogue row (localidades-por-id D3).
+          ...(pet.localityId !== undefined ? { localityId: pet.localityId } : {}),
         },
         { route: "rabies_observation_completed_dead_authority" },
       );

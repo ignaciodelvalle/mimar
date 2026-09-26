@@ -256,6 +256,7 @@ export async function recordDiseaseDiagnosisWriter(
           jurisdictionProvince: params.petJurisdictionProvince,
           jurisdictionLocality: params.petJurisdictionLocality,
           species: params.petSpecies,
+          ...(params.petLocalityId !== undefined ? { localityId: params.petLocalityId } : {}),
         };
 
         await routeOutbreakSignalNotifications(

@@ -120,6 +120,8 @@ type Deps = {
   findGovtRecipients: (opts: {
     province: string;
     locality: string;
+    /** The report place's catalogue row (localidades-por-id D3); absent = name path. */
+    localityId?: string | null;
   }) => Promise<string[]>;
   signal: (input: {
     reportId: string;
@@ -344,6 +346,9 @@ export async function createOrgWelfareReport(
         findGovtRecipients({
           province: jurisdictionProvince ?? "",
           locality: jurisdictionLocality ?? "",
+          // The place as resolved at the door: its row, or null when it named
+          // no single row (localidades-por-id D3). No place given = name path.
+          ...(eventPlace ? { localityId: eventPlace.resolved?.locality_id ?? null } : {}),
         }),
         repo.findInstitutionalAdmins(tx as Parameters<typeof repo.findInstitutionalAdmins>[0]),
       ]);

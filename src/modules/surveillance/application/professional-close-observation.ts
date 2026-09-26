@@ -162,6 +162,8 @@ type Deps = {
   findAuthoritiesForJurisdiction?: (jurisdiction: {
     province: string;
     locality: string;
+    /** The place's catalogue row (localidades-por-id D3); absent = name path. */
+    localityId?: string | null;
   }) => Promise<string[]>;
   /**
    * Who hears a POSITIVE close when the jurisdiction lookup THROWS: every
@@ -515,6 +517,9 @@ export async function professionalCloseObservation(
       authorityIds = await findAuthoritiesForJurisdiction({
         province: pet.jurisdictionProvince ?? "",
         locality: pet.jurisdictionLocality ?? "",
+        // The home's catalogue row (null = no single row → provincial unit
+        // only on the id path; localidades-por-id D3).
+        localityId: pet.localityId ?? null,
       });
     } catch (lookupErr) {
       console.error(

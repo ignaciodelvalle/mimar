@@ -597,12 +597,18 @@ async function findGovInterventionRecipients(input: {
   derivedByUserId: string | null;
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
+  localityId?: string | null;
 }): Promise<string[]> {
   const ids = new Set<string>();
   if (input.derivedByUserId) ids.add(input.derivedByUserId);
   // Null jurisdiction coerced, not skipped (2026-08-17) — see approval-routing.ts.
   const authorities = await findAuthoritiesForJurisdiction(
-    { province: input.jurisdictionProvince ?? "", locality: input.jurisdictionLocality ?? "" },
+    {
+      province: input.jurisdictionProvince ?? "",
+      locality: input.jurisdictionLocality ?? "",
+      // The report's catalogue row (localidades-por-id D3).
+      ...(input.localityId !== undefined ? { localityId: input.localityId } : {}),
+    },
     { route: "welfare_org_intervention" },
   );
   for (const id of authorities) ids.add(id);

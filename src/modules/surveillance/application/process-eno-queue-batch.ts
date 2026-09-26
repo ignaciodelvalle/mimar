@@ -45,6 +45,8 @@ export type EnoBatchDeps = {
     publicToken: string;
     jurisdictionProvince: string | null;
     jurisdictionLocality: string | null;
+    /** The home's catalogue row (localidades-por-id D3); absent = name path. */
+    localityId?: string | null;
   } | null>;
   /** Load active ownership (owner userId) for a pet. */
   getOwnership: (petId: string) => Promise<{ ownerUserId: string } | null>;
@@ -55,7 +57,12 @@ export type EnoBatchDeps = {
    * this to findAuthoritiesForJurisdiction — govt-first with the institutional
    * admin fallback — so this route is no longer the one path with no fallback.
    */
-  getGovtTargets: (province: string, locality: string) => Promise<{ userId: string }[]>;
+  getGovtTargets: (
+    province: string,
+    locality: string,
+    /** The place's catalogue row; absent = name path (localidades-por-id D3). */
+    localityId?: string | null,
+  ) => Promise<{ userId: string }[]>;
   /** Write an audit_log row. Actor is nullable: a diagnosis can have no identified clinician. */
   insertAuditLog: (row: {
     actorUserId: string | null;
@@ -139,7 +146,8 @@ async function processOne(petEventId: string, deps: EnoBatchDeps): Promise<boole
   const locality = petRow.jurisdictionLocality ?? "";
 
   // 4. Govt fanout.
-  const targets = await deps.getGovtTargets(province, locality);
+  // The row travels with the names, read from the same pet row.
+  const targets = await deps.getGovtTargets(province, locality, petRow.localityId);
   const targetsCount = targets.length;
 
   const notifications: Parameters<typeof deps.repo.insertNotifications>[0] = [];

@@ -206,6 +206,9 @@ describe("professionalCloseObservation — positive rabies escalation", () => {
     expect(findAuthoritiesForJurisdiction).toHaveBeenCalledWith({
       province: "Buenos Aires",
       locality: "La Plata",
+      // The home's catalogue row travels with the names (localidades-por-id
+      // D3); this fixture's pet has none, so it says "no single row".
+      localityId: null,
     });
     const authNotifs = result.notifications.filter(
       (n) => n.notificationType === "rabies_observation_positive_authority",

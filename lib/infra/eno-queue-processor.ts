@@ -50,6 +50,7 @@ export async function processEnoQueueBatch() {
           publicToken: pets.publicToken,
           jurisdictionProvince: pets.jurisdictionProvince,
           jurisdictionLocality: pets.jurisdictionLocality,
+          localityId: pets.localityId,
         })
         .from(pets)
         .where(eq(pets.id, petId))
@@ -87,9 +88,10 @@ export async function processEnoQueueBatch() {
     // findAuthoritiesForJurisdiction is govt-first, active-institutional-admin
     // fallback, one subsumption predicate — and it writes the
     // notification_fanout_empty audit row when even the fallback is empty.
-    getGovtTargets: async (province: string, locality: string) => {
+    getGovtTargets: async (province: string, locality: string, localityId?: string | null) => {
       const userIds = await findAuthoritiesForJurisdiction(
-        { province, locality },
+        // localidades-por-id D3: the pet row's catalogue row, when read.
+        { province, locality, ...(localityId !== undefined ? { localityId } : {}) },
         { route: "eno_disease_diagnosis" },
       );
       return userIds.map((userId) => ({ userId }));

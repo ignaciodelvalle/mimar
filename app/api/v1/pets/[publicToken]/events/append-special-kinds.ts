@@ -305,6 +305,7 @@ export async function appendDeath(
         rabiesObservationStatus: pet.rabiesObservationStatus ?? null,
         jurisdictionProvince: pet.jurisdictionProvince ?? null,
         jurisdictionLocality: pet.jurisdictionLocality ?? null,
+        localityId: pet.localityId ?? null,
       },
       recordedByUserId: ctx.userId,
       eventAuthorship: access.kind === "org" ? access.eventAuthorship : OWNER_AUTHORSHIP,

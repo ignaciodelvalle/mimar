@@ -79,6 +79,8 @@ export async function requestVetUpgradeForUser(
   // no id, a name two localities share is refused (localidades-por-id A7/A9).
   let opProvince: string;
   let opLocality: string;
+  // The catalogue row strict normalization resolved (localidades-por-id D3).
+  let opLocalityId: string | null = null;
   try {
     const normalizedOp = await normalizeLocationForWrite(
       {
@@ -94,6 +96,7 @@ export async function requestVetUpgradeForUser(
     );
     opProvince = normalizedOp.province ?? input.operationalProvince;
     opLocality = normalizedOp.locality ?? input.operationalLocality;
+    opLocalityId = normalizedOp.localityId ?? null;
   } catch (err) {
     if (err instanceof JurisdictionValidationError) {
       return { error: err.message };
@@ -163,6 +166,7 @@ export async function requestVetUpgradeForUser(
   const authorityIds = await findAuthoritiesForJurisdiction({
     province: opProvince,
     locality: opLocality,
+    localityId: opLocalityId,
   });
   const publicToken = await generateUniqueToken(
     approvalRequests,

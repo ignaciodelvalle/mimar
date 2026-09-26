@@ -111,6 +111,8 @@ type Deps = {
   findAuthoritiesForJurisdiction: (jurisdiction: {
     province: string;
     locality: string;
+    /** The place's catalogue row (localidades-por-id D3); absent = name path. */
+    localityId?: string | null;
   }) => Promise<string[]>;
 };
 
@@ -203,6 +205,7 @@ export async function closeEligibleObservations(
           const authorityIds = await findAuthoritiesForJurisdiction({
             province: pet.jurisdictionProvince ?? "",
             locality: pet.jurisdictionLocality ?? "",
+            localityId: pet.localityId ?? null,
           });
           if (authorityIds.length > 0) {
             const authNotifications: NewNotification[] = authorityIds.map((authorityId) => ({
@@ -307,6 +310,8 @@ export async function closeEligibleObservations(
         const authorityIds = await findAuthoritiesForJurisdiction({
           province: pet.jurisdictionProvince ?? "",
           locality: pet.jurisdictionLocality ?? "",
+          // The home's catalogue row (localidades-por-id D3).
+          localityId: pet.localityId ?? null,
         });
         if (authorityIds.length > 0) {
           const authNotifications: NewNotification[] = authorityIds.map((authorityId) => ({
