@@ -31,10 +31,10 @@ import { uploadAttachmentIfPresent } from "@/lib/infra/uploads";
 import { eventPlaceFromGate, toEventPlaceOrNull } from "@/lib/place/event-place";
 import { resolveMapFormPlace } from "@/lib/place/reported-place";
 import { findDisease } from "@/lib/reference/diseases";
-import { checkboxOn } from "@/lib/ui/form-checkbox";
 import { parseDateInput } from "@/lib/utils/format";
 import type { ContentReportCategory } from "@dim/contract/events";
 import { and, eq, isNull } from "drizzle-orm";
+import { parseDiseaseDiagnosisForm } from "./application/clinical/disease-diagnosis-form";
 
 // The org capability vocabulary, for the note gate below (PO decision
 // 2026-08-26). `organizations` is a shared kernel — it imports from no module,
@@ -639,25 +639,30 @@ export async function recordDiseaseDiagnosisAction(
     return { error: "Solo veterinarios con matrícula verificada pueden registrar diagnósticos." };
   }
 
-  const diseaseCode = String(formData.get("diseaseCode") ?? "").trim();
-  const confirmedByLab = checkboxOn(formData, "confirmedByLab");
-  const labName = String(formData.get("labName") ?? "").trim() || null;
-  const labReportRef = String(formData.get("labReportReference") ?? "").trim() || null;
-  const diagnosisDateRaw = String(formData.get("diagnosisDate") ?? "").trim();
-  const notes = String(formData.get("notes") ?? "").trim() || null;
+  // PO S2 (2026-09-26): the fields of the ENO diagnosis step, parsed by the
+  // helper the clinic panel's door shares — same refusals, same words.
+  const parsed = parseDiseaseDiagnosisForm(formData);
+  if (!parsed.ok) return { error: parsed.error };
+  const {
+    diseaseCode,
+    confirmedByLab,
+    labName,
+    labReportReference: labReportRef,
+    notes,
+  } = parsed.value;
+  const diagnosisDate = parsed.value.diagnosisDate;
 
-  if (!diseaseCode) return { error: "Falta el código de enfermedad." };
-  const disease = findDisease(diseaseCode);
-  if (!disease) return { error: "Código de enfermedad desconocido." };
-  if (!diagnosisDateRaw) return { error: "Falta la fecha del diagnóstico." };
-  const diagnosisDate = parseDateInput(diagnosisDateRaw);
-  if (!diagnosisDate) return { error: "Fecha de diagnóstico inválida." };
-
-  if (confirmedByLab && !labName) {
-    return {
-      error: "Para marcar como confirmado por laboratorio indicá el nombre del laboratorio.",
-    };
+  // Where it OCCURRED (L1, optional — PO S10): the ENO notice and the signal
+  // route there; no place = the pet's home.
+  const loc = parseLocationFromFormData(formData);
+  let normalizedLoc: Awaited<ReturnType<typeof normalizeLocationForWrite>>;
+  try {
+    normalizedLoc = await normalizeLocationForWrite(loc, { locality: "soft" });
+  } catch (err) {
+    if (err instanceof CoordError) return { error: err.message };
+    throw err;
   }
+  const eventPlace = eventPlaceFromGate(loc, normalizedLoc);
 
   // Resolve pet by publicToken — NO ownership check (vet can diagnose any pet;
   // that absence is deliberate and stays). Art. 16 (Ley 25.326): the deleted_at
@@ -695,6 +700,7 @@ export async function recordDiseaseDiagnosisAction(
       labReportReference: labReportRef,
       diagnosisDate,
       notes,
+      eventPlace,
     },
     {
       repo,
@@ -707,7 +713,7 @@ export async function recordDiseaseDiagnosisAction(
   if (!result.ok) {
     return { error: `No se pudo registrar el diagnóstico: ${result.error}` };
   }
-  return { error: null };
+  return { error: null, ok: true, redirectTo: `/mis-mascotas/${publicToken}` };
 }
 
 // ---------------------------------------------------------------------------
@@ -730,8 +736,8 @@ export async function recordDiseaseDiagnosisAction(
 //   COPIED: the pet lookup — same `deletedAt` filter, same refusal string, so
 //     this surface does not become an erasure oracle (Art. 16, Ley 25.326).
 //   NOT COPIED, AND CANNOT BE: the lab guard. The diagnosis action refuses
-//     `confirmedByLab` without a `labName` (the `if` a few hundred lines above
-//     this one). It CAN ask that because `clinical_info_logged` carries
+//     a lab diagnosis without a `labName` (parseDiseaseDiagnosisForm, the
+//     shared parser of the ENO diagnosis step). It CAN ask that because `clinical_info_logged` carries
 //     `lab_name` / `lab_report_reference`; `disease_reported`'s strict schema
 //     carries neither, so there is no field to demand.
 //

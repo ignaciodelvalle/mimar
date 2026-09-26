@@ -36,6 +36,7 @@ import { LnSheetCard, LnSheetWrap } from "@/components/ui/Sheet";
 
 import { DewormingForm } from "@/app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/antiparasitario/DewormingForm";
 import { ClinicalInfoForm } from "@/app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/clinico/ClinicalInfoForm";
+import { DiseaseDiagnosisForm } from "@/app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/clinico/diagnostico/DiseaseDiagnosisForm";
 import { SterilizationForm } from "@/app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/esterilizacion/SterilizationForm";
 import { MedicationStartForm } from "@/app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/medicacion-inicio/MedicationStartForm";
 import { MicrochipForm } from "@/app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/microchip/MicrochipForm";
@@ -44,6 +45,7 @@ import { NoteForm } from "@/app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/n
 import {
   atenderClinicalInfoAction,
   atenderDewormingAction,
+  atenderDiseaseDiagnosisAction,
   atenderMedicationStartAction,
   atenderMicrochipAction,
   atenderNoteAction,
@@ -111,6 +113,11 @@ export function AtenderCaptureMounter({
         defaultOccurredAt={sp("occurredAt") ?? undefined}
       />
     );
+  } else if (evento === "diagnostico") {
+    // PO S2: the ENO diagnosis step, the same form as the web clinical record.
+    // The walk-in names no place (the clinic is not where the animal fell ill).
+    const action = atenderDiseaseDiagnosisAction.bind(null, orgToken, publicToken);
+    form = <DiseaseDiagnosisForm action={action} species={species} showLocation={false} />;
   } else if (evento === "nota") {
     const action = atenderNoteAction.bind(null, orgToken, publicToken);
     form = (

@@ -18,6 +18,9 @@ export const ATENDER_EVENTOS = [
   { key: "medicacion", label: "Medicación" },
   { key: "chip", label: "Colocación de microchip" },
   { key: "nota", label: "Nota clínica" },
+  // PO S2 (2026-09-26): only a signer with a validated matrícula — the server
+  // refuses anyone else (atenderDiseaseDiagnosisAction).
+  { key: "diagnostico", label: "Diagnóstico de notificación obligatoria" },
   // CONDICIONAL, a diferencia de las demás: sólo se ofrece cuando este animal
   // tiene una observación antirrábica abierta. Un botón para cerrar algo que no
   // está abierto le miente al profesional sobre lo que el sistema va a hacer.
@@ -35,3 +38,9 @@ export type AtenderEvento = (typeof ATENDER_EVENTOS)[number]["key"];
  * no cambia.
  */
 export const ATENDER_EVENTOS_CONDICIONALES = new Set(["observacion"]);
+
+/**
+ * Las claves que dependen del FIRMANTE: sólo un profesional con matrícula
+ * validada registra un diagnóstico de notificación obligatoria (PO S2).
+ */
+export const ATENDER_EVENTOS_SOLO_MATRICULA = new Set(["diagnostico"]);

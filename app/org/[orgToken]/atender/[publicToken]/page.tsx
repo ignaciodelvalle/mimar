@@ -42,7 +42,11 @@ import { AtenderCaptureMounter } from "./AtenderCaptureMounter";
 import { AtenderQuickCapture } from "./AtenderQuickCapture";
 import { PendingSignaturesCard } from "./PendingSignaturesCard";
 import { RecordDeathInObservationForm } from "./RecordDeathInObservationForm";
-import { ATENDER_EVENTOS, ATENDER_EVENTOS_CONDICIONALES } from "./atender-eventos";
+import {
+  ATENDER_EVENTOS,
+  ATENDER_EVENTOS_CONDICIONALES,
+  ATENDER_EVENTOS_SOLO_MATRICULA,
+} from "./atender-eventos";
 
 /**
  * When this animal's open observation ends — the same deadline the close use
@@ -248,7 +252,9 @@ export default async function AtenderSignPage({
           <OpCardBody>
             <nav className="grid grid-cols-2 gap-2">
               {ATENDER_EVENTOS.filter(
-                (e) => !ATENDER_EVENTOS_CONDICIONALES.has(e.key) || observacionAbierta,
+                (e) =>
+                  (!ATENDER_EVENTOS_CONDICIONALES.has(e.key) || observacionAbierta) &&
+                  (!ATENDER_EVENTOS_SOLO_MATRICULA.has(e.key) || signer.matriculaVerified),
               ).map((e) => {
                 const isActive = activeEvento === e.key;
                 return (

@@ -58,10 +58,14 @@ export type SurveillancePet = {
   species: string;
   status: string;
   rabiesObservationStatus: string | null;
+  /** Read by findPetByToken only (the ENO diagnosis door, PO S2). */
+  jurisdictionCountry?: string;
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
   /** The home's catalogue row — routing on the id path (localidades-por-id D3). */
   localityId: string | null;
+  /** How that row was decided (localidades-por-id D3). */
+  placeMethod?: string | null;
 };
 
 // Shape returned by ENO queue finds.
@@ -88,9 +92,11 @@ export class SurveillanceRepository {
         species: pets.species,
         status: pets.status,
         rabiesObservationStatus: pets.rabiesObservationStatus,
+        jurisdictionCountry: pets.jurisdictionCountry,
         jurisdictionProvince: pets.jurisdictionProvince,
         jurisdictionLocality: pets.jurisdictionLocality,
         localityId: pets.localityId,
+        placeMethod: pets.placeMethod,
       })
       .from(pets)
       .where(eq(pets.publicToken, publicToken))

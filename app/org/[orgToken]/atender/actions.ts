@@ -13,7 +13,8 @@
 // weakened.
 //
 // Scope: CLINICAL events only (vacuna, desparasitación, cirugía/estudio,
-// medicación, nota clínica). No custody/transfer/adoption; no owner PII.
+// medicación, nota clínica, diagnóstico de notificación obligatoria). No
+// custody/transfer/adoption; no owner PII.
 
 import {
   FREQUENCY_LABELS,
@@ -34,6 +35,8 @@ import { parseDateInput } from "@/lib/utils/format";
 
 import type { EventFormState } from "@/src/modules/events/actions";
 import { createClinicalInfo } from "@/src/modules/events/application/clinical/clinical-info-use-case";
+import { parseDiseaseDiagnosisForm } from "@/src/modules/events/application/clinical/disease-diagnosis-form";
+import { recordDiseaseDiagnosisWriter } from "@/src/modules/events/application/clinical/record-disease-diagnosis-use-case";
 import { createMicrochip } from "@/src/modules/events/application/identity/microchip-use-case";
 import { createNote } from "@/src/modules/events/application/identity/note-use-case";
 import { createDeworming } from "@/src/modules/events/application/medical/deworming-use-case";
@@ -42,6 +45,7 @@ import { createSterilization } from "@/src/modules/events/application/medical/st
 import { createVaccination } from "@/src/modules/events/application/medical/vaccination-use-case";
 import { DEATH_CAUSES, DISPOSITION_METHODS } from "@/src/modules/events/domain/death-rules";
 import { CLINICAL_SUB_KINDS } from "@/src/modules/events/domain/enums";
+import { enqueueEnoTrigger } from "@/src/modules/surveillance/application/enqueue-eno-trigger";
 import { revalidatePath } from "next/cache";
 
 import { EventsRepository } from "@/src/modules/events/infrastructure/events-repository";
@@ -1184,5 +1188,106 @@ export async function atenderRecordDeathInObservationAction(
       ctaUrl: `/mis-mascotas/${pet.publicToken}`,
       relatedCaseId: biteCase?.id ?? null,
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Diagnóstico de enfermedad de notificación obligatoria (PO S2, 2026-09-26)
+// ---------------------------------------------------------------------------
+//
+// The clinic panel's door to the SAME writer the web clinical record uses
+// (recordDiseaseDiagnosisWriter, src/modules/events/actions.ts
+// recordDiseaseDiagnosisAction): the diagnosis event, its ENO notice with the
+// disease's deadline counted from the diagnosis date, the govt fan-out row and
+// the outbreak signal — one transaction.
+//
+// WHO: a matriculated vet signing for THIS organization — resolveAtenderPet
+// (event.write on the org + the DIM code) and a verified vet signature, the
+// same two checks, in the same order and words, as the observation close
+// above. The web door checks role=vet + matrícula on the profile; here the
+// signer's resolved authorship carries the same fact for the walk-in.
+//
+// WHERE: the notice routes to the pet's home unless a place is named; the
+// walk-in form names none (the clinic is not where the animal fell ill).
+// Parsing is shared with the web door (disease-diagnosis-form.ts).
+export async function atenderDiseaseDiagnosisAction(
+  orgToken: string,
+  publicToken: string,
+  _previous: EventFormState,
+  formData: FormData,
+): Promise<EventFormState> {
+  const access = await resolveAtenderPet(orgToken, publicToken);
+  if (!access.ok) return { error: access.error };
+  const { user, pet, organizationName, eventAuthorship } = access;
+
+  if (eventAuthorship.authorRole !== "vet" || !eventAuthorship.authorVerified) {
+    return {
+      error:
+        "El diagnóstico de una enfermedad de notificación obligatoria lo registra un profesional con matrícula validada. Si sos veterinario, pedí que se valide tu matrícula desde el perfil de la organización.",
+    };
+  }
+
+  const parsed = parseDiseaseDiagnosisForm(formData);
+  if (!parsed.ok) return { error: parsed.error };
+  const fields = parsed.value;
+  const plausibility = checkOccurredAtPlausible(fields.diagnosisDate, pet.dateOfBirth);
+  if (plausibility) return plausibility;
+
+  // The animal's jurisdiction and catalogue row (the fallback routing), read
+  // by the token the guard resolved — the same lookup the close above uses.
+  const surveillance = new SurveillanceRepository();
+  const located = await surveillance.findPetByToken(pet.publicToken);
+  if (!located || located.id !== pet.id) return { error: "Mascota no encontrada." };
+
+  const result = await recordDiseaseDiagnosisWriter(
+    {
+      petId: pet.id,
+      petName: pet.name,
+      petSpecies: located.species,
+      // pets.jurisdiction_country is NOT NULL DEFAULT 'AR'; findPetByToken reads it.
+      petJurisdictionCountry: located.jurisdictionCountry ?? "AR",
+      petJurisdictionProvince: located.jurisdictionProvince ?? null,
+      petJurisdictionLocality: located.jurisdictionLocality ?? null,
+      petLocalityId: located.localityId ?? null,
+      petPlaceMethod: located.placeMethod ?? null,
+      vetUserId: user.id,
+      vetDisplayName: organizationName,
+      diseaseCode: fields.diseaseCode,
+      confirmedByLab: fields.confirmedByLab,
+      labName: fields.labName,
+      labReportReference: fields.labReportReference,
+      diagnosisDate: fields.diagnosisDate,
+      notes: fields.notes,
+    },
+    {
+      repo: new EventsRepository(),
+      transaction: makeTransaction(),
+      flushNotifications: async (rows) => {
+        await createNotificationsBulk(
+          rows.map((n) => ({
+            ...n,
+            dedupeKey: `event:${n.relatedEventId ?? pet.id}:${n.userId}:${n.notificationType}`,
+          })),
+        );
+      },
+      // The govt fan-out row, in the diagnosis transaction (P1-3).
+      enqueueEnoTrigger: (petEvent, tx) =>
+        enqueueEnoTrigger(petEvent, { repo: surveillance, executor: tx }),
+    },
+  );
+  if (!result.ok) {
+    return { error: `No se pudo registrar el diagnóstico: ${result.error}` };
+  }
+
+  return completeAtenderSignature({
+    orgToken,
+    publicToken: pet.publicToken,
+    petId: pet.id,
+    petName: pet.name,
+    organizationName,
+    signerUserId: user.id,
+    eventId: result.diagnosisEventId,
+    eventType: "clinical_info_logged",
+    occurredAt: fields.diagnosisDate,
   });
 }

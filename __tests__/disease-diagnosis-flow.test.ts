@@ -771,3 +771,52 @@ describe("amendment re-evaluates the ENO outbox (S9)", () => {
     expect(rows[0].slaDueAt.getTime()).toBe(date.getTime() + 24 * HOUR);
   });
 });
+
+// PO S2 + S10: the vet's diagnosis names where the case occurred; the ENO
+// notice and the signal route THERE, not to the pet's home (CABA / Almagro).
+describe("a diagnosis with a place routes where it occurred (S2 + S10)", () => {
+  it("an unresolved Santa Fe place → the notice goes to Santa Fe, province-level", async () => {
+    const pet = await insertTestPet(ownerUserId, "PLACE");
+    const place = {
+      entered: { province: "Santa Fe", locality: "Paraje sin catálogo", indec_id: null },
+      resolved: null,
+    };
+    const result = await _recordDiseaseDiagnosisWriter(
+      {
+        petId: pet.id,
+        petName: pet.name,
+        petSpecies: pet.species,
+        petJurisdictionCountry: pet.jurisdictionCountry,
+        petJurisdictionProvince: pet.jurisdictionProvince ?? null,
+        petJurisdictionLocality: pet.jurisdictionLocality ?? null,
+        vetUserId,
+        vetDisplayName: "Dr. Test Ddx",
+        diseaseCode: "leptospirosis",
+        confirmedByLab: false,
+        labName: null,
+        labReportReference: null,
+        diagnosisDate: new Date(),
+        notes: null,
+        eventPlace: place,
+      },
+      {
+        repo: new EventsRepository(),
+        transaction: <T>(cb: (tx: unknown) => Promise<T>) =>
+          db.transaction(cb as Parameters<typeof db.transaction>[0]) as Promise<T>,
+        flushNotifications: async () => {},
+        enqueueEnoTrigger: async () => {},
+      },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const [row] = await db
+      .select()
+      .from(eventNotificationOutbox)
+      .where(eq(eventNotificationOutbox.sourceEventId, result.diagnosisEventId));
+    expect(row.targetJurisdictionProvince).toBe("Santa Fe");
+    expect(row.targetJurisdictionLocality).toBeNull();
+    expect(row.targetPlaceMethod).toBe("unresolved");
+    const [dx] = await db.select().from(petEvents).where(eq(petEvents.id, result.diagnosisEventId));
+    expect((dx.payload as Record<string, unknown>).place).toEqual(place);
+  });
+});

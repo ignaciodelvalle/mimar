@@ -28,6 +28,7 @@
 
 import { validateEventPayload } from "@/lib/events/event-schemas";
 import { homePlace } from "@/lib/events/home-place";
+import type { EventPlace } from "@/lib/events/place-payload";
 import { maybeNotifyOwnersOfPublicAlert } from "@/lib/infra/owner-disease-alerts";
 import { findDisease, isReportable } from "@/lib/reference/diseases";
 
@@ -61,6 +62,12 @@ export type RecordDiseaseDiagnosisWriterInput = {
   labReportReference: string | null;
   diagnosisDate: Date;
   notes: string | null;
+  /**
+   * Where the case OCCURRED, as entered and as resolved (PO S10): the ENO
+   * notice and the signal route there, not to the pet's home. Absent/null =
+   * the vet named no place; the home routes.
+   */
+  eventPlace?: EventPlace | null;
   now?: Date;
 };
 
@@ -130,12 +137,14 @@ export async function recordDiseaseDiagnosisWriter(
       ? { localityId: params.petLocalityId, placeMethod: params.petPlaceMethod ?? null }
       : {}),
   };
-  const signalPlace = homePlace({
-    province: params.petJurisdictionProvince,
-    locality: params.petJurisdictionLocality,
-    localityId: params.petLocalityId,
-    placeMethod: params.petPlaceMethod,
-  });
+  const signalPlace =
+    params.eventPlace ??
+    homePlace({
+      province: params.petJurisdictionProvince,
+      locality: params.petJurisdictionLocality,
+      localityId: params.petLocalityId,
+      placeMethod: params.petPlaceMethod,
+    });
 
   try {
     await deps.transaction(async (tx) => {
@@ -151,6 +160,7 @@ export async function recordDiseaseDiagnosisWriter(
         lab_name: params.labName,
         lab_report_reference: params.labReportReference,
         diagnosis_date: params.diagnosisDate.toISOString(),
+        ...(params.eventPlace ? { place: params.eventPlace } : {}),
       });
 
       const diagnosisEvent = await deps.repo.insertEvent(
