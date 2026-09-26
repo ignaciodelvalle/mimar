@@ -94,3 +94,40 @@ export async function notifyNewlyCoveringAuthorities(
   await createNotificationsBulk(inputs, exec);
   return { notified: newly };
 }
+
+/**
+ * Re-target the PENDING outbox rows of the resolved case whose target was
+ * snapshotted unresolved (stage D verify W7): they take the resolved row and
+ * method 'admin_queue'. Only rows still waiting to be delivered, only rows
+ * with no target row yet, only rows bound for the case's own names and fed
+ * by an event of the case or its animal — so a delivered notice is never
+ * touched and nobody is un-notified. Idempotent: a second run finds nothing.
+ */
+export async function retargetPendingOutbox(
+  exec: Executor,
+  input: { subjectTable: QueueSubjectTable; subjectId: string; localityId: string },
+): Promise<{ retargeted: number }> {
+  const where =
+    input.subjectTable === "cases"
+      ? sql`c.id = ${input.subjectId}::uuid`
+      : sql`c.welfare_report_id = ${input.subjectId}::uuid`;
+  const rows = (await exec.execute(sql`
+    update public.event_notification_outbox o
+       set target_locality_id = ${input.localityId}::uuid,
+           target_place_method = 'admin_queue'
+      from public.cases c
+     where ${where}
+       and o.status = 'pending'
+       and o.target_locality_id is null
+       and o.target_place_method = 'unresolved'
+       and o.target_jurisdiction_province is not distinct from c.jurisdiction_province
+       and o.target_jurisdiction_locality is not distinct from c.jurisdiction_locality
+       and exists (
+         select 1 from public.pet_events e
+          where e.id = o.source_event_id
+            and (e.case_id = c.id or e.pet_id = c.primary_pet_id)
+       )
+    returning o.id
+  `)) as unknown as unknown[];
+  return { retargeted: rows.length };
+}

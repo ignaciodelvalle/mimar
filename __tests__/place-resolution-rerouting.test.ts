@@ -9,9 +9,20 @@
 import { TransactionRollbackError, and, eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
-import { authorityUnitLocalities, db, govtAssignments, welfareReports } from "@/db";
+import {
+  authorityUnitLocalities,
+  db,
+  eventNotificationOutbox,
+  govtAssignments,
+  petEvents,
+  pets,
+  welfareReports,
+} from "@/db";
 import { openCase } from "@/lib/infra/case-helpers";
-import { notifyNewlyCoveringAuthorities } from "@/lib/place/resolution-rerouting";
+import {
+  notifyNewlyCoveringAuthorities,
+  retargetPendingOutbox,
+} from "@/lib/place/resolution-rerouting";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -171,6 +182,97 @@ describe("notifyNewlyCoveringAuthorities", () => {
       expect((await notifyNewlyCoveringAuthorities(tx, input, { mode: "id" })).notified).toEqual(
         [],
       );
+    });
+  });
+});
+
+// Stage D verify W7: an outbox row snapshotted while the place was unresolved
+// takes the resolved row once the queue resolves it — only while it is still
+// pending, never a delivered one, and only once.
+describe("retargetPendingOutbox", () => {
+  it("a pending unresolved row takes the resolved row; a delivered one is untouched; a rerun changes nothing", async () => {
+    await inRolledBackTx(async (tx) => {
+      const bragado = (
+        await one<{ id: string }>(
+          tx,
+          sql`select id::text as id from public.ar_localities where indec_id = ${MECHITA_BRAGADO}`,
+        )
+      ).id;
+      const [pet] = await tx
+        .insert(pets)
+        .values({
+          publicToken: `RT-${Date.now()}`,
+          name: "Reencamino",
+          species: "dog",
+          sex: "male",
+          status: "active",
+          jurisdictionProvince: "Buenos Aires",
+          jurisdictionLocality: "Mechita",
+        })
+        .returning({ id: pets.id });
+      const petId = pet?.id as string;
+      const caseRow = await openCase(
+        {
+          kind: "bite_incident",
+          primarySubjectKind: "registered_pet",
+          primaryPetId: petId,
+          jurisdictionProvince: "Buenos Aires",
+          jurisdictionLocality: "Mechita",
+          openedReason: { code: "bite_reported_owner", victimKind: "human", severity: "minor" },
+        } as unknown as Parameters<typeof openCase>[0],
+        tx,
+      );
+      const [event] = await tx
+        .insert(petEvents)
+        .values({
+          petId,
+          eventType: "note_added",
+          occurredAt: new Date(),
+          payload: { category: "otro", text: "fixture" },
+          authorRole: "system",
+          recordedByUserId: null,
+          caseId: caseRow.id,
+        } as typeof petEvents.$inferInsert)
+        .returning({ id: petEvents.id });
+      const base = {
+        sourceEventId: event?.id as string,
+        targetKind: "govt_webhook" as const,
+        targetJurisdictionProvince: "Buenos Aires",
+        targetJurisdictionLocality: "Mechita",
+        targetPlaceMethod: "unresolved",
+        payloadSnapshot: {},
+        slaDueAt: new Date(Date.now() + 86_400_000),
+      };
+      const [pending, delivered] = await tx
+        .insert(eventNotificationOutbox)
+        .values([
+          { ...base, status: "pending" as const },
+          { ...base, status: "delivered" as const, deliveredAt: new Date() },
+        ])
+        .returning({ id: eventNotificationOutbox.id });
+
+      const input = { subjectTable: "cases" as const, subjectId: caseRow.id, localityId: bragado };
+      expect(await retargetPendingOutbox(tx, input)).toEqual({ retargeted: 1 });
+      const rows = await tx
+        .select({
+          id: eventNotificationOutbox.id,
+          localityId: eventNotificationOutbox.targetLocalityId,
+          method: eventNotificationOutbox.targetPlaceMethod,
+        })
+        .from(eventNotificationOutbox)
+        .where(
+          sql`${eventNotificationOutbox.id} in (${pending?.id}::uuid, ${delivered?.id}::uuid)`,
+        );
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      expect(byId.get(pending?.id as string)).toMatchObject({
+        localityId: bragado,
+        method: "admin_queue",
+      });
+      expect(byId.get(delivered?.id as string)).toMatchObject({
+        localityId: null,
+        method: "unresolved",
+      });
+      expect(await retargetPendingOutbox(tx, input)).toEqual({ retargeted: 0 });
     });
   });
 });
