@@ -505,6 +505,8 @@ export class EventsRepository {
       payload: Record<string, unknown>;
       /** When it happened — the legal clock starts here (PO S5). */
       occurredAt?: Date | null;
+      /** Who signed it — some rules fire only for a matriculated vet (PO S4). */
+      author?: { authorRole?: string | null; authorVerified?: boolean | null };
     },
     pet: {
       jurisdictionProvince?: string | null;

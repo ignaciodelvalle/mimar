@@ -191,6 +191,7 @@ type Deps = {
     | "findLatestRabiesObservationStarted"
     | "updateRabiesObservationStatus"
     | "updateStatusProjection"
+    | "enqueueOutbox"
   >;
   transaction: <T>(cb: (tx: unknown) => Promise<T>) => Promise<T>;
   flushNotifications: (pendingNotifications: NewNotification[]) => Promise<void>;
@@ -328,6 +329,34 @@ export async function createDeathRecord(
             fileSize: uploadedSize ?? 0,
           },
           tx as Parameters<typeof deps.repo.insertAttachment>[1],
+        );
+      }
+
+      // PO S4 (2026-09-26): a death FROM a notifiable disease is an ENO case,
+      // in THIS transaction — a rollback takes both. The outbox rule decides:
+      // it fires only for a matriculated vet's record or a lab-confirmed
+      // diagnosis, with the disease's own window counted from the death
+      // (PO S5); rabies joins the animal's rabies case.
+      if (diseaseCode) {
+        await deps.repo.enqueueOutbox(
+          tx as Parameters<typeof deps.repo.enqueueOutbox>[0],
+          {
+            id: event.id,
+            petId: pet.id,
+            eventType: "death_recorded",
+            payload: eventPayload as Record<string, unknown>,
+            occurredAt,
+            author: {
+              authorRole: eventAuthorship.authorRole,
+              authorVerified: eventAuthorship.authorVerified,
+            },
+          },
+          {
+            jurisdictionProvince: pet.jurisdictionProvince,
+            jurisdictionLocality: pet.jurisdictionLocality,
+            ...(pet.localityId !== undefined ? { localityId: pet.localityId } : {}),
+          },
+          now,
         );
       }
 

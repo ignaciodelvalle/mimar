@@ -396,10 +396,10 @@ export default async function GobMortalidadPage({
           sub="del total (B9)"
           info={{
             definition:
-              "Porcentaje de fallecimientos que corresponden a enfermedades de notificación obligatoria (campo is_reportable = true). Un valor > 0 requiere notificación a la autoridad sanitaria (B9).",
+              "Porcentaje de fallecimientos registrados con una enfermedad de notificación obligatoria (campo is_reportable = true). Incluye lo que declara quien cuida al animal, que no es un diagnóstico (B9).",
             formula: "deaths con (is_reportable = true) / total",
             caveat:
-              "Cualquier valor > 0% activa una indicación de atención: esos fallecimientos requieren notificación ENO.",
+              "Cualquier valor > 0% activa una indicación de atención. El aviso legal (Cola ENO) se genera solo cuando el fallecimiento lo registra un veterinario matriculado o hay confirmación de laboratorio; lo declarado por el tutor queda como dato a confirmar.",
           }}
           descriptorId="mortality_reportable_share"
           guardInput={{ n: m.total }}

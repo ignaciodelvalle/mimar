@@ -23,6 +23,7 @@ import {
   profiles,
 } from "@/db";
 import { recordDiseaseDiagnosisWriter as _recordDiseaseDiagnosisWriter } from "@/src/modules/events/application/clinical/record-disease-diagnosis-use-case";
+import { createDeathRecord } from "@/src/modules/events/application/lifecycle/death-record-use-case";
 import { recordDiseaseDiagnosisWriter } from "@/src/modules/events/application/writers";
 import { EventsRepository } from "@/src/modules/events/infrastructure/events-repository";
 import { withMutationOverride } from "./_helpers/db-overrides";
@@ -494,5 +495,112 @@ describe("recordDiseaseDiagnosisWriter", () => {
       );
     expect(ownerAlerts.length).toBe(1);
     expect(isNull(notifications.archivedAt));
+  });
+});
+
+// PO S4 (2026-09-26): a vet-recorded death from rabies joins the animal's
+// rabies case — ONE record, the earliest deadline; a leptospirosis death by
+// the owner, unconfirmed, is a declaration and mints no legal row.
+describe("death_recorded → ENO (S4)", () => {
+  function deathInput(
+    pet: {
+      id: string;
+      name: string;
+      status: string;
+      jurisdictionProvince: string | null;
+      jurisdictionLocality: string | null;
+    },
+    over: Partial<Parameters<typeof createDeathRecord>[0]>,
+  ): Parameters<typeof createDeathRecord>[0] {
+    return {
+      pet: { ...pet, rabiesObservationStatus: null },
+      recordedByUserId: vetUserId,
+      eventAuthorship: { authorRole: "vet", authorOrganizationId: null, authorVerified: true },
+      cause: "disease",
+      causeDetail: null,
+      confirmedByVet: true,
+      vetName: null,
+      dispositionMethod: null,
+      facility: null,
+      occurredAt: new Date(),
+      notes: null,
+      deathAtClinic: false,
+      clinicName: null,
+      vetContactedOwner: null,
+      vetDecidedAlone: false,
+      ownerToPrivateCrematorium: false,
+      diseaseCode: "rabies_confirmed",
+      confirmedByLab: false,
+      isReportable: true,
+      uploadedPath: null,
+      uploadedMimeType: null,
+      uploadedSize: null,
+      clientIdempotencyKey: null,
+      custodyEpisodeCaseId: null,
+      ...over,
+    };
+  }
+  const deps = () => ({
+    repo: new EventsRepository(),
+    transaction: <T>(cb: (tx: unknown) => Promise<T>) =>
+      db.transaction(cb as Parameters<typeof db.transaction>[0]) as Promise<T>,
+    flushNotifications: async () => {},
+  });
+
+  it("a vet-recorded rabies death merges into the rabies case with the earliest deadline", async () => {
+    const pet = await insertTestPet(ownerUserId, "DEATHRAB");
+    const diagnosisDate = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const dx = await recordDiseaseDiagnosisWriter({
+      petId: pet.id,
+      petName: pet.name,
+      petSpecies: pet.species,
+      petJurisdictionCountry: pet.jurisdictionCountry,
+      petJurisdictionProvince: pet.jurisdictionProvince ?? null,
+      petJurisdictionLocality: pet.jurisdictionLocality ?? null,
+      vetUserId,
+      vetDisplayName: "Dr. Test Ddx",
+      diseaseCode: "rabies_confirmed",
+      confirmedByLab: true,
+      labName: "INPPAZ",
+      labReportReference: "LAB-S4",
+      diagnosisDate,
+      notes: null,
+    });
+    expect(dx.ok).toBe(true);
+
+    const death = await createDeathRecord(deathInput(pet, {}), deps());
+    expect(death.ok).toBe(true);
+    if (!death.ok) return;
+
+    const rows = await db
+      .select()
+      .from(eventNotificationOutbox)
+      .where(sql`${eventNotificationOutbox.enoCaseKey} like ${`rabies:pet:${pet.id}:%`}`);
+    expect(rows).toHaveLength(1);
+    const linked = (rows[0].linkedSources as { source_event_id: string }[]).map(
+      (l) => l.source_event_id,
+    );
+    expect(linked).toContain(death.eventId);
+    expect(rows[0].slaDueAt.getTime()).toBe(diagnosisDate.getTime() + 24 * 60 * 60 * 1000);
+  });
+
+  it("an owner's unconfirmed leptospirosis death mints no legal row", async () => {
+    const pet = await insertTestPet(ownerUserId, "DEATHOWN");
+    const death = await createDeathRecord(
+      deathInput(pet, {
+        recordedByUserId: ownerUserId,
+        eventAuthorship: { authorRole: "owner", authorOrganizationId: null, authorVerified: false },
+        confirmedByVet: false,
+        diseaseCode: "leptospirosis",
+      }),
+      deps(),
+    );
+    expect(death.ok).toBe(true);
+    if (!death.ok) return;
+    const rows = await db
+      .select({ id: eventNotificationOutbox.id })
+      .from(eventNotificationOutbox)
+      .where(eq(eventNotificationOutbox.sourceEventId, death.eventId));
+    expect(rows).toHaveLength(0);
   });
 });

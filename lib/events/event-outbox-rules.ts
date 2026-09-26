@@ -47,7 +47,7 @@ export interface OutboxRule {
    * rule should NOT produce an outbox row (the event does not require
    * notification to this target kind for this payload shape).
    */
-  slaHours(payload: Record<string, unknown>): number | null;
+  slaHours(payload: Record<string, unknown>, author?: EventAuthor): number | null;
 
   /**
    * Optional: produce a custom snapshot for the outbox row. When omitted,
@@ -77,6 +77,17 @@ export interface OutboxRule {
 }
 
 export type EnoCaseFamily = "rabies";
+
+/** Who signed the source event — some rules only fire for a professional. */
+export type EventAuthor = {
+  authorRole?: string | null;
+  authorVerified?: boolean | null;
+};
+
+/** A matriculated vet's signature (pet_events author_role + author_verified). */
+function isVerifiedVet(author: EventAuthor | undefined): boolean {
+  return author?.authorRole === "vet" && author.authorVerified === true;
+}
 
 /** The jurisdiction an ENO row is bound for — the authority that must be told. */
 export type EnoTarget = {
@@ -239,6 +250,48 @@ const rabiesObservationEndedGovtWebhook: OutboxRule = {
   },
 };
 
+/**
+ * Rule for death_recorded → govt_webhook (PO S4, 2026-09-26).
+ *
+ * A death FROM a notifiable disease is itself a notifiable case — before this
+ * rule a death recorded with rabies_confirmed left no row and no SLA (health
+ * audit #3). It fires only when the diagnosis is a professional's: the death
+ * was recorded by a matriculated vet, or the payload attests a lab
+ * confirmation. An owner's unconfirmed "died of X" is a declaration, not a
+ * diagnosis, and stays out of the legal queue (the owner's own
+ * `confirmed_by_vet` checkbox is not a vet's signature).
+ *
+ * SLA = that disease's catalog window; the clock is the death's occurrence
+ * (the event's occurredAt, PO S5). Rabies joins the animal's rabies case —
+ * the earliest deadline wins (the enqueue's merge).
+ *
+ * The snapshot is BUILT: the disease and the confirmation facts only — no
+ * cause_detail prose, no vet or clinic names (an external authority payload).
+ */
+const deathRecordedGovtWebhook: OutboxRule = {
+  target_kind: "govt_webhook",
+  slaHours(payload, author) {
+    const diseaseCode = typeof payload.disease_code === "string" ? payload.disease_code : null;
+    if (!diseaseCode) return null;
+    const disease = getEnoForDiseaseCode(diseaseCode);
+    if (!disease) return null;
+    if (!isVerifiedVet(author) && payload.confirmed_by_lab !== true) return null;
+    return disease.notifyHours;
+  },
+  buildSnapshot(payload) {
+    return {
+      disease_code: payload.disease_code,
+      cause: payload.cause,
+      confirmed_by_lab: payload.confirmed_by_lab === true,
+      during_rabies_observation: payload.during_rabies_observation === true,
+      death: true,
+    };
+  },
+  caseFamily(payload) {
+    return isRabiesDiseaseCode(payload.disease_code) ? RABIES_ENO_CODE : null;
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Rule registry
 // ---------------------------------------------------------------------------
@@ -247,4 +300,5 @@ export const OUTBOX_RULES: Partial<Record<EventType, OutboxRule[]>> = {
   clinical_info_logged: [clinicalInfoLoggedGovtWebhook],
   outbreak_signal: [outbreakSignalGovtWebhook],
   rabies_observation_ended: [rabiesObservationEndedGovtWebhook],
+  death_recorded: [deathRecordedGovtWebhook],
 };

@@ -2045,7 +2045,7 @@ export const KPI_CATALOG: Record<KpiId, KpiDefinition> = {
     unit: "percent",
     suppression: "none",
     caveat:
-      "Sin meta numérica — cualquier valor > 0% requiere notificación ENO a la autoridad sanitaria (B9); el tono de atención (ámbar cuando >0) no deriva de un umbral porcentual, deriva de la sola presencia de casos notificables.",
+      "Sin meta numérica — el tono de atención (ámbar cuando >0) no deriva de un umbral porcentual, deriva de la sola presencia de casos declarados con una enfermedad notificable (B9). La notificación ENO la genera el registro de un veterinario matriculado o un diagnóstico de laboratorio (PO S4, 2026-09-26); lo declarado por el tutor no la genera.",
     window: "period",
     species: "all_species",
     basis: "ratio",

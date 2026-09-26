@@ -87,6 +87,7 @@ type RepoLike = Pick<
   | "findLatestRabiesObservationStarted"
   | "updateRabiesObservationStatus"
   | "updateStatusProjection"
+  | "enqueueOutbox"
 >;
 
 function makeRepo(overrides: Partial<RepoLike> = {}): RepoLike {
@@ -102,6 +103,7 @@ function makeRepo(overrides: Partial<RepoLike> = {}): RepoLike {
     findLatestRabiesObservationStarted: vi.fn().mockResolvedValue(null),
     updateRabiesObservationStatus: vi.fn().mockResolvedValue(undefined),
     updateStatusProjection: vi.fn().mockResolvedValue(undefined),
+    enqueueOutbox: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -194,6 +196,43 @@ describe("createDeathRecord", () => {
       baseInput.now,
       expect.anything(),
     );
+  });
+
+  // PO S4 (2026-09-26): a death from a notifiable disease is offered to the
+  // legal queue in the SAME transaction, with its author (the rule fires only
+  // for a matriculated vet or a lab-confirmed diagnosis) and its occurrence
+  // (the clock, PO S5). The rule — not the writer — decides whether a row is due.
+  it("offers a death with a disease to the ENO outbox, with its author and occurrence (S4)", async () => {
+    const repo = makeRepo();
+    await createDeathRecord(
+      {
+        ...baseInput,
+        cause: "disease",
+        diseaseCode: "rabies_confirmed",
+        confirmedByLab: true,
+        eventAuthorship: { authorRole: "vet", authorOrganizationId: null, authorVerified: true },
+      },
+      { repo, transaction: makeTransaction(), flushNotifications: vi.fn() },
+    );
+    expect(repo.enqueueOutbox).toHaveBeenCalledTimes(1);
+    const [, event, pet] = (repo.enqueueOutbox as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(event).toMatchObject({
+      eventType: "death_recorded",
+      petId,
+      occurredAt: baseInput.occurredAt,
+      author: { authorRole: "vet", authorVerified: true },
+    });
+    expect(pet).toMatchObject({ jurisdictionProvince: "Buenos Aires" });
+  });
+
+  it("a death with no disease offers nothing to the outbox", async () => {
+    const repo = makeRepo();
+    await createDeathRecord(baseInput, {
+      repo,
+      transaction: makeTransaction(),
+      flushNotifications: vi.fn(),
+    });
+    expect(repo.enqueueOutbox).not.toHaveBeenCalled();
   });
 
   it("skips all cascades when idempotency noop", async () => {

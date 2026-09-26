@@ -48,7 +48,13 @@ import { sql } from "drizzle-orm";
 
 import { eventNotificationOutbox } from "@/db/schema";
 import { resolveEnoTargetJurisdiction } from "./eno-target-jurisdiction";
-import { OUTBOX_RULES, type OutboxRule, type TargetPlace, enoCaseKey } from "./event-outbox-rules";
+import {
+  type EventAuthor,
+  OUTBOX_RULES,
+  type OutboxRule,
+  type TargetPlace,
+  enoCaseKey,
+} from "./event-outbox-rules";
 import { eventPlaceTarget } from "./event-place-target";
 
 // ---------------------------------------------------------------------------
@@ -71,6 +77,8 @@ type EventInput = {
    * Absent = the enqueue instant, the old behaviour.
    */
   occurredAt?: Date | null;
+  /** Who signed it (pet_events author_role / author_verified) — some rules require a vet. */
+  author?: EventAuthor;
 };
 
 // Column references for the ON CONFLICT clauses. Qualified by the table name,
@@ -154,7 +162,7 @@ export async function enqueueOutboxForEvent(
   const rules = OUTBOX_RULES[event.eventType as keyof typeof OUTBOX_RULES] ?? [];
 
   for (const rule of rules) {
-    const slaHours = rule.slaHours(event.payload);
+    const slaHours = rule.slaHours(event.payload, event.author);
     if (slaHours === null) continue;
 
     const slaDueAt = new Date(clockStart(rule, event, now).getTime() + slaHours * 60 * 60 * 1000);

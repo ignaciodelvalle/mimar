@@ -63,6 +63,7 @@ const deathMocks = vi.hoisted(() => ({
     findLatestRabiesObservationStarted: vi.fn(),
     updateRabiesObservationStatus: vi.fn(),
     updateStatusProjection: vi.fn(),
+    enqueueOutbox: vi.fn(),
   },
   findOpenCaseForPetAndKind: vi.fn(),
   lockPetForDeathRecord: vi.fn(),
