@@ -117,6 +117,7 @@
     "seed:panorama": "node --import ./scripts/register-server-only-stub.mjs --import tsx scripts/seed-panorama.ts",
     "seed:authority-units": "node --import ./scripts/register-server-only-stub.mjs --import tsx scripts/seed-authority-units.ts",
     "place:parity-sweep": "node --import ./scripts/register-server-only-stub.mjs --import tsx scripts/place-parity-sweep.ts",
+    "place:backfill-event-places": "node --import ./scripts/register-server-only-stub.mjs --import tsx scripts/place-backfill-event-places.ts",
     "redistribute:caba-barrios": "node --import ./scripts/register-server-only-stub.mjs --import tsx scripts/redistribute-caba-barrios.ts",
     "seed:pet-photos": "tsx scripts/seed-pet-photos.ts",
     "seed:demo-polish": "tsx scripts/seed-demo-polish.ts",
