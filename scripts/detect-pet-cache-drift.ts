@@ -34,12 +34,23 @@
  *        transfer, because that owner is named on the spine too. See
  *        lib/infra/rederive-pet-ownerships.ts → explainPetOwnerOwnerships.
  *
- * KNOWN GAP, logged rather than fixed here: foster and shelter_custody rows
- * still have no drift detection at all, and `owner` has only the necessary
- * condition above. Replaying them means modelling custody_transferred,
- * adoption_finalized, decomiso, free-claim and chip-match — a much larger
- * change. Until that exists, a harness replaying those roles would mark the
- * entire corpus as drifted, which is why the scope is explicit.
+ *   `kind: "pet_holder_ownership_drift"`       — `ownerships` rows of role
+ *        owner / co_owner / shelter_custody / foster vs the intervals REPLAYED
+ *        from the spine (audit K3/W8; lib/projections/pet-holders.ts maps each
+ *        event). Each mismatch carries its own kind: missing_row,
+ *        extra_active_row, extra_ended_row, wrong_role, wrong_started_at,
+ *        wrong_ended_at. The line carries `seedTag`, and the summary counts
+ *        seed-tagged pets apart (holderDriftOnSeededPets) so real drift is
+ *        not drowned; both still count for the exit code.
+ *   `kind: "pet_holder_ownership_seed_unexplained"` — the same check on a pet
+ *        whose `pets.seed_tag` is set, when EVERY mismatch is a row no event
+ *        explains (`seed_unexplained`). Reported, counted apart, and not drift
+ *        for the exit code: seed scripts write holder rows without events, and
+ *        counting them would drown the real findings.
+ *
+ * Run it with the react-server condition, like every other DB script: `@/db`
+ * imports `server-only`, which throws under plain tsx.
+ *   node --conditions=react-server --import tsx scripts/detect-pet-cache-drift.ts
  *
  * Output: one JSON line per drifted pet (grep/jq-friendly), then a summary line
  * on stderr. Exit code:
@@ -62,9 +73,11 @@ import { asc, eq, gt, sql } from "drizzle-orm";
 import { db, pets } from "@/db";
 import { driftedColumns, rederivePetCache } from "@/lib/infra/rederive-pet-cache";
 import {
+  type HolderMismatch,
   explainPetOwnerOwnerships,
   hasOwnershipDrift,
   rederivePetCaretakerOwnerships,
+  rederivePetHolderOwnerships,
 } from "@/lib/infra/rederive-pet-ownerships";
 
 type Args = {
@@ -125,11 +138,7 @@ async function checkPet(
  * so ops and CI keep a single definition of "drift" — the argument for the
  * sibling harness was never that it should be run separately.
  *
- * SCOPED TO caretaker. `owner` gets only the necessary condition in the third
- * section below, and foster / shelter_custody get nothing: replaying `owner`
- * means modelling custody_transferred, adoption_finalized, decomiso, free-claim
- * and chip-match, and until that exists a harness replaying it would mark the
- * whole corpus as drifted.
+ * SCOPED TO caretaker. The other holder roles are the fourth section below.
  *
  * Read-only, same as the column check, and under the same per-pet advisory lock
  * so a concurrent accept cannot interleave between the two reads.
@@ -151,6 +160,20 @@ async function checkPetOwners(pet: PetRef): Promise<string[]> {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${pet.id}))`);
     const report = await explainPetOwnerOwnerships(pet.id, tx as unknown as typeof db);
     return report.mismatches;
+  });
+}
+
+/**
+ * FOURTH SECTION — owner / co_owner / shelter_custody / foster rows against the
+ * full replay (K3/W8). Same lock, same read-only posture.
+ */
+type HolderCheck = { seedTag: string | null; mismatches: HolderMismatch[] };
+
+async function checkPetHolders(pet: PetRef): Promise<HolderCheck> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${pet.id}))`);
+    const report = await rederivePetHolderOwnerships(pet.id, tx as unknown as typeof db);
+    return { seedTag: report.seedTag, mismatches: report.mismatches };
   });
 }
 
@@ -183,6 +206,10 @@ async function main(): Promise<void> {
   let driftedPets = 0;
   let driftedOwnerships = 0;
   let driftedOwners = 0;
+  let driftedHolders = 0;
+  let seedOnlyHolders = 0;
+  let seededHolders = 0;
+  const holderKinds: Record<string, number> = {};
 
   const emit = (pet: PetRef, drift: Record<string, { stored: unknown; derived: unknown }>) => {
     driftedPets++;
@@ -226,6 +253,24 @@ async function main(): Promise<void> {
     );
   };
 
+  const emitHolders = (pet: PetRef, report: HolderCheck) => {
+    const { mismatches, seedTag } = report;
+    for (const m of mismatches) holderKinds[m.kind] = (holderKinds[m.kind] ?? 0) + 1;
+    const seedOnly = mismatches.every((m) => m.kind === "seed_unexplained");
+    if (seedOnly) seedOnlyHolders++;
+    else if (seedTag !== null) seededHolders++;
+    else driftedHolders++;
+    console.log(
+      JSON.stringify({
+        kind: seedOnly ? "pet_holder_ownership_seed_unexplained" : "pet_holder_ownership_drift",
+        petId: pet.id,
+        publicToken: pet.publicToken,
+        seedTag,
+        mismatches,
+      }),
+    );
+  };
+
   const checkOne = async (pet: PetRef) => {
     const drift = await checkPet(pet);
     if (Object.keys(drift).length > 0) emit(pet, drift);
@@ -233,6 +278,8 @@ async function main(): Promise<void> {
     if (ownershipMismatches.length > 0) emitOwnership(pet, ownershipMismatches);
     const ownerMismatches = await checkPetOwners(pet);
     if (ownerMismatches.length > 0) emitOwner(pet, ownerMismatches);
+    const holders = await checkPetHolders(pet);
+    if (holders.mismatches.length > 0) emitHolders(pet, holders);
   };
 
   if (args.publicToken) {
@@ -257,11 +304,11 @@ async function main(): Promise<void> {
     }
   }
 
-  const total = driftedPets + driftedOwnerships + driftedOwners;
+  const total = driftedPets + driftedOwnerships + driftedOwners + driftedHolders + seededHolders;
   const verdict =
     total > 0 ? " — DRIFT DETECTED (read-only; repair is a human decision)" : " — clean";
   log(
-    `[detect-pet-cache-drift] done — scanned=${scanned} columnDrift=${driftedPets} caretakerOwnershipDrift=${driftedOwnerships} ownerOwnershipDrift=${driftedOwners}${verdict}`,
+    `[detect-pet-cache-drift] done — scanned=${scanned} columnDrift=${driftedPets} caretakerOwnershipDrift=${driftedOwnerships} ownerOwnershipDrift=${driftedOwners} holderOwnershipDrift=${driftedHolders} holderDriftOnSeededPets=${seededHolders} holderSeedUnexplained=${seedOnlyHolders} holderKinds=${JSON.stringify(holderKinds)}${verdict}`,
   );
 
   process.exit(total > 0 ? 1 : 0);

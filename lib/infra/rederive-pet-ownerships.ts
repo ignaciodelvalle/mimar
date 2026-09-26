@@ -18,12 +18,10 @@
 // What is covered here: `role='caretaker'` rows, against
 // `caretaker_designated` / `caretaker_ended`.
 //
-// What is NOT, and is logged as a finding for the integrity plan rather than
-// half-fixed: every other ownership role. Replaying `owner` alone means
-// modelling custody_transferred, adoption_finalized, decomiso, free-claim and
-// chip-match — a much larger change that this one must not absorb silently. A
-// pet's `owner` row today has no derivation behind it, so a harness that
-// reported on it would mark the entire corpus as drifted.
+// The other four roles (owner, co_owner, shelter_custody, foster) now have their
+// own full replay at the bottom of this file (`rederivePetHolderOwnerships`,
+// audit K3/W8). The two sections below it are kept: the owner necessary
+// condition is cheap and replay-free, and the caretaker replay keys on grants.
 //
 // OWNER, PARTIALLY (finding A09-5, 2026-09-22): `explainPetOwnerOwnerships`
 // below checks a NECESSARY condition that needs no replay — every `owner` row's
@@ -48,8 +46,17 @@
 
 import { and, asc, eq, inArray } from "drizzle-orm";
 
-import { db, ownerships, petEvents } from "@/db";
+import { db, ownerships, petEvents, pets } from "@/db";
 import { type CaretakerInterval, replayPetCaretakers } from "@/lib/projections/pet-caretaker";
+import {
+  HOLDER_EVENT_TYPES,
+  HOLDER_ROLES,
+  type HolderEvent,
+  type HolderInterval,
+  orgSubject,
+  replayPetHolders,
+  userSubject,
+} from "@/lib/projections/pet-holders";
 import type { ProjectionEvent } from "@/lib/projections/types";
 
 /** One `ownerships` row as the harness compares it. */
@@ -318,4 +325,219 @@ export async function explainPetOwnerOwnerships(
     .where(eq(petEvents.petId, petId));
 
   return { petId, mismatches: unexplainedOwnerRows(rows, events) };
+}
+
+// ---------------------------------------------------------------------------
+// OWNER / CO_OWNER / SHELTER_CUSTODY / FOSTER rows — the full replay (K3/W8)
+// ---------------------------------------------------------------------------
+//
+// The necessary condition above cannot see a transfer that forgot to END the
+// previous holder, a foster row nobody closed, or an org custody row with the
+// wrong ended_at. This replays every holder interval from the spine
+// (lib/projections/pet-holders.ts, which documents the event → interval map)
+// and compares it with the rows. DETECT ONLY: nothing here repairs, because a
+// row that disagrees with the log can mean the row is wrong OR the log is
+// incomplete, and only a human can tell which.
+//
+// SEED DATA. Seed scripts insert holder rows with no event behind them (the
+// K3 audit found such shelter_custody rows only on seeded pets). A row with no
+// explaining event on a pet whose `pets.seed_tag` is set is reported as
+// `seed_unexplained`, not as an extra row, so real drift is not drowned. The
+// marker is the column, never a token prefix or a count.
+
+export type HolderMismatchKind =
+  /** The spine opened an interval and no row carries it. */
+  | "missing_row"
+  /** A live row the spine does not explain: somebody holds a role nothing granted. */
+  | "extra_active_row"
+  /** An ended row the spine does not explain. */
+  | "extra_ended_row"
+  /** A row whose subject and start match an interval of a different role. */
+  | "wrong_role"
+  /** Matched row, but started_at disagrees with the opening event. */
+  | "wrong_started_at"
+  /** Matched row, but ended_at disagrees with the spine (open vs closed, or when). */
+  | "wrong_ended_at"
+  /** A row nothing explains on a seed-tagged pet. */
+  | "seed_unexplained";
+
+export type HolderMismatch = {
+  kind: HolderMismatchKind;
+  role: string;
+  /** `user:<uuid>` or `org:<uuid>`. */
+  subject: string;
+  ownershipId: string | null;
+  detail: string;
+};
+
+/** One non-caretaker `ownerships` row as the holder comparison sees it. */
+export type StoredHolderRow = {
+  id: string;
+  role: string;
+  ownerUserId: string | null;
+  ownerOrganizationId: string | null;
+  startedAt: Date;
+  endedAt: Date | null;
+};
+
+export type RederivePetHoldersReport = {
+  petId: string;
+  seedTag: string | null;
+  derived: HolderInterval[];
+  stored: StoredHolderRow[];
+  /** Empty means every holder row agrees with the spine. */
+  mismatches: HolderMismatch[];
+};
+
+function rowSubject(row: StoredHolderRow): string {
+  if (row.ownerOrganizationId) return orgSubject(row.ownerOrganizationId);
+  return row.ownerUserId ? userSubject(row.ownerUserId) : "none";
+}
+
+function rowState(row: StoredHolderRow): string {
+  return row.endedAt === null ? "live" : `ended ${iso(row.endedAt)}`;
+}
+
+function endsAgree(stored: Date | null, derived: Date | null): boolean {
+  if (stored === null || derived === null) return stored === derived;
+  return sameInstant(stored, derived);
+}
+
+/**
+ * Pure comparison. Pairing, in order:
+ *   1. same role and subject, start within tolerance (the normal case);
+ *   2. same role and subject, in start order (a row whose start drifted);
+ *   3. same subject and start, different role: `wrong_role`.
+ * Whatever is left is a missing row (derived) or an unexplained one (stored).
+ */
+export function compareHolderIntervals(
+  derived: HolderInterval[],
+  stored: StoredHolderRow[],
+  opts: { seeded: boolean },
+): HolderMismatch[] {
+  const mismatches: HolderMismatch[] = [];
+  const freeDerived = new Set(derived);
+  const freeStored = new Set(stored);
+
+  const pair = (d: HolderInterval, s: StoredHolderRow) => {
+    freeDerived.delete(d);
+    freeStored.delete(s);
+    if (!sameInstant(s.startedAt, d.startedAt)) {
+      mismatches.push({
+        kind: "wrong_started_at",
+        role: s.role,
+        subject: d.subject,
+        ownershipId: s.id,
+        detail: `ownership ${s.id}: started_at ${iso(s.startedAt)} but ${d.openedByEventType} (${d.openedByEventId}) opened it at ${iso(d.startedAt)}`,
+      });
+    }
+    if (!endsAgree(s.endedAt, d.endedAt)) {
+      mismatches.push({
+        kind: "wrong_ended_at",
+        role: s.role,
+        subject: d.subject,
+        ownershipId: s.id,
+        detail: `ownership ${s.id}: ${s.role} row is ${rowState(s)} but the spine says ${
+          d.endedAt === null ? "it is still live" : `it ended ${iso(d.endedAt)}`
+        }`,
+      });
+    }
+  };
+
+  for (const d of derived) {
+    const s = [...freeStored].find(
+      (r) =>
+        r.role === d.role && rowSubject(r) === d.subject && sameInstant(r.startedAt, d.startedAt),
+    );
+    if (s) pair(d, s);
+  }
+  for (const d of [...freeDerived]) {
+    const s = [...freeStored].find((r) => r.role === d.role && rowSubject(r) === d.subject);
+    if (s) pair(d, s);
+  }
+  for (const d of [...freeDerived]) {
+    const s = [...freeStored].find(
+      (r) => rowSubject(r) === d.subject && sameInstant(r.startedAt, d.startedAt),
+    );
+    if (!s) continue;
+    freeDerived.delete(d);
+    freeStored.delete(s);
+    mismatches.push({
+      kind: "wrong_role",
+      role: s.role,
+      subject: d.subject,
+      ownershipId: s.id,
+      detail: `ownership ${s.id}: row says ${s.role} but ${d.openedByEventType} (${d.openedByEventId}) opened ${d.role}`,
+    });
+  }
+
+  for (const d of freeDerived) {
+    mismatches.push({
+      kind: "missing_row",
+      role: d.role,
+      subject: d.subject,
+      ownershipId: null,
+      detail: `${d.openedByEventType} (${d.openedByEventId}) opened ${d.role} for ${d.subject} at ${iso(d.startedAt)} and no ownership row carries it`,
+    });
+  }
+  for (const s of freeStored) {
+    let kind: HolderMismatchKind = s.endedAt === null ? "extra_active_row" : "extra_ended_row";
+    if (opts.seeded) kind = "seed_unexplained";
+    mismatches.push({
+      kind,
+      role: s.role,
+      subject: rowSubject(s),
+      ownershipId: s.id,
+      detail: `ownership ${s.id}: ${rowState(s)} ${s.role} row for ${rowSubject(s)} and no event on the spine opens it`,
+    });
+  }
+  return mismatches;
+}
+
+export async function rederivePetHolderOwnerships(
+  petId: string,
+  client: DbOrTx = db,
+): Promise<RederivePetHoldersReport> {
+  const [pet] = await client
+    .select({ seedTag: pets.seedTag })
+    .from(pets)
+    .where(eq(pets.id, petId))
+    .limit(1);
+  const seedTag = pet?.seedTag ?? null;
+
+  const events: HolderEvent[] = await client
+    .select({
+      id: petEvents.id,
+      eventType: petEvents.eventType,
+      occurredAt: petEvents.occurredAt,
+      recordedAt: petEvents.recordedAt,
+      payload: petEvents.payload,
+      recordedByUserId: petEvents.recordedByUserId,
+      authorOrganizationId: petEvents.authorOrganizationId,
+      authorRole: petEvents.authorRole,
+    })
+    .from(petEvents)
+    .where(and(eq(petEvents.petId, petId), inArray(petEvents.eventType, [...HOLDER_EVENT_TYPES])));
+
+  const stored: StoredHolderRow[] = await client
+    .select({
+      id: ownerships.id,
+      role: ownerships.role,
+      ownerUserId: ownerships.ownerUserId,
+      ownerOrganizationId: ownerships.ownerOrganizationId,
+      startedAt: ownerships.startedAt,
+      endedAt: ownerships.endedAt,
+    })
+    .from(ownerships)
+    .where(and(eq(ownerships.petId, petId), inArray(ownerships.role, [...HOLDER_ROLES])))
+    .orderBy(asc(ownerships.startedAt), asc(ownerships.id));
+
+  const derived = replayPetHolders(events);
+  return {
+    petId,
+    seedTag,
+    derived,
+    stored,
+    mismatches: compareHolderIntervals(derived, stored, { seeded: seedTag !== null }),
+  };
 }

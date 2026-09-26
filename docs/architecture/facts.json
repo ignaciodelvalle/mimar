@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-09-26",
-  "sha": "0425fadb9",
+  "sha": "ec1480725",
   "facts": {
     "event_types": {
       "value": 55,
@@ -88,7 +88,7 @@
       "method": "files ending in `.yml` under `.github/workflows/`. There are no `.yaml` files at this snapshot; if one is added it will not be counted until this method changes."
     },
     "vitest_files": {
-      "value": 1759,
+      "value": 1760,
       "source": "vitest.config.ts -> __tests__/db-reachability.ts",
       "method": "discoverTestFiles().length, imported from the SAME module `vitest.config.ts` feeds into its `include` globs via computeTestPartition(). It walks the repo for /\\.test\\.tsx?$/ skipping node_modules, .next, .git, .claude, apps and e2e — so this is exactly the file set Vitest runs, not an independent glob that could drift from it."
     },
@@ -148,7 +148,7 @@
       "method": "EVENT_ATTACHMENT_URL_TTL_SECONDS and WELFARE_ATTACHMENT_URL_TTL_SECONDS read by regex — neither is exported, so neither can be imported. The generator asserts the two agree and refuses to emit a single number if they ever diverge."
     },
     "projections": {
-      "value": 13,
+      "value": 14,
       "source": "lib/projections/",
       "method": "non-test `.ts` files under `lib/projections/`, excluding the shared `types.ts`. A FILE count, and the only key here that is not backed by either an import or a declaration site: there is no projection registry to import — `scripts/rebuild-projections.ts` names each replay function individually — so adding a projection module without wiring it into the rebuilder would still move this number."
     },

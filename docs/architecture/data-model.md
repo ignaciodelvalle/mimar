@@ -186,7 +186,7 @@ is wrong today.
 
 ## 4. Projections
 
-`lib/projections` holds <!-- fact:projections -->13<!-- /fact --> pure replay
+`lib/projections` holds <!-- fact:projections -->14<!-- /fact --> pure replay
 modules — no database, no framework, one `ProjectionEvent` shape
 (`lib/projections/types.ts`) that deliberately omits the columns a projector
 must not read.
@@ -202,6 +202,7 @@ must not read.
 | `lib/projections/pet-jurisdiction.ts` | `pet_registered` and `movement_recorded` with `sub_kind=jurisdiction_changed`, raw |
 | `lib/projections/pet-adoption-eligibility.ts` | `adoption_eligibility_set`, latest-wins |
 | `lib/projections/pet-caretaker.ts` | `caretaker_designated` / `caretaker_ended` |
+| `lib/projections/pet-holders.ts` | owner / co_owner / shelter_custody / foster intervals from registration, intake, foster, adoption, transfer, claim and rehome events; reads authorship because the author IS the holder for several of them |
 | `lib/projections/pet-compliance.ts` | compliance state for the credential badges |
 | `lib/projections/travel-compliance.ts` | cross-border travel readiness |
 | `lib/projections/first-steps-checklist.ts` | onboarding checklist state |
@@ -211,7 +212,9 @@ Only the ones the cache harness imports — status, weight, microchip, tattoo,
 pregnancy, rabies observation, jurisdiction and adoption eligibility
 (`lib/infra/rederive-pet-cache.ts:83-93`) — feed the drift comparison. The rest
 are read-side projections with no cached twin, which is why the drift detector
-never mentions them.
+never mentions them. The two exceptions are `pet-caretaker` and `pet-holders`:
+they feed the ownership-row comparison in `lib/infra/rederive-pet-ownerships.ts`,
+not the column harness.
 
 ---
 
