@@ -63,6 +63,14 @@ export async function GET(request: Request) {
   // Folded detail cell → department code (WARNING 3: match member localities by
   // CODE, not the ambiguous department name). Absent for province / CABA cells.
   const departmentCode = url.searchParams.get("departmentCode") ?? undefined;
+  // The clicked cell's catalogue row (localidades-por-id D6, additive): read
+  // only on the id path; anything that is not a uuid is ignored.
+  const localityIdRaw = url.searchParams.get("localityId");
+  const localityId =
+    localityIdRaw &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(localityIdRaw)
+      ? localityIdRaw
+      : null;
   // Mirror the cobertura map's "solo firmado" numerator narrowing in the k-anon
   // guard (WARNING 2) — same ?verified=1 param the layer fetch + board URL use.
   const verifiedOnly = url.searchParams.get("verified") === "1";
@@ -119,6 +127,7 @@ export async function GET(request: Request) {
         province,
         locality: locality ?? null,
         departmentCode: departmentCode ?? null,
+        localityId,
         verifiedOnly,
         since,
         until: asOf ?? until,

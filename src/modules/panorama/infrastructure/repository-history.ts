@@ -32,6 +32,12 @@ import type { DashboardActor, DashboardJurisdiction } from "@/lib/metrics";
 import { ANONYMITY_K } from "@/lib/metrics/anonymity";
 import { findDisease } from "@/lib/reference/diseases";
 
+import {
+  type AttributionMode,
+  SIN_LOCALIDAD,
+  eventPlaceLocalityIdSql,
+  panoramaAttributionMode,
+} from "./place-attribution";
 import { type ChoroplethMetric, metricPredicate } from "./repository-choropleth";
 import {
   biteIncidentLocalitySql,
@@ -113,6 +119,14 @@ export type LoadUnitHistoryParams = {
    * is never pulled into the guard set (WARNING 3). Null for CABA barrios / cells
    * that resolved no department (they match by the direct locality-name arm). */
   departmentCode?: string | null;
+  /**
+   * The clicked cell's catalogue row (localidades-por-id D6; additive — a
+   * client that sends none keeps the department/name resolution). Read only
+   * on the id path (`panorama` flag or `mode`).
+   */
+  localityId?: string | null;
+  /** The attribution path; defaults to the `panorama` flag. */
+  mode?: AttributionMode;
   /** task #78 Part 3: mirror the cobertura map's "solo firmado" numerator narrowing
    * in the k-anon guard so it suppresses the SAME cells the map does (WARNING 2). */
   verifiedOnly?: boolean;
@@ -149,6 +163,7 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
     province,
     locality,
     departmentCode = null,
+    localityId: clickedLocalityId = null,
     verifiedOnly = false,
     since,
     until,
@@ -177,6 +192,8 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
     }
   }
 
+  const mode = params.mode ?? (await panoramaAttributionMode());
+
   const EVENT_LIMIT = 20;
   // k-anon threshold (mirrors suppressSmallCells k=5 used by the per-unit loaders).
   // Was a local `= 5` literal. Two different fives in one file, one of them
@@ -200,12 +217,18 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
   // Uses `province`/`locality` from the enclosing closure — only ever built under
   // `if (locality)`, where the label is non-null.
   // ---------------------------------------------------------------------------
-  function unitLocalityFilter(localityCol: SQL): SQL {
+  function unitLocalityFilter(localityCol: SQL, localityIdCol?: SQL): SQL {
     // PROVINCE-grain request (#40b): there is no locality to narrow to, so the
     // unit IS the province and the filter is a no-op. This is what lets the k-anon
     // guard below run the SAME per-layer counts at either grain instead of
     // duplicating eleven query branches.
     if (!locality) return sql`TRUE`;
+    // THE ID PATH (localidades-por-id D6): the map grouped rows by catalogue
+    // row, so the click resolves the same way — never by the ambiguous name.
+    if (mode === "id" && localityIdCol) {
+      const byId = idPathUnitFilter(localityIdCol);
+      if (byId) return byId;
+    }
     // Department drill (code present): match EXACTLY the member localities the fold
     // counted — pets whose (province, locality) join ar_localities under this
     // department CODE (the fold's MIN(department_code) group key). NO direct-label
@@ -237,6 +260,21 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
           AND ${sql`al.locality_name_norm`} = ${normNameSql(localityCol)}
       )
     )`;
+  }
+
+  /** The id-path unit of a click, or null to fall back to the name rules. */
+  function idPathUnitFilter(localityIdCol: SQL): SQL | null {
+    if (clickedLocalityId) return sql`${localityIdCol} = ${clickedLocalityId}::uuid`;
+    if (departmentCode) {
+      return sql`EXISTS (
+        SELECT 1 FROM ar_localities al
+        WHERE al.id = ${localityIdCol}
+          AND al.department_code = ${departmentCode}
+      )`;
+    }
+    // The per-province "Sin localidad" cell: the rows whose place never resolved.
+    if (locality === SIN_LOCALIDAD) return sql`${localityIdCol} IS NULL`;
+    return null;
   }
 
   // ---------------------------------------------------------------------------
@@ -279,7 +317,7 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
           gte(petEvents.occurredAt, since),
           lte(petEvents.occurredAt, until),
           sql`${pets.jurisdictionProvince} = ${province}`,
-          unitLocalityFilter(sql`${pets.jurisdictionLocality}`),
+          unitLocalityFilter(sql`${pets.jurisdictionLocality}`, sql`${pets.localityId}`),
         ];
         if (scope) conditions.push(sql`(${scope})`);
         const [row] = await db
@@ -298,7 +336,7 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
           lte(petEvents.occurredAt, until),
           // Where the bite OCCURRED — the same unit the map counts it in.
           sql`${biteIncidentProvinceSql()} = ${province}`,
-          unitLocalityFilter(biteIncidentLocalitySql()),
+          unitLocalityFilter(biteIncidentLocalitySql(), eventPlaceLocalityIdSql()),
         ];
         if (scope) conditions.push(sql`(${scope})`);
         const [row] = await db
@@ -316,7 +354,10 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
           lte(welfareReports.createdAt, until),
           sql`(${welfareReports.flaggedAt} IS NULL OR ${welfareReports.moderationResolvedAt} IS NOT NULL)`,
           sql`${welfareReports.jurisdictionProvince} = ${province}`,
-          unitLocalityFilter(sql`${welfareReports.jurisdictionLocality}`),
+          unitLocalityFilter(
+            sql`${welfareReports.jurisdictionLocality}`,
+            sql`${welfareReports.localityId}`,
+          ),
         ];
         if (scope) conditions.push(sql`(${scope})`);
         const [row] = await db
@@ -336,7 +377,10 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
           // signal time (pet_jurisdiction_*, the ONLY event that legitimately does
           // — see petEventsScopeClause jsdoc); it never writes flat province/locality.
           sql`(${petEvents.payload}->>'pet_jurisdiction_province') = ${province}`,
-          unitLocalityFilter(sql`(${petEvents.payload}->>'pet_jurisdiction_locality')`),
+          unitLocalityFilter(
+            sql`(${petEvents.payload}->>'pet_jurisdiction_locality')`,
+            eventPlaceLocalityIdSql(),
+          ),
         ];
         if (scope) conditions.push(sql`(${scope})`);
         const [row] = await db
@@ -381,7 +425,7 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
         const conditions: SQL[] = [
           metricPredicate("rabies-coverage", verifiedOnly),
           sql`${pets.jurisdictionProvince} = ${province}`,
-          unitLocalityFilter(sql`${pets.jurisdictionLocality}`),
+          unitLocalityFilter(sql`${pets.jurisdictionLocality}`, sql`${pets.localityId}`),
         ];
         if (scope) conditions.push(sql`(${scope})`);
         // countDistinct(pet): the choropleth counts DISTINCT PETS, so one dog with
@@ -408,7 +452,7 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
         const conditions: SQL[] = [
           metricPredicate("mortality"),
           sql`${pets.jurisdictionProvince} = ${province}`,
-          unitLocalityFilter(sql`${pets.jurisdictionLocality}`),
+          unitLocalityFilter(sql`${pets.jurisdictionLocality}`, sql`${pets.localityId}`),
         ];
         if (scope) conditions.push(sql`(${scope})`);
         const [row] = await db
@@ -427,7 +471,7 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
           gte(petEvents.occurredAt, since),
           lte(petEvents.occurredAt, until),
           sql`${pets.jurisdictionProvince} = ${province}`,
-          unitLocalityFilter(sql`${pets.jurisdictionLocality}`),
+          unitLocalityFilter(sql`${pets.jurisdictionLocality}`, sql`${pets.localityId}`),
         ];
         if (scope) conditions.push(sql`(${scope})`);
         const [row] = await db
@@ -456,7 +500,7 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
         const conditions: SQL[] = [
           metricPredicate(metric),
           sql`${pets.jurisdictionProvince} = ${province}`,
-          unitLocalityFilter(sql`${pets.jurisdictionLocality}`),
+          unitLocalityFilter(sql`${pets.jurisdictionLocality}`, sql`${pets.localityId}`),
         ];
         if (scope) conditions.push(sql`(${scope})`);
         const [row] = await db
@@ -492,22 +536,34 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
         sql`(${petEvents.payload}->>'pet_jurisdiction_province') = ${province}`,
       ];
       if (locality)
-        filters.push(unitLocalityFilter(sql`(${petEvents.payload}->>'pet_jurisdiction_locality')`));
+        filters.push(
+          unitLocalityFilter(
+            sql`(${petEvents.payload}->>'pet_jurisdiction_locality')`,
+            eventPlaceLocalityIdSql(),
+          ),
+        );
       return filters;
     }
 
     // Build province+locality filter for jurisdiction-column based tables
     // (welfare_reports, cases).
-    function columnJurisdictionFilter(provinceCol: SQL, localityCol: SQL): SQL[] {
+    function columnJurisdictionFilter(
+      provinceCol: SQL,
+      localityCol: SQL,
+      localityIdCol?: SQL,
+    ): SQL[] {
       const filters: SQL[] = [sql`${provinceCol} = ${province}`];
-      if (locality) filters.push(unitLocalityFilter(localityCol));
+      if (locality) filters.push(unitLocalityFilter(localityCol, localityIdCol));
       return filters;
     }
 
     // Build province+locality filter for the pets table.
     function petsJurisdictionFilter(): SQL[] {
       const filters: SQL[] = [sql`${pets.jurisdictionProvince} = ${province}`];
-      if (locality) filters.push(unitLocalityFilter(sql`${pets.jurisdictionLocality}`));
+      if (locality)
+        filters.push(
+          unitLocalityFilter(sql`${pets.jurisdictionLocality}`, sql`${pets.localityId}`),
+        );
       return filters;
     }
 
@@ -515,7 +571,8 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
     // repository-scope.ts) — the same attribution the map layer counts with.
     function biteUnitFilter(): SQL[] {
       const filters: SQL[] = [sql`${biteIncidentProvinceSql()} = ${province}`];
-      if (locality) filters.push(unitLocalityFilter(biteIncidentLocalitySql()));
+      if (locality)
+        filters.push(unitLocalityFilter(biteIncidentLocalitySql(), eventPlaceLocalityIdSql()));
       return filters;
     }
 
@@ -585,6 +642,7 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
           ...columnJurisdictionFilter(
             sql`${welfareReports.jurisdictionProvince}`,
             sql`${welfareReports.jurisdictionLocality}`,
+            sql`${welfareReports.localityId}`,
           ),
         ];
         if (scope) conditions.push(sql`(${scope})`);
@@ -644,6 +702,7 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
           ...columnJurisdictionFilter(
             sql`${cases.jurisdictionProvince}`,
             sql`${cases.jurisdictionLocality}`,
+            sql`${cases.localityId}`,
           ),
         ];
         if (scope) conditions.push(sql`(${scope})`);
@@ -802,19 +861,31 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
         sql`(${petEvents.payload}->>'pet_jurisdiction_province') = ${province}`,
       ];
       if (locality)
-        filters.push(unitLocalityFilter(sql`(${petEvents.payload}->>'pet_jurisdiction_locality')`));
+        filters.push(
+          unitLocalityFilter(
+            sql`(${petEvents.payload}->>'pet_jurisdiction_locality')`,
+            eventPlaceLocalityIdSql(),
+          ),
+        );
       return filters;
     }
 
-    function columnJurisdictionFilter(provinceCol: SQL, localityCol: SQL): SQL[] {
+    function columnJurisdictionFilter(
+      provinceCol: SQL,
+      localityCol: SQL,
+      localityIdCol?: SQL,
+    ): SQL[] {
       const filters: SQL[] = [sql`${provinceCol} = ${province}`];
-      if (locality) filters.push(unitLocalityFilter(localityCol));
+      if (locality) filters.push(unitLocalityFilter(localityCol, localityIdCol));
       return filters;
     }
 
     function petsJurisdictionFilter(): SQL[] {
       const filters: SQL[] = [sql`${pets.jurisdictionProvince} = ${province}`];
-      if (locality) filters.push(unitLocalityFilter(sql`${pets.jurisdictionLocality}`));
+      if (locality)
+        filters.push(
+          unitLocalityFilter(sql`${pets.jurisdictionLocality}`, sql`${pets.localityId}`),
+        );
       return filters;
     }
 
@@ -822,7 +893,8 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
     // repository-scope.ts) — the same attribution the map layer counts with.
     function biteUnitFilter(): SQL[] {
       const filters: SQL[] = [sql`${biteIncidentProvinceSql()} = ${province}`];
-      if (locality) filters.push(unitLocalityFilter(biteIncidentLocalitySql()));
+      if (locality)
+        filters.push(unitLocalityFilter(biteIncidentLocalitySql(), eventPlaceLocalityIdSql()));
       return filters;
     }
 
@@ -876,6 +948,7 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
           ...columnJurisdictionFilter(
             sql`${welfareReports.jurisdictionProvince}`,
             sql`${welfareReports.jurisdictionLocality}`,
+            sql`${welfareReports.localityId}`,
           ),
         ];
         if (scope) conditions.push(sql`(${scope})`);
@@ -917,6 +990,7 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
           ...columnJurisdictionFilter(
             sql`${cases.jurisdictionProvince}`,
             sql`${cases.jurisdictionLocality}`,
+            sql`${cases.localityId}`,
           ),
         ];
         if (scope) conditions.push(sql`(${scope})`);
@@ -1044,19 +1118,31 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
         sql`(${petEvents.payload}->>'pet_jurisdiction_province') = ${province}`,
       ];
       if (locality)
-        filters.push(unitLocalityFilter(sql`(${petEvents.payload}->>'pet_jurisdiction_locality')`));
+        filters.push(
+          unitLocalityFilter(
+            sql`(${petEvents.payload}->>'pet_jurisdiction_locality')`,
+            eventPlaceLocalityIdSql(),
+          ),
+        );
       return filters;
     }
 
-    function columnJurisdictionFilter(provinceCol: SQL, localityCol: SQL): SQL[] {
+    function columnJurisdictionFilter(
+      provinceCol: SQL,
+      localityCol: SQL,
+      localityIdCol?: SQL,
+    ): SQL[] {
       const filters: SQL[] = [sql`${provinceCol} = ${province}`];
-      if (locality) filters.push(unitLocalityFilter(localityCol));
+      if (locality) filters.push(unitLocalityFilter(localityCol, localityIdCol));
       return filters;
     }
 
     function petsJurisdictionFilter(): SQL[] {
       const filters: SQL[] = [sql`${pets.jurisdictionProvince} = ${province}`];
-      if (locality) filters.push(unitLocalityFilter(sql`${pets.jurisdictionLocality}`));
+      if (locality)
+        filters.push(
+          unitLocalityFilter(sql`${pets.jurisdictionLocality}`, sql`${pets.localityId}`),
+        );
       return filters;
     }
 
@@ -1064,7 +1150,8 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
     // repository-scope.ts) — the same attribution the map layer counts with.
     function biteUnitFilter(): SQL[] {
       const filters: SQL[] = [sql`${biteIncidentProvinceSql()} = ${province}`];
-      if (locality) filters.push(unitLocalityFilter(biteIncidentLocalitySql()));
+      if (locality)
+        filters.push(unitLocalityFilter(biteIncidentLocalitySql(), eventPlaceLocalityIdSql()));
       return filters;
     }
 
@@ -1141,6 +1228,7 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
           ...columnJurisdictionFilter(
             sql`${welfareReports.jurisdictionProvince}`,
             sql`${welfareReports.jurisdictionLocality}`,
+            sql`${welfareReports.localityId}`,
           ),
         ];
         if (scope) conditions.push(sql`(${scope})`);
@@ -1181,6 +1269,7 @@ export async function loadUnitHistory(params: LoadUnitHistoryParams): Promise<Un
           ...columnJurisdictionFilter(
             sql`${cases.jurisdictionProvince}`,
             sql`${cases.jurisdictionLocality}`,
+            sql`${cases.localityId}`,
           ),
         ];
         if (scope) conditions.push(sql`(${scope})`);

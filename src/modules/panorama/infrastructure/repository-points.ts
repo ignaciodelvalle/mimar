@@ -19,6 +19,7 @@ import type {
 } from "@/src/modules/panorama/application/build-features";
 import type { TimeBasis } from "@/src/modules/panorama/domain/time-scrub";
 
+import { localityCentroidSql, panoramaAttributionMode, pointCentroid } from "./place-attribution";
 import {
   type LayerRows,
   PER_LAYER_CAP,
@@ -26,9 +27,7 @@ import {
   eventWindowCol,
   jurisdictionColumnsScope,
   mordedurasEventPredicate,
-  normNameSql,
   petEventsScope,
-  provinceIsoMapSql,
 } from "./repository-scope";
 
 // ---------------------------------------------------------------------------
@@ -149,18 +148,16 @@ export async function loadDenunciaCentroids(
   // INDEC (province, name) pair is ambiguous, which would over-plot a report.
   // The subquery yields exactly ONE centroid per report (deterministic via MIN).
   // The exact welfare_reports.location_lat/lng is NEVER selected.
-  const centroidLat = sql<string | null>`(
-    SELECT MIN(al.latitude) FROM ar_localities al
-    WHERE al.province_code = ${provinceIsoMapSql(sql`${welfareReports.jurisdictionProvince}`)}
-      AND ${sql`al.locality_name_norm`} = ${normNameSql(sql`${welfareReports.jurisdictionLocality}`)}
-      AND al.removed_at IS NULL
-  )`;
-  const centroidLng = sql<string | null>`(
-    SELECT MIN(al.longitude) FROM ar_localities al
-    WHERE al.province_code = ${provinceIsoMapSql(sql`${welfareReports.jurisdictionProvince}`)}
-      AND ${sql`al.locality_name_norm`} = ${normNameSql(sql`${welfareReports.jurisdictionLocality}`)}
-      AND al.removed_at IS NULL
-  )`;
+  // localidades-por-id D6 (flag `panorama`): by the report's own catalogue
+  // row on the id path, by the (province, name) MIN on the name path.
+  const mode = await panoramaAttributionMode();
+  const place = {
+    province: sql`${welfareReports.jurisdictionProvince}`,
+    locality: sql`${welfareReports.jurisdictionLocality}`,
+    localityId: sql`${welfareReports.localityId}`,
+  };
+  const centroidLat = localityCentroidSql(mode, "latitude", place);
+  const centroidLng = localityCentroidSql(mode, "longitude", place);
 
   const rows = await db
     .select({
@@ -181,11 +178,15 @@ export async function loadDenunciaCentroids(
     // build-features transform also drops null-geometry, but filter early so the
     // count reflects plottable reports).
     rows: rows
-      .filter((r) => r.reportLat !== null && r.reportLng !== null)
       .map((r) => ({
+        r,
+        at: pointCentroid(mode, { province: r.province, lat: r.reportLat, lng: r.reportLng }),
+      }))
+      .filter(({ at }) => at.lat !== null && at.lng !== null)
+      .map(({ r, at }) => ({
         // Snapped centroid only — never the exact report coordinate.
-        centroidLat: r.reportLat,
-        centroidLng: r.reportLng,
+        centroidLat: at.lat,
+        centroidLng: at.lng,
         province: r.province,
         locality: r.locality,
         severity: r.severity,
@@ -385,24 +386,22 @@ export async function loadDecomisos(
   if (scope) conditions.push(sql`(${scope})`);
 
   // One centroid per case (scalar MIN subqueries), same pattern as denuncias.
-  const centroidLat = sql<string | null>`(
-    SELECT MIN(al.latitude) FROM ar_localities al
-    WHERE al.province_code = ${provinceIsoMapSql(sql`${cases.jurisdictionProvince}`)}
-      AND ${sql`al.locality_name_norm`} = ${normNameSql(sql`${cases.jurisdictionLocality}`)}
-      AND al.removed_at IS NULL
-  )`;
-  const centroidLng = sql<string | null>`(
-    SELECT MIN(al.longitude) FROM ar_localities al
-    WHERE al.province_code = ${provinceIsoMapSql(sql`${cases.jurisdictionProvince}`)}
-      AND ${sql`al.locality_name_norm`} = ${normNameSql(sql`${cases.jurisdictionLocality}`)}
-      AND al.removed_at IS NULL
-  )`;
+  // localidades-por-id D6: same attribution rule as the denuncia points.
+  const mode = await panoramaAttributionMode();
+  const place = {
+    province: sql`${cases.jurisdictionProvince}`,
+    locality: sql`${cases.jurisdictionLocality}`,
+    localityId: sql`${cases.localityId}`,
+  };
+  const centroidLat = localityCentroidSql(mode, "latitude", place);
+  const centroidLng = localityCentroidSql(mode, "longitude", place);
 
   const rows = await db
     .select({
       id: cases.id,
       publicCode: cases.publicCode,
       status: cases.status,
+      province: cases.jurisdictionProvince,
       centroidLat,
       centroidLng,
       openedAt: cases.openedAt,
@@ -413,13 +412,17 @@ export async function loadDecomisos(
 
   return {
     rows: rows
-      .filter((r) => r.centroidLat !== null && r.centroidLng !== null)
       .map((r) => ({
+        r,
+        at: pointCentroid(mode, { province: r.province, lat: r.centroidLat, lng: r.centroidLng }),
+      }))
+      .filter(({ at }) => at.lat !== null && at.lng !== null)
+      .map(({ r, at }) => ({
         id: r.id,
         publicCode: r.publicCode,
         status: r.status,
-        centroidLat: r.centroidLat,
-        centroidLng: r.centroidLng,
+        centroidLat: at.lat,
+        centroidLng: at.lng,
         openedAt: r.openedAt ? r.openedAt.toISOString() : null,
       })),
     truncated: rows.length >= PER_LAYER_CAP,

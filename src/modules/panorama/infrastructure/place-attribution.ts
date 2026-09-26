@@ -148,3 +148,40 @@ export function toLocalityRollupRows(
       };
     });
 }
+
+/**
+ * One locality centroid per ROW, for the point layers (repository-points.ts).
+ * Name path: MIN over the rows the (province, folded name) names — what the
+ * dots always plotted. Id path: the row's own catalogue row, so a homonym's
+ * report plots in its own partido; NULL when the place never resolved (the
+ * caller puts it on the province's representative point, never drops it).
+ */
+export function localityCentroidSql(
+  mode: AttributionMode,
+  axis: "latitude" | "longitude",
+  cols: PlaceColumns,
+): SQL<string | null> {
+  const column = sql.raw(`al.${axis}`);
+  if (mode === "id") {
+    return sql<string | null>`(
+      SELECT ${column} FROM ar_localities al WHERE al.id = ${cols.localityId}
+    )`;
+  }
+  return sql<string | null>`(
+    SELECT MIN(${column}) FROM ar_localities al
+    WHERE al.province_code = ${provinceIsoMapSql(cols.province)}
+      AND ${sql`al.locality_name_norm`} = ${normNameSql(cols.locality)}
+      AND al.removed_at IS NULL
+  )`;
+}
+
+/** A point's centroid, or — on the id path, unresolved — its province's point. */
+export function pointCentroid(
+  mode: AttributionMode,
+  row: { province: string | null; lat: string | null; lng: string | null },
+): { lat: string | null; lng: string | null } {
+  if (row.lat !== null && row.lng !== null) return { lat: row.lat, lng: row.lng };
+  if (mode !== "id" || !row.province) return { lat: null, lng: null };
+  const p = provinceRepresentativeCentroid(row.province);
+  return { lat: p.centroidLat, lng: p.centroidLng };
+}

@@ -31,7 +31,8 @@ import type { DashboardActor, DashboardJurisdiction } from "@/lib/metrics";
 import { dbNow } from "../../../../../__tests__/_helpers/db-now";
 import { withMutationOverride } from "../../../../../__tests__/_helpers/db-overrides";
 import { SIN_LOCALIDAD } from "../place-attribution";
-import { loadDenunciasByUnit } from "../repository";
+import { loadDenunciaCentroids, loadDenunciasByUnit, loadUnitHistory } from "../repository";
+import { provinceRepresentativeCentroid } from "../repository-scope";
 
 const GOVT: DashboardActor = { role: "govt" };
 const MECHITA: DashboardJurisdiction[] = [{ province: "Buenos Aires", locality: "Mechita" }];
@@ -39,7 +40,10 @@ const MECHITA_ALBERTI = "06021030";
 const MECHITA_BRAGADO = "06112080";
 const PER_PLACE = 5;
 
-const rowByIndec = new Map<string, { id: string; departmentCode: string | null }>();
+const rowByIndec = new Map<
+  string,
+  { id: string; departmentCode: string | null; latitude: string | null; longitude: string | null }
+>();
 const reportIds: string[] = [];
 let since = new Date(0);
 
@@ -91,6 +95,8 @@ beforeAll(async () => {
       id: arLocalities.id,
       indecId: arLocalities.indecId,
       departmentCode: arLocalities.departmentCode,
+      latitude: arLocalities.latitude,
+      longitude: arLocalities.longitude,
     })
     .from(arLocalities)
     .where(inArray(arLocalities.indecId, [MECHITA_ALBERTI, MECHITA_BRAGADO]));
@@ -145,5 +151,71 @@ describe("denuncias by unit — attribution path", () => {
       .from(welfareReports)
       .where(inArray(welfareReports.id, reportIds));
     expect(stored).toHaveLength(PER_PLACE * 3);
+  }, 60_000);
+
+  // Runs after the case above, over the same fixture reports.
+  it("denuncia points: each homonym plots on its own row; unresolved on the province point", async () => {
+    const alberti = rowByIndec.get(MECHITA_ALBERTI);
+    const bragado = rowByIndec.get(MECHITA_BRAGADO);
+    const at = (r: { centroidLat: string | null; centroidLng: string | null }) =>
+      `${Number(r.centroidLat).toFixed(4)},${Number(r.centroidLng).toFixed(4)}`;
+    const spot = (lat: string | null | undefined, lng: string | null | undefined) =>
+      `${Number(lat).toFixed(4)},${Number(lng).toFixed(4)}`;
+    const province = provinceRepresentativeCentroid("Buenos Aires");
+
+    flag.panorama = "id";
+    const idRows = (await loadDenunciaCentroids(GOVT, MECHITA, since)).rows.map(at);
+    const count = (s: string) => idRows.filter((r) => r === s).length;
+    expect(count(spot(alberti?.latitude, alberti?.longitude))).toBeGreaterThanOrEqual(PER_PLACE);
+    expect(count(spot(bragado?.latitude, bragado?.longitude))).toBeGreaterThanOrEqual(PER_PLACE);
+    expect(count(spot(province.centroidLat, province.centroidLng))).toBeGreaterThanOrEqual(
+      PER_PLACE,
+    );
+
+    flag.panorama = "name";
+    const nameRows = (await loadDenunciaCentroids(GOVT, MECHITA, since)).rows.map(at);
+    // One (province, name) centroid for every Mechita report — the confusion.
+    expect(new Set(nameRows).size).toBe(1);
+  }, 60_000);
+
+  // The cell a person clicks resolves the SAME way the map grouped it.
+  it("unit history on the id path: a department click counts its own rows; 'Sin localidad' the unresolved", async () => {
+    const alberti = rowByIndec.get(MECHITA_ALBERTI);
+    const bragado = rowByIndec.get(MECHITA_BRAGADO);
+    const [dept] = await db
+      .select({ name: arLocalities.departmentName })
+      .from(arLocalities)
+      .where(inArray(arLocalities.indecId, [MECHITA_BRAGADO]));
+    const until = new Date(since.getTime() + 2 * 60 * 60 * 1000);
+    const total = async (
+      mode: "name" | "id",
+      locality: string,
+      departmentCode: string | null,
+    ): Promise<number> => {
+      const r = await loadUnitHistory({
+        layer: "denuncias",
+        province: "Buenos Aires",
+        locality,
+        departmentCode,
+        mode,
+        since,
+        until,
+        actor: { role: "admin" },
+        jurisdictions: [],
+      });
+      return r.suppressed ? 0 : Object.values(r.byType).reduce((a, b) => a + b, 0);
+    };
+    const bragadoCell = () => total("id", dept?.name ?? "", bragado?.departmentCode ?? null);
+    const albertiCell = () => total("id", "Alberti", alberti?.departmentCode ?? null);
+    const sinLocalidad = () => total("id", SIN_LOCALIDAD, null);
+
+    const before = [await bragadoCell(), await albertiCell(), await sinLocalidad()];
+    await insertReports(bragado?.id ?? null, "HB");
+    await insertReports(null, "HU");
+    const after = [await bragadoCell(), await albertiCell(), await sinLocalidad()];
+
+    expect((after[0] ?? 0) - (before[0] ?? 0)).toBe(PER_PLACE);
+    expect((after[1] ?? 0) - (before[1] ?? 0)).toBe(0);
+    expect((after[2] ?? 0) - (before[2] ?? 0)).toBe(PER_PLACE);
   }, 60_000);
 });
