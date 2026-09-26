@@ -4,15 +4,35 @@
 
 import { describe, expect, it } from "vitest";
 
-import { ENO_DISEASES_AR, diseaseCodeToEnoCode, getEnoDisease, isEnoCode } from "./eno-catalog";
+import { DISEASES } from "@/lib/reference/diseases";
+
+import {
+  ENO_DISEASES_AR,
+  ENO_EXEMPT_REPORTABLE,
+  diseaseCodeToEnoCode,
+  getEnoDisease,
+  isEnoCode,
+} from "./eno-catalog";
 
 // ---------------------------------------------------------------------------
 // ENO_DISEASES_AR catalog shape
 // ---------------------------------------------------------------------------
 
 describe("ENO_DISEASES_AR", () => {
-  it("contains exactly 5 diseases", () => {
-    expect(ENO_DISEASES_AR).toHaveLength(5);
+  it("contains exactly 6 diseases", () => {
+    expect(ENO_DISEASES_AR).toHaveLength(6);
+  });
+
+  // PO S6 (2026-09-26): tuberculosis enters the list under Res. CVPBA 05/2020
+  // ("micobacterias") + Ley PBA 6115. The norm names no hour count; the 24 h
+  // is the "<24 hs" the legal framework states for ENO in general.
+  it("contains tuberculosis, 24 h, citing Res. CVPBA 05/2020 and Ley PBA 6115", () => {
+    const tb = ENO_DISEASES_AR.find((d) => d.code === "tuberculosis");
+    expect(tb).toBeDefined();
+    expect(tb?.notifyHours).toBe(24);
+    expect(tb?.stigmaSensitive).toBe(false);
+    expect(tb?.legalAnchor).toContain("CVPBA 05/2020");
+    expect(tb?.legalAnchor).toContain("6115");
   });
 
   it("contains rabies with critical severity and stigmaSensitive=false", () => {
@@ -184,5 +204,43 @@ describe("diseaseCodeToEnoCode", () => {
     const disease = getEnoDisease(eno);
     expect(disease?.code).toBe("brucelosis_canina");
     expect(disease?.stigmaSensitive).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Consistency with the disease catalog (health audit #9, PO S6 2026-09-26)
+// ---------------------------------------------------------------------------
+//
+// A disease the catalog marks `reportable` used to get an owner alert and a
+// "reportable" count while never entering the legal queue. Every reportable
+// code must now either bridge to an ENO code or be exempted by name, with the
+// reason, so a new reportable disease cannot slip past the legal queue silently.
+
+describe("every reportable disease is in the ENO list or explicitly exempted", () => {
+  const reportable = DISEASES.filter((d) => d.reportable).map((d) => d.code);
+
+  it("the catalog has reportable diseases to check (non-vacuity)", () => {
+    expect(reportable.length).toBeGreaterThan(5);
+  });
+
+  it.each(reportable)("%s bridges to an ENO code or carries an exemption", (code) => {
+    const inList = isEnoCode(diseaseCodeToEnoCode(code));
+    const exemption = ENO_EXEMPT_REPORTABLE[code];
+    expect(inList || (typeof exemption === "string" && exemption.length > 0)).toBe(true);
+    // Never both: an exemption for a code in the list would be dead text.
+    expect(inList && exemption !== undefined).toBe(false);
+  });
+
+  it("exempts exactly anthrax and toxoplasmosis, pending the PO's legal research", () => {
+    expect(Object.keys(ENO_EXEMPT_REPORTABLE).sort()).toEqual(["anthrax", "toxoplasmosis"]);
+    for (const reason of Object.values(ENO_EXEMPT_REPORTABLE)) {
+      expect(reason).toMatch(/PO/);
+    }
+  });
+
+  it("every exemption names a code the catalog really marks reportable", () => {
+    for (const code of Object.keys(ENO_EXEMPT_REPORTABLE)) {
+      expect(reportable).toContain(code);
+    }
   });
 });

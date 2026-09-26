@@ -2,9 +2,13 @@
 //
 // Source: spec 2026-05-21-eno-pipeline-design.md (ENO-D1 = A — Lista corta core).
 // Decision ENO-D1: 5 zoonotic diseases + severity tiers critical/high.
+// PO S6 (2026-09-26, health chain): + tuberculosis (Res. CVPBA 05/2020,
+// "micobacterias", + Ley PBA 6115). Anthrax and toxoplasmosis stay OUT pending
+// the PO's legal research — see ENO_EXEMPT_REPORTABLE below.
 //
-// DO NOT add diseases here without updating the spec. The list is locked per
-// ENO-D1 (2026-05-21).
+// DO NOT add diseases here without a PO decision naming the norm. Every
+// disease the catalog marks `reportable` must be in this list or in the
+// exemption map (eno-catalog.test.ts enforces it).
 //
 // Legal framework: SENASA + ministerios provinciales bajo Ley 15.465/1960
 // (Decreto 3640/64) + Res. MS 2827/2022 (Manual ENO; SNVS 2.0) + Res. SENASA 422/2003.
@@ -71,7 +75,30 @@ export const ENO_DISEASES_AR: readonly EnoDisease[] = [
     stigmaSensitive: true,
     legalAnchor: "Res. SENASA 422/2003 (Anexo II)",
   },
+  {
+    // PO S6 (2026-09-26). The resolution lists "micobacterias" among the
+    // diseases of mandatory report in small animals and names no hour count;
+    // 24 h is the "<24 hs" the legal framework states for ENO notification in
+    // general (docs/legal-framework-full.md), the most conservative window.
+    code: "tuberculosis",
+    label: "Tuberculosis (micobacterias)",
+    severity: "high",
+    notifyHours: 24,
+    stigmaSensitive: false,
+    legalAnchor: "Res. CVPBA 05/2020 (micobacterias) + Ley PBA 6115/1959",
+  },
 ] as const;
+
+/**
+ * Diseases the catalog marks `reportable` that are deliberately NOT in the ENO
+ * list, each with the reason. A reportable code must be in ENO_DISEASES_AR or
+ * here — never silently in neither (health audit #9).
+ */
+export const ENO_EXEMPT_REPORTABLE: Readonly<Record<string, string>> = {
+  anthrax: "Pending the PO's legal research (S6, 2026-09-26): no norm cited yet for small animals.",
+  toxoplasmosis:
+    "Pending the PO's legal research (S6, 2026-09-26): no norm cited yet for small animals.",
+};
 
 // ---------------------------------------------------------------------------
 // O(1) lookup index
