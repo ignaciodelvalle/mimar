@@ -7,6 +7,12 @@
 // When the admin page gains a catalog editor, move to a DB table — schema-ready.
 //
 // See docs/superpowers/specs/2026-05-17-symptom-disease-surveillance-design.md §4.1.
+//
+// PENDING CLINICAL REVIEW (PO S12, 2026-09-26): the weights, the bare colour and
+// behaviour synonyms and the missing negation handling are reviewed with a
+// matriculated vet before the pilot — not changed piecemeal here. The proposal
+// to bring to that review lives in the private repo:
+// dim-interno:docs/legal/legal-framework-complemento-2026-09-26.md (section 3).
 
 import type { DiseaseSpecies } from "./diseases";
 
@@ -275,7 +281,9 @@ export const SYMPTOMS: readonly SymptomDef[] = [
     label: "Desorientación",
     category: "neurological",
     species: ["dog", "cat"],
-    synonyms: ["desorientada", "desorientado", "perdido", "perdida", "se choca", "tropieza"],
+    // No "perdido"/"perdida": they are the lost-pet flow's words ("está
+    // perdido" = lost), not a neurological sign (PO addendum 2026-09-26).
+    synonyms: ["desorientada", "desorientado", "se choca", "tropieza"],
     related_diseases: [
       { disease_code: "distemper", specificity: "medium" },
       { disease_code: "rabies_suspected", specificity: "medium" },

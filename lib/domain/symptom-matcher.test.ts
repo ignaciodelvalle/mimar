@@ -204,4 +204,13 @@ describe("matchSymptoms — whole words, not substrings (health audit #6)", () =
     // bare colour synonym would drop "está amarillo". Left for the PO.
     expect(codes("su collar amarillo")).toContain("jaundice");
   });
+
+  // PO addendum (2026-09-26): "perdido"/"perdida" collided with the lost-pet
+  // flow — "está perdido" is a lost animal, not a neurological sign. A bug, not
+  // a clinical weight (those wait for the vet review, S12).
+  it('"está perdido" / "se nos perdió la perra, está perdida" is not disorientation', () => {
+    expect(codes("está perdido desde ayer")).not.toContain("disorientation");
+    expect(codes("la perra está perdida")).not.toContain("disorientation");
+    expect(codes("está desorientado y se choca")).toContain("disorientation");
+  });
 });
