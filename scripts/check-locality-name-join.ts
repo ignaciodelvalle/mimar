@@ -60,6 +60,13 @@ export const FROZEN_NAME_JOINS: Readonly<Record<string, number>> = {
   // expected can_read_case text inside its post-condition DO block (a LIKE
   // pattern asserting the predicate, not a join).
   "db/migrations/0241_govt_whole_province_rls.sql": 7,
+  // 0259 (localidades-por-id D8) re-defines the SAME six predicates to read
+  // public.govt_scope: a LEGACY grant (no authority unit) keeps 0241's name
+  // match through the scope row's jurisdiction_* columns — named so this fence
+  // still sees it — while unit grants match by locality_id. No new name
+  // comparison; the live set is unchanged. The 7th hit is the expected
+  // can_read_case text inside its post-condition. Stage E retires them.
+  "db/migrations/0259_rls_by_govt_scope.sql": 7,
 };
 
 /** Non-vacuity floor: the sum of the frozen list. A broken regex reads 0. */

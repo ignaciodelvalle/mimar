@@ -21,13 +21,20 @@ sees a row by comparing `govt_assignments.jurisdiction_locality` with the row's
 ## Live inventory (local catalog, 2026-09-22)
 
 Queried from `pg_policies`, `pg_proc` and `pg_views` in `public` — the
-database, not the migrations ("aplicada no es cerrada"). Eight objects mention
+database, not the migrations ("aplicada no es cerrada"). Nine objects mention
 the column; six of them compare it with another row's name. The two
 `SECURITY DEFINER` functions are `can_read_case` and `erase_subject_data`.
 
+Since `0259` (localidades-por-id D8) the six predicates read the operator's
+grants through `public.govt_scope` (`0257`). A grant on an **authority unit**
+matches rows by catalogue `locality_id` — never by name; a **legacy** grant
+(`authority_unit_id` NULL, every grant until an admin confirms it onto a unit)
+still matches by the name pair below, exactly as `0241` did. That legacy
+comparison is what the six rows still count.
+
 | # | Object | Kind | What the name decides | Last defined in |
 |---|---|---|---|---|
-| 1 | `approval_requests` · "approval requests visible to applicant or authority" | policy, SELECT | a govt operator reads approval requests in their `(province, locality)` | `db/migrations/0241_govt_whole_province_rls.sql` |
+| 1 | `approval_requests` · "approval requests visible to applicant or authority" | policy, SELECT | a govt operator reads approval requests in their `(province, locality)` | `db/migrations/0259_rls_by_govt_scope.sql` |
 | 2 | `custody_disputes` · "custody_disputes select by parties and authorities" | policy, SELECT | a govt operator reads disputes in their jurisdiction | same |
 | 3 | `custody_dispute_parties` · "custody_dispute_parties select by parties and authorities" | policy, SELECT | the parties of those disputes | same |
 | 4 | `pet_identifications` · "pet_identifications read by govt in jurisdiction" | policy, SELECT | a govt operator reads a pet's identifications through the pet's locality | same |
@@ -35,10 +42,11 @@ the column; six of them compare it with another row's name. The two
 | 6 | `can_read_case(uuid, uuid)` | function, **SECURITY DEFINER** | the govt branch of case visibility; called by the `cases` SELECT policy and the case-scoped policies on `pet_events` and `attachments` | same |
 | 7 | `erase_subject_data(uuid, text)` | function, **SECURITY DEFINER** | nothing — it WRITES `jurisdiction_locality = NULL` during erasure. Listed because it is privileged and touches the column | `db/migrations/0228_dead_letter_error_message_redaction.sql` |
 | 8 | `welfare_report_content` | view | nothing — it projects the column | — |
+| 9 | `govt_scope(uuid)` | function, SQL STABLE | nothing by itself — it RETURNS a legacy grant's name pair; the six predicates above compare it | `db/migrations/0257_govt_scope_and_place_flags.sql` |
 
 The ~21 matches the plan counted in the SQL **source** are the history of
 these six predicates: each policy was re-created by later migrations
-(`0086`, `0137`, `0140`, `0215`, `0216`, `0241`), and the two `db/*.sql` source files
+(`0086`, `0137`, `0140`, `0215`, `0216`, `0241`, `0259`), and the two `db/*.sql` source files
 (`db/rls.sql`, `db/cases_rls.sql`) still carry their original text. The frozen
 list in `scripts/check-locality-name-join.ts` holds all of them, file by file.
 
@@ -76,8 +84,10 @@ list in `scripts/check-locality-name-join.ts` holds all of them, file by file.
 
 ## What would retire them
 
-L4·2 — making the authority an explicit unit in `govt_assignments` — is the
-change that lets these predicates key on something other than a display name.
-It is gated on a product decision (what an authority unit is, and what happens
-to rows whose locality never resolved), recorded in the T3-J1 report. Until it
-lands, "one fold" is a claim about the TypeScript folds only.
+L4·2 — making the authority an explicit unit in `govt_assignments` — landed as
+localidades-por-id: `authority_units` (0253/0254), `authority_unit_id` on the
+grants (0255), `govt_scope` (0257) and the predicates reading it (0259). A
+grant leaves the name path when a platform admin confirms it onto its unit
+(`/admin/localidades/[unitId]`). The legacy name branch goes away in stage E,
+once every active grant is on a unit; until then "one fold" holds only for
+grants on a unit.

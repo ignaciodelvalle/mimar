@@ -195,6 +195,9 @@ describe("read scope, RLS and rules", () => {
     // An unresolved Mechita reaches neither partido (only the province would).
     expect(await scopeSees(albertiOp, null)).toBe(false);
   });
-  it.todo("RLS (D8): the five policies and can_read_case refuse Alberti's rows to Bragado");
-  it.todo("rules (D4): a Bragado ordinance never governs an Alberti dog");
+  // RLS (D8): the five policies and can_read_case refuse Alberti's rows to
+  // Bragado — closed in __tests__/rls/govt-unit-scope-rls.test.ts, which
+  // evaluates the LIVE quals against Mechita fixtures.
+  // Rules (D4): a Bragado ordinance never governs an Alberti dog — closed in
+  // __tests__/business-rules-by-unit.test.ts.
 });
