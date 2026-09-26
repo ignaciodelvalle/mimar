@@ -25,14 +25,27 @@ import { createClient } from "@supabase/supabase-js";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { arLocalities, authorityUnitLocalities, db, govtAssignments, pets, profiles } from "@/db";
+import {
+  arLocalities,
+  authorityUnitLocalities,
+  db,
+  govtAssignments,
+  pets,
+  profiles,
+  welfareReports,
+} from "@/db";
 import { type CoverageArea, type PetZone, orgCoversZone } from "@/lib/domain/org-coverage";
 import {
   type ApprovalJurisdiction,
   findAuthoritiesForJurisdiction,
 } from "@/lib/infra/approval-routing";
+import { canReadCase } from "@/lib/infra/case-access";
+import type { CaseDetail } from "@/lib/infra/case-queries";
+import { loadOperatorPetSubView } from "@/lib/infra/gob-pet-subview";
+import { loadWelfareInspectorDetail } from "@/lib/infra/welfare-inspector-detail";
 import { jurisdictionPairClause } from "@/lib/metrics/scope";
 import { scopedGrants } from "@/lib/place/scope";
+import { withMutationOverride } from "./_helpers/db-overrides";
 import { createFreshTestUser, deleteTestUser } from "./_helpers/fresh-test-user";
 
 const SUPABASE_URL = "http://127.0.0.1:54321";
@@ -215,4 +228,117 @@ describe("read scope, RLS and rules", () => {
   // evaluates the LIVE quals against Mechita fixtures.
   // Rules (D4): a Bragado ordinance never governs an Alberti dog — closed in
   // __tests__/business-rules-by-unit.test.ts.
+});
+
+// ---------------------------------------------------------------------------
+// Per-row gates (stage D audit addendum (c)).
+//
+// A list clause is not the only door: a case, a denuncia or a pet opened BY
+// URL is gated per row by jurisdictionScopeContains. On the id path a unit
+// grant compares the row's catalogue id there too, so Bragado's operator
+// cannot open Alberti's Mechita by typing its address, and Alberti's can.
+// Real rows (the loaders read through the shared connection), removed in
+// afterAll.
+// ---------------------------------------------------------------------------
+
+const ROW_PET_TOKEN = `HISO-ALB-${Date.now()}`;
+let rowPetId = "";
+let rowReportId = "";
+
+/** The operator's grants as the id path hands them to a per-row gate. */
+async function idPathJurisdictions(userId: string) {
+  const grants = await db
+    .select({
+      assignmentId: govtAssignments.id,
+      province: govtAssignments.jurisdictionProvince,
+      locality: govtAssignments.jurisdictionLocality,
+      authorityUnitId: govtAssignments.authorityUnitId,
+    })
+    .from(govtAssignments)
+    .where(and(eq(govtAssignments.userId, userId), isNull(govtAssignments.revokedAt)));
+  return scopedGrants(userId, grants, { mode: "id" });
+}
+
+describe("per-row gates (addendum c)", () => {
+  beforeAll(async () => {
+    const alberti = rowIdByIndec.get(MECHITA_ALBERTI) as string;
+    const [pet] = await db
+      .insert(pets)
+      .values({
+        publicToken: ROW_PET_TOKEN,
+        name: "Homonimo Alberti",
+        species: "dog",
+        sex: "male",
+        status: "active",
+        jurisdictionProvince: "Buenos Aires",
+        jurisdictionLocality: "Mechita",
+        localityId: alberti,
+      })
+      .returning({ id: pets.id });
+    rowPetId = pet?.id ?? "";
+    const [report] = await db
+      .insert(welfareReports)
+      .values({
+        referenceCode: `DEN-HISO-${String(Date.now()).slice(-4)}`,
+        kind: "neglect",
+        severity: "medium",
+        description: "homonym isolation fixture",
+        subjectKind: "unowned_animal",
+        subjectDescription: "stray test",
+        status: "in_progress",
+        jurisdictionProvince: "Buenos Aires",
+        jurisdictionLocality: "Mechita",
+        localityId: alberti,
+      })
+      .returning({ id: welfareReports.id });
+    rowReportId = report?.id ?? "";
+  });
+
+  afterAll(async () => {
+    await withMutationOverride(async (tx) => {
+      await tx.delete(welfareReports).where(eq(welfareReports.id, rowReportId));
+      await tx.delete(pets).where(eq(pets.id, rowPetId));
+    });
+  });
+
+  it("canReadCase: Bragado's operator cannot open Alberti's case; Alberti's can", async () => {
+    const detail = {
+      caseKind: "welfare_denuncia",
+      jurisdictionProvince: "Buenos Aires",
+      jurisdictionLocality: "Mechita",
+      localityId: rowIdByIndec.get(MECHITA_ALBERTI),
+    } as unknown as CaseDetail;
+    const viewer = async (email: string) => {
+      const userId = operatorIdByEmail.get(email) as string;
+      return { userId, role: "govt" as const, jurisdictions: await idPathJurisdictions(userId) };
+    };
+    expect(await canReadCase(detail, await viewer(BRAGADO_OPERATOR))).toBe(false);
+    expect(await canReadCase(detail, await viewer(ALBERTI_OPERATOR))).toBe(true);
+  });
+
+  it("the operator pet view: Alberti's Mechita pet is not found for Bragado", async () => {
+    const view = async (email: string) =>
+      loadOperatorPetSubView(ROW_PET_TOKEN, {
+        role: "govt",
+        jurisdictions: await idPathJurisdictions(operatorIdByEmail.get(email) as string),
+      });
+    expect(await view(BRAGADO_OPERATOR)).toBeNull();
+    expect(await view(ALBERTI_OPERATOR)).not.toBeNull();
+  });
+
+  it("the denuncia inspector detail: Alberti's report is not found for Bragado", async () => {
+    const open = async (email: string) => {
+      const id = operatorIdByEmail.get(email) as string;
+      return loadWelfareInspectorDetail(
+        {
+          profile: { id, role: "govt" },
+          jurisdictions: await idPathJurisdictions(id),
+          user: { id },
+        },
+        rowReportId,
+      );
+    };
+    expect((await open(BRAGADO_OPERATOR)).ok).toBe(false);
+    expect((await open(ALBERTI_OPERATOR)).ok).toBe(true);
+  });
 });
