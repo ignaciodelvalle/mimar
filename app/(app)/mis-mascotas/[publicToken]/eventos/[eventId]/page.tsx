@@ -3,6 +3,7 @@
 
 import { notReportedClause } from "@/lib/infra/content-reports";
 import { requireUuidParam } from "@/lib/infra/route-params";
+import { notHiddenFromSubjectClause } from "@/lib/infra/subject-hidden-events";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -48,7 +49,15 @@ export default async function EventDetailPage({
     // `loadPetEventDetail`, so the clause has to be here too. Found by the
     // coverage fence, not by reading: a reported item is addressable by URL
     // even when every listing has dropped it.
-    .where(and(eq(petEvents.id, eventId), eq(petEvents.petId, pet.id), notReportedClause()))
+    // And a denuncia's bridge event is not the owner's to open by URL (S1).
+    .where(
+      and(
+        eq(petEvents.id, eventId),
+        eq(petEvents.petId, pet.id),
+        notReportedClause(),
+        notHiddenFromSubjectClause(),
+      ),
+    )
     .limit(1);
   if (!event) notFound();
 

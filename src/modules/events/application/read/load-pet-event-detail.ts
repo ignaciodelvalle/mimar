@@ -39,6 +39,7 @@ import type { EventType } from "@/db/schema";
 import { upcastPayload } from "@/lib/events/event-upcasters";
 import { type ChangeEntry, applyAmendments } from "@/lib/infra/amendment";
 import { notReportedClause } from "@/lib/infra/content-reports";
+import { notHiddenFromSubjectClause } from "@/lib/infra/subject-hidden-events";
 
 // ---------------------------------------------------------------------------
 // Output
@@ -134,7 +135,15 @@ export async function readEventRow(petId: string, eventId: string): Promise<Even
     // from every listing is still addressable by URL without it. A reported
     // item answers "not found" here, which is the same answer the listings give
     // by omission.
-    .where(and(eq(petEvents.id, eventId), eq(petEvents.petId, petId), notReportedClause()))
+    // Same for a denuncia's bridge event (privacy audit S1).
+    .where(
+      and(
+        eq(petEvents.id, eventId),
+        eq(petEvents.petId, petId),
+        notReportedClause(),
+        notHiddenFromSubjectClause(),
+      ),
+    )
     .limit(1);
   return rows[0] ?? null;
 }
