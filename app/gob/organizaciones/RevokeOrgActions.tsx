@@ -32,8 +32,11 @@ type Org = {
   verified: boolean;
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
-  /** The org's catalogue row (localidades-por-id); absent = name rule. */
-  localityId?: string | null;
+  /**
+   * The org's catalogue row (localidades-por-id), threaded from
+   * searchOrganizations: required, so a caller cannot drop it silently.
+   */
+  localityId: string | null;
 };
 
 type UploadedFile = { name: string; attachmentId: string };

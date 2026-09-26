@@ -72,6 +72,7 @@ describe("OrganizacionesScreen — render smoke test", () => {
           verified: true,
           jurisdictionProvince: "Buenos Aires",
           jurisdictionLocality: "La Plata",
+          localityId: null,
         },
       ],
       truncated: false,

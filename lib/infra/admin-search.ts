@@ -69,6 +69,11 @@ export type OrgSearchResult = {
   cuit: string | null;
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
+  /**
+   * The org's catalogue row: RevokeOrgActions decides with the same per-row
+   * gate the server uses, which compares rows on the id path.
+   */
+  localityId: string | null;
   verified: boolean;
 };
 
@@ -302,6 +307,7 @@ export async function searchOrganizations(
       cuit: organizations.cuit,
       jurisdictionProvince: organizations.jurisdictionProvince,
       jurisdictionLocality: organizations.jurisdictionLocality,
+      localityId: organizations.localityId,
       verified: organizations.verified,
     })
     .from(organizations)
