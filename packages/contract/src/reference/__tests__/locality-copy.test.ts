@@ -30,7 +30,7 @@ const LOMAS = {
 describe("locality copy", () => {
   it("names the field in the words a citizen uses", () => {
     expect(LOCALITY_FIELD_LABEL).toBe("Ciudad, pueblo o barrio");
-    expect(LOCALITY_FIELD_PLACEHOLDER).toBe("Ej.: Banfield, San Justo, Villa María");
+    expect(LOCALITY_FIELD_PLACEHOLDER).toBe("Ej.: Banfield, Ramos Mejía, Villa María");
   });
 
   it("labels an alias row with the catalogue row it selects", () => {

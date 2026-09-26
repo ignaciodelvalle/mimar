@@ -1,6 +1,6 @@
 // Locality aliases — the names people use that the INDEC catalogue does not.
 //
-// Banfield, San Justo, Ramos Mejía, Bernal: in Gran Buenos Aires INDEC models
+// Banfield, Ramos Mejía, Ciudad Evita, Bernal: in Gran Buenos Aires INDEC models
 // the conurbano as one component per PARTIDO, so the catalogue has "Lomas de
 // Zamora" and not the towns inside it. The generated reference
 // lib/reference/locality-aliases.json (scripts/generate-locality-aliases.ts)

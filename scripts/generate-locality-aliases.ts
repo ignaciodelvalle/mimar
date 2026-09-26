@@ -36,6 +36,9 @@
  *                           (Olivos, Quilmes): the row itself already answers.
  *   · sources-disagree    — the BAHRA localidades endpoint and the asentamientos
  *                           download name different census localities for it.
+ *   · shares-name-with-unmapped-place — a same-name place in the province has no
+ *                           catalogue row to point at (a rural paraje): the
+ *                           mapped one would be the only one offered, so neither is.
  *   · ambiguous           — the same name in one province points at two or more
  *                           census localities (Villa Adelina, Tortuguitas, Gerli).
  * The runtime re-checks the second and fourth against the LIVE catalogue, so a
@@ -98,6 +101,7 @@ export type DropReason =
   | "same-as-target"
   | "already-in-catalogue"
   | "sources-disagree"
+  | "shares-name-with-unmapped-place"
   | "ambiguous";
 
 export type AliasBuild = {
@@ -172,6 +176,18 @@ function settleGroup(candidates: Candidate[]): [string, string] | DropReason {
     (c) => c.reason === "sources-disagree" || c.reason === "already-in-catalogue",
   );
   if (unsafe) return unsafe.reason as DropReason;
+  // A same-name place in this province that the catalogue cannot hold — a rural
+  // paraje with no census locality, or one whose census locality is not a row.
+  // Offering the mappable one ("San Justo (La Matanza)") would be the ONLY San
+  // Justo a person from the unmapped one sees, and nothing on screen would tell
+  // them it is not theirs. Conservative on purpose (P1): the name is dropped.
+  if (
+    candidates.some(
+      (c) => c.reason === "no-census-locality" || c.reason === "target-not-in-catalogue",
+    )
+  ) {
+    return "shares-name-with-unmapped-place";
+  }
   // One name, two census localities in one province. Mostly a place that
   // straddles a partido line (Villa Adelina: San Isidro AND Vicente López;
   // Tortuguitas: three partidos), where the person typing it often does not
@@ -199,6 +215,7 @@ export function buildLocalityAliases(input: {
     "same-as-target": 0,
     "already-in-catalogue": 0,
     "sources-disagree": 0,
+    "shares-name-with-unmapped-place": 0,
     ambiguous: 0,
   };
 
@@ -230,6 +247,7 @@ export function buildLocalityAliases(input: {
 
 const REASON_ORDER: DropReason[] = [
   "sources-disagree",
+  "shares-name-with-unmapped-place",
   "ambiguous",
   "already-in-catalogue",
   "same-as-target",

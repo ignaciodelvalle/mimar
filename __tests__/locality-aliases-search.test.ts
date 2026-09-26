@@ -45,7 +45,6 @@ describe("locality aliases — typeahead", () => {
   it.each([
     ["Banfield", "06490010", "Lomas de Zamora"],
     ["Temperley", "06490010", "Lomas de Zamora"],
-    ["San Justo", "06427010", "La Matanza"],
     ["Ramos Mejía", "06427010", "La Matanza"],
     ["Ciudad Evita", "06427010", "La Matanza"],
     ["Castelar", "06568010", "Morón"],
@@ -71,12 +70,12 @@ describe("locality aliases — typeahead", () => {
 
   it("ranks an exact alias under an exact catalogue match of the same name", async () => {
     if (!catalogPopulated) return;
-    // "San Justo" is a catalogue row in Santa Fe AND an alias in Buenos Aires.
-    const results = await typeahead("San Justo");
+    // "Castelar" is a catalogue row in Santa Fe AND an alias in Buenos Aires.
+    const results = await typeahead("Castelar");
     const catalogueIdx = results.findIndex(
-      (r) => r.provinceCode === "AR-S" && r.localityName === "San Justo" && !r.aliasName,
+      (r) => r.provinceCode === "AR-S" && r.localityName === "Castelar" && !r.aliasName,
     );
-    const aliasIdx = results.findIndex((r) => r.aliasName === "San Justo");
+    const aliasIdx = results.findIndex((r) => r.aliasName === "Castelar");
     expect(catalogueIdx).toBe(0);
     expect(aliasIdx).toBeGreaterThan(catalogueIdx);
   });
@@ -89,6 +88,15 @@ describe("locality aliases — typeahead", () => {
       const results = await typeahead(name, "AR-B");
       expect(results.filter((r) => r.aliasName !== undefined && r.aliasName === name)).toEqual([]);
     }
+  });
+
+  it("never offers an alias that shares its name with a place the catalogue cannot hold", async () => {
+    if (!catalogPopulated) return;
+    // San Justo (La Matanza) maps, but a rural San Justo in partido Ayacucho has
+    // no census locality: offering only the La Matanza one would hand the other
+    // person someone else's partido.
+    const results = await typeahead("San Justo", "AR-B");
+    expect(results.filter((r) => r.aliasName === "San Justo")).toEqual([]);
   });
 
   it("answers a name the catalogue carries with the row itself, not an alias", async () => {

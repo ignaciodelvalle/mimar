@@ -73,6 +73,22 @@ describe("buildLocalityAliases", () => {
     expect(build.dropped["already-in-catalogue"]).toBe(1);
   });
 
+  it("drops a name that a same-province place with no catalogue home also uses", () => {
+    // San Justo (La Matanza) has a census locality; the rural San Justo in
+    // partido Ayacucho does not. Offering the first would be the only San Justo
+    // the person from the second ever sees.
+    const build = buildLocalityAliases({
+      asentamientos: [
+        place("San Justo", "06", "06427", "06490010"),
+        place("San Justo", "06", "06063", null),
+      ],
+      bahra: [],
+      censales: CENSALES,
+    });
+    expect(build.aliases).toEqual([]);
+    expect(build.dropped["shares-name-with-unmapped-place"]).toBe(1);
+  });
+
   it("drops a name the two publications disagree about", () => {
     const build = buildLocalityAliases({
       asentamientos: [place("Temperley", "06", "06490", "06490010")],
@@ -121,7 +137,6 @@ describe("lib/reference/locality-aliases.json", () => {
   it.each([
     ["Banfield", "06490010"],
     ["Temperley", "06490010"],
-    ["San Justo", "06427010"],
     ["Ramos Mejía", "06427010"],
     ["Ciudad Evita", "06427010"],
     ["Castelar", "06568010"],
@@ -132,12 +147,16 @@ describe("lib/reference/locality-aliases.json", () => {
     expect(aliases).toContainEqual([name, id]);
   });
 
-  it.each(["Villa Adelina", "Tortuguitas", "Gerli", "San Francisco Solano", "Canning"])(
-    "does not carry the ambiguous %s in Buenos Aires",
-    (name) => {
-      // Buenos Aires only: the Villa Adelina in Santa Fe is another place with a
-      // single census locality, and stays.
-      expect(aliases.filter(([n, id]) => n === name && id.startsWith("06"))).toEqual([]);
-    },
-  );
+  it.each([
+    "Villa Adelina",
+    "Tortuguitas",
+    "Gerli",
+    "San Francisco Solano",
+    "Canning",
+    "San Justo",
+  ])("does not carry the ambiguous %s in Buenos Aires", (name) => {
+    // Buenos Aires only: the Villa Adelina in Santa Fe is another place with a
+    // single census locality, and stays.
+    expect(aliases.filter(([n, id]) => n === name && id.startsWith("06"))).toEqual([]);
+  });
 });

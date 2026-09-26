@@ -14,7 +14,7 @@
 export const LOCALITY_FIELD_LABEL = "Ciudad, pueblo o barrio";
 
 /** The field placeholder: the kind of name to type, by example. */
-export const LOCALITY_FIELD_PLACEHOLDER = "Ej.: Banfield, San Justo, Villa María";
+export const LOCALITY_FIELD_PLACEHOLDER = "Ej.: Banfield, Ramos Mejía, Villa María";
 
 /** What a search result needs to be described. Structural, so both the web's
  * `LocalitySearchResult` and the wire's `LocalityV1` satisfy it. */
