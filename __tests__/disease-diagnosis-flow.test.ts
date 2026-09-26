@@ -943,11 +943,11 @@ describe("a verified vet may diagnose their OWN animal (PO 2026-09-26)", () => {
     );
     expect(body).toContain("matriculaVerified");
     expect(body).not.toMatch(/requirePetAccess|requireAlivePetAccess|requireTitularAccess/);
-    expect(body).toContain("PO decision (2026-09-26, \"Sí, sin distinción\")");
+    expect(body).toContain('PO decision (2026-09-26, "Sí, sin distinción")');
     const page = readFileSync(
       "app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/clinico/diagnostico/page.tsx",
       "utf8",
     );
-    expect(page).toContain("PO decision (2026-09-26, \"Sí, sin distinción\")");
+    expect(page).toContain('PO decision (2026-09-26, "Sí, sin distinción")');
   });
 });
