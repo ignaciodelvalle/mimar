@@ -119,9 +119,14 @@ function makeFakeRepo(
     findActiveOwnerOwnership: vi
       .fn()
       .mockResolvedValue({ id: "own-1", ownerUserId: "user-sender" }),
-    findPetStatusById: vi
-      .fn()
-      .mockResolvedValue({ status: "found", inCustodyDispute: false, name: "Luna" }),
+    findPetStatusById: vi.fn().mockResolvedValue({
+      status: "found",
+      inCustodyDispute: false,
+      name: "Luna",
+      deletedAt: null,
+    }),
+    // audit K, W5: the sender's profile under a share lock — not being erased.
+    lockProfileForShare: vi.fn().mockResolvedValue({ deletedAt: null }),
     findUserIdByEmail: vi.fn().mockResolvedValue(null),
     // owner-flow writes
     insertPetTransfer: vi.fn().mockResolvedValue(undefined),
@@ -417,6 +422,7 @@ describe("acceptPetTransfer", () => {
       };
     const repo = makeFakeRepo({
       acquirePetAdvisoryLock: vi.fn().mockImplementation(track("lock", undefined)),
+      lockProfileForShare: vi.fn().mockImplementation(track("sender-share", { deletedAt: null })),
       findTransferByIdForUpdate: vi
         .fn()
         .mockImplementation(track("transfer-for-update", makeTransfer())),
@@ -441,13 +447,51 @@ describe("acceptPetTransfer", () => {
     });
     expect(result).toMatchObject({ ok: true });
     expect(repo.acquirePetAdvisoryLock).toHaveBeenCalledWith("pet-1", fakeTx);
-    expect(calls.slice(0, 5)).toEqual([
+    expect(calls.slice(0, 6)).toEqual([
       "lock",
+      "sender-share",
       "transfer-for-update",
       "pet-status",
       "current-owner",
       "sponsorship",
     ]);
+  });
+
+  it("refuses when the sender's account is being erased — before touching the transfer or any ownership (audit K, W5)", async () => {
+    const repo = makeFakeRepo({
+      lockProfileForShare: vi.fn().mockResolvedValue({ deletedAt: new Date() }),
+    });
+    const result = await acceptPetTransfer(baseInput, {
+      repo,
+      actor,
+      transaction: fakeTransaction,
+    });
+    expect(result).toMatchObject({ ok: false });
+    expect((result as { ok: false; error: string }).error).toMatch(/dada de baja/);
+    expect(repo.lockProfileForShare).toHaveBeenCalledWith("user-sender", fakeTx);
+    expect(repo.findTransferByIdForUpdate).not.toHaveBeenCalled();
+    expect(repo.closeOwnerOwnerships).not.toHaveBeenCalled();
+    expect(repo.insertOwnerOwnership).not.toHaveBeenCalled();
+  });
+
+  it("refuses a pet the erasure already soft-deleted (audit K, W5)", async () => {
+    const repo = makeFakeRepo({
+      findPetStatusById: vi.fn().mockResolvedValue({
+        status: "active",
+        inCustodyDispute: false,
+        name: "Luna",
+        deletedAt: new Date(),
+      }),
+    });
+    const result = await acceptPetTransfer(baseInput, {
+      repo,
+      actor,
+      transaction: fakeTransaction,
+    });
+    expect(result).toMatchObject({ ok: false });
+    expect((result as { ok: false; error: string }).error).toMatch(/ya no existe/);
+    expect(repo.closeOwnerOwnerships).not.toHaveBeenCalled();
+    expect(repo.insertOwnerOwnership).not.toHaveBeenCalled();
   });
 
   it("returns error when transfer not found", async () => {

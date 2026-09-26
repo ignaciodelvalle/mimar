@@ -180,13 +180,47 @@ export const TransfersRepository = {
   async findPetStatusById(
     petId: string,
     tx?: Tx,
-  ): Promise<{ status: PetRow["status"]; inCustodyDispute: boolean; name: string } | null> {
+  ): Promise<{
+    status: PetRow["status"];
+    inCustodyDispute: boolean;
+    name: string;
+    deletedAt: Date | null;
+  } | null> {
     const client: DbOrTx = tx ?? db;
     const [row] = await (client as typeof db)
-      .select({ status: pets.status, inCustodyDispute: pets.inCustodyDispute, name: pets.name })
+      .select({
+        status: pets.status,
+        inCustodyDispute: pets.inCustodyDispute,
+        name: pets.name,
+        // Art. 16: an erased pet is not a pet anyone can hand over (audit K, W5).
+        deletedAt: pets.deletedAt,
+      })
       .from(pets)
       .where(eq(pets.id, petId))
       .limit(1);
+    return row ?? null;
+  },
+
+  /**
+   * The sender's profile row, read `FOR SHARE` inside the accept transaction
+   * (audit K, W5). The erasure RPC (`erase_subject_data`) UPDATEs the subject's
+   * profile as its FIRST write and only later soft-deletes their owned pets
+   * and cancels their pending transfers. SHARE conflicts with that UPDATE, so:
+   *   - an erasure already under way makes the accept wait for it, and the
+   *     accept then reads `deleted_at` set and refuses;
+   *   - an accept already holding the share makes the erasure wait at its first
+   *     statement, so its later pets UPDATE sees the ownership already moved
+   *     and does not soft-delete the recipient's new pet.
+   * SHARE, not UPDATE: accepts on two different pets of the same sender must
+   * not serialise on the sender's row.
+   */
+  async lockProfileForShare(userId: string, tx: Tx): Promise<{ deletedAt: Date | null } | null> {
+    const [row] = await tx
+      .select({ deletedAt: profiles.deletedAt })
+      .from(profiles)
+      .where(eq(profiles.id, userId))
+      .limit(1)
+      .for("share");
     return row ?? null;
   },
 

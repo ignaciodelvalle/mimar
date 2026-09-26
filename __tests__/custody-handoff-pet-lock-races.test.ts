@@ -498,3 +498,82 @@ describe("W4 — a P2P accept decides on guards read under the pet lock", () => 
     expect(await eventTypes(f.pet.id)).not.toContain("custody_transferred");
   });
 });
+
+// ---------------------------------------------------------------------------
+// W5 — a P2P accept racing the sender's erasure (art. 16)
+// ---------------------------------------------------------------------------
+//
+// `erase_subject_data` (0245) takes no pet lock, so this race is not decided
+// by the advisory key: the holder below replays the RPC's own statement ORDER
+// on the rows it would touch — the subject's profile first, then the owned
+// pets' soft-delete — and the accept is started while that erasure is still
+// open. The use-case must be seen blocked on the sender's profile row, and
+// once the erasure commits (its pending-transfer cancel matching nothing, as
+// it did in the bug) the accept must refuse. Without the share lock the
+// accept ran straight through: the recipient got an owner row on a pet the
+// erasure had already soft-deleted.
+//
+// The SQL-side half — the RPC soft-deleting pets before it cancels transfers,
+// and taking no pet lock — is a migration, and is left as a follow-up.
+
+/** Is some backend blocked on a row lock while reading `profiles` FOR SHARE? */
+async function someoneWaitsOnProfileShare(): Promise<boolean> {
+  const rows = await holder<{ n: number }[]>`
+    SELECT count(*)::int AS n
+      FROM pg_stat_activity
+     WHERE wait_event_type = 'Lock'
+       AND query ILIKE '%from "profiles"%for share%'
+  `;
+  return rows[0].n > 0;
+}
+
+describe("W5 — a P2P accept does not hand over a pet its sender's erasure is deleting", () => {
+  it("an erasure under way wins: the accept waits for it, then refuses, and the recipient holds nothing", async () => {
+    const f = await offeredPet("P2pErase");
+
+    let racing: ReturnType<typeof f.accept> | null = null;
+    await holder.begin(async (h) => {
+      // erase_subject_data's first write, then its owned-pets soft-delete.
+      await h`UPDATE profiles SET deleted_at = now(), updated_at = now() WHERE id = ${f.senderId}`;
+      await h`UPDATE pets SET deleted_at = now(), updated_at = now() WHERE id = ${f.pet.id}`;
+
+      racing = f.accept();
+      racing.catch(() => undefined);
+      const deadline = Date.now() + 3000;
+      let waiting = false;
+      while (Date.now() < deadline) {
+        if (await someoneWaitsOnProfileShare()) {
+          waiting = true;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      if (!waiting) {
+        throw new Error(
+          "the accept never blocked on the sender's profile — it ran past the erasure",
+        );
+      }
+      // The pending-transfer cancel, last — as the RPC orders it.
+      await h`UPDATE pet_transfers SET status = 'cancelled', updated_at = now()
+               WHERE public_token = ${f.transferToken} AND status = 'pending'`;
+    });
+    if (!racing) throw new Error("accept was never started");
+    const result = await (racing as ReturnType<typeof f.accept>);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/dada de baja/);
+    const recipientRows = (await liveHolders(f.pet.id)).filter(
+      (r) => r.ownerUserId === f.recipientId,
+    );
+    expect(recipientRows).toEqual([]);
+    expect(await eventTypes(f.pet.id)).not.toContain("custody_transferred");
+  });
+
+  it("a pet already soft-deleted before the accept is refused on the pet guard", async () => {
+    const f = await offeredPet("P2pGone");
+    await db.update(pets).set({ deletedAt: new Date() }).where(eq(pets.id, f.pet.id));
+    const result = await f.accept();
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/ya no existe/);
+  });
+});

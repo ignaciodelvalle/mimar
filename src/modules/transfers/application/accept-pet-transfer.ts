@@ -132,6 +132,27 @@ export async function acceptPetTransfer(
         tx as Parameters<typeof repo.acquirePetAdvisoryLock>[1],
       );
 
+      // THE SENDER IS NOT BEING ERASED (audit K, W5). `erase_subject_data`
+      // takes no pet lock; it UPDATEs the subject's profile first, then
+      // soft-deletes their owned pets, then cancels their pending transfers.
+      // An accept slipping between the second and third step handed the
+      // recipient a pet the erasure had already soft-deleted. The share lock
+      // makes the two serialise at the erasure's FIRST statement: if the
+      // erasure is under way this waits and then reads `deleted_at` set; if
+      // this holds the share first, the erasure waits and its pets UPDATE later
+      // sees the ownership already moved. Taken BEFORE the transfer row — the
+      // erasure also UPDATEs that row, after the profile, so the reverse order
+      // would deadlock against it.
+      const sender = await repo.lockProfileForShare(
+        transfer.fromOwnerId,
+        tx as Parameters<typeof repo.lockProfileForShare>[1],
+      );
+      if (!sender || sender.deletedAt) {
+        throw new Error(
+          "La cuenta de quien te ofreció la mascota fue dada de baja. La transferencia ya no es válida.",
+        );
+      }
+
       // CONCURRENCY GUARD: re-read the transfer row FOR UPDATE inside the tx
       // and re-check it is still pending. The pre-tx status check above is a
       // stale read — two concurrent accepts (or an accept racing the
@@ -160,7 +181,11 @@ export async function acceptPetTransfer(
         transfer.petId,
         tx as Parameters<typeof repo.findPetStatusById>[1],
       );
-      if (!petSnapshot) {
+      // A soft-deleted pet (the owner's erasure, art. 16) is gone for the
+      // purpose of a hand-off — the recipient would inherit a pet nobody can
+      // see. Read under the pet lock and after the sender-profile share lock
+      // above, so an erasure in flight has already committed or has not begun.
+      if (!petSnapshot || petSnapshot.deletedAt) {
         throw new Error("La mascota ya no existe. La transferencia no es válida.");
       }
       petName = petSnapshot.name;
