@@ -67,7 +67,7 @@ function makeFakeRepo(
     pet?: Record<string, unknown> | null;
     foster?: Record<string, unknown> | null;
     /** Registered-account lookup result. Default: a registered account. */
-    dniAccount?: DniAccount | null;
+    dniAccount?: DniAccount | null | "too_many";
     adopterProfile?: Record<string, unknown> | null;
     approvedApplication?: { applicantUserId: string } | { error: string };
   } = {},
@@ -79,7 +79,7 @@ function makeFakeRepo(
   return {
     findShelterPet: vi.fn().mockResolvedValue(pet),
     findActiveFoster: vi.fn().mockResolvedValue(foster),
-    findAdopterAccountByDni: vi.fn().mockResolvedValue(dniAccount),
+    consultAdopterAccountByDni: vi.fn().mockResolvedValue(dniAccount),
     findApplicantProfile: vi.fn().mockResolvedValue(options.adopterProfile ?? null),
     findApprovedApplicationForFinalize: vi
       .fn()
@@ -150,6 +150,22 @@ const baseInput = {
 describe("finalizeAdoption", () => {
   beforeEach(() => {
     fakeTransaction.mockClear();
+  });
+
+  // ---- The DNI oracle's guards (security review, third oracle) -----------
+
+  it("consults the DNI through the guarded door, as the organization and the staff member", async () => {
+    const repo = makeFakeRepo();
+    await finalizeAdoption(baseInput, { repo, actor, transaction: fakeTransaction });
+    expect(repo.consultAdopterAccountByDni).toHaveBeenCalledWith("org-1", "org-user-1", "12345678");
+  });
+
+  it("over the organization's DNI ceiling: refused, nothing written", async () => {
+    const repo = makeFakeRepo({ dniAccount: "too_many" });
+    const result = await finalizeAdoption(baseInput, { repo, actor, transaction: fakeTransaction });
+    expect(result.ok).toBe(false);
+    expect((result as { error: string }).error).toMatch(/consultas de DNI/);
+    expect(fakeTransaction).not.toHaveBeenCalled();
   });
 
   // ---- Input validation (domain rules via use-case) ----------------------

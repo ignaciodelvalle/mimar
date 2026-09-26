@@ -22,7 +22,6 @@ function makeFakeRepo(
       custodyOwnershipId: "own-1",
     }),
     findActiveFoster: vi.fn().mockResolvedValue(null),
-    findStubAdopterByDni: vi.fn().mockResolvedValue(null),
     setEligibility: vi.fn().mockResolvedValue(undefined),
     setListingStatus: vi.fn().mockResolvedValue(undefined),
     updateListingContent: vi.fn().mockResolvedValue(undefined),

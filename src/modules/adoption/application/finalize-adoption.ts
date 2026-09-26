@@ -32,6 +32,7 @@ import {
   notifyCaretakersOfHandoff,
 } from "@/lib/infra/end-pet-ownerships";
 
+import { ADOPTER_DNI_TOO_MANY_MSG } from "../domain/dni-check-policy";
 import { validateFinalizationInput } from "../domain/finalize-rules";
 import type { FinalizationInput } from "../domain/types";
 import type { AdoptionRepository } from "../infrastructure/adoption-repository";
@@ -197,7 +198,13 @@ export async function finalizeAdoption(
     const rawDni = input.adopterDni ?? "";
     const dni = normalizeDni(rawDni);
 
-    const account = await repo.findAdopterAccountByDni(dni);
+    // The guarded door (security review, third oracle): the organization's
+    // DNI ceiling before the read and the hashed pii_queried trail after it,
+    // the same pair the confirmation action and the contract route take.
+    const account = await repo.consultAdopterAccountByDni(organization.id, user.id, dni);
+    if (account === "too_many") {
+      return { ok: false, error: ADOPTER_DNI_TOO_MANY_MSG };
+    }
     if (!account || !account.hasAuthAccount) {
       return { ok: false, error: ADOPTER_ACCOUNT_REQUIRED_MSG };
     }

@@ -25,12 +25,9 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db, petIdentifications } from "@/db";
-import { RateLimitError, enforceRateLimit } from "@/lib/infra/rate-limit";
-import { hashDni } from "@/lib/utils/dni-hash";
 import { formatDate, formatDateTimeLegal, sexLabel, speciesLabel } from "@/lib/utils/format";
-import { ADOPTER_DNI_CHECK_LIMITS } from "@/src/modules/adoption/domain/dni-check-policy";
+import { ADOPTER_DNI_TOO_MANY_MSG } from "@/src/modules/adoption/domain/dni-check-policy";
 import { AdoptionRepository } from "@/src/modules/adoption/infrastructure/adoption-repository";
-import { logPiiQueryForAuthority } from "@/src/modules/organizations/application/admin-proposals/log-pii-query";
 import { requireCapabilityForOrgToken } from "@/src/modules/organizations/infrastructure/authz-resolver";
 
 export const dynamic = "force-dynamic";
@@ -55,39 +52,19 @@ function htmlEscape(s: string | null | undefined): string {
 }
 
 /**
- * THE SAME DNI ORACLE AS checkAdopterAccountAction, SO THE SAME GUARDS
- * (privacy audit C2): the per-organization ceiling BEFORE the read, and the
- * hashed pii_queried trail AFTER it, found or not. Without them this route
- * answered "does this DNI hold an account?" unmetered and unlogged — a sweep
- * channel around the action's limiter. Keyed on the ORGANIZATION (the
- * capability is the org's); a refusal is not logged (the bucket counts it).
+ * The adopter's registered account, or the refusal to send (429 / 404).
+ * THE SAME DNI ORACLE AS checkAdopterAccountAction, SO THE SAME DOOR (privacy
+ * audit C2): consultAdopterAccountByDni takes the per-organization ceiling
+ * before the read and writes the hashed trail after it.
  */
-async function consultAdopterDni(organizationId: string, userId: string, adopterDni: string) {
-  try {
-    await enforceRateLimit("adopter_dni_check", organizationId, ADOPTER_DNI_CHECK_LIMITS);
-  } catch (err) {
-    if (err instanceof RateLimitError) return "too_many" as const;
-    throw err;
-  }
-  const account = await AdoptionRepository.findAdopterAccountByDni(adopterDni);
-  await logPiiQueryForAuthority(
-    userId,
-    hashDni(adopterDni),
-    account?.hasAuthAccount ? 1 : 0,
-    "adopter_dni_check",
-    { organization_id: organizationId },
-  );
-  return account;
-}
-
-/** The adopter's registered account, or the refusal to send (429 / 404). */
 async function resolveAdopterAccount(organizationId: string, userId: string, adopterDni: string) {
-  const consulted = await consultAdopterDni(organizationId, userId, adopterDni);
+  const consulted = await AdoptionRepository.consultAdopterAccountByDni(
+    organizationId,
+    userId,
+    adopterDni,
+  );
   if (consulted === "too_many") {
-    return new NextResponse(
-      "Demasiadas consultas de DNI desde esta organización. Esperá unos minutos y volvé a intentar.",
-      { status: 429 },
-    );
+    return new NextResponse(ADOPTER_DNI_TOO_MANY_MSG, { status: 429 });
   }
   if (!consulted || !consulted.hasAuthAccount) {
     return new NextResponse("No encontrado", { status: 404 });

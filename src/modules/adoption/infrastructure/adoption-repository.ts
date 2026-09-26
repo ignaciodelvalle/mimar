@@ -6,7 +6,7 @@
 
 import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 
-import { db, organizations, ownerships, petEvents, pets, profiles } from "@/db";
+import { db, organizations, ownerships, petEvents, pets } from "@/db";
 import { insertEventIdempotent } from "@/lib/events/event-idempotency";
 import { validateEventPayload } from "@/lib/events/event-schemas";
 import {
@@ -17,8 +17,8 @@ import {
 } from "@/lib/infra/case-helpers";
 import { ORG_CUSTODY_TAKEN_ERROR, findLiveOrgShelterCustody } from "@/lib/infra/org-custody";
 import { unerasedPetByToken } from "@/lib/infra/public-pet-lookup";
-import { hashDni } from "@/lib/utils/dni-hash";
 
+import { consultAdopterAccountByDni } from "./adopter-dni-consult";
 import {
   type InsertAdoptionFinalizedArgs,
   insertAdoptionFinalized,
@@ -331,69 +331,13 @@ export const AdoptionRepository = {
   },
 
   /**
-   * Finds a profile by DNI (via hash — no plaintext comparison).
-   * Wave 5 Item 25a: equality matching uses HMAC-SHA256 hash, never plaintext.
-   *
-   * Retired from the finalize-adoption path (org-pilot-pack): finalization now
-   * requires a REGISTERED account (see findAdopterAccountByDni below). Kept for
-   * any non-finalize caller and as the historical hash-equality reference.
+   * The adopter DNI oracle, guarded: per-organization ceiling before the read,
+   * hashed pii_queried trail after it (adopter-dni-consult.ts). The raw lookup
+   * is not on this repository on purpose — every caller goes through here.
+   * The unguarded stub-profile lookup (no production caller since
+   * org-pilot-pack) was removed with it.
    */
-  async findStubAdopterByDni(dni: string, tx?: Tx): Promise<{ id: string } | null> {
-    const client = tx ?? db;
-    const [row] = await client
-      .select({ id: profiles.id })
-      .from(profiles)
-      .where(eq(profiles.dniHash, hashDni(dni)))
-      .limit(1);
-    return row ?? null;
-  },
-
-  /**
-   * Finds an adopter ACCOUNT by DNI hash for the finalize-adoption flow
-   * (org-pilot-pack, reconciliation ruling): a valid match is a `profiles` row
-   * whose dniHash matches AND that has a corresponding `auth.users` row —
-   * i.e. a real registered account. `dniVerified` is intentionally NOT part of
-   * the match contract (a walk-in adopter who registers on the spot has
-   * dniVerified=false right after signup and must still match).
-   *
-   * `hasAuthAccount` is resolved via a raw-SQL EXISTS against `auth.users`
-   * because legacy stub profiles (created by the retired manual-DNI branch)
-   * have NO auth row and no schema flag distinguishes them — the auth join is
-   * the only honest signal. Callers MUST refuse when hasAuthAccount=false.
-   */
-  async findAdopterAccountByDni(
-    dni: string,
-    tx?: Tx,
-  ): Promise<{
-    id: string;
-    displayName: string;
-    dniVerified: boolean;
-    hasAuthAccount: boolean;
-  } | null> {
-    const client = tx ?? db;
-    const rows = await client.execute<{
-      id: string;
-      display_name: string;
-      dni_verified: boolean;
-      has_auth_account: boolean;
-    }>(sql`
-      SELECT p.id::text AS id,
-             p.display_name AS display_name,
-             p.dni_verified AS dni_verified,
-             EXISTS (SELECT 1 FROM auth.users u WHERE u.id = p.id) AS has_auth_account
-      FROM profiles p
-      WHERE p.dni_hash = ${hashDni(dni)}
-      LIMIT 1
-    `);
-    const row = rows[0];
-    if (!row) return null;
-    return {
-      id: row.id,
-      displayName: row.display_name,
-      dniVerified: row.dni_verified,
-      hasAuthAccount: row.has_auth_account,
-    };
-  },
+  consultAdopterAccountByDni,
 
   /**
    * Updates adoption eligibility and inserts the adoption_eligibility_set event.

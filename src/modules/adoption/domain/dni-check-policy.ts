@@ -49,3 +49,7 @@ export const ADOPTER_DNI_CHECK_LIMITS = {
   maxPerHour: 60,
   maxPerDay: 200,
 } as const;
+
+/** The es-AR refusal every caller of the DNI consultation shows at the ceiling. */
+export const ADOPTER_DNI_TOO_MANY_MSG =
+  "Demasiadas consultas de DNI desde esta organización. Esperá unos minutos y volvé a intentar.";

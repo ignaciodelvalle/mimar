@@ -29,7 +29,6 @@ function makeFakeRepo(petRow = makeListablePet()): typeof AdoptionRepository {
   return {
     findShelterPet: vi.fn().mockResolvedValue(petRow),
     findActiveFoster: vi.fn().mockResolvedValue(null),
-    findStubAdopterByDni: vi.fn().mockResolvedValue(null),
     setEligibility: vi.fn().mockResolvedValue(undefined),
     setListingStatus: vi.fn().mockResolvedValue(undefined),
     updateListingContent: vi.fn().mockResolvedValue(undefined),

@@ -5,7 +5,7 @@
 //   dniVerified is NOT required. Legacy stubs (no auth row) REFUSE.
 //
 // This runs against the real local Postgres (Supabase stack on 54321/54322)
-// because the entire value of findAdopterAccountByDni is the raw-SQL EXISTS
+// because the entire value of the DNI lookup (adopter-dni-consult.ts) is the raw-SQL EXISTS
 // against auth.users — a mocked repo cannot validate that join. Pattern
 // mirrors __tests__/adoption-cascade.test.ts (admin client + session mock +
 // withMutationOverride cleanup).
@@ -452,6 +452,64 @@ describe("registered-adopter finalization contract (auth.users EXISTS gate)", ()
     // The old branch would have inserted a randomUUID() stub here. Never again.
     expect(await profilesCountForDni(ABSENT_DNI)).toBe(0);
     expect(await finalizedEventCount()).toBe(0);
+  });
+
+  // The THIRD door (security review 2026-09-26): finalize consulted the DNI
+  // space with no ceiling and no trail. It now goes through the same guarded
+  // consultation as the confirmation action and the contract route.
+  it("finalize's DNI consultation leaves the same hashed trail", async () => {
+    mockSessionAs(coordUserId);
+    const rowsFor = async () =>
+      db
+        .select({ payload: auditLog.payload })
+        .from(auditLog)
+        .where(and(eq(auditLog.actorUserId, coordUserId), eq(auditLog.action, "pii_queried")));
+    const before = await rowsFor();
+
+    await finalizeAdoptionAction(
+      ORG_TOKEN,
+      PET_TOKEN,
+      { error: null },
+      finalizeFormData(ABSENT_DNI),
+    );
+
+    const after = await rowsFor();
+    expect(after.length - before.length).toBe(1);
+    const fresh = after
+      .map((r) => r.payload as Record<string, unknown>)
+      .filter((p) => p.query === hashDni(ABSENT_DNI) && p.surface === "adopter_dni_check");
+    expect(fresh.length).toBeGreaterThan(0);
+    expect(fresh.every((p) => p.organization_id === orgId && p.result_count === 0)).toBe(true);
+    expect(JSON.stringify(after.map((r) => r.payload))).not.toContain(ABSENT_DNI);
+  });
+
+  // Frozen clock for the same reason as the D4 ceiling test above.
+  it("finalize over the organization's DNI ceiling is refused before any read", async () => {
+    mockSessionAs(coordUserId);
+    const midMinute = Math.floor(Date.now() / 60_000) * 60_000 + 30_000;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(midMinute));
+    try {
+      await db
+        .delete(rateLimitBuckets)
+        .where(like(rateLimitBuckets.bucketKey, "adopter_dni_check:%"));
+      for (let i = 0; i < ADOPTER_DNI_CHECK_LIMITS.maxPerMinute; i++) {
+        await checkAdopterAccountAction(ORG_TOKEN, ABSENT_DNI);
+      }
+      const refused = await finalizeAdoptionAction(
+        ORG_TOKEN,
+        PET_TOKEN,
+        { error: null },
+        finalizeFormData(REGISTERED_DNI),
+      );
+      expect(refused.error).toMatch(/consultas de DNI/i);
+      expect(await finalizedEventCount()).toBe(0);
+      await db
+        .delete(rateLimitBuckets)
+        .where(like(rateLimitBuckets.bucketKey, "adopter_dni_check:%"));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("registered account with dniVerified=false → finalize PROCEEDS onto the real userId", async () => {
