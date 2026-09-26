@@ -3251,7 +3251,7 @@
         "AGENTS.md:446"
       ],
       "enforcer": [
-        "db/schema.ts:4504-4507"
+        "db/schema.ts:4515-4518"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3271,7 +3271,7 @@
         "AGENTS.md:474"
       ],
       "enforcer": [
-        "db/schema.ts:4830-4832"
+        "db/schema.ts:4841-4843"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3290,7 +3290,7 @@
         "AGENTS.md:487"
       ],
       "enforcer": [
-        "db/schema.ts:4918-4920"
+        "db/schema.ts:4929-4931"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
