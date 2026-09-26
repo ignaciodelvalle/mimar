@@ -478,3 +478,52 @@ describe("createWelfareReport — the entered place rides the bridge event", () 
     );
   });
 });
+
+// localidades-por-id: the denuncia's CASE is keyed to the place the door
+// resolved, so the id-path gates (canReadCase, scope, RLS by govt_scope) see
+// its catalogue row instead of treating it as unresolved.
+const RESOLVED_BRAGADO = {
+  entered: { province: "Buenos Aires", locality: "Mechita", indec_id: "06112080" },
+  resolved: {
+    locality_id: "22222222-2222-4222-8222-222222222222",
+    province_code: "AR-B",
+    method: "indec_id" as const,
+  },
+};
+
+describe("createWelfareReport — the case carries the resolved place", () => {
+  it("a resolved place keys the case to its row; an unresolved one is recorded as such", async () => {
+    const a = makeDeps();
+    await createWelfareReport(
+      { ...BASE_INPUT, eventPlace: RESOLVED_BRAGADO },
+      {
+        repo: a.repo,
+        openCase: a.openCase,
+        computeFlagReasons: a.computeFlagReasons,
+        signal: a.signal,
+        transaction: a.transaction,
+      },
+    );
+    expect(a.openCase).toHaveBeenCalledWith(
+      expect.objectContaining({
+        localityId: RESOLVED_BRAGADO.resolved.locality_id,
+        placeMethod: "indec_id",
+      }),
+    );
+
+    const b = makeDeps();
+    await createWelfareReport(
+      { ...BASE_INPUT, eventPlace: ENTERED_HOMONYM },
+      {
+        repo: b.repo,
+        openCase: b.openCase,
+        computeFlagReasons: b.computeFlagReasons,
+        signal: b.signal,
+        transaction: b.transaction,
+      },
+    );
+    expect(b.openCase).toHaveBeenCalledWith(
+      expect.objectContaining({ localityId: null, placeMethod: "unresolved" }),
+    );
+  });
+});

@@ -40,6 +40,8 @@ export interface OpenCaseInput {
   jurisdictionLocality?: string | null;
   /** Structural locality-attribution FK (migration 0147): ar_localities uuid PK. */
   localityId?: string | null;
+  /** HOW localityId was decided (lib/domain/place.ts); absent = not recorded. */
+  placeMethod?: string | null;
   openedByUserId?: string | null;
   openedByOrganizationId?: string | null;
   /** custody_transfer_handshake only: canonical receiver org id. */
@@ -162,6 +164,7 @@ export class CasesRepository {
       jurisdictionProvince: input.jurisdictionProvince ?? null,
       jurisdictionLocality: input.jurisdictionLocality ?? null,
       localityId: input.localityId ?? null,
+      placeMethod: input.placeMethod ?? null,
       openedByUserId: input.openedByUserId ?? null,
       openedByOrganizationId: input.openedByOrganizationId ?? null,
       receiverOrganizationId: input.receiverOrganizationId ?? null,

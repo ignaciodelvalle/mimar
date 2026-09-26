@@ -64,6 +64,9 @@ type OpenCaseInput = {
   locationLng: string | null;
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
+  /** The catalogue row the door resolved (localidades-por-id); null = unresolved. */
+  localityId?: string | null;
+  placeMethod?: string | null;
   openedByUserId: string;
   openedByOrganizationId: string;
   openedReason: OpenedReason;
@@ -204,6 +207,14 @@ export async function createOrgWelfareReport(
         locationLng: primarySubjectKind === "location" ? locationLng : null,
         jurisdictionProvince,
         jurisdictionLocality,
+        // The case is keyed to the place the door resolved, so the id-path
+        // gates see its row (P3). No place given = nothing recorded.
+        ...(eventPlace
+          ? {
+              localityId: eventPlace.resolved?.locality_id ?? null,
+              placeMethod: eventPlace.resolved?.method ?? "unresolved",
+            }
+          : {}),
         openedByUserId: orgMember.userId,
         openedByOrganizationId: orgMember.orgId,
         openedReason: {

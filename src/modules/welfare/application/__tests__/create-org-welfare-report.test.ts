@@ -526,3 +526,37 @@ describe("createOrgWelfareReport — the entered place rides the bridge event", 
     expect((call?.[0] as { payload: Record<string, unknown> }).payload.place).toEqual(place);
   });
 });
+
+// localidades-por-id: the denuncia's CASE is keyed to the place the door
+// resolved, so the id-path gates (canReadCase, scope, RLS by govt_scope) see
+// its catalogue row instead of treating it as unresolved.
+const RESOLVED_BRAGADO = {
+  entered: { province: "Buenos Aires", locality: "Mechita", indec_id: "06112080" },
+  resolved: {
+    locality_id: "22222222-2222-4222-8222-222222222222",
+    province_code: "AR-B",
+    method: "indec_id" as const,
+  },
+};
+
+describe("createOrgWelfareReport — the case carries the resolved place", () => {
+  it("a resolved place keys the case to its row", async () => {
+    const d = makeDeps();
+    await createOrgWelfareReport(
+      { ...BASE_INPUT, eventPlace: RESOLVED_BRAGADO },
+      {
+        repo: d.repo,
+        openCase: d.openCase,
+        findGovtRecipients: d.findGovtRecipients,
+        signal: d.signal,
+        transaction: d.transaction,
+      },
+    );
+    expect(d.openCase).toHaveBeenCalledWith(
+      expect.objectContaining({
+        localityId: RESOLVED_BRAGADO.resolved.locality_id,
+        placeMethod: "indec_id",
+      }),
+    );
+  });
+});
