@@ -140,4 +140,36 @@ describe("<RulesWizard> — step flow", () => {
     expect(field).toHaveValue("06112080");
     expect(container.querySelector('input[name="jurisdictionLocality"]')).toHaveValue("Mechita");
   });
+
+  it("a confirmed authority unit of the province can key the rule instead of a locality", () => {
+    const units = [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        name: "Municipio de Bragado",
+        provinceCode: "AR-B",
+      },
+      {
+        id: "22222222-2222-4222-8222-222222222222",
+        name: "Municipio de Rosario",
+        provinceCode: "AR-S",
+      },
+    ];
+    const { container } = render(<RulesWizard base="/gob" units={units} />);
+    fireEvent.change(screen.getByRole("combobox", { name: "Provincia" }), {
+      target: { value: "AR-B" },
+    });
+    fireEvent.click(within(activeSection()).getByRole("button", { name: "Continuar" }));
+    const unitSelect = screen.getByRole("combobox", {
+      name: "O una unidad de autoridad confirmada",
+    });
+    // Only the chosen province's units are offered.
+    expect(within(unitSelect).queryByText("Municipio de Rosario")).toBeNull();
+    fireEvent.change(unitSelect, { target: { value: units[0]?.id } });
+    fireEvent.click(within(activeSection()).getByRole("button", { name: "Continuar" }));
+    fireEvent.click(screen.getByText("Microchip obligatorio"));
+    fireEvent.click(within(activeSection()).getByRole("button", { name: "Continuar" }));
+
+    expect(container.querySelector('input[name="jurisdictionUnitId"]')).toHaveValue(units[0]?.id);
+    expect(container.querySelector('input[name="jurisdictionLocalityIndecId"]')).toBeNull();
+  });
 });

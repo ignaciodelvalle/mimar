@@ -4,6 +4,12 @@
 //
 // Route params: '_' is the sentinel for "null". So
 // /gob/reglas/AR/_/_ -> country-level rules for AR.
+//
+// Addressed by id too (localidades-por-id D4): since migration 0263 two
+// homonyms (Mechita, partido Alberti and partido Bragado) can each carry a
+// rule under the same name. `?lugar=<catalogue row>` or `?unidad=<unit>`
+// narrows the page to one place; the name alone, when it covers more than
+// one place, lists them to choose from instead of mixing their rules.
 
 import { and, eq, isNull } from "drizzle-orm";
 import Link from "next/link";
@@ -24,6 +30,11 @@ import {
 } from "@/lib/domain/rule-types-registry";
 import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
 import { resolveBusinessRule } from "@/lib/infra/business-rules-resolver";
+import {
+  type RulePlaceKey,
+  loadRulePlaceLabels,
+  rulePlaceQuery,
+} from "@/lib/infra/rule-place-labels";
 import { portalBase } from "@/lib/ui/portal-base";
 import { formatDate } from "@/lib/utils/format";
 
@@ -37,10 +48,20 @@ function decodeNullable(raw: string): string | null {
   return decodeURIComponent(raw);
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function placeKeyFrom(sp: { lugar?: string; unidad?: string }): RulePlaceKey | null {
+  if (sp.unidad && UUID_RE.test(sp.unidad)) return { kind: "unit", id: sp.unidad };
+  if (sp.lugar && UUID_RE.test(sp.lugar)) return { kind: "locality", id: sp.lugar };
+  return null;
+}
+
 export default async function JurisdictionReglasPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ country: string; province: string; locality: string }>;
+  searchParams?: Promise<{ lugar?: string; unidad?: string }>;
 }) {
   await requireAdminOrRedirect();
   const base = await portalBase();
@@ -49,6 +70,7 @@ export default async function JurisdictionReglasPage({
   const country = decodeURIComponent(countryRaw);
   const province = decodeNullable(provinceRaw);
   const locality = decodeNullable(localityRaw);
+  const placeKey = placeKeyFrom((await searchParams) ?? {});
 
   const rows = await db
     .select({
@@ -66,8 +88,50 @@ export default async function JurisdictionReglasPage({
         locality === null
           ? isNull(govtBusinessRules.jurisdictionLocality)
           : eq(govtBusinessRules.jurisdictionLocality, locality),
+        placeKey
+          ? placeKey.kind === "unit"
+            ? eq(govtBusinessRules.authorityUnitId, placeKey.id)
+            : eq(govtBusinessRules.localityId, placeKey.id)
+          : undefined,
       ),
     );
+  // The places this name covers among its rules: more than one, and no place
+  // chosen, means homonyms — list them instead of mixing their rules.
+  const labels = await loadRulePlaceLabels(rows.map((r) => r.rule));
+  const places = placeKey ? [] : labels.distinctPlaces;
+  if (places.length > 1) {
+    return (
+      <div className="space-y-6">
+        <OpCrumbs
+          items={[
+            { label: "Reglas", href: `${base}/reglas` },
+            { label: jurisdictionLabel(country, province, locality) },
+          ]}
+        />
+        <header className="space-y-1">
+          <h1 className="text-title font-semibold text-ln-op-ink">
+            Reglas para {jurisdictionLabel(country, province, locality)}
+          </h1>
+          <p className="text-sm text-ln-op-mute">
+            Hay más de un lugar con este nombre, y cada uno tiene sus propias reglas. Elegí cuál:
+          </p>
+        </header>
+        <ul className="space-y-2">
+          {places.map((p) => (
+            <li key={`${p.key.kind}:${p.key.id}`}>
+              <Link
+                href={`?${rulePlaceQuery(p.key)}`}
+                className="text-md font-semibold text-ln-op-azul no-underline underline-offset-4 hover:underline"
+              >
+                {p.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  const placeLabel = placeKey ? labels.labelOf(placeKey) : null;
 
   const activeByType = new Map(rows.map((r) => [r.rule.ruleType, r]));
   // Exclude rule types that don't have a configuration form yet — no dead-end links.
@@ -84,7 +148,12 @@ export default async function JurisdictionReglasPage({
   // source (and its resolved value) is shown instead.
   const missingResolved = await Promise.all(
     missingTypes.map((t) =>
-      resolveBusinessRule(t, { country, province, locality }).then((r) => ({ type: t, ...r })),
+      resolveBusinessRule(t, {
+        country,
+        province,
+        locality,
+        ...(placeKey?.kind === "locality" ? { localityId: placeKey.id } : {}),
+      }).then((r) => ({ type: t, ...r })),
     ),
   );
 
@@ -98,13 +167,13 @@ export default async function JurisdictionReglasPage({
       <OpCrumbs
         items={[
           { label: "Reglas", href: `${base}/reglas` },
-          { label: jurisdictionLabel(country, province, locality) },
+          { label: placeLabel ?? jurisdictionLabel(country, province, locality) },
         ]}
       />
 
       <header className="space-y-1">
         <h1 className="text-title font-semibold text-ln-op-ink">
-          Reglas para {jurisdictionLabel(country, province, locality)}
+          Reglas para {placeLabel ?? jurisdictionLabel(country, province, locality)}
         </h1>
       </header>
 
@@ -135,7 +204,7 @@ export default async function JurisdictionReglasPage({
               actions={
                 <div className="flex gap-3">
                   <Link
-                    href={`${base}/reglas/${segCountry}/${segProvince}/${segLocality}/editar/${rule.id}`}
+                    href={`${base}/reglas/${segCountry}/${segProvince}/${segLocality}/editar/${rule.id}${placeKey ? `?${rulePlaceQuery(placeKey)}` : ""}`}
                     className="text-sm font-semibold text-ln-op-azul no-underline underline-offset-4 hover:underline"
                   >
                     Editar
@@ -198,7 +267,14 @@ export default async function JurisdictionReglasPage({
                         </p>
                       </div>
                       <Link
-                        href={`${base}/reglas/${segCountry}/${segProvince}/${segLocality}/nueva?ruleType=${t}`}
+                        // A place chosen by id is configured from the wizard,
+                        // which keys the rule on the row (a homonym's name
+                        // alone would be refused).
+                        href={
+                          placeKey
+                            ? `${base}/reglas/nueva`
+                            : `${base}/reglas/${segCountry}/${segProvince}/${segLocality}/nueva?ruleType=${t}`
+                        }
                         className="shrink-0 text-sm font-semibold text-ln-op-azul no-underline underline-offset-4 hover:underline"
                       >
                         {"Configurar →"}

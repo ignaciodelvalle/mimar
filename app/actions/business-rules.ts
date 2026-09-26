@@ -127,9 +127,16 @@ export async function createBusinessRuleAction(
     return { error: null, warning: result.reason };
   }
   const base = resolvePortalBase(formData);
+  // Addressed by the place when the rule is keyed on one (D4): two homonyms
+  // share the name part of the URL.
+  const place = jurisdiction.place.authorityUnitId
+    ? `?unidad=${jurisdiction.place.authorityUnitId}`
+    : jurisdiction.place.localityId
+      ? `?lugar=${jurisdiction.place.localityId}`
+      : "";
   return {
     error: null,
-    redirectTo: `${base}/reglas/${encodeURIComponent(country)}/${encodeURIComponent(province ?? "_")}/${encodeURIComponent(locality ?? "_")}`,
+    redirectTo: `${base}/reglas/${encodeURIComponent(country)}/${encodeURIComponent(province ?? "_")}/${encodeURIComponent(locality ?? "_")}${place}`,
   };
 }
 

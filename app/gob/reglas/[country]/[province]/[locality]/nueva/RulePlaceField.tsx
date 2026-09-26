@@ -12,12 +12,15 @@
 
 import { createContext, useContext } from "react";
 
-export type RulePlace = { localityIndecId: string | null };
+export type RulePlace = { localityIndecId: string | null; unitId?: string | null };
 
 export const RulePlaceContext = createContext<RulePlace>({ localityIndecId: null });
 
 export function RulePlaceField() {
-  const { localityIndecId } = useContext(RulePlaceContext);
+  const { localityIndecId, unitId } = useContext(RulePlaceContext);
+  // A confirmed authority unit keys the rule on the unit; the server refuses
+  // a draft or another province's unit.
+  if (unitId) return <input type="hidden" name="jurisdictionUnitId" value={unitId} />;
   if (!localityIndecId) return null;
   return <input type="hidden" name="jurisdictionLocalityIndecId" value={localityIndecId} />;
 }

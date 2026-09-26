@@ -53,9 +53,60 @@ type Props = {
   /** Portal prefix (portal-follows-viewer, 2026-07-02) — threaded down to the
    * per-kind form so its post-submit redirect stays inside the right portal. */
   base: "/admin" | "/gob";
+  /** Confirmed authority units below the province (localidades-por-id D4). */
+  units?: ReadonlyArray<{ id: string; name: string; provinceCode: string }>;
 };
 
-export function RulesWizard({ base }: Props) {
+type PickedUnit = { id: string; name: string } | null;
+
+/** The place the rule form sends: a confirmed unit, or the picked row's INDEC id. */
+function rulePlaceOf(p: {
+  wholeProvince: boolean;
+  unit: PickedUnit;
+  localityIndecId: string | null;
+  effectiveLocality: string | null;
+}) {
+  if (p.wholeProvince) return { localityIndecId: null, unitId: null };
+  if (p.unit) return { localityIndecId: null, unitId: p.unit.id };
+  return { localityIndecId: p.effectiveLocality ? p.localityIndecId : null, unitId: null };
+}
+
+/** A confirmed authority unit of the province, as an alternative to a locality. */
+function UnitPickerField({
+  units,
+  value,
+  onChange,
+}: {
+  units: ReadonlyArray<{ id: string; name: string }>;
+  value: PickedUnit;
+  onChange: (u: PickedUnit) => void;
+}) {
+  if (units.length === 0) return null;
+  return (
+    <OpField label="O una unidad de autoridad confirmada">
+      {({ id, describedBy }) => (
+        <OpSelect
+          id={id}
+          value={value?.id ?? ""}
+          aria-describedby={describedBy}
+          onChange={(e) => {
+            const picked = units.find((u) => u.id === e.target.value);
+            onChange(picked ? { id: picked.id, name: picked.name } : null);
+          }}
+        >
+          <option value="">Ninguna — uso la localidad</option>
+          {units.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.name}
+            </option>
+          ))}
+        </OpSelect>
+      )}
+    </OpField>
+  );
+}
+
+export function RulesWizard({ base, units = [] }: Props) {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [provinceCode, setProvinceCode] = useState("");
@@ -64,9 +115,12 @@ export function RulesWizard({ base }: Props) {
   const [localityName, setLocalityName] = useState("");
   // The picked row's INDEC id: tells a homonym apart (localidades-por-id D4).
   const [localityIndecId, setLocalityIndecId] = useState<string | null>(null);
+  // Or a confirmed authority unit: the rule is keyed on the unit instead.
+  const [unit, setUnit] = useState<PickedUnit>(null);
+  const provinceUnits = units.filter((u) => u.provinceCode === provinceCode);
   const [ruleType, setRuleType] = useState<GovtBusinessRuleType | null>(null);
 
-  const effectiveLocality = wholeProvince ? null : localityName.trim() || null;
+  const effectiveLocality = wholeProvince ? null : (unit?.name ?? (localityName.trim() || null));
   const RuleForm = ruleType ? RULE_FORM_REGISTRY[ruleType] : undefined;
 
   return (
@@ -95,6 +149,7 @@ export function RulesWizard({ base }: Props) {
                 const code = e.target.value;
                 setProvinceCode(code);
                 setProvinceName(provinceByCode(code)?.name ?? "");
+                setUnit(null);
               }}
             >
               <option value="">Elegí una provincia…</option>
@@ -135,6 +190,7 @@ export function RulesWizard({ base }: Props) {
             if (e.target.checked) {
               setLocalityName("");
               setLocalityIndecId(null);
+              setUnit(null);
             }
           }}
         >
@@ -164,11 +220,14 @@ export function RulesWizard({ base }: Props) {
             />
           </div>
         )}
+        {!wholeProvince && (
+          <UnitPickerField units={provinceUnits} value={unit} onChange={setUnit} />
+        )}
         <OpButton
           type="button"
           variant="primary"
           block
-          disabled={!wholeProvince && !localityName.trim()}
+          disabled={!wholeProvince && !localityName.trim() && !unit}
           onClick={() => setStep(3)}
         >
           Continuar
@@ -238,7 +297,7 @@ export function RulesWizard({ base }: Props) {
               {RULE_TYPE_REGISTRY[ruleType].label}
             </p>
             <RulePlaceContext.Provider
-              value={{ localityIndecId: effectiveLocality ? localityIndecId : null }}
+              value={rulePlaceOf({ wholeProvince, unit, localityIndecId, effectiveLocality })}
             >
               <RuleForm
                 mode="create"

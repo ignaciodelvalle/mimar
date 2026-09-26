@@ -16,14 +16,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // No rows configured at this exact (country, province, locality) level —
 // every rule type falls into "Tipos sin excepción".
-const { chain } = vi.hoisted(() => {
+const { chain, rowsState } = vi.hoisted(() => {
+  const rowsState: { rows: unknown[] } = { rows: [] };
   const chain: Record<string, unknown> = {
     select: () => chain,
     from: () => chain,
     leftJoin: () => chain,
-    where: () => Promise.resolve([]),
+    where: () => Promise.resolve(rowsState.rows),
   };
-  return { chain };
+  return { chain, rowsState };
+});
+
+const placeLabelsMock = vi.fn();
+vi.mock("@/lib/infra/rule-place-labels", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/infra/rule-place-labels")>(
+    "@/lib/infra/rule-place-labels",
+  );
+  return { ...actual, loadRulePlaceLabels: (...a: unknown[]) => placeLabelsMock(...a) };
 });
 
 vi.mock("@/db", async () => {
@@ -54,6 +63,8 @@ import JurisdictionReglasPage from "./page";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  rowsState.rows = [];
+  placeLabelsMock.mockResolvedValue({ labelOf: () => null, distinctPlaces: [] });
   resolveBusinessRuleMock.mockImplementation(async (ruleType: string) => {
     // Every type resolves to the genuine hardcoded default EXCEPT
     // microchip_required, which a PROVINCE-level override governs instead —
@@ -99,5 +110,35 @@ describe("JurisdictionReglasPage — cascade-mask indicator", () => {
     const html = renderToStaticMarkup(el);
 
     expect(html).toContain("Configuradas exactamente en");
+  });
+
+  // localidades-por-id D4: two homonyms, each with its own rule, never share
+  // one page — the name lists the places, each addressed by its row.
+  it("a name that covers two keyed places lists them to choose from, by id", async () => {
+    rowsState.rows = [
+      { rule: { id: "r1", ruleType: "microchip_required" }, updatedBy: null },
+      { rule: { id: "r2", ruleType: "microchip_required" }, updatedBy: null },
+    ];
+    placeLabelsMock.mockResolvedValue({
+      labelOf: () => null,
+      distinctPlaces: [
+        {
+          key: { kind: "locality", id: "aaaaaaaa-0000-4000-8000-000000000001" },
+          label: "Mechita (Alberti)",
+        },
+        {
+          key: { kind: "locality", id: "aaaaaaaa-0000-4000-8000-000000000002" },
+          label: "Mechita (Bragado)",
+        },
+      ],
+    });
+    const el = await JurisdictionReglasPage({
+      params: Promise.resolve({ country: "AR", province: "Buenos Aires", locality: "Mechita" }),
+    });
+    const html = renderToStaticMarkup(el);
+    expect(html).toContain("Mechita (Alberti)");
+    expect(html).toContain("Mechita (Bragado)");
+    expect(html).toContain("?lugar=aaaaaaaa-0000-4000-8000-000000000002");
+    expect(html).not.toContain("Reglas activas");
   });
 });
