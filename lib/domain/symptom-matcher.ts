@@ -2,7 +2,8 @@
 //
 // Pipeline: normalize → matchSymptoms → aggregateDiseaseMatches → detectAlertableDiseases
 //
-// The matcher is intentionally simple: substring-contains of normalized synonyms.
+// The matcher is intentionally simple: whole-word/phrase containment of
+// normalized synonyms (accent- and case-folded, punctuation as a word break).
 // No stemming, no Levenshtein. Covers ~80% of real inputs without overengineering.
 // Iterate synonyms with production data rather than complicating the algorithm.
 //
@@ -40,19 +41,34 @@ export type DiseaseMatch = {
 export const normalize = normalizeText;
 
 /**
+ * Fold text into space-delimited word tokens: normalize (case, diacritics),
+ * then treat anything that is not a letter or a digit as a word break. The
+ * result is padded with one space on each side so a phrase can be found with
+ * a plain `includes(" phrase ")` that only matches on word boundaries.
+ */
+function toWordSequence(text: string): string {
+  const words = normalize(text)
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+  return words.length === 0 ? "" : ` ${words} `;
+}
+
+/**
  * Match free-text input against the symptom catalog.
  *
- * For each symptom, checks whether ANY of its synonyms appears as a substring
- * of the normalized input. Multiple matches for the same symptom collapse to
- * one (uniqueness on symptom_code).
+ * For each symptom, checks whether ANY of its synonyms appears as a WHOLE
+ * word or phrase of the normalized input (health audit #6, 2026-09-26): the
+ * old substring match read "gatos" as "tos" (→ tuberculosis) and "cambios"
+ * inside any sentence. Multiple matches for the same symptom collapse to one
+ * (uniqueness on symptom_code).
  *
  * Filters by species if provided (null or "other" = no filter).
  *
  * Returns an empty array if no matches.
  */
 export function matchSymptoms(freeText: string, species: string | null): MatchedSymptom[] {
-  const normalizedInput = normalize(freeText);
-  if (normalizedInput.length === 0) return [];
+  const input = toWordSequence(freeText);
+  if (input.length === 0) return [];
 
   const matches: MatchedSymptom[] = [];
   const seenCodes = new Set<string>();
@@ -68,8 +84,8 @@ export function matchSymptoms(freeText: string, species: string | null): Matched
     }
 
     for (const synonym of symptom.synonyms) {
-      const normSynonym = normalize(synonym);
-      if (normalizedInput.includes(normSynonym)) {
+      const phrase = toWordSequence(synonym);
+      if (phrase.length > 0 && input.includes(phrase)) {
         if (!seenCodes.has(symptom.code)) {
           matches.push({ symptom_code: symptom.code, matched_synonym: synonym });
           seenCodes.add(symptom.code);

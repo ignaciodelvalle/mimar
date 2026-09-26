@@ -145,3 +145,63 @@ describe("detectAlertableDiseases", () => {
     expect(detectAlertableDiseases("", "dog")).toEqual([]);
   });
 });
+
+// Health audit #6 (2026-09-26): the matcher read synonyms as SUBSTRINGS, so
+// "gatos" contained "tos" and any "cambios" meant rabies. Matching is now on
+// whole words/phrases of the accent- and case-folded text. Thresholds and
+// negation are PO decisions and deliberately untouched.
+describe("matchSymptoms — whole words, not substrings (health audit #6)", () => {
+  const codes = (text: string, species: string | null = "dog") =>
+    matchSymptoms(text, species).map((m) => m.symptom_code);
+
+  it('"gatos" is not "tos": no cough, no tuberculosis alert', () => {
+    expect(codes("juega con otros gatos")).not.toContain("cough");
+    const r = detectAlertableDiseases("juega con otros gatos y queda agitado", "dog");
+    expect(r.find((d) => d.disease_code === "tuberculosis")).toBeUndefined();
+  });
+
+  it('"cambios en la comida" is not a behaviour change', () => {
+    expect(codes("le hice cambios en la comida")).not.toContain("behavioral_changes");
+    expect(detectAlertableDiseases("le hice cambios en la comida", "dog")).toEqual([]);
+  });
+
+  it('bare "tiene cambios" no longer matches (recall trade-off pending PO confirmation)', () => {
+    // The bare "cambios" synonym was replaced by behaviour/conduct phrases so
+    // "cambios en la comida" stops reading as rabies. The cost is this input:
+    // an owner who writes only "tiene cambios" is no longer matched.
+    expect(codes("tiene cambios")).not.toContain("behavioral_changes");
+  });
+
+  it("a behaviour change stated as such still matches", () => {
+    expect(codes("tuvo cambios de comportamiento")).toContain("behavioral_changes");
+    expect(codes("Cambió el comportamiento de golpe")).toContain("behavioral_changes");
+  });
+
+  it("the word itself still matches, with accents, case and punctuation folded", () => {
+    expect(codes("Tose, TOS seca")).toContain("cough");
+    expect(codes("tiene fiebre.")).toContain("high_fever");
+    expect(codes("Convulsión anoche")).toContain("seizures");
+  });
+
+  it("a multi-word synonym only matches as the whole phrase", () => {
+    expect(codes("no come")).toContain("anorexia");
+    expect(codes("no comete errores")).not.toContain("anorexia");
+  });
+
+  it('"espuma en la boca" is hypersalivation → rabies alert', () => {
+    expect(codes("tiene espuma en la boca y muerde todo")).toContain("hypersalivation");
+    const r = detectAlertableDiseases("tiene espuma en la boca y muerde todo", "dog");
+    expect(r.map((d) => d.disease_code)).toContain("rabies_suspected");
+  });
+
+  it('"convulsiona" matches seizures (its alert threshold is a PO decision)', () => {
+    // Seizures is MEDIUM for rabies: alone it does not alert, by the D6 rule.
+    expect(codes("convulsiona")).toContain("seizures");
+  });
+
+  it('"su collar amarillo" still reads "amarillo" — a known false positive', () => {
+    // Whole-word matching cannot tell the collar from the gums; narrowing the
+    // bare colour synonym would drop "está amarillo". Left for the PO.
+    expect(codes("su collar amarillo")).toContain("jaundice");
+  });
+});

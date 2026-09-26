@@ -216,6 +216,9 @@ export const SYMPTOMS: readonly SymptomDef[] = [
       "hipersalivación",
       "saliva mucho",
       "le cae baba",
+      "espuma en la boca",
+      "espuma por la boca",
+      "echa espuma",
     ],
     related_diseases: [{ disease_code: "rabies_suspected", specificity: "high" }],
   },
@@ -246,7 +249,13 @@ export const SYMPTOMS: readonly SymptomDef[] = [
       "está rara",
       "actúa raro",
       "comportamiento diferente",
-      "cambios",
+      // Not a bare "cambios": with whole-word matching it still read "le hice
+      // cambios en la comida" as a rabies sign (health audit #6, 2026-09-26).
+      "cambios de comportamiento",
+      "cambio de comportamiento",
+      "cambios de conducta",
+      "cambio de conducta",
+      "cambio el comportamiento",
     ],
     related_diseases: [
       { disease_code: "rabies_suspected", specificity: "high" },
