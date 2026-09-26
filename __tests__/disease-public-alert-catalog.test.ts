@@ -8,7 +8,13 @@ import {
   getPublicAlertForDisease,
   renderPublicAlertCopy,
 } from "@/lib/reference/disease-public-alert-catalog";
-import { findDisease } from "@/lib/reference/diseases";
+import { DISEASES, findDisease } from "@/lib/reference/diseases";
+import { diseaseCodeToEnoCode, getEnoDisease } from "@/src/modules/surveillance/domain/eno-catalog";
+
+/** The diseases.ts codes whose ENO disease is stigma-sensitive (ENO-D4). */
+const STIGMA_SENSITIVE_CODES = DISEASES.map((d) => d.code).filter(
+  (code) => getEnoDisease(diseaseCodeToEnoCode(code))?.stigmaSensitive === true,
+);
 
 describe("disease-public-alert-catalog", () => {
   it("every alert entry has a code that exists in the disease catalog", () => {
@@ -63,5 +69,27 @@ describe("renderPublicAlertCopy", () => {
     if (!alert) throw new Error("rabies_confirmed must be in the curated catalog");
     const copy = renderPublicAlertCopy(alert, { pet_name: "X" });
     expect(copy.severity).toBe("urgent");
+  });
+});
+
+// PO S8 (2026-09-26): a stigma-sensitive disease never triggers an automatic
+// owner alert — the vet communicates it. The leishmaniasis copy used to say
+// "fue diagnosticado" to the owner, contradicting the ENO catalog's own policy
+// (health audit #8).
+describe("stigma-sensitive diseases get no automatic owner alert", () => {
+  it("the catalog names stigma-sensitive diseases to check (non-vacuity)", () => {
+    expect(STIGMA_SENSITIVE_CODES).toEqual(
+      expect.arrayContaining(["visceral_leishmaniasis", "canine_brucellosis"]),
+    );
+  });
+
+  it.each(STIGMA_SENSITIVE_CODES)("%s resolves to no public alert", (code) => {
+    expect(getPublicAlertForDisease(code)).toBeNull();
+  });
+
+  it("no curated alert entry names a stigma-sensitive disease", () => {
+    for (const alert of PUBLIC_ALERT_DISEASES) {
+      expect(STIGMA_SENSITIVE_CODES).not.toContain(alert.diseaseCode);
+    }
   });
 });

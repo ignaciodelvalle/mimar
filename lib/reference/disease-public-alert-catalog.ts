@@ -12,11 +12,18 @@
 // should require sign-off from a vet + epidemiologist.
 //
 // Diseases intentionally NOT here (per spec §5):
+//   - ANY stigma-sensitive disease (ENO catalog `stigmaSensitive`, ENO-D4):
+//     visceral_leishmaniasis, canine_brucellosis. PO S8 (2026-09-26): the vet
+//     communicates those, never an automatic alert. The leishmaniasis entry
+//     that used to be here told the owner "fue diagnosticado" and overrode that
+//     policy (health audit #8); getPublicAlertForDisease refuses the class, so
+//     re-adding an entry cannot bring the alert back.
 //   - canine_brucellosis (low household transmission risk)
 //   - toxoplasmosis (general-knowledge population, not specific to pet event)
 //   - parvovirus / distemper / FeLV / FIV (no zoonotic component)
 
 import type { Notification } from "@/db";
+import { diseaseCodeToEnoCode, getEnoDisease } from "@/src/modules/surveillance/domain/eno-catalog";
 
 export type OwnerAlertSeverity = Notification["severity"];
 
@@ -80,17 +87,6 @@ export const PUBLIC_ALERT_DISEASES: readonly PublicHealthAlert[] = [
       "Echinococcosis transmite huevos por heces. Riesgo doméstico real si owner no sabe manejar las deposiciones.",
   },
   {
-    diseaseCode: "visceral_leishmaniasis",
-    ownerNotificationTitle: "Leishmaniasis visceral detectada en {{pet_name}}",
-    ownerNotificationBody:
-      "{{pet_name}} fue diagnosticado con leishmaniasis visceral. Es una zoonosis transmitida por mosquito flebótomo. Reducí poblaciones de mosquitos en tu domicilio (eliminar agua estancada), protegé a {{pet_name}} con repelentes recomendados por el vet, y consultá a tu médico ante fiebre prolongada, pérdida de peso, o esplenomegalia.",
-    ownerNotificationSeverity: "warning",
-    ctaLabel: "Sobre leishmaniasis",
-    ctaUrl: "https://www.argentina.gob.ar/salud/glosario/leishmaniasis",
-    rationale:
-      "Vector-borne pero el manejo doméstico reduce riesgo. Owner es crítico para la prevención del vector.",
-  },
-  {
     diseaseCode: "anthrax",
     ownerNotificationTitle: "URGENTE — Carbunclo (ántrax) en {{pet_name}}",
     ownerNotificationBody:
@@ -115,7 +111,13 @@ export const PUBLIC_ALERT_DISEASES: readonly PublicHealthAlert[] = [
 
 const ALERT_INDEX = new Map(PUBLIC_ALERT_DISEASES.map((a) => [a.diseaseCode, a]));
 
+/**
+ * The curated alert for a disease, or null. ALWAYS null for a stigma-sensitive
+ * disease (PO S8): the owner hears it from the vet, never from an automatic
+ * notification — whatever the curated list says.
+ */
 export function getPublicAlertForDisease(diseaseCode: string): PublicHealthAlert | null {
+  if (getEnoDisease(diseaseCodeToEnoCode(diseaseCode))?.stigmaSensitive) return null;
   return ALERT_INDEX.get(diseaseCode) ?? null;
 }
 
