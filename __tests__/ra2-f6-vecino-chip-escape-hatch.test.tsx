@@ -150,6 +150,14 @@ vi.mock("@/lib/infra/ppp-classification", () => ({
 
 vi.mock("@/lib/infra/pet-access", () => ({ requirePetAccess: vi.fn() }));
 
+// The alta page offers the owner's last pet locality as a one-tap chip; this
+// walk is about the chip-match escape hatch, so no suggestion is offered.
+vi.mock("@/lib/place/home-suggestion", () => ({
+  ownerLatestHomeSuggestion: vi.fn().mockResolvedValue(null),
+  petHomeSuggestion: vi.fn().mockResolvedValue(null),
+  homeLocalityRow: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock("@/src/modules/pets/application/register-pet", () => ({
   registerPet: (...args: unknown[]) => registerPetMock(...args),
 }));
