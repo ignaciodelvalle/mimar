@@ -715,8 +715,9 @@ const clinicalInfo = z.object({
  *
  * `createSymptomObservedWriter` runs the free text through the disease matcher
  * and, for every REPORTABLE disease the match flags as alertable, appends a
- * system-authored `outbreak_signal`, enqueues an ENO outbox row and routes
- * notifications to the jurisdiction's authorities. That is the whole point of
+ * system-authored `outbreak_signal` and routes notifications to the
+ * jurisdiction's authorities (a SIGNAL — since PO S1, 2026-09-26, no legal ENO
+ * outbox row: that comes only from a vet or a lab). That is the whole point of
  * the kind, not a side effect to be sorry about: a person noticing something at
  * 23:00 with a phone in their hand is the fastest surveillance input this
  * product has. It is stated here so no reader believes this variant is as

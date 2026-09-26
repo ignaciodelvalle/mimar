@@ -197,8 +197,8 @@ describe("createSymptomObservedWriter", () => {
     expect(signalCall[0].authorRole).toBe("system");
     expect(signalCall[0].recordedByUserId).toBeNull();
 
-    // outbox enqueued for the signal
-    expect(repo.enqueueOutbox).toHaveBeenCalledTimes(1);
+    // PO S1: an owner's symptom is a SIGNAL — no legal ENO row is enqueued.
+    expect(repo.enqueueOutbox).not.toHaveBeenCalled();
 
     // route called once
     expect(mockRouteOutbreakSignalNotifications).toHaveBeenCalledTimes(1);
@@ -212,9 +212,8 @@ describe("createSymptomObservedWriter", () => {
     expect(alertInput.pet).toEqual({ id: petId, name: "Firulais" });
   });
 
-  // localidades-por-id D3: the signal carries the home place and its outbox
-  // row snapshots the home's catalogue row beside the names.
-  it("the signal carries the home place and its outbox row snapshots the row", async () => {
+  // localidades-por-id D3: the signal carries the home place.
+  it("the signal carries the home place", async () => {
     mockMatchSymptoms.mockReturnValue([{ symptom_code: "symptom_1" }]);
     mockAggregateDiseaseMatches.mockReturnValue([
       {
@@ -248,7 +247,7 @@ describe("createSymptomObservedWriter", () => {
     expect(signal.payload.place).toMatchObject({
       resolved: { locality_id: HOME, method: "catalogue_id" },
     });
-    expect(repo.enqueueOutbox.mock.calls[0]?.[2]).toMatchObject({ localityId: HOME });
+    expect(repo.enqueueOutbox).not.toHaveBeenCalled();
   });
 
   it("pushes urgent owner notification when rabies escalation is active", async () => {

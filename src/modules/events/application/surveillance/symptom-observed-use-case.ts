@@ -13,7 +13,6 @@
 //   - Matcher is defensive: try/catch — failure sets empty results, NEVER blocks the insert.
 //   - For each alertable reportable disease:
 //       insert outbreak_signal (plain, system author) +
-//       enqueueOutbox +
 //       routeOutbreakSignalNotifications +
 //       maybeNotifyOwnersOfPublicAlert
 //   - Rabies escalation: rabiesObservationStatus=in_progress + rabies_suspected high_count>=1
@@ -95,7 +94,9 @@ export type CreateSymptomObservedWriterResult =
   | { ok: false; error: string };
 
 type Deps = {
-  repo: Pick<EventsRepository, "insertEvent" | "insertEventIdempotent" | "enqueueOutbox">;
+  // No enqueueOutbox (PO S1, 2026-09-26): an owner's symptom is a SIGNAL for
+  // the authority, never a legal ENO row — that comes only from a vet/lab.
+  repo: Pick<EventsRepository, "insertEvent" | "insertEventIdempotent">;
   transaction: <T>(cb: (tx: unknown) => Promise<T>) => Promise<T>;
   flushNotifications: (pendingNotifications: NewNotification[]) => Promise<void>;
 };
@@ -255,24 +256,6 @@ export async function createSymptomObservedWriter(
           tx as Parameters<typeof deps.repo.insertEvent>[1],
         );
         signalEventIds.push(signalEvent.id);
-
-        // Enqueue outbox row for the outbreak_signal (ENO SLA).
-        await deps.repo.enqueueOutbox(
-          tx as Parameters<typeof deps.repo.enqueueOutbox>[0],
-          {
-            id: signalEvent.id,
-            petId,
-            eventType: "outbreak_signal",
-            payload: signalPayload as Record<string, unknown>,
-          },
-          {
-            jurisdictionProvince: petJurisdictionProvince,
-            jurisdictionLocality: petJurisdictionLocality,
-            ...(petLocalityId !== undefined
-              ? { localityId: petLocalityId, placeMethod: petPlaceMethod ?? null }
-              : {}),
-          },
-        );
 
         // Build minimal pet shape for routeOutbreakSignalNotifications.
         const fakePet = {

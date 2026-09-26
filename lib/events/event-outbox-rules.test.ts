@@ -70,25 +70,40 @@ describe("OUTBOX_RULES[outbreak_signal]", () => {
     expect(rules[0].target_kind).toBe("govt_webhook");
   });
 
-  it("outbreak_signal with rabies_suspected (maps to ENO 'rabies', critical) → 24 hours", () => {
+  // PO S1 (2026-09-26): a signal the MATCHER derived from an owner's (or a
+  // witness's) free text is a suspicion, not a notification — it pages the
+  // authority in-app and never mints a legal ENO row. Only the signal a vet's
+  // diagnosis derives stays on the legal queue.
+  it("a matcher signal (owner symptom) → null, whatever the disease", () => {
     const rule = rules[0];
-    const slaHours = rule.slaHours({
+    for (const disease_code of ["rabies_suspected", "leptospirosis", "tuberculosis"]) {
+      expect(rule.slaHours({ triggered_by: "matcher", disease_code })).toBeNull();
+    }
+  });
+
+  it("a legacy signal with no triggered_by is a matcher signal → null", () => {
+    expect(rules[0].slaHours({ disease_code: "rabies_suspected" })).toBeNull();
+  });
+
+  it("a diagnosis-derived signal with rabies_suspected (ENO 'rabies') → 24 hours", () => {
+    const slaHours = rules[0].slaHours({
+      triggered_by: "direct_diagnosis",
       disease_code: "rabies_suspected", // diseases.ts code → ENO 'rabies'
     });
     expect(slaHours).toBe(24);
   });
 
-  it("outbreak_signal with leptospirosis (direct ENO match, high severity) → 24 hours", () => {
-    const rule = rules[0];
-    const slaHours = rule.slaHours({
+  it("a diagnosis-derived signal with leptospirosis (direct ENO match) → 24 hours", () => {
+    const slaHours = rules[0].slaHours({
+      triggered_by: "direct_diagnosis",
       disease_code: "leptospirosis",
     });
     expect(slaHours).toBe(24);
   });
 
-  it("outbreak_signal with unknown disease_code → null (no outbox row)", () => {
-    const rule = rules[0];
-    const slaHours = rule.slaHours({
+  it("a diagnosis-derived signal with an unknown disease_code → null (no outbox row)", () => {
+    const slaHours = rules[0].slaHours({
+      triggered_by: "direct_diagnosis",
       disease_code: "not_in_catalog",
     });
     expect(slaHours).toBeNull();

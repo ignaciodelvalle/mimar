@@ -64,12 +64,18 @@ function makeDiseaseDiagnosisEvent(diseaseCode: string) {
   };
 }
 
-function makeOutbreakSignalEvent(diseaseCode: string) {
+// A diagnosis-derived signal by default: since PO S1 (2026-09-26) a matcher
+// signal mints no ENO row at all.
+function makeOutbreakSignalEvent(
+  diseaseCode: string,
+  triggeredBy: "direct_diagnosis" | "matcher" = "direct_diagnosis",
+) {
   return {
     id: "evt-signal-1",
     petId: "pet-1",
     eventType: "outbreak_signal" as const,
     payload: {
+      triggered_by: triggeredBy,
       disease_code: diseaseCode,
       disease_label: diseaseCode,
       match_strength: { high_count: 1, medium_count: 0, low_count: 0, matched_symptom_codes: [] },
@@ -121,7 +127,7 @@ describe("enqueueOutboxForEvent", () => {
     expect(inserted[0].slaDueAt).toEqual(expectedSla);
   });
 
-  it("outbreak_signal for ENO disease (rabies_suspected) → inserts one row with 24h SLA", async () => {
+  it("a diagnosis-derived outbreak_signal (rabies_suspected) → inserts one row with 24h SLA", async () => {
     const { tx, inserted } = makeMockTx();
     const event = makeOutbreakSignalEvent("rabies_suspected");
 
@@ -185,16 +191,20 @@ describe("enqueueOutboxForEvent", () => {
     expect(upserted).toHaveLength(0);
   });
 
-  it("a symptom-cluster rabies signal is not the case; the diagnosis-derived one is", async () => {
-    const symptom = makeOutbreakSignalEvent("rabies_suspected");
+  it("a symptom (matcher) signal inserts nothing (S1); the diagnosis-derived one is the case", async () => {
     const a = makeMockTx();
-    await enqueueOutboxForEvent(a.tx as never, symptom, PET, NOW);
-    expect(a.inserted[0].enoCaseKey).toBeNull();
+    await enqueueOutboxForEvent(
+      a.tx as never,
+      makeOutbreakSignalEvent("rabies_suspected", "matcher"),
+      PET,
+      NOW,
+    );
+    expect(a.inserted).toHaveLength(0);
 
     const b = makeMockTx();
     await enqueueOutboxForEvent(
       b.tx as never,
-      { ...symptom, payload: { ...symptom.payload, triggered_by: "direct_diagnosis" } },
+      makeOutbreakSignalEvent("rabies_suspected"),
       PET,
       NOW,
     );

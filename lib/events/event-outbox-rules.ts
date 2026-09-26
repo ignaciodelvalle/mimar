@@ -149,22 +149,27 @@ const clinicalInfoLoggedGovtWebhook: OutboxRule = {
 /**
  * Rule for outbreak_signal → govt_webhook.
  *
- * Fires only when the signal's disease_code maps to a disease in the ENO
- * catalog (i.e., severity is 'critical' or 'high'). All ENO catalog diseases
- * warrant a 24-hour notification window regardless of notifyHours — the outbox
- * SLA here is the notification-to-authority window, which is uniformly 24h
- * for the outbreak-signal path (the signal itself is already a derived alert).
+ * Fires only for the signal a VET'S DIAGNOSIS derives
+ * (`triggered_by === 'direct_diagnosis'`) whose disease_code maps to the ENO
+ * catalog. PO S1 (2026-09-26): a signal the symptom MATCHER derives — from an
+ * owner's libreta entry or a witness's welfare report — is a suspicion. It
+ * still pages the authority in-app (routeOutbreakSignalNotifications) and
+ * counts on the surveillance surfaces, but it mints NO legal ENO row: the
+ * legal notification comes only from a vet/lab diagnosis or a vet-confirmed
+ * rabies close. A legacy signal with no `triggered_by` is a matcher signal
+ * (the schema's own read default).
  *
- * Returns null for disease codes not in the ENO catalog.
+ * The 24 h window is the notification-to-authority window of the signal path,
+ * uniform for every ENO disease.
  */
 const outbreakSignalGovtWebhook: OutboxRule = {
   target_kind: "govt_webhook",
   slaHours(payload) {
+    if (payload.triggered_by !== "direct_diagnosis") return null;
     const diseaseCode = typeof payload.disease_code === "string" ? payload.disease_code : null;
     if (!diseaseCode) return null;
     const disease = getEnoForDiseaseCode(diseaseCode);
     if (!disease) return null;
-    // Outbreak signals from ENO diseases always warrant 24h govt notification.
     return 24;
   },
   // Only the signal a DIAGNOSIS derives is the diagnosis's case — it is the
