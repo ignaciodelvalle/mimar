@@ -132,6 +132,8 @@ async function raceUnderHeldPetLock<T>(
 const createdPetIds: string[] = [];
 const createdOrgIds: string[] = [];
 const createdProfileIds: string[] = [];
+/** Fixtures a test left without a holder on purpose, each with its reason at the add site. */
+const deliberatelyHolderless = new Set<string>();
 
 function randomDni(): string {
   return `${Math.floor(Math.random() * 90000000 + 10000000)}`;
@@ -372,6 +374,9 @@ describe("W1 — an adoption reversal acts on the holder under the pet lock", ()
       .where(eq(ownerships.id, f.adopterOwnershipId));
     expect(row.endedAt?.getTime()).toBe(closedAt.getTime());
     expect(await liveHolders(f.pet.id)).toEqual([]);
+    // Holderless ON PURPOSE: this fixture closed its only row by hand to reach
+    // the write-side guard. The K1 sweep at the end of the file skips it.
+    deliberatelyHolderless.add(f.pet.id);
   });
 });
 
@@ -575,5 +580,62 @@ describe("W5 — a P2P accept does not hand over a pet its sender's erasure is d
     const result = await f.accept();
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/ya no existe/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// K1 sweep — after every race above, no live pet is left without a holder
+// ---------------------------------------------------------------------------
+//
+// The audit's suggestion, as a DB test over THIS file's fixtures rather than a
+// fence over seed data: the unique index guarantees AT MOST one owner, and
+// nothing in the schema guarantees AT LEAST one holder. A hand-off that closes
+// one row and loses the race to open the next leaves exactly that. A holder is
+// any live row except `caretaker` — the same line `requireTitularAccess` and
+// `hasLiveTitularOwnership` draw: a caretaker looks after an owned pet, it
+// does not hold one.
+
+async function holderlessLivePets(petIds: string[]): Promise<string[]> {
+  if (petIds.length === 0) return [];
+  const rows = await holder<{ id: string }[]>`
+    SELECT p.id
+      FROM pets p
+     WHERE p.id = ANY(${petIds}::uuid[])
+       AND p.deleted_at IS NULL
+       AND p.status <> 'deceased'
+       AND NOT EXISTS (
+             SELECT 1 FROM ownerships o
+              WHERE o.pet_id = p.id
+                AND o.ended_at IS NULL
+                AND o.role <> 'caretaker')
+     ORDER BY p.id
+  `;
+  return rows.map((r) => r.id);
+}
+
+describe("K1 — every live fixture pet still has a holder after the races", () => {
+  it("non-vacuity: a pet held only by a caretaker is reported", async () => {
+    const titularId = await makeProfile("K1 titular");
+    const caretakerId = await makeProfile("K1 cuidador");
+    const pet = await makePet("K1Planted");
+    const [ownerRow] = await db
+      .insert(ownerships)
+      .values({ petId: pet.id, ownerUserId: titularId, role: "owner" })
+      .returning({ id: ownerships.id });
+    await db
+      .insert(ownerships)
+      .values({ petId: pet.id, ownerUserId: caretakerId, role: "caretaker" });
+    expect(await holderlessLivePets([pet.id])).toEqual([]);
+
+    await db.update(ownerships).set({ endedAt: new Date() }).where(eq(ownerships.id, ownerRow.id));
+    expect(await holderlessLivePets([pet.id])).toEqual([pet.id]);
+    deliberatelyHolderless.add(pet.id);
+  });
+
+  it("no fixture pet the hand-offs above touched was left without a holder", async () => {
+    const swept = createdPetIds.filter((id) => !deliberatelyHolderless.has(id));
+    // Non-vacuity: the sweep covers the controls and the races, not an empty list.
+    expect(swept.length).toBeGreaterThanOrEqual(8);
+    expect(await holderlessLivePets(swept)).toEqual([]);
   });
 });
