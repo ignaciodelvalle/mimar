@@ -47,6 +47,7 @@ import {
   excludeResolvedLostEpisodeSql,
   excludeStaleWelcomeSql,
 } from "@/lib/infra/notification-reconcile";
+import { type ScopedGrant, scopedGrants } from "@/lib/place/scope";
 
 // ---------------------------------------------------------------------------
 // Profile — canonical per-request read
@@ -91,21 +92,28 @@ export const getProfileCached = cache(async (userId: string): Promise<CachedProf
 // Jurisdictions — active govt_assignments for a user
 // ---------------------------------------------------------------------------
 
-export type CachedJurisdiction = { province: string; locality: string };
+export type CachedJurisdiction = ScopedGrant;
 
 /**
  * Cached active-jurisdictions read. Empty array for non-govt / no assignments.
+ *
+ * Each row is one grant's (province, locality) name pair. A grant on an
+ * authority unit also carries its id-path `place` when the `scope` consumer
+ * runs on the id path (localidades-por-id D2, lib/place/scope.ts); a legacy
+ * grant never does, so it scopes exactly as before.
  */
 export const getJurisdictionsCached = cache(
   async (userId: string): Promise<CachedJurisdiction[]> => {
     const rows = await db
       .select({
+        assignmentId: govtAssignments.id,
         province: govtAssignments.jurisdictionProvince,
         locality: govtAssignments.jurisdictionLocality,
+        authorityUnitId: govtAssignments.authorityUnitId,
       })
       .from(govtAssignments)
       .where(and(eq(govtAssignments.userId, userId), isNull(govtAssignments.revokedAt)));
-    return rows;
+    return scopedGrants(userId, rows);
   },
 );
 

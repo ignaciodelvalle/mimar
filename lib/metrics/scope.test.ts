@@ -14,7 +14,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
 import { pets } from "@/db";
-import { jurisdictionPairClause } from "@/lib/metrics/scope";
+import { jurisdictionPairClause, petsScopeClause } from "@/lib/metrics/scope";
 
 function render(clause: ReturnType<typeof jurisdictionPairClause> | undefined) {
   if (!clause) return { sql: "", params: [] as unknown[] };
@@ -108,5 +108,109 @@ describe("jurisdictionPairClause — parenthesized under AND composition (#60)",
     const { sql: text } = render(composed);
     // One pair: `and ((province = $ and locality = $))` — still grouped, harmless.
     expect(text).toMatch(/and\s*\(\(/i);
+  });
+});
+
+// localidades-por-id D2: a grant flips from its name pair to its authority
+// unit INDIVIDUALLY. A grant carries a `place` only when the `scope` consumer
+// runs on the id path AND the grant is on a unit (lib/infra/request-cache.ts);
+// a legacy grant never does, so it renders exactly as before.
+describe("jurisdictionPairClause — id path per grant (D2)", () => {
+  const localityIdExpr = sql`${pets.localityId}`;
+
+  it("a legacy grant renders its name pair even when a locality-id column is offered", () => {
+    const legacy = [{ province: "Buenos Aires", locality: "Mechita" }];
+    const withId = render(
+      jurisdictionPairClause(legacy, provinceExpr, localityExpr, localityIdExpr),
+    );
+    const without = render(jurisdictionPairClause(legacy, provinceExpr, localityExpr));
+    expect(withId).toEqual(without);
+    expect(withId.sql).not.toContain("locality_id");
+  });
+
+  it("a unit grant matches its member localities by id, never by name", () => {
+    const { sql: text, params } = render(
+      jurisdictionPairClause(
+        [
+          {
+            province: "Buenos Aires",
+            locality: "Mechita",
+            place: { path: "locality", provinceCode: "AR-B", localityIds: ["id-a", "id-b"] },
+          },
+        ],
+        provinceExpr,
+        localityExpr,
+        localityIdExpr,
+      ),
+    );
+    expect(text).toContain('"pets"."locality_id" in');
+    expect(text).not.toContain("jurisdiction_locality");
+    expect(params).toEqual(["id-a", "id-b"]);
+  });
+
+  it("a unit with no active member matches nothing", () => {
+    const { sql: text } = render(
+      jurisdictionPairClause(
+        [
+          {
+            province: "Buenos Aires",
+            locality: "Mechita",
+            place: { path: "locality", provinceCode: "AR-B", localityIds: [] },
+          },
+        ],
+        provinceExpr,
+        localityExpr,
+        localityIdExpr,
+      ),
+    );
+    expect(text).toMatch(/\(false\)/);
+  });
+
+  it("a provincial unit grant is its province by canonical name, unresolved rows included", () => {
+    const { sql: text, params } = render(
+      jurisdictionPairClause(
+        [{ province: "CABA", locality: "", place: { path: "province", provinceCode: "AR-C" } }],
+        provinceExpr,
+        localityExpr,
+        localityIdExpr,
+      ),
+    );
+    expect(text).not.toContain("locality");
+    expect(params).toEqual(["CABA"]);
+  });
+
+  it("without a locality-id column (a payload-keyed site) a unit grant keeps its name pair", () => {
+    const unitGrant = [
+      {
+        province: "Buenos Aires",
+        locality: "Mechita",
+        place: { path: "locality" as const, provinceCode: "AR-B", localityIds: ["id-a"] },
+      },
+    ];
+    const { sql: text, params } = render(
+      jurisdictionPairClause(unitGrant, provinceExpr, localityExpr),
+    );
+    expect(text).toContain("jurisdiction_locality");
+    expect(params).toEqual(["Buenos Aires", "Mechita"]);
+  });
+
+  it("petsScopeClause offers pets.locality_id to the unit grants", () => {
+    const { sql: text } = render(
+      petsScopeClause({
+        actor: { role: "admin" },
+        scope: {
+          kind: "jurisdictions",
+          jurisdictions: [
+            {
+              province: "Buenos Aires",
+              locality: "Mechita",
+              place: { path: "locality", provinceCode: "AR-B", localityIds: ["id-a"] },
+            },
+          ],
+        },
+        period: { from: new Date(0), to: new Date(0) },
+      } as unknown as Parameters<typeof petsScopeClause>[0]),
+    );
+    expect(text).toContain('"pets"."locality_id" in');
   });
 });

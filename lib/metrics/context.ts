@@ -15,6 +15,7 @@ import {
   isWholeProvinceAssignment,
   isWholeProvinceLocality,
 } from "@/lib/domain/jurisdiction-canonical";
+import type { GrantPlace } from "@/lib/place/govt-scope";
 
 /**
  * Who is asking: admin or national (universal read scope) or govt
@@ -24,8 +25,14 @@ import {
  */
 export type DashboardActor = { role: GobReadRole };
 
-/** A single jurisdiction pair as stored in govt_assignments. */
-export type DashboardJurisdiction = { province: string; locality: string };
+/**
+ * A single jurisdiction pair as stored in govt_assignments. `place` is set
+ * only when the grant is on an authority unit AND the `scope` consumer runs on
+ * the id path (localidades-por-id D2, lib/infra/request-cache.ts): a scope
+ * clause then matches the unit's localities by catalogue id wherever the table
+ * offers a locality_id column. A legacy grant never carries one.
+ */
+export type DashboardJurisdiction = { province: string; locality: string; place?: GrantPlace };
 
 /** The scope dimension of a ProjectionContext. */
 export type ProjectionScope =

@@ -8,7 +8,7 @@
 // Import note: this file uses @/db (Drizzle) — it lives in infrastructure,
 // not domain/. This is Pattern-B territory (aggregate reads, not pure rules).
 
-import { type AnyColumn, type SQL, and, eq, sql } from "drizzle-orm";
+import { type AnyColumn, type SQL, and, eq, inArray, sql } from "drizzle-orm";
 
 import {
   cases,
@@ -19,6 +19,8 @@ import {
   welfareReports,
 } from "@/db";
 import { isWholeProvinceLocality } from "@/lib/domain/jurisdiction-canonical";
+import type { GrantPlace } from "@/lib/place/govt-scope";
+import { provinceByCode } from "@/lib/reference/ar-provincias";
 
 import type { DashboardJurisdiction } from "./context";
 import type { ProjectionContext, ScopedForDisclosure } from "./context";
@@ -52,9 +54,45 @@ export function jurisdictionPairClause(
   jurisdictions: DashboardJurisdiction[],
   provinceExpr: SQL,
   localityExpr: SQL,
+  localityIdExpr?: SQL,
 ): SQL | null {
   if (jurisdictions.length === 0) return null;
   const pairs = jurisdictions.map((j) =>
+    // THE ID PATH, per grant (localidades-por-id D2). A grant carries `place`
+    // only when it is on an authority unit and the `scope` consumer runs on
+    // the id path. It then matches by catalogue id — a homonym elsewhere in the
+    // province never matches, and a row whose place never resolved (NULL
+    // locality_id) reaches only a provincial unit. A site that has no
+    // locality_id column (JSONB payload keys) passes no `localityIdExpr` and
+    // keeps the grant's stored name pair: exactly what it served before.
+    // A legacy grant has no `place` and never enters this branch.
+    j.place && localityIdExpr
+      ? grantPlacePredicate(j.place, provinceExpr, localityIdExpr)
+      : namePairPredicate(j, provinceExpr, localityExpr),
+  );
+  // Wrap the OR-chain in an outer group so the clause is a single self-contained
+  // boolean. Without this, a caller composing it via `and(condA, …, pairClause)`
+  // gets `condA AND … AND pair1 OR pair2 OR …`; SQL AND binds tighter than OR, so
+  // every row matching pair2… is returned regardless of the other conditions —
+  // breaking the jurisdiction fence AND the primaryPetId/status/kind filters
+  // (dawn QA #57: Argo pet-drill leaked other pets' cases). One pair alone is
+  // already parenthesized, so the extra group is a harmless no-op there.
+  return sql`(${sql.join(pairs, sql` OR `)})`;
+}
+
+/** A unit grant on the id path: its province, or its member localities by id. */
+function grantPlacePredicate(place: GrantPlace, provinceExpr: SQL, localityIdExpr: SQL): SQL {
+  if (place.path === "province") {
+    const province = provinceByCode(place.provinceCode);
+    return province ? sql`(${provinceExpr} = ${province.name})` : sql`(false)`;
+  }
+  if (place.localityIds.length === 0) return sql`(false)`;
+  return sql`(${inArray(localityIdExpr, place.localityIds)})`;
+}
+
+/** The legacy name semantics of one grant (the only path before D2). */
+function namePairPredicate(j: DashboardJurisdiction, provinceExpr: SQL, localityExpr: SQL): SQL {
+  return (
     // Whole-province assignment (e.g. CABA / "Ciudad Autónoma de Buenos Aires")
     // subsumes every locality/barrio in that province — match on province alone.
     // Province equality is always kept, so other provinces stay invisible.
@@ -70,16 +108,8 @@ export function jurisdictionPairClause(
     // the intended subsumption — no separate `IS NULL` disjunction is needed.
     isWholeProvinceLocality(j.province, j.locality)
       ? sql`(${provinceExpr} = ${j.province})`
-      : sql`(${provinceExpr} = ${j.province} AND ${localityExpr} = ${j.locality})`,
+      : sql`(${provinceExpr} = ${j.province} AND ${localityExpr} = ${j.locality})`
   );
-  // Wrap the OR-chain in an outer group so the clause is a single self-contained
-  // boolean. Without this, a caller composing it via `and(condA, …, pairClause)`
-  // gets `condA AND … AND pair1 OR pair2 OR …`; SQL AND binds tighter than OR, so
-  // every row matching pair2… is returned regardless of the other conditions —
-  // breaking the jurisdiction fence AND the primaryPetId/status/kind filters
-  // (dawn QA #57: Argo pet-drill leaked other pets' cases). One pair alone is
-  // already parenthesized, so the extra group is a harmless no-op there.
-  return sql`(${sql.join(pairs, sql` OR `)})`;
 }
 
 // ---------------------------------------------------------------------------
@@ -214,6 +244,7 @@ function petsJurisdictionClause(ctx: ProjectionContext) {
     jurisdictions,
     sql`${pets.jurisdictionProvince}`,
     sql`${pets.jurisdictionLocality}`,
+    sql`${pets.localityId}`,
   );
 }
 

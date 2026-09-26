@@ -79,6 +79,7 @@ function jurisdictionOnlyPetsCurrentJurisdictionClause(
       jurisdictions,
       sql`${pets.jurisdictionProvince}`,
       sql`${pets.jurisdictionLocality}`,
+      sql`${pets.localityId}`,
     ) ?? sql`false`
   );
 }
@@ -125,6 +126,7 @@ function jurisdictionOnlyCasesScopeClause(
       jurisdictions,
       sql`${cases.jurisdictionProvince}`,
       sql`${cases.jurisdictionLocality}`,
+      sql`${cases.localityId}`,
     ) ?? sql`false`
   );
 }
@@ -177,6 +179,7 @@ function jurisdictionOnlyCustodyDisputesScopeClause(
       jurisdictions,
       sql`${custodyDisputes.jurisdictionProvince}`,
       sql`${custodyDisputes.jurisdictionLocality}`,
+      sql`${custodyDisputes.localityId}`,
     ) ?? sql`false`
   );
 }
@@ -228,6 +231,7 @@ function jurisdictionOnlyWelfareReportsScopeClause(
       jurisdictions,
       sql`${welfareReports.jurisdictionProvince}`,
       sql`${welfareReports.jurisdictionLocality}`,
+      sql`${welfareReports.localityId}`,
     ) ?? sql`false`
   );
 }
@@ -258,6 +262,7 @@ export function organizationsScopeClause(
       jurisdictions,
       sql`${organizations.jurisdictionProvince}`,
       sql`${organizations.jurisdictionLocality}`,
+      sql`${organizations.localityId}`,
     ) ?? sql`false`
   );
 }

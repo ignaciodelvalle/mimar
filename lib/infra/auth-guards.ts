@@ -15,6 +15,7 @@ import type { ActorProfile } from "@/lib/domain/institutional-scope";
 import type { GobReadRole } from "@/lib/domain/jurisdiction-canonical";
 import { requireLiveUser } from "@/lib/infra/live-user";
 import {
+  type CachedJurisdiction,
   getJurisdictionsCached,
   getOrgMembershipCached,
   getProfileCached,
@@ -164,10 +165,10 @@ export async function requireOrgAccessByToken(orgToken: string): Promise<OrgAcce
   return { supabase, user, organization: row.organization, membership: row.membership };
 }
 
-export type AdminOrGovtJurisdiction = {
-  province: string;
-  locality: string;
-};
+// One grant's (province, locality) pair, plus its id-path `place` when the
+// grant is on an authority unit and the `scope` consumer runs on the id path
+// (localidades-por-id D2, lib/place/scope.ts).
+export type AdminOrGovtJurisdiction = CachedJurisdiction;
 
 export type AdminOrGovtSession = AuthenticatedSession & {
   profile: { id: string; role: "admin" | "govt" };

@@ -457,6 +457,7 @@ export async function fetchFosterPoolUtilization(
         [...jurisdictions],
         sql`${fosterVolunteers.jurisdictionProvince}`,
         sql`${fosterVolunteers.jurisdictionLocality}`,
+        sql`${fosterVolunteers.localityId}`,
       ) ?? sql`false`,
     );
   }

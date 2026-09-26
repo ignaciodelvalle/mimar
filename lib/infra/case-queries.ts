@@ -460,6 +460,7 @@ export async function findOpenCasesForPetWithCodes(
         [...govtScope],
         sql`${cases.jurisdictionProvince}`,
         sql`${cases.jurisdictionLocality}`,
+        sql`${cases.localityId}`,
       ) ?? sql`false`,
       syntheticRowExclusion.cases(),
     );
@@ -876,6 +877,7 @@ export function buildGovtCaseWhereClause(
       [...jurisdictions],
       sql`${cases.jurisdictionProvince}`,
       sql`${cases.jurisdictionLocality}`,
+      sql`${cases.localityId}`,
     ) ?? sql`false`
   } AND ${syntheticRowExclusion.cases()})`;
   const filterClauses = buildCaseKindStatusClauses(filters);
@@ -1169,6 +1171,7 @@ export async function listOutbreakInvestigationsForGovt(
           [...jurisdictions],
           sql`${cases.jurisdictionProvince}`,
           sql`${cases.jurisdictionLocality}`,
+          sql`${cases.localityId}`,
         ) ?? sql`false`,
         syntheticRowExclusion.cases(),
       );
@@ -1226,6 +1229,7 @@ export async function getOutbreakInvestigationDetail(
           [...jurisdictions],
           sql`${cases.jurisdictionProvince}`,
           sql`${cases.jurisdictionLocality}`,
+          sql`${cases.localityId}`,
         ) ?? sql`false`,
         syntheticRowExclusion.cases(),
       )
