@@ -998,7 +998,7 @@
       "enforcer": [
         "scripts/check-node-version.ts:87",
         "scripts/check-node-version.ts:171-219",
-        "package.json:194-196"
+        "package.json:195-197"
       ],
       "enforcementKind": "lint-script",
       "wired": "verify",
