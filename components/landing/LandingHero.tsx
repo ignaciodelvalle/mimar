@@ -22,11 +22,18 @@
 // LnPetStatus/LnStatusFlag type is intentionally NOT extended for them (each
 // state carries its own `tone`, mapped to tokens in globals.css via data-tone).
 //
-// The WHOLE card tints per state: trim background, status badge, photo ring,
-// the one contextual read-only row, and the card border. Clicking a state dot
-// takes control (stops the one-shot cycle if it's still running) and just
-// shows that state — no auto-resume; once a person has taken the wheel, the
-// card stays wherever they left it.
+// The WHOLE card tints per state: trim background, photo ring, the one
+// contextual read-only row, and the card border. The visible status badge
+// (PO 2026-09-25: "no me gusta el chip") is GONE — the lost state instead
+// recolors the card's own front background, mirroring the same
+// --color-ln-err-050 token the owner app's public credential uses for its
+// masthead tint (.pc-cred[data-situation="perdida"] .pc-head, app/globals.css)
+// and LnStatusFlag's lost variant (components/ui/StatusFlag.tsx). The state is
+// still exposed to assistive tech via an sr-only aria-live region (see the
+// span right inside .lp-hcard) since the visible label is gone. Clicking a
+// state dot takes control (stops the one-shot cycle if it's still running)
+// and just shows that state — no auto-resume; once a person has taken the
+// wheel, the card stays wherever they left it.
 //
 // Flip: the card turns edge-on (rotateY → 90°), swaps the visible face, then
 // turns back — the same single-painted-face mechanism the product's FlipCard
@@ -235,8 +242,19 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                   data-section="hero-credential"
                   data-tone={state.tone}
                   data-face={face}
-                  aria-label={`Credencial de ${PAMPA.name}`}
+                  aria-label={`Credencial de ${PAMPA.name} — estado: ${state.badge}`}
                 >
+                  {/* Accessible state carrier (PO 2026-09-25: the visible
+                      status chip was removed from the card — the lost state
+                      now reads through the card's background colour instead).
+                      A screen reader gets no visual cue, so this sr-only
+                      live region announces every state change; aria-live is
+                      "polite" so it never interrupts other reading. The
+                      aria-label above also carries the CURRENT state for a
+                      reader that lands on the card directly. */}
+                  <span className="sr-only" aria-live="polite">
+                    {`Estado de la credencial: ${state.badge}. ${state.row}.`}
+                  </span>
                   {/* FRONT — the credential the QR opens, in miniature: the
                       guilloche band and issuing line, photo and QR rising out
                       of the band, name and token between them, the identity
@@ -256,11 +274,12 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                         </span>
                       </span>
                       <span className="lp-hcard-trim-r">
-                        {/* The status seal. `key` restarts its stamp-in on
-                            every state change. */}
-                        <span key={index} className="lp-hcard-badge">
-                          {state.badge}
-                        </span>
+                        {/* The status seal/badge was removed (PO 2026-09-25:
+                            "no me gusta el chip"). The state now reads through
+                            the card's own background colour (lost) plus the
+                            border pulse, photo ring and contextual row that
+                            already tinted per state — see the sr-only live
+                            region above for the accessible carrier. */}
                         <FlipButton label="Girar credencial" onFlip={flip} />
                       </span>
                     </div>

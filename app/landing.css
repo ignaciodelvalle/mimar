@@ -597,6 +597,34 @@
   }
 }
 
+/* Lost-state BACKGROUND (PO 2026-09-25: the removed status chip's
+   replacement signal — "que cambie el fondo, como en la app real"). Same
+   token the owner app already uses for its OWN lost tint: --color-ln-err-050
+   is exactly .pc-cred[data-situation="perdida"] .pc-head's background
+   (app/globals.css) and LnStatusFlag's `lost` variant bg
+   (components/ui/StatusFlag.tsx) — never a new red. Scoped to .lp-hcard-front
+   (not the outer .lp-hcard) so the back face — the mini libreta, which a
+   person CAN flip to while the card is mid-cycle on "perdida" — keeps its own
+   white ground; only the credential front reads as tinted, same as the real
+   app never tints anything past its masthead row either. */
+.lp .lp-hcard-front {
+  background: var(--color-ln-card);
+  transition: background var(--motion-deliberate);
+}
+.lp .lp-hcard[data-tone="lost"] .lp-hcard-front {
+  background: var(--color-ln-err-050);
+}
+/* Contrast guard: .lp-hcard-fields dt normally sits on white at
+   --color-ln-mute (measured 5.02:1 there). On the lost tint that ratio drops
+   under 4.5:1 (WCAG AA, normal text) because --color-ln-err-050 is lighter
+   than white's usual pairing partner assumed elsewhere. Swap the SAME family's
+   darker ink-2 token (7.7:1 on err-050) rather than inventing a new shade —
+   the app itself never tints this deep (its own lost tint stops at the
+   masthead row), so there is no app usage to mirror for this one pairing. */
+.lp .lp-hcard[data-tone="lost"] .lp-hcard-fields dt {
+  color: var(--color-ln-ink-2);
+}
+
 /* single-painted-face swap (mirrors FlipCard) — back hidden until data-face */
 .lp .lp-hcard-back {
   display: none;
@@ -685,46 +713,16 @@
   color: var(--color-ln-celeste-100);
   white-space: nowrap;
 }
-/* A layout-only wrapper (seal + turn button in source order); its children
-   are placed on the band grid directly. */
+/* A layout-only wrapper (turn button in source order); its children are
+   placed on the band grid directly. Used to also carry the status seal
+   (removed, PO 2026-09-25 — see .lp-hcard-front's data-tone="lost" background
+   further down for its replacement). */
 .lp .lp-hcard-trim-r {
   display: contents;
 }
 .lp .lp-hcard-band .lp-hcard-flip {
   grid-row: 1;
   grid-column: 2;
-}
-.lp .lp-hcard-band .lp-hcard-badge {
-  grid-row: 2;
-  grid-column: 1 / -1;
-  justify-self: end;
-}
-/* The status seal: a struck stamp, not a pill — solid tone-soft fill so its
-   text never depends on the band behind it, a double rule for the struck
-   edge, a quarter-turn of tilt at rest. */
-.lp .lp-hcard-badge {
-  display: inline-flex;
-  align-items: center;
-  border: 1.5px solid var(--htone, var(--color-ln-ok));
-  outline: 1px solid var(--htone-soft, var(--color-ln-ok-bg));
-  outline-offset: 1px;
-  border-radius: var(--radius-sm);
-  padding: 4px 8px;
-  /* 10px is --text-xs; spelled out because this shorthand is the one
-     __tests__/font-weight-contract.test.ts exists to read, and its parser takes
-     the first var() in the value as the family. */
-  font: 700 10px / 1 var(--font-ln-mono);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  color: var(--htone, var(--color-ln-ok));
-  background: var(--htone-soft, var(--color-ln-ok-bg));
-  /* rotate, not transform: the stamp-in keyframes animate transform and end
-     on none, which would straighten a transform-based tilt. */
-  rotate: -2deg;
-  transition: color var(--motion-deliberate), background var(--motion-deliberate), border-color
-    var(--motion-deliberate);
-  animation: lp-hbadge-in var(--motion-slow) ease both;
 }
 .lp .lp-hcard-flip {
   width: 26px;
@@ -787,7 +785,11 @@
      overlaps by the negative margin. */
   position: relative;
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) auto;
+  /* Photo column MUST equal the QR's own box (96px, 80px in the narrow
+     @container variant below) — PO 2026-09-25: "misma medida que el QR, en
+     todos los anchos". Kept as one literal per breakpoint rather than a
+     shared custom property so grep can diff the two at a glance. */
+  grid-template-columns: 96px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: start;
   margin-top: -40px;
@@ -795,9 +797,12 @@
 }
 .lp .lp-hcard-photo {
   position: relative;
-  width: 76px;
-  height: 76px;
-  border-radius: var(--radius-input);
+  width: 96px;
+  height: 96px;
+  /* Same radius treatment as the QR frame (.lp-hcard-qr, --radius-lg) — the
+     two rise out of the band together and read as one pair of document
+     windows, not two different corner geometries. */
+  border-radius: var(--radius-lg);
   overflow: hidden;
   background: var(--color-ln-stripe);
   /* White ring (the card), then the state's colour — the ring is what makes
@@ -859,12 +864,14 @@
    a screen at arm's length. */
 @container (max-width: 340px) {
   .lp .lp-hcard-body {
-    grid-template-columns: 64px minmax(0, 1fr) auto;
+    grid-template-columns: 80px minmax(0, 1fr) auto;
     gap: 10px;
   }
   .lp .lp-hcard-photo {
-    width: 64px;
-    height: 64px;
+    /* Still the QR's own size at this width (80px) — see the note on
+       .lp-hcard-body above. */
+    width: 80px;
+    height: 80px;
   }
   .lp .lp-hcard-qr {
     width: 80px;
@@ -1070,16 +1077,6 @@
   transform: scale(1.25);
 }
 
-@keyframes lp-hbadge-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
 @keyframes lp-hstate-in {
   from {
     opacity: 0;
@@ -1093,8 +1090,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .lp .lp-hcard,
+  .lp .lp-hcard-front,
   .lp .lp-hcard-tone,
-  .lp .lp-hcard-badge,
   .lp .lp-hcard-photo,
   .lp .lp-hcard-ctx {
     transition: none;

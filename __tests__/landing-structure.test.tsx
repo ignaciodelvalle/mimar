@@ -114,8 +114,12 @@ describe("landing hero — credential + lost demo", () => {
     const html = renderHero();
     // The hero is the "credencial viva" card (front credential + back libreta).
     expect(html).toContain("lp-hcard");
-    expect(html).toContain("lp-hcard-badge");
-    // SSR / no-JS / reduced-motion rest on the first state — "al día".
+    // The visible status chip was removed (PO 2026-09-25): the state now
+    // reads through the card's background colour (lost) plus the sr-only
+    // live region below, never through a `.lp-hcard-badge` element.
+    expect(html).not.toContain("lp-hcard-badge");
+    // SSR / no-JS / reduced-motion rest on the first state — "al día" — which
+    // now surfaces only through the sr-only aria-live carrier.
     expect(html).toContain("AL DÍA");
     // The al-día contextual row is the one painted at rest.
     expect(html).toContain("Vacunas firmadas");
