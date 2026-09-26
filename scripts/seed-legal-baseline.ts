@@ -242,6 +242,32 @@ function legalMetadataOf(row: LegalBaselineRow) {
   };
 }
 
+/**
+ * The row already holds this dataset version with these exact values: an
+ * idempotent re-run leaves it alone and writes no audit row.
+ */
+function isUnchanged(
+  existing: typeof govtBusinessRules.$inferSelect | undefined,
+  row: LegalBaselineDataset["rows"][number],
+  version: string,
+): boolean {
+  return (
+    existing !== undefined &&
+    existing.baselineVersion === version &&
+    JSON.stringify(existing.rulePayload) === JSON.stringify(row.rulePayload) &&
+    existing.requirementLevel === row.requirementLevel &&
+    existing.legalBasis === row.legalBasis &&
+    existing.authority === row.authority &&
+    existing.sourceUrl === row.sourceUrl &&
+    existing.effectiveFrom === row.effectiveFrom &&
+    // T6 review MINOR 11: effectiveUntil was omitted here while BOTH write
+    // paths force it to null. A row carrying a set effectiveUntil compared
+    // "unchanged", so the re-seed skipped it and the value survived until
+    // some unrelated field changed and silently wiped it. Compare it.
+    existing.effectiveUntil === null
+  );
+}
+
 export async function seedLegalBaseline(
   db: DbHandle,
   dataset: LegalBaselineDataset,
@@ -278,20 +304,7 @@ export async function seedLegalBaseline(
         continue;
       }
 
-      const unchanged =
-        existing !== undefined &&
-        existing.baselineVersion === dataset.version &&
-        JSON.stringify(existing.rulePayload) === JSON.stringify(row.rulePayload) &&
-        existing.requirementLevel === row.requirementLevel &&
-        existing.legalBasis === row.legalBasis &&
-        existing.authority === row.authority &&
-        existing.sourceUrl === row.sourceUrl &&
-        existing.effectiveFrom === row.effectiveFrom &&
-        // T6 review MINOR 11: effectiveUntil was omitted here while BOTH write
-        // paths force it to null. A row carrying a set effectiveUntil compared
-        // "unchanged", so the re-seed skipped it and the value survived until
-        // some unrelated field changed and silently wiped it. Compare it.
-        existing.effectiveUntil === null;
+      const unchanged = isUnchanged(existing, row, dataset.version);
       if (unchanged) {
         summary.unchanged.push(rowLabel(row));
         continue;
