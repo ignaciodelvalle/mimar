@@ -988,13 +988,28 @@ export const organizationCoverage = pgTable(
       table.jurisdictionProvince,
       table.jurisdictionLocality,
     ),
-    // Unique per (org, province, locality) with NULLS NOT DISTINCT so that
-    // province-level rows (locality IS NULL) also deduplicate correctly.
-    // Added in migration 0073.
-    // Constraint name is intentionally short to stay under Postgres's 63-char limit.
-    orgProvinceLocalityUnique: unique("org_coverage_org_province_locality_unique")
-      .on(table.organizationId, table.jurisdictionProvince, table.jurisdictionLocality)
-      .nullsNotDistinct(),
+    // Uniqueness by what the zone names (migration 0261, localidades-por-id
+    // D5, replacing 0073's name constraint): a catalogue row, a unit, or —
+    // for zones keyed to neither — the (province, locality) text, coalesced
+    // so province-level rows (NULL) deduplicate. Two homonymous localities
+    // of one province are two zones.
+    orgLocalityIdUnique: uniqueIndex("org_coverage_org_locality_id_unique")
+      .on(table.organizationId, table.localityId)
+      .where(sql`${table.localityId} IS NOT NULL`),
+    orgUnitUnique: uniqueIndex("org_coverage_org_unit_unique")
+      .on(table.organizationId, table.authorityUnitId)
+      .where(sql`${table.authorityUnitId} IS NOT NULL`),
+    orgNameUnique: uniqueIndex("org_coverage_org_name_unique")
+      .on(
+        table.organizationId,
+        table.jurisdictionProvince,
+        sql`coalesce(${table.jurisdictionLocality}, '')`,
+      )
+      .where(sql`${table.localityId} IS NULL AND ${table.authorityUnitId} IS NULL`),
+    oneKey: check(
+      "organization_coverage_one_key",
+      sql`${table.localityId} IS NULL OR ${table.authorityUnitId} IS NULL`,
+    ),
     organizationCoverageJurisdictionProvinceCanonical: check(
       "organization_coverage_jurisdiction_province_canonical",
       sql`${table.jurisdictionProvince} is null or ${table.jurisdictionProvince} in ${CANONICAL_PROVINCE_SQL_LIST}`,

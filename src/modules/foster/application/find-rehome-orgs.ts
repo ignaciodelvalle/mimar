@@ -143,6 +143,9 @@ export async function sendRehomeRequest(
   const zone = {
     province: petRow.jurisdictionProvince ?? null,
     locality: petRow.jurisdictionLocality ?? null,
+    // The pet's catalogue row; the `coverage` flag decides whether it is read
+    // (localidades-por-id D5).
+    localityId: (petRow as { localityId?: string | null }).localityId ?? null,
   };
   if (!zone.province) {
     return {
@@ -151,7 +154,8 @@ export async function sendRehomeRequest(
     };
   }
   const coverage = await repo.findOrgCoverage(input.targetOrgId);
-  if (!orgCoversZone(coverage, zone)) {
+  const coverageMode = typeof repo.coverageMode === "function" ? await repo.coverageMode() : "name";
+  if (!orgCoversZone(coverage, zone, coverageMode)) {
     return {
       ok: false,
       error: `${orgRow.displayName} no cubre la zona de ${petName}. Elegí una organización que trabaje en ${zone.locality ?? zone.province}.`,

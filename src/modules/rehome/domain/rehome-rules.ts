@@ -90,6 +90,8 @@ export type SponsorCoverageSnapshot = {
   petName: string;
   zone: PetZone;
   coverage: readonly CoverageArea[];
+  /** The `coverage` flag's reading (localidades-por-id D5); default name. */
+  mode?: "name" | "id";
 };
 
 /** REQ-1's zone half: the org the titular names has to work where the pet is. */
@@ -100,7 +102,7 @@ export function validateSponsorCoverage(s: SponsorCoverageSnapshot): RuleResult 
       error: `${s.petName} no tiene provincia registrada. Editá el perfil de ${s.petName} para poder elegir una organización.`,
     };
   }
-  if (!orgCoversZone(s.coverage, s.zone)) {
+  if (!orgCoversZone(s.coverage, s.zone, s.mode ?? "name")) {
     return {
       ok: false,
       error: `${s.orgDisplayName} no cubre la zona de ${s.petName}. Elegí una organización que trabaje en ${s.zone.locality ?? s.zone.province}.`,

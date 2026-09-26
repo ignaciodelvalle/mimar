@@ -11,7 +11,6 @@ import {
   fosterVolunteers,
   notifications,
   organizationCapabilityGrants,
-  organizationCoverage,
   organizationMemberships,
   organizations,
   ownerships,
@@ -24,6 +23,7 @@ import { validateEventPayload } from "@/lib/events/event-schemas";
 import { closeCase, findOpenCaseForPetAndKind, openCase } from "@/lib/infra/case-helpers";
 import { type CronBudgetHeaders, effectiveDeadlineMs } from "@/lib/infra/cron-dispatcher";
 import { unerasedPetByToken } from "@/lib/infra/public-pet-lookup";
+import { coverageDecisionMode, loadOrgCoverageAreas } from "@/lib/place/coverage";
 
 import { insertConvertFosterToOwner } from "./foster-convert-to-owner-writer";
 import { insertEndFoster } from "./foster-end-writer";
@@ -1420,14 +1420,13 @@ export const FosterRepository = {
    * and the use-case's refusal cannot drift apart.
    */
   async findOrgCoverage(orgId: string, tx?: Tx): Promise<CoverageArea[]> {
-    const client = tx ?? db;
-    return client
-      .select({
-        jurisdictionProvince: organizationCoverage.jurisdictionProvince,
-        jurisdictionLocality: organizationCoverage.jurisdictionLocality,
-      })
-      .from(organizationCoverage)
-      .where(eq(organizationCoverage.organizationId, orgId));
+    // Id-aware rows (localidades-por-id D5).
+    return loadOrgCoverageAreas(orgId, tx ?? db);
+  },
+
+  /** The `coverage` flag, as the pure predicate reads it (localidades-por-id D5). */
+  async coverageMode(): Promise<"name" | "id"> {
+    return coverageDecisionMode();
   },
 
   /**

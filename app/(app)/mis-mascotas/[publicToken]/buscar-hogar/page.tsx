@@ -170,7 +170,12 @@ export default async function BuscarHogarPage({
   const province = pet.jurisdictionProvince ?? null;
   const locality = pet.jurisdictionLocality ?? null;
 
-  const coveringOrgs = await listCoveringOrgs({ province, locality }, { repo: RehomeRepository });
+  // The pet's catalogue row rides along; the `coverage` flag decides whether
+  // it is read (localidades-por-id D5).
+  const coveringOrgs = await listCoveringOrgs(
+    { province, locality, localityId: pet.localityId ?? null },
+    { repo: RehomeRepository },
+  );
 
   if (resolvedRole === "owner") {
     const state = await getRehomeStateForPet(pet.id, { repo: RehomeRepository });

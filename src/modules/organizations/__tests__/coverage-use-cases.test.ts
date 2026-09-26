@@ -142,6 +142,159 @@ describe("addCoverageZone", () => {
     );
   });
 
+  // localidades-por-id D5: a zone names its catalogue row by id, never a
+  // homonym by name.
+  describe("by catalogue id (D5)", () => {
+    const withIds = vi.fn().mockResolvedValue([
+      { name: "Mechita", id: "loc-alberti", department: "Alberti" },
+      { name: "Mechita", id: "loc-bragado", department: "Bragado" },
+      { name: "Tigre", id: "loc-tigre", department: "Tigre" },
+    ]);
+
+    it("records the picked row's id and name, and the id reaches the dup check", async () => {
+      const repo = makeRepo();
+      const result = await addCoverageZone(
+        {
+          organizationId: "org-1",
+          province: "Buenos Aires",
+          locality: null,
+          localityId: "loc-bragado",
+          provinceCode: "AR-B",
+        },
+        { repo, listLocalitiesByProvince: withIds, validProvinces },
+      );
+      expect(result.ok).toBe(true);
+      expect(repo.findDupCoverage).toHaveBeenCalledWith("org-1", "Buenos Aires", "Mechita", {
+        localityId: "loc-bragado",
+        authorityUnitId: null,
+      });
+      expect(repo.insertCoverage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          locality: "Mechita",
+          localityId: "loc-bragado",
+          authorityUnitId: null,
+          placeMethod: "catalogue_id",
+        }),
+      );
+    });
+
+    it("refuses an id of another province", async () => {
+      const repo = makeRepo();
+      const result = await addCoverageZone(
+        {
+          organizationId: "org-1",
+          province: "Buenos Aires",
+          locality: null,
+          localityId: "loc-cordoba",
+          provinceCode: "AR-B",
+        },
+        { repo, listLocalitiesByProvince: withIds, validProvinces },
+      );
+      expect(result).toEqual({
+        ok: false,
+        error: "La localidad indicada no pertenece a la provincia seleccionada.",
+      });
+      expect(repo.insertCoverage).not.toHaveBeenCalled();
+    });
+
+    it("a name two localities share is refused without an id; a unique one records its id", async () => {
+      const repo = makeRepo();
+      const homonym = await addCoverageZone(
+        {
+          organizationId: "org-1",
+          province: "Buenos Aires",
+          locality: "Mechita",
+          provinceCode: "AR-B",
+        },
+        { repo, listLocalitiesByProvince: withIds, validProvinces },
+      );
+      expect(homonym).toEqual({
+        ok: false,
+        error: "Hay más de una localidad con ese nombre en la provincia. Elegila de la lista.",
+      });
+      const unique = await addCoverageZone(
+        {
+          organizationId: "org-1",
+          province: "Buenos Aires",
+          locality: "Tigre",
+          provinceCode: "AR-B",
+        },
+        { repo, listLocalitiesByProvince: withIds, validProvinces },
+      );
+      expect(unique.ok).toBe(true);
+      expect(repo.insertCoverage).toHaveBeenCalledWith(
+        expect.objectContaining({ locality: "Tigre", localityId: "loc-tigre" }),
+      );
+    });
+
+    it("a zone on a CONFIRMED unit of the province records the unit, not a locality", async () => {
+      const repo = makeRepo();
+      const findUnit = vi.fn().mockResolvedValue({
+        id: "unit-alberti",
+        name: "Alberti",
+        provinceCode: "AR-B",
+        kind: "municipio",
+        status: "confirmed",
+      });
+      const result = await addCoverageZone(
+        {
+          organizationId: "org-1",
+          province: "Buenos Aires",
+          locality: null,
+          unitId: "unit-alberti",
+          provinceCode: "AR-B",
+        },
+        { repo, listLocalitiesByProvince: withIds, validProvinces, findUnit },
+      );
+      expect(result.ok).toBe(true);
+      expect(repo.insertCoverage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          locality: "Alberti",
+          localityId: null,
+          authorityUnitId: "unit-alberti",
+          placeMethod: null,
+        }),
+      );
+    });
+
+    it("refuses a draft unit, a provincial unit and a unit of another province", async () => {
+      const base = {
+        organizationId: "org-1",
+        province: "Buenos Aires",
+        locality: null,
+        unitId: "u",
+        provinceCode: "AR-B",
+      };
+      for (const unit of [
+        { id: "u", name: "Alberti", provinceCode: "AR-B", kind: "municipio", status: "draft" },
+        {
+          id: "u",
+          name: "Buenos Aires",
+          provinceCode: "AR-B",
+          kind: "provincia",
+          status: "confirmed",
+        },
+        {
+          id: "u",
+          name: "Río Cuarto",
+          provinceCode: "AR-X",
+          kind: "municipio",
+          status: "confirmed",
+        },
+      ]) {
+        const repo = makeRepo();
+        const result = await addCoverageZone(base, {
+          repo,
+          listLocalitiesByProvince: withIds,
+          validProvinces,
+          findUnit: vi.fn().mockResolvedValue(unit),
+        });
+        expect(result.ok, `${unit.kind}/${unit.status}/${unit.provinceCode}`).toBe(false);
+        expect(repo.insertCoverage).not.toHaveBeenCalled();
+      }
+    });
+  });
+
   it("skips locality check when locality is null", async () => {
     const noLocalityList = vi.fn(); // should NOT be called
     const repo = makeRepo();

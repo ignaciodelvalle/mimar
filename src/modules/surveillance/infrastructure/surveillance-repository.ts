@@ -23,16 +23,17 @@ import {
   enoProcessingQueue,
   govtAssignments,
   notifications,
-  organizationCoverage,
   ownerships,
   petEvents,
   pets,
 } from "@/db";
 import type { NewPetEvent, PetEvent } from "@/db/schema";
+import type { CoverageArea } from "@/lib/domain/org-coverage";
 import { insertEventIdempotent } from "@/lib/events/event-idempotency";
 import { enqueueOutboxForEvent } from "@/lib/events/event-outbox-enqueue";
 import { overlayAmendments } from "@/lib/infra/amendment";
 import { type AuditLogEntry, writeAuditLog } from "@/lib/infra/audit-log";
+import { coverageDecisionMode, loadOrgCoverageAreas } from "@/lib/place/coverage";
 import { OPEN_OBSERVATION_STATUSES, isRabiesVaccineName } from "../domain/rabies-observation";
 
 // ---------------------------------------------------------------------------
@@ -819,7 +820,8 @@ export class SurveillanceRepository {
     petId: string,
   ): Promise<{
     hasPetRelation: boolean;
-    coverageAreas: { jurisdictionProvince: string; jurisdictionLocality: string | null }[];
+    coverageAreas: CoverageArea[];
+    coverageMode: "name" | "id";
   }> {
     const [heldRows, authoredRows, coverageAreas] = await Promise.all([
       db
@@ -832,18 +834,14 @@ export class SurveillanceRepository {
         .from(petEvents)
         .where(and(eq(petEvents.petId, petId), eq(petEvents.authorOrganizationId, organizationId)))
         .limit(1),
-      db
-        .select({
-          jurisdictionProvince: organizationCoverage.jurisdictionProvince,
-          jurisdictionLocality: organizationCoverage.jurisdictionLocality,
-        })
-        .from(organizationCoverage)
-        .where(eq(organizationCoverage.organizationId, organizationId)),
+      // Id-aware rows (localidades-por-id D5).
+      loadOrgCoverageAreas(organizationId),
     ]);
 
     return {
       hasPetRelation: heldRows.length > 0 || authoredRows.length > 0,
       coverageAreas,
+      coverageMode: await coverageDecisionMode(),
     };
   }
 }

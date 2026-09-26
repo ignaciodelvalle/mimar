@@ -99,6 +99,12 @@ export type OrgBiteAuthorityInput = {
   coverageAreas: readonly CoverageArea[];
   /** Where the bite happened (province/locality), NOT where the pet lives. */
   incidentZone: PetZone;
+  /**
+   * The `coverage` flag's reading (localidades-por-id D5). On the id path the
+   * coverage arm compares catalogue rows, so a zone recorded on a homonym
+   * never reaches the incident. Default: the name path.
+   */
+  coverageMode?: "name" | "id";
 };
 
 export type OrgBiteAuthorityResult = { ok: true } | { ok: false; error: string };
@@ -123,7 +129,12 @@ export function assertOrgMayReportBite(input: OrgBiteAuthorityInput): OrgBiteAut
   const anchored =
     input.orgJurisdictionProvince !== null &&
     input.incidentZone.province === input.orgJurisdictionProvince;
-  if (anchored && orgCoversZone(input.coverageAreas, input.incidentZone)) return { ok: true };
+  if (
+    anchored &&
+    orgCoversZone(input.coverageAreas, input.incidentZone, input.coverageMode ?? "name")
+  ) {
+    return { ok: true };
+  }
 
   return {
     ok: false,

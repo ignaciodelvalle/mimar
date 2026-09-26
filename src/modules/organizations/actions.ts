@@ -462,7 +462,12 @@ export type ActionResult = { ok: true } | { error: string };
 export async function addCoverageZoneAction(input: {
   orgToken: string;
   province: string;
+  /** Legacy: a name, accepted only when unique in the province. */
   locality: string | null;
+  /** The picked catalogue row (localidades-por-id D5). */
+  localityId?: string | null;
+  /** A confirmed authority unit of the province. */
+  unitId?: string | null;
 }): Promise<ActionResult> {
   const { organization, membership } = await requireOrgAccessByToken(input.orgToken);
 
@@ -479,12 +484,15 @@ export async function addCoverageZoneAction(input: {
       organizationId: organization.id,
       province: input.province,
       locality: input.locality,
+      localityId: input.localityId ?? null,
+      unitId: input.unitId ?? null,
       provinceCode,
     },
     {
       repo,
       listLocalitiesByProvince: (code: string) => listLocalitiesByProvince(code as ProvinceCode),
       validProvinces: VALID_PROVINCE_NAMES,
+      findUnit: (unitId: string) => repo.findAuthorityUnit(unitId),
     },
   );
 

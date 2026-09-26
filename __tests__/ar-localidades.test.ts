@@ -180,7 +180,12 @@ describe("ar-localidades — listLocalitiesByProvince", () => {
     for (const item of result.slice(0, 5)) {
       expect(item).toHaveProperty("slug");
       expect(item).toHaveProperty("name");
-      expect(Object.keys(item)).toHaveLength(2);
+      // localidades-por-id D5: the catalogue row and its department ride along
+      // so a picker can tell homonyms apart and submit the row, not the name.
+      // Catalogue data only — nothing about a person.
+      expect(item).toHaveProperty("id");
+      expect(item).toHaveProperty("department");
+      expect(Object.keys(item).sort()).toEqual(["department", "id", "name", "slug"]);
     }
   });
 

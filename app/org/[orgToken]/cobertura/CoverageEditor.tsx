@@ -40,11 +40,40 @@ type Props = {
   orgToken: string;
   provinces: readonly Province[];
   localities: LocalityOption[];
+  /** The province's CONFIRMED authority units (a draft governs nothing). */
+  units?: ReadonlyArray<{ id: string; name: string }>;
   zones: OrganizationCoverage[];
   canManage: boolean;
 };
 
-export function CoverageEditor({ orgToken, provinces, localities, zones, canManage }: Props) {
+const UNIT_PREFIX = "unit:";
+
+/**
+ * A locality's label in the picker: its name, plus its department whenever
+ * another locality of the province shares the name (Mechita, partido Alberti
+ * vs partido Bragado) — the option's VALUE is the catalogue row, so two
+ * homonyms are two choices (localidades-por-id D5).
+ */
+function localityLabels(localities: LocalityOption[]): Map<string, string> {
+  const counts = new Map<string, number>();
+  for (const l of localities) counts.set(l.name, (counts.get(l.name) ?? 0) + 1);
+  return new Map(
+    localities.map((l) => [
+      l.id ?? l.slug,
+      (counts.get(l.name) ?? 0) > 1 && l.department ? `${l.name} (${l.department})` : l.name,
+    ]),
+  );
+}
+
+export function CoverageEditor({
+  orgToken,
+  provinces,
+  localities,
+  units = [],
+  zones,
+  canManage,
+}: Props) {
+  const labels = localityLabels(localities);
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -71,10 +100,13 @@ export function CoverageEditor({ orgToken, provinces, localities, zones, canMana
     if (!selectedProvince) return;
     setError(null);
     startTransition(async () => {
+      const isUnit = selectedLocality.startsWith(UNIT_PREFIX);
       const result = await addCoverageZoneAction({
         orgToken,
         province: selectedProvince.name,
-        locality: selectedLocality || null,
+        locality: null,
+        localityId: selectedLocality && !isUnit ? selectedLocality : null,
+        unitId: isUnit ? selectedLocality.slice(UNIT_PREFIX.length) : null,
       });
       if ("error" in result) {
         setError(result.error);
@@ -148,11 +180,22 @@ export function CoverageEditor({ orgToken, provinces, localities, zones, canMana
                 disabled={pending || !selectedProvinceCode}
               >
                 <option value="">Toda la provincia</option>
-                {localities.map((l) => (
-                  <option key={l.slug} value={l.name}>
-                    {l.name}
-                  </option>
-                ))}
+                {units.length > 0 && (
+                  <optgroup label="Unidades de autoridad">
+                    {units.map((u) => (
+                      <option key={u.id} value={`${UNIT_PREFIX}${u.id}`}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {localities
+                  .filter((l) => l.id)
+                  .map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {labels.get(l.id as string)}
+                    </option>
+                  ))}
               </select>
             </div>
           </div>

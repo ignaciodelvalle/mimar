@@ -156,7 +156,12 @@ type Deps = {
   loadOrgPetAuthority: (
     organizationId: string,
     petId: string,
-  ) => Promise<{ hasPetRelation: boolean; coverageAreas: CoverageArea[] }>;
+  ) => Promise<{
+    hasPetRelation: boolean;
+    coverageAreas: CoverageArea[];
+    /** The `coverage` flag (localidades-por-id D5); absent = the name path. */
+    coverageMode?: "name" | "id";
+  }>;
 };
 
 export type ReportBiteFromOrgResult = UseCaseResult<{
@@ -200,6 +205,17 @@ export async function reportBiteFromOrg(
   // home (stage A review, BLOCKER 2).
   const hasEventPlace = input.eventJurisdictionProvince !== null;
   const usesEventPlace = hasEventPlace || (input.eventPlace ?? null) !== null;
+  // The INCIDENT's catalogue row: it names the incident locality, so it
+  // exists only when the case routes there (no field-by-field fallback), and
+  // is null when that place did not resolve.
+  const incidentLocalityId =
+    hasEventPlace && input.eventJurisdictionLocality !== null
+      ? (input.eventLocalityId ?? null)
+      : null;
+  // What routing and the coverage arm are told (localidades-por-id D3/D5): the
+  // incident's row (or null, unresolved); a pet-home fallback tells nothing,
+  // which keeps both on the name path.
+  const incidentPlaceId = usesEventPlace ? { localityId: incidentLocalityId } : {};
   const caseProvince = usesEventPlace ? input.eventJurisdictionProvince : pet.jurisdictionProvince;
   const caseLocality = usesEventPlace
     ? hasEventPlace
@@ -227,7 +243,14 @@ export async function reportBiteFromOrg(
     orgJurisdictionProvince: organization.jurisdictionProvince ?? null,
     hasPetRelation: orgAuthority.hasPetRelation,
     coverageAreas: orgAuthority.coverageAreas,
-    incidentZone: { province: caseProvince, locality: caseLocality },
+    // The incident's catalogue row when the case took the incident place
+    // (localidades-por-id D5); the pet-home fallback passes none.
+    incidentZone: {
+      province: caseProvince,
+      locality: caseLocality,
+      ...incidentPlaceId,
+    },
+    coverageMode: orgAuthority.coverageMode ?? "name",
   });
   if (!mayReport.ok) return { ok: false, error: mayReport.error };
 
@@ -290,10 +313,7 @@ export async function reportBiteFromOrg(
           jurisdictionLocality: caseLocality,
           // The id names the INCIDENT locality, so it travels only when the
           // case routes there (no field-by-field fallback to the pet's home).
-          localityId:
-            hasEventPlace && input.eventJurisdictionLocality !== null
-              ? (input.eventLocalityId ?? null)
-              : null,
+          localityId: incidentLocalityId,
           openedByUserId: user.id,
           openedByOrganizationId: organization.id,
           openedReason: {
@@ -479,16 +499,8 @@ export async function reportBiteFromOrg(
     const authorityIds = await findAuthoritiesForJurisdiction({
       province: caseProvince ?? "",
       locality: caseLocality ?? "",
-      // Same rule as report-bite.ts (localidades-por-id D3): the incident's
-      // catalogue row or null; the pet's home pair passes nothing.
-      ...(usesEventPlace
-        ? {
-            localityId:
-              hasEventPlace && input.eventJurisdictionLocality !== null
-                ? (input.eventLocalityId ?? null)
-                : null,
-          }
-        : {}),
+      // Same rule as report-bite.ts (localidades-por-id D3).
+      ...incidentPlaceId,
     });
     for (const authorityId of authorityIds) {
       pendingNotifications.push({

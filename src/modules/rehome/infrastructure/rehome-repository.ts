@@ -39,6 +39,7 @@ import {
   openCase,
 } from "@/lib/infra/case-helpers";
 import { unerasedPetByToken } from "@/lib/infra/public-pet-lookup";
+import { coverageDecisionMode, expandUnitZones, loadOrgCoverageAreas } from "@/lib/place/coverage";
 import { AdoptionRepository } from "@/src/modules/adoption/infrastructure/adoption-repository";
 import {
   endRehomeSponsorship,
@@ -307,6 +308,8 @@ export const RehomeRepository = {
         orgType: organizations.orgType,
         jurisdictionProvince: organizationCoverage.jurisdictionProvince,
         jurisdictionLocality: organizationCoverage.jurisdictionLocality,
+        localityId: organizationCoverage.localityId,
+        authorityUnitId: organizationCoverage.authorityUnitId,
       })
       .from(organizations)
       .innerJoin(organizationCoverage, eq(organizationCoverage.organizationId, organizations.id))
@@ -320,16 +323,28 @@ export const RehomeRepository = {
           eq(organizationCoverage.jurisdictionProvince, province),
         ),
       );
-    return rows.map((r) => ({
+    // Unit zones carry their member localities for the id path (D5).
+    const coverage = await expandUnitZones(
+      db,
+      rows.map((r) => ({
+        jurisdictionProvince: r.jurisdictionProvince,
+        jurisdictionLocality: r.jurisdictionLocality,
+        localityId: r.localityId,
+        authorityUnitId: r.authorityUnitId,
+      })),
+    );
+    return rows.map((r, i) => ({
       id: r.id,
       publicToken: r.publicToken,
       displayName: r.displayName,
       orgType: r.orgType,
-      coverage: {
-        jurisdictionProvince: r.jurisdictionProvince,
-        jurisdictionLocality: r.jurisdictionLocality,
-      },
+      coverage: coverage[i] as CoverageArea,
     }));
+  },
+
+  /** The `coverage` flag, as the pure predicate reads it (localidades-por-id D5). */
+  async coverageMode(): Promise<"name" | "id"> {
+    return coverageDecisionMode();
   },
 
   /**
@@ -338,13 +353,9 @@ export const RehomeRepository = {
    * page's list and the use-case's refusal cannot drift apart.
    */
   async findOrgCoverage(orgId: string): Promise<CoverageArea[]> {
-    return db
-      .select({
-        jurisdictionProvince: organizationCoverage.jurisdictionProvince,
-        jurisdictionLocality: organizationCoverage.jurisdictionLocality,
-      })
-      .from(organizationCoverage)
-      .where(eq(organizationCoverage.organizationId, orgId));
+    // Id-aware rows (localidades-por-id D5): the name path reads the name
+    // pair exactly as before, the id path the recorded row or unit.
+    return loadOrgCoverageAreas(orgId);
   },
 
   /**

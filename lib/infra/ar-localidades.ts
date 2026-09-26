@@ -49,7 +49,17 @@ export type LocalitySearchResult = Locality & {
  * Minimal shape expected by <JurisdictionSwitcher localities={...}>.
  * Returned by listLocalitiesByProvince for direct use as a prop.
  */
-export type LocalityOption = { slug: string; name: string };
+/**
+ * A locality for a picker. `id` (the catalogue row) and `department` let a
+ * picker tell homonyms apart and submit the row, not the name
+ * (localidades-por-id D5); older consumers read slug + name only.
+ */
+export type LocalityOption = {
+  slug: string;
+  name: string;
+  id?: string;
+  department?: string | null;
+};
 
 /**
  * [lng, lat] centroid for a locality, keyed by locality slug.
@@ -210,9 +220,11 @@ export async function listLocalitiesByProvince(
 ): Promise<LocalityOption[]> {
   const rows = await db
     .select({
+      id: arLocalities.id,
       localitySlug: arLocalities.localitySlug,
       localityName: arLocalities.localityName,
       departmentCode: arLocalities.departmentCode,
+      departmentName: arLocalities.departmentName,
     })
     .from(arLocalities)
     .where(and(eq(arLocalities.provinceCode, provinceCode), isNull(arLocalities.removedAt)))
@@ -231,7 +243,12 @@ export async function listLocalitiesByProvince(
           departmentCode: r.departmentCode,
         }),
     )
-    .map((r) => ({ slug: r.localitySlug, name: r.localityName }));
+    .map((r) => ({
+      slug: r.localitySlug,
+      name: r.localityName,
+      id: r.id,
+      department: r.departmentName,
+    }));
 }
 
 /**

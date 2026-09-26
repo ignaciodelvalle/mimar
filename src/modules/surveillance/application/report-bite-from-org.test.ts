@@ -555,6 +555,34 @@ describe("reportBiteFromOrg — the reporting org must be verified AND connected
     expect(result.ok).toBe(false);
   });
 
+  // localidades-por-id D5: on the id path the coverage arm compares the
+  // incident's catalogue row with the zone's, so a zone recorded on a homonym
+  // barrio never reaches it; the name path (default) is unchanged.
+  it("on the id path REFUSES a zone recorded on another row with the same name", async () => {
+    const zone = {
+      jurisdictionProvince: "CABA",
+      jurisdictionLocality: "Palermo",
+      localityId: "loc-palermo-other",
+    };
+    const incident = {
+      ...BASE_INPUT,
+      eventJurisdictionProvince: "CABA",
+      eventJurisdictionLocality: "Palermo",
+      eventLocalityId: "loc-palermo",
+    };
+    const byId = makeDeps();
+    byId.loadOrgPetAuthority.mockResolvedValue({
+      hasPetRelation: false,
+      coverageAreas: [zone],
+      coverageMode: "id",
+    });
+    expect((await reportBiteFromOrg(incident, byId)).ok).toBe(false);
+
+    const byName = makeDeps();
+    byName.loadOrgPetAuthority.mockResolvedValue({ hasPetRelation: false, coverageAreas: [zone] });
+    expect((await reportBiteFromOrg(incident, byName)).ok).toBe(true);
+  });
+
   it("REFUSES coverage the org minted outside the province it was verified in", async () => {
     // U3 (2026-08-22): addCoverageZoneAction lets any admin/coordinator add ANY
     // province, so this row is self-asserted. Anchoring the arm to

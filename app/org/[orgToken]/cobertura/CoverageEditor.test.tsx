@@ -35,6 +35,7 @@ vi.mock("@/src/modules/organizations/actions", () => ({
   setPrimaryCoverageZoneAction: vi.fn(),
 }));
 
+import { addCoverageZoneAction } from "@/src/modules/organizations/actions";
 import { CoverageEditor } from "./CoverageEditor";
 
 const PROVINCES = [
@@ -128,5 +129,66 @@ describe("CoverageEditor — full navigation on change (router-drop fix)", () =>
     expect(routerPush).not.toHaveBeenCalled();
     expect(routerReplace).not.toHaveBeenCalled();
     expect(routerRefresh).not.toHaveBeenCalled();
+  });
+});
+
+// localidades-por-id D5: the zone is picked by catalogue row (or a confirmed
+// authority unit), never by a name two localities share.
+describe("CoverageEditor — picks the catalogue row, not the name (D5)", () => {
+  const MECHITAS = [
+    { slug: "mechita-alberti", name: "Mechita", id: "loc-alberti", department: "Alberti" },
+    { slug: "mechita-bragado", name: "Mechita", id: "loc-bragado", department: "Bragado" },
+    { slug: "tigre", name: "Tigre", id: "loc-tigre", department: "Tigre" },
+  ];
+
+  function renderWith(units: Array<{ id: string; name: string }> = []) {
+    setUrl("/org/org-token-1/cobertura?province=AR-B");
+    vi.mocked(addCoverageZoneAction).mockResolvedValue({ ok: true });
+    return render(
+      <CoverageEditor
+        orgToken="org-token-1"
+        provinces={PROVINCES}
+        localities={MECHITAS}
+        units={units}
+        zones={[]}
+        canManage
+      />,
+    );
+  }
+
+  it("labels homonyms with their department and submits the picked row's id", async () => {
+    renderWith();
+    expect(screen.getByRole("option", { name: "Mechita (Alberti)" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Mechita (Bragado)" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Tigre" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Localidad"), { target: { value: "loc-bragado" } });
+    fireEvent.click(screen.getByRole("button", { name: "Agregar zona" }));
+    await vi.waitFor(() =>
+      expect(addCoverageZoneAction).toHaveBeenCalledWith({
+        orgToken: "org-token-1",
+        province: "Buenos Aires",
+        locality: null,
+        localityId: "loc-bragado",
+        unitId: null,
+      }),
+    );
+  });
+
+  it("offers the province's confirmed units and submits the unit", async () => {
+    renderWith([{ id: "unit-alberti", name: "Alberti" }]);
+    fireEvent.change(screen.getByLabelText("Localidad"), {
+      target: { value: "unit:unit-alberti" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Agregar zona" }));
+    await vi.waitFor(() =>
+      expect(addCoverageZoneAction).toHaveBeenLastCalledWith({
+        orgToken: "org-token-1",
+        province: "Buenos Aires",
+        locality: null,
+        localityId: null,
+        unitId: "unit-alberti",
+      }),
+    );
   });
 });

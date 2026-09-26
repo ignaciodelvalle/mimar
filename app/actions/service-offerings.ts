@@ -136,6 +136,8 @@ export async function createServiceOfferingAction(
     organization.jurisdictionProvince,
     organization.jurisdictionLocality,
     input,
+    // The org's recorded catalogue row rides with its locality (D5).
+    organization.localityId,
   );
 
   if ("error" in result) return { error: result.error };

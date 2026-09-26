@@ -58,6 +58,7 @@ import { withMutationOverride } from "@/__tests__/_helpers/db-overrides";
 
 import {
   appointments,
+  arLocalities,
   db,
   notifications,
   organizationMemberships,
@@ -494,6 +495,50 @@ describe("createServiceOfferingWriter", () => {
       )
       .limit(1);
     expect(notif?.notificationType).toBe("service_offering_submitted");
+  });
+
+  // localidades-por-id D5: the offering records the org's catalogue row.
+  it("records the organization's catalogue row with the offering", async () => {
+    const [laPlata] = await db
+      .select({ id: arLocalities.id })
+      .from(arLocalities)
+      .where(and(eq(arLocalities.provinceCode, "AR-B"), eq(arLocalities.localityName, "La Plata")))
+      .limit(1);
+    expect(laPlata, "La Plata must be in the local catalogue").toBeTruthy();
+    const result = await createServiceOfferingWriter(
+      memberUserId,
+      {
+        organizationId: orgId,
+        organizationPublicToken: orgPublicToken,
+        organizationDisplayName: "UC SO Test Org",
+      },
+      "Buenos Aires",
+      "La Plata",
+      {
+        serviceKind: "vaccination_rabies",
+        displayName: "UC SO Create With Id",
+        description: null,
+        durationMinutes: 30,
+        slotCapacity: 1,
+        priceArs: null,
+        eligibilitySpecies: null,
+        eligibilityAgeMinMonths: null,
+        eligibilityAgeMaxMonths: null,
+      },
+      { localityId: laPlata?.id ?? null },
+    );
+    expect(result).toMatchObject({ ok: true });
+    const [row] = await db
+      .select({ localityId: serviceOfferings.localityId, method: serviceOfferings.placeMethod })
+      .from(serviceOfferings)
+      .where(
+        and(
+          eq(serviceOfferings.organizationId, orgId),
+          eq(serviceOfferings.displayName, "UC SO Create With Id"),
+        ),
+      )
+      .limit(1);
+    expect(row).toEqual({ localityId: laPlata?.id, method: "catalogue_id" });
   });
 
   it("invalid serviceKind (empty string) returns validation error", async () => {

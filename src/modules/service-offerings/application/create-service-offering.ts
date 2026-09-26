@@ -42,6 +42,13 @@ export async function createServiceOfferingWriter(
     eligibilityAgeMinMonths: number | null;
     eligibilityAgeMaxMonths: number | null;
   },
+  /**
+   * The catalogue row of `locality` when the caller knows it — the
+   * organization's own recorded locality_id (localidades-por-id D5). Written
+   * with the offering and passed to routing; absent keeps both on the name
+   * path.
+   */
+  place: { localityId?: string | null } = {},
 ): Promise<ServiceOfferingResult> {
   const parsed = CreateServiceOfferingInput.safeParse(input);
   if (!parsed.success) {
@@ -86,9 +93,13 @@ export async function createServiceOfferingWriter(
     serviceOfferings.publicToken,
     generateOfferingToken,
   );
+  // The id travels only while the stored locality is still the org's own
+  // (the canonical spelling of the same row); otherwise nothing is claimed.
+  const localityId = place.localityId && canonicalLocality !== null ? place.localityId : null;
   const authorityIds = await findAuthoritiesForJurisdiction({
     province: canonicalProvince ?? "",
     locality: canonicalLocality ?? "",
+    ...(place.localityId === undefined ? {} : { localityId }),
   });
 
   try {
@@ -99,6 +110,8 @@ export async function createServiceOfferingWriter(
         providerUserId: null,
         jurisdictionProvince: canonicalProvince,
         jurisdictionLocality: canonicalLocality,
+        localityId,
+        placeMethod: localityId ? "catalogue_id" : null,
         serviceKind: parsed.data.serviceKind,
         displayName: parsed.data.displayName,
         description: parsed.data.description,
@@ -178,6 +191,7 @@ export async function createServiceOfferingForOrg(
     eligibilityAgeMinMonths: number | null;
     eligibilityAgeMaxMonths: number | null;
   },
+  orgLocalityId?: string | null,
 ): Promise<ServiceOfferingResult> {
   return createServiceOfferingWriter(
     actorUserId,
@@ -189,5 +203,6 @@ export async function createServiceOfferingForOrg(
     orgProvince ?? "",
     orgLocality ?? "",
     input,
+    orgLocalityId === undefined ? {} : { localityId: orgLocalityId },
   );
 }

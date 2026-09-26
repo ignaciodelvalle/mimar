@@ -146,6 +146,8 @@ export async function GET(
           {
             province: access.pet.jurisdictionProvince,
             locality: access.pet.jurisdictionLocality,
+            // Read only when the `coverage` flag is on the id path (D5).
+            localityId: access.pet.localityId ?? null,
           },
           { repo: RehomeRepository },
         ),

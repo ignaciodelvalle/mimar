@@ -18,7 +18,7 @@
 // is the empty state that sends the person to edit the profile — not a list of
 // every org in the country.
 
-import { type PetZone, coverageAreaCoversZone } from "../domain/rehome-rules";
+import { type PetZone, orgCoversZone } from "../domain/rehome-rules";
 import type { RehomeCandidatesPort } from "./ports";
 
 /** One org the titular may ask, as the picker draws it. */
@@ -38,11 +38,14 @@ export async function listCoveringOrgs(
   if (!zone.province) return [];
 
   const rows = await deps.repo.findSponsorCandidatesInProvince(zone.province);
+  // The `coverage` flag decides the path (localidades-por-id D5); a zone
+  // without a localityId always takes the name rule.
+  const mode = (await deps.repo.coverageMode?.()) ?? "name";
 
   const seen = new Set<string>();
   const out: CoveringOrg[] = [];
   for (const row of rows) {
-    if (!coverageAreaCoversZone(row.coverage, zone)) continue;
+    if (!orgCoversZone([row.coverage], zone, mode)) continue;
     if (seen.has(row.id)) continue;
     seen.add(row.id);
     out.push({

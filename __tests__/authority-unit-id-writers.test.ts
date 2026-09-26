@@ -24,6 +24,12 @@ const SCANNED = ["app", "components", "lib", "src", "scripts"];
 const MENTIONS: Readonly<Record<string, "writer" | "reader">> = {
   // The partial-grant confirm flow: the ONE writer of govt_assignments'.
   "src/modules/organizations/application/authority-units/grant-unit.ts": "writer",
+  // The coverage-zone editor (localidades-por-id D5): a manager keys a zone to
+  // a CONFIRMED unit of the province by an explicit choice; add-coverage-zone
+  // validates it, the repository inserts it.
+  "src/modules/organizations/infrastructure/org-repository.ts": "writer",
+  "src/modules/organizations/application/add-coverage-zone.ts": "reader",
+  "src/modules/rehome/infrastructure/rehome-repository.ts": "reader",
   // Readers: the id-path consumers and the scope loader.
   "lib/infra/approval-routing.ts": "reader",
   "lib/infra/business-rules-resolver.ts": "reader",

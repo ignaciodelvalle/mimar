@@ -5,6 +5,7 @@ import { db, organizationCoverage } from "@/db";
 import { listLocalitiesByProvince } from "@/lib/infra/ar-localidades";
 import { requireOrgAccessByToken } from "@/lib/infra/auth-guards";
 import { PROVINCES, type ProvinceCode, provinceByCode } from "@/lib/reference/ar-provincias";
+import { OrgRepository } from "@/src/modules/organizations/infrastructure/org-repository";
 
 import { CoverageEditor } from "./CoverageEditor";
 
@@ -32,6 +33,10 @@ export default async function CoberturaPage({
   const localities = selectedProvinceObj
     ? await listLocalitiesByProvince(selectedProvinceObj.code as ProvinceCode)
     : [];
+  // A zone can also be a whole CONFIRMED authority unit (localidades-por-id D5).
+  const units = selectedProvinceObj
+    ? await new OrgRepository().listConfirmedUnits(selectedProvinceObj.code)
+    : [];
 
   return (
     <div className="space-y-6">
@@ -51,6 +56,7 @@ export default async function CoberturaPage({
         orgToken={orgToken}
         provinces={PROVINCES}
         localities={localities}
+        units={units}
         zones={zones}
         canManage={canManage}
       />

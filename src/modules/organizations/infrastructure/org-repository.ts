@@ -19,6 +19,7 @@ import {
   type OrganizationInvitation,
   type OrganizationMembership,
   auditLog,
+  authorityUnits,
   db,
   orgContactMessages,
   organizationCapabilityGrants,
@@ -51,6 +52,11 @@ export interface InsertCoverageInput {
   organizationId: string;
   province: string;
   locality: string | null;
+  /** The picked catalogue row (localidades-por-id D5). */
+  localityId?: string | null;
+  /** A confirmed authority unit the zone is keyed to (D5). */
+  authorityUnitId?: string | null;
+  placeMethod?: string | null;
   isPrimary?: boolean;
 }
 
@@ -393,21 +399,37 @@ export class OrgRepository {
   // ---------------------------------------------------------------------------
 
   /**
-   * Find a duplicate coverage zone for (orgId, province, locality).
-   * Returns null if no duplicate exists.
+   * Find a duplicate coverage zone. A zone keyed to a catalogue row or a
+   * unit is a duplicate of the same key (two homonymous localities of one
+   * province are two zones — localidades-por-id D5, migration 0261); a zone
+   * keyed to neither is a duplicate of the same (province, locality) name
+   * among the other unkeyed zones. Returns null if no duplicate exists.
    */
   async findDupCoverage(
     orgId: string,
     province: string,
     locality: string | null,
+    keys: { localityId?: string | null; authorityUnitId?: string | null } = {},
   ): Promise<OrganizationCoverage | null> {
-    const conditions = [
-      eq(organizationCoverage.organizationId, orgId),
-      eq(organizationCoverage.jurisdictionProvince, province),
-      locality === null
-        ? isNull(organizationCoverage.jurisdictionLocality)
-        : eq(organizationCoverage.jurisdictionLocality, locality),
-    ];
+    const conditions = keys.localityId
+      ? [
+          eq(organizationCoverage.organizationId, orgId),
+          eq(organizationCoverage.localityId, keys.localityId),
+        ]
+      : keys.authorityUnitId
+        ? [
+            eq(organizationCoverage.organizationId, orgId),
+            eq(organizationCoverage.authorityUnitId, keys.authorityUnitId),
+          ]
+        : [
+            eq(organizationCoverage.organizationId, orgId),
+            eq(organizationCoverage.jurisdictionProvince, province),
+            locality === null
+              ? isNull(organizationCoverage.jurisdictionLocality)
+              : eq(organizationCoverage.jurisdictionLocality, locality),
+            isNull(organizationCoverage.localityId),
+            isNull(organizationCoverage.authorityUnitId),
+          ];
 
     const [row] = await db
       .select()
@@ -415,6 +437,44 @@ export class OrgRepository {
       .where(and(...conditions))
       .limit(1);
     return row ?? null;
+  }
+
+  /**
+   * One authority unit, for the coverage editor (localidades-por-id D5): the
+   * use case refuses a draft, a provincial or another province's unit.
+   */
+  async findAuthorityUnit(unitId: string, e: Exec = db) {
+    if (!/^[0-9a-f-]{36}$/i.test(unitId)) return null;
+    const [row] = await e
+      .select({
+        id: authorityUnits.id,
+        name: authorityUnits.name,
+        provinceCode: authorityUnits.provinceCode,
+        kind: authorityUnits.kind,
+        status: authorityUnits.status,
+      })
+      .from(authorityUnits)
+      .where(eq(authorityUnits.id, unitId))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
+   * The province's CONFIRMED non-provincial units, for the coverage picker.
+   * A draft unit governs nothing, so it is not offered.
+   */
+  async listConfirmedUnits(provinceCode: string, e: Exec = db) {
+    return e
+      .select({ id: authorityUnits.id, name: authorityUnits.name })
+      .from(authorityUnits)
+      .where(
+        and(
+          eq(authorityUnits.provinceCode, provinceCode),
+          eq(authorityUnits.status, "confirmed"),
+          sql`${authorityUnits.kind} <> 'provincia'`,
+        ),
+      )
+      .orderBy(authorityUnits.name);
   }
 
   /**
@@ -427,6 +487,9 @@ export class OrgRepository {
         organizationId: values.organizationId,
         jurisdictionProvince: values.province,
         jurisdictionLocality: values.locality ?? null,
+        localityId: values.localityId ?? null,
+        authorityUnitId: values.authorityUnitId ?? null,
+        placeMethod: values.placeMethod ?? null,
         isPrimary: values.isPrimary ?? false,
       })
       .returning();

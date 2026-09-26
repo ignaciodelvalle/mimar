@@ -72,8 +72,15 @@ export async function requestRehomeSponsorship(
   const coverage = validateSponsorCoverage({
     orgDisplayName: org.displayName,
     petName: pet.name,
-    zone: { province: pet.jurisdictionProvince, locality: pet.jurisdictionLocality },
+    // The pet's catalogue row rides along; the `coverage` flag decides
+    // whether it is read (localidades-por-id D5).
+    zone: {
+      province: pet.jurisdictionProvince,
+      locality: pet.jurisdictionLocality,
+      localityId: pet.localityId,
+    },
     coverage: await repo.findOrgCoverage(org.id),
+    mode: (await repo.coverageMode?.()) ?? "name",
   });
   if (!coverage.ok) return { ok: false, error: coverage.error };
 

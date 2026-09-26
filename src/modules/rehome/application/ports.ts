@@ -66,6 +66,8 @@ export type OpenRequestCaseArgs = {
 
 export interface RehomeRequestPort {
   findPetByToken(publicToken: string): Promise<PetSummary | null>;
+  /** The `coverage` flag (localidades-por-id D5); absent = the name path. */
+  coverageMode?(): Promise<"name" | "id">;
   /** The user's live `role='owner'` row on the pet — never foster, never caretaker. */
   findLiveOwnerRow(petId: string, userId: string, tx?: unknown): Promise<{ id: string } | null>;
   findOrgById(orgId: string, tx?: unknown): Promise<SponsorOrg | null>;
@@ -322,6 +324,8 @@ export interface RehomeCandidatesPort {
    * pet's locality is `coverageAreaCoversZone`'s decision, made by the caller.
    */
   findSponsorCandidatesInProvince(province: string): Promise<SponsorCandidateRow[]>;
+  /** The `coverage` flag (localidades-por-id D5); absent = the name path. */
+  coverageMode?(): Promise<"name" | "id">;
 }
 
 export type RehomeRepositoryPort = RehomeRequestPort &

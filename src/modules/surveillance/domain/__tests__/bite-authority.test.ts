@@ -152,3 +152,36 @@ describe("assertOrgMayReportBite — the relation arm is untouched", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+// localidades-por-id D5: on the id path the coverage arm compares catalogue
+// rows — a zone that recorded Bragado's Mechita does not reach a bite in
+// Alberti's Mechita. The name path (the flag's default) cannot tell them apart.
+describe("assertOrgMayReportBite — coverage by catalogue id (D5)", () => {
+  const bragadoZone = [
+    {
+      jurisdictionProvince: "Buenos Aires",
+      jurisdictionLocality: "Mechita",
+      localityId: "loc-bragado",
+    },
+  ];
+  const base = {
+    orgVerified: true,
+    orgJurisdictionProvince: "Buenos Aires",
+    hasPetRelation: false,
+    coverageAreas: bragadoZone,
+    incidentZone: { province: "Buenos Aires", locality: "Mechita", localityId: "loc-alberti" },
+  };
+
+  it("the id path refuses the homonym; the name path still accepts it", () => {
+    expect(assertOrgMayReportBite({ ...base, coverageMode: "id" }).ok).toBe(false);
+    expect(assertOrgMayReportBite({ ...base, coverageMode: "name" }).ok).toBe(true);
+    expect(assertOrgMayReportBite(base).ok).toBe(true);
+  });
+
+  it("the id path accepts the zone's own row", () => {
+    const own = { ...base.incidentZone, localityId: "loc-bragado" };
+    expect(assertOrgMayReportBite({ ...base, incidentZone: own, coverageMode: "id" }).ok).toBe(
+      true,
+    );
+  });
+});

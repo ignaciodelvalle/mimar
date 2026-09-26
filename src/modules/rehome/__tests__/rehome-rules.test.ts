@@ -454,3 +454,26 @@ describe("validateWithdrawRequest — the titular cancels a request before it is
     if (!r.ok) expect(r.error).toMatch(/quien envió la solicitud/);
   });
 });
+
+// localidades-por-id D5: the titular's refusal compares catalogue rows on the
+// id path.
+describe("validateSponsorCoverage — by catalogue id (D5)", () => {
+  const s = {
+    orgDisplayName: "Refugio Bragado",
+    petName: "Toby",
+    zone: { province: "Buenos Aires", locality: "Mechita", localityId: "loc-alberti" },
+    coverage: [
+      {
+        jurisdictionProvince: "Buenos Aires",
+        jurisdictionLocality: "Mechita",
+        localityId: "loc-bragado",
+      },
+    ],
+  };
+
+  it("refuses the homonym's org on the id path, accepts it on the name path", () => {
+    expect(validateSponsorCoverage({ ...s, mode: "id" }).ok).toBe(false);
+    expect(validateSponsorCoverage({ ...s, mode: "name" }).ok).toBe(true);
+    expect(validateSponsorCoverage(s).ok).toBe(true);
+  });
+});
