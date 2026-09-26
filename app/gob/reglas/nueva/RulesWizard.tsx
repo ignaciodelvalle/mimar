@@ -33,6 +33,7 @@ import { jurisdictionLabel } from "@/lib/domain/jurisdiction-rules-href";
 import { RULE_TYPE_REGISTRY } from "@/lib/domain/rule-types-registry";
 import { PROVINCES, provinceByCode } from "@/lib/reference/ar-provincias";
 
+import { RulePlaceContext } from "../[country]/[province]/[locality]/nueva/RulePlaceField";
 import {
   RULE_FORM_REGISTRY,
   buildCreateFormExtraProps,
@@ -61,6 +62,8 @@ export function RulesWizard({ base }: Props) {
   const [provinceName, setProvinceName] = useState("");
   const [wholeProvince, setWholeProvince] = useState(false);
   const [localityName, setLocalityName] = useState("");
+  // The picked row's INDEC id: tells a homonym apart (localidades-por-id D4).
+  const [localityIndecId, setLocalityIndecId] = useState<string | null>(null);
   const [ruleType, setRuleType] = useState<GovtBusinessRuleType | null>(null);
 
   const effectiveLocality = wholeProvince ? null : localityName.trim() || null;
@@ -129,7 +132,10 @@ export function RulesWizard({ base }: Props) {
           checked={wholeProvince}
           onChange={(e) => {
             setWholeProvince(e.target.checked);
-            if (e.target.checked) setLocalityName("");
+            if (e.target.checked) {
+              setLocalityName("");
+              setLocalityIndecId(null);
+            }
           }}
         >
           Aplica a toda la provincia (sin localidad específica)
@@ -146,8 +152,14 @@ export function RulesWizard({ base }: Props) {
               id="rw-locality"
               scopeProvinceCode={provinceCode || null}
               disabled={!provinceCode}
-              onSelect={(result) => setLocalityName(result?.localityName ?? "")}
-              onDeselect={() => setLocalityName("")}
+              onSelect={(result) => {
+                setLocalityName(result?.localityName ?? "");
+                setLocalityIndecId(result?.indecId ?? null);
+              }}
+              onDeselect={() => {
+                setLocalityName("");
+                setLocalityIndecId(null);
+              }}
               placeholder={`Buscar localidad en ${provinceName || "la provincia elegida"}…`}
             />
           </div>
@@ -225,14 +237,18 @@ export function RulesWizard({ base }: Props) {
               {jurisdictionLabel("AR", provinceName || null, effectiveLocality)} {"·"}{" "}
               {RULE_TYPE_REGISTRY[ruleType].label}
             </p>
-            <RuleForm
-              mode="create"
-              country="AR"
-              province={provinceName || null}
-              locality={effectiveLocality}
-              base={base}
-              {...buildCreateFormExtraProps(ruleType, RULE_TYPE_REGISTRY[ruleType].default)}
-            />
+            <RulePlaceContext.Provider
+              value={{ localityIndecId: effectiveLocality ? localityIndecId : null }}
+            >
+              <RuleForm
+                mode="create"
+                country="AR"
+                province={provinceName || null}
+                locality={effectiveLocality}
+                base={base}
+                {...buildCreateFormExtraProps(ruleType, RULE_TYPE_REGISTRY[ruleType].default)}
+              />
+            </RulePlaceContext.Provider>
           </>
         ) : null}
       </section>

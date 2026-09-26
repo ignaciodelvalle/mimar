@@ -27,6 +27,7 @@ import { createBusinessRuleWriter as _createBusinessRuleWriter } from "@/src/mod
 import { deleteBusinessRuleWriter as _deleteBusinessRuleWriter } from "@/src/modules/organizations/application/business-rules/delete-business-rule";
 import {
   normalizeJurisdiction,
+  normalizeRuleJurisdiction,
   readJurisdictionFields,
 } from "@/src/modules/organizations/application/business-rules/normalize-jurisdiction";
 import { parseLegalMetadata } from "@/src/modules/organizations/application/business-rules/parse-legal-metadata";
@@ -100,7 +101,8 @@ export async function createBusinessRuleAction(
   }
   const ruleType = ruleTypeRaw as GovtBusinessRuleType;
 
-  const jurisdiction = await normalizeJurisdiction(formData);
+  // The place by id when the wizard picked one (localidades-por-id D4).
+  const jurisdiction = await normalizeRuleJurisdiction(formData);
   if (!jurisdiction.ok) return { error: jurisdiction.error };
   const { country, province, locality } = jurisdiction.value;
   const notes = (formData.get("notes") as string | null)?.trim() || null;
@@ -118,6 +120,7 @@ export async function createBusinessRuleAction(
     notes,
     legalAnchorIds,
     legalMetadata: legalMetadata.value,
+    place: jurisdiction.place,
   });
   if (!result.ok) return { error: result.error };
   if (result.noOp) {

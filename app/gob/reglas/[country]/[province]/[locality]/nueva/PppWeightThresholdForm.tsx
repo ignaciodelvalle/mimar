@@ -16,6 +16,7 @@ import { navigateAfterActionSuccess } from "@/lib/ui/full-page-action-nav";
 import { useKeptFields } from "@/lib/ui/use-kept-fields";
 
 import { LegalMetadataFieldset, type LegalMetadataInitial } from "./LegalMetadataFieldset";
+import { RulePlaceField } from "./RulePlaceField";
 
 const initialState: BusinessRuleFormState = { error: null };
 
@@ -97,6 +98,7 @@ export function PppWeightThresholdForm({
       <input type="hidden" name="jurisdictionCountry" value={country} />
       <input type="hidden" name="jurisdictionProvince" value={province ?? ""} />
       <input type="hidden" name="jurisdictionLocality" value={locality ?? ""} />
+      <RulePlaceField />
       <input type="hidden" name="portalBase" value={base} />
 
       {/* es-AR, con tildes y voseo — como el resto del producto. Este párrafo

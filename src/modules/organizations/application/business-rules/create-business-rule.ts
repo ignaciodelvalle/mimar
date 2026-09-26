@@ -33,6 +33,29 @@ function hasLegalMetadata(lm: BusinessRuleLegalMetadata | undefined): boolean {
   );
 }
 
+/**
+ * The rule already holding this place: same catalogue row, same unit, or —
+ * for a rule keyed to neither — the same name tuple among the unkeyed rules
+ * (the three unique indexes of migration 0263). Two homonyms are two places.
+ */
+function samePlace(params: CreateBusinessRuleWriterParams) {
+  if (params.place?.authorityUnitId) {
+    return eq(govtBusinessRules.authorityUnitId, params.place.authorityUnitId);
+  }
+  if (params.place?.localityId) return eq(govtBusinessRules.localityId, params.place.localityId);
+  return and(
+    eq(govtBusinessRules.jurisdictionCountry, params.jurisdictionCountry),
+    params.jurisdictionProvince === null
+      ? isNull(govtBusinessRules.jurisdictionProvince)
+      : eq(govtBusinessRules.jurisdictionProvince, params.jurisdictionProvince),
+    params.jurisdictionLocality === null
+      ? isNull(govtBusinessRules.jurisdictionLocality)
+      : eq(govtBusinessRules.jurisdictionLocality, params.jurisdictionLocality),
+    isNull(govtBusinessRules.localityId),
+    isNull(govtBusinessRules.authorityUnitId),
+  );
+}
+
 export async function createBusinessRuleWriter(
   params: CreateBusinessRuleWriterParams,
 ): Promise<CreateBusinessRuleResult> {
@@ -68,18 +91,7 @@ export async function createBusinessRuleWriter(
       const [existing] = await tx
         .select({ id: govtBusinessRules.id })
         .from(govtBusinessRules)
-        .where(
-          and(
-            eq(govtBusinessRules.ruleType, params.ruleType),
-            eq(govtBusinessRules.jurisdictionCountry, params.jurisdictionCountry),
-            params.jurisdictionProvince === null
-              ? isNull(govtBusinessRules.jurisdictionProvince)
-              : eq(govtBusinessRules.jurisdictionProvince, params.jurisdictionProvince),
-            params.jurisdictionLocality === null
-              ? isNull(govtBusinessRules.jurisdictionLocality)
-              : eq(govtBusinessRules.jurisdictionLocality, params.jurisdictionLocality),
-          ),
-        )
+        .where(and(eq(govtBusinessRules.ruleType, params.ruleType), samePlace(params)))
         .limit(1);
       if (existing) {
         throw new Error(
@@ -94,6 +106,10 @@ export async function createBusinessRuleWriter(
           jurisdictionCountry: params.jurisdictionCountry,
           jurisdictionProvince: params.jurisdictionProvince,
           jurisdictionLocality: params.jurisdictionLocality,
+          // The place it is keyed on (0263): the row or unit, never both.
+          localityId: params.place?.localityId ?? null,
+          authorityUnitId: params.place?.authorityUnitId ?? null,
+          placeMethod: params.place?.placeMethod ?? null,
           ruleType: params.ruleType,
           rulePayload: validation.data,
           notes: params.notes,
@@ -122,6 +138,10 @@ export async function createBusinessRuleWriter(
             country: params.jurisdictionCountry,
             province: params.jurisdictionProvince,
             locality: params.jurisdictionLocality,
+            ...(params.place?.localityId ? { localityId: params.place.localityId } : {}),
+            ...(params.place?.authorityUnitId
+              ? { authorityUnitId: params.place.authorityUnitId }
+              : {}),
           },
           newPayload: validation.data,
           // Same-transaction capture as previous/newPayload (spec RM6) —

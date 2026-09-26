@@ -35,6 +35,21 @@ vi.mock("@/lib/ui/full-page-action-nav", () => ({
   navigateAfterActionSuccess: vi.fn(),
 }));
 
+// The locality picker is the other writer's component; here it is a stub that
+// picks Mechita of partido Bragado — a homonym only its INDEC id tells apart.
+vi.mock("@/components/LocalityPickerAcross", () => ({
+  LocalityPickerAcross: (props: {
+    onSelect?: (r: { localityName: string; indecId: string } | null) => void;
+  }) => (
+    <button
+      type="button"
+      onClick={() => props.onSelect?.({ localityName: "Mechita", indecId: "06112080" })}
+    >
+      Elegir Mechita (Bragado)
+    </button>
+  ),
+}));
+
 import { RulesWizard } from "./RulesWizard";
 
 function activeSection(): HTMLElement {
@@ -106,5 +121,23 @@ describe("<RulesWizard> — step flow", () => {
       }),
     );
     expect(within(activeSection()).getByRole("button", { name: "Continuar" })).toBeEnabled();
+  });
+
+  // localidades-por-id D4: the rule is keyed on the row the person picked, so
+  // a homonym is no longer refused — the form carries the row's INDEC id.
+  it("a picked locality travels to the rule form as its INDEC id", () => {
+    const { container } = render(<RulesWizard base="/gob" />);
+    fireEvent.change(screen.getByRole("combobox", { name: "Provincia" }), {
+      target: { value: "AR-B" },
+    });
+    fireEvent.click(within(activeSection()).getByRole("button", { name: "Continuar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Elegir Mechita (Bragado)" }));
+    fireEvent.click(within(activeSection()).getByRole("button", { name: "Continuar" }));
+    fireEvent.click(screen.getByText("Microchip obligatorio"));
+    fireEvent.click(within(activeSection()).getByRole("button", { name: "Continuar" }));
+
+    const field = container.querySelector('input[name="jurisdictionLocalityIndecId"]');
+    expect(field).toHaveValue("06112080");
+    expect(container.querySelector('input[name="jurisdictionLocality"]')).toHaveValue("Mechita");
   });
 });

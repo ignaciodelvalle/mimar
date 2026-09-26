@@ -56,6 +56,15 @@ export type CreateBusinessRuleWriterParams = {
   legalAnchorIds: string[];
   /** Optional so pre-0183 callers keep compiling; absent = all columns NULL. */
   legalMetadata?: BusinessRuleLegalMetadata;
+  /**
+   * The place the rule is keyed on (migration 0263, localidades-por-id D4):
+   * a catalogue row or a confirmed unit. Absent = keyed on the names only.
+   */
+  place?: {
+    localityId: string | null;
+    authorityUnitId: string | null;
+    placeMethod: string | null;
+  };
 };
 
 export type CreateBusinessRuleResult =
