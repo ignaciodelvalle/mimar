@@ -49,6 +49,7 @@ import { sql } from "drizzle-orm";
 import { eventNotificationOutbox } from "@/db/schema";
 import { resolveEnoTargetJurisdiction } from "./eno-target-jurisdiction";
 import { OUTBOX_RULES, type OutboxRule, type TargetPlace, enoCaseKey } from "./event-outbox-rules";
+import { eventPlaceTarget } from "./event-place-target";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -136,9 +137,10 @@ function targetPlace(
  *
  * @param tx       — Drizzle PgTransaction (must be the same tx that inserted the source event).
  * @param event    — Minimal event object: id, eventType, payload.
- * @param pet      — Pet jurisdiction snapshot: the routing of every row EXCEPT a
- *                   case-keyed one, which routes by its bite case (and falls
- *                   back to this only when the animal has no bite case).
+ * @param pet      — Pet jurisdiction snapshot: the FALLBACK routing. A
+ *                   case-keyed row routes by its bite case; any other row by
+ *                   the event's own place (PO S10); this only when neither
+ *                   names a target.
  * @param now      — Optional: the enqueue instant (defaults to new Date()). The
  *                   legal clock starts at the occurrence (clockStart), never
  *                   later than this.
@@ -159,7 +161,12 @@ export async function enqueueOutboxForEvent(
     const snapshot = rule.buildSnapshot ? rule.buildSnapshot(event.payload) : event.payload;
 
     const family = rule.caseFamily ? rule.caseFamily(event.payload) : null;
-    const target = family ? await resolveEnoTargetJurisdiction(tx, event, pet) : pet;
+    // A case-family row (rabies) follows its bite case; every other row goes
+    // to where the event OCCURRED when it carries a place (PO S10), else to
+    // the caller's snapshot of the pet's home.
+    const target = family
+      ? await resolveEnoTargetJurisdiction(tx, event, pet)
+      : ((await eventPlaceTarget(tx, event.payload)) ?? pet);
     const caseKey = family ? enoCaseKey(family, event.petId, target) : null;
     const place = targetPlace(event.payload, target as { place?: TargetPlace }, pet);
 

@@ -349,6 +349,83 @@ describe("enqueueOutboxForEvent", () => {
       expect(b.inserted[0].targetPlaceMethod).toBeNull();
     });
 
+    // PO S10 (2026-09-26): a non-rabies ENO row goes to where the fact
+    // OCCURRED — the event's place — never to the pet's home when a place
+    // exists. A place that resolved to no row still names its province.
+    it("S10: a non-rabies row with a resolved place targets that place's names, not the home", async () => {
+      const { tx, inserted } = makeMockTx([{ localityName: "Mechita" }]);
+      const event = makeDiseaseDiagnosisEvent("leptospirosis");
+      await enqueueOutboxForEvent(
+        tx as never,
+        {
+          ...event,
+          payload: {
+            ...event.payload,
+            place: {
+              entered: { province: "Buenos Aires", locality: "Mechita", indec_id: null },
+              resolved: { locality_id: ALBERTI, province_code: "AR-B", method: "catalogue_id" },
+            },
+          },
+        },
+        {
+          jurisdictionProvince: "Córdoba",
+          jurisdictionLocality: "Río Cuarto",
+          localityId: BRAGADO,
+        },
+        NOW,
+      );
+      expect(inserted[0].targetJurisdictionProvince).toBe("Buenos Aires");
+      expect(inserted[0].targetJurisdictionLocality).toBe("Mechita");
+      expect(inserted[0].targetLocalityId).toBe(ALBERTI);
+    });
+
+    it("S10: an unresolved place routes to its province, never to the home", async () => {
+      const { tx, inserted } = makeMockTx();
+      const event = makeDiseaseDiagnosisEvent("leptospirosis");
+      await enqueueOutboxForEvent(
+        tx as never,
+        {
+          ...event,
+          payload: {
+            ...event.payload,
+            place: {
+              entered: { province: "Santa Fe", locality: "Villa Inexistente", indec_id: null },
+              resolved: null,
+            },
+          },
+        },
+        {
+          jurisdictionProvince: "Córdoba",
+          jurisdictionLocality: "Río Cuarto",
+          localityId: BRAGADO,
+        },
+        NOW,
+      );
+      expect(inserted[0].targetJurisdictionProvince).toBe("Santa Fe");
+      expect(inserted[0].targetJurisdictionLocality).toBeNull();
+      expect(inserted[0].targetLocalityId).toBeNull();
+      expect(inserted[0].targetPlaceMethod).toBe("unresolved");
+    });
+
+    it("S10: a place with no readable province falls back to the home", async () => {
+      const { tx, inserted } = makeMockTx();
+      const event = makeDiseaseDiagnosisEvent("leptospirosis");
+      await enqueueOutboxForEvent(
+        tx as never,
+        {
+          ...event,
+          payload: {
+            ...event.payload,
+            place: { entered: { province: null, locality: "X", indec_id: null }, resolved: null },
+          },
+        },
+        PET,
+        NOW,
+      );
+      expect(inserted[0].targetJurisdictionProvince).toBe("AR-B");
+      expect(inserted[0].targetJurisdictionLocality).toBe("La Plata");
+    });
+
     it("a row routed to a bite case takes the CASE's row, not a same-named home", async () => {
       // The homonym: the bite happened in Alberti's Mechita, the pet lives in
       // Bragado's. Same names, two rows — the notification follows the case.

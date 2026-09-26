@@ -133,6 +133,8 @@ function makeDeps(repoOverrides: FakeRepo = {}): EnoBatchDeps {
     getOwnership: vi.fn().mockResolvedValue({ ownerUserId: "owner-1" }),
     getDisease: vi.fn().mockResolvedValue(RABIES_DISEASE),
     getGovtTargets: vi.fn().mockResolvedValue([{ userId: "govt-1" }]),
+    // No place on the default event: the pet's home routes.
+    getEventPlaceTarget: vi.fn().mockResolvedValue(null),
     insertAuditLog: vi.fn().mockResolvedValue(undefined),
   };
 }
@@ -382,5 +384,37 @@ describe("processEnoQueueBatch — retry semantics", () => {
     const result = await processEnoQueueBatch(deps);
     expect(result.skipped).toBe(1);
     expect(result.processed).toBe(1);
+  });
+});
+
+// PO S10 (2026-09-26): the fan-out goes to where the diagnosis OCCURRED (the
+// event's place), never to the pet's home when the event carries a place.
+describe("processEnoQueueBatch — routes by the event's place (S10)", () => {
+  it("a diagnosis with a place fans out to that place's authorities", async () => {
+    const deps = makeDeps();
+    deps.getEventPlaceTarget = vi.fn().mockResolvedValue({
+      jurisdictionProvince: "Santa Fe",
+      jurisdictionLocality: "Rosario",
+      place: { localityId: "loc-rosario", placeMethod: "catalogue_id" },
+    });
+    await processEnoQueueBatch(deps);
+    expect(deps.getGovtTargets).toHaveBeenCalledWith("Santa Fe", "Rosario", "loc-rosario");
+  });
+
+  it("an unresolved place is a province-level fan-out", async () => {
+    const deps = makeDeps();
+    deps.getEventPlaceTarget = vi.fn().mockResolvedValue({
+      jurisdictionProvince: "Santa Fe",
+      jurisdictionLocality: null,
+      place: { localityId: null, placeMethod: "unresolved" },
+    });
+    await processEnoQueueBatch(deps);
+    expect(deps.getGovtTargets).toHaveBeenCalledWith("Santa Fe", "", null);
+  });
+
+  it("with no place, the pet's home routes as before", async () => {
+    const deps = makeDeps();
+    await processEnoQueueBatch(deps);
+    expect(deps.getGovtTargets).toHaveBeenCalledWith("Buenos Aires", "La Plata", undefined);
   });
 });

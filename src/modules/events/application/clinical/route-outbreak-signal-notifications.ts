@@ -14,6 +14,7 @@
 import { inArray } from "drizzle-orm";
 
 import { type db, type petEvents, type pets, profiles } from "@/db";
+import { eventPlaceTarget } from "@/lib/events/event-place-target";
 import { findAuthoritiesForJurisdiction } from "@/lib/infra/approval-routing";
 import { speciesLabel } from "@/lib/utils/format";
 
@@ -44,6 +45,20 @@ export type RouteSignalArgs = {
     medium_count: number;
   };
   escalation?: boolean;
+  /**
+   * Who described what the signal is built on — the notice says so instead of
+   * calling every signal "auto-reportado por dueño" (health audit). Absent =
+   * derived: a diagnosis-derived signal is a vet's, any other an owner's.
+   */
+  origin?: SignalOrigin;
+};
+
+export type SignalOrigin = "owner" | "witness" | "vet";
+
+const ORIGIN_SENTENCE: Record<SignalOrigin, string> = {
+  owner: "Síntomas descritos por quien cuida al animal",
+  witness: "Síntomas descritos en una denuncia de bienestar animal",
+  vet: "Diagnóstico registrado por un veterinario",
 };
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -69,14 +84,22 @@ export async function routeOutbreakSignalNotifications(
   pendingNotifications: NewNotification[],
 ): Promise<void> {
   const { signalEvent, pet, disease, escalation } = args;
+  const payload = (signalEvent.payload ?? {}) as Record<string, unknown>;
+  const origin: SignalOrigin =
+    args.origin ?? (payload.triggered_by === "direct_diagnosis" ? "vet" : "owner");
 
-  const province = pet.jurisdictionProvince ?? "";
-  const locality = pet.jurisdictionLocality ?? "";
+  // PO S10 (2026-09-26): the authority where it OCCURRED — the signal's own
+  // place — never the pet's home when the signal carries a place. A place
+  // that resolved to no row is a province-level notice.
+  const occurred = await eventPlaceTarget(tx, payload);
+  const province = (occurred ? occurred.jurisdictionProvince : pet.jurisdictionProvince) ?? "";
+  const locality = (occurred ? occurred.jurisdictionLocality : pet.jurisdictionLocality) ?? "";
+  const localityId = occurred ? (occurred.place?.localityId ?? null) : pet.localityId;
 
   const authorityIds = await findAuthoritiesForJurisdiction({
     province,
     locality,
-    ...(pet.localityId !== undefined ? { localityId: pet.localityId } : {}),
+    ...(localityId !== undefined ? { localityId } : {}),
   });
 
   if (authorityIds.length === 0) {
@@ -91,12 +114,14 @@ export async function routeOutbreakSignalNotifications(
     .from(profiles)
     .where(inArray(profiles.id, authorityIds));
 
-  const localityPart = pet.jurisdictionLocality ? ` en ${pet.jurisdictionLocality}` : "";
+  const localityPart = locality ? ` en ${locality}` : province ? ` en ${province}` : "";
   const titlePrefix = escalation ? "URGENTE — " : "Signal: ";
   const title = `${titlePrefix}posible ${disease.disease_label}${localityPart}`;
 
   const bodyLines = [
-    `**Signal automático.** Síntomas auto-reportados por dueño matchearon con la enfermedad reportable **${disease.disease_label}**.`,
+    origin === "vet"
+      ? `**Señal automática.** ${ORIGIN_SENTENCE.vet}: enfermedad reportable **${disease.disease_label}**.`
+      : `**Señal automática.** ${ORIGIN_SENTENCE[origin]} coinciden con la enfermedad reportable **${disease.disease_label}**.`,
     "",
   ];
   if (escalation) {
@@ -107,11 +132,16 @@ export async function routeOutbreakSignalNotifications(
   }
   bodyLines.push(
     `- Especie: ${speciesLabel(pet.species)}`,
-    `- Jurisdicción: ${[pet.jurisdictionLocality, pet.jurisdictionProvince].filter(Boolean).join(", ") || "no especificada"}`,
-    `- Match strength: ${disease.high_count} high · ${disease.medium_count} medium`,
-    "",
-    "_No es diagnóstico. Considerá el contexto: cuántos signals similares en la jurisdicción / período._",
+    `- Jurisdicción: ${[locality, province].filter(Boolean).join(", ") || "no especificada"}`,
   );
+  // A matcher signal is a suspicion from free text; a vet's diagnosis is not.
+  if (origin !== "vet") {
+    bodyLines.push(
+      `- Match strength: ${disease.high_count} high · ${disease.medium_count} medium`,
+      "",
+      "_No es diagnóstico. Considerá el contexto: cuántos signals similares en la jurisdicción / período._",
+    );
+  }
   const body = bodyLines.join("\n");
   const severity = escalation ? ("urgent" as const) : ("warning" as const);
 

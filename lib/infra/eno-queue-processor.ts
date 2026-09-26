@@ -24,6 +24,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 
 import { type AuditLogAction, auditLog, db, ownerships, pets } from "@/db";
+import { eventPlaceTarget } from "@/lib/events/event-place-target";
 import { findAuthoritiesForJurisdiction } from "@/lib/infra/approval-routing";
 import { processEnoQueueBatch as _processEnoQueueBatch } from "@/src/modules/surveillance/application/process-eno-queue-batch";
 import { getEnoDisease } from "@/src/modules/surveillance/domain/eno-catalog";
@@ -76,6 +77,9 @@ export async function processEnoQueueBatch() {
     getDisease: async (code: string) => {
       return getEnoDisease(code);
     },
+
+    // PO S10: the diagnosis's own place routes the fan-out when it names one.
+    getEventPlaceTarget: (payload: Record<string, unknown>) => eventPlaceTarget(db, payload),
 
     // The mandatory-reportable-disease route (Ley 15.465) gets the SAME fallback
     // as everything else (2026-08-17). This used to query govt_assignments raw:

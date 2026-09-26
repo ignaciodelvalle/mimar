@@ -20,7 +20,8 @@
 //      there is no incident to route by.
 //
 // Only rows a rule keys to a case family are resolved here; every other ENO
-// row keeps routing by the pet, as before.
+// row routes by the event's own place (PO S10, lib/events/event-place-target.ts)
+// and falls back to the pet's home only when the event names no place.
 
 import { and, desc, eq, sql } from "drizzle-orm";
 

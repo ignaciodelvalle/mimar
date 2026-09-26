@@ -63,6 +63,17 @@ export type EnoBatchDeps = {
     /** The place's catalogue row; absent = name path (localidades-por-id D3). */
     localityId?: string | null,
   ) => Promise<{ userId: string }[]>;
+  /**
+   * Where the diagnosis OCCURRED, from the event payload's `place` (PO S10):
+   * a resolved catalogue row, or a province-level target for a place that
+   * resolved to no row. Null = the event names no place; the pet's home routes.
+   * Production wires lib/events/event-place-target.ts.
+   */
+  getEventPlaceTarget: (payload: Record<string, unknown>) => Promise<{
+    jurisdictionProvince?: string | null;
+    jurisdictionLocality?: string | null;
+    place?: { localityId: string | null; placeMethod: string | null };
+  } | null>;
   /** Write an audit_log row. Actor is nullable: a diagnosis can have no identified clinician. */
   insertAuditLog: (row: {
     actorUserId: string | null;
@@ -142,12 +153,14 @@ async function processOne(petEventId: string, deps: EnoBatchDeps): Promise<boole
   const vetUserId = eventRow.recordedByUserId;
   const vetOrgId = eventRow.authorOrganizationId;
 
-  const province = petRow.jurisdictionProvince ?? "";
-  const locality = petRow.jurisdictionLocality ?? "";
-
-  // 4. Govt fanout.
-  // The row travels with the names, read from the same pet row.
-  const targets = await deps.getGovtTargets(province, locality, petRow.localityId);
+  // 4. Govt fanout — to where the diagnosis OCCURRED when the event names a
+  // place (PO S10), else the pet's home. The row travels with the names,
+  // read from the same source.
+  const occurred = await deps.getEventPlaceTarget(payload);
+  const province = (occurred ? occurred.jurisdictionProvince : petRow.jurisdictionProvince) ?? "";
+  const locality = (occurred ? occurred.jurisdictionLocality : petRow.jurisdictionLocality) ?? "";
+  const localityId = occurred ? (occurred.place?.localityId ?? null) : petRow.localityId;
+  const targets = await deps.getGovtTargets(province, locality, localityId);
   const targetsCount = targets.length;
 
   const notifications: Parameters<typeof deps.repo.insertNotifications>[0] = [];
@@ -159,9 +172,7 @@ async function processOne(petEventId: string, deps: EnoBatchDeps): Promise<boole
         notificationType: "eno_disease_diagnosis",
         title: `ENO: ${disease.label} — ${petRow.name}`,
         body: `Diagnóstico de ${disease.label} reportado en ${
-          petRow.jurisdictionLocality ??
-          petRow.jurisdictionProvince ??
-          "jurisdicción no especificada"
+          locality || province || "jurisdicción no especificada"
         }. SLA: ${disease.notifyHours}h.`,
         severity: disease.severity === "critical" ? ("urgent" as const) : ("warning" as const),
         relatedPetId: petRow.id,
