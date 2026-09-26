@@ -27,6 +27,7 @@ import {
 } from "@/lib/domain/business-rules-defaults";
 import { type PlaceReadMode, readPlaceFlag } from "@/lib/place/flags";
 import type { ShadowKind } from "@/lib/place/shadow";
+import { shadowIdPath } from "@/lib/place/shadow-guard";
 import { recordShadowDisagreement } from "@/lib/place/shadow-sink";
 import { provinceByName } from "@/lib/reference/ar-provincias";
 import { todayIsoInAr } from "@/lib/utils/format";
@@ -105,7 +106,12 @@ export async function resolveBusinessRule<T extends GovtBusinessRuleType>(
   if (mode === "id") return resolveById(ruleType, jurisdiction, executor);
 
   const byName = await resolveByName(ruleType, jurisdiction, executor);
-  const byId = await resolveById(ruleType, jurisdiction, executor);
+  // Shadow never breaks the request it watches (lib/place/shadow-guard.ts).
+  const shadow = await shadowIdPath("rules", executor, (sp) =>
+    resolveById(ruleType, jurisdiction, sp),
+  );
+  if (!shadow.ok) return byName;
+  const byId = shadow.value;
   if ((byName.matchedRow?.id ?? null) !== (byId.matchedRow?.id ?? null)) {
     await recordShadowDisagreement({
       consumer: "rules",

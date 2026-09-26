@@ -18,6 +18,7 @@ import { recordEmptyFanout } from "@/lib/infra/empty-fanout-trace";
 import { activeHumanInstitutionalAdminIds } from "@/lib/infra/notification-recipients";
 import { type PlaceReadMode, readPlaceFlag } from "@/lib/place/flags";
 import { classifyShadow, worstShadowKind } from "@/lib/place/shadow";
+import { shadowIdPath } from "@/lib/place/shadow-guard";
 import { recordShadowDisagreement } from "@/lib/place/shadow-sink";
 import { provinceByName } from "@/lib/reference/ar-provincias";
 
@@ -124,8 +125,10 @@ export async function govtAuthoritiesForPlace(
 
   // Sequential: a transaction executor is not safe under concurrent queries.
   const byName = await govtsByName(jurisdiction, exec);
-  const byId = await govtsById(jurisdiction, exec);
-  await recordRoutingShadow(jurisdiction, byName, byId, context?.route);
+  // Shadow never breaks the request it watches: a failing id path is
+  // reported and the name answer is served (lib/place/shadow-guard.ts).
+  const byId = await shadowIdPath("routing", exec, (sp) => govtsById(jurisdiction, sp));
+  if (byId.ok) await recordRoutingShadow(jurisdiction, byName, byId.value, context?.route);
   return byName;
 }
 

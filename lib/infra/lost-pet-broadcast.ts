@@ -20,6 +20,7 @@ import { createNotificationsBulk } from "@/lib/infra/notification-service";
 import { coverageCoversPlaceById } from "@/lib/place/coverage";
 import { type PlaceReadMode, readPlaceFlag } from "@/lib/place/flags";
 import type { ShadowKind } from "@/lib/place/shadow";
+import { shadowIdPath } from "@/lib/place/shadow-guard";
 import { recordShadowDisagreement } from "@/lib/place/shadow-sink";
 import { speciesLabel } from "@/lib/utils/format";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
@@ -144,6 +145,34 @@ function buildBroadcastBody(pet: PetForBroadcast): string {
   return parts.join("\n");
 }
 
+/**
+ * The shadow branch: serve the name path, compare the id path, record any
+ * disagreement. The id path never breaks the broadcast (shadow-guard.ts): if
+ * it fails, the name answer is served and nothing is recorded.
+ */
+export async function coveringOrgsInShadow(
+  client: DbOrTx,
+  area: BroadcastArea,
+  subjectKey: string,
+): Promise<string[]> {
+  const byName = await coveringOrgIds(client, area, "name");
+  const shadow = await shadowIdPath("coverage", client, (sp) => coveringOrgIds(sp, area, "id"));
+  if (!shadow.ok) return byName;
+  const byId = shadow.value;
+  const same = byName.length === byId.length && byName.every((o) => byId.includes(o));
+  if (!same) {
+    await recordShadowDisagreement({
+      consumer: "coverage",
+      kind: broadcastDisagreementKind(area, byName, byId),
+      subjectTable: "lost_broadcast",
+      subjectKey,
+      nameResult: [...byName].sort(),
+      idResult: [...byId].sort(),
+    });
+  }
+  return byName;
+}
+
 // Main export — call after the pet's status_changed event is committed.
 // Pass `db` directly (not a tx) so the broadcast is outside the main
 // transaction; failures don't roll back the lost-flip (D8).
@@ -200,25 +229,10 @@ export async function broadcastLostPet(
     const mode: PlaceReadMode =
       opts?.mode ??
       (broadcastArea.localityId === undefined ? "name" : await readPlaceFlag("coverage"));
-    let coveringOrgs: string[];
-    if (mode === "shadow") {
-      const byName = await coveringOrgIds(client, broadcastArea, "name");
-      const byId = await coveringOrgIds(client, broadcastArea, "id");
-      const same = byName.length === byId.length && byName.every((o) => byId.includes(o));
-      if (!same) {
-        await recordShadowDisagreement({
-          consumer: "coverage",
-          kind: broadcastDisagreementKind(broadcastArea, byName, byId),
-          subjectTable: "lost_broadcast",
-          subjectKey: opts?.episodeKey ?? pet.id,
-          nameResult: [...byName].sort(),
-          idResult: [...byId].sort(),
-        });
-      }
-      coveringOrgs = byName;
-    } else {
-      coveringOrgs = await coveringOrgIds(client, broadcastArea, mode);
-    }
+    const coveringOrgs =
+      mode === "shadow"
+        ? await coveringOrgsInShadow(client, broadcastArea, opts?.episodeKey ?? pet.id)
+        : await coveringOrgIds(client, broadcastArea, mode);
 
     if (coveringOrgs.length === 0) {
       return { broadcastedToMemberIds: [], orgCount: 0, deadLetteredCount: 0 };
