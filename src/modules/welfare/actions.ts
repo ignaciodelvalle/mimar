@@ -60,6 +60,7 @@ import { canReceiveDerivedWelfare } from "@/src/modules/welfare/domain/derivatio
 import { generateReferenceCode } from "@/src/modules/welfare/domain/reference-code";
 import { and, eq, isNull } from "drizzle-orm";
 
+import { welfareSymptomSurveillance } from "@/src/modules/events/application/surveillance/welfare-symptom-signals";
 import { addInterventionNote } from "./application/add-intervention-note";
 import { addReporterComment } from "./application/add-reporter-comment";
 import { assignWelfare } from "./application/assign-welfare";
@@ -1118,6 +1119,8 @@ export async function createWelfareReportAction(
       signal: async (opts) => {
         await signalWelfareReport(opts);
       },
+      // PO S7: the denuncia's symptoms run the matcher → a SIGNAL only.
+      surveillance: welfareSymptomSurveillance,
       transaction: db.transaction.bind(db),
     },
   );
@@ -1368,6 +1371,8 @@ export async function createOrgWelfareReportAction(
       signal: async (opts) => {
         await signalWelfareReport(opts);
       },
+      // PO S7: the denuncia's symptoms run the matcher → a SIGNAL only.
+      surveillance: welfareSymptomSurveillance,
       transaction: db.transaction.bind(db),
     },
   );

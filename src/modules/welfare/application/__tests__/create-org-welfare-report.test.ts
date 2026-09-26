@@ -78,6 +78,22 @@ function makeRepo(
   >;
 }
 
+/** The surveillance port: no matches unless a test says otherwise (PO S7). */
+function makeSurveillance(
+  match: {
+    matchedSymptomCodes: string[];
+    alertedDiseaseCodes: string[];
+    alerts: unknown[];
+  } = { matchedSymptomCodes: [], alertedDiseaseCodes: [], alerts: [] },
+) {
+  const flush = vi.fn().mockResolvedValue(undefined);
+  return {
+    match: vi.fn().mockResolvedValue(match),
+    emitSignals: vi.fn().mockResolvedValue(flush),
+    flush,
+  };
+}
+
 function makeDeps(repoOverrides: Partial<WelfareRepository> = {}) {
   const repo = makeRepo(repoOverrides);
   const openCase: OpenCaseFn = vi.fn().mockResolvedValue({ id: "case-002", publicCode: "C-002" });
@@ -87,7 +103,8 @@ function makeDeps(repoOverrides: Partial<WelfareRepository> = {}) {
     await cb({});
   });
 
-  return { repo, openCase, findGovtRecipients, signal, transaction };
+  const surveillance = makeSurveillance();
+  return { repo, openCase, findGovtRecipients, signal, transaction, surveillance };
 }
 
 /** Every notification row the use-case handed to the repo, flattened. */
@@ -155,6 +172,7 @@ describe("createOrgWelfareReport — audit_log presence (spec R2 REQUIRED)", () 
       findGovtRecipients,
       signal,
       transaction,
+      surveillance: makeSurveillance(),
     });
 
     expect(result.ok).toBe(true);
@@ -196,6 +214,7 @@ describe("createOrgWelfareReport — the confirmation follows the fact", () => {
       findGovtRecipients,
       signal,
       transaction,
+      surveillance: makeSurveillance(),
     });
 
     expect(result.ok).toBe(true);
@@ -228,6 +247,7 @@ describe("createOrgWelfareReport — the confirmation follows the fact", () => {
       findGovtRecipients,
       signal,
       transaction,
+      surveillance: makeSurveillance(),
     });
 
     expect(result.ok).toBe(true);
@@ -249,7 +269,7 @@ describe("createOrgWelfareReport — the confirmation follows the fact", () => {
 
     await createOrgWelfareReport(
       { ...BASE_INPUT, jurisdictionProvince: null, jurisdictionLocality: null },
-      { repo, openCase, findGovtRecipients, signal, transaction },
+      { repo, openCase, findGovtRecipients, signal, transaction, surveillance: makeSurveillance() },
     );
 
     expect(findGovtRecipients).toHaveBeenCalledWith({ province: "", locality: "" });
@@ -278,7 +298,7 @@ describe("createOrgWelfareReport — OA9 multi-source escalation", () => {
         subjectPetId: PET_ID, // pre-resolved
         subjectDescription: null,
       },
-      { repo, openCase, findGovtRecipients, signal, transaction },
+      { repo, openCase, findGovtRecipients, signal, transaction, surveillance: makeSurveillance() },
     );
 
     expect(result.ok).toBe(true);
@@ -311,7 +331,7 @@ describe("createOrgWelfareReport — OA9 multi-source escalation", () => {
         subjectPetId: PET_ID,
         subjectDescription: null,
       },
-      { repo, openCase, findGovtRecipients, signal, transaction },
+      { repo, openCase, findGovtRecipients, signal, transaction, surveillance: makeSurveillance() },
     );
 
     const petEventCalls = (repo.insertPetEvent as ReturnType<typeof vi.fn>).mock.calls;
@@ -336,6 +356,7 @@ describe("createOrgWelfareReport — OA9 multi-source escalation", () => {
       findGovtRecipients,
       signal,
       transaction,
+      surveillance: makeSurveillance(),
     });
 
     // No pet event calls for unowned_animal (no petId)
@@ -364,6 +385,7 @@ describe("createOrgWelfareReport — OA4 fan-out notifications", () => {
       findGovtRecipients,
       signal,
       transaction,
+      surveillance: makeSurveillance(),
     });
 
     expect(result.ok).toBe(true);
@@ -392,6 +414,7 @@ describe("createOrgWelfareReport — OA4 fan-out notifications", () => {
       findGovtRecipients,
       signal,
       transaction,
+      surveillance: makeSurveillance(),
     });
 
     const notifRows: Array<{ userId: string; notificationType: string }> = (
@@ -424,6 +447,7 @@ describe("createOrgWelfareReport — OA4 fan-out notifications", () => {
       findGovtRecipients,
       signal,
       transaction: txSpy,
+      surveillance: makeSurveillance(),
     });
 
     // notifications must come AFTER tx-end
@@ -446,7 +470,7 @@ describe("createOrgWelfareReport — severity forced to critical (OA2)", () => {
     // Even if the caller passes 'low' (which shouldn't happen but ensures server is authoritative)
     await createOrgWelfareReport(
       { ...BASE_INPUT, severity: "low" as "critical" },
-      { repo, openCase, findGovtRecipients, signal, transaction },
+      { repo, openCase, findGovtRecipients, signal, transaction, surveillance: makeSurveillance() },
     );
 
     const signalCall = (signal as ReturnType<typeof vi.fn>).mock.calls[0][0];
@@ -464,7 +488,7 @@ describe("createOrgWelfareReport — redirect", () => {
 
     const result = await createOrgWelfareReport(
       { ...BASE_INPUT, orgToken: "refugio-patitas" },
-      { repo, openCase, findGovtRecipients, signal, transaction },
+      { repo, openCase, findGovtRecipients, signal, transaction, surveillance: makeSurveillance() },
     );
 
     expect(result.ok).toBe(true);
@@ -493,6 +517,7 @@ describe("createOrgWelfareReport — signal", () => {
       findGovtRecipients,
       signal,
       transaction,
+      surveillance: makeSurveillance(),
     });
 
     expect(signal).toHaveBeenCalledOnce();
@@ -518,7 +543,7 @@ describe("createOrgWelfareReport — the entered place rides the bridge event", 
         subjectDescription: null,
         eventPlace: place,
       },
-      { repo, openCase, findGovtRecipients, signal, transaction },
+      { repo, openCase, findGovtRecipients, signal, transaction, surveillance: makeSurveillance() },
     );
     const call = (repo.insertPetEventIdempotent as ReturnType<typeof vi.fn>).mock.calls.find(
       (c) => (c[0] as { eventType: string }).eventType === "maltreatment_reported",
@@ -550,6 +575,7 @@ describe("createOrgWelfareReport — the case carries the resolved place", () =>
         findGovtRecipients: d.findGovtRecipients,
         signal: d.signal,
         transaction: d.transaction,
+        surveillance: makeSurveillance(),
       },
     );
     expect(d.openCase).toHaveBeenCalledWith(
@@ -558,5 +584,49 @@ describe("createOrgWelfareReport — the case carries the resolved place", () =>
         placeMethod: "indec_id",
       }),
     );
+  });
+});
+
+// PO S7 (2026-09-26): the org door runs the same matcher → SIGNAL leg.
+describe("createOrgWelfareReport — observed symptoms raise a signal (S7)", () => {
+  it("records the matcher's codes and emits the signals, then flushes after commit", async () => {
+    const deps = makeDeps();
+    const match = {
+      matchedSymptomCodes: ["jaundice"],
+      alertedDiseaseCodes: ["leptospirosis"],
+      alerts: [{ disease_code: "leptospirosis" }],
+    };
+    deps.surveillance = makeSurveillance(match);
+    (deps.repo.insertPetEventIdempotent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      wasNoop: false,
+      eventId: "sym-org-1",
+    });
+
+    await createOrgWelfareReport(
+      {
+        ...BASE_INPUT,
+        kind: "neglect",
+        subjectKind: "registered_pet",
+        subjectPetId: PET_ID,
+        subjectDescription: null,
+        observedSymptoms: "tiene los ojos amarillos",
+      },
+      deps,
+    );
+
+    const symptomCall = (
+      deps.repo.insertPetEventIdempotent as ReturnType<typeof vi.fn>
+    ).mock.calls.find(
+      (call: unknown[]) => (call[0] as { eventType: string }).eventType === "symptom_observed",
+    );
+    expect(symptomCall?.[0].payload).toMatchObject({
+      matched_symptom_codes: ["jaundice"],
+      alerted_disease_codes: ["leptospirosis"],
+    });
+    expect(deps.surveillance.emitSignals).toHaveBeenCalledWith(
+      expect.objectContaining({ petId: PET_ID, symptomEventId: "sym-org-1", match }),
+      expect.anything(),
+    );
+    expect(deps.surveillance.flush).toHaveBeenCalledOnce();
   });
 });

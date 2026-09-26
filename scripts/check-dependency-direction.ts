@@ -134,6 +134,14 @@ export const ALLOWED_EDGES = new Set<string>([
   // and the guard that enforces it drift apart. `auth` imports nothing from
   // `organizations`, so the graph stays acyclic.
   "organizations:auth",
+  // welfare → events (added 2026-09-26, health chain PO S7): a denuncia's
+  // "síntomas observados" run the SAME matcher and raise the SAME outbreak
+  // signal the libreta does — one signal writer, not a copy in welfare. The
+  // welfare use cases only declare a port (welfare/domain/
+  // symptom-surveillance-port.ts); welfare/actions.ts wires the events
+  // implementation. `events` imports nothing from `welfare`, so the graph
+  // stays acyclic.
+  "welfare:events",
 ]);
 
 // All module names (directory names under src/modules/).

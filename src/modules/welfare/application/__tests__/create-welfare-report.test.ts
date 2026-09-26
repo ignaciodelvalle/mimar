@@ -81,6 +81,22 @@ function makeRepo(
   >;
 }
 
+/** The surveillance port: no matches unless a test says otherwise (PO S7). */
+function makeSurveillance(
+  match: {
+    matchedSymptomCodes: string[];
+    alertedDiseaseCodes: string[];
+    alerts: unknown[];
+  } = { matchedSymptomCodes: [], alertedDiseaseCodes: [], alerts: [] },
+) {
+  const flush = vi.fn().mockResolvedValue(undefined);
+  return {
+    match: vi.fn().mockResolvedValue(match),
+    emitSignals: vi.fn().mockResolvedValue(flush),
+    flush,
+  };
+}
+
 function makeDeps(repoOverrides: Partial<WelfareRepository> = {}) {
   const repo = makeRepo(repoOverrides);
   const openCase: OpenCaseFn = vi.fn().mockResolvedValue({ id: "case-001", publicCode: "C-001" });
@@ -90,7 +106,8 @@ function makeDeps(repoOverrides: Partial<WelfareRepository> = {}) {
     await cb({});
   });
 
-  return { repo, openCase, computeFlagReasons, signal, transaction };
+  const surveillance = makeSurveillance();
+  return { repo, openCase, computeFlagReasons, signal, transaction, surveillance };
 }
 
 const BASE_INPUT = {
@@ -131,7 +148,7 @@ const BASE_INPUT = {
 
 describe("createWelfareReport — successful create (anon)", () => {
   it("inserts report + opens case + links case + emits signal, returns redirect to code page", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
 
     const result = await createWelfareReport(BASE_INPUT, {
       repo,
@@ -139,6 +156,7 @@ describe("createWelfareReport — successful create (anon)", () => {
       computeFlagReasons,
       signal,
       transaction,
+      surveillance: makeSurveillance(),
     });
 
     expect(result.ok).toBe(true);
@@ -151,11 +169,11 @@ describe("createWelfareReport — successful create (anon)", () => {
   });
 
   it("authenticated user: redirect goes to /denuncias/mias", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
 
     const result = await createWelfareReport(
       { ...BASE_INPUT, reporterUserId: "user-123" },
-      { repo, openCase, computeFlagReasons, signal, transaction },
+      { repo, openCase, computeFlagReasons, signal, transaction, surveillance: makeSurveillance() },
     );
 
     expect(result.ok).toBe(true);
@@ -166,7 +184,7 @@ describe("createWelfareReport — successful create (anon)", () => {
 
 describe("createWelfareReport — audit_log absence (spec: public create writes NONE)", () => {
   it("does NOT call insertAudit for a public (anon) create", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
 
     const result = await createWelfareReport(BASE_INPUT, {
       repo,
@@ -174,6 +192,7 @@ describe("createWelfareReport — audit_log absence (spec: public create writes 
       computeFlagReasons,
       signal,
       transaction,
+      surveillance: makeSurveillance(),
     });
 
     expect(result.ok).toBe(true);
@@ -181,11 +200,11 @@ describe("createWelfareReport — audit_log absence (spec: public create writes 
   });
 
   it("does NOT call insertAudit for an authenticated public create", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
 
     const result = await createWelfareReport(
       { ...BASE_INPUT, reporterUserId: "user-123" },
-      { repo, openCase, computeFlagReasons, signal, transaction },
+      { repo, openCase, computeFlagReasons, signal, transaction, surveillance: makeSurveillance() },
     );
 
     expect(result.ok).toBe(true);
@@ -206,6 +225,7 @@ describe("createWelfareReport — post-commit flag heuristics (anon only)", () =
       computeFlagReasons,
       signal,
       transaction,
+      surveillance: makeSurveillance(),
     });
 
     expect(result.ok).toBe(true);
@@ -226,6 +246,7 @@ describe("createWelfareReport — post-commit flag heuristics (anon only)", () =
       computeFlagReasons,
       signal,
       transaction,
+      surveillance: makeSurveillance(),
     });
 
     expect(repo.setFlagged).not.toHaveBeenCalled();
@@ -243,6 +264,7 @@ describe("createWelfareReport — post-commit flag heuristics (anon only)", () =
       computeFlagReasons,
       signal,
       transaction,
+      surveillance: makeSurveillance(),
     });
 
     // Report still succeeds despite flag failure
@@ -256,7 +278,7 @@ describe("createWelfareReport — post-commit flag heuristics (anon only)", () =
 
     await createWelfareReport(
       { ...BASE_INPUT, reporterUserId: "user-123" },
-      { repo, openCase, computeFlagReasons, signal, transaction },
+      { repo, openCase, computeFlagReasons, signal, transaction, surveillance: makeSurveillance() },
     );
 
     expect(computeFlagReasons).not.toHaveBeenCalled();
@@ -269,11 +291,11 @@ describe("createWelfareReport — reference-code retry (spec: 5 attempts on 2350
   // Here we just verify the use-case correctly uses the pre-inserted reportId/referenceCode.
 
   it("uses the pre-inserted reportId for openCase and returns matching referenceCode in redirect", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
 
     const result = await createWelfareReport(
       { ...BASE_INPUT, reportId: RPT_ID, referenceCode: "DEN-CUSTOM-99" },
-      { repo, openCase, computeFlagReasons, signal, transaction },
+      { repo, openCase, computeFlagReasons, signal, transaction, surveillance: makeSurveillance() },
     );
 
     expect(result.ok).toBe(true);
@@ -283,7 +305,7 @@ describe("createWelfareReport — reference-code retry (spec: 5 attempts on 2350
   });
 
   it("linkCase is called with the pre-inserted reportId", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
 
     await createWelfareReport(BASE_INPUT, {
       repo,
@@ -291,6 +313,7 @@ describe("createWelfareReport — reference-code retry (spec: 5 attempts on 2350
       computeFlagReasons,
       signal,
       transaction,
+      surveillance: makeSurveillance(),
     });
 
     // linkCase must use our pre-inserted reportId
@@ -303,7 +326,7 @@ describe("createWelfareReport — pet-event bridge (registered_pet)", () => {
   // The use-case receives pre-resolved subjectPetId + isOwnerOfSubjectPet.
 
   it("abandonment: emits abandonment_reported pet event in tx", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
 
     const result = await createWelfareReport(
       {
@@ -314,7 +337,7 @@ describe("createWelfareReport — pet-event bridge (registered_pet)", () => {
         isOwnerOfSubjectPet: false, // witness
         subjectDescription: null,
       },
-      { repo, openCase, computeFlagReasons, signal, transaction },
+      { repo, openCase, computeFlagReasons, signal, transaction, surveillance: makeSurveillance() },
     );
 
     expect(result.ok).toBe(true);
@@ -324,7 +347,7 @@ describe("createWelfareReport — pet-event bridge (registered_pet)", () => {
   });
 
   it("neglect (maltreatment): emits maltreatment_reported pet event", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
 
     const result = await createWelfareReport(
       {
@@ -335,7 +358,7 @@ describe("createWelfareReport — pet-event bridge (registered_pet)", () => {
         isOwnerOfSubjectPet: false,
         subjectDescription: null,
       },
-      { repo, openCase, computeFlagReasons, signal, transaction },
+      { repo, openCase, computeFlagReasons, signal, transaction, surveillance: makeSurveillance() },
     );
 
     expect(result.ok).toBe(true);
@@ -344,8 +367,27 @@ describe("createWelfareReport — pet-event bridge (registered_pet)", () => {
     expect(call[0]).toMatchObject({ eventType: "maltreatment_reported" });
   });
 
-  it("observedSymptoms: emits symptom_observed with matched_symptom_codes=[]", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
+  // PO S7 (2026-09-26): a denuncia's symptoms run the matcher and raise a
+  // SIGNAL — the codes land on the symptom event, one signal per alert is
+  // emitted in the same transaction where the report says it happened, and
+  // the authority notices go out after COMMIT. No ENO row, no owner alert
+  // (neither is the use case's to write).
+  it("observedSymptoms: runs the matcher, records its codes and emits the signals (S7)", async () => {
+    const deps = makeDeps();
+    const match = {
+      matchedSymptomCodes: ["hypersalivation", "aggression"],
+      alertedDiseaseCodes: ["rabies_suspected"],
+      alerts: [{ disease_code: "rabies_suspected" }],
+    };
+    deps.surveillance = makeSurveillance(match);
+    (deps.repo.insertPetEventIdempotent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      wasNoop: false,
+      eventId: "sym-evt-1",
+    });
+    const place = {
+      entered: { province: "Santa Fe", locality: "Rosario", indec_id: null },
+      resolved: null,
+    };
 
     await createWelfareReport(
       {
@@ -355,23 +397,56 @@ describe("createWelfareReport — pet-event bridge (registered_pet)", () => {
         subjectPetId: PET_ID,
         isOwnerOfSubjectPet: false,
         subjectDescription: null,
-        observedSymptoms: "Costillas visibles, pelaje opaco",
+        observedSymptoms: "Tiene espuma en la boca y muerde todo",
+        eventPlace: place,
       },
-      { repo, openCase, computeFlagReasons, signal, transaction },
+      deps,
     );
 
-    // 2 events: maltreatment_reported + symptom_observed
-    expect(repo.insertPetEventIdempotent).toHaveBeenCalledTimes(2);
-    const symptomCall = (repo.insertPetEventIdempotent as ReturnType<typeof vi.fn>).mock.calls.find(
+    expect(deps.surveillance.match).toHaveBeenCalledWith(
+      PET_ID,
+      "Tiene espuma en la boca y muerde todo",
+      expect.anything(),
+    );
+    const symptomCall = (
+      deps.repo.insertPetEventIdempotent as ReturnType<typeof vi.fn>
+    ).mock.calls.find(
       (call: unknown[]) => (call[0] as { eventType: string }).eventType === "symptom_observed",
     );
-    expect(symptomCall).toBeDefined();
-    // payload must have matched_symptom_codes: []
-    expect(symptomCall?.[0].payload).toMatchObject({ matched_symptom_codes: [] });
+    expect(symptomCall?.[0].payload).toMatchObject({
+      matched_symptom_codes: ["hypersalivation", "aggression"],
+      alerted_disease_codes: ["rabies_suspected"],
+    });
+    expect(deps.surveillance.emitSignals).toHaveBeenCalledWith(
+      expect.objectContaining({ petId: PET_ID, symptomEventId: "sym-evt-1", match, place }),
+      expect.anything(),
+    );
+    expect(deps.surveillance.flush).toHaveBeenCalledOnce();
+  });
+
+  it("a replayed denuncia (idempotent no-op) emits no second signal", async () => {
+    const deps = makeDeps();
+    (deps.repo.insertPetEventIdempotent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      wasNoop: true,
+      eventId: "sym-evt-1",
+    });
+    await createWelfareReport(
+      {
+        ...BASE_INPUT,
+        kind: "neglect",
+        subjectKind: "registered_pet",
+        subjectPetId: PET_ID,
+        isOwnerOfSubjectPet: false,
+        subjectDescription: null,
+        observedSymptoms: "babea mucho",
+      },
+      deps,
+    );
+    expect(deps.surveillance.emitSignals).not.toHaveBeenCalled();
   });
 
   it("kind=other: no bridge pet event emitted", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
 
     await createWelfareReport(
       {
@@ -382,14 +457,14 @@ describe("createWelfareReport — pet-event bridge (registered_pet)", () => {
         isOwnerOfSubjectPet: false,
         subjectDescription: null,
       },
-      { repo, openCase, computeFlagReasons, signal, transaction },
+      { repo, openCase, computeFlagReasons, signal, transaction, surveillance: makeSurveillance() },
     );
 
     expect(repo.insertPetEventIdempotent).not.toHaveBeenCalled();
   });
 
   it("owner reporter: authorRole=owner in event payload", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
 
     await createWelfareReport(
       {
@@ -401,7 +476,7 @@ describe("createWelfareReport — pet-event bridge (registered_pet)", () => {
         subjectDescription: null,
         reporterUserId: "user-owner",
       },
-      { repo, openCase, computeFlagReasons, signal, transaction },
+      { repo, openCase, computeFlagReasons, signal, transaction, surveillance: makeSurveillance() },
     );
 
     const call = (repo.insertPetEventIdempotent as ReturnType<typeof vi.fn>).mock.calls[0];
@@ -411,7 +486,7 @@ describe("createWelfareReport — pet-event bridge (registered_pet)", () => {
 
 describe("createWelfareReport — attachments", () => {
   it("calls insertAttachments in tx when attachments provided", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
     const attachments = [
       {
         storagePath: "welfare-evidence/rpt-001/file.jpg",
@@ -423,14 +498,14 @@ describe("createWelfareReport — attachments", () => {
 
     await createWelfareReport(
       { ...BASE_INPUT, attachments, reporterUserId: "user-123" },
-      { repo, openCase, computeFlagReasons, signal, transaction },
+      { repo, openCase, computeFlagReasons, signal, transaction, surveillance: makeSurveillance() },
     );
 
     expect(repo.insertAttachments).toHaveBeenCalledOnce();
   });
 
   it("skips insertAttachments when no attachments", async () => {
-    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
 
     await createWelfareReport(BASE_INPUT, {
       repo,
@@ -438,6 +513,7 @@ describe("createWelfareReport — attachments", () => {
       computeFlagReasons,
       signal,
       transaction,
+      surveillance: makeSurveillance(),
     });
 
     expect(repo.insertAttachments).not.toHaveBeenCalled();
@@ -457,7 +533,7 @@ describe("createWelfareReport — the entered place rides the bridge event", () 
     ["abandonment", "abandonment_reported"],
     ["neglect", "maltreatment_reported"],
   ])("%s: the %s payload carries the place as entered", async (kind, eventType) => {
-    const { repo, openCase, computeFlagReasons, signal, transaction } = makeDeps();
+    const { repo, openCase, computeFlagReasons, signal, transaction, surveillance } = makeDeps();
     await createWelfareReport(
       {
         ...BASE_INPUT,
@@ -468,7 +544,7 @@ describe("createWelfareReport — the entered place rides the bridge event", () 
         subjectDescription: null,
         eventPlace: ENTERED_HOMONYM,
       },
-      { repo, openCase, computeFlagReasons, signal, transaction },
+      { repo, openCase, computeFlagReasons, signal, transaction, surveillance: makeSurveillance() },
     );
     const call = (repo.insertPetEventIdempotent as ReturnType<typeof vi.fn>).mock.calls.find(
       (c) => (c[0] as { eventType: string }).eventType === eventType,
@@ -502,6 +578,7 @@ describe("createWelfareReport — the case carries the resolved place", () => {
         computeFlagReasons: a.computeFlagReasons,
         signal: a.signal,
         transaction: a.transaction,
+        surveillance: makeSurveillance(),
       },
     );
     expect(a.openCase).toHaveBeenCalledWith(
@@ -520,6 +597,7 @@ describe("createWelfareReport — the case carries the resolved place", () => {
         computeFlagReasons: b.computeFlagReasons,
         signal: b.signal,
         transaction: b.transaction,
+        surveillance: makeSurveillance(),
       },
     );
     expect(b.openCase).toHaveBeenCalledWith(

@@ -33,6 +33,7 @@ import {
   derivePrimarySubjectKind,
   deriveReporterRole,
 } from "../domain/report-classification";
+import type { WelfareSymptomSurveillance } from "../domain/symptom-surveillance-port";
 import type { WelfareRepository } from "../infrastructure/welfare-repository";
 
 // ---------------------------------------------------------------------------
@@ -127,6 +128,11 @@ type Deps = {
     hasContact: boolean;
   }) => Promise<void>;
   transaction: <T>(cb: (tx: unknown) => Promise<T>) => Promise<T>;
+  /**
+   * PO S7: "síntomas observados" run the matcher and raise a SIGNAL (no legal
+   * ENO row, no owner alert). See ../domain/symptom-surveillance-port.ts.
+   */
+  surveillance: WelfareSymptomSurveillance;
 };
 
 export type CreateWelfareReportResult =
@@ -172,6 +178,9 @@ export async function createWelfareReport(
   const authorRole = deriveAuthorRole(isOwnerOfSubjectPet);
 
   // Atomic tx: attachments + openCase + linkCase + pet_event bridge
+  // PO S7: the authority notices of any symptom signal, sent after COMMIT.
+  let flushSignals: () => Promise<void> = async () => {};
+
   try {
     await transaction(async (tx) => {
       // 4a. Attachment rows
@@ -294,17 +303,18 @@ export async function createWelfareReport(
         }
 
         if (observedSymptoms) {
+          const match = await deps.surveillance.match(subjectPetId, observedSymptoms, tx);
           const payload = validateEventPayload("symptom_observed", {
             source: "welfare_report",
             welfare_report_id: reportId,
             reporter_role: reporterRole,
             free_text: observedSymptoms,
-            matched_symptom_codes: [],
-            alerted_disease_codes: [],
+            matched_symptom_codes: match.matchedSymptomCodes,
+            alerted_disease_codes: match.alertedDiseaseCodes,
             severity_self_assessed: null,
             onset_at: null,
           });
-          await repo.insertPetEventIdempotent(
+          const symptom = await repo.insertPetEventIdempotent(
             {
               petId: subjectPetId,
               eventType: "symptom_observed",
@@ -320,6 +330,19 @@ export async function createWelfareReport(
             },
             tx as Parameters<typeof repo.insertPetEventIdempotent>[1],
           );
+          // A replay of the same report emits nothing twice.
+          if (!symptom.wasNoop && symptom.eventId) {
+            flushSignals = await deps.surveillance.emitSignals(
+              {
+                petId: subjectPetId,
+                symptomEventId: symptom.eventId,
+                match,
+                place: eventPlace ?? null,
+                now,
+              },
+              tx,
+            );
+          }
         }
       }
     });
@@ -352,6 +375,14 @@ export async function createWelfareReport(
     } catch (err) {
       console.error("[welfare] auto-flag heuristics failed (non-fatal):", err);
     }
+  }
+
+  // Post-commit: the symptom signals' authority notices (PO S7). Best-effort
+  // by construction — the report is already committed.
+  try {
+    await flushSignals();
+  } catch (err) {
+    console.error("[welfare] symptom-signal notices failed (report kept):", err);
   }
 
   // 6. Signal (best-effort legacy hook)

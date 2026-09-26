@@ -564,12 +564,12 @@ export class WelfareRepository {
   async insertPetEventIdempotent(
     values: typeof petEvents.$inferInsert,
     executor: DbOrTx = db,
-  ): Promise<{ wasNoop: boolean }> {
-    const { wasNoop } = await insertEventIdempotent(
+  ): Promise<{ wasNoop: boolean; eventId?: string }> {
+    const { event, wasNoop } = await insertEventIdempotent(
       values,
       executor as Parameters<typeof insertEventIdempotent>[1],
     );
-    return { wasNoop };
+    return { wasNoop, eventId: event.id };
   }
 
   /**

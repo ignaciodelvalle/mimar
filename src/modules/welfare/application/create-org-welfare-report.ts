@@ -34,6 +34,7 @@ import { validateEventPayload } from "@/lib/events/event-schemas";
 import type { EventPlace } from "@/lib/events/place-payload";
 import type { OpenedReason } from "@/src/modules/cases/domain/opened-reason";
 import { MALTREATMENT_KINDS, derivePrimarySubjectKind } from "../domain/report-classification";
+import type { WelfareSymptomSurveillance } from "../domain/symptom-surveillance-port";
 import type { WelfareRepository } from "../infrastructure/welfare-repository";
 import type { NewNotification } from "./types";
 
@@ -135,6 +136,11 @@ type Deps = {
     hasContact: boolean;
   }) => Promise<void>;
   transaction: <T>(cb: (tx: unknown) => Promise<T>) => Promise<T>;
+  /**
+   * PO S7: "síntomas observados" run the matcher and raise a SIGNAL (no legal
+   * ENO row, no owner alert). See ../domain/symptom-surveillance-port.ts.
+   */
+  surveillance: WelfareSymptomSurveillance;
 };
 
 export type CreateOrgWelfareReportResult =
@@ -175,6 +181,9 @@ export async function createOrgWelfareReport(
 
   // Atomic tx
   const pendingNotifications: NewNotification[] = [];
+  // PO S7: the authority notices of any symptom signal, sent after COMMIT.
+  let flushSignals: () => Promise<void> = async () => {};
+
   try {
     await transaction(async (tx) => {
       // 3a. Attachment rows
@@ -293,17 +302,18 @@ export async function createOrgWelfareReport(
         }
 
         if (observedSymptoms) {
+          const match = await deps.surveillance.match(subjectPetId, observedSymptoms, tx);
           const payload = validateEventPayload("symptom_observed", {
             source: "welfare_report",
             welfare_report_id: reportId,
             reporter_role: "witness",
             free_text: observedSymptoms,
-            matched_symptom_codes: [],
-            alerted_disease_codes: [],
+            matched_symptom_codes: match.matchedSymptomCodes,
+            alerted_disease_codes: match.alertedDiseaseCodes,
             severity_self_assessed: null,
             onset_at: null,
           });
-          await repo.insertPetEventIdempotent(
+          const symptom = await repo.insertPetEventIdempotent(
             {
               petId: subjectPetId,
               eventType: "symptom_observed",
@@ -320,6 +330,19 @@ export async function createOrgWelfareReport(
             },
             tx as Parameters<typeof repo.insertPetEventIdempotent>[1],
           );
+          // A replay of the same report emits nothing twice.
+          if (!symptom.wasNoop && symptom.eventId) {
+            flushSignals = await deps.surveillance.emitSignals(
+              {
+                petId: subjectPetId,
+                symptomEventId: symptom.eventId,
+                match,
+                place: eventPlace ?? null,
+                now,
+              },
+              tx,
+            );
+          }
         }
 
         // 3e. OA9: multi-source escalation — system note on the ORIGINAL case
@@ -457,6 +480,14 @@ export async function createOrgWelfareReport(
     } catch (e) {
       console.error("[welfare] notifications insert failed (action did succeed)", e);
     }
+  }
+
+  // Post-commit: the symptom signals' authority notices (PO S7). Best-effort
+  // by construction — the report is already committed.
+  try {
+    await flushSignals();
+  } catch (err) {
+    console.error("[welfare] symptom-signal notices failed (report kept):", err);
   }
 
   // 5. Signal (best-effort legacy hook)
