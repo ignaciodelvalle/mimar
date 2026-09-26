@@ -261,6 +261,31 @@ describe("unit lifecycle", () => {
     });
   });
 
+  // Stage C verify S4: `AR-I` matches ^AR-[A-Z]$ but is no province; the unit
+  // used to be created with no provincial parent, silently.
+  it("refuses a province code that is not one of the 24, and creates nothing", async () => {
+    await inRolledBackTx(async (tx) => {
+      const admin = await profileId(tx, "admin");
+      const before = (await tx.execute(
+        sql`select count(*)::int as n from public.authority_units`,
+      )) as unknown as Array<{ n: number }>;
+      for (const provinceCode of ["AR-I", "AR-O", "XX"]) {
+        expect(
+          await createAuthorityUnit(tx, admin, {
+            kind: "municipio",
+            provinceCode,
+            name: "Fantasma",
+          }),
+          provinceCode,
+        ).toEqual({ error: "VALIDATION_ERROR: Elegí una provincia." });
+      }
+      const after = (await tx.execute(
+        sql`select count(*)::int as n from public.authority_units`,
+      )) as unknown as Array<{ n: number }>;
+      expect(after[0]?.n).toBe(before[0]?.n);
+    });
+  });
+
   it("confirming and renaming a unit are audited with before and after", async () => {
     await inRolledBackTx(async (tx) => {
       const admin = await profileId(tx, "admin");

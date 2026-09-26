@@ -37,6 +37,7 @@ import {
 } from "@/db";
 import { type ActorProfile, canAssignGovtLocality } from "@/lib/domain/institutional-scope";
 import { writeAuditLog } from "@/lib/infra/audit-log";
+import { provinceByCode } from "@/lib/reference/ar-provincias";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type UnitExecutor = typeof db | Tx;
@@ -259,7 +260,11 @@ export async function createAuthorityUnit(
   const parsed = z
     .object({
       kind: z.enum(EDITABLE_UNIT_KINDS, "Elegí un tipo de unidad válido."),
-      provinceCode: z.string().regex(/^AR-[A-Z]$/, "Elegí una provincia."),
+      // One of the 24, not merely AR-shaped: AR-I would pass a regex and
+      // leave the unit with no provincial parent (stage C verify S4).
+      provinceCode: z
+        .string()
+        .refine((code) => provinceByCode(code)?.code === code, "Elegí una provincia."),
       name: nameSchema,
     })
     .safeParse(input);
