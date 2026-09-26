@@ -27,6 +27,8 @@ const DECLARED: Record<string, PgTable> = {
   authority_unit_localities: schema.authorityUnitLocalities,
   event_places: schema.eventPlaces,
   place_resolutions: schema.placeResolutions,
+  place_read_flags: schema.placeReadFlags,
+  place_shadow_disagreements: schema.placeShadowDisagreements,
 };
 
 /** Tables created only by a migration (0251): never pushed, CHECKs land whole. */

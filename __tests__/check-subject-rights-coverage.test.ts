@@ -243,9 +243,11 @@ describe("the one-sided debt is written down, and pinned", () => {
 
   // 0251 added place_repair_preimages (row ids, catalogue ids, a verdict);
   // 0253 added authority_units and authority_unit_localities (actor FKs only,
-  // the reason of a membership change goes to audit_log).
-  it("EXEMPT holds seventeen tables, every one exempt on BOTH sides", () => {
-    expect(Object.keys(EXEMPT)).toHaveLength(17);
+  // the reason of a membership change goes to audit_log); 0257 added
+  // place_read_flags (configuration) and place_shadow_disagreements (row ids
+  // and official recipients' ids, pruned after 30 days).
+  it("EXEMPT holds nineteen tables, every one exempt on BOTH sides", () => {
+    expect(Object.keys(EXEMPT)).toHaveLength(19);
     for (const t of Object.keys(EXEMPT)) {
       expect(CLASSIFICATION[t].export.state, t).toBe("exempt");
       expect(CLASSIFICATION[t].erase.state, t).toBe("exempt");

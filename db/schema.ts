@@ -3672,6 +3672,67 @@ export const authorityUnitLocalities = pgTable(
 
 export type AuthorityUnitLocality = typeof authorityUnitLocalities.$inferSelect;
 
+// The per-consumer switch from the name path to the id path (migration 0257,
+// localidades-por-id D1). One row per consumer, seeded 'name'; an operator
+// flips it after the parity sweep and rolls it back the same way, no deploy.
+// The consumer list is lib/place/flags.ts PLACE_READ_CONSUMERS (fenced).
+export const placeReadFlags = pgTable(
+  "place_read_flags",
+  {
+    consumer: text("consumer").primaryKey(),
+    mode: text("mode").notNull().default("name").$type<"name" | "shadow" | "id">(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    // 0257's CHECKs, by their live names (db:bootstrap pushes this file first).
+    consumerValid: check(
+      "place_read_flags_consumer_check",
+      sql`${table.consumer} IN ('scope', 'routing', 'rules', 'coverage', 'public_filters', 'panorama')`,
+    ),
+    modeValid: check("place_read_flags_mode_check", sql`${table.mode} IN ('name', 'shadow', 'id')`),
+  }),
+);
+
+// Where a consumer in shadow mode records a disagreement between the two paths,
+// classified by lib/place/shadow.ts (migration 0257). One row per (consumer,
+// subject, kind), counted; the sink prunes rows unseen for 30 days.
+export const placeShadowDisagreements = pgTable(
+  "place_shadow_disagreements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    consumer: text("consumer").notNull(),
+    kind: text("kind").notNull(),
+    subjectTable: text("subject_table").notNull(),
+    subjectKey: text("subject_key").notNull(),
+    nameResult: jsonb("name_result").notNull(),
+    idResult: jsonb("id_result").notNull(),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    seenCount: integer("seen_count").notNull().default(1),
+  },
+  (table) => ({
+    dedup: uniqueIndex("place_shadow_disagreements_dedup").on(
+      table.consumer,
+      table.subjectTable,
+      table.subjectKey,
+      table.kind,
+    ),
+    lastSeenIdx: index("place_shadow_disagreements_last_seen_idx").on(table.lastSeenAt),
+    consumerValid: check(
+      "place_shadow_disagreements_consumer_check",
+      sql`${table.consumer} IN ('scope', 'routing', 'rules', 'coverage', 'public_filters', 'panorama')`,
+    ),
+    kindValid: check(
+      "place_shadow_disagreements_kind_check",
+      sql`${table.kind} IN ('homonym_split', 'spelling_join', 'unresolved_to_province', 'unit_widening', 'legacy_grant', 'other')`,
+    ),
+    subjectValid: check(
+      "place_shadow_disagreements_subject_check",
+      sql`length(${table.subjectTable}) BETWEEN 1 AND 64 AND length(${table.subjectKey}) BETWEEN 1 AND 200`,
+    ),
+  }),
+);
+
 // Traceability of every import script execution. Used to debug imports and to
 // surface "last successful sync" on a future admin dashboard.
 export const arLocalitiesImportRuns = pgTable(

@@ -99,6 +99,9 @@ async function provincialUnit(tx: Tx, provinceCode: string): Promise<string> {
 // cross-province homonym pair the whole change is fenced with.
 const VILLA_MARIA_BA = "06021060";
 const VILLA_MARIA_CBA = "14042170";
+// Mechita, Buenos Aires: partido Alberti and partido Bragado (within-province).
+const MECHITA_ALBERTI = "06021030";
+const MECHITA_BRAGADO = "06112080";
 
 describe("authority unit tables (C1, migration 0253)", () => {
   it("both tables exist with row level security enabled", async () => {
@@ -391,6 +394,36 @@ describe("region units (migration 0254)", () => {
       `)) as unknown as Array<{ unit_id: string; level: string }>;
       expect(resolved.map((r) => r.level)).toEqual(["municipal", "provincial", "regional"]);
       expect(resolved.find((r) => r.level === "regional")?.unit_id).toBe(region);
+    });
+  });
+
+  // Stage C verify follow-up: the within-province homonym, asked directly.
+  // Mechita (partido Alberti) and Mechita (partido Bragado) share a name and a
+  // province; each reaches ONLY its own partido's unit (plus the province).
+  it("Mechita (Alberti) and Mechita (Bragado) reach two different municipal units", async () => {
+    await inRolledBackTx(async (tx) => {
+      const unitsOf = async (indecId: string) => {
+        const loc = await localityByIndecId(tx, indecId);
+        return (await tx.execute(sql`
+          select u.unit_id::text as unit_id, u.level, au.name
+            from public.authority_units_for_place(${loc}::uuid, 'AR-B') u
+            join public.authority_units au on au.id = u.unit_id
+           order by u.level
+        `)) as unknown as Array<{ unit_id: string; level: string; name: string }>;
+      };
+      const alberti = await unitsOf(MECHITA_ALBERTI);
+      const bragado = await unitsOf(MECHITA_BRAGADO);
+      expect(alberti.map((u) => u.level)).toEqual(["municipal", "provincial"]);
+      expect(bragado.map((u) => u.level)).toEqual(["municipal", "provincial"]);
+      const albertiMunicipal = alberti.find((u) => u.level === "municipal");
+      const bragadoMunicipal = bragado.find((u) => u.level === "municipal");
+      expect(albertiMunicipal?.name).toMatch(/Alberti/);
+      expect(bragadoMunicipal?.name).toMatch(/Bragado/);
+      expect(albertiMunicipal?.unit_id).not.toBe(bragadoMunicipal?.unit_id);
+      // The same province: the provincial unit is shared, and only it.
+      expect(alberti.find((u) => u.level === "provincial")?.unit_id).toBe(
+        bragado.find((u) => u.level === "provincial")?.unit_id,
+      );
     });
   });
 });

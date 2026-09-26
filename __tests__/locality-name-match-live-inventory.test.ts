@@ -25,6 +25,9 @@ type CatalogObject = { kind: string; name: string; compares: boolean; secdef: bo
 const TOUCHING = [
   "function public.can_read_case",
   "function public.erase_subject_data",
+  // 0257 (localidades-por-id D1): returns a legacy grant's name pair; it
+  // compares nothing itself — the policies that read it do (0259).
+  "function public.govt_scope",
   "policy public.approval_requests :: approval requests visible to applicant or authority",
   "policy public.custody_dispute_parties :: custody_dispute_parties select by parties and authorities",
   "policy public.custody_disputes :: custody_disputes select by parties and authorities",

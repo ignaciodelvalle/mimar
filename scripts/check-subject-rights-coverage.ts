@@ -337,6 +337,10 @@ export const CLASSIFICATION: Readonly<Record<string, Classification>> = {
   pet_tags: BOTH_COVERED,
   pet_transfers: BOTH_COVERED,
   pets: BOTH_COVERED,
+  // 0257 (localidades-por-id D1): configuration, one row per consumer.
+  place_read_flags: bothExempt(
+    "Per-consumer name/id read-path switch: a consumer name, a mode and a timestamp. Configuration, nothing about a person.",
+  ),
   // 0251: the R7 repair's pre-images — row ids, catalogue ids, a verdict and a
   // script-written reason. Nothing about a natural person.
   place_repair_preimages: bothExempt(
@@ -345,6 +349,10 @@ export const CLASSIFICATION: Readonly<Record<string, Classification>> = {
   // 0250: append-only — a row cannot be anonymised in place.
   place_resolutions: bothGap(
     "`actor_user_id` (the platform admin who resolved a place) and the free-text `reason` they wrote; append-only, so the erasure cannot touch it.",
+  ),
+  // 0257 (localidades-por-id D1): the shadow comparator's sink.
+  place_shadow_disagreements: bothExempt(
+    "Disagreements between the name and id read paths: a consumer, a kind, a subject row id and the two answers (row ids, or the ids of the officials a notification would reach). Pruned after 30 days.",
   ),
   // 0208: DELETED. `user_id` is NOT NULL, so the row cannot be anonymised in
   // place — a demand signal is not a lawful basis for keeping a named row.

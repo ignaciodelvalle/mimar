@@ -95,6 +95,10 @@ const RLS_REQUIRED: ReadonlyArray<string> = [
   // (admin + govt) SELECT, aal2-restricted; written only by the server.
   "authority_units",
   "authority_unit_localities",
+  // localidades-por-id D1 (0257): the per-consumer name/id switch and the
+  // shadow disagreement sink. Admin SELECT only, aal2; written by the server.
+  "place_read_flags",
+  "place_shadow_disagreements",
   // share_telemetry lived here until migration 0167 dropped the table (TEL-1,
   // PO 2026-08-04): collected per-view viewer data that nothing ever read.
   // Alert inbox + triage — deny-all backstop in migration 0111 (Paquete K).
@@ -410,7 +414,9 @@ describe("RLS coverage (V0-4 structural guarantee)", () => {
       predicate,
       "govt read must scope by jurisdiction_locality (province-only match leaks PII province-wide — R1)",
     ).toContain("jurisdiction_locality");
-    expect(predicate).toContain("govt_assignments");
+    // Since 0259 (localidades-por-id D8) the govt branch reads the operator's
+    // grants through public.govt_scope, which selects govt_assignments.
+    expect(predicate).toMatch(/govt_assignments|govt_scope\(/);
     // Sibling guards: role='govt' + deactivation, matching custody_disputes.
     expect(predicate).toContain("'govt'::user_role");
     expect(predicate).toContain("deactivated_at IS NULL");
@@ -422,10 +428,11 @@ describe("RLS coverage (V0-4 structural guarantee)", () => {
       "service_dog select by owner or authority",
     );
     expect(predicate, "service_dog authority policy is missing").not.toBeNull();
+    // Since 0259 the join goes through public.govt_scope (govt_assignments).
     expect(
       predicate,
       "govt branch must join govt_assignments (no join = any institutional govt reads assistance-dog status nationwide — R2)",
-    ).toContain("govt_assignments");
+    ).toMatch(/govt_assignments|govt_scope\(/);
     expect(predicate).toContain("jurisdiction_locality");
   });
 
