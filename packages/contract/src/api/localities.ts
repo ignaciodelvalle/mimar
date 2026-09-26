@@ -66,6 +66,14 @@ export type LocalityV1 = {
   provinceName: string;
   /** INDEC department, when the catalogue records one (CABA barrios have none). */
   departmentName: string | null;
+  /**
+   * Present when the row was found through an ALIAS — a name people use that
+   * the catalogue does not carry ("Banfield", whose row is Lomas de Zamora).
+   * DISPLAY ONLY: render "Banfield (Lomas de Zamora)", send back the other
+   * fields exactly as for any row. Additive: absent on a direct match, and a
+   * client that ignores it still stores the right locality.
+   */
+  aliasName?: string;
 };
 
 /**

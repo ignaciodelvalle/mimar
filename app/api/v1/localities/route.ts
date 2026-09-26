@@ -175,7 +175,8 @@ export async function GET(request: Request) {
       payloadVersion: LOCALITIES_PAYLOAD_VERSION,
       staleAfterMs: LOCALITIES_STALE_AFTER_MS,
     }),
-    // Projected down to the six fields a client renders and sends back. The
+    // Projected down to the six fields a client renders and sends back (plus
+    // `aliasName`, display only, on a row found through an alias). The
     // catalogue row also carries the `ar_localities` uuid (the app's structural
     // FK) and a `matchKind` ranking signal; neither belongs on a wire. See
     // `LocalityV1` for why each omission is deliberate, and why `indecId` is the
@@ -187,6 +188,8 @@ export async function GET(request: Request) {
       provinceCode: row.provinceCode,
       provinceName: row.provinceName,
       departmentName: row.departmentName,
+      // Display only — the row above is the alias's target (see LocalityV1).
+      ...(row.aliasName ? { aliasName: row.aliasName } : {}),
     })),
   };
 

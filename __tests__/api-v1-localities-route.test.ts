@@ -162,6 +162,40 @@ describe("GET /api/v1/localities — the wire shape", () => {
     });
   });
 
+  it("adds aliasName — and only that — to a row found through an alias", async () => {
+    // "Banfield" is not a catalogue row; the row IS Lomas de Zamora's. The wire
+    // carries the target's six fields unchanged (what the client sends back)
+    // plus the alias for display.
+    control.search = () => ({
+      results: [
+        {
+          ...CATALOG_ROW,
+          indecId: "06490010",
+          provinceCode: "AR-B",
+          provinceName: "Buenos Aires",
+          departmentName: "Lomas de Zamora",
+          localityName: "Lomas de Zamora",
+          localitySlug: "lomas-de-zamora",
+          aliasName: "Banfield",
+        },
+      ],
+    });
+
+    const body = (await (await GET(req("?q=Banfield"))).json()) as {
+      results: Array<Record<string, unknown>>;
+    };
+
+    expect(body.results[0]).toEqual({
+      indecId: "06490010",
+      localityName: "Lomas de Zamora",
+      localitySlug: "lomas-de-zamora",
+      provinceCode: "AR-B",
+      provinceName: "Buenos Aires",
+      departmentName: "Lomas de Zamora",
+      aliasName: "Banfield",
+    });
+  });
+
   it("drops the ar_localities uuid and the matchKind ranking signal", async () => {
     // THE UUID STILL DOES NOT TRAVEL, and that distinction is the point of this
     // case now that `indecId` does: the uuid is the APP'S structural FK

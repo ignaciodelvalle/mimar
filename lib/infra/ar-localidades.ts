@@ -10,6 +10,7 @@
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { type ArgentineLocality, arLocalities, db } from "@/db";
+import { searchLocalityAliases } from "@/lib/infra/locality-aliases";
 import { type ProvinceCode, provinceByCode, provinceByName } from "@/lib/reference/ar-provincias";
 
 // isWholeProvinceAggregate lives in the pure lib/reference layer so the INDEC
@@ -35,6 +36,13 @@ export type Locality = {
 export type LocalitySearchResult = Locality & {
   provinceName: string;
   matchKind: "exact" | "prefix" | "contains";
+  /**
+   * Set when the row was found through an ALIAS — a name people use that the
+   * catalogue does not carry (Banfield → the Lomas de Zamora row). Display only:
+   * every other field is the target catalogue row's, so picking it stores that
+   * row. Absent on a direct catalogue match. See lib/infra/locality-aliases.ts.
+   */
+  aliasName?: string;
 };
 
 /**
@@ -257,10 +265,31 @@ export async function listLocalityCentroids(
   return out;
 }
 
+/** Category priority: ciudad > localidad > pueblo > barrio > comuna > componente. */
+const CATEGORY_PRIORITY: Record<string, number> = {
+  ciudad: 6,
+  localidad: 5,
+  pueblo: 4,
+  barrio: 3,
+  comuna: 2,
+  componente: 1,
+};
+
+function matchKindForScore(score: number): LocalitySearchResult["matchKind"] {
+  return score >= 900 ? "exact" : score >= 90 ? "prefix" : "contains";
+}
+
 export async function searchLocalities(input: {
   provinceCode?: ProvinceCode;
   query: string;
   limit?: number;
+  /**
+   * Also offer alias matches (Banfield → Lomas de Zamora). ONLY for a typeahead
+   * a person picks from: an alias row carries its TARGET's name, so a caller
+   * that reads the first result as "the place this text names" must leave it
+   * off — jurisdiction-from-text does. Off by default for that reason.
+   */
+  includeAliases?: boolean;
 }): Promise<LocalitySearchResult[]> {
   const limit = Math.min(input.limit ?? DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT);
   const q = normalize(input.query);
@@ -318,8 +347,10 @@ export async function searchLocalities(input: {
     .orderBy(sql`${scoreExpr} desc, ${categoryPriorityExpr} desc, ${arLocalities.localityName} asc`)
     .limit(limit);
 
-  return rows.map(
-    (r): LocalitySearchResult => ({
+  const direct = rows.map((r) => ({
+    score: Number(r.score),
+    sortName: r.localityName,
+    result: {
       id: r.id,
       indecId: r.indecId,
       provinceCode: r.provinceCode as ProvinceCode,
@@ -329,9 +360,39 @@ export async function searchLocalities(input: {
       localityName: r.localityName,
       localitySlug: r.localitySlug,
       category: r.category as Locality["category"],
-      matchKind: r.score >= 1000 ? "exact" : r.score >= 100 ? "prefix" : "contains",
-    }),
-  );
+      matchKind: matchKindForScore(Number(r.score)),
+    } satisfies LocalitySearchResult,
+  }));
+  if (!input.includeAliases) return direct.map((d) => d.result);
+
+  // Aliases rank one notch under the catalogue (exact 900 vs 1000, prefix 90 vs
+  // 100): "Banfield" puts Banfield first, "Lomas" still puts the Lomas de Zamora
+  // row itself above any alias that merely starts the same way.
+  const aliasRows = await searchLocalityAliases({
+    query: input.query,
+    provinceCode: input.provinceCode,
+    limit,
+  });
+  const viaAlias = aliasRows.map(({ row, aliasName, score }) => ({
+    score,
+    sortName: aliasName,
+    result: {
+      ...rowToLocality(row),
+      provinceName: provinceByCode(row.provinceCode)?.name ?? row.provinceCode,
+      matchKind: matchKindForScore(score),
+      aliasName,
+    } satisfies LocalitySearchResult,
+  }));
+
+  return [...direct, ...viaAlias]
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        (CATEGORY_PRIORITY[b.result.category] ?? 0) - (CATEGORY_PRIORITY[a.result.category] ?? 0) ||
+        a.sortName.localeCompare(b.sortName, "es"),
+    )
+    .slice(0, limit)
+    .map((d) => d.result);
 }
 
 /** A catalog locality near a point, with its approximate distance to it. */

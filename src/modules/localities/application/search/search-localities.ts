@@ -90,6 +90,9 @@ export async function runLocalitySearch(input: {
     provinceCode,
     query: input.query,
     limit: SEARCH_LIMIT,
+    // A person picks from this list, so the names they actually use (Banfield,
+    // San Justo) are offered — each one selecting its catalogue row.
+    includeAliases: true,
   });
 
   return { results };
