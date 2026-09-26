@@ -383,6 +383,13 @@ jobs:
         # docs/agents/public-private-boundary.md.
         run: pnpm lint:public-boundary
 
+      - name: Lint (merge-conflict markers)
+        # Every tracked file, not just what tsc and Biome read: a conflict
+        # resolved in a hurry can leave its markers in a doc, a migration
+        # comment or a YAML workflow that nothing else parses. Allowlist, with
+        # reasons, lives in scripts/check-conflict-markers.ts (empty on purpose).
+        run: pnpm lint:conflict-markers
+
       - name: Lint (CI ↔ verify parity)
         # The ratchet that keeps this workflow honest. `pnpm verify` is the
         # Definition of Done and runs on one machine; CI is what blocks a merge.

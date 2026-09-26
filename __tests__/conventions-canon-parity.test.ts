@@ -121,7 +121,11 @@ const canon: Canon = loadCanon(REPO_ROOT);
 // 14 -> 15 on 2026-09-26: `__tests__/place-parity-sweep.test.ts` (stage D7 of
 // the same change): the flip gate for the scope consumer — name path vs id
 // path per govt user, every disagreement classified. Same reason.
-const UNMAPPED_COUNT = 15;
+//
+// 15 -> 17 on 2026-09-26 (semillas): lint:conflict-markers and
+// scripts/check-conflict-markers.ts. The merge-marker fence is new machinery
+// whose canon row has not been graded yet.
+const UNMAPPED_COUNT = 17;
 
 /**
  * Enforcement the filename glob below cannot see.

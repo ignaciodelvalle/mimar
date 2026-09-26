@@ -9988,6 +9988,18 @@
       "id": "__tests__/place-parity-sweep.test.ts",
       "path": "__tests__/place-parity-sweep.test.ts",
       "note": "Added 2026-09-26 with stage D (D7) of the SDD change localidades-por-id. It pins the flip gate for the scope consumer: lib/place/parity-sweep.ts asks the name path and the id path which pets, cases and welfare reports each govt user sees, through the same jurisdictionPairClause production uses, and classifies every disagreement (homonym split, unresolved to province, OTHER); a user with only legacy grants never disagrees, and an unexplained drop fails the gate. Its canon row lands with the change's stage E, alongside the other localidades-por-id fences listed here."
+    },
+    {
+      "kind": "lint-key",
+      "id": "lint:conflict-markers",
+      "path": "package.json",
+      "note": "Runs scripts/check-conflict-markers.ts (semillas, 2026-09-26): no tracked text file carries a merge-conflict marker line; canon row pending."
+    },
+    {
+      "kind": "check-script",
+      "id": "scripts/check-conflict-markers.ts",
+      "path": "scripts/check-conflict-markers.ts",
+      "note": "Merge-conflict marker fence over every tracked file (semillas, 2026-09-26); red controls in __tests__/check-conflict-markers.test.ts; canon row pending."
     }
   ]
 }
