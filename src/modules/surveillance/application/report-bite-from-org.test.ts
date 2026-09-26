@@ -389,9 +389,12 @@ describe("reportBiteFromOrg — incident jurisdiction overrides pet home jurisdi
   it("notifies the incident jurisdiction's (B) authority, not the pet's home (A) authority", async () => {
     const deps = makeDeps();
     await reportBiteFromOrg(INCIDENT_ELSEWHERE_INPUT, deps);
+    // localityId null: the incident place carried no catalogue id, so on the
+    // id path it is a province-level place (localidades-por-id D3).
     expect(deps.findAuthoritiesForJurisdiction).toHaveBeenCalledWith({
       province: "Córdoba",
       locality: "Río Cuarto",
+      localityId: null,
     });
     expect(deps.findAuthoritiesForJurisdiction).not.toHaveBeenCalledWith({
       province: "CABA",
@@ -418,6 +421,25 @@ describe("reportBiteFromOrg — incident jurisdiction overrides pet home jurisdi
       }),
       "fake-tx",
     );
+  });
+
+  // localidades-por-id D3: the same id reaches the authority routing, so a
+  // homonym's unit is never paged on the id path.
+  it("routes with the incident locality id, and with no id on a home fallback", async () => {
+    const LOCALITY_ID = "b0000000-0000-4000-8000-0000000000c3";
+    const deps = makeDeps();
+    await reportBiteFromOrg({ ...INCIDENT_ELSEWHERE_INPUT, eventLocalityId: LOCALITY_ID }, deps);
+    expect(deps.findAuthoritiesForJurisdiction).toHaveBeenLastCalledWith({
+      province: "Córdoba",
+      locality: "Río Cuarto",
+      localityId: LOCALITY_ID,
+    });
+    const home = makeDeps();
+    await reportBiteFromOrg(BASE_INPUT, home);
+    expect(home.findAuthoritiesForJurisdiction).toHaveBeenLastCalledWith({
+      province: "CABA",
+      locality: "Palermo",
+    });
   });
 
   // T1-G2 (localidad plan L2·1): the resolved incident locality id rides onto

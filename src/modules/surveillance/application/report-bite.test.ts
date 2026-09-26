@@ -387,9 +387,12 @@ describe("reportBite — incident jurisdiction overrides pet home jurisdiction",
   it("notifies the incident jurisdiction's (B) authority, not the pet's home (A) authority", async () => {
     const deps = makeDeps();
     await reportBite(INCIDENT_ELSEWHERE_INPUT, deps);
+    // localityId null: the incident place carried no catalogue id, so on the
+    // id path it is a province-level place (localidades-por-id D3).
     expect(deps.findAuthoritiesForJurisdiction).toHaveBeenCalledWith({
       province: "Córdoba",
       locality: "Río Cuarto",
+      localityId: null,
     });
     expect(deps.findAuthoritiesForJurisdiction).not.toHaveBeenCalledWith({
       province: "Buenos Aires",
@@ -434,6 +437,41 @@ describe("reportBite — incident locality id (T1-G2)", () => {
       expect.objectContaining({ jurisdictionLocality: "Río Cuarto", localityId: LOCALITY_ID }),
       "fake-tx",
     );
+  });
+
+  // localidades-por-id D3: the routing gets the same id the case gets; a
+  // case on the pet's home pair passes none (the name path decides it).
+  it("routes with the incident locality id, null when unresolved", async () => {
+    const deps = makeDeps();
+    await reportBite(
+      {
+        ...BASE_INPUT,
+        eventJurisdictionProvince: "Córdoba",
+        eventJurisdictionLocality: "Río Cuarto",
+        eventLocalityId: LOCALITY_ID,
+      },
+      deps,
+    );
+    expect(deps.findAuthoritiesForJurisdiction).toHaveBeenLastCalledWith({
+      province: "Córdoba",
+      locality: "Río Cuarto",
+      localityId: LOCALITY_ID,
+    });
+    const unresolved = makeDeps();
+    await reportBite(
+      {
+        ...BASE_INPUT,
+        eventJurisdictionProvince: "Córdoba",
+        eventJurisdictionLocality: "Paraje Sin Catalogo",
+        eventLocalityId: null,
+      },
+      unresolved,
+    );
+    expect(unresolved.findAuthoritiesForJurisdiction).toHaveBeenLastCalledWith({
+      province: "Córdoba",
+      locality: "Paraje Sin Catalogo",
+      localityId: null,
+    });
   });
 
   it("an incident locality the catalog did not resolve still opens the case, with no id", async () => {

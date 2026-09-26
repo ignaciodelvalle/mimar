@@ -10,17 +10,32 @@
 // approval_request lands. Admin fallback fires only when no govt covers
 // the locality, matching the visibility rule on the read side.
 
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { db, govtAssignments, profiles } from "@/db";
 import { localitiesCoveringSearch } from "@/lib/domain/jurisdiction-canonical";
 import { recordEmptyFanout } from "@/lib/infra/empty-fanout-trace";
 import { activeHumanInstitutionalAdminIds } from "@/lib/infra/notification-recipients";
+import { type PlaceReadMode, readPlaceFlag } from "@/lib/place/flags";
+import { classifyShadow, worstShadowKind } from "@/lib/place/shadow";
+import { recordShadowDisagreement } from "@/lib/place/shadow-sink";
+import { provinceByName } from "@/lib/reference/ar-provincias";
 
 export type ApprovalJurisdiction = {
   province: string;
   locality: string;
+  /**
+   * The place's catalogue row (localidades-por-id D3). `null` = the place is
+   * known and did NOT resolve: on the id path it reaches only the provincial
+   * unit. Absent = the caller has not been wired to pass it; that call keeps
+   * the name path whatever the flag says, because "unresolved" and "not told"
+   * must never be confused.
+   */
+  localityId?: string | null;
 };
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Executor = typeof db | Tx;
 
 /**
  * Optional caller context. `route` names the fan-out that is about to happen, so
@@ -31,6 +46,13 @@ export type ApprovalJurisdiction = {
  */
 export type ApprovalRoutingContext = {
   route?: string;
+  /**
+   * The parity sweep and the fences ask for a path explicitly instead of
+   * flipping the shared `routing` flag. Production reads the flag.
+   */
+  mode?: PlaceReadMode;
+  /** Read the grants through this executor (a test's rolled-back transaction). */
+  exec?: Executor;
 };
 
 // Returns the user IDs of every authority that should be notified about a
@@ -65,10 +87,134 @@ export type ApprovalRoutingContext = {
 //
 // It fails closed the same way the helper does: a non-canonical province accepts
 // only its literal locality, and a locality-specific assignment never widens.
+//
+// THE ID PATH (localidades-por-id D3, flag `routing`). A grant on an authority
+// unit reaches the place when the unit governs it —
+// public.authority_units_for_place: the provincial unit of the place's
+// province, plus every unit with an ACTIVE membership of its catalogue row. A
+// homonym's unit never does, and an unresolved place (localityId null) reaches
+// only the provincial unit (P1/P3). A LEGACY grant (authority_unit_id NULL)
+// keeps the name match below, the same SQL on both paths. In `shadow` the name
+// path is served and any disagreement is recorded (lib/place/shadow-sink.ts).
 export async function findAuthoritiesForJurisdiction(
   jurisdiction: ApprovalJurisdiction,
   context?: ApprovalRoutingContext,
 ): Promise<string[]> {
+  const govts = await govtAuthoritiesForPlace(jurisdiction, context);
+  if (govts.length > 0) return govts;
+  return adminFallback(jurisdiction, context);
+}
+
+/**
+ * The govt holders a place reaches, on the path `context.mode` (or the
+ * `routing` flag) selects. No admin fallback: that stays in
+ * findAuthoritiesForJurisdiction.
+ */
+export async function govtAuthoritiesForPlace(
+  jurisdiction: ApprovalJurisdiction,
+  context?: ApprovalRoutingContext,
+): Promise<string[]> {
+  const exec = context?.exec ?? db;
+  // A caller that does not pass the place's id cannot take the id path.
+  if (jurisdiction.localityId === undefined) return govtsByName(jurisdiction, exec);
+  const mode = context?.mode ?? (await readPlaceFlag("routing"));
+  if (mode === "name") return govtsByName(jurisdiction, exec);
+  if (mode === "id") return govtsById(jurisdiction, exec);
+
+  // Sequential: a transaction executor is not safe under concurrent queries.
+  const byName = await govtsByName(jurisdiction, exec);
+  const byId = await govtsById(jurisdiction, exec);
+  await recordRoutingShadow(jurisdiction, byName, byId, context?.route);
+  return byName;
+}
+
+// The PROFILE is the authority, not the assignment (T2-S5 — see govtsByName).
+// Shared by both paths, so they can only ever differ on the place.
+function reachableGovt() {
+  return and(
+    eq(profiles.role, "govt"),
+    isNull(profiles.deactivatedAt),
+    isNull(profiles.deletedAt),
+    eq(profiles.isSystem, false),
+  );
+}
+
+async function govtsById(jurisdiction: ApprovalJurisdiction, exec: Executor): Promise<string[]> {
+  const coveringLocalities = localitiesCoveringSearch(jurisdiction.province, jurisdiction.locality);
+  const provinceCode = provinceByName(jurisdiction.province)?.code ?? null;
+  const localityId = jurisdiction.localityId ?? null;
+  const rows = await exec
+    .select({ userId: govtAssignments.userId })
+    .from(govtAssignments)
+    .innerJoin(profiles, eq(profiles.id, govtAssignments.userId))
+    .where(
+      and(
+        isNull(govtAssignments.revokedAt),
+        reachableGovt(),
+        sql`((${govtAssignments.authorityUnitId} IS NULL
+               AND ${govtAssignments.jurisdictionProvince} = ${jurisdiction.province}
+               AND ${inArray(govtAssignments.jurisdictionLocality, coveringLocalities)})
+             OR ${govtAssignments.authorityUnitId} IN (
+               SELECT unit_id FROM public.authority_units_for_place(${localityId}::uuid, ${provinceCode})))`,
+      ),
+    );
+  return Array.from(new Set(rows.map((r) => r.userId)));
+}
+
+async function recordRoutingShadow(
+  jurisdiction: ApprovalJurisdiction,
+  byName: string[],
+  byId: string[],
+  route: string | undefined,
+): Promise<void> {
+  const nameSet = new Set(byName);
+  const idSet = new Set(byId);
+  const differing = [...new Set([...byName, ...byId])].filter(
+    (u) => nameSet.has(u) !== idSet.has(u),
+  );
+  if (differing.length === 0) return;
+  // The legacy branch is the same SQL on both paths, so a holder can only
+  // differ through a UNIT grant: legacyOnly is false by construction.
+  const ambiguous = await nameIsAmbiguous(jurisdiction.province, jurisdiction.locality);
+  const kinds = differing.flatMap((u) => {
+    const kind = classifyShadow({
+      namePath: nameSet.has(u),
+      idPath: idSet.has(u),
+      legacyOnly: false,
+      rowLocalityId: jurisdiction.localityId ?? null,
+      rowNameAmbiguous: ambiguous,
+      // Reached only by the id path = a unit grant whose name pair did not
+      // match this place: a unit wider than the old grant, which a person
+      // confirmed (the partial-grant confirm flow).
+      rowNameFoldsToCatalogue: false,
+      grantNamesRowLocality: false,
+    });
+    return kind ? [kind] : [];
+  });
+  const kind = worstShadowKind(kinds);
+  if (!kind) return;
+  await recordShadowDisagreement({
+    consumer: "routing",
+    kind,
+    subjectTable: `routing:${route ?? "unlabelled"}`,
+    subjectKey: `${jurisdiction.province}|${jurisdiction.locality}|${jurisdiction.localityId ?? "unresolved"}`,
+    nameResult: [...byName].sort(),
+    idResult: [...byId].sort(),
+  });
+}
+
+/** The stored name is shared by two or more live catalogue rows of the province. */
+async function nameIsAmbiguous(province: string, locality: string): Promise<boolean> {
+  const code = provinceByName(province)?.code;
+  if (!code || !locality) return false;
+  const rows = (await db.execute(sql`
+    select count(*)::int as n from public.ar_localities
+     where province_code = ${code} and locality_name = ${locality} and removed_at is null
+  `)) as unknown as Array<{ n: number }>;
+  return (rows[0]?.n ?? 0) > 1;
+}
+
+async function govtsByName(jurisdiction: ApprovalJurisdiction, exec: Executor): Promise<string[]> {
   const coveringLocalities = localitiesCoveringSearch(jurisdiction.province, jurisdiction.locality);
 
   // THE HOLDER MUST STILL BE REACHABLE (T2-S5, 2026-09-18). An unrevoked
@@ -95,7 +241,7 @@ export async function findAuthoritiesForJurisdiction(
   //     stops a row outliving a role change (a govt demoted or re-roled keeps
   //     the row until someone revokes it). The mandate is only live while the
   //     holder still HOLDS the role.
-  const govts = await db
+  const govts = await exec
     .select({ userId: govtAssignments.userId })
     .from(govtAssignments)
     .innerJoin(profiles, eq(profiles.id, govtAssignments.userId))
@@ -104,20 +250,20 @@ export async function findAuthoritiesForJurisdiction(
         eq(govtAssignments.jurisdictionProvince, jurisdiction.province),
         inArray(govtAssignments.jurisdictionLocality, coveringLocalities),
         isNull(govtAssignments.revokedAt),
-        eq(profiles.role, "govt"),
-        isNull(profiles.deactivatedAt),
-        isNull(profiles.deletedAt),
-        eq(profiles.isSystem, false),
+        reachableGovt(),
       ),
     );
 
-  if (govts.length > 0) {
-    // Deduplicate — a single govt can hold multiple assignments in the same
-    // locality across different countries / re-grants (shouldn't, but the
-    // partial unique only covers active rows for the same exact tuple).
-    return Array.from(new Set(govts.map((g) => g.userId)));
-  }
+  // Deduplicate — a single govt can hold multiple assignments in the same
+  // locality across different countries / re-grants (shouldn't, but the
+  // partial unique only covers active rows for the same exact tuple).
+  return Array.from(new Set(govts.map((g) => g.userId)));
+}
 
+async function adminFallback(
+  jurisdiction: ApprovalJurisdiction,
+  context: ApprovalRoutingContext | undefined,
+): Promise<string[]> {
   // Tightened per migration 0015: only active, non-deactivated institutional
   // admins receive fallback notifications.
   //

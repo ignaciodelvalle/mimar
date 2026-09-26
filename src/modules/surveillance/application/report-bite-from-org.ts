@@ -479,6 +479,16 @@ export async function reportBiteFromOrg(
     const authorityIds = await findAuthoritiesForJurisdiction({
       province: caseProvince ?? "",
       locality: caseLocality ?? "",
+      // Same rule as report-bite.ts (localidades-por-id D3): the incident's
+      // catalogue row or null; the pet's home pair passes nothing.
+      ...(usesEventPlace
+        ? {
+            localityId:
+              hasEventPlace && input.eventJurisdictionLocality !== null
+                ? (input.eventLocalityId ?? null)
+                : null,
+          }
+        : {}),
     });
     for (const authorityId of authorityIds) {
       pendingNotifications.push({

@@ -368,6 +368,18 @@ export async function reportBite(input: ReportBiteInput, deps: Deps): Promise<Re
     const authorityIds = await findAuthoritiesForJurisdiction({
       province: caseProvince ?? "",
       locality: caseLocality ?? "",
+      // The incident's catalogue row, or null when the incident place did not
+      // resolve (localidades-por-id D3). A case that took the pet's home pair
+      // passes nothing and keeps the name path: that pair's id is the pet's,
+      // not read here.
+      ...(usesEventPlace
+        ? {
+            localityId:
+              hasEventPlace && input.eventJurisdictionLocality !== null
+                ? (input.eventLocalityId ?? null)
+                : null,
+          }
+        : {}),
     });
     for (const authorityId of authorityIds) {
       pendingNotifications.push({
