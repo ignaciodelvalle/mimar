@@ -17,6 +17,10 @@
 import { type db, organizationCoverage, organizationMemberships, organizations } from "@/db";
 import type * as schema from "@/db/schema";
 import { createNotificationsBulk } from "@/lib/infra/notification-service";
+import { coverageCoversPlaceById } from "@/lib/place/coverage";
+import { type PlaceReadMode, readPlaceFlag } from "@/lib/place/flags";
+import type { ShadowKind } from "@/lib/place/shadow";
+import { recordShadowDisagreement } from "@/lib/place/shadow-sink";
 import { speciesLabel } from "@/lib/utils/format";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
@@ -46,7 +50,69 @@ export type OwnerProfileForBroadcast = {
 export type LastLocationForBroadcast = {
   province?: string | null;
   locality?: string | null;
+  /**
+   * The place's catalogue row (localidades-por-id D5): null = unresolved,
+   * absent = the caller did not resolve it — that broadcast keeps the name
+   * path whatever the `coverage` flag says.
+   */
+  localityId?: string | null;
 } | null;
+
+/** The alert area of one broadcast, resolved from lastLocation or the pet. */
+export type BroadcastArea = {
+  province: string;
+  locality: string | null;
+  localityId?: string | null;
+};
+
+/**
+ * Verified, active orgs whose coverage reaches `area`, on the path `mode`
+ * selects. The name path is the pre-D5 rule (C2): a place with a locality
+ * matches that locality or a province-wide row; a place with none matches
+ * every row of the province. The id path is lib/place/coverage.ts; an area
+ * with no localityId field always takes the name path.
+ */
+export async function coveringOrgIds(
+  client: DbOrTx,
+  area: BroadcastArea,
+  mode: PlaceReadMode,
+): Promise<string[]> {
+  const byId = mode === "id" && area.localityId !== undefined;
+  const coverage = byId
+    ? coverageCoversPlaceById({
+        province: area.province,
+        locality: area.locality,
+        localityId: area.localityId ?? null,
+      })
+    : and(
+        eq(organizationCoverage.jurisdictionProvince, area.province),
+        area.locality !== null
+          ? or(
+              eq(organizationCoverage.jurisdictionLocality, area.locality),
+              isNull(organizationCoverage.jurisdictionLocality),
+            )
+          : undefined,
+      );
+  const rows = await (client as typeof db)
+    .select({ orgId: organizations.id })
+    .from(organizations)
+    .innerJoin(organizationCoverage, eq(organizationCoverage.organizationId, organizations.id))
+    .where(and(eq(organizations.verified, true), eq(organizations.status, "active"), coverage));
+  return Array.from(new Set(rows.map((r) => r.orgId)));
+}
+
+/** Why the two paths alerted different orgs (lib/place/shadow.ts kinds). */
+function broadcastDisagreementKind(
+  area: BroadcastArea,
+  byName: string[],
+  byId: string[],
+): ShadowKind {
+  const idSet = new Set(byId);
+  const onlyName = byName.some((o) => !idSet.has(o));
+  if (onlyName && (area.localityId ?? null) === null) return "unresolved_to_province";
+  if (onlyName) return "homonym_split";
+  return "unit_widening";
+}
 
 export type BroadcastResult = {
   broadcastedToMemberIds: string[];
@@ -97,7 +163,7 @@ export async function broadcastLostPet(
   pet: PetForBroadcast,
   _ownerProfile: OwnerProfileForBroadcast,
   lastLocation: LastLocationForBroadcast,
-  opts?: { episodeKey?: string | null },
+  opts?: { episodeKey?: string | null; mode?: PlaceReadMode },
 ): Promise<BroadcastResult> {
   try {
     // 1. Require province (locality is optional — province-only rows cover the whole province).
@@ -119,42 +185,40 @@ export async function broadcastLostPet(
       return { broadcastedToMemberIds: [], orgCount: 0, deadLetteredCount: 0 };
     }
 
-    // 2. Find verified, active orgs with coverage matching the jurisdiction.
-    //
-    //    Matching rules (C2 — broader reach for locality-less lost pets):
-    //
-    //    - pet has locality → match rows where
-    //        jurisdictionLocality = locality (exact) OR jurisdictionLocality IS NULL (province-level).
-    //        An org with province-level coverage catches any locality; a locality-specific org
-    //        catches only its registered locality.
-    //
-    //    - pet has NO locality → match ALL coverage rows for the province.
-    //        Drop the locality predicate entirely (just eq(province)). A pet lost somewhere
-    //        in province X with no known locality should alert every org covering any
-    //        part of province X — both province-level and locality-specific orgs.
-    const localityPredicate =
-      locality !== null
-        ? or(
-            eq(organizationCoverage.jurisdictionLocality, locality),
-            isNull(organizationCoverage.jurisdictionLocality),
-          )
-        : undefined; // no locality filter — match all coverage rows for the province
-
-    const coveringOrgs = await (client as typeof db)
-      .select({
-        orgId: organizations.id,
-        orgDisplayName: organizations.displayName,
-      })
-      .from(organizations)
-      .innerJoin(organizationCoverage, eq(organizationCoverage.organizationId, organizations.id))
-      .where(
-        and(
-          eq(organizations.verified, true),
-          eq(organizations.status, "active"),
-          eq(organizationCoverage.jurisdictionProvince, province),
-          localityPredicate,
-        ),
-      );
+    // 2. Find verified, active orgs with coverage matching the area — on the
+    //    path the `coverage` flag selects (localidades-por-id D5). The name
+    //    path keeps the C2 rule (see coveringOrgIds); shadow serves it and
+    //    records any disagreement with the id path.
+    //    The id travels only with a lastLocation that carries one, and only
+    //    with its locality: a province-only place is unresolved (null).
+    const wiredId = lastLocation?.localityId;
+    const broadcastArea: BroadcastArea = {
+      province,
+      locality,
+      ...(wiredId === undefined ? {} : { localityId: locality === null ? null : wiredId }),
+    };
+    const mode: PlaceReadMode =
+      opts?.mode ??
+      (broadcastArea.localityId === undefined ? "name" : await readPlaceFlag("coverage"));
+    let coveringOrgs: string[];
+    if (mode === "shadow") {
+      const byName = await coveringOrgIds(client, broadcastArea, "name");
+      const byId = await coveringOrgIds(client, broadcastArea, "id");
+      const same = byName.length === byId.length && byName.every((o) => byId.includes(o));
+      if (!same) {
+        await recordShadowDisagreement({
+          consumer: "coverage",
+          kind: broadcastDisagreementKind(broadcastArea, byName, byId),
+          subjectTable: "lost_broadcast",
+          subjectKey: opts?.episodeKey ?? pet.id,
+          nameResult: [...byName].sort(),
+          idResult: [...byId].sort(),
+        });
+      }
+      coveringOrgs = byName;
+    } else {
+      coveringOrgs = await coveringOrgIds(client, broadcastArea, mode);
+    }
 
     if (coveringOrgs.length === 0) {
       return { broadcastedToMemberIds: [], orgCount: 0, deadLetteredCount: 0 };
@@ -166,7 +230,7 @@ export async function broadcastLostPet(
     //    triggering its own round-trip. A single `inArray` over all org ids
     //    fetches every eligible member at once; dedup happens in JS because a
     //    user may belong to multiple orgs in the same jurisdiction (notify once).
-    const orgIds = coveringOrgs.map((org) => org.orgId);
+    const orgIds = coveringOrgs;
     const members = await (client as typeof db)
       .select({ userId: organizationMemberships.userId })
       .from(organizationMemberships)

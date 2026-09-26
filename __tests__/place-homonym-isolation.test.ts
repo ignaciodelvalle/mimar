@@ -130,8 +130,8 @@ function albertiPlace(): ApprovalJurisdiction & { localityId: string | undefined
 }
 
 describe("coverage (D5)", () => {
-  // Known failure until work unit D5 (localidades-por-id): flip to `it` there.
-  it.fails("an org covering Bragado's Mechita does not cover Alberti's", () => {
+  // Closed by D5: the id path compares the zone's recorded catalogue row.
+  it("an org covering Bragado's Mechita does not cover Alberti's", () => {
     const bragadoCoverage = {
       jurisdictionProvince: "Buenos Aires",
       jurisdictionLocality: "Mechita",
@@ -142,7 +142,7 @@ describe("coverage (D5)", () => {
       locality: "Mechita",
       localityId: rowIdByIndec.get(MECHITA_ALBERTI),
     } as PetZone;
-    expect(orgCoversZone([bragadoCoverage], albertiZone)).toBe(false);
+    expect(orgCoversZone([bragadoCoverage], albertiZone, "id")).toBe(false);
   });
 });
 

@@ -300,7 +300,39 @@ describe("setPetLostWriter", () => {
       // `broadcastLostPet(db, pet, owner, lastLocation, opts)` — the fourth
       // argument is the override the fan-out reads before the pet's own pair.
       const lastLocation = mockBroadcastLostPet.mock.calls[0]?.[3];
-      expect(lastLocation).toEqual({ province: "Córdoba", locality: "Villa Carlos Paz" });
+      // localityId null: the incident place carried no catalogue id, so on the
+      // id path it is unresolved (localidades-por-id D5).
+      expect(lastLocation).toEqual({
+        province: "Córdoba",
+        locality: "Villa Carlos Paz",
+        localityId: null,
+      });
+    });
+
+    it("the alert carries the incident's catalogue row when it resolved (D5)", async () => {
+      const repo = makeRepo();
+      const LOCALITY_ID = "b0000000-0000-4000-8000-0000000000d5";
+      await setPetLostWriter(
+        {
+          ...baseParams,
+          eventJurisdictionProvince: "Córdoba",
+          eventJurisdictionLocality: "Villa Carlos Paz",
+          eventLocalityId: LOCALITY_ID,
+        } as typeof baseParams,
+        {
+          repo: repo as unknown as Pick<
+            EventsRepository,
+            "insertEvent" | "updatePetLostProjection" | "insertIdentification"
+          >,
+          transaction: makeTransaction(),
+          broadcastLostPet: mockBroadcastLostPet,
+        },
+      );
+      expect(mockBroadcastLostPet.mock.calls.at(-1)?.[3]).toEqual({
+        province: "Córdoba",
+        locality: "Villa Carlos Paz",
+        localityId: LOCALITY_ID,
+      });
     });
 
     // localidades-por-id A8: the status_changed event keeps where it was lost,

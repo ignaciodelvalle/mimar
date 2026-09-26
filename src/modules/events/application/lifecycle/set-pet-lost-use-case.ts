@@ -481,7 +481,15 @@ export async function setPetLostWriter(
         //
         // Falls back on its own: when nobody said where, `caseProvince` IS the
         // pet's pair, so this reads exactly as it did before.
-        { province: caseProvince, locality: caseLocality },
+        //
+        // The incident's catalogue row rides along (localidades-por-id D5) only
+        // when the case took the incident place; the pet-home fallback passes
+        // none and keeps the name path.
+        {
+          province: caseProvince,
+          locality: caseLocality,
+          ...(hasEventJurisdiction ? { localityId: caseLocalityId ?? null } : {}),
+        },
         { episodeKey: episodeCaseId },
       );
     } catch (err) {

@@ -26,10 +26,50 @@
 export type CoverageArea = {
   jurisdictionProvince: string;
   jurisdictionLocality: string | null;
+  /** The catalogue row the zone recorded (0248), read on the id path only. */
+  localityId?: string | null;
+  /** The authority unit the zone is keyed to (0255), read on the id path only. */
+  authorityUnitId?: string | null;
+  /**
+   * A unit zone's ACTIVE member localities (or "province" for a provincial
+   * unit), loaded by the caller. A unit zone without it covers nothing on the
+   * id path.
+   */
+  unitLocalityIds?: readonly string[] | "province";
 };
 
-/** Where the animal lives — `pets.jurisdiction_province` / `_locality`. */
-export type PetZone = { province: string | null; locality: string | null };
+/**
+ * Where the animal lives — `pets.jurisdiction_province` / `_locality`, and
+ * on the id path its catalogue row: `null` = known and unresolved, absent =
+ * the caller has not been wired (the name rule applies whatever the mode).
+ */
+export type PetZone = {
+  province: string | null;
+  locality: string | null;
+  localityId?: string | null;
+};
+
+/**
+ * The ID PATH (localidades-por-id D5, flag `coverage`). Mirrors
+ * lib/place/coverage.ts (the SQL the broadcast runs):
+ *   - a unit zone covers its member localities by id (a provincial unit, its
+ *     whole province); an unresolved zone never reaches a municipal unit (P1);
+ *   - a legacy zone that recorded its catalogue row covers only that row;
+ *   - a legacy zone that recorded nothing, a province-wide zone, and an
+ *     unresolved zone keep the name rule below.
+ */
+function coverageAreaCoversZoneById(area: CoverageArea, zone: PetZone): boolean {
+  if (!zone.province || area.jurisdictionProvince !== zone.province) return false;
+  if (area.authorityUnitId) {
+    const members = area.unitLocalityIds;
+    if (members === "province") return true;
+    if (!members || !zone.localityId) return false;
+    return members.includes(zone.localityId);
+  }
+  if (area.jurisdictionLocality === null) return true;
+  if (zone.localityId && area.localityId) return area.localityId === zone.localityId;
+  return coverageAreaCoversZone(area, zone);
+}
 
 /**
  * One coverage row against one zone. The locality half is deliberately
@@ -50,7 +90,18 @@ export function coverageAreaCoversZone(area: CoverageArea, zone: PetZone): boole
   return area.jurisdictionLocality === null || area.jurisdictionLocality === zone.locality;
 }
 
-/** Any-of over the org's coverage rows. No rows at all covers nothing. */
-export function orgCoversZone(areas: readonly CoverageArea[], zone: PetZone): boolean {
-  return areas.some((area) => coverageAreaCoversZone(area, zone));
+/**
+ * Any-of over the org's coverage rows. No rows at all covers nothing. `mode`
+ * is the `coverage` flag's reading, resolved by the caller (this stays pure);
+ * a zone with no `localityId` field always takes the name rule.
+ */
+export function orgCoversZone(
+  areas: readonly CoverageArea[],
+  zone: PetZone,
+  mode: "name" | "id" = "name",
+): boolean {
+  const byId = mode === "id" && zone.localityId !== undefined;
+  return areas.some((area) =>
+    byId ? coverageAreaCoversZoneById(area, zone) : coverageAreaCoversZone(area, zone),
+  );
 }
