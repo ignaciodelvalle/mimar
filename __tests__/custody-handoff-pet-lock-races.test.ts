@@ -28,7 +28,16 @@ import { and, eq, isNull } from "drizzle-orm";
 import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { db, notifications, organizations, ownerships, petEvents, pets, profiles } from "@/db";
+import {
+  db,
+  notifications,
+  organizations,
+  ownerships,
+  petCaretakerGrants,
+  petEvents,
+  pets,
+  profiles,
+} from "@/db";
 import { validateEventPayload } from "@/lib/events/event-schemas";
 import { hashDni } from "@/lib/utils/dni-hash";
 import { DEFAULT_LOCAL_URL } from "@/scripts/_db-target";
@@ -38,6 +47,8 @@ import {
   ReversalRefused,
 } from "@/src/modules/adoption/domain/reversal-rules";
 import { AdoptionRepository } from "@/src/modules/adoption/infrastructure/adoption-repository";
+import { acceptCaretakerGrant } from "@/src/modules/caretakers/application/accept-caretaker-grant";
+import { CaretakersRepository } from "@/src/modules/caretakers/infrastructure/caretakers-repository";
 
 import { withMutationOverride } from "./_helpers/db-overrides";
 
@@ -215,7 +226,10 @@ async function handOffTo(
 
 afterAll(async () => {
   await withMutationOverride(async (tx) => {
-    for (const id of createdPetIds) await tx.delete(pets).where(eq(pets.id, id));
+    for (const id of createdPetIds) {
+      await tx.delete(petCaretakerGrants).where(eq(petCaretakerGrants.petId, id));
+      await tx.delete(pets).where(eq(pets.id, id));
+    }
     for (const id of createdOrgIds) await tx.delete(organizations).where(eq(organizations.id, id));
     for (const id of createdProfileIds) {
       await tx.delete(notifications).where(eq(notifications.userId, id));
@@ -355,5 +369,65 @@ describe("W1 — an adoption reversal acts on the holder under the pet lock", ()
       .where(eq(ownerships.id, f.adopterOwnershipId));
     expect(row.endedAt?.getTime()).toBe(closedAt.getTime());
     expect(await liveHolders(f.pet.id)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// W3 — a caretaker invitation accepted while the pet changes hands
+// ---------------------------------------------------------------------------
+
+describe("W3 — accepting a caretaker invitation serialises with the hand-off", () => {
+  async function invitedPet(label: string) {
+    const titularId = await makeProfile(`${label} titular`);
+    const inviteeId = await makeProfile(`${label} invitado`);
+    const pet = await makePet(label);
+    const [ownerRow] = await db
+      .insert(ownerships)
+      .values({ petId: pet.id, ownerUserId: titularId, role: "owner" })
+      .returning({ id: ownerships.id });
+    const grantToken = `CG-chpl-${randomUUID().slice(0, 8)}`;
+    await db.insert(petCaretakerGrants).values({
+      publicToken: grantToken,
+      petId: pet.id,
+      grantedByUserId: titularId,
+      caretakerUserId: inviteeId,
+      caretakerEmail: `chpl-${label.toLowerCase()}@dim-test.local`,
+      status: "pending",
+      endsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    });
+    const accept = () =>
+      acceptCaretakerGrant(
+        {
+          grantPublicToken: grantToken,
+          callerUserId: inviteeId,
+          callerEmail: `chpl-${label.toLowerCase()}@dim-test.local`,
+          callerEmailConfirmed: true,
+        },
+        { repo: CaretakersRepository, now: () => new Date(), transaction },
+      );
+    return { titularId, inviteeId, pet, ownerRowId: ownerRow.id, accept };
+  }
+
+  it("control: with nobody racing, the invitee becomes the caretaker", async () => {
+    const f = await invitedPet("CareOk");
+    const result = await f.accept();
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    const roles = (await liveHolders(f.pet.id)).map((r) => r.role).sort();
+    expect(roles).toEqual(["caretaker", "owner"]);
+  });
+
+  it("a hand-off committing first wins: the invitee is refused and holds nothing on the new owner's pet", async () => {
+    const f = await invitedPet("CareRace");
+    const newOwnerId = await makeProfile("CareRace nuevo dueño");
+
+    const result = await raceUnderHeldPetLock(f.pet.id, f.accept, async (h) => {
+      await handOffTo(h, f.pet.id, f.ownerRowId, newOwnerId);
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/ya no es titular/);
+    const live = await liveHolders(f.pet.id);
+    expect(live).toEqual([expect.objectContaining({ role: "owner", ownerUserId: newOwnerId })]);
+    expect(await eventTypes(f.pet.id)).not.toContain("caretaker_designated");
   });
 });

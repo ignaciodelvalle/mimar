@@ -55,6 +55,7 @@ export type FakeRepo = CaretakersRepositoryPort & {
 
 export function makeFakeRepo(overrides: Partial<Record<string, unknown>> = {}): FakeRepo {
   const base = {
+    acquirePetAdvisoryLock: vi.fn().mockResolvedValue(undefined),
     findGrantByToken: vi.fn().mockResolvedValue(null),
     // The locked re-read defaults to "the row is still there and still
     // accepted", because that is the boring case every write path assumes.

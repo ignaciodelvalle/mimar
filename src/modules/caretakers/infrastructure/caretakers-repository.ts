@@ -95,6 +95,11 @@ export const CaretakersRepository = {
     return row ? toGrantRow(row) : null;
   },
 
+  /** The pet lock every custody hand-off takes first — see the port. */
+  async acquirePetAdvisoryLock(petId: string, tx: unknown): Promise<void> {
+    await (tx as Tx).execute(sql`SELECT pg_advisory_xact_lock(hashtext(${petId}))`);
+  },
+
   /**
    * Re-read under `SELECT ... FOR UPDATE`. The pre-transaction read every
    * use-case does is stale by construction — a concurrent accept, a titular

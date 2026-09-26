@@ -145,6 +145,18 @@ export type UserGrantRow = {
 };
 
 export interface CaretakersRepositoryPort {
+  // --- locks ---------------------------------------------------------------
+  /**
+   * `pg_advisory_xact_lock(hashtext(petId))` — the ONE key every custody
+   * hand-off serialises on (adoption, rehome, transfers, decomiso, disputes,
+   * foster, return-to-owner). Taken as the first statement of the accept
+   * transaction (audit K, W3): the "is the granter still titular" check is
+   * only worth having if no hand-off can commit between it and the insert.
+   * The same key string, not a shared helper — this module has zero
+   * cross-module edges by design.
+   */
+  acquirePetAdvisoryLock(petId: string, tx: unknown): Promise<void>;
+
   // --- reads ---------------------------------------------------------------
   findGrantByToken(publicToken: string): Promise<GrantRow | null>;
   findGrantByIdForUpdate(grantId: string, tx: unknown): Promise<GrantRow | null>;

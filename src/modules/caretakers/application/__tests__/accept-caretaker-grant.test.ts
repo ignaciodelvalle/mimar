@@ -94,6 +94,35 @@ describe("acceptCaretakerGrant", () => {
     expect(calls).toEqual(["tx:start", "insertAcceptGrant", "tx:end"]);
   });
 
+  it("takes the pet advisory lock FIRST in the transaction — before the grant re-read and the titular check (audit K, W3)", async () => {
+    const repo = repoWithPendingGrant();
+    const calls: string[] = [];
+    repo.acquirePetAdvisoryLock.mockImplementation(async (petId: string, tx: unknown) => {
+      calls.push(`lock:${petId}:${tx ? "tx" : "none"}`);
+    });
+    repo.findGrantByIdForUpdate.mockImplementation(async () => {
+      calls.push("grant-for-update");
+      return makeGrant();
+    });
+    repo.hasLiveTitularOwnership.mockImplementation(async () => {
+      calls.push("titular-check");
+      return true;
+    });
+    repo.insertAcceptGrant.mockImplementation(async () => {
+      calls.push("insertAcceptGrant");
+      return { ownershipId: "own-1" };
+    });
+
+    await acceptCaretakerGrant(input(), deps(repo));
+
+    expect(calls).toEqual([
+      `lock:${PET.id}:tx`,
+      "grant-for-update",
+      "titular-check",
+      "insertAcceptGrant",
+    ]);
+  });
+
   it("returns a failure and NO notifications when the transaction throws", async () => {
     // The mid-transaction failure the spec cares about. With a real DB nothing
     // is committed; here we prove the use-case does not press on and does not

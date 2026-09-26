@@ -119,6 +119,17 @@ export async function acceptCaretakerGrant(
 
   try {
     await transaction(async (tx) => {
+      // THE PET LOCK, FIRST (audit K, W3). The titular check below used to be
+      // a plain read with nothing serialising it against a hand-off: a
+      // transfer, finalize or decomiso committing between that read and the
+      // insert swept the pet's caretakers BEFORE this row existed (its
+      // `FOR UPDATE` sweep cannot see an uncommitted insert), and the invitee
+      // ended up an accepted caretaker on a stranger's pet. Every hand-off
+      // takes this same key first, so the two now run one after the other:
+      // either this commits first and the hand-off ends the arrangement, or
+      // the hand-off commits first and the checks below refuse.
+      await repo.acquirePetAdvisoryLock(grant.petId, tx);
+
       // Stale-read guard, the acceptPetTransfer shape: re-read the row under a
       // lock and re-check. Between the read above and this line the titular may
       // have cancelled, or the 7-day cron may have expired it.
