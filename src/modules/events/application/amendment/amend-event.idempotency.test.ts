@@ -92,6 +92,11 @@ vi.mock("./refresh-pet-cache-after-amendment", () => ({
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// The legal-queue leg (PO S9) reads through the tx; this suite's @/db mock has
+// no reads for it, and its own DB test lives in __tests__/disease-diagnosis-flow.
+vi.mock("./reevaluate-outbox-after-amendment", () => ({
+  reevaluateLegalQueueAfterAmendment: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { amendEvent, deriveAmendmentIdempotencyKey } from "./amend-event";
 

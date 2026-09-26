@@ -65,7 +65,7 @@ import { eventPlaceTarget } from "./event-place-target";
  *  row reads its bite case to route; every other row only inserts. */
 type DrizzleTx = Pick<typeof import("@/db").db, "insert" | "select">;
 
-type EventInput = {
+export type EventInput = {
   id: string;
   /** The animal the event is about — rules key their case on it. */
   petId: string;
@@ -85,7 +85,7 @@ type EventInput = {
 // which inside DO UPDATE means the EXISTING row; `excluded` is the proposed one.
 const existing = (column: string) => sql.raw(`"event_notification_outbox"."${column}"`);
 
-type PetInput = {
+export type PetInput = {
   jurisdictionProvince?: string | null;
   jurisdictionLocality?: string | null;
   /**
@@ -103,7 +103,11 @@ type PetInput = {
  * and never later than `now`, so a future-dated entry cannot buy time. A late
  * entry therefore lands with a deadline already in the past: visibly overdue.
  */
-function clockStart(rule: OutboxRule, event: EventInput, now: Date): Date {
+export function clockStart(
+  rule: OutboxRule,
+  event: Pick<EventInput, "payload" | "occurredAt">,
+  now: Date,
+): Date {
   const start = rule.clockStartsAt?.(event.payload) ?? event.occurredAt ?? now;
   return start.getTime() < now.getTime() ? start : now;
 }
@@ -158,8 +162,10 @@ export async function enqueueOutboxForEvent(
   event: EventInput,
   pet: PetInput,
   now: Date = new Date(),
+  /** Restrict to these rules (the amendment re-evaluation, PO S9); default = all of the type's. */
+  only?: readonly OutboxRule[],
 ): Promise<void> {
-  const rules = OUTBOX_RULES[event.eventType as keyof typeof OUTBOX_RULES] ?? [];
+  const rules = only ?? OUTBOX_RULES[event.eventType as keyof typeof OUTBOX_RULES] ?? [];
 
   for (const rule of rules) {
     const slaHours = rule.slaHours(event.payload, event.author);

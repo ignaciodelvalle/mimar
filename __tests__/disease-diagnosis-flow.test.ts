@@ -9,8 +9,11 @@
 //   4. Throttle: second diagnosis within 30d does not re-notify the owner.
 
 import { createClient } from "@supabase/supabase-js";
-import { and, eq, isNull, sql } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { and, eq, inArray, isNull, like, sql } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+// amendEvent revalidates paths; outside a Next request that is a no-op here.
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 import {
   db,
@@ -22,6 +25,8 @@ import {
   pets,
   profiles,
 } from "@/db";
+import { reevaluateOutboxAfterAmendment } from "@/lib/events/event-outbox-reevaluate";
+import { amendEvent } from "@/src/modules/events/application/amendment/amend-event";
 import { recordDiseaseDiagnosisWriter as _recordDiseaseDiagnosisWriter } from "@/src/modules/events/application/clinical/record-disease-diagnosis-use-case";
 import { createDeathRecord } from "@/src/modules/events/application/lifecycle/death-record-use-case";
 import { recordDiseaseDiagnosisWriter } from "@/src/modules/events/application/writers";
@@ -602,5 +607,167 @@ describe("death_recorded → ENO (S4)", () => {
       .from(eventNotificationOutbox)
       .where(eq(eventNotificationOutbox.sourceEventId, death.eventId));
     expect(rows).toHaveLength(0);
+  });
+});
+
+// PO S9 (2026-09-26): correcting a diagnosis re-evaluates the legal queue —
+// create or merge when it becomes notifiable or more urgent; never lengthen,
+// never delete.
+describe("amendment re-evaluates the ENO outbox (S9)", () => {
+  const HOUR = 60 * 60 * 1000;
+
+  async function diagnose(tokenSuffix: string, diseaseCode: string, diagnosisDate: Date) {
+    const pet = await insertTestPet(ownerUserId, tokenSuffix);
+    const r = await recordDiseaseDiagnosisWriter({
+      petId: pet.id,
+      petName: pet.name,
+      petSpecies: pet.species,
+      petJurisdictionCountry: pet.jurisdictionCountry,
+      petJurisdictionProvince: pet.jurisdictionProvince ?? null,
+      petJurisdictionLocality: pet.jurisdictionLocality ?? null,
+      vetUserId,
+      vetDisplayName: "Dr. Test Ddx",
+      diseaseCode,
+      confirmedByLab: false,
+      labName: null,
+      labReportReference: null,
+      diagnosisDate,
+      notes: null,
+    });
+    if (!r.ok) throw new Error(r.error);
+    const [root] = await db.select().from(petEvents).where(eq(petEvents.id, r.diagnosisEventId));
+    return { pet, root };
+  }
+
+  async function amend(
+    ctx: Awaited<ReturnType<typeof diagnose>>,
+    changes: Record<string, unknown>,
+  ) {
+    const before = ctx.root.payload as Record<string, unknown>;
+    const after = { ...before, ...changes };
+    return db.transaction(async (tx) => {
+      const amendment = await new EventsRepository().insertEvent(
+        {
+          petId: ctx.pet.id,
+          eventType: "event_amended",
+          occurredAt: new Date(),
+          recordedAt: new Date(),
+          recordedByUserId: vetUserId,
+          authorRole: "vet",
+          authorVerified: true,
+          authorOrganizationId: null,
+          payload: {
+            target_event_id: ctx.root.id,
+            reason: "Corrección del diagnóstico",
+            changes: Object.entries(changes).map(([field, value]) => ({
+              field,
+              old: before[field] ?? null,
+              new: value,
+            })),
+            actor_role: "vet",
+            actor_user_id: vetUserId,
+          },
+        },
+        tx,
+      );
+      const results = await reevaluateOutboxAfterAmendment(tx, {
+        root: {
+          id: ctx.root.id,
+          petId: ctx.pet.id,
+          eventType: ctx.root.eventType,
+          occurredAt: ctx.root.occurredAt,
+          author: { authorRole: "vet", authorVerified: true },
+        },
+        before,
+        after,
+        amendmentEventId: amendment.id,
+        pet: {
+          jurisdictionProvince: ctx.pet.jurisdictionProvince,
+          jurisdictionLocality: ctx.pet.jurisdictionLocality,
+        },
+      });
+      return { amendmentId: amendment.id, results };
+    });
+  }
+
+  const rowsOf = (sourceIds: string[]) =>
+    db
+      .select()
+      .from(eventNotificationOutbox)
+      .where(inArray(eventNotificationOutbox.sourceEventId, sourceIds));
+
+  it("a non-ENO disease corrected to leptospirosis creates the row, due from the diagnosis", async () => {
+    const date = new Date(Date.now() - 3 * HOUR);
+    const ctx = await diagnose("S9NEW", "parvovirus", date);
+    expect(await rowsOf([ctx.root.id])).toHaveLength(0);
+    const { amendmentId, results } = await amend(ctx, { disease_code: "leptospirosis" });
+    expect(results).toEqual(["created"]);
+    const rows = await rowsOf([amendmentId]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].slaDueAt.getTime()).toBe(date.getTime() + 24 * HOUR);
+  });
+
+  it("hidatidosis (48 h) corrected to leptospirosis (24 h) tightens the same record", async () => {
+    const date = new Date(Date.now() - 3 * HOUR);
+    const ctx = await diagnose("S9TIGHT", "hydatidosis", date);
+    const { amendmentId, results } = await amend(ctx, { disease_code: "leptospirosis" });
+    expect(results).toEqual(["tightened"]);
+    const rows = await rowsOf([ctx.root.id, amendmentId]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].slaDueAt.getTime()).toBe(date.getTime() + 24 * HOUR);
+    const links = (rows[0].linkedSources as { source_event_id: string }[]).map(
+      (l) => l.source_event_id,
+    );
+    expect(links).toContain(amendmentId);
+  });
+
+  it("leptospirosis corrected to hidatidosis (a LONGER window) changes nothing", async () => {
+    const date = new Date(Date.now() - 3 * HOUR);
+    const ctx = await diagnose("S9LONG", "leptospirosis", date);
+    const { amendmentId, results } = await amend(ctx, { disease_code: "hydatidosis" });
+    expect(results).toEqual(["unchanged"]);
+    const rows = await rowsOf([ctx.root.id, amendmentId]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].slaDueAt.getTime()).toBe(date.getTime() + 24 * HOUR);
+  });
+
+  it("a diagnosis corrected to a non-notifiable disease keeps its record (never deleted)", async () => {
+    const ctx = await diagnose("S9KEEP", "leptospirosis", new Date(Date.now() - HOUR));
+    const { results } = await amend(ctx, { disease_code: "parvovirus" });
+    expect(results).toEqual(["unchanged"]);
+    expect(await rowsOf([ctx.root.id])).toHaveLength(1);
+  });
+
+  it("end to end: a vet's correction through amendEvent creates the legal row", async () => {
+    const date = new Date(Date.now() - 4 * HOUR);
+    const ctx = await diagnose("S9E2E", "parvovirus", date);
+    const result = await amendEvent(
+      { id: vetUserId },
+      { id: ctx.pet.id, name: ctx.pet.name, publicToken: ctx.pet.publicToken },
+      { authorRole: "vet", authorOrganizationId: null, authorVerified: true },
+      {
+        publicToken: ctx.pet.publicToken,
+        targetEventId: ctx.root.id,
+        reason: "Resultado de laboratorio",
+        changes: [{ field: "disease_code", old: "parvovirus", new: "leptospirosis" }],
+      },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const rows = await rowsOf([result.amendmentEventId]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].slaDueAt.getTime()).toBe(date.getTime() + 24 * HOUR);
+  });
+
+  it("hidatidosis corrected to rabies joins the rabies case", async () => {
+    const date = new Date(Date.now() - 2 * HOUR);
+    const ctx = await diagnose("S9RAB", "hydatidosis", date);
+    await amend(ctx, { disease_code: "rabies_confirmed" });
+    const rows = await db
+      .select()
+      .from(eventNotificationOutbox)
+      .where(like(eventNotificationOutbox.enoCaseKey, `rabies:pet:${ctx.pet.id}:%`));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].slaDueAt.getTime()).toBe(date.getTime() + 24 * HOUR);
   });
 });

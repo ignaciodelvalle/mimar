@@ -22,6 +22,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { type AmendExecutor, checkAmendAuthorship, lockAmendmentRoot } from "./amend-authorship";
+import { reevaluateLegalQueueAfterAmendment } from "./reevaluate-outbox-after-amendment";
 import { refreshPetCacheAfterAmendment } from "./refresh-pet-cache-after-amendment";
 import type { AmendEventCommand, AmendEventResult } from "./types";
 
@@ -271,6 +272,15 @@ export async function amendEvent(
       // already overlaid. Keyed by the root event's type — no pets.* UPDATE is
       // append-only-guarded (only pet_events is), so a plain UPDATE is fine.
       await refreshPetCacheAfterAmendment(tx, pet.id, resolvedTargetEventId);
+
+      // PO S9 (2026-09-26): a corrected diagnosis re-evaluates the legal queue
+      // in this same transaction — created or tightened when it became
+      // notifiable or more urgent; never lengthened, never deleted.
+      await reevaluateLegalQueueAfterAmendment(tx, {
+        petId: pet.id,
+        rootEventId: resolvedTargetEventId,
+        amendmentEventId: amendmentEvent.id,
+      });
 
       // --- D5 sensitive path: audit_log + notify owner ---------------------
       if (isSensitive) {
