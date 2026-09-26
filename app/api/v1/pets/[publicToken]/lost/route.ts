@@ -127,13 +127,16 @@ const LOST_BUDGET_MS = 8_000;
 /**
  * The animal's registered row, as the "¿Es acá?" candidate shape — only on the
  * person path and only while marcar perdida is available (`status: active`).
- * `"unavailable"` when the read ran out of budget: a 503, never a missing chip
- * dressed as "this animal has no locality".
+ *
+ * A TIMEOUT DEGRADES TO NO CHIP, never to a 503. The chip is an optional
+ * convenience and `null` is already an answer the client renders; failing the
+ * whole cockpit — episode, feed, disclosure — over it would trade the search
+ * for a shortcut. The timeout is reported, so it is not silent.
  */
 async function readHomeLocality(
   personPath: boolean,
   pet: { status: string; localityId?: string | null },
-): Promise<GeocodingCandidateV1 | null | "unavailable"> {
+): Promise<GeocodingCandidateV1 | null> {
   if (!personPath || pet.status !== "active" || !pet.localityId) return null;
   try {
     const row = await withDbBudgetOrThrow(
@@ -150,8 +153,9 @@ async function readHomeLocality(
       departmentName: row.departmentName,
     };
   } catch (err) {
-    if (err instanceof DbBudgetExceededError) return "unavailable";
-    throw err;
+    if (!(err instanceof DbBudgetExceededError)) throw err;
+    reportError("api-v1-lost/home-locality", err, { degraded: "homeLocality: null" });
+    return null;
   }
 }
 
@@ -257,7 +261,6 @@ export async function GET(
   // marcar perdida, on the person path. The web's page makes the same call
   // (`app/(app)/mis-mascotas/[publicToken]/perdida/page.tsx`).
   const homeLocality = await readHomeLocality(access.kind === "owner", pet);
-  if (homeLocality === "unavailable") return unavailable();
 
   const payload = buildPetLostV1({
     pet,

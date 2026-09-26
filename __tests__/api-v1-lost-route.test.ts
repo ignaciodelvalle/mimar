@@ -48,12 +48,15 @@ const control = vi.hoisted(() => ({
   },
   /** Every `locality_id` the home-locality read was asked about. */
   homeReads: [] as string[],
+  /** When set, the home-locality read throws this instead of answering. */
+  homeThrows: null as null | Error,
 }));
 
 // The home-locality chip's row, read by id (lib/place/home-suggestion.ts).
 vi.mock("@/lib/place/home-suggestion", () => ({
   homeLocalityRow: async (id: string) => {
     control.homeReads.push(id);
+    if (control.homeThrows) throw control.homeThrows;
     return {
       id,
       indecId: "42021010",
@@ -682,6 +685,29 @@ describe("POST .../lost — marcar encontrada and reactivar", () => {
 describe("GET .../lost — the home-locality chip's row", () => {
   beforeEach(() => {
     control.homeReads = [];
+    control.homeThrows = null;
+  });
+
+  it("a timeout on that read degrades to no chip — the cockpit still answers 200", async () => {
+    const { DbBudgetExceededError } = await import("@/lib/infra/db-budget");
+    control.homeThrows = new DbBudgetExceededError("api-v1-lost-home", 8_000);
+    control.access = ownerAccess({ localityId: "loc-santa-rosa" });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = await get();
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      homeLocality: unknown;
+      episode: unknown;
+      disclosure: unknown;
+      capabilities: { canMarkLost: boolean };
+    };
+    expect(body.homeLocality).toBeNull();
+    expect(body.episode).toBeNull();
+    expect(body.disclosure).toBeTruthy();
+    expect(body.capabilities.canMarkLost).toBe(true);
+    // Reported, not silent.
+    expect(errors.mock.calls.flat().join(" ")).toContain("api-v1-lost/home-locality");
+    errors.mockRestore();
   });
 
   it("carries the animal's registered row, read by its stored id, to its owner", async () => {
