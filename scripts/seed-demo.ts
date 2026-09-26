@@ -87,7 +87,11 @@ import { EVENT_TYPES, type EventType } from "../db/schema";
 import { WHOLE_PROVINCE_LOCALITY } from "../lib/domain/jurisdiction-canonical";
 import { chipImplantSiteFromLocation } from "../lib/domain/microchip-implant-site";
 import { type HolderEvent, replayPetHolders } from "../lib/projections/pet-holders";
-import { normalizeStorylineHolderEvents } from "./seed-storyline-holders";
+import {
+  normalizeStorylineHolderEvents,
+  resolveStorylineOwner,
+  storylineAuthorKey,
+} from "./seed-storyline-holders";
 import { DANGEROUS_STORYLINES } from "./seed-storylines-dangerous";
 import { STORYLINES as ICONIC_STORYLINES } from "./seed-storylines-iconic";
 import { LEGEND_STORYLINES } from "./seed-storylines-legends";
@@ -376,62 +380,21 @@ const SEED_STORAGE_BUCKET = "seed-photos";
 // curatorial owner of every historical pet. This adapter maps token → UserKey.
 // ---------------------------------------------------------------------------
 
-/**
- * Resolves a storyline's owner field to a concrete user or org. Storylines in
- * the new modules (original10, dangerous, supporting) set `pet.owner` directly
- * as either a UserKey or an "org:..." string. The historical iconic file's
- * Storyline shape uses `pet.owner_of_record` instead — we fall back to a
- * token-prefix table for that subset.
- */
+// The resolution itself lives in scripts/seed-storyline-holders.ts
+// (resolveStorylineOwner / storylineAuthorKey), where the storyline test can
+// import it; these two only narrow its keys to this loader's account tables.
 function resolveOwnerForStoryline(pet: any): { user?: UserKey; org?: OrgKey } {
-  // Preferred: explicit pet.owner field (new storyline modules)
-  if (typeof pet?.owner === "string") {
-    const owner = pet.owner as string;
-    if (owner.startsWith("org:")) {
-      return { org: owner.slice(4) as OrgKey };
-    }
-    return { user: owner as UserKey };
-  }
-
-  // Legacy fallback for the iconic storyline file: map by public_token prefix.
-  const publicToken: string = pet?.public_token ?? "";
-  if (publicToken.startsWith("DIM-LAIK")) return { user: "ignacio" };
-  if (publicToken.startsWith("DIM-HACH")) return { user: "ignacio" };
-  if (publicToken.startsWith("DIM-HCN2")) return { user: "ignacio" };
-  if (publicToken.startsWith("DIM-PAL2")) return { user: "ignacio" };
-  if (publicToken.startsWith("DIM-TRRY")) return { user: "ignacio" };
-  if (publicToken.startsWith("DIM-KABO")) return { user: "noeli" };
-  if (publicToken.startsWith("DIM-HNKO")) return { user: "noeli" };
-  // Legends batch (2026-06)
-  if (publicToken.startsWith("DIM-BOBB")) return { user: "graciela" };
-  if (publicToken.startsWith("DIM-FRID")) return { org: "mascotas-ba-centro" };
-  if (publicToken.startsWith("DIM-OWNY")) return { org: "rescate-puerto-madero" };
-  return { user: "ignacio" };
+  const owner = resolveStorylineOwner(pet);
+  return { user: owner.user as UserKey | undefined, org: owner.org as OrgKey | undefined };
 }
 
-// Map any author_role we see on storylines to a concrete user from USERS.
-// Storyline events carry author_role only; we pick the closest seed user.
-// For org-owned pets (shelter custody), owner-attributed events fall back to
-// Alejo, since he's the personal-account human authoring on behalf of the org.
 function pickAuthorFromRole(
   authorRole: string | undefined,
   petOwnerUserKey: UserKey | null,
   userIds: Record<UserKey, string>,
 ): string | null {
-  switch (authorRole) {
-    case "vet":
-      return userIds.lilian;
-    case "govt":
-      return userIds.lucas;
-    case "admin":
-      return userIds.admin;
-    case "system":
-      return null;
-    case "shelter":
-      return userIds.alejo;
-    default:
-      return petOwnerUserKey ? userIds[petOwnerUserKey] : userIds.alejo;
-  }
+  const key = storylineAuthorKey(authorRole, petOwnerUserKey);
+  return key === null ? null : userIds[key as UserKey];
 }
 
 // ---------------------------------------------------------------------------

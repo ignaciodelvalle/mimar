@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { type HolderEvent, replayPetHolders } from "../lib/projections/pet-holders";
-import { type StorylineEvent, normalizeStorylineHolderEvents } from "./seed-storyline-holders";
+import {
+  type StorylineEvent,
+  normalizeStorylineHolderEvents,
+  resolveStorylineOwner,
+  storylineAuthorKey,
+} from "./seed-storyline-holders";
 import { DANGEROUS_STORYLINES } from "./seed-storylines-dangerous";
 import { STORYLINES as ICONIC_STORYLINES } from "./seed-storylines-iconic";
 import { LEGEND_STORYLINES } from "./seed-storylines-legends";
@@ -13,9 +18,9 @@ import { SUPPORTING_STORYLINES } from "./seed-storylines-supporting";
 // nobody else (a foster aside). scripts/seed-demo.ts refuses a storyline that
 // does not; this test finds it before a reseed does.
 //
-// Account ids are stand-ins (the keys themselves). The owner and author
-// resolution below mirrors scripts/seed-demo.ts (resolveOwnerForStoryline,
-// pickAuthorFromRole), which runs main() on import and cannot be imported.
+// Account ids are stand-ins (the keys themselves). Owner and author resolution
+// are the loader's own (resolveStorylineOwner, storylineAuthorKey — the
+// functions scripts/seed-demo.ts maps to real ids), not a copy of them.
 
 const USERS = ["ignacio", "noeli", "graciela", "lilian", "alejo", "lucas", "admin"];
 const ORGS = ["patitas-del-norte", "mascotas-ba-centro", "rescate-puerto-madero"];
@@ -34,49 +39,8 @@ const ALL: Story[] = [
   ...(SUPPORTING_STORYLINES as unknown as Story[]),
 ];
 
-const TOKEN_OWNERS: Array<[string, { user?: string; org?: string }]> = [
-  ["DIM-LAIK", { user: "ignacio" }],
-  ["DIM-HACH", { user: "ignacio" }],
-  ["DIM-HCN2", { user: "ignacio" }],
-  ["DIM-PAL2", { user: "ignacio" }],
-  ["DIM-TRRY", { user: "ignacio" }],
-  ["DIM-KABO", { user: "noeli" }],
-  ["DIM-HNKO", { user: "noeli" }],
-  ["DIM-BOBB", { user: "graciela" }],
-  ["DIM-FRID", { org: "mascotas-ba-centro" }],
-  ["DIM-OWNY", { org: "rescate-puerto-madero" }],
-];
-
-function resolveOwner(pet: Story["pet"]): { user?: string; org?: string } {
-  if (typeof pet.owner === "string") {
-    return pet.owner.startsWith("org:") ? { org: pet.owner.slice(4) } : { user: pet.owner };
-  }
-  return (
-    TOKEN_OWNERS.find(([prefix]) => pet.public_token.startsWith(prefix))?.[1] ?? {
-      user: "ignacio",
-    }
-  );
-}
-
-function authorOf(role: string | undefined, ownerUser: string | null): string | null {
-  switch (role) {
-    case "vet":
-      return "lilian";
-    case "govt":
-      return "lucas";
-    case "admin":
-      return "admin";
-    case "system":
-      return null;
-    case "shelter":
-      return "alejo";
-    default:
-      return ownerUser ?? "alejo";
-  }
-}
-
 function replayStory(story: Story) {
-  const owner = resolveOwner(story.pet);
+  const owner = resolveStorylineOwner(story.pet);
   const events = normalizeStorylineHolderEvents(story.events, {
     ownerUserId: owner.user ?? null,
     ownerOrgId: owner.org ?? null,
@@ -96,7 +60,7 @@ function replayStory(story: Story) {
       // the array order.
       recordedAt: new Date(Date.UTC(2026, 0, 1) + i),
       payload: e.payload ?? {},
-      recordedByUserId: authorOf(e.author_role, owner.user ?? null),
+      recordedByUserId: storylineAuthorKey(e.author_role, owner.user ?? null),
       authorOrganizationId: authorOrg,
       authorRole: e.author_role ?? "system",
     } as HolderEvent;
@@ -171,5 +135,32 @@ describe("normalizeStorylineHolderEvents rules", () => {
     );
     expect(e.authorOrganizationId).toBe("patitas-del-norte");
     expect(e.payload).toMatchObject({ custody_kind: "shelter_custody_by_org" });
+  });
+});
+
+describe("storyline owner and author resolution", () => {
+  it("reads an explicit owner, user or org", () => {
+    expect(resolveStorylineOwner({ public_token: "DIM-X", owner: "noeli" })).toEqual({
+      user: "noeli",
+    });
+    expect(
+      resolveStorylineOwner({ public_token: "DIM-X", owner: "org:patitas-del-norte" }),
+    ).toEqual({ org: "patitas-del-norte" });
+  });
+
+  it("falls back to the iconic token prefixes, then to ignacio", () => {
+    expect(resolveStorylineOwner({ public_token: "DIM-FRID-0001" })).toEqual({
+      org: "mascotas-ba-centro",
+    });
+    expect(resolveStorylineOwner({ public_token: "DIM-KABO-0001" })).toEqual({ user: "noeli" });
+    expect(resolveStorylineOwner({ public_token: "DIM-ZZZZ-0001" })).toEqual({ user: "ignacio" });
+  });
+
+  it("maps author roles to seeded accounts", () => {
+    expect(storylineAuthorKey("vet", "noeli")).toBe("lilian");
+    expect(storylineAuthorKey("shelter", "noeli")).toBe("alejo");
+    expect(storylineAuthorKey("system", "noeli")).toBeNull();
+    expect(storylineAuthorKey("owner", "noeli")).toBe("noeli");
+    expect(storylineAuthorKey(undefined, null)).toBe("alejo");
   });
 });

@@ -216,3 +216,69 @@ export function normalizeStorylineHolderEvents(
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Owner and author resolution, as account KEYS (the loader maps them to ids).
+// Lives here, not in seed-demo.ts, because seed-demo.ts runs main() on import:
+// the storyline test replays through these same two functions instead of a
+// copy of them.
+// ---------------------------------------------------------------------------
+
+// Legacy fallback for the iconic storyline file, whose pets carry
+// `owner_of_record` instead of `owner`: resolved by public_token prefix.
+const TOKEN_PREFIX_OWNERS: ReadonlyArray<readonly [string, { user?: string; org?: string }]> = [
+  ["DIM-LAIK", { user: "ignacio" }],
+  ["DIM-HACH", { user: "ignacio" }],
+  ["DIM-HCN2", { user: "ignacio" }],
+  ["DIM-PAL2", { user: "ignacio" }],
+  ["DIM-TRRY", { user: "ignacio" }],
+  ["DIM-KABO", { user: "noeli" }],
+  ["DIM-HNKO", { user: "noeli" }],
+  // Legends batch (2026-06)
+  ["DIM-BOBB", { user: "graciela" }],
+  ["DIM-FRID", { org: "mascotas-ba-centro" }],
+  ["DIM-OWNY", { org: "rescate-puerto-madero" }],
+];
+
+/**
+ * Resolves a storyline's owner to a seeded user or org key. Storylines in the
+ * newer modules (original10, dangerous, supporting) set `pet.owner` directly as
+ * a user key or an "org:<key>" string; the iconic file falls back to the
+ * token-prefix table above, and anything unmatched belongs to ignacio (the
+ * curatorial owner of every historical pet).
+ */
+export function resolveStorylineOwner(
+  pet: { owner?: unknown; public_token?: unknown } | null | undefined,
+): { user?: string; org?: string } {
+  if (typeof pet?.owner === "string") {
+    return pet.owner.startsWith("org:") ? { org: pet.owner.slice(4) } : { user: pet.owner };
+  }
+  const token = typeof pet?.public_token === "string" ? pet.public_token : "";
+  const hit = TOKEN_PREFIX_OWNERS.find(([prefix]) => token.startsWith(prefix));
+  return hit ? { ...hit[1] } : { user: "ignacio" };
+}
+
+/**
+ * The seeded user key that authors a storyline event with `authorRole`, or
+ * null for a system event. Owner-attributed events on an org-held pet fall back
+ * to alejo, the personal account authoring on behalf of the org.
+ */
+export function storylineAuthorKey(
+  authorRole: string | undefined,
+  ownerUserKey: string | null,
+): string | null {
+  switch (authorRole) {
+    case "vet":
+      return "lilian";
+    case "govt":
+      return "lucas";
+    case "admin":
+      return "admin";
+    case "system":
+      return null;
+    case "shelter":
+      return "alejo";
+    default:
+      return ownerUserKey ?? "alejo";
+  }
+}
