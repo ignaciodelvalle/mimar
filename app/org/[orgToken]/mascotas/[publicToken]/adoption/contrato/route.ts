@@ -80,6 +80,21 @@ async function consultAdopterDni(organizationId: string, userId: string, adopter
   return account;
 }
 
+/** The adopter's registered account, or the refusal to send (429 / 404). */
+async function resolveAdopterAccount(organizationId: string, userId: string, adopterDni: string) {
+  const consulted = await consultAdopterDni(organizationId, userId, adopterDni);
+  if (consulted === "too_many") {
+    return new NextResponse(
+      "Demasiadas consultas de DNI desde esta organización. Esperá unos minutos y volvé a intentar.",
+      { status: 429 },
+    );
+  }
+  if (!consulted || !consulted.hasAuthAccount) {
+    return new NextResponse("No encontrado", { status: 404 });
+  }
+  return consulted;
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ orgToken: string; publicToken: string }> },
@@ -117,17 +132,8 @@ export async function POST(
   // Re-resolve the adopter server-side (never trust the form's found-state):
   // same registered-account contract as finalize — dniHash match + auth.users
   // row EXISTS. No match → 404-style refusal, nothing rendered.
-  const consulted = await consultAdopterDni(organization.id, user.id, adopterDni);
-  if (consulted === "too_many") {
-    return new NextResponse(
-      "Demasiadas consultas de DNI desde esta organización. Esperá unos minutos y volvé a intentar.",
-      { status: 429 },
-    );
-  }
-  const account = consulted;
-  if (!account || !account.hasAuthAccount) {
-    return new NextResponse("No encontrado", { status: 404 });
-  }
+  const account = await resolveAdopterAccount(organization.id, user.id, adopterDni);
+  if (account instanceof NextResponse) return account;
 
   // Chip (if any) from the canonical identifications table. Auth-gated
   // surface — same visibility tier as the org pet detail (never public).
