@@ -120,7 +120,7 @@ import { WELFARE_REPORT_KINDS } from "@/src/modules/welfare/domain/types";
 import { WelfareRepository } from "@/src/modules/welfare/infrastructure/welfare-repository";
 import type { WelfareReportCommandInput, WelfareReportInput } from "@dim/contract/input";
 
-import { welfareSymptomSurveillance } from "@/src/modules/events/application/surveillance/welfare-symptom-signals";
+import { welfareSymptomSurveillance } from "@/src/modules/events/application/surveillance/welfare-symptom-surveillance";
 import {
   buildWelfareEvidenceTicketAck,
   buildWelfareLocationResolvedAck,

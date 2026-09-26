@@ -60,7 +60,7 @@ import { canReceiveDerivedWelfare } from "@/src/modules/welfare/domain/derivatio
 import { generateReferenceCode } from "@/src/modules/welfare/domain/reference-code";
 import { and, eq, isNull } from "drizzle-orm";
 
-import { welfareSymptomSurveillance } from "@/src/modules/events/application/surveillance/welfare-symptom-signals";
+import { welfareSymptomSurveillance } from "@/src/modules/events/application/surveillance/welfare-symptom-surveillance";
 import { addInterventionNote } from "./application/add-intervention-note";
 import { addReporterComment } from "./application/add-reporter-comment";
 import { assignWelfare } from "./application/assign-welfare";

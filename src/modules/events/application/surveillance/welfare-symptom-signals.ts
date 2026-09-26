@@ -190,9 +190,3 @@ export async function emitWelfareSymptomSignals(
     );
   };
 }
-
-/** The port the welfare use cases declare, wired to the two functions above. */
-export const welfareSymptomSurveillance = {
-  match: matchWelfareSymptoms,
-  emitSignals: emitWelfareSymptomSignals,
-};
