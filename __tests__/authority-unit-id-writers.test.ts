@@ -30,6 +30,22 @@ const MENTIONS: Readonly<Record<string, "writer" | "reader">> = {
   "src/modules/organizations/infrastructure/org-repository.ts": "writer",
   "src/modules/organizations/application/add-coverage-zone.ts": "reader",
   "src/modules/rehome/infrastructure/rehome-repository.ts": "reader",
+  // Business rules keyed on a unit (localidades-por-id D4, migration 0263): an
+  // admin picks a CONFIRMED unit of the province in the rules wizard. The
+  // confirmed-and-same-province guard lives in normalize-jurisdiction.ts (a
+  // draft or another province's unit is refused before any write); the writer
+  // stores what it was handed and dedups by the same key the index uses.
+  "src/modules/organizations/application/business-rules/create-business-rule.ts": "writer",
+  "src/modules/organizations/application/business-rules/normalize-jurisdiction.ts": "reader",
+  // The writer's params type (a declaration, no read or write of the row).
+  "src/modules/organizations/application/business-rules/types.ts": "reader",
+  // The create action forwards the normalized place and builds the ?unidad= URL.
+  "app/actions/business-rules.ts": "reader",
+  // The /reglas page narrowed to one unit (?unidad=), and its place labels.
+  "app/gob/reglas/[country]/[province]/[locality]/page.tsx": "reader",
+  "lib/infra/rule-place-labels.ts": "reader",
+  // The legal-baseline seed reads only rules keyed to no row and no unit.
+  "scripts/seed-legal-baseline.ts": "reader",
   // Readers: the id-path consumers and the scope loader.
   "lib/infra/approval-routing.ts": "reader",
   "lib/infra/business-rules-resolver.ts": "reader",
