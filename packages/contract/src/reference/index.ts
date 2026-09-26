@@ -43,6 +43,9 @@ export {
   chosenLocalityName,
   chosenLocalityParent,
   describeChosenLocality,
+  homeLocalityChipLabel,
+  homeLocalityChipName,
+  homeLocalityChipReason,
   localityOptionLabel,
 } from "./locality-copy.ts";
 export { pluralizeEs } from "./pluralize-es.ts";

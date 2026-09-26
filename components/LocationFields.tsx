@@ -43,11 +43,18 @@ import {
 } from "@/app/actions/geocoding";
 import { searchLocalitiesPublicAction } from "@/app/actions/localities";
 import { LocalityPickerAcross } from "@/components/LocalityPickerAcross";
+import { LnChip } from "@/components/ui/Chip";
 import { LnInput, LnSelect } from "@/components/ui/Field";
+import type { LocalitySearchResult } from "@/lib/infra/ar-localidades";
 import { PROVINCES, type Province, provinceByName } from "@/lib/reference/ar-provincias";
-import { LOCALITY_FIELD_LABEL, LOCALITY_FIELD_PLACEHOLDER } from "@dim/contract/reference";
+import {
+  LOCALITY_FIELD_LABEL,
+  LOCALITY_FIELD_PLACEHOLDER,
+  describeChosenLocality,
+  homeLocalityChipName,
+} from "@dim/contract/reference";
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const LocationPicker = dynamic(() => import("./LocationPicker"), {
   loading: () => (
@@ -98,6 +105,14 @@ export type LocationFieldsChange = {
 /** A catalogue row a pin could be in, as the reverse action offers it (B6). */
 type PlaceCandidate = ReversePinAnswer["place"]["candidates"][number];
 
+/**
+ * The animal's registered locality, offered as ONE tap (PO, 2026-09-26). The
+ * row comes from the stored `locality_id` (lib/place/home-suggestion.ts), never
+ * from a name. OPT-IN per call site and for OWNERS only: a finder, a denunciante
+ * or an official must never be shown where somebody's animal lives.
+ */
+export type LocationSuggestion = { locality: LocalitySearchResult; petName: string };
+
 /** "Mechita (Bragado), Buenos Aires" — the department tells two homonyms apart. */
 export function candidateLabel(c: PlaceCandidate): string {
   const department = c.departmentName ? ` (${c.departmentName})` : "";
@@ -123,6 +138,7 @@ export function LocationFields({
   l1Label = LOCALITY_FIELD_LABEL,
   cascade = false,
   defaultCenter = null,
+  suggestion = null,
 }: {
   mode: LocationMode;
   defaultValue?: LocationFieldsValue;
@@ -176,6 +192,13 @@ export function LocationFields({
   // input value. The public sighting form passes the pet's DISCLOSED
   // last-known lost location here (privacy-gated server-side).
   defaultCenter?: { lat: number; lng: number } | null;
+  /** The home-locality chip. NEVER a prefill: the field stays empty until the
+   * person taps it, and the tap selects the row exactly as picking it does —
+   * L1: the picker's own selection (its hidden inputs carry the INDEC id); L2:
+   * the "¿Es acá?" path (`localityPicked`, recorded as `user_picked`). On L2 it
+   * shows only while there is no map point: a pin is the answer, and home is
+   * never a fallback for one (lib/place/reported-place.ts, rule 4). */
+  suggestion?: LocationSuggestion | null;
 }) {
   const isL2 = mode === "l2";
 
@@ -227,6 +250,24 @@ export function LocationFields({
   const [candidates, setCandidates] = useState<PlaceCandidate[]>([]);
   const [pickedCandidate, setPickedCandidate] = useState<PlaceCandidate | "none" | null>(null);
   const pickedRow = pickedCandidate !== null && pickedCandidate !== "none" ? pickedCandidate : null;
+
+  // The home-locality chip. `homePicked` is whether the person tapped it;
+  // `homeMount` remounts the L1 picker when the tap starts or undoes a pick.
+  const [homePicked, setHomePicked] = useState(false);
+  const [homeMount, setHomeMount] = useState(0);
+  const homeCandidate = useMemo<PlaceCandidate | null>(
+    () =>
+      suggestion
+        ? {
+            provinceCode: suggestion.locality.provinceCode,
+            provinceName: suggestion.locality.provinceName,
+            localityName: suggestion.locality.localityName,
+            localityIndecId: suggestion.locality.indecId,
+            departmentName: suggestion.locality.departmentName,
+          }
+        : null,
+    [suggestion],
+  );
 
   // L2 address text + autocomplete state.
   const [addressText, setAddressText] = useState<string>(
@@ -337,6 +378,16 @@ export function LocationFields({
     onPointPresenceChange(point != null);
   }, [point]);
 
+  // A POINT REPLACES THE HOME PICK, whichever way it arrived (a map gesture, a
+  // typed address, a result). The chip hides while there is a point, and the
+  // row it picked must not ride along under a pin that says otherwise.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only a new point matters; homeCandidate is stable for the component's life.
+  useEffect(() => {
+    if (point == null) return;
+    setHomePicked(false);
+    setPickedCandidate((current) => (current === homeCandidate ? null : current));
+  }, [point]);
+
   // Emit the full structured value whenever the L2-derived state changes, so a
   // parent can lift it (DenunciaWizard M-followup). Opt-in — no-op unless a
   // consumer passes onChange.
@@ -412,6 +463,25 @@ export function LocationFields({
     setPickedLocality(choice.localityName);
   }
 
+  /** The home chip, tapped: pick the row, or undo the pick it made. */
+  function toggleHome(next: boolean) {
+    if (!suggestion || !homeCandidate) return;
+    setHomePicked(next);
+    if (isL2) {
+      if (next) {
+        // The SAME path as a "¿Es acá?" answer — nothing new reaches the server.
+        pickCandidate(homeCandidate);
+      } else {
+        setPickedCandidate(null);
+        setPickedProvince(null);
+        setPickedLocality(null);
+      }
+      return;
+    }
+    if (next && cascade) setCascadeProvinceCode(suggestion.locality.provinceCode);
+    setHomeMount((n) => n + 1);
+  }
+
   function pickResult(result: GeocodeResult) {
     setCandidates([]);
     setPickedCandidate(null);
@@ -427,8 +497,24 @@ export function LocationFields({
     setGeocodeFoundLabel(null);
   }
 
+  const showHomeChip = suggestion !== null && (!isL2 || point === null);
+
   return (
     <div className="space-y-4">
+      {showHomeChip && suggestion && (
+        <div className="space-y-1.5">
+          <LnChip selected={homePicked} onChange={toggleHome} className="min-h-11 text-left">
+            {homeLocalityChipName(suggestion.locality, suggestion.petName)}
+          </LnChip>
+          {isL2 && homePicked && (
+            <output className="block text-xs text-ln-ok">
+              Confirmado: {describeChosenLocality(suggestion.locality)}. Si sabés el punto exacto,
+              marcalo en el mapa.
+            </output>
+          )}
+        </div>
+      )}
+
       {/* L1 (single input) — cross-province locality autocomplete. Province is
           derived from the chosen locality. */}
       {!isL2 && !cascade && (
@@ -442,8 +528,11 @@ export function LocationFields({
             )}
           </label>
           <LocalityPickerAcross
+            key={`home-${homeMount}`}
             id="localityName"
             required={required}
+            initialPick={homePicked ? (suggestion?.locality ?? null) : null}
+            onDeselect={() => setHomePicked(false)}
             defaultValue={{
               provinceCode: defaultValue?.provinceCode ?? null,
               localityName: defaultValue?.localityName ?? null,
@@ -479,7 +568,11 @@ export function LocationFields({
             <LnSelect
               id="cascade-province"
               value={cascadeProvinceCode ?? ""}
-              onChange={(e) => setCascadeProvinceCode(e.target.value || null)}
+              onChange={(e) => {
+                setCascadeProvinceCode(e.target.value || null);
+                // Another province is another question: the home pick goes.
+                setHomePicked(false);
+              }}
               required={required}
               aria-required={required || undefined}
             >
@@ -506,9 +599,11 @@ export function LocationFields({
             <LocalityPickerAcross
               // Remount on province change so the query + picked locality reset —
               // a Palermo/CABA pick never survives a switch to Buenos Aires.
-              key={cascadeProvinceCode ?? "none"}
+              key={`${cascadeProvinceCode ?? "none"}:${homeMount}`}
               id="localityName"
               required={required}
+              initialPick={homePicked ? (suggestion?.locality ?? null) : null}
+              onDeselect={() => setHomePicked(false)}
               scopeProvinceCode={cascadeProvinceCode}
               disabled={!cascadeProvinceCode}
               defaultValue={{

@@ -9,7 +9,7 @@
 
 import { useActionState } from "react";
 
-import { LocationFields } from "@/components/LocationFields";
+import { LocationFields, type LocationSuggestion } from "@/components/LocationFields";
 import { LnField, LnTextarea } from "@/components/ui/Field";
 import { LnSheetBody, LnSheetFooter, LnSheetHeader } from "@/components/ui/Sheet";
 import { useActionRedirect } from "@/lib/ui/use-action-redirect";
@@ -26,6 +26,7 @@ export function UpdateLastSeenForm({
   petName,
   petJurisdictionProvince,
   petJurisdictionLocality,
+  homeSuggestion = null,
   defaultPlaceName,
   defaultNote,
   defaultLat,
@@ -35,6 +36,8 @@ export function UpdateLastSeenForm({
   petName: string;
   petJurisdictionProvince: string | null;
   petJurisdictionLocality: string | null;
+  /** The animal's registered locality, as a one-tap chip — never a prefill. */
+  homeSuggestion?: LocationSuggestion | null;
   /** Pre-filled from the open episode's originating status_changed event. */
   defaultPlaceName: string | null;
   defaultNote: string | null;
@@ -81,6 +84,7 @@ export function UpdateLastSeenForm({
             }}
             biasProvince={petJurisdictionProvince}
             biasLocality={petJurisdictionLocality}
+            suggestion={homeSuggestion}
           />
 
           <LnField label="Novedades">

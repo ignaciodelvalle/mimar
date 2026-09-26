@@ -17,7 +17,7 @@ import { deepLinkUrl } from "@dim/contract/links";
 import { useRef, useState, useTransition } from "react";
 
 import { Icon } from "@/components/Icon";
-import { LocationFields } from "@/components/LocationFields";
+import { LocationFields, type LocationSuggestion } from "@/components/LocationFields";
 import { LnCallout } from "@/components/ui/DocElements";
 import { LnField, LnInput, LnSelect, LnTextarea } from "@/components/ui/Field";
 import { LnGroupLabel, LnSheetBody, LnSheetHeader, LnSubCard } from "@/components/ui/Sheet";
@@ -99,6 +99,7 @@ export function MarkLostWizard({
   petDistinguishingFeatures,
   petJurisdictionProvince,
   petJurisdictionLocality,
+  homeSuggestion = null,
   priorAccessoriesWhenLost = null,
   priorBehaviorNotes = null,
   priorLastSeenContext = null,
@@ -114,6 +115,8 @@ export function MarkLostWizard({
   petDistinguishingFeatures: string | null;
   petJurisdictionProvince: string | null;
   petJurisdictionLocality: string | null;
+  /** The animal's registered locality, as a one-tap chip — never a prefill. */
+  homeSuggestion?: LocationSuggestion | null;
   /**
    * "Accesorios que llevaba" / "Comportamiento" / "Contexto del último
    * avistaje" from the pet's most recent PRIOR pet_marked_lost episode
@@ -287,6 +290,7 @@ export function MarkLostWizard({
               mode="l2"
               biasProvince={petJurisdictionProvince}
               biasLocality={petJurisdictionLocality}
+              suggestion={homeSuggestion}
             />
 
             {/* R5.2: the "Última ubicación" disclosure toggle, surfaced where

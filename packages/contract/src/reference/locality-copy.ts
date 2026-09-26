@@ -66,3 +66,29 @@ export function chosenLocalityParent(r: DescribableLocality): string {
   const unit = r.provinceCode === "AR-B" ? `partido de ${dept}` : `departamento ${dept}`;
   return `${unit}, ${r.provinceName}`;
 }
+
+// ---------------------------------------------------------------------------
+// The home-locality suggestion (PO, 2026-09-26)
+// ---------------------------------------------------------------------------
+//
+// Where an OWNER is asked for a place about their own animal, the animal's
+// registered locality is offered as ONE tap — never written into the field.
+// A prefill is a guess nobody corrects; a chip is a question the person answers.
+// Tapping selects the catalogue row exactly as picking it from the list does.
+// "donde vive" and not "donde está registrada": no gender to guess, and it is
+// how a person says it.
+
+/** The chip's visible action: "Usar Lomas de Zamora". */
+export function homeLocalityChipLabel(r: DescribableLocality): string {
+  return `Usar ${chosenLocalityName(r)}`;
+}
+
+/** The chip's reason, after the action: "donde vive Pampa". */
+export function homeLocalityChipReason(petName: string): string {
+  return `donde vive ${petName}`;
+}
+
+/** The whole accessible name — the visible words, in order (WCAG 2.5.3). */
+export function homeLocalityChipName(r: DescribableLocality, petName: string): string {
+  return `${homeLocalityChipLabel(r)}, ${homeLocalityChipReason(petName)}`;
+}

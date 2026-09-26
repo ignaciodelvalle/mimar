@@ -66,6 +66,11 @@ type Props = {
    * `localityNameIndecId`, `provinceName`. */
   name?: string;
   required?: boolean;
+  /** A row to start PICKED, exactly as if the person had just chosen it from
+   * the list — the home-locality chip (LocationFields `suggestion`) remounts the
+   * picker with it. Read once at mount. Not an edit-mode default: that one is a
+   * prior answer; this is a choice made a tap ago. */
+  initialPick?: LocalitySearchResult | null;
   /** Called on every successful pick — useful for parent state. */
   onSelect?: (selected: LocalitySearchResult | null) => void;
   /**
@@ -105,13 +110,18 @@ export function LocalityPickerAcross({
   id,
   name = "localityName",
   required,
+  initialPick = null,
   onSelect,
   onDeselect,
   onQueryChange,
   placeholder = LOCALITY_FIELD_PLACEHOLDER,
   searchAction = searchLocalitiesAction,
 }: Props) {
-  const [query, setQuery] = useState(defaultValue?.localityName ?? "");
+  const [query, setQuery] = useState(
+    initialPick
+      ? (initialPick.aliasName ?? initialPick.localityName)
+      : (defaultValue?.localityName ?? ""),
+  );
   // The query the current `results` array actually answers.
   //
   // Without this, "Sin resultados." was a LIE for most of its life: it rendered
@@ -129,12 +139,12 @@ export function LocalityPickerAcross({
   const latestQueryRef = useRef(query);
   // Set by handleSelect so the effect can tell "the user typed this" from "we
   // wrote this into the box because they picked it".
-  const justPickedRef = useRef(false);
+  const justPickedRef = useRef(initialPick !== null);
   // Hold the picked result so we can surface its provinceCode + indecId in
   // hidden inputs. When the user types without picking, this is null and
   // the hidden inputs fall back to the raw query (locality) + defaultValue
   // (province) — same tolerant contract as LocalityCombobox.
-  const [selected, setSelected] = useState<LocalitySearchResult | null>(null);
+  const [selected, setSelected] = useState<LocalitySearchResult | null>(initialPick);
   const [results, setResults] = useState<LocalitySearchResult[]>([]);
   const [open, setOpen] = useState(false);
   // An edit-mode pre-fill is a real catalog row until the user types over it.

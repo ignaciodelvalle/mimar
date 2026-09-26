@@ -20,6 +20,7 @@ import { redirect } from "next/navigation";
 import { fetchLatestLostDescription, fetchLostEpisodeForPet } from "@/lib/infra/lost-mode";
 import { fetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
 import { requireOwnedPetByToken } from "@/lib/infra/pets";
+import { petHomeSuggestion } from "@/lib/place/home-suggestion";
 import { lostLabel, markLostActionLabel } from "@/lib/utils/format";
 import { setPetLostAction, updateLostLastSeenAction } from "@/src/modules/events/actions";
 import { MarkLostWizard } from "./MarkLostWizard";
@@ -37,6 +38,10 @@ export default async function MarkPetLostPage({
   if (pet.status === "deceased") {
     redirect(`/mis-mascotas/${publicToken}`);
   }
+
+  // The home-locality chip is for the person path only: an org member acting on
+  // the animal is not the one who knows where it lives (PO, 2026-09-26).
+  const homeSuggestion = session.accessPath === "owner" ? await petHomeSuggestion(pet) : null;
 
   if (pet.status === "lost") {
     const episode = await fetchLostEpisodeForPet(pet.id);
@@ -62,6 +67,7 @@ export default async function MarkPetLostPage({
           petName={pet.name}
           petJurisdictionProvince={pet.jurisdictionProvince ?? null}
           petJurisdictionLocality={pet.jurisdictionLocality ?? null}
+          homeSuggestion={homeSuggestion}
           defaultPlaceName={episode.placeName}
           defaultNote={episode.ownerNote}
           defaultLat={episode.lastSeenLat != null ? Number(episode.lastSeenLat) : null}
@@ -110,6 +116,7 @@ export default async function MarkPetLostPage({
         petDistinguishingFeatures={pet.distinguishingFeatures ?? null}
         petJurisdictionProvince={pet.jurisdictionProvince ?? null}
         petJurisdictionLocality={pet.jurisdictionLocality ?? null}
+        homeSuggestion={homeSuggestion}
         priorAccessoriesWhenLost={priorLostDescription?.accessoriesWhenLost ?? null}
         priorBehaviorNotes={priorLostDescription?.behaviorNotes ?? null}
         priorLastSeenContext={priorLostDescription?.lastSeenContext ?? null}

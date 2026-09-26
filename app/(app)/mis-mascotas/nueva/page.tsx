@@ -15,6 +15,7 @@ import { and, count, eq, isNull } from "drizzle-orm";
 
 import { db, ownerships } from "@/db";
 import { requireUserOrRedirect } from "@/lib/infra/auth-guards";
+import { ownerLatestHomeSuggestion } from "@/lib/place/home-suggestion";
 import { trimmedSearchParam } from "@/lib/utils/search-params";
 import { createPetAction } from "@/src/modules/pets/actions";
 import { MinimalNewPetForm } from "./MinimalNewPetForm";
@@ -37,6 +38,9 @@ export default async function NewPetPage({
     .where(and(eq(ownerships.ownerUserId, user.id), isNull(ownerships.endedAt)));
 
   const isFirstPet = petCount === 0;
+  // A second animal most often lives where the first does: offer that locality
+  // as one tap (never a prefill). Nothing to offer on a first alta.
+  const homeSuggestion = isFirstPet ? null : await ownerLatestHomeSuggestion(user.id);
 
   // Chip-conflict return path (RA-2 F6). The vecino match card sends the finder
   // back here after they answer "No es la misma", carrying the disputed code
@@ -63,6 +67,7 @@ export default async function NewPetPage({
     <MinimalNewPetForm
       action={createPetAction}
       isFirstPet={isFirstPet}
+      homeSuggestion={homeSuggestion}
       chipConflict={chipConflict}
     />
   );

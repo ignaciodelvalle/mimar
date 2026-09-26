@@ -40,7 +40,7 @@ import {
 
 import { CustodyKindToggle } from "@/components/CustodyKindToggle";
 import { Icon } from "@/components/Icon";
-import { LocationFields } from "@/components/LocationFields";
+import { LocationFields, type LocationSuggestion } from "@/components/LocationFields";
 import { LnButton } from "@/components/ui/Button";
 import { LnCallout } from "@/components/ui/DocElements";
 import { LnField, LnInput, LnRadio, LnSelect } from "@/components/ui/Field";
@@ -91,6 +91,7 @@ export function MinimalNewPetForm({
   action,
   isFirstPet = false,
   chipConflict,
+  homeSuggestion = null,
 }: {
   action: FormAction;
   isFirstPet?: boolean;
@@ -103,6 +104,9 @@ export function MinimalNewPetForm({
    * the product's central use case impossible to complete.
    */
   chipConflict?: { microchipId: string; forceToken: string };
+  /** The owner's latest animal's locality, as a one-tap chip on the locality
+   * field — never a prefill. Null on a first alta. */
+  homeSuggestion?: LocationSuggestion | null;
 }) {
   // PO bug 2026-07-18, "se salta la foto" second cause: React 19 resets
   // uncontrolled fields after EVERY action return — the photo <input
@@ -444,7 +448,7 @@ export function MinimalNewPetForm({
 
           {/* Location — REQUIRED. Province-first cascade (commit 38fb1f44). */}
           <div className="flex flex-col gap-1.5">
-            <LocationFields mode="l1" required cascade />
+            <LocationFields mode="l1" required cascade suggestion={homeSuggestion} />
             <p className="font-ln-mono text-sm text-[var(--color-ln-mute)]">
               Requerido. Ayuda a las campañas regionales de salud animal.
             </p>
