@@ -9,6 +9,9 @@
 //   - CABA is ONE ciudad unit over every barrio (D1).
 //   - Homonyms split by unit, within and across provinces (P1/P3).
 //   - A re-run changes nothing, and never undoes a membership an admin moved.
+//   - Outside Buenos Aires the unit is the official local government; the
+//     seed-opened memberships of a superseded `departamento` draft are closed
+//     only when nothing points at the unit (plan step 6).
 //   - A grant holding part of a unit is listed for confirmation and its access
 //     stays exactly as it was (D2).
 
@@ -16,11 +19,10 @@ import { TransactionRollbackError, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { db } from "@/db";
-import { planAuthorityUnits } from "@/lib/place/authority-units-plan";
 import {
   applyAuthorityUnitPlan,
-  loadCatalogue,
   loadGrantCoverage,
+  planFromDatabase,
 } from "@/scripts/seed-authority-units";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -84,7 +86,7 @@ describe("the seeded units", () => {
     const ba = await activeUnitOf(db, VILLA_MARIA_BA);
     const cba = await activeUnitOf(db, VILLA_MARIA_CBA);
     expect(ba).toMatchObject({ seed_key: "municipio:AR-B:06021", kind: "municipio" });
-    expect(cba).toMatchObject({ seed_key: "departamento:AR-X:14042", kind: "departamento" });
+    expect(cba).toMatchObject({ seed_key: "gobierno_local:AR-X:140357", kind: "municipio" });
   });
 
   it("every seeded unit is a draft until an admin confirms it", async () => {
@@ -99,11 +101,12 @@ describe("the seeded units", () => {
 describe("the seed itself", () => {
   it("a second run changes nothing", async () => {
     await inRolledBackTx(async (tx) => {
-      const plan = planAuthorityUnits(await loadCatalogue(tx));
+      const plan = await planFromDatabase(tx);
       await applyAuthorityUnitPlan(tx, plan);
       expect(await applyAuthorityUnitPlan(tx, plan)).toMatchObject({
         unitsCreated: 0,
         membershipsOpened: 0,
+        membershipsClosed: 0,
       });
     });
   });
@@ -127,11 +130,81 @@ describe("the seed itself", () => {
         select ${unit?.id}::uuid, l.id from public.ar_localities l where l.indec_id = ${VILLA_MARIA_BA}
       `);
 
-      const result = await applyAuthorityUnitPlan(tx, planAuthorityUnits(await loadCatalogue(tx)));
+      const result = await applyAuthorityUnitPlan(tx, await planFromDatabase(tx));
       const after = await activeUnitOf(tx, VILLA_MARIA_BA);
       expect(after.unit_id).toBe(unit?.id);
       expect(after.unit_id).not.toBe(before.unit_id);
       expect(result.keptElsewhere).toBeGreaterThanOrEqual(1);
+    });
+  });
+});
+
+describe("superseded department units (plan step 6)", () => {
+  /** Put Villa María (Córdoba) back in a seed-made `departamento` draft, as the first seed left it. */
+  async function backInADepartment(tx: Tx, seedKey: string, addedBy: string | null) {
+    const [unit] = (await tx.execute(sql`
+      insert into public.authority_units (seed_key, kind, level, province_code, name, indec_department_code)
+      values (${seedKey}, 'departamento', 'municipal', 'AR-X', 'General San Martín (prueba)', '14042')
+      returning id::text as id
+    `)) as unknown as Array<{ id: string }>;
+    await tx.execute(sql`
+      update public.authority_unit_localities m set valid_to = now()
+        from public.ar_localities l
+       where l.id = m.locality_id and l.indec_id = ${VILLA_MARIA_CBA}
+         and m.valid_to is null and m.level = 'municipal'
+    `);
+    await tx.execute(sql`
+      insert into public.authority_unit_localities (unit_id, locality_id, added_by)
+      select ${unit?.id}::uuid, l.id, ${addedBy}::uuid
+        from public.ar_localities l where l.indec_id = ${VILLA_MARIA_CBA} and l.removed_at is null
+    `);
+    return unit?.id as string;
+  }
+
+  it("a seed-opened membership of an unreferenced departamento draft moves to the local government", async () => {
+    await inRolledBackTx(async (tx) => {
+      const dept = await backInADepartment(tx, "departamento:AR-X:fence-free", null);
+      const result = await applyAuthorityUnitPlan(tx, await planFromDatabase(tx));
+      expect(result.membershipsClosed).toBeGreaterThanOrEqual(1);
+      const after = await activeUnitOf(tx, VILLA_MARIA_CBA);
+      expect(after).toMatchObject({ seed_key: "gobierno_local:AR-X:140357", kind: "municipio" });
+      // The unit itself stays: units are never deleted.
+      const [still] = (await tx.execute(sql`
+        select count(*)::int as n from public.authority_units where id = ${dept}::uuid
+      `)) as unknown as Array<{ n: number }>;
+      expect(still?.n).toBe(1);
+    });
+  });
+
+  it("a departamento something points at keeps its memberships, and is reported", async () => {
+    await inRolledBackTx(async (tx) => {
+      const dept = await backInADepartment(tx, "departamento:AR-X:fence-referenced", null);
+      // A child unit is a reference like any grant or rule would be.
+      await tx.execute(sql`
+        insert into public.authority_units (kind, level, province_code, name, parent_unit_id)
+        values ('comuna', 'municipal', 'AR-X', 'Hija de prueba', ${dept}::uuid)
+      `);
+      const result = await applyAuthorityUnitPlan(tx, await planFromDatabase(tx));
+      expect((await activeUnitOf(tx, VILLA_MARIA_CBA)).unit_id).toBe(dept);
+      expect(result.referencedSuperseded.filter((u) => u.unitId === dept)).toEqual([
+        expect.objectContaining({
+          unitId: dept,
+          seedKey: "departamento:AR-X:fence-referenced",
+          referencedBy: ["authority_units.parent_unit_id"],
+          membershipsKept: 1,
+        }),
+      ]);
+    });
+  });
+
+  it("a membership an admin placed in a departamento is never closed by the seed", async () => {
+    await inRolledBackTx(async (tx) => {
+      const [admin] = (await tx.execute(sql`
+        select p.id::text as id from public.profiles p order by p.created_at limit 1
+      `)) as unknown as Array<{ id: string }>;
+      const dept = await backInADepartment(tx, "departamento:AR-X:fence-admin", admin?.id ?? null);
+      await applyAuthorityUnitPlan(tx, await planFromDatabase(tx));
+      expect((await activeUnitOf(tx, VILLA_MARIA_CBA)).unit_id).toBe(dept);
     });
   });
 });

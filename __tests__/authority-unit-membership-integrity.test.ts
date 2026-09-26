@@ -1,5 +1,7 @@
-// Fence: every live locality belongs to exactly one active authority unit at
-// municipal level, and the membership itself can only be opened and closed —
+// Fence: every live locality belongs to AT MOST one active authority unit at
+// municipal level — and to EXACTLY one wherever the seed plan places it (the
+// official source names its local government, or the unit comes from its
+// department) — and the membership itself can only be opened and closed —
 // never rewritten, never deleted.
 //
 // localidades-por-id, authority-units (P3: always reach exactly the right
@@ -21,6 +23,7 @@ import { describe, expect, it } from "vitest";
 
 import { db } from "@/db";
 import { isGovernableLocality } from "@/lib/place/authority-units-plan";
+import { planFromDatabase } from "@/scripts/seed-authority-units";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -453,10 +456,24 @@ describe("authority unit membership", () => {
   });
 
   // Flipped at C2: scripts/seed-authority-units.ts runs in db:bootstrap after
-  // the catalogue import. A red here means a live locality nobody governs (a
+  // the catalogue import. Relaxed at plan step 6 (units from the official
+  // local government): outside Buenos Aires and CABA a locality the official
+  // source names NO local government for (Río Negro's tierras de frontera,
+  // rural Tierra del Fuego, a disputed row) is governed by its province alone,
+  // so "exactly one" became:
+  //   - at most one active municipal unit, for every live locality;
+  //   - exactly one wherever the seed plan places it (a local government, a
+  //     Buenos Aires partido, CABA, a department fallback) or refuses to and
+  //     asks an admin (`unplaced`).
+  // A red here means a live locality nobody governs that should be (a
   // re-import added it: re-run the seed, or place it in /admin/localidades)
   // or one governed twice.
-  it("every live locality is in exactly one active municipal-level unit", async () => {
+  it("every live locality is in at most one active municipal unit, and in exactly one where the plan places it", async () => {
+    const plan = await planFromDatabase(db);
+    const required = new Set([
+      ...plan.units.flatMap((u) => u.localityIds),
+      ...plan.unplaced.map((r) => r.id),
+    ]);
     const rows = (await db.execute(sql`
       select l.id::text as id, l.province_code as "provinceCode", l.locality_name as "localityName",
              l.department_code as "departmentCode", l.source, count(m.unit_id)::int as units
@@ -477,7 +494,29 @@ describe("authority unit membership", () => {
     }>;
     // A row the catalogue guard drops (whole-province aggregate, superseded
     // source) governs nothing by design — the same predicate the seed uses.
-    const offenders = rows.filter((r) => isGovernableLocality({ ...r, departmentName: null }));
+    const offenders = rows
+      .filter((r) => isGovernableLocality(r))
+      .filter((r) => r.units > 1 || required.has(r.id));
     expect(offenders.slice(0, 20)).toEqual([]);
+  });
+
+  // The relaxation above is not vacuous and not a loophole: the rows it lets
+  // through are exactly the ones the plan leaves to the province, and each of
+  // them sits in no municipal unit or in one an admin chose — never two.
+  it("a locality with no official local government is left to its province, never guessed", async () => {
+    const plan = await planFromDatabase(db);
+    expect(plan.withoutLocalGovernment.length).toBeGreaterThan(0);
+    const ids = JSON.stringify(plan.withoutLocalGovernment.map((r) => r.id));
+    const [row] = (await db.execute(sql`
+      select count(*)::int as n from (
+        select m.locality_id from public.authority_unit_localities m
+         where m.valid_to is null and m.level = 'municipal'
+           and m.locality_id = any (select jsonb_array_elements_text(${ids}::jsonb)::uuid)
+         group by m.locality_id having count(*) > 1
+      ) twice
+    `)) as unknown as Array<{ n: number }>;
+    expect(row?.n).toBe(0);
+    expect(plan.withoutLocalGovernment.some((r) => r.provinceCode === "AR-B")).toBe(false);
+    expect(plan.withoutLocalGovernment.some((r) => r.provinceCode === "AR-C")).toBe(false);
   });
 });
