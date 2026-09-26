@@ -8,6 +8,7 @@
 //   1. Load transfer + status check + expiry check + recipient auth (id-or-email)
 //   2. Sender-accepting-own guard
 //   3. ATOMIC tx:
+//      -. pet advisory lock, first statement (audit K, W4)
 //      0. sponsored-pet guard under the lock (REQ-15) — refuse, never end
 //      a. closeOwnerOwnerships (BEFORE insert — unique-active-owner partial index parity)
 //      b. insertOwnerOwnership
@@ -114,6 +115,22 @@ export async function acceptPetTransfer(
   try {
     await transaction(async (tx) => {
       const now = new Date();
+
+      // THE PET LOCK, FIRST (audit K, W4). Every custody writer — adoption
+      // finalize and reversal, rehome, decomiso, disputes, foster, the
+      // cross-org and return-to-owner hand-offs, a death record — serialises
+      // on this one key. Without it the pet-status, dispute, owner and
+      // sponsorship reads below were plain reads: a rehome accept committing
+      // inside that window left the sponsorship alive over the new owner
+      // (REQ-15 bypassed), and a dispute or a death could land the same way.
+      // FIRST, before the transfer-row lock, so the order is always
+      // advisory → rows and no writer can hold a row this one waits for while
+      // waiting for the lock this one holds (the 40P01 residual named in
+      // owner-row-lock.test.ts).
+      await repo.acquirePetAdvisoryLock(
+        transfer.petId,
+        tx as Parameters<typeof repo.acquirePetAdvisoryLock>[1],
+      );
 
       // CONCURRENCY GUARD: re-read the transfer row FOR UPDATE inside the tx
       // and re-check it is still pending. The pre-tx status check above is a

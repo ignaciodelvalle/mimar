@@ -35,6 +35,7 @@ import {
   ownerships,
   petCaretakerGrants,
   petEvents,
+  petTransfers,
   pets,
   profiles,
 } from "@/db";
@@ -49,6 +50,8 @@ import {
 import { AdoptionRepository } from "@/src/modules/adoption/infrastructure/adoption-repository";
 import { acceptCaretakerGrant } from "@/src/modules/caretakers/application/accept-caretaker-grant";
 import { CaretakersRepository } from "@/src/modules/caretakers/infrastructure/caretakers-repository";
+import { acceptPetTransfer } from "@/src/modules/transfers/application/accept-pet-transfer";
+import { TransfersRepository } from "@/src/modules/transfers/infrastructure/transfers-repository";
 
 import { withMutationOverride } from "./_helpers/db-overrides";
 
@@ -429,5 +432,69 @@ describe("W3 — accepting a caretaker invitation serialises with the hand-off",
     const live = await liveHolders(f.pet.id);
     expect(live).toEqual([expect.objectContaining({ role: "owner", ownerUserId: newOwnerId })]);
     expect(await eventTypes(f.pet.id)).not.toContain("caretaker_designated");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// W4 — a P2P accept reads the pet's guards under the pet lock
+// ---------------------------------------------------------------------------
+
+/** A pet its owner has offered to a registered recipient: a pending P2P transfer. */
+async function offeredPet(label: string) {
+  const senderId = await makeProfile(`${label} emisor`);
+  const recipientId = await makeProfile(`${label} receptor`);
+  const pet = await makePet(label);
+  const [senderRow] = await db
+    .insert(ownerships)
+    .values({ petId: pet.id, ownerUserId: senderId, role: "owner" })
+    .returning({ id: ownerships.id });
+  const transferToken = `PTR-chpl-${randomUUID().slice(0, 10)}`;
+  const recipientEmail = `chpl-${label.toLowerCase()}-${randomUUID().slice(0, 6)}@dim-test.local`;
+  await db.insert(petTransfers).values({
+    publicToken: transferToken,
+    petId: pet.id,
+    fromOwnerId: senderId,
+    toOwnerId: recipientId,
+    toOwnerEmail: recipientEmail,
+    status: "pending",
+    reason: "gift",
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+  });
+  const accept = () =>
+    acceptPetTransfer(
+      { transferToken, callerEmail: recipientEmail, callerEmailConfirmed: true },
+      { repo: TransfersRepository, actor: { user: { id: recipientId } }, transaction },
+    );
+  return { senderId, recipientId, pet, senderRowId: senderRow.id, transferToken, accept };
+}
+
+describe("W4 — a P2P accept decides on guards read under the pet lock", () => {
+  it("control: with nobody racing, the recipient becomes the owner", async () => {
+    const f = await offeredPet("P2pOk");
+    const result = await f.accept();
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    expect(await liveHolders(f.pet.id)).toEqual([
+      expect.objectContaining({ role: "owner", ownerUserId: f.recipientId }),
+    ]);
+  });
+
+  it("a custody dispute opening first wins: the accept refuses and the sender keeps the pet", async () => {
+    const f = await offeredPet("P2pRace");
+
+    const result = await raceUnderHeldPetLock(f.pet.id, f.accept, async (h) => {
+      await h`UPDATE pets SET in_custody_dispute = true, updated_at = now() WHERE id = ${f.pet.id}`;
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/disputa de custodia/);
+    expect(await liveHolders(f.pet.id)).toEqual([
+      expect.objectContaining({ id: f.senderRowId, role: "owner", ownerUserId: f.senderId }),
+    ]);
+    const [transferRow] = await db
+      .select({ status: petTransfers.status })
+      .from(petTransfers)
+      .where(eq(petTransfers.publicToken, f.transferToken));
+    expect(transferRow.status).toBe("pending");
+    expect(await eventTypes(f.pet.id)).not.toContain("custody_transferred");
   });
 });

@@ -403,6 +403,53 @@ describe("acceptPetTransfer", () => {
       .mockImplementation(async (cb: (tx: unknown) => unknown) => cb(fakeTx));
   });
 
+  it("takes the pet advisory lock as the FIRST statement of the transaction (audit K, W4)", async () => {
+    // Before the transfer-row lock and before every read that decides the
+    // hand-off (pet status/dispute, current owner, open sponsorship): each of
+    // those is only a guard if no other custody writer can commit between it
+    // and the write, and they all serialise on this one key.
+    const calls: string[] = [];
+    const track =
+      (name: string, value: unknown) =>
+      async (..._args: unknown[]) => {
+        calls.push(name);
+        return value;
+      };
+    const repo = makeFakeRepo({
+      acquirePetAdvisoryLock: vi.fn().mockImplementation(track("lock", undefined)),
+      findTransferByIdForUpdate: vi
+        .fn()
+        .mockImplementation(track("transfer-for-update", makeTransfer())),
+      findPetStatusById: vi.fn().mockImplementation(
+        track("pet-status", {
+          status: "active",
+          inCustodyDispute: false,
+          name: "Max",
+          deletedAt: null,
+        }),
+      ),
+      findActiveOwnerOwnership: vi
+        .fn()
+        .mockImplementation(track("current-owner", { id: "own-1", ownerUserId: "user-sender" })),
+      findOpenSponsorship: vi.fn().mockImplementation(track("sponsorship", null)),
+    });
+
+    const result = await acceptPetTransfer(baseInput, {
+      repo,
+      actor,
+      transaction: fakeTransaction,
+    });
+    expect(result).toMatchObject({ ok: true });
+    expect(repo.acquirePetAdvisoryLock).toHaveBeenCalledWith("pet-1", fakeTx);
+    expect(calls.slice(0, 5)).toEqual([
+      "lock",
+      "transfer-for-update",
+      "pet-status",
+      "current-owner",
+      "sponsorship",
+    ]);
+  });
+
   it("returns error when transfer not found", async () => {
     const repo = makeFakeRepo({ findTransferByToken: vi.fn().mockResolvedValue(null) });
     const result = await acceptPetTransfer(baseInput, {
