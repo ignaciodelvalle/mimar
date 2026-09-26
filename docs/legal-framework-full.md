@@ -29,6 +29,10 @@
 - **Ley 11.843 / 1934** — Profilaxis de la peste / exterminio de roedores. Reglamentada por Decreto 92.767. [Fuente](https://www.argentina.gob.ar/normativa/nacional/ley-11843-195173/texto)
 
 - **Ley 15.465 / 1960** — Régimen legal de enfermedades de notificación obligatoria. Reglamentada por Decreto 3640/1964. Incluye rabia, hidatidosis, leptospirosis, leishmaniasis, brucelosis. [Fuente](https://www.argentina.gob.ar/normativa/nacional/ley-15465-195093/texto)
+  - Obliga por **casos humanos**. Su Manual ENO (Res. MS 2827/2022) lista el carbunco cutáneo y extracutáneo y la toxoplasmosis congénita y en embarazadas, siempre como eventos humanos: no hace notificable a un perro o gato con esas enfermedades. [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/425000-429999/425539/disp1-anexo2.pdf)
+
+- **Resolución SENASA 153 / 2021** — Enfermedades de denuncia obligatoria del lado animal. **Grupo I** ("enfermedades comunes a varias especies", entre ellas el carbunco): notificación inmediata, dentro de las 24 h de la sospecha, a SENASA; rige para cualquier especie. **Grupo II**: notificación según la norma específica de cada enfermedad (ahí figura la tuberculosis, sin plazo en horas). Su art. 22 **deroga la Res. SENASA 422/2003**. [Fuente](https://www.argentina.gob.ar/normativa/nacional/resoluci%C3%B3n-153-2021-348400/texto) · [Boletín Oficial](https://www.boletinoficial.gob.ar/detalleAviso/primera/242544/20210331)
+  - **DIM:** ancla del carbunco en el catálogo ENO (24 h, destino SENASA, sólo lo dispara un veterinario o un laboratorio). La toxoplasmosis no figura en ningún grupo y dejó de marcarse como notificable. Ningún código cita ya la 422/2003.
 
 - **Resolución MS 1715 / 2007** — Normas de vigilancia y control de ENO; lista oficial de eventos. Modificada por Res. MS 54/2008, 2827/2022 y 3517/2022. [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/175000-179999/175879/norma.htm)
 
@@ -134,7 +138,16 @@
 - **Proyecto integral de protección y bienestar animal** (Dip. Juliano, 2026) — Penas hasta 3 años; excluye prácticas SENASA. [Fuente](https://www.lanacion.com.ar/economia/campo/seres-sintientes-impulsan-una-nueva-ley-de-proteccion-y-bienestar-animal-con-prision-y-millonarias-nid05032026/)
 - **Proyecto sobre experimentación animal en investigación** (AACyTAL). [Fuente](https://argentinainvestiga.edu.ar/noticia.php?titulo=animales_en_laboratorio_una_cuestin_tica&id=1466)
 - **Proyecto Exp. 1473-D-2019** — Notificación obligatoria de leishmaniasis. [Fuente](https://www2.hcdn.gob.ar/proyectos/proyectoTP.jsp?exp=1473-D-2019)
+- **Proyecto de reforma integral de protección de datos personales** (Exp. 3397-D-2026, reingresado el 16/07/2026) — En etapa temprana; no cambia obligaciones vigentes. [Fuente](https://www.argentina.gob.ar/aaip/datospersonales/proyecto-ley-datos-personales)
 - **Proyectos de microchip nacional obligatorio** — Diversos, sin sanción a la fecha. [Fuente](https://www.infobae.com/tendencias/2022/04/14/caba-proponen-colocar-un-microchip-en-perros-y-gatos-para-su-cuidado-responsable/)
+
+### 1.8 Datos personales (AAIP)
+
+- **Ley 25.326, art. 21** — Inscripción de las bases de datos en el Registro Nacional de la AAIP. Alcanza a bases públicas y privadas destinadas a dar información sobre personas; la única exención es el uso exclusivamente personal, sin excepción por tamaño ni por ser persona humana. [Trámites](https://www.argentina.gob.ar/aaip/datospersonales/tramites)
+  - **DIM:** el registro muestra datos de terceros (página del QR, autoridad, veterinaria), así que la exención no aplica. La política de privacidad no debe decir "inscripta" hasta contar con el certificado.
+- **Transferencia internacional** — Brasil no figura entre los países con protección adecuada (Disp. 60/2016 y Res. AAIP 34/2019). Una transferencia allí requiere un mecanismo de la **Res. AAIP 198/2023**, por ejemplo cláusulas contractuales modelo; usadas tal cual no requieren aprobación previa, y un contrato que se aparta del modelo se presenta a la AAIP dentro de los 30 días. [Fuente](https://www.argentina.gob.ar/transferencias-internacionales)
+  - **DIM:** la infraestructura corre en São Paulo: las transferencias a esos proveedores necesitan ese mecanismo.
+- **Res. AAIP 47/2018** — Medidas de seguridad recomendadas para el tratamiento de datos personales; se declaran en la inscripción de la base. [Trámites](https://www.argentina.gob.ar/aaip/datospersonales/tramites)
 
 ---
 
@@ -160,8 +173,8 @@
 
 - **Ley 6115 / 1959** — Profilaxis obligatoria de brucelosis, hidatidosis, tuberculosis y triquinosis. [Fuente](https://normas.gba.gob.ar/documentos/0vGaATex.html)
 
-- **Resolución CVPBA 05 / 2020** — Enfermedades de denuncia obligatoria en pequeños animales (brucelosis canina, clamidiosis aviar, filariasis, esporotricosis, leishmaniasis visceral canina, leptospirosis, micobacterias, rabia animal). [Fuente](https://cvpba.org/wp-content/uploads/2022/03/ENO-05-2020-1.pdf)
-  - **DIM:** lista de enfermedades base para `symptom_observed`/`disease_diagnosed` con flag de denuncia obligatoria.
+- **Resolución CVPBA 05 / 2020** — Enfermedades de denuncia obligatoria en pequeños animales: brucelosis canina, clamidiosis aviar, dirofilariosis, esporotricosis, leishmaniasis visceral canina, leptospirosis canina, micobacteriosis en pequeños animales (tuberculosis), rabia animal y SARS-CoV-2 (sospecha clínica). **Plazo único para toda la lista:** el profesional informa "de forma inmediata". **Canal:** formulario web o planilla al Centro de Zoonosis municipal, que sigue a Zoonosis Urbanas (Ministerio de Salud PBA) y al SNVS 2.0. **Alcance:** obliga a los matriculados de PBA; no rige en CABA ni en otras provincias. Vigente según la página ENO del Colegio. [Fuente](https://cvpba.org/wp-content/uploads/2022/03/ENO-05-2020-1.pdf) · [cvpba.org/eno](https://cvpba.org/eno/)
+  - **DIM:** "inmediata" se toma como **24 h** en el catálogo ENO (la misma cifra que SENASA 153/2021 Grupo I y la Ley PBA 5325); fuera de PBA el plazo queda marcado "a confirmar". Esporotricosis y dirofilariosis entraron al catálogo; la clamidiosis aviar queda fuera de alcance porque el registro no toma aves; SARS-CoV-2 no se incorporó hasta confirmar su vigencia. La hidatidosis no está en esta lista: la respaldan la Res. MS 546/85 y la Ley PBA 6115, con plazo sin confirmar.
 
 ### 2.3 Ejercicio veterinario
 
@@ -418,8 +431,8 @@ Cada flujo lista: (1) actor que lo inicia, (2) qué se dispara, (3) anclaje norm
 
 ### 6.5 Notificación de Enfermedades de Denuncia Obligatoria (ENO)
 
-- Vet → carga caso → autoridad sanitaria (Min. Salud nac. y/o provincial) en <24 hs. Ley 15.465/1960 (Decreto 3640/64); Ley 5325/1948 (PBA); Res. MS 1715/2007; Res. CVPBA 05/2020 (rabia animal, leishmaniasis visceral canina, leptospirosis, brucelosis canina, esporotricosis, etc.).
-  - DIM: `disease_diagnosed.payload.eno_reportable: bool` + `eno_reported_to` + `eno_reported_at`.
+- Vet → carga caso → autoridad sanitaria (Min. Salud nac. y/o provincial) en <24 hs. Ley 15.465/1960 (Decreto 3640/64); Ley 5325/1948 (PBA); Res. MS 1715/2007; Res. CVPBA 05/2020 (inmediata); Res. SENASA 153/2021 (lado animal, Grupo I 24 h a SENASA).
+  - DIM: el veterinario registra el diagnóstico (`clinical_info_logged`, `sub_kind='disease_diagnosis'`) desde la ficha clínica o desde Atender; eso abre el aviso en la Cola ENO con el plazo de la enfermedad contado desde la fecha del diagnóstico. Lo que escribe el tutor o un denunciante es una **señal** para la autoridad, nunca un aviso legal. Mientras no exista un receptor, el aviso queda pendiente hasta que la autoridad lo marca "recibido" desde su bandeja.
 
 ### 6.6 Receta veterinaria
 
