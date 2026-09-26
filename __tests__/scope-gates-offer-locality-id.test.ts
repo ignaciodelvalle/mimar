@@ -51,7 +51,33 @@ function walk(dir: string, out: string[]): void {
   }
 }
 
-/** Top-level argument count of each call. */
+/** The top-level argument count of the call opening at `start`, and where it ends. */
+function countArgs(src: string, start: number): { args: number; end: number } {
+  let depth = 0;
+  let args = 1;
+  let sawToken = false;
+  let i = start;
+  for (; i < src.length; i++) {
+    const ch = src[i] as string;
+    if ("([{".includes(ch)) depth++;
+    else if (")]}".includes(ch)) {
+      if (depth === 0) break;
+      depth--;
+    } else if (ch === "," && depth === 0) {
+      // A trailing comma before `)` is not an argument.
+      if (
+        !src
+          .slice(i + 1)
+          .trimStart()
+          .startsWith(")")
+      )
+        args++;
+    } else if (!/\s/.test(ch)) sawToken = true;
+  }
+  return { args: sawToken ? args : 0, end: i };
+}
+
+/** Top-level argument count of each call (the definition skipped). */
 function argCounts(src: string): number[] {
   const out: number[] = [];
   let from = 0;
@@ -62,24 +88,9 @@ function argCounts(src: string): number[] {
       from = at + CALL.length;
       continue;
     }
-    let depth = 0;
-    let args = 1;
-    let i = at + CALL.length;
-    let sawToken = false;
-    for (; i < src.length; i++) {
-      const ch = src[i] as string;
-      if ("([{".includes(ch)) depth++;
-      else if (")]}".includes(ch)) {
-        if (depth === 0) break;
-        depth--;
-      } else if (ch === "," && depth === 0) {
-        // A trailing comma before `)` is not an argument.
-        const rest = src.slice(i + 1).trimStart();
-        if (!rest.startsWith(")")) args++;
-      } else if (!/\s/.test(ch)) sawToken = true;
-    }
-    out.push(sawToken ? args : 0);
-    from = i;
+    const { args, end } = countArgs(src, at + CALL.length);
+    out.push(args);
+    from = end;
   }
   return out;
 }
