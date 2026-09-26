@@ -2652,6 +2652,13 @@ export const AUDIT_LOG_ACTIONS = [
   //            received_at, overdue, target_jurisdiction_province,
   //            target_jurisdiction_locality }.
   "eno_notification_received",
+  // A RECEIVED (or delivered) ENO record re-opened to pending because a
+  // correction made the notice more urgent (lib/events/event-outbox-reevaluate.ts;
+  // PO review 2026-09-26). Migration 0265.
+  // Payload: { outbox_row_id, reason, amendment_event_id, source_event_id,
+  //            previous_received_at, previous_received_by_user_id,
+  //            previous_delivered_at, sla_due_at }.
+  "eno_notification_reopened",
   // Owner-initiated custody dispute (chip/tatuaje claim wizard, P3-1).
   // Payload: { dispute_public_token, pet_id, attachments_count }.
   "claim_dispute_submitted",

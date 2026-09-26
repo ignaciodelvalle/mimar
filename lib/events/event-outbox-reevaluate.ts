@@ -11,6 +11,9 @@
 //   - more urgent (the corrected deadline is EARLIER than the one in force) →
 //     the existing record's deadline moves earlier and the correction is
 //     linked into it (merged, for a case family);
+//   - a record the authority already RECEIVED is re-opened by a more urgent
+//     correction — pending again, receipt cleared (kept in the link) — and
+//     the re-opening enters audit_log as `eno_notification_reopened`;
 //   - anything else (same or later deadline, or no longer notifiable) →
 //     NOTHING. A legal clock never moves later and a record is never deleted:
 //     the authority may already hold it.
@@ -22,6 +25,7 @@
 import { and, eq, sql } from "drizzle-orm";
 
 import { eventNotificationOutbox } from "@/db/schema";
+import { writeAuditLog } from "@/lib/infra/audit-log";
 
 import {
   type EventInput,
@@ -31,7 +35,7 @@ import {
 } from "./event-outbox-enqueue";
 import { type EventAuthor, OUTBOX_RULES } from "./event-outbox-rules";
 
-type Tx = Pick<typeof import("@/db").db, "insert" | "select" | "update">;
+type Tx = Pick<typeof import("@/db").db, "insert" | "select" | "update" | "execute">;
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -51,6 +55,8 @@ export type OutboxReevaluationInput = {
   amendmentEventId: string;
   /** The pet's home snapshot — the fallback routing, as at any enqueue. */
   pet: PetInput;
+  /** Who corrected — the actor of any re-opening's audit row. */
+  actorUserId?: string | null;
   now?: Date;
 };
 
@@ -116,12 +122,18 @@ export async function reevaluateOutboxAfterAmendment(
           'payload_snapshot', ${JSON.stringify(input.after)}::jsonb,
           'previous_status', ${eventNotificationOutbox.status},
           'previous_sla_due_at', ${eventNotificationOutbox.slaDueAt},
-          'previous_payload_snapshot', ${eventNotificationOutbox.payloadSnapshot}
+          'previous_payload_snapshot', ${eventNotificationOutbox.payloadSnapshot},
+          'previous_received_at', ${eventNotificationOutbox.receivedAt},
+          'previous_received_by_user_id', ${eventNotificationOutbox.receivedByUserId}
         ))`,
         // The authority must receive the correction: a record already handled
-        // is re-opened, exactly as a case merge re-opens it (the enqueue).
+        // is re-opened, exactly as a case merge re-opens it (the enqueue) —
+        // and a re-opened record is not received any more (PO review
+        // 2026-09-26): the receipt is cleared here and kept in the link above.
         status: "pending",
         nextRetryAt: sql`now()`,
+        receivedAt: null,
+        receivedByUserId: null,
       })
       .where(
         and(
@@ -138,5 +150,44 @@ export async function reevaluateOutboxAfterAmendment(
     }
     results.push("tightened");
   }
+
+  if (results.includes("created") || results.includes("tightened")) {
+    await auditReopenedRecords(tx, input);
+  }
   return results;
+}
+
+/**
+ * Every record this correction RE-OPENED — one the authority had already
+ * received (or a receiver delivered) that is pending again — enters the audit
+ * register with whose receipt it replaced (PO review, 2026-09-26). Read back
+ * from the link each path appends, so the case merge and the in-place tighten
+ * answer the same way.
+ */
+async function auditReopenedRecords(tx: Tx, input: OutboxReevaluationInput): Promise<void> {
+  const rows = (await tx.execute(sql`
+    select o.id::text as id, o.sla_due_at as sla_due_at, l.link as link
+      from public.event_notification_outbox o,
+           lateral jsonb_array_elements(o.linked_sources) as l(link)
+     where l.link->>'source_event_id' = ${input.amendmentEventId}
+       and l.link->>'previous_status' in ('received', 'delivered')
+  `)) as unknown as Array<{ id: string; sla_due_at: Date | string; link: Record<string, unknown> }>;
+  for (const row of rows) {
+    await writeAuditLog(tx as Parameters<typeof writeAuditLog>[0], {
+      action: "eno_notification_reopened",
+      actorUserId: input.actorUserId ?? null,
+      payload: {
+        outbox_row_id: row.id,
+        reason: "diagnosis_amended_more_urgent",
+        amendment_event_id: input.amendmentEventId,
+        source_event_id: input.root.id,
+        previous_received_at: row.link.previous_received_at ?? null,
+        previous_received_by_user_id: row.link.previous_received_by_user_id ?? null,
+        previous_delivered_at: row.link.previous_delivered_at ?? null,
+        sla_due_at: new Date(row.sla_due_at).toISOString(),
+      },
+      before: { status: row.link.previous_status ?? null },
+      after: { status: "pending" },
+    });
+  }
 }

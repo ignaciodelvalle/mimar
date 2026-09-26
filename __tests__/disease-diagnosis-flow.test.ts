@@ -15,7 +15,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 // amendEvent revalidates paths; outside a Next request that is a no-op here.
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
+import { readFileSync } from "node:fs";
 import {
+  auditLog,
   db,
   enoProcessingQueue,
   eventNotificationOutbox,
@@ -29,6 +31,9 @@ import { reevaluateOutboxAfterAmendment } from "@/lib/events/event-outbox-reeval
 import { amendEvent } from "@/src/modules/events/application/amendment/amend-event";
 import { recordDiseaseDiagnosisWriter as _recordDiseaseDiagnosisWriter } from "@/src/modules/events/application/clinical/record-disease-diagnosis-use-case";
 import { createDeathRecord } from "@/src/modules/events/application/lifecycle/death-record-use-case";
+import { OutboxReceiptRepository } from "@/src/modules/surveillance/infrastructure/outbox-receipt-repository";
+
+import { isVerifiedVet } from "@/lib/infra/verified-vet";
 import { recordDiseaseDiagnosisWriter } from "@/src/modules/events/application/writers";
 import { EventsRepository } from "@/src/modules/events/infrastructure/events-repository";
 import { withMutationOverride } from "./_helpers/db-overrides";
@@ -681,6 +686,7 @@ describe("amendment re-evaluates the ENO outbox (S9)", () => {
         before,
         after,
         amendmentEventId: amendment.id,
+        actorUserId: vetUserId,
         pet: {
           jurisdictionProvince: ctx.pet.jurisdictionProvince,
           jurisdictionLocality: ctx.pet.jurisdictionLocality,
@@ -757,6 +763,77 @@ describe("amendment re-evaluates the ENO outbox (S9)", () => {
     const rows = await rowsOf([result.amendmentEventId]);
     expect(rows).toHaveLength(1);
     expect(rows[0].slaDueAt.getTime()).toBe(date.getTime() + 24 * HOUR);
+  });
+
+  // PO review 2026-09-26: a MORE urgent correction re-opens a notice the
+  // authority already received — pending, receipt cleared, audited; a
+  // correction that is not more urgent leaves the receipt alone.
+  async function receive(rowId: string) {
+    const r = await new OutboxReceiptRepository().markReceived({
+      rowId,
+      actorUserId: adminUserId,
+      actorRole: "admin",
+      scope: undefined,
+    });
+    expect(r.ok).toBe(true);
+  }
+
+  it("a more urgent correction re-opens a RECEIVED notice: pending, receipt cleared, audited", async () => {
+    const ctx = await diagnose("S9RCVT", "hydatidosis", new Date(Date.now() - 3 * HOUR));
+    const [row] = await rowsOf([ctx.root.id]);
+    await receive(row.id);
+
+    const { amendmentId } = await amend(ctx, { disease_code: "leptospirosis" });
+
+    const [after] = await rowsOf([ctx.root.id]);
+    expect(after.status).toBe("pending");
+    expect(after.receivedAt).toBeNull();
+    expect(after.receivedByUserId).toBeNull();
+    const link = (after.linkedSources as Record<string, unknown>[]).find(
+      (l) => l.source_event_id === amendmentId,
+    );
+    expect(link?.previous_status).toBe("received");
+    expect(link?.previous_received_by_user_id).toBe(adminUserId);
+
+    const audits = await db
+      .select({ actor: auditLog.actorUserId, payload: auditLog.payload })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, "eno_notification_reopened"),
+          sql`${auditLog.payload}->>'outbox_row_id' = ${row.id}`,
+        ),
+      );
+    expect(audits).toHaveLength(1);
+    expect(audits[0].actor).toBe(vetUserId);
+    expect(audits[0].payload).toMatchObject({
+      amendment_event_id: amendmentId,
+      previous_received_by_user_id: adminUserId,
+    });
+  });
+
+  it("a correction that is not more urgent leaves a RECEIVED notice untouched", async () => {
+    const ctx = await diagnose("S9RCVL", "leptospirosis", new Date(Date.now() - 3 * HOUR));
+    const [row] = await rowsOf([ctx.root.id]);
+    await receive(row.id);
+
+    await amend(ctx, { disease_code: "hydatidosis" });
+    await amend(ctx, { details: "Sin cambios clínicos" });
+
+    const [after] = await rowsOf([ctx.root.id]);
+    expect(after.status).toBe("received");
+    expect(after.receivedAt).not.toBeNull();
+    expect(after.receivedByUserId).toBe(adminUserId);
+    const audits = await db
+      .select({ id: auditLog.id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, "eno_notification_reopened"),
+          sql`${auditLog.payload}->>'outbox_row_id' = ${row.id}`,
+        ),
+      );
+    expect(audits).toHaveLength(0);
   });
 
   it("hidatidosis corrected to rabies joins the rabies case", async () => {

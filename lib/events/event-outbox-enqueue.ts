@@ -30,7 +30,8 @@
 //   - the deadline becomes the EARLIER of the two, always — a legal clock
 //     never moves later, and the stricter window is the one that binds;
 //   - a row still PENDING keeps its lease and attempts;
-//   - a row already DELIVERED or FAILED is re-opened to pending, due now: the
+//   - a row already DELIVERED, RECEIVED or FAILED is re-opened to pending, due
+//     now, its receipt cleared (the link keeps it): the
 //     authority was told the first half, and the second half (a confirmation)
 //     is exactly what it must receive. The delivery it replaces is kept in the
 //     link entry, not erased. (The drainer's success write is conditional on
@@ -217,7 +218,9 @@ export async function enqueueOutboxForEvent(
             'linked_at', now(),
             'payload_snapshot', excluded.payload_snapshot,
             'previous_status', ${existing("status")},
-            'previous_delivered_at', ${existing("delivered_at")}
+            'previous_delivered_at', ${existing("delivered_at")},
+            'previous_received_at', ${existing("received_at")},
+            'previous_received_by_user_id', ${existing("received_by_user_id")}
           ))`,
           status: "pending",
           slaDueAt: sql`least(${existing("sla_due_at")}, excluded.sla_due_at)`,
@@ -225,6 +228,11 @@ export async function enqueueOutboxForEvent(
           attempts: sql`CASE WHEN ${wasPending} THEN ${existing("attempts")} ELSE 0 END`,
           deliveredAt: sql`CASE WHEN ${wasPending} THEN ${existing("delivered_at")} ELSE NULL END`,
           lastError: sql`CASE WHEN ${wasPending} THEN ${existing("last_error")} ELSE NULL END`,
+          // A re-opened record is no longer received: the authority has not
+          // seen what re-opened it (PO, 2026-09-26 review). The link above
+          // keeps whose receipt it replaced.
+          receivedAt: sql`CASE WHEN ${wasPending} THEN ${existing("received_at")} ELSE NULL END`,
+          receivedByUserId: sql`CASE WHEN ${wasPending} THEN ${existing("received_by_user_id")} ELSE NULL END`,
         },
         // Idempotent replay: an event already on this record links nothing.
         setWhere: sql`${existing("source_event_id")} <> excluded.source_event_id

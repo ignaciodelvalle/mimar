@@ -177,7 +177,11 @@ export default async function AdminOutboxDetailPage({
             {/* PO S3: receipt confirmed by the authority, with the time. WHO
                 is in audit_log (eno_notification_received). */}
             <dt className="text-sm text-ln-op-mute">Recibido por la autoridad</dt>
-            <dd className="text-sm text-ln-op-ink">{fmt(row.receivedAt)}</dd>
+            <dd className="text-sm text-ln-op-ink">
+              {/* Only a RECEIVED row carries a receipt worth showing: a record
+                  a correction re-opened is pending again (review 2026-09-26). */}
+              {fmt(row.status === "received" ? row.receivedAt : null)}
+            </dd>
 
             <dt className="text-sm text-ln-op-mute">Creado</dt>
             <dd className="text-sm text-ln-op-ink">{fmt(row.createdAt)}</dd>

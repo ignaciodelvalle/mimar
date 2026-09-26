@@ -283,7 +283,7 @@ export function OutboxTable({
                 </td>
                 <td className="py-2 px-3 text-sm tabular-nums text-ln-op-mute whitespace-nowrap">
                   {formatDateTime(row.slaDueAt)}
-                  {row.receivedAt ? (
+                  {row.status === "received" && row.receivedAt ? (
                     <span className="block text-xs">Recibido {formatDateTime(row.receivedAt)}</span>
                   ) : null}
                 </td>

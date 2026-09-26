@@ -280,6 +280,7 @@ export async function amendEvent(
         petId: pet.id,
         rootEventId: resolvedTargetEventId,
         amendmentEventId: amendmentEvent.id,
+        actorUserId: user.id,
       });
 
       // --- D5 sensitive path: audit_log + notify owner ---------------------

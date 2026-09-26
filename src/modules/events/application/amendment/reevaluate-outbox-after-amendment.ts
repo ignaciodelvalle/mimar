@@ -15,7 +15,7 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export async function reevaluateLegalQueueAfterAmendment(
   tx: Tx,
-  input: { petId: string; rootEventId: string; amendmentEventId: string },
+  input: { petId: string; rootEventId: string; amendmentEventId: string; actorUserId: string },
 ): Promise<void> {
   const [root] = await tx
     .select({
@@ -81,6 +81,7 @@ export async function reevaluateLegalQueueAfterAmendment(
     before,
     after,
     amendmentEventId: input.amendmentEventId,
+    actorUserId: input.actorUserId,
     pet: pet ?? {},
   });
 }
