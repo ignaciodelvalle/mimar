@@ -337,6 +337,9 @@ export async function applyEnoCaseBackfill(plan: EnoCaseBackfillPlan): Promise<v
         .select({
           jurisdictionProvince: pets.jurisdictionProvince,
           jurisdictionLocality: pets.jurisdictionLocality,
+          // localidades-por-id D3: the row travels with the names.
+          localityId: pets.localityId,
+          placeMethod: pets.placeMethod,
         })
         .from(pets)
         .where(eq(pets.id, c.petId));

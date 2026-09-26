@@ -26,20 +26,40 @@ import { and, desc, eq, sql } from "drizzle-orm";
 
 import { cases, petEvents } from "@/db/schema";
 
-import type { EnoTarget } from "./event-outbox-rules";
+import type { EnoTarget, TargetPlace } from "./event-outbox-rules";
 
 type Reader = Pick<typeof import("@/db").db, "select">;
 
-async function caseJurisdiction(tx: Reader, caseId: string): Promise<EnoTarget | null> {
-  const [row] = await tx
-    .select({
-      jurisdictionProvince: cases.jurisdictionProvince,
-      jurisdictionLocality: cases.jurisdictionLocality,
-    })
-    .from(cases)
-    .where(eq(cases.id, caseId))
-    .limit(1);
-  return row ?? null;
+/**
+ * A target the row routes to. `place` is set when it came from a bite CASE:
+ * the case's own catalogue row travels with its names (localidades-por-id D3),
+ * so a homonym home can never stand in for where the bite happened.
+ */
+export type ResolvedEnoTarget = EnoTarget & { place?: TargetPlace };
+
+const CASE_TARGET = {
+  jurisdictionProvince: cases.jurisdictionProvince,
+  jurisdictionLocality: cases.jurisdictionLocality,
+  localityId: cases.localityId,
+  placeMethod: cases.placeMethod,
+};
+
+function fromCase(row: {
+  jurisdictionProvince: string | null;
+  jurisdictionLocality: string | null;
+  localityId: string | null;
+  placeMethod: string | null;
+}): ResolvedEnoTarget {
+  return {
+    jurisdictionProvince: row.jurisdictionProvince,
+    jurisdictionLocality: row.jurisdictionLocality,
+    place: { localityId: row.localityId ?? null, placeMethod: row.placeMethod ?? null },
+  };
+}
+
+async function caseJurisdiction(tx: Reader, caseId: string): Promise<ResolvedEnoTarget | null> {
+  const [row] = await tx.select(CASE_TARGET).from(cases).where(eq(cases.id, caseId)).limit(1);
+  return row ? fromCase(row) : null;
 }
 
 async function eventCaseId(tx: Reader, eventId: string): Promise<string | null> {
@@ -55,7 +75,7 @@ export async function resolveEnoTargetJurisdiction(
   tx: Reader,
   event: { id: string; petId: string; eventType: string; payload: Record<string, unknown> },
   fallback: EnoTarget,
-): Promise<EnoTarget> {
+): Promise<ResolvedEnoTarget> {
   if (event.eventType === "rabies_observation_ended") {
     let caseId = await eventCaseId(tx, event.id);
     const startedId = event.payload.observation_started_event_id;
@@ -65,13 +85,10 @@ export async function resolveEnoTargetJurisdiction(
   }
 
   const [bite] = await tx
-    .select({
-      jurisdictionProvince: cases.jurisdictionProvince,
-      jurisdictionLocality: cases.jurisdictionLocality,
-    })
+    .select(CASE_TARGET)
     .from(cases)
     .where(and(eq(cases.primaryPetId, event.petId), eq(cases.caseKind, "bite_incident")))
     .orderBy(sql`(${cases.status} = 'open') desc`, desc(cases.openedAt))
     .limit(1);
-  return bite ?? fallback;
+  return bite ? fromCase(bite) : fallback;
 }

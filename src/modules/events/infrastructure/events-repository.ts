@@ -499,7 +499,13 @@ export class EventsRepository {
   async enqueueOutbox(
     executor: DbOrTx,
     event: { id: string; petId: string; eventType: string; payload: Record<string, unknown> },
-    pet: { jurisdictionProvince?: string | null; jurisdictionLocality?: string | null },
+    pet: {
+      jurisdictionProvince?: string | null;
+      jurisdictionLocality?: string | null;
+      // localidades-por-id D3: the snapshot's catalogue row (see PetInput).
+      localityId?: string | null;
+      placeMethod?: string | null;
+    },
     now?: Date,
   ): Promise<void> {
     await enqueueOutboxForEvent(

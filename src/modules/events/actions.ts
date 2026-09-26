@@ -684,6 +684,8 @@ export async function recordDiseaseDiagnosisAction(
       petJurisdictionCountry: pet.jurisdictionCountry,
       petJurisdictionProvince: pet.jurisdictionProvince ?? null,
       petJurisdictionLocality: pet.jurisdictionLocality ?? null,
+      petLocalityId: pet.localityId ?? null,
+      petPlaceMethod: pet.placeMethod ?? null,
       vetUserId: user.id,
       vetDisplayName: vetProfile.displayName,
       diseaseCode,
@@ -798,6 +800,8 @@ export async function createDiseaseReportedAction(
         id: pet.id,
         jurisdictionProvince: pet.jurisdictionProvince ?? null,
         jurisdictionLocality: pet.jurisdictionLocality ?? null,
+        localityId: pet.localityId ?? null,
+        placeMethod: pet.placeMethod ?? null,
       },
       vet: { userId: user.id },
       // The vet is signing as a matriculated professional, which is what
@@ -961,6 +965,8 @@ export async function createSymptomObservedAction(
       petJurisdictionCountry: pet.jurisdictionCountry,
       petJurisdictionProvince: pet.jurisdictionProvince ?? null,
       petJurisdictionLocality: pet.jurisdictionLocality ?? null,
+      petLocalityId: pet.localityId ?? null,
+      petPlaceMethod: pet.placeMethod ?? null,
       rabiesObservationStatus: pet.rabiesObservationStatus ?? null,
       recordedByUserId: user.id,
       eventAuthorship: eventAuthorship as {

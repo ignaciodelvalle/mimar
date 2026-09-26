@@ -115,6 +115,8 @@ export async function appendSymptom(
       petJurisdictionCountry: pet.jurisdictionCountry,
       petJurisdictionProvince: pet.jurisdictionProvince ?? null,
       petJurisdictionLocality: pet.jurisdictionLocality ?? null,
+      petLocalityId: pet.localityId ?? null,
+      petPlaceMethod: pet.placeMethod ?? null,
       rabiesObservationStatus: pet.rabiesObservationStatus ?? null,
       recordedByUserId: ctx.userId,
       // Same rule as every other kind: the person path signs as the owner, the

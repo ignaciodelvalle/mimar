@@ -13,7 +13,7 @@ import { enqueueOutboxForEvent } from "./event-outbox-enqueue";
 
 type InsertedRow = Record<string, unknown>;
 
-function makeMockTx() {
+function makeMockTx(caseRows: Record<string, unknown>[] = []) {
   const inserted: InsertedRow[] = [];
   // Rows written through ON CONFLICT (a keyed case) — the SQL itself is
   // exercised against the real database in
@@ -24,7 +24,7 @@ function makeMockTx() {
   // No case here: every read answers nothing, so the row falls back to PET.
   const chain: Record<string, unknown> = {};
   for (const m of ["from", "where", "orderBy"]) chain[m] = vi.fn(() => chain);
-  chain.limit = vi.fn(() => Promise.resolve([]));
+  chain.limit = vi.fn(() => Promise.resolve(caseRows));
 
   const tx = {
     select: vi.fn(() => chain),
@@ -199,5 +199,104 @@ describe("enqueueOutboxForEvent", () => {
       NOW,
     );
     expect(b.inserted[0].enoCaseKey).toBe("rabies:pet:pet-1:AR-B|La Plata");
+  });
+
+  // -------------------------------------------------------------------------
+  // The target place BY ID (localidades-por-id D3 prerequisite). Snapshotted
+  // at enqueue time from the same source as the target names — the event's
+  // own place, else the bite case it routes to, else the caller's snapshot —
+  // and never re-read from the pet. A place that named no single row is
+  // NULL + 'unresolved'; a caller that snapshots no id records nothing.
+  // -------------------------------------------------------------------------
+  describe("target place by id", () => {
+    const ALBERTI = "11111111-1111-4111-8111-111111111111";
+    const BRAGADO = "22222222-2222-4222-8222-222222222222";
+    const placed = (resolved: Record<string, unknown> | null) => ({
+      ...makeOutbreakSignalEvent("rabies_suspected"),
+      payload: {
+        ...makeOutbreakSignalEvent("rabies_suspected").payload,
+        place: {
+          entered: { province: "Buenos Aires", locality: "Mechita", indec_id: null },
+          resolved,
+        },
+      },
+    });
+
+    it("an event carrying a resolved place targets that catalogue row", async () => {
+      const { tx, inserted } = makeMockTx();
+      const event = placed({ locality_id: ALBERTI, province_code: "AR-B", method: "catalogue_id" });
+      await enqueueOutboxForEvent(tx as never, event, { ...PET, localityId: BRAGADO }, NOW);
+      expect(inserted[0].targetLocalityId).toBe(ALBERTI);
+      expect(inserted[0].targetPlaceMethod).toBe("catalogue_id");
+    });
+
+    it("an event whose place never resolved stays NULL + 'unresolved'", async () => {
+      const { tx, inserted } = makeMockTx();
+      await enqueueOutboxForEvent(tx as never, placed(null), { ...PET, localityId: BRAGADO }, NOW);
+      expect(inserted[0].targetLocalityId).toBeNull();
+      expect(inserted[0].targetPlaceMethod).toBe("unresolved");
+    });
+
+    it("an event without a place takes the caller's snapshot row", async () => {
+      const { tx, inserted } = makeMockTx();
+      await enqueueOutboxForEvent(
+        tx as never,
+        makeDiseaseDiagnosisEvent("leptospirosis"),
+        { ...PET, localityId: BRAGADO, placeMethod: "legacy_unique_name" },
+        NOW,
+      );
+      expect(inserted[0].targetLocalityId).toBe(BRAGADO);
+      expect(inserted[0].targetPlaceMethod).toBe("legacy_unique_name");
+    });
+
+    it("a snapshot with no row is NULL + 'unresolved'; no snapshot at all records nothing", async () => {
+      const a = makeMockTx();
+      await enqueueOutboxForEvent(
+        a.tx as never,
+        makeDiseaseDiagnosisEvent("leptospirosis"),
+        { ...PET, localityId: null, placeMethod: "unresolved" },
+        NOW,
+      );
+      expect(a.inserted[0].targetLocalityId).toBeNull();
+      expect(a.inserted[0].targetPlaceMethod).toBe("unresolved");
+
+      const b = makeMockTx();
+      await enqueueOutboxForEvent(
+        b.tx as never,
+        makeDiseaseDiagnosisEvent("leptospirosis"),
+        PET,
+        NOW,
+      );
+      expect(b.inserted[0].targetLocalityId).toBeNull();
+      expect(b.inserted[0].targetPlaceMethod).toBeNull();
+    });
+
+    it("a row routed to a bite case takes the CASE's row, not a same-named home", async () => {
+      // The homonym: the bite happened in Alberti's Mechita, the pet lives in
+      // Bragado's. Same names, two rows — the notification follows the case.
+      const { tx, inserted } = makeMockTx([
+        {
+          jurisdictionProvince: "Buenos Aires",
+          jurisdictionLocality: "Mechita",
+          localityId: ALBERTI,
+          placeMethod: "indec_id",
+        },
+      ]);
+      await enqueueOutboxForEvent(
+        tx as never,
+        makeDiseaseDiagnosisEvent("rabies_confirmed"),
+        {
+          jurisdictionProvince: "Buenos Aires",
+          jurisdictionLocality: "Mechita",
+          localityId: BRAGADO,
+          placeMethod: "indec_id",
+        },
+        NOW,
+      );
+      expect(inserted[0].targetLocalityId).toBe(ALBERTI);
+      expect(inserted[0].targetPlaceMethod).toBe("indec_id");
+      // The case key stays name-keyed, exactly as before (legacy parity).
+      expect(inserted[0].enoCaseKey).toBe("rabies:pet:pet-1:Buenos Aires|Mechita");
+    });
   });
 });

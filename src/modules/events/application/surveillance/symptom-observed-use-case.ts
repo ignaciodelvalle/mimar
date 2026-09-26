@@ -22,6 +22,7 @@
 //   - Result: { ok: true, symptomEventId, signalEventIds, wasDuplicate }
 
 import { validateEventPayload } from "@/lib/events/event-schemas";
+import { homePlace } from "@/lib/events/home-place";
 import { maybeNotifyOwnersOfPublicAlert } from "@/lib/infra/owner-disease-alerts";
 import { parseDateInput } from "@/lib/utils/format";
 
@@ -42,6 +43,13 @@ export type CreateSymptomObservedWriterParams = {
   petJurisdictionCountry: string;
   petJurisdictionProvince: string | null;
   petJurisdictionLocality: string | null;
+  /**
+   * The home's catalogue row, read with the names (localidades-por-id D3).
+   * Absent = not snapshotted: the signal carries no place and the outbox
+   * records none. null = the home names no single row.
+   */
+  petLocalityId?: string | null;
+  petPlaceMethod?: string | null;
   /** Mirrors pets.rabiesObservationStatus for rabies escalation logic. */
   rabiesObservationStatus: string | null;
   recordedByUserId: string;
@@ -115,6 +123,8 @@ export async function createSymptomObservedWriter(
     petJurisdictionCountry,
     petJurisdictionProvince,
     petJurisdictionLocality,
+    petLocalityId,
+    petPlaceMethod,
     rabiesObservationStatus,
     recordedByUserId,
     eventAuthorship,
@@ -124,6 +134,14 @@ export async function createSymptomObservedWriter(
     clientIdempotencyKey,
     now = new Date(),
   } = params;
+
+  // The home as the signal's `place` (localidades-por-id D3).
+  const signalPlace = homePlace({
+    province: petJurisdictionProvince,
+    locality: petJurisdictionLocality,
+    localityId: petLocalityId,
+    placeMethod: petPlaceMethod,
+  });
 
   // Run matcher (defensive — failure must never block the insert).
   let alertableDiseases: import("@/lib/domain/symptom-matcher").DiseaseMatch[] = [];
@@ -218,6 +236,7 @@ export async function createSymptomObservedWriter(
           pet_jurisdiction_locality: petJurisdictionLocality,
           pet_species: petSpecies,
           ...(isRabiesEscalation ? { bite_observation_active: true } : {}),
+          ...(signalPlace ? { place: signalPlace } : {}),
         });
 
         // PLAIN insert — outbreak_signal is intentionally non-idempotent.
@@ -249,6 +268,9 @@ export async function createSymptomObservedWriter(
           {
             jurisdictionProvince: petJurisdictionProvince,
             jurisdictionLocality: petJurisdictionLocality,
+            ...(petLocalityId !== undefined
+              ? { localityId: petLocalityId, placeMethod: petPlaceMethod ?? null }
+              : {}),
           },
         );
 

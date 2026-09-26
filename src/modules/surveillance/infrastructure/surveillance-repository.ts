@@ -390,6 +390,9 @@ export class SurveillanceRepository {
         .select({
           jurisdictionProvince: pets.jurisdictionProvince,
           jurisdictionLocality: pets.jurisdictionLocality,
+          // localidades-por-id D3: the row travels with the names.
+          localityId: pets.localityId,
+          placeMethod: pets.placeMethod,
         })
         .from(pets)
         .where(eq(pets.id, event.petId));

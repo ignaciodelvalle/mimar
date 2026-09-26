@@ -76,6 +76,12 @@ export type EnoTarget = {
   jurisdictionLocality?: string | null;
 };
 
+/**
+ * The target's catalogue row, snapshotted beside the names (localidades-por-id
+ * D3). `localityId` null = no single row; `placeMethod` null = not recorded.
+ */
+export type TargetPlace = { localityId: string | null; placeMethod: string | null };
+
 // ---------------------------------------------------------------------------
 // Case keys
 // ---------------------------------------------------------------------------

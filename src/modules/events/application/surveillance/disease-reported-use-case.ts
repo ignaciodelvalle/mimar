@@ -110,7 +110,14 @@ export function isDiseaseReportedCode(value: string): value is DiseaseReportedCo
 }
 
 export type CreateDiseaseReportedInput = {
-  pet: { id: string; jurisdictionProvince: string | null; jurisdictionLocality: string | null };
+  pet: {
+    id: string;
+    jurisdictionProvince: string | null;
+    jurisdictionLocality: string | null;
+    /** localidades-por-id D3: the home's catalogue row, snapshotted with the names. */
+    localityId?: string | null;
+    placeMethod?: string | null;
+  };
   /** The reporting vet. Their matrícula is what the action verified. */
   vet: { userId: string };
   eventAuthorship: {
@@ -244,6 +251,9 @@ export async function createDiseaseReported(
         {
           jurisdictionProvince: pet.jurisdictionProvince,
           jurisdictionLocality: pet.jurisdictionLocality,
+          ...(pet.localityId !== undefined
+            ? { localityId: pet.localityId, placeMethod: pet.placeMethod ?? null }
+            : {}),
         },
         now,
       );

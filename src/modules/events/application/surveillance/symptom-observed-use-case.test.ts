@@ -212,6 +212,45 @@ describe("createSymptomObservedWriter", () => {
     expect(alertInput.pet).toEqual({ id: petId, name: "Firulais" });
   });
 
+  // localidades-por-id D3: the signal carries the home place and its outbox
+  // row snapshots the home's catalogue row beside the names.
+  it("the signal carries the home place and its outbox row snapshots the row", async () => {
+    mockMatchSymptoms.mockReturnValue([{ symptom_code: "symptom_1" }]);
+    mockAggregateDiseaseMatches.mockReturnValue([
+      {
+        disease_code: "rabies_suspected",
+        disease_label: "Rabia sospechada",
+        triggers_alert: true,
+        is_reportable: true,
+        high_count: 2,
+        medium_count: 1,
+        low_count: 0,
+        matched_symptoms: ["symptom_1"],
+      },
+    ]);
+    const HOME = "11111111-1111-4111-8111-111111111111";
+    const repo = makeRepo();
+    repo.insertEvent
+      .mockResolvedValueOnce({ id: randomUUID() })
+      .mockResolvedValueOnce({ id: randomUUID() });
+    await createSymptomObservedWriter(
+      { ...baseParams, rabiesObservationStatus: null, petLocalityId: HOME, petPlaceMethod: null },
+      {
+        repo: repo as unknown as Pick<
+          EventsRepository,
+          "insertEvent" | "insertEventIdempotent" | "enqueueOutbox"
+        >,
+        transaction: makeTransaction(),
+        flushNotifications: makeFlushNotifications(),
+      },
+    );
+    const signal = repo.insertEvent.mock.calls[1]?.[0] as { payload: Record<string, unknown> };
+    expect(signal.payload.place).toMatchObject({
+      resolved: { locality_id: HOME, method: "catalogue_id" },
+    });
+    expect(repo.enqueueOutbox.mock.calls[0]?.[2]).toMatchObject({ localityId: HOME });
+  });
+
   it("pushes urgent owner notification when rabies escalation is active", async () => {
     const disease = {
       disease_code: "rabies_suspected",

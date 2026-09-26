@@ -233,6 +233,30 @@ describe("recordDiseaseDiagnosisWriter", () => {
     expect(signalOutboxCall[1].eventType).toBe("outbreak_signal");
   });
 
+  // localidades-por-id D3: the signal carries the home `place`, and both
+  // outbox rows snapshot the home's catalogue row beside its names.
+  it("the signal carries the home place and both outbox rows snapshot its row", async () => {
+    const repo = makeRepo();
+    const HOME = "11111111-1111-4111-8111-111111111111";
+    await recordDiseaseDiagnosisWriter(
+      { ...BASE_INPUT, petLocalityId: HOME, petPlaceMethod: "indec_id" },
+      {
+        repo,
+        transaction: makeTx(),
+        flushNotifications: vi.fn(),
+        enqueueEnoTrigger: makeEnqueueEnoTrigger(),
+      },
+    );
+    const signal = (repo.insertEvent as ReturnType<typeof vi.fn>).mock.calls[1][0];
+    expect(signal.payload.place).toEqual({
+      entered: { province: "Buenos Aires", locality: "La Plata", indec_id: null },
+      resolved: { locality_id: HOME, province_code: "AR-B", method: "indec_id" },
+    });
+    for (const call of (repo.enqueueOutbox as ReturnType<typeof vi.fn>).mock.calls) {
+      expect(call[2]).toMatchObject({ localityId: HOME, placeMethod: "indec_id" });
+    }
+  });
+
   it("does NOT emit outbreak_signal for non-reportable disease", async () => {
     const repo = makeRepo();
 

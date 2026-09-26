@@ -27,6 +27,7 @@
 //   the ENQUEUE is now atomic with the event.
 
 import { validateEventPayload } from "@/lib/events/event-schemas";
+import { homePlace } from "@/lib/events/home-place";
 import { maybeNotifyOwnersOfPublicAlert } from "@/lib/infra/owner-disease-alerts";
 import { findDisease, isReportable } from "@/lib/reference/diseases";
 
@@ -45,6 +46,13 @@ export type RecordDiseaseDiagnosisWriterInput = {
   petJurisdictionCountry: string;
   petJurisdictionProvince: string | null;
   petJurisdictionLocality: string | null;
+  /**
+   * The home's catalogue row, read with the names (localidades-por-id D3).
+   * Absent = not snapshotted: the signal carries no place and the outbox
+   * records none. null = the home names no single row.
+   */
+  petLocalityId?: string | null;
+  petPlaceMethod?: string | null;
   vetUserId: string;
   vetDisplayName: string;
   diseaseCode: string;
@@ -113,6 +121,22 @@ export async function recordDiseaseDiagnosisWriter(
 
   const pendingNotifications: NewNotification[] = [];
 
+  // The home snapshot the outbox rows carry, names and catalogue row together
+  // (localidades-por-id D3), and the same home as the signal's `place`.
+  const homeSnapshot = {
+    jurisdictionProvince: params.petJurisdictionProvince,
+    jurisdictionLocality: params.petJurisdictionLocality,
+    ...(params.petLocalityId !== undefined
+      ? { localityId: params.petLocalityId, placeMethod: params.petPlaceMethod ?? null }
+      : {}),
+  };
+  const signalPlace = homePlace({
+    province: params.petJurisdictionProvince,
+    locality: params.petJurisdictionLocality,
+    localityId: params.petLocalityId,
+    placeMethod: params.petPlaceMethod,
+  });
+
   try {
     await deps.transaction(async (tx) => {
       const diagnosisPayload = validateEventPayload("clinical_info_logged", {
@@ -155,10 +179,7 @@ export async function recordDiseaseDiagnosisWriter(
           eventType: "clinical_info_logged",
           payload: diagnosisPayload as Record<string, unknown>,
         },
-        {
-          jurisdictionProvince: params.petJurisdictionProvince,
-          jurisdictionLocality: params.petJurisdictionLocality,
-        },
+        homeSnapshot,
       );
 
       // P1-3 DURABILITY: enqueue the ENO govt-fanout row IN THIS SAME tx, so it
@@ -196,6 +217,7 @@ export async function recordDiseaseDiagnosisWriter(
           pet_jurisdiction_province: params.petJurisdictionProvince,
           pet_jurisdiction_locality: params.petJurisdictionLocality,
           pet_species: params.petSpecies,
+          ...(signalPlace ? { place: signalPlace } : {}),
         });
 
         const signalEvent = await deps.repo.insertEvent(
@@ -223,10 +245,7 @@ export async function recordDiseaseDiagnosisWriter(
             eventType: "outbreak_signal",
             payload: signalPayload as Record<string, unknown>,
           },
-          {
-            jurisdictionProvince: params.petJurisdictionProvince,
-            jurisdictionLocality: params.petJurisdictionLocality,
-          },
+          homeSnapshot,
         );
 
         // Build a minimal pet shape for routeOutbreakSignalNotifications.

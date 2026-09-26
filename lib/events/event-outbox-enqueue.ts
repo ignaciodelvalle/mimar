@@ -48,7 +48,7 @@ import { sql } from "drizzle-orm";
 
 import { eventNotificationOutbox } from "@/db/schema";
 import { resolveEnoTargetJurisdiction } from "./eno-target-jurisdiction";
-import { OUTBOX_RULES, enoCaseKey } from "./event-outbox-rules";
+import { OUTBOX_RULES, type TargetPlace, enoCaseKey } from "./event-outbox-rules";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,7 +73,42 @@ const existing = (column: string) => sql.raw(`"event_notification_outbox"."${col
 type PetInput = {
   jurisdictionProvince?: string | null;
   jurisdictionLocality?: string | null;
+  /**
+   * The snapshot's catalogue row, read in the same transaction as the names
+   * (localidades-por-id D3). ABSENT = the caller snapshots no id: the row
+   * records no place (method NULL). null = no single row: 'unresolved'.
+   */
+  localityId?: string | null;
+  placeMethod?: string | null;
 };
+
+/**
+ * The target place BY ID, from the same source as the target names: the bite
+ * case the row routes to, else the event's own `place`, else the caller's
+ * snapshot. Never re-read from the pet here; never a homonym picked by name.
+ */
+function targetPlace(
+  payload: Record<string, unknown>,
+  routedTo: { place?: TargetPlace },
+  pet: PetInput,
+): TargetPlace {
+  if (routedTo.place) return routedTo.place;
+  const place = payload.place as
+    | { resolved?: { locality_id?: string; method?: string } | null }
+    | undefined;
+  if (place && typeof place === "object") {
+    const resolved = place.resolved;
+    return resolved?.locality_id
+      ? { localityId: resolved.locality_id, placeMethod: resolved.method ?? null }
+      : { localityId: null, placeMethod: "unresolved" };
+  }
+  if (!("localityId" in pet) || pet.localityId === undefined) {
+    return { localityId: null, placeMethod: null };
+  }
+  return pet.localityId
+    ? { localityId: pet.localityId, placeMethod: pet.placeMethod ?? "catalogue_id" }
+    : { localityId: null, placeMethod: pet.placeMethod ?? "unresolved" };
+}
 
 // ---------------------------------------------------------------------------
 // Main export
@@ -107,12 +142,15 @@ export async function enqueueOutboxForEvent(
     const family = rule.caseFamily ? rule.caseFamily(event.payload) : null;
     const target = family ? await resolveEnoTargetJurisdiction(tx, event, pet) : pet;
     const caseKey = family ? enoCaseKey(family, event.petId, target) : null;
+    const place = targetPlace(event.payload, target as { place?: TargetPlace }, pet);
 
     const row = {
       sourceEventId: event.id,
       targetKind: rule.target_kind,
       targetJurisdictionProvince: target.jurisdictionProvince ?? null,
       targetJurisdictionLocality: target.jurisdictionLocality ?? null,
+      targetLocalityId: place.localityId,
+      targetPlaceMethod: place.placeMethod,
       payloadSnapshot: snapshot,
       slaDueAt,
       status: "pending" as const,
