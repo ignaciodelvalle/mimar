@@ -54,12 +54,17 @@ import type { EventType } from "../db/schema";
 // db-free, so a static import here is safe (it does NOT trigger the deferred
 // db/index.ts load that the env bootstrap below must precede).
 import {
+  type HistoryFunnelChain,
+  type SeedHolderPlan,
+  acceptsHistoryFunnelChain,
   dateInYear,
   makeMulberry32,
   makeRegisteredByPicker,
   monthlyEventCount,
   pickDateInMonth,
   pickRegisteredYear,
+  planHistoryFunnelOwnerships,
+  planShelterHandoffOwnerships,
   provinceProfile,
   resolveHistoryLossOutcomes,
 } from "./seed-history-utils";
@@ -608,6 +613,25 @@ async function registerSeedPet(
   // result.notifications is deliberately DROPPED — see the doc comment above.
   const value = result.value as NonNullable<typeof result.value>;
   return { petId: value.petId };
+}
+
+/**
+ * Apply a holder plan (scripts/seed-history-utils.ts) to a pet registerPet just
+ * created: end its live owner row, then insert the planned rows. In that order,
+ * so the one-active-owner-per-pet index never sees two live owners.
+ */
+async function writeSeedHolderPlan(petId: string, plan: SeedHolderPlan): Promise<void> {
+  if (plan.registrationOwnerEndedAt) {
+    await db
+      .update(ownerships)
+      .set({ endedAt: plan.registrationOwnerEndedAt })
+      .where(
+        and(eq(ownerships.petId, petId), eq(ownerships.role, "owner"), isNull(ownerships.endedAt)),
+      );
+  }
+  if (plan.rows.length > 0) {
+    await db.insert(ownerships).values(plan.rows.map((r) => ({ ...r, petId })));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1797,7 +1821,7 @@ async function seedPets(
     const eventRows: Array<Record<string, unknown>> = [];
     // Cache-column corrections applied after registration, grouped so they cost
     // one UPDATE per distinct shape instead of one per pet.
-    const shelterOwnerships: Array<{ petId: string; orgId: string }> = [];
+    const shelterHolderPlans: Array<{ petId: string; plan: SeedHolderPlan }> = [];
     const lostPetIds: string[] = [];
     const deceasedPetIds: Array<{ petId: string; deceasedAt: Date }> = [];
 
@@ -1847,11 +1871,16 @@ async function seedPets(
       const petId = registered.petId;
 
       // Shelter custody: registerPet always writes an OWNER ownership (its
-      // ParsedPet has no notion of an organization holding the animal), so the
-      // ~2% shelter pets have that row re-pointed at the org afterwards.
-      if (shelterOrg) {
-        shelterOwnerships.push({ petId, orgId: shelterOrg.id });
-      }
+      // ParsedPet has no notion of an organization holding the animal). The
+      // ~2% shelter pets are then handed to the org on the spine — a
+      // custody_transferred owner → shelter_custody (citizen_to_org_handoff)
+      // an hour after registration — and their rows follow that event (and the
+      // adoption below, when there is one) via planShelterHandoffOwnerships.
+      // Re-pointing the row without an event used to leave a shelter_custody
+      // row no fact on the spine explains (holder drift, audit K3/W8).
+      const handoffAt = shelterOrg
+        ? new Date(Math.min(registeredAt.getTime() + 3_600_000, ANCHOR_MS))
+        : null;
 
       // Build events
       const evts = buildPetEvents(
@@ -1922,24 +1951,65 @@ async function seedPets(
       // org→owner handoff so the adoption-event family is non-empty; the
       // analytics adoption RATE is separately driven by pet_registered
       // acquisition_method='adopted' (set in buildPetEvents).
-      if (shelterOrg && rng() < 0.5) {
+      if (shelterOrg && handoffAt) {
         evts.push({
           petId,
-          eventType: "adoption_finalized" satisfies EventType,
-          occurredAt: randomWindowDate(WINDOW_DAYS),
+          eventType: "custody_transferred" satisfies EventType,
+          occurredAt: handoffAt,
           recordedByUserId: ownerUserId,
           authorRole: "shelter",
           authorVerified: true,
           authorOrganizationId: shelterOrg.id,
-          payload: {
-            source: "seed-panorama",
-            previous_owner_organization_id: shelterOrg.id,
-            adopter_user_id: ownerUserId,
-            foster_user_id: null,
-            contract_attachment_id: null,
-            post_adoption_followup_months: pick([6, 12]),
+          payload: validateEventPayload("custody_transferred", {
+            from_user_id: ownerUserId,
+            from_organization_id: null,
+            to_user_id: null,
+            to_organization_id: shelterOrg.id,
+            from_role: "owner",
+            to_role: "shelter_custody",
+            reason: "citizen_to_org_handoff",
+            foster_ended_event_id: null,
             notes: null,
-          },
+          }),
+        });
+        let adoptionAt: Date | null = null;
+        if (rng() < 0.5) {
+          // Both draws are made whether or not the adoption is emitted, so the
+          // rng stream downstream does not depend on the skip below.
+          const drawnAt = randomWindowDate(WINDOW_DAYS);
+          const followupMonths = pick([6, 12]);
+          // An adoption can only follow the hand-off; one drawn before it is
+          // dropped rather than moved, so the window's date spread is kept.
+          if (drawnAt.getTime() > handoffAt.getTime()) {
+            adoptionAt = drawnAt;
+            evts.push({
+              petId,
+              eventType: "adoption_finalized" satisfies EventType,
+              occurredAt: adoptionAt,
+              recordedByUserId: ownerUserId,
+              authorRole: "shelter",
+              authorVerified: true,
+              authorOrganizationId: shelterOrg.id,
+              payload: {
+                source: "seed-panorama",
+                previous_owner_organization_id: shelterOrg.id,
+                adopter_user_id: ownerUserId,
+                foster_user_id: null,
+                contract_attachment_id: null,
+                post_adoption_followup_months: followupMonths,
+                notes: null,
+              },
+            });
+          }
+        }
+        shelterHolderPlans.push({
+          petId,
+          plan: planShelterHandoffOwnerships({
+            ownerUserId,
+            orgId: shelterOrg.id,
+            handoffAt,
+            adoptionAt,
+          }),
         });
       }
 
@@ -1997,15 +2067,11 @@ async function seedPets(
     // Each of these mirrors a fact the loop above already wrote to the event
     // spine; none of them invents state the spine does not carry.
 
-    // Shelter custody: re-point registerPet's owner ownership at the org.
-    for (let b = 0; b < shelterOwnerships.length; b += BATCH_SIZE) {
-      const batch = shelterOwnerships.slice(b, b + BATCH_SIZE);
-      for (const { petId, orgId } of batch) {
-        await db
-          .update(ownerships)
-          .set({ ownerUserId: null, ownerOrganizationId: orgId, role: "shelter_custody" })
-          .where(eq(ownerships.petId, petId));
-      }
+    // Shelter custody: end registerPet's owner row at the hand-off and insert
+    // the org's shelter_custody row (and the adopter's owner row) — backed by
+    // the custody_transferred / adoption_finalized events above.
+    for (const { petId, plan } of shelterHolderPlans) {
+      await writeSeedHolderPlan(petId, plan);
     }
 
     // status='lost' — backed by the status_changed(active→lost) event above.
@@ -3548,6 +3614,9 @@ async function seedModelProvinceHistory(
     // random from a whole province/locality, which without this map produces
     // deaths, bites and outbreaks dated before the pet was ever registered.
     const registeredAtMs = new Map<string, number>();
+    // pet id → the adoption-funnel chains emitted for it, in order. Step 8
+    // writes the ownerships rows they imply (planHistoryFunnelOwnerships).
+    const funnelChainsByPet = new Map<string, HistoryFunnelChain[]>();
 
     const bump = (type: string): void => {
       eventCounts[type] = (eventCounts[type] ?? 0) + 1;
@@ -3918,8 +3987,10 @@ async function seedModelProvinceHistory(
 
           // --- adoption funnel: shelter_intake_recorded + foster_assigned + adoption_finalized ---
           // Each "chain" models one pet moving through the full custody pipeline.
-          // The custody funnel counts them independently via JOIN to pets, so
-          // emitting the events (without changing ownerships) is sufficient.
+          // The custody funnel counts them via JOIN to pets; the ownerships rows
+          // the app writers would have written alongside are planned per pet
+          // (funnelChainsByPet → planHistoryFunnelOwnerships) and written in
+          // step 8, so the holder replay agrees with the rows.
           const adoptCount = monthlyEventCount(
             Math.max(1, Math.round(monthlyBase * 0.6)),
             archetype,
@@ -3939,6 +4010,16 @@ async function seedModelProvinceHistory(
             const adoptionAt = new Date(
               Math.min(intakeAt.getTime() + randInt(21, 60) * 86_400_000, ANCHOR.getTime()),
             );
+            // The payload picks are drawn HERE, in their original order, so a
+            // skipped chain consumes exactly the draws an emitted one does and
+            // the deterministic rng stream downstream is unchanged.
+            const intakeReason = pick(["stray", "surrender", "transfer"] as const);
+            const followupMonths = pick([6, 12] as const);
+            const petChains = funnelChainsByPet.get(petId) ?? [];
+            const chain = { intakeAt, fosterAt, adoptionAt };
+            if (!acceptsHistoryFunnelChain(petChains.at(-1), chain)) continue;
+            petChains.push(chain);
+            funnelChainsByPet.set(petId, petChains);
 
             eventRows.push({
               petId,
@@ -3949,7 +4030,7 @@ async function seedModelProvinceHistory(
               authorVerified: true,
               payload: {
                 source: "seed-panorama-history",
-                intake_reason: pick(["stray", "surrender", "transfer"] as const),
+                intake_reason: intakeReason,
                 pet_jurisdiction_province: provinceName,
                 pet_jurisdiction_locality: loc.localityName,
               },
@@ -3985,7 +4066,7 @@ async function seedModelProvinceHistory(
                 adopter_user_id: ownerUserId,
                 foster_user_id: null,
                 contract_attachment_id: null,
-                post_adoption_followup_months: pick([6, 12] as const),
+                post_adoption_followup_months: followupMonths,
                 notes: null,
                 pet_jurisdiction_province: provinceName,
                 pet_jurisdiction_locality: loc.localityName,
@@ -4078,8 +4159,9 @@ async function seedModelProvinceHistory(
     }
 
     // 8. Stamp seed provenance, then batch insert the post-registration events.
-    //    Ownerships are no longer inserted here — registerPet wrote an owner
-    //    ownership for every history pet inside its registration transaction.
+    //    registerPet wrote an owner ownership for every history pet inside its
+    //    registration transaction; the adoption-funnel pets get the rest of
+    //    their holder rows after the events (writeSeedHolderPlan).
     const histTokens = perPetMeta.map((m) => m.token);
     for (let b = 0; b < histTokens.length; b += BATCH_SIZE) {
       const batch = histTokens.slice(b, b + BATCH_SIZE);
@@ -4097,6 +4179,12 @@ async function seedModelProvinceHistory(
           ? V
           : never,
       );
+    }
+
+    // Holder rows for the adoption-funnel pets — backed by the foster_assigned
+    // and adoption_finalized events just inserted.
+    for (const [petId, chains] of funnelChainsByPet) {
+      await writeSeedHolderPlan(petId, planHistoryFunnelOwnerships(ownerUserId, chains));
     }
 
     // status='lost' — backed by the still-open status_changed(active→lost)

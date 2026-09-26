@@ -315,7 +315,17 @@ async function ensurePampa(ownerId: string): Promise<{ id: string; created: bool
     })
     .returning({ id: pets.id });
 
-  await db.insert(ownerships).values({ petId: pet.id, ownerUserId: ownerId, role: "owner" });
+  // The owner row starts where the libreta's pet_registered says the
+  // registration happened, not at seed time: the holder drift fence replays
+  // that event and compares started_at (audit K3/W8).
+  const registration = PAMPA_EVENTS.find((e) => e.eventType === "pet_registered");
+  if (!registration) throw new Error("flagship-pampa-data has no pet_registered event");
+  await db.insert(ownerships).values({
+    petId: pet.id,
+    ownerUserId: ownerId,
+    role: "owner",
+    startedAt: dateAtNoonUtc(registration.date),
+  });
   log("OK", `${PAMPA_TOKEN} inserted → ${pet.id.slice(0, 8)}…`);
   return { id: pet.id, created: true };
 }

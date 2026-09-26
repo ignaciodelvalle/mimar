@@ -405,6 +405,7 @@ function endsAgree(stored: Date | null, derived: Date | null): boolean {
 
 /**
  * Pure comparison. Pairing, in order:
+ *   0. same role, subject, start and end (disambiguates same-instant ties);
  *   1. same role and subject, start within tolerance (the normal case);
  *   2. same role and subject, in start order (a row whose start drifted);
  *   3. same subject and start, different role: `wrong_role`.
@@ -444,7 +445,21 @@ export function compareHolderIntervals(
     }
   };
 
+  // 0. Exact matches first. Two intervals of one holder can share a start (a
+  // registration and an adoption in the same instant close one and open the
+  // next), and the rows come back in random id order within a tie; pairing on
+  // the start alone would cross them and report two wrong_ended_at.
   for (const d of derived) {
+    const s = [...freeStored].find(
+      (r) =>
+        r.role === d.role &&
+        rowSubject(r) === d.subject &&
+        sameInstant(r.startedAt, d.startedAt) &&
+        endsAgree(r.endedAt, d.endedAt),
+    );
+    if (s) pair(d, s);
+  }
+  for (const d of [...freeDerived]) {
     const s = [...freeStored].find(
       (r) =>
         r.role === d.role && rowSubject(r) === d.subject && sameInstant(r.startedAt, d.startedAt),

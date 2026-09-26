@@ -86,6 +86,8 @@ if (!STATS_ONLY) {
 import { EVENT_TYPES, type EventType } from "../db/schema";
 import { WHOLE_PROVINCE_LOCALITY } from "../lib/domain/jurisdiction-canonical";
 import { chipImplantSiteFromLocation } from "../lib/domain/microchip-implant-site";
+import { type HolderEvent, replayPetHolders } from "../lib/projections/pet-holders";
+import { normalizeStorylineHolderEvents } from "./seed-storyline-holders";
 import { DANGEROUS_STORYLINES } from "./seed-storylines-dangerous";
 import { STORYLINES as ICONIC_STORYLINES } from "./seed-storylines-iconic";
 import { LEGEND_STORYLINES } from "./seed-storylines-legends";
@@ -1069,12 +1071,9 @@ async function loadStoryline(
     })
     .returning({ id: schemas.pets.id });
 
-  await db.insert(schemas.ownerships).values({
-    petId: pet.id,
-    ownerUserId,
-    ownerOrganizationId: ownerOrgId,
-    role: ownerOrgId ? "shelter_custody" : "owner",
-  });
+  // Ownership rows are NOT written here any more: they are derived from the
+  // replay of the events inserted below (see the end of this function and
+  // scripts/seed-storyline-holders.ts), so they agree with the spine.
 
   // Upload photo if the storyline / manifest carries one
   const photoFile = resolvePhotoFile(story.pet);
@@ -1096,16 +1095,29 @@ async function loadStoryline(
   // guarantees the pairing: track the last started id and inject it into a
   // keyless ended payload.
   let lastRabiesObservationStartedId: string | null = null;
-  for (const e of story.events) {
+  // Custody facts rewritten to name real accounts and end with the resolved
+  // owner (scripts/seed-storyline-holders.ts documents rules R1-R5).
+  const knownIds = new Set<string>([...Object.values(userIds), ...Object.values(orgIds)]);
+  const storyEvents = normalizeStorylineHolderEvents(story.events, {
+    ownerUserId,
+    ownerOrgId,
+    fallbackUserId: userIds.alejo,
+    fallbackOrgId: orgIds["patitas-del-norte"],
+    isKnownId: (id) => knownIds.has(id),
+  });
+  const insertedHolderEvents: HolderEvent[] = [];
+  for (const e of storyEvents as any[]) {
     const author = pickAuthorFromRole(e.author_role, ownerResolved.user ?? null, userIds);
     // If the event author_role is 'shelter' or the pet is org-owned, attribute
-    // the event to that organization for the audit trail.
+    // the event to that organization for the audit trail. The normalizer may
+    // name the org explicitly (org-held registrations, citizen-pet shelters).
     const authorOrgId =
-      e.author_role === "shelter" && ownerOrgId
+      e.authorOrganizationId ??
+      (e.author_role === "shelter" && ownerOrgId
         ? ownerOrgId
         : ownerOrgId && e.author_role === "owner"
           ? ownerOrgId
-          : null;
+          : null);
     let payload: Record<string, unknown> = (e.payload ?? {}) as Record<string, unknown>;
     if (
       e.event_type === "rabies_observation_ended" &&
@@ -1127,6 +1139,16 @@ async function loadStoryline(
         payload,
       })
       .returning({ id: schemas.petEvents.id, recordedAt: schemas.petEvents.recordedAt });
+    insertedHolderEvents.push({
+      id: inserted.id,
+      eventType: e.event_type,
+      occurredAt: dateAtNoonUtc(e.date),
+      recordedAt: inserted.recordedAt,
+      payload,
+      recordedByUserId: author,
+      authorOrganizationId: authorOrgId,
+      authorRole: e.author_role ?? "system",
+    });
     if (e.event_type === "rabies_observation_started") {
       lastRabiesObservationStartedId = inserted.id;
     }
@@ -1137,6 +1159,36 @@ async function loadStoryline(
       };
     }
     eventCount++;
+  }
+
+  // Holder rows — exactly the intervals the spine just written replays to, the
+  // same map the holder drift detector (scripts/check-holder-drift.ts) checks.
+  const intervals = replayPetHolders(insertedHolderEvents);
+  const live = intervals.filter((i) => i.endedAt === null);
+  const ownerSubject = ownerOrgId ? `org:${ownerOrgId}` : `user:${ownerUserId}`;
+  const holdsIt = live.some(
+    (i) => i.subject === ownerSubject && (ownerOrgId !== null || i.role === "owner"),
+  );
+  const strangers = live.filter((i) => i.subject !== ownerSubject && i.role !== "foster");
+  if (!holdsIt || strangers.length > 0) {
+    throw new Error(
+      `${publicToken}: the storyline's custody events leave ${JSON.stringify(live.map((i) => `${i.role}:${i.subject}`))} live, not ${ownerSubject} — fix the storyline or scripts/seed-storyline-holders.ts`,
+    );
+  }
+  if (intervals.length > 0) {
+    await db.insert(schemas.ownerships).values(
+      intervals.map((i) => {
+        const [kind, id] = i.subject.split(":");
+        return {
+          petId: pet.id,
+          ownerUserId: kind === "user" ? id : null,
+          ownerOrganizationId: kind === "org" ? id : null,
+          role: i.role,
+          startedAt: i.startedAt,
+          endedAt: i.endedAt,
+        };
+      }),
+    );
   }
 
   // Canonical microchip row — legacy pets.* columns not written (ARCH-R).

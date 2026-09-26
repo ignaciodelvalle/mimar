@@ -1,15 +1,21 @@
 import { describe, expect, it } from "vitest";
 
+import { type HolderEvent, replayPetHolders } from "../lib/projections/pet-holders";
 import { replayPetStatus } from "../lib/projections/pet-status";
 import type { ProjectionEvent } from "../lib/projections/types";
 import {
+  type HistoryFunnelChain,
   type HistoryLossEpisode,
+  type SeedHolderPlan,
+  acceptsHistoryFunnelChain,
   dateInYear,
   makeMulberry32,
   monthIndex,
   monthlyEventCount,
   pickDateInMonth,
   pickRegisteredYear,
+  planHistoryFunnelOwnerships,
+  planShelterHandoffOwnerships,
   provinceProfile,
   resolveHistoryLossOutcomes,
   seasonalFactor,
@@ -363,5 +369,232 @@ describe("resolveHistoryLossOutcomes", () => {
     const a = resolve(episodes, { rng: makeMulberry32(9) });
     const b = resolve(episodes, { rng: makeMulberry32(9) });
     expect(a).toEqual(b);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Holder rows vs the holder replay (audit K3/W8)
+// ---------------------------------------------------------------------------
+//
+// The seed writes ownerships rows beside the custody events it appends; the
+// holder drift detector replays those events (lib/projections/pet-holders.ts)
+// and fails on any row that disagrees. These tests hold the planners to that
+// SAME replay, so a seed that drifts is caught here instead of by re-seeding.
+
+const USER = "00000000-0000-4000-8000-0000000000a1";
+const ORG = "00000000-0000-4000-8000-0000000000b1";
+const at = (iso: string) => new Date(iso);
+
+let seq = 0;
+function holderEvent(
+  eventType: string,
+  occurredAt: Date,
+  payload: Record<string, unknown>,
+  author: { user?: string; org?: string } = { user: USER },
+): HolderEvent {
+  seq++;
+  return {
+    id: `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`,
+    eventType,
+    occurredAt,
+    recordedAt: occurredAt,
+    payload,
+    recordedByUserId: author.user ?? null,
+    authorOrganizationId: author.org ?? null,
+  } as HolderEvent;
+}
+
+type Interval = { role: string; subject: string; startedAt: string; endedAt: string | null };
+
+function byStart(a: Interval, b: Interval): number {
+  return a.startedAt.localeCompare(b.startedAt) || a.role.localeCompare(b.role);
+}
+
+/** Registration row + planned rows, reduced to what the replay produces. */
+function rowsOf(registeredAt: Date, plan: SeedHolderPlan): Interval[] {
+  const all = [
+    {
+      role: "owner",
+      ownerUserId: USER as string | null,
+      ownerOrganizationId: null as string | null,
+      startedAt: registeredAt,
+      endedAt: plan.registrationOwnerEndedAt,
+    },
+    ...plan.rows,
+  ];
+  return all
+    .map((r) => ({
+      role: r.role,
+      subject: r.ownerOrganizationId ? `org:${r.ownerOrganizationId}` : `user:${r.ownerUserId}`,
+      startedAt: r.startedAt.toISOString(),
+      endedAt: r.endedAt?.toISOString() ?? null,
+    }))
+    .sort(byStart);
+}
+
+function replayed(events: HolderEvent[]): Interval[] {
+  return replayPetHolders(events)
+    .map((i) => ({
+      role: i.role,
+      subject: i.subject,
+      startedAt: i.startedAt.toISOString(),
+      endedAt: i.endedAt?.toISOString() ?? null,
+    }))
+    .sort(byStart);
+}
+
+function funnelEvents(registeredAt: Date, chains: HistoryFunnelChain[]): HolderEvent[] {
+  const events = [holderEvent("pet_registered", registeredAt, { custody_kind: "owner" })];
+  for (const c of chains) {
+    events.push(holderEvent("shelter_intake_recorded", c.intakeAt, { intake_reason: "stray" }));
+    events.push(holderEvent("foster_assigned", c.fosterAt, { foster_user_id: USER }));
+    events.push(
+      holderEvent("adoption_finalized", c.adoptionAt, {
+        adopter_user_id: USER,
+        previous_owner_organization_id: null,
+      }),
+    );
+  }
+  return events;
+}
+
+describe("acceptsHistoryFunnelChain", () => {
+  const chain = {
+    intakeAt: at("2025-03-01T00:00:00Z"),
+    fosterAt: at("2025-03-10T00:00:00Z"),
+    adoptionAt: at("2025-04-01T00:00:00Z"),
+  };
+
+  it("accepts a strictly increasing chain with no previous one", () => {
+    expect(acceptsHistoryFunnelChain(undefined, chain)).toBe(true);
+  });
+
+  it("rejects dates that collided at the anchor clamp", () => {
+    expect(acceptsHistoryFunnelChain(undefined, { ...chain, adoptionAt: chain.fosterAt })).toBe(
+      false,
+    );
+    expect(acceptsHistoryFunnelChain(undefined, { ...chain, fosterAt: chain.intakeAt })).toBe(
+      false,
+    );
+  });
+
+  it("rejects a chain that starts before the previous one finished", () => {
+    const next = {
+      intakeAt: at("2025-03-20T00:00:00Z"),
+      fosterAt: at("2025-04-05T00:00:00Z"),
+      adoptionAt: at("2025-05-01T00:00:00Z"),
+    };
+    expect(acceptsHistoryFunnelChain(chain, next)).toBe(false);
+    expect(
+      acceptsHistoryFunnelChain(chain, { ...next, intakeAt: at("2025-04-02T00:00:00Z") }),
+    ).toBe(true);
+  });
+});
+
+describe("planHistoryFunnelOwnerships", () => {
+  const registeredAt = at("2024-06-01T00:00:00Z");
+
+  it("leaves the registration row alone when there is no chain", () => {
+    const plan = planHistoryFunnelOwnerships(USER, []);
+    expect(plan).toEqual({ registrationOwnerEndedAt: null, rows: [] });
+    expect(rowsOf(registeredAt, plan)).toEqual(replayed(funnelEvents(registeredAt, [])));
+  });
+
+  it("matches the holder replay for one chain", () => {
+    const chains = [
+      {
+        intakeAt: at("2025-03-01T00:00:00Z"),
+        fosterAt: at("2025-03-10T00:00:00Z"),
+        adoptionAt: at("2025-04-01T00:00:00Z"),
+      },
+    ];
+    const plan = planHistoryFunnelOwnerships(USER, chains);
+    expect(rowsOf(registeredAt, plan)).toEqual(replayed(funnelEvents(registeredAt, chains)));
+  });
+
+  it("matches the holder replay for several accepted chains on one pet", () => {
+    const chains = [
+      {
+        intakeAt: at("2024-09-01T00:00:00Z"),
+        fosterAt: at("2024-09-10T00:00:00Z"),
+        adoptionAt: at("2024-10-01T00:00:00Z"),
+      },
+      {
+        intakeAt: at("2025-02-01T00:00:00Z"),
+        fosterAt: at("2025-02-15T00:00:00Z"),
+        adoptionAt: at("2025-03-20T00:00:00Z"),
+      },
+      {
+        intakeAt: at("2026-01-05T00:00:00Z"),
+        fosterAt: at("2026-01-20T00:00:00Z"),
+        adoptionAt: at("2026-02-28T00:00:00Z"),
+      },
+    ];
+    let prev: HistoryFunnelChain | undefined;
+    for (const c of chains) {
+      expect(acceptsHistoryFunnelChain(prev, c)).toBe(true);
+      prev = c;
+    }
+    const plan = planHistoryFunnelOwnerships(USER, chains);
+    const rows = rowsOf(registeredAt, plan);
+    expect(rows).toEqual(replayed(funnelEvents(registeredAt, chains)));
+    // Exactly one live owner row at the end, as the unique index demands.
+    expect(rows.filter((r) => r.role === "owner" && r.endedAt === null)).toHaveLength(1);
+  });
+});
+
+describe("planShelterHandoffOwnerships", () => {
+  const registeredAt = at("2026-01-10T12:00:00Z");
+  const handoffAt = at("2026-01-10T13:00:00Z");
+
+  function shelterEvents(adoptionAt: Date | null): HolderEvent[] {
+    const events = [
+      holderEvent("pet_registered", registeredAt, { custody_kind: "owner" }),
+      holderEvent(
+        "custody_transferred",
+        handoffAt,
+        {
+          from_user_id: USER,
+          to_organization_id: ORG,
+          from_role: "owner",
+          to_role: "shelter_custody",
+          reason: "citizen_to_org_handoff",
+          foster_ended_event_id: null,
+        },
+        { user: USER, org: ORG },
+      ),
+    ];
+    if (adoptionAt) {
+      events.push(
+        holderEvent(
+          "adoption_finalized",
+          adoptionAt,
+          { adopter_user_id: USER, previous_owner_organization_id: ORG },
+          { user: USER, org: ORG },
+        ),
+      );
+    }
+    return events;
+  }
+
+  it("matches the holder replay for a hand-off that stays in the shelter", () => {
+    const plan = planShelterHandoffOwnerships({
+      ownerUserId: USER,
+      orgId: ORG,
+      handoffAt,
+      adoptionAt: null,
+    });
+    expect(rowsOf(registeredAt, plan)).toEqual(replayed(shelterEvents(null)));
+  });
+
+  it("matches the holder replay for a hand-off followed by an adoption", () => {
+    const adoptionAt = at("2026-03-02T09:00:00Z");
+    const plan = planShelterHandoffOwnerships({
+      ownerUserId: USER,
+      orgId: ORG,
+      handoffAt,
+      adoptionAt,
+    });
+    expect(rowsOf(registeredAt, plan)).toEqual(replayed(shelterEvents(adoptionAt)));
   });
 });

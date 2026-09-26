@@ -434,3 +434,133 @@ function placeReunion(lostMs: number, boundMs: number, rng: () => number): Date 
     candidateMs < boundMs ? candidateMs : lostMs + Math.floor((boundMs - lostMs) / 2),
   );
 }
+
+// ---------------------------------------------------------------------------
+// Holder rows — ownerships agree with the custody events by construction
+// ---------------------------------------------------------------------------
+//
+// The panorama seeds append custody events (foster_assigned, adoption_finalized,
+// custody_transferred) outside the app's writers, so they must also write the
+// `ownerships` rows those writers would have written in the same transaction.
+// The holder drift detector (scripts/detect-pet-cache-drift.ts, fourth section)
+// replays the spine through lib/projections/pet-holders.ts and fails on any
+// row that disagrees. These planners are pure so the agreement is pinned by a
+// unit test against that replay, not only observable by re-seeding.
+
+/** One `ownerships` row a seed must insert (the caller adds pet_id). */
+export type SeedHolderRow = {
+  role: "owner" | "shelter_custody" | "foster";
+  ownerUserId: string | null;
+  ownerOrganizationId: string | null;
+  startedAt: Date;
+  endedAt: Date | null;
+};
+
+/** What the caller writes: close the registration's owner row, insert the rest. */
+export type SeedHolderPlan = {
+  /** ended_at for the live owner row registerPet wrote, or null to leave it live. */
+  registrationOwnerEndedAt: Date | null;
+  rows: SeedHolderRow[];
+};
+
+/** One adoption-funnel chain of the history seed, as its events date it. */
+export type HistoryFunnelChain = {
+  intakeAt: Date;
+  fosterAt: Date;
+  adoptionAt: Date;
+};
+
+/**
+ * Whether the history seed may emit this chain for a pet whose previous chain
+ * (if any) is `previous`. Two conditions, both about the replay, not realism:
+ *
+ *   - strictly increasing intake < foster < adoption. The dates are clamped to
+ *     the anchor, so they can collide, and events at one instant replay in id
+ *     order (random): an adoption applied before its own foster_assigned would
+ *     leave that foster interval open.
+ *   - no overlap with the previous chain: the pooled picker can draw the same
+ *     pet again while its last chain is still running, and a second
+ *     foster_assigned for a live foster is a no-op in the replay while it would
+ *     be a second row here.
+ */
+export function acceptsHistoryFunnelChain(
+  previous: HistoryFunnelChain | undefined,
+  chain: HistoryFunnelChain,
+): boolean {
+  const intake = chain.intakeAt.getTime();
+  const foster = chain.fosterAt.getTime();
+  const adoption = chain.adoptionAt.getTime();
+  if (!(intake < foster && foster < adoption)) return false;
+  return previous === undefined || previous.adoptionAt.getTime() < intake;
+}
+
+/**
+ * Rows for a history pet that went through `chains` (accepted, in order). The
+ * pet was registered by `ownerUserId`, who also authors every funnel event and
+ * is named as foster and adopter — the history seed has one synthetic user.
+ *
+ * Per chain, mirroring the app writers: foster_assigned opens a foster row
+ * (src/modules/foster/infrastructure/foster-repository.ts), and
+ * adoption_finalized ends every live row and opens the adopter's owner row
+ * (src/modules/adoption/infrastructure/adoption-finalize-writer.ts). The
+ * shelter_intake_recorded opens nothing: its author already holds the pet.
+ */
+export function planHistoryFunnelOwnerships(
+  ownerUserId: string,
+  chains: readonly HistoryFunnelChain[],
+): SeedHolderPlan {
+  const rows: SeedHolderRow[] = [];
+  for (let i = 0; i < chains.length; i++) {
+    const { fosterAt, adoptionAt } = chains[i];
+    rows.push({
+      role: "foster",
+      ownerUserId,
+      ownerOrganizationId: null,
+      startedAt: fosterAt,
+      endedAt: adoptionAt,
+    });
+    rows.push({
+      role: "owner",
+      ownerUserId,
+      ownerOrganizationId: null,
+      startedAt: adoptionAt,
+      endedAt: chains[i + 1]?.adoptionAt ?? null,
+    });
+  }
+  return { registrationOwnerEndedAt: chains[0]?.adoptionAt ?? null, rows };
+}
+
+/**
+ * Rows for a panorama shelter pet: registered by `ownerUserId`, handed to the
+ * shelter `orgId` at `handoffAt` (custody_transferred owner → shelter_custody,
+ * reason citizen_to_org_handoff), and optionally adopted back out at
+ * `adoptionAt` (adoption_finalized, adopter `ownerUserId`). The caller must
+ * guarantee handoffAt < adoptionAt.
+ */
+export function planShelterHandoffOwnerships(args: {
+  ownerUserId: string;
+  orgId: string;
+  handoffAt: Date;
+  adoptionAt: Date | null;
+}): SeedHolderPlan {
+  const { ownerUserId, orgId, handoffAt, adoptionAt } = args;
+  const rows: SeedHolderRow[] = [
+    {
+      role: "shelter_custody",
+      ownerUserId: null,
+      ownerOrganizationId: orgId,
+      startedAt: handoffAt,
+      endedAt: adoptionAt,
+    },
+  ];
+  if (adoptionAt) {
+    rows.push({
+      role: "owner",
+      ownerUserId,
+      ownerOrganizationId: null,
+      startedAt: adoptionAt,
+      endedAt: null,
+    });
+  }
+  return { registrationOwnerEndedAt: handoffAt, rows };
+}

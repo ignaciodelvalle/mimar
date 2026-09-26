@@ -1177,10 +1177,15 @@ async function seedShelterPets(orgId: string, intakeActorId: string): Promise<vo
         })
         .returning({ id: pets.id, publicToken: pets.publicToken });
 
+      // One instant for the intake, shared by the custody row and the
+      // shelter_intake_recorded that opens it (create-intake's shape): the
+      // holder drift fence replays that event and compares started_at.
+      const intakeAt = new Date();
       await tx.insert(ownerships).values({
         petId: pet.id,
         ownerOrganizationId: orgId,
         role: "shelter_custody",
+        startedAt: intakeAt,
       });
 
       // The pet's birth certificate in the spine. Without it these three rows
@@ -1192,7 +1197,7 @@ async function seedShelterPets(orgId: string, intakeActorId: string): Promise<vo
       //
       // It is dated one second before the intake so the spine reads in the
       // order the events actually happened: registered, then taken in.
-      const registeredAt = new Date(Date.now() - 1000);
+      const registeredAt = new Date(intakeAt.getTime() - 1000);
       await tx.insert(petEvents).values({
         petId: pet.id,
         eventType: "pet_registered",
@@ -1201,13 +1206,17 @@ async function seedShelterPets(orgId: string, intakeActorId: string): Promise<vo
         authorRole: "shelter",
         authorOrganizationId: orgId,
         authorVerified: true,
-        payload: { source: "seed-script" },
+        // The org takes the animal in, as create-intake registers it: a
+        // shelter_custody_by_org registration opens nothing by itself, the
+        // intake below opens the org's custody. Without custody_kind the
+        // schema default (owner) made the spine name the operator as owner.
+        payload: { source: "seed-script", custody_kind: "shelter_custody_by_org" },
       });
 
       await tx.insert(petEvents).values({
         petId: pet.id,
         eventType: "shelter_intake_recorded",
-        occurredAt: new Date(),
+        occurredAt: intakeAt,
         recordedByUserId: intakeActorId,
         authorRole: "shelter",
         authorOrganizationId: orgId,
