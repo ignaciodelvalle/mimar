@@ -13,11 +13,13 @@
 // A unit is never deleted and a provincial unit is never created by hand (the
 // seed owns one per province; it has no explicit members).
 //
-// DEFERRED ON PURPOSE: this editor cannot create a SUBMUNICIPAL unit. The
-// schema has the level (0253) for CABA's comunas under the ciudad unit, but no
-// kind maps to it here (LEVEL_OF_KIND below: `comuna` is the municipal-level
-// comuna of provinces like Santa Fe). CABA comunas as submunicipal units, with
-// editor support and a test, are a separate task, not a gap in this one.
+// This editor does not CREATE a submunicipal unit: CABA's 15 comunas are the
+// only ones, and the seed proposes them from the official barrio -> comuna
+// mapping (scripts/seed-authority-units.ts, localidades-por-id C5). Here
+// `comuna` is the municipal-level comuna of provinces like Santa Fe
+// (LEVEL_OF_KIND below). A seeded comuna is edited like any unit: renamed,
+// confirmed, and its barrios moved between comunas (a move stays at the target
+// unit's level) or removed from it (only a municipal membership must move).
 //
 // Every function takes its executor first — the module `db`, or a
 // transaction — so a caller can compose it and tests can roll it back. The
@@ -61,7 +63,7 @@ export const EDITABLE_UNIT_KINDS = [
   "departamento",
 ] as const satisfies readonly AuthorityUnitKind[];
 
-// No kind maps to `submunicipal` yet — see the deferral in the header.
+// No kind maps to `submunicipal`: the seed owns CABA's comunas (see the header).
 const LEVEL_OF_KIND: Record<(typeof EDITABLE_UNIT_KINDS)[number], AuthorityUnitLevel> = {
   region: "regional",
   municipio: "municipal",
@@ -200,9 +202,8 @@ export async function moveLocalityToUnit(
 }
 
 /**
- * Close a regional membership. A municipal one only moves. The submunicipal
- * branch is reachable only once submunicipal units exist, which this editor
- * cannot create yet (deferred: CABA comunas — see the header).
+ * Close a regional or submunicipal membership (a CABA comuna's, seeded — see
+ * the header). A municipal one only moves.
  */
 export async function removeLocalityFromUnit(
   exec: UnitExecutor,

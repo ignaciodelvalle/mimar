@@ -5,12 +5,14 @@
  *
  * WHAT IT WRITES. The plan is lib/place/authority-units-plan.ts: one
  * provincial unit per province, one municipio per Buenos Aires partido, ONE
- * ciudad unit over every CABA barrio, and elsewhere one unit per OFFICIAL LOCAL
+ * ciudad unit over every CABA barrio with one submunicipal comuna unit per
+ * comuna below it (C5: from the barrio's department, which migration 0267 and
+ * the CABA importer fill from the official mapping), and elsewhere one unit per OFFICIAL LOCAL
  * GOVERNMENT, read from the committed reference
  * lib/reference/locality-gobierno-local.json (never from the network; see
  * scripts/generate-locality-gobierno-local.ts). Every unit is inserted as a
- * DRAFT under its seed key; every live catalogue row with no active municipal
- * membership is opened into its planned unit. Idempotent, and ADDITIVE ONLY:
+ * DRAFT under its seed key; every live catalogue row with no active
+ * membership at a planned unit's level is opened into that unit. Idempotent, and ADDITIVE ONLY:
  *   - a unit that already exists (by seed key) is left exactly as it is — an
  *     admin's rename or confirmation is never overwritten;
  *   - a locality that already has an active membership is left where it is,
@@ -225,6 +227,7 @@ export async function applyAuthorityUnitPlan(
     province_code: u.provinceCode,
     name: u.name,
     indec_department_code: u.indecDepartmentCode,
+    parent_seed_key: u.parentSeedKey,
   }));
   const unitsJson = JSON.stringify(units);
 
@@ -247,7 +250,26 @@ export async function applyAuthorityUnitPlan(
              where p.province_code = x.province_code and p.kind = 'provincia')
       from jsonb_to_recordset(${unitsJson}::jsonb)
         as x(seed_key text, kind text, level text, province_code text, name text, indec_department_code text)
-     where x.level <> 'provincial'
+     where x.level not in ('provincial', 'submunicipal')
+    on conflict do nothing
+    returning id
+  `)) as unknown as unknown[];
+  // Submunicipal units (CABA's comunas) hang from their planned parent — the
+  // ciudad unit, inserted above — and fall back to the provincia only when an
+  // environment lacks it. A separate statement: one INSERT cannot see the rows
+  // it is itself inserting.
+  const submunicipal = (await tx.execute(sql`
+    insert into public.authority_units
+      (seed_key, kind, level, province_code, name, indec_department_code, parent_unit_id)
+    select x.seed_key, x.kind, x.level, x.province_code, x.name, x.indec_department_code,
+           coalesce(
+             (select p.id from public.authority_units p where p.seed_key = x.parent_seed_key),
+             (select p.id from public.authority_units p
+               where p.province_code = x.province_code and p.kind = 'provincia'))
+      from jsonb_to_recordset(${unitsJson}::jsonb)
+        as x(seed_key text, kind text, level text, province_code text, name text,
+             indec_department_code text, parent_seed_key text)
+     where x.level = 'submunicipal'
     on conflict do nothing
     returning id
   `)) as unknown as unknown[];
@@ -275,17 +297,20 @@ export async function applyAuthorityUnitPlan(
     returning id
   `)) as unknown as unknown[];
 
+  // Compared at the planned unit's own level: a barrio's ciudad membership is
+  // not "elsewhere" relative to its planned comuna.
   const [kept] = (await tx.execute(sql`
     select count(*)::int as n
       from jsonb_to_recordset(${members}::jsonb) as p(seed_key text, locality_id uuid)
+      join public.authority_units pu on pu.seed_key = p.seed_key
       join public.authority_unit_localities m
-        on m.locality_id = p.locality_id and m.valid_to is null and m.level = 'municipal'
+        on m.locality_id = p.locality_id and m.valid_to is null and m.level = pu.level
       join public.authority_units u on u.id = m.unit_id
      where u.seed_key is distinct from p.seed_key
   `)) as unknown as Array<{ n: number }>;
 
   return {
-    unitsCreated: provincial.length + others.length,
+    unitsCreated: provincial.length + others.length + submunicipal.length,
     membershipsOpened: opened.length,
     membershipsClosed: superseded.closed,
     keptElsewhere: kept?.n ?? 0,

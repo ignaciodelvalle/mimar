@@ -122,7 +122,7 @@ export function MoveLocalityForm({
   );
 }
 
-/** Close a regional membership (submunicipal units: deferred, see manage-units.ts). */
+/** Close a regional or submunicipal (CABA comuna) membership; see manage-units.ts. */
 export function RemoveMemberForm({
   unitId,
   localityId,

@@ -106,6 +106,54 @@ describe("planAuthorityUnits", () => {
     expect(caba.map((u) => u.seedKey)).toEqual(["ciudad:AR-C"]);
   });
 
+  // C5: CABA's comunas (Ley 1.777) are SUBMUNICIPAL units below the ciudad,
+  // from the barrio's department (INDEC's departments of CABA are its comunas).
+  it("each CABA comuna is a submunicipal unit below the ciudad, over the barrios naming it", () => {
+    const withDepartments = CATALOGUE.map((r) =>
+      r.id === "caba-palermo"
+        ? { ...r, departmentCode: "02098", departmentName: "Comuna 14" }
+        : r.id === "caba-belgrano-r"
+          ? { ...r, departmentCode: "02091", departmentName: "Comuna 13" }
+          : r,
+    );
+    const plan = planAuthorityUnits(withDepartments, REFERENCE);
+    const caba = plan.units.filter((u) => u.provinceCode === "AR-C" && u.level !== "provincial");
+    expect(caba.map((u) => u.seedKey)).toEqual([
+      "ciudad:AR-C",
+      "comuna:AR-C:02091",
+      "comuna:AR-C:02098",
+    ]);
+    // The ciudad still governs every barrio, with or without a comuna.
+    expect([...(caba[0]?.localityIds ?? [])].sort()).toEqual([
+      "caba-belgrano-r",
+      "caba-palermo",
+      "caba-recoleta",
+    ]);
+    expect(caba[2]).toEqual({
+      seedKey: "comuna:AR-C:02098",
+      kind: "comuna",
+      level: "submunicipal",
+      provinceCode: "AR-C",
+      name: "Comuna 14",
+      indecDepartmentCode: "02098",
+      parentSeedKey: "ciudad:AR-C",
+      localityIds: ["caba-palermo"],
+    });
+    expect(caba[1]?.localityIds).toEqual(["caba-belgrano-r"]);
+    // A barrio with no department (Recoleta here) is never guessed into a comuna.
+    expect(
+      plan.units.filter(
+        (u) => u.level === "submunicipal" && u.localityIds.includes("caba-recoleta"),
+      ),
+    ).toEqual([]);
+    expect(plan.unplaced).toEqual([]);
+  });
+
+  it("only CABA has submunicipal units: a department elsewhere is never a comuna", () => {
+    const plan = planAuthorityUnits(CATALOGUE, EMPTY_LOCAL_GOVERNMENTS);
+    expect(plan.units.filter((u) => u.level === "submunicipal")).toEqual([]);
+  });
+
   it("homonyms split by unit, within and across provinces", () => {
     const plan = planAuthorityUnits(CATALOGUE, REFERENCE);
     const alberti = unitOf(plan, "ba-mechita-alberti");

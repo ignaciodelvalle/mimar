@@ -23,6 +23,13 @@
 //   ar_localities centroids depend on these being non-NULL; the upsert below
 //   also BACKFILLS coordinates onto rows that predate this (imported NULL).
 // - indec_id stays null — these rows don't come from INDEC.
+// - department_code / department_name carry the barrio's COMUNA ("02091" /
+//   "Comuna 13"): INDEC's departments of CABA are its comunas. The mapping is
+//   the official one (lib/reference/caba-comunas.ts over the committed
+//   data.buenosaires.gob.ar resource); the import refuses to run when it does
+//   not cover the 48 barrios exactly. Rows imported before this carried NULL:
+//   the upsert below backfills them (and migration 0267 does it for existing
+//   environments without a re-import).
 // - This importer only ever inserts the 48 named barrios from CABA_BARRIOS, so
 //   it structurally CANNOT reintroduce the whole-province aggregate (the
 //   city-wide "Ciudad Autónoma de Buenos Aires" row). Do NOT add the whole city
@@ -45,6 +52,8 @@ import {
 // redistribute-caba-barrios.ts. We consume only name + centroid here; the
 // ar_localities locality_slug is derived by this script's own slugify()
 // (hyphenated), which differs from the geo-join slug carried on each entry.
+import { reconcileCabaComunas } from "@/lib/reference/caba-comunas";
+
 import { CABA_BARRIOS } from "./caba-barrios-data";
 
 const SOURCE: ArgentineLocalitySource = "caba_open_data";
@@ -55,7 +64,8 @@ const SOURCE_URL = "data.buenosaires.gob.ar (Ley CABA 1.777 — 48 barrios ofici
 // The canonical Ley CABA 1.777 barrio list (names + centroids) lives in
 // scripts/caba-barrios-data.ts (imported above as CABA_BARRIOS).
 
-function slugify(s: string): string {
+/** The catalogue slug of a barrio name (migration 0267 is keyed on it). */
+export function slugify(s: string): string {
   return s
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
@@ -63,6 +73,22 @@ function slugify(s: string): string {
     .replace(/\./g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+type Owned = Pick<
+  NewArgentineLocality,
+  | "source"
+  | "category"
+  | "localityName"
+  | "latitude"
+  | "longitude"
+  | "departmentCode"
+  | "departmentName"
+>;
+
+/** True when any column this importer owns differs from what it would write. */
+function differs(existing: Owned, wanted: Required<Owned>): boolean {
+  return (Object.keys(wanted) as Array<keyof Owned>).some((k) => existing[k] !== wanted[k]);
 }
 
 type Stats = {
@@ -84,6 +110,10 @@ export async function runImport(options?: { dryRun?: boolean }): Promise<Stats> 
   console.log(`Started CABA barrios import run ${run.id} (dryRun=${dryRun})`);
 
   try {
+    // Throws, naming every mismatch, unless the official comuna table covers
+    // the 48 barrios exactly — before a single row is written.
+    const comunaOf = reconcileCabaComunas(CABA_BARRIOS.map((b) => b.name));
+
     // Pre-fetch the active AR-C catalog ONCE and index it by slug, so the
     // per-barrio existence check is an in-memory lookup instead of 48 SELECTs
     // over remote latency. Inserts are flushed in a single multi-row INSERT and
@@ -106,18 +136,25 @@ export async function runImport(options?: { dryRun?: boolean }): Promise<Stats> 
       const latitude = barrio.lat.toFixed(7);
       const longitude = barrio.lng.toFixed(7);
       const existing = existingBySlug.get(slug);
+      const comuna = comunaOf.get(localityName);
+      if (!comuna) throw new Error(`no comuna for barrio ${localityName}`);
+      const departmentCode = comuna.departmentCode;
+      const departmentName = comuna.departmentName;
 
       if (existing) {
         // Already there. Bump last_imported_at + migrate source/version if it
         // came in via a different ingest path. Also BACKFILL the centroid onto
         // rows imported before we shipped coordinates (latitude/longitude NULL)
         // — panorama centroid-snapping drops any barrio row without coords.
-        const needsUpdate =
-          existing.source !== SOURCE ||
-          existing.category !== CATEGORY ||
-          existing.localityName !== localityName ||
-          existing.latitude !== latitude ||
-          existing.longitude !== longitude;
+        const needsUpdate = differs(existing, {
+          source: SOURCE,
+          category: CATEGORY,
+          localityName,
+          latitude,
+          longitude,
+          departmentCode,
+          departmentName,
+        });
         if (needsUpdate) {
           if (!dryRun) {
             await db
@@ -127,6 +164,8 @@ export async function runImport(options?: { dryRun?: boolean }): Promise<Stats> 
                 sourceVersion: "1.777",
                 category: CATEGORY,
                 localityName,
+                departmentCode,
+                departmentName,
                 latitude,
                 longitude,
                 lastImportedAt: now,
@@ -143,8 +182,8 @@ export async function runImport(options?: { dryRun?: boolean }): Promise<Stats> 
 
       toInsert.push({
         provinceCode: PROVINCE_CODE,
-        departmentName: null,
-        departmentCode: null,
+        departmentName,
+        departmentCode,
         localityName,
         localitySlug: slug,
         indecId: null,

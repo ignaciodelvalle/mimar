@@ -9,8 +9,14 @@
 //     (the official gobierno_local of every Buenos Aires locality is its
 //     partido: department 06007 → gobierno local 060007 — fenced on the
 //     committed reference).
-//   - CABA: ONE `ciudad` unit over every barrio (the barrios have no
-//     department). Never a unit per barrio.
+//   - CABA: ONE `ciudad` unit over every barrio, at municipal level. Never a
+//     unit per barrio. Below it, one SUBMUNICIPAL `comuna` unit per comuna
+//     (Ley CABA 1.777; localidades-por-id C5), over the barrios whose catalogue
+//     row names it as department (INDEC's departments of CABA are its comunas:
+//     02007 "Comuna 1" … 02105 "Comuna 15"; the official mapping is
+//     lib/reference/caba-comunas.ts). A barrio with no department gets the
+//     ciudad unit only — the comuna is never guessed. The comunas hang from the
+//     ciudad, so a barrio holds one municipal AND one submunicipal membership.
 //   - Every other province: the OFFICIAL LOCAL GOVERNMENT of the locality
 //     (Georef `gobierno_local_id`, lib/reference/locality-gobierno-local.json).
 //     A department is not a government there — Córdoba has 427 local
@@ -154,6 +160,13 @@ const CABA = "AR-C";
 const BUENOS_AIRES = "AR-B";
 export const CABA_CITY_NAME = "Ciudad Autónoma de Buenos Aires";
 
+export const CABA_CITY_SEED_KEY = `ciudad:${CABA}`;
+
+/** The seed key of a CABA comuna, by its INDEC department code. */
+export function cabaComunaSeedKey(departmentCode: string): string {
+  return `comuna:${CABA}:${departmentCode}`;
+}
+
 export function provincialSeedKey(provinceCode: string): string {
   return `provincia:${provinceCode}`;
 }
@@ -211,6 +224,12 @@ export function planAuthorityUnits(
     return key;
   };
 
+  const place = (unit: Omit<PlannedUnit, "localityIds">, localityId: string): void => {
+    const existing = units.get(unit.seedKey);
+    if (existing) existing.localityIds.push(localityId);
+    else units.set(unit.seedKey, { ...unit, localityIds: [localityId] });
+  };
+
   for (const row of rows) {
     if (!isGovernableLocality(row)) {
       excluded.push(row);
@@ -220,7 +239,7 @@ export function planAuthorityUnits(
     let unit: Omit<PlannedUnit, "localityIds">;
     if (row.provinceCode === CABA) {
       unit = {
-        seedKey: `ciudad:${CABA}`,
+        seedKey: CABA_CITY_SEED_KEY,
         kind: "ciudad",
         level: "municipal",
         provinceCode: CABA,
@@ -228,6 +247,20 @@ export function planAuthorityUnits(
         indecDepartmentCode: null,
         parentSeedKey: parent,
       };
+      if (row.departmentCode) {
+        place(
+          {
+            seedKey: cabaComunaSeedKey(row.departmentCode),
+            kind: "comuna",
+            level: "submunicipal",
+            provinceCode: CABA,
+            name: row.departmentName?.trim() || `Departamento ${row.departmentCode}`,
+            indecDepartmentCode: row.departmentCode,
+            parentSeedKey: CABA_CITY_SEED_KEY,
+          },
+          row.id,
+        );
+      }
     } else if (row.provinceCode !== BUENOS_AIRES && byGovernment.has(row.provinceCode)) {
       const governed = localGovernmentUnit(row, reference, parent);
       if (!governed) {
@@ -251,9 +284,7 @@ export function planAuthorityUnits(
       unplaced.push(row);
       continue;
     }
-    const existing = units.get(unit.seedKey);
-    if (existing) existing.localityIds.push(row.id);
-    else units.set(unit.seedKey, { ...unit, localityIds: [row.id] });
+    place(unit, row.id);
   }
 
   return {
