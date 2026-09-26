@@ -15,6 +15,14 @@
 //     stays as entered, and the event that recorded the place is never
 //     touched (P2).
 //
+// THE RECORD OF RECORD is place_resolutions, deliberately (stage D security
+// review): append-only by trigger, and it carries exactly what an audit row
+// would — who (actor_user_id), why (reason), when (created_at) and which
+// earlier resolution it replaces (supersedes_id). Writing an audit_log row as
+// well would be a second, driftable copy of the same fact. Note for the
+// fences: lint:audit-log detects mutations by Drizzle .insert/.update/.delete
+// only, so these raw-SQL writes are not measured by it either way.
+//
 // Subjects: cases and welfare_reports — rows written once at capture whose
 // place columns nothing re-derives. Pets are NOT resolved here: pets.locality_id
 // is a cache of the event spine (rederivePetCache would read an admin write as
