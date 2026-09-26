@@ -29,6 +29,7 @@ import {
   removeLocalityFromUnit,
   renameAuthorityUnit,
 } from "@/src/modules/organizations/application/authority-units/manage-units";
+import { closeRemovedLocalityMembership } from "@/src/modules/organizations/application/authority-units/removed-locality-memberships";
 
 export type { UnitEditError } from "@/src/modules/organizations/application/authority-units/manage-units";
 
@@ -55,6 +56,21 @@ export async function removeLocalityFromUnitAction(input: {
 }) {
   const { user } = await requireAdminOrRedirect();
   const result = await removeLocalityFromUnit(db, user.id, input);
+  if ("ok" in result) revalidateUnit(input.unitId);
+  return result;
+}
+
+/**
+ * E3: close the membership of a locality the INDEC import removed. Never
+ * automatic: an admin's act, with its reason, audited.
+ */
+export async function closeRemovedLocalityMembershipAction(input: {
+  localityId: string;
+  unitId: string;
+  reason: string;
+}) {
+  const { user } = await requireAdminOrRedirect();
+  const result = await closeRemovedLocalityMembership(db, user.id, input);
   if ("ok" in result) revalidateUnit(input.unitId);
   return result;
 }

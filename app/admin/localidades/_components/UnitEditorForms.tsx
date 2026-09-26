@@ -11,6 +11,7 @@
 import { useState, useTransition } from "react";
 
 import {
+  closeRemovedLocalityMembershipAction,
   confirmAuthorityUnitAction,
   createAuthorityUnitAction,
   moveLocalityToUnitAction,
@@ -175,6 +176,72 @@ export function RemoveMemberForm({
           loading={pending}
         >
           Quitar de la unidad
+        </OpButton>
+        <OpButton type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
+          Cancelar
+        </OpButton>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * E3: close the membership of a locality the INDEC import removed. A reason
+ * is required; the close is audited and never happens on its own.
+ */
+export function CloseRemovedMembershipForm({
+  unitId,
+  localityId,
+  localityName,
+}: {
+  unitId: string;
+  localityId: string;
+  localityName: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const { error, pending, run } = useUnitAction();
+
+  if (!open) {
+    return (
+      <OpButton type="button" variant="ghost" size="sm" onClick={() => setOpen(true)}>
+        Cerrar pertenencia
+      </OpButton>
+    );
+  }
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (reason.trim() === "" || pending) return;
+        run(
+          () => closeRemovedLocalityMembershipAction({ unitId, localityId, reason }),
+          () => "/admin/localidades",
+        );
+      }}
+    >
+      <OpField label={`Motivo para cerrar la pertenencia de ${localityName}`} required>
+        {({ id }) => (
+          <OpInput
+            id={id}
+            size="sm"
+            maxLength={500}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        )}
+      </OpField>
+      {error && <OpFormAlert>{error}</OpFormAlert>}
+      <div className="flex gap-2">
+        <OpButton
+          type="submit"
+          variant="danger"
+          size="sm"
+          disabled={reason.trim() === "" || pending}
+          loading={pending}
+        >
+          Cerrar pertenencia
         </OpButton>
         <OpButton type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
           Cancelar

@@ -21,6 +21,9 @@ const MESSAGES: Record<string, string> = {
   UNIT_NOT_CONFIRMED: "Confirmá la unidad con la autoridad antes de pasarle concesiones.",
   // localidades-por-id D9: the unresolved-place queue.
   NOT_UNRESOLVED: "Ese lugar ya se resolvió a una localidad. Recargá la lista.",
+  // localidades-por-id E3: memberships of localities the INDEC removed.
+  LOCALITY_NOT_REMOVED:
+    "Esa localidad sigue en el catálogo: su pertenencia no se cierra, se mueve a otra unidad.",
 };
 
 export function unitEditErrorMessage(error: string): string {

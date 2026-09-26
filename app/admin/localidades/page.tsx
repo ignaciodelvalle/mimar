@@ -22,11 +22,17 @@ import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
 import { PROVINCES, provinceByCode } from "@/lib/reference/ar-provincias";
 import { pluralizeEs } from "@/lib/utils/format";
 import { listAuthorityUnits } from "@/src/modules/organizations/application/authority-units/read-units";
+import { listRemovedLocalityMemberships } from "@/src/modules/organizations/application/authority-units/removed-locality-memberships";
 
-import { CreateUnitForm } from "./_components/UnitEditorForms";
+import { CloseRemovedMembershipForm, CreateUnitForm } from "./_components/UnitEditorForms";
 import { unitKindLabel, unitLevelLabel } from "./_components/unit-labels";
 
 export const dynamic = "force-dynamic";
+
+/** E3: how many removed localities still belong to a unit, in words. */
+function removedTitle(n: number): string {
+  return `Dadas de baja por el INDEC y todavía en una unidad: ${n} ${pluralizeEs(n, "localidad")}`;
+}
 
 const DEFAULT_PROVINCE = "AR-B";
 
@@ -42,6 +48,8 @@ export default async function AdminLocalidadesPage({
   const provinceCode = province?.code ?? DEFAULT_PROVINCE;
   const units = await listAuthorityUnits(db, provinceCode);
   const drafts = units.filter((u) => u.status === "draft").length;
+  // E3: localities the INDEC import removed that still belong to a unit.
+  const removed = await listRemovedLocalityMemberships(db, { provinceCode });
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
@@ -140,6 +148,34 @@ export default async function AdminLocalidadesPage({
           )}
         </OpCardBody>
       </OpCard>
+
+      {removed.length > 0 && (
+        <OpCard>
+          <OpCardHead title={removedTitle(removed.length)} />
+          <OpCardBody>
+            <p className="mb-3 text-sm text-ln-op-mute">
+              El catálogo ya no las ofrece, pero su pertenencia sigue abierta. Cerrala cuando
+              corresponda: queda registrado quién lo hizo, cuándo y por qué. Nunca se cierra sola.
+            </p>
+            <ul className="divide-y divide-ln-op-line">
+              {removed.map((r) => (
+                <li key={`${r.unitId}-${r.localityId}`} className="space-y-2 py-3">
+                  <p className="m-0 text-sm text-ln-op-ink">
+                    {r.departmentName ? `${r.localityName} (${r.departmentName})` : r.localityName}
+                    {" · "}
+                    {r.unitName} ({unitLevelLabel(r.level)})
+                  </p>
+                  <CloseRemovedMembershipForm
+                    unitId={r.unitId}
+                    localityId={r.localityId}
+                    localityName={r.localityName}
+                  />
+                </li>
+              ))}
+            </ul>
+          </OpCardBody>
+        </OpCard>
+      )}
 
       <OpCard>
         <OpCardHead title="Nueva unidad" />
