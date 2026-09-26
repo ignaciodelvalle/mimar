@@ -152,14 +152,12 @@ describe("sweepScopeParity", () => {
       const alberti = await localityId(tx, MECHITA_ALBERTI);
       const villaMaria = await localityId(tx, VILLA_MARIA_BA);
       const user = randomUUID();
-      await tx
-        .insert(profiles)
-        .values({
-          id: user,
-          displayName: "D7 mixed probe",
-          role: "govt",
-          accountType: "institutional",
-        });
+      await tx.insert(profiles).values({
+        id: user,
+        displayName: "D7 mixed probe",
+        role: "govt",
+        accountType: "institutional",
+      });
       // Legacy grant in A (Villa María, by name) + unit grant in B (Alberti's unit).
       await tx.insert(govtAssignments).values([
         { userId: user, jurisdictionProvince: "Buenos Aires", jurisdictionLocality: "Villa María" },
