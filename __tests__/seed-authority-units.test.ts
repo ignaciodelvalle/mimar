@@ -207,6 +207,22 @@ describe("superseded department units (plan step 6)", () => {
       expect((await activeUnitOf(tx, VILLA_MARIA_CBA)).unit_id).toBe(dept);
     });
   });
+
+  // Step-6 review: the guard is `u.status = 'draft'`. A departamento an
+  // authority CONFIRMED is its decision, not the seed's proposal — a reseed
+  // that no longer proposes it must leave its memberships where they are.
+  it("a CONFIRMED superseded departamento keeps its memberships through a reseed", async () => {
+    await inRolledBackTx(async (tx) => {
+      const dept = await backInADepartment(tx, "departamento:AR-X:fence-confirmed", null);
+      await tx.execute(sql`
+        update public.authority_units set status = 'confirmed', confirmed_at = now()
+         where id = ${dept}::uuid
+      `);
+      const result = await applyAuthorityUnitPlan(tx, await planFromDatabase(tx));
+      expect((await activeUnitOf(tx, VILLA_MARIA_CBA)).unit_id).toBe(dept);
+      expect(result.referencedSuperseded.some((u) => u.unitId === dept)).toBe(false);
+    });
+  });
 });
 
 describe("the partial-grant report (D2)", () => {
