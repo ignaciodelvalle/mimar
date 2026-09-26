@@ -2758,7 +2758,7 @@
       "enforcer": [
         "scripts/check-rls-coverage.ts:765",
         "package.json:36 lint:rls",
-        "__tests__/rls/coverage.test.ts:230-321",
+        "__tests__/rls/coverage.test.ts:234-325",
         "__tests__/check-rls-coverage.test.ts",
         "__tests__/rls/coverage.test.ts (views run as the caller, not as their owner — A02-3)"
       ],
@@ -2943,7 +2943,7 @@
         "__tests__/check-subject-rights-coverage.test.ts:1-9,74-171"
       ],
       "enforcer": [
-        "scripts/check-subject-rights-coverage.ts:702",
+        "scripts/check-subject-rights-coverage.ts:710",
         "package.json:40 lint:subject-rights",
         "__tests__/check-subject-rights-coverage.test.ts:57,95,272,279"
       ],
@@ -3251,7 +3251,7 @@
         "AGENTS.md:446"
       ],
       "enforcer": [
-        "db/schema.ts:4424-4427"
+        "db/schema.ts:4489-4492"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3271,7 +3271,7 @@
         "AGENTS.md:474"
       ],
       "enforcer": [
-        "db/schema.ts:4750-4752"
+        "db/schema.ts:4815-4817"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3290,7 +3290,7 @@
         "AGENTS.md:487"
       ],
       "enforcer": [
-        "db/schema.ts:4838-4840"
+        "db/schema.ts:4903-4905"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3893,7 +3893,7 @@
         "scripts/check-audit-log-coverage.ts:14-18",
         "package.json:20 lint:audit-log",
         "scripts/check-audit-log-actions-declared.ts",
-        "db/schema.ts:2593"
+        "db/schema.ts:2597"
       ],
       "enforcementKind": "lint-script",
       "wired": "verify",
@@ -9527,8 +9527,8 @@
       ],
       "enforcer": [
         "scripts/check-locality-name-join.ts:48-61",
-        "scripts/check-locality-name-join.ts:63-99",
-        "scripts/check-locality-name-join.ts:106-129",
+        "scripts/check-locality-name-join.ts:70-106",
+        "scripts/check-locality-name-join.ts:113-136",
         "package.json:151 lint:locality-name-join",
         "__tests__/check-locality-name-join.test.ts:1-71",
         "__tests__/locality-name-match-live-inventory.test.ts:24-102"
