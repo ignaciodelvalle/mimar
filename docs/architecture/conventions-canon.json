@@ -3251,7 +3251,7 @@
         "AGENTS.md:446"
       ],
       "enforcer": [
-        "db/schema.ts:4387-4390"
+        "db/schema.ts:4424-4427"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3271,7 +3271,7 @@
         "AGENTS.md:474"
       ],
       "enforcer": [
-        "db/schema.ts:4713-4715"
+        "db/schema.ts:4750-4752"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3290,7 +3290,7 @@
         "AGENTS.md:487"
       ],
       "enforcer": [
-        "db/schema.ts:4801-4803"
+        "db/schema.ts:4838-4840"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -9953,6 +9953,12 @@
       "id": "__tests__/gob-synthetic-exclusion-fence.test.ts",
       "path": "__tests__/gob-synthetic-exclusion-fence.test.ts",
       "note": "Added 2026-09-18 with pilot item T1-P1 (PO decision D3): the pilot runs in the one environment that also holds the national demo seed, so no seed-tagged row may reach a govt or national reader of /gob. The rule lives in dim-interno:docs/handoff/rumbo-al-piloto.md, which the d7dbf25f7 snapshot does not harvest, so no row can cite a source for it without claiming a verifiedAt for a document the extraction never read. The exclusion itself lives inside the scope helpers (lib/metrics/scope.ts withoutSyntheticRows); what this fence holds is the bypass: every raw jurisdictionPairClause( call under lib/, src/ and app/ must apply the exclusion within 12 lines, carry a `synthetic: covered` tag naming a same-file function whose body is CHECKED to apply it, or a `synthetic: exempt` tag with a reason (tables with no seed marker). Floors at 30 call sites / 20 real applications and names the govt read paths it must see, so a sweep that stops matching cannot go quietly green; mutation-tested against the real tree. The behaviour is proven against the database in __tests__/gob-synthetic-exclusion.test.ts."
+    },
+    {
+      "kind": "fence-test",
+      "id": "__tests__/schema-check-parity.test.ts",
+      "path": "__tests__/schema-check-parity.test.ts",
+      "note": "Added 2026-09-26 with the stage C review of the SDD change localidades-por-id. db:bootstrap pushes db/schema.ts before replaying db/migrations, so on a fresh database a migration's CREATE TABLE IF NOT EXISTS is skipped for every table schema.ts declares, and a CHECK written only in the migration never lands. The fence compares, for the authority-unit and place tables (0250, 0253/0254), every live CHECK name with the ones db/schema.ts declares, and pins place_repair_preimages (0251) as migration-only, so it cannot be moved into schema.ts without its CHECKs. Its canon row lands with the change's stage E, alongside the other localidades-por-id fences listed here."
     }
   ]
 }

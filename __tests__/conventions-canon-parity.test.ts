@@ -112,7 +112,12 @@ const canon: Canon = loadCanon(REPO_ROOT);
 // `scripts/check-province-map-single-source.ts` and their `lint:place-resolver`
 // / `lint:province-map` keys (stage B of the same change). Same reason: their
 // canon rows land with stage E.
-const UNMAPPED_COUNT = 13;
+//
+// 13 -> 14 on 2026-09-26: `__tests__/schema-check-parity.test.ts` (stage C
+// review of the same change): every live CHECK on the place and authority
+// tables is declared in db/schema.ts, because db:bootstrap pushes it before
+// replaying migrations. Same reason: its canon row lands with stage E.
+const UNMAPPED_COUNT = 14;
 
 /**
  * Enforcement the filename glob below cannot see.
