@@ -624,6 +624,10 @@ export async function recordDiseaseDiagnosisAction(
   formData: FormData,
 ): Promise<EventFormState> {
   // VET-ONLY auth: role=vet + matriculaVerified=true. NO ownership check.
+  // PO decision (2026-09-26, "Sí, sin distinción"): a verified vet MAY file a
+  // notifiable-disease diagnosis on ANY animal, INCLUDING ONE THEY OWN. Not a
+  // conflict-of-interest gap to close — the matrícula is the gate, never the
+  // relation to the animal. Pinned by __tests__/disease-diagnosis-flow.test.ts.
   const { user } = await requireUserOrRedirect();
   const [vetProfile] = await db
     .select({

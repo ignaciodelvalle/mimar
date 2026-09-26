@@ -1,6 +1,10 @@
 // The ENO diagnosis step of the clinical record (PO S2, 2026-09-26). Vet only:
 // a person without a verified matrícula is sent back to the clinical form —
 // the server action refuses them anyway (recordDiseaseDiagnosisAction).
+//
+// PO decision (2026-09-26, "Sí, sin distinción"): a verified vet reaching the
+// animal through their OWN ownership still files the diagnosis as a vet. The
+// gate is the matrícula, never the relation to the animal — do not add one.
 
 import { redirect } from "next/navigation";
 

@@ -897,3 +897,57 @@ describe("a diagnosis with a place routes where it occurred (S2 + S10)", () => {
     expect((dx.payload as Record<string, unknown>).place).toEqual(place);
   });
 });
+
+// PO decision (2026-09-26, "Sí, sin distinción"): a verified vet MAY file a
+// notifiable-disease diagnosis on ANY animal — including one they own. The
+// gate is the vet's matrícula, never the relation to the animal. Pinned so a
+// future review does not re-flag it as a conflict of interest.
+describe("a verified vet may diagnose their OWN animal (PO 2026-09-26)", () => {
+  it("the gate says yes and the diagnosis files a vet-signed ENO notice", async () => {
+    const pet = await insertTestPet(vetUserId, "OWNVET");
+    expect(await isVerifiedVet(vetUserId)).toBe(true);
+
+    const result = await recordDiseaseDiagnosisWriter({
+      petId: pet.id,
+      petName: pet.name,
+      petSpecies: pet.species,
+      petJurisdictionCountry: pet.jurisdictionCountry,
+      petJurisdictionProvince: pet.jurisdictionProvince ?? null,
+      petJurisdictionLocality: pet.jurisdictionLocality ?? null,
+      vetUserId,
+      vetDisplayName: "Dr. Test Ddx",
+      diseaseCode: "leptospirosis",
+      confirmedByLab: false,
+      labName: null,
+      labReportReference: null,
+      diagnosisDate: new Date(),
+      notes: null,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const [dx] = await db.select().from(petEvents).where(eq(petEvents.id, result.diagnosisEventId));
+    expect(dx.authorRole).toBe("vet");
+    expect(dx.authorVerified).toBe(true);
+    const rows = await db
+      .select({ id: eventNotificationOutbox.id })
+      .from(eventNotificationOutbox)
+      .where(eq(eventNotificationOutbox.sourceEventId, result.diagnosisEventId));
+    expect(rows).toHaveLength(1);
+  });
+
+  it("neither door adds a relation-to-the-animal check to the vet gate", () => {
+    const action = readFileSync("src/modules/events/actions.ts", "utf8");
+    const body = action.slice(
+      action.indexOf("export async function recordDiseaseDiagnosisAction"),
+      action.indexOf("export async function createDiseaseReportedAction"),
+    );
+    expect(body).toContain("matriculaVerified");
+    expect(body).not.toMatch(/requirePetAccess|requireAlivePetAccess|requireTitularAccess/);
+    expect(body).toContain("PO decision (2026-09-26, \"Sí, sin distinción\")");
+    const page = readFileSync(
+      "app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/clinico/diagnostico/page.tsx",
+      "utf8",
+    );
+    expect(page).toContain("PO decision (2026-09-26, \"Sí, sin distinción\")");
+  });
+});
