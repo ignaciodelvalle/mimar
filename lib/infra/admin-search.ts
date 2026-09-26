@@ -140,6 +140,7 @@ export async function searchUsers(
         [...scope.jurisdictions],
         sql`${pets.jurisdictionProvince}`,
         sql`${pets.jurisdictionLocality}`,
+        sql`${pets.localityId}`,
       ) ?? sql`false`,
     );
     scopeConditions.push(
@@ -265,6 +266,7 @@ export async function searchOrganizations(
           [...scope.jurisdictions],
           sql`${organizations.jurisdictionProvince}`,
           sql`${organizations.jurisdictionLocality}`,
+          sql`${organizations.localityId}`,
         ) ?? sql`false`);
 
   const verifiedPredicate =
@@ -369,6 +371,7 @@ export async function searchServiceDogCredentials(
             [...scope.jurisdictions],
             sql`${pets.jurisdictionProvince}`,
             sql`${pets.jurisdictionLocality}`,
+            sql`${pets.localityId}`,
           ) ?? sql`false`,
         ) ?? undefined);
 

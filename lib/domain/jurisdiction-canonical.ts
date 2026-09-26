@@ -187,19 +187,40 @@ export function isWholeProvinceAssignment(j: {
  *
  * Fail-closed: a target with no province is in nobody's scope (returns false),
  * mirroring how a null jurisdiction row is never selected by the SQL clause.
+ *
+ * THE ID PATH (localidades-por-id D2, audit addendum (a)). A grant that
+ * carries its id-path `place` (a unit grant, and only while the `scope` flag
+ * is on 'id' — lib/place/scope.ts) is compared by catalogue row when the
+ * caller passes the target's `targetLocalityId` (`null` = the row's place
+ * never resolved): a municipal unit admits its member rows only, a
+ * provincial unit its whole province. Same rule as jurisdictionPairClause's
+ * id branch, so the list and the detail answer alike. A legacy grant, and a
+ * caller that passes no row id, keep the name rule.
  */
 export function jurisdictionScopeContains(
-  jurisdictions: ReadonlyArray<{ province: string; locality: string }>,
+  jurisdictions: ReadonlyArray<{ province: string; locality: string; place?: GrantPlaceShape }>,
   targetProvince: string | null | undefined,
   targetLocality: string | null | undefined,
+  targetLocalityId?: string | null,
 ): boolean {
   if (!targetProvince) return false;
-  return jurisdictions.some((j) =>
-    isWholeProvinceLocality(j.province, j.locality)
+  return jurisdictions.some((j) => {
+    if (j.place && targetLocalityId !== undefined) {
+      if (j.place.path === "province") {
+        return provinceByCode(j.place.provinceCode)?.name === targetProvince;
+      }
+      return targetLocalityId !== null && j.place.localityIds.includes(targetLocalityId);
+    }
+    return isWholeProvinceLocality(j.province, j.locality)
       ? j.province === targetProvince
-      : j.province === targetProvince && j.locality === targetLocality,
-  );
+      : j.province === targetProvince && j.locality === targetLocality;
+  });
 }
+
+/** Structural twin of lib/place/govt-scope.ts GrantPlace (domain stays pure). */
+type GrantPlaceShape =
+  | { path: "province"; provinceCode: string }
+  | { path: "locality"; provinceCode: string; localityIds: readonly string[] };
 
 // ---------------------------------------------------------------------------
 // Read scope by role — THE ONE place "does this role read the whole country?"

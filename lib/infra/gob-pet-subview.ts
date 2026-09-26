@@ -140,8 +140,14 @@ export async function loadGobPetSubView(
 
   // Linking authorization — gather every welfare report / case that names this
   // pet as subject/primary, then require at least one INSIDE the caller's scope.
-  const inScope = (province: string | null, locality: string | null): boolean =>
-    isScoped ? jurisdictionScopeContains(jurisdictions, province, locality) : true;
+  // The catalogue row rides along: on the id path a unit grant compares rows
+  // (localidades-por-id), so a homonym's record does not link.
+  const inScope = (
+    province: string | null,
+    locality: string | null,
+    localityId: string | null,
+  ): boolean =>
+    isScoped ? jurisdictionScopeContains(jurisdictions, province, locality, localityId) : true;
 
   // Timing-oracle hardening (task #59, LOW-1): run the linking-record lookups
   // with the SAME query shape whether or not the pet exists, so response latency
@@ -155,6 +161,7 @@ export async function loadGobPetSubView(
       .select({
         province: welfareReports.jurisdictionProvince,
         locality: welfareReports.jurisdictionLocality,
+        localityId: welfareReports.localityId,
         status: welfareReports.status,
       })
       .from(welfareReports)
@@ -163,6 +170,7 @@ export async function loadGobPetSubView(
       .select({
         province: cases.jurisdictionProvince,
         locality: cases.jurisdictionLocality,
+        localityId: cases.localityId,
         status: cases.status,
       })
       .from(cases)
@@ -180,16 +188,19 @@ export async function loadGobPetSubView(
   const reportGrants = (r: {
     province: string | null;
     locality: string | null;
+    localityId: string | null;
     status: string;
   }): boolean =>
-    inScope(r.province, r.locality) &&
+    inScope(r.province, r.locality, r.localityId) &&
     (!isScoped || !isTerminalStatus(r.status as WelfareReportStatus));
   const caseGrants = (c: {
     province: string | null;
     locality: string | null;
+    localityId: string | null;
     status: string;
   }): boolean =>
-    inScope(c.province, c.locality) && (!isScoped || ACTIVE_CASE_STATUSES.has(c.status));
+    inScope(c.province, c.locality, c.localityId) &&
+    (!isScoped || ACTIVE_CASE_STATUSES.has(c.status));
 
   const hasLink = reportRows.some(reportGrants) || caseRows.some(caseGrants);
   if (!pet || !hasLink) return { ok: false };
@@ -321,6 +332,7 @@ export async function loadOperatorPetSubView(
       color: pets.color,
       jurisdictionProvince: pets.jurisdictionProvince,
       jurisdictionLocality: pets.jurisdictionLocality,
+      localityId: pets.localityId,
     })
     .from(pets)
     .where(and(eq(pets.publicToken, publicToken), isNull(pets.deletedAt)))
@@ -332,6 +344,7 @@ export async function loadOperatorPetSubView(
       scope.jurisdictions,
       pet.jurisdictionProvince,
       pet.jurisdictionLocality,
+      pet.localityId,
     );
     if (!inScope) return null;
   }

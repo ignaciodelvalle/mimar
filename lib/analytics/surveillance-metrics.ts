@@ -105,6 +105,7 @@ function outboxJurisdictionClause(ctx: ProjectionContext) {
     jurisdictions,
     sql`${eventNotificationOutbox.targetJurisdictionProvince}`,
     sql`${eventNotificationOutbox.targetJurisdictionLocality}`,
+    sql`${eventNotificationOutbox.targetLocalityId}`,
   );
 }
 
@@ -373,6 +374,7 @@ export async function fetchRabiesObservationCompliance(
           [j],
           sql`${pets.jurisdictionProvince}`,
           sql`${pets.jurisdictionLocality}`,
+          sql`${pets.localityId}`,
         ),
       );
       const scopeFragment = pairClause ? sql` AND (${pairClause})` : sql``;

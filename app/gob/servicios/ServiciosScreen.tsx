@@ -132,6 +132,7 @@ export async function ServiciosScreen({
           jurisdictions,
           sql`${serviceOfferings.jurisdictionProvince}`,
           sql`${serviceOfferings.jurisdictionLocality}`,
+          sql`${serviceOfferings.localityId}`,
         ) ?? sql`false`);
 
   const whereClause = scopeFilter ? and(baseCondition, scopeFilter) : baseCondition;

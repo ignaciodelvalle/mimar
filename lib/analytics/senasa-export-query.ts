@@ -94,6 +94,7 @@ export async function* streamSenasaBatch(
         [...jurisdictions],
         sql`${pets.jurisdictionProvince}`,
         sql`${pets.jurisdictionLocality}`,
+        sql`${pets.localityId}`,
       ) ?? sql`false`;
     where = and(base, scopeClause);
   }

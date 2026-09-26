@@ -138,6 +138,7 @@ export default async function NuevoDecomisoPage({ searchParams }: PageProps) {
           [...jurisdictions],
           sql`${organizations.jurisdictionProvince}`,
           sql`${organizations.jurisdictionLocality}`,
+          sql`${organizations.localityId}`,
         ) ?? sql`false`)
       : undefined;
 

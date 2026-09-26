@@ -114,6 +114,9 @@ export async function canReadCase(detail: CaseDetail, viewer: CaseViewer | null)
       viewer.jurisdictions,
       detail.jurisdictionProvince,
       detail.jurisdictionLocality,
+      // The catalogue row: on the id path a unit grant compares rows, so a
+      // homonym's case is not readable by URL (localidades-por-id).
+      detail.localityId,
     );
     if (inScope) return true;
     // Govt out-of-scope keeps falling through to the per-kind checks

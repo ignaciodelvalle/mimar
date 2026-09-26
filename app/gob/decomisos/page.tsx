@@ -167,6 +167,7 @@ export default async function DecomisosDashboardPage({
           session.jurisdictions.map((j) => ({ province: j.province, locality: j.locality })),
           sql`${cases.jurisdictionProvince}`,
           sql`${cases.jurisdictionLocality}`,
+          sql`${cases.localityId}`,
         ) ?? sql`false`,
       ) ?? sql`false`;
   }

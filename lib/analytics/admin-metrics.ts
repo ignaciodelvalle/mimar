@@ -205,6 +205,7 @@ export async function fetchQueueHealthScoped(
       ctx.scope.jurisdictions,
       sql`${approvalRequests.jurisdictionProvince}`,
       sql`${approvalRequests.jurisdictionLocality}`,
+      sql`${approvalRequests.localityId}`,
     );
     if (jurisClause) conditions.push(jurisClause);
   }

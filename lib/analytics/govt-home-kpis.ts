@@ -69,6 +69,7 @@ function jurisdictionOnlyCasesScopeClause(ctx: ProjectionContext) {
       jurisdictions,
       sql`${cases.jurisdictionProvince}`,
       sql`${cases.jurisdictionLocality}`,
+      sql`${cases.localityId}`,
     ) ?? sql`false`
   );
 }
@@ -124,6 +125,7 @@ function jurisdictionOnlyWelfareReportsScopeClause(ctx: ProjectionContext) {
       jurisdictions,
       sql`${welfareReports.jurisdictionProvince}`,
       sql`${welfareReports.jurisdictionLocality}`,
+      sql`${welfareReports.localityId}`,
     ) ?? sql`false`
   );
 }

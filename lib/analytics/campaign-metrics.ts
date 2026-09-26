@@ -223,6 +223,7 @@ async function resolveOfferingIds(
       [...jurisdictions],
       sql`${serviceOfferings.jurisdictionProvince}`,
       sql`${serviceOfferings.jurisdictionLocality}`,
+      sql`${serviceOfferings.localityId}`,
     ) ?? sql`false`;
 
   const conditions = [

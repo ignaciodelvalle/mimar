@@ -107,6 +107,7 @@ function regionRankingJurisdictionOnly(
     jurisdictions,
     sql`${pets.jurisdictionProvince}`,
     sql`${pets.jurisdictionLocality}`,
+    sql`${pets.localityId}`,
   );
 }
 

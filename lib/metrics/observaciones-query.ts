@@ -101,6 +101,7 @@ export async function fetchObservaciones(scope: ObservacionesScope, filters: Obs
         [...scope.jurisdictions],
         sql`${pets.jurisdictionProvince}`,
         sql`${pets.jurisdictionLocality}`,
+        sql`${pets.localityId}`,
       ) ?? sql`false`,
     );
   }

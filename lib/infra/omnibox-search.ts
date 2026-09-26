@@ -107,6 +107,7 @@ function caseJurisdictionScope(scope: Extract<OmniboxScope, { role: "admin" } | 
         [...scope.jurisdictions],
         sql`${cases.jurisdictionProvince}`,
         sql`${cases.jurisdictionLocality}`,
+        sql`${cases.localityId}`,
       ) ?? sql`false`,
     ) ?? undefined
   );
@@ -129,6 +130,7 @@ function petJurisdictionScope(scope: Extract<OmniboxScope, { role: "admin" } | {
         [...scope.jurisdictions],
         sql`${pets.jurisdictionProvince}`,
         sql`${pets.jurisdictionLocality}`,
+        sql`${pets.localityId}`,
       ) ?? sql`false`,
     ) ?? undefined
   );
@@ -360,6 +362,7 @@ async function searchWelfareReports(
             [...scope.jurisdictions],
             sql`${welfareReports.jurisdictionProvince}`,
             sql`${welfareReports.jurisdictionLocality}`,
+            sql`${welfareReports.localityId}`,
           ) ?? sql`false`,
         ) ?? undefined);
   // Reference codes are opaque non-PII identifiers (same class as cases.publicCode).

@@ -108,6 +108,8 @@ const GOB_WELFARE_DETAIL_SELECT = {
   locationAddress: welfareReports.locationAddress,
   jurisdictionProvince: welfareReports.jurisdictionProvince,
   jurisdictionLocality: welfareReports.jurisdictionLocality,
+  // localidades-por-id: the per-row gate compares catalogue rows on the id path.
+  localityId: welfareReports.localityId,
   locationLat: welfareReports.locationLat,
   locationLng: welfareReports.locationLng,
   occurredAt: welfareReports.occurredAt,
@@ -244,6 +246,7 @@ export async function loadWelfareInspectorDetail(
       jurisdictions,
       report.jurisdictionProvince,
       report.jurisdictionLocality,
+      report.localityId,
     );
     if (!inScope) return { ok: false };
   }

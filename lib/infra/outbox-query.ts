@@ -158,6 +158,7 @@ export function buildOutboxWhere(
         [...opts.jurisdiction],
         sql`${eventNotificationOutbox.targetJurisdictionProvince}`,
         sql`${eventNotificationOutbox.targetJurisdictionLocality}`,
+        sql`${eventNotificationOutbox.targetLocalityId}`,
       ) ?? sql`false`;
     conditions.push(jurisClause);
     // T1-P1: the govt twin never lists a notification about a synthetic

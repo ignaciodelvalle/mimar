@@ -99,6 +99,8 @@ const CASE_DETAIL_SELECT = {
   jurisdictionCountry: cases.jurisdictionCountry,
   jurisdictionProvince: cases.jurisdictionProvince,
   jurisdictionLocality: cases.jurisdictionLocality,
+  // localidades-por-id: the per-row gate compares catalogue rows on the id path.
+  localityId: cases.localityId,
   openedAt: cases.openedAt,
   openedReason: cases.openedReason,
   openedReasonCode: cases.openedReasonCode,
@@ -167,6 +169,8 @@ export interface CaseDetail {
   jurisdictionCountry: string;
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
+  /** The case's catalogue row (null = unresolved); absent in hand-built details. */
+  localityId?: string | null;
   openedAt: Date;
   openedReason: string | null;
   openedReasonCode: string | null;
@@ -399,6 +403,7 @@ export async function getCaseDetailByPublicCode(publicCode: string): Promise<Cas
     jurisdictionCountry: row.c.jurisdictionCountry,
     jurisdictionProvince: row.c.jurisdictionProvince,
     jurisdictionLocality: row.c.jurisdictionLocality,
+    localityId: row.c.localityId ?? null,
     openedAt: row.c.openedAt,
     openedReason: row.c.openedReason,
     openedReasonCode: row.c.openedReasonCode,
