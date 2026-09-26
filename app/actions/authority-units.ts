@@ -16,6 +16,7 @@ import { revalidatePath } from "next/cache";
 
 import { db } from "@/db";
 import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
+import { notifyNewlyCoveringAuthorities } from "@/lib/place/resolution-rerouting";
 import { type QueueSubjectTable, resolvePlaceFromQueue } from "@/lib/place/unresolved-queue";
 import { confirmGrantUnit } from "@/src/modules/organizations/application/authority-units/grant-unit";
 import {
@@ -111,6 +112,15 @@ export async function resolvePlaceFromQueueAction(input: {
 }) {
   const { user } = await requireAdminOrRedirect();
   const result = await resolvePlaceFromQueue(db, user.id, input);
-  if ("ok" in result) revalidatePath("/admin/localidades/pendientes");
+  if ("ok" in result) {
+    // After the commit, best effort: an OPEN case whose place is now known
+    // reaches the unit that governs it (D9). Never un-notifies anyone.
+    try {
+      await notifyNewlyCoveringAuthorities(db, input);
+    } catch (err) {
+      console.error("[place-queue] re-routing after resolution failed", err);
+    }
+    revalidatePath("/admin/localidades/pendientes");
+  }
   return result;
 }

@@ -1212,6 +1212,8 @@ const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   service_offering_rejected: "Servicio rechazado",
   service_offering_submitted: "Servicio enviado para revisión",
   shelter_intake_confirmed: "Ingreso al refugio confirmado",
+  // Places (localidades-por-id D9)
+  case_place_resolved_authority: "Caso ubicado en tu jurisdicción",
   // Welfare
   welfare_denuncia_stale_govt: "Denuncia de bienestar sin movimiento",
   welfare_org_intervention_note: "Nota de intervención de bienestar",
