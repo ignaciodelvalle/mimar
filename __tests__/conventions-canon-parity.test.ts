@@ -125,7 +125,11 @@ const canon: Canon = loadCanon(REPO_ROOT);
 // 15 -> 17 on 2026-09-26 (semillas): lint:conflict-markers and
 // scripts/check-conflict-markers.ts. The merge-marker fence is new machinery
 // whose canon row has not been graded yet.
-const UNMAPPED_COUNT = 17;
+//
+// 17 -> 19 on 2026-09-26 (semillas): lint:holder-drift and
+// scripts/check-holder-drift.ts, the holder replay gate over the whole
+// database (audit K3/W8). Same reason.
+const UNMAPPED_COUNT = 19;
 
 /**
  * Enforcement the filename glob below cannot see.

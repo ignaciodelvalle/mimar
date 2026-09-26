@@ -975,6 +975,15 @@ jobs:
         if: ${{ !cancelled() && steps.seed.outcome == 'success' && matrix.shard == 1 }}
         run: pnpm lint:spine
 
+      - name: "Fence: holder rows agree with the spine (lint:holder-drift)"
+        # Every owner / co_owner / shelter_custody / foster row of ownerships
+        # must match the intervals replayed from pet_events (audit K3/W8).
+        # Runs over the panorama seed above, which plans its rows from its own
+        # events; seed_unexplained rows on seed-tagged pets are counted, not
+        # failed.
+        if: ${{ !cancelled() && steps.seed.outcome == 'success' && matrix.shard == 1 }}
+        run: pnpm lint:holder-drift
+
       - name: "Fence: INDEC locality catalogue (lint:locality)"
         if: ${{ !cancelled() && steps.seed.outcome == 'success' && matrix.shard == 1 }}
         run: pnpm lint:locality

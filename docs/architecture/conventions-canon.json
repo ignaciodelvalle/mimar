@@ -10000,6 +10000,18 @@
       "id": "scripts/check-conflict-markers.ts",
       "path": "scripts/check-conflict-markers.ts",
       "note": "Merge-conflict marker fence over every tracked file (semillas, 2026-09-26); red controls in __tests__/check-conflict-markers.test.ts; canon row pending."
+    },
+    {
+      "kind": "lint-key",
+      "id": "lint:holder-drift",
+      "path": "package.json",
+      "note": "Runs scripts/check-holder-drift.ts (semillas, 2026-09-26): owner/co_owner/shelter_custody/foster rows agree with the holder replay of pet_events (audit K3/W8); canon row pending."
+    },
+    {
+      "kind": "check-script",
+      "id": "scripts/check-holder-drift.ts",
+      "path": "scripts/check-holder-drift.ts",
+      "note": "Holder-drift fence (semillas, 2026-09-26): set-based replay of the fourth section of scripts/detect-pet-cache-drift.ts; offline verdict pinned by __tests__/check-holder-drift.test.ts; canon row pending."
     }
   ]
 }

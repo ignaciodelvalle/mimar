@@ -292,7 +292,7 @@ fence's `EXTRA_FENCES` (fences whose FILENAME hides them from that glob) is eith
 cited by a row's enforcer or listed here. The parity fence pins this list's length
 EXACTLY: growing it and shrinking it are both hand edits, and both are reviewable.
 
-17 unmapped.
+19 unmapped.
 
 | Kind | Item | Why it is unmapped |
 | --- | --- | --- |
@@ -313,3 +313,5 @@ EXACTLY: growing it and shrinking it are both hand edits, and both are reviewabl
 | fence-test | `__tests__/place-parity-sweep.test.ts` | Added 2026-09-26 with stage D (D7) of the SDD change localidades-por-id. It pins the flip gate for the scope consumer: lib/place/parity-sweep.ts asks the name path and the id path which pets, cases and welfare reports each govt user sees, through the same jurisdictionPairClause production uses, and classifies every disagreement (homonym split, unresolved to province, OTHER); a user with only legacy grants never disagrees, and an unexplained drop fails the gate. Its canon row lands with the change's stage E, alongside the other localidades-por-id fences listed here. |
 | lint-key | `lint:conflict-markers` | Runs scripts/check-conflict-markers.ts (semillas, 2026-09-26): no tracked text file carries a merge-conflict marker line; canon row pending. |
 | check-script | `scripts/check-conflict-markers.ts` | Merge-conflict marker fence over every tracked file (semillas, 2026-09-26); red controls in __tests__/check-conflict-markers.test.ts; canon row pending. |
+| lint-key | `lint:holder-drift` | Runs scripts/check-holder-drift.ts (semillas, 2026-09-26): owner/co_owner/shelter_custody/foster rows agree with the holder replay of pet_events (audit K3/W8); canon row pending. |
+| check-script | `scripts/check-holder-drift.ts` | Holder-drift fence (semillas, 2026-09-26): set-based replay of the fourth section of scripts/detect-pet-cache-drift.ts; offline verdict pinned by __tests__/check-holder-drift.test.ts; canon row pending. |

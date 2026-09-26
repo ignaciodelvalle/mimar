@@ -46,19 +46,19 @@ job, run against the deployed staging origin, not the local suite.
 
 `package.json`'s `verify` script is one `&&`-chained line:
 `lint:node-version` → `typecheck` (`tsc --noEmit`) → `verify:mobile` → `lint`
-(Biome, over `.` and `app/.well-known`) → <!-- fact:verify_fences -->82<!-- /fact -->
+(Biome, over `.` and `app/.well-known`) → <!-- fact:verify_fences -->83<!-- /fact -->
 distinct `pnpm lint:<key>` fence steps → `build`
 (`node scripts/build.mjs`) → two more lint steps that run after the build
 (`lint:csp-prerender`, `lint:route-weight`, which need the built output).
 
 The fence count is generated two ways and cross-checked:
-<!-- fact:lint_scripts -->82<!-- /fact --> keys in `package.json` start with
-`lint:`, and <!-- fact:verify_fences -->82<!-- /fact --> of them are actually
+<!-- fact:lint_scripts -->83<!-- /fact --> keys in `package.json` start with
+`lint:`, and <!-- fact:verify_fences -->83<!-- /fact --> of them are actually
 invoked inside the `verify` script string. `pnpm lint:ci-parity`
 (`scripts/check-ci-lint-parity.ts`) is what keeps those two numbers equal — a
 `lint:*` key that exists but is missing from `verify` is a fence nothing runs,
 and this fence is the one that would catch that drift. Not every fence is a
-`lint:*` script: <!-- fact:check_scripts -->89<!-- /fact --> files under
+`lint:*` script: <!-- fact:check_scripts -->90<!-- /fact --> files under
 `scripts/check-*.ts` exist (three siblings — `check-raw-buttons.mjs`,
 `check-raw-select.mjs`, `check-op-controls.mjs` — are plain `.mjs` and are
 wired into `lint:buttons`, `lint:select`, `lint:op-controls`, so the `.ts`
@@ -72,7 +72,7 @@ resolution smoke check.
 
 ### Fence categories (representative, not exhaustive)
 
-`pnpm verify`'s <!-- fact:verify_fences -->82<!-- /fact --> fences group into
+`pnpm verify`'s <!-- fact:verify_fences -->83<!-- /fact --> fences group into
 recognisable categories. These twelve are representative, one per category —
 the full list is `package.json`'s `lint:*` keys:
 
@@ -87,6 +87,7 @@ the full list is `package.json`'s `lint:*` keys:
 | Audit trail | `lint:audit-log` | `scripts/check-audit-log-coverage.ts` | an operator action that mutates state and writes no `audit_log` row |
 | Data integrity | `lint:locality` | `scripts/check-locality-integrity.ts` | a jurisdiction field accepting free text instead of the canonical `ar_localities` catalog (DB-backed) |
 | Public/private boundary | `lint:public-boundary` | `scripts/check-public-boundary.ts` | a `docs/` file outside the declared public categories, a path shaped like private material (`reviews/`, `handoff/`, `cutover-*`, …), a personal mailbox, an e-mail + password pair in docs/config, or a tracked `.env*` with a value — policy in `docs/agents/public-private-boundary.md` |
+| Custody integrity | `lint:holder-drift` | `scripts/check-holder-drift.ts` | an owner / co_owner / shelter_custody / foster row of `ownerships` that disagrees with the intervals replayed from `pet_events` (DB-backed; `seed_unexplained` rows on seed-tagged pets are counted, not failed) |
 | Merge hygiene | `lint:conflict-markers` | `scripts/check-conflict-markers.ts` | a leftover merge-conflict marker line (ours, diff3 base, separator, theirs) in ANY tracked text file — docs, SQL and YAML included, which tsc and Biome never read |
 | CI hygiene | `lint:ci-parity` | `scripts/check-ci-lint-parity.ts` | a `lint:*` key present in `package.json` but absent from either `verify` or `ci.yml` |
 | Scheduling correctness | `lint:sched-refs` | `scripts/check-scheduled-fence-refs.ts` | a `schedule:`-triggered workflow with no explicit `ref:`, which would silently check out the default branch instead of the deploy branch (the bug documented in `dim-interno:.github/workflows/e2e-nightly.yml` and `mobile-export-nightly.yml`, §4) |
@@ -95,7 +96,7 @@ the full list is `package.json`'s `lint:*` keys:
 
 Two DB-backed fences worth naming because they run nowhere else: `lint:rls`
 and `lint:locality` (plus `lint:scope-authz` and `lint:spine`) need Postgres
-and are the reason CI splits into a `check` job (no DB, most of the <!-- fact:verify_fences -->82<!-- /fact --> fences)
+and are the reason CI splits into a `check` job (no DB, most of the <!-- fact:verify_fences -->83<!-- /fact --> fences)
 and a `test` job (real Postgres, these four plus the vitest suite) — see §4.
 
 ## 3. `pnpm test:verified` vs `pnpm test` — the Definition of Done
@@ -166,7 +167,7 @@ gate as evidence of anything.
 
 ## 4. What the suite actually covers
 
-- <!-- fact:vitest_files -->1778<!-- /fact --> files Vitest discovers
+- <!-- fact:vitest_files -->1779<!-- /fact --> files Vitest discovers
   (`vitest.config.ts` → `__tests__/db-reachability.ts`'s
   `discoverTestFiles()` — the exact set Vitest runs, not an independent glob
   that could drift from it).
