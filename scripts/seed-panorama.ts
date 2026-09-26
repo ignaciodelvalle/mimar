@@ -175,6 +175,7 @@ const {
   pets,
   ownerships,
   petEvents,
+  petIdentifications,
   organizations,
   welfareReports,
   arLocalities,
@@ -190,6 +191,7 @@ const {
   appointments,
 } = await import("../db");
 const { writePoint } = await import("@/lib/domain/location");
+const { chipImplantSiteFromLocation } = await import("@/lib/domain/microchip-implant-site");
 const { validateEventPayload } = await import("@/lib/events/event-schemas");
 const { PROVINCES } = await import("@/lib/reference/ar-provincias");
 const { generateReferenceCode } = await import("../src/modules/welfare/domain/reference-code");
@@ -632,6 +634,35 @@ async function writeSeedHolderPlan(petId: string, plan: SeedHolderPlan): Promise
   if (plan.rows.length > 0) {
     await db.insert(ownerships).values(plan.rows.map((r) => ({ ...r, petId })));
   }
+}
+
+/**
+ * The canonical pet_identifications row a microchip_implanted event implies —
+ * the same shape createMicrochip (src/modules/events/application/identity/
+ * microchip-use-case.ts) writes beside the event. The pets microchip cache
+ * columns are sourced from this row (ARCH-Q), so an event without it replays a
+ * chip the cache reads as null: 1510 panorama pets drifted that way.
+ */
+function seedChipIdentification(event: Record<string, unknown>) {
+  const payload = event.payload as {
+    chip_number: string;
+    implanted_by: string | null;
+    location_on_body: string | null;
+  };
+  const code = payload.chip_number;
+  return {
+    petId: event.petId as string,
+    kind: "microchip_iso" as const,
+    code,
+    recordedAt: (event.occurredAt as Date).toISOString().slice(0, 10),
+    recordedByUserId: event.recordedByUserId as string,
+    recordedByLabel: payload.implanted_by,
+    isoCountryCode: code.slice(0, 3),
+    isoManufacturerCode: code.slice(3, 7),
+    isoNationalId: code.slice(7, 15),
+    isoCompliant: true,
+    implantationSite: chipImplantSiteFromLocation(payload.location_on_body) ?? undefined,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1582,7 +1613,11 @@ function buildPetEvents(
 
   // Microchip: per coverage rate
   if (rng() < coverage.chip) {
-    const chipBase = String(petIndex).padStart(9, "0");
+    // A 15-digit ISO 11784 code, as the pet_identifications CHECK requires:
+    // country 858 + manufacturer 0858 (a block no other seed uses — the
+    // bootstrap test users hold 858000000000001) + the pet index as the
+    // 8-digit national id, which keeps every code unique per pet.
+    const chipBase = `0858${String(petIndex).padStart(8, "0")}`;
     events.push({
       petId,
       eventType: "microchip_implanted" satisfies EventType,
@@ -1824,6 +1859,8 @@ async function seedPets(
     const shelterHolderPlans: Array<{ petId: string; plan: SeedHolderPlan }> = [];
     const lostPetIds: string[] = [];
     const deceasedPetIds: Array<{ petId: string; deceasedAt: Date }> = [];
+    // Canonical chip rows backing the microchip_implanted events below.
+    const chipIdentifications: Array<ReturnType<typeof seedChipIdentification>> = [];
 
     for (let i = 0; i < provinceCount; i++) {
       const meta = perPetMeta[i];
@@ -2060,6 +2097,7 @@ async function seedPets(
       for (const e of evts) {
         const t = e.eventType as string;
         eventCounts[t] = (eventCounts[t] ?? 0) + 1;
+        if (t === "microchip_implanted") chipIdentifications.push(seedChipIdentification(e));
       }
     }
 
@@ -2107,6 +2145,12 @@ async function seedPets(
           ? V
           : never,
       );
+    }
+
+    // Canonical microchip rows — backed by the microchip_implanted events just
+    // inserted (createMicrochip's double-write).
+    for (let b = 0; b < chipIdentifications.length; b += BATCH_SIZE) {
+      await db.insert(petIdentifications).values(chipIdentifications.slice(b, b + BATCH_SIZE));
     }
 
     totalPets += provinceCount;
@@ -2167,11 +2211,23 @@ async function seedSetPieces(
     const petRow = { id: registered.petId };
 
     if (status !== "active") {
+      // deceasedAt is the earliest death_recorded the caller supplies — what
+      // replayPetStatus derives. It used to be an independent random date,
+      // which the drift detector read as cache ≠ spine on every deceased
+      // set-piece. The draw is still made so the rng stream after it is
+      // unchanged.
+      if (status === "deceased") randomWindowDate(30);
+      const deathTimes = extraEvents
+        .filter((e) => e.eventType === "death_recorded")
+        .map((e) => (e.occurredAt as Date).getTime());
+      if (status === "deceased" && deathTimes.length === 0) {
+        throw new Error(`deceased set-piece at index ${index} has no death_recorded event`);
+      }
       await db
         .update(pets)
         .set({
           status,
-          ...(status === "deceased" ? { deceasedAt: randomWindowDate(30) } : {}),
+          ...(status === "deceased" ? { deceasedAt: new Date(Math.min(...deathTimes)) } : {}),
         })
         .where(eq(pets.id, petRow.id));
     }
@@ -2671,6 +2727,28 @@ async function seedVigilanceChain(
   //   1 → closed within 10 days        → A8 compliant
   //   2 → overdue open (started > 10d)  → A9 live breach
   //   3 → closed past 10 days          → A8 non-compliant
+  // Targets whose spine already carries an observation — the set-piece #7
+  // chain (bite → observation → death during it). A second, unrelated
+  // observation on top of it, and the in_progress cache write below, made the
+  // cache contradict the replay (stored window_expired_unclosed vs derived
+  // completed_dead on PANO-011477).
+  const alreadyObserved = new Set(
+    (
+      await db
+        .select({ petId: petEvents.petId })
+        .from(petEvents)
+        .where(
+          and(
+            eq(petEvents.eventType, "rabies_observation_started"),
+            inArray(
+              petEvents.petId,
+              targets.map((x) => x.petId),
+            ),
+          ),
+        )
+    ).map((r) => r.petId),
+  );
+
   for (let t = 0; t < targets.length; t++) {
     const { petId, province } = targets[t];
     const bucket = t % 4;
@@ -2678,6 +2756,15 @@ async function seedVigilanceChain(
     // Start date: overdue/closed-late buckets start well before the 10d window.
     const startDaysBack = bucket === 2 || bucket === 3 ? randInt(13, 25) : randInt(2, 8);
     const startedAt = new Date(ANCHOR_MS - startDaysBack * 24 * 3600 * 1000);
+
+    if (alreadyObserved.has(petId)) {
+      // Skipped, but with exactly the draws an emitted target makes (the
+      // closed buckets' elapsed days, the ENO createdAt), so the rng stream
+      // every later step reads is unchanged.
+      if (bucket === 1 || bucket === 3) randInt(6, 10);
+      randInt(1, 20);
+      continue;
+    }
 
     const [startedEvent] = await db
       .insert(petEvents)
@@ -4899,6 +4986,13 @@ async function seedFeedVarietyTail(ownerUserId: string, shelterOrgs: PanoOrg[]):
       official_site_organization_id: null,
     },
   });
+  // The cache half of the observation just opened (replayPetRabiesObservation
+  // derives in_progress from it) — the vigilance chain above writes the same
+  // column for its observations; this one was left null.
+  await db
+    .update(pets)
+    .set({ rabiesObservationStatus: "in_progress" })
+    .where(eq(pets.id, biteTarget.id));
   inserted++;
 
   // 3) outbreak_signal.
