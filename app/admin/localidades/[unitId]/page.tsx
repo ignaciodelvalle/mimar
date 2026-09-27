@@ -23,7 +23,11 @@ import { requireUuidParam } from "@/lib/infra/route-params";
 import { provinceByCode } from "@/lib/reference/ar-provincias";
 import { formatDateShort, formatDateTimeNumericAr } from "@/lib/utils/format";
 import { listGrantCandidates } from "@/src/modules/organizations/application/authority-units/grant-unit";
-import { loadAuthorityUnitDetail } from "@/src/modules/organizations/application/authority-units/read-units";
+import {
+  listUnitHolders,
+  loadAuthorityUnitDetail,
+  moveReach,
+} from "@/src/modules/organizations/application/authority-units/read-units";
 
 import { GrantUnitForm } from "../_components/GrantUnitForm";
 
@@ -47,11 +51,15 @@ const CHANGE_LABELS: Record<string, string> = {
   govt_assignment_unit_confirmed: "Concesión de gobierno pasada a la unidad",
 };
 
-/** The province's live localities, labelled with the unit that holds them today. */
+/**
+ * The province's live localities, labelled with the unit that holds them today,
+ * and whom moving each one here reaches (verify S4): the holders of this unit
+ * gain it, the holders of its current unit at this level lose it.
+ */
 async function localityOptions(provinceCode: string, level: string, unitId: string) {
   const rows = (await db.execute(sql`
     select l.id::text as id, l.locality_name as name, l.department_name as department,
-           u.name as current_unit
+           u.name as current_unit, u.id::text as current_unit_id
       from public.ar_localities l
       left join public.authority_unit_localities m
         on m.locality_id = l.id and m.valid_to is null and m.level = ${level}
@@ -64,13 +72,23 @@ async function localityOptions(provinceCode: string, level: string, unitId: stri
     name: string;
     department: string | null;
     current_unit: string | null;
+    current_unit_id: string | null;
   }>;
-  return rows.map<LocalityOption>((r) => ({
-    id: r.id,
-    label: `${r.name}${r.department ? ` (${r.department})` : ""} — ${
-      r.current_unit ? `hoy en ${r.current_unit}` : "sin unidad"
-    }`,
-  }));
+  const holders = await listUnitHolders(db, [
+    unitId,
+    ...rows.flatMap((r) => (r.current_unit_id ? [r.current_unit_id] : [])),
+  ]);
+  return rows.map<LocalityOption>((r) => {
+    const reach = moveReach(holders, unitId, r.current_unit_id);
+    return {
+      id: r.id,
+      label: `${r.name}${r.department ? ` (${r.department})` : ""} — ${
+        r.current_unit ? `hoy en ${r.current_unit}` : "sin unidad"
+      }`,
+      gaining: reach.gaining.map((h) => h.displayName),
+      losing: reach.losing.map((h) => h.displayName),
+    };
+  });
 }
 
 export default async function AuthorityUnitPage({

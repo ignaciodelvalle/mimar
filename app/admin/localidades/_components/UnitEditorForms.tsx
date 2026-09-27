@@ -53,7 +53,36 @@ export function useUnitAction() {
   return { error, pending, run };
 }
 
-export type LocalityOption = { id: string; label: string };
+export type LocalityOption = {
+  id: string;
+  label: string;
+  /** Holders of this unit's grants: they gain the locality (verify S4). */
+  gaining: string[];
+  /** Holders of its current unit at this level: they lose it. */
+  losing: string[];
+};
+
+/** Whom the move reaches, shown before it is made. */
+export function MoveReachNotice({ option }: { option: LocalityOption }) {
+  if (option.gaining.length === 0 && option.losing.length === 0) {
+    return (
+      <p className="text-sm text-ln-op-mute">
+        Ninguna concesión de gobierno cambia de alcance con este movimiento.
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-1 rounded-[var(--radius-md)] border border-ln-op-line px-3 py-2 text-sm">
+      <p className="font-medium text-ln-op-ink">A quiénes alcanza este cambio</p>
+      {option.gaining.length > 0 && (
+        <p className="text-ln-op-ink-2">Pasan a ver esta localidad: {option.gaining.join(", ")}.</p>
+      )}
+      {option.losing.length > 0 && (
+        <p className="text-ln-op-ink-2">Dejan de verla: {option.losing.join(", ")}.</p>
+      )}
+    </div>
+  );
+}
 
 /** Place a locality of the province in this unit (closing its previous one). */
 export function MoveLocalityForm({
@@ -69,6 +98,7 @@ export function MoveLocalityForm({
   const [reason, setReason] = useState("");
   const { error, pending, run } = useUnitAction();
   const canSubmit = localityId !== "" && reason.trim() !== "" && !pending;
+  const selected = options.find((o) => o.id === localityId);
 
   return (
     <form
@@ -102,6 +132,7 @@ export function MoveLocalityForm({
           </OpSelect>
         )}
       </OpField>
+      {selected && <MoveReachNotice option={selected} />}
       <OpField label="Motivo" required>
         {({ id, describedBy }) => (
           <OpTextarea

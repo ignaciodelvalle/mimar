@@ -125,3 +125,67 @@ export async function loadAuthorityUnitDetail(
     changes: changes.map((c) => ({ ...c, performedAt: new Date(c.performedAt) })),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Whom a membership move reaches (localidades-por-id verify S4)
+// ---------------------------------------------------------------------------
+
+/** One active govt grant holder of a unit. */
+export type UnitHolder = { userId: string; displayName: string };
+
+/**
+ * The people whose grant sits on each of `unitIds` today: active (not
+ * revoked) grants of active accounts, on CONFIRMED units only — a draft
+ * governs nothing (govt_scope, 0260), so nobody gains or loses through it.
+ * Moving a locality into a unit widens every one of its holders; moving it
+ * out narrows the previous unit's. The editor shows both before the move.
+ */
+export async function listUnitHolders(
+  exec: Executor,
+  unitIds: readonly string[],
+): Promise<Map<string, UnitHolder[]>> {
+  const byUnit = new Map<string, UnitHolder[]>();
+  if (unitIds.length === 0) return byUnit;
+  const ids = sql.join(
+    [...new Set(unitIds)].map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  const rows = (await exec.execute(sql`
+    select distinct g.authority_unit_id::text as "unitId", g.user_id::text as "userId",
+           p.display_name as "displayName"
+      from public.govt_assignments g
+      join public.authority_units u on u.id = g.authority_unit_id
+      join public.profiles p on p.id = g.user_id
+     where g.authority_unit_id in (${ids})
+       and g.revoked_at is null
+       and u.status = 'confirmed'
+       and p.deactivated_at is null
+     order by 3, 2
+  `)) as unknown as Array<{ unitId: string } & UnitHolder>;
+  for (const r of rows) {
+    const list = byUnit.get(r.unitId) ?? [];
+    list.push({ userId: r.userId, displayName: r.displayName });
+    byUnit.set(r.unitId, list);
+  }
+  return byUnit;
+}
+
+/**
+ * Who gains and who loses a locality when it moves from `fromUnitId` (its
+ * unit at that level today, if any) to `toUnitId`. Someone holding a grant on
+ * both units keeps it and is in neither list.
+ */
+export function moveReach(
+  holders: ReadonlyMap<string, readonly UnitHolder[]>,
+  toUnitId: string,
+  fromUnitId: string | null,
+): { gaining: UnitHolder[]; losing: UnitHolder[] } {
+  const to = holders.get(toUnitId) ?? [];
+  const from = fromUnitId === null ? [] : (holders.get(fromUnitId) ?? []);
+  const toIds = new Set(to.map((h) => h.userId));
+  const fromIds = new Set(from.map((h) => h.userId));
+  return {
+    gaining: to.filter((h) => !fromIds.has(h.userId)),
+    losing: from.filter((h) => !toIds.has(h.userId)),
+  };
+}

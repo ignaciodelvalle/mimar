@@ -9,6 +9,8 @@
 // Everything runs inside a transaction that is always rolled back: the local
 // database is shared, and neither a unit nor a membership is ever deleted.
 
+import { randomUUID } from "node:crypto";
+
 import { TransactionRollbackError, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
@@ -22,7 +24,9 @@ import {
 } from "@/src/modules/organizations/application/authority-units/manage-units";
 import {
   listAuthorityUnits,
+  listUnitHolders,
   loadAuthorityUnitDetail,
+  moveReach,
 } from "@/src/modules/organizations/application/authority-units/read-units";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -362,5 +366,75 @@ describe("reading units", () => {
       });
       expect(move?.performedAt).toBeInstanceOf(Date);
     });
+  });
+});
+
+// Verify S4: moving a locality into a unit widens every holder of that unit
+// and narrows the holders of the unit it leaves. The editor shows both lists
+// before the move; these are the reads behind them.
+describe("whom a move reaches", () => {
+  async function holder(
+    tx: Tx,
+    name: string,
+    unitId: string,
+    over: { revoked?: boolean; deactivated?: boolean } = {},
+  ): Promise<string> {
+    const id = randomUUID();
+    await tx.execute(sql`
+      insert into public.profiles (id, display_name, role, account_type, deactivated_at)
+      values (${id}::uuid, ${name}, 'govt', 'institutional',
+              ${over.deactivated ? sql`now()` : sql`null`})
+    `);
+    await tx.execute(sql`
+      insert into public.govt_assignments
+        (user_id, jurisdiction_province, jurisdiction_locality, authority_unit_id, revoked_at)
+      values (${id}::uuid, 'Buenos Aires', ${`S4 ${name}`}, ${unitId}::uuid,
+              ${over.revoked ? sql`now()` : sql`null`})
+    `);
+    return id;
+  }
+
+  it("lists the active holders of confirmed units only", async () => {
+    await inRolledBackTx(async (tx) => {
+      const confirmed = (await activeUnit(
+        tx,
+        await localityId(tx, VILLA_MARIA_BA),
+        "municipal",
+      )) as string;
+      await tx.execute(sql`
+        update public.authority_units set status = 'confirmed', confirmed_at = now()
+         where id = ${confirmed}::uuid
+      `);
+      const draft = (await tx.execute(sql`
+        select id::text as id from public.authority_units
+         where province_code = 'AR-B' and level = 'municipal' and status = 'draft'
+           and id <> ${confirmed}::uuid
+         order by name limit 1
+      `)) as unknown as Array<{ id: string }>;
+      const draftId = (draft[0] as { id: string }).id;
+
+      const active = await holder(tx, "S4 activa", confirmed);
+      await holder(tx, "S4 revocada", confirmed, { revoked: true });
+      await holder(tx, "S4 desactivada", confirmed, { deactivated: true });
+      await holder(tx, "S4 en borrador", draftId);
+
+      const holders = await listUnitHolders(tx, [confirmed, draftId]);
+      expect(holders.get(confirmed)).toEqual([{ userId: active, displayName: "S4 activa" }]);
+      expect(holders.has(draftId)).toBe(false);
+      expect((await listUnitHolders(tx, [])).size).toBe(0);
+    });
+  });
+
+  it("the target's holders gain, the source's lose, and someone on both keeps it", () => {
+    const ana = { userId: "a", displayName: "Ana" };
+    const beto = { userId: "b", displayName: "Beto" };
+    const caro = { userId: "c", displayName: "Caro" };
+    const holders = new Map([
+      ["to", [ana, caro]],
+      ["from", [beto, caro]],
+    ]);
+    expect(moveReach(holders, "to", "from")).toEqual({ gaining: [ana], losing: [beto] });
+    expect(moveReach(holders, "to", null)).toEqual({ gaining: [ana, caro], losing: [] });
+    expect(moveReach(holders, "nobody", "from")).toEqual({ gaining: [], losing: [beto, caro] });
   });
 });
