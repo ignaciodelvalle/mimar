@@ -16,7 +16,11 @@ import { TransactionRollbackError, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { db } from "@/db";
-import { resolveBusinessRule } from "@/lib/infra/business-rules-resolver";
+import {
+  canonicalJurisdictionKey,
+  resolveBusinessRule,
+  resolveBusinessRuleForJurisdictions,
+} from "@/lib/infra/business-rules-resolver";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -275,5 +279,45 @@ describe("resolveBusinessRule on the name path, once homonyms carry their own ru
       );
       expect(r.matchedRow?.id).not.toBe(keyed);
     });
+  });
+});
+
+// Verify S1: the batch keys by catalogue id too. Two homonym places share a
+// name pair; keyed by names alone the batch kept ONE entry, resolved with the
+// first place's id, and handed Bragado's ordinance to Alberti's Mechita.
+describe("resolveBusinessRuleForJurisdictions on the id path", () => {
+  it("keeps homonym places apart: each gets its own unit's ordinance", async () => {
+    await inRolledBackTx(async (tx) => {
+      const alberti = await localityId(tx, MECHITA_ALBERTI);
+      const bragado = await localityId(tx, MECHITA_BRAGADO);
+      const ordinance = await rule(tx, {
+        locality: "Bragado",
+        unitId: await municipalUnitOf(tx, bragado),
+        days: 14,
+      });
+
+      const batch = await resolveBusinessRuleForJurisdictions(
+        "rabies_observation_window",
+        [mechita(bragado), mechita(alberti), mechita(null)],
+        tx,
+        { mode: "id" },
+      );
+      expect(batch.size).toBe(3);
+      expect(batch.get(canonicalJurisdictionKey(mechita(bragado)))?.matchedRow?.id).toBe(ordinance);
+      expect(batch.get(canonicalJurisdictionKey(mechita(alberti)))?.matchedRow?.id).not.toBe(
+        ordinance,
+      );
+      expect(batch.get(canonicalJurisdictionKey(mechita(null)))?.source).not.toBe("locality");
+    });
+  });
+
+  it("an unwired caller, a known-unresolved place and an id never share a key", () => {
+    const { localityId: _omit, ...unwired } = mechita(null);
+    const keys = new Set([
+      canonicalJurisdictionKey(unwired),
+      canonicalJurisdictionKey(mechita(null)),
+      canonicalJurisdictionKey(mechita("00000000-0000-0000-0000-000000000001")),
+    ]);
+    expect(keys.size).toBe(3);
   });
 });

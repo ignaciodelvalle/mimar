@@ -401,12 +401,26 @@ async function resolveByName<T extends GovtBusinessRuleType>(
  * Canonical string key for a jurisdiction — stable across `undefined`/`null`
  * normalization so batch-resolution maps can be looked up by re-deriving the
  * key from the same jurisdiction object.
+ *
+ * The catalogue id is part of the key (localidades-por-id verify S1): two
+ * homonym places (Mechita of Alberti and of Bragado) share a name pair, and on
+ * the id path they resolve to different ordinances, so a batch must not
+ * collapse them into one entry resolved with the first one's id. `localityId`
+ * is three-state and so is its slot: absent (unwired caller, name cascade),
+ * `null` (known and unresolved) and an id are three different resolutions.
  */
 export function canonicalJurisdictionKey(jurisdiction: Jurisdiction): string {
+  const idSlot =
+    jurisdiction.localityId === undefined
+      ? ""
+      : jurisdiction.localityId === null
+        ? "unresolved"
+        : `id:${jurisdiction.localityId}`;
   return [
     jurisdiction.country ?? "AR",
     jurisdiction.province ?? "",
     jurisdiction.locality ?? "",
+    idSlot,
   ].join("|");
 }
 
@@ -430,6 +444,7 @@ export async function resolveBusinessRuleForJurisdictions<T extends GovtBusiness
   ruleType: T,
   jurisdictions: Jurisdiction[],
   executor: Executor = db,
+  options: ResolveRuleOptions = {},
 ): Promise<Map<string, ResolvedRule<T>>> {
   const distinct = new Map<string, Jurisdiction>();
   for (const jurisdiction of jurisdictions) {
@@ -440,14 +455,16 @@ export async function resolveBusinessRuleForJurisdictions<T extends GovtBusiness
 
   if (executor === db) {
     const rules = await Promise.all(
-      entries.map(([, jurisdiction]) => resolveBusinessRule(ruleType, jurisdiction, executor)),
+      entries.map(([, jurisdiction]) =>
+        resolveBusinessRule(ruleType, jurisdiction, executor, options),
+      ),
     );
     return new Map(entries.map(([key], i) => [key, rules[i]]));
   }
 
   const resolved = new Map<string, ResolvedRule<T>>();
   for (const [key, jurisdiction] of entries) {
-    resolved.set(key, await resolveBusinessRule(ruleType, jurisdiction, executor));
+    resolved.set(key, await resolveBusinessRule(ruleType, jurisdiction, executor, options));
   }
   return resolved;
 }
