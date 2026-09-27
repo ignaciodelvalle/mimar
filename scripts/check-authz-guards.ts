@@ -80,6 +80,11 @@ export const AUTH_GUARDS = [
   "requireCapabilityForOrgToken",
   "requireOrgAccessByToken",
   "requireAdminOrRedirect",
+  // The administration gate (jurisdiction-admin): platform admin or an active
+  // jurisdiction admin appointee. Delegates to requireAdminOrRedirect today.
+  // Admission only — the province a writer may act in is decided by
+  // requireJurisdictionAdminFor inside the writer's transaction.
+  "requireAdministrationPrincipalOrRedirect",
   "requireAdminOrGovtOrRedirect",
   "requireDecomisoPrincipal",
   // Denuncia-moderation authority (Wave A/F). Reuses requireAdminOrGovtOrRedirect
@@ -121,6 +126,8 @@ export const AUTH_GUARDS = [
 // access must use one of these.
 export const INSTITUTIONAL_GUARDS = [
   "requireAdminOrRedirect",
+  // Platform admin or active jurisdiction admin appointee (jurisdiction-admin).
+  "requireAdministrationPrincipalOrRedirect",
   "requireAdminOrGovtOrRedirect",
   // The /gob READ gate (admin | govt | national — the read-only national role,
   // migration 0214). Institutional authority for a PAGE, and DELIBERATELY NOT
@@ -214,6 +221,8 @@ export const DELETION_AWARE_GUARDS = [
   "requireOwnedPetByToken",
   "requireOrgAccessByToken",
   "requireAdminOrRedirect",
+  // Deletion-aware because it delegates to requireAdminOrRedirect first.
+  "requireAdministrationPrincipalOrRedirect",
   "requireAdminOrGovtOrRedirect",
   "requireDecomisoPrincipal",
   "requireDenunciaModerationPrincipal",
@@ -554,6 +563,7 @@ export const GUARD_HOMES: Readonly<Record<string, readonly string[]>> = {
   requireCapabilityForOrgToken: ["src/modules/organizations/infrastructure/authz-resolver.ts"],
   requireOrgAccessByToken: ["lib/infra/auth-guards.ts"],
   requireAdminOrRedirect: ["lib/infra/auth-guards.ts"],
+  requireAdministrationPrincipalOrRedirect: ["lib/infra/auth-guards.ts"],
   requireAdminOrGovtOrRedirect: ["lib/infra/auth-guards.ts"],
   requireGobReadAccessOrRedirect: ["lib/infra/auth-guards.ts"],
   requireDecomisoPrincipal: ["lib/infra/auth-guards.ts"],

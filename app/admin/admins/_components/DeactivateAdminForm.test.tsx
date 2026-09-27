@@ -53,6 +53,7 @@ const ACTOR = {
   role: "admin" as const,
   accountType: "institutional" as const,
   deactivatedAt: null,
+  deletedAt: null,
 };
 
 const TARGET = { id: "admin-2", displayName: "Ana Admin" };

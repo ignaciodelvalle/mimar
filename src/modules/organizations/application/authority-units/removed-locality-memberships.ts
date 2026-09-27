@@ -17,9 +17,9 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 
-import { arLocalities, authorityUnitLocalities, authorityUnits, profiles } from "@/db";
-import { type ActorProfile, canAssignGovtLocality } from "@/lib/domain/institutional-scope";
+import { arLocalities, authorityUnitLocalities, authorityUnits } from "@/db";
 import { writeAuditLog } from "@/lib/infra/audit-log";
+import { requirePlatformAdmin } from "@/src/modules/organizations/application/admin-authority/authority";
 
 import type { UnitExecutor } from "./manage-units";
 
@@ -81,26 +81,6 @@ const inputSchema = z.object({
     .max(500, "El motivo admite hasta 500 caracteres."),
 });
 
-async function isActiveAdmin(exec: UnitExecutor, actorUserId: string): Promise<boolean> {
-  const [row] = await exec
-    .select({
-      id: profiles.id,
-      role: profiles.role,
-      accountType: profiles.accountType,
-      deactivatedAt: profiles.deactivatedAt,
-    })
-    .from(profiles)
-    .where(eq(profiles.id, actorUserId))
-    .limit(1);
-  if (!row) return false;
-  return canAssignGovtLocality({
-    id: row.id,
-    role: row.role as ActorProfile["role"],
-    accountType: row.accountType as ActorProfile["accountType"],
-    deactivatedAt: row.deactivatedAt,
-  });
-}
-
 /** Close one active membership of a REMOVED locality. Admin only; reason required. */
 export async function closeRemovedLocalityMembership(
   exec: UnitExecutor,
@@ -113,19 +93,22 @@ export async function closeRemovedLocalityMembership(
     if (issue?.path[0] !== "reason") return { error: "NOT_FOUND" };
     return { error: `VALIDATION_ERROR: ${issue.message}` };
   }
-  if (!(await isActiveAdmin(exec, actorUserId))) return { error: "CAPABILITY_DENIED" };
   const { localityId, unitId, reason } = parsed.data;
 
-  const [locality] = await exec
-    .select({ removedAt: arLocalities.removedAt })
-    .from(arLocalities)
-    .where(eq(arLocalities.id, localityId))
-    .limit(1);
-  if (!locality) return { error: "NOT_FOUND" };
-  // A live locality's municipal membership only moves (the editor's rule).
-  if (locality.removedAt === null) return { error: "LOCALITY_NOT_REMOVED" };
-
+  // Capability, the catalogue read and the close share one transaction.
   return exec.transaction(async (tx) => {
+    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+      return { error: "CAPABILITY_DENIED" as const };
+    }
+    const [locality] = await tx
+      .select({ removedAt: arLocalities.removedAt })
+      .from(arLocalities)
+      .where(eq(arLocalities.id, localityId))
+      .limit(1);
+    if (!locality) return { error: "NOT_FOUND" as const };
+    // A live locality's municipal membership only moves (the editor's rule).
+    if (locality.removedAt === null) return { error: "LOCALITY_NOT_REMOVED" as const };
+
     const closed = await tx
       .update(authorityUnitLocalities)
       .set({ validTo: sql`now()`, endedBy: actorUserId })

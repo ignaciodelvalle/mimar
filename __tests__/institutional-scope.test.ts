@@ -13,11 +13,14 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { db, govtAssignments, notifications, profiles } from "@/db";
 import {
+  canActInProvince,
   canAssignGovtLocality,
   canCreateInstitutional,
   canDeactivateAdmin,
   canDeactivateGovt,
   canResetCredentials,
+  decideAdminAuthority,
+  isPlatformAdmin,
 } from "@/lib/domain/institutional-scope";
 import type { ActorProfile } from "@/lib/domain/institutional-scope";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -212,6 +215,7 @@ const activeAdmin: ActorProfile = {
   role: "admin",
   accountType: "institutional",
   deactivatedAt: null,
+  deletedAt: null,
 };
 
 const deactivatedAdmin: ActorProfile = {
@@ -219,6 +223,7 @@ const deactivatedAdmin: ActorProfile = {
   role: "admin",
   accountType: "institutional",
   deactivatedAt: new Date("2026-01-01"),
+  deletedAt: null,
 };
 
 const govtActor: ActorProfile = {
@@ -226,6 +231,7 @@ const govtActor: ActorProfile = {
   role: "govt",
   accountType: "institutional",
   deactivatedAt: null,
+  deletedAt: null,
 };
 
 const ownerActor: ActorProfile = {
@@ -233,6 +239,7 @@ const ownerActor: ActorProfile = {
   role: "owner",
   accountType: "personal",
   deactivatedAt: null,
+  deletedAt: null,
 };
 
 describe("canCreateInstitutional", () => {
@@ -320,7 +327,7 @@ describe("canAssignGovtLocality", () => {
 });
 
 // ============================================================================
-// Shared negative admin-gate (4 cases — verifies reuse of isActiveAdmin)
+// Shared negative admin-gate (4 cases — verifies reuse of isPlatformAdmin)
 // ============================================================================
 
 describe("shared negative admin-gate — all helpers reject non-admin/deactivated", () => {
@@ -338,5 +345,86 @@ describe("shared negative admin-gate — all helpers reject non-admin/deactivate
 
   it("canAssignGovtLocality rejects personal owner", () => {
     expect(canAssignGovtLocality(ownerActor)).toBe(false);
+  });
+});
+
+// ============================================================================
+// Admin authority (jurisdiction-admin) — the one platform-admin predicate and
+// the pure authority decision the loader feeds.
+// ============================================================================
+
+describe("isPlatformAdmin", () => {
+  it("admits the active, non-erased institutional admin", () => {
+    expect(isPlatformAdmin(activeAdmin)).toBe(true);
+  });
+
+  it("refuses an ERASED admin even though role and deactivation read clean", () => {
+    // The five local copies it replaced never read deleted_at.
+    const erased = { ...activeAdmin, deletedAt: new Date("2026-02-01") };
+    expect(isPlatformAdmin(erased)).toBe(false);
+    expect(canCreateInstitutional(erased)).toBe(false);
+  });
+
+  it("refuses a deactivated admin, a govt, a personal account", () => {
+    expect(isPlatformAdmin(deactivatedAdmin)).toBe(false);
+    expect(isPlatformAdmin(govtActor)).toBe(false);
+    expect(isPlatformAdmin(ownerActor)).toBe(false);
+    expect(isPlatformAdmin({ ...activeAdmin, accountType: "personal" })).toBe(false);
+  });
+});
+
+describe("decideAdminAuthority", () => {
+  it("the platform admin is platform, whatever the appointment says", () => {
+    expect(decideAdminAuthority(activeAdmin, null)).toEqual({ kind: "platform" });
+    expect(decideAdminAuthority(activeAdmin, "AR-X")).toEqual({ kind: "platform" });
+  });
+
+  it("an active govt with an appointment province is a jurisdiction admin of THAT province", () => {
+    expect(decideAdminAuthority(govtActor, "AR-X")).toEqual({
+      kind: "jurisdiction",
+      provinceCode: "AR-X",
+    });
+  });
+
+  it("fails closed to none when there is no appointment or the profile is not an active govt", () => {
+    const stamp = new Date("2026-01-01");
+    expect(decideAdminAuthority(govtActor, null)).toEqual({ kind: "none" });
+    expect(decideAdminAuthority(govtActor, "")).toEqual({ kind: "none" });
+    expect(decideAdminAuthority(null, "AR-X")).toEqual({ kind: "none" });
+    expect(decideAdminAuthority({ ...govtActor, deactivatedAt: stamp }, "AR-X")).toEqual({
+      kind: "none",
+    });
+    expect(decideAdminAuthority({ ...govtActor, deletedAt: stamp }, "AR-X")).toEqual({
+      kind: "none",
+    });
+    expect(decideAdminAuthority({ ...govtActor, accountType: "personal" }, "AR-X")).toEqual({
+      kind: "none",
+    });
+    expect(decideAdminAuthority({ ...govtActor, role: "national" }, "AR-X")).toEqual({
+      kind: "none",
+    });
+    expect(decideAdminAuthority(ownerActor, "AR-X")).toEqual({ kind: "none" });
+    // A deactivated ADMIN with a stray appointment province never falls
+    // through to jurisdiction authority.
+    expect(decideAdminAuthority(deactivatedAdmin, "AR-X")).toEqual({ kind: "none" });
+  });
+});
+
+describe("canActInProvince", () => {
+  it("platform acts anywhere, including on a province-less (country-wide) target", () => {
+    expect(canActInProvince({ kind: "platform" }, "AR-X")).toBe(true);
+    expect(canActInProvince({ kind: "platform" }, null)).toBe(true);
+  });
+
+  it("a jurisdiction admin acts only inside its own province, never country-wide", () => {
+    const cordoba = { kind: "jurisdiction", provinceCode: "AR-X" } as const;
+    expect(canActInProvince(cordoba, "AR-X")).toBe(true);
+    expect(canActInProvince(cordoba, "AR-S")).toBe(false);
+    expect(canActInProvince(cordoba, null)).toBe(false);
+  });
+
+  it("none acts nowhere", () => {
+    expect(canActInProvince({ kind: "none" }, "AR-X")).toBe(false);
+    expect(canActInProvince({ kind: "none" }, null)).toBe(false);
   });
 });

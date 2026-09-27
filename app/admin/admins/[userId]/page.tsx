@@ -51,6 +51,7 @@ export default async function AdminDetailPage({
       role: profiles.role,
       accountType: profiles.accountType,
       deactivatedAt: profiles.deactivatedAt,
+      deletedAt: profiles.deletedAt,
     })
     .from(profiles)
     .where(eq(profiles.id, actorUser.id))
@@ -166,6 +167,7 @@ export default async function AdminDetailPage({
                 role: actorProfile.role as "owner" | "vet" | "govt" | "admin",
                 accountType: actorProfile.accountType as "personal" | "institutional",
                 deactivatedAt: actorProfile.deactivatedAt,
+                deletedAt: actorProfile.deletedAt,
               }}
               activeAdminCount={Number(activeCount)}
             />

@@ -9,7 +9,7 @@
 // §2.2: notifications accumulate in pendingNotificationsGovt[] inside the tx
 // and are inserted AFTER the transaction commits (best-effort, logged on failure).
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { auditLog, db, govtAssignments, notifications, profiles } from "@/db";
 import { canDeactivateGovt } from "@/lib/domain/institutional-scope";
@@ -74,11 +74,16 @@ export async function deactivateGovtForAuthority(
 
   try {
     await db.transaction(async (tx) => {
+      // Timestamps come from the DATABASE clock (now() = the transaction's
+      // start), not this Node process: a Docker VM drifts from its host, and
+      // these instants sit next to defaultNow() columns written in the same
+      // transaction (audit_log.created_at).
+      //
       // a. Revoke all active govt_assignments for target
       const revokedAssignments = await tx
         .update(govtAssignments)
         .set({
-          revokedAt: new Date(),
+          revokedAt: sql`now()`,
           revokedByUserId: actorUserId,
           revocationReason: input.motivo.trim(),
         })
@@ -95,7 +100,7 @@ export async function deactivateGovtForAuthority(
       // b. SET deactivated_at with anti-race WHERE
       const updatedRows = await tx
         .update(profiles)
-        .set({ deactivatedAt: new Date(), updatedAt: new Date() })
+        .set({ deactivatedAt: sql`now()`, updatedAt: sql`now()` })
         .where(and(eq(profiles.id, input.targetGovtUserId), isNull(profiles.deactivatedAt)))
         .returning({ id: profiles.id });
 

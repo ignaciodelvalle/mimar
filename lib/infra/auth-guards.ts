@@ -11,7 +11,7 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 
 import type { Organization, OrganizationMembership } from "@/db";
-import type { ActorProfile } from "@/lib/domain/institutional-scope";
+import type { ActorProfile, AdminAuthority } from "@/lib/domain/institutional-scope";
 import type { GobReadRole } from "@/lib/domain/jurisdiction-canonical";
 import { requireLiveUser } from "@/lib/infra/live-user";
 import {
@@ -341,8 +341,34 @@ export async function requireAdminOrRedirect(): Promise<AdminSession> {
       role: profile.role as ActorProfile["role"],
       accountType: profile.accountType as ActorProfile["accountType"],
       deactivatedAt: profile.deactivatedAt,
+      deletedAt: profile.deletedAt,
     },
   };
+}
+
+// ============================================================================
+// Administration guard (jurisdiction-admin) — platform admin or appointee
+// ============================================================================
+//
+// The page/action gate for surfaces a jurisdiction admin shares with the
+// platform admin (/gob/administracion, the delegated writers' actions). It
+// establishes WHO may enter; it never decides WHERE they may act — every
+// writer still derives the target's province and asks
+// requireJurisdictionAdminFor inside its own transaction.
+//
+// Stage: appointments are not wired yet, so this admits exactly what
+// requireAdminOrRedirect admits (it delegates to it, inheriting the erased /
+// deactivated / non-institutional refusals) and reports platform authority.
+// When appointments ship it widens to an active appointee, whose authority
+// then reads `{ kind: "jurisdiction", provinceCode }` — never platform.
+
+export type AdministrationSession = AdminSession & {
+  authority: AdminAuthority;
+};
+
+export async function requireAdministrationPrincipalOrRedirect(): Promise<AdministrationSession> {
+  const session = await requireAdminOrRedirect();
+  return { ...session, authority: { kind: "platform" } };
 }
 
 // ============================================================================

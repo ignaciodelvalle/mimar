@@ -34,9 +34,9 @@
 import { sql } from "drizzle-orm";
 import { z } from "zod/v4";
 
-import { type db, profiles } from "@/db";
-import { type ActorProfile, canAssignGovtLocality } from "@/lib/domain/institutional-scope";
+import type { db } from "@/db";
 import { provinceByCode, provinceByName } from "@/lib/reference/ar-provincias";
+import { requirePlatformAdmin } from "@/src/modules/organizations/application/admin-authority/authority";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type QueueExecutor = typeof db | Tx;
@@ -125,27 +125,6 @@ export async function listUnresolvedPlaces(
   return rows.map((r) => ({ ...r, createdAt: new Date(r.createdAt) }));
 }
 
-async function isActiveAdmin(exec: QueueExecutor, actorUserId: string): Promise<boolean> {
-  const rows = await exec
-    .select({
-      id: profiles.id,
-      role: profiles.role,
-      accountType: profiles.accountType,
-      deactivatedAt: profiles.deactivatedAt,
-    })
-    .from(profiles)
-    .where(sql`${profiles.id} = ${actorUserId}::uuid`)
-    .limit(1);
-  const row = rows[0];
-  if (!row) return false;
-  return canAssignGovtLocality({
-    id: row.id,
-    role: row.role as ActorProfile["role"],
-    accountType: row.accountType as ActorProfile["accountType"],
-    deactivatedAt: row.deactivatedAt,
-  });
-}
-
 const inputSchema = z.object({
   subjectTable: z.enum(QUEUE_SUBJECT_TABLES),
   subjectId: z.string().uuid(),
@@ -167,12 +146,16 @@ export async function resolvePlaceFromQueue(
   if (!parsed.success) {
     return { error: `VALIDATION_ERROR: ${parsed.error.issues[0]?.message ?? "datos inválidos"}` };
   }
-  if (!z.string().uuid().safeParse(actorUserId).success) return { error: "CAPABILITY_DENIED" };
-  if (!(await isActiveAdmin(exec, actorUserId))) return { error: "CAPABILITY_DENIED" };
   const { subjectTable, subjectId, localityId, reason } = parsed.data;
   const table = sql.raw(`public.${subjectTable}`);
 
   return exec.transaction(async (tx) => {
+    // Platform-only (the queue is never delegated), checked in the same
+    // transaction as the resolution it authorizes. A malformed actor id is
+    // refused by the loader, not by a query error.
+    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+      return { error: "CAPABILITY_DENIED" as const };
+    }
     const subject = (await tx.execute(sql`
       select jurisdiction_province as province, locality_id::text as "localityId"
         from ${table} where id = ${subjectId}::uuid for update

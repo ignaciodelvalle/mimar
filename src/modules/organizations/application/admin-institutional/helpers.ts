@@ -12,6 +12,7 @@ export async function loadActorProfile(actorUserId: string): Promise<ActorProfil
       role: profiles.role,
       accountType: profiles.accountType,
       deactivatedAt: profiles.deactivatedAt,
+      deletedAt: profiles.deletedAt,
     })
     .from(profiles)
     .where(eq(profiles.id, actorUserId))
@@ -24,6 +25,7 @@ export async function loadActorProfile(actorUserId: string): Promise<ActorProfil
     role: row.role as ActorProfile["role"],
     accountType: row.accountType as ActorProfile["accountType"],
     deactivatedAt: row.deactivatedAt,
+    deletedAt: row.deletedAt,
   };
 }
 

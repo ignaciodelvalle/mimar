@@ -29,11 +29,11 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 
-import { authorityUnits, type db, govtAssignments, profiles } from "@/db";
-import { type ActorProfile, canAssignGovtLocality } from "@/lib/domain/institutional-scope";
+import { authorityUnits, type db, govtAssignments } from "@/db";
 import { isWholeProvinceLocality } from "@/lib/domain/jurisdiction-canonical";
 import { writeAuditLog } from "@/lib/infra/audit-log";
 import { provinceByCode } from "@/lib/reference/ar-provincias";
+import { requirePlatformAdmin } from "@/src/modules/organizations/application/admin-authority/authority";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type GrantUnitExecutor = typeof db | Tx;
@@ -56,27 +56,6 @@ export type GrantUnitPlan = {
 };
 
 const uuid = z.string().uuid();
-
-async function isActiveAdmin(exec: GrantUnitExecutor, actorUserId: string): Promise<boolean> {
-  if (!uuid.safeParse(actorUserId).success) return false;
-  const [row] = await exec
-    .select({
-      id: profiles.id,
-      role: profiles.role,
-      accountType: profiles.accountType,
-      deactivatedAt: profiles.deactivatedAt,
-    })
-    .from(profiles)
-    .where(eq(profiles.id, actorUserId))
-    .limit(1);
-  if (!row) return false;
-  return canAssignGovtLocality({
-    id: row.id,
-    role: row.role as ActorProfile["role"],
-    accountType: row.accountType as ActorProfile["accountType"],
-    deactivatedAt: row.deactivatedAt,
-  });
-}
 
 /** What confirming `userId`'s grants onto `unitId` would do. Reads only. */
 export async function planGrantUnit(
@@ -216,18 +195,27 @@ export async function confirmGrantUnit(
 ): Promise<
   { ok: true; assignmentIds: string[] } | { error: GrantUnitError; added?: GrantUnitPlan["added"] }
 > {
-  if (!(await isActiveAdmin(exec, actorUserId))) return { error: "CAPABILITY_DENIED" };
-  const reason = reasonSchema.safeParse(input.reason);
-  if (!reason.success) {
-    return { error: `VALIDATION_ERROR: ${reason.error.issues[0]?.message ?? "datos inválidos"}` };
-  }
-  const plan = await planGrantUnit(exec, input);
-  if ("error" in plan) return plan;
-  const added = plan.added.map((a) => a.localityId);
-  if (!sameSet(added, input.acceptAdded)) return { error: "PARTIAL_GRANT", added: plan.added };
+  // The authority, the plan and the move are read and written in ONE
+  // transaction: a deactivation of the actor, or a concurrent change to the
+  // grants, that commits first is seen here instead of after the check.
+  return exec.transaction(async (tx) => {
+    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+      return { error: "CAPABILITY_DENIED" as const };
+    }
+    const reason = reasonSchema.safeParse(input.reason);
+    if (!reason.success) {
+      return {
+        error: `VALIDATION_ERROR: ${reason.error.issues[0]?.message ?? "datos inválidos"}` as const,
+      };
+    }
+    const plan = await planGrantUnit(tx, input);
+    if ("error" in plan) return plan;
+    const added = plan.added.map((a) => a.localityId);
+    if (!sameSet(added, input.acceptAdded)) {
+      return { error: "PARTIAL_GRANT" as const, added: plan.added };
+    }
 
-  const assignmentIds = plan.grants.map((g) => g.assignmentId).sort();
-  await exec.transaction(async (tx) => {
+    const assignmentIds = plan.grants.map((g) => g.assignmentId).sort();
     await tx
       .update(govtAssignments)
       .set({ authorityUnitId: plan.unit.id })
@@ -247,6 +235,6 @@ export async function confirmGrantUnit(
       before: { authority_unit_id: null },
       after: { authority_unit_id: plan.unit.id },
     });
+    return { ok: true as const, assignmentIds };
   });
-  return { ok: true, assignmentIds };
 }

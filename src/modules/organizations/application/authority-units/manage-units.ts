@@ -2,11 +2,13 @@
 //
 // Current unit membership decides which authority sees a locality's history
 // (design addendum #2), so every change here is an act of authority:
-//   1. capability — an active platform admin only (the same predicate that
-//      gates govt grants);
-//   2. ONE transaction — the membership rows (which carry who and when:
-//      added_by / ended_by, valid_from / valid_to) and the audit_log row (which
-//      carries WHY and before/after) commit together or not at all;
+//   1. capability — an active platform admin only (requirePlatformAdmin, the
+//      one admin-authority loader), checked INSIDE the transaction below;
+//   2. ONE transaction — the capability check, the reads the change depends
+//      on, the membership rows (which carry who and when: added_by /
+//      ended_by, valid_from / valid_to) and the audit_log row (which carries
+//      WHY and before/after) — all in one snapshot, committed together or not
+//      at all;
 //   3. a municipal membership is MOVED, never removed: every live locality
 //      stays in exactly one municipal unit (the membership fence). A regional
 //      membership can be removed.
@@ -35,11 +37,10 @@ import {
   authorityUnitLocalities,
   authorityUnits,
   type db,
-  profiles,
 } from "@/db";
-import { type ActorProfile, canAssignGovtLocality } from "@/lib/domain/institutional-scope";
 import { writeAuditLog } from "@/lib/infra/audit-log";
 import { provinceByCode } from "@/lib/reference/ar-provincias";
+import { requirePlatformAdmin } from "@/src/modules/organizations/application/admin-authority/authority";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type UnitExecutor = typeof db | Tx;
@@ -87,26 +88,6 @@ function validationError(error: z.ZodError): { error: UnitEditError } {
   return { error: `VALIDATION_ERROR: ${error.issues[0]?.message ?? "datos inválidos"}` };
 }
 
-async function isActiveAdmin(exec: UnitExecutor, actorUserId: string): Promise<boolean> {
-  const [row] = await exec
-    .select({
-      id: profiles.id,
-      role: profiles.role,
-      accountType: profiles.accountType,
-      deactivatedAt: profiles.deactivatedAt,
-    })
-    .from(profiles)
-    .where(eq(profiles.id, actorUserId))
-    .limit(1);
-  if (!row) return false;
-  return canAssignGovtLocality({
-    id: row.id,
-    role: row.role as ActorProfile["role"],
-    accountType: row.accountType as ActorProfile["accountType"],
-    deactivatedAt: row.deactivatedAt,
-  });
-}
-
 async function loadUnit(exec: UnitExecutor, unitId: string) {
   const [unit] = await exec
     .select({
@@ -143,20 +124,22 @@ export async function moveLocalityToUnit(
   if (!reason.success) return validationError(reason.error);
   if (!uuidSchema.safeParse(input.localityId).success) return { error: "NOT_FOUND" };
   if (!uuidSchema.safeParse(input.toUnitId).success) return { error: "NOT_FOUND" };
-  if (!(await isActiveAdmin(exec, actorUserId))) return { error: "CAPABILITY_DENIED" };
-
-  const unit = await loadUnit(exec, input.toUnitId);
-  if (!unit) return { error: "NOT_FOUND" };
-  if (unit.level === "provincial") return { error: "PROVINCIAL_UNIT_HAS_NO_MEMBERS" };
-  const [locality] = await exec
-    .select({ id: arLocalities.id, provinceCode: arLocalities.provinceCode })
-    .from(arLocalities)
-    .where(and(eq(arLocalities.id, input.localityId), isNull(arLocalities.removedAt)))
-    .limit(1);
-  if (!locality) return { error: "NOT_FOUND" };
-  if (locality.provinceCode !== unit.provinceCode) return { error: "PROVINCE_MISMATCH" };
 
   return exec.transaction(async (tx) => {
+    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+      return { error: "CAPABILITY_DENIED" as const };
+    }
+    const unit = await loadUnit(tx, input.toUnitId);
+    if (!unit) return { error: "NOT_FOUND" as const };
+    if (unit.level === "provincial") return { error: "PROVINCIAL_UNIT_HAS_NO_MEMBERS" as const };
+    const [locality] = await tx
+      .select({ id: arLocalities.id, provinceCode: arLocalities.provinceCode })
+      .from(arLocalities)
+      .where(and(eq(arLocalities.id, input.localityId), isNull(arLocalities.removedAt)))
+      .limit(1);
+    if (!locality) return { error: "NOT_FOUND" as const };
+    if (locality.provinceCode !== unit.provinceCode) return { error: "PROVINCE_MISMATCH" as const };
+
     const [current] = await tx
       .select({ id: authorityUnitLocalities.id, unitId: authorityUnitLocalities.unitId })
       .from(authorityUnitLocalities)
@@ -214,13 +197,15 @@ export async function removeLocalityFromUnit(
   if (!reason.success) return validationError(reason.error);
   if (!uuidSchema.safeParse(input.localityId).success) return { error: "NOT_FOUND" };
   if (!uuidSchema.safeParse(input.unitId).success) return { error: "NOT_FOUND" };
-  if (!(await isActiveAdmin(exec, actorUserId))) return { error: "CAPABILITY_DENIED" };
-
-  const unit = await loadUnit(exec, input.unitId);
-  if (!unit) return { error: "NOT_FOUND" };
-  if (unit.level === "municipal") return { error: "MUNICIPAL_MEMBERSHIP_MOVES_ONLY" };
 
   return exec.transaction(async (tx) => {
+    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+      return { error: "CAPABILITY_DENIED" as const };
+    }
+    const unit = await loadUnit(tx, input.unitId);
+    if (!unit) return { error: "NOT_FOUND" as const };
+    if (unit.level === "municipal") return { error: "MUNICIPAL_MEMBERSHIP_MOVES_ONLY" as const };
+
     const closed = await tx
       .update(authorityUnitLocalities)
       .set({ validTo: sql`now()`, endedBy: actorUserId })
@@ -270,10 +255,12 @@ export async function createAuthorityUnit(
     })
     .safeParse(input);
   if (!parsed.success) return validationError(parsed.error);
-  if (!(await isActiveAdmin(exec, actorUserId))) return { error: "CAPABILITY_DENIED" };
 
   const { kind, provinceCode, name } = parsed.data;
   return exec.transaction(async (tx) => {
+    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+      return { error: "CAPABILITY_DENIED" as const };
+    }
     const [provincia] = await tx
       .select({ id: authorityUnits.id })
       .from(authorityUnits)
@@ -310,12 +297,15 @@ export async function renameAuthorityUnit(
   const name = nameSchema.safeParse(input.name);
   if (!name.success) return validationError(name.error);
   if (!uuidSchema.safeParse(input.unitId).success) return { error: "NOT_FOUND" };
-  if (!(await isActiveAdmin(exec, actorUserId))) return { error: "CAPABILITY_DENIED" };
-  const unit = await loadUnit(exec, input.unitId);
-  if (!unit) return { error: "NOT_FOUND" };
-  if (unit.name === name.data) return { ok: true };
 
-  await exec.transaction(async (tx) => {
+  return exec.transaction(async (tx) => {
+    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+      return { error: "CAPABILITY_DENIED" as const };
+    }
+    const unit = await loadUnit(tx, input.unitId);
+    if (!unit) return { error: "NOT_FOUND" as const };
+    if (unit.name === name.data) return { ok: true as const };
+
     await tx.update(authorityUnits).set({ name: name.data }).where(eq(authorityUnits.id, unit.id));
     await writeAuditLog(tx, {
       action: "authority_unit_renamed",
@@ -324,8 +314,8 @@ export async function renameAuthorityUnit(
       before: { name: unit.name },
       after: { name: name.data },
     });
+    return { ok: true as const };
   });
-  return { ok: true };
 }
 
 /** A draft unit becomes confirmed: an admin checked it with the authority. */
@@ -335,12 +325,15 @@ export async function confirmAuthorityUnit(
   input: { unitId: string },
 ): Promise<{ ok: true } | { error: UnitEditError }> {
   if (!uuidSchema.safeParse(input.unitId).success) return { error: "NOT_FOUND" };
-  if (!(await isActiveAdmin(exec, actorUserId))) return { error: "CAPABILITY_DENIED" };
-  const unit = await loadUnit(exec, input.unitId);
-  if (!unit) return { error: "NOT_FOUND" };
-  if (unit.status === "confirmed") return { error: "ALREADY_CONFIRMED" };
 
-  await exec.transaction(async (tx) => {
+  return exec.transaction(async (tx) => {
+    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+      return { error: "CAPABILITY_DENIED" as const };
+    }
+    const unit = await loadUnit(tx, input.unitId);
+    if (!unit) return { error: "NOT_FOUND" as const };
+    if (unit.status === "confirmed") return { error: "ALREADY_CONFIRMED" as const };
+
     await tx
       .update(authorityUnits)
       .set({ status: "confirmed", confirmedBy: actorUserId, confirmedAt: sql`now()` })
@@ -352,6 +345,6 @@ export async function confirmAuthorityUnit(
       before: { status: "draft" },
       after: { status: "confirmed" },
     });
+    return { ok: true as const };
   });
-  return { ok: true };
 }
