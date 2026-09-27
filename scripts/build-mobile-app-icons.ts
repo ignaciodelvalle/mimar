@@ -112,15 +112,14 @@
 // was checked rather than assumed: at 0.768 the superellipse still cleared the
 // plaque's flat-edge midpoints by 119px and its chamfers by ~204px.
 //
-// RATIO_MASKABLE = 0.53. This one answers to Android, in dp on a 108dp layer.
+// RATIO_MASKABLE = 0.47. This one answers to Android, in dp on a 108dp layer.
 // Only the centre 72dp is GUARANTEED to survive every OEM mask, and Google
 // additionally RECOMMENDS keeping content inside a 66dp keyline. Both are
 // diameters of CIRCLES, so what has to fit is the mark's circumradius —
-// 0.5667 x ink width, from the chamfer geometry above:
-//
-//     0.53 x 1024 = 543px ink  →  circumradius 32.45dp of 108
-//         · 3.55dp inside the 72dp guaranteed mask (36dp radius)
-//         · 0.55dp inside the 66dp content keyline (33dp radius)
+// 0.6334 x ink width for the round-3 plaque (10-unit chamfer; it was 0.5667
+// with the old deep chamfer, when this ratio was 0.53). The full derivation is
+// on the constant below; the circumradius stays at ~32.2dp of 108, inside both
+// the 72dp guaranteed mask and the 66dp content keyline.
 //
 // The old 0.574 put it at 0.86dp inside the mask and 2.14dp OUTSIDE the
 // keyline — passing the guarantee, failing the recommendation, with less than a

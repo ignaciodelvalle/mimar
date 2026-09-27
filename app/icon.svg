@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="miMAR" style="color:#0E5A99">
+  <title>miMAR — Mi Mascota Argentina</title>
   <!--
     Next.js file-convention favicon (app/icon.svg -> auto <link rel="icon">).
     Duplicated from public/logo-mimar-mark-small.svg rather than referenced,

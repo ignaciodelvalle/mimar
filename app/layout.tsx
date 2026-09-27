@@ -185,8 +185,9 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: BRANDING.appName,
   },
+  // The favicon comes from the file convention (app/favicon.ico + app/icon.svg);
+  // naming a PNG here as well would add a third <link rel="icon">.
   icons: {
-    icon: "/icons/icon-192.png",
     apple: "/icons/icon-192.png",
   },
 };

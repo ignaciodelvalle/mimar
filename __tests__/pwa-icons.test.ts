@@ -362,8 +362,8 @@ describe("PWA icons — the routes that serve them", () => {
   });
 
   it("points app/layout.tsx's icon and apple-touch-icon at a generated file", () => {
-    // layout.tsx names ONE of the three (the 192), twice — as `icon` and as
-    // `apple`. Asserted as "every path it names is one of the three, and it
+    // layout.tsx names ONE of the three (the 192), as `apple`; the favicon is
+    // the app/favicon.ico + app/icon.svg file convention. Asserted as "every path it names is one of the three, and it
     // names at least one" rather than as an exact list, so adding an
     // apple-touch-icon at another generated size stays a one-line change while
     // a path to a file this script does not write still fails.
