@@ -120,6 +120,7 @@
     "place:parity-sweep": "node --import ./scripts/register-server-only-stub.mjs --import tsx scripts/place-parity-sweep.ts",
     "place:backfill-event-places": "node --import ./scripts/register-server-only-stub.mjs --import tsx scripts/place-backfill-event-places.ts",
     "place:backfill-outbox-targets": "node --import ./scripts/register-server-only-stub.mjs --import tsx scripts/place-backfill-outbox-targets.ts",
+    "place:drift-report": "node --import ./scripts/register-server-only-stub.mjs --import tsx scripts/place-drift-report.ts",
     "redistribute:caba-barrios": "node --import ./scripts/register-server-only-stub.mjs --import tsx scripts/redistribute-caba-barrios.ts",
     "seed:pet-photos": "tsx scripts/seed-pet-photos.ts",
     "seed:demo-polish": "tsx scripts/seed-demo-polish.ts",

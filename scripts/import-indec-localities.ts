@@ -75,6 +75,7 @@ import {
   arLocalitiesImportRuns,
   db,
 } from "@/db";
+import { collectPlaceDrift, formatPlaceDrift } from "@/lib/place/drift-report";
 import type { ProvinceCode } from "@/lib/reference/ar-provincias";
 import {
   isSupersededByAltSource,
@@ -687,6 +688,28 @@ export async function runImport(options?: {
   return stats;
 }
 
+/**
+ * What the run left pointing at a renamed or removed row (localidades-por-id
+ * E3). Read-only and never fatal: the import already committed, and a report
+ * that cannot run must not turn a good import into a failed bootstrap.
+ */
+async function printDriftSummary(): Promise<void> {
+  try {
+    const report = await collectPlaceDrift(db);
+    const [renamedLine, ...rest] = formatPlaceDrift(report);
+    const removedLine = rest.find((l) => l.startsWith("removed:"));
+    console.log(`[import-indec-localities] drift ${renamedLine}; ${removedLine ?? ""}`);
+    if (report.renamed.length > 0 || report.removed.length > 0) {
+      console.log("[import-indec-localities] details: pnpm place:drift-report");
+    }
+  } catch (err) {
+    console.warn(
+      "[import-indec-localities] drift report skipped:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
 async function cli(): Promise<void> {
   const dryRun = process.argv.includes("--dry-run");
   const urlOverride = process.argv.find((a) => a.startsWith("--source-url="))?.split("=")[1];
@@ -699,6 +722,7 @@ async function cli(): Promise<void> {
         "Re-run when datos.gob.ar is reachable, or set INDEC_LOCALITIES_CSV to a vendored full CSV.",
       );
     }
+    if (!dryRun) await printDriftSummary();
     process.exit(0);
   } catch (err) {
     console.error("Import failed:", err);
