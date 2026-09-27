@@ -130,18 +130,24 @@ export function petEventsScope(
  * columns, and that the panorama loaders scope directly. */
 export type JurisdictionColumnsTable = "welfareReports" | "cases" | "organizations";
 
+// `localityId` is the row's catalogue id (localidades-por-id verify S2): a unit
+// grant on the id path matches by it, exactly like every other list scope
+// (lib/metrics/scope.ts). On the name path it is never read.
 const JURISDICTION_COLUMNS = {
   welfareReports: {
     province: sql`${welfareReports.jurisdictionProvince}`,
     locality: sql`${welfareReports.jurisdictionLocality}`,
+    localityId: sql`${welfareReports.localityId}`,
   },
   cases: {
     province: sql`${cases.jurisdictionProvince}`,
     locality: sql`${cases.jurisdictionLocality}`,
+    localityId: sql`${cases.localityId}`,
   },
   organizations: {
     province: sql`${organizations.jurisdictionProvince}`,
     locality: sql`${organizations.jurisdictionLocality}`,
+    localityId: sql`${organizations.localityId}`,
   },
 } as const;
 
@@ -178,6 +184,7 @@ export function jurisdictionColumnsScope(
     JURISDICTION_COLUMNS[table].locality,
     adminProvince,
     adminLocality,
+    JURISDICTION_COLUMNS[table].localityId,
   );
   return table === "organizations" ? clause : withoutSyntheticRows(actor.role, table, clause);
 }
@@ -189,6 +196,7 @@ function jurisdictionColumnsOnly(
   localityCol: SQL,
   adminProvince?: string,
   adminLocality?: string,
+  localityIdCol?: SQL,
 ): SQL | null {
   if (hasNationalReadScope(actor.role)) {
     if (!adminProvince) return null;
@@ -202,7 +210,12 @@ function jurisdictionColumnsOnly(
   }
   return (
     // synthetic: covered — jurisdictionColumnsScope and biteIncidentScope wrap this with withoutSyntheticRows.
-    jurisdictionPairClause(jurisdictions, sql`${provinceCol}`, sql`${localityCol}`) ?? sql`false`
+    jurisdictionPairClause(
+      jurisdictions,
+      sql`${provinceCol}`,
+      sql`${localityCol}`,
+      localityIdCol,
+    ) ?? sql`false`
   );
 }
 
@@ -306,7 +319,8 @@ export function biteIncidentLocalitySql(): SQL<string | null> {
 
 /**
  * The viewer scope for a bite query, over the incident's place (above) rather
- * than the pet's home. Same contract as jurisdictionColumnsScope (admin
+ * than the pet's home. The place is a CASE over the event payload and the pet,
+ * with no single id column, so it passes no id and keeps the name pair. Same contract as jurisdictionColumnsScope (admin
  * universal / admin drill / govt pairs / govt without assignments → false),
  * plus the synthetic-row exclusion on the biting pet (T1-P1).
  */
