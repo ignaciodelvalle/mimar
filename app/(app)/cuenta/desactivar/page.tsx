@@ -8,6 +8,8 @@ import { redirect } from "next/navigation";
 import { LnCallout } from "@/components/ui/DocElements";
 import { db, govtAssignments, profiles } from "@/db";
 import { requireUserOrRedirect } from "@/lib/infra/auth-guards";
+import { provinceByCode } from "@/lib/reference/ar-provincias";
+import { loadAdminAuthority } from "@/src/modules/organizations/application/admin-authority/authority";
 
 import { GovtSelfDeactivateForm } from "./GovtSelfDeactivateForm";
 
@@ -94,6 +96,17 @@ export default async function DesactivarPage() {
     otherActiveGovtCount: coverageMap.get(`${a.province}||${a.locality}`) ?? 0,
   }));
 
+  // A jurisdiction administrator's appointment implies a whole-province grant,
+  // which the coverage rule above treats like any other locality: they can
+  // deactivate only when ANOTHER whole-province funcionario exists. The form
+  // names who ends the appointment instead (the platform admin; final review,
+  // jurisdiction-admin).
+  const authority = await loadAdminAuthority(db, user.id);
+  const jurisdictionAdminOf =
+    authority.kind === "jurisdiction"
+      ? (provinceByCode(authority.provinceCode)?.name ?? authority.provinceCode)
+      : null;
+
   return (
     <div className="mx-auto max-w-2xl px-8 py-7 pb-12">
       {/* Back */}
@@ -119,7 +132,10 @@ export default async function DesactivarPage() {
         Al desactivar tu cuenta, perdés acceso al panel de operador gubernamental.
       </LnCallout>
 
-      <GovtSelfDeactivateForm localities={localitiesWithCoverage} />
+      <GovtSelfDeactivateForm
+        localities={localitiesWithCoverage}
+        jurisdictionAdminOf={jurisdictionAdminOf}
+      />
     </div>
   );
 }

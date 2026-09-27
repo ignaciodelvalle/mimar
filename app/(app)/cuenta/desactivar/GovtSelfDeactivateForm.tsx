@@ -18,7 +18,21 @@ type LocalityRow = {
   otherActiveGovtCount: number;
 };
 
-export function GovtSelfDeactivateForm({ localities }: { localities: LocalityRow[] }) {
+/**
+ * `jurisdictionAdminOf`: the province NAME when the caller is a live
+ * jurisdiction administrator, else null. Their appointment implies a
+ * whole-province grant, which the coverage rule treats like any locality: it
+ * needs ANOTHER whole-province funcionario. Nobody else usually holds one, so
+ * the block banner tells them who can end the appointment (the platform
+ * admin) instead of pointing them at "tu administrador" — which is them.
+ */
+export function GovtSelfDeactivateForm({
+  localities,
+  jurisdictionAdminOf = null,
+}: {
+  localities: LocalityRow[];
+  jurisdictionAdminOf?: string | null;
+}) {
   const router = useRouter();
 
   const [reason, setReason] = useState("");
@@ -85,7 +99,7 @@ export function GovtSelfDeactivateForm({ localities }: { localities: LocalityRow
                   }`}
                 >
                   <span className="text-sm text-[var(--color-ln-ink-2)]">
-                    {loc.province} / {loc.locality}
+                    {loc.province} / {loc.locality || "Toda la provincia"}
                   </span>
                   {covered ? (
                     <span className="text-xs font-medium text-[var(--color-ln-ok)]">
@@ -114,10 +128,19 @@ export function GovtSelfDeactivateForm({ localities }: { localities: LocalityRow
           <p className="text-sm font-semibold text-[var(--color-ln-seal)]">
             No podés desactivarte todavía.
           </p>
-          <p className="text-sm text-[var(--color-ln-seal)]">
-            Una o más localidades quedarían sin govt si te desactivás. Pedile a tu administrador que
-            asigne otro govt a esas localidades antes de continuar.
-          </p>
+          {jurisdictionAdminOf ? (
+            <p className="text-sm text-[var(--color-ln-seal)]">
+              Sos administrador de jurisdicción de {jurisdictionAdminOf}, y tu designación incluye
+              toda la provincia: para desactivarte, otro funcionario tiene que cubrirla entera. No
+              podés dejar la designación desde acá. Pedile al administrador de la plataforma que la
+              revoque o que asigne otro funcionario a las localidades marcadas.
+            </p>
+          ) : (
+            <p className="text-sm text-[var(--color-ln-seal)]">
+              Una o más localidades quedarían sin govt si te desactivás. Pedile a tu administrador
+              que asigne otro govt a esas localidades antes de continuar.
+            </p>
+          )}
         </div>
       )}
 
@@ -132,6 +155,11 @@ export function GovtSelfDeactivateForm({ localities }: { localities: LocalityRow
             <ul className="space-y-1.5">
               {[
                 "Tu cuenta va a quedar desactivada.",
+                ...(jurisdictionAdminOf
+                  ? [
+                      `Tu designación como administrador de jurisdicción de ${jurisdictionAdminOf} termina, y solo el administrador de la plataforma puede designarte de nuevo.`,
+                    ]
+                  : []),
                 "Tus localidades pasan a los otros govts activos que ya las cubren.",
                 "Los pedidos pendientes en tus localidades van a la cola de los otros govts o, como fallback, a la del admin.",
                 "Tu usuario en el sistema se conserva (no se borra) pero no vas a poder acceder a esta sección.",
