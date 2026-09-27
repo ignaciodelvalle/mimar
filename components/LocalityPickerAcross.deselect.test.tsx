@@ -12,8 +12,8 @@ import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { AssignLocalityForm } from "@/app/admin/govts/_components/AssignLocalityForm";
 import { LocalityPickerAcross } from "@/components/LocalityPickerAcross";
+import { AssignLocalityForm } from "@/components/institutional/AssignLocalityForm";
 import type { LocalitySearchResult } from "@/lib/infra/ar-localidades";
 
 vi.mock("@/app/actions/localities", () => ({

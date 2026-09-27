@@ -4954,7 +4954,7 @@
       ],
       "enforcer": [
         "scripts/check-authz-guards.ts:50-106",
-        "scripts/check-authz-scoping.ts:248",
+        "scripts/check-authz-scoping.ts:255",
         "__tests__/server-actions-auth-coverage.test.ts"
       ],
       "enforcementKind": "lint-script",
@@ -6158,7 +6158,7 @@
       ],
       "enforcer": [
         "scripts/check-confused-deputy.ts:9-22",
-        "scripts/check-authz-scoping.ts:248"
+        "scripts/check-authz-scoping.ts:255"
       ],
       "enforcementKind": "lint-script",
       "wired": "verify",

@@ -1,6 +1,11 @@
 "use client";
 
-// The /admin/localidades unit editor's forms (localidades-por-id C4).
+// The authority-unit editor's forms (localidades-por-id C4), shared by the
+// platform admin's /admin/localidades and a jurisdiction admin's
+// /gob/administracion/unidades (jurisdiction-admin Phase 6). `basePath` is the
+// portal's unit list; every writer behind these actions re-derives the unit's
+// province and re-checks the actor's authority inside its own transaction, so
+// the portal a form renders in grants nothing.
 //
 // Every membership change asks for a reason: it decides which authority sees
 // a locality's history, and the reason is what the unit's change log shows
@@ -53,6 +58,9 @@ export function useUnitAction() {
   return { error, pending, run };
 }
 
+/** Where the platform admin's unit editor lives; the default `basePath`. */
+export const ADMIN_UNITS_BASE = "/admin/localidades";
+
 export type LocalityOption = {
   id: string;
   label: string;
@@ -89,10 +97,12 @@ export function MoveLocalityForm({
   unitId,
   options,
   levelLabel,
+  basePath = ADMIN_UNITS_BASE,
 }: {
   unitId: string;
   options: LocalityOption[];
   levelLabel: string;
+  basePath?: string;
 }) {
   const [localityId, setLocalityId] = useState("");
   const [reason, setReason] = useState("");
@@ -108,7 +118,7 @@ export function MoveLocalityForm({
         if (!canSubmit) return;
         run(
           () => moveLocalityToUnitAction({ localityId, toUnitId: unitId, reason }),
-          () => `/admin/localidades/${unitId}`,
+          () => `${basePath}/${unitId}`,
         );
       }}
     >
@@ -158,10 +168,12 @@ export function RemoveMemberForm({
   unitId,
   localityId,
   localityName,
+  basePath = ADMIN_UNITS_BASE,
 }: {
   unitId: string;
   localityId: string;
   localityName: string;
+  basePath?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -182,7 +194,7 @@ export function RemoveMemberForm({
         if (reason.trim() === "" || pending) return;
         run(
           () => removeLocalityFromUnitAction({ unitId, localityId, reason }),
-          () => `/admin/localidades/${unitId}`,
+          () => `${basePath}/${unitId}`,
         );
       }}
     >
@@ -282,7 +294,15 @@ export function CloseRemovedMembershipForm({
   );
 }
 
-export function RenameUnitForm({ unitId, name }: { unitId: string; name: string }) {
+export function RenameUnitForm({
+  unitId,
+  name,
+  basePath = ADMIN_UNITS_BASE,
+}: {
+  unitId: string;
+  name: string;
+  basePath?: string;
+}) {
   const [value, setValue] = useState(name);
   const { error, pending, run } = useUnitAction();
   const canSubmit = value.trim() !== "" && value.trim() !== name && !pending;
@@ -294,7 +314,7 @@ export function RenameUnitForm({ unitId, name }: { unitId: string; name: string 
         if (!canSubmit) return;
         run(
           () => renameAuthorityUnitAction({ unitId, name: value }),
-          () => `/admin/localidades/${unitId}`,
+          () => `${basePath}/${unitId}`,
         );
       }}
     >
@@ -316,7 +336,13 @@ export function RenameUnitForm({ unitId, name }: { unitId: string; name: string 
   );
 }
 
-export function ConfirmUnitButton({ unitId }: { unitId: string }) {
+export function ConfirmUnitButton({
+  unitId,
+  basePath = ADMIN_UNITS_BASE,
+}: {
+  unitId: string;
+  basePath?: string;
+}) {
   const { error, pending, run } = useUnitAction();
   return (
     <div className="space-y-2">
@@ -327,7 +353,7 @@ export function ConfirmUnitButton({ unitId }: { unitId: string }) {
         onClick={() =>
           run(
             () => confirmAuthorityUnitAction({ unitId }),
-            () => `/admin/localidades/${unitId}`,
+            () => `${basePath}/${unitId}`,
           )
         }
       >
@@ -346,7 +372,13 @@ const KIND_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "departamento", label: "Departamento" },
 ];
 
-export function CreateUnitForm({ provinceCode }: { provinceCode: string }) {
+export function CreateUnitForm({
+  provinceCode,
+  basePath = ADMIN_UNITS_BASE,
+}: {
+  provinceCode: string;
+  basePath?: string;
+}) {
   const [kind, setKind] = useState("municipio");
   const [name, setName] = useState("");
   const { error, pending, run } = useUnitAction();
@@ -359,7 +391,7 @@ export function CreateUnitForm({ provinceCode }: { provinceCode: string }) {
         if (!canSubmit) return;
         run(
           () => createAuthorityUnitAction({ kind, provinceCode, name }),
-          (r) => ("unitId" in r ? `/admin/localidades/${r.unitId}` : "/admin/localidades"),
+          (r) => ("unitId" in r ? `${basePath}/${r.unitId}` : basePath),
         );
       }}
     >

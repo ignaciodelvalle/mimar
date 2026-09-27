@@ -7,8 +7,8 @@
 // for). Previously duplicated verbatim across 5 call sites:
 //   - app/gob/usuarios/RevokeUserActions.tsx
 //   - app/gob/organizaciones/RevokeOrgActions.tsx
-//   - app/admin/govts/_components/RevokeLocalityRowActions.tsx
-//   - app/admin/govts/_components/DeactivateGovtForm.tsx
+//   - components/institutional/RevokeLocalityRowActions.tsx
+//   - components/institutional/DeactivateGovtForm.tsx
 //   - app/admin/admins/_components/DeactivateAdminForm.tsx
 // Three of those hardcoded the textarea id (duplicate-id smell when more than one
 // row renders); this shared version derives it from useId().

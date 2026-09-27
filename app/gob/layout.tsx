@@ -13,6 +13,7 @@ import { OpOmnibox } from "@/components/ui/dashboard/OpOmnibox";
 import { OpRail } from "@/components/ui/dashboard/OpRail";
 import { OpScopeChip } from "@/components/ui/dashboard/OpScopeChip";
 import { OperatorBreadcrumbs } from "@/components/ui/dashboard/OperatorBreadcrumbs";
+import { db } from "@/db";
 import { shouldShowDemoBanner } from "@/lib/domain/demo-mode";
 import { hasNationalReadScope } from "@/lib/domain/jurisdiction-canonical";
 import { roleLabel } from "@/lib/domain/role-labels";
@@ -22,6 +23,7 @@ import { getProfileCached } from "@/lib/infra/request-cache";
 import { BRANDING } from "@/lib/ui/branding";
 import { describeMandate } from "@/lib/ui/scope-chrome";
 import type { ShellSession } from "@/lib/ui/shell-nav";
+import { loadAdminAuthority } from "@/src/modules/organizations/application/admin-authority/authority";
 import type { Metadata } from "next";
 
 // Gate the /gob/* segment. admin, govt and national can access this surface.
@@ -97,8 +99,14 @@ export default async function GobiernoLayout({ children }: { children: React.Rea
   // One rail per viewer: the padrón sanitario export entry is shown only to
   // who the export page itself admits — the SAME predicate, not a copy
   // (app/gob/analytics/export/export-access.ts).
+  //
+  // The province administration entry (jurisdiction-admin Phase 6) is shown
+  // only to a govt with a LIVE appointment — asked of loadAdminAuthority, the
+  // loader behind the page's own guard. Only a govt costs the query.
   const navSections = gobNavSectionsFor({
     canExportPadronSanitario: canExportPadronSanitario(profile.role, jurisdictions),
+    administersProvince:
+      profile.role === "govt" && (await loadAdminAuthority(db, profile.id)).kind === "jurisdiction",
   });
   const brandSubtitle = "Gobierno";
 

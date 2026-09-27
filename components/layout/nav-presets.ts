@@ -437,8 +437,16 @@ export function buildOrgNavFlat(orgToken: string, opts: OrgNavOptions = {}): Nav
 //  - /gob/sistema has no nav entry today (folded into /gob/programa,
 //    2026-07-09 audit; route survives only as a deep-link redirect) — nothing
 //    to regroup, so Profundidad's "Sistema" is a no-op here.
-/** The padrón sanitario export — the one /gob rail entry gated per viewer. */
+/** The padrón sanitario export — a /gob rail entry gated per viewer. */
 export const GOB_PADRON_EXPORT_HREF = "/gob/analytics/export";
+
+/**
+ * A jurisdiction admin's province administration (jurisdiction-admin Phase 6)
+ * — the other /gob rail entry gated per viewer: shown only to a govt with a
+ * LIVE appointment, the one person its page admits (a plain govt is sent home,
+ * the platform admin administers from /admin).
+ */
+export const GOB_ADMINISTRACION_HREF = "/gob/administracion";
 
 export const GOB_NAV_SECTIONS: NavSection[] = [
   // Unlabeled/top — the Briefing. This IS the Briefing's home now (PO decision
@@ -627,6 +635,13 @@ export const GOB_NAV_SECTIONS: NavSection[] = [
       { href: "/gob/historial", label: "Historial", matchPrefix: "/gob/historial" },
       { href: "/gob/reglas", label: "Reglas", matchPrefix: "/gob/reglas" },
       { href: "/gob/directorio", label: "Directorio", matchPrefix: "/gob/directorio" },
+      // jurisdiction-admin (Phase 6): funcionarios and authority units of the
+      // appointee's one province. Rail-gated per viewer (gobNavSectionsFor).
+      {
+        href: GOB_ADMINISTRACION_HREF,
+        label: "Administración",
+        matchPrefix: GOB_ADMINISTRACION_HREF,
+      },
     ],
   },
 ];
@@ -634,18 +649,27 @@ export const GOB_NAV_SECTIONS: NavSection[] = [
 /**
  * The /gob rail for ONE viewer. GOB_NAV_SECTIONS is the full catalogue (the
  * screen-manifest fence and the breadcrumbs read it); the rail a person sees
- * drops the padrón sanitario export when they may not use it. The caller
+ * drops the padrón sanitario export when they may not use it, and the province
+ * administration unless they hold a live jurisdiction-admin appointment
+ * (`administersProvince`: the verdict of loadAdminAuthority, the same loader
+ * the page's guard asks). The caller
  * passes the verdict of the page's own predicate
  * (app/gob/analytics/export/export-access.ts canExportPadronSanitario) — this
  * module does not restate the rule. Before this, a govt official with no
  * jurisdiction was offered an entry that led to a lock screen (PO, 2026-09-25).
  * A section left empty is dropped.
  */
-export function gobNavSectionsFor(viewer: { canExportPadronSanitario: boolean }): NavSection[] {
-  if (viewer.canExportPadronSanitario) return GOB_NAV_SECTIONS;
+export function gobNavSectionsFor(viewer: {
+  canExportPadronSanitario: boolean;
+  administersProvince: boolean;
+}): NavSection[] {
+  const hidden = new Set<string>();
+  if (!viewer.canExportPadronSanitario) hidden.add(GOB_PADRON_EXPORT_HREF);
+  if (!viewer.administersProvince) hidden.add(GOB_ADMINISTRACION_HREF);
+  if (hidden.size === 0) return GOB_NAV_SECTIONS;
   return GOB_NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter((item) => item.href !== GOB_PADRON_EXPORT_HREF),
+    items: section.items.filter((item) => !hidden.has(item.href)),
   })).filter((section) => section.items.length > 0);
 }
 

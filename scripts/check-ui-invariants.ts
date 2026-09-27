@@ -677,7 +677,12 @@ export const SNAKE_CASE_ALLOWLIST = new Set<string>([
 // "✓ 25/47 remaining (22 migrated)" as if that slack were progress. A ratchet
 // with slack is not a ratchet. The check now fails in BOTH directions: growth
 // is a regression, and a drop means the constant is stale and must come down.
-export const RAW_BUTTON_BASELINE = 25;
+// 2026-09-27 (jurisdiction-admin Phase 6): 25 → 20. The shared institutional
+// forms (CreateGovtForm, AssignLocalityForm, DeactivateGovtForm,
+// RevokeLocalityRowActions) moved to components/institutional and their five
+// text-link raw buttons became OpButton / OpIconButton on the way — moved AND
+// migrated, so neither surface's ratchet absorbed them.
+export const RAW_BUTTON_BASELINE = 20;
 
 // Files to scan for raw button growth (operator tier only).
 // Exported so the test can assert the baseline against the REAL count instead

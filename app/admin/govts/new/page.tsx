@@ -1,7 +1,7 @@
 import { ScreenHeader } from "@/components/ui/dashboard/ScreenHeader";
 import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
 
-import { CreateGovtForm } from "./CreateGovtForm";
+import { CreateGovtForm } from "@/components/institutional/CreateGovtForm";
 
 export default async function NewGovtPage() {
   await requireAdminOrRedirect();

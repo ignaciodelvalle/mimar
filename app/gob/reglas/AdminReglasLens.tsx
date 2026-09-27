@@ -14,6 +14,12 @@
 // from every card's "Ver detalle →" link (and from the wizard's own
 // post-create redirect) — nothing that used to work stops working, only the
 // ENTRY point simplified.
+//
+// ONE PROVINCE for a jurisdiction admin (jurisdiction-admin Phase 6): the lens
+// asks its own guard who is looking, and a live appointee sees only the rules
+// placed in their province, with no country-wide entry point. That narrowing
+// is presentation; the rule writers refuse a country-wide or foreign-province
+// rule inside their own transaction whatever this screen offers.
 import Link from "next/link";
 
 import { LnEmptyState } from "@/components/ui/EmptyState";
@@ -36,7 +42,8 @@ import {
   RULE_SOURCE_LABEL as SOURCE_LABEL,
   summarizeRulePayload,
 } from "@/lib/domain/rule-types-registry";
-import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
+import { requireAdministrationPrincipalOrRedirect } from "@/lib/infra/auth-guards";
+import { provinceByCode, provinceByName } from "@/lib/reference/ar-provincias";
 import { pluralizeEs } from "@/lib/utils/format";
 
 type Props = {
@@ -118,10 +125,17 @@ function buildJurisdictionGroups(rows: RuleRow[]): JurisdictionGroup[] {
 }
 
 export async function AdminReglasLens({ base, kind = "" }: Props) {
-  // Defense in depth (R1.9): the parent page already branches on
-  // profile.role === "admin", but this component re-asserts the stricter
-  // admin-only guard independently.
-  await requireAdminOrRedirect();
+  // Defense in depth (R1.9): the parent page already branches on who
+  // administers, but this component re-asserts the administration guard
+  // independently — and takes the province scope from IT, never from a prop.
+  const { authority } = await requireAdministrationPrincipalOrRedirect();
+  const scope =
+    authority.kind === "jurisdiction"
+      ? {
+          code: authority.provinceCode,
+          name: provinceByCode(authority.provinceCode)?.name ?? authority.provinceCode,
+        }
+      : null;
 
   const rows = await db
     .select({
@@ -134,7 +148,12 @@ export async function AdminReglasLens({ base, kind = "" }: Props) {
     .from(govtBusinessRules)
     .orderBy(govtBusinessRules.jurisdictionProvince, govtBusinessRules.jurisdictionLocality);
 
-  const groups = buildJurisdictionGroups(rows as RuleRow[]);
+  const visibleRows = scope
+    ? (rows as RuleRow[]).filter(
+        (r) => r.country === "AR" && provinceByName(r.province)?.code === scope.code,
+      )
+    : (rows as RuleRow[]);
+  const groups = buildJurisdictionGroups(visibleRows);
 
   const availableKinds = Array.from(new Set(groups.flatMap((g) => g.rules.map((r) => r.ruleType))));
   availableKinds.sort((a, b) =>
@@ -161,8 +180,8 @@ export async function AdminReglasLens({ base, kind = "" }: Props) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <ScreenHeader
-          eyebrow="Admin · Reglas"
-          title="Reglas por jurisdicción"
+          eyebrow={scope ? "Gobierno · Reglas" : "Admin · Reglas"}
+          title={scope ? `Reglas de ${scope.name}` : "Reglas por jurisdicción"}
           subtitle={
             <p className="text-md text-ln-op-ink-2">
               {groups.length === 0
@@ -202,15 +221,22 @@ export async function AdminReglasLens({ base, kind = "" }: Props) {
               </li>
             ))}
           </ul>
-          <p className="text-sm text-ln-op-ink-2">
-            ¿Necesitás una excepción a nivel país (sin ligar a ninguna provincia)?{" "}
-            <Link
-              href={buildJurisdictionRulesHref({ country: "AR", base })}
-              className="font-semibold text-ln-op-azul no-underline underline-offset-4 hover:underline"
-            >
-              {"Configurala acá →"}
-            </Link>
-          </p>
+          {scope ? (
+            <p className="text-sm text-ln-op-ink-2">
+              Solo podés crear y cambiar reglas de {scope.name} y de sus localidades. Las reglas de
+              todo el país las administra la plataforma.
+            </p>
+          ) : (
+            <p className="text-sm text-ln-op-ink-2">
+              ¿Necesitás una excepción a nivel país (sin ligar a ninguna provincia)?{" "}
+              <Link
+                href={buildJurisdictionRulesHref({ country: "AR", base })}
+                className="font-semibold text-ln-op-azul no-underline underline-offset-4 hover:underline"
+              >
+                {"Configurala acá →"}
+              </Link>
+            </p>
+          )}
         </div>
       </details>
 

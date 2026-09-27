@@ -7,13 +7,21 @@
 // (`govt`, writes inside its localities) and a national observer (`national`,
 // reads the whole country and writes nothing). The observer takes no
 // localities, so the picker disappears when it is chosen.
+//
+// Shared (jurisdiction-admin Phase 6) with a jurisdiction admin's
+// /gob/administracion/funcionarios/nuevo, through `scope`: only a municipal
+// official, at least one locality, every picker inside the admin's province.
+// The scope is presentation only — createInstitutionalAccountForAuthority
+// refuses a national, an admin, or any locality outside the actor's province
+// on its own.
 
 import { useRef, useState } from "react";
 
 import { createInstitutionalAccountAction } from "@/app/actions/admin-institutional";
-import { MagicLinkResultPanel } from "@/app/admin/_components/MagicLinkResultPanel";
 import { LocalityPickerAcross } from "@/components/LocalityPickerAcross";
+import { MagicLinkResultPanel } from "@/components/institutional/MagicLinkResultPanel";
 import { OpButton, OpInput } from "@/components/ui/dashboard";
+import { OpIconButton } from "@/components/ui/dashboard/OpIconButton";
 import { emailConfirmationProblem } from "@/lib/domain/email-confirmation";
 import { notifySaved } from "@/lib/ui/action-feedback";
 import { UNKNOWN_ERROR_FALLBACK } from "@/lib/ui/error-fallback";
@@ -55,7 +63,17 @@ type SuccessState = {
   role: GovtScreenRole;
 };
 
-export function CreateGovtForm() {
+/** A jurisdiction admin's form: one province, municipal officials only. */
+export type CreateGovtScope = {
+  provinceCode: string;
+  provinceName: string;
+  /** Where each created account's page lives (`${detailBase}/${id}`). */
+  detailBase: string;
+  cancelHref: string;
+};
+
+export function CreateGovtForm({ scope }: { scope?: CreateGovtScope } = {}) {
+  const roles = scope ? GOVT_SCREEN_ROLES.filter((r) => r.value === "govt") : GOVT_SCREEN_ROLES;
   const [role, setRole] = useState<GovtScreenRole>("govt");
   const [email, setEmail] = useState("");
   // Typed twice (security review, T1-P3): the access link is mailed to it.
@@ -102,6 +120,11 @@ export function CreateGovtForm() {
         locality,
         localityIndecId: indecId || null,
       }));
+    if (scope && validLocalities.length === 0) {
+      setError(`Elegí al menos una localidad de ${scope.provinceName}.`);
+      setLoading(false);
+      return;
+    }
 
     try {
       const result = await createInstitutionalAccountAction({
@@ -153,7 +176,7 @@ export function CreateGovtForm() {
         profileId={success.profileId}
         // A national observer has the same detail page as a govt (it is
         // where its deactivation and credential reset live).
-        detailPath={`/admin/govts/${success.profileId}`}
+        detailPath={`${scope?.detailBase ?? "/admin/govts"}/${success.profileId}`}
         variant="create"
         inviteEmailSent={success.inviteEmailSent}
         onCreateAnother={handleCreateAnother}
@@ -164,10 +187,10 @@ export function CreateGovtForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-4">
-        <fieldset className="space-y-2">
+        <fieldset className={roles.length > 1 ? "space-y-2" : "sr-only"}>
           <legend className="text-md font-medium text-ln-op-ink">Tipo de cuenta</legend>
           <div className="flex flex-col gap-3 pt-1">
-            {GOVT_SCREEN_ROLES.map((r) => (
+            {roles.map((r) => (
               <label key={r.value} className="flex items-start gap-2 text-md cursor-pointer">
                 <input
                   type="radio"
@@ -249,22 +272,21 @@ export function CreateGovtForm() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <p className="block text-sm font-medium text-ln-op-ink-2">Localidades iniciales</p>
-              <button
-                type="button"
-                onClick={addLocality}
-                className="text-sm text-ln-op-azul hover:text-ln-op-azul-700 underline underline-offset-4"
-              >
+              <OpButton type="button" variant="ghost" size="sm" onClick={addLocality}>
                 + Agregar localidad
-              </button>
+              </OpButton>
             </div>
             <p className="text-sm text-ln-op-mute mb-3">
-              Opcional. Se pueden asignar más localidades luego desde la página del operador.
+              {scope
+                ? `Al menos una, de ${scope.provinceName}. Se pueden asignar más luego desde la página del funcionario.`
+                : "Opcional. Se pueden asignar más localidades luego desde la página del operador."}
             </p>
             <div className="space-y-2">
               {localities.map((l) => (
                 <div key={l.id} className="flex gap-2 items-start">
                   <div className="flex-1">
                     <LocalityPickerAcross
+                      scopeProvinceCode={scope?.provinceCode ?? null}
                       defaultValue={{
                         provinceName: l.provinceName || null,
                         localityName: l.locality || null,
@@ -282,14 +304,13 @@ export function CreateGovtForm() {
                     />
                   </div>
                   {localities.length > 1 && (
-                    <button
+                    <OpIconButton
                       type="button"
                       onClick={() => removeLocality(l.id)}
-                      className="text-ln-op-mute hover:text-ln-op-danger text-sm px-2 py-2"
                       aria-label="Quitar localidad"
                     >
                       &times;
-                    </button>
+                    </OpIconButton>
                   )}
                 </div>
               ))}
@@ -315,7 +336,7 @@ export function CreateGovtForm() {
         {/* Straight to the hub tab (privileged-accounts fusion 2026-08-02) —
             /admin/govts is redirect-only now, no reason to pay the hop. */}
         <a
-          href="/admin/cuentas?registro=govts"
+          href={scope?.cancelHref ?? "/admin/cuentas?registro=govts"}
           className="px-5 py-2 text-md border border-ln-op-line rounded-[var(--radius-md)] hover:bg-ln-op-stripe"
         >
           Cancelar

@@ -4,6 +4,10 @@
 //     (folded in verbatim from the old /admin/jurisdicciones surface).
 //   - govt lens: read-only resolved-cascade view, pre-scoped to the user's
 //     own institutional assignments (unchanged behavior, BR6 preserved).
+//   - a govt with a LIVE jurisdiction-admin appointment (jurisdiction-admin
+//     Phase 6) gets the admin lens instead, narrowed to their one province:
+//     the lens re-derives that province from its own guard, and every rule
+//     writer refuses a country-wide or foreign-province rule on its own.
 //
 // Mirrors app/gob/servicios/page.tsx — one page, two presentational lenses,
 // not parallel routes (AC3 pattern).
@@ -11,7 +15,7 @@
 import { OpCard, OpCardBody, OpCardHead, OpCodeBadge } from "@/components/ui/dashboard";
 import { AnalyticsLoadFallback } from "@/components/ui/dashboard/AnalyticsLoadFallback";
 import { ScreenHeader } from "@/components/ui/dashboard/ScreenHeader";
-import { GOVT_BUSINESS_RULE_TYPES } from "@/db";
+import { GOVT_BUSINESS_RULE_TYPES, db } from "@/db";
 import { analyticsRetryHref, loadWithTimeout } from "@/lib/analytics/analytics-load";
 import {
   RULE_TYPE_REGISTRY,
@@ -22,6 +26,7 @@ import { requireAdminOrGovtOrRedirect } from "@/lib/infra/auth-guards";
 import { resolveBusinessRule } from "@/lib/infra/business-rules-resolver";
 import { portalBase } from "@/lib/ui/portal-base";
 import { trimmedSearchParam } from "@/lib/utils/search-params";
+import { loadAdminAuthority } from "@/src/modules/organizations/application/admin-authority/authority";
 
 import { AdminReglasLens } from "./AdminReglasLens";
 
@@ -35,7 +40,11 @@ export default async function ReglasPage({
   const { jurisdictions, profile } = await requireAdminOrGovtOrRedirect();
   const base = await portalBase();
 
-  if (profile.role === "admin") {
+  const administers =
+    profile.role === "admin" ||
+    (profile.role === "govt" && (await loadAdminAuthority(db, profile.id)).kind === "jurisdiction");
+
+  if (administers) {
     // Rule-kind filter (PO redesign 2026-07-23) only applies to the admin
     // lens — it's now a short list of ONLY the jurisdictions that have custom
     // rules, so a "which jurisdictions touched this rule kind?" dropdown is

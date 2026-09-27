@@ -582,6 +582,27 @@ const GOB_LOCALIDADES_PENDIENTES: ScreenManifestEntry = {
   decision: "¿Qué casos y denuncias de mi provincia esperan que se resuelva su localidad?",
 };
 
+// jurisdiction-admin (Phase 6): a jurisdiction admin's province
+// administration — funcionarios and authority units of ONE province. Same
+// layer as the platform admin's unit editor and designations.
+const GOB_ADMINISTRACION: ScreenManifestEntry = {
+  route: "/gob/administracion",
+  layer: "profundidad",
+  decision: "¿Qué funcionarios, unidades y reglas de mi provincia tengo que administrar?",
+};
+
+const GOB_ADMINISTRACION_FUNCIONARIOS: ScreenManifestEntry = {
+  route: "/gob/administracion/funcionarios",
+  layer: "profundidad",
+  decision: "¿Quién opera en mi provincia, y dónde?",
+};
+
+const GOB_ADMINISTRACION_UNIDADES: ScreenManifestEntry = {
+  route: "/gob/administracion/unidades",
+  layer: "profundidad",
+  decision: "¿Qué autoridad gobierna cada localidad de mi provincia?",
+};
+
 const ADMIN_LIBRO: ScreenManifestEntry = {
   route: "/admin/libro",
   layer: "profundidad",
@@ -654,6 +675,9 @@ export const SCREEN_MANIFEST: readonly ScreenManifestEntry[] = [
   ADMIN_LOCALIDADES_PENDIENTES,
   GOB_LOCALIDADES_PENDIENTES,
   ADMIN_DESIGNACIONES,
+  GOB_ADMINISTRACION,
+  GOB_ADMINISTRACION_FUNCIONARIOS,
+  GOB_ADMINISTRACION_UNIDADES,
   ADMIN_ORGANIZACIONES,
   ADMIN_REGLAS,
   ADMIN_HISTORIAL,

@@ -43,10 +43,13 @@ vi.mock("@/db", async () => {
   };
 });
 
+// The page asks the administration guard (jurisdiction-admin Phase 6); the
+// platform admin opens every jurisdiction.
 vi.mock("@/lib/infra/auth-guards", () => ({
-  requireAdminOrRedirect: vi.fn(async () => ({
+  requireAdministrationPrincipalOrRedirect: vi.fn(async () => ({
     user: { id: "admin-1", email: "admin@dim.test" },
     profile: { id: "admin-1", role: "admin" },
+    authority: { kind: "platform" },
   })),
 }));
 

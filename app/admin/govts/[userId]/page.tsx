@@ -6,10 +6,10 @@ import { and, desc, eq, inArray, or } from "drizzle-orm";
 
 import { ResetCredentialsButton } from "@/app/admin/_components/ResetCredentialsButton";
 import { ResetMfaButton } from "@/app/admin/_components/ResetMfaButton";
-import { AssignLocalityForm } from "@/app/admin/govts/_components/AssignLocalityForm";
-import { DeactivateGovtActions } from "@/app/admin/govts/_components/DeactivateGovtForm";
-import { RevokeLocalityRowActions } from "@/app/admin/govts/_components/RevokeLocalityRowActions";
 import { Icon } from "@/components/Icon";
+import { AssignLocalityForm } from "@/components/institutional/AssignLocalityForm";
+import { DeactivateGovtActions } from "@/components/institutional/DeactivateGovtForm";
+import { RevokeLocalityRowActions } from "@/components/institutional/RevokeLocalityRowActions";
 import {
   OpCallout,
   OpCard,

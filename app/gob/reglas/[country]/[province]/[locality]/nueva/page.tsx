@@ -6,8 +6,12 @@ import Link from "next/link";
 import { OpBreach, OpCrumbs } from "@/components/ui/dashboard";
 import { GOVT_BUSINESS_RULE_TYPES, type GovtBusinessRuleType } from "@/db";
 import { RULE_TYPE_REGISTRY } from "@/lib/domain/rule-types-registry";
-import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
 import { portalBase } from "@/lib/ui/portal-base";
+
+import {
+  assertPlaceInScope,
+  requireRulePageScopeOrRedirect,
+} from "../../../../_lib/rule-page-scope";
 
 import { RULE_FORM_REGISTRY, buildCreateFormExtraProps } from "./forms";
 
@@ -25,7 +29,8 @@ export default async function NewRulePage({
   params: Promise<{ country: string; province: string; locality: string }>;
   searchParams: Promise<{ ruleType?: string }>;
 }) {
-  await requireAdminOrRedirect();
+  // A jurisdiction admin opens only places of their province (Phase 6).
+  const scope = await requireRulePageScopeOrRedirect();
   const base = await portalBase();
 
   const { country: countryRaw, province: provinceRaw, locality: localityRaw } = await params;
@@ -33,6 +38,7 @@ export default async function NewRulePage({
   const country = decodeURIComponent(countryRaw);
   const province = decodeNullable(provinceRaw);
   const locality = decodeNullable(localityRaw);
+  assertPlaceInScope(scope, country, province);
 
   const ruleType = sp.ruleType as GovtBusinessRuleType | undefined;
 

@@ -26,7 +26,7 @@ vi.mock("@/lib/ui/action-feedback", () => ({ notifySaved: vi.fn() }));
 vi.mock("@/components/LocalityPickerAcross", () => ({ LocalityPickerAcross: () => null }));
 
 import { CreateAdminForm } from "@/app/admin/admins/new/CreateAdminForm";
-import { CreateGovtForm } from "@/app/admin/govts/new/CreateGovtForm";
+import { CreateGovtForm } from "@/components/institutional/CreateGovtForm";
 
 afterEach(() => {
   cleanup();

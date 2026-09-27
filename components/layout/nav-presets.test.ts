@@ -471,6 +471,12 @@ const GOB_HREF_SNAPSHOT = new Set([
   "/gob/casos",
   "/gob/reglas",
   "/gob/historial",
+  // ADDED 2026-09-27 (jurisdiction-admin, Phase 6). A jurisdiction admin's
+  // province administration: funcionarios and authority units of their ONE
+  // province. Rail-gated per viewer (gobNavSectionsFor administersProvince):
+  // only a govt with a live appointment sees it; the page's guard admits no
+  // one else. Mirrored in lib/ui/shell-nav-phase-b.test.ts's copy of this set.
+  "/gob/administracion",
   // /gob/analytics REMOVED from nav (F9 fusion, 2026-08-01): absorbed into the
   // Programa hub as a tabbed vista (?vista=resumen|analitica). It had been
   // listed here since the snapshot was written; an external QA pass showed the

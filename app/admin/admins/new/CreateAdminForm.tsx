@@ -6,7 +6,7 @@
 import { useState } from "react";
 
 import { createInstitutionalAccountAction } from "@/app/actions/admin-institutional";
-import { MagicLinkResultPanel } from "@/app/admin/_components/MagicLinkResultPanel";
+import { MagicLinkResultPanel } from "@/components/institutional/MagicLinkResultPanel";
 import { OpButton, OpInput } from "@/components/ui/dashboard";
 import { emailConfirmationProblem } from "@/lib/domain/email-confirmation";
 import { notifySaved } from "@/lib/ui/action-feedback";

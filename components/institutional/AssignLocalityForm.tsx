@@ -5,6 +5,12 @@
 // State machine: idle → confirming → done | error
 // Inline form (no modal wrapper) — designed to sit inside the govts detail page
 // below the active-localities table, mirroring the RevokeLocalityRowActions pattern.
+//
+// Shared by the platform admin's /admin/govts/[userId] and a jurisdiction
+// admin's /gob/administracion/funcionarios/[userId] (jurisdiction-admin
+// Phase 6). `scopeProvince` narrows the pickers to that one province — a
+// convenience, never the guard: assignGovtLocalityForAuthority resolves the
+// catalogue province on the server and refuses anything outside the actor's.
 
 import { useState, useTransition } from "react";
 
@@ -22,10 +28,16 @@ type AssignedLocality = { province: string; locality: string };
 export function AssignLocalityForm({
   targetUserId,
   onAssigned,
+  scopeProvince,
 }: {
   targetUserId: string;
   onAssigned?: (locality: AssignedLocality) => void;
+  /** Offer only this province (a jurisdiction admin's own). */
+  scopeProvince?: { code: string; name: string };
 }) {
+  const provinceOptions = scopeProvince
+    ? PROVINCES.filter((p) => p.code === scopeProvince.code)
+    : PROVINCES;
   const [mode, setMode] = useState<Mode>("idle");
   // provinceName is the canonical display name from ar_provincias, resolved
   // by LocalityPickerAcross when the user picks a result.
@@ -54,8 +66,10 @@ export function AssignLocalityForm({
             ? `Provincia asignada: toda ${lastAssigned.province}`
             : `Localidad asignada: ${lastAssigned.locality}, ${lastAssigned.province}`}
         </p>
-        <button
+        <OpButton
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => {
             setMode("idle");
             setProvinceName("");
@@ -64,10 +78,9 @@ export function AssignLocalityForm({
             setWholeProvince(false);
             setLastAssigned(null);
           }}
-          className="text-xs underline underline-offset-2 text-ln-op-mute hover:text-ln-op-ink-2"
         >
           Asignar otra
-        </button>
+        </OpButton>
       </div>
     );
   }
@@ -115,7 +128,7 @@ export function AssignLocalityForm({
               className="min-h-11 text-ln-op-ink"
             >
               <option value="">Elegí una provincia</option>
-              {PROVINCES.map((p) => (
+              {provinceOptions.map((p) => (
                 <option key={p.code} value={p.name}>
                   {p.name}
                 </option>
@@ -132,6 +145,7 @@ export function AssignLocalityForm({
             </label>
             <LocalityPickerAcross
               id="assign-locality-locality"
+              scopeProvinceCode={scopeProvince?.code ?? null}
               onSelect={(r) => {
                 setProvinceName(r?.provinceName ?? "");
                 setLocality(r?.localityName ?? "");

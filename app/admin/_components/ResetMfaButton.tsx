@@ -15,8 +15,8 @@
 import { useState, useTransition } from "react";
 
 import { resetMfaFactorsAction } from "@/app/actions/admin-institutional";
-import { MagicLinkResultPanel } from "@/app/admin/_components/MagicLinkResultPanel";
 import { MOTIVO_MIN, MotivoField } from "@/components/MotivoField";
+import { MagicLinkResultPanel } from "@/components/institutional/MagicLinkResultPanel";
 import { LnCheckbox } from "@/components/ui/Field";
 import { OpButton } from "@/components/ui/dashboard";
 import { notifySaved } from "@/lib/ui/action-feedback";

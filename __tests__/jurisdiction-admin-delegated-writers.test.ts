@@ -23,7 +23,7 @@ import { createClient } from "@supabase/supabase-js";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
-import { unitEditErrorMessage } from "@/app/admin/localidades/_components/unit-edit-errors";
+import { unitEditErrorMessage } from "@/components/institutional/unit-edit-errors";
 import {
   attachments,
   auditLog,

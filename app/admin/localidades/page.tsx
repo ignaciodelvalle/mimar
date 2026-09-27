@@ -24,8 +24,11 @@ import { pluralizeEs } from "@/lib/utils/format";
 import { listAuthorityUnits } from "@/src/modules/organizations/application/authority-units/read-units";
 import { listRemovedLocalityMemberships } from "@/src/modules/organizations/application/authority-units/removed-locality-memberships";
 
-import { CloseRemovedMembershipForm, CreateUnitForm } from "./_components/UnitEditorForms";
-import { unitKindLabel, unitLevelLabel } from "./_components/unit-labels";
+import {
+  CloseRemovedMembershipForm,
+  CreateUnitForm,
+} from "@/components/institutional/UnitEditorForms";
+import { unitKindLabel, unitLevelLabel } from "@/components/institutional/unit-labels";
 
 export const dynamic = "force-dynamic";
 

@@ -12,7 +12,7 @@ import { useState } from "react";
 import { resolvePlaceFromQueueAction } from "@/app/actions/authority-units";
 import { OpButton, OpField, OpFormAlert, OpSelect, OpTextarea } from "@/components/ui/dashboard";
 
-import { useUnitAction } from "./UnitEditorForms";
+import { useUnitAction } from "@/components/institutional/UnitEditorForms";
 
 export type ResolvePlaceFormProps = {
   subjectTable: "cases" | "welfare_reports";

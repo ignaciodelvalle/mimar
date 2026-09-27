@@ -127,6 +127,13 @@ import { stripComments } from "./lib/strip-comments.mjs";
 // ---------------------------------------------------------------------------
 export const TENANT_GUARDS = [
   "requireAdminOrRedirect",
+  // jurisdiction-admin (Phases 4 and 6): admits the platform admin OR a govt
+  // with a live appointment for ONE province — authority over other accounts,
+  // bounded to a place. Missing from this list, every action widened onto it
+  // silently left the scoping count (the 2026-09-27 baseline "improvement"
+  // was exactly that). Its writers scope inside their transaction
+  // (requireJurisdictionAdminFor); lint:admin-authority is the fence for that.
+  "requireAdministrationPrincipalOrRedirect",
   "requireAdminOrGovtOrRedirect",
   "requireDecomisoPrincipal",
   "requireOrgAccessByToken",

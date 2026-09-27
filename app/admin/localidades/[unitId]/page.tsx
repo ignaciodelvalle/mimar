@@ -8,88 +8,33 @@
 // every locality stays in exactly one municipal unit. A region's locality can
 // be removed.
 //
+// The editor itself is shared with a jurisdiction admin's
+// /gob/administracion/unidades/[unitId] (components/institutional,
+// jurisdiction-admin Phase 6). What stays here is the platform admin's alone:
+// the reversals (jurisdiction-admin 6.4) — "Volver a borrador" and taking a
+// funcionario's grants off the unit — and the change log's reasons.
+//
 // Authz: the /admin layout gates the segment; every write re-checks the
-// platform-admin capability inside its transaction.
+// actor's authority inside its transaction.
 
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { sql } from "drizzle-orm";
-
-import { OpCard, OpCardBody, OpCardHead, OpPill } from "@/components/ui/dashboard";
+import { AuthorityUnitEditor } from "@/components/institutional/AuthorityUnitEditor";
+import { OpCard, OpCardBody, OpCardHead } from "@/components/ui/dashboard";
 import { db } from "@/db";
 import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
 import { requireUuidParam } from "@/lib/infra/route-params";
 import { provinceByCode } from "@/lib/reference/ar-provincias";
-import { formatDateShort, formatDateTimeNumericAr } from "@/lib/utils/format";
 import { listGrantCandidates } from "@/src/modules/organizations/application/authority-units/grant-unit";
 import {
-  listUnitHolders,
+  listGrantsOnUnit,
+  listLocalityMoveOptions,
   loadAuthorityUnitDetail,
-  moveReach,
 } from "@/src/modules/organizations/application/authority-units/read-units";
 
-import { GrantUnitForm } from "../_components/GrantUnitForm";
-
-import {
-  ConfirmUnitButton,
-  type LocalityOption,
-  MoveLocalityForm,
-  RemoveMemberForm,
-  RenameUnitForm,
-} from "../_components/UnitEditorForms";
-import { unitKindLabel, unitLevelLabel } from "../_components/unit-labels";
+import { UnconfirmGrantForm, UnconfirmUnitForm } from "../_components/UnitReversalForms";
 
 export const dynamic = "force-dynamic";
-
-const CHANGE_LABELS: Record<string, string> = {
-  authority_unit_created: "Unidad creada",
-  authority_unit_renamed: "Unidad renombrada",
-  authority_unit_confirmed: "Unidad confirmada",
-  authority_unit_membership_moved: "Localidad sumada",
-  authority_unit_membership_removed: "Localidad quitada",
-  govt_assignment_unit_confirmed: "Concesión de gobierno pasada a la unidad",
-};
-
-/**
- * The province's live localities, labelled with the unit that holds them today,
- * and whom moving each one here reaches (verify S4): the holders of this unit
- * gain it, the holders of its current unit at this level lose it.
- */
-async function localityOptions(provinceCode: string, level: string, unitId: string) {
-  const rows = (await db.execute(sql`
-    select l.id::text as id, l.locality_name as name, l.department_name as department,
-           u.name as current_unit, u.id::text as current_unit_id
-      from public.ar_localities l
-      left join public.authority_unit_localities m
-        on m.locality_id = l.id and m.valid_to is null and m.level = ${level}
-      left join public.authority_units u on u.id = m.unit_id
-     where l.province_code = ${provinceCode} and l.removed_at is null
-       and m.unit_id is distinct from ${unitId}::uuid
-     order by l.locality_name, l.department_name nulls first, l.id
-  `)) as unknown as Array<{
-    id: string;
-    name: string;
-    department: string | null;
-    current_unit: string | null;
-    current_unit_id: string | null;
-  }>;
-  const holders = await listUnitHolders(db, [
-    unitId,
-    ...rows.flatMap((r) => (r.current_unit_id ? [r.current_unit_id] : [])),
-  ]);
-  return rows.map<LocalityOption>((r) => {
-    const reach = moveReach(holders, unitId, r.current_unit_id);
-    return {
-      id: r.id,
-      label: `${r.name}${r.department ? ` (${r.department})` : ""} — ${
-        r.current_unit ? `hoy en ${r.current_unit}` : "sin unidad"
-      }`,
-      gaining: reach.gaining.map((h) => h.displayName),
-      losing: reach.losing.map((h) => h.displayName),
-    };
-  });
-}
 
 export default async function AuthorityUnitPage({
   params,
@@ -102,154 +47,61 @@ export default async function AuthorityUnitPage({
 
   const unit = await loadAuthorityUnitDetail(db, unitId);
   if (!unit) notFound();
-  const provincial = unit.level === "provincial";
-  const options = provincial ? [] : await localityOptions(unit.provinceCode, unit.level, unit.id);
-  const province = provinceByCode(unit.provinceCode);
+  const options =
+    unit.level === "provincial"
+      ? []
+      : await listLocalityMoveOptions(db, unit.provinceCode, unit.level, unit.id);
+  const provinceName = provinceByCode(unit.provinceCode)?.name ?? unit.provinceCode;
   const candidates = unit.status === "confirmed" ? await listGrantCandidates(db, unit.id) : [];
+  // Grants already pinned to the unit: the platform admin's reversal list
+  // (jurisdiction-admin 6.4), whatever the unit's status.
+  const pinned = await listGrantsOnUnit(db, unit.id);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5">
-      <p className="text-sm text-ln-op-mute">
-        <Link
-          href={`/admin/localidades?provincia=${unit.provinceCode}`}
-          className="underline underline-offset-4 hover:text-ln-op-ink-2"
-        >
-          Unidades de {province?.name ?? unit.provinceCode}
-        </Link>
-      </p>
-
+    <AuthorityUnitEditor
+      unit={unit}
+      provinceName={provinceName}
+      options={options}
+      candidates={candidates}
+      basePath="/admin/localidades"
+      back={{
+        href: `/admin/localidades?provincia=${unit.provinceCode}`,
+        label: `Unidades de ${provinceName}`,
+      }}
+      showChangeReasons
+      statusExtra={
+        unit.status === "confirmed" ? (
+          <UnconfirmUnitForm unitId={unit.id} pinnedHolders={pinned.map((h) => h.displayName)} />
+        ) : null
+      }
+    >
       <OpCard>
-        <OpCardHead
-          title={unit.name}
-          actions={
-            unit.status === "confirmed" ? (
-              <OpPill tone="ok">Confirmada</OpPill>
-            ) : (
-              <OpPill tone="open">Propuesta</OpPill>
-            )
-          }
-        />
-        <OpCardBody className="space-y-4">
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-            <dt className="text-ln-op-mute">Tipo</dt>
-            <dd className="text-ln-op-ink">{unitKindLabel(unit.kind)}</dd>
-            <dt className="text-ln-op-mute">Nivel</dt>
-            <dd className="text-ln-op-ink">{unitLevelLabel(unit.level)}</dd>
-            <dt className="text-ln-op-mute">Provincia</dt>
-            <dd className="text-ln-op-ink">{province?.name ?? unit.provinceCode}</dd>
-            {unit.confirmedAt && (
-              <>
-                <dt className="text-ln-op-mute">Confirmada</dt>
-                <dd className="text-ln-op-ink">{formatDateShort(unit.confirmedAt)}</dd>
-              </>
-            )}
-          </dl>
-          {unit.status === "draft" && <ConfirmUnitButton unitId={unit.id} />}
-          <RenameUnitForm unitId={unit.id} name={unit.name} />
-        </OpCardBody>
-      </OpCard>
-
-      <OpCard>
-        <OpCardHead title={provincial ? "Localidades" : `Localidades (${unit.members.length})`} />
-        <OpCardBody className="space-y-4">
-          {provincial ? (
-            <p className="text-sm text-ln-op-mute">
-              La unidad provincial abarca toda la provincia, también los lugares que no se pudieron
-              resolver a una localidad. No se le suman localidades una por una.
-            </p>
-          ) : unit.members.length === 0 ? (
-            <p className="text-sm text-ln-op-mute">Esta unidad todavía no tiene localidades.</p>
+        <OpCardHead title="Concesiones pasadas a esta unidad" />
+        <OpCardBody className="space-y-3">
+          {pinned.length === 0 ? (
+            <p className="text-sm text-ln-op-mute">Ninguna concesión está pasada a esta unidad.</p>
           ) : (
             <ul className="divide-y divide-ln-op-line text-sm">
-              {unit.members.map((m) => (
-                <li key={m.localityId} className="flex items-start justify-between gap-3 py-1.5">
-                  <span className="text-ln-op-ink">
-                    {m.localityName}
-                    {m.departmentName && (
-                      <span className="text-ln-op-mute"> ({m.departmentName})</span>
-                    )}
-                    <span className="ml-2 text-xs text-ln-op-mute">
-                      desde {formatDateShort(m.since)}
+              {pinned.map((h) => (
+                <li key={h.userId} className="space-y-2 py-2">
+                  <p className="m-0 text-ln-op-ink">
+                    <strong>{h.displayName}</strong>
+                    <span className="text-ln-op-mute">
+                      {" · "}
+                      {h.localities.map((l) => l || "toda la provincia").join(", ")}
                     </span>
-                  </span>
-                  {unit.level !== "municipal" && (
-                    <RemoveMemberForm
-                      unitId={unit.id}
-                      localityId={m.localityId}
-                      localityName={m.localityName}
-                    />
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-          {!provincial && (
-            <MoveLocalityForm
-              unitId={unit.id}
-              options={options}
-              levelLabel={unitLevelLabel(unit.level)}
-            />
-          )}
-        </OpCardBody>
-      </OpCard>
-
-      <OpCard>
-        <OpCardHead title="Concesiones de gobierno por pasar a la unidad" />
-        <OpCardBody className="space-y-4">
-          <p className="text-sm text-ln-op-mute">
-            Una concesión pasa a la unidad cuando registra una de sus localidades (o, en la unidad
-            provincial, toda la provincia). Desde ese momento cubre las localidades de la unidad por
-            identificador, no por nombre.
-          </p>
-          {unit.status !== "confirmed" ? (
-            // A draft is the seed's proposal and governs nothing (govt_scope,
-            // 0260): no grant moves onto it until it is confirmed.
-            <p className="text-sm text-ln-op-mute">
-              Confirmá la unidad con la autoridad antes de pasarle concesiones. Mientras sea una
-              propuesta no gobierna ninguna localidad.
-            </p>
-          ) : candidates.length === 0 ? (
-            <p className="text-sm text-ln-op-mute">No hay concesiones por pasar a esta unidad.</p>
-          ) : (
-            candidates.map((c) => (
-              <GrantUnitForm
-                key={c.userId}
-                unitId={unit.id}
-                userId={c.userId}
-                displayName={c.displayName}
-                grants={c.grants}
-                added={c.added}
-              />
-            ))
-          )}
-        </OpCardBody>
-      </OpCard>
-
-      <OpCard>
-        <OpCardHead title="Historial de cambios" />
-        <OpCardBody>
-          {unit.changes.length === 0 ? (
-            <p className="text-sm text-ln-op-mute">Sin cambios desde la siembra inicial.</p>
-          ) : (
-            <ul className="divide-y divide-ln-op-line text-sm">
-              {unit.changes.map((c, i) => (
-                <li key={`${c.performedAt.toISOString()}-${i}`} className="py-1.5">
-                  <span className="text-ln-op-ink">
-                    {c.action === "authority_unit_membership_moved" && c.after?.unit_id !== unit.id
-                      ? "Localidad movida a otra unidad"
-                      : (CHANGE_LABELS[c.action] ?? c.action)}
-                    {c.localityName && `: ${c.localityName}`}
-                  </span>
-                  <span className="block text-xs text-ln-op-mute">
-                    {formatDateTimeNumericAr(c.performedAt)} · {c.actorName ?? "Usuario eliminado"}
-                    {c.reason && ` · ${c.reason}`}
-                  </span>
+                  </p>
+                  <UnconfirmGrantForm
+                    unitId={unit.id}
+                    userId={h.userId}
+                    displayName={h.displayName}
+                  />
                 </li>
               ))}
             </ul>
           )}
         </OpCardBody>
       </OpCard>
-    </div>
+    </AuthorityUnitEditor>
   );
 }

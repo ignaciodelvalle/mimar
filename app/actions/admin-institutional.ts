@@ -14,10 +14,23 @@
 //
 // CRITICAL: Every runtime export in a "use server" file must be an async
 // function. Types are re-exported with `export type` (erased at runtime).
+//
+// TWO GUARDS, ON PURPOSE (jurisdiction-admin Phase 6). The three acts a
+// jurisdiction admin shares with the platform admin — creating a municipal
+// official, deactivating one, assigning one a locality — admit the
+// administration principal (platform admin or LIVE appointee); each writer then
+// derives the target's province and asks requireJurisdictionAdminFor inside its
+// own transaction, so admission here grants no place. Everything else in this
+// file is the platform admin's alone and keeps requireAdminOrRedirect: admin
+// deactivation, credential reset, second-factor reset. The inventory is pinned
+// by __tests__/jurisdiction-admin-portal.test.ts.
 
 import { revalidatePath } from "next/cache";
 
-import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
+import {
+  requireAdminOrRedirect,
+  requireAdministrationPrincipalOrRedirect,
+} from "@/lib/infra/auth-guards";
 import { assignGovtLocalityForAuthority as _assignGovtLocality } from "@/src/modules/organizations/application/admin-institutional/assign-govt-locality";
 import { createInstitutionalAccountForAuthority as _createInstitutional } from "@/src/modules/organizations/application/admin-institutional/create-institutional-account";
 import { deactivateAdminForAuthority as _deactivateAdmin } from "@/src/modules/organizations/application/admin-institutional/deactivate-admin";
@@ -39,17 +52,21 @@ export type { ResetMfaFactorsResult } from "@/src/modules/organizations/applicat
 // Action wrappers — thin controllers for UI components
 // ---------------------------------------------------------------------------
 
+// A jurisdiction admin's funcionarios (app/gob/administracion/funcionarios).
+const GOB_FUNCIONARIOS = "/gob/administracion/funcionarios";
+
 export async function createInstitutionalAccountAction(input: {
   role: "govt" | "admin" | "national";
   email: string;
   displayName: string;
   initialLocalities: { province: string; locality: string; localityIndecId?: string | null }[];
 }) {
-  const { user } = await requireAdminOrRedirect();
+  const { user } = await requireAdministrationPrincipalOrRedirect();
   const result = await _createInstitutional(user.id, input);
   if ("ok" in result) {
     revalidatePath("/admin/govts");
     revalidatePath("/admin/admins");
+    revalidatePath(GOB_FUNCIONARIOS);
   }
   return result;
 }
@@ -73,11 +90,13 @@ export async function deactivateGovtAction(input: {
   motivo: string;
   attachmentIds: string[];
 }) {
-  const { user } = await requireAdminOrRedirect();
+  const { user } = await requireAdministrationPrincipalOrRedirect();
   const result = await _deactivateGovt(user.id, input);
   if ("ok" in result && !result.noOp) {
     revalidatePath("/admin/govts");
     revalidatePath(`/admin/govts/${input.targetGovtUserId}`);
+    revalidatePath(GOB_FUNCIONARIOS);
+    revalidatePath(`${GOB_FUNCIONARIOS}/${input.targetGovtUserId}`);
   }
   return result;
 }
@@ -115,10 +134,11 @@ export async function assignGovtLocalityAction(input: {
   locality: string;
   localityIndecId?: string | null;
 }) {
-  const { user } = await requireAdminOrRedirect();
+  const { user } = await requireAdministrationPrincipalOrRedirect();
   const result = await _assignGovtLocality(user.id, input);
   if ("ok" in result && !result.noOp) {
     revalidatePath(`/admin/govts/${input.targetUserId}`);
+    revalidatePath(`${GOB_FUNCIONARIOS}/${input.targetUserId}`);
   }
   return result;
 }

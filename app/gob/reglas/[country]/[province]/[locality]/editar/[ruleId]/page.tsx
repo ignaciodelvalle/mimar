@@ -5,9 +5,13 @@ import { notFound } from "next/navigation";
 
 import { OpCrumbs } from "@/components/ui/dashboard";
 import { type GovtBusinessRuleType, db, govtBusinessRules } from "@/db";
-import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
 import { portalBase } from "@/lib/ui/portal-base";
+import { provincesOfRulePlace } from "@/src/modules/organizations/application/admin-authority/target-province";
 
+import {
+  assertRuleProvincesInScope,
+  requireRulePageScopeOrRedirect,
+} from "../../../../../_lib/rule-page-scope";
 import { RULE_FORM_REGISTRY, buildEditFormExtraProps } from "../../nueva/forms";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +31,8 @@ export default async function EditRulePage({
     ruleId: string;
   }>;
 }) {
-  await requireAdminOrRedirect();
+  // A jurisdiction admin opens only rules of their province (Phase 6).
+  const scope = await requireRulePageScopeOrRedirect();
   const base = await portalBase();
 
   const {
@@ -46,6 +51,10 @@ export default async function EditRulePage({
     .where(eq(govtBusinessRules.id, ruleId))
     .limit(1);
   if (!rule) notFound();
+  // The STORED place decides, through the same definition the writer uses.
+  if (scope.provinceCode !== null) {
+    assertRuleProvincesInScope(scope, await provincesOfRulePlace(db, rule));
+  }
 
   const ruleType = rule.ruleType as GovtBusinessRuleType;
   const payload = rule.rulePayload as Record<string, unknown>;

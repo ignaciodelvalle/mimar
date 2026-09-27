@@ -87,7 +87,10 @@ import { stripComments } from "./lib/strip-comments.mjs";
 // 2026-09-25 (W8, no device location): 54 → 53. OrgBiteForm.tsx's "usar mi
 // ubicación" text-link (the one flagged for PO design sign-off above) is gone
 // with the feature it triggered.
-const OPERATOR_BASELINE = 53;
+// 2026-09-27 (jurisdiction-admin Phase 6): 53 → 48. Five text-link raw buttons
+// of the institutional forms became OpButton / OpIconButton when the forms
+// moved to components/institutional (the citizen count did not rise).
+const OPERATOR_BASELINE = 48;
 const OPERATOR_SCAN_GLOB = "{app/gob,app/admin,app/org}/**/*.tsx";
 const OPERATOR_LABEL = "operator (app/gob, app/admin, app/org)";
 

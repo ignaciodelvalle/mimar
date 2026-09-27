@@ -38,6 +38,9 @@ const GOB_HREF_SNAPSHOT = new Set([
   // nav-presets.test.ts's GOB_HREF_SNAPSHOT.
   "/gob/reglas",
   "/gob/historial",
+  // ADDED 2026-09-27 — province administration (jurisdiction-admin Phase 6).
+  // Argued in nav-presets.test.ts's copy of this set.
+  "/gob/administracion",
   // /gob/analytics REMOVED (F9 fusion, 2026-08-01): absorbed into the Programa
   // hub as a tabbed vista — matches nav-presets.test.ts's GOB_HREF_SNAPSHOT.
   "/gob/perdidas",

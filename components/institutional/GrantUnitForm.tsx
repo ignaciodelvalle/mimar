@@ -14,7 +14,7 @@ import { useState } from "react";
 import { confirmGrantUnitAction } from "@/app/actions/authority-units";
 import { OpButton, OpCheckbox, OpField, OpFormAlert, OpTextarea } from "@/components/ui/dashboard";
 
-import { useUnitAction } from "./UnitEditorForms";
+import { ADMIN_UNITS_BASE, useUnitAction } from "./UnitEditorForms";
 
 export type GrantUnitFormProps = {
   unitId: string;
@@ -22,9 +22,18 @@ export type GrantUnitFormProps = {
   displayName: string;
   grants: Array<{ assignmentId: string; locality: string }>;
   added: Array<{ localityId: string; name: string }>;
+  /** The portal's unit list (see UnitEditorForms). */
+  basePath?: string;
 };
 
-export function GrantUnitForm({ unitId, userId, displayName, grants, added }: GrantUnitFormProps) {
+export function GrantUnitForm({
+  unitId,
+  userId,
+  displayName,
+  grants,
+  added,
+  basePath = ADMIN_UNITS_BASE,
+}: GrantUnitFormProps) {
   const [reason, setReason] = useState("");
   const [accepted, setAccepted] = useState<ReadonlySet<string>>(new Set());
   const { error, pending, run } = useUnitAction();
@@ -54,7 +63,7 @@ export function GrantUnitForm({ unitId, userId, displayName, grants, added }: Gr
               reason,
               acceptAdded: added.map((a) => a.localityId),
             }),
-          () => `/admin/localidades/${unitId}`,
+          () => `${basePath}/${unitId}`,
         );
       }}
     >

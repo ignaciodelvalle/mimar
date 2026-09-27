@@ -28,7 +28,7 @@ import {
   RULE_SOURCE_LABEL as SOURCE_LABEL,
   summarizeRulePayload,
 } from "@/lib/domain/rule-types-registry";
-import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
+
 import { resolveBusinessRule } from "@/lib/infra/business-rules-resolver";
 import {
   type RulePlaceKey,
@@ -37,6 +37,8 @@ import {
 } from "@/lib/infra/rule-place-labels";
 import { portalBase } from "@/lib/ui/portal-base";
 import { formatDate } from "@/lib/utils/format";
+
+import { assertPlaceInScope, requireRulePageScopeOrRedirect } from "../../../_lib/rule-page-scope";
 
 import { DeleteRuleButton } from "./DeleteRuleButton";
 import { RULE_FORM_REGISTRY } from "./nueva/forms";
@@ -63,13 +65,15 @@ export default async function JurisdictionReglasPage({
   params: Promise<{ country: string; province: string; locality: string }>;
   searchParams?: Promise<{ lugar?: string; unidad?: string }>;
 }) {
-  await requireAdminOrRedirect();
+  // A jurisdiction admin opens only places of their province (Phase 6).
+  const scope = await requireRulePageScopeOrRedirect();
   const base = await portalBase();
 
   const { country: countryRaw, province: provinceRaw, locality: localityRaw } = await params;
   const country = decodeURIComponent(countryRaw);
   const province = decodeNullable(provinceRaw);
   const locality = decodeNullable(localityRaw);
+  assertPlaceInScope(scope, country, province);
   const placeKey = placeKeyFrom((await searchParams) ?? {});
 
   const rows = await db

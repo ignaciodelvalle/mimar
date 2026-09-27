@@ -55,6 +55,12 @@ type Props = {
   base: "/admin" | "/gob";
   /** Confirmed authority units below the province (localidades-por-id D4). */
   units?: ReadonlyArray<{ id: string; name: string; provinceCode: string }>;
+  /**
+   * A jurisdiction admin's one province (jurisdiction-admin Phase 6): step 1
+   * offers only it, already chosen. Presentation only — the rule writer
+   * refuses any place outside the actor's province on its own.
+   */
+  lockedProvince?: { code: string; name: string };
 };
 
 type PickedUnit = { id: string; name: string } | null;
@@ -106,11 +112,23 @@ function UnitPickerField({
   );
 }
 
-export function RulesWizard({ base, units = [] }: Props) {
+/** Step 1's choices: every province, or only a jurisdiction admin's own. */
+function provinceStep(lockedProvince: Props["lockedProvince"]) {
+  if (!lockedProvince)
+    return { initial: { code: "", name: "" }, options: PROVINCES, locked: false };
+  return {
+    initial: lockedProvince,
+    options: PROVINCES.filter((p) => p.code === lockedProvince.code),
+    locked: true,
+  };
+}
+
+export function RulesWizard({ base, units = [], lockedProvince }: Props) {
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [provinceCode, setProvinceCode] = useState("");
-  const [provinceName, setProvinceName] = useState("");
+  const provinceChoice = provinceStep(lockedProvince);
+  const [provinceCode, setProvinceCode] = useState(provinceChoice.initial.code);
+  const [provinceName, setProvinceName] = useState(provinceChoice.initial.name);
   const [wholeProvince, setWholeProvince] = useState(false);
   const [localityName, setLocalityName] = useState("");
   // The picked row's INDEC id: tells a homonym apart (localidades-por-id D4).
@@ -152,8 +170,8 @@ export function RulesWizard({ base, units = [] }: Props) {
                 setUnit(null);
               }}
             >
-              <option value="">Elegí una provincia…</option>
-              {PROVINCES.map((p) => (
+              {provinceChoice.locked ? null : <option value="">Elegí una provincia…</option>}
+              {provinceChoice.options.map((p) => (
                 <option key={p.code} value={p.code}>
                   {p.name}
                 </option>

@@ -162,14 +162,16 @@ function RevokeLocalityForm({
             {selectedFiles.map((f) => (
               <li key={f.key} className="flex items-center gap-2 text-xs text-ln-op-ink-2">
                 <span className="truncate max-w-[200px]">{f.file.name}</span>
-                <button
+                <OpButton
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => removeFile(f.key)}
                   disabled={pending || uploading}
-                  className="text-ln-op-danger hover:underline shrink-0 disabled:opacity-50"
+                  className="shrink-0"
                 >
                   Quitar
-                </button>
+                </OpButton>
               </li>
             ))}
           </ul>

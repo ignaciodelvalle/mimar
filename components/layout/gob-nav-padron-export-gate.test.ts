@@ -11,13 +11,21 @@ import { describe, expect, it } from "vitest";
 
 import { canExportPadronSanitario } from "@/app/gob/analytics/export/export-access";
 
-import { GOB_NAV_SECTIONS, GOB_PADRON_EXPORT_HREF, gobNavSectionsFor } from "./nav-presets";
+import {
+  GOB_ADMINISTRACION_HREF,
+  GOB_NAV_SECTIONS,
+  GOB_PADRON_EXPORT_HREF,
+  gobNavSectionsFor,
+} from "./nav-presets";
 
 const ONE_JURISDICTION = [{ province: "Buenos Aires", locality: "La Plata" }];
 
+// Pinned `administersProvince: true` so these cases isolate the export gate;
+// the administration gate has its own block below.
 function railHrefs(role: string, jurisdictions: ReadonlyArray<unknown>): string[] {
   return gobNavSectionsFor({
     canExportPadronSanitario: canExportPadronSanitario(role, jurisdictions),
+    administersProvince: true,
   }).flatMap((s) => s.items.map((i) => i.href));
 }
 
@@ -68,5 +76,31 @@ describe("single source of truth — every reader asks the same predicate", () =
     const src = read(rel);
     expect(src).toContain("canExportPadronSanitario(profile.role, jurisdictions)");
     expect(src).not.toMatch(/role === "govt" && jurisdictions\.length/);
+  });
+});
+
+// jurisdiction-admin Phase 6: the province administration entry is shown only
+// to a govt with a LIVE appointment — the one viewer its page admits.
+describe("gobNavSectionsFor — the rail shows Administración only to a jurisdiction admin", () => {
+  const hrefs = (administersProvince: boolean) =>
+    gobNavSectionsFor({ canExportPadronSanitario: true, administersProvince }).flatMap((s) =>
+      s.items.map((i) => i.href),
+    );
+
+  it("a jurisdiction admin sees it", () => {
+    expect(hrefs(true)).toContain(GOB_ADMINISTRACION_HREF);
+  });
+
+  it("anyone else does not, and nothing else is dropped", () => {
+    expect(hrefs(false)).not.toContain(GOB_ADMINISTRACION_HREF);
+    expect(hrefs(false)).toEqual(hrefs(true).filter((h) => h !== GOB_ADMINISTRACION_HREF));
+  });
+
+  it("the layout asks the authority loader, the same one the page's guard asks", () => {
+    const src = readFileSync(path.resolve(__dirname, "../../app/gob/layout.tsx"), "utf8");
+    // Only a govt costs the query, and only a live appointment answers yes.
+    expect(src.replace(/\s+/g, " ")).toContain(
+      'administersProvince: profile.role === "govt" && (await loadAdminAuthority(db, profile.id)).kind === "jurisdiction",',
+    );
   });
 });
