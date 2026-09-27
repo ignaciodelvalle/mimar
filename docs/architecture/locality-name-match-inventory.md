@@ -21,9 +21,10 @@ sees a row by comparing `govt_assignments.jurisdiction_locality` with the row's
 ## Live inventory (local catalog, 2026-09-22)
 
 Queried from `pg_policies`, `pg_proc` and `pg_views` in `public` — the
-database, not the migrations ("aplicada no es cerrada"). Nine objects mention
-the column; six of them compare it with another row's name. The two
-`SECURITY DEFINER` functions are `can_read_case` and `erase_subject_data`.
+database, not the migrations ("aplicada no es cerrada"). Eleven objects mention
+the column; six of them compare it with another row's name. The three
+`SECURITY DEFINER` functions are `can_read_case`, `erase_subject_data` and
+`jurisdiction_admin_province` (rows 10–11 were added by `0268`, 2026-09-27).
 
 Since `0259` (localidades-por-id D8) the six predicates read the operator's
 grants through `public.govt_scope` (`0257`). A grant on an **authority unit**
@@ -43,6 +44,8 @@ comparison is what the six rows still count.
 | 7 | `erase_subject_data(uuid, text)` | function, **SECURITY DEFINER** | nothing — it WRITES `jurisdiction_locality = NULL` during erasure. Listed because it is privileged and touches the column | `db/migrations/0228_dead_letter_error_message_redaction.sql` |
 | 8 | `welfare_report_content` | view | nothing — it projects the column | — |
 | 9 | `govt_scope(uuid)` | function, SQL STABLE | nothing by itself — it RETURNS a legacy grant's name pair; the six predicates above compare it | `db/migrations/0257_govt_scope_and_place_flags.sql` |
+| 10 | `jurisdiction_admin_province(uuid)` | function, **SECURITY DEFINER** | whether a jurisdiction admin's implied grant is still WHOLE-PROVINCE (`''` or CABA's whole-city entry, through `govt_grant_is_whole_province`). Compares the name with a constant, never with another row's | `db/migrations/0268_jurisdiction_admin_appointments.sql` |
+| 11 | `jurisdiction_admin_appointments_validate()` | trigger function | the same whole-province test, at appointment time | same |
 
 The ~21 matches the plan counted in the SQL **source** are the history of
 these six predicates: each policy was re-created by later migrations
@@ -79,7 +82,7 @@ list in `scripts/check-locality-name-join.ts` holds all of them, file by file.
   compares two qualified locality names fails. It enumerates a FORM.
 - `__tests__/locality-name-match-live-inventory.test.ts`: pins the SUBJECT
   against the live catalog — the set of objects that mention the column, the
-  subset that compares it, and the two `SECURITY DEFINER` functions. An object
+  subset that compares it, and the three `SECURITY DEFINER` functions. An object
   appearing or disappearing fails until this table is updated.
 
 ## What would retire them

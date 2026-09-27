@@ -28,6 +28,12 @@ const TOUCHING = [
   // 0257 (localidades-por-id D1): returns a legacy grant's name pair; it
   // compares nothing itself — the policies that read it do (0259).
   "function public.govt_scope",
+  // 0268 (jurisdiction-admin): both test that the appointment's implied grant
+  // is WHOLE-PROVINCE (the '' sentinel or CABA's whole-city entry, via
+  // govt_grant_is_whole_province). Neither compares the name with another
+  // row's, so neither is in NAME_COMPARISONS.
+  "function public.jurisdiction_admin_appointments_validate",
+  "function public.jurisdiction_admin_province",
   "policy public.approval_requests :: approval requests visible to applicant or authority",
   "policy public.custody_dispute_parties :: custody_dispute_parties select by parties and authorities",
   "policy public.custody_disputes :: custody_disputes select by parties and authorities",
@@ -94,12 +100,17 @@ describe("live catalog — objects that touch jurisdiction_locality (L4·3)", ()
     ).toEqual([...NAME_COMPARISONS].sort());
   });
 
-  it("the two SECURITY DEFINER functions are the inventoried two", () => {
+  it("the three SECURITY DEFINER functions are the inventoried three", () => {
     expect(
       objects
         .filter((o) => o.secdef)
         .map(label)
         .sort(),
-    ).toEqual(["function public.can_read_case", "function public.erase_subject_data"]);
+    ).toEqual([
+      "function public.can_read_case",
+      "function public.erase_subject_data",
+      // 0268: the jurisdiction-admin twin (owner-only EXECUTE).
+      "function public.jurisdiction_admin_province",
+    ]);
   });
 });

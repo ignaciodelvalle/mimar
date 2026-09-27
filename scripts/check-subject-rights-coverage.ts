@@ -71,9 +71,9 @@
 // WHY "gap" EXISTS AT ALL
 // ---------------------------------------------------------------------------
 // The gap state is the point. A design without it forces every uncovered
-// table into EXEMPT, and there are seventeen tables here that hold real
+// table into EXEMPT, and there are eighteen tables here that hold real
 // subject data the RPCs do not touch. Writing "exempt" next to each of them
-// would be seventeen false statements in the one file whose whole job is to
+// would be eighteen false statements in the one file whose whole job is to
 // stop a false statement about coverage. KNOWN_GAP names the debt, prints it on
 // every run, and still fails on a table with no classification — so the NEXT
 // pet_caretaker_grants cannot arrive unnoticed, and the existing ones cannot be
@@ -85,7 +85,8 @@
 // lines above a §7 that already said 17. 0208 closed operator_feed_watermarks,
 // physical_tag_interest and organization_invitations, and 0226 closed
 // notification_dead_letter; 0250 added place_resolutions (append-only, so
-// the erasure cannot reach it), so it is seventeen. The
+// the erasure cannot reach it) and 0268 added jurisdiction_admin_appointments
+// (the same shape as govt_assignments, which is a gap too), so it is eighteen. The
 // number the CI line prints has always been computed from the list; what used
 // to be maintained by hand — these sentences — is now fenced against it too.
 //
@@ -267,6 +268,12 @@ export const CLASSIFICATION: Readonly<Record<string, Classification>> = {
   foster_volunteers: BOTH_COVERED,
   govt_assignments: bothGap("The subject's official assignment, `revocation_reason` and `notes`."),
   govt_business_rules: bothGap("Operator `notes` and the created_by / updated_by actor pair."),
+  // 0268 (jurisdiction-admin): an official appointment of a public official.
+  // Append-only by trigger, so the erasure could not redact it in place even
+  // if it tried — the same retained-accountability shape as govt_assignments.
+  jurisdiction_admin_appointments: bothGap(
+    "The subject's appointment as jurisdiction administrator (user_id), with the platform admin's `appointment_reason` and `revocation_reason` about them.",
+  ),
   jurisdictions_census: bothExempt("Published census figures per jurisdiction."),
   // 0207: the erasure revokes the subject's outstanding libreta shares (their
   // own grants of access die with the account).

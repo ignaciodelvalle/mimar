@@ -281,7 +281,12 @@ describe("the debt register is not empty, says so, and may not grow quietly", ()
   // subject loses its payload and is resolved), so it ratchets 17 -> 16.
   // 0250 added place_resolutions: append-only, so erasure cannot anonymise the
   // admin actor or the reason they typed in place. Raised 16 -> 17 on purpose.
-  const KNOWN_GAP_CEILING = 17;
+  // 0268 added jurisdiction_admin_appointments (jurisdiction-admin): an
+  // official appointment of a public official, append-only by trigger, so the
+  // erasure cannot redact the appointee FK or the platform admin's reasons in
+  // place — the same shape as govt_assignments, itself a gap. Raised 17 -> 18
+  // on purpose.
+  const KNOWN_GAP_CEILING = 18;
 
   it("does not grow past the declared ceiling without someone raising it on purpose", () => {
     expect(

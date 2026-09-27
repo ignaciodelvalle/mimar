@@ -72,6 +72,12 @@ export const AUDIT_ACTION_LABELS = {
   authority_unit_membership_moved: "Localidad movida de unidad de autoridad",
   authority_unit_membership_removed: "Localidad quitada de una unidad de autoridad",
   govt_assignment_unit_confirmed: "Concesión de gobierno pasada a una unidad de autoridad",
+  // jurisdiction-admin — the platform admin's appointments and reversals.
+  jurisdiction_admin_appointed: "Administrador/a jurisdiccional designado/a",
+  jurisdiction_admin_revoked: "Designación de administrador/a jurisdiccional revocada",
+  authority_unit_unconfirmed: "Unidad de autoridad vuelta a borrador",
+  govt_assignment_unit_unconfirmed: "Concesión de gobierno quitada de una unidad de autoridad",
+  govt_reactivated_by_admin: "Reactivación cuenta gobierno (por admin)",
   // Profile / account
   profile_self_updated: "Perfil actualizado",
   profile_avatar_updated: "Avatar actualizado",

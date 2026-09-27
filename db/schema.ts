@@ -2316,6 +2316,66 @@ export const govtAssignments = pgTable(
 export type GovtAssignment = typeof govtAssignments.$inferSelect;
 export type NewGovtAssignment = typeof govtAssignments.$inferInsert;
 
+// One delegated jurisdiction administrator per province (migration 0268,
+// SDD jurisdiction-admin). A jurisdiction admin is role `govt` + an ACTIVE row
+// here + that row's implied whole-province grant (govtAssignmentId), still
+// active. Append-only by trigger: revoked once by the platform admin, never
+// deleted or rewritten; re-appointing is a new row. Authority is read ONLY
+// through public.jurisdiction_admin_province(uuid) — the app's authority
+// module (src/modules/organizations/application/admin-authority/) calls it
+// inside each writer's transaction.
+export const jurisdictionAdminAppointments = pgTable(
+  "jurisdiction_admin_appointments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    provinceCode: text("province_code").notNull(),
+    govtAssignmentId: uuid("govt_assignment_id")
+      .notNull()
+      .references(() => govtAssignments.id, { onDelete: "restrict" }),
+    // True when appointing created the implied grant (so revoking the
+    // appointment revokes it too); false when an existing whole-province
+    // grant of the user was reused.
+    grantCreated: boolean("grant_created").notNull(),
+    appointedByUserId: uuid("appointed_by_user_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "restrict" }),
+    appointedAt: timestamp("appointed_at", { withTimezone: true }).notNull().defaultNow(),
+    appointmentReason: text("appointment_reason").notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedByUserId: uuid("revoked_by_user_id").references(() => profiles.id, {
+      onDelete: "restrict",
+    }),
+    revocationReason: text("revocation_reason"),
+  },
+  (table) => ({
+    oneActivePerProvince: uniqueIndex("jurisdiction_admin_appointments_one_active_per_province")
+      .on(table.provinceCode)
+      .where(sql`${table.revokedAt} IS NULL`),
+    oneActivePerUser: uniqueIndex("jurisdiction_admin_appointments_one_active_per_user")
+      .on(table.userId)
+      .where(sql`${table.revokedAt} IS NULL`),
+    grantIdx: index("jurisdiction_admin_appointments_grant_idx").on(table.govtAssignmentId),
+    provinceValid: check(
+      "jurisdiction_admin_appointments_province_valid",
+      sql`public.ar_province_name(${table.provinceCode}) IS NOT NULL`,
+    ),
+    reasonLen: check(
+      "jurisdiction_admin_appointments_reason_len",
+      sql`char_length(btrim(${table.appointmentReason})) BETWEEN 1 AND 500`,
+    ),
+    revocationShape: check(
+      "jurisdiction_admin_appointments_revocation_shape",
+      sql`(${table.revokedAt} IS NULL AND ${table.revokedByUserId} IS NULL AND ${table.revocationReason} IS NULL) OR (${table.revokedAt} IS NOT NULL AND ${table.revokedByUserId} IS NOT NULL AND ${table.revocationReason} IS NOT NULL AND char_length(btrim(${table.revocationReason})) BETWEEN 1 AND 500)`,
+    ),
+  }),
+);
+
+export type JurisdictionAdminAppointment = typeof jurisdictionAdminAppointments.$inferSelect;
+export type NewJurisdictionAdminAppointment = typeof jurisdictionAdminAppointments.$inferInsert;
+
 // Approval request types — kept as TEXT (with a DB CHECK) so adding a new
 // type is one migration of the CHECK constraint, not an enum migration.
 // Validation happens in lib/approval-payloads.ts.
@@ -2875,6 +2935,17 @@ export const AUDIT_LOG_ACTIONS = [
   "case_note_recorded",
   "case_closed_manually",
   "case_escalated_manually",
+  // jurisdiction-admin (migration 0269): the platform admin appoints and
+  // revokes one jurisdiction administrator per province, and reverses what a
+  // delegated administrator did — a unit back to draft, a grant off its unit,
+  // a deactivated funcionario back on. All five are PLATFORM-ONLY: the
+  // audit_log BEFORE INSERT trigger refuses them from any other actor.
+  // Delegated acts reuse their existing names; actor_user_id says who acted.
+  "jurisdiction_admin_appointed",
+  "jurisdiction_admin_revoked",
+  "authority_unit_unconfirmed",
+  "govt_assignment_unit_unconfirmed",
+  "govt_reactivated_by_admin",
 ] as const;
 export type AuditLogAction = (typeof AUDIT_LOG_ACTIONS)[number];
 
@@ -2899,9 +2970,20 @@ export const auditLog = pgTable(
     }),
     payload: jsonb("payload").notNull().default({}),
     performedAt: timestamp("performed_at", { withTimezone: true }).notNull().defaultNow(),
+    // WHERE the act happened (migration 0269, jurisdiction-admin D6). Stamped
+    // by the BEFORE INSERT trigger when NULL — from the payload/target place,
+    // else the actor's single province — and immutable after that, so the
+    // row stays visible to that province's administrator after the
+    // funcionario is deactivated or transferred. A value the writer supplies
+    // must match what the trigger derives. NULL = no province (platform-wide
+    // or unplaced): only the platform admin reads it.
+    provinceCode: text("province_code"),
   },
   (table) => ({
     actorIdx: index("audit_log_actor_idx").on(table.actorUserId, table.performedAt),
+    provinceIdx: index("audit_log_province_idx")
+      .on(table.provinceCode, table.performedAt)
+      .where(sql`${table.provinceCode} IS NOT NULL`),
     requestIdx: index("audit_log_request_idx").on(table.approvalRequestId),
     targetUserIdx: index("audit_log_target_user_idx").on(table.targetUserId),
     targetOrganizationIdx: index("audit_log_target_organization_idx").on(

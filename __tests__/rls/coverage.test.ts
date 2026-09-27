@@ -99,6 +99,9 @@ const RLS_REQUIRED: ReadonlyArray<string> = [
   // shadow disagreement sink. Admin SELECT only, aal2; written by the server.
   "place_read_flags",
   "place_shadow_disagreements",
+  // jurisdiction-admin (0268): one delegated administrator per province. Own
+  // row or platform-admin SELECT, aal2; no write policy — the server writes.
+  "jurisdiction_admin_appointments",
   // share_telemetry lived here until migration 0167 dropped the table (TEL-1,
   // PO 2026-08-04): collected per-view viewer data that nothing ever read.
   // Alert inbox + triage — deny-all backstop in migration 0111 (Paquete K).

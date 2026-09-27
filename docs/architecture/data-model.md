@@ -4,9 +4,9 @@
 > Verified against code on 2026-09-02 by writer A (opus subagent) · Status: reviewed
 > Numbers in this file are `<!-- fact:key -->` markers checked by `__tests__/architecture-facts.test.ts`.
 
-`db/schema.ts` declares <!-- fact:tables -->61<!-- /fact --> tables and
+`db/schema.ts` declares <!-- fact:tables -->62<!-- /fact --> tables and
 <!-- fact:enums -->22<!-- /fact --> enums, over
-<!-- fact:migrations -->266<!-- /fact --> forward-only SQL migrations under
+<!-- fact:migrations -->268<!-- /fact --> forward-only SQL migrations under
 `db/migrations`. This document is about the handful of them that carry the
 system's meaning, and about the one distinction the rest of the pack depends on:
 **which rows are the record, and which rows are a copy of the record kept for
@@ -349,10 +349,10 @@ inventory.
   with `BYPASSRLS`. `auth.uid()` is NULL there and RLS never fires. **App-layer
   guards are the only defense on this path.**
 - **Layer 2 — RLS, over PostgREST only.**
-  <!-- fact:rls_enabled_tables -->65<!-- /fact --> tables are DECLARED with
+  <!-- fact:rls_enabled_tables -->66<!-- /fact --> tables are DECLARED with
   `ENABLE ROW LEVEL SECURITY` across `db/rls.sql` and `db/migrations`; the live
   catalog reading lives in `__tests__/rls` and is the only authority on a running
-  database. <!-- fact:security_definer_functions -->12<!-- /fact --> functions are
+  database. <!-- fact:security_definer_functions -->15<!-- /fact --> functions are
   declared `SECURITY DEFINER`.
 
 <!-- fact:service_role_call_sites -->46<!-- /fact --> call sites construct the
