@@ -56,6 +56,9 @@ const MENTIONS: Readonly<Record<string, "writer" | "reader">> = {
   "lib/domain/org-coverage.ts": "reader",
   "lib/place/parity-sweep.ts": "reader",
   "lib/place/shadow.ts": "reader",
+  // The unit editor's holder list (verify S4): who holds a grant on a confirmed
+  // unit, so a locality move shows whom it reaches before it is submitted.
+  "src/modules/organizations/application/authority-units/read-units.ts": "reader",
 };
 
 const MENTION = /\bauthorityUnitId\b|\bauthority_unit_id\b/;
