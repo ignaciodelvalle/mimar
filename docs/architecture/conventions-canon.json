@@ -31,10 +31,10 @@
     ]
   },
   "stats": {
-    "rows": 528,
+    "rows": 529,
     "byStatus": {
       "UNENFORCED": 248,
-      "ENFORCED": 185,
+      "ENFORCED": 186,
       "PARTIAL": 95
     },
     "byScopeStatus": {
@@ -44,7 +44,7 @@
         "PARTIAL": 20
       },
       "db": {
-        "ENFORCED": 51,
+        "ENFORCED": 52,
         "PARTIAL": 22,
         "UNENFORCED": 30
       },
@@ -76,7 +76,7 @@
     "wired": {
       "none": 247,
       "ci": 10,
-      "verify": 139,
+      "verify": 140,
       "test:verified": 112,
       "manual": 6,
       "db": 14
@@ -9654,6 +9654,28 @@
       "confidence": 0.85,
       "numberKey": 541,
       "verifiedAt": "a7aa1b8c9"
+    },
+    {
+      "id": "CANON-542",
+      "rule": "Every administrative act asks the ONE authority module (admin-authority/authority.ts: requirePlatformAdmin, or requireJurisdictionAdminFor with the province of the TARGET row) inside its own transaction; no writer keeps a local admin predicate, and every database object that consults a jurisdiction appointment also compares a place.",
+      "scope": "db",
+      "sources": [
+        "src/modules/organizations/application/admin-authority/authority.ts",
+        "db/migrations/0268_jurisdiction_admin_appointments.sql",
+        "db/migrations/0270_jurisdiction_admin_review_fixes.sql"
+      ],
+      "enforcer": [
+        "scripts/check-admin-authority.ts",
+        "__tests__/admin-authority-fence.test.ts",
+        "__tests__/jurisdiction-admin-db-fence.test.ts"
+      ],
+      "enforcementKind": "lint-script",
+      "wired": "verify",
+      "status": "ENFORCED",
+      "statusBasis": "scripts/check-admin-authority.ts parses with the TypeScript compiler API (comments are never nodes) and fails on: (1) an exported function in admin-authority/, admin-institutional/, authority-units/, business-rules/ or lib/place/unresolved-queue.ts that takes an actor (a parameter or destructured field named actorUserId, or <param>.actorUserId read in its body) and calls neither a base guard, nor a wrapper verified to reach one (creationRefusal, delegatedDeactivationRefusal, delegatedGrantRefusal, ruleWriteRefusal, assertRuleWritable), nor a platform predicate verified to return isPlatformAdmin — hasAdminAuthority alone is not accepted; (2) any isActiveAdmin definition in app/lib/src/components, or a hand-written admin-role comparison (TS or SQL literal) in those folders beyond a frozen exact count; (3) an app/gob file reading audit_log without buildAuditHistoryWhere and auditHistoryRowColumns, beyond a frozen own-rows exception; (4) a drift in the pinned request guard of every exported administration server action. Stale allowlist entries are errors; non-vacuity floor of 24 actor writers and 1 scoped /gob reader. Wired as lint:admin-authority in verify and its own CI step. __tests__/admin-authority-fence.test.ts pins the detector with a red control per rule on copies of the real files; __tests__/jurisdiction-admin-db-fence.test.ts reads the catalog (every function/policy consulting an appointment compares a place, floor 5; the three guard triggers enabled; the audit guard's platform-only and delegated lists pinned). Both mutation-proven.",
+      "notes": "SDD change jurisdiction-admin, Phase 7 (2026-09-27). The Phase-6 source-reading guard inventory of the administration actions was absorbed into rule 4. Three platform-only writers (admin deactivation, credential and MFA reset) still read the actor's profile outside their transaction through the pure predicates canCreateInstitutional / canResetCredentials; the fence accepts them only because their definition returns isPlatformAdmin.",
+      "confidence": 0.9,
+      "verifiedAt": "39fd26030"
     }
   ],
   "recommendations": [
