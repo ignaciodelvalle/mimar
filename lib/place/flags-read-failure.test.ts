@@ -15,6 +15,7 @@ describe("readPlaceFlag", () => {
       select: () => {
         throw new Error('relation "place_read_flags" does not exist');
       },
+      transaction: (run: (sp: unknown) => Promise<unknown>) => run(failing),
     };
     await expect(readPlaceFlag("scope", failing as never)).resolves.toBe("name");
     await expect(readPlaceFlag("routing", failing as never)).resolves.toBe("name");
@@ -25,6 +26,7 @@ describe("readPlaceFlag", () => {
   it("an unknown mode in the table answers 'name'", async () => {
     const odd = {
       select: () => ({ from: async () => [{ consumer: "rules", mode: "sideways" }] }),
+      transaction: (run: (sp: unknown) => Promise<unknown>) => run(odd),
     };
     await expect(readPlaceFlag("rules", odd as never)).resolves.toBe("name");
   });

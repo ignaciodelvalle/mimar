@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { TransactionRollbackError, sql } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { db } from "@/db";
 import { PLACE_READ_CONSUMERS, readPlaceFlag } from "@/lib/place/flags";
@@ -66,5 +66,24 @@ describe("place_read_flags", () => {
       await tx.execute(sql`delete from public.place_read_flags where consumer = 'rules'`);
       expect(await readPlaceFlag("rules", tx)).toBe("name");
     });
+  });
+
+  // Verify S7: a failed read inside a caller's transaction answers 'name' AND
+  // leaves the transaction usable. Without its own savepoint the failed SELECT
+  // aborts the caller's transaction and the next statement fails.
+  it("a failed read on a transaction leaves that transaction usable", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await inRolledBackTx(async (tx) => {
+        // The table is unqualified in the query; an empty search path hides it.
+        await tx.execute(sql`set local search_path = pg_catalog`);
+        expect(await readPlaceFlag("scope", tx)).toBe("name");
+        const [row] = (await tx.execute(sql`select 1 as ok`)) as unknown as Array<{ ok: number }>;
+        expect(row?.ok).toBe(1);
+      });
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

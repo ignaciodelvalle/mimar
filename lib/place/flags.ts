@@ -54,6 +54,11 @@ async function loadModes(exec: Executor): Promise<ReadonlyMap<string, string>> {
 /**
  * The mode `consumer` runs in. With an explicit executor (a transaction, a
  * test) the table is read fresh; otherwise through a 30-second cache.
+ *
+ * On a caller's transaction the read runs in its own SAVEPOINT (verify S7): a
+ * failed SELECT would otherwise leave the caller's transaction aborted, and
+ * every statement after it would fail even though this function answered
+ * 'name'. On the pool there is nothing to protect, so no transaction opens.
  */
 export async function readPlaceFlag(
   consumer: PlaceReadConsumer,
@@ -62,7 +67,7 @@ export async function readPlaceFlag(
   try {
     let modes: ReadonlyMap<string, string>;
     if (exec) {
-      modes = await loadModes(exec);
+      modes = exec === db ? await loadModes(db) : await exec.transaction((sp) => loadModes(sp));
     } else {
       const now = Date.now();
       if (!cached || now - cached.at > CACHE_TTL_MS) {
