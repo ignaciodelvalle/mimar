@@ -185,6 +185,8 @@ const REAL_NOTIFICATION_TYPES = [
   "govt_self_deactivated_admin_notice",
   "govt_self_deactivated_cascade_notice",
   "institutional_account_created",
+  "jurisdiction_admin_appointed",
+  "jurisdiction_admin_revoked",
   "lost_episode_resolved_broadcast",
   "lost_episode_resolved_owner",
   "lost_pet_broadcast",

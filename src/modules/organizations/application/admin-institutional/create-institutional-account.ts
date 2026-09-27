@@ -2,7 +2,10 @@
 //
 // Creates a new institutional account (govt, admin or national) with:
 //   1. Zod validation
-//   2. Capability check (admin only)
+//   2. Authority pre-flight (platform admin) — fail fast, before any auth user
+//      exists. NOT the authoritative check: that one runs again INSIDE the
+//      transaction (5.0, security review L6), and a refusal there rolls back
+//      and compensates the auth user like any other transaction failure.
 //   3. Pre-flight duplicate email check via auth admin SDK
 //   4. auth.admin.createUser (CONFIRMED, NO password, first-access flag)
 //   5. DB transaction: profile + govt_assignments + audit_log + notification
@@ -18,16 +21,18 @@ import { eq } from "drizzle-orm";
 import { z } from "zod/v4";
 
 import { auditLog, db, govtAssignments, notifications, profiles } from "@/db";
-import { canCreateInstitutional } from "@/lib/domain/institutional-scope";
+import { jurisdictionAdminRefusal } from "@/lib/infra/jurisdiction-admin-refusals";
 import { resolveSiteUrl } from "@/lib/infra/site-url";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { JURISDICTION_ADMIN_REFUSAL_COPY } from "@/lib/ui/jurisdiction-admin-copy";
 import {
   FIRST_ACCESS_PATH,
   armedPasswordSetupMetadata,
 } from "@/src/modules/auth/domain/first-access";
+import { requirePlatformAdmin } from "@/src/modules/organizations/application/admin-authority/authority";
 
 import { mailInstitutionalAccessLink } from "./access-link-mail";
-import { databaseNow, loadActorProfile } from "./helpers";
+import { databaseNow } from "./helpers";
 import { resolveGovtLocality } from "./resolve-govt-locality";
 import type { CreateInstitutionalResult } from "./types";
 
@@ -120,10 +125,8 @@ export async function createInstitutionalAccountForAuthority(
     });
   }
 
-  // 2. Load actor + capability check
-  const actorProfile = await loadActorProfile(actorUserId);
-  if (!actorProfile) return { error: "CAPABILITY_DENIED" };
-  if (!canCreateInstitutional(actorProfile)) return { error: "CAPABILITY_DENIED" };
+  // 2. Authority pre-flight: no auth user is created for an actor without it.
+  if (!(await requirePlatformAdmin(db, actorUserId))) return { error: "CAPABILITY_DENIED" };
 
   const supabase = createAdminClient();
 
@@ -180,6 +183,12 @@ export async function createInstitutionalAccountForAuthority(
 
   try {
     await db.transaction(async (tx) => {
+      // 0. The authoritative authority check, in this transaction's snapshot
+      // (L6): an admin deactivated between the pre-flight and here is seen.
+      if (!(await requirePlatformAdmin(tx, actorUserId))) {
+        throw new Error("CAPABILITY_DENIED");
+      }
+
       // a. Update the auto-created profile to institutional
       const updatedRows = await tx
         .update(profiles)
@@ -255,6 +264,12 @@ export async function createInstitutionalAccountForAuthority(
         // Swallow — we've done our best
       }
     }
+    if (txErr instanceof Error && txErr.message === "CAPABILITY_DENIED") {
+      return { error: "CAPABILITY_DENIED" };
+    }
+    // A database refusal of the act itself is translated, never shown raw.
+    const refusal = jurisdictionAdminRefusal(txErr);
+    if (refusal) return { error: JURISDICTION_ADMIN_REFUSAL_COPY[refusal] };
     return {
       error: `DB_TX_FAILED: ${txErr instanceof Error ? txErr.message : String(txErr)}`,
     };

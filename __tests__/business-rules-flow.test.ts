@@ -455,6 +455,14 @@ describe("deleteBusinessRuleWriter", () => {
     expect(auditRow).toBeDefined();
     // C8: the deletion reason is recorded in the audit payload.
     expect((auditRow?.payload as { reason?: string }).reason).toBe(DELETE_REASON);
+    // jurisdiction-admin L1: the snapshot carries every place column of the
+    // row, and the audit row — written while the rule still existed — is
+    // stamped with its province.
+    const jurisdiction = (auditRow?.payload as { jurisdiction?: Record<string, unknown> })
+      .jurisdiction;
+    expect(jurisdiction).toHaveProperty("authorityUnitId");
+    expect(jurisdiction).toHaveProperty("localityId");
+    expect(auditRow?.provinceCode).toBe("AR-B");
   });
 
   it("rejects deletion with an empty reason", async () => {

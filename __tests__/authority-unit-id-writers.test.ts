@@ -37,6 +37,10 @@ const MENTIONS: Readonly<Record<string, "writer" | "reader">> = {
   // stores what it was handed and dedups by the same key the index uses.
   "src/modules/organizations/application/business-rules/create-business-rule.ts": "writer",
   "src/modules/organizations/application/business-rules/normalize-jurisdiction.ts": "reader",
+  // The rule delete records the row's unit in its audit snapshot
+  // (jurisdiction-admin security review L1): a read, so the deleted rule's
+  // history still says where it applied.
+  "src/modules/organizations/application/business-rules/delete-business-rule.ts": "reader",
   // The writer's params type (a declaration, no read or write of the row).
   "src/modules/organizations/application/business-rules/types.ts": "reader",
   // The create action forwards the normalized place and builds the ?unidad= URL.

@@ -5,6 +5,15 @@ import { runReevalHookIfRegistered } from "@/lib/infra/rule-types-effects";
 
 import type { DeleteBusinessRuleWriterParams } from "./types";
 
+// ORDER MATTERS (jurisdiction-admin security review L1). The audit row is
+// written BEFORE the delete, inside the same transaction: the audit guard
+// (0269) then reads the rule's place from the LIVE row through `ruleId`, not
+// only from the payload this writer built. And the payload's `jurisdiction`
+// snapshot carries every place column of the row — authority_unit_id and
+// locality_id too, not just the three names — so a deleted rule's history
+// still says where it applied once the row is gone. A delete carries no actor
+// column, so the audit row is the only database-side record of who did it.
+
 export async function deleteBusinessRuleWriter(
   params: DeleteBusinessRuleWriterParams,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -22,6 +31,7 @@ export async function deleteBusinessRuleWriter(
         .select()
         .from(govtBusinessRules)
         .where(eq(govtBusinessRules.id, params.ruleId))
+        .for("update")
         .limit(1);
       if (!existing) throw new Error("Regla no encontrada");
       scope = {
@@ -30,8 +40,13 @@ export async function deleteBusinessRuleWriter(
         locality: existing.jurisdictionLocality,
       };
       ruleType = existing.ruleType;
-
-      await tx.delete(govtBusinessRules).where(eq(govtBusinessRules.id, params.ruleId));
+      // Every place column of the row (L1), read here and only recorded: the
+      // audit payload is a snapshot, never a write of the rule's columns.
+      const jurisdictionSnapshot = {
+        ...scope,
+        authorityUnitId: existing.authorityUnitId,
+        localityId: existing.localityId,
+      };
 
       await tx.insert(auditLog).values({
         actorUserId: params.actorUserId,
@@ -39,11 +54,13 @@ export async function deleteBusinessRuleWriter(
         payload: {
           ruleId: params.ruleId,
           ruleType: existing.ruleType,
-          jurisdiction: scope,
+          jurisdiction: jurisdictionSnapshot,
           previousPayload: existing.rulePayload,
           reason,
         },
       });
+
+      await tx.delete(govtBusinessRules).where(eq(govtBusinessRules.id, params.ruleId));
     });
     if (ruleType && scope) {
       await runReevalHookIfRegistered(ruleType, scope);

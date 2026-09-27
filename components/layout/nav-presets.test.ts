@@ -801,6 +801,11 @@ const ADMIN_HREF_SNAPSHOT = new Set([
   // place a seeded draft is confirmed or a membership is moved (audited).
   // Mirrored in lib/ui/shell-nav-phase-b.test.ts's copy of this set.
   "/admin/localidades",
+  // ADDED 2026-09-27 (jurisdiction-admin, Phase 3). The ONLY place a
+  // jurisdiction administrator is designated or revoked — platform-only, one
+  // per province. Without an entry the PO would have to type the URL.
+  // Mirrored in lib/ui/shell-nav-phase-b.test.ts's copy of this set.
+  "/admin/designaciones",
 ]);
 
 describe("ADMIN_NAV_SECTIONS — section invariants", () => {

@@ -558,6 +558,14 @@ const ADMIN_LOCALIDADES: ScreenManifestEntry = {
   decision: "¿Qué autoridad gobierna cada localidad, y quién lo cambió?",
 };
 
+// jurisdiction-admin (Phase 3): who administers each province. Admin-only by
+// definition — designating and revoking is the platform admin's alone.
+const ADMIN_DESIGNACIONES: ScreenManifestEntry = {
+  route: "/admin/designaciones",
+  layer: "profundidad",
+  decision: "¿Quién administra cada provincia, y desde cuándo y por qué?",
+};
+
 // localidades-por-id D9: places that did not resolve to one catalogue row,
 // waiting for an admin to pick the row. Same layer as the unit editor.
 const ADMIN_LOCALIDADES_PENDIENTES: ScreenManifestEntry = {
@@ -645,6 +653,7 @@ export const SCREEN_MANIFEST: readonly ScreenManifestEntry[] = [
   ADMIN_LOCALIDADES,
   ADMIN_LOCALIDADES_PENDIENTES,
   GOB_LOCALIDADES_PENDIENTES,
+  ADMIN_DESIGNACIONES,
   ADMIN_ORGANIZACIONES,
   ADMIN_REGLAS,
   ADMIN_HISTORIAL,

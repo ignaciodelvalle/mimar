@@ -117,6 +117,9 @@ const ADMIN_HREF_SNAPSHOT = new Set([
   // ADDED 2026-09-25 — the authority-unit editor (localidades-por-id C4).
   // Argued in nav-presets.test.ts's copy of this set.
   "/admin/localidades",
+  // ADDED 2026-09-27 — jurisdiction administrators (jurisdiction-admin).
+  // Argued in nav-presets.test.ts's copy of this set.
+  "/admin/designaciones",
 ]);
 
 // Every capability the org nav gates on — must track nav-presets.test.ts's

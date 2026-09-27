@@ -8,6 +8,11 @@
 //      For each active locality assignment, count OTHER active govts covering it.
 //      If any has count=0 → block with LOCALITY_WOULD_BE_UNCOVERED.
 //   5. If coverage OK (same tx):
+//      0. If the caller is a jurisdiction administrator, their appointment is
+//         revoked FIRST — by themself, a resignation (the database admits the
+//         appointee as the one revoker besides the platform admin, 0270, and
+//         refuses to revoke the implied grant while the appointment is
+//         active, 0268 guard b). Security review L5.
 //      a. Revoke all active govt_assignments for caller
 //      b. SET deactivated_at on profiles (anti-race WHERE)
 //      c. INSERT audit_log action='govt_self_deactivated'
@@ -23,19 +28,56 @@
 //
 // §2.2: notifications accumulate in pendingNotifications[] inside the tx
 // and are inserted AFTER the transaction commits (best-effort, logged on failure).
+//
+// Every timestamp is the DATABASE clock (now()), never this Node process: the
+// revocations sit next to the defaultNow() audit row of the same transaction,
+// and the audit guard recognises "revoked by this actor in this transaction"
+// by revoked_at = now() (0269). Security review L4.
+//
+// A refusal the DATABASE makes never reaches the UI as its raw text (L5).
+//
+// `exec` (optional, default the module db) lets tests run it inside a
+// transaction they roll back — an appointment fixture is append-only.
 
 import { and, count, eq, isNull, ne, sql } from "drizzle-orm";
 
 import { auditLog, db, govtAssignments, notifications, profiles } from "@/db";
+import { pgError } from "@/lib/infra/db-errors";
+import {
+  type RevokedAppointment,
+  revokeActiveAppointmentInTx,
+} from "@/lib/infra/jurisdiction-admin-appointments";
+import { jurisdictionAdminRefusal } from "@/lib/infra/jurisdiction-admin-refusals";
+import { provinceByCode } from "@/lib/reference/ar-provincias";
+import { JURISDICTION_ADMIN_REFUSAL_COPY } from "@/lib/ui/jurisdiction-admin-copy";
 
 import type { GovtSelfDeactivateResult } from "./types";
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+export const GOVT_SELF_DEACTIVATE_DB_ERROR = "No se pudo desactivar tu cuenta. Probá de nuevo.";
+
+/** What the audit payload records of a resigned appointment. */
+function appointmentSummary(appointment: RevokedAppointment | null) {
+  return appointment
+    ? { appointment_id: appointment.appointmentId, province_code: appointment.provinceCode }
+    : null;
+}
+
+/** The sentence the admins' notice adds when an appointee resigned. */
+function appointmentNote(appointment: RevokedAppointment | null): string {
+  if (!appointment) return "";
+  const province = provinceByCode(appointment.provinceCode)?.name ?? appointment.provinceCode;
+  return ` Era administrador/a jurisdiccional de ${province}: la designación quedó revocada.`;
+}
 
 export async function govtSelfDeactivateForUser(
   userId: string,
   input?: { reason?: string },
+  exec: typeof db | Tx = db,
 ): Promise<GovtSelfDeactivateResult> {
   // 1. Load profile
-  const [profile] = await db
+  const [profile] = await exec
     .select({
       id: profiles.id,
       role: profiles.role,
@@ -65,9 +107,10 @@ export async function govtSelfDeactivateForUser(
   // self-deactivations from two govts in the same locality racing past coverage.
   type PendingNotification = typeof notifications.$inferInsert;
   const pendingNotifications: PendingNotification[] = [];
+  const resignationReason = input?.reason?.trim() || "Baja de la propia cuenta";
 
   try {
-    await db.transaction(async (tx) => {
+    await exec.transaction(async (tx) => {
       // Lock caller's profile row to serialise concurrent self-deactivation attempts.
       await tx.execute(sql`SELECT id FROM profiles WHERE id = ${userId} FOR UPDATE`);
 
@@ -111,11 +154,18 @@ export async function govtSelfDeactivateForUser(
         throw Object.assign(new Error("LOCALITY_WOULD_BE_UNCOVERED"), { uncovered });
       }
 
+      // 5.0 A jurisdiction administrator resigns their appointment first.
+      const appointment = await revokeActiveAppointmentInTx(tx, {
+        userId,
+        revokedBy: userId,
+        reason: resignationReason,
+      });
+
       // 5a. Revoke all active assignments
       const revokedRows = await tx
         .update(govtAssignments)
         .set({
-          revokedAt: new Date(),
+          revokedAt: sql`now()`,
           revokedByUserId: userId,
           revocationReason: "Self-deactivation",
         })
@@ -131,7 +181,7 @@ export async function govtSelfDeactivateForUser(
       // 5b. SET deactivated_at (anti-race WHERE)
       const updatedRows = await tx
         .update(profiles)
-        .set({ deactivatedAt: new Date(), updatedAt: new Date() })
+        .set({ deactivatedAt: sql`now()`, updatedAt: sql`now()` })
         .where(and(eq(profiles.id, userId), isNull(profiles.deactivatedAt)))
         .returning({ id: profiles.id });
 
@@ -151,8 +201,10 @@ export async function govtSelfDeactivateForUser(
             province: r.province,
             locality: r.locality,
           })),
+          appointment_revoked: appointmentSummary(appointment),
         },
       });
+      const resignedNote = appointmentNote(appointment);
 
       // 5d. Notify each active admin
       const activeAdmins = await tx
@@ -171,7 +223,7 @@ export async function govtSelfDeactivateForUser(
           userId: admin.id,
           notificationType: "govt_self_deactivated_admin_notice",
           title: "Un operador govt se auto-desactivó",
-          body: `El operador con ID ${userId} desactivó su propia cuenta.${input?.reason ? ` Motivo: ${input.reason}` : ""}`,
+          body: `El operador con ID ${userId} desactivó su propia cuenta.${input?.reason ? ` Motivo: ${input.reason}` : ""}${resignedNote}`,
           severity: "warning" as const,
           ctaUrl: `/admin/govts/${userId}`,
           ctaLabel: "Ver perfil",
@@ -230,6 +282,13 @@ export async function govtSelfDeactivateForUser(
         return { ok: true, noOp: true };
       }
     }
+    // A database refusal (trigger, constraint) is translated, never shown raw.
+    const refusal = jurisdictionAdminRefusal(err);
+    if (refusal) return { error: JURISDICTION_ADMIN_REFUSAL_COPY[refusal] };
+    if (pgError(err)) {
+      console.error("govtSelfDeactivateForUser failed", err);
+      return { error: GOVT_SELF_DEACTIVATE_DB_ERROR };
+    }
     return {
       error: err instanceof Error ? err.message : "Error desconocido al desactivar cuenta.",
     };
@@ -237,7 +296,7 @@ export async function govtSelfDeactivateForUser(
 
   if (pendingNotifications.length > 0) {
     try {
-      await db.insert(notifications).values(pendingNotifications);
+      await exec.insert(notifications).values(pendingNotifications);
     } catch (e) {
       console.error("notifications insert failed (govtSelfDeactivateForUser did succeed)", e);
     }

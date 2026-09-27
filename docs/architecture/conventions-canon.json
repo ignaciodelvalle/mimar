@@ -2943,7 +2943,7 @@
         "__tests__/check-subject-rights-coverage.test.ts:1-9,74-171"
       ],
       "enforcer": [
-        "scripts/check-subject-rights-coverage.ts:710",
+        "scripts/check-subject-rights-coverage.ts:720",
         "package.json:40 lint:subject-rights",
         "__tests__/check-subject-rights-coverage.test.ts:57,95,272,279"
       ],
@@ -3893,7 +3893,7 @@
         "scripts/check-audit-log-coverage.ts:14-18",
         "package.json:20 lint:audit-log",
         "scripts/check-audit-log-actions-declared.ts",
-        "db/schema.ts:2674"
+        "db/schema.ts:2675"
       ],
       "enforcementKind": "lint-script",
       "wired": "verify",

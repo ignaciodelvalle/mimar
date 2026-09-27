@@ -16,13 +16,18 @@
 // The decision itself is pure (lib/domain/institutional-scope.ts,
 // decideAdminAuthority / canActInProvince); this file only loads its inputs.
 //
-// Stage: the jurisdiction branch is not wired yet. appointmentProvince is
-// always null here, so only the platform admin holds authority — exactly the
-// behavior of the five local isActiveAdmin copies this module replaced. The
-// database twin public.jurisdiction_admin_province(uid) supplies it when
-// appointments ship (with FOR SHARE on the appointment row, design D4).
+// The jurisdiction branch (design D4): for an institutional govt the
+// appointment province comes from the DATABASE TWIN,
+// public.jurisdiction_admin_province(uid) — one definition of "who is a live
+// jurisdiction admin", shared with every trigger and policy (migration 0268).
+// Before asking it, the actor's ACTIVE appointment row is locked FOR SHARE: a
+// revocation (an UPDATE of that row) that has not committed yet makes this
+// writer wait, and one that starts after this read waits for the writer. The
+// revoke-racing-a-write gap (TOCTOU) closes on one row lock. The implied
+// grant needs no lock of its own: the database refuses to revoke it while the
+// appointment is active (0268, guard b), so it cannot go first.
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 
 import { type db, profiles } from "@/db";
@@ -67,13 +72,44 @@ async function loadAuthorityProfile(
   };
 }
 
+/**
+ * The province the actor administers per the database twin, with the active
+ * appointment row locked FOR SHARE for the rest of `exec`'s transaction.
+ * Null when there is no live appointment (any drift fails closed, 0268 D2).
+ */
+async function loadAppointmentProvince(
+  exec: AuthorityExecutor,
+  actorUserId: string,
+): Promise<string | null> {
+  await exec.execute(sql`
+    select id from public.jurisdiction_admin_appointments
+     where user_id = ${actorUserId}::uuid and revoked_at is null
+     for share`);
+  const rows = (await exec.execute(
+    sql`select public.jurisdiction_admin_province(${actorUserId}::uuid) as province_code`,
+  )) as unknown as Array<{ province_code: string | null }>;
+  return rows[0]?.province_code ?? null;
+}
+
 /** What administrative authority `actorUserId` holds, read through `exec`. */
 export async function loadAdminAuthority(
   exec: AuthorityExecutor,
   actorUserId: string,
 ): Promise<AdminAuthority> {
   const profile = await loadAuthorityProfile(exec, actorUserId);
-  return decideAdminAuthority(profile, null);
+  if (!profile) return { kind: "none" };
+  if (isPlatformAdmin(profile)) return { kind: "platform" };
+  // Only an active institutional govt can be a jurisdiction admin; nobody
+  // else costs the twin a query.
+  if (
+    profile.role !== "govt" ||
+    profile.accountType !== "institutional" ||
+    profile.deactivatedAt !== null ||
+    profile.deletedAt !== null
+  ) {
+    return { kind: "none" };
+  }
+  return decideAdminAuthority(profile, await loadAppointmentProvince(exec, actorUserId));
 }
 
 /** True only for the active, non-erased institutional platform admin. */

@@ -1155,6 +1155,8 @@ const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   govt_self_deactivated_admin_notice: "Auto-baja de operador govt",
   govt_self_deactivated_cascade_notice: "Cuenta govt dada de baja en cascada",
   institutional_account_created: "Cuenta institucional creada",
+  jurisdiction_admin_appointed: "Designación como administrador/a jurisdiccional",
+  jurisdiction_admin_revoked: "Fin de la designación jurisdiccional",
   operator_credentials_reset: "Credenciales de operador reseteadas",
   // Lost & Found
   lost_episode_resolved_broadcast: "Mascota encontrada — difusión",

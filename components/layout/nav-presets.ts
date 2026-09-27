@@ -814,6 +814,14 @@ export const ADMIN_NAV_SECTIONS: NavSection[] = [
         label: "Unidades de autoridad",
         matchPrefix: "/admin/localidades",
       },
+      // jurisdiction-admin (Phase 3): who administers each province. Next to
+      // the unit editor: the same admin-configures-jurisdiction layer. Not
+      // /admin/jurisdicciones — that path 308s to /admin/reglas (above).
+      {
+        href: "/admin/designaciones",
+        label: "Administradores jurisdiccionales",
+        matchPrefix: "/admin/designaciones",
+      },
       // /admin/historial REMOVED from nav (audit-trail fusion, 2026-08-02):
       // absorbed into the Auditoría hub as the "Actividad" vista
       // (?vista=sensibles|actividad) — both admin surfaces queried the same

@@ -1,12 +1,15 @@
 // Use-case: assignGovtLocalityForAuthority
 //
 // Assigns a new locality to an active govt:
-//   1. Capability check (admin only)
-//   2. Validate target is active institutional govt
-//   3. Check for duplicate active assignment (noOp if exists)
-//   4. ONE transaction: INSERT govt_assignments row
-//                     + INSERT audit_log action='govt_locality_assigned'
-//   5. INSERT notification to target (single insert — best-effort, try/catch)
+//   1. Validate + resolve the place through the canonical catalogue (read-only)
+//   2. ONE transaction (security review L6 — every read the grant depends on
+//      sits in the snapshot that writes it):
+//        a. authority: requirePlatformAdmin, the one admin-authority loader;
+//        b. target is an active institutional govt (locked FOR UPDATE, so a
+//           concurrent deactivation waits);
+//        c. duplicate active assignment → noOp;
+//        d. INSERT govt_assignments + INSERT audit_log 'govt_locality_assigned'
+//   3. INSERT notification to target (single insert — best-effort, try/catch)
 //
 // ARCH-P: the notification insert is wrapped in try/catch so a failure
 // does not propagate to the caller (single-insert hardening pattern).
@@ -15,14 +18,13 @@ import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod/v4";
 
 import { db, govtAssignments, notifications, profiles } from "@/db";
-import { canAssignGovtLocality } from "@/lib/domain/institutional-scope";
 import {
   WHOLE_PROVINCE_SENTINEL,
   canonicalProvinceNameForStorage,
 } from "@/lib/domain/jurisdiction-canonical";
 import { writeAuditLog } from "@/lib/infra/audit-log";
+import { requirePlatformAdmin } from "@/src/modules/organizations/application/admin-authority/authority";
 
-import { loadActorProfile } from "./helpers";
 import { resolveGovtLocality } from "./resolve-govt-locality";
 import type { AssignGovtLocalityResult } from "./types";
 
@@ -108,64 +110,73 @@ export async function assignGovtLocalityForAuthority(
   const localityId = resolved.localityId;
   const wholeProvince = canonicalLocality === WHOLE_PROVINCE_SENTINEL;
 
-  // 2. Load actor + capability check
-  const actorProfile = await loadActorProfile(actorUserId);
-  if (!actorProfile) return { error: "CAPABILITY_DENIED" };
-  if (!canAssignGovtLocality(actorProfile)) return { error: "CAPABILITY_DENIED" };
-
-  // 3. Validate target is active institutional govt
-  const [targetProfile] = await db
-    .select({
-      id: profiles.id,
-      role: profiles.role,
-      accountType: profiles.accountType,
-      deactivatedAt: profiles.deactivatedAt,
-    })
-    .from(profiles)
-    .where(eq(profiles.id, targetUserId))
-    .limit(1);
-
-  if (!targetProfile) return { error: "NOT_FOUND" };
-  if (targetProfile.role !== "govt" || targetProfile.accountType !== "institutional") {
-    return { error: "NOT_INSTITUTIONAL_GOVT" };
-  }
-  if (targetProfile.deactivatedAt !== null) return { error: "TARGET_DEACTIVATED" };
-
-  // 4. Check for duplicate active assignment (UNIQUE: user_id + province + locality WHERE revoked_at IS NULL)
-  const [existing] = await db
-    .select({ id: govtAssignments.id, localityId: govtAssignments.localityId })
-    .from(govtAssignments)
-    .where(
-      and(
-        eq(govtAssignments.userId, targetUserId),
-        eq(govtAssignments.jurisdictionProvince, canonicalProvince),
-        eq(govtAssignments.jurisdictionLocality, canonicalLocality),
-        isNull(govtAssignments.revokedAt),
-      ),
-    )
-    .limit(1);
-
-  if (existing) {
-    // A DIFFERENT row with the same name (a within-province homonym, C2b). The
-    // name-only check used to answer noOp here, and the admin read "assigned"
-    // for a locality that was never granted. While scope is matched by name the
-    // two would be the same scope twice, so this is refused, not inserted.
-    if (existing.localityId !== null && localityId !== null && existing.localityId !== localityId) {
-      return {
-        error: `VALIDATION_ERROR: Este operador ya tiene asignada otra localidad llamada ${canonicalLocality} en ${canonicalProvince}. Revocala antes de asignar esta.`,
-      };
-    }
-    return { ok: true, assignmentId: existing.id, noOp: true };
-  }
-
-  // 5+6. INSERT govt_assignments + audit_log — ONE transaction.
+  // 2. ONE transaction: authority, target, duplicate check, grant, audit.
   //
-  // These were two separate autocommits until 2026-08-16. A crash between them
-  // left a GRANTED JURISDICTION AUTHORITY with no audit trace, and the absence
-  // of that row is indistinguishable from the absence of the grant. The
-  // assignment and its accountability record are one fact; they commit or they
-  // both roll back.
-  const newAssignment = await db.transaction(async (tx) => {
+  // The grant and its audit row were two separate autocommits until
+  // 2026-08-16: a crash between them left a GRANTED JURISDICTION AUTHORITY
+  // with no audit trace. They commit or they both roll back — and since L6 the
+  // authority and target reads that justify them live in the same snapshot.
+  type Outcome = { refused: AssignGovtLocalityResult } | { assignmentId: string; noOp: boolean };
+  const outcome: Outcome = await db.transaction(async (tx): Promise<Outcome> => {
+    // a. Authority, in this transaction's snapshot.
+    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+      return { refused: { error: "CAPABILITY_DENIED" } };
+    }
+
+    // b. Target is an active institutional govt.
+    const [targetProfile] = await tx
+      .select({
+        id: profiles.id,
+        role: profiles.role,
+        accountType: profiles.accountType,
+        deactivatedAt: profiles.deactivatedAt,
+      })
+      .from(profiles)
+      .where(eq(profiles.id, targetUserId))
+      .for("update")
+      .limit(1);
+
+    if (!targetProfile) return { refused: { error: "NOT_FOUND" } };
+    if (targetProfile.role !== "govt" || targetProfile.accountType !== "institutional") {
+      return { refused: { error: "NOT_INSTITUTIONAL_GOVT" } };
+    }
+    if (targetProfile.deactivatedAt !== null) return { refused: { error: "TARGET_DEACTIVATED" } };
+
+    // c. Duplicate active assignment (UNIQUE: user_id + province + locality
+    // WHERE revoked_at IS NULL).
+    const [existing] = await tx
+      .select({ id: govtAssignments.id, localityId: govtAssignments.localityId })
+      .from(govtAssignments)
+      .where(
+        and(
+          eq(govtAssignments.userId, targetUserId),
+          eq(govtAssignments.jurisdictionProvince, canonicalProvince),
+          eq(govtAssignments.jurisdictionLocality, canonicalLocality),
+          isNull(govtAssignments.revokedAt),
+        ),
+      )
+      .limit(1);
+
+    if (existing) {
+      // A DIFFERENT row with the same name (a within-province homonym, C2b). The
+      // name-only check used to answer noOp here, and the admin read "assigned"
+      // for a locality that was never granted. While scope is matched by name the
+      // two would be the same scope twice, so this is refused, not inserted.
+      if (
+        existing.localityId !== null &&
+        localityId !== null &&
+        existing.localityId !== localityId
+      ) {
+        return {
+          refused: {
+            error: `VALIDATION_ERROR: Este operador ya tiene asignada otra localidad llamada ${canonicalLocality} en ${canonicalProvince}. Revocala antes de asignar esta.`,
+          },
+        };
+      }
+      return { assignmentId: existing.id, noOp: true };
+    }
+
+    // d. The grant and its accountability record — one fact.
     const [assignment] = await tx
       .insert(govtAssignments)
       .values({
@@ -194,8 +205,12 @@ export async function assignGovtLocalityForAuthority(
       after: { province: canonicalProvince, locality: canonicalLocality },
     });
 
-    return assignment;
+    return { assignmentId: assignment.id, noOp: false };
   });
+
+  if ("refused" in outcome) return outcome.refused;
+  if (outcome.noOp) return { ok: true, assignmentId: outcome.assignmentId, noOp: true };
+  const newAssignment = { id: outcome.assignmentId };
 
   // 7. INSERT notification to target govt — best-effort, must not undo the assignment.
   try {
