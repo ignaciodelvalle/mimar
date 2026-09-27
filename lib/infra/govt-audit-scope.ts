@@ -34,10 +34,16 @@ export async function fetchJurisdictionActorIds(
   if (jurisdictions.length === 0) return [];
 
   // synthetic: exempt — govt_assignments are operator accounts, not seed data.
+  //
+  // The peer's catalogue row goes along (localidades-por-id verify S3): a unit
+  // grant on the id path matches peers by the row they were granted, so the
+  // other partido's Mechita operators are not "my peers" after the scope flip.
+  // A legacy grant (and today every grant, flag on 'name') keeps the name pair.
   const pairsClause = jurisdictionPairClause(
     jurisdictions,
     sql`${govtAssignments.jurisdictionProvince}`,
     sql`${govtAssignments.jurisdictionLocality}`,
+    sql`${govtAssignments.localityId}`,
   );
   if (!pairsClause) return [];
 

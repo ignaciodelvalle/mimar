@@ -33,6 +33,7 @@ const ID_COLUMN: Readonly<Record<string, string>> = {
   alertSubscriptions: "localityId",
   alertFirings: "localityId",
   govtBusinessRules: "localityId",
+  govtAssignments: "localityId",
   eventNotificationOutbox: "targetLocalityId",
 };
 

@@ -11,7 +11,7 @@
 //   5. De-dupes a user with two active assignments matching two of the
 //      queried jurisdictions (selectDistinct).
 
-import { like } from "drizzle-orm";
+import { inArray, like, sql } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { db, govtAssignments, profiles } from "@/db";
@@ -30,6 +30,8 @@ async function makeProfile(displayName: string): Promise<string> {
   return id;
 }
 
+const homonymUsers: string[] = [];
+
 describe("fetchJurisdictionActorIds", () => {
   // The synthetic assignments this suite creates use localities (govt-audit-scope-*)
   // that do NOT resolve against ar_localities, so leaving them ACTIVE trips the
@@ -40,6 +42,10 @@ describe("fetchJurisdictionActorIds", () => {
     await db
       .delete(govtAssignments)
       .where(like(govtAssignments.jurisdictionLocality, "govt-audit-scope-%"));
+    // The homonym case uses real catalogue names; its rows go by user id.
+    if (homonymUsers.length > 0) {
+      await db.delete(govtAssignments).where(inArray(govtAssignments.userId, homonymUsers));
+    }
     await db
       .delete(profiles)
       .where(like(profiles.displayName, "govt-audit-scope%"))
@@ -117,5 +123,53 @@ describe("fetchJurisdictionActorIds", () => {
     ]);
 
     expect(result.filter((id) => id === dualUserId)).toHaveLength(1);
+  });
+
+  // localidades-por-id verify S3: on the id path a unit grant's peers are the
+  // operators granted a row of the unit, not everyone holding the same NAME.
+  // Mechita (Alberti) and Mechita (Bragado) share the pair "Buenos Aires /
+  // Mechita"; the Bragado unit's viewer must not count Alberti's operator.
+  it("a unit grant on the id path matches peers by catalogue row, never a homonym", async () => {
+    const ids = (await db.execute(sql`
+      select indec_id, id::text as id from public.ar_localities
+       where indec_id in ('06021030', '06112080') and removed_at is null
+    `)) as unknown as Array<{ indec_id: string; id: string }>;
+    const alberti = ids.find((r) => r.indec_id === "06021030")?.id;
+    const bragado = ids.find((r) => r.indec_id === "06112080")?.id;
+    expect(alberti && bragado, "both Mechita rows must be in the catalogue").toBeTruthy();
+
+    const albertiPeer = await makeProfile("govt-audit-scope homonym alberti");
+    const bragadoPeer = await makeProfile("govt-audit-scope homonym bragado");
+    homonymUsers.push(albertiPeer, bragadoPeer);
+    await db.insert(govtAssignments).values([
+      {
+        userId: albertiPeer,
+        jurisdictionProvince: TEST_PROVINCE,
+        jurisdictionLocality: "Mechita",
+        localityId: alberti,
+      },
+      {
+        userId: bragadoPeer,
+        jurisdictionProvince: TEST_PROVINCE,
+        jurisdictionLocality: "Mechita",
+        localityId: bragado,
+      },
+    ]);
+
+    const byUnit = await fetchJurisdictionActorIds([
+      {
+        province: TEST_PROVINCE,
+        locality: "Mechita",
+        place: { path: "locality", provinceCode: "AR-B", localityIds: [bragado as string] },
+      },
+    ]);
+    expect(byUnit).toContain(bragadoPeer);
+    expect(byUnit).not.toContain(albertiPeer);
+
+    // A legacy grant (no place) keeps the name pair: both are its peers.
+    const byName = await fetchJurisdictionActorIds([
+      { province: TEST_PROVINCE, locality: "Mechita" },
+    ]);
+    expect(byName).toEqual(expect.arrayContaining([albertiPeer, bragadoPeer]));
   });
 });
