@@ -8,10 +8,12 @@
 // cases pin that it now canonicalizes, and refuses what it cannot resolve.
 // Read-only against the catalog: nothing is written.
 
+import { randomUUID } from "node:crypto";
+
 import { TransactionRollbackError, and, eq, inArray, sql } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { arLocalities, authorityUnitLocalities, db, govtBusinessRules } from "@/db";
+import { arLocalities, authorityUnitLocalities, db, govtBusinessRules, profiles } from "@/db";
 import { createBusinessRuleWriter } from "@/src/modules/organizations/application/business-rules/create-business-rule";
 import {
   normalizeJurisdiction,
@@ -171,42 +173,53 @@ describe("createBusinessRuleWriter — two homonyms, two rules (migration 0263)"
 
   it("Alberti's and Bragado's Mechita each carry their own rule; a second one on the same row is refused", async () => {
     const rows = await Promise.all([rowOf(MECHITA_ALBERTI), rowOf(MECHITA_BRAGADO)]);
+    // The writer re-checks its actor's authority (jurisdiction-admin Phase 4),
+    // so the rules are written by a platform admin — one that exists only in
+    // this transaction, which is rolled back: nothing to clean up.
     await db
-      .delete(govtBusinessRules)
-      .where(
-        and(
-          eq(govtBusinessRules.ruleType, "microchip_required"),
-          inArray(govtBusinessRules.localityId, rows),
-        ),
-      );
-    for (const localityId of rows) {
-      const r = await createBusinessRuleWriter({
-        actorUserId: null as unknown as string,
-        ruleType: "microchip_required",
-        jurisdictionCountry: "AR",
-        jurisdictionProvince: "Buenos Aires",
-        jurisdictionLocality: "Mechita",
-        rulePayload: { required: false },
-        notes: null,
-        legalAnchorIds: [],
-        legalMetadata: { requirementLevel: "recommended" },
-        place: { localityId, authorityUnitId: null, placeMethod: "indec_id" },
+      .transaction(async (tx) => {
+        const adminId = randomUUID();
+        await tx.insert(profiles).values({
+          id: adminId,
+          displayName: "Mechita rules platform admin",
+          role: "admin",
+          accountType: "institutional",
+        });
+        await tx
+          .delete(govtBusinessRules)
+          .where(
+            and(
+              eq(govtBusinessRules.ruleType, "microchip_required"),
+              inArray(govtBusinessRules.localityId, rows),
+            ),
+          );
+        const write = (localityId: string) =>
+          createBusinessRuleWriter(
+            {
+              actorUserId: adminId,
+              ruleType: "microchip_required",
+              jurisdictionCountry: "AR",
+              jurisdictionProvince: "Buenos Aires",
+              jurisdictionLocality: "Mechita",
+              rulePayload: { required: false },
+              notes: null,
+              legalAnchorIds: [],
+              legalMetadata: { requirementLevel: "recommended" },
+              place: { localityId, authorityUnitId: null, placeMethod: "indec_id" },
+            },
+            tx,
+          );
+        for (const localityId of rows) {
+          const r = await write(localityId as string);
+          expect(r.ok && r.ruleId, JSON.stringify(r)).toBeTruthy();
+          if (r.ok && r.ruleId) created.push(r.ruleId);
+        }
+        const again = await write(rows[1] as string);
+        expect(again.ok).toBe(false);
+        tx.rollback();
+      })
+      .catch((e: unknown) => {
+        if (!(e instanceof TransactionRollbackError)) throw e;
       });
-      expect(r.ok && r.ruleId, JSON.stringify(r)).toBeTruthy();
-      if (r.ok && r.ruleId) created.push(r.ruleId);
-    }
-    const again = await createBusinessRuleWriter({
-      actorUserId: null as unknown as string,
-      ruleType: "microchip_required",
-      jurisdictionCountry: "AR",
-      jurisdictionProvince: "Buenos Aires",
-      jurisdictionLocality: "Mechita",
-      rulePayload: { required: false },
-      notes: null,
-      legalAnchorIds: [],
-      legalMetadata: { requirementLevel: "recommended" },
-      place: { localityId: rows[1] as string, authorityUnitId: null, placeMethod: "indec_id" },
-    });
-    expect(again.ok).toBe(false);
   });
 });

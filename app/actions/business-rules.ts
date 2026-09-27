@@ -21,7 +21,7 @@
 
 import { GOVT_BUSINESS_RULE_TYPES, type GovtBusinessRuleType } from "@/db";
 import { getRuleTypeDef } from "@/lib/domain/rule-types-registry";
-import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
+import { requireAdministrationPrincipalOrRedirect } from "@/lib/infra/auth-guards";
 
 import { createBusinessRuleWriter as _createBusinessRuleWriter } from "@/src/modules/organizations/application/business-rules/create-business-rule";
 import { deleteBusinessRuleWriter as _deleteBusinessRuleWriter } from "@/src/modules/organizations/application/business-rules/delete-business-rule";
@@ -80,8 +80,13 @@ function resolvePortalBase(formData: FormData): "/admin" | "/gob" {
 }
 
 // ---------------------------------------------------------------------------
-// Form-bound actions (admin-gated)
+// Form-bound actions (administration-gated)
 // ---------------------------------------------------------------------------
+//
+// requireAdministrationPrincipalOrRedirect admits the platform admin or a
+// live jurisdiction admin (jurisdiction-admin Phase 4). It says WHO may enter,
+// never WHERE: each writer reads the actor's authority again inside its own
+// transaction and compares it with the rule's place (rule-authority.ts).
 
 function parseRulePayloadFromForm(ruleType: GovtBusinessRuleType, formData: FormData): unknown {
   // Parsing logic per rule type lives in the registry (lib/domain/rule-types-
@@ -93,7 +98,7 @@ export async function createBusinessRuleAction(
   _previous: BusinessRuleFormState,
   formData: FormData,
 ): Promise<BusinessRuleFormState> {
-  const { user } = await requireAdminOrRedirect();
+  const { user } = await requireAdministrationPrincipalOrRedirect();
 
   const ruleTypeRaw = String(formData.get("ruleType") ?? "").trim();
   if (!(GOVT_BUSINESS_RULE_TYPES as readonly string[]).includes(ruleTypeRaw)) {
@@ -145,7 +150,7 @@ export async function updateBusinessRuleAction(
   _previous: BusinessRuleFormState,
   formData: FormData,
 ): Promise<BusinessRuleFormState> {
-  const { user } = await requireAdminOrRedirect();
+  const { user } = await requireAdministrationPrincipalOrRedirect();
 
   const ruleTypeRaw = String(formData.get("ruleType") ?? "").trim();
   if (!(GOVT_BUSINESS_RULE_TYPES as readonly string[]).includes(ruleTypeRaw)) {
@@ -185,7 +190,7 @@ export async function deleteBusinessRuleAction(
   _previous: BusinessRuleFormState,
   formData: FormData,
 ): Promise<BusinessRuleFormState> {
-  const { user } = await requireAdminOrRedirect();
+  const { user } = await requireAdministrationPrincipalOrRedirect();
   const reason = (formData.get("reason") as string | null)?.trim() ?? "";
   const result = await _deleteBusinessRuleWriter({ actorUserId: user.id, ruleId, reason });
   if (!result.ok) return { error: result.error };

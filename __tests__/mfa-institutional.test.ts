@@ -194,6 +194,8 @@ beforeEach(() => {
     role: "admin",
     accountType: "institutional",
     deactivatedAt: null,
+    // isPlatformAdmin requires it (an erased admin holds no authority).
+    deletedAt: null,
   });
   h.targetRows = [{ id: "op-1", accountType: "institutional" }];
   h.adminListFactors.mockResolvedValue({ data: { factors: [VERIFIED] }, error: null });

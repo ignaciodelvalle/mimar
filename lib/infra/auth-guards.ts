@@ -10,7 +10,7 @@
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 
-import type { Organization, OrganizationMembership } from "@/db";
+import { type Organization, type OrganizationMembership, db } from "@/db";
 import type { ActorProfile, AdminAuthority } from "@/lib/domain/institutional-scope";
 import type { GobReadRole } from "@/lib/domain/jurisdiction-canonical";
 import { requireLiveUser } from "@/lib/infra/live-user";
@@ -23,6 +23,7 @@ import {
 import type { createClient } from "@/lib/supabase/server";
 import { FIRST_ACCESS_PATH } from "@/src/modules/auth/domain/first-access";
 import { MFA_CHALLENGE_PATH, MFA_ENROL_PATH } from "@/src/modules/auth/domain/mfa-policy";
+import { loadAdminAuthority } from "@/src/modules/organizations/application/admin-authority/authority";
 
 export type AuthenticatedSession = {
   supabase: Awaited<ReturnType<typeof createClient>>;
@@ -356,19 +357,37 @@ export async function requireAdminOrRedirect(): Promise<AdminSession> {
 // writer still derives the target's province and asks
 // requireJurisdictionAdminFor inside its own transaction.
 //
-// Stage: appointments are not wired yet, so this admits exactly what
-// requireAdminOrRedirect admits (it delegates to it, inheriting the erased /
-// deactivated / non-institutional refusals) and reports platform authority.
-// When appointments ship it widens to an active appointee, whose authority
-// then reads `{ kind: "jurisdiction", provinceCode }` — never platform.
+// Admits (jurisdiction-admin Phase 4) an active institutional admin or govt
+// — the same erased / deactivated / non-institutional refusals as every
+// institutional guard — and then only when the one authority loader says
+// they hold administrative authority: the platform admin, or a govt with a
+// LIVE appointment (the database twin). A plain govt is sent home like any
+// other non-admin. The authority is reported, never trusted downstream: the
+// writer reads it again inside its own transaction.
 
 export type AdministrationSession = AdminSession & {
-  authority: AdminAuthority;
+  authority: Exclude<AdminAuthority, { kind: "none" }>;
 };
 
 export async function requireAdministrationPrincipalOrRedirect(): Promise<AdministrationSession> {
-  const session = await requireAdminOrRedirect();
-  return { ...session, authority: { kind: "platform" } };
+  const session = await requireUserOrRedirect(await currentReturnTo());
+  const profile = await loadActiveInstitutionalProfile(session.user.id, {
+    allow: ["admin", "govt"],
+    roleRejectRedirect: "/",
+  });
+  const authority = await loadAdminAuthority(db, profile.id);
+  if (authority.kind === "none") redirect("/");
+  return {
+    ...session,
+    profile: {
+      id: profile.id,
+      role: profile.role as ActorProfile["role"],
+      accountType: profile.accountType as ActorProfile["accountType"],
+      deactivatedAt: profile.deactivatedAt,
+      deletedAt: profile.deletedAt,
+    },
+    authority,
+  };
 }
 
 // ============================================================================

@@ -125,11 +125,31 @@ export async function requirePlatformAdmin(
  * True when the actor may act on a target in `provinceCode`: the platform
  * admin anywhere, a jurisdiction admin only inside their own province.
  * `provinceCode` MUST be derived from the target row, never from input.
+ *
+ * An act that touches SEVERAL places (a locality moved from one unit to
+ * another) passes every one of them: the actor must be able to act in each
+ * province named. An empty list names no province, so — like `null` — only
+ * the platform admin passes it.
  */
 export async function requireJurisdictionAdminFor(
   exec: AuthorityExecutor,
   actorUserId: string,
-  provinceCode: string | null,
+  provinceCode: string | null | ReadonlyArray<string | null>,
 ): Promise<boolean> {
-  return canActInProvince(await loadAdminAuthority(exec, actorUserId), provinceCode);
+  const authority = await loadAdminAuthority(exec, actorUserId);
+  const codes: ReadonlyArray<string | null> =
+    typeof provinceCode === "string" || provinceCode === null
+      ? [provinceCode]
+      : provinceCode.length === 0
+        ? [null]
+        : provinceCode;
+  return codes.every((code) => canActInProvince(authority, code));
+}
+
+/** True when the actor holds ANY administrative authority (platform or a province). */
+export async function hasAdminAuthority(
+  exec: AuthorityExecutor,
+  actorUserId: string,
+): Promise<boolean> {
+  return (await loadAdminAuthority(exec, actorUserId)).kind !== "none";
 }

@@ -4,9 +4,13 @@
 //   1. Validate + resolve the place through the canonical catalogue (read-only)
 //   2. ONE transaction (security review L6 — every read the grant depends on
 //      sits in the snapshot that writes it):
-//        a. authority: requirePlatformAdmin, the one admin-authority loader;
+//        a. authority, from the one admin-authority loader: the platform
+//           admin, or a jurisdiction admin granting a place in their own
+//           province (jurisdiction-admin Phase 4);
 //        b. target is an active institutional govt (locked FOR UPDATE, so a
-//           concurrent deactivation waits);
+//           concurrent deactivation waits) — for a jurisdiction admin, one
+//           whose active grants already lie wholly in that province, who is
+//           neither the actor nor another appointee;
 //        c. duplicate active assignment → noOp;
 //        d. INSERT govt_assignments + INSERT audit_log 'govt_locality_assigned'
 //   3. INSERT notification to target (single insert — best-effort, try/catch)
@@ -23,10 +27,28 @@ import {
   canonicalProvinceNameForStorage,
 } from "@/lib/domain/jurisdiction-canonical";
 import { writeAuditLog } from "@/lib/infra/audit-log";
-import { requirePlatformAdmin } from "@/src/modules/organizations/application/admin-authority/authority";
+import { jurisdictionAdminRefusal } from "@/lib/infra/jurisdiction-admin-refusals";
+import {
+  JURISDICTION_ADMIN_REFUSAL_COPY,
+  JURISDICTION_ADMIN_WRITER_COPY,
+} from "@/lib/ui/jurisdiction-admin-copy";
+import {
+  hasAdminAuthority,
+  requireJurisdictionAdminFor,
+  requirePlatformAdmin,
+} from "@/src/modules/organizations/application/admin-authority/authority";
+import {
+  govtTargetProvince,
+  provinceOfProvinceNames,
+  singleProvince,
+} from "@/src/modules/organizations/application/admin-authority/target-province";
 
 import { resolveGovtLocality } from "./resolve-govt-locality";
 import type { AssignGovtLocalityResult } from "./types";
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+/** Optional and last, like deactivate-govt's: tests join a transaction they roll back. */
+export type AssignGovtLocalityExecutor = typeof db | Tx;
 
 // D3 (PO 2026-08-04): a whole-province mandate is now assignable for ANY
 // province, expressed as the empty locality sentinel. `locality` therefore
@@ -83,6 +105,7 @@ export async function assignGovtLocalityForAuthority(
     locality: string;
     localityIndecId?: string | null;
   },
+  exec: AssignGovtLocalityExecutor = db,
 ): Promise<AssignGovtLocalityResult> {
   // 1. Validate input
   const parsed = assignLocalitySchema.safeParse(input);
@@ -117,96 +140,125 @@ export async function assignGovtLocalityForAuthority(
   // with no audit trace. They commit or they both roll back — and since L6 the
   // authority and target reads that justify them live in the same snapshot.
   type Outcome = { refused: AssignGovtLocalityResult } | { assignmentId: string; noOp: boolean };
-  const outcome: Outcome = await db.transaction(async (tx): Promise<Outcome> => {
-    // a. Authority, in this transaction's snapshot.
-    if (!(await requirePlatformAdmin(tx, actorUserId))) {
-      return { refused: { error: "CAPABILITY_DENIED" } };
-    }
-
-    // b. Target is an active institutional govt.
-    const [targetProfile] = await tx
-      .select({
-        id: profiles.id,
-        role: profiles.role,
-        accountType: profiles.accountType,
-        deactivatedAt: profiles.deactivatedAt,
-      })
-      .from(profiles)
-      .where(eq(profiles.id, targetUserId))
-      .for("update")
-      .limit(1);
-
-    if (!targetProfile) return { refused: { error: "NOT_FOUND" } };
-    if (targetProfile.role !== "govt" || targetProfile.accountType !== "institutional") {
-      return { refused: { error: "NOT_INSTITUTIONAL_GOVT" } };
-    }
-    if (targetProfile.deactivatedAt !== null) return { refused: { error: "TARGET_DEACTIVATED" } };
-
-    // c. Duplicate active assignment (UNIQUE: user_id + province + locality
-    // WHERE revoked_at IS NULL).
-    const [existing] = await tx
-      .select({ id: govtAssignments.id, localityId: govtAssignments.localityId })
-      .from(govtAssignments)
-      .where(
-        and(
-          eq(govtAssignments.userId, targetUserId),
-          eq(govtAssignments.jurisdictionProvince, canonicalProvince),
-          eq(govtAssignments.jurisdictionLocality, canonicalLocality),
-          isNull(govtAssignments.revokedAt),
-        ),
-      )
-      .limit(1);
-
-    if (existing) {
-      // A DIFFERENT row with the same name (a within-province homonym, C2b). The
-      // name-only check used to answer noOp here, and the admin read "assigned"
-      // for a locality that was never granted. While scope is matched by name the
-      // two would be the same scope twice, so this is refused, not inserted.
-      if (
-        existing.localityId !== null &&
-        localityId !== null &&
-        existing.localityId !== localityId
-      ) {
-        return {
-          refused: {
-            error: `VALIDATION_ERROR: Este operador ya tiene asignada otra localidad llamada ${canonicalLocality} en ${canonicalProvince}. Revocala antes de asignar esta.`,
-          },
-        };
+  let outcome: Outcome;
+  try {
+    outcome = await exec.transaction(async (tx): Promise<Outcome> => {
+      // a. Authority, in this transaction's snapshot: the platform admin, or a
+      //    jurisdiction admin — for whom the GRANTED place must be their
+      //    province (derived from the resolved catalogue, never from input).
+      if (!(await hasAdminAuthority(tx, actorUserId))) {
+        return { refused: { error: "CAPABILITY_DENIED" } };
       }
-      return { assignmentId: existing.id, noOp: true };
-    }
+      const grantProvince = await provinceOfProvinceNames(tx, [canonicalProvince]);
+      if (!(await requireJurisdictionAdminFor(tx, actorUserId, grantProvince))) {
+        return { refused: { error: JURISDICTION_ADMIN_WRITER_COPY.OUT_OF_PROVINCE } };
+      }
 
-    // d. The grant and its accountability record — one fact.
-    const [assignment] = await tx
-      .insert(govtAssignments)
-      .values({
-        userId: targetUserId,
-        jurisdictionProvince: canonicalProvince,
-        jurisdictionLocality: canonicalLocality,
-        localityId,
-        grantedByUserId: actorUserId,
-      })
-      .returning({ id: govtAssignments.id });
+      // b. Target is an active institutional govt.
+      const [targetProfile] = await tx
+        .select({
+          id: profiles.id,
+          role: profiles.role,
+          accountType: profiles.accountType,
+          deactivatedAt: profiles.deactivatedAt,
+        })
+        .from(profiles)
+        .where(eq(profiles.id, targetUserId))
+        .for("update")
+        .limit(1);
 
-    await writeAuditLog(tx, {
-      action: "govt_locality_assigned",
-      actorUserId,
-      targetUserId,
-      targetGovtAssignmentId: assignment.id,
-      payload: {
-        province: canonicalProvince,
-        locality: canonicalLocality,
-        locality_id: localityId,
-        govt_assignment_id: assignment.id,
-      },
-      // A grant has no prior state — the duplicate-assignment check above
-      // already returned noOp if one existed.
-      before: null,
-      after: { province: canonicalProvince, locality: canonicalLocality },
+      if (!targetProfile) return { refused: { error: "NOT_FOUND" } };
+      if (targetProfile.role !== "govt" || targetProfile.accountType !== "institutional") {
+        return { refused: { error: "NOT_INSTITUTIONAL_GOVT" } };
+      }
+      if (targetProfile.deactivatedAt !== null) return { refused: { error: "TARGET_DEACTIVATED" } };
+
+      // b'. A jurisdiction admin grants only to a funcionario already wholly
+      //     inside their province (single(P)) — never to themself, never to
+      //     another appointee. The platform admin is not narrowed here.
+      if (!(await requirePlatformAdmin(tx, actorUserId))) {
+        const target = await govtTargetProvince(tx, targetUserId);
+        if (
+          targetUserId === actorUserId ||
+          target.isAppointee ||
+          !(await requireJurisdictionAdminFor(tx, actorUserId, singleProvince(target)))
+        ) {
+          return { refused: { error: JURISDICTION_ADMIN_WRITER_COPY.OUT_OF_PROVINCE } };
+        }
+      }
+
+      // c. Duplicate active assignment (UNIQUE: user_id + province + locality
+      // WHERE revoked_at IS NULL).
+      const [existing] = await tx
+        .select({ id: govtAssignments.id, localityId: govtAssignments.localityId })
+        .from(govtAssignments)
+        .where(
+          and(
+            eq(govtAssignments.userId, targetUserId),
+            eq(govtAssignments.jurisdictionProvince, canonicalProvince),
+            eq(govtAssignments.jurisdictionLocality, canonicalLocality),
+            isNull(govtAssignments.revokedAt),
+          ),
+        )
+        .limit(1);
+
+      if (existing) {
+        // A DIFFERENT row with the same name (a within-province homonym, C2b). The
+        // name-only check used to answer noOp here, and the admin read "assigned"
+        // for a locality that was never granted. While scope is matched by name the
+        // two would be the same scope twice, so this is refused, not inserted.
+        if (
+          existing.localityId !== null &&
+          localityId !== null &&
+          existing.localityId !== localityId
+        ) {
+          return {
+            refused: {
+              error: `VALIDATION_ERROR: Este operador ya tiene asignada otra localidad llamada ${canonicalLocality} en ${canonicalProvince}. Revocala antes de asignar esta.`,
+            },
+          };
+        }
+        return { assignmentId: existing.id, noOp: true };
+      }
+
+      // d. The grant and its accountability record — one fact.
+      const [assignment] = await tx
+        .insert(govtAssignments)
+        .values({
+          userId: targetUserId,
+          jurisdictionProvince: canonicalProvince,
+          jurisdictionLocality: canonicalLocality,
+          localityId,
+          grantedByUserId: actorUserId,
+        })
+        .returning({ id: govtAssignments.id });
+
+      await writeAuditLog(tx, {
+        action: "govt_locality_assigned",
+        actorUserId,
+        targetUserId,
+        targetGovtAssignmentId: assignment.id,
+        payload: {
+          province: canonicalProvince,
+          locality: canonicalLocality,
+          locality_id: localityId,
+          govt_assignment_id: assignment.id,
+        },
+        // A grant has no prior state — the duplicate-assignment check above
+        // already returned noOp if one existed.
+        before: null,
+        after: { province: canonicalProvince, locality: canonicalLocality },
+      });
+
+      return { assignmentId: assignment.id, noOp: false };
     });
-
-    return { assignmentId: assignment.id, noOp: false };
-  });
+  } catch (err) {
+    // A database refusal (a foreign grant for an appointee, a grant outside
+    // the granter's province) is translated, never shown raw.
+    const refusal = jurisdictionAdminRefusal(err);
+    if (refusal) return { error: JURISDICTION_ADMIN_REFUSAL_COPY[refusal] };
+    throw err;
+  }
 
   if ("refused" in outcome) return outcome.refused;
   if (outcome.noOp) return { ok: true, assignmentId: outcome.assignmentId, noOp: true };
@@ -214,7 +266,7 @@ export async function assignGovtLocalityForAuthority(
 
   // 7. INSERT notification to target govt — best-effort, must not undo the assignment.
   try {
-    await db.insert(notifications).values({
+    await exec.insert(notifications).values({
       userId: targetUserId,
       notificationType: "govt_locality_assigned",
       // The operator must read what they were actually granted. A whole-province

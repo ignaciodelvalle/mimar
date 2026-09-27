@@ -2,8 +2,13 @@
 //
 // Current unit membership decides which authority sees a locality's history
 // (design addendum #2), so every change here is an act of authority:
-//   1. capability — an active platform admin only (requirePlatformAdmin, the
-//      one admin-authority loader), checked INSIDE the transaction below;
+//   1. capability — the platform admin anywhere, or a jurisdiction admin
+//      inside their own province (jurisdiction-admin Phase 4): anyone without
+//      administrative authority is refused first (CAPABILITY_DENIED), then
+//      the province of the UNIT acted on — and, for a move, of the locality
+//      and of the unit it leaves — goes to requireJurisdictionAdminFor
+//      (OUT_OF_PROVINCE). All of it INSIDE the transaction below. Taking a
+//      unit back to draft (unconfirmAuthorityUnit) stays platform-only;
 //   2. ONE transaction — the capability check, the reads the change depends
 //      on, the membership rows (which carry who and when: added_by /
 //      ended_by, valid_from / valid_to) and the audit_log row (which carries
@@ -40,13 +45,19 @@ import {
 } from "@/db";
 import { writeAuditLog } from "@/lib/infra/audit-log";
 import { provinceByCode } from "@/lib/reference/ar-provincias";
-import { requirePlatformAdmin } from "@/src/modules/organizations/application/admin-authority/authority";
+import {
+  hasAdminAuthority,
+  requireJurisdictionAdminFor,
+  requirePlatformAdmin,
+} from "@/src/modules/organizations/application/admin-authority/authority";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type UnitExecutor = typeof db | Tx;
 
 export type UnitEditError =
   | "CAPABILITY_DENIED"
+  | "OUT_OF_PROVINCE"
+  | "NOT_CONFIRMED"
   | "NOT_FOUND"
   | "PROVINCE_MISMATCH"
   | "PROVINCIAL_UNIT_HAS_NO_MEMBERS"
@@ -126,7 +137,7 @@ export async function moveLocalityToUnit(
   if (!uuidSchema.safeParse(input.toUnitId).success) return { error: "NOT_FOUND" };
 
   return exec.transaction(async (tx) => {
-    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+    if (!(await hasAdminAuthority(tx, actorUserId))) {
       return { error: "CAPABILITY_DENIED" as const };
     }
     const unit = await loadUnit(tx, input.toUnitId);
@@ -138,11 +149,15 @@ export async function moveLocalityToUnit(
       .where(and(eq(arLocalities.id, input.localityId), isNull(arLocalities.removedAt)))
       .limit(1);
     if (!locality) return { error: "NOT_FOUND" as const };
-    if (locality.provinceCode !== unit.provinceCode) return { error: "PROVINCE_MISMATCH" as const };
 
     const [current] = await tx
-      .select({ id: authorityUnitLocalities.id, unitId: authorityUnitLocalities.unitId })
+      .select({
+        id: authorityUnitLocalities.id,
+        unitId: authorityUnitLocalities.unitId,
+        unitProvinceCode: authorityUnits.provinceCode,
+      })
       .from(authorityUnitLocalities)
+      .innerJoin(authorityUnits, eq(authorityUnits.id, authorityUnitLocalities.unitId))
       .where(
         and(
           eq(authorityUnitLocalities.localityId, locality.id),
@@ -150,8 +165,19 @@ export async function moveLocalityToUnit(
           isNull(authorityUnitLocalities.validTo),
         ),
       )
-      .for("update")
+      .for("update", { of: authorityUnitLocalities })
       .limit(1);
+
+    // Every place the move touches — the target unit, the locality and the
+    // unit it leaves — must be the actor's, checked on its own and BEFORE the
+    // unit-vs-locality consistency check: two foreign units that agree with
+    // each other are still foreign.
+    const places = [unit.provinceCode, locality.provinceCode];
+    if (current) places.push(current.unitProvinceCode);
+    if (!(await requireJurisdictionAdminFor(tx, actorUserId, places))) {
+      return { error: "OUT_OF_PROVINCE" as const };
+    }
+    if (locality.provinceCode !== unit.provinceCode) return { error: "PROVINCE_MISMATCH" as const };
     if (current?.unitId === unit.id) return { ok: true as const, noOp: true };
 
     if (current) {
@@ -199,11 +225,14 @@ export async function removeLocalityFromUnit(
   if (!uuidSchema.safeParse(input.unitId).success) return { error: "NOT_FOUND" };
 
   return exec.transaction(async (tx) => {
-    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+    if (!(await hasAdminAuthority(tx, actorUserId))) {
       return { error: "CAPABILITY_DENIED" as const };
     }
     const unit = await loadUnit(tx, input.unitId);
     if (!unit) return { error: "NOT_FOUND" as const };
+    if (!(await requireJurisdictionAdminFor(tx, actorUserId, unit.provinceCode))) {
+      return { error: "OUT_OF_PROVINCE" as const };
+    }
     if (unit.level === "municipal") return { error: "MUNICIPAL_MEMBERSHIP_MOVES_ONLY" as const };
 
     const closed = await tx
@@ -258,8 +287,14 @@ export async function createAuthorityUnit(
 
   const { kind, provinceCode, name } = parsed.data;
   return exec.transaction(async (tx) => {
-    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+    if (!(await hasAdminAuthority(tx, actorUserId))) {
       return { error: "CAPABILITY_DENIED" as const };
+    }
+    // The unit being created lies in `provinceCode`: that IS the target's
+    // place. It is compared against the actor's authority like any other,
+    // never taken as authority itself.
+    if (!(await requireJurisdictionAdminFor(tx, actorUserId, provinceCode))) {
+      return { error: "OUT_OF_PROVINCE" as const };
     }
     const [provincia] = await tx
       .select({ id: authorityUnits.id })
@@ -299,11 +334,14 @@ export async function renameAuthorityUnit(
   if (!uuidSchema.safeParse(input.unitId).success) return { error: "NOT_FOUND" };
 
   return exec.transaction(async (tx) => {
-    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+    if (!(await hasAdminAuthority(tx, actorUserId))) {
       return { error: "CAPABILITY_DENIED" as const };
     }
     const unit = await loadUnit(tx, input.unitId);
     if (!unit) return { error: "NOT_FOUND" as const };
+    if (!(await requireJurisdictionAdminFor(tx, actorUserId, unit.provinceCode))) {
+      return { error: "OUT_OF_PROVINCE" as const };
+    }
     if (unit.name === name.data) return { ok: true as const };
 
     await tx.update(authorityUnits).set({ name: name.data }).where(eq(authorityUnits.id, unit.id));
@@ -327,11 +365,14 @@ export async function confirmAuthorityUnit(
   if (!uuidSchema.safeParse(input.unitId).success) return { error: "NOT_FOUND" };
 
   return exec.transaction(async (tx) => {
-    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+    if (!(await hasAdminAuthority(tx, actorUserId))) {
       return { error: "CAPABILITY_DENIED" as const };
     }
     const unit = await loadUnit(tx, input.unitId);
     if (!unit) return { error: "NOT_FOUND" as const };
+    if (!(await requireJurisdictionAdminFor(tx, actorUserId, unit.provinceCode))) {
+      return { error: "OUT_OF_PROVINCE" as const };
+    }
     if (unit.status === "confirmed") return { error: "ALREADY_CONFIRMED" as const };
 
     await tx
@@ -344,6 +385,59 @@ export async function confirmAuthorityUnit(
       payload: { unit_id: unit.id },
       before: { status: "draft" },
       after: { status: "confirmed" },
+    });
+    return { ok: true as const };
+  });
+}
+
+/**
+ * A confirmed unit goes back to draft (jurisdiction-admin, admin reversal).
+ * PLATFORM ADMIN ONLY: it is how a delegated confirmation is undone, so the
+ * person who confirmed it may not undo (or redo) it on their own authority.
+ * A draft unit governs nothing (govt_scope, 0260): the grants on it cover no
+ * locality until the unit is confirmed again — the page warns before this.
+ */
+export async function unconfirmAuthorityUnit(
+  exec: UnitExecutor,
+  actorUserId: string,
+  input: { unitId: string; reason: string },
+): Promise<{ ok: true } | { error: UnitEditError }> {
+  const reason = reasonSchema.safeParse(input.reason);
+  if (!reason.success) return validationError(reason.error);
+  if (!uuidSchema.safeParse(input.unitId).success) return { error: "NOT_FOUND" };
+
+  return exec.transaction(async (tx) => {
+    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+      return { error: "CAPABILITY_DENIED" as const };
+    }
+    const [unit] = await tx
+      .select({
+        id: authorityUnits.id,
+        status: authorityUnits.status,
+        confirmedBy: authorityUnits.confirmedBy,
+        confirmedAt: authorityUnits.confirmedAt,
+      })
+      .from(authorityUnits)
+      .where(eq(authorityUnits.id, input.unitId))
+      .for("update")
+      .limit(1);
+    if (!unit) return { error: "NOT_FOUND" as const };
+    if (unit.status !== "confirmed") return { error: "NOT_CONFIRMED" as const };
+
+    await tx
+      .update(authorityUnits)
+      .set({ status: "draft", confirmedBy: null, confirmedAt: null })
+      .where(eq(authorityUnits.id, unit.id));
+    await writeAuditLog(tx, {
+      action: "authority_unit_unconfirmed",
+      actorUserId,
+      payload: { unit_id: unit.id, reason: reason.data },
+      before: {
+        status: "confirmed",
+        confirmed_by: unit.confirmedBy,
+        confirmed_at: unit.confirmedAt?.toISOString() ?? null,
+      },
+      after: { status: "draft" },
     });
     return { ok: true as const };
   });

@@ -4,19 +4,27 @@ import { auditLog, db, govtBusinessRules } from "@/db";
 import { validateRulePayload } from "@/lib/infra/business-rules-validators";
 import { runReevalHookIfRegistered } from "@/lib/infra/rule-types-effects";
 
+import type { BusinessRuleExecutor } from "./create-business-rule";
+import { assertRuleWritable, ruleWriterErrorMessage } from "./rule-authority";
 import type { UpdateBusinessRuleWriterParams } from "./types";
 
 export async function updateBusinessRuleWriter(
   params: UpdateBusinessRuleWriterParams,
+  exec: BusinessRuleExecutor = db,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    await db.transaction(async (tx) => {
+    await exec.transaction(async (tx) => {
       const [existing] = await tx
         .select()
         .from(govtBusinessRules)
         .where(eq(govtBusinessRules.id, params.ruleId))
+        .for("update")
         .limit(1);
       if (!existing) throw new Error("Regla no encontrada");
+
+      // Who may edit THIS rule (jurisdiction-admin Phase 4): its STORED
+      // place, locked above — an update never moves a rule.
+      await assertRuleWritable(tx, params.actorUserId, existing);
 
       const validation = validateRulePayload(existing.ruleType, params.rulePayload);
       if (!validation.ok) throw new Error(`Payload inválido: ${validation.error}`);
@@ -102,7 +110,7 @@ export async function updateBusinessRuleWriter(
     });
     // Reeval after commit. Look up the row again to read jurisdiction
     // — we don't want to thread it through the closure.
-    const [updated] = await db
+    const [updated] = await exec
       .select()
       .from(govtBusinessRules)
       .where(eq(govtBusinessRules.id, params.ruleId))
@@ -116,6 +124,6 @@ export async function updateBusinessRuleWriter(
     }
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "error desconocido" };
+    return { ok: false, error: ruleWriterErrorMessage(err) };
   }
 }

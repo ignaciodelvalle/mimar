@@ -43,6 +43,11 @@ const MENTIONS: Readonly<Record<string, "writer" | "reader">> = {
   "src/modules/organizations/application/business-rules/delete-business-rule.ts": "reader",
   // The writer's params type (a declaration, no read or write of the row).
   "src/modules/organizations/application/business-rules/types.ts": "reader",
+  // Who may write a rule WHERE (jurisdiction-admin Phase 4): the rule's place
+  // — its unit among the rest — is read to derive the province the actor's
+  // authority is compared with. The shape of that place, and its resolver.
+  "src/modules/organizations/application/business-rules/rule-authority.ts": "reader",
+  "src/modules/organizations/application/admin-authority/target-province.ts": "reader",
   // The create action forwards the normalized place and builds the ?unidad= URL.
   "app/actions/business-rules.ts": "reader",
   // The /reglas page narrowed to one unit (?unidad=), and its place labels.

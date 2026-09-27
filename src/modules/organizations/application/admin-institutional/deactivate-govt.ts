@@ -3,10 +3,13 @@
 // Deactivates a govt account — or a national observer (pilot T1-P9):
 //   1. Validation
 //   2. ONE transaction:
-//      a. authority — requirePlatformAdmin, read INSIDE the transaction (the
-//         one admin-authority loader; security review L6);
+//      a. authority — read INSIDE the transaction (the one admin-authority
+//         loader; security review L6): the platform admin, or a jurisdiction
+//         admin (Phase 4);
 //      b. the target, locked FOR UPDATE: an active institutional govt or
-//         national;
+//         national. A jurisdiction admin may only deactivate a govt whose
+//         active grants all lie in their province — never themself, another
+//         appointee, a national, or a govt with no single province;
 //      c. if the target is a jurisdiction administrator, their appointment is
 //         revoked FIRST (the database refuses to revoke its implied grant
 //         while it is active — 0268, guard b) and that revocation is audited
@@ -32,8 +35,19 @@ import { writeAuditLog } from "@/lib/infra/audit-log";
 import { pgError } from "@/lib/infra/db-errors";
 import { revokeActiveAppointmentInTx } from "@/lib/infra/jurisdiction-admin-appointments";
 import { jurisdictionAdminRefusal } from "@/lib/infra/jurisdiction-admin-refusals";
-import { JURISDICTION_ADMIN_REFUSAL_COPY } from "@/lib/ui/jurisdiction-admin-copy";
-import { requirePlatformAdmin } from "@/src/modules/organizations/application/admin-authority/authority";
+import {
+  JURISDICTION_ADMIN_REFUSAL_COPY,
+  JURISDICTION_ADMIN_WRITER_COPY,
+} from "@/lib/ui/jurisdiction-admin-copy";
+import {
+  hasAdminAuthority,
+  requireJurisdictionAdminFor,
+  requirePlatformAdmin,
+} from "@/src/modules/organizations/application/admin-authority/authority";
+import {
+  govtTargetProvince,
+  singleProvince,
+} from "@/src/modules/organizations/application/admin-authority/target-province";
 import { claimAttachmentsForAudit } from "@/src/modules/organizations/application/revocations/helpers";
 
 import type { DeactivateResult } from "./types";
@@ -45,6 +59,26 @@ export type DeactivateGovtExecutor = typeof db | Tx;
 class Refused extends Error {}
 
 export const DEACTIVATE_GOVT_DB_ERROR = "No se pudo desactivar la cuenta. Probá de nuevo.";
+
+/**
+ * Why a JURISDICTION admin may not deactivate this target, or null (always
+ * null for the platform admin). Read with the target already locked.
+ */
+async function delegatedDeactivationRefusal(
+  tx: Tx,
+  actorUserId: string,
+  targetUserId: string,
+  targetRole: string,
+): Promise<string | null> {
+  if (await requirePlatformAdmin(tx, actorUserId)) return null;
+  if (targetUserId === actorUserId) return JURISDICTION_ADMIN_WRITER_COPY.SELF_DEACTIVATE;
+  const target = await govtTargetProvince(tx, targetUserId);
+  const place = targetRole === "national" ? null : singleProvince(target);
+  if (target.isAppointee || !(await requireJurisdictionAdminFor(tx, actorUserId, place))) {
+    return JURISDICTION_ADMIN_WRITER_COPY.OUT_OF_PROVINCE;
+  }
+  return null;
+}
 
 export async function deactivateGovtForAuthority(
   actorUserId: string,
@@ -65,8 +99,10 @@ export async function deactivateGovtForAuthority(
 
   try {
     await exec.transaction(async (tx) => {
-      // a. Authority, in this transaction's snapshot.
-      if (!(await requirePlatformAdmin(tx, actorUserId))) throw new Refused("CAPABILITY_DENIED");
+      // a. Authority, in this transaction's snapshot: the platform admin, or a
+      //    jurisdiction admin (whose province is checked against the target
+      //    below, once the target is locked).
+      if (!(await hasAdminAuthority(tx, actorUserId))) throw new Refused("CAPABILITY_DENIED");
 
       // b. The target is an active institutional govt OR national.
       //
@@ -97,6 +133,20 @@ export async function deactivateGovtForAuthority(
         throw new Refused("NOT_INSTITUTIONAL_GOVT");
       }
       if (targetProfile.deactivatedAt !== null) throw new Refused("TARGET_ALREADY_DEACTIVATED");
+
+      // a'. WHERE the actor may act (jurisdiction-admin Phase 4). The place
+      //    is the target's: a govt whose active grants all lie in ONE
+      //    province. A national observer, a govt with no active grant or with
+      //    grants in two provinces has no single place — platform only. A
+      //    jurisdiction admin never deactivates themself nor another
+      //    appointee (only the platform admin ends an appointment).
+      const delegated = await delegatedDeactivationRefusal(
+        tx,
+        actorUserId,
+        input.targetGovtUserId,
+        targetProfile.role,
+      );
+      if (delegated) throw new Refused(delegated);
 
       // Timestamps come from the DATABASE clock (now() = the transaction's
       // start), not this Node process: a Docker VM drifts from its host, and

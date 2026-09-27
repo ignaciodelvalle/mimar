@@ -37,3 +37,24 @@ export const JURISDICTION_ADMIN_REFUSAL_COPY: Readonly<Record<JurisdictionAdminR
   PROVINCE_TAKEN: "Esa provincia ya tiene un administrador de jurisdicción activo.",
   USER_ALREADY_APPOINTED: "Esa persona ya es administradora de otra jurisdicción.",
 };
+
+/**
+ * What an operator reads when a delegated WRITER refuses a jurisdiction
+ * admin before the database is asked (Phase 4). The writers decide; this is
+ * only the copy (es-AR).
+ */
+export const JURISDICTION_ADMIN_WRITER_COPY = {
+  /** An account outside the actor's province, or with no place at all. */
+  CREATE_OUTSIDE_PROVINCE: "No podés crear funcionarios fuera de tu jurisdicción.",
+  /** role admin | national requested by anyone but the platform admin. */
+  CREATE_PLATFORM_ROLE:
+    "Solo el administrador de la plataforma puede crear administradores o cuentas nacionales.",
+  /** The actor targeted their own account. */
+  SELF_DEACTIVATE: "No podés desactivar tu propia cuenta.",
+  /** Any other target outside the actor's province (another appointee included). */
+  OUT_OF_PROVINCE: "Solo podés actuar dentro de tu jurisdicción.",
+  /** A rule with no province (country-wide or foreign country). */
+  COUNTRY_WIDE: "No podés crear reglas para todo el país.",
+  /** Neither the platform admin nor a live jurisdiction admin. */
+  NO_AUTHORITY: "No tenés permiso de administración para hacer este cambio.",
+} as const;

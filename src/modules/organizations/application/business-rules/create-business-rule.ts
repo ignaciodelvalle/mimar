@@ -5,6 +5,8 @@ import { BUSINESS_RULES_DEFAULTS } from "@/lib/domain/business-rules-defaults";
 import { validateRulePayload } from "@/lib/infra/business-rules-validators";
 import { runReevalHookIfRegistered } from "@/lib/infra/rule-types-effects";
 
+import { assertRuleWritable, ruleWriterErrorMessage } from "./rule-authority";
+
 import type {
   BusinessRuleLegalMetadata,
   CreateBusinessRuleResult,
@@ -56,8 +58,13 @@ function samePlace(params: CreateBusinessRuleWriterParams) {
   );
 }
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+/** Optional and last: tests join a transaction they roll back. */
+export type BusinessRuleExecutor = typeof db | Tx;
+
 export async function createBusinessRuleWriter(
   params: CreateBusinessRuleWriterParams,
+  exec: BusinessRuleExecutor = db,
 ): Promise<CreateBusinessRuleResult> {
   if (!(GOVT_BUSINESS_RULE_TYPES as readonly string[]).includes(params.ruleType)) {
     return { ok: false, error: "Rule type inválido" };
@@ -82,8 +89,21 @@ export async function createBusinessRuleWriter(
     };
   }
 
+  // The place the new rule will hold: the one the server resolved (unit /
+  // catalogue row / province), exactly what the insert below writes.
+  const rulePlace = {
+    jurisdictionCountry: params.jurisdictionCountry,
+    jurisdictionProvince: params.jurisdictionProvince,
+    authorityUnitId: params.place?.authorityUnitId ?? null,
+    localityId: params.place?.localityId ?? null,
+  };
+
   try {
-    const ruleId = await db.transaction(async (tx) => {
+    const ruleId = await exec.transaction(async (tx) => {
+      // Who may write a rule HERE (jurisdiction-admin Phase 4), read in this
+      // transaction next to the authority.
+      await assertRuleWritable(tx, params.actorUserId, rulePlace);
+
       // Duplicate detection: existing row for the same (jurisdiction +
       // rule_type) should UPDATE not INSERT. The dedicated `update`
       // action handles that explicitly; here we reject so the admin
@@ -176,6 +196,6 @@ export async function createBusinessRuleWriter(
 
     return { ok: true, ruleId };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "error desconocido" };
+    return { ok: false, error: ruleWriterErrorMessage(err) };
   }
 }

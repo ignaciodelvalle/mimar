@@ -23,6 +23,12 @@
 //     every one of them (`acceptAdded`, the exact set). Until then the grants
 //     stay as they are — 8 of 9 stays 8 of 9.
 //
+// WHO (jurisdiction-admin Phase 4): the platform admin, or the jurisdiction
+// admin of the unit's province — and then only for a funcionario whose active
+// grants all lie in that province, who is not the actor and not another
+// appointee. Taking grants back off a unit (unconfirmGrantUnit) is the
+// platform admin's alone.
+//
 // Membership rows + the audit row (who, why, before/after) commit together.
 // Executor-first, so tests roll back.
 
@@ -33,13 +39,25 @@ import { authorityUnits, type db, govtAssignments } from "@/db";
 import { isWholeProvinceLocality } from "@/lib/domain/jurisdiction-canonical";
 import { writeAuditLog } from "@/lib/infra/audit-log";
 import { provinceByCode } from "@/lib/reference/ar-provincias";
-import { requirePlatformAdmin } from "@/src/modules/organizations/application/admin-authority/authority";
+import {
+  hasAdminAuthority,
+  requireJurisdictionAdminFor,
+  requirePlatformAdmin,
+} from "@/src/modules/organizations/application/admin-authority/authority";
+import {
+  govtTargetProvince,
+  singleProvince,
+} from "@/src/modules/organizations/application/admin-authority/target-province";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type GrantUnitExecutor = typeof db | Tx;
 
 export type GrantUnitError =
   | "CAPABILITY_DENIED"
+  | "OUT_OF_PROVINCE"
+  | "TARGET_OUT_OF_PROVINCE"
+  | "SELF_ACTION"
+  | "NOT_ON_UNIT"
   | "NOT_FOUND"
   | "NO_GRANTS"
   | "WHOLE_PROVINCE_GRANT"
@@ -184,6 +202,88 @@ const reasonSchema = z
   .max(500, "El motivo admite hasta 500 caracteres.");
 
 /**
+ * Why a delegated confirmation is refused, or null when the actor may make it
+ * (always null for the platform admin). A unit that does not exist is left to
+ * the plan, which answers NOT_FOUND.
+ */
+async function delegatedGrantRefusal(
+  tx: GrantUnitExecutor,
+  actorUserId: string,
+  input: { userId: string; unitId: string },
+): Promise<"OUT_OF_PROVINCE" | "TARGET_OUT_OF_PROVINCE" | "SELF_ACTION" | null> {
+  if (!uuid.safeParse(input.userId).success || !uuid.safeParse(input.unitId).success) return null;
+  const [unit] = await tx
+    .select({ provinceCode: authorityUnits.provinceCode })
+    .from(authorityUnits)
+    .where(eq(authorityUnits.id, input.unitId))
+    .limit(1);
+  if (!unit) return null;
+  if (!(await requireJurisdictionAdminFor(tx, actorUserId, unit.provinceCode))) {
+    return "OUT_OF_PROVINCE";
+  }
+  if (await requirePlatformAdmin(tx, actorUserId)) return null;
+  if (input.userId === actorUserId) return "SELF_ACTION";
+  const target = await govtTargetProvince(tx, input.userId);
+  if (
+    target.isAppointee ||
+    !(await requireJurisdictionAdminFor(tx, actorUserId, singleProvince(target)))
+  ) {
+    return "TARGET_OUT_OF_PROVINCE";
+  }
+  return null;
+}
+
+/**
+ * Take `userId`'s grants OFF `unitId` (jurisdiction-admin, admin reversal):
+ * authority_unit_id back to NULL, so each grant answers by its recorded
+ * (province, locality) again. PLATFORM ADMIN ONLY — the undo of a delegated
+ * confirmation is never itself delegated. Lives here because this file is the
+ * one writer of govt_assignments.authority_unit_id.
+ */
+export async function unconfirmGrantUnit(
+  exec: GrantUnitExecutor,
+  actorUserId: string,
+  input: { userId: string; unitId: string; reason: string },
+): Promise<{ ok: true; assignmentIds: string[] } | { error: GrantUnitError }> {
+  return exec.transaction(async (tx) => {
+    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+      return { error: "CAPABILITY_DENIED" as const };
+    }
+    const reason = reasonSchema.safeParse(input.reason);
+    if (!reason.success) {
+      return {
+        error: `VALIDATION_ERROR: ${reason.error.issues[0]?.message ?? "datos inválidos"}` as const,
+      };
+    }
+    if (!uuid.safeParse(input.userId).success || !uuid.safeParse(input.unitId).success) {
+      return { error: "NOT_FOUND" as const };
+    }
+    const moved = await tx
+      .update(govtAssignments)
+      .set({ authorityUnitId: null })
+      .where(
+        and(
+          eq(govtAssignments.userId, input.userId),
+          eq(govtAssignments.authorityUnitId, input.unitId),
+          isNull(govtAssignments.revokedAt),
+        ),
+      )
+      .returning({ id: govtAssignments.id });
+    if (moved.length === 0) return { error: "NOT_ON_UNIT" as const };
+    const assignmentIds = moved.map((m) => m.id).sort();
+    await writeAuditLog(tx, {
+      action: "govt_assignment_unit_unconfirmed",
+      actorUserId,
+      targetUserId: input.userId,
+      payload: { unit_id: input.unitId, assignment_ids: assignmentIds, reason: reason.data },
+      before: { authority_unit_id: input.unitId },
+      after: { authority_unit_id: null },
+    });
+    return { ok: true as const, assignmentIds };
+  });
+}
+
+/**
  * Move `userId`'s grants onto `unitId`. `acceptAdded` must list EXACTLY the
  * localities the unit adds to them (the plan's `added`); anything else is
  * PARTIAL_GRANT and nothing changes.
@@ -199,7 +299,7 @@ export async function confirmGrantUnit(
   // transaction: a deactivation of the actor, or a concurrent change to the
   // grants, that commits first is seen here instead of after the check.
   return exec.transaction(async (tx) => {
-    if (!(await requirePlatformAdmin(tx, actorUserId))) {
+    if (!(await hasAdminAuthority(tx, actorUserId))) {
       return { error: "CAPABILITY_DENIED" as const };
     }
     const reason = reasonSchema.safeParse(input.reason);
@@ -208,6 +308,12 @@ export async function confirmGrantUnit(
         error: `VALIDATION_ERROR: ${reason.error.issues[0]?.message ?? "datos inválidos"}` as const,
       };
     }
+    // jurisdiction-admin Phase 4. The unit's province is the place of the
+    // act; the funcionario whose grants move must lie wholly inside it too
+    // (single(P)), must not be the actor, and must not be another appointee.
+    // The platform admin passes every one of these as before.
+    const refusal = await delegatedGrantRefusal(tx, actorUserId, input);
+    if (refusal) return { error: refusal };
     const plan = await planGrantUnit(tx, input);
     if ("error" in plan) return plan;
     const added = plan.added.map((a) => a.localityId);

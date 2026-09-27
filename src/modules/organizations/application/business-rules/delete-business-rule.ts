@@ -3,6 +3,8 @@ import { eq } from "drizzle-orm";
 import { type GovtBusinessRuleType, auditLog, db, govtBusinessRules } from "@/db";
 import { runReevalHookIfRegistered } from "@/lib/infra/rule-types-effects";
 
+import type { BusinessRuleExecutor } from "./create-business-rule";
+import { assertRuleWritable, ruleWriterErrorMessage } from "./rule-authority";
 import type { DeleteBusinessRuleWriterParams } from "./types";
 
 // ORDER MATTERS (jurisdiction-admin security review L1). The audit row is
@@ -16,6 +18,7 @@ import type { DeleteBusinessRuleWriterParams } from "./types";
 
 export async function deleteBusinessRuleWriter(
   params: DeleteBusinessRuleWriterParams,
+  exec: BusinessRuleExecutor = db,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const reason = params.reason.trim();
   if (reason.length === 0) {
@@ -26,7 +29,7 @@ export async function deleteBusinessRuleWriter(
   let scope: { country: string; province: string | null; locality: string | null } | null = null;
   let ruleType: GovtBusinessRuleType | null = null;
   try {
-    await db.transaction(async (tx) => {
+    await exec.transaction(async (tx) => {
       const [existing] = await tx
         .select()
         .from(govtBusinessRules)
@@ -34,6 +37,9 @@ export async function deleteBusinessRuleWriter(
         .for("update")
         .limit(1);
       if (!existing) throw new Error("Regla no encontrada");
+      // Who may delete THIS rule (jurisdiction-admin Phase 4): its STORED
+      // place, locked above.
+      await assertRuleWritable(tx, params.actorUserId, existing);
       scope = {
         country: existing.jurisdictionCountry,
         province: existing.jurisdictionProvince,
@@ -67,6 +73,6 @@ export async function deleteBusinessRuleWriter(
     }
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "error desconocido" };
+    return { ok: false, error: ruleWriterErrorMessage(err) };
   }
 }

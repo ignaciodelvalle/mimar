@@ -11,6 +11,13 @@ const MESSAGES: Record<string, string> = {
     "Una localidad no puede quedar sin municipio: movela a otra unidad desde esa unidad.",
   NOT_A_MEMBER: "Esa localidad ya no estaba en la unidad.",
   ALREADY_CONFIRMED: "La unidad ya estaba confirmada.",
+  // jurisdiction-admin Phase 4: a delegated administrator outside their province.
+  OUT_OF_PROVINCE: "Esta unidad está fuera de tu jurisdicción.",
+  SELF_ACTION: "No podés cambiar tus propias concesiones.",
+  TARGET_OUT_OF_PROVINCE: "Solo podés actuar dentro de tu jurisdicción.",
+  // jurisdiction-admin: the platform admin's reversals.
+  NOT_CONFIRMED: "La unidad ya estaba en borrador.",
+  NOT_ON_UNIT: "Esa persona no tiene concesiones en esta unidad.",
   // localidades-por-id D2: confirming a govt user's grants onto a unit.
   NO_GRANTS:
     "Esa persona no tiene una concesión que pase a esta unidad: ninguna registra una localidad de la unidad.",

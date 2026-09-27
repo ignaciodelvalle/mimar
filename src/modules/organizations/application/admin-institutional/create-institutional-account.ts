@@ -2,10 +2,17 @@
 //
 // Creates a new institutional account (govt, admin or national) with:
 //   1. Zod validation
-//   2. Authority pre-flight (platform admin) — fail fast, before any auth user
-//      exists. NOT the authoritative check: that one runs again INSIDE the
-//      transaction (5.0, security review L6), and a refusal there rolls back
-//      and compensates the auth user like any other transaction failure.
+//   2. Authority pre-flight — fail fast, before any auth user exists. NOT the
+//      authoritative check: that one runs again INSIDE the transaction (5.0,
+//      security review L6), and a refusal there rolls back and compensates
+//      the auth user like any other transaction failure. Both ask the same
+//      question (creationRefusal, jurisdiction-admin Phase 4):
+//        - no administrative authority at all → CAPABILITY_DENIED;
+//        - role admin | national → the platform admin only;
+//        - role govt → requireJurisdictionAdminFor(the ONE province every
+//          resolved initial locality lies in). None, or two provinces, is no
+//          single place: platform only. A jurisdiction admin therefore always
+//          names at least one locality of their own province.
 //   3. Pre-flight duplicate email check via auth admin SDK
 //   4. auth.admin.createUser (CONFIRMED, NO password, first-access flag)
 //   5. DB transaction: profile + govt_assignments + audit_log + notification
@@ -24,12 +31,20 @@ import { auditLog, db, govtAssignments, notifications, profiles } from "@/db";
 import { jurisdictionAdminRefusal } from "@/lib/infra/jurisdiction-admin-refusals";
 import { resolveSiteUrl } from "@/lib/infra/site-url";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { JURISDICTION_ADMIN_REFUSAL_COPY } from "@/lib/ui/jurisdiction-admin-copy";
+import {
+  JURISDICTION_ADMIN_REFUSAL_COPY,
+  JURISDICTION_ADMIN_WRITER_COPY,
+} from "@/lib/ui/jurisdiction-admin-copy";
 import {
   FIRST_ACCESS_PATH,
   armedPasswordSetupMetadata,
 } from "@/src/modules/auth/domain/first-access";
-import { requirePlatformAdmin } from "@/src/modules/organizations/application/admin-authority/authority";
+import {
+  hasAdminAuthority,
+  requireJurisdictionAdminFor,
+  requirePlatformAdmin,
+} from "@/src/modules/organizations/application/admin-authority/authority";
+import { provinceOfProvinceNames } from "@/src/modules/organizations/application/admin-authority/target-province";
 
 import { mailInstitutionalAccessLink } from "./access-link-mail";
 import { databaseNow } from "./helpers";
@@ -69,6 +84,35 @@ const INSTITUTIONAL_CREATED_ACTION = {
   national: "institutional_national_created",
 } as const;
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+/** Optional and last, like deactivate-govt's: tests join a transaction they roll back. */
+export type CreateInstitutionalExecutor = typeof db | Tx;
+
+/** Thrown inside the transaction to roll it back with a result code. */
+class Refused extends Error {}
+
+/**
+ * Why `actorUserId` may not create this account, or null when they may. Asked
+ * twice with the same inputs: before the auth user exists, and inside the
+ * transaction that makes it institutional.
+ */
+async function creationRefusal(
+  exec: CreateInstitutionalExecutor,
+  actorUserId: string,
+  role: "govt" | "admin" | "national",
+  place: string | null,
+): Promise<string | null> {
+  if (!(await hasAdminAuthority(exec, actorUserId))) return "CAPABILITY_DENIED";
+  if (role !== "govt") {
+    return (await requirePlatformAdmin(exec, actorUserId))
+      ? null
+      : JURISDICTION_ADMIN_WRITER_COPY.CREATE_PLATFORM_ROLE;
+  }
+  return (await requireJurisdictionAdminFor(exec, actorUserId, place))
+    ? null
+    : JURISDICTION_ADMIN_WRITER_COPY.CREATE_OUTSIDE_PROVINCE;
+}
+
 // ---------------------------------------------------------------------------
 // Use-case
 // ---------------------------------------------------------------------------
@@ -81,6 +125,7 @@ export async function createInstitutionalAccountForAuthority(
     displayName: string;
     initialLocalities: { province: string; locality: string; localityIndecId?: string | null }[];
   },
+  exec: CreateInstitutionalExecutor = db,
 ): Promise<CreateInstitutionalResult> {
   // 1. Validate inputs
   const parsed = createInstitutionalSchema.safeParse(input);
@@ -126,7 +171,17 @@ export async function createInstitutionalAccountForAuthority(
   }
 
   // 2. Authority pre-flight: no auth user is created for an actor without it.
-  if (!(await requirePlatformAdmin(db, actorUserId))) return { error: "CAPABILITY_DENIED" };
+  // The place of a govt account is where its grants will lie — the resolved
+  // catalogue provinces, never the actor's word.
+  const place =
+    role === "govt"
+      ? await provinceOfProvinceNames(
+          exec,
+          canonicalLocalities.map((l) => l.province),
+        )
+      : null;
+  const preflight = await creationRefusal(exec, actorUserId, role, place);
+  if (preflight) return { error: preflight };
 
   const supabase = createAdminClient();
 
@@ -182,12 +237,12 @@ export async function createInstitutionalAccountForAuthority(
   const pendingNotifications: PendingNotification[] = [];
 
   try {
-    await db.transaction(async (tx) => {
+    await exec.transaction(async (tx) => {
       // 0. The authoritative authority check, in this transaction's snapshot
-      // (L6): an admin deactivated between the pre-flight and here is seen.
-      if (!(await requirePlatformAdmin(tx, actorUserId))) {
-        throw new Error("CAPABILITY_DENIED");
-      }
+      // (L6): an admin deactivated — or an appointment revoked — between the
+      // pre-flight and here is seen.
+      const refusal = await creationRefusal(tx, actorUserId, role, place);
+      if (refusal) throw new Refused(refusal);
 
       // a. Update the auto-created profile to institutional
       const updatedRows = await tx
@@ -250,7 +305,7 @@ export async function createInstitutionalAccountForAuthority(
     } catch (cleanupErr) {
       // Best-effort orphan logging — do NOT swallow the original error
       try {
-        await db.insert(auditLog).values({
+        await exec.insert(auditLog).values({
           actorUserId,
           action: "institutional_create_orphan_auth_user",
           payload: {
@@ -264,9 +319,7 @@ export async function createInstitutionalAccountForAuthority(
         // Swallow — we've done our best
       }
     }
-    if (txErr instanceof Error && txErr.message === "CAPABILITY_DENIED") {
-      return { error: "CAPABILITY_DENIED" };
-    }
+    if (txErr instanceof Refused) return { error: txErr.message };
     // A database refusal of the act itself is translated, never shown raw.
     const refusal = jurisdictionAdminRefusal(txErr);
     if (refusal) return { error: JURISDICTION_ADMIN_REFUSAL_COPY[refusal] };
@@ -277,7 +330,7 @@ export async function createInstitutionalAccountForAuthority(
 
   if (pendingNotifications.length > 0) {
     try {
-      await db.insert(notifications).values(pendingNotifications);
+      await exec.insert(notifications).values(pendingNotifications);
     } catch (e) {
       console.error("notifications insert failed (action did succeed)", e);
     }
