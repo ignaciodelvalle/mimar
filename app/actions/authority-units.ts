@@ -6,7 +6,7 @@
 // export taking a caller-supplied actor id would impersonate anyone). Shared
 // acts admit the administration principal (jurisdiction-admin Phase 6); the
 // rest and ./authority-unit-reversals.ts stay platform-only. Inventory pinned
-// by __tests__/jurisdiction-admin-portal.test.tsx.
+// by scripts/check-admin-authority.ts.
 
 import { revalidatePath } from "next/cache";
 

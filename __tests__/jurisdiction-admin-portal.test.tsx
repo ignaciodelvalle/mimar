@@ -11,8 +11,8 @@
 //   - a plain govt and a revoked appointee are sent home from every page of
 //     /gob/administracion and from every newly widened action;
 //   - a live appointee reaches no platform-only action — the widened guard
-//     sits only on the delegated ones, and the inventory of which action
-//     carries which guard is pinned from the source;
+//     sits only on the delegated ones (the inventory of which action carries
+//     which guard is pinned by scripts/check-admin-authority.ts, rule 4);
 //   - through a widened action, the appointee still cannot act outside their
 //     province or create a platform role (the writers' own refusal);
 //   - the platform admin's new reversals work, and are theirs alone.
@@ -22,8 +22,6 @@
 // actions all read and write the rolled-back fixtures.
 
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 
 import { eq, sql } from "drizzle-orm";
 import type React from "react";
@@ -744,64 +742,5 @@ describe("/gob/reglas editor pages — a jurisdiction admin opens only their pro
       );
       expect(html).toContain("Reglas para");
     });
-  });
-});
-
-// The inventory, read from the source: which guard every exported action of
-// the four administration action files calls. Widening one more action — or
-// narrowing one — turns this red on purpose: the diff must say which.
-describe("guard inventory of the administration actions", () => {
-  const PRINCIPAL = "requireAdministrationPrincipalOrRedirect";
-  const PLATFORM = "requireAdminOrRedirect";
-  const EXPECTED: Record<string, Record<string, string>> = {
-    "app/actions/admin-institutional.ts": {
-      createInstitutionalAccountAction: PRINCIPAL,
-      deactivateAdminAction: PLATFORM,
-      deactivateGovtAction: PRINCIPAL,
-      resetInstitutionalCredentialsAction: PLATFORM,
-      resetMfaFactorsAction: PLATFORM,
-      assignGovtLocalityAction: PRINCIPAL,
-    },
-    "app/actions/authority-units.ts": {
-      moveLocalityToUnitAction: PRINCIPAL,
-      removeLocalityFromUnitAction: PRINCIPAL,
-      closeRemovedLocalityMembershipAction: PLATFORM,
-      createAuthorityUnitAction: PRINCIPAL,
-      renameAuthorityUnitAction: PRINCIPAL,
-      confirmAuthorityUnitAction: PRINCIPAL,
-      confirmGrantUnitAction: PRINCIPAL,
-      resolvePlaceFromQueueAction: PLATFORM,
-    },
-    "app/actions/authority-unit-reversals.ts": {
-      unconfirmAuthorityUnitAction: PLATFORM,
-      unconfirmGrantUnitAction: PLATFORM,
-    },
-    "app/actions/jurisdiction-admin.ts": {
-      appointJurisdictionAdminAction: PLATFORM,
-      revokeJurisdictionAdminAction: PLATFORM,
-    },
-    "app/actions/business-rules.ts": {
-      createBusinessRuleAction: PRINCIPAL,
-      updateBusinessRuleAction: PRINCIPAL,
-      deleteBusinessRuleAction: PRINCIPAL,
-    },
-  };
-
-  function guardsOf(rel: string): Record<string, string> {
-    const src = readFileSync(path.resolve(__dirname, "..", rel), "utf8");
-    const found: Record<string, string> = {};
-    const exports = [...src.matchAll(/export async function (\w+)\(/g)];
-    exports.forEach((m, i) => {
-      const body = src.slice(m.index, exports[i + 1]?.index ?? src.length);
-      const guard = body.match(
-        /await (requireAdministrationPrincipalOrRedirect|requireAdminOrRedirect)\(\)/,
-      );
-      found[m[1]] = guard?.[1] ?? "NONE";
-    });
-    return found;
-  }
-
-  it.each(Object.keys(EXPECTED))("%s", (rel) => {
-    expect(guardsOf(rel)).toEqual(EXPECTED[rel]);
   });
 });

@@ -7,7 +7,7 @@
 // inside each writer's transaction. Kept apart from ./authority-units.ts, whose
 // shared acts a jurisdiction admin may call, so the file a platform-only act
 // lives in says what it is. Inventory pinned by
-// __tests__/jurisdiction-admin-portal.test.tsx.
+// scripts/check-admin-authority.ts.
 //
 // The writers are NOT exported here (a "use server" export taking a
 // caller-supplied actor id would impersonate anyone).

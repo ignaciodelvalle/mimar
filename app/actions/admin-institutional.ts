@@ -23,7 +23,7 @@
 // own transaction, so admission here grants no place. Everything else in this
 // file is the platform admin's alone and keeps requireAdminOrRedirect: admin
 // deactivation, credential reset, second-factor reset. The inventory is pinned
-// by __tests__/jurisdiction-admin-portal.test.ts.
+// by scripts/check-admin-authority.ts.
 
 import { revalidatePath } from "next/cache";
 

@@ -272,6 +272,15 @@ jobs:
         # frozen file by file; stage E drives the list to zero. Static, no DB.
         run: pnpm lint:place-resolver
 
+      - name: "Fence: administrative authority (lint:admin-authority)"
+        # jurisdiction-admin Phase 7. Every exported writer that takes an actor
+        # in the administration folders asks the one authority module
+        # (requirePlatformAdmin / requireJurisdictionAdminFor, or a verified
+        # wrapper); no local admin predicate; /gob audit reads go through the
+        # place scope + redaction; the request guard of every administration
+        # action is pinned. Static, no DB.
+        run: pnpm lint:admin-authority
+
       - name: Lint (jurisdiction scope + authorization derivation)
         # The scope layer's offline fences. Every one of these ran in `pnpm
         # verify` and none had ever run in CI — see the parity note on the
