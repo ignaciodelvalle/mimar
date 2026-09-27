@@ -4,7 +4,12 @@ import { type GovtBusinessRuleType, auditLog, db, govtBusinessRules } from "@/db
 import { runReevalHookIfRegistered } from "@/lib/infra/rule-types-effects";
 
 import type { BusinessRuleExecutor } from "./create-business-rule";
-import { assertRuleWritable, ruleWriterErrorMessage } from "./rule-authority";
+import {
+  RuleWriterError,
+  assertRuleWritable,
+  missingRuleRefusal,
+  ruleWriterErrorMessage,
+} from "./rule-authority";
 import type { DeleteBusinessRuleWriterParams } from "./types";
 
 // ORDER MATTERS (jurisdiction-admin security review L1). The audit row is
@@ -36,7 +41,8 @@ export async function deleteBusinessRuleWriter(
         .where(eq(govtBusinessRules.id, params.ruleId))
         .for("update")
         .limit(1);
-      if (!existing) throw new Error("Regla no encontrada");
+      // No oracle (review LOW-1): only the platform admin reads "not found".
+      if (!existing) throw new RuleWriterError(await missingRuleRefusal(tx, params.actorUserId));
       // Who may delete THIS rule (jurisdiction-admin Phase 4): its STORED
       // place, locked above.
       await assertRuleWritable(tx, params.actorUserId, existing);

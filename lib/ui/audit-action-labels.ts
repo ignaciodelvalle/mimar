@@ -61,6 +61,7 @@ export const AUDIT_ACTION_LABELS = {
   mfa_factor_enrolled: "Segundo factor configurado",
   mfa_factors_reset_by_admin: "Segundo factor restablecido por un admin",
   institutional_create_orphan_auth_user: "Usuario institucional creado sin perfil",
+  institutional_create_refused: "Alta de cuenta institucional rechazada",
   institutional_govt_created: "Cuenta gobierno creada",
   institutional_admin_created: "Cuenta admin creada",
   institutional_national_created: "Observador nacional creado",

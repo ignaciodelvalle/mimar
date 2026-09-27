@@ -21,7 +21,7 @@ import { randomUUID } from "node:crypto";
 
 import { createClient } from "@supabase/supabase-js";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { unitEditErrorMessage } from "@/app/admin/localidades/_components/unit-edit-errors";
 import {
@@ -52,7 +52,13 @@ import {
 import { revokeJurisdictionAdmin } from "@/src/modules/organizations/application/admin-authority/revoke";
 import { govtTargetProvince } from "@/src/modules/organizations/application/admin-authority/target-province";
 import { assignGovtLocalityForAuthority } from "@/src/modules/organizations/application/admin-institutional/assign-govt-locality";
-import { createInstitutionalAccountForAuthority } from "@/src/modules/organizations/application/admin-institutional/create-institutional-account";
+import {
+  CREATE_INSTITUTIONAL_FAILED,
+  CREATE_INSTITUTIONAL_RATE_LIMITED,
+  DELEGATED_CREATE_LIMIT,
+  DELEGATED_CREATE_RATE_KEY,
+  createInstitutionalAccountForAuthority,
+} from "@/src/modules/organizations/application/admin-institutional/create-institutional-account";
 import { deactivateGovtForAuthority } from "@/src/modules/organizations/application/admin-institutional/deactivate-govt";
 import {
   confirmGrantUnit,
@@ -69,6 +75,13 @@ import {
 import { closeRemovedLocalityMembership } from "@/src/modules/organizations/application/authority-units/removed-locality-memberships";
 import { createBusinessRuleWriter } from "@/src/modules/organizations/application/business-rules/create-business-rule";
 import { deleteBusinessRuleWriter } from "@/src/modules/organizations/application/business-rules/delete-business-rule";
+import {
+  RULE_NOT_FOUND,
+  RULE_WRITE_FAILED,
+  RuleWriteRefused,
+  RuleWriterError,
+  ruleWriterErrorMessage,
+} from "@/src/modules/organizations/application/business-rules/rule-authority";
 import { updateBusinessRuleWriter } from "@/src/modules/organizations/application/business-rules/update-business-rule";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -951,6 +964,11 @@ afterAll(async () => {
   await db.execute(
     sql`delete from public.profiles where display_name in (${CREATED_NAME}, ${RACED_NAME}, ${REFUSED_NAME}) and role = 'owner'`,
   );
+  // Every delegated creation attempt spends the actor's rate-limit budget
+  // (review LOW-3); the actors are this file's random, rolled-back ids.
+  await db.execute(
+    sql`delete from public.rate_limit_buckets where bucket_key like ${`${DELEGATED_CREATE_RATE_KEY}:%`}`,
+  );
 });
 
 describe("createInstitutionalAccountForAuthority — jurisdiction-aware, before AND inside the transaction", () => {
@@ -1018,5 +1036,197 @@ describe("createInstitutionalAccountForAuthority — jurisdiction-aware, before 
       expect(r).toEqual({ error: "CAPABILITY_DENIED" });
     });
     expect(await authUserIdByEmail(email)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase-4 security review LOWs (fixed before any action guard is widened)
+// ---------------------------------------------------------------------------
+
+describe("review LOW-1 — no enumeration oracle: for a jurisdiction admin, anything outside reads as outside", () => {
+  it("deactivate and assign: an unknown id, a foreign funcionario, a deactivated one and a citizen all read OUT_OF_PROVINCE; only the platform admin learns which", async () => {
+    await inRolledBackTx(async (tx) => {
+      const w = await world(tx);
+      const gone = await insertProfile(tx, "govt", "JA4 probe deactivated Córdoba govt");
+      await insertGrant(tx, gone, "Córdoba", w.cbaLoc.name, w.admin, w.cbaLoc.id);
+      await tx.update(profiles).set({ deactivatedAt: sql`now()` }).where(eq(profiles.id, gone));
+      const citizen = randomUUID();
+      await tx.insert(profiles).values({
+        id: citizen,
+        displayName: "JA4 probe citizen",
+        role: "owner",
+        accountType: "personal",
+      });
+      // A former funcionario whose role changed while a Córdoba grant stayed
+      // active: inside the province by its grants, and still not a target.
+      const demoted = randomUUID();
+      await tx.insert(profiles).values({
+        id: demoted,
+        displayName: "JA4 probe demoted funcionario",
+        role: "owner",
+        accountType: "personal",
+      });
+      await insertGrant(tx, demoted, "Córdoba", w.cbaLoc.name, w.admin, w.cbaLoc.id);
+      const unknown = randomUUID();
+      const outside = { error: COPY.OUT_OF_PROVINCE };
+
+      for (const target of [unknown, w.sfeGovt, gone, citizen, demoted]) {
+        expect(
+          await deactivateGovtForAuthority(
+            w.cba,
+            {
+              targetGovtUserId: target,
+              motivo: MOTIVO,
+              attachmentIds: [await evidence(tx, w.cba)],
+            },
+            tx,
+          ),
+          `deactivate ${target}`,
+        ).toEqual(outside);
+        expect(
+          await assignGovtLocalityForAuthority(
+            w.cba,
+            { targetUserId: target, province: "Córdoba", locality: "" },
+            tx,
+          ),
+          `assign ${target}`,
+        ).toEqual(outside);
+      }
+      // The platform admin still reads what it was.
+      expect(
+        await deactivateGovtForAuthority(
+          w.admin,
+          {
+            targetGovtUserId: unknown,
+            motivo: MOTIVO,
+            attachmentIds: [await evidence(tx, w.admin)],
+          },
+          tx,
+        ),
+      ).toEqual({ error: "NOT_INSTITUTIONAL_GOVT" });
+      expect(
+        await assignGovtLocalityForAuthority(
+          w.admin,
+          { targetUserId: unknown, province: "Córdoba", locality: "" },
+          tx,
+        ),
+      ).toEqual({ error: "NOT_FOUND" });
+    });
+  });
+
+  it("rules and unit grants: an unknown rule or unit reads like another province's", async () => {
+    await inRolledBackTx(async (tx) => {
+      const w = await world(tx);
+      const ruleId = randomUUID();
+      const update = (actorUserId: string) =>
+        updateBusinessRuleWriter(
+          { actorUserId, ruleId, rulePayload: { days: 22 }, notes: null, legalAnchorIds: [] },
+          tx,
+        );
+      const remove = (actorUserId: string) =>
+        deleteBusinessRuleWriter({ actorUserId, ruleId, reason: WHY }, tx);
+      for (const write of [update, remove]) {
+        expect(await write(w.cba)).toEqual({ ok: false, error: COPY.OUT_OF_PROVINCE });
+        expect(await write(w.cbaWhole)).toEqual({ ok: false, error: COPY.NO_AUTHORITY });
+        expect(await write(w.admin)).toEqual({ ok: false, error: RULE_NOT_FOUND });
+      }
+
+      for (const unitId of [randomUUID(), "not-a-uuid"]) {
+        expect(
+          await confirmGrantUnit(tx, w.cba, {
+            userId: w.cbaGovt,
+            unitId,
+            reason: WHY,
+            acceptAdded: [],
+          }),
+          unitId,
+        ).toEqual({ error: "OUT_OF_PROVINCE" });
+      }
+      expect(
+        await confirmGrantUnit(tx, w.admin, {
+          userId: w.cbaGovt,
+          unitId: randomUUID(),
+          reason: WHY,
+          acceptAdded: [],
+        }),
+      ).toEqual({ error: "NOT_FOUND" });
+    });
+  });
+});
+
+describe("review LOW-2 — no raw database or provider text reaches the UI", () => {
+  it("a rule writer shows its own sentences, and one generic sentence for anything else", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(ruleWriterErrorMessage(new RuleWriterError("Payload inválido: x"))).toBe(
+        "Payload inválido: x",
+      );
+      expect(ruleWriterErrorMessage(new RuleWriteRefused(COPY.COUNTRY_WIDE))).toBe(
+        COPY.COUNTRY_WIDE,
+      );
+      const raw = Object.assign(
+        new Error('Failed query: insert into "govt_business_rules" values ($1) secret-value'),
+        { cause: { code: "23505", message: "duplicate key secret-value" } },
+      );
+      expect(ruleWriterErrorMessage(raw)).toBe(RULE_WRITE_FAILED);
+      expect(ruleWriterErrorMessage(new Error("any bug text"))).toBe(RULE_WRITE_FAILED);
+      expect(log).toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
+});
+
+describe("review LOW-3 — a delegated administrator cannot learn who is on the platform", () => {
+  it("an address already registered reads the generic sentence and is audited without the address; the platform admin still reads DUPLICATE_EMAIL", async () => {
+    const { data } = await authAdmin.auth.admin.listUsers({ perPage: 1 });
+    const taken = data.users[0]?.email;
+    expect(taken, "the local auth schema has no user at all — run db:bootstrap").toBeTruthy();
+    await inRolledBackTx(async (tx) => {
+      const w = await world(tx);
+      const input = {
+        role: "govt" as const,
+        email: taken as string,
+        displayName: REFUSED_NAME,
+        initialLocalities: [{ province: "Córdoba", locality: w.cbaLoc.name }],
+      };
+      expect(await createInstitutionalAccountForAuthority(w.cba, input, tx)).toEqual({
+        error: CREATE_INSTITUTIONAL_FAILED,
+      });
+      const audited = await auditOf(tx, "institutional_create_refused", w.cba);
+      expect(audited).toHaveLength(1);
+      expect(audited[0].payload).toEqual({ role: "govt", reason: "duplicate_email" });
+      expect(JSON.stringify(audited[0].payload)).not.toContain(taken as string);
+      expect(audited[0].provinceCode).toBe("AR-X");
+
+      expect(await createInstitutionalAccountForAuthority(w.admin, input, tx)).toEqual({
+        error: "DUPLICATE_EMAIL",
+      });
+    });
+  });
+
+  it("delegated attempts are rate-limited per actor; the platform admin is not", async () => {
+    await inRolledBackTx(async (tx) => {
+      const w = await world(tx);
+      // Spend the actor's hourly budget, on the same key the writer builds.
+      const windowStart = Math.floor(Date.now() / 3_600_000) * 3_600_000;
+      await db.execute(sql`
+        insert into public.rate_limit_buckets (bucket_key, count, expires_at)
+        values (${`${DELEGATED_CREATE_RATE_KEY}:${w.cba}:hour:${windowStart}`},
+                ${DELEGATED_CREATE_LIMIT.maxPerHour},
+                ${new Date(windowStart + 3_600_000).toISOString()}::timestamptz)
+        on conflict (bucket_key) do update set count = excluded.count`);
+      const input = {
+        role: "govt" as const,
+        email: `ja4-limited-${randomUUID()}@dim-test.local`,
+        displayName: REFUSED_NAME,
+        initialLocalities: [{ province: "Córdoba", locality: w.cbaLoc.name }],
+      };
+      expect(await createInstitutionalAccountForAuthority(w.cba, input, tx)).toEqual({
+        error: CREATE_INSTITUTIONAL_RATE_LIMITED,
+      });
+      // Nothing reached the identity provider.
+      expect(await authUserIdByEmail(input.email)).toBeNull();
+    });
   });
 });

@@ -18,7 +18,7 @@
 // links) stays page-local — those are presentation decisions, not scoping
 // ones, and admin/historial deliberately does not port them (D1 scope).
 
-import { type SQL, and, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { type SQL, and, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 
 import type { AuditLogAction } from "@/db";
 import { auditLog, db, profiles } from "@/db";
@@ -28,8 +28,86 @@ import { keysetWhere } from "@/lib/utils/keyset-pagination";
  * `{ kind: "admin" }` = universal scope, no jurisdiction limit.
  * `{ kind: "govt", actorIds }` = restrict actorUserId to this jurisdiction-
  * derived set (possibly empty — callers must NOT treat empty as unscoped).
+ *
+ * jurisdiction-admin Phase 5 adds two optional fields to the govt kind:
+ *   - `viewerId`: whose history this is. A row the viewer did NOT act is read
+ *     through the redaction (auditHistoryRowColumns); without a viewer, EVERY
+ *     row is — the absent field fails closed, never open.
+ *   - `provinceCode`: set only for a live JURISDICTION ADMIN. Their scope is
+ *     the peers above PLUS every row that happened in their province (the
+ *     stamp, else the single province the row itself names — the database's
+ *     own audit_place_province), which survives a funcionario's deactivation or
+ *     transfer. Someone else's row reaches them WHAT and WHEN only, and a
+ *     person on it only when that person is a funcionario (PO decision M1).
  */
-export type AuditHistoryScope = { kind: "admin" } | { kind: "govt"; actorIds: string[] };
+export type AuditHistoryScope =
+  | { kind: "admin" }
+  | { kind: "govt"; actorIds: string[]; viewerId?: string; provinceCode?: string | null };
+
+/**
+ * The rows that happened in `provinceCode`: the stamp, else (a row written
+ * before migration 0269) the single province the row itself names. Same
+ * predicate as public.jurisdiction_admin_audit_trail.
+ */
+export function auditRowsInProvince(provinceCode: string): SQL {
+  return sql`(${auditLog.provinceCode} = ${provinceCode} or (${auditLog.provinceCode} is null and public.audit_place_province(null, ${auditLog.payload}, ${auditLog.targetGovtAssignmentId}) = ${provinceCode}))`;
+}
+
+/**
+ * The person/payload columns a history page selects, projected for the
+ * viewer (jurisdiction-admin Phase 5, PO decision M1).
+ *
+ *  - admin: the raw columns — the platform admin keeps full detail.
+ *  - govt: a row the viewer acted is theirs, raw. Anyone else's row carries
+ *    its payload through public.audit_payload_redacted — an allow-list per
+ *    action, fail-closed, the SAME function the appointee's PostgREST read
+ *    uses. For a jurisdiction admin (provinceCode set) the actor and target
+ *    are additionally shown only when they are funcionarios
+ *    (public.audit_institutional_or_null); `personHidden` says a person was
+ *    there and is not shown, so the page does not call them "deleted".
+ *
+ * The redaction runs IN SQL: third-party data never reaches the server
+ * component, so no render branch can leak it.
+ */
+export function auditHistoryRowColumns(scope: AuditHistoryScope): {
+  actorUserId: SQL<string | null>;
+  targetUserId: SQL<string | null>;
+  payload: SQL<unknown>;
+  actorHidden: SQL<boolean>;
+  targetHidden: SQL<boolean>;
+} {
+  if (scope.kind === "admin") {
+    return {
+      actorUserId: sql<string | null>`${auditLog.actorUserId}`,
+      targetUserId: sql<string | null>`${auditLog.targetUserId}`,
+      payload: sql<unknown>`${auditLog.payload}`,
+      actorHidden: sql<boolean>`false`,
+      targetHidden: sql<boolean>`false`,
+    };
+  }
+  const own = scope.viewerId
+    ? sql`(${auditLog.actorUserId} is not null and ${auditLog.actorUserId} = ${scope.viewerId})`
+    : sql`false`;
+  const payload = sql<unknown>`(case when ${own} then ${auditLog.payload} else public.audit_payload_redacted(${auditLog.action}, ${auditLog.payload}) end)`;
+  if (!scope.provinceCode) {
+    return {
+      actorUserId: sql<string | null>`${auditLog.actorUserId}`,
+      targetUserId: sql<string | null>`${auditLog.targetUserId}`,
+      payload,
+      actorHidden: sql<boolean>`false`,
+      targetHidden: sql<boolean>`false`,
+    };
+  }
+  const person = (column: typeof auditLog.actorUserId | typeof auditLog.targetUserId) =>
+    sql`(case when ${own} then ${column} else public.audit_institutional_or_null(${column}) end)`;
+  return {
+    actorUserId: sql<string | null>`${person(auditLog.actorUserId)}::text`,
+    targetUserId: sql<string | null>`${person(auditLog.targetUserId)}::text`,
+    payload,
+    actorHidden: sql<boolean>`(${auditLog.actorUserId} is not null and ${person(auditLog.actorUserId)} is null)`,
+    targetHidden: sql<boolean>`(${auditLog.targetUserId} is not null and ${person(auditLog.targetUserId)} is null)`,
+  };
+}
 
 export interface AuditHistoryFilters {
   actionFilters: readonly AuditLogAction[];
@@ -54,14 +132,28 @@ export function buildAuditHistoryWhere(
 ): SQL | undefined {
   const clauses: SQL[] = [];
   if (scope.kind === "govt") {
+    const peers =
+      scope.actorIds.length > 0 ? inArray(auditLog.actorUserId, scope.actorIds) : sql`false`;
+    // A jurisdiction admin: the peers, or anything that happened in their
+    // province (Phase 5). The OR is grouped by `or()` itself.
     clauses.push(
-      scope.actorIds.length > 0 ? inArray(auditLog.actorUserId, scope.actorIds) : sql`false`,
+      scope.provinceCode ? (or(peers, auditRowsInProvince(scope.provinceCode)) as SQL) : peers,
     );
   }
   if (filters.actionFilters.length > 0) {
     clauses.push(inArray(auditLog.action, filters.actionFilters as AuditLogAction[]));
   }
-  if (filters.actorFilter) clauses.push(eq(auditLog.actorUserId, filters.actorFilter));
+  if (filters.actorFilter) {
+    clauses.push(eq(auditLog.actorUserId, filters.actorFilter));
+    // A jurisdiction admin filters only by a person they may SEE: a citizen's
+    // id in the URL must not answer "did this person act in my province".
+    if (scope.kind === "govt" && scope.provinceCode) {
+      const own = scope.viewerId ? sql`${auditLog.actorUserId} = ${scope.viewerId} or ` : sql``;
+      clauses.push(
+        sql`(${own}public.audit_institutional_or_null(${auditLog.actorUserId}) is not null)`,
+      );
+    }
+  }
   if (filters.fromDate) clauses.push(gte(auditLog.performedAt, filters.fromDate));
   if (filters.toDate) clauses.push(lte(auditLog.performedAt, filters.toDate));
   const cursorClause = keysetWhere(auditLog.performedAt, auditLog.id, filters.cursor);

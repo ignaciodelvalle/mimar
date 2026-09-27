@@ -38,6 +38,15 @@
 // shown ONLY for the viewer's own rows; peer rows show action + result count
 // but not the raw query string (accountability without leaking what a
 // colleague searched for).
+//
+// jurisdiction-admin Phase 5 (PO decision M1, 2026-09-27). The redaction is
+// no longer only a render branch: every row the viewer did not act is
+// SELECTED through public.audit_payload_redacted (an allow-list per action,
+// fail-closed), so a colleague's query never reaches this component at all.
+// A JURISDICTION ADMIN additionally reads every row that happened in their
+// province (the stamp, surviving a funcionario's deactivation or transfer) —
+// WHAT and WHEN, and a person on it only when that person is a funcionario
+// (auditHistoryRowColumns). The platform admin keeps full detail.
 
 import { desc, inArray } from "drizzle-orm";
 import Link from "next/link";
@@ -59,6 +68,7 @@ import { resolveAnalyticsPeriod } from "@/lib/analytics/analytics-period";
 import { hasNationalReadScope } from "@/lib/domain/jurisdiction-canonical";
 import {
   type AuditHistoryScope,
+  auditHistoryRowColumns,
   buildAuditHistoryWhere,
   resolveAuditHistoryActorOptions,
 } from "@/lib/infra/audit-history-query";
@@ -66,6 +76,7 @@ import { requireGobReadAccessOrRedirect } from "@/lib/infra/auth-guards";
 import { fetchJurisdictionActorIds } from "@/lib/infra/govt-audit-scope";
 import { windows } from "@/lib/metrics";
 import { DEFAULT_DASHBOARD_PRESET } from "@/lib/metrics/period-presets";
+import { provinceByCode } from "@/lib/reference/ar-provincias";
 import { auditActionLabel } from "@/lib/ui/audit-action-labels";
 import { buildAuditActionOptions, parseAuditActions } from "@/lib/ui/audit-filters";
 import { groupConsecutiveAuditRows } from "@/lib/ui/audit-row-grouping";
@@ -73,13 +84,18 @@ import { buildTargetLinkInfo, businessRuleTargetSummary } from "@/lib/ui/audit-t
 import { formatDateTimeNumericAr, pluralizeEs } from "@/lib/utils/format";
 import { decodeCursor, newerHref, olderHref } from "@/lib/utils/keyset-pagination";
 import { trimmedSearchParam } from "@/lib/utils/search-params";
+import { loadAdminAuthority } from "@/src/modules/organizations/application/admin-authority/authority";
 
 export const dynamic = "force-dynamic";
 
 const GOB_HISTORIAL_PAGE_LIMIT = 100;
 
+/** How a person the viewer may not see is named (PO decision M1). */
+const HIDDEN_PERSON = "Persona usuaria";
+
 type GobHistorialQuery = {
   isAdmin: boolean;
+  viewerId: string;
   jurisdictions: Awaited<ReturnType<typeof requireGobReadAccessOrRedirect>>["jurisdictions"];
   actionFilters: ReturnType<typeof parseAuditActions>;
   actorFilter: string | null;
@@ -94,6 +110,7 @@ type GobHistorialQuery = {
 // took the filter bar down with it.
 async function loadGobHistorial({
   isAdmin,
+  viewerId,
   jurisdictions,
   actionFilters,
   actorFilter,
@@ -108,9 +125,24 @@ async function loadGobHistorial({
   // /admin/auditoria). Shared with admin/historial via lib/infra/audit-history-query
   // (#26 D1) — the scope predicate is the ONLY difference between the two
   // pages' queries; both call the same WHERE-clause builder.
+  //
+  // A jurisdiction admin (a live appointment, read here like every other
+  // authority read) adds the rows that happened in their province.
+  let provinceCode: string | null = null;
+  if (!isAdmin) {
+    const authority = await loadAdminAuthority(db, viewerId);
+    if (authority.kind === "jurisdiction") provinceCode = authority.provinceCode;
+  }
   const scope: AuditHistoryScope = isAdmin
     ? { kind: "admin" }
-    : { kind: "govt", actorIds: await fetchJurisdictionActorIds(jurisdictions) };
+    : {
+        kind: "govt",
+        actorIds: await fetchJurisdictionActorIds(jurisdictions),
+        viewerId,
+        provinceCode,
+      };
+  // The person/payload columns, projected for this viewer IN SQL.
+  const projected = auditHistoryRowColumns(scope);
 
   const whereClause = buildAuditHistoryWhere(scope, {
     actionFilters,
@@ -123,12 +155,14 @@ async function loadGobHistorial({
   const rawEntries = await db
     .select({
       id: auditLog.id,
-      actorUserId: auditLog.actorUserId,
+      actorUserId: projected.actorUserId,
+      actorHidden: projected.actorHidden,
       action: auditLog.action,
       approvalRequestId: auditLog.approvalRequestId,
-      targetUserId: auditLog.targetUserId,
+      targetUserId: projected.targetUserId,
+      targetHidden: projected.targetHidden,
       performedAt: auditLog.performedAt,
-      payload: auditLog.payload,
+      payload: projected.payload,
     })
     .from(auditLog)
     .where(whereClause)
@@ -205,6 +239,7 @@ async function loadGobHistorial({
   );
 
   return {
+    provinceCode,
     entries,
     olderLink,
     newerLink,
@@ -266,16 +301,19 @@ export default async function GobHistorialPage({
 
   const isMineFilter = actorFilter === user.id;
 
-  const scopeCopy = isAdmin
-    ? "Vista universal — todas las jurisdicciones."
-    : "Acciones de los operadores de gobierno asignados a tu jurisdicción.";
+  const scopeCopyFor = (provinceCode: string | null) =>
+    isAdmin
+      ? "Vista universal — todas las jurisdicciones."
+      : provinceCode
+        ? `Acciones de los operadores de tu jurisdicción y todo lo ocurrido en ${provinceByCode(provinceCode)?.name ?? "tu provincia"}. De las acciones de otras personas ves qué pasó y cuándo, sin datos personales de terceros.`
+        : "Acciones de los operadores de gobierno asignados a tu jurisdicción.";
 
-  const header = (
+  const headerFor = (provinceCode: string | null) => (
     <ScreenHeader
       className="space-y-2"
       eyebrow="Historial"
       title="Historial de auditoría"
-      subtitle={<p className="text-md text-ln-op-mute">{scopeCopy}</p>}
+      subtitle={<p className="text-md text-ln-op-mute">{scopeCopyFor(provinceCode)}</p>}
     />
   );
 
@@ -322,12 +360,21 @@ export default async function GobHistorialPage({
   );
 
   const load = await loadWithTimeout(
-    loadGobHistorial({ isAdmin, jurisdictions, actionFilters, actorFilter, fromDate, toDate, sp }),
+    loadGobHistorial({
+      isAdmin,
+      viewerId: user.id,
+      jurisdictions,
+      actionFilters,
+      actorFilter,
+      fromDate,
+      toDate,
+      sp,
+    }),
   );
   if (!load.ok) {
     return (
       <div className="space-y-6">
-        {header}
+        {headerFor(null)}
         {filterBar(
           // The actor names come from the load that just failed. Keep the
           // current selection selectable so the bar still reads back what is
@@ -342,13 +389,22 @@ export default async function GobHistorialPage({
       </div>
     );
   }
-  const { entries, olderLink, newerLink, tokenByReqId, namesById, targetsById, actorOptions } =
-    load.value;
+  const {
+    provinceCode,
+    entries,
+    olderLink,
+    newerLink,
+    tokenByReqId,
+    namesById,
+    targetsById,
+    actorOptions,
+  } = load.value;
+  const header = headerFor(provinceCode);
 
   const groups = groupConsecutiveAuditRows(entries);
 
-  const actorName = (uid: string | null) =>
-    uid ? (namesById.get(uid) ?? "Desconocido") : "Usuario eliminado";
+  const actorName = (uid: string | null, hidden = false) =>
+    hidden ? HIDDEN_PERSON : uid ? (namesById.get(uid) ?? "Desconocido") : "Usuario eliminado";
 
   const fmtTime = (d: Date) => formatDateTimeNumericAr(d);
 
@@ -368,7 +424,13 @@ export default async function GobHistorialPage({
             {auditActionLabel(entry.action)}
           </p>
           <p className="text-sm text-ln-op-mute">
-            {actorName(entry.actorUserId)}
+            {actorName(entry.actorUserId, entry.actorHidden)}
+            {entry.targetHidden && (
+              <>
+                {" "}
+                {"·"} sobre: <span>{HIDDEN_PERSON.toLowerCase()}</span>
+              </>
+            )}
             {entry.targetUserId &&
               (() => {
                 const target = targetsById.get(entry.targetUserId);
@@ -487,7 +549,8 @@ export default async function GobHistorialPage({
                             <OpPill tone="neutral">×{group.count}</OpPill>
                           </p>
                           <p className="text-sm text-ln-op-mute">
-                            {actorName(group.actorUserId)} {"·"} {group.count} acciones consecutivas{" "}
+                            {actorName(group.actorUserId, group.rows[0]?.actorHidden)} {"·"}{" "}
+                            {group.count} acciones consecutivas{" "}
                             <span className="group-open/run:hidden">{"·"} tocá para expandir</span>{" "}
                             {"·"}{" "}
                             <a

@@ -2947,6 +2947,12 @@ export const AUDIT_LOG_ACTIONS = [
   "authority_unit_unconfirmed",
   "govt_assignment_unit_unconfirmed",
   "govt_reactivated_by_admin",
+  // jurisdiction-admin Phase 5 (migration 0271, Phase-4 review LOW-3): a
+  // delegated administrator's account creation that was refused after the
+  // authority check (a duplicate address, the identity provider refusing).
+  // The administrator reads one generic sentence; this row is what the
+  // platform admin reads. Payload: { role, reason } — never the address.
+  "institutional_create_refused",
 ] as const;
 export type AuditLogAction = (typeof AUDIT_LOG_ACTIONS)[number];
 

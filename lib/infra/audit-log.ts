@@ -60,6 +60,14 @@ export type AuditLogEntry = {
   targetUserId?: string | null;
   targetOrganizationId?: string | null;
   targetGovtAssignmentId?: string | null;
+  /**
+   * WHERE the act happened (audit_log.province_code, migration 0269) — an
+   * ISO 3166-2:AR code. Omit it: the BEFORE INSERT trigger stamps the place
+   * the row names (else the target's, else the actor's single province).
+   * Supplied, it must equal what the trigger derives or the insert is refused
+   * — it can confirm a place, never choose one.
+   */
+  provinceCode?: string | null;
   /** Free-form context. Never PII that the row's FK columns already carry. */
   payload?: Record<string, unknown>;
   /**
@@ -96,6 +104,9 @@ export function buildAuditLogValues(entry: AuditLogEntry): typeof auditLog.$infe
     targetUserId: entry.targetUserId ?? null,
     targetOrganizationId: entry.targetOrganizationId ?? null,
     targetGovtAssignmentId: entry.targetGovtAssignmentId ?? null,
+    // Only when supplied: an absent key keeps the row byte-identical to a
+    // hand-written insert, and the trigger stamps it.
+    ...(entry.provinceCode != null ? { provinceCode: entry.provinceCode } : {}),
     payload,
   };
 }

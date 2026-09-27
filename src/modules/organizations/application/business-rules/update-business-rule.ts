@@ -5,7 +5,12 @@ import { validateRulePayload } from "@/lib/infra/business-rules-validators";
 import { runReevalHookIfRegistered } from "@/lib/infra/rule-types-effects";
 
 import type { BusinessRuleExecutor } from "./create-business-rule";
-import { assertRuleWritable, ruleWriterErrorMessage } from "./rule-authority";
+import {
+  RuleWriterError,
+  assertRuleWritable,
+  missingRuleRefusal,
+  ruleWriterErrorMessage,
+} from "./rule-authority";
 import type { UpdateBusinessRuleWriterParams } from "./types";
 
 export async function updateBusinessRuleWriter(
@@ -20,14 +25,15 @@ export async function updateBusinessRuleWriter(
         .where(eq(govtBusinessRules.id, params.ruleId))
         .for("update")
         .limit(1);
-      if (!existing) throw new Error("Regla no encontrada");
+      // No oracle (review LOW-1): only the platform admin reads "not found".
+      if (!existing) throw new RuleWriterError(await missingRuleRefusal(tx, params.actorUserId));
 
       // Who may edit THIS rule (jurisdiction-admin Phase 4): its STORED
       // place, locked above — an update never moves a rule.
       await assertRuleWritable(tx, params.actorUserId, existing);
 
       const validation = validateRulePayload(existing.ruleType, params.rulePayload);
-      if (!validation.ok) throw new Error(`Payload inválido: ${validation.error}`);
+      if (!validation.ok) throw new RuleWriterError(`Payload inválido: ${validation.error}`);
 
       // Legal-metadata columns (migration 0183). Per-field semantics:
       // `undefined` = the form did not carry the field → leave the column

@@ -1647,6 +1647,7 @@ Project only the fields callers need; never return a raw `payload` JSONB blob.
 |---|---|
 | Adoption review → return `{ id, applicantUserId }` only (Item 27) | `src/modules/adoption/infrastructure/adoption-repository.ts` |
 | Audit any new DB read for `payload->>` over-exposure | `grep -rn "payload->>"` before shipping |
+| `audit_log` read by anyone but the row's actor or the platform admin → the payload goes through `public.audit_payload_redacted(action, payload)` (an explicit allow-list per action, type-checked, fail-closed: unknown keys and unlisted actions read `{}`); a jurisdiction admin sees a person on the row only when they hold an institutional account (`public.audit_institutional_or_null`). Access trails (`pii_queried`, `welfare_location_viewed`, `evidence_viewed`, `adopter_pii_viewed`, the exports) reach the jurisdiction admin as WHAT + WHEN only — never `payload.query`, a DNI HMAC, an address or error text (PO decision M1, 2026-09-27). Their only PostgREST read is `public.jurisdiction_admin_audit_trail()`; no permissive `audit_log` policy but "actor or admin" may exist | migration `0271_jurisdiction_admin_audit_redaction.sql` (post-condition) + `lib/infra/audit-history-query.ts` → `auditHistoryRowColumns` + `__tests__/jurisdiction-admin-audit-visibility.test.ts` |
 
 ### 4. Privacy predicates in the query, not the render layer
 

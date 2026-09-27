@@ -167,18 +167,22 @@ export async function assignGovtLocalityForAuthority(
         .for("update")
         .limit(1);
 
-      if (!targetProfile) return { refused: { error: "NOT_FOUND" } };
-      if (targetProfile.role !== "govt" || targetProfile.accountType !== "institutional") {
-        return { refused: { error: "NOT_INSTITUTIONAL_GOVT" } };
-      }
-      if (targetProfile.deactivatedAt !== null) return { refused: { error: "TARGET_DEACTIVATED" } };
-
       // b'. A jurisdiction admin grants only to a funcionario already wholly
       //     inside their province (single(P)) — never to themself, never to
       //     another appointee. The platform admin is not narrowed here.
+      //
+      //     NO ORACLE (Phase-4 review LOW-1): for a jurisdiction admin this is
+      //     asked BEFORE the target row's own checks, and a target that does
+      //     not exist, is not an institutional govt or is deactivated reads
+      //     exactly like one in another province. Only the platform admin
+      //     learns which of those it was.
       if (!(await requirePlatformAdmin(tx, actorUserId))) {
         const target = await govtTargetProvince(tx, targetUserId);
         if (
+          !targetProfile ||
+          targetProfile.role !== "govt" ||
+          targetProfile.accountType !== "institutional" ||
+          targetProfile.deactivatedAt !== null ||
           targetUserId === actorUserId ||
           target.isAppointee ||
           !(await requireJurisdictionAdminFor(tx, actorUserId, singleProvince(target)))
@@ -186,6 +190,12 @@ export async function assignGovtLocalityForAuthority(
           return { refused: { error: JURISDICTION_ADMIN_WRITER_COPY.OUT_OF_PROVINCE } };
         }
       }
+
+      if (!targetProfile) return { refused: { error: "NOT_FOUND" } };
+      if (targetProfile.role !== "govt" || targetProfile.accountType !== "institutional") {
+        return { refused: { error: "NOT_INSTITUTIONAL_GOVT" } };
+      }
+      if (targetProfile.deactivatedAt !== null) return { refused: { error: "TARGET_DEACTIVATED" } };
 
       // c. Duplicate active assignment (UNIQUE: user_id + province + locality
       // WHERE revoked_at IS NULL).

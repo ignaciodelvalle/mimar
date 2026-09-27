@@ -5,7 +5,7 @@ import { BUSINESS_RULES_DEFAULTS } from "@/lib/domain/business-rules-defaults";
 import { validateRulePayload } from "@/lib/infra/business-rules-validators";
 import { runReevalHookIfRegistered } from "@/lib/infra/rule-types-effects";
 
-import { assertRuleWritable, ruleWriterErrorMessage } from "./rule-authority";
+import { RuleWriterError, assertRuleWritable, ruleWriterErrorMessage } from "./rule-authority";
 
 import type {
   BusinessRuleLegalMetadata,
@@ -114,7 +114,7 @@ export async function createBusinessRuleWriter(
         .where(and(eq(govtBusinessRules.ruleType, params.ruleType), samePlace(params)))
         .limit(1);
       if (existing) {
-        throw new Error(
+        throw new RuleWriterError(
           "Ya existe una regla para esa combinación de jurisdicción y tipo. Usá editar.",
         );
       }

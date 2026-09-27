@@ -62,7 +62,7 @@ RLS declared in a migration and no row here yet. Absence from this table means
 | ~~share_telemetry~~ | — | — | **table dropped** by `0167` (TEL-1, PO 2026-08-04): per-view viewer data with no reader. |
 | govt_assignments | Y | Y | govt sees own assignments. |
 | approval_requests | Y | Y | applicant or authority. |
-| audit_log | Y | Y | actor or admin; since `0269` also the jurisdiction admin of the row's province (`audit_row_visible_to_jurisdiction_admin` — the `province_code` stamp, else the single province the row itself names). aal2-restricted. |
+| audit_log | Y | Y | actor or admin; aal2-restricted. `0269` added a branch for the jurisdiction admin of the row's province; `0271` DROPPED it (RLS cannot hide payload columns — PO decision M1): the appointee reads their province through the SECURITY DEFINER `jurisdiction_admin_audit_trail()` instead, redacted by `audit_payload_redacted` / `audit_institutional_or_null`. |
 | jurisdiction_admin_appointments | Y | Y (read) | own row or platform admin, aal2-restricted (`0268`). No write policy and INSERT/UPDATE/DELETE revoked from anon/authenticated: written by service-role Drizzle only. Append-only by trigger (revoked once, never deleted). Retained accountability — an official appointment; declared a subject-rights gap like `govt_assignments`. |
 | govt_business_rules | Y | **deny-all** | reference data; deny-all via advisor remediation (`0113`). |
 | service_offerings | Y | Y | public-approved, org members, provider vet (`scheduling_rls.sql`). |

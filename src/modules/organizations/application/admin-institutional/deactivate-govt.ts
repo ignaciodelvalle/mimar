@@ -32,7 +32,6 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { auditLog, db, govtAssignments, notifications, profiles } from "@/db";
 import { validateMotivoAndAttachments } from "@/lib/domain/revocation-validation";
 import { writeAuditLog } from "@/lib/infra/audit-log";
-import { pgError } from "@/lib/infra/db-errors";
 import { revokeActiveAppointmentInTx } from "@/lib/infra/jurisdiction-admin-appointments";
 import { jurisdictionAdminRefusal } from "@/lib/infra/jurisdiction-admin-refusals";
 import {
@@ -63,18 +62,31 @@ export const DEACTIVATE_GOVT_DB_ERROR = "No se pudo desactivar la cuenta. Probá
 /**
  * Why a JURISDICTION admin may not deactivate this target, or null (always
  * null for the platform admin). Read with the target already locked.
+ *
+ * NO ORACLE (Phase-4 review LOW-1). For a jurisdiction admin this is asked
+ * BEFORE any check on the target row, and a target that does not exist, is
+ * not an institutional govt, or is already deactivated reads exactly like a
+ * target in another province: OUT_OF_PROVINCE. Otherwise distinct answers
+ * would tell a delegated administrator which ids exist anywhere in the
+ * country, and what they are.
  */
 async function delegatedDeactivationRefusal(
   tx: Tx,
   actorUserId: string,
   targetUserId: string,
-  targetRole: string,
+  target: { role: string; accountType: string; deactivatedAt: Date | null } | undefined,
 ): Promise<string | null> {
   if (await requirePlatformAdmin(tx, actorUserId)) return null;
   if (targetUserId === actorUserId) return JURISDICTION_ADMIN_WRITER_COPY.SELF_DEACTIVATE;
-  const target = await govtTargetProvince(tx, targetUserId);
-  const place = targetRole === "national" ? null : singleProvince(target);
-  if (target.isAppointee || !(await requireJurisdictionAdminFor(tx, actorUserId, place))) {
+  const place = await govtTargetProvince(tx, targetUserId);
+  if (
+    !target ||
+    target.role !== "govt" ||
+    target.accountType !== "institutional" ||
+    target.deactivatedAt !== null ||
+    place.isAppointee ||
+    !(await requireJurisdictionAdminFor(tx, actorUserId, singleProvince(place)))
+  ) {
     return JURISDICTION_ADMIN_WRITER_COPY.OUT_OF_PROVINCE;
   }
   return null;
@@ -125,6 +137,21 @@ export async function deactivateGovtForAuthority(
         .for("update")
         .limit(1);
 
+      // a'. WHERE the actor may act (jurisdiction-admin Phase 4), asked
+      //    FIRST (review LOW-1: no oracle). The place is the target's: a govt
+      //    whose active grants all lie in ONE province. A national observer,
+      //    a govt with no active grant or with grants in two provinces has no
+      //    single place — platform only. A jurisdiction admin never
+      //    deactivates themself nor another appointee (only the platform
+      //    admin ends an appointment).
+      const delegated = await delegatedDeactivationRefusal(
+        tx,
+        actorUserId,
+        input.targetGovtUserId,
+        targetProfile,
+      );
+      if (delegated) throw new Refused(delegated);
+
       if (!targetProfile) throw new Refused("NOT_INSTITUTIONAL_GOVT");
       if (
         (targetProfile.role !== "govt" && targetProfile.role !== "national") ||
@@ -133,20 +160,6 @@ export async function deactivateGovtForAuthority(
         throw new Refused("NOT_INSTITUTIONAL_GOVT");
       }
       if (targetProfile.deactivatedAt !== null) throw new Refused("TARGET_ALREADY_DEACTIVATED");
-
-      // a'. WHERE the actor may act (jurisdiction-admin Phase 4). The place
-      //    is the target's: a govt whose active grants all lie in ONE
-      //    province. A national observer, a govt with no active grant or with
-      //    grants in two provinces has no single place — platform only. A
-      //    jurisdiction admin never deactivates themself nor another
-      //    appointee (only the platform admin ends an appointment).
-      const delegated = await delegatedDeactivationRefusal(
-        tx,
-        actorUserId,
-        input.targetGovtUserId,
-        targetProfile.role,
-      );
-      if (delegated) throw new Refused(delegated);
 
       // Timestamps come from the DATABASE clock (now() = the transaction's
       // start), not this Node process: a Docker VM drifts from its host, and
@@ -252,13 +265,9 @@ export async function deactivateGovtForAuthority(
     // A database refusal (trigger, constraint) is translated, never shown raw.
     const refusal = jurisdictionAdminRefusal(err);
     if (refusal) return { error: JURISDICTION_ADMIN_REFUSAL_COPY[refusal] };
-    if (pgError(err)) {
-      console.error("deactivateGovtForAuthority failed", err);
-      return { error: DEACTIVATE_GOVT_DB_ERROR };
-    }
-    return {
-      error: err instanceof Error ? err.message : "Error desconocido al desactivar govt.",
-    };
+    // Anything else is logged, never shown raw (review LOW-2).
+    console.error("deactivateGovtForAuthority failed", err);
+    return { error: DEACTIVATE_GOVT_DB_ERROR };
   }
 
   if (pendingNotificationsGovt.length > 0) {

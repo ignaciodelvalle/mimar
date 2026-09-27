@@ -203,25 +203,30 @@ const reasonSchema = z
 
 /**
  * Why a delegated confirmation is refused, or null when the actor may make it
- * (always null for the platform admin). A unit that does not exist is left to
- * the plan, which answers NOT_FOUND.
+ * (always null for the platform admin, for whom a unit that does not exist is
+ * left to the plan, which answers NOT_FOUND).
+ *
+ * NO ORACLE (Phase-4 review LOW-1): for a jurisdiction admin a malformed or
+ * unknown unit id reads exactly like a unit in another province —
+ * OUT_OF_PROVINCE — so the answer never says which unit ids exist.
  */
 async function delegatedGrantRefusal(
   tx: GrantUnitExecutor,
   actorUserId: string,
   input: { userId: string; unitId: string },
 ): Promise<"OUT_OF_PROVINCE" | "TARGET_OUT_OF_PROVINCE" | "SELF_ACTION" | null> {
-  if (!uuid.safeParse(input.userId).success || !uuid.safeParse(input.unitId).success) return null;
+  if (await requirePlatformAdmin(tx, actorUserId)) return null;
+  if (!uuid.safeParse(input.userId).success || !uuid.safeParse(input.unitId).success) {
+    return "OUT_OF_PROVINCE";
+  }
   const [unit] = await tx
     .select({ provinceCode: authorityUnits.provinceCode })
     .from(authorityUnits)
     .where(eq(authorityUnits.id, input.unitId))
     .limit(1);
-  if (!unit) return null;
-  if (!(await requireJurisdictionAdminFor(tx, actorUserId, unit.provinceCode))) {
+  if (!unit || !(await requireJurisdictionAdminFor(tx, actorUserId, unit.provinceCode))) {
     return "OUT_OF_PROVINCE";
   }
-  if (await requirePlatformAdmin(tx, actorUserId)) return null;
   if (input.userId === actorUserId) return "SELF_ACTION";
   const target = await govtTargetProvince(tx, input.userId);
   if (

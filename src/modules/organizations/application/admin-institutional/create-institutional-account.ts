@@ -21,6 +21,17 @@
 //   7. mail that link through the repo's mail path (./access-link-mail.ts);
 //      the same link goes back to the admin panel to forward by hand
 //
+// WHAT A FAILURE SAYS (Phase-4 security review, LOW-2/3/4):
+//   - no identity-provider or Postgres text ever reaches the UI: it is
+//     logged server-side and the caller reads CREATE_INSTITUTIONAL_FAILED;
+//   - a JURISDICTION admin reads that same sentence for an address that is
+//     already registered — the platform keeps DUPLICATE_EMAIL — so creating
+//     accounts is not a way to learn who is on the platform. The refused
+//     attempt is audited (institutional_create_refused: role and reason,
+//     never the address) and delegated attempts are rate-limited per actor;
+//   - the orphan-auth-user record keeps the ids and error CODES only: never
+//     the intended address, never raw error text.
+//
 // §2.2: notifications accumulate in pendingNotifications[] inside the tx and
 // are inserted AFTER the transaction commits (best-effort, logged on failure).
 
@@ -28,7 +39,10 @@ import { eq } from "drizzle-orm";
 import { z } from "zod/v4";
 
 import { auditLog, db, govtAssignments, notifications, profiles } from "@/db";
+import { writeAuditLog } from "@/lib/infra/audit-log";
+import { pgErrorCode } from "@/lib/infra/db-errors";
 import { jurisdictionAdminRefusal } from "@/lib/infra/jurisdiction-admin-refusals";
+import { RateLimitError, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { resolveSiteUrl } from "@/lib/infra/site-url";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -90,6 +104,25 @@ export type CreateInstitutionalExecutor = typeof db | Tx;
 
 /** Thrown inside the transaction to roll it back with a result code. */
 class Refused extends Error {}
+
+/** The one sentence a failed creation reads — never provider or database text. */
+export const CREATE_INSTITUTIONAL_FAILED =
+  "No se pudo crear la cuenta. Si el problema sigue, consultá al administrador de la plataforma.";
+export const CREATE_INSTITUTIONAL_RATE_LIMITED =
+  "Hiciste demasiados intentos de alta seguidos. Probá de nuevo en un rato.";
+
+/**
+ * Account creations a jurisdiction admin may ATTEMPT (review LOW-3). Generous
+ * for staffing a province, far too few to sweep addresses. The platform admin
+ * is not limited.
+ */
+export const DELEGATED_CREATE_LIMIT = { maxPerHour: 30, maxPerDay: 100 } as const;
+export const DELEGATED_CREATE_RATE_KEY = "institutional_create_delegated";
+
+/** A failure's code for the logs and the orphan record: SQLSTATE or error name. */
+function errorCode(err: unknown): string {
+  return pgErrorCode(err) ?? (err instanceof Error ? err.name : "unknown");
+}
 
 /**
  * Why `actorUserId` may not create this account, or null when they may. Asked
@@ -183,16 +216,46 @@ export async function createInstitutionalAccountForAuthority(
   const preflight = await creationRefusal(exec, actorUserId, role, place);
   if (preflight) return { error: preflight };
 
+  // A jurisdiction admin (not the platform admin) is rate-limited, and reads
+  // one sentence for every refusal below (review LOW-3).
+  const delegated = !(await requirePlatformAdmin(exec, actorUserId));
+  if (delegated) {
+    try {
+      await enforceRateLimit(DELEGATED_CREATE_RATE_KEY, actorUserId, DELEGATED_CREATE_LIMIT);
+    } catch (err) {
+      if (err instanceof RateLimitError) return { error: CREATE_INSTITUTIONAL_RATE_LIMITED };
+      throw err;
+    }
+  }
+  /** A delegated refusal: audited (never the address), answered generically. */
+  const refuseDelegated = async (reason: string): Promise<CreateInstitutionalResult> => {
+    try {
+      await writeAuditLog(exec, {
+        action: "institutional_create_refused",
+        actorUserId,
+        payload: { role, reason },
+      });
+    } catch (auditErr) {
+      console.error("institutional_create_refused audit insert failed", auditErr);
+    }
+    return { error: CREATE_INSTITUTIONAL_FAILED };
+  };
+
   const supabase = createAdminClient();
 
   // 3. Pre-flight duplicate email check
   const { data: existingUsers, error: listErr } = await supabase.auth.admin.listUsers({
     perPage: 200,
   });
-  if (listErr) return { error: `AUTH_LIST_FAILED: ${listErr.message}` };
+  if (listErr) {
+    console.error("createInstitutionalAccountForAuthority: listUsers failed", listErr);
+    return { error: CREATE_INSTITUTIONAL_FAILED };
+  }
 
   const duplicateUser = existingUsers?.users.find((u) => u.email === email);
-  if (duplicateUser) return { error: "DUPLICATE_EMAIL" };
+  if (duplicateUser) {
+    return delegated ? refuseDelegated("duplicate_email") : { error: "DUPLICATE_EMAIL" };
+  }
 
   // 4. Create the auth user WITHOUT a password and with the first-access flag
   // (pilot T1-P3). The person chooses the password at FIRST_ACCESS_PATH, and
@@ -225,7 +288,12 @@ export async function createInstitutionalAccountForAuthority(
   });
 
   if (authErr || !authData.user) {
-    return { error: `AUTH_CREATE_FAILED: ${authErr?.message ?? "unknown error"}` };
+    // GoTrue's text ("already registered", …) is logged, never returned: for a
+    // delegated actor it would be the very oracle LOW-3 closes.
+    console.error("createInstitutionalAccountForAuthority: auth createUser failed", authErr);
+    return delegated
+      ? refuseDelegated("auth_create_failed")
+      : { error: CREATE_INSTITUTIONAL_FAILED };
   }
 
   const authUserId = authData.user.id;
@@ -303,16 +371,22 @@ export async function createInstitutionalAccountForAuthority(
     try {
       await supabase.auth.admin.deleteUser(authUserId);
     } catch (cleanupErr) {
-      // Best-effort orphan logging — do NOT swallow the original error
+      // Best-effort orphan logging — do NOT swallow the original error. The
+      // record carries ids and error CODES only (review LOW-4): the intended
+      // address and raw error text stay in the server log, out of audit_log.
+      console.error("institutional create: compensating deleteUser failed", {
+        authUserId,
+        txErr,
+        cleanupErr,
+      });
       try {
         await exec.insert(auditLog).values({
           actorUserId,
           action: "institutional_create_orphan_auth_user",
           payload: {
             orphan_auth_user_id: authUserId,
-            intended_email: email,
-            tx_error: txErr instanceof Error ? txErr.message : String(txErr),
-            cleanup_error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+            tx_error_code: errorCode(txErr),
+            cleanup_error_code: errorCode(cleanupErr),
           },
         });
       } catch {
@@ -323,9 +397,8 @@ export async function createInstitutionalAccountForAuthority(
     // A database refusal of the act itself is translated, never shown raw.
     const refusal = jurisdictionAdminRefusal(txErr);
     if (refusal) return { error: JURISDICTION_ADMIN_REFUSAL_COPY[refusal] };
-    return {
-      error: `DB_TX_FAILED: ${txErr instanceof Error ? txErr.message : String(txErr)}`,
-    };
+    console.error("createInstitutionalAccountForAuthority: transaction failed", txErr);
+    return { error: CREATE_INSTITUTIONAL_FAILED };
   }
 
   if (pendingNotifications.length > 0) {

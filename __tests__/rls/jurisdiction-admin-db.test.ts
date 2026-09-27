@@ -745,15 +745,15 @@ describe("audit_log_province_guard (0269)", () => {
     });
   });
 
-  it("audit_row_province reads an UNSTAMPED historic row from the place it names, and hides an unplaced one", async () => {
+  it("audit_place_province reads an UNSTAMPED historic row from the place it names, and hides an unplaced one", async () => {
     await inRolledBackTx(async (tx) => {
       const w = await world(tx);
+      // 0271 replaced the composite-argument audit_row_province(audit_log)
+      // with this scalar-argument twin (its denial path crashed the backend).
       const read = (payload: Record<string, unknown>) =>
         one<{ p: string | null }>(
           tx,
-          sql`select public.audit_row_province(jsonb_populate_record(null::public.audit_log,
-                jsonb_build_object('action', 'authority_unit_renamed',
-                                   'payload', ${JSON.stringify(payload)}::jsonb))) as p`,
+          sql`select public.audit_place_province(null, ${JSON.stringify(payload)}::jsonb, null) as p`,
         );
       expect((await read({ unit_id: w.places.mzaUnit })).p).toBe("AR-M");
       expect(
@@ -815,7 +815,7 @@ describe("govt_business_rules guard (0269)", () => {
 // 0269 — the audit_log RLS branch, through the real `authenticated` role
 // ---------------------------------------------------------------------------
 
-describe("audit_log RLS — the jurisdiction admin of the row's province (0269)", () => {
+describe("audit_log reads — the jurisdiction admin of the row's province (0269, narrowed by 0271)", () => {
   async function visibleTo(tx: Tx, userId: string, ids: string[]): Promise<string[]> {
     await tx.execute(
       sql`select set_config('request.jwt.claims', ${JSON.stringify({
@@ -836,7 +836,23 @@ describe("audit_log RLS — the jurisdiction admin of the row's province (0269)"
     return rows.map((r) => r.id).sort();
   }
 
-  it("the appointee reads their province's rows and no other; a plain govt reads neither", async () => {
+  async function trailOf(tx: Tx, userId: string): Promise<string[]> {
+    await tx.execute(
+      sql`select set_config('request.jwt.claims', ${JSON.stringify({
+        sub: userId,
+        role: "authenticated",
+        aal: "aal2",
+      })}, true)`,
+    );
+    await tx.execute(sql`set local role authenticated`);
+    const rows = (await tx.execute(
+      sql`select id::text as id from public.jurisdiction_admin_audit_trail(null, null, 500)`,
+    )) as unknown as Array<{ id: string }>;
+    await tx.execute(sql`reset role`);
+    return rows.map((r) => r.id);
+  }
+
+  it("the appointee reads their province's rows (redacted, through the trail) and no other; the table branch is gone; a plain govt reads neither", async () => {
     await inRolledBackTx(async (tx) => {
       const w = await world(tx);
       const mzaRow = await writeAudit(tx, {
@@ -850,14 +866,20 @@ describe("audit_log RLS — the jurisdiction admin of the row's province (0269)"
         payload: { unit_id: w.places.sjUnit },
       });
       const ids = [mzaRow.id, sjRow.id];
-      expect(await visibleTo(tx, w.mza, ids)).toEqual([mzaRow.id]);
+      // 0271 (PO decision M1): RLS cannot hide payload columns, so the raw
+      // table branch is gone — the appointee reads the table like any govt.
+      expect(await visibleTo(tx, w.mza, ids)).toEqual([]);
       expect(await visibleTo(tx, w.mzaPlain, ids)).toEqual([]);
-      // Revoked: the branch closes with the appointment.
+      const trail = await trailOf(tx, w.mza);
+      expect(trail).toContain(mzaRow.id);
+      expect(trail).not.toContain(sjRow.id);
+      expect(await trailOf(tx, w.mzaPlain)).toEqual([]);
+      // Revoked: the read closes with the appointment.
       await tx.execute(sql`update public.jurisdiction_admin_appointments
                               set revoked_at = now(), revoked_by_user_id = ${w.admin}::uuid,
                                   revocation_reason = 'Fin'
                             where user_id = ${w.mza}::uuid`);
-      expect(await visibleTo(tx, w.mza, ids)).toEqual([]);
+      expect(await trailOf(tx, w.mza)).toEqual([]);
     });
   });
 });
@@ -989,7 +1011,8 @@ describe("0270 — the audit helpers are owner-only (L3)", () => {
     "public.audit_as_province_code(text)",
     "public.audit_row_place_codes(jsonb, uuid)",
     "public.audit_target_user_provinces(uuid, uuid)",
-    "public.audit_row_province(public.audit_log)",
+    // 0271: the scalar twin of the dropped audit_row_province(audit_log).
+    "public.audit_place_province(text, jsonb, uuid)",
   ];
 
   it("neither anon nor authenticated may execute any of them", async () => {
