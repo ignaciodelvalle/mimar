@@ -156,7 +156,7 @@ beforeAll(async () => {
     userId: govtUserId,
     jurisdictionProvince: "CABA",
     jurisdictionLocality: "Buenos Aires",
-    grantedByUserId: govtUserId, // self for test convenience
+    grantedByUserId: null, // 0270: only an administrator grants; a fixture has no granter
   });
 
   // Add govt user as coordinator of the govt org.

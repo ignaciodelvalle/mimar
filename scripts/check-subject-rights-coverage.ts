@@ -271,8 +271,18 @@ export const CLASSIFICATION: Readonly<Record<string, Classification>> = {
   // 0268 (jurisdiction-admin): an official appointment of a public official.
   // Append-only by trigger, so the erasure could not redact it in place even
   // if it tried — the same retained-accountability shape as govt_assignments.
+  //
+  // CLASSIFICATION: RETAINED ACCOUNTABILITY. The gap is deliberate on the
+  // erasure side: the row records the exercise of a public function (who held
+  // administrative authority over a province, from when, appointed and revoked
+  // by whom and why), collected for "el ejercicio de funciones propias de los
+  // poderes del Estado" — Ley 25.326 art. 5 inc. 2 b), a lawful basis that
+  // needs no consent — and it is what makes every delegated act accountable.
+  // The export side is a real gap (export_subject_data does not return it) and
+  // stays declared as one. The fence has no separate "retained" class, so the
+  // honest label is `gap`, with the basis named here (security review Q6).
   jurisdiction_admin_appointments: bothGap(
-    "The subject's appointment as jurisdiction administrator (user_id), with the platform admin's `appointment_reason` and `revocation_reason` about them.",
+    "The subject's appointment as jurisdiction administrator (user_id), with the platform admin's `appointment_reason` and `revocation_reason` about them. Retained accountability: public-function basis, Ley 25.326 art. 5 inc. 2 b).",
   ),
   jurisdictions_census: bothExempt("Published census figures per jurisdiction."),
   // 0207: the erasure revokes the subject's outstanding libreta shares (their

@@ -110,8 +110,9 @@ beforeAll(async () => {
         rulePayload: {},
         requirementLevel: "not_regulated",
         legalBasis: "Ordenanza Prueba 999",
-        createdByUserId: OWNER_ID,
-        updatedByUserId: OWNER_ID,
+        // 0270: only an administrator authors a rule; a fixture row has no author.
+        createdByUserId: null,
+        updatedByUserId: null,
       },
       {
         jurisdictionCountry: "AR",
@@ -122,8 +123,9 @@ beforeAll(async () => {
         requirementLevel: "mandatory",
         legalBasis: CITATION_BASIS,
         authority: CITATION_AUTHORITY,
-        createdByUserId: OWNER_ID,
-        updatedByUserId: OWNER_ID,
+        // 0270: only an administrator authors a rule; a fixture row has no author.
+        createdByUserId: null,
+        updatedByUserId: null,
       },
     ])
     .returning({ id: govtBusinessRules.id });

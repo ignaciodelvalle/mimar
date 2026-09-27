@@ -2319,8 +2319,9 @@ export type NewGovtAssignment = typeof govtAssignments.$inferInsert;
 // One delegated jurisdiction administrator per province (migration 0268,
 // SDD jurisdiction-admin). A jurisdiction admin is role `govt` + an ACTIVE row
 // here + that row's implied whole-province grant (govtAssignmentId), still
-// active. Append-only by trigger: revoked once by the platform admin, never
-// deleted or rewritten; re-appointing is a new row. Authority is read ONLY
+// active. Append-only by trigger: revoked once — by the platform admin, or by
+// the appointee resigning (0270) — never deleted or rewritten; re-appointing
+// is a new row. Authority is read ONLY
 // through public.jurisdiction_admin_province(uuid) — the app's authority
 // module (src/modules/organizations/application/admin-authority/) calls it
 // inside each writer's transaction.

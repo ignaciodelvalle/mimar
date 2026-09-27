@@ -549,7 +549,8 @@ async function seedGovtUser(
         userId: id,
         jurisdictionProvince: l.province,
         jurisdictionLocality: l.locality,
-        grantedByUserId: id,
+        // 0270: only an administrator grants; a fixture grant has no granter.
+        grantedByUserId: null,
       })),
     );
   }

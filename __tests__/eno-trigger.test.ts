@@ -214,7 +214,7 @@ beforeAll(async () => {
       userId: govtProvinceUserId,
       jurisdictionProvince: TEST_PROVINCE,
       jurisdictionLocality: "", // province-wide sentinel
-      grantedByUserId: govtProvinceUserId,
+      grantedByUserId: null, // 0270: only an administrator grants; a fixture has no granter
     })
     .returning();
   insertedGovtAssignmentIds.push(provAssignment.id);
@@ -242,7 +242,7 @@ beforeAll(async () => {
       userId: govtLocalityUserId,
       jurisdictionProvince: TEST_PROVINCE,
       jurisdictionLocality: TEST_LOCALITY,
-      grantedByUserId: govtLocalityUserId,
+      grantedByUserId: null, // 0270: only an administrator grants; a fixture has no granter
     })
     .returning();
   insertedGovtAssignmentIds.push(localityAssignment.id);

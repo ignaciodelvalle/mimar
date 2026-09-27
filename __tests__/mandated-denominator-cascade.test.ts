@@ -93,8 +93,9 @@ beforeAll(async () => {
         ruleType: "microchip_required",
         rulePayload: { required: true },
         requirementLevel: "mandatory",
-        createdByUserId: ACTOR_ID,
-        updatedByUserId: ACTOR_ID,
+        // 0270: only an administrator authors a rule; a fixture row has no author.
+        createdByUserId: null,
+        updatedByUserId: null,
       },
       {
         jurisdictionCountry: "AR",
@@ -103,8 +104,9 @@ beforeAll(async () => {
         ruleType: "microchip_required",
         rulePayload: { required: false },
         requirementLevel: "not_regulated",
-        createdByUserId: ACTOR_ID,
-        updatedByUserId: ACTOR_ID,
+        // 0270: only an administrator authors a rule; a fixture row has no author.
+        createdByUserId: null,
+        updatedByUserId: null,
       },
     ])
     .returning({ id: govtBusinessRules.id });

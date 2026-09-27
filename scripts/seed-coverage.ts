@@ -160,7 +160,6 @@ const {
   welfareReports,
   welfareReportAttachments,
   libretaShareTokens,
-  govtAssignments,
   govtBusinessRules,
   fosterVolunteers,
   fosterProposals,
@@ -265,11 +264,6 @@ async function findOrgMembershipId(orgId: string, userId: string): Promise<strin
     .where(eq(organizationMemberships.organizationId, orgId))
     .limit(1);
   return m?.id ?? null;
-}
-
-async function findGovtUserId(): Promise<string | null> {
-  const [row] = await db.select({ userId: govtAssignments.userId }).from(govtAssignments).limit(1);
-  return row?.userId ?? null;
 }
 
 async function findLostPerfCaseId(): Promise<string | null> {
@@ -454,11 +448,13 @@ async function runSeed(): Promise<void> {
     log("INFO", `  Generic PERF pet: ${genericPet.id.slice(0, 8)}…`);
   }
 
-  const govtUserId = await findGovtUserId();
-  if (!govtUserId) {
-    log("WARN", "No govt user found — govt_business_rules will use owner");
+  // Only the platform admin (or a jurisdiction admin in their province)
+  // authors a rule: the database refuses anyone else since 0270. Without the
+  // seed admin the rule is written with no author (a system write).
+  const ruleAuthorId = await findAuthUserIdByEmail(supabase, "admin@dim.test");
+  if (!ruleAuthorId) {
+    log("WARN", "admin@dim.test not found — govt_business_rules will have no author");
   }
-  const ruleAuthorId = govtUserId ?? ownerUserId;
 
   // ── 1. welfare_reports ────────────────────────────────────────────────────
   log("STEP", "1/16 welfare_reports");

@@ -293,7 +293,7 @@ describe("jurisdiction_admin_appointments + jurisdiction_admin_province (0268)",
     });
   });
 
-  it("is append-only: no delete, no rewrite, one revocation, by the platform admin only", async () => {
+  it("is append-only: no delete, no rewrite, one revocation, by the platform admin (or the appointee resigning)", async () => {
     await inRolledBackTx(async (tx) => {
       const w = await world(tx);
       const where = sql`where user_id = ${w.mza}::uuid`;
@@ -320,15 +320,30 @@ describe("jurisdiction_admin_appointments + jurisdiction_admin_province (0268)",
         ),
         { code: "23001", constraint: /jurisdiction_admin_append_only/ },
       );
-      // The appointee cannot revoke themself (nor can any govt).
-      await expectDbError(
-        inSavepoint(tx, (sp) =>
-          sp.execute(sql`update public.jurisdiction_admin_appointments
-                            set revoked_at = now(), revoked_by_user_id = ${w.mza}::uuid,
-                                revocation_reason = 'Renuncio' ${where}`),
-        ),
-        { code: "42501", constraint: /jurisdiction_admin_platform_only/ },
-      );
+      // No other govt revokes it — not a plain govt, not another appointee
+      // (0270 admits only the platform admin, or the appointee resigning).
+      for (const other of [w.mzaPlain, w.sj]) {
+        await expectDbError(
+          inSavepoint(tx, (sp) =>
+            sp.execute(sql`update public.jurisdiction_admin_appointments
+                              set revoked_at = now(), revoked_by_user_id = ${other}::uuid,
+                                  revocation_reason = 'No soy yo' ${where}`),
+          ),
+          { code: "42501", constraint: /jurisdiction_admin_platform_only/ },
+        );
+      }
+      // The appointee may resign (it only ever narrows authority) — proven in
+      // a savepoint, so the platform admin's revocation below still has a row.
+      await inSavepoint(tx, async (sp) => {
+        await sp.execute(sql`update public.jurisdiction_admin_appointments
+                                set revoked_at = now(), revoked_by_user_id = ${w.mza}::uuid,
+                                    revocation_reason = 'Renuncio' ${where}`);
+        expect(await adminProvince(sp, w.mza)).toBeNull();
+        throw ROLLBACK;
+      }).catch((e: unknown) => {
+        if (e !== ROLLBACK) throw e;
+      });
+      expect(await adminProvince(tx, w.mza)).toBe("AR-M");
       await tx.execute(sql`update public.jurisdiction_admin_appointments
                               set revoked_at = now(), revoked_by_user_id = ${w.admin}::uuid,
                                   revocation_reason = 'Fin de la designación' ${where}`);
@@ -843,6 +858,161 @@ describe("audit_log RLS — the jurisdiction admin of the row's province (0269)"
                                   revocation_reason = 'Fin'
                             where user_id = ${w.mza}::uuid`);
       expect(await visibleTo(tx, w.mza, ids)).toEqual([]);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 0270 — the Phase-2 security review: fail closed for EVERY actor (M2), and
+// the audit helpers are not an API (L3)
+// ---------------------------------------------------------------------------
+
+describe("0270 — an actor with no authority at all is refused at the database (M2)", () => {
+  const delegatedInMendoza = (w: World): Array<Parameters<typeof writeAudit>[1]> => [
+    { actor: null, action: "authority_unit_renamed", payload: { unit_id: w.places.mzaUnit } },
+    {
+      actor: null,
+      action: "govt_locality_assigned",
+      targetUser: w.mzaPlain,
+      payload: { province: "Mendoza", locality: "Las Heras" },
+    },
+    {
+      actor: null,
+      action: "govt_business_rule_created",
+      payload: { jurisdiction: { country: "AR", province: "Mendoza", locality: null } },
+    },
+    { actor: null, action: "institutional_govt_created", targetUser: w.mzaPlain },
+  ];
+
+  it("a plain govt, or a citizen, cannot write a delegated act even inside a province", async () => {
+    await inRolledBackTx(async (tx) => {
+      const w = await world(tx);
+      const citizen = await insertProfile(tx, "owner", "JA probe citizen");
+      const other = await insertProfile(tx, "govt", "JA probe other Mendoza govt");
+      await insertGrant(tx, other, "Mendoza", "Maipú", w.admin);
+      for (const actor of [other, citizen]) {
+        for (const row of delegatedInMendoza(w)) {
+          await expectDbError(
+            inSavepoint(tx, (sp) => writeAudit(sp, { ...row, actor })),
+            { code: "42501", constraint: /jurisdiction_admin_no_authority/ },
+          ).catch((e: unknown) => {
+            throw new Error(`expected ${row.action} by ${actor} to be refused: ${String(e)}`);
+          });
+        }
+      }
+    });
+  });
+
+  it("the platform admin and a system writer (no actor) still write every delegated act", async () => {
+    await inRolledBackTx(async (tx) => {
+      const w = await world(tx);
+      for (const actor of [w.admin, null]) {
+        for (const row of delegatedInMendoza(w)) {
+          await writeAudit(tx, { ...row, actor });
+        }
+      }
+      // A plain govt's NON-delegated acts are untouched.
+      const own = await writeAudit(tx, { actor: w.mzaPlain, action: "evidence_viewed" });
+      expect(own.province_code).toBe("AR-M");
+    });
+  });
+
+  it("a plain govt cannot grant; it still revokes (rank rule, resignation); a null granter passes", async () => {
+    await inRolledBackTx(async (tx) => {
+      const w = await world(tx);
+      const recruit = await insertProfile(tx, "govt", "JA probe recruit");
+      await expectDbError(
+        inSavepoint(tx, (sp) => insertGrant(sp, recruit, "Mendoza", "Las Heras", w.mzaPlain)),
+        { code: "42501", constraint: /jurisdiction_admin_no_authority/ },
+      );
+      // Self-grant — the escalation this belt exists for.
+      await expectDbError(
+        inSavepoint(tx, (sp) => insertGrant(sp, w.mzaPlain, "Mendoza", "Maipú", w.mzaPlain)),
+        { code: "42501", constraint: /jurisdiction_admin_no_authority/ },
+      );
+      const granted = await insertGrant(tx, recruit, "Mendoza", "Las Heras", null);
+      await tx.execute(sql`update public.govt_assignments
+                              set revoked_at = now(), revoked_by_user_id = ${w.mzaPlain}::uuid,
+                                  revocation_reason = 'Por rango'
+                            where id = ${granted}::uuid`);
+      await tx.execute(sql`update public.govt_assignments
+                              set revoked_at = now(), revoked_by_user_id = ${w.mzaPlain}::uuid,
+                                  revocation_reason = 'Renuncia'
+                            where user_id = ${w.mzaPlain}::uuid and revoked_at is null`);
+    });
+  });
+
+  it("a plain govt cannot author a rule; an untouched updated_by is not a new act", async () => {
+    await inRolledBackTx(async (tx) => {
+      const w = await world(tx);
+      const insertRule = (sp: Tx, actor: string) =>
+        sp.execute(sql`
+          insert into public.govt_business_rules
+            (jurisdiction_province, jurisdiction_locality, rule_type, rule_payload,
+             created_by_user_id, updated_by_user_id)
+          values ('Mendoza', ${`JA probe ${randomUUID()}`}, 'ppp_breed_list',
+                  '{"breeds":["Probe"]}'::jsonb, ${actor}::uuid, ${actor}::uuid)
+          returning id::text as id`);
+      await expectDbError(
+        inSavepoint(tx, (sp) => insertRule(sp, w.mzaPlain)),
+        {
+          code: "42501",
+          constraint: /jurisdiction_admin_no_authority/,
+        },
+      );
+      const [rule] = (await insertRule(tx, w.admin)) as unknown as Array<{ id: string }>;
+      // Stamping a plain govt as the updater is refused…
+      await expectDbError(
+        inSavepoint(tx, (sp) =>
+          sp.execute(sql`update public.govt_business_rules
+                            set rule_payload = '{"breeds":["Otra"]}'::jsonb,
+                                updated_by_user_id = ${w.mzaPlain}::uuid
+                          where id = ${rule.id}::uuid`),
+        ),
+        { code: "42501", constraint: /jurisdiction_admin_no_authority/ },
+      );
+      // …but a rewrite that leaves the author as it was is not refused on
+      // behalf of an author who has since left.
+      await tx.execute(
+        sql`update public.profiles set deactivated_at = now() where id = ${w.admin}::uuid`,
+      );
+      await tx.execute(sql`update public.govt_business_rules
+                              set rule_payload = '{"breeds":["Sistema"]}'::jsonb
+                            where id = ${rule.id}::uuid`);
+    });
+  });
+});
+
+describe("0270 — the audit helpers are owner-only (L3)", () => {
+  const helpers = [
+    "public.audit_try_uuid(text)",
+    "public.audit_as_province_code(text)",
+    "public.audit_row_place_codes(jsonb, uuid)",
+    "public.audit_target_user_provinces(uuid, uuid)",
+    "public.audit_row_province(public.audit_log)",
+  ];
+
+  it("neither anon nor authenticated may execute any of them", async () => {
+    for (const fn of helpers) {
+      for (const role of ["anon", "authenticated"]) {
+        const [row] = (await db.execute(
+          sql`select has_function_privilege(${role}, ${fn}, 'EXECUTE') as ok`,
+        )) as unknown as Array<{ ok: boolean }>;
+        expect(row.ok, `${role} can execute ${fn}`).toBe(false);
+      }
+    }
+  });
+
+  it("an authenticated session calling one directly is refused", async () => {
+    await inRolledBackTx(async (tx) => {
+      await tx.execute(sql`set local role authenticated`);
+      await expectDbError(
+        inSavepoint(tx, (sp) =>
+          sp.execute(sql`select public.audit_try_uuid('00000000-0000-4000-8000-000000000000')`),
+        ),
+        { code: "42501" },
+      );
+      await tx.execute(sql`reset role`);
     });
   });
 });

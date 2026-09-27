@@ -176,7 +176,7 @@ beforeAll(async () => {
     userId: govtUserId,
     jurisdictionProvince: "CABA",
     jurisdictionLocality: "Buenos Aires",
-    grantedByUserId: govtUserId,
+    grantedByUserId: null, // 0270: only an administrator grants; a fixture has no granter
   });
 
   // Admin profile (stub).

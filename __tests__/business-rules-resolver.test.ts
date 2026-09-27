@@ -1,7 +1,7 @@
 // Tests for the cascading govt business rules resolver.
 // Spec 2026-05-19-govt-business-rules-poc-design §4.3.
 
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { db, govtBusinessRules, profiles } from "@/db";
@@ -36,6 +36,14 @@ beforeAll(async () => {
       displayName: "br-resolver-actor",
     })
     .onConflictDoNothing();
+  // The auth.users insert above fires handle_new_user(), which creates this
+  // profile as an OWNER first — so the insert just above is a no-op and the
+  // actor was never the admin it was meant to be. Since 0270 the database
+  // refuses a rule authored by anyone but an administrator: make it one.
+  await db
+    .update(profiles)
+    .set({ role: "admin", accountType: "institutional", deactivatedAt: null })
+    .where(eq(profiles.id, ACTOR_ID));
 });
 
 afterEach(async () => {
