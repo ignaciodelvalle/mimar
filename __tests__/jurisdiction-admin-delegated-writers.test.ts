@@ -39,6 +39,7 @@ import {
   canResetCredentials,
 } from "@/lib/domain/institutional-scope";
 import { revokeActiveAppointmentInTx } from "@/lib/infra/jurisdiction-admin-appointments";
+import { jurisdictionAdminRefusal } from "@/lib/infra/jurisdiction-admin-refusals";
 import { resolvePlaceFromQueue } from "@/lib/place/unresolved-queue";
 import {
   JURISDICTION_ADMIN_REFUSAL_COPY,
@@ -60,6 +61,10 @@ import {
   createInstitutionalAccountForAuthority,
 } from "@/src/modules/organizations/application/admin-institutional/create-institutional-account";
 import { deactivateGovtForAuthority } from "@/src/modules/organizations/application/admin-institutional/deactivate-govt";
+import {
+  REACTIVATE_GOVT_COPY,
+  reactivateGovtForAuthority,
+} from "@/src/modules/organizations/application/admin-institutional/reactivate-govt";
 import {
   confirmGrantUnit,
   unconfirmGrantUnit,
@@ -904,6 +909,81 @@ describe("the platform admin reverses what a jurisdiction admin did", () => {
         expect(rows, action).toHaveLength(1);
         expect(rows[0].provinceCode, action).toBe("AR-X");
       }
+    });
+  });
+
+  it("reactivates a funcionario the appointee deactivated — the account only, audited where the deactivation was; nobody else can", async () => {
+    await inRolledBackTx(async (tx) => {
+      const w = await world(tx);
+      ok(
+        await deactivateGovtForAuthority(
+          w.cba,
+          {
+            targetGovtUserId: w.cbaGovt,
+            motivo: MOTIVO,
+            attachmentIds: [await evidence(tx, w.cba)],
+          },
+          tx,
+        ),
+      );
+      const input = { targetGovtUserId: w.cbaGovt, reason: MOTIVO };
+
+      // Only the platform admin: not the appointee who deactivated, not a
+      // plain whole-province govt, not the deactivated account's peer.
+      for (const actor of [w.cba, w.sfe, w.cbaWhole]) {
+        expect(await reactivateGovtForAuthority(actor, input, tx), actor).toEqual({
+          error: REACTIVATE_GOVT_COPY.CAPABILITY_DENIED,
+        });
+      }
+      // The database refuses the act from an appointee on its own (0270, c).
+      const direct = await tx
+        .transaction(async (sp) => {
+          await sp.insert(auditLog).values({
+            action: "govt_reactivated_by_admin",
+            actorUserId: w.cba,
+            targetUserId: w.cbaGovt,
+            payload: {},
+          });
+        })
+        .then(
+          () => null,
+          (e: unknown) => e,
+        );
+      expect(jurisdictionAdminRefusal(direct)).toBe("PLATFORM_ONLY");
+
+      expect(await reactivateGovtForAuthority(w.admin, { ...input, reason: "corto" }, tx)).toEqual({
+        error: REACTIVATE_GOVT_COPY.REASON_TOO_SHORT,
+      });
+      expect(await reactivateGovtForAuthority(w.admin, input, tx)).toEqual({ ok: true });
+
+      const [profile] = await tx
+        .select({ deactivatedAt: profiles.deactivatedAt })
+        .from(profiles)
+        .where(eq(profiles.id, w.cbaGovt));
+      expect(profile.deactivatedAt).toBeNull();
+      // The localities the deactivation revoked stay revoked.
+      const active = await tx
+        .select()
+        .from(govtAssignments)
+        .where(and(eq(govtAssignments.userId, w.cbaGovt), isNull(govtAssignments.revokedAt)));
+      expect(active).toHaveLength(0);
+
+      const [audit] = await auditOf(tx, "govt_reactivated_by_admin", w.admin);
+      expect(audit.provinceCode).toBe("AR-X");
+      expect(audit.payload).toMatchObject({
+        reason: MOTIVO,
+        target_role: "govt",
+        deactivated_by_user_id: w.cba,
+        grants_restored: false,
+      });
+
+      // Once active, there is nothing to reverse; a non-govt is not a target.
+      expect(await reactivateGovtForAuthority(w.admin, input, tx)).toEqual({
+        error: REACTIVATE_GOVT_COPY.NOT_DEACTIVATED,
+      });
+      expect(
+        await reactivateGovtForAuthority(w.admin, { ...input, targetGovtUserId: w.admin }, tx),
+      ).toEqual({ error: REACTIVATE_GOVT_COPY.NOT_INSTITUTIONAL_GOVT });
     });
   });
 

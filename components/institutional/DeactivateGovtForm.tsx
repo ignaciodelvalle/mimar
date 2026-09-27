@@ -157,8 +157,9 @@ function DeactivateGovtForm({
         Desactivar {accountNoun(target)} &mdash; {target.displayName}
       </p>
       <p className="text-xs text-ln-op-danger">
-        Esta acción es irreversible desde esta interfaz. El usuario quedará desactivado y recibirá
-        una notificación con el motivo.
+        Solo el administrador de la plataforma puede reactivar la cuenta, y las localidades
+        revocadas no vuelven. El usuario quedará desactivado y recibirá una notificación con el
+        motivo.
         {localityWarning && <span className="block mt-1 font-medium">{localityWarning}</span>}
       </p>
 

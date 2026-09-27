@@ -121,8 +121,9 @@ async function GovtReglasReadOnlyView({
       title="Reglas que aplican a tu jurisdicción"
       subtitle={
         <p className="text-md text-ln-op-ink-2">
-          Vista de solo lectura, pre-filtrada a tus localidades asignadas. La administración de
-          reglas la hace el admin nacional.
+          Vista de solo lectura, pre-filtrada a tus localidades asignadas. Las reglas las
+          administran el administrador de la plataforma y, dentro de su provincia, el administrador
+          de la jurisdicción.
         </p>
       }
     />

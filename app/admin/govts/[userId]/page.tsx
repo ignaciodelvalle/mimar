@@ -6,6 +6,7 @@ import { and, desc, eq, inArray, or } from "drizzle-orm";
 
 import { ResetCredentialsButton } from "@/app/admin/_components/ResetCredentialsButton";
 import { ResetMfaButton } from "@/app/admin/_components/ResetMfaButton";
+import { ReactivateGovtForm } from "@/app/admin/govts/_components/ReactivateGovtForm";
 import { Icon } from "@/components/Icon";
 import { AssignLocalityForm } from "@/components/institutional/AssignLocalityForm";
 import { DeactivateGovtActions } from "@/components/institutional/DeactivateGovtForm";
@@ -50,6 +51,7 @@ export default async function GovtDetailPage({ params }: { params: Promise<{ use
       accountType: profiles.accountType,
       role: profiles.role,
       deactivatedAt: profiles.deactivatedAt,
+      deletedAt: profiles.deletedAt,
       createdAt: profiles.createdAt,
     })
     .from(profiles)
@@ -273,6 +275,19 @@ export default async function GovtDetailPage({ params }: { params: Promise<{ use
               detailPath={`/admin/govts/${govt.id}`}
             />
           </div>
+        </section>
+      )}
+
+      {/* The platform admin's reversal of a deactivation (jurisdiction-admin,
+          admin-reversal) — whoever made it. Localities are not restored. */}
+      {!isActive && govt.deletedAt === null && (
+        <section className="space-y-3">
+          <h2 className="text-md font-semibold text-ln-op-ink">Reactivar cuenta</h2>
+          <ReactivateGovtForm
+            targetUserId={govt.id}
+            displayName={govt.displayName}
+            isNational={isNational}
+          />
         </section>
       )}
 

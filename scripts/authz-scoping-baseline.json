@@ -12,6 +12,7 @@
   "app/actions/bulk-pet-events.ts": 3,
   "app/actions/custody-disputes.ts": 6,
   "app/actions/decomiso-pet-lookup.ts": 1,
+  "app/actions/govt-reactivation.ts": 1,
   "app/actions/omnibox-search.ts": 2,
   "app/actions/revocation-evidence.ts": 1,
   "app/actions/rule-impact-preview.ts": 1,
