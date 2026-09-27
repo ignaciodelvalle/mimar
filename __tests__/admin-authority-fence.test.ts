@@ -10,8 +10,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   ACTION_GUARD_INVENTORY,
+  ACTOR_NAMES,
   MIN_ACTOR_WRITERS,
   MIN_GOB_AUDIT_READERS,
+  RANK_GUARD,
+  RANK_GUARDED_WRITERS,
+  RANK_MODULE,
   type SourceFile,
   WRAPPERS,
   countAuditReads,
@@ -65,6 +69,25 @@ describe("the detector", () => {
     ).toBe(false);
   });
 
+  it("sees an actor named after the column it fills: grantedByUserId, revokedByUserId (INFO-1)", () => {
+    expect(ACTOR_NAMES).toEqual(["actorUserId", "grantedByUserId", "revokedByUserId"]);
+    expect(takesActor(firstFunction("export async function a(grantedByUserId: string) {}"))).toBe(
+      true,
+    );
+    expect(takesActor(firstFunction("export async function a({ revokedByUserId }: P) {}"))).toBe(
+      true,
+    );
+    expect(
+      takesActor(firstFunction("export async function a(p: P) { use(p.grantedByUserId); }")),
+    ).toBe(true);
+    // A column read off a ROW, not off a parameter, is not an actor.
+    expect(
+      takesActor(
+        firstFunction("export async function a(id: string) { use(row.revokedByUserId); }"),
+      ),
+    ).toBe(false);
+  });
+
   it("counts hand-written admin-role comparisons in code and SQL, never in a comment", () => {
     const src = [
       '// role === "admin" used to be asked here; see authority.ts',
@@ -110,6 +133,10 @@ describe("the repository", () => {
       `${APP}/authority-units/manage-units.ts#moveLocalityToUnit`,
       `${APP}/business-rules/update-business-rule.ts#updateBusinessRuleWriter`,
       "lib/place/unresolved-queue.ts#resolvePlaceFromQueue",
+      // The revocation flow (INFO-1), under the rank guard.
+      `${APP}/revocations/revoke-govt-locality.ts#revokeGovtLocalityForAuthority`,
+      `${APP}/revocations/revoke-vet-role.ts#revokeVetRoleForAuthority`,
+      `${APP}/revocations/revoke-org-verification.ts#revokeOrgVerificationForAuthority`,
     ]) {
       expect(actorWriters, key).toContain(key);
     }
@@ -158,6 +185,64 @@ describe("red controls", () => {
     expect(rules).toContain(
       `writer-guard ${APP}/business-rules/create-business-rule.ts#createBusinessRuleWriter`,
     );
+  });
+
+  it("rule 1 — a writer whose actor is grantedByUserId / revokedByUserId and asks nothing (INFO-1)", () => {
+    const file = `${APP}/authority-units/new-writer.ts`;
+    const rules = rulesOf(
+      withFile(
+        file,
+        [
+          "export async function grant(tx: Tx, grantedByUserId: string) { await tx.insert(x); }",
+          "export async function revoke(tx: Tx, p: P) { await tx.update(x).set({ by: p.revokedByUserId }); }",
+        ].join("\n"),
+      ),
+    );
+    expect(rules).toContain(`writer-guard ${file}#grant`);
+    expect(rules).toContain(`writer-guard ${file}#revoke`);
+  });
+
+  it("rule 1 — revocations/ is scanned: a new revocation writer is listed on purpose or asks a base guard", () => {
+    const file = `${APP}/revocations/revoke-something.ts`;
+    const unlisted = withFile(
+      file,
+      "export async function revokeSomething(actorUserId: string) { if (!canRevoke(p, t, j)) return; }",
+    );
+    expect(rulesOf(unlisted)).toContain(`writer-guard ${file}#revokeSomething`);
+  });
+
+  it("rule 1 — a listed revocation writer that stops asking canRevoke", () => {
+    const file = `${APP}/revocations/revoke-govt-locality.ts`;
+    const src = sourceOf(file).replace(
+      "if (!canRevoke(auth.profile, target, auth.jurisdictions)) {",
+      "if (!auth.ok) {",
+    );
+    expect(rulesOf(withFile(file, src))).toContain(
+      `writer-guard ${file}#revokeGovtLocalityForAuthority`,
+    );
+  });
+
+  it("rule 1 — canRevoke that stops comparing places takes every revocation writer down", () => {
+    const src = sourceOf(RANK_MODULE).replace(
+      "return govtCoverageStrictlyContains(jurisdictions, target);",
+      "return true;",
+    );
+    const rules = rulesOf(withFile(RANK_MODULE, src));
+    expect(rules).toContain(`writer-guard ${RANK_MODULE}#${RANK_GUARD}`);
+    for (const key of Object.keys(RANK_GUARDED_WRITERS)) {
+      expect(rules).toContain(`writer-guard ${key}`);
+    }
+  });
+
+  it("rule 1 — a stale rank-guarded entry is an error", () => {
+    const file = `${APP}/revocations/revoke-vet-role.ts`;
+    const src = sourceOf(file).replace(
+      "export async function revokeVetRoleForAuthority(",
+      "export async function revokeVetRoleRenamed(",
+    );
+    const rules = rulesOf(withFile(file, src));
+    expect(rules).toContain(`writer-guard ${file}#revokeVetRoleForAuthority`);
+    expect(rules).toContain(`writer-guard ${file}#revokeVetRoleRenamed`);
   });
 
   it("rule 1 — a stale exemption is an error", () => {

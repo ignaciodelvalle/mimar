@@ -16,13 +16,19 @@
 //
 // RULES
 //   1. writer-guard. In the administration writer folders (WRITER_ROOTS),
-//      every exported function that takes an actor (a parameter named
-//      `actorUserId`, a destructured `actorUserId`, or `<param>.actorUserId`
-//      read in its body) must call an authority guard somewhere in its body:
+//      every exported function that takes an actor (a parameter named after
+//      one of ACTOR_NAMES — `actorUserId`, `grantedByUserId`,
+//      `revokedByUserId` — destructured or not, or `<param>.<that name>` read
+//      in its body) must call an authority guard somewhere in its body:
 //      BASE_GUARDS, a WRAPPER (itself verified to call a base guard), or a
 //      PLATFORM_PREDICATE (verified, in lib/domain/institutional-scope.ts, to
 //      return isPlatformAdmin). `hasAdminAuthority` is NOT a guard on its own:
-//      it says "some authority" and names no place.
+//      it says "some authority" and names no place. The revocation writers
+//      (revocations/) answer to a second, older authority — the govt's own
+//      coverage RANK over the target — and each one listed in
+//      RANK_GUARDED_WRITERS must call RANK_GUARD (verified to compare places
+//      in lib/domain/revocation-scope.ts); a new revocation writer is listed
+//      on purpose or asks a base guard.
 //   2. no-local-admin-check. No `isActiveAdmin` is defined anywhere in the
 //      app, and the writer folders compare no role to "admin" by hand (TS or
 //      SQL). Frozen exceptions carry an exact count and a reason.
@@ -63,7 +69,17 @@ export const WRITER_ROOTS = [
   `${APP}/authority-units/`,
   `${APP}/business-rules/`,
   "lib/place/unresolved-queue.ts",
+  // The revocation flow (final review INFO-1): it revokes govt localities, vet
+  // roles and org verifications — acts on OTHER accounts, so it is scanned
+  // like every writer, under the rank rule below.
+  `${APP}/revocations/`,
 ] as const;
+
+/**
+ * Parameter names that carry the acting user (final review INFO-1: a writer
+ * that names its actor after the column it fills is still a writer).
+ */
+export const ACTOR_NAMES = ["actorUserId", "grantedByUserId", "revokedByUserId"] as const;
 
 /** The module that DEFINES the guards: its exports take an actor by design. */
 export const GUARD_MODULE = `${APP}/admin-authority/authority.ts`;
@@ -104,8 +120,37 @@ export const DOMAIN_MODULE = "lib/domain/institutional-scope.ts";
 export const WRITER_EXEMPT: Readonly<Record<string, string>> = {
   [`${APP}/admin-institutional/helpers.ts#loadActorProfile`]:
     "loads the actor's profile FOR a guard; decides nothing",
+  [`${APP}/revocations/helpers.ts#loadActorAuthority`]:
+    "loads the actor's role and coverage FOR canRevoke; decides nothing",
+  [`${APP}/revocations/helpers.ts#claimAttachmentsForAudit`]:
+    "inside the caller's (guarded) transaction, claims only files the actor uploaded themself",
+  [`${APP}/revocations/upload-evidence.ts#uploadRevocationEvidence`]:
+    "stores the actor's OWN evidence file, unattached; it takes effect only when a guarded revocation claims it",
   [`${APP}/business-rules/rule-authority.ts#missingRuleRefusal`]:
     "chooses the refusal copy for a rule id that matches no row; the writer still asserts the stored rule",
+};
+
+/**
+ * The revocation flow's authority (rule 1): `canRevoke(profile, target,
+ * coverage)` — the platform admin, or a govt whose coverage contains (for a
+ * locality, strictly outranks) the TARGET's place. Verified in its module to
+ * compare places, so a stub that returns true is caught. Not a jurisdiction-
+ * admin power: any govt holds it within its own coverage, by design (Fase 5
+ * revocation spec); on govt_assignments the database also refuses to revoke an
+ * active appointment's implied grant (0268).
+ */
+export const RANK_GUARD = "canRevoke";
+export const RANK_MODULE = "lib/domain/revocation-scope.ts";
+const RANK_PLACE_COMPARATORS = ["jurisdictionScopeContains", "govtCoverageStrictlyContains"];
+
+/** Revocation writers that answer to RANK_GUARD, each with why. */
+export const RANK_GUARDED_WRITERS: Readonly<Record<string, string>> = {
+  [`${APP}/revocations/revoke-govt-locality.ts#revokeGovtLocalityForAuthority`]:
+    "revokes another govt's locality grant when the actor's coverage strictly outranks it",
+  [`${APP}/revocations/revoke-vet-role.ts#revokeVetRoleForAuthority`]:
+    "revokes a vet role inside the actor's coverage (license province or operational place)",
+  [`${APP}/revocations/revoke-org-verification.ts#revokeOrgVerificationForAuthority`]:
+    "revokes an organisation's verification inside the actor's coverage",
 };
 
 /** Rule 2: hand-written admin-role comparisons allowed in the writer folders. */
@@ -115,6 +160,21 @@ export const RAW_ADMIN_CHECK_ALLOWED: Readonly<Record<string, { count: number; r
       count: 1,
       reason:
         "the last-admin floor locks the set of TARGET admins FOR UPDATE; the actor is gated by canCreateInstitutional",
+    },
+    [`${APP}/revocations/helpers.ts`]: {
+      count: 1,
+      reason:
+        "loadActorAuthority's entry test (admin or govt may revoke at all); what they may revoke is canRevoke's decision",
+    },
+    [`${APP}/revocations/revoke-vet-role.ts`]: {
+      count: 2,
+      reason:
+        "an ORGANISATION membership role: the sole-admin cascade over the TARGET vet's clinics, not the actor's authority",
+    },
+    [`${APP}/revocations/upload-evidence.ts`]: {
+      count: 1,
+      reason:
+        "who may upload their own evidence file (admin or govt); the file does nothing until a revocation that asks canRevoke claims it",
     },
   };
 
@@ -172,7 +232,7 @@ export const ACTION_GUARD_INVENTORY: Readonly<Record<string, Readonly<Record<str
  * that trips means the scanner stopped seeing the subject, not that the code
  * got better. Raise a floor when writers are added; never lower it to pass.
  */
-export const MIN_ACTOR_WRITERS = 24;
+export const MIN_ACTOR_WRITERS = 27;
 export const MIN_GOB_AUDIT_READERS = 1;
 
 // ---------------------------------------------------------------------------
@@ -245,17 +305,19 @@ export function calledNames(node: ts.Node): Set<string> {
   return names;
 }
 
+const ACTOR_NAME_SET: ReadonlySet<string> = new Set(ACTOR_NAMES);
+
 /** Does this function take an actor? (see rule 1) */
 export function takesActor(fn: ts.FunctionLikeDeclaration): boolean {
   const paramNames = new Set<string>();
   for (const p of fn.parameters) {
     if (ts.isIdentifier(p.name)) {
-      if (p.name.text === "actorUserId") return true;
+      if (ACTOR_NAME_SET.has(p.name.text)) return true;
       paramNames.add(p.name.text);
     } else if (ts.isObjectBindingPattern(p.name)) {
       for (const el of p.name.elements) {
         const prop = el.propertyName ?? el.name;
-        if (ts.isIdentifier(prop) && prop.text === "actorUserId") return true;
+        if (ts.isIdentifier(prop) && ACTOR_NAME_SET.has(prop.text)) return true;
       }
     }
   }
@@ -264,7 +326,7 @@ export function takesActor(fn: ts.FunctionLikeDeclaration): boolean {
     forEachDescendant(fn.body, (n) => {
       if (
         ts.isPropertyAccessExpression(n) &&
-        n.name.text === "actorUserId" &&
+        ACTOR_NAME_SET.has(n.name.text) &&
         ts.isIdentifier(n.expression) &&
         paramNames.has(n.expression.text)
       ) {
@@ -357,6 +419,25 @@ function verifiedPredicates(
     }
   }
   return ok;
+}
+
+/** RANK_GUARD, if its definition still compares the target's place. */
+function verifiedRankGuard(
+  parsed: ReadonlyMap<string, ts.SourceFile>,
+  violations: Violation[],
+): string | null {
+  const sf = parsed.get(RANK_MODULE);
+  const fn = sf ? topLevelFunctions(sf).find((f) => f.name === RANK_GUARD) : undefined;
+  const calls = fn ? calledNames(fn.node) : new Set<string>();
+  if (fn && RANK_PLACE_COMPARATORS.every((c) => calls.has(c))) return RANK_GUARD;
+  violations.push({
+    rule: "writer-guard",
+    where: `${RANK_MODULE}#${RANK_GUARD}`,
+    message: fn
+      ? `rank guard no longer compares places (${RANK_PLACE_COMPARATORS.join(", ")})`
+      : "stale RANK_GUARD: no such function",
+  });
+  return null;
 }
 
 const ADMIN_LITERAL = new Set(["admin"]);
@@ -463,8 +544,10 @@ function staleEntries(
 function ruleWriterGuard(parsed: Parsed, violations: Violation[]): string[] {
   const wrappers = verifiedWrappers(parsed, violations);
   const predicates = verifiedPredicates(parsed, violations);
+  const rankGuard = verifiedRankGuard(parsed, violations);
   const accepted = new Set<string>([...BASE_GUARDS, ...wrappers, ...predicates]);
   const exemptSeen = new Set<string>();
+  const rankSeen = new Set<string>();
   const actorWriters: string[] = [];
   for (const [file, sf] of parsed) {
     if (!underAny(file, WRITER_ROOTS) || file === GUARD_MODULE) continue;
@@ -476,7 +559,18 @@ function ruleWriterGuard(parsed: Parsed, violations: Violation[]): string[] {
         continue;
       }
       actorWriters.push(key);
-      if (![...calledNames(fn.node)].some((c) => accepted.has(c))) {
+      const calls = calledNames(fn.node);
+      if (key in RANK_GUARDED_WRITERS) {
+        rankSeen.add(key);
+        if (rankGuard && calls.has(rankGuard)) continue;
+        violations.push({
+          rule: "writer-guard",
+          where: key,
+          message: `a revocation writer that does not ask ${RANK_GUARD} (the target's place against the actor's coverage)`,
+        });
+        continue;
+      }
+      if (![...calls].some((c) => accepted.has(c))) {
         violations.push({
           rule: "writer-guard",
           where: key,
@@ -485,6 +579,14 @@ function ruleWriterGuard(parsed: Parsed, violations: Violation[]): string[] {
       }
     }
   }
+  violations.push(
+    ...staleEntries(
+      "writer-guard",
+      Object.keys(RANK_GUARDED_WRITERS),
+      rankSeen,
+      "stale RANK_GUARDED_WRITERS entry: no exported function taking an actor by that name",
+    ),
+  );
   violations.push(
     ...staleEntries(
       "writer-guard",
@@ -605,6 +707,7 @@ function inScope(file: string, source: string): boolean {
   return (
     underAny(file, WRITER_ROOTS) ||
     file === DOMAIN_MODULE ||
+    file === RANK_MODULE ||
     file.startsWith("app/gob/") ||
     file in ACTION_GUARD_INVENTORY ||
     source.includes("isActiveAdmin")
