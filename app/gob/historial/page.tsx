@@ -47,6 +47,9 @@
 // province (the stamp, surviving a funcionario's deactivation or transfer) —
 // WHAT and WHEN, and a person on it only when that person is a funcionario
 // (auditHistoryRowColumns). The platform admin keeps full detail.
+// The approval request a row names reaches a jurisdiction admin only on their
+// own rows (final review LOW-2, migration 0272): on anyone else's, no id, no
+// token, no "Ver solicitud" link.
 
 import { desc, inArray } from "drizzle-orm";
 import Link from "next/link";
@@ -158,7 +161,7 @@ async function loadGobHistorial({
       actorUserId: projected.actorUserId,
       actorHidden: projected.actorHidden,
       action: auditLog.action,
-      approvalRequestId: auditLog.approvalRequestId,
+      approvalRequestId: projected.approvalRequestId,
       targetUserId: projected.targetUserId,
       targetHidden: projected.targetHidden,
       performedAt: auditLog.performedAt,

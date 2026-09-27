@@ -65,6 +65,11 @@ export function auditRowsInProvince(provinceCode: string): SQL {
  *    are additionally shown only when they are funcionarios
  *    (public.audit_institutional_or_null); `personHidden` says a person was
  *    there and is not shown, so the page does not call them "deleted".
+ *    And the approval request a row names is returned on the viewer's OWN
+ *    rows only (final review LOW-2, migration 0272): the id is a citizen's
+ *    application, and the page turns it into that request's public token.
+ *    A request the appointee may decide is reached from their queue, whose
+ *    scope check is the one that answers; the trail only says it happened.
  *
  * The redaction runs IN SQL: third-party data never reaches the server
  * component, so no render branch can leak it.
@@ -72,6 +77,7 @@ export function auditRowsInProvince(provinceCode: string): SQL {
 export function auditHistoryRowColumns(scope: AuditHistoryScope): {
   actorUserId: SQL<string | null>;
   targetUserId: SQL<string | null>;
+  approvalRequestId: SQL<string | null>;
   payload: SQL<unknown>;
   actorHidden: SQL<boolean>;
   targetHidden: SQL<boolean>;
@@ -80,6 +86,7 @@ export function auditHistoryRowColumns(scope: AuditHistoryScope): {
     return {
       actorUserId: sql<string | null>`${auditLog.actorUserId}`,
       targetUserId: sql<string | null>`${auditLog.targetUserId}`,
+      approvalRequestId: sql<string | null>`${auditLog.approvalRequestId}`,
       payload: sql<unknown>`${auditLog.payload}`,
       actorHidden: sql<boolean>`false`,
       targetHidden: sql<boolean>`false`,
@@ -93,6 +100,7 @@ export function auditHistoryRowColumns(scope: AuditHistoryScope): {
     return {
       actorUserId: sql<string | null>`${auditLog.actorUserId}`,
       targetUserId: sql<string | null>`${auditLog.targetUserId}`,
+      approvalRequestId: sql<string | null>`${auditLog.approvalRequestId}`,
       payload,
       actorHidden: sql<boolean>`false`,
       targetHidden: sql<boolean>`false`,
@@ -103,6 +111,10 @@ export function auditHistoryRowColumns(scope: AuditHistoryScope): {
   return {
     actorUserId: sql<string | null>`${person(auditLog.actorUserId)}::text`,
     targetUserId: sql<string | null>`${person(auditLog.targetUserId)}::text`,
+    // Same rule as the trail (0272): a NULL, never the id, on anyone else's row.
+    approvalRequestId: sql<
+      string | null
+    >`(case when ${own} then ${auditLog.approvalRequestId} end)::text`,
     payload,
     actorHidden: sql<boolean>`(${auditLog.actorUserId} is not null and ${person(auditLog.actorUserId)} is null)`,
     targetHidden: sql<boolean>`(${auditLog.targetUserId} is not null and ${person(auditLog.targetUserId)} is null)`,
@@ -174,6 +186,13 @@ export function buildAuditHistoryWhere(
  * In both branches, a selected `actorFilter` not already in the list is
  * fetched and appended so the dropdown still shows the selected name after
  * pagination narrows the page's own actor set.
+ *
+ * A govt viewer (final review LOW-3) gets that extra name only when the id
+ * is their own or names a funcionario (public.audit_institutional_or_null,
+ * the same test the rows and the ?actor= filter apply): the URL is theirs to
+ * write, and an arbitrary citizen's id must not come back as a name. Any
+ * other id stays out of the list — the filter itself already answers nothing
+ * for it.
  */
 export async function resolveAuditHistoryActorOptions(
   scope: AuditHistoryScope,
@@ -196,10 +215,20 @@ export async function resolveAuditHistoryActorOptions(
     options = pageActorIds.map((id) => ({ id, name: namesById.get(id) ?? "Desconocido" }));
   }
   if (actorFilter && !options.find((o) => o.id === actorFilter)) {
+    const visible =
+      scope.kind === "govt"
+        ? and(
+            eq(profiles.id, actorFilter),
+            or(
+              ...(scope.viewerId ? [eq(profiles.id, scope.viewerId)] : []),
+              sql`public.audit_institutional_or_null(${profiles.id}) is not null`,
+            ),
+          )
+        : eq(profiles.id, actorFilter);
     const [extra] = await db
       .select({ id: profiles.id, displayName: profiles.displayName })
       .from(profiles)
-      .where(eq(profiles.id, actorFilter))
+      .where(visible)
       .limit(1);
     if (extra) options.push({ id: extra.id, name: extra.displayName });
   }

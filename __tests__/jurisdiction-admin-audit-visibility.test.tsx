@@ -14,6 +14,10 @@
 //   4. /gob/historial — the history query AND the rendered page, driven
 //      through its real data path.
 //
+// Final review follow-ups (migration 0272): the approval request someone
+// else's row names never reaches the appointee (LOW-2), and an arbitrary id in
+// ?actor= never comes back as a name unless it is a funcionario's (LOW-3).
+//
 // The negative fixture is the PO's own: a `pii_queried` row whose query is
 // "Juan Perez", written by a funcionario of the appointee's province.
 //
@@ -93,6 +97,7 @@ import {
   type AuditHistoryScope,
   auditHistoryRowColumns,
   buildAuditHistoryWhere,
+  resolveAuditHistoryActorOptions,
 } from "@/lib/infra/audit-history-query";
 import { fetchJurisdictionActorIds } from "@/lib/infra/govt-audit-scope";
 
@@ -193,13 +198,15 @@ async function writeAudit(
     action: string;
     payload?: Record<string, unknown>;
     targetUser?: string | null;
+    approvalRequest?: string | null;
   },
 ): Promise<{ id: string; province_code: string | null }> {
   const [row] = await rows<{ id: string; province_code: string | null }>(
     tx,
-    sql`insert into public.audit_log (actor_user_id, action, target_user_id, payload)
+    sql`insert into public.audit_log
+          (actor_user_id, action, target_user_id, approval_request_id, payload)
         values (${a.actor}::uuid, ${a.action}, ${a.targetUser ?? null}::uuid,
-                ${JSON.stringify(a.payload ?? {})}::jsonb)
+                ${a.approvalRequest ?? null}::uuid, ${JSON.stringify(a.payload ?? {})}::jsonb)
         returning id::text as id, province_code`,
   );
   return row;
@@ -257,6 +264,7 @@ async function historyQuery(tx: Tx, scope: AuditHistoryScope, actorFilter: strin
       actorHidden: cols.actorHidden,
       targetUserId: cols.targetUserId,
       targetHidden: cols.targetHidden,
+      approvalRequestId: cols.approvalRequestId,
       payload: cols.payload,
     })
     .from(auditLog)
@@ -456,6 +464,125 @@ describe("M1 — the appointee reads WHAT and WHEN of their province, never a th
       expect(html).not.toContain(SEARCHED);
       expect(html).not.toContain(HMAC);
       expect(html).not.toContain("JA5 probe citizen");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Final review LOW-2 / LOW-3 — the request a row names, and the ?actor= name
+// ---------------------------------------------------------------------------
+
+/** A citizen's pending matrícula application in Mendoza; returns its id and token. */
+async function insertRequest(tx: Tx, applicant: string): Promise<{ id: string; token: string }> {
+  const token = `JA-REQ-${randomUUID()}`;
+  const [row] = await rows<{ id: string }>(
+    tx,
+    sql`insert into public.approval_requests
+          (public_token, type, applicant_user_id, target_user_id,
+           jurisdiction_province, jurisdiction_locality, payload)
+        values (${token}, 'role_upgrade_vet', ${applicant}::uuid, ${applicant}::uuid,
+                'Mendoza', 'Godoy Cruz',
+                '{"payload_version":1,"matricula_number":"MN-JA-PROBE"}'::jsonb)
+        returning id::text as id`,
+  );
+  return { id: row.id, token };
+}
+
+describe("LOW-2 — the approval request of someone else's row never reaches the appointee", () => {
+  it("through the trail, the history query and the rendered page; their own row keeps its link", async () => {
+    await inRolledBackTx(async (tx) => {
+      const w = await world(tx);
+      const peerRequest = await insertRequest(tx, w.citizen);
+      const ownRequest = await insertRequest(tx, w.citizen2);
+      // A funcionario opens a citizen's application; the citizen withdraws
+      // it; the appointee opens another one.
+      const decided = await writeAudit(tx, {
+        actor: w.mzaPlain,
+        action: "request_viewed",
+        approvalRequest: peerRequest.id,
+      });
+      const withdrawn = await writeAudit(tx, {
+        actor: w.citizen,
+        action: "approval_request_withdrawn_by_applicant",
+        approvalRequest: peerRequest.id,
+        payload: { province: "Mendoza" },
+      });
+      const own = await writeAudit(tx, {
+        actor: w.mza,
+        action: "request_viewed",
+        approvalRequest: ownRequest.id,
+      });
+      for (const row of [decided, withdrawn, own]) expect(row.province_code).toBe("AR-M");
+
+      // 1. The trail (0272).
+      const trail = await asUser<{ id: string; approval_request_id: string | null }>(
+        tx,
+        w.mza,
+        sql`select id::text as id, approval_request_id::text as approval_request_id
+              from public.jurisdiction_admin_audit_trail(null, null, 500)`,
+      );
+      const inTrail = new Map(trail.map((r) => [r.id, r.approval_request_id]));
+      expect(inTrail.has(decided.id)).toBe(true);
+      expect(inTrail.get(decided.id)).toBeNull();
+      expect(inTrail.has(withdrawn.id)).toBe(true);
+      expect(inTrail.get(withdrawn.id)).toBeNull();
+      expect(inTrail.get(own.id)).toBe(ownRequest.id);
+      expect(JSON.stringify(trail)).not.toContain(peerRequest.id);
+
+      // 2. The /gob/historial query.
+      const scope: AuditHistoryScope = {
+        kind: "govt",
+        actorIds: await fetchJurisdictionActorIds([{ province: "Mendoza", locality: "" }]),
+        viewerId: w.mza,
+        provinceCode: "AR-M",
+      };
+      const history = new Map((await historyQuery(tx, scope)).map((r) => [r.id, r]));
+      expect(history.get(decided.id)).toMatchObject({ approvalRequestId: null });
+      expect(history.get(withdrawn.id)).toMatchObject({ approvalRequestId: null });
+      expect(history.get(own.id)?.approvalRequestId).toBe(ownRequest.id);
+      // The platform admin keeps the request.
+      const full = new Map((await historyQuery(tx, { kind: "admin" })).map((r) => [r.id, r]));
+      expect(full.get(decided.id)?.approvalRequestId).toBe(peerRequest.id);
+
+      // 3. The rendered page.
+      state.session = {
+        user: { id: w.mza },
+        profile: { id: w.mza, role: "govt" },
+        jurisdictions: [{ province: "Mendoza", locality: "" }],
+      };
+      const element = await GobHistorialPage({
+        searchParams: Promise.resolve({ period: "custom", from: "2000-01-01", to: "2099-12-31" }),
+      });
+      const html = renderToStaticMarkup(element as React.ReactElement);
+      expect(html).toContain(`/gob/cola/${ownRequest.token}`);
+      expect(html).not.toContain(peerRequest.token);
+      expect(html).not.toContain(peerRequest.id.slice(0, 8));
+    });
+  });
+});
+
+describe("LOW-3 — ?actor= names only a funcionario (or the viewer)", () => {
+  it("a citizen's id in the URL never comes back as a name to a govt viewer; the platform admin is unchanged", async () => {
+    await inRolledBackTx(async (tx) => {
+      const w = await world(tx);
+      const appointee: AuditHistoryScope = {
+        kind: "govt",
+        actorIds: [w.mzaPlain],
+        viewerId: w.mza,
+        provinceCode: "AR-M",
+      };
+      const plain: AuditHistoryScope = { kind: "govt", actorIds: [w.mzaPlain], viewerId: w.sj };
+      const names = async (scope: AuditHistoryScope, actor: string) =>
+        (await resolveAuditHistoryActorOptions(scope, [], new Map(), actor)).map((o) => o.name);
+
+      for (const scope of [appointee, plain]) {
+        expect(await names(scope, w.citizen)).toEqual(["JA5 probe Mendoza funcionario"]);
+      }
+      // A funcionario outside the peer list, and the viewer themself: named.
+      expect(await names(appointee, w.sj)).toContain("JA5 probe San Juan funcionario");
+      expect(await names(appointee, w.mza)).toContain("JA5 probe Mendoza appointee");
+      // Universal scope keeps resolving any id (the platform admin).
+      expect(await names({ kind: "admin" }, w.citizen)).toEqual(["JA5 probe citizen Ana"]);
     });
   });
 });
