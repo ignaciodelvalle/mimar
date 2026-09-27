@@ -266,7 +266,9 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                         {/* The real mark, decorative: the issuing line beside
                             it is the text. */}
                         <span className="lp-hcard-mark" aria-hidden="true">
-                          <img src="/logo-mimar-mark.svg" alt="" width={18} height={18} />
+                          {/* <=24px surface: the small-size cut, not the main
+                              mark scaled down — see public/logo-mimar-mark-small.svg. */}
+                          <img src="/logo-mimar-mark-small.svg" alt="" width={18} height={18} />
                         </span>
                         <span>
                           <span className="lp-hcard-issuer-name">Credencial miMAR</span>

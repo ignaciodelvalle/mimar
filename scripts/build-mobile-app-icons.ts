@@ -297,11 +297,26 @@ export const RATIO_LAUNCHER = 0.68;
  * How much of a MASKABLE canvas the plaque covers — Android's adaptive
  * foreground layer, and the web manifest's `purpose: "maskable"` icon.
  *
- * CHOSEN against Android's two circles: 0.53 puts the plaque's circumradius at
- * 32.45dp of a 108dp layer, inside both the 72dp guaranteed mask and the 66dp
- * content keyline. See the header for the full derivation.
+ * RECOMPUTED for round 3 ("chaflán 10, pata +6%", 2026-09-27). This ratio is
+ * NOT a free-standing decision — it answers to a circumradius/ink-width
+ * constant the header calls out as fixed by the chamfer, and the chamfer
+ * moved. Round 1/2's 21-unit corner cut put that constant at 0.5667 (the
+ * farthest vertex sits 51 of 90 ink-units from centre); round 3's 10-unit cut
+ * leaves more of the original square corner standing, which pushes the same
+ * vertex out to sqrt(35²+45²) = 57.01 of 90, i.e. 0.6334 — a ~12% jump. The
+ * OLD 0.53 was tuned against 0.5667 (32.45dp of 108, inside both Android
+ * circles); left unchanged against 0.6334 it measures 0.3366 of the canvas —
+ * OVER the 72dp guaranteed-mask radius (0.333) and further over the 66dp
+ * content keyline (0.3056) — a real regression `__tests__/pwa-icons.test.ts`
+ * caught the moment the new mark was regenerated, not a hypothetical one.
+ *
+ * 0.47 targets the SAME circumradius fraction of canvas the old ratio held
+ * (0.53 × 0.5667 ≈ 0.300, now 0.47 × 0.6334 ≈ 0.298), which lands at 32.17dp
+ * of 108: 3.83dp inside the 36dp guaranteed-mask radius, 0.83dp inside the
+ * 33dp content keyline — comparable margins to before. See the header for
+ * the full two-circle derivation; only the chamfer constant changed.
  */
-export const RATIO_MASKABLE = 0.53;
+export const RATIO_MASKABLE = 0.47;
 
 /**
  * How much of Play's 1024×500 feature graphic the plaque covers, BY HEIGHT.
