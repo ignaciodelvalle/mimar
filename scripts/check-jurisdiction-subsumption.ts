@@ -94,7 +94,7 @@ const KNOWN_EXCEPTIONS = new Set<string>([
   // subsumes from the scope-owner side. Swapping it in as-is would still
   // under-count (the groupBy+exact-key lookup below it would silently drop
   // a widened match). Flagged for a follow-up bidirectional helper.
-  "app/(app)/cuenta/desactivar/page.tsx:74",
+  "app/(app)/cuenta/desactivar/page.tsx:76",
 ]);
 
 // Shape 1 — in-memory `===` chain (order-tolerant, newline-tolerant). Kept

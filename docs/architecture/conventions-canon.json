@@ -7102,7 +7102,7 @@
       "partialShape": "declared-limit",
       "clause": "R5",
       "statusBasis": "scripts/check-jurisdiction-subsumption.ts:162-168 states the limit inside the rule's own scope: the scope-field shape only counts when REQUIRE_SCOPE_TOKEN (/jurisdiction/i, :169) appears near the predicate, so an assignment list named `scopes` or `assignments` slips past. :124-134 records that this fence stayed green through a real instance of its class (resolveScopedJurisdictions, ~32 /gob screens) until Shape 4 was added 2026-08-17. Hits exit 1 at :251.",
-      "notes": "Also carries one live single-site exception (:89-98, app/(app)/cuenta/desactivar/page.tsx:74) and gates the builder shapes on a nearby .map( (:147). The enumerated shapes themselves are hard-fail with no baseline. The prior basis quoted only the header's bug-class description and never reached the KNOWN LIMIT block.",
+      "notes": "Also carries one live single-site exception (:89-98, app/(app)/cuenta/desactivar/page.tsx:76) and gates the builder shapes on a nearby .map( (:147). The enumerated shapes themselves are hard-fail with no baseline. The prior basis quoted only the header's bug-class description and never reached the KNOWN LIMIT block.",
       "confidence": 0.75,
       "verifiedAt": "d7dbf25f7"
     },
