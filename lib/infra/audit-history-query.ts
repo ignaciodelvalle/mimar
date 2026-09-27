@@ -188,11 +188,11 @@ export function buildAuditHistoryWhere(
  * pagination narrows the page's own actor set.
  *
  * A govt viewer (final review LOW-3) gets that extra name only when the id
- * is their own or names a funcionario (public.audit_institutional_or_null,
- * the same test the rows and the ?actor= filter apply): the URL is theirs to
- * write, and an arbitrary citizen's id must not come back as a name. Any
- * other id stays out of the list — the filter itself already answers nothing
- * for it.
+ * names a funcionario (public.audit_institutional_or_null, the same test the
+ * rows and the ?actor= filter apply; the viewer is one, so "mi actividad"
+ * keeps its name): the URL is theirs to write, and an arbitrary citizen's id
+ * must not come back as a name. Any other id stays out of the list — the
+ * filter itself already answers nothing for it.
  */
 export async function resolveAuditHistoryActorOptions(
   scope: AuditHistoryScope,
@@ -219,10 +219,7 @@ export async function resolveAuditHistoryActorOptions(
       scope.kind === "govt"
         ? and(
             eq(profiles.id, actorFilter),
-            or(
-              ...(scope.viewerId ? [eq(profiles.id, scope.viewerId)] : []),
-              sql`public.audit_institutional_or_null(${profiles.id}) is not null`,
-            ),
+            sql`public.audit_institutional_or_null(${profiles.id}) is not null`,
           )
         : eq(profiles.id, actorFilter);
     const [extra] = await db
