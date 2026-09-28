@@ -214,7 +214,7 @@
     "supabase": "^2.0.0",
     "tailwindcss": "^4.0.0",
     "tsx": "^4.22.0",
-    "typescript": "^5.7.0",
+    "typescript": "^7.0.2",
     "vite": "~8.0.16",
     "vitest": "^4.1.11"
   },
