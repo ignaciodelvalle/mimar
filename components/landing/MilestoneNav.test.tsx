@@ -248,7 +248,7 @@ describe("<MilestoneNav> — the click latch (the CTA advances from what it NAVI
     // Manual scroll well past the parked position: `idea` crosses the line, so
     // the CTA follows the spy again and offers the milestone after it.
     scrollTo(1700, geometryAt(1700));
-    expect(ctaName()).toBe("Continuar a la próxima sección: Cuando no es un buen día");
+    expect(ctaName()).toBe("Continuar a la próxima sección: Para cada situación");
   });
 
   it("releases the latch when a scroll RECEDES from the target mid-flight (a hand on the page)", () => {

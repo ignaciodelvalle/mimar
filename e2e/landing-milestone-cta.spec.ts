@@ -7,9 +7,10 @@
 // worktree has no server to point playwright at.
 //
 // What it guards, and why these exact assertions:
-//   1. The CTA is VISIBLE at 390px (the most common width in Argentina) and
-//      at 1440px, and carries a proper accessible name (role=button +
-//      aria-label that CONTAINS the visible "Continuar" — WCAG 2.5.3).
+//   1. The CTA is VISIBLE at 1440px and carries a proper accessible name
+//      (role=button + aria-label that CONTAINS the visible "Continuar" — WCAG
+//      2.5.3). At 390px it is HIDDEN (critique 2026-09-29, m7: below 940px
+//      it covered the content being read).
 //   2. It NEVER intersects the sticky nav's auth CTAs. The
 //      landing's hardest-won guarantee is the 320–561px sign-in entry point
 //      (e2e/landing-signin-reachable.spec.ts, defect D.7) — a new floating
@@ -103,8 +104,27 @@ async function waitForScrollToSettle(page: Page): Promise<void> {
   );
 }
 
-// 390 = most common width in Argentina; 1440 = common desktop.
-for (const width of [390, 1440]) {
+// Desktop only since the 2026-09-29 critique (m7): below 940px the fixed pill
+// covered the bottom-right of what was being read. At 390 — the most common
+// width in Argentina — it must be GONE, and gone without costing the page its
+// width (the no-sideways-scroll clause stays).
+test("milestone CTA is hidden on a phone (390px) and adds no sideways scroll", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  // Attached (it hydrated), just not displayed — otherwise this passes on a
+  // page where the component never mounted at all.
+  const cta = page.locator('[data-section="milestone-cta"]');
+  await expect(cta).toBeAttached();
+  await expect(cta).toBeHidden();
+  const scrollsSideways = await page.evaluate(() => {
+    const d = document.documentElement;
+    return d.scrollWidth - d.clientWidth > 1;
+  });
+  expect(scrollsSideways, "the landing scrolls horizontally at 390px").toBe(false);
+});
+
+// 1440 = common desktop.
+for (const width of [1440]) {
   test(`milestone CTA is visible, named, and clear of the nav CTAs at ${width}px`, async ({
     page,
   }) => {
@@ -172,7 +192,7 @@ const MILESTONE_NAMES = [
   "Emergencias, sin cuenta",
   "El vínculo",
   "Una mascota, muchas manos",
-  "Cuando no es un buen día",
+  "Para cada situación",
   "Empezar",
 ];
 

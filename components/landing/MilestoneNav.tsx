@@ -53,7 +53,7 @@ export const MILESTONES: LandingMilestone[] = [
   { id: "crisis", name: "Emergencias, sin cuenta" },
   { id: "vinculo", name: "El vínculo" },
   { id: "idea", name: "Una mascota, muchas manos" },
-  { id: "features", name: "Cuando no es un buen día" },
+  { id: "features", name: "Para cada situación" },
   { id: "empezar", name: "Empezar" },
 ];
 

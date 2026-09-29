@@ -1,5 +1,9 @@
 // Features as life moments (benchmark L6, LifeSG naming — no law citations
-// in copy). "Y cuando no es un buen día" band, 6 cards.
+// in copy). "Para cada situación" band, 6 cards.
+//
+// Retitled 2026-09-29 (critique M10): it was "Y cuando no es un buen día",
+// over a set that includes adopting and a change of family, which are not
+// bad days. The title now covers what the cards actually are.
 
 import { Icon } from "@/components/Icon";
 import { LIFE_MOMENTS } from "@/components/landing/landing-content";
@@ -10,7 +14,7 @@ export function FeaturesSection() {
     <section className="lp-section lp-section--stripe" id="features" data-section="life-moments">
       <div className="lp-wrap">
         <div className="lp-featband-h lp-reveal">
-          <h2 className="lp-display text-[clamp(28px,3.6vw,44px)]">Y cuando no es un buen día</h2>
+          <h2 className="lp-display text-[clamp(28px,3.6vw,44px)]">Para cada situación</h2>
           <span className="lp-lead text-base">
             Lo serio también está cubierto — de punta a punta.
           </span>

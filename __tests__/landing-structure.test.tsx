@@ -32,11 +32,24 @@ vi.mock("next/link", () => ({
   }) => React.createElement("a", { href, className, ...rest }, children),
 }));
 
+// The bond band's photo is a static import; Vite hands tests a bare URL
+// string, which next/image rejects for placeholder="blur". Give it the shape
+// Next's loader produces.
+vi.mock("@/public/landing/portada.jpg", () => ({
+  default: {
+    src: "/landing/portada.jpg",
+    width: 1600,
+    height: 900,
+    blurDataURL: "data:image/jpeg;base64,AA==",
+  },
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: vi.fn(() => ({ push: vi.fn() })),
   usePathname: vi.fn(() => "/"),
 }));
 
+import { BondBand } from "@/components/landing/BondBand";
 import { CrisisBand } from "@/components/landing/CrisisBand";
 import { EmpezarSection } from "@/components/landing/EmpezarSection";
 import { FaqSection } from "@/components/landing/FaqSection";
@@ -368,7 +381,23 @@ describe("story — CastFila + 6 chapters + rail", () => {
   });
 });
 
+describe("bond band — a real heading with somewhere to go (m4)", () => {
+  it("is an H2 naming its section, and its standfirst links to the story", () => {
+    const html = renderToStaticMarkup(<BondBand />);
+    expect(html).toMatch(/<h2 id="vinculo-titulo"[^>]*>Un vínculo para toda la vida\.<\/h2>/);
+    expect(html).toContain('aria-labelledby="vinculo-titulo"');
+    expect(html).toContain('href="#idea"');
+    expect(html).not.toContain("Todo lo que miMAR protege empieza acá.");
+  });
+});
+
 describe("life moments + FAQ + trust row", () => {
+  it("titles the band for every situation, not only bad days (M10)", () => {
+    const html = renderToStaticMarkup(<FeaturesSection />);
+    expect(html).toContain("Para cada situación");
+    expect(html).not.toContain("no es un buen día");
+  });
+
   it("renders the 6 life-moment cards without law citations", () => {
     const html = renderToStaticMarkup(<FeaturesSection />);
     expect(html).toContain("Vi un caso de maltrato");

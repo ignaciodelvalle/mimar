@@ -312,6 +312,14 @@
     box-shadow: var(--shadow-lg);
   }
 }
+/* Desktop only (critique 2026-09-29, m7). On a phone the fixed pill sat over
+   the bottom-right of whatever was being read, and a thumb already scrolls
+   faster than any "next" button. Below 940px the page is plain scroll. */
+@media (max-width: 940px) {
+  .lp .lp-milestone-cta {
+    display: none;
+  }
+}
 .lp .lp-milestone-cta .lp-milestone-ar {
   transition: transform var(--motion-base);
 }
@@ -1344,6 +1352,14 @@
   font-size: clamp(15px, 1.5vw, 18px);
   line-height: 1.5;
   color: rgba(255, 255, 255, 0.9);
+}
+.lp .lp-bond-sub a {
+  display: inline-block;
+  padding-block: 3px;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 @media (max-width: 640px) {
   .lp .lp-bond {
@@ -2854,6 +2870,19 @@
   font-size: 14px;
   color: var(--color-ln-ink-2);
   text-decoration: none;
+}
+/* Fingers, not cursors (critique 2026-09-29, m5): 17px-tall links passed WCAG
+   2.5.8 on spacing alone. On a phone each one gets a 36px target, and the
+   list's gap shrinks to keep the column the same length. */
+@media (max-width: 820px) {
+  .lp .lp-foot ul {
+    gap: 0;
+  }
+  .lp .lp-foot ul a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+  }
 }
 @media (hover: hover) {
   .lp .lp-foot ul a:hover {
