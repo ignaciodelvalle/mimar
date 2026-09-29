@@ -15,23 +15,42 @@
 //   2. weight_recorded, when the vet weighed the animal — its own event, so
 //      there is ONE weight source; the pet's weight cache is re-derived from
 //      the spine.
-// Both rows carry the visit's id explicitly and share the caller's
+//   3. symptom_observed, ONLY when the motivo de consulta + hallazgos match
+//      the symptom catalogue (matchSymptoms): reported as `vet`, through the
+//      same writer an owner's symptom goes through, inside this transaction.
+//      Its outbreak signals route to the authority as always; its
+//      notifications are returned for the caller to flush after commit.
+// Every vet row carries the visit's id explicitly and shares the caller's
 // clientIdempotencyKey: the idempotency index is per (pet, event_type, key),
-// so one key covers the pair and an offline client can replay it whole.
+// so one key covers the set and an offline client can replay it whole.
 //
 // Order inside the visit is a data property, not a gate: an intake recorded
 // after a vaccine in the same visit is accepted (design decision; PO default).
 
+import { matchSymptoms } from "@/lib/domain/symptom-matcher";
 import { validateEventPayload } from "@/lib/events/event-schemas";
 
 import type { EventsRepository } from "../../infrastructure/events-repository";
-import type { RecordedEvent, UseCaseResult } from "../types";
+import { createSymptomObservedWriter } from "../surveillance/symptom-observed-use-case";
+import type { NewNotification, RecordedEvent, UseCaseResult } from "../types";
 import type { ConditionAtIntakeFields } from "./condition-at-intake-form";
 
 export const INTAKE_EVENT_TYPE = "condition_at_intake_recorded";
 
 export type RecordConditionAtIntakeInput = {
-  pet: { id: string };
+  /** What the symptom writer needs to route a signal, when the text matches. */
+  pet: {
+    id: string;
+    publicToken: string;
+    name: string;
+    species: string;
+    jurisdictionCountry: string;
+    jurisdictionProvince: string | null;
+    jurisdictionLocality: string | null;
+    localityId?: string | null;
+    placeMethod?: string | null;
+    rabiesObservationStatus: string | null;
+  };
   user: { id: string };
   eventAuthorship: {
     authorRole: string;
@@ -47,12 +66,14 @@ export type RecordConditionAtIntakeInput = {
 export type RecordedIntake = RecordedEvent & {
   /** The sibling weight_recorded, when the vet weighed the animal. */
   weightEventId: string | null;
+  /** The vet-reported symptom_observed, when the text matched the catalogue. */
+  symptomEventId: string | null;
 };
 
 type Deps = {
   repo: Pick<
     EventsRepository,
-    "insertEventIdempotent" | "findVisitEventOfType" | "updateWeightProjection"
+    "insertEvent" | "insertEventIdempotent" | "findVisitEventOfType" | "updateWeightProjection"
   >;
   transaction: <T>(cb: (tx: unknown) => Promise<T>) => Promise<T>;
 };
@@ -88,6 +109,12 @@ export async function recordConditionAtIntake(
   });
   const key = fields.clientIdempotencyKey;
   const now = new Date();
+  const symptomText = [fields.presentingComplaint, fields.findings]
+    .filter((t): t is string => Boolean(t))
+    .join(". ");
+  const symptomsMatch =
+    symptomText.length > 0 && matchSymptoms(symptomText, pet.species).length > 0;
+  const notifications: NewNotification[] = [];
 
   const outcome = await transaction(async (tx) => {
     const executor = tx as Executor;
@@ -138,20 +165,70 @@ export async function recordConditionAtIntake(
       }
     }
 
-    return { kind: "recorded" as const, eventId: event.id, weightEventId };
+    let symptomEventId: string | null = null;
+    if (symptomsMatch) {
+      const symptom = await createSymptomObservedWriter(
+        {
+          petId: pet.id,
+          petPublicToken: pet.publicToken,
+          petName: pet.name,
+          petSpecies: pet.species,
+          petJurisdictionCountry: pet.jurisdictionCountry,
+          petJurisdictionProvince: pet.jurisdictionProvince,
+          petJurisdictionLocality: pet.jurisdictionLocality,
+          ...(pet.localityId !== undefined ? { petLocalityId: pet.localityId } : {}),
+          ...(pet.placeMethod !== undefined ? { petPlaceMethod: pet.placeMethod } : {}),
+          rabiesObservationStatus: pet.rabiesObservationStatus,
+          recordedByUserId: user.id,
+          eventAuthorship,
+          freeText: symptomText,
+          severity: null,
+          onsetAt: null,
+          clientIdempotencyKey: key,
+          reporterRole: "vet",
+          visitId: visit.id,
+          now,
+        },
+        {
+          repo,
+          // The writer's transaction IS this one: the symptom commits or rolls
+          // back with the intake.
+          transaction: (cb) => cb(tx),
+          flushNotifications: async (pending) => {
+            notifications.push(...pending);
+          },
+        },
+      );
+      // A failed symptom write leaves this transaction aborted; rethrow so the
+      // whole intake rolls back instead of committing half of it.
+      if (!symptom.ok) throw new Error(symptom.error);
+      symptomEventId = symptom.symptomEventId;
+    }
+
+    return { kind: "recorded" as const, eventId: event.id, weightEventId, symptomEventId };
   });
 
   if (outcome.kind === "already_recorded") return { ok: false, error: INTAKE_ALREADY_RECORDED };
   if (outcome.kind === "replay") {
     return {
       ok: true,
-      value: { eventId: outcome.eventId, wasDuplicate: true, weightEventId: null },
+      value: {
+        eventId: outcome.eventId,
+        wasDuplicate: true,
+        weightEventId: null,
+        symptomEventId: null,
+      },
       notifications: [],
     };
   }
   return {
     ok: true,
-    value: { eventId: outcome.eventId, wasDuplicate: false, weightEventId: outcome.weightEventId },
-    notifications: [],
+    value: {
+      eventId: outcome.eventId,
+      wasDuplicate: false,
+      weightEventId: outcome.weightEventId,
+      symptomEventId: outcome.symptomEventId,
+    },
+    notifications,
   };
 }

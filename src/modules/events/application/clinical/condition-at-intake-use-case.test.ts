@@ -57,8 +57,10 @@ async function freshVisit(): Promise<{ petId: string; visitId: string }> {
 function fields(overrides: Partial<ConditionAtIntakeFields> = {}): ConditionAtIntakeFields {
   return {
     generalCondition: "fair",
-    presentingComplaint: "Decaimiento",
-    findings: "Deshidratación leve",
+    // Deliberately matches nothing in the symptom catalogue: the symptom
+    // path has its own cases below.
+    presentingComplaint: "Control anual",
+    findings: "Sin particularidades",
     vitals: { temperature_c: 39.1, hydration: "mild" },
     weightKg: "14.20",
     clientIdempotencyKey: randomUUID(),
@@ -72,7 +74,16 @@ function input(
   overrides: Partial<RecordConditionAtIntakeInput> = {},
 ): RecordConditionAtIntakeInput {
   return {
-    pet: { id: petId },
+    pet: {
+      id: petId,
+      publicToken: `VISIT-PET-${petId.slice(0, 8)}`,
+      name: "Visita",
+      species: "dog",
+      jurisdictionCountry: "AR",
+      jurisdictionProvince: null,
+      jurisdictionLocality: null,
+      rabiesObservationStatus: null,
+    },
     user: { id: vet },
     eventAuthorship: { authorRole: "vet", authorOrganizationId: org, authorVerified: true },
     visit: { id: visitId, organizationId: org, modality: "home" },
@@ -126,9 +137,9 @@ describe("recordConditionAtIntake — the write", () => {
       payload_version: 1,
       modality: "home",
       general_condition: "fair",
-      presenting_complaint: "Decaimiento",
+      presenting_complaint: "Control anual",
       vitals: { temperature_c: 39.1, hydration: "mild" },
-      findings: "Deshidratación leve",
+      findings: "Sin particularidades",
     });
     expect(intake?.payload).not.toHaveProperty("weight_kg");
 
@@ -222,5 +233,44 @@ describe("recordConditionAtIntake — who may write", () => {
     const result = await recordConditionAtIntake(input(petId, visitId, { eventAuthorship }), deps);
     expect(result).toEqual({ ok: false, error: INTAKE_NOT_A_VERIFIED_VET });
     expect(await rowsOf(petId)).toEqual([]);
+  });
+});
+
+describe("recordConditionAtIntake — the vet symptom path", () => {
+  it("text that matches the catalogue emits symptom_observed as the VET, in the visit, with the shared key", async () => {
+    const { petId, visitId } = await freshVisit();
+    const req = input(petId, visitId, {
+      fields: fields({ presentingComplaint: "Está decaído desde ayer", weightKg: null }),
+    });
+    const result = await recordConditionAtIntake(req, deps);
+    if (!result.ok) throw new Error(result.error);
+    expect(result.value.symptomEventId).not.toBeNull();
+
+    const symptom = (await rowsOf(petId)).find((r) => r.eventType === "symptom_observed");
+    expect(symptom?.id).toBe(result.value.symptomEventId);
+    expect(symptom?.visitId).toBe(visitId);
+    expect(symptom?.key).toBe(req.fields.clientIdempotencyKey);
+    expect(symptom?.payload).toMatchObject({
+      reporter_role: "vet",
+      source: "libreta",
+      matched_symptom_codes: expect.arrayContaining(["lethargy"]),
+    });
+  });
+
+  it("text that matches nothing emits no symptom_observed", async () => {
+    const { petId, visitId } = await freshVisit();
+    const result = await recordConditionAtIntake(input(petId, visitId), deps);
+    expect(result).toMatchObject({ ok: true, value: { symptomEventId: null } });
+    expect((await rowsOf(petId)).some((r) => r.eventType === "symptom_observed")).toBe(false);
+  });
+
+  it("a replay does not emit the symptom twice", async () => {
+    const { petId, visitId } = await freshVisit();
+    const req = input(petId, visitId, {
+      fields: fields({ findings: "Apagado, sin energía", weightKg: null }),
+    });
+    await recordConditionAtIntake(req, deps);
+    await recordConditionAtIntake(req, deps);
+    expect((await rowsOf(petId)).filter((r) => r.eventType === "symptom_observed")).toHaveLength(1);
   });
 });

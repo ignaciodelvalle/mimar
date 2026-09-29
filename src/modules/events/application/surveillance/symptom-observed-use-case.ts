@@ -16,7 +16,9 @@
 //       routeOutbreakSignalNotifications +
 //       maybeNotifyOwnersOfPublicAlert
 //   - Rabies escalation: rabiesObservationStatus=in_progress + rabies_suspected high_count>=1
-//       → route with escalation=true + push urgent owner notification.
+//       → route with escalation=true + push urgent owner notification — the
+//       push only when reporterRole is `owner` (vet-visit-record: the vet
+//       intake path reports as `vet`, and the push is worded for an owner).
 //   - pendingNotifications flushed by caller (flushNotifications dep).
 //   - Result: { ok: true, symptomEventId, signalEventIds, wasDuplicate }
 
@@ -66,6 +68,22 @@ export type CreateSymptomObservedWriterParams = {
    * When null/absent, falls back to plain insertEvent (preserves headless writer path).
    */
   clientIdempotencyKey?: string | null;
+  /**
+   * Who is reporting what they saw (vet-visit-record, 2026-09-29). Defaults to
+   * `owner`, the only reporter this writer had until the vet intake path. The
+   * owner-facing rabies escalation push ("registraste síntomas…") is sent
+   * ONLY when the reporter is the owner: it is addressed to the person who
+   * wrote the symptom and worded for an owner, so a vet would receive an
+   * urgent notice telling them to go see a vet. The authority routing is
+   * unchanged for every reporter.
+   */
+  reporterRole?: "owner" | "vet" | "witness";
+  /**
+   * The clinical visit the symptom was observed in. Stamped on the
+   * symptom_observed row only; the system outbreak_signal it may raise is not
+   * the vet's act and stays outside the visit.
+   */
+  visitId?: string | null;
   now?: Date;
 };
 
@@ -133,6 +151,8 @@ export async function createSymptomObservedWriter(
     severity,
     onsetAt,
     clientIdempotencyKey,
+    reporterRole = "owner",
+    visitId = null,
     now = new Date(),
   } = params;
 
@@ -169,7 +189,7 @@ export async function createSymptomObservedWriter(
       const symptomPayload = validateEventPayload("symptom_observed", {
         source: "libreta" as const,
         welfare_report_id: null,
-        reporter_role: "owner" as const,
+        reporter_role: reporterRole,
         free_text: freeText,
         matched_symptom_codes: matchedSymptomCodes,
         alerted_disease_codes: alertableDiseases.map((d) => d.disease_code),
@@ -188,6 +208,7 @@ export async function createSymptomObservedWriter(
         recordedByUserId,
         ...eventAuthorship,
         payload: symptomPayload,
+        ...(visitId ? { visitId } : {}),
       };
 
       let symptomEvent: { id: string };
@@ -286,7 +307,8 @@ export async function createSymptomObservedWriter(
         );
 
         // Rabies escalation: urgent owner notification (spec D5 explicit exception).
-        if (isRabiesEscalation) {
+        // Owner reporter only — see `reporterRole` on the params.
+        if (isRabiesEscalation && reporterRole === "owner") {
           pendingNotifications.push({
             userId: recordedByUserId,
             notificationType: "rabies_observation_escalation_owner",

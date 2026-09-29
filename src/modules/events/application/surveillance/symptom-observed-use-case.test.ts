@@ -527,3 +527,100 @@ describe("createSymptomObservedWriter", () => {
     expect(flush).toHaveBeenCalledWith([]); // flush called with empty array
   });
 });
+
+// vet-visit-record (2026-09-29): the writer stops hardcoding the owner.
+describe("createSymptomObservedWriter — reporterRole", () => {
+  const rabies = {
+    disease_code: "rabies_suspected",
+    disease_label: "Rabia sospechada",
+    triggers_alert: true,
+    is_reportable: true,
+    high_count: 1,
+    medium_count: 0,
+    low_count: 0,
+    matched_symptoms: ["symptom_1"],
+  };
+  const vetAuthorship = {
+    authorRole: "vet" as const,
+    authorOrganizationId: randomUUID(),
+    authorVerified: true,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMaybeNotifyOwnersOfPublicAlert.mockResolvedValue({ delivered: 0 });
+    mockRouteOutbreakSignalNotifications.mockResolvedValue(undefined);
+    mockMatchSymptoms.mockReturnValue([{ symptom_code: "symptom_1" }]);
+    mockAggregateDiseaseMatches.mockReturnValue([rabies]);
+  });
+
+  function deps(repo: ReturnType<typeof makeRepo>, flush = makeFlushNotifications()) {
+    return {
+      repo: repo as unknown as Pick<EventsRepository, "insertEvent" | "insertEventIdempotent">,
+      transaction: makeTransaction(),
+      flushNotifications: flush,
+    };
+  }
+
+  it("defaults to owner when no reporterRole is given", async () => {
+    const repo = makeRepo();
+    await createSymptomObservedWriter(baseParams, deps(repo));
+    const symptom = repo.insertEvent.mock.calls[0][0] as { payload: { reporter_role: string } };
+    expect(symptom.payload.reporter_role).toBe("owner");
+  });
+
+  it("a vet reporter writes reporter_role=vet and stamps the visit on the symptom only", async () => {
+    const repo = makeRepo();
+    const visitId = randomUUID();
+    const result = await createSymptomObservedWriter(
+      { ...baseParams, eventAuthorship: vetAuthorship, reporterRole: "vet", visitId },
+      deps(repo),
+    );
+    expect(result.ok).toBe(true);
+    const [symptom, signal] = repo.insertEvent.mock.calls.map(
+      (c) => c[0] as { eventType: string; visitId?: string; payload: { reporter_role?: string } },
+    );
+    expect(symptom.eventType).toBe("symptom_observed");
+    expect(symptom.payload.reporter_role).toBe("vet");
+    expect(symptom.visitId).toBe(visitId);
+    expect(signal.eventType).toBe("outbreak_signal");
+    expect(signal.visitId).toBeUndefined();
+  });
+
+  it("suppresses the owner-worded rabies escalation push for a vet reporter, and still escalates to the authority", async () => {
+    const repo = makeRepo();
+    const flush = makeFlushNotifications();
+    await createSymptomObservedWriter(
+      {
+        ...baseParams,
+        eventAuthorship: vetAuthorship,
+        reporterRole: "vet",
+        rabiesObservationStatus: "in_progress",
+      },
+      deps(repo, flush),
+    );
+    const flushed = flush.mock.calls[0][0] as NewNotification[];
+    expect(flushed.some((n) => n.notificationType === "rabies_observation_escalation_owner")).toBe(
+      false,
+    );
+    const routeCall = mockRouteOutbreakSignalNotifications.mock.calls[0] as [
+      unknown,
+      { escalation?: boolean },
+      NewNotification[],
+    ];
+    expect(routeCall[1].escalation).toBe(true);
+  });
+
+  it("the owner reporter still gets the escalation push (control)", async () => {
+    const repo = makeRepo();
+    const flush = makeFlushNotifications();
+    await createSymptomObservedWriter(
+      { ...baseParams, rabiesObservationStatus: "in_progress" },
+      deps(repo, flush),
+    );
+    const flushed = flush.mock.calls[0][0] as NewNotification[];
+    expect(flushed.some((n) => n.notificationType === "rabies_observation_escalation_owner")).toBe(
+      true,
+    );
+  });
+});
