@@ -75,6 +75,38 @@ export function AppHead({
   );
 }
 
+/**
+ * The org portal's own header, for the tablet screens (vet, refugio): an
+ * eyebrow + the org's display name as the h1, exactly the pattern
+ * `app/org/[orgToken]/page.tsx` renders ("Panel de {orgType}" over
+ * `organization.displayName`, both in ln-op-mute/ln-op-ink) — the org
+ * identity a real member sees is constant across the portal, unlike the
+ * page-specific title underneath, which stays whatever that real page calls
+ * itself (e.g. "Ingresos", `app/org/[orgToken]/intake/page.tsx`).
+ */
+export function OpHead({
+  orgType,
+  orgName,
+  page,
+  right,
+}: {
+  orgType: string;
+  orgName: string;
+  page?: ReactNode;
+  right?: ReactNode;
+}) {
+  return (
+    <div className="lp-op-head">
+      <div className="min-w-0 flex-1">
+        <p className="lp-op-eyebrow">Panel de {orgType}</p>
+        <div className="lp-op-title">{orgName}</div>
+        {page && <p className="lp-op-page">{page}</p>}
+      </div>
+      {right}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Dueño — the sign-up moment (2022-03-14): only Pampa, no chip yet
 // ---------------------------------------------------------------------------

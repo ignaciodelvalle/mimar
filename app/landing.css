@@ -1714,6 +1714,167 @@
   min-height: 0;
 }
 
+/* ============ tablet frame — org portal chapters (vet, refugio) =========== */
+/* Landscape chrome, org-portal palette (ln-op-*). Fixed size, no variants —
+   same rule as .lp-phone (PO 2026-09-29): the device itself signals "this is
+   the organization's portal", not the owner's phone. Scaled down uniformly
+   with `zoom` at the story's own mobile breakpoint (940px, below) so both
+   org-portal chapters render at the identical size at every viewport. */
+.lp .lp-tablet {
+  width: 760px;
+  border-radius: 26px;
+  padding: 16px;
+  position: relative;
+  background: var(--color-ln-op-navy);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+.lp .lp-tablet-cam {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  z-index: 5;
+}
+.lp .lp-tab-scr {
+  width: 728px;
+  height: 528px;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-ln-op-page);
+  color: var(--color-ln-op-ink);
+  font-family: var(--lp-sans);
+}
+/* Two layout modes, two zoom levels — `zoom` scales the frame AND its
+   content together, so neither ever clips or overflows its column:
+   - >940px: the two-column desktop grid (.lp-chapter-grid, above). Its
+     column caps out around 440px even at the page's own 1280px max-width
+     (.lp-wrap-wide) — a bare 760px-wide tablet overflowed it (measured with
+     Playwright, 2026-09-29: the vet chapter's tablet bled ~160px past its
+     column on both sides at 1280×900). 0.5 lands at 380×280, comfortably
+     inside the narrowest column the breakpoint allows (~414px, at 941px
+     viewport) while still reading clearly wider/shorter than the 340px-wide
+     portrait phone.
+   - <=940px: the single-column mobile stack, plenty of width regardless.
+   One factor per breakpoint for BOTH org-portal chapters, so "the same size
+   in both chapters at a given viewport" holds by construction. */
+@media (min-width: 941px) {
+  .lp .lp-ch-device .lp-tablet {
+    zoom: 0.5;
+  }
+}
+@media (max-width: 940px) {
+  .lp .lp-ch-device .lp-tablet {
+    zoom: 0.42;
+  }
+}
+
+/* Org-portal header: eyebrow + org name as the h1 (mirrors
+   app/org/[orgToken]/page.tsx's own header block), then the real page's own
+   title underneath. */
+.lp .lp-op-head {
+  padding: 14px 20px 12px;
+  background: var(--color-ln-op-card);
+  border-bottom: 1px solid var(--color-ln-op-line);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.lp .lp-op-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ln-op-mute);
+}
+.lp .lp-op-title {
+  font-family: var(--lp-serif);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-ln-op-ink);
+  line-height: 1.15;
+  margin-top: 2px;
+}
+.lp .lp-op-page {
+  font-size: 11px;
+  color: var(--color-ln-op-mute);
+  margin-top: 3px;
+}
+.lp .lp-op-signer {
+  font-size: 11.5px;
+  color: var(--color-ln-op-mute);
+  margin: -2px 0 2px;
+}
+
+/* Org-portal recolor: the tablet screens reuse the SAME card/form/list shapes
+   as the owner-app screens above (lp-vf-*, lp-ph-card, lp-intake-row,
+   lp-match-*), repainted with ln-op-* — the portal's real palette — instead
+   of the owner app's ln-*. Scoped to .lp-tab-scr so no class needs a second
+   name; only its colors change with the device it renders inside. */
+.lp .lp-tab-scr .lp-vf-l {
+  color: var(--color-ln-op-mute);
+}
+.lp .lp-tab-scr .lp-vf-i {
+  border-color: var(--color-ln-op-line);
+  background: var(--color-ln-op-card);
+  color: var(--color-ln-op-ink);
+}
+.lp .lp-tab-scr .lp-vf-submit {
+  background: var(--color-ln-op-azul);
+  color: #fff;
+}
+.lp .lp-tab-scr .lp-vf-tag {
+  color: var(--color-ln-op-ok);
+}
+.lp .lp-tab-scr .lp-vf-done {
+  color: var(--color-ln-op-ink-2);
+}
+.lp .lp-tab-scr .lp-kv-title {
+  color: var(--color-ln-op-ink);
+}
+.lp .lp-tab-scr .lp-ph-card {
+  background: var(--color-ln-op-card);
+  border-color: var(--color-ln-op-line);
+}
+.lp .lp-tab-scr .lp-intake-row + .lp-intake-row {
+  border-top-color: var(--color-ln-op-line-2);
+}
+.lp .lp-tab-scr .lp-intake-row b {
+  color: var(--color-ln-op-ink);
+}
+.lp .lp-tab-scr .lp-intake-row .lp-intake-sub {
+  color: var(--color-ln-op-ink-2);
+}
+.lp .lp-tab-scr .lp-intake-row .lp-iic {
+  background: var(--color-ln-op-blue-bg);
+  color: var(--color-ln-op-azul);
+}
+.lp .lp-tab-scr .lp-intake-row[data-t="ok"] .lp-iic {
+  background: var(--color-ln-op-ok-bg);
+  color: var(--color-ln-op-ok);
+}
+.lp .lp-tab-scr .lp-match-breach {
+  background: var(--color-ln-op-danger-bg);
+  border-color: var(--color-ln-op-danger-bd);
+}
+.lp .lp-tab-scr .lp-match-ok {
+  background: var(--color-ln-op-ok-bg);
+  border-color: var(--color-ln-op-line);
+}
+.lp .lp-tab-scr .lp-match-sub {
+  color: var(--color-ln-op-ink-2);
+}
+.lp .lp-tab-scr .lp-match-pill {
+  background: var(--color-ln-op-danger);
+  color: #fff;
+}
+
 /* libreta feed */
 .lp .lp-lib-feed {
   padding-top: 4px;

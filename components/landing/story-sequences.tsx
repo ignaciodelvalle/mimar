@@ -19,6 +19,7 @@
 import { Icon } from "@/components/Icon";
 import { PhoneFrame } from "@/components/landing/PhoneFrame";
 import { StepButton } from "@/components/landing/StepButton";
+import { TabletFrame } from "@/components/landing/TabletFrame";
 import type { LandingChapter } from "@/components/landing/landing-content";
 import {
   PAMPA,
@@ -28,7 +29,7 @@ import {
   landingDate,
   pampaEvent,
 } from "@/components/landing/landing-content";
-import { AppHead } from "@/components/landing/story-screens";
+import { AppHead, OpHead } from "@/components/landing/story-screens";
 import { useChapterSequence } from "@/components/landing/use-chapter-sequence";
 import { LnBadge } from "@/components/ui/Badge";
 import { LnPetPhoto } from "@/components/ui/RegRow";
@@ -160,14 +161,10 @@ const VET_ADDED = VET_STAMP + 1; // 7
 function VetPortalScreen({ step, animate }: { step: number; animate: boolean }) {
   return (
     <>
-      <div className="lp-scr-top" />
-      <AppHead
-        title={PAMPA_VET.name}
-        sub={
-          <>
-            <span className="whitespace-nowrap">{PAMPA_VET.license}</span> · {PAMPA_VET.clinic}
-          </>
-        }
+      <OpHead
+        orgType="Clínica"
+        orgName={PAMPA_VET.clinic}
+        page="Atender mascota"
         right={<LnBadge variant="success">Matrícula verificada</LnBadge>}
       />
       <div className="lp-app-body lp-ph-pad">
@@ -179,6 +176,12 @@ function VetPortalScreen({ step, animate }: { step: number; animate: boolean }) 
             <Icon name="check" size="sm" decorative />
           </span>
         </div>
+        {/* The real signing page's own line (app/org/[orgToken]/atender/[publicToken]/page.tsx:165-167:
+            "Firmás como <signer.label> ... verificado por profesional"). */}
+        <p className="lp-op-signer">
+          Firmás como <b>{PAMPA_VET.name}</b> {"·"}
+          <span className="whitespace-nowrap">{PAMPA_VET.license}</span>
+        </p>
         <div className="lp-vf-form">
           {VET_FIELDS.map(([label, value], i) => (
             <div className="lp-vf" key={label}>
@@ -223,9 +226,9 @@ export const VET_SEQUENCE: SequenceSpec = {
     { label: `Se suma a la libreta de ${PAMPA.name}.`, at: VET_ADDED },
   ],
   device: (step, animate) => (
-    <PhoneFrame>
+    <TabletFrame>
       <VetPortalScreen step={step} animate={animate} />
-    </PhoneFrame>
+    </TabletFrame>
   ),
 };
 
@@ -370,10 +373,10 @@ const SHELTER = "Refugio Patitas del Barrio";
 function IntakeChipScreen() {
   return (
     <>
-      <div className="lp-scr-top" />
-      <AppHead
-        title="Ingresos"
-        sub={SHELTER}
+      <OpHead
+        orgType="Refugio"
+        orgName={SHELTER}
+        page="Ingresos"
         right={<LnBadge variant="info">Verificada</LnBadge>}
       />
       <div className="lp-app-body lp-ph-pad">
@@ -392,8 +395,7 @@ function IntakeChipScreen() {
 function IntakeMatchScreen({ pressed }: { pressed: boolean }) {
   return (
     <>
-      <div className="lp-scr-top" />
-      <AppHead title="Ingresos" sub={SHELTER} />
+      <OpHead orgType="Refugio" orgName={SHELTER} page="Ingresos" />
       <div className="lp-app-body lp-ph-pad">
         <div className="lp-match-breach">
           <b>Posible coincidencia detectada</b>
@@ -425,8 +427,7 @@ function IntakeMatchScreen({ pressed }: { pressed: boolean }) {
 function IntakeDoneScreen() {
   return (
     <>
-      <div className="lp-scr-top" />
-      <AppHead title="Ingresos" sub={SHELTER} />
+      <OpHead orgType="Refugio" orgName={SHELTER} page="Ingresos" />
       <div className="lp-app-body lp-ph-pad">
         <div className="lp-match-ok">
           <b>Ingreso registrado</b>
@@ -566,7 +567,9 @@ const SHELTER_SCREENS: Array<() => ReactNode> = [
   () => <OwnerFoundScreen />,
   () => <OwnerHomeScreen />,
 ];
-const OWNER_FROM = 4;
+// Exported so the device-frame guard test (and anything else that needs the
+// split) does not re-hardcode this index and drift from it.
+export const OWNER_FROM = 4;
 
 export const SHELTER_SEQUENCE: SequenceSpec = {
   total: SHELTER_SCREENS.length,
@@ -584,14 +587,18 @@ export const SHELTER_SEQUENCE: SequenceSpec = {
     { label: `${PAMPA.name} vuelve a casa, y su credencial a estar al día.`, at: 6 },
   ],
   deviceLabel: (step) => (step >= OWNER_FROM ? `App de ${PAMPA_OWNER_NAME}` : "Portal del refugio"),
+  // The device itself switches with who is using it (PO 2026-09-29): the
+  // refugio's own tablet for its intake steps, then Martín's phone from
+  // OWNER_FROM on — the same split `deviceLabel` above already marks.
   device: (step, animate) => {
     const render = SHELTER_SCREENS[step] ?? SHELTER_SCREENS[SHELTER_SCREENS.length - 1];
+    const Frame = step >= OWNER_FROM ? PhoneFrame : TabletFrame;
     return (
-      <PhoneFrame>
+      <Frame>
         <div key={step} className={animate ? "lp-seq-screen lp-seq-in" : "lp-seq-screen"}>
           {render?.()}
         </div>
-      </PhoneFrame>
+      </Frame>
     );
   },
 };

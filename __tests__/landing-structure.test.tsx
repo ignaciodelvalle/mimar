@@ -305,8 +305,15 @@ describe("story — CastFila + 6 chapters + rail", () => {
   it("every device mock is hidden from assistive tech; the chapter copy is the summary (m6)", () => {
     const html = renderToStaticMarkup(<StorySection />);
     const phones = html.match(/<div class="lp-phone"[^>]*>/g) ?? [];
-    expect(phones.length).toBeGreaterThanOrEqual(5);
+    // Owner-device chapters at SSR (dueno, anon and refugio's final step —
+    // Martín's phone — and libreta): 4. The vet chapter's SSR-final step is
+    // now a tablet, not a phone (PO 2026-09-29 — the org portal chapters).
+    expect(phones.length).toBeGreaterThanOrEqual(4);
     for (const p of phones) expect(p).toContain('aria-hidden="true"');
+    const tablets = html.match(/<div class="lp-tablet"[^>]*>/g) ?? [];
+    // The vet chapter's SSR-final step is a tablet at every render.
+    expect(tablets.length).toBeGreaterThanOrEqual(1);
+    for (const t of tablets) expect(t).toContain('aria-hidden="true"');
     expect(html).toMatch(/<div class="lp-mac" aria-hidden="true">/);
     // Each chapter carries readable copy outside its device.
     const chapters = html.split(/id="cap-/).slice(1);
