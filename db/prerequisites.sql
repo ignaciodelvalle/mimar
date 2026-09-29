@@ -54,3 +54,46 @@ IMMUTABLE
 PARALLEL SAFE
 STRICT
 AS $func$ SELECT public.unaccent('public.unaccent'::regdictionary, $1) $func$;
+
+-- ISO code <-> canonical province name — db/schema.ts's CHECK
+-- jurisdiction_admin_appointments_province_valid (migration 0268) calls
+-- public.ar_province_name(text) directly, so push needs it to exist before
+-- CREATE TABLE runs. Mirrors db/migrations/0249_province_code_fns.sql exactly.
+-- Only this direction is a push prerequisite: schema.ts has no generated
+-- column, default or CHECK that calls public.ar_province_code(text) (it is
+-- read at the application layer only), so it is not duplicated here — if a
+-- future CHECK or default calls it, add it here too, and say so in this
+-- comment, same as 0146/immutable_unaccent above.
+CREATE OR REPLACE FUNCTION public.ar_province_name(p_code text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+  SELECT CASE p_code
+    WHEN 'AR-B' THEN 'Buenos Aires'
+    WHEN 'AR-C' THEN 'CABA'
+    WHEN 'AR-K' THEN 'Catamarca'
+    WHEN 'AR-H' THEN 'Chaco'
+    WHEN 'AR-U' THEN 'Chubut'
+    WHEN 'AR-X' THEN 'Córdoba'
+    WHEN 'AR-W' THEN 'Corrientes'
+    WHEN 'AR-E' THEN 'Entre Ríos'
+    WHEN 'AR-P' THEN 'Formosa'
+    WHEN 'AR-Y' THEN 'Jujuy'
+    WHEN 'AR-L' THEN 'La Pampa'
+    WHEN 'AR-F' THEN 'La Rioja'
+    WHEN 'AR-M' THEN 'Mendoza'
+    WHEN 'AR-N' THEN 'Misiones'
+    WHEN 'AR-Q' THEN 'Neuquén'
+    WHEN 'AR-R' THEN 'Río Negro'
+    WHEN 'AR-A' THEN 'Salta'
+    WHEN 'AR-J' THEN 'San Juan'
+    WHEN 'AR-D' THEN 'San Luis'
+    WHEN 'AR-Z' THEN 'Santa Cruz'
+    WHEN 'AR-S' THEN 'Santa Fe'
+    WHEN 'AR-G' THEN 'Santiago del Estero'
+    WHEN 'AR-V' THEN 'Tierra del Fuego'
+    WHEN 'AR-T' THEN 'Tucumán'
+  END
+$$;
