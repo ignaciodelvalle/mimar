@@ -58,7 +58,7 @@ import { ANDROID_PACKAGE_NAME } from "@dim/contract/links";
  * `handle_all_urls` is the one Android's App Links verifier looks for; it means
  * "this app may act as me for every URL on this host". It is the whole point of
  * the file and there is no narrower relation that would work — the scoping is
- * done by the intent filter's `pathPrefix` on the app side, not here.
+ * done by the intent filter's `pathPattern` on the app side (the bare credential path only), not here.
  */
 export const HANDLE_ALL_URLS = "delegate_permission/common.handle_all_urls";
 

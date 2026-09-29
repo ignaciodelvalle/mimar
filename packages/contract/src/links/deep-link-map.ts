@@ -153,7 +153,7 @@ export const DEEP_LINK_MAP = {
    * The QR-verifiable public credential. The most important link in the product.
    *
    * `appPath` STAYS `null` even now that a verified Android App Link exists for
-   * it (native-review S-8, 2026-09-25 — see `apps/mobile/app.config.ts`'s
+   * it (native-review S-8, 2026-09-29 — see `apps/mobile/app.config.ts`'s
    * "ANDROID APP LINKS" section). That field is the `mimar://` custom-scheme
    * claim this table's own rule below forbids for a public one-subject link, and
    * it is what `appRoutePath`/`deepLinkAppUrl` read — neither is involved in a
