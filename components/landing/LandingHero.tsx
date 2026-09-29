@@ -66,6 +66,7 @@
 // (PO decision: keep it, make the page around it calmer). Don't "fix" it back
 // to a Poncho display font.
 
+import { CRISIS_DOORS } from "@/components/landing/CrisisBand";
 import {
   HERO_CREDENTIAL_FIELDS,
   HERO_LIBRETA_ROWS,
@@ -107,11 +108,31 @@ type HeroState = {
 const HERO_STATES: HeroState[] = [
   { key: "aldia", badge: "AL DÍA", tone: "ok", row: "Vacunas firmadas" },
   { key: "perdida", badge: "PERDIDA", tone: "lost", row: "Llamar al dueño" },
-  { key: "encontrada", badge: "AL DÍA", tone: "ok", row: "Volvió a casa" },
+  // Its own name, not a second "AL DÍA" (critique 2026-09-29, M4): two dots
+  // named alike read as one state twice, to a screen reader and to the eye.
+  { key: "encontrada", badge: "DE VUELTA EN CASA", tone: "ok", row: "Volvió a casa" },
   { key: "observacion", badge: "EN OBSERVACIÓN", tone: "watch", row: "Cierra sola en 8 días" },
   { key: "tratamiento", badge: "EN TRATAMIENTO", tone: "sick", row: "Plan en el historial" },
   { key: "ppp", badge: "REGISTRO PPP", tone: "ppp", row: "Requisito jurisdiccional" },
 ];
+
+/**
+ * The state, in words, on the card's own body (critique 2026-09-29, M4).
+ *
+ * The chip that used to carry it was removed (PO 2026-09-25), which left the
+ * lost state readable ONLY through the card turning pink: colour as the sole
+ * carrier, WCAG 1.4.1. One line, not a chip: the word leads the contextual row.
+ * Being found returns the card to its resting state, so it reads "Al día".
+ */
+function stateWord(key: string, badge: string): string {
+  if (key === "perdida") return capitalize(lostThirdPersonPhrase(PAMPA.sexEnum));
+  if (key === "encontrada") return "Al día";
+  return capitalize(badge.toLowerCase());
+}
+
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 
 const CYCLE_MS = 2600;
 
@@ -157,6 +178,10 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
   // Always start on "al día", front face — correct for SSR, no-JS, reduced motion.
   const [index, setIndex] = useState(0);
   const [face, setFace] = useState<"front" | "back">("front");
+  // What the live region says. Empty until the PERSON changes something: the
+  // one-shot cycle used to be announced too, six announcements in a row while
+  // a screen-reader user was still reaching the H1 (critique 2026-09-29, M4).
+  const [announcement, setAnnouncement] = useState("");
 
   const cardRef = useRef<HTMLDivElement>(null);
   const cycleRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -189,10 +214,27 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
     };
   }, [stopCycle]);
 
+  // Only a person flips the card (the cycle never does), so every face change
+  // after mount is theirs to hear about.
+  const shownFaceRef = useRef(face);
+  useEffect(() => {
+    if (shownFaceRef.current === face) return;
+    shownFaceRef.current = face;
+    setAnnouncement(
+      face === "back" ? "Mostrando la libreta sanitaria." : "Mostrando la credencial.",
+    );
+  }, [face]);
+
   const selectState = useCallback(
     (i: number) => {
       stopCycle();
       setIndex(i);
+      const picked = HERO_STATES[i];
+      if (picked) {
+        setAnnouncement(
+          `Estado de la credencial: ${stateWord(picked.key, picked.badge)}. ${picked.row}.`,
+        );
+      }
     },
     [stopCycle],
   );
@@ -223,6 +265,7 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
   }, [stopCycle]);
 
   const state = HERO_STATES[index] ?? HERO_STATES[0];
+  const word = stateWord(state.key, state.badge);
   // A scannable QR needs BOTH the markup and a target that resolves; app/page.tsx
   // only supplies them together. Anything less renders the inert glyph.
   const scannable = qrSvg !== null && publicHref !== null;
@@ -233,6 +276,79 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
     <section className="lp-section lp-section--paper lp-hero" id="top" data-section="landing-hero">
       <div className="lp-wrap-wide">
         <div className="lp-hero-grid">
+          {/* COPY FIRST, in the DOM and on every screen (critique 2026-09-29,
+              C3). The credential used to come first on phones: at 390px the
+              H1 began at y≈734, below the fold, so the first screen showed a
+              card without saying what miMAR is. Source order is now reading
+              order at every width: desktop puts the copy left and the card
+              right with no `order` reordering at all, which also retires the
+              focus-order trade-off the 2026-08-10 inversion had to make. */}
+          <div className="lp-hero-copy">
+            {/* The way out for someone in a hurry (critique 2026-09-29, C4).
+                The crisis band sits below the fold on every screen; a person
+                who arrives from "perdí a mi perro" must see their door
+                without scrolling. Same two destinations as the band, from the
+                same constant, so the two can never disagree. */}
+            <p className="lp-hero-urgent lp-reveal" data-section="hero-urgent">
+              <span>¿Perdiste o encontraste una mascota?</span>{" "}
+              <span className="lp-hero-urgent-links">
+                <Link href={CRISIS_DOORS.lost.href}>{CRISIS_DOORS.lost.label}</Link>
+                <span aria-hidden="true"> · </span>
+                <Link href={CRISIS_DOORS.found.href}>{CRISIS_DOORS.found.label}</Link>
+              </span>
+            </p>
+            {/* Eyebrow: describes the artifact the hero card is already
+                drawing. It used to read "República Argentina · Ministerio de
+                Salud" — an endorsement nobody granted (there is no convenio
+                with any state body, and the Mi Argentina agreement is still an
+                open prerequisite). A claim of state backing on the first line
+                above the headline is exactly what Play treats as impersonation
+                and what a funcionario would read as a signature they never
+                gave. Replaced with what the product actually is. */}
+            <p className="lp-eyebrow lp-eyebrow--dot lp-reveal">
+              Credencial digital · QR público verificable
+            </p>
+            <h1 className="lp-display lp-h-hero lp-reveal" data-d="1">
+              Toda una vida,
+              <br />
+              en una sola libreta.
+            </h1>
+            {/* Honesty pass (WU1, landing redesign 2026-09-24; corrected
+                2026-09-24 review): "registro nacional" and "inmutable" both
+                overclaimed — there is no convenio with any state body (see
+                state-endorsement-fence), and art. 16 de la Ley 25.326
+                requires an audited suppression exception over the event log
+                (límites honestos A.1). "Nada se reescribe" ALSO overclaimed —
+                /privacidad documents that account erasure replaces the
+                user's free text with a notice, which is a rewrite. Now uses
+                A.1's own wording: "una corrección es un asiento nuevo, nunca
+                una edición" describes the append-only DEFAULT without
+                denying the audited exception. */}
+            <p className="lp-lead lp-reveal" data-d="2">
+              La libreta sanitaria de tu mascota en el teléfono, con una credencial QR que
+              cualquiera puede escanear si se pierde. Su historial solo se agrega: una corrección es
+              un asiento nuevo, nunca una edición.
+            </p>
+            <div className="lp-hero-cta lp-reveal" data-d="3">
+              {/* ONE primary action, for the owner (critique 2026-09-29, C2).
+                  The 2026-07-21 removal left the hero with a ghost button
+                  only: "Gratis para siempre" sat under it with nothing to
+                  click, and on a phone the nav's signup button is a short
+                  "Crear cuenta" that says nothing about the pet. This one
+                  names what you get. "Cómo funciona" stays as the secondary. */}
+              <Link href="/registro" className="lp-btn lp-btn--primary">
+                Crear la libreta de mi mascota
+              </Link>
+              <a href="#idea" className="lp-btn lp-btn--ghost">
+                Cómo funciona
+              </a>
+            </div>
+            {/* Hero triad — exact copy is a PO-locked decision (#4). */}
+            <p className="lp-hero-kill lp-reveal" data-d="4">
+              <b>Gratis para siempre.</b> Sin papeleo. Datos abiertos.
+            </p>
+          </div>
+
           <div className="lp-hero-photo lp-reveal" data-d="2">
             <div className="flex w-full flex-col items-center">
               <div className="lp-hcardwrap">
@@ -242,18 +358,15 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                   data-section="hero-credential"
                   data-tone={state.tone}
                   data-face={face}
-                  aria-label={`Credencial de ${PAMPA.name} — estado: ${state.badge}`}
+                  aria-label={`Credencial de ${PAMPA.name} — estado: ${word}`}
                 >
-                  {/* Accessible state carrier (PO 2026-09-25: the visible
-                      status chip was removed from the card — the lost state
-                      now reads through the card's background colour instead).
-                      A screen reader gets no visual cue, so this sr-only
-                      live region announces every state change; aria-live is
-                      "polite" so it never interrupts other reading. The
-                      aria-label above also carries the CURRENT state for a
-                      reader that lands on the card directly. */}
+                  {/* Live region for the changes a PERSON makes: a state dot,
+                      the flip. The automatic cycle is not announced, it would
+                      talk over the H1. The aria-label above carries the
+                      CURRENT state for a reader that lands on the card, and
+                      the visible state word below carries it for everyone. */}
                   <span className="sr-only" aria-live="polite">
-                    {`Estado de la credencial: ${state.badge}. ${state.row}.`}
+                    {announcement}
                   </span>
                   {/* FRONT — the credential the QR opens, in miniature: the
                       guilloche band and issuing line, photo and QR rising out
@@ -299,10 +412,15 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                               : `${PAMPA.name}, ${PAMPA.speciesNoun}`
                           }
                           fill
-                          sizes="76px"
-                          // The hero credential's photo is above the fold on
-                          // every visit: fetch it ahead of lower images.
-                          fetchPriority="high"
+                          // The box it paints into is 96px (.lp-hcard-photo);
+                          // "76px" asked for an image smaller than the box and
+                          // scaled it up (critique 2026-09-29, m3).
+                          sizes="96px"
+                          // Above the fold on phones and desktop alike.
+                          // fetchPriority alone left next/image's default
+                          // loading="lazy" in place; `priority` loads it
+                          // eagerly and preloads it.
+                          priority
                           className="object-cover"
                         />
                       </span>
@@ -351,11 +469,13 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                       ))}
                     </dl>
 
-                    <div key={index} className="lp-hcard-ctx">
+                    <div key={index} className="lp-hcard-ctx" data-section="hero-state-line">
                       <span className="lp-hcard-ctx-chev" aria-hidden="true">
                         ▸
                       </span>
-                      <span>{state.row}</span>
+                      <span>
+                        <b className="lp-hcard-ctx-state">{word}</b> · {state.row}
+                      </span>
                     </div>
 
                     {/* miMAR's own machine-readable strip (see heroMrzLines):
@@ -428,55 +548,6 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                 ))}
               </div>
             </div>
-          </div>
-
-          <div>
-            {/* Eyebrow: describes the artifact the hero card is already
-                drawing. It used to read "República Argentina · Ministerio de
-                Salud" — an endorsement nobody granted (there is no convenio
-                with any state body, and the Mi Argentina agreement is still an
-                open prerequisite). A claim of state backing on the first line
-                above the headline is exactly what Play treats as impersonation
-                and what a funcionario would read as a signature they never
-                gave. Replaced with what the product actually is. */}
-            <p className="lp-eyebrow lp-eyebrow--dot lp-reveal">
-              Credencial digital · QR público verificable
-            </p>
-            <h1 className="lp-display lp-h-hero lp-reveal mt-4" data-d="1">
-              Toda una vida,
-              <br />
-              en una sola libreta.
-            </h1>
-            {/* Honesty pass (WU1, landing redesign 2026-09-24; corrected
-                2026-09-24 review): "registro nacional" and "inmutable" both
-                overclaimed — there is no convenio with any state body (see
-                state-endorsement-fence), and art. 16 de la Ley 25.326
-                requires an audited suppression exception over the event log
-                (límites honestos A.1). "Nada se reescribe" ALSO overclaimed —
-                /privacidad documents that account erasure replaces the
-                user's free text with a notice, which is a rewrite. Now uses
-                A.1's own wording: "una corrección es un asiento nuevo, nunca
-                una edición" describes the append-only DEFAULT without
-                denying the audited exception. */}
-            <p className="lp-lead lp-reveal mt-6" data-d="2">
-              La libreta sanitaria de tu mascota en el teléfono, con una credencial QR que
-              cualquiera puede escanear si se pierde. Su historial solo se agrega: una corrección es
-              un asiento nuevo, nunca una edición.
-            </p>
-            <div className="lp-hero-cta lp-reveal" data-d="3">
-              {/* The primary "Crear tu miMAR" CTA that used to live here was
-                  removed (PO feedback 2026-07-21): it duplicated LandingNav's
-                  "Crear mi miMAR" (/signup), both visible above the fold at
-                  once. "Cómo funciona" is a distinct secondary action (scrolls
-                  to #idea) and stays as the hero's own CTA. */}
-              <a href="#idea" className="lp-btn lp-btn--ghost">
-                Cómo funciona
-              </a>
-            </div>
-            {/* Hero triad — exact copy is a PO-locked decision (#4). */}
-            <p className="lp-hero-kill lp-reveal" data-d="4">
-              <b>Gratis para siempre.</b> Sin papeleo. Datos abiertos.
-            </p>
           </div>
         </div>
       </div>

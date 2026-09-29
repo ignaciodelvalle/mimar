@@ -25,6 +25,17 @@
 import { Icon } from "@/components/Icon";
 import Link from "next/link";
 
+/**
+ * The two crisis destinations, shared with the hero's urgency line
+ * (LandingHero.tsx, critique 2026-09-29 C4): the band sits below the fold on
+ * every screen, so the hero repeats its first two doors — and both must lead
+ * to the SAME place, which one constant guarantees.
+ */
+export const CRISIS_DOORS = {
+  lost: { label: "Perdí una mascota", href: "/mis-mascotas" },
+  found: { label: "Encontré una mascota", href: "/perdidas" },
+} as const;
+
 export function CrisisBand() {
   return (
     <section
@@ -37,12 +48,12 @@ export function CrisisBand() {
         {/* Owner job ("activá el modo perdido") lands on the owner's pets, not
             the finder board — /mis-mascotas preserves the destination through
             the auth flow (cursor citizen UX P2, verified 2026-07-24). */}
-        <Link className="lp-crisis-card" data-t="perdi" href="/mis-mascotas">
+        <Link className="lp-crisis-card" data-t="perdi" href={CRISIS_DOORS.lost.href}>
           <span className="lp-cic" aria-hidden="true">
             <Icon name="perdida" size="md" decorative />
           </span>
           <span>
-            <b>Perdí una mascota</b>
+            <b>{CRISIS_DOORS.lost.label}</b>
             {/* No neighbours are alerted: marking a pet lost notifies the
                 verified orgs whose coverage matches its jurisdiction
                 (lib/infra/lost-pet-broadcast.ts). */}
@@ -54,12 +65,12 @@ export function CrisisBand() {
             →
           </span>
         </Link>
-        <Link className="lp-crisis-card" data-t="encontre" href="/perdidas">
+        <Link className="lp-crisis-card" data-t="encontre" href={CRISIS_DOORS.found.href}>
           <span className="lp-cic" aria-hidden="true">
             <Icon name="qr" size="md" decorative />
           </span>
           <span>
-            <b>Encontré una mascota</b>
+            <b>{CRISIS_DOORS.found.label}</b>
             <span className="lp-crisis-sub">Escaneá su QR o buscala por señas. Sin cuenta.</span>
           </span>
           <span className="lp-ar" aria-hidden="true">

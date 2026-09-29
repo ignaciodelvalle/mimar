@@ -61,6 +61,7 @@ import {
   LineChart,
   Link2,
   Lock,
+  LogIn,
   LogOut,
   Mail,
   MapPin,
@@ -266,6 +267,9 @@ export const ICON_MAP: Record<string, LucideIcon> = {
   menu: Menu,
   settings: Settings,
   bell: Bell,
+  // Sign-in glyph for the landing nav on narrow phones, where the
+  // "Iniciar sesión" text no longer fits beside the brand and the signup CTA.
+  ingresar: LogIn,
   logout: LogOut,
   dashboard: LayoutDashboard,
   laptop: Laptop,

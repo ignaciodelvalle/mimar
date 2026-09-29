@@ -65,3 +65,57 @@ for (const width of PHONE_WIDTHS) {
     ).toBeLessThanOrEqual(1);
   });
 }
+
+/** True when the element's whole box sits inside the viewport, no scrolling. */
+async function fullyInFirstScreen(page: Page, selector: string): Promise<boolean> {
+  return page
+    .locator(selector)
+    .first()
+    .evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && r.top >= 0 && r.bottom <= window.innerHeight;
+    });
+}
+
+test("a 390×690 la primera pantalla dice qué es miMAR y ofrece la acción (C3)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 690 });
+  await page.goto("/");
+  await expect(page.locator("h1")).toBeVisible();
+  expect(await fullyInFirstScreen(page, "h1"), "the H1 is below the fold").toBe(true);
+  await expect(page.getByRole("link", { name: "Crear la libreta de mi mascota" })).toBeVisible();
+  expect(
+    await fullyInFirstScreen(page, '.lp-hero-cta a[href="/registro"]'),
+    "the primary CTA is below the fold",
+  ).toBe(true);
+});
+
+for (const width of PHONE_WIDTHS) {
+  test(`el nav queda en una fila de 64px o menos a ${width}px (C3)`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/");
+    const height = await page
+      .locator("header.lp-nav")
+      .evaluate((el) => (el as HTMLElement).offsetHeight);
+    expect(height, `the nav is ${height}px tall at ${width}px`).toBeLessThanOrEqual(64);
+  });
+}
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 390, height: 690 },
+]) {
+  test(`"Perdí una mascota" se ve sin scrollear a ${viewport.width}×${viewport.height} (C4)`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+    const lost = page.locator('[data-section="hero-urgent"] a', { hasText: "Perdí una mascota" });
+    await expect(lost).toBeVisible();
+    expect(
+      await fullyInFirstScreen(page, '[data-section="hero-urgent"] a[href="/mis-mascotas"]'),
+      "the way out for a lost pet is below the fold",
+    ).toBe(true);
+  });
+}

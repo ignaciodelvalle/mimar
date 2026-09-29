@@ -3,6 +3,7 @@
 // Sticky landing nav — sits ABOVE the GobStripe (intentional order, handoff
 // README §Estructura 1). Bottom border fades in after 8px of scroll.
 
+import { Icon } from "@/components/Icon";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -60,14 +61,26 @@ export function LandingNav() {
             ghost. Copy audit 2026-07-21: this was the one file saying
             "Ingresar" while 7 others say "Iniciar sesión" for the same
             destination — reconciled to the dominant/canonical verb. */}
+        {/* ONE ROW ON A PHONE (critique 2026-09-29, C3). Wrapping to two rows
+            made the sticky nav 121px tall at 390px — a fifth of the screen for
+            the whole scroll. Below 480px the sign-in link shows a glyph and
+            keeps its words for assistive tech (visually hidden, never
+            display:none, so its name is still "Iniciar sesión"), and the
+            signup CTA swaps to its short label. Each label is display:none
+            when not shown, so the accessible name is always the visible one
+            (WCAG 2.5.3). */}
         <Link
           href="/iniciar-sesion"
           className="lp-btn lp-btn--ghost lp-btn--nav lp-btn--nav-secondary"
         >
-          Iniciar sesión
+          <span className="lp-nav-signin-ic" aria-hidden="true">
+            <Icon name="ingresar" size="md" decorative />
+          </span>
+          <span className="lp-nav-signin-text">Iniciar sesión</span>
         </Link>
         <Link href="/registro" className="lp-btn lp-btn--primary lp-btn--nav">
-          Crear mi miMAR
+          <span className="lp-nav-cta-long">Crear mi miMAR</span>
+          <span className="lp-nav-cta-short">Crear cuenta</span>
         </Link>
       </div>
     </header>

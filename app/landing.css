@@ -421,17 +421,19 @@
   .lp-nav .lp-nav-in {
     gap: 12px;
   }
-  /* At 320px (SE-class devices) brand + both CTAs still exceed the line even
-     stripped of chrome, and the row was pushing the document into horizontal
-     scroll. Let it wrap onto a second line: two rows is a layout, a sideways
-     scrollbar on a landing page is a defect. The spacer collapses so the CTAs
-     stay together rather than being flung apart across the wrap. */
+  /* ONE ROW, ≤ 64px (critique 2026-09-29, C3). This used to let the row wrap
+     at 320px to dodge a sideways scroll — and it wrapped at 390 too: two rows,
+     121px of sticky nav, a fifth of the phone's screen for the whole scroll.
+     The row now fits instead of wrapping: the brand drops its sub-line here,
+     and below 480px the sign-in link shows a glyph and the signup CTA its
+     short label (see the ≤480px block below). 9 + 44 + 9 + the 1px border =
+     63px. e2e/landing-mobile-layout.spec.ts measures it at 360/390/414, and
+     landing-signin-reachable.spec.ts still proves no sideways scroll at 320. */
   .lp-nav .lp-nav-in {
-    flex-wrap: wrap;
-    row-gap: 8px;
+    padding-block: 9px;
   }
-  .lp .lp-spacer {
-    flex-basis: 0;
+  .lp-nav .lp-brand-sub {
+    display: none;
   }
   .lp-nav .lp-btn--nav-secondary {
     padding-inline: 2px;
@@ -451,6 +453,53 @@
     align-items: center;
   }
 }
+/* The short forms of the two nav CTAs. Hidden by default; each form is
+   display:none when it is not the one on screen, so the accessible name is
+   always the visible label (WCAG 2.5.3) — except the sign-in words, which stay
+   in the accessibility tree (visually hidden) because the glyph that replaces
+   them has no text of its own. */
+.lp-nav .lp-nav-signin-ic,
+.lp-nav .lp-nav-cta-short {
+  display: none;
+}
+@media (max-width: 480px) {
+  .lp-nav .lp-nav-in {
+    gap: 8px;
+    padding-inline: 14px;
+  }
+  .lp-nav .lp-brand {
+    gap: 8px;
+  }
+  .lp-nav .lp-btn--nav-secondary {
+    position: relative;
+    min-width: 44px;
+    justify-content: center;
+    text-decoration: none;
+  }
+  .lp-nav .lp-nav-signin-ic {
+    display: inline-flex;
+  }
+  .lp-nav .lp-nav-signin-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .lp-nav .lp-btn--nav.lp-btn--primary {
+    padding-inline: 14px;
+  }
+  .lp-nav .lp-nav-cta-long {
+    display: none;
+  }
+  .lp-nav .lp-nav-cta-short {
+    display: inline;
+  }
+}
 
 /* ============ hero ========================================================= */
 .lp .lp-hero {
@@ -462,31 +511,64 @@
   gap: clamp(32px, 5vw, 72px);
   align-items: center;
 }
-/* Hero order — INVERTED 2026-08-10 (PO decision).
- *
- * The photo block goes FIRST in the DOM now, and desktop reorders instead of
- * mobile. Before, `order: -1` under 900px put the photo on top visually while it
- * sat second in source — and that block is not decoration: it holds the link to
- * the demo credential and a `role="toolbar"` of states. Visually first, in tab
- * last, which is WCAG 2.4.3 (Focus Order).
- *
- * Someone pays either way: reordering is what creates the mismatch, and one of
- * the two breakpoints has to carry it. Mobile carries the traffic of a citizen
- * product and is where the mismatch was live, so desktop pays. Above 900px the
- * copy moves left and the photo right, exactly as before — nothing changes on
- * screen, only which side the reorder happens on.
+/* Hero order — copy FIRST, in source and on screen, at every width (critique
+ * 2026-09-29, C3). The 2026-08-10 inversion put the credential first in the
+ * DOM so its link and state toolbar would not be visually first and tab-last
+ * (WCAG 2.4.3), and paid for it with an `order: 2` on desktop. On a phone it
+ * also meant the first screen was a card with no headline: the H1 began at
+ * y≈734 at 390px. Copy-first source order needs no reordering anywhere —
+ * desktop still reads copy left, card right — so both problems go at once.
  */
-@media (min-width: 901px) {
-  .lp .lp-hero-photo {
-    order: 2;
-  }
-}
 @media (max-width: 900px) {
+  .lp .lp-hero {
+    /* The first screen is the product's one sentence; 48px of paper above it
+       was a fifth of what a phone shows before the fold. */
+    padding-top: 28px;
+  }
   .lp .lp-hero-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .lp .lp-hero-photo {
     justify-content: flex-start;
+  }
+}
+/* The hero copy's own rhythm. Its elements carry `margin: 0` from .lp-display
+   and .lp-lead, which is why the Tailwind mt-* utilities that used to sit on
+   them did nothing: the lead touched the H1's descenders (~10px, critique
+   2026-09-29, m1). */
+.lp .lp-hero-copy .lp-eyebrow {
+  margin-top: 20px;
+}
+.lp .lp-hero-copy .lp-h-hero {
+  margin-top: 16px;
+}
+.lp .lp-hero-copy .lp-lead {
+  margin-top: 22px;
+}
+/* The urgency line (C4): a quiet line above the eyebrow, not a banner — it is
+   a way out for the few who need it, and it must not outshout the headline for
+   everyone else. Links are inline text, but padded to a 24px-tall target
+   (WCAG 2.5.8) because this is the one place on the page a hurried thumb aims. */
+.lp .lp-hero-urgent {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--color-ln-ink-2);
+}
+.lp .lp-hero-urgent-links {
+  white-space: nowrap;
+}
+.lp .lp-hero-urgent a {
+  display: inline-block;
+  padding-block: 3px;
+  color: var(--color-ln-err);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (hover: hover) {
+  .lp .lp-hero-urgent a:hover {
+    text-decoration-thickness: 2px;
   }
 }
 .lp .lp-hero-cta {
@@ -927,6 +1009,22 @@
 }
 .lp .lp-hcard-ctx-chev {
   font-size: var(--text-xs);
+}
+/* The state word leads the row (M4): the row itself steps down to regular
+   weight so the word is what the eye lands on. */
+.lp .lp-hcard-ctx-state {
+  font-weight: 800;
+}
+.lp .lp-hcard-ctx > span:last-child {
+  font-weight: 500;
+}
+/* A narrow card wraps the longest row ("En observación · Cierra sola en 8
+   días") to two lines; reserve both, so the cycle still never moves anything
+   below the card. */
+@container (max-width: 380px) {
+  .lp .lp-hcard-ctx {
+    min-height: 58px;
+  }
 }
 
 /* miMAR's machine-readable strip — two lines of the card's own format (see

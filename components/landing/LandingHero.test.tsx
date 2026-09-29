@@ -6,9 +6,10 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { CRISIS_DOORS, CrisisBand } from "./CrisisBand";
 import { LandingHero } from "./LandingHero";
 
 const SAMPLE_SVG = '<svg viewBox="0 0 100 100"><rect width="100" height="100"/></svg>';
@@ -82,5 +83,136 @@ describe("<LandingHero> — no demo pet to resolve (RA-6 finding 1)", () => {
     expect(
       screen.getByText("Cada mascota registrada tiene su credencial pública con QR"),
     ).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Design critique 2026-09-29 — C2 (primary CTA), C3 (copy first), C4 (urgency
+// line), M4 (state word, distinct dot names, live region for people only).
+// ---------------------------------------------------------------------------
+
+function renderDemoHero() {
+  return render(
+    <LandingHero qrSvg={SAMPLE_SVG} publicHref="/p/DIM-PAMP-0001" publicToken="DIM-PAMP-0001" />,
+  );
+}
+
+describe("<LandingHero> — one primary action for the owner (C2)", () => {
+  it("has exactly one primary-styled button, and it leads to /registro", () => {
+    const { container } = renderDemoHero();
+    const primaries = container.querySelectorAll(".lp-hero-cta .lp-btn--primary");
+    expect(primaries).toHaveLength(1);
+    const cta = screen.getByRole("link", { name: "Crear la libreta de mi mascota" });
+    expect(cta).toBe(primaries[0]);
+    expect(cta).toHaveAttribute("href", "/registro");
+  });
+
+  it("keeps 'Cómo funciona' as the secondary, next to it", () => {
+    const { container } = renderDemoHero();
+    const how = screen.getByRole("link", { name: "Cómo funciona" });
+    expect(how).toHaveAttribute("href", "#idea");
+    expect(how).toHaveClass("lp-btn--ghost");
+    expect(container.querySelector(".lp-hero-cta")).toContainElement(how);
+  });
+
+  it("reads copy before the credential, in source order (C3)", () => {
+    renderDemoHero();
+    const h1 = screen.getByRole("heading", { level: 1 });
+    const card = document.querySelector('[data-section="hero-credential"]');
+    expect(card).not.toBeNull();
+    // DOCUMENT_POSITION_FOLLOWING: the card comes after the headline.
+    expect(h1.compareDocumentPosition(card as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+});
+
+describe("<LandingHero> — the urgency line (C4)", () => {
+  it("links to the SAME destinations as the crisis band", () => {
+    renderDemoHero();
+    const line = document.querySelector('[data-section="hero-urgent"]') as HTMLElement;
+    expect(line).not.toBeNull();
+    const lost = within(line).getByRole("link", { name: CRISIS_DOORS.lost.label });
+    const found = within(line).getByRole("link", { name: CRISIS_DOORS.found.label });
+    expect(lost).toHaveAttribute("href", CRISIS_DOORS.lost.href);
+    expect(found).toHaveAttribute("href", CRISIS_DOORS.found.href);
+
+    // …and the band itself really uses those constants.
+    cleanup();
+    render(<CrisisBand />);
+    expect(screen.getByRole("link", { name: /Perdí una mascota/ })).toHaveAttribute(
+      "href",
+      CRISIS_DOORS.lost.href,
+    );
+    expect(screen.getByRole("link", { name: /Encontré una mascota/ })).toHaveAttribute(
+      "href",
+      CRISIS_DOORS.found.href,
+    );
+  });
+
+  it("sits above the headline", () => {
+    renderDemoHero();
+    const line = document.querySelector('[data-section="hero-urgent"]') as Node;
+    const h1 = screen.getByRole("heading", { level: 1 });
+    expect(line.compareDocumentPosition(h1) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+});
+
+describe("<LandingHero> — the state reads in words, not only colour (M4)", () => {
+  function stateLine(): HTMLElement {
+    return document.querySelector('[data-section="hero-state-line"]') as HTMLElement;
+  }
+  function liveRegion(): HTMLElement {
+    return document.querySelector('[aria-live="polite"]') as HTMLElement;
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("rests on a visible 'Al día'", () => {
+    renderDemoHero();
+    expect(stateLine()).toHaveTextContent("Al día · Vacunas firmadas");
+  });
+
+  it("says 'Está perdida' on the card body when the lost state is shown", () => {
+    renderDemoHero();
+    const toolbar = screen.getByRole("toolbar", { name: "Estados de la credencial" });
+    fireEvent.click(within(toolbar).getByRole("button", { name: "PERDIDA" }));
+    expect(stateLine()).toHaveTextContent("Está perdida · Llamar al dueño");
+  });
+
+  it("names every state dot differently — the found state is not a second 'AL DÍA'", () => {
+    renderDemoHero();
+    const toolbar = screen.getByRole("toolbar", { name: "Estados de la credencial" });
+    const names = within(toolbar)
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("aria-label"));
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).toContain("DE VUELTA EN CASA");
+  });
+
+  it("does not announce the automatic cycle", () => {
+    vi.useFakeTimers();
+    renderDemoHero();
+    expect(liveRegion()).toBeEmptyDOMElement();
+    act(() => {
+      vi.advanceTimersByTime(2600);
+    });
+    // The card moved on…
+    expect(stateLine()).toHaveTextContent("Está perdida");
+    // …and nobody was interrupted.
+    expect(liveRegion()).toBeEmptyDOMElement();
+  });
+
+  it("announces a state the person picks", () => {
+    renderDemoHero();
+    const toolbar = screen.getByRole("toolbar", { name: "Estados de la credencial" });
+    fireEvent.click(within(toolbar).getByRole("button", { name: "EN TRATAMIENTO" }));
+    expect(liveRegion()).toHaveTextContent(
+      "Estado de la credencial: En tratamiento. Plan en el historial.",
+    );
   });
 });
