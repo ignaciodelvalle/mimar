@@ -2,7 +2,11 @@
 // C4). Pure, so the copy is tested without a browser.
 
 const MESSAGES: Record<string, string> = {
-  CAPABILITY_DENIED: "Solo un administrador de la plataforma puede editar unidades.",
+  // jurisdiction-admin (verify-report S-3, 2026-09-29): a jurisdiction admin
+  // edits units in their own province too, not only the platform admin — see
+  // OUT_OF_PROVINCE below for the wrong-province case.
+  CAPABILITY_DENIED:
+    "Necesitás ser administrador de la plataforma o administrador de tu jurisdicción para editar unidades.",
   NOT_FOUND: "No encontramos esa unidad o esa localidad.",
   PROVINCE_MISMATCH: "La localidad es de otra provincia que la unidad.",
   PROVINCIAL_UNIT_HAS_NO_MEMBERS:

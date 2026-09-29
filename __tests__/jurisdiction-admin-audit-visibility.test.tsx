@@ -633,6 +633,45 @@ describe("the audit history by place (tasks 5.5, 5.6)", () => {
     });
   });
 
+  it("a funcionario's act stays visible after their account is deactivated (S-2, verify-report follow-up)", async () => {
+    await inRolledBackTx(async (tx) => {
+      const w = await world(tx);
+      const leaver = await insertProfile(tx, "govt", "JA5 probe deactivated funcionario");
+      const leaverGrant = await insertGrant(tx, leaver, "Mendoza", "San Rafael", w.admin);
+      const act = await writeAudit(tx, { actor: leaver, action: "evidence_viewed" });
+      expect(act.province_code).toBe("AR-M");
+
+      // Same effect deactivateGovtForAuthority produces (revoke every active
+      // grant, then stamp deactivated_at) — done directly here so the
+      // fixture stays a plain SQL write, like the transfer case above.
+      await tx.execute(sql`update public.govt_assignments
+                              set revoked_at = now(), revoked_by_user_id = ${w.admin}::uuid,
+                                  revocation_reason = 'Baja de prueba'
+                            where id = ${leaverGrant}::uuid`);
+      await tx.execute(sql`update public.profiles
+                              set deactivated_at = now()
+                            where id = ${leaver}::uuid`);
+
+      // The peer rule alone would lose it too (deactivated, no active
+      // grant) — the PLACE stamp is what keeps it visible, same invariant
+      // as the transfer case, proven now for deactivation instead of a move.
+      const peers = await fetchJurisdictionActorIds([{ province: "Mendoza", locality: "" }]);
+      expect(peers).not.toContain(leaver);
+      const place = (
+        await historyQuery(tx, {
+          kind: "govt",
+          actorIds: peers,
+          viewerId: w.mza,
+          provinceCode: "AR-M",
+        })
+      ).map((r) => r.id);
+      expect(place).toContain(act.id);
+
+      const trail = (await trailOf(tx, w.mza)).map((r) => r.id);
+      expect(trail).toContain(act.id);
+    });
+  });
+
   it("a row written before the stamp is read from the place it names; an unplaced row stays hidden", async () => {
     await inRolledBackTx(async (tx) => {
       const w = await world(tx);
