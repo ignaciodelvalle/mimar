@@ -1443,8 +1443,20 @@
   color: var(--color-ln-azul);
 }
 @media (max-width: 940px) {
+  /* minmax(0, 1fr), NOT 1fr (critique 2026-09-29, C1). A bare `1fr` is
+     `minmax(auto, 1fr)`, and `auto` lets the track grow to its items'
+     min-content — here the rail's six `nowrap` pills, ~577px. The track
+     then outgrew a 390px phone, the rail's own `overflow-x: auto` never
+     engaged (it was never narrower than its content), and the WHOLE page
+     scrolled sideways. The 0 floor, plus `min-width: 0` on the grid item
+     (.lp-rail-shell, since the PS10 restructure) and on the rail itself,
+     keeps the overflow inside the rail's box, where it belongs. */
   .lp .lp-story-wrap {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lp .lp-rail-shell,
+  .lp .lp-rail {
+    min-width: 0;
   }
   .lp .lp-rail {
     position: sticky;

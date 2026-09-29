@@ -176,9 +176,9 @@ gate as evidence of anything.
   (jest-expo, via `verify:mobile`) — `db-reachability.ts` skips `apps/` for
   exactly that reason, so these are never double-counted with the vitest
   total.
-- <!-- fact:e2e_specs -->45<!-- /fact --> files under `e2e/**/*.spec.ts`.
+- <!-- fact:e2e_specs -->46<!-- /fact --> files under `e2e/**/*.spec.ts`.
   Playwright's own `testIgnore` drops `demo/**` and `perf/**` at run time, so
-  fewer than <!-- fact:e2e_specs -->45<!-- /fact --> run in the default
+  fewer than <!-- fact:e2e_specs -->46<!-- /fact --> run in the default
   project.
 
 ## 5. e2e is a separate gate
