@@ -70,6 +70,7 @@
 // itself is missing. The day the adapter ships, `setImagePickerPort()` runs at
 // bootstrap and both light up with no change here.
 
+import * as FileSystem from "expo-file-system";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
@@ -118,6 +119,7 @@ import { useScrollToError } from "../ui/use-scroll-to-error";
 import { LocalityPicker } from "./LocalityPicker";
 import { QuickCaptureBox } from "./QuickCaptureBox";
 import { bitePickedLocation } from "./bite-location";
+import type { StoredEventDraftPhoto } from "./event-draft-store";
 import {
   type AcceptedImage,
   acceptPickedImage,
@@ -514,6 +516,37 @@ type TattooPhotoState =
   | { phase: "ready"; previewUri: string | null; stagedPath: string }
   | { phase: "failed"; message: string };
 
+/**
+ * Re-3 (native review, 2026-09-29): what a person sees instead of their photo
+ * when the draft restore could not trust it — either the upload never landed
+ * a `stagedPath` before the app died, or the local file it pointed at is
+ * gone. Lands in `TattooPhotoState`'s existing `failed` phase, which already
+ * draws exactly the right things for this: a red callout with the sentence,
+ * the "Podés elegir una que ya tengas…" helper, and the pick button — no new
+ * UI, because "something went wrong, pick again" is already that phase's job.
+ */
+export const PHOTO_LOST_ON_RESTORE_MESSAGE =
+  "Volvé a elegir la foto: se perdió cuando se cerró la app.";
+
+/**
+ * Whether the local file behind a restored photo snapshot is still on disk.
+ * `false` on anything this build cannot confirm — a filesystem call that
+ * throws is treated exactly like "it's gone": the safe direction is asking
+ * the person to pick again, never quietly trusting a `stagedPath` that
+ * nothing here could actually verify still has a file behind it.
+ *
+ * `expo-file-system` IS ALREADY IN THIS BINARY (`native/file-share.ts` carries
+ * the same header note) — reading it here adds no native module and moves no
+ * fingerprint.
+ */
+function photoFileStillExists(localUri: string): boolean {
+  try {
+    return new FileSystem.File(localUri).exists;
+  } catch {
+    return false;
+  }
+}
+
 function EventForm({
   kind,
   publicToken,
@@ -623,6 +656,34 @@ function EventForm({
   // on the phone and offered back. See that entry for why the other ten screens
   // keep the old sentence.
   const { allowLeave } = useDraftDiscardGuard(dirty, DISCARD_COPY.asiento);
+  // MOVED AHEAD OF `useEventDraft` (Re-3, native review, 2026-09-29): the hook
+  // needs THIS RENDER'S photo snapshot to decide whether there is anything new
+  // worth persisting, so the `useState` has to exist before that call rather
+  // than after it, where it used to sit. Nothing between here and there reads
+  // `photo` before this point, so the reorder changes no other behaviour.
+  const [photo, setPhoto] = useState<TattooPhotoState>({ phase: "none" });
+  // WHAT A PHOTO ATTEMPT LOOKS LIKE ON DISK, alongside the text (Re-3).
+  //
+  // ONLY `uploading` AND `ready` PRODUCE ONE. `picking` and `review` hold
+  // nothing serialisable (no bytes were accepted yet, or the accepted bytes
+  // live only in memory pending a tap this build cannot assume survives a
+  // restart); `failed` and `none` have nothing worth keeping either. A photo
+  // whose adapter reported no `previewUri` has no local file to check on
+  // restore, so it produces `null` too — see `StoredEventDraftPhoto`'s header
+  // for why `localUri` is the one thing this needs to be useful at all.
+  const photoDraftSnapshot: StoredEventDraftPhoto | null = (() => {
+    if (photo.phase === "uploading") {
+      return photo.image.previewUri === null
+        ? null
+        : { localUri: photo.image.previewUri, stagedPath: null };
+    }
+    if (photo.phase === "ready") {
+      return photo.previewUri === null
+        ? null
+        : { localUri: photo.previewUri, stagedPath: photo.stagedPath };
+    }
+    return null;
+  })();
   // WHAT SOMEBODY TYPED SURVIVES BEING INTERRUPTED (PO decision 2026-09-16).
   //
   // A LOCAL DRAFT, AND NOT A SEND QUEUE. That ordering is the decision itself,
@@ -640,13 +701,17 @@ function EventForm({
     sourceEventId,
     draft,
     onRestore: setDraft,
+    // THE TATTOO/CHECK-IN PHOTO, RIDING ALONG (Re-3). `null` for every other
+    // kind, since `photoDraftSnapshot` is `null` whenever `photo` never leaves
+    // `{ phase: "none" }` — which is every render of a kind with no photo
+    // control at all.
+    photo: photoDraftSnapshot,
   });
   // ONE key for this whole asiento. `useRef` and not `useState` because a
   // re-render must not be able to produce a different key, and because nothing
   // renders from it. Never `restart()`-ed: this form IS one attempt, and the
   // same-day confirm below is the SAME attempt resent.
   const attempt = useRef(createAttemptSession());
-  const [photo, setPhoto] = useState<TattooPhotoState>({ phase: "none" });
   // F-10 (native review): "Falta la foto del tatuaje…" stayed on screen after
   // the photo it was complaining about finished uploading. `set()` above
   // clears a stale field error the moment the DRAFT changes, but the photo is
@@ -686,6 +751,10 @@ function EventForm({
    * it's connected to.
    */
   const photoAttemptStarted = useRef(false);
+  /** Re-3 (native review, 2026-09-29): guards the draft-photo restore effect
+   *  below against StrictMode's mount → unmount → mount, same as
+   *  `startedRecovery` guards the Android one. */
+  const appliedRestoredPhoto = useRef(false);
   // D7: LOS DOS KINDS QUE TIENEN FOTO, Y NADA MAS. `pickImageSafely`'s marker
   // necesita saber CUAL de los dos pantallas esta pidiendo — antes solo existia
   // "tattoo" — y este valor es lo unico que las funciones de abajo consultan
@@ -694,6 +763,53 @@ function EventForm({
   // ahi, porque el boton que las dispara solo se dibuja para estos dos.
   const photoScreen: "tattoo" | "post_adoption_checkin" | null =
     kind === "tattoo" || kind === "post_adoption_checkin" ? kind : null;
+
+  /**
+   * Re-3 (native review, 2026-09-29): THE DRAFT'S OWN PHOTO, ON THE FIRST
+   * RENDER THAT KNOWS ABOUT IT. `restored` arrives asynchronously from
+   * `useEventDraft`'s mount-time read, same as the text — this effect is
+   * what turns `restored.photo` into something on screen, the way `onRestore`
+   * (passed as `setDraft` above) does for the text fields.
+   *
+   * GUARDED BY THE SAME `photoAttemptStarted` THE ANDROID RECOVERY BELOW
+   * USES, and for the identical reason: a person who has ALREADY pressed
+   * "Elegir la foto…" on this very mount, or whose Android held a pick from
+   * before it, must not have that live attempt overwritten by a snapshot
+   * that is, by definition, older. `appliedRestoredPhoto` is this effect's
+   * own StrictMode guard, the same shape as `startedRecovery`.
+   *
+   * ONLY A `stagedPath` MAKES A RESTORE WORTH TRUSTING. A snapshot written
+   * while the upload was still in flight (`stagedPath: null` — the app died
+   * mid-`stageTattooPhoto`) has no server-side object to point at regardless
+   * of what the local file says, so it always falls to the explicit refusal
+   * below: there is nothing to resume, only something to say. See
+   * `StoredEventDraftPhoto`'s header for the rest of that reasoning.
+   *
+   * THE LOCAL FILE IS CHECKED EVEN WHEN A `stagedPath` EXISTS, because the
+   * file is the only thing this screen can look at with its own eyes: the
+   * cache the OS reclaimed, or a picked-from-another-app file the source app
+   * has since deleted, leaves a `previewUri` that resolves to nothing. A
+   * restore that cannot show the person their own photo is not a silent
+   * success — it is the exact failure mode this finding is about, just moved
+   * one level down.
+   */
+  useEffect(() => {
+    if (photoScreen === null || restored === null || restored.photo === null) return;
+    if (appliedRestoredPhoto.current || photoAttemptStarted.current) return;
+    appliedRestoredPhoto.current = true;
+    photoAttemptStarted.current = true;
+    const snapshot = restored.photo;
+    const usable = snapshot.stagedPath !== null && photoFileStillExists(snapshot.localUri);
+    setPhoto(
+      usable
+        ? {
+            phase: "ready",
+            previewUri: snapshot.localUri,
+            stagedPath: snapshot.stagedPath as string,
+          }
+        : { phase: "failed", message: PHOTO_LOST_ON_RESTORE_MESSAGE },
+    );
+  }, [photoScreen, restored]);
 
   // ELEGIR Y SUBIR SON UN SOLO GESTO PARA UNA ELECCION EN VIVO, y suben AHORA
   // y no al enviar. La persona se entera de que la subida fallo mientras

@@ -102,11 +102,45 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 export const EVENT_DRAFT_MAX_AGE_MS = 7 * DAY_MS;
 
+/**
+ * A tattoo/check-in photo attempt, snapshotted alongside the text fields
+ * (Re-3, native review, 2026-09-29).
+ *
+ * ONLY THIS MUCH RIDES ALONG. `RecordEventScreen`'s own header on
+ * `TattooPhotoState` explains why the FULL state — an in-memory
+ * `AcceptedImage`'s bytes, `picking`/`review`/`uploading`'s transient
+ * progress — stays OUT of the draft: bytes are not serialisable text and a
+ * `Blob` is not something `useIsDirty` can compare field by field. A local
+ * URI is a string, and it is the one thing worth keeping: without it, the
+ * form used to lose a fully-staged photo the same way it lost one still
+ * mid-upload — silently, with the text surviving right next to it and the
+ * photo simply gone, which is what made this look "complete" to whoever came
+ * back to it.
+ *
+ * `stagedPath` IS `null` UNTIL THE UPLOAD LANDS. A photo killed mid-upload
+ * has a local file and no server-side name yet; a photo killed after
+ * `stageTattooPhoto` returned has both. That difference is what lets a
+ * restore tell "we had started, but the bytes never made it up" from
+ * "nothing was ever picked" — see the caller in `RecordEventScreen` for what
+ * each combination becomes on screen.
+ */
+export type StoredEventDraftPhoto = {
+  /** Device-local `file://`/`content://` URI. The caller checks this file
+   *  still exists before trusting anything else here — a cache the OS
+   *  reclaimed is exactly the case this type cannot tell from a lie. */
+  localUri: string;
+  /** The staging bucket's object name, once the PUT succeeded; `null` while
+   *  it had not, yet. */
+  stagedPath: string | null;
+};
+
 /** What was found on disk, and when it was written. */
 export type StoredEventDraft = {
   values: EventDraft;
   /** Device clock at write time, ms since epoch. See `isTooOld`. */
   savedAt: number;
+  /** `null` when no photo attempt was in flight or staged when this was written. */
+  photo: StoredEventDraftPhoto | null;
 };
 
 /** Everything that separates one form's scratch paper from another's. */
@@ -189,6 +223,21 @@ function narrowStoredDraft(raw: unknown): EventDraft | null {
 }
 
 /**
+ * The stored photo snapshot, narrowed the same defensive way
+ * `narrowStoredDraft` is: a value this build cannot recognise is dropped
+ * rather than trusted, because the alternative is handing `RecordEventScreen`
+ * a `stagedPath` of the wrong type and letting it reach the contract.
+ */
+function narrowStoredPhoto(raw: unknown): StoredEventDraftPhoto | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const stored = raw as Record<string, unknown>;
+  if (typeof stored.localUri !== "string" || stored.localUri.length === 0) return null;
+  const stagedPath = stored.stagedPath;
+  if (stagedPath !== null && typeof stagedPath !== "string") return null;
+  return { localUri: stored.localUri, stagedPath: stagedPath ?? null };
+}
+
+/**
  * Store what somebody has typed so far.
  *
  * FAILURES ARE SWALLOWED, the same contract `writeCachedCredential` states: a
@@ -201,9 +250,13 @@ export async function writeEventDraft(
   key: string,
   values: EventDraft,
   now: number = Date.now(),
+  /** See `StoredEventDraftPhoto`. `now` stays third — every existing caller
+   *  passes at most three arguments, and reordering would silently hand `now`
+   *  where this type is expected. */
+  photo: StoredEventDraftPhoto | null = null,
 ): Promise<void> {
   try {
-    await AsyncStorage.setItem(key, JSON.stringify({ savedAt: now, values }));
+    await AsyncStorage.setItem(key, JSON.stringify({ savedAt: now, values, photo }));
   } catch {
     // See above.
   }
@@ -227,14 +280,14 @@ export async function readEventDraft(
   try {
     const raw = await AsyncStorage.getItem(key);
     if (raw === null) return null;
-    const parsed = JSON.parse(raw) as { savedAt?: unknown; values?: unknown };
+    const parsed = JSON.parse(raw) as { savedAt?: unknown; values?: unknown; photo?: unknown };
     const savedAt = typeof parsed?.savedAt === "number" ? parsed.savedAt : null;
     const values = savedAt === null ? null : narrowStoredDraft(parsed.values);
     if (savedAt === null || values === null || isTooOld(savedAt, now)) {
       await forgetEventDraft(key);
       return null;
     }
-    return { values, savedAt };
+    return { values, savedAt, photo: narrowStoredPhoto(parsed.photo) };
   } catch {
     // A value this build cannot read is a value it must not keep either.
     await forgetEventDraft(key);

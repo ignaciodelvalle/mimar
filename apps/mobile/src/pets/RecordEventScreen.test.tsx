@@ -15,6 +15,7 @@
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import * as FileSystem from "expo-file-system";
 import {
   Alert,
   AppState,
@@ -116,10 +117,12 @@ import {
   resetImagePickerPort,
   setImagePickerPort,
 } from "../native/image-picker-port";
-import { RecordEventScreen } from "./RecordEventScreen";
+import { PHOTO_LOST_ON_RESTORE_MESSAGE, RecordEventScreen } from "./RecordEventScreen";
+import { eventDraftKey, writeEventDraft } from "./event-draft-store";
 import {
   RECORD_KINDS,
   WRITABLE_KINDS as WRITABLE_KIND_SET,
+  emptyDraft,
   kindTitle,
   recordEventCta,
 } from "./record-event-view-model";
@@ -1830,6 +1833,98 @@ describe("tatuaje — T4-M1 (2026-09-22): una foto que Android sostuvo desde ant
       await waitFor(() => expect(screen.getByText("Elegir la foto del tatuaje")).toBeOnTheScreen());
       expect(screen.queryByText("¿Es esta la foto del tatuaje?")).not.toBeOnTheScreen();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Re-3 (native review, 2026-09-29): the photo survives (or explicitly does
+// not) the same interruption the text already does
+//
+// Before this fix, `TattooPhotoState` always restarted at `{ phase: "none" }`
+// on a fresh mount — the ONLY state a `useState` can start at, since none of
+// it lived in the draft. A photo already staged before the app died vanished
+// exactly as silently as one still mid-upload, and the person who came back
+// to a form with every text field filled had no way to notice until the
+// submit refused it with `TATTOO_PHOTO_REQUIRED`, minutes later.
+//
+// THESE CASES GO THROUGH THE STORE DIRECTLY, not through a pick-then-kill
+// dance this test renderer cannot perform: `writeEventDraft` is exactly what
+// `use-event-draft.ts`'s own autosave would have written before the app died,
+// and reading it back through a fresh `render()` is what a process restart
+// does. The store's own rules for `photo` — narrowing, the write/read round
+// trip, the sweep — are pinned in `event-draft-store.test.ts`; what these pin
+// is what THIS SCREEN does with what the store hands back.
+// ---------------------------------------------------------------------------
+
+describe("tatuaje — Re-3 (native review, 2026-09-29): la foto sobrevive (o no) al cierre de la app", () => {
+  function tattooDraftKey(): string {
+    return eventDraftKey({
+      ownerId: mockSignedInUserId,
+      publicToken: TOKEN,
+      kind: "tattoo",
+      sourceEventId: null,
+    });
+  }
+
+  it("con el archivo local todavía ahí, restaura la foto lista — sin volver a elegirla", async () => {
+    const localUri = "file:///cache/tattoo-restaurada-presente.jpg";
+    new FileSystem.File(localUri).create();
+    await writeEventDraft(tattooDraftKey(), emptyDraft(new Date()), Date.now(), {
+      localUri,
+      stagedPath: A_STAGED_PATH,
+    });
+
+    render(<RecordEventScreen publicToken={TOKEN} initialKind="tattoo" />);
+
+    await waitFor(() => expect(screen.getByText("Foto lista")).toBeOnTheScreen());
+    expect(screen.queryByText(PHOTO_LOST_ON_RESTORE_MESSAGE)).not.toBeOnTheScreen();
+
+    // Y EL ASIENTO SALE CON EL `stagedPath` RESTAURADO, sin pasar de nuevo por
+    // el selector ni por `stageTattooPhoto`.
+    fireEvent.changeText(screen.getByLabelText("Código del tatuaje, obligatorio"), "ABC-1234");
+    fireEvent.press(submitControl());
+
+    await waitFor(() => expect(mockRecordPetEvent).toHaveBeenCalledTimes(1));
+    expect(mockRecordPetEvent.mock.calls[0]?.[2]).toMatchObject({ stagedPath: A_STAGED_PATH });
+    expect(mockStageTattooPhoto).not.toHaveBeenCalled();
+  });
+
+  it("con el archivo local perdido, avisa en vez de restaurar en silencio", async () => {
+    const localUri = "file:///cache/tattoo-restaurada-perdida.jpg";
+    // NO `.create()`: para este mock, en esta corrida, el archivo nunca existió.
+    await writeEventDraft(tattooDraftKey(), emptyDraft(new Date()), Date.now(), {
+      localUri,
+      stagedPath: A_STAGED_PATH,
+    });
+
+    render(<RecordEventScreen publicToken={TOKEN} initialKind="tattoo" />);
+
+    await waitFor(() => expect(screen.getByText(PHOTO_LOST_ON_RESTORE_MESSAGE)).toBeOnTheScreen());
+    expect(screen.queryByText("Foto lista")).not.toBeOnTheScreen();
+
+    // EL FORMULARIO PIDE ELEGIR DE NUEVO — no manda nada con un `stagedPath`
+    // que nadie pudo confirmar que todavía tiene una foto detrás.
+    fireEvent.changeText(screen.getByLabelText("Código del tatuaje, obligatorio"), "ABC-1234");
+    fireEvent.press(submitControl());
+    await waitFor(() => expect(screen.getByText(/falta la foto del tatuaje/i)).toBeOnTheScreen());
+    expect(mockRecordPetEvent).not.toHaveBeenCalled();
+  });
+
+  it("una subida matada A MITAD DE CAMINO (sin stagedPath todavía) también avisa, tenga o no el archivo", async () => {
+    // Re-3 en su forma original: el proceso murió mientras `stageTattooPhoto`
+    // seguía en el aire. No hay `stagedPath` que restaurar, y el archivo local
+    // — exista o no — no alcanza por sí solo para armar un `ready`.
+    const localUri = "file:///cache/tattoo-restaurada-a-medio-subir.jpg";
+    new FileSystem.File(localUri).create();
+    await writeEventDraft(tattooDraftKey(), emptyDraft(new Date()), Date.now(), {
+      localUri,
+      stagedPath: null,
+    });
+
+    render(<RecordEventScreen publicToken={TOKEN} initialKind="tattoo" />);
+
+    await waitFor(() => expect(screen.getByText(PHOTO_LOST_ON_RESTORE_MESSAGE)).toBeOnTheScreen());
+    expect(screen.queryByText("Foto lista")).not.toBeOnTheScreen();
   });
 });
 

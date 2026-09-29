@@ -81,6 +81,7 @@ import { draftSweepEpoch, getSessionState } from "../auth/session-store";
 import { sameDraft } from "../ui/use-draft-dirty";
 import {
   type StoredEventDraft,
+  type StoredEventDraftPhoto,
   eventDraftKey,
   forgetEventDraft,
   pruneExpiredEventDrafts,
@@ -156,6 +157,19 @@ function mayStillWrite(owner: DraftOwner): boolean {
   return state.phase !== "signed-in" || state.user.id === owner.ownerId;
 }
 
+/**
+ * Whether two photo snapshots are the same, for the same reason `sameDraft`
+ * exists for the text: writing the identical snapshot back on every idle tick
+ * would be a write per keystroke of SOMEONE ELSE'S field, and "did the photo
+ * change" has to be askable without a network round trip. Two fields, both
+ * strings-or-null, so a structural compare needs no library.
+ */
+function samePhoto(a: StoredEventDraftPhoto | null, b: StoredEventDraftPhoto | null): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  return a.localUri === b.localUri && a.stagedPath === b.stagedPath;
+}
+
 export type UseEventDraft = {
   /**
    * The draft that was found and put on screen, or `null`. Drives the banner —
@@ -175,6 +189,7 @@ export function useEventDraft({
   sourceEventId,
   draft,
   onRestore,
+  photo = null,
 }: {
   publicToken: string;
   kind: WritableKind;
@@ -183,6 +198,15 @@ export function useEventDraft({
   draft: EventDraft;
   /** Put a recovered draft on screen. `setDraft` from the form. */
   onRestore: (values: EventDraft) => void;
+  /**
+   * The form's live tattoo/check-in photo snapshot (Re-3, native review),
+   * or `null` when there is none to persist — every kind but the two photo
+   * screens leaves this at its default. Compared by VALUE, same as `draft`;
+   * what it becomes on restore is `RecordEventScreen`'s decision (see
+   * `restored.photo`), not this hook's — this file stays filesystem-free, the
+   * same boundary its header draws around the spine.
+   */
+  photo?: StoredEventDraftPhoto | null;
 }): UseEventDraft {
   const owner = useRef<DraftOwner | null>(null);
   if (owner.current === null) {
@@ -204,6 +228,13 @@ export function useEventDraft({
   const current = useRef(draft);
   current.current = draft;
 
+  // The photo snapshot as of THIS render, same reasoning as `current` above —
+  // and the same fix for the same bug (Re-3): before this ref existed, a
+  // photo that reached `ready` between two idle writes with no text typed in
+  // between had nothing forcing a write to notice it either.
+  const currentPhoto = useRef<StoredEventDraftPhoto | null>(photo);
+  currentPhoto.current = photo;
+
   // What the form started with, captured once — the same trick and the same
   // reasoning as `useIsDirty`. It is what "nothing has been typed" means here,
   // and it cannot be `emptyDraft()` built on demand: that function reads the
@@ -212,6 +243,11 @@ export function useEventDraft({
 
   // What is on disk, as values. `null` means "nothing of ours is stored".
   const persisted = useRef<EventDraft | null>(null);
+
+  // What photo snapshot is on disk. `null` means "nothing of ours is stored",
+  // same as `persisted` above — and the same two readers: the idle-write skip
+  // and `persistNow`'s own.
+  const persistedPhoto = useRef<StoredEventDraftPhoto | null>(null);
 
   // The asiento landed. Nothing may be written from here on. See the header.
   const sealed = useRef(false);
@@ -236,24 +272,36 @@ export function useEventDraft({
     // it. What exactly is refused, and what is not, is `mayStillWrite`'s.
     if (!mayStillWrite(writer)) return;
     const values = current.current;
-    // NEVER STORE AN UNTOUCHED FORM. Opening a form and leaving must not create
-    // a draft: the next visit would then be greeted by a banner announcing the
-    // recovery of nothing, which teaches people to ignore the banner before the
-    // day it matters. Same argument `useIsDirty` makes for the discard guard.
-    if (sameDraft(values, pristine.current)) return;
-    if (persisted.current !== null && sameDraft(values, persisted.current)) return;
+    const photoSnapshot = currentPhoto.current;
+    // NEVER STORE AN UNTOUCHED FORM WITH NO PHOTO EITHER. Opening a form and
+    // leaving must not create a draft: the next visit would then be greeted by
+    // a banner announcing the recovery of nothing, which teaches people to
+    // ignore the banner before the day it matters. Same argument `useIsDirty`
+    // makes for the discard guard — extended here (Re-3) because a photo can
+    // be the ONLY thing worth restoring: somebody who picks a tattoo photo and
+    // types nothing else still has something to lose.
+    if (sameDraft(values, pristine.current) && photoSnapshot === null) return;
+    if (
+      persisted.current !== null &&
+      sameDraft(values, persisted.current) &&
+      samePhoto(photoSnapshot, persistedPhoto.current)
+    ) {
+      return;
+    }
     // ASKED ONCE MORE WHEN THE QUEUE REACHES IT, because a write can wait
     // behind an earlier one for as long as that one takes, and the session can
     // end in between.
     //
-    // `persisted` MOVES ONLY ONCE THE WRITE HAS PASSED AND LANDED. Marking the
-    // values as saved before the queue asked would let a REFUSED write teach
-    // this form that its text is on disk, and every later departure with the
-    // same text would then skip the write it needed.
+    // `persisted`/`persistedPhoto` MOVE ONLY ONCE THE WRITE HAS PASSED AND
+    // LANDED. Marking the values as saved before the queue asked would let a
+    // REFUSED write teach this form that its text (or photo) is on disk, and
+    // every later departure with the same values would then skip the write it
+    // needed.
     queue.current = queue.current.then(async () => {
       if (!mayStillWrite(writer)) return;
-      await writeEventDraft(key, values);
+      await writeEventDraft(key, values, undefined, photoSnapshot);
       persisted.current = values;
+      persistedPhoto.current = photoSnapshot;
     });
   }, [key]);
 
@@ -264,6 +312,7 @@ export function useEventDraft({
     // its values back into `persisted` after the clear.
     queue.current = queue.current.then(() => {
       persisted.current = null;
+      persistedPhoto.current = null;
       return forgetEventDraft(key);
     });
   }, [key]);
@@ -303,6 +352,7 @@ export function useEventDraft({
         sameDraft(current.current, pristine.current);
       if (offerable && found !== null) {
         persisted.current = found.values;
+        persistedPhoto.current = found.photo;
         onRestoreRef.current(found.values);
         setRestored(found);
       }
@@ -325,15 +375,21 @@ export function useEventDraft({
     };
   }, [key]);
 
-  // THE IDLE WRITE. Re-armed by each change, cleared by the next one, absent
-  // entirely once the draft matches what is stored.
+  // THE IDLE WRITE. Re-armed by each change — to the TEXT or to the PHOTO
+  // (Re-3) — cleared by the next one, absent entirely once both match what is
+  // stored. Without `photo` in the deps and in this skip, a tattoo photo that
+  // finished uploading while the person had not touched a single field would
+  // arm no timer at all: nothing here would ever notice it existed.
   useEffect(() => {
     if (key === null || sealed.current) return;
-    if (sameDraft(draft, pristine.current)) return;
-    if (persisted.current !== null && sameDraft(draft, persisted.current)) return;
+    const draftUnchanged =
+      sameDraft(draft, pristine.current) ||
+      (persisted.current !== null && sameDraft(draft, persisted.current));
+    const photoUnchanged = samePhoto(photo, persistedPhoto.current);
+    if (draftUnchanged && photoUnchanged) return;
     const timer = setTimeout(persistNow, AUTOSAVE_IDLE_MS);
     return () => clearTimeout(timer);
-  }, [draft, key, persistNow]);
+  }, [draft, photo, key, persistNow]);
 
   // THE DEPARTURES. Both read `persistNow` through a ref so they can subscribe
   // once for the life of the form: a dependency on `persistNow` itself would

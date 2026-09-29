@@ -121,6 +121,66 @@ describe("writeEventDraft / readEventDraft — the round trip", () => {
   });
 });
 
+describe("StoredEventDraftPhoto — the photo snapshot rides along (Re-3, native review)", () => {
+  it("gives back the photo snapshot with the text, when there is one", async () => {
+    await writeEventDraft(KEY, typed(), NOW, {
+      localUri: "file:///cache/tattoo.jpg",
+      stagedPath: "pet-id/object.jpg",
+    });
+
+    const found = await readEventDraft(KEY, NOW);
+    expect(found?.photo).toEqual({
+      localUri: "file:///cache/tattoo.jpg",
+      stagedPath: "pet-id/object.jpg",
+    });
+  });
+
+  it("answers null when no photo was ever attempted — every kind but the two photo screens", async () => {
+    await writeEventDraft(KEY, typed(), NOW);
+    expect((await readEventDraft(KEY, NOW))?.photo).toBeNull();
+  });
+
+  it("keeps a photo mid-upload — a local file with no stagedPath yet", async () => {
+    // Re-3's own scenario: the app died while `stageTattooPhoto` was still in
+    // flight, so there is a local file and nothing the server confirmed yet.
+    await writeEventDraft(KEY, typed(), NOW, {
+      localUri: "file:///cache/tattoo.jpg",
+      stagedPath: null,
+    });
+
+    const found = await readEventDraft(KEY, NOW);
+    expect(found?.photo).toEqual({ localUri: "file:///cache/tattoo.jpg", stagedPath: null });
+  });
+
+  it("drops a photo envelope with no usable localUri", async () => {
+    await AsyncStorage.setItem(
+      KEY,
+      JSON.stringify({ savedAt: NOW, values: typed(), photo: { localUri: "", stagedPath: null } }),
+    );
+    expect((await readEventDraft(KEY, NOW))?.photo).toBeNull();
+  });
+
+  it("drops a photo envelope whose stagedPath is neither a string nor null", async () => {
+    await AsyncStorage.setItem(
+      KEY,
+      JSON.stringify({
+        savedAt: NOW,
+        values: typed(),
+        photo: { localUri: "file:///cache/tattoo.jpg", stagedPath: 12 },
+      }),
+    );
+    expect((await readEventDraft(KEY, NOW))?.photo).toBeNull();
+  });
+
+  it("drops a photo envelope that is not an object", async () => {
+    await AsyncStorage.setItem(
+      KEY,
+      JSON.stringify({ savedAt: NOW, values: typed(), photo: "file:///cache/tattoo.jpg" }),
+    );
+    expect((await readEventDraft(KEY, NOW))?.photo).toBeNull();
+  });
+});
+
 describe("readEventDraft — how old is too old", () => {
   it("still offers a draft one minute inside the window", async () => {
     await writeEventDraft(KEY, typed(), NOW);
@@ -262,6 +322,24 @@ describe("forgetting", () => {
 
     expect(await AsyncStorage.getAllKeys()).toEqual(["mimar.credential.v1.DIM-PAMP-0001"]);
   });
+
+  it("forgetAllEventDrafts sweeps a staged photo too — same key, same blob (Re-3, S-1)", async () => {
+    // THE URI IS NOT A SEPARATE KEY this sweep could forget to look at: it
+    // lives inside the SAME JSON envelope as the text, under the SAME key
+    // `forgetAllEventDrafts` already removes wholesale. A bite draft's photo
+    // is exactly the kind of third-party evidence `sweepDraftsOnDeliberateExit`
+    // exists to remove on "Cerrar sesión en todos los dispositivos" and on
+    // account erasure — there is no second list this sweep needed to also
+    // consult.
+    await writeEventDraft(KEY, typed(), NOW, {
+      localUri: "file:///cache/tattoo.jpg",
+      stagedPath: "pet-id/object.jpg",
+    });
+
+    await forgetAllEventDrafts();
+
+    expect(await AsyncStorage.getItem(KEY)).toBeNull();
+  });
 });
 
 describe("pruneExpiredEventDrafts — what is KEPT, not only what is offered", () => {
@@ -290,6 +368,17 @@ describe("pruneExpiredEventDrafts — what is KEPT, not only what is offered", (
     await pruneExpiredEventDrafts(NOW);
 
     expect(await AsyncStorage.getAllKeys()).toEqual(["mimar.credential.v1.DIM-PAMP-0001"]);
+  });
+
+  it("removes an expired draft's staged photo along with its text — same key, same blob", async () => {
+    await writeEventDraft(KEY, typed(), NOW - 21 * DAY_MS, {
+      localUri: "file:///cache/tattoo.jpg",
+      stagedPath: "pet-id/object.jpg",
+    });
+
+    await pruneExpiredEventDrafts(NOW);
+
+    expect(await AsyncStorage.getItem(KEY)).toBeNull();
   });
 });
 
