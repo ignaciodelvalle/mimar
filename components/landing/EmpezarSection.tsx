@@ -35,6 +35,13 @@ export function EmpezarSection() {
               <p className="lp-eyebrow mb-2">{r.eyebrow}</p>
               <h3>{r.title}</h3>
               <p>{r.body}</p>
+              {r.steps && (
+                <ol className="lp-role-steps" data-section="empezar-steps">
+                  {r.steps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+              )}
               <div className="flex flex-wrap gap-2">
                 <Link href={r.ctaHref} className="lp-btn lp-btn--primary lp-btn--compact">
                   {r.cta} <span className="lp-ar">→</span>

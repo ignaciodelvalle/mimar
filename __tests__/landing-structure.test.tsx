@@ -422,7 +422,7 @@ describe("life moments + FAQ + trust row", () => {
   it("renders 5 objection <details> and the trust row with a subtle beta chip", () => {
     const html = renderToStaticMarkup(<FaqSection />);
     const details = html.match(/<details/g) ?? [];
-    expect(details.length).toBe(5);
+    expect(details.length).toBe(6);
     expect(html).toContain("¿Cuánto cuesta?");
     expect(html).toContain('data-section="trust-row"');
     expect(html).toContain("Estadísticas abiertas");
@@ -453,6 +453,32 @@ describe("empezar — three doors", () => {
     expect(html).toContain('href="/municipios"');
     expect(html).not.toContain("Soy gobierno");
     expect(html).toContain('href="/registro"');
+  });
+});
+
+// Critique 2026-09-29, M1 — the page promised "anyone can scan it if she gets
+// lost" and never said how the QR reaches the collar.
+describe("how the QR reaches the collar (M1)", () => {
+  it("the FAQ answers it with the two paths that exist: self-print and a pre-issued tag", () => {
+    const html = renderToStaticMarkup(<FaqSection />);
+    expect(html).toContain("¿Cómo le pongo el QR?");
+    expect(html).toContain("imprimís su chapita con el QR");
+    expect(html).toContain("si tu jurisdicción lo habilita");
+    expect(html).toContain("número de serie y el código del envoltorio");
+    // Both paths are real routes today.
+    for (const route of [
+      ["app", "(app)", "mis-mascotas", "[publicToken]", "chapita", "page.tsx"],
+      ["app", "(app)", "cuenta", "chapas", "activar", "page.tsx"],
+    ]) {
+      expect(() => readFileSync(join(process.cwd(), ...route), "utf8")).not.toThrow();
+    }
+  });
+
+  it("the owner's door ends its steps on the QR", () => {
+    const html = renderToStaticMarkup(<EmpezarSection />);
+    const steps = html.slice(html.indexOf('data-section="empezar-steps"'));
+    expect(steps.match(/<li>/g)?.length).toBe(3);
+    expect(steps).toContain("Imprimí su chapita con el QR");
   });
 });
 

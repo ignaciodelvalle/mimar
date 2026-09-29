@@ -2551,6 +2551,22 @@
   flex: 1;
   margin: 0 0 18px;
 }
+/* The owner's three steps (critique 2026-09-29, M1): the last one is the QR
+   on the collar, which the whole lost-pet promise depends on. */
+.lp .lp-role-steps {
+  margin: -6px 0 20px;
+  padding-left: 1.3em;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--color-ln-ink-2);
+}
+.lp .lp-role-steps li + li {
+  margin-top: 4px;
+}
+.lp .lp-role-steps li::marker {
+  color: var(--color-ln-azul);
+  font-weight: 700;
+}
 
 /* Third door (WU4, landing redesign 2026-09-24): "Soy municipio o
    provincia", navy card — the same --lp-navy surface as the chapter 5

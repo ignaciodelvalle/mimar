@@ -606,6 +606,17 @@ export const FAQS: Array<[string, string]> = [
     "No. La credencial QR funciona desde el día uno. Si tu mascota ya tiene chip, se asocia al mismo historial y suma una forma más de identificarla.",
   ],
   [
+    // Critique 2026-09-29, M1: the whole "anyone can scan it if she gets lost"
+    // promise rests on a physical QR, and the page never said how to get one.
+    // Only the two paths that exist today: the self-print sheet at
+    // /mis-mascotas/[token]/chapita (on unless the jurisdiction turns its
+    // printable_qr channel off, lib/domain/business-rules-defaults.ts) and the
+    // pre-issued tag activated at /cuenta/chapas/activar with its serial and
+    // the code printed on the envelope.
+    "¿Cómo le pongo el QR?",
+    "Desde la ficha de tu mascota imprimís su chapita con el QR, si tu jurisdicción lo habilita: recortala y plastificala, o metela en un portachapita. Si te entregaron una chapa miMAR, la activás desde tu cuenta con su número de serie y el código del envoltorio.",
+  ],
+  [
     "¿Reemplaza la libreta de papel?",
     // PO 2026-09-29 (critique M3): "firmada digitalmente" names a legal
     // category (Ley 25.506, licensed certifier) the product does not claim, and
@@ -638,6 +649,8 @@ export type LandingRole = {
   ctaHref: string;
   cta2: string;
   cta2Href: string;
+  /** How it starts, in order (the owner door only). */
+  steps?: string[];
 };
 
 export const ROLES: LandingRole[] = [
@@ -647,6 +660,14 @@ export const ROLES: LandingRole[] = [
     eyebrow: "Soy dueño",
     title: "miMAR para tu mascota",
     body: "Identidad pública con QR, historial sanitario y modo perdido. Gratis.",
+    // M1 (critique 2026-09-29): the last step is the physical QR, the one the
+    // page's whole lost-pet promise depends on. See the "¿Cómo le pongo el
+    // QR?" FAQ for the two real paths.
+    steps: [
+      "Creá tu cuenta.",
+      "Registrá a tu mascota: su credencial con QR se crea al terminar.",
+      "Imprimí su chapita con el QR, o activá la chapa que te entregaron, y ponésela en el collar.",
+    ],
     cta: "Crear cuenta",
     ctaHref: "/registro",
     cta2: "Ya tengo cuenta",

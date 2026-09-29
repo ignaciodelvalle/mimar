@@ -16,7 +16,7 @@ export function FaqSection() {
           </h2>
         </div>
         {/* Entrance sequencing (existing .lp-reveal + data-d mechanism):
-            heading first, then the five objections stagger in 1..5. */}
+            heading first, then the six questions stagger in 1..6. */}
         <div className="lp-faq mt-[clamp(30px,4vw,48px)]">
           {FAQS.map(([q, a], i) => (
             <details className="op-disclosure lp-reveal" data-d={i + 1} key={q}>
