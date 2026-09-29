@@ -29,6 +29,7 @@
 
 import { matchSymptoms } from "@/lib/domain/symptom-matcher";
 import { validateEventPayload } from "@/lib/events/event-schemas";
+import { matchesDbError } from "@/lib/infra/db-errors";
 
 import type { EventsRepository } from "../../infrastructure/events-repository";
 import { createSymptomObservedWriter } from "../surveillance/symptom-observed-use-case";
@@ -85,6 +86,9 @@ export const INTAKE_ALREADY_RECORDED =
 
 type Executor = Parameters<EventsRepository["insertEventIdempotent"]>[1];
 
+/** The partial unique index (migration 0274) that holds one intake per visit. */
+export const ONE_INTAKE_PER_VISIT_INDEX = "pet_events_one_intake_per_visit";
+
 export async function recordConditionAtIntake(
   input: RecordConditionAtIntakeInput,
   deps: Deps,
@@ -116,7 +120,7 @@ export async function recordConditionAtIntake(
     symptomText.length > 0 && matchSymptoms(symptomText, pet.species).length > 0;
   const notifications: NewNotification[] = [];
 
-  const outcome = await transaction(async (tx) => {
+  const writeInTx = async (tx: unknown) => {
     const executor = tx as Executor;
 
     const existing = await repo.findVisitEventOfType(visit.id, INTAKE_EVENT_TYPE, executor);
@@ -206,7 +210,24 @@ export async function recordConditionAtIntake(
     }
 
     return { kind: "recorded" as const, eventId: event.id, weightEventId, symptomEventId };
-  });
+  };
+
+  // THE RACE THE PRE-READ CANNOT SEE. Two submits for one visit both read "no
+  // intake yet" and both insert; the partial unique index lets one commit and
+  // fails the other with a raw 23505. That loser gets the same answer the
+  // pre-read would have given it — a replay when it carried the winner's key,
+  // the refusal sentence otherwise — read after the winner committed.
+  let outcome: Awaited<ReturnType<typeof writeInTx>>;
+  try {
+    outcome = await transaction(writeInTx);
+  } catch (err) {
+    if (!matchesDbError(err, { code: "23505", constraint: ONE_INTAKE_PER_VISIT_INDEX })) throw err;
+    const winner = await repo.findVisitEventOfType(visit.id, INTAKE_EVENT_TYPE);
+    outcome =
+      winner && key && winner.clientIdempotencyKey === key
+        ? { kind: "replay" as const, eventId: winner.id }
+        : { kind: "already_recorded" as const };
+  }
 
   if (outcome.kind === "already_recorded") return { ok: false, error: INTAKE_ALREADY_RECORDED };
   if (outcome.kind === "replay") {

@@ -204,6 +204,48 @@ describe("recordConditionAtIntake — the write", () => {
   });
 });
 
+describe("recordConditionAtIntake — the race past the pre-read", () => {
+  // A repository whose in-transaction pre-read sees nothing: exactly what the
+  // loser of a race sees when the winner has not committed yet. Reads outside
+  // a transaction (no executor) stay real.
+  class StalePreReadRepository extends EventsRepository {
+    override async findVisitEventOfType(
+      visitId: string,
+      eventType: string,
+      executor?: Parameters<EventsRepository["findVisitEventOfType"]>[2],
+    ) {
+      if (executor) return null;
+      return super.findVisitEventOfType(visitId, eventType);
+    }
+  }
+
+  it("a loser with ANOTHER key gets the refusal sentence, not a raw 23505", async () => {
+    const { petId, visitId } = await freshVisit();
+    await recordConditionAtIntake(input(petId, visitId), deps);
+    const loser = await recordConditionAtIntake(input(petId, visitId), {
+      ...deps,
+      repo: new StalePreReadRepository(),
+    });
+    expect(loser).toEqual({ ok: false, error: INTAKE_ALREADY_RECORDED });
+    expect(
+      (await rowsOf(petId)).filter((r) => r.eventType === "condition_at_intake_recorded"),
+    ).toHaveLength(1);
+  });
+
+  it("two concurrent intakes for one visit: one records, the other is refused with a sentence", async () => {
+    const { petId, visitId } = await freshVisit();
+    const results = await Promise.all([
+      recordConditionAtIntake(input(petId, visitId), deps),
+      recordConditionAtIntake(input(petId, visitId), deps),
+    ]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, error: INTAKE_ALREADY_RECORDED }]);
+    expect(
+      (await rowsOf(petId)).filter((r) => r.eventType === "condition_at_intake_recorded"),
+    ).toHaveLength(1);
+  });
+});
+
 describe("recordConditionAtIntake — who may write", () => {
   it.each([
     [
