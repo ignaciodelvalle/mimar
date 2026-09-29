@@ -166,6 +166,13 @@ const RLS_REQUIRED: ReadonlyArray<string> = [
   // DELETE (rows go via profiles CASCADE, or via erase_subject_data — 0245
   // added it to both subject-rights RPCs).
   "user_surface_visits",
+  // Clinical visits (migration 0273, vet-visit-record): one SELECT policy TO
+  // authenticated — an active member of the visit's organization (through the
+  // caller-only SECURITY DEFINER helper caller_is_active_org_member, because a
+  // policy subquery on organization_memberships recurses) or the pet's active
+  // titular. Zero write policies: open/close/supersede run over Drizzle
+  // (BYPASSRLS). Behavioural fence: __tests__/rls/visits-rls.test.ts.
+  "visits",
 ];
 
 // ---------------------------------------------------------------------------

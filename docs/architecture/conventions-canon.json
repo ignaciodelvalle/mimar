@@ -2590,7 +2590,7 @@
       ],
       "enforcer": [
         "__tests__/dni-hash-pepper.test.ts:128-176",
-        "db/schema.ts:321-322,414-416"
+        "db/schema.ts:322-323,415-417"
       ],
       "enforcementKind": "vitest",
       "wired": "test:verified",
@@ -2714,7 +2714,7 @@
         "AGENTS.md:1611"
       ],
       "enforcer": [
-        "db/schema.ts:441-444",
+        "db/schema.ts:442-445",
         "db/migrations/0106_dni_less_identity.sql:119"
       ],
       "enforcementKind": "db-constraint",
@@ -3169,7 +3169,7 @@
         "AGENTS.md:425"
       ],
       "enforcer": [
-        "db/schema.ts:1116-1119"
+        "db/schema.ts:1117-1120"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3188,7 +3188,7 @@
         "AGENTS.md:426"
       ],
       "enforcer": [
-        "db/schema.ts:1120-1122"
+        "db/schema.ts:1121-1123"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3207,7 +3207,7 @@
         "AGENTS.md:435"
       ],
       "enforcer": [
-        "db/schema.ts:1128-1130"
+        "db/schema.ts:1129-1131"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3251,7 +3251,7 @@
         "AGENTS.md:446"
       ],
       "enforcer": [
-        "db/schema.ts:4514-4517"
+        "db/schema.ts:4608-4611"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3271,7 +3271,7 @@
         "AGENTS.md:474"
       ],
       "enforcer": [
-        "db/schema.ts:4840-4842"
+        "db/schema.ts:4934-4936"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3290,7 +3290,7 @@
         "AGENTS.md:487"
       ],
       "enforcer": [
-        "db/schema.ts:4928-4930"
+        "db/schema.ts:5022-5024"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3324,7 +3324,7 @@
         "CLAUDE.md:13"
       ],
       "enforcer": [
-        "db/schema.ts:462",
+        "db/schema.ts:463",
         "__tests__/public-token-in-url-invariant.test.ts:154"
       ],
       "enforcementKind": "db-constraint",
@@ -3597,7 +3597,7 @@
       ],
       "enforcer": [
         "__tests__/rabies-professional-closure-fence.test.ts:1-20,72-126",
-        "db/schema.ts:753 petsRabiesObservationStatusValid"
+        "db/schema.ts:754 petsRabiesObservationStatusValid"
       ],
       "enforcementKind": "vitest",
       "wired": "test:verified",
@@ -3893,7 +3893,7 @@
         "scripts/check-audit-log-coverage.ts:14-18",
         "package.json:20 lint:audit-log",
         "scripts/check-audit-log-actions-declared.ts",
-        "db/schema.ts:2695"
+        "db/schema.ts:2773"
       ],
       "enforcementKind": "lint-script",
       "wired": "verify",
@@ -4220,7 +4220,7 @@
       ],
       "enforcer": [
         "__tests__/event-schemas.test.ts:27-40",
-        "db/schema.ts:1326"
+        "db/schema.ts:1327"
       ],
       "enforcementKind": "vitest",
       "wired": "test:verified",
@@ -8764,7 +8764,7 @@
       "rule": "A microchip identification's code must be exactly 15 characters and non-null (`chip_requires_iso_fields`), and a profile's dni_hash must be unique when present (`profiles_dni_hash_unique`).",
       "scope": "db",
       "sources": [
-        "db/schema.ts:4630-4633, db/schema.ts:414-416"
+        "db/schema.ts:4724-4727, db/schema.ts:414-416"
       ],
       "enforcer": [
         "db/schema.ts"

@@ -1074,6 +1074,9 @@ export const PET_EVENT_COLUMN_PRIVACY: Record<string, ColumnEntry> = {
   firmado_at: colPa("When the professional signed the act."),
   firma_hash: colPa("Hash of the professional's signature over the act."),
   created_at: CF,
+  // The clinical visit the row was written in (migration 0273): an id of
+  // operational metadata, not a person.
+  visit_id: CF,
 };
 
 // ---------------------------------------------------------------------------

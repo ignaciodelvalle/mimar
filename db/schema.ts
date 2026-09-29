@@ -28,6 +28,7 @@ import {
   text,
   time,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -1344,6 +1345,67 @@ export const petCaretakerGrants = pgTable(
 );
 
 // ============================================================================
+// Visits — one vet, one pet, one organization, one sitting (migration 0273)
+// ============================================================================
+// Operational metadata (invariant 3), not a fact: the facts a visit groups
+// live in pet_events, each stamped with `visit_id` AT INSERT (the spine is
+// append-only, so the link cannot be added later). Lifecycle rules live in the
+// BEFORE UPDATE trigger enforce_visits_mutation_rules: modality freezes once
+// an event references the visit, the close fields are set once, the nullable
+// FKs move only to NULL. RLS: SELECT for an active member of the org or the
+// pet's active titular; no write policy (Drizzle/BYPASSRLS only).
+// Declared before petEvents so the composite FK below can name it.
+export const visits = pgTable(
+  "visits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    petId: uuid("pet_id")
+      .notNull()
+      .references(() => pets.id, { onDelete: "cascade" }),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    // Nullable for erasure only; the application always sets it.
+    vetUserId: uuid("vet_user_id").references(() => profiles.id, { onDelete: "set null" }),
+    modality: text("modality").notNull().default("clinic"),
+    appointmentId: uuid("appointment_id").references((): AnyPgColumn => appointments.id, {
+      onDelete: "set null",
+    }),
+    openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closeReason: text("close_reason"),
+    closedByUserId: uuid("closed_by_user_id").references(() => profiles.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    idPetUnique: unique("visits_id_pet_unique").on(table.id, table.petId),
+    // Not unique on purpose: an offline client may sync a visit while a web
+    // one is open; the application supersedes the older one.
+    openIdx: index("visits_open_idx")
+      .on(table.petId, table.organizationId, table.vetUserId)
+      .where(sql`${table.closedAt} IS NULL`),
+    organizationIdx: index("visits_organization_id_idx").on(table.organizationId),
+    appointmentIdx: index("visits_appointment_id_idx")
+      .on(table.appointmentId)
+      .where(sql`${table.appointmentId} IS NOT NULL`),
+    modalityValid: check("visits_modality_valid", sql`${table.modality} IN ('clinic', 'home')`),
+    closeReasonValid: check(
+      "visits_close_reason_valid",
+      sql`${table.closeReason} IN ('vet', 'expired', 'superseded')`,
+    ),
+    closePair: check(
+      "visits_close_pair",
+      sql`(${table.closedAt} IS NULL) = (${table.closeReason} IS NULL)`,
+    ),
+  }),
+);
+
+export type Visit = typeof visits.$inferSelect;
+export type NewVisit = typeof visits.$inferInsert;
+
+// ============================================================================
 // PetEvents — the append-only timeline (the spine)
 // ============================================================================
 // Every fact about a pet's life is a row here. Never edited, never deleted.
@@ -1422,8 +1484,24 @@ export const petEvents = pgTable(
     firmadoAt: timestamp("firmado_at", { withTimezone: true }),
     firmaHash: text("firma_hash"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // The visit this event was written in (migration 0273). Stamped AT INSERT
+    // by VisitScopedEventsRepository (src/modules/visits) — never later, the
+    // spine is append-only. NULL for every event written outside a visit and
+    // for every row that predates the column (never guess-backfilled). The FK
+    // is composite (visit_id, pet_id) so an event cannot name another pet's
+    // visit; the BEFORE INSERT trigger pet_events_visit_org_match refuses an
+    // author organization that is not the visit's.
+    visitId: uuid("visit_id"),
   },
   (table) => ({
+    visitFk: foreignKey({
+      name: "pet_events_visit_fk",
+      columns: [table.visitId, table.petId],
+      foreignColumns: [visits.id, visits.petId],
+    }),
+    visitIdIdx: index("pet_events_visit_id_idx")
+      .on(table.visitId)
+      .where(sql`${table.visitId} IS NOT NULL`),
     petTimelineIdx: index("pet_events_pet_id_occurred_at_idx").on(table.petId, table.occurredAt),
     eventTypeIdx: index("pet_events_event_type_idx").on(table.eventType),
     // Composite for province-scale analytics scans that filter by event_type +
@@ -3257,10 +3335,18 @@ export const serviceOfferings = pgTable(
     // P1-3); the offering owner explicitly opts in via the org-side form.
     isPublic: boolean("is_public").notNull().default(false),
 
+    // Where the service is delivered (migration 0273): at the clinic or at
+    // the owner's home. Copied onto each appointment at booking.
+    modality: text("modality").notNull().default("clinic"),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    modalityValid: check(
+      "service_offerings_modality_valid",
+      sql`${table.modality} IN ('clinic', 'home')`,
+    ),
     orgIdx: index("service_offerings_org_idx")
       .on(table.organizationId)
       .where(sql`${table.organizationId} IS NOT NULL`),
@@ -3453,11 +3539,19 @@ export const appointments = pgTable(
     }),
     notesFromOwner: text("notes_from_owner"),
     notesFromOrg: text("notes_from_org"),
+    // Denormalized from the offering at booking (migration 0273), so the
+    // agenda shows clinic vs home without a join and a later edit of the
+    // offering does not rewrite a booked appointment.
+    modality: text("modality").notNull().default("clinic"),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    modalityValid: check(
+      "appointments_modality_valid",
+      sql`${table.modality} IN ('clinic', 'home')`,
+    ),
     // (pet_id, status, created_at): replaces the old (pet_id, created_at) index.
     // Covers the pet-detail confirmed-turnos query and all other pet+status
     // appointment lookups. Migration 0096 drops appointments_pet_idx.

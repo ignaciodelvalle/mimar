@@ -407,6 +407,12 @@ export const CLASSIFICATION: Readonly<Record<string, Classification>> = {
   // once (org-setup-checklist.ts, S3-F04). A row lives until the owning
   // profile is deleted (ON DELETE CASCADE) or the subject exercises art. 16.
   user_surface_visits: BOTH_COVERED,
+  // 0273 (vet-visit-record): the grouping of one vet's events at one
+  // organization in one sitting. The clinical facts themselves are pet_events
+  // rows, which both RPCs already reach.
+  visits: bothExempt(
+    "A pet, an organization, a modality (clinic/home, no address), open/close times and a close reason, plus two actor FKs (vet_user_id, closed_by_user_id) recording who performed a clinical act. No free text.",
+  ),
   welfare_report_attachments: bothGap("uploaded_by_user_id and `original_filename`."),
   welfare_reports: BOTH_COVERED,
 };

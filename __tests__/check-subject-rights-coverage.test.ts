@@ -245,9 +245,11 @@ describe("the one-sided debt is written down, and pinned", () => {
   // 0253 added authority_units and authority_unit_localities (actor FKs only,
   // the reason of a membership change goes to audit_log); 0257 added
   // place_read_flags (configuration) and place_shadow_disagreements (row ids
-  // and official recipients' ids, pruned after 30 days).
-  it("EXEMPT holds nineteen tables, every one exempt on BOTH sides", () => {
-    expect(Object.keys(EXEMPT)).toHaveLength(19);
+  // and official recipients' ids, pruned after 30 days). 0273 added visits (a
+  // pet, an organization, a modality, times and two actor FKs of the clinical
+  // act — the facts it groups are pet_events rows, which both RPCs reach).
+  it("EXEMPT holds twenty tables, every one exempt on BOTH sides", () => {
+    expect(Object.keys(EXEMPT)).toHaveLength(20);
     for (const t of Object.keys(EXEMPT)) {
       expect(CLASSIFICATION[t].export.state, t).toBe("exempt");
       expect(CLASSIFICATION[t].erase.state, t).toBe("exempt");

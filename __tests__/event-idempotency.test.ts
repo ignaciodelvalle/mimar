@@ -48,6 +48,7 @@ function makeEvent(overrides: Partial<PetEvent> = {}): PetEvent {
     firmadoAt: null,
     firmaHash: null,
     createdAt: new Date("2026-05-22T10:00:00Z"),
+    visitId: null,
     ...overrides,
   };
 }
