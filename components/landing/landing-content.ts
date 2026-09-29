@@ -317,7 +317,8 @@ export const ACTORS: LandingActor[] = [
   {
     key: "refugio",
     name: "Refugio",
-    does: "Custodia, tránsitos y adopciones verificadas.",
+    // Owner's words (critique 2026-09-29, M2): what a shelter does FOR HER.
+    does: "La recibe si se pierde y la identifica por su chip.",
   },
   {
     key: "estado",
@@ -374,7 +375,9 @@ export const CHAPTERS: LandingChapter[] = [
     // Pampa's libreta has no appointment: what the vet chapter can truthfully
     // show is the 2022 rabies dose being signed.
     title: "La vacuna queda firmada.",
-    lead: `La ${VET_SHORT_NAME} — matrícula verificada — le aplica la antirrábica y firma el asiento. Dato fiable, de origen.`,
+    // "Dato fiable, de origen." was the operator's vocabulary (critique
+    // 2026-09-29, M2; PO chose this wording over "vale como la libreta de papel").
+    lead: `La ${VET_SHORT_NAME} le aplica la antirrábica y la anota en su libreta. Queda firmada con su matrícula.`,
   },
   {
     key: "anon",
@@ -561,7 +564,9 @@ export const LIFE_MOMENTS: LifeMoment[] = [
     // is computed straight from pets/pet_events, cadence "recomputed on every
     // render" — live, not daily. Rewritten to make no cadence claim at all:
     // just that it is automatic, not a spreadsheet.
-    body: "Las vacunaciones masivas cargan constancias solas; la cobertura se actualiza sola, sin planillas.",
+    // Owner's words (critique 2026-09-29, M2): what the campaign means for
+    // YOUR pet and what your comuna sees. Still no cadence claim.
+    body: "La dosis de campaña se suma a su libreta, y tu comuna sabe cuántas mascotas están vacunadas sin ver las de nadie.",
   },
   {
     icon: "candado",
@@ -602,7 +607,10 @@ export const FAQS: Array<[string, string]> = [
   ],
   [
     "¿Reemplaza la libreta de papel?",
-    "Tiene la misma información, firmada digitalmente. Mientras la homologación avanza jurisdicción por jurisdicción, conservá también la de papel.",
+    // PO 2026-09-29 (critique M3): "firmada digitalmente" names a legal
+    // category (Ley 25.506, licensed certifier) the product does not claim, and
+    // no homologation is in progress.
+    "Tiene la misma información, firmada por tu veterinaria con su matrícula verificada. Por ahora, conservá también la libreta de papel.",
   ],
   [
     "¿Y si me roban el teléfono?",
@@ -660,7 +668,7 @@ export const ROLES: LandingRole[] = [
     icon: "edificio",
     eyebrow: "Soy municipio o provincia",
     title: "miMAR para tu jurisdicción",
-    body: "Zoonosis y bienestar animal: coordiná campañas y respondé con datos de origen, no planillas.",
+    body: "Zoonosis y bienestar animal: coordiná campañas y seguí la cobertura de tu jurisdicción con datos que llegan firmados, sin cargarlos a mano.",
     cta: "Conocer miMAR para municipios",
     ctaHref: "/municipios",
     cta2: "Ya tengo cuenta institucional",

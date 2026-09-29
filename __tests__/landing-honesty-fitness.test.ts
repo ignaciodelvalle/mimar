@@ -94,6 +94,13 @@ const BANNED_TERMS: Array<{ re: RegExp; label: string }> = [
     label: "nada se reescribe (denies the A.1 audited suppression exception)",
   },
   {
+    // The design critique of 2026-09-29 proposed "Nadie puede borrar ni
+    // cambiar lo que firmó tu veterinaria" for the hero. Same denial, new
+    // spelling; the hero now says "no se edita" instead.
+    re: /\bnadie\s+puede\s+borrar\b/gi,
+    label: "nadie puede borrar (denies the A.1 audited suppression exception)",
+  },
+  {
     re: /\bnunca\s+se\s+borra\b/gi,
     label: "nunca se borra (denies the A.1 audited suppression exception)",
   },
@@ -170,6 +177,9 @@ describe("the fence is not vacuous", () => {
     expect(violationsIn("<p>Su historial solo se agrega: nada se reescribe.</p>")).not.toEqual([]);
     expect(violationsIn("<p>…y toda su historia, nunca se borra.</p>")).not.toEqual([]);
     expect(violationsIn("<p>La línea de vida es de Pampa: nada se borra.</p>")).not.toEqual([]);
+    expect(
+      violationsIn("<p>Nadie puede borrar ni cambiar lo que firmó tu veterinaria.</p>"),
+    ).not.toEqual([]);
   });
 
   it("PASSES the honest replacements this WU shipped", () => {
@@ -185,5 +195,10 @@ describe("the fence is not vacuous", () => {
     ).toEqual([]);
     expect(violationsIn("<p>…y toda su historia, asiento por asiento.</p>")).toEqual([]);
     expect(violationsIn("<p>La cobertura se actualiza sola, sin planillas.</p>")).toEqual([]);
+    expect(
+      violationsIn(
+        "<p>Lo que firma tu veterinaria no se edita: si algo estaba mal, se corrige con un asiento nuevo.</p>",
+      ),
+    ).toEqual([]);
   });
 });

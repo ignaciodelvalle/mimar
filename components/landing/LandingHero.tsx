@@ -323,11 +323,16 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                 user's free text with a notice, which is a rewrite. Now uses
                 A.1's own wording: "una corrección es un asiento nuevo, nunca
                 una edición" describes the append-only DEFAULT without
-                denying the audited exception. */}
+                denying the audited exception.
+                Owner's words (critique 2026-09-29, M2, PO-approved): the
+                technical "asiento" sentence now lives only in chapter 5. The
+                critique proposed "Nadie puede borrar ni cambiar lo que firmó
+                tu veterinaria", which denies the same audited exception, so
+                this says what is true in the same plain register. */}
             <p className="lp-lead lp-reveal" data-d="2">
               La libreta sanitaria de tu mascota en el teléfono, con una credencial QR que
-              cualquiera puede escanear si se pierde. Su historial solo se agrega: una corrección es
-              un asiento nuevo, nunca una edición.
+              cualquiera puede escanear si se pierde. Lo que firma tu veterinaria no se edita: si
+              algo estaba mal, se corrige con un asiento nuevo.
             </p>
             <div className="lp-hero-cta lp-reveal" data-d="3">
               {/* ONE primary action, for the owner (critique 2026-09-29, C2).
@@ -343,9 +348,13 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                 Cómo funciona
               </a>
             </div>
-            {/* Hero triad — exact copy is a PO-locked decision (#4). */}
+            {/* Hero triad — exact copy is a PO-locked decision (#4), revised by
+                the PO 2026-09-29 (critique M3): "Datos abiertos" beside a pet's
+                credential read as "my pet's data is open", which the FAQ
+                "¿Quién ve los datos…?" contradicts. What is open is the
+                statistics, and they carry no personal data. */}
             <p className="lp-hero-kill lp-reveal" data-d="4">
-              <b>Gratis para siempre.</b> Sin papeleo. Datos abiertos.
+              <b>Gratis para siempre.</b> Sin papeleo. Estadísticas abiertas, sin datos personales.
             </p>
           </div>
 

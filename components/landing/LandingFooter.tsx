@@ -30,7 +30,7 @@ export function LandingFooter() {
                 framing used across the rest of the honesty pass. */}
             <p className="max-w-xs text-md leading-relaxed text-[var(--color-ln-mute)]">
               La libreta sanitaria digital de las mascotas de Argentina, con historial que solo se
-              agrega. Gratis y con datos abiertos.
+              agrega. Gratis, y con estadísticas abiertas sin datos personales.
             </p>
             {/* PO decision, orchestrator review 2026-09-24 (reverses D7): the
                 celeste-and-white stripe, the "Estado" chapter and (once WU5
@@ -73,9 +73,13 @@ export function LandingFooter() {
             here is a norm citation, which claims nothing about who backs the
             product. */}
         <div className="lp-foot-legal">
+          {/* PO 2026-09-29 (critique M3): a platform does not "operate under"
+              Ley 14.346, the criminal law on animal cruelty. What is true: the
+              cruelty reports it takes fall under that law, and personal data
+              is handled under Ley 25.326. */}
           <span>
-            miMAR opera bajo la Ley 14.346 (protección animal) y la Ley 25.326 (protección de datos
-            personales).
+            Las denuncias de maltrato se encuadran en la Ley 14.346. Tus datos se tratan según la
+            Ley 25.326.
           </span>
         </div>
       </div>

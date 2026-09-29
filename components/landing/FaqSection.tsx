@@ -41,7 +41,7 @@ export function FaqSection() {
             <Icon name="candado" size="sm" decorative /> Historial que solo se agrega
           </span>
           <span>
-            <Icon name="chart-line" size="sm" decorative /> Datos abiertos
+            <Icon name="chart-line" size="sm" decorative /> Estadísticas abiertas
           </span>
           <span>
             <LnBadge variant="info">beta</LnBadge>

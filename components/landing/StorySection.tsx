@@ -259,8 +259,8 @@ export function StorySection() {
           </h2>
           <p className="lp-lead lp-reveal mx-auto mt-4" data-d="2">
             Alrededor de Pampa están su dueño, su veterinaria, un refugio y el Estado. Los tres
-            primeros escriben en su libreta; el Estado ve el agregado. Esta es su historia, capítulo
-            por capítulo.
+            primeros escriben en su libreta; el Estado ve solo totales, nunca a Pampa. Esta es su
+            historia, capítulo por capítulo.
           </p>
         </div>
 
