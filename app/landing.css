@@ -2532,6 +2532,8 @@
 .lp .lp-role-steps {
   margin: -6px 0 20px;
   padding-left: 1.3em;
+  /* Tailwind's preflight strips list markers; the numbers are the point. */
+  list-style: decimal;
   font-size: 14.5px;
   line-height: 1.55;
   color: var(--color-ln-ink-2);
