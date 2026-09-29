@@ -132,10 +132,20 @@ async function clearExistingGrant(page: Page): Promise<void> {
     const button = page.getByRole("button", { name: trigger });
     if ((await button.count()) === 0) continue;
     await button.click();
+    const resolved = page.waitForResponse(
+      (r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined,
+      { timeout: 30_000 },
+    );
     await page.getByRole("button", { name: confirm }).click();
-    // The page reloads itself (navigateAfterActionSuccess) — wait for the form
-    // that only the "no arrangement" state renders.
-    await expect(page.getByRole("button", { name: "Invitar como cuidador/a" })).toBeVisible();
+    await resolved;
+    // The page reloads itself (navigateAfterActionSuccess), and the caller's
+    // next fill must not race that reload. Reload it ourselves until the form
+    // only the "no arrangement" state renders is there — a visible button
+    // alone could be the pre-reload DOM (the cascade in CI run 36640718326).
+    await expect(async () => {
+      await page.goto(page.url(), { waitUntil: "domcontentloaded" });
+      await expect(page.getByLabel(/correo/i)).toBeVisible({ timeout: 5_000 });
+    }).toPass({ timeout: 30_000 });
     return;
   }
 }
@@ -213,15 +223,28 @@ test.describe
         });
         await caretakerPage.getByLabel(/^Peso/i).fill("13.7");
         await caretakerPage.getByLabel(/^Fecha/i).fill(todayInAr());
+        // Wait for the SERVER ACTION's answer (the chapas.spec pattern), never
+        // the post-action URL: navigating straight after the click aborts the
+        // in-flight action, and the redirect is the hop e2e/README.md says drops.
+        const weightSaved = caretakerPage.waitForResponse(
+          (r) =>
+            r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined,
+          { timeout: 30_000 },
+        );
         await caretakerPage.getByRole("button", { name: "Registrar peso" }).click();
+        await weightSaved;
         // Assert the OUTCOME (the entry in the libreta), never the redirect. And
         // assert the refusal is ABSENT: a caretaker being told "esta acción es
         // solo del titular" here would mean the deny-list had swallowed the one
-        // thing they are for.
-        await caretakerPage.goto(`/mis-mascotas/${token}?tab=libreta`, {
-          waitUntil: "domcontentloaded",
-        });
-        await expect(caretakerPage.getByText(/13[.,]7/).first()).toBeVisible();
+        // thing they are for. The action's own full-document redirect may still
+        // be in flight and abort this goto (net::ERR_ABORTED in CI run
+        // 36640718326), so the navigation is retried until the outcome shows.
+        await expect(async () => {
+          await caretakerPage.goto(`/mis-mascotas/${token}?tab=libreta`, {
+            waitUntil: "domcontentloaded",
+          });
+          await expect(caretakerPage.getByText(/13[.,]7/).first()).toBeVisible({ timeout: 5_000 });
+        }).toPass({ timeout: 30_000 });
         await expect(caretakerPage.getByText(/solo del titular/i)).toHaveCount(0);
 
         // ---- the titular ends it, unilaterally and immediately ---------------
