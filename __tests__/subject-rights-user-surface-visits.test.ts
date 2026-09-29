@@ -185,7 +185,14 @@ const ERASE_ANCHOR =
   "    RETURNING user_id";
 const ERASE_MUTANT = "    DELETE FROM public.user_surface_visits\n" + "    RETURNING user_id";
 
-type EraseProbe = { survivors: string[]; subjectId: string; bystanderId: string; deleted: number };
+type EraseProbe = {
+  survivors: string[];
+  subjectId: string;
+  bystanderId: string;
+  deleted: number;
+  /** Every row in the table just before the erasure — the mutant deletes all of them. */
+  tableRows: number;
+};
 
 /**
  * Seeds a visit for the subject AND one for an unrelated operator, then runs
@@ -200,6 +207,11 @@ async function probeErase(mutated: boolean): Promise<EraseProbe> {
     await seedVisit(tx, bystander.id, "gob_home");
 
     if (mutated) await applyMutant(tx, "erase_subject_data", ERASE_ANCHOR, ERASE_MUTANT);
+
+    // The shared local database holds other users' visits too (any browsing of
+    // the app writes them), so the predicate-less mutant's count is the table's
+    // size at this instant, never a constant.
+    const before = await rows(tx, sql`SELECT count(*)::int AS n FROM public.user_surface_visits`);
 
     await actAs(tx, subject.id);
     await tx.execute(
@@ -225,6 +237,7 @@ async function probeErase(mutated: boolean): Promise<EraseProbe> {
       subjectId: subject.id,
       bystanderId: bystander.id,
       deleted: Number(audit[0].deleted),
+      tableRows: Number(before[0].n),
     };
   });
 }
@@ -239,11 +252,12 @@ describe("art. 16 — the erasure deletes the subject's surface visits and nobod
   });
 
   it("KILL: dropping `WHERE user_id = p_user_id` erases the bystander's visit too", async () => {
-    const { survivors, bystanderId, deleted } = await probeErase(true);
+    const { survivors, bystanderId, deleted, tableRows } = await probeErase(true);
 
     expect(survivors).toHaveLength(0);
     expect(survivors).not.toContain(bystanderId);
-    expect(deleted).toBe(2);
+    expect(tableRows).toBeGreaterThanOrEqual(2);
+    expect(deleted).toBe(tableRows);
   });
 });
 
