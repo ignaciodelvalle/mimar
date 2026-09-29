@@ -89,7 +89,12 @@ export function AsientoCard({
   weightSamples,
 }: {
   view: AsientoView;
-  eventHref: string;
+  /**
+   * The record's detail page. Omitted only by a READ-ONLY reader with no
+   * detail route of its own — the walk-in history in Atender, whose clinic
+   * does not hold the pet (vet-visit-record) — and then no link renders.
+   */
+  eventHref?: string;
   weightSamples?: WeightSample[];
 }) {
   const hasFacts = view.facts.length > 0 || view.handwrittenNote || view.showSparkline;
@@ -179,13 +184,15 @@ export function AsientoCard({
             Pedir verificación →
           </Link>
         )}
-        <Link
-          href={eventHref}
-          prefetch={false}
-          className="text-sm font-semibold text-[var(--color-ln-azul)] no-underline hover:underline"
-        >
-          Ver detalle →
-        </Link>
+        {eventHref && (
+          <Link
+            href={eventHref}
+            prefetch={false}
+            className="text-sm font-semibold text-[var(--color-ln-azul)] no-underline hover:underline"
+          >
+            Ver detalle →
+          </Link>
+        )}
       </div>
     </article>
   );

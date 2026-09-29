@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 
 import type { EventType } from "@/db/schema";
+import { INTAKE_CONDITION_LABELS, labelOf } from "@/lib/domain/visit-labels";
 import { upcastPayload } from "@/lib/events/event-upcasters";
 import { findDisease } from "@/lib/reference/diseases";
 import { AR_TIME_ZONE, formatWeightKg, parseDateInput } from "@/lib/utils/format";
@@ -141,6 +142,13 @@ export function eventPayloadDetails(
       // es-AR comma, never the stored "12.50" dot (lib/utils/format.ts).
       push("Peso", "kg", (v) => formatWeightKg(v) ?? `${v} kg`);
       break;
+    case "condition_at_intake_recorded":
+      // Top-level fields only: `field` must be a payload key a correction can
+      // name, and the vitals live in a nested object (vet-visit-record).
+      push("Estado general", "general_condition", (v) => labelOf(INTAKE_CONDITION_LABELS, v) ?? v);
+      push("Motivo de consulta", "presenting_complaint");
+      push("Hallazgos", "findings");
+      break;
     case "vet_visit_logged":
       push("Motivo", "reason");
       push("Veterinario", "vet_name");
@@ -213,6 +221,13 @@ export function eventPayloadSummary(eventType: string, payload: unknown): EventP
   };
 
   switch (eventType) {
+    case "condition_at_intake_recorded": {
+      const condition = labelOf(INTAKE_CONDITION_LABELS, p.general_condition);
+      return {
+        primary: condition ? `Estado al ingreso: ${condition}` : "Estado al ingreso",
+        secondary: str("presenting_complaint"),
+      };
+    }
     case "vaccination_administered": {
       const vaccine = str("vaccine_name");
       const adminBy = str("administered_by");

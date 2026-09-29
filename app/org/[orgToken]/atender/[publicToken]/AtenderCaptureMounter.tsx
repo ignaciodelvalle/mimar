@@ -44,6 +44,7 @@ import { NoteForm } from "@/app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/n
 
 import {
   atenderClinicalInfoAction,
+  atenderConditionAtIntakeAction,
   atenderDewormingAction,
   atenderDiseaseDiagnosisAction,
   atenderMedicationStartAction,
@@ -54,6 +55,7 @@ import {
 } from "../actions";
 import { AtenderStallNotice } from "./AtenderStallNotice";
 import { AtenderVaccinationGate } from "./AtenderVaccinationGate";
+import { ConditionAtIntakeForm } from "./ConditionAtIntakeForm";
 
 // ATENDER_EVENTOS + AtenderEvento moved to ./atender-eventos (server-safe) so
 // the Server Component page.tsx can import the array without the client-boundary
@@ -81,7 +83,12 @@ export function AtenderCaptureMounter({
 
   let form: React.ReactNode = null;
 
-  if (evento === "vacuna") {
+  if (evento === "ingreso") {
+    // vet-visit-record: how the animal arrived. The action opens the signer's
+    // visit when none is open and refuses a signer without a validated matrícula.
+    const action = atenderConditionAtIntakeAction.bind(null, orgToken, publicToken);
+    form = <ConditionAtIntakeForm action={action} />;
+  } else if (evento === "vacuna") {
     const action = atenderVaccinationAction.bind(null, orgToken, publicToken);
     form = (
       <AtenderVaccinationGate

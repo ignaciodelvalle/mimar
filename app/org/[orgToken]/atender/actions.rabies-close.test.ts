@@ -94,6 +94,18 @@ vi.mock("@/lib/infra/vet-observation-reach", () => ({
   clinicMayRecordObservationDeath: mocks.clinicMayRecordObservationDeath,
 }));
 
+// The visit seam (vet-visit-record): these tests pin the writers' edge, not the
+// visit. Each writer gets the (mocked) EventsRepository it always got.
+vi.mock("./atender-visit", async () => {
+  const { EventsRepository } = await import(
+    "@/src/modules/events/infrastructure/events-repository"
+  );
+  return {
+    atenderEventsRepository: vi.fn(async () => new EventsRepository()),
+    openAtenderVisit: vi.fn(),
+  };
+});
+
 vi.mock("./atender-access", async () => {
   // The real normaliser (lib/domain/dim-token.ts, zero dependencies): ASCII
   // a-z only, not the browser's Unicode `toUpperCase()`, which turns

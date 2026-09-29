@@ -6,6 +6,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EventFormState } from "@/src/modules/events/actions";
 
+// The visit seam (vet-visit-record): these tests pin the writers' edge, not the
+// visit. Each writer gets the (mocked) EventsRepository it always got.
+vi.mock("./atender-visit", async () => {
+  const { EventsRepository } = await import(
+    "@/src/modules/events/infrastructure/events-repository"
+  );
+  return {
+    atenderEventsRepository: vi.fn(async () => new EventsRepository()),
+    openAtenderVisit: vi.fn(),
+  };
+});
+
 const mockResolveAtenderPet = vi.hoisted(() => vi.fn());
 vi.mock("./atender-access", () => ({
   ATENDER_TOKEN_PATTERN: /^DIM-[A-Z0-9]{4}-[A-Z0-9]{4}$/,

@@ -12,6 +12,10 @@
 // 2026-08-06 (Cowork QA v3, M3): vets are the ones who actually implant and
 // register microchips, so fresh placement is a first-class walk-in record.
 export const ATENDER_EVENTOS = [
+  // vet-visit-record (2026-09-29): first, because it is the first thing a vet
+  // records in an atención. Only a validated matrícula — the server refuses
+  // anyone else (atenderConditionAtIntakeAction).
+  { key: "ingreso", label: "Estado al ingreso" },
   { key: "vacuna", label: "Vacuna" },
   { key: "desparasitacion", label: "Desparasitación" },
   { key: "cirugia", label: "Cirugía / estudio" },
@@ -41,6 +45,7 @@ export const ATENDER_EVENTOS_CONDICIONALES = new Set(["observacion"]);
 
 /**
  * Las claves que dependen del FIRMANTE: sólo un profesional con matrícula
- * validada registra un diagnóstico de notificación obligatoria (PO S2).
+ * validada registra un diagnóstico de notificación obligatoria (PO S2) o el
+ * estado al ingreso de una atención (vet-visit-record).
  */
-export const ATENDER_EVENTOS_SOLO_MATRICULA = new Set(["diagnostico"]);
+export const ATENDER_EVENTOS_SOLO_MATRICULA = new Set(["diagnostico", "ingreso"]);

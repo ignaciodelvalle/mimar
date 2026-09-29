@@ -62,6 +62,14 @@ vi.mock("@/src/modules/organizations/infrastructure/authz-resolver", () => ({
   resolveLiveOrgActor: (...args: unknown[]) => mockResolveLiveOrgActor(...args),
 }));
 
+// The visit seam (vet-visit-record) — ./actions imports it, and the visits
+// module reads table columns this file's "@/db" mock does not carry. The code
+// entry never writes, so the seam is never reached.
+vi.mock("./atender-visit", () => ({
+  atenderEventsRepository: vi.fn(),
+  openAtenderVisit: vi.fn(),
+}));
+
 import { lookupAtenderPetAction } from "./actions";
 import { resolveAtenderContext, resolveAtenderPet } from "./atender-access";
 

@@ -22,6 +22,13 @@
 // reader), never from the author's role — see ownerDeclaredSubject.
 
 import type { EventType } from "@/db/schema";
+import {
+  INTAKE_CONDITION_LABELS,
+  INTAKE_HYDRATION_LABELS,
+  INTAKE_MUCOUS_LABELS,
+  VISIT_MODALITY_LABELS,
+  labelOf,
+} from "@/lib/domain/visit-labels";
 import { computeConfidence } from "@/lib/events/event-confidence";
 import { upcastPayload } from "@/lib/events/event-upcasters";
 import { eventPayloadDetails, eventPayloadSummary } from "@/lib/events/events";
@@ -263,6 +270,7 @@ const ICON_TINT: Record<string, { icon: string; tint: string }> = {
   note_added: { icon: "nota", tint: "ln-ic-amarillo" },
   vet_visit_logged: { icon: "vet", tint: "ln-ic-azul" },
   clinical_info_logged: { icon: "clinico", tint: "ln-ic-violeta" },
+  condition_at_intake_recorded: { icon: "vet", tint: "ln-ic-azul" },
   medication_started: { icon: "medicacion", tint: "ln-ic-violeta" },
   medication_stopped: { icon: "medicacion-fin", tint: "ln-ic-violeta" },
   medication_dose_taken: { icon: "medicacion", tint: "ln-ic-violeta" },
@@ -521,6 +529,36 @@ export function toAsientoView(
           fact("Veterinario", str(p, "vet_name"), "Sin dato"),
           fact("Clínica", str(p, "clinic"), "Sin dato"),
           fact("Diagnóstico", str(p, "diagnosis"), "Sin dato"),
+        ],
+      };
+    }
+
+    case "condition_at_intake_recorded": {
+      // vet-visit-record: how the animal arrived. Present-only vitals — a vet
+      // who took no temperature did not record "sin dato", they recorded less.
+      const vitals = (p.vitals ?? {}) as P;
+      const optional = (key: string, value: string | null): AsientoFact[] =>
+        value ? [{ key, value }] : [];
+      const num = (key: string, unit: string): string | null => {
+        const v = vitals[key];
+        return typeof v === "number" ? `${String(v).replace(".", ",")}${unit}` : null;
+      };
+      const condition = labelOf(INTAKE_CONDITION_LABELS, p.general_condition);
+      return {
+        ...base,
+        kind: "Estado al ingreso",
+        title: condition ? `Estado general: ${condition}` : "Estado al ingreso",
+        handwrittenNote: str(p, "findings") ?? undefined,
+        facts: [
+          { key: "Fecha", value: aplicada },
+          fact("Motivo de consulta", str(p, "presenting_complaint"), "Sin dato"),
+          ...optional("Modalidad", labelOf(VISIT_MODALITY_LABELS, p.modality)),
+          ...optional("Temperatura", num("temperature_c", " °C")),
+          ...optional("Frec. cardíaca", num("heart_rate_bpm", " lpm")),
+          ...optional("Frec. respiratoria", num("respiratory_rate_rpm", " rpm")),
+          ...optional("Condición corporal", num("body_condition_score", "/9")),
+          ...optional("Hidratación", labelOf(INTAKE_HYDRATION_LABELS, vitals.hydration)),
+          ...optional("Mucosas", labelOf(INTAKE_MUCOUS_LABELS, vitals.mucous_membranes)),
         ],
       };
     }

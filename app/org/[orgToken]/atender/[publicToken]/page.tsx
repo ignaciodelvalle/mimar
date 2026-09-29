@@ -22,7 +22,10 @@ import {
   OpCodeBadge,
   OpCrumbs,
 } from "@/components/ui/dashboard";
-import { formatDateShort, speciesLabel } from "@/lib/utils/format";
+import { VISIT_MODALITY_LABELS } from "@/lib/domain/visit-labels";
+import { withDbBudget } from "@/lib/infra/db-budget";
+import { formatDateShort, formatTime, speciesLabel } from "@/lib/utils/format";
+import { getWalkInLibreta } from "@/src/modules/pets/application/tab-data/get-walk-in-libreta";
 
 import { CloseObservationForm } from "@/app/admin/observaciones/[publicToken]/CloseObservationForm";
 import { formatObservationEnd } from "@/src/modules/surveillance/application/professional-close-observation";
@@ -38,15 +41,22 @@ import {
 } from "../actions";
 import { resolveAtenderPet } from "../atender-access";
 import { fetchPendingDeclaredEvents } from "../atender-declared-events";
+import { findCurrentAtenderVisit, listAtenderAppointments } from "../atender-visit";
+import { atenderCloseVisitAction, atenderStartVisitAction } from "../visit-actions";
 import { AtenderCaptureMounter } from "./AtenderCaptureMounter";
 import { AtenderQuickCapture } from "./AtenderQuickCapture";
 import { PendingSignaturesCard } from "./PendingSignaturesCard";
 import { RecordDeathInObservationForm } from "./RecordDeathInObservationForm";
+import { VisitCard } from "./VisitCard";
+import { WalkInHistory } from "./WalkInHistory";
 import {
   ATENDER_EVENTOS,
   ATENDER_EVENTOS_CONDICIONALES,
   ATENDER_EVENTOS_SOLO_MATRICULA,
 } from "./atender-eventos";
+
+/** Budget for each of the visit-record reads (history, open visit, appointments). */
+const VISIT_READS_BUDGET_MS = 5000;
 
 /**
  * When this animal's open observation ends — the same deadline the close use
@@ -146,7 +156,32 @@ export default async function AtenderSignPage({
       ? formatObservationEnd(finObservacion)
       : undefined;
   const justSigned = sp.firmado === "1";
-  const pendingSignatures = await fetchPendingDeclaredEvents(pet.id);
+  // vet-visit-record: the history is read HERE, after resolveAtenderPet
+  // succeeded and in the same render as the capture surface — a member who
+  // may not write on this animal was already turned away above, and sees
+  // neither. The open visit and the pet's appointments feed the VisitCard.
+  // The three new reads are bounded: a slow history degrades to a sentence
+  // (never to an empty record, which would read as "no history"), and a slow
+  // visit read to the "Iniciar atención" card — the writers resolve the visit
+  // on their own anyway.
+  const [pendingSignatures, history, currentVisit, attendable] = await Promise.all([
+    fetchPendingDeclaredEvents(pet.id),
+    withDbBudget(getWalkInLibreta(pet.id), VISIT_READS_BUDGET_MS, "atender history", null).catch(
+      () => null,
+    ),
+    withDbBudget(
+      findCurrentAtenderVisit(access),
+      VISIT_READS_BUDGET_MS,
+      "atender open visit",
+      null,
+    ).catch(() => null),
+    withDbBudget(
+      listAtenderAppointments(access, ahora),
+      VISIT_READS_BUDGET_MS,
+      "atender appointments",
+      [],
+    ).catch(() => []),
+  ]);
 
   return (
     <main className="min-h-screen bg-ln-op-page p-6">
@@ -227,6 +262,35 @@ export default async function AtenderSignPage({
               : "Evento registrado a nombre de la organización. Quedó guardado, pero no lleva firma profesional: para eso lo tiene que registrar alguien con matrícula validada."}
           </output>
         )}
+
+        <VisitCard
+          visit={
+            currentVisit
+              ? {
+                  modality: currentVisit.modality,
+                  openedAtLabel: formatTime(currentVisit.openedAt),
+                }
+              : null
+          }
+          appointments={attendable.map((a) => ({
+            id: a.id,
+            label: `${a.offeringName} · ${formatTime(a.startsAt)} · ${VISIT_MODALITY_LABELS[a.modality]}`,
+            modality: a.modality,
+          }))}
+          startAction={atenderStartVisitAction.bind(null, orgToken, pet.publicToken)}
+          closeAction={
+            currentVisit
+              ? atenderCloseVisitAction.bind(null, orgToken, pet.publicToken, currentVisit.id)
+              : null
+          }
+        />
+
+        <WalkInHistory
+          history={history}
+          publicToken={pet.publicToken}
+          viewerUserId={access.user.id}
+          now={ahora}
+        />
 
         <PendingSignaturesCard
           orgToken={orgToken}

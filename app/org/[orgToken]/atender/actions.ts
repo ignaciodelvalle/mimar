@@ -55,6 +55,11 @@ import { closeCase, findOpenCaseForPetAndKind } from "@/lib/infra/case-helpers";
 import { activeHumanInstitutionalAdminIds } from "@/lib/infra/notification-recipients";
 import { createNotificationsBulk } from "@/lib/infra/notification-service";
 import { clinicMayRecordObservationDeath } from "@/lib/infra/vet-observation-reach";
+import { parseConditionAtIntakeForm } from "@/src/modules/events/application/clinical/condition-at-intake-form";
+import {
+  INTAKE_NOT_A_VERIFIED_VET,
+  recordConditionAtIntake,
+} from "@/src/modules/events/application/clinical/condition-at-intake-use-case";
 import { professionalCloseObservation } from "@/src/modules/surveillance/application/professional-close-observation";
 import type { RabiesObservationOutcome } from "@/src/modules/surveillance/domain/rabies-observation";
 import { SurveillanceRepository } from "@/src/modules/surveillance/infrastructure/surveillance-repository";
@@ -62,6 +67,7 @@ import { ATENDER_TOKEN_PATTERN, normalizeAtenderToken, resolveAtenderPet } from 
 import { attemptedChipMatchesDeclaration, rejectIfAlreadySigned } from "./atender-declared-events";
 import { completeAtenderSignature } from "./atender-signature-completion";
 import { hasUncataloguedVaccineFlag } from "./atender-vaccine-gate";
+import { atenderEventsRepository, openAtenderVisit } from "./atender-visit";
 
 export type { EventFormState } from "@/src/modules/events/actions";
 
@@ -90,6 +96,12 @@ type Authorship = {
   authorVerified: boolean;
 };
 
+// Every writer below writes through atenderEventsRepository(access) — the
+// signer's VISIT (vet-visit-record, 2026-09-29): it opens or reuses the visit
+// for this pet at this organization and stamps its id on the rows the signer
+// writes, so a sitting's events read as one atención. It never refuses a write
+// for want of a visit (see ./atender-visit.ts).
+//
 // Every writer below closes through completeAtenderSignature — see that module's
 // header. It owns BOTH the owner alert and the `?firmado=1` receipt, so success
 // is not something a walk-in writer can construct on its own and the alert
@@ -179,7 +191,7 @@ export async function atenderVaccinationAction(
   const upload = await uploadAttachmentIfPresent(supabase, attachmentFile, "event-attachments");
   if (upload.error) return { error: upload.error };
 
-  const repo = new EventsRepository();
+  const repo = await atenderEventsRepository(access);
   let signedEventId: string | null = null;
   try {
     const result = await createVaccination(
@@ -267,7 +279,7 @@ export async function atenderDewormingAction(
   const upload = await uploadAttachmentIfPresent(supabase, attachmentFile, "event-attachments");
   if (upload.error) return { error: upload.error };
 
-  const repo = new EventsRepository();
+  const repo = await atenderEventsRepository(access);
   let signedEventId: string | null = null;
   try {
     const result = await createDeworming(
@@ -349,7 +361,7 @@ export async function atenderClinicalInfoAction(
   const upload = await uploadAttachmentIfPresent(supabase, attachmentFile, "event-attachments");
   if (upload.error) return { error: upload.error };
 
-  const repo = new EventsRepository();
+  const repo = await atenderEventsRepository(access);
   let signedEventId: string | null = null;
   try {
     const result = await createClinicalInfo(
@@ -460,7 +472,7 @@ export async function atenderMedicationStartAction(
   const upload = await uploadAttachmentIfPresent(supabase, attachmentFile, "event-attachments");
   if (upload.error) return { error: upload.error };
 
-  const repo = new EventsRepository();
+  const repo = await atenderEventsRepository(access);
   let signedEventId: string | null = null;
   try {
     const result = await createMedicationStart(
@@ -542,7 +554,7 @@ export async function atenderNoteAction(
   const upload = await uploadAttachmentIfPresent(supabase, attachmentFile, "event-attachments");
   if (upload.error) return { error: upload.error };
 
-  const repo = new EventsRepository();
+  const repo = await atenderEventsRepository(access);
   let signedEventId: string | null = null;
   try {
     const result = await createNote(
@@ -686,7 +698,7 @@ export async function atenderMicrochipAction(
     };
   }
 
-  const repo = new EventsRepository();
+  const repo = await atenderEventsRepository(access);
   let signedEventId: string | null = null;
   try {
     const result = await createMicrochip(
@@ -779,7 +791,7 @@ export async function atenderSterilizationAction(
   const upload = await uploadAttachmentIfPresent(supabase, attachmentFile, "event-attachments");
   if (upload.error) return { error: upload.error };
 
-  const repo = new EventsRepository();
+  const repo = await atenderEventsRepository(access);
   let signedEventId: string | null = null;
   try {
     const result = await createSterilization(
@@ -1132,7 +1144,7 @@ export async function atenderRecordDeathInObservationAction(
       },
     },
     {
-      repo: new EventsRepository(),
+      repo: await atenderEventsRepository(access),
       transaction: makeTransaction(),
       // Foster / rehome notices the cascades may queue, through the durable
       // service like every other notice this action sends. Each carries the
@@ -1260,7 +1272,7 @@ export async function atenderDiseaseDiagnosisAction(
       notes: fields.notes,
     },
     {
-      repo: new EventsRepository(),
+      repo: await atenderEventsRepository(access),
       transaction: makeTransaction(),
       flushNotifications: async (rows) => {
         await createNotificationsBulk(
@@ -1289,5 +1301,104 @@ export async function atenderDiseaseDiagnosisAction(
     eventId: result.diagnosisEventId,
     eventType: "clinical_info_logged",
     occurredAt: fields.diagnosisDate,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Estado al ingreso (vet-visit-record, 2026-09-29)
+// ---------------------------------------------------------------------------
+//
+// The state the animal arrived in — the first thing a vet records in an
+// atención. WHO: a matriculated vet signing for THIS organization, the same two
+// checks, in the same order, as the diagnosis above; the use-case refuses
+// anyone else on its own too. WHAT: condition_at_intake_recorded, plus a
+// weight_recorded when the animal was weighed and a vet-reported
+// symptom_observed when the motivo de consulta or the hallazgos match the
+// symptom catalogue — one transaction, one visit, one idempotency key
+// (recordConditionAtIntake). The visit is opened here if the vet has not
+// opened one: the intake needs its id and its modality.
+export async function atenderConditionAtIntakeAction(
+  orgToken: string,
+  publicToken: string,
+  _previous: EventFormState,
+  formData: FormData,
+): Promise<EventFormState> {
+  const access = await resolveAtenderPet(orgToken, publicToken);
+  if (!access.ok) return { error: access.error };
+  const { user, pet, organizationName, eventAuthorship } = access;
+
+  if (eventAuthorship.authorRole !== "vet" || !eventAuthorship.authorVerified) {
+    return { error: INTAKE_NOT_A_VERIFIED_VET };
+  }
+
+  const parsed = parseConditionAtIntakeForm(formData);
+  if (!parsed.ok) return { error: parsed.error };
+
+  // Species and jurisdiction route a matched symptom's signal; read by the
+  // token the guard resolved, like the diagnosis above.
+  const surveillance = new SurveillanceRepository();
+  const located = await surveillance.findPetByToken(pet.publicToken);
+  if (!located || located.id !== pet.id) return { error: "Mascota no encontrada." };
+
+  const opened = await openAtenderVisit(access);
+  if (!opened.ok) return { error: "No se pudo abrir la atención de esta mascota." };
+  const { visit } = opened;
+
+  // The intake happens now, at the table: its occurred_at is the moment it is
+  // recorded, which keeps it first among the visit's clinical events.
+  const occurredAt = new Date();
+  let result: Awaited<ReturnType<typeof recordConditionAtIntake>>;
+  try {
+    result = await recordConditionAtIntake(
+      {
+        pet: {
+          id: pet.id,
+          publicToken: pet.publicToken,
+          name: pet.name,
+          species: located.species,
+          jurisdictionCountry: located.jurisdictionCountry ?? "AR",
+          jurisdictionProvince: located.jurisdictionProvince ?? null,
+          jurisdictionLocality: located.jurisdictionLocality ?? null,
+          localityId: located.localityId ?? null,
+          placeMethod: located.placeMethod ?? null,
+          rabiesObservationStatus: pet.rabiesObservationStatus,
+        },
+        user: { id: user.id },
+        eventAuthorship: eventAuthorship as Authorship,
+        visit: { id: visit.id, organizationId: visit.organizationId, modality: visit.modality },
+        occurredAt,
+        fields: parsed.value,
+      },
+      { repo: new EventsRepository(), transaction: makeTransaction() },
+    );
+  } catch (err) {
+    return {
+      error: `No se pudo registrar el estado al ingreso: ${err instanceof Error ? err.message : "error desconocido"}`,
+    };
+  }
+  if (!result.ok) return { error: result.error };
+
+  // A matched symptom's notifications, after commit, through the durable
+  // service — keyed on the event each one is about.
+  if (result.notifications.length > 0) {
+    await createNotificationsBulk(
+      result.notifications.map((n) => ({
+        ...n,
+        dedupeKey: `event:${n.relatedEventId ?? pet.id}:${n.userId}:${n.notificationType}`,
+      })),
+    );
+  }
+
+  return completeAtenderSignature({
+    orgToken,
+    publicToken: pet.publicToken,
+    petId: pet.id,
+    petName: pet.name,
+    organizationName,
+    signerUserId: user.id,
+    // A replay inserted nothing: the owners were told the first time.
+    eventId: result.value.wasDuplicate ? null : result.value.eventId,
+    eventType: "condition_at_intake_recorded",
+    occurredAt,
   });
 }

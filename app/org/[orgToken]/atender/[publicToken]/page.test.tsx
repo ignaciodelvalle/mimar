@@ -62,6 +62,24 @@ vi.mock("@/src/modules/surveillance/infrastructure/surveillance-repository", () 
   },
 }));
 
+// vet-visit-record: the visit reads and the walk-in history. Mocked for the
+// same reason as the cards above; the history mock is also what the
+// "withheld together" test below counts calls on.
+vi.mock("../atender-visit", () => ({
+  findCurrentAtenderVisit: vi.fn().mockResolvedValue(null),
+  listAtenderAppointments: vi.fn().mockResolvedValue([]),
+}));
+vi.mock("../visit-actions", () => ({
+  atenderStartVisitAction: vi.fn(),
+  atenderCloseVisitAction: vi.fn(),
+}));
+const getWalkInLibretaMock = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ past: [], truncated: false, visits: {} }),
+);
+vi.mock("@/src/modules/pets/application/tab-data/get-walk-in-libreta", () => ({
+  getWalkInLibreta: getWalkInLibretaMock,
+}));
+
 import AtenderSignPage from "./page";
 
 async function renderPage(searchParams: { evento?: string; firmado?: string } = {}) {
@@ -88,6 +106,58 @@ describe("atender sign page — #43 provenance copy", () => {
     const html = await renderPage();
     expect(html).toContain("· verificado por profesional");
     expect(html).not.toContain("Queda registrado a nombre de la organización");
+  });
+});
+
+// vet-visit-record — the history comes before recording, and only together
+// with it: a member who may not write on this animal sees neither.
+describe("atender sign page — history before the capture surface", () => {
+  it("renders the pet's record ABOVE the capture grid, grouped by atención", async () => {
+    resolveAtenderPetMock.mockResolvedValueOnce(fixtureAccess(true));
+    getWalkInLibretaMock.mockResolvedValueOnce({
+      past: [
+        {
+          id: "evt-1",
+          petId: "pet-1",
+          eventType: "vaccination_administered",
+          payload: { vaccine_name: "Antirrábica" },
+          occurredAt: new Date("2026-09-20T13:00:00Z"),
+          notes: null,
+          recordedByUserId: "vet-9",
+          authorRole: "vet",
+          authorVerified: true,
+          authorOrganizationId: "org-9",
+          authorOrgName: "Otra clínica",
+          attachmentUrl: null,
+          hasAttachment: false,
+          visitId: "visit-1",
+        },
+      ],
+      truncated: false,
+      visits: { "visit-1": { modality: "home", openedAt: new Date("2026-09-20T12:50:00Z") } },
+    });
+    const html = await renderPage();
+    const history = html.indexOf("Historia clínica");
+    expect(history).toBeGreaterThan(-1);
+    expect(history).toBeLessThan(html.indexOf("¿Qué querés registrar?"));
+    expect(html).toContain("Antirrábica");
+    expect(html).toContain("A domicilio");
+    // Read-only: the holder's detail route is not this clinic's.
+    expect(html).not.toContain("Ver detalle");
+  });
+
+  it("withholds the history AND the capture surface when access is refused", async () => {
+    getWalkInLibretaMock.mockClear();
+    resolveAtenderPetMock.mockResolvedValueOnce({
+      ok: false,
+      reason: "NO_CAPABILITY",
+      error: "Necesitás el permiso 'Registrar eventos clínicos' (event.write).",
+    });
+    const html = await renderPage();
+    expect(html).toContain("Registrar eventos clínicos");
+    expect(html).not.toContain("Historia clínica");
+    expect(html).not.toContain("¿Qué querés registrar?");
+    expect(getWalkInLibretaMock).not.toHaveBeenCalled();
   });
 });
 

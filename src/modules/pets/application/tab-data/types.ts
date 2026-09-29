@@ -68,6 +68,18 @@ export type HistorialEventRow = {
   // Set when a later `event_amended` event corrects this one — drives the
   // "Corregido · ver original" affordance (WS-3). Enriched in the tab-data shim.
   amendedAt?: Date | null;
+  /**
+   * The visit this record was written in (pet_events.visit_id, migration
+   * 0273) — stamped at insert, never backfilled, so null for every record
+   * written outside a vet's atención. Renderers group by it.
+   */
+  visitId?: string | null;
+};
+
+/** A visit as the libreta titles it: where, and when it opened. */
+export type LibretaVisitSummary = {
+  modality: string;
+  openedAt: Date;
 };
 
 // ---------------------------------------------------------------------------
@@ -100,6 +112,12 @@ export type LibretaFaceData = {
   past: HistorialEventRow[];
   /** True when `past` was cut off by PAST_EVENTS_WINDOW — older events exist. */
   pastTruncated: boolean;
+  /**
+   * The visits the `past` records were written in, by id — what the face
+   * titles each atención block with. Optional: a fixture or loader without
+   * visits still renders, the blocks just lose their modality.
+   */
+  visits?: Record<string, LibretaVisitSummary>;
   summary: VaccinationSummary;
   weightSamples: Array<{ date: Date; kg: number }>;
   activeShares: LibretaShareToken[];
