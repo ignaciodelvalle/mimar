@@ -243,13 +243,50 @@ describe("story — CastFila + 6 chapters + rail", () => {
   it("renders the CastFila variant with Pampa and the 4 hands", () => {
     const html = renderToStaticMarkup(<StorySection />);
     expect(html).toContain('data-section="cast-fila"');
-    // Roles are one word each (PO landing feedback #8 — no "el"/"la").
-    expect(html).toContain("Dueño");
-    expect(html).toContain("Veterinario");
-    expect(html).toContain("Organización");
-    expect(html).toContain("Estado");
+    // Roles are one word each (PO landing feedback #8 — no "el"/"la"), and
+    // the SAME word the chapters use (critique 2026-09-29, M6).
+    expect(ACTORS.map((a) => a.name)).toEqual(["Dueño", "Veterinaria", "Refugio", "Estado"]);
+    for (const a of ACTORS) expect(html).toContain(`<b>${a.name}.</b>`);
+    expect(html).not.toContain("Veterinario");
+    expect(html).not.toContain("Organización");
     // The orbit variant is explicitly NOT built (PO decision #1).
     expect(html).not.toContain("orbit");
+  });
+
+  it("the cast is one paragraph, not a second set of chapter shortcuts (M6)", () => {
+    const html = renderToStaticMarkup(<StorySection />);
+    const cast = html.slice(
+      html.indexOf('data-section="cast-fila"'),
+      html.indexOf('data-section="story-rail-shell"'),
+    );
+    expect(cast).toContain('<p class="lp-castfila-hands">');
+    expect(cast).not.toContain("<button");
+  });
+
+  it("the rail names moments, not hands (M6)", () => {
+    expect(CHAPTERS.map((c) => c.moment)).toEqual([
+      "Alta",
+      "Vacuna",
+      "Se pierde",
+      "Refugio",
+      "Libreta",
+      "Estado",
+    ]);
+    const html = renderToStaticMarkup(<StorySection />);
+    for (const c of CHAPTERS) expect(html).toContain(`<span class="lp-rname">${c.moment}</span>`);
+    expect(html).not.toContain("Anónimo</span>");
+  });
+
+  it("every device mock is hidden from assistive tech; the chapter copy is the summary (m6)", () => {
+    const html = renderToStaticMarkup(<StorySection />);
+    const phones = html.match(/<div class="lp-phone"[^>]*>/g) ?? [];
+    expect(phones.length).toBeGreaterThanOrEqual(5);
+    for (const p of phones) expect(p).toContain('aria-hidden="true"');
+    expect(html).toMatch(/<div class="lp-mac" aria-hidden="true">/);
+    // Each chapter carries readable copy outside its device.
+    const chapters = html.split(/id="cap-/).slice(1);
+    expect(chapters).toHaveLength(CHAPTERS.length);
+    for (const ch of chapters) expect(ch).toMatch(/lp-ch-lead|lp-estado-bridge/);
   });
 
   it("renders the 6 chapter anchors and the scroll-spy rail", () => {
@@ -260,6 +297,14 @@ describe("story — CastFila + 6 chapters + rail", () => {
     expect(html).toContain('data-section="story-rail"');
     // The anon chapter drives the red rail state via data-s="lost".
     expect(html).toContain('data-s="lost"');
+  });
+
+  it("the phone frame follows the viewport height, never a fixed taller box (M5)", () => {
+    const css = readFileSync(join(process.cwd(), "app", "landing.css"), "utf8");
+    for (const sel of [".lp .lp-scr {", ".lp .lp-scr--tall {"]) {
+      const rule = css.slice(css.indexOf(sel), css.indexOf("}", css.indexOf(sel)));
+      expect(rule, sel).toMatch(/height: clamp\([^)]*100svh[^)]*\)/);
+    }
   });
 
   it("the story's sequences never loop (WCAG 2.2.2)", () => {
@@ -288,11 +333,11 @@ describe("story — CastFila + 6 chapters + rail", () => {
     const anchors = [...html.matchAll(/id="cap-([a-z]+)"/g)].map((m) => m[1]);
     expect(anchors).toEqual(CHAPTERS.map((c) => c.key));
     expect(html).toContain("Capítulo 6 · Estado");
-    expect(html).toContain("Esa dosis de campaña es una más en la cobertura de su comuna.");
-    // Every cast shortcut points at a chapter that exists.
-    for (const a of ACTORS) {
-      expect(CHAPTERS.some((c) => c.key === a.chapter)).toBe(true);
-    }
+    // The bridge is the Estado heading's standfirst, inside the console
+    // (critique 2026-09-29, m8), not loose text above it.
+    expect(html).toContain(
+      '<p class="lp-estado-bridge">Esa dosis de campaña es una más en la cobertura de su comuna.</p>',
+    );
   });
 
   it("estado console renders the celeste silhouette cartogram (24 tiles, single hue)", () => {

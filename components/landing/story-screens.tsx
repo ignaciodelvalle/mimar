@@ -129,7 +129,9 @@ export function LibretaScreen() {
     <>
       <div className="lp-scr-top" />
       <AppHead
-        photo={<LnPetPhoto alt={PAMPA.name} status="ok" size={40} />}
+        // Her photo, not the striped "FOTO" placeholder: the same image the
+        // hero and the cast show (critique 2026-09-29, m2).
+        photo={<LnPetPhoto src="/landing/pampa-hero.jpg" alt={PAMPA.name} status="ok" size={40} />}
         title={PAMPA.name}
         sub={`${PAMPA.sex} · ${PAMPA.age}`}
         right={<LnStatusFlag status="ok" />}
@@ -208,13 +210,18 @@ const LEGEND_TINT: Record<number, string> = {
   4: "color-mix(in srgb, var(--color-ln-celeste) 55%, var(--color-ln-celeste-100))",
 };
 
-export function EstadoConsole() {
+export function EstadoConsole({ bridge }: { bridge?: string }) {
   return (
     <div className="lp-estado" data-section="estado-console">
       <div className="lp-estado-head">
         <div>
           <p className="lp-eyebrow">Vista · Estado</p>
           <h3 className="lp-display lp-h-sub mt-3">Tendencias, no planillas.</h3>
+          {/* The chapter's bridge from the libreta, as the heading's own
+              standfirst (critique 2026-09-29, m8). It used to float as plain
+              text above the dark card, with no heading, and did not read as
+              part of the chapter. */}
+          {bridge && <p className="lp-estado-bridge">{bridge}</p>}
           {/* Honesty pass (WU1, landing redesign 2026-09-24; corrected
               2026-09-24 review): dropped "del país" (no jurisdiction has
               onboarded the whole country) and "en tiempo real". The first

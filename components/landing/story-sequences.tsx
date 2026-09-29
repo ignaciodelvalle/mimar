@@ -116,7 +116,7 @@ function SequencedChapter({
       <div className="lp-chapter-grid">
         <div>
           <div className="lp-ch-num">
-            Capítulo {index + 1} · {chapter.hand}
+            Capítulo {index + 1} · {chapter.moment}
           </div>
           <h3 className="lp-display lp-h-sub lp-ch-title">{chapter.title}</h3>
           <p className="lp-lead lp-ch-lead">{chapter.lead}</p>
@@ -378,6 +378,20 @@ function LostFeedScreen() {
         right={<LnStatusFlag status="lost" sex={PAMPA.sexEnum} />}
       />
       <div className="lp-app-body lp-ph-pad">
+        {/* The same situation card as step 2: on the real screen it sits above
+            the feed, and without it the chapter's last frame was a phone
+            ~80% empty (critique 2026-09-29, M5). */}
+        <div className="lp-ph-card">
+          <p className="lp-kv-title">Situación</p>
+          <div className="lp-kv">
+            <span>Perdida desde</span>
+            <b>{landingDate(LOST.date)}</b>
+          </div>
+          <div className="lp-kv">
+            <span>Última vez</span>
+            <b>{LOST_PLACE}</b>
+          </div>
+        </div>
         <div className="lp-ph-card">
           <p className="lp-kv-title">Avistajes y escaneos</p>
           <div className="lp-feed-row">
@@ -566,6 +580,40 @@ function OwnerFoundScreen() {
   );
 }
 
+/**
+ * 7 · The payoff (critique 2026-09-29, M5): the chapter used to end on the
+ * "¿Confirmás?" dialog, never showing her home. After the confirm, Martín's
+ * app shows Pampa back AL DÍA (the flag the product renders for an active
+ * pet) and the entry the libreta adds, worded as chapter 5's libreta words
+ * it. Not "EN CASA": no product surface prints that label.
+ */
+function OwnerHomeScreen() {
+  return (
+    <>
+      <div className="lp-scr-top" />
+      <AppHead
+        photo={<LnPetPhoto src={PHOTO} alt={PAMPA.name} status="ok" size={40} />}
+        title={PAMPA.name}
+        sub={landingDate(FOUND.date)}
+        right={<LnStatusFlag status="ok" />}
+      />
+      <div className="lp-app-body lp-ph-pad">
+        <div className="lp-ph-card">
+          <div className="lp-intake-row" data-t="ok">
+            <span className="lp-iic">
+              <Icon name="casa" size="sm" decorative />
+            </span>
+            <div className="min-w-0">
+              <b>Volvió a casa</b>
+              <span className="lp-intake-sub">Devuelta a su dueño · {landingDate(FOUND.date)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 const SHELTER_SCREENS: Array<() => ReactNode> = [
   () => <IntakeChipScreen />,
   () => <IntakeMatchScreen pressed={false} />,
@@ -573,6 +621,7 @@ const SHELTER_SCREENS: Array<() => ReactNode> = [
   () => <IntakeDoneScreen />,
   () => <OwnerNotifiedScreen />,
   () => <OwnerFoundScreen />,
+  () => <OwnerHomeScreen />,
 ];
 const OWNER_FROM = 4;
 
@@ -589,6 +638,7 @@ export const SHELTER_SEQUENCE: SequenceSpec = {
       label: `${landingDate(FOUND.date)}: ${PAMPA_OWNER_NAME} la marca como encontrada.`,
       at: 5,
     },
+    { label: `${PAMPA.name} vuelve a casa, y su credencial a estar al día.`, at: 6 },
   ],
   deviceLabel: (step) => (step >= OWNER_FROM ? `App de ${PAMPA_OWNER_NAME}` : "Portal del refugio"),
   device: (step, animate) => {

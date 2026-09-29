@@ -292,12 +292,13 @@ export function heroMrzLines(token: string | null): [string, string] {
 // Cast — the four hands around the pet (CastFila, PO-locked variant)
 // ---------------------------------------------------------------------------
 
+// ONE NAME PER HAND, EVERYWHERE (critique 2026-09-29, M6). The cast said
+// "Veterinario" and "Organización" while the rail and the chapter eyebrows said
+// "Veterinaria" and "Refugio" for the same people; they now match. The cast is
+// also no longer a grid of chapter shortcuts: the rail right below it already
+// jumps to chapters, so two blocks did one job. It is one paragraph now.
 export type LandingActor = {
   key: string;
-  /** Chapter id this hand scrolls to (cap-{chapter}). */
-  chapter: string;
-  tone: "warm" | "neutral" | "official";
-  icon: IconName;
   name: string;
   does: string;
 };
@@ -305,33 +306,21 @@ export type LandingActor = {
 export const ACTORS: LandingActor[] = [
   {
     key: "dueno",
-    chapter: "dueno",
-    tone: "warm",
-    icon: "corazon",
     name: "Dueño",
     does: "Registra, comparte, activa el modo perdido.",
   },
   {
     key: "vet",
-    chapter: "vet",
-    tone: "neutral",
-    icon: "vet",
-    name: "Veterinario",
+    name: "Veterinaria",
     does: "Firma vacunas y diagnósticos.",
   },
   {
-    key: "org",
-    chapter: "refugio",
-    tone: "neutral",
-    icon: "casa",
-    name: "Organización",
+    key: "refugio",
+    name: "Refugio",
     does: "Custodia, tránsitos y adopciones verificadas.",
   },
   {
     key: "estado",
-    chapter: "estado",
-    tone: "official",
-    icon: "edificio",
     name: "Estado",
     does: "Vigila tendencias con datos reales.",
   },
@@ -343,7 +332,13 @@ export const ACTORS: LandingActor[] = [
 
 export type LandingChapter = {
   key: string;
-  hand: string;
+  /**
+   * What HAPPENS in the chapter, named on the rail and in the eyebrow
+   * (critique 2026-09-29, M6). It used to be whose hand it was, which gave
+   * "Anónimo" to a chapter about Pampa getting lost and "miMAR" to one that is
+   * nobody's hand at all.
+   */
+  moment: string;
   /** Rail dot tone — drives the rail state (Pampa turns red on "anon"). */
   state: "registered" | "ok" | "lost" | "navy";
   /** Device side on desktop; the "estado" chapter is full-width. */
@@ -365,7 +360,7 @@ export type LandingChapter = {
 export const CHAPTERS: LandingChapter[] = [
   {
     key: "dueno",
-    hand: "Dueño",
+    moment: "Alta",
     state: "registered",
     side: "r",
     title: "Empieza en casa.",
@@ -373,7 +368,7 @@ export const CHAPTERS: LandingChapter[] = [
   },
   {
     key: "vet",
-    hand: "Veterinaria",
+    moment: "Vacuna",
     state: "ok",
     side: "l",
     // Pampa's libreta has no appointment: what the vet chapter can truthfully
@@ -383,7 +378,7 @@ export const CHAPTERS: LandingChapter[] = [
   },
   {
     key: "anon",
-    hand: "Anónimo",
+    moment: "Se pierde",
     state: "lost",
     side: "r",
     // 2024-03-09, the day the seed marks her lost, was a Saturday; the seed's
@@ -393,7 +388,7 @@ export const CHAPTERS: LandingChapter[] = [
   },
   {
     key: "refugio",
-    hand: "Refugio",
+    moment: "Refugio",
     // Still lost here: the shelter takes her in on 2024-03-11; Martín marks
     // her found on 2024-03-13, at the end of this chapter.
     state: "lost",
@@ -404,7 +399,7 @@ export const CHAPTERS: LandingChapter[] = [
   },
   {
     key: "libreta",
-    hand: "miMAR",
+    moment: "Libreta",
     state: "ok",
     side: "r",
     title: "Todo quedó escrito.",
@@ -415,7 +410,7 @@ export const CHAPTERS: LandingChapter[] = [
   },
   {
     key: "estado",
-    hand: "Estado",
+    moment: "Estado",
     state: "navy",
     full: true,
     // Bridge from the libreta's last entry. True under both coverage lenses:

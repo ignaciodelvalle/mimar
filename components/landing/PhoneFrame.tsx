@@ -7,14 +7,22 @@ import type { ReactNode } from "react";
 export function PhoneFrame({
   children,
   tall = false,
+  short = false,
   lost = false,
 }: {
   children: ReactNode;
   tall?: boolean;
+  /** A screen with little on it (the sign-up screen): a shorter phone. */
+  short?: boolean;
   /** Lost-credential screen: warm red paper background. */
   lost?: boolean;
 }) {
-  const screenClass = ["lp-scr", tall && "lp-scr--tall", lost && "lp-scr--lost"]
+  const screenClass = [
+    "lp-scr",
+    tall && "lp-scr--tall",
+    short && "lp-scr--short",
+    lost && "lp-scr--lost",
+  ]
     .filter(Boolean)
     .join(" ");
   return (

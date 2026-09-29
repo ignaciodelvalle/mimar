@@ -15,7 +15,6 @@
 // variant was explicitly not built). The optional "rail accumulates libreta
 // entries" deepener was SKIPPED to protect the timeline (noted in handoff).
 
-import { Icon } from "@/components/Icon";
 import { PhoneFrame } from "@/components/landing/PhoneFrame";
 import { StepButton } from "@/components/landing/StepButton";
 import { ACTORS, CHAPTERS, PAMPA } from "@/components/landing/landing-content";
@@ -30,8 +29,10 @@ import { useEffect, useRef, useState } from "react";
 function chapterDevice(key: string) {
   switch (key) {
     case "dueno":
+      // Short frame: the sign-up screen holds one pet, and a full-height phone
+      // left most of it blank (critique 2026-09-29, M5).
       return (
-        <PhoneFrame>
+        <PhoneFrame short>
           <DuenoScreen />
         </PhoneFrame>
       );
@@ -60,9 +61,12 @@ function scrollToChapter(key: string) {
 }
 
 // ---------------------------------------------------------------------------
-// CastFila — Pampa + the 4 hands as a 2×2 grid of chapter shortcuts
+// CastFila — Pampa + the 4 hands, as one paragraph
 // ---------------------------------------------------------------------------
 
+// The hands used to be a 2×2 grid of buttons that scrolled to chapters — the
+// same job as the rail right below it (critique 2026-09-29, M6). One way to
+// jump is enough; the cast now just says who is around her.
 function CastFila() {
   return (
     <div className="lp-castfila" data-section="cast-fila">
@@ -75,35 +79,14 @@ function CastFila() {
         <LnStatusFlag status="ok" />
       </div>
       <div className="lp-castfila-sep" aria-hidden="true" />
-      <div className="lp-castfila-hands">
-        {ACTORS.map((a) => (
-          <button
-            type="button"
-            key={a.key}
-            className="lp-castfila-hand"
-            data-tone={a.tone}
-            onClick={() => scrollToChapter(a.chapter)}
-          >
-            {/* Named by its visible text plus a screen-reader-only purpose, not
-                an aria-label: the old label ("Ir al capítulo: …") replaced
-                the visible role and sentence, which axe reports as
-                label-content-name-mismatch (WCAG 2.5.3) — the same audit as the
-                nav's brand link (review L-5). */}
-            <span className="lp-role-ic" aria-hidden="true">
-              <Icon name={a.icon} size="sm" decorative />
-            </span>
-            <span>
-              {/* The space keeps "Dueño" and its sentence two words in the
-                  computed name; both are display:block, so it never renders. */}
-              <b>{a.name}</b> <span className="lp-hand-sub">{a.does}</span>
-              <span className="sr-only">, ir al capítulo</span>
-            </span>
-            <span className="lp-ar" aria-hidden="true">
-              →
-            </span>
-          </button>
+      <p className="lp-castfila-hands">
+        {ACTORS.map((a, i) => (
+          <span key={a.key} className="lp-castfila-hand">
+            <b>{a.name}.</b> {a.does}
+            {i < ACTORS.length - 1 ? " " : null}
+          </span>
         ))}
-      </div>
+      </p>
     </div>
   );
 }
@@ -189,7 +172,7 @@ function Rail({ active }: { active: string }) {
               onSelect={() => scrollToChapter(c.key)}
             >
               <span className="lp-rn">{String(i + 1).padStart(2, "0")}</span>
-              <span className="lp-rname">{c.hand}</span>
+              <span className="lp-rname">{c.moment}</span>
               <span className="lp-rdot" aria-hidden="true" />
             </StepButton>
           ))}
@@ -217,11 +200,10 @@ function Chapter({ chapter, index }: { chapter: LandingChapter; index: number })
       <div className="lp-chapter" data-full="1" id={`cap-${chapter.key}`}>
         <div className="w-full">
           <div className="lp-ch-num">
-            Capítulo {index + 1} · {chapter.hand}
+            Capítulo {index + 1} · {chapter.moment}
           </div>
-          {chapter.lead && <p className="lp-lead lp-ch-lead">{chapter.lead}</p>}
           <div className="mt-4">
-            <EstadoConsole />
+            <EstadoConsole bridge={chapter.lead} />
           </div>
         </div>
       </div>
@@ -232,7 +214,7 @@ function Chapter({ chapter, index }: { chapter: LandingChapter; index: number })
       <div className="lp-chapter-grid">
         <div>
           <div className="lp-ch-num">
-            Capítulo {index + 1} · {chapter.hand}
+            Capítulo {index + 1} · {chapter.moment}
           </div>
           <h3 className="lp-display lp-h-sub lp-ch-title">{chapter.title}</h3>
           <p className="lp-lead lp-ch-lead">{chapter.lead}</p>

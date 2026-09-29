@@ -274,10 +274,44 @@ describe("rail — progress (PS10)", () => {
     expect(html).toContain("lp-rail-progress");
     expect(html).toContain("scaleY(0)");
     const rail = html.slice(html.indexOf('data-section="story-rail"'));
-    expect(rail.indexOf('aria-current="step"')).toBeLessThan(rail.indexOf("Veterinaria"));
+    expect(rail.indexOf('aria-current="step"')).toBeLessThan(rail.indexOf(">Vacuna<"));
     expect(CHAPTERS.filter((c) => c.state === "lost").map((c) => c.key)).toEqual([
       "anon",
       "refugio",
     ]);
+  });
+});
+
+// Critique 2026-09-29, M5 — every chapter ends on its payoff, not on a
+// dialog or an empty phone.
+describe("chapter endings (M5)", () => {
+  const finalScreen = (spec: typeof SHELTER_SEQUENCE) =>
+    renderToStaticMarkup(spec.device(spec.total - 1, false));
+
+  it("chapter 4 ends with Pampa home and AL DÍA, after the confirm dialog", () => {
+    const last = finalScreen(SHELTER_SEQUENCE);
+    expect(last).toContain("Volvió a casa");
+    expect(last).toContain("AL DÍA");
+    expect(last).not.toContain("¿Confirmás?");
+    // The confirm is still one step before it.
+    const confirm = renderToStaticMarkup(
+      SHELTER_SEQUENCE.device(SHELTER_SEQUENCE.total - 2, false),
+    );
+    expect(confirm).toContain("Sí, la encontré");
+    // And the step list names the payoff.
+    expect(SHELTER_SEQUENCE.items.at(-1)?.at).toBe(SHELTER_SEQUENCE.total - 1);
+  });
+
+  it("chapter 3 ends on the search itself, not a lone card", () => {
+    const last = finalScreen(LOST_SEQUENCE);
+    expect(last).toContain("Situación");
+    expect(last).toContain("Escanearon su QR");
+  });
+
+  it("chapter 1 uses the short phone: its screen holds one pet", () => {
+    const html = renderToStaticMarkup(<StorySection />);
+    const [first, second] = CHAPTERS.map((c) => `id="cap-${c.key}"`);
+    const chapterOne = html.slice(html.indexOf(first ?? ""), html.indexOf(second ?? ""));
+    expect(chapterOne).toContain("lp-scr--short");
   });
 });

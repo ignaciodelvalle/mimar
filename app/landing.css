@@ -1374,64 +1374,20 @@
   align-self: stretch;
   background: var(--color-ln-line);
 }
+/* The four hands, as one paragraph (critique 2026-09-29, M6): it used to be
+   a 2×2 grid of chapter-shortcut buttons doing the rail's job one block
+   above it. */
 .lp .lp-castfila-hands {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
   flex: 1;
-}
-.lp .lp-castfila-hand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  text-align: left;
-  background: var(--color-ln-card);
-  border: 1px solid var(--color-ln-line);
-  border-radius: 12px;
-  padding: 13px 15px;
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
-  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
-}
-@media (hover: hover) {
-  .lp .lp-castfila-hand:hover {
-    border-color: var(--color-ln-ink);
-    box-shadow: var(--shadow-md);
-  }
-}
-.lp .lp-role-ic {
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  background: var(--color-ln-celeste-050);
-  color: var(--color-ln-azul);
-  flex-shrink: 0;
-}
-.lp [data-tone="warm"] .lp-role-ic {
-  background: var(--lp-seal-bg);
-  color: var(--color-ln-seal);
-}
-.lp [data-tone="official"] .lp-role-ic {
-  background: var(--color-ln-azul-900);
-  color: #fff;
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--color-ln-ink-2);
+  text-wrap: pretty;
 }
 .lp .lp-castfila-hand b {
-  display: block;
-  font-size: 14px;
   color: var(--color-ln-ink);
-}
-.lp .lp-castfila-hand .lp-hand-sub {
-  font-size: 12px;
-  color: var(--color-ln-mute);
-  line-height: 1.35;
-  display: block;
-}
-.lp .lp-castfila-hand .lp-ar {
-  margin-left: auto;
-  color: var(--color-ln-faint);
+  font-weight: 700;
 }
 @media (max-width: 780px) {
   .lp .lp-castfila {
@@ -1441,7 +1397,6 @@
     display: none;
   }
   .lp .lp-castfila-hands {
-    grid-template-columns: 1fr;
     width: 100%;
   }
 }
@@ -1696,8 +1651,13 @@
   z-index: 5;
   pointer-events: none;
 }
+/* NEVER TALLER THAN THE SCREEN (critique 2026-09-29, M5). A fixed 640px
+   phone under a sticky nav, plus the device label above it, overran a
+   1440×800 viewport: the vet chapter's FIRMADO stamp — the payoff of the
+   whole sequence — played below the fold. The frame now follows the
+   viewport's height, with a floor under which the screens stop fitting. */
 .lp .lp-scr {
-  height: 640px;
+  height: clamp(560px, calc(100svh - 190px), 640px);
   display: flex;
   flex-direction: column;
   background: var(--color-ln-paper);
@@ -1706,7 +1666,11 @@
   padding-bottom: 18px;
 }
 .lp .lp-scr--tall {
-  height: 760px;
+  height: clamp(600px, calc(100svh - 150px), 760px);
+}
+/* The sign-up screen holds one pet: a full phone was mostly blank paper. */
+.lp .lp-scr--short {
+  height: 440px;
 }
 .lp .lp-scr-top {
   height: 52px;
@@ -2134,6 +2098,13 @@
 }
 .lp .lp-estado .lp-eyebrow {
   color: var(--color-ln-op-celeste);
+}
+.lp .lp-estado-bridge {
+  margin: 12px 0 0;
+  font-family: var(--lp-serif);
+  font-size: clamp(18px, 1.8vw, 22px);
+  line-height: 1.35;
+  color: #fff;
 }
 .lp .lp-estado-head {
   display: grid;
@@ -2942,7 +2913,6 @@
 .lp .lp-btn:active,
 .lp .lp-milestone-cta:active,
 .lp .lp-crisis-card:active,
-.lp .lp-castfila-hand:active,
 .lp .lp-rail-step:active,
 .lp .lp-mun-btn--line:active {
   transform: translateY(1px);
@@ -2956,7 +2926,6 @@
   .lp .lp-btn:active,
   .lp .lp-milestone-cta:active,
   .lp .lp-crisis-card:active,
-  .lp .lp-castfila-hand:active,
   .lp .lp-rail-step:active,
   .lp .lp-mun-btn--line:active {
     transform: none;
