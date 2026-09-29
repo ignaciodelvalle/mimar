@@ -71,7 +71,12 @@ reads back from the memo: no new charge on `public_token_page`. The old
 residual — `generateMetadata` resolving the token outside the guard — is
 closed. Case variants (`/p/dim-…`) never reach any of it: `middleware.ts`
 308-redirects them to the issued spelling, so every limiter key and the scan
-log only ever see one name per credential.
+log only ever see one name per credential. `GET /api/v1/pets/{token}/credential`
+(§10, the one anonymous `/api/v1` reader of this token) gets the same
+edge redirect — added 2026-09-29 (native-review C-2 / N-12-02) after this
+paragraph's own claim turned out to only ever have been true for `/p`: the API
+route's per-lookup key (`${publicToken}:${ip}`, §10) was still built from the
+raw, non-canonicalised param.
 
 **The bucket is per-surface, and that is deliberate.** Call sites pass distinct
 names — `public_token_page`, `public_token_encontre`, `public_token_sighting`,

@@ -89,6 +89,52 @@ describe("canonicalPublicTokenRedirectPath", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// The anonymous `/api/v1` reader — native-review C-2 / N-12-02 (2026-09-29).
+//
+// `GET /api/v1/pets/{token}/credential` is the ONE `/api/v1` route that
+// resolves this token without a bearer/session guard (@no-auth-required), so
+// it shares `/p`'s failure mode: a lowercase or space-padded token 404s, and
+// fragments the per-lookup limiter (`${publicToken}:${ip}`) exactly like `/p`
+// did before 2026-09-23. Every OTHER `/api/v1/pets/{token}/*` route sits
+// behind `requirePetAccess` and is deliberately left alone below.
+// ---------------------------------------------------------------------------
+
+describe("canonicalPublicTokenRedirectPath — the anonymous /api/v1 credential reader", () => {
+  it.each([
+    ["/api/v1/pets/dim-pamp-0001/credential", "/api/v1/pets/DIM-PAMP-0001/credential"],
+    ["/api/v1/pets/%20dim-pamp-0001%20/credential", "/api/v1/pets/DIM-PAMP-0001/credential"],
+    ["/api/v1/pets/DiM-PaMp-0001/credential", "/api/v1/pets/DIM-PAMP-0001/credential"],
+  ])("GET %s → %s", (path, target) => {
+    expect(canonicalPublicTokenRedirectPath("GET", path)).toBe(target);
+    expect(canonicalPublicTokenRedirectPath("HEAD", path)).toBe(target);
+  });
+
+  it.each([
+    ["already canonical", "/api/v1/pets/DIM-PAMP-0001/credential"],
+    [
+      "unicode lookalike (dotless i)",
+      `/api/v1/pets/${encodeURIComponent("dım-pamp-0001")}/credential`,
+    ],
+    ["not a token", "/api/v1/pets/hola/credential"],
+    ["malformed escape", "/api/v1/pets/%E0%A4%A/credential"],
+    // A DIFFERENT, AUTHENTICATED route under the same [publicToken] segment —
+    // out of scope on purpose (see the function's docblock): an authenticated
+    // caller is not the anonymous-enumeration problem this redirect exists for.
+    ["a sibling authenticated route, not /credential", "/api/v1/pets/dim-pamp-0001/profile"],
+    ["the bare pet resource, not /credential", "/api/v1/pets/dim-pamp-0001"],
+    ["a nested authenticated route", "/api/v1/pets/dim-pamp-0001/events/credential"],
+  ])("does not redirect: %s", (_label, path) => {
+    expect(canonicalPublicTokenRedirectPath("GET", path)).toBeNull();
+  });
+
+  it("never redirects a POST on this path shape either", () => {
+    expect(
+      canonicalPublicTokenRedirectPath("POST", "/api/v1/pets/dim-pamp-0001/credential"),
+    ).toBeNull();
+  });
+});
+
 describe("middleware() — the wire", () => {
   it("answers 308 with the canonical Location, query string preserved, no session refresh", async () => {
     const res = await middleware(new NextRequest("http://localhost:3000/p/dim-pamp-0001?src=qr"));
@@ -121,6 +167,26 @@ describe("middleware() — the wire", () => {
       new NextRequest("http://localhost:3000/p/dim-pamp-0001/encontre", { method: "POST" }),
     );
     expect(res.status).not.toBe(308);
+    expect(mockUpdateSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("308s a lowercase /api/v1 credential request to the canonical Location", async () => {
+    const res = await middleware(
+      new NextRequest("http://localhost:3000/api/v1/pets/dim-pamp-0001/credential"),
+    );
+    expect(res.status).toBe(308);
+    expect(res.headers.get("location")).toBe(
+      "http://localhost:3000/api/v1/pets/DIM-PAMP-0001/credential",
+    );
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+  });
+
+  it("passes a lowercase /api/v1 request through for a sibling, authenticated route", async () => {
+    const res = await middleware(
+      new NextRequest("http://localhost:3000/api/v1/pets/dim-pamp-0001/profile"),
+    );
+    expect(res.status).not.toBe(308);
+    expect(res.headers.get("location")).toBeNull();
     expect(mockUpdateSession).toHaveBeenCalledTimes(1);
   });
 });

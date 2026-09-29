@@ -126,8 +126,9 @@ export function buildContentSecurityPolicy(
 }
 
 /**
- * The canonical `/p/{token}` path for a request, or `null` when there is
- * nothing to redirect (2026-09-23).
+ * The canonical path for a request naming a public DIM token, or `null` when
+ * there is nothing to redirect (2026-09-23; extended 2026-09-29, native-review
+ * C-2 / N-12-02).
  *
  * WHY A REDIRECT AND NOT A FOLDING LOOKUP. A lowercase or space-padded token
  * (`/p/dim-pamp-0001`, a QR reader's trailing `%20`) names the same pet as the
@@ -140,20 +141,58 @@ export function buildContentSecurityPolicy(
  * and logged scans under names no pet has. Redirecting once, here, means
  * nothing downstream ever sees a non-canonical spelling.
  *
- * WHAT IS REDIRECTED. GET/HEAD only — a POST (a server action on these pages)
- * cannot follow a 308 without re-sending its body, and its arguments do not
- * come from the path anyway. The token segment is canonicalised by
- * `canonicalDimToken` (lib/domain/dim-token.ts): trim + ASCII-only uppercase,
- * and ONLY when the result has the token's shape. A lookalike (`dım-…`, Turkish
- * dotless i) or any other non-token is left alone to 404 as typed — a redirect
- * is a claim that the destination is the same resource. Any sub-path
- * (`/encontre`, `/sighting`, `/opengraph-image`) and the query string survive.
+ * TWO SURFACES, NOT ONE. `/p/{token}` (the five HTML surfaces, any sub-path
+ * survives) and `GET /api/v1/pets/{token}/credential` — the one `/api/v1`
+ * route that resolves this token WITHOUT a bearer/session guard
+ * (`@no-auth-required`, `app/api/v1/pets/[publicToken]/credential/route.ts`).
+ * That route keys its own per-lookup limiter `${publicToken}:${ip}` and reads
+ * `lookupPublicCredential` → `publicPetByToken`, the SAME exact-match
+ * predicate `/p` uses — so a lowercase token hitting the API directly 404s and
+ * fragments the limiter exactly like `/p` did before 2026-09-23. This doc
+ * block claimed the API's per-lookup key was already covered before that date;
+ * it was not — only `/p/{token}` had a matcher. Every OTHER
+ * `/api/v1/pets/{token}/*` route sits behind `requirePetAccess` /
+ * `resolvePetHolderAccess` and is out of scope: an authenticated caller is not
+ * the anonymous-enumeration/limiter-fragmentation problem this redirect exists
+ * to close.
+ *
+ * WHAT IS REDIRECTED. GET/HEAD only — a POST (a server action on the `/p`
+ * pages) cannot follow a 308 without re-sending its body, and its arguments do
+ * not come from the path anyway; the credential API route is GET-only anyway.
+ * The token segment is canonicalised by `canonicalDimToken`
+ * (lib/domain/dim-token.ts): trim + ASCII-only uppercase, and ONLY when the
+ * result has the token's shape. A lookalike (`dım-…`, Turkish dotless i) or
+ * any other non-token is left alone to 404 as typed — a redirect is a claim
+ * that the destination is the same resource. Any `/p` sub-path (`/encontre`,
+ * `/sighting`, `/opengraph-image`) and the query string survive.
  */
 export function canonicalPublicTokenRedirectPath(method: string, pathname: string): string | null {
   if (method !== "GET" && method !== "HEAD") return null;
-  const match = pathname.match(/^\/p\/([^/]+)(\/.*)?$/);
-  if (!match) return null;
-  const [, rawSegment, rest = ""] = match;
+
+  const pageMatch = pathname.match(/^\/p\/([^/]+)(\/.*)?$/);
+  if (pageMatch) {
+    const [, rawSegment, rest = ""] = pageMatch;
+    const canonical = canonicalPathSegment(rawSegment);
+    return canonical === null ? null : `/p/${canonical}${rest}`;
+  }
+
+  const apiCredentialMatch = pathname.match(/^\/api\/v1\/pets\/([^/]+)\/credential$/);
+  if (apiCredentialMatch) {
+    const [, rawSegment] = apiCredentialMatch;
+    const canonical = canonicalPathSegment(rawSegment);
+    return canonical === null ? null : `/api/v1/pets/${canonical}/credential`;
+  }
+
+  return null;
+}
+
+/**
+ * Decode + canonicalise one path segment, or `null` when there is nothing to
+ * redirect: a malformed escape, a non-token, or an already-canonical segment.
+ * Shared by every matcher in `canonicalPublicTokenRedirectPath` above so the
+ * decode-then-canonicalise-then-compare rule cannot drift between them.
+ */
+function canonicalPathSegment(rawSegment: string): string | null {
   let segment: string;
   try {
     segment = decodeURIComponent(rawSegment);
@@ -161,8 +200,7 @@ export function canonicalPublicTokenRedirectPath(method: string, pathname: strin
     return null; // malformed escape: not a token, let the route 404 it
   }
   const canonical = canonicalDimToken(segment);
-  if (canonical === null || canonical === segment) return null;
-  return `/p/${canonical}${rest}`;
+  return canonical === null || canonical === segment ? null : canonical;
 }
 
 export async function middleware(request: NextRequest) {
@@ -268,7 +306,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // Permanent redirect: a non-canonical public token spelling → the issued one
-  // (`/p/dim-pamp-0001` → `/p/DIM-PAMP-0001`). See the function's docblock for
+  // (`/p/dim-pamp-0001` → `/p/DIM-PAMP-0001`, and the same for the anonymous
+  // `/api/v1/pets/{token}/credential` reader). See the function's docblock for
   // why this lives at the edge and not in the lookup predicate.
   const canonicalTokenPath = canonicalPublicTokenRedirectPath(request.method, pathname);
   if (canonicalTokenPath !== null) {
