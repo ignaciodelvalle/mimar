@@ -708,6 +708,18 @@ jobs:
         #      churn: drops and re-creates expression+partial index
         #   5. organization_invitations.expires_at default — same class as (1)/(2),
         #      interval default serialization churn
+        #   6. govt_business_rules_type_name_unique / org_coverage_org_name_unique —
+        #      same class as (4): both are a `coalesce(col, '')` expression column
+        #      plus a partial `WHERE locality_id IS NULL AND authority_unit_id IS
+        #      NULL`, and schema.ts's declaration (db/schema.ts) is byte-identical
+        #      in shape to what `pg_indexes` reports live — drizzle-kit just can't
+        #      round-trip an expression+partial index, same as (4). This job never
+        #      reached this step long enough to report it: it was crashing earlier,
+        #      at "Apply schema via drizzle-kit push", on a missing
+        #      public.ar_province_name (fixed 2026-09-29, db/prerequisites.sql), so
+        #      the churn was already there and simply never surfaced. Verified
+        #      2026-09-29 against a throwaway postgres:16: three consecutive
+        #      `db:push` runs reproduce the identical DROP+CREATE pair forever.
         run: |
           OUTPUT=$(pnpm db:push 2>&1)
           echo "$OUTPUT"
@@ -724,12 +736,16 @@ jobs:
             | grep -vF 'ALTER TABLE "govt_business_rules" ADD CONSTRAINT "govt_business_rules_type_jurisdiction_unique" UNIQUE NULLS NOT DISTINCT' \
             | grep -vF 'DROP INDEX "org_invitations_active_unique"' \
             | grep -vF 'CREATE UNIQUE INDEX "org_invitations_active_unique"' \
-            | grep -vF 'ALTER TABLE "organization_invitations" ALTER COLUMN "expires_at" SET DEFAULT')
+            | grep -vF 'ALTER TABLE "organization_invitations" ALTER COLUMN "expires_at" SET DEFAULT' \
+            | grep -vF 'DROP INDEX "govt_business_rules_type_name_unique"' \
+            | grep -vF 'CREATE UNIQUE INDEX "govt_business_rules_type_name_unique"' \
+            | grep -vF 'DROP INDEX "org_coverage_org_name_unique"' \
+            | grep -vF 'CREATE UNIQUE INDEX "org_coverage_org_name_unique"')
           if echo "$FILTERED" | grep -qE "^(ALTER TABLE|CREATE|DROP|DO )"; then
             echo "::error::Drizzle reports pending changes — schema.ts ↔ migrations drift"
             exit 1
           fi
-          echo "::notice::Only known false-positive drifts detected (permanent_conditions, pulse_until, org_coverage constraint, govt_business_rules constraint, org_invitations index, expires_at default); treating as no-op."
+          echo "::notice::Only known false-positive drifts detected (permanent_conditions, pulse_until, org_coverage constraint, govt_business_rules constraint, org_invitations index, expires_at default, govt_business_rules_type_name_unique index, org_coverage_org_name_unique index); treating as no-op."
 
   test-shard:
     name: Tests (vitest) · shard ${{ matrix.shard }}/4
