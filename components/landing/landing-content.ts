@@ -526,11 +526,13 @@ export function mapTintStep(v: number): 0 | 1 | 2 | 3 | 4 {
 // Grouped by theme (PO landing feedback): the first pair is surveillance
 // REACH — how wide the signal spreads (total signals + jurisdictions covered);
 // the second pair is the RABIES-specific read (active observations + coverage).
+//
+// Two, not four (critique 2026-09-29, M7, PO-approved): for an owner the
+// console is a glimpse, not a pitch. The one that speaks to their own pet's
+// vaccine leads; the full console lives on /municipios.
 export const CONSOLE_KPIS = [
-  { label: "Señales zoonóticas · 12m", value: "1.982", tone: "warn" },
-  { label: "Jurisdicciones con señal", value: "19/24", tone: "blue" },
-  { label: "Observaciones antirrábicas", value: "214", tone: "danger" },
   { label: "Cobertura antirrábica", value: "72,4%", tone: "ok" },
+  { label: "Jurisdicciones con señal", value: "19/24", tone: "blue" },
 ] as const;
 
 // ---------------------------------------------------------------------------

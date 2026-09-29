@@ -37,6 +37,7 @@ import { OpKpiSm } from "@/components/ui/dashboard/OpKpiSm";
 import { formatRate } from "@/lib/utils/format";
 import { speciesLabel } from "@/lib/utils/species";
 import { PAMPA_PET } from "@/scripts/flagship-pampa-data";
+import Link from "next/link";
 import type React from "react";
 import type { ReactNode } from "react";
 
@@ -210,100 +211,52 @@ const LEGEND_TINT: Record<number, string> = {
   4: "color-mix(in srgb, var(--color-ln-celeste) 55%, var(--color-ln-celeste-100))",
 };
 
+// M7 (critique 2026-09-29, PO-approved): the chapter was a 1,200px dark
+// console with zoonotic signals, a cartogram and four KPIs, and the one line
+// an owner cares about ("solo datos agregados, nunca individuales") was its
+// third bullet. It now opens on that line, keeps a small console (the map and
+// two KPIs) as a glimpse, and sends whoever wants more to /municipios.
 export function EstadoConsole({ bridge }: { bridge?: string }) {
   return (
-    <div className="lp-estado" data-section="estado-console">
-      <div className="lp-estado-head">
-        <div>
-          <p className="lp-eyebrow">Vista · Estado</p>
-          <h3 className="lp-display lp-h-sub mt-3">Tendencias, no planillas.</h3>
-          {/* The chapter's bridge from the libreta, as the heading's own
-              standfirst (critique 2026-09-29, m8). It used to float as plain
-              text above the dark card, with no heading, and did not read as
-              part of the chapter. */}
-          {bridge && <p className="lp-estado-bridge">{bridge}</p>}
-          {/* Honesty pass (WU1, landing redesign 2026-09-24; corrected
-              2026-09-24 review): dropped "del país" (no jurisdiction has
-              onboarded the whole country) and "en tiempo real". The first
-              draft's replacement — "actualizadas todos los días" — was ALSO
-              wrong: panorama_cube (the daily cron) only serves 5 CHOROPLETH
-              layers {cobertura, esterilizacion, microchip, ppp, mortalidad}
-              to ADMIN actors on a COMPLETE national/province slice
-              (src/modules/panorama/application/load-layer-features-cube.ts).
-              A municipio/provincia's own scoped view — what this chapter
-              speaks to — "stays live in v1" per that same file, and the
-              zoonotic-signals KPI itself (active_zoonosis_signals,
-              lib/metrics/kpi-catalog.ts:576-585, fetcherName
-              "fetchActiveZoonosis") is a live "'now' snapshot", not a daily
-              batch. No cadence claim now — just automatic vs. manual. */}
-          <p className="lp-lead mt-3.5 text-lg">
-            Cada libreta suma a la foto sanitaria de cada jurisdicción. La consola llega
-            prefiltrada: señales zoonóticas, sin planillas.
-          </p>
-        </div>
-        <div className="lp-kicks">
-          <div className="lp-kick">
-            <span className="lp-kic">
-              <Icon name="chart-line" size="sm" decorative />
-            </span>
-            <div>
-              <b>Señales tempranas</b>
-              <span className="lp-kick-sub">
-                Síntomas y diagnósticos agregados detectan patrones antes.
-              </span>
-            </div>
-          </div>
-          <div className="lp-kick">
-            <span className="lp-kic">
-              <Icon name="map-pin" size="sm" decorative />
-            </span>
-            <div>
-              <b>Por jurisdicción</b>
-              <span className="lp-kick-sub">Cobertura, denuncias y brotes, comuna por comuna.</span>
-            </div>
-          </div>
-          <div className="lp-kick">
-            <span className="lp-kic">
-              <Icon name="candado" size="sm" decorative />
-            </span>
-            <div>
-              <b>Anonimizado por diseño</b>
-              <span className="lp-kick-sub">Solo datos agregados — nunca individuales.</span>
-            </div>
-          </div>
-        </div>
+    <div className="lp-estado lp-estado--compact" data-section="estado-console">
+      <div className="lp-estado-copy">
+        <p className="lp-eyebrow">Vista · Estado</p>
+        <h3 className="lp-display lp-h-sub mt-3">Tu comuna ve totales, nunca a tu mascota.</h3>
+        {/* The chapter's bridge from the libreta, as the heading's own
+            standfirst (critique 2026-09-29, m8). It used to float as plain
+            text above the dark card, with no heading, and did not read as
+            part of the chapter. */}
+        {bridge && <p className="lp-estado-bridge">{bridge}</p>}
+        {/* Honesty pass (WU1, 2026-09-24): no cadence claim ("en tiempo
+            real" and "actualizadas todos los días" were both wrong for this
+            surface; see lib/metrics/kpi-catalog.ts), no "del país". */}
+        <p className="lp-estado-privacy" data-section="estado-privacy">
+          <Icon name="candado" size="sm" decorative />
+          <span>
+            <b>Solo datos agregados, nunca individuales.</b> Cada libreta suma a la foto sanitaria
+            de su jurisdicción: cuántas mascotas están vacunadas, sin ver las de nadie.
+          </span>
+        </p>
+        <Link href="/municipios" className="lp-estado-more">
+          Ver más para municipios <span aria-hidden="true">→</span>
+        </Link>
       </div>
 
-      <div className="lp-mac" aria-hidden="true">
-        <div className="lp-mac-bar">
-          <span className="lp-mac-dot" />
-          <span className="lp-mac-dot" />
-          <span className="lp-mac-dot" />
-          <span className="lp-mac-title">miMAR · Consola de vigilancia</span>
-        </div>
-        <div className="lp-con">
-          <div className="lp-con-bar">
-            <span className="lp-con-title">
-              <Icon name="shield" size="sm" decorative /> Señales zoonóticas
-            </span>
-            <span className="lp-fpill">Últimos 12 meses</span>
-            <span className="lp-fpill">Rabia + leptospirosis</span>
-            <span className="lp-fpill">Confirmadas y sospechosas</span>
+      <div className="lp-estado-glimpse">
+        <div className="lp-mac" aria-hidden="true">
+          <div className="lp-mac-bar">
+            <span className="lp-mac-dot" />
+            <span className="lp-mac-dot" />
+            <span className="lp-mac-dot" />
+            <span className="lp-mac-title">miMAR · Consola de vigilancia</span>
           </div>
-          <div className="lp-con-body">
-            <div className="lp-con-rail">
+          <div className="lp-con">
+            <div className="lp-con-kpis">
               {CONSOLE_KPIS.map((k) => (
                 <div className="lp-navy-card op-surface" key={k.label}>
                   <OpKpiSm label={k.label} value={<CountUp value={k.value} />} tone={k.tone} />
                 </div>
               ))}
-              <div className="lp-con-railnote">
-                fuente: miMAR + campañas oficiales
-                <br />
-                agregado y anónimo por diseño
-                <br />
-                datos ilustrativos · demo
-              </div>
             </div>
             <div className="lp-con-map">
               <div className="lp-con-map-h">
@@ -321,8 +274,8 @@ export function EstadoConsole({ bridge }: { bridge?: string }) {
             </div>
           </div>
         </div>
+        <p className="lp-con-note">consola ilustrativa · datos de demostración</p>
       </div>
-      <p className="lp-con-note">consola ilustrativa · datos de demostración</p>
     </div>
   );
 }

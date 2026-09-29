@@ -375,6 +375,23 @@ describe("story — CastFila + 6 chapters + rail", () => {
     expect(html).toContain('data-q="0"');
   });
 
+  it("the Estado chapter leads with privacy, keeps a small console and hands off to /municipios (M7)", () => {
+    const html = renderToStaticMarkup(<StorySection />);
+    const estado = html.slice(html.indexOf('data-section="estado-console"'));
+    // The owner's line comes before the console window.
+    const privacy = estado.indexOf("Solo datos agregados, nunca individuales.");
+    expect(privacy).toBeGreaterThan(-1);
+    expect(privacy).toBeLessThan(estado.indexOf('class="lp-mac"'));
+    // Map + two KPIs, not four.
+    expect(estado.match(/class="lp-navy-card/g)?.length).toBe(2);
+    expect(estado).toContain('href="/municipios"');
+    expect(estado).toContain("Ver más para municipios");
+    // Still says the numbers are made up.
+    expect(estado).toContain("datos de demostración");
+    // No operator jargon in the chapter's own words.
+    expect(estado).not.toContain("planillas");
+  });
+
   it("libreta screen shows real system event types (es-AR labels), append-only footer", () => {
     const html = renderToStaticMarkup(<StorySection />);
     // Event types are the REAL system event types (landing-content.ts), but

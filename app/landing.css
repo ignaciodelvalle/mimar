@@ -2113,8 +2113,64 @@
 .lp .lp-estado .lp-lead {
   color: var(--lp-navy-ink);
 }
+/* Contrast (critique 2026-09-29, M7): op-celeste measured 3.15:1 where the
+   card's radial gradient lightens behind the eyebrow; celeste-100 clears AA
+   anywhere on it. */
 .lp .lp-estado .lp-eyebrow {
-  color: var(--color-ln-op-celeste);
+  color: var(--color-ln-celeste-100);
+}
+/* M7 (critique 2026-09-29): copy left, a small console right; one column on
+   narrow screens. The privacy line leads the copy. */
+.lp .lp-estado--compact {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
+  gap: clamp(24px, 4vw, 56px);
+  align-items: center;
+}
+@media (max-width: 860px) {
+  .lp .lp-estado--compact {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.lp .lp-estado-privacy {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 18px 0 0;
+  font-size: 16.5px;
+  line-height: 1.55;
+  color: var(--lp-navy-ink);
+}
+.lp .lp-estado-privacy svg {
+  margin-top: 4px;
+  flex-shrink: 0;
+  color: var(--color-ln-celeste-100);
+}
+.lp .lp-estado-privacy b {
+  color: #fff;
+}
+.lp .lp-estado-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-top: 10px;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.lp .lp-con-kpis {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 12px 12px 0;
+}
+.lp .lp-estado--compact .lp-con-map {
+  margin: 12px;
+}
+.lp .lp-estado--compact .lp-map-grid {
+  min-height: 240px;
 }
 .lp .lp-estado-bridge {
   margin: 12px 0 0;
@@ -2122,48 +2178,6 @@
   font-size: clamp(18px, 1.8vw, 22px);
   line-height: 1.35;
   color: #fff;
-}
-.lp .lp-estado-head {
-  display: grid;
-  grid-template-columns: 1.1fr 1fr;
-  gap: clamp(24px, 4vw, 56px);
-  align-items: end;
-  margin-bottom: clamp(26px, 4vw, 44px);
-}
-@media (max-width: 860px) {
-  .lp .lp-estado-head {
-    grid-template-columns: 1fr;
-  }
-}
-.lp .lp-kick {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-.lp .lp-kick .lp-kic {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--color-ln-op-celeste);
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-}
-.lp .lp-kick b {
-  display: block;
-  font-size: 14.5px;
-  color: #fff;
-}
-.lp .lp-kick .lp-kick-sub {
-  font-size: 13.5px;
-  color: var(--lp-navy-ink);
-  line-height: 1.5;
-}
-.lp .lp-kicks {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
 }
 
 /* mac-ish console window */
@@ -2197,61 +2211,6 @@
   display: flex;
   flex-direction: column;
   color: var(--lp-navy-ink);
-}
-.lp .lp-con-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--lp-navy-line);
-  flex-wrap: wrap;
-}
-.lp .lp-con-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: #fff;
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-  margin-right: 6px;
-}
-.lp .lp-con-title svg {
-  color: var(--color-ln-op-celeste);
-}
-.lp .lp-fpill {
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--lp-navy-ink);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--lp-navy-line);
-  border-radius: var(--radius-pill);
-  padding: 4px 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.lp .lp-con-body {
-  display: grid;
-  grid-template-columns: 232px 1fr;
-  gap: 12px;
-  padding: 12px 16px 16px;
-}
-@media (max-width: 760px) {
-  .lp .lp-con-body {
-    grid-template-columns: 1fr;
-  }
-}
-.lp .lp-con-rail {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.lp .lp-con-railnote {
-  margin-top: auto;
-  font-family: var(--lp-mono);
-  font-size: 9px;
-  color: var(--lp-navy-mute);
-  line-height: 1.5;
 }
 .lp .lp-navy-card {
   background: rgba(255, 255, 255, 0.04);
@@ -2301,7 +2260,7 @@
   color: #fff;
 }
 .lp .lp-mtile .lp-ab {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.05em;
 }
@@ -2355,12 +2314,14 @@
   height: 12px;
   border-radius: 3px;
 }
+/* Contrast (critique 2026-09-29, M7): the mute ink measured 2.44:1 here;
+   the console's own body ink clears AA on every stop of the card. */
 .lp .lp-con-note {
-  margin-top: 18px;
+  margin-top: 12px;
   font-size: 12px;
   font-family: var(--lp-mono);
   text-align: center;
-  color: var(--lp-navy-mute);
+  color: var(--lp-navy-ink);
 }
 
 /* ============ features — life moments ===================================== */
