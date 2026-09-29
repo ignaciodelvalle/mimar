@@ -113,6 +113,12 @@ export const ALLOWED_EDGES = new Set<string>([
   // and closing that made the existing dependency visible to this fence.
   // organizations imports from no module, so the graph stays acyclic.
   "events:organizations",
+  // vet-visit-record (2026-09-29). VisitScopedEventsRepository EXTENDS the
+  // events module's EventsRepository to stamp pet_events.visit_id at insert,
+  // so the Atender writers keep their signatures and receive the scoped
+  // repository in place of the plain one. events imports nothing from visits,
+  // so the graph stays acyclic.
+  "visits:events",
 
   // SUBJECT-RIGHTS ERASE RELEASES THE MICROCHIP (2026-08-28, PO/Claude decision).
   // When a person erases their account, the suppressed pet's microchip must be
