@@ -1749,7 +1749,12 @@
   position: relative;
   border-radius: 34px;
   background: var(--color-ln-op-navy);
-  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.12);
+  /* Token, not the phone's own raw shadow (which this originally copied) —
+     the CSS ratchet (gate gLT1, coordinator review) caps raw box-shadow in
+     this file at the 2 already grandfathered (.lp-phone, .lp-mac); a third
+     raw one is a new violation the ratchet does not forgive. --shadow-lg is
+     the closest declared token to the weight this bezel wants. */
+  box-shadow: var(--shadow-lg);
 }
 .lp .lp-tablet-cam {
   position: absolute;
@@ -1774,16 +1779,38 @@
   font-family: var(--lp-sans);
   /* Bumped well past the owner-app phone's own tiny labels (10/12/14/16px) —
      "marketing mockup" type, not the real portal's own density — because
-     EVERYTHING inside a tablet screen still goes through a zoom (below). Also
-     reaches Tailwind's `text-xs`/`text-sm` utilities (LnVstamp's "FIRMADO",
-     LnBadge's "Matrícula verificada"/"Verificada"): both compile to
-     `font-size: var(--text-xs|sm)` from the same @theme tokens
-     (app/globals.css), so redefining the custom property here cascades into
-     them too — confirmed with a Playwright probe before relying on it. */
-  --text-xs: 16px;
-  --text-sm: 17px;
-  --text-md: 18px;
-  --text-base: 19px;
+     EVERYTHING inside a tablet screen still goes through a zoom (below).
+     Named --tab-*, NOT --text-* (coordinator review, gate gLT1): the CSS
+     ratchet's below-floor rule finds a sheet's typographic floor by
+     regex-searching the file for the FIRST `--text-xs: Npx` it can see, with
+     no notion of selector scope — so a scoped `--text-xs: 16px` here read as
+     the WHOLE FILE's floor, and every pre-existing raw font-size under 16px
+     (there are dozens) suddenly counted as "below floor" (46 vs baseline 8,
+     none of the other 38 touched by this change). --tab-* sidesteps the
+     regex entirely: same bump, but the scale's REAL floor (10px, parsed from
+     app/globals.css normally, defaults to 10 here since this file declares
+     no --text-xs of its own) stays what it always was. */
+  --tab-xs: 16px;
+  --tab-sm: 17px;
+  --tab-md: 18px;
+  --tab-base: 19px;
+}
+/* Bridges Tailwind's compiled `.text-xs` utility (LnVstamp's "FIRMADO" stamp,
+   LnBadge's "Matrícula verificada"/"Verificada") to the tablet scale above —
+   `.text-xs` normally reads the REAL --text-xs (10px); this out-specifies it
+   only inside a tablet screen. `.text-sm/-md/-base` added for symmetry, even
+   though no current tablet screen uses those Tailwind utilities directly. */
+.lp .lp-tab-scr .text-xs {
+  font-size: var(--tab-xs);
+}
+.lp .lp-tab-scr .text-sm {
+  font-size: var(--tab-sm);
+}
+.lp .lp-tab-scr .text-md {
+  font-size: var(--tab-md);
+}
+.lp .lp-tab-scr .text-base {
+  font-size: var(--tab-base);
 }
 /* Two layout modes, two zoom levels — `zoom` scales the frame AND its
    content together, so text scales WITH the frame instead of clipping:
@@ -1827,7 +1854,7 @@
   flex-direction: column;
 }
 .lp .lp-op-eyebrow {
-  font-size: var(--text-xs);
+  font-size: var(--tab-xs);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1845,7 +1872,7 @@
   margin-top: 2px;
 }
 .lp .lp-op-page {
-  font-size: var(--text-xs);
+  font-size: var(--tab-xs);
   color: var(--color-ln-op-mute);
   margin-top: 3px;
 }
@@ -1853,7 +1880,7 @@
   margin-top: 6px;
 }
 .lp p.lp-op-signer {
-  font-size: var(--text-sm);
+  font-size: var(--tab-sm);
   color: var(--color-ln-op-mute);
   margin: -2px 0 2px;
   /* One line, always — the label + the vet's real name + license number is
@@ -1869,15 +1896,23 @@
   text-overflow: ellipsis;
 }
 
-/* Org-portal recolor: the tablet screens reuse the SAME card/form/list shapes
-   as the owner-app screens above (lp-vf-*, lp-ph-card, lp-intake-row,
-   lp-match-*), repainted with ln-op-* — the portal's real palette — instead
-   of the owner app's ln-*. Scoped to .lp-tab-scr so no class needs a second
-   name; only its colors change with the device it renders inside. */
+/* Org-portal recolor + rescale: the tablet screens reuse the SAME card/form/
+   list shapes as the owner-app screens above (lp-vf-*, lp-ph-card,
+   lp-intake-row, lp-match-*), repainted with ln-op-* (the portal's real
+   palette) and resized onto the --tab-* mockup scale, instead of the owner
+   app's ln-* colors and its own --text-* sizes. Scoped to .lp-tab-scr so no
+   class needs a second name; only what it looks like changes with the
+   device it renders inside. Every font-size below is explicit — none of it
+   rides a blanket --text-* redefinition any more (see .lp-tab-scr above:
+   that redefinition, scoped or not, was still read as the WHOLE FILE's
+   typographic floor by the CSS ratchet's regex, turning 38 untouched
+   declarations elsewhere in this file into new "below floor" violations). */
 .lp .lp-tab-scr .lp-vf-l {
+  font-size: var(--tab-xs);
   color: var(--color-ln-op-mute);
 }
 .lp .lp-tab-scr .lp-vf-i {
+  font-size: var(--tab-sm);
   border-color: var(--color-ln-op-line);
   background: var(--color-ln-op-card);
   color: var(--color-ln-op-ink);
@@ -1892,18 +1927,25 @@
   grid-template-columns: 1fr 1fr;
   gap: 10px 12px;
 }
+.lp .lp-tab-scr .lp-vf-pet {
+  font-size: var(--tab-md);
+}
 .lp .lp-tab-scr .lp-vf-submit {
+  font-size: var(--tab-sm);
   grid-column: 1 / -1;
   background: var(--color-ln-op-azul);
   color: #fff;
 }
 .lp .lp-tab-scr .lp-vf-tag {
+  font-size: var(--tab-xs);
   color: var(--color-ln-op-ok);
 }
 .lp .lp-tab-scr .lp-vf-done {
+  font-size: var(--tab-sm);
   color: var(--color-ln-op-ink-2);
 }
 .lp .lp-tab-scr .lp-kv-title {
+  font-size: var(--tab-sm);
   color: var(--color-ln-op-ink);
 }
 .lp .lp-tab-scr .lp-ph-card {
@@ -1914,14 +1956,14 @@
   border-top-color: var(--color-ln-op-line-2);
 }
 .lp .lp-tab-scr .lp-intake-row b {
-  /* Raw px in the base rule (12.5px), not one of the --text-* tokens above,
-     so it needs its own bump here to clear the readability floor too. */
-  font-size: var(--text-md);
+  /* Raw px in the base rule (12.5px), not a --text-* token, so it needs its
+     own bump here regardless. */
+  font-size: var(--tab-md);
   color: var(--color-ln-op-ink);
 }
 .lp .lp-tab-scr .lp-intake-row .lp-intake-sub {
   /* Same reason: the base rule is a raw 11px. */
-  font-size: var(--text-sm);
+  font-size: var(--tab-sm);
   color: var(--color-ln-op-ink-2);
 }
 .lp .lp-tab-scr .lp-intake-row .lp-iic {
@@ -1933,17 +1975,24 @@
   color: var(--color-ln-op-ok);
 }
 .lp .lp-tab-scr .lp-match-breach {
+  font-size: var(--tab-sm);
   background: var(--color-ln-op-danger-bg);
   border-color: var(--color-ln-op-danger-bd);
 }
 .lp .lp-tab-scr .lp-match-ok {
+  font-size: var(--tab-sm);
   background: var(--color-ln-op-ok-bg);
   border-color: var(--color-ln-op-line);
 }
+.lp .lp-tab-scr .lp-match-name {
+  font-size: var(--tab-base);
+}
 .lp .lp-tab-scr .lp-match-sub {
+  font-size: var(--tab-sm);
   color: var(--color-ln-op-ink-2);
 }
 .lp .lp-tab-scr .lp-match-pill {
+  font-size: var(--tab-xs);
   background: var(--color-ln-op-danger);
   color: #fff;
 }
