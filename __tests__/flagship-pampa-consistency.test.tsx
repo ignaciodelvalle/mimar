@@ -362,12 +362,14 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
     expect(html).toContain("Alguien encontró a Pampa. No dejó datos de contacto.");
     expect(html).not.toContain("¡Hola! Soy");
     expect(html).not.toContain("Custodia devuelta");
-    // The real product labels of the animated chapters.
+    // The real product labels of the animated chapters. The vet form shows
+    // 3 of its 5 real fields on the tablet (coordinator review, round 3 —
+    // a fixed 3∶4 frame has real height limits): "Administrado por" and
+    // "Próxima dosis (fecha)" are the two dropped, so they are not asserted
+    // here any more.
     for (const label of [
       "Marca / laboratorio",
       "Lote / número de batch",
-      "Administrado por",
-      "Próxima dosis (fecha)",
       "Marcar asistencia",
       "FIRMADO",
       "Marcar como perdida",

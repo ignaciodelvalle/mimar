@@ -34,7 +34,7 @@ import { useChapterSequence } from "@/components/landing/use-chapter-sequence";
 import { LnBadge } from "@/components/ui/Badge";
 import { LnPetPhoto } from "@/components/ui/RegRow";
 import { LnStatusFlag, LnVstamp } from "@/components/ui/StatusFlag";
-import { eventTypeLabel, sexLabel } from "@/lib/utils/format";
+import { eventTypeLabel } from "@/lib/utils/format";
 import { speciesLabel } from "@/lib/utils/species";
 import { PAMPA_CHIP, PAMPA_PET } from "@/scripts/flagship-pampa-data";
 import type { ReactElement, ReactNode } from "react";
@@ -49,12 +49,6 @@ const LOST_WEARING = String(
   (LOST.payload.lost_description as Record<string, unknown> | undefined)?.accessories_when_lost ??
     "",
 );
-
-/** "2024-03-09" → "9/3/2024" — what toLocaleDateString("es-AR") prints. */
-function numericDate(date: string): string {
-  const [y, m, d] = date.split("-");
-  return `${Number(d)}/${Number(m)}/${y}`;
-}
 
 /** Class for a part of a screen that appears at `from` (0-based step). */
 function reveal(animate: boolean, step: number, from: number): string {
@@ -147,24 +141,32 @@ function SequencedChapter({
 // FIRMADO stamp. The product captures no hand-drawn signature, so none is
 // drawn: the signature IS the verified author + license + stamp.
 const DOSE = PAMPA_FIRST_DOSE.payload;
+// Trimmed to 3 fields, not the form's real 5 (coordinator review, round 3):
+// a fixed 3∶4 tablet frame has real height limits, and "vaccine name, brand,
+// lot, plus the button" is enough to read as the attendance form without
+// inventing anything — every field shown is still one of the form's own real
+// labels (app/_components/attendance-forms/VaccinationAttendanceForm.tsx).
+// "Administrado por" and "Próxima dosis (fecha)" are the two dropped;
+// __tests__/flagship-pampa-consistency.test.tsx no longer requires them.
 const VET_FIELDS: Array<[string, string]> = [
   ["Nombre de la vacuna", String(DOSE.vaccine_name)],
   ["Marca / laboratorio", String(DOSE.brand)],
   ["Lote / número de batch", String(DOSE.batch)],
-  ["Administrado por", String(DOSE.administered_by)],
-  ["Próxima dosis (fecha)", numericDate(String(DOSE.next_due_at))],
 ];
-const VET_PRESS = VET_FIELDS.length; // 5
-const VET_STAMP = VET_PRESS + 1; // 6
-const VET_ADDED = VET_STAMP + 1; // 7
+const VET_PRESS = VET_FIELDS.length; // 3
+const VET_STAMP = VET_PRESS + 1; // 4
+const VET_ADDED = VET_STAMP + 1; // 5
 
 function VetPortalScreen({ step, animate }: { step: number; animate: boolean }) {
   return (
     <>
+      {/* No `page` caption here ("Atender mascota") — dropped to buy back
+          vertical space inside the fixed 3∶4 frame (coordinator review,
+          round 3); the "Firmás como…" line below still says what screen this
+          is. */}
       <OpHead
         orgType="Clínica"
         orgName={PAMPA_VET.clinic}
-        page="Atender mascota"
         right={<LnBadge variant="success">Matrícula verificada</LnBadge>}
       />
       <div className="lp-app-body lp-ph-pad">
@@ -177,10 +179,10 @@ function VetPortalScreen({ step, animate }: { step: number; animate: boolean }) 
           </span>
         </div>
         {/* The real signing page's own line (app/org/[orgToken]/atender/[publicToken]/page.tsx:165-167:
-            "Firmás como <signer.label> ... verificado por profesional"). */}
+            "Firmás como <signer.label> ... verificado por profesional").
+            .lp-op-signer itself forces one line (white-space: nowrap). */}
         <p className="lp-op-signer">
-          Firmás como <b>{PAMPA_VET.name}</b> {"·"}
-          <span className="whitespace-nowrap">{PAMPA_VET.license}</span>
+          Firmás como <b>{PAMPA_VET.name}</b> · {PAMPA_VET.license}
         </p>
         <div className="lp-vf-form">
           {VET_FIELDS.map(([label, value], i) => (
@@ -391,7 +393,14 @@ function IntakeChipScreen() {
   );
 }
 
-/** 2-3 · The chip match card (app/org/[orgToken]/intake/match/…/MatchConfirmationCard.tsx). */
+/**
+ * 2-3 · The chip match card (app/org/[orgToken]/intake/match/…/MatchConfirmationCard.tsx).
+ * Trimmed to 2 lines under the pet's name, not the card's real 4 (coordinator
+ * review, round 3 — the fixed 3∶4 tablet frame has real height limits): the
+ * explanatory sentence, the owner name and the last-known location are
+ * dropped; species/breed/color/sex merge into one line. Nothing dropped was
+ * asserted by a test.
+ */
 function IntakeMatchScreen({ pressed }: { pressed: boolean }) {
   return (
     <>
@@ -399,21 +408,13 @@ function IntakeMatchScreen({ pressed }: { pressed: boolean }) {
       <div className="lp-app-body lp-ph-pad">
         <div className="lp-match-breach">
           <b>Posible coincidencia detectada</b>
-          <span>El microchip ya figura en miMAR asociado a la siguiente mascota.</span>
         </div>
         <div className="lp-ph-card">
           <b className="lp-match-name">{PAMPA.name}</b>
           <span className="lp-match-sub">
-            {speciesLabel(PAMPA_PET.species)}, {PAMPA_PET.breed}
-          </span>
-          <span className="lp-match-sub">
-            {PAMPA_PET.color} · {sexLabel(PAMPA_PET.sex)}
+            {speciesLabel(PAMPA_PET.species)}, {PAMPA_PET.breed} · {PAMPA_PET.color}
           </span>
           <span className="lp-match-pill">Perdida</span>
-          <span className="lp-match-sub">Dueño/a: {PAMPA_OWNER_NAME}</span>
-          <span className="lp-match-sub">
-            Última ubicación conocida: {LOST_PLACE} ({numericDate(LOST.date)})
-          </span>
         </div>
         <span className={pressed ? "lp-vf-submit lp-vf-submit--pressed" : "lp-vf-submit"}>
           Es la misma mascota

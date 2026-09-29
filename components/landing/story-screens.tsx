@@ -83,6 +83,11 @@ export function AppHead({
  * identity a real member sees is constant across the portal, unlike the
  * page-specific title underneath, which stays whatever that real page calls
  * itself (e.g. "Ingresos", `app/org/[orgToken]/intake/page.tsx`).
+ *
+ * `right` (e.g. the "Matrícula verificada" badge) renders on its own row
+ * below the title, not beside it: a badge sharing the title's row squeezed
+ * the column at the tablet's width and broke "PANEL DE / CLÍNICA" and
+ * "Atender / mascota" mid-phrase (coordinator review, round 3).
  */
 export function OpHead({
   orgType,
@@ -97,12 +102,10 @@ export function OpHead({
 }) {
   return (
     <div className="lp-op-head">
-      <div className="min-w-0 flex-1">
-        <p className="lp-op-eyebrow">Panel de {orgType}</p>
-        <div className="lp-op-title">{orgName}</div>
-        {page && <p className="lp-op-page">{page}</p>}
-      </div>
-      {right}
+      <p className="lp-op-eyebrow">Panel de {orgType}</p>
+      <div className="lp-op-title">{orgName}</div>
+      {page && <p className="lp-op-page">{page}</p>}
+      {right && <div className="lp-op-badge-row">{right}</div>}
     </div>
   );
 }

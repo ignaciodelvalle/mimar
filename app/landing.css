@@ -1715,49 +1715,57 @@
 }
 
 /* ============ tablet frame — org portal chapters (vet, refugio) =========== */
-/* Landscape chrome, org-portal palette (ln-op-*). Fixed size, no variants —
-   same rule as .lp-phone (PO 2026-09-29): the device itself signals "this is
-   the organization's portal", not the owner's phone. Scaled with `zoom` at
-   two breakpoints (below) so both org-portal chapters render at the
-   identical size at every viewport.
-   Native width kept small on purpose (420px, not the first attempt's 760px):
-   a 760px design needed zoom ~0.42–0.5 to fit any column, which shrank its
-   text past readable (measured 2026-09-29: labels rendered at 4-6px on a
-   390px phone — a coordinator review caught it). At 420px the frame needs
-   only a light zoom (0.8/0.95 below), so the bumped `--text-*` tokens two
-   rules down survive as real, legible pixels instead of being zoomed back
-   into illegibility. */
+/* Org-portal palette (ln-op-*). Fixed size, no variants — same rule as
+   .lp-phone (PO 2026-09-29): the device itself signals "this is the
+   organization's portal", not the owner's phone. Scaled with `zoom` at two
+   breakpoints (below) so both org-portal chapters render at the identical
+   size at every viewport.
+   Real tablet proportions, on purpose (coordinator review, round 3): a
+   716-tall frame on a 420-wide one measured 336×617 — width/height 0.54,
+   indistinguishable from the phone's own 340×640 (0.53) and defeating the
+   entire point ("a different device, a different profile"). `aspect-ratio`
+   now FIXES the shape at 3∶4 (0.75, an iPad-mini-ish portrait) — content no
+   longer drives the frame's height, so the screens inside were simplified
+   instead (see .lp-vf-form and the dropped vet fields, story-sequences.tsx).
+   Width nudged 420→440px from the readability fix (round 2): fixing the
+   ratio turned out to leave the refugio chip-match screen ~53px short of
+   fitting even after trimming it (see IntakeMatchScreen, story-sequences.tsx)
+   — 440px's proportionally taller 3∶4 box (586.7 native vs 560) closes that
+   with margin, while still rendering "about" 336/400px through the same
+   0.8/0.95 zoom below (352/418px — the brief's own wording for both). */
 .lp .lp-tablet {
-  width: 420px;
-  border-radius: 22px;
-  padding: 16px;
+  width: 440px;
+  aspect-ratio: 3 / 4;
+  /* Thicker, EVEN bezel all around (no phone-style notch/island) + a
+     rounder corner — the tablet's other visual tell, next to its shape.
+     No padding here on purpose: .lp-tab-scr below is absolutely positioned
+     with `inset` instead. A padded, in-flow .lp-tab-scr with height:100%
+     let its own content's natural height push .lp-tablet TALLER than its
+     aspect-ratio on the vet screen (measured 336×510 = 0.66, not 0.75 —
+     .lp-tab-scr's `height:100%` resolves against an "auto"-height ancestor,
+     so it fell back to shrink-to-fit instead of a real 100%). Taking
+     .lp-tab-scr out of flow removes that feedback loop: .lp-tablet's box is
+     then governed ONLY by width + aspect-ratio, never by what is inside. */
   position: relative;
+  border-radius: 34px;
   background: var(--color-ln-op-navy);
   box-shadow: 0 30px 60px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
 .lp .lp-tablet-cam {
   position: absolute;
-  top: 7px;
+  top: 11px;
   left: 50%;
   transform: translateX(-50%);
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.35);
   z-index: 5;
 }
 .lp .lp-tab-scr {
-  width: 388px;
-  /* Tall enough for the vet form's 5 fields (2 per row, see .lp-vf-form
-     below) + submit + FIRMADO stamp — natural content height measured 720px
-     native (Playwright, scrTop to .lp-vf-done's bottom, at zoom 0.95).
-     .lp-app-body's own overflow:hidden silently clips content at a shorter
-     height WITHOUT .lp-tab-scr itself ever reporting an overflow (its own
-     scrollHeight stays pinned to whatever height is declared here — the
-     clip happens one level down, and only checking .lp-app-body's
-     scrollHeight catches it). 740px leaves a small buffer. */
-  height: 740px;
-  border-radius: 8px;
+  position: absolute;
+  inset: 26px;
+  border-radius: 12px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1780,15 +1788,15 @@
 /* Two layout modes, two zoom levels — `zoom` scales the frame AND its
    content together, so text scales WITH the frame instead of clipping:
    - <=940px: the single-column mobile stack. 0.8 renders the 420px-wide
-     frame at 336px, inside the narrowest column this bucket ever hands it
-     (measured ~354px at 390×844) with margin to spare. At the smallest
-     `--text-xs` (16px) that is 12.8px rendered — clears the 11px (390) and
-     12px (820, same bucket) floors from the readability review.
+     frame at 336px — the mobile content column itself (measured ~354px at
+     390×844), so the tablet fills it the way the coordinator asked, with a
+     touch of margin. At the smallest `--text-xs` (16px) that is 12.8px
+     rendered — clears the 11px (390) and 12px (820, same bucket) floors
+     from the readability review. Height follows from the 3∶4 ratio: 448px.
    - >940px: the two-column desktop grid (.lp-chapter-grid, above), whose
      column caps out around 440px even at the page's own 1280px max-width
-     (.lp-wrap-wide) — this is what a bare 760px-native frame overflowed by
-     ~160px a side before this fix. 0.95 renders 420px at 399px, comfortably
-     inside that column, with `--text-xs` landing at 15.2px rendered.
+     (.lp-wrap-wide). 0.95 renders 420px at 399px, comfortably inside that
+     column (`--text-xs` at 15.2px rendered), 532px tall at 3∶4.
    One factor per breakpoint for BOTH org-portal chapters, so "the same size
    in both chapters at a given viewport" holds by construction. */
 @media (min-width: 941px) {
@@ -1804,14 +1812,19 @@
 
 /* Org-portal header: eyebrow + org name as the h1 (mirrors
    app/org/[orgToken]/page.tsx's own header block), then the real page's own
-   title underneath. */
+   title underneath.
+   STACKED, not a row with the badge beside it (coordinator review, round 3):
+   a `right`-slot badge (e.g. "MATRÍCULA VERIFICADA") squeezed the title
+   column at the tablet's narrower width and broke "PANEL DE / CLÍNICA" and
+   "Atender / mascota" mid-phrase. The badge now gets its own row
+   (.lp-op-badge-row) under the title, at the column's full width, so
+   nothing upstream of it ever has less width than the header itself. */
 .lp .lp-op-head {
   padding: 14px 20px 12px;
   background: var(--color-ln-op-card);
   border-bottom: 1px solid var(--color-ln-op-line);
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  flex-direction: column;
 }
 .lp .lp-op-eyebrow {
   font-size: var(--text-xs);
@@ -1836,10 +1849,24 @@
   color: var(--color-ln-op-mute);
   margin-top: 3px;
 }
-.lp .lp-op-signer {
+.lp .lp-op-badge-row {
+  margin-top: 6px;
+}
+.lp p.lp-op-signer {
   font-size: var(--text-sm);
   color: var(--color-ln-op-mute);
   margin: -2px 0 2px;
+  /* One line, always — the label + the vet's real name + license number is
+     long, and a mid-phrase wrap here reads as broken chrome, not a device.
+     The extra `p` element selector isn't decorative: `.lp :is(p, .lp-lead)`
+     (below, text-wrap: pretty for prose) ties this rule's specificity
+     exactly and sits LATER in the file, so it silently won the `text-wrap`
+     longhand `white-space` expands into — the computed style still read
+     "normal" and the text wrapped even with this rule in place, caught by
+     re-measuring after the fact rather than trusting the screenshot alone. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Org-portal recolor: the tablet screens reuse the SAME card/form/list shapes
