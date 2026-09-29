@@ -682,7 +682,9 @@ export const ROLES: LandingRole[] = [
     title: "Solicitá acceso verificado",
     body: "Refugios, veterinarias, redes de rescate: custodia, adopciones y eventos sanitarios firmados.",
     cta: "Solicitar acceso",
-    ctaHref: "/registro",
+    // Its own request form (critique 2026-09-29, M8): /registro is the
+    // OWNER's sign-up, so an organization used to land in the wrong flow.
+    ctaHref: "/organizaciones/solicitar-acceso",
     cta2: "Ya tengo cuenta",
     cta2Href: "/iniciar-sesion",
   },
@@ -732,7 +734,7 @@ export const FOOTER_NAV: Array<[string, Array<[string, string]>]> = [
   [
     "Operadores",
     [
-      ["Organizaciones", "/registro"],
+      ["Organizaciones", "/organizaciones/solicitar-acceso"],
       ["Refugios", "/refugios"],
       ["Iniciar sesión", "/iniciar-sesion"],
     ],

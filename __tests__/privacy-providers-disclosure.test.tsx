@@ -77,6 +77,13 @@ describe("/privacidad — providers and the international transfer", () => {
     );
   });
 
+  it("discloses the organization access-request form the same way (critique 2026-09-29, M8)", () => {
+    const body = text(providersSection());
+    expect(body).toContain(
+      "Pedido de acceso para organizaciones. Si completás el formulario de /organizaciones/solicitar-acceso, tu nombre, el de tu organización, su localidad, tu correo y, si lo das, tu teléfono, se envían por correo electrónico a nuestro equipo a través de Resend (Estados Unidos). No los guardamos en nuestra base de datos; los usamos solo para responderte.",
+    );
+  });
+
   it("rests the transfer on express consent under art. 12, without claiming adequacy", () => {
     const body = text(providersSection());
     expect(body).toContain("Disposición AAIP 60/2016");

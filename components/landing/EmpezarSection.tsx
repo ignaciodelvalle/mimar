@@ -5,6 +5,14 @@
 // landing feedback: heading trimmed to just "Empezar"; the eyebrow +
 // "antes del día que se pierda" lead were removed so the doors carry the
 // section.
+//
+// HIERARCHY (critique 2026-09-29, M8, PO-approved). The owner, who this page
+// is for, had the lightest card while the municipios door was the heaviest
+// (navy) and sat orphaned on a second row. Now the owner's door runs full
+// width with the primary style and a full-size CTA; organizations and
+// municipios share the second row as two equal, secondary cards. The
+// organization's "Solicitar acceso" goes to its own request form, not to the
+// owner's sign-up.
 
 import { Icon } from "@/components/Icon";
 import { ROLES } from "@/components/landing/landing-content";
@@ -20,38 +28,45 @@ export function EmpezarSection() {
           </h2>
         </div>
         {/* Entrance sequencing (existing .lp-reveal + data-d mechanism):
-            heading first, then the two doors stagger in — owner door leads. */}
+            heading first, then the doors stagger in — owner door leads. */}
         <div className="lp-role-grid mt-[clamp(36px,5vw,54px)]">
-          {ROLES.map((r, i) => (
-            <article
-              className="lp-role-card lp-reveal"
-              data-d={i + 1}
-              data-tone={r.tone}
-              key={r.tone}
-            >
-              <span className="lp-ric" aria-hidden="true">
-                <Icon name={r.icon} size="lg" decorative />
-              </span>
-              <p className="lp-eyebrow mb-2">{r.eyebrow}</p>
-              <h3>{r.title}</h3>
-              <p>{r.body}</p>
-              {r.steps && (
-                <ol className="lp-role-steps" data-section="empezar-steps">
-                  {r.steps.map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ol>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <Link href={r.ctaHref} className="lp-btn lp-btn--primary lp-btn--compact">
-                  {r.cta} <span className="lp-ar">→</span>
-                </Link>
-                <Link href={r.cta2Href} className="lp-btn lp-btn--ghost lp-btn--compact">
-                  {r.cta2}
-                </Link>
-              </div>
-            </article>
-          ))}
+          {ROLES.map((r, i) => {
+            const primary = r.tone === "dueno";
+            const size = primary ? "" : " lp-btn--compact";
+            return (
+              <article
+                className={`lp-role-card lp-reveal${primary ? " lp-role-card--primary" : ""}`}
+                data-d={i + 1}
+                data-tone={r.tone}
+                key={r.tone}
+              >
+                <span className="lp-ric" aria-hidden="true">
+                  <Icon name={r.icon} size="lg" decorative />
+                </span>
+                <p className="lp-eyebrow mb-2">{r.eyebrow}</p>
+                <h3>{r.title}</h3>
+                <p>{r.body}</p>
+                {r.steps && (
+                  <ol className="lp-role-steps" data-section="empezar-steps">
+                    {r.steps.map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ol>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    href={r.ctaHref}
+                    className={`lp-btn ${primary ? "lp-btn--primary" : "lp-btn--ghost"}${size}`}
+                  >
+                    {r.cta} <span className="lp-ar">→</span>
+                  </Link>
+                  <Link href={r.cta2Href} className={`lp-btn lp-btn--ghost${size}`}>
+                    {r.cta2}
+                  </Link>
+                </div>
+              </article>
+            );
+          })}
         </div>
       </div>
     </section>

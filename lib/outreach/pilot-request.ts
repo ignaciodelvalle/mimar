@@ -241,7 +241,8 @@ export type PilotMail = {
   html: string;
 };
 
-function escapeHtml(value: string): string {
+/** Shared with lib/outreach/org-access-request.ts, which builds the same kind of mail. */
+export function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")

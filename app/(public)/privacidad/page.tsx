@@ -248,6 +248,13 @@ export default function PrivacidadPage() {
             guardamos en nuestra base de datos; los usamos solo para responderte.
           </p>
           <p className="text-sm text-[var(--color-ln-ink-2)] leading-relaxed">
+            <strong>Pedido de acceso para organizaciones.</strong> Si completás el formulario de
+            /organizaciones/solicitar-acceso, tu nombre, el de tu organización, su localidad, tu
+            correo y, si lo das, tu teléfono, se envían por correo electrónico a nuestro equipo a
+            través de Resend (Estados Unidos). No los guardamos en nuestra base de datos; los usamos
+            solo para responderte.
+          </p>
+          <p className="text-sm text-[var(--color-ln-ink-2)] leading-relaxed">
             <strong>Transferencia internacional.</strong> Brasil y Estados Unidos no figuran entre
             los países que la Agencia de Acceso a la Información Pública considera con un nivel de
             protección adecuado (Disposición AAIP 60/2016). Por eso pedimos tu consentimiento

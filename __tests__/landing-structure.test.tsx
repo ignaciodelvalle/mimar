@@ -471,6 +471,32 @@ describe("empezar — three doors", () => {
     expect(html).not.toContain("Soy gobierno");
     expect(html).toContain('href="/registro"');
   });
+
+  // Critique 2026-09-29, M8 (PO-approved).
+  it("puts the owner first and alone as the primary door; the organization asks, it does not sign up", () => {
+    const html = renderToStaticMarkup(<EmpezarSection />);
+    const primary = html.match(/class="lp-role-card[^"]*lp-role-card--primary[^"]*"/g) ?? [];
+    expect(primary).toHaveLength(1);
+    const owner = html.slice(html.indexOf('data-tone="dueno"'), html.indexOf('data-tone="org"'));
+    expect(owner).toContain("lp-btn lp-btn--primary");
+    // Only the owner door carries the primary button style.
+    expect(html.match(/lp-btn--primary/g)).toHaveLength(1);
+    const org = html.slice(html.indexOf('data-tone="org"'), html.indexOf('data-tone="gob"'));
+    expect(org).toContain('href="/organizaciones/solicitar-acceso"');
+    expect(org).not.toContain('href="/registro"');
+  });
+
+  it("the organization's request route exists", () => {
+    const page = join(
+      process.cwd(),
+      "app",
+      "(public)",
+      "organizaciones",
+      "solicitar-acceso",
+      "page.tsx",
+    );
+    expect(() => readFileSync(page, "utf8")).not.toThrow();
+  });
 });
 
 // Critique 2026-09-29, M1 — the page promised "anyone can scan it if she gets
