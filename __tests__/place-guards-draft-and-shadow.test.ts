@@ -10,6 +10,8 @@
 //
 // Everything runs in a transaction that is always rolled back.
 
+import { randomUUID } from "node:crypto";
+
 import { TransactionRollbackError, and, eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
@@ -199,14 +201,21 @@ describe("multi-operator fan-out (W8)", () => {
         update public.authority_units set status = 'confirmed', confirmed_at = now()
          where id = ${alberti?.unit}::uuid
       `);
-      const govts = (await tx.execute(sql`
-        select id::text as id from public.profiles
-         where role = 'govt' and deactivated_at is null and deleted_at is null and not is_system
-         order by created_at limit 4
-      `)) as unknown as Array<{ id: string }>;
-      expect(govts.length, "four govt profiles must exist (seed)").toBe(4);
-      const ids = govts.map((g) => g.id);
-      for (const id of ids) await tx.delete(govtAssignments).where(eq(govtAssignments.userId, id));
+      // The four operators are this test's own, created inside the rolled-back
+      // transaction. It used to borrow the first four live govt profiles of the
+      // database, but the seed provisions exactly TWO (govt@ and govt-local@,
+      // scripts/seed-test-users.ts); the rest were whatever other test files
+      // had committed and left behind. A fresh CI database held three (run
+      // 36552956434, shard 2/4); the shared local one holds dozens.
+      const ids: string[] = [];
+      for (const n of [1, 2, 3, 4]) {
+        const id = randomUUID();
+        await tx.execute(sql`
+          insert into public.profiles (id, display_name, role, account_type)
+          values (${id}::uuid, ${`W8 operator ${n}`}, 'govt', 'institutional')
+        `);
+        ids.push(id);
+      }
       await tx.insert(govtAssignments).values([
         ...ids.slice(0, 3).map((userId) => ({
           userId,
