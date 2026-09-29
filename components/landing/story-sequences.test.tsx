@@ -156,13 +156,16 @@ describe("story sequences — motion allowed", () => {
     const { container } = render(<SequenceChapter chapter={c} index={index} />);
     expect(container.querySelectorAll(".lp-vf .lp-seq-in")).toHaveLength(1);
     act(() => FakeIntersectionObserver.instances[0]?.callback([{ isIntersecting: true }]));
-    act(() => {
-      vi.advanceTimersByTime(VET_SEQUENCE.stepMs * 4);
-    });
-    expect(container.querySelectorAll(".lp-vf .lp-seq-in")).toHaveLength(5);
-    expect(container.querySelector(".lp-lib-stamp--in")).toBeNull();
+    // 3 fields now, not the form's real 5 (coordinator review, round 3 —
+    // fixed 3∶4 tablet frame, real height limits): one step short of
+    // VET_STAMP, all 3 are revealed but the stamp is not yet.
     act(() => {
       vi.advanceTimersByTime(VET_SEQUENCE.stepMs * 3);
+    });
+    expect(container.querySelectorAll(".lp-vf .lp-seq-in")).toHaveLength(3);
+    expect(container.querySelector(".lp-lib-stamp--in")).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(VET_SEQUENCE.stepMs * 5);
     });
     expect(container.querySelector(".lp-lib-stamp--in")).not.toBeNull();
     expect(container.querySelectorAll(".lp-seq-pending")).toHaveLength(0);
@@ -222,28 +225,31 @@ describe("story sequences — motion allowed", () => {
     expect(buttons[2]).toHaveAttribute("aria-current", "step");
   });
 
-  it("names whose phone it is, per step, in the refugio chapter", () => {
-    const { chapter: c, index } = chapter("refugio");
-    const { container } = render(<SequenceChapter chapter={c} index={index} />);
-    const buttons = container.querySelectorAll<HTMLButtonElement>(".lp-seq-step");
-    fireEvent.click(buttons[0] as HTMLButtonElement);
-    expect(container.querySelector(".lp-seq-who")?.textContent).toBe("Portal del refugio");
-    fireEvent.click(buttons[buttons.length - 1] as HTMLButtonElement);
-    expect(container.querySelector(".lp-seq-who")?.textContent).toMatch(/^App de /);
-  });
-
-  // PO 2026-09-29: chapter 3 ("Se pierde") used to switch this same label
-  // between "App de Martín" and "Celular del vecino · sin app" mid-chapter,
-  // which read as two devices in one chapter. It is now a single phone
-  // throughout — no device label at all.
-  it("chapter 3 is a single, unlabelled phone (no more 'two devices')", () => {
-    const { chapter: c, index } = chapter("anon");
-    const { container } = render(<SequenceChapter chapter={c} index={index} />);
-    expect(container.querySelector(".lp-seq-who")).toBeNull();
-    const buttons = container.querySelectorAll<HTMLButtonElement>(".lp-seq-step");
-    fireEvent.click(buttons[buttons.length - 1] as HTMLButtonElement);
-    expect(container.querySelector(".lp-seq-who")).toBeNull();
-  });
+  // PO 2026-09-29, twice: chapter 3 ("Se pierde") used to switch a
+  // "deviceLabel" caption between "App de Martín" and "Celular del vecino ·
+  // sin app" mid-chapter (two devices in one chapter); the refugio chapter's
+  // own "Portal del refugio" / "App de Martín" caption survived that first
+  // pass, then got removed too — the whole `deviceLabel` mechanism (the
+  // `SequenceSpec` field, the `.lp-seq-who` element and its CSS) is gone.
+  // The PO's intent, stated directly the second time: "sin tener que
+  // aclarar en cada caso" — the device itself (phone vs tablet, and the
+  // portal header inside a tablet) has to say whose it is, with no caption
+  // anywhere naming it. No sequence chapter may render `.lp-seq-who`, at
+  // any step — this guard covers all three, not just the ones that used to
+  // have the bug.
+  it.each(SEQUENCES)(
+    "$key: no device caption at any step ('sin aclarar en cada caso')",
+    ({ key }) => {
+      const { chapter: c, index } = chapter(key);
+      const { container } = render(<SequenceChapter chapter={c} index={index} />);
+      expect(container.querySelector(".lp-seq-who")).toBeNull();
+      const buttons = container.querySelectorAll<HTMLButtonElement>(".lp-seq-step");
+      for (const button of Array.from(buttons)) {
+        fireEvent.click(button);
+        expect(container.querySelector(".lp-seq-who")).toBeNull();
+      }
+    },
+  );
 });
 
 describe("Estado — the map fills in once (PS9)", () => {

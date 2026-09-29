@@ -66,8 +66,6 @@ type SequenceSpec = {
   stepMs: number;
   /** Step list items: `at` is the device step the item completes at (and jumps to). */
   items: Array<{ label: string; at: number }>;
-  /** Whose device this is, per step (shown above the phone), or none. */
-  deviceLabel?: (step: number) => string;
   device: (step: number, animate: boolean) => ReactElement;
 };
 
@@ -123,7 +121,11 @@ function SequencedChapter({
           </ol>
         </div>
         <div className="lp-ch-device lp-seq-device" ref={ref}>
-          {spec.deviceLabel && <p className="lp-seq-who">{spec.deviceLabel(step)}</p>}
+          {/* No caption naming whose device this is (PO 2026-09-29: "sin
+              tener que aclarar en cada caso") — the device itself (phone vs
+              tablet) and the portal header inside it (OpHead) carry that,
+              same as every other chapter. The removed `deviceLabel` field
+              used to print "Portal del refugio" / "App de Martín" here. */}
           {spec.device(step, animate)}
         </div>
       </div>
@@ -587,10 +589,11 @@ export const SHELTER_SEQUENCE: SequenceSpec = {
     },
     { label: `${PAMPA.name} vuelve a casa, y su credencial a estar al día.`, at: 6 },
   ],
-  deviceLabel: (step) => (step >= OWNER_FROM ? `App de ${PAMPA_OWNER_NAME}` : "Portal del refugio"),
-  // The device itself switches with who is using it (PO 2026-09-29): the
-  // refugio's own tablet for its intake steps, then Martín's phone from
-  // OWNER_FROM on — the same split `deviceLabel` above already marks.
+  // The device itself switches with who is using it (PO 2026-09-29, and
+  // again 2026-09-29 on captions: "sin tener que aclarar en cada caso" — no
+  // `deviceLabel` caption names it either; the removed field used to print
+  // "Portal del refugio" / "App de Martín" above the device): the refugio's
+  // own tablet for its intake steps, then Martín's phone from OWNER_FROM on.
   device: (step, animate) => {
     const render = SHELTER_SCREENS[step] ?? SHELTER_SCREENS[SHELTER_SCREENS.length - 1];
     const Frame = step >= OWNER_FROM ? PhoneFrame : TabletFrame;
