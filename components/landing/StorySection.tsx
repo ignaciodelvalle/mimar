@@ -29,10 +29,12 @@ import { useEffect, useRef, useState } from "react";
 function chapterDevice(key: string) {
   switch (key) {
     case "dueno":
-      // Short frame: the sign-up screen holds one pet, and a full-height phone
-      // left most of it blank (critique 2026-09-29, M5).
+      // Standard-height frame (PO 2026-09-29): the short variant made this
+      // chapter's phone visibly smaller than every other chapter's. A
+      // same-size phone across chapters outranks filling the frame exactly —
+      // see PhoneFrame's `short` prop, now unused.
       return (
-        <PhoneFrame short>
+        <PhoneFrame>
           <DuenoScreen />
         </PhoneFrame>
       );
@@ -76,7 +78,6 @@ function CastFila() {
             introduces Pampa with a real face, then the story forgot it. */}
         <LnPetPhoto src="/landing/pampa-hero.jpg" alt={PAMPA.name} status="ok" size={148} />
         <span className="font-ln-serif text-xl font-semibold">{PAMPA.name}</span>
-        <LnStatusFlag status="ok" />
       </div>
       <div className="lp-castfila-sep" aria-hidden="true" />
       <p className="lp-castfila-hands">
@@ -107,8 +108,9 @@ function CastFila() {
 // chapter index, as a fraction. A running CSS animation outranks the inline
 // style, so the two never fight.
 //
-// Pampa's flag reads PERDIDA through chapters 3 and 4 (she is lost from
-// 2024-03-09 until Martín marks her found on 2024-03-13) and AL DÍA otherwise.
+// Pampa's flag shows PERDIDA through chapters 3 and 4 (she is lost from
+// 2024-03-09 until Martín marks her found on 2024-03-13); the rail carries no
+// flag otherwise (PO 2026-09-29 — see the "AL DÍA" removal note below).
 
 function Rail({ active }: { active: string }) {
   const index = Math.max(
@@ -150,9 +152,15 @@ function Rail({ active }: { active: string }) {
           />
           <span>
             <span className="lp-rail-name">{PAMPA.name}</span>
-            <span className="mt-1 block">
-              <LnStatusFlag status={lost ? "lost" : "ok"} sex={PAMPA.sexEnum} />
-            </span>
+            {/* Only the lost state is worth repeating under her name as the
+                reader scrolls (PO 2026-09-29): the resting "AL DÍA" chip
+                stayed visible, unchanged, for most of the story and read as
+                the same label repeating many times. */}
+            {lost && (
+              <span className="mt-1 block">
+                <LnStatusFlag status="lost" sex={PAMPA.sexEnum} />
+              </span>
+            )}
           </span>
         </div>
         <div className="lp-rail-steps">

@@ -555,31 +555,6 @@
 .lp .lp-hero-copy .lp-lead {
   margin-top: 22px;
 }
-/* The urgency line (C4): a quiet line above the eyebrow, not a banner — it is
-   a way out for the few who need it, and it must not outshout the headline for
-   everyone else. Links are inline text, but padded to a 24px-tall target
-   (WCAG 2.5.8) because this is the one place on the page a hurried thumb aims. */
-.lp .lp-hero-urgent {
-  margin: 0;
-  font-size: 14.5px;
-  line-height: 1.5;
-  color: var(--color-ln-ink-2);
-}
-.lp .lp-hero-urgent a {
-  /* Each link stays whole; the pair may wrap (at 320px both do not fit). */
-  white-space: nowrap;
-  display: inline-block;
-  padding-block: 3px;
-  color: var(--color-ln-err);
-  font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-@media (hover: hover) {
-  .lp .lp-hero-urgent a:hover {
-    text-decoration-thickness: 2px;
-  }
-}
 .lp .lp-hero-cta {
   display: flex;
   gap: 10px;
@@ -1662,10 +1637,6 @@
 }
 .lp .lp-scr--tall {
   height: 760px;
-}
-/* The sign-up screen holds one pet: a full phone was mostly blank paper. */
-.lp .lp-scr--short {
-  height: 440px;
 }
 /* NEVER TALLER THAN THE SCREEN (critique 2026-09-29, M5). A 640px phone (760
    for the libreta) under the sticky nav, plus the device label above it,

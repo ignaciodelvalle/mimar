@@ -9,7 +9,6 @@ import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { CRISIS_DOORS, CrisisBand } from "./CrisisBand";
 import { LandingHero } from "./LandingHero";
 
 const SAMPLE_SVG = '<svg viewBox="0 0 100 100"><rect width="100" height="100"/></svg>';
@@ -52,7 +51,7 @@ describe("<LandingHero> — credential controls keep their accessible contract",
     expect(back).toHaveClass("lp-hcard-flip");
   });
 
-  it("renders the four owner-state dots as named, pressable controls in a toolbar", () => {
+  it("renders the three owner-state dots as named, pressable controls in a toolbar", () => {
     render(
       <LandingHero qrSvg={SAMPLE_SVG} publicHref="/p/DIM-PAMP-0001" publicToken="DIM-PAMP-0001" />,
     );
@@ -60,10 +59,11 @@ describe("<LandingHero> — credential controls keep their accessible contract",
     const toolbar = screen.getByRole("toolbar", { name: "Estados de la credencial" });
     const dots = within(toolbar).getAllByRole("button");
     // Owner states only (PO 2026-09-29, critique M4): no PPP, no observación.
+    // "DE VUELTA EN CASA" was removed (PO 2026-09-29): it resolved back to the
+    // same AL DÍA wording, so it was a redundant state.
     expect(dots.map((d) => d.getAttribute("aria-label"))).toEqual([
       "AL DÍA",
       "PERDIDA",
-      "DE VUELTA EN CASA",
       "EN TRATAMIENTO",
     ]);
     for (const dot of dots) {
@@ -133,39 +133,6 @@ describe("<LandingHero> — one primary action for the owner (C2)", () => {
   });
 });
 
-describe("<LandingHero> — the urgency line (C4)", () => {
-  it("links to the SAME destinations as the crisis band", () => {
-    renderDemoHero();
-    const line = document.querySelector('[data-section="hero-urgent"]') as HTMLElement;
-    expect(line).not.toBeNull();
-    const lost = within(line).getByRole("link", { name: CRISIS_DOORS.lost.label });
-    const found = within(line).getByRole("link", { name: CRISIS_DOORS.found.label });
-    expect(lost).toHaveAttribute("href", CRISIS_DOORS.lost.href);
-    expect(found).toHaveAttribute("href", CRISIS_DOORS.found.href);
-
-    // …and the band itself really uses those constants.
-    cleanup();
-    render(<CrisisBand />);
-    expect(screen.getByRole("link", { name: /Perdí una mascota/ })).toHaveAttribute(
-      "href",
-      CRISIS_DOORS.lost.href,
-    );
-    expect(screen.getByRole("link", { name: /Encontré una mascota/ })).toHaveAttribute(
-      "href",
-      CRISIS_DOORS.found.href,
-    );
-  });
-
-  it("sits above the headline", () => {
-    renderDemoHero();
-    const line = document.querySelector('[data-section="hero-urgent"]') as Node;
-    const h1 = screen.getByRole("heading", { level: 1 });
-    expect(line.compareDocumentPosition(h1) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-  });
-});
-
 describe("<LandingHero> — the state reads in words, not only colour (M4)", () => {
   function stateLine(): HTMLElement {
     return document.querySelector('[data-section="hero-state-line"]') as HTMLElement;
@@ -190,14 +157,13 @@ describe("<LandingHero> — the state reads in words, not only colour (M4)", () 
     expect(stateLine()).toHaveTextContent("Está perdida · Llamar al dueño");
   });
 
-  it("names every state dot differently — the found state is not a second 'AL DÍA'", () => {
+  it("names every state dot differently", () => {
     renderDemoHero();
     const toolbar = screen.getByRole("toolbar", { name: "Estados de la credencial" });
     const names = within(toolbar)
       .getAllByRole("button")
       .map((b) => b.getAttribute("aria-label"));
     expect(new Set(names).size).toBe(names.length);
-    expect(names).toContain("DE VUELTA EN CASA");
   });
 
   it("does not announce the automatic cycle", () => {

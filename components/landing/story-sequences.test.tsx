@@ -308,10 +308,14 @@ describe("chapter endings (M5)", () => {
     expect(last).toContain("Escanearon su QR");
   });
 
-  it("chapter 1 uses the short phone: its screen holds one pet", () => {
+  it("chapter 1's phone is the same standard size as the other chapters (PO 2026-09-29)", () => {
+    // The short phone made this chapter's device visibly smaller than the
+    // rest of the story — reversed by the PO: every chapter's phone must be
+    // the same size.
     const html = renderToStaticMarkup(<StorySection />);
     const [first, second] = CHAPTERS.map((c) => `id="cap-${c.key}"`);
     const chapterOne = html.slice(html.indexOf(first ?? ""), html.indexOf(second ?? ""));
-    expect(chapterOne).toContain("lp-scr--short");
+    expect(chapterOne).not.toContain("lp-scr--short");
+    expect(chapterOne).not.toContain("lp-scr--tall");
   });
 });

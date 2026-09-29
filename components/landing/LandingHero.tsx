@@ -14,9 +14,11 @@
 // public national registry should not look like it's still selling itself
 // after the first look).
 //
-// The sequence plays once on load: al día → perdida → de vuelta en casa →
-// en tratamiento → back to AL DÍA, where the interval clears itself and the
-// card stops for good. Only states an OWNER lives through (PO 2026-09-29,
+// The sequence plays once on load: al día → perdida → en tratamiento → back
+// to AL DÍA, where the interval clears itself and the card stops for good.
+// The "de vuelta en casa" state was removed (PO 2026-09-29): it resolved back
+// to the same AL DÍA wording anyway, so the cycle now goes straight from
+// PERDIDA to EN TRATAMIENTO. Only states an OWNER lives through (PO 2026-09-29,
 // critique M4, reversing handoff decision B4): "EN OBSERVACIÓN" and "REGISTRO
 // PPP · Requisito jurisdiccional" were the first thing a new owner saw, and
 // "PPP" is explained nowhere on the page. They are jurisdiction matters;
@@ -66,7 +68,6 @@
 // (PO decision: keep it, make the page around it calmer). Don't "fix" it back
 // to a Poncho display font.
 
-import { CRISIS_DOORS } from "@/components/landing/CrisisBand";
 import {
   HERO_CREDENTIAL_FIELDS,
   HERO_LIBRETA_ROWS,
@@ -103,14 +104,12 @@ type HeroState = {
   row: string;
 };
 
-// PO-approved sequence. "encontrada" resolves back to AL DÍA (green) on
-// purpose — being found returns the credential to its resting state.
+// PO-approved sequence. The "encontrada" / "de vuelta en casa" state was
+// removed (PO 2026-09-29): it only resolved back to AL DÍA, so it read as a
+// second, differently-named copy of the resting state.
 const HERO_STATES: HeroState[] = [
   { key: "aldia", badge: "AL DÍA", tone: "ok", row: "Vacunas firmadas" },
   { key: "perdida", badge: "PERDIDA", tone: "lost", row: "Llamar al dueño" },
-  // Its own name, not a second "AL DÍA" (critique 2026-09-29, M4): two dots
-  // named alike read as one state twice, to a screen reader and to the eye.
-  { key: "encontrada", badge: "DE VUELTA EN CASA", tone: "ok", row: "Volvió a casa" },
   { key: "tratamiento", badge: "EN TRATAMIENTO", tone: "sick", row: "Plan en el historial" },
 ];
 
@@ -120,11 +119,9 @@ const HERO_STATES: HeroState[] = [
  * The chip that used to carry it was removed (PO 2026-09-25), which left the
  * lost state readable ONLY through the card turning pink: colour as the sole
  * carrier, WCAG 1.4.1. One line, not a chip: the word leads the contextual row.
- * Being found returns the card to its resting state, so it reads "Al día".
  */
 function stateWord(key: string, badge: string): string {
   if (key === "perdida") return capitalize(lostThirdPersonPhrase(PAMPA.sexEnum));
-  if (key === "encontrada") return "Al día";
   return capitalize(badge.toLowerCase());
 }
 
@@ -282,19 +279,6 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
               right with no `order` reordering at all, which also retires the
               focus-order trade-off the 2026-08-10 inversion had to make. */}
           <div className="lp-hero-copy">
-            {/* The way out for someone in a hurry (critique 2026-09-29, C4).
-                The crisis band sits below the fold on every screen; a person
-                who arrives from "perdí a mi perro" must see their door
-                without scrolling. Same two destinations as the band, from the
-                same constant, so the two can never disagree. */}
-            <p className="lp-hero-urgent lp-reveal" data-section="hero-urgent">
-              <span>¿Perdiste o encontraste una mascota?</span>{" "}
-              <span className="lp-hero-urgent-links">
-                <Link href={CRISIS_DOORS.lost.href}>{CRISIS_DOORS.lost.label}</Link>
-                <span aria-hidden="true"> · </span>
-                <Link href={CRISIS_DOORS.found.href}>{CRISIS_DOORS.found.label}</Link>
-              </span>
-            </p>
             {/* Eyebrow: describes the artifact the hero card is already
                 drawing. It used to read "República Argentina · Ministerio de
                 Salud" — an endorsement nobody granted (there is no convenio

@@ -16,10 +16,12 @@
 //      the browser skips their layout and sizes them from
 //      `contain-intrinsic-size`. A reading taken only at load measures the
 //      placeholders. Scrolling through makes every section lay out for real.
-//   3. The first screen (C3/C4): at 390×690 — a phone's usable height once
-//      the browser chrome is gone — the H1, the primary CTA and the "Perdí
-//      una mascota" way out are visible without scrolling, and the sticky
-//      nav stays one row (≤ 64px) instead of eating a fifth of the screen.
+//   3. The first screen (C3): at 390×690 — a phone's usable height once the
+//      browser chrome is gone — the H1 and the primary CTA are visible
+//      without scrolling, and the sticky nav stays one row (≤ 64px) instead
+//      of eating a fifth of the screen. The hero's own "¿Perdiste o
+//      encontraste una mascota?" line (C4) was removed from the hero
+//      (PO 2026-09-29): the crisis band below the fold is the one door now.
 
 import { type Page, expect, test } from "@playwright/test";
 
@@ -99,23 +101,5 @@ for (const width of PHONE_WIDTHS) {
       .locator("header.lp-nav")
       .evaluate((el) => (el as HTMLElement).offsetHeight);
     expect(height, `the nav is ${height}px tall at ${width}px`).toBeLessThanOrEqual(64);
-  });
-}
-
-for (const viewport of [
-  { width: 1440, height: 900 },
-  { width: 390, height: 690 },
-]) {
-  test(`"Perdí una mascota" se ve sin scrollear a ${viewport.width}×${viewport.height} (C4)`, async ({
-    page,
-  }) => {
-    await page.setViewportSize(viewport);
-    await page.goto("/");
-    const lost = page.locator('[data-section="hero-urgent"] a', { hasText: "Perdí una mascota" });
-    await expect(lost).toBeVisible();
-    expect(
-      await fullyInFirstScreen(page, '[data-section="hero-urgent"] a[href="/mis-mascotas"]'),
-      "the way out for a lost pet is below the fold",
-    ).toBe(true);
   });
 }
