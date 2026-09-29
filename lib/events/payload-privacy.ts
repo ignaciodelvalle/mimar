@@ -313,6 +313,18 @@ export const PAYLOAD_PRIVACY: Record<EventType, Record<string, PrivacyEntry>> = 
     jurisdiction_province: CF,
     jurisdiction_locality: CF,
   },
+  condition_at_intake_recorded: {
+    payload_version: CF,
+    modality: CF,
+    general_condition: CF,
+    // What the owner said brought them in, as the vet wrote it down; and what
+    // the vet found. Kept as the vet's professional act; an owner-authored row
+    // (not a path any writer has) would be the owner's own words.
+    presenting_complaint: paGated(CLINICAL_PROSE),
+    findings: paGated(CLINICAL_PROSE),
+    // Vital signs are measurements of the animal.
+    vitals: CF,
+  },
   weight_recorded: {
     payload_version: CF,
     kg: CF,
@@ -972,6 +984,7 @@ export const COORDINATE_PRIVACY: Record<EventType, CoordinateEntry> = {
   medication_stopped: "coarsen",
   medication_dose_taken: "coarsen",
   vet_visit_logged: "coarsen",
+  condition_at_intake_recorded: "coarsen",
   weight_recorded: "coarsen",
   clinical_info_logged: "coarsen",
   microchip_implanted: "coarsen",

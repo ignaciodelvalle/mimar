@@ -6,7 +6,7 @@
 
 `db/schema.ts` declares <!-- fact:tables -->63<!-- /fact --> tables and
 <!-- fact:enums -->22<!-- /fact --> enums, over
-<!-- fact:migrations -->272<!-- /fact --> forward-only SQL migrations under
+<!-- fact:migrations -->273<!-- /fact --> forward-only SQL migrations under
 `db/migrations`. This document is about the handful of them that carry the
 system's meaning, and about the one distinction the rest of the pack depends on:
 **which rows are the record, and which rows are a copy of the record kept for
@@ -124,7 +124,7 @@ four groups:
 
 ### 3.2 The catalog
 
-<!-- fact:event_types -->55<!-- /fact --> event types live in
+<!-- fact:event_types -->56<!-- /fact --> event types live in
 `packages/contract/src/events/event-types.ts` as a plain `const` array with zero
 imports. It sits in `packages/contract` and not in `db/schema.ts` for one
 concrete reason, written at the top of the file: a React Native client that

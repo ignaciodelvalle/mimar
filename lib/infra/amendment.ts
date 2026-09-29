@@ -31,6 +31,9 @@ export const AMENDABLE_EVENT_TYPES: ReadonlyArray<EventType> = [
   "deworming_administered",
   "weight_recorded",
   "vet_visit_logged",
+  // A vitals typo or a misread condition is corrected by a new event_amended,
+  // never by editing the intake row (vet-visit-record).
+  "condition_at_intake_recorded",
   "clinical_info_logged",
   "medication_started",
   "note_added",

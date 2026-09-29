@@ -738,6 +738,14 @@ function buildShowcaseEvents(
       diagnosis: "sano, BCS 5/9",
       vet_name: "Dra. García",
     }),
+    condition_at_intake_recorded: () => ({
+      source: "seed-perf",
+      modality: "clinic",
+      general_condition: "good",
+      presenting_complaint: "control anual",
+      vitals: { temperature_c: 38.5, heart_rate_bpm: 100 },
+      findings: null,
+    }),
     // ── Body metrics ───────────────────────────────────────────────────────
     weight_recorded: () => ({
       source: "seed-perf",

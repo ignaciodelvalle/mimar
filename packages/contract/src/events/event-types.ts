@@ -37,6 +37,13 @@ export const EVENT_TYPES = [
   // were removed 2026-05-18 as part of the event-catalog-cleanup. Historical
   // rows with those types remain in pet_events (events are immutable).
   "vet_visit_logged",
+  // The state the pet arrived in, recorded by a verified vet at the start of a
+  // clinical visit (vet-visit-record, 2026-09-29): general condition, the
+  // owner-stated reason, optional vitals and findings. Weight is NOT in its
+  // payload — the writer emits a sibling `weight_recorded` in the same visit,
+  // so there is one weight source. Grouped with the visit's other events by
+  // pet_events.visit_id (migration 0273). Never on the public credential.
+  "condition_at_intake_recorded",
   // Body metrics
   "weight_recorded",
   // Identification & legal

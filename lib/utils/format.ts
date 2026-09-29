@@ -776,6 +776,7 @@ const EVENT_TYPE_LABELS = {
   medication_stopped: "Fin de medicación",
   // Clinical encounters
   vet_visit_logged: "Visita al veterinario",
+  condition_at_intake_recorded: "Estado al ingreso",
   // Body metrics
   weight_recorded: "Peso registrado",
   // Identification & legal

@@ -360,7 +360,7 @@ instead of `actor_user_id = null` (A08-6). What stays unreconstructable, on
 purpose: the old value of a redacted key. Findings in
 `dim-interno:docs/reviews/2026-09-fresh/lenses/A08.md`.
 
-The catalog is <!-- fact:event_types -->55<!-- /fact --> types
+The catalog is <!-- fact:event_types -->56<!-- /fact --> types
 (`packages/contract/src/events/event-types.ts:20`). The public credential folds
 `event_amended` corrections before rendering, through
 `lib/domain/credential-badges.ts` — a stranger scanning the QR sees the corrected

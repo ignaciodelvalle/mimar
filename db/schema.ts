@@ -1502,6 +1502,13 @@ export const petEvents = pgTable(
     visitIdIdx: index("pet_events_visit_id_idx")
       .on(table.visitId)
       .where(sql`${table.visitId} IS NOT NULL`),
+    // At most one condition_at_intake_recorded per visit (migration 0274) —
+    // the concurrency backstop under recordConditionAtIntake's own read.
+    oneIntakePerVisit: uniqueIndex("pet_events_one_intake_per_visit")
+      .on(table.visitId)
+      .where(
+        sql`${table.eventType} = 'condition_at_intake_recorded' AND ${table.visitId} IS NOT NULL`,
+      ),
     petTimelineIdx: index("pet_events_pet_id_occurred_at_idx").on(table.petId, table.occurredAt),
     eventTypeIdx: index("pet_events_event_type_idx").on(table.eventType),
     // Composite for province-scale analytics scans that filter by event_type +

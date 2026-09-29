@@ -140,6 +140,10 @@ export const CASE_ATTACHMENT_RULES: Record<EventType, AttachmentRule> = {
     mode: "optional",
     compatibleWith: ["bite_incident", "adoption_listing", "welfare_denuncia", "foster_placement"],
   },
+  // Grouped by its visit (pet_events.visit_id), not by a case: the intake
+  // writer never takes a case id. Revisit if a case flow ever needs the
+  // arrival state as evidence.
+  condition_at_intake_recorded: { mode: "never", compatibleWith: [] },
   clinical_info_logged: {
     mode: "optional",
     compatibleWith: ["bite_incident", "welfare_denuncia", "outbreak_investigation"],

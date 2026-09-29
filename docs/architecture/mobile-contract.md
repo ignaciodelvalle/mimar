@@ -111,7 +111,7 @@ installable by a React Native app.
 
 | Entry point | Holds |
 |---|---|
-| `packages/contract/src/events` | `EVENT_TYPES` — the <!-- fact:event_types -->55<!-- /fact --> event types, and the payload vocabulary |
+| `packages/contract/src/events` | `EVENT_TYPES` — the <!-- fact:event_types -->56<!-- /fact --> event types, and the payload vocabulary |
 | `packages/contract/src/api` | the `/api/v1` wire shapes: `public-credential.ts`, `pets.ts`, `my-privacy.ts`, `pet-lost.ts`, `pet-shares.ts`, `welfare-report.ts`, `errors.ts` and their siblings — one file per resource |
 | `packages/contract/src/input` | zod schemas for what a client may send; the **only** entry point with a runtime dependency |
 | `packages/contract/src/links` | `deepLinkMap`, `deepLinkPath`, `deepLinkUrl`, the custom scheme, and the Android/iOS identifiers |

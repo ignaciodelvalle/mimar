@@ -31,7 +31,7 @@ Ultimate trajectory: **Mi Argentina integration** — federation with the Argent
 | Domain specs & plans index | `docs/superpowers/README.md` |
 | External-agent handoffs + orientation protocol | `dim-interno:docs/design/handoffs/README.md` — auditors/proposers MUST read it; canonical checkout only, never `.claude/worktrees/` |
 | Implementation plans | `docs/superpowers/plans/` |
-| Event types — the `EVENT_TYPES` const IS the count (<!-- fact:event_types -->55<!-- /fact --> — generated from that const by `pnpm facts:write`, not typed by hand) | `db/schema.ts` |
+| Event types — the `EVENT_TYPES` const IS the count (<!-- fact:event_types -->56<!-- /fact --> — generated from that const by `pnpm facts:write`, not typed by hand) | `db/schema.ts` |
 | Per-event Zod schemas | `lib/events/event-schemas.ts` |
 | Libreta sanitaria event filter | `lib/infra/libreta-sanitaria.ts` |
 | Metrics / projection primitives | `lib/metrics/` (context, scope, period, anonymity, population, cache) |
@@ -80,7 +80,7 @@ Before writing a new event type, walk through `docs/event-design-checklist.md`. 
 | Legal framework | [#legal-framework](#legal-framework) | Compliance, SENASA, Ley 25.326 |
 | Data model | [#data-model](#data-model) | Schema, new tables, migrations |
 | Libreta sanitaria | [#libreta-sanitaria](#libreta-sanitaria) | Medical events, UI surfaces |
-| Event catalog — 55 types | [#event-catalog--55-types](#event-catalog--55-types) | New event types, payload design |
+| Event catalog — 56 types | [#event-catalog--56-types](#event-catalog--56-types) | New event types, payload design |
 | Privacy tiers | [#privacy-tiers-the-public-surface](#privacy-tiers-the-public-surface) | Public credential, Tier 0/1/2 |
 | Dashboards & projections | [#dashboards--projections-the-consumers](#dashboards--projections-the-consumers) | Govt / analyst / welfare views |
 | Aggregation & privacy policy | [#aggregation--privacy-policy](#aggregation--privacy-policy) | k-anonymity, opt-in, PII rules |
@@ -703,7 +703,7 @@ A conditional whose justification NAMES a specific flow becomes wrong the day th
 
 The naming is not cosmetic. It is the conceptual surface that makes DIM legible to non-technical dueños, which is precisely what the North Star ("the data-collection layer must be valuable on its own to drive adoption") requires. Renaming this later would mean retraining users we already onboarded. Lock it now, before scale.
 
-## Event catalog — 55 types
+## Event catalog — 56 types
 
 `UI` column: `v1` = recordable by owner in the v1 PWA · `system` = system-emitted · `later` = schema-ready, UI deferred (either non-owner reporter flow needed, or the owner-facing form just hasn't been built yet).
 
@@ -739,6 +739,7 @@ Grouped by purpose for navigation. Adding a new event type is a one-line edit to
 | Type                  | UI    | Payload                                                                                  |
 | --------------------- | ----- | ---------------------------------------------------------------------------------------- |
 | `vet_visit_logged`    | v1    | `{ reason, diagnosis?, vet_name?, clinic? }`                                             |
+| `condition_at_intake_recorded` | vet (Atender) | `{ modality: clinic|home, general_condition: good|fair|poor|critical, presenting_complaint: string|null, vitals?: { temperature_c?, heart_rate_bpm?, respiratory_rate_rpm?, body_condition_score?, hydration?, mucous_membranes? }, findings: string|null }` — the state the pet arrived in, written by a verified vet at the start of a visit (vet-visit-record, 2026-09-29). One per visit (`pet_events_one_intake_per_visit`, 0274); weight is a sibling `weight_recorded` in the same visit, never in this payload. Libreta (owner + org audience), amendable; never on the public credential. |
 | `clinical_info_logged`| v1    | `{ sub_kind: lab_work\|imaging\|surgery\|allergy_detection\|disease_diagnosis\|pregnancy\|other, title, details?, performed_by? }` — umbrella event with sub-kind discriminator (covers what lab/imaging/surgery/allergy used to model as dedicated event_types pre-2026-05-18; `disease_diagnosis` powers ENO fanout; `pregnancy` tracks phase lifecycle) |
 
 **Body metrics**
@@ -812,7 +813,7 @@ Un tenedor objeta algo que escribió **otra persona** sobre su animal. Hoy eso e
 
 | Type            | UI | Payload                                                                                                                                                                                                                                   |
 | --------------- | -- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `event_amended` | v1 | `{ target_event_id, reason: string\|null, changes: [{field, old, new}], actor_role: owner\|vet\|admin\|govt, actor_user_id? }` — **Principle #2 (built 2026-06-19, Wave 2 Item 15).** Immutable correction: references the original event, never mutates it. `changes` shape calcs `pet_profile_updated`; `actor_role/reason` calcs `microchip_replaced`. Amendable allowlist (D4): `vaccination_administered`, `deworming_administered`, `weight_recorded`, `vet_visit_logged`, `clinical_info_logged`, `medication_started`, `note_added`, `sterilization_performed`, `movement_recorded`. NOT amendable: death, incidents, legal/forensic events (D4 in spec). Admin/govt amendments: `reason` mandatory ≥5 chars, `audit_log` row, owner notified (`notification_type='admin_event_amended'`). Amendment-of-amendment allowed — always references the ORIGINAL `target_event_id`. Projection: libreta applies latest amendment at render; original remains in `/historial`. NOT part of the libreta (pointer/audit artifact, not clinical entry). |
+| `event_amended` | v1 | `{ target_event_id, reason: string\|null, changes: [{field, old, new}], actor_role: owner\|vet\|admin\|govt, actor_user_id? }` — **Principle #2 (built 2026-06-19, Wave 2 Item 15).** Immutable correction: references the original event, never mutates it. `changes` shape calcs `pet_profile_updated`; `actor_role/reason` calcs `microchip_replaced`. Amendable allowlist (D4): `vaccination_administered`, `deworming_administered`, `weight_recorded`, `vet_visit_logged`, `condition_at_intake_recorded`, `clinical_info_logged`, `medication_started`, `note_added`, `sterilization_performed`, `movement_recorded`. NOT amendable: death, incidents, legal/forensic events (D4 in spec). Admin/govt amendments: `reason` mandatory ≥5 chars, `audit_log` row, owner notified (`notification_type='admin_event_amended'`). Amendment-of-amendment allowed — always references the ORIGINAL `target_event_id`. Projection: libreta applies latest amendment at render; original remains in `/historial`. NOT part of the libreta (pointer/audit artifact, not clinical entry). |
 
 **Schema-ready, requires non-owner reporting flow**
 

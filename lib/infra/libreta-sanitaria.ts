@@ -29,6 +29,9 @@ export const LIBRETA_SANITARIA_EVENT_TYPES = [
   "medication_stopped",
   "medication_dose_taken",
   "vet_visit_logged",
+  // The state the pet arrived in at a clinical visit (vet-visit-record). Owner
+  // and org audience see it in full; the public credential never does.
+  "condition_at_intake_recorded",
   "weight_recorded",
   "clinical_info_logged",
   "microchip_implanted",

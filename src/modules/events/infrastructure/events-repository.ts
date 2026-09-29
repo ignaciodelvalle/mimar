@@ -177,6 +177,27 @@ export class EventsRepository {
     return row ?? null;
   }
 
+  /**
+   * The event of `eventType` already recorded under visit `visitId`, if any
+   * (vet-visit-record). Used by once-per-visit writers — the intake — to tell
+   * a replay of their own write (same clientIdempotencyKey) from a second,
+   * different one. The partial unique index pet_events_one_intake_per_visit is
+   * the backstop under concurrency; this read is what lets the writer answer
+   * with a sentence instead of a constraint error.
+   */
+  async findVisitEventOfType(
+    visitId: string,
+    eventType: string,
+    executor: DbOrTx = db,
+  ): Promise<{ id: string; clientIdempotencyKey: string | null } | null> {
+    const [row] = await executor
+      .select({ id: petEvents.id, clientIdempotencyKey: petEvents.clientIdempotencyKey })
+      .from(petEvents)
+      .where(and(eq(petEvents.visitId, visitId), eq(petEvents.eventType, eventType)))
+      .limit(1);
+    return row ?? null;
+  }
+
   // ===========================================================================
   // Attachment + reminders
   // ===========================================================================

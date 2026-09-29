@@ -394,6 +394,85 @@ const vetVisitLogged = z
     }
   });
 
+// condition_at_intake_recorded (vet-visit-record, 2026-09-29). The state the
+// pet arrived in, written by a verified vet at the start of a visit. STRICT at
+// every level: an unknown key or an out-of-range vital is refused, not stored.
+// Weight is deliberately absent — the writer emits a sibling weight_recorded
+// in the same visit (one weight source). The bounds are physiological
+// plausibility for dogs and cats, wide enough for neonates and emergencies,
+// narrow enough to refuse a unit mistake (a 385 °C, a 12 kg typed as bpm).
+export const INTAKE_GENERAL_CONDITIONS = ["good", "fair", "poor", "critical"] as const;
+export const INTAKE_HYDRATION_LEVELS = ["normal", "mild", "moderate", "severe"] as const;
+export const INTAKE_MUCOUS_MEMBRANES = [
+  "pink",
+  "pale",
+  "cyanotic",
+  "icteric",
+  "hyperemic",
+] as const;
+export const INTAKE_PRESENTING_COMPLAINT_MAX = 500;
+export const INTAKE_FINDINGS_MAX = 2000;
+export const INTAKE_VITAL_BOUNDS = {
+  temperature_c: { min: 30, max: 45 },
+  heart_rate_bpm: { min: 20, max: 400 },
+  respiratory_rate_rpm: { min: 4, max: 200 },
+  body_condition_score: { min: 1, max: 9 },
+} as const;
+
+const intakeVitals = z
+  .object({
+    temperature_c: z
+      .number()
+      .min(INTAKE_VITAL_BOUNDS.temperature_c.min)
+      .max(INTAKE_VITAL_BOUNDS.temperature_c.max)
+      .optional(),
+    heart_rate_bpm: z
+      .number()
+      .int()
+      .min(INTAKE_VITAL_BOUNDS.heart_rate_bpm.min)
+      .max(INTAKE_VITAL_BOUNDS.heart_rate_bpm.max)
+      .optional(),
+    respiratory_rate_rpm: z
+      .number()
+      .int()
+      .min(INTAKE_VITAL_BOUNDS.respiratory_rate_rpm.min)
+      .max(INTAKE_VITAL_BOUNDS.respiratory_rate_rpm.max)
+      .optional(),
+    body_condition_score: z
+      .number()
+      .int()
+      .min(INTAKE_VITAL_BOUNDS.body_condition_score.min)
+      .max(INTAKE_VITAL_BOUNDS.body_condition_score.max)
+      .optional(),
+    hydration: z.enum(INTAKE_HYDRATION_LEVELS).optional(),
+    mucous_membranes: z.enum(INTAKE_MUCOUS_MEMBRANES).optional(),
+  })
+  .strict()
+  .refine((v) => Object.values(v).some((x) => x !== undefined), {
+    message: "vitals, when present, must carry at least one measurement",
+  });
+
+const conditionAtIntakeRecorded = z
+  .object(
+    withVersion({
+      // Snapshot of the visit's modality at the time of intake — the drift
+      // pass compares it with visits.modality.
+      modality: z.enum(["clinic", "home"]),
+      general_condition: z.enum(INTAKE_GENERAL_CONDITIONS),
+      // "Motivo de consulta": what the owner says brought them in.
+      presenting_complaint: z
+        .string()
+        .trim()
+        .min(1)
+        .max(INTAKE_PRESENTING_COMPLAINT_MAX)
+        .nullable(),
+      vitals: intakeVitals.optional(),
+      // "Hallazgos": what the vet observed on examination.
+      findings: z.string().trim().min(1).max(INTAKE_FINDINGS_MAX).nullable(),
+    }),
+  )
+  .strict();
+
 const weightRecorded = z
   .object(
     withVersion({
@@ -1276,6 +1355,7 @@ export const PayloadSchemas: Partial<Record<EventType, z.ZodTypeAny>> = {
   medication_stopped: medicationStopped,
   medication_dose_taken: medicationDoseTaken,
   vet_visit_logged: vetVisitLogged,
+  condition_at_intake_recorded: conditionAtIntakeRecorded,
   weight_recorded: weightRecorded,
   clinical_info_logged: clinicalInfoLogged,
   microchip_implanted: microchipImplanted,
