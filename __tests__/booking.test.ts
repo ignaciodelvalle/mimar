@@ -217,6 +217,9 @@ beforeAll(async () => {
       status: "approved",
       jurisdictionProvince: "Buenos Aires",
       jurisdictionLocality: "CABA",
+      // A home offering, so the happy path proves the booking COPIES the
+      // modality instead of taking the column default (vet-visit-record).
+      modality: "home",
     })
     .returning();
   offeringId = offering.id;
@@ -348,6 +351,8 @@ describe("bookSlotWriter", () => {
     expect(appt!.petId).toBe(petId);
     expect(appt!.ownerUserId).toBe(ownerUserId);
     expect(appt!.status).toBe("confirmed");
+    // Copied from the offering at booking — the column default is "clinic".
+    expect(appt!.modality).toBe("home");
 
     // Verify bookings_count was incremented.
     const [slot] = await db

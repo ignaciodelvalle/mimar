@@ -153,10 +153,10 @@ export async function bookSlotWriter(
       // approved offering — matching the UI gate — so a paused offering can't be
       // booked out of band.
       const offeringRows = await tx.execute(
-        sql`SELECT organization_id, status FROM service_offerings WHERE id = ${slot.serviceOfferingId} LIMIT 1`,
+        sql`SELECT organization_id, status, modality FROM service_offerings WHERE id = ${slot.serviceOfferingId} LIMIT 1`,
       );
       const offeringRow = offeringRows[0] as
-        | { organization_id: string | null; status: string }
+        | { organization_id: string | null; status: string; modality: string }
         | undefined;
       if (!offeringRow) {
         throw new BookingError("El servicio no está disponible.");
@@ -174,6 +174,10 @@ export async function bookSlotWriter(
         ownerUserId,
         serviceOfferingId: slot.serviceOfferingId,
         organizationId,
+        // Denormalized from the offering AT BOOKING (vet-visit-record): the
+        // agenda reads it without a join, and a later edit of the offering
+        // does not rewrite where an already-booked visit happens.
+        modality: offeringRow.modality,
         status: "confirmed",
       });
 

@@ -8,6 +8,7 @@ import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { OpCallout, OpCard, OpCardBody, OpCardHead, OpPill } from "@/components/ui/dashboard";
 import { db, serviceOfferings } from "@/db";
+import { VISIT_MODALITY_LABELS, labelOf } from "@/lib/domain/visit-labels";
 import { requireOrgAccessByToken } from "@/lib/infra/auth-guards";
 import { findServiceKind } from "@/lib/reference/service-kinds";
 import { pluralizeEs } from "@/lib/utils/format";
@@ -114,6 +115,8 @@ export default async function ServiciosPage({
                         <p className="text-md font-medium text-ln-op-ink">{o.displayName}</p>
                         <p className="text-sm text-ln-op-mute">
                           {kind?.label ?? o.serviceKind}
+                          {labelOf(VISIT_MODALITY_LABELS, o.modality) &&
+                            ` · ${labelOf(VISIT_MODALITY_LABELS, o.modality)}`}
                           {o.priceArs !== null
                             ? ` · $${Number(o.priceArs).toLocaleString("es-AR")}`
                             : " · Campaña gratuita"}

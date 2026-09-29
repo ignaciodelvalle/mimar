@@ -104,6 +104,42 @@ describe("LibretaFace — H3 curated detail (negative case, end-to-end)", () => 
   });
 });
 
+describe("LibretaFace — records grouped by atención (vet-visit-record)", () => {
+  it("renders a visit's records as ONE block titled with the atención's modality", () => {
+    const html = renderToStaticMarkup(
+      <LibretaFace
+        data={faceData({
+          past: [
+            pastEvent({
+              id: "evt-intake",
+              eventType: "condition_at_intake_recorded",
+              payload: {
+                modality: "home",
+                general_condition: "fair",
+                presenting_complaint: "Tos",
+                findings: null,
+                vitals: { temperature_c: 39.4 },
+              },
+              visitId: "visit-1",
+            }),
+            pastEvent({ id: "evt-steril", visitId: "visit-1" }),
+            pastEvent({ id: "evt-loose" }),
+          ],
+          visits: { "visit-1": { modality: "home", openedAt: new Date("2026-01-01T12:00:00Z") } },
+        })}
+        petPublicToken="abc"
+        isOwner
+      />,
+    );
+    expect(html.match(/data-section="libreta-atencion"/g)).toHaveLength(1);
+    expect(html).toMatch(/Atención · [^<]+ · A domicilio/);
+    // The intake reads in Spanish, vitals included, never as raw codes.
+    expect(html).toContain("Estado general: Regular");
+    expect(html).toContain("39,4 °C");
+    expect(html).not.toContain("fair");
+  });
+});
+
 describe("LibretaFace — ADR-10 consolidation (no lens chips, share removed)", () => {
   it("owner sees the note_added event too (no chip filtering, single consolidated timeline)", () => {
     const noteEvent = pastEvent({

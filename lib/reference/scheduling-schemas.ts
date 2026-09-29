@@ -13,6 +13,9 @@ export const CreateServiceOfferingInput = z.object({
   eligibilitySpecies: z.array(z.enum(["dog", "cat"])).nullable(),
   eligibilityAgeMinMonths: z.number().int().min(0).max(360).nullable(),
   eligibilityAgeMaxMonths: z.number().int().min(0).max(360).nullable(),
+  // Where the care happens (vet-visit-record, migration 0273). Optional so
+  // every caller that predates it keeps creating clinic offerings.
+  modality: z.enum(["clinic", "home"]).optional(),
 });
 
 export type CreateServiceOfferingInputType = z.infer<typeof CreateServiceOfferingInput>;

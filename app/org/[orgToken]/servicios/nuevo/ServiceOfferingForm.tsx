@@ -16,9 +16,17 @@
 import { useActionState, useState } from "react";
 
 import type { ServiceOfferingFormState } from "@/app/actions/service-offerings";
-import { LnCheckbox, LnInput, LnSelect, LnTextarea } from "@/components/ui/Field";
+import {
+  LnCheckbox,
+  LnInput,
+  LnRadio,
+  LnRadioGroup,
+  LnSelect,
+  LnTextarea,
+} from "@/components/ui/Field";
 import { LnWizardShell } from "@/components/ui/WizardShell";
 import { OpButton } from "@/components/ui/dashboard";
+import { VISIT_MODALITY_LABELS } from "@/lib/domain/visit-labels";
 import type { ServiceKindDef } from "@/lib/reference/service-kinds";
 import { useActionRedirect } from "@/lib/ui/use-action-redirect";
 import { useKeptFields } from "@/lib/ui/use-kept-fields";
@@ -132,6 +140,27 @@ export function ServiceOfferingForm({
               placeholder="Ej: Vacunación antirrábica — campaña junio 2026"
             />
           </div>
+
+          {/* vet-visit-record: where the care happens. Copied onto every
+              appointment booked from this offering, so the agenda says it and
+              the vet's atención opens with it. */}
+          <LnRadioGroup
+            key={`modality-${kept("modality")}`}
+            legend="¿Dónde se atiende?"
+            required
+            optionsClassName="flex flex-wrap gap-4"
+          >
+            {(Object.keys(VISIT_MODALITY_LABELS) as Array<"clinic" | "home">).map((m) => (
+              <LnRadio
+                key={m}
+                name="modality"
+                value={m}
+                defaultChecked={keptChecked("modality", m === "clinic", m)}
+              >
+                {VISIT_MODALITY_LABELS[m]}
+              </LnRadio>
+            ))}
+          </LnRadioGroup>
 
           <div className="space-y-1">
             <label htmlFor="description" className="block text-md font-medium text-ln-op-ink">

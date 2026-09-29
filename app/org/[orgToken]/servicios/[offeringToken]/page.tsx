@@ -8,6 +8,7 @@ import { notFound } from "next/navigation";
 
 import { OpCard, OpCardBody, OpCardHead, OpKpiSm, OpPill } from "@/components/ui/dashboard";
 import { appointments, db, organizations, serviceOfferings, timeSlots } from "@/db";
+import { VISIT_MODALITY_LABELS, labelOf } from "@/lib/domain/visit-labels";
 import { requireOrgAccessByToken } from "@/lib/infra/auth-guards";
 import { findServiceKind } from "@/lib/reference/service-kinds";
 import { AR_TIME_ZONE, pluralizeEs, speciesLabelPlural } from "@/lib/utils/format";
@@ -198,6 +199,10 @@ export default async function OfferingDetailPage({
             <Row
               label="Duración"
               value={`${offering.durationMinutes} ${pluralizeEs(offering.durationMinutes, "minuto")}`}
+            />
+            <Row
+              label="Dónde se atiende"
+              value={labelOf(VISIT_MODALITY_LABELS, offering.modality) ?? "En la clínica"}
             />
             {canCreate && offering.status !== "archived" ? (
               <div className="flex items-baseline gap-3 px-4 py-3 flex-wrap">

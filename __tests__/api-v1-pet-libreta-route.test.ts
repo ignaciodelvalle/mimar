@@ -258,6 +258,17 @@ describe("buildPetLibretaV1 — what crosses, and what must not", () => {
     expect(wire).not.toContain("/mis-mascotas/");
   });
 
+  it("carries the atención grouping key, null outside a visit (vet-visit-record)", () => {
+    const data = faceData({
+      past: [pastRow({ id: "evt-v", visitId: "visit-1" }), pastRow({ id: "evt-n" })],
+    });
+    const entries = okSection(build({ data }).timeline).entries;
+    expect(entries.map((e) => [e.eventId, e.visitId])).toEqual([
+      ["evt-v", "visit-1"],
+      ["evt-n", null],
+    ]);
+  });
+
   it("reports the PRESENCE of an attachment even though the URL is gone", () => {
     // The two are different questions, and answering the first with a null URL
     // would collapse "no file" into "we did not sign one".

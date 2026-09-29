@@ -154,6 +154,8 @@ export function buildPetLibretaV1(input: BuildPetLibretaInput): PetLibretaV1 {
     const view = toAsientoView(row, input.publicToken, data.viewer, now);
     return {
       eventId: row.id,
+      // vet-visit-record: the atención grouping key, additive in v1.
+      visitId: row.visitId ?? null,
       eventType: row.eventType,
       kind: view.kind,
       title: view.title,

@@ -126,6 +126,8 @@ export async function createServiceOfferingAction(
       ageMinRaw !== null && ageMinRaw !== "" ? Number.parseInt(String(ageMinRaw), 10) : null,
     eligibilityAgeMaxMonths:
       ageMaxRaw !== null && ageMaxRaw !== "" ? Number.parseInt(String(ageMaxRaw), 10) : null,
+    // vet-visit-record: anything but "home" is a clinic offering, the default.
+    modality: formData.get("modality") === "home" ? ("home" as const) : ("clinic" as const),
   };
 
   const result = await createServiceOfferingForOrgUC(

@@ -18,6 +18,7 @@ import {
   OpPill,
 } from "@/components/ui/dashboard";
 import { appointments, db, pets, profiles, serviceOfferings, timeSlots } from "@/db";
+import { VISIT_MODALITY_LABELS, labelOf } from "@/lib/domain/visit-labels";
 import { requireOrgAccessByToken } from "@/lib/infra/auth-guards";
 import { findServiceKind } from "@/lib/reference/service-kinds";
 import { AR_TIME_ZONE, formatTime, pluralizeEs } from "@/lib/utils/format";
@@ -48,12 +49,15 @@ type SlotRow = {
   offeringId: string;
   offeringTitle: string;
   serviceKind: string;
+  modality: string;
 };
 
 type OfferingGroup = {
   offeringId: string;
   offeringTitle: string;
   serviceKind: string;
+  /** clinic | home — where the offering's care happens (vet-visit-record). */
+  modality: string;
   slots: SlotRow[];
 };
 
@@ -155,6 +159,7 @@ export default async function OrgAgendaPage({
         offeringId: serviceOfferings.id,
         offeringTitle: serviceOfferings.displayName,
         serviceKind: serviceOfferings.serviceKind,
+        modality: serviceOfferings.modality,
       })
       .from(timeSlots)
       .innerJoin(serviceOfferings, eq(serviceOfferings.id, timeSlots.serviceOfferingId))
@@ -177,6 +182,7 @@ export default async function OrgAgendaPage({
         offeringId: row.offeringId,
         offeringTitle: row.offeringTitle,
         serviceKind: row.serviceKind,
+        modality: row.modality,
         slots: [],
       };
       offeringGroupsMap.set(row.offeringId, group);
@@ -253,9 +259,14 @@ export default async function OrgAgendaPage({
           offeringGroups.map((group) => {
             const kindDef = findServiceKind(group.serviceKind);
             const groupLabel = kindDef?.label ?? group.serviceKind;
+            const modalityLabel = labelOf(VISIT_MODALITY_LABELS, group.modality);
             return (
               <OpCard key={group.offeringId}>
-                <OpCardHead title={`${group.offeringTitle} · ${groupLabel}`} />
+                <OpCardHead
+                  title={[group.offeringTitle, groupLabel, modalityLabel]
+                    .filter(Boolean)
+                    .join(" · ")}
+                />
                 <OpCardBody className="p-0">
                   <ul className="divide-y divide-ln-op-line">
                     {group.slots.map((slot) => {
@@ -325,7 +336,15 @@ export default async function OrgAgendaPage({
                         <OpPill tone={pill.tone}>{pill.label}</OpPill>
                       </div>
                       <p className="text-sm text-ln-op-mute">
-                        {kindDef?.label ?? offering.serviceKind} · <span>{ownerLabel}</span>
+                        {/* vet-visit-record: where the care happens, copied
+                            from the offering when the appointment was booked. */}
+                        {[
+                          kindDef?.label ?? offering.serviceKind,
+                          labelOf(VISIT_MODALITY_LABELS, appointment.modality),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}{" "}
+                        · <span>{ownerLabel}</span>
                         {ownerProfile?.phone && <> · {ownerProfile.phone}</>}
                       </p>
                     </div>

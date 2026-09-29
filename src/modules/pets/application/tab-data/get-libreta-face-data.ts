@@ -50,6 +50,7 @@ import { viewerHoldsPetClause } from "@/lib/infra/pet-holder-clause";
 import { fetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
 import { eventAttachmentSignedUrl } from "@/lib/infra/storage";
 import { notHiddenFromSubjectClause } from "@/lib/infra/subject-hidden-events";
+import { loadVisitSummaries } from "./load-visit-summaries";
 import type { HistorialEventRow, LibretaFaceData } from "./types";
 
 // The owner-path guard against the welfare_denuncia bridge-event leak lives
@@ -252,7 +253,7 @@ export async function getLibretaFaceData(
         .filter((id): id is string => typeof id === "string"),
     ),
   ];
-  const [allAttachmentRows, authorOrgRows] = await Promise.all([
+  const [allAttachmentRows, authorOrgRows, visitSummaries] = await Promise.all([
     eventIds.length > 0
       ? db.select().from(attachments).where(inArray(attachments.eventId, eventIds))
       : Promise.resolve([]),
@@ -262,6 +263,9 @@ export async function getLibretaFaceData(
           .from(organizations)
           .where(inArray(organizations.id, authorOrgIds))
       : Promise.resolve([]),
+    // The atención each vet-written record belongs to (vet-visit-record) —
+    // titles the face's visit blocks. Empty, and free, when none is stamped.
+    loadVisitSummaries(pastEvents),
   ]);
   const orgNameById = new Map(authorOrgRows.map((o) => [o.id, o.displayName]));
   // Decomiso evidence keeps its metadata (PO decision D7): withheld unless the
@@ -350,6 +354,7 @@ export async function getLibretaFaceData(
       future,
       past,
       pastTruncated,
+      visits: visitSummaries,
       summary,
       weightSamples,
       activeShares,

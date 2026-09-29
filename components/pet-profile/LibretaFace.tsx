@@ -29,6 +29,7 @@ import type { LibretaFaceData } from "@/src/modules/pets/application/tab-data/ty
 import { useState } from "react";
 import { toAsientoView } from "./asiento-fields";
 import { pastEventMatchesAudience } from "./libreta-lens";
+import { groupPastByVisit } from "./libreta-visit-groups";
 
 // Resolved pet-level-override-with-account-fallback contacts (owner-ia-redesign
 // P2). Resolution happens in the RSC (lib/domain/emergency-contacts.ts); this
@@ -92,6 +93,28 @@ export function LibretaFace({ data, petPublicToken, isOwner, emergencyContacts }
   // must not depend on a value that drifts between renders). The absolute
   // dates are already tz-pinned (AR_TIME_ZONE) for the sibling #418 subclass.
   const [now] = useState(() => new Date());
+  const renderAsiento = (row: (typeof visiblePast)[number]) => (
+    <AsientoCard
+      key={row.id}
+      view={toAsientoView(row, petPublicToken, data.viewer, now)}
+      eventHref={`/mis-mascotas/${petPublicToken}/eventos/${row.id}`}
+      // A weight asiento's sparkline shows the TRAILING 12-MONTH
+      // curve ending at its own date — every weigh-in in the year
+      // before this record (chronological), not just prev+current,
+      // and never future weigh-ins the owner logged later (a past
+      // record must not depend on data that didn't exist yet).
+      weightSamples={
+        row.eventType === "weight_recorded"
+          ? data.weightSamples.filter((s) => {
+              const t = s.date.getTime();
+              const end = new Date(row.occurredAt).getTime();
+              return t <= end && t >= end - 365 * 86_400_000;
+            })
+          : undefined
+      }
+    />
+  );
+
   const speciesLine = [
     speciesLabel(data.identity.species),
     data.identity.sex === "male" ? "macho" : data.identity.sex === "female" ? "hembra" : null,
@@ -146,27 +169,26 @@ export function LibretaFace({ data, petPublicToken, isOwner, emergencyContacts }
                 onClear={() => setSelectedTypes(new Set<string>())}
               />
               <div className="ln-asientos">
-                {visiblePast.map((row) => (
-                  <AsientoCard
-                    key={row.id}
-                    view={toAsientoView(row, petPublicToken, data.viewer, now)}
-                    eventHref={`/mis-mascotas/${petPublicToken}/eventos/${row.id}`}
-                    // A weight asiento's sparkline shows the TRAILING 12-MONTH
-                    // curve ending at its own date — every weigh-in in the year
-                    // before this record (chronological), not just prev+current,
-                    // and never future weigh-ins the owner logged later (a past
-                    // record must not depend on data that didn't exist yet).
-                    weightSamples={
-                      row.eventType === "weight_recorded"
-                        ? data.weightSamples.filter((s) => {
-                            const t = s.date.getTime();
-                            const end = new Date(row.occurredAt).getTime();
-                            return t <= end && t >= end - 365 * 86_400_000;
-                          })
-                        : undefined
-                    }
-                  />
-                ))}
+                {/* vet-visit-record: the records one vet wrote in one atención
+                    read as one block, titled "Atención · fecha · modalidad";
+                    everything else renders one by one, as before. */}
+                {groupPastByVisit(visiblePast, data.visits).map((entry) =>
+                  entry.kind === "event" ? (
+                    renderAsiento(entry.row)
+                  ) : (
+                    <section
+                      key={`visit-${entry.visitId}`}
+                      aria-label={entry.header}
+                      data-section="libreta-atencion"
+                      className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-ln-line-2)] p-2"
+                    >
+                      <p className="px-1 font-ln-mono text-xs uppercase tracking-[.06em] text-[var(--color-ln-mute)]">
+                        {entry.header}
+                      </p>
+                      {entry.rows.map(renderAsiento)}
+                    </section>
+                  ),
+                )}
               </div>
             </>
           )}

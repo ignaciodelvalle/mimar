@@ -471,7 +471,11 @@ describe("createServiceOfferingWriter", () => {
 
     // Offering should exist in DB with pending_approval status.
     const [row] = await db
-      .select({ status: serviceOfferings.status, displayName: serviceOfferings.displayName })
+      .select({
+        status: serviceOfferings.status,
+        displayName: serviceOfferings.displayName,
+        modality: serviceOfferings.modality,
+      })
       .from(serviceOfferings)
       .where(
         and(
@@ -482,6 +486,8 @@ describe("createServiceOfferingWriter", () => {
       .limit(1);
 
     expect(row?.status).toBe("pending_approval");
+    // No modality given → a clinic offering (vet-visit-record).
+    expect(row?.modality).toBe("clinic");
 
     // Applicant receives service_offering_submitted notification.
     const [notif] = await db
@@ -495,6 +501,44 @@ describe("createServiceOfferingWriter", () => {
       )
       .limit(1);
     expect(notif?.notificationType).toBe("service_offering_submitted");
+  });
+
+  // vet-visit-record: where the care happens is the operator's choice.
+  it("records a home offering as home", async () => {
+    const result = await createServiceOfferingWriter(
+      memberUserId,
+      {
+        organizationId: orgId,
+        organizationPublicToken: orgPublicToken,
+        organizationDisplayName: "UC SO Test Org",
+      },
+      "Buenos Aires",
+      "La Plata",
+      {
+        serviceKind: "vaccination_rabies",
+        displayName: "UC SO Create Home",
+        description: null,
+        durationMinutes: 30,
+        slotCapacity: 1,
+        priceArs: null,
+        eligibilitySpecies: null,
+        eligibilityAgeMinMonths: null,
+        eligibilityAgeMaxMonths: null,
+        modality: "home",
+      },
+    );
+    expect(result).toMatchObject({ ok: true });
+    const [row] = await db
+      .select({ modality: serviceOfferings.modality })
+      .from(serviceOfferings)
+      .where(
+        and(
+          eq(serviceOfferings.organizationId, orgId),
+          eq(serviceOfferings.displayName, "UC SO Create Home"),
+        ),
+      )
+      .limit(1);
+    expect(row?.modality).toBe("home");
   });
 
   // localidades-por-id D5: the offering records the org's catalogue row.

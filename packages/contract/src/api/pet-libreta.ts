@@ -206,11 +206,19 @@ export type LibretaProvenanceV1 = {
  */
 export type LibretaEntryV1 = {
   /**
-   * The spine row id. The ONE internal identifier on this payload, and it earns
-   * it: it addresses `GET /pets/{token}/events/{eventId}` and the amend
-   * endpoint. Not a pet id, not a case id, not an ownership row id.
+   * The spine row id. The one ADDRESSABLE internal identifier on this payload,
+   * and it earns it: it addresses `GET /pets/{token}/events/{eventId}` and the
+   * amend endpoint. Not a pet id, not a case id, not an ownership row id.
    */
   eventId: string;
+  /**
+   * The vet's atención this record was written in (vet-visit-record, additive
+   * in v1), or null for every record written outside one. A GROUPING key and
+   * nothing more: no endpoint takes it, and it names no vet, organization or
+   * appointment — records sharing it read as one "Atención" block. Optional
+   * only for clients built before it; the server always sends it.
+   */
+  visitId?: string | null;
   /** From `@dim/contract/events` — the shared vocabulary, so a client may switch on it. */
   eventType: string;
   /** Mono uppercase eyebrow, e.g. "Vacuna · obligatoria". */

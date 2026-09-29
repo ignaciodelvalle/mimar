@@ -41,6 +41,8 @@ export async function createServiceOfferingWriter(
     eligibilitySpecies: ("dog" | "cat")[] | null;
     eligibilityAgeMinMonths: number | null;
     eligibilityAgeMaxMonths: number | null;
+    /** clinic | home; absent → clinic. */
+    modality?: "clinic" | "home";
   },
   /**
    * The catalogue row of `locality` when the caller knows it — the
@@ -121,6 +123,7 @@ export async function createServiceOfferingWriter(
         eligibilitySpecies: parsed.data.eligibilitySpecies,
         eligibilityAgeMinMonths: parsed.data.eligibilityAgeMinMonths,
         eligibilityAgeMaxMonths: parsed.data.eligibilityAgeMaxMonths,
+        modality: parsed.data.modality ?? "clinic",
         status: "pending_approval",
       });
 
@@ -190,6 +193,7 @@ export async function createServiceOfferingForOrg(
     eligibilitySpecies: ("dog" | "cat")[] | null;
     eligibilityAgeMinMonths: number | null;
     eligibilityAgeMaxMonths: number | null;
+    modality?: "clinic" | "home";
   },
   orgLocalityId?: string | null,
 ): Promise<ServiceOfferingResult> {
