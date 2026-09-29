@@ -1717,12 +1717,19 @@
 /* ============ tablet frame — org portal chapters (vet, refugio) =========== */
 /* Landscape chrome, org-portal palette (ln-op-*). Fixed size, no variants —
    same rule as .lp-phone (PO 2026-09-29): the device itself signals "this is
-   the organization's portal", not the owner's phone. Scaled down uniformly
-   with `zoom` at the story's own mobile breakpoint (940px, below) so both
-   org-portal chapters render at the identical size at every viewport. */
+   the organization's portal", not the owner's phone. Scaled with `zoom` at
+   two breakpoints (below) so both org-portal chapters render at the
+   identical size at every viewport.
+   Native width kept small on purpose (420px, not the first attempt's 760px):
+   a 760px design needed zoom ~0.42–0.5 to fit any column, which shrank its
+   text past readable (measured 2026-09-29: labels rendered at 4-6px on a
+   390px phone — a coordinator review caught it). At 420px the frame needs
+   only a light zoom (0.8/0.95 below), so the bumped `--text-*` tokens two
+   rules down survive as real, legible pixels instead of being zoomed back
+   into illegibility. */
 .lp .lp-tablet {
-  width: 760px;
-  border-radius: 26px;
+  width: 420px;
+  border-radius: 22px;
   padding: 16px;
   position: relative;
   background: var(--color-ln-op-navy);
@@ -1730,47 +1737,68 @@
 }
 .lp .lp-tablet-cam {
   position: absolute;
-  top: 8px;
+  top: 7px;
   left: 50%;
   transform: translateX(-50%);
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.35);
   z-index: 5;
 }
 .lp .lp-tab-scr {
-  width: 728px;
-  height: 528px;
-  border-radius: 10px;
+  width: 388px;
+  /* Tall enough for the vet form's 5 fields (2 per row, see .lp-vf-form
+     below) + submit + FIRMADO stamp — natural content height measured 720px
+     native (Playwright, scrTop to .lp-vf-done's bottom, at zoom 0.95).
+     .lp-app-body's own overflow:hidden silently clips content at a shorter
+     height WITHOUT .lp-tab-scr itself ever reporting an overflow (its own
+     scrollHeight stays pinned to whatever height is declared here — the
+     clip happens one level down, and only checking .lp-app-body's
+     scrollHeight catches it). 740px leaves a small buffer. */
+  height: 740px;
+  border-radius: 8px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   background: var(--color-ln-op-page);
   color: var(--color-ln-op-ink);
   font-family: var(--lp-sans);
+  /* Bumped well past the owner-app phone's own tiny labels (10/12/14/16px) —
+     "marketing mockup" type, not the real portal's own density — because
+     EVERYTHING inside a tablet screen still goes through a zoom (below). Also
+     reaches Tailwind's `text-xs`/`text-sm` utilities (LnVstamp's "FIRMADO",
+     LnBadge's "Matrícula verificada"/"Verificada"): both compile to
+     `font-size: var(--text-xs|sm)` from the same @theme tokens
+     (app/globals.css), so redefining the custom property here cascades into
+     them too — confirmed with a Playwright probe before relying on it. */
+  --text-xs: 16px;
+  --text-sm: 17px;
+  --text-md: 18px;
+  --text-base: 19px;
 }
 /* Two layout modes, two zoom levels — `zoom` scales the frame AND its
-   content together, so neither ever clips or overflows its column:
-   - >940px: the two-column desktop grid (.lp-chapter-grid, above). Its
+   content together, so text scales WITH the frame instead of clipping:
+   - <=940px: the single-column mobile stack. 0.8 renders the 420px-wide
+     frame at 336px, inside the narrowest column this bucket ever hands it
+     (measured ~354px at 390×844) with margin to spare. At the smallest
+     `--text-xs` (16px) that is 12.8px rendered — clears the 11px (390) and
+     12px (820, same bucket) floors from the readability review.
+   - >940px: the two-column desktop grid (.lp-chapter-grid, above), whose
      column caps out around 440px even at the page's own 1280px max-width
-     (.lp-wrap-wide) — a bare 760px-wide tablet overflowed it (measured with
-     Playwright, 2026-09-29: the vet chapter's tablet bled ~160px past its
-     column on both sides at 1280×900). 0.5 lands at 380×280, comfortably
-     inside the narrowest column the breakpoint allows (~414px, at 941px
-     viewport) while still reading clearly wider/shorter than the 340px-wide
-     portrait phone.
-   - <=940px: the single-column mobile stack, plenty of width regardless.
+     (.lp-wrap-wide) — this is what a bare 760px-native frame overflowed by
+     ~160px a side before this fix. 0.95 renders 420px at 399px, comfortably
+     inside that column, with `--text-xs` landing at 15.2px rendered.
    One factor per breakpoint for BOTH org-portal chapters, so "the same size
    in both chapters at a given viewport" holds by construction. */
 @media (min-width: 941px) {
   .lp .lp-ch-device .lp-tablet {
-    zoom: 0.5;
+    zoom: 0.95;
   }
 }
 @media (max-width: 940px) {
   .lp .lp-ch-device .lp-tablet {
-    zoom: 0.42;
+    zoom: 0.8;
   }
 }
 
@@ -1786,7 +1814,7 @@
   gap: 12px;
 }
 .lp .lp-op-eyebrow {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1794,20 +1822,22 @@
 }
 .lp .lp-op-title {
   font-family: var(--lp-serif);
-  font-size: 19px;
+  /* The largest text on screen on purpose — bumped past --text-base (below
+     the readability fix's tokens) since it also carries the org's real name. */
+  font-size: 22px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--color-ln-op-ink);
-  line-height: 1.15;
+  line-height: 1.2;
   margin-top: 2px;
 }
 .lp .lp-op-page {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-ln-op-mute);
   margin-top: 3px;
 }
 .lp .lp-op-signer {
-  font-size: 11.5px;
+  font-size: var(--text-sm);
   color: var(--color-ln-op-mute);
   margin: -2px 0 2px;
 }
@@ -1825,7 +1855,18 @@
   background: var(--color-ln-op-card);
   color: var(--color-ln-op-ink);
 }
+/* Two fields per row instead of the owner-app phone's single stacked column
+   — the vet's 5-field form otherwise needed ~825px of native height just to
+   avoid clipping its own submit button, leaving the tablet far taller and
+   narrower than the phone it is supposed to read as distinct FROM (readability
+   fix, 2026-09-29). The submit button still spans the full width. */
+.lp .lp-tab-scr .lp-vf-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
 .lp .lp-tab-scr .lp-vf-submit {
+  grid-column: 1 / -1;
   background: var(--color-ln-op-azul);
   color: #fff;
 }
@@ -1846,9 +1887,14 @@
   border-top-color: var(--color-ln-op-line-2);
 }
 .lp .lp-tab-scr .lp-intake-row b {
+  /* Raw px in the base rule (12.5px), not one of the --text-* tokens above,
+     so it needs its own bump here to clear the readability floor too. */
+  font-size: var(--text-md);
   color: var(--color-ln-op-ink);
 }
 .lp .lp-tab-scr .lp-intake-row .lp-intake-sub {
+  /* Same reason: the base rule is a raw 11px. */
+  font-size: var(--text-sm);
   color: var(--color-ln-op-ink-2);
 }
 .lp .lp-tab-scr .lp-intake-row .lp-iic {
