@@ -2329,26 +2329,26 @@ export const jurisdictionAdminAppointments = pgTable(
   "jurisdiction_admin_appointments",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => profiles.id, { onDelete: "restrict" }),
+    // FKs named explicitly below (userFk, govtAssignmentFk, appointedByFk,
+    // revokedByFk): migration 0268 declared them via unnamed inline
+    // REFERENCES, so Postgres gave each its own default `<table>_<col>_fkey`
+    // name — different from drizzle's own auto-generated name (some of which
+    // also exceed the 63-byte identifier limit and get silently truncated),
+    // which made every `pnpm db:push` see permanent drift. Matched to the
+    // names already stored in every environment (verified 2026-09-29 against
+    // the shared local dev DB).
+    userId: uuid("user_id").notNull(),
     provinceCode: text("province_code").notNull(),
-    govtAssignmentId: uuid("govt_assignment_id")
-      .notNull()
-      .references(() => govtAssignments.id, { onDelete: "restrict" }),
+    govtAssignmentId: uuid("govt_assignment_id").notNull(),
     // True when appointing created the implied grant (so revoking the
     // appointment revokes it too); false when an existing whole-province
     // grant of the user was reused.
     grantCreated: boolean("grant_created").notNull(),
-    appointedByUserId: uuid("appointed_by_user_id")
-      .notNull()
-      .references(() => profiles.id, { onDelete: "restrict" }),
+    appointedByUserId: uuid("appointed_by_user_id").notNull(),
     appointedAt: timestamp("appointed_at", { withTimezone: true }).notNull().defaultNow(),
     appointmentReason: text("appointment_reason").notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
-    revokedByUserId: uuid("revoked_by_user_id").references(() => profiles.id, {
-      onDelete: "restrict",
-    }),
+    revokedByUserId: uuid("revoked_by_user_id"),
     revocationReason: text("revocation_reason"),
   },
   (table) => ({
@@ -2359,6 +2359,26 @@ export const jurisdictionAdminAppointments = pgTable(
       .on(table.userId)
       .where(sql`${table.revokedAt} IS NULL`),
     grantIdx: index("jurisdiction_admin_appointments_grant_idx").on(table.govtAssignmentId),
+    userFk: foreignKey({
+      name: "jurisdiction_admin_appointments_user_id_fkey",
+      columns: [table.userId],
+      foreignColumns: [profiles.id],
+    }).onDelete("restrict"),
+    govtAssignmentFk: foreignKey({
+      name: "jurisdiction_admin_appointments_govt_assignment_id_fkey",
+      columns: [table.govtAssignmentId],
+      foreignColumns: [govtAssignments.id],
+    }).onDelete("restrict"),
+    appointedByFk: foreignKey({
+      name: "jurisdiction_admin_appointments_appointed_by_user_id_fkey",
+      columns: [table.appointedByUserId],
+      foreignColumns: [profiles.id],
+    }).onDelete("restrict"),
+    revokedByFk: foreignKey({
+      name: "jurisdiction_admin_appointments_revoked_by_user_id_fkey",
+      columns: [table.revokedByUserId],
+      foreignColumns: [profiles.id],
+    }).onDelete("restrict"),
     provinceValid: check(
       "jurisdiction_admin_appointments_province_valid",
       sql`public.ar_province_name(${table.provinceCode}) IS NOT NULL`,
@@ -5263,10 +5283,10 @@ export const eventNotificationOutbox = pgTable(
     // Jurisdiction snapshot at enqueue time — used for webhook routing in v2.
     targetJurisdictionProvince: text("target_jurisdiction_province"),
     targetJurisdictionLocality: text("target_jurisdiction_locality"),
-    // The target place by id, snapshotted at event time (migration 0248).
-    targetLocalityId: uuid("target_locality_id").references(() => arLocalities.id, {
-      onDelete: "restrict",
-    }),
+    // The target place by id, snapshotted at event time (migration 0248). FK
+    // named explicitly below (targetLocalityFk) to match the name migration
+    // 0248 already gave it in every environment.
+    targetLocalityId: uuid("target_locality_id"),
     targetPlaceMethod: text("target_place_method"),
 
     // Snapshot of the source event payload at enqueue time — decoupled from
@@ -5305,10 +5325,9 @@ export const eventNotificationOutbox = pgTable(
     // Append-only by construction (the enqueue only ever concatenates).
     linkedSources: jsonb("linked_sources").notNull().default(sql`'[]'::jsonb`),
     // Set only on a row the legacy backfill folded into a case record
-    // (status 'merged'): the record that now carries its content.
-    mergedIntoId: uuid("merged_into_id").references((): AnyPgColumn => eventNotificationOutbox.id, {
-      onDelete: "set null",
-    }),
+    // (status 'merged'): the record that now carries its content. FK named
+    // explicitly below (mergedIntoFk) — auto-generated exceeds 63 bytes.
+    mergedIntoId: uuid("merged_into_id"),
   },
   (table) => ({
     // The DB-level guarantee behind enoCaseKey: two writers racing for one
@@ -5324,6 +5343,25 @@ export const eventNotificationOutbox = pgTable(
     slaDueIdx: index("outbox_sla_due_idx").on(table.slaDueAt, table.status),
     // Admin UI reverse-lookup from source event.
     sourceEventIdx: index("outbox_source_event_idx").on(table.sourceEventId),
+    // Auto-generated FK names exceed Postgres's 63-byte identifier limit and
+    // get silently truncated, producing perpetual schema/migration drift
+    // (`pnpm db:push` never converges). Declared explicitly, matching the
+    // names already stored in every environment: targetLocalityFk mirrors
+    // migration 0248's `<table>_<id_col>_restrict_fk` convention; mergedIntoFk
+    // mirrors drizzle's own default name truncated to 63 bytes, which is what
+    // a bare `.references()` here silently created and every push kept
+    // recreating identically (verified 2026-09-29 against a throwaway
+    // postgres:16 and the shared local dev DB).
+    targetLocalityFk: foreignKey({
+      name: "event_notification_outbox_target_locality_id_restrict_fk",
+      columns: [table.targetLocalityId],
+      foreignColumns: [arLocalities.id],
+    }).onDelete("restrict"),
+    mergedIntoFk: foreignKey({
+      name: "event_notification_outbox_merged_into_id_event_notification_out",
+      columns: [table.mergedIntoId],
+      foreignColumns: [table.id],
+    }).onDelete("set null"),
   }),
 );
 

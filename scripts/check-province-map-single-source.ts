@@ -50,6 +50,16 @@ export const FROZEN_PROVINCE_MAPS: Readonly<Record<string, number>> = {
   "packages/contract/src/reference/provinces.ts": 24,
   // Its SQL face (two functions × 24), parity-tested against the list.
   "db/migrations/0249_province_code_fns.sql": 48,
+  // The SAME kind of exception as immutable_unaccent, a few lines above it in
+  // this same file: db/prerequisites.sql runs before drizzle-kit push against
+  // a virgin database (see its own header), so it cannot CALL
+  // public.ar_province_name — it is the file DEFINING it for the first time,
+  // mirroring 0249's ar_province_name body byte-for-byte (not ar_province_code
+  // — schema.ts never calls that one). One function × 24, not two. Added
+  // 2026-09-29 when schema.ts's jurisdiction_admin_appointments CHECK
+  // (migration 0268) turned out to need it and prerequisites.sql didn't have
+  // it, crashing "Schema vs migrations drift" on a virgin Postgres.
+  "db/prerequisites.sql": 24,
   // History: re-typed before this fence, immutable. Measured 2026-09-25.
   "db/migrations/0055_jurisdiction_province_canonical.sql": 24,
   "db/migrations/0060_ref_senasa_vocabularies.sql": 4,
