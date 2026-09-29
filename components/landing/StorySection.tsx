@@ -29,18 +29,20 @@ import { useEffect, useRef, useState } from "react";
 function chapterDevice(key: string) {
   switch (key) {
     case "dueno":
-      // Standard-height frame (PO 2026-09-29): the short variant made this
-      // chapter's phone visibly smaller than every other chapter's. A
-      // same-size phone across chapters outranks filling the frame exactly —
-      // see PhoneFrame's `short` prop, now unused.
       return (
         <PhoneFrame>
           <DuenoScreen />
         </PhoneFrame>
       );
     case "libreta":
+      // Standard-height frame, same as every other chapter (PO 2026-09-29):
+      // PhoneFrame's old `tall` variant (760px) made this chapter's phone
+      // visibly bigger than the rest of the story. LibretaFeed's content now
+      // scrolls inside the same 640px screen instead (.lp-lib-feed,
+      // app/landing.css) — a same-size phone across chapters outranks
+      // showing every entry without scrolling.
       return (
-        <PhoneFrame tall>
+        <PhoneFrame>
           <LibretaScreen />
         </PhoneFrame>
       );

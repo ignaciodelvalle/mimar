@@ -332,9 +332,12 @@ describe("story — CastFila + 6 chapters + rail", () => {
       ),
     ].map((m) => ({ maxHeight: Number(m[1]), zoom: Number(m[2]) }));
     expect(scaled.length).toBeGreaterThanOrEqual(2);
-    // The tall libreta phone (760px) plus the nav fits a 800px-tall viewport.
+    // Every chapter's phone is now the SAME 640px frame (PhoneFrame's `tall`
+    // variant was removed, PO 2026-09-29: it used to make the libreta chapter's
+    // phone 760px, visibly bigger than the rest of the story). Plus the nav,
+    // it fits an 800px-tall viewport.
     const at800 = scaled.filter((s) => s.maxHeight >= 800).map((s) => s.zoom);
-    expect(Math.min(...at800) * 760 + 64 + 40).toBeLessThanOrEqual(800);
+    expect(Math.min(...at800) * 640 + 64 + 40).toBeLessThanOrEqual(800);
   });
 
   it("the story's sequences never loop (WCAG 2.2.2)", () => {

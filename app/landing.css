@@ -1661,17 +1661,18 @@
   overflow: hidden;
   padding-bottom: 18px;
 }
-.lp .lp-scr--tall {
-  height: 760px;
-}
-/* NEVER TALLER THAN THE SCREEN (critique 2026-09-29, M5). A 640px phone (760
-   for the libreta) under the sticky nav, plus the device label above it,
-   overran a laptop viewport: the vet chapter's FIRMADO stamp, the payoff of
-   the whole sequence, played below the fold. Shrinking the SCREEN does not
-   work: its content is drawn for 640px and the stamp is the first thing
-   clipped. So the whole phone scales, content included, with `zoom` (which,
-   unlike transform, also shrinks the space it takes). Desktop only: stacked
-   on a phone, the device is scrolled to like any other block. */
+/* NEVER TALLER THAN THE SCREEN (critique 2026-09-29, M5). A 640px phone under
+   the sticky nav, plus the device label above it, overran a laptop viewport:
+   the vet chapter's FIRMADO stamp, the payoff of the whole sequence, played
+   below the fold. Shrinking the SCREEN does not work: its content is drawn
+   for 640px and the stamp is the first thing clipped. So the whole phone
+   scales, content included, with `zoom` (which, unlike transform, also
+   shrinks the space it takes). Desktop only: stacked on a phone, the device
+   is scrolled to like any other block.
+   ONE size, always (PO 2026-09-29): the `--tall` variant (760px, libreta
+   chapter) made that one chapter's phone bigger than the rest of the story —
+   removed along with PhoneFrame's `tall` prop. The libreta's own content now
+   scrolls inside this same 640px screen (.lp-lib-feed below) instead. */
 @media (min-width: 941px) and (max-height: 860px) {
   .lp .lp-ch-device .lp-phone {
     zoom: 0.86;
@@ -1717,6 +1718,16 @@
 .lp .lp-lib-feed {
   padding-top: 4px;
   position: relative;
+  /* The libreta's own content used to get a taller 760px phone (PhoneFrame's
+     removed `tall` variant, PO 2026-09-29); it now scrolls inside the SAME
+     640px screen every other chapter uses, the way the real app's own list
+     would rather than clipping entries invisibly. Only this element scrolls —
+     .lp-app-body's own `overflow: hidden` still holds for every screen that
+     already fits without it, and the LibretaFeed reveal's min-height pin
+     (LibretaFeed.tsx) still reserves the settled list's height so nothing
+     jumps while it stages in. */
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 .lp .lp-lib-row {
   display: grid;
@@ -1980,76 +1991,6 @@
 }
 .lp .lp-ph-cap svg {
   color: var(--color-ln-ok);
-}
-
-/* lost public credential screen (cap-anon) */
-.lp .lp-lostb {
-  background: var(--color-ln-err);
-  color: #fff;
-  text-align: center;
-  padding: 10px 14px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.lp .lp-lostb small {
-  display: block;
-  font-weight: 500;
-  text-transform: none;
-  letter-spacing: 0;
-  /* Full white, no opacity: at 0.85 this 11px line measured 4.33:1 on ln-err
-     (review L-5); plain white is 5.44:1. */
-  margin-top: 2px;
-  font-size: 11px;
-}
-.lp .lp-scr--lost {
-  background: #fdf4f2; /* lost paper tint — handoff value, no ln-* token */
-}
-.lp .lp-lost-hero {
-  text-align: center;
-  padding: 18px 18px 6px;
-}
-.lp .lp-lh-name {
-  font-family: var(--lp-serif);
-  font-size: 25px;
-  font-weight: 600;
-  color: var(--color-ln-ink);
-  margin-top: 12px;
-  letter-spacing: -0.015em;
-}
-.lp .lp-lh-sub {
-  font-size: 12.5px;
-  color: var(--color-ln-ink-2);
-  margin-top: 4px;
-  line-height: 1.5;
-}
-.lp .lp-lost-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  padding: 14px 16px 4px;
-}
-.lp .lp-lost-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  /* Canon D.1 again, same fence-blindness as .lp-btn above: this was a raw 10px
-     while the CTA one screen up is a pill. Not a second exemption — the same
-     PO decision (X2-S2, 2026-07-29), the same stylesheet, and nothing looked at
-     stylesheets until check-raw-buttons.mjs learned to read .css (2026-08-05). */
-  border-radius: var(--radius-pill);
-  padding: 12px 10px;
-  font-size: 13px;
-  font-weight: 700;
-  color: #fff;
-}
-.lp .lp-lost-btn--call {
-  background: var(--color-ln-ok);
-}
-.lp .lp-lost-btn--found {
-  background: var(--color-ln-azul);
 }
 
 /* org intake mini-rows (cap-refugio) */
@@ -2883,7 +2824,6 @@
 .lp .lp-hcard-token,
 .lp .lp-hcard-libwho,
 .lp .lp-intake-sub,
-.lp .lp-lostb small,
 .lp .lp-ah-s,
 .lp .lp-mv {
   font-variant-numeric: tabular-nums;
@@ -3159,52 +3099,6 @@ html:has([data-landing-root]) {
 .lp .lp-poster-hint {
   font-size: var(--text-xs);
   color: var(--color-ln-ink-2);
-}
-
-/* The public page's last-seen block, no map (Pampa's report has no point). */
-.lp .lp-lost-seen {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 12px 16px 0;
-  padding-top: 10px;
-  border-top: 1px solid var(--color-ln-line-2);
-  font-size: var(--text-sm);
-}
-.lp .lp-lost-seen-h {
-  font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-ln-mute);
-}
-.lp .lp-lost-seen-none {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--text-xs);
-  color: var(--color-ln-mute);
-}
-.lp .lp-lost-sight {
-  margin: 12px 16px 0;
-  text-align: center;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--color-ln-ink-2);
-}
-
-/* The owner's feed row. */
-.lp .lp-feed-row {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  font-size: var(--text-sm);
-}
-.lp .lp-feed-row span {
-  display: block;
-  font-size: var(--text-xs);
-  color: var(--color-ln-mute);
-  font-variant-numeric: tabular-nums;
 }
 
 /* The chip match card, the intake notice, the notification, the confirm. */

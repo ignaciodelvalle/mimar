@@ -124,7 +124,7 @@ describe("story sequences — reduced motion", () => {
     fireEvent.click(buttons[0] as HTMLButtonElement);
     expect(stepOf("anon")).toBe(0);
     expect(buttons[0]).toHaveAttribute("aria-current", "step");
-    expect(buttons[4]).not.toHaveAttribute("aria-current");
+    expect(buttons[buttons.length - 1]).not.toHaveAttribute("aria-current");
     expect(container.innerHTML).not.toMatch(ANIMATION_CLASSES);
   });
 });
@@ -222,16 +222,27 @@ describe("story sequences — motion allowed", () => {
     expect(buttons[2]).toHaveAttribute("aria-current", "step");
   });
 
-  it("names whose phone it is, per step", () => {
-    const { chapter: c, index } = chapter("anon");
+  it("names whose phone it is, per step, in the refugio chapter", () => {
+    const { chapter: c, index } = chapter("refugio");
     const { container } = render(<SequenceChapter chapter={c} index={index} />);
     const buttons = container.querySelectorAll<HTMLButtonElement>(".lp-seq-step");
-    fireEvent.click(buttons[3] as HTMLButtonElement);
-    expect(container.querySelector(".lp-seq-who")?.textContent).toBe(
-      "Celular del vecino · sin app",
-    );
-    fireEvent.click(buttons[4] as HTMLButtonElement);
+    fireEvent.click(buttons[0] as HTMLButtonElement);
+    expect(container.querySelector(".lp-seq-who")?.textContent).toBe("Portal del refugio");
+    fireEvent.click(buttons[buttons.length - 1] as HTMLButtonElement);
     expect(container.querySelector(".lp-seq-who")?.textContent).toMatch(/^App de /);
+  });
+
+  // PO 2026-09-29: chapter 3 ("Se pierde") used to switch this same label
+  // between "App de Martín" and "Celular del vecino · sin app" mid-chapter,
+  // which read as two devices in one chapter. It is now a single phone
+  // throughout — no device label at all.
+  it("chapter 3 is a single, unlabelled phone (no more 'two devices')", () => {
+    const { chapter: c, index } = chapter("anon");
+    const { container } = render(<SequenceChapter chapter={c} index={index} />);
+    expect(container.querySelector(".lp-seq-who")).toBeNull();
+    const buttons = container.querySelectorAll<HTMLButtonElement>(".lp-seq-step");
+    fireEvent.click(buttons[buttons.length - 1] as HTMLButtonElement);
+    expect(container.querySelector(".lp-seq-who")).toBeNull();
   });
 });
 
@@ -302,20 +313,23 @@ describe("chapter endings (M5)", () => {
     expect(SHELTER_SEQUENCE.items.at(-1)?.at).toBe(SHELTER_SEQUENCE.total - 1);
   });
 
-  it("chapter 3 ends on the search itself, not a lone card", () => {
+  // Chapter 3 used to end on the neighbour's own phone showing the public
+  // page (PO 2026-09-29: read as two devices in one chapter). It now ends
+  // with the found-report notification landing on Martín's own phone — the
+  // same, single device the whole chapter plays on.
+  it("chapter 3 ends with the found-report notification, on the owner's own phone", () => {
     const last = finalScreen(LOST_SEQUENCE);
-    expect(last).toContain("Situación");
-    expect(last).toContain("Escanearon su QR");
+    expect(last).toContain("Alguien encontró a Pampa");
+    expect(last).not.toContain("Celular del vecino");
   });
 
-  it("chapter 1's phone is the same standard size as the other chapters (PO 2026-09-29)", () => {
-    // The short phone made this chapter's device visibly smaller than the
-    // rest of the story — reversed by the PO: every chapter's phone must be
-    // the same size.
+  it("no chapter's phone carries a size modifier — every chapter is the same size (PO 2026-09-29)", () => {
+    // The short phone (chapter 1) and the tall libreta phone (chapter 5) both
+    // made their chapter's device visibly different from the rest of the
+    // story — the PO reversed BOTH: every chapter's phone is the same size,
+    // always. PhoneFrame no longer even has a size prop to pass.
     const html = renderToStaticMarkup(<StorySection />);
-    const [first, second] = CHAPTERS.map((c) => `id="cap-${c.key}"`);
-    const chapterOne = html.slice(html.indexOf(first ?? ""), html.indexOf(second ?? ""));
-    expect(chapterOne).not.toContain("lp-scr--short");
-    expect(chapterOne).not.toContain("lp-scr--tall");
+    expect(html).not.toContain("lp-scr--short");
+    expect(html).not.toContain("lp-scr--tall");
   });
 });

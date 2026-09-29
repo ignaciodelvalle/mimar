@@ -349,8 +349,6 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       expect(html).toContain(String(e.payload.brand));
     }
     expect(html).toContain(flat(formatChip(PAMPA_CHIP)));
-    expect(html).toContain(`Lo busca ${OWNER_NAME}.`);
-    expect(html).toContain("Sin punto exacto en el mapa");
     // No screen claims a current rabies vaccine: the only dated screen that
     // could (2022-04-12) is the dose itself, and no product surface prints it.
     expect(html).not.toContain("Antirrábica vigente");
@@ -359,7 +357,9 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
     expect(html).toContain("Caniche · hembra · nacimiento estimado nov 2021");
     expect(html).toContain("Posible coincidencia detectada");
     expect(html).toContain("Es la misma mascota");
-    expect(html).toContain("La tengo conmigo");
+    // Chapter 3 ends on the owner's real in-app notice for an anonymous finder
+    // (notify-owner-of-found-pet.ts), not on the finder's own screen.
+    expect(html).toContain("Alguien encontró a Pampa. No dejó datos de contacto.");
     expect(html).not.toContain("¡Hola! Soy");
     expect(html).not.toContain("Custodia devuelta");
     // The real product labels of the animated chapters.
@@ -372,9 +372,13 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       "FIRMADO",
       "Marcar como perdida",
       "Compartir o imprimir el cartel",
-      "Llamar",
-      "Escanearon su QR",
       "Identificación",
+      // The chapter 3 found-report notification (PO 2026-09-29, replacing the
+      // neighbour's own separately-labelled phone) is the EXACT copy
+      // notifyOwnerOfFoundPet writes for an anonymous finder with no name or
+      // contact (src/modules/pets/application/public/notify-owner-of-found-pet.ts).
+      `Alguien encontró a ${PAMPA_PET.name}`,
+      "No dejó datos de contacto.",
       `Encontraron a ${PAMPA_PET.name}`,
       "detectó a Pampa por su microchip. Coordiná la devolución.",
       "Sí, la encontré",
@@ -385,6 +389,11 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
     expect(html).not.toMatch(/lp-minimap|−?\d{2}\.\d{3,}, −?\d{2}\.\d{3,}/);
     expect(html).not.toContain("vecinos");
     expect(html).not.toContain("EN CASA");
+    // Chapter 3 is ONE device now — no separately-labelled second phone.
+    // (The chapter's own lead narration still legitimately says the finder
+    // has "sin cuenta y sin app" — that is prose about the real flow, not a
+    // second device label, and stays true regardless of how the mock renders.)
+    expect(html).not.toContain("Celular del vecino");
   });
 
   it("the hero credential's identity fields are the seed's pet row", () => {

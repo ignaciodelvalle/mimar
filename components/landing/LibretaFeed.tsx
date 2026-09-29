@@ -34,12 +34,15 @@
 //    catches an observer that is broken or unsupported, never a chapter that
 //    is simply still off-screen.
 //
-// The phone screen keeps a fixed height (.lp-scr--tall) and clips overflow,
-// and the feed itself reserves its FINAL height before it collapses anything:
-// the full list's height is measured pre-paint and pinned as min-height, so
-// rows collapsing and expanding inside it never move anything outside it (no
-// CLS). The pin is released once the last row has settled — from then on the
-// list is its own height again, and a later resize reflows it naturally.
+// The phone screen keeps the SAME fixed height as every other chapter's
+// (.lp-scr, 640px — the old, taller `.lp-scr--tall` variant was removed, PO
+// 2026-09-29), and the feed itself now scrolls (.lp-lib-feed) instead of the
+// screen growing around it. The feed still reserves its FINAL height before
+// it collapses anything: the full list's height is measured pre-paint and
+// pinned as min-height, so rows collapsing and expanding inside it never move
+// anything outside it (no CLS). The pin is released once the last row has
+// settled — from then on the list is its own height again, and a later
+// resize reflows it naturally.
 
 import { PAMPA } from "@/components/landing/landing-content";
 import type { LibretaEvent } from "@/components/landing/landing-content";

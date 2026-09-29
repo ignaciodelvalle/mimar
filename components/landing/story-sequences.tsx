@@ -33,16 +33,7 @@ import { useChapterSequence } from "@/components/landing/use-chapter-sequence";
 import { LnBadge } from "@/components/ui/Badge";
 import { LnPetPhoto } from "@/components/ui/RegRow";
 import { LnStatusFlag, LnVstamp } from "@/components/ui/StatusFlag";
-import { publicPlaceReference } from "@/lib/domain/public-place-reference";
-import { lostTimeLabel } from "@/lib/infra/lost-listing";
-import {
-  eventTypeLabel,
-  foundPossessivePhrase,
-  lastSeenHeadingLabel,
-  lostBannerHeadline,
-  sexLabel,
-  sightingPhrase,
-} from "@/lib/utils/format";
+import { eventTypeLabel, sexLabel } from "@/lib/utils/format";
 import { speciesLabel } from "@/lib/utils/species";
 import { PAMPA_CHIP, PAMPA_PET } from "@/scripts/flagship-pampa-data";
 import type { ReactElement, ReactNode } from "react";
@@ -50,7 +41,6 @@ import type { ReactElement, ReactNode } from "react";
 const PHOTO = "/landing/pampa-hero.jpg";
 
 const LOST = pampaEvent("status_changed", "lost");
-const SCANNED = pampaEvent("credential_scanned");
 const INTAKE = pampaEvent("shelter_intake_recorded");
 const FOUND = pampaEvent("status_changed", "active");
 const LOST_PLACE = String(LOST.payload.location_description);
@@ -58,10 +48,6 @@ const LOST_WEARING = String(
   (LOST.payload.lost_description as Record<string, unknown> | undefined)?.accessories_when_lost ??
     "",
 );
-
-function noonUtc(date: string): Date {
-  return new Date(`${date}T12:00:00Z`);
-}
 
 /** "2024-03-09" → "9/3/2024" — what toLocaleDateString("es-AR") prints. */
 function numericDate(date: string): string {
@@ -244,7 +230,7 @@ export const VET_SEQUENCE: SequenceSpec = {
 };
 
 // ---------------------------------------------------------------------------
-// PS7 · Se pierde — five screens (2024-03-09 → 2024-03-10)
+// PS7 · Se pierde — four screens, one phone throughout (2024-03-09 → 2024-03-10)
 // ---------------------------------------------------------------------------
 
 /** 1 · Martín marks her lost (apps/mobile/src/lost/LostScreen.tsx, the form). */
@@ -322,99 +308,36 @@ function LostPosterScreen() {
 }
 
 /**
- * 4 · A neighbour's phone, no app, no account: the PUBLIC page as it renders
- * for Pampa (app/(public)/p/[publicToken] + PublicLostSections.tsx). The name
- * alone is the heading. Her lost report has a place and no coordinates, so the
- * page draws no map: only the place and "Sin punto exacto en el mapa".
+ * 4 · Someone finds Pampa and reports it — the notification lands on
+ * ${PAMPA_OWNER_NAME}'s OWN phone, the same device as every other step in this
+ * chapter (PO 2026-09-29: the neighbour's own phone, shown separately with a
+ * "Celular del vecino · sin app" label, read as two devices in one chapter).
+ * The copy is EXACTLY what notifyOwnerOfFoundPet writes
+ * (src/modules/pets/application/public/notify-owner-of-found-pet.ts) for an
+ * anonymous finder who leaves no name or contact — the honest default, not an
+ * invented message: title `Alguien encontró a {name}`, body
+ * `{who} encontró a {name}.{contactLine}` with who="Alguien" and
+ * contactLine=" No dejó datos de contacto.". Styled like the SAME `.lp-notif`
+ * card the refugio chapter's own found-notification uses below, for one
+ * consistent in-app-notification look across the story.
  */
-function LostPublicScreen() {
+function OwnerFoundReportScreen() {
   return (
     <>
       <div className="lp-scr-top" />
-      <div className="lp-lostb">
-        {lostBannerHeadline(PAMPA.sexEnum)}
-        <small>{lostTimeLabel(noonUtc(LOST.date), noonUtc(SCANNED.date))}</small>
-      </div>
-      <div className="lp-lost-hero">
-        <div className="lp-lh-name">{PAMPA.name}</div>
-        <div className="lp-lh-sub">
-          {[speciesLabel(PAMPA_PET.species), PAMPA_PET.breed, sexLabel(PAMPA_PET.sex)].join(" · ")}
-        </div>
-        <div className="lp-lh-sub">Lo busca {PAMPA_OWNER_NAME}.</div>
-      </div>
-      <div className="lp-lost-actions">
-        <span className="lp-lost-btn lp-lost-btn--call">
-          <Icon name="telefono" size="sm" decorative /> Llamar
-        </span>
-        <span className="lp-lost-btn lp-lost-btn--found">
-          <Icon name="ubicacion" size="sm" decorative /> {foundPossessivePhrase(PAMPA.sexEnum)}
-        </span>
-      </div>
-      <div className="lp-lost-seen">
-        <span className="lp-lost-seen-h">{lastSeenHeadingLabel(PAMPA.sexEnum)}</span>
-        <b>{publicPlaceReference(LOST_PLACE)}</b>
-        <span className="lp-lost-seen-none">
-          <Icon name="ubicacion" size="sm" decorative /> Sin punto exacto en el mapa
-        </span>
-      </div>
-      <p className="lp-lost-sight">{sightingPhrase(PAMPA.sexEnum)}</p>
-    </>
-  );
-}
-
-/**
- * 5 · Back on Martín's phone: the scan in "Avistajes y escaneos"
- * (apps/mobile/src/lost/lost-view-model.ts feedItemTitle). A scan row shows at
- * most an approximate locality, never a street or a pin; the seed's scan has
- * no location at all, so the row shows none.
- */
-function LostFeedScreen() {
-  return (
-    <>
-      <div className="lp-scr-top" />
-      <AppHead
-        photo={<LnPetPhoto src={PHOTO} alt={PAMPA.name} status="lost" size={40} />}
-        title={PAMPA.name}
-        right={<LnStatusFlag status="lost" sex={PAMPA.sexEnum} />}
-      />
       <div className="lp-app-body lp-ph-pad">
-        {/* The same situation card as step 2: on the real screen it sits above
-            the feed, and without it the chapter's last frame was a phone
-            ~80% empty (critique 2026-09-29, M5). */}
-        <div className="lp-ph-card">
-          <p className="lp-kv-title">Situación</p>
-          <div className="lp-kv">
-            <span>Perdida desde</span>
-            <b>{landingDate(LOST.date)}</b>
-          </div>
-          <div className="lp-kv">
-            <span>Última vez</span>
-            <b>{LOST_PLACE}</b>
-          </div>
-        </div>
-        <div className="lp-ph-card">
-          <p className="lp-kv-title">Avistajes y escaneos</p>
-          <div className="lp-feed-row">
-            <Icon name="qr" size="sm" decorative />
-            <div>
-              <b>Escanearon su QR</b>
-              <span>{landingDate(SCANNED.date)}</span>
-            </div>
-          </div>
+        <div className="lp-notif">
+          <span className="lp-notif-app">miMAR</span>
+          <b>Alguien encontró a {PAMPA.name}</b>
+          <span>Alguien encontró a {PAMPA.name}. No dejó datos de contacto.</span>
+          <span className="lp-vf-submit">Ver mascota</span>
         </div>
       </div>
     </>
   );
 }
 
-const LOST_SCREENS = [
-  LostMarkScreen,
-  LostOpenScreen,
-  LostPosterScreen,
-  LostPublicScreen,
-  LostFeedScreen,
-];
-const NEIGHBOUR_STEP = 3;
+const LOST_SCREENS = [LostMarkScreen, LostOpenScreen, LostPosterScreen, OwnerFoundReportScreen];
 
 export const LOST_SEQUENCE: SequenceSpec = {
   total: LOST_SCREENS.length,
@@ -423,15 +346,12 @@ export const LOST_SEQUENCE: SequenceSpec = {
     { label: `${PAMPA_OWNER_NAME} la marca como perdida.`, at: 0 },
     { label: "Avisamos a refugios y veterinarias verificadas de tu zona.", at: 1 },
     { label: "El cartel con su QR, listo para compartir.", at: 2 },
-    { label: "Al día siguiente, un vecino escanea su QR.", at: 3 },
-    { label: `${PAMPA_OWNER_NAME} ve el escaneo en su búsqueda.`, at: 4 },
+    { label: `Alguien la encuentra: ${PAMPA_OWNER_NAME} recibe el aviso al instante.`, at: 3 },
   ],
-  deviceLabel: (step) =>
-    step === NEIGHBOUR_STEP ? "Celular del vecino · sin app" : `App de ${PAMPA_OWNER_NAME}`,
   device: (step, animate) => {
-    const Screen = LOST_SCREENS[step] ?? LostFeedScreen;
+    const Screen = LOST_SCREENS[step] ?? OwnerFoundReportScreen;
     return (
-      <PhoneFrame lost={step === NEIGHBOUR_STEP}>
+      <PhoneFrame>
         <div key={step} className={animate ? "lp-seq-screen lp-seq-in" : "lp-seq-screen"}>
           <Screen />
         </div>
