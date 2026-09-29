@@ -1063,6 +1063,66 @@ describe("Android hardening (N1)", () => {
   });
 });
 
+describe("Android App Links (native-review S-8)", () => {
+  // See app.config.ts's "ANDROID APP LINKS" header section for the full
+  // argument. The short version pinned here: exactly two intent filters, the
+  // custom scheme WITHOUT autoVerify and the verified `https` one WITH it,
+  // scoped to `/p` and nothing wider.
+  type IntentFilter = {
+    action: string;
+    autoVerify?: boolean;
+    category: string[];
+    data: Array<{ scheme: string; host?: string; pathPrefix?: string }>;
+  };
+
+  function intentFilters(): IntentFilter[] {
+    return (resolved.android?.intentFilters ?? []) as IntentFilter[];
+  }
+
+  it("declares exactly two intent filters — the custom scheme and the verified https link", () => {
+    expect(intentFilters()).toHaveLength(2);
+  });
+
+  it("keeps the mimar:// custom scheme filter unverified", () => {
+    const custom = intentFilters().find((f) => f.data.some((d) => d.scheme === "mimar"));
+    expect(custom).toBeDefined();
+    expect(custom?.autoVerify).not.toBe(true);
+    expect(custom?.category).toEqual(expect.arrayContaining(["BROWSABLE", "DEFAULT"]));
+  });
+
+  it("verifies the https App Link, scoped to /p and nothing wider", () => {
+    const httpsFilter = intentFilters().find((f) => f.data.some((d) => d.scheme === "https"));
+    expect(httpsFilter).toBeDefined();
+    expect(httpsFilter?.autoVerify).toBe(true);
+    expect(httpsFilter?.category).toEqual(expect.arrayContaining(["BROWSABLE", "DEFAULT"]));
+    expect(httpsFilter?.data).toEqual([
+      { scheme: "https", host: "www.mimar.com.ar", pathPrefix: "/p" },
+    ]);
+  });
+
+  it("never claims /t — the physical-tag resolver has no mobile screen to hand off to", () => {
+    // /t/[serial] is a server-side rate-limited DB lookup with three tag-status
+    // pages and a 307 to /p/…; claiming it here would hand Android a link the
+    // installed app cannot answer. See app.config.ts's own comment.
+    const httpsFilter = intentFilters().find((f) => f.data.some((d) => d.scheme === "https"));
+    for (const entry of httpsFilter?.data ?? []) {
+      expect(entry.pathPrefix).not.toBe("/t");
+    }
+  });
+
+  it("points the App Link at the SAME host production's API base URL names — no drift between the two", () => {
+    // eas.json's own test above pins EXPO_PUBLIC_API_BASE_URL to
+    // https://www.mimar.com.ar for the production profile. A verified App Link
+    // naming a different host would silently never verify: Android compares the
+    // filter's host against assetlinks.json served from THAT host, not from
+    // wherever the app happens to call its API.
+    const httpsFilter = intentFilters().find((f) => f.data.some((d) => d.scheme === "https"));
+    const productionApiHost = new URL(easJson.build.production?.env?.EXPO_PUBLIC_API_BASE_URL ?? "")
+      .host;
+    expect(httpsFilter?.data[0]?.host).toBe(productionApiHost);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // .easignore — the archive EAS uploads
 // ---------------------------------------------------------------------------

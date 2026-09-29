@@ -16,52 +16,69 @@
 //
 // It is NOT enough for the thing this product actually wants, which is invariant
 // #1: the pet IS the credential, and a `DIM-XXXX-XXXX` token resolves to a
-// QR-verifiable page. Today scanning that QR opens the browser at
-// `https://…/p/{token}`. A custom scheme cannot change that — no phone camera
-// will follow `mimar://p/{token}` from a QR it finds in the street, and it must
-// not: any app could have claimed the scheme.
+// QR-verifiable page. Until this fix, scanning that QR always opened the
+// browser at `https://www.mimar.com.ar/p/{token}` — a custom scheme cannot
+// change that, and it must not: no phone camera will follow `mimar://p/{token}`
+// from a QR it finds in the street, and any app could have claimed the scheme.
 //
 // ---------------------------------------------------------------------------
-// WHAT IS NOT WIRED, AND WHY IT CANNOT BE WIRED IN THIS WORK UNIT (M5)
+// ANDROID APP LINKS — WIRED FOR `/p` ONLY (native-review S-8, 2026-09-29)
 // ---------------------------------------------------------------------------
-// Verified App Links / Universal Links — the mechanism that lets the INSTALLED
-// app open `https://mimar.ar/p/{token}` directly while everyone else still gets
-// the web page. That is the correct end state for the QR, and it is blocked on
-// something no code in this repo can produce:
+// Verified App Links let the INSTALLED app open `https://www.mimar.com.ar/p/…`
+// directly while everyone else still gets the web page. The blocker this
+// section used to describe — no Play console, so no Play-signed fingerprint —
+// is resolved: the orchestrator read BOTH the current and the previous
+// app-signing SHA-256 fingerprints out of the Play console on 2026-09-29 (a
+// device can still hold an install verified under the earlier key, so both
+// must be published, not just the newest). `lib/infra/assetlinks.ts` and
+// `app/.well-known/assetlinks.json/route.ts` already publish whatever
+// `ANDROID_APP_FINGERPRINT` carries — that env var still needs setting in
+// Vercel with both values, comma- or whitespace-separated; no file in this
+// repo can do that part.
 //
-//   Android needs `https://{domain}/.well-known/assetlinks.json` to publish the
-//   SHA-256 fingerprint of the certificate the APK is signed with. Under Play
-//   App Signing that key is Google's, not ours — the fingerprint only exists
-//   after the app is uploaded to a Play console that does not exist yet. (The
-//   EAS account does now — the first build ran on 2026-08-26 — but Play is a
-//   separate enrolment and is still the blocker.) Publishing a fingerprint we
-//   control instead would verify a build Play will never ship, and the link
-//   would silently fall back to the browser on every real install: the failure
-//   mode of App Links is not an error, it is a page that quietly opens in
-//   Chrome.
+// THE FILTER BELOW IS SCOPED TO `/p`, NOT THE WHOLE DOMAIN AND NOT `/t`
+// (physical-tag serials). `/t/[serial]` (`app/(public)/t/[serial]/page.tsx`) is
+// a SERVER-SIDE resolver — rate-limited DB lookup, three tag-status pages, a
+// 307 to `/p/…` — with no mobile equivalent; claiming it here would hand
+// Android a link the installed app cannot answer, and this app's
+// `+not-found.tsx` ("abrilo desde el navegador") is a worse landing than the
+// browser page it replaces. `/p/:publicToken/encontre` and
+// `/p/:publicToken/sighting` share the `/p` prefix and have no mobile screen
+// either — a direct scan of one of those (rare; normally reached by tapping a
+// button on the credential page, not scanned on its own) falls through to that
+// same not-found screen instead of crashing.
 //
-//   iOS needs `https://{domain}/.well-known/apple-app-site-association` carrying
-//   the Team ID, which likewise does not exist before the Apple enrolment.
+// `apps/mobile/app/p/[publicToken].tsx` is the screen this filter hands off
+// to. It renders the SAME `CredentialScreen` the owner's gated route
+// (`app/mascotas/[publicToken]/credencial.tsx`) does, with NO session gate —
+// `fetchCredential` (`src/credential/credential-api.ts`) already calls
+// `GET /api/v1/pets/{token}/credential` with no bearer, so gating entry here
+// would send exactly the audience App Links exist for — a finder who has never
+// signed in — to a sign-in screen for a link they never asked to log into.
 //
-// So M5 is: enrol, read the Play-signed fingerprint out of the console, serve
-// both well-known files from the web app, THEN add the `autoVerify` filter
-// below. Writing the filter first would ship a claim we cannot honour.
+// `packages/contract/src/links/deep-link-map.ts`'s `credential.appPath` STAYS
+// `null`. That field is the `mimar://` custom-scheme form and the
+// `appRoutePath` / `matchWebPath` machinery a notification CTA walks through —
+// unrelated to this. A verified `https` App Link reaches its screen through
+// expo-router's OWN file-system resolution against the incoming URL's path,
+// exactly as the `appointment` entry's own docblock already describes for the
+// custom scheme; no table lookup is involved either way.
 //
-//   android: {
-//     intentFilters: [
-//       {
-//         action: "VIEW",
-//         autoVerify: true,                       // ← requires assetlinks.json
-//         data: [{ scheme: "https", host: "mimar.ar", pathPrefix: "/p" }],
-//         category: ["BROWSABLE", "DEFAULT"],
-//       },
-//     ],
-//   },
-//   ios: { associatedDomains: ["applinks:mimar.ar"] },   // ← requires Team ID
+// A FUTURE VET-FACING APP MUST NOT CLAIM THESE LINKS. Two Android apps with
+// `autoVerify` filters for the same host race for the same association, and
+// only the citizen-facing credential app has any business winning `/p/…` — a
+// vet app would need its own, narrower filter for its own paths, never this
+// one.
 //
-// The host is a placeholder too: the credential currently lives at
-// `dim-staging.vercel.app`, and a verified link must point at the production
-// domain, not at a preview host whose `.well-known` any Vercel deploy can move.
+// THIS CHANGES THE NATIVE FINGERPRINT (`runtimeVersion: { policy: "fingerprint"
+// }`, further down, hashes the intent-filter set among other things it hashes)
+// — so it SHIPS ONLY WITH THE NEXT REAL BUILD, the one scheduled for 10/1,
+// never over the air.
+//
+// iOS REMAINS UNWIRED. `https://www.mimar.com.ar/.well-known/apple-app-site-
+// association` needs a Team ID from an Apple enrolment that does not exist
+// yet, so `ios.associatedDomains` stays absent rather than publishing a claim
+// with nothing on the other side to verify it.
 //
 // ===========================================================================
 // THE SECOND DECLARATION THAT NEEDS PARAGRAPHS: expo-updates
@@ -422,14 +439,24 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // `expo-image-picker` block for the ordering reason recorded above it.
     intentFilters: [
       // The custom scheme, declared explicitly rather than left to the implicit
-      // filter Expo generates from `scheme`. When the verified `https` filter
-      // above lands it becomes a SECOND entry in this same array, and a reader
-      // comparing them should be able to see that one carries `autoVerify` and
-      // the other cannot.
+      // filter Expo generates from `scheme`. A SEPARATE entry from the verified
+      // `https` filter below — one carries `autoVerify` and the other cannot,
+      // and a reader comparing them should be able to see why.
       {
         action: "VIEW",
         category: ["BROWSABLE", "DEFAULT"],
         data: [{ scheme: "mimar" }],
+      },
+      // The verified App Link (native-review S-8, 2026-09-29). See the header's
+      // "ANDROID APP LINKS" section for what is and is not covered, why `/p`
+      // alone, and why this needed BOTH the current and the previous
+      // Play-signing fingerprint published at `/.well-known/assetlinks.json`
+      // before it could go in.
+      {
+        action: "VIEW",
+        autoVerify: true,
+        category: ["BROWSABLE", "DEFAULT"],
+        data: [{ scheme: "https", host: "www.mimar.com.ar", pathPrefix: "/p" }],
       },
     ],
   },
