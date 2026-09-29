@@ -81,17 +81,19 @@ async function appointFresh(): Promise<string> {
   return appointment.id;
 }
 
-async function isWaitingOnLock(pid: number): Promise<boolean> {
+/** Is backend `pid` waiting on a lock — and, when given, running a statement like `queryLike`? */
+async function isWaitingOnLock(pid: number, queryLike?: string): Promise<boolean> {
   const rows = await revoker<{ n: number }[]>`
     select count(*)::int as n from pg_stat_activity
-     where pid = ${pid} and wait_event_type = 'Lock'`;
+     where pid = ${pid} and wait_event_type = 'Lock'
+       and (${queryLike ?? null}::text is null or query ilike ${queryLike ?? null}::text)`;
   return rows[0].n > 0;
 }
 
-async function waitUntilWaiting(pid: number, who: string): Promise<void> {
+async function waitUntilWaiting(pid: number, who: string, queryLike?: string): Promise<void> {
   const deadline = Date.now() + 4000;
   while (Date.now() < deadline) {
-    if (await isWaitingOnLock(pid)) return;
+    if (await isWaitingOnLock(pid, queryLike)) return;
     await new Promise((r) => setTimeout(r, 25));
   }
   throw new Error(`${who} never waited on a lock — the appointment row was not held`);
@@ -178,6 +180,23 @@ describe("a revocation racing a delegated write (FOR SHARE on the appointment)",
   it("B — a revocation in flight makes the loader wait, and the loader then answers none", async () => {
     const appointmentId = await appointFresh();
     let loading: Promise<unknown> | null = null;
+    // ONE observer, and the commit waits for it. This case used to run two
+    // probes of the same wait: the loader's own (by pid) and a second one here
+    // (by query text) that committed the revocation as soon as IT saw the
+    // wait. Whichever probe won, the other lost: when this side saw the wait
+    // first, the commit released the loader before its pid probe ever ran,
+    // and that probe then polled a backend that was no longer waiting until
+    // its deadline — "never waited on a lock", although it had (CI run
+    // 36552956434 failed in 4024 ms, under this side's 5000 ms deadline, so
+    // this side HAD seen the wait). A 300 ms delay before the pid probe
+    // reproduces it on every run. Now the commit is gated on the loader's
+    // probe: the revocation cannot commit before that probe has seen the wait.
+    let loaderSeenWaiting!: () => void;
+    let loaderNotSeen!: (e: unknown) => void;
+    const loaderWaiting = new Promise<void>((resolve, reject) => {
+      loaderSeenWaiting = resolve;
+      loaderNotSeen = reject;
+    });
     await revoker.begin(async (t) => {
       await revoke(t, appointmentId);
       loading = db.transaction(async (tx) => {
@@ -186,22 +205,19 @@ describe("a revocation racing a delegated write (FOR SHARE on the appointment)",
         )) as unknown as Array<{ pid: number }>;
         const authority = loadAdminAuthority(tx, appointee);
         authority.catch(() => undefined);
-        await waitUntilWaiting(pid, "the authority loader");
+        await waitUntilWaiting(
+          pid,
+          "the authority loader",
+          "%jurisdiction_admin_appointments%for share%",
+        );
+        loaderSeenWaiting();
         return authority;
       });
-      loading.catch(() => undefined);
+      // A loader that fails before it is seen waiting fails the wait too
+      // (a no-op once loaderSeenWaiting has run).
+      loading.catch(loaderNotSeen);
       // Commit only once the loader has been seen waiting on the row.
-      const deadline = Date.now() + 5000;
-      let seen = false;
-      while (Date.now() < deadline && !seen) {
-        const rows = await revoker<{ n: number }[]>`
-          select count(*)::int as n from pg_stat_activity
-           where wait_event_type = 'Lock'
-             and query ilike '%jurisdiction_admin_appointments%for share%'`;
-        seen = rows[0].n > 0;
-        if (!seen) await new Promise((r) => setTimeout(r, 25));
-      }
-      expect(seen, "the loader waited on the uncommitted revocation").toBe(true);
+      await loaderWaiting;
     });
     expect(await loading).toEqual({ kind: "none" });
   }, 20_000);
