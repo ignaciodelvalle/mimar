@@ -1063,20 +1063,46 @@ describe("Android hardening (N1)", () => {
   });
 });
 
-describe("Android App Links (native-review S-8)", () => {
+describe("Android App Links (native-review S-8, narrowed on fresh review)", () => {
   // See app.config.ts's "ANDROID APP LINKS" header section for the full
   // argument. The short version pinned here: exactly two intent filters, the
   // custom scheme WITHOUT autoVerify and the verified `https` one WITH it,
-  // scoped to `/p` and nothing wider.
+  // matching the BARE credential path only — never a prefix.
   type IntentFilter = {
     action: string;
     autoVerify?: boolean;
     category: string[];
-    data: Array<{ scheme: string; host?: string; pathPrefix?: string }>;
+    data: Array<{ scheme: string; host?: string; pathPattern?: string; pathPrefix?: string }>;
   };
 
   function intentFilters(): IntentFilter[] {
     return (resolved.android?.intentFilters ?? []) as IntentFilter[];
+  }
+
+  /**
+   * Android's `PatternMatcher` semantics for an intent filter's `pathPattern`,
+   * as a JS `RegExp` — just enough of them to test THIS pattern, not a general
+   * translator. Per the platform docs: the match is against the WHOLE path
+   * (anchored both ends, unlike `pathPrefix`, which only anchors the start);
+   * `.` means "any one character"; every other character here is literal.
+   *
+   * `*` (Android's "zero or more of the PRECEDING character") is deliberately
+   * NOT implemented — this pattern has none — and the function refuses loudly
+   * rather than silently mistranslating one, so a future pattern that grows a
+   * `*` fails this test instead of passing it for the wrong reason.
+   */
+  function androidPathPatternToRegExp(pattern: string): RegExp {
+    if (pattern.includes("*")) {
+      throw new Error(
+        "androidPathPatternToRegExp: '*' (zero-or-more-of-the-preceding-character) " +
+          "is not implemented — extend this deliberately before testing a pattern that uses one.",
+      );
+    }
+    let escaped = "";
+    for (const ch of pattern) {
+      escaped += ch === "." ? "[^]" : ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+    return new RegExp(`^${escaped}$`);
   }
 
   it("declares exactly two intent filters — the custom scheme and the verified https link", () => {
@@ -1090,14 +1116,45 @@ describe("Android App Links (native-review S-8)", () => {
     expect(custom?.category).toEqual(expect.arrayContaining(["BROWSABLE", "DEFAULT"]));
   });
 
-  it("verifies the https App Link, scoped to /p and nothing wider", () => {
+  it("verifies the https App Link with an exact pathPattern, never a pathPrefix", () => {
     const httpsFilter = intentFilters().find((f) => f.data.some((d) => d.scheme === "https"));
     expect(httpsFilter).toBeDefined();
     expect(httpsFilter?.autoVerify).toBe(true);
     expect(httpsFilter?.category).toEqual(expect.arrayContaining(["BROWSABLE", "DEFAULT"]));
     expect(httpsFilter?.data).toEqual([
-      { scheme: "https", host: "www.mimar.com.ar", pathPrefix: "/p" },
+      { scheme: "https", host: "www.mimar.com.ar", pathPattern: "/p/DIM-....-...." },
     ]);
+    // NON-VACUITY for the "never a pathPrefix" half of this test's own name.
+    expect(httpsFilter?.data[0]).not.toHaveProperty("pathPrefix");
+  });
+
+  it("matches exactly the bare credential shape — not the finder or sighting sub-paths, not /t", () => {
+    // THE REGRESSION THIS PINS SHUT. The first draft of this filter used
+    // `pathPrefix: "/p"`, which — because a prefix has no end anchor — also
+    // matched `/p/:publicToken/encontre` and `/p/:publicToken/sighting`, the
+    // finder and sighting report forms a stranger scanning someone else's lost
+    // pet needs. Android would have handed a tap on either straight to this
+    // app's +not-found.tsx instead of the working web form it replaced.
+    const httpsFilter = intentFilters().find((f) => f.data.some((d) => d.scheme === "https"));
+    const pattern = httpsFilter?.data[0]?.pathPattern;
+    expect(typeof pattern).toBe("string");
+    const regexp = androidPathPatternToRegExp(pattern as string);
+
+    // The two real shapes a QR ever encodes (the seeded flagship and a
+    // production-shaped example — see lib/domain/dim-token.ts's
+    // DIM_TOKEN_PATTERN, [A-Z0-9]{4}-[A-Z0-9]{4}).
+    expect(regexp.test("/p/DIM-PAMP-0001")).toBe(true);
+    expect(regexp.test("/p/DIM-AB12-CD34")).toBe(true);
+
+    // The two sub-paths this filter must NOT claim.
+    expect(regexp.test("/p/DIM-PAMP-0001/encontre")).toBe(false);
+    expect(regexp.test("/p/DIM-PAMP-0001/sighting")).toBe(false);
+
+    // Neither shorter nor longer than the issued shape, and never /t.
+    expect(regexp.test("/p/DIM-PAMP-000")).toBe(false);
+    expect(regexp.test("/p/DIM-PAMP-00011")).toBe(false);
+    expect(regexp.test("/p")).toBe(false);
+    expect(regexp.test("/t/ABCDEFGH")).toBe(false);
   });
 
   it("never claims /t — the physical-tag resolver has no mobile screen to hand off to", () => {
@@ -1106,6 +1163,7 @@ describe("Android App Links (native-review S-8)", () => {
     // installed app cannot answer. See app.config.ts's own comment.
     const httpsFilter = intentFilters().find((f) => f.data.some((d) => d.scheme === "https"));
     for (const entry of httpsFilter?.data ?? []) {
+      expect(entry.pathPattern?.startsWith("/t")).not.toBe(true);
       expect(entry.pathPrefix).not.toBe("/t");
     }
   });

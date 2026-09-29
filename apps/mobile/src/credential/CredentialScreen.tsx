@@ -31,13 +31,17 @@ import type {
   PublicCredentialV1,
 } from "@dim/contract/api";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { publicCredentialPageUrl } from "../config/api";
+import {
+  publicCredentialFinderPageUrl,
+  publicCredentialPageUrl,
+  publicCredentialSightingPageUrl,
+} from "../config/api";
 import { speciesLabel } from "../pets/species";
 import { Alert, Body, Card, ContactRow, Loading, Row, Unavailable } from "../ui/components";
 import { FONTS } from "../ui/fonts";
-import { Eyebrow, PrimaryButton, Screen, Title } from "../ui/kit";
+import { Eyebrow, PrimaryButton, Screen, SecondaryButton, Title } from "../ui/kit";
 import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "../ui/theme";
 import { CredentialQr } from "./CredentialQr";
 import { type CredentialFetchResult, fetchCredential, fetchFailureMessage } from "./credential-api";
@@ -322,7 +326,7 @@ function CredentialBody({
       <StatusSection section={view.status} />
       <VaccinationSection section={view.vaccination} />
       <NoticesSection section={view.notices} />
-      <LostSection lost={view.lost} />
+      <LostSection lost={view.lost} publicToken={publicToken} />
     </>
   );
 }
@@ -344,20 +348,19 @@ function IdentitySection({ section }: { section: SectionView<CredentialIdentityS
               a wallet whose entire UI is es-AR. Measured on the flagship pet
               2026-09-07.
 
-              WHO ACTUALLY READS THIS, because the first draft of this comment
-              got it wrong and the claim is the kind a later triage would trust:
-              NOT a stranger. This screen is the one at
-              `app/mascotas/[publicToken]/credencial.tsx`, which mounts BEHIND
-              THE GATE on purpose — the anonymous reader the QR sends is served
-              by the web page at `/p/{token}`, a different codebase, and that
-              one was already routing species through its own `speciesLabel`
-              (guarded by `__tests__/species-label-single-source.test.ts`). The
-              population reachable here is a device carrying a stored session
-              that has not re-verified yet (`useDisplayOnlyGate`, the
-              `session-unverified` arm): the owner or a caretaker, on a cold
-              start or while verification is still in flight, reading their own
-              animal's credential. Smaller than "anybody with a phone", still
-              a citizen reading an English identifier off a health document.
+              WHO ACTUALLY READS THIS, UPDATED (native-review S-8, 2026-09-29).
+              This comment used to say "NOT a stranger" — true when this
+              component had exactly one caller, the gated
+              `app/mascotas/[publicToken]/credencial.tsx`, reachable only from a
+              device carrying a stored session (`useDisplayOnlyGate`, the
+              `session-unverified` arm). It now has a SECOND caller,
+              `app/p/[publicToken].tsx`, reached with NO gate at all through the
+              verified Android App Link — genuinely anybody with a phone camera
+              and the app installed, never signed in. Both populations read
+              `speciesLabel` (guarded by
+              `__tests__/species-label-single-source.test.ts`), which is the one
+              fact this comment needs to stay true; the rest is history rather
+              than a live constraint.
 
               `speciesLabel` already carries the argument for this and the
               answer to the obvious objection (finding M1, review 2026-09-07):
@@ -442,8 +445,8 @@ function NoticesSection({ section }: { section: SectionView<CredentialNoticesSec
  * precisely the blank-instead-of-an-honest-failure bug this whole file exists to
  * prevent, arriving through the one section with enough states to hide it.
  */
-function LostSection({ lost }: { lost: LostView }) {
-  return <Card title="Búsqueda">{lostBody(lost)}</Card>;
+function LostSection({ lost, publicToken }: { lost: LostView; publicToken: string }) {
+  return <Card title="Búsqueda">{lostBody(lost, publicToken)}</Card>;
 }
 
 /**
@@ -465,14 +468,14 @@ function LostSection({ lost }: { lost: LostView }) {
  * here, which is the guarantee worth keeping. What changed is what happens on
  * the day the compiler was not consulted, because the server moved instead.
  */
-function lostBody(lost: LostView) {
+function lostBody(lost: LostView, publicToken: string) {
   switch (lost.state) {
     case "unavailable":
       return <Unavailable message={lost.message} />;
     case "not-lost":
       return <Body>No está reportada como perdida.</Body>;
     case "lost":
-      return <LostDetail data={lost.data} />;
+      return <LostDetail data={lost.data} publicToken={publicToken} />;
     default: {
       const unhandled: never = lost;
       void unhandled;
@@ -481,15 +484,61 @@ function lostBody(lost: LostView) {
   }
 }
 
-function LostDetail({ data }: { data: CredentialLostSection }) {
+function LostDetail({ data, publicToken }: { data: CredentialLostSection; publicToken: string }) {
   return (
     <>
       <Alert>Reportada como perdida.</Alert>
       {data.owner.firstName ? <Row label="Contacto" value={data.owner.firstName} /> : null}
       {data.owner.phoneE164 ? <ContactRow label="Teléfono" value={data.owner.phoneE164} /> : null}
       {data.lastSeen?.locality ? <Row label="Visto en" value={data.lastSeen.locality} /> : null}
+      <LostReportAction data={data} publicToken={publicToken} />
     </>
   );
+}
+
+/**
+ * "¿La encontraste?" / "¿La viste?" — the two report actions the web's
+ * `CredentialActionBar` offers a stranger for a lost pet (native-review S-8
+ * follow-up, 2026-09-29: this app had neither, for anybody — owner or
+ * stranger). `allowFinderForm`/`allowSighting` are the SAME two flags the
+ * web page's own decision reads (`app/(public)/p/[publicToken]/page.tsx`),
+ * resolved server-side — never both true, and the contract's own comment on
+ * `CredentialLostSection` says a custody dispute forces both false — so this
+ * renders exactly one action or none, matching the web exactly.
+ *
+ * OPENS THE BROWSER, deliberately, rather than a native form: the finder and
+ * sighting flows are server actions with their own validation, rate limits
+ * and copy, and building a second implementation of them is a separate, larger
+ * work unit than wiring the App Link. `apps/mobile/app.config.ts`'s verified
+ * intent filter is scoped to the BARE credential path
+ * (`pathPattern: "/p/DIM-....-...."`, not a prefix) precisely so this exact
+ * URL keeps falling through to the browser instead of Android handing it back
+ * to this same screen.
+ */
+function LostReportAction({
+  data,
+  publicToken,
+}: {
+  data: CredentialLostSection;
+  publicToken: string;
+}) {
+  if (data.allowFinderForm) {
+    return (
+      <SecondaryButton
+        label="La encontré — avisar en el navegador"
+        onPress={() => void Linking.openURL(publicCredentialFinderPageUrl(publicToken))}
+      />
+    );
+  }
+  if (data.allowSighting) {
+    return (
+      <SecondaryButton
+        label="La vi cerca de acá — avisar en el navegador"
+        onPress={() => void Linking.openURL(publicCredentialSightingPageUrl(publicToken))}
+      />
+    );
+  }
+  return null;
 }
 
 /**

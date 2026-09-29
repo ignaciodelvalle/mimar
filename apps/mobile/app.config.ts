@@ -36,17 +36,34 @@
 // Vercel with both values, comma- or whitespace-separated; no file in this
 // repo can do that part.
 //
-// THE FILTER BELOW IS SCOPED TO `/p`, NOT THE WHOLE DOMAIN AND NOT `/t`
-// (physical-tag serials). `/t/[serial]` (`app/(public)/t/[serial]/page.tsx`) is
-// a SERVER-SIDE resolver — rate-limited DB lookup, three tag-status pages, a
-// 307 to `/p/…` — with no mobile equivalent; claiming it here would hand
-// Android a link the installed app cannot answer, and this app's
-// `+not-found.tsx` ("abrilo desde el navegador") is a worse landing than the
-// browser page it replaces. `/p/:publicToken/encontre` and
-// `/p/:publicToken/sighting` share the `/p` prefix and have no mobile screen
-// either — a direct scan of one of those (rare; normally reached by tapping a
-// button on the credential page, not scanned on its own) falls through to that
-// same not-found screen instead of crashing.
+// THE FILTER BELOW MATCHES THE BARE CREDENTIAL PATH ONLY — an exact
+// `pathPattern`, NOT a `pathPrefix` (fresh review, 2026-09-29; the first draft
+// of this filter used `pathPrefix: "/p"`, which is wrong for the same reason
+// claiming the whole domain would be wrong, just narrower). Android's
+// `pathPattern` is anchored to the WHOLE path and treats `.` as "any one
+// character" — nothing else is a wildcard — so `"/p/DIM-....-...."` matches
+// exactly `/p/` + the four issued token characters (`lib/domain/dim-token.ts`'s
+// `DIM_TOKEN_PATTERN`, `[A-Z0-9]{4}`) + `-` + four more, and NOTHING longer or
+// shorter. The QR only ever encodes the canonical uppercase spelling — a
+// lowercase paste gets a 308 to it from `middleware.ts`, never from a camera —
+// so case is not a concern here.
+//
+// WHY THE PREFIX WAS WRONG. `/p/:publicToken/encontre` and
+// `/p/:publicToken/sighting` — the finder and sighting report forms — share the
+// `/p` prefix, and BOTH are exactly what a stranger scanning someone else's
+// lost pet needs. Under `pathPrefix: "/p"` Android would have handed a tap on
+// either straight to this app's `+not-found.tsx` instead of the working web
+// form it replaced — the fresh-review catch this section now documents.
+// `pathPattern`'s anchoring is what keeps this from recurring: it matches ONLY
+// the bare credential shape, so those two paths (and `/t`, and anything else
+// ever added under `/p`) are never handed to the app at all and go straight to
+// the browser, exactly as they did before this section existed.
+//
+// `/t` (physical-tag serials) stays out for an unrelated, independent reason:
+// `/t/[serial]` (`app/(public)/t/[serial]/page.tsx`) is a SERVER-SIDE resolver
+// — rate-limited DB lookup, three tag-status pages, a 307 to `/p/…` — with no
+// mobile equivalent; claiming it would hand Android a link the installed app
+// cannot answer.
 //
 // `apps/mobile/app/p/[publicToken].tsx` is the screen this filter hands off
 // to. It renders the SAME `CredentialScreen` the owner's gated route
@@ -447,16 +464,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         category: ["BROWSABLE", "DEFAULT"],
         data: [{ scheme: "mimar" }],
       },
-      // The verified App Link (native-review S-8, 2026-09-29). See the header's
-      // "ANDROID APP LINKS" section for what is and is not covered, why `/p`
-      // alone, and why this needed BOTH the current and the previous
-      // Play-signing fingerprint published at `/.well-known/assetlinks.json`
-      // before it could go in.
+      // The verified App Link (native-review S-8, 2026-09-29; narrowed the same
+      // day on fresh review — see the header's "ANDROID APP LINKS" section for
+      // why `pathPattern` and not `pathPrefix`, why exactly this shape, and why
+      // this needed BOTH the current and the previous Play-signing fingerprint
+      // published at `/.well-known/assetlinks.json` before it could go in).
       {
         action: "VIEW",
         autoVerify: true,
         category: ["BROWSABLE", "DEFAULT"],
-        data: [{ scheme: "https", host: "www.mimar.com.ar", pathPrefix: "/p" }],
+        data: [{ scheme: "https", host: "www.mimar.com.ar", pathPattern: "/p/DIM-....-...." }],
       },
     ],
   },

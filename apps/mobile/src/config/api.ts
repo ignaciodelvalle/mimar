@@ -157,9 +157,10 @@ export function planesLookCrossed(): boolean {
  * Invariant #1 — the pet is the credential — means the code has to resolve for
  * whoever scans it, and that is a stranger with a phone camera and no miMAR
  * install. `mimar://` would resolve for nobody; the API URL would hand them
- * JSON. Once verified App Links land (see `app.config.ts`) this exact `https`
- * URL starts opening the app for people who DO have it installed, and keeps
- * working unchanged for everyone else. That is why the QR must encode it now.
+ * JSON. The verified Android App Link (see `app.config.ts`, native-review S-8)
+ * now opens THIS app at `app/p/[publicToken].tsx` for people who have it
+ * installed, and keeps working unchanged — straight to the browser — for
+ * everyone else. That is why the QR encodes this exact url.
  *
  * The PATH comes from `@dim/contract/links` — the same table the web app builds
  * its own `/p/{token}` links from. It used to be a template literal here, which
@@ -170,6 +171,32 @@ export function planesLookCrossed(): boolean {
  */
 export function publicCredentialPageUrl(publicToken: string): string {
   return deepLinkUrl(API_BASE_URL, "credential", { publicToken });
+}
+
+/**
+ * The web finder-in-possession form for a lost pet — `/p/{token}/encontre`
+ * (native-review S-8 follow-up, 2026-09-29).
+ *
+ * NO NATIVE SCREEN ANSWERS THIS PATH, ON PURPOSE. `apps/mobile/app.config.ts`'s
+ * verified App Link is scoped to the bare credential path only
+ * (`pathPattern`, not `pathPrefix`), so this exact url keeps falling through to
+ * the browser instead of Android handing it back to this app.
+ * `CredentialScreen`'s `LostReportAction` hands it to `Linking.openURL` rather
+ * than trying to render the form natively — that form is a server action with
+ * its own validation and rate limits, and building a second implementation of
+ * it is a separate, larger work unit than wiring the App Link.
+ */
+export function publicCredentialFinderPageUrl(publicToken: string): string {
+  return deepLinkUrl(API_BASE_URL, "credentialFinder", { publicToken });
+}
+
+/**
+ * The web sighting-report form for a lost pet — `/p/{token}/sighting`. Same
+ * reasoning as `publicCredentialFinderPageUrl` above, for the other of the two
+ * report actions a lost pet's credential can offer.
+ */
+export function publicCredentialSightingPageUrl(publicToken: string): string {
+  return deepLinkUrl(API_BASE_URL, "credentialSighting", { publicToken });
 }
 
 /**
