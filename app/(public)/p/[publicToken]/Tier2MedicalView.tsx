@@ -143,7 +143,13 @@ export function Tier2MedicalView({
       {/* Active medications */}
       {activeMedications.length > 0 && (
         <MedBlock label="Medicación activa">
-          <ul className="m-0 list-none p-0">
+          {/* role="list" is NOT redundant here: WebKit/VoiceOver drops the
+              list semantics of a <ul> styled `list-style: none`, so the count
+              ("lista, 3 elementos") vanishes for exactly the reader who needs
+              to know how many drugs the animal is on (native review C-3). */}
+          {/* biome-ignore lint/a11y/noRedundantRoles: restores list semantics WebKit drops under list-style: none */}
+          {/* biome-ignore lint/a11y/useSemanticElements: it IS the semantic element; the role only re-asserts it for WebKit */}
+          <ul role="list" className="m-0 list-none p-0">
             {activeMedications.map((drug) => (
               <li
                 key={drug}
