@@ -142,8 +142,12 @@ describe("landing hero — credential + lost demo", () => {
     // Later-state contextual rows only appear via client-side cycling — never in
     // SSR HTML (the per-state row is keyed to the current index; dot aria-labels
     // carry the badge strings, so absence is asserted on the row copy instead).
+    expect(html).not.toContain("Plan en el historial");
+    // The jurisdiction-only states are gone from the hero altogether (PO
+    // 2026-09-29, critique M4, reversing handoff decision B4).
+    expect(html).not.toContain("PPP");
+    expect(html).not.toContain("OBSERVACIÓN");
     expect(html).not.toContain("Requisito jurisdiccional");
-    expect(html).not.toContain("Cierra sola en 8 días");
   });
 });
 

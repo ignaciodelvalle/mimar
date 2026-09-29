@@ -52,14 +52,20 @@ describe("<LandingHero> — credential controls keep their accessible contract",
     expect(back).toHaveClass("lp-hcard-flip");
   });
 
-  it("renders the six state dots as named, pressable controls in a toolbar", () => {
+  it("renders the four owner-state dots as named, pressable controls in a toolbar", () => {
     render(
       <LandingHero qrSvg={SAMPLE_SVG} publicHref="/p/DIM-PAMP-0001" publicToken="DIM-PAMP-0001" />,
     );
 
     const toolbar = screen.getByRole("toolbar", { name: "Estados de la credencial" });
     const dots = within(toolbar).getAllByRole("button");
-    expect(dots).toHaveLength(6);
+    // Owner states only (PO 2026-09-29, critique M4): no PPP, no observación.
+    expect(dots.map((d) => d.getAttribute("aria-label"))).toEqual([
+      "AL DÍA",
+      "PERDIDA",
+      "DE VUELTA EN CASA",
+      "EN TRATAMIENTO",
+    ]);
     for (const dot of dots) {
       expect(dot).toHaveClass("lp-hdot"); // the class the 24×24 hit-area CSS targets
       expect(dot).toHaveAccessibleName();

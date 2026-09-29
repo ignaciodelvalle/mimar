@@ -14,13 +14,13 @@
 // public national registry should not look like it's still selling itself
 // after the first look).
 //
-// The sequence plays once on load: al día → perdida → encontrada (al día) →
-// en observación antirrábica → en tratamiento → requiere registro PPP → back
-// to AL DÍA, where the interval clears itself and the card stops for good.
-// Two of these — "en observación antirrábica" and "requiere registro PPP" —
-// are landing-hero-only states with a landing-local tone treatment; the shared
-// LnPetStatus/LnStatusFlag type is intentionally NOT extended for them (each
-// state carries its own `tone`, mapped to tokens in globals.css via data-tone).
+// The sequence plays once on load: al día → perdida → de vuelta en casa →
+// en tratamiento → back to AL DÍA, where the interval clears itself and the
+// card stops for good. Only states an OWNER lives through (PO 2026-09-29,
+// critique M4, reversing handoff decision B4): "EN OBSERVACIÓN" and "REGISTRO
+// PPP · Requisito jurisdiccional" were the first thing a new owner saw, and
+// "PPP" is explained nowhere on the page. They are jurisdiction matters;
+// /municipios already covers the observation workflow.
 //
 // The WHOLE card tints per state: trim background, photo ring, the one
 // contextual read-only row, and the card border. The visible status badge
@@ -92,7 +92,7 @@ type LandingHeroProps = {
 const PLACEHOLDER_TOKEN = "DIM-••••-••••";
 
 /** Landing-local status tone group (drives the card tint in CSS via data-tone). */
-type HeroTone = "ok" | "lost" | "watch" | "sick" | "ppp";
+type HeroTone = "ok" | "lost" | "sick";
 
 type HeroState = {
   key: string;
@@ -111,9 +111,7 @@ const HERO_STATES: HeroState[] = [
   // Its own name, not a second "AL DÍA" (critique 2026-09-29, M4): two dots
   // named alike read as one state twice, to a screen reader and to the eye.
   { key: "encontrada", badge: "DE VUELTA EN CASA", tone: "ok", row: "Volvió a casa" },
-  { key: "observacion", badge: "EN OBSERVACIÓN", tone: "watch", row: "Cierra sola en 8 días" },
   { key: "tratamiento", badge: "EN TRATAMIENTO", tone: "sick", row: "Plan en el historial" },
-  { key: "ppp", badge: "REGISTRO PPP", tone: "ppp", row: "Requisito jurisdiccional" },
 ];
 
 /**

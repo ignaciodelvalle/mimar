@@ -613,8 +613,7 @@
    drives rotateY imperatively; same single-painted-face mechanic as FlipCard /
    .ln-doc-turn). Motion — cycle, turn, lost-pulse — is gated on .lp-motion. */
 
-/* per-state token tint (landing-local; two states — watch/ppp — have no shared
-   LnPetStatus equivalent, which is why the tint lives here, not in that type) */
+/* per-state token tint (landing-local, one per hero state) */
 .lp .lp-hcard[data-tone="ok"] {
   --htone: var(--color-ln-ok);
   --htone-soft: var(--color-ln-ok-bg);
@@ -625,20 +624,10 @@
   --htone-soft: var(--color-ln-err-050);
   --htone-bd: var(--color-ln-err-100);
 }
-.lp .lp-hcard[data-tone="watch"] {
-  --htone: var(--color-ln-azul-700);
-  --htone-soft: var(--color-ln-celeste-050);
-  --htone-bd: var(--color-ln-celeste-100);
-}
 .lp .lp-hcard[data-tone="sick"] {
   --htone: var(--color-ln-warn);
   --htone-soft: var(--color-ln-warn-050);
   --htone-bd: var(--color-ln-warn-100);
-}
-.lp .lp-hcard[data-tone="ppp"] {
-  --htone: var(--color-ln-violeta);
-  --htone-soft: var(--color-ln-violeta-050);
-  --htone-bd: var(--color-ln-violeta-100);
 }
 
 .lp .lp-hcardwrap {
@@ -1027,9 +1016,9 @@
 .lp .lp-hcard-ctx > span:last-child {
   font-weight: 500;
 }
-/* A narrow card wraps the longest row ("En observación · Cierra sola en 8
-   días") to two lines; reserve both, so the cycle still never moves anything
-   below the card. */
+/* A narrow card wraps the longest row ("En tratamiento · Plan en el
+   historial") to two lines; reserve both, so the cycle still never moves
+   anything below the card. */
 @container (max-width: 380px) {
   .lp .lp-hcard-ctx {
     min-height: 58px;
@@ -1169,14 +1158,8 @@
 .lp .lp-hdot[data-tone="lost"] {
   --dtone: var(--color-ln-err);
 }
-.lp .lp-hdot[data-tone="watch"] {
-  --dtone: var(--color-ln-azul-700);
-}
 .lp .lp-hdot[data-tone="sick"] {
   --dtone: var(--color-ln-warn);
-}
-.lp .lp-hdot[data-tone="ppp"] {
-  --dtone: var(--color-ln-violeta);
 }
 .lp .lp-hdot[data-on="true"] {
   background: var(--dtone, var(--color-ln-azul));
