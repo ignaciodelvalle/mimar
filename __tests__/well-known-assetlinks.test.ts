@@ -18,7 +18,7 @@
 import { existsSync, readFileSync } from "node:fs";
 
 import { ANDROID_PACKAGE_NAME } from "@dim/contract/links";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   HANDLE_ALL_URLS,
@@ -64,6 +64,15 @@ const FP_A = [
 ].join(":");
 
 const FP_B = FP_A.replace(/^14/, "AB");
+
+/** Every context string the route reported as an incident, for the 500 arm. */
+const reported: string[] = [];
+
+vi.mock("@/lib/infra/report-error", () => ({
+  reportError: (context: string) => {
+    reported.push(context);
+  },
+}));
 
 describe("parseFingerprints", () => {
   it("treats an unset variable as no association", () => {
@@ -159,6 +168,52 @@ describe("the package name has exactly one home", () => {
     const config = readFileSync("apps/mobile/app.config.ts", "utf8");
     expect(config).toContain("ANDROID_PACKAGE_NAME");
     expect(config).toContain("@dim/contract/links");
+  });
+});
+
+describe("GET /.well-known/assetlinks.json — the HTTP edge", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    reported.length = 0;
+  });
+
+  it("answers 404, no-store, when no fingerprint is configured", async () => {
+    vi.stubEnv("ANDROID_APP_FINGERPRINT", "");
+    const { GET } = await import("@/app/.well-known/assetlinks.json/route");
+    const response = await GET();
+    expect(response.status).toBe(404);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.text()).toBe("");
+  });
+
+  it("answers 500 with a readable body when the fingerprint is malformed, and reports it", async () => {
+    vi.stubEnv("ANDROID_APP_FINGERPRINT", "not-a-fingerprint");
+    const { GET } = await import("@/app/.well-known/assetlinks.json/route");
+    const response = await GET();
+    expect(response.status).toBe(500);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual({ error: "assetlinks_misconfigured" });
+    expect(reported).toEqual(["well-known/assetlinks"]);
+  });
+
+  it("answers 200 with both fingerprints, application/json, and a cacheable header", async () => {
+    vi.stubEnv("ANDROID_APP_FINGERPRINT", `${FP_A},${FP_B}`);
+    const { GET } = await import("@/app/.well-known/assetlinks.json/route");
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toMatch(/^application\/json/);
+    expect(response.headers.get("cache-control")).toBe("public, max-age=3600");
+    expect(await response.json()).toEqual([
+      {
+        relation: [HANDLE_ALL_URLS],
+        target: {
+          namespace: "android_app",
+          package_name: ANDROID_PACKAGE_NAME,
+          sha256_cert_fingerprints: [FP_A, FP_B],
+        },
+      },
+    ]);
+    expect(reported).toEqual([]);
   });
 });
 

@@ -372,6 +372,17 @@ describe("the table is unambiguous", () => {
     expect(APP_SCREENS.has("/transferencias/*")).toBe(true);
   });
 
+  // native-review S-8, 2026-09-29. This screen is reached ONLY through the
+  // verified Android App Link (`apps/mobile/app.config.ts`'s intent filter),
+  // never through `appPath`/`appRoutePath` — see the `credential` entry's own
+  // comment above for why those two stay unrelated. Checked here, against the
+  // same file-system corpus, because a screen this table does not name is
+  // exactly the kind of thing that can be renamed or deleted with nothing in
+  // this fitness test noticing.
+  it("has a real screen for the verified App Link the credential's own appPath cannot describe", () => {
+    expect(APP_SCREENS.has(eraseParams(DEEP_LINK_MAP.credential.webPath))).toBe(true);
+  });
+
   // A public link HANDED TO SOMEBODY stays null, forever. A stranger's phone
   // camera does not follow `mimar://`, and a public link that only resolves for
   // people with the app installed is a lost pet nobody can report.

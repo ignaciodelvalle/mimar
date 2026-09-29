@@ -149,7 +149,21 @@ export const DEEP_LINK_MAP = {
   // for a stranger with a phone camera and no MiMAR install.
   // -------------------------------------------------------------------------
 
-  /** The QR-verifiable public credential. The most important link in the product. */
+  /**
+   * The QR-verifiable public credential. The most important link in the product.
+   *
+   * `appPath` STAYS `null` even now that a verified Android App Link exists for
+   * it (native-review S-8, 2026-09-25 — see `apps/mobile/app.config.ts`'s
+   * "ANDROID APP LINKS" section). That field is the `mimar://` custom-scheme
+   * claim this table's own rule below forbids for a public one-subject link, and
+   * it is what `appRoutePath`/`deepLinkAppUrl` read — neither is involved in a
+   * verified `https` link. `apps/mobile/app/p/[publicToken].tsx` is a REAL
+   * screen Android hands the incoming URL to directly, through expo-router's own
+   * file-system resolution against the url's path, exactly as the `appointment`
+   * entry's own comment describes for the custom scheme. Two different
+   * mechanisms answering "does a screen exist for this" differently is exactly
+   * why `appointment` needed the same distinction spelled out below.
+   */
   credential: { webPath: "/p/:publicToken", appPath: null, access: "public" },
 
   /** "I have this animal" — the finder-in-possession flow. */
