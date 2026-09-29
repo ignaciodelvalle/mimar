@@ -132,8 +132,14 @@ async function clearExistingGrant(page: Page): Promise<void> {
     const button = page.getByRole("button", { name: trigger });
     if ((await button.count()) === 0) continue;
     await button.click();
+    // Scoped to this page's own path, as in e2e/demo/_helpers.ts: another
+    // action the page fires must not stand in for the finalize/withdraw.
+    const actionPath = new URL(page.url()).pathname;
     const resolved = page.waitForResponse(
-      (r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined,
+      (r) =>
+        r.request().method() === "POST" &&
+        r.request().headers()["next-action"] !== undefined &&
+        new URL(r.url()).pathname === actionPath,
       { timeout: 30_000 },
     );
     await page.getByRole("button", { name: confirm }).click();
@@ -226,9 +232,13 @@ test.describe
         // Wait for the SERVER ACTION's answer (the chapas.spec pattern), never
         // the post-action URL: navigating straight after the click aborts the
         // in-flight action, and the redirect is the hop e2e/README.md says drops.
+        // Scoped to THIS page's path so another action the page fires cannot
+        // stand in for the one we wait on (the e2e/demo/_helpers.ts rule).
         const weightSaved = caretakerPage.waitForResponse(
           (r) =>
-            r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined,
+            r.request().method() === "POST" &&
+            r.request().headers()["next-action"] !== undefined &&
+            new URL(r.url()).pathname === `/mis-mascotas/${token}`,
           { timeout: 30_000 },
         );
         await caretakerPage.getByRole("button", { name: "Registrar peso" }).click();
