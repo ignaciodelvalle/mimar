@@ -1340,7 +1340,7 @@
 .lp .lp-bond-sub a {
   display: inline-block;
   padding-block: 3px;
-  color: #fff;
+  color: var(--color-ln-card);
   font-weight: 600;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -2147,7 +2147,7 @@
   color: var(--color-ln-celeste-100);
 }
 .lp .lp-estado-privacy b {
-  color: #fff;
+  color: var(--color-ln-card);
 }
 .lp .lp-estado-more {
   display: inline-flex;
@@ -2155,7 +2155,7 @@
   gap: 6px;
   min-height: 44px;
   margin-top: 10px;
-  color: #fff;
+  color: var(--color-ln-card);
   font-weight: 600;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -2177,7 +2177,7 @@
   font-family: var(--lp-serif);
   font-size: clamp(18px, 1.8vw, 22px);
   line-height: 1.35;
-  color: #fff;
+  color: var(--color-ln-card);
 }
 
 /* mac-ish console window */
