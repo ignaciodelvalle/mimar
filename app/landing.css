@@ -500,6 +500,8 @@
   }
   .lp-nav .lp-btn--nav.lp-btn--primary {
     padding-inline: 14px;
+    /* "Crear / cuenta" on two lines made the row 84px tall at 320px. */
+    white-space: nowrap;
   }
   .lp-nav .lp-nav-cta-long {
     display: none;
@@ -563,10 +565,9 @@
   line-height: 1.5;
   color: var(--color-ln-ink-2);
 }
-.lp .lp-hero-urgent-links {
-  white-space: nowrap;
-}
 .lp .lp-hero-urgent a {
+  /* Each link stays whole; the pair may wrap (at 320px both do not fit). */
+  white-space: nowrap;
   display: inline-block;
   padding-block: 3px;
   color: var(--color-ln-err);
@@ -1667,13 +1668,8 @@
   z-index: 5;
   pointer-events: none;
 }
-/* NEVER TALLER THAN THE SCREEN (critique 2026-09-29, M5). A fixed 640px
-   phone under a sticky nav, plus the device label above it, overran a
-   1440×800 viewport: the vet chapter's FIRMADO stamp — the payoff of the
-   whole sequence — played below the fold. The frame now follows the
-   viewport's height, with a floor under which the screens stop fitting. */
 .lp .lp-scr {
-  height: clamp(560px, calc(100svh - 190px), 640px);
+  height: 640px;
   display: flex;
   flex-direction: column;
   background: var(--color-ln-paper);
@@ -1682,11 +1678,29 @@
   padding-bottom: 18px;
 }
 .lp .lp-scr--tall {
-  height: clamp(600px, calc(100svh - 150px), 760px);
+  height: 760px;
 }
 /* The sign-up screen holds one pet: a full phone was mostly blank paper. */
 .lp .lp-scr--short {
   height: 440px;
+}
+/* NEVER TALLER THAN THE SCREEN (critique 2026-09-29, M5). A 640px phone (760
+   for the libreta) under the sticky nav, plus the device label above it,
+   overran a laptop viewport: the vet chapter's FIRMADO stamp, the payoff of
+   the whole sequence, played below the fold. Shrinking the SCREEN does not
+   work: its content is drawn for 640px and the stamp is the first thing
+   clipped. So the whole phone scales, content included, with `zoom` (which,
+   unlike transform, also shrinks the space it takes). Desktop only: stacked
+   on a phone, the device is scrolled to like any other block. */
+@media (min-width: 941px) and (max-height: 860px) {
+  .lp .lp-ch-device .lp-phone {
+    zoom: 0.86;
+  }
+}
+@media (min-width: 941px) and (max-height: 740px) {
+  .lp .lp-ch-device .lp-phone {
+    zoom: 0.76;
+  }
 }
 .lp .lp-scr-top {
   height: 52px;
@@ -2081,6 +2095,10 @@
 .lp .lp-intake-row[data-t="ok"] .lp-iic {
   background: var(--color-ln-ok-bg);
   color: var(--color-ln-ok);
+}
+.lp .lp-intake-row[data-t="err"] .lp-iic {
+  background: var(--color-ln-err-050);
+  color: var(--color-ln-err);
 }
 .lp .lp-intake-row b {
   display: block;
@@ -3077,7 +3095,7 @@ html:has([data-landing-root]) {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   font-size: var(--text-md);
 }
 .lp .lp-vf-tag {
@@ -3092,7 +3110,9 @@ html:has([data-landing-root]) {
 .lp .lp-vf-form {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  /* Tightened 2026-09-29 (M5): the FIRMADO line was the part clipped by
+     the 640px screen. */
+  gap: 5px;
 }
 .lp .lp-vf {
   display: flex;
@@ -3105,8 +3125,8 @@ html:has([data-landing-root]) {
 }
 .lp .lp-vf-i {
   display: block;
-  min-height: 30px;
-  padding: 6px 9px;
+  min-height: 28px;
+  padding: 5px 9px;
   border: 1px solid var(--color-ln-line);
   border-radius: var(--radius-md);
   background: var(--color-ln-card);
@@ -3136,7 +3156,7 @@ html:has([data-landing-root]) {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 12px;
+  margin-top: 8px;
   font-size: var(--text-sm);
   color: var(--color-ln-ink-2);
 }

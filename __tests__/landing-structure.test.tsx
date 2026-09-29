@@ -312,12 +312,17 @@ describe("story — CastFila + 6 chapters + rail", () => {
     expect(html).toContain('data-s="lost"');
   });
 
-  it("the phone frame follows the viewport height, never a fixed taller box (M5)", () => {
+  it("the phone scales down on short desktop viewports instead of overrunning them (M5)", () => {
     const css = readFileSync(join(process.cwd(), "app", "landing.css"), "utf8");
-    for (const sel of [".lp .lp-scr {", ".lp .lp-scr--tall {"]) {
-      const rule = css.slice(css.indexOf(sel), css.indexOf("}", css.indexOf(sel)));
-      expect(rule, sel).toMatch(/height: clamp\([^)]*100svh[^)]*\)/);
-    }
+    const scaled = [
+      ...css.matchAll(
+        /@media \(min-width: 941px\) and \(max-height: (\d+)px\) \{\s*\.lp \.lp-ch-device \.lp-phone \{\s*zoom: ([\d.]+);/g,
+      ),
+    ].map((m) => ({ maxHeight: Number(m[1]), zoom: Number(m[2]) }));
+    expect(scaled.length).toBeGreaterThanOrEqual(2);
+    // The tall libreta phone (760px) plus the nav fits a 800px-tall viewport.
+    const at800 = scaled.filter((s) => s.maxHeight >= 800).map((s) => s.zoom);
+    expect(Math.min(...at800) * 760 + 64 + 40).toBeLessThanOrEqual(800);
   });
 
   it("the story's sequences never loop (WCAG 2.2.2)", () => {

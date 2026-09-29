@@ -584,8 +584,9 @@ function OwnerFoundScreen() {
  * 7 · The payoff (critique 2026-09-29, M5): the chapter used to end on the
  * "¿Confirmás?" dialog, never showing her home. After the confirm, Martín's
  * app shows Pampa back AL DÍA (the flag the product renders for an active
- * pet) and the entry the libreta adds, worded as chapter 5's libreta words
- * it. Not "EN CASA": no product surface prints that label.
+ * pet) and the three entries the search left in her libreta, newest first,
+ * worded as chapter 5's libreta words them: lost, taken in, home. Not "EN
+ * CASA": no product surface prints that label.
  */
 function OwnerHomeScreen() {
   return (
@@ -606,6 +607,28 @@ function OwnerHomeScreen() {
             <div className="min-w-0">
               <b>Volvió a casa</b>
               <span className="lp-intake-sub">Devuelta a su dueño · {landingDate(FOUND.date)}</span>
+            </div>
+          </div>
+          <div className="lp-intake-row">
+            <span className="lp-iic">
+              <Icon name="edificio" size="sm" decorative />
+            </span>
+            <div className="min-w-0">
+              <b>Ingresó a un refugio</b>
+              <span className="lp-intake-sub">
+                {String(INTAKE.payload.intake_condition)} · {landingDate(INTAKE.date)}
+              </span>
+            </div>
+          </div>
+          <div className="lp-intake-row" data-t="err">
+            <span className="lp-iic">
+              <Icon name="perdida" size="sm" decorative />
+            </span>
+            <div className="min-w-0">
+              <b>Reportada perdida</b>
+              <span className="lp-intake-sub">
+                {LOST_PLACE} · {landingDate(LOST.date)}
+              </span>
             </div>
           </div>
         </div>
