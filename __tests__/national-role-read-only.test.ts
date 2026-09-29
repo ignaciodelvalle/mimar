@@ -186,7 +186,9 @@ describe("national role — writes are refused", () => {
       if (stripComments(readFileSync(rel, "utf8")).includes(READ_GATE)) offenders.push(rel);
     }
     expect(offenders, "writers must gate on requireAdminOrGovtOrRedirect").toEqual([]);
-  });
+    // A full read of every action and route file: CPU-bound, not a wait, and
+    // it overran the 5 s default once under a loaded full-suite run (gAL2).
+  }, 30_000);
 
   it("the fence is not vacuous: it still catches an import of the read gate", () => {
     // The comment-stripping above only ever makes this rule LOOSER, so the

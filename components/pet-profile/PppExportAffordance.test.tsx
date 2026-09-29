@@ -66,7 +66,9 @@ describe("eligible owner (CABA)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Esta mascota no figura como potencialmente peligrosa.",
     );
-    expect(screen.getByRole("button", { name: BUTTON })).toBeInTheDocument();
+    // findByRole, not getByRole: the alert can land a render before the busy
+    // label ("Generando el PDF…") gives the button its name back.
+    expect(await screen.findByRole("button", { name: BUTTON })).toBeInTheDocument();
   });
 
   it("an infrastructure failure gets the generic retry message", async () => {
