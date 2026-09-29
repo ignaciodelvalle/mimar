@@ -526,6 +526,9 @@ function RootLayout() {
           name="mascotas/[publicToken]/credencial"
           options={{ title: "Credencial pública" }}
         />
+        {/* The verified App Link's landing (S-8): the same CredentialScreen as
+            the owner's route above, so it carries the same title. */}
+        <Stack.Screen name="p/[publicToken]" options={{ title: "Credencial pública" }} />
         {/* LAS TRES QUE TENÍAN SUPERFICIES EN DESACUERDO, decididas por el PO el
             01/09 (las preguntas vivieron en la fence, TITLE_PENDING):
             · «Modo perdida» — el string del botón que la abre y el nombre con
