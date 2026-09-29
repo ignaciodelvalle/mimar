@@ -51,19 +51,23 @@ describe("<LandingHero> — credential controls keep their accessible contract",
     expect(back).toHaveClass("lp-hcard-flip");
   });
 
-  it("renders the three owner-state dots as named, pressable controls in a toolbar", () => {
+  it("renders the four owner-state dots as named, pressable controls, in order", () => {
     render(
       <LandingHero qrSvg={SAMPLE_SVG} publicHref="/p/DIM-PAMP-0001" publicToken="DIM-PAMP-0001" />,
     );
 
     const toolbar = screen.getByRole("toolbar", { name: "Estados de la credencial" });
     const dots = within(toolbar).getAllByRole("button");
-    // Owner states only (PO 2026-09-29, critique M4): no PPP, no observación.
-    // "DE VUELTA EN CASA" was removed (PO 2026-09-29): it resolved back to the
-    // same AL DÍA wording, so it was a redundant state.
+    // Owner states only (PO 2026-09-29, critique M4): no PPP jurisdiction
+    // paperwork. "DE VUELTA EN CASA" was removed the same day: it resolved
+    // back to the same AL DÍA wording, so it was a redundant state.
+    // "EN OBSERVACIÓN ANTIRRÁBICA" was added later the same day (separate PO
+    // request): a bite/rabies observation IS the owner's own situation,
+    // unlike the removed PPP registration paperwork.
     expect(dots.map((d) => d.getAttribute("aria-label"))).toEqual([
       "AL DÍA",
       "PERDIDA",
+      "EN OBSERVACIÓN ANTIRRÁBICA",
       "EN TRATAMIENTO",
     ]);
     for (const dot of dots) {
@@ -155,6 +159,19 @@ describe("<LandingHero> — the state reads in words, not only colour (M4)", () 
     const toolbar = screen.getByRole("toolbar", { name: "Estados de la credencial" });
     fireEvent.click(within(toolbar).getByRole("button", { name: "PERDIDA" }));
     expect(stateLine()).toHaveTextContent("Está perdida · Llamar al dueño");
+  });
+
+  it("reuses the product's own 'observacion-antirrabica' label and tints celeste/vigilancia (M4 follow-up)", () => {
+    renderDemoHero();
+    const toolbar = screen.getByRole("toolbar", { name: "Estados de la credencial" });
+    fireEvent.click(within(toolbar).getByRole("button", { name: "EN OBSERVACIÓN ANTIRRÁBICA" }));
+    // Same wording lib/ui/pet-situation.ts uses for the real credential's
+    // "observacion-antirrabica" situation — the landing must not invent its own.
+    expect(stateLine()).toHaveTextContent(
+      "En observación antirrábica · Mordedura · control de 10 días",
+    );
+    const card = document.querySelector('[data-section="hero-credential"]');
+    expect(card).toHaveAttribute("data-tone", "vigilancia");
   });
 
   it("names every state dot differently", () => {

@@ -604,6 +604,15 @@
   --htone-soft: var(--color-ln-warn-050);
   --htone-bd: var(--color-ln-warn-100);
 }
+/* Vigilancia (en observación antirrábica) — the SAME celeste family the real
+   credential uses for this situation: .pc-cred[data-situation=
+   "observacion-antirrabica"] .pc-sit-chip (app/globals.css) pairs
+   --color-ln-celeste-050/-100 with --color-ln-azul as the ink. No new tokens. */
+.lp .lp-hcard[data-tone="vigilancia"] {
+  --htone: var(--color-ln-azul);
+  --htone-soft: var(--color-ln-celeste-050);
+  --htone-bd: var(--color-ln-celeste-100);
+}
 
 .lp .lp-hcardwrap {
   perspective: 1200px;
@@ -999,6 +1008,20 @@
     min-height: 58px;
   }
 }
+/* The vigilancia row ("En observación antirrábica · Mordedura · control de 10
+   días", 59 chars) runs ~60% longer than the previous longest ("En
+   tratamiento · Plan en el historial", 37 chars) — long enough to need 2 lines
+   even at the card's FULL width, and a 3rd at the narrowest supported phones,
+   where the other three states still fit their default reservations. Scoped
+   to this one tone so the shorter states keep their existing, tighter rows. */
+.lp .lp-hcard[data-tone="vigilancia"] .lp-hcard-ctx {
+  min-height: 58px;
+}
+@container (max-width: 380px) {
+  .lp .lp-hcard[data-tone="vigilancia"] .lp-hcard-ctx {
+    min-height: 78px;
+  }
+}
 
 /* miMAR's machine-readable strip — two lines of the card's own format (see
    heroMrzLines in landing-content.ts), set like the foot of an identity
@@ -1135,6 +1158,9 @@
 }
 .lp .lp-hdot[data-tone="sick"] {
   --dtone: var(--color-ln-warn);
+}
+.lp .lp-hdot[data-tone="vigilancia"] {
+  --dtone: var(--color-ln-azul);
 }
 .lp .lp-hdot[data-on="true"] {
   background: var(--dtone, var(--color-ln-azul));

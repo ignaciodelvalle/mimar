@@ -143,10 +143,15 @@ describe("landing hero — credential + lost demo", () => {
     // SSR HTML (the per-state row is keyed to the current index; dot aria-labels
     // carry the badge strings, so absence is asserted on the row copy instead).
     expect(html).not.toContain("Plan en el historial");
-    // The jurisdiction-only states are gone from the hero altogether (PO
-    // 2026-09-29, critique M4, reversing handoff decision B4).
+    // The jurisdiction PAPERWORK state is still gone from the hero (PO
+    // 2026-09-29, critique M4, reversing handoff decision B4) — "PPP" is
+    // explained nowhere on the page and /municipios already covers that
+    // registration workflow. A DIFFERENT "en observación antirrábica" state
+    // was added later the same day (separate PO request): a bite/rabies
+    // observation is the owner's own situation, not jurisdiction paperwork, so
+    // its dot legitimately puts "OBSERVACIÓN" back into every render via its
+    // static aria-label — only the PPP-specific wording stays banned.
     expect(html).not.toContain("PPP");
-    expect(html).not.toContain("OBSERVACIÓN");
     expect(html).not.toContain("Requisito jurisdiccional");
   });
 });

@@ -14,15 +14,20 @@
 // public national registry should not look like it's still selling itself
 // after the first look).
 //
-// The sequence plays once on load: al día → perdida → en tratamiento → back
-// to AL DÍA, where the interval clears itself and the card stops for good.
-// The "de vuelta en casa" state was removed (PO 2026-09-29): it resolved back
-// to the same AL DÍA wording anyway, so the cycle now goes straight from
-// PERDIDA to EN TRATAMIENTO. Only states an OWNER lives through (PO 2026-09-29,
-// critique M4, reversing handoff decision B4): "EN OBSERVACIÓN" and "REGISTRO
-// PPP · Requisito jurisdiccional" were the first thing a new owner saw, and
-// "PPP" is explained nowhere on the page. They are jurisdiction matters;
-// /municipios already covers the observation workflow.
+// The sequence plays once on load: al día → perdida → en observación
+// antirrábica → en tratamiento → back to AL DÍA, where the interval clears
+// itself and the card stops for good. The "de vuelta en casa" state was
+// removed (PO 2026-09-29): it resolved back to the same AL DÍA wording
+// anyway. Only states an OWNER lives through (PO 2026-09-29, critique M4,
+// reversing handoff decision B4): "EN OBSERVACIÓN" and "REGISTRO PPP ·
+// Requisito jurisdiccional" were removed because that pair was jurisdiction
+// PAPERWORK — "PPP" is explained nowhere on the page, and /municipios already
+// covers that registration workflow. The rabies-observation state below (PO
+// request, same day) is a DIFFERENT thing: a pet under clinical quarantine
+// after a bite is squarely the owner's own situation, not a jurisdiction
+// form — the product's own lib/ui/pet-situation.ts already names it
+// "observacion-antirrabica" on the real credential, so the hero now tells the
+// same truth about it.
 //
 // The WHOLE card tints per state: trim background, photo ring, the one
 // contextual read-only row, and the card border. The visible status badge
@@ -92,8 +97,10 @@ type LandingHeroProps = {
 /** Shown in place of a real token when there is no demo pet to resolve. */
 const PLACEHOLDER_TOKEN = "DIM-••••-••••";
 
-/** Landing-local status tone group (drives the card tint in CSS via data-tone). */
-type HeroTone = "ok" | "lost" | "sick";
+/** Landing-local status tone group (drives the card tint in CSS via data-tone).
+ *  "vigilancia" mirrors the product's own tone for this situation (see
+ *  lib/ui/pet-situation.ts's `PetSituationTone`). */
+type HeroTone = "ok" | "lost" | "vigilancia" | "sick";
 
 type HeroState = {
   key: string;
@@ -106,10 +113,20 @@ type HeroState = {
 
 // PO-approved sequence. The "encontrada" / "de vuelta en casa" state was
 // removed (PO 2026-09-29): it only resolved back to AL DÍA, so it read as a
-// second, differently-named copy of the resting state.
+// second, differently-named copy of the resting state. "observacion" was
+// added the same day (separate PO request): the badge reuses the product's
+// own "observacion-antirrabica" label verbatim (lib/ui/pet-situation.ts) so
+// stateWord()'s default capitalize(badge.toLowerCase()) path reproduces it
+// exactly — no special-casing needed, unlike "perdida"'s sex agreement.
 const HERO_STATES: HeroState[] = [
   { key: "aldia", badge: "AL DÍA", tone: "ok", row: "Vacunas firmadas" },
   { key: "perdida", badge: "PERDIDA", tone: "lost", row: "Llamar al dueño" },
+  {
+    key: "observacion",
+    badge: "EN OBSERVACIÓN ANTIRRÁBICA",
+    tone: "vigilancia",
+    row: "Mordedura · control de 10 días",
+  },
   { key: "tratamiento", badge: "EN TRATAMIENTO", tone: "sick", row: "Plan en el historial" },
 ];
 
