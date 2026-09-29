@@ -62,6 +62,13 @@ export type RepoFunction = {
   source: string;
   /** The dollar-quoted body, verbatim (what pg_proc.prosrc stores). */
   body: string;
+  /**
+   * A tombstone: the authoritative statement for this name is a DROP FUNCTION
+   * (0271 drops two functions 0269 created). The live database must NOT have
+   * it. Name-level, like the rest of this check — a surviving overload of the
+   * same name reads as drift, which fails closed.
+   */
+  dropped?: true;
 };
 
 const CREATE_FN_RE =
@@ -73,14 +80,53 @@ const CREATE_FN_RE =
  * CALLER applies the last-definition-wins rule across files.
  */
 export function extractFunctionBodies(source: string, contents: string): RepoFunction[] {
-  const out: RepoFunction[] = [];
+  return extractIndexedBodies(source, contents).map(({ fn }) => fn);
+}
+
+function extractIndexedBodies(
+  source: string,
+  contents: string,
+): Array<{ fn: RepoFunction; index: number }> {
+  const out: Array<{ fn: RepoFunction; index: number }> = [];
   for (const m of contents.matchAll(CREATE_FN_RE)) {
     const name = m[1];
     const tag = m[2];
     const bodyStart = (m.index ?? 0) + m[0].length;
     const end = contents.indexOf(tag, bodyStart);
     if (end === -1) continue; // malformed — never guess a body
-    out.push({ name, source, body: contents.slice(bodyStart, end) });
+    out.push({ fn: { name, source, body: contents.slice(bodyStart, end) }, index: m.index ?? 0 });
+  }
+  return out;
+}
+
+const DROP_FN_RE = /DROP\s+FUNCTION\s+(?:IF\s+EXISTS\s+)?([^;]+);/gi;
+
+/**
+ * Every function a `DROP FUNCTION [IF EXISTS] a(...), b(...);` statement names,
+ * with the statement's offset so the caller can order it against CREATEs in
+ * the same file (a drop-then-recreate must end up live, not tombstoned).
+ */
+export function extractFunctionDrops(contents: string): Array<{ name: string; index: number }> {
+  const out: Array<{ name: string; index: number }> = [];
+  for (const m of contents.matchAll(DROP_FN_RE)) {
+    // Split the target list on TOP-LEVEL commas only — argument lists nest.
+    let depth = 0;
+    let start = 0;
+    const targets: string[] = [];
+    const list = m[1];
+    for (let i = 0; i <= list.length; i++) {
+      const ch = list[i];
+      if (ch === "(") depth++;
+      else if (ch === ")") depth--;
+      else if ((ch === "," && depth === 0) || ch === undefined) {
+        targets.push(list.slice(start, i));
+        start = i + 1;
+      }
+    }
+    for (const target of targets) {
+      const name = /^\s*(?:public\.)?(\w+)\s*(?:\(|$)/i.exec(target)?.[1];
+      if (name !== undefined) out.push({ name, index: m.index ?? 0 });
+    }
   }
   return out;
 }
@@ -88,7 +134,8 @@ export function extractFunctionBodies(source: string, contents: string): RepoFun
 /**
  * The authoritative body per function name: db/triggers.sql wins for the
  * functions it defines (hand-applied source of truth — see header); otherwise
- * the last defining migration wins.
+ * the last defining migration wins. A later DROP FUNCTION (in file order, then
+ * statement order) leaves a tombstone instead: the name must be absent live.
  */
 export function collectRepoFunctions(
   migrationFiles: Array<{ name: string; contents: string }>,
@@ -96,7 +143,14 @@ export function collectRepoFunctions(
 ): Map<string, RepoFunction> {
   const byName = new Map<string, RepoFunction>();
   for (const f of migrationFiles) {
-    for (const fn of extractFunctionBodies(f.name, f.contents)) {
+    const events = [
+      ...extractIndexedBodies(f.name, f.contents),
+      ...extractFunctionDrops(f.contents).map(({ name, index }) => ({
+        fn: { name, source: f.name, body: "", dropped: true as const },
+        index,
+      })),
+    ].sort((a, b) => a.index - b.index);
+    for (const { fn } of events) {
       byName.set(fn.name, fn); // files arrive sorted — later overwrites earlier
     }
   }
@@ -154,6 +208,12 @@ export async function checkFunctionParity(client: Client): Promise<Section> {
 
   for (const [name, fn] of repoFns) {
     const deployed = live.get(name);
+    if (fn.dropped) {
+      if (deployed !== undefined) {
+        failures.push(`${name}: dropped by ${fn.source} but still PRESENT in the live database`);
+      }
+      continue;
+    }
     if (deployed === undefined) {
       failures.push(`${name}: defined in ${fn.source} but MISSING from the live database`);
       continue;

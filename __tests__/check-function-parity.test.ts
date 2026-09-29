@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   collectRepoFunctions,
   extractFunctionBodies,
+  extractFunctionDrops,
   normalizeBody,
 } from "@/scripts/check-function-parity";
 
@@ -68,6 +69,45 @@ describe("collectRepoFunctions — authority rules", () => {
     );
     expect(map.get("f_mig")?.source).toBe("0182_x.sql");
     expect(map.get("f_other")?.source).toBe("db/triggers.sql");
+  });
+});
+
+describe("collectRepoFunctions — DROP FUNCTION tombstones", () => {
+  // CI run 36560138481: 0271 drops two functions 0269 created, and the scanner
+  // — CREATE-only — demanded both exist on a freshly replayed database.
+  it("a later migration's DROP leaves a tombstone, not the old body", () => {
+    const map = collectRepoFunctions(
+      [
+        { name: "0269_a.sql", contents: FN("f_gone", "\nbody\n") },
+        {
+          name: "0271_b.sql",
+          contents: "DROP FUNCTION IF EXISTS public.f_gone(public.audit_log);",
+        },
+      ],
+      null,
+    );
+    expect(map.get("f_gone")).toMatchObject({ dropped: true, source: "0271_b.sql" });
+  });
+
+  it("drop-then-recreate in one file ends live; recreate-then-drop ends dropped", () => {
+    const map = collectRepoFunctions(
+      [
+        { name: "0001_a.sql", contents: `DROP FUNCTION f_back();\n${FN("f_back", "\nnew\n")}` },
+        { name: "0002_b.sql", contents: `${FN("f_out", "\nx\n")}\nDROP FUNCTION f_out();` },
+      ],
+      null,
+    );
+    expect(map.get("f_back")?.dropped).toBeUndefined();
+    expect(normalizeBody(map.get("f_back")?.body ?? "")).toBe("new");
+    expect(map.get("f_out")?.dropped).toBe(true);
+  });
+
+  it("names every target of a multi-function DROP, splitting on top-level commas only", () => {
+    expect(
+      extractFunctionDrops(
+        "DROP FUNCTION IF EXISTS public.a(numeric(10,2), text), b(uuid) CASCADE;",
+      ).map((d) => d.name),
+    ).toEqual(["a", "b"]);
   });
 });
 
