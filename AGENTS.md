@@ -523,7 +523,16 @@ None of these are blockers for v1. The data model accepts them without rework; t
 - `payload` (jsonb), `notes?`, `created_at`
 - **Location (interim, v1):** `location_lat?`, `location_lng?` — numeric(10,7) lat/lng pair for events that carry precise location (vet visit, scan GPS, found-pet). Migrating to PostGIS `geography(Point, 4326)` as `location_point?` is deferred until we need radius search or polygon-based projections; Drizzle `customType` makes the lift-and-shift straightforward.
 - **SENASA alignment columns (compliance PR 3, all nullable):** `tipo_evento_code` (FK → `ref.tipo_evento_sanitario`), `lote_biologico`, `laboratorio`, `vencimiento_biologico`, `via_aplicacion_code` (FK → `ref.via_aplicacion`), `vet_matricula`, `vet_jurisdiccion_code` (FK → `ref.jurisdiccion_sanitaria`), `establecimiento_renspa`, `proxima_dosis_at`, `firmado_at`, `firma_hash` (Ley 25.506 placeholder). Helpers en `lib/reference/sanitary-vocab.ts`. Legacy events sin `tipo_evento_code` siguen funcionando como antes; el form `/vet/eventos/nuevo` los populará cuando se reescriba al orden del PDF Res. 580/2014.
+- `visit_id?` (migration 0273) — the vet's atención the row was written in. Stamped AT INSERT by the Atender writers (`VisitScopedEventsRepository`), never backfilled, null for every row written outside a visit. Composite FK `(visit_id, pet_id) → visits(id, pet_id)`: a row cannot point at another pet's visit. Trigger `pet_events_visit_org_match`: a stamped row's `author_organization_id` must be the visit's organization.
 - **Append-only. Never edit, never delete. Correct by adding a new event.**
+
+### `Visit` (`visits`) — one vet, one pet, one organization, one sitting (migration 0273)
+Operational metadata (invariant 3), **not a fact**: the grouping of what one vet wrote for one pet at one organization in one atención. The facts stay in `pet_events`, each stamped with `visit_id`.
+- `id` (a caller may supply it — offline clients; `ensureOpenVisit` inserts it idempotently and refuses one that names another pet/org/vet), `pet_id` (→ pets, cascade), `organization_id` (→ organizations, restrict), `vet_user_id?` (→ profiles, set null on erasure), `modality` (`clinic | home`), `appointment_id?` (→ appointments, set null), `opened_at`, `closed_at?`, `close_reason?` (`vet | expired | superseded`), `closed_by_user_id?`. `UNIQUE (id, pet_id)` backs the composite FK above.
+- **Lifecycle** (`src/modules/visits`): every Atender writer opens or reuses the signer's visit implicitly (care is never refused for want of one); "Iniciar atención" opens it explicitly with a modality and optionally the appointment being attended; "Terminar atención" closes it (`vet`, DB clock). Opening runs under `pg_advisory_xact_lock` per (pet, org, vet); an open visit older than 12 h is closed lazily as `expired` (`closed_at` = its last record, or its opening), older open ones as `superseded`. No partial unique index on purpose — an offline visit may sync while a web one is open.
+- **Mutation rules** (trigger `visits_mutation_rules`): `modality` changes only while no event references the visit; close fields are set once; the other columns are immutable.
+- **Modality elsewhere:** `service_offerings.modality` (chosen when the service is created) and `appointments.modality` (copied from the offering AT BOOKING, so the agenda needs no join and an edited offering does not rewrite a booked visit). The libreta (web `LibretaFace`, native payload `visitId`, Atender's walk-in history) groups a visit's records as one "Atención · fecha · modalidad" block.
+- **Drift:** `scripts/detect-pet-cache-drift.ts` fifth section (`lib/infra/visit-drift.ts`) — intake payload modality vs the visit, stamped row org vs the visit (belt under the trigger), and empty expired visits (information only). A pet mismatch is unrepresentable (the FK).
 
 ### `Reminder`
 - `id`, `pet_id`, `user_id`, `reminder_type` (vaccine|medication|appointment|custom)
@@ -1043,6 +1052,8 @@ RLS history and coverage:
 - `e2e/cross-tenant-isolation.spec.ts` (Wave 5 Item 26) validates both the
   action-edge authz and the PostgREST RLS layer end-to-end via Playwright.
 
+- `visits` (migration 0273, vet-visit-record): RLS on, `anon` revoked, ONE `SELECT` policy `TO authenticated` — an active member of the visit's organization (through the `SECURITY DEFINER` helper `public.caller_is_active_org_member(uuid)`, because a policy subquery on `organization_memberships` recurses) OR the holder of an active ownership of the pet. No write policies: visits are written only by Drizzle (BYPASSRLS), like `pet_events` after 0212. Pinned by `__tests__/rls/visits-rls.test.ts` (positive owner/member; negative other-org member, ended ownership, stranger, anon, authenticated writes).
+
 When adding a new PII or tenant-scoped table:
 1. Enable RLS in the migration (`ALTER TABLE … ENABLE ROW LEVEL SECURITY`).
 2. Add it to `RLS_REQUIRED` in `__tests__/rls/coverage.test.ts`.
@@ -1252,6 +1263,7 @@ The operator situational map — jurisdiction-fenced choropleth + graduated symb
 |---|---|---|
 | ✅ | Vet con membership en org puede emitir eventos clínicos | dentro de `/org/[orgToken]` |
 | ✅ | Vet independiente crea clinic org via `/cuenta/crear-consultorio` + opera desde `/org/[orgToken]` | Sprint 1A (Fases A–C) |
+| ✅ | Atención con visita: Iniciar/Terminar atención (en la clínica o a domicilio, turno opcional), Estado al ingreso (`condition_at_intake_recorded`, solo matrícula validada, síntomas del vet a vigilancia), historia clínica visible antes de registrar, registros agrupados por atención | `/org/[orgToken]/atender/[publicToken]` (vet-visit-record, 2026-09-29) |
 
 ### Admin & govt
 

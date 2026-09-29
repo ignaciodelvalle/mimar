@@ -48,6 +48,14 @@
  *        for the exit code: seed scripts write holder rows without events, and
  *        counting them would drown the real findings.
  *
+ *   `kind: "visit_modality_drift"` / `kind: "visit_organization_drift"` — the
+ *        FIFTH section (vet-visit-record): visits against the records stamped
+ *        with them. An intake whose payload modality disagrees with its visit,
+ *        or a stamped record authored for another organization than its
+ *        visit's (lib/infra/visit-drift.ts). Set-based, not per pet.
+ *   `kind: "visit_empty_expired"` — a visit opened and never used, closed by
+ *        the stale sweep. Information, NOT drift: not counted for the exit code.
+ *
  * Run it with the react-server condition, like every other DB script: `@/db`
  * imports `server-only`, which throws under plain tsx.
  *   node --conditions=react-server --import tsx scripts/detect-pet-cache-drift.ts
@@ -79,6 +87,7 @@ import {
   rederivePetCaretakerOwnerships,
   rederivePetHolderOwnerships,
 } from "@/lib/infra/rederive-pet-ownerships";
+import { findVisitDrift, visitDriftCount } from "@/lib/infra/visit-drift";
 
 type Args = {
   publicToken: string | null;
@@ -282,6 +291,7 @@ async function main(): Promise<void> {
     if (holders.mismatches.length > 0) emitHolders(pet, holders);
   };
 
+  let visitScope: { petId?: string } = {};
   if (args.publicToken) {
     const [pet] = await db
       .select({ id: pets.id, publicToken: pets.publicToken })
@@ -293,6 +303,7 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     scanned = 1;
+    visitScope = { petId: pet.id };
     await checkOne(pet);
   } else {
     for await (const pet of iterateAllPets(args.batchSize)) {
@@ -304,11 +315,29 @@ async function main(): Promise<void> {
     }
   }
 
-  const total = driftedPets + driftedOwnerships + driftedOwners + driftedHolders + seededHolders;
+  // FIFTH SECTION — visits (vet-visit-record). Set-based, once per run.
+  const visits = await findVisitDrift(db, visitScope);
+  for (const m of visits.modality)
+    console.log(JSON.stringify({ kind: "visit_modality_drift", ...m }));
+  for (const m of visits.organization) {
+    console.log(JSON.stringify({ kind: "visit_organization_drift", ...m }));
+  }
+  for (const v of visits.emptyExpired) {
+    console.log(JSON.stringify({ kind: "visit_empty_expired", ...v }));
+  }
+  const driftedVisits = visitDriftCount(visits);
+
+  const total =
+    driftedPets +
+    driftedOwnerships +
+    driftedOwners +
+    driftedHolders +
+    seededHolders +
+    driftedVisits;
   const verdict =
     total > 0 ? " — DRIFT DETECTED (read-only; repair is a human decision)" : " — clean";
   log(
-    `[detect-pet-cache-drift] done — scanned=${scanned} columnDrift=${driftedPets} caretakerOwnershipDrift=${driftedOwnerships} ownerOwnershipDrift=${driftedOwners} holderOwnershipDrift=${driftedHolders} holderDriftOnSeededPets=${seededHolders} holderSeedUnexplained=${seedOnlyHolders} holderKinds=${JSON.stringify(holderKinds)}${verdict}`,
+    `[detect-pet-cache-drift] done — scanned=${scanned} columnDrift=${driftedPets} caretakerOwnershipDrift=${driftedOwnerships} ownerOwnershipDrift=${driftedOwners} holderOwnershipDrift=${driftedHolders} holderDriftOnSeededPets=${seededHolders} holderSeedUnexplained=${seedOnlyHolders} holderKinds=${JSON.stringify(holderKinds)} visitDrift=${driftedVisits} visitEmptyExpired=${visits.emptyExpired.length}${verdict}`,
   );
 
   process.exit(total > 0 ? 1 : 0);
