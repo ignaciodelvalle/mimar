@@ -103,6 +103,38 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const EVENT_DRAFT_MAX_AGE_MS = 7 * DAY_MS;
 
 /**
+ * How long a restored `stagedPath` may still be trusted — FIVE DAYS, strictly
+ * shorter than `EVENT_DRAFT_MAX_AGE_MS` (fresh review, 2026-09-29).
+ *
+ * MIRRORED FROM THE SERVER, NOT INVENTED HERE — the same pattern
+ * `pet-photo-view-model.ts`'s `PET_PHOTO_MAX_BYTES` uses for the bucket's size
+ * cap. `lib/infra/storage-gc.ts`'s `ABANDONED_STAGED_UPLOAD_MIN_AGE_MS` sweeps
+ * an object in the staging bucket once it is older than SIX DAYS (seventy-two
+ * times the two-hour signed-upload window) — an app process kept alive that
+ * long, on the flow `RecordEventScreen` uses (stage at pick time, confirm at
+ * submit time), is exactly the case that constant's own header names. This
+ * app cannot import that file to read the number directly: it is server-only
+ * code (`drizzle`, the Supabase admin client), so the value is transcribed
+ * here instead.
+ *
+ * THE MARGIN IS A FULL DAY BELOW THE SIX-DAY FLOOR, and it has to be: the
+ * sweep is a daily cron (`vercel.json`, `0 3 * * *`), not a continuous one, so
+ * an object can survive up to a day past the six-day mark before the next run
+ * actually removes it — but never less. Trusting a `stagedPath` for five days
+ * therefore never crosses into a window where the object might already be
+ * gone; trusting it for six would.
+ *
+ * WHAT HAPPENS PAST THIS WINDOW is not silence: `RecordEventScreen`'s restore
+ * treats an aged-out `stagedPath` exactly like a missing local file — the
+ * explicit `PHOTO_LOST_ON_RESTORE_MESSAGE`, never a submit that reaches the
+ * server only to fail there with a sentence about a "photo" that describes a
+ * GC sweep the person has no way to understand (`Ese archivo no es una
+ * foto…`). The TEXT keeps its own, longer, seven-day window — this constant
+ * governs only what a restore does with the photo half of the same draft.
+ */
+export const STAGED_PHOTO_TRUST_WINDOW_MS = 5 * DAY_MS;
+
+/**
  * A tattoo/check-in photo attempt, snapshotted alongside the text fields
  * (Re-3, native review, 2026-09-29).
  *

@@ -118,7 +118,12 @@ import {
   setImagePickerPort,
 } from "../native/image-picker-port";
 import { PHOTO_LOST_ON_RESTORE_MESSAGE, RecordEventScreen } from "./RecordEventScreen";
-import { eventDraftKey, writeEventDraft } from "./event-draft-store";
+import {
+  STAGED_PHOTO_TRUST_WINDOW_MS,
+  eventDraftKey,
+  readEventDraft,
+  writeEventDraft,
+} from "./event-draft-store";
 import {
   RECORD_KINDS,
   WRITABLE_KINDS as WRITABLE_KIND_SET,
@@ -1925,6 +1930,104 @@ describe("tatuaje — Re-3 (native review, 2026-09-29): la foto sobrevive (o no)
 
     await waitFor(() => expect(screen.getByText(PHOTO_LOST_ON_RESTORE_MESSAGE)).toBeOnTheScreen());
     expect(screen.queryByText("Foto lista")).not.toBeOnTheScreen();
+  });
+
+  it("WRITE SIDE: guarda un borrador con SOLO la foto — nadie tocó un campo de texto", async () => {
+    // Antes de `photo` en las dependencias del idle-write (fresh review,
+    // 2026-09-29), este caso no escribía NADA: `sameDraft(draft, pristine)`
+    // era verdadero porque el texto nunca cambió, y el timer de dos segundos
+    // jamás se armaba. Una foto elegida sin tocar ningún campo era, para el
+    // autoguardado, indistinguible de un formulario recién abierto.
+    const localUri = "file:///cache/tattoo-recien-elegida.jpg";
+    setImagePickerPort({
+      name: "test-picks",
+      available: true,
+      pickImage: async () => ({
+        outcome: "picked",
+        bytes: new Uint8Array([0xff, 0xd8, 0xff]),
+        contentType: "image/jpeg",
+        previewUri: localUri,
+      }),
+      recoverPendingPick: async () => null,
+    });
+
+    jest.useFakeTimers({ doNotFake: ["nextTick"] });
+    try {
+      render(<RecordEventScreen publicToken={TOKEN} initialKind="tattoo" />);
+
+      await act(async () => {
+        fireEvent.press(screen.getByText("Elegir la foto del tatuaje"));
+      });
+
+      // NINGÚN CAMPO DE TEXTO TOCADO — la única señal de que algo cambió
+      // acá es la foto, que ya está en `ready` (`mockStageTattooPhoto`
+      // resuelve de una).
+      act(() => {
+        jest.advanceTimersByTime(2_000);
+      });
+    } finally {
+      // FUERA DEL `try`, ANTES DE LEER EL DISCO — mismo orden que el resto de
+      // este archivo usa con fake timers: el flush de abajo depende de un
+      // `setTimeout` real.
+      jest.useRealTimers();
+    }
+
+    await flushStorage();
+    const found = await readEventDraft(tattooDraftKey());
+    expect(found?.photo).toEqual({ localUri, stagedPath: A_STAGED_PATH });
+  });
+
+  it("una foto restaurada MÁS ALLÁ de la ventana de confianza del servidor avisa, no falla en el envío", async () => {
+    // Re-3, fresh review (2026-09-29): el barrido del servidor puede haber
+    // borrado el objeto en `uploads-staging` antes de que este `stagedPath`
+    // deje de ofrecerse como borrador (siete días de texto contra seis del
+    // barrido). Confiar en él más allá de `STAGED_PHOTO_TRUST_WINDOW_MS`
+    // cambiaría un aviso claro por un rechazo del servidor sobre una "foto"
+    // que en realidad ya no está.
+    const localUri = "file:///cache/tattoo-restaurada-vieja.jpg";
+    new FileSystem.File(localUri).create();
+    const savedAt = Date.now() - (STAGED_PHOTO_TRUST_WINDOW_MS + 24 * 60 * 60 * 1000);
+    await writeEventDraft(tattooDraftKey(), emptyDraft(new Date(savedAt)), savedAt, {
+      localUri,
+      stagedPath: A_STAGED_PATH,
+    });
+
+    render(<RecordEventScreen publicToken={TOKEN} initialKind="tattoo" />);
+
+    await waitFor(() => expect(screen.getByText(PHOTO_LOST_ON_RESTORE_MESSAGE)).toBeOnTheScreen());
+    expect(screen.queryByText("Foto lista")).not.toBeOnTheScreen();
+  });
+});
+
+describe("check-in post-adopción — Re-3: una foto perdida en la restauración no bloquea un envío opcional", () => {
+  it("restaura con el aviso de foto perdida y el envío sigue funcionando sin foto", async () => {
+    // A DIFERENCIA DEL TATUAJE, la foto acá es opcional (D7): el aviso de
+    // "volvé a elegir la foto" no puede convertirse en un bloqueo que este
+    // kind ni siquiera tiene. El envío tiene que salir igual, con
+    // `stagedPath: null`, y sin ningún error de campo obligatorio inventado
+    // por esta pantalla.
+    const localUri = "file:///cache/checkin-restaurada-perdida.jpg";
+    const key = eventDraftKey({
+      ownerId: mockSignedInUserId,
+      publicToken: TOKEN,
+      kind: "post_adoption_checkin",
+      sourceEventId: null,
+    });
+    // NO `.create()`: para este mock, en esta corrida, el archivo nunca existió.
+    await writeEventDraft(key, emptyDraft(new Date()), Date.now(), {
+      localUri,
+      stagedPath: A_STAGED_PATH,
+    });
+
+    render(<RecordEventScreen publicToken={TOKEN} initialKind="post_adoption_checkin" />);
+
+    await waitFor(() => expect(screen.getByText(PHOTO_LOST_ON_RESTORE_MESSAGE)).toBeOnTheScreen());
+
+    fireEvent.press(submitControl());
+
+    await waitFor(() => expect(mockRecordPetEvent).toHaveBeenCalledTimes(1));
+    expect(sentBody()).toMatchObject({ kind: "post_adoption_checkin", stagedPath: null });
+    expect(screen.queryByText(/falta la foto/i)).not.toBeOnTheScreen();
   });
 });
 

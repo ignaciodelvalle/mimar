@@ -72,7 +72,7 @@
 
 import * as FileSystem from "expo-file-system";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
 
 import type { OwnerPetPppRegistryV1 } from "@dim/contract/api";
@@ -119,7 +119,7 @@ import { useScrollToError } from "../ui/use-scroll-to-error";
 import { LocalityPicker } from "./LocalityPicker";
 import { QuickCaptureBox } from "./QuickCaptureBox";
 import { bitePickedLocation } from "./bite-location";
-import type { StoredEventDraftPhoto } from "./event-draft-store";
+import { STAGED_PHOTO_TRUST_WINDOW_MS, type StoredEventDraftPhoto } from "./event-draft-store";
 import {
   type AcceptedImage,
   acceptPickedImage,
@@ -671,7 +671,18 @@ function EventForm({
   // whose adapter reported no `previewUri` has no local file to check on
   // restore, so it produces `null` too — see `StoredEventDraftPhoto`'s header
   // for why `localUri` is the one thing this needs to be useful at all.
-  const photoDraftSnapshot: StoredEventDraftPhoto | null = (() => {
+  //
+  // `useMemo`, KEYED ON `photo` AND NOT RECOMPUTED BARE EVERY RENDER (fresh
+  // review, 2026-09-29): a plain IIFE here returns a NEW object on every
+  // render — including one caused by something this screen has nothing to do
+  // with the photo, like a keystroke in an unrelated field re-rendering the
+  // whole form. `useEventDraft`'s idle-write effect depends on this value by
+  // REFERENCE (`Object.is`, the default), so a fresh object every render reads
+  // as "the photo changed" and keeps re-arming the two-second debounce —
+  // never letting it fire while the person keeps typing elsewhere. Memoising
+  // on `photo` means the reference is stable across every render that did not
+  // call `setPhoto`, which is the only thing that should count as a change.
+  const photoDraftSnapshot: StoredEventDraftPhoto | null = useMemo(() => {
     if (photo.phase === "uploading") {
       return photo.image.previewUri === null
         ? null
@@ -683,7 +694,7 @@ function EventForm({
         : { localUri: photo.previewUri, stagedPath: photo.stagedPath };
     }
     return null;
-  })();
+  }, [photo]);
   // WHAT SOMEBODY TYPED SURVIVES BEING INTERRUPTED (PO decision 2026-09-16).
   //
   // A LOCAL DRAFT, AND NOT A SEND QUEUE. That ordering is the decision itself,
@@ -792,6 +803,17 @@ function EventForm({
    * restore that cannot show the person their own photo is not a silent
    * success — it is the exact failure mode this finding is about, just moved
    * one level down.
+   *
+   * THE AGE OF THE SNAPSHOT IS CHECKED TOO (fresh review, 2026-09-29). A draft
+   * can be up to `EVENT_DRAFT_MAX_AGE_MS` (seven days) old and still be
+   * offered — but the server's own storage GC sweeps an abandoned staged
+   * object after six, and `restored.savedAt` is the same instant the text and
+   * the photo were written together. Trusting a `stagedPath` past
+   * `STAGED_PHOTO_TRUST_WINDOW_MS` would let a submit reach the server only to
+   * be refused there with a sentence about a "photo" that is really a GC sweep
+   * nobody can explain to the person holding the phone — see that constant's
+   * own header for the margin. The TEXT keeps its full seven days regardless;
+   * this only shortens how long the PHOTO half of the same draft is trusted.
    */
   useEffect(() => {
     if (photoScreen === null || restored === null || restored.photo === null) return;
@@ -799,7 +821,9 @@ function EventForm({
     appliedRestoredPhoto.current = true;
     photoAttemptStarted.current = true;
     const snapshot = restored.photo;
-    const usable = snapshot.stagedPath !== null && photoFileStillExists(snapshot.localUri);
+    const withinTrustWindow = Date.now() - restored.savedAt < STAGED_PHOTO_TRUST_WINDOW_MS;
+    const usable =
+      snapshot.stagedPath !== null && withinTrustWindow && photoFileStillExists(snapshot.localUri);
     setPhoto(
       usable
         ? {
