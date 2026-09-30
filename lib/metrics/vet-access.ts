@@ -28,6 +28,8 @@
 
 import { and, count, eq, gte, inArray, lte, sql } from "drizzle-orm";
 
+import type { EventType } from "@dim/contract/events";
+
 import { analyticsDb as db, petEvents, pets } from "@/db";
 
 import { suppressSmallCells } from "./anonymity";
@@ -57,13 +59,27 @@ import { petsScopeClause } from "./scope";
  *   sterilization_performed  — surgery under anaesthesia; not owner-performable.
  *   microchip_implanted      — subcutaneous implant; a professional procedure.
  *   clinical_info_logged     — lab work / imaging / surgery / diagnosis records.
+ *   condition_at_intake_recorded — the vet's examination at the start of a
+ *                              visit (vet-visit-record, 2026-09-29). Only a
+ *                              VERIFIED vet of the visit's organization can
+ *                              write it (INTAKE_NOT_A_VERIFIED_VET): the least
+ *                              ambiguous act in this list.
  *
  * DELIBERATELY EXCLUDED:
  *   deworming_administered — antiparasitics are sold over the counter and are
  *     routinely applied by the owner at home, so counting them would measure
  *     owner diligence, not access to professional service.
- *   weight_recorded, note_added — owner self-reports; measuring them would make
- *     the signal a proxy for registry engagement instead of veterinary access.
+ *   weight_recorded — mostly an owner self-report; the one a vet intake writes
+ *     alongside condition_at_intake_recorded belongs to the same examination,
+ *     which is already counted once through the intake. Counting it too would
+ *     make one consult two acts.
+ *   symptom_observed — a description, not an act: an owner writes most of
+ *     them, and the one an intake writes is again part of that examination.
+ *   note_added — an annotation; measuring it would make the signal a proxy for
+ *     registry engagement instead of veterinary access.
+ *
+ * Type-checked against the event catalogue (`satisfies`), so a renamed or
+ * removed type fails the build here instead of silently counting nothing.
  */
 export const VET_ACTIVITY_EVENT_TYPES = [
   "vet_visit_logged",
@@ -71,7 +87,8 @@ export const VET_ACTIVITY_EVENT_TYPES = [
   "sterilization_performed",
   "microchip_implanted",
   "clinical_info_logged",
-] as const;
+  "condition_at_intake_recorded",
+] as const satisfies readonly EventType[];
 
 /** True when a govt actor has no assigned jurisdictions — queries return empty. */
 function isEmptyScope(ctx: ProjectionContext): boolean {

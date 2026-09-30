@@ -36,6 +36,7 @@ const LOC_VAX = "VaxOnlyVille"; // vaccination_administered instead of a visit
 const LOC_STERIL = "SterilOnlyVille"; // sterilization_performed
 const LOC_CHIP = "ChipOnlyVille"; // microchip_implanted
 const LOC_CLINICAL = "ClinicalOnlyVille"; // clinical_info_logged
+const LOC_INTAKE = "IntakeOnlyVille"; // condition_at_intake_recorded
 const LOC_DEWORM = "DewormOnlyVille"; // deworming_administered — must NOT count
 const TOKEN_PREFIX = "VET-ACC-TST";
 
@@ -87,6 +88,13 @@ const PAYLOADS: Record<string, Record<string, unknown>> = {
   sterilization_performed: { payload_version: 1, method: "surgical", performed_by: null },
   microchip_implanted: { payload_version: 1, code: "900000000000001", implanted_by: null },
   clinical_info_logged: { payload_version: 1, kind: "lab", summary: "hemograma" },
+  condition_at_intake_recorded: {
+    payload_version: 1,
+    modality: "clinic",
+    general_condition: "fair",
+    presenting_complaint: null,
+    findings: null,
+  },
   deworming_administered: {
     payload_version: 1,
     product: "Antiparasitario",
@@ -132,6 +140,7 @@ beforeAll(async () => {
   await seedOneActVille(LOC_STERIL, "sterilization_performed");
   await seedOneActVille(LOC_CHIP, "microchip_implanted");
   await seedOneActVille(LOC_CLINICAL, "clinical_info_logged");
+  await seedOneActVille(LOC_INTAKE, "condition_at_intake_recorded");
   await seedOneActVille(LOC_DEWORM, "deworming_administered");
 }, 60_000);
 
@@ -243,6 +252,7 @@ describe("fetchVetAccessByLocality — the numerator counts every veterinary act
     ["a sterilization", LOC_STERIL],
     ["a microchip implant", LOC_CHIP],
     ["a clinical record", LOC_CLINICAL],
+    ["a vet's intake examination", LOC_INTAKE],
   ])(
     "counts %s exactly like a logged visit (only the event type differs)",
     async (_label, loc) => {
@@ -262,6 +272,7 @@ describe("fetchVetAccessByLocality — the numerator counts every veterinary act
     expect([...VET_ACTIVITY_EVENT_TYPES].sort()).toEqual(
       [
         "clinical_info_logged",
+        "condition_at_intake_recorded",
         "microchip_implanted",
         "sterilization_performed",
         "vaccination_administered",
