@@ -9,7 +9,10 @@
 //   - motion allowed → the chapter rewinds to step 0 and plays once, when its
 //     observer reports ~40% in view; a never-firing observer fails open;
 //   - at most one sequence plays at a time;
-//   - the step list is real buttons: a click jumps, aria-current follows.
+//   - back/forward controls (PO 2026-09-30, no step list): named in
+//     Spanish, disabled at the ends, one step per click, autoplay stops;
+//   - an actor change slides the outgoing device out; each person's device
+//     carries its own case colour.
 // Facts are checked against the seed module in
 // __tests__/flagship-pampa-consistency.test.tsx.
 
@@ -26,7 +29,9 @@ import { StorySection } from "./StorySection";
 import { CHAPTERS } from "./landing-content";
 import { EstadoConsole } from "./story-screens";
 import {
+  ACTORS,
   LOST_SEQUENCE,
+  OWNER_FROM,
   POSTER_QR_MATRIX,
   SHELTER_SEQUENCE,
   SequenceChapter,
@@ -74,7 +79,15 @@ function stepOf(key: string): number {
   return Number(document.getElementById(`cap-${key}`)?.getAttribute("data-step"));
 }
 
-const ANIMATION_CLASSES = /lp-seq-in|lp-seq-pending|lp-map-grid--(in|pending)/;
+const ANIMATION_CLASSES =
+  /lp-seq-in|lp-seq-pending|lp-seq-slide|lp-seq-dev-(in|out)|lp-map-grid--(in|pending)/;
+
+function arrows(container: HTMLElement) {
+  const prev = container.querySelector<HTMLButtonElement>('button[aria-label="Paso anterior"]');
+  const next = container.querySelector<HTMLButtonElement>('button[aria-label="Paso siguiente"]');
+  if (!prev || !next) throw new Error("missing ‹ › controls");
+  return { prev, next };
+}
 
 beforeEach(() => {
   setMatchMedia(false);
@@ -90,13 +103,17 @@ afterEach(() => {
 });
 
 describe("story sequences — SSR renders the final state", () => {
-  it.each(SEQUENCES)("$key: final step, no animation class, last item current", ({ key, spec }) => {
+  it.each(SEQUENCES)("$key: final step, no animation class, forward disabled", ({ key, spec }) => {
     const { chapter: c, index } = chapter(key);
     const html = renderToStaticMarkup(<SequenceChapter chapter={c} index={index} />);
     expect(html).toContain(`data-step="${spec.total - 1}"`);
     expect(html).not.toMatch(ANIMATION_CLASSES);
-    const current = html.match(/aria-current="step"/g) ?? [];
-    expect(current).toHaveLength(1);
+    // No step list any more (PO 2026-09-30): no visible lead, no labels.
+    expect(html).not.toContain("lp-seq-step");
+    expect(html).not.toContain("lp-ch-lead");
+    // Resting on the last step: forward is disabled, back is not.
+    expect(html).toMatch(/<button[^>]*aria-label="Paso siguiente"[^>]*disabled=""/);
+    expect(html).not.toMatch(/<button[^>]*aria-label="Paso anterior"[^>]*disabled=""/);
     // The final device step is the one on the page.
     expect(html).toContain(renderToStaticMarkup(spec.device(spec.total - 1, false)));
   });
@@ -123,16 +140,21 @@ describe("story sequences — reduced motion", () => {
     expect(FakeIntersectionObserver.instances).toHaveLength(0);
   });
 
-  it("the step list still navigates (navigation is not animation)", () => {
+  it("‹ › still navigate, statically (navigation is not animation)", () => {
     setMatchMedia(true);
-    const { chapter: c, index } = chapter("anon");
+    const { chapter: c, index } = chapter("refugio");
     const { container } = render(<SequenceChapter chapter={c} index={index} />);
-    const buttons = container.querySelectorAll<HTMLButtonElement>(".lp-seq-step");
-    expect(buttons).toHaveLength(LOST_SEQUENCE.items.length);
-    fireEvent.click(buttons[0] as HTMLButtonElement);
-    expect(stepOf("anon")).toBe(0);
-    expect(buttons[0]).toHaveAttribute("aria-current", "step");
-    expect(buttons[buttons.length - 1]).not.toHaveAttribute("aria-current");
+    const { prev, next } = arrows(container);
+    // Back across the tablet → phone hand-over: no exiting device, no class.
+    for (let i = SHELTER_SEQUENCE.total - 2; i >= 0; i--) {
+      fireEvent.click(prev);
+      expect(stepOf("refugio")).toBe(i);
+      expect(container.innerHTML).not.toMatch(ANIMATION_CLASSES);
+      expect(container.querySelectorAll(".lp-seq-case")).toHaveLength(1);
+    }
+    expect(prev).toBeDisabled();
+    fireEvent.click(next);
+    expect(stepOf("refugio")).toBe(1);
     expect(container.innerHTML).not.toMatch(ANIMATION_CLASSES);
   });
 });
@@ -218,19 +240,107 @@ describe("story sequences — motion allowed", () => {
     expect(stepOf("anon")).toBe(1);
   });
 
-  it("a click on a step stops the autoplay and shows that step", () => {
+  it("‹ › carry Spanish names, stop the autoplay and move one step each", () => {
     vi.useFakeTimers();
     const { chapter: c, index } = chapter("refugio");
     const { container } = render(<SequenceChapter chapter={c} index={index} />);
+    const { prev, next } = arrows(container);
+    expect(container.querySelector("fieldset.lp-seq-nav")).toHaveAttribute(
+      "aria-label",
+      `Pasos del capítulo ${index + 1}`,
+    );
+    // Rewound to step 0: back is disabled at the start.
+    expect(prev).toBeDisabled();
+    expect(next).toBeEnabled();
     act(() => FakeIntersectionObserver.instances[0]?.callback([{ isIntersecting: true }]));
-    const buttons = container.querySelectorAll<HTMLButtonElement>(".lp-seq-step");
-    fireEvent.click(buttons[2] as HTMLButtonElement);
+    fireEvent.click(next);
+    expect(stepOf("refugio")).toBe(1);
+    fireEvent.click(next);
     expect(stepOf("refugio")).toBe(2);
     act(() => {
       vi.advanceTimersByTime(SHELTER_SEQUENCE.stepMs * 10);
     });
+    // The autoplay is stopped for good.
     expect(stepOf("refugio")).toBe(2);
-    expect(buttons[2]).toHaveAttribute("aria-current", "step");
+    fireEvent.click(prev);
+    expect(stepOf("refugio")).toBe(1);
+    // Moving back slides the next screen in from the other side.
+    expect(container.querySelector(".lp-seq-slide")).toHaveAttribute("data-dir", "back");
+    for (let i = 0; i < SHELTER_SEQUENCE.total; i++) fireEvent.click(next);
+    expect(stepOf("refugio")).toBe(SHELTER_SEQUENCE.total - 1);
+    expect(next).toBeDisabled();
+    expect(prev).toBeEnabled();
+  });
+
+  it("the vet chapter's ‹ › stop at the named steps, not at every field", () => {
+    const { chapter: c, index } = chapter("vet");
+    const { container } = render(<SequenceChapter chapter={c} index={index} />);
+    const { next } = arrows(container);
+    const stops = [stepOf("vet")];
+    while (!next.disabled) {
+      fireEvent.click(next);
+      stops.push(stepOf("vet"));
+    }
+    // Step 0 is where the rewind leaves it; then each item's own step.
+    expect(stops).toEqual([0, ...VET_SEQUENCE.items.slice(1).map((it) => it.at)]);
+  });
+
+  it("the refugio's tablet slides out and the owner's phone slides in, then the stage clears", () => {
+    vi.useFakeTimers();
+    const { chapter: c, index } = chapter("refugio");
+    const { container } = render(<SequenceChapter chapter={c} index={index} />);
+    act(() => FakeIntersectionObserver.instances[0]?.callback([{ isIntersecting: true }]));
+    act(() => {
+      vi.advanceTimersByTime(SHELTER_SEQUENCE.stepMs * (OWNER_FROM - 1));
+    });
+    expect(container.querySelector(".lp-seq-dev-out")).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(SHELTER_SEQUENCE.stepMs);
+    });
+    expect(stepOf("refugio")).toBe(OWNER_FROM);
+    const out = container.querySelector(".lp-seq-dev-out");
+    expect(out?.querySelector('.lp-seq-case[data-actor="shelter"] .lp-tablet')).not.toBeNull();
+    const incoming = container.querySelector(".lp-seq-dev-in");
+    expect(incoming?.querySelector('.lp-seq-case[data-actor="owner"] .lp-phone')).not.toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(container.querySelector(".lp-seq-dev-out")).toBeNull();
+    expect(container.querySelector(".lp-seq-dev-in")).toBeNull();
+    // A screen change within one device does not move the device.
+    act(() => {
+      vi.advanceTimersByTime(SHELTER_SEQUENCE.stepMs);
+    });
+    expect(container.querySelector(".lp-seq-dev-out")).toBeNull();
+    expect(container.querySelector(".lp-seq-slide")).not.toBeNull();
+  });
+
+  it("the client's first rewind is not a device switch", () => {
+    const { chapter: c, index } = chapter("refugio");
+    const { container } = render(<SequenceChapter chapter={c} index={index} />);
+    // SSR rests on Martín's phone; the rewind lands on the shelter's tablet.
+    expect(stepOf("refugio")).toBe(0);
+    expect(container.querySelector(".lp-seq-dev-out")).toBeNull();
+  });
+
+  it("restarts cleanly after the visitor navigates away mid-play and back", () => {
+    vi.useFakeTimers();
+    const { chapter: c, index } = chapter("anon");
+    const first = render(<SequenceChapter chapter={c} index={index} />);
+    act(() => FakeIntersectionObserver.instances[0]?.callback([{ isIntersecting: true }]));
+    act(() => {
+      vi.advanceTimersByTime(LOST_SEQUENCE.stepMs);
+    });
+    expect(stepOf("anon")).toBe(1);
+    first.unmount();
+    render(<SequenceChapter chapter={c} index={index} />);
+    expect(stepOf("anon")).toBe(0);
+    // The old run's timers are gone and it freed the one-at-a-time slot.
+    act(() => FakeIntersectionObserver.instances[1]?.callback([{ isIntersecting: true }]));
+    act(() => {
+      vi.advanceTimersByTime(LOST_SEQUENCE.stepMs);
+    });
+    expect(stepOf("anon")).toBe(1);
   });
 
   // PO 2026-09-29, twice: chapter 3 ("Se pierde") used to switch a
@@ -251,13 +361,54 @@ describe("story sequences — motion allowed", () => {
       const { chapter: c, index } = chapter(key);
       const { container } = render(<SequenceChapter chapter={c} index={index} />);
       expect(container.querySelector(".lp-seq-who")).toBeNull();
-      const buttons = container.querySelectorAll<HTMLButtonElement>(".lp-seq-step");
-      for (const button of Array.from(buttons)) {
-        fireEvent.click(button);
+      const { next } = arrows(container);
+      while (!next.disabled) {
+        fireEvent.click(next);
         expect(container.querySelector(".lp-seq-who")).toBeNull();
       }
     },
   );
+});
+
+// PO 2026-09-30: "un color de carcasa distinto por persona".
+describe("case colours — one per person", () => {
+  const css = readFileSync(join(__dirname, "..", "..", "app", "landing.css"), "utf8");
+
+  it("every step of every chapter wraps its device in its actor's case", () => {
+    const expected: Record<string, (step: number) => string> = {
+      vet: () => "vet",
+      anon: () => "owner",
+      refugio: (s) => (s >= OWNER_FROM ? "owner" : "shelter"),
+    };
+    for (const { key, spec } of SEQUENCES) {
+      for (let i = 0; i < spec.total; i++) {
+        const html = renderToStaticMarkup(spec.device(i, false));
+        expect(html, `${key} step ${i}`).toContain(
+          `class="lp-seq-case" data-actor="${expected[key]?.(i)}"`,
+        );
+      }
+    }
+  });
+
+  it("each actor has its own case token, in light and in dark, all distinct", () => {
+    expect([...ACTORS]).toEqual(["owner", "neighbour", "vet", "shelter"]);
+    const block = (selector: string) => {
+      const start = css.indexOf(`${selector} {`);
+      expect(start, selector).toBeGreaterThan(-1);
+      return css.slice(start, css.indexOf("}", start));
+    };
+    for (const theme of [block(".lp"), block(":where(.dark) .lp")]) {
+      const values = ACTORS.map((a) => {
+        const m = theme.match(new RegExp(`--lp-case-${a}:\\s*([^;]+);`));
+        expect(m, a).not.toBeNull();
+        return m?.[1]?.trim();
+      });
+      expect(new Set(values).size).toBe(ACTORS.length);
+    }
+    for (const a of ACTORS) {
+      expect(css).toContain(`.lp-seq-case[data-actor="${a}"] {\n  --lp-case: var(--lp-case-${a});`);
+    }
+  });
 });
 
 describe("Estado — the map fills in once (PS9)", () => {

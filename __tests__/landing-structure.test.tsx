@@ -347,10 +347,12 @@ describe("story — CastFila + 6 chapters + rail", () => {
     expect(tablets.length).toBeGreaterThanOrEqual(1);
     for (const t of tablets) expect(t).toContain('aria-hidden="true"');
     expect(html).toMatch(/<div class="lp-mac" aria-hidden="true">/);
-    // Each chapter carries readable copy outside its device.
+    // Each chapter carries readable copy outside its device. The animated
+    // chapters show no visible lead (PO 2026-09-30, "sin descripción"): their
+    // lead is screen-reader text next to the back/forward controls.
     const chapters = html.split(/id="cap-/).slice(1);
     expect(chapters).toHaveLength(CHAPTERS.length);
-    for (const ch of chapters) expect(ch).toMatch(/lp-ch-lead|lp-estado-bridge/);
+    for (const ch of chapters) expect(ch).toMatch(/lp-ch-lead|lp-estado-bridge|lp-seq-nav/);
   });
 
   it("renders the 6 chapter anchors and the scroll-spy rail", () => {

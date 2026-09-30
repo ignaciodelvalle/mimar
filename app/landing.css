@@ -54,11 +54,27 @@
   --lp-navy-ink: var(--color-ln-op-rail-text);
   --lp-navy-mute: var(--color-ln-op-rail-mute);
   --lp-seal-bg: #fbf1e6; /* warm seal tint — no ln-* token yet (handoff value) */
+  /* Device case colours, one per person in the story (PO 2026-09-30; see
+     .lp-seq-case). Distinct hue per actor, each dark enough to read as a
+     case on paper. Dark theme below. */
+  --lp-case-owner: var(--color-ln-ink-2);
+  --lp-case-neighbour: var(--color-ln-rosa);
+  --lp-case-vet: var(--color-ln-op-navy);
+  --lp-case-shelter: var(--color-ln-ok-700);
   background: var(--color-ln-paper);
   color: var(--color-ln-ink);
   font-family: var(--lp-sans);
   font-size: 17px;
   line-height: 1.6;
+}
+/* Dark theme: the repo's (dormant) `.dark` switch, globals.css `@variant
+   dark`. The light cases would sink into a dark page, so each lifts to a
+   lighter shade of the SAME hue: still one distinct colour per person. */
+:where(.dark) .lp {
+  --lp-case-owner: #8a9aa4;
+  --lp-case-neighbour: #d989b0;
+  --lp-case-vet: #4f7fae;
+  --lp-case-shelter: #5aa77a;
 }
 .lp .lp-wrap {
   max-width: 1120px;
@@ -1752,7 +1768,9 @@
      then governed ONLY by width + aspect-ratio, never by what is inside. */
   position: relative;
   border-radius: 34px;
-  background: var(--color-ln-op-navy);
+  /* The case colour of whoever holds it (.lp-seq-case[data-actor]); the vet's
+     navy when unwrapped. */
+  background: var(--lp-case, var(--lp-case-vet));
   /* Token, not the phone's own raw shadow (which this originally copied) —
      the CSS ratchet (gate gLT1, coordinator review) caps raw box-shadow in
      this file at the 2 already grandfathered (.lp-phone, .lp-mac); a third
@@ -3200,65 +3218,194 @@ html:has([data-landing-root]) {
   gap: 10px;
 }
 
-/* The step list: real buttons (StepButton), one per step, jump on click. */
-.lp .lp-seq-steps {
-  list-style: none;
-  margin: 22px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+/* A screen change: the next screen slides in from the side it comes from,
+   INSIDE the device (.lp-scr / .lp-tab-scr clip it). Only on the client,
+   with motion allowed; the global reduced-motion rule collapses it too. */
+.lp .lp-seq-slide {
+  animation: lp-seq-slide-fwd var(--motion-slow) var(--ease-editorial) both;
 }
-.lp .lp-seq-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-input);
-  background: transparent;
-  font: inherit;
-  font-size: var(--text-md);
-  color: var(--color-ln-ink-2);
-  text-align: left;
-  cursor: pointer;
-  transition: background var(--motion-fast), border-color var(--motion-fast);
+.lp .lp-seq-slide[data-dir="back"] {
+  animation-name: lp-seq-slide-back;
 }
-.lp .lp-seq-step.on {
-  background: var(--color-ln-card);
-  border-color: var(--color-ln-line);
-  color: var(--color-ln-ink);
-}
-@media (hover: hover) {
-  .lp .lp-seq-step:hover {
-    background: var(--color-ln-card);
+@keyframes lp-seq-slide-fwd {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
-.lp .lp-seq-step:active {
-  opacity: 0.75;
+@keyframes lp-seq-slide-back {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
-.lp .lp-seq-n {
+
+/* An actor change (PO 2026-09-30, "el teléfono sale y entra otro"): the
+   outgoing device leaves on its own layer, out of flow, while the incoming
+   one takes the stage. Transform + opacity only; neither device changes size. */
+.lp .lp-seq-stage {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+.lp .lp-seq-dev-out {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: lp-seq-dev-out-fwd var(--motion-deliberate) var(--ease-editorial) both;
+}
+.lp .lp-seq-dev-out[data-dir="back"] {
+  animation-name: lp-seq-dev-out-back;
+}
+.lp .lp-seq-dev-in {
+  animation: lp-seq-dev-in-fwd var(--motion-deliberate) var(--ease-editorial) both;
+}
+.lp .lp-seq-dev-in[data-dir="back"] {
+  animation-name: lp-seq-dev-in-back;
+}
+@keyframes lp-seq-dev-out-fwd {
+  to {
+    opacity: 0;
+    transform: translateX(-48px) scale(0.96);
+  }
+}
+@keyframes lp-seq-dev-out-back {
+  to {
+    opacity: 0;
+    transform: translateX(48px) scale(0.96);
+  }
+}
+@keyframes lp-seq-dev-in-fwd {
+  from {
+    opacity: 0;
+    transform: translateX(48px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lp-seq-dev-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-48px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp .lp-seq-slide,
+  .lp .lp-seq-dev-in {
+    animation: none;
+  }
+  .lp .lp-seq-dev-out {
+    display: none;
+  }
+}
+
+/* ‹ track › — the chapter's only controls (PO 2026-09-30: back and forward,
+   no step list). The track is the step count at a glance, aria-hidden; the
+   buttons carry the names. 44px round targets. */
+.lp .lp-seq-nav {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  margin: 26px 0 0;
+  padding: 0;
+  border: 0;
+}
+.lp .lp-seq-arrow {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 1.5px solid var(--color-ln-line-strong);
-  font-family: var(--lp-mono);
-  font-size: var(--text-xs);
-  font-variant-numeric: tabular-nums;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--color-ln-line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-ln-card);
+  color: var(--color-ln-ink);
+  cursor: pointer;
+  transition: border-color var(--motion-fast), color var(--motion-fast), opacity var(--motion-fast);
 }
-.lp .lp-seq-step[data-state="on"] .lp-seq-n {
-  border-color: var(--color-ln-azul);
-  color: var(--color-ln-azul);
+.lp .lp-seq-arrow--back svg {
+  transform: scaleX(-1);
 }
-.lp .lp-seq-step[data-state="done"] .lp-seq-n {
-  border-color: var(--color-ln-ok);
-  background: var(--color-ln-ok);
-  color: var(--color-ln-card);
+@media (hover: hover) {
+  .lp .lp-seq-arrow:not(:disabled):hover {
+    border-color: var(--color-ln-azul);
+    color: var(--color-ln-azul);
+  }
 }
+.lp .lp-seq-arrow:not(:disabled):active {
+  opacity: 0.75;
+}
+.lp .lp-seq-arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.lp .lp-seq-track {
+  display: flex;
+  gap: 5px;
+  flex: 1;
+  max-width: 168px;
+}
+.lp .lp-seq-bar {
+  flex: 1;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--color-ln-line);
+  transition: background var(--motion-base);
+}
+.lp .lp-seq-bar[data-state="done"] {
+  background: var(--color-ln-line-strong);
+}
+.lp .lp-seq-bar[data-state="on"] {
+  background: var(--color-ln-azul);
+}
+
+/* Case colours — one per person (PO 2026-09-30, "un color de carcasa
+   distinto por persona"). The phone's case is a bezel drawn OVER the
+   screen's edge (::after), so the frame's size never moves; the tablet's
+   case is its bezel background. Unwrapped phones (the dueño and libreta
+   chapters) are Martín's, so they fall back to the owner colour. */
+.lp .lp-seq-case[data-actor="owner"] {
+  --lp-case: var(--lp-case-owner);
+}
+.lp .lp-seq-case[data-actor="neighbour"] {
+  --lp-case: var(--lp-case-neighbour);
+}
+.lp .lp-seq-case[data-actor="vet"] {
+  --lp-case: var(--lp-case-vet);
+}
+.lp .lp-seq-case[data-actor="shelter"] {
+  --lp-case: var(--lp-case-shelter);
+}
+.lp .lp-phone::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 7px solid var(--lp-case, var(--lp-case-owner));
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 4;
+}
+/* .lp-tablet's own background reads var(--lp-case, …): see the tablet frame. */
 
 /* Form-like rows (the vet's attendance form, the intake's chip field). */
 .lp .lp-vf-pet {

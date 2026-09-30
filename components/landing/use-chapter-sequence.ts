@@ -18,8 +18,12 @@
 //  - At most ONE sequence animates at a time across the page: a chapter that
 //    enters view while another is still playing waits for it (a module-level
 //    queue), so two moving phones never compete for the eye.
-//  - `goTo(i)` (the clickable step list) stops the autoplay for good and shows
-//    step i. It works with motion off too — it is navigation, not animation.
+//  - `goTo(i)` (the chapter's ‹ › controls) stops the autoplay for good and
+//    shows step i. It works with motion off too — it is navigation, not
+//    animation. `dir` says which way the last move went, so a screen can
+//    slide in from the side it came from; autoplay always moves forward.
+//  - Unmounting mid-play (the visitor navigates away) clears every timer and
+//    frees the one-at-a-time slot, so a remount starts clean from step 0.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
@@ -78,8 +82,12 @@ export type ChapterSequence = {
   step: number;
   /** True only on the client, with motion allowed — gates every animation class. */
   animate: boolean;
-  /** Jump to a step (clickable step list). Stops the autoplay. */
+  /** Jump to a step (the ‹ › controls). Stops the autoplay. */
   goTo: (i: number) => void;
+  /** Direction of the last step change: autoplay and "next" are "fwd". */
+  dir: "fwd" | "back";
+  /** True once the visitor has taken over with the controls. */
+  manual: boolean;
 };
 
 export function useChapterSequence(total: number, stepMs: number): ChapterSequence {
@@ -87,6 +95,10 @@ export function useChapterSequence(total: number, stepMs: number): ChapterSequen
   const last = total - 1;
   const [step, setStep] = useState(last);
   const [animate, setAnimate] = useState(false);
+  const [dir, setDir] = useState<"fwd" | "back">("fwd");
+  const [manual, setManual] = useState(false);
+  const stepRef = useRef(last);
+  stepRef.current = step;
   const stoppedRef = useRef(false);
   const timersRef = useRef<number[]>([]);
   const idRef = useRef<symbol>(Symbol("chapter-sequence"));
@@ -164,10 +176,13 @@ export function useChapterSequence(total: number, stepMs: number): ChapterSequen
       stoppedRef.current = true;
       clearTimers();
       release(idRef.current);
-      setStep(Math.max(0, Math.min(last, i)));
+      const next = Math.max(0, Math.min(last, i));
+      setDir(next < stepRef.current ? "back" : "fwd");
+      setManual(true);
+      setStep(next);
     },
     [clearTimers, last],
   );
 
-  return { ref, step, animate, goTo };
+  return { ref, step, animate, goTo, dir, manual };
 }

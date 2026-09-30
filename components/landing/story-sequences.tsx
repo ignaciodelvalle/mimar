@@ -10,11 +10,17 @@
 //  - Every Pampa fact is the seed's (scripts/flagship-pampa-data.ts): dates,
 //    the dose, the vet, the lost report, the intake.
 //  - Every string drawn INSIDE a device is one the product itself renders, at
-//    the file cited next to it. The step list on the left is the landing's own
-//    narration, and says so by living outside the device.
+//    the file cited next to it. The step labels are the landing's own
+//    narration and live outside the device (for screen readers only: the
+//    device mock is aria-hidden, and the PO wants no visible description,
+//    "sin descripción", 2026-09-30).
 //
-// Motion: transform/opacity only, inside fixed-size device frames (.lp-scr is
-// a fixed height), so nothing outside the phone ever moves.
+// Motion: transform/opacity only. A screen change slides inside the
+// fixed-size device (.lp-scr is a fixed height, .lp-tab-scr a fixed inset); an
+// actor change (the refugio's tablet handing over to Martín's phone) slides
+// the outgoing device out and the incoming one in. Each person's device has
+// its own case colour (data-actor, --lp-case-* in app/landing.css); its SIZE
+// never changes.
 
 import { Icon } from "@/components/Icon";
 import { PhoneFrame } from "@/components/landing/PhoneFrame";
@@ -37,7 +43,14 @@ import { LnStatusFlag, LnVstamp } from "@/components/ui/StatusFlag";
 import { eventTypeLabel } from "@/lib/utils/format";
 import { speciesLabel } from "@/lib/utils/species";
 import { PAMPA_CHIP, PAMPA_PET } from "@/scripts/flagship-pampa-data";
-import type { ReactElement, ReactNode } from "react";
+import {
+  type ReactElement,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 const PHOTO = "/landing/pampa-hero.jpg";
 
@@ -87,17 +100,66 @@ function reveal(animate: boolean, step: number, from: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// The chapter shell: narration + step list on the left, the device on the right
+// The chapter shell: number, moment, title and ‹ › on the left, the device on
+// the right
 // ---------------------------------------------------------------------------
 
-type SequenceSpec = {
+/**
+ * Whose device is in hand. One case colour each (--lp-case-* tokens in
+ * app/landing.css); the phone/tablet choice follows from it.
+ */
+export type SequenceActor = "owner" | "neighbour" | "vet" | "shelter";
+
+export const ACTORS: readonly SequenceActor[] = ["owner", "neighbour", "vet", "shelter"];
+
+type Dir = "fwd" | "back";
+
+type SequenceDef = {
   /** Number of device steps the sequence plays through. */
   total: number;
   stepMs: number;
-  /** Step list items: `at` is the device step the item completes at (and jumps to). */
+  /** Step items: `at` is the device step the item completes at (‹ › stop there). */
   items: Array<{ label: string; at: number }>;
-  device: (step: number, animate: boolean) => ReactElement;
+  actor: (step: number) => SequenceActor;
+  screen: (step: number, animate: boolean) => ReactNode;
+  /** True when every step is its own screen (it slides); false when one screen fills in. */
+  slides: boolean;
 };
+
+type SequenceSpec = SequenceDef & {
+  device: (step: number, animate: boolean, dir?: Dir) => ReactElement;
+};
+
+/** Matches the CSS device switch (--motion-deliberate, 600ms). */
+const DEVICE_SWITCH_MS = 600;
+
+function isTablet(actor: SequenceActor): boolean {
+  return actor === "vet" || actor === "shelter";
+}
+
+function sequence(def: SequenceDef): SequenceSpec {
+  return {
+    ...def,
+    device: (step, animate, dir = "fwd") => {
+      const actor = def.actor(step);
+      const Frame = isTablet(actor) ? TabletFrame : PhoneFrame;
+      const slide = animate && def.slides;
+      return (
+        <div className="lp-seq-case" data-actor={actor}>
+          <Frame>
+            <div
+              key={def.slides ? step : "screen"}
+              className={slide ? "lp-seq-screen lp-seq-slide" : "lp-seq-screen"}
+              data-dir={slide ? dir : undefined}
+            >
+              {def.screen(step, animate)}
+            </div>
+          </Frame>
+        </div>
+      );
+    },
+  };
+}
 
 function SequencedChapter({
   chapter,
@@ -108,12 +170,34 @@ function SequencedChapter({
   index: number;
   spec: SequenceSpec;
 }) {
-  const { ref, step, animate, goTo } = useChapterSequence(spec.total, spec.stepMs);
+  const { ref, step, animate, goTo, dir, manual } = useChapterSequence(spec.total, spec.stepMs);
   // The item in progress: the first whose completion step is not behind us.
   const activeItem = Math.max(
     0,
     spec.items.findIndex((it) => it.at >= step),
   );
+  const prevItem = spec.items[activeItem - 1];
+  const nextItem = spec.items[activeItem + 1];
+  const current = spec.items[activeItem];
+
+  // Actor switch: keep the outgoing device on stage while it slides out. Only
+  // a change seen while ALREADY animating counts: the client's first rewind
+  // (final step to step 0) is not a switch the visitor ever saw.
+  const actor = spec.actor(step);
+  const shownRef = useRef({ step, actor, animate });
+  const [exiting, setExiting] = useState<{ step: number; dir: Dir } | null>(null);
+  useLayoutEffect(() => {
+    const prev = shownRef.current;
+    shownRef.current = { step, actor, animate };
+    if (!animate || !prev.animate || prev.actor === actor) return;
+    setExiting({ step: prev.step, dir });
+  }, [step, actor, animate, dir]);
+  useEffect(() => {
+    if (!exiting) return;
+    const t = window.setTimeout(() => setExiting(null), DEVICE_SWITCH_MS);
+    return () => window.clearTimeout(t);
+  }, [exiting]);
+
   return (
     <div
       className="lp-chapter"
@@ -128,35 +212,61 @@ function SequencedChapter({
             Capítulo {index + 1} · {chapter.moment}
           </div>
           <h3 className="lp-display lp-h-sub lp-ch-title">{chapter.title}</h3>
-          <p className="lp-lead lp-ch-lead">{chapter.lead}</p>
-          <ol className="lp-seq-steps" aria-label={`Pasos del capítulo ${index + 1}`}>
-            {spec.items.map((it, i) => {
-              const state = i < activeItem ? "done" : i === activeItem ? "on" : "todo";
-              return (
-                <li key={it.label}>
-                  <StepButton
-                    className="lp-seq-step"
-                    active={i === activeItem}
-                    data-state={state}
-                    onSelect={() => goTo(it.at)}
-                  >
-                    <span className="lp-seq-n" aria-hidden="true">
-                      {state === "done" ? <Icon name="check" size="sm" decorative /> : i + 1}
-                    </span>
-                    <span>{it.label}</span>
-                  </StepButton>
-                </li>
-              );
-            })}
-          </ol>
+          {/* No visible lead or step labels (PO 2026-09-30: "sin
+              descripción"); the device tells the story. The device mock is
+              aria-hidden, so a screen reader still gets the chapter's lead
+              and the current step, here. */}
+          <p className="sr-only">{chapter.lead}</p>
+          <fieldset className="lp-seq-nav" aria-label={`Pasos del capítulo ${index + 1}`}>
+            <StepButton
+              className="lp-seq-arrow lp-seq-arrow--back"
+              label="Paso anterior"
+              disabled={!prevItem}
+              onSelect={() => prevItem && goTo(prevItem.at)}
+            >
+              <Icon name="chevron-right" size="sm" decorative />
+            </StepButton>
+            <span className="lp-seq-track" aria-hidden="true">
+              {spec.items.map((it, i) => (
+                <span
+                  key={it.label}
+                  className="lp-seq-bar"
+                  data-state={i < activeItem ? "done" : i === activeItem ? "on" : "todo"}
+                />
+              ))}
+            </span>
+            <StepButton
+              className="lp-seq-arrow"
+              label="Paso siguiente"
+              disabled={!nextItem}
+              onSelect={() => nextItem && goTo(nextItem.at)}
+            >
+              <Icon name="chevron-right" size="sm" decorative />
+            </StepButton>
+          </fieldset>
+          <p className="sr-only" aria-live={manual ? "polite" : "off"}>
+            Paso {activeItem + 1} de {spec.items.length}: {current?.label}
+          </p>
         </div>
         <div className="lp-ch-device lp-seq-device" ref={ref}>
           {/* No caption naming whose device this is (PO 2026-09-29: "sin
-              tener que aclarar en cada caso") — the device itself (phone vs
-              tablet) and the portal header inside it (OpHead) carry that,
-              same as every other chapter. The removed `deviceLabel` field
-              used to print "Portal del refugio" / "App de Martín" here. */}
-          {spec.device(step, animate)}
+              tener que aclarar en cada caso"): the device itself (phone vs
+              tablet, and its case colour) and the portal header inside it
+              (OpHead) carry that. */}
+          <div className="lp-seq-stage">
+            {exiting && (
+              <div className="lp-seq-dev-out" data-dir={exiting.dir}>
+                {spec.device(exiting.step, false)}
+              </div>
+            )}
+            <div
+              key={actor}
+              className={exiting ? "lp-seq-dev-in" : "lp-seq-dev"}
+              data-dir={exiting ? exiting.dir : undefined}
+            >
+              {spec.device(step, animate, dir)}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -250,7 +360,7 @@ function VetPortalScreen({ step, animate }: { step: number; animate: boolean }) 
   );
 }
 
-export const VET_SEQUENCE: SequenceSpec = {
+export const VET_SEQUENCE: SequenceSpec = sequence({
   total: VET_ADDED + 1,
   stepMs: 650,
   items: [
@@ -259,12 +369,10 @@ export const VET_SEQUENCE: SequenceSpec = {
     { label: "La dosis queda firmada con su matrícula.", at: VET_STAMP },
     { label: `Se suma a la libreta de ${PAMPA.name}.`, at: VET_ADDED },
   ],
-  device: (step, animate) => (
-    <TabletFrame>
-      <VetPortalScreen step={step} animate={animate} />
-    </TabletFrame>
-  ),
-};
+  actor: () => "vet",
+  screen: (step, animate) => <VetPortalScreen step={step} animate={animate} />,
+  slides: false,
+});
 
 // ---------------------------------------------------------------------------
 // PS7 · Se pierde — four screens, one phone throughout (2024-03-09 → 2024-03-10)
@@ -386,7 +494,7 @@ function OwnerFoundReportScreen() {
 
 const LOST_SCREENS = [LostMarkScreen, LostOpenScreen, LostPosterScreen, OwnerFoundReportScreen];
 
-export const LOST_SEQUENCE: SequenceSpec = {
+export const LOST_SEQUENCE: SequenceSpec = sequence({
   total: LOST_SCREENS.length,
   stepMs: 1900,
   items: [
@@ -395,17 +503,13 @@ export const LOST_SEQUENCE: SequenceSpec = {
     { label: "El cartel con su QR, listo para compartir.", at: 2 },
     { label: `Alguien la encuentra: ${PAMPA_OWNER_NAME} recibe el aviso al instante.`, at: 3 },
   ],
-  device: (step, animate) => {
+  actor: () => "owner",
+  screen: (step) => {
     const Screen = LOST_SCREENS[step] ?? OwnerFoundReportScreen;
-    return (
-      <PhoneFrame>
-        <div key={step} className={animate ? "lp-seq-screen lp-seq-in" : "lp-seq-screen"}>
-          <Screen />
-        </div>
-      </PhoneFrame>
-    );
+    return <Screen />;
   },
-};
+  slides: true,
+});
 
 // ---------------------------------------------------------------------------
 // PS8 · Refugio — "Su chip dice quién es." (2024-03-11 → 2024-03-13)
@@ -616,7 +720,7 @@ const SHELTER_SCREENS: Array<() => ReactNode> = [
 // split) does not re-hardcode this index and drift from it.
 export const OWNER_FROM = 4;
 
-export const SHELTER_SEQUENCE: SequenceSpec = {
+export const SHELTER_SEQUENCE: SequenceSpec = sequence({
   total: SHELTER_SCREENS.length,
   stepMs: 1700,
   items: [
@@ -638,19 +742,15 @@ export const SHELTER_SEQUENCE: SequenceSpec = {
   // again 2026-09-29 on captions: "sin tener que aclarar en cada caso" — no
   // `deviceLabel` caption names it either; the removed field used to print
   // "Portal del refugio" / "App de Martín" above the device): the refugio's
-  // own tablet for its intake steps, then Martín's phone from OWNER_FROM on.
-  device: (step, animate) => {
+  // own tablet for its intake steps, then Martín's phone from OWNER_FROM on;
+  // the tablet slides out and the phone slides in (PO 2026-09-30).
+  actor: (step) => (step >= OWNER_FROM ? "owner" : "shelter"),
+  screen: (step) => {
     const render = SHELTER_SCREENS[step] ?? SHELTER_SCREENS[SHELTER_SCREENS.length - 1];
-    const Frame = step >= OWNER_FROM ? PhoneFrame : TabletFrame;
-    return (
-      <Frame>
-        <div key={step} className={animate ? "lp-seq-screen lp-seq-in" : "lp-seq-screen"}>
-          {render?.()}
-        </div>
-      </Frame>
-    );
+    return render?.();
   },
-};
+  slides: true,
+});
 
 // ---------------------------------------------------------------------------
 // Entry point for StorySection
