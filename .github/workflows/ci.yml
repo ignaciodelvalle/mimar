@@ -399,6 +399,12 @@ jobs:
         # reasons, lives in scripts/check-conflict-markers.ts (empty on purpose).
         run: pnpm lint:conflict-markers
 
+      - name: Lint (travel reference freshness)
+        # Corridor and airline rules carry sourceUrl / lastVerifiedAt /
+        # reviewBy. Fails only on malformed provenance; a rule merely past its
+        # review date is printed as a warning and never turns a merge red.
+        run: pnpm lint:travel-freshness
+
       - name: Lint (CI ↔ verify parity)
         # The ratchet that keeps this workflow honest. `pnpm verify` is the
         # Definition of Done and runs on one machine; CI is what blocks a merge.

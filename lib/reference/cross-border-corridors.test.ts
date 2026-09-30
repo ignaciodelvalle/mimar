@@ -73,3 +73,44 @@ describe("corridor registry — per-corridor invariants (R3.2, R3.4)", () => {
     expect(labels).toContain("Estados Unidos");
   });
 });
+
+describe("corridor registry — 2026-09-30 corrections (viajes-fase-2)", () => {
+  it("no corridor is left citation-pending", () => {
+    for (const c of CORRIDORS) {
+      expect(Object.keys(c.rules).length, c.id).toBeGreaterThan(0);
+    }
+  });
+
+  it("Chile: 10-day CZI window, 21-day rabies wait, deworming ceiling 30 with the floor pending", () => {
+    const chile = getCorridor("chile");
+    expect(chile.rules.document_issuance_window_days).toBe(10);
+    expect(chile.rules.rabies_vaccination_to_travel_wait_days).toBe(21);
+    expect(chile.rules.parasite_treatment_window_days).toBe(30);
+    // No quarantine is declared — the "10-day confinement" is in no source.
+    expect(chile.rules.quarantine_days_required).toBeUndefined();
+    const pending = (chile.pendingRequirements ?? []).map((r) => r.value).join("\n");
+    expect(pending).toMatch(/Microchip/);
+    expect(pending).toMatch(/al menos 5 días/);
+  });
+
+  it("Brasil: 60-day CVI, 21-day rabies wait, 15-day deworming, microchip optional", () => {
+    const brasil = getCorridor("brasil");
+    expect(brasil.rules.document_issuance_window_days).toBe(60);
+    expect(brasil.rules.rabies_vaccination_to_travel_wait_days).toBe(21);
+    expect(brasil.rules.parasite_treatment_window_days).toBe(15);
+    expect(brasil.rules.required_documents?.join("\n")).toMatch(/Microchip opcional/);
+  });
+
+  it("USA carries the CDC minimum dog age until the rule table can express it", () => {
+    const usa = getCorridor("usa");
+    expect((usa.pendingRequirements ?? []).map((r) => r.value).join("\n")).toMatch(/6 meses/);
+  });
+
+  it("every declared rule has its own provenance", () => {
+    for (const c of CORRIDORS) {
+      const sources = c.ruleSources as Record<string, unknown>;
+      const missing = Object.keys(c.rules).filter((k) => !sources[k]);
+      expect(missing, c.id).toEqual([]);
+    }
+  });
+});

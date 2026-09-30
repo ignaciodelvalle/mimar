@@ -10040,6 +10040,18 @@
       "id": "__tests__/travel-private-read-coverage.test.ts",
       "path": "__tests__/travel-private-read-coverage.test.ts",
       "note": "Added 2026-09-30 with Phase 1 of the SDD change viajes-fase-2 (design D8). Every app/lib/src file that queries pet_events in a shape that can return a trip (transport_recorded), a CVI (cvi_issued) or a correction of either is triaged into one list: it carries the shared notTravelPrivateClause (lib/infra/travel-private-events.ts), reads travel rows on purpose as a titular path or writer, is a suppressed aggregate, only folds event_amended onto an allow-list without movement, or is a false positive. Both directions are asserted, plus no private copy of the predicate and every movement sub_kind triaged. The behaviour is proven against the database in __tests__/travel-privacy-surfaces.test.ts. Its canon row lands when the change closes."
+    },
+    {
+      "kind": "lint-key",
+      "id": "lint:travel-freshness",
+      "path": "package.json",
+      "note": "Runs scripts/check-travel-reference-freshness.ts (viajes-fase-2 Phase 2, design D6): corridor rules, airline policies and the curated brachycephalic list carry sourceUrl/lastVerifiedAt/reviewBy; wired into verify and ci.yml; canon row pending."
+    },
+    {
+      "kind": "check-script",
+      "id": "scripts/check-travel-reference-freshness.ts",
+      "path": "scripts/check-travel-reference-freshness.ts",
+      "note": "Travel reference freshness fence (viajes-fase-2 Phase 2, design D6). Fails only on STRUCTURE — a missing or non-https sourceUrl, a malformed date, reviewBy before lastVerifiedAt or beyond the TTL (180 days for countries, 90 for airlines), a lastVerifiedAt in the future, an unverified value without a note, a corridor rule without provenance. A rule merely past its review date is a warning and exits 0: the calendar never turns a merge red. Red controls in __tests__/check-travel-reference-freshness.test.ts; canon row pending."
     }
   ]
 }

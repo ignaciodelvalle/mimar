@@ -29,8 +29,11 @@ function makeCorridor(id: Corridor["id"], label: string, rules: CorridorRules): 
     version: "test.1",
     effectiveFrom: "2026-01-01",
     sourceUrl: "https://example.gov/test",
+    lastVerifiedAt: "2026-01-01",
+    reviewBy: "2026-06-30",
     appliesTo: { species: ["dog", "cat"], direction: "outbound_from_ar" },
     rules,
+    ruleSources: {},
   };
 }
 

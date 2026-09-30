@@ -133,7 +133,11 @@ const canon: Canon = loadCanon(REPO_ROOT);
 // 19 -> 20 on 2026-09-30 (viajes-fase-2 Phase 1):
 // __tests__/travel-private-read-coverage.test.ts, the trip-privacy read
 // coverage fence. Its canon row lands when the change closes.
-const UNMAPPED_COUNT = 20;
+//
+// 20 -> 22 on 2026-09-30 (viajes-fase-2 Phase 2): lint:travel-freshness and
+// scripts/check-travel-reference-freshness.ts, the non-blocking travel
+// reference freshness fence. Same reason.
+const UNMAPPED_COUNT = 22;
 
 /**
  * Enforcement the filename glob below cannot see.
