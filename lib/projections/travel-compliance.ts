@@ -73,7 +73,7 @@ import {
 } from "@/lib/projections/travel-rule-merge";
 import type { Airline, AirlineModalityRule } from "@/lib/reference/airlines";
 import type { Corridor } from "@/lib/reference/cross-border-corridors";
-import { pluralizeEs } from "@/lib/utils/format";
+import { pluralizeEs, speciesLabelPlural } from "@/lib/utils/format";
 
 export type { TravelPetFacts } from "@/lib/projections/travel-libreta-checks";
 export type { RuleSourceRef } from "@/lib/projections/travel-rule-merge";
@@ -503,8 +503,6 @@ function ruleObligations(rules: readonly MergedRule[], env: EvalEnv): TravelObli
 // Airline gates — facts about the airline row itself, not rule types
 // ---------------------------------------------------------------------------
 
-const SPECIES_PLURAL: Record<string, string> = { dog: "perros", cat: "gatos" };
-
 function airlineObligation(
   airline: Airline,
   key: TravelObligationKey,
@@ -591,7 +589,10 @@ function speciesGate(
   const accepted = airline.modalities[modality]?.species;
   if (!accepted || !species) return null;
   if ((accepted.value as readonly string[]).includes(species)) return null;
-  const who = SPECIES_PLURAL[species] ?? "esta especie";
+  const who =
+    species === "dog" || species === "cat"
+      ? speciesLabelPlural(species).toLowerCase()
+      : "esta especie";
   return airlineObligation(
     airline,
     "airline_species",
