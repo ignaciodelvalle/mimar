@@ -3614,7 +3614,8 @@ html:has([data-landing-root]) {
    opacity only, staggered by --i. Client + motion only, like .lp-seq-in. */
 .lp .lp-seq-type > span {
   animation: lp-seq-word var(--motion-fast) var(--ease-editorial) both;
-  animation-delay: calc(var(--i, 0) * 110ms);
+  /* ~110ms per word: three quarters of --motion-fast. */
+  animation-delay: calc(var(--i, 0) * var(--motion-fast) * 0.75);
 }
 @keyframes lp-seq-word {
   from {
@@ -3627,7 +3628,10 @@ html:has([data-landing-root]) {
 /* The button pressed once the typing above is done, late in the step. */
 .lp .lp-vf-submit.lp-seq-late {
   transform: none;
-  animation: lp-seq-press var(--motion-fast) var(--ease-editorial) 1300ms both;
+  /* Pressed ~1.35s into the step, after the typing (--motion-deliberate x2
+     + --motion-fast); every step lasts at least 1700ms. */
+  animation: lp-seq-press var(--motion-fast) var(--ease-editorial)
+    calc(var(--motion-deliberate) * 2 + var(--motion-fast)) both;
 }
 @keyframes lp-seq-press {
   to {
