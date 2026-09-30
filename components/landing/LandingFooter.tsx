@@ -27,10 +27,13 @@ export function LandingFooter() {
                 WU1 honesty pass (2026-09-24): "registro nacional" also
                 overclaimed (no convenio with any state body — see
                 state-endorsement-fence.test.ts). Replaced with the libreta
-                framing used across the rest of the honesty pass. */}
+                framing used across the rest of the honesty pass.
+                Copy review 2026-09-30 (D1/D2/D3): the footer repeated the
+                append-only mechanic, the anonymous-stats promise and the
+                free-forever promise, all already stated in the hero and the
+                FAQ — cut to the one sentence a footer needs. */}
             <p className="max-w-xs text-md leading-relaxed text-[var(--color-ln-mute)]">
-              La libreta sanitaria digital de las mascotas de Argentina, con historial que solo se
-              agrega. Gratis, y con estadísticas abiertas sin datos personales.
+              La libreta sanitaria digital de tu mascota.
             </p>
             {/* PO decision, orchestrator review 2026-09-24 (reverses D7): the
                 celeste-and-white stripe, the "Estado" chapter and (once WU5

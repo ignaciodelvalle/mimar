@@ -169,7 +169,7 @@ function libretaCopy(e: PampaSeedEvent): LibretaCopy | null {
           flag: "lost",
         };
       }
-      return { tone: "ok", title: "Volvió a casa", meta: "Devuelta a su dueño", flag: "ok" };
+      return { tone: "ok", title: "Encontrada · devuelta a su dueño", meta: "", flag: "ok" };
     }
     case "shelter_intake_recorded":
       return { tone: "", title: "Ingresó a un refugio", meta: str(p.intake_condition) };
@@ -366,7 +366,7 @@ export const CHAPTERS: LandingChapter[] = [
     state: "registered",
     side: "r",
     title: "Empieza en casa.",
-    lead: `${OWNER_NAME} registra a Pampa: identidad pública con QR y un historial listo para escribirse. Gratuito, en cinco minutos.`,
+    lead: `${OWNER_NAME} registra a Pampa: ya tiene su QR y su libreta.`,
   },
   {
     key: "vet",
@@ -378,7 +378,9 @@ export const CHAPTERS: LandingChapter[] = [
     title: "La vacuna queda firmada.",
     // "Dato fiable, de origen." was the operator's vocabulary (critique
     // 2026-09-29, M2; PO chose this wording over "vale como la libreta de papel").
-    lead: `La ${VET_SHORT_NAME} le aplica la antirrábica y la anota en su libreta. Queda firmada con su matrícula.`,
+    // Copy review 2026-09-30 (D7): "firmada con su matrícula" repeated 3 times
+    // in this one chapter (the step list and the FAQ already say it).
+    lead: `La ${VET_SHORT_NAME} le aplica la antirrábica y la anota en su libreta.`,
   },
   {
     key: "anon",
@@ -388,7 +390,9 @@ export const CHAPTERS: LandingChapter[] = [
     // 2024-03-09, the day the seed marks her lost, was a Saturday; the seed's
     // last_seen_context is "Se soltó en la plaza durante un paseo".
     title: "Un sábado, se suelta en la plaza.",
-    lead: `${OWNER_NAME} la marca como perdida. Al día siguiente, alguien escanea su QR: sin cuenta y sin app, ve lo justo para ayudar y puede avisar.`,
+    // Copy review 2026-09-30 (D10): the first sentence repeated the chapter's
+    // own step 1, right below.
+    lead: "Al día siguiente, alguien escanea su QR y avisa, sin cuenta ni app.",
   },
   {
     key: "refugio",
@@ -399,7 +403,9 @@ export const CHAPTERS: LandingChapter[] = [
     side: "l",
     // The return home is authored by the owner (2024-03-13), not the shelter.
     title: "La recibe un refugio.",
-    lead: `Leen su chip y miMAR detecta la coincidencia: el refugio confirma que es la misma mascota y registra el ingreso. Dos días después, ${OWNER_NAME} la marca como encontrada.`,
+    // Copy review 2026-09-30 (D9): the fuller version repeated the 7 steps
+    // the chapter plays right below it.
+    lead: `Leen su chip y miMAR la reconoce. Dos días después, ${OWNER_NAME} la marca como encontrada.`,
   },
   {
     key: "libreta",
@@ -410,7 +416,11 @@ export const CHAPTERS: LandingChapter[] = [
     // Honesty pass (WU1, landing redesign 2026-09-24): "inmutable" overclaimed —
     // art. 16 de la Ley 25.326 exige una excepción auditada de supresión sobre
     // el asiento (límites honestos A.1). Lo que sí se sostiene: solo agrega.
-    lead: `${OWNER_NAME}, la ${VET_SHORT_NAME} y el refugio escribieron en la misma libreta. Cada vacuna, cada consulta, cada vuelta a casa se suma a la de Pampa. Solo se agrega: una corrección es un asiento nuevo, nunca una edición.`,
+    // Copy review 2026-09-30 (D12): 38 words down to one sentence — the
+    // "asiento nuevo" mechanic is explained once already (see the FAQ trust
+    // row), and "cada vuelta a casa" is the same phrasing the honesty pass
+    // retired from the libreta row above.
+    lead: `${OWNER_NAME}, la ${VET_SHORT_NAME} y el refugio escribieron en la misma libreta.`,
   },
   {
     key: "estado",
@@ -547,15 +557,18 @@ export type LifeMoment = {
 };
 
 export const LIFE_MOMENTS: LifeMoment[] = [
-  {
-    icon: "alerta",
-    title: "Vi un caso de maltrato",
-    body: "Sin cuenta y sin login. Recibís un código de seguimiento y el caso lo toma la autoridad.",
-  },
+  // "Vi un caso de maltrato" was cut (copy review 2026-09-30, D6): CrisisBand
+  // already has this exact door above the fold, and this card's own body
+  // said "el caso lo toma la autoridad" — which contradicts
+  // app/(public)/denuncias/seguimiento/page.tsx ("aún no fue enviada a la
+  // herramienta gubernamental").
   {
     icon: "shield",
     title: "Mi perro mordió a alguien",
-    body: "Tras una mordedura, el período de observación se abre, se sigue y se cierra en miMAR. Automático.",
+    // Copy review 2026-09-30: "se cierra en miMAR. Automático." was false —
+    // only a professional closes an observation
+    // (src/modules/surveillance/application/close-eligible-observations.ts).
+    body: "La observación antirrábica se abre en miMAR y la cierra un profesional.",
   },
   {
     icon: "vacuna",
@@ -569,7 +582,10 @@ export const LIFE_MOMENTS: LifeMoment[] = [
     // just that it is automatic, not a spreadsheet.
     // Owner's words (critique 2026-09-29, M2): what the campaign means for
     // YOUR pet and what your comuna sees. Still no cadence claim.
-    body: "La dosis de campaña se suma a su libreta, y tu comuna sabe cuántas mascotas están vacunadas sin ver las de nadie.",
+    // Copy review 2026-09-30 (the state-access claim, minimal option): "sin
+    // ver las de nadie" repeated the false "solo totales" promise this pass
+    // removed from the Estado chapter.
+    body: "La dosis de campaña se suma a su libreta y a la cobertura de tu comuna.",
   },
   {
     icon: "candado",
@@ -579,12 +595,16 @@ export const LIFE_MOMENTS: LifeMoment[] = [
   {
     icon: "corazon",
     title: "Quiero adoptar",
-    body: "Catálogo nacional solo con organizaciones de acceso otorgado.",
+    // Copy review 2026-09-30: "acceso otorgado" was jargon, and "nacional"
+    // read as a state-run catalog.
+    body: "Mascotas en adopción de organizaciones verificadas.",
   },
   {
     icon: "transferencia",
     title: "Cambió de familia",
-    body: "Cada tránsito, adopción y transferencia queda registrada.",
+    // Copy review 2026-09-30: subject/verb agreement fix ("tránsito, adopción
+    // y transferencia" is plural, "queda" is singular).
+    body: "Tránsitos, adopciones y transferencias quedan en su libreta.",
   },
 ];
 
@@ -602,7 +622,10 @@ export const FAQS: Array<[string, string]> = [
   ],
   [
     "¿Quién ve los datos de mi mascota?",
-    "Vos ves todo. Quien escanea el QR ve solo lo que decidiste compartir. Cada profesional u organización accede según su rol.",
+    // Copy review 2026-09-30 (the state-access claim, minimal option): this
+    // answer used to say nothing about the State's own access, which the
+    // Estado chapter now states plainly — the two must agree.
+    "Vos ves todo. Quien escanea el QR ve solo lo que decidiste compartir. La autoridad de tu zona accede a lo que necesita para cuidar la salud pública, y cada acceso queda registrado.",
   ],
   [
     "¿Necesito microchip?",
@@ -617,7 +640,9 @@ export const FAQS: Array<[string, string]> = [
     // pre-issued tag activated at /cuenta/chapas/activar with its serial and
     // the code printed on the envelope.
     "¿Cómo le pongo el QR?",
-    "Desde la ficha de tu mascota imprimís su chapita con el QR, si tu jurisdicción lo habilita: recortala y plastificala, o metela en un portachapita. Si te entregaron una chapa miMAR, la activás desde tu cuenta con su número de serie y el código del envoltorio.",
+    // Copy review 2026-09-30: 45 words down to the two real paths, without
+    // repeating step 3 of "Empezar" (recortala/plastificala, número de serie).
+    "Desde la ficha de tu mascota imprimís su chapita con el QR, si tu jurisdicción lo habilita. Si te dieron una chapa miMAR, la activás desde tu cuenta.",
   ],
   [
     "¿Reemplaza la libreta de papel?",
@@ -628,7 +653,7 @@ export const FAQS: Array<[string, string]> = [
   ],
   [
     "¿Y si me roban el teléfono?",
-    "miMAR no vive en tu teléfono: vive en el registro. Entrás desde cualquier dispositivo con tu cuenta, y la credencial pública sigue funcionando igual.",
+    "Tu libreta no está en el teléfono: entrás desde cualquier dispositivo, y el QR sigue funcionando.",
   ],
 ];
 
@@ -647,7 +672,9 @@ export type LandingRole = {
   icon: IconName;
   eyebrow: string;
   title: string;
-  body: string;
+  /** Optional: the owner door's intro sentence was cut (copy review
+   *  2026-09-30) — its 3 steps below already say what it said. */
+  body?: string;
   cta: string;
   ctaHref: string;
   cta2: string;
@@ -662,7 +689,6 @@ export const ROLES: LandingRole[] = [
     icon: "corazon",
     eyebrow: "Soy dueño",
     title: "miMAR para tu mascota",
-    body: "Identidad pública con QR, historial sanitario y modo perdido. Gratis.",
     // M1 (critique 2026-09-29): the last step is the physical QR, the one the
     // page's whole lost-pet promise depends on. See the "¿Cómo le pongo el
     // QR?" FAQ for the two real paths.
@@ -694,7 +720,7 @@ export const ROLES: LandingRole[] = [
     icon: "edificio",
     eyebrow: "Soy municipio o provincia",
     title: "miMAR para tu jurisdicción",
-    body: "Zoonosis y bienestar animal: coordiná campañas y seguí la cobertura de tu jurisdicción con datos que llegan firmados, sin cargarlos a mano.",
+    body: "Coordiná campañas y seguí la cobertura de tu jurisdicción.",
     cta: "Conocer miMAR para municipios",
     ctaHref: "/municipios",
     cta2: "Ya tengo cuenta institucional",

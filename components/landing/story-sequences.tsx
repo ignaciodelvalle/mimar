@@ -549,8 +549,10 @@ function OwnerFoundScreen() {
  * "¿Confirmás?" dialog, never showing her home. After the confirm, Martín's
  * app shows Pampa back AL DÍA (the flag the product renders for an active
  * pet) and the three entries the search left in her libreta, newest first,
- * worded as chapter 5's libreta words them: lost, taken in, home. Not "EN
- * CASA": no product surface prints that label.
+ * worded as chapter 5's libreta words them: lost, taken in, found. Copy
+ * review 2026-09-30: "Volvió a casa" / "EN CASA" is not a label any product
+ * surface prints, and reads as a claim this deployment cannot back for every
+ * pet — "Encontrada · devuelta a su dueño" states the same fact without it.
  */
 function OwnerHomeScreen() {
   return (
@@ -569,8 +571,8 @@ function OwnerHomeScreen() {
               <Icon name="casa" size="sm" decorative />
             </span>
             <div className="min-w-0">
-              <b>Volvió a casa</b>
-              <span className="lp-intake-sub">Devuelta a su dueño · {landingDate(FOUND.date)}</span>
+              <b>Encontrada · devuelta a su dueño</b>
+              <span className="lp-intake-sub">{landingDate(FOUND.date)}</span>
             </div>
           </div>
           <div className="lp-intake-row">
@@ -627,7 +629,10 @@ export const SHELTER_SEQUENCE: SequenceSpec = {
       label: `${landingDate(FOUND.date)}: ${PAMPA_OWNER_NAME} la marca como encontrada.`,
       at: 5,
     },
-    { label: `${PAMPA.name} vuelve a casa, y su credencial a estar al día.`, at: 6 },
+    {
+      label: `${PAMPA.name} está de vuelta con ${PAMPA_OWNER_NAME}, y su credencial vuelve a estar al día.`,
+      at: 6,
+    },
   ],
   // The device itself switches with who is using it (PO 2026-09-29, and
   // again 2026-09-29 on captions: "sin tener que aclarar en cada caso" — no

@@ -15,9 +15,6 @@ export function FeaturesSection() {
       <div className="lp-wrap">
         <div className="lp-featband-h lp-reveal">
           <h2 className="lp-display text-[clamp(28px,3.6vw,44px)]">Para cada situación</h2>
-          <span className="lp-lead text-base">
-            Lo serio también está cubierto — de punta a punta.
-          </span>
         </div>
         {/* Entrance sequencing (existing .lp-reveal + data-d mechanism, no new
             animation vocabulary): the band headline lands first, then the six

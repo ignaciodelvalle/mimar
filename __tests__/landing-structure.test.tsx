@@ -426,7 +426,13 @@ describe("story — CastFila + 6 chapters + rail", () => {
     const html = renderToStaticMarkup(<StorySection />);
     const estado = html.slice(html.indexOf('data-section="estado-console"'));
     // The owner's line comes before the console window.
-    const privacy = estado.indexOf("Solo datos agregados, nunca individuales.");
+    // Copy review 2026-09-30 (the state-access claim, minimal option): "solo
+    // datos agregados, nunca individuales" was false — a funcionario can open
+    // any pet's file in their own jurisdiction. Replaced with the truthful,
+    // narrower claim: only their own zone, and every access is logged.
+    const privacy = estado.indexOf(
+      "La autoridad de tu zona accede a lo que necesita para cuidar la salud pública",
+    );
     expect(privacy).toBeGreaterThan(-1);
     expect(privacy).toBeLessThan(estado.indexOf('class="lp-mac"'));
     // Map + two KPIs, not four.
@@ -452,21 +458,25 @@ describe("story — CastFila + 6 chapters + rail", () => {
     expect(html).not.toContain("shelter_intake_recorded");
     // Límites honestos A.1 wording (2026-09-24): "nada se edita, nada se borra"
     // overclaimed — account erasure replaces the user's own free text.
-    expect(html).toContain("append-only — una corrección es un asiento");
+    // Copy review 2026-09-30 (D1): the mechanism explanation was cut from this
+    // badge; it now carries only the trust claim, same words as the FAQ row.
+    expect(html).toContain("Historial que solo se agrega");
     expect(html).not.toContain("nada se borra");
   });
 });
 
-describe("bond band — a real heading with somewhere to go (m4)", () => {
-  it("is an H2 naming its section, with a standfirst sentence (no link, PO 2026-09-30)", () => {
+describe("bond band — a real heading, no standfirst (copy review 2026-09-30, option C)", () => {
+  it("is an H2 naming its section, with the photo carrying the rest", () => {
     const html = renderToStaticMarkup(<BondBand />);
     expect(html).toMatch(/<h2 id="vinculo-titulo"[^>]*>Un vínculo para toda la vida\.<\/h2>/);
     expect(html).toContain('aria-labelledby="vinculo-titulo"');
-    expect(html).toContain(
-      "Por eso cada vacuna, cada consulta y cada vuelta a casa quedan en su libreta.",
-    );
-    // PO 2026-09-30: the "Conocé la historia de Pampa →" link was removed —
-    // the sentence now stands alone, with no link into the story section.
+    // The standfirst sentence was cut entirely (option C): the eyebrow, the
+    // title and the photo already make the point without repeating the
+    // "cada vacuna, cada consulta, cada vuelta a casa" triad chapter 5 states.
+    expect(html).not.toContain("lp-bond-sub");
+    expect(html).not.toContain("cada vuelta a casa");
+    // The "Conocé la historia de Pampa →" link was removed earlier
+    // (PO 2026-09-30) and stays gone now that the sentence it sat in is gone too.
     expect(html).not.toContain("Conocé la historia");
     expect(html).not.toContain('href="#idea"');
     expect(html).not.toContain("Todo lo que miMAR protege empieza acá.");
@@ -480,11 +490,14 @@ describe("life moments + FAQ + trust row", () => {
     expect(html).not.toContain("no es un buen día");
   });
 
-  it("renders the 6 life-moment cards without law citations", () => {
+  it("renders the 5 life-moment cards without law citations", () => {
     const html = renderToStaticMarkup(<FeaturesSection />);
-    expect(html).toContain("Vi un caso de maltrato");
     expect(html).toContain("Mi perro mordió a alguien");
     expect(html).toContain("Quiero adoptar");
+    // "Vi un caso de maltrato" was cut here (copy review 2026-09-30, D6):
+    // CrisisBand already carries this exact door above the fold, and this
+    // card's own body contradicted the real denuncia flow.
+    expect(html).not.toContain("Vi un caso de maltrato");
     // No law citations in feature copy (README §6).
     expect(html).not.toMatch(/Ley\s+\d/);
   });
@@ -560,7 +573,10 @@ describe("how the QR reaches the collar (M1)", () => {
     expect(html).toContain("¿Cómo le pongo el QR?");
     expect(html).toContain("imprimís su chapita con el QR");
     expect(html).toContain("si tu jurisdicción lo habilita");
-    expect(html).toContain("número de serie y el código del envoltorio");
+    // Copy review 2026-09-30 shortened this answer, dropping the
+    // recortala/plastificala/número-de-serie detail already covered by the
+    // owner door's own steps (empezar-steps).
+    expect(html).toContain("la activás desde tu cuenta");
     // Both paths are real routes today.
     for (const route of [
       ["app", "(app)", "mis-mascotas", "[publicToken]", "chapita", "page.tsx"],
@@ -588,5 +604,56 @@ describe("footer", () => {
     expect(html).toContain("Ley 25.326");
     expect(html).toContain('href="/perdidas"');
     expect(html).toContain('href="/accesibilidad"');
+  });
+
+  // Copy review 2026-09-30 (D1/D2/D3): the footer used to repeat the
+  // append-only mechanic, the anonymous-stats promise and the free-forever
+  // promise — all already said elsewhere on the page.
+  it("no longer repeats the append-only / anonymous-stats / free-forever promises", () => {
+    const html = renderToStaticMarkup(<LandingFooter />);
+    expect(html).not.toContain("historial que solo se agrega");
+    expect(html).not.toContain("estadísticas abiertas");
+    expect(html).not.toContain("Gratis");
+  });
+});
+
+// Copy review 2026-09-30 — the full punch list of removed overclaims and
+// repeats, checked across the rendered sections they used to live in.
+describe("copy review 2026-09-30 — removed overclaims stay removed", () => {
+  function reviewedSections(): string {
+    return [
+      renderHero(),
+      renderToStaticMarkup(<BondBand />),
+      renderToStaticMarkup(<StorySection />),
+      renderToStaticMarkup(<FeaturesSection />),
+      renderToStaticMarkup(<FaqSection />),
+      renderToStaticMarkup(<LandingFooter />),
+    ].join(" ");
+  }
+
+  it("the false 'the State sees only totals' claim is gone from every place it used to appear", () => {
+    const html = reviewedSections();
+    expect(html).not.toMatch(/ve solo totales/i);
+    expect(html).not.toContain("nunca a tu mascota");
+    expect(html).not.toContain("nunca a Pampa");
+    expect(html).not.toContain("sin ver las de nadie");
+  });
+
+  it("the new, truthful state-access line is present in the Estado chapter and the matching FAQ", () => {
+    const truthfulLine = "accede a lo que necesita para cuidar la salud pública";
+    expect(renderToStaticMarkup(<StorySection />)).toContain(truthfulLine);
+    expect(renderToStaticMarkup(<FaqSection />)).toContain(truthfulLine);
+  });
+
+  it("'Volvió a casa' / 'vuelve a casa' are gone from the narrative", () => {
+    const html = reviewedSections();
+    expect(html).not.toContain("Volvió a casa");
+    expect(html).not.toContain("vuelve a casa");
+    // The honest replacement is present where the removed copy used to be.
+    expect(html).toContain("Encontrada · devuelta a su dueño");
+  });
+
+  it("the 'asiento nuevo' mechanic is not repeated across the narrative", () => {
+    expect(reviewedSections()).not.toContain("asiento nuevo");
   });
 });

@@ -45,7 +45,7 @@ export function EmpezarSection() {
                 </span>
                 <p className="lp-eyebrow mb-2">{r.eyebrow}</p>
                 <h3>{r.title}</h3>
-                <p>{r.body}</p>
+                {r.body && <p>{r.body}</p>}
                 {r.steps && (
                   <ol className="lp-role-steps" data-section="empezar-steps">
                     {r.steps.map((step) => (

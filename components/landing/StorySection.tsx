@@ -268,11 +268,13 @@ export function StorySection() {
             Muchas manos.
           </h2>
           <p className="lp-lead lp-reveal mx-auto mt-4" data-d="2">
-            Alrededor de Pampa están su dueño, su veterinaria, un refugio y el Estado. Los tres
-            primeros escriben en su libreta; el Estado ve solo totales, nunca a Pampa.{" "}
-            {/* PO 2026-09-30: on its own line, as a block — not a literal <br>,
-                which screen readers can announce oddly mid-sentence. */}
-            <span className="block">Esta es su historia, capítulo por capítulo.</span>
+            {/* Copy review 2026-09-30 (D14): the old sentence repeated the cast
+                right below it AND claimed "el Estado ve solo totales, nunca a
+                Pampa" — false (see the Estado chapter's honesty pass). Cut to
+                the bridge line only. On its own line, as a block — not a
+                literal <br>, which screen readers can announce oddly
+                mid-sentence. */}
+            Alrededor de Pampa hay muchas manos. <span className="block">Esta es su historia.</span>
           </p>
         </div>
 

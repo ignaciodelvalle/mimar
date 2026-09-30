@@ -314,7 +314,10 @@ describe("chapter endings (M5)", () => {
 
   it("chapter 4 ends with Pampa home and AL DÍA, after the confirm dialog", () => {
     const last = finalScreen(SHELTER_SEQUENCE);
-    expect(last).toContain("Volvió a casa");
+    // Copy review 2026-09-30: "Volvió a casa" is not a label any product
+    // surface prints; the screen says the same fact without it.
+    expect(last).toContain("Encontrada · devuelta a su dueño");
+    expect(last).not.toContain("Volvió a casa");
     expect(last).toContain("AL DÍA");
     expect(last).not.toContain("¿Confirmás?");
     // The confirm is still one step before it.

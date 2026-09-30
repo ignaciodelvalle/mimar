@@ -177,10 +177,12 @@ export function LibretaScreen() {
           2026-09-24 review): "nada se edita, nada se borra" was a second
           instance of the same A.1 overclaim already fixed on
           CHAPTERS.libreta.lead — missed here because it lives in the phone
-          mock's own badge, not the chapter copy. Same A.1 wording. */}
+          mock's own badge, not the chapter copy. Copy review 2026-09-30 (D1):
+          the mechanism explanation ("asiento nuevo", the English "append-only")
+          repeated across six places on the page; this badge keeps only the
+          trust claim, in the same words as the FAQ trust row. */}
       <div className="lp-lib-lock">
-        <Icon name="candado" size="sm" decorative /> append-only — una corrección es un asiento
-        nuevo, nunca una edición
+        <Icon name="candado" size="sm" decorative /> Historial que solo se agrega
       </div>
     </>
   );
@@ -255,21 +257,26 @@ export function EstadoConsole({ bridge }: { bridge?: string }) {
   return (
     <div className="lp-estado lp-estado--compact" data-section="estado-console">
       <div className="lp-estado-copy">
-        <p className="lp-eyebrow">Vista · Estado</p>
-        <h3 className="lp-display lp-h-sub mt-3">Tu comuna ve totales, nunca a tu mascota.</h3>
+        {/* "Vista · Estado" was cut (copy review 2026-09-30): redundant with
+            the "Capítulo 6 · Estado" number right above the chapter. */}
+        {/* Copy review 2026-09-30 (the state-access claim, minimal option):
+            the chapter used to claim "totales, nunca a tu mascota" / "solo
+            datos agregados, nunca individuales" — false. A funcionario can
+            open any pet's file in their own jurisdiction (see
+            lib/infra/omnibox-search.ts, lib/infra/gob-pet-subview.ts); what is
+            true is narrower and stronger: only their own zone, and every
+            access is logged. */}
+        <h3 className="lp-display lp-h-sub mt-3">Tu comuna cuida la salud de todos.</h3>
         {/* The chapter's bridge from the libreta, as the heading's own
             standfirst (critique 2026-09-29, m8). It used to float as plain
             text above the dark card, with no heading, and did not read as
             part of the chapter. */}
         {bridge && <p className="lp-estado-bridge">{bridge}</p>}
-        {/* Honesty pass (WU1, 2026-09-24): no cadence claim ("en tiempo
-            real" and "actualizadas todos los días" were both wrong for this
-            surface; see lib/metrics/kpi-catalog.ts), no "del país". */}
         <p className="lp-estado-privacy" data-section="estado-privacy">
           <Icon name="candado" size="sm" decorative />
           <span>
-            <b>Solo datos agregados, nunca individuales.</b> Cada libreta suma a la foto sanitaria
-            de su jurisdicción: cuántas mascotas están vacunadas, sin ver las de nadie.
+            La autoridad de tu zona accede a lo que necesita para cuidar la salud pública, y cada
+            acceso queda registrado.
           </span>
         </p>
         <Link href="/municipios" className="lp-estado-more">

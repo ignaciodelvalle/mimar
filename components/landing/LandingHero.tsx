@@ -339,8 +339,8 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                 chapter 5, see StorySection.tsx) to make room for the Play
                 badge right below. */}
             <p className="lp-lead lp-reveal" data-d="2">
-              La libreta sanitaria de tu mascota en el teléfono, con una credencial QR que
-              cualquiera puede escanear si se pierde.
+              La libreta de tu mascota en el teléfono, con un QR que cualquiera puede escanear si se
+              pierde.
             </p>
             {/* Google Play badge (PO 2026-09-30): the Android app is approved
                 on Play, but there is no listing URL yet — this renders the

@@ -48,14 +48,13 @@ export function BondBand() {
             Un vínculo para toda la vida.
           </h2>
           {/* Its standfirst said "Todo lo que miMAR protege empieza acá." —
-              vague, and with nowhere to go. It now says what follows and
-              links to it. */}
-          {/* PO 2026-09-30: removed the "Conocé la historia de Pampa →" link —
-              the sentence now stands on its own. "cada vuelta a casa" is left
-              as-is; a separate pass is proposing alternatives for it. */}
-          <p className="lp-bond-sub lp-reveal" data-d="2">
-            Por eso cada vacuna, cada consulta y cada vuelta a casa quedan en su libreta.
-          </p>
+              vague, and with nowhere to go. The "Conocé la historia de Pampa →"
+              link was removed first (PO 2026-09-30), and the copy review of the
+              same date recommended cutting the standfirst sentence entirely
+              (option C): the eyebrow, the title and the photo already carry
+              the band's point without a line repeating "cada vacuna, cada
+              consulta, cada vuelta a casa" — the same triad chapter 5 states
+              once, properly. */}
         </div>
       </div>
     </section>
