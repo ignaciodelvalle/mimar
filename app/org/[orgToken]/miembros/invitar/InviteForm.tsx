@@ -13,6 +13,12 @@ import { inviteMemberAction } from "@/src/modules/organizations/actions";
 
 type RoleOption = { value: string; label: string };
 
+const VET_INDIVIDUAL_ROLE = "vet_individual";
+
+/** Shown instead of the clinical-permission checkbox when inviting a vet. */
+export const VET_INVITE_MATRICULA_EXPLANATION =
+  "Los permisos clínicos salen de su propia matrícula verificada: cuando la verifique desde su cuenta, podrá registrar eventos, ver pacientes y reportar mordeduras. Mientras tanto puede gestionar turnos.";
+
 type Props = {
   organizationId: string;
   orgToken: string;
@@ -32,6 +38,10 @@ export function InviteForm({ organizationId, grantableRoles, defaultRole }: Prop
   const [email, setEmail] = useState("");
   const [role, setRole] = useState(defaultRole ?? grantableRoles[0]?.value ?? "");
   const [canWritePetEvents, setCanWritePetEvents] = useState(false);
+  // portal-vet-p0 D11: a vet_individual's clinical permissions come from their
+  // own verified matrícula, so the checkbox does not apply and is replaced by
+  // an explanation instead of being silently dropped.
+  const isVetInvite = role === VET_INDIVIDUAL_ROLE;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,7 +51,7 @@ export function InviteForm({ organizationId, grantableRoles, defaultRole }: Prop
         organizationId,
         email,
         invitedRole: role,
-        canWritePetEvents,
+        canWritePetEvents: isVetInvite ? false : canWritePetEvents,
       });
       if ("error" in result) {
         setError(result.error);
@@ -145,12 +155,18 @@ export function InviteForm({ organizationId, grantableRoles, defaultRole }: Prop
       </LnField>
 
       <div className="pb-4">
-        <LnCheckbox
-          checked={canWritePetEvents}
-          onChange={(e) => setCanWritePetEvents(e.target.checked)}
-        >
-          Puede registrar eventos clínicos/sanitarios
-        </LnCheckbox>
+        {isVetInvite ? (
+          <p className="text-sm text-ln-op-mute" data-testid="vet-invite-matricula-note">
+            {VET_INVITE_MATRICULA_EXPLANATION}
+          </p>
+        ) : (
+          <LnCheckbox
+            checked={canWritePetEvents}
+            onChange={(e) => setCanWritePetEvents(e.target.checked)}
+          >
+            Puede registrar eventos clínicos/sanitarios
+          </LnCheckbox>
+        )}
       </div>
 
       {error && (

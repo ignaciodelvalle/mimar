@@ -3,7 +3,11 @@
 // Auth handled by caller (Supabase session check, getActiveMemberships[length-1]).
 // Caller passes the resolved `active` membership context to keep this use-case pure.
 
-import { VET_INDIVIDUAL_IMPLICIT_CAPS } from "@/src/modules/organizations/domain/capabilities";
+import {
+  CREDENTIAL_GATED_REQUEST_REFUSAL_COPY,
+  VET_INDIVIDUAL_BASELINE_CAPS,
+  credentialGatedGrantRefusal,
+} from "@/src/modules/organizations/domain/capabilities";
 import type {
   Exec,
   OrgRepository,
@@ -94,10 +98,19 @@ export async function requestCapability(
     return { ok: false, error: "Como administrador ya tenés todos los permisos." };
   }
 
-  // vet_individual has an implicit baseline — block duplicate requests.
+  // A vet_individual's clinical capabilities come from their own verified
+  // matrícula, never from an admin's approval (portal-vet-p0 D10), so there is
+  // nothing to request. Before this, an unverified vet was told "ya tenés este
+  // permiso por defecto", which was false.
+  const credentialRefusal = credentialGatedGrantRefusal(active.membership.role, input.capability);
+  if (credentialRefusal) {
+    return { ok: false, error: CREDENTIAL_GATED_REQUEST_REFUSAL_COPY[credentialRefusal] };
+  }
+
+  // vet_individual has an unconditional baseline — block duplicate requests.
   if (
     active.membership.role === "vet_individual" &&
-    (VET_INDIVIDUAL_IMPLICIT_CAPS as readonly string[]).includes(input.capability)
+    (VET_INDIVIDUAL_BASELINE_CAPS as readonly string[]).includes(input.capability)
   ) {
     return { ok: false, error: "Como veterinario/a ya tenés este permiso por defecto." };
   }

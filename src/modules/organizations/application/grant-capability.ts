@@ -11,7 +11,9 @@
 
 import {
   COORDINATOR_IMPLICIT_CAPS,
-  VET_INDIVIDUAL_IMPLICIT_CAPS,
+  CREDENTIAL_GATED_GRANT_REFUSAL_COPY,
+  VET_INDIVIDUAL_BASELINE_CAPS,
+  credentialGatedGrantRefusal,
   isValidCapability,
 } from "@/src/modules/organizations/domain/capabilities";
 import { assertNotSelfGrant } from "@/src/modules/organizations/domain/self-grant";
@@ -146,8 +148,17 @@ export async function grantCapability(
     };
   }
 
+  // Block granting a clinical capability to a vet_individual (portal-vet-p0
+  // D10): it comes from their own verified matrícula, and a grant row would
+  // outlive a revocation. Checked before the "already implicit" rule so an
+  // unverified vet is not told they already hold it.
+  const credentialRefusal = credentialGatedGrantRefusal(targetMembership.role, capability);
+  if (credentialRefusal) {
+    return { ok: false, error: CREDENTIAL_GATED_GRANT_REFUSAL_COPY[credentialRefusal] };
+  }
+
   // Block granting a capability the target role already holds implicitly.
-  const vetImplicit = VET_INDIVIDUAL_IMPLICIT_CAPS as readonly string[];
+  const vetImplicit = VET_INDIVIDUAL_BASELINE_CAPS as readonly string[];
   const coordImplicit = COORDINATOR_IMPLICIT_CAPS as readonly string[];
   if (
     (targetMembership.role === "vet_individual" && vetImplicit.includes(capability)) ||

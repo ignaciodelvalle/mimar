@@ -74,6 +74,48 @@ describe("inviteMember", () => {
     expect((result as { error: string }).error).toMatch(/Rol inválido/);
   });
 
+  // portal-vet-p0 D11: the clinical checkbox never applies to a vet_individual.
+  it("stores canWritePetEvents=false for a vet_individual even when the caller sends true", async () => {
+    const repo = baseRepo();
+    const result = await inviteMember(
+      {
+        organizationId: "org-1",
+        email: "vet@test.com",
+        invitedRole: "vet_individual",
+        canWritePetEvents: true,
+        actor: { userId: "user-actor", role: "admin", membershipId: "mem-actor" },
+        organization: makeOrg(),
+        generateToken: vi.fn().mockResolvedValue("TOKEN-VET"),
+        appBase: "https://example.test",
+      },
+      { repo, isUniqueViolation: vi.fn() },
+    );
+    expect(result.ok).toBe(true);
+    expect(repo.insertInvite).toHaveBeenCalledWith(
+      expect.objectContaining({ invitedRole: "vet_individual", canWritePetEvents: false }),
+    );
+  });
+
+  it("keeps canWritePetEvents for a member invite", async () => {
+    const repo = baseRepo();
+    await inviteMember(
+      {
+        organizationId: "org-1",
+        email: "member@test.com",
+        invitedRole: "member",
+        canWritePetEvents: true,
+        actor: { userId: "user-actor", role: "admin", membershipId: "mem-actor" },
+        organization: makeOrg(),
+        generateToken: vi.fn().mockResolvedValue("TOKEN-MEM"),
+        appBase: "https://example.test",
+      },
+      { repo, isUniqueViolation: vi.fn() },
+    );
+    expect(repo.insertInvite).toHaveBeenCalledWith(
+      expect.objectContaining({ invitedRole: "member", canWritePetEvents: true }),
+    );
+  });
+
   it("returns error when invited role outranks actor", async () => {
     const result = await inviteMember(
       {
@@ -502,6 +544,31 @@ describe("acceptInvitation", () => {
     );
     expect(result.ok).toBe(true);
     // admin gets event.write implicitly — no grant row needed.
+    expect(repo.insertGrant).not.toHaveBeenCalled();
+  });
+
+  // portal-vet-p0 D10: a stale invitation carrying the checkbox (written
+  // before D11 forced it off) must not mint a grant row for a vet_individual —
+  // the row would outlive their matrícula.
+  it("does NOT insert event.write grant for vet_individual even when canWritePetEvents=true", async () => {
+    const org = { id: "org-1", publicToken: "ORG-TKN", displayName: "Test Org" };
+    const repo = {
+      ...baseRepo(),
+      lockInviteByToken: vi
+        .fn()
+        .mockResolvedValue(makeInvite({ invitedRole: "vet_individual", canWritePetEvents: true })),
+      findOrgById: vi.fn().mockResolvedValue(org),
+      insertMembership: vi.fn().mockResolvedValue("mem-vet"),
+      insertGrant: vi.fn(),
+    };
+    const txFn = vi.fn().mockImplementation(async (cb: (tx: unknown) => Promise<void>) => {
+      await cb({});
+    });
+    const result = await acceptInvitation(
+      { invitationToken: "TKN", userId: "user-accepter", userEmail: "test@example.com" },
+      { repo, transaction: txFn, isUniqueViolation: vi.fn().mockReturnValue(false) },
+    );
+    expect(result.ok).toBe(true);
     expect(repo.insertGrant).not.toHaveBeenCalled();
   });
 

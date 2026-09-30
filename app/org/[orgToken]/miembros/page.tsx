@@ -24,6 +24,7 @@ import { capRows as capListRows } from "@/lib/utils/list-pagination";
 import { resolveGrantedCaps } from "@/src/modules/organizations/domain/capabilities";
 import { getGrantedCapabilities } from "@/src/modules/organizations/infrastructure/authz-resolver";
 
+import { BY_MATRICULA_LABEL } from "../_lib/matricula-copy";
 import { ChangeRoleSelect } from "./ChangeRoleSelect";
 import { CopyLinkButton } from "./CopyLinkButton";
 import { EventWriteToggle } from "./EventWriteToggle";
@@ -245,11 +246,24 @@ export default async function MiembrosPage({
                     {/* Event-write toggle and remove — only for manageable targets */}
                     {canManage && (
                       <div className="flex shrink-0 flex-wrap gap-2">
-                        <EventWriteToggle
-                          organizationId={organization.id}
-                          membershipId={m.id}
-                          canWrite={eventWriteSet.has(m.id)}
-                        />
+                        {/* portal-vet-p0 D12: a vet_individual's clinical
+                            permissions come from their own verified matrícula,
+                            so there is nothing for an admin to toggle. */}
+                        {m.role === "vet_individual" ? (
+                          <span
+                            className="self-center text-sm text-ln-op-mute"
+                            title="Los permisos clínicos salen de su propia matrícula verificada"
+                            data-testid="event-write-by-matricula"
+                          >
+                            {BY_MATRICULA_LABEL}
+                          </span>
+                        ) : (
+                          <EventWriteToggle
+                            organizationId={organization.id}
+                            membershipId={m.id}
+                            canWrite={eventWriteSet.has(m.id)}
+                          />
+                        )}
                         <RemoveMemberButton
                           organizationId={organization.id}
                           membershipId={m.id}

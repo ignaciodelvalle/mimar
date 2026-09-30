@@ -274,3 +274,42 @@ export function resolveGrantedCaps(
 
   return set;
 }
+
+// ---------------------------------------------------------------------------
+// credentialGatedGrantRefusal — the one rule every grant writer asks.
+// Appended at the end on purpose: docs/architecture/authorization.md cites the
+// lines above by number.
+// ---------------------------------------------------------------------------
+
+/** Why a capability cannot be granted to a membership role. */
+export type CredentialGatedGrantRefusal = "derives_from_matricula";
+
+/**
+ * A vet_individual's clinical capabilities (VET_CREDENTIAL_CAPS) come from
+ * their own verified matrícula, never from an org decision (portal-vet-p0
+ * D10). Every path that writes a grant row — direct grant, member request,
+ * the event-write toggle, invitation accept — asks this first and writes
+ * nothing when it refuses. Other roles are unaffected: an org that wants a
+ * non-vet to record uses role `member` plus a grant.
+ */
+export function credentialGatedGrantRefusal(
+  role: string,
+  capability: string,
+): CredentialGatedGrantRefusal | null {
+  if (role === "vet_individual" && VET_CREDENTIAL_CAP_SET.has(capability)) {
+    return "derives_from_matricula";
+  }
+  return null;
+}
+
+/** Admin-facing refusal copy (grant, toggle). */
+export const CREDENTIAL_GATED_GRANT_REFUSAL_COPY: Record<CredentialGatedGrantRefusal, string> = {
+  derives_from_matricula:
+    "Los permisos clínicos de un veterinario/a no se conceden: salen de su propia matrícula verificada.",
+};
+
+/** Member-facing refusal copy (the vet asking for it herself). */
+export const CREDENTIAL_GATED_REQUEST_REFUSAL_COPY: Record<CredentialGatedGrantRefusal, string> = {
+  derives_from_matricula:
+    "Este permiso no se pide: sale de tu matrícula verificada. Verificala desde Mi cuenta.",
+};

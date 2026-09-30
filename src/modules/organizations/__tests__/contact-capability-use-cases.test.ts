@@ -15,6 +15,10 @@ import { decideCapability } from "@/src/modules/organizations/application/decide
 import { grantCapability } from "@/src/modules/organizations/application/grant-capability";
 import { requestCapability } from "@/src/modules/organizations/application/request-capability";
 import { submitOrgContact } from "@/src/modules/organizations/application/submit-org-contact";
+import {
+  CREDENTIAL_GATED_GRANT_REFUSAL_COPY,
+  CREDENTIAL_GATED_REQUEST_REFUSAL_COPY,
+} from "@/src/modules/organizations/domain/capabilities";
 
 // ---------------------------------------------------------------------------
 // submitOrgContact
@@ -221,12 +225,12 @@ describe("requestCapability", () => {
     );
   });
 
-  it("returns error when vet_individual requests implicit cap", async () => {
+  it("returns error when vet_individual requests a baseline cap", async () => {
     const repo = makeRepo();
     const result = await requestCapability(
       {
         userId: "user-vet",
-        capability: "event.write", // vet implicit
+        capability: "appointment.manage", // vet baseline (portal-vet-p0 D10)
         reason: null,
         active: {
           ...activeOrg,
@@ -239,6 +243,43 @@ describe("requestCapability", () => {
     expect((result as { ok: false; error: string }).error).toBe(
       "Como veterinario/a ya tenés este permiso por defecto.",
     );
+    expect(repo.insertGrant).not.toHaveBeenCalled();
+  });
+
+  it.each(["pet.read_held", "event.write", "intake.create", "bite.report"])(
+    "refuses a vet_individual request for the credential cap %s, pointing at the matrícula (D10)",
+    async (capability) => {
+      const repo = makeRepo();
+      const result = await requestCapability(
+        {
+          userId: "user-vet",
+          capability,
+          reason: null,
+          active: {
+            ...activeOrg,
+            membership: { ...activeOrg.membership, role: "vet_individual" },
+          },
+        },
+        { repo, transaction: txFn, isUniqueViolation },
+      );
+      expect(result.ok).toBe(false);
+      expect((result as { ok: false; error: string }).error).toBe(
+        CREDENTIAL_GATED_REQUEST_REFUSAL_COPY.derives_from_matricula,
+      );
+      // Not the old false claim: an unverified vet does NOT hold it by default.
+      expect((result as { ok: false; error: string }).error).not.toMatch(/ya tenés/);
+      expect(repo.insertGrant).not.toHaveBeenCalled();
+    },
+  );
+
+  it("a member may still request event.write (the gate is vet_individual-only)", async () => {
+    const repo = makeRepo();
+    const result = await requestCapability(
+      { userId: "user-1", capability: "event.write", reason: null, active: activeOrg },
+      { repo, transaction: txFn, isUniqueViolation },
+    );
+    expect(result.ok).toBe(true);
+    expect(repo.insertGrant).toHaveBeenCalled();
   });
 
   it("returns unique-violation error for duplicate open grant", async () => {
@@ -700,16 +741,45 @@ describe("grantCapability", () => {
     expect((result as { ok: false; error: string }).error).toMatch(/administradores/i);
   });
 
-  it("returns error when vet_individual tries to get an implicit cap", async () => {
+  it("returns error when vet_individual tries to get a baseline cap", async () => {
     const repo = makeRepo({
       findActiveMembership: vi.fn().mockResolvedValue(makeMembership("vet_individual")),
     });
     const result = await grantCapability(
-      { ...baseInput, capability: "event.write" }, // vet implicit cap
+      { ...baseInput, capability: "appointment.manage" }, // vet baseline cap
       { repo, transaction: txFn, isUniqueViolation },
     );
     expect(result.ok).toBe(false);
     expect((result as { ok: false; error: string }).error).toMatch(/impl/i);
+  });
+
+  it.each(["pet.read_held", "event.write", "intake.create", "bite.report"])(
+    "refuses to grant the credential cap %s to a vet_individual and writes nothing (D10)",
+    async (capability) => {
+      const repo = makeRepo({
+        findActiveMembership: vi.fn().mockResolvedValue(makeMembership("vet_individual")),
+      });
+      const result = await grantCapability(
+        { ...baseInput, capability },
+        { repo, transaction: txFn, isUniqueViolation },
+      );
+      expect(result.ok).toBe(false);
+      expect((result as { ok: false; error: string }).error).toBe(
+        CREDENTIAL_GATED_GRANT_REFUSAL_COPY.derives_from_matricula,
+      );
+      expect(repo.insertGrant).not.toHaveBeenCalled();
+      expect(repo.insertAuditLog).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still grants event.write to a member (the gate is vet_individual-only)", async () => {
+    const repo = makeRepo();
+    const result = await grantCapability(
+      { ...baseInput, capability: "event.write" },
+      { repo, transaction: txFn, isUniqueViolation },
+    );
+    expect(result.ok).toBe(true);
+    expect(repo.insertGrant).toHaveBeenCalled();
   });
 
   it("returns error when coordinator tries to get an implicit cap", async () => {

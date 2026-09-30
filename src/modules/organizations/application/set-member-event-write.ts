@@ -28,7 +28,11 @@
 // The column is kept, not dropped: nothing enforces on it any more, and
 // dropping it is a separate, migration-bearing decision.
 
-import { resolveGrantedCaps } from "@/src/modules/organizations/domain/capabilities";
+import {
+  CREDENTIAL_GATED_GRANT_REFUSAL_COPY,
+  credentialGatedGrantRefusal,
+  resolveGrantedCaps,
+} from "@/src/modules/organizations/domain/capabilities";
 import { ROLE_RANK } from "@/src/modules/organizations/domain/role-rules";
 import type {
   Exec,
@@ -124,6 +128,16 @@ export async function setMemberEventWrite(
   const targetRank = ROLE_RANK[target.role] ?? 0;
   if (targetRank > actorRank) {
     return { ok: false, error: "No podés gestionar a alguien con un rol mayor al tuyo." };
+  }
+
+  // 3b. Credential gate (portal-vet-p0 D10). Turning event.write ON for a
+  // vet_individual would write a grant row that outlives their matrícula.
+  // Turning it OFF stays allowed: it only revokes a legacy row.
+  if (input.canWrite) {
+    const credentialRefusal = credentialGatedGrantRefusal(target.role, "event.write");
+    if (credentialRefusal) {
+      return { ok: false, error: CREDENTIAL_GATED_GRANT_REFUSAL_COPY[credentialRefusal] };
+    }
   }
 
   // 4 & 5. Grant/revoke `event.write` capability + mirror to legacy column + audit_log (one tx).

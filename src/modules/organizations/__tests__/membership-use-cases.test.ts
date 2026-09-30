@@ -18,6 +18,7 @@ import { leaveOrganization } from "@/src/modules/organizations/application/leave
 import { removeMember } from "@/src/modules/organizations/application/remove-member";
 import { setMemberEventWrite } from "@/src/modules/organizations/application/set-member-event-write";
 import { updateOrganization } from "@/src/modules/organizations/application/update-organization";
+import { CREDENTIAL_GATED_GRANT_REFUSAL_COPY } from "@/src/modules/organizations/domain/capabilities";
 
 // ---------------------------------------------------------------------------
 // Shared fixture helpers
@@ -683,6 +684,65 @@ describe("setMemberEventWrite", () => {
       }),
       expect.anything(),
     );
+  });
+
+  // portal-vet-p0 D10: a vet_individual's event.write comes from their own
+  // matrícula, so the toggle may not write a grant row for them.
+  it("refuses to turn event.write ON for a vet_individual and writes nothing", async () => {
+    const repo = {
+      ...baseRepo(),
+      findActiveMembership: vi
+        .fn()
+        .mockResolvedValue(
+          makeMembership({ id: "mem-target", userId: "user-target", role: "vet_individual" }),
+        ),
+    };
+    const transaction = makeTx();
+    const result = await setMemberEventWrite(
+      {
+        organizationId: "org-1",
+        membershipId: "mem-target",
+        canWrite: true,
+        actor: { userId: "user-actor", role: "admin", membershipId: "mem-actor" },
+        organization: { publicToken: "TKN" },
+      },
+      { repo, transaction },
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: CREDENTIAL_GATED_GRANT_REFUSAL_COPY.derives_from_matricula,
+    });
+    expect(transaction).not.toHaveBeenCalled();
+    expect(repo.insertGrant).not.toHaveBeenCalled();
+    expect(repo.insertAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("still lets an admin turn event.write OFF for a vet_individual (revokes a legacy row)", async () => {
+    const repo = {
+      ...baseRepo(),
+      findActiveMembership: vi
+        .fn()
+        .mockResolvedValue(
+          makeMembership({ id: "mem-target", userId: "user-target", role: "vet_individual" }),
+        ),
+      findApprovedGrant: vi.fn().mockResolvedValue({
+        id: "grant-legacy",
+        decidedByUserId: "user-old-admin",
+        decidedAt: new Date("2026-01-01T00:00:00Z"),
+      }),
+    };
+    const result = await setMemberEventWrite(
+      {
+        organizationId: "org-1",
+        membershipId: "mem-target",
+        canWrite: false,
+        actor: { userId: "user-actor", role: "admin", membershipId: "mem-actor" },
+        organization: { publicToken: "TKN" },
+      },
+      { repo, transaction: makeTx() },
+    );
+    expect(result.ok).toBe(true);
+    expect(repo.setGrantStatus).toHaveBeenCalledWith("grant-legacy", "revoked", expect.anything());
   });
 
   it("grants event.write capability with a single complete insertGrant when canWrite=true and no existing grant", async () => {

@@ -19,6 +19,7 @@ import { Icon } from "@/components/Icon";
 import { OrgSetupChecklist } from "@/components/OrgSetupChecklist";
 import {
   OpBreach,
+  OpCallout,
   OpCard,
   OpCardBody,
   OpCardHead,
@@ -67,6 +68,16 @@ import { getGrantedCapabilities } from "@/src/modules/organizations/infrastructu
 import { OrgDailyLoopOrientation } from "./OrgDailyLoopOrientation";
 import { RequestCapabilityForm } from "./RequestCapabilityForm";
 import { SoloVetAgendaLanding } from "./SoloVetAgendaLanding";
+import {
+  type CapabilityState,
+  MATRICULA_UPGRADE_HREF,
+  STATE_DOT,
+  STATE_PILL_LABEL,
+  STATE_PILL_TONE,
+  canRequestFromRow,
+  capabilityStateFor,
+  historyStates,
+} from "./_lib/capability-state";
 import { deriveMatriculaStatus } from "./_lib/member-matricula";
 import { pendingQueueTone, queueSignalNote } from "./_lib/queue-signal-display";
 
@@ -85,37 +96,6 @@ const ORG_TYPE_LABELS: Record<string, string> = {
   rescue_network: "Red de rescate",
   sanitary_authority: "Autoridad sanitaria",
   other: "Organización",
-};
-
-type CapabilityState =
-  | { kind: "granted" }
-  | { kind: "pending" }
-  | { kind: "denied"; reason: string | null }
-  | { kind: "revoked"; reason: string | null }
-  | { kind: "none" };
-
-const STATE_PILL_TONE: Record<CapabilityState["kind"], "ok" | "open" | "danger" | "neutral"> = {
-  granted: "ok",
-  pending: "open",
-  denied: "danger",
-  revoked: "danger",
-  none: "neutral",
-};
-
-const STATE_PILL_LABEL: Record<CapabilityState["kind"], string> = {
-  granted: "Concedido",
-  pending: "Pendiente",
-  denied: "Denegado",
-  revoked: "Revocado",
-  none: "No concedido",
-};
-
-const STATE_DOT: Record<CapabilityState["kind"], string> = {
-  granted: "bg-ln-op-ok",
-  pending: "bg-ln-op-warn",
-  denied: "bg-ln-op-danger",
-  revoked: "bg-ln-op-danger",
-  none: "bg-ln-op-line",
 };
 
 // ---------------------------------------------------------------------------
@@ -203,31 +183,22 @@ export default async function OrgDashboardPage({
         .where(eq(organizationCapabilityGrants.membershipId, membership.id))
         .orderBy(desc(organizationCapabilityGrants.requestedAt));
 
-  const stateByCapability = new Map<string, CapabilityState>();
-  for (const row of grantHistory) {
-    if (stateByCapability.has(row.capability)) continue;
-    if (row.status === "approved") {
-      stateByCapability.set(row.capability, { kind: "granted" });
-    } else if (row.status === "pending") {
-      stateByCapability.set(row.capability, { kind: "pending" });
-    } else if (row.status === "denied") {
-      stateByCapability.set(row.capability, { kind: "denied", reason: row.decisionReason });
-    } else if (row.status === "revoked") {
-      // Review F1 (post-B1): decisionReason now keeps the ORIGINAL GRANT's
-      // reason (revoke is status-only, provenance preserved) — rendering it
-      // here labeled a revocation with the approval's motive. The revoke's
-      // own reason lives in the capability_revoked audit payload and the
-      // member's notification; this surface states the fact without a motive.
-      stateByCapability.set(row.capability, { kind: "revoked", reason: null });
-    }
-  }
+  const stateByCapability = historyStates(grantHistory);
 
   function stateFor(capability: OrganizationCapability): CapabilityState {
-    if (granted.has(capability)) return { kind: "granted" };
-    return stateByCapability.get(capability) ?? { kind: "none" };
+    return capabilityStateFor(capability, {
+      granted,
+      membershipRole: membership.role,
+      history: stateByCapability,
+    });
   }
 
   const canCreateServices = granted.has("service_offering.create");
+  // portal-vet-p0 D12: a vet_individual whose clinical capabilities are still
+  // waiting on the matrícula gets one banner saying why, on top of the rows.
+  const needsMatricula = CAPABILITY_CATALOG.some(
+    (entry) => stateFor(entry.capability).kind === "needs_matricula",
+  );
 
   // D-9 (Lote D) — the acting member's matrícula, as a STATUS instead of a
   // conditional clause. Fetched only for members who can actually sign a
@@ -973,6 +944,23 @@ export default async function OrgDashboardPage({
           {/* UX 3.6 (a): nav modules gated by capability disappear silently. This
               line explains the link and points to the request path below, so a
               missing section reads as "ask for access" instead of a dead end. */}
+          {needsMatricula && (
+            <div className="px-4 pt-3" data-testid="needs-matricula-banner">
+              <OpCallout
+                title="Tus permisos clínicos esperan tu matrícula verificada"
+                body={
+                  <>
+                    Registrar eventos, ver pacientes, cargar ingresos y reportar mordeduras se
+                    habilitan cuando verifiques tu matrícula. Mientras tanto podés gestionar turnos.{" "}
+                    <Link href={MATRICULA_UPGRADE_HREF} className="text-ln-op-azul hover:underline">
+                      Verificar matrícula
+                    </Link>
+                  </>
+                }
+                icon={<Icon name="shield-check" decorative />}
+              />
+            </div>
+          )}
           {!isAdmin && (
             <p className="px-4 pt-3 text-sm text-ln-op-mute">
               Cada permiso habilita su módulo en el menú. Si no ves una sección que esperabas, pedí
@@ -1006,9 +994,7 @@ export default async function OrgDashboardPage({
                 capabilityAppliesToOrgType(entry.capability, orgType),
               ).map((entry) => {
                 const state = stateFor(entry.capability);
-                const showRequestForm =
-                  !isAdmin &&
-                  (state.kind === "none" || state.kind === "denied" || state.kind === "revoked");
+                const showRequestForm = canRequestFromRow(state, isAdmin);
                 return (
                   <li key={entry.capability} className="flex items-start gap-3 px-4 py-3">
                     <span
@@ -1023,6 +1009,16 @@ export default async function OrgDashboardPage({
                       <p className="text-sm text-ln-op-mute">{entry.description}</p>
                       {(state.kind === "denied" || state.kind === "revoked") && state.reason && (
                         <p className="text-sm italic text-ln-op-faint">Motivo: {state.reason}</p>
+                      )}
+                      {state.kind === "needs_matricula" && (
+                        <p className="pt-1 text-sm">
+                          <Link
+                            href={MATRICULA_UPGRADE_HREF}
+                            className="text-ln-op-azul hover:underline"
+                          >
+                            Verificá tu matrícula
+                          </Link>
+                        </p>
                       )}
                       {showRequestForm && (
                         <div className="pt-1">

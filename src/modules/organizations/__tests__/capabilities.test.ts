@@ -13,6 +13,7 @@ import {
   VET_INDIVIDUAL_IMPLICIT_CAPS,
   WELFARE_DECOMISO_EXECUTE_CAPABILITY,
   capabilityAppliesToOrgType,
+  credentialGatedGrantRefusal,
   isValidCapability,
   resolveGrantedCaps,
 } from "@/src/modules/organizations/domain/capabilities";
@@ -149,6 +150,34 @@ describe("VET_INDIVIDUAL_IMPLICIT_CAPS", () => {
   it("does NOT include member.invite (coordinators only)", () => {
     expect(VET_INDIVIDUAL_IMPLICIT_CAPS).not.toContain("member.invite");
   });
+});
+
+// portal-vet-p0 D10 — the one rule every grant writer asks.
+describe("credentialGatedGrantRefusal", () => {
+  it.each(["pet.read_held", "event.write", "intake.create", "bite.report"])(
+    "refuses %s for a vet_individual",
+    (capability) => {
+      expect(credentialGatedGrantRefusal("vet_individual", capability)).toBe(
+        "derives_from_matricula",
+      );
+    },
+  );
+
+  it("allows every non-credential capability for a vet_individual", () => {
+    for (const cap of ORGANIZATION_CAPABILITIES) {
+      if ((VET_CREDENTIAL_CAPS as readonly string[]).includes(cap)) continue;
+      expect(credentialGatedGrantRefusal("vet_individual", cap)).toBeNull();
+    }
+  });
+
+  it.each(["admin", "coordinator", "member", "volunteer", "foster"])(
+    "never refuses for role %s, whatever the capability",
+    (role) => {
+      for (const cap of ORGANIZATION_CAPABILITIES) {
+        expect(credentialGatedGrantRefusal(role, cap)).toBeNull();
+      }
+    },
+  );
 });
 
 // portal-vet-p0 D10 — the preset split. Pinned as exact lists on purpose: a

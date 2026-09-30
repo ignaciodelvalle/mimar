@@ -9,6 +9,7 @@ import { requireOrgAccessByToken } from "@/lib/infra/auth-guards";
 import { formatDateTimeNumericAr } from "@/lib/utils/format";
 import {
   CAPABILITY_CATALOG,
+  credentialGatedGrantRefusal,
   resolveGrantedCaps,
 } from "@/src/modules/organizations/domain/capabilities";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
@@ -159,12 +160,23 @@ export default async function PermisosPage({
     for (const cap of resolvedSet) {
       if (!explicitGrants[cap]) implicitCaps.add(cap);
     }
+    // portal-vet-p0 D12: a clinical capability a vet_individual does not
+    // effectively hold is not grantable (it comes from their own matrícula),
+    // so its cell says why instead of offering "+".
+    const credentialGatedCaps = new Set<string>();
+    for (const col of MATRIX_COLUMNS) {
+      if ((resolvedSet as ReadonlySet<string>).has(col.capability)) continue;
+      if (credentialGatedGrantRefusal(m.role, col.capability)) {
+        credentialGatedCaps.add(col.capability);
+      }
+    }
     return {
       membershipId: m.membershipId,
       displayName: m.displayName ?? m.userId,
       role: m.role,
       explicitGrants,
       implicitCaps,
+      credentialGatedCaps,
     };
   });
 

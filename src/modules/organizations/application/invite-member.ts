@@ -120,7 +120,10 @@ export async function inviteMember(
       invitedByUserId: input.actor.userId,
       email: normalizedEmail,
       invitedRole: input.invitedRole as InvitableRole,
-      canWritePetEvents: input.canWritePetEvents ?? false,
+      // A vet_individual's clinical capabilities come from their own verified
+      // matrícula (portal-vet-p0 D11), so the checkbox never applies to them.
+      canWritePetEvents:
+        input.invitedRole === "vet_individual" ? false : (input.canWritePetEvents ?? false),
       invitationToken: token,
     });
   } catch (err) {

@@ -12,6 +12,7 @@
 //   6. isUniqueViolation → "Ya sos miembro activo de esta organización."
 //   7. Return { orgToken } + pending notifications (caller flushes post-tx).
 
+import { credentialGatedGrantRefusal } from "@/src/modules/organizations/domain/capabilities";
 import { inviteAcceptValidity } from "@/src/modules/organizations/domain/membership-state";
 import type {
   Exec,
@@ -37,8 +38,16 @@ export interface AcceptInvitationRepo {
   setEventWrite: OrgRepository["setEventWrite"];
 }
 
-// Roles that receive event.write implicitly via authz-resolver (no grant row needed).
-const IMPLICIT_EVENT_WRITE_ROLES = new Set(["admin", "vet_individual"]);
+/**
+ * Whether accepting an invitation for `role` writes an event.write grant row
+ * when the invitation carries the checkbox. Never for admin (holds everything
+ * implicitly) and never for vet_individual (portal-vet-p0 D10: event.write
+ * comes from their own verified matrícula, and a row would outlive it).
+ */
+function inviteWritesEventWriteGrant(role: string): boolean {
+  if (role === "admin") return false;
+  return credentialGatedGrantRefusal(role, "event.write") === null;
+}
 
 // ---------------------------------------------------------------------------
 // Input / Deps
@@ -142,12 +151,9 @@ export async function acceptInvitation(
       );
 
       // 5a. Insert event.write capability grant for roles that don't get it implicitly.
-      // Roles 'admin' and 'vet_individual' are resolved via implicit caps in authz-resolver;
-      // a grant row for them would be redundant (though harmless). Skip to keep data clean.
-      if (
-        validInvite.canWritePetEvents &&
-        !IMPLICIT_EVENT_WRITE_ROLES.has(validInvite.invitedRole)
-      ) {
+      // Skipped for admin (redundant) and vet_individual (credential-gated: a row
+      // would outlive a revoked matrícula), see inviteWritesEventWriteGrant.
+      if (validInvite.canWritePetEvents && inviteWritesEventWriteGrant(validInvite.invitedRole)) {
         await repo.insertGrant(
           {
             membershipId: newMembershipId,
@@ -163,8 +169,8 @@ export async function acceptInvitation(
       }
 
       // Legacy column: derived from the role + grant just written, never copied
-      // from the invitation's checkbox (a vet_individual invited with it off
-      // still holds event.write implicitly).
+      // from the invitation's checkbox (a vet_individual holds event.write only
+      // through their own verified matrícula, whatever the checkbox said).
       await syncEventWriteMirror(repo, newMembershipId, e);
 
       // Mark accepted.

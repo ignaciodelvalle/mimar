@@ -14,6 +14,7 @@ import {
   grantCapabilityAction,
 } from "@/src/modules/organizations/actions";
 import React, { useActionState, useTransition } from "react";
+import { NEEDS_MATRICULA_LABEL } from "../../_lib/matricula-copy";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -27,6 +28,11 @@ export type MatrixMember = {
   explicitGrants: Record<string, string>;
   /** Set of capabilities that come from role (implicit). */
   implicitCaps: Set<string>;
+  /**
+   * Clinical capabilities a vet_individual does not hold yet because their own
+   * matrícula is not verified. Inert: nobody can grant them (portal-vet-p0 D10).
+   */
+  credentialGatedCaps?: Set<string>;
 };
 
 export type MatrixProps = {
@@ -281,6 +287,23 @@ export function CapabilityMatrix({
                 const grantId = member.explicitGrants[col.capability];
                 const isImplicit = member.implicitCaps.has(col.capability);
 
+                // Checked before the explicit grant: a legacy row for a clinical
+                // capability is ignored while the vet's matrícula is not valid,
+                // so a revocable check here would claim a permission they lack.
+                if (member.credentialGatedCaps?.has(col.capability)) {
+                  return (
+                    <td key={col.capability} className="px-2 py-2 text-center">
+                      <span
+                        title={NEEDS_MATRICULA_LABEL}
+                        data-testid="matrix-needs-matricula"
+                        className="block max-w-[84px] text-xs leading-[1.2] text-ln-op-mute"
+                      >
+                        {NEEDS_MATRICULA_LABEL}
+                      </span>
+                    </td>
+                  );
+                }
+
                 if (grantId) {
                   // Explicit approved grant — interactive revoke
                   return (
@@ -355,6 +378,9 @@ export function CapabilityMatrix({
         <span className="flex items-center gap-1">
           <span>—</span>
           Sin permiso
+        </span>
+        <span className="flex items-center gap-1">
+          {NEEDS_MATRICULA_LABEL}: sale de la matrícula del veterinario/a, no se concede
         </span>
       </div>
     </div>
