@@ -29,6 +29,7 @@ vi.mock("next/link", () => ({
   }) => React.createElement("a", { href, className }, children),
 }));
 
+import { toAtenderCaptureMatch } from "@/app/org/[orgToken]/atender/[publicToken]/atender-quick-capture-match";
 import { LandingHero } from "@/components/landing/LandingHero";
 import { StorySection } from "@/components/landing/StorySection";
 import {
@@ -37,15 +38,21 @@ import {
   formatChip,
 } from "@/components/landing/landing-content";
 import {
+  FINDER_MESSAGE,
   LOST_SEQUENCE,
+  OWNER_FOUND_BODY,
   SHELTER_SEQUENCE,
+  VET_NOTE,
+  VET_NOTE_VACCINE,
   VET_SEQUENCE,
 } from "@/components/landing/story-sequences";
+import { matchCaptureIntent } from "@/lib/events/event-capture-matcher";
 import {
   OWNER_NAME,
   PAMPA_CHIP,
   PAMPA_EVENTS,
   PAMPA_PET,
+  PAMPA_TOKEN,
   VET_CLINIC,
   VET_LICENSE,
   VET_NAME,
@@ -340,7 +347,9 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       Array.from({ length: spec.total }, (_, i) => renderToStaticMarkup(spec.device(i, false))),
     );
     const html = flat([renderToStaticMarkup(<StorySection />), ...steps].join(" "));
-    expect(html).toContain(VET_NAME);
+    // The vet chapter shows the atender page, which names the signer by
+    // matrícula ("Firmás como matrícula …"), not by name — so the name is
+    // not required here; the license and the clinic are.
     expect(html).toContain(VET_LICENSE);
     expect(html).toContain(VET_CLINIC);
     for (const e of PAMPA_EVENTS.filter((x) => x.eventType === "vaccination_administered")) {
@@ -356,33 +365,66 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
     expect(html).toContain("Caniche · hembra · nacimiento estimado nov 2021");
     expect(html).toContain("Posible coincidencia detectada");
     expect(html).toContain("Es la misma mascota");
-    // Chapter 3 ends on the owner's real in-app notice for an anonymous finder
-    // (notify-owner-of-found-pet.ts), not on the finder's own screen.
-    expect(html).toContain("Alguien encontró a Pampa. No dejó datos de contacto.");
+    // Chapter 3's found-report notification is EXACTLY what
+    // notifyOwnerOfFoundPet writes for a finder who leaves a message and no
+    // name or contact (notify-owner-of-found-pet.ts:220-226, :257).
+    expect(html).toContain(OWNER_FOUND_BODY.replaceAll('"', "&quot;"));
+    expect(OWNER_FOUND_BODY).toBe(
+      `Alguien dejó un mensaje: "${FINDER_MESSAGE}". No dejó datos de contacto.`,
+    );
     expect(html).not.toContain("¡Hola! Soy");
     expect(html).not.toContain("Custodia devuelta");
-    // The real product labels of the animated chapters. The vet form shows
-    // 3 of its 5 real fields on the tablet (coordinator review, round 3 —
-    // a fixed 3∶4 frame has real height limits): "Administrado por" and
-    // "Próxima dosis (fecha)" are the two dropped, so they are not asserted
-    // here any more.
+    // No product surface prints these: the old attendance-form mock's
+    // FIRMADO stamp on the vet's tablet, and a "La encontré" button (the
+    // public page's is "La tengo conmigo").
+    const vetHtml = Array.from({ length: VET_SEQUENCE.total }, (_, i) =>
+      renderToStaticMarkup(VET_SEQUENCE.device(i, false)),
+    ).join(" ");
+    expect(vetHtml).not.toContain("FIRMADO");
+    expect(vetHtml).not.toContain("Marcar asistencia");
+    expect(html).not.toContain("La encontré");
+    // Every string drawn inside a device in the animated chapters is the
+    // product's own; the file:line of each is cited next to it in
+    // components/landing/story-sequences.tsx.
     for (const label of [
+      // Vet — the atender quick-capture flow (app/org/[orgToken]/atender/…).
+      "Atender mascota",
+      "Credencial de la mascota",
+      "Código de la credencial (DIM-XXXX-XXXX)",
+      "Buscar mascota",
+      PAMPA_TOKEN,
+      `Atendiendo a ${PAMPA_PET.name} · Perro`,
+      `Firmás como <b>matrícula ${VET_LICENSE}</b> · verificado por profesional`,
+      "Registrá lo que atendiste",
+      "Identificar →",
+      "Alta confianza",
+      "Editar en el formulario",
+      "Asentar vacuna",
+      "Registrar vacuna",
+      "Libreta sanitaria oficial",
       "Marca / laboratorio",
-      "Lote / número de batch",
-      "Marcar asistencia",
-      "FIRMADO",
-      "Marcar como perdida",
-      "Compartir o imprimir el cartel",
-      "Identificación",
-      // The chapter 3 found-report notification (PO 2026-09-29, replacing the
-      // neighbour's own separately-labelled phone) is the EXACT copy
-      // notifyOwnerOfFoundPet writes for an anonymous finder with no name or
-      // contact (src/modules/pets/application/public/notify-owner-of-found-pet.ts).
-      // The title changed 2026-09-30 to "¡Encontraron a {name}!" for every
-      // finder; the body still names the anonymous finder.
+      "Evento clínico firmado. Podés registrar otro o volver al inicio.",
+      // Lost — the public credential and its found form (app/(public)/p/…).
+      "Credencial pública",
+      "Perdida",
+      "Perro · Caniche · Hembra",
+      "¿Encontraste a esta mascota?",
+      "Tocá acá para avisarle al dueño.",
+      "Tu nombre (opcional)",
+      "Nombre y apellido",
+      "Cómo te contactamos (opcional)",
+      "Teléfono o email",
+      "Mensaje (opcional)",
+      "Avisar al dueño",
+      "¡Gracias!",
+      "Le avisamos al dueño. Mientras tanto, cuidala lo mejor que puedas.",
       `¡Encontraron a ${PAMPA_PET.name}!`,
-      `Alguien encontró a ${PAMPA_PET.name}`,
-      "No dejó datos de contacto.",
+      "Ver mascota",
+      "Cartel para imprimir",
+      "Escaneá para más info",
+      "Compartir o imprimir el cartel",
+      // Refugio.
+      "Identificación",
       "detectó a Pampa por su microchip. Coordiná la devolución.",
       "Sí, la encontré",
     ]) {
@@ -397,6 +439,22 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
     // has "sin cuenta y sin app" — that is prose about the real flow, not a
     // second device label, and stays true regardless of how the mock renders.)
     expect(html).not.toContain("Celular del vecino");
+  });
+
+  it("the vet's typed note is what the real matcher turns into the card drawn", () => {
+    // VET_NOTE is the vet's own text; the card the chapter draws for it
+    // (event "Vacuna", "Alta confianza", Vacuna = VET_NOTE_VACCINE) must be
+    // what atender's quick capture actually resolves it to.
+    const match = toAtenderCaptureMatch(matchCaptureIntent(VET_NOTE));
+    expect(match).toEqual({
+      evento: "vacuna",
+      slots: { vaccineName: VET_NOTE_VACCINE },
+      confidence: "high",
+    });
+    // The brand and batch she types into the form are the seed's first dose.
+    const dose = PAMPA_EVENTS.find((e) => e.eventType === "vaccination_administered");
+    expect(VET_NOTE).toContain(String(dose?.payload.brand));
+    expect(VET_NOTE).toContain(String(dose?.payload.batch));
   });
 
   it("the hero credential's identity fields are the seed's pet row", () => {

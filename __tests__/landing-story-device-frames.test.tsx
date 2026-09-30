@@ -73,7 +73,9 @@ describe("landing story — the device tells who is using it (PO 2026-09-29)", (
     }
   });
 
-  it("the lost chapter (anon) stays on the owner's own phone throughout, never a tablet", () => {
+  // Chapter 3 is two people's phones (PO 2026-09-30): the neighbour's, then
+  // the owner's — phones both, never a tablet.
+  it("the lost chapter (anon) stays on phones throughout, never a tablet", () => {
     for (let i = 0; i < LOST_SEQUENCE.total; i++) {
       const html = renderToStaticMarkup(LOST_SEQUENCE.device(i, false));
       expect(html, `step ${i}`).toContain("lp-phone");

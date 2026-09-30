@@ -17,8 +17,8 @@
 //
 // Motion: transform/opacity only. A screen change slides inside the
 // fixed-size device (.lp-scr is a fixed height, .lp-tab-scr a fixed inset); an
-// actor change (the refugio's tablet handing over to Martín's phone) slides
-// the outgoing device out and the incoming one in. Each person's device has
+// actor change (the neighbour's phone, or the refugio's tablet, handing over
+// to Martín's phone) slides the outgoing device out and the incoming one in. Each person's device has
 // its own case colour (data-actor, --lp-case-* in app/landing.css); its SIZE
 // never changes.
 
@@ -39,11 +39,12 @@ import { AppHead, OpHead } from "@/components/landing/story-screens";
 import { useChapterSequence } from "@/components/landing/use-chapter-sequence";
 import { LnBadge } from "@/components/ui/Badge";
 import { LnPetPhoto } from "@/components/ui/RegRow";
-import { LnStatusFlag, LnVstamp } from "@/components/ui/StatusFlag";
-import { eventTypeLabel } from "@/lib/utils/format";
+import { LnStatusFlag } from "@/components/ui/StatusFlag";
+import { eventTypeLabel, sexLabel, situationLabelForSex } from "@/lib/utils/format";
 import { speciesLabel } from "@/lib/utils/species";
-import { PAMPA_CHIP, PAMPA_PET } from "@/scripts/flagship-pampa-data";
+import { PAMPA_CHIP, PAMPA_PET, PAMPA_TOKEN } from "@/scripts/flagship-pampa-data";
 import {
+  type CSSProperties,
   type ReactElement,
   type ReactNode,
   useEffect,
@@ -88,16 +89,6 @@ const LOST = pampaEvent("status_changed", "lost");
 const INTAKE = pampaEvent("shelter_intake_recorded");
 const FOUND = pampaEvent("status_changed", "active");
 const LOST_PLACE = String(LOST.payload.location_description);
-const LOST_WEARING = String(
-  (LOST.payload.lost_description as Record<string, unknown> | undefined)?.accessories_when_lost ??
-    "",
-);
-
-/** Class for a part of a screen that appears at `from` (0-based step). */
-function reveal(animate: boolean, step: number, from: number): string {
-  if (!animate) return "";
-  return step >= from ? "lp-seq-in" : "lp-seq-pending";
-}
 
 // ---------------------------------------------------------------------------
 // The chapter shell: number, moment, title and ‹ › on the left, the device on
@@ -274,157 +265,406 @@ function SequencedChapter({
 }
 
 // ---------------------------------------------------------------------------
+// Shared bits: the decorative poster QR, a sentence typed word by word
+// ---------------------------------------------------------------------------
+
+/** The decorative mini QR (see POSTER_QR_MATRIX), at whatever size `className` sets. */
+function PosterQr({ className }: { className: string }) {
+  return (
+    <svg
+      className={className}
+      aria-hidden="true"
+      viewBox={`0 0 ${POSTER_QR_BOX} ${POSTER_QR_BOX}`}
+      shapeRendering="crispEdges"
+    >
+      <rect width={POSTER_QR_BOX} height={POSTER_QR_BOX} fill="#fff" />
+      <path d={POSTER_QR_PATH} fill="#000" />
+    </svg>
+  );
+}
+
+/**
+ * A sentence someone types, word by word (opacity only, staggered by
+ * --i). Static — the whole sentence, no class — whenever `typing` is false:
+ * SSR, reduced motion, and every step after the one it is typed in.
+ */
+function Typed({ text, typing }: { text: string; typing: boolean }) {
+  if (!typing) return <>{text}</>;
+  const words = text.split(" ");
+  return (
+    <span className="lp-seq-type">
+      {words.map((w, i) => (
+        <span
+          // biome-ignore lint/suspicious/noArrayIndexKey: a fixed sentence, words never reorder
+          key={i}
+          style={{ "--i": i } as CSSProperties}
+        >
+          {i < words.length - 1 ? `${w} ` : w}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // PS6 · Veterinaria — "La vacuna queda firmada." (2022-04-12)
 // ---------------------------------------------------------------------------
 
-// The vet records a vaccine through the web portal's attendance form
-// (app/_components/attendance-forms/VaccinationAttendanceForm.tsx): its real
-// field labels, its real submit "Marcar asistencia". Then the libreta's own
-// FIRMADO stamp. The product captures no hand-drawn signature, so none is
-// drawn: the signature IS the verified author + license + stamp.
+// The vet's real quick-capture flow on the org portal's "Atender mascota"
+// (PO 2026-09-30): find the pet by its credential code, write what was done
+// in her own words, let the SHARED matcher read it, land on the prefilled
+// vaccine form, register it. Every string on these screens is the portal's
+// own, cited next to it.
+//
+// Two things the PO's outline named that the product does not render, so
+// they are NOT drawn:
+//  - a QR scan: "Atender mascota" takes the credential CODE, typed
+//    (app/org/[orgToken]/atender/CodeEntryForm.tsx) — no camera;
+//  - an "Anotar" button: that is the owner app's verb. The portal's card is
+//    "Registrá lo que atendiste" and its button "Identificar →".
+// The old attendance-form mock also drew a FIRMADO stamp no product surface
+// prints; the portal's real receipt ("Evento clínico firmado…") replaces it.
 const DOSE = PAMPA_FIRST_DOSE.payload;
-// Trimmed to 3 fields, not the form's real 5 (coordinator review, round 3):
-// a fixed 3∶4 tablet frame has real height limits, and "vaccine name, brand,
-// lot, plus the button" is enough to read as the attendance form without
-// inventing anything — every field shown is still one of the form's own real
-// labels (app/_components/attendance-forms/VaccinationAttendanceForm.tsx).
-// "Administrado por" and "Próxima dosis (fecha)" are the two dropped;
-// __tests__/flagship-pampa-consistency.test.tsx no longer requires them.
-const VET_FIELDS: Array<[string, string]> = [
-  ["Nombre de la vacuna", String(DOSE.vaccine_name)],
-  ["Marca / laboratorio", String(DOSE.brand)],
-  ["Lote / número de batch", String(DOSE.batch)],
-];
-const VET_PRESS = VET_FIELDS.length; // 3
-const VET_STAMP = VET_PRESS + 1; // 4
-const VET_ADDED = VET_STAMP + 1; // 5
 
-function VetPortalScreen({ step, animate }: { step: number; animate: boolean }) {
+/**
+ * The note the vet types. It is HER text, not product copy; what the product
+ * makes of it is fenced: __tests__/flagship-pampa-consistency.test.tsx runs
+ * it through the real matcher and asserts the card below is what comes back
+ * (event "vacuna", high confidence, Vacuna = VET_NOTE_VACCINE).
+ */
+export const VET_NOTE = `Le apliqué la ${String(DOSE.vaccine_name)}. ${String(DOSE.brand)}, lote ${String(DOSE.batch)}`;
+/** The matcher's vaccineName slot for VET_NOTE (fenced, see above). */
+export const VET_NOTE_VACCINE = String(DOSE.vaccine_name);
+
+const VET_CODE = 0; // code entry
+const VET_FOUND = 1; // the pet's page: who she is, who signs
+const VET_TYPE = 2; // "Registrá lo que atendiste", typed
+const VET_READ = 3; // the matcher's card
+const VET_FORM = 4; // the prefilled vaccine form
+const VET_DONE = 5; // the receipt
+
+/** app/org/[orgToken]/atender/[publicToken]/page.tsx:229-231 — the pet's page h1. */
+function VetPetLine({ photo }: { photo?: boolean }) {
+  return (
+    <div className="lp-vf-pet">
+      {photo && <LnPetPhoto src={PHOTO} alt={PAMPA.name} status="ok" size={36} />}
+      <b>
+        Atendiendo a {PAMPA.name} · {speciesLabel(PAMPA_PET.species)}
+      </b>
+    </div>
+  );
+}
+
+/** app/org/[orgToken]/atender/[publicToken]/page.tsx:232-235 (signer.label, atender-access.ts:246-248). */
+function VetSignerLine() {
+  return (
+    <p className="lp-op-signer lp-op-signer--wrap">
+      Firmás como <b>matrícula {PAMPA_VET.license}</b> · verificado por profesional
+    </p>
+  );
+}
+
+function VetScreen({ step, animate }: { step: number; animate: boolean }) {
+  const typing = animate && step === VET_TYPE;
+  const filling = animate && step === VET_FORM;
   return (
     <>
-      {/* No `page` caption here ("Atender mascota") — dropped to buy back
-          vertical space inside the fixed 3∶4 frame (coordinator review,
-          round 3); the "Firmás como…" line below still says what screen this
-          is. */}
-      <OpHead
-        orgType="Clínica"
-        orgName={PAMPA_VET.clinic}
-        right={<LnBadge variant="success">Matrícula verificada</LnBadge>}
-      />
+      {/* "Atender mascota": the crumb and h1 of both atender pages
+          (app/org/[orgToken]/atender/page.tsx:46-48). */}
+      <OpHead orgType="Clínica" orgName={PAMPA_VET.clinic} page="Atender mascota" />
       <div className="lp-app-body lp-ph-pad">
-        <div className="lp-vf-pet">
-          <LnPetPhoto src={PHOTO} alt={PAMPA.name} status="ok" size={36} />
-          <b>{PAMPA.name}</b>
-          <span className="lp-vf-tag">
-            <Icon name="microchip" size="sm" decorative /> Microchip
-            <Icon name="check" size="sm" decorative />
-          </span>
-        </div>
-        {/* The real signing page's own line (app/org/[orgToken]/atender/[publicToken]/page.tsx:165-167:
-            "Firmás como <signer.label> ... verificado por profesional").
-            .lp-op-signer itself forces one line (white-space: nowrap). */}
-        <p className="lp-op-signer">
-          Firmás como <b>{PAMPA_VET.name}</b> · {PAMPA_VET.license}
-        </p>
-        <div className="lp-vf-form">
-          {VET_FIELDS.map(([label, value], i) => (
-            <div className="lp-vf" key={label}>
-              <span className="lp-vf-l">{label}</span>
-              <span className="lp-vf-i">
-                <span className={reveal(animate, step, i)}>{value}</span>
+        {step === VET_CODE && (
+          // app/org/[orgToken]/atender/page.tsx:57 (card title) and
+          // CodeEntryForm.tsx:56 (label), :77-78 (button).
+          <div className="lp-ph-card">
+            <p className="lp-kv-title">Credencial de la mascota</p>
+            <div className="lp-vf">
+              <span className="lp-vf-l">Código de la credencial (DIM-XXXX-XXXX)</span>
+              <span className="lp-vf-i lp-vf-i--mono">
+                <Typed text={PAMPA_TOKEN} typing={animate} />
               </span>
             </div>
-          ))}
-          <span
-            className={
-              animate && step === VET_PRESS ? "lp-vf-submit lp-vf-submit--pressed" : "lp-vf-submit"
-            }
-          >
-            Marcar asistencia
-          </span>
-        </div>
-        <div className="lp-vf-done">
-          <span
-            className={
-              animate ? (step >= VET_STAMP ? "lp-lib-stamp--in" : "lp-seq-pending") : undefined
-            }
-          >
-            <LnVstamp variant="ok" label="FIRMADO" />
-          </span>
-          <span className={reveal(animate, step, VET_ADDED)}>
-            {eventTypeLabel("vaccination_administered")} · Se sumó a la libreta de {PAMPA.name}
-          </span>
-        </div>
+            <span className="lp-vf-submit">Buscar mascota</span>
+          </div>
+        )}
+
+        {step === VET_FOUND && (
+          <>
+            <VetPetLine photo />
+            <VetSignerLine />
+            {/* OpCodeBadge, page.tsx:280. */}
+            <span className="lp-op-code">{PAMPA_TOKEN}</span>
+          </>
+        )}
+
+        {step === VET_TYPE && (
+          <>
+            <VetPetLine />
+            {/* page.tsx:349 (card title); AtenderQuickCapture.tsx:91-108
+                (the textarea, then "Identificar →"). */}
+            <div className="lp-ph-card">
+              <p className="lp-kv-title">Registrá lo que atendiste</p>
+              <span className="lp-vf-i lp-vf-i--area">
+                <Typed text={VET_NOTE} typing={typing} />
+              </span>
+              <span
+                className={
+                  animate ? "lp-vf-submit lp-vf-submit--pressed lp-seq-late" : "lp-vf-submit"
+                }
+              >
+                Identificar →
+              </span>
+            </div>
+          </>
+        )}
+
+        {step === VET_READ && (
+          <>
+            <VetPetLine />
+            {/* components/ui/CaptureConfidenceCard.tsx: the event label
+                (ATENDER_EVENTOS "vacuna" → "Vacuna", atender-eventos.ts:19),
+                the badge (:62, "high"), the slot row (SLOT_LABELS.vaccineName,
+                AtenderQuickCapture.tsx:28), the two buttons (:94 default
+                editLabel; confirmLabel "Asentar vacuna", AtenderQuickCapture.tsx:122). */}
+            <div className="lp-cc">
+              <div className="lp-cc-head">
+                <b>Vacuna</b>
+                <LnBadge variant="success" icon="check-circle">
+                  Alta confianza
+                </LnBadge>
+              </div>
+              <div className="lp-cc-row">
+                <span>Vacuna</span>
+                <b>{VET_NOTE_VACCINE}</b>
+              </div>
+              <div className="lp-cc-actions">
+                <span className="lp-cc-ghost">Editar en el formulario</span>
+                <span className="lp-vf-submit lp-vf-submit--ok">Asentar vacuna</span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {step === VET_FORM && (
+          // app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/vacuna/VaccinationForm.tsx:
+          // header :172-173, "Vacuna" :183 (prefilled from the card through
+          // initialVaccineName, AtenderCaptureMounter.tsx:97), "Marca /
+          // laboratorio" :269, "Lote" :281, the CTA :399. Brand and batch are
+          // typed by the vet — the matcher prefills only the vaccine.
+          <div className="lp-ph-card">
+            <p className="lp-kv-title lp-sheet-t">Registrar vacuna</p>
+            <p className="lp-sheet-s">Libreta sanitaria oficial</p>
+            <div className="lp-vf-form">
+              <div className="lp-vf lp-vf--full">
+                <span className="lp-vf-l">Vacuna</span>
+                <span className="lp-vf-i">{VET_NOTE_VACCINE}</span>
+              </div>
+              <div className="lp-vf">
+                <span className="lp-vf-l">Marca / laboratorio</span>
+                <span className="lp-vf-i">
+                  <Typed text={String(DOSE.brand)} typing={filling} />
+                </span>
+              </div>
+              <div className="lp-vf">
+                <span className="lp-vf-l">Lote</span>
+                <span className="lp-vf-i lp-vf-i--mono">
+                  <Typed text={String(DOSE.batch)} typing={filling} />
+                </span>
+              </div>
+              <span
+                className={
+                  animate
+                    ? "lp-vf-submit lp-vf-submit--ok lp-vf-submit--pressed lp-seq-late"
+                    : "lp-vf-submit lp-vf-submit--ok"
+                }
+              >
+                Registrar vacuna
+              </span>
+            </div>
+          </div>
+        )}
+
+        {step >= VET_DONE && (
+          <>
+            <VetPetLine photo />
+            <VetSignerLine />
+            {/* The receipt a verified signer gets, page.tsx:291-293. */}
+            <div className={animate ? "lp-match-ok lp-seq-in" : "lp-match-ok"}>
+              <span>Evento clínico firmado. Podés registrar otro o volver al inicio.</span>
+            </div>
+          </>
+        )}
       </div>
     </>
   );
 }
 
 export const VET_SEQUENCE: SequenceSpec = sequence({
-  total: VET_ADDED + 1,
-  stepMs: 650,
+  total: VET_DONE + 1,
+  stepMs: 1900,
   items: [
-    { label: "Carga la dosis en el formulario de asistencia.", at: VET_PRESS - 1 },
-    { label: "Marca asistencia.", at: VET_PRESS },
-    { label: "La dosis queda firmada con su matrícula.", at: VET_STAMP },
-    { label: `Se suma a la libreta de ${PAMPA.name}.`, at: VET_ADDED },
+    { label: `Busca a ${PAMPA.name} con el código de su credencial.`, at: VET_FOUND },
+    { label: "Anota lo que hizo, con sus palabras.", at: VET_TYPE },
+    { label: "miMAR reconoce que es una vacuna.", at: VET_READ },
+    { label: "El formulario llega completado; lo valida.", at: VET_FORM },
+    { label: "Queda firmado con su matrícula.", at: VET_DONE },
   ],
   actor: () => "vet",
-  screen: (step, animate) => <VetPortalScreen step={step} animate={animate} />,
-  slides: false,
+  screen: (step, animate) => <VetScreen step={step} animate={animate} />,
+  slides: true,
 });
 
 // ---------------------------------------------------------------------------
-// PS7 · Se pierde — four screens, one phone throughout (2024-03-09 → 2024-03-10)
+// PS7 · Se pierde — the neighbour's phone, then Martín's (2024-03-10)
 // ---------------------------------------------------------------------------
 
-/** 1 · Martín marks her lost (apps/mobile/src/lost/LostScreen.tsx, the form). */
-function LostMarkScreen() {
+// The citizen circuit (PO 2026-09-30): a neighbour — no account, no app —
+// scans the QR, lands on the public credential in its "perdida" state,
+// opens its found form and leaves a message; Martín gets the notification
+// that form's action writes. His phone then shows the poster whose QR the
+// neighbour scanned.
+//
+// The found form drawn is the credential's own inline one
+// (app/(public)/p/[publicToken]/page.tsx:970-987 → FoundPetForm.tsx →
+// notify-owner-of-found-pet.ts), because it is the one that writes
+// "¡Encontraron a {nombre}!". The sticky "La tengo conmigo" button
+// (lib/utils/format.ts:543) opens /encontre instead, whose notification is
+// "Alguien tiene a {nombre}" and names where the finder is — a place this
+// story may not draw. There is no "La encontré" button on the public page.
+//
+// Martín's map is left out: the owner's lost case shows scans as a feed and
+// counts ("Avistamientos y escaneos"), and a map of where a QR was read is
+// exactly what the fence forbids.
+
+/** What the neighbour types — HER words, not product copy. No place, on purpose. */
+export const FINDER_MESSAGE = "Está bien y tranquila, tiene su collar puesto";
+
+const LOST_SCAN = 0;
+const LOST_PAGE = 1;
+const LOST_WRITE = 2;
+const LOST_SENT = 3;
+const LOST_OWNER = 4; // the actor switch: Martín's phone from here on
+const LOST_POSTER = 5;
+// Exported so the tests do not re-hardcode the split.
+export const LOST_OWNER_FROM = LOST_OWNER;
+export const LOST_POSTER_STEP = LOST_POSTER;
+
+/** 1 · The phone's own camera on the poster's QR — no product copy at all. */
+function NeighbourScanScreen() {
+  return (
+    <div className="lp-cam">
+      <div className="lp-cam-frame">
+        <PosterQr className="lp-cam-qr" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The public credential's masthead in its "perdida" state
+ * (app/(public)/p/[publicToken]/page.tsx: crest :626, "miMAR" + "Credencial
+ * pública" :652-654, situation chip :668-675 with situationLabelForSex).
+ */
+function PublicMasthead() {
+  return (
+    <div className="lp-pub-head">
+      <span className="lp-pub-crest" aria-hidden="true">
+        m
+      </span>
+      <div className="min-w-0 flex-1">
+        <b className="lp-pub-brand">miMAR</b>
+        <span className="lp-pub-kind">Credencial pública</span>
+      </div>
+      <span className="lp-pub-chip">
+        <Icon name="perdida" size="sm" decorative />
+        {situationLabelForSex("Perdida", PAMPA_PET.sex)}
+      </span>
+    </div>
+  );
+}
+
+/** page.tsx:434-436 — species · breed · sex. */
+const PUBLIC_BREED_LINE = [
+  speciesLabel(PAMPA_PET.species),
+  PAMPA_PET.breed,
+  sexLabel(PAMPA_PET.sex),
+].join(" · ");
+
+/** 2 · The public page, lost: name bar and the "¿Encontraste…?" row (page.tsx:711-716, :973-976). */
+function PublicLostScreen() {
   return (
     <>
       <div className="lp-scr-top" />
-      <AppHead
-        photo={<LnPetPhoto src={PHOTO} alt={PAMPA.name} status="lost" size={40} />}
-        title={PAMPA.name}
-        right={<LnStatusFlag status="lost" sex={PAMPA.sexEnum} />}
-      />
       <div className="lp-app-body lp-ph-pad">
-        <div className="lp-ph-card">
-          <div className="lp-kv">
-            <span>Dónde la viste por última vez</span>
-            <b>{LOST_PLACE}</b>
-          </div>
-          <div className="lp-kv">
-            <span>Qué llevaba puesto</span>
-            <b>{LOST_WEARING}</b>
+        <div className="lp-pub">
+          <PublicMasthead />
+          <LnPetPhoto src={PHOTO} alt={PAMPA.name} status="lost" size={132} />
+          <b className="lp-pub-name">{PAMPA.name}</b>
+          <span className="lp-pub-sub">{PUBLIC_BREED_LINE}</span>
+          <div className="lp-pub-found">
+            <div className="min-w-0 flex-1">
+              <b>¿Encontraste a esta mascota?</b>
+              <span>Tocá acá para avisarle al dueño.</span>
+            </div>
+            <span aria-hidden="true">›</span>
           </div>
         </div>
-        <span className="lp-vf-submit lp-vf-submit--lost">Marcar como perdida</span>
       </div>
     </>
   );
 }
 
-/** 2 · The search is open; verified orgs of her zone are told (lib/infra/lost-pet-broadcast.ts). */
-function LostOpenScreen() {
+/** 3 · The found form, opened (FoundPetForm.tsx: labels :49, :65, :89; placeholders :57, :78; CTA :113). */
+function FinderWriteScreen({ typing }: { typing: boolean }) {
   return (
     <>
       <div className="lp-scr-top" />
-      <AppHead
-        photo={<LnPetPhoto src={PHOTO} alt={PAMPA.name} status="lost" size={40} />}
-        title={PAMPA.name}
-        right={<LnStatusFlag status="lost" sex={PAMPA.sexEnum} />}
-      />
       <div className="lp-app-body lp-ph-pad">
-        <div className="lp-ph-card">
-          <p className="lp-kv-title">Situación</p>
-          <div className="lp-kv">
-            <span>Perdida desde</span>
-            <b>{landingDate(LOST.date)}</b>
+        <div className="lp-pub">
+          <PublicMasthead />
+          <b className="lp-pub-q">¿Encontraste a esta mascota?</b>
+          <div className="lp-vf-form">
+            <div className="lp-vf">
+              <span className="lp-vf-l">Tu nombre (opcional)</span>
+              <span className="lp-vf-i lp-vf-i--ph">Nombre y apellido</span>
+            </div>
+            <div className="lp-vf">
+              <span className="lp-vf-l">Cómo te contactamos (opcional)</span>
+              <span className="lp-vf-i lp-vf-i--ph">Teléfono o email</span>
+            </div>
+            <div className="lp-vf">
+              <span className="lp-vf-l">Mensaje (opcional)</span>
+              <span className="lp-vf-i lp-vf-i--area">
+                <Typed text={FINDER_MESSAGE} typing={typing} />
+              </span>
+            </div>
           </div>
-          <div className="lp-kv">
-            <span>Última vez</span>
-            <b>{LOST_PLACE}</b>
+          <span
+            className={
+              typing
+                ? "lp-vf-submit lp-vf-submit--warn lp-seq-late"
+                : "lp-vf-submit lp-vf-submit--warn"
+            }
+          >
+            Avisar al dueño
+          </span>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** 4 · Sent (FoundPetForm.tsx:28-31). */
+function FinderSentScreen() {
+  return (
+    <>
+      <div className="lp-scr-top" />
+      <div className="lp-app-body lp-ph-pad">
+        <div className="lp-pub">
+          <PublicMasthead />
+          <div className="lp-match-ok">
+            <b>¡Gracias!</b>
+            <span>Le avisamos al dueño. Mientras tanto, cuidala lo mejor que puedas.</span>
           </div>
         </div>
       </div>
@@ -432,7 +672,32 @@ function LostOpenScreen() {
   );
 }
 
-/** 3 · The poster (apps/mobile/src/lost/LostScreen.tsx "Cartel para imprimir"). */
+/**
+ * 5 · Martín's phone. EXACTLY what notifyOwnerOfFoundPet writes
+ * (src/modules/pets/application/public/notify-owner-of-found-pet.ts:220-226,
+ * title :257, CTA :262) for a finder who leaves a message and neither a
+ * name nor a contact: who = "Alguien", body `{who} dejó un mensaje:
+ * "{message}".{contactLine}`, contactLine " No dejó datos de contacto.".
+ */
+export const OWNER_FOUND_BODY = `Alguien dejó un mensaje: "${FINDER_MESSAGE}". No dejó datos de contacto.`;
+
+function OwnerFoundReportScreen() {
+  return (
+    <>
+      <div className="lp-scr-top" />
+      <div className="lp-app-body lp-ph-pad">
+        <div className="lp-notif">
+          <span className="lp-notif-app">miMAR</span>
+          <b>¡Encontraron a {PAMPA.name}!</b>
+          <span>{OWNER_FOUND_BODY}</span>
+          <span className="lp-vf-submit">Ver mascota</span>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** 6 · The poster (apps/mobile/src/lost/LostScreen.tsx "Cartel para imprimir"). */
 function LostPosterScreen() {
   return (
     <>
@@ -444,15 +709,7 @@ function LostPosterScreen() {
           <b className="lp-poster-name">{PAMPA.name}</b>
           <LnStatusFlag status="lost" sex={PAMPA.sexEnum} />
           {/* Decorative mini QR (PO 2026-09-30) — see POSTER_QR_MATRIX. */}
-          <svg
-            className="lp-poster-qr"
-            aria-hidden="true"
-            viewBox={`0 0 ${POSTER_QR_BOX} ${POSTER_QR_BOX}`}
-            shapeRendering="crispEdges"
-          >
-            <rect width={POSTER_QR_BOX} height={POSTER_QR_BOX} fill="#fff" />
-            <path d={POSTER_QR_PATH} fill="#000" />
-          </svg>
+          <PosterQr className="lp-poster-qr" />
           <span className="lp-poster-hint">Escaneá para más info</span>
         </div>
         <span className="lp-vf-submit">Compartir o imprimir el cartel</span>
@@ -461,52 +718,32 @@ function LostPosterScreen() {
   );
 }
 
-/**
- * 4 · Someone finds Pampa and reports it — the notification lands on
- * ${PAMPA_OWNER_NAME}'s OWN phone, the same device as every other step in this
- * chapter (PO 2026-09-29: the neighbour's own phone, shown separately with a
- * "Celular del vecino · sin app" label, read as two devices in one chapter).
- * The copy is EXACTLY what notifyOwnerOfFoundPet writes
- * (src/modules/pets/application/public/notify-owner-of-found-pet.ts) for an
- * anonymous finder who leaves no name or contact — the honest default, not an
- * invented message: title `¡Encontraron a {name}!` (PO 2026-09-30 — same
- * title for every finder, named or anonymous), body
- * `{who} encontró a {name}.{contactLine}` with who="Alguien" and
- * contactLine=" No dejó datos de contacto.". Styled like the SAME `.lp-notif`
- * card the refugio chapter's own found-notification uses below, for one
- * consistent in-app-notification look across the story.
- */
-function OwnerFoundReportScreen() {
-  return (
-    <>
-      <div className="lp-scr-top" />
-      <div className="lp-app-body lp-ph-pad">
-        <div className="lp-notif">
-          <span className="lp-notif-app">miMAR</span>
-          <b>¡Encontraron a {PAMPA.name}!</b>
-          <span>Alguien encontró a {PAMPA.name}. No dejó datos de contacto.</span>
-          <span className="lp-vf-submit">Ver mascota</span>
-        </div>
-      </div>
-    </>
-  );
-}
-
-const LOST_SCREENS = [LostMarkScreen, LostOpenScreen, LostPosterScreen, OwnerFoundReportScreen];
-
 export const LOST_SEQUENCE: SequenceSpec = sequence({
-  total: LOST_SCREENS.length,
+  total: LOST_POSTER + 1,
   stepMs: 1900,
   items: [
-    { label: `${PAMPA_OWNER_NAME} la marca como perdida.`, at: 0 },
-    { label: "Avisamos a refugios y veterinarias verificadas de tu zona.", at: 1 },
-    { label: "El cartel con su QR, listo para compartir.", at: 2 },
-    { label: `Alguien la encuentra: ${PAMPA_OWNER_NAME} recibe el aviso al instante.`, at: 3 },
+    { label: "Un vecino escanea su QR con la cámara del celular.", at: LOST_SCAN },
+    { label: `Ve que ${PAMPA.name} está perdida.`, at: LOST_PAGE },
+    { label: `Le deja un mensaje a ${PAMPA_OWNER_NAME}, sin cuenta ni app.`, at: LOST_SENT },
+    { label: `${PAMPA_OWNER_NAME} recibe el aviso al instante.`, at: LOST_OWNER },
+    { label: "El cartel con su QR, el mismo que escaneó el vecino.", at: LOST_POSTER },
   ],
-  actor: () => "owner",
-  screen: (step) => {
-    const Screen = LOST_SCREENS[step] ?? OwnerFoundReportScreen;
-    return <Screen />;
+  actor: (step) => (step >= LOST_OWNER ? "owner" : "neighbour"),
+  screen: (step, animate) => {
+    switch (step) {
+      case LOST_SCAN:
+        return <NeighbourScanScreen />;
+      case LOST_PAGE:
+        return <PublicLostScreen />;
+      case LOST_WRITE:
+        return <FinderWriteScreen typing={animate} />;
+      case LOST_SENT:
+        return <FinderSentScreen />;
+      case LOST_OWNER:
+        return <OwnerFoundReportScreen />;
+      default:
+        return <LostPosterScreen />;
+    }
   },
   slides: true,
 });

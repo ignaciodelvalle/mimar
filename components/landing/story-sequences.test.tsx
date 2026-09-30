@@ -30,11 +30,14 @@ import { CHAPTERS } from "./landing-content";
 import { EstadoConsole } from "./story-screens";
 import {
   ACTORS,
+  LOST_OWNER_FROM,
+  LOST_POSTER_STEP,
   LOST_SEQUENCE,
   OWNER_FROM,
   POSTER_QR_MATRIX,
   SHELTER_SEQUENCE,
   SequenceChapter,
+  VET_NOTE,
   VET_SEQUENCE,
 } from "./story-sequences";
 import { resetChapterSequencesForTests } from "./use-chapter-sequence";
@@ -80,7 +83,7 @@ function stepOf(key: string): number {
 }
 
 const ANIMATION_CLASSES =
-  /lp-seq-in|lp-seq-pending|lp-seq-slide|lp-seq-dev-(in|out)|lp-map-grid--(in|pending)/;
+  /lp-seq-in|lp-seq-pending|lp-seq-slide|lp-seq-type|lp-seq-late|lp-seq-dev-(in|out)|lp-map-grid--(in|pending)/;
 
 function arrows(container: HTMLElement) {
   const prev = container.querySelector<HTMLButtonElement>('button[aria-label="Paso anterior"]');
@@ -180,25 +183,26 @@ describe("story sequences — motion allowed", () => {
     expect(stepOf("anon")).toBe(LOST_SEQUENCE.total - 1);
   });
 
-  it("the vet form fills field by field, then stamps", () => {
+  it("the vet types her note word by word, then the portal signs it", () => {
     vi.useFakeTimers();
     const { chapter: c, index } = chapter("vet");
     const { container } = render(<SequenceChapter chapter={c} index={index} />);
-    expect(container.querySelectorAll(".lp-vf .lp-seq-in")).toHaveLength(1);
     act(() => FakeIntersectionObserver.instances[0]?.callback([{ isIntersecting: true }]));
-    // 3 fields now, not the form's real 5 (coordinator review, round 3 —
-    // fixed 3∶4 tablet frame, real height limits): one step short of
-    // VET_STAMP, all 3 are revealed but the stamp is not yet.
     act(() => {
-      vi.advanceTimersByTime(VET_SEQUENCE.stepMs * 3);
+      vi.advanceTimersByTime(VET_SEQUENCE.stepMs * 2);
     });
-    expect(container.querySelectorAll(".lp-vf .lp-seq-in")).toHaveLength(3);
-    expect(container.querySelector(".lp-lib-stamp--in")).toBeNull();
+    expect(stepOf("vet")).toBe(2);
+    // Step 2 is the quick-capture card: the note types in, one span per word.
+    const typed = container.querySelector(".lp-seq-type");
+    expect(typed?.children).toHaveLength(VET_NOTE.split(" ").length);
+    expect(typed?.textContent).toBe(VET_NOTE);
+    expect(container.textContent).toContain("Registrá lo que atendiste");
     act(() => {
       vi.advanceTimersByTime(VET_SEQUENCE.stepMs * 5);
     });
-    expect(container.querySelector(".lp-lib-stamp--in")).not.toBeNull();
-    expect(container.querySelectorAll(".lp-seq-pending")).toHaveLength(0);
+    expect(stepOf("vet")).toBe(VET_SEQUENCE.total - 1);
+    expect(container.querySelector(".lp-seq-type")).toBeNull();
+    expect(container.textContent).toContain("Evento clínico firmado.");
   });
 
   it("fails open to the final step when the observer never calls back", () => {
@@ -377,7 +381,7 @@ describe("case colours — one per person", () => {
   it("every step of every chapter wraps its device in its actor's case", () => {
     const expected: Record<string, (step: number) => string> = {
       vet: () => "vet",
-      anon: () => "owner",
+      anon: (s) => (s >= LOST_OWNER_FROM ? "owner" : "neighbour"),
       refugio: (s) => (s >= OWNER_FROM ? "owner" : "shelter"),
     };
     for (const { key, spec } of SEQUENCES) {
@@ -481,23 +485,44 @@ describe("chapter endings (M5)", () => {
     expect(SHELTER_SEQUENCE.items.at(-1)?.at).toBe(SHELTER_SEQUENCE.total - 1);
   });
 
-  // Chapter 3 used to end on the neighbour's own phone showing the public
-  // page (PO 2026-09-29: read as two devices in one chapter). It now ends
-  // with the found-report notification landing on Martín's own phone — the
-  // same, single device the whole chapter plays on.
-  it("chapter 3 ends with the found-report notification, on the owner's own phone", () => {
+  // Chapter 3 (PO 2026-09-30): the neighbour's phone scans, reads the
+  // "perdida" page and leaves a message; Martín's phone gets the
+  // notification, then ends on the poster whose QR was scanned.
+  it("chapter 3: the neighbour's phone hands over to the owner's, and ends on the poster", () => {
     const last = finalScreen(LOST_SEQUENCE);
-    // PO 2026-09-30: the notification title is now "¡Encontraron a {name}!"
-    // for every finder; the body still names the anonymous finder.
-    expect(last).toContain("¡Encontraron a Pampa!");
-    expect(last).toContain("Alguien encontró a Pampa");
+    expect(last).toContain("Cartel para imprimir");
+    expect(last).toContain("lp-poster-qr");
+    const notif = renderToStaticMarkup(LOST_SEQUENCE.device(LOST_OWNER_FROM, false));
+    expect(notif).toContain("¡Encontraron a Pampa!");
+    expect(notif).toContain("Alguien dejó un mensaje:");
+    expect(notif).toContain('data-actor="owner"');
+    const sent = renderToStaticMarkup(LOST_SEQUENCE.device(LOST_OWNER_FROM - 1, false));
+    expect(sent).toContain('data-actor="neighbour"');
+    expect(sent).toContain("¡Gracias!");
     expect(last).not.toContain("Celular del vecino");
+  });
+
+  it("chapter 3's actor switch slides the neighbour's phone out and the owner's in", () => {
+    vi.useFakeTimers();
+    const { chapter: c, index } = chapter("anon");
+    const { container } = render(<SequenceChapter chapter={c} index={index} />);
+    act(() => FakeIntersectionObserver.instances[0]?.callback([{ isIntersecting: true }]));
+    act(() => {
+      vi.advanceTimersByTime(LOST_SEQUENCE.stepMs * LOST_OWNER_FROM);
+    });
+    expect(stepOf("anon")).toBe(LOST_OWNER_FROM);
+    expect(
+      container.querySelector('.lp-seq-dev-out .lp-seq-case[data-actor="neighbour"] .lp-phone'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('.lp-seq-dev-in .lp-seq-case[data-actor="owner"] .lp-phone'),
+    ).not.toBeNull();
   });
 
   // PO 2026-09-30 (second call): the poster's QR is a DECORATIVE mini QR — a
   // fixed 13x13 matrix that reads as a QR with three finder squares, not a
   // scannable code. The scannable QR is the hero card's.
-  it("the poster's QR (step 2) is a decorative 13x13 matrix with three finder squares", () => {
+  it("the poster's QR is a decorative 13x13 matrix with three finder squares", () => {
     expect(POSTER_QR_MATRIX).toHaveLength(13);
     for (const row of POSTER_QR_MATRIX) expect(row).toMatch(/^[01]{13}$/);
     const finder = ["11111", "10001", "10101", "10001", "11111"];
@@ -507,7 +532,7 @@ describe("chapter endings (M5)", () => {
     expect(block(0, 8)).toEqual(finder);
     expect(block(8, 0)).toEqual(finder);
 
-    const posterHtml = renderToStaticMarkup(LOST_SEQUENCE.device(2, false));
+    const posterHtml = renderToStaticMarkup(LOST_SEQUENCE.device(LOST_POSTER_STEP, false));
     const qrIdx = posterHtml.indexOf("lp-poster-qr");
     expect(qrIdx).toBeGreaterThan(-1);
     const qrSvg = posterHtml.slice(qrIdx, posterHtml.indexOf("</svg>", qrIdx));

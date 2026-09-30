@@ -2013,6 +2013,26 @@
   font-size: var(--tab-sm);
   color: var(--color-ln-op-ink-2);
 }
+/* The quick-capture screens (vet chapter, PO 2026-09-30) on the tablet scale. */
+.lp .lp-tab-scr .lp-cc,
+.lp .lp-tab-scr .lp-match-ok {
+  font-size: var(--tab-sm);
+}
+.lp .lp-tab-scr .lp-cc-head b {
+  font-size: var(--tab-base);
+}
+.lp .lp-tab-scr .lp-sheet-s,
+.lp .lp-tab-scr .lp-op-code {
+  font-size: var(--tab-xs);
+}
+.lp .lp-tab-scr .lp-vf-submit--ok {
+  background: var(--color-ln-op-ok);
+}
+.lp .lp-tab-scr .lp-ph-card + .lp-vf-pet,
+.lp .lp-tab-scr .lp-vf-pet + .lp-ph-card,
+.lp .lp-tab-scr .lp-vf-pet + .lp-cc {
+  margin-top: 6px;
+}
 .lp .lp-tab-scr .lp-match-pill {
   font-size: var(--tab-xs);
   background: var(--color-ln-op-danger);
@@ -3590,6 +3610,258 @@ html:has([data-landing-root]) {
   color: var(--color-ln-mute);
 }
 
+/* Typing (story-sequences.tsx Typed): a sentence appears word by word,
+   opacity only, staggered by --i. Client + motion only, like .lp-seq-in. */
+.lp .lp-seq-type > span {
+  animation: lp-seq-word var(--motion-fast) var(--ease-editorial) both;
+  animation-delay: calc(var(--i, 0) * 110ms);
+}
+@keyframes lp-seq-word {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* The button pressed once the typing above is done, late in the step. */
+.lp .lp-vf-submit.lp-seq-late {
+  transform: none;
+  animation: lp-seq-press var(--motion-fast) var(--ease-editorial) 1300ms both;
+}
+@keyframes lp-seq-press {
+  to {
+    transform: scale(0.97);
+  }
+}
+
+/* Field variants: a mono code, a textarea, an empty field's placeholder, a
+   field spanning the tablet's two-column form. */
+.lp .lp-vf-i--mono {
+  font-family: var(--lp-mono);
+  letter-spacing: 0.04em;
+}
+.lp .lp-vf-i--area {
+  min-height: 64px;
+  line-height: 1.4;
+}
+.lp .lp-vf-i--ph {
+  color: var(--color-ln-faint);
+}
+.lp .lp-vf--full {
+  grid-column: 1 / -1;
+}
+.lp .lp-vf-submit--ok {
+  background: var(--color-ln-ok);
+}
+.lp .lp-vf-submit--warn {
+  background: var(--color-ln-warn);
+}
+
+/* The atender page's signer line, allowed to wrap (the matrícula line is
+   longer than the attendance form's was), and its DIM code badge. */
+.lp p.lp-op-signer--wrap {
+  white-space: normal;
+  margin: 0 0 8px;
+}
+.lp .lp-op-code {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border: 1px solid var(--color-ln-op-line);
+  border-radius: var(--radius-sm);
+  font-family: var(--lp-mono);
+  color: var(--color-ln-op-ink-2);
+}
+
+/* The quick-capture confidence card (components/ui/CaptureConfidenceCard.tsx). */
+.lp .lp-cc {
+  border: 1px solid var(--color-ln-op-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-ln-op-card);
+  overflow: hidden;
+}
+.lp .lp-cc-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-ln-op-line-2);
+}
+.lp .lp-cc-head b {
+  flex: 1;
+  font-family: var(--lp-serif);
+}
+.lp .lp-cc-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.lp .lp-cc-row span {
+  color: var(--color-ln-op-mute);
+}
+.lp .lp-cc-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--color-ln-op-line);
+  background: var(--color-ln-op-page);
+}
+.lp .lp-cc-actions .lp-vf-submit {
+  margin-top: 0;
+}
+.lp .lp-cc-ghost {
+  display: block;
+  padding: 7px 12px;
+  border: 1px solid var(--color-ln-op-line);
+  border-radius: var(--radius-pill);
+  text-align: center;
+  color: var(--color-ln-op-ink);
+}
+/* The vaccine form's sheet header (VaccinationForm.tsx LnSheetHeader). */
+.lp .lp-sheet-t {
+  font-family: var(--lp-serif);
+  margin-bottom: 0;
+}
+.lp .lp-sheet-s {
+  margin-bottom: 10px;
+  color: var(--color-ln-op-mute);
+}
+
+/* The neighbour's camera on the poster's QR: no UI, only a viewfinder. */
+.lp .lp-cam {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  background: var(--color-ln-ink);
+}
+.lp .lp-cam-frame {
+  position: relative;
+  padding: 18px;
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(var(--color-ln-card), var(--color-ln-card)) top left / 28px 3px no-repeat,
+    linear-gradient(var(--color-ln-card), var(--color-ln-card)) top left / 3px 28px no-repeat,
+    linear-gradient(var(--color-ln-card), var(--color-ln-card)) top right / 28px 3px no-repeat,
+    linear-gradient(var(--color-ln-card), var(--color-ln-card)) top right / 3px 28px no-repeat,
+    linear-gradient(var(--color-ln-card), var(--color-ln-card)) bottom left / 28px 3px no-repeat,
+    linear-gradient(var(--color-ln-card), var(--color-ln-card)) bottom left / 3px 28px no-repeat,
+    linear-gradient(var(--color-ln-card), var(--color-ln-card)) bottom right / 28px 3px no-repeat,
+    linear-gradient(var(--color-ln-card), var(--color-ln-card)) bottom right / 3px 28px no-repeat;
+}
+.lp .lp-cam-qr {
+  display: block;
+  width: 150px;
+  height: 150px;
+  border-radius: var(--radius-sm);
+}
+
+/* The public credential, lost (app/(public)/p/[publicToken]/page.tsx). */
+.lp .lp-pub {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.lp .lp-pub-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: stretch;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-ln-line-2);
+  text-align: left;
+}
+.lp .lp-pub-crest {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: 1.5px solid var(--color-ln-azul);
+  border-radius: 50%;
+  font-family: var(--lp-serif);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-ln-azul);
+}
+.lp .lp-pub-brand {
+  display: block;
+  font-family: var(--lp-serif);
+  font-size: var(--text-md);
+}
+.lp .lp-pub-kind {
+  display: block;
+  font-family: var(--lp-mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-ln-mute);
+}
+.lp .lp-pub-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-ln-err-050);
+  color: var(--color-ln-err);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+.lp .lp-pub-name {
+  font-family: var(--lp-serif);
+  font-size: var(--text-2xl);
+  line-height: 1;
+}
+.lp .lp-pub-sub {
+  font-size: var(--text-sm);
+  color: var(--color-ln-ink-2);
+}
+.lp .lp-pub-q {
+  align-self: flex-start;
+  font-family: var(--lp-serif);
+  font-size: var(--text-md);
+}
+.lp .lp-pub .lp-vf-form {
+  align-self: stretch;
+  text-align: left;
+}
+.lp .lp-pub .lp-vf-submit {
+  align-self: stretch;
+}
+.lp .lp-pub .lp-match-ok {
+  align-self: stretch;
+  margin-top: 24px;
+}
+.lp .lp-pub-found {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: stretch;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-ln-line);
+  border-radius: var(--radius-md);
+  background: var(--color-ln-stripe);
+  text-align: left;
+  font-size: var(--text-lg);
+  color: var(--color-ln-mute);
+}
+.lp .lp-pub-found b {
+  display: block;
+  font-family: var(--lp-serif);
+  font-size: var(--text-md);
+  color: var(--color-ln-ink);
+}
+.lp .lp-pub-found span {
+  display: block;
+  font-size: var(--text-sm);
+}
+
 /* ---------------------------------------------------------------------------
    Estado — the map fills in north to south (PS9)
    --------------------------------------------------------------------------- */
@@ -3713,7 +3985,9 @@ html:has([data-landing-root]) {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .lp .lp-seq-in {
+  .lp .lp-seq-in,
+  .lp .lp-seq-type > span,
+  .lp .lp-vf-submit.lp-seq-late {
     animation: none;
   }
   .lp .lp-rail-fill,
