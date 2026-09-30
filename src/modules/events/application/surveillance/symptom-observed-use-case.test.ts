@@ -42,6 +42,14 @@ vi.mock("../clinical/route-outbreak-signal-notifications", () => ({
   routeOutbreakSignalNotifications: mockRouteOutbreakSignalNotifications,
 }));
 
+// The dedup lookup needs a real transaction; unit-level it answers "no recent
+// signal" unless a test says otherwise. The folding rule itself stays real.
+const mockLockAndFindRecentSignals = vi.hoisted(() => vi.fn());
+vi.mock("./recent-outbreak-signals", async (importActual) => ({
+  ...(await importActual<typeof import("./recent-outbreak-signals")>()),
+  lockAndFindRecentSignals: mockLockAndFindRecentSignals,
+}));
+
 import type { EventsRepository } from "../../infrastructure/events-repository";
 import type { NewNotification } from "../types";
 import { createSymptomObservedWriter } from "./symptom-observed-use-case";
@@ -106,6 +114,7 @@ describe("createSymptomObservedWriter", () => {
     vi.clearAllMocks();
     mockMaybeNotifyOwnersOfPublicAlert.mockResolvedValue({ delivered: 0 });
     mockRouteOutbreakSignalNotifications.mockResolvedValue(undefined);
+    mockLockAndFindRecentSignals.mockResolvedValue([]);
   });
 
   it("inserts symptom_observed (plain) with empty match arrays when no diseases match", async () => {
@@ -133,6 +142,7 @@ describe("createSymptomObservedWriter", () => {
       ok: true,
       symptomEventId: symptomId,
       signalEventIds: [],
+      corroboratedSignalEventIds: [],
       wasDuplicate: false,
     });
 
@@ -188,6 +198,7 @@ describe("createSymptomObservedWriter", () => {
       ok: true,
       symptomEventId: symptomId,
       signalEventIds: [signalId],
+      corroboratedSignalEventIds: [],
       wasDuplicate: false,
     });
 
@@ -343,6 +354,7 @@ describe("createSymptomObservedWriter", () => {
       ok: true,
       symptomEventId: symptomId,
       signalEventIds: [],
+      corroboratedSignalEventIds: [],
       wasDuplicate: false,
     });
 
@@ -472,6 +484,7 @@ describe("createSymptomObservedWriter", () => {
       ok: true,
       symptomEventId: symptomId,
       signalEventIds: [],
+      corroboratedSignalEventIds: [],
       wasDuplicate: false,
     });
     // Must use idempotent path
@@ -519,6 +532,7 @@ describe("createSymptomObservedWriter", () => {
       ok: true,
       symptomEventId: symptomId,
       signalEventIds: [],
+      corroboratedSignalEventIds: [],
       wasDuplicate: true,
     });
     // No signals, no outbox, no notifications when noop
@@ -552,6 +566,7 @@ describe("createSymptomObservedWriter — reporterRole", () => {
     mockRouteOutbreakSignalNotifications.mockResolvedValue(undefined);
     mockMatchSymptoms.mockReturnValue([{ symptom_code: "symptom_1" }]);
     mockAggregateDiseaseMatches.mockReturnValue([rabies]);
+    mockLockAndFindRecentSignals.mockResolvedValue([]);
   });
 
   function deps(repo: ReturnType<typeof makeRepo>, flush = makeFlushNotifications()) {
@@ -622,5 +637,98 @@ describe("createSymptomObservedWriter — reporterRole", () => {
     expect(flushed.some((n) => n.notificationType === "rabies_observation_escalation_owner")).toBe(
       true,
     );
+  });
+});
+
+describe("createSymptomObservedWriter — corroboration instead of a second signal", () => {
+  const rabies = {
+    disease_code: "rabies_suspected",
+    disease_label: "Rabia sospechada",
+    triggers_alert: true,
+    is_reportable: true,
+    high_count: 1,
+    medium_count: 0,
+    low_count: 0,
+    matched_symptoms: ["symptom_1"],
+  };
+  const existingId = randomUUID();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMaybeNotifyOwnersOfPublicAlert.mockResolvedValue({ delivered: 0 });
+    mockRouteOutbreakSignalNotifications.mockResolvedValue(undefined);
+    mockMatchSymptoms.mockReturnValue([{ symptom_code: "symptom_1" }]);
+    mockAggregateDiseaseMatches.mockReturnValue([rabies]);
+  });
+
+  function run(params: Partial<typeof baseParams> & { rabiesObservationStatus?: string | null }) {
+    const repo = makeRepo();
+    const flush = makeFlushNotifications();
+    const result = createSymptomObservedWriter(
+      { ...baseParams, ...params },
+      {
+        repo: repo as unknown as Pick<EventsRepository, "insertEvent" | "insertEventIdempotent">,
+        transaction: makeTransaction(),
+        flushNotifications: flush,
+      },
+    );
+    return { repo, flush, result };
+  }
+
+  it("an existing routine signal is corroborated: no new signal, no routing, no owner alert", async () => {
+    mockLockAndFindRecentSignals.mockResolvedValue([
+      { id: existingId, diseaseCode: "rabies_suspected", escalation: false },
+    ]);
+    const { repo, result } = run({});
+    const r = await result;
+    if (!r.ok) throw new Error(r.error);
+    expect(r.signalEventIds).toEqual([]);
+    expect(r.corroboratedSignalEventIds).toEqual([existingId]);
+    expect(repo.insertEvent).toHaveBeenCalledTimes(1);
+    const symptom = repo.insertEvent.mock.calls[0][0] as { payload: Record<string, unknown> };
+    expect(symptom.payload.corroborated_signals).toEqual([
+      { disease_code: "rabies_suspected", outbreak_signal_event_id: existingId },
+    ]);
+    // The disease stays in alerted_disease_codes: the rabies-observation
+    // escalation reader keys on it and the report DID alert.
+    expect(symptom.payload.alerted_disease_codes).toEqual(["rabies_suspected"]);
+    expect(mockRouteOutbreakSignalNotifications).not.toHaveBeenCalled();
+    expect(mockMaybeNotifyOwnersOfPublicAlert).not.toHaveBeenCalled();
+  });
+
+  it("an escalation is never folded into a routine signal that sent no urgent notice", async () => {
+    mockLockAndFindRecentSignals.mockResolvedValue([
+      { id: existingId, diseaseCode: "rabies_suspected", escalation: false },
+    ]);
+    const { repo, result } = run({ rabiesObservationStatus: "in_progress" });
+    const r = await result;
+    if (!r.ok) throw new Error(r.error);
+    expect(r.signalEventIds).toHaveLength(1);
+    expect(r.corroboratedSignalEventIds).toEqual([]);
+    expect(repo.insertEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it("an escalation IS folded into an earlier escalation", async () => {
+    mockLockAndFindRecentSignals.mockResolvedValue([
+      { id: existingId, diseaseCode: "rabies_suspected", escalation: true },
+    ]);
+    const { flush, result } = run({ rabiesObservationStatus: "in_progress" });
+    const r = await result;
+    if (!r.ok) throw new Error(r.error);
+    expect(r.signalEventIds).toEqual([]);
+    expect(r.corroboratedSignalEventIds).toEqual([existingId]);
+    const flushed = flush.mock.calls[0][0] as NewNotification[];
+    expect(flushed).toEqual([]);
+  });
+
+  it("a recent signal for ANOTHER disease does not fold this one", async () => {
+    mockLockAndFindRecentSignals.mockResolvedValue([
+      { id: existingId, diseaseCode: "leptospirosis", escalation: false },
+    ]);
+    const { result } = run({});
+    const r = await result;
+    if (!r.ok) throw new Error(r.error);
+    expect(r.signalEventIds).toHaveLength(1);
+    expect(r.corroboratedSignalEventIds).toEqual([]);
   });
 });

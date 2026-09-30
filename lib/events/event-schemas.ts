@@ -1143,6 +1143,20 @@ const symptomObserved = z
       alerted_disease_codes: z.array(z.string()).default([]),
       severity_self_assessed: z.enum(["mild", "moderate", "severe"]).nullable(),
       onset_at: z.string().nullable(),
+      // Alerted diseases that raised NO new outbreak_signal because one for the
+      // same pet and disease already existed inside the corroboration window
+      // (src/modules/events/application/surveillance/recent-outbreak-signals.ts):
+      // this report corroborates that signal instead of duplicating it. The
+      // earlier signal is never touched (append-only); the link lives here.
+      // Absent on rows written before 2026-09-30 and on reports that raised
+      // only new signals.
+      corroborated_signals: z
+        .array(
+          z
+            .object({ disease_code: z.string(), outbreak_signal_event_id: z.string().uuid() })
+            .strict(),
+        )
+        .optional(),
     }),
   )
   .strict()

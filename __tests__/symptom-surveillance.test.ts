@@ -15,6 +15,7 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { db, notifications, ownerships, petEvents, pets, profiles } from "@/db";
+import { fetchSurveillanceSignals } from "@/lib/analytics/dashboards/surveillance";
 import { createSymptomObservedWriter } from "@/src/modules/events/application/writers";
 import {
   ADMIN_FALLBACK_JURISDICTION,
@@ -334,6 +335,125 @@ describe("createSymptomObservedWriter — surveillance pipeline", () => {
     expect(notifs).toHaveLength(1);
     expect(notifs[0].body).toContain("Síntomas observados por un veterinario en la consulta");
     expect(notifs[0].body).not.toContain("quien cuida al animal");
+  });
+
+  describe("one episode, two reporters — corroboration instead of a second signal", () => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const RABIES_TEXT = "le sale baba y está muy agresivo";
+
+    function report(
+      pet: typeof pets.$inferSelect,
+      who: "owner" | "vet",
+      now: Date,
+    ): ReturnType<typeof createSymptomObservedWriter> {
+      return createSymptomObservedWriter({
+        petId: pet.id,
+        petPublicToken: pet.publicToken,
+        petName: pet.name,
+        petSpecies: pet.species,
+        petJurisdictionCountry: pet.jurisdictionCountry,
+        petJurisdictionProvince: pet.jurisdictionProvince ?? null,
+        petJurisdictionLocality: pet.jurisdictionLocality ?? null,
+        recordedByUserId: who === "owner" ? ownerUserId : adminUserId,
+        eventAuthorship:
+          who === "owner"
+            ? ownerAuthorship
+            : { authorRole: "vet", authorOrganizationId: null, authorVerified: true },
+        freeText: RABIES_TEXT,
+        severity: null,
+        onsetAt: null,
+        // The vet leg is exactly what recordConditionAtIntake passes
+        // (condition-at-intake-use-case.ts): reporterRole 'vet' + its own now.
+        reporterRole: who,
+        now,
+      });
+    }
+
+    async function rabiesSignals(petId: string) {
+      const rows = await db
+        .select()
+        .from(petEvents)
+        .where(and(eq(petEvents.petId, petId), eq(petEvents.eventType, "outbreak_signal")));
+      return rows.filter(
+        (r) => (r.payload as Record<string, unknown>).disease_code === "rabies_suspected",
+      );
+    }
+
+    async function authorityNotices(petId: string) {
+      return db
+        .select()
+        .from(notifications)
+        .where(
+          and(
+            eq(notifications.userId, adminUserId),
+            eq(notifications.notificationType, "outbreak_signal_detected"),
+            eq(notifications.relatedPetId, petId),
+          ),
+        );
+    }
+
+    /** What the /gob/vigilancia list and 30-day tile count for this pet. */
+    async function kpiCountedSignals(petId: string) {
+      const rows = await fetchSurveillanceSignals({ role: "admin" }, [], {
+        since: new Date(Date.now() - 30 * DAY_MS),
+        diseaseCode: "rabies_suspected",
+      });
+      return rows.filter((r) => r.petId === petId);
+    }
+
+    it("owner report then vet intake inside the window: ONE signal, ONE notice, ONE KPI row, corroboration recorded", async () => {
+      const pet = await insertTestPet(ownerUserId, "CORROB");
+
+      const owner = await report(pet, "owner", new Date(Date.now() - 2 * DAY_MS));
+      if (!owner.ok) throw new Error(owner.error);
+      expect(owner.signalEventIds).toHaveLength(1);
+
+      const vet = await report(pet, "vet", new Date());
+      if (!vet.ok) throw new Error(vet.error);
+      expect(vet.signalEventIds).toEqual([]);
+      expect(vet.corroboratedSignalEventIds).toEqual(owner.signalEventIds);
+
+      const signals = await rabiesSignals(pet.id);
+      expect(signals.map((s) => s.id)).toEqual(owner.signalEventIds);
+      expect(await authorityNotices(pet.id)).toHaveLength(1);
+      expect((await kpiCountedSignals(pet.id)).map((s) => s.signalEventId)).toEqual(
+        owner.signalEventIds,
+      );
+
+      // The corroboration lives on the vet's symptom_observed; the owner's
+      // signal is untouched (append-only).
+      const [vetSymptom] = await db
+        .select()
+        .from(petEvents)
+        .where(eq(petEvents.id, vet.symptomEventId));
+      expect((vetSymptom.payload as Record<string, unknown>).corroborated_signals).toEqual([
+        { disease_code: "rabies_suspected", outbreak_signal_event_id: owner.signalEventIds[0] },
+      ]);
+      expect((vetSymptom.payload as Record<string, unknown>).reporter_role).toBe("vet");
+      expect((signals[0].payload as Record<string, unknown>).reporter_role).toBe("owner");
+    });
+
+    it("outside the 30-day window the vet intake raises its own signal", async () => {
+      const pet = await insertTestPet(ownerUserId, "NOCORROB");
+
+      const owner = await report(pet, "owner", new Date(Date.now() - 31 * DAY_MS));
+      if (!owner.ok) throw new Error(owner.error);
+      const vet = await report(pet, "vet", new Date());
+      if (!vet.ok) throw new Error(vet.error);
+
+      expect(vet.signalEventIds).toHaveLength(1);
+      expect(vet.corroboratedSignalEventIds).toEqual([]);
+      expect(await rabiesSignals(pet.id)).toHaveLength(2);
+      expect(await authorityNotices(pet.id)).toHaveLength(2);
+
+      const [vetSymptom] = await db
+        .select()
+        .from(petEvents)
+        .where(eq(petEvents.id, vet.symptomEventId));
+      expect(vetSymptom.payload as Record<string, unknown>).not.toHaveProperty(
+        "corroborated_signals",
+      );
+    });
   });
 
   it("non-reportable disease match (distemper via cough+nasal_discharge) → no outbreak_signal", async () => {

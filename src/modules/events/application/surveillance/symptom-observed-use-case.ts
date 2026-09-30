@@ -11,7 +11,11 @@
 // Parity:
 //   - symptom_observed: PLAIN insert (NOT idempotent), with matched codes + alerted diseases.
 //   - Matcher is defensive: try/catch — failure sets empty results, NEVER blocks the insert.
-//   - For each alertable reportable disease:
+//   - Source-side dedup (2026-09-30, recent-outbreak-signals.ts): an alertable
+//       disease that already has an outbreak_signal for this pet inside the
+//       30-day window raises NOTHING new — it is recorded as
+//       `corroborated_signals` on the symptom_observed payload.
+//   - For each other alertable reportable disease:
 //       insert outbreak_signal (plain, system author) +
 //       routeOutbreakSignalNotifications +
 //       maybeNotifyOwnersOfPublicAlert
@@ -30,6 +34,7 @@ import { parseDateInput } from "@/lib/utils/format";
 import type { EventsRepository } from "../../infrastructure/events-repository";
 import { routeOutbreakSignalNotifications } from "../clinical/route-outbreak-signal-notifications";
 import type { NewNotification } from "../types";
+import { lockAndFindRecentSignals, signalToCorroborate } from "./recent-outbreak-signals";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -92,6 +97,12 @@ export type CreateSymptomObservedWriterResult =
       ok: true;
       symptomEventId: string;
       signalEventIds: string[];
+      /**
+       * Existing outbreak_signals this report corroborated instead of
+       * duplicating (same pet + disease inside the 30-day window, see
+       * recent-outbreak-signals.ts). Empty on a replay.
+       */
+      corroboratedSignalEventIds: string[];
       /**
        * Did the idempotent insert resolve to an event that ALREADY EXISTED?
        *
@@ -182,10 +193,41 @@ export async function createSymptomObservedWriter(
   let symptomEventId = "";
   let wasDuplicate = false;
   const signalEventIds: string[] = [];
+  const corroboratedSignalEventIds: string[] = [];
   const pendingNotifications: NewNotification[] = [];
 
   try {
     await deps.transaction(async (tx) => {
+      const rabiesObservationActive = rabiesObservationStatus === "in_progress";
+      const planned = alertableDiseases.map((d) => ({
+        d,
+        isRabiesEscalation:
+          rabiesObservationActive && d.disease_code === "rabies_suspected" && d.high_count >= 1,
+      }));
+
+      // Source-side dedup (recent-outbreak-signals.ts): a disease that already
+      // has a signal for this pet inside the window is CORROBORATED — recorded
+      // on this symptom_observed — instead of raising a second signal, a
+      // second authority notice and a second count on every /gob surface.
+      const recent = await lockAndFindRecentSignals(tx as DbTx, {
+        petId,
+        diseaseCodes: planned.map((p) => p.d.disease_code),
+        now,
+      });
+      const corroborated: { disease_code: string; outbreak_signal_event_id: string }[] = [];
+      const toSignal: typeof planned = [];
+      for (const p of planned) {
+        const existing = signalToCorroborate(recent, p.d.disease_code, p.isRabiesEscalation);
+        if (existing) {
+          corroborated.push({
+            disease_code: p.d.disease_code,
+            outbreak_signal_event_id: existing.id,
+          });
+        } else {
+          toSignal.push(p);
+        }
+      }
+
       const symptomPayload = validateEventPayload("symptom_observed", {
         source: "libreta" as const,
         welfare_report_id: null,
@@ -195,6 +237,7 @@ export async function createSymptomObservedWriter(
         alerted_disease_codes: alertableDiseases.map((d) => d.disease_code),
         severity_self_assessed: severity,
         onset_at: onsetAt,
+        ...(corroborated.length > 0 ? { corroborated_signals: corroborated } : {}),
       });
 
       const symptomEventBase = {
@@ -237,12 +280,12 @@ export async function createSymptomObservedWriter(
         symptomEventId = symptomEvent.id;
       }
 
-      const rabiesObservationActive = rabiesObservationStatus === "in_progress";
+      corroboratedSignalEventIds.push(...corroborated.map((c) => c.outbreak_signal_event_id));
 
-      for (const d of alertableDiseases) {
-        const isRabiesEscalation =
-          rabiesObservationActive && d.disease_code === "rabies_suspected" && d.high_count >= 1;
-
+      // Only the diseases with no signal in the window raise one. A folded
+      // disease also skips the owner alert (throttled on the same 30 days) and
+      // the rabies push (folded only into an escalation that already sent it).
+      for (const { d, isRabiesEscalation } of toSignal) {
         const signalPayload = validateEventPayload("outbreak_signal", {
           source_symptom_event_id: symptomEvent.id,
           // Who described the symptoms: the authority notice reads it, so a
@@ -345,5 +388,5 @@ export async function createSymptomObservedWriter(
   // Flush pending notifications post-tx (failure must not roll back the write).
   await deps.flushNotifications(pendingNotifications);
 
-  return { ok: true, symptomEventId, signalEventIds, wasDuplicate };
+  return { ok: true, symptomEventId, signalEventIds, corroboratedSignalEventIds, wasDuplicate };
 }

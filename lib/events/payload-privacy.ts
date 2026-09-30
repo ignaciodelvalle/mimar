@@ -371,6 +371,7 @@ export const PAYLOAD_PRIVACY: Record<EventType, Record<string, PrivacyEntry>> = 
     alerted_disease_codes: CF,
     severity_self_assessed: CF,
     onset_at: CF,
+    corroborated_signals: CF,
   },
   outbreak_signal: {
     // Catalogue place, as entered and as resolved (lib/events/place-payload.ts):
