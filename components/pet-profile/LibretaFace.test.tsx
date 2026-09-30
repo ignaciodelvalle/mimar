@@ -270,7 +270,7 @@ describe("LibretaFace — Emergencia block (wave-3 P3)", () => {
     expect(html).toContain('href="/mis-mascotas/abc?sheet=emergencia"');
   });
 
-  it("appears above the immutability note, near the footer", () => {
+  it("renders the emergency block and no immutability claim", () => {
     const html = renderToStaticMarkup(
       <LibretaFace
         data={faceData()}
@@ -282,9 +282,10 @@ describe("LibretaFace — Emergencia block (wave-3 P3)", () => {
         }}
       />,
     );
-    const emergenciaPos = html.indexOf('data-section="libreta-emergencia"');
-    const notePos = html.indexOf("Los eventos no se editan ni se borran");
-    expect(emergenciaPos).toBeGreaterThan(-1);
-    expect(notePos).toBeGreaterThan(emergenciaPos);
+    // PO 2026-09-30: the "no se editan ni se borran" note is gone — it
+    // contradicted audited erasure (Ley 25.326 art. 16) and confused owners.
+    expect(html).toContain('data-section="libreta-emergencia"');
+    expect(html).not.toContain("no se borran");
+    expect(html).not.toContain("inmutables");
   });
 });

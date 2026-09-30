@@ -2,7 +2,7 @@
 //
 // Section 01 Registro de vacunación → LnVaccineLedger (ruled table).
 // Section 02 Historial clínico → LnTimeline (dot+icon by type, vertical connector).
-// Footer: "Asientos firmados digitalmente · inmutables" + export.
+// Footer: the export button.
 //
 // Render logic (groupedEvents, agrupada/cronologica toggle) is UNCHANGED.
 

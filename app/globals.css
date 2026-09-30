@@ -2197,21 +2197,7 @@ a.ln-qr-link:focus-visible .ln-qr-frame {
   color: #8a6d10;
 }
 
-/* ---- Immutability note + footer ------------------------------------------ */
-.ln-immut {
-  font-size: var(--text-sm);
-  color: var(--color-ln-mute);
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  line-height: 1.5;
-  margin-top: 20px;
-}
-.ln-immut svg {
-  margin-top: 2px;
-  color: var(--color-ln-faint);
-  flex-shrink: 0;
-}
+/* ---- Libreta footer ------------------------------------------------------ */
 .ln-libfoot {
   display: flex;
   align-items: center;

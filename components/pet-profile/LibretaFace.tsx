@@ -211,14 +211,7 @@ export function LibretaFace({ data, petPublicToken, isOwner, emergencyContacts }
         </div>
       )}
 
-      {/* Immutability, in plain es-AR (append-only ledger — WS-3). */}
-      <p className="ln-immut">
-        <Icon name="lock" size="sm" decorative />
-        <span>Los eventos no se editan ni se borran. Una corrección es un evento nuevo.</span>
-      </p>
-
       <footer className="ln-libfoot font-ln-mono text-xs uppercase tracking-[.04em] text-[var(--color-ln-faint)]">
-        <span>Asientos firmados digitalmente · inmutables</span>
         <span className="ln-fspace" />
         <ExportLibretaButton petPublicToken={petPublicToken} />
       </footer>
