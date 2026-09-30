@@ -15,7 +15,12 @@ import { attachments, db, petEvents } from "@/db";
 import type { EventType } from "@/db/schema";
 import { readPoint } from "@/lib/domain/location";
 import { eventPayloadDetails, eventPayloadSummary } from "@/lib/events/events";
-import { amendAuthorshipRefusal, applyAmendments } from "@/lib/infra/amendment";
+import {
+  PROFESSIONAL_AUTHOR_ROLES,
+  amendAuthorshipRefusal,
+  amendBannerCopy,
+  applyAmendments,
+} from "@/lib/infra/amendment";
 import { withholdUnreadableDecomisoEvidence } from "@/lib/infra/decomiso-evidence-access";
 import { requireOwnedPetByToken } from "@/lib/infra/pets";
 import { eventAttachmentSignedUrl } from "@/lib/infra/storage";
@@ -116,24 +121,31 @@ export default async function EventDetailPage({
   // viewer may correct — their own, never one a professional wrote or
   // corrected. The server action enforces the same rule; this only keeps the
   // button from offering what the write would refuse.
-  const canAmend =
-    accessPath === "owner" &&
-    amendAuthorshipRefusal(
+  const authorshipRefusal = amendAuthorshipRefusal(
+    {
+      userId: session.user.id,
+      standing: "person",
+      titularTenures: await readTitularTenures(pet.id, session.user.id),
+    },
+    [
       {
-        userId: session.user.id,
-        standing: "person",
-        titularTenures: await readTitularTenures(pet.id, session.user.id),
+        authorRole: event.authorRole,
+        authorVerified: event.authorVerified,
+        recordedByUserId: event.recordedByUserId,
+        recordedAt: event.recordedAt,
       },
-      [
-        {
-          authorRole: event.authorRole,
-          authorVerified: event.authorVerified,
-          recordedByUserId: event.recordedByUserId,
-          recordedAt: event.recordedAt,
-        },
-        ...amendmentChain,
-      ],
-    ) === null;
+      ...amendmentChain,
+    ],
+  );
+  const canAmend = accessPath === "owner" && authorshipRefusal === null;
+  // D9 (portal-vet-p0): the banner says what is true for THIS viewer and THIS
+  // record — it used to promise "podés registrar una corrección" to an owner
+  // looking at a vet's record she is offered no button for.
+  const bannerCopy = amendBannerCopy(
+    authorshipRefusal,
+    accessPath,
+    amendmentChain.some((a) => PROFESSIONAL_AUTHOR_ROLES.has(a.authorRole)),
+  );
 
   return (
     <div className="mx-auto max-w-2xl px-8 py-7 pb-12">
@@ -173,10 +185,7 @@ export default async function EventDetailPage({
         className="mb-4 flex flex-col gap-2.5 rounded-[var(--radius-sm)] border border-[var(--color-ln-line)] bg-[var(--color-ln-stripe)] px-3.5 py-2.5"
         role="note"
       >
-        <p className="font-ln-mono text-sm text-[var(--color-ln-mute)]">
-          Este registro no se puede editar ni borrar — la libreta es un historial inmutable. Si hay
-          un dato incorrecto, podés registrar una corrección que queda acreditada en el historial.
-        </p>
+        <p className="font-ln-mono text-sm text-[var(--color-ln-mute)]">{bannerCopy}</p>
         <AmendEventButton
           eventId={event.id}
           eventType={event.eventType}

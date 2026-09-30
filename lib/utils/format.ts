@@ -1077,6 +1077,7 @@ const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   adoption_info_requested: "Info de adopción solicitada",
   // Amendments
   admin_event_amended: "Evento corregido por admin",
+  professional_event_amended: "Registro corregido por un profesional",
   // Appointments
   appointment_cancelled_by_org: "Turno cancelado por la organización",
   appointment_attended: "Turno atendido",

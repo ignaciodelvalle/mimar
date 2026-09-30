@@ -74,7 +74,7 @@ vi.mock("../visit-actions", () => ({
   atenderCloseVisitAction: vi.fn(),
 }));
 const getWalkInLibretaMock = vi.hoisted(() =>
-  vi.fn().mockResolvedValue({ past: [], truncated: false, visits: {} }),
+  vi.fn().mockResolvedValue({ past: [], truncated: false, visits: {}, correctionAuthors: {} }),
 );
 vi.mock("@/src/modules/pets/application/tab-data/get-walk-in-libreta", () => ({
   getWalkInLibreta: getWalkInLibretaMock,
@@ -82,7 +82,9 @@ vi.mock("@/src/modules/pets/application/tab-data/get-walk-in-libreta", () => ({
 
 import AtenderSignPage from "./page";
 
-async function renderPage(searchParams: { evento?: string; firmado?: string } = {}) {
+async function renderPage(
+  searchParams: { evento?: string; firmado?: string; corregido?: string } = {},
+) {
   const node = await AtenderSignPage({
     params: Promise.resolve({ orgToken: "org-token", publicToken: "DIM-TEST-0001" }),
     searchParams: Promise.resolve(searchParams),
@@ -135,6 +137,7 @@ describe("atender sign page — history before the capture surface", () => {
       ],
       truncated: false,
       visits: { "visit-1": { modality: "home", openedAt: new Date("2026-09-20T12:50:00Z") } },
+      correctionAuthors: {},
     });
     const html = await renderPage();
     const history = html.indexOf("Historia clínica");
@@ -323,5 +326,76 @@ describe("atender sign page — the observation close waits for the deadline", (
 
     expect(html).toContain("Cierre estimado: 24 de sept de 2026");
     expect(html).toContain("lo registra un profesional con matrícula validada");
+  });
+});
+
+// portal-vet-p0 — the clinic corrects its OWN records from Atender. The page
+// offers "Corregir" with the server's predicate: a verified signer, on a row
+// this organization signed (root and every correction). Everything else stays
+// a read.
+describe("atender sign page — Corregir on the clinic's own records", () => {
+  function row(
+    id: string,
+    authorOrganizationId: string | null,
+    eventType = "vaccination_administered",
+  ) {
+    return {
+      id,
+      petId: "pet-1",
+      eventType,
+      payload: { vaccine_name: `Vacuna ${id}` },
+      occurredAt: new Date("2026-09-20T13:00:00Z"),
+      notes: null,
+      recordedByUserId: "vet-9",
+      authorRole: authorOrganizationId ? "vet" : "owner",
+      authorVerified: authorOrganizationId !== null,
+      authorOrganizationId,
+      authorOrgName: authorOrganizationId ? "Clínica" : null,
+      attachmentUrl: null,
+      hasAttachment: false,
+      visitId: null,
+    };
+  }
+
+  const HISTORY = {
+    past: [
+      row("own", "org-1"),
+      row("other-clinic", "org-9"),
+      row("owner-entry", null),
+      row("own-corrected-elsewhere", "org-1"),
+      row("own-death", "org-1", "death_recorded"),
+    ],
+    truncated: false,
+    visits: {},
+    correctionAuthors: {
+      "own-corrected-elsewhere": [{ authorOrganizationId: "org-9", recordedByUserId: "vet-x" }],
+    },
+  };
+
+  it("offers Corregir only on amendable rows this clinic signed, root and chain", async () => {
+    resolveAtenderPetMock.mockResolvedValueOnce(fixtureAccess(true));
+    getWalkInLibretaMock.mockResolvedValueOnce(HISTORY);
+    const html = await renderPage();
+    expect(html).toContain('data-amendable-row="own"');
+    expect(html).not.toContain('data-amendable-row="other-clinic"');
+    expect(html).not.toContain('data-amendable-row="owner-entry"');
+    expect(html).not.toContain('data-amendable-row="own-corrected-elsewhere"');
+    expect(html).not.toContain('data-amendable-row="own-death"');
+    expect(html.match(/Corregir registro/g)).toHaveLength(1);
+  });
+
+  it("offers nothing to a signer without a validated matrícula", async () => {
+    resolveAtenderPetMock.mockResolvedValueOnce(fixtureAccess(false));
+    getWalkInLibretaMock.mockResolvedValueOnce(HISTORY);
+    const html = await renderPage();
+    expect(html).not.toContain("data-amendable-row");
+    expect(html).not.toContain("Corregir registro");
+  });
+
+  it("renders the correction receipt on ?corregido=1 — never 'Evento clínico firmado'", async () => {
+    resolveAtenderPetMock.mockResolvedValueOnce(fixtureAccess(true));
+    const html = await renderPage({ corregido: "1" });
+    expect(html).toContain("Corrección registrada. El registro original queda en el historial.");
+    expect(html).not.toContain("Evento clínico firmado.");
   });
 });

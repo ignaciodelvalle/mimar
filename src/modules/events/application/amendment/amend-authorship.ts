@@ -28,9 +28,11 @@ import { db, ownerships, petEvents } from "@/db";
 import {
   AMEND_AUTHORSHIP_REFUSAL_COPY,
   type AmendAuthorshipSubject,
+  ORG_AMENDMENT_SCOPE_REFUSAL_COPY,
   TITULAR_SIDE_HOLDER_ROLES,
   type TitularTenure,
   amendAuthorshipRefusal,
+  orgAmendmentScopeRefusal,
   resolveAmendActorStanding,
 } from "@/lib/infra/amendment";
 import type { PetEventAuthorship } from "@/lib/infra/pet-access";
@@ -60,6 +62,7 @@ async function readCorrectionAuthors(
       recordedByUserId: petEvents.recordedByUserId,
       recordedAt: petEvents.recordedAt,
       actorRole: sql<string | null>`${petEvents.payload}->>'actor_role'`,
+      authorOrganizationId: petEvents.authorOrganizationId,
     })
     .from(petEvents)
     .where(
@@ -107,10 +110,35 @@ export async function checkAmendAuthorship(
     eventAuthorship: PetEventAuthorship;
     petId: string;
     root: AmendAuthorshipSubject & { id: string };
+    /**
+     * Present only on the org door (Atender, portal-vet-p0): the correction must
+     * also pass `orgAmendmentScopeRefusal` — a verified signer, and a record
+     * whose root and every correction this organization signed. It is checked
+     * here so it binds on BOTH passes, including the locked recheck.
+     */
+    orgScope?: { organizationId: string };
   },
   executor: AmendExecutor = db,
 ): Promise<string | null> {
   const standing = resolveAmendActorStanding(input.profileRole, input.eventAuthorship);
+
+  if (input.orgScope) {
+    // The scope needs the chain whatever the standing, so it reads it itself.
+    const scopeSubjects: AmendAuthorshipSubject[] = [
+      input.root,
+      ...(await readCorrectionAuthors(executor, input.petId, input.root.id)),
+    ];
+    const scopeRefusal = orgAmendmentScopeRefusal(
+      {
+        userId: input.userId,
+        organizationId: input.orgScope.organizationId,
+        authorVerified: input.eventAuthorship.authorVerified,
+      },
+      scopeSubjects,
+    );
+    if (scopeRefusal) return ORG_AMENDMENT_SCOPE_REFUSAL_COPY[scopeRefusal];
+  }
+
   // Override and verified professionals pass without a single read.
   if (standing === "override" || standing === "verified_professional") return null;
 

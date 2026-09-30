@@ -216,6 +216,7 @@ const REAL_NOTIFICATION_TYPES = [
   "ppp_registration_reminder",
   "pregnancy_ended_owner",
   "pregnancy_started_owner",
+  "professional_event_amended",
   "profile_self_updated",
   "rabies_observation_completed_dead_authority",
   "rabies_observation_completed_negative_owner",

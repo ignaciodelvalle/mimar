@@ -39,6 +39,7 @@ import {
   atenderCloseRabiesObservationAction,
   atenderRecordDeathInObservationAction,
 } from "../actions";
+import { atenderAmendEventAction } from "../amend/actions";
 import { resolveAtenderPet } from "../atender-access";
 import { fetchPendingDeclaredEvents } from "../atender-declared-events";
 import { findCurrentAtenderVisit, listAtenderAppointments } from "../atender-visit";
@@ -54,6 +55,7 @@ import {
   ATENDER_EVENTOS_CONDICIONALES,
   ATENDER_EVENTOS_SOLO_MATRICULA,
 } from "./atender-eventos";
+import { walkInAmendableIds } from "./walk-in-amend-eligibility";
 
 /** Budget for each of the visit-record reads (history, open visit, appointments). */
 const VISIT_READS_BUDGET_MS = 5000;
@@ -80,7 +82,12 @@ export default async function AtenderSignPage({
   searchParams,
 }: {
   params: Promise<{ orgToken: string; publicToken: string }>;
-  searchParams: Promise<{ evento?: string; firmado?: string; confirmEventId?: string }>;
+  searchParams: Promise<{
+    evento?: string;
+    firmado?: string;
+    corregido?: string;
+    confirmEventId?: string;
+  }>;
 }) {
   const { orgToken, publicToken } = await params;
   const sp = await searchParams;
@@ -156,6 +163,7 @@ export default async function AtenderSignPage({
       ? formatObservationEnd(finObservacion)
       : undefined;
   const justSigned = sp.firmado === "1";
+  const justAmended = sp.corregido === "1";
   // vet-visit-record: the history is read HERE, after resolveAtenderPet
   // succeeded and in the same render as the capture surface — a member who
   // may not write on this animal was already turned away above, and sees
@@ -263,6 +271,14 @@ export default async function AtenderSignPage({
           </output>
         )}
 
+        {/* portal-vet-p0 D7: a correction signs nothing new, so it gets its
+            own receipt — never "Evento clínico firmado". */}
+        {justAmended && !activeEvento && (
+          <output className="block rounded-[var(--radius-sm)] border border-ln-op-ok bg-ln-op-card px-3 py-2 text-sm text-ln-op-ink">
+            Corrección registrada. El registro original queda en el historial.
+          </output>
+        )}
+
         <VisitCard
           visit={
             currentVisit
@@ -290,6 +306,18 @@ export default async function AtenderSignPage({
           publicToken={pet.publicToken}
           viewerUserId={access.user.id}
           now={ahora}
+          amend={
+            history && signer.matriculaVerified
+              ? {
+                  eligibleIds: walkInAmendableIds(history, {
+                    userId: access.user.id,
+                    organizationId: access.organizationId,
+                    signerVerified: signer.matriculaVerified,
+                  }),
+                  submitAction: atenderAmendEventAction.bind(null, orgToken, pet.publicToken),
+                }
+              : undefined
+          }
         />
 
         <PendingSignaturesCard

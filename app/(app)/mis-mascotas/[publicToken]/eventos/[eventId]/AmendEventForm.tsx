@@ -21,6 +21,24 @@ import { LnField, LnInput, LnTextarea } from "@/components/ui/Field";
 import { navigateAfterActionSuccess } from "@/lib/ui/full-page-action-nav";
 import { useEffect, useRef, useState, useTransition } from "react";
 
+/** What a correction submit answers — the owner door's and Atender's both fit. */
+export type AmendSubmitResult = { ok: true; redirectTo?: string } | { ok: false; error: string };
+
+/**
+ * The server action a correction posts to. Default: the owner door
+ * (`amendEventAction`). Atender passes its org door bound to the org and pet
+ * (portal-vet-p0), which ignores `publicToken` in favour of its bound one.
+ */
+export type AmendSubmitAction = (input: {
+  publicToken: string;
+  targetEventId: string;
+  reason: string | null;
+  changes: Array<{ field: string; old: unknown; new: unknown }>;
+}) => Promise<AmendSubmitResult>;
+
+/** The floor the org door enforces on the reason; the form says it up front. */
+const REQUIRED_REASON_MIN_LENGTH = 5;
+
 export type AmendEventFormProps = {
   eventId: string;
   eventType: string;
@@ -28,6 +46,10 @@ export type AmendEventFormProps = {
   publicToken: string;
   onClose: () => void;
   triggerRef?: React.RefObject<HTMLElement | null>;
+  /** Defaults to the owner door's `amendEventAction`. */
+  submitAction?: AmendSubmitAction;
+  /** When true the reason is mandatory (≥5 characters) — the Atender door. */
+  reasonRequired?: boolean;
 };
 
 // Fields excluded from the amendment form — internal/system fields.
@@ -56,6 +78,8 @@ export function AmendEventForm({
   publicToken,
   onClose,
   triggerRef,
+  submitAction = amendEventAction,
+  reasonRequired = false,
 }: AmendEventFormProps) {
   const [isPending, startTransition] = useTransition();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -118,6 +142,10 @@ export function AmendEventForm({
       setError("No modificaste ningún campo. Hacé al menos un cambio antes de corregir.");
       return;
     }
+    if (reasonRequired && reason.trim().length < REQUIRED_REASON_MIN_LENGTH) {
+      setError("Contá el motivo de la corrección (mínimo 5 caracteres).");
+      return;
+    }
     setError(null);
     setConfirmOpen(true);
   }
@@ -125,7 +153,7 @@ export function AmendEventForm({
   function handleConfirm() {
     const changes = buildChanges();
     startTransition(async () => {
-      const result = await amendEventAction({
+      const result = await submitAction({
         publicToken,
         targetEventId: eventId,
         reason: reason.trim() || null,
@@ -133,11 +161,12 @@ export function AmendEventForm({
       });
       setConfirmOpen(false);
       if (result.ok) {
-        // Full document reload of the event page: the libreta projection and
-        // amendment chain are server-derived, and router.refresh() is banned
-        // (silent-drop defect — see lib/ui/full-page-action-nav.ts). The
-        // reload also closes this dialog, so no onClose() needed.
-        navigateAfterActionSuccess(window.location.href);
+        // Full document reload: the libreta projection and amendment chain are
+        // server-derived, and router.refresh() is banned (silent-drop defect —
+        // see lib/ui/full-page-action-nav.ts). The reload also closes this
+        // dialog, so no onClose() needed. A door with its own receipt (Atender's
+        // `?corregido=1`) names where to go; the owner door reloads in place.
+        navigateAfterActionSuccess(result.redirectTo || window.location.href);
       } else {
         setError(result.error);
       }
@@ -249,8 +278,12 @@ export function AmendEventForm({
           {/* Reason */}
           <LnField
             label="Motivo de la corrección"
-            optional
-            hint="Obligatorio para administradores y gobierno"
+            optional={!reasonRequired}
+            hint={
+              reasonRequired
+                ? "Obligatorio, mínimo 5 caracteres. Es lo que lee el dueño."
+                : "Obligatorio para administradores y gobierno"
+            }
           >
             {({ id }) => (
               <LnTextarea

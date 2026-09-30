@@ -19,11 +19,14 @@ import {
   ADMIN_AMENDMENT_NOTIFICATION_TYPE,
   AMENDABLE_EVENT_TYPES,
   type AmendActor,
+  ORG_AMENDMENT_SCOPE_REFUSAL_COPY,
   amendAuthorshipRefusal,
+  amendBannerCopy,
   applyAmendments,
   canAmendEvent,
   isAmendableEventType,
   latestAmendment,
+  orgAmendmentScopeRefusal,
   resolveAmendActorStanding,
 } from "@/lib/infra/amendment";
 import {
@@ -464,5 +467,109 @@ describe("amendAuthorshipRefusal", () => {
       expect(amendAuthorshipRefusal(actor, vetRecord)).toBe(null);
       expect(amendAuthorshipRefusal(actor, ownerRecord)).toBe(null);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// portal-vet-p0 — the org door's scope (PO decision 2026-09-30)
+// ---------------------------------------------------------------------------
+
+describe("orgAmendmentScopeRefusal — a clinic corrects its own records", () => {
+  const VERIFIED = { userId: "vet-a", organizationId: "clinic-a", authorVerified: true };
+
+  it("allows a verified member when root and every correction are this clinic's", () => {
+    expect(
+      orgAmendmentScopeRefusal(VERIFIED, [
+        { authorOrganizationId: "clinic-a" },
+        { authorOrganizationId: "clinic-a" },
+      ]),
+    ).toBeNull();
+  });
+
+  it("is not signer-only: a colleague (different user) of the same clinic passes", () => {
+    // The subjects carry no signer id at all — the rule is the ORGANIZATION.
+    expect(
+      orgAmendmentScopeRefusal({ ...VERIFIED, userId: "vet-b" }, [
+        { authorOrganizationId: "clinic-a" },
+      ]),
+    ).toBeNull();
+  });
+
+  it("refuses an unverified signer before anything else", () => {
+    expect(
+      orgAmendmentScopeRefusal({ ...VERIFIED, authorVerified: false }, [
+        { authorOrganizationId: "clinic-a" },
+      ]),
+    ).toBe("unverified_signer");
+  });
+
+  it("refuses another clinic's record", () => {
+    expect(orgAmendmentScopeRefusal(VERIFIED, [{ authorOrganizationId: "clinic-b" }])).toBe(
+      "other_author",
+    );
+  });
+
+  it("refuses an owner entry (no organization)", () => {
+    expect(orgAmendmentScopeRefusal(VERIFIED, [{ authorOrganizationId: null }])).toBe(
+      "other_author",
+    );
+    expect(orgAmendmentScopeRefusal(VERIFIED, [{}])).toBe("other_author");
+  });
+
+  it("refuses when ANY correction in the chain is not this clinic's (admin, owner, other clinic)", () => {
+    for (const intruder of [null, "clinic-b"]) {
+      expect(
+        orgAmendmentScopeRefusal(VERIFIED, [
+          { authorOrganizationId: "clinic-a" },
+          { authorOrganizationId: intruder },
+        ]),
+      ).toBe("other_author");
+    }
+  });
+
+  it("refuses an empty subject list rather than passing vacuously", () => {
+    expect(orgAmendmentScopeRefusal(VERIFIED, [])).toBe("other_author");
+  });
+
+  it("has es-AR copy for every refusal", () => {
+    expect(Object.keys(ORG_AMENDMENT_SCOPE_REFUSAL_COPY).sort()).toEqual([
+      "other_author",
+      "unverified_signer",
+    ]);
+  });
+});
+
+describe("amendBannerCopy — never promises a correction the viewer cannot make", () => {
+  const BASE = "Este registro no se puede editar ni borrar — la libreta es un historial inmutable.";
+
+  it("offers the correction only to an owner the rule admits", () => {
+    expect(amendBannerCopy(null, "owner")).toBe(
+      `${BASE} Si hay un dato incorrecto, podés registrar una corrección que queda acreditada en el historial.`,
+    );
+  });
+
+  it("tells the owner only a professional can correct a professional record", () => {
+    const copy = amendBannerCopy("professional_authored", "owner");
+    expect(copy).toBe(
+      `${BASE} Lo cargó o lo corrigió un profesional: solo un profesional puede corregirlo.`,
+    );
+    expect(copy).not.toContain("podés registrar");
+  });
+
+  it("says the record was corrected by a professional, without naming anyone", () => {
+    expect(amendBannerCopy("professional_authored", "owner", true)).toBe(
+      `${BASE} Fue corregido por un profesional; el registro original sigue en el historial. Solo un profesional puede corregirlo.`,
+    );
+  });
+
+  it("names the author rule on someone else's entry", () => {
+    expect(amendBannerCopy("not_author", "owner")).toBe(
+      `${BASE} Solo quien lo cargó puede corregirlo.`,
+    );
+  });
+
+  it("promises nothing to a non-owner path", () => {
+    expect(amendBannerCopy(null, "org")).toBe(BASE);
+    expect(amendBannerCopy(null, null)).toBe(BASE);
   });
 });

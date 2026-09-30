@@ -46,10 +46,12 @@ describe("notifyOwnersOfClinicalEvent — third-party clinical signature", () =>
     // date or the recourse sentence and still pass.
     expect(arg.body).toBe(
       "Refugio Patitas del Norte registró vacuna administrada con fecha 16 de julio de 2026. " +
-        "Si no reconocés esta atención, abrí el registro para revisarlo o corregirlo.",
+        "Si no reconocés esta atención, abrí el registro para revisarlo. " +
+        "Si hay un error, pedile a Refugio Patitas del Norte que lo corrija.",
     );
-    // Deep link to the EVENT, not the libreta: that page carries the owner's
-    // "Corregir registro" button, which is the recourse the body promises.
+    // Deep link to the EVENT, not the libreta. The body no longer promises the
+    // owner a correction she cannot make (portal-vet-p0 D9): it names the
+    // signer as the one who corrects.
     expect(arg.ctaLabel).toBe("Ver el registro");
     expect(arg.ctaUrl).toBe("/mis-mascotas/DIM-1234-5678/eventos/evt-1");
     expect(arg.relatedPetId).toBe("pet-1");
@@ -104,7 +106,8 @@ describe("notifyOwnersOfClinicalEvent — third-party clinical signature", () =>
 
     expect(createNotification.mock.calls[0][0].body).toBe(
       "Refugio Patitas del Norte registró antiparasitario con fecha 16 de julio de 2026. " +
-        "Si no reconocés esta atención, abrí el registro para revisarlo o corregirlo.",
+        "Si no reconocés esta atención, abrí el registro para revisarlo. " +
+        "Si hay un error, pedile a Refugio Patitas del Norte que lo corrija.",
     );
   });
 

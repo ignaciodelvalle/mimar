@@ -12,16 +12,20 @@ import { Icon } from "@/components/Icon";
 import type { EventType } from "@/db/schema";
 import { isAmendableEventType } from "@/lib/infra/amendment";
 import { useRef, useState } from "react";
-import { AmendEventForm } from "./AmendEventForm";
+import { AmendEventForm, type AmendSubmitAction } from "./AmendEventForm";
 
 export type AmendEventButtonProps = {
   eventId: string;
   eventType: EventType | string;
   /** Pre-filled current payload for the form. */
   currentPayload: Record<string, unknown>;
-  /** True when the viewer has write access to pet events (owner path). */
+  /** True when the viewer may correct this record on this door. */
   canAmend: boolean;
   publicToken: string;
+  /** The door's server action; defaults to the owner door (see AmendEventForm). */
+  submitAction?: AmendSubmitAction;
+  /** Mandatory reason (Atender's door). */
+  reasonRequired?: boolean;
 };
 
 export function AmendEventButton({
@@ -30,6 +34,8 @@ export function AmendEventButton({
   currentPayload,
   canAmend,
   publicToken,
+  submitAction,
+  reasonRequired,
 }: AmendEventButtonProps) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -67,6 +73,8 @@ export function AmendEventButton({
           publicToken={publicToken}
           onClose={() => setOpen(false)}
           triggerRef={btnRef}
+          submitAction={submitAction}
+          reasonRequired={reasonRequired}
         />
       )}
     </>

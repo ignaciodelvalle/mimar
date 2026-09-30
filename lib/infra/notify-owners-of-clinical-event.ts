@@ -173,13 +173,16 @@ export async function notifyOwnersOfClinicalEvent(
         // care. It also keeps the row out of the urgent-only Web Push leg.
         severity: "info",
         title: `Nuevo registro en la libreta de ${input.petName}`,
+        // The recourse is the SIGNER's, not the owner's (portal-vet-p0 D9): under
+        // decision 3B an owner cannot correct a record a professional or an
+        // organization signed, so "abrí el registro para corregirlo" promised a
+        // button she is never shown. The clinic can correct it (from Atender).
         body: `${input.authorLabel} registró ${eventLabelInline} con fecha ${formatDate(
           input.occurredAt,
-        )}. Si no reconocés esta atención, abrí el registro para revisarlo o corregirlo.`,
+        )}. Si no reconocés esta atención, abrí el registro para revisarlo. Si hay un error, pedile a ${input.authorLabel} que lo corrija.`,
         ctaLabel: "Ver el registro",
-        // Deep-link to the EVENT, not the libreta: that page is where the
-        // owner's "Corregir registro" affordance lives, so the recourse the body
-        // promises is one tap away.
+        // Deep-link to the EVENT, not the libreta: the owner reviews the record
+        // itself, with who signed it.
         ctaUrl: `/mis-mascotas/${input.petPublicToken}/eventos/${input.eventId}`,
         relatedPetId: input.petId,
         relatedEventId: input.eventId,

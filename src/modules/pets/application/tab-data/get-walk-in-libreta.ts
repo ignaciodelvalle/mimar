@@ -41,6 +41,19 @@ export type WalkInLibreta = {
   /** True when older records exist beyond the window. */
   truncated: boolean;
   visits: Record<string, LibretaVisitSummary>;
+  /**
+   * Who signed each correction already on a record, keyed by the ROOT event id
+   * (portal-vet-p0). Atender offers "Corregir" only on a record this clinic
+   * signed, root AND chain — the same predicate the server applies under its
+   * lock (`orgAmendmentScopeRefusal`). A correction is always newer than its
+   * root, so every correction of a record inside the window is inside it too.
+   */
+  correctionAuthors: Record<string, WalkInCorrectionAuthor[]>;
+};
+
+export type WalkInCorrectionAuthor = {
+  authorOrganizationId: string | null;
+  recordedByUserId: string | null;
 };
 
 export async function getWalkInLibreta(petId: string): Promise<WalkInLibreta> {
@@ -64,6 +77,17 @@ export async function getWalkInLibreta(petId: string): Promise<WalkInLibreta> {
   const truncated = raw.length > WALK_IN_WINDOW;
   const windowed = truncated ? raw.slice(0, WALK_IN_WINDOW) : raw;
   const projected = overlayAmendments(windowed).filter((e) => e.eventType !== "event_amended");
+
+  const correctionAuthors: Record<string, WalkInCorrectionAuthor[]> = {};
+  for (const e of windowed) {
+    if (e.eventType !== "event_amended") continue;
+    const target = (e.payload as Record<string, unknown> | null)?.target_event_id;
+    if (typeof target !== "string") continue;
+    (correctionAuthors[target] ??= []).push({
+      authorOrganizationId: e.authorOrganizationId ?? null,
+      recordedByUserId: e.recordedByUserId ?? null,
+    });
+  }
 
   const eventIds = projected.map((e) => e.id);
   const orgIds = [
@@ -98,5 +122,5 @@ export async function getWalkInLibreta(petId: string): Promise<WalkInLibreta> {
       e.amendedAt instanceof Date ? e.amendedAt : e.amendedAt ? new Date(e.amendedAt) : null,
   }));
 
-  return { past, truncated, visits };
+  return { past, truncated, visits, correctionAuthors };
 }

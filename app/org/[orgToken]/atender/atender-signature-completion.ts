@@ -59,11 +59,23 @@ export type AtenderSignatureCompletion = {
    * ClinicalEventOwnerNotice.
    */
   ownerNotice?: ClinicalEventOwnerNotice;
+  /**
+   * Which receipt the signer sees. `signed` (default) is `?firmado=1`; `amended`
+   * is the correction's `?corregido=1` (portal-vet-p0 D7) — "Evento firmado"
+   * would be false copy for a correction, which signs nothing new. Built here
+   * too, so a correction reaches its receipt only through the owner alert.
+   */
+  receipt?: "signed" | "amended";
 };
 
-/** The redirect target for a signed walk-in event — the `?firmado=1` receipt. */
-function successRedirect(orgToken: string, publicToken: string): string {
-  return `/org/${orgToken}/atender/${publicToken}?firmado=1`;
+/** The redirect target for a walk-in write — the `?firmado=1` or `?corregido=1` receipt. */
+function successRedirect(
+  orgToken: string,
+  publicToken: string,
+  receipt: "signed" | "amended",
+): string {
+  const query = receipt === "amended" ? "?corregido=1" : "?firmado=1";
+  return `/org/${orgToken}/atender/${publicToken}${query}`;
 }
 
 /**
@@ -98,6 +110,6 @@ export async function completeAtenderSignature(
   return {
     error: null,
     ok: true,
-    redirectTo: successRedirect(input.orgToken, input.publicToken),
+    redirectTo: successRedirect(input.orgToken, input.publicToken, input.receipt ?? "signed"),
   };
 }

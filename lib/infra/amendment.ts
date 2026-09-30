@@ -183,6 +183,12 @@ export type AmendAuthorshipSubject = {
   recordedAt?: Date | string | null;
   /** For an event_amended row: payload.actor_role. Absent for the root. */
   actorRole?: string | null;
+  /**
+   * pet_events.author_organization_id — the organization that signed the row.
+   * Only the org door's scope rule (`orgAmendmentScopeRefusal`) reads it; absent
+   * is read as "no organization", which that rule refuses.
+   */
+  authorOrganizationId?: string | null;
 };
 
 export type AmendActorStanding = "override" | "verified_professional" | "org_member" | "person";
@@ -268,6 +274,117 @@ export function amendAuthorshipRefusal(
   if (!subjects.every((s) => isOwnSubject(actor, s))) return "not_author";
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// D3c — The org door's scope: a clinic corrects its OWN records (portal-vet-p0)
+// ---------------------------------------------------------------------------
+//
+// The rule above decides whether an actor's STANDING lets them correct a
+// record; a verified professional passes it for any record on the animal,
+// including an owner's entry and another clinic's. That is right for the doors
+// that reach a record through custody. It is too wide for Atender, which
+// reaches the animal through a PUBLIC code with no custody at all: a clinic
+// that met the animal once would be able to rewrite what every other clinic
+// signed.
+//
+// So the org door narrows it (PO decision 2026-09-30): a correction from
+// Atender is allowed when the actor signs VERIFIED (a validated matrícula), and
+// the record AND every correction already on it were signed by THIS SAME
+// organization. Any verified colleague of the clinic may correct — not only
+// the original signer; the correction carries whoever corrects. An owner's
+// entry, another clinic's, or an admin/govt correction in the chain (all with a
+// different or null organization) is refused.
+//
+// This runs IN ADDITION to `amendAuthorshipRefusal`, never instead of it, and
+// under the same per-record lock (amend-authorship.ts). Switching to "only the
+// original signer" would be one line: require
+// `subjects[0].recordedByUserId === actor.userId` as well.
+
+export type OrgAmendmentScopeRefusal = "unverified_signer" | "other_author";
+
+export type OrgAmendmentActor = {
+  userId: string;
+  /** The organization the correction is signed for (the Atender orgToken's). */
+  organizationId: string;
+  /** Whether the correction will be signed verified (validated matrícula). */
+  authorVerified: boolean;
+};
+
+/** es-AR copy for each org-door refusal — shared by the server and the screens. */
+export const ORG_AMENDMENT_SCOPE_REFUSAL_COPY: Record<OrgAmendmentScopeRefusal, string> = {
+  unverified_signer: "Para corregir un registro desde Atender necesitás tu matrícula validada.",
+  other_author: "Desde Atender solo se corrigen registros que cargó esta organización.",
+};
+
+/**
+ * Why the org door refuses this correction, or null when it may proceed to the
+ * authorship rule. `subjects` is the root record followed by every correction
+ * already on it — the same list `amendAuthorshipRefusal` reads.
+ */
+export function orgAmendmentScopeRefusal(
+  actor: OrgAmendmentActor,
+  subjects: ReadonlyArray<Pick<AmendAuthorshipSubject, "authorOrganizationId">>,
+): OrgAmendmentScopeRefusal | null {
+  if (!actor.authorVerified) return "unverified_signer";
+  if (subjects.length === 0) return "other_author";
+  if (!subjects.every((s) => s.authorOrganizationId === actor.organizationId)) {
+    return "other_author";
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// D9 — What the owner's event page says about correcting (portal-vet-p0)
+// ---------------------------------------------------------------------------
+//
+// The banner used to say, to everyone, "podés registrar una corrección". Under
+// decision 3B that promise is false for every record a professional signed or
+// corrected — the owner is offered no button and has no way to make it. The
+// banner now says what is TRUE for this viewer and this record, and never names
+// the professional.
+
+const AMEND_BANNER_BASE =
+  "Este registro no se puede editar ni borrar — la libreta es un historial inmutable.";
+
+/**
+ * The event page's correction banner.
+ *
+ * @param refusal  the authorship refusal for this viewer on this record, or null
+ * @param accessPath  how the viewer reaches the animal ("owner" is the only
+ *   path offered a correction on this page)
+ * @param correctedByProfessional  whether a professional already corrected it
+ */
+export function amendBannerCopy(
+  refusal: AmendAuthorshipRefusal | null,
+  accessPath: string | null,
+  correctedByProfessional = false,
+): string {
+  const parts = [AMEND_BANNER_BASE];
+  if (correctedByProfessional) {
+    parts.push("Fue corregido por un profesional; el registro original sigue en el historial.");
+  }
+  if (refusal === "professional_authored") {
+    parts.push(
+      correctedByProfessional
+        ? "Solo un profesional puede corregirlo."
+        : "Lo cargó o lo corrigió un profesional: solo un profesional puede corregirlo.",
+    );
+  } else if (refusal === "not_author") {
+    parts.push("Solo quien lo cargó puede corregirlo.");
+  } else if (accessPath === "owner") {
+    parts.push(
+      "Si hay un dato incorrecto, podés registrar una corrección que queda acreditada en el historial.",
+    );
+  }
+  return parts.join(" ");
+}
+
+/**
+ * Notification type of the owner notice a professional correction from Atender
+ * sends (portal-vet-p0 D4). A vet's correction is not on amendEvent's D5 path,
+ * which only notifies for admin/govt — without this it would be silent.
+ */
+export const PROFESSIONAL_AMENDMENT_NOTIFICATION_TYPE = "professional_event_amended" as const;
 
 // ---------------------------------------------------------------------------
 // D2 — Projection: fold every amendment onto an event row

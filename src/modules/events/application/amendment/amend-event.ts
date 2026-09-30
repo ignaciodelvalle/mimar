@@ -79,11 +79,21 @@ function writeFailure(err: unknown): AmendEventResult {
   };
 }
 
+/**
+ * Which door the correction came through, when it narrows the rule. Absent on
+ * the owner web door and `/api/v1` — they keep the authorship rule alone.
+ * `orgScope` is Atender's (portal-vet-p0): the record and every correction on it
+ * must be this organization's, and the signer verified. See
+ * `orgAmendmentScopeRefusal` in lib/infra/amendment.ts.
+ */
+export type AmendEventDoor = { orgScope: { organizationId: string } };
+
 export async function amendEvent(
   user: { id: string },
   pet: { id: string; name: string; publicToken: string },
   eventAuthorship: PetEventAuthorship,
   input: AmendEventCommand,
+  door?: AmendEventDoor,
 ): Promise<AmendEventResult> {
   const { publicToken, targetEventId, reason, changes } = input;
 
@@ -97,6 +107,7 @@ export async function amendEvent(
       authorVerified: petEvents.authorVerified,
       recordedByUserId: petEvents.recordedByUserId,
       recordedAt: petEvents.recordedAt,
+      authorOrganizationId: petEvents.authorOrganizationId,
     })
     .from(petEvents)
     .where(and(eq(petEvents.id, targetEventId), eq(petEvents.petId, pet.id)))
@@ -165,7 +176,9 @@ export async function amendEvent(
       authorVerified: targetEvent.authorVerified,
       recordedByUserId: targetEvent.recordedByUserId,
       recordedAt: targetEvent.recordedAt,
+      authorOrganizationId: targetEvent.authorOrganizationId,
     },
+    orgScope: door?.orgScope,
   };
   const authorshipRefusal = await checkAmendAuthorship(authorshipInput);
   if (authorshipRefusal) {

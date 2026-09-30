@@ -11,7 +11,16 @@
 // Read-only on purpose: no "Ver detalle" (the detail route is the holder's,
 // and this clinic holds nothing), no "Pedir verificación" (an owner's action).
 // Grouped by atención exactly like the libreta face (groupPastByVisit).
+//
+// ONE EXCEPTION, portal-vet-p0: "Corregir" on the rows THIS clinic signed, for
+// a signer with a validated matrícula (`amend.eligibleIds`, computed by the page
+// with the server's own predicate). Only those rows hand their payload to the
+// client form; every other row stays a read.
 
+import {
+  AmendEventButton,
+  type AmendEventButtonProps,
+} from "@/app/(app)/mis-mascotas/[publicToken]/eventos/[eventId]/AmendEventButton";
 import { AsientoCard } from "@/components/pet-profile/AsientoCard";
 import { toAsientoView } from "@/components/pet-profile/asiento-fields";
 import { groupPastByVisit } from "@/components/pet-profile/libreta-visit-groups";
@@ -24,12 +33,18 @@ export function WalkInHistory({
   publicToken,
   viewerUserId,
   now,
+  amend,
 }: {
   /** Null when the read did not finish in its budget — said, never shown as empty. */
   history: WalkInLibreta | null;
   publicToken: string;
   viewerUserId: string;
   now: Date;
+  /** Absent: no row is correctable (the signer is not verified). */
+  amend?: {
+    eligibleIds: ReadonlySet<string>;
+    submitAction: NonNullable<AmendEventButtonProps["submitAction"]>;
+  };
 }) {
   if (history === null) {
     return (
@@ -47,12 +62,29 @@ export function WalkInHistory({
   // The walk-in reader is never the pet's titular: provenance must say who
   // wrote each record, never "Cargado por vos" on an owner's entry.
   const viewer = { userId: viewerUserId, currentOwnerUserId: null };
-  const renderAsiento = (row: HistorialEventRow) => (
-    <AsientoCard
-      key={row.id}
-      view={{ ...toAsientoView(row, publicToken, viewer, now), verifyHref: undefined }}
-    />
-  );
+  const renderAsiento = (row: HistorialEventRow) => {
+    const card = (
+      <AsientoCard
+        key={row.id}
+        view={{ ...toAsientoView(row, publicToken, viewer, now), verifyHref: undefined }}
+      />
+    );
+    if (!amend?.eligibleIds.has(row.id)) return card;
+    return (
+      <div key={row.id} className="space-y-1.5" data-amendable-row={row.id}>
+        {card}
+        <AmendEventButton
+          eventId={row.id}
+          eventType={row.eventType}
+          currentPayload={(row.payload ?? {}) as Record<string, unknown>}
+          canAmend
+          publicToken={publicToken}
+          submitAction={amend.submitAction}
+          reasonRequired
+        />
+      </div>
+    );
+  };
 
   return (
     <OpCard>
