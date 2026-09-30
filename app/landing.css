@@ -2405,11 +2405,6 @@
   border-color: var(--color-ln-azul);
   color: var(--color-ln-azul);
 }
-.lp .lp-nat-inert {
-  padding: 6px 0;
-  font-size: var(--text-xs);
-  color: var(--color-ln-mute);
-}
 
 /* libreta feed — "fills up" entrance (WU3, components/landing/LibretaFeed.tsx).
  * Fail-open: LibretaFeed only ever applies --pending/--in from a client

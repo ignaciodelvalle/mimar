@@ -493,11 +493,12 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       "Ver mascota",
       // Martín's phone, the NATIVE app (apps/mobile/…): the inbox row
       // (src/notifications/NotificationsScreen.tsx:497-545, severityLabel
-      // notifications-view-model.ts:100), its inert-CTA form (:526-528).
+      // notifications-view-model.ts:100). Both CTAs map to native screens
+      // (deep-link-map.ts), so both render as buttons.
       "Notificaciones",
       "Urgente",
       "Marcar como leída",
-      "Coordinar devolución · abrilo desde la web",
+      "Coordinar devolución",
       // "Modo perdida" (app/_layout.tsx:543) and its PosterCard
       // (src/lost/LostScreen.tsx:559, lost-view-model.ts:693-696).
       "Modo perdida",

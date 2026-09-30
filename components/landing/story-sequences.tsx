@@ -735,13 +735,11 @@ function NativeInboxScreen({
   date,
   body,
   cta,
-  ctaRouted,
 }: {
   title: string;
   date: string;
   body: ReactNode;
   cta: string;
-  ctaRouted: boolean;
 }) {
   return (
     <>
@@ -756,11 +754,7 @@ function NativeInboxScreen({
           <span className="lp-nat-notif-sev">Urgente</span>
           <span>{body}</span>
           <div className="lp-nat-notif-actions">
-            {ctaRouted ? (
-              <span className="lp-nat-action lp-nat-action--em">{cta}</span>
-            ) : (
-              <span className="lp-nat-inert">{`${cta} · abrilo desde la web`}</span>
-            )}
+            <span className="lp-nat-action lp-nat-action--em">{cta}</span>
             <span className="lp-nat-action">Marcar como leída</span>
           </div>
         </div>
@@ -787,7 +781,6 @@ function OwnerFoundReportScreen() {
       date={SCAN.date}
       body={OWNER_FOUND_BODY}
       cta="Ver mascota"
-      ctaRouted
     />
   );
 }
@@ -984,9 +977,9 @@ function IntakeDoneScreen() {
 /**
  * 4 · Martín's notification, in the native inbox — the text
  * confirm-chip-match-refugio.ts:199-203 writes. Its CTA points at
- * "/mis-mascotas/{token}/devolucion", which has no row in the deep-link map
- * (apps/mobile/src/ui/routes.ts:589-593 says so), so the native inbox prints
- * it as inert text (NotificationsScreen.tsx:526-528) — drawn as it renders.
+ * "/mis-mascotas/{token}/devolucion", which maps to the native return screen
+ * (packages/contract/src/links/deep-link-map.ts, `petReturn`), so the inbox
+ * renders it as a button (NotificationsScreen.tsx, RowAction emphasis).
  */
 function OwnerNotifiedScreen() {
   return (
@@ -995,7 +988,6 @@ function OwnerNotifiedScreen() {
       date={INTAKE.date}
       body={`${PAMPA_SHELTER} detectó a ${PAMPA.name} por su microchip. Coordiná la devolución.`}
       cta="Coordinar devolución"
-      ctaRouted={false}
     />
   );
 }
