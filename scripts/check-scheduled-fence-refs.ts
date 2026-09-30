@@ -129,17 +129,7 @@ export const REF_EXEMPT: Exemption[] = [
 // Adding an entry here is not a way to silence a red. It asserts that a
 // scheduled workflow is ABSENT from `${DEFAULT_BRANCH}` — a claim the fence
 // verifies against the default branch and fails if untrue.
-export const NOT_ON_DEFAULT_BRANCH: Exemption[] = [
-  {
-    workflow: "mirror-supabase-images.yml",
-    reason:
-      "Introduced on branch ci-image-mirror (2026-09-29) to mirror Supabase's " +
-      "public.ecr.aws images to GHCR after run 36640718326 hit ECR Public's " +
-      "anonymous-pull data-volume throttle. Not yet merged to main, so its " +
-      "`schedule:` trigger is not live yet — remove this entry in the same " +
-      "commit that merges it.",
-  },
-];
+export const NOT_ON_DEFAULT_BRANCH: Exemption[] = [];
 
 /**
  * Scheduled workflows that deliberately ship WITHOUT `red-streak-alert`.
