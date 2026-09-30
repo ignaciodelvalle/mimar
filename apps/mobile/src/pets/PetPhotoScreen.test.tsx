@@ -120,6 +120,27 @@ function aPick(over: Partial<Extract<ImagePickResult, { outcome: "picked" }>> = 
 }
 
 beforeEach(() => {
+  // FAKE TIMERS, NOT A BIGGER waitFor CEILING (2026-09-29). Every `waitFor`
+  // below polls in REAL ms by default, and `pickInto`'s wait on the transient
+  // "Abriendo tus fotos…" label going away is a wait on a NEGATIVE with no
+  // real timer anywhere in the awaited chain (`pickImageSafely` is pure
+  // promise/microtask work — see its file). Under a fully parallel `pnpm
+  // verify` the flakiness was never the promise chain being slow; it was the
+  // OS not scheduling this worker process often enough, which starves BOTH
+  // the real `setInterval` `waitFor` polls on AND the promise's own
+  // continuations, so a real-ms ceiling silently shrinks under load with no
+  // logic actually hanging (2 of 3 local gates, always green alone: 21/21 in
+  // ~30s). `jest.useFakeTimers` turns `waitFor`'s real-ms budget into a
+  // VIRTUAL one — see `@testing-library/react-native`'s `wait-for.js`: with
+  // fake timers it advances a simulated clock in a loop instead of arming a
+  // real `setInterval`, so the number of polls before timing out no longer
+  // depends on how much wall-clock time the machine happens to hand this
+  // process. `jest.setTimeout(15_000)` below is untouched and stays the one
+  // real, wall-clock backstop against an actual hang. `doNotFake: ["nextTick"]`
+  // matches the convention already used for the same reason in
+  // `LocalityPicker.test.tsx`, `MudanzaScreen.test.tsx` and
+  // `RecordEventScreen.test.tsx`.
+  jest.useFakeTimers({ doNotFake: ["nextTick"] });
   nextPick = { outcome: "cancelled" };
   nextRecovery = null;
   mockBack.mockReset();
