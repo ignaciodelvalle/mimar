@@ -6,6 +6,7 @@
 // Rules (exact parity with original):
 //   1. Validate newRole ∈ INVITABLE_ROLES.
 //   2. Validate newRoleRank ≤ actorRank (can't assign higher role).
+//   2b. The new role fits the org type (roleAppliesToOrgType, portal-vet-p0 D13).
 //   3. Load target membership.
 //   4. For admin demotion: tx + FOR UPDATE lock.
 //   5. LAST-ADMIN check FIRST.
@@ -14,7 +15,12 @@
 //   8. setRole + audit_log (same tx).
 
 import { lastAdminBlocks } from "@/src/modules/organizations/domain/membership-state";
-import { INVITABLE_ROLES, ROLE_RANK } from "@/src/modules/organizations/domain/role-rules";
+import {
+  INVITABLE_ROLES,
+  ROLE_NOT_FOR_ORG_TYPE_ERROR,
+  ROLE_RANK,
+  roleAppliesToOrgType,
+} from "@/src/modules/organizations/domain/role-rules";
 import type {
   Exec,
   OrgRepository,
@@ -37,6 +43,8 @@ export type ChangeOrganizationMemberRoleInput = {
   };
   organization: {
     publicToken: string;
+    /** Coordinator and volunteer are refused outside a rehoming org (D13). */
+    orgType: string;
   };
 };
 
@@ -79,6 +87,13 @@ export async function changeOrganizationMemberRole(
   // 2. Can't promote above own rank.
   if (newRoleRank > actorRank) {
     return { ok: false, error: "No podés asignar un rol mayor al tuyo." };
+  }
+
+  // 2b. Org-type fit (portal-vet-p0 D13). Only the NEW role is checked: a
+  // member who already holds coordinator or volunteer in a clinic keeps it
+  // until someone assigns them a role that fits.
+  if (!roleAppliesToOrgType(input.newRole, input.organization.orgType)) {
+    return { ok: false, error: ROLE_NOT_FOR_ORG_TYPE_ERROR };
   }
 
   // 3. Load target.

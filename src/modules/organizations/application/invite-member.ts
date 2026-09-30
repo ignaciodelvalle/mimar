@@ -6,6 +6,7 @@
 // Rules (exact parity with original):
 //   1. Validate invitedRole ∈ INVITABLE_ROLES.
 //   2. targetRank ≤ inviterRank (can't invite to higher role).
+//   2b. The role fits the org type (roleAppliesToOrgType, portal-vet-p0 D13).
 //   3. Normalize + validate email (must contain @).
 //   4. Check existing active invite: if expired → auto-revoke; if active → block.
 //   5. Generate unique token (caller provides generator fn).
@@ -17,7 +18,9 @@ import { resolveSiteUrl } from "@/lib/infra/site-url";
 import {
   INVITABLE_ROLES,
   type InvitableRole,
+  ROLE_NOT_FOR_ORG_TYPE_ERROR,
   ROLE_RANK,
+  roleAppliesToOrgType,
 } from "@/src/modules/organizations/domain/role-rules";
 import type { OrgRepository } from "@/src/modules/organizations/infrastructure/org-repository";
 import type { NewNotification, UseCaseResult } from "./types";
@@ -40,6 +43,8 @@ export type InviteMemberInput = {
     id: string;
     publicToken: string;
     displayName: string;
+    /** Coordinator and volunteer are refused outside a rehoming org (D13). */
+    orgType: string;
   };
   /** Caller provides token generator (real: generateUniqueToken; test: vi.fn()) */
   generateToken: () => Promise<string>;
@@ -81,6 +86,12 @@ export async function inviteMember(
   const targetRank = ROLE_RANK[input.invitedRole as keyof typeof ROLE_RANK] ?? 0;
   if (targetRank > inviterRank) {
     return { ok: false, error: "No podés invitar a alguien con un rol mayor al tuyo." };
+  }
+
+  // 2b. Org-type fit (portal-vet-p0 D13): a clinic has no coordinators or
+  // volunteers. The form never offers them there; this is the binding half.
+  if (!roleAppliesToOrgType(input.invitedRole, input.organization.orgType)) {
+    return { ok: false, error: ROLE_NOT_FOR_ORG_TYPE_ERROR };
   }
 
   // 3. Normalize + validate email.

@@ -278,7 +278,12 @@ Resolution is pure (`resolveGrantedCaps`, `:244`):
 
 `SHELTER_ONLY_CAPABILITIES` (`:147`) is an org-TYPE filter layered on top: a
 clinic never surfaces the six custody-rehoming capabilities even when its
-membership admin implicitly holds them.
+membership admin implicitly holds them. Which org types run that lifecycle is
+ONE rule, `isRehomingOrgType` in `src/modules/organizations/domain/org-type.ts`
+(a zero-import leaf): the capability filter, the permissions-matrix columns, the
+settable-role lists and the org-type vocabulary all ask it, and
+`roleAppliesToOrgType` (`role-rules.ts`) makes the invite and role-change use
+cases refuse coordinator and volunteer outside a shelter or rescue network.
 
 One capability is deliberately NOT in the org set:
 `WELFARE_DECOMISO_EXECUTE_CAPABILITY` (`:123`). A decomiso is an act of the

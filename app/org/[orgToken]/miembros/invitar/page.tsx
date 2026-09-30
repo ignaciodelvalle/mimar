@@ -8,18 +8,11 @@
 import { redirect } from "next/navigation";
 
 import { requireOrgAccessByToken } from "@/lib/infra/auth-guards";
-import { type InvitableRole, ROLE_RANK } from "@/src/modules/organizations/domain/role-rules";
+import { ROLE_RANK } from "@/src/modules/organizations/domain/role-rules";
 import { getGrantedCapabilities } from "@/src/modules/organizations/infrastructure/authz-resolver";
 
+import { getSettableRoles } from "../member-management";
 import { InviteForm } from "./InviteForm";
-
-const ROLE_LABELS: Record<InvitableRole, string> = {
-  admin: "Administrador",
-  coordinator: "Coordinador",
-  member: "Miembro",
-  volunteer: "Voluntario",
-  vet_individual: "Veterinario",
-};
 
 export default async function InvitarMiembroPage({
   params,
@@ -35,27 +28,18 @@ export default async function InvitarMiembroPage({
     redirect(`/org/${orgToken}/miembros`);
   }
 
-  const inviterRank = ROLE_RANK[membership.role];
-
-  // All invitable roles (foster excluded) that are ≤ the inviter's rank.
-  const INVITABLE: InvitableRole[] = [
-    "admin",
-    "coordinator",
-    "member",
-    "volunteer",
-    "vet_individual",
-  ];
-  const grantableRoles = INVITABLE.filter((role) => ROLE_RANK[role] <= inviterRank);
-
-  const grantableRoleOptions = grantableRoles.map((role) => ({
-    value: role,
-    label: ROLE_LABELS[role],
-  }));
+  // The ONE settable-role list (rank ≤ the inviter's, foster excluded, and
+  // coordinator/volunteer only in a rehoming org — portal-vet-p0 D13). The
+  // server applies the same bounds, so the form never offers a role the action
+  // refuses.
+  const grantableRoleOptions = getSettableRoles(membership.role, organization.orgType);
 
   // Default the form to the LEAST-privileged grantable role, not the list's
   // first entry (which is "admin" whenever the inviter is an admin). An
   // invite left unchanged should never land as admin by accident.
-  const defaultRole = [...grantableRoles].sort((a, b) => ROLE_RANK[a] - ROLE_RANK[b])[0];
+  const defaultRole = [...grantableRoleOptions.map((r) => r.value)].sort(
+    (a, b) => ROLE_RANK[a as keyof typeof ROLE_RANK] - ROLE_RANK[b as keyof typeof ROLE_RANK],
+  )[0];
 
   return (
     <div className="mx-auto max-w-xl space-y-6">

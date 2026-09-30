@@ -38,11 +38,12 @@ function makeInvite(overrides: Partial<OrganizationInvitation> = {}): Organizati
   };
 }
 
-function makeOrg() {
+function makeOrg(orgType = "shelter") {
   return {
     id: "org-1",
     publicToken: "ORG-TOKEN",
     displayName: "Test Org",
+    orgType,
   };
 }
 
@@ -234,6 +235,52 @@ describe("inviteMember", () => {
       { repo, isUniqueViolation: vi.fn() },
     );
     expect(repo.findActiveInvite).toHaveBeenCalledWith("org-CORRECT", "user@test.com");
+  });
+  // portal-vet-p0 D13 — coordinator and volunteer are shelter roles.
+  describe("org-type fit", () => {
+    const invite = async (invitedRole: string, orgType: string) => {
+      const repo = baseRepo();
+      const result = await inviteMember(
+        {
+          organizationId: "org-1",
+          email: "nuevo@test.com",
+          invitedRole,
+          actor: { userId: "user-actor", role: "admin", membershipId: "mem-actor" },
+          organization: makeOrg(orgType),
+          generateToken: vi.fn().mockResolvedValue("TOKEN-FIT"),
+          appBase: "https://example.test",
+        },
+        { repo, isUniqueViolation: vi.fn() },
+      );
+      return { result, repo };
+    };
+
+    for (const invitedRole of ["coordinator", "volunteer"]) {
+      for (const orgType of ["clinic", "sanitary_authority", "other"]) {
+        it(`refuses inviting a ${invitedRole} to a ${orgType}, and stores nothing`, async () => {
+          const { result, repo } = await invite(invitedRole, orgType);
+          expect(result).toEqual({
+            ok: false,
+            error: "Ese rol es de refugios y redes de rescate. En esta organización no se usa.",
+          });
+          expect(repo.insertInvite).not.toHaveBeenCalled();
+        });
+      }
+      for (const orgType of ["shelter", "rescue_network"]) {
+        it(`still invites a ${invitedRole} to a ${orgType} (shelter regression)`, async () => {
+          const { result, repo } = await invite(invitedRole, orgType);
+          expect(result.ok).toBe(true);
+          expect(repo.insertInvite).toHaveBeenCalledWith(expect.objectContaining({ invitedRole }));
+        });
+      }
+    }
+
+    for (const invitedRole of ["admin", "member", "vet_individual"]) {
+      it(`invites a ${invitedRole} to a clinic`, async () => {
+        const { result } = await invite(invitedRole, "clinic");
+        expect(result.ok).toBe(true);
+      });
+    }
   });
 });
 

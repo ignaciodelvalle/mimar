@@ -82,3 +82,27 @@ describe("<EditOrgForm> — survives the React 19 post-error reset", () => {
     ).toBe(true);
   });
 });
+
+// portal-vet-p0 D13 — the origin toggle speaks the org's kind. It is never
+// hidden: an absent checkbox posts false and would switch the setting off.
+describe("<EditOrgForm> — the origin toggle follows the org type", () => {
+  it("keeps the refugio wording for a shelter (regression)", () => {
+    const { container } = render(<EditOrgForm organization={ORG} />);
+    expect(container).toHaveTextContent(
+      "Mostrar a mi organización como refugio de origen en la credencial pública de las mascotas",
+    );
+    expect(container).toHaveTextContent(
+      "Cuando está activo, la credencial pública muestra el nombre de tu organización como refugio de origen de la mascota.",
+    );
+  });
+
+  it("does not call a clinic a refugio, and still renders the toggle", () => {
+    const clinic = { ...ORG, orgType: "clinic" } as typeof ORG;
+    const { container } = render(<EditOrgForm organization={clinic} />);
+    expect(container.querySelector('input[name="tier0ShowOriginOrg"]')).not.toBeNull();
+    expect(container).toHaveTextContent(
+      "Mostrar a mi organización como organización de origen en la credencial pública de las mascotas",
+    );
+    expect(container).not.toHaveTextContent(/refugio de origen/);
+  });
+});

@@ -4,7 +4,6 @@
 
 import { OpCard, OpCardBody, OpCardHead, OpCodeBadge, OpPill } from "@/components/ui/dashboard";
 import { db, organizationCapabilityGrants, organizationMemberships, profiles } from "@/db";
-import { ORGANIZATION_CAPABILITIES } from "@/db/schema";
 import { requireOrgAccessByToken } from "@/lib/infra/auth-guards";
 import { formatDateTimeNumericAr } from "@/lib/utils/format";
 import {
@@ -14,9 +13,10 @@ import {
 } from "@/src/modules/organizations/domain/capabilities";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import Link from "next/link";
-import type { MatrixColumn, MatrixMember } from "./CapabilityMatrix";
+import type { MatrixMember } from "./CapabilityMatrix";
 import { CapabilityMatrix } from "./CapabilityMatrix";
 import { DecideForm } from "./DecideForm";
+import { matrixColumnsFor } from "./matrix-columns";
 
 const ROLE_LABELS: Record<string, string> = {
   admin: "Administrador/a",
@@ -26,19 +26,6 @@ const ROLE_LABELS: Record<string, string> = {
   foster: "Tránsito",
   vet_individual: "Veterinario/a",
 };
-
-// Caps in ORGANIZATION_CAPABILITIES but absent from CAPABILITY_CATALOG get a fallback label.
-const EXTRA_CAP_LABELS: Record<string, string> = {
-  "org.transfer.propose": "Proponer transferencia",
-  "org.transfer.accept": "Aceptar transferencia",
-};
-
-// Full ordered column list: catalog order first, then extras.
-const CATALOG_MAP = new Map(CAPABILITY_CATALOG.map((e) => [e.capability as string, e.label]));
-const MATRIX_COLUMNS: MatrixColumn[] = ORGANIZATION_CAPABILITIES.map((cap) => ({
-  capability: cap,
-  label: CATALOG_MAP.get(cap) ?? EXTRA_CAP_LABELS[cap] ?? cap,
-}));
 
 const LABEL_BY_CAPABILITY = new Map(
   CAPABILITY_CATALOG.map((entry) => [entry.capability as string, entry.label]),
@@ -55,6 +42,7 @@ export default async function PermisosPage({
 }) {
   const { orgToken } = await params;
   const { organization, membership: callerMembership } = await requireOrgAccessByToken(orgToken);
+  const matrixColumns = matrixColumnsFor(organization.orgType);
 
   // --- Query 1: pending + approved grants for the requests queue ---
   const rows = await db
@@ -164,7 +152,7 @@ export default async function PermisosPage({
     // effectively hold is not grantable (it comes from their own matrícula),
     // so its cell says why instead of offering "+".
     const credentialGatedCaps = new Set<string>();
-    for (const col of MATRIX_COLUMNS) {
+    for (const col of matrixColumns) {
       if ((resolvedSet as ReadonlySet<string>).has(col.capability)) continue;
       if (credentialGatedGrantRefusal(m.role, col.capability)) {
         credentialGatedCaps.add(col.capability);
@@ -334,7 +322,7 @@ export default async function PermisosPage({
         <OpCardBody>
           <CapabilityMatrix
             members={matrixMembers}
-            columns={MATRIX_COLUMNS}
+            columns={matrixColumns}
             organizationId={organization.id}
             orgToken={orgToken}
             callerMembershipId={callerMembership.id}

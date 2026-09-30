@@ -12,7 +12,7 @@
 // live in infrastructure/authz-resolver.ts.
 
 import { ORGANIZATION_CAPABILITIES, type OrganizationCapability } from "@/db/schema";
-
+import { isRehomingOrgType } from "./org-type";
 // ---------------------------------------------------------------------------
 // Catalog types
 // ---------------------------------------------------------------------------
@@ -154,9 +154,9 @@ export const SHELTER_ONLY_CAPABILITIES: ReadonlySet<OrganizationCapability> = ne
 ]);
 
 // Org types that run the custody-rehoming lifecycle (and thus the shelter-only
-// capabilities above). Everything else (clinic, sanitary_authority, other)
+// capabilities above) come from the ONE rule in ./org-type (isRehomingOrgType,
+// portal-vet-p0 D13). Everything else (clinic, sanitary_authority, other)
 // hides them.
-const REHOMING_ORG_TYPES: ReadonlySet<string> = new Set(["shelter", "rescue_network"]);
 
 /**
  * Whether a capability is relevant to a given org_type. Shelter-only
@@ -169,7 +169,7 @@ export function capabilityAppliesToOrgType(
   orgType: string,
 ): boolean {
   if (SHELTER_ONLY_CAPABILITIES.has(capability)) {
-    return REHOMING_ORG_TYPES.has(orgType);
+    return isRehomingOrgType(orgType);
   }
   return true;
 }

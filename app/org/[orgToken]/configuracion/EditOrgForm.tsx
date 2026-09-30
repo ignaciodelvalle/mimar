@@ -12,9 +12,10 @@ import {
   type UpdateOrgFormState,
   updateOrganizationAction,
 } from "@/src/modules/organizations/actions";
-
-// Shelter and rescue_network org types show the capacity section (Item 16 D1).
-const SHELTER_TYPES = new Set<string>(["shelter", "rescue_network"]);
+// Shelter and rescue_network org types show the capacity section (Item 16 D1):
+// the ONE org-type rule and its vocabulary, both zero-dependency leaves.
+import { isRehomingOrgType } from "@/src/modules/organizations/domain/org-type";
+import { orgVocabulary } from "@/src/modules/organizations/domain/org-type-vocabulary";
 
 type Props = {
   organization: Pick<
@@ -64,7 +65,8 @@ export function EditOrgForm({ organization }: Props) {
   );
 
   // Capacity fields (shelters only).
-  const isShelter = SHELTER_TYPES.has(organization.orgType);
+  const isShelter = isRehomingOrgType(organization.orgType);
+  const vocabulary = orgVocabulary(organization.orgType);
   const [capacityDogs, setCapacityDogs] = useState(capacityStr(organization.capacityDogs));
   const [capacityCats, setCapacityCats] = useState(capacityStr(organization.capacityCats));
   const [capacityOther, setCapacityOther] = useState(capacityStr(organization.capacityOther));
@@ -187,12 +189,12 @@ export function EditOrgForm({ organization }: Props) {
             "true",
           )}
         >
-          Mostrar a mi organización como refugio de origen en la credencial pública de las mascotas
+          {vocabulary.originOrgToggleLabel}
         </LnCheckbox>
-        <p className="text-sm text-ln-op-mute pl-6">
-          Cuando está activo, la credencial pública muestra el nombre de tu organización como
-          refugio de origen de la mascota.
-        </p>
+        {/* Not hidden for a clinic: an absent checkbox posts false and would
+            silently switch the setting off (organizations/actions.ts). Only
+            its words follow the org type. */}
+        <p className="text-sm text-ln-op-mute pl-6">{vocabulary.originOrgToggleHint}</p>
       </div>
 
       {/* Shelter capacity section (Item 16 D1) — only for shelter / rescue_network orgs */}

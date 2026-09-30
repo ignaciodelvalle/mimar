@@ -13,6 +13,8 @@ import { requireOrgAccessByToken } from "@/lib/infra/auth-guards";
 import { pluralizeEs } from "@/lib/utils/format";
 import { capRows } from "@/lib/utils/list-pagination";
 import { trimmedSearchParam } from "@/lib/utils/search-params";
+import { isRehomingOrgType } from "@/src/modules/organizations/domain/org-type";
+import { orgVocabulary } from "@/src/modules/organizations/domain/org-type-vocabulary";
 import { getGrantedCapabilities } from "@/src/modules/organizations/infrastructure/authz-resolver";
 import { and, countDistinct, desc, eq, ilike, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import Link from "next/link";
@@ -88,6 +90,10 @@ export default async function OrgMascotasPage({
   const canManageAdoptionListing = granted.has("adoption.listing.manage");
   const canEventWrite = granted.has("event.write");
   const canRead = granted.has("pet.read_held") || membership.role === "admin";
+  // portal-vet-p0 D13: the list is named for the org's kind — "Pacientes" for a
+  // clinic (PO), unchanged for a refugio (orgVocabulary).
+  const vocabulary = orgVocabulary(organization.orgType);
+  const isRehoming = isRehomingOrgType(organization.orgType);
 
   if (!canRead) {
     return (
@@ -166,10 +172,10 @@ export default async function OrgMascotasPage({
           <OpCrumbs
             items={[
               { label: "Panel", href: `/org/${orgToken}` },
-              { label: "Mascotas en custodia" },
+              { label: vocabulary.heldPetsTitle },
             ]}
           />
-          <h1 className="text-title font-semibold text-ln-op-ink">Mascotas en custodia</h1>
+          <h1 className="text-title font-semibold text-ln-op-ink">{vocabulary.heldPetsTitle}</h1>
           {/* The filter bar and "Registrar ingreso" are built from `sp` and
               `canIntake`, both resolved BEFORE this load — nothing here depends
               on the rows that failed. Dropping them left the operator unable to
@@ -308,12 +314,12 @@ export default async function OrgMascotasPage({
             <OpCrumbs
               items={[
                 { label: "Panel", href: `/org/${orgToken}` },
-                { label: "Mascotas en custodia" },
+                { label: vocabulary.heldPetsTitle },
               ]}
             />
             {/* Title matches the nav-rail item "Mascotas" (QA 2026-07-03:
                 sidebar said Mascotas, page said Animales en custodia). */}
-            <h1 className="text-title font-semibold text-ln-op-ink">Mascotas en custodia</h1>
+            <h1 className="text-title font-semibold text-ln-op-ink">{vocabulary.heldPetsTitle}</h1>
             {/* The count is the org's TRUE size (its own COUNT), not the size
                 of the fetched slice — see CUSTODY_FETCH_CAP. */}
             <p className="text-md text-ln-op-ink-2">
@@ -321,6 +327,18 @@ export default async function OrgMascotasPage({
                 ? "Todavía no hay animales registrados a nombre de la organización."
                 : `${totalActiveCustody} ${pluralizeEs(totalActiveCustody, "animal")} bajo custodia activa.`}
             </p>
+            {/* A clinic holds almost nothing: the animals it treats walk in
+                with their owner and are found by their code in Atender, not
+                listed here. Say so where the list is empty (portal-vet-p0). */}
+            {!isRehoming && totalActiveCustody === 0 && !hasActiveFilters && canEventWrite && (
+              <p className="text-md text-ln-op-ink-2" data-testid="clinic-empty-atender">
+                Los pacientes que atendés se buscan por su código en{" "}
+                <Link href={`/org/${orgToken}/atender`} className="text-ln-op-azul hover:underline">
+                  Atender mascota
+                </Link>
+                .
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-4">
             {/* Exit ramp (org-first readiness #4): the org's own roster, in the

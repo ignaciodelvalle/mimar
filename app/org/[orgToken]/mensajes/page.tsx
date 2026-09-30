@@ -23,6 +23,7 @@ import { db, orgContactMessages } from "@/db";
 import { requireOrgAccessByToken } from "@/lib/infra/auth-guards";
 import { AR_TIME_ZONE } from "@/lib/utils/format";
 import { capRows } from "@/lib/utils/list-pagination";
+import { orgVocabulary } from "@/src/modules/organizations/domain/org-type-vocabulary";
 import { requireCapability } from "@/src/modules/organizations/infrastructure/authz-resolver";
 import { desc, eq } from "drizzle-orm";
 import Link from "next/link";
@@ -81,6 +82,7 @@ export default async function MensajesPage({
     .limit(PAGE_SIZE + 1);
 
   const { rows: mensajes, truncated } = capRows(rows, PAGE_SIZE);
+  const vocabulary = orgVocabulary(organization.orgType);
 
   return (
     <div className="space-y-4">
@@ -93,10 +95,11 @@ export default async function MensajesPage({
 
       <header>
         <h1 className="text-lg font-semibold text-ln-op-ink">Mensajes</h1>
+        {/* portal-vet-p0 D13: a clinic has no volunteers; only a rehoming org's
+            inbox speaks of them (orgVocabulary). */}
         <p className="mt-1 text-sm text-ln-op-mute">
-          Consultas y ofrecimientos de voluntariado que llegaron desde el perfil público de{" "}
-          {organization.displayName}. Responder es por fuera de miMAR: escribile al correo que dejó
-          cada persona.
+          {vocabulary.messagesIntroLead} {organization.displayName}. Responder es por fuera de
+          miMAR: escribile al correo que dejó cada persona.
         </p>
       </header>
 
@@ -104,7 +107,7 @@ export default async function MensajesPage({
         <LnEmptyState
           icon="mensaje"
           title="Todavía no hay mensajes"
-          description="Cuando alguien escriba desde el perfil público o se ofrezca como voluntario/a, va a aparecer acá."
+          description={vocabulary.messagesEmptyDescription}
         />
       ) : (
         <>

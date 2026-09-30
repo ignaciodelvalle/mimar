@@ -404,7 +404,7 @@ describe("changeOrganizationMemberRole", () => {
         membershipId: "mem-target",
         newRole: "superadmin",
         actor: { userId: "user-actor", role: "admin", membershipId: "mem-actor" },
-        organization: { publicToken: "TKN" },
+        organization: { publicToken: "TKN", orgType: "shelter" },
       },
       { repo: baseRepo(), transaction: vi.fn() },
     );
@@ -419,7 +419,7 @@ describe("changeOrganizationMemberRole", () => {
         membershipId: "mem-target",
         newRole: "admin",
         actor: { userId: "user-actor", role: "coordinator", membershipId: "mem-actor" },
-        organization: { publicToken: "TKN" },
+        organization: { publicToken: "TKN", orgType: "shelter" },
       },
       { repo: baseRepo(), transaction: vi.fn() },
     );
@@ -434,7 +434,7 @@ describe("changeOrganizationMemberRole", () => {
         membershipId: "mem-target",
         newRole: "member",
         actor: { userId: "user-actor", role: "admin", membershipId: "mem-actor" },
-        organization: { publicToken: "TKN" },
+        organization: { publicToken: "TKN", orgType: "shelter" },
       },
       { repo, transaction: vi.fn() },
     );
@@ -456,7 +456,7 @@ describe("changeOrganizationMemberRole", () => {
         membershipId: "mem-target",
         newRole: "coordinator",
         actor: { userId: "user-actor", role: "admin", membershipId: "mem-actor" },
-        organization: { publicToken: "TKN" },
+        organization: { publicToken: "TKN", orgType: "shelter" },
       },
       { repo, transaction: vi.fn() },
     );
@@ -484,7 +484,7 @@ describe("changeOrganizationMemberRole", () => {
         // coordinator (rank 4) can't manage admin (rank 5)
         newRole: "member",
         actor: { userId: "user-actor", role: "coordinator", membershipId: "mem-actor" },
-        organization: { publicToken: "TKN" },
+        organization: { publicToken: "TKN", orgType: "shelter" },
       },
       { repo, transaction: txFn },
     );
@@ -514,7 +514,7 @@ describe("changeOrganizationMemberRole", () => {
         membershipId: "mem-target",
         newRole: "member",
         actor: { userId: "user-actor", role: "admin", membershipId: "mem-actor" },
-        organization: { publicToken: "TKN" },
+        organization: { publicToken: "TKN", orgType: "shelter" },
       },
       { repo, transaction: txFn },
     );
@@ -544,13 +544,67 @@ describe("changeOrganizationMemberRole", () => {
         membershipId: "mem-target",
         newRole: "coordinator",
         actor: { userId: "user-actor", role: "admin", membershipId: "mem-actor" },
-        organization: { publicToken: "TKN" },
+        organization: { publicToken: "TKN", orgType: "shelter" },
       },
       { repo, transaction: txFn },
     );
     expect(result.ok).toBe(true);
     // Non-admin target path uses a tx for atomicity with audit write.
     expect(repo.setRole).toHaveBeenCalledWith("mem-target", "coordinator", {});
+  });
+
+  // portal-vet-p0 D13 — coordinator and volunteer are shelter roles.
+  describe("org-type fit", () => {
+    const txFn = () =>
+      vi.fn().mockImplementation(async (cb: (tx: unknown) => Promise<void>) => {
+        await cb({});
+      });
+    const repoWithTarget = (role: "member" | "volunteer" | "coordinator") => ({
+      ...baseRepo(),
+      findActiveMembership: vi
+        .fn()
+        .mockResolvedValue(makeMembership({ id: "mem-target", userId: "user-target", role })),
+      setRole: vi.fn().mockResolvedValue(undefined),
+    });
+    const change = async (newRole: string, orgType: string, repo = repoWithTarget("member")) => {
+      const result = await changeOrganizationMemberRole(
+        {
+          organizationId: "org-1",
+          membershipId: "mem-target",
+          newRole,
+          actor: { userId: "user-actor", role: "admin", membershipId: "mem-actor" },
+          organization: { publicToken: "TKN", orgType },
+        },
+        { repo, transaction: txFn() },
+      );
+      return { result, repo };
+    };
+
+    for (const newRole of ["coordinator", "volunteer"]) {
+      for (const orgType of ["clinic", "sanitary_authority", "other"]) {
+        it(`refuses assigning ${newRole} in a ${orgType}, and writes nothing`, async () => {
+          const { result, repo } = await change(newRole, orgType);
+          expect(result).toEqual({
+            ok: false,
+            error: "Ese rol es de refugios y redes de rescate. En esta organización no se usa.",
+          });
+          expect(repo.setRole).not.toHaveBeenCalled();
+        });
+      }
+      for (const orgType of ["shelter", "rescue_network"]) {
+        it(`still assigns ${newRole} in a ${orgType} (shelter regression)`, async () => {
+          const { result, repo } = await change(newRole, orgType);
+          expect(result.ok).toBe(true);
+          expect(repo.setRole).toHaveBeenCalledWith("mem-target", newRole, {});
+        });
+      }
+    }
+
+    it("lets a clinic move a LEGACY volunteer to a role that fits", async () => {
+      const { result, repo } = await change("member", "clinic", repoWithTarget("volunteer"));
+      expect(result.ok).toBe(true);
+      expect(repo.setRole).toHaveBeenCalledWith("mem-target", "member", {});
+    });
   });
 });
 

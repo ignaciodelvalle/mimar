@@ -138,8 +138,8 @@ export default async function MiembrosPage({
     );
   const totalMembersCount = Number(totalMembersRow?.n ?? members.length);
 
-  // Settable roles for the viewer (rank-bounded).
-  const settableRoles = canInvite ? getSettableRoles(membership.role) : [];
+  // Settable roles for the viewer (rank- and org-type-bounded).
+  const settableRoles = canInvite ? getSettableRoles(membership.role, organization.orgType) : [];
 
   // Pending invitations: not accepted, not revoked, not yet expired.
   // Only fetched when the viewer holds member.invite (avoids leaking invite
@@ -232,6 +232,7 @@ export default async function MiembrosPage({
                         organizationId={organization.id}
                         membershipId={m.id}
                         currentRole={m.role}
+                        currentRoleLabel={ROLE_LABEL[m.role]}
                         settableRoles={settableRoles}
                       />
                     ) : (

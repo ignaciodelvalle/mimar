@@ -11,10 +11,10 @@ import { OpCard, OpCardBody, OpCardHead, OpCrumbs, OpKpi } from "@/components/ui
 import { computeOccupancyBreakdown, fetchOrgCensus } from "@/lib/analytics/org-census";
 import { requireOrgAccessByToken } from "@/lib/infra/auth-guards";
 import { speciesLabelPlural } from "@/lib/utils/species";
+import { isRehomingOrgType } from "@/src/modules/organizations/domain/org-type";
 import { getGrantedCapabilities } from "@/src/modules/organizations/infrastructure/authz-resolver";
-
-// Shelters and rescue networks are the only org types where occupancy is meaningful.
-const SHELTER_TYPES = new Set(["shelter", "rescue_network"]);
+// Shelters and rescue networks are the only org types where occupancy is
+// meaningful — isRehomingOrgType, the ONE org-type rule (portal-vet-p0 D13).
 
 export default async function OrgCensoPage({
   params,
@@ -28,7 +28,7 @@ export default async function OrgCensoPage({
   const canIntake = granted.has("intake.create") || membership.role === "admin";
 
   // Non-shelter orgs or users without intake.create capability see a not-applicable notice.
-  const isShelterOrg = SHELTER_TYPES.has(organization.orgType);
+  const isShelterOrg = isRehomingOrgType(organization.orgType);
   if (!isShelterOrg || !canIntake) {
     // Reached only by URL now (the nav item is shelterOnly) — still needs an
     // H1 for a11y/scanability (cursor citizen UX V1, 2026-07-24).

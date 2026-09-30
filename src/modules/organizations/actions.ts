@@ -238,7 +238,7 @@ export async function changeMemberRoleAction(input: {
         role: actorMembership.role,
         membershipId: actorMembership.id,
       },
-      organization: { publicToken: organization.publicToken },
+      organization: { publicToken: organization.publicToken, orgType: organization.orgType },
     },
     {
       repo,
@@ -360,6 +360,7 @@ export async function inviteMemberAction(input: {
         id: organization.id,
         publicToken: organization.publicToken,
         displayName: organization.displayName,
+        orgType: organization.orgType,
       },
       generateToken: () =>
         generateUniqueToken(

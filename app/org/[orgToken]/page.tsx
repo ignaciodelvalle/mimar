@@ -63,6 +63,7 @@ import {
   CAPABILITY_CATALOG,
   capabilityAppliesToOrgType,
 } from "@/src/modules/organizations/domain/capabilities";
+import { isRehomingOrgType } from "@/src/modules/organizations/domain/org-type";
 import { getGrantedCapabilities } from "@/src/modules/organizations/infrastructure/authz-resolver";
 
 import { OrgDailyLoopOrientation } from "./OrgDailyLoopOrientation";
@@ -80,6 +81,7 @@ import {
 } from "./_lib/capability-state";
 import { deriveMatriculaStatus } from "./_lib/member-matricula";
 import { pendingQueueTone, queueSignalNote } from "./_lib/queue-signal-display";
+import { todayHeroLinks } from "./_lib/today-hero";
 
 const ROLE_LABELS: Record<string, string> = {
   admin: "Administrador/a",
@@ -161,7 +163,7 @@ export default async function OrgDashboardPage({
   // (Adopciones, Foster/Tránsitos, custodia). See capabilityAppliesToOrgType.
   const showCap = (capability: OrganizationCapability): boolean =>
     granted.has(capability) && capabilityAppliesToOrgType(capability, orgType);
-  const isRehoming = orgType === "shelter" || orgType === "rescue_network";
+  const isRehoming = isRehomingOrgType(orgType);
   const canDecideRequests = granted.has("capability.grant");
   const canReadHeld = showCap("pet.read_held");
   const canIntake = showCap("intake.create");
@@ -489,12 +491,17 @@ export default async function OrgDashboardPage({
     ? deriveOccupancyDisplay(occupancyBreakdown.total, occupancyBreakdown.noCapacityDeclared)
     : null;
 
+  // portal-vet-p0 D13: a non-rehoming org (a clinic) leads with its day — the
+  // agenda and Atender — for every member who can work them, admins included.
+  // It replaces the role-first lead below; a refugio never gets it (null).
+  const todayHero = todayHeroLinks({ orgToken, orgType, granted });
+
   // Role-first lead (four-actor lean IA critique §4): land a non-admin member in
   // their primary job, derived from granted capabilities. Admins keep the full
   // ops overview below. Priority follows the daily loop; each surface is one the
   // capability action cards already link to (no new routes).
   const primaryJob: { href: string; label: string; description: string } | null = (() => {
-    if (isAdmin) return null;
+    if (isAdmin || todayHero) return null;
     if (granted.has("appointment.manage"))
       return {
         href: `/org/${orgToken}/agenda`,
@@ -532,6 +539,28 @@ export default async function OrgDashboardPage({
     <div className="space-y-6">
       {/* Page header — hoisted above the loads so the degraded branches keep it. */}
       {header}
+
+      {/* The clinic's day (portal-vet-p0 D13), up top. */}
+      {todayHero && (
+        <OpCard>
+          <OpCardHead title="Hoy" />
+          <OpCardBody className="p-0">
+            <ul className="divide-y divide-ln-op-line" data-testid="today-hero">
+              {todayHero.map((link) => (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    className="block p-4 no-underline transition-colors hover:bg-ln-op-stripe"
+                  >
+                    <p className="text-sm font-semibold text-ln-op-ink">{link.label}</p>
+                    <p className="mt-1 text-sm text-ln-op-mute">{link.description}</p>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </OpCardBody>
+        </OpCard>
+      )}
 
       {/* Role-first lead (critique §4): a non-admin member's primary job, up top. */}
       {primaryJob && (

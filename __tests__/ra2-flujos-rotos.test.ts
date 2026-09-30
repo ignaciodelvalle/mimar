@@ -381,7 +381,9 @@ describe("RA-2 F9 — the propose-transfer page gates on the capability, not on 
 
   it("the capability it names is the one the permissions console can actually grant", () => {
     // "Pedíselo a un admin" is only actionable if the admin sees that row.
-    const console_ = source("app/org/[orgToken]/admin/permisos/page.tsx");
+    // The console's columns live in matrix-columns.ts since portal-vet-p0 (they
+    // are filtered by org type there); org.transfer.* applies to every type.
+    const console_ = source("app/org/[orgToken]/admin/permisos/matrix-columns.ts");
     expect(console_).toContain('"org.transfer.propose"');
     // And the label the page quotes must be the catalog's, or the member and
     // the admin are looking for different words on different screens.

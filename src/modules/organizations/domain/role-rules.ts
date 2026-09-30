@@ -6,6 +6,8 @@
 
 import type { OrganizationMembership } from "@/db/schema";
 
+import { isRehomingOrgType } from "./org-type";
+
 // ---------------------------------------------------------------------------
 // Role rank — higher number = higher authority.
 // Matches the rank table in the spec (admin5 coordinator4 member3
@@ -76,3 +78,25 @@ export function canAssign(
 ): boolean {
   return ROLE_RANK[newRole] <= ROLE_RANK[actorRole];
 }
+
+// ---------------------------------------------------------------------------
+// Org-type fit (portal-vet-p0 D13) — the roles only a shelter has.
+// ---------------------------------------------------------------------------
+
+/**
+ * Roles that exist only in the custody-rehoming lifecycle: a coordinator runs
+ * cross-org transfers and a volunteer does shelter work. A clinic, a sanitary
+ * authority or an "other" org is never offered them, and the server refuses to
+ * invite or assign them there. Members who ALREADY hold one keep it — nothing
+ * here touches an existing row.
+ */
+const REHOMING_ONLY_ROLES: ReadonlySet<string> = new Set(["coordinator", "volunteer"]);
+
+/** Whether `role` may be invited to, or assigned in, an org of `orgType`. */
+export function roleAppliesToOrgType(role: string, orgType: string): boolean {
+  return !REHOMING_ONLY_ROLES.has(role) || isRehomingOrgType(orgType);
+}
+
+/** es-AR refusal when a role does not exist for this kind of organization. */
+export const ROLE_NOT_FOR_ORG_TYPE_ERROR =
+  "Ese rol es de refugios y redes de rescate. En esta organización no se usa.";
