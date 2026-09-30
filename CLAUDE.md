@@ -67,7 +67,7 @@ Stack: Next.js 15 (App Router) + React 19 + TypeScript, Supabase (Postgres + RLS
 | Need | Anchor |
 |---|---|
 | Data model / schema / migrations | `#data-model` |
-| Event catalog (55 types) | `#event-catalog--55-types` |
+| Event catalog (56 types) | `#event-catalog--56-types` |
 | Roles, account types, capabilities | `#user-roles--account-types` |
 | RLS / authorization | `#authorization-architecture-wave-5-item-26` |
 | Privacy checklist (any public route or PII field) | `#privacidad-y-manejo-de-datos` |
