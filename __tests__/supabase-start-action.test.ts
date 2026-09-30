@@ -600,3 +600,18 @@ describe("the retry wrapper's shape", () => {
     }
   });
 });
+
+// 2026-09-30, CI run 36666342759: an input's `description:` quoted the
+// github-token expression in prose, and GitHub EVALUATES expressions in an
+// action's metadata — the action failed to load ("Unrecognized named-value:
+// 'github'") and took down every job that starts the local stack. Local YAML
+// parsing cannot see it; only the runner does. So the metadata is fenced here:
+// an expression may appear only where the runner is meant to evaluate it.
+describe("action metadata", () => {
+  it("carries no ${{ }} expression inside any input description", () => {
+    const yaml = readFileSync(ACTION, "utf8");
+    const inputsBlock = yaml.slice(yaml.indexOf("\ninputs:"), yaml.indexOf("\nruns:"));
+    expect(inputsBlock.length, "the inputs block was found").toBeGreaterThan(100);
+    expect(inputsBlock).not.toContain("${{");
+  });
+});

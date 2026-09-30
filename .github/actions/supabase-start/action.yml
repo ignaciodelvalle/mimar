@@ -137,8 +137,10 @@ inputs:
     default: "15"
   github-token:
     description: >-
-      A token with `packages: read` on this repository (pass `${{ github.token
-      }}` — no new secret needed), used to `docker login ghcr.io` and probe
+      A token with `packages: read` on this repository (callers pass the
+      job's own github.token expression — no new secret needed; never write
+      that expression inside this description, GitHub evaluates it here and
+      refuses to load the action), used to `docker login ghcr.io` and probe
       `.github/workflows/mirror-supabase-images.yml`'s readiness marker
       (`ghcr.io/<owner>/supabase/mirror-ready:cli-<version>-pg<major>`) before
       falling back to `public.ecr.aws`. Left empty (the default), this step

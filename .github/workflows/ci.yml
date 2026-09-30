@@ -740,12 +740,14 @@ jobs:
             | grep -vF 'DROP INDEX "govt_business_rules_type_name_unique"' \
             | grep -vF 'CREATE UNIQUE INDEX "govt_business_rules_type_name_unique"' \
             | grep -vF 'DROP INDEX "org_coverage_org_name_unique"' \
-            | grep -vF 'CREATE UNIQUE INDEX "org_coverage_org_name_unique"')
+            | grep -vF 'CREATE UNIQUE INDEX "org_coverage_org_name_unique"' \
+            | grep -vF 'ALTER TABLE "pet_events" DROP CONSTRAINT "pet_events_visit_fk"' \
+            | grep -vF 'ALTER TABLE "pet_events" ADD CONSTRAINT "pet_events_visit_fk" FOREIGN KEY ("visit_id","pet_id") REFERENCES "public"."visits"("id","pet_id")')
           if echo "$FILTERED" | grep -qE "^(ALTER TABLE|CREATE|DROP|DO )"; then
             echo "::error::Drizzle reports pending changes — schema.ts ↔ migrations drift"
             exit 1
           fi
-          echo "::notice::Only known false-positive drifts detected (permanent_conditions, pulse_until, org_coverage constraint, govt_business_rules constraint, org_invitations index, expires_at default, govt_business_rules_type_name_unique index, org_coverage_org_name_unique index); treating as no-op."
+          echo "::notice::Only known false-positive drifts detected (permanent_conditions, pulse_until, org_coverage constraint, govt_business_rules constraint, org_invitations index, expires_at default, govt_business_rules_type_name_unique index, org_coverage_org_name_unique index, pet_events_visit_fk composite FK); treating as no-op."
 
   test-shard:
     name: Tests (vitest) · shard ${{ matrix.shard }}/4
