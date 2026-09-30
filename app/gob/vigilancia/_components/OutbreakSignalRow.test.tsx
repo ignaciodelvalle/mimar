@@ -49,6 +49,7 @@ const SIGNAL: SurveillanceSignal = {
   authorOrganizationId: null,
   payload: {},
   investigation: null,
+  corroboration: { reports: 0, byVet: 0 },
 };
 
 describe("OutbreakSignalRow — signalId deep-link affordance", () => {
@@ -99,5 +100,33 @@ describe("OutbreakSignalRow — no ofrece abrir lo que ya está abierto", () => 
     const { container } = render(<OutbreakSignalRow signal={{ ...SIGNAL, investigation: null }} />);
     expect(container.textContent ?? "").toContain("Abrir investigación");
     expect(container.querySelector('a[href*="/investigaciones/nuevo"]')).toBeTruthy();
+  });
+});
+
+describe("OutbreakSignalRow — los reportes que la señal absorbió se ven", () => {
+  // El dedup en origen no crea una segunda señal cuando el mismo episodio se
+  // reporta de nuevo; sin esta línea la confirmación del veterinario no se
+  // vería en ningún lado.
+  it("una señal corroborada por un veterinario lo dice", () => {
+    const { container } = render(
+      <OutbreakSignalRow signal={{ ...SIGNAL, corroboration: { reports: 1, byVet: 1 } }} />,
+    );
+    expect(container.textContent ?? "").toContain(
+      "Corroborado por veterinario · +1 reporte del mismo episodio",
+    );
+  });
+
+  it("dos reportes de quien cuida al animal se cuentan sin atribuírselos a un veterinario", () => {
+    const { container } = render(
+      <OutbreakSignalRow signal={{ ...SIGNAL, corroboration: { reports: 2, byVet: 0 } }} />,
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("+2 reportes del mismo episodio");
+    expect(text).not.toContain("Corroborado por veterinario");
+  });
+
+  it("sin corroboraciones no agrega ninguna línea (control)", () => {
+    const { container } = render(<OutbreakSignalRow signal={SIGNAL} />);
+    expect(container.textContent ?? "").not.toContain("del mismo episodio");
   });
 });

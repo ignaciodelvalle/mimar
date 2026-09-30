@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ConfidenceBadge } from "@/components/event/ConfidenceBadge";
 import { OpCodeBadge } from "@/components/ui/dashboard";
 import type { SurveillanceSignal } from "@/lib/analytics/govt-dashboards";
+import { corroborationLabel } from "@/lib/analytics/signal-corroboration";
 import { computeConfidence } from "@/lib/events/event-confidence";
 import { formatDateShort, speciesLabel } from "@/lib/utils/format";
 
@@ -51,6 +52,7 @@ export function OutbreakSignalRow({ signal, highlighted = false }: OutbreakSigna
     authorOrganizationId: signal.authorOrganizationId,
     payload: signal.payload,
   });
+  const corroboration = corroborationLabel(signal.corroboration);
 
   return (
     <li
@@ -82,6 +84,12 @@ export function OutbreakSignalRow({ signal, highlighted = false }: OutbreakSigna
           <p className="text-sm text-ln-op-mute truncate">
             {signal.locality ?? "—"}, {signal.province ?? "—"}
           </p>
+          {/* Reports of the same episode folded into this signal by the
+              source-side dedup — invisible otherwise, because they raise no
+              signal of their own. */}
+          {corroboration ? (
+            <p className="text-sm text-ln-op-ink-2 truncate">{corroboration}</p>
+          ) : null}
         </div>
         <time
           dateTime={signal.detectedAt.toISOString()}

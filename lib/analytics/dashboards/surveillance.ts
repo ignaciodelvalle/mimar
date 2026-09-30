@@ -24,6 +24,7 @@ import { findDisease } from "@/lib/reference/diseases";
 import { parseArDateStartOfDay } from "@/lib/utils/date-input-ar";
 import { isoDateInAr } from "@/lib/utils/format";
 import { EPIDEMIOLOGICAL_CASE_KINDS } from "@/src/modules/cases/domain/case-kinds";
+import type { SignalCorroboration } from "../signal-corroboration";
 import { aggregateRowsByDepartment } from "../subregion-aggregate";
 import type { SubregionAggregate } from "../subregion-redaction";
 import {
@@ -76,6 +77,15 @@ export type SurveillanceSignal = {
    * such row, and correctly does not make any signal look triaged.
    */
   investigation: { publicCode: string; status: string } | null;
+  /**
+   * Later reports of the SAME episode that the source-side dedup folded into
+   * this signal instead of raising a second one
+   * (src/modules/events/application/surveillance/recent-outbreak-signals.ts).
+   * Read at query time from the symptom_observed rows that name this signal in
+   * `corroborated_signals` — the signal itself is never updated. `byVet` counts
+   * the ones a vet reported (an intake confirming an owner's account).
+   */
+  corroboration: SignalCorroboration;
 };
 
 export type DiseaseSummary = {
@@ -162,6 +172,20 @@ export async function fetchSurveillanceSignals(
         order by ce.occurred_at desc
         limit 1
       )`,
+      // Folded reports of the same episode (see SurveillanceSignal.corroboration).
+      // Anchored on the signal's own pet so the scan stays on that pet's rows.
+      corroboration: sql<{ reports: number; by_vet: number }>`(
+        select json_build_object(
+          'reports', count(*),
+          'by_vet', count(*) filter (where so.payload->>'reporter_role' = 'vet')
+        )
+        from pet_events so
+        where so.pet_id = ${petEvents.petId}
+          and so.event_type = 'symptom_observed'
+          and so.payload->'corroborated_signals' @> jsonb_build_array(
+            jsonb_build_object('outbreak_signal_event_id', ${petEvents.id}::text)
+          )
+      )`,
     })
     .from(petEvents)
     .innerJoin(pets, eq(pets.id, petEvents.petId))
@@ -187,6 +211,10 @@ export async function fetchSurveillanceSignals(
     investigation: r.investigation
       ? { publicCode: r.investigation.code, status: r.investigation.status }
       : null,
+    corroboration: {
+      reports: Number(r.corroboration?.reports ?? 0),
+      byVet: Number(r.corroboration?.by_vet ?? 0),
+    },
   }));
 }
 
