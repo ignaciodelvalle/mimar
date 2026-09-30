@@ -383,7 +383,6 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       `¡Encontraron a ${PAMPA_PET.name}!`,
       `Alguien encontró a ${PAMPA_PET.name}`,
       "No dejó datos de contacto.",
-      `Encontraron a ${PAMPA_PET.name}`,
       "detectó a Pampa por su microchip. Coordiná la devolución.",
       "Sí, la encontré",
     ]) {

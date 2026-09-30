@@ -495,7 +495,7 @@ function IntakeDoneScreen() {
 
 /**
  * 5 · Martín's notification — the text confirm-chip-match-refugio.ts writes:
- * "Encontraron a {name}" / "{org} detectó a {name} por su microchip. Coordiná
+ * "¡Encontraron a {name}!" / "{org} detectó a {name} por su microchip. Coordiná
  * la devolución." with the CTA "Coordinar devolución".
  */
 function OwnerNotifiedScreen() {
@@ -505,7 +505,7 @@ function OwnerNotifiedScreen() {
       <div className="lp-app-body lp-ph-pad">
         <div className="lp-notif">
           <span className="lp-notif-app">miMAR</span>
-          <b>Encontraron a {PAMPA.name}</b>
+          <b>¡Encontraron a {PAMPA.name}!</b>
           <span>
             {SHELTER} detectó a {PAMPA.name} por su microchip. Coordiná la devolución.
           </span>

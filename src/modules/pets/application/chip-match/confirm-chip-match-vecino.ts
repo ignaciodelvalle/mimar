@@ -220,7 +220,7 @@ export async function confirmChipMatchAsVecinoWriter({
         userId: ownerOwnership.ownerUserId,
         notificationType: "chip_match_notification_owner",
         severity: "urgent",
-        title: `Encontraron a ${matchedPet.name}`,
+        title: `¡Encontraron a ${matchedPet.name}!`,
         body: `Un vecino detectó a ${matchedPet.name} por su microchip. Coordiná la devolución.`,
         ctaLabel: "Coordinar devolución",
         ctaUrl: `/mis-mascotas/${matchedPetToken}/devolucion`,
