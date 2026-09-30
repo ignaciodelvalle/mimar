@@ -221,7 +221,7 @@ export const ORGANIZATION_CAPABILITIES = [
   "member.invite",
   "capability.grant",
   // Scheduling system (Fase 0). Service providers earn these via the approval
-  // flow; NOT included in VET_INDIVIDUAL_IMPLICIT_CAPS (intentional per spec).
+  // flow; appointment.manage is also the vet_individual baseline (portal-vet-p0).
   "service_offering.create",
   "appointment.manage",
   // Bite reporting (org-side). Vets and shelter coordinators with this

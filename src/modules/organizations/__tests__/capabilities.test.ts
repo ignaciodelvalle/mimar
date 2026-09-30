@@ -8,6 +8,8 @@ import {
   CAPABILITY_CATALOG,
   COORDINATOR_IMPLICIT_CAPS,
   SHELTER_ONLY_CAPABILITIES,
+  VET_CREDENTIAL_CAPS,
+  VET_INDIVIDUAL_BASELINE_CAPS,
   VET_INDIVIDUAL_IMPLICIT_CAPS,
   WELFARE_DECOMISO_EXECUTE_CAPABILITY,
   capabilityAppliesToOrgType,
@@ -137,12 +139,36 @@ describe("VET_INDIVIDUAL_IMPLICIT_CAPS", () => {
     expect(VET_INDIVIDUAL_IMPLICIT_CAPS).toContain("intake.create");
   });
 
-  it("has exactly 3 entries", () => {
-    expect(VET_INDIVIDUAL_IMPLICIT_CAPS).toHaveLength(3);
+  it("is exactly the union of the baseline and the credential halves", () => {
+    expect([...VET_INDIVIDUAL_IMPLICIT_CAPS].sort()).toEqual(
+      [...VET_INDIVIDUAL_BASELINE_CAPS, ...VET_CREDENTIAL_CAPS].sort(),
+    );
+    expect(VET_INDIVIDUAL_IMPLICIT_CAPS).toHaveLength(5);
   });
 
   it("does NOT include member.invite (coordinators only)", () => {
     expect(VET_INDIVIDUAL_IMPLICIT_CAPS).not.toContain("member.invite");
+  });
+});
+
+// portal-vet-p0 D10 — the preset split. Pinned as exact lists on purpose: a
+// capability moving between the halves changes who holds it without a
+// matrícula, and that must be a visible decision, not a quiet edit.
+describe("vet preset split (baseline vs credential)", () => {
+  it("the baseline is exactly appointment.manage", () => {
+    expect([...VET_INDIVIDUAL_BASELINE_CAPS]).toEqual(["appointment.manage"]);
+  });
+
+  it("the credential half is exactly the four clinical capabilities", () => {
+    expect([...VET_CREDENTIAL_CAPS].sort()).toEqual(
+      ["bite.report", "event.write", "intake.create", "pet.read_held"].sort(),
+    );
+  });
+
+  it("the two halves do not overlap", () => {
+    for (const cap of VET_INDIVIDUAL_BASELINE_CAPS) {
+      expect(VET_CREDENTIAL_CAPS).not.toContain(cap);
+    }
   });
 });
 
@@ -228,21 +254,49 @@ describe("resolveGrantedCaps — admin", () => {
 const VET_OK = { vetCredentialValid: true } as const;
 
 describe("resolveGrantedCaps — vet_individual", () => {
-  it("withholds the implicit clinical caps when the member's vet credential is not valid", () => {
+  it("withholds the clinical caps when the member's vet credential is not valid", () => {
     // Revoked or resigned matrícula, or a role that is not vet: the membership
     // row alone is not a credential. Default (no context) is the same deny.
     for (const granted of [
       resolveGrantedCaps("vet_individual", [], { vetCredentialValid: false }),
       resolveGrantedCaps("vet_individual", []),
     ]) {
-      for (const cap of VET_INDIVIDUAL_IMPLICIT_CAPS) expect(granted.has(cap)).toBe(false);
+      for (const cap of VET_CREDENTIAL_CAPS) expect(granted.has(cap)).toBe(false);
     }
-    // An explicit grant an org admin approved still applies.
-    expect(
-      resolveGrantedCaps("vet_individual", ["event.write"], { vetCredentialValid: false }).has(
-        "event.write",
-      ),
-    ).toBe(true);
+  });
+
+  it("holds the baseline (Turnos) without a verified matrícula", () => {
+    for (const granted of [
+      resolveGrantedCaps("vet_individual", [], { vetCredentialValid: false }),
+      resolveGrantedCaps("vet_individual", []),
+    ]) {
+      expect(granted.has("appointment.manage")).toBe(true);
+      expect(granted.size).toBe(VET_INDIVIDUAL_BASELINE_CAPS.length);
+    }
+  });
+
+  it("drops approved grant rows for credential caps while the matrícula is not valid (D10)", () => {
+    // A row an admin approved earlier would otherwise outlive the revocation
+    // and undo W6. Every clinical cap, not only event.write.
+    const unverified = resolveGrantedCaps("vet_individual", [...VET_CREDENTIAL_CAPS], {
+      vetCredentialValid: false,
+    });
+    for (const cap of VET_CREDENTIAL_CAPS) expect(unverified.has(cap)).toBe(false);
+  });
+
+  it("keeps approved grant rows OUTSIDE the credential half while the matrícula is not valid", () => {
+    const granted = resolveGrantedCaps("vet_individual", ["service_offering.create"], {
+      vetCredentialValid: false,
+    });
+    expect(granted.has("service_offering.create")).toBe(true);
+  });
+
+  it("the drop is vet_individual-only: a member keeps an approved event.write row", () => {
+    expect(resolveGrantedCaps("member", ["event.write"]).has("event.write")).toBe(true);
+  });
+
+  it("a verified vet holds bite.report (Mordeduras)", () => {
+    expect(resolveGrantedCaps("vet_individual", [], VET_OK).has("bite.report")).toBe(true);
   });
 
   it("vet_individual gets VET_INDIVIDUAL_IMPLICIT_CAPS when no approved rows", () => {

@@ -30,7 +30,11 @@ import {
   organizations,
   profiles,
 } from "@/db";
-import { VET_INDIVIDUAL_IMPLICIT_CAPS } from "@/src/modules/organizations/domain/capabilities";
+import {
+  VET_CREDENTIAL_CAPS,
+  VET_INDIVIDUAL_BASELINE_CAPS,
+  VET_INDIVIDUAL_IMPLICIT_CAPS,
+} from "@/src/modules/organizations/domain/capabilities";
 import {
   getActiveMemberships,
   getGrantedCapabilities,
@@ -299,15 +303,19 @@ describe("getGrantedCapabilities", () => {
     }
   });
 
-  it("vet_individual withholds the implicit caps once the member is no longer a verified vet", async () => {
+  it("vet_individual withholds the clinical caps once the member is no longer a verified vet", async () => {
     await db
       .update(profiles)
       .set({ role: "owner", matriculaVerified: false })
       .where(eq(profiles.id, vetUserId));
     try {
       const granted = await getGrantedCapabilities({ id: vetMembershipId, role: "vet_individual" });
-      for (const cap of VET_INDIVIDUAL_IMPLICIT_CAPS) {
+      for (const cap of VET_CREDENTIAL_CAPS) {
         expect(granted.has(cap)).toBe(false);
+      }
+      // portal-vet-p0 D10: the agenda is the baseline, not a clinical act.
+      for (const cap of VET_INDIVIDUAL_BASELINE_CAPS) {
+        expect(granted.has(cap)).toBe(true);
       }
     } finally {
       await db

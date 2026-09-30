@@ -41,7 +41,7 @@ Authorization is **grant-based**: capabilities are approved grants stored in `or
 
 - `admin` — implicit grant of ALL capabilities universally.
 - `coordinator` — implicit grant of a coordinator baseline set (`COORDINATOR_IMPLICIT_CAPS` in `domain/capabilities.ts`).
-- `vet_individual` — implicit grant of `VET_INDIVIDUAL_IMPLICIT_CAPS` plus any explicitly approved grants.
+- `vet_individual` — implicit `VET_INDIVIDUAL_BASELINE_CAPS` (`appointment.manage`) always; `VET_CREDENTIAL_CAPS` (`pet.read_held`, `event.write`, `intake.create`, `bite.report`) only while the member's own matrícula is verified. Clinical capabilities are never granted to a `vet_individual` — approved rows for them are ignored while the matrícula is not valid. Other approved grants apply as usual.
 - `member`, `volunteer`, `foster` — only explicit `status='approved'` grants from `organization_capability_grants`.
 
 ## API

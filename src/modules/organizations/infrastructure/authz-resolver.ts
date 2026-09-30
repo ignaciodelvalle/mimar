@@ -232,7 +232,9 @@ export async function getActiveMemberships(userId: string): Promise<ActiveMember
 //
 // Capabilities currently granted on a membership:
 //   - role=admin: implicit grant of ALL capabilities (universal).
-//   - role=vet_individual: VET_INDIVIDUAL_IMPLICIT_CAPS + explicit approved grants.
+//   - role=vet_individual: VET_INDIVIDUAL_BASELINE_CAPS, plus VET_CREDENTIAL_CAPS
+//     only with a verified matrícula, plus approved grants (credential rows dropped
+//     while the matrícula is not valid).
 //   - role=coordinator: COORDINATOR_IMPLICIT_CAPS + explicit approved grants.
 //   - other roles: only status='approved' grant rows (isValidCapability filtered).
 //

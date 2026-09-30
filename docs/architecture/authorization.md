@@ -257,16 +257,22 @@ The UI catalog is a **subset**. `src/modules/organizations/domain/capabilities.t
 declares `CAPABILITY_CATALOG` with Spanish label and description per entry, and
 it omits `org.transfer.propose` and `org.transfer.accept` — the two cross-org
 transfer capabilities that `COORDINATOR_IMPLICIT_CAPS`
-(`src/modules/organizations/domain/capabilities.ts:190`) grants implicitly to
+(`src/modules/organizations/domain/capabilities.ts:210`) grants implicitly to
 coordinators. So those two are grantable and enforceable but have no row in the
 permissions table a member sees. That is a UI gap, not an authorization gap;
 `isValidCapability` (`:132`) validates against the schema constant, not the
 catalog.
 
-Resolution is pure (`resolveGrantedCaps`, `:209`):
+Resolution is pure (`resolveGrantedCaps`, `:244`):
 
 - membership role `admin` → every capability, no explicit grant needed;
-- `vet_individual` → `VET_INDIVIDUAL_IMPLICIT_CAPS` (`:182`) ∪ approved grants;
+- `vet_individual` → `VET_INDIVIDUAL_BASELINE_CAPS` (`:185`, the agenda:
+  `appointment.manage`) always, plus `VET_CREDENTIAL_CAPS` (`:193`, the four
+  clinical capabilities) only while the member's own matrícula is verified, plus
+  approved grants. While the matrícula is not valid, approved grant rows for a
+  credential capability are ignored too — a row an admin wrote earlier must not
+  outlive a revocation. `VET_INDIVIDUAL_IMPLICIT_CAPS` (`:201`) is the union of
+  the two halves;
 - `coordinator` → `COORDINATOR_IMPLICIT_CAPS` ∪ approved grants;
 - everyone else → approved grants only.
 

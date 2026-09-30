@@ -3,7 +3,7 @@
 //
 // Baseline model:
 //   - admin          → ALL ORGANIZATION_CAPABILITIES (universal grant)
-//   - vet_individual → VET_INDIVIDUAL_IMPLICIT_CAPS ∪ approved grants
+//   - vet_individual → BASELINE ∪ (CREDENTIAL if matrícula verified) ∪ grants
 //   - coordinator    → COORDINATOR_IMPLICIT_CAPS ∪ approved grants
 //   - others         → only approved grant rows (isValidCapability-filtered)
 //
@@ -87,8 +87,8 @@ export const CAPABILITY_CATALOG: readonly CapabilityCatalogEntry[] = [
     description:
       "Decidir sobre las solicitudes de capacidades del resto del equipo (lo que los admins hacen).",
   },
-  // Scheduling system (Fase 0). Not in VET_INDIVIDUAL_IMPLICIT_CAPS: service
-  // providers earn these via the approval flow (intentional per spec D8).
+  // Scheduling system (Fase 0). Earned via the approval flow (spec D8), except
+  // appointment.manage, which is the vet_individual baseline (portal-vet-p0).
   {
     capability: "service_offering.create",
     label: "Publicar servicios",
@@ -178,12 +178,32 @@ export function capabilityAppliesToOrgType(
 // Implicit capability baselines
 // ---------------------------------------------------------------------------
 
-// vet_individual: implicit caps per docs/org-portal-permissions.md.
-export const VET_INDIVIDUAL_IMPLICIT_CAPS: readonly OrganizationCapability[] = [
+// vet_individual — the preset splits in two (portal-vet-p0 D10).
+//
+// BASELINE: every vet_individual member holds it, verified or not. Running
+// the clinic's agenda is not a clinical act.
+export const VET_INDIVIDUAL_BASELINE_CAPS: readonly OrganizationCapability[] = [
+  "appointment.manage",
+] as const;
+
+// CREDENTIAL: clinical acts, bound to the member's own verified matrícula.
+// They are never GRANTED to a vet_individual: a grant row would outlive a
+// revoked matrícula (W6), so resolveGrantedCaps ignores such rows while the
+// credential is invalid.
+export const VET_CREDENTIAL_CAPS: readonly OrganizationCapability[] = [
   "pet.read_held",
   "event.write",
   "intake.create",
+  "bite.report",
 ] as const;
+
+// The whole vet preset (docs/org-portal-permissions.md): baseline ∪ credential.
+export const VET_INDIVIDUAL_IMPLICIT_CAPS: readonly OrganizationCapability[] = [
+  ...VET_INDIVIDUAL_BASELINE_CAPS,
+  ...VET_CREDENTIAL_CAPS,
+];
+
+const VET_CREDENTIAL_CAP_SET: ReadonlySet<string> = new Set(VET_CREDENTIAL_CAPS);
 
 // coordinator: cross-org transfer + member.invite implicit per CT9.
 // Exported so authz-resolver and the shim can reference it.
@@ -214,8 +234,10 @@ export const COORDINATOR_IMPLICIT_CAPS: readonly OrganizationCapability[] = [
  * vet whose matrícula was revoked, or who resigned it, keeps the membership
  * row until something ends it — and without this check that row alone kept
  * vaccines, bites, rabies closes and controlled meds open to them. Absent or
- * false → the implicit clinical caps are withheld (default deny); explicit
- * approved grants still apply, since an org admin decided those.
+ * false → the clinical caps (VET_CREDENTIAL_CAPS) are withheld (default deny),
+ * INCLUDING approved grant rows for them (portal-vet-p0 D10): a row an admin
+ * wrote before would otherwise outlive the revocation. The baseline and every
+ * other approved grant still apply.
  */
 export type ResolveGrantedCapsContext = { vetCredentialValid?: boolean };
 
@@ -229,16 +251,21 @@ export function resolveGrantedCaps(
   }
 
   const set = new Set<OrganizationCapability>();
+  const vetCredentialValid = context.vetCredentialValid === true;
+  const dropsCredentialRows = role === "vet_individual" && !vetCredentialValid;
 
   // Add approved explicit grants (validate each string)
   for (const row of approvedRows) {
-    if (isValidCapability(row)) set.add(row);
+    if (!isValidCapability(row)) continue;
+    if (dropsCredentialRows && VET_CREDENTIAL_CAP_SET.has(row)) continue;
+    set.add(row);
   }
 
   // Add role-based implicit baselines
   if (role === "vet_individual") {
-    if (context.vetCredentialValid === true) {
-      for (const cap of VET_INDIVIDUAL_IMPLICIT_CAPS) set.add(cap);
+    for (const cap of VET_INDIVIDUAL_BASELINE_CAPS) set.add(cap);
+    if (vetCredentialValid) {
+      for (const cap of VET_CREDENTIAL_CAPS) set.add(cap);
     }
   } else if (role === "coordinator") {
     for (const cap of COORDINATOR_IMPLICIT_CAPS) set.add(cap);
