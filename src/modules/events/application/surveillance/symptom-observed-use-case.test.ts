@@ -52,6 +52,11 @@ vi.mock("./recent-outbreak-signals", async (importActual) => ({
 
 import type { EventsRepository } from "../../infrastructure/events-repository";
 import type { NewNotification } from "../types";
+import {
+  type NewReportState,
+  type RecentSignal,
+  signalToCorroborate,
+} from "./recent-outbreak-signals";
 import { createSymptomObservedWriter } from "./symptom-observed-use-case";
 
 // ---------------------------------------------------------------------------
@@ -652,6 +657,7 @@ describe("createSymptomObservedWriter — corroboration instead of a second sign
     matched_symptoms: ["symptom_1"],
   };
   const existingId = randomUUID();
+  const UNTRIAGED = { linked: false, sourceSeverity: null };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -661,7 +667,7 @@ describe("createSymptomObservedWriter — corroboration instead of a second sign
     mockAggregateDiseaseMatches.mockReturnValue([rabies]);
   });
 
-  function run(params: Partial<typeof baseParams> & { rabiesObservationStatus?: string | null }) {
+  function run(params: Partial<Parameters<typeof createSymptomObservedWriter>[0]>) {
     const repo = makeRepo();
     const flush = makeFlushNotifications();
     const result = createSymptomObservedWriter(
@@ -677,7 +683,7 @@ describe("createSymptomObservedWriter — corroboration instead of a second sign
 
   it("an existing routine signal is corroborated: no new signal, no routing, no owner alert", async () => {
     mockLockAndFindRecentSignals.mockResolvedValue([
-      { id: existingId, diseaseCode: "rabies_suspected", escalation: false },
+      { id: existingId, diseaseCode: "rabies_suspected", escalation: false, ...UNTRIAGED },
     ]);
     const { repo, result } = run({});
     const r = await result;
@@ -698,7 +704,7 @@ describe("createSymptomObservedWriter — corroboration instead of a second sign
 
   it("an escalation is never folded into a routine signal that sent no urgent notice", async () => {
     mockLockAndFindRecentSignals.mockResolvedValue([
-      { id: existingId, diseaseCode: "rabies_suspected", escalation: false },
+      { id: existingId, diseaseCode: "rabies_suspected", escalation: false, ...UNTRIAGED },
     ]);
     const { repo, result } = run({ rabiesObservationStatus: "in_progress" });
     const r = await result;
@@ -710,7 +716,7 @@ describe("createSymptomObservedWriter — corroboration instead of a second sign
 
   it("an escalation IS folded into an earlier escalation", async () => {
     mockLockAndFindRecentSignals.mockResolvedValue([
-      { id: existingId, diseaseCode: "rabies_suspected", escalation: true },
+      { id: existingId, diseaseCode: "rabies_suspected", escalation: true, ...UNTRIAGED },
     ]);
     const { flush, result } = run({ rabiesObservationStatus: "in_progress" });
     const r = await result;
@@ -723,12 +729,103 @@ describe("createSymptomObservedWriter — corroboration instead of a second sign
 
   it("a recent signal for ANOTHER disease does not fold this one", async () => {
     mockLockAndFindRecentSignals.mockResolvedValue([
-      { id: existingId, diseaseCode: "leptospirosis", escalation: false },
+      { id: existingId, diseaseCode: "leptospirosis", escalation: false, ...UNTRIAGED },
     ]);
     const { result } = run({});
     const r = await result;
     if (!r.ok) throw new Error(r.error);
     expect(r.signalEventIds).toHaveLength(1);
     expect(r.corroboratedSignalEventIds).toEqual([]);
+  });
+
+  it("a signal somebody acted on (signal_link) never absorbs a new report", async () => {
+    mockLockAndFindRecentSignals.mockResolvedValue([
+      {
+        id: existingId,
+        diseaseCode: "rabies_suspected",
+        escalation: false,
+        linked: true,
+        sourceSeverity: null,
+      },
+    ]);
+    const { result } = run({});
+    const r = await result;
+    if (!r.ok) throw new Error(r.error);
+    expect(r.signalEventIds).toHaveLength(1);
+    expect(r.corroboratedSignalEventIds).toEqual([]);
+    expect(mockRouteOutbreakSignalNotifications).toHaveBeenCalledTimes(1);
+  });
+
+  it("a vet intake recording critical condition raises its own signal", async () => {
+    mockLockAndFindRecentSignals.mockResolvedValue([
+      { id: existingId, diseaseCode: "rabies_suspected", escalation: false, ...UNTRIAGED },
+    ]);
+    const { result } = run({ vetGeneralCondition: "critical" });
+    const r = await result;
+    if (!r.ok) throw new Error(r.error);
+    expect(r.signalEventIds).toHaveLength(1);
+    expect(r.corroboratedSignalEventIds).toEqual([]);
+  });
+});
+
+describe("signalToCorroborate — when a report may fold", () => {
+  const signal = (over: Partial<RecentSignal> = {}): RecentSignal => ({
+    id: "s-new",
+    diseaseCode: "leptospirosis",
+    escalation: false,
+    linked: false,
+    sourceSeverity: "moderate",
+    ...over,
+  });
+  const report = (over: Partial<NewReportState> = {}): NewReportState => ({
+    escalation: false,
+    severity: null,
+    ...over,
+  });
+
+  it("folds into an open, untriaged signal when nothing says it got worse", () => {
+    expect(signalToCorroborate([signal()], "leptospirosis", report())?.id).toBe("s-new");
+    expect(
+      signalToCorroborate([signal()], "leptospirosis", report({ severity: "moderate" }))?.id,
+    ).toBe("s-new");
+    expect(signalToCorroborate([signal()], "leptospirosis", report({ severity: "mild" }))?.id).toBe(
+      "s-new",
+    );
+    expect(
+      signalToCorroborate([signal()], "leptospirosis", report({ vetGeneralCondition: "fair" }))?.id,
+    ).toBe("s-new");
+  });
+
+  it("never folds into a linked signal, whatever the case status", () => {
+    expect(signalToCorroborate([signal({ linked: true })], "leptospirosis", report())).toBeNull();
+  });
+
+  it("looks only at the NEWEST signal: an older untriaged one never absorbs after a linked one", () => {
+    const recent = [signal({ id: "s-new", linked: true }), signal({ id: "s-old" })];
+    expect(signalToCorroborate(recent, "leptospirosis", report())).toBeNull();
+  });
+
+  it("a higher severity is a worsening", () => {
+    expect(
+      signalToCorroborate([signal()], "leptospirosis", report({ severity: "severe" })),
+    ).toBeNull();
+  });
+
+  it("a severity against a source that had none is not comparable — do not fold", () => {
+    expect(
+      signalToCorroborate(
+        [signal({ sourceSeverity: null })],
+        "leptospirosis",
+        report({ severity: "mild" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("a vet's poor or critical general condition is a worsening on its own", () => {
+    for (const c of ["poor", "critical"] as const) {
+      expect(
+        signalToCorroborate([signal()], "leptospirosis", report({ vetGeneralCondition: c })),
+      ).toBeNull();
+    }
   });
 });

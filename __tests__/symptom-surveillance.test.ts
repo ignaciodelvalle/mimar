@@ -11,10 +11,10 @@
 // in chip-match.test.ts) to avoid the Next.js request context requirement.
 
 import { createClient } from "@supabase/supabase-js";
-import { and, eq } from "drizzle-orm";
+import { and, eq, like } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { db, notifications, ownerships, petEvents, pets, profiles } from "@/db";
+import { caseEvents, cases, db, notifications, ownerships, petEvents, pets, profiles } from "@/db";
 import { fetchSurveillanceSignals } from "@/lib/analytics/dashboards/surveillance";
 import { createSymptomObservedWriter } from "@/src/modules/events/application/writers";
 import {
@@ -42,6 +42,8 @@ let ownerUserId: string;
 let adminUserId: string;
 
 const insertedPetIds: string[] = [];
+/** Investigation fixtures this file inserts; deleted by prefix in afterAll. */
+const CASE_CODE_PREFIX = "CAS-SURVTEST-";
 
 // This suite covers the ADMIN-FALLBACK path — "no govt seeded for this
 // locality" — so it needs a jurisdiction no govt operator holds.
@@ -153,6 +155,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Investigation fixtures first (case_events cascade; case_events is
+  // append-only, so the delete runs under the override).
+  await withMutationOverride(async (tx) => {
+    await tx.delete(cases).where(like(cases.publicCode, `${CASE_CODE_PREFIX}%`));
+  });
+
   // Delete tracked pets (cascade removes ownerships and pet_events).
   for (const petId of insertedPetIds) {
     await withMutationOverride(async (tx) => {
@@ -369,6 +377,22 @@ describe("createSymptomObservedWriter — surveillance pipeline", () => {
       });
     }
 
+    function baseReport(pet: typeof pets.$inferSelect) {
+      return {
+        petId: pet.id,
+        petPublicToken: pet.publicToken,
+        petName: pet.name,
+        petSpecies: pet.species,
+        petJurisdictionCountry: pet.jurisdictionCountry,
+        petJurisdictionProvince: pet.jurisdictionProvince ?? null,
+        petJurisdictionLocality: pet.jurisdictionLocality ?? null,
+        recordedByUserId: ownerUserId,
+        eventAuthorship: ownerAuthorship,
+        freeText: RABIES_TEXT,
+        onsetAt: null,
+      };
+    }
+
     async function rabiesSignals(petId: string) {
       const rows = await db
         .select()
@@ -431,6 +455,66 @@ describe("createSymptomObservedWriter — surveillance pipeline", () => {
       ]);
       expect((vetSymptom.payload as Record<string, unknown>).reporter_role).toBe("vet");
       expect((signals[0].payload as Record<string, unknown>).reporter_role).toBe("owner");
+
+      // …and /gob sees it: the ORIGINAL signal's row carries the corroboration,
+      // read from the later symptom_observed (the signal was never touched).
+      const [row] = await kpiCountedSignals(pet.id);
+      expect(row.corroboration).toEqual({ reports: 1, byVet: 1 });
+    });
+
+    it("a signal whose investigation was CLOSED never absorbs a new report: new signal, new notice", async () => {
+      const pet = await insertTestPet(ownerUserId, "CLOSEDCASE");
+
+      const owner = await report(pet, "owner", new Date(Date.now() - 10 * DAY_MS));
+      if (!owner.ok) throw new Error(owner.error);
+      // Authorities opened an investigation from that signal and closed it.
+      const [closed] = await db
+        .insert(cases)
+        .values({
+          publicCode: `${CASE_CODE_PREFIX}${Date.now()}`,
+          caseKind: "outbreak_investigation",
+          primarySubjectKind: "general",
+          status: "closed",
+          closedReason: "resolved",
+          closedAt: new Date(Date.now() - 5 * DAY_MS),
+          openedReason: "Fixture: investigación cerrada sobre la señal",
+        })
+        .returning({ id: cases.id });
+      await db.insert(caseEvents).values({
+        caseId: closed.id,
+        entryType: "signal_link",
+        payload: { signal_event_id: owner.signalEventIds[0] },
+      });
+
+      const vet = await report(pet, "vet", new Date());
+      if (!vet.ok) throw new Error(vet.error);
+
+      expect(vet.corroboratedSignalEventIds).toEqual([]);
+      expect(vet.signalEventIds).toHaveLength(1);
+      expect(await rabiesSignals(pet.id)).toHaveLength(2);
+      expect(await authorityNotices(pet.id)).toHaveLength(2);
+    });
+
+    it("a report that says it got WORSE raises its own signal inside the window", async () => {
+      const pet = await insertTestPet(ownerUserId, "WORSE");
+      const at = (daysAgo: number) => new Date(Date.now() - daysAgo * DAY_MS);
+
+      const first = await createSymptomObservedWriter({
+        ...baseReport(pet),
+        severity: "mild",
+        now: at(3),
+      });
+      if (!first.ok) throw new Error(first.error);
+      const worse = await createSymptomObservedWriter({
+        ...baseReport(pet),
+        severity: "severe",
+        now: at(0),
+      });
+      if (!worse.ok) throw new Error(worse.error);
+
+      expect(worse.corroboratedSignalEventIds).toEqual([]);
+      expect(worse.signalEventIds).toHaveLength(1);
+      expect(await authorityNotices(pet.id)).toHaveLength(2);
     });
 
     it("outside the 30-day window the vet intake raises its own signal", async () => {

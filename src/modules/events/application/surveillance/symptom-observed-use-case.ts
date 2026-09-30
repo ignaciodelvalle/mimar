@@ -12,9 +12,10 @@
 //   - symptom_observed: PLAIN insert (NOT idempotent), with matched codes + alerted diseases.
 //   - Matcher is defensive: try/catch — failure sets empty results, NEVER blocks the insert.
 //   - Source-side dedup (2026-09-30, recent-outbreak-signals.ts): an alertable
-//       disease that already has an outbreak_signal for this pet inside the
-//       30-day window raises NOTHING new — it is recorded as
-//       `corroborated_signals` on the symptom_observed payload.
+//       disease whose newest outbreak_signal for this pet is inside the 30-day
+//       window, UNTRIAGED (no signal_link) and not outranked by this report's
+//       severity raises NOTHING new — it is recorded as `corroborated_signals`
+//       on the symptom_observed payload. Anything unclear raises a signal.
 //   - For each other alertable reportable disease:
 //       insert outbreak_signal (plain, system author) +
 //       routeOutbreakSignalNotifications +
@@ -89,6 +90,12 @@ export type CreateSymptomObservedWriterParams = {
    * the vet's act and stays outside the visit.
    */
   visitId?: string | null;
+  /**
+   * The vet's general condition at intake, when this report comes from one.
+   * Read only by the dedup guard: poor or critical is a worsening, so the
+   * report raises its own signal instead of corroborating an earlier one.
+   */
+  vetGeneralCondition?: "good" | "fair" | "poor" | "critical" | null;
   now?: Date;
 };
 
@@ -164,6 +171,7 @@ export async function createSymptomObservedWriter(
     clientIdempotencyKey,
     reporterRole = "owner",
     visitId = null,
+    vetGeneralCondition = null,
     now = new Date(),
   } = params;
 
@@ -217,7 +225,11 @@ export async function createSymptomObservedWriter(
       const corroborated: { disease_code: string; outbreak_signal_event_id: string }[] = [];
       const toSignal: typeof planned = [];
       for (const p of planned) {
-        const existing = signalToCorroborate(recent, p.d.disease_code, p.isRabiesEscalation);
+        const existing = signalToCorroborate(recent, p.d.disease_code, {
+          escalation: p.isRabiesEscalation,
+          severity,
+          vetGeneralCondition,
+        });
         if (existing) {
           corroborated.push({
             disease_code: p.d.disease_code,

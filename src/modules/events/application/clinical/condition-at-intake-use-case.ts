@@ -191,6 +191,9 @@ export async function recordConditionAtIntake(
           clientIdempotencyKey: key,
           reporterRole: "vet",
           visitId: visit.id,
+          // Poor or critical is a worsening: the dedup guard then raises a
+          // new signal instead of folding this into an earlier one.
+          vetGeneralCondition: fields.generalCondition,
           now,
         },
         {
