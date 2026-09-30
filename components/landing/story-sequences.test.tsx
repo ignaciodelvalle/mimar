@@ -374,6 +374,54 @@ describe("story sequences — motion allowed", () => {
   );
 });
 
+// PO 2026-09-30, second call: a visible one-line step caption + "n/total"
+// counter under the ‹ › controls, for all three animated chapters — and the
+// refugio merge that dropped its two identical-looking match-card steps into
+// one (7 steps → 6).
+describe("story sequences — the visible step caption", () => {
+  it("shows the current step's caption and updates it after a ‹ › click", () => {
+    const { chapter: c, index } = chapter("refugio");
+    const { container } = render(<SequenceChapter chapter={c} index={index} />);
+    const { next } = arrows(container);
+    expect(container.querySelector(".lp-seq-caption-text")?.textContent).toBe(
+      SHELTER_SEQUENCE.items[0]?.label,
+    );
+    fireEvent.click(next);
+    expect(container.querySelector(".lp-seq-caption-text")?.textContent).toBe(
+      SHELTER_SEQUENCE.items[1]?.label,
+    );
+  });
+
+  it.each(SEQUENCES)("$key: the counter reads n/total and tracks the step", ({ key, spec }) => {
+    const { chapter: c, index } = chapter(key);
+    const { container } = render(<SequenceChapter chapter={c} index={index} />);
+    const { next } = arrows(container);
+    expect(container.querySelector(".lp-seq-caption-count")?.textContent).toBe(
+      `1/${spec.items.length}`,
+    );
+    fireEvent.click(next);
+    expect(container.querySelector(".lp-seq-caption-count")?.textContent).toBe(
+      `2/${spec.items.length}`,
+    );
+  });
+
+  it("the refugio chapter merged its two identical-looking match steps: 6 steps, not 7", () => {
+    expect(SHELTER_SEQUENCE.total).toBe(6);
+    expect(SHELTER_SEQUENCE.items).toHaveLength(6);
+  });
+
+  it.each(SEQUENCES)(
+    "$key: no two consecutive steps render identical device markup",
+    ({ spec }) => {
+      for (let i = 1; i < spec.total; i++) {
+        const prev = renderToStaticMarkup(spec.device(i - 1, false));
+        const curr = renderToStaticMarkup(spec.device(i, false));
+        expect(curr).not.toBe(prev);
+      }
+    },
+  );
+});
+
 // PO 2026-09-30: "un color de carcasa distinto por persona".
 describe("case colours — one per person", () => {
   const css = readFileSync(join(__dirname, "..", "..", "app", "landing.css"), "utf8");

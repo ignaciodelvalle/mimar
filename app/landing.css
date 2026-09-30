@@ -3399,6 +3399,39 @@ html:has([data-landing-root]) {
   background: var(--color-ln-azul);
 }
 
+/* The visible step caption, under the ‹ › controls (PO 2026-09-30, second
+   call): a "n/total" counter plus the current step's line. The text fades
+   in on each step change — respecting reduced motion through the media
+   query, not a JS flag, so it degrades the same way with or without the
+   chapter's own animation. */
+.lp .lp-seq-caption {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 10px 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-ln-ink-2);
+}
+.lp .lp-seq-caption-count {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  color: var(--color-ln-mute);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lp .lp-seq-caption-text {
+    animation: lp-seq-caption-fade var(--motion-fast) var(--ease-editorial) both;
+  }
+}
+@keyframes lp-seq-caption-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* Case colours — one per person (PO 2026-09-30, "un color de carcasa
    distinto por persona"). The phone's case is a bezel drawn OVER the
    screen's edge (::after), so the frame's size never moves; the tablet's

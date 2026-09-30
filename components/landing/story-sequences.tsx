@@ -203,10 +203,9 @@ function SequencedChapter({
             Capítulo {index + 1} · {chapter.moment}
           </div>
           <h3 className="lp-display lp-h-sub lp-ch-title">{chapter.title}</h3>
-          {/* No visible lead or step labels (PO 2026-09-30: "sin
-              descripción"); the device tells the story. The device mock is
-              aria-hidden, so a screen reader still gets the chapter's lead
-              and the current step, here. */}
+          {/* No visible chapter lead (PO 2026-09-30: "sin descripción") — the
+              device tells the story. The device mock is aria-hidden, so a
+              screen reader still gets the chapter's lead here. */}
           <p className="sr-only">{chapter.lead}</p>
           <fieldset className="lp-seq-nav" aria-label={`Pasos del capítulo ${index + 1}`}>
             <StepButton
@@ -235,8 +234,17 @@ function SequencedChapter({
               <Icon name="chevron-right" size="sm" decorative />
             </StepButton>
           </fieldset>
-          <p className="sr-only" aria-live={manual ? "polite" : "off"}>
-            Paso {activeItem + 1} de {spec.items.length}: {current?.label}
+          {/* The visible step caption (PO 2026-09-30, second call): one line
+              under the ‹ › controls, plus a "n/total" counter. It doubles as
+              the aria-live carrier (only "polite" once the visitor has taken
+              the controls, same as before) so nothing announces twice. */}
+          <p className="lp-seq-caption" aria-live={manual ? "polite" : "off"}>
+            <span className="lp-seq-caption-count" aria-hidden="true">
+              {activeItem + 1}/{spec.items.length}
+            </span>
+            <span key={activeItem} className="lp-seq-caption-text">
+              {current?.label}
+            </span>
           </p>
         </div>
         <div className="lp-ch-device lp-seq-device" ref={ref}>
@@ -503,11 +511,11 @@ export const VET_SEQUENCE: SequenceSpec = sequence({
   total: VET_DONE + 1,
   stepMs: 1900,
   items: [
-    { label: `Busca a ${PAMPA.name} con el código de su credencial.`, at: VET_FOUND },
-    { label: "Anota lo que hizo, con sus palabras.", at: VET_TYPE },
-    { label: "miMAR reconoce que es una vacuna.", at: VET_READ },
-    { label: "El formulario llega completado; lo valida.", at: VET_FORM },
-    { label: "Queda firmado con su matrícula.", at: VET_DONE },
+    { label: `Busca a ${PAMPA.name} por su código.`, at: VET_FOUND },
+    { label: "Anota con sus palabras.", at: VET_TYPE },
+    { label: "miMAR reconoce la vacuna.", at: VET_READ },
+    { label: "El formulario llega completo.", at: VET_FORM },
+    { label: "Firmado con su matrícula.", at: VET_DONE },
   ],
   actor: () => "vet",
   screen: (step, animate) => <VetScreen step={step} animate={animate} />,
@@ -722,11 +730,11 @@ export const LOST_SEQUENCE: SequenceSpec = sequence({
   total: LOST_POSTER + 1,
   stepMs: 1900,
   items: [
-    { label: "Un vecino escanea su QR con la cámara del celular.", at: LOST_SCAN },
+    { label: "Un vecino escanea el QR.", at: LOST_SCAN },
     { label: `Ve que ${PAMPA.name} está perdida.`, at: LOST_PAGE },
-    { label: `Le deja un mensaje a ${PAMPA_OWNER_NAME}, sin cuenta ni app.`, at: LOST_SENT },
-    { label: `${PAMPA_OWNER_NAME} recibe el aviso al instante.`, at: LOST_OWNER },
-    { label: "El cartel con su QR, el mismo que escaneó el vecino.", at: LOST_POSTER },
+    { label: `Le deja un mensaje a ${PAMPA_OWNER_NAME}.`, at: LOST_SENT },
+    { label: `${PAMPA_OWNER_NAME} recibe el aviso.`, at: LOST_OWNER },
+    { label: "El cartel lleva el mismo QR.", at: LOST_POSTER },
   ],
   actor: (step) => (step >= LOST_OWNER ? "owner" : "neighbour"),
   screen: (step, animate) => {
@@ -777,14 +785,20 @@ function IntakeChipScreen() {
 }
 
 /**
- * 2-3 · The chip match card (app/org/[orgToken]/intake/match/…/MatchConfirmationCard.tsx).
+ * 2 · The chip match card, shown and confirmed in one step (merged from the
+ * old two static "pressed"/unpressed screens, PO 2026-09-30: they rendered
+ * identically under ‹ › since the press only ever read through motion).
+ * "Es la misma mascota" now animates its press with the same
+ * type-then-press pattern as the vet's own buttons (`lp-seq-late`, see
+ * VetScreen above): pressed only while `animate` plays.
+ * (app/org/[orgToken]/intake/match/…/MatchConfirmationCard.tsx).
  * Trimmed to 2 lines under the pet's name, not the card's real 4 (coordinator
  * review, round 3 — the fixed 3∶4 tablet frame has real height limits): the
  * explanatory sentence, the owner name and the last-known location are
  * dropped; species/breed/color/sex merge into one line. Nothing dropped was
  * asserted by a test.
  */
-function IntakeMatchScreen({ pressed }: { pressed: boolean }) {
+function IntakeMatchScreen({ animate }: { animate: boolean }) {
   return (
     <>
       <OpHead orgType="Refugio" orgName={SHELTER} page="Ingresos" />
@@ -799,7 +813,9 @@ function IntakeMatchScreen({ pressed }: { pressed: boolean }) {
           </span>
           <span className="lp-match-pill">Perdida</span>
         </div>
-        <span className={pressed ? "lp-vf-submit lp-vf-submit--pressed" : "lp-vf-submit"}>
+        <span
+          className={animate ? "lp-vf-submit lp-vf-submit--pressed lp-seq-late" : "lp-vf-submit"}
+        >
           Es la misma mascota
         </span>
       </div>
@@ -944,10 +960,14 @@ function OwnerHomeScreen() {
   );
 }
 
-const SHELTER_SCREENS: Array<() => ReactNode> = [
+// 7 steps → 6 (PO 2026-09-30): the old steps 2 and 3 were the SAME screen
+// (IntakeMatchScreen with pressed false, then true) — indistinguishable under
+// ‹ › since the press only ever read through motion. Merged into one step
+// (see IntakeMatchScreen above); every index below and OWNER_FROM shift down
+// by one accordingly.
+const SHELTER_SCREENS: Array<(animate: boolean) => ReactNode> = [
   () => <IntakeChipScreen />,
-  () => <IntakeMatchScreen pressed={false} />,
-  () => <IntakeMatchScreen pressed />,
+  (animate) => <IntakeMatchScreen animate={animate} />,
   () => <IntakeDoneScreen />,
   () => <OwnerNotifiedScreen />,
   () => <OwnerFoundScreen />,
@@ -955,25 +975,18 @@ const SHELTER_SCREENS: Array<() => ReactNode> = [
 ];
 // Exported so the device-frame guard test (and anything else that needs the
 // split) does not re-hardcode this index and drift from it.
-export const OWNER_FROM = 4;
+export const OWNER_FROM = 3;
 
 export const SHELTER_SEQUENCE: SequenceSpec = sequence({
   total: SHELTER_SCREENS.length,
   stepMs: 1700,
   items: [
-    { label: "El refugio lee su chip y lo carga en Ingresos.", at: 0 },
-    { label: "miMAR encuentra la coincidencia: está perdida.", at: 1 },
-    { label: "El refugio confirma: es la misma mascota.", at: 2 },
-    { label: "Registra el ingreso.", at: 3 },
-    { label: `${PAMPA_OWNER_NAME} recibe el aviso.`, at: 4 },
-    {
-      label: `${landingDate(FOUND.date)}: ${PAMPA_OWNER_NAME} la marca como encontrada.`,
-      at: 5,
-    },
-    {
-      label: `${PAMPA.name} está de vuelta con ${PAMPA_OWNER_NAME}, y su credencial vuelve a estar al día.`,
-      at: 6,
-    },
+    { label: "El refugio lee el chip.", at: 0 },
+    { label: "miMAR avisa: está perdida.", at: 1 },
+    { label: "Registra el ingreso.", at: 2 },
+    { label: `${PAMPA_OWNER_NAME} recibe el aviso.`, at: 3 },
+    { label: "La marca como encontrada.", at: 4 },
+    { label: `Vuelve con ${PAMPA_OWNER_NAME}.`, at: 5 },
   ],
   // The device itself switches with who is using it (PO 2026-09-29, and
   // again 2026-09-29 on captions: "sin tener que aclarar en cada caso" — no
@@ -982,9 +995,9 @@ export const SHELTER_SEQUENCE: SequenceSpec = sequence({
   // own tablet for its intake steps, then Martín's phone from OWNER_FROM on;
   // the tablet slides out and the phone slides in (PO 2026-09-30).
   actor: (step) => (step >= OWNER_FROM ? "owner" : "shelter"),
-  screen: (step) => {
+  screen: (step, animate) => {
     const render = SHELTER_SCREENS[step] ?? SHELTER_SCREENS[SHELTER_SCREENS.length - 1];
-    return render?.();
+    return render?.(animate);
   },
   slides: true,
 });
