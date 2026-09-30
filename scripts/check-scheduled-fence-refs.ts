@@ -126,19 +126,20 @@ export const REF_EXEMPT: Exemption[] = [
  * workflow absent from the default branch with no entry here also fails, so a
  * newly added nightly cannot quietly join the two below.
  */
-// EMPTY since 2026-08-28, and that emptiness is the point.
-//
-// Both entries — mobile-export-nightly.yml and panorama-qa-nightly.yml — were
-// cleared the only way an entry here can be cleared: `main` was moved to the
-// integration tip (`a3ec504c5`), so the two files reached the default branch and
-// their schedules became real. The fence caught its own staleness within minutes
-// of that push, in the reverse direction it was built to check, and named both
-// files. That reverse check earned its keep on the first occasion it had.
-//
 // Adding an entry here is not a way to silence a red. It asserts that a
 // scheduled workflow is ABSENT from `${DEFAULT_BRANCH}` — a claim the fence
 // verifies against the default branch and fails if untrue.
-export const NOT_ON_DEFAULT_BRANCH: Exemption[] = [];
+export const NOT_ON_DEFAULT_BRANCH: Exemption[] = [
+  {
+    workflow: "mirror-supabase-images.yml",
+    reason:
+      "Introduced on branch ci-image-mirror (2026-09-29) to mirror Supabase's " +
+      "public.ecr.aws images to GHCR after run 36640718326 hit ECR Public's " +
+      "anonymous-pull data-volume throttle. Not yet merged to main, so its " +
+      "`schedule:` trigger is not live yet — remove this entry in the same " +
+      "commit that merges it.",
+  },
+];
 
 /**
  * Scheduled workflows that deliberately ship WITHOUT `red-streak-alert`.

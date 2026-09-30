@@ -871,7 +871,16 @@ jobs:
         #
         # The action also retries a transient start after tearing the
         # half-started stack down, and still fails on the last attempt.
+        #
+        # `github-token` lets it try the GHCR image mirror before
+        # `public.ecr.aws` — see the dated comment block in that action's
+        # `action.yml` and `.github/workflows/mirror-supabase-images.yml`.
+        # No secret to provision: `github.token` is the job's own ambient
+        # `GITHUB_TOKEN`, already scoped `packages: read` by this repository's
+        # default workflow permissions.
         uses: ./.github/actions/supabase-start
+        with:
+          github-token: ${{ github.token }}
 
       - name: Extract Supabase env vars
         # Publishes the REAL anon key (and the rest of `supabase status -o env`)
@@ -1254,7 +1263,11 @@ jobs:
         # 0.0.0.0:54322 ... address already in use`. It is 1 of 90 stack-start
         # executions across the 45 most recent runs — hardening, not the reason
         # this job is red. The other 42 reds are in `Run Playwright e2e suite`.
+        #
+        # `github-token` — same reasoning as the vitest job's copy of this step.
         uses: ./.github/actions/supabase-start
+        with:
+          github-token: ${{ github.token }}
 
       - name: Extract Supabase env vars for runtime
         # Was an inline script AFTER db:bootstrap; now the shared composite

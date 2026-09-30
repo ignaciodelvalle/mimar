@@ -1,0 +1,279 @@
+name: Mirror Supabase images to GHCR
+
+# WHY THIS EXISTS (2026-09-29, run 36640718326)
+# ---------------------------------------------------------------------------
+# `.github/actions/supabase-start` pulls every Supabase service image from
+# `public.ecr.aws/supabase/*` (the CLI's hardcoded default registry — see
+# `GetRegistry()` / `defaultRegistry` in `internal/utils/docker.go` of the
+# pinned `supabase` CLI). That registry is AWS ECR Public, and GitHub-hosted
+# runners share a small pool of egress IPs against its anonymous-pull quota.
+# Run 36640718326 failed a "Start Supabase local stack" step with:
+#
+#   Error toomanyrequests: Data limit exceeded
+#
+# — not Docker Hub, not a rate limit on request COUNT but on anonymous-pull
+# DATA volume, and not something a `docker login` to Docker Hub could ever
+# touch (the supabase-start action's own comment block already documents
+# that a Docker Hub login changes nothing here).
+#
+# THE FIX: mirror the exact image set the pinned CLI needs to
+# `ghcr.io/<owner>/supabase/<image>:<tag>`, authenticated with the calling
+# workflow's own `GITHUB_TOKEN` — no new account, no new secret, no PO
+# action. `.github/actions/supabase-start` then tries that mirror first and
+# only falls back to `public.ecr.aws` if the mirror doesn't have what it
+# needs, so this can never make a CI run WORSE than today.
+#
+# WHY THE IMAGE LIST IS DISCOVERED, NOT HARDCODED
+# ---------------------------------------------------------------------------
+# The Supabase CLI has no `--dry-run` / `--print-images` flag (checked
+# against `cmd/start.go` for the pinned version) and resolves each service's
+# exact image:tag from internal, per-release constants keyed by
+# `supabase/config.toml`'s `db.major_version` — there is no CLI-version-proof
+# way to compute those tags from outside the CLI. Hardcoding them here would
+# repeat the exact mistake this repo already paid for once: the `inbucket`
+# entry in `supabase-start`'s own `exclude` default silently went stale after
+# an upstream rename to `mailpit` (see that action's long comment). So this
+# job asks the CLI directly: it runs the SAME `supabase start --exclude …`
+# ci.yml runs, against the untouched default registry, then reads back
+# `docker images` for whatever `public.ecr.aws/supabase/*` refs actually got
+# pulled. That list is exactly what `supabase-start` needs for THIS pinned
+# CLI version and THIS `major_version` — nothing guessed, nothing stale.
+#
+# WHY THE RESULT IS COMMITTED, NOT JUST PUSHED
+# ---------------------------------------------------------------------------
+# `.github/actions/supabase-start` needs to know which GHCR tag to PROBE
+# before touching `supabase start` (a probe that requires starting the stack
+# to learn the tag would defeat the point — it would have to hit
+# `public.ecr.aws` anyway). Since the CLI cannot report that tag without a
+# real start, this job writes the resolved list to a plain-text file next to
+# the action and commits it — a checked-in, diffable, versioned manifest the
+# action can read for free out of its own checkout, with a live
+# `docker buildx imagetools inspect` against GHCR as the real, self-healing
+# safety check (the file only says what SHOULD be there; the live inspect
+# confirms it actually IS).
+on:
+  workflow_dispatch: {}
+  schedule:
+    # Weekly, off-peak UTC. A CLI bump between runs is caught by the
+    # push-triggered run below; this is the "nothing changed but let's
+    # re-confirm the mirror is intact" sweep.
+    - cron: "27 4 * * 1"
+  push:
+    branches: [main]
+    paths:
+      # A `supabase` CLI bump (package.json/pnpm-lock.yaml) or a
+      # `db.major_version` bump (supabase/config.toml) both change which
+      # postgres tag `supabase start` resolves to.
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "supabase/config.toml"
+      - ".github/workflows/mirror-supabase-images.yml"
+
+# Only one mirror run touches the manifest file and GHCR tags at a time.
+concurrency:
+  group: mirror-supabase-images
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  mirror:
+    name: Mirror Supabase CLI's images to GHCR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # `schedule:` fires only from, and checks out, the default branch —
+          # `pnpm lint:sched-refs` (scripts/check-scheduled-fence-refs.ts)
+          # requires every scheduled workflow to pin it explicitly rather than
+          # rely on that default silently. Same reasoning as every other
+          # scheduled workflow in this repo (see mobile-export-nightly.yml).
+          ref: main
+
+      - name: Setup pnpm
+        # No `version:` input — see ci.yml's own comment: the version comes
+        # from the root package.json `packageManager` field.
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Read the shared --exclude default from supabase-start
+        # The exact same exclude set ci.yml's two jobs use, read out of the
+        # action's own input default so this file is never a second place
+        # that set has to be kept in sync by hand.
+        id: exclude
+        run: |
+          node - <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require("node:fs");
+          const yaml = fs.readFileSync(".github/actions/supabase-start/action.yml", "utf8");
+          const match = yaml.match(/exclude:[\s\S]*?default:\s*([^\n]+)/);
+          if (!match) {
+            throw new Error(
+              "could not find the `exclude` input's default in .github/actions/supabase-start/action.yml",
+            );
+          }
+          console.log(`list=${match[1].trim()}`);
+          NODE
+
+      - name: Start Supabase against the default registry
+        # Deliberately untouched: this is how we learn the exact image set,
+        # so it must resolve against `public.ecr.aws` like `supabase-start`
+        # does today. A small retry loop absorbs a transient
+        # `toomanyrequests` here too — this job runs far less often than
+        # every CI run, but it still shares the same throttled resource.
+        run: |
+          set -euo pipefail
+          attempt=1
+          max_attempts=4
+          backoff=15
+          until pnpm exec supabase start --exclude "${{ steps.exclude.outputs.list }}"; do
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "::error::supabase start failed on all ${max_attempts} attempt(s) while discovering the image list."
+              exit 1
+            fi
+            echo "::warning::supabase start attempt ${attempt}/${max_attempts} failed; retrying in ${backoff}s."
+            pnpm exec supabase stop --no-backup >/dev/null 2>&1 || true
+            sleep "$backoff"
+            backoff=$((backoff * 2))
+            attempt=$((attempt + 1))
+          done
+
+      - name: List the images this CLI version actually pulled
+        id: images
+        run: |
+          set -euo pipefail
+          docker images --format '{{.Repository}}:{{.Tag}}' \
+            | grep -E '^public\.ecr\.aws/supabase/' \
+            | sort -u > /tmp/supabase-images.txt
+          if [ ! -s /tmp/supabase-images.txt ]; then
+            echo "::error::no public.ecr.aws/supabase/* images found after supabase start — nothing to mirror."
+            exit 1
+          fi
+          echo "Images to mirror:"
+          cat /tmp/supabase-images.txt
+
+      - name: Stop the local stack
+        if: always()
+        run: pnpm exec supabase stop --no-backup
+
+      - name: Log in to GHCR
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Mirror each image to GHCR (skip already-mirrored tags)
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          owner_lc="${OWNER,,}"
+          : > /tmp/mirrored-manifest.txt
+          while IFS= read -r src; do
+            name_tag="${src#public.ecr.aws/supabase/}"
+            dest="ghcr.io/${owner_lc}/supabase/${name_tag}"
+            echo "$name_tag" >> /tmp/mirrored-manifest.txt
+
+            if docker buildx imagetools inspect "$dest" >/dev/null 2>&1; then
+              echo "skip (already mirrored): $dest"
+              continue
+            fi
+
+            attempt=1
+            max_attempts=5
+            backoff=10
+            until docker buildx imagetools create --tag "$dest" "$src"; do
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "::error::failed to mirror ${src} -> ${dest} after ${max_attempts} attempt(s) (toomanyrequests or another registry error)."
+                exit 1
+              fi
+              echo "::warning::mirror attempt ${attempt}/${max_attempts} for ${src} failed; retrying in ${backoff}s."
+              sleep "$backoff"
+              backoff=$((backoff * 2))
+              attempt=$((attempt + 1))
+            done
+            echo "mirrored: ${src} -> ${dest}"
+          done < /tmp/supabase-images.txt
+
+      - name: Update the committed manifest supabase-start reads
+        id: manifest
+        run: |
+          set -euo pipefail
+          manifest=".github/actions/supabase-start/mirrored-images.txt"
+          {
+            echo "# Generated by .github/workflows/mirror-supabase-images.yml — do not hand-edit."
+            echo "# One \`name:tag\` per line, exactly as resolved by the pinned supabase CLI"
+            echo "# (see package.json) against supabase/config.toml's db.major_version, for the"
+            echo "# --exclude set .github/actions/supabase-start uses. Read by that action to"
+            echo "# know which GHCR tag to probe before overriding the image registry."
+            sort -u /tmp/mirrored-manifest.txt
+          } > "$manifest"
+
+          if git diff --quiet -- "$manifest"; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit the updated manifest
+        if: steps.manifest.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/actions/supabase-start/mirrored-images.txt
+          git commit -m "ci(supabase-mirror): update mirrored image manifest"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+  # `pnpm lint:sched-refs` (scripts/check-scheduled-fence-refs.ts) requires
+  # every `schedule:`-triggered workflow to wire this or list a reasoned
+  # exemption — CONTRIBUTING.md's rule that a scheduled fence's first-ever
+  # red run must not go unnoticed just because there was no prior green to
+  # transition from. A silently-red mirror is the same failure mode this
+  # whole file exists to close: `supabase-start` would fall back to
+  # `public.ecr.aws` forever and nobody would know why until the ECR
+  # throttle bit again.
+  alert:
+    name: Alert on a red streak
+    needs: mirror
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Local composite actions resolve from the checked-out tree, so this
+          # job needs the same pin as the one above.
+          ref: main
+
+      - name: Open or update the alert issue
+        uses: ./.github/actions/red-streak-alert
+        with:
+          workflow: mirror-supabase-images.yml
+          outcome: ${{ needs.mirror.result }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: "[mirror] Supabase image mirror to GHCR is failing"
+          # `pnpm lint:sched-refs` requires this explicitly whenever a job
+          # wiring the alert also skips a step behind `if: steps.<id>...` —
+          # here, "Commit the updated manifest"'s `steps.manifest.outputs.
+          # changed` guard. That guard only skips a COMMIT when nothing
+          # changed; the actual audit (start the stack, discover the image
+          # list, mirror to GHCR) is unconditional, so `success` always means
+          # the mirror genuinely ran. Hardcoded "true" is honest here, unlike
+          # a guard that skips the audit itself.
+          audited: "true"

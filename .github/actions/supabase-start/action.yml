@@ -76,6 +76,17 @@ description: >-
 # log `Retrying after 4s: ...` and then succeed. This wrapper deliberately does
 # not duplicate that; it retries the START, which the CLI does not.
 #
+# UPDATE 2026-09-29 (run 36640718326) — the throttle got worse: `Error
+# toomanyrequests: Data limit exceeded` on `public.ecr.aws/supabase/*`, ECR
+# Public's anonymous-pull DATA-volume ceiling, shared by every GitHub-hosted
+# runner's small IP pool. Retrying the pull (which the CLI already does) or
+# retrying the start (which this file does) both eventually lose to that —
+# neither changes how much anonymous traffic the runner's IP has already
+# spent. The fix that actually moves the needle is not logging into a
+# registry the CLI doesn't even talk to; it's giving the CLI a DIFFERENT,
+# authenticated registry to pull from. See "MIRROR-FIRST" below and
+# `.github/workflows/mirror-supabase-images.yml`, which populates it.
+#
 # THE INVARIANT THIS FILE MUST NEVER LOSE
 # ---------------------------------------------------------------------------
 # The final attempt's exit status is the step's exit status. A retry wrapper
@@ -124,6 +135,18 @@ inputs:
     description: Seconds to wait after the first failure; doubled each retry.
     required: false
     default: "15"
+  github-token:
+    description: >-
+      A token with `packages: read` on this repository (pass `${{ github.token
+      }}` — no new secret needed), used to `docker login ghcr.io` and probe
+      `.github/workflows/mirror-supabase-images.yml`'s mirror before falling
+      back to `public.ecr.aws`. Left empty (the default), this step behaves
+      exactly as it did before the mirror existed: no login, no probe,
+      straight to `public.ecr.aws`. See the dated comment block above for why
+      this exists and `mirrored-images.txt` next to this file for what the
+      mirror currently carries.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -134,21 +157,79 @@ runs:
         SUPABASE_EXCLUDE: ${{ inputs.exclude }}
         SUPABASE_ATTEMPTS: ${{ inputs.attempts }}
         SUPABASE_BACKOFF: ${{ inputs.backoff-seconds }}
+        SUPABASE_GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
         # Declared, not inherited. The runner already applies `-e -o pipefail`
         # to every `shell: bash` step; saying so here is what stops the next
         # reader from believing a failing command is a value this loop reads.
         set -euo pipefail
 
+        # MIRROR-FIRST (2026-09-29, run 36640718326) — see the dated comment
+        # block above this file's `inputs:` for the full story. This section
+        # is a no-op when `github-token` is empty (`__tests__/supabase-start-
+        # action.test.ts` never sets `SUPABASE_GITHUB_TOKEN`, so every
+        # existing assertion runs this exact code path — REGISTRY stays
+        # `public.ecr.aws` and nothing below changes shape or output).
+        #
+        # Every fallible lookup here ends in `|| true` or sits inside an `if`
+        # condition on purpose: under this script's own `set -e`, a failed
+        # command SUBSTITUTION used in a bare assignment (unlike one on the
+        # left of `||`) still kills the step — and a mirror that is merely
+        # incomplete must never be able to abort the step before the retry
+        # loop, with its battle-tested `public.ecr.aws` fallback, even runs.
+        REGISTRY="public.ecr.aws"
+        if [ -n "${SUPABASE_GITHUB_TOKEN:-}" ]; then
+          if printf '%s' "${SUPABASE_GITHUB_TOKEN}" \
+            | docker login ghcr.io -u "${GITHUB_ACTOR:-github-actions}" --password-stdin >/dev/null 2>&1
+          then
+            MANIFEST=".github/actions/supabase-start/mirrored-images.txt"
+            PG_TAG=""
+            if [ -f "$MANIFEST" ]; then
+              PG_TAG=$(grep -v '^#' "$MANIFEST" 2>/dev/null | grep '^postgres:' | head -n1 | cut -d: -f2- || true)
+            fi
+            if [ -n "$PG_TAG" ]; then
+              OWNER_LC=$(printf '%s' "${GITHUB_REPOSITORY_OWNER:-}" | tr '[:upper:]' '[:lower:]' || true)
+              if [ -n "$OWNER_LC" ] \
+                && docker buildx imagetools inspect "ghcr.io/${OWNER_LC}/supabase/postgres:${PG_TAG}" >/dev/null 2>&1
+              then
+                REGISTRY="ghcr.io/${OWNER_LC}"
+                echo "Supabase image mirror found (ghcr.io/${OWNER_LC}/supabase/postgres:${PG_TAG}); pulling from GHCR instead of public.ecr.aws."
+              else
+                echo "::warning::GHCR mirror probe for postgres:${PG_TAG} did not resolve; pulling from public.ecr.aws as before. Run the \"Mirror Supabase images to GHCR\" workflow (workflow_dispatch) to (re)populate it."
+              fi
+            else
+              echo "::warning::${MANIFEST} has no \`postgres:\` entry yet; pulling from public.ecr.aws as before. Run the \"Mirror Supabase images to GHCR\" workflow once to create it."
+            fi
+          else
+            echo "::warning::\`docker login ghcr.io\` failed; pulling from public.ecr.aws as before."
+          fi
+        fi
+
         BACKOFF="${SUPABASE_BACKOFF}"
         attempt=1
+        mirror_fallback_used=0
         while [ "$attempt" -le "${SUPABASE_ATTEMPTS}" ]; do
           # The ONLY errexit-safe form of "run it and keep the status": the left
           # of `||` is exempt, and `$?` here is unambiguously the child's.
           RC=0
-          pnpm exec supabase start --exclude "${SUPABASE_EXCLUDE}" || RC=$?
+          SUPABASE_INTERNAL_IMAGE_REGISTRY="$REGISTRY" pnpm exec supabase start --exclude "${SUPABASE_EXCLUDE}" || RC=$?
           if [ "$RC" -eq 0 ]; then
             exit 0
+          fi
+
+          # One free fallback, spent before touching the caller's attempt
+          # budget or backoff: if the GHCR mirror path just failed for the
+          # FIRST time, drop back to `public.ecr.aws` and retry immediately.
+          # This is what keeps "never worse than today" true even if the
+          # probe above was a false positive for some image other than
+          # postgres (the mirror workflow copies the whole set atomically, so
+          # this should be rare, but the probe only checked one image).
+          if [ "$REGISTRY" != "public.ecr.aws" ] && [ "$mirror_fallback_used" -eq 0 ]; then
+            echo "::warning::\`supabase start\` via the GHCR mirror failed (exit ${RC}); falling back to public.ecr.aws for the remaining attempt(s), at no cost to the retry budget."
+            pnpm exec supabase stop --no-backup >/dev/null 2>&1 || true
+            REGISTRY="public.ecr.aws"
+            mirror_fallback_used=1
+            continue
           fi
 
           if [ "$attempt" -ge "${SUPABASE_ATTEMPTS}" ]; then
