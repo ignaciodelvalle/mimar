@@ -7,6 +7,8 @@
 // raises no signal and no notice of its own, so without this line it would be
 // invisible to the authority.
 
+import { pluralizeEs } from "@/lib/utils/format";
+
 export type SignalCorroboration = {
   /** symptom_observed rows that name the signal in `corroborated_signals`. */
   reports: number;
@@ -21,7 +23,7 @@ export type SignalCorroboration = {
  */
 export function corroborationLabel(c: SignalCorroboration): string | null {
   if (c.reports <= 0) return null;
-  const count = c.reports === 1 ? "+1 reporte" : `+${c.reports} reportes`;
+  const count = `+${c.reports} ${pluralizeEs(c.reports, "reporte")}`;
   return c.byVet > 0
     ? `Corroborado por veterinario · ${count} del mismo episodio`
     : `${count} del mismo episodio`;
