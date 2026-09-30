@@ -359,6 +359,32 @@ describe("generateTravelExport — guards", () => {
     expect(allowed.ok).toBe(true);
   });
 
+  it("returns not_found to a USER holding shelter_custody — allow-list, not 'not a caretaker'", async () => {
+    // A neighbour keeping a found animal. The role is legal on the person path
+    // (only the ORG-held shelter_custody is capped per pet) and is not a titular.
+    const SHELTER_HOLDER = "eeeeeeee-1111-0000-0000-000000000024";
+    await db
+      .insert(profiles)
+      .values({ id: SHELTER_HOLDER, displayName: "Travel Shelter Holder", role: "owner" })
+      .onConflictDoNothing({ target: profiles.id });
+    await db.insert(ownerships).values({
+      petId: travelPetId,
+      ownerUserId: SHELTER_HOLDER,
+      role: "shelter_custody",
+      startedAt: new Date(),
+    });
+
+    const supabaseMock = buildSupabaseMock();
+    mockCreateClient.mockResolvedValue(supabaseMock as never);
+    mockRequireUserOrRedirect.mockResolvedValue({
+      supabase: supabaseMock,
+      user: { id: SHELTER_HOLDER },
+    } as never);
+
+    const refused = await generateTravelExport(TRAVEL_PET_TOKEN);
+    expect(refused).toEqual({ ok: false, error: "not_found" });
+  });
+
   it("returns no_movement_context when the pet has zero movement_recorded events", async () => {
     const supabaseMock = buildSupabaseMock();
     mockCreateClient.mockResolvedValue(supabaseMock as never);

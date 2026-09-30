@@ -40,7 +40,7 @@ import {
   profiles,
 } from "@/db";
 import { loadSharedLibretaEvents } from "@/lib/infra/libreta-share-events";
-import { canAccessTravel } from "@/lib/infra/pet-access";
+import { canAccessTravel, resolvePetHolderAccess } from "@/lib/infra/pet-access";
 import { isTravelPrivateEvent, notTravelPrivateClause } from "@/lib/infra/travel-private-events";
 import { amendEvent } from "@/src/modules/events/application/amendment/amend-event";
 import { readEventRow } from "@/src/modules/events/application/read/load-pet-event-detail";
@@ -51,6 +51,8 @@ import { withMutationOverride } from "./_helpers/db-overrides";
 
 const OWNER_ID = "7a5e0f1e-0000-4000-8000-00000000a001";
 const CARETAKER_ID = "7a5e0f1e-0000-4000-8000-00000000a002";
+// A USER-held shelter_custody row: a neighbour keeping a found animal.
+const SHELTER_HOLDER_ID = "7a5e0f1e-0000-4000-8000-00000000a003";
 const PET_TOKEN = `TRAVELPRIV-${Date.now()}`;
 
 const OWNER_AUTHORSHIP = {
@@ -88,6 +90,7 @@ function isTravelRowOrItsCorrection(row: { id: string; eventType: string; payloa
 beforeAll(async () => {
   await ensureUser(OWNER_ID, "travel-privacy-owner");
   await ensureUser(CARETAKER_ID, "travel-privacy-caretaker");
+  await ensureUser(SHELTER_HOLDER_ID, "travel-privacy-shelter-holder");
 
   [pet] = await db
     .insert(pets)
@@ -105,6 +108,7 @@ beforeAll(async () => {
   await db.insert(ownerships).values([
     { petId: pet.id, ownerUserId: OWNER_ID, role: "owner" },
     { petId: pet.id, ownerUserId: CARETAKER_ID, role: "caretaker" },
+    { petId: pet.id, ownerUserId: SHELTER_HOLDER_ID, role: "shelter_custody" },
   ]);
 
   const base = {
@@ -192,8 +196,11 @@ describe("canAccessTravel — who may read a trip", () => {
     expect(canAccessTravel("owner", "foster")).toBe(true);
   });
 
-  it("refuses a caretaker, the org path, and an unresolved role", () => {
+  it("refuses a caretaker, a user-held shelter_custody, the org path, and an unresolved role", () => {
     expect(canAccessTravel("owner", "caretaker")).toBe(false);
+    expect(canAccessTravel("owner", "shelter_custody")).toBe(false);
+    // Fails closed: a role nobody has classified is refused.
+    expect(canAccessTravel("owner", "some_future_role")).toBe(false);
     expect(canAccessTravel("org", null)).toBe(false);
     expect(canAccessTravel("owner", null)).toBe(false);
     expect(canAccessTravel(null, null)).toBe(false);
@@ -263,6 +270,46 @@ describe("non-titular surfaces show nothing of the trip", () => {
   it("the shared libreta a vet opens from a link", async () => {
     const shared = await loadSharedLibretaEvents(pet.id);
     expect(shared.filter(isTravelRowOrItsCorrection)).toEqual([]);
+  });
+
+  it("the libreta face read by a user holding shelter_custody, resolved as production does", async () => {
+    const access = await resolvePetHolderAccess(pet.publicToken, SHELTER_HOLDER_ID);
+    expect(access.kind).toBe("owner");
+    if (access.kind !== "owner") return;
+    expect(access.holderRole).toBe("shelter_custody");
+    const result = await getLibretaFaceData(
+      {
+        user: { id: SHELTER_HOLDER_ID },
+        pet,
+        accessPath: "owner",
+        organization: null,
+        holderRole: access.holderRole,
+      },
+      { signAttachments: false },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.past.filter(isTravelRowOrItsCorrection)).toEqual([]);
+    expect(result.data.past.map((e) => e.id)).toContain(vaccinationId);
+  });
+
+  it("the correction writer refuses a user holding shelter_custody", async () => {
+    const result = await amendEvent(
+      { id: SHELTER_HOLDER_ID },
+      { id: pet.id, name: pet.name, publicToken: pet.publicToken },
+      OWNER_AUTHORSHIP,
+      {
+        publicToken: pet.publicToken,
+        targetEventId: transportId,
+        reason: null,
+        changes: [{ field: "travel_date", old: "2026-12-22", new: "2027-01-05" }],
+      },
+    );
+    expect(result).toEqual({
+      ok: false,
+      code: "travel_private_target",
+      error: "Evento no encontrado.",
+    });
   });
 
   it("the correction writer refuses a caretaker with the not-found sentence", async () => {

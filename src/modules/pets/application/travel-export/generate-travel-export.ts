@@ -4,13 +4,13 @@
 //
 // Role gate: titular-only (R4.2/R5 — same strict ownership stance as PPP:
 // the pet must belong to the authenticated user via ownerships, no org path —
-// and, since viajes-fase-2 D8, no caretaker either).
+// and, since viajes-fase-2 D8, TRAVEL_TITULAR_ROLES only).
 //
 // Storage bucket `travel-exports` is OWNER OPS — created in Supabase Studio
 // before deploy, never from code (R5.2). If the bucket is missing, the upload
 // fails and the caller receives "storage_upload_failed".
 
-import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 
 import { auditLog, db, ownerships, petEvents, pets, profiles } from "@/db";
 import {
@@ -22,6 +22,7 @@ import {
 } from "@/lib/analytics/travel-exports";
 import { overlayAmendments } from "@/lib/infra/amendment";
 import { requireUserOrRedirect } from "@/lib/infra/auth-guards";
+import { TRAVEL_TITULAR_ROLES } from "@/lib/infra/travel-private-events";
 import { deriveTravelCompliance, deriveTravelContext } from "@/lib/projections/travel-compliance";
 import { type CorridorId, getCorridor } from "@/lib/reference/cross-border-corridors";
 import { formatDateTimeLegal } from "@/lib/utils/format";
@@ -37,11 +38,11 @@ export async function generateTravelExport(
   const { user } = await requireUserOrRedirect();
 
   // Ownership check: the pet must exist and the user must hold it as a TITULAR
-  // on the person path — owner, co-owner or foster, never a caretaker. The PDF
-  // carries the corridors and the CVI, which only a titular may read
-  // (viajes-fase-2, D8 — the same rule as canAccessTravel and
-  // holdsPetAsTravelTitular). A caretaker gets the same not_found as a pet
-  // that does not exist.
+  // on the person path — TRAVEL_TITULAR_ROLES (owner, co-owner, foster), never
+  // a caretaker or a user-held shelter_custody row. The PDF carries the
+  // corridors and the CVI, which only a titular may read (viajes-fase-2, D8 —
+  // the same allow-list as canAccessTravel and holdsPetAsTravelTitular).
+  // Anyone else gets the same not_found as a pet that does not exist.
   const [ownerRow] = await db
     .select({
       petId: pets.id,
@@ -58,7 +59,7 @@ export async function generateTravelExport(
         eq(pets.publicToken, petPublicToken),
         eq(ownerships.ownerUserId, user.id),
         isNull(ownerships.endedAt),
-        ne(ownerships.role, "caretaker"),
+        inArray(ownerships.role, [...TRAVEL_TITULAR_ROLES]),
       ),
     )
     .limit(1);

@@ -21,18 +21,40 @@
 // same shape `notReportedClause` uses.
 //
 // WHO MAY READ THEM: `canAccessTravel` in lib/infra/pet-access.ts — the person
-// path, and not as a caretaker (owner, co-owner, foster). A caretaker is often
+// path, in TRAVEL_TITULAR_ROLES only (owner, co-owner, foster). A caretaker is often
 // the very person keeping the animal while the household is away; an org
 // member reaches the pet through custody or a sponsorship, not through the
 // trip.
 //
 // Which reads carry it is fenced by __tests__/travel-private-read-coverage.test.ts.
 
-import { and, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
-import { db, ownerships, petEvents } from "@/db";
+import { type OwnershipRole, db, ownerships, petEvents } from "@/db";
 
 type DbOrTx = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * The ownership roles that may read a pet's trips — an ALLOW-list that fails
+ * closed. Shared by canAccessTravel (lib/infra/pet-access.ts),
+ * holdsPetAsTravelTitular below and the travel PDF's ownership join, so the
+ * three cannot drift.
+ *
+ * Not "everyone but a caretaker": `shelter_custody` can be held by a USER — a
+ * neighbour keeping a found or stray animal for a while — and that person has
+ * no business reading where the real owner is travelling. A role added to
+ * `ownershipRoleEnum` later is refused here until someone decides otherwise.
+ */
+export const TRAVEL_TITULAR_ROLES = [
+  "owner",
+  "co_owner",
+  "foster",
+] as const satisfies readonly OwnershipRole[];
+
+/** Whether an ownership role is one of TRAVEL_TITULAR_ROLES. */
+export function isTravelTitularRole(role: string | null | undefined): boolean {
+  return role != null && (TRAVEL_TITULAR_ROLES as readonly string[]).includes(role);
+}
 
 /** The `movement_recorded` sub-kinds only a titular may read. */
 export const TRAVEL_PRIVATE_SUB_KINDS = ["transport_recorded", "cvi_issued"] as const;
@@ -93,8 +115,9 @@ export function notTravelPrivateClause() {
  * the database form of `canAccessTravel`, for a caller that was not handed
  * the resolved access (the correction writer, which three doors share).
  *
- * Live rows only; a caretaker row does not count, and neither does an
- * organization's row (it has no `owner_user_id`).
+ * Live rows only, in TRAVEL_TITULAR_ROLES only: a caretaker or a user-held
+ * shelter_custody row does not count, and neither does an organization's row
+ * (it has no `owner_user_id`).
  */
 export async function holdsPetAsTravelTitular(
   userId: string,
@@ -109,7 +132,7 @@ export async function holdsPetAsTravelTitular(
         eq(ownerships.petId, petId),
         eq(ownerships.ownerUserId, userId),
         isNull(ownerships.endedAt),
-        ne(ownerships.role, "caretaker"),
+        inArray(ownerships.role, [...TRAVEL_TITULAR_ROLES]),
       ),
     )
     .limit(1);

@@ -28,7 +28,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { TRAVEL_PRIVATE_SUB_KINDS } from "@/lib/infra/travel-private-events";
+import { TRAVEL_PRIVATE_SUB_KINDS, TRAVEL_TITULAR_ROLES } from "@/lib/infra/travel-private-events";
 
 const ROOT = process.cwd();
 const CLAUSE_MODULE = "lib/infra/travel-private-events.ts";
@@ -179,9 +179,24 @@ describe("travel-private read coverage", () => {
     expect(src).toContain('code: "travel_private_target"');
   });
 
-  it("the travel PDF refuses a caretaker in its ownership join", () => {
-    const src = read("src/modules/pets/application/travel-export/generate-travel-export.ts");
-    expect(src).toContain('ne(ownerships.role, "caretaker")');
+  it("the travel-titular roles are one fail-closed allow-list: owner, co_owner, foster", () => {
+    expect([...TRAVEL_TITULAR_ROLES].sort()).toEqual(["co_owner", "foster", "owner"]);
+  });
+
+  it("all three travel gates use that allow-list, none a caretaker deny", () => {
+    const gates = [
+      "lib/infra/pet-access.ts", // canAccessTravel
+      CLAUSE_MODULE, // holdsPetAsTravelTitular
+      "src/modules/pets/application/travel-export/generate-travel-export.ts",
+    ];
+    for (const file of gates) {
+      const src = read(file);
+      expect(src, file).toMatch(/TRAVEL_TITULAR_ROLES|isTravelTitularRole/);
+    }
+    expect(read(CLAUSE_MODULE)).not.toContain('ne(ownerships.role, "caretaker")');
+    expect(
+      read("src/modules/pets/application/travel-export/generate-travel-export.ts"),
+    ).not.toContain('ne(ownerships.role, "caretaker")');
   });
 
   it("a correction may not change a movement's sub_kind — the clause reads it raw", () => {
