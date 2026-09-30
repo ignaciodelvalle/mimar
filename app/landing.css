@@ -646,6 +646,15 @@
     var(--motion-deliberate);
   transform-style: flat;
   overflow: hidden;
+  /* Fixed outer box, front or back (PO 2026-09-30): both faces stack in the
+     SAME grid cell, so the implicit row sizes to the taller of the two and
+     the card never resizes — or shifts the page — when it flips. Simpler and
+     more robust than a per-breakpoint fixed height: it tracks whichever face
+     is actually taller at each viewport with no magic numbers to keep in
+     sync. Not the preserve-3d/backface-visibility stacking the FlipCard
+     comment above warns off — this is a flat grid overlap, and the turn's
+     rotateY still applies to the whole .lp-hcard as one plane. */
+  display: grid;
 }
 /* lost keeps a subtle border pulse (the old halo's data-status="lost" wink) */
 .lp.lp-motion .lp-hcard[data-tone="lost"] {
@@ -672,6 +681,8 @@
    white ground; only the credential front reads as tinted, same as the real
    app never tints anything past its masthead row either. */
 .lp .lp-hcard-front {
+  grid-area: 1 / 1;
+  min-width: 0;
   background: var(--color-ln-card);
   transition: background var(--motion-deliberate);
 }
@@ -689,15 +700,25 @@
   color: var(--color-ln-ink-2);
 }
 
-/* single-painted-face swap (mirrors FlipCard) — back hidden until data-face */
+/* single-painted-face swap (mirrors FlipCard) — both faces occupy the SAME
+   grid cell (see .lp-hcard's `display: grid` above) so the card's box is the
+   taller of the two at every viewport. `visibility` (not `display: none`)
+   keeps the inactive face contributing to that sizing while still pulling it
+   out of the accessibility tree and the tab order, same as `display: none`
+   did before. */
 .lp .lp-hcard-back {
-  display: none;
+  grid-area: 1 / 1;
+  min-width: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 .lp .lp-hcard[data-face="back"] .lp-hcard-front {
-  display: none;
+  visibility: hidden;
+  pointer-events: none;
 }
 .lp .lp-hcard[data-face="back"] .lp-hcard-back {
-  display: block;
+  visibility: visible;
+  pointer-events: auto;
 }
 
 /* ---- band: the document's guilloche head ---------------------------------
@@ -983,8 +1004,10 @@
   color: var(--htone, var(--color-ln-ok));
   font-weight: 700;
   font-size: var(--text-md);
-  /* Reserved: every state's row is one line, and the height is pinned so the
-     one-shot cycle never moves anything below the card. */
+  /* Every state's copy is short enough to be exactly one line at every
+     supported width (measured 390/820/1280px — PO 2026-09-30); min-height
+     only floors the row so the one-shot cycle never moves anything below the
+     card, it does not reserve room for a 2nd line. */
   min-height: 38px;
   transition: background var(--motion-deliberate), color var(--motion-deliberate);
   animation: lp-hstate-in var(--motion-slow) ease both;
@@ -1000,29 +1023,6 @@
 .lp .lp-hcard-ctx > span:last-child {
   font-weight: 500;
 }
-/* A narrow card wraps the longest row ("En tratamiento · Plan en el
-   historial") to two lines; reserve both, so the cycle still never moves
-   anything below the card. */
-@container (max-width: 380px) {
-  .lp .lp-hcard-ctx {
-    min-height: 58px;
-  }
-}
-/* The vigilancia row ("En observación antirrábica · Mordedura · control de 10
-   días", 59 chars) runs ~60% longer than the previous longest ("En
-   tratamiento · Plan en el historial", 37 chars) — long enough to need 2 lines
-   even at the card's FULL width, and a 3rd at the narrowest supported phones,
-   where the other three states still fit their default reservations. Scoped
-   to this one tone so the shorter states keep their existing, tighter rows. */
-.lp .lp-hcard[data-tone="vigilancia"] .lp-hcard-ctx {
-  min-height: 58px;
-}
-@container (max-width: 380px) {
-  .lp .lp-hcard[data-tone="vigilancia"] .lp-hcard-ctx {
-    min-height: 78px;
-  }
-}
-
 /* miMAR's machine-readable strip — two lines of the card's own format (see
    heroMrzLines in landing-content.ts), set like the foot of an identity
    document: paper ground, dashed tear line, tracked mono. Full-strength ink-2:
@@ -1102,13 +1102,6 @@
   font-size: var(--text-sm);
   white-space: nowrap;
 }
-.lp .lp-hcard-libfoot {
-  padding: 11px 16px 13px;
-  font-size: var(--text-sm);
-  color: var(--color-ln-mute);
-  font-style: italic;
-}
-
 /* curiosity-hook microcopy — sits between the credential and the state dots,
    pointing at the same real QR the card already renders (PO-locked wording,
    landing microcopy train). */

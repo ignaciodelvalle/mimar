@@ -125,7 +125,12 @@ const HERO_STATES: HeroState[] = [
     key: "observacion",
     badge: "EN OBSERVACIÓN ANTIRRÁBICA",
     tone: "vigilancia",
-    row: "Mordedura · control de 10 días",
+    // Shortened (PO 2026-09-30): "Mordedura · control de 10 días" — and even
+    // "Mordedura · 10 días" — pushed the notice past one line at 390px
+    // alongside the (already long) state word. "Mordedura" alone still says
+    // the truthful cause; the 10-day control period lives in the pet's own
+    // history once the credential is real.
+    row: "Mordedura",
   },
   { key: "tratamiento", badge: "EN TRATAMIENTO", tone: "sick", row: "Plan en el historial" },
 ];
@@ -519,9 +524,6 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                         <span className="lp-hcard-libstamp">FIRMADA</span>
                       </div>
                     ))}
-                    <div className="lp-hcard-libfoot">
-                      …y toda su historia, asiento por asiento.
-                    </div>
                   </div>
                 </div>
               </div>

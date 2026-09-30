@@ -36,6 +36,17 @@ describe("<LandingHero> — curiosity-hook microcopy", () => {
   });
 });
 
+describe("<LandingHero> — libreta back face", () => {
+  // "…y toda su historia, asiento por asiento." was removed (PO 2026-09-30):
+  // the three vet-signed rows already make the point without a closing line.
+  it("does not carry the removed 'toda su historia' closing line", () => {
+    const { container } = render(
+      <LandingHero qrSvg={SAMPLE_SVG} publicHref="/p/DIM-PAMP-0001" publicToken="DIM-PAMP-0001" />,
+    );
+    expect(container.textContent).not.toContain("toda su historia");
+  });
+});
+
 describe("<LandingHero> — credential controls keep their accessible contract", () => {
   // Guards the FlipButton extraction (2026-08-02, citizen button-ratchet
   // offset) and the A1/A2 hit-area work: the CSS pads the targets, but only
@@ -167,9 +178,10 @@ describe("<LandingHero> — the state reads in words, not only colour (M4)", () 
     fireEvent.click(within(toolbar).getByRole("button", { name: "EN OBSERVACIÓN ANTIRRÁBICA" }));
     // Same wording lib/ui/pet-situation.ts uses for the real credential's
     // "observacion-antirrabica" situation — the landing must not invent its own.
-    expect(stateLine()).toHaveTextContent(
-      "En observación antirrábica · Mordedura · control de 10 días",
-    );
+    // Row shortened to "Mordedura" (PO 2026-09-30): the fuller
+    // "Mordedura · control de 10 días" pushed the notice past one line at
+    // 390px — see the one-line-notice fitness test below.
+    expect(stateLine()).toHaveTextContent("En observación antirrábica · Mordedura");
     const card = document.querySelector('[data-section="hero-credential"]');
     expect(card).toHaveAttribute("data-tone", "vigilancia");
   });

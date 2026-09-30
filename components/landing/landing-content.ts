@@ -22,7 +22,7 @@
 
 import type { IconName } from "@/components/Icon";
 import { BRANDING } from "@/lib/ui/branding";
-import { ageFromDateOfBirth, sexLabel, speciesLabel } from "@/lib/utils/format";
+import { ageFromDateOfBirth, speciesLabel } from "@/lib/utils/format";
 import {
   OWNER_NAME,
   PAMPA_EVENTS,
@@ -223,16 +223,17 @@ export const PAMPA = {
 /**
  * The hero card's identity fields. Same labels and the same words as the
  * public credential the hero QR opens (app/(public)/p/[publicToken]/page.tsx
- * builds its breed line from speciesLabel + breed and its sex from sexLabel,
- * and prints "Microchip · Sí/No"), all read from the seed's pet row and
- * libreta — so the card and the page it links to cannot disagree about Pampa.
- * Age rather than the birth date (PO, 2026-09-25): computed from the seed's
- * date of birth, so the card stays true as Pampa gets older.
+ * builds its breed line from speciesLabel + breed and prints
+ * "Microchip · Sí/No"), all read from the seed's pet row and libreta — so the
+ * card and the page it links to cannot disagree about Pampa.
+ *
+ * "Sexo" and "Edad" were removed (PO 2026-09-30): the front had four fields
+ * across two rows and only needed one line's worth of identity to make its
+ * point; species/breed and microchip are the two that a person scanning a
+ * lost-pet QR actually needs.
  */
 export const HERO_CREDENTIAL_FIELDS: ReadonlyArray<{ label: string; value: string }> = [
   { label: "Especie y raza", value: `${speciesLabel(PAMPA_PET.species)} · ${PAMPA_PET.breed}` },
-  { label: "Sexo", value: sexLabel(PAMPA_PET.sex) },
-  { label: "Edad", value: PAMPA.age },
   {
     label: "Microchip",
     value: PAMPA_EVENTS.some((e) => e.eventType === "microchip_implanted") ? "Sí" : "No",

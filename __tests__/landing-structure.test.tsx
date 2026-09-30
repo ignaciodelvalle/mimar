@@ -167,9 +167,17 @@ describe("landing hero — the credential is miMAR's own document", () => {
   it("carries the issuing line and the identity fields the public credential prints", () => {
     const html = renderHero();
     expect(html).toContain("Credencial miMAR");
-    for (const label of ["Especie y raza", "Sexo", "Edad", "Microchip"]) {
+    for (const label of ["Especie y raza", "Microchip"]) {
       expect(html, label).toContain(`<dt>${label}</dt>`);
     }
+  });
+
+  // "Sexo" and "Edad" were removed from the front (PO 2026-09-30): the field
+  // grid only needs the two facts a scanner actually uses.
+  it("no longer carries Sexo or Edad on the front", () => {
+    const html = renderHero();
+    expect(html).not.toContain("<dt>Sexo</dt>");
+    expect(html).not.toContain("<dt>Edad</dt>");
   });
 
   it("prints a machine-readable strip in miMAR's format, built from the real token", () => {
