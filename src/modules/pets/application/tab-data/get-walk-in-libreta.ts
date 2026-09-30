@@ -83,10 +83,12 @@ export async function getWalkInLibreta(petId: string): Promise<WalkInLibreta> {
     if (e.eventType !== "event_amended") continue;
     const target = (e.payload as Record<string, unknown> | null)?.target_event_id;
     if (typeof target !== "string") continue;
-    (correctionAuthors[target] ??= []).push({
+    const authors = correctionAuthors[target] ?? [];
+    authors.push({
       authorOrganizationId: e.authorOrganizationId ?? null,
       recordedByUserId: e.recordedByUserId ?? null,
     });
+    correctionAuthors[target] = authors;
   }
 
   const eventIds = projected.map((e) => e.id);

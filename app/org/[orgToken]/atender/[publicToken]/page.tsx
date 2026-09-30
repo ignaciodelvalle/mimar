@@ -25,7 +25,10 @@ import {
 import { VISIT_MODALITY_LABELS } from "@/lib/domain/visit-labels";
 import { withDbBudget } from "@/lib/infra/db-budget";
 import { formatDateShort, formatTime, speciesLabel } from "@/lib/utils/format";
-import { getWalkInLibreta } from "@/src/modules/pets/application/tab-data/get-walk-in-libreta";
+import {
+  type WalkInLibreta,
+  getWalkInLibreta,
+} from "@/src/modules/pets/application/tab-data/get-walk-in-libreta";
 
 import { CloseObservationForm } from "@/app/admin/observaciones/[publicToken]/CloseObservationForm";
 import { formatObservationEnd } from "@/src/modules/surveillance/application/professional-close-observation";
@@ -40,7 +43,7 @@ import {
   atenderRecordDeathInObservationAction,
 } from "../actions";
 import { atenderAmendEventAction } from "../amend/actions";
-import { resolveAtenderPet } from "../atender-access";
+import { type AtenderAccessSuccess, resolveAtenderPet } from "../atender-access";
 import { fetchPendingDeclaredEvents } from "../atender-declared-events";
 import { findCurrentAtenderVisit, listAtenderAppointments } from "../atender-visit";
 import { atenderCloseVisitAction, atenderStartVisitAction } from "../visit-actions";
@@ -75,6 +78,27 @@ async function loadObservationEnd(petId: string): Promise<Date | null> {
   if (!started) return null;
   const payload = (started.payload ?? {}) as Record<string, unknown>;
   return resolveObservationDeadline(payload.observation_until, started.occurredAt);
+}
+
+/**
+ * What WalkInHistory needs to offer "Corregir" (portal-vet-p0): the rows this
+ * clinic may correct, and the org door bound to this org and pet. Nothing for
+ * a signer without a validated matrícula, or when the history did not load.
+ */
+function walkInAmendProps(
+  history: WalkInLibreta | null,
+  access: AtenderAccessSuccess,
+  orgToken: string,
+) {
+  if (!history || !access.signer.matriculaVerified) return undefined;
+  return {
+    eligibleIds: walkInAmendableIds(history, {
+      userId: access.user.id,
+      organizationId: access.organizationId,
+      signerVerified: access.signer.matriculaVerified,
+    }),
+    submitAction: atenderAmendEventAction.bind(null, orgToken, access.pet.publicToken),
+  };
 }
 
 export default async function AtenderSignPage({
@@ -306,18 +330,7 @@ export default async function AtenderSignPage({
           publicToken={pet.publicToken}
           viewerUserId={access.user.id}
           now={ahora}
-          amend={
-            history && signer.matriculaVerified
-              ? {
-                  eligibleIds: walkInAmendableIds(history, {
-                    userId: access.user.id,
-                    organizationId: access.organizationId,
-                    signerVerified: signer.matriculaVerified,
-                  }),
-                  submitAction: atenderAmendEventAction.bind(null, orgToken, pet.publicToken),
-                }
-              : undefined
-          }
+          amend={walkInAmendProps(history, access, orgToken)}
         />
 
         <PendingSignaturesCard
