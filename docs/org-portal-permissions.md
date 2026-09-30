@@ -41,7 +41,8 @@ Authorization is **grant-based**: capabilities are approved grants stored in `or
 
 - `admin` — implicit grant of ALL capabilities universally.
 - `coordinator` — implicit grant of a coordinator baseline set (`COORDINATOR_IMPLICIT_CAPS` in `domain/capabilities.ts`).
-- `vet_individual` — implicit `VET_INDIVIDUAL_BASELINE_CAPS` (`appointment.manage`) always; `VET_CREDENTIAL_CAPS` (`pet.read_held`, `event.write`, `intake.create`, `bite.report`) only while the member's own matrícula is verified. Clinical capabilities are never granted to a `vet_individual` — approved rows for them are ignored while the matrícula is not valid. Other approved grants apply as usual.
+- `vet_individual` — implicit `VET_INDIVIDUAL_BASELINE_CAPS` (`appointment.manage`) always; `VET_CREDENTIAL_CAPS` (`pet.read_held`, `event.write`, `intake.create`, `bite.report`) only while the member's own matrícula is verified. Clinical capabilities are never granted to a `vet_individual` — approved rows for them are ignored while the matrícula is not valid, and none of the five writers (grant, request, event-write toggle, invite acceptance, and approving an old pending request) creates or approves one. Other approved grants apply as usual.
+  - **Accepted privacy tradeoff.** Because `appointment.manage` is baseline, an invited vet whose matrícula is not yet verified can open the agenda (`app/org/[orgToken]/agenda/page.tsx`), which shows each booking owner's first name and phone. That is the same exposure a receptionist holding `appointment.manage` already has, bounded to the member's own organization and to an authenticated, active membership; no clinical data is reachable without the verified matrícula. Recorded in the AGENTS.md privacy checklist (§6e).
 - `member`, `volunteer`, `foster` — only explicit `status='approved'` grants from `organization_capability_grants`.
 
 ## API

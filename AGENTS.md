@@ -1779,6 +1779,10 @@ Una tabla `lost_feed_item_reports` habría sido la otra opción defendible y se 
 
 Un consultorio walk-in puede leer hasta 100 entradas de la libreta sanitaria de **cualquier** mascota cuyo código DIM se le muestre — sin tener custodia — porque `resolveAtenderPet` ya lo autorizó a escribir sobre ella (`event.write` en la organización); ver `src/modules/pets/application/tab-data/get-walk-in-libreta.ts` (`WALK_IN_WINDOW`).
 
+### 6e. Agenda de un veterinario/a sin matrícula verificada — contacto del dueño, dentro de su clínica (tradeoff aceptado, portal-vet-p0)
+
+Desde portal-vet-p0 (D10), `appointment.manage` es la base de **todo** miembro `vet_individual`, verificado o no (`VET_INDIVIDUAL_BASELINE_CAPS` en `src/modules/organizations/domain/capabilities.ts`): llevar la agenda no es un acto clínico. La agenda (`app/org/[orgToken]/agenda/page.tsx`) muestra, por turno, el **nombre de pila y el teléfono del dueño**. Entonces una veterinaria invitada cuya matrícula todavía no está verificada ve el contacto de los dueños **de los turnos de su propia clínica**. Es la misma exposición que ya tiene una recepcionista con `appointment.manage`, y queda acotada a la misma organización y a un miembro autenticado con membresía activa: no alcanza turnos de otra clínica ni ningún dato clínico, que siguen atados a la matrícula verificada (`VET_CREDENTIAL_CAPS`). Aceptado a sabiendas; el mismo tradeoff está anotado en `docs/org-portal-permissions.md`.
+
 ### 7. Subject rights (Ley 25.326)
 
 | Right | Enforcement |

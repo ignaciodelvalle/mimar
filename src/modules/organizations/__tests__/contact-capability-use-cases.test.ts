@@ -578,6 +578,85 @@ describe("decideCapability", () => {
       "Otro permiso ya está activo para este miembro.",
     );
   });
+  // portal-vet-p0 D10 — the fifth writer. An OLD pending request for a
+  // clinical capability on a vet_individual (filed before request-capability
+  // refused it) must not be approved: the row would grant nothing and still
+  // leave an "approved" row, an audit entry and a notification behind.
+  describe("a credential-gated capability on a vet_individual", () => {
+    const vetState = {
+      role: "vet_individual",
+      approvedCapabilities: [],
+      vetCredentialValid: false,
+      active: true,
+    };
+    const decide = (repo: ReturnType<typeof makeRepo>, decision: "approved" | "denied") => {
+      const transaction = vi
+        .fn()
+        .mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => cb({}));
+      const result = decideCapability(
+        {
+          deciderId: "admin-1",
+          grantId: "grant-1",
+          decision,
+          reason: null,
+          active: activeOrg,
+          granted: new Set(["capability.grant"]),
+        },
+        { repo, transaction, isUniqueViolation },
+      );
+      return { result, transaction };
+    };
+
+    for (const capability of ["event.write", "pet.read_held", "intake.create", "bite.report"]) {
+      it(`refuses approving a pending ${capability} request; the row stays pending`, async () => {
+        const repo = makeRepo({
+          findGrant: vi.fn().mockResolvedValue(makeGrant({ capability })),
+          readEventWriteState: vi.fn().mockResolvedValue(vetState),
+        });
+        const { result, transaction } = decide(repo, "approved");
+        expect(await result).toEqual({
+          ok: false,
+          error:
+            "Los permisos clínicos de un veterinario/a no se conceden: salen de su propia matrícula verificada.",
+        });
+        expect(transaction).not.toHaveBeenCalled();
+        expect(repo.updateGrant).not.toHaveBeenCalled();
+        expect(repo.setGrantStatus).not.toHaveBeenCalled();
+        expect(repo.insertAuditLog).not.toHaveBeenCalled();
+      });
+    }
+
+    it("still lets the admin DENY that request", async () => {
+      const repo = makeRepo({
+        findGrant: vi.fn().mockResolvedValue(makeGrant({ capability: "event.write" })),
+        readEventWriteState: vi.fn().mockResolvedValue(vetState),
+      });
+      const { result } = decide(repo, "denied");
+      expect((await result).ok).toBe(true);
+      expect(repo.updateGrant).toHaveBeenCalledWith(
+        "grant-1",
+        expect.objectContaining({ status: "denied" }),
+        expect.anything(),
+      );
+    });
+
+    it("still approves a capability that is NOT credential-gated for a vet_individual", async () => {
+      const repo = makeRepo({
+        findGrant: vi.fn().mockResolvedValue(makeGrant({ capability: "member.invite" })),
+        readEventWriteState: vi.fn().mockResolvedValue(vetState),
+      });
+      const { result } = decide(repo, "approved");
+      expect((await result).ok).toBe(true);
+    });
+
+    it("still approves event.write for a plain member", async () => {
+      const repo = makeRepo({
+        findGrant: vi.fn().mockResolvedValue(makeGrant({ capability: "event.write" })),
+      });
+      const { result } = decide(repo, "approved");
+      expect((await result).ok).toBe(true);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,11 @@
 // the form — the org whose panel is open, never the session default) +
 // getGrantedCapabilities. Caller passes the resolved `active` context and `granted` set.
 
-import { isValidCapability } from "@/src/modules/organizations/domain/capabilities";
+import {
+  CREDENTIAL_GATED_GRANT_REFUSAL_COPY,
+  credentialGatedGrantRefusal,
+  isValidCapability,
+} from "@/src/modules/organizations/domain/capabilities";
 import { canDecide } from "@/src/modules/organizations/domain/membership-state";
 import { assertNotSelfGrant } from "@/src/modules/organizations/domain/self-grant";
 import type {
@@ -148,6 +152,23 @@ export async function decideCapability(
   const beneficiaryUserId = await repo.findGrantMemberUserId(grant.membershipId);
   const fourEyes = assertNotSelfGrant(input.deciderId, beneficiaryUserId);
   if (!fourEyes.ok) return { ok: false, error: fourEyes.error };
+
+  // portal-vet-p0 D10, the fifth writer: approving an OLD pending request for
+  // a clinical capability on a vet_individual. The four other writers refuse
+  // to create such a row; this one used to approve it. The row granted nothing
+  // (resolveGrantedCaps drops it while the matrícula is invalid) but left a
+  // misleading "approved" row, an audit entry and a notification behind. Same
+  // helper, same admin copy; the request stays pending, nothing is written.
+  // Deny and revoke stay open — they only ever take a permission away.
+  if (input.decision === "approved") {
+    const beneficiary = await repo.readEventWriteState(grant.membershipId);
+    const credentialRefusal = beneficiary
+      ? credentialGatedGrantRefusal(beneficiary.role, capability)
+      : null;
+    if (credentialRefusal) {
+      return { ok: false, error: CREDENTIAL_GATED_GRANT_REFUSAL_COPY[credentialRefusal] };
+    }
+  }
 
   const pendingNotifications: NewNotification[] = [];
 
