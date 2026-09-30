@@ -31,7 +31,7 @@ import { EstadoConsole } from "./story-screens";
 import {
   ACTORS,
   LOST_OWNER_FROM,
-  LOST_POSTER_STEP,
+  LOST_SCAN_STEP,
   LOST_SEQUENCE,
   OWNER_FROM,
   POSTER_QR_MATRIX,
@@ -516,13 +516,19 @@ describe("chapter endings (M5)", () => {
   const finalScreen = (spec: typeof SHELTER_SEQUENCE) =>
     renderToStaticMarkup(spec.device(spec.total - 1, false));
 
-  it("chapter 4 ends with Pampa home and AL DÍA, after the confirm dialog", () => {
+  it("chapter 4 ends on the owner's native libreta, after the confirm dialog", () => {
     const last = finalScreen(SHELTER_SEQUENCE);
-    // Copy review 2026-09-30: "Volvió a casa" is not a label any product
-    // surface prints; the screen says the same fact without it.
-    expect(last).toContain("Encontrada · devuelta a su dueño");
+    // The owner's ledger as the native app draws it (landing-vs-app audit
+    // 2026-09-30): the real asiento titles, newest first, dated as of that day.
+    const found = last.indexOf("Marcada como encontrada");
+    const intake = last.indexOf("Ingreso al refugio");
+    const lost = last.indexOf("Marcada como perdida");
+    expect(found).toBeGreaterThan(-1);
+    expect(intake).toBeGreaterThan(found);
+    expect(lost).toBeGreaterThan(intake);
+    expect(last).toContain("hoy · ");
+    expect(last).not.toContain("Encontrada · devuelta a su dueño");
     expect(last).not.toContain("Volvió a casa");
-    expect(last).toContain("AL DÍA");
     expect(last).not.toContain("¿Confirmás?");
     // The confirm is still one step before it.
     const confirm = renderToStaticMarkup(
@@ -534,12 +540,15 @@ describe("chapter endings (M5)", () => {
   });
 
   // Chapter 3 (PO 2026-09-30): the neighbour's phone scans, reads the
-  // "perdida" page and leaves a message; Martín's phone gets the
-  // notification, then ends on the poster whose QR was scanned.
+  // "perdida" page and leaves a message; Martín's phone (the native app) gets
+  // the notification, then ends on the poster card of its "Modo perdida".
   it("chapter 3: the neighbour's phone hands over to the owner's, and ends on the poster", () => {
     const last = finalScreen(LOST_SEQUENCE);
+    expect(last).toContain("Modo perdida");
     expect(last).toContain("Cartel para imprimir");
-    expect(last).toContain("lp-poster-qr");
+    expect(last).toContain("Compartir o imprimir el cartel");
+    // The native card draws no poster preview.
+    expect(last).not.toContain("lp-poster-qr");
     const notif = renderToStaticMarkup(LOST_SEQUENCE.device(LOST_OWNER_FROM, false));
     expect(notif).toContain("¡Encontraron a Pampa!");
     expect(notif).toContain("Alguien dejó un mensaje:");
@@ -570,7 +579,7 @@ describe("chapter endings (M5)", () => {
   // PO 2026-09-30 (second call): the poster's QR is a DECORATIVE mini QR — a
   // fixed 13x13 matrix that reads as a QR with three finder squares, not a
   // scannable code. The scannable QR is the hero card's.
-  it("the poster's QR is a decorative 13x13 matrix with three finder squares", () => {
+  it("the poster's QR (on the neighbour's camera) is a decorative 13x13 matrix with three finder squares", () => {
     expect(POSTER_QR_MATRIX).toHaveLength(13);
     for (const row of POSTER_QR_MATRIX) expect(row).toMatch(/^[01]{13}$/);
     const finder = ["11111", "10001", "10101", "10001", "11111"];
@@ -580,8 +589,8 @@ describe("chapter endings (M5)", () => {
     expect(block(0, 8)).toEqual(finder);
     expect(block(8, 0)).toEqual(finder);
 
-    const posterHtml = renderToStaticMarkup(LOST_SEQUENCE.device(LOST_POSTER_STEP, false));
-    const qrIdx = posterHtml.indexOf("lp-poster-qr");
+    const posterHtml = renderToStaticMarkup(LOST_SEQUENCE.device(LOST_SCAN_STEP, false));
+    const qrIdx = posterHtml.indexOf("lp-cam-qr");
     expect(qrIdx).toBeGreaterThan(-1);
     const qrSvg = posterHtml.slice(qrIdx, posterHtml.indexOf("</svg>", qrIdx));
     // Decorative: hidden from assistive tech, promising nothing it can't do.

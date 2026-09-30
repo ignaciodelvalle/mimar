@@ -44,12 +44,43 @@
 // settled — from then on the list is its own height again, and a later
 // resize reflows it naturally.
 
-import { PAMPA } from "@/components/landing/landing-content";
-import type { LibretaEvent } from "@/components/landing/landing-content";
-import { LnStatusFlag, LnVstamp } from "@/components/ui/StatusFlag";
-import type { EventType } from "@/db/schema";
-import { eventTypeLabel } from "@/lib/utils/format";
+import { type LibretaEvent, asientoRelative } from "@/components/landing/landing-content";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+
+/**
+ * One asiento, as the native owner app draws it
+ * (apps/mobile/src/pets/LibretaScreen.tsx:350-378, EntryCard): the mono
+ * eyebrow, the serif title, "{relativo} · {fecha}", the fact rows
+ * (FactRow, :389-404) and the provenance line. `now` is the moment the
+ * screen depicts — the relative half is measured from it, as the app
+ * measures it from the phone's clock.
+ */
+export function NativeAsiento({
+  entry,
+  now,
+  className = "lp-nat-entry",
+}: {
+  entry: LibretaEvent;
+  now: Date;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <span className="lp-nat-kind">{entry.kind}</span>
+      <span className="lp-lib-t">{entry.title}</span>
+      <span className="lp-nat-when">
+        {asientoRelative(entry.date, now)} · {entry.whenAbsolute}
+      </span>
+      {entry.facts.map((f) => (
+        <span className="lp-nat-fact" key={f.key}>
+          <span>{f.key}</span>
+          <b className={f.mono ? "lp-nat-mono" : undefined}>{f.value}</b>
+        </span>
+      ))}
+      <span className="lp-nat-prov">{entry.provenance}</span>
+    </div>
+  );
+}
 
 /** Interval between two consecutive entries entering. */
 const STEP_MS = 700;
@@ -69,7 +100,7 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-export function LibretaFeed({ events }: { events: LibretaEvent[] }) {
+export function LibretaFeed({ events, now }: { events: LibretaEvent[]; now: Date }) {
   const containerRef = useRef<HTMLDivElement>(null);
   // SSR + first client render: everything already "played" — the full list,
   // static, no animation classes. Only flipped to a staged reveal client-side
@@ -185,37 +216,15 @@ export function LibretaFeed({ events }: { events: LibretaEvent[] }) {
         ]
           .filter(Boolean)
           .join(" ");
-        const stampClass = ["ml-auto", animate && played && "lp-lib-stamp--in"]
-          .filter(Boolean)
-          .join(" ");
+        // The native card has no stamp: its provenance line ("Verificado por
+        // …") is what says who signed (LibretaScreen.tsx:370).
         return (
-          <div className={rowClass} key={`${e.type}-${e.year}-${e.month}-${e.title}`}>
-            <div className="lp-lib-when">
-              <div className="lp-lib-y">{e.year}</div>
-              <div className="lp-lib-m">{e.month}</div>
-            </div>
-            <div className="lp-lib-spine">
-              <span className="lp-lib-dot" data-t={e.tone} />
-            </div>
-            <div>
-              <div className="lp-lib-t">
-                {e.title}
-                {e.flag && <LnStatusFlag status={e.flag} sex={PAMPA.sexEnum} />}
-                {e.stamp && (
-                  <span className={stampClass}>
-                    {/* Historical log entry — "signed", not "currently valid"
-                        (label override same mechanism LnHero uses for AL DÍA). */}
-                    <LnVstamp variant={e.stamp} label="FIRMADO" />
-                  </span>
-                )}
-              </div>
-              <div className="lp-lib-meta">{e.meta}</div>
-              <div className="lp-lib-foot">
-                <span className="lp-lib-type">{eventTypeLabel(e.type as EventType)}</span>
-                <span className="lp-lib-by">{e.by}</span>
-              </div>
-            </div>
-          </div>
+          <NativeAsiento
+            key={`${e.type}-${e.date}-${e.title}`}
+            entry={e}
+            now={now}
+            className={`lp-nat-entry ${rowClass}`}
+          />
         );
       })}
     </div>

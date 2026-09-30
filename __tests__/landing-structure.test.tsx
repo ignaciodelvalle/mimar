@@ -191,7 +191,7 @@ describe("landing hero — the credential is miMAR's own document", () => {
   it("carries the issuing line and the identity fields the public credential prints", () => {
     const html = renderHero();
     expect(html).toContain("Credencial miMAR");
-    for (const label of ["Especie y raza", "Microchip"]) {
+    for (const label of ["Raza", "Microchip"]) {
       expect(html, label).toContain(`<dt>${label}</dt>`);
     }
   });
@@ -447,23 +447,25 @@ describe("story — CastFila + 6 chapters + rail", () => {
     expect(estado).not.toContain("planillas");
   });
 
-  it("libreta screen shows real system event types (es-AR labels), append-only footer", () => {
+  it("libreta screen shows the native asientos (es-AR labels), no invented footer", () => {
     const html = renderToStaticMarkup(<StorySection />);
-    // Event types are the REAL system event types (landing-content.ts), but
-    // rendered through eventTypeLabel() — raw snake_case must never leak to
-    // the public landing (review 19-i18n, item #3).
+    // The native libreta's own eyebrows and titles (components/pet-profile/
+    // asiento-fields.ts toAsientoView, via the native LibretaScreen) — raw
+    // snake_case must never leak to the public landing (review 19-i18n, #3).
     expect(html).toContain("Mascota registrada");
-    expect(html).toContain("Vacuna administrada");
+    expect(html).toContain("Vacuna · obligatoria");
     expect(html).toContain("Ingreso al refugio");
     expect(html).not.toContain("pet_registered");
     expect(html).not.toContain("vaccination_administered");
     expect(html).not.toContain("shelter_intake_recorded");
     // Límites honestos A.1 wording (2026-09-24): "nada se edita, nada se borra"
-    // overclaimed — account erasure replaces the user's own free text.
-    // Copy review 2026-09-30 (D1): the mechanism explanation was cut from this
-    // badge; it now carries only the trust claim, same words as the FAQ row.
-    expect(html).toContain("Historial que solo se agrega");
+    // overclaimed — account erasure replaces the user's own free text. The
+    // landing's own "Historial que solo se agrega" badge was not product copy
+    // (landing-vs-app audit 2026-09-30), and the native face's note says the
+    // events are never deleted, so no footer is drawn at all.
+    expect(html).not.toContain("Historial que solo se agrega");
     expect(html).not.toContain("nada se borra");
+    expect(html).not.toContain("no se editan ni se borran");
   });
 });
 
@@ -651,8 +653,8 @@ describe("copy review 2026-09-30 — removed overclaims stay removed", () => {
     const html = reviewedSections();
     expect(html).not.toContain("Volvió a casa");
     expect(html).not.toContain("vuelve a casa");
-    // The honest replacement is present where the removed copy used to be.
-    expect(html).toContain("Encontrada · devuelta a su dueño");
+    // The replacement is the native libreta's own asiento title.
+    expect(html).toContain("Marcada como encontrada");
   });
 
   it("the 'asiento nuevo' mechanic is not repeated across the narrative", () => {

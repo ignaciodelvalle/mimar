@@ -23,24 +23,34 @@
 // never changes.
 
 import { Icon } from "@/components/Icon";
+import { NativeAsiento } from "@/components/landing/LibretaFeed";
 import { PhoneFrame } from "@/components/landing/PhoneFrame";
 import { StepButton } from "@/components/landing/StepButton";
 import { TabletFrame } from "@/components/landing/TabletFrame";
 import type { LandingChapter } from "@/components/landing/landing-content";
 import {
+  LIBRETA_EVENTS,
   PAMPA,
   PAMPA_FIRST_DOSE,
   PAMPA_OWNER_NAME,
+  PAMPA_SHELTER,
   PAMPA_VET,
-  landingDate,
   pampaEvent,
+  seedInstant,
 } from "@/components/landing/landing-content";
-import { AppHead, OpHead } from "@/components/landing/story-screens";
+import { AppHead, NativeLibretaBand, OpHead } from "@/components/landing/story-screens";
 import { useChapterSequence } from "@/components/landing/use-chapter-sequence";
 import { LnBadge } from "@/components/ui/Badge";
 import { LnPetPhoto } from "@/components/ui/RegRow";
-import { LnStatusFlag } from "@/components/ui/StatusFlag";
-import { eventTypeLabel, sexLabel, situationLabelForSex } from "@/lib/utils/format";
+import {
+  AR_TIME_ZONE,
+  formatDate,
+  foundPossessivePhrase,
+  pluralizeEs,
+  sexLabel,
+  sightingPhrase,
+  situationLabelForSex,
+} from "@/lib/utils/format";
 import { speciesLabel } from "@/lib/utils/species";
 import { PAMPA_CHIP, PAMPA_PET, PAMPA_TOKEN } from "@/scripts/flagship-pampa-data";
 import {
@@ -85,10 +95,9 @@ const POSTER_QR_PATH = POSTER_QR_MATRIX.flatMap((row, y) =>
   ),
 ).join("");
 
-const LOST = pampaEvent("status_changed", "lost");
+const SCAN = pampaEvent("credential_scanned");
 const INTAKE = pampaEvent("shelter_intake_recorded");
 const FOUND = pampaEvent("status_changed", "active");
-const LOST_PLACE = String(LOST.payload.location_description);
 
 // ---------------------------------------------------------------------------
 // The chapter shell: number, moment, title and ‹ › on the left, the device on
@@ -528,21 +537,25 @@ export const VET_SEQUENCE: SequenceSpec = sequence({
 
 // The citizen circuit (PO 2026-09-30): a neighbour — no account, no app —
 // scans the QR, lands on the public credential in its "perdida" state,
-// opens its found form and leaves a message; Martín gets the notification
-// that form's action writes. His phone then shows the poster whose QR the
-// neighbour scanned.
+// opens its found form and leaves a message; Martín's phone (the NATIVE
+// owner app, PO 2026-09-30) gets the notification that form's action
+// writes, then shows the poster card of its "Modo perdida" screen.
 //
-// The found form drawn is the credential's own inline one
-// (app/(public)/p/[publicToken]/page.tsx:970-987 → FoundPetForm.tsx →
-// notify-owner-of-found-pet.ts), because it is the one that writes
-// "¡Encontraron a {nombre}!". The sticky "La tengo conmigo" button
-// (lib/utils/format.ts:543) opens /encontre instead, whose notification is
-// "Alguien tiene a {nombre}" and names where the finder is — a place this
-// story may not draw. There is no "La encontré" button on the public page.
+// The public page's lost state leads with its CTA row
+// (components/pet-profile/PublicLostSections.tsx:215-272): "Llamar" (the
+// seed discloses the phone), "La tengo conmigo" (opens /encontre, whose
+// notification is "Alguien tiene a {nombre}" and names where the finder is —
+// a place this story may not draw) and "La vi cerca de acá" (a sighting).
+// All three are drawn; the one the neighbour uses is the credential's own
+// inline found form further down (app/(public)/p/[publicToken]/page.tsx:
+// 970-987 → FoundPetForm.tsx → notify-owner-of-found-pet.ts), because it is
+// the one that writes "¡Encontraron a {nombre}!". It is drawn highlighted.
+// There is no "La encontré" button on the public page.
 //
-// Martín's map is left out: the owner's lost case shows scans as a feed and
-// counts ("Avistamientos y escaneos"), and a map of where a QR was read is
-// exactly what the fence forbids.
+// Two things the real page has that this story does NOT draw: the last-seen
+// mini-map (PublicLostSections.tsx:358-, a map of where she was lost) and
+// any map on Martín's side — the fence forbids a map or coordinates of a
+// scan, and the native lost screen has none either (LostScreen.tsx:46-49).
 
 /** What the neighbour types — HER words, not product copy. No place, on purpose. */
 export const FINDER_MESSAGE = "Está bien y tranquila, tiene su collar puesto";
@@ -556,6 +569,7 @@ const LOST_POSTER = 5;
 // Exported so the tests do not re-hardcode the split.
 export const LOST_OWNER_FROM = LOST_OWNER;
 export const LOST_POSTER_STEP = LOST_POSTER;
+export const LOST_SCAN_STEP = LOST_SCAN;
 
 /** 1 · The phone's own camera on the poster's QR — no product copy at all. */
 function NeighbourScanScreen() {
@@ -598,7 +612,12 @@ const PUBLIC_BREED_LINE = [
   sexLabel(PAMPA_PET.sex),
 ].join(" · ");
 
-/** 2 · The public page, lost: name bar and the "¿Encontraste…?" row (page.tsx:711-716, :973-976). */
+/**
+ * 2 · The public page, lost: name bar (page.tsx:711-716), the CTA row
+ * (PublicLostSections.tsx:216-227 "Llamar", :256-262 foundPossessivePhrase,
+ * :264-270 sightingPhrase) and the "¿Encontraste…?" row (page.tsx:973-976),
+ * which is the one the neighbour opens — so it is the one highlighted.
+ */
 function PublicLostScreen() {
   return (
     <>
@@ -606,10 +625,21 @@ function PublicLostScreen() {
       <div className="lp-app-body lp-ph-pad">
         <div className="lp-pub">
           <PublicMasthead />
-          <LnPetPhoto src={PHOTO} alt={PAMPA.name} status="lost" size={132} />
+          <LnPetPhoto src={PHOTO} alt={PAMPA.name} status="lost" size={88} />
           <b className="lp-pub-name">{PAMPA.name}</b>
           <span className="lp-pub-sub">{PUBLIC_BREED_LINE}</span>
-          <div className="lp-pub-found">
+          <div className="lp-pub-ctas">
+            <span className="lp-pub-cta lp-pub-cta--solid">
+              <Icon name="telefono" size="sm" decorative /> Llamar
+            </span>
+            <span className="lp-pub-cta lp-pub-cta--solid">
+              <Icon name="ubicacion" size="sm" decorative /> {foundPossessivePhrase(PAMPA_PET.sex)}
+            </span>
+            <span className="lp-pub-cta">
+              <Icon name="ojo" size="sm" decorative /> {sightingPhrase(PAMPA_PET.sex)}
+            </span>
+          </div>
+          <div className="lp-pub-found" data-used="true">
             <div className="min-w-0 flex-1">
               <b>¿Encontraste a esta mascota?</b>
               <span>Tocá acá para avisarle al dueño.</span>
@@ -680,47 +710,111 @@ function FinderSentScreen() {
   );
 }
 
-/**
- * 5 · Martín's phone. EXACTLY what notifyOwnerOfFoundPet writes
- * (src/modules/pets/application/public/notify-owner-of-found-pet.ts:220-226,
- * title :257, CTA :262) for a finder who leaves a message and neither a
- * name nor a contact: who = "Alguien", body `{who} dejó un mensaje:
- * "{message}".{contactLine}`, contactLine " No dejó datos de contacto.".
- */
-export const OWNER_FOUND_BODY = `Alguien dejó un mensaje: "${FINDER_MESSAGE}". No dejó datos de contacto.`;
+/** A notification's day as the native inbox prints it (notifications-view-model.ts:127-131). */
+function inboxDate(date: string): string {
+  return seedInstant(date).toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: AR_TIME_ZONE,
+  });
+}
 
-function OwnerFoundReportScreen() {
+/**
+ * One row of the native inbox (apps/mobile/src/notifications/
+ * NotificationsScreen.tsx:475-555; stack title "Notificaciones",
+ * apps/mobile/app/_layout.tsx:334): title and date, the severity word
+ * (severityLabel("urgent") → "Urgente", notifications-view-model.ts:97-100),
+ * the body, then the row's actions. A CTA the app has a screen for is a
+ * button (:509-516); one it has not is inert text that says so (:526-528).
+ * Both notifications here are "urgent" (notify-owner-of-found-pet.ts:259,
+ * confirm-chip-match-refugio.ts:199).
+ */
+function NativeInboxScreen({
+  title,
+  date,
+  body,
+  cta,
+  ctaRouted,
+}: {
+  title: string;
+  date: string;
+  body: ReactNode;
+  cta: string;
+  ctaRouted: boolean;
+}) {
   return (
     <>
       <div className="lp-scr-top" />
+      <AppHead title="Notificaciones" />
       <div className="lp-app-body lp-ph-pad">
-        <div className="lp-notif">
-          <span className="lp-notif-app">miMAR</span>
-          <b>¡Encontraron a {PAMPA.name}!</b>
-          <span>{OWNER_FOUND_BODY}</span>
-          <span className="lp-vf-submit">Ver mascota</span>
+        <div className="lp-nat-notif">
+          <div className="lp-nat-notif-head">
+            <b>{title}</b>
+            <span>{inboxDate(date)}</span>
+          </div>
+          <span className="lp-nat-notif-sev">Urgente</span>
+          <span>{body}</span>
+          <div className="lp-nat-notif-actions">
+            {ctaRouted ? (
+              <span className="lp-nat-action lp-nat-action--em">{cta}</span>
+            ) : (
+              <span className="lp-nat-inert">{`${cta} · abrilo desde la web`}</span>
+            )}
+            <span className="lp-nat-action">Marcar como leída</span>
+          </div>
         </div>
       </div>
     </>
   );
 }
 
-/** 6 · The poster (apps/mobile/src/lost/LostScreen.tsx "Cartel para imprimir"). */
+/**
+ * 5 · Martín's phone. EXACTLY what notifyOwnerOfFoundPet writes
+ * (src/modules/pets/application/public/notify-owner-of-found-pet.ts:220-226,
+ * title :257, CTA :262) for a finder who leaves a message and neither a
+ * name nor a contact: who = "Alguien", body `{who} dejó un mensaje:
+ * "{message}".{contactLine}`, contactLine " No dejó datos de contacto.".
+ * Its CTA ("/mis-mascotas/{token}") maps to a native screen
+ * (packages/contract/src/links/deep-link-map.ts:221), so it is a button.
+ */
+export const OWNER_FOUND_BODY = `Alguien dejó un mensaje: "${FINDER_MESSAGE}". No dejó datos de contacto.`;
+
+function OwnerFoundReportScreen() {
+  return (
+    <NativeInboxScreen
+      title={`¡Encontraron a ${PAMPA.name}!`}
+      date={SCAN.date}
+      body={OWNER_FOUND_BODY}
+      cta="Ver mascota"
+      ctaRouted
+    />
+  );
+}
+
+/**
+ * 6 · The poster, on Martín's native "Modo perdida" screen (stack title,
+ * apps/mobile/app/_layout.tsx:543): its PosterCard
+ * (apps/mobile/src/lost/LostScreen.tsx:536-573) — title, POSTER_CARD_BODY
+ * and POSTER_BUTTON_LABEL (lost-view-model.ts:693-696). The app shares a
+ * server-made PDF; it draws no poster preview of its own, so none is drawn
+ * here. The rest of the screen (the case card, the state commands, the feed)
+ * sits around it and is omitted.
+ */
 function LostPosterScreen() {
   return (
     <>
       <div className="lp-scr-top" />
-      <AppHead title="Cartel para imprimir" />
+      <AppHead title="Modo perdida" />
       <div className="lp-app-body lp-ph-pad">
-        <div className="lp-poster">
-          <LnPetPhoto src={PHOTO} alt={PAMPA.name} status="lost" size={96} />
-          <b className="lp-poster-name">{PAMPA.name}</b>
-          <LnStatusFlag status="lost" sex={PAMPA.sexEnum} />
-          {/* Decorative mini QR (PO 2026-09-30) — see POSTER_QR_MATRIX. */}
-          <PosterQr className="lp-poster-qr" />
-          <span className="lp-poster-hint">Escaneá para más info</span>
+        <div className="lp-ph-card">
+          <p className="lp-kv-title">Cartel para imprimir</p>
+          <p className="lp-ph-note">
+            Un PDF tamaño A4 con su foto, los datos que elegiste mostrar y el QR de su credencial.
+            Mandalo por WhatsApp o imprimilo.
+          </p>
+          <span className="lp-vf-submit lp-vf-submit--ghost">Compartir o imprimir el cartel</span>
         </div>
-        <span className="lp-vf-submit">Compartir o imprimir el cartel</span>
       </div>
     </>
   );
@@ -760,48 +854,69 @@ export const LOST_SEQUENCE: SequenceSpec = sequence({
 // PS8 · Refugio — "Su chip dice quién es." (2024-03-11 → 2024-03-13)
 // ---------------------------------------------------------------------------
 
-const SHELTER = "Refugio Patitas del Barrio";
-
-/** 1 · Ingresos, step 1 "Identificación" (app/org/[orgToken]/intake/IntakeForm.tsx). */
+/**
+ * 1 · Ingresos, step 1 "Identificación" (app/org/[orgToken]/intake/IntakeForm.tsx):
+ * the wizard's counter and step label (components/ui/WizardShell.tsx:86-92,
+ * STEP_LABELS :45), the step's own sentence (:335-338 — it is the one that
+ * says a chip match leaves this form for the match flow), the chip and its
+ * country (:340, :351) and the step's button (:376). The tattoo field
+ * (:362) is omitted. The real match page comes after the wizard's other
+ * three steps and its submit; the story cuts from here to it.
+ *
+ * No "Verificada" badge: nothing under app/org/** prints one here
+ * (landing-vs-app audit 2026-09-30).
+ */
 function IntakeChipScreen() {
   return (
     <>
-      <OpHead
-        orgType="Refugio"
-        orgName={SHELTER}
-        page="Ingresos"
-        right={<LnBadge variant="info">Verificada</LnBadge>}
-      />
+      <OpHead orgType="Refugio" orgName={PAMPA_SHELTER} page="Ingresos" />
       <div className="lp-app-body lp-ph-pad">
-        <p className="lp-kv-title">Paso 1 de 4 · Identificación</p>
-        <div className="lp-vf">
-          <span className="lp-vf-l">Número de microchip</span>
-          <span className="lp-vf-i">{PAMPA_CHIP}</span>
+        <div>
+          <p className="lp-vf-l">Paso 1 de 4</p>
+          <p className="lp-kv-title">Identificación</p>
         </div>
-        <span className="lp-vf-submit">Continuar (chequearemos el chip al confirmar)</span>
+        <p className="lp-ph-note">
+          Si la mascota tiene microchip o tatuaje, ingrésalos. Si el chip coincide con una mascota
+          perdida en miMAR, vamos a redirigirte al flujo de match para confirmar la identidad.
+        </p>
+        <div className="lp-vf-form">
+          <div className="lp-vf">
+            <span className="lp-vf-l">Número de microchip</span>
+            <span className="lp-vf-i">{PAMPA_CHIP}</span>
+          </div>
+          <div className="lp-vf">
+            <span className="lp-vf-l">País del chip</span>
+            <span className="lp-vf-i" />
+          </div>
+          <span className="lp-vf-submit">Continuar (chequearemos el chip al confirmar)</span>
+        </div>
       </div>
     </>
   );
 }
 
 /**
- * 2 · The chip match card, shown and confirmed in one step (merged from the
- * old two static "pressed"/unpressed screens, PO 2026-09-30: they rendered
- * identically under ‹ › since the press only ever read through motion).
- * "Es la misma mascota" now animates its press with the same
- * type-then-press pattern as the vet's own buttons (`lp-seq-late`, see
- * VetScreen above): pressed only while `animate` plays.
- * (app/org/[orgToken]/intake/match/…/MatchConfirmationCard.tsx).
- * Trimmed to 2 lines under the pet's name, not the card's real 4 (coordinator
- * review, round 3 — the fixed 3∶4 tablet frame has real height limits): the
- * explanatory sentence, the owner name and the last-known location are
- * dropped; species/breed/color/sex merge into one line. Nothing dropped was
- * asserted by a test.
+ * 2 · The chip match page (app/org/[orgToken]/intake/match/[matchedPetToken]/
+ * page.tsx:129 "Coincidencia de microchip"), its MatchConfirmationCard shown
+ * and confirmed in one step (merged from the old two static
+ * "pressed"/unpressed screens, PO 2026-09-30: they rendered identically under
+ * ‹ › since the press only ever read through motion). "Es la misma mascota"
+ * animates its press with the same type-then-press pattern as the vet's own
+ * buttons (`lp-seq-late`, see VetScreen above): pressed only while `animate`
+ * plays.
+ *
+ * The card, as MatchConfirmationCard.tsx draws it: the breach title (:87-90),
+ * the name (:107), the species line "Perro, Caniche" (:80-82, :108) and the
+ * details line "blanco · Hembra" (:83, :109) — TWO lines, as the card keeps
+ * them — the "Perdida" pill (:113) and both buttons (:148-164). Dropped for
+ * the fixed 3∶4 tablet frame (coordinator review, round 3): the breach's
+ * explanatory sentence, the owner's first name, the last-known location and
+ * the footnote. Nothing dropped was asserted by a test.
  */
 function IntakeMatchScreen({ animate }: { animate: boolean }) {
   return (
     <>
-      <OpHead orgType="Refugio" orgName={SHELTER} page="Ingresos" />
+      <OpHead orgType="Refugio" orgName={PAMPA_SHELTER} page="Coincidencia de microchip" />
       <div className="lp-app-body lp-ph-pad">
         <div className="lp-match-breach">
           <b>Posible coincidencia detectada</b>
@@ -809,40 +924,56 @@ function IntakeMatchScreen({ animate }: { animate: boolean }) {
         <div className="lp-ph-card">
           <b className="lp-match-name">{PAMPA.name}</b>
           <span className="lp-match-sub">
-            {speciesLabel(PAMPA_PET.species)}, {PAMPA_PET.breed} · {PAMPA_PET.color}
+            {speciesLabel(PAMPA_PET.species)}, {PAMPA_PET.breed}
+          </span>
+          <span className="lp-match-sub">
+            {PAMPA_PET.color} · {sexLabel(PAMPA_PET.sex)}
           </span>
           <span className="lp-match-pill">Perdida</span>
         </div>
-        <span
-          className={animate ? "lp-vf-submit lp-vf-submit--pressed lp-seq-late" : "lp-vf-submit"}
-        >
-          Es la misma mascota
-        </span>
+        <div className="lp-vf-form">
+          <span
+            className={animate ? "lp-vf-submit lp-vf-submit--pressed lp-seq-late" : "lp-vf-submit"}
+          >
+            Es la misma mascota
+          </span>
+          <span className="lp-vf-submit lp-vf-submit--ghost">No es la misma</span>
+        </div>
       </div>
     </>
   );
 }
 
-/** 4 · The intake, recorded (org pet list's "Ingreso registrado" notice). */
+/**
+ * 3 · Where "Es la misma mascota" lands: the match page's successRedirect is
+ * the intake page (match/[matchedPetToken]/page.tsx:149), whose default tab is
+ * the queue (intake/page.tsx:35). The confirm already wrote the intake
+ * (confirm-chip-match-refugio.ts:172-192), so Pampa is its newest row:
+ * the tabs (:122-138), the "Ingresos recientes" card (:155), the row's name,
+ * "{especie} · {fecha}" and "Ver ficha" (:170-187, formatDate). The old
+ * "Ingreso registrado" card, with an icon, the condition and the date, was
+ * not this page (the org pet list's callout, mascotas/page.tsx:398-409, is a
+ * different flow's and shows only the token).
+ */
 function IntakeDoneScreen() {
   return (
     <>
-      <OpHead orgType="Refugio" orgName={SHELTER} page="Ingresos" />
+      <OpHead orgType="Refugio" orgName={PAMPA_SHELTER} page="Ingresos" />
       <div className="lp-app-body lp-ph-pad">
-        <div className="lp-match-ok">
-          <b>Ingreso registrado</b>
+        <div className="lp-op-tabs">
+          <span data-on="true">Cola de ingresos</span>
+          <span>Registrar</span>
         </div>
         <div className="lp-ph-card">
-          <div className="lp-intake-row" data-t="ok">
-            <span className="lp-iic">
-              <Icon name="casa" size="sm" decorative />
-            </span>
-            <div className="min-w-0">
-              <b>{eventTypeLabel("shelter_intake_recorded")}</b>
+          <p className="lp-kv-title">Ingresos recientes</p>
+          <div className="lp-intake-row">
+            <div className="min-w-0 flex-1">
+              <b>{PAMPA.name}</b>
               <span className="lp-intake-sub">
-                {String(INTAKE.payload.intake_condition)} · {landingDate(INTAKE.date)}
+                {speciesLabel(PAMPA_PET.species)} · {formatDate(seedInstant(INTAKE.date))}
               </span>
             </div>
+            <span className="lp-op-btn">Ver ficha</span>
           </div>
         </div>
       </div>
@@ -851,42 +982,36 @@ function IntakeDoneScreen() {
 }
 
 /**
- * 5 · Martín's notification — the text confirm-chip-match-refugio.ts writes:
- * "¡Encontraron a {name}!" / "{org} detectó a {name} por su microchip. Coordiná
- * la devolución." with the CTA "Coordinar devolución".
+ * 4 · Martín's notification, in the native inbox — the text
+ * confirm-chip-match-refugio.ts:199-203 writes. Its CTA points at
+ * "/mis-mascotas/{token}/devolucion", which has no row in the deep-link map
+ * (apps/mobile/src/ui/routes.ts:589-593 says so), so the native inbox prints
+ * it as inert text (NotificationsScreen.tsx:526-528) — drawn as it renders.
  */
 function OwnerNotifiedScreen() {
   return (
-    <>
-      <div className="lp-scr-top" />
-      <div className="lp-app-body lp-ph-pad">
-        <div className="lp-notif">
-          <span className="lp-notif-app">miMAR</span>
-          <b>¡Encontraron a {PAMPA.name}!</b>
-          <span>
-            {SHELTER} detectó a {PAMPA.name} por su microchip. Coordiná la devolución.
-          </span>
-          <span className="lp-vf-submit">Coordinar devolución</span>
-        </div>
-      </div>
-    </>
+    <NativeInboxScreen
+      title={`¡Encontraron a ${PAMPA.name}!`}
+      date={INTAKE.date}
+      body={`${PAMPA_SHELTER} detectó a ${PAMPA.name} por su microchip. Coordiná la devolución.`}
+      cta="Coordinar devolución"
+      ctaRouted={false}
+    />
   );
 }
 
 /**
- * 6 · 13 mar: Martín closes the search — "Marcar como encontrada", then the
- * two-step confirm "Sí, la encontré" (apps/mobile/src/lost/LostScreen.tsx).
+ * 5 · 13 mar: Martín closes the search on the native "Modo perdida" screen
+ * (apps/mobile/app/_layout.tsx:543) — "Marcar como encontrada", then the
+ * two-step confirm (apps/mobile/src/lost/LostScreen.tsx:412-426: the warn
+ * callout, its sentence, "Sí, la encontré" and "Cancelar").
  * The return is his entry, not the shelter's.
  */
 function OwnerFoundScreen() {
   return (
     <>
       <div className="lp-scr-top" />
-      <AppHead
-        photo={<LnPetPhoto src={PHOTO} alt={PAMPA.name} status="lost" size={40} />}
-        title={PAMPA.name}
-        sub={landingDate(FOUND.date)}
-      />
+      <AppHead title="Modo perdida" />
       <div className="lp-app-body lp-ph-pad">
         <div className="lp-confirm">
           <b>¿Confirmás?</b>
@@ -895,6 +1020,7 @@ function OwnerFoundScreen() {
             quienes la estaban buscando.
           </span>
           <span className="lp-vf-submit lp-vf-submit--pressed">Sí, la encontré</span>
+          <span className="lp-vf-submit lp-vf-submit--ghost">Cancelar</span>
         </div>
       </div>
     </>
@@ -902,59 +1028,31 @@ function OwnerFoundScreen() {
 }
 
 /**
- * 7 · The payoff (critique 2026-09-29, M5): the chapter used to end on the
+ * 6 · The payoff (critique 2026-09-29, M5): the chapter used to end on the
  * "¿Confirmás?" dialog, never showing her home. After the confirm, Martín's
- * app shows Pampa back AL DÍA (the flag the product renders for an active
- * pet) and the three entries the search left in her libreta, newest first,
- * worded as chapter 5's libreta words them: lost, taken in, found. Copy
- * review 2026-09-30: "Volvió a casa" / "EN CASA" is not a label any product
- * surface prints, and reads as a claim this deployment cannot back for every
- * pet — "Encontrada · devuelta a su dueño" states the same fact without it.
+ * native pet screen, turned to its libreta, carries what the search left —
+ * "Marcada como encontrada", "Ingreso al refugio", "Marcada como perdida",
+ * newest first — as the owner's ledger really draws them (see
+ * LIBRETA_EVENTS in landing-content.ts: the owner audience sees every event,
+ * so these three are on it). Dated as of that day: "hoy", "hace 2 días"…
+ * The older asientos continue below the fold, as the ledger does.
  */
 function OwnerHomeScreen() {
+  const now = seedInstant(FOUND.date);
+  const ledger = LIBRETA_EVENTS.filter((e) => e.date <= FOUND.date).reverse();
   return (
     <>
       <div className="lp-scr-top" />
-      <AppHead
-        photo={<LnPetPhoto src={PHOTO} alt={PAMPA.name} status="ok" size={40} />}
-        title={PAMPA.name}
-        sub={landingDate(FOUND.date)}
-        right={<LnStatusFlag status="ok" />}
-      />
-      <div className="lp-app-body lp-ph-pad">
-        <div className="lp-ph-card">
-          <div className="lp-intake-row" data-t="ok">
-            <span className="lp-iic">
-              <Icon name="casa" size="sm" decorative />
-            </span>
-            <div className="min-w-0">
-              <b>Encontrada · devuelta a su dueño</b>
-              <span className="lp-intake-sub">{landingDate(FOUND.date)}</span>
-            </div>
-          </div>
-          <div className="lp-intake-row">
-            <span className="lp-iic">
-              <Icon name="edificio" size="sm" decorative />
-            </span>
-            <div className="min-w-0">
-              <b>Ingresó a un refugio</b>
-              <span className="lp-intake-sub">
-                {String(INTAKE.payload.intake_condition)} · {landingDate(INTAKE.date)}
-              </span>
-            </div>
-          </div>
-          <div className="lp-intake-row" data-t="err">
-            <span className="lp-iic">
-              <Icon name="perdida" size="sm" decorative />
-            </span>
-            <div className="min-w-0">
-              <b>Reportada perdida</b>
-              <span className="lp-intake-sub">
-                {LOST_PLACE} · {landingDate(LOST.date)}
-              </span>
-            </div>
-          </div>
-        </div>
+      <AppHead title="Mascota" />
+      <NativeLibretaBand />
+      <span className="lp-nat-card-t">Asientos</span>
+      <span className="lp-nat-count">
+        {ledger.length} {pluralizeEs(ledger.length, "registro")}
+      </span>
+      <div className="lp-app-body lp-nat-ledger">
+        {ledger.map((e) => (
+          <NativeAsiento key={`${e.type}-${e.date}`} entry={e} now={now} />
+        ))}
       </div>
     </>
   );

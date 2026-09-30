@@ -31,11 +31,14 @@ vi.mock("next/link", () => ({
 
 import { toAtenderCaptureMatch } from "@/app/org/[orgToken]/atender/[publicToken]/atender-quick-capture-match";
 import { LandingHero } from "@/components/landing/LandingHero";
+import { NativeAsiento } from "@/components/landing/LibretaFeed";
 import { StorySection } from "@/components/landing/StorySection";
 import {
   HERO_CREDENTIAL_FIELDS,
   LIBRETA_EVENTS,
+  PAMPA_SHELTER,
   formatChip,
+  seedInstant,
 } from "@/components/landing/landing-content";
 import {
   FINDER_MESSAGE,
@@ -46,7 +49,9 @@ import {
   VET_NOTE_VACCINE,
   VET_SEQUENCE,
 } from "@/components/landing/story-sequences";
+import { toAsientoView } from "@/components/pet-profile/asiento-fields";
 import { matchCaptureIntent } from "@/lib/events/event-capture-matcher";
+import { formatDate } from "@/lib/utils/format";
 import {
   OWNER_NAME,
   PAMPA_CHIP,
@@ -59,6 +64,7 @@ import {
   buildPampaLibreta,
 } from "@/scripts/flagship-pampa-data";
 import { stripComments } from "@/scripts/lib/strip-comments.mjs";
+import type { HistorialEventRow } from "@/src/modules/pets/application/tab-data/types";
 
 const FROZEN_EVENTS = [
   {
@@ -320,24 +326,68 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
     expect(hits, `invented Pampa facts:\n${hits.join("\n")}`).toEqual([]);
   });
 
-  it("the libreta is the seed's entries minus the purged scan, authored as in the seed", () => {
+  it("the libreta is the seed's entries minus the purged scan", () => {
     const seeded = PAMPA_EVENTS.filter((e) => e.eventType !== "credential_scanned");
     expect(LIBRETA_EVENTS).toHaveLength(seeded.length);
     expect(LIBRETA_EVENTS.map((e) => e.type)).toEqual(seeded.map((e) => e.eventType));
-    expect(LIBRETA_EVENTS.map((e) => e.year)).toEqual(seeded.map((e) => e.date.slice(0, 4)));
-    const vetShort = `Dra. ${VET_NAME.split(" ").at(-1)}`;
-    const expectedBy = seeded.map((e) =>
-      e.authorRole === "owner"
-        ? `${OWNER_NAME} · dueño`
-        : e.authorRole === "vet"
-          ? `${vetShort} · vet`
-          : "Refugio · org",
-    );
-    expect(LIBRETA_EVENTS.map((e) => flat(e.by))).toEqual(expectedBy);
-    // The last dose: signed by the vet, at the Comuna 13 campaign.
+    expect(LIBRETA_EVENTS.map((e) => e.date)).toEqual(seeded.map((e) => e.date));
+    // The last dose: the Comuna 13 campaign's, signed.
     const last = LIBRETA_EVENTS.at(-1);
-    expect(flat(last?.by ?? "")).toBe(`${vetShort} · vet`);
-    expect(last?.meta).toContain("Comuna 13");
+    expect(last?.provenance).toContain("Comuna 13");
+  });
+
+  // Martín's phone is the native app (PO 2026-09-30). Its libreta draws what
+  // the server's projection composes — components/pet-profile/asiento-fields.ts
+  // toAsientoView, run by app/api/v1/pets/[publicToken]/libreta/payload.ts for
+  // the OWNER audience. The landing transcribes it (the real module would pull
+  // drizzle-orm into the client bundle); this runs the real one on every seed
+  // event and asserts the transcription says exactly the same thing.
+  it("every asiento the landing draws is what the real projection makes of the seed event", () => {
+    const OWNER = "owner-user";
+    const now = new Date("2026-09-30T12:00:00-03:00");
+    for (const entry of LIBRETA_EVENTS) {
+      const seed = PAMPA_EVENTS.find((e) => e.date === entry.date && e.eventType === entry.type);
+      expect(seed, entry.title).toBeDefined();
+      if (!seed) continue;
+      const isShelter = seed.authorRole === "shelter";
+      const row = {
+        id: `${seed.eventType}-${seed.date}`,
+        petId: "pet",
+        eventType: seed.eventType,
+        payload: seed.payload,
+        occurredAt: seedInstant(seed.date),
+        notes: null,
+        recordedByUserId: seed.authorRole === "owner" ? OWNER : "someone-else",
+        authorRole: seed.authorRole,
+        authorVerified: seed.authorVerified,
+        // The intake the chip match writes carries its organization
+        // (confirm-chip-match-refugio.ts:185-187).
+        authorOrganizationId: isShelter ? "org" : null,
+        authorOrgName: isShelter ? PAMPA_SHELTER : null,
+        attachmentUrl: null,
+        hasAttachment: false,
+        amendedAt: null,
+      } as unknown as HistorialEventRow;
+      const view = toAsientoView(
+        row,
+        "DIM-TEST-0001",
+        { userId: OWNER, currentOwnerUserId: OWNER },
+        now,
+      );
+      expect(entry.kind, entry.title).toBe(view.kind);
+      expect(entry.title).toBe(view.title);
+      expect(entry.whenAbsolute, entry.title).toBe(view.whenAbsolute);
+      expect(entry.provenance, entry.title).toBe(view.provenance.label);
+      // Every fact the landing draws is one of the real card's, verbatim.
+      for (const fact of entry.facts) {
+        expect(view.facts, `${entry.title} · ${fact.key}`).toContainEqual(
+          expect.objectContaining({ key: fact.key, value: fact.value }),
+        );
+      }
+      // And the relative half, from the same "now".
+      const html = flat(renderToStaticMarkup(<NativeAsiento entry={entry} now={now} />));
+      expect(html, entry.title).toContain(`${view.whenRelative} · ${flat(view.whenAbsolute)}`);
+    }
   });
 
   it("the story renders the seed's vet, doses and lost report", () => {
@@ -356,13 +406,29 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       expect(html).toContain(String(e.payload.batch));
       expect(html).toContain(String(e.payload.brand));
     }
-    expect(html).toContain(flat(formatChip(PAMPA_CHIP)));
+    // The chip as the intake form and the native libreta print it: ungrouped.
+    expect(html).toContain(PAMPA_CHIP);
     // No screen claims a current rabies vaccine: the only dated screen that
     // could (2022-04-12) is the dose itself, and no product surface prints it.
     expect(html).not.toContain("Antirrábica vigente");
     // One pet on the sign-up screen, and the real product labels.
     expect(html).not.toMatch(/Beagle|Holland Lop|3 mascotas|alerta activa/);
-    expect(html).toContain("Caniche · hembra · nacimiento estimado nov 2021");
+    // The landing-vs-app audit (2026-09-30) found these in the devices; no
+    // product surface draws them there.
+    for (const invented of [
+      "Credencial y QR creados",
+      "Compartir miMAR",
+      "Modo perdido",
+      "Verificada",
+      "Reportada perdida",
+      "Ingresó a un refugio",
+      "devuelta a su dueño",
+      "Historial que solo se agrega",
+      "Jurisdicciones con señal",
+      "Señales por 100 mil",
+    ]) {
+      expect(html, invented).not.toContain(invented);
+    }
     expect(html).toContain("Posible coincidencia detectada");
     expect(html).toContain("Es la misma mascota");
     // Chapter 3's found-report notification is EXACTLY what
@@ -408,6 +474,11 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       "Credencial pública",
       "Perdida",
       "Perro · Caniche · Hembra",
+      // The lost CTA row (components/pet-profile/PublicLostSections.tsx:226,
+      // foundPossessivePhrase / sightingPhrase in lib/utils/format.ts:538-562).
+      "Llamar",
+      "La tengo conmigo",
+      "La vi cerca de acá",
       "¿Encontraste a esta mascota?",
       "Tocá acá para avisarle al dueño.",
       "Tu nombre (opcional)",
@@ -420,11 +491,55 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       "Le avisamos al dueño. Mientras tanto, cuidala lo mejor que puedas.",
       `¡Encontraron a ${PAMPA_PET.name}!`,
       "Ver mascota",
+      // Martín's phone, the NATIVE app (apps/mobile/…): the inbox row
+      // (src/notifications/NotificationsScreen.tsx:497-545, severityLabel
+      // notifications-view-model.ts:100), its inert-CTA form (:526-528).
+      "Notificaciones",
+      "Urgente",
+      "Marcar como leída",
+      "Coordinar devolución · abrilo desde la web",
+      // "Modo perdida" (app/_layout.tsx:543) and its PosterCard
+      // (src/lost/LostScreen.tsx:559, lost-view-model.ts:693-696).
+      "Modo perdida",
       "Cartel para imprimir",
-      "Escaneá para más info",
+      "Un PDF tamaño A4 con su foto, los datos que elegiste mostrar y el QR de su credencial. Mandalo por WhatsApp o imprimilo.",
       "Compartir o imprimir el cartel",
-      // Refugio.
+      "Cancelar",
+      // "Mis mascotas" (app/_layout.tsx:288), its row and footer
+      // (src/pets/PetRow.tsx:127-135, credential-view-model.ts:261,
+      // app/mascotas/index.tsx:431).
+      "Mis mascotas",
+      "Activa",
+      "Registrar otra mascota",
+      // The pet screen on its libreta (app/_layout.tsx:302,
+      // src/pets/DocumentChromeNative.tsx:391-395, LibretaScreen.tsx:316-322).
+      "Mascota",
+      "Libreta Sanitaria",
+      "Libreta · dorso",
+      "Asientos",
+      "Marcada como perdida",
+      "Marcada como encontrada",
+      "Ingreso al refugio",
+      `Registrado por ${PAMPA_SHELTER}`,
+      // Refugio — the intake wizard (app/org/[orgToken]/intake/IntakeForm.tsx
+      // :45, :335-338, :340, :351, :376; components/ui/WizardShell.tsx:88).
+      "Paso 1 de 4",
       "Identificación",
+      "vamos a redirigirte al flujo de match para confirmar la identidad.",
+      "Número de microchip",
+      "País del chip",
+      "Continuar (chequearemos el chip al confirmar)",
+      // The match page (match/[matchedPetToken]/page.tsx:129) and its card
+      // (MatchConfirmationCard.tsx:80-83, :154, :163).
+      "Coincidencia de microchip",
+      "Perro, Caniche",
+      `${PAMPA_PET.color} · Hembra`,
+      "No es la misma",
+      // The intake queue it lands on (intake/page.tsx:127, :155, :180, :186).
+      "Cola de ingresos",
+      "Ingresos recientes",
+      `Perro · ${formatDate(seedInstant(String(PAMPA_EVENTS.find((e) => e.eventType === "shelter_intake_recorded")?.date)))}`,
+      "Ver ficha",
       "detectó a Pampa por su microchip. Coordiná la devolución.",
       "Sí, la encontré",
     ]) {
@@ -459,7 +574,9 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
 
   it("the hero credential's identity fields are the seed's pet row", () => {
     const byLabel = Object.fromEntries(HERO_CREDENTIAL_FIELDS.map((f) => [f.label, f.value]));
-    expect(byLabel["Especie y raza"]).toContain(PAMPA_PET.breed);
+    // The native credential's own labels (CredentialScreen.tsx:375, :383).
+    expect(byLabel).not.toHaveProperty("Especie y raza");
+    expect(byLabel.Raza).toBe(PAMPA_PET.breed);
     expect(byLabel).not.toHaveProperty("Nacimiento estimado");
     // Pampa's libreta has a chip implant, so the card may say "Sí".
     expect(PAMPA_EVENTS.some((e) => e.eventType === "microchip_implanted")).toBe(true);

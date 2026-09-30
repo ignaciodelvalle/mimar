@@ -1,9 +1,8 @@
 "use client";
 
-// Story device screens — illustrative renders of the real product surfaces,
-// built from the shipped DS components (LnRegistry/LnRegRow/LnBadge/
-// LnStatusFlag/LnVstamp/LnPetPhoto). Ported from the handoff prototype
-// (landing2/screens.jsx, story-screens.jsx, console.jsx).
+// Story device screens — illustrative renders of the real product surfaces.
+// Martín's phone is the NATIVE owner app (apps/mobile) in every chapter (PO
+// 2026-09-30): each screen below cites the native file it transcribes.
 //
 // All screens live inside an aria-hidden PhoneFrame / console window: they
 // are decorative illustrations; the narrative copy lives in the chapters.
@@ -25,16 +24,12 @@ import {
   LIBRETA_EVENTS,
   MAP_TILES,
   PAMPA,
-  PAMPA_SIGNUP_LINE,
-  landingDate,
   mapTintStep,
-  pampaEvent,
 } from "@/components/landing/landing-content";
 import { useChapterSequence } from "@/components/landing/use-chapter-sequence";
-import { LnPetPhoto, LnRegRow, LnRegistry } from "@/components/ui/RegRow";
-import { LnStatusFlag } from "@/components/ui/StatusFlag";
+import { LnPetPhoto } from "@/components/ui/RegRow";
 import { OpKpiSm } from "@/components/ui/dashboard/OpKpiSm";
-import { formatRate } from "@/lib/utils/format";
+import { formatRate, pluralizeEs } from "@/lib/utils/format";
 import { speciesLabel } from "@/lib/utils/species";
 import { PAMPA_PET } from "@/scripts/flagship-pampa-data";
 import Link from "next/link";
@@ -110,44 +105,50 @@ export function OpHead({
   );
 }
 
+/**
+ * The native pet screen's document band, back face
+ * (apps/mobile/src/pets/DocumentChromeNative.tsx:386-396): "Libreta Sanitaria"
+ * over "Libreta · dorso". No situation chip: an active pet has none (:402).
+ */
+export function NativeLibretaBand() {
+  return (
+    <div className="lp-nat-band">
+      <b>Libreta Sanitaria</b>
+      <span>Libreta · dorso</span>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Dueño — the sign-up moment (2022-03-14): only Pampa, no chip yet
 // ---------------------------------------------------------------------------
 
-// The screen shows Pampa as she was on the chapter's date. It used to be a
-// 2026 list with a Beagle and a rabbit the seed never created and "1 alerta
-// activa"; on the day Martín signed up there was one pet, a credential and a
-// QR, and no chip (the seed's pet_registered has has_microchip: false).
-const REGISTERED = pampaEvent("pet_registered");
-
+// The native "Mis mascotas" list the day Martín registers her: one row,
+// transcribed from apps/mobile/src/pets/PetRow.tsx:82-136 — photo, the name
+// in serif, the species, the status chip (petStatusLabel("active") →
+// "Activa", apps/mobile/src/credential/credential-view-model.ts:258-262) —
+// and the list footer's "Registrar otra mascota"
+// (apps/mobile/app/mascotas/index.tsx:431). The stack title is
+// apps/mobile/app/_layout.tsx:288.
+//
+// Removed (landing-vs-app audit 2026-09-30): the "Credencial y QR creados ·
+// sin chip todavía" line, and the "Compartir miMAR" / "Modo perdido" chips —
+// no list the product draws carries them.
 export function DuenoScreen() {
   return (
     <>
       <div className="lp-scr-top" />
-      <AppHead title="Mis mascotas" sub={`Alta · ${landingDate(REGISTERED.date)}`} />
-      <div className="lp-app-body px-3 pt-2.5">
-        <LnRegistry>
-          <LnRegRow
-            name={PAMPA.name}
-            status="registered"
-            sex={PAMPA.sexEnum}
-            species={speciesLabel(PAMPA_PET.species)}
-            breed={PAMPA_SIGNUP_LINE}
-            nextLine="Credencial y QR creados · sin chip todavía"
-            photoSrc="/landing/pampa-hero.jpg"
-            photoSize={46}
-          />
-        </LnRegistry>
-        <div className="lp-ph-caps mt-3">
-          <span className="lp-ph-cap">
-            <Icon name="share" size="sm" decorative className="text-[var(--color-ln-azul)]" />
-            Compartir miMAR
-          </span>
-          <span className="lp-ph-cap">
-            <Icon name="perdida" size="sm" decorative className="text-[var(--color-ln-err)]" />
-            Modo perdido
-          </span>
+      <AppHead title="Mis mascotas" />
+      <div className="lp-app-body lp-ph-pad">
+        <div className="lp-nat-petrow">
+          <LnPetPhoto src="/landing/pampa-hero.jpg" alt={PAMPA.name} size={52} radius="md" />
+          <div className="min-w-0 flex-1">
+            <b className="lp-nat-petname">{PAMPA.name}</b>
+            <span className="lp-nat-petsp">{speciesLabel(PAMPA_PET.species)}</span>
+          </div>
+          <span className="lp-nat-chip">Activa</span>
         </div>
+        <span className="lp-vf-submit">Registrar otra mascota</span>
       </div>
     </>
   );
@@ -157,33 +158,33 @@ export function DuenoScreen() {
 // story-sequences.tsx.
 
 // ---------------------------------------------------------------------------
-// La libreta — the seed's entries (minus the purged scan), append-only
+// La libreta — the seed's entries (minus the purged scan), newest first
 // ---------------------------------------------------------------------------
 
+// The native pet screen turned to its libreta face: the stack title "Mascota"
+// (apps/mobile/app/_layout.tsx:302), the document band, and the "Asientos"
+// card with its count (apps/mobile/src/pets/LibretaScreen.tsx:316-335,
+// ledgerCountLabel in libreta-view-model.ts:222-224). The face's "Anotar"
+// button and its identity, vaccination and "Próximo" cards sit above the
+// ledger in the app; they are omitted here, not altered.
+//
+// The old footer badge ("Historial que solo se agrega") was the landing's own
+// wording. The native face prints LIBRETA_IMMUTABILITY_NOTE instead, which
+// says the events are never deleted — the overclaim the honesty pass removed
+// from this page (límites honestos A.1), so neither is drawn.
 export function LibretaScreen() {
+  // The moment this chapter depicts is today: its last asiento is 2026's.
+  const now = new Date();
   return (
     <>
       <div className="lp-scr-top" />
-      <AppHead
-        // Her photo, not the striped "FOTO" placeholder: the same image the
-        // hero and the cast show (critique 2026-09-29, m2).
-        photo={<LnPetPhoto src="/landing/pampa-hero.jpg" alt={PAMPA.name} status="ok" size={40} />}
-        title={PAMPA.name}
-        sub={`${PAMPA.sex} · ${PAMPA.age}`}
-        right={<LnStatusFlag status="ok" />}
-      />
-      <LibretaFeed events={LIBRETA_EVENTS_NEWEST_FIRST} />
-      {/* Honesty pass (WU1; caught by the fence's extended ban list,
-          2026-09-24 review): "nada se edita, nada se borra" was a second
-          instance of the same A.1 overclaim already fixed on
-          CHAPTERS.libreta.lead — missed here because it lives in the phone
-          mock's own badge, not the chapter copy. Copy review 2026-09-30 (D1):
-          the mechanism explanation ("asiento nuevo", the English "append-only")
-          repeated across six places on the page; this badge keeps only the
-          trust claim, in the same words as the FAQ trust row. */}
-      <div className="lp-lib-lock">
-        <Icon name="candado" size="sm" decorative /> Historial que solo se agrega
-      </div>
+      <AppHead title="Mascota" />
+      <NativeLibretaBand />
+      <span className="lp-nat-card-t">Asientos</span>
+      <span className="lp-nat-count">
+        {LIBRETA_EVENTS.length} {pluralizeEs(LIBRETA_EVENTS.length, "registro")}
+      </span>
+      <LibretaFeed events={LIBRETA_EVENTS_NEWEST_FIRST} now={now} />
     </>
   );
 }
@@ -221,7 +222,7 @@ function ConsoleCartogram() {
               "--row": t.r,
             } as React.CSSProperties
           }
-          title={`${t.name} · ${formatRate(t.v)} /100k`}
+          title={`${t.name} · ${formatRate(t.v)}%`}
         >
           <span className="lp-ab">{t.ab}</span>
           <span className="lp-mv">{formatRate(t.v)}</span>
@@ -232,11 +233,11 @@ function ConsoleCartogram() {
 }
 
 const LEGEND_STEPS: Array<[0 | 1 | 2 | 3 | 4, string]> = [
-  [0, "<1,5"],
-  [1, "1,5–4"],
-  [2, "4–6"],
-  [3, "6–8"],
-  [4, "≥8"],
+  [0, "<45%"],
+  [1, "45–55%"],
+  [2, "55–65%"],
+  [3, "65–75%"],
+  [4, "≥75%"],
 ];
 
 const LEGEND_TINT: Record<number, string> = {
@@ -302,7 +303,9 @@ export function EstadoConsole({ bridge }: { bridge?: string }) {
             </div>
             <div className="lp-con-map">
               <div className="lp-con-map-h">
-                <b>Señales por 100 mil habitantes</b>
+                {/* The panorama's rabies-coverage layer, under the KPI's own label
+                    (lib/metrics/kpi-catalog.ts:377). */}
+                <b>Cobertura antirrábica — perros (12 meses)</b>
                 <span className="lp-con-map-sub">por jurisdicción</span>
               </div>
               <ConsoleCartogram />

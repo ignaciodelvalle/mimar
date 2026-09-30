@@ -21,11 +21,14 @@ import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LibretaFeed } from "./LibretaFeed";
 import { LIBRETA_EVENTS } from "./landing-content";
+
+/** A fixed "today" for the relative dates, so no assertion depends on the clock. */
+const NOW = new Date("2026-09-30T12:00:00-03:00");
 
 function setMatchMedia(reducedMotion: boolean) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -64,11 +67,11 @@ afterEach(() => {
 
 describe("<LibretaFeed> — SSR / no-JS", () => {
   it("server markup shows every entry, visible, with no hiding class", () => {
-    const html = renderToStaticMarkup(<LibretaFeed events={LIBRETA_EVENTS} />);
+    const html = renderToStaticMarkup(<LibretaFeed events={LIBRETA_EVENTS} now={NOW} />);
     for (const e of LIBRETA_EVENTS) {
       expect(html).toContain(e.title);
     }
-    const rows = html.match(/class="lp-lib-row"/g) ?? [];
+    const rows = html.match(/class="lp-nat-entry lp-lib-row"/g) ?? [];
     expect(rows.length).toBe(LIBRETA_EVENTS.length);
     expect(html).not.toContain("lp-lib-row--pending");
     expect(html).not.toContain("lp-lib-row--in");
@@ -78,13 +81,11 @@ describe("<LibretaFeed> — SSR / no-JS", () => {
 describe("<LibretaFeed> — prefers-reduced-motion", () => {
   it("renders every entry with no animation class, statically", () => {
     setMatchMedia(true);
-    render(<LibretaFeed events={LIBRETA_EVENTS} />);
+    render(<LibretaFeed events={LIBRETA_EVENTS} now={NOW} />);
 
     // Read titles straight off the title elements rather than via
-    // screen.getByText: a title element can carry a trailing flag/stamp
-    // child (e.g. "Vacunación: antirrábica" + a FIRMADO stamp), and
-    // eventTypeLabel() can coincidentally equal a title on its own
-    // ("Microchip implantado" is both), so text queries are ambiguous here.
+    // screen.getByText: an asiento's eyebrow can equal its own title
+    // ("Mascota registrada" is both), so text queries are ambiguous here.
     const titleTexts = Array.from(document.querySelectorAll(".lp-lib-t")).map(
       (el) => el.textContent ?? "",
     );
@@ -100,7 +101,7 @@ describe("<LibretaFeed> — prefers-reduced-motion", () => {
 describe("<LibretaFeed> — staged reveal (motion allowed)", () => {
   it("hides unplayed entries until the chapter intersects, then plays one every ~700ms", () => {
     vi.useFakeTimers();
-    render(<LibretaFeed events={LIBRETA_EVENTS} />);
+    render(<LibretaFeed events={LIBRETA_EVENTS} now={NOW} />);
 
     // Motion is allowed: every entry starts pending, none has played yet.
     expect(document.querySelectorAll(".lp-lib-row--pending").length).toBe(LIBRETA_EVENTS.length);
@@ -129,7 +130,7 @@ describe("<LibretaFeed> — staged reveal (motion allowed)", () => {
 
   it("fails open ~1.4s after mount if the observer NEVER calls back at all", () => {
     vi.useFakeTimers();
-    render(<LibretaFeed events={LIBRETA_EVENTS} />);
+    render(<LibretaFeed events={LIBRETA_EVENTS} now={NOW} />);
     expect(document.querySelectorAll(".lp-lib-row--pending").length).toBe(LIBRETA_EVENTS.length);
 
     // No callback is ever delivered on this observer instance — a broken or
@@ -150,7 +151,7 @@ describe("<LibretaFeed> — staged reveal (motion allowed)", () => {
     // initial callback right after observe() — even when NOT intersecting —
     // and that alone must disarm the fallback.
     vi.useFakeTimers();
-    render(<LibretaFeed events={LIBRETA_EVENTS} />);
+    render(<LibretaFeed events={LIBRETA_EVENTS} now={NOW} />);
 
     const io = FakeIntersectionObserver.instances[0];
     act(() => {
@@ -185,7 +186,7 @@ describe("<LibretaFeed> — staged reveal (motion allowed)", () => {
     // later reveal must be the row directly above the previous one.
     const newestFirst = [...LIBRETA_EVENTS].reverse();
     vi.useFakeTimers();
-    render(<LibretaFeed events={newestFirst} />);
+    render(<LibretaFeed events={newestFirst} now={NOW} />);
 
     const io = FakeIntersectionObserver.instances[0];
     act(() => {
@@ -228,7 +229,7 @@ describe("<LibretaFeed> — staged reveal (motion allowed)", () => {
   it("reserves the settled list's height before collapsing rows, and releases it once settled", () => {
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(612);
     vi.useFakeTimers();
-    const { container } = render(<LibretaFeed events={LIBRETA_EVENTS} />);
+    const { container } = render(<LibretaFeed events={LIBRETA_EVENTS} now={NOW} />);
     const feed = container.querySelector<HTMLElement>(".lp-lib-feed");
 
     // Rows are collapsed, and the feed still holds the full list's height.
@@ -254,7 +255,7 @@ describe("<LibretaFeed> — staged reveal (motion allowed)", () => {
   it("the fail-open path releases the reserved height along with the full list", () => {
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(612);
     vi.useFakeTimers();
-    const { container } = render(<LibretaFeed events={LIBRETA_EVENTS} />);
+    const { container } = render(<LibretaFeed events={LIBRETA_EVENTS} now={NOW} />);
     act(() => {
       vi.advanceTimersByTime(1400);
     });
@@ -262,22 +263,16 @@ describe("<LibretaFeed> — staged reveal (motion allowed)", () => {
     expect(container.querySelector<HTMLElement>(".lp-lib-feed")?.style.minHeight).toBe("");
   });
 
-  it("stamps vaccination entries FIRMADO with the overshoot class once played", () => {
-    vi.useFakeTimers();
-    render(<LibretaFeed events={LIBRETA_EVENTS} />);
-
-    const io = FakeIntersectionObserver.instances[0];
-    act(() => {
-      io.callback([{ isIntersecting: true }]);
-    });
-    act(() => {
-      vi.advanceTimersByTime(1400 + LIBRETA_EVENTS.length * 700);
-    });
-
-    const firmado = screen.getAllByText("FIRMADO");
-    expect(firmado.length).toBeGreaterThan(0);
-    for (const el of firmado) {
-      expect(el.closest(".lp-lib-stamp--in")).not.toBeNull();
-    }
+  // The native asiento has no stamp (apps/mobile/src/pets/LibretaScreen.tsx:
+  // 350-378): who signed is its provenance line, and the date is
+  // "{relativo} · {fecha}" measured from the moment the screen depicts.
+  it("draws each asiento the native way: eyebrow, title, dates, provenance — no FIRMADO stamp", () => {
+    const html = renderToStaticMarkup(<LibretaFeed events={LIBRETA_EVENTS} now={NOW} />);
+    expect(html).not.toContain("FIRMADO");
+    expect(html).toContain("Vacuna · obligatoria");
+    expect(html).toContain("Verificado por vet");
+    expect(html).toContain("Cargado por vos");
+    // 2022-03-14 seen from 2026-09-30: four years.
+    expect(html).toContain("hace 4 años · 14 de mar de 2022");
   });
 });

@@ -21,13 +21,19 @@
 // set no longer matches what ships here.
 
 import type { IconName } from "@/components/Icon";
+import type { EventType } from "@/db/schema";
 import { BRANDING } from "@/lib/ui/branding";
-import { ageFromDateOfBirth, speciesLabel } from "@/lib/utils/format";
+import {
+  AR_TIME_ZONE,
+  ageFromDateOfBirth,
+  eventTypeLabel,
+  pluralizeEs,
+  speciesLabel,
+} from "@/lib/utils/format";
 import {
   OWNER_NAME,
   PAMPA_EVENTS,
   PAMPA_PET,
-  type PampaAuthorRole,
   type PampaSeedEvent,
   VET_CLINIC,
   VET_LICENSE,
@@ -44,34 +50,15 @@ import {
 // opens (a vet the seed never created, a neighbours' alert the product never
 // sends); __tests__/flagship-pampa-consistency.test.ts now fences it.
 
-const MONTHS_ES = [
-  "ene",
-  "feb",
-  "mar",
-  "abr",
-  "may",
-  "jun",
-  "jul",
-  "ago",
-  "sep",
-  "oct",
-  "nov",
-  "dic",
-] as const;
-
-/** "2022-04-12" → { year: "2022", month: "abr", day: 12 }. */
-function splitDate(date: string): { year: string; month: string; day: number } {
-  const [year = "", month = "1", day = "1"] = date.split("-");
-  return { year, month: MONTHS_ES[Number(month) - 1] ?? "", day: Number(day) };
-}
-
-/** No-break space: a date, a chip number or "Dra. Marrone" never splits across lines. */
+/** No-break space: a chip number or "Dra. Marrone" never splits across lines. */
 const NBSP = "\u00a0";
 
-/** "2022-04-12" → "12 abr 2022" (joined by no-break spaces). */
-export function landingDate(date: string): string {
-  const { year, month, day } = splitDate(date);
-  return [day, month, year].join(NBSP);
+/**
+ * A seed date ("2022-04-12") as an instant at Argentine noon, so no product
+ * formatter pinned to AR time ever prints it as the day before.
+ */
+export function seedInstant(date: string): Date {
+  return new Date(`${date}T12:00:00-03:00`);
 }
 
 /** "941000100000001" → "941 000 100 000 001" (groups joined by no-break spaces). */
@@ -94,27 +81,8 @@ export const PAMPA_VET = {
 
 export const PAMPA_OWNER_NAME = OWNER_NAME;
 
-/** "Caniche · hembra · nacimiento estimado nov 2021" — the sign-up facts. */
-export const PAMPA_SIGNUP_LINE = (() => {
-  const dob = splitDate(PAMPA_PET.dateOfBirth);
-  const sex = PAMPA_PET.sex === "female" ? "hembra" : "macho";
-  const born = PAMPA_PET.birthDateIsEstimated ? "nacimiento estimado" : "nacimiento";
-  return `${PAMPA_PET.breed} · ${sex} · ${born} ${dob.month}${NBSP}${dob.year}`;
-})();
-
-const AUTHOR_BY_ROLE: Record<PampaAuthorRole, string> = {
-  owner: `${OWNER_NAME} · dueño`,
-  vet: `${VET_SHORT_NAME} · vet`,
-  shelter: "Refugio · org",
-  scanner: "Anónimo · vía QR",
-};
-
 function str(v: unknown): string {
   return typeof v === "string" ? v : "";
-}
-
-function lowerFirst(v: string): string {
-  return v.charAt(0).toLowerCase() + v.slice(1);
 }
 
 /** Looks one seed event up by type (and, for status changes, target status). */
@@ -135,56 +103,168 @@ export const PAMPA_CAMPAIGN_DOSE = PAMPA_EVENTS.filter(
 /** The seed's FIRST vaccination — the one chapter 2 shows being signed. */
 export const PAMPA_FIRST_DOSE = pampaEvent("vaccination_administered");
 
-type LibretaCopy = Pick<LibretaEvent, "tone" | "title" | "meta" | "flag" | "stamp">;
+/**
+ * The shelter of chapter 4. The seed has no organization for its intake
+ * (it records it under the owner), so the name is the landing's own; it is
+ * the org `confirm-chip-match-refugio.ts` would stamp on the event.
+ */
+export const PAMPA_SHELTER = "Refugio Patitas del Barrio";
 
-function libretaCopy(e: PampaSeedEvent): LibretaCopy | null {
-  const p = e.payload;
-  switch (e.eventType) {
-    case "pet_registered":
-      return { tone: "warm", title: "Alta en el registro", meta: PAMPA_SIGNUP_LINE };
-    case "microchip_implanted":
-      return {
-        tone: "",
-        title: "Microchip implantado",
-        meta: `${formatChip(str(p.chip_number))} · ${str(p.location_on_body)}`,
-      };
-    case "vaccination_administered": {
-      const campaign = str(p.administered_by).startsWith("Campaña");
-      return {
-        tone: campaign ? "navy" : "ok",
-        title: `Vacunación: ${lowerFirst(str(p.vaccine_name))}`,
-        meta: `${str(p.brand)} · lote ${str(p.batch)} · ${str(p.administered_by)}`,
-        stamp: "ok",
-      };
-    }
-    case "sterilization_performed":
-      return { tone: "ok", title: "Castración", meta: str(p.clinic) };
-    case "status_changed": {
-      if (p.to_status === "lost") {
-        const lost = (p.lost_description ?? {}) as Record<string, unknown>;
-        return {
-          tone: "err",
-          title: "Reportada perdida",
-          meta: `${str(p.location_description)} · ${lowerFirst(str(lost.accessories_when_lost))}`,
-          flag: "lost",
-        };
+// ---------------------------------------------------------------------------
+// The owner's libreta, as the NATIVE app draws it (PO 2026-09-30: Martín's
+// phone is the native owner app in every chapter)
+// ---------------------------------------------------------------------------
+//
+// apps/mobile/src/pets/LibretaScreen.tsx:350-378 draws each asiento as the
+// server composed it (app/api/v1/pets/[publicToken]/libreta/payload.ts:146-168,
+// which runs the web's own projection, components/pet-profile/asiento-fields.ts
+// toAsientoView): an eyebrow (`kind`), a title, "{relativo} · {fecha}", the
+// fact rows, and the provenance line. The owner audience sees EVERY event
+// (components/pet-profile/libreta-lens.ts:18-21, `audience === "owner"`), so
+// the lost/intake/found asientos are on it — the "sanitaria" whitelist that
+// excludes them is the org viewer's, not the owner's.
+//
+// The projection below is a transcription of toAsientoView for the event
+// types the seed carries, fenced against the real function in
+// __tests__/flagship-pampa-consistency.test.tsx. It is not imported: its
+// module pulls drizzle-orm into this client bundle.
+
+/** asiento-fields.ts:317 — the rabies test that makes a vaccine "obligatoria". */
+const RABIES_RE = /antirr[aá]b|rabi/i;
+
+/** lib/events/events.ts:443-451 — clinical_info_logged's sub_kind labels. */
+const CLINICAL_SUB_KIND_LABELS: Record<string, string> = {
+  lab_work: "Laboratorio",
+  imaging: "Imagen",
+  surgery: "Cirugía",
+  allergy_detection: "Alergia",
+  disease_diagnosis: "Diagnóstico",
+  pregnancy: "Embarazo",
+  other: "Otro",
+};
+
+export type LibretaFact = { key: string; value: string; mono?: boolean };
+
+/**
+ * asiento-fields.ts:186-257 (deriveProvenance), for the authors the seed has.
+ * The owner reads his own asientos, so an owner-declared one is "vos"; the
+ * shelter's intake carries its organization (confirm-chip-match-refugio.ts:185-187).
+ */
+function provenance(e: PampaSeedEvent, citedProfessional: string | null): string {
+  switch (e.authorRole) {
+    case "vet":
+      if (e.authorVerified) {
+        return citedProfessional ? `Verificado por ${citedProfessional}` : "Verificado por vet";
       }
-      return { tone: "ok", title: "Encontrada · devuelta a su dueño", meta: "", flag: "ok" };
-    }
-    case "shelter_intake_recorded":
-      return { tone: "", title: "Ingresó a un refugio", meta: str(p.intake_condition) };
-    case "clinical_info_logged":
+      return "Registrado sin verificar";
+    case "shelter":
+      return e.authorVerified ? "Verificado · Registro miMAR" : `Registrado por ${PAMPA_SHELTER}`;
+    case "scanner":
+      return "Reportado por un tercero";
+    default:
+      return "Cargado por vos";
+  }
+}
+
+type AsientoCopy = { kind: string; title: string; facts: LibretaFact[]; cited?: string | null };
+
+/** asiento-fields.ts:389-612 (toAsientoView), per event type. */
+function asientoCopy(e: PampaSeedEvent): AsientoCopy | null {
+  const p = e.payload;
+  const label = eventTypeLabel(e.eventType as EventType);
+  switch (e.eventType) {
+    case "vaccination_administered": {
+      const name = str(p.vaccine_name);
+      // :401-412 — the rows the native card prints; the laboratory and batch
+      // are the two this story needs (the rest are omitted, not altered).
       return {
-        tone: "warn",
-        title: "Diagnóstico registrado",
-        meta: `${str(p.title)} · ${lowerFirst(str(p.details))}`,
-        flag: "sick",
+        kind: RABIES_RE.test(name) ? "Vacuna · obligatoria" : "Vacuna",
+        title: name || "Vacuna",
+        facts: [
+          { key: "Laboratorio", value: str(p.brand) },
+          { key: "Lote", value: str(p.batch) },
+        ],
+        cited: str(p.administered_by) || null,
       };
-    // credential_scanned is NOT a libreta row: scanner-role scans are purged
+    }
+    case "sterilization_performed": {
+      const procedure = str(p.procedure);
+      const procedureLabel =
+        procedure === "castration"
+          ? "castración"
+          : procedure === "spay"
+            ? "ovariectomía"
+            : procedure;
+      return {
+        kind: "Esterilización",
+        title: procedureLabel ? `Esterilización · ${procedureLabel}` : "Esterilización",
+        facts: [],
+      };
+    }
+    case "microchip_implanted":
+      // :508-519 — "Número" is a mono fact.
+      return {
+        kind: "Identificación · microchip",
+        title: "Microchip",
+        facts: [{ key: "Número", value: str(p.chip_number), mono: true }],
+      };
+    case "status_changed":
+      // The default branch (:594-611): kind is the type label, title the
+      // summary's primary (lib/events/events.ts:493-505).
+      return {
+        kind: label,
+        title:
+          p.to_status === "lost"
+            ? "Marcada como perdida"
+            : p.to_status === "active"
+              ? "Marcada como encontrada"
+              : label,
+        facts: [],
+      };
+    case "clinical_info_logged": {
+      const sub = CLINICAL_SUB_KIND_LABELS[str(p.sub_kind)];
+      return {
+        kind: label,
+        title: sub ? `Información clínica · ${sub}` : "Información clínica",
+        facts: [],
+      };
+    }
+    case "pet_registered":
+    case "shelter_intake_recorded":
+      // No summary case in lib/events/events.ts: the title falls back to the label.
+      return { kind: label, title: label, facts: [] };
+    // credential_scanned is NOT an asiento here: scanner-role scans are purged
     // after 90 days (lib/infra/scan-retention.ts).
     default:
       return null;
   }
+}
+
+/** asiento-fields.ts:103-114 (formatAbsolute) — "12 abr 2022". */
+export function asientoDate(date: string): string {
+  return seedInstant(date).toLocaleDateString("es-AR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: AR_TIME_ZONE,
+  });
+}
+
+/** asiento-fields.ts:120-134 (formatRelative), against `now`. */
+export function asientoRelative(date: string, now: Date): string {
+  const days = Math.floor((now.getTime() - seedInstant(date).getTime()) / 86_400_000);
+  if (days <= 0) return "hoy";
+  if (days === 1) return "ayer";
+  if (days < 7) return `hace ${days} días`;
+  if (days < 14) return "hace 1 semana";
+  if (days < 30) return `hace ${Math.floor(days / 7)} sem.`;
+  if (days < 60) return "hace 1 mes";
+  if (days < 365) {
+    const months = Math.floor(days / 30);
+    return `hace ${months} ${pluralizeEs(months, "mes")}`;
+  }
+  const years = Math.floor(days / 365);
+  return years === 1 ? "hace 1 año" : `hace ${years} años`;
 }
 
 // ---------------------------------------------------------------------------
@@ -223,17 +303,20 @@ export const PAMPA = {
 /**
  * The hero card's identity fields. Same labels and the same words as the
  * public credential the hero QR opens (app/(public)/p/[publicToken]/page.tsx
- * builds its breed line from speciesLabel + breed and prints
- * "Microchip · Sí/No"), all read from the seed's pet row and libreta — so the
+ * prints "Microchip · Sí/No"; the native credential labels "Raza" and
+ * "Microchip"), all read from the seed's pet row and libreta — so the
  * card and the page it links to cannot disagree about Pampa.
  *
  * "Sexo" and "Edad" were removed (PO 2026-09-30): the front had four fields
  * across two rows and only needed one line's worth of identity to make its
- * point; species/breed and microchip are the two that a person scanning a
- * lost-pet QR actually needs.
+ * point; breed and microchip are the two that a person scanning a lost-pet
+ * QR actually needs.
  */
 export const HERO_CREDENTIAL_FIELDS: ReadonlyArray<{ label: string; value: string }> = [
-  { label: "Especie y raza", value: `${speciesLabel(PAMPA_PET.species)} · ${PAMPA_PET.breed}` },
+  // "Raza" and "Microchip" are the labels the native credential prints
+  // (apps/mobile/src/credential/CredentialScreen.tsx:375, :383). "Especie y
+  // raza" was a label no product surface has (landing-vs-app audit 2026-09-30).
+  { label: "Raza", value: PAMPA_PET.breed },
   {
     label: "Microchip",
     value: PAMPA_EVENTS.some((e) => e.eventType === "microchip_implanted") ? "Sí" : "No",
@@ -437,25 +520,39 @@ export const CHAPTERS: LandingChapter[] = [
 // Pampa's libreta — REAL system event types only, as seen in the app
 // ---------------------------------------------------------------------------
 
+/** One asiento as the native libreta draws it (see the projection above). */
 export type LibretaEvent = {
-  year: string;
-  month: string;
-  tone: "" | "ok" | "warn" | "err" | "warm" | "navy";
-  title: string;
-  meta: string;
   /** event_type verbatim (English, system vocabulary). */
   type: string;
-  by: string;
-  flag?: "lost" | "ok" | "sick";
-  stamp?: "ok";
+  /** The seed's date, "YYYY-MM-DD". */
+  date: string;
+  year: string;
+  /** The mono eyebrow (LibretaScreen.tsx:358). */
+  kind: string;
+  title: string;
+  /** "12 abr 2022" — the absolute half of "{relativo} · {fecha}" (:360-362). */
+  whenAbsolute: string;
+  facts: LibretaFact[];
+  /** The provenance line (:370). */
+  provenance: string;
 };
 
 /** Pampa's libreta, chronological (oldest → newest), straight from the seed. */
 export const LIBRETA_EVENTS: LibretaEvent[] = PAMPA_EVENTS.flatMap((e) => {
-  const copy = libretaCopy(e);
+  const copy = asientoCopy(e);
   if (!copy) return [];
-  const { year, month } = splitDate(e.date);
-  return [{ year, month, type: e.eventType, by: AUTHOR_BY_ROLE[e.authorRole], ...copy }];
+  return [
+    {
+      type: e.eventType,
+      date: e.date,
+      year: e.date.slice(0, 4),
+      kind: copy.kind,
+      title: copy.title,
+      whenAbsolute: asientoDate(e.date),
+      facts: copy.facts,
+      provenance: provenance(e, copy.cited ?? null),
+    },
+  ];
 });
 
 /**
@@ -494,56 +591,61 @@ export type MapTile = {
   c: number;
   /** Grid row (0-based). */
   r: number;
-  /** Zoonotic signals per 100k inhabitants, last 12 months (demo data). */
+  /**
+   * Rabies coverage, dogs, last 12 months, in % (demo data). A real panorama
+   * layer (`rabies-coverage`, src/modules/panorama/application/get-layer-features.ts:516)
+   * and a real KPI (lib/metrics/kpi-catalog.ts:377); the old "señales por 100
+   * mil habitantes" was neither (landing-vs-app audit 2026-09-30).
+   */
   v: number;
 };
 
 export const MAP_TILES: MapTile[] = [
-  { ab: "JUJ", name: "Jujuy", c: 1, r: 0, v: 7.1 },
-  { ab: "SAL", name: "Salta", c: 1, r: 1, v: 8.4 },
-  { ab: "FOR", name: "Formosa", c: 3, r: 1, v: 9.2 },
-  { ab: "MIS", name: "Misiones", c: 4, r: 1, v: 7.8 },
-  { ab: "CAT", name: "Catamarca", c: 0, r: 2, v: 3.9 },
-  { ab: "TUC", name: "Tucumán", c: 1, r: 2, v: 5.2 },
-  { ab: "SDE", name: "S. del Estero", c: 2, r: 2, v: 6.3 },
-  { ab: "CHA", name: "Chaco", c: 3, r: 2, v: 8.1 },
-  { ab: "CTS", name: "Corrientes", c: 4, r: 2, v: 6.6 },
-  { ab: "LRJ", name: "La Rioja", c: 0, r: 3, v: 2.8 },
-  { ab: "CBA", name: "Córdoba", c: 2, r: 3, v: 3.4 },
-  { ab: "SFE", name: "Santa Fe", c: 3, r: 3, v: 4.5 },
-  { ab: "ERS", name: "Entre Ríos", c: 4, r: 3, v: 4.1 },
-  { ab: "SJN", name: "San Juan", c: 0, r: 4, v: 2.2 },
-  { ab: "SLU", name: "San Luis", c: 1, r: 4, v: 2.0 },
-  { ab: "BUE", name: "Buenos Aires", c: 3, r: 4, v: 5.0 },
-  { ab: "CABA", name: "CABA", c: 4, r: 4, v: 2.4 },
-  { ab: "MZA", name: "Mendoza", c: 0, r: 5, v: 2.1 },
-  { ab: "LPA", name: "La Pampa", c: 2, r: 5, v: 1.3 },
-  { ab: "NQN", name: "Neuquén", c: 1, r: 6, v: 1.1 },
-  { ab: "RNG", name: "Río Negro", c: 2, r: 6, v: 1.8 },
-  { ab: "CHU", name: "Chubut", c: 1, r: 7, v: 0.9 },
-  { ab: "SCZ", name: "Santa Cruz", c: 1, r: 8, v: 0.4 },
-  { ab: "TDF", name: "T. del Fuego", c: 2, r: 9, v: 0.3 },
+  { ab: "JUJ", name: "Jujuy", c: 1, r: 0, v: 70.5 },
+  { ab: "SAL", name: "Salta", c: 1, r: 1, v: 77 },
+  { ab: "FOR", name: "Formosa", c: 3, r: 1, v: 81 },
+  { ab: "MIS", name: "Misiones", c: 4, r: 1, v: 74 },
+  { ab: "CAT", name: "Catamarca", c: 0, r: 2, v: 54.5 },
+  { ab: "TUC", name: "Tucumán", c: 1, r: 2, v: 61 },
+  { ab: "SDE", name: "S. del Estero", c: 2, r: 2, v: 66.5 },
+  { ab: "CHA", name: "Chaco", c: 3, r: 2, v: 75.5 },
+  { ab: "CTS", name: "Corrientes", c: 4, r: 2, v: 68 },
+  { ab: "LRJ", name: "La Rioja", c: 0, r: 3, v: 49 },
+  { ab: "CBA", name: "Córdoba", c: 2, r: 3, v: 52 },
+  { ab: "SFE", name: "Santa Fe", c: 3, r: 3, v: 57.5 },
+  { ab: "ERS", name: "Entre Ríos", c: 4, r: 3, v: 55.5 },
+  { ab: "SJN", name: "San Juan", c: 0, r: 4, v: 46 },
+  { ab: "SLU", name: "San Luis", c: 1, r: 4, v: 45 },
+  { ab: "BUE", name: "Buenos Aires", c: 3, r: 4, v: 60 },
+  { ab: "CABA", name: "CABA", c: 4, r: 4, v: 47 },
+  { ab: "MZA", name: "Mendoza", c: 0, r: 5, v: 45.5 },
+  { ab: "LPA", name: "La Pampa", c: 2, r: 5, v: 41.5 },
+  { ab: "NQN", name: "Neuquén", c: 1, r: 6, v: 40.5 },
+  { ab: "RNG", name: "Río Negro", c: 2, r: 6, v: 44 },
+  { ab: "CHU", name: "Chubut", c: 1, r: 7, v: 39.5 },
+  { ab: "SCZ", name: "Santa Cruz", c: 1, r: 8, v: 37 },
+  { ab: "TDF", name: "T. del Fuego", c: 2, r: 9, v: 36.5 },
 ];
 
 /** Celeste tint quantile (0–4) — silhouette map, single hue (PO decision #5). */
 export function mapTintStep(v: number): 0 | 1 | 2 | 3 | 4 {
-  if (v >= 8) return 4;
-  if (v >= 6) return 3;
-  if (v >= 4) return 2;
-  if (v >= 1.5) return 1;
+  if (v >= 75) return 4;
+  if (v >= 65) return 3;
+  if (v >= 55) return 2;
+  if (v >= 45) return 1;
   return 0;
 }
 
-// Grouped by theme (PO landing feedback): the first pair is surveillance
-// REACH — how wide the signal spreads (total signals + jurisdictions covered);
-// the second pair is the RABIES-specific read (active observations + coverage).
+// Both labels are real KPIs (lib/metrics/kpi-catalog.ts:377 shortened, and
+// :597 verbatim). "Jurisdicciones con señal" was not one (landing-vs-app audit
+// 2026-09-30): nothing in the catalog is called that.
 //
 // Two, not four (critique 2026-09-29, M7, PO-approved): for an owner the
 // console is a glimpse, not a pitch. The one that speaks to their own pet's
 // vaccine leads; the full console lives on /municipios.
 export const CONSOLE_KPIS = [
   { label: "Cobertura antirrábica", value: "72,4%", tone: "ok" },
-  { label: "Jurisdicciones con señal", value: "19/24", tone: "blue" },
+  { label: "Mascotas en observación rábica", value: "38", tone: "blue" },
 ] as const;
 
 // ---------------------------------------------------------------------------

@@ -133,6 +133,13 @@ const HERO_STATES: HeroState[] = [
     // history once the credential is real.
     row: "Mordedura",
   },
+  // Kept (landing-vs-app audit 2026-09-30): the PUBLIC page never shows it
+  // (its situation is fed public-safe signals only), but this card is the
+  // OWNER's view, and there it is real — an active medication course sets
+  // inTreatment (src/modules/pets/application/read/load-owner-pet-detail.ts:
+  // 503, :710) and derivePetSituation returns "En tratamiento"
+  // (lib/ui/pet-situation.ts:166); the native document band prints it too
+  // (apps/mobile/src/pets/DocumentChromeNative.tsx:95, its band skin).
   { key: "tratamiento", badge: "EN TRATAMIENTO", tone: "sick", row: "Plan en el historial" },
 ];
 
