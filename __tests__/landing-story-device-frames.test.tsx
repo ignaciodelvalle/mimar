@@ -26,7 +26,9 @@ vi.mock("next/link", () => ({
   }) => React.createElement("a", { href, className }, children),
 }));
 
+import { PhoneFrame } from "@/components/landing/PhoneFrame";
 import { StorySection } from "@/components/landing/StorySection";
+import { TabletFrame } from "@/components/landing/TabletFrame";
 import {
   LOST_SEQUENCE,
   OWNER_FROM,
@@ -94,5 +96,71 @@ describe("landing story — the device tells who is using it (PO 2026-09-29)", (
         expect(html, `step ${i}`).not.toContain("lp-tablet");
       }
     }
+  });
+});
+
+// One tablet for both organizations, drawn as a real device (PO 2026-09-30):
+// the vet and the refugio render the SAME frame — same component, same
+// geometry, same bezel — and only the case colour (data-actor → --lp-case)
+// differs. The chrome is decorative: aria-hidden, and no text node at all, so
+// the in-device product-string fence (flagship-pampa-consistency) never sees
+// a string the product does not render.
+describe("landing story — device chrome (PO 2026-09-30)", () => {
+  /** The device with its screen content cut out: case wrapper + frame chrome only. */
+  function frameSkeleton(html: string): string {
+    const open = '<div class="lp-tab-scr">';
+    const start = html.indexOf(open);
+    const end = html.indexOf('<span class="lp-tablet-edge">');
+    if (start === -1 || end === -1) throw new Error("tablet screen not found");
+    return html.slice(0, start + open.length) + html.slice(end);
+  }
+
+  it("the vet and the refugio render the identical tablet, differing only by case colour", () => {
+    const vetFrames = Array.from({ length: VET_SEQUENCE.total }, (_, i) =>
+      frameSkeleton(renderToStaticMarkup(VET_SEQUENCE.device(i, false))),
+    );
+    const shelterFrames = Array.from({ length: OWNER_FROM }, (_, i) =>
+      frameSkeleton(renderToStaticMarkup(SHELTER_SEQUENCE.device(i, false))),
+    );
+    for (const f of vetFrames) expect(f).toContain('data-actor="vet"');
+    for (const f of shelterFrames) expect(f).toContain('data-actor="shelter"');
+    const normalise = (f: string) => f.replace(/data-actor="(vet|shelter)"/, 'data-actor="*"');
+    const reference = normalise(vetFrames[0] ?? "");
+    expect(reference).toContain('<div class="lp-tablet" aria-hidden="true">');
+    for (const f of [...vetFrames, ...shelterFrames]) expect(normalise(f)).toBe(reference);
+  });
+
+  it("no per-actor CSS rule reshapes a device: data-actor only sets the case colour", () => {
+    // Comments stripped first: prose mentioning data-actor is not a rule.
+    const css = readFileSync("app/landing.css", "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const rules = css.match(/[^{}]*data-actor[^{}]*\{[^}]*\}/g) ?? [];
+    expect(rules.length).toBeGreaterThanOrEqual(4);
+    for (const rule of rules) {
+      const body = rule.slice(rule.indexOf("{") + 1, rule.lastIndexOf("}"));
+      const props = body
+        .split(";")
+        .map((d) => d.trim())
+        .filter(Boolean)
+        .map((d) => d.slice(0, d.indexOf(":")).trim());
+      expect(props, rule.trim()).toEqual(["--lp-case"]);
+    }
+  });
+
+  it("phone and tablet chrome is aria-hidden and adds no text", () => {
+    for (const html of [
+      renderToStaticMarkup(<PhoneFrame>{null}</PhoneFrame>),
+      renderToStaticMarkup(<TabletFrame>{null}</TabletFrame>),
+    ]) {
+      expect(html).toMatch(/^<div class="lp-(phone|tablet)" aria-hidden="true">/);
+      // Every tag stripped leaves nothing: no clock, no carrier, no label.
+      expect(html.replace(/<[^>]*>/g, "").trim()).toBe("");
+      expect(html).not.toMatch(/<(text|title|desc)\b/);
+    }
+    const phone = renderToStaticMarkup(<PhoneFrame>{null}</PhoneFrame>);
+    for (const part of ["lp-phone-bezel", "lp-phone-island", "lp-phone-status", "lp-phone-key"]) {
+      expect(phone).toContain(part);
+    }
+    // The status-bar glyphs carry their own aria-hidden too.
+    expect(phone).toMatch(/<svg class="lp-phone-status"[^>]*aria-hidden="true"/);
   });
 });

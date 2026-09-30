@@ -61,6 +61,31 @@
   --lp-case-neighbour: var(--color-ln-rosa);
   --lp-case-vet: var(--color-ln-op-navy);
   --lp-case-shelter: var(--color-ln-ok-700);
+  /* Device chrome (PO 2026-09-30, "que se funda con el fondo como la
+     credencial"). The shadow speaks the hero credential's language
+     (.lp-hcard: --shadow-lg, soft and layered at low opacity) plus one wide,
+     faint, negatively-spread layer so a 640px device settles on the paper
+     instead of floating over it. Geometry is concentric by construction:
+     each inner radius is the outer one minus the ring around it. */
+  --lp-device-shadow: 0 22px 48px -24px rgba(24, 28, 36, 0.16), var(--shadow-lg);
+  --lp-device-rim: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 0 0 1px
+    rgba(255, 255, 255, 0.08);
+  --lp-screen-edge: inset 0 0 0 1px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --lp-key-shade: inset 0 0 0 1px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  --lp-bezel: #0f1216;
+  --lp-screen-line: rgba(0, 0, 0, 0.22);
+  --lp-glass: linear-gradient(
+    128deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.03) 30%,
+    rgba(255, 255, 255, 0) 46%
+  );
+  --lp-phone-r: 40px;
+  --lp-phone-case: 6px;
+  --lp-phone-bezel: 3px;
+  --lp-tablet-r: 32px;
+  --lp-tablet-case: 8px;
+  --lp-tablet-bezel: 12px;
   background: var(--color-ln-paper);
   color: var(--color-ln-ink);
   font-family: var(--lp-sans);
@@ -75,6 +100,7 @@
   --lp-case-neighbour: #d989b0;
   --lp-case-vet: #4f7fae;
   --lp-case-shelter: #5aa77a;
+  --lp-device-shadow: 0 22px 48px -24px rgba(0, 0, 0, 0.5), var(--shadow-lg);
 }
 .lp .lp-wrap {
   max-width: 1120px;
@@ -1603,6 +1629,11 @@
   /* below-the-fold device frames render lazily (native, no JS) */
   content-visibility: auto;
   contain-intrinsic-size: auto 640px;
+  /* content-visibility implies paint containment, which clipped the device's
+     soft shadow into a hard-edged box at this block's border (PO 2026-09-30,
+     "la sombra muy marcada"). The margin lets the shadow and the side keys
+     paint past the box without changing its layout size. */
+  overflow-clip-margin: 48px;
 }
 .lp .lp-ch-num {
   font-family: var(--lp-mono);
@@ -1641,28 +1672,94 @@
 }
 
 /* ============ phone frame + app screens =================================== */
+/* A real modern phone (PO 2026-09-30), same outer box as before: every piece
+   of chrome is absolutely positioned, so the frame is still exactly
+   min(340px, 88vw) × 640px. Rings, outside in: the actor's case
+   (--lp-phone-case), a slim black bezel (--lp-phone-bezel), a 1px screen
+   edge; each corner radius is the outer one minus the rings, so they nest.
+   The frame no longer clips (.lp-scr does), so the keys can sit as slight
+   bumps on the case edge. */
 .lp .lp-phone {
   width: min(340px, 88vw);
-  border-radius: 40px;
-  overflow: hidden;
+  border-radius: var(--lp-phone-r);
   position: relative;
-  background: var(--color-ln-paper);
-  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.12);
+  background: var(--lp-case, var(--lp-case-owner));
+  box-shadow: var(--lp-device-shadow);
+}
+.lp .lp-phone .lp-scr {
+  border-radius: var(--lp-phone-r);
+}
+.lp .lp-phone-bezel {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: var(--lp-phone-case) solid var(--lp-case, var(--lp-case-owner));
+  box-shadow: inset 0 0 0 var(--lp-phone-bezel) var(--lp-bezel), inset 0 0 0
+    calc(var(--lp-phone-bezel) + 1px) var(--lp-screen-line);
+  pointer-events: none;
+  z-index: 4;
+}
+/* The case's edge highlight, over everything else. */
+.lp .lp-phone::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: var(--lp-device-rim);
+  pointer-events: none;
+  z-index: 6;
+}
+.lp .lp-phone-key {
+  position: absolute;
+  width: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--lp-case, var(--lp-case-owner));
+  box-shadow: var(--lp-key-shade);
+}
+.lp .lp-phone-key--vol-up {
+  left: -2px;
+  top: 128px;
+  height: 42px;
+}
+.lp .lp-phone-key--vol-down {
+  left: -2px;
+  top: 180px;
+  height: 42px;
+}
+.lp .lp-phone-key--power {
+  right: -2px;
+  top: 150px;
+  height: 68px;
 }
 .lp .lp-phone-island {
   position: absolute;
-  top: 10px;
+  top: calc(var(--lp-phone-case) + var(--lp-phone-bezel) + 7px);
   left: 50%;
   transform: translateX(-50%);
-  width: 104px;
-  height: 30px;
-  border-radius: 20px;
-  background: #000;
+  width: 92px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  background: var(--lp-bezel);
+  z-index: 5;
+}
+/* Signal, wifi and battery glyphs (PhoneFrame's SVG, no text). White under
+   `difference` blending: dark on the app's paper, light on the camera's
+   dark viewfinder, with no per-screen switch. */
+.lp .lp-phone-status {
+  position: absolute;
+  top: calc(var(--lp-phone-case) + var(--lp-phone-bezel) + 14px);
+  right: calc(var(--lp-phone-case) + var(--lp-phone-bezel) + 22px);
+  width: 50px;
+  height: 10px;
+  color: var(--color-ln-card);
+  mix-blend-mode: difference;
+  opacity: 0.85;
+  pointer-events: none;
   z-index: 5;
 }
 .lp .lp-phone-home {
   position: absolute;
-  bottom: 7px;
+  bottom: calc(var(--lp-phone-case) + var(--lp-phone-bezel) + 5px);
   left: 50%;
   transform: translateX(-50%);
   width: 120px;
@@ -1756,9 +1853,8 @@
 .lp .lp-tablet {
   width: 440px;
   aspect-ratio: 3 / 4;
-  /* Thicker, EVEN bezel all around (no phone-style notch/island) + a
-     rounder corner — the tablet's other visual tell, next to its shape.
-     No padding here on purpose: .lp-tab-scr below is absolutely positioned
+  /* An EVEN bezel all around (no phone-style notch/island) — the tablet's
+     other visual tell, next to its shape. No padding here on purpose: .lp-tab-scr below is absolutely positioned
      with `inset` instead. A padded, in-flow .lp-tab-scr with height:100%
      let its own content's natural height push .lp-tablet TALLER than its
      aspect-ratio on the vet screen (measured 336×510 = 0.66, not 0.75 —
@@ -1767,32 +1863,82 @@
      .lp-tab-scr out of flow removes that feedback loop: .lp-tablet's box is
      then governed ONLY by width + aspect-ratio, never by what is inside. */
   position: relative;
-  border-radius: 34px;
+  /* A real modern tablet (PO 2026-09-30), ONE for the vet and the refugio:
+     the case (--lp-tablet-case) around a uniform slim black bezel
+     (--lp-tablet-bezel) around the screen, corners concentric by
+     construction (each inner radius = the outer one minus the ring). */
+  border-radius: var(--lp-tablet-r);
   /* The case colour of whoever holds it (.lp-seq-case[data-actor]); the vet's
      navy when unwrapped. */
   background: var(--lp-case, var(--lp-case-vet));
-  /* Token, not the phone's own raw shadow (which this originally copied) —
-     the CSS ratchet (gate gLT1, coordinator review) caps raw box-shadow in
-     this file at the 2 already grandfathered (.lp-phone, .lp-mac); a third
-     raw one is a new violation the ratchet does not forgive. --shadow-lg is
-     the closest declared token to the weight this bezel wants. */
-  box-shadow: var(--shadow-lg);
+  /* The edge highlight on the case, and the credential's soft shadow
+     language (--lp-device-shadow) — tokens only, per the CSS ratchet. */
+  box-shadow: var(--lp-device-rim), var(--lp-device-shadow);
 }
+.lp .lp-tablet-bezel {
+  position: absolute;
+  inset: var(--lp-tablet-case);
+  border-radius: calc(var(--lp-tablet-r) - var(--lp-tablet-case));
+  background: var(--lp-bezel);
+}
+/* Front camera, centred on the LONG bezel (the left one in portrait), the
+   way current tablets place it for landscape video calls. */
 .lp .lp-tablet-cam {
   position: absolute;
-  top: 11px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 50%;
+  left: calc(var(--lp-tablet-case) + var(--lp-tablet-bezel) / 2);
+  transform: translate(-50%, -50%);
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.35);
+  background: radial-gradient(circle at 35% 35%, rgba(120, 140, 170, 0.75), rgba(20, 26, 36, 1) 70%);
+  box-shadow: var(--lp-screen-edge);
   z-index: 5;
+}
+.lp .lp-tablet-key {
+  position: absolute;
+  border-radius: var(--radius-pill);
+  background: var(--lp-case, var(--lp-case-vet));
+  box-shadow: var(--lp-key-shade);
+}
+.lp .lp-tablet-key--top {
+  top: -2px;
+  right: 58px;
+  width: 44px;
+  height: 3px;
+}
+.lp .lp-tablet-key--vol-up {
+  right: -2px;
+  top: 84px;
+  width: 3px;
+  height: 38px;
+}
+.lp .lp-tablet-key--vol-down {
+  right: -2px;
+  top: 130px;
+  width: 3px;
+  height: 38px;
+}
+/* The screen's inner edge (a hairline where glass meets pixels) and a
+   barely visible glass reflection, both above the screen, both inert. */
+.lp .lp-tablet-edge,
+.lp .lp-tablet-glass {
+  position: absolute;
+  inset: calc(var(--lp-tablet-case) + var(--lp-tablet-bezel));
+  border-radius: calc(var(--lp-tablet-r) - var(--lp-tablet-case) - var(--lp-tablet-bezel));
+  pointer-events: none;
+  z-index: 6;
+}
+.lp .lp-tablet-edge {
+  box-shadow: var(--lp-screen-edge);
+}
+.lp .lp-tablet-glass {
+  background: var(--lp-glass);
 }
 .lp .lp-tab-scr {
   position: absolute;
-  inset: 26px;
-  border-radius: 12px;
+  inset: calc(var(--lp-tablet-case) + var(--lp-tablet-bezel));
+  border-radius: calc(var(--lp-tablet-r) - var(--lp-tablet-case) - var(--lp-tablet-bezel));
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -3434,8 +3580,9 @@ html:has([data-landing-root]) {
 
 /* Case colours — one per person (PO 2026-09-30, "un color de carcasa
    distinto por persona"). The phone's case is a bezel drawn OVER the
-   screen's edge (::after), so the frame's size never moves; the tablet's
-   case is its bezel background. Unwrapped phones (the dueño and libreta
+   screen's edge (.lp-phone-bezel), so the frame's size never moves; the
+   tablet's case is its own background, around a black bezel. The vet and
+   the refugio share ONE tablet: this colour is all that differs. Unwrapped phones (the dueño and libreta
    chapters) are Martín's, so they fall back to the owner colour. */
 .lp .lp-seq-case[data-actor="owner"] {
   --lp-case: var(--lp-case-owner);
@@ -3449,16 +3596,8 @@ html:has([data-landing-root]) {
 .lp .lp-seq-case[data-actor="shelter"] {
   --lp-case: var(--lp-case-shelter);
 }
-.lp .lp-phone::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border: 7px solid var(--lp-case, var(--lp-case-owner));
-  border-radius: inherit;
-  pointer-events: none;
-  z-index: 4;
-}
-/* .lp-tablet's own background reads var(--lp-case, …): see the tablet frame. */
+/* The phone's case is .lp-phone-bezel's border and .lp-tablet's own
+   background; both read var(--lp-case, …): see the frames above. */
 
 /* Form-like rows (the vet's attendance form, the intake's chip field). */
 .lp .lp-vf-pet {

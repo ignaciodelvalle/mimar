@@ -29,9 +29,9 @@
       "fontSize": 65,
       "fontHalfPx": 26,
       "fontBelowFloor": 8,
-      "radius": 24,
-      "shadow": 2,
-      "hex": 12,
+      "radius": 20,
+      "shadow": 1,
+      "hex": 11,
       "deadWeight": 0,
       "duration": 0
     }
