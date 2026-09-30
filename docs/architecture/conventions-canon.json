@@ -1101,7 +1101,7 @@
       ],
       "enforcer": [
         "scripts/check-scheduled-fence-refs.ts:447-465",
-        "scripts/check-scheduled-fence-refs.ts:487",
+        "scripts/check-scheduled-fence-refs.ts:477",
         "__tests__/scheduled-fence-refs.test.ts:353-355"
       ],
       "enforcementKind": "lint-script",
