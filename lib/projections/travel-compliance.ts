@@ -1,28 +1,81 @@
 // ---------------------------------------------------------------------------
-// Travel compliance projection (movilidad-jurisdiccional Fase 1)
+// Travel compliance projection (movilidad-jurisdiccional Fase 1; rule engine
+// widened by viajes-fase-2 Phase 3, design D2/D3)
 //
-// PURE derivation: (movement context, corridor reference data, pet events) ->
-// travel obligations view. Sibling to deriveComplianceState — it does NOT
-// modify or wrap the domestic 4-card logic (spec R2.1), and mirrors its
-// "nothing is fetched, all inputs arrive resolved" contract (R2.7): the
-// /viaje route loads events + corridors and passes them in.
+// PURE derivation: (trip context, corridor + airline reference data, pet facts,
+// pet events) -> travel obligations view. Sibling to deriveComplianceState —
+// it does NOT modify or wrap the domestic 4-card logic (spec R2.1), and
+// mirrors its "nothing is fetched, all inputs arrive resolved" contract
+// (R2.7).
 //
-// Union semantics (R2.2-R2.4): obligations are the UNION across the pet's
-// origin and destination(s). Each rule type merges across contributing
-// jurisdictions with its OWN strictness direction from STRICTNESS_DIRECTION
-// (min | max | union) — never a single global "strictest wins".
+// The pipeline:
+//   1. corridor rules and, when an airline AND a modality are chosen, the
+//      airline's rules become Contributions (lib/projections/travel-rule-merge);
+//   2. they merge per (rule type, document) with each rule type's OWN
+//      strictness direction — never a single global "strictest wins";
+//   3. each merged rule is evaluated against the libreta
+//      (lib/projections/travel-libreta-checks) — microchip before rabies,
+//      animal age, deworming window, CVI window, titre — not just displayed;
+//   4. an obligation any of whose sources is expired or unverified is
+//      degraded (info → warning) and carries a "Verificá" notice. A blocker
+//      is never lowered.
+//
+// Copy: the settled state reads "Registrada en la libreta" — the libreta
+// records facts; SENASA and the airline decide. Nothing here promises.
 //
 // requirementLevel (R2.5-R2.6) exists ONLY on this projection's output. The
-// domestic ObligationCard does NOT gain it in Fase 1 (R4.3).
+// domestic ObligationCard does NOT gain it (R4.3).
 // ---------------------------------------------------------------------------
 
-import {
-  type RequirementLevel,
-  STRICTNESS_DIRECTION,
-  type TravelRuleType,
+import type { SourceMeta } from "@/lib/domain/travel-freshness";
+import type {
+  Modality,
+  RequirementLevel,
+  TravelRuleType,
+  TravelSpecies,
 } from "@/lib/domain/travel-strictness";
 import type { ComplianceTone } from "@/lib/projections/pet-compliance";
+import {
+  type CheckContext,
+  type Evaluation,
+  MODALITY_LABELS,
+  TRAVEL_DOCUMENT_LABELS,
+  type TravelPetFacts,
+  dayOfDateOnly,
+  dayOfInstant,
+  evaluateBreedRestrictions,
+  evaluateDeworming,
+  evaluateDocumentWindow,
+  evaluateEmbargoes,
+  evaluateMaxWeight,
+  evaluateMicrochipBeforeRabies,
+  evaluateMicrochipRequired,
+  evaluateMinAnimalAge,
+  evaluateRabiesMaxAge,
+  evaluateRabiesMinAge,
+  evaluateRabiesWait,
+  evaluateRequiredVaccines,
+  evaluateTiterRequired,
+  evaluateTiterWait,
+  readLibreta,
+} from "@/lib/projections/travel-libreta-checks";
+import {
+  type MergedRule,
+  type RuleSourceRef,
+  airlineContributions,
+  corridorContributions,
+  degradeForFreshness,
+  findRule,
+  freshnessNotice,
+  mergeContributions,
+  sourceRef,
+  worstFreshness,
+} from "@/lib/projections/travel-rule-merge";
+import type { Airline, AirlineModalityRule } from "@/lib/reference/airlines";
 import type { Corridor } from "@/lib/reference/cross-border-corridors";
+
+export type { TravelPetFacts } from "@/lib/projections/travel-libreta-checks";
+export type { RuleSourceRef } from "@/lib/projections/travel-rule-merge";
 
 export type TravelJurisdiction = {
   country: string;
@@ -44,30 +97,60 @@ export type TravelComplianceInput = {
   origin: TravelJurisdiction;
   /**
    * Destination jurisdictions resolved from jurisdiction_changed history
-   * (multi-locality). In Fase 1 domestic jurisdictions contribute no travel
-   * rule VALUES yet (the govt_business_rules promotion path is deferred,
-   * design D4) — they are carried for disclosure and forward-compatibility.
+   * (multi-locality). Domestic jurisdictions contribute no travel rule VALUES
+   * yet (the govt_business_rules promotion path is deferred, design D4) —
+   * they are carried for disclosure and forward-compatibility.
    */
   destinations: TravelJurisdiction[];
   /** Corridors resolved from transport_recorded events. */
   corridors: Corridor[];
   /** Earliest upcoming travel date, when a trip is recorded. */
   travelDate: Date | null;
-  /** The pet's events (vaccinations etc.) for satisfaction checks. */
+  /**
+   * The pet's events the checks read: vaccinations, dewormings, microchip
+   * implants/replacements, weights, lab work, and the CVI
+   * (movement_recorded cvi_issued). Callers are titular-only (design D8).
+   */
   events: TravelComplianceEvent[];
+  /** Species, birth date and breed. Absent → those checks read amber. */
+  pet?: TravelPetFacts | null;
+  /** The airline the owner chose for the trip, if any. */
+  airline?: Airline | null;
+  /** How the pet flies. A selector: without it no airline row contributes. */
+  modality?: Modality | null;
 };
 
-/** ObligationCard shape (key/label/state/tone/detail/legalFootnote) + the two
- * travel-only fields (spec R2.5). */
+export type TravelObligationKey =
+  | TravelRuleType
+  | "corridor_rules_pending"
+  | "corridor_not_resolved"
+  | "modality_not_selected"
+  | "airline_modality"
+  | "airline_species"
+  | "incompatible_windows";
+
+/** Where the obligation is listed on /viaje (design D5). */
+export type TravelObligationGroup = "destino" | "aerolinea" | "libreta";
+
+/** ObligationCard shape (key/label/state/tone/detail/legalFootnote) + the
+ * travel-only fields (spec R2.5, design D2). */
 export type TravelObligation = {
-  key: TravelRuleType | "corridor_rules_pending" | "corridor_not_resolved";
+  /** Unique per obligation: two document windows share a key, never an id. */
+  id: string;
+  key: TravelObligationKey;
+  group: TravelObligationGroup;
   label: string;
   state: string;
   tone: ComplianceTone;
   detail: string | null;
   legalFootnote: string;
   requirementLevel: RequirementLevel;
+  /** The corridors/airlines whose value binds. */
   contributingJurisdictions: string[];
+  /** Every source behind the obligation, with its freshness. */
+  sources: RuleSourceRef[];
+  /** "Verificá — …" when any source is expired or unverified; else null. */
+  freshnessNotice: string | null;
 };
 
 // "sin_datos" (R-honesty, QA histórico 2026-07-08 item 3): a foreign
@@ -173,8 +256,31 @@ const RULE_LABELS: Record<TravelRuleType, string> = {
   import_permit_required: "Permiso de importación",
   microchip_before_vaccination_required: "Microchip previo a la vacuna antirrábica",
   required_documents: "Documentación a presentar",
-  required_vaccines: "Vacunas adicionales requeridas",
+  required_vaccines: "Vacunas requeridas",
+  min_animal_age_days: "Edad mínima del animal para viajar",
+  parasite_treatment_min_days_before: "Tratamiento antiparasitario · ventana previa",
+  rabies_vaccination_max_days_before_travel: "Vacuna antirrábica · antigüedad máxima",
+  microchip_required: "Microchip",
+  max_weight_kg: "Peso máximo",
+  breed_restrictions: "Restricciones de raza",
+  embargoes: "Restricciones de temporada o ruta",
+  booking_lead_hours: "Reserva anticipada",
 };
+
+/** Rule types answered by reading the pet's own events (group "libreta"). */
+const LIBRETA_CHECKED = new Set<TravelRuleType>([
+  "rabies_vaccination_to_travel_wait_days",
+  "rabies_titer_test_wait_days",
+  "rabies_vaccination_min_age_days",
+  "parasite_treatment_window_days",
+  "parasite_treatment_min_days_before",
+  "rabies_titer_test_required",
+  "microchip_before_vaccination_required",
+  "required_vaccines",
+  "min_animal_age_days",
+  "rabies_vaccination_max_days_before_travel",
+  "microchip_required",
+]);
 
 const LEVEL_SEVERITY: Record<RequirementLevel, number> = {
   blocker: 0,
@@ -182,203 +288,405 @@ const LEVEL_SEVERITY: Record<RequirementLevel, number> = {
   info: 2,
 };
 
-const ONE_DAY_MS = 86400000;
+// ---------------------------------------------------------------------------
+// Evaluators per rule type — the map is total, so a new rule type without an
+// evaluator fails typecheck. Null = no obligation (a flag nobody demands, or a
+// rule another obligation already covers).
+// ---------------------------------------------------------------------------
+
+type EvalEnv = { ctx: CheckContext; rules: readonly MergedRule[]; modality: Modality | null };
+type Evaluator = (rule: MergedRule, env: EvalEnv) => Evaluation | null;
+
+function num(rule: MergedRule): number {
+  return rule.value as number;
+}
+
+function flag(rule: MergedRule): boolean {
+  return rule.value === true;
+}
+
+function list<T>(rule: MergedRule): readonly T[] {
+  return rule.value as readonly T[];
+}
+
+function informational(state: string, detail: string | null): Evaluation {
+  return { tone: "neutral", deadlineLapsed: false, state, detail };
+}
+
+function airlineNameOf(rule: MergedRule): string {
+  return rule.binding.find((s) => s.kind === "airline")?.label ?? "la aerolínea";
+}
+
+const EVALUATORS: Record<TravelRuleType, Evaluator> = {
+  document_issuance_window_days: (r, { ctx }) => evaluateDocumentWindow(num(r), r.document, ctx),
+  rabies_vaccination_to_travel_wait_days: (r, { ctx }) => evaluateRabiesWait(num(r), ctx),
+  rabies_titer_test_wait_days: (r, { ctx }) => evaluateTiterWait(num(r), ctx),
+  quarantine_days_required: (r) =>
+    informational("A verificar", `Prever ${num(r)} días de cuarentena al ingreso`),
+  rabies_vaccination_min_age_days: (r, { ctx }) => evaluateRabiesMinAge(num(r), ctx),
+  parasite_treatment_window_days: (r, { ctx, rules }) =>
+    evaluateDeworming(
+      num(r),
+      findRule(rules, "parasite_treatment_min_days_before")?.value ?? null,
+      ctx,
+    ),
+  // The floor is evaluated WITH the ceiling when there is one.
+  parasite_treatment_min_days_before: (r, { ctx, rules }) =>
+    findRule(rules, "parasite_treatment_window_days") ? null : evaluateDeworming(null, num(r), ctx),
+  rabies_titer_test_required: (r, { ctx }) => (flag(r) ? evaluateTiterRequired(ctx) : null),
+  import_permit_required: (r) =>
+    flag(r)
+      ? informational(
+          "Requerido: verificá con la autoridad del destino",
+          "Permiso de importación del país de destino",
+        )
+      : null,
+  microchip_before_vaccination_required: (r, { ctx }) =>
+    flag(r) ? evaluateMicrochipBeforeRabies(ctx) : null,
+  // A checklist of papers is information by design (design D3) — otherwise
+  // green could never be reached; freshness can still raise it to a warning.
+  required_documents: (r) =>
+    list<string>(r).length > 0
+      ? { ...informational("Llevá esta documentación", list<string>(r).join(" · ")), level: "info" }
+      : null,
+  required_vaccines: (r, { ctx }) =>
+    list<string>(r).length > 0 ? evaluateRequiredVaccines(list<string>(r), ctx) : null,
+  min_animal_age_days: (r, { ctx }) => evaluateMinAnimalAge(num(r), ctx),
+  rabies_vaccination_max_days_before_travel: (r, { ctx }) => evaluateRabiesMaxAge(num(r), ctx),
+  microchip_required: (r, { ctx }) => (flag(r) ? evaluateMicrochipRequired(ctx) : null),
+  max_weight_kg: (r, { ctx }) =>
+    evaluateMaxWeight(num(r), r.includesCarrier, airlineNameOf(r), ctx),
+  breed_restrictions: (r, { ctx, modality }) =>
+    modality ? evaluateBreedRestrictions(list(r), airlineNameOf(r), modality, ctx) : null,
+  embargoes: (r, { ctx }) => evaluateEmbargoes(list(r), airlineNameOf(r), ctx),
+  booking_lead_hours: (r) => ({
+    ...informational(
+      "A tener en cuenta",
+      `Reservá el lugar de la mascota con al menos ${num(r)} horas de anticipación`,
+    ),
+    level: "info",
+  }),
+};
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Obligation building
 // ---------------------------------------------------------------------------
 
-type NumericContribution = { corridorLabel: string; value: number };
-type BooleanContribution = { corridorLabel: string; value: boolean };
-type SetContribution = { corridorLabel: string; value: readonly string[] };
+function uniqueSources(sources: readonly RuleSourceRef[]): RuleSourceRef[] {
+  const seen = new Set<string>();
+  return sources.filter((s) => {
+    const key = `${s.kind}:${s.id}:${s.sourceUrl}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
-function mergeNumeric(
-  direction: "min" | "max",
-  contributions: NumericContribution[],
-): { value: number; contributors: string[] } {
-  const values = contributions.map((c) => c.value);
-  const merged = direction === "min" ? Math.min(...values) : Math.max(...values);
+function uniqueLabels(sources: readonly RuleSourceRef[]): string[] {
+  return [...new Set(sources.map((s) => s.label))];
+}
+
+function footnoteFor(sources: readonly RuleSourceRef[]): string {
+  const corridors = uniqueLabels(sources.filter((s) => s.kind === "corridor"));
+  const airlines = uniqueLabels(sources.filter((s) => s.kind === "airline"));
+  const parts: string[] = [];
+  if (corridors.length > 0) parts.push(`Regla del corredor de viaje · ${corridors.join(" · ")}`);
+  if (airlines.length > 0) {
+    parts.push(`Política publicada por ${airlines.join(" · ")} — verificá con tu aerolínea`);
+  }
+  return parts.length > 0
+    ? parts.join(" · ")
+    : "Regla del corredor de viaje · corredores registrados";
+}
+
+function groupFor(rule: MergedRule, binding: readonly RuleSourceRef[]): TravelObligationGroup {
+  if (LIBRETA_CHECKED.has(rule.ruleType)) return "libreta";
+  if (rule.ruleType === "document_issuance_window_days" && rule.document === "senasa_cvi") {
+    return "libreta";
+  }
+  return binding.length > 0 && binding.every((s) => s.kind === "airline") ? "aerolinea" : "destino";
+}
+
+function labelFor(rule: MergedRule): string {
+  if (rule.ruleType === "document_issuance_window_days" && rule.document) {
+    return `${TRAVEL_DOCUMENT_LABELS[rule.document]} · ventana de emisión`;
+  }
+  return RULE_LABELS[rule.ruleType];
+}
+
+/**
+ * The floor and the ceiling of the deworming window are ONE obligation; the
+ * ceiling's obligation also carries the floor's sources.
+ */
+function companionsOf(rule: MergedRule, rules: readonly MergedRule[]): MergedRule[] {
+  if (rule.ruleType !== "parasite_treatment_window_days") return [];
+  const floor = findRule(rules, "parasite_treatment_min_days_before");
+  return floor ? [floor] : [];
+}
+
+function ruleObligation(
+  rule: MergedRule,
+  evaluation: Evaluation,
+  companions: readonly MergedRule[],
+): TravelObligation {
+  const binding = uniqueSources([...rule.binding, ...companions.flatMap((c) => c.binding)]);
+  const all = uniqueSources([...rule.all, ...companions.flatMap((c) => c.all)]);
+  const base = evaluation.level ?? requirementLevelFor(evaluation.tone, evaluation.deadlineLapsed);
   return {
-    value: merged,
-    contributors: contributions.filter((c) => c.value === merged).map((c) => c.corridorLabel),
+    id: rule.document ? `${rule.ruleType}:${rule.document}` : rule.ruleType,
+    key: rule.ruleType,
+    group: groupFor(rule, binding),
+    label: labelFor(rule),
+    state: evaluation.state,
+    tone: evaluation.tone,
+    detail: evaluation.detail,
+    legalFootnote: footnoteFor(binding),
+    requirementLevel: degradeForFreshness(base, worstFreshness(all)),
+    contributingJurisdictions: uniqueLabels(binding),
+    sources: all,
+    freshnessNotice: freshnessNotice(all),
   };
 }
 
-function mergeBoolean(contributions: BooleanContribution[]): {
-  value: boolean;
-  contributors: string[];
+/** A floor above its ceiling can never be met: a blocker, never a guess. */
+function incompatibleWindows(rules: readonly MergedRule[]): {
+  obligations: TravelObligation[];
+  skip: Set<TravelRuleType>;
 } {
-  return {
-    value: contributions.some((c) => c.value),
-    contributors: contributions.filter((c) => c.value).map((c) => c.corridorLabel),
-  };
-}
-
-function mergeSet(contributions: SetContribution[]): { value: string[]; contributors: string[] } {
-  const union = new Set<string>();
-  const contributors: string[] = [];
-  for (const c of contributions) {
-    if (c.value.length === 0) continue;
-    contributors.push(c.corridorLabel);
-    for (const item of c.value) union.add(item);
+  const pairs: [TravelRuleType, TravelRuleType, string][] = [
+    [
+      "parasite_treatment_min_days_before",
+      "parasite_treatment_window_days",
+      "Las fuentes piden el antiparasitario en ventanas que no se superponen",
+    ],
+    [
+      "rabies_vaccination_to_travel_wait_days",
+      "rabies_vaccination_max_days_before_travel",
+      "Las fuentes piden una antirrábica más vieja y más nueva a la vez",
+    ],
+  ];
+  const obligations: TravelObligation[] = [];
+  const skip = new Set<TravelRuleType>();
+  for (const [floorType, ceilingType, detail] of pairs) {
+    const floor = findRule(rules, floorType);
+    const ceiling = findRule(rules, ceilingType);
+    if (!floor || !ceiling || num(floor) <= num(ceiling)) continue;
+    skip.add(floorType);
+    skip.add(ceilingType);
+    const obligation = ruleObligation(
+      ceiling,
+      { tone: "over", deadlineLapsed: true, state: "Ventanas incompatibles", detail },
+      [floor],
+    );
+    obligations.push({
+      ...obligation,
+      id: `incompatible_windows:${ceilingType}`,
+      key: "incompatible_windows",
+    });
   }
-  return { value: [...union], contributors };
+  return { obligations, skip };
 }
 
-// The latest rabies vaccination event (by occurredAt), if any. Local copy of
-// the pet-compliance matcher — that module's helper is deliberately private
-// (R2.1: the domestic projection stays byte-for-byte untouched).
-function latestRabiesDoseAt(events: TravelComplianceEvent[]): Date | null {
-  const dose = events
-    .filter((e) => {
-      if (e.eventType !== "vaccination_administered") return false;
-      const p = (e.payload ?? {}) as Record<string, unknown>;
-      const name = typeof p.vaccine_name === "string" ? p.vaccine_name.toLowerCase() : "";
-      return /antirr[aá]b|rabi/.test(name);
-    })
-    .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())[0];
-  return dose ? new Date(dose.occurredAt) : null;
-}
-
-function footnoteFor(contributors: string[]): string {
-  const scope = contributors.length > 0 ? contributors.join(" · ") : "corredores registrados";
-  return `Regla del corredor de viaje · ${scope}`;
+function ruleObligations(rules: readonly MergedRule[], env: EvalEnv): TravelObligation[] {
+  const { obligations, skip } = incompatibleWindows(rules);
+  for (const rule of rules) {
+    if (skip.has(rule.ruleType)) continue;
+    const evaluation = EVALUATORS[rule.ruleType](rule, env);
+    if (!evaluation) continue;
+    obligations.push(ruleObligation(rule, evaluation, companionsOf(rule, rules)));
+  }
+  return obligations;
 }
 
 // ---------------------------------------------------------------------------
-// Per-rule-type evaluation → tone + state + detail
+// Airline gates — facts about the airline row itself, not rule types
 // ---------------------------------------------------------------------------
 
-type Evaluation = { tone: ComplianceTone; deadlineLapsed: boolean; state: string; detail: string };
+const SPECIES_PLURAL: Record<string, string> = { dog: "perros", cat: "gatos" };
 
-function evaluateRabiesWait(waitDays: number, input: TravelComplianceInput): Evaluation {
-  const doseAt = latestRabiesDoseAt(input.events);
-  const base = `Mínimo ${waitDays} días entre la vacuna antirrábica y el viaje`;
-  if (!input.travelDate) {
-    return { tone: "neutral", deadlineLapsed: false, state: "Sin fecha de viaje", detail: base };
-  }
-  if (doseAt) {
-    const readyAt = new Date(doseAt.getTime() + waitDays * ONE_DAY_MS);
-    if (readyAt <= input.travelDate) {
-      return { tone: "ok", deadlineLapsed: false, state: "Cumplida", detail: base };
-    }
-    // The recorded dose cannot satisfy the wait before the travel date.
-    return { tone: "over", deadlineLapsed: true, state: "No llega a cumplirse", detail: base };
-  }
-  // No dose on record: still satisfiable if vaccinating today leaves enough
-  // wait before the trip.
-  const lastChance = new Date(input.travelDate.getTime() - waitDays * ONE_DAY_MS);
-  const lapsed = input.now > lastChance;
+function airlineObligation(
+  airline: Airline,
+  key: TravelObligationKey,
+  evaluation: Evaluation,
+  meta: SourceMeta,
+  now: Date,
+): TravelObligation {
+  const source = sourceRef("airline", airline.id, airline.name, meta, now);
+  const base = requirementLevelFor(evaluation.tone, evaluation.deadlineLapsed);
   return {
-    tone: "due",
-    deadlineLapsed: lapsed,
-    state: lapsed ? "Plazo vencido" : "Pendiente",
-    detail: base,
+    id: key,
+    key,
+    group: "aerolinea",
+    label: `Aerolínea · ${airline.name}`,
+    state: evaluation.state,
+    tone: evaluation.tone,
+    detail: evaluation.detail,
+    legalFootnote: footnoteFor([source]),
+    requirementLevel: degradeForFreshness(base, source.freshness),
+    contributingJurisdictions: [airline.name],
+    sources: [source],
+    freshnessNotice: freshnessNotice([source]),
   };
 }
 
-function evaluateInformationalDays(ruleType: TravelRuleType, value: number): Evaluation {
-  const details: Partial<Record<TravelRuleType, string>> = {
-    document_issuance_window_days: `Emitir el certificado como máximo ${value} días antes del viaje`,
-    rabies_titer_test_wait_days: `Esperar ${value} días desde la titulación antes de viajar`,
-    quarantine_days_required: `Prever ${value} días de cuarentena al ingreso`,
-    rabies_vaccination_min_age_days: `Edad mínima de ${value} días al recibir la vacuna antirrábica`,
-    parasite_treatment_window_days: `Aplicar el tratamiento como máximo ${value} días antes del viaje`,
-  };
+function airlineHeaderMeta(airline: Airline): SourceMeta {
   return {
-    tone: "neutral",
-    deadlineLapsed: false,
-    state: "A verificar",
-    detail: details[ruleType] ?? `${value} días`,
+    sourceUrl: airline.sourceUrl,
+    lastVerifiedAt: airline.lastVerifiedAt,
+    reviewBy: airline.reviewBy,
+    verification: "verified",
   };
+}
+
+function modalityGate(airline: Airline, modality: Modality, now: Date): TravelObligation | null {
+  const row: AirlineModalityRule | undefined = airline.modalities[modality];
+  const where = MODALITY_LABELS[modality];
+  if (!row) {
+    return airlineObligation(
+      airline,
+      "airline_modality",
+      informational(`Sin datos publicados por ${airline.name} para ${where}`, null),
+      airlineHeaderMeta(airline),
+      now,
+    );
+  }
+  if (row.offered.value === "no") {
+    return airlineObligation(
+      airline,
+      "airline_modality",
+      {
+        tone: "over",
+        deadlineLapsed: true,
+        state: `Según lo publicado por ${airline.name}, no lleva mascotas en ${where}`,
+        detail: row.offered.note ?? null,
+      },
+      row.offered,
+      now,
+    );
+  }
+  if (row.offered.value === "restricted") {
+    return airlineObligation(
+      airline,
+      "airline_modality",
+      {
+        tone: "neutral",
+        deadlineLapsed: false,
+        state: `Según lo publicado por ${airline.name}, lleva mascotas en ${where} con restricciones`,
+        detail: row.offered.note ?? null,
+      },
+      row.offered,
+      now,
+    );
+  }
+  return null;
+}
+
+function speciesGate(
+  airline: Airline,
+  modality: Modality,
+  species: string | null,
+  now: Date,
+): TravelObligation | null {
+  const accepted = airline.modalities[modality]?.species;
+  if (!accepted || !species) return null;
+  if ((accepted.value as readonly string[]).includes(species)) return null;
+  const who = SPECIES_PLURAL[species] ?? "esta especie";
+  return airlineObligation(
+    airline,
+    "airline_species",
+    {
+      tone: "over",
+      deadlineLapsed: true,
+      state: `Según lo publicado por ${airline.name}, no lleva ${who} en ${MODALITY_LABELS[modality]}`,
+      detail: null,
+    },
+    accepted,
+    now,
+  );
+}
+
+function airlineGates(
+  airline: Airline,
+  modality: Modality | null,
+  species: string | null,
+  now: Date,
+): TravelObligation[] {
+  if (!modality) {
+    return [
+      airlineObligation(
+        airline,
+        "modality_not_selected",
+        {
+          tone: "neutral",
+          deadlineLapsed: false,
+          state: "Elegí cabina, bodega o carga",
+          detail: `Los requisitos de ${airline.name} dependen de cómo viaja la mascota`,
+        },
+        airlineHeaderMeta(airline),
+        now,
+      ),
+    ];
+  }
+  return [
+    modalityGate(airline, modality, now),
+    speciesGate(airline, modality, species, now),
+  ].filter((o): o is TravelObligation => o !== null);
 }
 
 // ---------------------------------------------------------------------------
 // Main derivation
 // ---------------------------------------------------------------------------
 
-export function deriveTravelCompliance(input: TravelComplianceInput): TravelComplianceState {
-  const obligations: TravelObligation[] = [];
+function travelSpecies(species: string | null | undefined): TravelSpecies | null {
+  return species === "dog" || species === "cat" ? species : null;
+}
 
+function honestyObligation(
+  key: "corridor_rules_pending" | "corridor_not_resolved",
+  state: string,
+  detail: string,
+  legalFootnote: string,
+  labels: string[],
+): TravelObligation {
+  return {
+    id: key,
+    key,
+    group: "destino",
+    label: "Requisitos del corredor",
+    state,
+    tone: "neutral",
+    detail,
+    legalFootnote,
+    requirementLevel: requirementLevelFor("neutral", false),
+    contributingJurisdictions: labels,
+    sources: [],
+    freshnessNotice: null,
+  };
+}
+
+export function deriveTravelCompliance(input: TravelComplianceInput): TravelComplianceState {
+  const { now } = input;
+  const species = travelSpecies(input.pet?.species);
   const corridorsWithRules = input.corridors.filter((c) => Object.keys(c.rules).length > 0);
   const corridorsPending = input.corridors.filter((c) => Object.keys(c.rules).length === 0);
+  const modality = input.airline ? (input.modality ?? null) : null;
 
-  // Collect contributions per rule type across all corridors touching the trip.
-  const numericByType = new Map<TravelRuleType, NumericContribution[]>();
-  const booleanByType = new Map<TravelRuleType, BooleanContribution[]>();
-  const setByType = new Map<TravelRuleType, SetContribution[]>();
-
-  for (const corridor of corridorsWithRules) {
-    for (const [ruleTypeRaw, value] of Object.entries(corridor.rules)) {
-      const ruleType = ruleTypeRaw as TravelRuleType;
-      if (typeof value === "number") {
-        const list = numericByType.get(ruleType) ?? [];
-        list.push({ corridorLabel: corridor.label, value });
-        numericByType.set(ruleType, list);
-      } else if (typeof value === "boolean") {
-        const list = booleanByType.get(ruleType) ?? [];
-        list.push({ corridorLabel: corridor.label, value });
-        booleanByType.set(ruleType, list);
-      } else if (Array.isArray(value)) {
-        const list = setByType.get(ruleType) ?? [];
-        list.push({ corridorLabel: corridor.label, value });
-        setByType.set(ruleType, list);
-      }
-    }
+  const contributions = corridorsWithRules.flatMap((c) => corridorContributions(c, species, now));
+  if (input.airline && modality) {
+    const corridorIds = input.corridors.map((c) => c.id);
+    contributions.push(...airlineContributions(input.airline, modality, corridorIds, now));
   }
+  const rules = mergeContributions(contributions);
 
-  // Numeric rules — merged per direction (S5 min / S6 max).
-  for (const [ruleType, contributions] of numericByType) {
-    const direction = STRICTNESS_DIRECTION[ruleType];
-    if (direction === "union") continue; // shape mismatch — union rules are not numeric
-    const { value, contributors } = mergeNumeric(direction, contributions);
-    const evaluation =
-      ruleType === "rabies_vaccination_to_travel_wait_days"
-        ? evaluateRabiesWait(value, input)
-        : evaluateInformationalDays(ruleType, value);
-    obligations.push({
-      key: ruleType,
-      label: RULE_LABELS[ruleType],
-      state: evaluation.state,
-      tone: evaluation.tone,
-      detail: evaluation.detail,
-      legalFootnote: footnoteFor(contributors),
-      requirementLevel: requirementLevelFor(evaluation.tone, evaluation.deadlineLapsed),
-      contributingJurisdictions: contributors,
-    });
-  }
-
-  // Boolean union rules — required if ANY corridor requires it. A rule that
-  // no corridor requires produces no obligation (nothing to comply with).
-  for (const [ruleType, contributions] of booleanByType) {
-    const { value, contributors } = mergeBoolean(contributions);
-    if (!value) continue;
-    obligations.push({
-      key: ruleType,
-      label: RULE_LABELS[ruleType],
-      state: "Requerido",
-      tone: "neutral",
-      detail: null,
-      legalFootnote: footnoteFor(contributors),
-      requirementLevel: requirementLevelFor("neutral", false),
-      contributingJurisdictions: contributors,
-    });
-  }
-
-  // Set union rules — the traveler carries the union, never a subset (S7).
-  for (const [ruleType, contributions] of setByType) {
-    const { value, contributors } = mergeSet(contributions);
-    if (value.length === 0) continue;
-    obligations.push({
-      key: ruleType,
-      label: RULE_LABELS[ruleType],
-      state: "A presentar",
-      tone: "neutral",
-      detail: value.join(" · "),
-      legalFootnote: footnoteFor(contributors),
-      requirementLevel: requirementLevelFor("neutral", false),
-      contributingJurisdictions: contributors,
-    });
+  const ctx: CheckContext = {
+    today: dayOfInstant(now),
+    travelDay: input.travelDate ? dayOfDateOnly(input.travelDate) : null,
+    pet: input.pet ?? null,
+    libreta: readLibreta(input.events),
+  };
+  const obligations = ruleObligations(rules, { ctx, rules, modality });
+  if (input.airline) {
+    obligations.push(...airlineGates(input.airline, modality, input.pet?.species ?? null, now));
   }
 
   // Citation-pending corridors: rule values have not been validated yet, so
@@ -386,17 +694,15 @@ export function deriveTravelCompliance(input: TravelComplianceInput): TravelComp
   // covering every pending corridor.
   if (corridorsPending.length > 0) {
     const labels = corridorsPending.map((c) => c.label);
-    obligations.push({
-      key: "corridor_rules_pending",
-      label: "Requisitos del corredor",
-      state: "Pendiente de validación oficial",
-      tone: "neutral",
-      detail:
+    obligations.push(
+      honestyObligation(
+        "corridor_rules_pending",
+        "Pendiente de validación oficial",
         "Los valores regulatorios de este corredor todavía no fueron validados con la fuente oficial.",
-      legalFootnote: footnoteFor(labels),
-      requirementLevel: requirementLevelFor("neutral", false),
-      contributingJurisdictions: labels,
-    });
+        `Regla del corredor de viaje · ${labels.join(" · ")}`,
+        labels,
+      ),
+    );
   }
 
   // Corridor NOT resolved at all (R-honesty, QA histórico 2026-07-08 item 3):
@@ -410,17 +716,15 @@ export function deriveTravelCompliance(input: TravelComplianceInput): TravelComp
   const hasForeignDestination = input.destinations.some((d) => d.country !== "AR");
   const corridorNotResolved = hasForeignDestination && input.corridors.length === 0;
   if (corridorNotResolved) {
-    obligations.push({
-      key: "corridor_not_resolved",
-      label: "Requisitos del corredor",
-      state: "Verificación no disponible",
-      tone: "neutral",
-      detail:
+    obligations.push(
+      honestyObligation(
+        "corridor_not_resolved",
+        "Verificación no disponible",
         "Sin requisitos cargados para este corredor — no se pudo resolver un corredor para el destino informado. Registrá el transporte del viaje para intentar resolverlo.",
-      legalFootnote: "Sin corredor resuelto para el destino informado.",
-      requirementLevel: requirementLevelFor("neutral", false),
-      contributingJurisdictions: [],
-    });
+        "Sin corredor resuelto para el destino informado.",
+        [],
+      ),
+    );
   }
 
   obligations.sort(

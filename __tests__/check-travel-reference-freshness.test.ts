@@ -102,15 +102,34 @@ describe("structural errors fail", () => {
     expect(verdict.errors.join("\n")).toMatch(/is in the future/);
   });
 
-  it("a declared rule with no provenance", () => {
+  it("a declared rule with no provenance (a bare value, not an envelope)", () => {
     const [first] = SHIPPED_REGISTRY.corridors;
+    const bare = { value: 10 } as unknown as NonNullable<
+      Corridor["rules"]["document_issuance_window_days"]
+    >;
     const verdict = evaluateReferenceFreshness(
-      withCorridor({
-        ruleSources: { ...first.ruleSources, document_issuance_window_days: undefined },
-      }),
+      withCorridor({ rules: { ...first.rules, document_issuance_window_days: bare } }),
       VERIFIED_ON,
     );
     expect(verdict.errors.join("\n")).toMatch(/rules\.document_issuance_window_days: sourceUrl/);
+  });
+
+  it("a rule envelope that lost its review date", () => {
+    const [first] = SHIPPED_REGISTRY.corridors;
+    const envelope = first.rules.rabies_vaccination_to_travel_wait_days;
+    if (!envelope) throw new Error("fixture: the first corridor declares a rabies wait");
+    const verdict = evaluateReferenceFreshness(
+      withCorridor({
+        rules: {
+          ...first.rules,
+          rabies_vaccination_to_travel_wait_days: { ...envelope, reviewBy: "" },
+        },
+      }),
+      VERIFIED_ON,
+    );
+    expect(verdict.errors.join("\n")).toMatch(
+      /rules\.rabies_vaccination_to_travel_wait_days: reviewBy missing/,
+    );
   });
 
   it("an unverified value without a note", () => {

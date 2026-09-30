@@ -96,7 +96,11 @@ const DTO = {
   ],
   obligations: [
     {
+      id: "required_documents",
       key: "required_documents" as const,
+      group: "destino" as const,
+      sources: [],
+      freshnessNotice: null,
       label: "Documentación a presentar",
       state: "A presentar",
       tone: "neutral" as const,

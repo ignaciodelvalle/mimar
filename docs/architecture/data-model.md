@@ -186,7 +186,7 @@ is wrong today.
 
 ## 4. Projections
 
-`lib/projections` holds <!-- fact:projections -->14<!-- /fact --> pure replay
+`lib/projections` holds <!-- fact:projections -->16<!-- /fact --> pure replay
 modules — no database, no framework, one `ProjectionEvent` shape
 (`lib/projections/types.ts`) that deliberately omits the columns a projector
 must not read.

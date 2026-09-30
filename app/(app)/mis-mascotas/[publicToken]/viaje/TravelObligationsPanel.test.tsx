@@ -13,7 +13,11 @@ function render(node: React.ReactElement): string {
 }
 
 const BLOCKER: TravelObligation = {
+  id: "rabies_vaccination_to_travel_wait_days",
   key: "rabies_vaccination_to_travel_wait_days",
+  group: "libreta",
+  sources: [],
+  freshnessNotice: null,
   label: "Vacuna antirrábica · espera previa al viaje",
   state: "Plazo vencido",
   tone: "due",
@@ -24,7 +28,11 @@ const BLOCKER: TravelObligation = {
 };
 
 const INFO: TravelObligation = {
+  id: "required_documents",
   key: "required_documents",
+  group: "destino",
+  sources: [],
+  freshnessNotice: "Verificá — dato sin confirmar con la fuente",
   label: "Documentación a presentar",
   state: "A presentar",
   tone: "neutral",
@@ -58,6 +66,11 @@ describe("<TravelObligationsPanel>", () => {
     const html = render(<TravelObligationsPanel obligations={[BLOCKER, INFO]} />);
     expect(html).toContain("Bloqueante");
     expect(html).toContain("Informativo");
+  });
+
+  it("renders the freshness notice of an obligation whose source is not fresh", () => {
+    const html = render(<TravelObligationsPanel obligations={[BLOCKER, INFO]} />);
+    expect(html).toContain("Verificá — dato sin confirmar con la fuente");
   });
 
   it("renders an empty-list message when there are no obligations", () => {

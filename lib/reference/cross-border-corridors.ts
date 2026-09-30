@@ -21,9 +21,20 @@
 // later). scripts/check-travel-reference-freshness.ts fails `pnpm verify` on a
 // missing or malformed one, and only WARNS when a rule is merely past its
 // review date — the calendar never blocks a merge.
+//
+// ENVELOPES (viajes-fase-2, design D2): each rule is a `RuleEnvelope` — its
+// value AND its provenance in one object, optionally scoped to a species and,
+// for document windows, to the document it is about. The requirements that
+// Phase 2 could only carry as prose (Chile's microchip and deworming floor,
+// the USA minimum dog age) are rule types now, checked against the libreta.
 
-import type { SourceMeta, Sourced } from "@/lib/domain/travel-freshness";
-import type { TravelRuleType, TravelRuleValueByType } from "@/lib/domain/travel-strictness";
+import type { SourceMeta } from "@/lib/domain/travel-freshness";
+import type {
+  RuleEnvelope,
+  TravelDocument,
+  TravelRuleEnvelopes,
+  TravelSpecies,
+} from "@/lib/domain/travel-strictness";
 
 // R3.5 staleness disclaimer — rendered on ALL THREE surfaces (checklist,
 // semáforo, exported PDF). es-AR wording pending PO sign-off (design open
@@ -34,10 +45,8 @@ export const TRAVEL_DISCLAIMER =
 export const CORRIDOR_IDS = ["chile", "uruguay", "brasil", "ue_espana", "usa"] as const;
 export type CorridorId = (typeof CORRIDOR_IDS)[number];
 
-export type CorridorRules = { [K in TravelRuleType]?: TravelRuleValueByType[K] };
-
-/** Provenance of each declared rule (viajes-fase-2, design D6). */
-export type CorridorRuleSources = { [K in TravelRuleType]?: SourceMeta };
+/** Each declared rule, with its own provenance (viajes-fase-2, design D2). */
+export type CorridorRules = TravelRuleEnvelopes;
 
 export interface Corridor {
   id: CorridorId;
@@ -57,23 +66,16 @@ export interface Corridor {
   reviewBy: string;
   /** Fase 1 is outbound-from-Argentina only (spec R3.4). */
   appliesTo: { species: readonly ("dog" | "cat")[]; direction: "outbound_from_ar" };
+  /**
+   * Every declared rule carries its own source —
+   * scripts/check-travel-reference-freshness.ts fails on one that does not.
+   */
   rules: CorridorRules;
-  /**
-   * Where each declared rule came from. Every key of `rules` has an entry —
-   * scripts/check-travel-reference-freshness.ts fails otherwise.
-   */
-  ruleSources: CorridorRuleSources;
-  /**
-   * Requirements verified at the source that the rule table cannot express
-   * yet: a minimum ANIMAL age, a deworming FLOOR, a mandatory microchip. The
-   * rule engine (viajes-fase-2 Phase 3) turns each into a rule type; until then
-   * they are carried here, cited, so nothing verified is dropped.
-   */
-  pendingRequirements?: readonly Sourced<string>[];
 }
 
 // Structure-only registry: version 2026.0 marked the citation-pending state.
-const SPECIES: readonly ("dog" | "cat")[] = ["dog", "cat"];
+const SPECIES: readonly TravelSpecies[] = ["dog", "cat"];
+const DOGS: readonly TravelSpecies[] = ["dog"];
 
 // PO gate PARTIALLY resolved (2026-07-18): the research package
 // (datos-investigados-2026-07-18/corredores-transfronterizos.json) source-cited
@@ -90,17 +92,22 @@ const SPECIES: readonly ("dog" | "cat")[] = ["dog", "cat"];
 //     implanted) and the CVI is valid 60 days, as for the rest of Mercosur.
 // The same pass reconfirmed every Uruguay, UE-España and USA value against its
 // primary source, and found one requirement the USA corridor lacked: a dog
-// must be at least 6 months old on entry (CDC) — carried in
-// `pendingRequirements` until the rule table has a minimum-animal-age type.
+// must be at least 6 months old on entry (CDC).
+//
+// 2026.3 (viajes-fase-2 Phase 3): no value changed; what changed is what the
+// table can SAY. Chile's mandatory microchip, Chile's 5-day deworming floor and
+// the USA minimum dog age were carried as prose (`pendingRequirements`) and
+// are rule types now (microchip_required, parasite_treatment_min_days_before,
+// min_animal_age_days), checked against the libreta. The microchips Uruguay
+// (dogs), UE-España and the USA already demanded in `required_documents` are
+// declared as microchip_required too, so the libreta is asked about them.
 //
 // deriveTravelCompliance (lib/projections/travel-compliance.ts) keys the
 // "requisitos pendientes de validación oficial" warning off
 // `Object.keys(rules).length === 0`; with Chile and Brasil populated, no
 // corridor surfaces it any more.
-const RULES_VERSION = "2026.1";
-const RULES_EFFECTIVE_FROM = "2026-07-18";
-const CORRECTED_VERSION = "2026.2";
-const CORRECTED_EFFECTIVE_FROM = "2026-09-30";
+const RULES_VERSION = "2026.3";
+const RULES_EFFECTIVE_FROM = "2026-09-30";
 
 // Every corridor value was checked against its source on this date.
 const LAST_VERIFIED = "2026-09-30";
@@ -115,7 +122,7 @@ const UY_INGRESO = "https://www.gub.uy/tramites/solicitud-ingreso-mascotas-urugu
 const EU_2026_636 = "https://eur-lex.europa.eu/legal-content/ES/TXT/HTML/?uri=OJ%3AL_202600636";
 const CDC_DOGS = "https://www.cdc.gov/importation/dogs/rabies-free-low-risk-countries.html";
 
-/** A rule verified at `sourceUrl` on LAST_VERIFIED. */
+/** Provenance of a rule verified at `sourceUrl` on LAST_VERIFIED. */
 function verifiedAt(sourceUrl: string, note?: string): SourceMeta {
   return {
     sourceUrl,
@@ -123,6 +130,22 @@ function verifiedAt(sourceUrl: string, note?: string): SourceMeta {
     reviewBy: REVIEW_BY,
     verification: "verified",
     ...(note ? { note } : {}),
+  };
+}
+
+type EnvelopeScope = {
+  note?: string;
+  species?: readonly TravelSpecies[];
+  document?: TravelDocument;
+};
+
+/** A rule value verified at `sourceUrl`, with its scope. */
+function rule<V>(value: V, sourceUrl: string, scope: EnvelopeScope = {}): RuleEnvelope<V> {
+  return {
+    value,
+    ...verifiedAt(sourceUrl, scope.note),
+    ...(scope.species ? { appliesToSpecies: scope.species } : {}),
+    ...(scope.document ? { document: scope.document } : {}),
   };
 }
 
@@ -134,54 +157,44 @@ export const CORRIDORS: readonly Corridor[] = [
     id: "chile",
     label: "Chile",
     jurisdiction: { country: "CL" },
-    version: CORRECTED_VERSION,
-    effectiveFrom: CORRECTED_EFFECTIVE_FROM,
+    version: RULES_VERSION,
+    effectiveFrom: RULES_EFFECTIVE_FROM,
     sourceUrl: SENASA_CHILE,
     lastVerifiedAt: LAST_VERIFIED,
     reviewBy: REVIEW_BY,
     appliesTo: { species: SPECIES, direction: "outbound_from_ar" },
     rules: {
       // CZI: ingreso dentro de los 10 días desde la emisión, prorrogable 5.
-      document_issuance_window_days: 10,
-      rabies_vaccination_to_travel_wait_days: 21,
-      // Techo de la ventana 5–30 días antes del CZI. El PISO (5) no tiene
-      // rule type todavía — ver pendingRequirements.
-      parasite_treatment_window_days: 30,
-      rabies_titer_test_required: false,
-      required_documents: [
-        "Certificado Zoosanitario de Importación (CZI) — CVI digital SENASA",
-        "Microchip ISO 11784/11785 o tatuaje (obligatorio desde el 27/07/2026)",
-        "Antiparasitario interno y externo entre 5 y 30 días antes del CZI",
-      ],
-      required_vaccines: ["Antirrábica"],
+      document_issuance_window_days: rule(10, SENASA_CHILE, {
+        document: "senasa_cvi",
+        note: "Ingreso dentro de los 10 días desde la emisión del CZI, prorrogable 5 días más.",
+      }),
+      rabies_vaccination_to_travel_wait_days: rule(21, SENASA_CHILE),
+      // Ventana 5–30 días antes del CZI: el techo y el piso son dos reglas.
+      parasite_treatment_window_days: rule(30, SENASA_CHILE, {
+        note: "Ventana de 5 a 30 días antes del CZI; esta regla es el techo.",
+      }),
+      parasite_treatment_min_days_before: rule(5, SENASA_CHILE, {
+        note: "Antiparasitario interno y externo al menos 5 días antes del CZI; esta regla es el piso.",
+      }),
+      // Obligatorio desde el 27/07/2026, perros y gatos (microchip o tatuaje ISO).
+      microchip_required: rule(true, SENASA_CHILE, {
+        note: "Microchip o tatuaje ISO obligatorio para perros y gatos desde el 27/07/2026.",
+      }),
+      rabies_titer_test_required: rule(false, SENASA_CHILE),
+      required_documents: rule(
+        [
+          "Certificado Zoosanitario de Importación (CZI) — CVI digital SENASA",
+          "Microchip ISO 11784/11785 o tatuaje (obligatorio desde el 27/07/2026)",
+          "Antiparasitario interno y externo entre 5 y 30 días antes del CZI",
+        ],
+        SENASA_CHILE,
+      ),
+      required_vaccines: rule(["Antirrábica"], SENASA_CHILE),
       // Sin cuarentena declarada: el "confinamiento domiciliario de 10 días"
       // no aparece en ninguna fuente oficial ni de prensa — se omite el rule
       // type en lugar de declarar 0.
     },
-    ruleSources: {
-      document_issuance_window_days: verifiedAt(
-        SENASA_CHILE,
-        "Ingreso dentro de los 10 días desde la emisión del CZI, prorrogable 5 días más.",
-      ),
-      rabies_vaccination_to_travel_wait_days: verifiedAt(SENASA_CHILE),
-      parasite_treatment_window_days: verifiedAt(
-        SENASA_CHILE,
-        "Ventana de 5 a 30 días antes del CZI; acá solo el techo.",
-      ),
-      rabies_titer_test_required: verifiedAt(SENASA_CHILE),
-      required_documents: verifiedAt(SENASA_CHILE),
-      required_vaccines: verifiedAt(SENASA_CHILE),
-    },
-    pendingRequirements: [
-      {
-        value: "Microchip o tatuaje ISO obligatorio para perros y gatos desde el 27/07/2026",
-        ...verifiedAt(SENASA_CHILE),
-      },
-      {
-        value: "Antiparasitario interno y externo al menos 5 días antes del CZI",
-        ...verifiedAt(SENASA_CHILE),
-      },
-    ],
   },
   {
     // Consultado 2026-07-18 y reconfirmado sin cambios 2026-09-30. Fuentes:
@@ -200,36 +213,34 @@ export const CORRIDORS: readonly Corridor[] = [
       // CVI válido 60 días desde emisión (examen clínico dentro de los 10
       // días previos a la emisión — ese es el paso más ajustado, pero el
       // dato modelable de "ventana de emisión" es la validez del CVI).
-      document_issuance_window_days: 60,
+      document_issuance_window_days: rule(60, SENASA_MERCOSUR, { document: "senasa_cvi" }),
       // Primovacunación aplicada >=21 días antes del ingreso.
-      rabies_vaccination_to_travel_wait_days: 21,
+      rabies_vaccination_to_travel_wait_days: rule(21, SENASA_MERCOSUR),
       // Antiparasitario interno+externo dentro de los 15 días previos al CVI.
-      parasite_treatment_window_days: 15,
-      rabies_titer_test_required: false,
-      import_permit_required: false,
+      parasite_treatment_window_days: rule(15, SENASA_MERCOSUR),
+      rabies_titer_test_required: rule(false, SENASA_MERCOSUR),
+      import_permit_required: rule(false, UY_INGRESO),
       // Microchip obligatorio para perros >90 días (Res. 273 DGSG,
       // 27/08/2018) — no exigido para gatos; no hay requisito documentado de
       // que el chip preceda a la vacuna (a diferencia de UE), por eso
       // microchip_before_vaccination_required queda sin declarar.
-      required_documents: [
-        "Certificado Veterinario Internacional (CVI) modelo Mercosur — SENASA",
-        "Microchip ISO 11784/11785 (perros >90 días; Res. 273 DGSG)",
-        "Antiparasitario interno con praziquantel + externo, hasta 15 días antes del CVI",
-        "Test de leishmaniasis negativo (perros >90 días, hasta 60 días antes del ingreso)",
-      ],
-      required_vaccines: ["Antirrábica"],
+      microchip_required: rule(true, UY_INGRESO, {
+        species: DOGS,
+        note: "Perros de más de 90 días (Res. 273 DGSG, 27/08/2018); no se exige a gatos.",
+      }),
+      required_documents: rule(
+        [
+          "Certificado Veterinario Internacional (CVI) modelo Mercosur — SENASA",
+          "Microchip ISO 11784/11785 (perros >90 días; Res. 273 DGSG)",
+          "Antiparasitario interno con praziquantel + externo, hasta 15 días antes del CVI",
+          "Test de leishmaniasis negativo (perros >90 días, hasta 60 días antes del ingreso)",
+        ],
+        UY_INGRESO,
+      ),
+      required_vaccines: rule(["Antirrábica"], SENASA_MERCOSUR),
       // Sin cuarentena (cuarentena.aplica=false en la fuente) — se omite el
       // rule type en lugar de declarar 0, para no sugerir un requisito de
       // "0 días" donde no existe ninguno.
-    },
-    ruleSources: {
-      document_issuance_window_days: verifiedAt(SENASA_MERCOSUR),
-      rabies_vaccination_to_travel_wait_days: verifiedAt(SENASA_MERCOSUR),
-      parasite_treatment_window_days: verifiedAt(SENASA_MERCOSUR),
-      rabies_titer_test_required: verifiedAt(SENASA_MERCOSUR),
-      import_permit_required: verifiedAt(UY_INGRESO),
-      required_documents: verifiedAt(UY_INGRESO),
-      required_vaccines: verifiedAt(SENASA_MERCOSUR),
     },
   },
   {
@@ -239,38 +250,33 @@ export const CORRIDORS: readonly Corridor[] = [
     id: "brasil",
     label: "Brasil",
     jurisdiction: { country: "BR" },
-    version: CORRECTED_VERSION,
-    effectiveFrom: CORRECTED_EFFECTIVE_FROM,
+    version: RULES_VERSION,
+    effectiveFrom: RULES_EFFECTIVE_FROM,
     sourceUrl: SENASA_MERCOSUR,
     lastVerifiedAt: LAST_VERIFIED,
     reviewBy: REVIEW_BY,
     appliesTo: { species: SPECIES, direction: "outbound_from_ar" },
     rules: {
       // CVI válido 60 días desde la emisión.
-      document_issuance_window_days: 60,
-      rabies_vaccination_to_travel_wait_days: 21,
+      document_issuance_window_days: rule(60, SENASA_MERCOSUR, { document: "senasa_cvi" }),
+      rabies_vaccination_to_travel_wait_days: rule(21, SENASA_MERCOSUR),
       // Antirrábica exigida a mascotas de más de 90 días.
-      rabies_vaccination_min_age_days: 90,
-      parasite_treatment_window_days: 15,
+      rabies_vaccination_min_age_days: rule(90, SENASA_MERCOSUR),
+      parasite_treatment_window_days: rule(15, SENASA_MERCOSUR),
       // Brasil no exige titulación a ningún origen.
-      rabies_titer_test_required: false,
-      required_documents: [
-        "Certificado Veterinario Internacional (CVI) modelo Portaria MAPA n.º 741/2024 — SENASA",
-        "Examen clínico hasta 10 días antes de la emisión del CVI",
-        "Antiparasitario interno y externo hasta 15 días antes del CVI",
-        "Microchip opcional: si está implantado, tiene que figurar en el CVI",
-      ],
-      required_vaccines: ["Antirrábica"],
-      // Sin cuarentena — se omite el rule type en lugar de declarar 0.
-    },
-    ruleSources: {
-      document_issuance_window_days: verifiedAt(SENASA_MERCOSUR),
-      rabies_vaccination_to_travel_wait_days: verifiedAt(SENASA_MERCOSUR),
-      rabies_vaccination_min_age_days: verifiedAt(SENASA_MERCOSUR),
-      parasite_treatment_window_days: verifiedAt(SENASA_MERCOSUR),
-      rabies_titer_test_required: verifiedAt(SENASA_MERCOSUR),
-      required_documents: verifiedAt(SENASA_MERCOSUR),
-      required_vaccines: verifiedAt(SENASA_MERCOSUR),
+      rabies_titer_test_required: rule(false, SENASA_MERCOSUR),
+      required_documents: rule(
+        [
+          "Certificado Veterinario Internacional (CVI) modelo Portaria MAPA n.º 741/2024 — SENASA",
+          "Examen clínico hasta 10 días antes de la emisión del CVI",
+          "Antiparasitario interno y externo hasta 15 días antes del CVI",
+          "Microchip opcional: si está implantado, tiene que figurar en el CVI",
+        ],
+        SENASA_MERCOSUR,
+      ),
+      required_vaccines: rule(["Antirrábica"], SENASA_MERCOSUR),
+      // Sin cuarentena — se omite el rule type en lugar de declarar 0. El
+      // microchip es opcional: microchip_required queda sin declarar.
     },
   },
   {
@@ -298,37 +304,32 @@ export const CORRIDORS: readonly Corridor[] = [
     reviewBy: REVIEW_BY,
     appliesTo: { species: SPECIES, direction: "outbound_from_ar" },
     rules: {
-      // Certificado Sanitario UE emitido <=10 días antes de la llegada.
-      document_issuance_window_days: 10,
+      // Certificado Sanitario UE, emitido por el veterinario oficial de SENASA
+      // <=10 días antes de la llegada.
+      document_issuance_window_days: rule(10, EU_2026_636, { document: "senasa_cvi" }),
       // >=21 días desde la (primo)vacunación antirrábica antes de viajar.
-      rabies_vaccination_to_travel_wait_days: 21,
+      rabies_vaccination_to_travel_wait_days: rule(21, EU_2026_636),
       // Vacuna solo válida si el animal tiene >=12 semanas (84 días).
-      rabies_vaccination_min_age_days: 84,
+      rabies_vaccination_min_age_days: rule(84, EU_2026_636),
       // Argentina está en el Anexo II — exenta del test de titulación.
-      rabies_titer_test_required: false,
-      import_permit_required: false,
+      rabies_titer_test_required: rule(false, EU_2026_636),
+      import_permit_required: rule(false, EU_2026_636),
+      microchip_required: rule(true, EU_2026_636),
       // El microchip DEBE implantarse ANTES de la vacuna antirrábica para
       // que la vacuna cuente — requisito explícito de la fuente.
-      microchip_before_vaccination_required: true,
-      required_documents: [
-        "Certificado Sanitario UE emitido por veterinario oficial SENASA",
-        "Microchip ISO 11784/11785 implantado antes de la vacuna antirrábica",
-      ],
-      required_vaccines: ["Antirrábica"],
+      microchip_before_vaccination_required: rule(true, EU_2026_636),
+      required_documents: rule(
+        [
+          "Certificado Sanitario UE emitido por veterinario oficial SENASA",
+          "Microchip ISO 11784/11785 implantado antes de la vacuna antirrábica",
+        ],
+        EU_2026_636,
+      ),
+      required_vaccines: rule(["Antirrábica"], EU_2026_636),
       // Sin cuarentena si se cumple el régimen. Sin antiparasitario
       // obligatorio para España (el tratamiento contra Echinococcus
       // multilocularis solo aplica a Finlandia/Irlanda/Malta/Noruega) — se
       // omiten ambos rule types en lugar de declarar valores nulos/0.
-    },
-    ruleSources: {
-      document_issuance_window_days: verifiedAt(EU_2026_636),
-      rabies_vaccination_to_travel_wait_days: verifiedAt(EU_2026_636),
-      rabies_vaccination_min_age_days: verifiedAt(EU_2026_636),
-      rabies_titer_test_required: verifiedAt(EU_2026_636),
-      import_permit_required: verifiedAt(EU_2026_636),
-      microchip_before_vaccination_required: verifiedAt(EU_2026_636),
-      required_documents: verifiedAt(EU_2026_636),
-      required_vaccines: verifiedAt(EU_2026_636),
     },
   },
   {
@@ -353,41 +354,41 @@ export const CORRIDORS: readonly Corridor[] = [
     id: "usa",
     label: "Estados Unidos",
     jurisdiction: { country: "US" },
-    version: CORRECTED_VERSION,
-    effectiveFrom: CORRECTED_EFFECTIVE_FROM,
+    version: RULES_VERSION,
+    effectiveFrom: RULES_EFFECTIVE_FROM,
     sourceUrl: CDC_DOGS,
     lastVerifiedAt: LAST_VERIFIED,
     reviewBy: REVIEW_BY,
     appliesTo: { species: SPECIES, direction: "outbound_from_ar" },
     rules: {
       // Certificado Libre de Miasis (screwworm), emitido <=5 días antes del
-      // embarque — la ventana de emisión más ajustada de las exigidas.
-      document_issuance_window_days: 5,
-      rabies_titer_test_required: false,
-      required_documents: [
-        "Certificado Veterinario Internacional (CVI) — SENASA",
-        "Certificado Libre de Miasis (screwworm), emitido hasta 5 días antes del embarque",
-        "CDC Dog Import Form (online, completado por el dueño; válido 6 meses)",
-        "Microchip legible ISO 11784/11785 (detectable por escáner universal)",
-      ],
+      // embarque — la ventana es la de ESE certificado, no la del CVI.
+      document_issuance_window_days: rule(5, CDC_DOGS, {
+        document: "miasis_certificate",
+        note: "La ventana de 5 días es la del Certificado Libre de Miasis que emite el veterinario oficial.",
+      }),
+      // CDC: el perro tiene que tener al menos 6 meses al ingresar. 183 días
+      // es la lectura conservadora de "6 meses".
+      min_animal_age_days: rule(183, CDC_DOGS, {
+        species: DOGS,
+        note: "Perros: al menos 6 meses de edad al ingresar a Estados Unidos.",
+      }),
+      // Microchip legible por escáner universal, exigido por el CDC a perros.
+      microchip_required: rule(true, CDC_DOGS, { species: DOGS }),
+      rabies_titer_test_required: rule(false, CDC_DOGS),
+      required_documents: rule(
+        [
+          "Certificado Veterinario Internacional (CVI) — SENASA",
+          "Certificado Libre de Miasis (screwworm), emitido hasta 5 días antes del embarque",
+          "CDC Dog Import Form (online, completado por el dueño; válido 6 meses)",
+          "Microchip legible ISO 11784/11785 (detectable por escáner universal)",
+        ],
+        CDC_DOGS,
+      ),
       // Sin cuarentena federal (SENASA sugiere separar al perro del ganado
       // 5 días por precaución screwworm — no es una cuarentena formal, no se
       // modela como quarantine_days_required).
     },
-    ruleSources: {
-      document_issuance_window_days: verifiedAt(
-        CDC_DOGS,
-        "La ventana de 5 días es la del Certificado Libre de Miasis que emite el veterinario oficial.",
-      ),
-      rabies_titer_test_required: verifiedAt(CDC_DOGS),
-      required_documents: verifiedAt(CDC_DOGS),
-    },
-    pendingRequirements: [
-      {
-        value: "Perros: al menos 6 meses de edad al ingresar a Estados Unidos",
-        ...verifiedAt(CDC_DOGS),
-      },
-    ],
   },
 ];
 

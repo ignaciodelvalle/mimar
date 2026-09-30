@@ -30,6 +30,12 @@
 // Freshness is fenced by scripts/check-travel-reference-freshness.ts.
 
 import type { SourceMeta, Sourced } from "@/lib/domain/travel-freshness";
+import type {
+  BreedRestriction,
+  Embargo,
+  Modality,
+  TravelSpecies,
+} from "@/lib/domain/travel-strictness";
 import type { CorridorId } from "@/lib/reference/cross-border-corridors";
 
 export const AIRLINE_IDS = [
@@ -56,18 +62,11 @@ export const AIRLINE_IDS = [
 ] as const;
 export type AirlineId = (typeof AIRLINE_IDS)[number];
 
-export type Modality = "cabin" | "hold" | "cargo";
-export type PetSpecies = "dog" | "cat";
-
-export type BreedRestriction = {
-  kind: "brachycephalic" | "dangerous_list" | "airline_veto";
-  /** Catalogue labels, or the curated brachycephalic list. */
-  breeds: "BRACHYCEPHALIC_LIST" | readonly string[];
-  /** Breeds the airline names that the catalogue does not list, verbatim. */
-  offCatalogue?: readonly string[];
-  appliesTo: readonly Modality[];
-  effect: "banned" | "muzzle" | "cabin_only";
-};
+// The shapes the rule engine merges live with the rule table
+// (lib/domain/travel-strictness.ts); they are re-exported here so the
+// registry reads on its own.
+export type { BreedRestriction, Embargo, Modality } from "@/lib/domain/travel-strictness";
+export type PetSpecies = TravelSpecies;
 
 export type AirlineDocument =
   | "vet_health_certificate"
@@ -84,14 +83,6 @@ export type RequiredDocument = {
   minDaysSinceDose?: number;
   /** A dose applied at most this many days before the flight. */
   maxDaysSinceDose?: number;
-};
-
-export type Embargo = {
-  kind: "seasonal" | "temperature" | "route";
-  /** MM-DD, for seasonal embargoes. */
-  from?: string;
-  to?: string;
-  note: string;
 };
 
 export type MinAge = {

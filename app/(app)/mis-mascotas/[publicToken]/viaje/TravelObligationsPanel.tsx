@@ -37,7 +37,7 @@ export function TravelObligationsPanel({ obligations }: TravelObligationsPanelPr
         const badge = LEVEL_BADGE[obligation.requirementLevel];
         return (
           <li
-            key={obligation.key}
+            key={obligation.id}
             className="rounded-[var(--radius-sm)] border border-[var(--color-ln-line-strong)] p-3"
           >
             <div className="flex items-start justify-between gap-2">
@@ -47,6 +47,11 @@ export function TravelObligationsPanel({ obligations }: TravelObligationsPanelPr
             <p className="mt-1 text-sm">{obligation.state}</p>
             {obligation.detail && (
               <p className="mt-1 text-sm text-[var(--color-ln-mute)]">{obligation.detail}</p>
+            )}
+            {obligation.freshnessNotice && (
+              <p className="mt-1 text-sm text-[var(--color-ln-warn)]">
+                {obligation.freshnessNotice}
+              </p>
             )}
             {obligation.contributingJurisdictions.length > 0 && (
               <p className="mt-1 text-xs text-[var(--color-ln-mute)]">

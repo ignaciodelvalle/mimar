@@ -81,36 +81,47 @@ describe("corridor registry — 2026-09-30 corrections (viajes-fase-2)", () => {
     }
   });
 
-  it("Chile: 10-day CZI window, 21-day rabies wait, deworming ceiling 30 with the floor pending", () => {
+  it("Chile: 10-day CZI window, 21-day rabies wait, deworming 5–30, microchip mandatory", () => {
     const chile = getCorridor("chile");
-    expect(chile.rules.document_issuance_window_days).toBe(10);
-    expect(chile.rules.rabies_vaccination_to_travel_wait_days).toBe(21);
-    expect(chile.rules.parasite_treatment_window_days).toBe(30);
+    expect(chile.rules.document_issuance_window_days?.value).toBe(10);
+    expect(chile.rules.document_issuance_window_days?.document).toBe("senasa_cvi");
+    expect(chile.rules.rabies_vaccination_to_travel_wait_days?.value).toBe(21);
+    expect(chile.rules.parasite_treatment_window_days?.value).toBe(30);
+    expect(chile.rules.parasite_treatment_min_days_before?.value).toBe(5);
+    expect(chile.rules.microchip_required?.value).toBe(true);
+    expect(chile.rules.microchip_required?.appliesToSpecies).toBeUndefined();
     // No quarantine is declared — the "10-day confinement" is in no source.
     expect(chile.rules.quarantine_days_required).toBeUndefined();
-    const pending = (chile.pendingRequirements ?? []).map((r) => r.value).join("\n");
-    expect(pending).toMatch(/Microchip/);
-    expect(pending).toMatch(/al menos 5 días/);
   });
 
   it("Brasil: 60-day CVI, 21-day rabies wait, 15-day deworming, microchip optional", () => {
     const brasil = getCorridor("brasil");
-    expect(brasil.rules.document_issuance_window_days).toBe(60);
-    expect(brasil.rules.rabies_vaccination_to_travel_wait_days).toBe(21);
-    expect(brasil.rules.parasite_treatment_window_days).toBe(15);
-    expect(brasil.rules.required_documents?.join("\n")).toMatch(/Microchip opcional/);
+    expect(brasil.rules.document_issuance_window_days?.value).toBe(60);
+    expect(brasil.rules.rabies_vaccination_to_travel_wait_days?.value).toBe(21);
+    expect(brasil.rules.parasite_treatment_window_days?.value).toBe(15);
+    expect(brasil.rules.microchip_required).toBeUndefined();
+    expect(brasil.rules.required_documents?.value.join("\n")).toMatch(/Microchip opcional/);
   });
 
-  it("USA carries the CDC minimum dog age until the rule table can express it", () => {
+  it("USA: the CDC 6-month minimum is a dog-only min_animal_age_days rule", () => {
     const usa = getCorridor("usa");
-    expect((usa.pendingRequirements ?? []).map((r) => r.value).join("\n")).toMatch(/6 meses/);
+    expect(usa.rules.min_animal_age_days?.value).toBe(183);
+    expect(usa.rules.min_animal_age_days?.appliesToSpecies).toEqual(["dog"]);
+    // The 5-day window is the miasis certificate's, never the CVI's.
+    expect(usa.rules.document_issuance_window_days?.document).toBe("miasis_certificate");
   });
 
-  it("every declared rule has its own provenance", () => {
+  it("Uruguay's microchip is scoped to dogs", () => {
+    expect(getCorridor("uruguay").rules.microchip_required?.appliesToSpecies).toEqual(["dog"]);
+  });
+
+  it("every declared rule is an envelope with its own provenance", () => {
     for (const c of CORRIDORS) {
-      const sources = c.ruleSources as Record<string, unknown>;
-      const missing = Object.keys(c.rules).filter((k) => !sources[k]);
-      expect(missing, c.id).toEqual([]);
+      for (const [ruleType, envelope] of Object.entries(c.rules)) {
+        expect(envelope?.sourceUrl, `${c.id}.${ruleType}`).toMatch(/^https:\/\//);
+        expect(envelope?.lastVerifiedAt, `${c.id}.${ruleType}`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(envelope?.reviewBy, `${c.id}.${ruleType}`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      }
     }
   });
 });

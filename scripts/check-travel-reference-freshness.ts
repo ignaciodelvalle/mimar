@@ -14,7 +14,7 @@
 //     date pushed out of reach is a way of never reviewing;
 //   · a `lastVerifiedAt` in the future — a dodge, not a verification;
 //   · an unverified value with no `note` saying why;
-//   · a corridor rule with no provenance entry at all.
+//   · a corridor rule that is a bare value instead of a sourced envelope.
 //
 // IT NEVER FAILS ON THE CALENDAR. A rule merely past its `reviewBy` is listed
 // as a WARNING and the fence exits 0: the passage of time is not a defect in
@@ -87,25 +87,16 @@ function isSourcedLeaf(value: unknown): value is Record<string, unknown> {
 function corridorEntries(corridor: Corridor): Entry[] {
   const base = `corridor ${corridor.id}`;
   const entries: Entry[] = [{ path: base, kind: "country", meta: { ...corridor }, leaf: false }];
-  const sources = corridor.ruleSources as Record<string, Record<string, unknown> | undefined>;
-  for (const ruleType of Object.keys(corridor.rules)) {
-    const meta = sources[ruleType];
+  // Each rule is an envelope carrying its own provenance (design D2). A rule
+  // that is not one — a bare value — surfaces as missing fields below.
+  for (const [ruleType, envelope] of Object.entries(corridor.rules)) {
     entries.push({
       path: `${base} › rules.${ruleType}`,
       kind: "country",
-      // A missing provenance entry surfaces as missing fields below.
-      meta: meta ?? {},
+      meta: isSourcedLeaf(envelope) ? envelope : {},
       leaf: true,
     });
   }
-  (corridor.pendingRequirements ?? []).forEach((req, i) => {
-    entries.push({
-      path: `${base} › pendingRequirements[${i}]`,
-      kind: "country",
-      meta: { ...req },
-      leaf: true,
-    });
-  });
   return entries;
 }
 

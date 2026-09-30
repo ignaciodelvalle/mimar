@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import type { TravelRuleValueByType } from "@/lib/domain/travel-strictness";
 import {
   type TravelComplianceInput,
   deriveTravelCompliance,
@@ -21,7 +22,20 @@ import type { Corridor, CorridorRules } from "@/lib/reference/cross-border-corri
 
 const NOW = new Date("2026-07-04T12:00:00Z");
 
-function makeCorridor(id: Corridor["id"], label: string, rules: CorridorRules): Corridor {
+type PlainRules = { [K in keyof TravelRuleValueByType]?: TravelRuleValueByType[K] };
+
+/** Wraps plain values in fresh, verified envelopes (viajes-fase-2 D2). */
+function makeCorridor(id: Corridor["id"], label: string, plain: PlainRules): Corridor {
+  const rules: Record<string, unknown> = {};
+  for (const [ruleType, value] of Object.entries(plain)) {
+    rules[ruleType] = {
+      value,
+      sourceUrl: "https://example.gov/test",
+      lastVerifiedAt: "2026-06-01",
+      reviewBy: "2026-11-28",
+      verification: "verified",
+    };
+  }
   return {
     id,
     label,
@@ -29,11 +43,10 @@ function makeCorridor(id: Corridor["id"], label: string, rules: CorridorRules): 
     version: "test.1",
     effectiveFrom: "2026-01-01",
     sourceUrl: "https://example.gov/test",
-    lastVerifiedAt: "2026-01-01",
-    reviewBy: "2026-06-30",
+    lastVerifiedAt: "2026-06-01",
+    reviewBy: "2026-11-28",
     appliesTo: { species: ["dog", "cat"], direction: "outbound_from_ar" },
-    rules,
-    ruleSources: {},
+    rules: rules as CorridorRules,
   };
 }
 
@@ -257,10 +270,22 @@ describe("deriveTravelCompliance — semáforo and disclosure", () => {
   it("warnings but no blockers → amarillo", () => {
     const state = deriveTravelCompliance(
       makeInput({
-        corridors: [makeCorridor("chile", "Chile", { required_documents: ["health_certificate"] })],
+        corridors: [makeCorridor("chile", "Chile", { import_permit_required: true })],
       }),
     );
     expect(state.semaforo).toBe("amarillo");
+  });
+
+  it("a documents checklist alone is information, not a pending item (design D3)", () => {
+    const state = deriveTravelCompliance(
+      makeInput({
+        corridors: [makeCorridor("chile", "Chile", { required_documents: ["health_certificate"] })],
+      }),
+    );
+    const docs = state.obligations.find((o) => o.key === "required_documents");
+    expect(docs?.requirementLevel).toBe("info");
+    expect(docs?.state).toBe("Llevá esta documentación");
+    expect(state.semaforo).toBe("verde");
   });
 
   it("all obligations met → verde", () => {

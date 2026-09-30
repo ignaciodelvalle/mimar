@@ -48,6 +48,9 @@ export async function generateTravelExport(
       petId: pets.id,
       petName: pets.name,
       petSpecies: pets.species,
+      petBreed: pets.breed,
+      petDateOfBirth: pets.dateOfBirth,
+      petBirthDateIsEstimated: pets.birthDateIsEstimated,
       petJurisdictionCountry: pets.jurisdictionCountry,
       petJurisdictionProvince: pets.jurisdictionProvince,
       petJurisdictionLocality: pets.jurisdictionLocality,
@@ -66,7 +69,9 @@ export async function generateTravelExport(
 
   if (!ownerRow) return { ok: false, error: "not_found" };
 
-  // Same event window the /viaje RSC reads — projection parity (invariant #3).
+  // Everything the rule engine checks against the libreta (viajes-fase-2 D3):
+  // rabies doses, dewormings, the microchip, weights, lab work (titre) and the
+  // CVI, plus the amendments that correct them.
   const rawEvents = await db
     .select({
       id: petEvents.id,
@@ -81,6 +86,11 @@ export async function generateTravelExport(
         inArray(petEvents.eventType, [
           "movement_recorded",
           "vaccination_administered",
+          "deworming_administered",
+          "microchip_implanted",
+          "microchip_replaced",
+          "weight_recorded",
+          "clinical_info_logged",
           "event_amended",
         ]),
       ),
@@ -109,8 +119,14 @@ export async function generateTravelExport(
     corridors,
     travelDate: context.travelDate,
     events: events
-      .filter((e) => e.eventType === "vaccination_administered")
+      .filter((e) => e.eventType !== "event_amended")
       .map((e) => ({ eventType: e.eventType, payload: e.payload, occurredAt: e.occurredAt })),
+    pet: {
+      species: ownerRow.petSpecies,
+      dateOfBirth: ownerRow.petDateOfBirth,
+      birthDateIsEstimated: ownerRow.petBirthDateIsEstimated,
+      breed: ownerRow.petBreed,
+    },
   });
 
   const [ownerProfile] = await db
