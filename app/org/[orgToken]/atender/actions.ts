@@ -1340,7 +1340,15 @@ export async function atenderConditionAtIntakeAction(
   const located = await surveillance.findPetByToken(pet.publicToken);
   if (!located || located.id !== pet.id) return { error: "Mascota no encontrada." };
 
-  const opened = await openAtenderVisit(access);
+  let opened: Awaited<ReturnType<typeof openAtenderVisit>>;
+  try {
+    opened = await openAtenderVisit(access);
+  } catch {
+    // A DB error here (connection, constraint) must read as a sentence, not
+    // crash the server action with an unhandled error page (suggestion,
+    // vet-visit-record verify report).
+    return { error: "No se pudo abrir la atención de esta mascota." };
+  }
   if (!opened.ok) return { error: "No se pudo abrir la atención de esta mascota." };
   const { visit } = opened;
 

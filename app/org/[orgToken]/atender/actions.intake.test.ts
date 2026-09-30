@@ -223,4 +223,15 @@ describe("atenderConditionAtIntakeAction", () => {
     expect(result.error).toBe("Ya registrado.");
     expect(mockNotifyOwners).not.toHaveBeenCalled();
   });
+
+  // Suggestion from the verify report: a DB error opening the visit (a thrown
+  // exception, not a { ok: false } result) must read as an es-AR sentence, not
+  // crash the server action with an unhandled error page.
+  it("a DB error opening the visit reads as a sentence, not an unhandled crash", async () => {
+    mockResolveAtenderPet.mockResolvedValue(access(VET));
+    mockOpenAtenderVisit.mockRejectedValue(new Error("connection terminated unexpectedly"));
+    const result = await call({ generalCondition: "good" });
+    expect(result.error).toBe("No se pudo abrir la atención de esta mascota.");
+    expect(mockRecordIntake).not.toHaveBeenCalled();
+  });
 });

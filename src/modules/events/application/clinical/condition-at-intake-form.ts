@@ -26,6 +26,7 @@ import {
   INTAKE_PRESENTING_COMPLAINT_MAX,
   INTAKE_VITAL_BOUNDS,
 } from "@/lib/events/event-schemas";
+import { isUuid } from "@/lib/utils/uuid";
 import { MAX_WEIGHT_KG } from "@dim/contract/input";
 
 export type IntakeGeneralCondition = (typeof INTAKE_GENERAL_CONDITIONS)[number];
@@ -73,6 +74,36 @@ function oneOf<T extends string>(
 ): T | null | "invalid" {
   if (value === null) return null;
   return (allowed as readonly string[]).includes(value) ? (value as T) : "invalid";
+}
+
+/** toFixed(2) string, the weight_recorded payload format; null when not weighed. */
+function parseWeightKg(
+  formData: FormData,
+): { ok: true; value: string | null } | { ok: false; error: string } {
+  const raw = text(formData, "weightKg");
+  if (raw === null) return { ok: true, value: null };
+  const kg = decimal(raw);
+  if (!Number.isFinite(kg) || kg <= 0) return { ok: false, error: "Peso inválido." };
+  if (kg > MAX_WEIGHT_KG) {
+    return { ok: false, error: `El peso no puede superar los ${MAX_WEIGHT_KG} kg.` };
+  }
+  return { ok: true, value: kg.toFixed(2) };
+}
+
+/**
+ * `client_idempotency_key` is a Postgres `uuid` column: a malformed value
+ * here would otherwise surface as a raw "invalid input syntax for type uuid"
+ * error out of the insert instead of a sentence the vet can read.
+ */
+function parseClientIdempotencyKey(
+  formData: FormData,
+): { ok: true; value: string | null } | { ok: false; error: string } {
+  const raw = text(formData, "clientIdempotencyKey");
+  if (raw === null) return { ok: true, value: null };
+  if (!isUuid(raw)) {
+    return { ok: false, error: "Identificador de envío inválido. Volvé a intentar." };
+  }
+  return { ok: true, value: raw };
 }
 
 type Bounded = { min: number; max: number };
@@ -161,16 +192,11 @@ export function parseConditionAtIntakeForm(formData: FormData): ConditionAtIntak
     ...(mucous ? { mucous_membranes: mucous } : {}),
   };
 
-  let weightKg: string | null = null;
-  const weightRaw = text(formData, "weightKg");
-  if (weightRaw !== null) {
-    const kg = decimal(weightRaw);
-    if (!Number.isFinite(kg) || kg <= 0) return { ok: false, error: "Peso inválido." };
-    if (kg > MAX_WEIGHT_KG) {
-      return { ok: false, error: `El peso no puede superar los ${MAX_WEIGHT_KG} kg.` };
-    }
-    weightKg = kg.toFixed(2);
-  }
+  const weightKg = parseWeightKg(formData);
+  if (!weightKg.ok) return weightKg;
+
+  const clientIdempotencyKey = parseClientIdempotencyKey(formData);
+  if (!clientIdempotencyKey.ok) return clientIdempotencyKey;
 
   return {
     ok: true,
@@ -179,8 +205,8 @@ export function parseConditionAtIntakeForm(formData: FormData): ConditionAtIntak
       presentingComplaint,
       findings,
       vitals: Object.keys(vitals).length > 0 ? vitals : null,
-      weightKg,
-      clientIdempotencyKey: text(formData, "clientIdempotencyKey"),
+      weightKg: weightKg.value,
+      clientIdempotencyKey: clientIdempotencyKey.value,
     },
   };
 }

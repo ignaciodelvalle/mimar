@@ -71,6 +71,14 @@ describe("atenderStartVisitAction", () => {
     expect(await start({ modality: "clinic" })).toEqual({ error: "No." });
     expect(mockOpenAtenderVisit).not.toHaveBeenCalled();
   });
+
+  // Suggestion from the verify report: a DB error opening the visit (a thrown
+  // exception) must read as an es-AR sentence, not crash the server action.
+  it("a DB error opening the visit reads as a sentence, not an unhandled crash", async () => {
+    mockOpenAtenderVisit.mockRejectedValue(new Error("connection terminated unexpectedly"));
+    const result = await start({ modality: "clinic" });
+    expect(result.error).toBe("No se pudo iniciar la atención.");
+  });
 });
 
 describe("atenderCloseVisitAction", () => {

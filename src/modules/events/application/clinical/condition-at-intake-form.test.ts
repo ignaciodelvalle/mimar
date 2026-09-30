@@ -171,6 +171,34 @@ describe("parseConditionAtIntakeForm", () => {
     );
   });
 
+  // Suggestion from the verify report: client_idempotency_key is a Postgres
+  // `uuid` column, so a malformed value must be refused HERE with a sentence,
+  // never reach the insert as a raw "invalid input syntax for type uuid".
+  it("refuses a malformed clientIdempotencyKey with a sentence, not a raw DB error", () => {
+    const malformed = parseConditionAtIntakeForm(
+      form({ generalCondition: "good", clientIdempotencyKey: "not-a-uuid" }),
+    );
+    expect(malformed).toEqual({
+      ok: false,
+      error: "Identificador de envío inválido. Volvé a intentar.",
+    });
+  });
+
+  it("accepts a well-formed clientIdempotencyKey and omits it when absent", () => {
+    const withKey = parseConditionAtIntakeForm(
+      form({
+        generalCondition: "good",
+        clientIdempotencyKey: "11111111-1111-4111-8111-111111111111",
+      }),
+    );
+    expect(withKey).toMatchObject({
+      ok: true,
+      value: { clientIdempotencyKey: "11111111-1111-4111-8111-111111111111" },
+    });
+    const withoutKey = parseConditionAtIntakeForm(form({ generalCondition: "good" }));
+    expect(withoutKey).toMatchObject({ ok: true, value: { clientIdempotencyKey: null } });
+  });
+
   it("every parsed form validates against the schema (the two agree)", () => {
     const parsed = parseConditionAtIntakeForm(
       form({ generalCondition: "poor", temperatureC: "45", heartRateBpm: "20" }),

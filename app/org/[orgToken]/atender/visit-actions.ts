@@ -42,10 +42,18 @@ export async function atenderStartVisitAction(
     return { error: "El turno elegido no es válido." };
   }
 
-  const opened = await openAtenderVisit(access, {
-    modality,
-    appointmentId: appointmentRaw || null,
-  });
+  let opened: Awaited<ReturnType<typeof openAtenderVisit>>;
+  try {
+    opened = await openAtenderVisit(access, {
+      modality,
+      appointmentId: appointmentRaw || null,
+    });
+  } catch {
+    // A DB error here (connection, constraint) must read as a sentence, not
+    // crash the server action with an unhandled error page (suggestion,
+    // vet-visit-record verify report).
+    return { error: "No se pudo iniciar la atención." };
+  }
   if (!opened.ok) {
     return {
       error:

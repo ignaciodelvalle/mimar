@@ -1775,6 +1775,10 @@ Las doce lecturas están enumeradas en el docblock de `content-reports.ts` y ver
 
 Una tabla `lost_feed_item_reports` habría sido la otra opción defendible y se descartó justamente por la primera fila de esa tabla: el RPC de borrado enumera tablas **a mano**, así que una tabla nueva es un hueco nuevo — y ya hay uno abierto en §6b. Ver §7: nada vincula hoy `pii.apply_baseline` con los dos RPC, y esa es la razón por la que la elección de mecanismo, acá, es una decisión de privacidad y no de gusto.
 
+### 6d. Atender (walk-in) — hasta 100 entradas de la libreta, sin custodia
+
+Un consultorio walk-in puede leer hasta 100 entradas de la libreta sanitaria de **cualquier** mascota cuyo código DIM se le muestre — sin tener custodia — porque `resolveAtenderPet` ya lo autorizó a escribir sobre ella (`event.write` en la organización); ver `src/modules/pets/application/tab-data/get-walk-in-libreta.ts` (`WALK_IN_WINDOW`).
+
 ### 7. Subject rights (Ley 25.326)
 
 | Right | Enforcement |
