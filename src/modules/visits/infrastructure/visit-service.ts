@@ -32,20 +32,34 @@ export function openVisit(input: EnsureOpenVisitInput): Promise<EnsureOpenVisitR
   return ensureOpenVisit({ repo: new VisitsRepository(), transaction }, input);
 }
 
+/** closeVisitOfPet's own refusal, alongside close-visit's "not_found". */
+export type CloseVisitOfPetResult = CloseVisitResult | { ok: false; reason: "not_authorized" };
+
 /**
  * Close a visit of this organization, and of this pet — a visit of another
  * pet reads as not found, the same as an unknown id.
+ *
+ * `visitId` is a client-changeable bound argument, so identity alone is not
+ * authorization: closing is restricted to the visit's OWN vet
+ * (`visit.vetUserId === actorUserId`) or an org admin (`isOrgAdmin`) — a
+ * colleague who merely shares the organization is refused, the visit stays
+ * open. A visit whose vet was erased (`vetUserId` null) has no "own vet" left,
+ * so only an admin can close it.
  */
 export async function closeVisitOfPet(input: {
   visitId: string;
   petId: string;
   organizationId: string;
   actorUserId: string;
-}): Promise<CloseVisitResult> {
+  isOrgAdmin: boolean;
+}): Promise<CloseVisitOfPetResult> {
   const repo = new VisitsRepository();
   const visit = await repo.findVisitById(input.visitId, db);
   if (!visit || visit.petId !== input.petId || visit.organizationId !== input.organizationId) {
     return { ok: false, reason: "not_found" };
+  }
+  if (!input.isOrgAdmin && visit.vetUserId !== input.actorUserId) {
+    return { ok: false, reason: "not_authorized" };
   }
   return closeVisit(
     { repo, transaction },

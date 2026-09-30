@@ -62,7 +62,9 @@ export async function atenderStartVisitAction(
 /**
  * "Terminar atención". `visitId` is a BOUND argument, never a form field, and
  * it must name a visit of THIS pet at THIS organization — anything else reads
- * as not found. Closing twice is a no-op.
+ * as not found. Closing is further restricted to the visit's OWN vet or an
+ * org admin (W4): any other org member is refused and the visit stays open.
+ * Closing twice is a no-op.
  */
 export async function atenderCloseVisitAction(
   orgToken: string,
@@ -80,8 +82,16 @@ export async function atenderCloseVisitAction(
     petId: access.pet.id,
     organizationId: access.organizationId,
     actorUserId: access.user.id,
+    isOrgAdmin: access.isOrgAdmin,
   });
-  if (!closed.ok) return { error: "No encontramos esa atención." };
+  if (!closed.ok) {
+    return {
+      error:
+        closed.reason === "not_authorized"
+          ? "Solo quien atendió esta visita, o un administrador de la organización, puede cerrarla."
+          : "No encontramos esa atención.",
+    };
+  }
 
   revalidatePath(`/org/${orgToken}/atender/${access.pet.publicToken}`);
   return { error: null, ok: true };

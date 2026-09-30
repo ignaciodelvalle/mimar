@@ -171,6 +171,7 @@ describe("visit service — closing", () => {
       petId: other.petId,
       organizationId: org,
       actorUserId: vet,
+      isOrgAdmin: false,
     });
     expect(foreign).toEqual({ ok: false, reason: "not_found" });
     expect((await findCurrentOpenVisit(key))?.id).toBe(opened.visit.id);
@@ -180,6 +181,7 @@ describe("visit service — closing", () => {
       petId: key.petId,
       organizationId: org,
       actorUserId: vet,
+      isOrgAdmin: false,
     });
     expect(closed).toMatchObject({ ok: true, alreadyClosed: false });
     expect(await findCurrentOpenVisit(key)).toBeNull();
@@ -188,5 +190,55 @@ describe("visit service — closing", () => {
     const [row] = await rowsOf(key.petId);
     expect(row.visitId).not.toBeNull();
     expect(row.visitId).not.toBe(opened.visit.id);
+  });
+});
+
+describe("visit service — closing is restricted to the visit's own vet or an admin (W4)", () => {
+  it("the visit's own vet closes it", async () => {
+    const key = await freshKey();
+    const opened = await openVisit(key);
+    if (!opened.ok) throw new Error("expected the visit to open");
+
+    const closed = await closeVisitOfPet({
+      visitId: opened.visit.id,
+      petId: key.petId,
+      organizationId: org,
+      actorUserId: vet,
+      isOrgAdmin: false,
+    });
+    expect(closed).toMatchObject({ ok: true, alreadyClosed: false });
+  });
+
+  it("an org admin closes another vet's visit", async () => {
+    const admin = await makeProfile(fx, "svc-admin");
+    const key = await freshKey();
+    const opened = await openVisit(key);
+    if (!opened.ok) throw new Error("expected the visit to open");
+
+    const closed = await closeVisitOfPet({
+      visitId: opened.visit.id,
+      petId: key.petId,
+      organizationId: org,
+      actorUserId: admin,
+      isOrgAdmin: true,
+    });
+    expect(closed).toMatchObject({ ok: true, alreadyClosed: false });
+  });
+
+  it("a colleague who is neither the visit's vet nor an admin is refused, and the visit stays open", async () => {
+    const colleague = await makeProfile(fx, "svc-colleague");
+    const key = await freshKey();
+    const opened = await openVisit(key);
+    if (!opened.ok) throw new Error("expected the visit to open");
+
+    const refused = await closeVisitOfPet({
+      visitId: opened.visit.id,
+      petId: key.petId,
+      organizationId: org,
+      actorUserId: colleague,
+      isOrgAdmin: false,
+    });
+    expect(refused).toEqual({ ok: false, reason: "not_authorized" });
+    expect((await findCurrentOpenVisit(key))?.id).toBe(opened.visit.id);
   });
 });

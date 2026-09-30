@@ -24,6 +24,7 @@ const ACCESS = {
   ok: true as const,
   user: { id: "vet-1" },
   organizationId: "org-1",
+  isOrgAdmin: false,
   pet: { id: "pet-1", publicToken: "DIM-TEST-0001" },
 };
 const VISIT_ID = "3f0c1f5e-2b7a-4c55-9a0e-6f1d2c3b4a59";
@@ -88,7 +89,22 @@ describe("atenderCloseVisitAction", () => {
       petId: "pet-1",
       organizationId: "org-1",
       actorUserId: "vet-1",
+      isOrgAdmin: false,
     });
+  });
+
+  it("forwards isOrgAdmin so an admin can close a colleague's visit", async () => {
+    mockResolveAtenderPet.mockResolvedValue({ ...ACCESS, isOrgAdmin: true });
+    mockCloseVisitOfPet.mockResolvedValue({ ok: true, visit: {}, alreadyClosed: false });
+    const result = await atenderCloseVisitAction(
+      "ORG",
+      "DIM-TEST-0001",
+      VISIT_ID,
+      { error: null },
+      fd({}),
+    );
+    expect(result).toEqual({ error: null, ok: true });
+    expect(mockCloseVisitOfPet).toHaveBeenCalledWith(expect.objectContaining({ isOrgAdmin: true }));
   });
 
   it("a visit of another pet or org reads as not found", async () => {
@@ -101,6 +117,20 @@ describe("atenderCloseVisitAction", () => {
       fd({}),
     );
     expect(result.error).toBe("No encontramos esa atención.");
+  });
+
+  it("refuses a colleague who is neither the visit's vet nor an admin, with a clear reason", async () => {
+    mockCloseVisitOfPet.mockResolvedValue({ ok: false, reason: "not_authorized" });
+    const result = await atenderCloseVisitAction(
+      "ORG",
+      "DIM-TEST-0001",
+      VISIT_ID,
+      { error: null },
+      fd({}),
+    );
+    expect(result.error).toBe(
+      "Solo quien atendió esta visita, o un administrador de la organización, puede cerrarla.",
+    );
   });
 
   it("a malformed id never reaches the database", async () => {

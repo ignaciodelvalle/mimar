@@ -97,6 +97,8 @@ export type AtenderAccessSuccess = {
   user: { id: string };
   organizationId: string;
   organizationName: string;
+  /** membership.role === "admin" on THIS org — used to gate closing a colleague's visit. */
+  isOrgAdmin: boolean;
   pet: AtenderPet;
   signer: AtenderSigner;
   eventAuthorship: PetEventAuthorship;
@@ -178,6 +180,7 @@ export async function resolveAtenderContext(orgToken: string): Promise<
       user: { id: string };
       organizationId: string;
       organizationName: string;
+      isOrgAdmin: boolean;
       signer: AtenderSigner;
       eventAuthorship: PetEventAuthorship;
     }
@@ -208,6 +211,7 @@ export async function resolveAtenderContext(orgToken: string): Promise<
 
   const organizationId = actor.organization.id;
   const organizationName = actor.organization.displayName;
+  const isOrgAdmin = actor.membership.role === "admin";
 
   // Signer profile: matrícula only — the PROVENANCE tier, not an authorization
   // input. The right-to-erasure lockout that used to be read here is gone from
@@ -261,6 +265,7 @@ export async function resolveAtenderContext(orgToken: string): Promise<
     user: { id: actor.userId },
     organizationId,
     organizationName,
+    isOrgAdmin,
     signer: { label: signerLabel, matriculaVerified, recordName: signerRecordName },
     eventAuthorship,
   };
@@ -349,6 +354,7 @@ export async function resolveAtenderPet(
     user: context.user,
     organizationId: context.organizationId,
     organizationName: context.organizationName,
+    isOrgAdmin: context.isOrgAdmin,
     pet: petRow,
     signer: context.signer,
     eventAuthorship: context.eventAuthorship,

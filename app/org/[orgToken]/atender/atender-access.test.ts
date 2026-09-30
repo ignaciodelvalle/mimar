@@ -288,6 +288,23 @@ describe("resolveAtenderPet — #43 provenance", () => {
     }
   });
 
+  it("carries isOrgAdmin true only for an admin membership (W4 — closing a colleague's visit)", async () => {
+    mockResolveLiveOrgActor.mockResolvedValue(
+      liveActor({ membership: { id: "mem-001", role: "admin" } }),
+    );
+    queue([signerProfile()], [pet()]);
+    const result = await resolveAtenderPet("ORG-TOKEN", "DIM-ABCD-1234");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.isOrgAdmin).toBe(true);
+  });
+
+  it("carries isOrgAdmin false for a non-admin membership", async () => {
+    queue([signerProfile()], [pet()]);
+    const result = await resolveAtenderPet("ORG-TOKEN", "DIM-ABCD-1234");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.isOrgAdmin).toBe(false);
+  });
+
   it("rejects a deceased pet", async () => {
     queue([signerProfile()], [pet({ status: "deceased" })]);
     const result = await resolveAtenderPet("ORG-TOKEN", "DIM-ABCD-1234");
