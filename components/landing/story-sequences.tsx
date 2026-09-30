@@ -34,42 +34,42 @@ import { useChapterSequence } from "@/components/landing/use-chapter-sequence";
 import { LnBadge } from "@/components/ui/Badge";
 import { LnPetPhoto } from "@/components/ui/RegRow";
 import { LnStatusFlag, LnVstamp } from "@/components/ui/StatusFlag";
-import { credentialQrUrl } from "@/lib/infra/site-url";
 import { eventTypeLabel } from "@/lib/utils/format";
 import { speciesLabel } from "@/lib/utils/species";
 import { PAMPA_CHIP, PAMPA_PET } from "@/scripts/flagship-pampa-data";
-import QRCode from "qrcode";
 import type { ReactElement, ReactNode } from "react";
 
 const PHOTO = "/landing/pampa-hero.jpg";
 
-// The lost-poster's QR (PO 2026-09-30) — REAL, not decorative: it must encode
-// the SAME public credential URL the hero QR does (app/page.tsx +
-// credentialQrUrl, both built on lib/infra/site-url.ts's resolveSiteUrl), so
-// the two QRs on the page are identical for a given deployment. Built from
-// QRCode.create() — the package's synchronous, public matrix API — rather
-// than QRCode.toString() (Promise-only): this stays a plain string computed
-// once at module load, with no client-only effect/state for a chapter that
-// SSR and reduced motion already render statically (see the file header).
-// resolveSiteUrl() reads NEXT_PUBLIC_SITE_URL, which Next.js inlines into the
-// client bundle too, so this is safe to compute in a "use client" module.
-export const POSTER_QR_URL = credentialQrUrl(PAMPA_PET.publicToken);
-function posterQrSvg(url: string): string {
-  const qr = QRCode.create(url, { errorCorrectionLevel: "Q" });
-  const size = qr.modules.size;
-  const margin = 1;
-  const dim = size + margin * 2;
-  let cells = "";
-  for (let row = 0; row < size; row++) {
-    for (let col = 0; col < size; col++) {
-      if (qr.modules.get(row, col)) {
-        cells += `<rect x="${col + margin}" y="${row + margin}" width="1" height="1"/>`;
-      }
-    }
-  }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${dim} ${dim}" width="64" height="64" shape-rendering="crispEdges"><rect width="${dim}" height="${dim}" fill="#fff"/><g fill="#000">${cells}</g></svg>`;
-}
-const POSTER_QR_SVG = posterQrSvg(POSTER_QR_URL);
+// The lost-poster's QR (PO 2026-09-30, second call) — a DECORATIVE mini QR:
+// it only has to read as "a QR", not scan. A fixed 13x13 matrix with three
+// finder squares, drawn with big modules so it stays legible at 64px. The
+// scannable QR on this page is the hero card's; this one is a picture of a
+// poster. Being static, it also keeps the qrcode encoder out of this
+// "use client" bundle.
+export const POSTER_QR_MATRIX: readonly string[] = [
+  "1111101011111",
+  "1000100010001",
+  "1010100010101",
+  "1000101010001",
+  "1111100011111",
+  "0000001000000",
+  "1011011101101",
+  "0000010110110",
+  "1111101011010",
+  "1000100110011",
+  "1010101101100",
+  "1000101001011",
+  "1111101110101",
+];
+// 13 modules inside a 19-unit box: the matrix fills ~68% of the frame.
+const POSTER_QR_MARGIN = 3;
+const POSTER_QR_BOX = POSTER_QR_MATRIX.length + POSTER_QR_MARGIN * 2;
+const POSTER_QR_PATH = POSTER_QR_MATRIX.flatMap((row, y) =>
+  [...row].flatMap((cell, x) =>
+    cell === "1" ? [`M${x + POSTER_QR_MARGIN} ${y + POSTER_QR_MARGIN}h1v1h-1z`] : [],
+  ),
+).join("");
 
 const LOST = pampaEvent("status_changed", "lost");
 const INTAKE = pampaEvent("shelter_intake_recorded");
@@ -335,16 +335,16 @@ function LostPosterScreen() {
           <LnPetPhoto src={PHOTO} alt={PAMPA.name} status="lost" size={96} />
           <b className="lp-poster-name">{PAMPA.name}</b>
           <LnStatusFlag status="lost" sex={PAMPA.sexEnum} />
-          {/* Real QR (PO 2026-09-30) — see POSTER_QR_SVG above: the same
-              credential URL the hero card's QR encodes for this deployment,
-              never a decorative pattern. */}
-          <span
+          {/* Decorative mini QR (PO 2026-09-30) — see POSTER_QR_MATRIX. */}
+          <svg
             className="lp-poster-qr"
-            role="img"
-            aria-label={`Código QR de la credencial pública de ${PAMPA.name}`}
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: locally generated QR SVG from qrcode's create() (public API), encoding this deployment's own public credential URL — no user input.
-            dangerouslySetInnerHTML={{ __html: POSTER_QR_SVG }}
-          />
+            aria-hidden="true"
+            viewBox={`0 0 ${POSTER_QR_BOX} ${POSTER_QR_BOX}`}
+            shapeRendering="crispEdges"
+          >
+            <rect width={POSTER_QR_BOX} height={POSTER_QR_BOX} fill="#fff" />
+            <path d={POSTER_QR_PATH} fill="#000" />
+          </svg>
           <span className="lp-poster-hint">Escaneá para más info</span>
         </div>
         <span className="lp-vf-submit">Compartir o imprimir el cartel</span>

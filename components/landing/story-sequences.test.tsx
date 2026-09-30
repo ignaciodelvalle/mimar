@@ -20,13 +20,14 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { credentialQrUrl } from "@/lib/infra/site-url";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { StorySection } from "./StorySection";
 import { CHAPTERS } from "./landing-content";
 import { EstadoConsole } from "./story-screens";
 import {
   LOST_SEQUENCE,
-  POSTER_QR_URL,
+  POSTER_QR_MATRIX,
   SHELTER_SEQUENCE,
   SequenceChapter,
   VET_SEQUENCE,
@@ -342,26 +343,32 @@ describe("chapter endings (M5)", () => {
     expect(last).not.toContain("Celular del vecino");
   });
 
-  // PO 2026-09-30: the poster step used to show a decorative CSS pattern
-  // (aria-hidden, no real content). It now must encode the SAME public
-  // credential URL the hero card's QR does, for the SAME flagship token
-  // (DIM-PAMP-0001) — not a self-referential re-derivation of the SVG
-  // template: this asserts the literal PLAIN-TEXT url story-sequences.tsx
-  // feeds to the qrcode encoder, independently of how that encoder renders.
-  it("the poster's QR (step 2) encodes Pampa's real public credential URL, same as the hero's", () => {
-    expect(POSTER_QR_URL).toBe(credentialQrUrl("DIM-PAMP-0001"));
-    expect(POSTER_QR_URL).toMatch(/\/p\/DIM-PAMP-0001$/);
+  // PO 2026-09-30 (second call): the poster's QR is a DECORATIVE mini QR — a
+  // fixed 13x13 matrix that reads as a QR with three finder squares, not a
+  // scannable code. The scannable QR is the hero card's.
+  it("the poster's QR (step 2) is a decorative 13x13 matrix with three finder squares", () => {
+    expect(POSTER_QR_MATRIX).toHaveLength(13);
+    for (const row of POSTER_QR_MATRIX) expect(row).toMatch(/^[01]{13}$/);
+    const finder = ["11111", "10001", "10101", "10001", "11111"];
+    const block = (top: number, left: number) =>
+      POSTER_QR_MATRIX.slice(top, top + 5).map((r) => r.slice(left, left + 5));
+    expect(block(0, 0)).toEqual(finder);
+    expect(block(0, 8)).toEqual(finder);
+    expect(block(8, 0)).toEqual(finder);
+
     const posterHtml = renderToStaticMarkup(LOST_SEQUENCE.device(2, false));
     const qrIdx = posterHtml.indexOf("lp-poster-qr");
     expect(qrIdx).toBeGreaterThan(-1);
-    const qrSpan = posterHtml.slice(qrIdx, posterHtml.indexOf("</span>", qrIdx));
-    expect(qrSpan).toContain('role="img"');
-    expect(qrSpan).toContain('aria-label="Código QR de la credencial pública de Pampa"');
-    // A real QR renders vector <rect> cells, never the removed decorative
-    // pattern span with no content — and unlike that removed span, it is not
-    // aria-hidden: it carries real information now.
-    expect(qrSpan).toMatch(/<svg[^>]*>.*<rect/);
-    expect(qrSpan).not.toContain("aria-hidden");
+    const qrSvg = posterHtml.slice(qrIdx, posterHtml.indexOf("</svg>", qrIdx));
+    // Decorative: hidden from assistive tech, promising nothing it can't do.
+    expect(qrSvg).toContain('aria-hidden="true"');
+    expect(qrSvg).not.toContain("aria-label");
+    expect(qrSvg).toMatch(/<path d="M/);
+  });
+
+  it("the client story bundle does not ship the qrcode encoder", () => {
+    const src = readFileSync(join(__dirname, "story-sequences.tsx"), "utf8");
+    expect(src).not.toMatch(/from "qrcode"/);
   });
 
   it("no chapter's phone carries a size modifier — every chapter is the same size (PO 2026-09-29)", () => {
