@@ -571,6 +571,17 @@
   color: var(--color-ln-ink);
   font-weight: 600;
 }
+/* Google Play badge (PO 2026-09-30) — plain image, never an anchor (see the
+   comment beside its markup in LandingHero.tsx). Sized by height only so the
+   badge's own aspect ratio is never stretched or squashed; the margin below
+   approximates Google's brand-guideline clear space around the mark. */
+.lp .lp-hero-badge {
+  margin-top: 14px;
+}
+.lp .lp-hero-badge img {
+  height: 44px;
+  width: auto;
+}
 .lp .lp-hero-photo {
   display: flex;
   justify-content: center;
@@ -3357,13 +3368,20 @@ html:has([data-landing-root]) {
   font-family: var(--lp-serif);
   font-size: var(--text-2xl);
 }
+/* Real QR now (PO 2026-09-30, story-sequences.tsx POSTER_QR_SVG) — the box
+   just sizes the inline <svg>; the decorative repeating-gradient placeholder
+   this rule used to paint is gone, the svg paints its own white background. */
 .lp .lp-poster-qr {
+  display: block;
   width: 64px;
   height: 64px;
   border-radius: var(--radius-sm);
-  background: repeating-linear-gradient(90deg, var(--color-ln-ink) 0 4px, transparent 4px 8px),
-    repeating-linear-gradient(0deg, var(--color-ln-ink) 0 4px, transparent 4px 8px);
-  opacity: 0.8;
+  overflow: hidden;
+}
+.lp .lp-poster-qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 .lp .lp-poster-hint {
   font-size: var(--text-xs);

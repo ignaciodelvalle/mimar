@@ -80,6 +80,7 @@ import {
   heroMrzLines,
 } from "@/components/landing/landing-content";
 import { lostThirdPersonPhrase } from "@/lib/utils/format";
+import googlePlayBadge from "@/public/landing/google-play-badge-es419.png";
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -332,12 +333,48 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                 technical "asiento" sentence now lives only in chapter 5. The
                 critique proposed "Nadie puede borrar ni cambiar lo que firmó
                 tu veterinaria", which denies the same audited exception, so
-                this says what is true in the same plain register. */}
+                this says what is true in the same plain register.
+                PO 2026-09-30: the "no se edita … asiento nuevo" sentence was
+                removed from the hero lead entirely (it still lives in
+                chapter 5, see StorySection.tsx) to make room for the Play
+                badge right below. */}
             <p className="lp-lead lp-reveal" data-d="2">
               La libreta sanitaria de tu mascota en el teléfono, con una credencial QR que
-              cualquiera puede escanear si se pierde. Lo que firma tu veterinaria no se edita: si
-              algo estaba mal, se corrige con un asiento nuevo.
+              cualquiera puede escanear si se pierde.
             </p>
+            {/* Google Play badge (PO 2026-09-30): the Android app is approved
+                on Play, but there is no listing URL yet — this renders the
+                OFFICIAL es-419 badge asset as a plain image, never an anchor,
+                so nothing here looks clickable before there is somewhere to
+                click. Do not wrap this in a disabled/dead <a>: an inert link
+                is worse than an inert image (same doctrine as the hero QR
+                never scanning to a 404, see demo-pet.ts). The asset is
+                Google's own PNG, downloaded unmodified from Google's badge
+                service (play.google.com/intl/en_us/badges/static/images/
+                badges/es-419_badge_web_generic.png — Google Play and the
+                Google Play logo are trademarks of Google LLC; this badge is
+                used per Google's brand guidelines, unaltered), sized in
+                landing.css (.lp-hero-badge) by CSS height only so its aspect
+                ratio, colors and clear space are never distorted. Once
+                NEXT_PUBLIC_PLAY_STORE_URL resolves (lib/ui/play-store.ts),
+                wrap this same image in that link — do not build a second
+                badge element. */}
+            <div className="lp-hero-badge lp-reveal" data-d="2">
+              {/* width/height are the asset's real pixel dimensions (Google's
+                  own PNG, 646×250) — required because this import resolves to
+                  a plain public-URL string, not a bundler-probed
+                  StaticImageData object (the file lives in public/, like
+                  portada.jpg above; unlike that one, this image isn't shown
+                  with `fill`, so next/image needs the box explicitly). CSS
+                  (.lp-hero-badge img, app/landing.css) then scales it by
+                  height only, so the true aspect ratio is preserved. */}
+              <Image
+                src={googlePlayBadge}
+                alt="Disponible en Google Play"
+                width={646}
+                height={250}
+              />
+            </div>
             <div className="lp-hero-cta lp-reveal" data-d="3">
               {/* ONE primary action, for the owner (critique 2026-09-29, C2).
                   The 2026-07-21 removal left the hero with a ghost button
@@ -358,7 +395,7 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                 "¿Quién ve los datos…?" contradicts. What is open is the
                 statistics, and they carry no personal data. */}
             <p className="lp-hero-kill lp-reveal" data-d="4">
-              <b>Gratis para siempre.</b> Sin papeleo. Estadísticas abiertas, sin datos personales.
+              <b>Gratis para siempre.</b> Sin papeleo. Estadísticas abiertas y anónimas.
             </p>
           </div>
 

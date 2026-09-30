@@ -86,11 +86,35 @@ describe("landing hero — credential + lost demo", () => {
   it("renders the EXACT PO-locked triad copy", () => {
     const html = renderHero();
     expect(html).toContain("Gratis para siempre.");
-    expect(html).toContain("Sin papeleo. Estadísticas abiertas, sin datos personales.");
+    // PO 2026-09-30: "sin datos personales" -> "y anónimas".
+    expect(html).toContain("Sin papeleo. Estadísticas abiertas y anónimas.");
     // "Datos abiertos" next to a pet's credential read as "her data is open".
     expect(html).not.toContain("Datos abiertos");
     // The old P4-1 variant must not resurface.
     expect(html).not.toContain("Tarda menos de un minuto");
+  });
+
+  // PO 2026-09-30: the hero lead used to close on "Lo que firma tu
+  // veterinaria no se edita: si algo estaba mal, se corrige con un asiento
+  // nuevo." — removed from the hero (the same idea still lives in chapter 5,
+  // StorySection.tsx) to make room for the Play badge right below the lead.
+  it("no longer carries the 'no se edita … asiento nuevo' sentence in the hero lead", () => {
+    const html = renderHero();
+    expect(html).not.toContain("no se edita");
+    expect(html).not.toContain("se corrige con un asiento nuevo");
+  });
+
+  // PO 2026-09-30: the official Google Play badge, right below the hero
+  // lead — a plain image (never a link: there is no listing URL yet).
+  it("renders the Google Play badge as a plain image, never a link", () => {
+    const html = renderHero();
+    expect(html).toContain('alt="Disponible en Google Play"');
+    // It must never be wrapped in an <a> — a disabled/dead link is worse than
+    // an inert image (docs/agents brief, PO 2026-09-30).
+    const badgeIdx = html.indexOf("lp-hero-badge");
+    expect(badgeIdx).toBeGreaterThan(-1);
+    const badgeBlock = html.slice(badgeIdx, badgeIdx + 400);
+    expect(badgeBlock).not.toContain("<a ");
   });
 
   it("embeds the real QR SVG linking to the seeded demo credential", () => {
@@ -434,11 +458,17 @@ describe("story — CastFila + 6 chapters + rail", () => {
 });
 
 describe("bond band — a real heading with somewhere to go (m4)", () => {
-  it("is an H2 naming its section, and its standfirst links to the story", () => {
+  it("is an H2 naming its section, with a standfirst sentence (no link, PO 2026-09-30)", () => {
     const html = renderToStaticMarkup(<BondBand />);
     expect(html).toMatch(/<h2 id="vinculo-titulo"[^>]*>Un vínculo para toda la vida\.<\/h2>/);
     expect(html).toContain('aria-labelledby="vinculo-titulo"');
-    expect(html).toContain('href="#idea"');
+    expect(html).toContain(
+      "Por eso cada vacuna, cada consulta y cada vuelta a casa quedan en su libreta.",
+    );
+    // PO 2026-09-30: the "Conocé la historia de Pampa →" link was removed —
+    // the sentence now stands alone, with no link into the story section.
+    expect(html).not.toContain("Conocé la historia");
+    expect(html).not.toContain('href="#idea"');
     expect(html).not.toContain("Todo lo que miMAR protege empieza acá.");
   });
 });

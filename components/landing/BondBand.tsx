@@ -50,9 +50,11 @@ export function BondBand() {
           {/* Its standfirst said "Todo lo que miMAR protege empieza acá." —
               vague, and with nowhere to go. It now says what follows and
               links to it. */}
+          {/* PO 2026-09-30: removed the "Conocé la historia de Pampa →" link —
+              the sentence now stands on its own. "cada vuelta a casa" is left
+              as-is; a separate pass is proposing alternatives for it. */}
           <p className="lp-bond-sub lp-reveal" data-d="2">
-            Por eso cada vacuna, cada consulta y cada vuelta a casa quedan en su libreta.{" "}
-            <a href="#idea">Conocé la historia de Pampa →</a>
+            Por eso cada vacuna, cada consulta y cada vuelta a casa quedan en su libreta.
           </p>
         </div>
       </div>
