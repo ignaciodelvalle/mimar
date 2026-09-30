@@ -857,11 +857,13 @@ describe("PetDocumentScreen — controls with no native destination are drawn ho
     fireEvent.press(screen.getByText("Perro de asistencia"));
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/asistencia`);
     mockPush.mockClear();
-    // Viaje is disabled on the WEB too, with the web's own badge, and it is
-    // the one row in this sheet that is still legitimately inert: "Próximamente"
-    // promises nothing, so there is nowhere to send anybody.
-    expect(screen.getByText("Viaje y movilidad")).toBeOnTheScreen();
-    expect(screen.getByText("Próximamente")).toBeOnTheScreen();
+    // VIAJE NOW NAVIGATES (viajes-fase-2, 6.3). It was the last inert row —
+    // "Próximamente" — and it is gone with the facade: the trip, the CVI, the
+    // cancel and the semáforo all live on the native screen.
+    expect(screen.queryByText("Próximamente")).toBeNull();
+    fireEvent.press(screen.getByText("Viaje y movilidad"));
+    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/viaje`);
+    mockPush.mockClear();
     // CHAPA FÍSICA NOW NAVIGATES (D2) — the same reversal Acompañamiento de
     // adopción got on 2026-09-10, and for the same reason: the door reaches
     // the identical use-case the web action reaches, so there is no longer a
@@ -918,6 +920,9 @@ describe("PetDocumentScreen — the viewer line survives, per role", () => {
     fireEvent.press(screen.getByText("Más"));
     expect(screen.queryByText("Editar datos")).toBeNull();
     expect(screen.queryByText("Contactos de emergencia")).toBeNull();
+    // NOR THE TRIP (viajes-fase-2): a caretaker is often the person keeping
+    // the animal while the family travels, and the web hides the row too.
+    expect(screen.queryByText("Viaje y movilidad")).toBeNull();
     // The server-refused entries stay offered, as they always were.
     expect(screen.getByText("Transferir la titularidad")).toBeOnTheScreen();
     // THE PHOTO STAYS, and that mirrors the server's own gate rather than the

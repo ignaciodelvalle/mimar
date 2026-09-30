@@ -10,6 +10,8 @@
 // detected" — and never "apto", "cumple", "en orden" or "listo para viajar".
 // Pinned by app/(app)/mis-mascotas/[publicToken]/viaje/TravelSemaforo.test.tsx.
 
+import { PET_TRAVEL_AIRLINE_NOTICE, PET_TRAVEL_GROUP_LABELS } from "@dim/contract/api";
+
 /**
  * The four states of the semáforo. Declared here, not imported from the
  * projection, so lib/domain depends on nothing above it; the projection's
@@ -27,15 +29,14 @@ export const TRAVEL_SEMAFORO_LABELS: Record<TravelSemaforoState, string> = {
   sin_datos: "Verificación no disponible",
 };
 
-/** What the airline block always says (design D5). */
-export const TRAVEL_AIRLINE_NOTICE = "Verificá con tu aerolínea";
+/**
+ * What the airline block always says (design D5). Declared in the contract,
+ * because the native screen draws it too and cannot import this file.
+ */
+export const TRAVEL_AIRLINE_NOTICE = PET_TRAVEL_AIRLINE_NOTICE;
 
 /** The three groups of obligations on /viaje, in the order they are listed. */
-export const TRAVEL_GROUP_LABELS = {
-  destino: "Destino",
-  aerolinea: "Aerolínea",
-  libreta: "Libreta",
-} as const;
+export const TRAVEL_GROUP_LABELS = PET_TRAVEL_GROUP_LABELS;
 
 /** Strings no travel surface may ever show (spec honesty-and-copy). */
 export const TRAVEL_FORBIDDEN_COPY = /\bapto\b|\bcumple\b|en orden|listo para viajar/i;

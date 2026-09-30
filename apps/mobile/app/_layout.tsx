@@ -572,6 +572,11 @@ function RootLayout() {
           name="mascotas/[publicToken]/asistencia"
           options={{ title: "Perro de asistencia" }}
         />
+        {/* VIAJE (viajes-fase-2). Transcribed from the row that opens it
+            (`OwnerFace.tsx`, "Viaje y movilidad") minus "y movilidad", which
+            is the web sheet's grouping; the web page's heading is "Viaje de
+            {nombre}", and the screen's own title carries the name. */}
+        <Stack.Screen name="mascotas/[publicToken]/viaje" options={{ title: "Viaje" }} />
         {/* LA RUTA NO RECONOCIDA (NAV-M1). Sin registrar, el encabezado sale del
             nombre del archivo: "+not-found", en inglés y con un signo más, sobre
             la única pantalla que por definición ve alguien que llegó desde

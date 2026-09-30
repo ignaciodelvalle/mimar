@@ -53,6 +53,7 @@ import {
   serviceDogRoute,
   sharesRoute,
   transferPetRoute,
+  travelRoute,
   vaccineRemindersRoute,
 } from "../ui/routes";
 import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "../ui/theme";
@@ -764,8 +765,8 @@ function MoreList({
             misma razón: `POST /pets/{token}/profile`'s `toggle_physical_tag_
             interest` alcanza el MISMO use-case que la web
             (`togglePhysicalTagInterestAction`), así que ya no hay una web a la
-            que mandar a nadie. `canRequestPhysicalTag` y no `showWebOnlyRows`
-            a secas: esa gate sólo conoce "fallecida o no" porque la página web
+            que mandar a nadie. `canRequestPhysicalTag` y no una gate de
+            "fallecida o no" a secas: esa sólo alcanzaba porque la página web
             de la que viene es person-path únicamente por construcción, y esta
             cara sirve TAMBIÉN al camino de organización — ver el comentario
             del gate. */}
@@ -843,7 +844,19 @@ function MoreList({
           onPress={() => router.push(editPetRoute(view.publicToken))}
         />
       ) : null}
-      {gates.showWebOnlyRows ? <MoreRow label="Viaje y movilidad" caption="Próximamente" /> : null}
+      {/* VIAJE (viajes-fase-2, 6.3): A DOOR NOW, not the inert "Próximamente"
+            row. `GET|POST /pets/{token}/travel` reach the loader and the three
+            use-cases the web's /viaje page reaches, so the whole owner flow —
+            trip, CVI, cancel, semáforo — is in the app. Gated on
+            `canPlanTravel`, the web row's own audience (owner, co-owner,
+            foster; never a caretaker, never a deceased animal). */}
+      {gates.canPlanTravel ? (
+        <MoreRow
+          label="Viaje y movilidad"
+          accessibilityHint="Registrar un viaje, cargar el CVI y ver qué pide el destino."
+          onPress={() => router.push(travelRoute(view.publicToken))}
+        />
+      ) : null}
       {/* FALLECIMIENTO — LAST, AND THE PLACEMENT IS A CHOICE THIS FILE MADE.
             Unlike the attestation door above, NO docblock anywhere names a home
             for `death`: `WRITABLE_KINDS` lists the three kinds "reached from

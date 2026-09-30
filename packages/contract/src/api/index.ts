@@ -298,6 +298,8 @@ export {
 } from "./pets.ts";
 export type { PetMoveJurisdictionV1, PetMoveRecordedV1 } from "./pet-move.ts";
 export {
+  PET_TRAVEL_AIRLINE_NOTICE,
+  PET_TRAVEL_GROUP_LABELS,
   PET_TRAVEL_PAYLOAD_VERSION,
   PET_TRAVEL_STALE_AFTER_MS,
   type PetTravelCommandAckV1,

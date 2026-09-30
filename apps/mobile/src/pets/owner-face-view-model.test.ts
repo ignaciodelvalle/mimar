@@ -566,3 +566,46 @@ describe("ownerFaceGates — D3's canManageServiceDog", () => {
     expect(gatesFor({ species: null }).canManageServiceDog).toBe(true);
   });
 });
+
+describe("ownerFaceGates — viajes-fase-2's canPlanTravel", () => {
+  // The web row's audience (`MAS_SHEET_TRAVEL_ROLES`): owner, co-owner and
+  // foster, after the sheet's deceased early-return.
+  const okStatus = (petStatus: string): { state: "ok"; data: OwnerPetStatusSection } => ({
+    state: "ok",
+    data: { petStatus } as OwnerPetStatusSection,
+  });
+  const noPpp: { state: "ok"; data: OwnerPetPppRegistriesSection } = { state: "ok", data: null };
+  const gatesFor = (
+    viewerRole: "owner" | "co_owner" | "foster" | "caretaker" | "org_member",
+    petStatus: string | null = "active",
+  ) =>
+    ownerFaceGates({
+      viewerRole,
+      isTitular: viewerRole === "owner",
+      status:
+        petStatus === null
+          ? { state: "unavailable", message: SECTION_UNAVAILABLE_MESSAGE }
+          : okStatus(petStatus),
+      pppRegistries: noPpp,
+    });
+
+  it("is offered to the three travel titulars", () => {
+    for (const role of ["owner", "co_owner", "foster"] as const) {
+      expect(gatesFor(role).canPlanTravel).toBe(true);
+    }
+  });
+
+  it("is refused to a caretaker and to the organisation path", () => {
+    expect(gatesFor("caretaker").canPlanTravel).toBe(false);
+    expect(gatesFor("org_member").canPlanTravel).toBe(false);
+  });
+
+  it("is gone for a deceased animal and stays for a lost one", () => {
+    expect(gatesFor("owner", "deceased").canPlanTravel).toBe(false);
+    expect(gatesFor("owner", "lost").canPlanTravel).toBe(true);
+  });
+
+  it("stays offered while the status read has not answered — permissive, like its siblings", () => {
+    expect(gatesFor("co_owner", null).canPlanTravel).toBe(true);
+  });
+});

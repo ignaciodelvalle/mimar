@@ -663,6 +663,16 @@ export function serviceDogRoute(publicToken: string): `/mascotas/${string}/asist
   return `/mascotas/${encodeURIComponent(publicToken)}/asistencia`;
 }
 
+/**
+ * VIAJE — the owner's trips, the semáforo and the trip and CVI forms
+ * (viajes-fase-2). Nested under the pet and named with the web's own segment
+ * (`/mis-mascotas/{token}/viaje`), for the reasons `physicalTagInterestRoute`
+ * gives.
+ */
+export function travelRoute(publicToken: string): `/mascotas/${string}/viaje` {
+  return `/mascotas/${encodeURIComponent(publicToken)}/viaje`;
+}
+
 export type AppRoute =
   | (typeof ROUTES)[keyof typeof ROUTES]
   | ReturnType<typeof credentialRoute>
@@ -684,5 +694,6 @@ export type AppRoute =
   | ReturnType<typeof caseRoute>
   | ReturnType<typeof physicalTagInterestRoute>
   | ReturnType<typeof serviceDogRoute>
+  | ReturnType<typeof travelRoute>
   | ReturnType<typeof turnoRoute>
   | ReturnType<typeof buscarOfferingRoute>;

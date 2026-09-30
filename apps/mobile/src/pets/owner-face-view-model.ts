@@ -574,9 +574,20 @@ export type OwnerFaceGates = {
   canTransfer: boolean;
   canDesignateCaretaker: boolean;
   canOpenReturn: boolean;
-  /** The "Próximamente" row, which the web hides on a deceased animal — its
-   *  sheet's deceased early-return prunes it. */
-  showWebOnlyRows: boolean;
+  /**
+   * "Viaje y movilidad" (viajes-fase-2, task 6.3) — a door to `TravelScreen`,
+   * replacing the inert "Próximamente" row.
+   *
+   * THE WEB ROW'S OWN AUDIENCE: `MAS_SHEET_TRAVEL_ROLES` (owner, co-owner,
+   * foster — the server's `TRAVEL_TITULAR_ROLES`), after the sheet's deceased
+   * early-return. A CARETAKER is left out on purpose: they are often the person
+   * keeping the animal while the family is away, and the family's trip is not
+   * theirs to read. The org path is left out because `canAccessTravel` admits
+   * the person path only. Unlike a titular-only row, this one is HIDDEN rather
+   * than captioned: the web hides it, and an inert row would say something
+   * exists that this viewer may never open.
+   */
+  canPlanTravel: boolean;
   /**
    * "Reportar fallecimiento" — the terminal asiento, from the ⋯ Más list.
    *
@@ -616,8 +627,8 @@ export type OwnerFaceGates = {
    * `togglePhysicalTagInterestAction`'s own check (`accessPath !== "owner"`
    * refuses) translated to this payload's viewer vocabulary: PERSON PATH, not
    * the legal owner alone — owner, co-owner, foster and caretaker all pass,
-   * only the org path does not. This is the gate `showWebOnlyRows` (deceased
-   * alone) cannot express on its own: the web page this row's sheet lives on
+   * only the org path does not. This is what a "deceased alone" gate cannot
+   * express: the web page this row's sheet lives on
    * is person-path ONLY by construction, so the web's `!isDeceased` gate never
    * had to also exclude an org member — this face does, because ONE
    * component serves both viewer paths.
@@ -634,6 +645,12 @@ export type OwnerFaceGates = {
    */
   canManageServiceDog: boolean;
 };
+
+/**
+ * Who is offered "Viaje y movilidad" — the web's `MAS_SHEET_TRAVEL_ROLES`, in
+ * this payload's viewer vocabulary. See `canPlanTravel`.
+ */
+const TRAVEL_VIEWER_ROLES: readonly OwnerPetDetailViewerRole[] = ["owner", "co_owner", "foster"];
 
 export function ownerFaceGates(view: {
   viewerRole: OwnerPetDetailViewerRole;
@@ -664,7 +681,7 @@ export function ownerFaceGates(view: {
     canTransfer: view.isTitular && !isNotActive,
     canDesignateCaretaker: view.isTitular && !isNotActive,
     canOpenReturn: !isDeceased,
-    showWebOnlyRows: !isDeceased,
+    canPlanTravel: !isDeceased && TRAVEL_VIEWER_ROLES.includes(view.viewerRole),
     canRecordDeath: !isDeceased,
     canAttestDangerousBreed:
       !isDeceased && view.pppRegistries.state === "ok" && view.pppRegistries.data !== null,
@@ -749,7 +766,7 @@ export function titularOnlyRowCaption(gates: OwnerFaceGates): string | null {
  *
  * THE CALLER'S GATES ARE WHAT MAKE THE LINK SAFE, and they were reasoned out
  * before this function existed (see the two comments above the rows in
- * `OwnerFace.tsx`): `showWebOnlyRows` drops both for a deceased animal, whose
+ * `OwnerFace.tsx`): a deceased animal drops both rows, whose
  * destinations the web suppresses too, and `canSeeFindHome` is `foster`-only
  * because `buscar-hogar/page.tsx` `notFound()`s every other role. A link that
  * 404s is worse than an inert row, and the gates are why neither of these can.

@@ -107,6 +107,7 @@ import {
   PET_REHOME_PAYLOAD_VERSION,
   PET_RETURN_PAYLOAD_VERSION,
   PET_SHARES_PAYLOAD_VERSION,
+  PET_TRAVEL_PAYLOAD_VERSION,
   type PasswordResetRequestedV1,
   type PetClaimCommandAckV1,
   type PetEventDetailV1,
@@ -123,6 +124,8 @@ import {
   type PetReturnCommandAckV1,
   type PetReturnV1,
   type PetSharesV1,
+  type PetTravelCommandAckV1,
+  type PetTravelV1,
   type RehomeCommandAckV1,
   type ShareCommandAckV1,
   type SignupV1,
@@ -147,6 +150,7 @@ import type {
   PetPhotoContentType,
   PetProfileCommandInput,
   PetReturnCommandInput,
+  PetTravelCommandInput,
   RecordEventInput,
   RegisterPetInput,
   RehomeCommandInput,
@@ -1978,6 +1982,65 @@ export function sendRehomeCommand(
       method: "POST",
       body: input,
       headers: idempotencyKey === null ? undefined : { "idempotency-key": idempotencyKey },
+    },
+    session,
+  );
+}
+
+/**
+ * `GET /pets/{publicToken}/travel` — VIAJE: the owner's trips, their CVIs and
+ * the SERVER's semáforo for one trip (viajes-fase-2).
+ *
+ * THE SEMÁFORO IS READ, NEVER DERIVED. The corridor and airline rules, their
+ * freshness and the libreta checks live on the server, in the loader the web's
+ * /viaje page renders from; a client that re-derived a colour would be a second
+ * engine that can disagree with the browser about whether a dog may board.
+ *
+ * `tripEventId` selects which trip `compliance` reads. `null` leaves the choice
+ * to the server (the next upcoming trip), which is what a first open wants.
+ *
+ * A 403 `travel_forbidden` is a holder who is not a travel titular — a
+ * caretaker, most often, who is keeping the animal while the family is away.
+ * The face does not offer them the row, so a refusal here is a stale gate.
+ */
+export function fetchPetTravel(
+  session: SessionPort,
+  publicToken: string,
+  tripEventId: string | null,
+): Promise<ApiResult<PetTravelV1>> {
+  const query = tripEventId === null ? "" : `?trip=${encodeURIComponent(tripEventId)}`;
+  return apiRequest<PetTravelV1>(
+    {
+      path: `/api/v1/pets/${encodeURIComponent(publicToken)}/travel${query}`,
+      expectedPayloadVersion: PET_TRAVEL_PAYLOAD_VERSION,
+    },
+    session,
+  );
+}
+
+/**
+ * `POST /pets/{publicToken}/travel` — record a trip, record a CVI, or cancel a
+ * trip. The three reach the use-cases the web's travel actions reach.
+ *
+ * `idempotencyKey` IS REQUIRED ON ALL THREE, because the server requires it: a
+ * missing or malformed header is a 400 `idempotency_key_required`. Each command
+ * appends a row on the spine, and the key makes a retry after a lost response
+ * answer the first write (`replayed: true`, or `changed: false` on a cancel)
+ * instead of appending a second one. Scope it to one attempt — see
+ * `pets/idempotency.ts`.
+ */
+export function sendPetTravelCommand(
+  session: SessionPort,
+  publicToken: string,
+  input: PetTravelCommandInput,
+  idempotencyKey: string,
+): Promise<ApiResult<PetTravelCommandAckV1>> {
+  return apiRequest<PetTravelCommandAckV1>(
+    {
+      path: `/api/v1/pets/${encodeURIComponent(publicToken)}/travel`,
+      method: "POST",
+      body: input,
+      headers: { "idempotency-key": idempotencyKey },
     },
     session,
   );

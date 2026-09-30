@@ -25,6 +25,26 @@ export const PET_TRAVEL_PAYLOAD_VERSION = 1;
  */
 export const PET_TRAVEL_STALE_AFTER_MS = 60_000;
 
+/**
+ * What every airline block says, on the web and on the phone (design D5).
+ *
+ * THE HOME IS HERE AND NOT IN `lib/domain/travel-copy.ts`, which re-exports it:
+ * the native screen draws the airline block too, and it cannot import server
+ * code. One constant in the package both sides already share is how the two
+ * surfaces cannot drift into two wordings of the same warning.
+ */
+export const PET_TRAVEL_AIRLINE_NOTICE = "Verificá con tu aerolínea";
+
+/**
+ * The three groups of obligations, in the order both surfaces list them. Same
+ * reason for living here as `PET_TRAVEL_AIRLINE_NOTICE`.
+ */
+export const PET_TRAVEL_GROUP_LABELS = {
+  destino: "Destino",
+  aerolinea: "Aerolínea",
+  libreta: "Libreta",
+} as const;
+
 export type PetTravelSemaforoV1 = "rojo" | "amarillo" | "verde" | "sin_datos";
 
 /** One trip still on, as the owner recorded it (after corrections). */
