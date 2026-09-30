@@ -266,6 +266,18 @@ export {
   petMoveCommandInputSchema,
 } from "./pet-move.ts";
 export {
+  PET_TRAVEL_COMMAND_INPUT_CODES,
+  TRAVEL_CORRIDOR_IDS,
+  TRAVEL_MODALITIES,
+  TRAVEL_MODES,
+  type PetTravelCommand,
+  type PetTravelCommandInput,
+  type PetTravelCommandInputCode,
+  type TravelCorridorId,
+  firstPetTravelCommandInputCode,
+  petTravelCommandInputSchema,
+} from "./pet-travel.ts";
+export {
   EMERGENCY_CONTACT_NAME_MAX,
   EMERGENCY_CONTACT_PHONE_MAX,
   PET_COLOR_MAX,

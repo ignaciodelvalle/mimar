@@ -682,6 +682,10 @@ const movementCviIssued = z
       issued_date: z.string(),
       // Cross-references petIdentifications.isoCountryCode when known.
       chip_iso_country_code: z.string().nullable(),
+      // The last day the certificate is valid, when the owner copied it off
+      // the CVI (viajes-fase-2, D4). Optional: rows written before it stay
+      // valid. The writer's edge refuses a value earlier than `issued_date`.
+      valid_until: z.string().optional(),
     }),
   )
   .strict();
@@ -699,6 +703,21 @@ const movementTransportRecorded = z
       travel_date: z.string(),
       mode: z.enum(["air", "land", "sea"]).nullable(),
       purpose: z.string().nullable(),
+      // viajes-fase-2, D4 — all three optional, so rows written before them
+      // stay valid.
+      //
+      // `airline_id` is a registry SLUG and deliberately not an enum: the
+      // airline registry evolves and an event is immutable, so a slug retired
+      // from the registry must not make an old trip unparseable. The writer's
+      // edge refuses an unknown slug at write time.
+      airline_id: z.string().min(1).optional(),
+      // How the owner intends the animal to fly. It selects the airline's
+      // modality row; it is not a rule.
+      intended_modality: z.enum(["cabin", "hold", "cargo"]).optional(),
+      // Set ONLY by a correction (event_amended {field: "cancelled", new:
+      // true}) — the trip writer never sends it. A cancelled trip drops out of
+      // deriveTrips and deriveTravelContext; the row itself stays.
+      cancelled: z.boolean().optional(),
     }),
   )
   .strict();

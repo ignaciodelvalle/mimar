@@ -599,5 +599,21 @@ export function apiErrorMessage(code: ApiV1ErrorCode): string {
       // clave de idempotencia, un reintento ciego no se distingue de un
       // segundo intento.
       return "No pudimos completar la acción. Actualizá la pantalla para ver cómo quedó.";
+    // Trips (viajes-fase-2). Every travel write carries an Idempotency-Key,
+    // so retrying `travel_failed` with the same key is safe.
+    case "travel_forbidden":
+      return "Solo quien es titular de la mascota puede registrar o cancelar viajes.";
+    case "travel_not_allowed":
+      return "Esta mascota está registrada como fallecida y no acepta nuevos registros.";
+    case "travel_input_invalid":
+      return "Revisá los datos: la fecha de viaje va de ayer a un año, el CVI no puede tener fecha futura y la aerolínea tiene que ser de la lista.";
+    case "trip_duplicate":
+      return "Ya registraste un viaje a ese destino para esa fecha.";
+    case "cvi_duplicate":
+      return "Ese número de CVI ya está registrado para esta mascota.";
+    case "trip_not_found":
+      return "No encontramos ese viaje. Actualizá la pantalla para ver cómo quedó.";
+    case "travel_failed":
+      return "No pudimos guardar el viaje. Volvé a intentar en unos segundos.";
   }
 }

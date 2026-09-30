@@ -119,6 +119,14 @@ export const ALLOWED_EDGES = new Set<string>([
   // repository in place of the plain one. events imports nothing from visits,
   // so the graph stays acyclic.
   "visits:events",
+  // viajes-fase-2 (D4). Cancelling a trip IS a correction — invariant 2 says a
+  // cancellation is a new event, never an edit — so `cancel-trip.ts` calls the
+  // events module's `amendEvent` rather than writing its own `event_amended`
+  // row: the authorship lock, the travel-private refusal and the idempotency
+  // key all live there, and a second writer would be a second definition of
+  // "correction". events imports nothing from pets (the one edge it had was
+  // removed 2026-07-18, see the header), so the graph stays acyclic.
+  "pets:events",
 
   // SUBJECT-RIGHTS ERASE RELEASES THE MICROCHIP (2026-08-28, PO/Claude decision).
   // When a person erases their account, the suppressed pet's microchip must be

@@ -214,6 +214,9 @@ export function deriveTravelContext(
       });
     }
     if (p.sub_kind === "transport_recorded" && typeof p.travel_date === "string") {
+      // A cancelled trip (a correction set `cancelled: true`) is not part of
+      // any context: its corridor's rules no longer apply to anything.
+      if (p.cancelled === true) continue;
       const date = new Date(p.travel_date);
       if (!Number.isFinite(date.getTime())) continue;
       if (date.getTime() < now.getTime() - RECENT_TRAVEL_WINDOW_MS) continue; // stale trip
@@ -223,6 +226,55 @@ export function deriveTravelContext(
   }
 
   return { destinations, corridorIds: [...corridorIds], travelDate };
+}
+
+/** One recorded trip, as the owner registered it (after corrections). */
+export type TravelTrip = {
+  /** The transport_recorded row's id — the handle a cancellation targets. */
+  eventId: string;
+  corridorId: string;
+  /** `YYYY-MM-DD`, as recorded. */
+  travelDate: string;
+  mode: string | null;
+  airlineId: string | null;
+  intendedModality: Modality | null;
+};
+
+const MODALITIES: readonly string[] = ["cabin", "hold", "cargo"];
+
+/**
+ * Every trip that is still on (viajes-fase-2, D4/D5), earliest first.
+ *
+ * Reads AMENDMENT-OVERLAID movement rows (overlayAmendments): a corrected
+ * corridor or date is the corrected one, and a trip whose correction set
+ * `cancelled: true` is skipped. The row itself stays in the spine — a
+ * cancellation is a new event, never an edit. No staleness filter here: the
+ * duplicate check needs past trips too, and the page decides what "upcoming"
+ * means with `now`.
+ */
+export function deriveTrips(
+  movementEvents: ReadonlyArray<{ id: string; eventType: string; payload: unknown }>,
+): TravelTrip[] {
+  const trips: TravelTrip[] = [];
+  for (const e of movementEvents) {
+    if (e.eventType !== "movement_recorded") continue;
+    const p = (e.payload ?? {}) as Record<string, unknown>;
+    if (p.sub_kind !== "transport_recorded") continue;
+    if (p.cancelled === true) continue;
+    if (typeof p.corridor_id !== "string" || typeof p.travel_date !== "string") continue;
+    trips.push({
+      eventId: e.id,
+      corridorId: p.corridor_id,
+      travelDate: p.travel_date,
+      mode: typeof p.mode === "string" ? p.mode : null,
+      airlineId: typeof p.airline_id === "string" ? p.airline_id : null,
+      intendedModality:
+        typeof p.intended_modality === "string" && MODALITIES.includes(p.intended_modality)
+          ? (p.intended_modality as Modality)
+          : null,
+    });
+  }
+  return trips.sort((a, b) => a.travelDate.localeCompare(b.travelDate));
 }
 
 // ---------------------------------------------------------------------------

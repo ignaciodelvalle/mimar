@@ -12,9 +12,15 @@ import {
   type TravelComplianceInput,
   deriveTravelCompliance,
   deriveTravelContext,
+  deriveTrips,
   requirementLevelFor,
 } from "@/lib/projections/travel-compliance";
-import type { Corridor, CorridorRules } from "@/lib/reference/cross-border-corridors";
+import {
+  CORRIDOR_IDS,
+  type Corridor,
+  type CorridorRules,
+} from "@/lib/reference/cross-border-corridors";
+import { TRAVEL_CORRIDOR_IDS } from "@dim/contract/input";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -433,5 +439,80 @@ describe("deriveTravelContext", () => {
       NOW, // 2026-07-04 — 14 days later
     );
     expect(ctx.corridorIds).toEqual(["brasil"]);
+  });
+
+  it("skips a trip a correction cancelled (viajes-fase-2 D4)", () => {
+    const ctx = deriveTravelContext(
+      [
+        {
+          sub_kind: "transport_recorded",
+          corridor_id: "chile",
+          travel_date: "2026-08-01",
+          cancelled: true,
+        },
+        { sub_kind: "transport_recorded", corridor_id: "uruguay", travel_date: "2026-09-01" },
+      ],
+      NOW,
+    );
+    expect(ctx.corridorIds).toEqual(["uruguay"]);
+    expect(ctx.travelDate?.toISOString().slice(0, 10)).toBe("2026-09-01");
+  });
+});
+
+describe("deriveTrips", () => {
+  const move = (id: string, payload: Record<string, unknown>) => ({
+    id,
+    eventType: "movement_recorded",
+    payload,
+  });
+
+  it("lists live trips earliest first, with airline and modality, and skips the rest", () => {
+    const trips = deriveTrips([
+      move("t2", {
+        sub_kind: "transport_recorded",
+        corridor_id: "chile",
+        travel_date: "2026-09-01",
+        mode: "air",
+        airline_id: "latam",
+        intended_modality: "hold",
+      }),
+      move("t1", {
+        sub_kind: "transport_recorded",
+        corridor_id: "uruguay",
+        travel_date: "2026-08-01",
+      }),
+      move("gone", {
+        sub_kind: "transport_recorded",
+        corridor_id: "brasil",
+        travel_date: "2026-08-15",
+        cancelled: true,
+      }),
+      move("cvi", { sub_kind: "cvi_issued", cvi_number: "X" }),
+      { id: "amend", eventType: "event_amended", payload: {} },
+    ]);
+    expect(trips).toEqual([
+      {
+        eventId: "t1",
+        corridorId: "uruguay",
+        travelDate: "2026-08-01",
+        mode: null,
+        airlineId: null,
+        intendedModality: null,
+      },
+      {
+        eventId: "t2",
+        corridorId: "chile",
+        travelDate: "2026-09-01",
+        mode: "air",
+        airlineId: "latam",
+        intendedModality: "hold",
+      },
+    ]);
+  });
+});
+
+describe("the v1 travel contract pins the corridor set", () => {
+  it("TRAVEL_CORRIDOR_IDS equals CORRIDOR_IDS", () => {
+    expect([...TRAVEL_CORRIDOR_IDS]).toEqual([...CORRIDOR_IDS]);
   });
 });

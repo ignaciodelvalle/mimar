@@ -1211,6 +1211,37 @@
  *                         gives none: without an idempotency key a blind
  *                         retry of `accept` cannot be told from a second
  *                         attempt.
+ *
+ * THE TRAVEL CODES (viajes-fase-2). `POST /api/v1/pets/{publicToken}/travel`
+ * runs `record_trip`, `record_cvi` and `cancel_trip`. Every one requires an
+ * `Idempotency-Key`, so a true replay answers 200 `replayed: true` and never
+ * reaches a 409 below.
+ *
+ * - `travel_forbidden`  — the caller holds this animal but is not a travel
+ *                         titular: a caretaker, a user-held custody row, or
+ *                         the org path. A trip says when a household is away;
+ *                         only the owner, a co-owner or a foster reads or
+ *                         writes one. 403, never 404, the `move_forbidden`
+ *                         reasoning. Also answered to a co-owner cancelling a
+ *                         trip somebody else recorded (a record is corrected by
+ *                         whoever wrote it).
+ * - `travel_not_allowed`
+ *                       — the ANIMAL refuses: it is registered deceased. 409.
+ * - `travel_input_invalid`
+ *                       — a date outside the plausible window (a trip from
+ *                         yesterday up to a year ahead; a CVI issued in the
+ *                         last year and not in the future), an airline this
+ *                         build does not know, or an airline on a trip that is
+ *                         not by air. 400. The window depends on today, which
+ *                         the server owns, so the input schema cannot say it.
+ * - `trip_duplicate`    — a trip to the same corridor on the same day is
+ *                         already on record and not cancelled. 409. The move is
+ *                         re-read, or cancel and record again.
+ * - `cvi_duplicate`     — a CVI with the same number is already on record. 409.
+ * - `trip_not_found`    — `cancel_trip` named a row that is not a trip of this
+ *                         animal. 404.
+ * - `travel_failed`     — the write failed. 500. A retry WITH THE SAME KEY is
+ *                         safe: if the first attempt committed, it answers it.
  */
 export const API_V1_ERROR_CODES = [
   "rate_limited",
@@ -1322,6 +1353,13 @@ export const API_V1_ERROR_CODES = [
   "foster_not_eligible",
   "foster_already_resolved",
   "foster_failed",
+  "travel_forbidden",
+  "travel_not_allowed",
+  "travel_input_invalid",
+  "trip_duplicate",
+  "cvi_duplicate",
+  "trip_not_found",
+  "travel_failed",
 ] as const;
 
 export type ApiV1ErrorCode = (typeof API_V1_ERROR_CODES)[number];

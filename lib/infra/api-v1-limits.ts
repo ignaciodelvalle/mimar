@@ -1315,6 +1315,13 @@ export const API_V1_IP_BUCKET_FAMILIES: Readonly<Record<string, ApiV1IpFamily>> 
   // about the animal by the titular's own act) and not `inbox-state`.
   api_v1_rehome_read_ip: "authenticated-read",
   api_v1_rehome_write_ip: "authenticated-write",
+
+  // Landed with the travel write door (`pets/{token}/travel`, viajes-fase-2).
+  // `authenticated-write` for the reminders reasoning: one owner in a form,
+  // recording their own trip or CVI. Not `pet-disclosure-write` — a trip
+  // publishes nothing, it is titular-only by design (D8) — and not
+  // `pet-record-write`, whose anchor is a vet day of many animals.
+  api_v1_travel_write_ip: "authenticated-write",
 };
 
 /**

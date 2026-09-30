@@ -415,11 +415,19 @@ export const PAYLOAD_PRIVACY: Record<EventType, Record<string, PrivacyEntry>> = 
     issuing_authority: CF,
     issued_date: CF,
     chip_iso_country_code: CF,
+    // viajes-fase-2 (D4). CF answers "what survives art.16 erasure" — a CVI's
+    // expiry, an airline slug, a modality enum and a cancelled flag are facts
+    // about the record, not about a person. WHO may read them is a separate
+    // question, answered by notTravelPrivateClause (D8).
+    valid_until: CF,
     corridor_id: CF,
     direction: CF,
     travel_date: CF,
     mode: CF,
     purpose: paGated("Purpose of a transport: official prose when an authority wrote it."),
+    airline_id: CF,
+    intended_modality: CF,
+    cancelled: CF,
   },
   microchip_implanted: {
     payload_version: CF,

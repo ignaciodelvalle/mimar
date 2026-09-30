@@ -1,6 +1,6 @@
 // Movement use-case types (movilidad-jurisdiccional Fase 1).
 
-import type { Pet } from "@/db";
+import type { Pet, db } from "@/db";
 import type { PetEventAuthorship } from "@/lib/infra/pet-access";
 import type { CorridorId } from "@/lib/reference/cross-border-corridors";
 
@@ -40,6 +40,8 @@ export type CviIssuedMovement = {
   issuing_authority: string;
   issued_date: string;
   chip_iso_country_code: string | null;
+  /** viajes-fase-2 D4 — the certificate's last valid day, when known. */
+  valid_until?: string;
 };
 
 export type TransportRecordedMovement = {
@@ -49,6 +51,9 @@ export type TransportRecordedMovement = {
   travel_date: string;
   mode: "air" | "land" | "sea" | null;
   purpose: string | null;
+  /** viajes-fase-2 D4 — a registry slug (lib/reference/airlines.ts). */
+  airline_id?: string;
+  intended_modality?: "cabin" | "hold" | "cargo";
 };
 
 export type MovementInput =
@@ -88,6 +93,28 @@ export type RecordMovementParams = {
    * present, so a caller that mixed sources would store an inconsistent pair.
    */
   resolvedLocalityId?: string | null;
+  /**
+   * The caller's idempotency key (viajes-fase-2, D4): the web's per-form-mount
+   * UUID or `/api/v1`'s `Idempotency-Key`. A second write with the same key is
+   * a no-op that answers the FIRST write's `eventId` with `replayed: true` —
+   * through `insertEventIdempotent` and `pet_events_idempotency_idx`. Absent →
+   * a plain insert, as before.
+   */
+  clientIdempotencyKey?: string | null;
+  /**
+   * A domain refusal checked INSIDE the write transaction, under a per-pet
+   * advisory lock, AFTER the replay check (so a replay answers its own event,
+   * not "duplicate of itself"). Returns a refusal code, or null to proceed.
+   * The travel writers use it for `trip_duplicate` / `cvi_duplicate`: two
+   * different keys racing for the same trip serialize on the lock and the
+   * second one sees the first.
+   */
+  refuseIf?: (tx: MovementTx) => Promise<string | null>;
 };
 
-export type RecordMovementResult = { ok: true; eventId: string } | { ok: false; error: string };
+/** The transaction handle `refuseIf` reads through. */
+export type MovementTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+export type RecordMovementResult =
+  | { ok: true; eventId: string; replayed: boolean }
+  | { ok: false; error: string; refusal?: string };

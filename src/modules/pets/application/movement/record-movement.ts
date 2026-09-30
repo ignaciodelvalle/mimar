@@ -17,10 +17,11 @@
 // other jurisdiction-keyed read path. Regression-locked by
 // __tests__/movement-writer.test.ts (S10).
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
-import { db, petEvents, pets } from "@/db";
+import { db, pets } from "@/db";
 import { normalizeLocationForWrite } from "@/lib/domain/location-normalize";
+import { findExistingByKey, insertEventIdempotent } from "@/lib/events/event-idempotency";
 import { validateEventPayload } from "@/lib/events/event-schemas";
 
 import type { MovementInput, RecordMovementParams, RecordMovementResult } from "./types";
@@ -93,12 +94,21 @@ async function canonicalizeMovement(
   };
 }
 
+/** A domain refusal raised inside the transaction — rolls it back, not an incident. */
+class MovementRefusedError extends Error {
+  constructor(readonly refusal: string) {
+    super(refusal);
+  }
+}
+
 export async function recordMovementWriter(
   params: RecordMovementParams,
 ): Promise<RecordMovementResult> {
   const now = params.now ?? new Date();
+  const key = params.clientIdempotencyKey ?? null;
 
   let eventId = "";
+  let replayed = false;
   try {
     // Canonicalize the destination jurisdiction before both the event payload
     // and the denormalization so they never diverge (review 14 item 11).
@@ -122,10 +132,31 @@ export async function recordMovementWriter(
     const payload = validateEventPayload("movement_recorded", recorded);
 
     await db.transaction(async (tx) => {
-      // (1) Event row FIRST — the immutable fact.
-      const [event] = await tx
-        .insert(petEvents)
-        .values({
+      // (0) viajes-fase-2 D4. A REPLAY answers the first write before any
+      // domain refusal runs: the same request sent twice is not a duplicate of
+      // itself. Then the refusal, under a per-pet lock so two different keys
+      // racing for the same trip see each other.
+      if (key) {
+        const existing = await findExistingByKey(params.pet.id, "movement_recorded", key, tx);
+        if (existing) {
+          eventId = existing.id;
+          replayed = true;
+          return;
+        }
+      }
+      if (params.refuseIf) {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext(${`movement:${params.pet.id}`}))`,
+        );
+        const refusal = await params.refuseIf(tx);
+        if (refusal) throw new MovementRefusedError(refusal);
+      }
+
+      // (1) Event row FIRST — the immutable fact. Through the idempotency path
+      // when the caller brought a key (a concurrent twin that slipped past the
+      // lookup above lands on the unique index and answers the same row).
+      const { event, wasNoop } = await insertEventIdempotent(
+        {
           petId: params.pet.id,
           eventType: "movement_recorded",
           occurredAt: params.occurredAt,
@@ -134,9 +165,13 @@ export async function recordMovementWriter(
           ...params.eventAuthorship,
           payload,
           notes: params.notes,
-        })
-        .returning();
+          clientIdempotencyKey: key,
+        },
+        tx as Parameters<typeof insertEventIdempotent>[1],
+      );
       eventId = event.id;
+      replayed = wasNoop;
+      if (wasNoop) return;
 
       // (2) Denormalize ONLY for jurisdiction_changed (R6.2) — using the
       // canonicalized destination resolved above.
@@ -153,8 +188,11 @@ export async function recordMovementWriter(
       }
     });
   } catch (err) {
+    if (err instanceof MovementRefusedError) {
+      return { ok: false, error: err.refusal, refusal: err.refusal };
+    }
     return { ok: false, error: err instanceof Error ? err.message : "error desconocido" };
   }
 
-  return { ok: true, eventId };
+  return { ok: true, eventId, replayed };
 }

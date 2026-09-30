@@ -297,6 +297,7 @@ export {
   type PetRegisteredV1,
 } from "./pets.ts";
 export type { PetMoveJurisdictionV1, PetMoveRecordedV1 } from "./pet-move.ts";
+export type { PetTravelCommandAckV1 } from "./pet-travel.ts";
 export {
   PET_REHOME_PAYLOAD_VERSION,
   PET_REHOME_STALE_AFTER_MS,
