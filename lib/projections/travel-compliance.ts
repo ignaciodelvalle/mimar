@@ -73,6 +73,7 @@ import {
 } from "@/lib/projections/travel-rule-merge";
 import type { Airline, AirlineModalityRule } from "@/lib/reference/airlines";
 import type { Corridor } from "@/lib/reference/cross-border-corridors";
+import { pluralizeEs } from "@/lib/utils/format";
 
 export type { TravelPetFacts } from "@/lib/projections/travel-libreta-checks";
 export type { RuleSourceRef } from "@/lib/projections/travel-rule-merge";
@@ -362,7 +363,7 @@ const EVALUATORS: Record<TravelRuleType, Evaluator> = {
   booking_lead_hours: (r) => ({
     ...informational(
       "A tener en cuenta",
-      `Reservá el lugar de la mascota con al menos ${num(r)} horas de anticipación`,
+      `Reservá el lugar de la mascota con al menos ${num(r)} ${pluralizeEs(num(r), "hora")} de anticipación`,
     ),
     level: "info",
   }),
