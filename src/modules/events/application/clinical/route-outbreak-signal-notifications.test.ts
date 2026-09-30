@@ -146,4 +146,35 @@ describe("routeOutbreakSignalNotifications — what it says about the origin", (
     expect(pending[0]?.body).toContain("denuncia de bienestar animal");
     expect(pending[0]?.body).toContain("No es diagnóstico");
   });
+
+  it("a matcher signal over a vet's intake says a vet observed the symptoms — not a diagnosis, not the owner", async () => {
+    const tx = makeTx([], [{ id: "gov-1", role: "govt" }]);
+    const pending: NewNotification[] = [];
+    await routeOutbreakSignalNotifications(
+      tx as never,
+      {
+        signalEvent: signal({ reporter_role: "vet" }),
+        pet: PET,
+        disease: DISEASE,
+      },
+      pending,
+    );
+    expect(pending[0]?.body).toContain("Síntomas observados por un veterinario en la consulta");
+    expect(pending[0]?.body).not.toContain("quien cuida al animal");
+    expect(pending[0]?.body).not.toContain("Diagnóstico registrado");
+    // Still a suspicion read from text: the caveat and the strength stay.
+    expect(pending[0]?.body).toContain("No es diagnóstico");
+    expect(pending[0]?.body).toContain("Match strength");
+  });
+
+  it("a matcher row written before reporter_role existed still reads as the owner's", async () => {
+    const tx = makeTx([], [{ id: "gov-1", role: "govt" }]);
+    const pending: NewNotification[] = [];
+    await routeOutbreakSignalNotifications(
+      tx as never,
+      { signalEvent: signal({}), pet: PET, disease: DISEASE },
+      pending,
+    );
+    expect(pending[0]?.body).toContain("Síntomas descritos por quien cuida al animal");
+  });
 });

@@ -48,18 +48,39 @@ export type RouteSignalArgs = {
   /**
    * Who described what the signal is built on — the notice says so instead of
    * calling every signal "auto-reportado por dueño" (health audit). Absent =
-   * derived: a diagnosis-derived signal is a vet's, any other an owner's.
+   * derived from the payload, see `signalOrigin`.
    */
   origin?: SignalOrigin;
 };
 
-export type SignalOrigin = "owner" | "witness" | "vet";
+/**
+ * `vet` is a DIAGNOSIS a vet recorded (ENO direct path). `vet_exam` is a
+ * matcher signal over symptoms a vet OBSERVED at an intake: professional
+ * observation, but still a suspicion from text — not a diagnosis, so it keeps
+ * the match strength and the "no es diagnóstico" caveat.
+ */
+export type SignalOrigin = "owner" | "witness" | "vet" | "vet_exam";
 
 const ORIGIN_SENTENCE: Record<SignalOrigin, string> = {
   owner: "Síntomas descritos por quien cuida al animal",
   witness: "Síntomas descritos en una denuncia de bienestar animal",
   vet: "Diagnóstico registrado por un veterinario",
+  vet_exam: "Síntomas observados por un veterinario en la consulta",
 };
+
+/**
+ * The origin a signal's own payload declares. A diagnosis-derived signal is a
+ * vet's diagnosis; a matcher signal is whoever described the symptoms
+ * (`reporter_role`, written since 2026-09-30). A matcher row without one
+ * predates the field and was an owner's — the witness path has always passed
+ * its origin explicitly.
+ */
+export function signalOrigin(payload: Record<string, unknown>): SignalOrigin {
+  if (payload.triggered_by === "direct_diagnosis") return "vet";
+  if (payload.reporter_role === "vet") return "vet_exam";
+  if (payload.reporter_role === "witness") return "witness";
+  return "owner";
+}
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -85,8 +106,7 @@ export async function routeOutbreakSignalNotifications(
 ): Promise<void> {
   const { signalEvent, pet, disease, escalation } = args;
   const payload = (signalEvent.payload ?? {}) as Record<string, unknown>;
-  const origin: SignalOrigin =
-    args.origin ?? (payload.triggered_by === "direct_diagnosis" ? "vet" : "owner");
+  const origin: SignalOrigin = args.origin ?? signalOrigin(payload);
 
   // PO S10 (2026-09-26): the authority where it OCCURRED — the signal's own
   // place — never the pet's home when the signal carries a place. A place

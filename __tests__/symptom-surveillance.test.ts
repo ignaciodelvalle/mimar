@@ -294,6 +294,48 @@ describe("createSymptomObservedWriter — surveillance pipeline", () => {
     expect(notifs[0].relatedEventId).toBe(rabiesSignal!.id);
   });
 
+  it("a vet-reported symptom signal tells the authority a vet observed it, not the owner", async () => {
+    const pet = await insertTestPet(ownerUserId, "VETREP");
+
+    const result = await createSymptomObservedWriter({
+      petId: pet.id,
+      petPublicToken: pet.publicToken,
+      petName: pet.name,
+      petSpecies: pet.species,
+      petJurisdictionCountry: pet.jurisdictionCountry,
+      petJurisdictionProvince: pet.jurisdictionProvince ?? null,
+      petJurisdictionLocality: pet.jurisdictionLocality ?? null,
+      recordedByUserId: adminUserId,
+      eventAuthorship: { authorRole: "vet", authorOrganizationId: null, authorVerified: true },
+      freeText: "le sale baba y está muy agresivo",
+      severity: null,
+      onsetAt: null,
+      reporterRole: "vet",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(`Expected ok, got: ${result.error}`);
+
+    const [signal] = await db
+      .select()
+      .from(petEvents)
+      .where(and(eq(petEvents.petId, pet.id), eq(petEvents.eventType, "outbreak_signal")));
+    expect((signal.payload as Record<string, unknown>).reporter_role).toBe("vet");
+
+    const notifs = await db
+      .select()
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.userId, adminUserId),
+          eq(notifications.notificationType, "outbreak_signal_detected"),
+          eq(notifications.relatedPetId, pet.id),
+        ),
+      );
+    expect(notifs).toHaveLength(1);
+    expect(notifs[0].body).toContain("Síntomas observados por un veterinario en la consulta");
+    expect(notifs[0].body).not.toContain("quien cuida al animal");
+  });
+
   it("non-reportable disease match (distemper via cough+nasal_discharge) → no outbreak_signal", async () => {
     // distemper: nasal_discharge is high, cough is medium — triggers_alert but NOT reportable.
     const pet = await insertTestPet(ownerUserId, "DISTEMPER");

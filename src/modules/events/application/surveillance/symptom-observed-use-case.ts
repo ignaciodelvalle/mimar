@@ -245,6 +245,9 @@ export async function createSymptomObservedWriter(
 
         const signalPayload = validateEventPayload("outbreak_signal", {
           source_symptom_event_id: symptomEvent.id,
+          // Who described the symptoms: the authority notice reads it, so a
+          // vet's intake is not announced as the owner's account.
+          reporter_role: reporterRole,
           disease_code: d.disease_code,
           disease_label: d.disease_label,
           match_strength: {

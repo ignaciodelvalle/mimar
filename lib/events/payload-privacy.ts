@@ -380,6 +380,7 @@ export const PAYLOAD_PRIVACY: Record<EventType, Record<string, PrivacyEntry>> = 
     source_symptom_event_id: CF,
     source_disease_diagnosis_event_id: CF,
     triggered_by: CF,
+    reporter_role: CF,
     confirmed_by_lab: CF,
     disease_code: CF,
     disease_label: CF,

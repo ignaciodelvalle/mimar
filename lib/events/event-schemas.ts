@@ -1172,6 +1172,13 @@ const outbreakSignal = z
       // Path discriminator. Optional for back-compat: rows written before
       // ENO are implicitly 'matcher' (read path defaults).
       triggered_by: z.enum(["matcher", "direct_diagnosis"]).optional(),
+      // Matcher path: who DESCRIBED the symptoms the matcher read — copied
+      // from the source symptom_observed's reporter_role, so the authority
+      // notice can say a vet observed them at intake instead of calling every
+      // matcher signal an owner's. Optional for back-compat: rows written
+      // before 2026-09-30 carry none and read as the owner's, which is what
+      // every one of them was (the witness path names itself at routing).
+      reporter_role: z.enum(["owner", "witness", "vet"]).optional(),
       // True when the vet attested a confirmatory lab result (ENO §6.1).
       // Lifts the signal severity in govt dashboards.
       confirmed_by_lab: z.boolean().optional(),

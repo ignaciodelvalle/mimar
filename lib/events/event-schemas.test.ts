@@ -88,6 +88,30 @@ describe("outbreakSignal payload schema", () => {
     ).not.toThrow();
   });
 
+  it("carries who described the symptoms, and only a known reporter", () => {
+    const base = {
+      source_symptom_event_id: "550e8400-e29b-41d4-a716-446655440000",
+      disease_code: "rabies_suspected",
+      disease_label: "Sospecha de rabia",
+      match_strength: {
+        high_count: 1,
+        medium_count: 0,
+        low_count: 0,
+        matched_symptom_codes: ["hypersalivation"],
+      },
+      pet_jurisdiction_country: "AR",
+      pet_jurisdiction_province: null,
+      pet_jurisdiction_locality: null,
+      pet_species: "dog",
+    };
+    expect(
+      validateEventPayload("outbreak_signal", { ...base, reporter_role: "vet" }),
+    ).toMatchObject({ reporter_role: "vet" });
+    expect(() =>
+      validateEventPayload("outbreak_signal", { ...base, reporter_role: "scanner" }),
+    ).toThrow();
+  });
+
   it("rejects extra keys (strict mode)", () => {
     expect(() =>
       validateEventPayload("outbreak_signal", {
