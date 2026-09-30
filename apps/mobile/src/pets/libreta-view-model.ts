@@ -30,16 +30,6 @@ import { unknownEnumLabel } from "../ui/enum-label";
 import { type SectionView, sectionView } from "./owner-face-view-model";
 import { speciesLabel } from "./species";
 
-/**
- * The immutability note the web prints at the foot of the libreta, verbatim.
- *
- * It is not decoration. It is the sentence that makes the "Corregir" affordance
- * legible: without it, a correction that leaves the original in place reads as a
- * bug rather than as the whole design.
- */
-export const LIBRETA_IMMUTABILITY_NOTE =
-  "Los eventos no se editan ni se borran. Una corrección es un evento nuevo.";
-
 /** Both lists empty. The web's own sentence for it. */
 export const LIBRETA_EMPTY_LABEL = "Sin eventos ni cuidados programados todavía.";
 

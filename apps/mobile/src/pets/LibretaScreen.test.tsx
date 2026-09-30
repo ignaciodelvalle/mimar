@@ -130,6 +130,15 @@ describe("LibretaScreen — what a read that worked shows", () => {
     expect(screen.getByText("Antirrábica")).toBeOnTheScreen();
   });
 
+  it("does not claim that asientos can never be erased", async () => {
+    // PO 2026-09-30: the old footer ("Los eventos no se editan ni se borran")
+    // contradicted Ley 25.326 art. 16, which allows audited erasure. Removed,
+    // not reworded.
+    render(<LibretaScreen publicToken={TOKEN} />);
+    expect(await screen.findByText("Pampa")).toBeOnTheScreen();
+    expect(screen.queryByText(/se borran/i)).toBeNull();
+  });
+
   it("opens one asiento when it is pressed", async () => {
     render(<LibretaScreen publicToken={TOKEN} />);
     fireEvent.press(await screen.findByText("Antirrábica"));

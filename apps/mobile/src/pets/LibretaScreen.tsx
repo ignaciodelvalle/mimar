@@ -42,7 +42,6 @@ import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "..
 import {
   LEDGER_EMPTY_LABEL,
   LIBRETA_EMPTY_LABEL,
-  LIBRETA_IMMUTABILITY_NOTE,
   LIBRETA_TRUNCATED_NOTE,
   type LibretaView,
   UPCOMING_EMPTY_LABEL,
@@ -333,8 +332,6 @@ function LibretaBody({ view, deceased }: { view: LibretaView; deceased: boolean 
           )
         }
       </Section>
-
-      <Text style={styles.immutability}>{LIBRETA_IMMUTABILITY_NOTE}</Text>
     </>
   );
 }
@@ -472,11 +469,4 @@ const styles = StyleSheet.create({
   warning: { fontFamily: FONTS.sansSemibold, fontSize: TYPE.sm, color: COLORS.warnInk },
   amended: { fontFamily: FONTS.sansSemibold, fontSize: TYPE.sm, color: COLORS.accent },
   attachment: { fontFamily: FONTS.sans, fontSize: TYPE.sm, color: COLORS.inkMuted },
-  immutability: {
-    fontFamily: FONTS.sans,
-    fontSize: TYPE.sm,
-    lineHeight: TYPE.sm * LEADING.sm,
-    color: COLORS.inkMuted,
-    paddingHorizontal: SPACE.xs,
-  },
 });
