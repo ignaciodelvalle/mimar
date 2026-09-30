@@ -2,14 +2,15 @@
 // Clones the generate-ppp-export.ts flow: ownership check → DTO → pdf-lib →
 // upload to private bucket → signed URL (24h) → audit log with schemaVersion.
 //
-// Role gate: owner-only (R4.2/R5 — same strict ownership stance as PPP:
-// the pet must belong to the authenticated user via ownerships, no org path).
+// Role gate: titular-only (R4.2/R5 — same strict ownership stance as PPP:
+// the pet must belong to the authenticated user via ownerships, no org path —
+// and, since viajes-fase-2 D8, no caretaker either).
 //
 // Storage bucket `travel-exports` is OWNER OPS — created in Supabase Studio
 // before deploy, never from code (R5.2). If the bucket is missing, the upload
 // fails and the caller receives "storage_upload_failed".
 
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
 
 import { auditLog, db, ownerships, petEvents, pets, profiles } from "@/db";
 import {
@@ -35,7 +36,12 @@ export async function generateTravelExport(
 ): Promise<GenerateTravelExportResult> {
   const { user } = await requireUserOrRedirect();
 
-  // Ownership check: pet must exist and belong to this user (strict owner-path).
+  // Ownership check: the pet must exist and the user must hold it as a TITULAR
+  // on the person path — owner, co-owner or foster, never a caretaker. The PDF
+  // carries the corridors and the CVI, which only a titular may read
+  // (viajes-fase-2, D8 — the same rule as canAccessTravel and
+  // holdsPetAsTravelTitular). A caretaker gets the same not_found as a pet
+  // that does not exist.
   const [ownerRow] = await db
     .select({
       petId: pets.id,
@@ -52,6 +58,7 @@ export async function generateTravelExport(
         eq(pets.publicToken, petPublicToken),
         eq(ownerships.ownerUserId, user.id),
         isNull(ownerships.endedAt),
+        ne(ownerships.role, "caretaker"),
       ),
     )
     .limit(1);

@@ -327,6 +327,38 @@ describe("generateTravelExport — guards", () => {
     expect(result.error).toBe("not_found");
   });
 
+  it("returns not_found to a caretaker of the pet — the trip is the titular's (D8)", async () => {
+    const CARETAKER_USER = "eeeeeeee-1111-0000-0000-000000000023";
+    await db
+      .insert(profiles)
+      .values({ id: CARETAKER_USER, displayName: "Travel Caretaker", role: "owner" })
+      .onConflictDoNothing({ target: profiles.id });
+    await db.insert(ownerships).values({
+      petId: travelPetId,
+      ownerUserId: CARETAKER_USER,
+      role: "caretaker",
+      startedAt: new Date(),
+    });
+
+    const supabaseMock = buildSupabaseMock();
+    mockCreateClient.mockResolvedValue(supabaseMock as never);
+    mockRequireUserOrRedirect.mockResolvedValue({
+      supabase: supabaseMock,
+      user: { id: CARETAKER_USER },
+    } as never);
+
+    const refused = await generateTravelExport(TRAVEL_PET_TOKEN);
+    expect(refused).toEqual({ ok: false, error: "not_found" });
+
+    // The titular of the same pet still gets the PDF.
+    mockRequireUserOrRedirect.mockResolvedValue({
+      supabase: supabaseMock,
+      user: { id: MOCK_OWNER_ID },
+    } as never);
+    const allowed = await generateTravelExport(TRAVEL_PET_TOKEN);
+    expect(allowed.ok).toBe(true);
+  });
+
   it("returns no_movement_context when the pet has zero movement_recorded events", async () => {
     const supabaseMock = buildSupabaseMock();
     mockCreateClient.mockResolvedValue(supabaseMock as never);

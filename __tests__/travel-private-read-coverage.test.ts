@@ -66,8 +66,9 @@ const TITULAR_OR_WRITER: readonly string[] = [
   // travel target it asks holdsPetAsTravelTitular and refuses everyone else
   // with `travel_private_target` (asserted below).
   "src/modules/events/application/amendment/amend-event.ts",
-  // The owner's travel PDF. Its ownership join still admits a caretaker today;
-  // Phase 4 (task 4.4) narrows it to canAccessTravel.
+  // The titular's travel PDF. Its ownership join refuses a caretaker row, the
+  // same rule as canAccessTravel (asserted below; behaviour in
+  // __tests__/travel-export.test.ts).
   "src/modules/pets/application/travel-export/generate-travel-export.ts",
   // Cache derivations: they read movement rows to rebuild pets.jurisdiction_*
   // from jurisdiction_changed and render nothing.
@@ -176,6 +177,17 @@ describe("travel-private read coverage", () => {
     const src = read("src/modules/events/application/amendment/amend-event.ts");
     expect(src).toContain("holdsPetAsTravelTitular(");
     expect(src).toContain('code: "travel_private_target"');
+  });
+
+  it("the travel PDF refuses a caretaker in its ownership join", () => {
+    const src = read("src/modules/pets/application/travel-export/generate-travel-export.ts");
+    expect(src).toContain('ne(ownerships.role, "caretaker")');
+  });
+
+  it("a correction may not change a movement's sub_kind — the clause reads it raw", () => {
+    const src = read("src/modules/events/application/amendment/amend-event.ts");
+    expect(src).toMatch(/movement_recorded: \["sub_kind"\]/);
+    expect(src).toContain('code: "discriminator_locked"');
   });
 
   it("every entry exists and really queries pet_events", () => {
