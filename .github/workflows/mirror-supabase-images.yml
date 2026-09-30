@@ -110,7 +110,7 @@ jobs:
       - name: Setup pnpm
         # No `version:` input — see ci.yml's own comment: the version comes
         # from the root package.json `packageManager` field.
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node
         uses: actions/setup-node@v4
