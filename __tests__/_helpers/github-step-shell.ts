@@ -133,10 +133,17 @@ export type StepOutcome = { status: number; output: string };
  * same script under a deliberately different regime (bare `bash`, say) to prove
  * the script does not depend on the caller's flags. Production paths must let
  * it default.
+ *
+ * `cwd` overrides the process's own working directory. Left unset (every
+ * caller before this option existed), the script inherits vitest's cwd — the
+ * repo root — which is fine for a script with no relative-path reads of its
+ * own. A script that reads a repo-relative file (e.g. `supabase/config.toml`)
+ * needs a HERMETIC cwd instead, so its test fixture does not depend on that
+ * real file's content ever staying what the test expects.
  */
 export function execStep(
   step: CompositeStep,
-  opts: { dir: string; env: NodeJS.ProcessEnv; flags?: readonly string[] },
+  opts: { dir: string; env: NodeJS.ProcessEnv; flags?: readonly string[]; cwd?: string },
 ): StepOutcome {
   const scriptPath = join(opts.dir, "step.sh");
   writeFileSync(scriptPath, step.script);
@@ -147,6 +154,7 @@ export function execStep(
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       env: opts.env,
+      cwd: opts.cwd,
     });
     return { status: 0, output };
   } catch (err) {

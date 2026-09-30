@@ -29,7 +29,15 @@
 // `exit "$RC"` would pass just as happily on a script where that line is
 // unreachable — which is precisely what happened.
 
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix as posixPath } from "node:path";
@@ -58,6 +66,13 @@ type Outcome = { status: number; output: string; calls: string[] };
  *
  * `flags` exists for the one case that deliberately runs under a different
  * regime; everything else lets the harness derive it from the step.
+ *
+ * The mirror-first options (`token`, `owner`, `actor`, `dockerLoginRc`,
+ * `dockerInspectRc`, `nodeRc`, `major`) all default to values that reproduce
+ * TODAY's path exactly: `token` is `undefined`, which — unlike an empty
+ * string — is explicitly DELETED from the child's env below, so no ambient
+ * `SUPABASE_GITHUB_TOKEN` in the process running this suite could leak in
+ * and silently change which branch a "default" call exercises.
  */
 function runAction(
   failures: number,
@@ -66,6 +81,19 @@ function runAction(
     exclude?: string;
     startRc?: number;
     flags?: readonly string[];
+    /** `SUPABASE_GITHUB_TOKEN`. Omitted (not `""`) reproduces today's path. */
+    token?: string;
+    /** `GITHUB_REPOSITORY_OWNER`, deliberately mixed-case by default to prove lowercasing. */
+    owner?: string;
+    actor?: string;
+    /** Exit code the stub `docker login ...` returns. */
+    dockerLoginRc?: number;
+    /** Exit code the stub `docker buildx imagetools inspect <marker>` returns — 0 = "found". */
+    dockerInspectRc?: number;
+    /** Exit code the stub `node -p "require(...).version"` returns. */
+    nodeRc?: number;
+    /** The fixture `supabase/config.toml`'s `db.major_version`. */
+    major?: string;
   } = {},
 ): Outcome {
   const dir = mkdtempSync(join(tmpdir(), "supabase-start-"));
@@ -79,11 +107,15 @@ function runAction(
   // The stub counts only `start` invocations, so a `stop` between attempts
   // cannot be miscounted as a retry. It records the WHOLE argv, so the
   // `--exclude` assertion reads what was passed rather than trusting it.
+  // It ALSO records the registry the caller set for that one invocation —
+  // `SUPABASE_INTERNAL_IMAGE_REGISTRY=<x> pnpm exec supabase start ...` sets
+  // that var only for this child, so reading it here is the only way to
+  // observe, from outside, which registry a given attempt actually used.
   writeFileSync(
     join(dir, "pnpm"),
     [
       "#!/bin/bash",
-      `echo "$*" >> ${JSON.stringify(callLog)}`,
+      `echo "REGISTRY=\${SUPABASE_INTERNAL_IMAGE_REGISTRY:-<unset>} $*" >> ${JSON.stringify(callLog)}`,
       'if [[ "$*" == *" start "* || "$*" == *" start" ]]; then',
       `  n=$(cat ${JSON.stringify(counter)} 2>/dev/null || echo 0)`,
       "  n=$((n + 1))",
@@ -97,18 +129,70 @@ function runAction(
   );
   chmodSync(join(dir, "pnpm"), 0o755);
 
+  // Stubs for the two binaries the mirror-first probe touches. Built
+  // unconditionally: when `token` is unset the probe block never runs, so
+  // these are simply never invoked — see "does nothing when github-token is
+  // empty" below, which asserts exactly that instead of assuming it.
+  writeFileSync(
+    join(dir, "docker"),
+    [
+      "#!/bin/bash",
+      `echo "$*" >> ${JSON.stringify(callLog)}`,
+      'if [ "$1" = "login" ]; then exit "${DOCKER_LOGIN_RC:-0}"; fi',
+      'if [ "$1" = "buildx" ] && [ "$2" = "imagetools" ] && [ "$3" = "inspect" ]; then exit "${DOCKER_INSPECT_RC:-0}"; fi',
+      "exit 0",
+      "",
+    ].join("\n"),
+  );
+  chmodSync(join(dir, "docker"), 0o755);
+
+  writeFileSync(
+    join(dir, "node"),
+    [
+      "#!/bin/bash",
+      `echo "$*" >> ${JSON.stringify(callLog)}`,
+      'if [ "$1" = "-p" ]; then',
+      '  if [ "${NODE_RC:-0}" != "0" ]; then exit "${NODE_RC}"; fi',
+      '  echo "${STUB_CLI_VERSION:-9.9.9}"',
+      "  exit 0",
+      "fi",
+      "exit 0",
+      "",
+    ].join("\n"),
+  );
+  chmodSync(join(dir, "node"), 0o755);
+
+  // The one real (non-stubbed) filesystem read the mirror-first block makes.
+  // A fixture here, under a `cwd` scoped to this temp dir, is what keeps
+  // these tests from depending on the REAL repo's supabase/config.toml
+  // content ever staying what a test expects.
+  mkdirSync(join(dir, "supabase"), { recursive: true });
+  writeFileSync(join(dir, "supabase", "config.toml"), `major_version = ${opts.major ?? "17"}\n`);
+
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    PATH: `${dir}:${process.env.PATH ?? ""}`,
+    SUPABASE_EXCLUDE: opts.exclude ?? "studio,imgproxy,edge-runtime,realtime",
+    SUPABASE_ATTEMPTS: opts.attempts ?? "3",
+    // Zero backoff: this suite must not sleep. The doubling is arithmetic,
+    // not behaviour, and 0 doubles to 0.
+    SUPABASE_BACKOFF: "0",
+    GITHUB_REPOSITORY_OWNER: opts.owner ?? "Acme",
+    GITHUB_ACTOR: opts.actor ?? "actor",
+    DOCKER_LOGIN_RC: String(opts.dockerLoginRc ?? 0),
+    DOCKER_INSPECT_RC: String(opts.dockerInspectRc ?? 0),
+    NODE_RC: String(opts.nodeRc ?? 0),
+  };
+  // `undefined`, not a deleted key: Node's child_process omits an env entry
+  // whose value is `undefined` (normalizeSpawnArguments), so this has the
+  // same effect on the child's environment while staying a plain assignment.
+  env.SUPABASE_GITHUB_TOKEN = opts.token;
+
   const { status, output } = execStep(step(), {
     dir,
     flags: opts.flags,
-    env: {
-      ...process.env,
-      PATH: `${dir}:${process.env.PATH ?? ""}`,
-      SUPABASE_EXCLUDE: opts.exclude ?? "studio,imgproxy,edge-runtime,realtime",
-      SUPABASE_ATTEMPTS: opts.attempts ?? "3",
-      // Zero backoff: this suite must not sleep. The doubling is arithmetic,
-      // not behaviour, and 0 doubles to 0.
-      SUPABASE_BACKOFF: "0",
-    },
+    cwd: dir,
+    env,
   });
 
   const calls = existsSync(callLog)
@@ -119,6 +203,12 @@ function runAction(
 
 const starts = (o: Outcome) => o.calls.filter((c) => c.includes(" start"));
 const stops = (o: Outcome) => o.calls.filter((c) => c.includes(" stop"));
+
+/** The `SUPABASE_INTERNAL_IMAGE_REGISTRY` a given logged `pnpm` call ran under. */
+const registryOf = (call: string): string => {
+  const m = call.match(/^REGISTRY=(\S+)/);
+  return m ? m[1] : "<unset>";
+};
 
 /**
  * Every WHOLE step of `workflow` whose body mentions `needle`.
@@ -263,6 +353,125 @@ describe("the supabase-start action, executed under the runner's own shell", SPA
     const out = runAction(1, { exclude });
     expect(starts(out)).toHaveLength(2);
     for (const call of starts(out)) expect(call).toContain(`--exclude ${exclude}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MIRROR-FIRST: probing the GHCR image mirror before touching
+// `public.ecr.aws`, added 2026-09-30 after a fresh review blocked the first
+// cut of this feature for shipping with no coverage at all. Every case here
+// exercises the REAL script through the SAME runner-argv harness as above —
+// stubbing `docker`, `node`, and (via the existing `pnpm` stub) `supabase`,
+// never reading or writing anything outside its own temp `dir`.
+// ---------------------------------------------------------------------------
+describe("mirror-first: probing the GHCR mirror before public.ecr.aws", SPAWN_BUDGET, () => {
+  it("does nothing when github-token is empty — today's path, byte for byte", () => {
+    // `token` omitted, not `""` — see runAction's own doc comment for why
+    // that distinction matters here.
+    const out = runAction(0);
+    expect(out.status).toBe(0);
+    expect(starts(out)).toHaveLength(1);
+    expect(registryOf(starts(out)[0])).toBe("public.ecr.aws");
+    // The strongest form of "no-op": `docker` and `node` were never even
+    // invoked, not just "invoked and ignored" — the only logged call is the
+    // one successful `pnpm ... start`.
+    expect(out.calls).toHaveLength(1);
+    expect(out.output).not.toContain("GHCR");
+  });
+
+  it("logs in, finds the readiness marker, and starts against the GHCR mirror", () => {
+    const out = runAction(0, {
+      token: "gh-token",
+      owner: "Acme", // mixed case on purpose — GHCR paths must be lowercase
+      dockerLoginRc: 0,
+      dockerInspectRc: 0, // marker found
+    });
+    expect(out.status).toBe(0);
+    expect(starts(out)).toHaveLength(1);
+    expect(registryOf(starts(out)[0]), "owner must be lowercased for the GHCR path").toBe(
+      "ghcr.io/acme",
+    );
+    expect(out.output).toContain("pulling from GHCR instead of public.ecr.aws");
+  });
+
+  it("falls back to public.ecr.aws with a warning when the marker is absent", () => {
+    const out = runAction(0, {
+      token: "gh-token",
+      dockerLoginRc: 0,
+      dockerInspectRc: 1, // marker not found
+    });
+    expect(out.status).toBe(0);
+    expect(registryOf(starts(out)[0])).toBe("public.ecr.aws");
+    expect(out.output).toContain("::warning::");
+    expect(out.output).toContain("not found");
+  });
+
+  it("falls back to public.ecr.aws when `docker login` itself fails", () => {
+    const out = runAction(0, {
+      token: "gh-token",
+      dockerLoginRc: 1,
+    });
+    expect(out.status).toBe(0);
+    expect(registryOf(starts(out)[0])).toBe("public.ecr.aws");
+    expect(out.output).toContain("::warning::");
+    expect(out.output).toContain("docker login ghcr.io");
+    // A failed login must not even attempt the marker probe.
+    expect(out.calls.some((c) => c.includes("imagetools"))).toBe(false);
+  });
+
+  it("falls back to public.ecr.aws when the CLI version or major_version can't be resolved", () => {
+    const out = runAction(0, {
+      token: "gh-token",
+      nodeRc: 1, // `node -p` fails, as it would with no node_modules/supabase yet
+    });
+    expect(out.status).toBe(0);
+    expect(registryOf(starts(out)[0])).toBe("public.ecr.aws");
+    expect(out.output).toContain("::warning::");
+    expect(out.output).toContain("could not resolve");
+    expect(out.calls.some((c) => c.includes("imagetools"))).toBe(false);
+  });
+
+  it("a first-attempt GHCR failure falls back to ECR WITHOUT spending a retry", () => {
+    // `failures=1`: the very first `start` call fails, every later one
+    // succeeds. With the marker present, that first call runs against GHCR;
+    // the free fallback then retries against public.ecr.aws immediately —
+    // still attempt 1 of the caller's budget.
+    const out = runAction(1, {
+      token: "gh-token",
+      dockerInspectRc: 0,
+      attempts: "3",
+    });
+    expect(out.status).toBe(0);
+    expect(starts(out)).toHaveLength(2);
+    expect(registryOf(starts(out)[0]), "the failed attempt was against GHCR").toBe("ghcr.io/acme");
+    expect(registryOf(starts(out)[1]), "the recovering attempt was against ECR").toBe(
+      "public.ecr.aws",
+    );
+    expect(stops(out), "the fallback tears the half-started GHCR attempt down").toHaveLength(1);
+    expect(out.output).toContain("at no cost to the retry budget");
+  });
+
+  it("remaining ECR attempts keep the caller's full budget after that free fallback", () => {
+    // Every attempt fails now, GHCR and ECR alike. The free GHCR attempt must
+    // not shrink the 3 ECR attempts the caller asked for, and the final
+    // error must still say "3", not "4".
+    const out = runAction(Number.POSITIVE_INFINITY, {
+      token: "gh-token",
+      dockerInspectRc: 0,
+      attempts: "3",
+    });
+    expect(out.status).not.toBe(0);
+    expect(starts(out), "1 free GHCR attempt + the full 3-attempt ECR budget").toHaveLength(4);
+    expect(
+      starts(out)
+        .slice(1)
+        .every((c) => registryOf(c) === "public.ecr.aws"),
+    ).toBe(true);
+    expect(
+      stops(out),
+      "one fallback stop + two between-retry stops, none after the last",
+    ).toHaveLength(3);
+    expect(out.output).toContain("failed on all 3 attempt(s)");
   });
 });
 
