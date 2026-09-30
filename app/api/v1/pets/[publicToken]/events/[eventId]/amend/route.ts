@@ -372,6 +372,12 @@ function refusal(code: AmendEventFailureCode, message: string, userId: string) {
       // `PetEventDetailV1.amend.refusal`. A new code would fall through the
       // exhaustive switch of every native build already installed.
       return apiV1Error("amend_not_allowed", 409);
+    case "discriminator_locked":
+      // The change names `movement_recorded.sub_kind`, the field that decides
+      // what kind of record this is (viajes-fase-2, D8). Like `not_amendable`
+      // it is a fact about the record's shape: stop offering the affordance.
+      // A new wire code would fall through every installed build's switch.
+      return apiV1Error("amend_not_allowed", 409);
     case "travel_private_target":
       // A trip or CVI the caller may not read (D8). The route's own read hides
       // it first, so reaching here is a race or a second door; either way it

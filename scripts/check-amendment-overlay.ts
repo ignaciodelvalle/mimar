@@ -228,6 +228,11 @@ const ALLOWLIST: Record<string, Classification> = {
     kind: "raw-by-design",
     reason: "seeder idempotency on its own payload.source tag",
   },
+  "lib/infra/travel-private-events.ts": {
+    kind: "raw-by-design",
+    reason:
+      "notTravelPrivateClause reads movement_recorded.sub_kind and event_amended.target_event_id; neither is amendable — amend-event.ts NON_AMENDABLE_FIELDS locks sub_kind (discriminator_locked) and event_amended is outside the amendable allowlist — so the stored values are the effective ones",
+  },
   // --- debt ------------------------------------------------------------------
   "app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/medicacion-fin/page.tsx": {
     kind: "debt",

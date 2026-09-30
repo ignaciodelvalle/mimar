@@ -320,3 +320,44 @@ describe("no push, no outbox", () => {
     expect(enqueued).toEqual([]);
   });
 });
+
+describe("a correction cannot turn a move into a trip", () => {
+  it("refuses jurisdiction_changed → cvi_issued, so the clause may read sub_kind raw", async () => {
+    const move = await recordMovementWriter({
+      pet,
+      recordedByUserId: OWNER_ID,
+      eventAuthorship: OWNER_AUTHORSHIP,
+      occurredAt: new Date(),
+      notes: null,
+      movement: {
+        sub_kind: "jurisdiction_changed",
+        from_country: "AR",
+        from_province: "CABA",
+        from_locality: "Palermo",
+        to_country: "AR",
+        to_province: "Buenos Aires",
+        to_locality: "La Plata",
+        effective_date: "2026-07-01",
+        reason: null,
+      },
+    });
+    if (!move.ok) throw new Error("fixture: the jurisdiction move was refused");
+
+    const result = await amendEvent(
+      { id: OWNER_ID },
+      { id: pet.id, name: pet.name, publicToken: pet.publicToken },
+      OWNER_AUTHORSHIP,
+      {
+        publicToken: pet.publicToken,
+        targetEventId: move.eventId,
+        reason: null,
+        changes: [{ field: "sub_kind", old: "jurisdiction_changed", new: "cvi_issued" }],
+      },
+    );
+    expect(result).toEqual({
+      ok: false,
+      code: "discriminator_locked",
+      error: "No se puede cambiar el tipo de registro de un movimiento.",
+    });
+  });
+});

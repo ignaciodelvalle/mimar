@@ -82,6 +82,11 @@ export type AmendEventCommand = {
  *                        the person path. Its `error` is the SAME sentence as
  *                        `target_not_found`, and a consumer must answer it the
  *                        same way: to anyone else the record does not exist.
+ * - `discriminator_locked` — a change names the field that decides what KIND
+ *                        of record this is (`movement_recorded.sub_kind`). A
+ *                        correction corrects a record; it never turns it into
+ *                        another kind (viajes-fase-2, D8). A fact about the
+ *                        request, not about the caller.
  * - `write_failed`     — the transaction itself failed. The only one that is a
  *                        server incident, the only one worth reporting, and the
  *                        only one a client should retry.
@@ -101,6 +106,7 @@ export type AmendEventFailureCode =
   | "reason_required"
   | "authorship_refused"
   | "travel_private_target"
+  | "discriminator_locked"
   | "write_failed"
   | "not_permitted";
 

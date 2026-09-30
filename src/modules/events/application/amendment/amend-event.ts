@@ -136,6 +136,57 @@ async function targetRefusal(
   return null;
 }
 
+/**
+ * Payload keys a correction may never change, per event type: a DISCRIMINATOR
+ * decides what kind of record the row is, and a correction corrects a record —
+ * it does not turn it into another one. `movement_recorded.sub_kind` is the
+ * case that matters (viajes-fase-2, D8): a jurisdiction_changed corrected to
+ * transport_recorded would be a trip that every read filtering on the STORED
+ * sub_kind (notTravelPrivateClause) still shows to a caretaker, an org or the
+ * public, together with a correction carrying the travel values. Refusing it
+ * here is what lets those reads use the stored value.
+ */
+const NON_AMENDABLE_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  movement_recorded: ["sub_kind"],
+};
+
+/**
+ * Why these CHANGES cannot be applied to a record of `eventType`, or null.
+ *
+ * 3a. At least one change.
+ * 3b. Every changed field is a key of the target's payload (T3-A2b security
+ *     review, item 9): the erasure classifies a correction's old/new by the
+ *     TARGET's rule for that field, so a field the schema does not have would
+ *     carry a value no rule classifies.
+ * 3c. No change touches the record's discriminator (NON_AMENDABLE_FIELDS).
+ */
+function changesRefusal(
+  eventType: string,
+  changes: AmendEventCommand["changes"] | undefined,
+): AmendEventResult | null {
+  if (!changes || changes.length === 0) {
+    return { ok: false, code: "changes_required", error: "Debés indicar al menos un cambio." };
+  }
+  const targetKeys = classifiedTopLevelKeys(eventType);
+  const unknownField = changes.find((c) => !targetKeys.has(c.field));
+  if (unknownField) {
+    return {
+      ok: false,
+      code: "unknown_field",
+      error: `El campo "${unknownField.field}" no existe en este tipo de evento.`,
+    };
+  }
+  const locked = NON_AMENDABLE_FIELDS[eventType] ?? [];
+  if (changes.some((c) => locked.includes(c.field))) {
+    return {
+      ok: false,
+      code: "discriminator_locked",
+      error: "No se puede cambiar el tipo de registro de un movimiento.",
+    };
+  }
+  return null;
+}
+
 export async function amendEvent(
   user: { id: string },
   pet: { id: string; name: string; publicToken: string },
@@ -169,24 +220,9 @@ export async function amendEvent(
   const targetRefused = await targetRefusal(targetEvent, user.id, pet.id);
   if (targetRefused) return targetRefused;
 
-  // --- 3. Validate changes non-empty ----------------------------------------
-  if (!changes || changes.length === 0) {
-    return { ok: false, code: "changes_required", error: "Debés indicar al menos un cambio." };
-  }
-
-  // --- 3b. Every changed field is a key of the target's payload -------------
-  // (T3-A2b security review, item 9.) The erasure classifies a correction's
-  // old/new by the TARGET's rule for that field; a field the target schema
-  // does not have would carry a value no rule classifies.
-  const targetKeys = classifiedTopLevelKeys(targetEvent.eventType);
-  const unknownField = changes.find((c) => !targetKeys.has(c.field));
-  if (unknownField) {
-    return {
-      ok: false,
-      code: "unknown_field",
-      error: `El campo "${unknownField.field}" no existe en este tipo de evento.`,
-    };
-  }
+  // --- 3. The changes themselves: non-empty, known fields, no discriminator --
+  const changesRefused = changesRefusal(targetEvent.eventType, changes);
+  if (changesRefused) return changesRefused;
 
   // --- 4. Determine actor role + D5 sensitive path --------------------------
   // For v1 all access through requireAlivePetAccess is owner or org-shelter.
