@@ -1,20 +1,25 @@
 // `/api/v1/pets/{publicToken}/travel` — the owner's trips (viajes-fase-2).
 //
+// GET reads the owner's trips, their CVIs and the SERVER-computed semáforo of
+// one trip (`?trip=`, the next one by default) — through `loadTravelView`, the
+// loader the web /viaje page renders from (`./payload.ts`).
+//
 // POST, THREE COMMANDS BEHIND ONE URL — `record_trip`, `record_cvi`,
 // `cancel_trip` — the shape `/reminders` and `/lost` use; `./commands.ts`
-// answers "may this command run, and what exactly does it do". The READ of the
-// trips and the semáforo (`GET`) lands with the /viaje page, which shares its
-// loader.
+// answers "may this command run, and what exactly does it do".
 //
 // `Idempotency-Key` IS REQUIRED FOR ALL THREE. Each appends a row on the
 // append-only spine, and the retry that matters is a phone's after a timeout
 // that may have committed: the key makes it answer the first write.
 //
-// THE WRITE FAMILY IS GENERIC `authenticated-write` — see the bucket's entry in
+// TWO FAMILIES, ONE FILE: the read takes `authenticated-read`, the write the
+// generic `authenticated-write` — see both buckets' entries in
 // lib/infra/api-v1-limits.ts.
 
 import { apiV1Error } from "@/lib/infra/api-v1";
 import {
+  API_V1_AUTHENTICATED_READ_IP_LIMIT,
+  API_V1_AUTHENTICATED_READ_USER_LIMIT,
   API_V1_AUTHENTICATED_WRITE_IP_LIMIT,
   API_V1_AUTHENTICATED_WRITE_USER_LIMIT,
 } from "@/lib/infra/api-v1-limits";
@@ -27,17 +32,76 @@ import { isValidIdempotencyKey } from "@dim/contract/api";
 import { petTravelCommandInputSchema } from "@dim/contract/input";
 
 import { runPetTravelCommand, unavailable } from "./commands";
+import { readPetTravel } from "./payload";
 
 export const dynamic = "force-dynamic";
 
 /** One GoTrue round-trip plus one indexed profile read. */
 const AUTH_BUDGET_MS = 5_000;
 
-// AUTHORIZED, not opted out: the handler calls requireLiveUser and then
-// resolves pet access, and those two calls ARE the authorization. Said here
+/** A `?trip=` value worth looking up: UUID-shaped, else ignored. */
+const TRIP_ID_RE = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+
+// AUTHORIZED, not opted out: both handlers call requireLiveUser and then
+// resolve pet access, and those two calls ARE the authorization. Said here
 // for a reader scanning for the guard — and said WITHOUT writing the opt-out
 // marker, because a comment that spells the marker in order to deny it still
 // reads as one to a scanner matching the token.
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ publicToken: string }> },
+) {
+  const { publicToken } = await params;
+
+  const client = createClientFromBearer(request.headers.get("authorization"));
+  if (!client.ok) {
+    return apiV1Error(client.reason === "MISSING" ? "auth_required" : "auth_expired", 401);
+  }
+
+  if (
+    !(await spendBudget(
+      "api_v1_travel_read_ip",
+      callerIp(request.headers),
+      API_V1_AUTHENTICATED_READ_IP_LIMIT,
+    ))
+  ) {
+    return apiV1Error("rate_limited", 429);
+  }
+
+  // In the handler body, like the write's copy — `check-api-v1-envelope` reads
+  // the handler body only and cannot see through a shared helper.
+  let live: Awaited<ReturnType<typeof requireLiveUser>>;
+  try {
+    live = await withDbBudgetOrThrow(
+      requireLiveUser({ supabase: client.supabase, accessToken: client.token }),
+      AUTH_BUDGET_MS,
+      "api-v1-travel-auth",
+    );
+  } catch (err) {
+    if (err instanceof DbBudgetExceededError) return unavailable();
+    throw err;
+  }
+  if (!live.ok) return liveUserRefusal(live.reason);
+
+  if (
+    !(await spendBudget(
+      "api_v1_travel_read_user",
+      live.user.id,
+      API_V1_AUTHENTICATED_READ_USER_LIMIT,
+    ))
+  ) {
+    return apiV1Error("rate_limited", 429);
+  }
+
+  const trip = (new URL(request.url).searchParams.get("trip") ?? "").trim();
+
+  return readPetTravel({
+    publicToken,
+    userId: live.user.id,
+    tripId: TRIP_ID_RE.test(trip) ? trip : null,
+  });
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ publicToken: string }> },

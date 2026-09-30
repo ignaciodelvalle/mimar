@@ -8,6 +8,7 @@
 import { LnBadge } from "@/components/ui/Badge";
 import type { RequirementLevel } from "@/lib/domain/travel-strictness";
 import type { TravelObligation } from "@/lib/projections/travel-compliance";
+import { isoToArDateDisplay } from "@/lib/utils/date-input-ar";
 
 const LEVEL_BADGE: Record<
   RequirementLevel,
@@ -57,6 +58,26 @@ export function TravelObligationsPanel({ obligations }: TravelObligationsPanelPr
               <p className="mt-1 text-xs text-[var(--color-ln-mute)]">
                 Exigido por: {obligation.contributingJurisdictions.join(" · ")}
               </p>
+            )}
+            {obligation.sources.length > 0 && (
+              <ul className="mt-1 space-y-0.5">
+                {obligation.sources.map((source) => (
+                  <li
+                    key={`${source.kind}:${source.id}:${source.sourceUrl}`}
+                    className="text-xs text-[var(--color-ln-mute)]"
+                  >
+                    <a
+                      href={source.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline"
+                    >
+                      Fuente: {source.label}
+                    </a>
+                    , revisada el {isoToArDateDisplay(source.lastVerifiedAt)}
+                  </li>
+                ))}
+              </ul>
             )}
             <p className="mt-1 text-xs text-[var(--color-ln-mute)]">{obligation.legalFootnote}</p>
           </li>

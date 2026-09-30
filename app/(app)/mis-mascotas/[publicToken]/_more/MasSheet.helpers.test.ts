@@ -2,16 +2,20 @@
 // pruning). The ADR-17c GPS-tracking placeholder row was removed by the lean
 // audit (2026-07-03) — a disabled row advertising a nonexistent feature.
 //
-// UX honesty pass (2026-07-19): the blanket "no disabled rows" invariant from
-// that lean audit is superseded for ONE row — "Viaje y movilidad" — because
-// unlike GPS tracking, /viaje IS a real route with no writer behind it
-// (transport_recorded is never emitted). See MasSheet.helpers.ts for the
-// full rationale.
+// "Viaje y movilidad" was a disabled "Próximamente" row from the 2026-07-19
+// honesty pass until viajes-fase-2 shipped its writers; it is live now, for
+// travel titulars only (task 5.4).
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { TRAVEL_TITULAR_ROLES } from "@/lib/infra/travel-private-events";
 import { describe, expect, it } from "vitest";
-import { type MasSheetInput, deriveMasSheetItems } from "./MasSheet.helpers";
+
+import {
+  MAS_SHEET_TRAVEL_ROLES,
+  type MasSheetInput,
+  deriveMasSheetItems,
+} from "./MasSheet.helpers";
 
 function baseInput(overrides: Partial<MasSheetInput> = {}): MasSheetInput {
   return {
@@ -37,7 +41,7 @@ describe("deriveMasSheetItems — deceased pruning (REQ-9.3)", () => {
     expect(items.map((i) => i.id)).toEqual(["edit", "contacts"]);
   });
 
-  it("does not surface the travel Próximamente row for a deceased pet", () => {
+  it("does not surface the travel row for a deceased pet", () => {
     const items = deriveMasSheetItems(
       baseInput({ pet: { species: "dog", status: "deceased", publicToken: "abc123" } }),
     );
@@ -52,15 +56,29 @@ describe("deriveMasSheetItems — no placeholder rows (lean audit 2026-07-03)", 
   });
 });
 
-describe("deriveMasSheetItems — Viaje y movilidad Próximamente (UX honesty pass, 2026-07-19)", () => {
-  it("surfaces a disabled travel row with a Próximamente badge for an active pet", () => {
+describe("deriveMasSheetItems — Viaje y movilidad (viajes-fase-2, task 5.4)", () => {
+  it("surfaces a live travel row for an owner of an active pet", () => {
     const items = deriveMasSheetItems(baseInput());
     const travel = items.find((i) => i.id === "travel");
     expect(travel).toBeDefined();
-    expect(travel?.disabled).toBe(true);
-    expect(travel?.badge).toBe("Próximamente");
+    expect(travel?.disabled).toBeUndefined();
+    expect(travel?.badge).toBeUndefined();
     expect(travel?.label).toBe("Viaje y movilidad");
     expect(travel?.href).toBe("/mis-mascotas/abc123/viaje");
+  });
+
+  it.each(["co_owner", "foster"])("offers it to a %s — a travel titular", (role) => {
+    const items = deriveMasSheetItems(baseInput({ ownershipRole: role }));
+    expect(items.map((i) => i.id)).toContain("travel");
+  });
+
+  it.each(["caretaker", "shelter_custody", null])("hides it from %s", (role) => {
+    const items = deriveMasSheetItems(baseInput({ ownershipRole: role }));
+    expect(items.map((i) => i.id)).not.toContain("travel");
+  });
+
+  it("its role list is TRAVEL_TITULAR_ROLES, the list /viaje and the v1 door enforce", () => {
+    expect([...MAS_SHEET_TRAVEL_ROLES].sort()).toEqual([...TRAVEL_TITULAR_ROLES].sort());
   });
 });
 
@@ -108,8 +126,9 @@ describe("deriveMasSheetItems — chapa física entry point", () => {
 // pressing a button teaches a person that the product is broken, not that the
 // boundary is deliberate — and it invites them to keep pressing.
 //
-// Only the rows a caretaker legitimately keeps stay: the chapita, the travel
-// placeholder. Everything titular-only leaves.
+// Only the rows a caretaker legitimately keeps stay: the chapita. The travel
+// row leaves too since it went live (viajes-fase-2: trips are titular-only).
+// Everything titular-only leaves.
 // ---------------------------------------------------------------------------
 describe("deriveMasSheetItems — caretaker deny-list", () => {
   const caretaker = () => deriveMasSheetItems(baseInput({ ownershipRole: "caretaker" }));

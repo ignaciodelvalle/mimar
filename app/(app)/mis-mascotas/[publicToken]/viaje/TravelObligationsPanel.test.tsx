@@ -73,6 +73,29 @@ describe("<TravelObligationsPanel>", () => {
     expect(html).toContain("Verificá — dato sin confirmar con la fuente");
   });
 
+  it("shows each source with the day it was last checked (design D5)", () => {
+    const withSource: TravelObligation = {
+      ...BLOCKER,
+      sources: [
+        {
+          kind: "corridor",
+          id: "chile",
+          label: "Chile",
+          sourceUrl: "https://www.sag.gob.cl",
+          lastVerifiedAt: "2026-09-30",
+          reviewBy: "2027-03-29",
+          verification: "verified",
+          note: null,
+          freshness: "fresh",
+        },
+      ],
+    };
+    const html = render(<TravelObligationsPanel obligations={[withSource]} />);
+    expect(html).toContain("Fuente: Chile");
+    expect(html).toContain("revisada el 30/09/2026");
+    expect(html).toContain('href="https://www.sag.gob.cl"');
+  });
+
   it("renders an empty-list message when there are no obligations", () => {
     const html = render(<TravelObligationsPanel obligations={[]} />);
     expect(html).toContain("Sin requisitos");

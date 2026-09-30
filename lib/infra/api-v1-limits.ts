@@ -1322,6 +1322,10 @@ export const API_V1_IP_BUCKET_FAMILIES: Readonly<Record<string, ApiV1IpFamily>> 
   // publishes nothing, it is titular-only by design (D8) — and not
   // `pet-record-write`, whose anchor is a vet day of many animals.
   api_v1_travel_write_ip: "authenticated-write",
+  // The READ of the same door (`GET pets/{token}/travel`, task 5.5) joins
+  // `authenticated-read` on the argument every pet-scoped read makes: the
+  // native screen opens the pet and taps "Viaje" inside one second.
+  api_v1_travel_read_ip: "authenticated-read",
 };
 
 /**

@@ -297,7 +297,18 @@ export {
   type PetRegisteredV1,
 } from "./pets.ts";
 export type { PetMoveJurisdictionV1, PetMoveRecordedV1 } from "./pet-move.ts";
-export type { PetTravelCommandAckV1 } from "./pet-travel.ts";
+export {
+  PET_TRAVEL_PAYLOAD_VERSION,
+  PET_TRAVEL_STALE_AFTER_MS,
+  type PetTravelCommandAckV1,
+  type PetTravelComplianceV1,
+  type PetTravelCviV1,
+  type PetTravelObligationV1,
+  type PetTravelSemaforoV1,
+  type PetTravelSourceV1,
+  type PetTravelTripV1,
+  type PetTravelV1,
+} from "./pet-travel.ts";
 export {
   PET_REHOME_PAYLOAD_VERSION,
   PET_REHOME_STALE_AFTER_MS,

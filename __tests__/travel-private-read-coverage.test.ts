@@ -74,6 +74,10 @@ const TITULAR_OR_WRITER: readonly string[] = [
   // It runs only after travelAuthzRefusal admitted a travel titular
   // (canAccessTravel; asserted below; behaviour in __tests__/travel-writers.test.ts).
   "src/modules/pets/application/travel/travel-edge.ts",
+  // THE titular read behind /viaje and GET /api/v1/pets/{token}/travel. It
+  // refuses anyone canAccessTravel refuses before it reads (asserted below;
+  // behaviour in __tests__/api-v1-travel.test.ts).
+  "src/modules/pets/application/travel/load-travel-view.ts",
   // Cache derivations: they read movement rows to rebuild pets.jurisdiction_*
   // from jurisdiction_changed and render nothing.
   "lib/infra/rederive-pet-cache.ts",
@@ -194,6 +198,14 @@ describe("travel-private read coverage", () => {
       expect(gate, writer).toBeGreaterThan(-1);
       expect(load, writer).toBeGreaterThan(gate);
     }
+  });
+
+  it("the travel view refuses a non-titular before its read", () => {
+    const src = read("src/modules/pets/application/travel/load-travel-view.ts");
+    const gate = src.indexOf("canAccessTravel(viewer.accessPath, viewer.holderRole)");
+    const load = src.indexOf(".from(petEvents)");
+    expect(gate).toBeGreaterThan(-1);
+    expect(load).toBeGreaterThan(gate);
   });
 
   it("the travel-titular roles are one fail-closed allow-list: owner, co_owner, foster", () => {

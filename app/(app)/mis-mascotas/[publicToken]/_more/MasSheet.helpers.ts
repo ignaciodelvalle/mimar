@@ -14,6 +14,12 @@ export interface MasSheetInput {
   hasPendingReturnProposal: boolean;
 }
 
+/**
+ * Who may open /viaje — a client-safe copy of TRAVEL_TITULAR_ROLES (that module
+ * imports the database client, which this sheet's bundle must not).
+ */
+export const MAS_SHEET_TRAVEL_ROLES: readonly string[] = ["owner", "co_owner", "foster"];
+
 export interface MasSheetItem {
   id: string;
   label: string;
@@ -168,22 +174,21 @@ export function deriveMasSheetItems(input: MasSheetInput): MasSheetItem[] {
   //
   // "Ficha" merged into the "Editar datos y ficha" row above (same target).
 
-  // Viaje transfronterizo (movilidad Fase 1): unlike the GPS-tracking row
-  // removed by the lean audit below (a placeholder for a feature that never
-  // existed), /viaje IS a real route — but no writer anywhere records a
-  // transport_recorded event (only jurisdiction_changed moves via /mudanza
-  // are wired; see TransportRecordedMovement in
-  // src/modules/pets/application/movement/types.ts, still unused). PO
-  // decision (UX honesty pass, 2026-07-19): keep the route, stop hiding that
-  // it's non-functional — surface it here disabled with "Próximamente"
-  // (ADR-17c idiom), same capability-gating spirit as MpfExportGate.
-  items.push({
-    id: "travel",
-    label: "Viaje y movilidad",
-    href: `/mis-mascotas/${pet.publicToken}/viaje`,
-    disabled: true,
-    badge: "Próximamente",
-  });
+  // Viaje (viajes-fase-2, task 5.4): live since the trip and CVI writers
+  // shipped. Only for a TRAVEL titular — owner, co-owner, foster — the same
+  // allow-list canAccessTravel applies on /viaje and on the v1 door
+  // (TRAVEL_TITULAR_ROLES, lib/infra/travel-private-events.ts; this client-safe
+  // copy is pinned to it by MasSheet.helpers.test.ts). A caretaker is often the
+  // person keeping the animal while the household is away, and a user-held
+  // shelter_custody row has no business with the owner's trip. A deceased pet
+  // never reaches here (early return above).
+  if (MAS_SHEET_TRAVEL_ROLES.includes(ownershipRole ?? "")) {
+    items.push({
+      id: "travel",
+      label: "Viaje y movilidad",
+      href: `/mis-mascotas/${pet.publicToken}/viaje`,
+    });
+  }
 
   // Pet-scoped emergency sheet (?sheet=emergencia) — the same profile fields
   // the old /cuenta/editar path edited, without leaving the pet the user is

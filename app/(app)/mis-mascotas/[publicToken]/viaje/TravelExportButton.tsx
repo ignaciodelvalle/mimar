@@ -10,6 +10,7 @@
 import { useState, useTransition } from "react";
 
 import { generateTravelExportAction } from "@/app/actions/travel-export";
+import { LnButton } from "@/components/ui/Button";
 
 const ERROR_MESSAGES: Record<string, string> = {
   not_found: "No encontramos la mascota o no tenés permiso para exportar.",
@@ -39,14 +40,9 @@ export function TravelExportButton({ petPublicToken }: { petPublicToken: string 
 
   return (
     <section aria-label="Exportar documentación de viaje" className="space-y-2">
-      <button
-        type="button"
-        onClick={handleExport}
-        disabled={isPending}
-        className="rounded-[var(--radius-sm)] border border-[var(--color-ln-line-strong)] px-4 py-2 text-sm font-semibold disabled:opacity-60"
-      >
+      <LnButton type="button" variant="ghost" onClick={handleExport} loading={isPending}>
         {isPending ? "Generando PDF…" : "Descargar documentación de viaje (PDF)"}
-      </button>
+      </LnButton>
       {signedUrl && (
         <p className="text-sm">
           <a
