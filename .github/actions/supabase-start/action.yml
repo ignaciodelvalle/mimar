@@ -139,12 +139,12 @@ inputs:
     description: >-
       A token with `packages: read` on this repository (pass `${{ github.token
       }}` — no new secret needed), used to `docker login ghcr.io` and probe
-      `.github/workflows/mirror-supabase-images.yml`'s mirror before falling
-      back to `public.ecr.aws`. Left empty (the default), this step behaves
-      exactly as it did before the mirror existed: no login, no probe,
-      straight to `public.ecr.aws`. See the dated comment block above for why
-      this exists and `mirrored-images.txt` next to this file for what the
-      mirror currently carries.
+      `.github/workflows/mirror-supabase-images.yml`'s readiness marker
+      (`ghcr.io/<owner>/supabase/mirror-ready:cli-<version>-pg<major>`) before
+      falling back to `public.ecr.aws`. Left empty (the default), this step
+      behaves exactly as it did before the mirror existed: no login, no
+      probe, straight to `public.ecr.aws`. See the dated comment block above
+      for why this exists.
     required: false
     default: ""
 
@@ -171,34 +171,48 @@ runs:
         # existing assertion runs this exact code path — REGISTRY stays
         # `public.ecr.aws` and nothing below changes shape or output).
         #
-        # Every fallible lookup here ends in `|| true` or sits inside an `if`
-        # condition on purpose: under this script's own `set -e`, a failed
-        # command SUBSTITUTION used in a bare assignment (unlike one on the
-        # left of `||`) still kills the step — and a mirror that is merely
-        # incomplete must never be able to abort the step before the retry
-        # loop, with its battle-tested `public.ecr.aws` fallback, even runs.
+        # Every fallible lookup here puts the command on the LEFT of its own
+        # `||` (falling back to an explicit empty value) or sits inside an
+        # `if` condition, on purpose: under this script's own `set -e`, a
+        # failed command SUBSTITUTION used in a bare assignment (unlike one
+        # on the left of `||`) still kills the step — and a mirror that is
+        # merely incomplete must never be able to abort the step before the
+        # retry loop, with its battle-tested `public.ecr.aws` fallback, even
+        # runs. `__tests__/supabase-start-action.test.ts` also restricts a
+        # forced-success fallback piped to the `true` builtin to the teardown
+        # line only, which is the other reason an explicit-fallback
+        # assignment is the right shape here.
         REGISTRY="public.ecr.aws"
         if [ -n "${SUPABASE_GITHUB_TOKEN:-}" ]; then
           if printf '%s' "${SUPABASE_GITHUB_TOKEN}" \
             | docker login ghcr.io -u "${GITHUB_ACTOR:-github-actions}" --password-stdin >/dev/null 2>&1
           then
-            MANIFEST=".github/actions/supabase-start/mirrored-images.txt"
-            PG_TAG=""
-            if [ -f "$MANIFEST" ]; then
-              PG_TAG=$(grep -v '^#' "$MANIFEST" 2>/dev/null | grep '^postgres:' | head -n1 | cut -d: -f2- || true)
-            fi
-            if [ -n "$PG_TAG" ]; then
-              OWNER_LC=$(printf '%s' "${GITHUB_REPOSITORY_OWNER:-}" | tr '[:upper:]' '[:lower:]' || true)
-              if [ -n "$OWNER_LC" ] \
-                && docker buildx imagetools inspect "ghcr.io/${OWNER_LC}/supabase/postgres:${PG_TAG}" >/dev/null 2>&1
-              then
+            # The readiness marker's key: SAME derivation
+            # .github/workflows/mirror-supabase-images.yml uses to publish it
+            # (its "Resolve the readiness marker's key" step), computed
+            # without running `supabase start` — the CLI version comes from
+            # this job's own `pnpm install` (already run by the caller before
+            # this action), the postgres major version from the checked-out
+            # `supabase/config.toml`.
+            #
+            # Each lookup is on the left of its own `||`, the SAME idiom this
+            # file's header comment explains for `cmd || RC=$?`: exempt from
+            # `set -e` because it is not the list's last command, and it
+            # leaves the variable empty (never unset, `set -u` is live) on
+            # failure instead of aborting the step over an incomplete probe.
+            CLI_VERSION=$(node -p "require('./node_modules/supabase/package.json').version" 2>/dev/null) || CLI_VERSION=""
+            MAJOR=$(grep -m1 '^major_version' supabase/config.toml 2>/dev/null | grep -oE '[0-9]+' | head -n1) || MAJOR=""
+            if [ -n "$CLI_VERSION" ] && [ -n "$MAJOR" ]; then
+              OWNER_LC=$(printf '%s' "${GITHUB_REPOSITORY_OWNER:-}" | tr '[:upper:]' '[:lower:]') || OWNER_LC=""
+              MARKER="ghcr.io/${OWNER_LC}/supabase/mirror-ready:cli-${CLI_VERSION}-pg${MAJOR}"
+              if [ -n "$OWNER_LC" ] && docker buildx imagetools inspect "$MARKER" >/dev/null 2>&1; then
                 REGISTRY="ghcr.io/${OWNER_LC}"
-                echo "Supabase image mirror found (ghcr.io/${OWNER_LC}/supabase/postgres:${PG_TAG}); pulling from GHCR instead of public.ecr.aws."
+                echo "Supabase image mirror ready (${MARKER}); pulling from GHCR instead of public.ecr.aws."
               else
-                echo "::warning::GHCR mirror probe for postgres:${PG_TAG} did not resolve; pulling from public.ecr.aws as before. Run the \"Mirror Supabase images to GHCR\" workflow (workflow_dispatch) to (re)populate it."
+                echo "::warning::GHCR mirror marker ${MARKER} not found; pulling from public.ecr.aws as before. Run the \"Mirror Supabase images to GHCR\" workflow (workflow_dispatch) to (re)populate it."
               fi
             else
-              echo "::warning::${MANIFEST} has no \`postgres:\` entry yet; pulling from public.ecr.aws as before. Run the \"Mirror Supabase images to GHCR\" workflow once to create it."
+              echo "::warning::could not resolve the supabase CLI version ('${CLI_VERSION}') or supabase/config.toml's db.major_version ('${MAJOR}') to probe the GHCR mirror; pulling from public.ecr.aws as before."
             fi
           else
             echo "::warning::\`docker login ghcr.io\` failed; pulling from public.ecr.aws as before."

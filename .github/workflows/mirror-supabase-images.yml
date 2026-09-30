@@ -39,18 +39,29 @@ name: Mirror Supabase images to GHCR
 # pulled. That list is exactly what `supabase-start` needs for THIS pinned
 # CLI version and THIS `major_version` — nothing guessed, nothing stale.
 #
-# WHY THE RESULT IS COMMITTED, NOT JUST PUSHED
+# WHY A GHCR MARKER TAG, NOT A COMMITTED MANIFEST (revised 2026-09-30, review)
 # ---------------------------------------------------------------------------
-# `.github/actions/supabase-start` needs to know which GHCR tag to PROBE
-# before touching `supabase start` (a probe that requires starting the stack
-# to learn the tag would defeat the point — it would have to hit
-# `public.ecr.aws` anyway). Since the CLI cannot report that tag without a
-# real start, this job writes the resolved list to a plain-text file next to
-# the action and commits it — a checked-in, diffable, versioned manifest the
-# action can read for free out of its own checkout, with a live
-# `docker buildx imagetools inspect` against GHCR as the real, self-healing
-# safety check (the file only says what SHOULD be there; the live inspect
-# confirms it actually IS).
+# The first cut of this file committed the resolved image list to
+# `.github/actions/supabase-start/mirrored-images.txt` on `main` so the
+# action could read it for free. A fresh review blocked that: this repo's
+# `main` is Vercel's Production Branch (see `vercel-live-project-is-dim-
+# staging` in project memory) — every push to it fires a production deploy
+# AND a full `ci.yml` run, so a bot commit here would trigger both on every
+# CLI bump, every week, forever, for a file nothing but this workflow reads.
+#
+# The fix is to make the READINESS SIGNAL itself live in the one place both
+# sides already read: GHCR. After every image mirrors successfully, this job
+# publishes one more cheap tag, `ghcr.io/<owner>/supabase/mirror-ready:cli-
+# <version>-pg<major_version>` — an `imagetools create` alias pointing at the
+# postgres manifest already pushed above (GHCR-to-GHCR, no ECR traffic, no
+# new blobs). `.github/actions/supabase-start` computes that SAME key from
+# `node_modules/supabase/package.json` and `supabase/config.toml` (both
+# already on disk after its caller's own `pnpm install`, no CLI invocation
+# needed) and probes for the tag with `docker buildx imagetools inspect`. The
+# key carries `major_version` as well as the CLI version — a CLI unchanged
+# but a `db.major_version` bump (13→15→17…) resolves a DIFFERENT postgres
+# tag, and a marker keyed on CLI version alone would report "ready" for a
+# postgres image the mirror never actually copied.
 on:
   workflow_dispatch: {}
   schedule:
@@ -63,19 +74,20 @@ on:
     paths:
       # A `supabase` CLI bump (package.json/pnpm-lock.yaml) or a
       # `db.major_version` bump (supabase/config.toml) both change which
-      # postgres tag `supabase start` resolves to.
+      # postgres tag `supabase start` resolves to, and therefore the
+      # readiness marker's key.
       - "package.json"
       - "pnpm-lock.yaml"
       - "supabase/config.toml"
       - ".github/workflows/mirror-supabase-images.yml"
 
-# Only one mirror run touches the manifest file and GHCR tags at a time.
+# Only one mirror run touches GHCR tags at a time.
 concurrency:
   group: mirror-supabase-images
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
   packages: write
 
 jobs:
@@ -108,6 +120,21 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Resolve the readiness marker's key
+        # Both halves are knowable WITHOUT running `supabase start` — the
+        # whole point, since `.github/actions/supabase-start` computes this
+        # same key before deciding whether to touch the mirror at all.
+        id: pin
+        run: |
+          set -euo pipefail
+          cli_version=$(node -p "require('./node_modules/supabase/package.json').version")
+          major=$(grep -m1 '^major_version' supabase/config.toml | grep -oE '[0-9]+' | head -n1)
+          if [ -z "$cli_version" ] || [ -z "$major" ]; then
+            echo "::error::could not resolve supabase CLI version ('${cli_version}') or supabase/config.toml's db.major_version ('${major}')."
+            exit 1
+          fi
+          echo "marker_tag=cli-${cli_version}-pg${major}" >> "$GITHUB_OUTPUT"
 
       - name: Read the shared --exclude default from supabase-start
         # The exact same exclude set ci.yml's two jobs use, read out of the
@@ -151,7 +178,6 @@ jobs:
           done
 
       - name: List the images this CLI version actually pulled
-        id: images
         run: |
           set -euo pipefail
           docker images --format '{{.Repository}}:{{.Tag}}' \
@@ -171,32 +197,42 @@ jobs:
       - name: Log in to GHCR
         run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Mirror each image to GHCR (skip already-mirrored tags)
+      - name: Mirror each image to GHCR (retag + push what supabase start already pulled)
+        # `docker buildx imagetools create` against a `public.ecr.aws` source
+        # would refetch the manifest AND every blob from ECR even though
+        # `supabase start` just pulled all of it into this runner's local
+        # Docker daemon — spending the exact anonymous-pull volume this whole
+        # job exists to stop spending. `docker tag` + `docker push` reuse
+        # what is already local: zero extra ECR traffic. This publishes
+        # linux/amd64 only, which is what a `supabase start` on THIS runner
+        # actually pulled — sufficient because the only consumer is
+        # `supabase-start` on GitHub-hosted (linux/amd64) runners, never an
+        # end user's own machine.
         env:
           OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
           owner_lc="${OWNER,,}"
-          : > /tmp/mirrored-manifest.txt
           while IFS= read -r src; do
             name_tag="${src#public.ecr.aws/supabase/}"
             dest="ghcr.io/${owner_lc}/supabase/${name_tag}"
-            echo "$name_tag" >> /tmp/mirrored-manifest.txt
 
             if docker buildx imagetools inspect "$dest" >/dev/null 2>&1; then
               echo "skip (already mirrored): $dest"
               continue
             fi
 
+            docker tag "$src" "$dest"
+
             attempt=1
             max_attempts=5
             backoff=10
-            until docker buildx imagetools create --tag "$dest" "$src"; do
+            until docker push "$dest"; do
               if [ "$attempt" -ge "$max_attempts" ]; then
-                echo "::error::failed to mirror ${src} -> ${dest} after ${max_attempts} attempt(s) (toomanyrequests or another registry error)."
+                echo "::error::failed to push ${dest} after ${max_attempts} attempt(s) (toomanyrequests or another registry error)."
                 exit 1
               fi
-              echo "::warning::mirror attempt ${attempt}/${max_attempts} for ${src} failed; retrying in ${backoff}s."
+              echo "::warning::push attempt ${attempt}/${max_attempts} for ${dest} failed; retrying in ${backoff}s."
               sleep "$backoff"
               backoff=$((backoff * 2))
               attempt=$((attempt + 1))
@@ -204,36 +240,42 @@ jobs:
             echo "mirrored: ${src} -> ${dest}"
           done < /tmp/supabase-images.txt
 
-      - name: Update the committed manifest supabase-start reads
-        id: manifest
+      - name: Publish the readiness marker
+        # Anchored to postgres: it can never be in `--exclude` (see
+        # supabase-start's own `exclude` input description — it is not in
+        # the CLI's excludable list), so it is guaranteed to be in
+        # /tmp/supabase-images.txt and already pushed by the step above.
+        # This `imagetools create` call is GHCR source -> GHCR dest, so it
+        # touches no ECR traffic either.
+        env:
+          OWNER: ${{ github.repository_owner }}
+          MARKER_TAG: ${{ steps.pin.outputs.marker_tag }}
         run: |
           set -euo pipefail
-          manifest=".github/actions/supabase-start/mirrored-images.txt"
-          {
-            echo "# Generated by .github/workflows/mirror-supabase-images.yml — do not hand-edit."
-            echo "# One \`name:tag\` per line, exactly as resolved by the pinned supabase CLI"
-            echo "# (see package.json) against supabase/config.toml's db.major_version, for the"
-            echo "# --exclude set .github/actions/supabase-start uses. Read by that action to"
-            echo "# know which GHCR tag to probe before overriding the image registry."
-            sort -u /tmp/mirrored-manifest.txt
-          } > "$manifest"
-
-          if git diff --quiet -- "$manifest"; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+          owner_lc="${OWNER,,}"
+          pg_line=$(grep '/postgres:' /tmp/supabase-images.txt | head -n1)
+          if [ -z "$pg_line" ]; then
+            echo "::error::no postgres:<tag> entry found in the discovered image list — cannot anchor the readiness marker."
+            exit 1
           fi
+          pg_name_tag="${pg_line#public.ecr.aws/supabase/}"
+          src="ghcr.io/${owner_lc}/supabase/${pg_name_tag}"
+          dest="ghcr.io/${owner_lc}/supabase/mirror-ready:${MARKER_TAG}"
 
-      - name: Commit the updated manifest
-        if: steps.manifest.outputs.changed == 'true'
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/actions/supabase-start/mirrored-images.txt
-          git commit -m "ci(supabase-mirror): update mirrored image manifest"
-          git pull --rebase origin "${GITHUB_REF_NAME}"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          attempt=1
+          max_attempts=5
+          backoff=10
+          until docker buildx imagetools create --tag "$dest" "$src"; do
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "::error::failed to publish the readiness marker ${dest} after ${max_attempts} attempt(s)."
+              exit 1
+            fi
+            echo "::warning::marker publish attempt ${attempt}/${max_attempts} failed; retrying in ${backoff}s."
+            sleep "$backoff"
+            backoff=$((backoff * 2))
+            attempt=$((attempt + 1))
+          done
+          echo "readiness marker published: ${dest} -> ${src}"
 
   # `pnpm lint:sched-refs` (scripts/check-scheduled-fence-refs.ts) requires
   # every `schedule:`-triggered workflow to wire this or list a reasoned
@@ -268,12 +310,3 @@ jobs:
           outcome: ${{ needs.mirror.result }}
           token: ${{ secrets.GITHUB_TOKEN }}
           title: "[mirror] Supabase image mirror to GHCR is failing"
-          # `pnpm lint:sched-refs` requires this explicitly whenever a job
-          # wiring the alert also skips a step behind `if: steps.<id>...` —
-          # here, "Commit the updated manifest"'s `steps.manifest.outputs.
-          # changed` guard. That guard only skips a COMMIT when nothing
-          # changed; the actual audit (start the stack, discover the image
-          # list, mirror to GHCR) is unconditional, so `success` always means
-          # the mirror genuinely ran. Hardcoded "true" is honest here, unlike
-          # a guard that skips the audit itself.
-          audited: "true"
