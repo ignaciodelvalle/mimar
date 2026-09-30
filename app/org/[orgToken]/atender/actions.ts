@@ -1343,10 +1343,12 @@ export async function atenderConditionAtIntakeAction(
   let opened: Awaited<ReturnType<typeof openAtenderVisit>>;
   try {
     opened = await openAtenderVisit(access);
-  } catch {
+  } catch (err) {
     // A DB error here (connection, constraint) must read as a sentence, not
     // crash the server action with an unhandled error page (suggestion,
-    // vet-visit-record verify report).
+    // vet-visit-record verify report) — and must still leave a trace: the
+    // same logger line visitScopedEventsRepository uses. UUIDs only, no PII.
+    console.error("[visits] opening the intake's visit failed", err);
     return { error: "No se pudo abrir la atención de esta mascota." };
   }
   if (!opened.ok) return { error: "No se pudo abrir la atención de esta mascota." };

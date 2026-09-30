@@ -48,10 +48,12 @@ export async function atenderStartVisitAction(
       modality,
       appointmentId: appointmentRaw || null,
     });
-  } catch {
+  } catch (err) {
     // A DB error here (connection, constraint) must read as a sentence, not
     // crash the server action with an unhandled error page (suggestion,
-    // vet-visit-record verify report).
+    // vet-visit-record verify report) — and must still leave a trace: the
+    // same logger line visitScopedEventsRepository uses. UUIDs only, no PII.
+    console.error("[visits] starting a visit failed", err);
     return { error: "No se pudo iniciar la atención." };
   }
   if (!opened.ok) {
