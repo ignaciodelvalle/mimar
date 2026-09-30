@@ -324,6 +324,28 @@ describe("GET /api/v1/me/notifications — the projection", () => {
     expect(body.notifications[0]?.cta).toEqual({ label: "Leer la resolución", route: null });
   });
 
+  it("routes a chip-match 'Coordinar devolución' CTA to the native devolución screen", async () => {
+    // `confirm-chip-match-{refugio,vecino}.ts` store this label and web path.
+    // Without `DEEP_LINK_MAP.petReturn` the inbox drew it as inert text.
+    control.list = () => ({
+      rows: [
+        row({
+          notification: {
+            notificationType: "chip_match_notification_owner",
+            ctaLabel: "Coordinar devolución",
+            ctaUrl: "/mis-mascotas/DIM-PAMP-0001/devolucion",
+          },
+        }),
+      ],
+      hasMore: false,
+    });
+    const body = (await (await GET(req())).json()) as MyNotificationsV1;
+    expect(body.notifications[0]?.cta).toEqual({
+      label: "Coordinar devolución",
+      route: "/mascotas/DIM-PAMP-0001/devolucion",
+    });
+  });
+
   it("routes nothing for a web path the deep-link table does not name", async () => {
     control.list = () => ({
       rows: [row({ notification: { ctaUrl: "/inicio" } })],

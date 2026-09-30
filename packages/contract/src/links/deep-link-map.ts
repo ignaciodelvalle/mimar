@@ -243,6 +243,29 @@ export const DEEP_LINK_MAP = {
   },
 
   /**
+   * DEVOLUCIÓN — the titular answers somebody who has the animal, or proposes
+   * returning it to the organisation it came from.
+   *
+   * IT EARNS A ROW because four notification writers name it as their CTA:
+   * `chip_match_notification_owner` (`confirm-chip-match-{refugio,vecino}.ts`,
+   * "Coordinar devolución") and the return proposals
+   * (`propose-return-as-{refugio,vecino}.ts`). With no row the native inbox drew
+   * each as "abrilo desde la web" while `app/mascotas/[publicToken]/
+   * devolucion.tsx` already ran the same three modes as the web page, against
+   * `GET/POST /api/v1/pets/{token}/return`.
+   *
+   * A chip match creates no proposal, so the owner who taps it lands on the
+   * state the server reports (usually `no_source_org` or `can_propose`), exactly
+   * as the web page renders it — the screen reads capabilities from the server
+   * and never guesses.
+   */
+  petReturn: {
+    webPath: "/mis-mascotas/:publicToken/devolucion",
+    appPath: "mascotas/:publicToken/devolucion",
+    access: "session",
+  },
+
+  /**
    * One appointment, and THE ONE ENTRY WITH A CUSTOM-SCHEME FORM.
    *
    * The page renders a check-in QR encoding `mimar://appointment/{token}`. It

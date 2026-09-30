@@ -97,6 +97,14 @@ describe("appRouteForPushUrl", () => {
     );
   });
 
+  it("opens the devolución screen for a chip-match or return-proposal push", () => {
+    // `chip_match_notification_owner` and the return proposals write this path.
+    // Before `DEEP_LINK_MAP.petReturn` the tap opened the app and went nowhere.
+    expect(appRouteForPushUrl("/mis-mascotas/DIM-PAMP-0001/devolucion")).toBe(
+      "/mascotas/DIM-PAMP-0001/devolucion",
+    );
+  });
+
   it("prefers the static sibling over the parameterised one", () => {
     // The pair that made `matchWebPath` stop returning the first match: under
     // "first wins" this resolved to a pet credential whose token was the literal

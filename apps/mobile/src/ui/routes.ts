@@ -586,11 +586,10 @@ export function rehomeRoute(publicToken: string): `/mascotas/${string}/buscar-ho
  * devolverlo. No hay ninguna fila sobre una mascota ajena, así que la mascota
  * está de verdad en la dirección.
  *
- * EL PATH COINCIDE CON EL DE LA WEB (`/mis-mascotas/{token}/devolucion`). Hoy no
- * entra ningún deep link — `DEEP_LINK_MAP` no tiene fila para esto — pero la
- * notificación `custody_transfer_proposal_owner` es exactamente lo que un push
- * abriría, así que las dos formas ya están de acuerdo en la palabra para cuando
- * llegue.
+ * EL PATH COINCIDE CON EL DE LA WEB (`/mis-mascotas/{token}/devolucion`), y ya
+ * entra por deep link: `DEEP_LINK_MAP.petReturn` resuelve el `cta_url` de
+ * `chip_match_notification_owner` y de las propuestas de devolución a esta
+ * pantalla, desde la bandeja y desde un push.
  */
 export function returnPetRoute(publicToken: string): `/mascotas/${string}/devolucion` {
   return `/mascotas/${encodeURIComponent(publicToken)}/devolucion`;

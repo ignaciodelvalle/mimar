@@ -566,6 +566,21 @@ describe("matchWebPath — no two destinations can claim the same path", () => {
     expect(appRoutePath("adoptionCatalogue", {})).toBe("/adoptar");
   });
 
+  it("resolves the chip-match CTA to the app's devolución screen", () => {
+    // `confirm-chip-match-{refugio,vecino}.ts` write "Coordinar devolución" with
+    // this path; the native inbox drew it as "abrilo desde la web" until the row
+    // existed. The screen is `apps/mobile/app/mascotas/[publicToken]/devolucion.tsx`.
+    expect(matchWebPath("/mis-mascotas/DIM-PAMP-0001/devolucion")).toEqual({
+      name: "petReturn",
+      params: { publicToken: "DIM-PAMP-0001" },
+    });
+    expect(appRoutePath("petReturn", { publicToken: "DIM-PAMP-0001" })).toBe(
+      "/mascotas/DIM-PAMP-0001/devolucion",
+    );
+    // A sibling the table does not name still answers null.
+    expect(matchWebPath("/mis-mascotas/DIM-PAMP-0001/buscar-hogar")).toBe(null);
+  });
+
   it("keeps ONE pet's listing distinct from the catalogue", () => {
     // `adoptionListing` is public and takes a token; `adoptionCatalogue` is the
     // signed-in list. Different segment counts, so no ambiguity — asserted
