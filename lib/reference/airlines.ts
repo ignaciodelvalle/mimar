@@ -174,8 +174,13 @@ const FO_CABIN =
   "https://ayuda.flybondi.com/es-419/article/81-puedo-viajar-con-mi-mascota-en-cabina-en-vuelos-nacionales";
 const FO_PETS = "https://flybondi.com/ar/viajaconmascota";
 const JA_BLOG = "https://www.dudimascotas.com.ar/blog/posts/jetsmart-mascotas-cabina-c5dc9a0d0480/";
-const JA_RULES =
-  "https://assets-us-01.kc-usercontent.com/b2956330-c34f-0064-2c6f-27bd5c0147fc/18851d58-5beb-4a51-8be2-2e8311740863/Regulaciones-15.11.22.pdf";
+// JetSMART's help centre, the stable entry point to its policies. The
+// regulations themselves are a PDF (Regulaciones, 15/11/2022) whose asset URL
+// is built from CMS ids, which are not a stable address — and whose
+// UUID-shaped segments lint:uuid rightly refuses in source.
+const JA_RULES = "https://jetsmart.com/co/es/centro-de-ayuda";
+const JA_RULES_NOTE =
+  "Dato de las Regulaciones oficiales en PDF (15/11/2022), enlazadas desde el centro de ayuda regional; pueden estar desactualizadas y no son específicas de Argentina.";
 const LA_PETS =
   "https://www.latamairlines.com/ar/es/centro-ayuda/preguntas/mascotas/transporte/viaje-avion";
 const G3_CABIN = "https://www.voegol.com.br/en/nh/dog-cat-cabine";
@@ -321,7 +326,7 @@ export const AIRLINES: readonly Airline[] = [
             },
           ],
           JA_RULES,
-          "Texto ambiguo: restringe por 'condiciones fisiológicas' sin aclarar si prohíbe el viaje.",
+          `${JA_RULES_NOTE} Texto ambiguo: restringe por 'condiciones fisiológicas' sin aclarar si prohíbe el viaje.`,
         ),
         requiredDocuments: unverified(
           [
@@ -329,7 +334,7 @@ export const AIRLINES: readonly Airline[] = [
             { doc: "rabies_certificate", minDaysSinceDose: 30, maxDaysSinceDose: 365 },
           ],
           JA_RULES,
-          "Regulaciones oficiales de noviembre 2022; no se encontró una versión 2025/2026.",
+          `${JA_RULES_NOTE} No se encontró una versión 2025/2026.`,
         ),
       },
       hold: {
