@@ -85,9 +85,9 @@ describe("the landing story passes Pampa's sex", () => {
   const content = read("components", "landing", "landing-content.ts");
   const rail = read("components", "landing", "StorySection.tsx");
   const screens = read("components", "landing", "story-screens.tsx");
-  // WU3 moved the libreta (the entries that carry `flag: "lost"`) out of
-  // story-screens.tsx into its own animated component.
+  // WU3 moved the libreta out of story-screens.tsx into its own component.
   const libreta = read("components", "landing", "LibretaFeed.tsx");
+  const sequences = read("components", "landing", "story-sequences.tsx");
 
   it("declares Pampa's sex in a form the components can inflect on", () => {
     // The display field is "Hembra", which normalizeSex() reads as unknown.
@@ -98,16 +98,20 @@ describe("the landing story passes Pampa's sex", () => {
   it("passes it wherever the flag can render a lost state", () => {
     // Pampa is the flagship pet and this is the first screen of the product,
     // so the misgendering was more visible here than on the list it was
-    // reported against.
-    expect(content).toContain('flag: "lost"');
+    // reported against. Since the 2026-09-30 parity pass the phone screens
+    // are the native app's, which inflect the lost label through
+    // situationLabelForSex rather than LnStatusFlag.
     expect(rail).toMatch(/<LnStatusFlag[^>]*sex=\{PAMPA\.sexEnum\}/);
-    expect(libreta).toMatch(/<LnStatusFlag[^>]*sex=\{PAMPA\.sexEnum\}/);
+    expect(sequences).toMatch(/situationLabelForSex\("Perdida", PAMPA_PET\.sex\)/);
   });
 
-  it("leaves no flag in the story screens that could render lost without a sex", () => {
-    // Every flag still in story-screens.tsx must be a literal "ok" (no
-    // gendered label to get wrong) or carry Pampa's sex.
-    const flags = screens.match(/<LnStatusFlag\b[^>]*>/g) ?? [];
+  it("leaves no flag in the story that could render lost without a sex", () => {
+    // Every flag left in the story must be a literal "ok" (no gendered label
+    // to get wrong) or carry Pampa's sex. The rail's flag keeps this
+    // non-vacuous.
+    const flags = [rail, screens, sequences, libreta].flatMap(
+      (src) => src.match(/<LnStatusFlag\b[^>]*>/g) ?? [],
+    );
     expect(flags.length).toBeGreaterThan(0);
     for (const flag of flags) {
       expect(flag.includes('status="ok"') || /sex=\{PAMPA\.sexEnum\}/.test(flag)).toBe(true);
