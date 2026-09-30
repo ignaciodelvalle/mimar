@@ -220,7 +220,7 @@ describe("notifyOwnerOfFoundPet — real notification wiring", () => {
     // Owner 2 is the active owner after phase 2; it now has the phase-2
     // sighting notification plus this found-pet one.
     const rows = await notificationsFor(OWNER_2_ID);
-    const found = rows.filter((n) => n.title === "Alguien encontró a WiringTestDog");
+    const found = rows.filter((n) => n.title === "¡Encontraron a WiringTestDog!");
     expect(found).toHaveLength(1);
     const n = found[0];
     expect(n.notificationType).toBe("pet_found_report");

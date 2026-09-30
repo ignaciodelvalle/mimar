@@ -325,6 +325,9 @@ describe("chapter endings (M5)", () => {
   // same, single device the whole chapter plays on.
   it("chapter 3 ends with the found-report notification, on the owner's own phone", () => {
     const last = finalScreen(LOST_SEQUENCE);
+    // PO 2026-09-30: the notification title is now "¡Encontraron a {name}!"
+    // for every finder; the body still names the anonymous finder.
+    expect(last).toContain("¡Encontraron a Pampa!");
     expect(last).toContain("Alguien encontró a Pampa");
     expect(last).not.toContain("Celular del vecino");
   });

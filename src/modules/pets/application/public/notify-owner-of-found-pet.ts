@@ -248,7 +248,13 @@ export async function notifyOwnerOfFoundPet(
     recipients.map((recipient) => ({
       userId: recipient.userId,
       notificationType: "pet_found_report",
-      title: `Alguien encontró a ${pet.name}`,
+      // PO 2026-09-30: the title is now the same "¡Encontraron a {nombre}!"
+      // for every finder, named or anonymous — the exclamation and the
+      // gender-neutral "Encontraron" read as good news regardless of who
+      // reports it. It never varied by `who` before this change either (the
+      // finder's name only ever showed up in the BODY below); this keeps
+      // that shape, just with the new wording.
+      title: `¡Encontraron a ${pet.name}!`,
       body,
       severity: "urgent" as const,
       category: "perdidas",

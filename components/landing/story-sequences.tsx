@@ -322,7 +322,8 @@ function LostPosterScreen() {
  * The copy is EXACTLY what notifyOwnerOfFoundPet writes
  * (src/modules/pets/application/public/notify-owner-of-found-pet.ts) for an
  * anonymous finder who leaves no name or contact — the honest default, not an
- * invented message: title `Alguien encontró a {name}`, body
+ * invented message: title `¡Encontraron a {name}!` (PO 2026-09-30 — same
+ * title for every finder, named or anonymous), body
  * `{who} encontró a {name}.{contactLine}` with who="Alguien" and
  * contactLine=" No dejó datos de contacto.". Styled like the SAME `.lp-notif`
  * card the refugio chapter's own found-notification uses below, for one
@@ -335,7 +336,7 @@ function OwnerFoundReportScreen() {
       <div className="lp-app-body lp-ph-pad">
         <div className="lp-notif">
           <span className="lp-notif-app">miMAR</span>
-          <b>Alguien encontró a {PAMPA.name}</b>
+          <b>¡Encontraron a {PAMPA.name}!</b>
           <span>Alguien encontró a {PAMPA.name}. No dejó datos de contacto.</span>
           <span className="lp-vf-submit">Ver mascota</span>
         </div>

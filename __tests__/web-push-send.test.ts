@@ -243,7 +243,7 @@ describe("sendPushForNotifications", () => {
       {
         userId: USER_ID,
         severity: "urgent",
-        title: "Alguien encontró a Pampa",
+        title: "¡Encontraron a Pampa!",
         body: "Contactalo ya",
         ctaUrl: "/mis-mascotas/DIM-PAMP-0001",
         dedupeKey: "found:abc",
@@ -253,7 +253,7 @@ describe("sendPushForNotifications", () => {
     expect(sendNotificationMock).toHaveBeenCalledTimes(1);
     const [, body] = sendNotificationMock.mock.calls[0] as [unknown, string];
     expect(JSON.parse(body)).toEqual({
-      title: "Alguien encontró a Pampa",
+      title: "¡Encontraron a Pampa!",
       body: "Contactalo ya",
       url: "/mis-mascotas/DIM-PAMP-0001",
       tag: "found:abc",
@@ -318,14 +318,14 @@ describe("sendPushForNotifications — the second leg", () => {
 
     await sendPushForNotifications([
       { userId: USER_ID, severity: "info", title: "Bienvenida" },
-      { userId: USER_ID, severity: "urgent", title: "Alguien encontró a Pampa" },
+      { userId: USER_ID, severity: "urgent", title: "¡Encontraron a Pampa!" },
     ]);
 
     expect(expoLegCalls).toHaveLength(1);
     // The FILTERED rows, not the raw batch: the predicate runs once, above both
     // legs, so the two channels cannot disagree about what is worth a lock
     // screen. Handing over everything would make the native leg re-decide.
-    expect(expoLegCalls[0].map((row) => row.title)).toEqual(["Alguien encontró a Pampa"]);
+    expect(expoLegCalls[0].map((row) => row.title)).toEqual(["¡Encontraron a Pampa!"]);
   });
 
   it("reaches phones even when WEB push is turned off", async () => {

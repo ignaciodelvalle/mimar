@@ -379,6 +379,9 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       // neighbour's own separately-labelled phone) is the EXACT copy
       // notifyOwnerOfFoundPet writes for an anonymous finder with no name or
       // contact (src/modules/pets/application/public/notify-owner-of-found-pet.ts).
+      // The title changed 2026-09-30 to "¡Encontraron a {name}!" for every
+      // finder; the body still names the anonymous finder.
+      `¡Encontraron a ${PAMPA_PET.name}!`,
       `Alguien encontró a ${PAMPA_PET.name}`,
       "No dejó datos de contacto.",
       `Encontraron a ${PAMPA_PET.name}`,
