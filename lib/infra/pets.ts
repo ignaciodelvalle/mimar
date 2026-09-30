@@ -22,5 +22,6 @@ export async function requireOwnedPetByToken(publicToken: string) {
     pet: access.pet,
     accessPath: access.accessPath,
     organization: access.organization,
+    holderRole: access.holderRole,
   };
 }

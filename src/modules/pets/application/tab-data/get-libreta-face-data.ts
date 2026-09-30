@@ -27,6 +27,7 @@ import { and, asc, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { mergeFutureLedger } from "@/components/pet-profile/libreta-future.helpers";
 import {
   type Organization,
+  type OwnershipRole,
   type Pet,
   appointments,
   attachments,
@@ -46,10 +47,12 @@ import { overlayAmendments } from "@/lib/infra/amendment";
 import { resolveBusinessRule } from "@/lib/infra/business-rules-resolver";
 import { notReportedClause } from "@/lib/infra/content-reports";
 import { withholdUnreadableDecomisoEvidence } from "@/lib/infra/decomiso-evidence-access";
+import { canAccessTravel } from "@/lib/infra/pet-access";
 import { viewerHoldsPetClause } from "@/lib/infra/pet-holder-clause";
 import { fetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
 import { eventAttachmentSignedUrl } from "@/lib/infra/storage";
 import { notHiddenFromSubjectClause } from "@/lib/infra/subject-hidden-events";
+import { notTravelPrivateClause } from "@/lib/infra/travel-private-events";
 import { loadVisitSummaries } from "./load-visit-summaries";
 import type { HistorialEventRow, LibretaFaceData } from "./types";
 
@@ -108,11 +111,23 @@ export async function getLibretaFaceData(
     pet: Pet;
     accessPath: "owner" | "org";
     organization: Organization | null;
+    /**
+     * The ownership role that authorized a PERSON-path access; null on the org
+     * path. REQUIRED rather than optional so a caller cannot forget it: it
+     * decides whether the pet's trips are in the stream (canAccessTravel), and
+     * a forgotten role must fail to compile, not fail open.
+     */
+    holderRole: OwnershipRole | null;
   },
   options: LibretaFaceOptions = {},
 ): Promise<{ ok: true; data: LibretaFaceData } | { ok: false; error: string }> {
   const { user, pet, accessPath } = context;
   const signAttachments = options.signAttachments ?? true;
+  // The pet's trips and CVIs are the titular's alone (viajes-fase-2, D8): an
+  // org viewer and a caretaker read the same libreta without them.
+  const travelClause = canAccessTravel(accessPath, context.holderRole)
+    ? undefined
+    : notTravelPrivateClause();
 
   const [
     rawWindowEvents,
@@ -154,6 +169,7 @@ export async function getLibretaFaceData(
           // reads. Unlike the hidden-case clause above this applies on EVERY
           // access path: the message is no less abusive to an org viewer.
           notReportedClause(),
+          travelClause,
         ),
       )
       .orderBy(desc(petEvents.occurredAt))
@@ -174,6 +190,7 @@ export async function getLibretaFaceData(
           excludeSelfScansClause(),
           excludeAuthorityOnlyClause(),
           accessPath === "owner" ? notHiddenFromSubjectClause() : undefined,
+          travelClause,
         ),
       )
       .orderBy(asc(petEvents.occurredAt)),

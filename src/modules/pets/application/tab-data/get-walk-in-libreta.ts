@@ -17,6 +17,8 @@
 //   · only libreta-sanitaria types (libretaSanitariaClause) — the health
 //     record, not custody, transfers or the owner's private notes;
 //   · no self-scans, no authority-only signals, nothing a holder reported;
+//   · nothing of the owner's trips (viajes-fase-2, D8) — movement is not a
+//     libreta type, but a correction of a trip rides in with event_amended;
 //   · corrections applied (overlayAmendments), the corrections themselves not
 //     listed;
 //   · no attachment URLs — a walk-in reader sees that a file exists, never the
@@ -30,6 +32,7 @@ import { excludeAuthorityOnlyClause, excludeSelfScansClause } from "@/lib/events
 import { overlayAmendments } from "@/lib/infra/amendment";
 import { notReportedClause } from "@/lib/infra/content-reports";
 import { libretaSanitariaClause } from "@/lib/infra/libreta-sanitaria";
+import { notTravelPrivateClause } from "@/lib/infra/travel-private-events";
 
 import { loadVisitSummaries } from "./load-visit-summaries";
 import type { HistorialEventRow, LibretaVisitSummary } from "./types";
@@ -69,6 +72,7 @@ export async function getWalkInLibreta(petId: string): Promise<WalkInLibreta> {
         excludeSelfScansClause(),
         excludeAuthorityOnlyClause(),
         notReportedClause(),
+        notTravelPrivateClause(),
       ),
     )
     .orderBy(desc(petEvents.occurredAt))

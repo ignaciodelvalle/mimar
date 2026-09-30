@@ -162,6 +162,7 @@ describe("getLibretaFaceData — owner-path hidden-case event exclusion", () => 
       pet: fixturePet,
       accessPath: "owner",
       organization: null,
+      holderRole: "owner",
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -175,6 +176,7 @@ describe("getLibretaFaceData — owner-path hidden-case event exclusion", () => 
       pet: fixturePet,
       accessPath: "owner",
       organization: null,
+      holderRole: "owner",
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -188,6 +190,7 @@ describe("getLibretaFaceData — owner-path hidden-case event exclusion", () => 
       pet: fixturePet,
       accessPath: "owner",
       organization: null,
+      holderRole: "owner",
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -294,6 +297,7 @@ describe("getLibretaFaceData — pagination boundary (PAST_EVENTS_WINDOW)", () =
       pet: pagePet,
       accessPath: "owner",
       organization: null,
+      holderRole: "owner",
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -310,6 +314,7 @@ describe("getLibretaFaceData — pagination boundary (PAST_EVENTS_WINDOW)", () =
       pet: pagePet,
       accessPath: "owner",
       organization: null,
+      holderRole: "owner",
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;

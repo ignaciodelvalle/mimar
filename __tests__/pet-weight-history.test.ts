@@ -447,6 +447,7 @@ describe("viewerHoldsPetClause — agrees with resolvePetHolderAccess (A01-5)", 
           pet,
           accessPath: orgViewer ? "org" : "owner",
           organization: orgViewer ? org : null,
+          holderRole: orgViewer ? null : "owner",
         },
         { signAttachments: false },
       );

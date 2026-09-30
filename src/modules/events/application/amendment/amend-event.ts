@@ -18,6 +18,7 @@ import { validateEventPayload } from "@/lib/events/event-schemas";
 import { classifiedTopLevelKeys } from "@/lib/events/payload-privacy";
 import { ADMIN_AMENDMENT_NOTIFICATION_TYPE, isAmendableEventType } from "@/lib/infra/amendment";
 import type { PetEventAuthorship } from "@/lib/infra/pet-access";
+import { holdsPetAsTravelTitular, isTravelPrivateEvent } from "@/lib/infra/travel-private-events";
 import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -88,6 +89,53 @@ function writeFailure(err: unknown): AmendEventResult {
  */
 export type AmendEventDoor = { orgScope: { organizationId: string } };
 
+/**
+ * The refusal for a trip or CVI the actor may not read (viajes-fase-2, D8), or
+ * null.
+ *
+ * Every read a non-titular can reach drops these rows, so no screen offers them
+ * a correction — but three doors share this writer and a correction CARRIES the
+ * old and new values, so the writer refuses on its own rather than trusting
+ * every door to have hidden the row. Asked of the database, not of the caller:
+ * the doors resolve access three different ways and none of them hands the
+ * ownership role down this far. The query runs only for a travel row, so every
+ * other correction pays nothing for it.
+ *
+ * The sentence is the not-found one: telling a caller "this is a trip you may
+ * not see" would already be the leak.
+ */
+async function travelPrivateRefusal(
+  target: { eventType: string; payload: unknown },
+  userId: string,
+  petId: string,
+): Promise<AmendEventResult | null> {
+  if (!isTravelPrivateEvent(target.eventType, target.payload)) return null;
+  if (await holdsPetAsTravelTitular(userId, petId)) return null;
+  return { ok: false, code: "travel_private_target", error: "Evento no encontrado." };
+}
+
+/**
+ * Why this TARGET cannot be corrected by this actor, or null: a trip the actor
+ * may not read first (so a non-titular learns nothing about it, not even its
+ * type), then the amendable-type allowlist (D4).
+ */
+async function targetRefusal(
+  target: { eventType: string; payload: unknown },
+  userId: string,
+  petId: string,
+): Promise<AmendEventResult | null> {
+  const travelRefusal = await travelPrivateRefusal(target, userId, petId);
+  if (travelRefusal) return travelRefusal;
+  if (!isAmendableEventType(target.eventType)) {
+    return {
+      ok: false,
+      code: "not_amendable",
+      error: `El tipo de evento "${target.eventType}" no admite enmiendas.`,
+    };
+  }
+  return null;
+}
+
 export async function amendEvent(
   user: { id: string },
   pet: { id: string; name: string; publicToken: string },
@@ -117,13 +165,9 @@ export async function amendEvent(
     return { ok: false, code: "target_not_found", error: "Evento no encontrado." };
   }
 
-  if (!isAmendableEventType(targetEvent.eventType)) {
-    return {
-      ok: false,
-      code: "not_amendable",
-      error: `El tipo de evento "${targetEvent.eventType}" no admite enmiendas.`,
-    };
-  }
+  // --- 2b. Trip privacy (viajes-fase-2, D8), then the allowlist -------------
+  const targetRefused = await targetRefusal(targetEvent, user.id, pet.id);
+  if (targetRefused) return targetRefused;
 
   // --- 3. Validate changes non-empty ----------------------------------------
   if (!changes || changes.length === 0) {

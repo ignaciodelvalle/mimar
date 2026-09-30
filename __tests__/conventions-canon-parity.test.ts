@@ -129,7 +129,11 @@ const canon: Canon = loadCanon(REPO_ROOT);
 // 17 -> 19 on 2026-09-26 (semillas): lint:holder-drift and
 // scripts/check-holder-drift.ts, the holder replay gate over the whole
 // database (audit K3/W8). Same reason.
-const UNMAPPED_COUNT = 19;
+//
+// 19 -> 20 on 2026-09-30 (viajes-fase-2 Phase 1):
+// __tests__/travel-private-read-coverage.test.ts, the trip-privacy read
+// coverage fence. Its canon row lands when the change closes.
+const UNMAPPED_COUNT = 20;
 
 /**
  * Enforcement the filename glob below cannot see.

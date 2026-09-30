@@ -77,6 +77,11 @@ export type AmendEventCommand = {
  *                        another person wrote. A fact about who is asking AND
  *                        whose record it is; `error` names which. See
  *                        `amendAuthorshipRefusal` in lib/infra/amendment.ts.
+ * - `travel_private_target` — the record is a trip or a CVI (viajes-fase-2,
+ *                        D8) and the actor does not hold the pet as a titular on
+ *                        the person path. Its `error` is the SAME sentence as
+ *                        `target_not_found`, and a consumer must answer it the
+ *                        same way: to anyone else the record does not exist.
  * - `write_failed`     — the transaction itself failed. The only one that is a
  *                        server incident, the only one worth reporting, and the
  *                        only one a client should retry.
@@ -95,6 +100,7 @@ export type AmendEventFailureCode =
   | "unknown_field"
   | "reason_required"
   | "authorship_refused"
+  | "travel_private_target"
   | "write_failed"
   | "not_permitted";
 

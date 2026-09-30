@@ -292,7 +292,7 @@ fence's `EXTRA_FENCES` (fences whose FILENAME hides them from that glob) is eith
 cited by a row's enforcer or listed here. The parity fence pins this list's length
 EXACTLY: growing it and shrinking it are both hand edits, and both are reviewable.
 
-19 unmapped.
+20 unmapped.
 
 | Kind | Item | Why it is unmapped |
 | --- | --- | --- |
@@ -315,3 +315,4 @@ EXACTLY: growing it and shrinking it are both hand edits, and both are reviewabl
 | check-script | `scripts/check-conflict-markers.ts` | Merge-conflict marker fence over every tracked file (semillas, 2026-09-26); red controls in __tests__/check-conflict-markers.test.ts; canon row pending. |
 | lint-key | `lint:holder-drift` | Runs scripts/check-holder-drift.ts (semillas, 2026-09-26): owner/co_owner/shelter_custody/foster rows agree with the holder replay of pet_events (audit K3/W8); canon row pending. |
 | check-script | `scripts/check-holder-drift.ts` | Holder-drift fence (semillas, 2026-09-26): set-based replay of the fourth section of scripts/detect-pet-cache-drift.ts; offline verdict pinned by __tests__/check-holder-drift.test.ts; canon row pending. |
+| fence-test | `__tests__/travel-private-read-coverage.test.ts` | Added 2026-09-30 with Phase 1 of the SDD change viajes-fase-2 (design D8). Every app/lib/src file that queries pet_events in a shape that can return a trip (transport_recorded), a CVI (cvi_issued) or a correction of either is triaged into one list: it carries the shared notTravelPrivateClause (lib/infra/travel-private-events.ts), reads travel rows on purpose as a titular path or writer, is a suppressed aggregate, only folds event_amended onto an allow-list without movement, or is a false positive. Both directions are asserted, plus no private copy of the predicate and every movement sub_kind triaged. The behaviour is proven against the database in __tests__/travel-privacy-surfaces.test.ts. Its canon row lands when the change closes. |

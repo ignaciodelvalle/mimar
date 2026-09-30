@@ -1103,7 +1103,8 @@ export const KPI_CATALOG: Record<KpiId, KpiDefinition> = {
     fetcherPath: "lib/metrics/movement.ts",
     cadence: "matches the caller's ProjectionContext period",
     unit: "count",
-    suppression: "none — jurisdiction-level totals, not locality-grouped",
+    suppression:
+      "cvi_issued / transport_recorded publish only at or above ANONYMITY_K (null below), and total is withheld when it would reveal a suppressed travel count by subtraction; jurisdiction_changed: none (viajes-fase-2, D8)",
     caveat:
       "Epidemiological mobility signal surfaced on /gob/vigilancia — a moved animal carries its exposure into a new jurisdiction. Scoped by the pet's HOME jurisdiction; a jurisdiction_changed move denormalizes the pet's home to the DESTINATION, so a scoped operator sees inbound relocations once the pet has landed. SEED-DENSITY CAVEAT: movement_recorded (esp. cvi_issued / transport_recorded cross-border) is sparse in seed data — reads honest low/zero totals.",
     window: "period",

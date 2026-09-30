@@ -55,7 +55,7 @@ import {
 import { DbBudgetExceededError, withDbBudgetOrThrow } from "@/lib/infra/db-budget";
 import { withholdUnreadableDecomisoEvidence } from "@/lib/infra/decomiso-evidence-access";
 import { type LiveUserFailureReason, requireLiveUser } from "@/lib/infra/live-user";
-import { resolvePetHolderAccess } from "@/lib/infra/pet-access";
+import { canAccessTravel, resolvePetHolderAccess } from "@/lib/infra/pet-access";
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { eventAttachmentSignedUrl } from "@/lib/infra/storage";
 import { createClientFromBearer } from "@/lib/supabase/bearer";
@@ -177,7 +177,12 @@ export async function GET(
   try {
     [read, titularTenures] = await withDbBudgetOrThrow(
       Promise.all([
-        loadPetEventDetail({ petId: access.pet.id, eventId }),
+        loadPetEventDetail({
+          petId: access.pet.id,
+          eventId,
+          // A trip or CVI is the titular's alone (viajes-fase-2, D8).
+          travelVisible: access.kind === "owner" && canAccessTravel("owner", access.holderRole),
+        }),
         access.kind === "owner"
           ? readTitularTenures(access.pet.id, live.user.id)
           : Promise.resolve([]),

@@ -10034,6 +10034,12 @@
       "id": "scripts/check-holder-drift.ts",
       "path": "scripts/check-holder-drift.ts",
       "note": "Holder-drift fence (semillas, 2026-09-26): set-based replay of the fourth section of scripts/detect-pet-cache-drift.ts; offline verdict pinned by __tests__/check-holder-drift.test.ts; canon row pending."
+    },
+    {
+      "kind": "fence-test",
+      "id": "__tests__/travel-private-read-coverage.test.ts",
+      "path": "__tests__/travel-private-read-coverage.test.ts",
+      "note": "Added 2026-09-30 with Phase 1 of the SDD change viajes-fase-2 (design D8). Every app/lib/src file that queries pet_events in a shape that can return a trip (transport_recorded), a CVI (cvi_issued) or a correction of either is triaged into one list: it carries the shared notTravelPrivateClause (lib/infra/travel-private-events.ts), reads travel rows on purpose as a titular path or writer, is a suppressed aggregate, only folds event_amended onto an allow-list without movement, or is a false positive. Both directions are asserted, plus no private copy of the predicate and every movement sub_kind triaged. The behaviour is proven against the database in __tests__/travel-privacy-surfaces.test.ts. Its canon row lands when the change closes."
     }
   ]
 }

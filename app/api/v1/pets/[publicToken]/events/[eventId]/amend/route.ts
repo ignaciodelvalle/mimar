@@ -78,6 +78,7 @@ import { type LiveUserFailureReason, requireLiveUser } from "@/lib/infra/live-us
 import {
   OWNER_AUTHORSHIP,
   type PetHolderAccess,
+  canAccessTravel,
   resolvePetHolderAccess,
 } from "@/lib/infra/pet-access";
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
@@ -267,7 +268,13 @@ async function writeCorrection(ctx: {
   let read: Awaited<ReturnType<typeof loadPetEventDetail>>;
   try {
     read = await withDbBudgetOrThrow(
-      loadPetEventDetail({ petId: access.pet.id, eventId: ctx.eventId }),
+      loadPetEventDetail({
+        petId: access.pet.id,
+        eventId: ctx.eventId,
+        // A trip or CVI a caller may not read is one they may not correct:
+        // it answers 404 here, like any record they cannot see (D8).
+        travelVisible: access.kind === "owner" && canAccessTravel("owner", access.holderRole),
+      }),
       RESOLVE_BUDGET_MS,
       "api-v1-amend-load",
     );
@@ -365,6 +372,11 @@ function refusal(code: AmendEventFailureCode, message: string, userId: string) {
       // `PetEventDetailV1.amend.refusal`. A new code would fall through the
       // exhaustive switch of every native build already installed.
       return apiV1Error("amend_not_allowed", 409);
+    case "travel_private_target":
+      // A trip or CVI the caller may not read (D8). The route's own read hides
+      // it first, so reaching here is a race or a second door; either way it
+      // answers exactly what a missing record answers.
+      return apiV1Error("not_found", 404);
     case "not_permitted":
       // The web shim's own gate. Unreachable here — this route resolved access
       // itself, above — and mapped to what it answers for a pet it cannot

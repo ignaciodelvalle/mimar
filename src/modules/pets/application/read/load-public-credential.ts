@@ -46,6 +46,7 @@ import { notReportedClause } from "@/lib/infra/content-reports";
 import { fetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
 import { reportError } from "@/lib/infra/report-error";
 import { petPhotoUrl } from "@/lib/infra/storage";
+import { notTravelPrivateClause } from "@/lib/infra/travel-private-events";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm";
 
@@ -77,7 +78,15 @@ export async function loadCredentialViewData(pet: Pet) {
           payload: petEvents.payload,
         })
         .from(petEvents)
-        .where(and(eq(petEvents.petId, pet.id), eq(petEvents.eventType, "event_amended")));
+        .where(
+          and(
+            eq(petEvents.petId, pet.id),
+            eq(petEvents.eventType, "event_amended"),
+            // Nothing of the trip on the public page, not even a correction of
+            // one (viajes-fase-2, D8).
+            notTravelPrivateClause(),
+          ),
+        );
     }
     return amendmentEventsCache;
   };

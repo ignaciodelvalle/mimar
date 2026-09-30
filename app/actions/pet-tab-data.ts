@@ -30,6 +30,6 @@ export async function getLibretaFaceData(
 ): Promise<{ ok: true; data: LibretaFaceData } | { ok: false; error: string }> {
   const access = await requirePetAccess(publicToken);
   if (!access.ok) return { ok: false, error: "Acceso denegado" };
-  const { user, pet, accessPath, organization } = access;
-  return _getLibretaFaceData({ user, pet, accessPath, organization });
+  const { user, pet, accessPath, organization, holderRole } = access;
+  return _getLibretaFaceData({ user, pet, accessPath, organization, holderRole });
 }

@@ -4,6 +4,7 @@
 import { notReportedClause } from "@/lib/infra/content-reports";
 import { requireUuidParam } from "@/lib/infra/route-params";
 import { notHiddenFromSubjectClause } from "@/lib/infra/subject-hidden-events";
+import { notTravelPrivateClause } from "@/lib/infra/travel-private-events";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -22,6 +23,7 @@ import {
   applyAmendments,
 } from "@/lib/infra/amendment";
 import { withholdUnreadableDecomisoEvidence } from "@/lib/infra/decomiso-evidence-access";
+import { canAccessTravel } from "@/lib/infra/pet-access";
 import { requireOwnedPetByToken } from "@/lib/infra/pets";
 import { eventAttachmentSignedUrl } from "@/lib/infra/storage";
 import { eventTypeLabel, formatDateTime } from "@/lib/utils/format";
@@ -61,6 +63,10 @@ export default async function EventDetailPage({
         eq(petEvents.petId, pet.id),
         notReportedClause(),
         notHiddenFromSubjectClause(),
+        // A trip or CVI is the titular's alone (viajes-fase-2, D8): an org
+        // viewer or a caretaker opening it by URL gets the same 404 as a record
+        // that does not exist.
+        canAccessTravel(accessPath, session.holderRole) ? undefined : notTravelPrivateClause(),
       ),
     )
     .limit(1);

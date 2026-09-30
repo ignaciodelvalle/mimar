@@ -8,7 +8,10 @@
 //     corrections (groupLibretaEvents never renders the amendment rows);
 //   - no reported lost-feed message (notReportedClause);
 //   - no denuncia bridge event (notHiddenFromSubjectClause, privacy audit W3):
-//     the reporter's relato is not the vet's to read either.
+//     the reporter's relato is not the vet's to read either;
+//   - nothing of the owner's trips (notTravelPrivateClause, viajes-fase-2 D8):
+//     movement is not a libreta type, but a CORRECTION of a trip rides in with
+//     event_amended and carries the old and new travel date.
 
 import { and, desc, eq, or } from "drizzle-orm";
 
@@ -17,6 +20,7 @@ import { excludeSelfScansClause } from "@/lib/events/events";
 import { notReportedClause } from "@/lib/infra/content-reports";
 import { libretaSanitariaClause } from "@/lib/infra/libreta-sanitaria";
 import { notHiddenFromSubjectClause } from "@/lib/infra/subject-hidden-events";
+import { notTravelPrivateClause } from "@/lib/infra/travel-private-events";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -33,6 +37,7 @@ export async function loadSharedLibretaEvents(petId: string, exec: typeof db | T
           or(libretaSanitariaClause(), eq(petEvents.eventType, "event_amended")),
           notReportedClause(),
           notHiddenFromSubjectClause(),
+          notTravelPrivateClause(),
         ),
       )
       .orderBy(desc(petEvents.occurredAt))

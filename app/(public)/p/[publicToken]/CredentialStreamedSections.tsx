@@ -34,6 +34,7 @@ import { overlayAmendments } from "@/lib/infra/amendment";
 import { resolveBusinessRule } from "@/lib/infra/business-rules-resolver";
 import { resolveOriginOrg, shouldShowOriginOrgBadge } from "@/lib/infra/origin-org";
 import { reportError } from "@/lib/infra/report-error";
+import { notTravelPrivateClause } from "@/lib/infra/travel-private-events";
 import { Tier2MedicalView } from "./Tier2MedicalView";
 
 // ---------------------------------------------------------------------------
@@ -181,7 +182,16 @@ function runTier2Queries(
         payload: petEvents.payload,
       })
       .from(petEvents)
-      .where(and(eq(petEvents.petId, petId), eq(petEvents.eventType, "event_amended"))),
+      .where(
+        and(
+          eq(petEvents.petId, petId),
+          eq(petEvents.eventType, "event_amended"),
+          // A stranger scanning the QR reads nothing of the trip — not even a
+          // correction of one, which carries the old and new travel date
+          // (viajes-fase-2, D8).
+          notTravelPrivateClause(),
+        ),
+      ),
     // Same jurisdiction-resolved window the owner's libreta uses — the two
     // surfaces MUST share the whole derivation, thresholds included.
     resolveBusinessRule("due_soon_window", {

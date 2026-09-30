@@ -40,6 +40,7 @@ import { upcastPayload } from "@/lib/events/event-upcasters";
 import { type ChangeEntry, applyAmendments } from "@/lib/infra/amendment";
 import { notReportedClause } from "@/lib/infra/content-reports";
 import { notHiddenFromSubjectClause } from "@/lib/infra/subject-hidden-events";
+import { notTravelPrivateClause } from "@/lib/infra/travel-private-events";
 
 // ---------------------------------------------------------------------------
 // Output
@@ -113,8 +114,19 @@ type EventRow = {
   locationLng: unknown;
 };
 
-/** The event itself, fenced by pet. */
-export async function readEventRow(petId: string, eventId: string): Promise<EventRow | null> {
+/**
+ * The event itself, fenced by pet — and by trip privacy.
+ *
+ * `travelVisible` is `canAccessTravel(...)` for the caller (viajes-fase-2,
+ * D8). REQUIRED, with no default, so a new caller has to answer it: when false
+ * a trip, a CVI or a correction of either answers `null`, the same "not here"
+ * as a record that does not exist.
+ */
+export async function readEventRow(
+  petId: string,
+  eventId: string,
+  travelVisible: boolean,
+): Promise<EventRow | null> {
   const rows = await db
     .select({
       id: petEvents.id,
@@ -142,6 +154,7 @@ export async function readEventRow(petId: string, eventId: string): Promise<Even
         eq(petEvents.petId, petId),
         notReportedClause(),
         notHiddenFromSubjectClause(),
+        travelVisible ? undefined : notTravelPrivateClause(),
       ),
     )
     .limit(1);
@@ -269,10 +282,15 @@ const PRODUCTION_DEPS: PetEventDetailDeps = {
  * `loadOwnerPetDetail` documents.
  */
 export async function loadPetEventDetail(
-  input: { petId: string; eventId: string },
+  input: {
+    petId: string;
+    eventId: string;
+    /** `canAccessTravel(...)` for the caller — see `readEventRow`. */
+    travelVisible: boolean;
+  },
   deps: PetEventDetailDeps = PRODUCTION_DEPS,
 ): Promise<PetEventDetailRead | null> {
-  const event = await deps.readEventRow(input.petId, input.eventId);
+  const event = await deps.readEventRow(input.petId, input.eventId, input.travelVisible);
   if (!event) return null;
 
   const [amendments, files, orgName] = await Promise.all([

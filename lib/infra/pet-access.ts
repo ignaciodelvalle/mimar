@@ -525,6 +525,24 @@ export function isTitularHolder(
   return !(accessPath === "owner" && holderRole === "caretaker");
 }
 
+/**
+ * Whether the viewer may read the pet's TRIPS — `transport_recorded` and
+ * `cvi_issued` (viajes-fase-2, design D8). Narrower than `isTitularHolder` on
+ * purpose, and an ALLOW rather than a deny: it admits the person path only
+ * (owner, co-owner, foster) and refuses a caretaker AND the org path. A trip
+ * says when a household is away and where it is going; nobody reaching the
+ * animal through custody, a sponsorship or a walk-in needs that.
+ *
+ * Every read that can return a travel row to anyone else carries
+ * `notTravelPrivateClause()` (lib/infra/travel-private-events.ts).
+ */
+export function canAccessTravel(
+  accessPath: PetAccessPath | null,
+  holderRole: OwnershipRole | string | null,
+): boolean {
+  return accessPath === "owner" && holderRole != null && isTitularHolder(accessPath, holderRole);
+}
+
 export async function requireTitularAccess(publicToken: string): Promise<PetAccessResult> {
   const access = await requirePetAccess(publicToken);
   if (!access.ok) return access;

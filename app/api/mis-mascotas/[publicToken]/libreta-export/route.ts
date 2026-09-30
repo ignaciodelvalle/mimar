@@ -52,6 +52,7 @@ import {
 } from "@/lib/infra/libreta-sanitaria";
 import { requireLiveUser } from "@/lib/infra/live-user";
 import { notHiddenFromSubjectClause } from "@/lib/infra/subject-hidden-events";
+import { notTravelPrivateClause } from "@/lib/infra/travel-private-events";
 import {
   eventTypeLabel,
   formatDate,
@@ -200,6 +201,11 @@ export async function GET(
         // A denuncia's bridge symptom_observed is a libreta type too: the
         // reporter's relato must not print in the owner's copy (audit W3).
         notHiddenFromSubjectClause(),
+        // This export is reachable by a caretaker and an org member too, and a
+        // correction of a trip rides in with event_amended carrying the travel
+        // date. The export never renders a trip for anyone, so the clause is
+        // unconditional (viajes-fase-2, D8).
+        notTravelPrivateClause(),
       ),
     )
     .orderBy(desc(petEvents.occurredAt));

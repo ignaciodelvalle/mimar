@@ -271,7 +271,7 @@ export {
   vetAccessDesertThresholdPer1k,
 } from "./vet-access";
 export type { VetAccessBand, VetAccessResult, VetAccessRow } from "./vet-access";
-export { fetchMovementCorridors } from "./movement";
+export { fetchMovementCorridors, formatMovementCount } from "./movement";
 export type { MovementCorridorsResult } from "./movement";
 export { approvalRate, fetchAdoptionApplicationFunnel } from "./adoption-funnel";
 export type { AdoptionFunnelResult } from "./adoption-funnel";

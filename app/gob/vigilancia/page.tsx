@@ -44,6 +44,7 @@ import {
   enoSlaTone,
   fetchKpiTrend,
   fetchMovementCorridors,
+  formatMovementCount,
   rabiesComplianceHeadline,
   rabiesComplianceTone,
   windows,
@@ -864,7 +865,7 @@ export default async function GobVigilanciaPage({
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="text-center">
                   <div className="text-xl font-semibold text-ln-op-ink tabular-nums">
-                    {movement.total.toLocaleString("es-AR")}
+                    {formatMovementCount(movement.total)}
                   </div>
                   <div className="text-sm text-ln-op-mute mt-0.5">Movimientos totales</div>
                 </div>
@@ -876,13 +877,13 @@ export default async function GobVigilanciaPage({
                 </div>
                 <div className="text-center">
                   <div className="text-xl font-semibold text-ln-op-ink tabular-nums">
-                    {movement.cviIssued.toLocaleString("es-AR")}
+                    {formatMovementCount(movement.cviIssued)}
                   </div>
                   <div className="text-sm text-ln-op-mute mt-0.5">CVI emitidos</div>
                 </div>
                 <div className="text-center">
                   <div className="text-xl font-semibold text-ln-op-ink tabular-nums">
-                    {movement.transportRecorded.toLocaleString("es-AR")}
+                    {formatMovementCount(movement.transportRecorded)}
                   </div>
                   <div className="text-sm text-ln-op-mute mt-0.5">Transportes registrados</div>
                 </div>

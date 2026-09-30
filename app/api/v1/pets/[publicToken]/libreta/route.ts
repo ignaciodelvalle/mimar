@@ -186,6 +186,8 @@ export async function GET(
           pet: access.pet,
           accessPath,
           organization: access.kind === "org" ? access.organization : null,
+          // Decides whether the pet's trips ride in the stream (canAccessTravel).
+          holderRole: access.kind === "owner" ? access.holderRole : null,
         },
         // See the header: a URL this payload will not carry is never minted.
         { signAttachments: false },

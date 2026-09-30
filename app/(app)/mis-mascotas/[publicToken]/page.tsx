@@ -91,6 +91,7 @@ async function LibretaFaceSection({
   pet,
   accessPath,
   organization,
+  holderRole,
   isOwner,
   emergencyContacts,
 }: {
@@ -98,10 +99,11 @@ async function LibretaFaceSection({
   pet: PetAccessSuccess["pet"];
   accessPath: PetAccessSuccess["accessPath"];
   organization: PetAccessSuccess["organization"];
+  holderRole: PetAccessSuccess["holderRole"];
   isOwner: boolean;
   emergencyContacts: LibretaFaceEmergencyContacts | null;
 }) {
-  const result = await getLibretaFaceData({ user, pet, accessPath, organization });
+  const result = await getLibretaFaceData({ user, pet, accessPath, organization, holderRole });
   if (!result.ok) return <TabErrorState message={result.error} />;
   return (
     <div className="op-fade-in">
@@ -579,6 +581,7 @@ export default async function PetDetailPage({
         pet={pet}
         accessPath={accessPath}
         organization={organization}
+        holderRole={holderRole}
         isOwner={isOwner}
         emergencyContacts={resolvedEmergencyContacts}
       />
