@@ -161,17 +161,16 @@ export async function exportTravelPdfForViewer(params: {
   const signedUrl = await createSignedTravelExportUrl(storagePath, EXPORT_URL_TTL_SECONDS);
   if (!signedUrl) return { ok: false, error: "signed_url_failed" };
 
-  // Audit log (R5.3): petId, petPublicToken, corridor ids, semáforo,
-  // schemaVersion. Deliberately NO airline_id and NO travel_date (design D7):
-  // admin readers of the audit log are not titulars, and those two say when a
-  // household is away and how.
+  // Audit log (R5.3): petId, petPublicToken, semáforo, schemaVersion.
+  // Deliberately NO airline_id, NO travel_date (design D7) and NO corridor
+  // (PO 2026-10-01): admin readers of the audit log are not titulars, and those
+  // say when a household is away, how, and where it is going.
   await db.insert(auditLog).values({
     actorUserId: params.userId,
     action: "travel_export_generated",
     payload: {
       petId: pet.id,
       petPublicToken: pet.publicToken,
-      corridorIds: [view.corridor.id],
       semaforo: dto.semaforo,
       schemaVersion: TRAVEL_EXPORT_SCHEMA_VERSION,
     },

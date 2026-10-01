@@ -465,15 +465,15 @@ describe("generateTravelExport — S14 happy path", () => {
     const payload = after[after.length - 1].payload as Record<string, unknown>;
     expect(payload.petPublicToken).toBe(TRAVEL_PET_TOKEN);
     expect(payload.schemaVersion).toBe(TRAVEL_EXPORT_SCHEMA_VERSION);
-    // ONE trip per PDF, as on the screen — not every active trip's corridors.
-    expect(payload.corridorIds).toHaveLength(1);
-    expect(["chile", "uruguay"]).toContain((payload.corridorIds as string[])[0]);
-    // Design D7: admin readers of the audit log are not titulars. Nothing that
-    // says when the household is away, or how.
+    // Design D7 + PO 2026-10-01: admin readers of the audit log are not
+    // titulars. Nothing that says when the household is away, how, or WHERE —
+    // the corridor names the destination, so it left the payload too.
     expect(Object.keys(payload).sort()).toEqual(
-      ["corridorIds", "petId", "petPublicToken", "schemaVersion", "semaforo"].sort(),
+      ["petId", "petPublicToken", "schemaVersion", "semaforo"].sort(),
     );
-    expect(JSON.stringify(payload)).not.toMatch(/airline|travel_?date/i);
+    expect(JSON.stringify(payload)).not.toMatch(
+      /airline|travel_?date|corridor|chile|uruguay|brasil|espana|usa/i,
+    );
   });
 
   it("prints the trip the page is showing — and its semáforo is the page's", async () => {
@@ -504,7 +504,14 @@ describe("generateTravelExport — S14 happy path", () => {
     const added = (await auditRows()).filter((r) => !before.has(r.id));
     expect(added).toHaveLength(1);
     const payload = added[0].payload as Record<string, unknown>;
-    expect(payload.corridorIds).toEqual(["uruguay"]);
+    // The audit no longer names the corridor (PO 2026-10-01), so WHICH trip was
+    // printed is read off the stored file's path, which the titular's own
+    // bucket keys by corridor.
+    expect(payload).not.toHaveProperty("corridorIds");
+    const bucket = supabaseMock.storage.from.mock.results[0]?.value as {
+      upload: { mock: { calls: unknown[][] } };
+    };
+    expect(String(bucket.upload.mock.calls[0]?.[0])).toContain("uruguay");
 
     const [pet] = await db.select().from(pets).where(eq(pets.id, travelPetId));
     const screen = await loadTravelView({
