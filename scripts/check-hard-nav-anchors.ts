@@ -42,7 +42,7 @@ export const HARD_NAV_LINK = new RegExp(
 );
 
 // Directories whose files are in scope (repo-relative, forward slashes).
-const SCOPE_PREFIXES = ["app/(public)/", "components/pet-profile/"];
+const SCOPE_PREFIXES = ["app/(public)/", "app/(institucional)/", "components/pet-profile/"];
 
 // Per-file allowlist ("relativePath") for a reviewed, intentional soft-nav.
 export const HARD_NAV_ALLOWLIST = new Set<string>([

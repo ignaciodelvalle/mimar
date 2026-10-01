@@ -3,7 +3,7 @@
 // Enforces that literal `<button` elements do not increase across two
 // surfaces, tracked with SEPARATE baselines so burn-down stays legible:
 //   - operator/government/org  (app/gob, app/admin, app/org)
-//   - citizen                  (components/**, app/(app), app/(public), app/(auth))
+//   - citizen                  (components/**, app/(app), app/(public), app/(institucional), app/(auth))
 // The target is full adoption of the LnButton (components/ui/Button.tsx) and
 // OpButton (components/ui/dashboard/OpButton.tsx) primitives instead of raw
 // `<button>` tags, so touch targets, focus rings, and disabled/loading
@@ -147,9 +147,11 @@ const OPERATOR_LABEL = "operator (app/gob, app/admin, app/org)";
 // "Usar mi ubicación" link. The third was already gone on main when W8 was
 // measured (306 at the branch point); its source was not located, and it is
 // banked here only because the ratchet should hold what the tree really has.
-const CITIZEN_BASELINE = 304;
-const CITIZEN_SCAN_GLOB = "{components,app/(app),app/(public),app/(auth)}/**/*.tsx";
-const CITIZEN_LABEL = "citizen (components/**, app/(app), app/(public), app/(auth))";
+const CITIZEN_BASELINE = 302;
+const CITIZEN_SCAN_GLOB =
+  "{components,app/(app),app/(public),app/(institucional),app/(auth)}/**/*.tsx";
+const CITIZEN_LABEL =
+  "citizen (components/**, app/(app), app/(public), app/(institucional), app/(auth))";
 
 const RAW_BUTTON = /<button\b/g;
 
@@ -431,7 +433,7 @@ const OPERATOR_RADIUS_BASELINE = 18;
 // purpose, so the count is honest at 101.
 // 2026-09-25 (W8): 101 → 100 — LocationFields.tsx's primary "Usar mi ubicación
 // actual" button carried a hand-written `rounded-xl`; it left with the button.
-const CITIZEN_RADIUS_BASELINE = 100;
+const CITIZEN_RADIUS_BASELINE = 99;
 
 function scanRadii({ label, glob, baseline, scriptName }) {
   const files = globSync(glob, { exclude: (p) => /\.test\.tsx$/.test(p) });

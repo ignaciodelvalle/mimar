@@ -111,6 +111,7 @@ function discoverRoutes(): Set<string> {
  */
 const GROUP_ACCESS: Record<string, DeepLinkAccess> = {
   "(public)": "public",
+  "(institucional)": "public",
   "(app)": "session",
 };
 
