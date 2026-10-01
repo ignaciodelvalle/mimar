@@ -714,15 +714,9 @@ const movementTransportRecorded = z
       // How the owner intends the animal to fly. It selects the airline's
       // modality row; it is not a rule.
       intended_modality: z.enum(["cabin", "hold", "cargo"]).optional(),
-      // Set ONLY by a correction (event_amended {field: "cancelled", new:
-      // true}) — the trip writer never sends it. A cancelled trip drops out of
-      // deriveTrips and deriveTravelContext; the row itself stays.
+      // Set ONLY by a correction (amendEvent): `cancelled` drops the trip from
+      // deriveTrips; `documents_confirmed` = ticked labels the trip's rules list.
       cancelled: z.boolean().optional(),
-      // The papers the owner ticked "Lo tengo" for on this trip (PO
-      // 2026-10-01). Set ONLY by a correction (confirmTripDocument → amendEvent
-      // {field: "documents_confirmed", new: [...]}) — the trip writer never
-      // sends it. Each entry is a document label the trip's own rules list at
-      // the time of the tick (the writer refuses any other), never free text.
       documents_confirmed: z.array(z.string().min(1).max(300)).max(50).optional(),
     }),
   )
