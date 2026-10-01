@@ -1,4 +1,5 @@
-// Tests for the pet-profile block ordering (AGENTS.md rule 5).
+// Tests for the pet-profile block ordering (AGENTS.md rule 5 — the Design rules
+// intro's "convention 5", whose heading is "### 6. Pet profile order").
 //
 // REWRITTEN for the "Una sola libreta" redesign (2026-07-04). The credential-
 // before-alerts invariant this file has always guarded is unchanged in INTENT
@@ -6,9 +7,18 @@
 // `data-section="hero"`) with the avisos strip as a sibling below it. It no
 // longer does. The whole front face is now delegated to `PetDetailTabsPanel`
 // via its `credencialContent` prop — a single `<CredentialFace>` element — and
-// CredentialFace owns the block order internally:
+// CredentialFace owns the card's block order internally:
 //
-//   identity  →  Cumplimiento  →  Avisos (slot)  →  Anotar (slot)  →  actions
+//   identity  →  Cumplimiento  →  Avisos (slot)  →  Anotar (slot)
+//
+// The acts LEFT THE CARD with owner-pet-actions (PO 2026-10-01, "los botones
+// salen de la tarjeta"). CredentialFace has no `actions` slot anymore; page.tsx
+// hands the primary row (`PetActionRow`) and the grouped panel
+// (`PetActionPanel`, the former "⋯ Más") to `PetDetailTabsPanel` as
+// `credencialActions`, which draws them AFTER the flip card, on the credencial
+// face only:
+//
+//   flip card  →  PetActionRow (Anotar · Compartir · Modo perdida)  →  PetActionPanel
 //
 // So `data-section="hero"` is gone from page.tsx, and the prioritized alert
 // strip (`PetAlertStrip`) is passed INTO CredentialFace as its `avisos` slot
@@ -19,20 +29,25 @@
 // order (the alerts array is assembled above the return), so a page.tsx
 // source-order-of-data-sections guard is no longer meaningful.
 //
-// AGENTS.md rule 5, block order (unchanged doctrine):
+// AGENTS.md rule 5, block order:
 //   1. Credencial first (Face 1) — identity/credential is the first content
 //      block. No conditional banner precedes it.
 //   2. Avisos in one prioritized strip, BELOW the credential (lost leads it).
-//   3. Capture (Anotar), then the two-face tabs.
-//   4. Everything else lives behind "⋯ Más".
+//   3. The two faces, then the acts below them — the primary row, outside the
+//      card, on the credencial face only.
+//   4. The former "⋯ Más", shown inline and grouped under the primary row.
 //
-// This file now guards the invariant WHERE IT LIVES:
+// This file guards the invariant WHERE IT LIVES:
 //   - page.tsx: delegates the front face to PetDetailTabsPanel/CredentialFace
 //     and passes PetAlertStrip as the `avisos` slot (not a sibling above the
 //     credential); AND the pre-redesign flat v2.1 section names must not
 //     resurface (negative guard, unchanged).
-//   - CredentialFace.tsx: the block order identity → cumplimiento → avisos →
-//     anotar → actions, guarded by source position.
+//   - CredentialFace.tsx: the card's block order identity → cumplimiento →
+//     avisos → anotar, guarded by source position, with no act inside the card.
+//   - PetDetailTabsPanel.tsx + page.tsx: the acts render AFTER the flip card,
+//     gated to the credencial face, the primary row before the grouped panel.
+//     (Render-level twins: PetDetailTabsPanel.interaction.test.tsx and
+//     CredentialFace.test.tsx's "acts sit BELOW the credential" block.)
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -40,6 +55,7 @@ import { describe, expect, it } from "vitest";
 
 const PAGE_TSX = resolve(__dirname, "../app/(app)/mis-mascotas/[publicToken]/page.tsx");
 const CREDENTIAL_FACE_TSX = resolve(__dirname, "../components/pet-profile/CredentialFace.tsx");
+const TABS_PANEL_TSX = resolve(__dirname, "../components/pet-profile/PetDetailTabsPanel.tsx");
 
 function read(filePath: string): string {
   return readFileSync(filePath, "utf-8");
@@ -50,6 +66,21 @@ function sourceIndex(src: string, needle: string): number {
   const i = src.indexOf(needle);
   expect(i, `expected to find \`${needle}\` in source`).toBeGreaterThanOrEqual(0);
   return i;
+}
+
+/**
+ * The expression one JSX prop holds (`name={…}`, braces included), cut by brace
+ * depth so a guard reads what the prop CARRIES rather than whatever happens to
+ * follow it in the file.
+ */
+function propExpression(src: string, name: string): string {
+  const open = sourceIndex(src, `${name}={`) + name.length + 1;
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}" && --depth === 0) return src.slice(open, i + 1);
+  }
+  throw new Error(`unbalanced braces after \`${name}={\``);
 }
 
 // Page-level section names from the pre-two-face pet-profile v2.1 flat order.
@@ -72,13 +103,21 @@ const OBSOLETE_V21_PAGE_SECTIONS = [
 
 // CredentialFace's internal block order (AGENTS.md rule 5). Source markers are
 // CODE, not comment text, so a reordered comment can't mask a reordered render.
+// The acts are not a block of the card since owner-pet-actions — where they
+// render now is the "acts below the card" describe at the end of this file.
 const CREDENTIAL_BLOCK_ORDER = [
   { name: "identity", marker: 'className="ln-idrow"' },
   { name: "cumplimiento", marker: "<ComplianceObligationsPanel" },
   { name: "avisos", marker: "{avisos && (" },
   { name: "anotar", marker: "{anotar && (" },
-  { name: "actions", marker: "{actions && (" },
 ] as const;
+
+// Each one, found in CredentialFace.tsx, is an act mounted inside the card again.
+const ACTS_INSIDE_THE_CARD = ["<PetActionRow", "<PetActionPanel", "{actions && ("] as const;
+
+// The acts' mount in PetDetailTabsPanel — the gate is part of the marker, so the
+// acts leaving the credencial-only condition fails here too.
+const ACTS_BELOW_THE_CARD = '{credencialActions && activeFace === "credencial" ? (';
 
 // ---------------------------------------------------------------------------
 // page.tsx — front face is delegated; alerts go INTO the credential
@@ -242,10 +281,20 @@ describe("PO correction — the multi-pet nav (PetSwitcherAvatars) renders ABOVE
 // ---------------------------------------------------------------------------
 
 describe("CredentialFace block order — source guard (AGENTS.md rule 5)", () => {
-  it("renders every block: identity → cumplimiento → avisos → anotar → actions", () => {
+  it("renders every block on the card: identity → cumplimiento → avisos → anotar", () => {
     const src = read(CREDENTIAL_FACE_TSX);
     for (const { marker } of CREDENTIAL_BLOCK_ORDER) {
       sourceIndex(src, marker);
+    }
+  });
+
+  it("mounts no act inside the card — the acts sit below it (owner-pet-actions)", () => {
+    const src = read(CREDENTIAL_FACE_TSX);
+    for (const act of ACTS_INSIDE_THE_CARD) {
+      expect(
+        src,
+        `\`${act}\` found in CredentialFace.tsx — an act is back inside the card; the acts render below it (rule 5)`,
+      ).not.toContain(act);
     }
   });
 
@@ -275,5 +324,49 @@ describe("CredentialFace block order — source guard (AGENTS.md rule 5)", () =>
     const positions = CREDENTIAL_BLOCK_ORDER.map(({ marker }) => sourceIndex(src, marker));
     const sorted = [...positions].sort((a, b) => a - b);
     expect(positions).toEqual(sorted);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// owner-pet-actions (PO 2026-10-01) — the acts render BELOW the card, in
+// PetDetailTabsPanel, from what page.tsx hands it as `credencialActions`
+// ---------------------------------------------------------------------------
+
+describe("the acts below the card — source guard (AGENTS.md rule 5)", () => {
+  it("PetDetailTabsPanel draws the flip card first, then the acts — on the credencial face only", () => {
+    const src = read(TABS_PANEL_TSX);
+    const cardAt = sourceIndex(src, "<FlipCard");
+    // The card is the credential: its front face is the CredentialFace node.
+    expect(sourceIndex(src, "front={credencialContent}")).toBeGreaterThan(cardAt);
+    expect(
+      sourceIndex(src, ACTS_BELOW_THE_CARD),
+      "the acts appear before <FlipCard — they must sit BELOW the credential, never above it (rule 5)",
+    ).toBeGreaterThan(cardAt);
+  });
+
+  it("the acts are the card's sibling, not one of its props", () => {
+    // FlipCard is self-closing with no JSX in its props, so its first `/>` ends
+    // it. Acts handed INTO the card would turn over with it onto the libreta.
+    const src = read(TABS_PANEL_TSX);
+    const cardAt = sourceIndex(src, "<FlipCard");
+    const cardEnd = sourceIndex(src.slice(cardAt), "/>") + cardAt;
+    expect(src.slice(cardAt, cardEnd)).not.toContain("credencialActions");
+    expect(sourceIndex(src, ACTS_BELOW_THE_CARD)).toBeGreaterThan(cardEnd);
+  });
+
+  it("page.tsx hands over the primary row, then the grouped panel — and nothing of the card", () => {
+    const page = read(PAGE_TSX);
+    // Passed to the panel that draws it below the card…
+    expect(sourceIndex(page, "credencialActions={")).toBeGreaterThan(
+      sourceIndex(page, "<PetDetailTabsPanel"),
+    );
+    // …holding the primary row (Anotar · Compartir · Modo perdida) first, then
+    // the former "⋯ Más" grouped panel.
+    const acts = propExpression(page, "credencialActions");
+    expect(
+      sourceIndex(acts, "<PetActionRow"),
+      "the primary row must lead the acts, above the grouped panel (rule 5)",
+    ).toBeLessThan(sourceIndex(acts, "<PetActionPanel"));
+    expect(acts).not.toContain("<CredentialFace");
   });
 });
