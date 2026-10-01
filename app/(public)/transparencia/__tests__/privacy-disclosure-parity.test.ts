@@ -28,7 +28,7 @@ import { describe, expect, it } from "vitest";
 import { ANONYMITY_K } from "@/lib/metrics/anonymity";
 import { OPEN_DATA_K, SUPPRESSED_MARKER } from "@/lib/open-data/province-suppression";
 
-const PAGE = join(process.cwd(), "app", "(public)", "transparencia", "page.tsx");
+const PAGE = join(process.cwd(), "app", "(institucional)", "transparencia", "page.tsx");
 const SUPPRESSION = join(process.cwd(), "lib", "open-data", "province-suppression.ts");
 
 /** Source with comments blanked out (line offsets preserved). A source-scan
