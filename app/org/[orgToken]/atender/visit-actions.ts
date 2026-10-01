@@ -11,8 +11,14 @@
 // sitting when it ends.
 //
 // Auth: resolveAtenderPet, the same boundary every walk-in writer passes.
-
-import { revalidatePath } from "next/cache";
+//
+// NO revalidatePath. The VisitCard sits ON the Atender page, and revalidating
+// the route the form is on hands the client router the Next 15.5 production
+// transition that never commits (lib/ui/full-page-action-nav.ts): the visit
+// opened, and the button stayed disabled forever. Found by
+// e2e/vet-visit-intake.spec.ts (the travel forms hit the same thing, 3fc722dfa).
+// Both actions return `redirectTo` and the card reloads the page as a full
+// document (useActionRedirect, the N3 contract).
 
 import type { EventFormState } from "@/src/modules/events/actions";
 import { isVisitModality } from "@/src/modules/visits/domain/types";
@@ -20,6 +26,10 @@ import { closeVisitOfPet } from "@/src/modules/visits/infrastructure/visit-servi
 
 import { resolveAtenderPet } from "./atender-access";
 import { openAtenderVisit } from "./atender-visit";
+
+function atenderPath(orgToken: string, publicToken: string): string {
+  return `/org/${orgToken}/atender/${publicToken}`;
+}
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -65,8 +75,7 @@ export async function atenderStartVisitAction(
     };
   }
 
-  revalidatePath(`/org/${orgToken}/atender/${access.pet.publicToken}`);
-  return { error: null, ok: true };
+  return { error: null, ok: true, redirectTo: atenderPath(orgToken, access.pet.publicToken) };
 }
 
 /**
@@ -103,6 +112,5 @@ export async function atenderCloseVisitAction(
     };
   }
 
-  revalidatePath(`/org/${orgToken}/atender/${access.pet.publicToken}`);
-  return { error: null, ok: true };
+  return { error: null, ok: true, redirectTo: atenderPath(orgToken, access.pet.publicToken) };
 }

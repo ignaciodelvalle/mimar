@@ -5,7 +5,9 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// No revalidatePath: the card sits on the Atender page and revalidating it
+// never commits in a production build. A call would throw against this mock.
+vi.mock("next/cache", () => ({}));
 
 const mockResolveAtenderPet = vi.hoisted(() => vi.fn());
 vi.mock("./atender-access", () => ({ resolveAtenderPet: mockResolveAtenderPet }));
@@ -47,7 +49,11 @@ describe("atenderStartVisitAction", () => {
   it("opens the visit with the chosen modality and appointment", async () => {
     mockOpenAtenderVisit.mockResolvedValue({ ok: true, visit: {}, created: true });
     const result = await start({ modality: "home", appointmentId: VISIT_ID });
-    expect(result).toEqual({ error: null, ok: true });
+    expect(result).toEqual({
+      error: null,
+      ok: true,
+      redirectTo: "/org/ORG/atender/DIM-TEST-0001",
+    });
     expect(mockOpenAtenderVisit).toHaveBeenCalledWith(ACCESS, {
       modality: "home",
       appointmentId: VISIT_ID,
@@ -91,7 +97,11 @@ describe("atenderCloseVisitAction", () => {
       { error: null },
       fd({}),
     );
-    expect(result).toEqual({ error: null, ok: true });
+    expect(result).toEqual({
+      error: null,
+      ok: true,
+      redirectTo: "/org/ORG/atender/DIM-TEST-0001",
+    });
     expect(mockCloseVisitOfPet).toHaveBeenCalledWith({
       visitId: VISIT_ID,
       petId: "pet-1",
@@ -111,7 +121,11 @@ describe("atenderCloseVisitAction", () => {
       { error: null },
       fd({}),
     );
-    expect(result).toEqual({ error: null, ok: true });
+    expect(result).toEqual({
+      error: null,
+      ok: true,
+      redirectTo: "/org/ORG/atender/DIM-TEST-0001",
+    });
     expect(mockCloseVisitOfPet).toHaveBeenCalledWith(expect.objectContaining({ isOrgAdmin: true }));
   });
 

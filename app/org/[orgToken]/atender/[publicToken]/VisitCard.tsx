@@ -19,6 +19,7 @@ import { useActionState } from "react";
 import { LnField, LnRadio, LnRadioGroup, LnSelect } from "@/components/ui/Field";
 import { OpButton, OpCard, OpCardBody, OpCardHead } from "@/components/ui/dashboard";
 import { VISIT_MODALITY_LABELS } from "@/lib/domain/visit-labels";
+import { useActionRedirect } from "@/lib/ui/use-action-redirect";
 import { useKeptFields } from "@/lib/ui/use-kept-fields";
 import type { EventFormState } from "@/src/modules/events/actions";
 
@@ -58,6 +59,11 @@ export function VisitCard({
     closeAction ?? (async () => initialState),
     initialState,
   );
+  // Both actions answer `redirectTo` and the page reloads as a full document
+  // (N3 contract): revalidating the route the card sits on never commits in a
+  // production build, and the button stayed disabled forever.
+  const startNavigating = useActionRedirect(startState.redirectTo, startState);
+  const closeNavigating = useActionRedirect(closeState.redirectTo, closeState);
 
   if (visit && closeAction) {
     return (
@@ -69,7 +75,7 @@ export function VisitCard({
               {VISIT_MODALITY_LABELS[visit.modality]} · desde las {visit.openedAtLabel}. Todo lo que
               registres queda agrupado en esta atención.
             </p>
-            <OpButton type="submit" variant="ghost" size="sm" loading={closing}>
+            <OpButton type="submit" variant="ghost" size="sm" loading={closing || closeNavigating}>
               Terminar atención
             </OpButton>
           </form>
@@ -135,7 +141,12 @@ export function VisitCard({
             </p>
           )}
           <div className="flex flex-wrap items-center gap-3">
-            <OpButton type="submit" variant="primary" size="sm" loading={starting}>
+            <OpButton
+              type="submit"
+              variant="primary"
+              size="sm"
+              loading={starting || startNavigating}
+            >
               Iniciar atención
             </OpButton>
             <p className="text-xs text-ln-op-mute">
