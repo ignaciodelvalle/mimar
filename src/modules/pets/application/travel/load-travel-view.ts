@@ -1,8 +1,8 @@
 // loadTravelView — THE ONE READ behind every surface that shows an owner their
 // trip (viajes-fase-2, design D5 / task 5.1).
 //
-// The /viaje page and `GET /api/v1/pets/{publicToken}/travel` both call it (the
-// PDF export joins in Phase 7), so web, the native screen and the PDF show the
+// The /viaje page, `GET /api/v1/pets/{publicToken}/travel` and the travel PDF
+// export (generate-travel-export.ts) all call it, so web, the native screen and the PDF show the
 // same semáforo BY CONSTRUCTION rather than by three derivations agreeing.
 //
 // What it does:
@@ -34,6 +34,7 @@ import {
   deriveTravelCompliance,
   deriveTrips,
 } from "@/lib/projections/travel-compliance";
+import { MODALITY_LABELS } from "@/lib/projections/travel-libreta-checks";
 import { type Airline, getAirline, isAirlineId } from "@/lib/reference/airlines";
 import {
   CORRIDOR_IDS,
@@ -41,6 +42,7 @@ import {
   type CorridorId,
   getCorridor,
 } from "@/lib/reference/cross-border-corridors";
+import { isoToArDateDisplay } from "@/lib/utils/date-input-ar";
 import { isoDateInAr } from "@/lib/utils/format";
 
 /**
@@ -116,6 +118,23 @@ type ViewEvent = {
 
 function isCorridorId(value: string): value is CorridorId {
   return (CORRIDOR_IDS as readonly string[]).includes(value);
+}
+
+/** "Chile, 12/11/2026" — how a trip is named on /viaje and in its PDF. */
+export function travelTripLabel(trip: TravelTrip): string {
+  const corridor = isCorridorId(trip.corridorId)
+    ? getCorridor(trip.corridorId).label
+    : trip.corridorId;
+  return `${corridor}, ${isoToArDateDisplay(trip.travelDate)}`;
+}
+
+/** "Chile, 12/11/2026 · LATAM, en cabina" — the line over the semáforo. */
+export function travelTripSummary(trip: TravelTrip): string {
+  const airline =
+    trip.airlineId && isAirlineId(trip.airlineId) ? getAirline(trip.airlineId).name : null;
+  if (!airline) return travelTripLabel(trip);
+  const where = trip.intendedModality ? `, en ${MODALITY_LABELS[trip.intendedModality]}` : "";
+  return `${travelTripLabel(trip)} · ${airline}${where}`;
 }
 
 /** The CVIs among the overlaid movement rows, the most recently issued first. */

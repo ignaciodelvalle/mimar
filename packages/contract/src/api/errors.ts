@@ -1239,9 +1239,17 @@
  *                         re-read, or cancel and record again.
  * - `cvi_duplicate`     — a CVI with the same number is already on record. 409.
  * - `trip_not_found`    — `cancel_trip` named a row that is not a trip of this
- *                         animal. 404.
+ *                         animal. 404. Also the export's answer when the animal
+ *                         has no trip on to print.
  * - `travel_failed`     — the write failed. 500. A retry WITH THE SAME KEY is
  *                         safe: if the first attempt committed, it answers it.
+ *                         Also the export's answer when the PDF could not be
+ *                         rendered, stored or signed; a retry makes a new one.
+ *
+ * `POST /api/v1/pets/{publicToken}/travel/export` answers a caller who holds
+ * the animal but is not a travel titular with `not_found`, NOT
+ * `travel_forbidden`: it is the web export's answer, and the PDF is the one
+ * travel artefact that leaves the app.
  */
 export const API_V1_ERROR_CODES = [
   "rate_limited",

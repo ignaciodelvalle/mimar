@@ -16,6 +16,7 @@ export type { GenerateTravelExportResult };
 // changing the use-case signature)
 export async function generateTravelExportAction(
   petPublicToken: string,
+  tripEventId: string | null = null,
 ): Promise<GenerateTravelExportResult> {
-  return generateTravelExport(petPublicToken);
+  return generateTravelExport(petPublicToken, tripEventId);
 }

@@ -88,8 +88,10 @@ describe("travel export — the traceability section carries the shared attribut
       petSpecies: "dog",
       ownerDisplayName: "Ignacio Del Valle",
       exportGeneratedAt: "30 de julio de 2026, 10:00 (hora de Argentina)",
+      tripSummary: "Uruguay, 12/11/2026",
       semaforo: "verde",
       corridors: [],
+      airline: null,
       obligations: [],
     });
 

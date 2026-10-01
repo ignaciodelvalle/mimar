@@ -1,12 +1,17 @@
 // Tests for the travel doc bundle export (movilidad-jurisdiccional Fase 1,
-// Capability 5 — R5.1-R5.4, S14).
+// Capability 5 — R5.1-R5.4, S14; rebuilt on loadTravelView in viajes-fase-2
+// Phase 7).
 //
 // Unit: schema version, storage path convention, section builder (per-corridor
 // disclaimer + version/effectiveFrom — R5.4 applies the R3.5 disclaimer to the
 // exported artifact exactly as on-screen), PDF smoke render.
+// Phase 7: the DTO is the travel view's own reading (same semáforo, same
+// obligations, the screen's label); a stale rule prints "Verificá", never a
+// clean pass; the airline block and per-source dates; no forbidden promise.
 // Integration: generateTravelExportAction against local DB (Storage mocked,
 // ppp-caba-export pattern) — ONE PDF signed URL + ONE travel_export_generated
-// audit_log row carrying schemaVersion (S14).
+// audit_log row carrying schemaVersion (S14) and neither the airline nor the
+// travel date.
 
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -18,10 +23,22 @@ import {
   buildTravelExportSections,
   generateTravelExportPdf,
 } from "@/lib/analytics/travel-exports";
+import {
+  TRAVEL_AIRLINE_NOTICE,
+  TRAVEL_FORBIDDEN_COPY,
+  TRAVEL_SEMAFORO_LABELS,
+} from "@/lib/domain/travel-copy";
 import * as authGuards from "@/lib/infra/auth-guards";
 import { TRAVEL_DISCLAIMER } from "@/lib/reference/cross-border-corridors";
 import * as supabaseServer from "@/lib/supabase/server";
-import { generateTravelExport } from "@/src/modules/pets/application/travel-export/generate-travel-export";
+import {
+  buildTravelExportDto,
+  generateTravelExport,
+} from "@/src/modules/pets/application/travel-export/generate-travel-export";
+import {
+  buildTravelView,
+  loadTravelView,
+} from "@/src/modules/pets/application/travel/load-travel-view";
 import { withMutationOverride } from "./_helpers/db-overrides";
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
@@ -77,6 +94,8 @@ const DTO = {
   petSpecies: "dog",
   ownerDisplayName: "María López",
   exportGeneratedAt: "04/07/2026 12:00",
+  tripSummary: "Chile, 12/11/2026",
+  airline: null,
   semaforo: "amarillo" as const,
   corridors: [
     {
@@ -145,6 +164,146 @@ describe("generateTravelExportPdf — smoke render", () => {
     const bytes = await generateTravelExportPdf(DTO);
     expect(bytes).toBeInstanceOf(Uint8Array);
     expect(bytes.length).toBeGreaterThan(1000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unit — the DTO is the travel view's reading (viajes-fase-2, Phase 7)
+// ---------------------------------------------------------------------------
+
+const VIEW_PET = {
+  id: "00000000-0000-4000-8000-0000000000e7",
+  publicToken: "DIM-TRAV-VIEW",
+  name: "Rita",
+  species: "dog",
+  breed: "Dogo Argentino",
+  dateOfBirth: "2022-01-10",
+  birthDateIsEstimated: false,
+  jurisdictionCountry: "AR",
+  jurisdictionProvince: "CABA",
+  jurisdictionLocality: "Palermo",
+};
+
+/** One trip to Chile with Iberia in the hold, 20 days after `now`. */
+function viewAt(now: Date) {
+  const travelDate = new Date(now.getTime() + 20 * 86_400_000).toISOString().slice(0, 10);
+  return buildTravelView({
+    pet: VIEW_PET,
+    events: [
+      {
+        id: "00000000-0000-4000-8000-0000000000f1",
+        eventType: "movement_recorded",
+        occurredAt: now,
+        payload: {
+          payload_version: 1,
+          sub_kind: "transport_recorded",
+          corridor_id: "chile",
+          direction: "outbound_from_ar",
+          travel_date: travelDate,
+          mode: "air",
+          airline_id: "iberia",
+          intended_modality: "hold",
+        },
+      },
+    ],
+    tripId: null,
+    now,
+  });
+}
+
+function dtoAt(now: Date) {
+  const view = viewAt(now);
+  const dto = buildTravelExportDto({
+    pet: VIEW_PET,
+    view,
+    ownerDisplayName: "María López",
+    generatedAt: now,
+  });
+  if (!dto) throw new Error("fixture: no trip in the view");
+  return {
+    view,
+    dto,
+    text: buildTravelExportSections(dto)
+      .flatMap((s) => [s.heading, ...s.lines])
+      .join("\n"),
+  };
+}
+
+describe("buildTravelExportDto — the screen's reading, not a second computation", () => {
+  it("carries the view's semáforo, obligations and corridors by reference", () => {
+    const { view, dto } = dtoAt(new Date());
+    expect(dto.semaforo).toBe(view.compliance?.semaforo);
+    expect(dto.obligations).toBe(view.compliance?.obligations);
+    expect(dto.corridors).toBe(view.compliance?.corridorsShown);
+  });
+
+  it("says the semáforo in the screen's words and never promises", () => {
+    const { dto, text } = dtoAt(new Date());
+    expect(text).toContain(`Semáforo: ${TRAVEL_SEMAFORO_LABELS[dto.semaforo]}`);
+    expect(text).not.toMatch(TRAVEL_FORBIDDEN_COPY);
+    // The Fase 1 table's green is gone for good, whatever the colour.
+    for (const semaforo of ["rojo", "amarillo", "verde", "sin_datos"] as const) {
+      const all = buildTravelExportSections({ ...dto, semaforo })
+        .flatMap((s) => s.lines)
+        .join("\n");
+      expect(all).not.toMatch(TRAVEL_FORBIDDEN_COPY);
+    }
+  });
+
+  it("prints the airline block and every source with the date it was checked", () => {
+    const { dto, text } = dtoAt(new Date());
+    expect(dto.airline).toMatchObject({ name: "Iberia", modality: "bodega" });
+    expect(text).toContain(`${TRAVEL_AIRLINE_NOTICE}: Iberia`);
+    expect(text).toContain("Modalidad elegida: bodega");
+    const sourced = dto.obligations.flatMap((o) => o.sources);
+    expect(sourced.length).toBeGreaterThan(0);
+    for (const s of sourced) expect(text).toContain(`Fuente: ${s.label} (${s.sourceUrl})`);
+  });
+
+  it("names the trip it read", () => {
+    const { dto, text } = dtoAt(new Date());
+    expect(dto.tripSummary).toMatch(/^Chile, \d{2}\/\d{2}\/\d{4} · Iberia, en bodega$/);
+    expect(text).toContain(`Viaje: ${dto.tripSummary}`);
+  });
+
+  it("is null when there is no trip to read", () => {
+    const view = buildTravelView({ pet: VIEW_PET, events: [], tripId: null, now: new Date() });
+    expect(
+      buildTravelExportDto({ pet: VIEW_PET, view, ownerDisplayName: "x", generatedAt: new Date() }),
+    ).toBeNull();
+  });
+});
+
+describe("travel export — a stale rule prints 'Verificá', never a clean pass (spec 'Stale export')", () => {
+  // Years past every reviewBy in the registries: every corridor and airline
+  // rule is expired at this instant.
+  const STALE_NOW = new Date("2031-03-01T12:00:00Z");
+
+  it("shows the same 'Verificá' state the screen shows, on every degraded row", () => {
+    const { view, dto, text } = dtoAt(STALE_NOW);
+    const degraded = dto.obligations.filter((o) => o.freshnessNotice !== null);
+    // Rows that read clean today are degraded once their rules expire.
+    const degradedToday = dtoAt(new Date()).dto.obligations.filter(
+      (o) => o.freshnessNotice !== null,
+    );
+    expect(degraded.length).toBeGreaterThan(degradedToday.length);
+    expect(
+      degraded.some((o) => /^Verificá — dato sin revisar desde/.test(o.freshnessNotice ?? "")),
+    ).toBe(true);
+    for (const o of degraded) {
+      expect(o.freshnessNotice).toMatch(/^Verificá — /);
+      expect(text).toContain(o.freshnessNotice as string);
+    }
+    // Nothing stale reads green, on the screen or on paper.
+    expect(view.compliance?.semaforo).not.toBe("verde");
+    expect(text).not.toContain(TRAVEL_SEMAFORO_LABELS.verde);
+  });
+
+  it("renders to a real PDF — every word the engine writes fits the PDF font", async () => {
+    for (const now of [new Date(), STALE_NOW]) {
+      const bytes = await generateTravelExportPdf(dtoAt(now).dto);
+      expect(bytes.length).toBeGreaterThan(1000);
+    }
   });
 });
 
@@ -306,7 +465,55 @@ describe("generateTravelExport — S14 happy path", () => {
     const payload = after[after.length - 1].payload as Record<string, unknown>;
     expect(payload.petPublicToken).toBe(TRAVEL_PET_TOKEN);
     expect(payload.schemaVersion).toBe(TRAVEL_EXPORT_SCHEMA_VERSION);
-    expect(payload.corridorIds).toEqual(expect.arrayContaining(["chile", "uruguay"]));
+    // ONE trip per PDF, as on the screen — not every active trip's corridors.
+    expect(payload.corridorIds).toHaveLength(1);
+    expect(["chile", "uruguay"]).toContain((payload.corridorIds as string[])[0]);
+    // Design D7: admin readers of the audit log are not titulars. Nothing that
+    // says when the household is away, or how.
+    expect(Object.keys(payload).sort()).toEqual(
+      ["corridorIds", "petId", "petPublicToken", "schemaVersion", "semaforo"].sort(),
+    );
+    expect(JSON.stringify(payload)).not.toMatch(/airline|travel_?date/i);
+  });
+
+  it("prints the trip the page is showing — and its semáforo is the page's", async () => {
+    const supabaseMock = buildSupabaseMock();
+    mockRequireUserOrRedirect.mockResolvedValue({
+      supabase: supabaseMock,
+      user: { id: MOCK_OWNER_ID },
+    } as never);
+
+    const rows = await db
+      .select({ id: petEvents.id, payload: petEvents.payload })
+      .from(petEvents)
+      .where(eq(petEvents.petId, travelPetId));
+    const uruguay = rows.find(
+      (r) => (r.payload as Record<string, unknown>).corridor_id === "uruguay",
+    );
+    if (!uruguay) throw new Error("fixture: no uruguay trip");
+
+    const auditRows = () =>
+      db
+        .select({ id: auditLog.id, payload: auditLog.payload })
+        .from(auditLog)
+        .where(eq(auditLog.actorUserId, MOCK_OWNER_ID));
+    const before = new Set((await auditRows()).map((r) => r.id));
+    const result = await generateTravelExport(TRAVEL_PET_TOKEN, uruguay.id);
+    expect(result.ok).toBe(true);
+
+    const added = (await auditRows()).filter((r) => !before.has(r.id));
+    expect(added).toHaveLength(1);
+    const payload = added[0].payload as Record<string, unknown>;
+    expect(payload.corridorIds).toEqual(["uruguay"]);
+
+    const [pet] = await db.select().from(pets).where(eq(pets.id, travelPetId));
+    const screen = await loadTravelView({
+      pet,
+      viewer: { accessPath: "owner", holderRole: "owner" },
+      tripId: uruguay.id,
+    });
+    if (!screen.ok) throw new Error("fixture: the titular was refused");
+    expect(payload.semaforo).toBe(screen.view.compliance?.semaforo);
   });
 });
 

@@ -8,7 +8,9 @@
 //   · `?trip=` picks the trip; the default is the next one; a cancelled trip
 //     is gone from the list;
 //   · a caretaker gets travel_forbidden, a stranger not_found (design D8);
-//   · nothing on the wire promises, and the disclaimers always ride along.
+//   · nothing on the wire promises, and the disclaimers always ride along;
+//   · the export door (task 6.5) answers the web export's signed link for the
+//     trip asked for, and not_found — no file — to anyone else.
 // The pure trip selection is pinned at the bottom without a database.
 
 import { eq, sql } from "drizzle-orm";
@@ -17,6 +19,27 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 // amendEvent (behind cancelTrip) calls revalidatePath after it commits.
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
+}));
+
+// The export door stores the PDF with the service-role client (migration 0172);
+// Storage is faked, the database is real — the travel-export.test.ts pattern.
+const storage = vi.hoisted(() => ({
+  signedUrl: "https://storage.example.com/travel-exports/viaje.pdf?token=mock",
+  uploads: [] as { bucket: string; path: string }[],
+}));
+const SIGNED_URL = storage.signedUrl;
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: () => ({
+    storage: {
+      from: (bucket: string) => ({
+        upload: async (path: string) => {
+          storage.uploads.push({ bucket, path });
+          return { data: { path }, error: null };
+        },
+        createSignedUrl: async () => ({ data: { signedUrl: storage.signedUrl }, error: null }),
+      }),
+    },
+  }),
 }));
 
 import { db, ownerships, pets, profiles } from "@/db";
@@ -29,7 +52,8 @@ import { loadTravelView, selectTrip } from "@/src/modules/pets/application/trave
 import { recordCvi } from "@/src/modules/pets/application/travel/record-cvi";
 import { recordTrip } from "@/src/modules/pets/application/travel/record-trip";
 import type { TravelActor } from "@/src/modules/pets/application/travel/types";
-import type { PetTravelV1 } from "@dim/contract/api";
+import type { PetTravelExportV1, PetTravelV1 } from "@dim/contract/api";
+import { exportPetTravel } from "../app/api/v1/pets/[publicToken]/travel/export/export";
 import { readPetTravel } from "../app/api/v1/pets/[publicToken]/travel/payload";
 import { withMutationOverride } from "./_helpers/db-overrides";
 
@@ -231,6 +255,57 @@ describe("GET /api/v1/pets/{token}/travel — the web loader's reading, on the w
     for (const text of texts) expect(text).not.toMatch(TRAVEL_FORBIDDEN_COPY);
     expect(body.disclaimers.join(" ")).toContain("SENASA");
     expect(body.disclaimers.join(" ")).toContain("Verificá con tu aerolínea");
+  });
+});
+
+describe("POST /api/v1/pets/{token}/travel/export — the web's PDF, for the native app (6.5)", () => {
+  async function exportPdf(pet: TestPet, userId: string, tripId: string | null = null) {
+    const res = await exportPetTravel({ publicToken: pet.publicToken, userId, tripId });
+    return {
+      status: res.status,
+      cacheControl: res.headers.get("cache-control"),
+      body: (await res.json()) as PetTravelExportV1 & { error?: string },
+    };
+  }
+
+  it("answers a signed link to the PDF of the trip asked for, through the web's use-case", async () => {
+    storage.uploads.length = 0;
+    const pet = await insertTestPet("EXPORT");
+    await addTrip(pet, "chile", 20);
+    const uruguay = await addTrip(pet, "uruguay", 60);
+
+    const { status, cacheControl, body } = await exportPdf(pet, OWNER_ID, uruguay);
+    expect(status).toBe(200);
+    expect(cacheControl).toContain("no-store");
+    expect(body.pdfUrl).toBe(SIGNED_URL);
+    expect(Number.isNaN(Date.parse(body.expiresAt))).toBe(false);
+    // One file, in the web export's bucket and path convention, for THAT trip.
+    expect(storage.uploads).toHaveLength(1);
+    expect(storage.uploads[0]?.bucket).toBe("travel-exports");
+    expect(storage.uploads[0]?.path).toMatch(new RegExp(`^${pet.publicToken}/travel/uruguay/`));
+  });
+
+  it("answers trip_not_found when the animal has no trip on", async () => {
+    const pet = await insertTestPet("EXPNONE");
+    const { status, body } = await exportPdf(pet, OWNER_ID);
+    expect(status).toBe(404);
+    expect(body).toEqual({ error: "trip_not_found" });
+  });
+
+  it("answers not_found — never the PDF — to a caretaker and to a stranger", async () => {
+    storage.uploads.length = 0;
+    const pet = await insertTestPet("EXPAUTHZ");
+    await addTrip(pet, "uruguay", 15);
+    await db
+      .insert(ownerships)
+      .values({ petId: pet.id, ownerUserId: CARETAKER_ID, role: "caretaker" });
+
+    for (const userId of [CARETAKER_ID, STRANGER_ID]) {
+      const { status, body } = await exportPdf(pet, userId);
+      expect(status).toBe(404);
+      expect(body).toEqual({ error: "not_found" });
+    }
+    expect(storage.uploads).toEqual([]);
   });
 });
 

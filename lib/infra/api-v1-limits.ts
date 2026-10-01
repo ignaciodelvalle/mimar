@@ -1326,6 +1326,13 @@ export const API_V1_IP_BUCKET_FAMILIES: Readonly<Record<string, ApiV1IpFamily>> 
   // `authenticated-read` on the argument every pet-scoped read makes: the
   // native screen opens the pet and taps "Viaje" inside one second.
   api_v1_travel_read_ip: "authenticated-read",
+  // The travel PDF (`POST pets/{token}/travel/export`, task 6.5). Its OWN
+  // bucket rather than the travel write's: an owner exporting twice must not
+  // spend the budget of the trip they are about to record. `authenticated-write`
+  // because each call stores a file and writes an audit row — one owner acting
+  // on their own record, the family's anchor — and the web's export button has
+  // no tighter limit to mirror.
+  api_v1_travel_export_ip: "authenticated-write",
 };
 
 /**

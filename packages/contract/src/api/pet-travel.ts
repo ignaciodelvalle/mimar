@@ -152,3 +152,23 @@ export type PetTravelCommandAckV1 =
   | { command: "record_trip"; eventId: string; replayed: boolean }
   | { command: "record_cvi"; eventId: string; replayed: boolean }
   | { command: "cancel_trip"; tripEventId: string; changed: boolean };
+
+/**
+ * `POST /api/v1/pets/{publicToken}/travel/export[?trip=]` — the travel PDF, as
+ * a bare ack (task 6.5).
+ *
+ * THE SAME PDF THE WEB HANDS OUT. The server renders it from the same reading
+ * `GET` returns for that trip (`loadTravelView`), stores it in the private
+ * `travel-exports` bucket and signs a download link; the web's "Descargar
+ * documentación de viaje" button gets the same link from the same use-case.
+ * The app downloads the file and hands it to the share sheet. No PDF is ever
+ * drawn on the phone, so paper and screen cannot disagree.
+ *
+ * A POST, not a GET: every export stores a file and writes an audit row.
+ */
+export type PetTravelExportV1 = {
+  /** Signed download link to the PDF. Valid until `expiresAt`, no auth header. */
+  pdfUrl: string;
+  /** ISO instant; the link stops working after it (24 hours). */
+  expiresAt: string;
+};

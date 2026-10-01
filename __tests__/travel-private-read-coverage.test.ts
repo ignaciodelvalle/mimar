@@ -32,6 +32,8 @@ import { TRAVEL_PRIVATE_SUB_KINDS, TRAVEL_TITULAR_ROLES } from "@/lib/infra/trav
 
 const ROOT = process.cwd();
 const CLAUSE_MODULE = "lib/infra/travel-private-events.ts";
+const EXPORT_CORE = "src/modules/pets/application/travel-export/generate-travel-export.ts";
+const EXPORT_V1 = "app/api/v1/pets/[publicToken]/travel/export/export.ts";
 
 /**
  * Reads a non-titular can reach. Each CARRIES the clause — conditionally on
@@ -66,10 +68,10 @@ const TITULAR_OR_WRITER: readonly string[] = [
   // travel target it asks holdsPetAsTravelTitular and refuses everyone else
   // with `travel_private_target` (asserted below).
   "src/modules/events/application/amendment/amend-event.ts",
-  // The titular's travel PDF. Its ownership join refuses a caretaker row, the
-  // same rule as canAccessTravel (asserted below; behaviour in
-  // __tests__/travel-export.test.ts).
-  "src/modules/pets/application/travel-export/generate-travel-export.ts",
+  // (The titular's travel PDF left this list in viajes-fase-2 Phase 7: it no
+  // longer queries pet_events — both its doors, the web action and
+  // POST /api/v1/pets/{token}/travel/export, read through loadTravelView below.
+  // Asserted in "the travel PDF reads only through the travel view".)
   // The three travel WRITERS' shared read (duplicate check, cancel target).
   // It runs only after travelAuthzRefusal admitted a travel titular
   // (canAccessTravel; asserted below; behaviour in __tests__/travel-writers.test.ts).
@@ -206,6 +208,17 @@ describe("travel-private read coverage", () => {
     const load = src.indexOf(".from(petEvents)");
     expect(gate).toBeGreaterThan(-1);
     expect(load).toBeGreaterThan(gate);
+  });
+
+  it("the travel PDF reads only through the travel view, from both of its doors", () => {
+    // A second read here would be a second semáforo — and a read the gate
+    // inside loadTravelView does not cover.
+    const core = read(EXPORT_CORE);
+    expect(READS_PET_EVENTS.test(core)).toBe(false);
+    expect(core).toContain("loadTravelView({");
+    const v1 = read(EXPORT_V1);
+    expect(READS_PET_EVENTS.test(v1)).toBe(false);
+    expect(v1).toContain("exportTravelPdfForViewer(");
   });
 
   it("the travel-titular roles are one fail-closed allow-list: owner, co_owner, foster", () => {

@@ -31,18 +31,14 @@ import { UrlTabs, UrlTabsContent } from "@/components/ui/UrlTabs";
 import { TRAVEL_AIRLINE_NOTICE, TRAVEL_GROUP_LABELS } from "@/lib/domain/travel-copy";
 import { requireTitularAccess } from "@/lib/infra/pet-access";
 import type { TravelObligationGroup, TravelTrip } from "@/lib/projections/travel-compliance";
-import { MODALITY_LABELS } from "@/lib/projections/travel-libreta-checks";
-import { AIRLINES, getAirline, isAirlineId } from "@/lib/reference/airlines";
-import {
-  CORRIDORS,
-  CORRIDOR_IDS,
-  type CorridorId,
-  getCorridor,
-} from "@/lib/reference/cross-border-corridors";
+import { AIRLINES } from "@/lib/reference/airlines";
+import { CORRIDORS } from "@/lib/reference/cross-border-corridors";
 import { isoToArDateDisplay } from "@/lib/utils/date-input-ar";
 import {
   type TravelView,
   loadTravelView,
+  travelTripLabel as tripLabel,
+  travelTripSummary as tripSummary,
 } from "@/src/modules/pets/application/travel/load-travel-view";
 import {
   cancelTripAction,
@@ -58,26 +54,6 @@ import { TravelSemaforo } from "./TravelSemaforo";
 import { TripForm } from "./TripForm";
 
 const GROUP_ORDER: TravelObligationGroup[] = ["destino", "aerolinea", "libreta"];
-
-function corridorLabel(id: string): string {
-  return (CORRIDOR_IDS as readonly string[]).includes(id)
-    ? getCorridor(id as CorridorId).label
-    : id;
-}
-
-/** "Chile, 12/11/2026" — how a trip is named on this page. */
-function tripLabel(trip: TravelTrip): string {
-  return `${corridorLabel(trip.corridorId)}, ${isoToArDateDisplay(trip.travelDate)}`;
-}
-
-/** "Chile, 12/11/2026 · LATAM, en cabina" — the line over the semáforo. */
-function tripSummary(trip: TravelTrip): string {
-  const airline =
-    trip.airlineId && isAirlineId(trip.airlineId) ? getAirline(trip.airlineId).name : null;
-  if (!airline) return tripLabel(trip);
-  const where = trip.intendedModality ? `, en ${MODALITY_LABELS[trip.intendedModality]}` : "";
-  return `${tripLabel(trip)} · ${airline}${where}`;
-}
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -270,7 +246,7 @@ export default async function ViajePage({
 
           {trip && (
             <Section title="Documentación para llevar">
-              <TravelExportButton petPublicToken={pet.publicToken} />
+              <TravelExportButton petPublicToken={pet.publicToken} tripEventId={trip.eventId} />
             </Section>
           )}
         </div>

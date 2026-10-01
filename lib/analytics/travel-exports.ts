@@ -17,16 +17,28 @@
 import { PDFDocument, type PDFFont, PageSizes, StandardFonts, rgb } from "pdf-lib";
 
 import { documentAttributionLine } from "@/lib/analytics/export-attribution";
+import {
+  TRAVEL_AIRLINE_NOTICE,
+  TRAVEL_GROUP_LABELS,
+  TRAVEL_SEMAFORO_LABELS,
+} from "@/lib/domain/travel-copy";
 import type { RequirementLevel } from "@/lib/domain/travel-strictness";
 import type {
   CorridorDisclosure,
   TravelObligation,
+  TravelObligationGroup,
   TravelSemaforo,
 } from "@/lib/projections/travel-compliance";
 import { TRAVEL_DISCLAIMER } from "@/lib/reference/cross-border-corridors";
+import { isoToArDateDisplay } from "@/lib/utils/date-input-ar";
 import { speciesInProse } from "@/lib/utils/species";
 
-export const TRAVEL_EXPORT_SCHEMA_VERSION = "2026-07-04";
+// 2026-09-30 (viajes-fase-2, Phase 7): the PDF reads ONE trip through
+// loadTravelView, groups its obligations Destino / Aerolínea / Libreta, prints
+// each source with the date it was last checked and a "Verificá" line on every
+// stale or unconfirmed one, and says the semáforo in the words the screen uses.
+// 2026-07-04 was the Fase 1 corridor-only checklist.
+export const TRAVEL_EXPORT_SCHEMA_VERSION = "2026-09-30";
 
 const TRAVEL_EXPORTS_BUCKET = "travel-exports";
 
@@ -34,14 +46,30 @@ const TRAVEL_EXPORTS_BUCKET = "travel-exports";
 // DTO
 // ---------------------------------------------------------------------------
 
+/** The airline the owner chose for the trip, as the PDF names it. */
+export type TravelExportAirline = {
+  name: string;
+  /** "cabina", "bodega", "carga" — null when the owner has not chosen one. */
+  modality: string | null;
+  /** The airline's published pet-policy page. */
+  sourceUrl: string;
+  /** `YYYY-MM-DD`, when miMAR last read that page. */
+  lastVerifiedAt: string;
+};
+
 export type TravelExportDto = {
   petName: string;
   petPublicToken: string;
   petSpecies: string;
   ownerDisplayName: string;
   exportGeneratedAt: string;
+  /** "Chile, 12/11/2026 · LATAM, en cabina" — the trip the reading is about. */
+  tripSummary: string;
   semaforo: TravelSemaforo;
   corridors: CorridorDisclosure[];
+  /** Null when the trip names no airline: then no airline section is printed. */
+  airline: TravelExportAirline | null;
+  /** Worst first, as loadTravelView returns them. */
   obligations: TravelObligation[];
 };
 
@@ -66,24 +94,56 @@ export function buildTravelExportPath(
 // on parsed PDF bytes.
 // ---------------------------------------------------------------------------
 
-const SEMAFORO_LABELS: Record<TravelSemaforo, string> = {
-  rojo: "ROJO — No viajar todavía",
-  amarillo: "AMARILLO — Revisar pendientes",
-  verde: "VERDE — Requisitos en orden",
-  sin_datos: "SIN DATOS — Verificación no disponible",
-};
-
+// The semáforo is said in the SAME words as /viaje and the native screen
+// (lib/domain/travel-copy.ts). Fase 1 printed its own table here, and its green
+// promised what the screen had already stopped promising.
 const LEVEL_LABELS: Record<RequirementLevel, string> = {
   blocker: "Bloqueante",
   warning: "Atención",
   info: "Informativo",
 };
 
+/** The order /viaje lists the groups in. */
+const GROUP_ORDER: readonly TravelObligationGroup[] = ["destino", "aerolinea", "libreta"];
+
 export type TravelExportSection = {
-  kind: "summary" | "checklist" | "corridor" | "traceability";
+  kind: "summary" | "checklist" | "airline" | "corridor" | "traceability";
   heading: string;
   lines: string[];
 };
+
+/** One obligation, as the checklist prints it: verdict, reasons, sources. */
+function obligationLines(o: TravelObligation): string[] {
+  return [
+    `[${LEVEL_LABELS[o.requirementLevel]}] ${o.label} — ${o.state}`,
+    ...(o.detail ? [`  ${o.detail}`] : []),
+    // The degraded-row marker: "Verificá — dato sin revisar desde …" or
+    // "Verificá — dato sin confirmar con la fuente". A stale rule is never
+    // printed as a clean pass (spec travel-export, "Stale export").
+    ...(o.freshnessNotice ? [`  ${o.freshnessNotice}`] : []),
+    ...(o.contributingJurisdictions.length > 0
+      ? [`  Exigido por: ${o.contributingJurisdictions.join(" · ")}`]
+      : []),
+    ...o.sources.map(
+      (s) =>
+        `  Fuente: ${s.label} (${s.sourceUrl}), verificada el ${isoToArDateDisplay(s.lastVerifiedAt)}`,
+    ),
+  ];
+}
+
+/** The airline block: whose policy it is, and that it is theirs to confirm. */
+function airlineSection(airline: TravelExportAirline): TravelExportSection {
+  return {
+    kind: "airline",
+    heading: `AEROLÍNEA: ${airline.name.toUpperCase()}`,
+    lines: [
+      `${TRAVEL_AIRLINE_NOTICE}: ${airline.name}`,
+      `Modalidad elegida: ${airline.modality ?? "sin elegir"}`,
+      `Lo que sigue es la política que ${airline.name} publica. Puede cambiar sin aviso: confirmala antes de reservar.`,
+      `Política publicada: ${airline.sourceUrl}, leída el ${isoToArDateDisplay(airline.lastVerifiedAt)}`,
+    ],
+  };
+}
 
 export function buildTravelExportSections(dto: TravelExportDto): TravelExportSection[] {
   const sections: TravelExportSection[] = [];
@@ -101,24 +161,34 @@ export function buildTravelExportSections(dto: TravelExportDto): TravelExportSec
       `Mascota: ${dto.petName} (${speciesInProse(dto.petSpecies)})`,
       `Identificador público (token miMAR): ${dto.petPublicToken}`,
       `Tenedor/propietario: ${dto.ownerDisplayName}`,
-      `Semáforo: ${SEMAFORO_LABELS[dto.semaforo]}`,
+      `Viaje: ${dto.tripSummary}`,
+      `Semáforo: ${TRAVEL_SEMAFORO_LABELS[dto.semaforo]}`,
     ],
   });
 
-  sections.push({
-    kind: "checklist",
-    heading: "CHECKLIST DE REQUISITOS",
-    lines:
-      dto.obligations.length === 0
-        ? ["Sin requisitos para el contexto de viaje registrado."]
-        : dto.obligations.flatMap((o) => [
-            `[${LEVEL_LABELS[o.requirementLevel]}] ${o.label} — ${o.state}`,
-            ...(o.detail ? [`  ${o.detail}`] : []),
-            ...(o.contributingJurisdictions.length > 0
-              ? [`  Exigido por: ${o.contributingJurisdictions.join(" · ")}`]
-              : []),
-          ]),
-  });
+  if (dto.obligations.length === 0) {
+    sections.push({
+      kind: "checklist",
+      heading: "REQUISITOS",
+      lines: ["Sin requisitos para el contexto de viaje registrado."],
+    });
+  }
+
+  // The groups /viaje draws, in its order; the airline block heads its group,
+  // and is printed whenever the trip names an airline — the screen's rule.
+  for (const group of GROUP_ORDER) {
+    if (group === "aerolinea") {
+      if (!dto.airline) continue;
+      sections.push(airlineSection(dto.airline));
+    }
+    const obligations = dto.obligations.filter((o) => o.group === group);
+    if (obligations.length === 0) continue;
+    sections.push({
+      kind: "checklist",
+      heading: `REQUISITOS — ${TRAVEL_GROUP_LABELS[group].toUpperCase()}`,
+      lines: obligations.flatMap(obligationLines),
+    });
+  }
 
   // R5.4: one section per corridor, each with version/effectiveFrom + the
   // staleness disclaimer (S13 applies to the exported artifact).

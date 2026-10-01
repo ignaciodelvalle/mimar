@@ -256,7 +256,7 @@ in its **layout**, before any page body runs.
 `app/` that are **not** routes.
 
 Across the whole tree: <!-- fact:pages -->280<!-- /fact --> `page.tsx` files,
-<!-- fact:route_handlers -->101<!-- /fact --> `route.ts` handlers, and only
+<!-- fact:route_handlers -->102<!-- /fact --> `route.ts` handlers, and only
 <!-- fact:layouts -->11<!-- /fact --> `layout.tsx` files. That ratio is the shape
 to notice — the gate is concentrated in the layouts, not spread across the
 hundreds of pages it protects.

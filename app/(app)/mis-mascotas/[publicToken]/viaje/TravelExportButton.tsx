@@ -20,7 +20,14 @@ const ERROR_MESSAGES: Record<string, string> = {
   signed_url_failed: "No pudimos generar el enlace de descarga. Probá de nuevo.",
 };
 
-export function TravelExportButton({ petPublicToken }: { petPublicToken: string }) {
+export function TravelExportButton({
+  petPublicToken,
+  tripEventId,
+}: {
+  petPublicToken: string;
+  /** The trip the page is showing: the PDF reads the same one. */
+  tripEventId: string;
+}) {
   const [isPending, startTransition] = useTransition();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +35,7 @@ export function TravelExportButton({ petPublicToken }: { petPublicToken: string 
   function handleExport() {
     setError(null);
     startTransition(async () => {
-      const result = await generateTravelExportAction(petPublicToken);
+      const result = await generateTravelExportAction(petPublicToken, tripEventId);
       if (result.ok) {
         setSignedUrl(result.signedUrl);
       } else {

@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-30",
-  "sha": "a51149779",
+  "generatedAt": "2026-10-01",
+  "sha": "db8faf582",
   "facts": {
     "event_types": {
       "value": 56,
@@ -33,7 +33,7 @@
       "method": "files named exactly `page.tsx` anywhere under `app/`."
     },
     "route_handlers": {
-      "value": 101,
+      "value": 102,
       "source": "app/**/route.ts",
       "method": "files named exactly `route.ts` anywhere under `app/`."
     },
