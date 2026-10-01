@@ -474,8 +474,9 @@ export const CHAPTERS: LandingChapter[] = [
     // last_seen_context is "Se soltó en la plaza durante un paseo".
     title: "Un sábado, se suelta en la plaza.",
     // Copy review 2026-09-30 (D10): the first sentence repeated the chapter's
-    // own step 1, right below.
-    lead: "Al día siguiente, alguien escanea su QR y avisa, sin cuenta ni app.",
+    // own step 1, right below. PO 2026-10-01: the chapter now opens on the
+    // owner's report and poster, and the neighbour's notice is a sighting.
+    lead: `${OWNER_NAME} la reporta perdida e imprime su cartel. Un vecino escanea el QR y le avisa, sin cuenta ni app.`,
   },
   {
     key: "refugio",
@@ -707,6 +708,15 @@ export const LIFE_MOMENTS: LifeMoment[] = [
     // Copy review 2026-09-30: subject/verb agreement fix ("tránsito, adopción
     // y transferencia" is plural, "queda" is singular).
     body: "Tránsitos, adopciones y transferencias quedan en su libreta.",
+  },
+  {
+    // PO 2026-10-01. The travel view (loadTravelView) checks the
+    // destination's and the airline's requirements against the libreta.
+    // The sixth card also closes the grid: 3 + 3 at three columns, 2 + 2 + 2
+    // at two (app/landing.css .lp-feat-grid), where five left one row short.
+    icon: "valija",
+    title: "Me voy de viaje con mi mascota",
+    body: "Te dice qué le falta según el país y la aerolínea, con lo que ya está en su libreta.",
   },
 ];
 

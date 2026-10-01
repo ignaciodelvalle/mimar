@@ -50,6 +50,7 @@ vi.mock("next/navigation", () => ({
   usePathname: vi.fn(() => "/"),
 }));
 
+import { ICON_MAP } from "@/components/Icon";
 import { BondBand } from "@/components/landing/BondBand";
 import { CrisisBand } from "@/components/landing/CrisisBand";
 import { EmpezarSection } from "@/components/landing/EmpezarSection";
@@ -62,6 +63,7 @@ import {
   ACTORS,
   CHAPTERS,
   HERO_MRZ_WIDTH,
+  LIFE_MOMENTS,
   heroMrzLines,
 } from "@/components/landing/landing-content";
 
@@ -494,16 +496,38 @@ describe("life moments + FAQ + trust row", () => {
     expect(html).not.toContain("no es un buen día");
   });
 
-  it("renders the 5 life-moment cards without law citations", () => {
+  it("renders the 6 life-moment cards without law citations", () => {
     const html = renderToStaticMarkup(<FeaturesSection />);
+    expect(html.match(/<article class="lp-feat /g) ?? []).toHaveLength(6);
     expect(html).toContain("Mi perro mordió a alguien");
     expect(html).toContain("Quiero adoptar");
+    // The travel card (PO 2026-10-01).
+    expect(html).toContain("Me voy de viaje con mi mascota");
+    expect(html).toContain(
+      "Te dice qué le falta según el país y la aerolínea, con lo que ya está en su libreta.",
+    );
     // "Vi un caso de maltrato" was cut here (copy review 2026-09-30, D6):
     // CrisisBand already carries this exact door above the fold, and this
     // card's own body contradicted the real denuncia flow.
     expect(html).not.toContain("Vi un caso de maltrato");
     // No law citations in feature copy (README §6).
     expect(html).not.toMatch(/Ley\s+\d/);
+  });
+
+  it("every life-moment icon is a real glyph, never the HelpCircle fallback", () => {
+    for (const m of LIFE_MOMENTS) {
+      expect(ICON_MAP[m.icon], `${m.title}: icon "${m.icon}"`).toBeDefined();
+    }
+    // The travel card's suitcase (components/Icon.tsx, PO 2026-10-01).
+    expect(ICON_MAP.valija?.displayName).toBe("Luggage");
+  });
+
+  it("the card count fills every row of the grid: 6 = 3 × 2 = 2 × 3", () => {
+    // .lp-feat-grid tops out at three columns and drops to two on a tablet
+    // (app/landing.css, auto-fit with a 300px minimum), so a count divisible
+    // by both leaves no card alone in its row.
+    expect(LIFE_MOMENTS.length % 3).toBe(0);
+    expect(LIFE_MOMENTS.length % 2).toBe(0);
   });
 
   it("renders 5 objection <details> and the trust row with a subtle beta chip", () => {

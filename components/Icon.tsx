@@ -63,6 +63,7 @@ import {
   Lock,
   LogIn,
   LogOut,
+  Luggage,
   Mail,
   MapPin,
   Megaphone,
@@ -195,6 +196,9 @@ export const ICON_MAP: Record<string, LucideIcon> = {
   ocultar: EyeOff,
   casa: Home,
   home: Home,
+  // Travel (the landing's "Me voy de viaje" card, PO 2026-10-01).
+  valija: Luggage,
+  luggage: Luggage,
   camara: Camera,
   celular: Smartphone,
   adjuntar: Paperclip,
