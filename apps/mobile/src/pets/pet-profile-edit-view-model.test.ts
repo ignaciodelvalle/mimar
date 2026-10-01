@@ -67,6 +67,7 @@ function view(over: Partial<PetProfileEditV1> = {}): PetProfileEditV1 {
       canCorrectSpecies: true,
       canTogglePhysicalTagInterest: true,
       canManageServiceDog: true,
+      canEditProfile: true,
     },
     physicalTagInterest: { interested: false, requestedAt: null },
     serviceDog: { designation: null },
@@ -102,6 +103,7 @@ describe("the two capabilities are two different refusals", () => {
         canCorrectSpecies: false,
         canTogglePhysicalTagInterest: false,
         canManageServiceDog: false,
+        canEditProfile: false,
       },
     });
     const identity = identityBlockedReason(blocked);
@@ -121,6 +123,7 @@ describe("the two capabilities are two different refusals", () => {
         canCorrectSpecies: true,
         canTogglePhysicalTagInterest: true,
         canManageServiceDog: false,
+        canEditProfile: true,
       },
       emergencyContacts: null,
       emergencyAccountDefault: null,
@@ -140,6 +143,7 @@ describe("the two capabilities are two different refusals", () => {
         canCorrectSpecies: false,
         canTogglePhysicalTagInterest: true,
         canManageServiceDog: false,
+        canEditProfile: false,
       },
     });
     expect(speciesBlockedReason(view())).toBeNull();

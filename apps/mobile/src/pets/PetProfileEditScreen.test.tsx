@@ -75,6 +75,7 @@ function payload(over: Partial<PetProfileEditV1> = {}): PetProfileEditV1 {
       canCorrectSpecies: true,
       canTogglePhysicalTagInterest: true,
       canManageServiceDog: true,
+      canEditProfile: true,
     },
     physicalTagInterest: { interested: false, requestedAt: null },
     serviceDog: { designation: null },
@@ -113,6 +114,7 @@ describe("PetProfileEditScreen — the two halves are gated separately", () => {
           canCorrectSpecies: true,
           canTogglePhysicalTagInterest: true,
           canManageServiceDog: false,
+          canEditProfile: true,
         },
         emergencyContacts: null,
         emergencyAccountDefault: null,
@@ -137,6 +139,7 @@ describe("PetProfileEditScreen — the two halves are gated separately", () => {
           canCorrectSpecies: false,
           canTogglePhysicalTagInterest: true,
           canManageServiceDog: true,
+          canEditProfile: false,
         },
       }),
     });
@@ -287,6 +290,7 @@ describe("PetProfileEditScreen — saving", () => {
           canCorrectSpecies: false,
           canTogglePhysicalTagInterest: false,
           canManageServiceDog: false,
+          canEditProfile: false,
         },
       }),
     });

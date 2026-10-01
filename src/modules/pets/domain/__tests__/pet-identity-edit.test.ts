@@ -24,12 +24,21 @@
 
 import { describe, expect, it } from "vitest";
 
+import { petAgeFromBirthDate } from "@dim/contract/reference";
+
+import { diffPet } from "@/src/modules/pets/domain/pet-diff";
 import type { ParsedPet } from "@/src/modules/pets/domain/types";
 
 import {
   type EditablePetSnapshot,
   composePetIdentityEdit,
 } from "@/src/modules/pets/domain/pet-identity-edit";
+import {
+  type PetProfileEdit,
+  type StoredBirthDate,
+  composePetProfileEdit,
+  resolveEditedBirthDate,
+} from "@/src/modules/pets/domain/pet-profile-edit";
 
 /** A pet with EVERY optional field populated — a blank one proves nothing. */
 function fullPet(over: Partial<EditablePetSnapshot> = {}): EditablePetSnapshot {
@@ -174,5 +183,294 @@ describe("composePetIdentityEdit — what the caller did not name survives", () 
       color: null,
     });
     expect(parsed.species).toBe("cat");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The birth date an edit stores (owner-pet-actions, 2026-10-01)
+// ---------------------------------------------------------------------------
+//
+// THE BUG THIS PINS. The web's edit form shows the stored date as an age and
+// posts the age back; the parser turned that age into "today minus N months"
+// on EVERY save. So a date the owner had recorded exactly moved to the 1st (or
+// to whatever today's day was), was re-flagged as an estimate, and moved again
+// on the next unrelated save — a correction of the animal's colour silently
+// rewrote its birth date.
+
+/** 12:00 in Buenos Aires on 14 October 2026 — a mid-day instant, see pet-age.ts. */
+const OCT_14_NOON_AR = new Date("2026-10-14T15:00:00Z");
+
+const RECORDED: StoredBirthDate = { dateOfBirth: "2020-03-15", birthDateIsEstimated: false };
+
+describe("resolveEditedBirthDate — an age shown and posted back is not a new age", () => {
+  it("keeps a RECORDED date when the form posts back the age it showed", () => {
+    const shown = petAgeFromBirthDate(RECORDED.dateOfBirth, OCT_14_NOON_AR);
+    expect(shown).toEqual({ years: 6, months: 6 });
+    expect(
+      resolveEditedBirthDate({ stored: RECORDED, submitted: shown, now: OCT_14_NOON_AR }),
+    ).toEqual(RECORDED);
+  });
+
+  it("does not drift across saves on different days", () => {
+    let stored = RECORDED;
+    for (const day of ["2026-10-14", "2026-11-02", "2027-03-20"]) {
+      const now = new Date(`${day}T15:00:00Z`);
+      const shown = petAgeFromBirthDate(stored.dateOfBirth, now);
+      stored = resolveEditedBirthDate({ stored, submitted: shown, now });
+    }
+    expect(stored).toEqual(RECORDED);
+  });
+
+  it("keeps the date when the form showed yesterday's age — opened before midnight", () => {
+    // Born on the 14th: on the 13th the animal is 6 años 6 meses, on the 14th
+    // it turns 6 años 7 meses. A form opened on the 13th and saved on the 14th
+    // posts the age it showed, which is not a change.
+    const stored = { dateOfBirth: "2020-03-14", birthDateIsEstimated: false };
+    expect(
+      resolveEditedBirthDate({
+        stored,
+        submitted: { years: 6, months: 6 },
+        now: OCT_14_NOON_AR,
+      }),
+    ).toEqual(stored);
+  });
+
+  it("keeps the date when the client's calendar ran a day ahead of Argentina's", () => {
+    expect(
+      resolveEditedBirthDate({
+        stored: RECORDED,
+        submitted: { years: 6, months: 7 },
+        now: OCT_14_NOON_AR,
+      }),
+    ).toEqual(RECORDED);
+  });
+
+  it("estimates a new date, and says so, when the age itself was changed", () => {
+    expect(
+      resolveEditedBirthDate({
+        stored: RECORDED,
+        submitted: { years: 4, months: 0 },
+        now: OCT_14_NOON_AR,
+      }),
+    ).toEqual({ dateOfBirth: "2022-10-14", birthDateIsEstimated: true });
+  });
+
+  it("estimates one for an animal that had no date", () => {
+    expect(
+      resolveEditedBirthDate({
+        stored: { dateOfBirth: null, birthDateIsEstimated: false },
+        submitted: { years: 2, months: null },
+        now: OCT_14_NOON_AR,
+      }),
+    ).toEqual({ dateOfBirth: "2024-10-14", birthDateIsEstimated: true });
+  });
+
+  it("answers with the two birth-date fields alone, never the row it was handed", () => {
+    // Callers hand it the whole pet row as `stored` (structurally it fits) and
+    // spread the answer into an identity edit. Returning `stored` itself spread
+    // the row's stored name and colour over the ones the person had just typed —
+    // caught by the route test, pinned here where it belongs.
+    const row = { ...RECORDED, name: "Pampa", color: "Atigrada", sex: "female" };
+    const shown = petAgeFromBirthDate(row.dateOfBirth, OCT_14_NOON_AR);
+    const answer = resolveEditedBirthDate({ stored: row, submitted: shown, now: OCT_14_NOON_AR });
+    expect(answer).toEqual(RECORDED);
+    expect(Object.keys(answer).sort()).toEqual(["birthDateIsEstimated", "dateOfBirth"]);
+  });
+
+  it("clears the date when both age fields were emptied, as the web form always has", () => {
+    expect(
+      resolveEditedBirthDate({
+        stored: RECORDED,
+        submitted: { years: null, months: null },
+        now: OCT_14_NOON_AR,
+      }),
+    ).toEqual({ dateOfBirth: null, birthDateIsEstimated: false });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// composePetProfileEdit — a section saved is the only section changed
+// ---------------------------------------------------------------------------
+
+const NOTHING: PetProfileEdit = {
+  identity: null,
+  health: null,
+  publicCredential: null,
+  insurance: null,
+  origin: null,
+};
+
+describe("composePetProfileEdit — each section overlays only its own fields", () => {
+  it("a health save changes the five health fields and nothing else", () => {
+    const parsed = composePetProfileEdit(fullPet(), {
+      ...NOTHING,
+      health: {
+        favouriteFoods: ["Dieta casera"],
+        knownAllergies: [],
+        trainingLevel: "advanced",
+        permanentConditions: ["ciego", "otra"],
+        permanentConditionsOther: "displasia leve",
+      },
+    });
+
+    const expected: ParsedPet = {
+      // The section that was saved.
+      favouriteFoods: ["Dieta casera"],
+      knownAllergies: [],
+      trainingLevel: "advanced",
+      permanentConditions: ["ciego", "otra"],
+      permanentConditionsOther: "displasia leve",
+
+      // Everything else, exactly as the animal has it.
+      name: "Pampa",
+      breed: "Mestizo",
+      color: "Atigrada",
+      species: "dog",
+      sex: "female",
+      dateOfBirth: "2021-03-04",
+      birthDateIsEstimated: true,
+      estimatedWeightKg: "18.50",
+      insuranceCompany: "Aseguradora Sur",
+      insurancePolicyNumber: "POL-9182",
+      jurisdictionProvince: "Buenos Aires",
+      jurisdictionLocality: "San Carlos de Bariloche",
+      acquisitionMethod: "adopted",
+      emergencyInfoVisible: true,
+      discloseConditionsPublicly: true,
+
+      microchipId: null,
+      microchipCountryCode: null,
+      microchipImplantedAt: null,
+      microchipImplantedBy: null,
+      microchipLocation: null,
+      custodyKind: "owner",
+    };
+    expect(parsed).toEqual(expected);
+    expect(Object.keys(parsed).sort()).toEqual(Object.keys(expected).sort());
+  });
+
+  it("an identity save carries the sex and the birth date it was handed", () => {
+    const parsed = composePetProfileEdit(fullPet(), {
+      ...NOTHING,
+      identity: {
+        name: "Pampita",
+        breed: "Caniche",
+        color: "Blanca",
+        sex: "male",
+        dateOfBirth: "2020-05-01",
+        birthDateIsEstimated: false,
+      },
+    });
+    expect(parsed).toMatchObject({
+      name: "Pampita",
+      breed: "Caniche",
+      color: "Blanca",
+      sex: "male",
+      dateOfBirth: "2020-05-01",
+      birthDateIsEstimated: false,
+      // An untouched section stays as it was.
+      insuranceCompany: "Aseguradora Sur",
+      permanentConditions: ["ciego", "otra"],
+    });
+  });
+
+  it("the insurance, origin and credential sections write exactly their fields", () => {
+    const parsed = composePetProfileEdit(fullPet(), {
+      ...NOTHING,
+      publicCredential: { emergencyInfoVisible: false, discloseConditionsPublicly: false },
+      insurance: { insuranceCompany: null, insurancePolicyNumber: null },
+      origin: { acquisitionMethod: "gift" },
+    });
+    expect(parsed).toMatchObject({
+      emergencyInfoVisible: false,
+      discloseConditionsPublicly: false,
+      insuranceCompany: null,
+      insurancePolicyNumber: null,
+      acquisitionMethod: "gift",
+      name: "Pampa",
+      dateOfBirth: "2021-03-04",
+      permanentConditions: ["ciego", "otra"],
+    });
+  });
+
+  it("an edit that names no section composes the animal as it is — the diff is empty", () => {
+    const pet = fullPet();
+    const parsed = composePetProfileEdit(pet, NOTHING);
+    expect(diffPet({ ...pet, potentiallyDangerousBreed: false }, parsed, false)).toEqual([]);
+    expect(parsed.emergencyInfoVisible).toBe(pet.emergencyInfoVisible);
+  });
+
+  it("turns the disclosure off when the health save leaves no condition to disclose", () => {
+    const parsed = composePetProfileEdit(fullPet(), {
+      ...NOTHING,
+      health: {
+        favouriteFoods: [],
+        knownAllergies: [],
+        trainingLevel: null,
+        permanentConditions: [],
+        permanentConditionsOther: null,
+      },
+    });
+    expect(parsed.permanentConditions).toEqual([]);
+    expect(parsed.discloseConditionsPublicly).toBe(false);
+  });
+
+  it("does not publish a disclosure for an animal with no conditions", () => {
+    const parsed = composePetProfileEdit(
+      fullPet({ permanentConditions: [], permanentConditionsOther: null }),
+      {
+        ...NOTHING,
+        publicCredential: { emergencyInfoVisible: true, discloseConditionsPublicly: true },
+      },
+    );
+    expect(parsed.discloseConditionsPublicly).toBe(false);
+  });
+
+  it("drops the description when 'otra' is no longer one of the conditions", () => {
+    const parsed = composePetProfileEdit(fullPet(), {
+      ...NOTHING,
+      health: {
+        favouriteFoods: [],
+        knownAllergies: [],
+        trainingLevel: null,
+        permanentConditions: ["ciego"],
+        permanentConditionsOther: "displasia de cadera",
+      },
+    });
+    expect(parsed.permanentConditionsOther).toBeNull();
+  });
+
+  it("keeps a legacy condition the animal carries and drops a code nobody knows", () => {
+    const parsed = composePetProfileEdit(
+      fullPet({ permanentConditions: ["una_condicion_que_ya_no_existe"] }),
+      {
+        ...NOTHING,
+        health: {
+          favouriteFoods: [],
+          knownAllergies: [],
+          trainingLevel: null,
+          permanentConditions: ["una_condicion_que_ya_no_existe", "inventada", "sordo"],
+          permanentConditionsOther: null,
+        },
+      },
+    );
+    expect(parsed.permanentConditions).toEqual(["una_condicion_que_ya_no_existe", "sordo"]);
+  });
+
+  it("is what composePetIdentityEdit always was, given the identity section alone", () => {
+    const pet = fullPet();
+    expect(composePetIdentityEdit(pet, { name: "Pampita", breed: null, color: "Blanca" })).toEqual(
+      composePetProfileEdit(pet, {
+        ...NOTHING,
+        identity: {
+          name: "Pampita",
+          breed: null,
+          color: "Blanca",
+          sex: pet.sex,
+          dateOfBirth: pet.dateOfBirth,
+          birthDateIsEstimated: pet.birthDateIsEstimated,
+        },
+      }),
+    );
   });
 });

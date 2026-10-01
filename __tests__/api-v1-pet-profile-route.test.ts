@@ -28,6 +28,8 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { petAgeFromBirthDate } from "@dim/contract/reference";
+
 const OWNER_ID = "11111111-1111-4111-8111-111111111111";
 const PET_ID = "22222222-2222-4222-8222-222222222222";
 const TOKEN = "DIM-PAMP-0001";
@@ -367,6 +369,8 @@ describe("GET — what the form pre-fills with", () => {
       // D3: the legal owner alone — `AsistenciaPage` and
       // `loadOwnedPetWithServiceDog` both say `role = 'owner'`.
       canManageServiceDog: false,
+      // owner-pet-actions: the owner panel lets a co-owner into Editar datos.
+      canEditProfile: true,
     });
     // NULL, not an empty draft: these are the titular's own numbers.
     expect(body.emergencyContacts).toBeNull();
@@ -393,6 +397,7 @@ describe("GET — what the form pre-fills with", () => {
       // caretaker passes its own check exactly as a co-owner does.
       canTogglePhysicalTagInterest: true,
       canManageServiceDog: false,
+      canEditProfile: false,
     });
   });
 
@@ -1158,5 +1163,177 @@ describe("POST — the request itself", () => {
     const response = await send(IDENTITY);
     expect(response.status).toBe(404);
     expect(control.writes).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// owner-pet-actions — "Editar datos" by section (`edit_profile`)
+// ---------------------------------------------------------------------------
+
+/** Every section null: the body that edits nothing. */
+const NO_SECTIONS = {
+  command: "edit_profile",
+  identity: null,
+  health: null,
+  publicCredential: null,
+  insurance: null,
+  origin: null,
+};
+
+/** What the composer handed `updatePet`, from the one write this test expects. */
+function composed(): Record<string, unknown> {
+  expect(control.writes).toHaveLength(1);
+  return control.writes[0].input.parsed as Record<string, unknown>;
+}
+
+describe("POST — editar datos por sección", () => {
+  it("writes the sections it names and leaves every other one as stored", async () => {
+    const response = await send({
+      ...NO_SECTIONS,
+      health: {
+        favouriteFoods: ["Dieta casera"],
+        knownAllergies: ["Pollo"],
+        trainingLevel: "basic",
+        permanentConditions: [],
+        permanentConditionsOther: null,
+      },
+      insurance: { insuranceCompany: "Sancor Seguros", insurancePolicyNumber: "POL-1" },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ command: "edit_profile", changed: true });
+    expect(composed()).toMatchObject({
+      favouriteFoods: ["Dieta casera"],
+      knownAllergies: ["Pollo"],
+      trainingLevel: "basic",
+      insuranceCompany: "Sancor Seguros",
+      insurancePolicyNumber: "POL-1",
+      // Untouched sections, exactly as the row has them.
+      name: "Pampa",
+      sex: "female",
+      dateOfBirth: "2021-03-04",
+      acquisitionMethod: "adopted",
+      estimatedWeightKg: "18.50",
+    });
+  });
+
+  it("keeps the stored birth date when the identity section posts back the age it shows", async () => {
+    // THE DRIFT. The row's date is a RECORDED one; the screen shows it as an age
+    // and posts the age back with a colour change. The date must not move and
+    // must not become an estimate.
+    const shown = petAgeFromBirthDate("2021-03-04", new Date());
+    await send({
+      ...NO_SECTIONS,
+      identity: {
+        name: "Pampa",
+        breed: "Caniche",
+        color: "Blanca",
+        sex: "female",
+        ageYears: shown.years,
+        ageMonths: shown.months,
+      },
+    });
+    expect(composed()).toMatchObject({
+      color: "Blanca",
+      dateOfBirth: "2021-03-04",
+      birthDateIsEstimated: false,
+    });
+  });
+
+  it("estimates a new birth date, flagged as one, when the age itself changed", async () => {
+    await send({
+      ...NO_SECTIONS,
+      identity: {
+        name: "Pampa",
+        breed: "Caniche",
+        color: "Atigrada",
+        sex: "male",
+        ageYears: 11,
+        ageMonths: 0,
+      },
+    });
+    const parsed = composed();
+    expect(parsed.sex).toBe("male");
+    expect(parsed.birthDateIsEstimated).toBe(true);
+    expect(petAgeFromBirthDate(parsed.dateOfBirth as string, new Date())).toEqual({
+      years: 11,
+      months: 0,
+    });
+  });
+
+  it("reports changed:false for an edit that names no section", async () => {
+    const body = await (await send(NO_SECTIONS)).json();
+    expect(body).toEqual({ command: "edit_profile", changed: false });
+  });
+
+  it("reports changed:true for a toggle the diff does not carry", async () => {
+    // `emergencyInfoVisible` writes without a `pet_profile_updated` entry; the
+    // ack still has to say the save landed.
+    const body = await (
+      await send({
+        ...NO_SECTIONS,
+        publicCredential: { emergencyInfoVisible: true, discloseConditionsPublicly: false },
+      })
+    ).json();
+    expect(body).toEqual({ command: "edit_profile", changed: true });
+  });
+
+  it("refuses a breed the persisted species' catalog does not carry, writing nothing", async () => {
+    const response = await send({
+      ...NO_SECTIONS,
+      identity: {
+        name: "Pampa",
+        breed: "Persa",
+        color: null,
+        sex: "female",
+        ageYears: null,
+        ageMonths: null,
+      },
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "profile_breed_invalid" });
+    expect(control.writes).toHaveLength(0);
+  });
+
+  it("refuses a body that leaves a section key out — absent is not 'leave it'", async () => {
+    const { origin: _origin, ...withoutOrigin } = NO_SECTIONS;
+    const response = await send(withoutOrigin);
+    expect(response.status).toBe(400);
+    expect(control.writes).toHaveLength(0);
+  });
+
+  it("admits a co-owner and a foster, the holders the owner panel lets in", async () => {
+    for (const role of ["co_owner", "foster"]) {
+      control.writes = [];
+      control.access = asRole(role);
+      expect((await send(NO_SECTIONS)).status).toBe(200);
+      expect(control.writes).toHaveLength(1);
+    }
+  });
+
+  it("refuses a caretaker, a user-held custody row and the org path, writing nothing", async () => {
+    for (const access of [asRole("caretaker"), asRole("shelter_custody"), asOrg()]) {
+      control.writes = [];
+      control.access = access;
+      const response = await send(NO_SECTIONS);
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: "profile_forbidden" });
+      expect(control.writes).toHaveLength(0);
+    }
+  });
+
+  it("reports the same gate on the read, so no screen offers what the write refuses", async () => {
+    const expectations: Array<[() => unknown, boolean]> = [
+      [asRole("owner"), true],
+      [asRole("co_owner"), true],
+      [asRole("foster"), true],
+      [asRole("caretaker"), false],
+      [asRole("shelter_custody"), false],
+      [asOrg(), false],
+    ];
+    for (const [access, allowed] of expectations) {
+      control.access = access;
+      const body = await (await read()).json();
+      expect(body.capabilities.canEditProfile).toBe(allowed);
+    }
   });
 });

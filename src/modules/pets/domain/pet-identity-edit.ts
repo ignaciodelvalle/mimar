@@ -1,6 +1,13 @@
 // Composing a `ParsedPet` for a NARROW identity edit — the three fields the
-// native "Editar datos" screen offers, laid over everything the animal already
-// has.
+// native "Editar datos" screen offered before owner-pet-actions, laid over
+// everything the animal already has. Installed builds still send it
+// (`edit_identity`), so it stays.
+//
+// SINCE owner-pet-actions (2026-10-01) THIS IS THE IDENTITY SECTION OF
+// `composePetProfileEdit` (`pet-profile-edit.ts`), with the sex and the birth
+// date carried over as stored: one composer, so the two commands cannot drift
+// into carrying the untouched fields differently. The reasoning below is still
+// the reason both exist.
 //
 // WHY THIS EXISTS AT ALL, AND WHY IT IS NOT "JUST BUILD THE OBJECT INLINE"
 // ---------------------------------------------------------------------------
@@ -50,42 +57,13 @@
 //     deliberately does not carry the pet's real custody: doing so would imply
 //     this door decides something about it, and it decides nothing.
 
-import type { PermanentCondition } from "@/lib/reference/permanent-conditions";
-
+import { type EditablePetSnapshot, composePetProfileEdit } from "./pet-profile-edit";
 import type { ParsedPet } from "./types";
 
-/**
- * Everything about the animal that a narrow edit must PRESERVE, plus the three
- * fields it may replace.
- *
- * Structural rather than the Drizzle `Pet` type, for the reason `pet-diff.ts`
- * gives for its own snapshot: the domain layer stays free of `@/db`, and a real
- * `pets` row satisfies this shape as-is.
- */
-export type EditablePetSnapshot = {
-  name: string;
-  species: string;
-  sex: "male" | "female" | "unknown";
-  breed: string | null;
-  dateOfBirth: string | null;
-  birthDateIsEstimated: boolean;
-  color: string | null;
-  estimatedWeightKg: string | null;
-  favouriteFoods: string[] | null;
-  knownAllergies: string[] | null;
-  trainingLevel: "none" | "basic" | "intermediate" | "advanced" | "professional" | null;
-  insuranceCompany: string | null;
-  insurancePolicyNumber: string | null;
-  jurisdictionProvince: string | null;
-  jurisdictionLocality: string | null;
-  acquisitionMethod: ParsedPet["acquisitionMethod"];
-  emergencyInfoVisible: boolean;
-  permanentConditions: string[];
-  permanentConditionsOther: string | null;
-  discloseConditionsPublicly: boolean;
-};
+/** Defined beside the general composer; re-exported for this file's importers. */
+export type { EditablePetSnapshot };
 
-/** The three fields the native screen edits. Trimming happened in the schema. */
+/** The three fields the old native screen edits. Trimming happened in the schema. */
 export type PetIdentityEdit = {
   name: string;
   breed: string | null;
@@ -93,53 +71,32 @@ export type PetIdentityEdit = {
 };
 
 /**
- * Overlay a three-field edit on the animal's current state.
+ * Overlay a three-field edit on the animal's current state: the identity
+ * section of `composePetProfileEdit`, with the sex and the birth date exactly as
+ * stored and every other section left alone.
  *
- * `permanentConditions` is narrowed by a cast rather than re-validated. The
- * array came OUT of the column, it went IN through `parsePetForm`, which only
- * admits catalog codes, and the `pets_permanent_conditions_other_ck` constraint
- * guards the one cross-field rule. Re-filtering here would mean an unknown code
- * — a row written before a catalog entry was renamed, say — is silently DROPPED
- * by an unrelated name edit, which is the same class of quiet data loss this
- * whole file exists to prevent.
+ * `permanentConditions` is carried, not re-validated — an unknown code (a row
+ * written before a catalog entry was renamed, say) silently DROPPED by an
+ * unrelated name edit is the same class of quiet data loss this whole file
+ * exists to prevent. The general composer leaves an unedited section untouched,
+ * so that holds by construction.
  */
 export function composePetIdentityEdit(
   existing: EditablePetSnapshot,
   edit: PetIdentityEdit,
 ): ParsedPet {
-  return {
-    // The three the caller named.
-    name: edit.name,
-    breed: edit.breed,
-    color: edit.color,
-
-    // Everything else, exactly as the animal already has it.
-    species: existing.species,
-    sex: existing.sex,
-    dateOfBirth: existing.dateOfBirth,
-    birthDateIsEstimated: existing.birthDateIsEstimated,
-    estimatedWeightKg: existing.estimatedWeightKg,
-    favouriteFoods: existing.favouriteFoods ?? [],
-    knownAllergies: existing.knownAllergies ?? [],
-    trainingLevel: existing.trainingLevel,
-    insuranceCompany: existing.insuranceCompany,
-    insurancePolicyNumber: existing.insurancePolicyNumber,
-    jurisdictionProvince: existing.jurisdictionProvince,
-    jurisdictionLocality: existing.jurisdictionLocality,
-    acquisitionMethod: existing.acquisitionMethod,
-    emergencyInfoVisible: existing.emergencyInfoVisible,
-    permanentConditions: existing.permanentConditions as PermanentCondition[],
-    permanentConditionsOther: existing.permanentConditionsOther,
-    discloseConditionsPublicly: existing.discloseConditionsPublicly,
-
-    // Not this endpoint's to write — see the header.
-    microchipId: null,
-    microchipCountryCode: null,
-    microchipImplantedAt: null,
-    microchipImplantedBy: null,
-    microchipLocation: null,
-    // Required by `ParsedPet` and read by nobody on the update path — only
-    // `insertPetRegistered` consumes it. See the header's last bullet.
-    custodyKind: "owner",
-  };
+  return composePetProfileEdit(existing, {
+    identity: {
+      name: edit.name,
+      breed: edit.breed,
+      color: edit.color,
+      sex: existing.sex,
+      dateOfBirth: existing.dateOfBirth,
+      birthDateIsEstimated: existing.birthDateIsEstimated,
+    },
+    health: null,
+    publicCredential: null,
+    insurance: null,
+    origin: null,
+  });
 }

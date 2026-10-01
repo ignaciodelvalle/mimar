@@ -6,6 +6,7 @@ import { canonicalProvinceNameForStorage } from "@/lib/domain/jurisdiction-canon
 import { parseLocationFromFormData } from "@/lib/domain/location-value";
 import {
   type PermanentCondition,
+  type PetAge,
   TRAINING_LEVEL_VALUES,
   type TrainingLevel,
   detectContactInfoInFreeText,
@@ -74,6 +75,24 @@ export function normalizeConditionsOther(parsed: ParsedPet): string | null {
 // `@dim/contract/reference` (owner-pet-actions, 2026-10-01), unchanged, so the
 // app's "Editar datos" and the v1 alta run the same rule this parser runs.
 
+/** One age field: blank → null, a negative → 0, garbage → 0. */
+function parseAgeField(formData: FormData, key: "ageYears" | "ageMonths"): number | null {
+  const raw = String(formData.get(key) ?? "").trim();
+  return raw ? Math.max(0, Number.parseInt(raw, 10) || 0) : null;
+}
+
+/**
+ * The two age fields AS POSTED. `parsePetForm` turns them into a date; the edit
+ * path also needs them raw, to ask `resolveEditedBirthDate` whether the person
+ * changed the age at all or posted back the one the form showed.
+ */
+export function parseAgeFromFormData(formData: FormData): PetAge {
+  return {
+    years: parseAgeField(formData, "ageYears"),
+    months: parseAgeField(formData, "ageMonths"),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
@@ -119,11 +138,7 @@ export function parsePetForm(
   const sex: "male" | "female" | "unknown" =
     sexRaw === "male" || sexRaw === "female" ? sexRaw : "unknown";
 
-  const ageYearsRaw = String(formData.get("ageYears") ?? "").trim();
-  const ageMonthsRaw = String(formData.get("ageMonths") ?? "").trim();
-  const ageYears = ageYearsRaw ? Math.max(0, Number.parseInt(ageYearsRaw, 10) || 0) : null;
-  const ageMonths = ageMonthsRaw ? Math.max(0, Number.parseInt(ageMonthsRaw, 10) || 0) : null;
-  const dateOfBirth = estimatedBirthDateFromAge({ years: ageYears, months: ageMonths }, new Date());
+  const dateOfBirth = estimatedBirthDateFromAge(parseAgeFromFormData(formData), new Date());
   const birthDateIsEstimated = dateOfBirth !== null;
 
   const breed = String(formData.get("breed") ?? "").trim() || null;

@@ -89,7 +89,12 @@ import { upsertServiceDog } from "@/src/modules/pets/application/service-dog/ups
 import { updatePet } from "@/src/modules/pets/application/update-pet";
 import { diffPet } from "@/src/modules/pets/domain/pet-diff";
 import { composePetIdentityEdit } from "@/src/modules/pets/domain/pet-identity-edit";
-import type { NewNotification } from "@/src/modules/pets/domain/types";
+import {
+  type PetProfileIdentityEdit,
+  composePetProfileEdit,
+  resolveEditedBirthDate,
+} from "@/src/modules/pets/domain/pet-profile-edit";
+import type { NewNotification, ParsedPet } from "@/src/modules/pets/domain/types";
 import { PetsRepository } from "@/src/modules/pets/infrastructure/pets-repository";
 import type { PetProfileEditAckV1 } from "@dim/contract/api";
 import { type PetProfileCommandInput, resolvePetIdentityLengths } from "@dim/contract/input";
@@ -175,10 +180,8 @@ export async function runPetProfileCommand(ctx: CommandContext) {
   }
 
   if (ctx.input.command === "edit_profile") {
-    // The contract learns the command one work unit before this door can run it
-    // (owner-pet-actions 2.1 → 2.2): until the sectioned composer lands it is
-    // refused here, so no half-wired write path exists in between.
-    return apiV1Error("invalid_request", 400);
+    if (!capabilities.canEditProfile) return apiV1Error("profile_forbidden", 403);
+    return editProfile(ctx, access, ctx.input);
   }
 
   if (!capabilities.canEditEmergencyContacts) return apiV1Error("profile_forbidden", 403);
@@ -358,39 +361,107 @@ async function editIdentity(
   access: ResolvedProfileAccess,
   input: Extract<PetProfileCommandInput, { command: "edit_identity" }>,
 ) {
-  const pet = access.pet;
+  const gated = gateIdentityText(access.pet, input);
+  if (!gated.ok) return gated.refusal;
 
-  // The catalog gate, against the PERSISTED species and with the stored breed
-  // grandfathered. See the header.
+  const parsed = composePetIdentityEdit(access.pet, {
+    name: input.name,
+    breed: gated.breed,
+    color: input.color,
+  });
+  return writeComposedProfile(ctx, access, parsed, "edit_identity");
+}
+
+/**
+ * EDITAR DATOS POR SECCIÓN (owner-pet-actions) — every section the web form
+ * edits, through the same `updatePet` the web's `updatePetAction` reaches.
+ *
+ * Each section is `null` (left exactly as stored) or whole, and
+ * `composePetProfileEdit` lays the ones that came over the animal's current
+ * state — the seventeen-column writer is why that composition is the whole job
+ * (`pet-identity-edit.ts`'s header). The identity section passes the same breed
+ * and length gates `edit_identity` does, and its age goes through
+ * `resolveEditedBirthDate`, so posting back the age the screen showed keeps the
+ * stored birth date instead of re-deriving one from today.
+ */
+async function editProfile(
+  ctx: CommandContext,
+  access: ResolvedProfileAccess,
+  input: Extract<PetProfileCommandInput, { command: "edit_profile" }>,
+) {
+  let identity: PetProfileIdentityEdit | null = null;
+  if (input.identity !== null) {
+    const gated = gateIdentityText(access.pet, input.identity);
+    if (!gated.ok) return gated.refusal;
+    identity = {
+      name: input.identity.name,
+      breed: gated.breed,
+      color: input.identity.color,
+      sex: input.identity.sex,
+      ...resolveEditedBirthDate({
+        stored: access.pet,
+        submitted: { years: input.identity.ageYears, months: input.identity.ageMonths },
+        now: new Date(),
+      }),
+    };
+  }
+
+  const parsed = composePetProfileEdit(access.pet, {
+    identity,
+    health: input.health,
+    publicCredential: input.publicCredential,
+    insurance: input.insurance,
+    origin: input.origin,
+  });
+  return writeComposedProfile(ctx, access, parsed, "edit_profile");
+}
+
+/**
+ * The two gates an identity write passes before anything is composed — both
+ * need the animal's current row, which is why neither lives on the schema.
+ *
+ * THE BREED: the catalog gate, against the PERSISTED species and with the
+ * stored breed grandfathered. See the header.
+ *
+ * THE LENGTH: `pets.name` and `pets.color` are `text` and the web's parser caps
+ * neither, so an over-long value ALREADY EXISTS on some animals — and a cap
+ * applied to it on the way back out would refuse the whole request, colour
+ * correction included, leaving the owner unable to edit their own record from
+ * the phone. Only NEW values are gated; what the animal already carries passes
+ * at any length. `invalid_request` and not a code of its own: the client holds
+ * the same payload this compares against and says so per field before posting,
+ * so reaching here means a client out of step with the contract — the case the
+ * route's own schema backstop already answers with one key and no field detail.
+ */
+function gateIdentityText(
+  pet: ResolvedProfileAccess["pet"],
+  input: { name: string; breed: string | null; color: string | null },
+): { ok: true; breed: string | null } | { ok: false; refusal: Response } {
   const breedResolution = resolveBreedForWrite(pet.species, input.breed, {
     storedBreed: pet.breed,
   });
-  if (!breedResolution.ok) return apiV1Error("profile_breed_invalid", 400);
-
-  // THE LENGTH GATE, and it is HERE rather than on the schema for the same
-  // reason the breed gate is: both need the animal's current row. `pets.name`
-  // and `pets.color` are `text` and the web's parser caps neither, so an
-  // over-long value ALREADY EXISTS on some animals — and a cap applied to it on
-  // the way back out would refuse the whole request, colour correction included,
-  // leaving the owner unable to edit their own record from the phone. Only NEW
-  // values are gated; what the animal already carries passes at any length.
-  //
-  // `invalid_request` and not a code of its own: the client holds the same
-  // payload this compares against and says so per field before posting, so
-  // reaching here means a client out of step with the contract — the case the
-  // route's own schema backstop already answers with one key and no field
-  // detail.
+  if (!breedResolution.ok) {
+    return { ok: false, refusal: apiV1Error("profile_breed_invalid", 400) };
+  }
   const lengths = resolvePetIdentityLengths(
     { name: input.name, color: input.color },
     { name: pet.name, color: pet.color },
   );
-  if (!lengths.ok) return apiV1Error("invalid_request", 400);
+  if (!lengths.ok) return { ok: false, refusal: apiV1Error("invalid_request", 400) };
+  return { ok: true, breed: breedResolution.breed };
+}
 
-  const parsed = composePetIdentityEdit(pet, {
-    name: input.name,
-    breed: breedResolution.breed,
-    color: input.color,
-  });
+/**
+ * The write both commands end in: the pre-write reads, `updatePet`, the
+ * notification flush and the measured ack.
+ */
+async function writeComposedProfile(
+  ctx: CommandContext,
+  access: ResolvedProfileAccess,
+  parsed: ParsedPet,
+  command: "edit_identity" | "edit_profile",
+) {
+  const pet = access.pet;
 
   let existingCanonicalIds: Awaited<ReturnType<typeof fetchActiveIdentifications>>;
   let potentiallyDangerousBreed: boolean;
@@ -419,17 +490,20 @@ async function editIdentity(
     throw err;
   }
 
-  // `changed` is decided by the SAME pure diff `updatePet` uses to decide
-  // whether to open a transaction at all. Recomputing it here rather than
-  // reading a flag off the result is the honest shape available today: the
-  // use-case answers `{ ok: true, notifications: [] }` for a no-op and for a
-  // real write alike, and an ack that said `true` for both would tell a person
-  // their correction landed when the writer had already decided it was the same
-  // value. The other three inputs to `isNoOp` are CONSTANTS on this door — there
-  // is no photo, `emergencyInfoVisible` is carried over unchanged by the
-  // composer, and `microchipId` is null so no chip can be newly added — so an
-  // empty diff is exactly the no-op condition and nothing wider.
-  const changed = diffPet(pet, parsed, potentiallyDangerousBreed).length > 0;
+  // `changed` is decided by the SAME inputs `updatePet` uses to decide whether
+  // to open a transaction at all. Recomputing it here rather than reading a
+  // flag off the result is the honest shape available today: the use-case
+  // answers `{ ok: true, notifications: [] }` for a no-op and for a real write
+  // alike, and an ack that said `true` for both would tell a person their
+  // correction landed when the writer had already decided it was the same value.
+  // Of `isNoOp`'s other inputs, two are CONSTANTS on this door — there is no
+  // photo, and `microchipId` is null so no chip can be newly added — and the
+  // third is the one column that writes WITHOUT a diff entry:
+  // `emergencyInfoVisible`, which only the sectioned edit can move (the identity
+  // composer carries it unchanged). So this is exactly the no-op condition.
+  const changed =
+    diffPet(pet, parsed, potentiallyDangerousBreed).length > 0 ||
+    parsed.emergencyInfoVisible !== pet.emergencyInfoVisible;
 
   const result = await updatePet(
     {
@@ -462,17 +536,17 @@ async function editIdentity(
     // The use-case's message is es-AR prose written for a form. It is NOT
     // echoed: this surface answers with a code from the contract's vocabulary
     // and nothing else, so a client cannot come to depend on a sentence.
-    reportError("api-v1-profile/edit_identity", result.error);
+    reportError(`api-v1-profile/${command}`, result.error);
     return apiV1Error("profile_failed", 500);
   }
 
   // REACHABLE, not defensive. `updatePet` queues exactly one notification — the
   // PPP registration reminder — and only when the animal BECAME potentially
-  // dangerous, which needs a breed change. This door edits the breed, so the
-  // transition is reachable from it and the flush is real work.
+  // dangerous, which needs a breed change. Both commands edit the breed, so the
+  // transition is reachable from them and the flush is real work.
   await flushNotifications(result.notifications, new Date().toISOString().slice(0, 10));
 
-  return ack({ command: "edit_identity", changed });
+  return ack({ command, changed });
 }
 
 /**

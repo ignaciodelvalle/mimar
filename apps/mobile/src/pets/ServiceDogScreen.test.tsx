@@ -64,6 +64,7 @@ function payload(over: Partial<PetProfileEditV1> = {}): PetProfileEditV1 {
       canCorrectSpecies: true,
       canTogglePhysicalTagInterest: true,
       canManageServiceDog: true,
+      canEditProfile: true,
     },
     ...over,
   } as PetProfileEditV1;
@@ -88,6 +89,7 @@ describe("ServiceDogScreen — who sees what", () => {
           canCorrectSpecies: true,
           canTogglePhysicalTagInterest: true,
           canManageServiceDog: false,
+          canEditProfile: true,
         },
       }),
     });

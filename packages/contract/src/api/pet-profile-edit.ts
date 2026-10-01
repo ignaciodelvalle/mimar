@@ -159,6 +159,20 @@ export type PetProfileEditCapabilitiesV1 = {
    * designation block tells a client the species through `species` above.
    */
   canManageServiceDog: boolean;
+  /**
+   * owner-pet-actions (2026-10-01) — the sectioned `edit_profile` command, and
+   * the gate on the whole "Editar datos" beyond the three identity fields.
+   *
+   * THE PERSON PATH, AS THE OWNER PANEL READS IT: owner, co-owner and foster.
+   * Narrower than `canEditIdentity` on purpose, twice. The ORG path is out: an
+   * organization member acts from the portal, and the owner panel offers them no
+   * "Editar datos" at all. And a holder the viewer vocabulary has no word for —
+   * a user-held `shelter_custody` row, any role added later — reads as a
+   * caretaker, exactly as `toViewerRole` names them on the owner face, so the
+   * owner's insurance and medical text are never served to somebody the panel
+   * itself calls a caretaker (PO decision: "web = app").
+   */
+  canEditProfile: boolean;
 };
 
 export type PetProfileEditV1 = {

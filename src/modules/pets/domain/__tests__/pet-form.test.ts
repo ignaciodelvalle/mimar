@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { parsePetForm } from "../pet-form";
+import { parseAgeFromFormData, parsePetForm } from "../pet-form";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -164,6 +164,26 @@ describe("parsePetForm — age to dateOfBirth", () => {
     expect(result.error).toBeNull();
     // 0 years 0 months → still triggers DOB path (ageYears !== null)
     expect(result.parsed?.birthDateIsEstimated).toBe(true);
+  });
+});
+
+// The edit path needs the age AS POSTED, not the date derived from it: whether
+// the person changed the age is a comparison with the stored date
+// (`resolveEditedBirthDate`), and only the raw fields can answer it.
+describe("parseAgeFromFormData — the two age fields as the form posted them", () => {
+  it("reads both fields, blank as null", () => {
+    expect(parseAgeFromFormData(makeFormData({ ageYears: "6", ageMonths: " " }))).toEqual({
+      years: 6,
+      months: null,
+    });
+    expect(parseAgeFromFormData(makeFormData({}))).toEqual({ years: null, months: null });
+  });
+
+  it("clamps a negative to zero and reads garbage as zero, as parsePetForm always did", () => {
+    expect(parseAgeFromFormData(makeFormData({ ageYears: "-3", ageMonths: "x" }))).toEqual({
+      years: 0,
+      months: 0,
+    });
   });
 });
 

@@ -12,6 +12,8 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { petAgeFromBirthDate } from "@dim/contract/reference";
+
 // ---------------------------------------------------------------------------
 // Module mocks (must be at top level before imports)
 // ---------------------------------------------------------------------------
@@ -726,6 +728,88 @@ describe("updatePetAction", () => {
         expect.objectContaining({ potentiallyDangerousBreed: true }),
         expect.anything(),
       );
+    });
+  });
+
+  // owner-pet-actions: the edit form shows the stored birth date as an age and
+  // posts the age back. Turning that age into "today minus N months" on every
+  // save moved the date on each save and re-flagged a recorded date as an
+  // estimate — an edit of the colour rewrote the birth date.
+  describe("the birth date an edit stores", () => {
+    async function withStoredBirthDate(dateOfBirth: string, birthDateIsEstimated: boolean) {
+      const petAccessMod = await import("@/lib/infra/pet-access");
+      petAccessMod.requireTitularAccess = vi.fn().mockResolvedValue({
+        ok: true,
+        user: { id: "user-1" },
+        supabase: { storage: { from: vi.fn().mockReturnValue({ remove: vi.fn() }) } },
+        pet: {
+          id: "pet-existing",
+          name: "Luna",
+          species: "perro",
+          sex: "female",
+          breed: "labrador",
+          dateOfBirth,
+          birthDateIsEstimated,
+          color: "negro",
+          estimatedWeightKg: null,
+          favouriteFoods: null,
+          knownAllergies: null,
+          trainingLevel: null,
+          potentiallyDangerousBreed: false,
+          insuranceCompany: null,
+          insurancePolicyNumber: null,
+          jurisdictionProvince: "Buenos Aires",
+          jurisdictionLocality: "La Plata",
+          acquisitionMethod: "adopted",
+          emergencyInfoVisible: false,
+          permanentConditions: [],
+          permanentConditionsOther: null,
+          discloseConditionsPublicly: false,
+        },
+        eventAuthorship: { authorRole: "owner", authorOrganizationId: null, authorVerified: false },
+        accessPath: "owner",
+      });
+    }
+
+    function parsedSentToUpdatePet(updatePet: unknown): Record<string, unknown> {
+      const call = (updatePet as ReturnType<typeof vi.fn>).mock.calls[0];
+      return (call[0] as { parsed: Record<string, unknown> }).parsed;
+    }
+
+    it("keeps a recorded date when the form posts back the age it showed", async () => {
+      await withStoredBirthDate("2022-01-01", false);
+      const shown = petAgeFromBirthDate("2022-01-01", new Date());
+      const { updatePet } = await import("@/src/modules/pets/application/update-pet");
+
+      await updatePetAction(
+        "DIM-TEST-0001",
+        { error: null },
+        makeUpdateFormData({ ageYears: String(shown.years), ageMonths: String(shown.months) }),
+      );
+
+      expect(parsedSentToUpdatePet(updatePet)).toMatchObject({
+        dateOfBirth: "2022-01-01",
+        birthDateIsEstimated: false,
+      });
+    });
+
+    it("estimates a new date, flagged as one, when the age itself was changed", async () => {
+      await withStoredBirthDate("2022-01-01", false);
+      const { updatePet } = await import("@/src/modules/pets/application/update-pet");
+
+      await updatePetAction(
+        "DIM-TEST-0001",
+        { error: null },
+        makeUpdateFormData({ ageYears: "12", ageMonths: "0" }),
+      );
+
+      const parsed = parsedSentToUpdatePet(updatePet);
+      expect(parsed.birthDateIsEstimated).toBe(true);
+      expect(parsed.dateOfBirth).not.toBe("2022-01-01");
+      expect(petAgeFromBirthDate(parsed.dateOfBirth as string, new Date())).toEqual({
+        years: 12,
+        months: 0,
+      });
     });
   });
 

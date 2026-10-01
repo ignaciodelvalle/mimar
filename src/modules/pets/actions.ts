@@ -65,7 +65,8 @@ import { recordMovementWriter } from "./application/movement/record-movement";
 import { correctPetSpecies } from "./application/profile/correct-species";
 import { registerPet } from "./application/register-pet";
 import { updatePet } from "./application/update-pet";
-import { parsePetForm } from "./domain/pet-form";
+import { parseAgeFromFormData, parsePetForm } from "./domain/pet-form";
+import { resolveEditedBirthDate } from "./domain/pet-profile-edit";
 import type { NewNotification, NewPetFormState } from "./domain/types";
 import { PetsRepository } from "./infrastructure/pets-repository";
 
@@ -439,6 +440,19 @@ export async function updatePetAction(
   }
   // Safe: parseResult.error === null implies parsed is non-null (discriminated union).
   const parsed = parseResult.parsed as NonNullable<typeof parseResult.parsed>;
+
+  // The birth date, NOT the parser's "today minus the posted age". The form
+  // shows the stored date as an age and posts it back, so re-deriving the date
+  // from it on every save moved the date on each save and turned a recorded
+  // date into an estimate (owner-pet-actions). The same rule the native
+  // sectioned edit runs, from the same module.
+  const birth = resolveEditedBirthDate({
+    stored: existingPet,
+    submitted: parseAgeFromFormData(formData),
+    now: new Date(),
+  });
+  parsed.dateOfBirth = birth.dateOfBirth;
+  parsed.birthDateIsEstimated = birth.birthDateIsEstimated;
 
   // Breed catalog gate (QA A4) — same as createPetAction, with one exception:
   // re-submitting the pet's CURRENT stored breed unchanged is accepted even

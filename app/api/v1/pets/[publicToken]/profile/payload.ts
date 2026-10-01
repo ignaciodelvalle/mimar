@@ -30,6 +30,10 @@ import {
   type ServiceDogDesignationV1,
 } from "@dim/contract/api";
 
+// The owner face's own mapping of `ownerships.role` onto the viewer vocabulary
+// — the libreta face imports it for the same reason: one mapping per caller.
+import { toViewerRole } from "../payload";
+
 /** The `pets` columns this payload reads. Structural — the row satisfies it. */
 export type ProfilePetRow = {
   publicToken: string;
@@ -87,6 +91,13 @@ export function isLegalOwner(access: ResolvedProfileAccess): boolean {
  *     co-owner, a foster and a caretaker are all outside it. NOT for a DECEASED
  *     animal either: `loadOwnedPetWithServiceDog` refuses one, and this flag
  *     says so up front rather than offering a form that can only be refused.
+ *   · THE SECTIONED PROFILE EDIT (owner-pet-actions) is the person path as the
+ *     OWNER FACE names it — `toViewerRole`, the one mapping of `ownerships.role`
+ *     onto the viewer vocabulary — minus the caretaker. Not `isTitularHolder`:
+ *     that deny admits the org path and a user-held `shelter_custody` row, and
+ *     the owner panel offers neither an "Editar datos". This block serves the
+ *     owner's insurance and medical text; it goes to exactly the viewers the
+ *     panel lets in, and the write is refused to everybody else.
  */
 export function petProfileCapabilities(
   access: ResolvedProfileAccess,
@@ -105,6 +116,8 @@ export function petProfileCapabilities(
     canCorrectSpecies: titular,
     canTogglePhysicalTagInterest: access.kind === "owner",
     canManageServiceDog: isLegalOwner(access) && access.pet.status !== "deceased",
+    canEditProfile:
+      access.kind === "owner" && toViewerRole("owner", access.holderRole) !== "caretaker",
   };
 }
 
