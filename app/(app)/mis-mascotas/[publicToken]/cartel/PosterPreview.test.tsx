@@ -155,7 +155,7 @@ describe("<PosterPreview> — missing-photo pre-print warning (tester fix #3b)",
     const html = render(<PosterPreview {...BASE_PROPS} photoUrl={null} />);
     expect(html).toContain("Sin foto, el cartel pierde casi todo su valor");
     expect(html).toContain("Agregar foto");
-    expect(html).toContain("/mis-mascotas/DIM-TEST-1234?sheet=editar-mascota");
+    expect(html).toContain("/mis-mascotas/DIM-TEST-1234?sheet=foto");
     // Print CTA is demoted (secondary styling), NOT removed — printing stays possible.
     expect(html).toContain("Imprimir cartel");
     expect(html).not.toContain(

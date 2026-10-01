@@ -527,9 +527,32 @@ export function SheetMounter({
   }
 
   if (sheet === "editar-mascota") {
-    // Defense-in-depth for a hand-typed URL, like the chapita/emergencia
-    // branches: the page passes no data to a viewer the form refuses.
-    if (!editPetData) return null;
+    // The page passes no data to a viewer the form refuses (a hand-typed URL,
+    // a stale link, or the capture matcher's "editar mascota" route). Say so
+    // instead of a tap that opens nothing; the form itself never mounts.
+    if (!editPetData) {
+      return (
+        <Sheet
+          id="editar-mascota"
+          title={`Editar ${petName}`}
+          open
+          onClose={close}
+          side="right"
+          size="md"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-[var(--color-ln-ink-2)]">
+              No podés editar los datos de <strong>{petName}</strong> con tu rol en esta mascota.
+            </p>
+            <div className="flex gap-2">
+              <LnButton type="button" variant="ghost" onClick={close}>
+                Volver al perfil
+              </LnButton>
+            </div>
+          </div>
+        </Sheet>
+      );
+    }
     const action = updatePetAction.bind(null, petToken);
     return (
       <Sheet

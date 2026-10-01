@@ -123,7 +123,7 @@ export function PosterPreview({
           >
             Sin foto, el cartel pierde casi todo su valor — agregá una antes de imprimir.{" "}
             <Link
-              href={`/mis-mascotas/${publicToken}?sheet=editar-mascota`}
+              href={`/mis-mascotas/${publicToken}?sheet=foto`}
               className="font-semibold underline underline-offset-2"
             >
               Agregar foto

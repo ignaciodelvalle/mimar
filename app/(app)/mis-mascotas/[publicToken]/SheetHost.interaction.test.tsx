@@ -265,11 +265,13 @@ describe("?sheet=mas — an alias for the acts below the card, not a sheet", () 
 // The edit sheet ships the pet row — insurance and condition text — so the page
 // hands it no data for a viewer the form refuses, and a hand-typed URL meets
 // nothing rather than a form it could not save.
-describe("?sheet=editar-mascota — nothing for a viewer the form refuses", () => {
-  it("renders no sheet when the page passed no edit data", () => {
+describe("?sheet=editar-mascota — a visible refusal for a viewer the form refuses", () => {
+  it("says the data is not theirs to edit and mounts no form when the page passed no edit data", () => {
     window.history.replaceState(null, "", "/mis-mascotas/abc123?sheet=editar-mascota");
     render(<SheetMounter {...baseSheetMounterProps} editPetData={null} />);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText(/No podés editar los datos de/)).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 });
 
