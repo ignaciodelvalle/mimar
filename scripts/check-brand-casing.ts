@@ -50,7 +50,7 @@
 //                                This is the one place the bare word IS the
 //                                token, and the reason the rule has to be
 //                                shaped around a hyphen at all.
-//   app/(public)/acerca/page.tsx — deliberate institutional disclosure. The
+//   app/(institucional)/acerca/page.tsx — deliberate institutional disclosure. The
 //                                codename is not a secret; /acerca explains
 //                                what it stands for. It just is not the name
 //                                the product signs documents with.

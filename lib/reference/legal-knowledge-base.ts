@@ -9,7 +9,7 @@
 //
 // Grouped by life-moment/topic (not a flat law dump), following the
 // argentina.gob.ar service-ficha convention: ¿Qué dice? / ¿A quién aplica? /
-// ¿Qué obligación implica en miMAR? / Fuente. See `app/(public)/leyes/page.tsx`
+// ¿Qué obligación implica en miMAR? / Fuente. See `app/(institucional)/leyes/page.tsx`
 // for the rendering (progressive-disclosure accordion, plain language first).
 //
 // `sourceUrl` is included ONLY when the exact URL is already vetted in

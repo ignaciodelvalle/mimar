@@ -633,9 +633,9 @@ export const SNAKE_CASE_ALLOWLIST = new Set<string>([
   // app/gob/reglas/.../nueva/PppWeightThresholdForm.tsx — <span font-mono>
   // ppp_breed_list</span>, the rule flag name in the threshold explainer.
   "app/gob/reglas/[country]/[province]/[locality]/nueva/PppWeightThresholdForm.tsx:ppp_breed_list",
-  // app/(public)/transparencia/page.tsx — <code>codigo_iso</code>, the CSV column
+  // app/(institucional)/transparencia/page.tsx — <code>codigo_iso</code>, the CSV column
   // name in the open-data column glossary.
-  "app/(public)/transparencia/page.tsx:codigo_iso",
+  "app/(institucional)/transparencia/page.tsx:codigo_iso",
 ]);
 
 // ---------------------------------------------------------------------------

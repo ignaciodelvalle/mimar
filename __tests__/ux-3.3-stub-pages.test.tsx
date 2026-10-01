@@ -53,7 +53,7 @@ function countMatches(html: string, pattern: RegExp): number {
 // 1–5: AccesibilidadPage
 // ---------------------------------------------------------------------------
 
-import AccesibilidadPage from "@/app/(public)/accesibilidad/page";
+import AccesibilidadPage from "@/app/(institucional)/accesibilidad/page";
 
 describe("AccesibilidadPage — honest accessibility statement (UX 3.3)", () => {
   let html: string;

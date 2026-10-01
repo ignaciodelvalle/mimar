@@ -19,7 +19,7 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import PrivacidadPage from "@/app/(public)/privacidad/page";
+import PrivacidadPage from "@/app/(institucional)/privacidad/page";
 import { LEGAL_VERSION } from "@/lib/reference/legal-version";
 
 afterEach(cleanup);

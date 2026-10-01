@@ -24,7 +24,7 @@ vi.mock("next/link", () => ({
   }) => React.createElement("a", { href, className }, children),
 }));
 
-import LeyesPage from "@/app/(public)/leyes/page";
+import LeyesPage from "@/app/(institucional)/leyes/page";
 import {
   LEGAL_KNOWLEDGE_GROUPS,
   getAllLegalKnowledgeEntries,

@@ -180,10 +180,17 @@ describe("every exempt path is a real page that really carries no records", () =
     expect(EXEMPT.length).toBeGreaterThanOrEqual(8);
   });
 
-  it("each one resolves to a page file under app/(public)", () => {
+  // The institutional reading pages live in app/(institucional) (landing chrome),
+  // the rest of the exempt set in app/(public). Either group counts: what matters
+  // is that the slug is a real page, not which chrome frames it.
+  const pageFile = (slug: string): string | undefined =>
+    ["(institucional)", "(public)"]
+      .map((group) => path.join(process.cwd(), "app", group, slug, "page.tsx"))
+      .find((file) => existsSync(file));
+
+  it("each one resolves to a page file under app/(institucional) or app/(public)", () => {
     for (const slug of EXEMPT) {
-      const file = path.join(process.cwd(), "app", "(public)", slug, "page.tsx");
-      expect(existsSync(file), `${slug} is exempt but has no page at ${file}`).toBe(true);
+      expect(pageFile(slug), `${slug} is exempt but has no page in either group`).toBeDefined();
     }
   });
 
@@ -192,10 +199,7 @@ describe("every exempt path is a real page that really carries no records", () =
     // so importing it is the observable form of "this page shows records".
     const offenders: string[] = [];
     for (const slug of EXEMPT) {
-      const src = readFileSync(
-        path.join(process.cwd(), "app", "(public)", slug, "page.tsx"),
-        "utf8",
-      );
+      const src = readFileSync(pageFile(slug) as string, "utf8");
       if (/from\s+"@\/db"/.test(src) || /\bawait\s+db\b/.test(src)) offenders.push(slug);
     }
     expect(

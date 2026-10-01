@@ -31,7 +31,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import PrivacidadPage from "@/app/(public)/privacidad/page";
+import PrivacidadPage from "@/app/(institucional)/privacidad/page";
 import robots from "@/app/robots";
 import { LostDisclosureCard } from "@/components/pet-profile/LostDisclosureCard";
 import nextConfig from "@/next.config";

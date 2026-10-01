@@ -64,7 +64,7 @@ import { join } from "node:path";
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import PrivacidadPage from "@/app/(public)/privacidad/page";
+import PrivacidadPage from "@/app/(institucional)/privacidad/page";
 import {
   CONTACT_EMAILS,
   OWNED_MAIL_DOMAINS,
