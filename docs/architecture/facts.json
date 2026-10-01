@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-10-01",
-  "sha": "8174af1b5",
+  "sha": "4f7887d4c",
   "facts": {
     "event_types": {
       "value": 56,
@@ -38,7 +38,7 @@
       "method": "files named exactly `route.ts` anywhere under `app/`."
     },
     "layouts": {
-      "value": 11,
+      "value": 12,
       "source": "app/**/layout.tsx",
       "method": "files named exactly `layout.tsx` anywhere under `app/`."
     },
