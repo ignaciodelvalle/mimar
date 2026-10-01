@@ -46,7 +46,6 @@ import { createVaccination } from "@/src/modules/events/application/medical/vacc
 import { DEATH_CAUSES, DISPOSITION_METHODS } from "@/src/modules/events/domain/death-rules";
 import { CLINICAL_SUB_KINDS } from "@/src/modules/events/domain/enums";
 import { enqueueEnoTrigger } from "@/src/modules/surveillance/application/enqueue-eno-trigger";
-import { revalidatePath } from "next/cache";
 
 import { EventsRepository } from "@/src/modules/events/infrastructure/events-repository";
 
@@ -106,6 +105,13 @@ type Authorship = {
 // header. It owns BOTH the owner alert and the `?firmado=1` receipt, so success
 // is not something a walk-in writer can construct on its own and the alert
 // cannot be forgotten by a writer added later.
+//
+// NO revalidatePath, in any writer here. Every form on the Atender page leaves
+// for that receipt as a full document (contract N3), so a revalidated re-render
+// of the page would only ride the response to be thrown away. It is not free
+// either: a re-render of the page a form sits on is what can fail to commit in
+// a production build (lib/ui/full-page-action-nav.ts) — visit-actions.ts and
+// requestCapabilityAction dropped theirs for that reason.
 
 // ---------------------------------------------------------------------------
 // Code entry — resolve a DIM credential to the signing surface
@@ -954,8 +960,6 @@ export async function atenderCloseRabiesObservationAction(
     })),
   );
 
-  revalidatePath(`/org/${orgToken}/atender/${pet.publicToken}`);
-
   // THE OWNER, through the same exit as every walk-in writer. A clinic without
   // custody just wrote a legal result on this animal, so the owner-alert
   // contract applies to it exactly as to a vaccine: every active owner and
@@ -1176,8 +1180,6 @@ export async function atenderRecordDeathInObservationAction(
   if (!result.ok) {
     return { error: `No se pudo registrar el fallecimiento: ${result.error}` };
   }
-
-  revalidatePath(`/org/${orgToken}/atender/${pet.publicToken}`);
 
   return completeAtenderSignature({
     orgToken,

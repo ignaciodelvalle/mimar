@@ -322,6 +322,9 @@ describe("atenderCloseRabiesObservationAction — the licence gate", () => {
       ok: true,
       redirectTo: "/org/ORG-1/atender/DIM-TEST-0001?firmado=1",
     });
+    // The form leaves for that receipt as a full document; a revalidation of
+    // the Atender page would only ride the response to be thrown away.
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
     expect(mocks.repo.insertObservationEnded).toHaveBeenCalledTimes(1);
     const [row] = mocks.repo.insertObservationEnded.mock.calls[0];
     expect(row.authorRole).toBe("vet");
@@ -539,6 +542,8 @@ describe("atenderRecordDeathInObservationAction — PO D8", () => {
       ok: true,
       redirectTo: "/org/ORG-1/atender/DIM-TEST-0001?firmado=1",
     });
+    // Same as the close: the receipt is a full-document navigation, no revalidation.
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
 
     // One death_recorded, on the spine, signed by the licensed vet of this clinic.
     expect(deathMocks.eventsRepo.insertEventIdempotent).toHaveBeenCalledTimes(1);
