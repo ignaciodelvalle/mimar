@@ -12,6 +12,9 @@
 //      service does not exist anywhere".
 //   4. A GUESSED JURISDICTION SAYS SO. The web draws the prefill into its filter
 //      form where it reads as something the person chose.
+//   5. RESULTS FROM THE REST OF THE CITY SAY SO (F-3). The zone row still names
+//      the barrio; rows from another barrio under it, unexplained, read as the
+//      app having lost track of where the person searched.
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
@@ -125,7 +128,10 @@ describe("the service picker", () => {
     fireEvent.press(screen.getByText("Vacunación antirrábica"));
 
     await waitFor(() => expect(mockSearch).toHaveBeenCalledTimes(2));
-    expect(mockSearch.mock.calls[1]?.[1]).toEqual({ serviceKind: "vaccination_rabies" });
+    expect(mockSearch.mock.calls[1]?.[1]).toEqual({
+      serviceKind: "vaccination_rabies",
+      widenToCity: true,
+    });
   });
 
   it("falls back to the picker when the server does not recognise the service", async () => {
@@ -299,7 +305,64 @@ describe("the results", () => {
     fireEvent.press(screen.getByText("Elegir otro servicio"));
 
     await waitFor(() => expect(mockSearch).toHaveBeenCalledTimes(3));
-    expect(mockSearch.mock.calls[2]?.[1]).toEqual({ serviceKind: null });
+    expect(mockSearch.mock.calls[2]?.[1]).toEqual({ serviceKind: null, widenToCity: true });
+  });
+});
+
+describe("an empty CABA barrio, answered from the rest of the city (F-3)", () => {
+  // The server decides whether the fallback applies and says so in `widenedTo`;
+  // what this screen owes is the one line that explains why the rows are not
+  // from the barrio its zone row names.
+  async function reachWidened(over: Partial<AppointmentSearchV1>) {
+    mockSearch.mockResolvedValueOnce({ outcome: "ok", payload: payload() });
+    mockSearch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        serviceKind: "vaccination_rabies",
+        appliedProvince: "CABA",
+        appliedLocality: "Palermo",
+        jurisdictionSource: "defaulted-from-pet",
+        ...over,
+      }),
+    });
+    render(<BuscarTurnoScreen onOpenOffering={jest.fn()} />);
+    await waitFor(() => expect(screen.getByText("Vacunación antirrábica")).toBeTruthy());
+    fireEvent.press(screen.getByText("Vacunación antirrábica"));
+    await waitFor(() => expect(screen.getByText("Buscar cerca de: Palermo, CABA")).toBeTruthy());
+  }
+
+  it("draws the city's offerings under a line that says where they come from", async () => {
+    await reachWidened({
+      widenedTo: "city",
+      results: [anOffering({ displayName: "Campaña en Caballito", coverageLabel: "Caballito" })],
+    });
+
+    expect(
+      screen.getByText(
+        "No hay turnos en Palermo para este servicio. Estos son los del resto de CABA.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Campaña en Caballito")).toBeTruthy();
+    // The zone row still names the barrio the person searched: the widening is
+    // the server's answer, not a change of the person's zone.
+    expect(screen.getByText("Buscar cerca de: Palermo, CABA")).toBeTruthy();
+    expect(screen.queryByText(/No hay turnos disponibles/)).toBeNull();
+  });
+
+  it("names the whole city when even the city has nothing", async () => {
+    await reachWidened({ widenedTo: "city", results: [] });
+
+    expect(screen.getByText("No hay turnos disponibles en CABA para este servicio.")).toBeTruthy();
+    // Not the barrio sentence, and no explanation line over an empty list.
+    expect(screen.queryByText(/Probá otra localidad/)).toBeNull();
+    expect(screen.queryByText(/Estos son los del resto/)).toBeNull();
+  });
+
+  it("draws no widening line for an ordinary barrio result", async () => {
+    await reachWidened({ widenedTo: null, results: [anOffering()] });
+
+    expect(screen.getByText("Campaña antirrábica — Plaza San Martín")).toBeTruthy();
+    expect(screen.queryByText(/Estos son los del resto/)).toBeNull();
   });
 });
 
@@ -331,7 +394,10 @@ describe("choosing the zone", () => {
     // runs only when a half is MISSING from the query string, so sending an empty
     // province would suppress the very default this screen relies on.
     await reachResults();
-    expect(mockSearch.mock.calls[1]?.[1]).toEqual({ serviceKind: "vaccination_rabies" });
+    expect(mockSearch.mock.calls[1]?.[1]).toEqual({
+      serviceKind: "vaccination_rabies",
+      widenToCity: true,
+    });
   });
 
   it("draws the zone the server actually used, and says it was a guess", async () => {
@@ -378,6 +444,7 @@ describe("choosing the zone", () => {
       serviceKind: "vaccination_rabies",
       province: "Río Negro",
       locality: "El Bolsón",
+      widenToCity: true,
     });
     // The typeahead itself was scoped to the province the person chose.
     expect(mockLocalities).toHaveBeenCalledWith({ q: "Bolsón", province: "AR-R", aliases: true });
@@ -415,6 +482,7 @@ describe("choosing the zone", () => {
       serviceKind: null,
       province: "Río Negro",
       locality: "El Bolsón",
+      widenToCity: true,
     });
   });
 

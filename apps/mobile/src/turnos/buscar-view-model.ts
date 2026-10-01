@@ -18,6 +18,7 @@
 // authorization rule on the client side of the wire.
 
 import type {
+  AppointmentSearchV1,
   BookableOfferingV1,
   BookablePetV1,
   BookableSlotV1,
@@ -194,15 +195,54 @@ export function jurisdictionNoteLabel(view: {
   return "Es la zona donde registraste tu primera mascota. Podés cambiarla.";
 }
 
-/** The empty result, said in the words of the search that produced it. */
+/**
+ * The empty result, said in the words of the search that produced it.
+ *
+ * WIDENED AND STILL EMPTY (F-3) names the CITY and stops suggesting another
+ * locality: the server already looked in every barrio of it, so "probá otra
+ * localidad" would send somebody through forty-eight barrios the answer already
+ * covers. `widenedTo` is optional here only so the older call sites that pass a
+ * bare place keep compiling; the screen passes the whole payload.
+ */
 export function noResultsLabel(view: {
   appliedProvince: string | null;
   appliedLocality: string | null;
+  widenedTo?: AppointmentSearchV1["widenedTo"];
 }): string {
+  if (view.widenedTo === "city" && view.appliedProvince) {
+    return `No hay turnos disponibles en ${view.appliedProvince} para este servicio.`;
+  }
   const place = view.appliedLocality ?? view.appliedProvince;
   return place
     ? `No hay turnos disponibles en ${place} para este servicio. Probá otra localidad.`
     : "No hay turnos disponibles para este servicio en los próximos días.";
+}
+
+/**
+ * The line above WIDENED results — why they are not from the barrio the zone
+ * row names (F-3).
+ *
+ * `null` unless the server says it widened AND found something. The row keeps
+ * reading "Buscar cerca de: Palermo, CABA", because that is still where the
+ * person searched; without this line a list of campaigns in Caballito under it
+ * reads as the app having lost track of the place.
+ *
+ * IT PROMISES NOTHING ABOUT DISTANCE. It names the two places and stops there:
+ * each row already carries its own coverage, and the server widens only inside a
+ * province that is one city.
+ */
+export function widenedResultsNote(view: {
+  appliedProvince: string | null;
+  appliedLocality: string | null;
+  widenedTo: AppointmentSearchV1["widenedTo"];
+  results: readonly unknown[];
+}): string | null {
+  if (view.widenedTo !== "city" || view.results.length === 0) return null;
+  // Both halves are known by construction — the server widens only a search
+  // that named a locality in a canonical province — and a sentence with a
+  // blank where a place should be is worse than no sentence.
+  if (!view.appliedLocality || !view.appliedProvince) return null;
+  return `No hay turnos en ${view.appliedLocality} para este servicio. Estos son los del resto de ${view.appliedProvince}.`;
 }
 
 /** The picker's rows, straight off the wire — the catalogue is the server's. */

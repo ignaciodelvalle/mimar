@@ -41,6 +41,15 @@
 // stale zone silently outliving the reason it was picked — somebody who looked
 // at their mother's barrio once, then wonders for weeks why their own campaigns
 // are missing.
+//
+// AN EMPTY CABA BARRIO SHOWS THE REST OF THE CITY (F-3, native review
+// 2026-09-23). Every search asks for it (`ampliar=ciudad`) and the SERVER decides
+// whether it applies — only a province that is one city, only when the barrio
+// itself had nothing — and says so in `widenedTo`. This screen re-derives none
+// of that: it draws the server's answer, with one line saying why the results
+// are not from the barrio on the zone row. A whole-city campaign never needed
+// this (the barrio search already reaches it); what it adds is a campaign tagged
+// to ANOTHER barrio, which a barrio search could never reach.
 
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -65,6 +74,7 @@ import {
   offeringKindLabel,
   offeringMetaLabel,
   offeringTitle,
+  widenedResultsNote,
 } from "./buscar-view-model";
 import { appointmentProviderLabel } from "./turnos-view-model";
 
@@ -107,6 +117,9 @@ export function BuscarTurnoScreen({
       // query string, so an explicit empty value would be a request to search
       // nowhere in particular and would suppress the default.
       ...(place === null ? {} : { province: place.provinceName, locality: place.localityName }),
+      // ALWAYS ASKED, NEVER ASSUMED. The server widens only where it may and
+      // only when the barrio came back empty; see the header.
+      widenToCity: true,
     });
     if (result.outcome === "ok") {
       setState({ phase: "ready", view: result.payload });
@@ -225,6 +238,7 @@ export function BuscarTurnoScreen({
   }
 
   const note = jurisdictionNoteLabel(view);
+  const widened = widenedResultsNote(view);
   const heading =
     view.serviceKinds.find((k) => k.code === view.serviceKind)?.label ?? "Buscar turno";
 
@@ -251,6 +265,13 @@ export function BuscarTurnoScreen({
 
       <View style={styles.section}>
         <Eyebrow>Resultados</Eyebrow>
+        {/* ABOVE THE ROWS, so it is read before them: the zone row still names
+            the barrio, and these rows are from elsewhere in the city. */}
+        {widened === null ? null : (
+          <Callout>
+            <Body>{widened}</Body>
+          </Callout>
+        )}
         {view.results.length === 0 ? (
           <EmptyState
             headline={noResultsLabel(view)}

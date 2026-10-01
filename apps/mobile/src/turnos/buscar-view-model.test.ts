@@ -33,6 +33,7 @@ import {
   slotDayHeading,
   slotPlacesLabel,
   slotTimeLabel,
+  widenedResultsNote,
 } from "./buscar-view-model";
 
 const SLOT_UUID = "6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f";
@@ -299,6 +300,44 @@ describe("the empty result", () => {
     expect(noResultsLabel({ appliedProvince: null, appliedLocality: null })).toBe(
       "No hay turnos disponibles para este servicio en los próximos días.",
     );
+  });
+
+  it("names the CITY once the server looked across it, and stops sending people barrio to barrio", () => {
+    // F-3: the server already searched every barrio, so "probá otra localidad"
+    // would point at forty-eight places the answer already covers.
+    expect(
+      noResultsLabel({ appliedProvince: "CABA", appliedLocality: "Palermo", widenedTo: "city" }),
+    ).toBe("No hay turnos disponibles en CABA para este servicio.");
+  });
+
+  it("keeps the barrio sentence when the server did NOT widen", () => {
+    expect(
+      noResultsLabel({ appliedProvince: "CABA", appliedLocality: "Palermo", widenedTo: null }),
+    ).toBe("No hay turnos disponibles en Palermo para este servicio. Probá otra localidad.");
+  });
+});
+
+describe("the widened results note (F-3)", () => {
+  const widened = {
+    appliedProvince: "CABA",
+    appliedLocality: "Palermo",
+    widenedTo: "city" as const,
+    results: [anOffering({ coverageLabel: "Caballito" })],
+  };
+
+  it("says why the rows are not from the barrio the zone row names", () => {
+    expect(widenedResultsNote(widened)).toBe(
+      "No hay turnos en Palermo para este servicio. Estos son los del resto de CABA.",
+    );
+  });
+
+  it("says nothing for an ordinary search — the zone row is the whole story there", () => {
+    expect(widenedResultsNote({ ...widened, widenedTo: null })).toBe(null);
+  });
+
+  it("says nothing over an empty widened answer, which the empty state already words", () => {
+    // Two sentences about one empty list would be two things that can disagree.
+    expect(widenedResultsNote({ ...widened, results: [] })).toBe(null);
   });
 });
 

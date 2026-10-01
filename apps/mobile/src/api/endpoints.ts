@@ -1240,7 +1240,9 @@ export function sendAppointmentCommand(
  * `locality`, `fecha_desde`, `solo_gratis`. `snake_case` and one of them in
  * Spanish is not this file's taste; it is `/turnos/buscar`'s query string, and a
  * person who shares a search from the browser and one who shares it from the
- * phone should be describing the same thing.
+ * phone should be describing the same thing. The one the web does not publish
+ * yet, `ampliar=ciudad` (F-3: an empty CABA barrio answered from the rest of the
+ * city, see `AppointmentSearchV1.widenedTo`), is named in the same vocabulary.
  *
  * AN OMITTED FILTER IS NOT AN EMPTY ONE. A key is set only when it has a value,
  * because `?province=` is a request to search the empty-string province and
@@ -1255,6 +1257,7 @@ export function fetchAppointmentSearch(
     locality?: string | null;
     fechaDesde?: string | null;
     freeOnly?: boolean;
+    widenToCity?: boolean;
   } = {},
 ): Promise<ApiResult<AppointmentSearchV1>> {
   const params = new URLSearchParams();
@@ -1263,6 +1266,7 @@ export function fetchAppointmentSearch(
   if (query.locality) params.set("locality", query.locality);
   if (query.fechaDesde) params.set("fecha_desde", query.fechaDesde);
   if (query.freeOnly) params.set("solo_gratis", "true");
+  if (query.widenToCity) params.set("ampliar", "ciudad");
   const suffix = params.size === 0 ? "" : `?${params.toString()}`;
 
   return apiRequest<AppointmentSearchV1>(
