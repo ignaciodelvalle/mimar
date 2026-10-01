@@ -30,7 +30,6 @@ import { PppExportAffordance } from "@/components/pet-profile/PppExportAffordanc
 import { LOST_CASE_ANCHOR, resolveWebPetActions } from "@/components/pet-profile/pet-action-web";
 import { DegradedFallback } from "@/components/ui/DegradedFallback";
 import { AnalyticsLoadFallback } from "@/components/ui/dashboard/AnalyticsLoadFallback";
-import { db } from "@/db";
 import { loadWithTimeout } from "@/lib/analytics/analytics-load";
 import { resolveEmergencyContacts } from "@/lib/domain/emergency-contacts";
 import { type CarouselPet, shouldShowCarousel } from "@/lib/domain/owner-carousel";
@@ -57,7 +56,6 @@ import {
   loadOwnerPetDetail,
 } from "@/src/modules/pets/application/read/load-owner-pet-detail";
 import { getLibretaFaceData } from "@/src/modules/pets/application/tab-data/get-libreta-face-data";
-import { fetchPendingReturnProposalForOwner } from "@/src/modules/return-to-owner/application/proposal-queries";
 import { toViewerRole } from "@dim/contract/api";
 import { derivePetActions } from "@dim/contract/reference";
 import Link from "next/link";
@@ -65,6 +63,7 @@ import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
 import { SheetMounter } from "./SheetMounter";
 import { resolveCaptureIntentUrl } from "./anotar/handoff";
+import { editPetDataFor } from "./edit-pet-data";
 
 // ---------------------------------------------------------------------------
 // Pet-state standardization (PO 2026-07-16): the masthead band (chromeSituation
@@ -321,8 +320,10 @@ export default async function PetDetailPage({
   // this page mounts. They are deliberately NOT in the reader: the native face
   // is read-only, and an endpoint that loaded the chapita-interest row to serve
   // a GET would be paying for a button it does not render.
-  // hasPendingReturnProposal depends on ownershipRole (must be "owner").
-  let hasPendingReturnProposal = false;
+  //
+  // The pending-return-proposal read that used to sit here is gone with the
+  // "⋯ Más" sheet it fed (owner-pet-actions): the panel's "Devolución" row is
+  // offered to every holder and `/devolucion` answers each state itself.
   // Chapita (physical-tag-interest) state for the owner — powers the 5th
   // action-bar icon + ?sheet=chapita (pet-document-redesign ADR-17b). Never
   // fetched for a deceased pet (REQ-9.3 suppresses the entry point).
@@ -347,13 +348,6 @@ export default async function PetDetailPage({
   const showPregnancyStartOption = canStartPregnancy(pet);
 
   if (accessPath === "owner") {
-    // "Confirmar devolución": only the legal owner, only when a pending return
-    // proposal exists. Reuses the same ARCH-B tri-check as /devolucion.
-    const returnProposalQuery =
-      ownershipRole === "owner"
-        ? fetchPendingReturnProposalForOwner(pet.id, user.id, db)
-        : Promise.resolve(false);
-
     const chapitaQuery = isDeceased
       ? Promise.resolve(null)
       : getPhysicalTagInterest(pet.id, user.id);
@@ -369,14 +363,12 @@ export default async function PetDetailPage({
     // Deceased pets never mount the anotar sheet (REQ-9.3), so skip the read.
     const adoptedQuery = isDeceased ? Promise.resolve(false) : isPetAdoptedByUser(pet.id, user.id);
 
-    const [returnProposalResult, chapitaState, channels, adoptedByViewer] = await Promise.all([
-      returnProposalQuery,
+    const [chapitaState, channels, adoptedByViewer] = await Promise.all([
       chapitaQuery,
       physicalCredentialChannelsQuery,
       adoptedQuery,
     ]);
 
-    hasPendingReturnProposal = returnProposalResult;
     chapitaData = chapitaState;
     physicalCredentialChannels = channels;
     showCheckinOption = adoptedByViewer;
@@ -776,8 +768,6 @@ export default async function PetDetailPage({
         species={pet.species}
         petStatus={pet.status as "active" | "lost" | "deceased"}
         accessPath={accessPath === "org" ? "org" : "owner"}
-        ownershipRole={ownershipRole}
-        hasPendingReturnProposal={hasPendingReturnProposal}
         tier2PublicEnabledUntil={
           pet.tier2PublicEnabledUntil ? new Date(pet.tier2PublicEnabledUntil).toISOString() : null
         }
@@ -794,21 +784,17 @@ export default async function PetDetailPage({
               }
             : null
         }
-        editPetData={{
-          // Client props reach EVERY viewer of this route (org included) —
-          // never ship the pet-level emergency-contact columns here. PetForm
-          // does not read them; nulling keeps the Pet shape without the PII
-          // (M2 fresh-review required fix 1).
-          existingPet: {
-            ...pet,
-            preferredVetName: null,
-            preferredVetPhone: null,
-            emergencyContactName: null,
-            emergencyContactPhone: null,
-          },
+        // Client props reach EVERY viewer of this route: the row carries the
+        // owner's insurance and condition text, so it ships only to a viewer
+        // the edit form admits — `null` for a caretaker, a user-held custody
+        // row and the org path (owner-pet-actions; see edit-pet-data.ts).
+        editPetData={editPetDataFor({
+          accessPath: accessPath === "org" ? "org" : "owner",
+          holderRole,
+          pet,
           existingPhotoUrl: editPhotoUrl,
           pppBreedList: pppBreedRule.payload.breeds,
-        }}
+        })}
         chapitaData={chapitaData}
         alertsOriginShelter={alertsOriginShelter}
         showCheckinOption={showCheckinOption}

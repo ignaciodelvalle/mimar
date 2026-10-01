@@ -1,12 +1,31 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ALL_CAPTURE_OPTIONS,
   buildKindDeeplink,
   getNoteSlotKey,
 } from "@/app/(app)/mis-mascotas/[publicToken]/anotar/handoff";
 import { buildAnotarUrl } from "@/app/(app)/mis-mascotas/[publicToken]/anotar/handoff";
 
 const TOKEN = "DIM-TEST-TOKEN";
+
+// owner-pet-actions (PO 2026-10-01): the Anotar catalogue is for RECORDING. Its
+// "Perfil" category re-listed the panel's doors under other labels ("Transferir
+// mascota", "Editar datos de la mascota", "Buscar hogar (adopción)") — one of
+// the three drifted copies the shared action catalogue replaced. Those doors
+// live in the owner's panel below the credential now, once.
+describe("the Anotar catalogue records; it is not a second menu of the pet's doors", () => {
+  it("has no Perfil category", () => {
+    expect(ALL_CAPTURE_OPTIONS.map((o) => o.category)).not.toContain("Perfil");
+  });
+
+  it("still offers the recording catalogue itself", () => {
+    const categories = new Set(ALL_CAPTURE_OPTIONS.map((o) => o.category));
+    expect(categories).toContain("Salud");
+    expect(categories).toContain("Estado");
+    expect(ALL_CAPTURE_OPTIONS.length).toBeGreaterThan(15);
+  });
+});
 
 describe("buildAnotarUrl", () => {
   // Flow audit 2026-07-03: the handoff target is the PROFILE with

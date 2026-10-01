@@ -76,8 +76,6 @@ const baseSheetMounterProps = {
   editPetData: { existingPet: {} as never, existingPhotoUrl: null, pppBreedList: [] },
   petStatus: "active" as const,
   accessPath: "owner" as const,
-  ownershipRole: "owner" as const,
-  hasPendingReturnProposal: false,
   chapitaData: { interested: false, requestedAt: null },
   physicalCredentialChannels: null,
   emergencyContacts: {
@@ -234,6 +232,44 @@ describe("PetActionRow + SheetMounter — client-driven sheet open/close (router
     const sheet = document.querySelector('[data-sheet-id="chapita"]');
     expect(sheet).toBeInTheDocument();
     expect(within(sheet as HTMLElement).getAllByText("Chapa física").length).toBeGreaterThan(0);
+  });
+});
+
+// owner-pet-actions (PO 2026-10-01): "⋯ Más" is gone — its rows sit inline
+// below the credential. An old `?sheet=mas` link (a bookmark, a notification, an
+// e2e walk) is kept as an ALIAS: it lands on those rows instead of on a sheet.
+describe("?sheet=mas — an alias for the acts below the card, not a sheet", () => {
+  it("opens no sheet, scrolls to the acts and strips the param", async () => {
+    window.history.replaceState(null, "", "/mis-mascotas/abc123?sheet=mas");
+    const scrolled = vi.fn();
+    render(
+      <>
+        <div
+          id="acciones"
+          ref={(el) => {
+            if (el) el.scrollIntoView = scrolled;
+          }}
+        />
+        <SheetMounter {...baseSheetMounterProps} />
+      </>,
+    );
+    await waitFor(() => {
+      expect(window.location.search).not.toContain("sheet=");
+    });
+    expect(scrolled).toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/mis-mascotas/abc123");
+  });
+});
+
+// The edit sheet ships the pet row — insurance and condition text — so the page
+// hands it no data for a viewer the form refuses, and a hand-typed URL meets
+// nothing rather than a form it could not save.
+describe("?sheet=editar-mascota — nothing for a viewer the form refuses", () => {
+  it("renders no sheet when the page passed no edit data", () => {
+    window.history.replaceState(null, "", "/mis-mascotas/abc123?sheet=editar-mascota");
+    render(<SheetMounter {...baseSheetMounterProps} editPetData={null} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
 

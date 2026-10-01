@@ -32,6 +32,7 @@ import {
 } from "@/lib/domain/location-normalize";
 import { parseLocationFromFormData } from "@/lib/domain/location-value";
 import { validateMicrochipId } from "@/lib/domain/microchip-validation";
+import { canEditPetProfile } from "@/lib/domain/profile-editors";
 import { lookupByChip } from "@/lib/infra/chip-lookup";
 import { requireLiveUser } from "@/lib/infra/live-user";
 import { generateForceToken, validateForceToken } from "@/lib/infra/microchip-force-token";
@@ -78,6 +79,12 @@ import { PetsRepository } from "./infrastructure/pets-repository";
 // custody dispute when the chip is registered to someone else.
 const CHIP_ALREADY_REGISTERED_MSG =
   "Este microchip ya figura registrado en miMAR para otra mascota. Si es tuya, vinculala a tu cuenta o pedí la transferencia desde “Mis mascotas › Reclamar una mascota”.";
+
+// The edit form's refusal for a holder outside `canEditPetProfile`. A backstop:
+// the profile shows them "Editar datos" grey with its reason and never mounts
+// the form, so reaching this means a request the page did not offer.
+const PROFILE_EDIT_REFUSED =
+  "No podés editar los datos de esta mascota: los editan su titular, un co-titular o quien la tiene en tránsito.";
 
 // Re-export for consumers that import the type from this module.
 export type { NewPetFormState } from "./domain/types";
@@ -424,6 +431,14 @@ export async function updatePetAction(
   const access = await requireTitularAccess(publicToken);
   if (!access.ok) return { error: access.error };
   const { supabase, user, pet: existingPet, eventAuthorship, accessPath } = access;
+
+  // web = app (owner-pet-actions): this form saves for exactly the viewers the
+  // app's `edit_profile` admits — the owner panel's "Editar datos" row. Narrower
+  // than the titular gate above (which a user-held custody row and the org path
+  // pass), and BEHIND it, so the titular-only fence still sees that guard.
+  if (!canEditPetProfile(accessPath, access.holderRole)) {
+    return { error: PROFILE_EDIT_REFUSED };
+  }
 
   // ARCH-S: fetch canonical chip presence before the update so chipNewlyAdded
   // guard doesn't need the dropped pets.microchipId column.

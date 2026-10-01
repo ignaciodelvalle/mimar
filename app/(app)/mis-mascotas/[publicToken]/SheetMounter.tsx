@@ -30,21 +30,23 @@
  * `sp.sheet`), so open state simply reacts to useSearchParams(), which Next
  * updates reactively on both the SSR-provided initial URL AND on
  * pushSheetUrl()'s shallow window.history.pushState calls from every
- * trigger (PetActionRow, LibretaFace's EmergenciaBlock
- * link, MasSheet — see lib/ui/sheet-nav.ts). `close()` uses closeSheetNav
+ * trigger (PetActionRow, PetActionPanel, LibretaFace's EmergenciaBlock
+ * link — see lib/ui/sheet-nav.ts). `close()` uses closeSheetNav
  * instead of router.replace so closing never touches the router either.
  */
 
+import { CREDENCIAL_ACTIONS_ID } from "@/components/pet-profile/PetDetailTabsPanel";
 import { TurnoAntirrabicaSheet } from "@/components/pet-profile/TurnoAntirrabicaSheet";
 import { LnButton } from "@/components/ui/Button";
 import { Sheet } from "@/components/ui/VaulSheet";
+import { scrollIntoViewRespectingMotion } from "@/lib/ui/reduced-motion-scroll";
 import { buildCloseSheetUrl } from "@/lib/ui/sheet-helpers";
 import { closeSheetNav, closeSheetNavWithFullReload } from "@/lib/ui/sheet-nav";
 import { useActionRedirect } from "@/lib/ui/use-action-redirect";
 import { foundParticiple, markLostActionLabel } from "@/lib/utils/format";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useActionState, useCallback } from "react";
+import { useActionState, useCallback, useEffect } from "react";
 
 import { CaptureBox } from "./anotar/CaptureBox";
 import { CaptureOptionsList } from "./anotar/CaptureOptionsList";
@@ -82,7 +84,6 @@ import { updatePetAction } from "@/src/modules/pets/actions";
 import type { EmergencyContactValues } from "@/components/pet-profile/EmergencyContactFields";
 import { PhysicalTagInterestSheet } from "./_chapita/PhysicalTagInterestSheet";
 import { EmergencyContactSheet } from "./_emergencia/EmergencyContactSheet";
-import { MasSheet } from "./_more/MasSheet";
 import { MergedShareSheet } from "./_share/MergedShareSheet";
 import { TransferSenderForm } from "./_transfer/TransferSenderForm";
 
@@ -111,7 +112,11 @@ type Props = {
   tier2PublicPermanent: boolean;
   /** Data required by MarkLostForm. Null when pet is not active (already lost or deceased). */
   markLostData: MarkLostData | null;
-  /** Data required by the editar-mascota sheet. Always set. */
+  /**
+   * Data required by the editar-mascota sheet, or `null` for a viewer the form
+   * refuses (`canEditPetProfile`): the row carries the owner's insurance and
+   * condition text, and client props reach every viewer of the route.
+   */
   editPetData: {
     existingPet: Pet;
     existingPhotoUrl: string | null;
@@ -122,13 +127,11 @@ type Props = {
      * standalone /editar page. Display-only.
      */
     pppBreedList: readonly string[];
-  };
+  } | null;
   /** Pet status — needed to gate the marcar-encontrada sheet. */
   petStatus: "active" | "lost" | "deceased";
-  /** Two-face redesign (2026-07-01) — required by the "⋯ Más" sheet (MasSheet). */
+  /** The viewer's path: the owner-only sheets refuse the org path. */
   accessPath: "owner" | "org";
-  ownershipRole: string | null;
-  hasPendingReturnProposal: boolean;
   /**
    * physical-tag-interest state for the owner viewer (pet-document-redesign
    * ADR-17b). Null for org viewers / deceased pets — the chapita branch
@@ -194,8 +197,6 @@ export function SheetMounter({
   editPetData,
   petStatus,
   accessPath,
-  ownershipRole,
-  hasPendingReturnProposal,
   chapitaData,
   physicalCredentialChannels,
   emergencyContacts,
@@ -449,16 +450,10 @@ export function SheetMounter({
   }
 
   if (sheet === "mas") {
-    return (
-      <Sheet id="mas" title="Más" open onClose={close}>
-        <MasSheet
-          pet={{ species, status: petStatus, publicToken: petToken }}
-          accessPath={accessPath}
-          ownershipRole={ownershipRole}
-          hasPendingReturnProposal={hasPendingReturnProposal}
-        />
-      </Sheet>
-    );
+    // "⋯ Más" is gone (owner-pet-actions, PO 2026-10-01): its rows sit inline
+    // below the credential. An old link to it — a bookmark, a notification, an
+    // e2e walk — is an ALIAS that lands on those rows instead of on a sheet.
+    return <ActionsAlias onArrived={close} />;
   }
 
   if (sheet === "transferir-mascota") {
@@ -524,6 +519,9 @@ export function SheetMounter({
   }
 
   if (sheet === "editar-mascota") {
+    // Defense-in-depth for a hand-typed URL, like the chapita/emergencia
+    // branches: the page passes no data to a viewer the form refuses.
+    if (!editPetData) return null;
     const action = updatePetAction.bind(null, petToken);
     return (
       <Sheet
@@ -578,6 +576,21 @@ export function SheetMounter({
   }
 
   // Unknown or absent sheet param — render nothing.
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// ActionsAlias — `?sheet=mas`, kept as a link that lands on the acts
+// ---------------------------------------------------------------------------
+
+function ActionsAlias({ onArrived }: { onArrived: () => void }) {
+  useEffect(() => {
+    const acts = document.getElementById(CREDENCIAL_ACTIONS_ID);
+    if (acts) scrollIntoViewRespectingMotion(acts, { block: "start" });
+    // Strips the param the way every sheet's close does — replaceState for a
+    // direct load, so the alias leaves nothing in the history to step back to.
+    onArrived();
+  }, [onArrived]);
   return null;
 }
 

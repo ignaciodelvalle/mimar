@@ -42,8 +42,6 @@ const baseProps = {
   markLostData: null,
   editPetData: { existingPet: {} as never, existingPhotoUrl: null, pppBreedList: [] },
   petStatus: "active" as const,
-  ownershipRole: "owner" as const,
-  hasPendingReturnProposal: false,
   chapitaData: { interested: false, requestedAt: null },
   physicalCredentialChannels: null,
   emergencyContacts: {

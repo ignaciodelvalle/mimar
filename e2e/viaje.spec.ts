@@ -275,15 +275,23 @@ test.describe
         await loginAs(caretakerPage, CARETAKER);
         await acceptInvitation(caretakerPage);
 
-        // ---- NOT OFFERED: the overflow sheet has no travel row ----------------
-        await caretakerPage.goto(`/mis-mascotas/${petToken}?sheet=mas`, {
+        // ---- NOT REACHABLE: the travel row is grey, with the reason -----------
+        // owner-pet-actions (2026-10-01): the panel below the credential shows
+        // the row grey instead of hiding it; what must not exist is a link.
+        await caretakerPage.goto(`/mis-mascotas/${petToken}`, {
           waitUntil: "domcontentloaded",
         });
-        // NON-VACUITY FIRST: the sheet is open, so the absence below is real.
-        await expect(caretakerPage.getByRole("link", { name: /Chapa física/ })).toBeVisible({
+        const panel = caretakerPage.locator('[data-section="pet-action-panel"]');
+        // NON-VACUITY FIRST: the panel rendered, so the absence below is real.
+        await expect(panel.getByRole("link", { name: /Chapa física/ })).toBeVisible({
           timeout: 20_000,
         });
-        await expect(caretakerPage.getByRole("link", { name: "Viaje y movilidad" })).toHaveCount(0);
+        await expect(
+          panel.getByRole("link", { name: "Viaje y movilidad", exact: true }),
+        ).toHaveCount(0);
+        await expect(
+          panel.locator('[aria-disabled="true"]', { hasText: "Viaje y movilidad" }),
+        ).toContainText("No disponible para cuidadores");
 
         // ---- NOT SHOWN: /viaje is the titular's, and says so ------------------
         await caretakerPage.goto(`/mis-mascotas/${petToken}/viaje`, {

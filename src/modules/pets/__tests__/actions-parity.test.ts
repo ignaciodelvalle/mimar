@@ -92,6 +92,7 @@ vi.mock("@/lib/infra/pet-access", () => ({
     },
     eventAuthorship: { authorRole: "owner", authorOrganizationId: null, authorVerified: false },
     accessPath: "owner",
+    holderRole: "owner",
   }),
 }));
 
@@ -565,6 +566,7 @@ describe("updatePetAction", () => {
       },
       eventAuthorship: { authorRole: "owner", authorOrganizationId: null, authorVerified: false },
       accessPath: "owner",
+      holderRole: "owner",
     });
     // The two resolvers answer with the SAME names and DIFFERENT rows — see the
     // module mock's note. `id` is the value that reaches `pets.locality_id`.
@@ -678,6 +680,7 @@ describe("updatePetAction", () => {
         },
         eventAuthorship: { authorRole: "owner", authorOrganizationId: null, authorVerified: false },
         accessPath: "owner",
+        holderRole: "owner",
       });
     }
 
@@ -773,6 +776,7 @@ describe("updatePetAction", () => {
         },
         eventAuthorship: { authorRole: "owner", authorOrganizationId: null, authorVerified: false },
         accessPath: "owner",
+        holderRole: "owner",
       });
     }
 
@@ -815,6 +819,44 @@ describe("updatePetAction", () => {
         years: 12,
         months: 0,
       });
+    });
+  });
+
+  // web = app (owner-pet-actions, PO 2026-10-01): the form saves for exactly the
+  // viewers the app's edit_profile admits — `canEditPetProfile`, one predicate.
+  // The titular gate still runs first; this narrows behind it.
+  describe("who may save — the app's edit gate", () => {
+    async function asHolder(accessPath: "owner" | "org", holderRole: string | null) {
+      const petAccessMod = await import("@/lib/infra/pet-access");
+      const base = await vi.mocked(petAccessMod.requireTitularAccess)("DIM-TEST-0001");
+      petAccessMod.requireTitularAccess = vi.fn().mockResolvedValue({
+        ...base,
+        accessPath,
+        holderRole,
+      });
+    }
+
+    it.each([
+      ["a user-held custody row", "owner", "shelter_custody"],
+      ["the org path", "org", null],
+    ] as const)("refuses %s, and writes nothing", async (_who, accessPath, holderRole) => {
+      await asHolder(accessPath, holderRole);
+      const { updatePet } = await import("@/src/modules/pets/application/update-pet");
+
+      const result = await updatePetAction("DIM-TEST-0001", { error: null }, makeUpdateFormData());
+
+      expect(result.error).toMatch(/no podés editar/i);
+      expect(updatePet).not.toHaveBeenCalled();
+    });
+
+    it.each(["co_owner", "foster"])("still saves for a %s", async (holderRole) => {
+      await asHolder("owner", holderRole);
+      const { updatePet } = await import("@/src/modules/pets/application/update-pet");
+
+      const state = await updatePetAction("DIM-TEST-0001", { error: null }, makeUpdateFormData());
+
+      expect(state.redirectTo).toBe("/mis-mascotas/DIM-TEST-0001");
+      expect(updatePet).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -926,6 +968,7 @@ describe("correctPetSpeciesAction", () => {
       },
       eventAuthorship: { authorRole: "owner", authorOrganizationId: null, authorVerified: false },
       accessPath: "owner",
+      holderRole: "owner",
     });
   }
 

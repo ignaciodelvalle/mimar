@@ -7,9 +7,10 @@ import { ACCOUNTS, loginAs } from "./demo/_helpers";
  *
  *   TE1  designate → accept → the caretaker records a medical event → the
  *        titular ends it → the pet leaves the caretaker's list.
- *   TE2  the deny-list AT THE UI: with an active arrangement, a caretaker can
- *        neither see nor reach transfer, adoption publishing, identity editing
- *        or a jurisdiction change.
+ *   TE2  the deny-list AT THE UI: with an active arrangement, a caretaker
+ *        cannot reach transfer, adoption publishing, identity editing or a
+ *        jurisdiction change — the panel shows those rows grey, with the
+ *        reason, and none of them is a link (owner-pet-actions, 2026-10-01).
  *
  * WHY THE TWO LIVE IN ONE FILE, `serial`
  * ---------------------------------------------------------------------------
@@ -23,9 +24,10 @@ import { ACCOUNTS, loginAs } from "./demo/_helpers";
  * ---------------------------------------------------------------------------
  * The server already refuses: `requireTitularAccess` (C2) and migration 0190's
  * RLS. Both are unit- and db-tested. What CANNOT be tested below the browser is
- * the thing this spec exists for — that the caretaker never SEES the control.
- * A permission wall discovered by pressing a button teaches a person the
- * product is broken, not that the boundary is deliberate.
+ * the thing this spec exists for — that the caretaker never meets the boundary
+ * by pressing a button. Since owner-pet-actions the row is SHOWN, grey and with
+ * its reason, instead of hidden (PO: "lo que no aplica en gris con el motivo"):
+ * the boundary is read before it is tried, and there is still nothing to press.
  *
  * CONVENTIONS HONOURED (e2e/README.md)
  * ---------------------------------------------------------------------------
@@ -278,7 +280,7 @@ test.describe
     // TE2 — the deny-list, at the UI layer
     // -------------------------------------------------------------------------
 
-    test("TE2 — un cuidador no ve ni alcanza transferir, publicar en adopción ni cambiar identidad", async ({
+    test("TE2 — un cuidador no alcanza transferir, publicar en adopción ni cambiar identidad", async ({
       page,
       browser,
     }) => {
@@ -301,23 +303,32 @@ test.describe
           timeout: 20_000,
         });
 
-        // ---- NOT SEEN: the overflow sheet offers none of the deny-list rows ---
+        // ---- NOT REACHABLE: the deny-list rows are GREY, with the reason ------
+        // owner-pet-actions (PO 2026-10-01): the old "⋯ Más" sheet HID these
+        // rows; the panel below the credential SHOWS them grey and says why, so
+        // the boundary is read before it is tried. What must not exist is a
+        // LINK. The old `?sheet=mas` URL is kept as an alias that lands on the
+        // panel, and this walk goes through it on purpose.
         await caretakerPage.goto(`/mis-mascotas/${token}?sheet=mas`, {
           waitUntil: "domcontentloaded",
         });
-        // NON-VACUITY FIRST. If the sheet failed to open, every absence below
+        const panel = caretakerPage.locator('[data-section="pet-action-panel"]');
+        // NON-VACUITY FIRST. If the panel failed to render, every absence below
         // would pass over an empty screen.
-        await expect(caretakerPage.getByRole("link", { name: /Chapa física/ })).toBeVisible();
-        for (const denied of [
-          "Transferir mascota",
-          "Buscar hogar",
-          "Editar datos y ficha",
-          "Cuidador temporal",
-        ]) {
+        await expect(panel.getByRole("link", { name: /Chapa física/ })).toBeVisible();
+        for (const [denied, reason] of [
+          ["Transferir la titularidad", "Solo el titular"],
+          ["Acompañamiento de adopción", "Solo el titular"],
+          ["Editar datos", "No disponible para cuidadores"],
+          ["Cuidador temporal", "Solo el titular"],
+        ] as const) {
           await expect(
-            caretakerPage.getByRole("link", { name: denied }),
-            `"${denied}" must not be offered to a caretaker`,
+            panel.getByRole("link", { name: denied, exact: true }),
+            `"${denied}" must not be a door for a caretaker`,
           ).toHaveCount(0);
+          const row = panel.locator('[aria-disabled="true"]', { hasText: denied });
+          await expect(row, `"${denied}" is shown grey`).toBeVisible();
+          await expect(row).toContainText(reason);
         }
 
         // ---- NOT REACHED: and the refusal is a sentence, not a 404 -----------

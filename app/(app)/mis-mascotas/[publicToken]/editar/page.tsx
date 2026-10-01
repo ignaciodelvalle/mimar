@@ -3,6 +3,7 @@ import { PetForm } from "@/components/PetForm";
 import { NotTitularNotice } from "@/components/pet-profile/NotTitularNotice";
 import { LnSheetCard, LnSheetHeader, LnSheetWrap } from "@/components/ui/Sheet";
 import { attachments, db } from "@/db";
+import { canEditPetProfile } from "@/lib/domain/profile-editors";
 import { resolveBusinessRule } from "@/lib/infra/business-rules-resolver";
 import { requireTitularAccess } from "@/lib/infra/pet-access";
 import { fetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
@@ -10,7 +11,7 @@ import { petPhotoUrl } from "@/lib/infra/storage";
 import { updatePetAction } from "@/src/modules/pets/actions";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 export default async function EditPetPage({
   params,
@@ -37,6 +38,14 @@ export default async function EditPetPage({
       );
     }
     notFound();
+  }
+  // web = app (owner-pet-actions): the form for exactly the viewers who may save
+  // it (`canEditPetProfile`, the rule `updatePetAction` and the app read). A
+  // user-held custody row and the org path pass the titular gate above but not
+  // this one; they hold or reach the animal, so a 404 would be a lie — the
+  // profile is where "Editar datos" shows them its reason.
+  if (!canEditPetProfile(access.accessPath, access.holderRole)) {
+    redirect(`/mis-mascotas/${publicToken}`);
   }
   const { pet } = access;
 

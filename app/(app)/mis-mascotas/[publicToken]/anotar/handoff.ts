@@ -52,10 +52,11 @@ export const QUICK_ACTIONS: Array<{ eventType: EventType; label: string }> = [
 
 export type QuickAction = (typeof QUICK_ACTIONS)[number];
 
-// All loggable events and owner flows — the full discoverability list for the
-// anotar surface (WP-7). Driven by the registry so it stays in sync. Entries
-// with a `routeOverride` bypass the registry deeplink (management flows that
-// open sheets or navigate to paths not in EVENT_CAPTURE_REGISTRY).
+// All loggable events — the full discoverability list for the anotar surface
+// (WP-7). Driven by the registry so it stays in sync. Entries with a
+// `routeOverride` bypass the registry deeplink (recording flows that open a
+// sheet or a page not in EVENT_CAPTURE_REGISTRY: the lost/found marks, the
+// pregnancy start). The pet's other doors are not here — see the list's end.
 export type CaptureOption = {
   eventType: EventType;
   label: string;
@@ -136,37 +137,12 @@ export const ALL_CAPTURE_OPTIONS: CaptureOption[] = [
   },
   // Notas
   { eventType: "note_added", label: "Agregar nota", category: "Notas" },
-  // Gestión del perfil
-  {
-    eventType: "status_changed",
-    label: "Compartir libreta",
-    category: "Perfil",
-    routeOverride: "?sheet=compartir-libreta",
-  },
-  {
-    eventType: "status_changed",
-    label: "Transferir mascota",
-    category: "Perfil",
-    routeOverride: "?sheet=transferir-mascota",
-  },
-  {
-    eventType: "status_changed",
-    label: "Editar datos de la mascota",
-    category: "Perfil",
-    routeOverride: "?sheet=editar-mascota",
-  },
-  {
-    eventType: "vaccination_administered",
-    label: "Programar vacuna",
-    category: "Perfil",
-    routeOverride: "/vacunas/programar",
-  },
-  {
-    eventType: "status_changed",
-    label: "Buscar hogar (adopción)",
-    category: "Perfil",
-    routeOverride: "/buscar-hogar",
-  },
+  // The "Perfil" category that used to close this list — Compartir libreta,
+  // Transferir mascota, Editar datos de la mascota, Programar vacuna, Buscar
+  // hogar — was a second menu of the pet's doors under other labels, one of the
+  // three drifted copies owner-pet-actions replaced (PO 2026-10-01). Those
+  // doors live once, in the owner's panel below the credential
+  // (`derivePetActions`, @dim/contract/reference); this list records.
 ];
 
 export function findQuickAction(kind: string | undefined): QuickAction | undefined {

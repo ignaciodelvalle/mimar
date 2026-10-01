@@ -17,6 +17,7 @@
 // call, and a foster holding the animal in transit is a Path-1 holder with no
 // business reading them. `null` and not an empty draft — see the contract.
 
+import { canEditPetProfile } from "@/lib/domain/profile-editors";
 import { apiV1Envelope } from "@/lib/infra/api-v1";
 import { type PetHolderAccess, isTitularHolder } from "@/lib/infra/pet-access";
 import type { PhysicalTagInterestState } from "@/lib/infra/physical-tag-interest";
@@ -30,10 +31,6 @@ import {
   type PetProfileEditV1,
   type ServiceDogDesignationV1,
 } from "@dim/contract/api";
-
-// The owner face's own mapping of `ownerships.role` onto the viewer vocabulary
-// — the libreta face imports it for the same reason: one mapping per caller.
-import { toViewerRole } from "../payload";
 
 /** The `pets` columns this payload reads. Structural — the row satisfies it. */
 export type ProfilePetRow = {
@@ -109,13 +106,14 @@ export function isLegalOwner(access: ResolvedProfileAccess): boolean {
  *     co-owner, a foster and a caretaker are all outside it. NOT for a DECEASED
  *     animal either: `loadOwnedPetWithServiceDog` refuses one, and this flag
  *     says so up front rather than offering a form that can only be refused.
- *   · THE SECTIONED PROFILE EDIT (owner-pet-actions) is the person path as the
- *     OWNER FACE names it — `toViewerRole`, the one mapping of `ownerships.role`
- *     onto the viewer vocabulary — minus the caretaker. Not `isTitularHolder`:
- *     that deny admits the org path and a user-held `shelter_custody` row, and
- *     the owner panel offers neither an "Editar datos". This block serves the
- *     owner's insurance and medical text; it goes to exactly the viewers the
- *     panel lets in, and the write is refused to everybody else.
+ *   · THE SECTIONED PROFILE EDIT (owner-pet-actions) is `canEditPetProfile`,
+ *     the predicate the web's `updatePetAction` and its forms read too (web =
+ *     app): the person path as owner, co-owner or foster. Not
+ *     `isTitularHolder`: that deny admits the org path and a user-held
+ *     `shelter_custody` row, and the owner panel offers neither an "Editar
+ *     datos". This block serves the owner's insurance and medical text; it goes
+ *     to exactly the viewers the panel lets in, and the write is refused to
+ *     everybody else.
  */
 export function petProfileCapabilities(
   access: ResolvedProfileAccess,
@@ -134,8 +132,10 @@ export function petProfileCapabilities(
     canCorrectSpecies: titular,
     canTogglePhysicalTagInterest: access.kind === "owner",
     canManageServiceDog: isLegalOwner(access) && access.pet.status !== "deceased",
-    canEditProfile:
-      access.kind === "owner" && toViewerRole("owner", access.holderRole) !== "caretaker",
+    canEditProfile: canEditPetProfile(
+      access.kind,
+      access.kind === "owner" ? access.holderRole : null,
+    ),
   };
 }
 
