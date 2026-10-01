@@ -68,7 +68,7 @@ import { correctPetSpecies } from "./application/profile/correct-species";
 import { registerPet } from "./application/register-pet";
 import { updatePet } from "./application/update-pet";
 import { parseAgeFromFormData, parsePetForm } from "./domain/pet-form";
-import { resolveEditedBirthDate } from "./domain/pet-profile-edit";
+import { resolveEditedBirthDate, withStoredLegacyConditionCodes } from "./domain/pet-profile-edit";
 import type { NewNotification, NewPetFormState } from "./domain/types";
 import { PetsRepository } from "./infrastructure/pets-repository";
 
@@ -469,6 +469,14 @@ export async function updatePetAction(
   });
   parsed.dateOfBirth = birth.dateOfBirth;
   parsed.birthDateIsEstimated = birth.birthDateIsEstimated;
+
+  // The form posts only the codes the catalogue still names; a stored code it
+  // dropped no longer is not the owner's to lose here. The native sectioned
+  // edit keeps it (composePetProfileEdit), and so does this door.
+  parsed.permanentConditions = withStoredLegacyConditionCodes(
+    parsed.permanentConditions,
+    existingPet.permanentConditions ?? [],
+  ) as typeof parsed.permanentConditions;
 
   // The free text of Salud and Seguro, under the app door's own gate: a NEW
   // value past its cap is refused with the contract's sentence; what the animal

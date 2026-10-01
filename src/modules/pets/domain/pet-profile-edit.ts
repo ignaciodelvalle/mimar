@@ -195,6 +195,17 @@ function keptConditionCodes(submitted: string[], stored: string[]): string[] {
   return submitted.filter((code) => isPermanentCondition(code) || stored.includes(code));
 }
 
+/**
+ * A save from a form that can only show the catalogue's codes: what it posted
+ * (already sanitised to the catalogue), plus every code the animal carries that
+ * the catalogue no longer names. Same rule as `keptConditionCodes`, for a
+ * caller that never saw those codes and so could not post them back.
+ */
+export function withStoredLegacyConditionCodes(submitted: string[], stored: string[]): string[] {
+  const legacy = stored.filter((code) => !isPermanentCondition(code) && !submitted.includes(code));
+  return keptConditionCodes([...submitted, ...legacy], stored);
+}
+
 /** The four condition fields after a save, normalised the way the web parser does. */
 function composeConditions(
   existing: EditablePetSnapshot,

@@ -805,20 +805,69 @@ describe("updatePetAction", () => {
     it("estimates a new date, flagged as one, when the age itself was changed", async () => {
       await withStoredBirthDate("2022-01-01", false);
       const { updatePet } = await import("@/src/modules/pets/application/update-pet");
+      // A frozen clock, so the expected date is a literal and not the helper's
+      // own answer round-tripped. Only Date is faked: the action awaits real I/O.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
+      try {
+        await updatePetAction(
+          "DIM-TEST-0001",
+          { error: null },
+          makeUpdateFormData({ ageYears: "12", ageMonths: "0" }),
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(parsedSentToUpdatePet(updatePet)).toMatchObject({
+        dateOfBirth: "2014-10-15",
+        birthDateIsEstimated: true,
+      });
+    });
+  });
+
+  // The edit form can only show the catalogue's condition codes, so it posts
+  // back only those; a code the animal already carries that the catalogue no
+  // longer names (a renamed entry, a legacy row) is not the owner's to drop by
+  // saving something else. The app's sectioned edit keeps it
+  // (`composePetProfileEdit`); the web save must too.
+  describe("the conditions an edit stores", () => {
+    async function withStoredConditions(permanentConditions: string[]) {
+      const petAccessMod = await import("@/lib/infra/pet-access");
+      const base = await vi.mocked(petAccessMod.requireTitularAccess)("DIM-TEST-0001");
+      petAccessMod.requireTitularAccess = vi.fn().mockResolvedValue({
+        ...base,
+        pet: { ...base.pet, permanentConditions },
+      });
+    }
+
+    it("keeps a stored code the catalogue no longer names, and honours what the form changed", async () => {
+      await withStoredConditions(["diabetes", "codigo_viejo"]);
+      const { updatePet } = await import("@/src/modules/pets/application/update-pet");
 
       await updatePetAction(
         "DIM-TEST-0001",
         { error: null },
-        makeUpdateFormData({ ageYears: "12", ageMonths: "0" }),
+        // The form dropped diabetes and ticked epilepsia; it never saw the legacy code.
+        makeUpdateFormData({ permanentConditions: "epilepsia" }),
       );
 
-      const parsed = parsedSentToUpdatePet(updatePet);
-      expect(parsed.birthDateIsEstimated).toBe(true);
-      expect(parsed.dateOfBirth).not.toBe("2022-01-01");
-      expect(petAgeFromBirthDate(parsed.dateOfBirth as string, new Date())).toEqual({
-        years: 12,
-        months: 0,
-      });
+      const call = vi.mocked(updatePet).mock.calls[0];
+      expect(call[0].parsed.permanentConditions).toEqual(["epilepsia", "codigo_viejo"]);
+    });
+
+    it("does not invent a code the animal never carried", async () => {
+      await withStoredConditions([]);
+      const { updatePet } = await import("@/src/modules/pets/application/update-pet");
+
+      await updatePetAction(
+        "DIM-TEST-0001",
+        { error: null },
+        makeUpdateFormData({ permanentConditions: "epilepsia,codigo_inventado" }),
+      );
+
+      const call = vi.mocked(updatePet).mock.calls[0];
+      expect(call[0].parsed.permanentConditions).toEqual(["epilepsia"]);
     });
   });
 
