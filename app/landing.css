@@ -4257,3 +4257,21 @@ html:has([data-landing-root]) {
     transition: none;
   }
 }
+
+/* Institutional reading pages (app/(institucional)/layout.tsx). globals.css
+   zeroes every heading's margin (`h1,h2,…{margin:0}`) and that type selector
+   beats the `space-y-*` utilities, which are :where()-wrapped, so a heading sat
+   flush against whatever followed it. The rhythm lives here, scoped to this
+   one reading column; the (public) product pages are not under `.lp-reading`. */
+.lp .lp-reading h1 {
+  margin-bottom: 1rem;
+}
+.lp .lp-reading h2 {
+  margin-bottom: 0.75rem;
+}
+.lp .lp-reading h3 {
+  margin-bottom: 0.5rem;
+}
+.lp .lp-reading h3:not(:first-child) {
+  margin-top: 1.25rem;
+}

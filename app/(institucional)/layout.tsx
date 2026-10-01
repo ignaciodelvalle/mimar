@@ -34,7 +34,7 @@ export default function InstitucionalLayout({ children }: { children: React.Reac
     <div className="lp flex min-h-screen flex-col" data-landing-root>
       <DemoModeBanner enabled={shouldShowDemoBanner(process.env.NEXT_PUBLIC_DEMO_MODE)} />
       <LandingNav />
-      <main id="main-content" className="flex-1">
+      <main id="main-content" className="lp-reading flex-1">
         {children}
       </main>
       <LandingFooter />
