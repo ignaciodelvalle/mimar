@@ -12,6 +12,7 @@ import { useActionState, useEffect, useState } from "react";
 import { LnButton } from "@/components/ui/Button";
 import { DateInputAr } from "@/components/ui/DateInputAr";
 import { LN_CONTROL_MONO_CLASS, LnField, LnInput } from "@/components/ui/Field";
+import { useActionRedirect } from "@/lib/ui/use-action-redirect";
 import { useKeptFields } from "@/lib/ui/use-kept-fields";
 import type { TravelFormState } from "@/src/modules/pets/application/travel/types";
 
@@ -29,6 +30,9 @@ export function CviForm({
   const { boundAction, kept } = useKeptFields<TravelFormState>(action);
   const [state, formAction, isPending] = useActionState(boundAction, initialState);
   const [idempotencyKey, setIdempotencyKey] = useState(initialIdempotencyKey);
+  // The page reloads as a full document (N3 contract, see TripForm).
+  const navigating = useActionRedirect(state.redirectTo, state);
+  const busy = isPending || navigating;
 
   useEffect(() => {
     if (state.ok) setIdempotencyKey(crypto.randomUUID());
@@ -94,8 +98,8 @@ export function CviForm({
         <output className="block text-sm text-[var(--color-ln-ok)]">CVI registrado.</output>
       )}
 
-      <LnButton type="submit" variant="primary" size="lg" block loading={isPending}>
-        {isPending ? "Registrando…" : "Registrar CVI"}
+      <LnButton type="submit" variant="primary" size="lg" block loading={busy}>
+        {busy ? "Registrando…" : "Registrar CVI"}
       </LnButton>
     </form>
   );

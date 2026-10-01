@@ -17,6 +17,7 @@ import { useActionState, useEffect, useState } from "react";
 import { LnButton } from "@/components/ui/Button";
 import { DateInputAr } from "@/components/ui/DateInputAr";
 import { LN_CONTROL_MONO_CLASS, LnField, LnSelect } from "@/components/ui/Field";
+import { useActionRedirect } from "@/lib/ui/use-action-redirect";
 import { useKeptFields } from "@/lib/ui/use-kept-fields";
 import type { TravelFormState } from "@/src/modules/pets/application/travel/types";
 
@@ -52,6 +53,9 @@ export function TripForm({
   const { boundAction, kept } = useKeptFields<TravelFormState>(action);
   const [state, formAction, isPending] = useActionState(boundAction, initialState);
   const [idempotencyKey, setIdempotencyKey] = useState(initialIdempotencyKey);
+  // The page reloads as a full document onto the new trip (N3 contract).
+  const navigating = useActionRedirect(state.redirectTo, state);
+  const busy = isPending || navigating;
 
   // A success is a new trip on the spine: the next submit is a different one.
   useEffect(() => {
@@ -172,8 +176,8 @@ export function TripForm({
         <output className="block text-sm text-[var(--color-ln-ok)]">Viaje registrado.</output>
       )}
 
-      <LnButton type="submit" variant="primary" size="lg" block loading={isPending}>
-        {isPending ? "Registrando…" : "Registrar viaje"}
+      <LnButton type="submit" variant="primary" size="lg" block loading={busy}>
+        {busy ? "Registrando…" : "Registrar viaje"}
       </LnButton>
     </form>
   );

@@ -13,6 +13,7 @@
 import { useActionState, useState } from "react";
 
 import { LnButton } from "@/components/ui/Button";
+import { useActionRedirect } from "@/lib/ui/use-action-redirect";
 import type { TravelFormState } from "@/src/modules/pets/application/travel/types";
 
 const initialState: TravelFormState = { error: null };
@@ -33,6 +34,9 @@ export function CancelTripButton({
 }) {
   const [state, formAction, isPending] = useActionState(action, initialState);
   const [confirming, setConfirming] = useState(false);
+  // The page reloads as a full document without the trip (N3 contract).
+  const navigating = useActionRedirect(state.redirectTo, state);
+  const busy = isPending || navigating;
 
   if (!confirming) {
     return (
@@ -58,14 +62,14 @@ export function CancelTripButton({
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <LnButton type="submit" variant="seal" size="sm" loading={isPending}>
+        <LnButton type="submit" variant="seal" size="sm" loading={busy}>
           Confirmar cancelación
         </LnButton>
         <LnButton
           type="button"
           variant="ghost"
           size="sm"
-          disabled={isPending}
+          disabled={busy}
           onClick={() => setConfirming(false)}
         >
           Volver

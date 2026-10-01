@@ -4,7 +4,14 @@
 //
 // Each one: requireTitularAccess (the pet exists, the caller holds it, and is
 // not a caretaker) → parse the form → call the SAME use-case
-// `POST /api/v1/pets/{publicToken}/travel` calls → revalidate /viaje. The
+// `POST /api/v1/pets/{publicToken}/travel` calls → return `redirectTo` /viaje.
+//
+// NO revalidatePath. These forms sit ON /viaje, and revalidating the route the
+// form is on hands the client router the Next 15.5 production transition that
+// never commits (lib/ui/full-page-action-nav.ts): the write landed, and the
+// button said "Registrando…" forever. Found by e2e/viaje.spec.ts; jsdom cannot
+// see it. The form navigates as a full document instead (useActionRedirect).
+// The
 // narrower travel rule (canAccessTravel: owner, co-owner, foster on the person
 // path) and the deceased refusal live in the use-case, so the two doors cannot
 // disagree about them.
@@ -12,8 +19,6 @@
 // IDEMPOTENCY. Each form mounts with a hidden `idempotencyKey` (a UUID minted
 // client-side, renewed after a success), so a double submit of one form is ONE
 // event — the replay answers the first write's id.
-
-import { revalidatePath } from "next/cache";
 
 import { requireTitularAccess } from "@/lib/infra/pet-access";
 import { CORRIDOR_IDS, type CorridorId } from "@/lib/reference/cross-border-corridors";
@@ -82,8 +87,12 @@ export async function recordTripAction(
   });
   if (!result.ok) return { error: result.error };
 
-  revalidatePath(viajePath(publicToken));
-  return { error: null, ok: true };
+  // The page opens on the trip just recorded.
+  return {
+    error: null,
+    ok: true,
+    redirectTo: `${viajePath(publicToken)}?viaje=${encodeURIComponent(result.eventId)}`,
+  };
 }
 
 export async function recordCviAction(
@@ -112,8 +121,7 @@ export async function recordCviAction(
   });
   if (!result.ok) return { error: result.error };
 
-  revalidatePath(viajePath(publicToken));
-  return { error: null, ok: true };
+  return { error: null, ok: true, redirectTo: viajePath(publicToken) };
 }
 
 export async function cancelTripAction(
@@ -141,6 +149,5 @@ export async function cancelTripAction(
   });
   if (!result.ok) return { error: result.error };
 
-  revalidatePath(viajePath(publicToken));
-  return { error: null, ok: true };
+  return { error: null, ok: true, redirectTo: viajePath(publicToken) };
 }

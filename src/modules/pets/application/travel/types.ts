@@ -78,6 +78,9 @@ export type CancelTripResult =
 /**
  * What the web's travel forms (`useActionState`) receive back. `error` is the
  * es-AR sentence the form renders; `ok` flips on success so the form can reset
- * and mint a fresh idempotency key for the next submission.
+ * and mint a fresh idempotency key for the next submission. `redirectTo` is the
+ * N3 post-action navigation (lib/ui/use-action-redirect.ts): /viaje reloads as
+ * a full document, because revalidating the route the form sits on rides the
+ * same Next 15.5 transition that never commits in production.
  */
-export type TravelFormState = { error: string | null; ok?: boolean };
+export type TravelFormState = { error: string | null; ok?: boolean; redirectTo?: string };
