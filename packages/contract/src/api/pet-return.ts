@@ -76,6 +76,12 @@ export type PetReturnStateV1 =
       kind: "inbound_pending";
       /** A first name, an organisation's display name, or "Alguien". */
       actorName: string;
+      /**
+       * Whether `actorName` is an organisation's display name or a person's
+       * first name (or the "Alguien" fallback). Copy differs: an organisation
+       * "has the pet safe and is waiting"; a person "wants to hand it back".
+       */
+      actorKind: "organization" | "person";
       /** ISO-8601. What the proposer said, or when the event landed. */
       proposedAt: string;
       notes: string | null;

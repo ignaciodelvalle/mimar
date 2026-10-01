@@ -210,6 +210,7 @@ describe("readPetReturnState — a pending proposal, from the caller's side", ()
     expect(await run()).toEqual({
       kind: "inbound_pending",
       actorName: "Ana",
+      actorKind: "person",
       proposedAt: "2026-08-20T12:00:00.000Z",
       notes: "La tengo yo",
     });
@@ -292,7 +293,10 @@ describe("readPetReturnState — naming the person holding the animal", () => {
       proposal({ to_user_id: USER_ID, from_user_id: null, from_organization_id: "org-9" }),
       [{ displayName: "Refugio Patitas del Sur" }],
     ];
-    expect(await run()).toMatchObject({ actorName: "Refugio Patitas del Sur" });
+    expect(await run()).toMatchObject({
+      actorName: "Refugio Patitas del Sur",
+      actorKind: "organization",
+    });
   });
 
   it('falls back to "Alguien" rather than to a blank', async () => {
@@ -300,7 +304,7 @@ describe("readPetReturnState — naming the person holding the animal", () => {
     // word for the same case.
     control.pending = true;
     control.results = [proposal({ to_user_id: USER_ID, from_user_id: null }), []];
-    expect(await run()).toMatchObject({ actorName: "Alguien" });
+    expect(await run()).toMatchObject({ actorName: "Alguien", actorKind: "person" });
   });
 });
 

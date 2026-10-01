@@ -92,7 +92,12 @@ export const RETURN_REASON_CHOICES: ReadonlyArray<{ reason: string; label: strin
 export function returnStateHeadline(state: PetReturnStateV1, petName: string): string {
   switch (state.kind) {
     case "inbound_pending":
-      return `${state.actorName} tiene a ${petName} y quiere devolvértela.`;
+      // An organisation proposer (the shelter that confirmed a chip match) has
+      // the pet safe and is waiting; a person proposer wants to hand it back.
+      // A server that predates `actorKind` reads as a person — the old wording.
+      return state.actorKind === "organization"
+        ? `${petName} está en ${state.actorName}, a salvo y esperándote.`
+        : `${state.actorName} tiene a ${petName} a salvo y quiere devolvértela.`;
     case "awaiting_org":
       // NOT "aceptá o rechazá". This is the caller's own outgoing proposal and
       // the organisation has not answered; there is nothing for them to do.
@@ -119,6 +124,22 @@ export function returnStateHeadline(state: PetReturnStateV1, petName: string): s
     case "not_the_adopter":
       return `${petName} figura adoptada por otra persona, así que la devolución la propone quien la adoptó.`;
   }
+}
+
+/** The sentence under "Confirmar la devolución", per who is proposing. */
+export function confirmReturnSentence(state: PetReturnStateV1, petName: string): string {
+  const closing =
+    state.kind === "inbound_pending" && state.actorKind === "organization"
+      ? "Ahí el refugio deja de cuidarla."
+      : "Ahí termina su cuidado temporal.";
+  return `Tocá el botón cuando ya tengas a ${petName} con vos. ${closing}`;
+}
+
+/** The sentence under "Rechazar la devolución", per who is proposing. */
+export function rejectReturnSentence(state: PetReturnStateV1): string {
+  return state.kind === "inbound_pending" && state.actorKind === "organization"
+    ? "Si no es tu mascota o algo no está bien, contale el motivo al refugio."
+    : "Si no es tu mascota o algo no está bien, contale el motivo.";
 }
 
 /** The web's own role labels on this page (`ROLE_LABELS`), transcribed. */
@@ -151,13 +172,13 @@ export function acceptedMessage(
   petName: string,
 ): { tone: "ok" | "err"; message: string } {
   if (!ack.autoCancelled) {
-    return { tone: "ok", message: `Listo. ${petName} vuelve a figurar a tu nombre.` };
+    return { tone: "ok", message: `¡Listo! ${petName} ya está en casa con vos.` };
   }
   return {
     tone: "err",
     message:
       ack.reason ??
-      "La propuesta se canceló automáticamente y la mascota no volvió a tu nombre. Volvé a abrir la pantalla.",
+      "No pudimos confirmar la devolución porque la propuesta se canceló. Volvé a abrir la pantalla.",
   };
 }
 

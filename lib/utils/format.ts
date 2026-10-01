@@ -547,6 +547,22 @@ export function foundPossessivePhrase(sex: string | null | undefined): string {
   }
 }
 
+/**
+ * Owner-side "go and pick the pet up" phrase, e.g. "ir a buscarla" / "ir a
+ * buscarlo". Unknown sex sidesteps the lo/la pronoun by naming the pet, the
+ * same neutral move foundPossessivePhrase and sightingPhrase make.
+ */
+export function pickUpPhrase(sex: string | null | undefined, petName: string): string {
+  switch (normalizeSex(sex)) {
+    case "male":
+      return "ir a buscarlo";
+    case "female":
+      return "ir a buscarla";
+    default:
+      return `ir a buscar a ${petName}`;
+  }
+}
+
 /** Sighting CTA/headline, e.g. "La vi cerca de acá" / "Lo vi cerca de acá". Used
  * both as the sighting-form page headline and the lower-commitment CTA button
  * next to foundPossessivePhrase on the lost public credential — the two must

@@ -528,7 +528,7 @@ describe("chapter endings (M5)", () => {
     const last = finalScreen(SHELTER_SEQUENCE);
     expect(last).toContain('data-actor="owner"');
     // acceptedMessage for a return that went through.
-    expect(last).toContain("Listo. Pampa vuelve a figurar a tu nombre.");
+    expect(last).toContain("¡Listo! Pampa ya está en casa con vos.");
     expect(last).not.toContain("Ya tengo a Pampa");
     // The accept flips lost → active itself: no "Sí, la encontré" after it.
     expect(last).not.toContain("Sí, la encontré");
@@ -540,7 +540,7 @@ describe("chapter endings (M5)", () => {
     const at = (animate: boolean) =>
       renderToStaticMarkup(SHELTER_SEQUENCE.device(SHELTER_SEQUENCE.total - 2, animate));
     expect(at(false)).toContain("Devolución de Pampa");
-    expect(at(false)).toContain("Refugio Patitas tiene a Pampa y quiere devolvértela.");
+    expect(at(false)).toContain("Pampa está en Refugio Patitas, a salvo y esperándote.");
     expect(at(false)).toMatch(/lp-vf-submit--pressed[^>]*>Ya tengo a Pampa/);
     expect(at(true)).toMatch(/lp-seq-late[^>]*>Ya tengo a Pampa/);
     expect(at(false)).not.toContain("Proponer la devolución");

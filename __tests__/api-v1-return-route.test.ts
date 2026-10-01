@@ -122,6 +122,7 @@ function petRow(over: Record<string, unknown> = {}) {
 const INBOUND = {
   kind: "inbound_pending",
   actorName: "Ana",
+  actorKind: "person",
   proposedAt: "2026-08-20T12:00:00.000Z",
   notes: "La tengo yo",
 };

@@ -34,6 +34,7 @@ import {
   findLiveOrgShelterCustody,
   isOrgCustodyCollision,
 } from "@/lib/infra/org-custody";
+import { pickUpPhrase } from "@/lib/utils/format";
 import { writeRefugioReturnProposalInTx } from "@/src/modules/return-to-owner/application/propose-return-as-refugio";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
@@ -235,7 +236,7 @@ export async function confirmChipMatchAsRefugioWriter({
           notificationType: "chip_match_notification_owner",
           severity: "urgent",
           title: `¡Encontraron a ${matchedPet.name}!`,
-          body: `${organization.displayName} detectó a ${matchedPet.name} por su microchip. Coordiná la devolución.`,
+          body: `${matchedPet.name} está a salvo en ${organization.displayName}. La reconocieron por su microchip. Coordiná con ellos para ${pickUpPhrase(matchedPet.sex, matchedPet.name)}.`,
           ctaLabel: "Coordinar devolución",
           ctaUrl: `/mis-mascotas/${matchedPetToken}/devolucion`,
           relatedPetId: matchedPet.id,

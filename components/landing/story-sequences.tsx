@@ -1049,7 +1049,7 @@ function IntakeDoneScreen() {
 
 /**
  * 4 · Martín's notification, in the native inbox — the text
- * confirm-chip-match-refugio.ts:233-243 writes (severity "urgent", :236).
+ * confirm-chip-match-refugio.ts:234-244 writes (severity "urgent", :237).
  * Its CTA points at "/mis-mascotas/{token}/devolucion", which maps to the
  * native return screen (packages/contract/src/links/deep-link-map.ts,
  * `petReturn`), so the inbox renders it as a button (NotificationsScreen.tsx,
@@ -1061,7 +1061,7 @@ function OwnerNotifiedScreen() {
       title={`¡Encontraron a ${PAMPA.name}!`}
       date={INTAKE.date}
       severity="urgent"
-      body={`${PAMPA_SHELTER} detectó a ${PAMPA.name} por su microchip. Coordiná la devolución.`}
+      body={`${PAMPA.name} está a salvo en ${PAMPA_SHELTER}. La reconocieron por su microchip. Coordiná con ellos para ir a buscarla.`}
       cta="Coordinar devolución"
     />
   );
@@ -1074,15 +1074,15 @@ function OwnerNotifiedScreen() {
  *
  * THE STATE IS `inbound_pending`. Since 2026-10-01 (PO) the refugio's chip
  * match leaves the return proposal addressed to Martín in the intake's own
- * transaction (confirm-chip-match-refugio.ts:219-227, through
+ * transaction (confirm-chip-match-refugio.ts:220-228, through
  * writeRefugioReturnProposalInTx), so readPetReturnState finds it pending and
  * names the organization as the proposer
  * (src/modules/return-to-owner/application/read-return-state.ts:143-175,
- * proposerName :204-210). The screen reads: the title (DevolucionScreen.tsx:160),
- * the headline (returnStateHeadline, devolucion-view-model.ts:94-95), the
+ * proposerIdentity :192-215, `actorKind` "organization"). The screen reads: the title (DevolucionScreen.tsx:162),
+ * the headline (returnStateHeadline, devolucion-view-model.ts:94-101), the
  * "Confirmar la devolución" card with its sentence and "Ya tengo a {nombre}"
- * (:176-188) — the one he presses — and the "Rechazar la devolución" card's
- * title and sentence (:192-194; its "Motivo" field and button are below the
+ * (:178-189, confirmReturnSentence) — the one he presses — and the "Rechazar la devolución" card's
+ * title and sentence (:191-194, rejectReturnSentence; its "Motivo" field and button are below the
  * fold, omitted). The proposal carries no notes, so there is no "Lo que dejó
  * escrito" card (:169-173).
  */
@@ -1094,13 +1094,12 @@ function OwnerDevolucionScreen({ animate }: { animate: boolean }) {
       <div className="lp-app-body lp-ph-pad">
         <p className="lp-kv-title lp-sheet-t">Devolución de {PAMPA.name}</p>
         <p className="lp-ph-note">
-          {PAMPA_SHELTER} tiene a {PAMPA.name} y quiere devolvértela.
+          {PAMPA.name} está en {PAMPA_SHELTER}, a salvo y esperándote.
         </p>
         <div className="lp-ph-card">
           <p className="lp-kv-title">Confirmar la devolución</p>
           <p className="lp-ph-note">
-            Confirmá sólo cuando tengas a {PAMPA.name} con vos. La custodia de quien la tiene se
-            cierra en ese momento.
+            Tocá el botón cuando ya tengas a {PAMPA.name} con vos. Ahí el refugio deja de cuidarla.
           </p>
           <span
             className={
@@ -1114,7 +1113,9 @@ function OwnerDevolucionScreen({ animate }: { animate: boolean }) {
         </div>
         <div className="lp-ph-card">
           <p className="lp-kv-title">Rechazar la devolución</p>
-          <p className="lp-ph-note">Quien la tiene va a recibir tu respuesta con el motivo.</p>
+          <p className="lp-ph-note">
+            Si no es tu mascota o algo no está bien, contale el motivo al refugio.
+          </p>
         </div>
       </div>
     </>
@@ -1127,8 +1128,8 @@ function OwnerDevolucionScreen({ animate }: { animate: boolean }) {
  * closes the refugio's custody and flips her lost → active itself
  * (src/modules/return-to-owner/application/owner-accept-return.ts:249-281), so
  * no "Sí, la encontré" follows. The same native screen then shows its notice
- * (DevolucionScreen.tsx:119-120, :163-167), acceptedMessage's sentence for a
- * return that went through (devolucion-view-model.ts:153-154).
+ * (DevolucionScreen.tsx:122, :165-169), acceptedMessage's sentence for a
+ * return that went through (devolucion-view-model.ts:170-176).
  *
  * Omitted, not altered: the headline the screen re-reads underneath once the
  * return landed (returnStateHeadline for the state after it). No "al día"
@@ -1143,7 +1144,7 @@ function OwnerReturnedScreen() {
       <div className="lp-app-body lp-ph-pad">
         <p className="lp-kv-title lp-sheet-t">Devolución de {PAMPA.name}</p>
         <div className="lp-match-ok">
-          <span>Listo. {PAMPA.name} vuelve a figurar a tu nombre.</span>
+          <span>¡Listo! {PAMPA.name} ya está en casa con vos.</span>
         </div>
       </div>
     </>

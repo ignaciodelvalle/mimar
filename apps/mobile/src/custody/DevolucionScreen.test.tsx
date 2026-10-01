@@ -53,6 +53,7 @@ function payload(state: PetReturnStateV1, capabilities: PetReturnCapabilitiesV1)
 const INBOUND: PetReturnStateV1 = {
   kind: "inbound_pending",
   actorName: "Ana",
+  actorKind: "person",
   proposedAt: "2026-08-20T12:00:00.000Z",
   notes: "La encontré en la plaza",
 };
@@ -86,7 +87,9 @@ beforeEach(() => {
 describe("DevolucionScreen — the controls are the server's", () => {
   it("draws both answers for an inbound proposal, and the note it carried", async () => {
     render(<DevolucionScreen publicToken={TOKEN} />);
-    expect(await screen.findByText("Ana tiene a Pampa y quiere devolvértela.")).toBeOnTheScreen();
+    expect(
+      await screen.findByText("Ana tiene a Pampa a salvo y quiere devolvértela."),
+    ).toBeOnTheScreen();
     expect(screen.getByText("Ya tengo a Pampa")).toBeOnTheScreen();
     expect(screen.getByText("Rechazar")).toBeOnTheScreen();
     expect(screen.getByText("La encontré en la plaza")).toBeOnTheScreen();
@@ -200,7 +203,7 @@ describe("DevolucionScreen — answering", () => {
   it("says the animal came back only when it did", async () => {
     render(<DevolucionScreen publicToken={TOKEN} />);
     fireEvent.press(await screen.findByText("Ya tengo a Pampa"));
-    expect(await screen.findByText("Listo. Pampa vuelve a figurar a tu nombre.")).toBeOnTheScreen();
+    expect(await screen.findByText("¡Listo! Pampa ya está en casa con vos.")).toBeOnTheScreen();
   });
 
   it("renders an AUTO-CANCELLED accept as the server's own reason, not as success", async () => {
@@ -223,7 +226,7 @@ describe("DevolucionScreen — answering", () => {
         "La propuesta se canceló automáticamente porque Pampa ya no figura como perdida.",
       ),
     ).toBeOnTheScreen();
-    expect(screen.queryByText("Listo. Pampa vuelve a figurar a tu nombre.")).toBeNull();
+    expect(screen.queryByText("¡Listo! Pampa ya está en casa con vos.")).toBeNull();
   });
 
   it("refuses a blank rejection motive LOCALLY and posts nothing", async () => {

@@ -60,6 +60,7 @@ export function toWireState(state: PetReturnState): PetReturnStateV1 {
       return {
         kind: "inbound_pending",
         actorName: state.actorName,
+        actorKind: state.actorKind,
         proposedAt: state.proposedAt,
         notes: state.notes,
       };

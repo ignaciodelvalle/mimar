@@ -21,6 +21,7 @@ import {
   lostThirdPersonPhrase,
   markLostActionLabel,
   markLostFirstPrompt,
+  pickUpPhrase,
   registeredAdjective,
   sightedWhenQuestion,
   sightingPhrase,
@@ -37,6 +38,17 @@ describe("lostBannerHeadline", () => {
     expect(lostBannerHeadline(null)).toBe("SE PERDIÓ");
     expect(lostBannerHeadline(undefined)).toBe("SE PERDIÓ");
     expect(lostBannerHeadline("nonsense")).toBe("SE PERDIÓ");
+  });
+});
+
+describe("pickUpPhrase", () => {
+  it("genders the pronoun by sex", () => {
+    expect(pickUpPhrase("male", "Rocky")).toBe("ir a buscarlo");
+    expect(pickUpPhrase("female", "Pampa")).toBe("ir a buscarla");
+  });
+  it("names the pet when the sex is unknown", () => {
+    expect(pickUpPhrase("unknown", "Pampa")).toBe("ir a buscar a Pampa");
+    expect(pickUpPhrase(null, "Pampa")).toBe("ir a buscar a Pampa");
   });
 });
 

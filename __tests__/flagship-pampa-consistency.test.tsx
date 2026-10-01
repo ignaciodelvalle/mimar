@@ -362,7 +362,7 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
         authorRole: seed.authorRole,
         authorVerified: seed.authorVerified,
         // The intake the chip match writes carries its organization
-        // (confirm-chip-match-refugio.ts:207-210).
+        // (confirm-chip-match-refugio.ts:208-211).
         authorOrganizationId: isShelter ? "org" : null,
         authorOrgName: isShelter ? PAMPA_SHELTER : null,
         attachmentUrl: null,
@@ -592,19 +592,19 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       "Coordinar devolución",
       // The native Devolución in the state the refugio's proposal leaves it
       // in, `inbound_pending` (read-return-state.ts:143-175, the org named by
-      // proposerName :204-210): app/_layout.tsx:390; src/custody/
-      // DevolucionScreen.tsx:160-161, :176-188, :192-194; returnStateHeadline,
-      // devolucion-view-model.ts:94-95. Then the accept's notice
-      // (DevolucionScreen.tsx:119-120, :163-167; acceptedMessage :153-154).
+      // proposerIdentity :192-215): app/_layout.tsx:390; src/custody/
+      // DevolucionScreen.tsx:162-163, :178-189, :191-194; returnStateHeadline,
+      // devolucion-view-model.ts:94-101. Then the accept's notice
+      // (DevolucionScreen.tsx:122, :165-169; acceptedMessage :170-176).
       "Devolución",
       "Devolución de Pampa",
-      `${PAMPA_SHELTER} tiene a Pampa y quiere devolvértela.`,
+      `Pampa está en ${PAMPA_SHELTER}, a salvo y esperándote.`,
       "Confirmar la devolución",
-      "Confirmá sólo cuando tengas a Pampa con vos. La custodia de quien la tiene se cierra en ese momento.",
+      "Tocá el botón cuando ya tengas a Pampa con vos. Ahí el refugio deja de cuidarla.",
       "Ya tengo a Pampa",
       "Rechazar la devolución",
-      "Quien la tiene va a recibir tu respuesta con el motivo.",
-      "Listo. Pampa vuelve a figurar a tu nombre.",
+      "Si no es tu mascota o algo no está bien, contale el motivo al refugio.",
+      "¡Listo! Pampa ya está en casa con vos.",
       // "Mis mascotas" (app/_layout.tsx:288), its row and footer
       // (src/pets/PetRow.tsx:127-135, credential-view-model.ts:261,
       // app/mascotas/index.tsx:431).
@@ -644,7 +644,7 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       "Ingresos recientes",
       `Perro · ${formatDate(seedInstant(String(PAMPA_EVENTS.find((e) => e.eventType === "shelter_intake_recorded")?.date)))}`,
       "Ver ficha",
-      "detectó a Pampa por su microchip. Coordiná la devolución.",
+      `Pampa está a salvo en ${PAMPA_SHELTER}. La reconocieron por su microchip. Coordiná con ellos para ir a buscarla.`,
     ]) {
       expect(html, label).toContain(label);
     }

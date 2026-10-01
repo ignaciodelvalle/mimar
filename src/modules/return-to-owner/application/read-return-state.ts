@@ -58,6 +58,8 @@ export type PetReturnState =
       kind: "inbound_pending";
       /** Who is proposing — a first name, or an organisation's display name. */
       actorName: string;
+      /** Organisation display name, or a person's first name / "Alguien". */
+      actorKind: "organization" | "person";
       proposedAt: string;
       notes: string | null;
     }
@@ -168,7 +170,7 @@ async function describePendingProposal(
 
   return {
     kind: "inbound_pending",
-    actorName: await proposerName(fromUserId, fromOrgId, exec),
+    ...(await proposerIdentity(fromUserId, fromOrgId, exec)),
     proposedAt: (payload.proposed_at as string | null) ?? latest.occurredAt.toISOString(),
     notes: (payload.notes as string | null) ?? null,
   };
@@ -187,19 +189,19 @@ async function describePendingProposal(
  * kept rather than improved: a blank where a name should be reads as a bug, and
  * inventing a longer sentence here would put copy in a query.
  */
-async function proposerName(
+async function proposerIdentity(
   fromUserId: string | null,
   fromOrgId: string | null,
   exec: DbOrTx,
-): Promise<string> {
+): Promise<{ actorName: string; actorKind: "organization" | "person" }> {
   if (fromUserId) {
     const [profile] = await exec
       .select({ displayName: profiles.displayName })
       .from(profiles)
       .where(eq(profiles.id, fromUserId))
       .limit(1);
-    if (profile) return profile.displayName.split(" ")[0];
-    return "Alguien";
+    if (profile) return { actorName: profile.displayName.split(" ")[0], actorKind: "person" };
+    return { actorName: "Alguien", actorKind: "person" };
   }
   if (fromOrgId) {
     const [org] = await exec
@@ -207,7 +209,7 @@ async function proposerName(
       .from(organizations)
       .where(eq(organizations.id, fromOrgId))
       .limit(1);
-    if (org) return org.displayName;
+    if (org) return { actorName: org.displayName, actorKind: "organization" };
   }
-  return "Alguien";
+  return { actorName: "Alguien", actorKind: "person" };
 }

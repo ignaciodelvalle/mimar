@@ -25,7 +25,9 @@ import {
   buildAcceptReturn,
   buildProposeReturn,
   buildRejectReturn,
+  confirmReturnSentence,
   holderRoleLabel,
+  rejectReturnSentence,
   returnStateHeadline,
 } from "./devolucion-view-model";
 
@@ -110,10 +112,33 @@ describe("returnStateHeadline — six states, six different sentences", () => {
       named({
         kind: "inbound_pending",
         actorName: "Ana",
+        actorKind: "person",
         proposedAt: "2026-08-20T12:00:00.000Z",
         notes: null,
       }),
-    ).toBe("Ana tiene a Pampa y quiere devolvértela.");
+    ).toBe("Ana tiene a Pampa a salvo y quiere devolvértela.");
+  });
+
+  it("says the pet is safe at the ORGANISATION that proposed, and is waiting", () => {
+    expect(
+      named({
+        kind: "inbound_pending",
+        actorName: "Refugio Patitas",
+        actorKind: "organization",
+        proposedAt: "2026-08-20T12:00:00.000Z",
+        notes: null,
+      }),
+    ).toBe("Pampa está en Refugio Patitas, a salvo y esperándote.");
+  });
+
+  it("reads a server without actorKind as a person, the older wording", () => {
+    const legacy = {
+      kind: "inbound_pending",
+      actorName: "Ana",
+      proposedAt: "2026-08-20T12:00:00.000Z",
+      notes: null,
+    } as unknown as PetReturnStateV1;
+    expect(named(legacy)).toBe("Ana tiene a Pampa a salvo y quiere devolvértela.");
   });
 
   it("does NOT read like an invitation to answer on awaiting_org", () => {
@@ -185,11 +210,37 @@ describe("holderRoleLabel — the web's own labels", () => {
   });
 });
 
+describe("the two answer cards' sentences, per who is proposing", () => {
+  const org: PetReturnStateV1 = {
+    kind: "inbound_pending",
+    actorName: "Refugio Patitas",
+    actorKind: "organization",
+    proposedAt: "2026-08-20T12:00:00.000Z",
+    notes: null,
+  };
+  const person: PetReturnStateV1 = { ...org, actorName: "Ana", actorKind: "person" };
+
+  it("names the refugio only when an organisation proposed", () => {
+    expect(confirmReturnSentence(org, "Pampa")).toBe(
+      "Tocá el botón cuando ya tengas a Pampa con vos. Ahí el refugio deja de cuidarla.",
+    );
+    expect(confirmReturnSentence(person, "Pampa")).toBe(
+      "Tocá el botón cuando ya tengas a Pampa con vos. Ahí termina su cuidado temporal.",
+    );
+    expect(rejectReturnSentence(org)).toBe(
+      "Si no es tu mascota o algo no está bien, contale el motivo al refugio.",
+    );
+    expect(rejectReturnSentence(person)).toBe(
+      "Si no es tu mascota o algo no está bien, contale el motivo.",
+    );
+  });
+});
+
 describe("acceptedMessage — a 200 that is not always good news", () => {
   it("celebrates only when the animal actually came back", () => {
     expect(acceptedMessage({ autoCancelled: false, reason: null }, "Pampa")).toEqual({
       tone: "ok",
-      message: "Listo. Pampa vuelve a figurar a tu nombre.",
+      message: "¡Listo! Pampa ya está en casa con vos.",
     });
   });
 
@@ -221,6 +272,6 @@ describe("acceptedMessage — a 200 that is not always good news", () => {
     // rather than falling through to "Listo".
     const result = acceptedMessage({ autoCancelled: true, reason: null }, "Pampa");
     expect(result.tone).toBe("err");
-    expect(result.message).toContain("no volvió a tu nombre");
+    expect(result.message).toContain("la propuesta se canceló");
   });
 });

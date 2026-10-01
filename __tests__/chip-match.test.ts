@@ -883,7 +883,12 @@ describe("refugio decision='same' leaves the return proposal for the owner", () 
       userId: ownerUserId,
       holderRole: "owner",
     });
-    expect(state).toMatchObject({ kind: "inbound_pending", actorName: ORG_NAME, notes: null });
+    expect(state).toMatchObject({
+      kind: "inbound_pending",
+      actorName: ORG_NAME,
+      actorKind: "organization",
+      notes: null,
+    });
   });
 
   it("the owner gets exactly ONE notice for the match and the proposal", async () => {
@@ -899,6 +904,10 @@ describe("refugio decision='same' leaves the return proposal for the owner", () 
     expect(notices).toHaveLength(1);
     expect(notices[0].notificationType).toBe("chip_match_notification_owner");
     expect(notices[0].ctaUrl).toBe(`/mis-mascotas/${publicToken}/devolucion`);
+    // The fixture pet has no known sex, so the pick-up phrase names the pet.
+    expect(notices[0].body).toBe(
+      `TestPet-PNOTE está a salvo en ${ORG_NAME}. La reconocieron por su microchip. Coordiná con ellos para ir a buscar a TestPet-PNOTE.`,
+    );
   });
 
   it("a retry is idempotent: no second proposal, intake or notice", async () => {

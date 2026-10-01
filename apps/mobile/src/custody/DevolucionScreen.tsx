@@ -54,6 +54,8 @@ import {
   buildAcceptReturn,
   buildProposeReturn,
   buildRejectReturn,
+  confirmReturnSentence,
+  rejectReturnSentence,
   returnStateHeadline,
 } from "./devolucion-view-model";
 
@@ -175,10 +177,7 @@ export function DevolucionScreen({ publicToken }: { publicToken: string }) {
       {canAccept ? (
         <Card title="Confirmar la devolución">
           <View style={{ gap: 12 }}>
-            <Body>
-              Confirmá sólo cuando tengas a {view.petName} con vos. La custodia de quien la tiene se
-              cierra en ese momento.
-            </Body>
+            <Body>{confirmReturnSentence(view.state, view.petName)}</Body>
             <PrimaryButton
               label={`Ya tengo a ${view.petName}`}
               disabled={busy}
@@ -191,7 +190,7 @@ export function DevolucionScreen({ publicToken }: { publicToken: string }) {
       {canReject ? (
         <Card title="Rechazar la devolución">
           <View style={{ gap: 12 }}>
-            <Body>Quien la tiene va a recibir tu respuesta con el motivo.</Body>
+            <Body>{rejectReturnSentence(view.state)}</Body>
             <TextField
               label="Motivo"
               required
