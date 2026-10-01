@@ -188,3 +188,25 @@ describe("middleware — the old AC3-era /admin→/gob 308s are gone (portal-fol
     },
   );
 });
+
+// A Set-Cookie on a server action's response reads to the client router as
+// "cookies changed" (`x-action-revalidated: [[],0,1]`) and triggers the refresh
+// transition that never commits in a Next 15.5 production build: the Atender
+// VisitCard stayed disabled forever (e2e/vet-visit-intake.spec.ts). The
+// remember-last-org cookie is therefore written on navigations only.
+describe("middleware — dim_last_org is never set on a server action", () => {
+  it("sets it on a navigation under /org/[orgToken]", async () => {
+    const response = await middleware(requestFor("/org/DIM-PMAV-E2VT/atender"));
+    expect(response.cookies.get("dim_last_org")?.value).toBe("DIM-PMAV-E2VT");
+  });
+
+  it("does not set it when the request is a server action", async () => {
+    const request = new NextRequest(new URL("https://dim.test/org/DIM-PMAV-E2VT/atender"), {
+      method: "POST",
+      headers: { "next-action": "78162a249b280135e2b02c019275460155fcc678a3" },
+    });
+    const response = await middleware(request);
+    expect(response.cookies.get("dim_last_org")).toBeUndefined();
+    expect(response.headers.get("set-cookie") ?? "").not.toContain("dim_last_org");
+  });
+});

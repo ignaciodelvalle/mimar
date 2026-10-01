@@ -327,8 +327,17 @@ export async function middleware(request: NextRequest) {
   // still re-checks the cookie's org against the caller's OWN already-fetched
   // membership list before using it — a stale/foreign token here just fails
   // that check silently.
+  //
+  // NEVER on a server action. A Set-Cookie on an action's response — even one
+  // from here, which the action never wrote — reaches the client as
+  // `x-action-revalidated: [[],0,1]` (cookies changed), and the client router
+  // answers with the same refresh transition that never commits in a Next 15.5
+  // production build (lib/ui/full-page-action-nav.ts): the write lands, the
+  // form's pending flag never clears, and its `redirectTo` never fires. Every
+  // form under /org/* paid it; e2e/vet-visit-intake.spec.ts's "Iniciar
+  // atención" is where it showed. The page's own GET already set the cookie.
   const orgTokenMatch = pathname.match(/^\/org\/([^/]+)/);
-  if (orgTokenMatch) {
+  if (orgTokenMatch && !request.headers.has("next-action")) {
     response.cookies.set("dim_last_org", orgTokenMatch[1], {
       path: "/",
       sameSite: "lax",
