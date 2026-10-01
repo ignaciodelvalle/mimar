@@ -77,14 +77,21 @@ export function isLegalOwner(access: ResolvedProfileAccess): boolean {
  * `lost/commands.ts` gives for its own: an allow-list quietly narrows the roles
  * the web admits the first time somebody adds a role to the system.
  *
- *   · IDENTITY mirrors `requireTitularAccess`, which denies exactly one thing —
- *     a person-path holder whose `ownerships.role` is `caretaker`. A co-owner
- *     passes, a foster passes, the org path passes. It is not re-derived here:
- *     `isTitularHolder` is the guard's OWN predicate, exported from
- *     `lib/infra/pet-access.ts` and called by `requireTitularAccess` itself, so
- *     the two cannot drift into disagreeing about who a titular is. This file
- *     writing the expression out again would have been the fourth hand-kept copy
- *     of one rule on this API surface.
+ *   · IDENTITY (`edit_identity`, legacy) is `canEditPetProfile` — the SAME
+ *     predicate as THE SECTIONED PROFILE EDIT below, because both write the
+ *     same name/breed/colour columns and the web's only door to them,
+ *     `updatePetAction`, is one action behind one gate (owner-pet-actions, PO
+ *     2026-10-01: web = app). It used to mirror `requireTitularAccess` /
+ *     `isTitularHolder` instead, which admits the org path and a user-held
+ *     `shelter_custody` row — a door the web never opened for them
+ *     (verify-report W1).
+ *   · CORRECT SPECIES keeps mirroring `requireTitularAccess` — `isTitularHolder`
+ *     is the guard's OWN predicate, exported from `lib/infra/pet-access.ts` and
+ *     called by `requireTitularAccess` itself, so the two cannot drift into
+ *     disagreeing about who a titular is. This is `CorrectSpeciesPage`'s own
+ *     web gate, a separately-governed action, and NOT a stand-in for
+ *     `canEditPetProfile`: it happened to equal IDENTITY's old value, and now
+ *     parts ways from it instead — see the note by `canCorrectSpecies` below.
  *   · CONTACTS is not a `requireTitularAccess` question at all and cannot be
  *     expressed as one: the writer's own query joins `ownerships` on
  *     `role = 'owner'`, so co-owner, foster and the entire org path are outside
@@ -123,19 +130,25 @@ export function petProfileCapabilities(
   // `holderRole` exists only on the owner arm, which is exactly the arm the
   // predicate reads.
   const titular = isTitularHolder(access.kind, access.kind === "owner" ? access.holderRole : null);
+  // IDENTITY and THE SECTIONED PROFILE EDIT are one predicate now (owner-pet-
+  // actions, PO 2026-10-01: web = app) — both write the same owner data through
+  // the web's single `updatePetAction` gate, so the API must not offer either
+  // door to a holder the web refuses.
+  const editsProfile = canEditPetProfile(
+    access.kind,
+    access.kind === "owner" ? access.holderRole : null,
+  );
   return {
-    canEditIdentity: titular,
+    canEditIdentity: editsProfile,
     canEditEmergencyContacts: access.kind === "owner" && access.holderRole === "owner",
-    // The web's `corregir-especie` page guards with `requireTitularAccess` too
-    // (`CorrectSpeciesPage`), so today this IS `canEditIdentity` — reported on
-    // its own so the two can part ways without a client noticing the wrong one.
+    // The web's `corregir-especie` page guards with `requireTitularAccess`
+    // ALONE (`CorrectSpeciesPage`) — its own, separately-governed gate, not
+    // `canEditPetProfile`. It used to equal `canEditIdentity` by coincidence;
+    // now that IDENTITY has moved, the two part ways exactly as planned.
     canCorrectSpecies: titular,
     canTogglePhysicalTagInterest: access.kind === "owner",
     canManageServiceDog: isLegalOwner(access) && access.pet.status !== "deceased",
-    canEditProfile: canEditPetProfile(
-      access.kind,
-      access.kind === "owner" ? access.holderRole : null,
-    ),
+    canEditProfile: editsProfile,
   };
 }
 

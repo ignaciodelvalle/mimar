@@ -4,10 +4,14 @@
 // WHAT THIS FILE HAS TO PROVE
 // ---------------------------------------------------------------------------
 //   1. THE GUARDS ARE THE WEB'S, AND THEY ARE TWO GUARDS, NOT ONE. Identity is
-//      `requireTitularAccess` — a caretaker refused, a CO-OWNER and a FOSTER and
-//      the ORG path admitted. Contacts are the LEGAL owner alone: co-owner,
-//      foster and org all refused, which is narrower than titular and cannot be
-//      expressed as it. A single rule would be wrong for somebody either way.
+//      `canEditPetProfile` (owner-pet-actions, PO 2026-10-01: web = app) — a
+//      caretaker, the ORG path and a user-held `shelter_custody` row refused; a
+//      CO-OWNER and a FOSTER admitted. `correct_species` is the one surface
+//      still on `requireTitularAccess` (`CorrectSpeciesPage`'s own, separate web
+//      gate): same caretaker refusal, but the ORG path and `shelter_custody`
+//      pass it. Contacts are the LEGAL owner alone: co-owner, foster and org all
+//      refused, which is narrower than either and cannot be expressed as one. A
+//      single rule would be wrong for somebody either way.
 //   2. THE READ AND THE WRITE AGREE. The capability flags the read reports are
 //      the same two booleans the write enforces, so a client can never be
 //      offered a control that answers 403.
@@ -402,13 +406,26 @@ describe("GET — what the form pre-fills with", () => {
     });
   });
 
-  it("admits the ORG path to the identity half, as requireTitularAccess does", async () => {
+  it("refuses the ORG path the identity half too — canEditPetProfile, not requireTitularAccess", async () => {
     control.access = asOrg();
     const body = await (await read()).json();
-    // The org path has no ownership row, so `holderRole` is null by
-    // construction and requireTitularAccess is a no-op there.
-    expect(body.capabilities.canEditIdentity).toBe(true);
+    expect(body.capabilities.canEditIdentity).toBe(false);
     expect(body.capabilities.canEditEmergencyContacts).toBe(false);
+    // `correct_species` is the one surface that still mirrors
+    // `requireTitularAccess` — `CorrectSpeciesPage`'s own, separately-governed
+    // web gate — so the org path keeps passing THAT one.
+    expect(body.capabilities.canCorrectSpecies).toBe(true);
+  });
+
+  it("refuses a user-held shelter_custody row the identity half — same rule as owner-pet-actions", async () => {
+    control.access = asRole("shelter_custody");
+    const body = await (await read()).json();
+    expect(body.capabilities.canEditIdentity).toBe(false);
+    expect(body.capabilities.canEditProfile).toBe(false);
+    // Unlike identity, `requireTitularAccess` never denied a user-held
+    // shelter_custody row (it only denies `caretaker`), so correct_species
+    // still admits it.
+    expect(body.capabilities.canCorrectSpecies).toBe(true);
   });
 });
 
@@ -524,6 +541,20 @@ describe("POST — editar identidad", () => {
       control.access = asRole(role);
       expect((await send(IDENTITY)).status).toBe(200);
       expect(control.writes).toHaveLength(1);
+    }
+  });
+
+  it("refuses the ORG path and a user-held shelter_custody row, and writes nothing (verify-report W1)", async () => {
+    // `canEditPetProfile`, not `requireTitularAccess`/`isTitularHolder` — the
+    // latter would admit both, which is exactly the drift the web never had:
+    // `updatePetAction` is the only door to this data and it narrows with
+    // `canEditPetProfile` too.
+    for (const access of [asOrg(), asRole("shelter_custody")]) {
+      control.access = access;
+      const response = await send(IDENTITY);
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: "profile_forbidden" });
+      expect(control.writes).toHaveLength(0);
     }
   });
 
@@ -1123,11 +1154,14 @@ describe("POST — contactos de emergencia", () => {
     expect(control.writes).toHaveLength(0);
   });
 
-  it("refuses the ORG path, which the identity half admits", async () => {
-    // The one place the two commands visibly disagree about the same caller.
+  it("refuses the ORG path on both contacts and identity — they agree now (verify-report W1)", async () => {
+    // Used to be the one place the two commands visibly disagreed about the
+    // same caller: identity mirrored `requireTitularAccess` and admitted the
+    // org path. Identity moved to `canEditPetProfile` (owner-pet-actions, PO
+    // 2026-10-01: web = app), so the two refuse it the same way now.
     control.access = asOrg();
     expect((await send(CONTACTS)).status).toBe(403);
-    expect((await send(IDENTITY)).status).toBe(200);
+    expect((await send(IDENTITY)).status).toBe(403);
   });
 
   it("answers 404 when the ownership row moved between the guard and the write", async () => {
