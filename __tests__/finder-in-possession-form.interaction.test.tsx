@@ -93,3 +93,51 @@ describe("<FinderInPossessionForm> — canKeepUntil across the indefinite toggle
     expect(hiddenCanKeepUntil(container)?.value).toBe("");
   });
 });
+
+// PO 2026-10-01: one reachable contact is required. The action refuses
+// without it (finder-in-possession-action.test.ts); this pins that the form
+// says so BEFORE the round trip, in es-AR, and never reaches the action.
+describe("<FinderInPossessionForm> — a contact is required", () => {
+  const CONTACT_REQUIRED = "Dejá un teléfono o un email para que el dueño pueda contactarte.";
+
+  function submit(container: HTMLElement): void {
+    fireEvent.submit(container.querySelector("form:not(.inline)") as HTMLFormElement);
+  }
+
+  it("refuses a submit with no phone and no email, and does not call the action", async () => {
+    const { reportFinderInPossessionAction } = await import(
+      "@/app/(public)/p/[publicToken]/encontre/action"
+    );
+    vi.mocked(reportFinderInPossessionAction).mockClear();
+    const { container, getByRole } = render(<FinderInPossessionForm {...BASE_PROPS} />);
+
+    submit(container);
+
+    expect(getByRole("alert")).toHaveTextContent(CONTACT_REQUIRED);
+    expect(reportFinderInPossessionAction).not.toHaveBeenCalled();
+  });
+
+  it("refuses a phone too short to dial", () => {
+    const { container, getByRole } = render(<FinderInPossessionForm {...BASE_PROPS} />);
+    fireEvent.change(container.querySelector("#finderPhone") as HTMLInputElement, {
+      target: { value: "1111" },
+    });
+
+    submit(container);
+
+    expect(getByRole("alert")).toHaveTextContent(CONTACT_REQUIRED);
+  });
+
+  it("lets an email alone through the contact check (the next check is availability)", () => {
+    const { container, getByRole } = render(<FinderInPossessionForm {...BASE_PROPS} />);
+    fireEvent.change(container.querySelector("#finderEmail") as HTMLInputElement, {
+      target: { value: "ana@example.com" },
+    });
+
+    submit(container);
+
+    expect(getByRole("alert")).toHaveTextContent(
+      "Indicá hasta cuándo podés cuidarla o marcá que podés tenerla indefinidamente.",
+    );
+  });
+});

@@ -68,6 +68,7 @@ import { resolveLostPetAlertRecipients } from "@/lib/infra/pet-alert-recipients"
 import { publicPetByToken } from "@/lib/infra/public-pet-lookup";
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { DISPUTE_TIP_NOTICE } from "@/lib/ui/dispute-copy";
+import { FINDER_CONTACT_REQUIRED, hasReachableContact } from "@/lib/utils/contact-parts";
 import { headers } from "next/headers";
 
 import type { PublicActionState } from "./types";
@@ -79,12 +80,23 @@ export async function notifyOwnerOfFoundPet(
 ): Promise<PublicActionState> {
   if (!publicToken) return { ok: false, error: "Token de mascota inválido." };
 
-  // PO 2026-07-24: name and contact are OPTIONAL — an anonymous found-report
-  // still tells the owner their pet was found, which beats a finder bouncing
-  // off a mandatory form. The UI explains why leaving a contact helps.
+  // The name stays OPTIONAL (PO 2026-07-24). The contact does NOT any more (PO
+  // 2026-10-01): a report with no way back told the owner "alguien encontró a
+  // tu mascota" and left them nobody to call — a dead end on the recovery path.
+  // At least one reachable contact (a phone or an email) is now required, and
+  // THIS is where that is enforced; the form's check only saves a round trip.
   const finderName = String(formData.get("finderName") ?? "").trim();
   const finderContact = String(formData.get("finderContact") ?? "").trim();
   const message = String(formData.get("message") ?? "").trim();
+
+  // Pure form validation, so it runs BEFORE the limiter: it reads nothing about
+  // the token (no existence oracle), and a refused form must not burn the
+  // (IP, token) budget and block the immediate corrected retry. Checked on the
+  // value as it will be STORED (after the 120-char cut below), so a contact
+  // pushed past the cut by padding cannot pass here and arrive empty.
+  if (!hasReachableContact(finderContact.slice(0, 120))) {
+    return { ok: false, error: FINDER_CONTACT_REQUIRED };
+  }
 
   // Rate limit FIRST — before the token resolves to anything.
   //
@@ -214,13 +226,12 @@ export async function notifyOwnerOfFoundPet(
   const safeContact = finderContact.slice(0, 120);
   const safeMessage = message.slice(0, 500);
 
-  // Anonymous-safe body: never render an empty name slot, and be honest when
-  // there is no way to call back (the owner should not hunt for a contact
-  // that was never left).
+  // Anonymous-safe body: never render an empty name slot. The contact is
+  // always present now (validated at the top), so the old "No dejó datos de
+  // contacto." branch is unreachable here and is gone. This action writes no
+  // event, so there are no old rows of its own to read back defensively.
   const who = safeName || "Alguien";
-  const contactLine = safeContact
-    ? ` Te podés contactar al ${safeContact}.`
-    : " No dejó datos de contacto.";
+  const contactLine = ` Te podés contactar al ${safeContact}.`;
   const body = safeMessage
     ? `${who} dejó un mensaje: "${safeMessage}".${contactLine}`
     : `${who} encontró a ${pet.name}.${contactLine}`;

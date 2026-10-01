@@ -2,7 +2,8 @@
 
 import { type PublicActionState, notifyOwnerOfFoundPetAction } from "@/app/actions/public";
 import { useKeptFields } from "@/lib/ui/use-kept-fields";
-import { useActionState } from "react";
+import { FINDER_CONTACT_REQUIRED, hasReachableContact } from "@/lib/utils/contact-parts";
+import { useActionState, useState } from "react";
 
 const initialState: PublicActionState = { ok: false, error: null };
 
@@ -18,6 +19,22 @@ export function FoundPetForm({ publicToken }: { publicToken: string }) {
     notifyOwnerOfFoundPetAction.bind(null, publicToken),
   );
   const [state, formAction, isPending] = useActionState(keptAction, initialState);
+  // The contact is REQUIRED (PO 2026-10-01) and the action refuses without it;
+  // this check only spares the finder a round trip. `kept` re-seeds the fields
+  // after the server answers, but a client refusal never reaches the action,
+  // so nothing is reset and nothing needs re-seeding.
+  const [clientError, setClientError] = useState<string | null>(null);
+  const shownError = clientError ?? state.error;
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    const contact = new FormData(e.currentTarget).get("finderContact");
+    if (!hasReachableContact(typeof contact === "string" ? contact : "")) {
+      e.preventDefault();
+      setClientError(FINDER_CONTACT_REQUIRED);
+      return;
+    }
+    setClientError(null);
+  }
 
   if (state.ok) {
     return (
@@ -40,10 +57,10 @@ export function FoundPetForm({ publicToken }: { publicToken: string }) {
   const errorId = "found-pet-form-error";
 
   return (
-    <form action={formAction} className="space-y-3">
-      {/* PO 2026-07-24: name + contact are OPTIONAL (anonymous report allowed)
-          — lowering the barrier matters more than a guaranteed callback. One
-          explanatory line says why leaving a contact helps, without forcing it. */}
+    <form action={formAction} onSubmit={handleSubmit} className="space-y-3">
+      {/* The name is OPTIONAL (PO 2026-07-24). The contact is REQUIRED (PO
+          2026-10-01): without it the owner learned the pet was found and had
+          no way to reach whoever found it. */}
       <div className="space-y-1">
         <label htmlFor="finderName" className="block text-xs font-medium text-ln-warn">
           Tu nombre (opcional)
@@ -55,14 +72,14 @@ export function FoundPetForm({ publicToken }: { publicToken: string }) {
           type="text"
           autoComplete="name"
           placeholder="Nombre y apellido"
-          aria-describedby={state.error ? errorId : undefined}
+          aria-describedby={shownError ? errorId : undefined}
           className={inputClass}
         />
       </div>
 
       <div className="space-y-1">
         <label htmlFor="finderContact" className="block text-xs font-medium text-ln-warn">
-          Cómo te contactamos (opcional)
+          Cómo te contactamos
         </label>
         {/* UX 3.5 item 8a: combined phone-or-email field. inputMode="email"
             surfaces "@"/"." while keeping digits reachable — the best single
@@ -76,11 +93,16 @@ export function FoundPetForm({ publicToken }: { publicToken: string }) {
           inputMode="email"
           autoComplete="email"
           placeholder="Teléfono o email"
-          aria-describedby={state.error ? errorId : undefined}
+          // aria-required, not `required`: the native bubble speaks the
+          // BROWSER's language and fires before handleSubmit, so the es-AR
+          // message below would never show for an empty field.
+          aria-required="true"
+          aria-invalid={clientError ? true : undefined}
+          aria-describedby={shownError ? errorId : undefined}
           className={inputClass}
         />
         <p className="text-xs text-ln-mute">
-          Dejar un contacto ayuda a coordinar la entrega, pero no es obligatorio.
+          Es la única forma de que el dueño pueda coordinar la entrega con vos.
         </p>
       </div>
 
@@ -99,9 +121,9 @@ export function FoundPetForm({ publicToken }: { publicToken: string }) {
       </div>
 
       {/* B-2: stable id so required inputs above can reference via aria-describedby */}
-      {state.error && (
+      {shownError && (
         <p id={errorId} className="text-xs text-ln-err" role="alert">
-          {state.error}
+          {shownError}
         </p>
       )}
 

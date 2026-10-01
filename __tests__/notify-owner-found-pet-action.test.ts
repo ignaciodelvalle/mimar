@@ -326,12 +326,13 @@ describe("notifyOwnerOfFoundPetAction — persistent rate-limit migration", () =
     const result = await (await loadAction())(
       PUBLIC_TOKEN,
       PREVIOUS_STATE,
-      makeFormData({ finderContact: "1111" }),
+      makeFormData({ finderContact: "11-1111-2222" }),
     );
 
     expect(result.ok).toBe(true);
-    expect(insertedNotifications[0].body as string).toContain("Alguien");
-    expect(insertedNotifications[0].body as string).toContain("1111");
+    expect(insertedNotifications[0].body as string).toBe(
+      "Alguien encontró a Pochi. Te podés contactar al 11-1111-2222.",
+    );
   });
 
   // TURNED AROUND 2026-08-22. This test used to assert the opposite — that a
@@ -393,16 +394,47 @@ describe("notifyOwnerOfFoundPetAction — persistent rate-limit migration", () =
     expect(deadLetteredRows).toHaveLength(0);
   });
 
-  it("accepts a report without finderContact — owner is told no contact was left", async () => {
+  // PO 2026-10-01: a report with no way back was a dead end for the owner. The
+  // SERVER refuses it — the form's own check is a convenience, and this action
+  // is anon-callable by a hand-rolled POST. "Unreachable" is the bar, not
+  // "empty": a value that cannot become a phone or an email link is refused too.
+  it.each([
+    ["no contact field at all", { finderName: "Ana" }],
+    ["an empty contact", { finderName: "Ana", finderContact: "" }],
+    ["a whitespace-only contact", { finderContact: "    " }],
+    ["a contact that is neither a phone nor an email", { finderContact: "por acá" }],
+    ["a phone too short to dial", { finderContact: "1111" }],
+    // The value is cut at 120 characters before it is stored; a phone padded
+    // past the cut would pass a check on the raw value and arrive empty.
+    [
+      "a phone pushed past the 120-character cut",
+      { finderContact: `${"x".repeat(120)} 11-2222-3333` },
+    ],
+  ])("refuses %s, before spending any budget or writing anything", async (_label, fields) => {
+    const result = await (await loadAction())(PUBLIC_TOKEN, PREVIOUS_STATE, makeFormData(fields));
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Dejá un teléfono o un email para que el dueño pueda contactarte.",
+    });
+    expect(mockEnforceRateLimit).not.toHaveBeenCalled();
+    expect(mockDb.select).not.toHaveBeenCalled();
+    expect(insertedNotifications).toHaveLength(0);
+    expect(deadLetteredRows).toHaveLength(0);
+  });
+
+  it("accepts an email as the only contact, and the owner reads it", async () => {
     const result = await (await loadAction())(
       PUBLIC_TOKEN,
       PREVIOUS_STATE,
-      makeFormData({ finderName: "Ana" }),
+      makeFormData({ finderName: "Ana", finderContact: "ana@example.com", message: "Está bien" }),
     );
 
     expect(result.ok).toBe(true);
-    expect(insertedNotifications[0].body as string).toContain("Ana");
-    expect(insertedNotifications[0].body as string).toContain("No dejó datos de contacto");
+    expect(insertedNotifications[0].body as string).toBe(
+      'Ana dejó un mensaje: "Está bien". Te podés contactar al ana@example.com.',
+    );
+    expect(insertedNotifications[0].body as string).not.toContain("No dejó datos de contacto");
   });
 });
 

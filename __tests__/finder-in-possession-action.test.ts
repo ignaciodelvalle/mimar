@@ -9,7 +9,7 @@
 //   5. Idempotency guard → ok:true without second insert.
 //   6. Photo upload failure → non-fatal (ok:true + warning).
 //   7. Missing name → accepted (anonymous handoff, PO 2026-07-24).
-//   8. Missing both phone and email → accepted; owner told no contact left.
+//   8. No reachable phone or email → refused before the limiter (PO 2026-10-01).
 //   9. Missing location → ok:false.
 //  10. Notification severity=urgent, category=perdidas.
 //  11. Vet-urgent condition sets urgent body copy in notification.
@@ -546,7 +546,7 @@ describe("reportFinderInPossessionAction — P0e", () => {
     // No lat/lng — the required map point is missing → rejected pre-limit.
     const fd = makeFormData({
       finderName: "Ana",
-      finderPhone: "1111",
+      finderPhone: "11-1111-2222",
       localityName: "La Plata",
       petCondition: "bien",
       canKeepIndefinite: "true",
@@ -606,7 +606,40 @@ describe("reportFinderInPossessionAction — P0e", () => {
     expect(callOrder).toEqual(["rate-limit"]);
   });
 
-  it("accepts a handoff without any contact — owner is told no contact was left (PO 2026-07-24)", async () => {
+  // PO 2026-10-01: the finder says they HAVE the animal, so the owner's whole
+  // next step is reaching them — a report with no way back was a dead end. The
+  // server refuses it; the form's check is a convenience. "Unreachable" is the
+  // bar, not "empty": a phone too short to dial and an email-less "@"-less
+  // string count as no contact at all.
+  it.each([
+    ["no phone and no email", {}],
+    ["both blank", { finderPhone: "  ", finderEmail: "" }],
+    ["a phone too short to dial and no email", { finderPhone: "1111" }],
+    ["text in the email field that is not an email", { finderEmail: "no tengo" }],
+  ])("refuses %s, before spending any budget or writing anything", async (_label, contact) => {
+    vi.resetModules();
+    buildMockDb("lost");
+    mockEnforceRateLimit.mockClear();
+
+    const { reportFinderInPossessionAction } = await import(
+      "@/app/(public)/p/[publicToken]/encontre/action"
+    );
+    const { finderPhone: _phone, ...noContact } = BASE_FIELDS;
+    const fd = makeFormData({ ...noContact, ...contact, canKeepIndefinite: "true" });
+
+    const result = await reportFinderInPossessionAction(PUBLIC_TOKEN, PREVIOUS_STATE, fd);
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Dejá un teléfono o un email para que el dueño pueda contactarte.",
+    });
+    expect(mockEnforceRateLimit).not.toHaveBeenCalled();
+    expect(callOrder).toEqual([]);
+    expect(capturedPetEventInsert).toBeNull();
+    expect(capturedNotificationInsert).toBeNull();
+  });
+
+  it("accepts an email as the only contact, and the owner's alert carries it", async () => {
     vi.resetModules();
     buildMockDb("lost");
     mockUpload.mockResolvedValue({ uploadedPath: null, mimeType: null, size: null, error: null });
@@ -614,12 +647,10 @@ describe("reportFinderInPossessionAction — P0e", () => {
     const { reportFinderInPossessionAction } = await import(
       "@/app/(public)/p/[publicToken]/encontre/action"
     );
+    const { finderPhone: _phone, ...noPhone } = BASE_FIELDS;
     const fd = makeFormData({
-      finderName: "Ana",
-      locationLat: "-34.92",
-      locationLng: "-57.95",
-      localityName: "La Plata",
-      petCondition: "bien",
+      ...noPhone,
+      finderEmail: "ana@example.com",
       canKeepIndefinite: "true",
     });
 
@@ -627,8 +658,11 @@ describe("reportFinderInPossessionAction — P0e", () => {
 
     expect(result.ok).toBe(true);
     const payload = capturedPetEventInsert?.payload as Record<string, unknown>;
-    expect(payload.finderContact).toBeNull();
-    expect(capturedNotificationInsert?.body as string).toContain("No dejó datos de contacto");
+    expect(payload.finderContact).toBe("ana@example.com");
+    expect(capturedNotificationInsert?.body as string).toContain(
+      "Contactalo/a al ana@example.com.",
+    );
+    expect(capturedNotificationInsert?.body as string).not.toContain("No dejó datos de contacto");
   });
 
   it("returns ok:false when the map point is missing", async () => {
@@ -641,7 +675,7 @@ describe("reportFinderInPossessionAction — P0e", () => {
     // Has locality but NO lat/lng — the exact point is now the required field.
     const fd = makeFormData({
       finderName: "Ana",
-      finderPhone: "1111",
+      finderPhone: "11-1111-2222",
       localityName: "La Plata",
       petCondition: "bien",
       canKeepIndefinite: "true",
@@ -662,7 +696,7 @@ describe("reportFinderInPossessionAction — P0e", () => {
     );
     const fd = makeFormData({
       finderName: "Ana",
-      finderPhone: "1111",
+      finderPhone: "11-1111-2222",
       locationLat: "-34.92",
       locationLng: "-57.95",
       localityName: "La Plata",
@@ -756,7 +790,7 @@ describe("reportFinderInPossessionAction — P0e", () => {
     );
     const fd = makeFormData({
       finderName: "Carlos",
-      finderPhone: "9999",
+      finderPhone: "11-9999-0000",
       locationLat: "-32.95",
       locationLng: "-60.66",
       localityName: "Rosario",

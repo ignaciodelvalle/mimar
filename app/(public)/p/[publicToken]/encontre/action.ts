@@ -50,7 +50,11 @@ import { reportError } from "@/lib/infra/report-error";
 import { uploadAttachmentIfPresent } from "@/lib/infra/uploads";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DISPUTE_TIP_NOTICE } from "@/lib/ui/dispute-copy";
-import { CONTACT_SEPARATOR } from "@/lib/utils/contact-parts";
+import {
+  CONTACT_SEPARATOR,
+  FINDER_CONTACT_REQUIRED,
+  hasReachableContact,
+} from "@/lib/utils/contact-parts";
 import { AR_TIME_ZONE, parseArDatetimeLocal } from "@/lib/utils/format";
 
 export type FinderInPossessionState = {
@@ -91,12 +95,18 @@ export async function reportFinderInPossessionAction(
   const photoFile =
     formData.get("photoNow") instanceof File ? (formData.get("photoNow") as File) : null;
 
-  // Validation. PO 2026-07-24: name and contact are OPTIONAL — an anonymous
-  // handoff report is still a report (the pet is safe somewhere, at a known
-  // point). The form explains why leaving a contact helps, without forcing it.
+  // Validation. The name stays OPTIONAL (PO 2026-07-24); the contact is
+  // REQUIRED (PO 2026-10-01). The finder says they are holding the animal, so
+  // the owner's whole next step is reaching them — a report with no way back
+  // was a dead end. At least one of phone/email must be reachable; this is the
+  // authority, the form's check only saves a round trip. Checked on the values
+  // as they will be STORED (after the cuts), so padding cannot slip past.
   const finderName = rawFinderName ? rawFinderName.slice(0, 80) : null;
   const finderPhone = rawFinderPhone ? rawFinderPhone.slice(0, 40) : null;
   const finderEmail = rawFinderEmail ? rawFinderEmail.slice(0, 120) : null;
+  if (!hasReachableContact(finderPhone ?? "") && !hasReachableContact(finderEmail ?? "")) {
+    return { ok: false, error: FINDER_CONTACT_REQUIRED };
+  }
 
   // requireCoords:true + locality:"none" — coords required and range-checked; no locality
   // lookup (finder possession behavior unchanged, now routed through the shared gate).
@@ -271,8 +281,9 @@ export async function reportFinderInPossessionAction(
   }
 
   // Build the canonical contact string: phone takes precedence; append email
-  // when both are provided. The schema's finderContact is a single text field;
-  // null = anonymous handoff (PO 2026-07-24).
+  // when both are provided. The schema's finderContact is a single text field.
+  // It is never empty here (validated at the top, PO 2026-10-01); the schema
+  // keeps it nullable only because events written before that carry null.
   //
   // THE SEPARATOR IS A NAMED CONSTANT because two consumers split on it — the
   // web feed (`lib/utils/contact-parts.ts`) and the native lost screen
@@ -282,13 +293,12 @@ export async function reportFinderInPossessionAction(
   const finderContact =
     finderPhone && finderEmail
       ? `${finderPhone}${CONTACT_SEPARATOR}${finderEmail}`
-      : (finderPhone ?? finderEmail);
+      : (finderPhone ?? finderEmail ?? "");
 
   // Idempotency: skip the INSERT when an identical finder_in_possession event
-  // for (petId, finderContact) already exists in the last 5 minutes. Only keyed
-  // when a contact WAS left — two distinct anonymous finders within 5 minutes
-  // must not swallow each other's report (the per-IP 1/min limiter already
-  // covers double-taps from the same person).
+  // for (petId, finderContact) already exists in the last 5 minutes. Keyed on
+  // the contact, which every report now carries (the `if` below is kept as a
+  // guard: an empty key would make two different finders one report).
   //
   // IT GUARDS THE EVENT, AND ONLY THE EVENT. This block used to `return ok`
   // outright, and that was a hole a retry could not climb out of. The event is
@@ -464,8 +474,12 @@ export async function reportFinderInPossessionAction(
     }
   }
 
-  // Notification to owner. Anonymous-safe: never render an empty name slot,
-  // and be honest when the finder left no way to call back.
+  // Notification to owner. Anonymous-safe: never render an empty name slot.
+  // The contact is always there now (validated at the top), so the old "No
+  // dejó datos de contacto." branch is unreachable and is gone. Events written
+  // before 2026-10-01 with a null contact are read by the owner's feed
+  // (LostScanFeed), which still handles their absence; this body is only ever
+  // built for a fresh report.
   const locationDisplay = locationLabel;
 
   const isUrgent = petCondition === "necesita_vet_urgente";
@@ -473,7 +487,7 @@ export async function reportFinderInPossessionAction(
   const notifBody = [
     `${finderName ?? "Alguien"} dice que tiene a ${pet.name} en ${locationDisplay}.`,
     isUrgent ? "URGENTE: necesita atención veterinaria." : `Estado: ${petCondition}.`,
-    finderContact ? `Contactalo/a al ${finderContact}.` : "No dejó datos de contacto.",
+    `Contactalo/a al ${finderContact}.`,
     safeMessage ? `Mensaje: "${safeMessage}".` : null,
     canKeepIndefinite
       ? "Puede cuidarlo indefinidamente."

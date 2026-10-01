@@ -90,3 +90,23 @@ export function contactLink(value: string): ContactLink | null {
 export function contactPartLinks(value: string): Array<{ part: string; link: ContactLink | null }> {
   return contactParts(value).map((part) => ({ part, link: contactLink(part) }));
 }
+
+/**
+ * Whether `value` carries at least one contact the owner can actually use — a
+ * part that becomes a link (an "@", or a phone with enough digits).
+ *
+ * THE FINDER FLOWS REQUIRE THIS (PO decision 2026-10-01). A found-pet report
+ * that left no way back was a dead end: the owner read "alguien encontró a tu
+ * mascota" and had nobody to call. Plain non-emptiness is not the bar — "x" is
+ * not empty and is exactly as unreachable — so the test is the same one the
+ * owner's screen applies when it decides whether a contact can become a link.
+ * Both the client forms and the server actions call it; the server is the
+ * authority, the client only saves a round trip.
+ */
+export function hasReachableContact(value: string): boolean {
+  return contactParts(value).some((part) => contactLink(part) !== null);
+}
+
+/** The refusal both finder forms show when no reachable contact was left. */
+export const FINDER_CONTACT_REQUIRED =
+  "Dejá un teléfono o un email para que el dueño pueda contactarte.";

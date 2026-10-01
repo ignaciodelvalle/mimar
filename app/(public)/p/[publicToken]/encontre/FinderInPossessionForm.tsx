@@ -5,8 +5,9 @@
 // This form captures contact, current location (L1), condition, availability, and
 // an optional current photo.
 //
-// Name and contact are OPTIONAL (PO decision 2026-07-24): the finder can
-// report anonymously — one muted line explains why leaving a contact helps.
+// The name is OPTIONAL (PO decision 2026-07-24). A contact is REQUIRED — a phone
+// or an email, at least one (PO decision 2026-10-01): the finder is holding the
+// animal and the owner's whole next step is reaching them.
 // No prefill (PO decision 2026-07-16): even when the user is logged in, the
 // finder types every field by hand. Logged-in detection remains only to render
 // the "¿No sos vos? Salí de la sesión" advisory banner.
@@ -19,6 +20,7 @@ import { LocationFields } from "@/components/LocationFields";
 import { DateInputAr } from "@/components/ui/DateInputAr";
 import { TimeInputAr } from "@/components/ui/TimeInputAr";
 import { useKeptFields } from "@/lib/ui/use-kept-fields";
+import { FINDER_CONTACT_REQUIRED, hasReachableContact } from "@/lib/utils/contact-parts";
 
 import { type FinderInPossessionState, reportFinderInPossessionAction } from "./action";
 
@@ -163,7 +165,13 @@ export function FinderInPossessionForm({
   const requiredMark = <span className="text-[var(--color-ln-seal)] ml-0.5">*</span>;
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    // Name/contact are optional (PO 2026-07-24) — only availability is checked.
+    // The name is optional (PO 2026-07-24); one reachable contact is not (PO
+    // 2026-10-01). The action refuses the same way — this only saves a trip.
+    if (!hasReachableContact(finderPhone) && !hasReachableContact(finderEmail)) {
+      e.preventDefault();
+      setClientError(FINDER_CONTACT_REQUIRED);
+      return;
+    }
     if (!canKeepIndefinite && !canKeepUntil.trim()) {
       e.preventDefault();
       setClientError(
@@ -229,14 +237,11 @@ export function FinderInPossessionForm({
           />
         </div>
 
-        {/* Contact: phone (tel) + email — both optional (PO 2026-07-24) */}
+        {/* Contact: phone (tel) + email — at least one (PO 2026-10-01) */}
         <fieldset className="space-y-3">
-          <legend className={`${labelClass} mb-1`}>
-            Contacto{" "}
-            <span className="font-normal text-[var(--color-ln-faint)] text-xs">(opcional)</span>
-          </legend>
+          <legend className={`${labelClass} mb-1`}>Contacto{requiredMark}</legend>
           <p className="text-xs text-[var(--color-ln-mute)]">
-            Dejar un contacto ayuda a coordinar la entrega, pero no es obligatorio.
+            Dejá al menos uno: es la única forma de que el dueño/a coordine la entrega con vos.
           </p>
           <div className="space-y-1.5">
             <label

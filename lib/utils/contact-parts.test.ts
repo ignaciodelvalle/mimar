@@ -17,6 +17,7 @@ import {
   contactLink,
   contactPartLinks,
   contactParts,
+  hasReachableContact,
 } from "@/lib/utils/contact-parts";
 
 describe("CONTACT_SEPARATOR", () => {
@@ -137,5 +138,25 @@ describe("contactPartLinks", () => {
 
   it("returns nothing for a blank value", () => {
     expect(contactPartLinks("  ")).toEqual([]);
+  });
+});
+
+// The bar the finder flows hold a report to (PO 2026-10-01): at least one part
+// the owner can actually use. Not "non-empty" — "x" is not empty and is exactly
+// as much of a dead end as nothing.
+describe("hasReachableContact", () => {
+  it.each([
+    ["11 4123-4567", true],
+    ["+54 9 11 4123-4567", true],
+    ["ana@example.com", true],
+    ["1111 / ana@example.com", true],
+    ["11-4123-4567 / no sé", true],
+    ["", false],
+    ["   ", false],
+    ["1111", false],
+    ["por la plaza", false],
+    [" / ", false],
+  ])("%j -> %s", (value, expected) => {
+    expect(hasReachableContact(value)).toBe(expected);
   });
 });
