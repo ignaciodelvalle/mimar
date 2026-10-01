@@ -37,7 +37,7 @@ import { Body, Card, Row, Unavailable } from "../ui/components";
 import { FONTS } from "../ui/fonts";
 import { Callout, LinkText, SecondaryButton, pressedOpacity } from "../ui/kit";
 import { caseRoute, publicCredentialRoute, recordEventRoute } from "../ui/routes";
-import { COLORS, LEADING, RADIUS, SPACE, TRACKING, TYPE } from "../ui/theme";
+import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "../ui/theme";
 import { FaceDivider, FaceSection, IDENTITY_POKE_OUT } from "./DocumentChromeNative";
 import {
   type OwnerFaceView,
@@ -824,9 +824,18 @@ const styles = StyleSheet.create({
    * block for why the name came out of it.
    */
   idRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
+  /**
+   * The photo frame, which is also a door since owner-pet-actions (the
+   * Pressable in `PhotoFrame`). 84 is the web's `.ln-photo` box; the
+   * `TOUCH_TARGET` floor is what keeps the door thumb-sized (48dp, A-1) if that
+   * box is ever shrunk — Yoga lets `min*` win over a smaller `width`/`height`.
+   * The QR frame carries the same floor, because the two frames mirror.
+   */
   photo: {
     width: 84,
     height: 84,
+    minWidth: TOUCH_TARGET,
+    minHeight: TOUCH_TARGET,
     marginTop: -IDENTITY_POKE_OUT,
     borderRadius: 12,
     borderWidth: 4,
@@ -945,10 +954,15 @@ const styles = StyleSheet.create({
    *
    * The code inside is `QR_SIZE` (76): 84 minus the 4-point ring on each side,
    * border-box. See that constant for the arithmetic and the web parity.
+   *
+   * The frame is a door (the public credential), so it carries the photo's
+   * `TOUCH_TARGET` floor too.
    */
   qrFrame: {
     width: 84,
     height: 84,
+    minWidth: TOUCH_TARGET,
+    minHeight: TOUCH_TARGET,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.surface,

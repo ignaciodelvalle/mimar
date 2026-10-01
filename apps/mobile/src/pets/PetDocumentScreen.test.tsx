@@ -937,6 +937,20 @@ describe("PetDocumentScreen — the photo frame is a door (owner-pet-actions)", 
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/foto`);
   });
 
+  it("keeps both identity doors at least a thumb-sized target (48dp, A-1)", async () => {
+    // The frames are the web's 84 box; the `TOUCH_TARGET` floor is what holds
+    // each door at 48dp if that box is ever shrunk. Asserted on the RENDERED
+    // Pressables, like the flip control, so it also proves the style reaches them.
+    render(<PetDocumentScreen publicToken={TOKEN} />);
+    await screen.findByText("Pampa");
+    for (const door of ["Agregar una foto de Pampa", "Ver credencial pública"]) {
+      const style = StyleSheet.flatten(screen.getByLabelText(door).props.style);
+      expect([door, style.minWidth, style.minHeight]).toEqual([door, TOUCH_TARGET, TOUCH_TARGET]);
+      expect(style.width).toBeGreaterThanOrEqual(TOUCH_TARGET);
+      expect(style.height).toBeGreaterThanOrEqual(TOUCH_TARGET);
+    }
+  });
+
   it("is a door for a caretaker too — the Foto row's own gate — and for nobody on the org path", async () => {
     // `POST /pets/{token}/photo` takes any holder role: `titular-only.ts` lists
     // photos among what a caretaker MAY do.
