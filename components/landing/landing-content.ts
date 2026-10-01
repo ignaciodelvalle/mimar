@@ -108,7 +108,7 @@ export const PAMPA_FIRST_DOSE = pampaEvent("vaccination_administered");
  * (it records it under the owner), so the name is the landing's own; it is
  * the org `confirm-chip-match-refugio.ts` would stamp on the event.
  */
-export const PAMPA_SHELTER = "Refugio Patitas del Barrio";
+export const PAMPA_SHELTER = "Refugio Patitas";
 
 // ---------------------------------------------------------------------------
 // The owner's libreta, as the NATIVE app draws it (PO 2026-09-30: Martín's

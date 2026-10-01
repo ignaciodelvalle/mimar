@@ -540,7 +540,7 @@ describe("chapter endings (M5)", () => {
     const at = (animate: boolean) =>
       renderToStaticMarkup(SHELTER_SEQUENCE.device(SHELTER_SEQUENCE.total - 2, animate));
     expect(at(false)).toContain("Devolución de Pampa");
-    expect(at(false)).toContain("Refugio Patitas del Barrio tiene a Pampa y quiere devolvértela.");
+    expect(at(false)).toContain("Refugio Patitas tiene a Pampa y quiere devolvértela.");
     expect(at(false)).toMatch(/lp-vf-submit--pressed[^>]*>Ya tengo a Pampa/);
     expect(at(true)).toMatch(/lp-seq-late[^>]*>Ya tengo a Pampa/);
     expect(at(false)).not.toContain("Proponer la devolución");

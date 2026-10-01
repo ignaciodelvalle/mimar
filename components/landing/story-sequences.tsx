@@ -924,6 +924,12 @@ export const LOST_SEQUENCE: SequenceSpec = sequence({
  *
  * No "Verificada" badge: nothing under app/org/** prints one here
  * (landing-vs-app audit 2026-09-30).
+ *
+ * AHEAD OF THE PRODUCT (PO decision 2026-10-01, debt pending): the step's
+ * sentence and the "Escanear QR" button are NOT what IntakeForm.tsx:335 prints
+ * today (it says "Si la mascota tiene microchip o tatuaje, ingrésalos…" and has
+ * no QR entry). The landing shows the chip-or-QR identification the product is
+ * about to ship; the gap is logged as debt by the orchestrator.
  */
 function IntakeChipScreen() {
   return (
@@ -935,14 +941,15 @@ function IntakeChipScreen() {
           <p className="lp-kv-title">Identificación</p>
         </div>
         <p className="lp-ph-note">
-          Si la mascota tiene microchip o tatuaje, ingrésalos. Si el chip coincide con una mascota
-          perdida en miMAR, vamos a redirigirte al flujo de match para confirmar la identidad.
+          Ingresá su microchip o tatuaje, o escaneá el QR de su chapa si tiene. Si coincide con una
+          mascota perdida en miMAR, vamos a redirigirte para confirmar la identidad.
         </p>
         <div className="lp-vf-form">
           <div className="lp-vf">
             <span className="lp-vf-l">Número de microchip</span>
             <span className="lp-vf-i">{PAMPA_CHIP}</span>
           </div>
+          <span className="lp-vf-submit lp-vf-submit--ghost">Escanear QR</span>
           <div className="lp-vf">
             <span className="lp-vf-l">País del chip</span>
             <span className="lp-vf-i" />
@@ -1163,7 +1170,7 @@ export const SHELTER_SEQUENCE: SequenceSpec = sequence({
   total: SHELTER_SCREENS.length,
   stepMs: 1700,
   items: [
-    { label: "El refugio lee el chip.", at: 0 },
+    { label: "El refugio lee el chip o el QR.", at: 0 },
     { label: "miMAR avisa: está perdida.", at: 1 },
     { label: "Registra el ingreso.", at: 2 },
     { label: `${PAMPA_OWNER_NAME} recibe el aviso.`, at: 3 },

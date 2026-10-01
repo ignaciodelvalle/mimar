@@ -443,7 +443,7 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
     // (report-pet-sighting.ts:349-365, joined by spaces at :434) — stated
     // here as a literal, not rebuilt from the landing's own template.
     expect(SIGHTING_BODY).toBe(
-      'Alguien reportó haber visto a Pampa cerca de un punto. Mensaje: "La llevé al Refugio Patitas del Barrio". Contacto de quien la vio: vecina@example.com. Mirá el detalle en su perfil.',
+      'Alguien reportó haber visto a Pampa cerca de un punto. Mensaje: "La llevé al Refugio Patitas". Contacto de quien la vio: vecina@example.com. Mirá el detalle en su perfil.',
     );
     expect(html).toContain(SIGHTING_BODY.replaceAll('"', "&quot;"));
     // The neighbour names the story's refugio — the same one chapter 4's tablet is.
@@ -625,7 +625,11 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       // :45, :335-338, :340, :351, :376; components/ui/WizardShell.tsx:88).
       "Paso 1 de 4",
       "Identificación",
-      "vamos a redirigirte al flujo de match para confirmar la identidad.",
+      // Chip-or-QR identification: ahead of the product (PO 2026-10-01, debt pending) —
+      // IntakeForm.tsx:335 still prints the older chip-or-tattoo sentence.
+      "Ingresá su microchip o tatuaje, o escaneá el QR de su chapa si tiene.",
+      "vamos a redirigirte para confirmar la identidad.",
+      "Escanear QR",
       "Número de microchip",
       "País del chip",
       "Continuar (chequearemos el chip al confirmar)",
