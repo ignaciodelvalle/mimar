@@ -174,6 +174,13 @@ export async function runPetProfileCommand(ctx: CommandContext) {
     return runServiceDogCommand(ctx, ctx.input);
   }
 
+  if (ctx.input.command === "edit_profile") {
+    // The contract learns the command one work unit before this door can run it
+    // (owner-pet-actions 2.1 → 2.2): until the sectioned composer lands it is
+    // refused here, so no half-wired write path exists in between.
+    return apiV1Error("invalid_request", 400);
+  }
+
   if (!capabilities.canEditEmergencyContacts) return apiV1Error("profile_forbidden", 403);
   return setEmergencyContacts(ctx, access, ctx.input);
 }

@@ -307,6 +307,18 @@ export function petProfileInputCodeMessage(code: PetProfileCommandInputCode | nu
       return "Revisá las fechas: escribilas como DD/MM/AAAA y que el día exista.";
     case "VISIBILITY_INVALID":
       return "La app no pudo armar la acción. Volvé a intentar.";
+    // owner-pet-actions — "Editar datos" by section.
+    case "SEX_INVALID":
+      return "Elegí el sexo de la mascota.";
+    case "TRAINING_LEVEL_INVALID":
+      return "Elegí un nivel de entrenamiento de la lista.";
+    case "ACQUISITION_METHOD_INVALID":
+      return "Elegí cómo llegó la mascota de la lista.";
+    case "CONDITION_OTHER_REQUIRED":
+      return "Describí la otra condición.";
+    case "CONDITION_OTHER_HAS_CONTACT":
+      // The web parser's own sentence for the same refusal (`parsePetForm`).
+      return "La descripción de la condición no puede incluir teléfonos ni emails: puede mostrarse en la credencial pública. Escribila sin datos de contacto.";
   }
 }
 
@@ -334,6 +346,12 @@ export function savedLabel(command: PetProfileCommandInput["command"], changed: 
       return changed
         ? "Listo. La corrección queda registrada en la libreta."
         : "La especie es la misma; no hay nada que corregir.";
+    // Not "queda registrado en la libreta": a section can change only the
+    // credential's emergency-info toggle, which writes no asiento.
+    case "edit_profile":
+      return changed
+        ? "Listo. Guardamos los cambios."
+        : "No había nada que cambiar: ya estaba así.";
     // UNREACHABLE VIA THIS FUNCTION — the toggle's ack carries `state`, never
     // `changed` (see the contract's own note on `PetProfileEditAckV1`), and the
     // screen that sends it reads `physicalTagInterestSavedLabel` instead. Kept

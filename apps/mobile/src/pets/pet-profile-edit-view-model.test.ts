@@ -353,6 +353,21 @@ describe("every input code has a sentence, and a no-op is not a lie", () => {
       "La especie es la misma; no hay nada que corregir.",
     );
   });
+
+  it("names each refusal of the sectioned edit, the contact one in the web's own words", () => {
+    expect(petProfileInputCodeMessage("SEX_INVALID")).toBe("Elegí el sexo de la mascota.");
+    expect(petProfileInputCodeMessage("CONDITION_OTHER_REQUIRED")).toBe(
+      "Describí la otra condición.",
+    );
+    expect(petProfileInputCodeMessage("CONDITION_OTHER_HAS_CONTACT")).toContain(
+      "puede mostrarse en la credencial pública",
+    );
+  });
+
+  it("does not promise a libreta entry for a section save — a toggle writes none", () => {
+    expect(savedLabel("edit_profile", true)).toBe("Listo. Guardamos los cambios.");
+    expect(savedLabel("edit_profile", false)).toContain("nada que cambiar");
+  });
 });
 
 describe("D2 — el interés en la chapa física", () => {

@@ -229,3 +229,165 @@ describe("the service-dog commands (D3)", () => {
     );
   });
 });
+
+// AN INSTALLED BUILD CANNOT BE UPDATED BY THIS COMMIT. Every phone that already
+// has the app keeps sending these eight bodies, byte for byte, after the server
+// learns a ninth command — so each one must still parse to exactly what it
+// parsed to before (owner-pet-actions, 2026-10-01).
+describe("the eight commands installed builds send keep parsing unchanged", () => {
+  const INSTALLED_BODIES = [
+    { command: "edit_identity", name: "Pampa", breed: "Caniche", color: null },
+    {
+      command: "set_emergency_contacts",
+      preferredVetName: "Vet Norte",
+      preferredVetPhone: "1122334455",
+      emergencyContactName: "",
+      emergencyContactPhone: "",
+    },
+    { command: "correct_species", species: "cat" },
+    { command: "toggle_physical_tag_interest" },
+    {
+      command: "save_service_dog",
+      serviceType: "guia",
+      trainingCenter: "Bocalan Argentina",
+      trainingCertDate: null,
+      rupgaCredential: null,
+      credentialIssueDate: null,
+      credentialExpiryDate: null,
+      notes: null,
+    },
+    { command: "request_service_dog_verification" },
+    { command: "set_service_dog_visibility", publicVisibility: "private_only" },
+    { command: "retire_service_dog" },
+  ];
+
+  it.each(INSTALLED_BODIES)("$command", (body) => {
+    expect(petProfileCommandInputSchema.parse(body)).toEqual(body);
+  });
+});
+
+describe("edit_profile — Editar datos by section (owner-pet-actions)", () => {
+  /** Every section null: a valid body that edits nothing. */
+  const NOTHING = {
+    command: "edit_profile",
+    identity: null,
+    health: null,
+    publicCredential: null,
+    insurance: null,
+    origin: null,
+  };
+
+  const IDENTITY = {
+    name: "Pampa",
+    breed: "Caniche",
+    color: "Atigrada",
+    sex: "female",
+    ageYears: 5,
+    ageMonths: 6,
+  };
+
+  const HEALTH = {
+    favouriteFoods: ["Dieta casera"],
+    knownAllergies: ["Pollo"],
+    trainingLevel: "basic",
+    permanentConditions: ["ciego"],
+    permanentConditionsOther: null,
+  };
+
+  it("accepts a body that edits nothing — each section is null, not absent", () => {
+    expect(petProfileCommandInputSchema.parse(NOTHING)).toEqual(NOTHING);
+  });
+
+  it("refuses a body that leaves a section key out: absent is not 'leave it'", () => {
+    const { origin: _origin, ...withoutOrigin } = NOTHING;
+    expect(petProfileCommandInputSchema.safeParse(withoutOrigin).success).toBe(false);
+  });
+
+  it("normalises each section the way the web form's parser does", () => {
+    const parsed = petProfileCommandInputSchema.parse({
+      ...NOTHING,
+      identity: { ...IDENTITY, name: "  Pampa  ", breed: "", ageYears: "5", ageMonths: " " },
+      health: { ...HEALTH, favouriteFoods: ["  Dieta casera ", "", "   "] },
+      insurance: { insuranceCompany: "  Sancor Seguros ", insurancePolicyNumber: "" },
+      origin: { acquisitionMethod: "adopted" },
+      publicCredential: { emergencyInfoVisible: true, discloseConditionsPublicly: false },
+    });
+    expect(parsed).toEqual({
+      command: "edit_profile",
+      identity: { ...IDENTITY, breed: null, ageYears: 5, ageMonths: null },
+      health: HEALTH,
+      publicCredential: { emergencyInfoVisible: true, discloseConditionsPublicly: false },
+      insurance: { insuranceCompany: "Sancor Seguros", insurancePolicyNumber: null },
+      origin: { acquisitionMethod: "adopted" },
+    });
+  });
+
+  it("clamps an age the way the alta does, so a typo cannot reach the date arithmetic", () => {
+    const parsed = petProfileCommandInputSchema.parse({
+      ...NOTHING,
+      identity: { ...IDENTITY, ageYears: 3000, ageMonths: -3 },
+    });
+    expect(parsed).toMatchObject({ identity: { ageYears: 250, ageMonths: 0 } });
+  });
+
+  it("parses its own output back to itself", () => {
+    const once = petProfileCommandInputSchema.parse({
+      ...NOTHING,
+      identity: IDENTITY,
+      health: HEALTH,
+      origin: { acquisitionMethod: null },
+    });
+    expect(petProfileCommandInputSchema.parse(once)).toEqual(once);
+  });
+
+  it("names a sex outside the three the column holds — an edit never guesses one", () => {
+    expect(codeFor({ ...NOTHING, identity: { ...IDENTITY, sex: "hembra" } })).toBe("SEX_INVALID");
+  });
+
+  it("names a training level the column does not hold", () => {
+    expect(codeFor({ ...NOTHING, health: { ...HEALTH, trainingLevel: "experto" } })).toBe(
+      "TRAINING_LEVEL_INVALID",
+    );
+  });
+
+  it("names an acquisition method outside the six", () => {
+    expect(codeFor({ ...NOTHING, origin: { acquisitionMethod: "robado" } })).toBe(
+      "ACQUISITION_METHOD_INVALID",
+    );
+  });
+
+  it("requires the description when 'otra' is one of the conditions", () => {
+    expect(
+      codeFor({
+        ...NOTHING,
+        health: { ...HEALTH, permanentConditions: ["otra"], permanentConditionsOther: "  " },
+      }),
+    ).toBe("CONDITION_OTHER_REQUIRED");
+  });
+
+  it("refuses a description carrying a phone or an email — it can reach the public credential", () => {
+    expect(
+      codeFor({
+        ...NOTHING,
+        health: {
+          ...HEALTH,
+          permanentConditions: ["otra"],
+          permanentConditionsOther: "displasia, llamar al 11 4567-8901",
+        },
+      }),
+    ).toBe("CONDITION_OTHER_HAS_CONTACT");
+  });
+
+  it("does not police a description the web would drop — 'otra' is not selected", () => {
+    expect(
+      codeFor({
+        ...NOTHING,
+        health: { ...HEALTH, permanentConditionsOther: "llamar al 11 4567-8901" },
+      }),
+    ).toBeNull();
+  });
+
+  it("still refuses a blank name inside the identity section", () => {
+    expect(codeFor({ ...NOTHING, identity: { ...IDENTITY, name: "   " } })).toBe("NAME_REQUIRED");
+  });
+});

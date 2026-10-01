@@ -68,6 +68,17 @@ import { PET_SEXES } from "./intake.ts";
 // refused to re-save (A2-alta-asentar-11): two doors onto one column disagreeing
 // about what fits in it. Imported rather than re-declared, for the reason above.
 import { PET_COLOR_MAX, PET_NAME_MAX } from "./pet-profile-edit.ts";
+// The acquisition vocabulary and the age parsing are the EDIT door's too
+// (`edit_profile`), so they live in a leaf below both — see that file for the
+// cycle it avoids. Imported for this schema and re-exported for every existing
+// import path.
+import {
+  ACQUISITION_METHODS,
+  type AcquisitionMethod,
+  MAX_PET_AGE_MONTHS,
+  MAX_PET_AGE_YEARS,
+  ageCount,
+} from "./pet-profile-fields.ts";
 // Imported, not just re-exported: this file's own `registerPetInputSchema` names
 // PET_SPECIES at module-evaluation time, so it needs the local binding too.
 import { PET_SPECIES, type PetSpecies } from "./pet-species.ts";
@@ -89,18 +100,11 @@ import { isWritableName } from "./writable-name.ts";
 export { PET_SPECIES, type PetSpecies };
 
 /**
- * How the animal came to live with this person. Optional everywhere — an owner
- * who does not want to say is not blocked from registering.
+ * How the animal came to live with this person, and the ceilings on a stated
+ * age — DEFINED in `pet-profile-fields.ts` since owner-pet-actions and
+ * re-exported here so every existing import path keeps working.
  */
-export const ACQUISITION_METHODS = [
-  "adopted",
-  "purchased",
-  "found_stray",
-  "gift",
-  "born_in_litter",
-  "other",
-] as const;
-export type AcquisitionMethod = (typeof ACQUISITION_METHODS)[number];
+export { ACQUISITION_METHODS, type AcquisitionMethod, MAX_PET_AGE_MONTHS, MAX_PET_AGE_YEARS };
 
 // ---------------------------------------------------------------------------
 // Field helpers (same semantics as intake.ts — see the notes there)
@@ -232,67 +236,10 @@ const estimatedWeight = z
 const trimmedEnum = <T extends readonly [string, ...string[]]>(values: T) =>
   z.preprocess((v) => (typeof v === "string" ? v.trim() : v), z.enum(values));
 
-/**
- * The upper bound on a stated age, in YEARS.
- *
- * 250 is not a guess at how long a pet lives — it is the point past which a
- * number is certainly not an age. The bound has to exist at all because the
- * consumer DERIVES a date of birth from it with unguarded `Date` arithmetic:
- * `ageYears: 3000` produced the malformed string `"-000974-08"` on its way into
- * a Postgres `date` column (a 500), and `ageYears: 300000` threw a `RangeError`
- * out of `toISOString()` — outside any try/catch, so the response was not even
- * the error envelope. Both were demonstrated, not theorised (WU-B review FB-2).
- *
- * WHY SO HIGH, when no dog reaches 30. Because `species` includes `other`, and
- * in Argentina that is routinely a tortuga terrestre: 50-100 years is ordinary
- * for one and they are handed down within a family. A ceiling of 40 would
- * silently mangle a legitimate entry. 250 clears the longest-lived companion
- * animal on record several times over while keeping the derived date a
- * well-formed four-digit ISO year (worst case: 500 years back, ~1526).
- *
- * WHY IT CLAMPS INSTEAD OF REFUSING. Same reason the rest of this transform
- * does: an age field is an ESTIMATE, and this file's stated position is that
- * rejecting "aprox 2" would block a registration over a guess. The ceiling
- * exists to keep the DERIVATION well-formed, not to police data quality — and
- * 250 was chosen partly so a clamped value cannot masquerade as a real one. A
- * pet recorded as 250 years old is visibly a typo somebody can fix; one clamped
- * to 40 looks like a fact.
- */
-export const MAX_PET_AGE_YEARS = 250;
-
-/** The same bound expressed in months, so an owner may state the whole age either way. */
-export const MAX_PET_AGE_MONTHS = MAX_PET_AGE_YEARS * 12;
-
-/**
- * A whole-number count of years or months, as the owner typed it. Absent,
- * blank or `null` → null; unparseable → 0; negatives clamp to 0; anything past
- * `max` clamps to `max` (see MAX_PET_AGE_YEARS).
- *
- * Otherwise byte-identical to the wizard's behaviour
- * (`Math.max(0, parseInt(x) || 0)`) and intentional. Accepts a NUMBER too,
- * which the FormData path could not — a JSON client has no reason to quote an
- * integer. Accepts `null` because that is what this very transform emits for
- * an untouched field, and the wizard sends the transform's output back.
- */
-const ageCount = (max: number) =>
-  z
-    .union([z.string(), z.number()])
-    .nullish()
-    .transform((v) => {
-      if (v === undefined || v === null) return null;
-      if (typeof v === "number") {
-        // The `isFinite` arm is a belt, not the guard that matters: `z.number()`
-        // refuses NaN and ±Infinity BEFORE any transform runs (measured against
-        // zod 4), so a wire body carrying one is rejected outright — and neither
-        // can come out of `JSON.parse` anyway. This covers a caller that builds
-        // the object in-process.
-        return Number.isFinite(v) ? Math.min(max, Math.max(0, Math.trunc(v))) : 0;
-      }
-      const trimmed = v.trim();
-      if (!trimmed) return null;
-      const parsed = Number.parseInt(trimmed, 10);
-      return Number.isNaN(parsed) ? 0 : Math.min(max, Math.max(0, parsed));
-    });
+// The age ceilings (`MAX_PET_AGE_YEARS`, `MAX_PET_AGE_MONTHS`) and the age
+// parser (`ageCount`) live in `pet-profile-fields.ts` with their full reasoning
+// — why 250, why clamp rather than refuse — because the edit door parses an age
+// the same way.
 
 // ---------------------------------------------------------------------------
 // Schema

@@ -70,10 +70,19 @@
 
 import { z } from "zod";
 
-// From the leaf, NOT from `register-pet.ts`: that file imports this one's length
-// caps, so importing it back from here closes a cycle — and both files build zod
-// schemas at module-evaluation time, where a cycle turns the other side's
-// constants into `undefined`. See `pet-species.ts`.
+import { detectContactInfoInFreeText } from "../reference/contact-in-free-text.ts";
+import { TRAINING_LEVEL_VALUES } from "../reference/pet-profile-options.ts";
+import { PET_SEXES } from "./intake.ts";
+// From the leaves, NOT from `register-pet.ts`: that file imports this one's
+// length caps, so importing it back from here closes a cycle — and both files
+// build zod schemas at module-evaluation time, where a cycle turns the other
+// side's constants into `undefined`. See `pet-species.ts`.
+import {
+  ACQUISITION_METHODS,
+  MAX_PET_AGE_MONTHS,
+  MAX_PET_AGE_YEARS,
+  ageCount,
+} from "./pet-profile-fields.ts";
 import { PET_SPECIES } from "./pet-species.ts";
 import {
   SERVICE_DOG_NOTES_MAX,
@@ -139,6 +148,12 @@ export const PET_PROFILE_COMMAND_INPUT_CODES = [
   "NOTES_TOO_LONG",
   "DATE_INVALID",
   "VISIBILITY_INVALID",
+  // owner-pet-actions — the sectioned `edit_profile`'s own five.
+  "SEX_INVALID",
+  "TRAINING_LEVEL_INVALID",
+  "ACQUISITION_METHOD_INVALID",
+  "CONDITION_OTHER_REQUIRED",
+  "CONDITION_OTHER_HAS_CONTACT",
 ] as const;
 export type PetProfileCommandInputCode = (typeof PET_PROFILE_COMMAND_INPUT_CODES)[number];
 
@@ -167,21 +182,27 @@ const optionalColor = z
  * contract that let a client ask for the ambiguity would have to invent an
  * answer. Posting `null` clears; posting the current value leaves it.
  */
+/**
+ * The name, as both identity commands take it.
+ *
+ * NOT `.max(PET_NAME_MAX)`: the length rule needs the stored value to tell a
+ * carried-over name from a typed one. `resolvePetIdentityLengths` is it.
+ *
+ * The SHAPE rule is different in kind and belongs here: a name made of
+ * zero-width spaces is not a name at any length, there is nothing to grandfather
+ * (no writer can have stored one — the edit and alta doors all refuse it), and a
+ * rename to `"​​"` would blank the animal's credential
+ * (A2-alta-asentar-09).
+ */
+const writablePetName = z
+  .string({ error: "NAME_REQUIRED" })
+  .trim()
+  .min(1, { error: "NAME_REQUIRED" })
+  .refine(isWritableName, { error: "NAME_INVALID" });
+
 const editIdentity = z.object({
   command: z.literal("edit_identity"),
-  // NOT `.max(PET_NAME_MAX)`: the length rule needs the stored value to tell a
-  // carried-over name from a typed one. `resolvePetIdentityLengths` is it.
-  //
-  // The SHAPE rule is different in kind and belongs here: a name made of
-  // zero-width spaces is not a name at any length, there is nothing to
-  // grandfather (no writer can have stored one — this and alta are the only two
-  // doors, and both refuse it now), and a rename to `"​​"` would blank
-  // the animal's credential (A2-alta-asentar-09).
-  name: z
-    .string({ error: "NAME_REQUIRED" })
-    .trim()
-    .min(1, { error: "NAME_REQUIRED" })
-    .refine(isWritableName, { error: "NAME_INVALID" }),
+  name: writablePetName,
   breed: optionalBreed,
   color: optionalColor,
 });
@@ -363,6 +384,130 @@ const retireServiceDog = z.object({
   command: z.literal("retire_service_dog"),
 });
 
+// ---------------------------------------------------------------------------
+// EDITAR DATOS, BY SECTION — `edit_profile` (owner-pet-actions, 2026-10-01)
+// ---------------------------------------------------------------------------
+//
+// The app's "Editar datos" could change three fields; the web's could change
+// fifteen. This command closes the gap: one section per Guardar, the same
+// sections the web form shows, through the same `updatePet` the web's
+// `updatePetAction` reaches.
+//
+// EVERY SECTION KEY IS REQUIRED AND NULLABLE. `null` means "this section was not
+// edited — leave every field of it as stored"; an object means "this section,
+// exactly as the screen shows it". A missing key is refused rather than read as
+// either, for the reason `edit_identity` gives about its fields: "leave it" and
+// "clear it" are different acts, and an absent key would have to guess.
+//
+// WHAT IS NOT A SECTION HERE, each with its own door already: the contacts
+// (`set_emergency_contacts`), the species (`correct_species`, FULL-LOCK), the
+// weight (an asiento, "Anotar → Peso"), the microchip (its own protocol) and the
+// locality (a mudanza, `/move`).
+//
+// NO LENGTH CAP REACHES THESE FIELDS, for the reason this file's header gives
+// about `name` and `color`: the web's parser caps none of them, so longer values
+// already exist, and a cap applied on the way back out would lock an owner out
+// of the section that carries one.
+
+/** Trimmed free text; absent, blank and `null` all mean "not stated". */
+const optionalText = z
+  .string()
+  .trim()
+  .nullish()
+  .transform((v) => (v ? v : null));
+
+/** A list of free-text entries: each trimmed, blanks dropped — the web parser's rule. */
+const textList = z.array(z.string().trim()).transform((items) => items.filter((s) => s !== ""));
+
+/** Identidad: the three `edit_identity` fields plus the sex and the age. */
+const profileIdentity = z.object({
+  name: writablePetName,
+  breed: optionalBreed,
+  color: optionalColor,
+  // REFUSED, never caught to "unknown" as the alta does: on a registration the
+  // fallback costs nothing, on an edit it would overwrite a known sex.
+  sex: z.enum(PET_SEXES, { error: "SEX_INVALID" }),
+  // The age the screen shows, posted back. The server keeps the stored birth
+  // date when this is the age that date reads as, and estimates a new one only
+  // when it is not (`resolveEditedBirthDate`). Both blank clears the date.
+  ageYears: ageCount(MAX_PET_AGE_YEARS),
+  ageMonths: ageCount(MAX_PET_AGE_MONTHS),
+});
+
+/**
+ * The "otra" description is required when "otra" is chosen, and may not carry
+ * a phone or an email: it can render on the PUBLIC credential. When "otra" is
+ * not chosen the text is dropped on save, so it is not policed.
+ */
+function refineConditionOther(
+  health: { permanentConditions: string[]; permanentConditionsOther: string | null },
+  ctx: z.RefinementCtx,
+) {
+  if (!health.permanentConditions.includes("otra")) return;
+  const other = health.permanentConditionsOther;
+  if (other === null) {
+    ctx.addIssue({
+      code: "custom",
+      message: "CONDITION_OTHER_REQUIRED",
+      path: ["permanentConditionsOther"],
+    });
+    return;
+  }
+  if (detectContactInfoInFreeText(other) !== null) {
+    ctx.addIssue({
+      code: "custom",
+      message: "CONDITION_OTHER_HAS_CONTACT",
+      path: ["permanentConditionsOther"],
+    });
+  }
+}
+
+/**
+ * Salud y cuidados. Condition codes are free strings here and filtered on save
+ * against the catalog — keeping any code the animal already carries — rather
+ * than refused, so a stored legacy code survives being posted back.
+ */
+const profileHealth = z
+  .object({
+    favouriteFoods: textList,
+    knownAllergies: textList,
+    trainingLevel: z.enum(TRAINING_LEVEL_VALUES, { error: "TRAINING_LEVEL_INVALID" }).nullable(),
+    permanentConditions: textList,
+    permanentConditionsOther: optionalText,
+  })
+  .superRefine(refineConditionOther);
+
+/**
+ * Qué muestra la credencial pública. These two DO change what other people see,
+ * which no other field of this endpoint does — see the route's limiter note.
+ */
+const profilePublicCredential = z.object({
+  emergencyInfoVisible: z.boolean(),
+  discloseConditionsPublicly: z.boolean(),
+});
+
+/** Seguro. */
+const profileInsurance = z.object({
+  insuranceCompany: optionalText,
+  insurancePolicyNumber: optionalText,
+});
+
+/** Origen. Refused outside the six, unlike the alta's silent fallback — see `sex`. */
+const profileOrigin = z.object({
+  acquisitionMethod: z
+    .enum(ACQUISITION_METHODS, { error: "ACQUISITION_METHOD_INVALID" })
+    .nullable(),
+});
+
+const editProfile = z.object({
+  command: z.literal("edit_profile"),
+  identity: profileIdentity.nullable(),
+  health: profileHealth.nullable(),
+  publicCredential: profilePublicCredential.nullable(),
+  insurance: profileInsurance.nullable(),
+  origin: profileOrigin.nullable(),
+});
+
 export const petProfileCommandInputSchema = z.discriminatedUnion("command", [
   editIdentity,
   setEmergencyContacts,
@@ -372,6 +517,7 @@ export const petProfileCommandInputSchema = z.discriminatedUnion("command", [
   requestServiceDogVerification,
   setServiceDogVisibility,
   retireServiceDog,
+  editProfile,
 ]);
 
 export type PetProfileCommandInput = z.infer<typeof petProfileCommandInputSchema>;

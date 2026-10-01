@@ -255,9 +255,16 @@ export type PhysicalTagInterestDraftV1 = {
  * "did this change" question, because EVERY successful call changes the row —
  * it is the DIRECTION that is the fact worth reporting, so the ack carries
  * `state` instead, mirroring `TogglePhysicalTagInterestResult` verbatim.
+ *
+ * `edit_profile` (owner-pet-actions) shares `changed` with the identity edit,
+ * measured the same way: the diff `updatePet` itself decides by, plus the one
+ * column that writes without an event (`emergencyInfoVisible`).
  */
 export type PetProfileEditAckV1 =
-  | { command: "edit_identity" | "set_emergency_contacts" | "correct_species"; changed: boolean }
+  | {
+      command: "edit_identity" | "set_emergency_contacts" | "correct_species" | "edit_profile";
+      changed: boolean;
+    }
   | { command: "toggle_physical_tag_interest"; state: "interested" | "cancelled" }
   /**
    * D3 — the three service-dog writes that answer nothing but success, which
