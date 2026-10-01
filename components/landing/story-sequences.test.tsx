@@ -521,35 +521,32 @@ describe("chapter endings (M5)", () => {
   const finalScreen = (spec: typeof SHELTER_SEQUENCE) =>
     renderToStaticMarkup(spec.device(spec.total - 1, false));
 
-  // PO 2026-10-01: the chapter ends on Martín's "Sí, la encontré" turning into
-  // the closed search — the confirm only while it plays, the result at rest.
-  it("chapter 4 ends on the closed search, after the native devolución", () => {
+  // PO 2026-10-01: the refugio's match leaves the return proposal, so Martín's
+  // Devolución is `inbound_pending` and "Ya tengo a Pampa" is pressed; the
+  // accept itself closes the search, and the chapter ends on its notice.
+  it("chapter 4 ends on the confirmed return, after the native devolución", () => {
     const last = finalScreen(SHELTER_SEQUENCE);
     expect(last).toContain('data-actor="owner"');
-    expect(last).toContain("Modo perdida");
-    // commandDoneLabel("mark_found") and situationHeadline, for a female pet.
-    expect(last).toContain(
-      "Listo. La marcamos como encontrada y avisamos a quienes la estaban buscando.",
-    );
-    expect(last).toContain("Pampa no está perdida.");
-    expect(last).not.toContain("¿Confirmás?");
+    // acceptedMessage for a return that went through.
+    expect(last).toContain("Listo. Pampa vuelve a figurar a tu nombre.");
+    expect(last).not.toContain("Ya tengo a Pampa");
+    // The accept flips lost → active itself: no "Sí, la encontré" after it.
+    expect(last).not.toContain("Sí, la encontré");
+    expect(last).not.toContain("Modo perdida");
     // No claim that her vaccines are current: the 2022 dose had lapsed.
     expect(last).not.toMatch(/al día|vigente/i);
-    // Playing, the same step first shows the confirm, pressed, then swaps.
-    const playing = renderToStaticMarkup(SHELTER_SEQUENCE.device(SHELTER_SEQUENCE.total - 1, true));
-    expect(playing).toContain("Sí, la encontré");
-    expect(playing).toMatch(/lp-seq-swap-before[\s\S]*¿Confirmás\?[\s\S]*lp-seq-swap-after/);
-    expect(playing).toMatch(/lp-seq-late[^>]*>Sí, la encontré/);
-    // The step before it is the native return screen.
-    const devolucion = renderToStaticMarkup(
-      SHELTER_SEQUENCE.device(SHELTER_SEQUENCE.total - 2, false),
-    );
-    expect(devolucion).toContain("Devolución de Pampa");
-    // `can_propose`: the chip match writes no proposal for him to accept.
-    expect(devolucion).toContain("Proponer la devolución");
-    expect(devolucion).not.toContain("Ya tengo a Pampa");
+    // The step before it is the native return screen, `inbound_pending`,
+    // with the confirm pressed — at rest and, late in the step, while playing.
+    const at = (animate: boolean) =>
+      renderToStaticMarkup(SHELTER_SEQUENCE.device(SHELTER_SEQUENCE.total - 2, animate));
+    expect(at(false)).toContain("Devolución de Pampa");
+    expect(at(false)).toContain("Refugio Patitas del Barrio tiene a Pampa y quiere devolvértela.");
+    expect(at(false)).toMatch(/lp-vf-submit--pressed[^>]*>Ya tengo a Pampa/);
+    expect(at(true)).toMatch(/lp-seq-late[^>]*>Ya tengo a Pampa/);
+    expect(at(false)).not.toContain("Proponer la devolución");
     // And the step list names the payoff.
     expect(SHELTER_SEQUENCE.items.at(-1)?.at).toBe(SHELTER_SEQUENCE.total - 1);
+    expect(SHELTER_SEQUENCE.items.at(-2)?.label).toBe("Confirma la devolución.");
   });
 
   // Chapter 3 (PO 2026-10-01): Martín reports her lost and shares the

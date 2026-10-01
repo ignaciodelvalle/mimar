@@ -4116,13 +4116,6 @@ html:has([data-landing-root]) {
   background: var(--color-ln-azul);
   color: var(--color-ln-card);
 }
-/* A native Choice's chip row (apps/mobile/src/ui/kit.tsx Choice), drawn
-   with the same pill as the public CTAs. */
-.lp .lp-nat-choice {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
 /* The action the neighbour takes (the one this story follows). */
 .lp .lp-pub-cta[data-used="true"] {
   border-color: var(--color-ln-azul);

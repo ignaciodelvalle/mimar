@@ -148,7 +148,7 @@ export type LibretaFact = { key: string; value: string; mono?: boolean };
 /**
  * asiento-fields.ts:186-257 (deriveProvenance), for the authors the seed has.
  * The owner reads his own asientos, so an owner-declared one is "vos"; the
- * shelter's intake carries its organization (confirm-chip-match-refugio.ts:185-187).
+ * shelter's intake carries its organization (confirm-chip-match-refugio.ts:207-210).
  */
 function provenance(e: PampaSeedEvent, citedProfessional: string | null): string {
   switch (e.authorRole) {
@@ -481,15 +481,17 @@ export const CHAPTERS: LandingChapter[] = [
   {
     key: "refugio",
     moment: "Refugio",
-    // Still lost here: the shelter takes her in on 2024-03-11; Martín marks
-    // her found on 2024-03-13, at the end of this chapter.
+    // Still lost here: the shelter takes her in on 2024-03-11 and leaves the
+    // return proposal; on 2024-03-13 Martín confirms the return, which is
+    // what closes the search (owner-accept-return.ts), at the end of this
+    // chapter.
     state: "lost",
     side: "l",
     // The return home is authored by the owner (2024-03-13), not the shelter.
     title: "La recibe un refugio.",
     // Copy review 2026-09-30 (D9): the fuller version repeated the 7 steps
     // the chapter plays right below it.
-    lead: `Leen su chip y miMAR la reconoce. Dos días después, ${OWNER_NAME} la marca como encontrada.`,
+    lead: `Leen su chip y miMAR la reconoce. Dos días después, ${OWNER_NAME} confirma la devolución.`,
   },
   {
     key: "libreta",

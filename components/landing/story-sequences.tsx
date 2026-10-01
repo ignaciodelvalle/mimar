@@ -44,7 +44,6 @@ import { LnPetPhoto } from "@/components/ui/RegRow";
 import {
   AR_TIME_ZONE,
   formatDate,
-  foundParticiple,
   foundPossessivePhrase,
   lostLabel,
   markLostActionLabel,
@@ -284,7 +283,7 @@ function Typed({ text, typing, from = 0 }: { text: string; typing: boolean; from
 /**
  * A screen that becomes the next one INSIDE its step: a form typed and sent,
  * then the screen the product shows once it went through (the sighting's
- * thanks, the lost screen after "Sí, la encontré"). While `animate` plays,
+ * thanks). While `animate` plays,
  * `before` is drawn, pressed (`lp-seq-late`), then cross-fades into `after`
  * (opacity + transform only, app/landing.css .lp-seq-swap). Static — SSR,
  * reduced motion, and the device sliding out — draws `after` alone: the
@@ -1008,7 +1007,7 @@ function IntakeMatchScreen({ animate }: { animate: boolean }) {
  * 3 · Where "Es la misma mascota" lands: the match page's successRedirect is
  * the intake page (match/[matchedPetToken]/page.tsx:149), whose default tab is
  * the queue (intake/page.tsx:35). The confirm already wrote the intake
- * (confirm-chip-match-refugio.ts:172-192), so Pampa is its newest row:
+ * (confirm-chip-match-refugio.ts:186-213), so Pampa is its newest row:
  * the tabs (:122-138), the "Ingresos recientes" card (:155), the row's name,
  * "{especie} · {fecha}" and "Ver ficha" (:170-187, formatDate). The old
  * "Ingreso registrado" card, with an icon, the condition and the date, was
@@ -1043,7 +1042,7 @@ function IntakeDoneScreen() {
 
 /**
  * 4 · Martín's notification, in the native inbox — the text
- * confirm-chip-match-refugio.ts:198-203 writes (severity "urgent", :199).
+ * confirm-chip-match-refugio.ts:233-243 writes (severity "urgent", :236).
  * Its CTA points at "/mis-mascotas/{token}/devolucion", which maps to the
  * native return screen (packages/contract/src/links/deep-link-map.ts,
  * `petReturn`), so the inbox renders it as a button (NotificationsScreen.tsx,
@@ -1062,37 +1061,25 @@ function OwnerNotifiedScreen() {
 }
 
 /**
- * The four return motives, with the native Choice's own labels
- * (apps/mobile/src/custody/devolucion-view-model.ts:84-89, RETURN_REASON_CHOICES).
- */
-const RETURN_REASON_LABELS = [
-  "Cambio de circunstancias / no me pude adaptar",
-  "Limitaciones de espacio o vivienda",
-  "Necesita cuidados especiales que no puedo dar",
-  "Otro motivo",
-] as const;
-
-/**
  * 5 · Where "Coordinar devolución" lands: the NATIVE return screen
  * (apps/mobile/app/mascotas/[publicToken]/devolucion.tsx → src/custody/
  * DevolucionScreen.tsx), stack title "Devolución" (app/_layout.tsx:390).
  *
- * THE STATE IS `can_propose`, NOT `inbound_pending`. The chip match
- * (confirm-chip-match-refugio.ts:164-207) opens a shelter_custody row and
- * writes no `custody_transfer_proposed`, so readPetReturnState
- * (src/modules/return-to-owner/application/read-return-state.ts:114-131)
- * finds no pending proposal and asks resolveReturnTargetOrg, which — with no
- * adoption on record — answers the refugio holding the parallel
- * shelter_custody row (resolve-return-target-org.ts, the owner fallback). So
- * the screen reads: the title (DevolucionScreen.tsx:160), the headline
- * (returnStateHeadline `can_propose`, devolucion-view-model.ts:100-103), and
- * the "Devolver a la organización" card (:213-246): its sentence, the
- * required "Razón de la devolución" chips (Choice, apps/mobile/src/ui/kit.tsx:906-;
- * FieldLabel's "*", :315-321), "Comentario (opcional)" and "Proponer la
- * devolución". Nothing is picked or pressed: the story shows where the
- * notification takes him, not a proposal he sends.
+ * THE STATE IS `inbound_pending`. Since 2026-10-01 (PO) the refugio's chip
+ * match leaves the return proposal addressed to Martín in the intake's own
+ * transaction (confirm-chip-match-refugio.ts:219-227, through
+ * writeRefugioReturnProposalInTx), so readPetReturnState finds it pending and
+ * names the organization as the proposer
+ * (src/modules/return-to-owner/application/read-return-state.ts:143-175,
+ * proposerName :204-210). The screen reads: the title (DevolucionScreen.tsx:160),
+ * the headline (returnStateHeadline, devolucion-view-model.ts:94-95), the
+ * "Confirmar la devolución" card with its sentence and "Ya tengo a {nombre}"
+ * (:176-188) — the one he presses — and the "Rechazar la devolución" card's
+ * title and sentence (:192-194; its "Motivo" field and button are below the
+ * fold, omitted). The proposal carries no notes, so there is no "Lo que dejó
+ * escrito" card (:169-173).
  */
-function OwnerDevolucionScreen() {
+function OwnerDevolucionScreen({ animate }: { animate: boolean }) {
   return (
     <>
       <div className="lp-scr-top" />
@@ -1100,27 +1087,27 @@ function OwnerDevolucionScreen() {
       <div className="lp-app-body lp-ph-pad">
         <p className="lp-kv-title lp-sheet-t">Devolución de {PAMPA.name}</p>
         <p className="lp-ph-note">
-          Podés proponer devolver a {PAMPA.name} a {PAMPA_SHELTER}.
+          {PAMPA_SHELTER} tiene a {PAMPA.name} y quiere devolvértela.
         </p>
         <div className="lp-ph-card">
-          <p className="lp-kv-title">Devolver a la organización</p>
+          <p className="lp-kv-title">Confirmar la devolución</p>
           <p className="lp-ph-note">
-            La organización recibe tu propuesta y tiene que aceptarla. Hasta que confirmen la
-            recepción, {PAMPA.name} sigue a tu nombre.
+            Confirmá sólo cuando tengas a {PAMPA.name} con vos. La custodia de quien la tiene se
+            cierra en ese momento.
           </p>
-          <div className="lp-vf-form">
-            <span className="lp-vf-l">Razón de la devolución *</span>
-            <div className="lp-nat-choice">
-              {RETURN_REASON_LABELS.map((l) => (
-                <span className="lp-pub-cta" key={l}>
-                  {l}
-                </span>
-              ))}
-            </div>
-            <span className="lp-vf-l">Comentario (opcional)</span>
-            <span className="lp-vf-i lp-vf-i--ph">Algo que la organización deba saber…</span>
-            <span className="lp-vf-submit">Proponer la devolución</span>
-          </div>
+          <span
+            className={
+              animate
+                ? "lp-vf-submit lp-vf-submit--pressed lp-seq-late"
+                : "lp-vf-submit lp-vf-submit--pressed"
+            }
+          >
+            Ya tengo a {PAMPA.name}
+          </span>
+        </div>
+        <div className="lp-ph-card">
+          <p className="lp-kv-title">Rechazar la devolución</p>
+          <p className="lp-ph-note">Quien la tiene va a recibir tu respuesta con el motivo.</p>
         </div>
       </div>
     </>
@@ -1128,89 +1115,45 @@ function OwnerDevolucionScreen() {
 }
 
 /**
- * 6a · 13 mar: Martín closes the search on the native "Modo perdida" screen
- * (apps/mobile/app/_layout.tsx:543) — the two-step confirm
- * (apps/mobile/src/lost/LostScreen.tsx:412-426: the warn callout, its
- * sentence, "Sí, la encontré" and "Cancelar"). The return is his entry, not
- * the shelter's, and it does not go through step 5: closing a search is the
- * owner's "mark_found" on the lost screen, which needs no return proposal.
- */
-function OwnerConfirmFoundScreen({ animate }: { animate: boolean }) {
-  return (
-    <div className="lp-confirm">
-      <b>¿Confirmás?</b>
-      <span>
-        Se cierra la búsqueda, la credencial pública deja de mostrar el aviso y avisamos a quienes
-        la estaban buscando.
-      </span>
-      <span className={animate ? "lp-vf-submit lp-vf-submit--pressed lp-seq-late" : "lp-vf-submit"}>
-        Sí, la encontré
-      </span>
-      <span className="lp-vf-submit lp-vf-submit--ghost">Cancelar</span>
-    </div>
-  );
-}
-
-/**
- * 6b · The payoff (critique 2026-09-29, M5: a chapter ends on its payoff, not
- * on a dialog): the same screen once "mark_found" landed — the "Listo"
- * callout (LostScreen.tsx:293-297) with commandDoneLabel's sentence
- * (lost-view-model.ts:633-634, foundAdjective) and the "Situación" card
- * (LostScreen.tsx:377-378), whose situationHeadline for a pet no longer lost
- * is "{nombre} no está {lostAdjective}." (lost-view-model.ts:102).
+ * 6 · The payoff (critique 2026-09-29, M5: a chapter ends on its payoff, not on
+ * a dialog). Confirming the return IS the end of the search: the accept
+ * closes the refugio's custody and flips her lost → active itself
+ * (src/modules/return-to-owner/application/owner-accept-return.ts:249-281), so
+ * no "Sí, la encontré" follows. The same native screen then shows its notice
+ * (DevolucionScreen.tsx:119-120, :163-167), acceptedMessage's sentence for a
+ * return that went through (devolucion-view-model.ts:153-154).
  *
- * No "al día" claim: on 2024-03-13 her rabies dose had lapsed (the seed's
- * 2022 dose was due 2023-04-12; the next is 2026's), so nothing here says her
- * credential's vaccines are current.
+ * Omitted, not altered: the headline the screen re-reads underneath once the
+ * return landed (returnStateHeadline for the state after it). No "al día"
+ * claim either: on 2024-03-13 her rabies dose had lapsed (the seed's 2022 dose
+ * was due 2023-04-12; the next is 2026's).
  */
-function OwnerFoundDoneScreen() {
-  return (
-    <>
-      <div className="lp-match-ok">
-        <b>Listo</b>
-        <span>
-          Listo. La marcamos como {foundParticiple(PAMPA_PET.sex)} y avisamos a quienes la estaban
-          buscando.
-        </span>
-      </div>
-      <div className="lp-ph-card">
-        <p className="lp-kv-title">Situación</p>
-        <p className="lp-ph-note">
-          {PAMPA.name} no está {LOST_ADJ}.
-        </p>
-      </div>
-    </>
-  );
-}
-
-/** 6 · The confirm, pressed, then the screen it leaves — one step (see Swap). */
-function OwnerFoundScreen({ animate }: { animate: boolean }) {
+function OwnerReturnedScreen() {
   return (
     <>
       <div className="lp-scr-top" />
-      <AppHead title="Modo perdida" />
+      <AppHead title="Devolución" />
       <div className="lp-app-body lp-ph-pad">
-        <Swap
-          animate={animate}
-          before={<OwnerConfirmFoundScreen animate={animate} />}
-          after={<OwnerFoundDoneScreen />}
-        />
+        <p className="lp-kv-title lp-sheet-t">Devolución de {PAMPA.name}</p>
+        <div className="lp-match-ok">
+          <span>Listo. {PAMPA.name} vuelve a figurar a tu nombre.</span>
+        </div>
       </div>
     </>
   );
 }
 
 // 6 steps (PO 2026-10-01): the refugio's three tablet steps, then Martín's
-// phone — the notification, the native Devolución, and "Sí, la encontré"
-// turning into the closed search. The old libreta payoff screen is gone: the
-// story's libreta chapter (5) right after this one draws the same ledger.
+// phone — the notification, the native Devolución with "Ya tengo a Pampa"
+// pressed, and the return it leaves. The old libreta payoff screen is gone:
+// the story's libreta chapter (5) right after this one draws the same ledger.
 const SHELTER_SCREENS: Array<(animate: boolean) => ReactNode> = [
   () => <IntakeChipScreen />,
   (animate) => <IntakeMatchScreen animate={animate} />,
   () => <IntakeDoneScreen />,
   () => <OwnerNotifiedScreen />,
-  () => <OwnerDevolucionScreen />,
-  (animate) => <OwnerFoundScreen animate={animate} />,
+  (animate) => <OwnerDevolucionScreen animate={animate} />,
+  () => <OwnerReturnedScreen />,
 ];
 // Exported so the device-frame guard test (and anything else that needs the
 // split) does not re-hardcode this index and drift from it.
@@ -1224,7 +1167,7 @@ export const SHELTER_SEQUENCE: SequenceSpec = sequence({
     { label: "miMAR avisa: está perdida.", at: 1 },
     { label: "Registra el ingreso.", at: 2 },
     { label: `${PAMPA_OWNER_NAME} recibe el aviso.`, at: 3 },
-    { label: "Coordina la devolución.", at: 4 },
+    { label: "Confirma la devolución.", at: 4 },
     { label: `Vuelve con ${PAMPA_OWNER_NAME}.`, at: 5 },
   ],
   // The device itself switches with who is using it (PO 2026-09-29, and

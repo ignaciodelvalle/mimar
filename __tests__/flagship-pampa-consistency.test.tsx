@@ -362,7 +362,7 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
         authorRole: seed.authorRole,
         authorVerified: seed.authorVerified,
         // The intake the chip match writes carries its organization
-        // (confirm-chip-match-refugio.ts:185-187).
+        // (confirm-chip-match-refugio.ts:207-210).
         authorOrganizationId: isShelter ? "org" : null,
         authorOrgName: isShelter ? PAMPA_SHELTER : null,
         attachmentUrl: null,
@@ -477,16 +477,32 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
     expect(html).not.toContain("No dejó datos de contacto.");
     expect(html).not.toContain("Cómo te contactamos (opcional)");
     expect(html).not.toContain("¿Encontraste a esta mascota?");
-    // The chip match writes no return proposal, so the Devolución screen's
-    // `inbound_pending` arm is unreachable in this story — never drawn.
-    expect(html).not.toContain("quiere devolvértela");
-    expect(html).not.toContain("Ya tengo a Pampa");
-    expect(html).not.toContain("Confirmar la devolución");
-    const chipMatchSrc = readFileSync(
-      "src/modules/pets/application/chip-match/confirm-chip-match-refugio.ts",
-      "utf8",
+    // Chapter 4's Devolución is the `inbound_pending` arm, and it is reachable
+    // ONLY because the refugio's chip match leaves the return proposal
+    // (PO 2026-10-01). If the match stops writing it, the owner lands on
+    // `can_propose` — him offering the dog TO the refugio — and this chapter
+    // would be drawing a screen nobody can reach. So the proposal is required
+    // here, at its source, and the backwards arm may not be drawn.
+    const chipMatchSrc = stripComments(
+      readFileSync("src/modules/pets/application/chip-match/confirm-chip-match-refugio.ts", "utf8"),
     );
-    expect(chipMatchSrc).not.toContain("custody_transfer_proposed");
+    expect(chipMatchSrc).toContain("writeRefugioReturnProposalInTx(tx, {");
+    const proposalSrc = stripComments(
+      readFileSync("src/modules/return-to-owner/application/propose-return-as-refugio.ts", "utf8"),
+    );
+    const helper = proposalSrc.slice(
+      proposalSrc.indexOf("export async function writeRefugioReturnProposalInTx"),
+      proposalSrc.indexOf("export async function proposeReturnAsRefugioUseCase"),
+    );
+    expect(helper).toContain('eventType: "custody_transfer_proposed"');
+    expect(helper).toContain("to_user_id: ownerUserId");
+    expect(helper).toContain("from_organization_id: organizationId");
+    expect(html).not.toContain("Podés proponer devolver");
+    expect(html).not.toContain("Devolver a la organización");
+    expect(html).not.toContain("Proponer la devolución");
+    // Confirming the return is what ends the search (owner-accept-return.ts
+    // flips lost → active), so the chapter no longer needs "Sí, la encontré".
+    expect(html).not.toContain("Sí, la encontré");
     expect(html).not.toContain("¡Hola! Soy");
     expect(html).not.toContain("Custodia devuelta");
     // No product surface prints these: the old attendance-form mock's
@@ -574,31 +590,21 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       "Urgente",
       "Marcar como leída",
       "Coordinar devolución",
-      // The native Devolución in the state the chip match leaves it in,
-      // `can_propose` (read-return-state.ts:114-131): app/_layout.tsx:390;
-      // src/custody/DevolucionScreen.tsx:160, :213-246; returnStateHeadline,
-      // devolucion-view-model.ts:100-103; RETURN_REASON_CHOICES :84-89.
+      // The native Devolución in the state the refugio's proposal leaves it
+      // in, `inbound_pending` (read-return-state.ts:143-175, the org named by
+      // proposerName :204-210): app/_layout.tsx:390; src/custody/
+      // DevolucionScreen.tsx:160-161, :176-188, :192-194; returnStateHeadline,
+      // devolucion-view-model.ts:94-95. Then the accept's notice
+      // (DevolucionScreen.tsx:119-120, :163-167; acceptedMessage :153-154).
       "Devolución",
       "Devolución de Pampa",
-      `Podés proponer devolver a Pampa a ${PAMPA_SHELTER}.`,
-      "Devolver a la organización",
-      "La organización recibe tu propuesta y tiene que aceptarla. Hasta que confirmen la recepción, Pampa sigue a tu nombre.",
-      "Razón de la devolución",
-      "Cambio de circunstancias / no me pude adaptar",
-      "Limitaciones de espacio o vivienda",
-      "Necesita cuidados especiales que no puedo dar",
-      "Otro motivo",
-      "Comentario (opcional)",
-      "Algo que la organización deba saber…",
-      "Proponer la devolución",
-      // "Sí, la encontré" (LostScreen.tsx:414-424) and what it leaves:
-      // "Listo" (:294), commandDoneLabel (lost-view-model.ts:633-634),
-      // "Situación" + situationHeadline (:377-378; lost-view-model.ts:102).
-      "¿Confirmás?",
-      "Cancelar",
-      "Listo. La marcamos como encontrada y avisamos a quienes la estaban buscando.",
-      "Situación",
-      "Pampa no está perdida.",
+      `${PAMPA_SHELTER} tiene a Pampa y quiere devolvértela.`,
+      "Confirmar la devolución",
+      "Confirmá sólo cuando tengas a Pampa con vos. La custodia de quien la tiene se cierra en ese momento.",
+      "Ya tengo a Pampa",
+      "Rechazar la devolución",
+      "Quien la tiene va a recibir tu respuesta con el motivo.",
+      "Listo. Pampa vuelve a figurar a tu nombre.",
       // "Mis mascotas" (app/_layout.tsx:288), its row and footer
       // (src/pets/PetRow.tsx:127-135, credential-view-model.ts:261,
       // app/mascotas/index.tsx:431).
@@ -635,7 +641,6 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       `Perro · ${formatDate(seedInstant(String(PAMPA_EVENTS.find((e) => e.eventType === "shelter_intake_recorded")?.date)))}`,
       "Ver ficha",
       "detectó a Pampa por su microchip. Coordiná la devolución.",
-      "Sí, la encontré",
     ]) {
       expect(html, label).toContain(label);
     }
