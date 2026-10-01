@@ -545,7 +545,9 @@ describe("chapter endings (M5)", () => {
       SHELTER_SEQUENCE.device(SHELTER_SEQUENCE.total - 2, false),
     );
     expect(devolucion).toContain("Devolución de Pampa");
-    expect(devolucion).toContain("Ya tengo a Pampa");
+    // `can_propose`: the chip match writes no proposal for him to accept.
+    expect(devolucion).toContain("Proponer la devolución");
+    expect(devolucion).not.toContain("Ya tengo a Pampa");
     // And the step list names the payoff.
     expect(SHELTER_SEQUENCE.items.at(-1)?.at).toBe(SHELTER_SEQUENCE.total - 1);
   });

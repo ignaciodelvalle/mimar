@@ -477,6 +477,16 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
     expect(html).not.toContain("No dejó datos de contacto.");
     expect(html).not.toContain("Cómo te contactamos (opcional)");
     expect(html).not.toContain("¿Encontraste a esta mascota?");
+    // The chip match writes no return proposal, so the Devolución screen's
+    // `inbound_pending` arm is unreachable in this story — never drawn.
+    expect(html).not.toContain("quiere devolvértela");
+    expect(html).not.toContain("Ya tengo a Pampa");
+    expect(html).not.toContain("Confirmar la devolución");
+    const chipMatchSrc = readFileSync(
+      "src/modules/pets/application/chip-match/confirm-chip-match-refugio.ts",
+      "utf8",
+    );
+    expect(chipMatchSrc).not.toContain("custody_transfer_proposed");
     expect(html).not.toContain("¡Hola! Soy");
     expect(html).not.toContain("Custodia devuelta");
     // No product surface prints these: the old attendance-form mock's
@@ -564,17 +574,23 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       "Urgente",
       "Marcar como leída",
       "Coordinar devolución",
-      // The native Devolución (app/_layout.tsx:390; src/custody/
-      // DevolucionScreen.tsx:160, :176-188, :192-194; returnStateHeadline
-      // inbound_pending, devolucion-view-model.ts:95).
+      // The native Devolución in the state the chip match leaves it in,
+      // `can_propose` (read-return-state.ts:114-131): app/_layout.tsx:390;
+      // src/custody/DevolucionScreen.tsx:160, :213-246; returnStateHeadline,
+      // devolucion-view-model.ts:100-103; RETURN_REASON_CHOICES :84-89.
       "Devolución",
       "Devolución de Pampa",
-      `${PAMPA_SHELTER} tiene a Pampa y quiere devolvértela.`,
-      "Confirmar la devolución",
-      "Confirmá sólo cuando tengas a Pampa con vos. La custodia de quien la tiene se cierra en ese momento.",
-      "Ya tengo a Pampa",
-      "Rechazar la devolución",
-      "Quien la tiene va a recibir tu respuesta con el motivo.",
+      `Podés proponer devolver a Pampa a ${PAMPA_SHELTER}.`,
+      "Devolver a la organización",
+      "La organización recibe tu propuesta y tiene que aceptarla. Hasta que confirmen la recepción, Pampa sigue a tu nombre.",
+      "Razón de la devolución",
+      "Cambio de circunstancias / no me pude adaptar",
+      "Limitaciones de espacio o vivienda",
+      "Necesita cuidados especiales que no puedo dar",
+      "Otro motivo",
+      "Comentario (opcional)",
+      "Algo que la organización deba saber…",
+      "Proponer la devolución",
       // "Sí, la encontré" (LostScreen.tsx:414-424) and what it leaves:
       // "Listo" (:294), commandDoneLabel (lost-view-model.ts:633-634),
       // "Situación" + situationHeadline (:377-378; lost-view-model.ts:102).

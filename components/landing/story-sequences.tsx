@@ -1062,19 +1062,35 @@ function OwnerNotifiedScreen() {
 }
 
 /**
+ * The four return motives, with the native Choice's own labels
+ * (apps/mobile/src/custody/devolucion-view-model.ts:84-89, RETURN_REASON_CHOICES).
+ */
+const RETURN_REASON_LABELS = [
+  "Cambio de circunstancias / no me pude adaptar",
+  "Limitaciones de espacio o vivienda",
+  "Necesita cuidados especiales que no puedo dar",
+  "Otro motivo",
+] as const;
+
+/**
  * 5 · Where "Coordinar devolución" lands: the NATIVE return screen
  * (apps/mobile/app/mascotas/[publicToken]/devolucion.tsx → src/custody/
  * DevolucionScreen.tsx), stack title "Devolución" (app/_layout.tsx:390).
- * With the refugio holding her in shelter custody and its return proposal
- * addressed to Martín, the server's state is `inbound_pending` with the
- * organization's display name as the actor
- * (src/modules/return-to-owner/application/read-return-state.ts:143-175,
- * proposerName :204-210), so the screen reads: the title (:160), the
- * headline (returnStateHeadline, devolucion-view-model.ts:94-95), the
- * "Confirmar la devolución" card with its sentence and "Ya tengo a {nombre}"
- * (:176-188), and the "Rechazar la devolución" card's title and sentence
- * (:192-194; its "Motivo" field and button are below the fold, omitted).
- * The proposal leaves no notes, so there is no "Lo que dejó escrito" card.
+ *
+ * THE STATE IS `can_propose`, NOT `inbound_pending`. The chip match
+ * (confirm-chip-match-refugio.ts:164-207) opens a shelter_custody row and
+ * writes no `custody_transfer_proposed`, so readPetReturnState
+ * (src/modules/return-to-owner/application/read-return-state.ts:114-131)
+ * finds no pending proposal and asks resolveReturnTargetOrg, which — with no
+ * adoption on record — answers the refugio holding the parallel
+ * shelter_custody row (resolve-return-target-org.ts, the owner fallback). So
+ * the screen reads: the title (DevolucionScreen.tsx:160), the headline
+ * (returnStateHeadline `can_propose`, devolucion-view-model.ts:100-103), and
+ * the "Devolver a la organización" card (:213-246): its sentence, the
+ * required "Razón de la devolución" chips (Choice, apps/mobile/src/ui/kit.tsx:906-;
+ * FieldLabel's "*", :315-321), "Comentario (opcional)" and "Proponer la
+ * devolución". Nothing is picked or pressed: the story shows where the
+ * notification takes him, not a proposal he sends.
  */
 function OwnerDevolucionScreen() {
   return (
@@ -1084,19 +1100,27 @@ function OwnerDevolucionScreen() {
       <div className="lp-app-body lp-ph-pad">
         <p className="lp-kv-title lp-sheet-t">Devolución de {PAMPA.name}</p>
         <p className="lp-ph-note">
-          {PAMPA_SHELTER} tiene a {PAMPA.name} y quiere devolvértela.
+          Podés proponer devolver a {PAMPA.name} a {PAMPA_SHELTER}.
         </p>
         <div className="lp-ph-card">
-          <p className="lp-kv-title">Confirmar la devolución</p>
+          <p className="lp-kv-title">Devolver a la organización</p>
           <p className="lp-ph-note">
-            Confirmá sólo cuando tengas a {PAMPA.name} con vos. La custodia de quien la tiene se
-            cierra en ese momento.
+            La organización recibe tu propuesta y tiene que aceptarla. Hasta que confirmen la
+            recepción, {PAMPA.name} sigue a tu nombre.
           </p>
-          <span className="lp-vf-submit">Ya tengo a {PAMPA.name}</span>
-        </div>
-        <div className="lp-ph-card">
-          <p className="lp-kv-title">Rechazar la devolución</p>
-          <p className="lp-ph-note">Quien la tiene va a recibir tu respuesta con el motivo.</p>
+          <div className="lp-vf-form">
+            <span className="lp-vf-l">Razón de la devolución *</span>
+            <div className="lp-nat-choice">
+              {RETURN_REASON_LABELS.map((l) => (
+                <span className="lp-pub-cta" key={l}>
+                  {l}
+                </span>
+              ))}
+            </div>
+            <span className="lp-vf-l">Comentario (opcional)</span>
+            <span className="lp-vf-i lp-vf-i--ph">Algo que la organización deba saber…</span>
+            <span className="lp-vf-submit">Proponer la devolución</span>
+          </div>
         </div>
       </div>
     </>
@@ -1108,7 +1132,8 @@ function OwnerDevolucionScreen() {
  * (apps/mobile/app/_layout.tsx:543) — the two-step confirm
  * (apps/mobile/src/lost/LostScreen.tsx:412-426: the warn callout, its
  * sentence, "Sí, la encontré" and "Cancelar"). The return is his entry, not
- * the shelter's.
+ * the shelter's, and it does not go through step 5: closing a search is the
+ * owner's "mark_found" on the lost screen, which needs no return proposal.
  */
 function OwnerConfirmFoundScreen({ animate }: { animate: boolean }) {
   return (
