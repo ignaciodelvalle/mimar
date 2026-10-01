@@ -206,6 +206,7 @@ async function insertPetWithChip(opts: {
   status: "active" | "lost" | "deceased";
   ownerUserId: string;
   tokenSuffix: string;
+  sex?: "male" | "female" | "unknown";
 }): Promise<{ petId: string; publicToken: string; canonicalChip: string }> {
   const token = `LF2-${opts.tokenSuffix}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
   const now = new Date();
@@ -215,7 +216,7 @@ async function insertPetWithChip(opts: {
       publicToken: token,
       name: `TestPet-${opts.tokenSuffix}`,
       species: "dog",
-      sex: "unknown",
+      sex: opts.sex ?? "unknown",
       status: opts.status,
       potentiallyDangerousBreed: false,
     })
@@ -906,7 +907,27 @@ describe("refugio decision='same' leaves the return proposal for the owner", () 
     expect(notices[0].ctaUrl).toBe(`/mis-mascotas/${publicToken}/devolucion`);
     // The fixture pet has no known sex, so the pick-up phrase names the pet.
     expect(notices[0].body).toBe(
-      `TestPet-PNOTE está a salvo en ${ORG_NAME}. La reconocieron por su microchip. Coordiná con ellos para ir a buscar a TestPet-PNOTE.`,
+      `TestPet-PNOTE está a salvo en ${ORG_NAME}, que leyó su microchip. Coordiná con el refugio para ir a buscar a TestPet-PNOTE.`,
+    );
+  });
+
+  it.each([
+    ["male", "PNOTM", "ir a buscarlo"],
+    ["female", "PNOTF", "ir a buscarla"],
+  ] as const)("the owner notice agrees with a %s pet", async (sex, suffix, phrase) => {
+    const { petId, publicToken } = await insertPetWithChip({
+      microchipId: `CHIP-PROP-SEX-${suffix}-${Date.now()}`,
+      status: "lost",
+      ownerUserId,
+      tokenSuffix: suffix,
+      sex,
+    });
+    await confirmAsRefugio(publicToken);
+
+    const notices = await ownerNoticesFor(petId);
+    expect(notices).toHaveLength(1);
+    expect(notices[0].body).toBe(
+      `TestPet-${suffix} está a salvo en ${ORG_NAME}, que leyó su microchip. Coordiná con el refugio para ${phrase}.`,
     );
   });
 

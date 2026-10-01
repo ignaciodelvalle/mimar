@@ -1061,7 +1061,7 @@ function OwnerNotifiedScreen() {
       title={`¡Encontraron a ${PAMPA.name}!`}
       date={INTAKE.date}
       severity="urgent"
-      body={`${PAMPA.name} está a salvo en ${PAMPA_SHELTER}. La reconocieron por su microchip. Coordiná con ellos para ir a buscarla.`}
+      body={`${PAMPA.name} está a salvo en ${PAMPA_SHELTER}, que leyó su microchip. Coordiná con el refugio para ir a buscarla.`}
       cta="Coordinar devolución"
     />
   );

@@ -236,7 +236,7 @@ export async function confirmChipMatchAsRefugioWriter({
           notificationType: "chip_match_notification_owner",
           severity: "urgent",
           title: `¡Encontraron a ${matchedPet.name}!`,
-          body: `${matchedPet.name} está a salvo en ${organization.displayName}. La reconocieron por su microchip. Coordiná con ellos para ${pickUpPhrase(matchedPet.sex, matchedPet.name)}.`,
+          body: `${matchedPet.name} está a salvo en ${organization.displayName}, que leyó su microchip. Coordiná con el refugio para ${pickUpPhrase(matchedPet.sex, matchedPet.name)}.`,
           ctaLabel: "Coordinar devolución",
           ctaUrl: `/mis-mascotas/${matchedPetToken}/devolucion`,
           relatedPetId: matchedPet.id,

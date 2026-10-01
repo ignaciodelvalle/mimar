@@ -644,7 +644,7 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       "Ingresos recientes",
       `Perro · ${formatDate(seedInstant(String(PAMPA_EVENTS.find((e) => e.eventType === "shelter_intake_recorded")?.date)))}`,
       "Ver ficha",
-      `Pampa está a salvo en ${PAMPA_SHELTER}. La reconocieron por su microchip. Coordiná con ellos para ir a buscarla.`,
+      `Pampa está a salvo en ${PAMPA_SHELTER}, que leyó su microchip. Coordiná con el refugio para ir a buscarla.`,
     ]) {
       expect(html, label).toContain(label);
     }
