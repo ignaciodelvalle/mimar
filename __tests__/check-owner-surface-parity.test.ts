@@ -19,11 +19,13 @@ import { describe, expect, it } from "vitest";
 import {
   DECLARED_DIVERGENCES,
   type DeclaredDivergence,
+  MIN_COMPOSER_PROPERTIES,
   MIN_CONTRACT_API_KEYS,
   MIN_JOINED_ACTIONS,
   MIN_KINDS,
   MIN_OWNER_ACTIONS,
   MIN_OWNER_GUARDS,
+  MIN_PROFILE_FIELDS,
   MIN_USE_SERVER_FILES,
   MIN_V1_USE_CASES,
   type ParityInputs,
@@ -210,6 +212,111 @@ describe("the join — a web door the app lacks is named", () => {
     ).failures;
     expect(failuresMatching(failures, "owner guard exports")).toHaveLength(1);
     expect(failuresMatching(failures, "owner-guarded actions — found 0")).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The FIELD census (owner-pet-actions, 2026-10-01)
+// ---------------------------------------------------------------------------
+//
+// The use-case join above saw parity where there was none: the app reached
+// `updatePet` through `edit_identity`, so the join called the web's edit form
+// covered — while the app could write three of its fields and the web fifteen.
+// Sex, birth date, allergies, insurance, the public toggles: every one a gap,
+// none visible. The census asks the question the join cannot: for every field
+// the web's edit WRITES, can a v1 command write it too?
+
+describe("the field census — every field the web's edit writes", () => {
+  const composer = live.profileComposer ?? "";
+
+  it("measures the live tree above its floors, and finds fields the app CAN write", () => {
+    const c = evaluate(live).census;
+    expect(c.profileFields).toBeGreaterThan(MIN_PROFILE_FIELDS);
+    expect(c.composerProperties).toBeGreaterThan(MIN_COMPOSER_PROPERTIES);
+    // Non-vacuity in the other direction: a census where nothing is writable
+    // would be all divergences, and a declaration list that swallowed them all.
+    expect(c.v1WritableFields).toBeGreaterThan(MIN_PROFILE_FIELDS / 2);
+  });
+
+  it("names a field the moment the composer stops writing it", () => {
+    const line =
+      "insuranceCompany: edit.insurance ? edit.insurance.insuranceCompany : existing.insuranceCompany,";
+    expect(composer).toContain(line);
+    const carried = composer.replace(line, "insuranceCompany: existing.insuranceCompany,");
+    const named = failuresMatching(
+      evaluate(mutated({ profileComposer: carried })).failures,
+      "divergence not declared: field:insurance_company",
+    );
+    expect(named).toHaveLength(1);
+    expect(named[0]).toContain("composePetProfileEdit");
+  });
+
+  it("fails as it would have before edit_profile: no v1 call to the composer is no field at all", () => {
+    // The world before owner-pet-actions phase 2, rebuilt by removing the one
+    // call the v1 surface makes. Every field the web writes becomes a gap.
+    const without = live.v1Files.map((f) => ({
+      ...f,
+      src: f.src.replaceAll("composePetProfileEdit(", "somethingElse("),
+    }));
+    const failures = evaluate(mutated({ v1Files: without })).failures;
+    for (const field of ["name", "sex", "date_of_birth", "known_allergies", "insurance_company"]) {
+      expect(failuresMatching(failures, `divergence not declared: field:${field}`)).toHaveLength(1);
+    }
+  });
+
+  it("names a NEW field the web's diff starts writing that no v1 command writes", () => {
+    const diff = live.petDiff ?? "";
+    const anchor = '{ field: "color", oldVal: existing.color, newVal: parsed.color },';
+    expect(diff).toContain(anchor);
+    const grown = diff.replace(
+      anchor,
+      `${anchor}\n    { field: "distinguishing_features", oldVal: existing.color, newVal: parsed.distinguishingFeatures },`,
+    );
+    expect(
+      failuresMatching(
+        evaluate(mutated({ petDiff: grown })).failures,
+        "divergence not declared: field:distinguishing_features",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("counts the toggle that writes without a diff entry — the census is not only diffPet's", () => {
+    const line =
+      "emergencyInfoVisible: edit.publicCredential\n      ? edit.publicCredential.emergencyInfoVisible\n      : existing.emergencyInfoVisible,";
+    expect(composer).toContain(line);
+    const carried = composer.replace(line, "emergencyInfoVisible: existing.emergencyInfoVisible,");
+    expect(
+      failuresMatching(
+        evaluate(mutated({ profileComposer: carried })).failures,
+        "divergence not declared: field:emergency_info_visible",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("fails the floor, not parity, when a source it reads is gone or reshaped", () => {
+    expect(
+      failuresMatching(
+        evaluate(mutated({ profileComposer: null })).failures,
+        "could not derive what composePetProfileEdit writes",
+      ),
+    ).toHaveLength(1);
+    expect(
+      failuresMatching(
+        evaluate(mutated({ petDiff: null })).failures,
+        "could not derive the profile field list",
+      ),
+    ).toHaveLength(1);
+    // A renamed diff function reads as no fields — never as no gaps.
+    const renamed = (live.petDiff ?? "").replace(
+      "export function diffPet(",
+      "export function diff(",
+    );
+    expect(
+      failuresMatching(
+        evaluate(mutated({ petDiff: renamed })).failures,
+        "could not derive the profile field list",
+      ),
+    ).toHaveLength(1);
   });
 });
 

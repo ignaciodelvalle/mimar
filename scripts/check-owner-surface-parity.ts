@@ -46,6 +46,18 @@
 //     that as the mordedura's receipt arriving — a real gap waved through by a
 //     field NAME. The DTO half stays global, because a DTO key has no use-case
 //     to scope by; a DTO that names a different case must say so in the name.
+//   · THE FIELD CENSUS (owner-pet-actions, 2026-10-01) is the part the join
+//     could not see. The app reached `updatePet` through `edit_identity`, so the
+//     join called the web's edit form covered — while the app wrote three of its
+//     fields and the web fifteen. Sex, birth date, allergies, insurance and the
+//     public toggles were all gaps, and none of them was a missing USE-CASE. So
+//     the fields are counted too, from the code: every `{ field: "…" }` entry of
+//     `diffPet` (what an edit can change, as the spine records it) plus the
+//     column `updatePet` writes WITHOUT a diff entry (`const flagChanged =
+//     parsed.…`), each against what `composePetProfileEdit` — the composer every
+//     v1 profile edit goes through — writes from the request rather than
+//     carrying from the stored row. A field no v1 command can write is
+//     `field:<column>`, declared like any other divergence.
 //
 // EXCLUSIONS ARE EXPLICIT, REASONED AND FEW. A deliberate divergence lives in
 // DECLARED_DIVERGENCES, once, with the sentence saying WHY and the sentence
@@ -103,6 +115,13 @@ export const CONTRACT_API_DIR = "packages/contract/src/api";
 /** A module is a use-case when its resolved path starts here and crosses this segment. */
 export const USE_CASE_ROOT = "src/modules/";
 export const USE_CASE_LAYER = "/application/";
+/** The web edit's diff: which fields a save can change, as `pet_profile_updated` names them. */
+export const PET_DIFF = "src/modules/pets/domain/pet-diff.ts";
+/** The use-case behind both edit doors — where a column is written WITHOUT a diff entry. */
+export const UPDATE_PET_USE_CASE = "src/modules/pets/application/update-pet.ts";
+/** The composer every v1 profile edit lays its sections through. */
+export const PROFILE_COMPOSER = "src/modules/pets/domain/pet-profile-edit.ts";
+export const PROFILE_COMPOSER_EXPORT = "composePetProfileEdit";
 const THIS_FILE = "scripts/check-owner-surface-parity.ts";
 
 // ---------------------------------------------------------------------------
@@ -122,6 +141,12 @@ export const MIN_JOINED_ACTIONS = 15;
 export const MIN_V1_USE_CASES = 20;
 export const MIN_KINDS = 12;
 export const MIN_CONTRACT_API_KEYS = 200;
+// The field census, measured 2026-10-01 on owner-pet-actions: 17 profile fields
+// (16 `diffPet` entries plus the one flag `updatePet` writes without a diff
+// entry), 26 properties in `composePetProfileEdit`'s returned literal, 15 of the
+// 17 fields writable from the v1 surface.
+export const MIN_PROFILE_FIELDS = 12;
+export const MIN_COMPOSER_PROPERTIES = 18;
 
 // ---------------------------------------------------------------------------
 // Declared divergences — the list the PO reads
@@ -141,6 +166,7 @@ export type DeclaredDivergence = {
  *   `write:<action>→<useCase>`  the action calls a use-case no v1 route reaches
  *   `read:<action>.<field>`     the action shows a result field no v1 read carries
  *   `unjoined:<action>`         the action writes inline; the join cannot see it
+ *   `field:<column>`            the web's edit writes the column; no v1 command does
  *
  * Keep it sorted by key so a diff reads cleanly. Every entry here is pending
  * work in the native app until the PO says otherwise.
@@ -160,6 +186,26 @@ export const DECLARED_DIVERGENCES: Record<string, DeclaredDivergence> = {
   // Left as a heading with no entries on purpose. The next receipt divergence
   // belongs here, and a section that vanished would make the next one look like
   // it had nowhere to go.
+
+  // --- Profile fields the web's edit writes and no v1 command does ---------
+  // Before `edit_profile` the app's only composer wrote the name, the breed and
+  // the colour, so this census would have named fourteen fields here. That
+  // change closed twelve (sex, birth date, allergies, foods, training, the
+  // conditions and their text, the public disclosure of them, both insurance
+  // fields, origin and the emergency toggle). The two left are not missing
+  // doors; each says why.
+  "field:estimated_weight_kg": {
+    reason:
+      "The app moves this column through its governed door instead: a `weight` asiento (Anotar → Peso, POST /api/v1/pets/{token}/events) re-derives pets.estimated_weight_kg from the spine (`updateWeightProjection`). The web's edit form also overwrites the estimate directly, and that overwrite has no v1 twin by design — a measurement with a date is the better record.",
+    closes:
+      "Drop the weight field from the web's edit form so both doors record weight only as an asiento; this entry then goes stale. Adding the estimate to edit_profile would close it the other way, and is not the plan.",
+  },
+  "field:potentially_dangerous_breed": {
+    reason:
+      "Not a door on either side: no request value reaches the PPP flag. diffPet compares the value the SERVER re-resolves from the persisted species, the breed and the jurisdiction, and both doors resolve it the same way (resolvePppClassificationForJurisdiction) on every write, edit_profile included.",
+    closes:
+      "Nothing, while the flag stays derived. If it ever became a value a person sets, it would need its own governed command, and this entry would then be a real gap.",
+  },
 
   // --- Web writers with no v1 door ---------------------------------------
   // TATUAJE SALIO DE ESTA LISTA EL 2026-09-10, cerrado y no despriorizado: el
@@ -209,6 +255,10 @@ export type ParityInputs = {
   mobileViewModel: string | null;
   contractRecordEvent: string | null;
   routerWriters: string | null;
+  /** The field census's three sources; `null` = unreadable, a failure as above. */
+  petDiff: string | null;
+  updatePetUseCase: string | null;
+  profileComposer: string | null;
 };
 
 function readOrNull(cwd: string, rel: string): string | null {
@@ -261,6 +311,9 @@ export function collectInputs(cwd = process.cwd()): ParityInputs {
     mobileViewModel: readOrNull(cwd, MOBILE_VIEW_MODEL),
     contractRecordEvent: readOrNull(cwd, CONTRACT_RECORD_EVENT),
     routerWriters: readOrNull(cwd, ROUTER_WRITERS),
+    petDiff: readOrNull(cwd, PET_DIFF),
+    updatePetUseCase: readOrNull(cwd, UPDATE_PET_USE_CASE),
+    profileComposer: readOrNull(cwd, PROFILE_COMPOSER),
   };
 }
 
@@ -299,18 +352,26 @@ export function useCaseIdentity(ref: UseCaseRef): string {
 }
 
 /**
- * A specifier → the canonical use-case module path, or `null` when it is not
- * one. `@/src/modules/x/application/y` and `./application/y` (from inside
- * `src/modules/x/`) both resolve to `src/modules/x/application/y`.
+ * A repo-local specifier → the canonical module path, extension dropped; `null`
+ * for a package. `@/a/b` and `./b` (from inside `a/`) both resolve to `a/b`.
  */
-export function resolveUseCaseModule(fromPath: string, specifier: string): string | null {
+export function resolveModulePath(fromPath: string, specifier: string): string | null {
   let rel: string;
   if (specifier.startsWith("@/")) rel = specifier.slice(2);
   else if (specifier.startsWith(".")) {
     rel = posix.join(posix.dirname(fromPath.replaceAll("\\", "/")), specifier);
   } else return null;
-  rel = rel.replace(/\.(?:ts|js)$/, "");
-  if (!rel.startsWith(USE_CASE_ROOT) || !rel.includes(USE_CASE_LAYER)) return null;
+  return rel.replace(/\.(?:ts|js)$/, "");
+}
+
+/**
+ * A specifier → the canonical use-case module path, or `null` when it is not
+ * one. `@/src/modules/x/application/y` and `./application/y` (from inside
+ * `src/modules/x/`) both resolve to `src/modules/x/application/y`.
+ */
+export function resolveUseCaseModule(fromPath: string, specifier: string): string | null {
+  const rel = resolveModulePath(fromPath, specifier);
+  if (rel === null || !rel.startsWith(USE_CASE_ROOT) || !rel.includes(USE_CASE_LAYER)) return null;
   return rel;
 }
 
@@ -319,12 +380,20 @@ export function resolveUseCaseModule(fromPath: string, specifier: string): strin
  * type is not a door.
  */
 export function parseUseCaseImports(file: SourceFile): UseCaseRef[] {
+  return parseValueImports(file, resolveUseCaseModule);
+}
+
+/** Every value import whose specifier `resolve` maps to a module, by name. */
+function parseValueImports(
+  file: SourceFile,
+  resolve: (fromPath: string, specifier: string) => string | null,
+): UseCaseRef[] {
   const refs: UseCaseRef[] = [];
   const re = /import\s+(type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g;
   const text = stripComments(file.src);
   for (let m = re.exec(text); m !== null; m = re.exec(text)) {
     if (m[1]) continue;
-    const module = resolveUseCaseModule(file.path, m[3]);
+    const module = resolve(file.path, m[3]);
     if (module === null) continue;
     for (const raw of m[2].split(",")) {
       const entry = raw.trim();
@@ -449,6 +518,160 @@ export function kindsFromRouter(src: string | null): string[] | null {
 }
 
 // ---------------------------------------------------------------------------
+// The field census's derivations
+// ---------------------------------------------------------------------------
+
+/** A field the web's edit writes: its column, and the request value feeding it. */
+export type ProfileField = {
+  /** The column, as `pet_profile_updated` names it (`insurance_company`). */
+  field: string;
+  /** The `ParsedPet` property the new value comes from; `null` when none does. */
+  reads: string | null;
+};
+
+/** The index of the bracket closing the one at `open`, strings skipped; -1 if unbalanced. */
+function matchingClose(text: string, open: number): number {
+  const closer: Record<string, string> = { "(": ")", "[": "]", "{": "}" };
+  const stack: string[] = [];
+  let quote: string | null = null;
+  for (let i = open; i < text.length; i++) {
+    const ch = text[i] as string;
+    if (quote !== null) {
+      if (ch === "\\") i++;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+    else if (ch in closer) stack.push(closer[ch] as string);
+    else if (ch === ")" || ch === "]" || ch === "}") {
+      if (stack.pop() !== ch) return -1;
+      if (stack.length === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/** The body of `export function <name>(…) {…}`, or `null` when it cannot be found. */
+function functionBody(text: string, name: string): string | null {
+  const anchor = text.indexOf(`export function ${name}(`);
+  if (anchor === -1) return null;
+  const paramsEnd = matchingClose(text, text.indexOf("(", anchor));
+  if (paramsEnd === -1) return null;
+  const open = text.indexOf("{", paramsEnd);
+  const close = open === -1 ? -1 : matchingClose(text, open);
+  return close === -1 ? null : text.slice(open + 1, close);
+}
+
+/** A list split at its top-level commas, blanks dropped. */
+function splitTopLevel(list: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let from = 0;
+  for (let i = 0; i < list.length; i++) {
+    const ch = list[i] as string;
+    if (quote !== null) {
+      if (ch === "\\") i++;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+    else if ("([{".includes(ch)) depth++;
+    else if (")]}".includes(ch)) depth--;
+    else if (ch === "," && depth === 0) {
+      parts.push(list.slice(from, i));
+      from = i + 1;
+    }
+  }
+  parts.push(list.slice(from));
+  return parts.filter((p) => p.trim().length > 0);
+}
+
+/**
+ * `diffPet`'s entries — `{ field: "x", oldVal: …, newVal: <expr> }` — each with
+ * the `parsed.<prop>` its new value comes from. Scoped to the function's own
+ * body, so nothing else in the file can add a field.
+ */
+export function profileFieldsFromDiff(src: string | null): ProfileField[] | null {
+  if (src === null) return null;
+  const body = functionBody(stripComments(src), "diffPet");
+  if (body === null) return null;
+  const out: ProfileField[] = [];
+  const re = /\{\s*field:\s*"([a-z_]+)"\s*,\s*oldVal:\s*[^,]+,\s*newVal:\s*([^}]*)\}/g;
+  for (const m of body.matchAll(re)) {
+    const read = (m[2] as string).match(/(?<![\w$.])parsed\.([A-Za-z_$][\w$]*)/);
+    out.push({ field: m[1] as string, reads: read ? (read[1] as string) : null });
+  }
+  return out.length === 0 ? null : out;
+}
+
+/** `emergencyInfoVisible` → `emergency_info_visible`: the column a property writes. */
+export function columnName(prop: string): string {
+  return prop.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+}
+
+/**
+ * The columns `updatePet` writes WITHOUT a diff entry — `const flagChanged =
+ * parsed.x !== …`. One today, `emergencyInfoVisible`: a public-credential
+ * toggle, and exactly the kind of field a census of `diffPet` alone would miss.
+ */
+export function flagFieldsFromUpdatePet(src: string | null): ProfileField[] | null {
+  if (src === null) return null;
+  const m = stripComments(src).match(/const\s+flagChanged\s*=\s*([^;]+);/);
+  if (!m) return null;
+  const props = [...(m[1] as string).matchAll(/(?<![\w$.])parsed\.([A-Za-z_$][\w$]*)/g)];
+  if (props.length === 0) return null;
+  return props.map((p) => ({ field: columnName(p[1] as string), reads: p[1] as string }));
+}
+
+/** What the composer's returned `ParsedPet` writes from the edit, and how many properties it read. */
+export type ComposerWrites = { written: Set<string>; properties: number };
+
+/** A value that is not the edit: the stored row's own property, or a constant. */
+const CARRIED_LITERAL = /^(?:null|true|false|-?\d+(?:\.\d+)?|"[^"]*"|'[^']*')$/;
+
+/**
+ * The properties `composePetProfileEdit` fills FROM THE EDIT. A property is
+ * carried — not written — when its value is `existing.<same name>` or a
+ * constant; anything else is the request reaching the column. A shorthand or a
+ * spread is not counted as written: the fence cannot read it, and an unread
+ * property must surface as a gap rather than pass as parity.
+ */
+export function composerWrites(src: string | null): ComposerWrites | null {
+  if (src === null) return null;
+  const body = functionBody(stripComments(src), PROFILE_COMPOSER_EXPORT);
+  if (body === null) return null;
+  const ret = body.lastIndexOf("return {");
+  if (ret === -1) return null;
+  const open = body.indexOf("{", ret);
+  const close = matchingClose(body, open);
+  if (close === -1) return null;
+  const written = new Set<string>();
+  let properties = 0;
+  for (const part of splitTopLevel(body.slice(open + 1, close))) {
+    properties++;
+    const m = part.match(/^\s*([A-Za-z_$][\w$]*)\s*:\s*([\s\S]+?)\s*$/);
+    if (!m) continue;
+    const key = m[1] as string;
+    const value = (m[2] as string).replace(/\s+/g, " ");
+    if (value !== `existing.${key}` && !CARRIED_LITERAL.test(value)) written.add(key);
+  }
+  return properties === 0 ? null : { written, properties };
+}
+
+/** Some v1 file imports the composer by name and CALLS it. */
+export function v1ReachesComposer(v1Files: SourceFile[]): boolean {
+  const target = PROFILE_COMPOSER.replace(/\.ts$/, "");
+  return v1Files.some((file) => {
+    const text = stripComments(file.src);
+    return parseValueImports(file, resolveModulePath).some(
+      (ref) =>
+        ref.module === target && ref.exported === PROFILE_COMPOSER_EXPORT && calls(text, ref.local),
+    );
+  });
+}
+
+// ---------------------------------------------------------------------------
 // The two sets
 // ---------------------------------------------------------------------------
 
@@ -491,9 +714,15 @@ type Derived = {
   contract: string[] | null;
   mobile: string[] | null;
   router: string[] | null;
+  /** `diffPet`'s fields plus `updatePet`'s undiffed flag; `null` = could not derive. */
+  profileFields: ProfileField[] | null;
+  composer: ComposerWrites | null;
+  composerReached: boolean;
 };
 
 function derive(inputs: ParityInputs): Derived {
+  const diffFields = profileFieldsFromDiff(inputs.petDiff);
+  const flagFields = flagFieldsFromUpdatePet(inputs.updatePetUseCase);
   const guards = ownerGuardNames(inputs.guardSources);
   const v1UseCases = new Set<string>();
   const v1ReadsByUseCase = new Map<string, Set<string>>();
@@ -518,6 +747,9 @@ function derive(inputs: ParityInputs): Derived {
     contract: kindsFromContract(inputs.contractRecordEvent),
     mobile: kindsFromMobile(inputs.mobileViewModel),
     router: kindsFromRouter(inputs.routerWriters),
+    profileFields: diffFields && flagFields ? [...diffFields, ...flagFields] : null,
+    composer: composerWrites(inputs.profileComposer),
+    composerReached: v1ReachesComposer(inputs.v1Files),
   };
 }
 
@@ -535,6 +767,10 @@ export type Census = {
   v1UseCases: number;
   contractApiKeys: number;
   kinds: { contract: number; mobile: number; router: number };
+  /** Fields the web's edit writes, and how many of them a v1 command writes too. */
+  profileFields: number;
+  v1WritableFields: number;
+  composerProperties: number;
 };
 
 export type Verdict = {
@@ -625,6 +861,66 @@ function findDivergences(d: Derived): { divergences: Divergence[]; joined: numbe
   return { divergences, joined };
 }
 
+/** The census: every field the web's edit writes, against what a v1 command writes. */
+function findFieldDivergences(d: Derived): { divergences: Divergence[]; writable: number } {
+  const divergences: Divergence[] = [];
+  let writable = 0;
+  // A census it could not read reports NO gaps rather than every field as one:
+  // the floor below names the broken source, and a wall of "not declared" lines
+  // would bury it (the vocabulary check holds back the same way).
+  if (d.profileFields === null || d.composer === null) return { divergences, writable };
+  for (const f of d.profileFields) {
+    if (d.composerReached && f.reads !== null && d.composer.written.has(f.reads)) {
+      writable++;
+      continue;
+    }
+    divergences.push({ key: `field:${f.field}`, detail: fieldGapDetail(f, d.composerReached) });
+  }
+  return { divergences, writable };
+}
+
+function fieldGapDetail(f: ProfileField, composerReached: boolean): string {
+  if (f.reads === null) {
+    return `${PET_DIFF} — diffPet derives \`${f.field}\` from no request value, so no edit command can write it on either door.`;
+  }
+  if (!composerReached) {
+    return `${PROFILE_COMPOSER} — no route under ${V1_ROOT} calls ${PROFILE_COMPOSER_EXPORT}, so no v1 command writes \`${f.field}\`. The web owner can edit it; the app cannot.`;
+  }
+  return `${PROFILE_COMPOSER} — ${PROFILE_COMPOSER_EXPORT} carries \`${f.reads}\` from the stored row on every v1 edit, so no v1 command writes \`${f.field}\`. The web owner can edit it; the app cannot.`;
+}
+
+/** The census's own floors: a source it cannot read must fail, never pass. */
+function fieldCensusVacuityFailures(d: Derived): string[] {
+  const failures: string[] = [];
+  if (d.profileFields === null) {
+    failures.push(
+      `non-vacuity: could not derive the profile field list from ${PET_DIFF} (diffPet's \`{ field: "…" }\` entries) and ${UPDATE_PET_USE_CASE} (\`const flagChanged = parsed.…\`). A file moved, a function was renamed or the entries were reshaped; a census of nothing must not read as parity.`,
+    );
+  } else {
+    const f = floor(
+      d.profileFields.length,
+      MIN_PROFILE_FIELDS,
+      "profile fields the web's edit writes",
+      "Either the diff really shrank — say so by lowering MIN_PROFILE_FIELDS — or the parser is missing entries.",
+    );
+    if (f !== null) failures.push(f);
+  }
+  if (d.composer === null) {
+    failures.push(
+      `non-vacuity: could not derive what ${PROFILE_COMPOSER_EXPORT} writes from ${PROFILE_COMPOSER}: the file is unreadable, the function was renamed, or its \`return { … }\` literal was reshaped. Without it every field reads as unwritable — or, swallowed by declarations, as nothing.`,
+    );
+  } else {
+    const f = floor(
+      d.composer.properties,
+      MIN_COMPOSER_PROPERTIES,
+      `properties in ${PROFILE_COMPOSER_EXPORT}'s returned ParsedPet`,
+      "The composer must build the whole row the writer stores; fewer properties is the parser losing them.",
+    );
+    if (f !== null) failures.push(f);
+  }
+  return failures;
+}
+
 function setDiff(a: string[], b: string[]): string[] {
   const bs = new Set(b);
   return a.filter((x) => !bs.has(x));
@@ -676,10 +972,15 @@ function vocabularyFailures(d: Derived): string[] {
   return failures;
 }
 
-/** Every divergence declared with both sentences; every declaration still live. */
+/**
+ * Every divergence declared with both sentences; every declaration still live.
+ * `uncomputed` names key prefixes whose scan could not run this time — their
+ * declarations are not called stale, because nothing was looked for.
+ */
 function declarationFailures(
   divergences: Divergence[],
   declared: Record<string, DeclaredDivergence>,
+  uncomputed: readonly string[] = [],
 ): string[] {
   const failures: string[] = [];
   const seen = new Set<string>();
@@ -698,6 +999,7 @@ function declarationFailures(
   }
   for (const key of Object.keys(declared)) {
     if (seen.has(key)) continue;
+    if (uncomputed.some((prefix) => key.startsWith(prefix))) continue;
     failures.push(
       `stale declaration: ${key} is in DECLARED_DIVERGENCES but the scan no longer finds that divergence. Remove it in the same commit that closed it — a declaration nobody re-reads is how the next real gap gets waved through.`,
     );
@@ -710,11 +1012,15 @@ export function evaluate(
   declared: Record<string, DeclaredDivergence> = DECLARED_DIVERGENCES,
 ): Verdict {
   const d = derive(inputs);
-  const { divergences, joined } = findDivergences(d);
+  const { divergences: actionDivergences, joined } = findDivergences(d);
+  const fields = findFieldDivergences(d);
+  const divergences = [...actionDivergences, ...fields.divergences];
+  const censusRan = d.profileFields !== null && d.composer !== null;
   const failures = [
     ...vacuityFailures(inputs, d, joined),
+    ...fieldCensusVacuityFailures(d),
     ...vocabularyFailures(d),
-    ...declarationFailures(divergences, declared),
+    ...declarationFailures(divergences, declared, censusRan ? [] : ["field:"]),
   ];
   return {
     failures,
@@ -731,6 +1037,9 @@ export function evaluate(
         mobile: d.mobile?.length ?? 0,
         router: d.router?.length ?? 0,
       },
+      profileFields: d.profileFields?.length ?? 0,
+      v1WritableFields: fields.writable,
+      composerProperties: d.composer?.properties ?? 0,
     },
   };
 }
@@ -747,7 +1056,8 @@ function run(): void {
     `${c.ownerActions} owner-guarded actions, ${c.joinedActions} joined to the v1 surface; ` +
     `${c.v1UseCases} use-cases reached from ${V1_ROOT}; ` +
     `kinds contract ${c.kinds.contract} / mobile ${c.kinds.mobile} / router ${c.kinds.router}; ` +
-    `${c.contractApiKeys} v1 DTO keys.`;
+    `${c.contractApiKeys} v1 DTO keys; ` +
+    `${c.profileFields} profile fields the web's edit writes, ${c.v1WritableFields} writable from ${V1_ROOT}.`;
 
   if (verdict.failures.length > 0) {
     console.error(`\n✗ Owner-surface parity — ${verdict.failures.length} failure(s):\n`);
