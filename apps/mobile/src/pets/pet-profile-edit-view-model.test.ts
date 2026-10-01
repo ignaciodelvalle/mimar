@@ -17,9 +17,18 @@
 import { describe, expect, it } from "@jest/globals";
 
 import type { PetProfileDraftV1, PetProfileEditV1 } from "@dim/contract/api";
-import { PET_NAME_MAX } from "@dim/contract/input";
+import {
+  PET_ALLERGY_ENTRY_MAX,
+  PET_CONDITION_OTHER_MAX,
+  PET_FOODS_MAX,
+  PET_INSURANCE_COMPANY_MAX,
+  PET_INSURANCE_POLICY_MAX,
+  PET_NAME_MAX,
+  PET_PROFILE_TEXT_LENGTH_MESSAGES,
+} from "@dim/contract/input";
+import { PET_PROFILE_EDIT_SECTION_IDS } from "@dim/contract/reference";
 
-import { PET_EDIT_SECTION_PARAM, editPetRoute } from "../ui/routes";
+import { PET_EDIT_SECTIONS, PET_EDIT_SECTION_PARAM, editPetRoute } from "../ui/routes";
 import {
   ACQUISITION_CHOICES,
   type EditDrafts,
@@ -49,6 +58,7 @@ import {
   physicalTagInterestSavedLabel,
   physicalTagInterestTitle,
   profileBlockedReason,
+  profileFieldCaps,
   reseedDrafts,
   sameEditDrafts,
   savedLabel,
@@ -481,7 +491,7 @@ describe("petEditSectionFromParam — an unknown section is the default, not an 
       "identidad",
       "salud",
       "contactos",
-      "credencial",
+      "credencial-publica",
       "seguro",
       "origen",
     ] as const) {
@@ -489,11 +499,19 @@ describe("petEditSectionFromParam — an unknown section is the default, not an 
     }
   });
 
+  it("is the contract's list, so a `seccion` the web writes opens the same section here", () => {
+    // One list for both platforms (`PET_PROFILE_EDIT_SECTION_IDS`): the web's
+    // form anchors `?seccion=credencial-publica`, and an app that spelled it
+    // `credencial` would open that link at the top of the form.
+    expect(PET_EDIT_SECTIONS).toEqual(PET_PROFILE_EDIT_SECTION_IDS);
+    expect(petEditSectionFromParam("credencial")).toBeNull();
+  });
+
   it("reads what the route builder writes, round trip", () => {
-    const written = editPetRoute(TOKEN, { seccion: "credencial" });
+    const written = editPetRoute(TOKEN, { seccion: "credencial-publica" });
     const query = written.slice(written.indexOf("?") + 1);
     const value = new URLSearchParams(query).get(PET_EDIT_SECTION_PARAM);
-    expect(petEditSectionFromParam(value ?? undefined)).toBe("credencial");
+    expect(petEditSectionFromParam(value ?? undefined)).toBe("credencial-publica");
   });
 
   it("takes the first of a repeated parameter, trimmed — the shape expo-router hands over", () => {
@@ -703,11 +721,14 @@ describe("each section's Guardar sends its own section and null for the rest", (
 
   it("Salud y cuidados: chips plus the typed rest, de-duplicated, and every condition code kept", () => {
     const { health } = seeded().profile;
-    const built = buildProfileHealth({
-      ...health,
-      foodsOther: "Zanahoria,  Pollo hervido , ,Zanahoria",
-      allergiesOther: "Pollo",
-    });
+    const built = buildProfileHealth(
+      {
+        ...health,
+        foodsOther: "Zanahoria,  Pollo hervido , ,Zanahoria",
+        allergiesOther: "Pollo",
+      },
+      PROFILE,
+    );
     expect(built).toEqual({
       ok: true,
       input: onlySection({
@@ -724,15 +745,17 @@ describe("each section's Guardar sends its own section and null for the rest", (
 
   it("Salud y cuidados: 'otra' needs its description, and the description may not carry a phone", () => {
     const { health } = seeded().profile;
-    const missing = buildProfileHealth({ ...health, conditions: ["otra"], conditionsOther: " " });
+    const missing = buildProfileHealth(
+      { ...health, conditions: ["otra"], conditionsOther: " " },
+      PROFILE,
+    );
     expect(missing.ok).toBe(false);
     if (!missing.ok) expect(missing.code).toBe("CONDITION_OTHER_REQUIRED");
 
-    const phone = buildProfileHealth({
-      ...health,
-      conditions: ["otra"],
-      conditionsOther: "Llamar al 11 5555 1234",
-    });
+    const phone = buildProfileHealth(
+      { ...health, conditions: ["otra"], conditionsOther: "Llamar al 11 5555 1234" },
+      PROFILE,
+    );
     expect(phone.ok).toBe(false);
     if (!phone.ok) expect(phone.code).toBe("CONDITION_OTHER_HAS_CONTACT");
   });
@@ -753,7 +776,10 @@ describe("each section's Guardar sends its own section and null for the rest", (
 
   it("Seguro: an emptied field clears, a filled one is trimmed", () => {
     expect(
-      buildProfileInsurance({ insuranceCompany: "  Sancor Seguros ", insurancePolicyNumber: "" }),
+      buildProfileInsurance(
+        { insuranceCompany: "  Sancor Seguros ", insurancePolicyNumber: "" },
+        PROFILE,
+      ),
     ).toEqual({
       ok: true,
       input: onlySection({
@@ -770,6 +796,121 @@ describe("each section's Guardar sends its own section and null for the rest", (
     expect(buildProfileOrigin({ acquisitionMethod: null })).toEqual({
       ok: true,
       input: onlySection({ origin: { acquisitionMethod: null } }),
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The free text of Salud and Seguro is capped for NEW values — before the round
+// trip, with the field's own sentence (owner-pet-actions, the caps of e88c05c89)
+// ---------------------------------------------------------------------------
+//
+// The server refuses an over-cap NEW value with a bare `invalid_request` and no
+// field detail, on purpose: "a client runs the same gate before posting and says
+// which field". Without the gate here a person who typed a 90-character insurer
+// read "No pudimos guardar los cambios" and nothing about which box. The gate is
+// the contract's own function, fed the values the schema already normalised and
+// the profile the screen already holds, so the app refuses exactly what the
+// server would, field for field — and admits what the animal already carries.
+
+describe("the free text of Salud and Seguro is capped for NEW values, before the round trip", () => {
+  const over = (cap: number) => "x".repeat(cap + 1);
+
+  it("refuses a NEW allergy past its cap, with the contract's sentence for that field", () => {
+    const { health } = seeded().profile;
+    const built = buildProfileHealth(
+      { ...health, allergiesOther: over(PET_ALLERGY_ENTRY_MAX) },
+      PROFILE,
+    );
+    expect(built).toEqual({
+      ok: false,
+      code: "ALLERGY_TOO_LONG",
+      message: PET_PROFILE_TEXT_LENGTH_MESSAGES.ALLERGY_TOO_LONG,
+    });
+  });
+
+  it("ADMITS the animal's own over-long allergy, posted back unchanged", () => {
+    const legacy = over(PET_ALLERGY_ENTRY_MAX);
+    const stored = { ...PROFILE, knownAllergies: [legacy] };
+    const { health } = seeded({ profile: stored }).profile;
+    const built = buildProfileHealth(health, stored);
+    expect(built.ok && built.input).toMatchObject({ health: { knownAllergies: [legacy] } });
+  });
+
+  it("counts the list the schema sends — chips and typed entries — against the cap", () => {
+    const { health } = seeded().profile;
+    const typed = Array.from({ length: PET_FOODS_MAX }, (_, i) => `Comida ${i}`).join(", ");
+    // One chip is already picked, so the typed twenty make twenty-one.
+    const built = buildProfileHealth({ ...health, foodsOther: typed }, PROFILE);
+    expect(built.ok).toBe(false);
+    if (!built.ok) expect(built.code).toBe("FOODS_TOO_MANY");
+  });
+
+  it("measures the 'otra' description only while 'otra' is chosen", () => {
+    const { health } = seeded().profile;
+    const description = over(PET_CONDITION_OTHER_MAX);
+    const chosen = buildProfileHealth(
+      { ...health, conditions: ["otra"], conditionsOther: description },
+      PROFILE,
+    );
+    expect(chosen.ok).toBe(false);
+    if (!chosen.ok) expect(chosen.code).toBe("CONDITION_OTHER_TOO_LONG");
+
+    const dropped = buildProfileHealth({ ...health, conditionsOther: description }, PROFILE);
+    expect(dropped.ok).toBe(true);
+  });
+
+  it("refuses a NEW insurer and a NEW policy number, each with its own sentence", () => {
+    const company = buildProfileInsurance(
+      { insuranceCompany: over(PET_INSURANCE_COMPANY_MAX), insurancePolicyNumber: "" },
+      PROFILE,
+    );
+    expect(company).toEqual({
+      ok: false,
+      code: "INSURANCE_COMPANY_TOO_LONG",
+      message: PET_PROFILE_TEXT_LENGTH_MESSAGES.INSURANCE_COMPANY_TOO_LONG,
+    });
+
+    const policy = buildProfileInsurance(
+      { insuranceCompany: "Sancor Seguros", insurancePolicyNumber: over(PET_INSURANCE_POLICY_MAX) },
+      PROFILE,
+    );
+    expect(policy.ok).toBe(false);
+    if (!policy.ok) expect(policy.code).toBe("INSURANCE_POLICY_TOO_LONG");
+  });
+
+  it("ADMITS the animal's own over-long insurer while its policy is corrected", () => {
+    const legacy = over(PET_INSURANCE_COMPANY_MAX);
+    const stored = { ...PROFILE, insuranceCompany: legacy };
+    const built = buildProfileInsurance(
+      { insuranceCompany: legacy, insurancePolicyNumber: "POL-999" },
+      stored,
+    );
+    expect(built.ok && built.input).toMatchObject({
+      insurance: { insuranceCompany: legacy, insurancePolicyNumber: "POL-999" },
+    });
+  });
+});
+
+describe("profileFieldCaps — the input caps cannot shorten what is already stored", () => {
+  it("uses the contract's constants for an animal with ordinary values", () => {
+    expect(profileFieldCaps(PROFILE)).toEqual({
+      conditionOther: PET_CONDITION_OTHER_MAX,
+      insuranceCompany: PET_INSURANCE_COMPANY_MAX,
+      insurancePolicyNumber: PET_INSURANCE_POLICY_MAX,
+    });
+  });
+
+  it("rises to the stored length, field by field, and never borrows another field's", () => {
+    const caps = profileFieldCaps({
+      ...PROFILE,
+      permanentConditionsOther: "y".repeat(PET_CONDITION_OTHER_MAX + 30),
+      insuranceCompany: "z".repeat(PET_INSURANCE_COMPANY_MAX + 5),
+    });
+    expect(caps).toEqual({
+      conditionOther: PET_CONDITION_OTHER_MAX + 30,
+      insuranceCompany: PET_INSURANCE_COMPANY_MAX + 5,
+      insurancePolicyNumber: PET_INSURANCE_POLICY_MAX,
     });
   });
 });

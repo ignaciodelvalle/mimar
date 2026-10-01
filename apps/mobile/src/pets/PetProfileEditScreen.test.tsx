@@ -48,6 +48,14 @@ jest.mock("../api/endpoints", () => ({
 jest.mock("../auth/session-store", () => ({ sessionPort: {} }));
 
 import type { PetProfileDraftV1, PetProfileEditV1 } from "@dim/contract/api";
+import {
+  PET_ALLERGY_ENTRY_MAX,
+  PET_CONDITION_OTHER_MAX,
+  PET_INSURANCE_COMPANY_MAX,
+  PET_INSURANCE_POLICY_MAX,
+  PET_PROFILE_TEXT_LENGTH_MESSAGES,
+} from "@dim/contract/input";
+import { PET_PROFILE_EDIT_SECTIONS } from "@dim/contract/reference";
 
 import { PetProfileEditScreen } from "./PetProfileEditScreen";
 
@@ -169,19 +177,36 @@ describe("PetProfileEditScreen — the six sections, in the plan's order", () =>
     render(<PetProfileEditScreen publicToken={TOKEN} />);
     await screen.findByDisplayValue("Pampa");
 
+    // Spelled out, AND equal to the contract's list the web form draws from: a
+    // title the two platforms word differently is two sections to a reader.
     const titles = [
       "Identidad",
       "Salud y cuidados",
-      "Contactos de emergencia",
+      "Contactos",
       "Qué muestra la credencial pública",
       "Seguro",
       "Origen",
     ];
+    expect(PET_PROFILE_EDIT_SECTIONS.map((section) => section.title)).toEqual(titles);
     const order = readingOrder();
     const at = titles.map((title) => order.indexOf(title));
     // Each title is on the screen, and after the one before it.
     expect(at.every((index) => index >= 0)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
+  });
+
+  it("names each section's Guardar as the web form does, from the same list", async () => {
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    await screen.findByDisplayValue("Pampa");
+    const labels = PET_PROFILE_EDIT_SECTIONS.flatMap((section) =>
+      section.saveLabel === null ? [] : [section.saveLabel],
+    );
+    // Five sections save fields; Contactos is a door on the web and a form of its
+    // own here, so it keeps the app's "Guardar contactos".
+    expect(labels).toHaveLength(5);
+    for (const label of labels) expect(screen.getByText(label)).toBeOnTheScreen();
+    expect(screen.getByText("Guardar lo que se muestra")).toBeOnTheScreen();
+    expect(screen.getByText("Guardar contactos")).toBeOnTheScreen();
   });
 
   it("pre-fills every section from the server's own values", async () => {
@@ -252,7 +277,11 @@ describe("PetProfileEditScreen — the halves are gated separately", () => {
     expect(screen.queryByText("Guardar identidad")).toBeNull();
     // Four sections, one reason each, and no control behind any of them.
     expect(screen.getAllByText(/Estos datos los edita el titular/)).toHaveLength(4);
-    for (const save of ["Guardar salud y cuidados", "Guardar visibilidad", "Guardar seguro"]) {
+    for (const save of [
+      "Guardar salud y cuidados",
+      "Guardar lo que se muestra",
+      "Guardar seguro",
+    ]) {
       expect([save, screen.queryByText(save)]).toEqual([save, null]);
     }
     // The other half is untouched by that refusal.
@@ -393,6 +422,67 @@ describe("PetProfileEditScreen — each Guardar sends its own section", () => {
     expect(mockSend).not.toHaveBeenCalled();
   });
 
+  it("Salud y cuidados: a NEW allergy past its cap is refused in the section, naming the field, and not posted", async () => {
+    // The server answers this with a bare 400 and no field; the screen must say
+    // which box, before the round trip (the contract's caps, e88c05c89).
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    await screen.findByDisplayValue("Pampa");
+    fireEvent.changeText(
+      screen.getByLabelText("Otras alergias"),
+      "a".repeat(PET_ALLERGY_ENTRY_MAX + 1),
+    );
+    fireEvent.press(screen.getByText("Guardar salud y cuidados"));
+    expect(
+      await screen.findByText(PET_PROFILE_TEXT_LENGTH_MESSAGES.ALLERGY_TOO_LONG),
+    ).toBeOnTheScreen();
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("Seguro: a NEW insurer past its cap is refused with its own sentence, and not posted", async () => {
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    fireEvent.changeText(
+      await screen.findByDisplayValue("Mapfre Mascotas"),
+      "s".repeat(PET_INSURANCE_COMPANY_MAX + 1),
+    );
+    fireEvent.press(screen.getByText("Guardar seguro"));
+    expect(
+      await screen.findByText(PET_PROFILE_TEXT_LENGTH_MESSAGES.INSURANCE_COMPANY_TOO_LONG),
+    ).toBeOnTheScreen();
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("caps the insurer, the policy and the 'otra' description at the contract's numbers", async () => {
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    expect((await screen.findByDisplayValue("Mapfre Mascotas")).props.maxLength).toBe(
+      PET_INSURANCE_COMPANY_MAX,
+    );
+    expect(screen.getByDisplayValue("POL-123").props.maxLength).toBe(PET_INSURANCE_POLICY_MAX);
+    fireEvent.press(screen.getByRole("checkbox", { name: "Otra (especificar)" }));
+    expect(screen.getByLabelText("Especificá la condición, obligatorio").props.maxLength).toBe(
+      PET_CONDITION_OTHER_MAX,
+    );
+  });
+
+  it("does not truncate an insurer longer than the cap invented after it", async () => {
+    const legacy = "Aseguradora ".repeat(10).trim();
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ profile: { ...PROFILE, insuranceCompany: legacy } }),
+    });
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    expect((await screen.findByDisplayValue(legacy)).props.maxLength).toBe(legacy.length);
+
+    // And the save carries it over, untouched, while the policy is corrected.
+    fireEvent.changeText(screen.getByDisplayValue("POL-123"), "POL-999");
+    fireEvent.press(screen.getByText("Guardar seguro"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalled());
+    expect(mockSend).toHaveBeenCalledWith(
+      {},
+      TOKEN,
+      onlySection({ insurance: { insuranceCompany: legacy, insurancePolicyNumber: "POL-999" } }),
+    );
+  });
+
   it("Qué muestra la credencial pública: the two toggles, alone", async () => {
     render(<PetProfileEditScreen publicToken={TOKEN} />);
     await screen.findByDisplayValue("Pampa");
@@ -401,7 +491,7 @@ describe("PetProfileEditScreen — each Guardar sends its own section", () => {
       "valueChange",
       false,
     );
-    fireEvent.press(screen.getByText("Guardar visibilidad"));
+    fireEvent.press(screen.getByText("Guardar lo que se muestra"));
     await waitFor(() => expect(mockSend).toHaveBeenCalled());
     expect(mockSend).toHaveBeenCalledWith(
       {},
@@ -620,27 +710,27 @@ describe("PetProfileEditScreen — opens on the section the link names (`?seccio
     render(<PetProfileEditScreen publicToken={TOKEN} initialSection="contactos" />);
     await screen.findByDisplayValue("Pampa");
     // jest has no layout: the section reports where it landed, as Yoga would.
-    fireEvent(screen.getByText("Contactos de emergencia"), "layout", layoutAt(900));
+    fireEvent(screen.getByText("Contactos"), "layout", layoutAt(900));
     expect(scrollTo).toHaveBeenCalledWith({ y: 900 - SPACE.lg, animated: false });
   });
 
   it("does not scroll for a section the link did not name, nor when none was named", async () => {
     const named = render(<PetProfileEditScreen publicToken={TOKEN} initialSection="seguro" />);
     await screen.findByDisplayValue("Pampa");
-    fireEvent(screen.getByText("Contactos de emergencia"), "layout", layoutAt(900));
+    fireEvent(screen.getByText("Contactos"), "layout", layoutAt(900));
     expect(scrollTo).not.toHaveBeenCalled();
     named.unmount();
 
     render(<PetProfileEditScreen publicToken={TOKEN} />);
     await screen.findByDisplayValue("Pampa");
-    fireEvent(screen.getByText("Contactos de emergencia"), "layout", layoutAt(900));
+    fireEvent(screen.getByText("Contactos"), "layout", layoutAt(900));
     expect(scrollTo).not.toHaveBeenCalled();
   });
 
   it("scrolls ONCE — a later layout (a breed list growing above) does not yank the reader back", async () => {
     render(<PetProfileEditScreen publicToken={TOKEN} initialSection="contactos" />);
     await screen.findByDisplayValue("Pampa");
-    const title = screen.getByText("Contactos de emergencia");
+    const title = screen.getByText("Contactos");
     fireEvent(title, "layout", layoutAt(900));
     fireEvent(title, "layout", layoutAt(1300));
     expect(scrollTo).toHaveBeenCalledTimes(1);

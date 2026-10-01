@@ -138,7 +138,7 @@ export function PetProfileEditScreen({
       <View onLayout={sections.anchor("contactos")}>
         <ContactsSection {...shared} onChange={(contacts) => edit.patch({ contacts })} />
       </View>
-      <View onLayout={sections.anchor("credencial")}>
+      <View onLayout={sections.anchor("credencial-publica")}>
         <PublicCredentialSection
           {...shared}
           onChange={(publicCredential) => edit.patchProfile("publicCredential", publicCredential)}

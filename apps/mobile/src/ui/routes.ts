@@ -15,6 +15,11 @@
 // call site, not a screen that silently fails to open — with no generated file
 // in the loop.
 
+import {
+  PET_PROFILE_EDIT_SECTION_IDS,
+  type PetProfileEditSectionId,
+} from "@dim/contract/reference";
+
 export const ROUTES = {
   /** The gate. Decides where a cold start actually lands. */
   root: "/",
@@ -488,16 +493,13 @@ export const PET_EDIT_SECTION_PARAM = "seccion";
  * The sections of "Editar datos", in the order the screen draws them
  * (owner-pet-actions, PO plan 2026-10-01): Identidad, Salud y cuidados,
  * Contactos, Qué muestra la credencial pública, Seguro, Origen.
+ *
+ * THE CONTRACT'S LIST, not a copy of it: the web form anchors the same ids
+ * (`?seccion=credencial-publica`), and a section the two platforms spelled
+ * differently would open a shared link at the top of the form on one of them.
  */
-export const PET_EDIT_SECTIONS = [
-  "identidad",
-  "salud",
-  "contactos",
-  "credencial",
-  "seguro",
-  "origen",
-] as const;
-export type PetEditSection = (typeof PET_EDIT_SECTIONS)[number];
+export const PET_EDIT_SECTIONS = PET_PROFILE_EDIT_SECTION_IDS;
+export type PetEditSection = PetProfileEditSectionId;
 
 /**
  * Editar los datos de la mascota — every section, and the emergency contacts,

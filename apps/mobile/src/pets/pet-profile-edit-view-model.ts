@@ -22,14 +22,19 @@ import type {
   AcquisitionMethod,
   PetProfileCommandInput,
   PetProfileCommandInputCode,
+  PetProfileTextLengthCode,
   PetSex,
   PetSpecies,
   StoredPetIdentityText,
+  StoredPetProfileText,
 } from "@dim/contract/input";
 import {
   EMERGENCY_CONTACT_NAME_MAX,
   EMERGENCY_CONTACT_PHONE_MAX,
   PET_COLOR_MAX,
+  PET_CONDITION_OTHER_MAX,
+  PET_INSURANCE_COMPANY_MAX,
+  PET_INSURANCE_POLICY_MAX,
   PET_NAME_MAX,
   PET_SPECIES,
   SERVICE_DOG_NOTES_MAX,
@@ -39,6 +44,7 @@ import {
   petIdentityFieldCap,
   petProfileCommandInputSchema,
   resolvePetIdentityLengths,
+  resolvePetProfileTextLengths,
 } from "@dim/contract/input";
 import {
   COMMON_ALLERGIES,
@@ -223,7 +229,17 @@ export function accountFallbackLabel(payload: PetProfileEditV1, pair: "vet" | "e
 
 export type CommandResult =
   | { ok: true; input: PetProfileCommandInput }
-  | { ok: false; message: string; code: PetProfileCommandInputCode | null };
+  | {
+      ok: false;
+      message: string;
+      /**
+       * The schema's code, or — for Salud and Seguro — the free-text cap's.
+       * Two vocabularies on purpose: the caps' sentences travel with their codes
+       * (`PET_PROFILE_TEXT_LENGTH_MESSAGES`), so they never pass through
+       * `petProfileInputCodeMessage`'s exhaustive switch.
+       */
+      code: PetProfileCommandInputCode | PetProfileTextLengthCode | null;
+    };
 
 /** Exported for the sibling screens that post to the same endpoint (D3's service dog). */
 export function validated(wire: unknown): CommandResult {
@@ -748,9 +764,35 @@ export function buildProfileIdentity(
   );
 }
 
-/** GUARDAR SALUD Y CUIDADOS. Chips, then the typed entries, de-duplicated. */
-export function buildProfileHealth(draft: HealthDraft): CommandResult {
-  return validated(
+/**
+ * The free-text caps of Salud and Seguro, run on what the SCHEMA produced.
+ *
+ * THE SERVER'S OWN GATE, BEFORE THE ROUND TRIP. `edit_profile` answers an
+ * over-cap NEW value with a bare `invalid_request` — no field, by design: the
+ * contract leaves naming the field to the client that runs the same gate first.
+ * So this runs `resolvePetProfileTextLengths` on the parsed command (trimmed,
+ * blanks dropped: what the server measures) against what the animal already
+ * holds, and a refusal carries the contract's sentence for that field. A value
+ * the animal already has passes at any length, exactly as it does on the server.
+ */
+function withinTextCaps(built: CommandResult, stored: StoredPetProfileText): CommandResult {
+  if (!built.ok || built.input.command !== "edit_profile") return built;
+  const lengths = resolvePetProfileTextLengths(
+    { health: built.input.health, insurance: built.input.insurance },
+    stored,
+  );
+  return lengths.ok ? built : { ok: false, code: lengths.code, message: lengths.message };
+}
+
+/**
+ * GUARDAR SALUD Y CUIDADOS. Chips, then the typed entries, de-duplicated. Takes
+ * the STORED profile for the free-text caps (`withinTextCaps`).
+ */
+export function buildProfileHealth(
+  draft: HealthDraft,
+  stored: StoredPetProfileText,
+): CommandResult {
+  const built = validated(
     editProfileWire({
       health: {
         favouriteFoods: unique([...draft.foods, ...splitEntries(draft.foodsOther)]),
@@ -761,6 +803,7 @@ export function buildProfileHealth(draft: HealthDraft): CommandResult {
       },
     }),
   );
+  return withinTextCaps(built, stored);
 }
 
 /** GUARDAR QUÉ MUESTRA LA CREDENCIAL PÚBLICA. The two toggles and nothing else. */
@@ -768,9 +811,36 @@ export function buildProfilePublicCredential(draft: PublicCredentialDraft): Comm
   return validated(editProfileWire({ publicCredential: { ...draft } }));
 }
 
-/** GUARDAR SEGURO. An emptied field clears it. */
-export function buildProfileInsurance(draft: InsuranceDraft): CommandResult {
-  return validated(editProfileWire({ insurance: { ...draft } }));
+/** GUARDAR SEGURO. An emptied field clears it; a NEW value is capped (`withinTextCaps`). */
+export function buildProfileInsurance(
+  draft: InsuranceDraft,
+  stored: StoredPetProfileText,
+): CommandResult {
+  return withinTextCaps(validated(editProfileWire({ insurance: { ...draft } })), stored);
+}
+
+/**
+ * The `maxLength` the capped single-line inputs may carry for THIS animal —
+ * `identityFieldCaps`' rule for the other three free-text fields the web form
+ * also caps: the contract's constant, raised to whatever is already stored, so
+ * an input never truncates a legacy value into a correction nobody asked for.
+ * The two lists have no input-level cap: an entry is one of several in a box,
+ * and the save measures each one (`withinTextCaps`).
+ */
+export function profileFieldCaps(
+  profile: Pick<
+    PetProfileDraftV1,
+    "permanentConditionsOther" | "insuranceCompany" | "insurancePolicyNumber"
+  >,
+): { conditionOther: number; insuranceCompany: number; insurancePolicyNumber: number } {
+  return {
+    conditionOther: petIdentityFieldCap(PET_CONDITION_OTHER_MAX, profile.permanentConditionsOther),
+    insuranceCompany: petIdentityFieldCap(PET_INSURANCE_COMPANY_MAX, profile.insuranceCompany),
+    insurancePolicyNumber: petIdentityFieldCap(
+      PET_INSURANCE_POLICY_MAX,
+      profile.insurancePolicyNumber,
+    ),
+  };
 }
 
 /** GUARDAR ORIGEN. One of the six methods, or none. */

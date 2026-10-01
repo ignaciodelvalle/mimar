@@ -17,7 +17,7 @@
 // section it belongs to: on a screen this long, a message at the top would be
 // off screen when somebody saves the fifth section.
 
-import type { PetProfileEditV1 } from "@dim/contract/api";
+import type { PetProfileDraftV1, PetProfileEditV1 } from "@dim/contract/api";
 import { PET_SPECIES, type PetSpecies } from "@dim/contract/input";
 import {
   COMMON_ALLERGIES,
@@ -27,8 +27,10 @@ import {
   PERMANENT_CONDITIONS,
   PERMANENT_CONDITION_GROUPS,
   type PermanentCondition,
+  type PetProfileEditSectionId,
   permanentConditionGroup,
   permanentConditionLabel,
+  petProfileEditSection,
 } from "@dim/contract/reference";
 import { useMemo, useState } from "react";
 import { Keyboard, Pressable, StyleSheet, Switch, Text, View } from "react-native";
@@ -77,6 +79,7 @@ import {
   identityBlockedReason,
   identityFieldCaps,
   profileBlockedReason,
+  profileFieldCaps,
   speciesBlockedReason,
   toChoice,
   toggleCatalogPick,
@@ -104,6 +107,23 @@ const SEX_VALUES = SEX_OPTIONS.map((option) => option.value);
 
 /** The chip label for a catalogue entry that IS its own label (foods, allergies). */
 const asIs = (value: string) => value;
+
+/**
+ * Contactos' Guardar. The contract's list gives it none — on the web the section
+ * is a door to the emergency-contact sheet — while here it is a form of its own.
+ */
+const CONTACTS_SAVE_LABEL = "Guardar contactos";
+
+/**
+ * A section's title and the name of its Guardar, from the contract's ONE list
+ * (`PET_PROFILE_EDIT_SECTIONS`), the list the web form draws from too: two
+ * hand-kept copies of six titles is how "Guardar visibilidad" here came to sit
+ * beside "Guardar lo que se muestra" there.
+ */
+function sectionCopy(id: PetProfileEditSectionId): { title: string; saveLabel: string } {
+  const section = petProfileEditSection(id);
+  return { title: section.title, saveLabel: section.saveLabel ?? CONTACTS_SAVE_LABEL };
+}
 
 // ---------------------------------------------------------------------------
 // Identidad
@@ -138,7 +158,7 @@ export function IdentitySection({
   const blocked = identityBlockedReason(view);
   return (
     <>
-      <Card title="Identidad">
+      <Card title={sectionCopy("identidad").title}>
         {blocked === null ? (
           <IdentityForm
             view={view}
@@ -242,7 +262,7 @@ function IdentityForm({
         value={identity.color}
       />
       <PrimaryButton
-        label="Guardar identidad"
+        label={sectionCopy("identidad").saveLabel}
         disabled={busy}
         onPress={() =>
           onSave(
@@ -470,10 +490,12 @@ export function HealthSection({
 }: SectionProps & { onChange: (next: HealthDraft) => void }) {
   const blocked = profileBlockedReason(view);
   const draft = drafts.profile?.health ?? null;
+  // What the animal already holds — the free-text caps measure only NEW values.
+  const stored = view.profile ?? null;
   return (
-    <Card title="Salud y cuidados">
-      {blocked === null && draft !== null ? (
-        <HealthForm draft={draft} busy={busy} onChange={onChange} onSave={onSave} />
+    <Card title={sectionCopy("salud").title}>
+      {blocked === null && draft !== null && stored !== null ? (
+        <HealthForm draft={draft} stored={stored} busy={busy} onChange={onChange} onSave={onSave} />
       ) : (
         <Reason text={blocked ?? "No pudimos cargar esta sección."} />
       )}
@@ -489,11 +511,13 @@ export function HealthSection({
  */
 function HealthForm({
   draft,
+  stored,
   busy,
   onChange,
   onSave,
 }: {
   draft: HealthDraft;
+  stored: PetProfileDraftV1;
   busy: boolean;
   onChange: (next: HealthDraft) => void;
   onSave: Save;
@@ -547,11 +571,16 @@ function HealthForm({
         onSelect={(choice) => onChange({ ...draft, trainingLevel: fromChoice(choice) })}
         disabled={busy}
       />
-      <ConditionPicker draft={draft} busy={busy} onChange={onChange} />
+      <ConditionPicker
+        draft={draft}
+        otherMaxLength={profileFieldCaps(stored).conditionOther}
+        busy={busy}
+        onChange={onChange}
+      />
       <PrimaryButton
-        label="Guardar salud y cuidados"
+        label={sectionCopy("salud").saveLabel}
         disabled={busy}
-        onPress={() => onSave("health", buildProfileHealth(draft))}
+        onPress={() => onSave("health", buildProfileHealth(draft, stored))}
       />
     </View>
   );
@@ -569,10 +598,13 @@ function conditionsOf(groupId: (typeof PERMANENT_CONDITION_GROUPS)[number]["id"]
  */
 function ConditionPicker({
   draft,
+  otherMaxLength,
   busy,
   onChange,
 }: {
   draft: HealthDraft;
+  /** The description's cap for THIS animal (`profileFieldCaps`). */
+  otherMaxLength: number;
   busy: boolean;
   onChange: (next: HealthDraft) => void;
 }) {
@@ -604,6 +636,7 @@ function ConditionPicker({
           {...otherChain(0)}
           label="Especificá la condición"
           required
+          maxLength={otherMaxLength}
           onChangeText={(conditionsOther) => onChange({ ...draft, conditionsOther })}
           value={draft.conditionsOther}
         />
@@ -633,7 +666,7 @@ export function ContactsSection({
   const blocked = contactsBlockedReason(view);
   const draft = drafts.contacts;
   return (
-    <Card title="Contactos de emergencia">
+    <Card title={sectionCopy("contactos").title}>
       {blocked === null && draft !== null ? (
         <ContactsForm view={view} draft={draft} busy={busy} onChange={onChange} onSave={onSave} />
       ) : (
@@ -699,7 +732,7 @@ function ContactsForm({
       <Text style={styles.detail}>{accountFallbackLabel(view, "emergency")}</Text>
 
       <PrimaryButton
-        label="Guardar contactos"
+        label={sectionCopy("contactos").saveLabel}
         disabled={busy}
         onPress={() => onSave("contacts", buildEmergencyContacts(draft))}
       />
@@ -728,7 +761,7 @@ export function PublicCredentialSection({
   const blocked = profileBlockedReason(view);
   const draft = drafts.profile?.publicCredential ?? null;
   return (
-    <Card title="Qué muestra la credencial pública">
+    <Card title={sectionCopy("credencial-publica").title}>
       {blocked === null && draft !== null ? (
         <View style={styles.stack}>
           <Body>Esto cambia lo que ve cualquier persona que escanea el QR de la credencial.</Body>
@@ -749,7 +782,7 @@ export function PublicCredentialSection({
             }
           />
           <PrimaryButton
-            label="Guardar visibilidad"
+            label={sectionCopy("credencial-publica").saveLabel}
             disabled={busy}
             onPress={() => onSave("publicCredential", buildProfilePublicCredential(draft))}
           />
@@ -781,14 +814,18 @@ export function InsuranceSection({
   const chain = useReturnKeyChain(2);
   const blocked = profileBlockedReason(view);
   const draft = drafts.profile?.insurance ?? null;
+  // What the animal already holds — the caps measure, and the inputs admit, it.
+  const stored = view.profile ?? null;
+  const caps = stored === null ? null : profileFieldCaps(stored);
   return (
-    <Card title="Seguro">
-      {blocked === null && draft !== null ? (
+    <Card title={sectionCopy("seguro").title}>
+      {blocked === null && draft !== null && stored !== null && caps !== null ? (
         <View style={styles.stack}>
           <TextField
             {...chain(0)}
             label="Compañía"
             placeholder={INSURER_EXAMPLE}
+            maxLength={caps.insuranceCompany}
             onChangeText={(insuranceCompany) => onChange({ ...draft, insuranceCompany })}
             value={draft.insuranceCompany}
           />
@@ -797,13 +834,14 @@ export function InsuranceSection({
             label="Número de póliza"
             mono
             autoCapitalize="characters"
+            maxLength={caps.insurancePolicyNumber}
             onChangeText={(insurancePolicyNumber) => onChange({ ...draft, insurancePolicyNumber })}
             value={draft.insurancePolicyNumber}
           />
           <PrimaryButton
-            label="Guardar seguro"
+            label={sectionCopy("seguro").saveLabel}
             disabled={busy}
-            onPress={() => onSave("insurance", buildProfileInsurance(draft))}
+            onPress={() => onSave("insurance", buildProfileInsurance(draft, stored))}
           />
         </View>
       ) : (
@@ -830,7 +868,7 @@ export function OriginSection({
   const blocked = profileBlockedReason(view);
   const draft = drafts.profile?.origin ?? null;
   return (
-    <Card title="Origen">
+    <Card title={sectionCopy("origen").title}>
       {blocked === null && draft !== null ? (
         <View style={styles.stack}>
           <Choice
@@ -842,7 +880,7 @@ export function OriginSection({
             disabled={busy}
           />
           <PrimaryButton
-            label="Guardar origen"
+            label={sectionCopy("origen").saveLabel}
             disabled={busy}
             onPress={() => onSave("origin", buildProfileOrigin(draft))}
           />
