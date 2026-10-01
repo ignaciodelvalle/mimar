@@ -47,6 +47,25 @@ export const PET_TRAVEL_GROUP_LABELS = {
 
 export type PetTravelSemaforoV1 = "rojo" | "amarillo" | "verde" | "sin_datos";
 
+/**
+ * The semáforo's words, on the web, on the phone and in the PDF. Same reason
+ * for living here as `PET_TRAVEL_AIRLINE_NOTICE`: the server sends
+ * `semaforoLabel` from this table, and a native test pins the same table, so a
+ * reworded colour cannot reach one surface and miss the other.
+ *
+ * NOTHING HERE PROMISES. Red says something is pending, not that the animal
+ * may not travel (PO 2026-10-01): miMAR reads the libreta against rules it
+ * copied; the authority and the airline decide.
+ */
+export const PET_TRAVEL_SEMAFORO_LABELS: Record<PetTravelSemaforoV1, string> = {
+  rojo: "Hay requisitos pendientes",
+  amarillo: "Revisar pendientes",
+  verde: "Sin pendientes detectados",
+  // A foreign destination is on record but no corridor was resolved for it:
+  // nothing was checked, so none of the three colours applies.
+  sin_datos: "Verificación no disponible",
+};
+
 /** One trip still on, as the owner recorded it (after corrections). */
 export type PetTravelTripV1 = {
   /** The handle `cancel_trip` takes, and `?trip=` selects. */

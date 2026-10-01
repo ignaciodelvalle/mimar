@@ -28,9 +28,12 @@ const CORRIDOR = {
 };
 
 describe("<TravelSemaforo>", () => {
-  it("rojo: renders the blocker state label", () => {
+  // PO 2026-10-01: red says what is pending, never that the trip is blocked —
+  // the authority and the airline decide that, not miMAR.
+  it("rojo: renders the pending-requirements label", () => {
     const html = render(<TravelSemaforo semaforo="rojo" corridors={[CORRIDOR]} />);
-    expect(html).toContain("Hay requisitos que bloquean el viaje");
+    expect(html).toContain("Hay requisitos pendientes");
+    expect(html).not.toContain("bloquean");
   });
 
   it("amarillo: renders the warning state label", () => {

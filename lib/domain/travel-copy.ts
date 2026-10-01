@@ -10,7 +10,11 @@
 // detected" — and never "apto", "cumple", "en orden" or "listo para viajar".
 // Pinned by app/(app)/mis-mascotas/[publicToken]/viaje/TravelSemaforo.test.tsx.
 
-import { PET_TRAVEL_AIRLINE_NOTICE, PET_TRAVEL_GROUP_LABELS } from "@dim/contract/api";
+import {
+  PET_TRAVEL_AIRLINE_NOTICE,
+  PET_TRAVEL_GROUP_LABELS,
+  PET_TRAVEL_SEMAFORO_LABELS,
+} from "@dim/contract/api";
 
 /**
  * The four states of the semáforo. Declared here, not imported from the
@@ -19,15 +23,12 @@ import { PET_TRAVEL_AIRLINE_NOTICE, PET_TRAVEL_GROUP_LABELS } from "@dim/contrac
  */
 export type TravelSemaforoState = "rojo" | "amarillo" | "verde" | "sin_datos";
 
-export const TRAVEL_SEMAFORO_LABELS: Record<TravelSemaforoState, string> = {
-  // Pending PO sign-off (design open question): the rojo wording.
-  rojo: "Hay requisitos que bloquean el viaje",
-  amarillo: "Revisar pendientes",
-  verde: "Sin pendientes detectados",
-  // A foreign destination is on record but no corridor was resolved for it:
-  // nothing was checked, so none of the three colours applies.
-  sin_datos: "Verificación no disponible",
-};
+/**
+ * The semáforo's words. Declared in the contract, because the native screen
+ * is pinned to the same table and cannot import this file.
+ */
+export const TRAVEL_SEMAFORO_LABELS: Record<TravelSemaforoState, string> =
+  PET_TRAVEL_SEMAFORO_LABELS;
 
 /**
  * What the airline block always says (design D5). Declared in the contract,

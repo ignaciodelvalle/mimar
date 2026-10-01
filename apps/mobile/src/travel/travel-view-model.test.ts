@@ -14,6 +14,7 @@ import { describe, expect, it } from "@jest/globals";
 
 import {
   PET_TRAVEL_AIRLINE_NOTICE,
+  PET_TRAVEL_SEMAFORO_LABELS,
   type PetTravelComplianceV1,
   type PetTravelObligationV1,
   type PetTravelTripV1,
@@ -79,6 +80,16 @@ describe("reading", () => {
     expect(semaforoTone("amarillo")).toBe("warn");
     expect(semaforoTone("verde")).toBe("ok");
     expect(semaforoTone("sin_datos")).toBe("neutral");
+  });
+
+  // PO 2026-10-01. The server draws `semaforoLabel` from this same contract
+  // table, so the phone and the web cannot word red two ways.
+  it("the contract's red says requirements are pending, never that the trip is blocked", () => {
+    expect(PET_TRAVEL_SEMAFORO_LABELS.rojo).toBe("Hay requisitos pendientes");
+    expect(PET_TRAVEL_SEMAFORO_LABELS.verde).toBe("Sin pendientes detectados");
+    for (const label of Object.values(PET_TRAVEL_SEMAFORO_LABELS)) {
+      expect(label).not.toMatch(/bloque|\bapto\b|\bcumple\b|en orden|listo para viajar/i);
+    }
   });
 
   it("names a trip as the web does", () => {
