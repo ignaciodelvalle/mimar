@@ -190,12 +190,13 @@ export function speciesDraftFrom(payload: PetProfileEditV1): PetSpecies | null {
 /** Why the species correction is not offered, or `null` when it is. */
 export function speciesBlockedReason(payload: PetProfileEditV1): string | null {
   if (payload.capabilities.canCorrectSpecies) return null;
-  // The same refusal as the identity form — a caretaker — said about THIS act,
-  // because the web's own `NotTitularNotice` names what was asked for. NOT the
-  // identity sentence's "es solo del titular" wording: the two cards can be
-  // blocked on one screen at once, and two sentences a test cannot tell apart
-  // are two sentences a person reads as one.
-  return "Sos cuidador/a de esta mascota. La especie la corrige el titular.";
+  // The same refusal as the identity form, said about THIS act, because the
+  // web's own `NotTitularNotice` names what was asked for. No "cuidador/a": the
+  // flag now refuses the org path and a user-held custody too (owner-pet-
+  // actions). NOT the identity sentence's "es solo del titular" wording: the two
+  // cards can be blocked on one screen at once, and two sentences a test cannot
+  // tell apart are two sentences a person reads as one.
+  return "La especie la corrige el titular.";
 }
 
 /** Why the contacts form is not offered, or `null` when it is. */
