@@ -30,12 +30,16 @@ import { CHAPTERS } from "./landing-content";
 import { EstadoConsole } from "./story-screens";
 import {
   ACTORS,
-  LOST_OWNER_FROM,
-  LOST_SCAN_STEP,
+  LOST_INBOX_STEP,
+  LOST_POSTER_STEP,
+  LOST_PUBLIC_STEP,
+  LOST_REPORT_STEP,
   LOST_SEQUENCE,
+  LOST_SIGHTING_STEP,
   OWNER_FROM,
-  POSTER_QR_MATRIX,
   SHELTER_SEQUENCE,
+  SIGHTING_CONTACT,
+  SIGHTING_MESSAGE,
   SequenceChapter,
   VET_NOTE,
   VET_SEQUENCE,
@@ -83,7 +87,7 @@ function stepOf(key: string): number {
 }
 
 const ANIMATION_CLASSES =
-  /lp-seq-in|lp-seq-pending|lp-seq-slide|lp-seq-type|lp-seq-late|lp-seq-dev-(in|out)|lp-map-grid--(in|pending)/;
+  /lp-seq-in|lp-seq-pending|lp-seq-slide|lp-seq-type|lp-seq-late|lp-seq-swap|lp-seq-dev-(in|out)|lp-map-grid--(in|pending)/;
 
 function arrows(container: HTMLElement) {
   const prev = container.querySelector<HTMLButtonElement>('button[aria-label="Paso anterior"]');
@@ -429,7 +433,8 @@ describe("case colours — one per person", () => {
   it("every step of every chapter wraps its device in its actor's case", () => {
     const expected: Record<string, (step: number) => string> = {
       vet: () => "vet",
-      anon: (s) => (s >= LOST_OWNER_FROM ? "owner" : "neighbour"),
+      // Martín, Martín, the neighbour, the neighbour, Martín (PO 2026-10-01).
+      anon: (s) => (["owner", "owner", "neighbour", "neighbour", "owner"] as const)[s] ?? "?",
       refugio: (s) => (s >= OWNER_FROM ? "owner" : "shelter"),
     };
     for (const { key, spec } of SEQUENCES) {
@@ -516,87 +521,107 @@ describe("chapter endings (M5)", () => {
   const finalScreen = (spec: typeof SHELTER_SEQUENCE) =>
     renderToStaticMarkup(spec.device(spec.total - 1, false));
 
-  it("chapter 4 ends on the owner's native libreta, after the confirm dialog", () => {
+  // PO 2026-10-01: the chapter ends on Martín's "Sí, la encontré" turning into
+  // the closed search — the confirm only while it plays, the result at rest.
+  it("chapter 4 ends on the closed search, after the native devolución", () => {
     const last = finalScreen(SHELTER_SEQUENCE);
-    // The owner's ledger as the native app draws it (landing-vs-app audit
-    // 2026-09-30): the real asiento titles, newest first, dated as of that day.
-    const found = last.indexOf("Marcada como encontrada");
-    const intake = last.indexOf("Ingreso al refugio");
-    const lost = last.indexOf("Marcada como perdida");
-    expect(found).toBeGreaterThan(-1);
-    expect(intake).toBeGreaterThan(found);
-    expect(lost).toBeGreaterThan(intake);
-    expect(last).toContain("hoy · ");
-    expect(last).not.toContain("Encontrada · devuelta a su dueño");
-    expect(last).not.toContain("Volvió a casa");
+    expect(last).toContain('data-actor="owner"');
+    expect(last).toContain("Modo perdida");
+    // commandDoneLabel("mark_found") and situationHeadline, for a female pet.
+    expect(last).toContain(
+      "Listo. La marcamos como encontrada y avisamos a quienes la estaban buscando.",
+    );
+    expect(last).toContain("Pampa no está perdida.");
     expect(last).not.toContain("¿Confirmás?");
-    // The confirm is still one step before it.
-    const confirm = renderToStaticMarkup(
+    // No claim that her vaccines are current: the 2022 dose had lapsed.
+    expect(last).not.toMatch(/al día|vigente/i);
+    // Playing, the same step first shows the confirm, pressed, then swaps.
+    const playing = renderToStaticMarkup(SHELTER_SEQUENCE.device(SHELTER_SEQUENCE.total - 1, true));
+    expect(playing).toContain("Sí, la encontré");
+    expect(playing).toMatch(/lp-seq-swap-before[\s\S]*¿Confirmás\?[\s\S]*lp-seq-swap-after/);
+    expect(playing).toMatch(/lp-seq-late[^>]*>Sí, la encontré/);
+    // The step before it is the native return screen.
+    const devolucion = renderToStaticMarkup(
       SHELTER_SEQUENCE.device(SHELTER_SEQUENCE.total - 2, false),
     );
-    expect(confirm).toContain("Sí, la encontré");
+    expect(devolucion).toContain("Devolución de Pampa");
+    expect(devolucion).toContain("Ya tengo a Pampa");
     // And the step list names the payoff.
     expect(SHELTER_SEQUENCE.items.at(-1)?.at).toBe(SHELTER_SEQUENCE.total - 1);
   });
 
-  // Chapter 3 (PO 2026-09-30): the neighbour's phone scans, reads the
-  // "perdida" page and leaves a message; Martín's phone (the native app) gets
-  // the notification, then ends on the poster card of its "Modo perdida".
-  it("chapter 3: the neighbour's phone hands over to the owner's, and ends on the poster", () => {
-    const last = finalScreen(LOST_SEQUENCE);
-    expect(last).toContain("Modo perdida");
-    expect(last).toContain("Cartel para imprimir");
-    expect(last).toContain("Compartir o imprimir el cartel");
+  // Chapter 3 (PO 2026-10-01): Martín reports her lost and shares the
+  // poster; a neighbour scans it, sends a sighting with a contact; Martín's
+  // inbox gets it.
+  it("chapter 3: owner, neighbour, owner — and ends on the sighting notification", () => {
+    const at = (s: number, animate = false) =>
+      renderToStaticMarkup(LOST_SEQUENCE.device(s, animate));
+    expect(at(LOST_REPORT_STEP)).toContain("Marcar como perdida");
+    expect(at(LOST_POSTER_STEP)).toContain("Compartir o imprimir el cartel");
     // The native card draws no poster preview.
-    expect(last).not.toContain("lp-poster-qr");
-    const notif = renderToStaticMarkup(LOST_SEQUENCE.device(LOST_OWNER_FROM, false));
-    expect(notif).toContain("¡Encontraron a Pampa!");
-    expect(notif).toContain("Alguien dejó un mensaje:");
-    expect(notif).toContain('data-actor="owner"');
-    const sent = renderToStaticMarkup(LOST_SEQUENCE.device(LOST_OWNER_FROM - 1, false));
-    expect(sent).toContain('data-actor="neighbour"');
-    expect(sent).toContain("¡Gracias!");
+    expect(at(LOST_POSTER_STEP)).not.toContain("<svg");
+    expect(at(LOST_PUBLIC_STEP)).toContain('data-actor="neighbour"');
+    expect(at(LOST_PUBLIC_STEP)).toMatch(/data-used="true"[^>]*>.*La vi cerca de acá/);
+    // The old found form is gone.
+    expect(at(LOST_PUBLIC_STEP)).not.toContain("¿Encontraste a esta mascota?");
+    // The sighting step at rest is the form's thanks…
+    expect(at(LOST_SIGHTING_STEP)).toContain("¡Gracias!");
+    // …and while it plays, the form is typed first.
+    const typing = at(LOST_SIGHTING_STEP, true);
+    expect(typing).toContain("Algún detalle (opcional)");
+    expect(typing).toContain("Avisar al dueño/a");
+    const last = finalScreen(LOST_SEQUENCE);
+    expect(LOST_SEQUENCE.total - 1).toBe(LOST_INBOX_STEP);
+    expect(last).toContain('data-actor="owner"');
+    expect(last).toContain("Avistaje de Pampa");
+    expect(last).toContain("Atención");
+    expect(last).toContain(SIGHTING_MESSAGE);
+    expect(last).toContain(SIGHTING_CONTACT);
     expect(last).not.toContain("Celular del vecino");
   });
 
-  it("chapter 3's actor switch slides the neighbour's phone out and the owner's in", () => {
+  it("the neighbour types the message, then the contact, in one stagger", () => {
     vi.useFakeTimers();
     const { chapter: c, index } = chapter("anon");
     const { container } = render(<SequenceChapter chapter={c} index={index} />);
     act(() => FakeIntersectionObserver.instances[0]?.callback([{ isIntersecting: true }]));
     act(() => {
-      vi.advanceTimersByTime(LOST_SEQUENCE.stepMs * LOST_OWNER_FROM);
+      vi.advanceTimersByTime(LOST_SEQUENCE.stepMs * LOST_SIGHTING_STEP);
     });
-    expect(stepOf("anon")).toBe(LOST_OWNER_FROM);
+    expect(stepOf("anon")).toBe(LOST_SIGHTING_STEP);
+    const fields = [...container.querySelectorAll(".lp-seq-swap-before .lp-seq-type")];
+    expect(fields.map((f) => f.textContent)).toEqual([SIGHTING_MESSAGE, SIGHTING_CONTACT]);
+    const words = SIGHTING_MESSAGE.split(" ").length;
+    const contactWord = fields[1]?.firstElementChild as HTMLElement | null;
+    expect(contactWord?.style.getPropertyValue("--i")).toBe(String(words));
+    expect(container.querySelector(".lp-seq-swap-after")?.textContent).toContain("¡Gracias!");
+  });
+
+  it("chapter 3's actor switches slide one phone out and the other in, both ways", () => {
+    vi.useFakeTimers();
+    const { chapter: c, index } = chapter("anon");
+    const { container } = render(<SequenceChapter chapter={c} index={index} />);
+    act(() => FakeIntersectionObserver.instances[0]?.callback([{ isIntersecting: true }]));
+    act(() => {
+      vi.advanceTimersByTime(LOST_SEQUENCE.stepMs * LOST_PUBLIC_STEP);
+    });
+    expect(stepOf("anon")).toBe(LOST_PUBLIC_STEP);
+    expect(
+      container.querySelector('.lp-seq-dev-out .lp-seq-case[data-actor="owner"] .lp-phone'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('.lp-seq-dev-in .lp-seq-case[data-actor="neighbour"] .lp-phone'),
+    ).not.toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(LOST_SEQUENCE.stepMs * (LOST_INBOX_STEP - LOST_PUBLIC_STEP));
+    });
+    expect(stepOf("anon")).toBe(LOST_INBOX_STEP);
     expect(
       container.querySelector('.lp-seq-dev-out .lp-seq-case[data-actor="neighbour"] .lp-phone'),
     ).not.toBeNull();
     expect(
       container.querySelector('.lp-seq-dev-in .lp-seq-case[data-actor="owner"] .lp-phone'),
     ).not.toBeNull();
-  });
-
-  // PO 2026-09-30 (second call): the poster's QR is a DECORATIVE mini QR — a
-  // fixed 13x13 matrix that reads as a QR with three finder squares, not a
-  // scannable code. The scannable QR is the hero card's.
-  it("the poster's QR (on the neighbour's camera) is a decorative 13x13 matrix with three finder squares", () => {
-    expect(POSTER_QR_MATRIX).toHaveLength(13);
-    for (const row of POSTER_QR_MATRIX) expect(row).toMatch(/^[01]{13}$/);
-    const finder = ["11111", "10001", "10101", "10001", "11111"];
-    const block = (top: number, left: number) =>
-      POSTER_QR_MATRIX.slice(top, top + 5).map((r) => r.slice(left, left + 5));
-    expect(block(0, 0)).toEqual(finder);
-    expect(block(0, 8)).toEqual(finder);
-    expect(block(8, 0)).toEqual(finder);
-
-    const posterHtml = renderToStaticMarkup(LOST_SEQUENCE.device(LOST_SCAN_STEP, false));
-    const qrIdx = posterHtml.indexOf("lp-cam-qr");
-    expect(qrIdx).toBeGreaterThan(-1);
-    const qrSvg = posterHtml.slice(qrIdx, posterHtml.indexOf("</svg>", qrIdx));
-    // Decorative: hidden from assistive tech, promising nothing it can't do.
-    expect(qrSvg).toContain('aria-hidden="true"');
-    expect(qrSvg).not.toContain("aria-label");
-    expect(qrSvg).toMatch(/<path d="M/);
   });
 
   it("the client story bundle does not ship the qrcode encoder", () => {

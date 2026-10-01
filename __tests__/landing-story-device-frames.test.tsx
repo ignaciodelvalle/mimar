@@ -75,8 +75,8 @@ describe("landing story — the device tells who is using it (PO 2026-09-29)", (
     }
   });
 
-  // Chapter 3 is two people's phones (PO 2026-09-30): the neighbour's, then
-  // the owner's — phones both, never a tablet.
+  // Chapter 3 is two people's phones (PO 2026-10-01): the owner's, the
+  // neighbour's, the owner's again — phones all, never a tablet.
   it("the lost chapter (anon) stays on phones throughout, never a tablet", () => {
     for (let i = 0; i < LOST_SEQUENCE.total; i++) {
       const html = renderToStaticMarkup(LOST_SEQUENCE.device(i, false));
@@ -157,10 +157,21 @@ describe("landing story — device chrome (PO 2026-09-30)", () => {
       expect(html).not.toMatch(/<(text|title|desc)\b/);
     }
     const phone = renderToStaticMarkup(<PhoneFrame>{null}</PhoneFrame>);
-    for (const part of ["lp-phone-bezel", "lp-phone-island", "lp-phone-status", "lp-phone-key"]) {
+    // The camera island and the side keys stay.
+    for (const part of [
+      "lp-phone-bezel",
+      "lp-phone-island",
+      "lp-phone-key--vol-up",
+      "lp-phone-key--vol-down",
+      "lp-phone-key--power",
+    ]) {
       expect(phone).toContain(part);
     }
-    // The status-bar glyphs carry their own aria-hidden too.
-    expect(phone).toMatch(/<svg class="lp-phone-status"[^>]*aria-hidden="true"/);
+    // No status bar (PO 2026-10-01): the signal / wifi / battery glyphs are
+    // gone, and with them the frame's only SVG.
+    expect(phone).not.toContain("lp-phone-status");
+    expect(phone).not.toContain("<svg");
+    const css = readFileSync("app/landing.css", "utf8");
+    expect(css).not.toContain("lp-phone-status");
   });
 });

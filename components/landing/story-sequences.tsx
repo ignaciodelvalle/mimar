@@ -17,19 +17,18 @@
 //
 // Motion: transform/opacity only. A screen change slides inside the
 // fixed-size device (.lp-scr is a fixed height, .lp-tab-scr a fixed inset); an
-// actor change (the neighbour's phone, or the refugio's tablet, handing over
-// to Martín's phone) slides the outgoing device out and the incoming one in. Each person's device has
+// actor change (Martín's phone handing over to the neighbour's and back, or
+// the refugio's tablet handing over to Martín's phone) slides the outgoing
+// device out and the incoming one in. Each person's device has
 // its own case colour (data-actor, --lp-case-* in app/landing.css); its SIZE
 // never changes.
 
 import { Icon } from "@/components/Icon";
-import { NativeAsiento } from "@/components/landing/LibretaFeed";
 import { PhoneFrame } from "@/components/landing/PhoneFrame";
 import { StepButton } from "@/components/landing/StepButton";
 import { TabletFrame } from "@/components/landing/TabletFrame";
 import type { LandingChapter } from "@/components/landing/landing-content";
 import {
-  LIBRETA_EVENTS,
   PAMPA,
   PAMPA_FIRST_DOSE,
   PAMPA_OWNER_NAME,
@@ -38,16 +37,19 @@ import {
   pampaEvent,
   seedInstant,
 } from "@/components/landing/landing-content";
-import { AppHead, NativeLibretaBand, OpHead } from "@/components/landing/story-screens";
+import { AppHead, OpHead } from "@/components/landing/story-screens";
 import { useChapterSequence } from "@/components/landing/use-chapter-sequence";
 import { LnBadge } from "@/components/ui/Badge";
 import { LnPetPhoto } from "@/components/ui/RegRow";
 import {
   AR_TIME_ZONE,
   formatDate,
+  foundParticiple,
   foundPossessivePhrase,
-  pluralizeEs,
+  lostLabel,
+  markLostActionLabel,
   sexLabel,
+  sightedWhenQuestion,
   sightingPhrase,
   situationLabelForSex,
 } from "@/lib/utils/format";
@@ -65,39 +67,8 @@ import {
 
 const PHOTO = "/landing/pampa-hero.jpg";
 
-// The lost-poster's QR (PO 2026-09-30, second call) — a DECORATIVE mini QR:
-// it only has to read as "a QR", not scan. A fixed 13x13 matrix with three
-// finder squares, drawn with big modules so it stays legible at 64px. The
-// scannable QR on this page is the hero card's; this one is a picture of a
-// poster. Being static, it also keeps the qrcode encoder out of this
-// "use client" bundle.
-export const POSTER_QR_MATRIX: readonly string[] = [
-  "1111101011111",
-  "1000100010001",
-  "1010100010101",
-  "1000101010001",
-  "1111100011111",
-  "0000001000000",
-  "1011011101101",
-  "0000010110110",
-  "1111101011010",
-  "1000100110011",
-  "1010101101100",
-  "1000101001011",
-  "1111101110101",
-];
-// 13 modules inside a 19-unit box: the matrix fills ~68% of the frame.
-const POSTER_QR_MARGIN = 3;
-const POSTER_QR_BOX = POSTER_QR_MATRIX.length + POSTER_QR_MARGIN * 2;
-const POSTER_QR_PATH = POSTER_QR_MATRIX.flatMap((row, y) =>
-  [...row].flatMap((cell, x) =>
-    cell === "1" ? [`M${x + POSTER_QR_MARGIN} ${y + POSTER_QR_MARGIN}h1v1h-1z`] : [],
-  ),
-).join("");
-
-const SCAN = pampaEvent("credential_scanned");
+const LOST = pampaEvent("status_changed", "lost");
 const INTAKE = pampaEvent("shelter_intake_recorded");
-const FOUND = pampaEvent("status_changed", "active");
 
 // ---------------------------------------------------------------------------
 // The chapter shell: number, moment, title and ‹ › on the left, the device on
@@ -282,30 +253,17 @@ function SequencedChapter({
 }
 
 // ---------------------------------------------------------------------------
-// Shared bits: the decorative poster QR, a sentence typed word by word
+// Shared bits: a sentence typed word by word, a screen that turns into the
+// next one within its step
 // ---------------------------------------------------------------------------
-
-/** The decorative mini QR (see POSTER_QR_MATRIX), at whatever size `className` sets. */
-function PosterQr({ className }: { className: string }) {
-  return (
-    <svg
-      className={className}
-      aria-hidden="true"
-      viewBox={`0 0 ${POSTER_QR_BOX} ${POSTER_QR_BOX}`}
-      shapeRendering="crispEdges"
-    >
-      <rect width={POSTER_QR_BOX} height={POSTER_QR_BOX} fill="#fff" />
-      <path d={POSTER_QR_PATH} fill="#000" />
-    </svg>
-  );
-}
 
 /**
  * A sentence someone types, word by word (opacity only, staggered by
  * --i). Static — the whole sentence, no class — whenever `typing` is false:
- * SSR, reduced motion, and every step after the one it is typed in.
+ * SSR, reduced motion, and every step after the one it is typed in. `from`
+ * offsets the stagger, so a second field starts where the first one ended.
  */
-function Typed({ text, typing }: { text: string; typing: boolean }) {
+function Typed({ text, typing, from = 0 }: { text: string; typing: boolean; from?: number }) {
   if (!typing) return <>{text}</>;
   const words = text.split(" ");
   return (
@@ -314,13 +272,50 @@ function Typed({ text, typing }: { text: string; typing: boolean }) {
         <span
           // biome-ignore lint/suspicious/noArrayIndexKey: a fixed sentence, words never reorder
           key={i}
-          style={{ "--i": i } as CSSProperties}
+          style={{ "--i": from + i } as CSSProperties}
         >
           {i < words.length - 1 ? `${w} ` : w}
         </span>
       ))}
     </span>
   );
+}
+
+/**
+ * A screen that becomes the next one INSIDE its step: a form typed and sent,
+ * then the screen the product shows once it went through (the sighting's
+ * thanks, the lost screen after "Sí, la encontré"). While `animate` plays,
+ * `before` is drawn, pressed (`lp-seq-late`), then cross-fades into `after`
+ * (opacity + transform only, app/landing.css .lp-seq-swap). Static — SSR,
+ * reduced motion, and the device sliding out — draws `after` alone: the
+ * state the step leaves behind.
+ */
+function Swap({
+  animate,
+  before,
+  after,
+}: {
+  animate: boolean;
+  before: ReactNode;
+  after: ReactNode;
+}) {
+  if (!animate) return <>{after}</>;
+  return (
+    <div className="lp-seq-swap">
+      <div className="lp-seq-swap-before">{before}</div>
+      <div className="lp-seq-swap-after">{after}</div>
+    </div>
+  );
+}
+
+/** A seed day as the product's es-AR short date prints it: "11/03/2024". */
+function arShortDate(date: string): string {
+  return seedInstant(date).toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: AR_TIME_ZONE,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -532,53 +527,144 @@ export const VET_SEQUENCE: SequenceSpec = sequence({
 });
 
 // ---------------------------------------------------------------------------
-// PS7 · Se pierde — the neighbour's phone, then Martín's (2024-03-10)
+// PS7 · Se pierde — Martín's phone, the neighbour's, Martín's again
+// (2024-03-09 → 2024-03-11)
 // ---------------------------------------------------------------------------
 
-// The citizen circuit (PO 2026-09-30): a neighbour — no account, no app —
-// scans the QR, lands on the public credential in its "perdida" state,
-// opens its found form and leaves a message; Martín's phone (the NATIVE
-// owner app, PO 2026-09-30) gets the notification that form's action
-// writes, then shows the poster card of its "Modo perdida" screen.
+// ONE loss told across two chapters (PO 2026-10-01). Here: Martín reports her
+// lost on his NATIVE app and shares the poster; a neighbour — no account, no
+// app — scans the poster's QR, lands on the public credential in its
+// "perdida" state and uses its sighting form ("La vi cerca de acá") to say
+// she took her to the refugio, leaving a contact; Martín's inbox gets the
+// notification that form's use-case writes. Chapter 4 picks up at the refugio.
 //
-// The public page's lost state leads with its CTA row
-// (components/pet-profile/PublicLostSections.tsx:215-272): "Llamar" (the
-// seed discloses the phone), "La tengo conmigo" (opens /encontre, whose
-// notification is "Alguien tiene a {nombre}" and names where the finder is —
-// a place this story may not draw) and "La vi cerca de acá" (a sighting).
-// All three are drawn; the one the neighbour uses is the credential's own
-// inline found form further down (app/(public)/p/[publicToken]/page.tsx:
-// 970-987 → FoundPetForm.tsx → notify-owner-of-found-pet.ts), because it is
-// the one that writes "¡Encontraron a {nombre}!". It is drawn highlighted.
-// There is no "La encontré" button on the public page.
+// The found form ("¿Encontraste a esta mascota?") is no longer drawn: since
+// finder-contact (2026-10-01) it requires a contact, and the sighting is the
+// flow whose notification this chapter shows.
 //
-// Two things the real page has that this story does NOT draw: the last-seen
-// mini-map (PublicLostSections.tsx:358-, a map of where she was lost) and
-// any map on Martín's side — the fence forbids a map or coordinates of a
-// scan, and the native lost screen has none either (LostScreen.tsx:46-49).
+// No map, no point, no street of the sighting: the form's map
+// (LocationFields, PetSightingForm.tsx:135-141) and the lost form's point
+// picker (LostScreen.tsx:749-755) are omitted, not altered. The public page's
+// last-seen mini-map (PublicLostSections.tsx:358-) is not drawn either.
 
-/** What the neighbour types — HER words, not product copy. No place, on purpose. */
-export const FINDER_MESSAGE = "Está bien y tranquila, tiene su collar puesto";
+/**
+ * What the neighbour types into "Algún detalle" — HER words, landing
+ * narration, not product copy. The refugio is the story's own
+ * (PAMPA_SHELTER), so chapter 4's tablet is the place she names here.
+ */
+export const SIGHTING_MESSAGE = `La llevé al ${PAMPA_SHELTER}`;
+/** The contact she leaves (a reserved example domain: nobody's real address). */
+export const SIGHTING_CONTACT = "vecina@example.com";
 
-const LOST_SCAN = 0;
-const LOST_PAGE = 1;
-const LOST_WRITE = 2;
-const LOST_SENT = 3;
-const LOST_OWNER = 4; // the actor switch: Martín's phone from here on
-const LOST_POSTER = 5;
+/**
+ * EXACTLY the body reportPetSighting writes for a message and a contact with
+ * no name (src/modules/pets/application/sighting/report-pet-sighting.ts:349-365):
+ * the lead line, `Mensaje: "{description}".`, `Contacto de quien la vio:
+ * {contact}.`, "Mirá el detalle en su perfil.", joined by spaces (:434).
+ */
+export const SIGHTING_BODY = [
+  `Alguien reportó haber visto a ${PAMPA.name} cerca de un punto.`,
+  `Mensaje: "${SIGHTING_MESSAGE}".`,
+  `Contacto de quien la vio: ${SIGHTING_CONTACT}.`,
+  "Mirá el detalle en su perfil.",
+].join(" ");
+
+const LOST_REPORT = 0; // Martín: "Marcar a Pampa como perdida"
+const LOST_POSTER = 1; // Martín: the poster card
+const LOST_PUBLIC = 2; // the neighbour: the public credential, lost
+const LOST_SIGHTING = 3; // the neighbour: the sighting form, sent
+const LOST_INBOX = 4; // Martín: the sighting notification
 // Exported so the tests do not re-hardcode the split.
-export const LOST_OWNER_FROM = LOST_OWNER;
+export const LOST_REPORT_STEP = LOST_REPORT;
 export const LOST_POSTER_STEP = LOST_POSTER;
-export const LOST_SCAN_STEP = LOST_SCAN;
+export const LOST_PUBLIC_STEP = LOST_PUBLIC;
+export const LOST_SIGHTING_STEP = LOST_SIGHTING;
+export const LOST_INBOX_STEP = LOST_INBOX;
 
-/** 1 · The phone's own camera on the poster's QR — no product copy at all. */
-function NeighbourScanScreen() {
+function lostDescription(key: string): string {
+  const d = LOST.payload.lost_description;
+  const v = d && typeof d === "object" ? (d as Record<string, unknown>)[key] : null;
+  return typeof v === "string" ? v : "";
+}
+
+/** The seed's "dónde": its location_description. */
+const LOST_WHERE = String(LOST.payload.location_description ?? "");
+/** The seed's last_seen_context: "Se soltó en la plaza durante un paseo". */
+const LOST_CONTEXT = lostDescription("last_seen_context");
+/** "perdida" for Pampa (lostLabel, lib/utils/format.ts:372-381; the native lostAdjective agrees). */
+const LOST_ADJ = lostLabel(PAMPA_PET.sex).toLowerCase();
+
+/**
+ * 1 · Martín's native "Modo perdida" (stack title, apps/mobile/app/_layout.tsx:543),
+ * on its mark-lost pane (apps/mobile/src/lost/LostScreen.tsx MarkLostForm): the
+ * card title and sentence (:724-728), "Dónde la viste por última vez" (:757),
+ * "Contexto del extravío" (:837) and the submit, `Marcar como {lostAdjective}`
+ * (:888; lost-view-model.ts:44-53 — markLostActionLabel is the web's same
+ * switch). Both values are the seed's lost report. The point picker, the
+ * locality picker, the "Cómo reconocerla" fields and the disclosure toggles
+ * sit between them and are omitted.
+ */
+function OwnerReportLostScreen({ animate }: { animate: boolean }) {
   return (
-    <div className="lp-cam">
-      <div className="lp-cam-frame">
-        <PosterQr className="lp-cam-qr" />
+    <>
+      <div className="lp-scr-top" />
+      <AppHead title="Modo perdida" />
+      <div className="lp-app-body lp-ph-pad">
+        <div className="lp-ph-card">
+          <p className="lp-kv-title">
+            Marcar a {PAMPA.name} como {LOST_ADJ}
+          </p>
+          <p className="lp-ph-note">
+            Su credencial pública va a mostrar el aviso de búsqueda. Abajo elegís qué datos tuyos se
+            publican mientras la búsqueda esté activa.
+          </p>
+        </div>
+        <div className="lp-vf-form">
+          <div className="lp-vf">
+            <span className="lp-vf-l">Dónde la viste por última vez</span>
+            <span className="lp-vf-i">{LOST_WHERE}</span>
+          </div>
+          <div className="lp-vf">
+            <span className="lp-vf-l">Contexto del extravío</span>
+            <span className="lp-vf-i lp-vf-i--area">
+              <Typed text={LOST_CONTEXT} typing={animate} />
+            </span>
+          </div>
+          <span
+            className={animate ? "lp-vf-submit lp-vf-submit--pressed lp-seq-late" : "lp-vf-submit"}
+          >
+            {markLostActionLabel(PAMPA_PET.sex)}
+          </span>
+        </div>
       </div>
-    </div>
+    </>
+  );
+}
+
+/**
+ * 2 · The poster, on the same native "Modo perdida" screen: its PosterCard
+ * (apps/mobile/src/lost/LostScreen.tsx:556-573) — title, POSTER_CARD_BODY
+ * and POSTER_BUTTON_LABEL (lost-view-model.ts:693-696). The app shares a
+ * server-made PDF; it draws no poster preview of its own, so none is drawn
+ * here. The rest of the screen (the case card, the state commands, the feed)
+ * sits around it and is omitted.
+ */
+function LostPosterScreen() {
+  return (
+    <>
+      <div className="lp-scr-top" />
+      <AppHead title="Modo perdida" />
+      <div className="lp-app-body lp-ph-pad">
+        <div className="lp-ph-card">
+          <p className="lp-kv-title">Cartel para imprimir</p>
+          <p className="lp-ph-note">
+            Un PDF tamaño A4 con su foto, los datos que elegiste mostrar y el QR de su credencial.
+            Mandalo por WhatsApp o imprimilo.
+          </p>
+          <span className="lp-vf-submit lp-vf-submit--ghost">Compartir o imprimir el cartel</span>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -613,10 +699,11 @@ const PUBLIC_BREED_LINE = [
 ].join(" · ");
 
 /**
- * 2 · The public page, lost: name bar (page.tsx:711-716), the CTA row
- * (PublicLostSections.tsx:216-227 "Llamar", :256-262 foundPossessivePhrase,
- * :264-270 sightingPhrase) and the "¿Encontraste…?" row (page.tsx:973-976),
- * which is the one the neighbour opens — so it is the one highlighted.
+ * 3 · The neighbour's phone, on the page the poster's QR opens: the public
+ * credential, lost — masthead, name bar (page.tsx:711-716) and the CTA row
+ * (components/pet-profile/PublicLostSections.tsx:216-227 "Llamar", :256-262
+ * foundPossessivePhrase, :264-270 sightingPhrase). "La vi cerca de acá" is the
+ * one she uses, so it is the one highlighted.
  */
 function PublicLostScreen() {
   return (
@@ -635,109 +722,118 @@ function PublicLostScreen() {
             <span className="lp-pub-cta lp-pub-cta--solid">
               <Icon name="ubicacion" size="sm" decorative /> {foundPossessivePhrase(PAMPA_PET.sex)}
             </span>
-            <span className="lp-pub-cta">
+            <span className="lp-pub-cta" data-used="true">
               <Icon name="ojo" size="sm" decorative /> {sightingPhrase(PAMPA_PET.sex)}
             </span>
           </div>
-          <div className="lp-pub-found" data-used="true">
-            <div className="min-w-0 flex-1">
-              <b>¿Encontraste a esta mascota?</b>
-              <span>Tocá acá para avisarle al dueño.</span>
-            </div>
-            <span aria-hidden="true">›</span>
-          </div>
         </div>
       </div>
     </>
   );
 }
 
-/** 3 · The found form, opened (FoundPetForm.tsx: labels :49, :65, :89; placeholders :57, :78; CTA :113). */
-function FinderWriteScreen({ typing }: { typing: boolean }) {
+/**
+ * 4a · The sighting page (app/(public)/p/[publicToken]/sighting/page.tsx:
+ * "← Volver al perfil" :148, the h1 sightingPhrase :150-152, the sentence
+ * :154) and its form (PetSightingForm.tsx): "¿Cuándo la viste?" (:145,
+ * sightedWhenQuestion) with its "Fecha" half (:153; the intake day, as the
+ * seed has it), "Algún detalle (opcional)" (:192), the contact group opened
+ * (:241) with "Teléfono o email" (:267), and "Avisar al dueño/a" (:301).
+ * Omitted, not altered: the map (:135-141), the "Hora (24 h)" half, the photo
+ * group and the "Tu nombre" field (she leaves none).
+ */
+function SightingFormScreen({ typing }: { typing: boolean }) {
   return (
-    <>
-      <div className="lp-scr-top" />
-      <div className="lp-app-body lp-ph-pad">
-        <div className="lp-pub">
-          <PublicMasthead />
-          <b className="lp-pub-q">¿Encontraste a esta mascota?</b>
-          <div className="lp-vf-form">
-            <div className="lp-vf">
-              <span className="lp-vf-l">Tu nombre (opcional)</span>
-              <span className="lp-vf-i lp-vf-i--ph">Nombre y apellido</span>
-            </div>
-            <div className="lp-vf">
-              <span className="lp-vf-l">Cómo te contactamos (opcional)</span>
-              <span className="lp-vf-i lp-vf-i--ph">Teléfono o email</span>
-            </div>
-            <div className="lp-vf">
-              <span className="lp-vf-l">Mensaje (opcional)</span>
-              <span className="lp-vf-i lp-vf-i--area">
-                <Typed text={FINDER_MESSAGE} typing={typing} />
-              </span>
-            </div>
-          </div>
-          <span
-            className={
-              typing
-                ? "lp-vf-submit lp-vf-submit--warn lp-seq-late"
-                : "lp-vf-submit lp-vf-submit--warn"
-            }
-          >
-            Avisar al dueño
+    <div className="lp-pub lp-pub--form">
+      <span className="lp-pub-back">← Volver al perfil</span>
+      <b className="lp-pub-q">{sightingPhrase(PAMPA_PET.sex)}</b>
+      <span className="lp-pub-sub">
+        Marcá dónde y cuándo viste a {PAMPA.name}. El dueño/a recibe el aviso al instante.
+      </span>
+      <div className="lp-vf-form">
+        <div className="lp-vf">
+          <span className="lp-vf-l">{sightedWhenQuestion(PAMPA_PET.sex)}</span>
+          <span className="lp-vf-l">Fecha</span>
+          <span className="lp-vf-i">{arShortDate(INTAKE.date)}</span>
+        </div>
+        <div className="lp-vf">
+          <span className="lp-vf-l">Algún detalle (opcional)</span>
+          <span className="lp-vf-i lp-vf-i--area">
+            <Typed text={SIGHTING_MESSAGE} typing={typing} />
+          </span>
+        </div>
+        <div className="lp-vf">
+          <span className="lp-vf-l">¿Querés que te puedan contactar? (opcional)</span>
+          <span className="lp-vf-l">Teléfono o email</span>
+          <span className="lp-vf-i">
+            <Typed
+              text={SIGHTING_CONTACT}
+              typing={typing}
+              from={SIGHTING_MESSAGE.split(" ").length}
+            />
           </span>
         </div>
       </div>
-    </>
+      <span className={typing ? "lp-vf-submit lp-vf-submit--pressed lp-seq-late" : "lp-vf-submit"}>
+        Avisar al dueño/a
+      </span>
+    </div>
   );
 }
 
-/** 4 · Sent (FoundPetForm.tsx:28-31). */
-function FinderSentScreen() {
+/** 4b · Sent: the form's own success state (PetSightingForm.tsx:102-120). */
+function SightingSentScreen() {
+  return (
+    <div className="lp-pub">
+      <div className="lp-match-ok">
+        <b>¡Gracias!</b>
+        <span>
+          Le avisamos al dueño/a con el punto que marcaste. Cualquier detalle más puede ayudar.
+        </span>
+      </div>
+      <span className="lp-pub-back">Volver al perfil de {PAMPA.name}</span>
+    </div>
+  );
+}
+
+/** 4 · The form, typed and sent, then its thanks — one step (see Swap). */
+function NeighbourSightingScreen({ animate }: { animate: boolean }) {
   return (
     <>
       <div className="lp-scr-top" />
       <div className="lp-app-body lp-ph-pad">
-        <div className="lp-pub">
-          <PublicMasthead />
-          <div className="lp-match-ok">
-            <b>¡Gracias!</b>
-            <span>Le avisamos al dueño. Mientras tanto, cuidala lo mejor que puedas.</span>
-          </div>
-        </div>
+        <Swap
+          animate={animate}
+          before={<SightingFormScreen typing={animate} />}
+          after={<SightingSentScreen />}
+        />
       </div>
     </>
   );
 }
 
-/** A notification's day as the native inbox prints it (notifications-view-model.ts:127-131). */
-function inboxDate(date: string): string {
-  return seedInstant(date).toLocaleDateString("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    timeZone: AR_TIME_ZONE,
-  });
-}
+/** The native inbox's severity word (severityLabel, notifications-view-model.ts:97-108). */
+const SEVERITY_LABEL = { urgent: "Urgente", warning: "Atención" } as const;
 
 /**
  * One row of the native inbox (apps/mobile/src/notifications/
  * NotificationsScreen.tsx:475-555; stack title "Notificaciones",
- * apps/mobile/app/_layout.tsx:334): title and date, the severity word
- * (severityLabel("urgent") → "Urgente", notifications-view-model.ts:97-100),
- * the body, then the row's actions. A CTA the app has a screen for is a
- * button (:509-516); one it has not is inert text that says so (:526-528).
- * Both notifications here are "urgent" (notify-owner-of-found-pet.ts:259,
- * confirm-chip-match-refugio.ts:199).
+ * apps/mobile/app/_layout.tsx:334): title and date (the inbox's dd/mm/aaaa,
+ * notifications-view-model.ts:127-131), the severity word, the body, then
+ * the row's actions. A CTA the app has a screen for is a button (:509-516);
+ * one it has not is inert text that says so (:526-528). Both CTAs here map to
+ * native screens (packages/contract/src/links/deep-link-map.ts).
  */
 function NativeInboxScreen({
   title,
   date,
+  severity,
   body,
   cta,
 }: {
   title: string;
   date: string;
+  severity: keyof typeof SEVERITY_LABEL;
   body: ReactNode;
   cta: string;
 }) {
@@ -749,9 +845,9 @@ function NativeInboxScreen({
         <div className="lp-nat-notif">
           <div className="lp-nat-notif-head">
             <b>{title}</b>
-            <span>{inboxDate(date)}</span>
+            <span>{arShortDate(date)}</span>
           </div>
-          <span className="lp-nat-notif-sev">Urgente</span>
+          <span className="lp-nat-notif-sev">{SEVERITY_LABEL[severity]}</span>
           <span>{body}</span>
           <div className="lp-nat-notif-actions">
             <span className="lp-nat-action lp-nat-action--em">{cta}</span>
@@ -764,80 +860,51 @@ function NativeInboxScreen({
 }
 
 /**
- * 5 · Martín's phone. EXACTLY what notifyOwnerOfFoundPet writes
- * (src/modules/pets/application/public/notify-owner-of-found-pet.ts:220-226,
- * title :257, CTA :262) for a finder who leaves a message and neither a
- * name nor a contact: who = "Alguien", body `{who} dejó un mensaje:
- * "{message}".{contactLine}`, contactLine " No dejó datos de contacto.".
- * Its CTA ("/mis-mascotas/{token}") maps to a native screen
- * (packages/contract/src/links/deep-link-map.ts:221), so it is a button.
+ * 5 · Martín's phone: the notification reportPetSighting writes
+ * (report-pet-sighting.ts:429-445): title `Avistaje de {nombre}` (:433),
+ * SIGHTING_BODY (:434), severity "warning" (:435 → "Atención"), CTA "Ver
+ * mascota" (:438), whose "/mis-mascotas/{token}" is a native screen
+ * (deep-link-map.ts:221), so it is a button. Dated the intake day.
  */
-export const OWNER_FOUND_BODY = `Alguien dejó un mensaje: "${FINDER_MESSAGE}". No dejó datos de contacto.`;
-
-function OwnerFoundReportScreen() {
+function OwnerSightingScreen() {
   return (
     <NativeInboxScreen
-      title={`¡Encontraron a ${PAMPA.name}!`}
-      date={SCAN.date}
-      body={OWNER_FOUND_BODY}
+      title={`Avistaje de ${PAMPA.name}`}
+      date={INTAKE.date}
+      severity="warning"
+      body={SIGHTING_BODY}
       cta="Ver mascota"
     />
   );
 }
 
-/**
- * 6 · The poster, on Martín's native "Modo perdida" screen (stack title,
- * apps/mobile/app/_layout.tsx:543): its PosterCard
- * (apps/mobile/src/lost/LostScreen.tsx:536-573) — title, POSTER_CARD_BODY
- * and POSTER_BUTTON_LABEL (lost-view-model.ts:693-696). The app shares a
- * server-made PDF; it draws no poster preview of its own, so none is drawn
- * here. The rest of the screen (the case card, the state commands, the feed)
- * sits around it and is omitted.
- */
-function LostPosterScreen() {
-  return (
-    <>
-      <div className="lp-scr-top" />
-      <AppHead title="Modo perdida" />
-      <div className="lp-app-body lp-ph-pad">
-        <div className="lp-ph-card">
-          <p className="lp-kv-title">Cartel para imprimir</p>
-          <p className="lp-ph-note">
-            Un PDF tamaño A4 con su foto, los datos que elegiste mostrar y el QR de su credencial.
-            Mandalo por WhatsApp o imprimilo.
-          </p>
-          <span className="lp-vf-submit lp-vf-submit--ghost">Compartir o imprimir el cartel</span>
-        </div>
-      </div>
-    </>
-  );
-}
-
 export const LOST_SEQUENCE: SequenceSpec = sequence({
-  total: LOST_POSTER + 1,
-  stepMs: 1900,
+  total: LOST_INBOX + 1,
+  // Longer than the other chapters: step 4 types a message and a contact,
+  // presses "Avisar al dueño/a" (~1.35s) and only then turns into the thanks
+  // (~1.65s, .lp-seq-swap), which needs to stay up a moment before Martín's
+  // phone takes over.
+  stepMs: 2600,
   items: [
-    { label: "Un vecino escanea el QR.", at: LOST_SCAN },
-    { label: `Ve que ${PAMPA.name} está perdida.`, at: LOST_PAGE },
-    { label: `Le deja un mensaje a ${PAMPA_OWNER_NAME}.`, at: LOST_SENT },
-    { label: `${PAMPA_OWNER_NAME} recibe el aviso.`, at: LOST_OWNER },
-    { label: "El cartel lleva el mismo QR.", at: LOST_POSTER },
+    { label: `${PAMPA_OWNER_NAME} la reporta perdida.`, at: LOST_REPORT },
+    { label: "Imprime el cartel con su QR.", at: LOST_POSTER },
+    { label: "Un vecino escanea el cartel.", at: LOST_PUBLIC },
+    { label: "Avisa: la llevó al refugio.", at: LOST_SIGHTING },
+    { label: `${PAMPA_OWNER_NAME} recibe la pista.`, at: LOST_INBOX },
   ],
-  actor: (step) => (step >= LOST_OWNER ? "owner" : "neighbour"),
+  actor: (step) => (step === LOST_PUBLIC || step === LOST_SIGHTING ? "neighbour" : "owner"),
   screen: (step, animate) => {
     switch (step) {
-      case LOST_SCAN:
-        return <NeighbourScanScreen />;
-      case LOST_PAGE:
-        return <PublicLostScreen />;
-      case LOST_WRITE:
-        return <FinderWriteScreen typing={animate} />;
-      case LOST_SENT:
-        return <FinderSentScreen />;
-      case LOST_OWNER:
-        return <OwnerFoundReportScreen />;
-      default:
+      case LOST_REPORT:
+        return <OwnerReportLostScreen animate={animate} />;
+      case LOST_POSTER:
         return <LostPosterScreen />;
+      case LOST_PUBLIC:
+        return <PublicLostScreen />;
+      case LOST_SIGHTING:
+        return <NeighbourSightingScreen animate={animate} />;
+      default:
+        return <OwnerSightingScreen />;
     }
   },
   slides: true,
@@ -976,16 +1043,18 @@ function IntakeDoneScreen() {
 
 /**
  * 4 · Martín's notification, in the native inbox — the text
- * confirm-chip-match-refugio.ts:199-203 writes. Its CTA points at
- * "/mis-mascotas/{token}/devolucion", which maps to the native return screen
- * (packages/contract/src/links/deep-link-map.ts, `petReturn`), so the inbox
- * renders it as a button (NotificationsScreen.tsx, RowAction emphasis).
+ * confirm-chip-match-refugio.ts:198-203 writes (severity "urgent", :199).
+ * Its CTA points at "/mis-mascotas/{token}/devolucion", which maps to the
+ * native return screen (packages/contract/src/links/deep-link-map.ts,
+ * `petReturn`), so the inbox renders it as a button (NotificationsScreen.tsx,
+ * RowAction emphasis).
  */
 function OwnerNotifiedScreen() {
   return (
     <NativeInboxScreen
       title={`¡Encontraron a ${PAMPA.name}!`}
       date={INTAKE.date}
+      severity="urgent"
       body={`${PAMPA_SHELTER} detectó a ${PAMPA.name} por su microchip. Coordiná la devolución.`}
       cta="Coordinar devolución"
     />
@@ -993,26 +1062,41 @@ function OwnerNotifiedScreen() {
 }
 
 /**
- * 5 · 13 mar: Martín closes the search on the native "Modo perdida" screen
- * (apps/mobile/app/_layout.tsx:543) — "Marcar como encontrada", then the
- * two-step confirm (apps/mobile/src/lost/LostScreen.tsx:412-426: the warn
- * callout, its sentence, "Sí, la encontré" and "Cancelar").
- * The return is his entry, not the shelter's.
+ * 5 · Where "Coordinar devolución" lands: the NATIVE return screen
+ * (apps/mobile/app/mascotas/[publicToken]/devolucion.tsx → src/custody/
+ * DevolucionScreen.tsx), stack title "Devolución" (app/_layout.tsx:390).
+ * With the refugio holding her in shelter custody and its return proposal
+ * addressed to Martín, the server's state is `inbound_pending` with the
+ * organization's display name as the actor
+ * (src/modules/return-to-owner/application/read-return-state.ts:143-175,
+ * proposerName :204-210), so the screen reads: the title (:160), the
+ * headline (returnStateHeadline, devolucion-view-model.ts:94-95), the
+ * "Confirmar la devolución" card with its sentence and "Ya tengo a {nombre}"
+ * (:176-188), and the "Rechazar la devolución" card's title and sentence
+ * (:192-194; its "Motivo" field and button are below the fold, omitted).
+ * The proposal leaves no notes, so there is no "Lo que dejó escrito" card.
  */
-function OwnerFoundScreen() {
+function OwnerDevolucionScreen() {
   return (
     <>
       <div className="lp-scr-top" />
-      <AppHead title="Modo perdida" />
+      <AppHead title="Devolución" />
       <div className="lp-app-body lp-ph-pad">
-        <div className="lp-confirm">
-          <b>¿Confirmás?</b>
-          <span>
-            Se cierra la búsqueda, la credencial pública deja de mostrar el aviso y avisamos a
-            quienes la estaban buscando.
-          </span>
-          <span className="lp-vf-submit lp-vf-submit--pressed">Sí, la encontré</span>
-          <span className="lp-vf-submit lp-vf-submit--ghost">Cancelar</span>
+        <p className="lp-kv-title lp-sheet-t">Devolución de {PAMPA.name}</p>
+        <p className="lp-ph-note">
+          {PAMPA_SHELTER} tiene a {PAMPA.name} y quiere devolvértela.
+        </p>
+        <div className="lp-ph-card">
+          <p className="lp-kv-title">Confirmar la devolución</p>
+          <p className="lp-ph-note">
+            Confirmá sólo cuando tengas a {PAMPA.name} con vos. La custodia de quien la tiene se
+            cierra en ese momento.
+          </p>
+          <span className="lp-vf-submit">Ya tengo a {PAMPA.name}</span>
+        </div>
+        <div className="lp-ph-card">
+          <p className="lp-kv-title">Rechazar la devolución</p>
+          <p className="lp-ph-note">Quien la tiene va a recibir tu respuesta con el motivo.</p>
         </div>
       </div>
     </>
@@ -1020,48 +1104,88 @@ function OwnerFoundScreen() {
 }
 
 /**
- * 6 · The payoff (critique 2026-09-29, M5): the chapter used to end on the
- * "¿Confirmás?" dialog, never showing her home. After the confirm, Martín's
- * native pet screen, turned to its libreta, carries what the search left —
- * "Marcada como encontrada", "Ingreso al refugio", "Marcada como perdida",
- * newest first — as the owner's ledger really draws them (see
- * LIBRETA_EVENTS in landing-content.ts: the owner audience sees every event,
- * so these three are on it). Dated as of that day: "hoy", "hace 2 días"…
- * The older asientos continue below the fold, as the ledger does.
+ * 6a · 13 mar: Martín closes the search on the native "Modo perdida" screen
+ * (apps/mobile/app/_layout.tsx:543) — the two-step confirm
+ * (apps/mobile/src/lost/LostScreen.tsx:412-426: the warn callout, its
+ * sentence, "Sí, la encontré" and "Cancelar"). The return is his entry, not
+ * the shelter's.
  */
-function OwnerHomeScreen() {
-  const now = seedInstant(FOUND.date);
-  const ledger = LIBRETA_EVENTS.filter((e) => e.date <= FOUND.date).reverse();
+function OwnerConfirmFoundScreen({ animate }: { animate: boolean }) {
+  return (
+    <div className="lp-confirm">
+      <b>¿Confirmás?</b>
+      <span>
+        Se cierra la búsqueda, la credencial pública deja de mostrar el aviso y avisamos a quienes
+        la estaban buscando.
+      </span>
+      <span className={animate ? "lp-vf-submit lp-vf-submit--pressed lp-seq-late" : "lp-vf-submit"}>
+        Sí, la encontré
+      </span>
+      <span className="lp-vf-submit lp-vf-submit--ghost">Cancelar</span>
+    </div>
+  );
+}
+
+/**
+ * 6b · The payoff (critique 2026-09-29, M5: a chapter ends on its payoff, not
+ * on a dialog): the same screen once "mark_found" landed — the "Listo"
+ * callout (LostScreen.tsx:293-297) with commandDoneLabel's sentence
+ * (lost-view-model.ts:633-634, foundAdjective) and the "Situación" card
+ * (LostScreen.tsx:377-378), whose situationHeadline for a pet no longer lost
+ * is "{nombre} no está {lostAdjective}." (lost-view-model.ts:102).
+ *
+ * No "al día" claim: on 2024-03-13 her rabies dose had lapsed (the seed's
+ * 2022 dose was due 2023-04-12; the next is 2026's), so nothing here says her
+ * credential's vaccines are current.
+ */
+function OwnerFoundDoneScreen() {
   return (
     <>
-      <div className="lp-scr-top" />
-      <AppHead title="Mascota" />
-      <NativeLibretaBand />
-      <span className="lp-nat-card-t">Asientos</span>
-      <span className="lp-nat-count">
-        {ledger.length} {pluralizeEs(ledger.length, "registro")}
-      </span>
-      <div className="lp-app-body lp-nat-ledger">
-        {ledger.map((e) => (
-          <NativeAsiento key={`${e.type}-${e.date}`} entry={e} now={now} />
-        ))}
+      <div className="lp-match-ok">
+        <b>Listo</b>
+        <span>
+          Listo. La marcamos como {foundParticiple(PAMPA_PET.sex)} y avisamos a quienes la estaban
+          buscando.
+        </span>
+      </div>
+      <div className="lp-ph-card">
+        <p className="lp-kv-title">Situación</p>
+        <p className="lp-ph-note">
+          {PAMPA.name} no está {LOST_ADJ}.
+        </p>
       </div>
     </>
   );
 }
 
-// 7 steps → 6 (PO 2026-09-30): the old steps 2 and 3 were the SAME screen
-// (IntakeMatchScreen with pressed false, then true) — indistinguishable under
-// ‹ › since the press only ever read through motion. Merged into one step
-// (see IntakeMatchScreen above); every index below and OWNER_FROM shift down
-// by one accordingly.
+/** 6 · The confirm, pressed, then the screen it leaves — one step (see Swap). */
+function OwnerFoundScreen({ animate }: { animate: boolean }) {
+  return (
+    <>
+      <div className="lp-scr-top" />
+      <AppHead title="Modo perdida" />
+      <div className="lp-app-body lp-ph-pad">
+        <Swap
+          animate={animate}
+          before={<OwnerConfirmFoundScreen animate={animate} />}
+          after={<OwnerFoundDoneScreen />}
+        />
+      </div>
+    </>
+  );
+}
+
+// 6 steps (PO 2026-10-01): the refugio's three tablet steps, then Martín's
+// phone — the notification, the native Devolución, and "Sí, la encontré"
+// turning into the closed search. The old libreta payoff screen is gone: the
+// story's libreta chapter (5) right after this one draws the same ledger.
 const SHELTER_SCREENS: Array<(animate: boolean) => ReactNode> = [
   () => <IntakeChipScreen />,
   (animate) => <IntakeMatchScreen animate={animate} />,
   () => <IntakeDoneScreen />,
   () => <OwnerNotifiedScreen />,
-  () => <OwnerFoundScreen />,
-  () => <OwnerHomeScreen />,
+  () => <OwnerDevolucionScreen />,
+  (animate) => <OwnerFoundScreen animate={animate} />,
 ];
 // Exported so the device-frame guard test (and anything else that needs the
 // split) does not re-hardcode this index and drift from it.
@@ -1075,7 +1199,7 @@ export const SHELTER_SEQUENCE: SequenceSpec = sequence({
     { label: "miMAR avisa: está perdida.", at: 1 },
     { label: "Registra el ingreso.", at: 2 },
     { label: `${PAMPA_OWNER_NAME} recibe el aviso.`, at: 3 },
-    { label: "La marca como encontrada.", at: 4 },
+    { label: "Coordina la devolución.", at: 4 },
     { label: `Vuelve con ${PAMPA_OWNER_NAME}.`, at: 5 },
   ],
   // The device itself switches with who is using it (PO 2026-09-29, and

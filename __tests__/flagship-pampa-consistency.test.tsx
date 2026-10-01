@@ -41,10 +41,11 @@ import {
   seedInstant,
 } from "@/components/landing/landing-content";
 import {
-  FINDER_MESSAGE,
   LOST_SEQUENCE,
-  OWNER_FOUND_BODY,
   SHELTER_SEQUENCE,
+  SIGHTING_BODY,
+  SIGHTING_CONTACT,
+  SIGHTING_MESSAGE,
   VET_NOTE,
   VET_NOTE_VACCINE,
   VET_SEQUENCE,
@@ -392,9 +393,15 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
 
   it("the story renders the seed's vet, doses and lost report", () => {
     // SSR shows each animated chapter's FINAL step; every other step is only
-    // one click (or one play-through) away, so all of them are checked.
+    // one click (or one play-through) away, so all of them are checked — at
+    // rest AND playing: a step that turns into the next screen within itself
+    // (the sighting form → its thanks, the confirm → the closed search) only
+    // draws its first screen while it plays.
     const steps = [VET_SEQUENCE, LOST_SEQUENCE, SHELTER_SEQUENCE].flatMap((spec) =>
-      Array.from({ length: spec.total }, (_, i) => renderToStaticMarkup(spec.device(i, false))),
+      Array.from({ length: spec.total }, (_, i) => [
+        renderToStaticMarkup(spec.device(i, false)),
+        renderToStaticMarkup(spec.device(i, true)),
+      ]).flat(),
     );
     const html = flat([renderToStaticMarkup(<StorySection />), ...steps].join(" "));
     // The vet chapter shows the atender page, which names the signer by
@@ -431,13 +438,45 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
     }
     expect(html).toContain("Posible coincidencia detectada");
     expect(html).toContain("Es la misma mascota");
-    // Chapter 3's found-report notification is EXACTLY what
-    // notifyOwnerOfFoundPet writes for a finder who leaves a message and no
-    // name or contact (notify-owner-of-found-pet.ts:220-226, :257).
-    expect(html).toContain(OWNER_FOUND_BODY.replaceAll('"', "&quot;"));
-    expect(OWNER_FOUND_BODY).toBe(
-      `Alguien dejó un mensaje: "${FINDER_MESSAGE}". No dejó datos de contacto.`,
+    // Chapter 3's sighting notification is EXACTLY what reportPetSighting
+    // writes for a neighbour who leaves a message and a contact and no name
+    // (report-pet-sighting.ts:349-365, joined by spaces at :434) — stated
+    // here as a literal, not rebuilt from the landing's own template.
+    expect(SIGHTING_BODY).toBe(
+      'Alguien reportó haber visto a Pampa cerca de un punto. Mensaje: "La llevé al Refugio Patitas del Barrio". Contacto de quien la vio: vecina@example.com. Mirá el detalle en su perfil.',
     );
+    expect(html).toContain(SIGHTING_BODY.replaceAll('"', "&quot;"));
+    // The neighbour names the story's refugio — the same one chapter 4's tablet is.
+    expect(SIGHTING_MESSAGE).toContain(PAMPA_SHELTER);
+    expect(html).toContain(SIGHTING_CONTACT);
+    // And the use-case still writes those parts, in that order.
+    const sightingSrc = readFileSync(
+      "src/modules/pets/application/sighting/report-pet-sighting.ts",
+      "utf8",
+    );
+    // Fragments around each interpolation (the source's templates, read as text).
+    const parts = [
+      "`Alguien reportó haber visto a ",
+      " cerca de un punto.`",
+      '`Mensaje: "',
+      "`Contacto de quien la vio: ",
+      '"Mirá el detalle en su perfil."',
+      "title: `Avistaje de ",
+      'body: bodyParts.join(" ")',
+      'severity: "warning" as const',
+      'ctaLabel: "Ver mascota"',
+    ];
+    let cursor = -1;
+    for (const part of parts) {
+      const at = sightingSrc.indexOf(part);
+      expect(at, part).toBeGreaterThan(cursor);
+      cursor = at;
+    }
+    // The finder-contact change removed this line from both found flows, and
+    // the old found form is no longer drawn.
+    expect(html).not.toContain("No dejó datos de contacto.");
+    expect(html).not.toContain("Cómo te contactamos (opcional)");
+    expect(html).not.toContain("¿Encontraste a esta mascota?");
     expect(html).not.toContain("¡Hola! Soy");
     expect(html).not.toContain("Custodia devuelta");
     // No product surface prints these: the old attendance-form mock's
@@ -470,7 +509,25 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       "Libreta sanitaria oficial",
       "Marca / laboratorio",
       "Evento clínico firmado. Podés registrar otro o volver al inicio.",
-      // Lost — the public credential and its found form (app/(public)/p/…).
+      // Lost — Martín's native "Modo perdida" (app/_layout.tsx:543), its
+      // mark-lost pane (src/lost/LostScreen.tsx:724-728, :757, :837, :888;
+      // lostAdjective lost-view-model.ts:44-53) and its PosterCard
+      // (LostScreen.tsx:556-573, lost-view-model.ts:693-696).
+      "Modo perdida",
+      "Marcar a Pampa como perdida",
+      "Su credencial pública va a mostrar el aviso de búsqueda. Abajo elegís qué datos tuyos se publican mientras la búsqueda esté activa.",
+      "Dónde la viste por última vez",
+      "Contexto del extravío",
+      "Marcar como perdida",
+      "Cartel para imprimir",
+      "Un PDF tamaño A4 con su foto, los datos que elegiste mostrar y el QR de su credencial. Mandalo por WhatsApp o imprimilo.",
+      "Compartir o imprimir el cartel",
+      // The seed's lost report, read from the module.
+      String(
+        PAMPA_EVENTS.find((e) => e.payload.to_status === "lost")?.payload.location_description,
+      ),
+      "Se soltó en la plaza durante un paseo",
+      // The neighbour — the public credential, lost (app/(public)/p/…).
       "Credencial pública",
       "Perdida",
       "Perro · Caniche · Hembra",
@@ -479,33 +536,53 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       "Llamar",
       "La tengo conmigo",
       "La vi cerca de acá",
-      "¿Encontraste a esta mascota?",
-      "Tocá acá para avisarle al dueño.",
-      "Tu nombre (opcional)",
-      "Nombre y apellido",
-      "Cómo te contactamos (opcional)",
+      // The sighting page (sighting/page.tsx:148, :150-154) and its form
+      // (PetSightingForm.tsx:145, :153, :192, :241, :267, :301) and thanks
+      // (:106-108, :118).
+      "← Volver al perfil",
+      "Marcá dónde y cuándo viste a Pampa. El dueño/a recibe el aviso al instante.",
+      "¿Cuándo la viste?",
+      "Fecha",
+      "11/03/2024",
+      "Algún detalle (opcional)",
+      "¿Querés que te puedan contactar? (opcional)",
       "Teléfono o email",
-      "Mensaje (opcional)",
-      "Avisar al dueño",
+      "Avisar al dueño/a",
       "¡Gracias!",
-      "Le avisamos al dueño. Mientras tanto, cuidala lo mejor que puedas.",
-      `¡Encontraron a ${PAMPA_PET.name}!`,
-      "Ver mascota",
+      "Le avisamos al dueño/a con el punto que marcaste. Cualquier detalle más puede ayudar.",
+      "Volver al perfil de Pampa",
       // Martín's phone, the NATIVE app (apps/mobile/…): the inbox row
       // (src/notifications/NotificationsScreen.tsx:497-545, severityLabel
-      // notifications-view-model.ts:100). Both CTAs map to native screens
-      // (deep-link-map.ts), so both render as buttons.
+      // notifications-view-model.ts:97-108: "urgent" → Urgente, "warning" →
+      // Atención). Both CTAs map to native screens (deep-link-map.ts), so both
+      // render as buttons. The sighting's title (report-pet-sighting.ts:433).
       "Notificaciones",
+      "Avistaje de Pampa",
+      "Atención",
+      "Ver mascota",
+      `¡Encontraron a ${PAMPA_PET.name}!`,
       "Urgente",
       "Marcar como leída",
       "Coordinar devolución",
-      // "Modo perdida" (app/_layout.tsx:543) and its PosterCard
-      // (src/lost/LostScreen.tsx:559, lost-view-model.ts:693-696).
-      "Modo perdida",
-      "Cartel para imprimir",
-      "Un PDF tamaño A4 con su foto, los datos que elegiste mostrar y el QR de su credencial. Mandalo por WhatsApp o imprimilo.",
-      "Compartir o imprimir el cartel",
+      // The native Devolución (app/_layout.tsx:390; src/custody/
+      // DevolucionScreen.tsx:160, :176-188, :192-194; returnStateHeadline
+      // inbound_pending, devolucion-view-model.ts:95).
+      "Devolución",
+      "Devolución de Pampa",
+      `${PAMPA_SHELTER} tiene a Pampa y quiere devolvértela.`,
+      "Confirmar la devolución",
+      "Confirmá sólo cuando tengas a Pampa con vos. La custodia de quien la tiene se cierra en ese momento.",
+      "Ya tengo a Pampa",
+      "Rechazar la devolución",
+      "Quien la tiene va a recibir tu respuesta con el motivo.",
+      // "Sí, la encontré" (LostScreen.tsx:414-424) and what it leaves:
+      // "Listo" (:294), commandDoneLabel (lost-view-model.ts:633-634),
+      // "Situación" + situationHeadline (:377-378; lost-view-model.ts:102).
+      "¿Confirmás?",
       "Cancelar",
+      "Listo. La marcamos como encontrada y avisamos a quienes la estaban buscando.",
+      "Situación",
+      "Pampa no está perdida.",
       // "Mis mascotas" (app/_layout.tsx:288), its row and footer
       // (src/pets/PetRow.tsx:127-135, credential-view-model.ts:261,
       // app/mascotas/index.tsx:431).

@@ -1742,21 +1742,6 @@
   background: var(--lp-bezel);
   z-index: 5;
 }
-/* Signal, wifi and battery glyphs (PhoneFrame's SVG, no text). White under
-   `difference` blending: dark on the app's paper, light on the camera's
-   dark viewfinder, with no per-screen switch. */
-.lp .lp-phone-status {
-  position: absolute;
-  top: calc(var(--lp-phone-case) + var(--lp-phone-bezel) + 14px);
-  right: calc(var(--lp-phone-case) + var(--lp-phone-bezel) + 22px);
-  width: 50px;
-  height: 10px;
-  color: var(--color-ln-card);
-  mix-blend-mode: difference;
-  opacity: 0.85;
-  pointer-events: none;
-  z-index: 5;
-}
 .lp .lp-phone-home {
   position: absolute;
   bottom: calc(var(--lp-phone-case) + var(--lp-phone-bezel) + 5px);
@@ -3785,34 +3770,6 @@ html:has([data-landing-root]) {
   color: var(--color-ln-mute);
 }
 
-/* The poster. */
-.lp .lp-poster {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 14px;
-  border: 1px solid var(--color-ln-line);
-  border-radius: var(--radius-input);
-  background: var(--color-ln-card);
-}
-.lp .lp-poster-name {
-  font-family: var(--lp-serif);
-  font-size: var(--text-2xl);
-}
-/* Decorative mini QR (PO 2026-09-30, story-sequences.tsx POSTER_QR_MATRIX) —
-   the <svg> itself; it paints its own white background. */
-.lp .lp-poster-qr {
-  display: block;
-  width: 64px;
-  height: 64px;
-  border-radius: var(--radius-sm);
-}
-.lp .lp-poster-hint {
-  font-size: var(--text-xs);
-  color: var(--color-ln-ink-2);
-}
-
 /* The chip match card, the intake notice, the notification, the confirm. */
 .lp .lp-match-breach,
 .lp .lp-match-ok,
@@ -3901,6 +3858,48 @@ html:has([data-landing-root]) {
 @keyframes lp-seq-press {
   to {
     transform: scale(0.97);
+  }
+}
+
+/* A screen that becomes the next one within its step (story-sequences.tsx
+   Swap): the form, typed and pressed (.lp-seq-late, ~1.35s), fades out and
+   the screen it leads to fades in over it at ~1.65s. Opacity + transform
+   only; the box never changes size. Client + motion only, like .lp-seq-in. */
+.lp .lp-seq-swap {
+  --lp-swap-at: calc(var(--motion-deliberate) * 2 + var(--motion-fast) * 3);
+  position: relative;
+  flex: 1;
+}
+.lp .lp-seq-swap-before {
+  animation: lp-seq-swap-out var(--motion-base) var(--ease-editorial) var(--lp-swap-at) both;
+}
+.lp .lp-seq-swap-after {
+  position: absolute;
+  inset: 0;
+  animation: lp-seq-swap-in var(--motion-deliberate) var(--ease-editorial) var(--lp-swap-at) both;
+}
+@keyframes lp-seq-swap-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes lp-seq-swap-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp .lp-seq-swap-before {
+    display: none;
+  }
+  .lp .lp-seq-swap-after {
+    position: static;
+    animation: none;
   }
 }
 
@@ -3998,34 +3997,6 @@ html:has([data-landing-root]) {
   color: var(--color-ln-op-mute);
 }
 
-/* The neighbour's camera on the poster's QR: no UI, only a viewfinder. */
-.lp .lp-cam {
-  flex: 1;
-  display: grid;
-  place-items: center;
-  background: var(--color-ln-ink);
-}
-.lp .lp-cam-frame {
-  position: relative;
-  padding: 18px;
-  border-radius: var(--radius-lg);
-  background:
-    linear-gradient(var(--color-ln-card), var(--color-ln-card)) top left / 28px 3px no-repeat,
-    linear-gradient(var(--color-ln-card), var(--color-ln-card)) top left / 3px 28px no-repeat,
-    linear-gradient(var(--color-ln-card), var(--color-ln-card)) top right / 28px 3px no-repeat,
-    linear-gradient(var(--color-ln-card), var(--color-ln-card)) top right / 3px 28px no-repeat,
-    linear-gradient(var(--color-ln-card), var(--color-ln-card)) bottom left / 28px 3px no-repeat,
-    linear-gradient(var(--color-ln-card), var(--color-ln-card)) bottom left / 3px 28px no-repeat,
-    linear-gradient(var(--color-ln-card), var(--color-ln-card)) bottom right / 28px 3px no-repeat,
-    linear-gradient(var(--color-ln-card), var(--color-ln-card)) bottom right / 3px 28px no-repeat;
-}
-.lp .lp-cam-qr {
-  display: block;
-  width: 150px;
-  height: 150px;
-  border-radius: var(--radius-sm);
-}
-
 /* The public credential, lost (app/(public)/p/[publicToken]/page.tsx). */
 .lp .lp-pub {
   display: flex;
@@ -4095,6 +4066,19 @@ html:has([data-landing-root]) {
   font-family: var(--lp-serif);
   font-size: var(--text-md);
 }
+/* The sighting page (app/(public)/p/[publicToken]/sighting/page.tsx): a
+   left-aligned form page, with its "← Volver al perfil" link. */
+.lp .lp-pub--form {
+  align-items: stretch;
+  text-align: left;
+}
+.lp .lp-pub-back {
+  align-self: flex-start;
+  font-size: var(--text-sm);
+  color: var(--color-ln-ink);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
 .lp .lp-pub .lp-vf-form {
   align-self: stretch;
   text-align: left;
@@ -4105,30 +4089,6 @@ html:has([data-landing-root]) {
 .lp .lp-pub .lp-match-ok {
   align-self: stretch;
   margin-top: 24px;
-}
-.lp .lp-pub-found {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  align-self: stretch;
-  margin-top: 10px;
-  padding: 12px;
-  border: 1px solid var(--color-ln-line);
-  border-radius: var(--radius-md);
-  background: var(--color-ln-stripe);
-  text-align: left;
-  font-size: var(--text-lg);
-  color: var(--color-ln-mute);
-}
-.lp .lp-pub-found b {
-  display: block;
-  font-family: var(--lp-serif);
-  font-size: var(--text-md);
-  color: var(--color-ln-ink);
-}
-.lp .lp-pub-found span {
-  display: block;
-  font-size: var(--text-sm);
 }
 /* PublicLostSections.tsx:215-272: two solid azul pills, one outline. */
 .lp .lp-pub-ctas {
@@ -4156,13 +4116,10 @@ html:has([data-landing-root]) {
   background: var(--color-ln-azul);
   color: var(--color-ln-card);
 }
-/* The row the neighbour opens (the one this story follows). */
-.lp .lp-pub-found[data-used="true"] {
+/* The action the neighbour takes (the one this story follows). */
+.lp .lp-pub-cta[data-used="true"] {
   border-color: var(--color-ln-azul);
   box-shadow: 0 0 0 2px var(--color-ln-celeste-050);
-}
-.lp .lp-pub .lp-pub-found {
-  margin-top: 4px;
 }
 
 /* ---------------------------------------------------------------------------
