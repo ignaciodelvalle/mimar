@@ -3,11 +3,14 @@
 //
 // GET reads what a form needs to pre-fill itself — the three identity fields,
 // the pet-level emergency-contact override, the account defaults each of those
-// falls back to when cleared, and which of the commands this caller may send.
-// POST runs one of eight: editar los datos, guardar los contactos, corregir la
+// falls back to when cleared, the rest of the profile the sectioned "Editar
+// datos" pre-fills (`profile`, owner-pet-actions; `null` without
+// `canEditProfile`), and which of the commands this caller may send.
+// POST runs one of nine: editar los datos, guardar los contactos, corregir la
 // especie (the FULL-LOCK correction, added 2026-09-10), toggle the interest in a
-// physical tag (D2, 2026-09-25), or one of the four owner acts on the
-// service-dog designation (D3, 2026-09-25) — `./commands.ts`.
+// physical tag (D2, 2026-09-25), one of the four owner acts on the
+// service-dog designation (D3, 2026-09-25), or editar datos por sección
+// (`edit_profile`, owner-pet-actions, 2026-10-01) — `./commands.ts`.
 //
 // WHY THIS IS NOT ON THE EVENTS ENDPOINT, and why it is not two endpoints
 // ---------------------------------------------------------------------------
@@ -79,11 +82,20 @@ const ACCESS_BUDGET_MS = 5_000;
 //
 // THE WRITE takes the GENERIC authenticated-write family, and that is a decision
 // rather than a default. `/lost` and `/shares` share `pet-disclosure-write`
-// because both change what OTHER PEOPLE may see of an animal; neither command
-// here does. An identity correction publishes nothing new — the name was already
-// on the public credential — and the contact override is read by nobody but the
-// owner. What bounds this act is the ordinary "one person editing their own
-// records" budget: 10/min, 40/hr, 100/day per user.
+// because both change what OTHER PEOPLE may see of an animal. An identity
+// correction publishes nothing new — the name was already on the public
+// credential — and the contact override is read by nobody but the owner.
+//
+// ONE SECTION HERE DOES CHANGE WHAT OTHERS SEE, since owner-pet-actions: the
+// two public-credential toggles of `edit_profile` (the emergency info on the
+// credential, and whether the conditions are disclosed). The write stays in the
+// generic family anyway, and the direction is the conservative one: that family
+// is the TIGHTER of the two (10/min against the disclosure family's 15/min per
+// user), the toggles are saved with their section's own Guardar rather than
+// flipped live in the middle of a situation — the use the disclosure family's
+// headroom exists for — and moving this URL would loosen the ceiling on every
+// other command it carries. What bounds this act is the ordinary "one person
+// editing their own records" budget: 10/min, 40/hr, 100/day per user.
 //
 // Both keep their OWN bucket names: a shared counter makes "which surface is
 // being hammered" unanswerable from the limiter's own storage.

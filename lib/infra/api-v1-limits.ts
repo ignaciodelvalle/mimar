@@ -1044,11 +1044,15 @@ export const API_V1_IP_BUCKET_FAMILIES: Readonly<Record<string, ApiV1IpFamily>> 
   // THE WRITE IS THE GENERIC AUTHENTICATED-WRITE FAMILY AND NOT
   // `pet-disclosure-write`, which is the neighbouring choice and the wrong one.
   // That family exists for writes that change WHAT OTHER PEOPLE MAY SEE of an
-  // animal — the lost-mode fan-out, a share link — and neither command here
-  // does: an identity correction publishes nothing new (the name was already on
-  // the public credential), and the emergency-contact override is read by
-  // nobody but the owner. What bounds this act is the ordinary "one person
-  // editing their own records" anchor.
+  // animal — the lost-mode fan-out, a share link. An identity correction
+  // publishes nothing new (the name was already on the public credential), and
+  // the emergency-contact override is read by nobody but the owner. Since
+  // owner-pet-actions the sectioned edit's two public-credential toggles DO
+  // change what others see; they stay here on purpose, because this family is
+  // the tighter of the two and the toggles are saved with a section's Guardar,
+  // not flipped mid-situation — the reasoning is in the route's own note. What
+  // bounds this act is the ordinary "one person editing their own records"
+  // anchor.
   api_v1_profile_read_ip: "authenticated-read",
   api_v1_profile_write_ip: "authenticated-write",
 

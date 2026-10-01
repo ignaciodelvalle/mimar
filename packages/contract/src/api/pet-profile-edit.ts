@@ -53,11 +53,14 @@
 //   · INTERNAL IDs, for the reason `owner-pet-detail.ts` states: this is what a
 //     stolen access token buys. `publicToken` is the animal's identity here.
 
+import type { PetSex } from "../input/intake.ts";
+import type { AcquisitionMethod } from "../input/pet-profile-fields.ts";
 import type {
   ServiceDogStatusV1,
   ServiceDogTypeV1,
   ServiceDogVisibilityV1,
 } from "../input/service-dog.ts";
+import type { TrainingLevel } from "../reference/pet-profile-options.ts";
 
 export const PET_PROFILE_EDIT_PAYLOAD_VERSION = 1;
 
@@ -211,7 +214,50 @@ export type PetProfileEditV1 = {
    * For the owner it is `{ designation: null }` when nothing was ever saved.
    */
   serviceDog: ServiceDogSectionV1 | null;
+  /**
+   * owner-pet-actions — everything else "Editar datos" pre-fills, by section.
+   * `null` when `capabilities.canEditProfile` is false: a boundary, not an empty
+   * form. It carries the owner's INSURANCE CONTRACT (a fact about the person,
+   * not the animal) and the free-text CONDITION description (medical), and
+   * neither reaches a viewer the owner panel does not let into "Editar datos".
+   *
+   * ADDITIVE, so `payloadVersion` stays 1: an installed build that knows nothing
+   * of this key keeps reading the payload it was built for.
+   */
+  profile: PetProfileDraftV1 | null;
   capabilities: PetProfileEditCapabilitiesV1;
+};
+
+/**
+ * The sectioned edit's fields as stored — what each section's form pre-fills.
+ *
+ * EVERY KEY IS ITS COLUMN'S NAME, camelCased (`pets.known_allergies` →
+ * `knownAllergies`), and nothing else: a wire key inherits the privacy class of
+ * the column it carries, and a key named after anything but its column would
+ * make that inheritance a matter of opinion. No new column and no new event key
+ * sits behind any of them.
+ *
+ * The birth date travels as the stored DATE and is never pre-computed into an
+ * age here: a client shows it with `petAgeFromBirthDate` and posts the age back,
+ * and the server keeps the date unless the age changed (`edit_profile`).
+ */
+export type PetProfileDraftV1 = {
+  sex: PetSex;
+  /** `YYYY-MM-DD` or null — the column is a `date`. */
+  dateOfBirth: string | null;
+  birthDateIsEstimated: boolean;
+  /** Empty when the column is null: what a picker pre-fills with. */
+  favouriteFoods: string[];
+  knownAllergies: string[];
+  trainingLevel: TrainingLevel | null;
+  /** Condition codes as stored — a legacy code the catalog dropped included. */
+  permanentConditions: string[];
+  permanentConditionsOther: string | null;
+  emergencyInfoVisible: boolean;
+  discloseConditionsPublicly: boolean;
+  insuranceCompany: string | null;
+  insurancePolicyNumber: string | null;
+  acquisitionMethod: AcquisitionMethod | null;
 };
 
 /**

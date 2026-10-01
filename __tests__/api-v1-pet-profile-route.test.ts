@@ -1321,6 +1321,63 @@ describe("POST — editar datos por sección", () => {
     }
   });
 
+  it("serves the rest of the profile to whoever may edit it, keyed by its columns", async () => {
+    const body = await (await read()).json();
+    // payloadVersion stays 1: the block is ADDITIVE, and an installed build that
+    // compares the version strictly must keep reading this payload.
+    expect(body.payloadVersion).toBe(1);
+    expect(body.profile).toEqual({
+      sex: "female",
+      dateOfBirth: "2021-03-04",
+      birthDateIsEstimated: false,
+      // Null array columns read as empty lists — what a picker pre-fills with.
+      favouriteFoods: [],
+      knownAllergies: [],
+      trainingLevel: null,
+      permanentConditions: [],
+      permanentConditionsOther: null,
+      emergencyInfoVisible: false,
+      discloseConditionsPublicly: false,
+      insuranceCompany: null,
+      insurancePolicyNumber: null,
+      acquisitionMethod: "adopted",
+    });
+  });
+
+  it("carries the insurance and the condition text the animal has", async () => {
+    control.access = () => ({
+      kind: "owner",
+      holderRole: "owner",
+      pet: petRow({
+        favouriteFoods: ["Dieta casera"],
+        permanentConditions: ["ciego", "otra"],
+        permanentConditionsOther: "displasia de cadera",
+        insuranceCompany: "Sancor Seguros",
+        insurancePolicyNumber: "POL-1",
+      }),
+    });
+    const body = await (await read()).json();
+    expect(body.profile).toMatchObject({
+      favouriteFoods: ["Dieta casera"],
+      permanentConditions: ["ciego", "otra"],
+      permanentConditionsOther: "displasia de cadera",
+      insuranceCompany: "Sancor Seguros",
+      insurancePolicyNumber: "POL-1",
+    });
+  });
+
+  it("withholds the block ENTIRELY — null, not an empty draft — from anybody else", async () => {
+    // The insurance contract is a fact about the OWNER and the condition text is
+    // medical; neither reaches a viewer the owner panel calls a caretaker, nor
+    // the org path.
+    for (const access of [asRole("caretaker"), asRole("shelter_custody"), asOrg()]) {
+      control.access = access;
+      const body = await (await read()).json();
+      expect(body.capabilities.canEditProfile).toBe(false);
+      expect(body.profile).toBeNull();
+    }
+  });
+
   it("reports the same gate on the read, so no screen offers what the write refuses", async () => {
     const expectations: Array<[() => unknown, boolean]> = [
       [asRole("owner"), true],

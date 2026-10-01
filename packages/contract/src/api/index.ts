@@ -339,6 +339,7 @@ export {
   type PetEmergencyAccountDefaultV1,
   type PetEmergencyDraftV1,
   type PetIdentityDraftV1,
+  type PetProfileDraftV1,
   type PetProfileEditAckV1,
   type PetProfileEditCapabilitiesV1,
   type PetProfileEditV1,

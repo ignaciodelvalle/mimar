@@ -25,6 +25,7 @@ import type { ServiceDogDesignationRow } from "@/src/modules/pets/application/se
 import {
   PET_PROFILE_EDIT_PAYLOAD_VERSION,
   PET_PROFILE_EDIT_STALE_AFTER_MS,
+  type PetProfileDraftV1,
   type PetProfileEditCapabilitiesV1,
   type PetProfileEditV1,
   type ServiceDogDesignationV1,
@@ -45,6 +46,23 @@ export type ProfilePetRow = {
   preferredVetPhone: string | null;
   emergencyContactName: string | null;
   emergencyContactPhone: string | null;
+} & PetProfileDraftColumns;
+
+/** The columns behind `PetProfileDraftV1`, one per wire key. */
+type PetProfileDraftColumns = {
+  sex: PetProfileDraftV1["sex"];
+  dateOfBirth: string | null;
+  birthDateIsEstimated: boolean;
+  favouriteFoods: string[] | null;
+  knownAllergies: string[] | null;
+  trainingLevel: PetProfileDraftV1["trainingLevel"];
+  permanentConditions: string[];
+  permanentConditionsOther: string | null;
+  emergencyInfoVisible: boolean;
+  discloseConditionsPublicly: boolean;
+  insuranceCompany: string | null;
+  insurancePolicyNumber: string | null;
+  acquisitionMethod: PetProfileDraftV1["acquisitionMethod"];
 };
 
 /** The access record, minus the `none` arm the caller has already turned into a 404. */
@@ -199,7 +217,34 @@ export function buildPetProfileEditV1({
     serviceDog: capabilities.canManageServiceDog
       ? { designation: serviceDog === null ? null : serviceDogDesignation(serviceDog) }
       : null,
+    // The owner's insurance and the medical free text ride in here, so the block
+    // exists only under the gate the write enforces — `null` for anybody else.
+    profile: capabilities.canEditProfile ? profileDraft(pet) : null,
     capabilities,
+  };
+}
+
+/**
+ * The row → the sectioned edit's pre-fill. Named fields, never a spread: a
+ * column added to the row must not reach the wire without somebody deciding it
+ * should. Null array columns read as empty lists, which is what a picker
+ * pre-fills with and what the web form shows.
+ */
+function profileDraft(pet: ProfilePetRow): PetProfileDraftV1 {
+  return {
+    sex: pet.sex,
+    dateOfBirth: pet.dateOfBirth,
+    birthDateIsEstimated: pet.birthDateIsEstimated,
+    favouriteFoods: pet.favouriteFoods ?? [],
+    knownAllergies: pet.knownAllergies ?? [],
+    trainingLevel: pet.trainingLevel,
+    permanentConditions: pet.permanentConditions,
+    permanentConditionsOther: pet.permanentConditionsOther,
+    emergencyInfoVisible: pet.emergencyInfoVisible,
+    discloseConditionsPublicly: pet.discloseConditionsPublicly,
+    insuranceCompany: pet.insuranceCompany,
+    insurancePolicyNumber: pet.insurancePolicyNumber,
+    acquisitionMethod: pet.acquisitionMethod,
   };
 }
 
