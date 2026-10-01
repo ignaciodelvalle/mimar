@@ -2,7 +2,8 @@
 // (viajes-fase-2, task 6.2).
 //
 // THE WHOLE OWNER FLOW, IN THE APP. The web's /viaje page registers a trip,
-// records a CVI, cancels a trip and reads the semáforo; every one of those is
+// records a CVI, cancels a trip, ticks "Lo tengo" for each paper the trip asks
+// for, and reads the semáforo; every one of those is
 // here, through `GET|POST /pets/{token}/travel`, which reach the SAME loader and
 // the SAME use-cases the web page reaches. Nothing on this screen sends anybody
 // to a browser.
@@ -12,13 +13,17 @@
 // header for why it never derives a verdict). The disclaimers travel with every
 // reading and are drawn with every reading.
 //
-// ONE KEY PER ATTEMPT, three kinds of attempt. The trip form and the CVI form
+// ONE KEY PER ATTEMPT, four kinds of attempt. The trip form and the CVI form
 // each hold an attempt session (`pets/idempotency.ts`): the key is minted on the
 // first submit and reused on every retry of that same submit, so a retry that
 // lost its response answers `replayed: true` instead of appending a second trip.
 // A landed write restarts it — the next trip is a different trip. Cancels hold
 // one session PER TRIP, so a cancel of trip B can never reuse the key of an
-// earlier cancel of trip A that may have landed unheard.
+// earlier cancel of trip A that may have landed unheard. A paper's tick holds
+// one session per (trip, paper, direction), for the same reason: a tick, its
+// untick and a second tick are three writes, never a replay of one another.
+// While any write is in flight every tick is disabled, so two papers are never
+// ticked at once (the server reads the current ticks, then appends the list).
 //
 // THE READ IS RE-DONE AFTER EVERY WRITE, NOT PATCHED — the semáforo of a new
 // trip, or of a trip after a new CVI, is the server's to compute. And a re-read
@@ -73,13 +78,16 @@ import {
   type TripDraft,
   airlineNoticeBody,
   buildCancelTrip,
+  buildConfirmDocument,
   buildCvi,
   buildTrip,
   cancelQuestion,
   contributorsLine,
   cviIssuedBounds,
   cviLine,
+  documentStatusLine,
   noTripLine,
+  obligationDocuments,
   obligationSections,
   requirementLevelLabel,
   selectedTrip,
@@ -109,7 +117,12 @@ type ScreenState =
 
 type Notice = { tone: "ok" | "err"; message: string } | null;
 
-type Busy = { what: "trip" } | { what: "cvi" } | { what: "cancel"; tripEventId: string } | null;
+type Busy =
+  | { what: "trip" }
+  | { what: "cvi" }
+  | { what: "cancel"; tripEventId: string }
+  | { what: "document"; label: string }
+  | null;
 
 /** The picker's "not chosen" option. `Choice` takes strings; `""` is none. */
 const NONE = "";
@@ -140,6 +153,7 @@ export function TravelScreen({ publicToken }: { publicToken: string }) {
   const tripAttempt = useRef(createAttemptSession());
   const cviAttempt = useRef(createAttemptSession());
   const cancelAttempts = useRef(new Map<string, AttemptSession>());
+  const documentAttempts = useRef(new Map<string, AttemptSession>());
 
   // A stale response must not overwrite a newer one when a trip switch and a
   // write's re-read overlap — the counter every sibling screen keeps.
@@ -254,6 +268,29 @@ export function TravelScreen({ publicToken }: { publicToken: string }) {
     [send, load],
   );
 
+  const confirmDocument = useCallback(
+    async (trip: PetTravelTripV1, label: string, confirmed: boolean) => {
+      const built = buildConfirmDocument(trip.tripEventId, label, confirmed);
+      if (!built.ok) {
+        setNotice({ tone: "err", message: built.message });
+        return;
+      }
+      const sessionKey = `${trip.tripEventId}\u0000${label}\u0000${confirmed}`;
+      const sessions = documentAttempts.current;
+      let session = sessions.get(sessionKey);
+      if (session === undefined) {
+        session = createAttemptSession();
+        sessions.set(sessionKey, session);
+      }
+      const ack = await send(built.input, session.key(), { what: "document", label });
+      if (ack === null || ack.command !== "confirm_trip_document") return;
+      session.restart();
+      // The obligation's colour is the server's to recompute.
+      await load("refresh");
+    },
+    [send, load],
+  );
+
   if (state.phase === "loading") {
     return (
       <Screen>
@@ -315,6 +352,7 @@ export function TravelScreen({ publicToken }: { publicToken: string }) {
           onAskCancel={() => setConfirmingCancel(trip.tripEventId)}
           onBackFromCancel={() => setConfirmingCancel(null)}
           onConfirmCancel={() => void cancelTrip(trip)}
+          onConfirmDocument={(label, confirmed) => void confirmDocument(trip, label, confirmed)}
         />
       ) : null}
 
@@ -432,6 +470,7 @@ function TripReading({
   onAskCancel,
   onBackFromCancel,
   onConfirmCancel,
+  onConfirmDocument,
 }: {
   view: PetTravelV1;
   trip: PetTravelTripV1;
@@ -441,6 +480,7 @@ function TripReading({
   onAskCancel: () => void;
   onBackFromCancel: () => void;
   onConfirmCancel: () => void;
+  onConfirmDocument: (label: string, confirmed: boolean) => void;
 }) {
   const compliance = view.compliance;
   return (
@@ -479,7 +519,14 @@ function TripReading({
 
       {compliance !== null
         ? obligationSections(compliance, trip).map((section) => (
-            <ObligationGroupCard key={section.group} section={section} trip={trip} />
+            <ObligationGroupCard
+              key={section.group}
+              section={section}
+              trip={trip}
+              canRecord={view.capabilities.canRecord}
+              busy={busy}
+              onConfirmDocument={onConfirmDocument}
+            />
           ))
         : null}
     </>
@@ -596,9 +643,15 @@ function CancelControl({
 function ObligationGroupCard({
   section,
   trip,
+  canRecord,
+  busy,
+  onConfirmDocument,
 }: {
   section: ObligationSection;
   trip: PetTravelTripV1;
+  canRecord: boolean;
+  busy: Busy;
+  onConfirmDocument: (label: string, confirmed: boolean) => void;
 }) {
   return (
     <Card title={section.title}>
@@ -611,20 +664,56 @@ function ObligationGroupCard({
         <Body>{NO_OBLIGATIONS_LINE}</Body>
       ) : (
         section.obligations.map((obligation) => (
-          <ObligationItem key={obligation.id} obligation={obligation} />
+          <ObligationItem
+            key={obligation.id}
+            obligation={obligation}
+            canRecord={canRecord}
+            busy={busy}
+            onConfirmDocument={onConfirmDocument}
+          />
         ))
       )}
     </Card>
   );
 }
 
-function ObligationItem({ obligation }: { obligation: PetTravelObligationV1 }) {
+function ObligationItem({
+  obligation,
+  canRecord,
+  busy,
+  onConfirmDocument,
+}: {
+  obligation: PetTravelObligationV1;
+  canRecord: boolean;
+  busy: Busy;
+  onConfirmDocument: (label: string, confirmed: boolean) => void;
+}) {
   const contributors = contributorsLine(obligation);
   return (
     <View style={{ gap: 4, paddingVertical: 8 }}>
       <Row label={obligation.label} value={requirementLevelLabel(obligation.requirementLevel)} />
       <Body>{obligation.state}</Body>
       {obligation.detail ? <Body>{obligation.detail}</Body> : null}
+      {obligationDocuments(obligation).map((document) => (
+        // One paper: what the owner said about it, and the tick that says it.
+        <View key={document.label} style={{ gap: 4, paddingVertical: 4 }}>
+          <Row label={document.label} value={documentStatusLine(document)} />
+          {canRecord ? (
+            <SecondaryButton
+              label={
+                busy?.what === "document" && busy.label === document.label
+                  ? "Guardando…"
+                  : document.confirmed
+                    ? "Desmarcar"
+                    : "Lo tengo"
+              }
+              accessibilityHint={`${document.confirmed ? "Desmarca" : "Marca"} ${document.label}.`}
+              disabled={busy !== null}
+              onPress={() => onConfirmDocument(document.label, !document.confirmed)}
+            />
+          ) : null}
+        </View>
+      ))}
       {obligation.freshnessNotice ? (
         // A degraded datum is never drawn as settled (spec travel-reference-
         // freshness): the notice is a warning box, not a grey footnote.

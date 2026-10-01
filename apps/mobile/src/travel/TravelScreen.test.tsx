@@ -352,6 +352,90 @@ describe("TravelScreen — cancelling a trip", () => {
   });
 });
 
+describe("TravelScreen — 'Lo tengo' per paper (PO 2026-10-01)", () => {
+  const PAPERS = {
+    id: "required_documents",
+    group: "destino" as const,
+    label: "Documentación a presentar",
+    state: "Confirmá que tenés cada documento",
+    detail: "Sin confirmar: Permiso de importación",
+    requirementLevel: "warning" as const,
+    contributingJurisdictions: ["Chile"],
+    sources: [],
+    freshnessNotice: null,
+    legalFootnote: "Regla del corredor de viaje · Chile",
+    documents: [
+      { label: "Certificado veterinario", confirmed: true },
+      { label: "Permiso de importación", confirmed: false },
+    ],
+  };
+
+  function withPapers(over: Partial<PetTravelV1> = {}) {
+    const base = payload(over);
+    if (base.compliance === null) throw new Error("fixture: a trip has a reading");
+    return { ...base, compliance: { ...base.compliance, obligations: [PAPERS] } };
+  }
+
+  it("shows each paper with what the owner said, and ticks one with confirm_trip_document", async () => {
+    mockFetch.mockResolvedValue({ outcome: "ok", payload: withPapers() });
+    mockSend.mockResolvedValue({
+      outcome: "ok",
+      payload: { command: "confirm_trip_document", tripEventId: TRIP_A, changed: true },
+    });
+    render(<TravelScreen publicToken={TOKEN} />);
+    expect(await screen.findByText("Lo tenés, según indicaste")).toBeOnTheScreen();
+    expect(screen.getByText("Sin confirmar")).toBeOnTheScreen();
+    expect(screen.getByText("Desmarcar")).toBeOnTheScreen();
+
+    fireEvent.press(screen.getByText("Lo tengo"));
+    await waitFor(() =>
+      expect(mockSend).toHaveBeenCalledWith(
+        {},
+        TOKEN,
+        {
+          command: "confirm_trip_document",
+          tripEventId: TRIP_A,
+          document: "Permiso de importación",
+          confirmed: true,
+        },
+        mockKeys[0],
+      ),
+    );
+    expect(await screen.findByText("Documento actualizado.")).toBeOnTheScreen();
+    // The obligation's colour is the server's: the reading is re-done.
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+  });
+
+  it("takes a tick back with confirmed: false, under a key of its own", async () => {
+    mockFetch.mockResolvedValue({ outcome: "ok", payload: withPapers() });
+    mockSend.mockResolvedValue({
+      outcome: "ok",
+      payload: { command: "confirm_trip_document", tripEventId: TRIP_A, changed: true },
+    });
+    render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Desmarcar");
+    fireEvent.press(screen.getByText("Desmarcar"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+    expect(mockSend.mock.calls[0]?.[2]).toEqual({
+      command: "confirm_trip_document",
+      tripEventId: TRIP_A,
+      document: "Certificado veterinario",
+      confirmed: false,
+    });
+  });
+
+  it("lists the papers without a tick when nothing may be recorded", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: withPapers({ capabilities: { canRecord: false } }),
+    });
+    render(<TravelScreen publicToken={TOKEN} />);
+    expect(await screen.findByText("Permiso de importación")).toBeOnTheScreen();
+    expect(screen.queryByText("Lo tengo")).toBeNull();
+    expect(screen.queryByText("Desmarcar")).toBeNull();
+  });
+});
+
 describe("TravelScreen — the travel PDF, from the phone (task 6.5)", () => {
   // The file modules are the global spies from jest.setup.js; their defaults
   // are the happy path (a share target exists, the sheet closes).

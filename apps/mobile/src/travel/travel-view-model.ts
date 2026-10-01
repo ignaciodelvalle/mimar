@@ -28,6 +28,7 @@ import {
   type PetTravelCommandAckV1,
   type PetTravelComplianceV1,
   type PetTravelCviV1,
+  type PetTravelDocumentV1,
   type PetTravelObligationV1,
   type PetTravelSemaforoV1,
   type PetTravelSourceV1,
@@ -165,6 +166,19 @@ export function sourceLine(source: PetTravelSourceV1): string {
   return `Fuente: ${source.label}, revisada el ${isoToDateInput(source.lastVerifiedAt)}`;
 }
 
+/**
+ * What a paper's line says under it (PO 2026-10-01) — the web's words. It
+ * records what the OWNER said; it never says the paper is valid.
+ */
+export function documentStatusLine(document: PetTravelDocumentV1): string {
+  return document.confirmed ? "Lo tenés, según indicaste" : "Sin confirmar";
+}
+
+/** The papers an obligation lists; an older server sends none. */
+export function obligationDocuments(obligation: PetTravelObligationV1): PetTravelDocumentV1[] {
+  return obligation.documents ?? [];
+}
+
 /** "AR-123: emitido el 01/10/2026, válido hasta el 11/10/2026". */
 export function cviLine(cvi: PetTravelCviV1): string {
   const until = cvi.validUntil ? `, válido hasta el ${isoToDateInput(cvi.validUntil)}` : "";
@@ -252,6 +266,8 @@ export function travelInputCodeMessage(code: PetTravelCommandInputCode | null): 
       return "La fecha de vencimiento no puede ser anterior a la de emisión.";
     case "TRIP_ID_REQUIRED":
       return "No pudimos identificar ese viaje. Volvé a abrir la pantalla.";
+    case "DOCUMENT_REQUIRED":
+      return "No pudimos identificar ese documento. Volvé a abrir la pantalla.";
     case "COMMAND_REQUIRED":
     case null:
       return "No pudimos armar el pedido. Revisá los datos y volvé a intentar.";
@@ -300,6 +316,18 @@ export function buildCancelTrip(tripEventId: string): TravelCommandResult {
   return fromParse({ command: "cancel_trip", tripEventId });
 }
 
+/**
+ * "LO TENGO" for one paper of a trip, or the tick taken back — a correction
+ * appended through the amendment path, as on the web (PO 2026-10-01).
+ */
+export function buildConfirmDocument(
+  tripEventId: string,
+  document: string,
+  confirmed: boolean,
+): TravelCommandResult {
+  return fromParse({ command: "confirm_trip_document", tripEventId, document, confirmed });
+}
+
 /** The two-step cancel's question, naming the trip — the web's wording. */
 export function cancelQuestion(trip: PetTravelTripV1): string {
   return `¿Cancelar el viaje a ${tripLabel(trip)}? Deja de figurar en esta pantalla y en el semáforo.`;
@@ -320,6 +348,8 @@ export function travelAckMessage(ack: PetTravelCommandAckV1): string {
       return ack.replayed ? "Ese CVI ya estaba registrado." : "CVI registrado.";
     case "cancel_trip":
       return ack.changed ? "Viaje cancelado." : "Ese viaje ya estaba cancelado.";
+    case "confirm_trip_document":
+      return ack.changed ? "Documento actualizado." : "Ese documento ya estaba así.";
   }
 }
 

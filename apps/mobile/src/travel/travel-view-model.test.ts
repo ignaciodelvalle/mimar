@@ -24,10 +24,13 @@ import {
   EMPTY_CVI_DRAFT,
   EMPTY_TRIP_DRAFT,
   buildCancelTrip,
+  buildConfirmDocument,
   buildCvi,
   buildTrip,
   cviIssuedBounds,
   cviLine,
+  documentStatusLine,
+  obligationDocuments,
   obligationSections,
   selectedTrip,
   semaforoTone,
@@ -229,6 +232,34 @@ describe("forms", () => {
     });
     expect(buildCancelTrip("nope").ok).toBe(false);
   });
+
+  it("ticks a paper by the trip's id and the document's own label", () => {
+    expect(buildConfirmDocument(TRIP.tripEventId, "Certificado veterinario", true)).toEqual({
+      ok: true,
+      input: {
+        command: "confirm_trip_document",
+        tripEventId: TRIP.tripEventId,
+        document: "Certificado veterinario",
+        confirmed: true,
+      },
+    });
+    const blank = buildConfirmDocument(TRIP.tripEventId, "  ", false);
+    expect(blank).toMatchObject({ ok: false, code: "DOCUMENT_REQUIRED" });
+  });
+});
+
+describe("papers to carry (PO 2026-10-01)", () => {
+  it("says what the owner said about each paper, never that it is valid", () => {
+    expect(documentStatusLine({ label: "CVI", confirmed: true })).toBe("Lo tenés, según indicaste");
+    expect(documentStatusLine({ label: "CVI", confirmed: false })).toBe("Sin confirmar");
+  });
+
+  it("reads no papers from a server that sends none", () => {
+    expect(obligationDocuments(obligation({}))).toEqual([]);
+    expect(
+      obligationDocuments(obligation({ documents: [{ label: "CVI", confirmed: false }] })),
+    ).toEqual([{ label: "CVI", confirmed: false }]);
+  });
 });
 
 describe("acknowledgements", () => {
@@ -245,6 +276,9 @@ describe("acknowledgements", () => {
     expect(travelAckMessage({ command: "cancel_trip", tripEventId: "t", changed: false })).toBe(
       "Ese viaje ya estaba cancelado.",
     );
+    expect(
+      travelAckMessage({ command: "confirm_trip_document", tripEventId: "t", changed: false }),
+    ).toBe("Ese documento ya estaba así.");
   });
 });
 
