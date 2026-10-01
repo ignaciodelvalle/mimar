@@ -30,7 +30,7 @@
  *      push can exit 0 having created a quarter of the schema, and a bootstrap
  *      that trusts the exit code carries that forward (see verifySchemaLanded).
  *   3. Apply the non-RLS orthogonal `db/*.sql` STRICTLY:
- *        triggers.sql → storage.sql → welfare_storage.sql
+ *        triggers.sql → storage.sql → welfare_storage.sql → exports_storage.sql
  *      These files are normally pasted into Studio by hand (see the header of
  *      db/triggers.sql). RLS is NOT applied here anymore — it lives in the
  *      migration tree (db/migrations/0086_track_rls_in_migrations.sql, applied
@@ -575,7 +575,15 @@ header("Step 3/4 — apply db/*.sql (triggers, RLS, storage) — STRICT");
 // applied here, so RLS is applied exactly once and there is no double-application conflict.
 // can_read_case() is defined by migration 0034 (also replayed in step 2). This list keeps
 // only the non-RLS-policy orthogonal SQL (triggers + storage buckets/policies).
-const ORTHOGONAL_ORDER = ["db/triggers.sql", "db/storage.sql", "db/welfare_storage.sql"];
+// exports_storage.sql creates the private export buckets (welfare, PPP, travel)
+// deploy-provision already applies; without it a bootstrapped DB answers every
+// PDF export with "No pudimos guardar el PDF" (e2e/viaje.spec.ts exports one).
+const ORTHOGONAL_ORDER = [
+  "db/triggers.sql",
+  "db/storage.sql",
+  "db/welfare_storage.sql",
+  "db/exports_storage.sql",
+];
 
 for (const sqlPath of ORTHOGONAL_ORDER) {
   if (!existsSync(sqlPath)) {

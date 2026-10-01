@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-10-01",
-  "sha": "db8faf582",
+  "sha": "db352b2a5",
   "facts": {
     "event_types": {
       "value": 56,
@@ -93,7 +93,7 @@
       "method": "discoverTestFiles().length, imported from the SAME module `vitest.config.ts` feeds into its `include` globs via computeTestPartition(). It walks the repo for /\\.test\\.tsx?$/ skipping node_modules, .next, .git, .claude, apps and e2e — so this is exactly the file set Vitest runs, not an independent glob that could drift from it."
     },
     "e2e_specs": {
-      "value": 48,
+      "value": 49,
       "source": "e2e/**/*.spec.ts",
       "method": "files ending in `.spec.ts` under `e2e/`. Playwright's own `testIgnore` drops `demo/**` and `perf/**` at run time, so fewer than this actually run in the default project."
     },

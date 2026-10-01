@@ -70,6 +70,14 @@ explicit `env:` block is untouched. See `scripts/run-e2e.ts`; a bare
   is a refusal, so it never spends `auth_login_email` — the EMAIL-keyed budget
   whose reset helper is local-DB-only and which a serial staging run shares with
   every spec that logs in.
+- `viaje.spec.ts` — the OWNER's travel flow on `/mis-mascotas/[token]/viaje`:
+  record a trip (Chile + LATAM in cabin), read its semáforo, record a CVI,
+  export the PDF and fetch the signed URL, then cancel. Between the export and
+  the cancel, a caretaker of the same pet (a real accepted grant, as in
+  `caretaker-temporal.spec.ts`) is shown to see none of it: no "Viaje y
+  movilidad" row, the titular notice on `/viaje`, and `branded-not-found` on
+  the trip's own event URL. The export needs the `travel-exports` bucket,
+  which `pnpm db:bootstrap` creates from `db/exports_storage.sql`.
 - `public-smoke.spec.ts`, `auth.spec.ts`, `auth-bypass.spec.ts`,
   `create-pet.spec.ts`, `cross-tenant-isolation.spec.ts`,
   `owner-shell.spec.ts`, `admin-topbar.spec.ts`, `executive-smoke.spec.ts`,

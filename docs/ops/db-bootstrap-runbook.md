@@ -17,7 +17,7 @@ interference, psql path on Windows, etc.).
 | 1 | `pnpm db:push` — drizzle-kit syncs `db/schema.ts` → DB (tables, enums, indexes, FKs) |
 | 2 | Replay `db/migrations/*.sql` best-effort (CHECK constraints, functions, triggers) |
 | 2.5 | Baseline `_dim_migrations` tracking table so `db:migrate` is a no-op after bootstrap |
-| 3 | Apply `db/triggers.sql`, `db/storage.sql`, `db/welfare_storage.sql` STRICT |
+| 3 | Apply `db/triggers.sql`, `db/storage.sql`, `db/welfare_storage.sql`, `db/exports_storage.sql` STRICT |
 | 4 | Seed reference data: INDEC localities, CABA barrios, test users |
 
 ```
