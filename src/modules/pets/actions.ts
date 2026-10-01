@@ -45,6 +45,7 @@ import { fetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
 import { resolvePppClassificationForJurisdiction } from "@/lib/infra/ppp-classification";
 import { uploadAttachmentIfPresent } from "@/lib/infra/uploads";
 import { eventPlaceFromGate } from "@/lib/place/event-place";
+import { resolvePetProfileTextLengths } from "@dim/contract/input";
 
 /**
  * Parses the domain layer's `estimatedWeightKg: string | null` into the
@@ -453,6 +454,12 @@ export async function updatePetAction(
   });
   parsed.dateOfBirth = birth.dateOfBirth;
   parsed.birthDateIsEstimated = birth.birthDateIsEstimated;
+
+  // The free text of Salud and Seguro, under the app door's own gate: a NEW
+  // value past its cap is refused with the contract's sentence; what the animal
+  // already carries stays savable at any length.
+  const lengths = resolvePetProfileTextLengths({ health: parsed, insurance: parsed }, existingPet);
+  if (!lengths.ok) return { error: lengths.message };
 
   // Breed catalog gate (QA A4) — same as createPetAction, with one exception:
   // re-submitting the pet's CURRENT stored breed unchanged is accepted even

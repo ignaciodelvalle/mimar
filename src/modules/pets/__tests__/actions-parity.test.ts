@@ -12,6 +12,11 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  PET_INSURANCE_COMPANY_MAX,
+  PET_INSURANCE_POLICY_MAX,
+  PET_PROFILE_TEXT_LENGTH_MESSAGES,
+} from "@dim/contract/input";
 import { petAgeFromBirthDate } from "@dim/contract/reference";
 
 // ---------------------------------------------------------------------------
@@ -810,6 +815,51 @@ describe("updatePetAction", () => {
         years: 12,
         months: 0,
       });
+    });
+  });
+
+  // The same length gate the app's edit_profile passes, from the same contract
+  // function: a NEW value past its cap is refused with the contract's own es-AR
+  // sentence, and what the animal already has stays savable at any length.
+  describe("the free text an edit stores", () => {
+    async function withStoredInsurance(insuranceCompany: string | null) {
+      const petAccessMod = await import("@/lib/infra/pet-access");
+      // The beforeEach's own answer, with the one column this block varies.
+      const base = await vi.mocked(petAccessMod.requireTitularAccess)("DIM-TEST-0001");
+      petAccessMod.requireTitularAccess = vi.fn().mockResolvedValue({
+        ...base,
+        pet: { ...base.pet, insuranceCompany },
+      });
+    }
+
+    it("refuses a NEW policy number past its cap, naming the cap, and writes nothing", async () => {
+      await withStoredInsurance(null);
+      const { updatePet } = await import("@/src/modules/pets/application/update-pet");
+
+      const result = await updatePetAction(
+        "DIM-TEST-0001",
+        { error: null },
+        makeUpdateFormData({ insurancePolicyNumber: "9".repeat(PET_INSURANCE_POLICY_MAX + 1) }),
+      );
+
+      expect(result.error).toBe(PET_PROFILE_TEXT_LENGTH_MESSAGES.INSURANCE_POLICY_TOO_LONG);
+      expect(updatePet).not.toHaveBeenCalled();
+    });
+
+    it("saves the animal's own over-long company, posted back unchanged", async () => {
+      const legacy = "Aseguradora ".repeat(10).trim();
+      expect(legacy.length).toBeGreaterThan(PET_INSURANCE_COMPANY_MAX);
+      await withStoredInsurance(legacy);
+      const { updatePet } = await import("@/src/modules/pets/application/update-pet");
+
+      const state = await updatePetAction(
+        "DIM-TEST-0001",
+        { error: null },
+        makeUpdateFormData({ insuranceCompany: legacy }),
+      );
+
+      expect(state.redirectTo).toBe("/mis-mascotas/DIM-TEST-0001");
+      expect(updatePet).toHaveBeenCalledTimes(1);
     });
   });
 

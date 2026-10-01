@@ -28,6 +28,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { PET_ALLERGY_ENTRY_MAX, PET_INSURANCE_COMPANY_MAX } from "@dim/contract/input";
 import { petAgeFromBirthDate } from "@dim/contract/reference";
 
 const OWNER_ID = "11111111-1111-4111-8111-111111111111";
@@ -1292,6 +1293,54 @@ describe("POST — editar datos por sección", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "profile_breed_invalid" });
     expect(control.writes).toHaveLength(0);
+  });
+
+  it("refuses NEW free text past its cap, writing nothing", async () => {
+    // The security review's finding: the sections took any length, and a
+    // pet_profile_updated payload cannot be trimmed after the fact.
+    for (const body of [
+      {
+        ...NO_SECTIONS,
+        insurance: {
+          insuranceCompany: "x".repeat(PET_INSURANCE_COMPANY_MAX + 1),
+          insurancePolicyNumber: null,
+        },
+      },
+      {
+        ...NO_SECTIONS,
+        health: {
+          favouriteFoods: [],
+          knownAllergies: ["x".repeat(PET_ALLERGY_ENTRY_MAX + 1)],
+          trainingLevel: null,
+          permanentConditions: [],
+          permanentConditionsOther: null,
+        },
+      },
+    ]) {
+      control.writes = [];
+      const response = await send(body);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "invalid_request" });
+      expect(control.writes).toHaveLength(0);
+    }
+  });
+
+  it("keeps the animal's own over-long text savable — the cap is for new values", async () => {
+    const legacyCompany = "x".repeat(PET_INSURANCE_COMPANY_MAX + 10);
+    control.access = () => ({
+      kind: "owner",
+      holderRole: "owner",
+      pet: petRow({ insuranceCompany: legacyCompany }),
+    });
+    const response = await send({
+      ...NO_SECTIONS,
+      insurance: { insuranceCompany: legacyCompany, insurancePolicyNumber: "POL-2" },
+    });
+    expect(response.status).toBe(200);
+    expect(composed()).toMatchObject({
+      insuranceCompany: legacyCompany,
+      insurancePolicyNumber: "POL-2",
+    });
   });
 
   it("refuses a body that leaves a section key out — absent is not 'leave it'", async () => {

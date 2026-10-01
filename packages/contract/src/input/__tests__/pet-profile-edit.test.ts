@@ -20,12 +20,22 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  PET_ALLERGIES_MAX,
+  PET_ALLERGY_ENTRY_MAX,
   PET_COLOR_MAX,
+  PET_CONDITION_OTHER_MAX,
+  PET_FOODS_MAX,
+  PET_FOOD_ENTRY_MAX,
+  PET_INSURANCE_COMPANY_MAX,
+  PET_INSURANCE_POLICY_MAX,
   PET_NAME_MAX,
+  PET_PROFILE_TEXT_LENGTH_CODES,
+  PET_PROFILE_TEXT_LENGTH_MESSAGES,
   firstPetProfileCommandInputCode,
   petIdentityFieldCap,
   petProfileCommandInputSchema,
   resolvePetIdentityLengths,
+  resolvePetProfileTextLengths,
 } from "../pet-profile-edit.ts";
 
 /** The first input code for a body, or `null` when the body parses. */
@@ -389,5 +399,241 @@ describe("edit_profile — Editar datos by section (owner-pet-actions)", () => {
 
   it("still refuses a blank name inside the identity section", () => {
     expect(codeFor({ ...NOTHING, identity: { ...IDENTITY, name: "   " } })).toBe("NAME_REQUIRED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The free text of "Salud y cuidados" and "Seguro" — capped for NEW values only
+// ---------------------------------------------------------------------------
+//
+// Same rule as the name and the colour above, for the same reason: the web's
+// form parser never capped these columns, so longer values already exist, and a
+// cap that refused them on the way back out would lock an owner out of the
+// section that carries one. A value the animal already has passes at any length;
+// a value being typed now does not.
+
+describe("resolvePetProfileTextLengths — the free text of Salud y Seguro", () => {
+  /** What the animal has today: short, ordinary values. */
+  const STORED_TEXT = {
+    favouriteFoods: ["Dieta casera"],
+    knownAllergies: ["Pollo"],
+    permanentConditionsOther: null,
+    insuranceCompany: "Sancor Seguros",
+    insurancePolicyNumber: "POL-1",
+  };
+
+  const health = (over: Partial<Record<string, unknown>> = {}) => ({
+    favouriteFoods: ["Dieta casera"],
+    knownAllergies: ["Pollo"],
+    permanentConditions: [] as string[],
+    permanentConditionsOther: null as string | null,
+    ...over,
+  });
+
+  const insurance = (over: Partial<Record<string, unknown>> = {}) => ({
+    insuranceCompany: "Sancor Seguros" as string | null,
+    insurancePolicyNumber: "POL-1" as string | null,
+    ...over,
+  });
+
+  const over = (cap: number) => "x".repeat(cap + 1);
+
+  it("admits sections left alone, and values within every cap", () => {
+    expect(resolvePetProfileTextLengths({ health: null, insurance: null }, STORED_TEXT)).toEqual({
+      ok: true,
+    });
+    expect(
+      resolvePetProfileTextLengths({ health: health(), insurance: insurance() }, STORED_TEXT),
+    ).toEqual({ ok: true });
+  });
+
+  it("refuses a NEW insurance company past the cap, with a sentence naming the cap", () => {
+    const answer = resolvePetProfileTextLengths(
+      { health: null, insurance: insurance({ insuranceCompany: over(PET_INSURANCE_COMPANY_MAX) }) },
+      STORED_TEXT,
+    );
+    expect(answer).toEqual({
+      ok: false,
+      code: "INSURANCE_COMPANY_TOO_LONG",
+      message: `El nombre de la aseguradora es demasiado largo (máximo ${PET_INSURANCE_COMPANY_MAX} caracteres).`,
+    });
+  });
+
+  it("refuses a NEW policy number past ITS cap, which is not the company's", () => {
+    const answer = resolvePetProfileTextLengths(
+      {
+        health: null,
+        insurance: insurance({ insurancePolicyNumber: over(PET_INSURANCE_POLICY_MAX) }),
+      },
+      STORED_TEXT,
+    );
+    expect(answer.ok).toBe(false);
+    if (!answer.ok) expect(answer.code).toBe("INSURANCE_POLICY_TOO_LONG");
+    // Within the company's cap and past the policy's: the two numbers differ.
+    expect(PET_INSURANCE_POLICY_MAX).toBeLessThan(PET_INSURANCE_COMPANY_MAX);
+  });
+
+  it("ADMITS the animal's own over-long company and policy, posted back unchanged", () => {
+    const legacy = {
+      ...STORED_TEXT,
+      insuranceCompany: over(PET_INSURANCE_COMPANY_MAX),
+      insurancePolicyNumber: over(PET_INSURANCE_POLICY_MAX),
+    };
+    expect(
+      resolvePetProfileTextLengths(
+        {
+          health: null,
+          insurance: insurance({
+            // Whitespace around a carried-over value is not a new value.
+            insuranceCompany: ` ${legacy.insuranceCompany} `,
+            insurancePolicyNumber: legacy.insurancePolicyNumber,
+          }),
+        },
+        legacy,
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it("refuses a DIFFERENT over-long company even on an animal that already has one", () => {
+    const legacy = { ...STORED_TEXT, insuranceCompany: over(PET_INSURANCE_COMPANY_MAX) };
+    const answer = resolvePetProfileTextLengths(
+      {
+        health: null,
+        insurance: insurance({ insuranceCompany: `${over(PET_INSURANCE_COMPANY_MAX)}y` }),
+      },
+      legacy,
+    );
+    expect(answer.ok).toBe(false);
+  });
+
+  it("caps each NEW allergy and each NEW food, and keeps the ones already stored", () => {
+    const longAllergy = over(PET_ALLERGY_ENTRY_MAX);
+    const refused = resolvePetProfileTextLengths(
+      { health: health({ knownAllergies: ["Pollo", longAllergy] }), insurance: null },
+      STORED_TEXT,
+    );
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) {
+      expect(refused.code).toBe("ALLERGY_TOO_LONG");
+      expect(refused.message).toBe(
+        `Cada alergia puede tener hasta ${PET_ALLERGY_ENTRY_MAX} caracteres.`,
+      );
+    }
+
+    const longFood = over(PET_FOOD_ENTRY_MAX);
+    const food = resolvePetProfileTextLengths(
+      { health: health({ favouriteFoods: [longFood] }), insurance: null },
+      STORED_TEXT,
+    );
+    expect(food.ok).toBe(false);
+    if (!food.ok) expect(food.code).toBe("FOOD_TOO_LONG");
+
+    // The same two entries, already on the animal: carried, not typed.
+    const legacy = { ...STORED_TEXT, knownAllergies: [longAllergy], favouriteFoods: [longFood] };
+    expect(
+      resolvePetProfileTextLengths(
+        {
+          health: health({ knownAllergies: [longAllergy, "Huevo"], favouriteFoods: [longFood] }),
+          insurance: null,
+        },
+        legacy,
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it("caps how many entries a list may grow to, but never below what is stored", () => {
+    const many = (n: number, prefix: string) =>
+      Array.from({ length: n }, (_, i) => `${prefix} ${i}`);
+    const tooMany = resolvePetProfileTextLengths(
+      {
+        health: health({ knownAllergies: many(PET_ALLERGIES_MAX + 1, "alergia") }),
+        insurance: null,
+      },
+      STORED_TEXT,
+    );
+    expect(tooMany.ok).toBe(false);
+    if (!tooMany.ok) expect(tooMany.code).toBe("ALLERGIES_TOO_MANY");
+
+    const foods = resolvePetProfileTextLengths(
+      { health: health({ favouriteFoods: many(PET_FOODS_MAX + 1, "comida") }), insurance: null },
+      STORED_TEXT,
+    );
+    expect(foods.ok).toBe(false);
+    if (!foods.ok) expect(foods.code).toBe("FOODS_TOO_MANY");
+
+    // An animal that already holds more than the cap may keep them all, and
+    // swap one for another — the list did not grow.
+    const stored = many(PET_ALLERGIES_MAX + 3, "alergia");
+    const swapped = [...stored.slice(1), "Huevo"];
+    expect(
+      resolvePetProfileTextLengths(
+        { health: health({ knownAllergies: swapped }), insurance: null },
+        { ...STORED_TEXT, knownAllergies: stored },
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it("caps the 'otra' description at the web form's own length, only when 'otra' is chosen", () => {
+    const long = over(PET_CONDITION_OTHER_MAX);
+    const refused = resolvePetProfileTextLengths(
+      {
+        health: health({ permanentConditions: ["otra"], permanentConditionsOther: long }),
+        insurance: null,
+      },
+      STORED_TEXT,
+    );
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.code).toBe("CONDITION_OTHER_TOO_LONG");
+    // Without "otra" the text is dropped on save, so there is nothing to cap.
+    expect(
+      resolvePetProfileTextLengths(
+        { health: health({ permanentConditionsOther: long }), insurance: null },
+        STORED_TEXT,
+      ),
+    ).toEqual({ ok: true });
+    // And the animal's own over-long description passes, posted back.
+    expect(
+      resolvePetProfileTextLengths(
+        {
+          health: health({ permanentConditions: ["otra"], permanentConditionsOther: long }),
+          insurance: null,
+        },
+        { ...STORED_TEXT, permanentConditionsOther: long },
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it("reports the HEALTH refusal first when both sections are over — one message, nearest the top", () => {
+    const answer = resolvePetProfileTextLengths(
+      {
+        health: health({ knownAllergies: [over(PET_ALLERGY_ENTRY_MAX)] }),
+        insurance: insurance({ insuranceCompany: over(PET_INSURANCE_COMPANY_MAX) }),
+      },
+      STORED_TEXT,
+    );
+    expect(answer.ok).toBe(false);
+    if (!answer.ok) expect(answer.code).toBe("ALLERGY_TOO_LONG");
+  });
+
+  it("gives every code an es-AR sentence that names its number", () => {
+    const numbers: Record<string, number> = {
+      ALLERGIES_TOO_MANY: PET_ALLERGIES_MAX,
+      ALLERGY_TOO_LONG: PET_ALLERGY_ENTRY_MAX,
+      FOODS_TOO_MANY: PET_FOODS_MAX,
+      FOOD_TOO_LONG: PET_FOOD_ENTRY_MAX,
+      CONDITION_OTHER_TOO_LONG: PET_CONDITION_OTHER_MAX,
+      INSURANCE_COMPANY_TOO_LONG: PET_INSURANCE_COMPANY_MAX,
+      INSURANCE_POLICY_TOO_LONG: PET_INSURANCE_POLICY_MAX,
+    };
+    expect(Object.keys(PET_PROFILE_TEXT_LENGTH_MESSAGES).sort()).toEqual(
+      [...PET_PROFILE_TEXT_LENGTH_CODES].sort(),
+    );
+    for (const code of PET_PROFILE_TEXT_LENGTH_CODES) {
+      expect(PET_PROFILE_TEXT_LENGTH_MESSAGES[code]).toContain(String(numbers[code]));
+    }
+  });
+
+  it("keeps the 'otra' cap at the web form's own maxLength — one field, one number", () => {
+    expect(PET_CONDITION_OTHER_MAX).toBe(120);
   });
 });

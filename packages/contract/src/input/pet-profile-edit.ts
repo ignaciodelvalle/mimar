@@ -404,10 +404,12 @@ const retireServiceDog = z.object({
 // weight (an asiento, "Anotar → Peso"), the microchip (its own protocol) and the
 // locality (a mudanza, `/move`).
 //
-// NO LENGTH CAP REACHES THESE FIELDS, for the reason this file's header gives
-// about `name` and `color`: the web's parser caps none of them, so longer values
-// already exist, and a cap applied on the way back out would lock an owner out
-// of the section that carries one.
+// THE FREE TEXT IS CAPPED FOR NEW VALUES ONLY — `resolvePetProfileTextLengths`
+// below, and not a `.max()` here, for the reason this file's header gives about
+// `name` and `color`: the web's parser capped none of these columns, so longer
+// values already exist, and a cap applied on the way back out would lock an
+// owner out of the section that carries one. The schema still sees no row; the
+// gate does.
 
 /** Trimmed free text; absent, blank and `null` all mean "not stated". */
 const optionalText = z
@@ -507,6 +509,201 @@ const editProfile = z.object({
   insurance: profileInsurance.nullable(),
   origin: profileOrigin.nullable(),
 });
+
+// ---------------------------------------------------------------------------
+// The free text of Salud and Seguro — capped for NEW values (security review,
+// owner-pet-actions phases 1-2)
+// ---------------------------------------------------------------------------
+//
+// Until this existed the sectioned edit took any length: a list of allergies a
+// megabyte long would have been written to the row and copied into the
+// append-only `pet_profile_updated` payload, where nothing can ever trim it.
+// The numbers are the web's where the web has one and the repo's short-text
+// convention where it does not.
+//
+// THE GRANDFATHER RULE IS `resolvePetIdentityLengths`' one: a value identical to
+// the one already on the animal passes at any length, so a legacy row stays
+// readable AND savable. Only what a person is typing now is measured. Each side
+// calls it with the stored values — the server in both write doors
+// (`profile/commands.ts` and `updatePetAction`), a client before the round trip.
+//
+// THE SENTENCE TRAVELS WITH THE CODE, unlike `PET_PROFILE_COMMAND_INPUT_CODES`,
+// whose copy the app keeps in an exhaustive switch: seven codes there would have
+// had to land with seven sentences in the app in the same commit. A code that
+// brings its own es-AR sentence is shown as-is by the web form and by any client
+// that runs this gate before posting. The server answers a refusal with
+// `invalid_request` and no field detail, as it does for the identity lengths.
+
+/**
+ * The longest a NEW allergy may be. The catalog's longest entry is 22
+ * characters; eighty is the repo's short-text cap (the name, the colour, a
+ * contact name) and leaves free text room to describe one allergy.
+ */
+export const PET_ALLERGY_ENTRY_MAX = 80;
+
+/** The longest a NEW favourite food may be. Same number, same reason. */
+export const PET_FOOD_ENTRY_MAX = 80;
+
+/**
+ * How many allergies a NEW list may hold. Above the catalog (eleven) with room
+ * for free text; an animal that already holds more keeps them.
+ */
+export const PET_ALLERGIES_MAX = 20;
+
+/** How many favourite foods a NEW list may hold. The catalog has eight. */
+export const PET_FOODS_MAX = 20;
+
+/**
+ * The longest a NEW "otra" description may be — the web form's own `maxLength`
+ * on that input (PetForm's sensitive section), mirrored rather than invented.
+ * It can render on the PUBLIC credential, which is one more reason to bound it.
+ */
+export const PET_CONDITION_OTHER_MAX = 120;
+
+/** The longest a NEW insurance company may be: a company name, the name's cap. */
+export const PET_INSURANCE_COMPANY_MAX = 80;
+
+/**
+ * The longest a NEW policy number may be. Forty, the phone's number: it is an
+ * identifier a person reads off a card, not prose.
+ */
+export const PET_INSURANCE_POLICY_MAX = 40;
+
+/** In the order a form reports them: Salud's top to bottom, then Seguro's. */
+export const PET_PROFILE_TEXT_LENGTH_CODES = [
+  "ALLERGIES_TOO_MANY",
+  "ALLERGY_TOO_LONG",
+  "FOODS_TOO_MANY",
+  "FOOD_TOO_LONG",
+  "CONDITION_OTHER_TOO_LONG",
+  "INSURANCE_COMPANY_TOO_LONG",
+  "INSURANCE_POLICY_TOO_LONG",
+] as const;
+export type PetProfileTextLengthCode = (typeof PET_PROFILE_TEXT_LENGTH_CODES)[number];
+
+/** The es-AR sentence for each code — see the block above for why it lives here. */
+export const PET_PROFILE_TEXT_LENGTH_MESSAGES: Readonly<Record<PetProfileTextLengthCode, string>> =
+  {
+    ALLERGIES_TOO_MANY: `Cargaste demasiadas alergias: el máximo es ${PET_ALLERGIES_MAX}.`,
+    ALLERGY_TOO_LONG: `Cada alergia puede tener hasta ${PET_ALLERGY_ENTRY_MAX} caracteres.`,
+    FOODS_TOO_MANY: `Cargaste demasiadas comidas: el máximo es ${PET_FOODS_MAX}.`,
+    FOOD_TOO_LONG: `Cada comida puede tener hasta ${PET_FOOD_ENTRY_MAX} caracteres.`,
+    CONDITION_OTHER_TOO_LONG: `La descripción de la condición es demasiado larga (máximo ${PET_CONDITION_OTHER_MAX} caracteres).`,
+    INSURANCE_COMPANY_TOO_LONG: `El nombre de la aseguradora es demasiado largo (máximo ${PET_INSURANCE_COMPANY_MAX} caracteres).`,
+    INSURANCE_POLICY_TOO_LONG: `El número de póliza es demasiado largo (máximo ${PET_INSURANCE_POLICY_MAX} caracteres).`,
+  };
+
+/** What the animal already holds in the capped columns. The `pets` row fits. */
+export type StoredPetProfileText = {
+  favouriteFoods: readonly string[] | null;
+  knownAllergies: readonly string[] | null;
+  permanentConditionsOther: string | null;
+  insuranceCompany: string | null;
+  insurancePolicyNumber: string | null;
+};
+
+/** The two sections the gate reads — `null` when the save leaves one alone. */
+export type PetProfileTextEdit = {
+  health: {
+    favouriteFoods: readonly string[];
+    knownAllergies: readonly string[];
+    permanentConditions: readonly string[];
+    permanentConditionsOther: string | null;
+  } | null;
+  insurance: {
+    insuranceCompany: string | null;
+    insurancePolicyNumber: string | null;
+  } | null;
+};
+
+export type PetProfileTextLengthResolution =
+  | { ok: true }
+  | { ok: false; code: PetProfileTextLengthCode; message: string };
+
+function refuse(code: PetProfileTextLengthCode): PetProfileTextLengthResolution {
+  return { ok: false, code, message: PET_PROFILE_TEXT_LENGTH_MESSAGES[code] };
+}
+
+/**
+ * A list's two caps: how many entries, and how long a NEW entry. An entry the
+ * animal already has passes at any length; the count may reach what is stored
+ * when that is more than the cap, so swapping one entry for another on a legacy
+ * list is not refused for the length of the list it did not grow.
+ */
+function listRefusal(
+  submitted: readonly string[],
+  stored: readonly string[] | null,
+  caps: { count: number; entry: number },
+  codes: { count: PetProfileTextLengthCode; entry: PetProfileTextLengthCode },
+): PetProfileTextLengthResolution | null {
+  const kept = (stored ?? []).map((entry) => entry.trim());
+  if (submitted.length > Math.max(caps.count, kept.length)) return refuse(codes.count);
+  for (const entry of submitted) {
+    const trimmed = entry.trim();
+    if (trimmed.length > caps.entry && !kept.includes(trimmed)) return refuse(codes.entry);
+  }
+  return null;
+}
+
+/**
+ * The length gate for the free text of `edit_profile`'s Salud and Seguro, and
+ * of the web form that edits the same columns — applied to NEW VALUES ONLY.
+ *
+ * The first refusal wins, in `PET_PROFILE_TEXT_LENGTH_CODES` order: one message,
+ * the one nearest the top of the form. The "otra" description is measured only
+ * when "otra" is chosen — otherwise it is dropped on save and there is nothing
+ * to keep.
+ */
+export function resolvePetProfileTextLengths(
+  edit: PetProfileTextEdit,
+  stored: StoredPetProfileText,
+): PetProfileTextLengthResolution {
+  const health = edit.health;
+  if (health) {
+    const refusal =
+      listRefusal(
+        health.knownAllergies,
+        stored.knownAllergies,
+        { count: PET_ALLERGIES_MAX, entry: PET_ALLERGY_ENTRY_MAX },
+        { count: "ALLERGIES_TOO_MANY", entry: "ALLERGY_TOO_LONG" },
+      ) ??
+      listRefusal(
+        health.favouriteFoods,
+        stored.favouriteFoods,
+        { count: PET_FOODS_MAX, entry: PET_FOOD_ENTRY_MAX },
+        { count: "FOODS_TOO_MANY", entry: "FOOD_TOO_LONG" },
+      );
+    if (refusal) return refusal;
+    if (
+      health.permanentConditions.includes("otra") &&
+      exceedsCap(
+        health.permanentConditionsOther,
+        PET_CONDITION_OTHER_MAX,
+        stored.permanentConditionsOther,
+      )
+    ) {
+      return refuse("CONDITION_OTHER_TOO_LONG");
+    }
+  }
+  const insurance = edit.insurance;
+  if (insurance) {
+    if (
+      exceedsCap(insurance.insuranceCompany, PET_INSURANCE_COMPANY_MAX, stored.insuranceCompany)
+    ) {
+      return refuse("INSURANCE_COMPANY_TOO_LONG");
+    }
+    if (
+      exceedsCap(
+        insurance.insurancePolicyNumber,
+        PET_INSURANCE_POLICY_MAX,
+        stored.insurancePolicyNumber,
+      )
+    ) {
+      return refuse("INSURANCE_POLICY_TOO_LONG");
+    }
+  }
+  return { ok: true };
+}
 
 export const petProfileCommandInputSchema = z.discriminatedUnion("command", [
   editIdentity,

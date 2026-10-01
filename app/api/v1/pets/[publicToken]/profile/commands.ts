@@ -97,7 +97,11 @@ import {
 import type { NewNotification, ParsedPet } from "@/src/modules/pets/domain/types";
 import { PetsRepository } from "@/src/modules/pets/infrastructure/pets-repository";
 import type { PetProfileEditAckV1 } from "@dim/contract/api";
-import { type PetProfileCommandInput, resolvePetIdentityLengths } from "@dim/contract/input";
+import {
+  type PetProfileCommandInput,
+  resolvePetIdentityLengths,
+  resolvePetProfileTextLengths,
+} from "@dim/contract/input";
 
 import { type ResolvedProfileAccess, isLegalOwner, petProfileCapabilities } from "./payload";
 
@@ -389,6 +393,16 @@ async function editProfile(
   access: ResolvedProfileAccess,
   input: Extract<PetProfileCommandInput, { command: "edit_profile" }>,
 ) {
+  // The free text of Salud and Seguro, measured against what the animal
+  // already has: a NEW value past its cap is refused, a stored one is not.
+  // `invalid_request` with no field detail, as the identity lengths answer — a
+  // client runs the same gate before posting and says which field.
+  const lengths = resolvePetProfileTextLengths(
+    { health: input.health, insurance: input.insurance },
+    access.pet,
+  );
+  if (!lengths.ok) return apiV1Error("invalid_request", 400);
+
   let identity: PetProfileIdentityEdit | null = null;
   if (input.identity !== null) {
     const gated = gateIdentityText(access.pet, input.identity);
