@@ -114,6 +114,20 @@ export type PetTravelObligationV1 = {
   /** "Verificá — …" when a source is expired or unverified; else null. */
   freshnessNotice: string | null;
   legalFootnote: string;
+  /**
+   * Only on the papers-to-carry obligation: each document, and whether the
+   * owner ticked "Lo tengo" for it on THIS trip (`confirm_trip_document`).
+   * Null on every other obligation. Optional on the wire so a server older
+   * than the client still parses.
+   */
+  documents?: PetTravelDocumentV1[] | null;
+};
+
+/** One paper the trip asks for, and whether the owner said they have it. */
+export type PetTravelDocumentV1 = {
+  /** The document as the rule names it — also the key the command takes. */
+  label: string;
+  confirmed: boolean;
 };
 
 export type PetTravelComplianceV1 = {
@@ -165,12 +179,15 @@ export type PetTravelV1 = {
  * already happened: nothing was appended, and `eventId` is the first write's.
  * A client that retried after a timeout reads it to know its first attempt
  * landed. `changed` on the cancel half says the same thing about STATE: a trip
- * already cancelled answers `changed: false`, never a refusal.
+ * already cancelled answers `changed: false`, never a refusal. The document
+ * tick answers the same way: ticking a document already ticked is
+ * `changed: false`.
  */
 export type PetTravelCommandAckV1 =
   | { command: "record_trip"; eventId: string; replayed: boolean }
   | { command: "record_cvi"; eventId: string; replayed: boolean }
-  | { command: "cancel_trip"; tripEventId: string; changed: boolean };
+  | { command: "cancel_trip"; tripEventId: string; changed: boolean }
+  | { command: "confirm_trip_document"; tripEventId: string; changed: boolean };
 
 /**
  * `POST /api/v1/pets/{publicToken}/travel/export[?trip=]` — the travel PDF, as

@@ -1,7 +1,8 @@
-// The three travel commands behind `POST /api/v1/pets/{publicToken}/travel`
+// The four travel commands behind `POST /api/v1/pets/{publicToken}/travel`
 // (viajes-fase-2, design D4).
 //
-// SAME USE-CASES AS THE WEB. `recordTrip`, `recordCvi` and `cancelTrip` under
+// SAME USE-CASES AS THE WEB. `recordTrip`, `recordCvi`, `cancelTrip` and
+// `confirmTripDocument` under
 // src/modules/pets/application/travel/ are what the web's travel actions call
 // too, which is what the owner-surface parity fence joins on.
 //
@@ -24,6 +25,7 @@ import {
 } from "@/lib/infra/pet-access";
 import { reportError } from "@/lib/infra/report-error";
 import { cancelTrip } from "@/src/modules/pets/application/travel/cancel-trip";
+import { confirmTripDocument } from "@/src/modules/pets/application/travel/confirm-trip-document";
 import { recordCvi } from "@/src/modules/pets/application/travel/record-cvi";
 import { recordTrip } from "@/src/modules/pets/application/travel/record-trip";
 import type { TravelActor, TravelRefusalCode } from "@/src/modules/pets/application/travel/types";
@@ -140,6 +142,23 @@ export async function runPetTravelCommand(ctx: TravelCommandContext) {
         if (!result.ok) return refusal(result.code, ctx.userId);
         const body: PetTravelCommandAckV1 = {
           command: "cancel_trip",
+          tripEventId: result.tripEventId,
+          changed: result.changed,
+        };
+        return apiV1Json(body, { status: 200 });
+      }
+      case "confirm_trip_document": {
+        const result = await confirmTripDocument({
+          pet,
+          actor,
+          tripEventId: input.tripEventId,
+          document: input.document,
+          confirmed: input.confirmed,
+          clientIdempotencyKey: ctx.idempotencyKey,
+        });
+        if (!result.ok) return refusal(result.code, ctx.userId);
+        const body: PetTravelCommandAckV1 = {
+          command: "confirm_trip_document",
           tripEventId: result.tripEventId,
           changed: result.changed,
         };

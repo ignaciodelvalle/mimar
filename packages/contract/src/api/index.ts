@@ -306,6 +306,7 @@ export {
   type PetTravelCommandAckV1,
   type PetTravelComplianceV1,
   type PetTravelCviV1,
+  type PetTravelDocumentV1,
   type PetTravelExportV1,
   type PetTravelObligationV1,
   type PetTravelSemaforoV1,

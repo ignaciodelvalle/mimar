@@ -7,6 +7,11 @@ import { describe, expect, it } from "vitest";
 
 import type { TravelObligation } from "@/lib/projections/travel-compliance";
 import { TravelObligationsPanel } from "./TravelObligationsPanel";
+import {
+  DOCUMENT_CONFIRMED_LINE,
+  DOCUMENT_PENDING_LINE,
+  TripDocumentsChecklist,
+} from "./TripDocumentsChecklist";
 
 function render(node: React.ReactElement): string {
   return renderToStaticMarkup(node);
@@ -94,6 +99,48 @@ describe("<TravelObligationsPanel>", () => {
     expect(html).toContain("Fuente: Chile");
     expect(html).toContain("revisada el 30/09/2026");
     expect(html).toContain('href="https://www.sag.gob.cl"');
+  });
+
+  // PO 2026-10-01: each paper shows whether the owner ticked "Lo tengo".
+  const PAPERS: TravelObligation = {
+    ...INFO,
+    requirementLevel: "warning",
+    state: "Confirmá que tenés cada documento",
+    documents: [
+      { label: "Certificado veterinario", confirmed: true },
+      { label: "Permiso de importación", confirmed: false },
+    ],
+  };
+
+  it("lists the papers read-only with what the owner ticked, when no control is given", () => {
+    const html = render(<TravelObligationsPanel obligations={[PAPERS]} />);
+    expect(html).toContain("Certificado veterinario: lo tenés, según indicaste");
+    expect(html).toContain("Permiso de importación: sin confirmar");
+    expect(html).not.toContain("Lo tengo");
+  });
+
+  it("draws the 'Lo tengo' control per paper on the titular's page", () => {
+    const html = render(
+      <TravelObligationsPanel
+        obligations={[PAPERS]}
+        renderDocuments={(o) => (
+          <TripDocumentsChecklist
+            action={async () => ({ error: null })}
+            tripEventId="11111111-1111-4111-8111-111111111111"
+            documents={o.documents ?? []}
+            idempotencyKeys={["k1", "k2"]}
+          />
+        )}
+      />,
+    );
+    // The unticked paper offers "Lo tengo"; the ticked one offers to take it back.
+    expect(html).toContain("Lo tengo");
+    expect(html).toContain("Desmarcar");
+    expect(html).toContain(DOCUMENT_CONFIRMED_LINE);
+    expect(html).toContain(DOCUMENT_PENDING_LINE);
+    expect(html).toContain('name="document" value="Permiso de importación"');
+    expect(html).toContain('name="confirmed" value="true"');
+    expect(html).toContain('name="confirmed" value="false"');
   });
 
   it("renders an empty-list message when there are no obligations", () => {

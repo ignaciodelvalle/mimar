@@ -718,6 +718,12 @@ const movementTransportRecorded = z
       // true}) — the trip writer never sends it. A cancelled trip drops out of
       // deriveTrips and deriveTravelContext; the row itself stays.
       cancelled: z.boolean().optional(),
+      // The papers the owner ticked "Lo tengo" for on this trip (PO
+      // 2026-10-01). Set ONLY by a correction (confirmTripDocument → amendEvent
+      // {field: "documents_confirmed", new: [...]}) — the trip writer never
+      // sends it. Each entry is a document label the trip's own rules list at
+      // the time of the tick (the writer refuses any other), never free text.
+      documents_confirmed: z.array(z.string().min(1).max(300)).max(50).optional(),
     }),
   )
   .strict();

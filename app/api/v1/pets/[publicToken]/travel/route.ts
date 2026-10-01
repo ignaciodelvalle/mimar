@@ -4,11 +4,11 @@
 // one trip (`?trip=`, the next one by default) — through `loadTravelView`, the
 // loader the web /viaje page renders from (`./payload.ts`).
 //
-// POST, THREE COMMANDS BEHIND ONE URL — `record_trip`, `record_cvi`,
-// `cancel_trip` — the shape `/reminders` and `/lost` use; `./commands.ts`
+// POST, FOUR COMMANDS BEHIND ONE URL — `record_trip`, `record_cvi`,
+// `cancel_trip`, `confirm_trip_document` — the shape `/reminders` and `/lost` use; `./commands.ts`
 // answers "may this command run, and what exactly does it do".
 //
-// `Idempotency-Key` IS REQUIRED FOR ALL THREE. Each appends a row on the
+// `Idempotency-Key` IS REQUIRED FOR ALL FOUR. Each appends a row on the
 // append-only spine, and the retry that matters is a phone's after a timeout
 // that may have committed: the key makes it answer the first write.
 //

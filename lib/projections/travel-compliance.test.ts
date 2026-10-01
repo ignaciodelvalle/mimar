@@ -282,16 +282,62 @@ describe("deriveTravelCompliance — semáforo and disclosure", () => {
     expect(state.semaforo).toBe("amarillo");
   });
 
-  it("a documents checklist alone is information, not a pending item (design D3)", () => {
-    const state = deriveTravelCompliance(
+  // PO 2026-10-01: the papers are a pending item until the OWNER says they
+  // have each one ("Lo tengo"); then the obligation records their word, as
+  // information — it never says a paper is valid.
+  it("a documents checklist is a warning until the owner ticks every paper", () => {
+    const corridors = [
+      makeCorridor("chile", "Chile", {
+        required_documents: ["health_certificate", "import_permit"],
+      }),
+    ];
+    const none = deriveTravelCompliance(makeInput({ corridors }));
+    const pending = none.obligations.find((o) => o.key === "required_documents");
+    expect(pending?.requirementLevel).toBe("warning");
+    expect(pending?.state).toBe("Confirmá que tenés cada documento");
+    expect(pending?.detail).toBe("Sin confirmar: health_certificate · import_permit");
+    expect(pending?.documents).toEqual([
+      { label: "health_certificate", confirmed: false },
+      { label: "import_permit", confirmed: false },
+    ]);
+    expect(none.semaforo).toBe("amarillo");
+
+    const some = deriveTravelCompliance(
+      makeInput({ corridors, confirmedDocuments: ["import_permit"] }),
+    );
+    const half = some.obligations.find((o) => o.key === "required_documents");
+    expect(half?.requirementLevel).toBe("warning");
+    expect(half?.detail).toBe("Sin confirmar: health_certificate");
+    expect(some.semaforo).toBe("amarillo");
+
+    const all = deriveTravelCompliance(
       makeInput({
-        corridors: [makeCorridor("chile", "Chile", { required_documents: ["health_certificate"] })],
+        corridors,
+        // A tick for a paper no rule asks for any more changes nothing.
+        confirmedDocuments: ["health_certificate", "import_permit", "old_paper"],
       }),
     );
-    const docs = state.obligations.find((o) => o.key === "required_documents");
-    expect(docs?.requirementLevel).toBe("info");
-    expect(docs?.state).toBe("Llevá esta documentación");
-    expect(state.semaforo).toBe("verde");
+    const done = all.obligations.find((o) => o.key === "required_documents");
+    expect(done?.requirementLevel).toBe("info");
+    expect(done?.state).toBe("Registraste que tenés cada documento");
+    expect(done?.documents?.every((d) => d.confirmed)).toBe(true);
+    expect(all.semaforo).toBe("verde");
+  });
+
+  it("only the papers obligation carries a document list", () => {
+    const state = deriveTravelCompliance(
+      makeInput({
+        corridors: [
+          makeCorridor("chile", "Chile", {
+            required_documents: ["health_certificate"],
+            rabies_vaccination_to_travel_wait_days: 21,
+          }),
+        ],
+      }),
+    );
+    for (const o of state.obligations) {
+      expect(o.documents !== undefined).toBe(o.key === "required_documents");
+    }
   });
 
   it("all obligations met → verde", () => {
@@ -498,6 +544,7 @@ describe("deriveTrips", () => {
         mode: null,
         airlineId: null,
         intendedModality: null,
+        documentsConfirmed: [],
       },
       {
         eventId: "t2",
@@ -506,8 +553,21 @@ describe("deriveTrips", () => {
         mode: "air",
         airlineId: "latam",
         intendedModality: "hold",
+        documentsConfirmed: [],
       },
     ]);
+  });
+
+  it("reads the trip's ticked papers, strings only", () => {
+    const [trip] = deriveTrips([
+      move("t", {
+        sub_kind: "transport_recorded",
+        corridor_id: "uruguay",
+        travel_date: "2026-08-01",
+        documents_confirmed: ["CZI", 7, null, "Microchip"],
+      }),
+    ]);
+    expect(trip?.documentsConfirmed).toEqual(["CZI", "Microchip"]);
   });
 });
 

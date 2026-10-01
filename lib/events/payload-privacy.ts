@@ -428,6 +428,11 @@ export const PAYLOAD_PRIVACY: Record<EventType, Record<string, PrivacyEntry>> = 
     airline_id: CF,
     intended_modality: CF,
     cancelled: CF,
+    // PO 2026-10-01: which of the trip's required papers the owner said they
+    // hold. Every entry is a label copied from the reference rules (the writer
+    // refuses anything else), so it says nothing about a person — CF, with the
+    // same read fence (D8) as the rest of the trip.
+    documents_confirmed: CF,
   },
   microchip_implanted: {
     payload_version: CF,

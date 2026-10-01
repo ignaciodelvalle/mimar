@@ -75,6 +75,9 @@ export type CancelTripResult =
   | { ok: true; tripEventId: string; changed: boolean }
   | { ok: false; code: TravelRefusalCode; error: string };
 
+/** Same shape as a cancel: idempotent on the STATE, `changed: false` on a repeat. */
+export type ConfirmTripDocumentResult = CancelTripResult;
+
 /**
  * What the web's travel forms (`useActionState`) receive back. `error` is the
  * es-AR sentence the form renders; `ok` flips on success so the form can reset

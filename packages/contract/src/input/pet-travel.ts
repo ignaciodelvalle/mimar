@@ -1,13 +1,14 @@
 // Client-input contract for the owner's trips —
 // `POST /api/v1/pets/{publicToken}/travel` (viajes-fase-2, design D4/D5).
 //
-// THREE COMMANDS BEHIND ONE URL, the shape `/reminders` and `/lost` use:
-// `record_trip`, `record_cvi` and `cancel_trip`. All three reach the IDENTICAL
+// FOUR COMMANDS BEHIND ONE URL, the shape `/reminders` and `/lost` use:
+// `record_trip`, `record_cvi`, `cancel_trip` and `confirm_trip_document` (the
+// owner's "Lo tengo" for one paper of a trip). All four reach the IDENTICAL
 // use-cases the web's Server Actions reach (src/modules/pets/application/
 // travel/), so a phone and a browser recording the same trip cannot drift into
 // two notions of what a duplicate is or who may write one.
 //
-// `Idempotency-Key` IS REQUIRED ON ALL THREE. Each command appends a row on the
+// `Idempotency-Key` IS REQUIRED ON ALL FOUR. Each command appends a row on the
 // append-only spine, and a phone on a subway retries after a timeout that may
 // well have committed; the key makes that retry answer the first write
 // (`replayed: true`) instead of appending a second trip.
@@ -47,6 +48,7 @@ export const PET_TRAVEL_COMMAND_INPUT_CODES = [
   "VALID_UNTIL_INVALID",
   "VALID_UNTIL_BEFORE_ISSUED",
   "TRIP_ID_REQUIRED",
+  "DOCUMENT_REQUIRED",
 ] as const;
 export type PetTravelCommandInputCode = (typeof PET_TRAVEL_COMMAND_INPUT_CODES)[number];
 
@@ -111,10 +113,28 @@ const cancelTrip = z.object({
   tripEventId: z.uuid({ error: "TRIP_ID_REQUIRED" }),
 });
 
+/**
+ * "Lo tengo" for one document of a trip (`confirmed: true`), or the tick taken
+ * back (`false`). `document` is the label exactly as the trip's obligation
+ * lists it; the server refuses one the trip does not list
+ * (`travel_input_invalid`), so nothing typed ever reaches the record.
+ */
+const confirmTripDocument = z.object({
+  command: z.literal("confirm_trip_document"),
+  tripEventId: z.uuid({ error: "TRIP_ID_REQUIRED" }),
+  document: z
+    .string({ error: "DOCUMENT_REQUIRED" })
+    .trim()
+    .min(1, { error: "DOCUMENT_REQUIRED" })
+    .max(300, { error: "DOCUMENT_REQUIRED" }),
+  confirmed: z.boolean({ error: "DOCUMENT_REQUIRED" }),
+});
+
 export const petTravelCommandInputSchema = z.discriminatedUnion("command", [
   recordTrip,
   recordCvi,
   cancelTrip,
+  confirmTripDocument,
 ]);
 
 export type PetTravelCommandInput = z.infer<typeof petTravelCommandInputSchema>;

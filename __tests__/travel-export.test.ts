@@ -185,7 +185,7 @@ const VIEW_PET = {
 };
 
 /** One trip to Chile with Iberia in the hold, 20 days after `now`. */
-function viewAt(now: Date) {
+function viewAt(now: Date, documentsConfirmed?: string[]) {
   const travelDate = new Date(now.getTime() + 20 * 86_400_000).toISOString().slice(0, 10);
   return buildTravelView({
     pet: VIEW_PET,
@@ -203,6 +203,8 @@ function viewAt(now: Date) {
           mode: "air",
           airline_id: "iberia",
           intended_modality: "hold",
+          // As overlayAmendments folds a "Lo tengo" correction in.
+          ...(documentsConfirmed ? { documents_confirmed: documentsConfirmed } : {}),
         },
       },
     ],
@@ -211,8 +213,8 @@ function viewAt(now: Date) {
   });
 }
 
-function dtoAt(now: Date) {
-  const view = viewAt(now);
+function dtoAt(now: Date, documentsConfirmed?: string[]) {
+  const view = viewAt(now, documentsConfirmed);
   const dto = buildTravelExportDto({
     pet: VIEW_PET,
     view,
@@ -228,6 +230,25 @@ function dtoAt(now: Date) {
       .join("\n"),
   };
 }
+
+describe("travel export — the papers, with what the owner ticked (PO 2026-10-01)", () => {
+  it("prints each document with its confirmed state, as the screen shows it", () => {
+    const now = new Date();
+    const unticked = dtoAt(now);
+    const papers =
+      unticked.dto.obligations.find((o) => o.key === "required_documents")?.documents ?? [];
+    expect(papers.length).toBeGreaterThan(1);
+    const [first, ...rest] = papers.map((d) => d.label);
+    for (const label of [first, ...rest]) {
+      expect(unticked.text).toContain(`[ ] ${label}: sin confirmar`);
+    }
+
+    const { text } = dtoAt(now, [first ?? ""]);
+    expect(text).toContain(`[x] ${first}: lo tenés, según indicaste`);
+    for (const label of rest) expect(text).toContain(`[ ] ${label}: sin confirmar`);
+    expect(text).not.toMatch(TRAVEL_FORBIDDEN_COPY);
+  });
+});
 
 describe("buildTravelExportDto — the screen's reading, not a second computation", () => {
   it("carries the view's semáforo, obligations and corridors by reference", () => {

@@ -5,6 +5,8 @@
 // ComplianceObligationsPanel — those are hard-keyed to the 4 domestic cards
 // and requirementLevel must not leak onto them (R4.3).
 
+import type { ReactNode } from "react";
+
 import { LnBadge } from "@/components/ui/Badge";
 import type { RequirementLevel } from "@/lib/domain/travel-strictness";
 import type { TravelObligation } from "@/lib/projections/travel-compliance";
@@ -21,9 +23,31 @@ const LEVEL_BADGE: Record<
 
 export type TravelObligationsPanelProps = {
   obligations: TravelObligation[];
+  /**
+   * The "Lo tengo" controls for an obligation that lists documents (PO
+   * 2026-10-01). Absent — a deceased animal, a test — the documents are listed
+   * read-only with their confirmed state.
+   */
+  renderDocuments?: (obligation: TravelObligation) => ReactNode;
 };
 
-export function TravelObligationsPanel({ obligations }: TravelObligationsPanelProps) {
+/** The documents of an obligation, read-only: what the owner has ticked. */
+function DocumentsReadOnly({ obligation }: { obligation: TravelObligation }) {
+  return (
+    <ul className="mt-1 space-y-0.5">
+      {(obligation.documents ?? []).map((d) => (
+        <li key={d.label} className="text-sm">
+          {d.label}: {d.confirmed ? "lo tenés, según indicaste" : "sin confirmar"}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function TravelObligationsPanel({
+  obligations,
+  renderDocuments,
+}: TravelObligationsPanelProps) {
   if (obligations.length === 0) {
     return (
       <p className="text-sm text-[var(--color-ln-mute)]">
@@ -49,6 +73,13 @@ export function TravelObligationsPanel({ obligations }: TravelObligationsPanelPr
             {obligation.detail && (
               <p className="mt-1 text-sm text-[var(--color-ln-mute)]">{obligation.detail}</p>
             )}
+            {obligation.documents &&
+              obligation.documents.length > 0 &&
+              (renderDocuments ? (
+                renderDocuments(obligation)
+              ) : (
+                <DocumentsReadOnly obligation={obligation} />
+              ))}
             {obligation.freshnessNotice && (
               <p className="mt-1 text-sm text-[var(--color-ln-warn)]">
                 {obligation.freshnessNotice}

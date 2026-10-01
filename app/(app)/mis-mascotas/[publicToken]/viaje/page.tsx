@@ -42,6 +42,7 @@ import {
 } from "@/src/modules/pets/application/travel/load-travel-view";
 import {
   cancelTripAction,
+  confirmTripDocumentAction,
   recordCviAction,
   recordTripAction,
 } from "@/src/modules/pets/travel-actions";
@@ -51,6 +52,7 @@ import { CviForm } from "./CviForm";
 import { TravelExportButton } from "./TravelExportButton";
 import { TravelObligationsPanel } from "./TravelObligationsPanel";
 import { TravelSemaforo } from "./TravelSemaforo";
+import { TripDocumentsChecklist } from "./TripDocumentsChecklist";
 import { TripForm } from "./TripForm";
 
 const GROUP_ORDER: TravelObligationGroup[] = ["destino", "aerolinea", "libreta"];
@@ -106,7 +108,23 @@ function TripReading({
                   aviso: confirmala antes de reservar.
                 </LnCallout>
               )}
-              <TravelObligationsPanel obligations={obligations} />
+              <TravelObligationsPanel
+                obligations={obligations}
+                renderDocuments={
+                  canRecord
+                    ? (obligation) => (
+                        <TripDocumentsChecklist
+                          action={confirmTripDocumentAction.bind(null, publicToken)}
+                          tripEventId={trip.eventId}
+                          documents={obligation.documents ?? []}
+                          idempotencyKeys={(obligation.documents ?? []).map(() =>
+                            crypto.randomUUID(),
+                          )}
+                        />
+                      )
+                    : undefined
+                }
+              />
             </Section>
           );
         })}

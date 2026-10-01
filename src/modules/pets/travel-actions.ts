@@ -24,6 +24,7 @@ import { requireTitularAccess } from "@/lib/infra/pet-access";
 import { CORRIDOR_IDS, type CorridorId } from "@/lib/reference/cross-border-corridors";
 
 import { cancelTrip } from "./application/travel/cancel-trip";
+import { confirmTripDocument } from "./application/travel/confirm-trip-document";
 import { recordCvi } from "./application/travel/record-cvi";
 import { recordTrip } from "./application/travel/record-trip";
 import type { TravelActor, TravelFormState } from "./application/travel/types";
@@ -150,4 +151,52 @@ export async function cancelTripAction(
   if (!result.ok) return { error: result.error };
 
   return { error: null, ok: true, redirectTo: viajePath(publicToken) };
+}
+
+/**
+ * "Lo tengo" for one paper the trip asks for, or the tick taken back (PO
+ * 2026-10-01). The same use-case `POST /api/v1/pets/{publicToken}/travel`
+ * `confirm_trip_document` runs.
+ *
+ * A tick ALWAYS travels with a key: the page mints one per render, and a post
+ * without one gets a fresh one here. The amendment's derived fallback key
+ * hashes the change, and tick → untick → tick repeats a change — a derived key
+ * would answer the third as a replay of the first and leave the paper unticked.
+ * A double submit is still one write: the use-case answers `changed: false`
+ * when the state already matches.
+ */
+export async function confirmTripDocumentAction(
+  publicToken: string,
+  _previous: TravelFormState,
+  formData: FormData,
+): Promise<TravelFormState> {
+  const access = await requireTitularAccess(publicToken);
+  if (!access.ok) return { error: access.error };
+  const actor: TravelActor = {
+    userId: access.user.id,
+    accessPath: access.accessPath,
+    holderRole: access.holderRole,
+    eventAuthorship: access.eventAuthorship,
+  };
+
+  const tripEventId = field(formData, "tripEventId");
+  if (!UUID_RE.test(tripEventId)) return { error: "No encontramos ese viaje." };
+  const document = field(formData, "document");
+  if (!document) return { error: "Ese documento no figura entre los que pide este viaje." };
+
+  const result = await confirmTripDocument({
+    pet: access.pet,
+    actor,
+    tripEventId,
+    document,
+    confirmed: field(formData, "confirmed") === "true",
+    clientIdempotencyKey: idempotencyKeyOf(formData) ?? crypto.randomUUID(),
+  });
+  if (!result.ok) return { error: result.error };
+
+  return {
+    error: null,
+    ok: true,
+    redirectTo: `${viajePath(publicToken)}?viaje=${encodeURIComponent(tripEventId)}`,
+  };
 }

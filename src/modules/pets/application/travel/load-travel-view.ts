@@ -221,6 +221,7 @@ export function buildTravelView(params: {
     },
     airline,
     modality: airline ? selectedTrip.intendedModality : null,
+    confirmedDocuments: selectedTrip.documentsConfirmed,
   });
 
   return { trips, selectedTrip, cvis, corridor, airline, compliance };

@@ -119,6 +119,13 @@ export type TravelComplianceInput = {
   airline?: Airline | null;
   /** How the pet flies. A selector: without it no airline row contributes. */
   modality?: Modality | null;
+  /**
+   * The documents the owner ticked "Lo tengo" for, on THIS trip (the trip's
+   * `documents_confirmed`, written by a correction — confirmTripDocument). The
+   * papers-to-carry obligation stays a warning until every document it lists
+   * is here (PO 2026-10-01).
+   */
+  confirmedDocuments?: readonly string[];
 };
 
 export type TravelObligationKey =
@@ -152,6 +159,18 @@ export type TravelObligation = {
   sources: RuleSourceRef[];
   /** "Verificá — …" when any source is expired or unverified; else null. */
   freshnessNotice: string | null;
+  /**
+   * Only on `required_documents`: each paper and whether the owner ticked
+   * "Lo tengo" for it on this trip. Absent on every other obligation.
+   */
+  documents?: TravelDocumentItem[];
+};
+
+/** One paper the trip asks for, and whether the owner said they have it. */
+export type TravelDocumentItem = {
+  /** As the rule names it — also the key `documents_confirmed` stores. */
+  label: string;
+  confirmed: boolean;
 };
 
 // "sin_datos" (R-honesty, QA histórico 2026-07-08 item 3): a foreign
@@ -238,9 +257,19 @@ export type TravelTrip = {
   mode: string | null;
   airlineId: string | null;
   intendedModality: Modality | null;
+  /**
+   * The papers the owner ticked "Lo tengo" for on this trip — the trip's
+   * `documents_confirmed` after corrections. Empty when none.
+   */
+  documentsConfirmed: string[];
 };
 
 const MODALITIES: readonly string[] = ["cabin", "hold", "cargo"];
+
+/** A payload's `documents_confirmed`, read defensively: strings only. */
+function documentsConfirmedOf(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((d): d is string => typeof d === "string") : [];
+}
 
 /**
  * Every trip that is still on (viajes-fase-2, D4/D5), earliest first.
@@ -272,6 +301,7 @@ export function deriveTrips(
         typeof p.intended_modality === "string" && MODALITIES.includes(p.intended_modality)
           ? (p.intended_modality as Modality)
           : null,
+      documentsConfirmed: documentsConfirmedOf(p.documents_confirmed),
     });
   }
   return trips.sort((a, b) => a.travelDate.localeCompare(b.travelDate));
@@ -347,7 +377,13 @@ const LEVEL_SEVERITY: Record<RequirementLevel, number> = {
 // rule another obligation already covers).
 // ---------------------------------------------------------------------------
 
-type EvalEnv = { ctx: CheckContext; rules: readonly MergedRule[]; modality: Modality | null };
+type EvalEnv = {
+  ctx: CheckContext;
+  rules: readonly MergedRule[];
+  modality: Modality | null;
+  /** The papers the owner ticked "Lo tengo" for on this trip. */
+  confirmedDocuments: ReadonlySet<string>;
+};
 type Evaluator = (rule: MergedRule, env: EvalEnv) => Evaluation | null;
 
 function num(rule: MergedRule): number {
@@ -396,12 +432,31 @@ const EVALUATORS: Record<TravelRuleType, Evaluator> = {
       : null,
   microchip_before_vaccination_required: (r, { ctx }) =>
     flag(r) ? evaluateMicrochipBeforeRabies(ctx) : null,
-  // A checklist of papers is information by design (design D3) — otherwise
-  // green could never be reached; freshness can still raise it to a warning.
-  required_documents: (r) =>
-    list<string>(r).length > 0
-      ? { ...informational("Llevá esta documentación", list<string>(r).join(" · ")), level: "info" }
-      : null,
+  // The papers to carry (PO 2026-10-01). miMAR cannot see a paper, so the
+  // owner says it: a WARNING until they tick "Lo tengo" for every document on
+  // this trip, then information that records what THEY said — never that the
+  // paper is valid. Freshness can still raise the settled state to a warning.
+  required_documents: (r, { confirmedDocuments }) => {
+    const docs = list<string>(r);
+    if (docs.length === 0) return null;
+    const missing = docs.filter((d) => !confirmedDocuments.has(d));
+    if (missing.length === 0) {
+      return {
+        tone: "ok",
+        deadlineLapsed: false,
+        state: "Registraste que tenés cada documento",
+        detail: docs.join(" · "),
+        level: "info",
+      };
+    }
+    return {
+      tone: "due",
+      deadlineLapsed: false,
+      state: "Confirmá que tenés cada documento",
+      detail: `Sin confirmar: ${missing.join(" · ")}`,
+      level: "warning",
+    };
+  },
   required_vaccines: (r, { ctx }) =>
     list<string>(r).length > 0 ? evaluateRequiredVaccines(list<string>(r), ctx) : null,
   min_animal_age_days: (r, { ctx }) => evaluateMinAnimalAge(num(r), ctx),
@@ -546,7 +601,14 @@ function ruleObligations(rules: readonly MergedRule[], env: EvalEnv): TravelObli
     if (skip.has(rule.ruleType)) continue;
     const evaluation = EVALUATORS[rule.ruleType](rule, env);
     if (!evaluation) continue;
-    obligations.push(ruleObligation(rule, evaluation, companionsOf(rule, rules)));
+    const obligation = ruleObligation(rule, evaluation, companionsOf(rule, rules));
+    if (rule.ruleType === "required_documents") {
+      obligation.documents = list<string>(rule).map((label) => ({
+        label,
+        confirmed: env.confirmedDocuments.has(label),
+      }));
+    }
+    obligations.push(obligation);
   }
   return obligations;
 }
@@ -738,7 +800,12 @@ export function deriveTravelCompliance(input: TravelComplianceInput): TravelComp
     pet: input.pet ?? null,
     libreta: readLibreta(input.events),
   };
-  const obligations = ruleObligations(rules, { ctx, rules, modality });
+  const obligations = ruleObligations(rules, {
+    ctx,
+    rules,
+    modality,
+    confirmedDocuments: new Set(input.confirmedDocuments ?? []),
+  });
   if (input.airline) {
     obligations.push(...airlineGates(input.airline, modality, input.pet?.species ?? null, now));
   }

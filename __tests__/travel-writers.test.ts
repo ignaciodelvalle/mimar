@@ -11,7 +11,10 @@
 //   · only a travel titular writes (caretaker, org path refused), never for a
 //     deceased animal, never with an implausible date or an unknown airline;
 //   · a cancellation is a correction — the original row is untouched and
-//     deriveTrips drops the trip.
+//     deriveTrips drops the trip;
+//   · a "Lo tengo" tick is a correction too (PO 2026-10-01): the papers stay a
+//     warning until every one is ticked, a repeat appends nothing, and only a
+//     document the trip lists can be ticked.
 
 import { and, asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -26,6 +29,8 @@ import { OWNER_AUTHORSHIP } from "@/lib/infra/pet-access";
 import { deriveTrips } from "@/lib/projections/travel-compliance";
 import { isoDateInAr } from "@/lib/utils/format";
 import { cancelTrip } from "@/src/modules/pets/application/travel/cancel-trip";
+import { confirmTripDocument } from "@/src/modules/pets/application/travel/confirm-trip-document";
+import { loadTravelView } from "@/src/modules/pets/application/travel/load-travel-view";
 import { recordCvi } from "@/src/modules/pets/application/travel/record-cvi";
 import { recordTrip } from "@/src/modules/pets/application/travel/record-trip";
 import { loadOverlaidMovements } from "@/src/modules/pets/application/travel/travel-edge";
@@ -448,6 +453,172 @@ describe("cancelTrip", () => {
       clientIdempotencyKey: key(),
     });
     expect(caretaker).toMatchObject({ ok: false, code: "forbidden" });
+  });
+});
+
+describe("confirmTripDocument", () => {
+  type TestPet = Awaited<ReturnType<typeof insertTestPet>>;
+
+  async function uruguayTrip(pet: TestPet) {
+    const trip = await recordTrip({
+      pet: travelPet(pet),
+      actor: ownerActor(),
+      input: {
+        corridorId: "uruguay",
+        travelDate: day(30),
+        mode: null,
+        airlineId: null,
+        intendedModality: null,
+      },
+      clientIdempotencyKey: key(),
+    });
+    if (!trip.ok) throw new Error(`setup: trip refused (${trip.code})`);
+    return trip.eventId;
+  }
+
+  async function papers(pet: TestPet, tripId: string) {
+    const read = await loadTravelView({
+      pet,
+      viewer: { accessPath: "owner", holderRole: "owner" },
+      tripId,
+    });
+    if (!read.ok) throw new Error("the owner must read the view");
+    const obligation = read.view.compliance?.obligations.find(
+      (o) => o.key === "required_documents",
+    );
+    if (!obligation?.documents) throw new Error("fixture: the corridor lists no documents");
+    return obligation;
+  }
+
+  async function amendmentCount(petId: string) {
+    const rows = await db
+      .select({ id: petEvents.id })
+      .from(petEvents)
+      .where(and(eq(petEvents.petId, petId), eq(petEvents.eventType, "event_amended")));
+    return rows.length;
+  }
+
+  function tick(pet: TestPet, tripEventId: string, document: string, confirmed = true) {
+    return confirmTripDocument({
+      pet,
+      actor: ownerActor(),
+      tripEventId,
+      document,
+      confirmed,
+      clientIdempotencyKey: key(),
+    });
+  }
+
+  it("stays a warning until every paper is ticked, then records the owner's word as info", async () => {
+    const pet = await insertTestPet("DOCS");
+    const tripId = await uruguayTrip(pet);
+    const [original] = await db.select().from(petEvents).where(eq(petEvents.id, tripId));
+
+    const before = await papers(pet, tripId);
+    expect(before.requirementLevel).toBe("warning");
+    expect(before.state).toBe("Confirmá que tenés cada documento");
+    expect(before.documents?.every((d) => !d.confirmed)).toBe(true);
+    const labels = (before.documents ?? []).map((d) => d.label);
+    expect(labels.length).toBeGreaterThan(0);
+
+    for (const [i, label] of labels.entries()) {
+      expect(await tick(pet, tripId, label)).toEqual({
+        ok: true,
+        tripEventId: tripId,
+        changed: true,
+      });
+      const now = await papers(pet, tripId);
+      const done = i === labels.length - 1;
+      expect(now.requirementLevel).toBe(done ? "info" : "warning");
+    }
+
+    const after = await papers(pet, tripId);
+    expect(after.state).toBe("Registraste que tenés cada documento");
+    expect(after.documents?.every((d) => d.confirmed)).toBe(true);
+    // One correction per tick, the trip row itself never touched.
+    expect(await amendmentCount(pet.id)).toBe(labels.length);
+    const [still] = await db.select().from(petEvents).where(eq(petEvents.id, tripId));
+    expect(still.payload).toEqual(original.payload);
+  });
+
+  it("is idempotent on the state, and a tick taken back and given again lands", async () => {
+    const pet = await insertTestPet("DOCSIDEM");
+    const tripId = await uruguayTrip(pet);
+    const [first] = (await papers(pet, tripId)).documents ?? [];
+    if (!first) throw new Error("fixture: no document");
+
+    expect((await tick(pet, tripId, first.label)).ok).toBe(true);
+    const count = await amendmentCount(pet.id);
+    expect(await tick(pet, tripId, first.label)).toEqual({
+      ok: true,
+      tripEventId: tripId,
+      changed: false,
+    });
+    expect(await amendmentCount(pet.id)).toBe(count);
+
+    // tick, untick, tick: each is a new correction; none is mistaken for a
+    // replay of an earlier, identical change.
+    expect(await tick(pet, tripId, first.label, false)).toMatchObject({ changed: true });
+    expect((await papers(pet, tripId)).documents?.[0]?.confirmed).toBe(false);
+    expect(await tick(pet, tripId, first.label, true)).toMatchObject({ changed: true });
+    expect((await papers(pet, tripId)).documents?.[0]?.confirmed).toBe(true);
+    expect(await amendmentCount(pet.id)).toBe(count + 2);
+  });
+
+  it("refuses a document the trip does not list, an unknown trip, and a caretaker", async () => {
+    const pet = await insertTestPet("DOCSNO");
+    const tripId = await uruguayTrip(pet);
+    const [first] = (await papers(pet, tripId)).documents ?? [];
+    if (!first) throw new Error("fixture: no document");
+
+    expect(await tick(pet, tripId, "Algo que nadie pidió")).toMatchObject({
+      ok: false,
+      code: "input_invalid",
+    });
+    expect(await tick(pet, crypto.randomUUID(), first.label)).toMatchObject({
+      ok: false,
+      code: "trip_not_found",
+    });
+    const caretaker = await confirmTripDocument({
+      pet,
+      actor: { ...ownerActor(), holderRole: "caretaker" },
+      tripEventId: tripId,
+      document: first.label,
+      confirmed: true,
+      clientIdempotencyKey: key(),
+    });
+    expect(caretaker).toMatchObject({ ok: false, code: "forbidden" });
+    expect(await amendmentCount(pet.id)).toBe(0);
+  });
+
+  it("is the v1 command confirm_trip_document, with the same refusals", async () => {
+    const pet = await insertTestPet("DOCSV1");
+    const tripId = await uruguayTrip(pet);
+    const [first] = (await papers(pet, tripId)).documents ?? [];
+    if (!first) throw new Error("fixture: no document");
+    const ctx = (document: string) => ({
+      publicToken: pet.publicToken,
+      userId: OWNER_ID,
+      idempotencyKey: key(),
+      input: {
+        command: "confirm_trip_document" as const,
+        tripEventId: tripId,
+        document,
+        confirmed: true,
+      },
+    });
+
+    const ok = await runPetTravelCommand(ctx(first.label));
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({
+      command: "confirm_trip_document",
+      tripEventId: tripId,
+      changed: true,
+    });
+
+    const unlisted = await runPetTravelCommand(ctx("Pasaporte del titular"));
+    expect(unlisted.status).toBe(400);
+    expect(await unlisted.json()).toEqual({ error: "travel_input_invalid" });
   });
 });
 

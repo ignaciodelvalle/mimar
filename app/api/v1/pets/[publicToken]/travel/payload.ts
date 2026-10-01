@@ -84,6 +84,7 @@ function toWireObligation(
     })),
     freshnessNotice: o.freshnessNotice,
     legalFootnote: o.legalFootnote,
+    documents: o.documents ? o.documents.map((d) => ({ ...d })) : null,
   };
 }
 

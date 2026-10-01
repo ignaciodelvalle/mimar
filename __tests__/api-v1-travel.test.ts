@@ -318,6 +318,7 @@ describe("selectTrip — which trip the semáforo reads", () => {
     mode: null,
     airlineId: null,
     intendedModality: null,
+    documentsConfirmed: [],
   });
 
   it("defaults to the next trip, not the earliest recent one", () => {

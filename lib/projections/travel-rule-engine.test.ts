@@ -576,9 +576,21 @@ const COMPLETE_CHILE_LIBRETA = [
 ];
 
 describe("honesty and copy", () => {
-  it("a complete Chile libreta reaches verde on the shipped corridor", () => {
+  it("a complete Chile libreta reaches verde on the shipped corridor once every paper is ticked", () => {
+    const chile = getCorridor("chile");
+    // Before the owner ticks anything, the papers are the ONE pending item.
+    const unticked = deriveTravelCompliance(
+      input({ corridors: [chile], events: COMPLETE_CHILE_LIBRETA }),
+    );
+    expect(
+      unticked.obligations.filter((o) => o.requirementLevel !== "info").map((o) => o.key),
+    ).toEqual(["required_documents"]);
+    expect(unticked.semaforo).toBe("amarillo");
+
+    const papers = find(unticked, "required_documents").documents?.map((d) => d.label) ?? [];
+    expect(papers.length).toBeGreaterThan(0);
     const state = deriveTravelCompliance(
-      input({ corridors: [getCorridor("chile")], events: COMPLETE_CHILE_LIBRETA }),
+      input({ corridors: [chile], events: COMPLETE_CHILE_LIBRETA, confirmedDocuments: papers }),
     );
     expect(state.obligations.filter((o) => o.requirementLevel !== "info")).toEqual([]);
     expect(state.semaforo).toBe("verde");

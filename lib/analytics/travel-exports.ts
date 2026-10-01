@@ -38,7 +38,9 @@ import { speciesInProse } from "@/lib/utils/species";
 // each source with the date it was last checked and a "Verificá" line on every
 // stale or unconfirmed one, and says the semáforo in the words the screen uses.
 // 2026-07-04 was the Fase 1 corridor-only checklist.
-export const TRAVEL_EXPORT_SCHEMA_VERSION = "2026-09-30";
+// 2026-10-01 (PO sign-offs): each document of the papers-to-carry obligation is
+// printed with whether the owner ticked "Lo tengo" for it on this trip.
+export const TRAVEL_EXPORT_SCHEMA_VERSION = "2026-10-01";
 
 const TRAVEL_EXPORTS_BUCKET = "travel-exports";
 
@@ -117,6 +119,12 @@ function obligationLines(o: TravelObligation): string[] {
   return [
     `[${LEVEL_LABELS[o.requirementLevel]}] ${o.label} — ${o.state}`,
     ...(o.detail ? [`  ${o.detail}`] : []),
+    // The papers, each with what the OWNER said about it — a tick records
+    // their word, never that the paper is valid (PO 2026-10-01).
+    ...(o.documents ?? []).map(
+      (d) =>
+        `  [${d.confirmed ? "x" : " "}] ${d.label}: ${d.confirmed ? "lo tenés, según indicaste" : "sin confirmar"}`,
+    ),
     // The degraded-row marker: "Verificá — dato sin revisar desde …" or
     // "Verificá — dato sin confirmar con la fuente". A stale rule is never
     // printed as a clean pass (spec travel-export, "Stale export").
