@@ -45,6 +45,18 @@ describe("myReportFailureMessage", () => {
       myReportFailureMessage({ outcome: "api-error", code: "rate_limited", retryAfterSeconds: 30 }),
     ).toContain("30 segundos");
   });
+
+  it("prints the support code of a reported failure (F-6)", () => {
+    // MyReportDetailScreen renders this function's answer and nothing else, so
+    // this is where the shared mapping's "Código" has to survive the override.
+    expect(
+      myReportFailureMessage({
+        outcome: "malformed",
+        detail: "bad json",
+        correlationId: "abc12345",
+      }),
+    ).toBe("El servidor respondió algo que no pudimos leer. Volvé a intentar.\nCódigo: abc12345");
+  });
 });
 
 describe("reportRowAccessibilityLabel", () => {

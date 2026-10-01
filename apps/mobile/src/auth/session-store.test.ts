@@ -1109,6 +1109,63 @@ describe("completeIdentity — the server says it is already done", () => {
 });
 
 // ---------------------------------------------------------------------------
+// F-6 — CrearCuentaScreen and IdentidadPendienteScreen print the STORE's
+// message, so the shared mapping (the countdown, the support code) has to
+// survive this layer. The sentences are written out, not derived.
+// ---------------------------------------------------------------------------
+
+describe("the store's refusals speak through apiFailureMessage (F-6)", () => {
+  const SIGNUP_INPUT = {
+    email: "ana@dim.test",
+    password: "hunter2hunter2",
+    confirmPassword: "hunter2hunter2",
+    tosAccepted: true,
+  };
+
+  it("signUp counts a 429 down instead of saying 'esperá un momento'", async () => {
+    mockSignup.mockResolvedValue({
+      outcome: "api-error",
+      code: "rate_limited",
+      retryAfterSeconds: 30,
+    });
+
+    await expect(signUp(SIGNUP_INPUT)).resolves.toEqual({
+      ok: false,
+      message: "Demasiadas consultas. Probá de nuevo en 30 segundos.",
+    });
+  });
+
+  it("signUp prints the support code of a reported failure", async () => {
+    mockSignup.mockResolvedValue({
+      outcome: "malformed",
+      detail: "Unexpected end of JSON input",
+      correlationId: "abc12345",
+    });
+
+    await expect(signUp(SIGNUP_INPUT)).resolves.toEqual({
+      ok: false,
+      message:
+        "El servidor respondió algo que no pudimos leer. Volvé a intentar.\nCódigo: abc12345",
+    });
+  });
+
+  it("completeIdentity prints the support code of a reported failure", async () => {
+    await signIn("ana@dim.test", "hunter2");
+    mockCompleteIdentity.mockResolvedValue({
+      outcome: "malformed",
+      detail: "Unexpected end of JSON input",
+      correlationId: "def45678",
+    });
+
+    await expect(completeIdentity({ firstName: "Ana", lastName: "Pérez" })).resolves.toEqual({
+      ok: false,
+      message:
+        "El servidor respondió algo que no pudimos leer. Volvé a intentar.\nCódigo: def45678",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // clearSession — the push revoke, and the cycle it would otherwise close
 // ---------------------------------------------------------------------------
 

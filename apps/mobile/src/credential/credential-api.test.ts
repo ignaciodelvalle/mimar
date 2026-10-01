@@ -163,17 +163,28 @@ describe("fetchCredential — codes outside the contract's vocabulary", () => {
 describe("fetchCredential — the payloadVersion gate", () => {
   it("refuses a payload from a future contract instead of guessing at it", async () => {
     const result = await withFetch({ status: 200, body: okPayload({ payloadVersion: 99 }) });
-    expect(result).toEqual({ outcome: "unsupported-version", received: 99 });
+    expect(result).toMatchObject({ outcome: "unsupported-version", received: 99 });
   });
 
   it("reports null — not NaN — when the version is missing or not a number", async () => {
     expect(
       await withFetch({ status: 200, body: okPayload({ payloadVersion: undefined }) }),
-    ).toEqual({ outcome: "unsupported-version", received: null });
-    expect(await withFetch({ status: 200, body: okPayload({ payloadVersion: "1" }) })).toEqual({
-      outcome: "unsupported-version",
-      received: null,
-    });
+    ).toMatchObject({ outcome: "unsupported-version", received: null });
+    expect(
+      await withFetch({ status: 200, body: okPayload({ payloadVersion: "1" }) }),
+    ).toMatchObject({ outcome: "unsupported-version", received: null });
+  });
+
+  it("files the skew and prints its code, like a bearer read would (F-6)", async () => {
+    // This door builds its own result from `performRequest`, and until F-6 that
+    // skipped the report: version skew on the owner's own credential printed
+    // "Actualizá la app" with no code support could look up. The id's SHAPE is
+    // asserted here; that it matches the Sentry event is `version-skew.test.ts`'s.
+    const result = await withFetch({ status: 200, body: okPayload({ payloadVersion: 99 }) });
+    const correlationId =
+      result.outcome === "unsupported-version" ? result.correlationId : undefined;
+    expect(correlationId).toMatch(/^[0-9a-f]{8}$/);
+    expect(fetchFailureMessage(result)).toContain(`Código: ${correlationId}`);
   });
 });
 

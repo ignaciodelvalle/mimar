@@ -140,6 +140,32 @@ describe("requestPasswordReset", () => {
     const result = await requestPasswordReset("nadie@example.com");
     expect(result).toEqual({ ok: true });
   });
+
+  it("counts a 429 down and prints a reported failure's code (F-6)", async () => {
+    // RecuperarScreen prints this message verbatim, so the shared mapping has
+    // to survive the store: the countdown a locked-out person needs before
+    // tapping again, and the code support needs to find the event.
+    mockRequestPasswordReset.mockResolvedValue({
+      outcome: "api-error",
+      code: "rate_limited",
+      retryAfterSeconds: 45,
+    });
+    await expect(requestPasswordReset("ana@example.com")).resolves.toEqual({
+      ok: false,
+      message: "Demasiadas consultas. Probá de nuevo en 45 segundos.",
+    });
+
+    mockRequestPasswordReset.mockResolvedValue({
+      outcome: "malformed",
+      detail: "Unexpected end of JSON input",
+      correlationId: "ghi90123",
+    });
+    await expect(requestPasswordReset("ana@example.com")).resolves.toEqual({
+      ok: false,
+      message:
+        "El servidor respondió algo que no pudimos leer. Volvé a intentar.\nCódigo: ghi90123",
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

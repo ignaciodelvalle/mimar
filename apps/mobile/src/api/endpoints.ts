@@ -162,7 +162,13 @@ import type {
   WelfareReportCommandInput,
 } from "@dim/contract/input";
 
-import { type ApiResult, type SessionPort, apiRequest, performRequest } from "./client";
+import {
+  type ApiResult,
+  type SessionPort,
+  apiRequest,
+  performRequest,
+  reportedResult,
+} from "./client";
 import { apiV1ErrorCode } from "./error-copy";
 
 /**
@@ -171,25 +177,36 @@ import { apiV1ErrorCode } from "./error-copy";
  * It therefore uses `performRequest` directly and interprets its own result:
  * routing it through `apiRequest` would ask the session port for a token that
  * by definition does not exist yet, and would end a session nobody has.
+ *
+ * ITS FAILURES ARE STILL REPORTED, through `reportedResult` — the half of
+ * `apiRequest` this door does need. Without it a malformed answer here filed no
+ * event and printed no "Código" on the one screen every tester sees first (F-6).
+ * The same holds for every other no-bearer door below.
  */
 export async function login(input: {
   email: string;
   password: string;
 }): Promise<ApiResult<LoginV1>> {
+  const path = "/api/v1/auth/login";
   const raw = await performRequest({
-    path: "/api/v1/auth/login",
+    path,
     method: "POST",
     body: { email: input.email, password: input.password },
   });
 
   if (raw.transport === "unreachable") return { outcome: "unreachable", detail: raw.detail };
-  if (raw.transport === "malformed") return { outcome: "malformed", detail: raw.detail };
+  if (raw.transport === "malformed") {
+    return reportedResult<LoginV1>({ outcome: "malformed", detail: raw.detail }, path);
+  }
   if (raw.status !== 200) {
-    return {
-      outcome: "api-error",
-      code: apiV1ErrorCode(raw.body) ?? "temporarily_unavailable",
-      retryAfterSeconds: raw.retryAfterSeconds,
-    };
+    return reportedResult<LoginV1>(
+      {
+        outcome: "api-error",
+        code: apiV1ErrorCode(raw.body) ?? "temporarily_unavailable",
+        retryAfterSeconds: raw.retryAfterSeconds,
+      },
+      path,
+    );
   }
   return { outcome: "ok", payload: raw.body as LoginV1 };
 }
@@ -230,20 +247,26 @@ export async function signup(input: {
   /** The legal version whose consent sentence this bundle displayed. */
   legalVersion?: string;
 }): Promise<ApiResult<SignupV1>> {
+  const path = "/api/v1/auth/signup";
   const raw = await performRequest({
-    path: "/api/v1/auth/signup",
+    path,
     method: "POST",
     body: input,
   });
 
   if (raw.transport === "unreachable") return { outcome: "unreachable", detail: raw.detail };
-  if (raw.transport === "malformed") return { outcome: "malformed", detail: raw.detail };
+  if (raw.transport === "malformed") {
+    return reportedResult<SignupV1>({ outcome: "malformed", detail: raw.detail }, path);
+  }
   if (raw.status !== 201) {
-    return {
-      outcome: "api-error",
-      code: apiV1ErrorCode(raw.body) ?? "temporarily_unavailable",
-      retryAfterSeconds: raw.retryAfterSeconds,
-    };
+    return reportedResult<SignupV1>(
+      {
+        outcome: "api-error",
+        code: apiV1ErrorCode(raw.body) ?? "temporarily_unavailable",
+        retryAfterSeconds: raw.retryAfterSeconds,
+      },
+      path,
+    );
   }
   return { outcome: "ok", payload: raw.body as SignupV1 };
 }
@@ -276,20 +299,29 @@ export async function signup(input: {
 export async function requestPasswordReset(input: {
   email: string;
 }): Promise<ApiResult<PasswordResetRequestedV1>> {
+  const path = "/api/v1/auth/password-reset";
   const raw = await performRequest({
-    path: "/api/v1/auth/password-reset",
+    path,
     method: "POST",
     body: { email: input.email },
   });
 
   if (raw.transport === "unreachable") return { outcome: "unreachable", detail: raw.detail };
-  if (raw.transport === "malformed") return { outcome: "malformed", detail: raw.detail };
+  if (raw.transport === "malformed") {
+    return reportedResult<PasswordResetRequestedV1>(
+      { outcome: "malformed", detail: raw.detail },
+      path,
+    );
+  }
   if (raw.status !== 202) {
-    return {
-      outcome: "api-error",
-      code: apiV1ErrorCode(raw.body) ?? "temporarily_unavailable",
-      retryAfterSeconds: raw.retryAfterSeconds,
-    };
+    return reportedResult<PasswordResetRequestedV1>(
+      {
+        outcome: "api-error",
+        code: apiV1ErrorCode(raw.body) ?? "temporarily_unavailable",
+        retryAfterSeconds: raw.retryAfterSeconds,
+      },
+      path,
+    );
   }
   return { outcome: "ok", payload: raw.body as PasswordResetRequestedV1 };
 }
@@ -541,22 +573,33 @@ export async function searchLocalities(query: {
   if (query.province) params.set("province", query.province);
   if (query.aliases) params.set("aliases", "1");
 
-  const raw = await performRequest({ path: `/api/v1/localities?${params.toString()}` });
+  // The query string is dropped from the report's route tag by `telemetryPath`:
+  // `q` is whatever the person was typing.
+  const path = `/api/v1/localities?${params.toString()}`;
+  const raw = await performRequest({ path });
   if (raw.transport === "unreachable") return { outcome: "unreachable", detail: raw.detail };
-  if (raw.transport === "malformed") return { outcome: "malformed", detail: raw.detail };
+  if (raw.transport === "malformed") {
+    return reportedResult<LocalitiesV1>({ outcome: "malformed", detail: raw.detail }, path);
+  }
   if (raw.status !== 200) {
-    return {
-      outcome: "api-error",
-      code: apiV1ErrorCode(raw.body) ?? "temporarily_unavailable",
-      retryAfterSeconds: raw.retryAfterSeconds,
-    };
+    return reportedResult<LocalitiesV1>(
+      {
+        outcome: "api-error",
+        code: apiV1ErrorCode(raw.body) ?? "temporarily_unavailable",
+        retryAfterSeconds: raw.retryAfterSeconds,
+      },
+      path,
+    );
   }
   const payload = raw.body as LocalitiesV1;
   if (payload?.payloadVersion !== LOCALITIES_PAYLOAD_VERSION) {
-    return {
-      outcome: "unsupported-version",
-      received: typeof payload?.payloadVersion === "number" ? payload.payloadVersion : null,
-    };
+    return reportedResult<LocalitiesV1>(
+      {
+        outcome: "unsupported-version",
+        received: typeof payload?.payloadVersion === "number" ? payload.payloadVersion : null,
+      },
+      path,
+    );
   }
   return { outcome: "ok", payload };
 }

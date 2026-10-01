@@ -182,4 +182,17 @@ describe("the upload copy — three failures, three different instructions", () 
       }),
     ).toContain("en 30 segundos");
   });
+
+  it("a reported ticket or confirm failure carries its support code (F-6)", () => {
+    // PetPhotoScreen prints this function's answer verbatim, so the "Código" a
+    // tester reads aloud has to come through both API stages, not just one.
+    for (const stage of ["ticket", "confirm"] as const) {
+      expect(
+        petPhotoFailureMessage({
+          stage,
+          result: { outcome: "malformed", detail: "bad json", correlationId: "def45678" },
+        }),
+      ).toContain("\nCódigo: def45678");
+    }
+  });
 });

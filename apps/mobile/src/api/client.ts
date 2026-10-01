@@ -347,6 +347,27 @@ function reportFailure<T>(result: ApiResult<T>, route: string): ApiResult<T> {
   return { ...result, correlationId };
 }
 
+/**
+ * `reportFailure` for a result built OUTSIDE `apiRequest` — the doors with no
+ * bearer (F-6, native review 2026-09-23).
+ *
+ * `login`, `signup`, `requestPasswordReset`, `searchLocalities` and the public
+ * credential read interpret `performRequest` themselves, because `apiRequest`
+ * would ask the session port for a token that does not exist yet. Skipping
+ * `apiRequest` skipped the report with it: a malformed answer or a version-skew
+ * refusal on the very screens a tester reaches first — "no me dejó entrar" is
+ * the sentence `observability/report.ts` was written for — filed no event and
+ * printed no "Código". Those screens already render through `apiFailureMessage`;
+ * the id was missing one layer down, here.
+ *
+ * TAKES THE FILLED PATH AND TEMPLATES IT ITSELF, so no caller can forget to: the
+ * credential path carries the pet's public token, and a route tag is indexed
+ * forever (`telemetryPath`).
+ */
+export function reportedResult<T>(result: ApiResult<T>, path: string): ApiResult<T> {
+  return reportFailure(result, telemetryPath(path));
+}
+
 /** The codes that mean "this session is over", with the reason to end it under. */
 function sessionEndingReason(code: ApiV1ErrorCode, status: number): SessionEndReason | null {
   if (status === 401) {
@@ -444,10 +465,11 @@ export function apiFailureMessage(result: ApiResult<unknown>): string | null {
   // ADDED HERE AND NOT IN THE NOTICE COMPONENTS, and the reason is that this is
   // the only function that sees the `ApiResult` the id is attached to —
   // `ErrorNotice`, `StaleNotice` and `Callout` all receive a finished string.
-  // The consequence is worth stating: the 23 screens that still hand-roll their
-  // own `failureMessage` switch instead of calling this (A6-cuenta-resiliencia-14)
-  // do NOT print a code, and they will start to on the day those switches are
-  // deleted — which is the point of deleting them.
+  // The consequence is worth stating: a screen prints a code only if its result
+  // went through `reportFailure` first. The hand-rolled `failureMessage` switches
+  // that bypassed this function are gone (A6-cuenta-resiliencia-14, fenced by
+  // `failure-message-fences.test.ts`), and the no-bearer doors that built their
+  // result without the report now go through `reportedResult` (F-6).
   //
   // Only a REPORTED failure carries an id, so the ordinary refusals (`not_found`,
   // `rate_limited`, a dead spot) keep their sentence exactly as it was: a code

@@ -26,7 +26,7 @@ import {
   type PublicCredentialV1Degraded,
 } from "@dim/contract/api";
 
-import { type ApiResult, apiFailureMessage, performRequest } from "../api/client";
+import { type ApiResult, apiFailureMessage, performRequest, reportedResult } from "../api/client";
 import { apiV1ErrorCode } from "../api/error-copy";
 
 /**
@@ -41,14 +41,22 @@ export type CredentialFetchResult =
   | { outcome: "degraded"; payload: PublicCredentialV1Degraded }
   | ApiResult<PublicCredentialV1>;
 
-/** `GET /api/v1/pets/{token}/credential`. One request, no retry. */
+/**
+ * `GET /api/v1/pets/{token}/credential`. One request, no retry.
+ *
+ * Its failures are reported through `reportedResult` exactly as an `apiRequest`
+ * call's are, so a malformed or version-skewed answer files an event and the
+ * screen prints its "Código" (F-6). The report's route tag is the TEMPLATE —
+ * `reportedResult` strips the token, which identifies an animal and its holder.
+ */
 export async function fetchCredential(publicToken: string): Promise<CredentialFetchResult> {
-  const raw = await performRequest({
-    path: `/api/v1/pets/${encodeURIComponent(publicToken)}/credential`,
-  });
+  const path = `/api/v1/pets/${encodeURIComponent(publicToken)}/credential`;
+  const raw = await performRequest({ path });
 
   if (raw.transport === "unreachable") return { outcome: "unreachable", detail: raw.detail };
-  if (raw.transport === "malformed") return { outcome: "malformed", detail: raw.detail };
+  if (raw.transport === "malformed") {
+    return reportedResult<PublicCredentialV1>({ outcome: "malformed", detail: raw.detail }, path);
+  }
 
   // Checked BEFORE the generic error arm precisely because its body is not a
   // bare `{ error }`.
@@ -57,21 +65,27 @@ export async function fetchCredential(publicToken: string): Promise<CredentialFe
     if (degraded?.payloadVersion === PUBLIC_CREDENTIAL_PAYLOAD_VERSION) {
       return { outcome: "degraded", payload: degraded };
     }
-    return {
-      outcome: "api-error",
-      code: "temporarily_unavailable",
-      retryAfterSeconds: raw.retryAfterSeconds,
-    };
+    return reportedResult<PublicCredentialV1>(
+      {
+        outcome: "api-error",
+        code: "temporarily_unavailable",
+        retryAfterSeconds: raw.retryAfterSeconds,
+      },
+      path,
+    );
   }
 
   if (raw.status < 200 || raw.status >= 300) {
     // An unrecognised code is a contract violation, not something to display
     // raw. Anything unexpected reads as a failed read, never as 404.
-    return {
-      outcome: "api-error",
-      code: apiV1ErrorCode(raw.body) ?? "temporarily_unavailable",
-      retryAfterSeconds: raw.retryAfterSeconds,
-    };
+    return reportedResult<PublicCredentialV1>(
+      {
+        outcome: "api-error",
+        code: apiV1ErrorCode(raw.body) ?? "temporarily_unavailable",
+        retryAfterSeconds: raw.retryAfterSeconds,
+      },
+      path,
+    );
   }
 
   const payload = raw.body as PublicCredentialV1;
@@ -79,7 +93,7 @@ export async function fetchCredential(publicToken: string): Promise<CredentialFe
     // An old build should say "actualizá la app", not render half a credential
     // from a shape it is guessing at.
     const received = typeof payload?.payloadVersion === "number" ? payload.payloadVersion : null;
-    return { outcome: "unsupported-version", received };
+    return reportedResult<PublicCredentialV1>({ outcome: "unsupported-version", received }, path);
   }
 
   return { outcome: "ok", payload };
