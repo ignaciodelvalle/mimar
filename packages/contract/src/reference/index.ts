@@ -48,6 +48,28 @@ export {
   homeLocalityChipReason,
   localityOptionLabel,
 } from "./locality-copy.ts";
+export {
+  type DerivedPetAction,
+  type DerivedPetActionGroup,
+  type DerivedPetActions,
+  FOSTER_FIND_HOME_COPY,
+  PET_ACTION_COPY,
+  PET_ACTION_GROUP_IDS,
+  PET_ACTION_GROUPS,
+  PET_ACTION_IDS,
+  PET_ACTION_INERT_CAPTIONS,
+  PET_ACTION_INERT_REASONS,
+  PET_ACTION_PRIMARY_ROW,
+  type PetActionContext,
+  type PetActionCopy,
+  type PetActionGroupDef,
+  type PetActionGroupId,
+  type PetActionId,
+  type PetActionInertReason,
+  type PetActionState,
+  derivePetActions,
+  findPetAction,
+} from "./pet-actions.ts";
 export { pluralizeEs } from "./pluralize-es.ts";
 export { PROVINCES, type ReferenceProvince } from "./provinces.ts";
 export {
