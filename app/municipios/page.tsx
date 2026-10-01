@@ -9,7 +9,6 @@ import "@/app/landing.css";
 
 import { LandingFooter } from "@/components/landing/LandingFooter";
 import { LandingNav } from "@/components/landing/LandingNav";
-import { resolvePlayStoreUrl } from "@/lib/ui/play-store";
 
 import { PilotRequestForm } from "./PilotRequestForm";
 import { CAPABILITIES, QUESTIONS, faqs, pilotSteps } from "./content";
@@ -52,9 +51,8 @@ export const dynamic = "force-dynamic";
  * a pilot length, a response time, and anything only partly built.
  */
 export default function MunicipiosPage() {
-  const playStoreUrl = resolvePlayStoreUrl(process.env);
-  const steps = pilotSteps(playStoreUrl);
-  const faq = faqs(playStoreUrl);
+  const steps = pilotSteps();
+  const faq = faqs();
 
   return (
     <div className="lp flex min-h-screen flex-col" data-landing-root>

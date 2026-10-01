@@ -90,10 +90,12 @@ export const CAPABILITIES: readonly Capability[] = [
     body: "Cada mordedura abre su observación, con su plazo a la vista hasta que la veterinaria la cierra.",
   },
   {
-    // Input: app/(public)/denuncias/nueva. Office: app/gob/denuncias
-    // (moderación + triage) → app/gob/casos.
+    // Input: app/(public)/denuncias/nueva (web) and the Android app's report
+    // screen. Office: app/gob/denuncias (moderación + triage) → app/gob/casos.
+    // The Android app is named unconditionally: AHEAD OF THE PRODUCT per PO
+    // decision 2026-10-01 (no Play listing yet), debt pending.
     title: "Denuncias de maltrato",
-    body: "Los vecinos denuncian desde la web y tu oficina las toma, las resuelve o abre un caso.",
+    body: "Los vecinos denuncian desde la web o la app y tu oficina las toma, las resuelve o abre un caso.",
   },
   {
     // Input: app/(app)/mis-mascotas/[publicToken]/perdida (owner) +
@@ -124,14 +126,16 @@ export const CAPABILITIES: readonly Capability[] = [
 
 /**
  * The pilot, in order. Step 2: create-institutional-account.ts + access-link-
- * mail.ts. Step 3: citizens use the web portal; the Android app is named ONLY
- * when a Play listing exists (lib/ui/play-store.ts), so an unpublished app is
- * never promised.
+ * mail.ts. Step 3: citizens use the web portal or the Android app.
+ *
+ * AHEAD OF THE PRODUCT (PO decision 2026-10-01, debt pending): the Android app
+ * is named unconditionally even though no Play listing is configured yet. This
+ * replaces the earlier rule that named it only when lib/ui/play-store.ts
+ * resolved a listing.
  */
-export function pilotSteps(playStoreUrl: string | null): string[] {
-  const citizens = playStoreUrl
-    ? "Los vecinos se suman desde el portal web o descargando la app de Android, y lo que cargan llega al tablero de tu oficina."
-    : "Los vecinos se suman desde el portal web, y lo que cargan llega al tablero de tu oficina.";
+export function pilotSteps(): string[] {
+  const citizens =
+    "Los vecinos se suman desde el portal web o descargando la app de Android, y lo que cargan llega al tablero de tu oficina.";
   return [
     "Nos pasás los correos institucionales de quienes lo van a usar y las localidades de tu jurisdicción.",
     "Creamos las cuentas. Cada persona recibe un enlace de acceso por correo y elige su propia contraseña.",
@@ -142,9 +146,11 @@ export function pilotSteps(playStoreUrl: string | null): string[] {
 export type Faq = { q: string; a: string };
 
 /**
- * Questions that remove friction. Each answer is true in the code.
+ * Questions that remove friction. Each answer is true in the code, except the
+ * Android app mention (ahead of the product, PO decision 2026-10-01, debt
+ * pending).
  */
-export function faqs(playStoreUrl: string | null): Faq[] {
+export function faqs(): Faq[] {
   return [
     {
       // Step 1 of pilotSteps; create-institutional-account.ts.
@@ -157,11 +163,10 @@ export function faqs(playStoreUrl: string | null): Faq[] {
       a: "No. El portal de tu oficina funciona en el navegador, desde cualquier computadora con internet.",
     },
     {
-      // Citizen web portal (app/(app)); Android app only when listed.
+      // Citizen web portal (app/(app)) and the Android app (apps/mobile),
+      // named unconditionally: ahead of the product, PO 2026-10-01.
       q: "¿Cómo se suman los vecinos?",
-      a: playStoreUrl
-        ? "Registran a sus mascotas en el portal web o en la app de Android. Veterinarias y refugios cargan lo suyo con su propia cuenta."
-        : "Registran a sus mascotas en el portal web. Veterinarias y refugios cargan lo suyo con su propia cuenta.",
+      a: "Desde el celular con la app de Android, o desde cualquier computadora en el portal web. Registran a sus mascotas y su libreta sanitaria, avisan si se pierden, sacan turno en las campañas y hacen denuncias. Veterinarias y refugios cargan lo suyo con su propia cuenta, y todo llega al tablero de tu oficina.",
     },
     {
       // CsvExportLink on the dashboards + app/gob/analytics/export.
