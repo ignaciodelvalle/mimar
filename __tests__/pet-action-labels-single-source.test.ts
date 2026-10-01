@@ -10,11 +10,13 @@
 // would notice: the copy would read right on the day it was typed.
 //
 // THE SUBJECT IS DERIVED, not listed. A file is a panel CONSUMER when it names
-// the catalogue or the web's resolved view of it (`derivePetActions`,
-// `resolveWebPetActions`, `WebPetAction`, …), under the web roots AND the app's
-// source tree — so the native panel is judged the day it imports the catalogue,
-// with nothing to add here. Tests are not consumers: asserting a label is their
-// job.
+// the catalogue or a platform's resolved view of it (`derivePetActions`,
+// `resolveWebPetActions`, `WebPetAction`, `ownerPanelView`, `OwnerPanelRow`, …),
+// under the web roots AND the app's source tree. Tests are not consumers:
+// asserting a label is their job. The app's runner has its own half —
+// `apps/mobile/src/pets/OwnerActionPanel.test.tsx` mounts the native panel over
+// the catalogue's whole gate matrix and fails on any string the catalogue does
+// not own.
 //
 // THE CHECK IS ON LITERALS. Every string literal and every JSX text node of a
 // consumer, comments stripped, is compared — trimmed, whole — against the
@@ -41,9 +43,13 @@ const REPO = join(import.meta.dirname, "..");
 const WEB_ROOTS = ["components", "app"];
 const NATIVE_ROOT = "apps/mobile/src";
 
-/** A source names the catalogue, or the web's resolved view of it. */
+/**
+ * A source names the catalogue, or a platform's resolved view of it — the web's
+ * (`resolveWebPetActions`, `WebPetAction`, …) or the app's (`ownerPanelView`,
+ * `OwnerPanelView`, `OwnerPanelRow`, `OwnerPanelGroup`).
+ */
 const CONSUMER_MARK =
-  /\b(?:derivePetActions|findPetAction|DerivedPetActions?|DerivedPetActionGroup|PetActionId|resolveWebPetActions|WebPetActions?|WebPetActionGroup)\b/;
+  /\b(?:derivePetActions|findPetAction|DerivedPetActions?|DerivedPetActionGroup|PetActionId|resolveWebPetActions|WebPetActions?|WebPetActionGroup|ownerPanelView|OwnerPanel(?:View|Row|Group))\b/;
 
 function walk(rel: string, out: string[]): void {
   for (const name of readdirSync(join(REPO, rel))) {
@@ -124,12 +130,16 @@ describe("the catalogue's words live in the catalogue only", () => {
     expect(paths.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("reads the app's source tree too, so the native panel is judged once it imports the catalogue", () => {
+  it("finds the app's panel among the consumers too (non-vacuity)", () => {
     // The scan root must be real: a moved tree would judge nothing and pass.
     expect(native.length).toBeGreaterThan(50);
-    // The native panel lands with phase 5 of owner-pet-actions; until it
-    // imports the catalogue it is not a consumer, and that is not a failure.
-    expect(nativeConsumers.length).toBeGreaterThanOrEqual(0);
+    // Phase 5 of owner-pet-actions landed the native panel: the view-model that
+    // reads the catalogue, and the component that draws what it resolved. Both
+    // must be judged — the component imports only the app's resolved view
+    // (`OwnerPanelView`), the way the web's panel imports `WebPetAction`.
+    const paths = nativeConsumers.map((s) => s.path);
+    expect(paths).toContain("apps/mobile/src/pets/owner-face-view-model.ts");
+    expect(paths).toContain("apps/mobile/src/pets/OwnerActionPanel.tsx");
   });
 
   it("no consumer types a catalogue string itself", () => {
