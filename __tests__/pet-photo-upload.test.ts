@@ -196,6 +196,7 @@ import {
   STAGING_BUCKET,
   confirmPetPhoto,
   mintPetPhotoTicket,
+  recordPetPhoto,
   stagedPathBelongsToPet,
 } from "@/lib/infra/pet-photo-upload";
 import {
@@ -468,6 +469,67 @@ describe("confirming — the bytes decide, not the declaration", () => {
     expect(result.photo.photoUrl).toBe(
       `https://s.test/storage/v1/object/public/pet-photos/${control.uploaded[0].path}`,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `recordPetPhoto` — the ROW and the POINTER, shared by both photo doors
+// ---------------------------------------------------------------------------
+//
+// The app's door (`confirmPetPhoto`, above) and the web's (`updatePetPhotoAction`,
+// owner-pet-actions) write the same two things for the same act: an
+// `attachments` row and `pets.primary_photo_id` pointing at it, inside one
+// transaction that refuses an erased animal. One function, so the two doors
+// cannot come to disagree about the erasure race. It touches NO storage: each
+// door owns its own objects and takes them back itself.
+
+const RECORDED = {
+  petId: PET_ID,
+  userId: USER_ID,
+  storagePath: "55555555-5555-4555-8555-555555555555.jpg",
+  mimeType: "image/jpeg",
+  fileSize: 4321,
+} as const;
+
+describe("recordPetPhoto — the row, then the pointer, or nothing", () => {
+  it("inserts the attachments row the door describes and reports a first photo", async () => {
+    const result = await recordPetPhoto(RECORDED);
+    expect(result).toEqual({ ok: true, replacedPrevious: false });
+    expect(control.inserted).toEqual([
+      {
+        petId: PET_ID,
+        uploadedByUserId: USER_ID,
+        storagePath: RECORDED.storagePath,
+        mimeType: "image/jpeg",
+        fileSize: 4321,
+      },
+    ]);
+  });
+
+  it("says it displaced an earlier photo when the pet already had one", async () => {
+    control.primaryPhotoId = "att-0";
+    expect(await recordPetPhoto(RECORDED)).toEqual({ ok: true, replacedPrevious: true });
+  });
+
+  it("answers pet_gone for an erased animal, and keeps no row", async () => {
+    control.petIsLive = false;
+    expect(await recordPetPhoto(RECORDED)).toEqual({ ok: false, code: "pet_gone" });
+    expect(control.inserted).toEqual([]);
+  });
+
+  it("answers pet_gone when the erasure lands between the read and the pointer, rolled back", async () => {
+    control.erasedMidTransaction = true;
+    expect(await recordPetPhoto(RECORDED)).toEqual({ ok: false, code: "pet_gone" });
+    expect(control.inserted).toEqual([]);
+  });
+
+  it("answers photo_failed when the transaction fails, and touches no storage either way", async () => {
+    control.txThrows = true;
+    expect(await recordPetPhoto(RECORDED)).toEqual({ ok: false, code: "photo_failed" });
+    control.txThrows = false;
+    await recordPetPhoto(RECORDED);
+    expect(control.removed).toEqual([]);
+    expect(control.uploaded).toEqual([]);
   });
 });
 

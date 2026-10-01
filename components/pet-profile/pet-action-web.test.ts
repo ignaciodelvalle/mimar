@@ -1,11 +1,11 @@
 // The web half of the owner's action panel: where each catalogue row goes on
-// THIS platform, and what happens to a row the web has no door for.
+// THIS platform.
 //
 // The WHAT — which rows, live or grey, and why — is `derivePetActions`, tested
 // in the contract. What is pinned here is the WHERE: a sheet on this page, a
-// page of its own, or the lost case already on screen; and the one platform
-// rule the catalogue cannot know, that the web's only photo field lives inside
-// "Editar datos".
+// page of its own, or the lost case already on screen. Since the web gained its
+// own photo door (`?sheet=foto`, the app's photo screen's twin) there is no row
+// the catalogue makes live that the web cannot open.
 
 import { describe, expect, it } from "vitest";
 
@@ -71,7 +71,7 @@ describe("resolveWebPetActions — where each row goes on the web", () => {
     expect(live.length).toBe(all(actions).length);
     expect(Object.fromEntries(live.map((a) => [a.id, a.link?.href]))).toMatchObject({
       edit: `/mis-mascotas/${TOKEN}?sheet=editar-mascota`,
-      photo: `/mis-mascotas/${TOKEN}?sheet=editar-mascota&seccion=foto`,
+      photo: `/mis-mascotas/${TOKEN}?sheet=foto`,
       contacts: `/mis-mascotas/${TOKEN}?sheet=emergencia`,
       service_dog: `/mis-mascotas/${TOKEN}/asistencia`,
       physical_tag: `/mis-mascotas/${TOKEN}?sheet=chapita`,
@@ -100,27 +100,50 @@ describe("resolveWebPetActions — what stays grey", () => {
     expect(transfer.caption).toBe(PET_ACTION_INERT_CAPTIONS.titular_only);
   });
 
-  it("greys the photo for a holder the web's edit form refuses, naming the app that has the door", () => {
-    // The catalogue gives a caretaker the photo LIVE (the app's photo door
-    // admits any holder) and "Editar datos" grey; the web's photo IS that form.
+  it("opens the photo for a CARETAKER, as the app does — the edit form stays grey", () => {
+    // The catalogue gives a caretaker the photo LIVE (photos are among what a
+    // caretaker MAY do) and "Editar datos" grey. The photo is its own door on
+    // both platforms now, so the grey edit form no longer takes it with it.
     const caretaker = web({ ...TITULAR, viewerRole: "caretaker", isTitular: false });
     expect(find(caretaker, "edit").link).toBeNull();
     const photo = find(caretaker, "photo");
-    expect(photo.link).toBeNull();
-    expect(photo.caption).toBe(PET_ACTION_INERT_CAPTIONS.app_only);
-    // And the credential's photo frame is not a door for them either.
-    expect(caretaker.photoHref).toBeNull();
+    expect(photo.link).toEqual({ kind: "sheet", href: `/mis-mascotas/${TOKEN}?sheet=foto` });
+    expect(photo.caption).toBeNull();
+    // And the credential's photo frame is the same door.
+    expect(caretaker.photoHref).toBe(`/mis-mascotas/${TOKEN}?sheet=foto`);
   });
 
-  it("keeps the photo door for a deceased animal's titular — the form still admits them", () => {
+  it("draws no live row grey for want of a web door, for any holder in any state", () => {
+    const offences: string[] = [];
+    let checked = 0;
+    for (const viewerRole of ["owner", "co_owner", "foster", "caretaker"] as const) {
+      for (const petStatus of ["active", "lost", "deceased"] as const) {
+        const ctx = { ...TITULAR, viewerRole, isTitular: viewerRole === "owner", petStatus };
+        const derived = derivePetActions(ctx);
+        const actions = web(ctx);
+        for (const action of [...derived.primary, ...derived.groups.flatMap((g) => g.actions)]) {
+          if (action.state.kind !== "live") continue;
+          checked += 1;
+          if (find(actions, action.id).link === null) {
+            offences.push(`${viewerRole}/${petStatus}/${action.id}`);
+          }
+        }
+      }
+    }
+    // Non-vacuity: the twelve panels above hold dozens of live rows.
+    expect(checked).toBeGreaterThan(50);
+    expect(offences).toEqual([]);
+  });
+
+  it("keeps the photo door for a deceased animal's titular", () => {
     const deceased = web({ ...TITULAR, petStatus: "deceased" });
-    expect(find(deceased, "photo").link?.href).toContain("seccion=foto");
+    expect(find(deceased, "photo").link?.href).toBe(`/mis-mascotas/${TOKEN}?sheet=foto`);
   });
 
-  it("makes the photo frame the same door as the Foto row when the viewer may use it", () => {
+  it("makes the photo frame the same door as the Foto row", () => {
     const titular = web(TITULAR);
     expect(titular.photoHref).toBe(find(titular, "photo").link?.href);
-    expect(titular.photoHref).toContain("seccion=foto");
+    expect(titular.photoHref).toBe(`/mis-mascotas/${TOKEN}?sheet=foto`);
   });
 
   it("keeps the standing note under a live row — the death row says what it closes", () => {

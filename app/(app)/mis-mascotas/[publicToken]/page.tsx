@@ -651,9 +651,9 @@ export default async function PetDetailPage({
               photoSrc: photoUrl ?? undefined,
               // The photo frame is the "Foto" row's own door — empty: "+ Foto",
               // with a photo: change it — and the catalogue decides it like
-              // every other door: absent for a vet or a shelter reading the
-              // credential, and for a holder the web's edit form refuses (the
-              // app has their photo door).
+              // every other door: open for any holder, a caretaker included
+              // (`?sheet=foto`, the app's photo screen's twin), and absent for
+              // a vet or a shelter reading the credential.
               addPhotoHref: petActions.photoHref ?? undefined,
               tags: heroTags,
             }}
@@ -795,6 +795,8 @@ export default async function PetDetailPage({
           existingPhotoUrl: editPhotoUrl,
           pppBreedList: pppBreedRule.payload.breeds,
         })}
+        // The `?sheet=foto` preview: the photo the credential above already shows.
+        photoUrl={photoUrl}
         chapitaData={chapitaData}
         alertsOriginShelter={alertsOriginShelter}
         showCheckinOption={showCheckinOption}

@@ -11,6 +11,7 @@ import { ACCOUNTS, loginAs } from "./demo/_helpers";
  *        cannot reach transfer, adoption publishing, identity editing or a
  *        jurisdiction change — the panel shows those rows grey, with the
  *        reason, and none of them is a link (owner-pet-actions, 2026-10-01).
+ *        The photo, which IS theirs to take, is a link that opens its sheet.
  *
  * WHY THE TWO LIVE IN ONE FILE, `serial`
  * ---------------------------------------------------------------------------
@@ -330,6 +331,18 @@ test.describe
           await expect(row, `"${denied}" is shown grey`).toBeVisible();
           await expect(row).toContainText(reason);
         }
+
+        // ---- REACHED: a photo IS a caretaker's to take ------------------------
+        // `lib/domain/titular-only.ts` lists photos among what a caretaker MAY
+        // do. The app's photo screen admits them; since owner-pet-actions the
+        // web's "Foto" is its own sheet too (`?sheet=foto`), not a field of the
+        // edit form greyed above — so it is a LINK here, and it opens.
+        const photo = panel.getByRole("link", { name: "Foto", exact: true });
+        await expect(photo).toHaveAttribute("href", `/mis-mascotas/${token}?sheet=foto`);
+        await photo.click();
+        await expect(
+          caretakerPage.getByRole("dialog").getByRole("button", { name: "Guardar foto" }),
+        ).toBeVisible();
 
         // ---- NOT REACHED: and the refusal is a sentence, not a 404 -----------
         // Asserting the SURFACE, never response.status(): a streaming route can

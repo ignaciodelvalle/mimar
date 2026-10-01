@@ -426,6 +426,71 @@ export async function confirmPetPhoto(params: {
     return { ok: false, code: "photo_failed" };
   }
 
+  const recorded = await recordPetPhoto({
+    petId,
+    userId,
+    storagePath: finalPath,
+    mimeType: detected,
+    fileSize: normalised.byteLength,
+  });
+  if (!recorded.ok) {
+    // `pet_gone` (an erased animal: a photo of it is precisely what art. 16
+    // removed) or `photo_failed` (the row did not land): either way the object
+    // just written has no row pointing at it. Take it back rather than leave an
+    // orphan nothing will ever reference — the same cleanup every Server Action
+    // does when its transaction fails after an upload.
+    try {
+      await admin.storage.from(PET_PHOTO_BUCKET).remove([finalPath]);
+    } catch {
+      // Best-effort, exactly like the staged discard.
+    }
+    await discardStaged();
+    return { ok: false, code: recorded.code };
+  }
+
+  await discardStaged();
+
+  const url = petPhotoUrl(finalPath);
+  if (!url) {
+    // petPhotoUrl only returns null for an empty path, which cannot happen
+    // here. Handled rather than asserted so a misconfigured SUPABASE_URL is a
+    // 500 with a log line instead of a payload carrying a broken string.
+    console.error("[pet-photo] saved the photo but could not build its URL", { finalPath });
+    return { ok: false, code: "photo_failed" };
+  }
+
+  return { ok: true, photo: { photoUrl: url, replacedPrevious: recorded.replacedPrevious } };
+}
+
+export type RecordPhotoResult =
+  | { ok: true; replacedPrevious: boolean }
+  | { ok: false; code: "pet_gone" | "photo_failed" };
+
+/**
+ * Make an object ALREADY WRITTEN to `pet-photos` the animal's photo: the
+ * `attachments` row, then `pets.primary_photo_id` pointing at it, in one
+ * transaction that refuses an erased animal.
+ *
+ * SHARED BY BOTH PHOTO DOORS — the app's (`confirmPetPhoto`, above) and the
+ * web's (`updatePetPhotoAction`, which uploads through `uploadAttachmentIfPresent`
+ * like every other web form). One writer for one act, so the two doors cannot
+ * come to disagree about the erasure race below.
+ *
+ * THE CALLER MUST HAVE AUTHORIZED ALREADY, for the reason `mintPetPhotoTicket`
+ * gives: it takes a `petId`, checks nothing about who is asking, and must not
+ * look like it does.
+ *
+ * IT TOUCHES NO STORAGE. On a refusal the object is the caller's to take back —
+ * each door knows which objects it wrote and with which client.
+ */
+export async function recordPetPhoto(params: {
+  petId: string;
+  userId: string;
+  storagePath: string;
+  mimeType: string;
+  fileSize: number;
+}): Promise<RecordPhotoResult> {
+  const { petId, userId, storagePath, mimeType, fileSize } = params;
   let replacedPrevious: boolean | null = false;
   try {
     replacedPrevious = await db.transaction(async (tx) => {
@@ -442,13 +507,7 @@ export async function confirmPetPhoto(params: {
 
       const [row] = await tx
         .insert(attachments)
-        .values({
-          petId,
-          uploadedByUserId: userId,
-          storagePath: finalPath,
-          mimeType: detected,
-          fileSize: normalised.byteLength,
-        })
+        .values({ petId, uploadedByUserId: userId, storagePath, mimeType, fileSize })
         .returning({ id: attachments.id });
 
       // The filter is repeated on the WRITE, and ITS AFFECTED-ROW COUNT IS THE
@@ -463,7 +522,7 @@ export async function confirmPetPhoto(params: {
       // Milliseconds wide, and art. 16 does not have a width exemption.
       //
       // Zero rows is therefore the SAME outcome as the SELECT finding nothing:
-      // `pet_gone`, which the caller unwinds by removing both objects.
+      // `pet_gone`, which the caller unwinds by removing what it wrote.
       const updated = await tx
         .update(pets)
         .set({ primaryPhotoId: row.id })
@@ -479,56 +538,16 @@ export async function confirmPetPhoto(params: {
       return current.primaryPhotoId != null;
     });
   } catch (err) {
-    // OUR OWN ROLLBACK, not a failure. Same unwind as the zero-row SELECT: take
-    // back both objects and answer `pet_gone`.
-    if (err instanceof PetErasedDuringConfirm) {
-      try {
-        await admin.storage.from(PET_PHOTO_BUCKET).remove([finalPath]);
-      } catch {
-        // Best-effort, exactly like the staged discard.
-      }
-      await discardStaged();
-      return { ok: false, code: "pet_gone" };
-    }
+    // OUR OWN ROLLBACK, not a failure: the same answer as the zero-row SELECT.
+    if (err instanceof PetErasedDuringConfirm) return { ok: false, code: "pet_gone" };
     console.error("[pet-photo] could not record the photo", {
       petId,
       message: err instanceof Error ? err.message : String(err),
     });
-    // The object is written and no row points at it. Remove it rather than
-    // leave an orphan nothing will ever reference — the same cleanup every
-    // Server Action does when its transaction fails after an upload.
-    try {
-      await admin.storage.from(PET_PHOTO_BUCKET).remove([finalPath]);
-    } catch {
-      // Best-effort, exactly like the staged discard.
-    }
-    await discardStaged();
     return { ok: false, code: "photo_failed" };
   }
-
-  if (replacedPrevious === null) {
-    // The animal is soft-deleted. Take back the object we just wrote — a photo
-    // of an erased pet is precisely what art. 16 removed — and answer the way
-    // every other surface answers about a pet that is gone.
-    try {
-      await admin.storage.from(PET_PHOTO_BUCKET).remove([finalPath]);
-    } catch {
-      // Best-effort, exactly like the staged discard.
-    }
-    await discardStaged();
-    return { ok: false, code: "pet_gone" };
-  }
-
-  await discardStaged();
-
-  const url = petPhotoUrl(finalPath);
-  if (!url) {
-    // petPhotoUrl only returns null for an empty path, which cannot happen
-    // here. Handled rather than asserted so a misconfigured SUPABASE_URL is a
-    // 500 with a log line instead of a payload carrying a broken string.
-    console.error("[pet-photo] saved the photo but could not build its URL", { finalPath });
-    return { ok: false, code: "photo_failed" };
-  }
-
-  return { ok: true, photo: { photoUrl: url, replacedPrevious } };
+  // The animal is soft-deleted: answer the way every other surface answers
+  // about a pet that is gone.
+  if (replacedPrevious === null) return { ok: false, code: "pet_gone" };
+  return { ok: true, replacedPrevious };
 }

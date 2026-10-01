@@ -17,9 +17,9 @@
 //      has no screen in this build and says "Se hace desde la web".
 //   2. THE REASONS, EXHAUSTIVELY — every `PetActionInertReason` the contract
 //      declares is classified below, at compile time: drawn on this platform
-//      (and then the matrix must actually reach it, with the contract's
-//      caption), or a word only the OTHER platform uses. A reason added to the
-//      catalogue fails the app's typecheck here until somebody decides which.
+//      (and then the matrix must actually reach it, with the contract's es-AR
+//      caption), or a word only the OTHER platform would use. A reason added to
+//      the catalogue fails the app's typecheck here until somebody decides.
 //   3. THE RENDER — the panel component, mounted, shows only strings the
 //      catalogue owns. A label typed into `OwnerActionPanel.tsx` would be the
 //      fourth copy of a list that already drifted with three.
@@ -198,16 +198,15 @@ describe("ownerPanelView — the catalogue's gate matrix, under the app's runner
  * typecheck here until somebody says whether the app draws it.
  *
  *   · `drawn` — the panel shows it, with the contract's caption.
- *   · `other_platform` — the word the OTHER platform uses for a door only this
- *     one has: `app_only` is the web's "Se hace desde la app", and the app, by
- *     definition, has that door.
+ *   · `other_platform` — a word the OTHER platform would use for a door only
+ *     this one has. None today: the web's `app_only` ("Se hace desde la app")
+ *     went when the web gained the caretaker's photo door (`?sheet=foto`).
  */
 const NATIVE_REASON_CLASS: Readonly<Record<PetActionInertReason, "drawn" | "other_platform">> = {
   titular_only: "drawn",
   not_active: "drawn",
   caretaker: "drawn",
   web_only: "drawn",
-  app_only: "other_platform",
 };
 
 describe("ownerPanelView — every grey reason the contract declares is handled", () => {
@@ -233,8 +232,8 @@ describe("ownerPanelView — every grey reason the contract declares is handled"
     }
   });
 
-  it("never draws the other platform's word, and no grey row goes without a reason", () => {
-    expect(captionsDrawn.has(PET_ACTION_INERT_CAPTIONS.app_only)).toBe(false);
+  it("draws no grey row without one of the contract's reasons", () => {
+    expect(captionsDrawn.size).toBeGreaterThan(0);
     expect(captionsDrawn.has(null)).toBe(false);
     const known = new Set(Object.values(PET_ACTION_INERT_CAPTIONS));
     expect([...captionsDrawn].filter((caption) => !known.has(caption as string))).toEqual([]);

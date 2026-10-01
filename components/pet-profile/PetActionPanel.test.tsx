@@ -87,12 +87,13 @@ describe("<PetActionPanel> — what does not apply is grey, with the reason", ()
     expect(rowOf(html, "Editar datos")).toContain("<a ");
   });
 
-  it("a caretaker sees Editar datos grey, and Foto grey with the app named as its door", () => {
+  it("a caretaker sees Editar datos grey, and Foto as a door of its own, as on the app", () => {
     const html = render({ ...TITULAR, viewerRole: "caretaker", isTitular: false });
     expect(rowOf(html, "Editar datos")).toContain(PET_ACTION_INERT_CAPTIONS.caretaker);
     const photo = rowOf(html, "Foto");
-    expect(photo).not.toContain("<a ");
-    expect(photo).toContain(PET_ACTION_INERT_CAPTIONS.app_only);
+    expect(photo).toContain("<a ");
+    expect(photo).toContain("sheet=foto");
+    expect(photo).not.toContain('aria-disabled="true"');
     // A caretaker still reaches what the role exists for.
     expect(rowOf(html, "Reportar fallecimiento")).toContain("<a ");
   });

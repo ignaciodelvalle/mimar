@@ -273,9 +273,9 @@ describe("?sheet=editar-mascota — nothing for a viewer the form refuses", () =
   });
 });
 
-// owner-pet-actions: the panel's "Foto" lands on `seccion=foto`, and the form's
-// Contactos section opens the emergency sheet — for the titular, whose contacts
-// these are, and for nobody else.
+// owner-pet-actions: a link that names a section (`seccion=`) lands on it, and
+// the form's Contactos section opens the emergency sheet — for the titular,
+// whose contacts these are, and for nobody else.
 describe("?sheet=editar-mascota — the section a link asked for, and Contactos", () => {
   const editPetData = {
     existingPet: {
@@ -329,6 +329,58 @@ describe("?sheet=editar-mascota — the section a link asked for, and Contactos"
     );
     const contactos = screen.getByRole("dialog").querySelector("#seccion-contactos") as HTMLElement;
     expect(within(contactos).queryByRole("link")).toBeNull();
+  });
+});
+
+// owner-pet-actions, PO rule "web = app": the photo is a door of its own on both
+// platforms, open to any holder — a caretaker included — and NOT a field of the
+// edit form a caretaker may not open. The page passes that caretaker no edit
+// data at all, which is exactly the case that used to leave them without a door.
+describe("?sheet=foto — the photo door, for any holder", () => {
+  const CARETAKER_ACTIONS = resolveWebPetActions(
+    derivePetActions({
+      viewerRole: "caretaker",
+      isTitular: false,
+      petStatus: "active",
+      species: "dog",
+      pppDoor: false,
+    }),
+    { petPublicToken: "abc123", petStatus: "active" },
+  );
+
+  it("opens from a caretaker's Foto row, with nothing of the edit form behind it", () => {
+    render(
+      <>
+        <PetActionPanel groups={CARETAKER_ACTIONS.groups} />
+        <SheetMounter
+          {...baseSheetMounterProps}
+          editPetData={null}
+          emergencyContacts={null}
+          photoUrl={null}
+        />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("link", { name: "Foto" }));
+    expect(window.location.search).toContain("sheet=foto");
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("button", { name: "Guardar foto" })).toBeInTheDocument();
+    expect(dialog.querySelector('input[type="file"][name="photo"]')).not.toBeNull();
+    // The edit form is not what opened: none of its sections is in the sheet.
+    expect(dialog.querySelector("#seccion-identidad")).toBeNull();
+  });
+
+  it("shows the credential's current photo in the sheet", () => {
+    window.history.replaceState(null, "", "/mis-mascotas/abc123?sheet=foto");
+    render(<SheetMounter {...baseSheetMounterProps} photoUrl="https://s.test/firulais.jpg" />);
+    expect(
+      within(screen.getByRole("dialog")).getByAltText("Vista previa de la mascota"),
+    ).toHaveAttribute("src", "https://s.test/firulais.jpg");
+  });
+
+  it("is no door for an organization member — the panel gives the org path no Foto row", () => {
+    window.history.replaceState(null, "", "/mis-mascotas/abc123?sheet=foto");
+    render(<SheetMounter {...baseSheetMounterProps} accessPath="org" />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
 

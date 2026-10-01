@@ -9,27 +9,23 @@
 // the web until it says where it goes, and the app keeps its own record of the
 // same shape.
 //
-// ONE PLATFORM RULE THE CATALOGUE CANNOT KNOW: the web's only photo field lives
-// inside "Editar datos" (`updatePetAction`), so a holder that form does not
-// admit — a caretaker, a user-held custody row — has no web door to the photo,
-// while the app has one of its own (`POST /pets/{token}/photo`, any holder). The
-// form admits exactly the viewers whose `edit` row is live, so the photo's door
-// is read off that row rather than off a second copy of the rule. A live row the
-// web cannot serve is drawn grey with "Se hace desde la app" rather than linking
-// to a form that would refuse the save.
+// EVERY LIVE ROW HAS A DOOR HERE. The photo was the last one missing: its only
+// web field lived inside "Editar datos", which a caretaker may not use, while
+// the app had a photo screen for any holder (`POST /pets/{token}/photo`). The
+// web's `?sheet=foto` is that screen's twin (`updatePetPhotoAction`, the same
+// rule), so the catalogue's live photo row opens it for every holder — the
+// owner included, as on the app — and the credential's frame opens it too.
 //
 // Pure: no React, no I/O. The page derives once and hands the result to the
 // primary row, the panel and the credential's photo frame, so the three cannot
 // disagree about a door.
 
 import type { PetProfileIconName } from "@dim/contract/icons";
-import {
-  type DerivedPetAction,
-  type DerivedPetActions,
-  PET_ACTION_INERT_CAPTIONS,
-  type PetActionGroupId,
-  type PetActionId,
-  findPetAction,
+import type {
+  DerivedPetAction,
+  DerivedPetActions,
+  PetActionGroupId,
+  PetActionId,
 } from "@dim/contract/reference";
 
 /** The element the profile wraps the lost case in, for "Modo perdida" to land on. */
@@ -63,7 +59,7 @@ export type WebPetActionGroup = {
 export type WebPetActions = {
   primary: WebPetAction[];
   groups: WebPetActionGroup[];
-  /** The credential's photo frame: the Foto row's door, or `null` when it has none here. */
+  /** The credential's photo frame: the Foto row's door, or `null` with no Foto row (the org path). */
   photoHref: string | null;
 };
 
@@ -72,23 +68,15 @@ export type WebPetActionContext = {
   petStatus: "active" | "lost" | "deceased";
 };
 
-/** What a destination reads: the page's facts, plus what the panel itself decided. */
-type DestinationContext = WebPetActionContext & {
-  /** The catalogue's `edit` row is live — the web's edit form admits this viewer. */
-  editFormAdmits: boolean;
-};
-
-function sheet(ctx: DestinationContext, id: string, section?: string): WebPetActionLink {
-  const query = section ? `?sheet=${id}&seccion=${section}` : `?sheet=${id}`;
-  return { kind: "sheet", href: `/mis-mascotas/${ctx.petPublicToken}${query}` };
+function sheet(ctx: WebPetActionContext, id: string): WebPetActionLink {
+  return { kind: "sheet", href: `/mis-mascotas/${ctx.petPublicToken}?sheet=${id}` };
 }
 
-function route(ctx: DestinationContext, path: string): WebPetActionLink {
+function route(ctx: WebPetActionContext, path: string): WebPetActionLink {
   return { kind: "route", href: `/mis-mascotas/${ctx.petPublicToken}/${path}` };
 }
 
-/** `null` = the web has no door for this viewer; the row turns grey, `app_only`. */
-type Destination = (ctx: DestinationContext) => WebPetActionLink | null;
+type Destination = (ctx: WebPetActionContext) => WebPetActionLink;
 
 export const WEB_PET_ACTION_DESTINATIONS: Readonly<Record<PetActionId, Destination>> = {
   record: (ctx) => sheet(ctx, "anotar"),
@@ -101,7 +89,9 @@ export const WEB_PET_ACTION_DESTINATIONS: Readonly<Record<PetActionId, Destinati
       ? { kind: "anchor", href: `#${LOST_CASE_ANCHOR}` }
       : sheet(ctx, "marcar-perdida"),
   edit: (ctx) => sheet(ctx, "editar-mascota"),
-  photo: (ctx) => (ctx.editFormAdmits ? sheet(ctx, "editar-mascota", "foto") : null),
+  // Its own sheet, for any holder the catalogue gives the row to — the app's
+  // photo screen's twin, not a field of the edit form a caretaker cannot open.
+  photo: (ctx) => sheet(ctx, "foto"),
   contacts: (ctx) => sheet(ctx, "emergencia"),
   service_dog: (ctx) => route(ctx, "asistencia"),
   physical_tag: (ctx) => sheet(ctx, "chapita"),
@@ -116,31 +106,24 @@ export const WEB_PET_ACTION_DESTINATIONS: Readonly<Record<PetActionId, Destinati
   death: (ctx) => route(ctx, "eventos/nuevo/fallecimiento"),
 };
 
-function toWeb(action: DerivedPetAction, ctx: DestinationContext): WebPetAction {
+function toWeb(action: DerivedPetAction, ctx: WebPetActionContext): WebPetAction {
   const base = {
     id: action.id,
     label: action.label,
     hint: action.hint,
+    caption: action.caption,
     icon: action.icon,
     tone: action.tone,
   };
-  if (action.state.kind === "inert") return { ...base, caption: action.caption, link: null };
-  const link = WEB_PET_ACTION_DESTINATIONS[action.id](ctx);
-  if (link === null) {
-    return { ...base, caption: PET_ACTION_INERT_CAPTIONS.app_only, link: null };
-  }
-  return { ...base, caption: action.caption, link };
+  if (action.state.kind === "inert") return { ...base, link: null };
+  return { ...base, link: WEB_PET_ACTION_DESTINATIONS[action.id](ctx) };
 }
 
 /** The derived panel, with this platform's doors. Pure. */
 export function resolveWebPetActions(
   derived: DerivedPetActions,
-  page: WebPetActionContext,
+  ctx: WebPetActionContext,
 ): WebPetActions {
-  const ctx: DestinationContext = {
-    ...page,
-    editFormAdmits: findPetAction(derived, "edit")?.state.kind === "live",
-  };
   const primary = derived.primary.map((action) => toWeb(action, ctx));
   const groups = derived.groups.map((group) => ({
     id: group.id,

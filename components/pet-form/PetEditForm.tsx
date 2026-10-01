@@ -6,10 +6,10 @@
 // Contactos, Qué muestra la credencial pública, Seguro, Origen — read from the
 // contract (`PET_PROFILE_EDIT_SECTIONS`), each with its own Guardar and a
 // `seccion-<id>` anchor a link can land on. Two web-only blocks bracket them:
-// the photo first (the web's only photo field lives in this form) and "Otros
-// datos" last — the weight, the locality and the microchip, which keep their
-// own doors (Anotar → Peso, the mudanza, Anotar → microchip) and still ride
-// this form because its writer stores every column.
+// the photo first and "Otros datos" last — the weight, the locality and the
+// microchip. Each has a door of its own as well (the photo's `?sheet=foto`, the
+// app's photo screen's twin; Anotar → Peso, the mudanza, Anotar → microchip)
+// and still rides this form because its writer stores every column.
 //
 // EVERY GUARDAR SAVES THE WHOLE FORM. `updatePetAction` writes the whole row,
 // so a post that left a field out would wipe it. The button a person pressed
@@ -260,7 +260,7 @@ function SharedSection({
 }
 
 // ---------------------------------------------------------------------------
-// Foto (web-only: the web's photo field lives in this form)
+// Foto (web-only here; the panel's "Foto" opens its own door, `?sheet=foto`)
 // ---------------------------------------------------------------------------
 
 function PhotoSection({

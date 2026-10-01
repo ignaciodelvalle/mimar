@@ -224,17 +224,29 @@ export function MicrochipBlock({
 export function LnPhotoField({
   onFileChange,
   preview,
+  optional = true,
 }: {
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   preview: string | null;
+  /**
+   * `false` where the photo IS the act — the photo sheet — so the label does not
+   * call optional the one thing the form is for. A form with other fields
+   * (the alta, Editar datos) keeps the default.
+   */
+  optional?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
       <p className="font-ln-mono text-xs font-semibold uppercase tracking-[.1em] text-[var(--color-ln-mute)]">
-        Foto{" "}
-        <span className="font-normal lowercase tracking-[.04em] text-[var(--color-ln-faint)]">
-          opcional
-        </span>
+        Foto
+        {optional && (
+          <>
+            {" "}
+            <span className="font-normal lowercase tracking-[.04em] text-[var(--color-ln-faint)]">
+              opcional
+            </span>
+          </>
+        )}
       </p>
       <label
         htmlFor="photo"

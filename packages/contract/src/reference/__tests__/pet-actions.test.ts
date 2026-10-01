@@ -17,6 +17,7 @@ import {
   type DerivedPetActions,
   PET_ACTION_IDS,
   PET_ACTION_INERT_CAPTIONS,
+  PET_ACTION_INERT_REASONS,
   type PetActionContext,
   type PetActionId,
   derivePetActions,
@@ -246,8 +247,8 @@ describe("the catalogue itself", () => {
   });
 });
 
-describe("the platform captions — a door one platform does not have yet", () => {
-  it("are never derived: the catalogue knows nothing about platforms", () => {
+describe("the platform caption — a door one platform does not have yet", () => {
+  it("is never derived: the catalogue knows nothing about platforms", () => {
     const reasons = new Set<string>();
     for (const viewerRole of ["owner", "co_owner", "foster", "caretaker", "org_member"] as const) {
       for (const petStatus of ["active", "lost", "deceased", null] as const) {
@@ -263,15 +264,26 @@ describe("the platform captions — a door one platform does not have yet", () =
         }
       }
     }
-    // The matrix did produce grey rows, so the two absences below are real.
+    // The matrix did produce grey rows, so the absence below is real.
     expect(reasons.size).toBeGreaterThan(0);
     expect(reasons.has("web_only")).toBe(false);
-    expect(reasons.has("app_only")).toBe(false);
   });
 
-  it("name the platform that does have the door", () => {
+  it("names the platform that does have the door", () => {
     expect(PET_ACTION_INERT_CAPTIONS.web_only).toBe("Se hace desde la web");
-    expect(PET_ACTION_INERT_CAPTIONS.app_only).toBe("Se hace desde la app");
+  });
+
+  it("keeps no word for a gap that is closed — the web has every door the app has", () => {
+    // `app_only` ("Se hace desde la app") named the caretaker's photo, which the
+    // web could only reach through "Editar datos". The web's `?sheet=foto` is the
+    // app's photo screen's twin now, so no platform has a reason to say it; a
+    // caption nobody draws is a sentence nobody reviews.
+    expect([...PET_ACTION_INERT_REASONS]).toEqual([
+      "titular_only",
+      "not_active",
+      "caretaker",
+      "web_only",
+    ]);
   });
 });
 

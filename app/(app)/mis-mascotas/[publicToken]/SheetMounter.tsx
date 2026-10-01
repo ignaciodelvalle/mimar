@@ -84,6 +84,7 @@ import { updatePetAction } from "@/src/modules/pets/actions";
 import type { EmergencyContactValues } from "@/components/pet-profile/EmergencyContactFields";
 import { PhysicalTagInterestSheet } from "./_chapita/PhysicalTagInterestSheet";
 import { EmergencyContactSheet } from "./_emergencia/EmergencyContactSheet";
+import { PetPhotoSheet } from "./_foto/PetPhotoSheet";
 import { MergedShareSheet } from "./_share/MergedShareSheet";
 import { TransferSenderForm } from "./_transfer/TransferSenderForm";
 
@@ -128,6 +129,12 @@ type Props = {
      */
     pppBreedList: readonly string[];
   } | null;
+  /**
+   * The credential's current photo, for the `?sheet=foto` preview. The same
+   * URL the credential already shows every viewer, so it carries nothing the
+   * page does not already render. `null` when the animal has none.
+   */
+  photoUrl?: string | null;
   /** Pet status — needed to gate the marcar-encontrada sheet. */
   petStatus: "active" | "lost" | "deceased";
   /** The viewer's path: the owner-only sheets refuse the org path. */
@@ -195,6 +202,7 @@ export function SheetMounter({
   tier2PublicPermanent,
   markLostData,
   editPetData,
+  photoUrl = null,
   petStatus,
   accessPath,
   chapitaData,
@@ -541,10 +549,23 @@ export function SheetMounter({
           // contacts are theirs, and `emergencyContacts` is null for anybody
           // else (the same gate the emergencia branch below backstops).
           contactsHref={emergencyContacts ? `/mis-mascotas/${petToken}?sheet=emergencia` : null}
-          // The panel's "Foto" lands on `seccion=foto`; any section a link
-          // names is scrolled into view when the sheet opens.
+          // Any section a link names is scrolled into view when the sheet opens.
           initialSection={searchParams.get("seccion")}
         />
+      </Sheet>
+    );
+  }
+
+  if (sheet === "foto") {
+    // The photo's own door (owner-pet-actions, PO rule "web = app"): any holder
+    // on the person path, a caretaker included — the app's photo screen admits
+    // them and so does `updatePetPhotoAction`. The org path gets no Foto row
+    // from the catalogue, so a hand-typed URL meets nothing, as in the
+    // chapita/emergencia branches.
+    if (accessPath !== "owner") return null;
+    return (
+      <Sheet id="foto" title={`Foto de ${petName}`} open onClose={close}>
+        <PetPhotoSheet petPublicToken={petToken} existingPhotoUrl={photoUrl} />
       </Sheet>
     );
   }

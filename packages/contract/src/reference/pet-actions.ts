@@ -200,7 +200,6 @@ export const PET_ACTION_INERT_REASONS = [
   "not_active",
   "caretaker",
   "web_only",
-  "app_only",
 ] as const;
 export type PetActionInertReason = (typeof PET_ACTION_INERT_REASONS)[number];
 
@@ -209,20 +208,22 @@ export type PetActionInertReason = (typeof PET_ACTION_INERT_REASONS)[number];
  * co-owner has to ask the titular, a titular whose animal is lost has to find
  * it first, and a caretaker is holding someone else's animal.
  *
- * `web_only` and `app_only` are never produced by `derivePetActions`, which
- * knows nothing about platforms: each is the caption a platform uses for a
- * destination it does not have yet — the app's foster "Buscar hogar"
- * (`web_only`), the web's photo for a holder its edit form does not admit, a
- * caretaker's (`app_only`: the web's only photo field lives inside "Editar
- * datos", while the app has a photo door of its own). Kept here so that copy
- * has one home like every other line on the panel.
+ * `web_only` is never produced by `derivePetActions`, which knows nothing about
+ * platforms: it is the caption the app uses for the one destination it does not
+ * have yet, the foster's "Buscar hogar". Kept here so that copy has one home
+ * like every other line on the panel.
+ *
+ * THERE IS NO `app_only` ANY MORE, and that is the gap closing, not a word
+ * lost. It named the caretaker's photo on the web, whose only photo field lived
+ * inside "Editar datos"; the web's `?sheet=foto` is the app's photo screen's
+ * twin now (owner-pet-actions, PO rule "web = app"). A caption no platform
+ * draws is a sentence nobody reviews — add one back the day a gap opens.
  */
 export const PET_ACTION_INERT_CAPTIONS: Readonly<Record<PetActionInertReason, string>> = {
   titular_only: "Solo el titular",
   not_active: "No se puede en esta situación",
   caretaker: "No disponible para cuidadores",
   web_only: "Se hace desde la web",
-  app_only: "Se hace desde la app",
 };
 
 /**

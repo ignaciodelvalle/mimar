@@ -207,6 +207,16 @@ export const DECLARED_DIVERGENCES: Record<string, DeclaredDivergence> = {
       "Nothing, while the flag stays derived. If it ever became a value a person sets, it would need its own governed command, and this entry would then be a real gap.",
   },
 
+  // --- Web writers the join cannot see ------------------------------------
+  // Not pending in the app: the web was the one behind. Listed because this
+  // fence must say so when it cannot see an action, never count it as parity.
+  "unjoined:updatePetPhotoAction": {
+    reason:
+      "At parity below this fence's reach: the web's photo door (`?sheet=foto`, owner-pet-actions) and POST /api/v1/pets/{token}/photo (`confirmPetPhoto`) write the row and the pointer through the SAME `recordPetPhoto` (lib/infra/pet-photo-upload.ts), under the same rule (any holder; event.write on the org path). That writer is infra, not a src/modules application use-case, and use-cases are all the join can see.",
+    closes:
+      "Move the photo's row-and-pointer write into a src/modules/pets/application use-case that the web action and the v1 photo route both name; the join then sees one act and this entry goes stale.",
+  },
+
   // --- Web writers with no v1 door ---------------------------------------
   // TATUAJE SALIO DE ESTA LISTA EL 2026-09-10, cerrado y no despriorizado: el
   // contrato tiene su variante `tattoo`, el router llama a `createTattooForUser`
