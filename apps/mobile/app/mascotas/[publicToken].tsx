@@ -20,8 +20,8 @@
 // WHERE THE PUBLIC DOCUMENT WENT. `CredentialScreen` survives intact —
 // offline cache and all — as the route `/mascotas/{token}/credencial`
 // (`publicCredentialRoute`), reached from the front face's QR block (now
-// tappable; it was inert) and from "Más". Nothing an owner could hand to a
-// stranger was deleted; it moved to where the web keeps it.
+// tappable; it was inert). Nothing an owner could hand to a stranger was
+// deleted; it moved to where the web keeps it.
 //
 // THE PARAMETER IS VALIDATED, not trusted. `useLocalSearchParams` is typed
 // `string | string[]` because a path segment can legally repeat, and a bad

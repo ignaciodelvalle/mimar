@@ -404,9 +404,10 @@ export function credentialRoute(
  * A ROUTE AND NOT A FACE, since the two-face rewrite (PO decision, 2026-08-28):
  * the web's card has exactly two faces (Credencial · frente, Libreta · dorso)
  * and its public document lives one tap away at `/p/{token}`. This is that tap,
- * reached from the profile's QR block and from "Más" — mirroring where the web
- * puts it rather than surfacing the public page as a third tab beside the two
- * faces it is not one of.
+ * reached from the profile's QR block — mirroring where the web puts it rather
+ * than surfacing the public page as a third tab beside the two faces it is not
+ * one of. (The "Credencial pública" row of the old "Más" list opened it too, and
+ * went with that list in owner-pet-actions: it was the QR tap again.)
  */
 export function publicCredentialRoute(publicToken: string): `/mascotas/${string}/credencial` {
   return `/mascotas/${encodeURIComponent(publicToken)}/credencial`;
@@ -473,25 +474,57 @@ export function sharesRoute(publicToken: string): `/mascotas/${string}/compartir
 }
 
 /**
- * Editar los datos de la mascota, and the emergency contacts, on ONE screen.
+ * The query parameter that names which section of "Editar datos" to open on.
  *
- * TWO ENTRY POINTS LAND HERE and that is deliberate. The web keeps them as two
- * rows of the "⋯ Más" sheet — "Editar datos y ficha" and "Contactos de
- * emergencia" — because each opens a different `?sheet=`, which is a URL
- * mechanism a stack navigator does not have. Splitting them into two native
- * routes would have bought a second copy of one fetch, one guard-derived
- * capability pair and one save path, to hide a card a person can already see by
- * scrolling. The two entry points differ in what they PROMISE and in nothing
- * else: this function takes no section argument, the screen renders both cards
- * in a fixed order — datos, then contactos — and whichever row was tapped, the
- * other is one scroll away.
+ * Named once, here, for the reason `DOCUMENT_FACE_PARAM` is: it is written by
+ * `editPetRoute` and read by `app/mascotas/[publicToken]/editar.tsx`, and two
+ * files that agree on a string literal by coincidence is the failure this module
+ * exists to prevent. Spanish, like the web's own anchors, because it is a word in
+ * a URL a person can read.
+ */
+export const PET_EDIT_SECTION_PARAM = "seccion";
+
+/**
+ * The sections of "Editar datos", in the order the screen draws them
+ * (owner-pet-actions, PO plan 2026-10-01): Identidad, Salud y cuidados,
+ * Contactos, Qué muestra la credencial pública, Seguro, Origen.
+ */
+export const PET_EDIT_SECTIONS = [
+  "identidad",
+  "salud",
+  "contactos",
+  "credencial",
+  "seguro",
+  "origen",
+] as const;
+export type PetEditSection = (typeof PET_EDIT_SECTIONS)[number];
+
+/**
+ * Editar los datos de la mascota — every section, and the emergency contacts,
+ * on ONE screen.
+ *
+ * TWO ENTRY POINTS LAND HERE, and since owner-pet-actions they differ in WHERE
+ * they land as well as in what they promise. The web keeps them as two doors
+ * because each opens a different `?sheet=`; a stack navigator has no sheet, and
+ * splitting them into two routes would buy a second copy of one fetch and one
+ * save path. So the panel's "Contactos de emergencia" row passes
+ * `{ seccion: "contactos" }` and the screen scrolls to that section, while
+ * "Editar datos" passes nothing and opens at the top.
+ *
+ * `seccion` IS OPTIONAL AND THE OMISSION IS THE DEFAULT, the way
+ * `credentialRoute`'s `face` is: no section means the top of the form, not a
+ * `?seccion=identidad` restating it.
  *
  * The path matches the WEB's leaf (`/mis-mascotas/{token}/editar`), unlike the
  * `?sheet=` half: nothing deep-links in today, and when something does, the
  * `mimar://` and `https` forms will already agree on the word.
  */
-export function editPetRoute(publicToken: string): `/mascotas/${string}/editar` {
-  return `/mascotas/${encodeURIComponent(publicToken)}/editar`;
+export function editPetRoute(
+  publicToken: string,
+  options: { seccion?: PetEditSection } = {},
+): `/mascotas/${string}/editar${string}` {
+  const suffix = options.seccion ? `?${PET_EDIT_SECTION_PARAM}=${options.seccion}` : "";
+  return `/mascotas/${encodeURIComponent(publicToken)}/editar${suffix}`;
 }
 
 /**
@@ -566,9 +599,10 @@ export function vaccineRemindersRoute(publicToken: string): `/mascotas/${string}
  * EL PATH COINCIDE CON EL DE LA WEB (`/mis-mascotas/{token}/buscar-hogar`),
  * aunque el encabezado diga "Acompañamiento de adopción": la web pone las dos
  * preguntas — la del foster ("Buscar hogar") y la del titular — en una misma
- * ruta y decide adentro a quién le habla. Acá sólo entra el titular (la fila de
- * "Más" del foster sigue diciendo "Disponible en la web"), pero el día que
- * entre un deep link las dos formas ya van a estar de acuerdo en la palabra.
+ * ruta y decide adentro a quién le habla. Acá sólo entra el titular (la fila
+ * "Buscar hogar" del foster, en el panel, sigue gris con "Se hace desde la
+ * web"), pero el día que entre un deep link las dos formas ya van a estar de
+ * acuerdo en la palabra.
  */
 export function rehomeRoute(publicToken: string): `/mascotas/${string}/buscar-hogar` {
   return `/mascotas/${encodeURIComponent(publicToken)}/buscar-hogar`;

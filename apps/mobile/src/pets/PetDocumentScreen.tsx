@@ -4,9 +4,17 @@
 // owner's front face, `OwnerCredentialFace`) and Libreta · dorso
 // (`LibretaScreen`), inside the shared `DocumentChromeNative` — band, mono
 // title, situation chip, turn button, hairline frame. The public credential is
-// a ROUTE one tap from the QR block and from "Más", not a face; see the route
-// shell (`app/mascotas/[publicToken].tsx`) for the argument with the old
-// three-face layering.
+// a ROUTE one tap from the QR block, not a face; see the route shell
+// (`app/mascotas/[publicToken].tsx`) for the argument with the old three-face
+// layering.
+//
+// THE ACTIONS ARE BELOW THE CARD, NOT ON IT (owner-pet-actions, PO 2026-10-01).
+// `OwnerActionPanel` — primary row, the sections that were already below the
+// card, then the grouped rows — belongs to the credential face and follows the
+// painted face like those sections always did. Its rows come from the
+// contract's catalogue through `ownerPanelView`, computed ONCE here and handed
+// to both the panel and the face (which keeps two doors of its own: the
+// attestation on the compliance card and the photo frame).
 //
 // THE TURN IS ANIMATED, AND THE INSTANT SWAP IS STILL A FIRST-CLASS PATH — it
 // is what a reader who asked for less motion gets, and what this document
@@ -37,7 +45,7 @@
 
 import type { OwnerPetSituationV1 } from "@dim/contract/api";
 import { useFocusEffect } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { BackHandler, StyleSheet, Text, View } from "react-native";
 
 import { apiFailureMessage } from "../api/client";
@@ -52,8 +60,14 @@ import { useReconnect } from "../ui/use-reconnect";
 import { DocumentChromeNative, type DocumentFace } from "./DocumentChromeNative";
 import { TurningSheet, useDocumentTurn } from "./DocumentTurn";
 import { LibretaScreen } from "./LibretaScreen";
+import { OwnerActionPanel } from "./OwnerActionPanel";
 import { OwnerCredentialFace, OwnerExtraSections } from "./OwnerFace";
-import { type OwnerFaceView, buildOwnerFaceView } from "./owner-face-view-model";
+import {
+  type OwnerFaceView,
+  type OwnerPanelView,
+  buildOwnerFaceView,
+  ownerPanelView,
+} from "./owner-face-view-model";
 
 type OwnerState =
   | { phase: "loading" }
@@ -234,6 +248,7 @@ export function PetDocumentScreen({
   useReconnect(() => void load("focus"));
 
   const view = owner.phase === "ready" ? owner.view : null;
+  const panel = useMemo(() => (view === null ? null : ownerPanelView(view)), [view]);
 
   return (
     // PULL TO REFRESH, and no button. A national credential's only blue
@@ -277,7 +292,7 @@ export function PetDocumentScreen({
           situation={situationOf(view)}
         >
           {painted === "credencial" ? (
-            <FrontFaceBody state={owner} />
+            <FrontFaceBody state={owner} panel={panel} />
           ) : (
             <LibretaScreen
               publicToken={publicToken}
@@ -291,14 +306,18 @@ export function PetDocumentScreen({
         </DocumentChromeNative>
       </TurningSheet>
 
-      {painted === "credencial" && view !== null ? <OwnerExtraSections view={view} /> : null}
+      {painted === "credencial" && view !== null && panel !== null ? (
+        <OwnerActionPanel panel={panel}>
+          <OwnerExtraSections view={view} />
+        </OwnerActionPanel>
+      ) : null}
     </Screen>
   );
 }
 
 /** The front face's three phases, inside the chrome. A failed read renders its
  *  refusal INSIDE the card — the document is still a document, just unread. */
-function FrontFaceBody({ state }: { state: OwnerState }) {
+function FrontFaceBody({ state, panel }: { state: OwnerState; panel: OwnerPanelView | null }) {
   if (state.phase === "loading") {
     return (
       <View style={styles.facePad}>
@@ -322,7 +341,9 @@ function FrontFaceBody({ state }: { state: OwnerState }) {
           <StaleNotice message={state.staleFailure} />
         </View>
       )}
-      <OwnerCredentialFace view={state.view} />
+      {/* `panel` is derived from this same `state.view`, so it is non-null in
+          this arm; the guard is for the type, not for a state that occurs. */}
+      {panel === null ? null : <OwnerCredentialFace view={state.view} panel={panel} />}
     </>
   );
 }

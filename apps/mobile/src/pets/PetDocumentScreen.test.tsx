@@ -126,6 +126,7 @@ jest.mock("@react-native-community/netinfo", () => ({
 jest.mock("../auth/session-store", () => ({ sessionPort: {} }));
 
 import { BAND_MAX_FONT_SCALE, IDENTITY_POKE_OUT } from "./DocumentChromeNative";
+import { ownerActionPanelStyles } from "./OwnerActionPanel";
 import { QR_SIZE, ownerFaceStyles } from "./OwnerFace";
 import { PetDocumentScreen } from "./PetDocumentScreen";
 import { VacunasScreen } from "./VacunasScreen";
@@ -394,16 +395,15 @@ describe("PetDocumentScreen — two faces of one document", () => {
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/credencial`);
   });
 
-  it("reaches the public credential from Más too", async () => {
+  it("keeps the QR as the one door to the public credential — the duplicate row is gone", async () => {
+    // owner-pet-actions (PO): the "Credencial pública" row of the old Más list
+    // opened exactly what the QR opens, one scroll further down. The caption
+    // under the name still names the document; nothing else is a second door.
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
-    fireEvent.press(screen.getByText("Más"));
-    // "Credencial pública" appears twice — the QR block's caption above, and
-    // the Más row that just expanded below it. The row is the last match.
-    const matches = screen.getAllByText("Credencial pública");
-    const moreRow = matches.at(-1);
-    if (moreRow === undefined) throw new Error("Más row not rendered");
-    fireEvent.press(moreRow);
+    expect(screen.queryByText("Credencial pública")).toBeNull();
+    expect(screen.queryByText("Más")).toBeNull();
+    fireEvent.press(screen.getByLabelText("Ver credencial pública"));
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/credencial`);
   });
 
@@ -505,6 +505,13 @@ describe("PetDocumentScreen — the credential is mounted ON the sheet that turn
     // screen over instead of the credential.
     expect(onTheSheet).not.toContain("Recordatorios");
     expect(screen.getByText("Recordatorios")).toBeOnTheScreen();
+    // NOR ARE THE ACTIONS, since owner-pet-actions (PO): "the buttons come out
+    // of the card and sit below it, scrolling with the page". The credential
+    // is a document; the panel is what a person does with it.
+    for (const action of ["Anotar", "Compartir", "Modo perdida", "Editar datos"]) {
+      expect(onTheSheet).not.toContain(action);
+      expect(screen.getByText(action)).toBeOnTheScreen();
+    }
   });
 
   it("keeps the libreta on that same stage once the document has turned", async () => {
@@ -541,9 +548,12 @@ describe("PetDocumentScreen — the sheet and what sits under it turn together",
 
     fireEvent.press(screen.getByLabelText("Girar a Libreta"));
     expect(screen.getByText("Recordatorios")).toBeOnTheScreen();
+    // The action panel is the credential's too, and turns with it.
+    expect(screen.getByText("Editar datos")).toBeOnTheScreen();
 
     await screen.findByText("Libreta · dorso", { includeHiddenElements: true }, { timeout: 5000 });
     expect(screen.queryByText("Recordatorios")).toBeNull();
+    expect(screen.queryByText("Editar datos")).toBeNull();
   });
 });
 
@@ -717,10 +727,11 @@ describe("PetDocumentScreen — a failure is never drawn as an absence", () => {
 
     // THE EXCEPTION IS GONE (PO decision 2026-09-16). Reminders used to stay
     // when empty because the card carried the only door to `/vacunas`; the door
-    // moved into the Más sheet, so this section now follows the same rule as
-    // its three siblings above. The door itself is pinned further down, in the
-    // "reminders door, in the Más sheet" block — including that it survives a
-    // failed read, which is what the old exception really protected.
+    // moved out of the card (today: the panel's Salud group), so this section
+    // follows the same rule as its three siblings above. The door itself is
+    // pinned further down, in the "reminders door, in the Salud group" block —
+    // including that it survives a failed read, which is what the old
+    // exception really protected.
     expect(screen.queryByText("Recordatorios")).toBeNull();
     expect(screen.queryByText("Sin próximas vacunas.")).toBeNull();
 
@@ -786,154 +797,225 @@ describe("PetDocumentScreen — a failure is never drawn as an absence", () => {
   });
 });
 
-describe("PetDocumentScreen — controls with no native destination are drawn honest", () => {
-  it("takes Editar datos to the native edit screen, not to a caption", async () => {
-    // This row USED to be the honest-disabled rendering, captioned "Desde la
-    // web": same pill, muted, announced disabled. The screen behind it now
-    // exists, so the caption would have become the lie the caption existed to
-    // avoid. The assertion is kept pointing at the same row on purpose — it is
-    // the one that fails if the destination is ever removed again without the
-    // caption coming back.
-    //
-    // IT IS NOW REACHED THROUGH ⋯ Más (2026-09-04): the face carries four pills
-    // in two columns, and the fifth was this one. The row and its destination
-    // are unchanged — only where you press it from.
+describe("PetDocumentScreen — the panel below the card (owner-pet-actions)", () => {
+  // WHAT CHANGED, AND WHAT THESE PIN. The pill row and the ⋯ Más list used to
+  // live INSIDE the credential, and Más was a door to fourteen unrelated rows.
+  // The PO's layout (2026-10-01): the card carries no actions; below it sit a
+  // primary row [Anotar][Compartir][Modo perdida], the sections that were
+  // already below the card, and then the old Más rows in named groups — LA
+  // MASCOTA, SALUD, VIAJES, CUSTODIA — with Reportar fallecimiento apart, last.
+  // Who gets which row is the contract's catalogue (`derivePetActions`); these
+  // tests pin that the screen DRAWS it, in that order, and that every door
+  // opens the screen it names.
+
+  it("draws the primary row as exactly Anotar, Compartir and Modo perdida", async () => {
+    // Found by the style OBJECT it was built from, not by a testID (the mobile
+    // convention: production stays a11y-only and the test reaches under it).
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
-    expect(screen.queryByText("Editar datos")).toBeNull();
-    fireEvent.press(screen.getByText("Más"));
+
+    const primaryRow = screen.UNSAFE_getByProps({ style: ownerActionPanelStyles.primaryRow });
+    const buttons = within(primaryRow).getAllByRole("button");
+    expect(buttons).toHaveLength(3);
+    expect(within(primaryRow).getByText("Anotar")).toBeOnTheScreen();
+    expect(within(primaryRow).getByText("Compartir")).toBeOnTheScreen();
+    expect(within(primaryRow).getByText("Modo perdida")).toBeOnTheScreen();
+    // Every pill is a thumb-sized target (48dp, `TOUCH_TARGET`).
+    expect(StyleSheet.flatten(ownerActionPanelStyles.primaryAction).minHeight).toBe(TOUCH_TARGET);
+  });
+
+  it("orders the screen: card, primary row, the existing sections, then the groups", async () => {
+    // The plan's layout, read off the rendered text in reading order. A panel
+    // mounted ABOVE the reminders — or inside the card again — reorders these.
+    render(<PetDocumentScreen publicToken={TOKEN} />);
+    await screen.findByText("Pampa");
+
+    const reading = textUnder(screen.toJSON());
+    const at = (text: string) => {
+      const index = reading.indexOf(text);
+      if (index < 0) throw new Error(`"${text}" is not on the screen`);
+      return index;
+    };
+    expect(at("Cumplimiento")).toBeLessThan(at("Anotar"));
+    expect(at("Modo perdida")).toBeLessThan(at("Antirrábica anual"));
+    expect(at("Antirrábica anual")).toBeLessThan(at("La mascota"));
+    expect(at("La mascota")).toBeLessThan(at("Salud"));
+    expect(at("Salud")).toBeLessThan(at("Viajes"));
+    expect(at("Viajes")).toBeLessThan(at("Custodia"));
+    expect(at("Custodia")).toBeLessThan(at("Reportar fallecimiento"));
+  });
+
+  it("announces each group heading as a heading, so TalkBack can walk the groups", async () => {
+    render(<PetDocumentScreen publicToken={TOKEN} />);
+    await screen.findByText("Pampa");
+    for (const heading of ["La mascota", "Salud", "Viajes", "Custodia"]) {
+      expect(screen.getByRole("header", { name: heading })).toBeOnTheScreen();
+    }
+  });
+
+  it("takes Editar datos to the edit screen at the top, and Contactos to its own section", async () => {
+    render(<PetDocumentScreen publicToken={TOKEN} />);
+    await screen.findByText("Pampa");
+
     fireEvent.press(screen.getByText("Editar datos"));
-    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/editar`);
-    expect(screen.queryByText("Desde la web")).toBeNull();
-  });
+    expect(mockPush).toHaveBeenLastCalledWith(`/mascotas/${TOKEN}/editar`);
 
-  it("leaves the face at four action pills, two per row", async () => {
-    // THE 2+2 GRID, MEASURED. Four labels being on the screen is not the
-    // claim — all four were on the screen when there were FIVE pills too, so
-    // an assertion that only reads labels passes on the layout it was written
-    // to reject. The claim has two halves and needs both: exactly four buttons
-    // INSIDE the action row, and a cell basis that puts two of them on a line.
-    // Four pills at a 100% basis is 4+0+0+0; a 48% basis over five pills is
-    // the 2+2+1 orphan this change removed.
-    //
-    // NO testID: the mobile convention is that production stays a11y-only and
-    // the test reaches under it with UNSAFE_* (ui/skeleton.test.tsx states it,
-    // ui/kit.test.tsx repeats it). The row is found by the style OBJECT it was
-    // built from, so renaming the label of any pill cannot fake this pass.
-    render(<PetDocumentScreen publicToken={TOKEN} />);
-    await screen.findByText("Pampa");
-
-    const rows = screen.UNSAFE_getAllByProps({ style: ownerFaceStyles.actionRow });
-    const actionRow = rows.at(-1);
-    if (!actionRow) throw new Error("action row not rendered");
-    expect(within(actionRow).getAllByRole("button")).toHaveLength(4);
-    expect(StyleSheet.flatten(ownerFaceStyles.action).flexBasis).toBe("48%");
-
-    // "Modo perdida" is the emergency and stays on the FACE by decision, not
-    // by whichever four happened to be left over.
-    expect(within(actionRow).getByText("Modo perdida")).toBeOnTheScreen();
-  });
-
-  it("takes Contactos de emergencia to the same screen, and leaves the rest honest", async () => {
-    // The two rows share a destination because the web's two `?sheet=` rows are
-    // one screen here — see the comment at the row. What matters for THIS test
-    // is that the rows which are still web-only keep saying so: a live row and
-    // a dead row must not look alike.
-    render(<PetDocumentScreen publicToken={TOKEN} />);
-    await screen.findByText("Pampa");
-    fireEvent.press(screen.getByText("Más"));
-    expect(screen.getByText("Chapa física")).toBeOnTheScreen();
+    // ONE SCREEN, TWO PROMISES: the contacts row opens the same form ON its
+    // section, which is what makes it a different door and not a duplicate.
     fireEvent.press(screen.getByText("Contactos de emergencia"));
-    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/editar`);
-
-    mockPush.mockClear();
-    // NO web-only row left for a titular: Chapa física went live on 2026-09-25
-    // (D2) and Perro de asistencia the same day (D3), the way Acompañamiento de
-    // adopción did on 2026-09-10 — no "Se hace desde la web" caption anywhere
-    // in a titular's sheet.
-    expect(screen.queryByText("Se hace desde la web")).toBeNull();
-    // PERRO DE ASISTENCIA NOW NAVIGATES (D3) to its own screen, which reaches
-    // the web's four owner use-cases through `POST /pets/{token}/profile`.
-    fireEvent.press(screen.getByText("Perro de asistencia"));
-    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/asistencia`);
-    mockPush.mockClear();
-    // VIAJE NOW NAVIGATES (viajes-fase-2, 6.3). It was the last inert row —
-    // "Próximamente" — and it is gone with the facade: the trip, the CVI, the
-    // cancel and the semáforo all live on the native screen.
-    expect(screen.queryByText("Próximamente")).toBeNull();
-    fireEvent.press(screen.getByText("Viaje y movilidad"));
-    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/viaje`);
-    mockPush.mockClear();
-    // CHAPA FÍSICA NOW NAVIGATES (D2) — the same reversal Acompañamiento de
-    // adopción got on 2026-09-10, and for the same reason: the door reaches
-    // the identical use-case the web action reaches, so there is no longer a
-    // web to send anybody to.
-    fireEvent.press(screen.getByText("Chapa física"));
-    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/chapita`);
-
-    mockPush.mockClear();
-    fireEvent.press(screen.getByText("Acompañamiento de adopción"));
-    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/buscar-hogar`);
+    expect(mockPush).toHaveBeenLastCalledWith(`/mascotas/${TOKEN}/editar?seccion=contactos`);
   });
 
-  it("reaches the photo screen from Más", async () => {
+  it("opens every other row's own screen, and leaves a titular no web-only row", async () => {
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
-    fireEvent.press(screen.getByText("Más"));
-    fireEvent.press(screen.getByText("Foto de la mascota"));
+
+    expect(screen.queryByText("Se hace desde la web")).toBeNull();
+    expect(screen.queryByText("Próximamente")).toBeNull();
+    const doors: Array<[string, unknown]> = [
+      ["Foto", `/mascotas/${TOKEN}/foto`],
+      ["Perro de asistencia", `/mascotas/${TOKEN}/asistencia`],
+      ["Chapa física", `/mascotas/${TOKEN}/chapita`],
+      ["Recordatorios de vacunas", `/mascotas/${TOKEN}/vacunas`],
+      ["Viaje y movilidad", `/mascotas/${TOKEN}/viaje`],
+      ["Devolución", `/mascotas/${TOKEN}/devolucion`],
+      ["Acompañamiento de adopción", `/mascotas/${TOKEN}/buscar-hogar`],
+      ["Cuidador temporal", { pathname: `/mascotas/${TOKEN}/cuidado`, params: { name: "Pampa" } }],
+      [
+        "Transferir la titularidad",
+        { pathname: `/mascotas/${TOKEN}/transferir`, params: { name: "Pampa" } },
+      ],
+    ];
+    for (const [label, target] of doors) {
+      fireEvent.press(screen.getByText(label));
+      expect([label, mockPush.mock.calls.at(-1)?.[0]]).toEqual([label, target]);
+    }
+    // And nothing left the app.
+    expect(mockOpenURL).not.toHaveBeenCalled();
+  });
+});
+
+describe("PetDocumentScreen — the photo frame is a door (owner-pet-actions)", () => {
+  /** The identity section with a photo URL, or none. */
+  function withPhoto(photoUrl: string | null) {
+    return {
+      identity: OK({
+        name: "Pampa",
+        species: "dog",
+        sex: "female",
+        breed: "Mestiza",
+        breedLine: "Mestiza · Hembra · 2 años · Perro",
+        photoUrl,
+        jurisdictionProvince: "CABA",
+        jurisdictionLocality: "Palermo",
+        tags: [],
+      }),
+    };
+  }
+
+  it("asks for a FIRST photo where there is none, and opens the photo screen", async () => {
+    // A first photo took four taps (Más, the row, then the picker) while the
+    // frame showed a paw and did nothing.
+    render(<PetDocumentScreen publicToken={TOKEN} />);
+    await screen.findByText("Pampa");
+
+    expect(screen.getByText("Agregar foto")).toBeOnTheScreen();
+    fireEvent.press(screen.getByLabelText("Agregar una foto de Pampa"));
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/foto`);
   });
 
-  // A CARETAKER SEES NEITHER ROW, and that case is asserted where the rest of
-  // the per-role rules live — see "tells a caretaker how they hold the animal"
-  // below. It is named here so a reader of this block does not conclude the
-  // rows are unconditional now that they navigate.
+  it("changes an existing photo from the same frame", async () => {
+    mockFetchOwnerPetDetail.mockResolvedValue({
+      outcome: "ok",
+      payload: payload(withPhoto("https://cdn.example/pampa.jpg")),
+    });
+    render(<PetDocumentScreen publicToken={TOKEN} />);
+    await screen.findByText("Pampa");
+
+    expect(screen.queryByText("Agregar foto")).toBeNull();
+    fireEvent.press(screen.getByLabelText("Cambiar la foto de Pampa"));
+    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/foto`);
+  });
+
+  it("is a door for a caretaker too — the Foto row's own gate — and for nobody on the org path", async () => {
+    // `POST /pets/{token}/photo` takes any holder role: `titular-only.ts` lists
+    // photos among what a caretaker MAY do.
+    mockFetchOwnerPetDetail.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ viewer: { role: "caretaker", isTitular: false } }),
+    });
+    const caretaker = render(<PetDocumentScreen publicToken={TOKEN} />);
+    await screen.findByText("Sos su cuidador");
+    expect(screen.getByLabelText("Agregar una foto de Pampa")).toBeOnTheScreen();
+    caretaker.unmount();
+
+    mockFetchOwnerPetDetail.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ viewer: { role: "org_member", isTitular: false } }),
+    });
+    render(<PetDocumentScreen publicToken={TOKEN} />);
+    await screen.findByText("La ves como miembro de la organización");
+    // NON-VACUITY: the frame is still drawn — it is the door that is withheld.
+    expect(screen.getByText("Pampa")).toBeOnTheScreen();
+    expect(screen.queryByLabelText("Agregar una foto de Pampa")).toBeNull();
+    expect(screen.queryByText("Agregar foto")).toBeNull();
+  });
 });
 
 describe("PetDocumentScreen — the viewer line survives, per role", () => {
-  it("tells an org member how they hold the animal, and narrows their footer", async () => {
+  it("tells an org member how they hold the animal, and narrows their panel to Compartir", async () => {
     mockFetchOwnerPetDetail.mockResolvedValue({
       outcome: "ok",
       payload: payload({ viewer: { role: "org_member", isTitular: false } }),
     });
     render(<PetDocumentScreen publicToken={TOKEN} />);
     expect(await screen.findByText("La ves como miembro de la organización")).toBeOnTheScreen();
-    // The web's org action row: Compartir, and nothing owner-only.
+    // The web's org action row: Compartir, and nothing owner-only — an org
+    // member acts from the org portal.
     expect(screen.getByText("Compartir")).toBeOnTheScreen();
     expect(screen.queryByText("Anotar")).toBeNull();
     expect(screen.queryByText("Editar datos")).toBeNull();
-    expect(screen.queryByText("Más")).toBeNull();
+    expect(screen.queryByText("La mascota")).toBeNull();
   });
 
-  it("tells a caretaker how they hold the animal, and hides the dead rows the web hides", async () => {
+  it("tells a caretaker how they hold the animal, and greys what is not theirs WITH the reason", async () => {
+    // THE PO'S RULE, BOTH PLATFORMS: a row that does not apply is drawn grey
+    // with its reason, never silently missing — a caretaker looking for
+    // "Editar datos" now learns it exists and why it is not theirs, instead of
+    // concluding the app cannot do it.
     mockFetchOwnerPetDetail.mockResolvedValue({
       outcome: "ok",
       payload: payload({ viewer: { role: "caretaker", isTitular: false } }),
     });
     render(<PetDocumentScreen publicToken={TOKEN} />);
     expect(await screen.findByText("Sos su cuidador")).toBeOnTheScreen();
-    // A dead control has no server to refuse it, so the client mirrors the
-    // web's own caretaker deny-list for the DISABLED rows only. Both rows now
-    // live INSIDE the ⋯ Más sheet, so the sheet has to be open for the
-    // assertion to mean anything — asserted before the press it would pass on
-    // any caretaker AND on any titular, which is the vacuous shape.
-    fireEvent.press(screen.getByText("Más"));
-    expect(screen.queryByText("Editar datos")).toBeNull();
-    expect(screen.queryByText("Contactos de emergencia")).toBeNull();
-    // NOR THE TRIP (viajes-fase-2): a caretaker is often the person keeping
-    // the animal while the family travels, and the web hides the row too.
-    expect(screen.queryByText("Viaje y movilidad")).toBeNull();
-    // The server-refused entries stay offered, as they always were.
+
+    // Editar datos and the trip: the arrangement, named (`requireTitularAccess`
+    // denies a caretaker; the trip is the family's).
+    expect(screen.getAllByText("No disponible para cuidadores")).toHaveLength(2);
+    // The titular's own acts, and the titular's own vet and phone.
     expect(screen.getByText("Transferir la titularidad")).toBeOnTheScreen();
-    // THE PHOTO STAYS, and that mirrors the server's own gate rather than the
-    // titular one: `POST /pets/{token}/photo` takes any holder role, because
-    // `titular-only.ts` lists photos among what a caretaker MAY do. Hiding the
-    // row here would be a stricter second copy of an authorization rule.
-    expect(screen.getByText("Foto de la mascota")).toBeOnTheScreen();
+    expect(screen.getByText("Contactos de emergencia")).toBeOnTheScreen();
+
+    mockPush.mockClear();
+    for (const grey of [
+      "Editar datos",
+      "Viaje y movilidad",
+      "Contactos de emergencia",
+      "Transferir la titularidad",
+    ]) {
+      fireEvent.press(screen.getByText(grey));
+    }
+    expect(mockPush).not.toHaveBeenCalled();
+
+    // THE PHOTO STAYS A DOOR, and that mirrors the server's own gate rather
+    // than the titular one: `POST /pets/{token}/photo` takes any holder role.
+    fireEvent.press(screen.getByText("Foto"));
+    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/foto`);
   });
 });
 
-describe("PetDocumentScreen — the face reads petStatus and the role (A3-documento-credencial-04)", () => {
+describe("PetDocumentScreen — the panel reads petStatus and the role", () => {
   function withStatus(petStatus: string) {
     return {
       status: OK({
@@ -946,10 +1028,10 @@ describe("PetDocumentScreen — the face reads petStatus and the role (A3-docume
     };
   }
 
-  it("collapses a FALLECIDA animal to Compartir + Más, the web's own shape", async () => {
-    // The titular of a deceased animal was offered a red "Modo perdida" pill and
-    // "Transferir la titularidad" — which answers 409 "Abrí su ficha para ver
-    // por qué" while the person is standing in the ficha.
+  it("keeps only Compartir, Editar datos, Foto and Contactos for a FALLECIDA animal (PO)", async () => {
+    // The titular of a deceased animal used to be offered a red "Modo perdida"
+    // and "Transferir la titularidad" — which answers 409 "Abrí su ficha para
+    // ver por qué" while the person is standing in the ficha.
     mockFetchOwnerPetDetail.mockResolvedValue({
       outcome: "ok",
       payload: payload(withStatus("deceased")),
@@ -957,34 +1039,27 @@ describe("PetDocumentScreen — the face reads petStatus and the role (A3-docume
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
 
-    expect(screen.getByText("Compartir")).toBeOnTheScreen();
-    expect(screen.queryByText("Anotar")).toBeNull();
-    expect(screen.queryByText("Modo perdida")).toBeNull();
-
-    fireEvent.press(screen.getByText("Más"));
-    expect(screen.queryByText("Transferir la titularidad")).toBeNull();
-    expect(screen.queryByText("Cuidador temporal")).toBeNull();
-    expect(screen.queryByText("Devolución")).toBeNull();
-    // AND THE FALSE PROMISES ABOUT THE WEB. Both destinations are hidden
-    // there for a deceased animal, so "Disponible en la web" was sending
-    // somebody to a browser to look for a page that is not on it either.
-    expect(screen.queryByText("Chapa física")).toBeNull();
-    // D3: "Perro de asistencia" follows the web row, which sits after the
-    // sheet's deceased early-return — gone here too.
-    expect(screen.queryByText("Perro de asistencia")).toBeNull();
-    expect(screen.queryByText("Acompañamiento de adopción")).toBeNull();
-    expect(screen.queryByText("Viaje y movilidad")).toBeNull();
-
-    // WHAT SURVIVES: corrections and who to call, which is exactly what the
-    // web's deceased early-return keeps (`MasSheet.helpers.ts:64-78`), plus the
-    // two read-only rows this app has and the browser does not.
-    expect(screen.getByText("Editar datos")).toBeOnTheScreen();
-    expect(screen.getByText("Contactos de emergencia")).toBeOnTheScreen();
-    expect(screen.getByText("Credencial pública")).toBeOnTheScreen();
-    expect(screen.getByText("Foto de la mascota")).toBeOnTheScreen();
+    for (const kept of ["Compartir", "Editar datos", "Foto", "Contactos de emergencia"]) {
+      expect(screen.getByText(kept)).toBeOnTheScreen();
+    }
+    for (const gone of [
+      "Anotar",
+      "Modo perdida",
+      "Transferir la titularidad",
+      "Cuidador temporal",
+      "Devolución",
+      "Chapa física",
+      "Perro de asistencia",
+      "Acompañamiento de adopción",
+      "Viaje y movilidad",
+      "Recordatorios de vacunas",
+      "Reportar fallecimiento",
+    ]) {
+      expect([gone, screen.queryByText(gone)]).toEqual([gone, null]);
+    }
   });
 
-  it("draws the titular-only rows INERT for a co-owner, with the reason", async () => {
+  it("draws the titular-only rows INERT for a co-owner, each with the reason", async () => {
     // The co-owner used to fill in the whole transfer form — address, motivo,
     // comentario — before a refusal the web never lets them reach.
     mockFetchOwnerPetDetail.mockResolvedValue({
@@ -993,51 +1068,32 @@ describe("PetDocumentScreen — the face reads petStatus and the role (A3-docume
     });
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Sos cotitular");
-    fireEvent.press(screen.getByText("Más"));
 
-    // The row is still THERE — a co-owner reading a face with a hole in it
-    // cannot tell a missing feature from a missing permission.
-    expect(screen.getByText("Transferir la titularidad")).toBeOnTheScreen();
-    expect(screen.getByText("Cuidador temporal")).toBeOnTheScreen();
-    expect(screen.getAllByText("Solo el titular").length).toBe(2);
+    // The rows are still THERE — a co-owner reading a panel with a hole in it
+    // cannot tell a missing feature from a missing permission. Five of them:
+    // the contacts, the assistance dog, the caretaker, the adoption support and
+    // the transfer.
+    expect(screen.getAllByText("Solo el titular")).toHaveLength(5);
 
     mockPush.mockClear();
     fireEvent.press(screen.getByText("Transferir la titularidad"));
     fireEvent.press(screen.getByText("Cuidador temporal"));
+    // FINDING F2, review 2026-09-07: `buscar-hogar/page.tsx` 404s a co-owner,
+    // so the row may never be a live link for them — grey is the honest form.
+    fireEvent.press(screen.getByText("Acompañamiento de adopción"));
     expect(mockPush).not.toHaveBeenCalled();
-  });
 
-  it("offers a co-owner NEITHER find-home row — the web's destination refuses them", async () => {
-    // FINDING F2, review 2026-09-07. The `else` arm behind "Acompañamiento de
-    // adopción" covered `owner` AND `co_owner`, so a co-owner read "Disponible
-    // en la web", opened a browser and got a 404: `buscar-hogar/page.tsx` keeps
-    // only `owner` and `foster` on the ownership row and `notFound()`s the rest,
-    // and `MasSheet.helpers.ts:140` gates the row on `ownershipRole === "owner"`
-    // for that exact reason. Same shape as the 2026-08-20 defect, role axis.
-    mockFetchOwnerPetDetail.mockResolvedValue({
-      outcome: "ok",
-      payload: payload({ viewer: { role: "co_owner", isTitular: false } }),
-    });
-    render(<PetDocumentScreen publicToken={TOKEN} />);
-    await screen.findByText("Sos cotitular");
-    fireEvent.press(screen.getByText("Más"));
-
-    expect(screen.queryByText("Acompañamiento de adopción")).toBeNull();
-    expect(screen.queryByText("Buscar hogar")).toBeNull();
-    // The control: the rows a co-owner DOES reach are still there, so this is a
-    // narrowed audience and not a fragment that stopped rendering.
-    expect(screen.getByText("Contactos de emergencia")).toBeOnTheScreen();
-    expect(screen.getByText("Editar datos")).toBeOnTheScreen();
+    // The control: what a co-owner DOES reach is still a door.
+    fireEvent.press(screen.getByText("Editar datos"));
+    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/editar`);
   });
 
   it("keeps the two find-home labels on their own roles", async () => {
-    // The control that makes the case above mean something: the titular reads
-    // "Acompañamiento de adopción" and the foster reads "Buscar hogar" — one
-    // destination, two asks, and neither may vanish while the co-owner's does.
+    // One destination, two asks: the titular reads "Acompañamiento de
+    // adopción" and the foster reads "Buscar hogar".
     mockFetchOwnerPetDetail.mockResolvedValue({ outcome: "ok", payload: payload() });
     const titular = render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
-    fireEvent.press(screen.getByText("Más"));
     expect(screen.getByText("Acompañamiento de adopción")).toBeOnTheScreen();
     expect(screen.queryByText("Buscar hogar")).toBeNull();
     titular.unmount();
@@ -1048,51 +1104,18 @@ describe("PetDocumentScreen — the face reads petStatus and the role (A3-docume
     });
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
-    fireEvent.press(screen.getByText("Más"));
     expect(screen.getByText("Buscar hogar")).toBeOnTheScreen();
     expect(screen.queryByText("Acompañamiento de adopción")).toBeNull();
   });
 
-  // ===================================================================
-  // THE REMAINING WEB-ONLY ROW SENDS NOBODY TO A BROWSER. THIS TEST WAS
-  // INVERTED FROM WHAT IT ASSERTED THIS MORNING, AND THE INVERSION IS THE
-  // RECORD.
-  // ===================================================================
-  // Earlier on 2026-09-11 this row (and Chapa física beside it, until D2 took
-  // it live on 2026-09-25) was given a `Linking.openURL` handler, and this
-  // test pinned that it fired. The reasoning was about the ROW: a row that
-  // rendered with no `onPress` in a sheet where everything else navigates is
-  // indistinguishable from a broken button, and the caption was already
-  // promising something ("Disponible en la web").
-  //
-  // The product owner's reasoning is about the PERSON, and it outranks it:
-  // during a closed-testing pilot, a tester sent out to a browser mid-flow does
-  // not come back, and the pilot is measured in people who keep using the app.
-  // A row that says where the thing lives costs a moment of mild
-  // disappointment; a browser tab costs the session.
-  //
-  // So the old assertion is not deleted, it is turned around, and the caption
-  // changed with it — "Se hace desde la web" states a fact instead of inviting
-  // a tap. `ListRow` renders an `onPress`-less row muted and announces
-  // `disabled`, which is what makes this different from the silent dead rows
-  // that handler replaced.
-  //
-  // THE ASSERTION IS ON `mockOpenURL` NOT BEING CALLED AT ALL, because that is
-  // the thing the decision is about: no path out of the app.
-  it("D2: Chapa física now navigates in-app, and never opens a browser", async () => {
-    render(<PetDocumentScreen publicToken={TOKEN} />);
-    await screen.findByText("Pampa");
-    fireEvent.press(screen.getByText("Más"));
-
-    fireEvent.press(screen.getByText("Chapa física"));
-    expect(mockOpenURL).not.toHaveBeenCalled();
-    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/chapita`);
-  });
-
+  // THE PILOT RULE, kept from 2026-09-11: no row sends anybody to a browser. A
+  // tester sent out of the app mid-flow does not come back, and the pilot is
+  // measured in people who keep using the app. A row that says where the thing
+  // lives costs a moment of mild disappointment; a browser tab costs the
+  // session. Asserted on `openURL` NOT BEING CALLED AT ALL.
   it("does NOT send the FOSTER to a browser from Buscar hogar", async () => {
-    // The role matters and the test names it: the foster's ask is `foster`'s
-    // `sendRehomeRequest`, a different module from the titular's `RehomeScreen`
-    // (native since 2026-09-10). A regression that pointed this row at
+    // The foster's ask is `foster`'s `sendRehomeRequest`, a different module
+    // from the titular's `RehomeScreen`. A regression that pointed this row at
     // `rehomeRoute` would send a foster to a screen whose endpoint does not
     // serve them — so "goes nowhere" is asserted against BOTH exits.
     mockFetchOwnerPetDetail.mockResolvedValue({
@@ -1101,23 +1124,21 @@ describe("PetDocumentScreen — the face reads petStatus and the role (A3-docume
     });
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
-    fireEvent.press(screen.getByText("Más"));
 
     fireEvent.press(screen.getByText("Buscar hogar"));
     expect(mockOpenURL).not.toHaveBeenCalled();
     expect(mockPush).not.toHaveBeenCalled();
     expect(screen.getByText("Se hace desde la web")).toBeOnTheScreen();
-    // D3: a foster is not the legal owner, and the web row gates on
-    // `ownershipRole === "owner"` — no "Perro de asistencia" at all.
-    expect(screen.queryByText("Perro de asistencia")).toBeNull();
+    // A foster is not the legal owner: "Perro de asistencia" is there, grey.
+    fireEvent.press(screen.getByText("Perro de asistencia"));
+    expect(mockPush).not.toHaveBeenCalled();
   });
 
   it("keeps Modo perdida on a LOST animal while the titular-only rows go inert", async () => {
     // THE DELIBERATE DIVERGENCE. The web drops "Marcar como perdida" on a lost
     // animal because its LostCaseBlock carries "Marcar como encontrada"; this
     // row IS that cockpit, so taking it away would hide the entry point in the
-    // one state where somebody needs it fastest. `status === "active"` still
-    // gates the two the web gates.
+    // one state where somebody needs it fastest.
     mockFetchOwnerPetDetail.mockResolvedValue({
       outcome: "ok",
       payload: payload(withStatus("lost")),
@@ -1126,8 +1147,7 @@ describe("PetDocumentScreen — the face reads petStatus and the role (A3-docume
     await screen.findByText("Pampa");
     expect(screen.getByText("Modo perdida")).toBeOnTheScreen();
 
-    fireEvent.press(screen.getByText("Más"));
-    expect(screen.getAllByText("No se puede en esta situación").length).toBe(2);
+    expect(screen.getAllByText("No se puede en esta situación")).toHaveLength(2);
     mockPush.mockClear();
     fireEvent.press(screen.getByText("Transferir la titularidad"));
     expect(mockPush).not.toHaveBeenCalled();
@@ -1146,7 +1166,6 @@ describe("PetDocumentScreen — the face reads petStatus and the role (A3-docume
     expect(screen.getByText("Anotar")).toBeOnTheScreen();
     expect(screen.getByText("Modo perdida")).toBeOnTheScreen();
 
-    fireEvent.press(screen.getByText("Más"));
     expect(screen.queryByText("Solo el titular")).toBeNull();
     mockPush.mockClear();
     fireEvent.press(screen.getByText("Transferir la titularidad"));
@@ -1365,7 +1384,7 @@ describe("the credential photo", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The reminders door lives in the Más sheet, and the screen behind it
+// The reminders door lives in the panel's Salud group, and the screen behind it
 // ---------------------------------------------------------------------------
 //
 // `VacunasScreen` is tested HERE rather than in a file of its own because the
@@ -1374,25 +1393,22 @@ describe("the credential photo", () => {
 // chain behind it, and because the screen IS this document's reminders section
 // continued.
 //
-// THE DOOR MOVED on 2026-09-16 (PO). It used to be a button inside the card
-// below the credential, which forced that card to render even with nothing
-// scheduled — a titled box announcing an absence on every healthy animal's
-// document. The tests below moved with it, and they still pin the SAME two
-// properties, because those are what the move had to preserve:
+// THE DOOR HAS MOVED TWICE: out of the card below the credential into the Más
+// sheet (PO, 2026-09-16), then into the panel's SALUD group with no sheet to
+// open first (owner-pet-actions). The tests below still pin the SAME two
+// properties, because those are what every move had to preserve:
 //   1. the door is reachable, and goes to /vacunas;
 //   2. a reminders read that FAILED cannot take the door with it.
-// The second one is why the row is unconditional rather than gated on the
-// section: the write does not read the list, so a row that vanished on a
-// failed read would be a dead end caused by something unrelated.
+// The catalogue gates the row on the animal and the viewer, never on the
+// reminders section: the write does not read the list.
 
-describe("PetDocumentScreen — the reminders door, in the Más sheet", () => {
-  it("WITH ROWS: the card lists them, and Más carries the way in", async () => {
+describe("PetDocumentScreen — the reminders door, in the Salud group", () => {
+  it("WITH ROWS: the card lists them, and the Salud row carries the way in", async () => {
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
     expect(screen.getByText("Antirrábica anual")).toBeOnTheScreen();
 
-    fireEvent.press(screen.getByText("Más"));
-    fireEvent.press(await screen.findByText("Recordatorios de vacunas"));
+    fireEvent.press(screen.getByText("Recordatorios de vacunas"));
     expect(mockPush).toHaveBeenCalledWith(vaccineRemindersRoute(TOKEN));
   });
 
@@ -1409,16 +1425,15 @@ describe("PetDocumentScreen — the reminders door, in the Más sheet", () => {
     expect(screen.queryByText("Recordatorios")).toBeNull();
     expect(screen.queryByText("Sin próximas vacunas.")).toBeNull();
 
-    fireEvent.press(screen.getByText("Más"));
-    fireEvent.press(await screen.findByText("Recordatorios de vacunas"));
+    fireEvent.press(screen.getByText("Recordatorios de vacunas"));
     expect(mockPush).toHaveBeenCalledWith(vaccineRemindersRoute(TOKEN));
   });
 
   it("READ FAILED: the refusal is drawn AND the door survives it", async () => {
-    // The dead end this exists against, unchanged by the move: hiding the way
-    // in because a read failed tells the person the app cannot schedule a
-    // vaccine, when the truth is that the app could not READ the list. The
-    // write needs no list.
+    // The dead end this exists against: hiding the way in because a read
+    // failed tells the person the app cannot schedule a vaccine, when the truth
+    // is that the app could not READ the list. The write needs no list, and the
+    // catalogue never reads it.
     mockFetchOwnerPetDetail.mockResolvedValue({
       outcome: "ok",
       payload: payload({ reminders: UNAVAILABLE }),
@@ -1429,12 +1444,7 @@ describe("PetDocumentScreen — the reminders door, in the Más sheet", () => {
     expect(screen.getByText("Recordatorios")).toBeOnTheScreen();
     expect(screen.getByText("No se pudo leer esta sección.")).toBeOnTheScreen();
 
-    // MUTATION APPLIED: gate the Más row on the reminders section having
-    // loaded. The refusal is still drawn, the row is not. Red here, and ONLY
-    // here: the "renders every unavailable section as its refusal" test above
-    // catches a hidden REFUSAL; this one catches a hidden DOOR.
-    fireEvent.press(screen.getByText("Más"));
-    fireEvent.press(await screen.findByText("Recordatorios de vacunas"));
+    fireEvent.press(screen.getByText("Recordatorios de vacunas"));
     expect(mockPush).toHaveBeenCalledWith(vaccineRemindersRoute(TOKEN));
   });
 });
@@ -1579,11 +1589,12 @@ describe("PetDocumentScreen — the two contextual doors", () => {
   /** The registries section for an animal the regime DOES cover. */
   const PPP_APPLIES = OK([{ id: "caba_ley_4078", label: "CABA · Ley 4078", required: true }]);
 
-  it("reaches the fallecimiento form from Más, carrying the kind", async () => {
+  it("reaches the fallecimiento form from its own row at the foot of the panel, carrying the kind", async () => {
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
 
-    fireEvent.press(screen.getByText("Más"));
+    // The consequence is on the row BEFORE the tap.
+    expect(screen.getByText("Cierra el registro del animal")).toBeOnTheScreen();
     fireEvent.press(screen.getByText("Reportar fallecimiento"));
 
     expect(mockPush).toHaveBeenCalledWith("/mascotas/DIM-PAMP-0001/asentar?kind=death");
@@ -1603,7 +1614,6 @@ describe("PetDocumentScreen — the two contextual doors", () => {
     fireEvent.press(screen.getByText("Anotar"));
     expect(mockPush).toHaveBeenLastCalledWith("/mascotas/DIM-PAMP-0001/asentar");
 
-    fireEvent.press(screen.getByText("Más"));
     fireEvent.press(screen.getByText("Reportar fallecimiento"));
     expect(mockPush).toHaveBeenLastCalledWith("/mascotas/DIM-PAMP-0001/asentar?kind=death");
     expect(mockPush).not.toHaveBeenLastCalledWith("/mascotas/DIM-PAMP-0001/asentar");
@@ -1611,8 +1621,8 @@ describe("PetDocumentScreen — the two contextual doors", () => {
 
   it("offers no fallecimiento row on an animal already registered as fallecida", async () => {
     // A second death on one animal is a 409 from `checkWriteGuard`. The row is
-    // withheld rather than drawn inert: the deceased pill row is already
-    // collapsed to [Compartir][Más] for the same reason.
+    // withheld rather than drawn inert: a deceased animal keeps only Compartir,
+    // Editar datos, Foto and Contactos (PO), for the same reason.
     mockFetchOwnerPetDetail.mockResolvedValue({
       outcome: "ok",
       payload: payload({
@@ -1628,12 +1638,11 @@ describe("PetDocumentScreen — the two contextual doors", () => {
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
 
-    fireEvent.press(screen.getByText("Más"));
     expect(screen.queryByText("Reportar fallecimiento")).toBeNull();
-    // NON-VACUITY: the sheet really opened, and rows that survive a death ARE
-    // on it — so the assertion above is about the gate and not about an
-    // unexpanded list.
-    expect(screen.getByText("Foto de la mascota")).toBeOnTheScreen();
+    // NON-VACUITY: the panel really rendered, and rows that survive a death ARE
+    // on it — so the assertion above is about the gate and not about a panel
+    // that never mounted.
+    expect(screen.getByText("Foto")).toBeOnTheScreen();
   });
 
   it("puts the atestación door on the PPP card, and it carries the kind", async () => {
