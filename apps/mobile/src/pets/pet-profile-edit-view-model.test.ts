@@ -19,6 +19,7 @@ import { describe, expect, it } from "@jest/globals";
 import type { PetProfileEditV1 } from "@dim/contract/api";
 import { PET_NAME_MAX } from "@dim/contract/input";
 
+import { PET_EDIT_SECTION_PARAM, editPetRoute } from "../ui/routes";
 import {
   accountFallbackLabel,
   breedChoicesFor,
@@ -31,6 +32,7 @@ import {
   identityBlockedReason,
   identityDraftFrom,
   identityFieldCaps,
+  petEditSectionFromParam,
   petProfileInputCodeMessage,
   physicalTagInterestBody,
   physicalTagInterestRequestedAtLabel,
@@ -413,5 +415,85 @@ describe("D2 — el interés en la chapa física", () => {
     const label = physicalTagInterestRequestedAtLabel("2026-09-01T12:00:00.000Z");
     expect(label).toContain("Anotado el");
     expect(label).toMatch(/2026/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `?seccion=` — the route that names a section, and the reader that honours it
+// ---------------------------------------------------------------------------
+//
+// owner-pet-actions 5.1. "Contactos de emergencia" and "Editar datos" land on
+// ONE screen; what tells them apart is the section the screen scrolls to. The
+// parameter is written in `ui/routes.ts` and read by the `editar` route shell
+// through `petEditSectionFromParam`, so the thing that has to hold is that the
+// two agree — the same contract `document-face-param.test.ts` pins for `?face=`.
+//
+// THE EXPECTED STRINGS ARE SPELLED OUT, not composed from the builder: a test
+// that re-derives its expectation from the function under test agrees with a
+// broken builder and with nothing else.
+
+const TOKEN = "DIM-PAMP-0001";
+
+describe("editPetRoute — the screen, and the section it opens on", () => {
+  it("names the screen with no query when no section is asked for", () => {
+    // The two callers that predate sections (the old "Editar datos" row and
+    // RehomeScreen's "Editar los datos") keep the plain path.
+    expect(editPetRoute(TOKEN)).toBe("/mascotas/DIM-PAMP-0001/editar");
+  });
+
+  it("carries the section the caller asked for", () => {
+    expect(editPetRoute(TOKEN, { seccion: "contactos" })).toBe(
+      "/mascotas/DIM-PAMP-0001/editar?seccion=contactos",
+    );
+    expect(editPetRoute(TOKEN, { seccion: "seguro" })).toBe(
+      "/mascotas/DIM-PAMP-0001/editar?seccion=seguro",
+    );
+  });
+
+  it("still encodes the token, and puts the query AFTER it", () => {
+    expect(editPetRoute("a/b", { seccion: "salud" })).toBe("/mascotas/a%2Fb/editar?seccion=salud");
+  });
+
+  it("uses the parameter name the route shell reads", () => {
+    expect(PET_EDIT_SECTION_PARAM).toBe("seccion");
+    expect(editPetRoute(TOKEN, { seccion: "origen" })).toContain(`?${PET_EDIT_SECTION_PARAM}=`);
+  });
+});
+
+describe("petEditSectionFromParam — an unknown section is the default, not an error", () => {
+  it("accepts exactly the six sections the screen draws", () => {
+    for (const section of [
+      "identidad",
+      "salud",
+      "contactos",
+      "credencial",
+      "seguro",
+      "origen",
+    ] as const) {
+      expect(petEditSectionFromParam(section)).toBe(section);
+    }
+  });
+
+  it("reads what the route builder writes, round trip", () => {
+    const written = editPetRoute(TOKEN, { seccion: "credencial" });
+    const query = written.slice(written.indexOf("?") + 1);
+    const value = new URLSearchParams(query).get(PET_EDIT_SECTION_PARAM);
+    expect(petEditSectionFromParam(value ?? undefined)).toBe("credencial");
+  });
+
+  it("takes the first of a repeated parameter, trimmed — the shape expo-router hands over", () => {
+    expect(petEditSectionFromParam(["salud", "seguro"])).toBe("salud");
+    expect(petEditSectionFromParam(" contactos ")).toBe("contactos");
+  });
+
+  it("answers null for anything else, so the screen opens at the top", () => {
+    // Every one of these is a real shape a URL can arrive in: no parameter, the
+    // empty string, a section a newer build has and this one does not, and
+    // casing nobody wrote by hand.
+    expect(petEditSectionFromParam(undefined)).toBeNull();
+    expect(petEditSectionFromParam("")).toBeNull();
+    expect(petEditSectionFromParam([])).toBeNull();
+    expect(petEditSectionFromParam("microchip")).toBeNull();
+    expect(petEditSectionFromParam("Contactos")).toBeNull();
   });
 });

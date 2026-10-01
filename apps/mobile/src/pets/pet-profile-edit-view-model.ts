@@ -40,7 +40,27 @@ import {
 } from "@dim/contract/input";
 import { breedsForSpecies } from "@dim/contract/reference";
 
+import { PET_EDIT_SECTIONS, type PetEditSection } from "../ui/routes";
 import { AR_TIME_ZONE } from "./libreta-view-model";
+
+/**
+ * The section a `?seccion=` names, or `null` — which opens the screen at the top.
+ *
+ * AN UNKNOWN SECTION IS NOT AN ERROR, it is the default: the posture the pet
+ * document takes with an unknown `?face=`. A link naming a section this build
+ * does not have still points at a real animal's data, and refusing to open the
+ * form over a query string would turn a cosmetic disagreement into a dead link.
+ * Takes the raw parameter because expo-router types a query value as
+ * `string | string[]`.
+ */
+export function petEditSectionFromParam(
+  raw: string | readonly string[] | undefined,
+): PetEditSection | null {
+  const first = (typeof raw === "string" ? raw : raw?.[0])?.trim() ?? "";
+  return (PET_EDIT_SECTIONS as readonly string[]).includes(first)
+    ? (first as PetEditSection)
+    : null;
+}
 
 /** The identity form's fields, as strings — what a `TextInput` actually holds. */
 export type IdentityDraft = {
