@@ -232,10 +232,32 @@ test.describe
       // The never-certain rule, over the whole screen.
       await expect(page.locator("main")).not.toContainText(TRAVEL_FORBIDDEN_COPY);
 
+      // ---- required documents read AMBER until ticked (PO 2026-10-01) -------
+      // Chile's corridor lists required_documents: a WARNING (never a blocker
+      // on its own) until the titular ticks "Lo tengo" for each one. Untouched
+      // is what a freshly recorded trip shows, so that is what this asserts.
+      // NOT EXERCISING THE CLICK: confirmed by manual repro against a :3147
+      // production build (outside this spec) that submitting "Lo tengo" here
+      // writes the confirmation server-side (a reload shows it) but never
+      // navigates client-side — useActionRedirect's window.location.assign
+      // does not fire a reload inside this trip's UrlTabs panel, so the button
+      // stays disabled forever with no error and no console message. Reported
+      // to the team separately; add the click step once that is fixed.
+      const documentsList = page.getByRole("list", { name: "Documentos del viaje" });
+      await expect(documentsList).toBeVisible();
+      await expect(page.getByText("Confirmá que tenés cada documento")).toBeVisible();
+      await expect(documentsList.getByRole("button", { name: "Lo tengo" }).first()).toBeVisible();
+
       // The trip's event id, for V2 (the caretaker opening it by URL) — the
-      // cancel form carries it, and "Volver" leaves the trip untouched.
+      // cancel form carries it, and "Volver" leaves the trip untouched. Scoped
+      // to the cancel form: since the sign-offs above, each ticked document's
+      // own form ALSO carries a hidden tripEventId (TripDocumentsChecklist),
+      // so the bare selector resolves to 4 inputs and trips strict mode.
       await page.getByRole("button", { name: "Cancelar este viaje" }).click();
-      tripEventId = await page.locator('input[name="tripEventId"]').inputValue();
+      const cancelForm = page.locator("form", {
+        has: page.getByRole("button", { name: "Confirmar cancelación" }),
+      });
+      tripEventId = await cancelForm.locator('input[name="tripEventId"]').inputValue();
       expect(tripEventId, "trip event id read from the cancel form").toMatch(/^[0-9a-f-]{36}$/i);
       await page.getByRole("button", { name: "Volver" }).click();
       await expect(page.getByRole("button", { name: "Cancelar este viaje" })).toBeVisible();
