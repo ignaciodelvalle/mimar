@@ -17,10 +17,12 @@
 // own vet and phone number, which is exactly the fix the web made in its M2
 // review and exactly what this app must not undo.
 
-import type { PetProfileEditV1 } from "@dim/contract/api";
+import type { PetProfileDraftV1, PetProfileEditV1 } from "@dim/contract/api";
 import type {
+  AcquisitionMethod,
   PetProfileCommandInput,
   PetProfileCommandInputCode,
+  PetSex,
   PetSpecies,
   StoredPetIdentityText,
 } from "@dim/contract/input";
@@ -38,10 +40,20 @@ import {
   petProfileCommandInputSchema,
   resolvePetIdentityLengths,
 } from "@dim/contract/input";
-import { breedsForSpecies } from "@dim/contract/reference";
+import {
+  COMMON_ALLERGIES,
+  COMMON_FOODS,
+  PERMANENT_CONDITIONS,
+  TRAINING_LEVELS,
+  TRAINING_LEVEL_VALUES,
+  type TrainingLevel,
+  breedsForSpecies,
+  petAgeFromBirthDate,
+} from "@dim/contract/reference";
 
 import { PET_EDIT_SECTIONS, type PetEditSection } from "../ui/routes";
 import { AR_TIME_ZONE } from "./libreta-view-model";
+import { ACQUISITION_ORDER, acquisitionMethodLabel } from "./pet-field-options";
 
 /**
  * The section a `?seccion=` names, or `null` — which opens the screen at the top.
@@ -429,4 +441,380 @@ export function physicalTagInterestRequestedAtLabel(requestedAt: string | null):
     timeZone: AR_TIME_ZONE,
   }).format(date);
   return `Anotado el ${formatted}.`;
+}
+
+// ---------------------------------------------------------------------------
+// "Editar datos" by section (owner-pet-actions, PO plan 2026-10-01)
+// ---------------------------------------------------------------------------
+//
+// THE GAP. The app's "Editar datos" could change the name, the breed and the
+// colour; the web's form changes fifteen fields. The PO's plan closes it in
+// SECTIONS, the same six on both platforms — Identidad, Salud y cuidados,
+// Contactos, Qué muestra la credencial pública, Seguro, Origen — each with its
+// own Guardar.
+//
+// ONE SECTION PER SAVE, ON THE WIRE AND ON THE SCREEN. `edit_profile` takes
+// every section as a required, nullable key, and `null` means "leave it as
+// stored"; so each builder below sends its own object and `null` for the other
+// four. A Guardar that sent everything would write whatever another section's
+// half-typed draft held. The screen keeps the same promise in the other
+// direction: after a save it re-seeds THAT section from the server and leaves
+// what was typed elsewhere alone (`reseedDrafts`).
+//
+// WHAT IS STILL NOT A SECTION, each with its own door: the contacts
+// (`set_emergency_contacts`), the species (`correct_species`, FULL-LOCK), the
+// weight (an asiento), the microchip and the locality (a mudanza).
+
+/**
+ * One save group of the screen. Identidad holds two (its form, and the species
+ * correction, which is its own command); every other section holds one.
+ */
+export type SaveGroup =
+  | "identity"
+  | "species"
+  | "contacts"
+  | "health"
+  | "publicCredential"
+  | "insurance"
+  | "origin";
+
+/** The two Identidad fields only the sectioned edit carries. The age is what the inputs hold. */
+export type IdentityExtrasDraft = { sex: PetSex; ageYears: string; ageMonths: string };
+
+/**
+ * Salud y cuidados, the way the web's form holds it: catalogue CHIPS, plus the
+ * owner's own entries as comma-separated text. Chips stay in catalogue order
+ * (`toggleCatalogPick`); a stored condition code the catalogue has dropped rides
+ * at the end of `conditions` so posting the section back keeps it.
+ */
+export type HealthDraft = {
+  foods: string[];
+  foodsOther: string;
+  allergies: string[];
+  allergiesOther: string;
+  trainingLevel: TrainingLevel | null;
+  conditions: string[];
+  conditionsOther: string;
+};
+
+export type PublicCredentialDraft = {
+  emergencyInfoVisible: boolean;
+  discloseConditionsPublicly: boolean;
+};
+
+export type InsuranceDraft = { insuranceCompany: string; insurancePolicyNumber: string };
+
+export type OriginDraft = { acquisitionMethod: AcquisitionMethod | null };
+
+export type ProfileDrafts = {
+  identityExtras: IdentityExtrasDraft;
+  health: HealthDraft;
+  publicCredential: PublicCredentialDraft;
+  insurance: InsuranceDraft;
+  origin: OriginDraft;
+};
+
+/** Everything the screen lets a person type, by section. */
+export type EditDrafts = {
+  identity: IdentityDraft;
+  species: PetSpecies | null;
+  contacts: EmergencyDraft | null;
+  /** `null` when the profile sections are not offered (`profileBlockedReason`). */
+  profile: ProfileDrafts | null;
+};
+
+/**
+ * The profile block, when THIS caller may edit it. `undefined` covers an older
+ * server that sends no key at all; it reads like `null` — no sections.
+ */
+function editableProfile(payload: PetProfileEditV1): PetProfileDraftV1 | null {
+  if (payload.capabilities.canEditProfile !== true) return null;
+  return payload.profile ?? null;
+}
+
+/** Catalogue picks in catalogue order, then whatever else is stored. */
+function splitByCatalog(catalog: readonly string[], stored: readonly string[]) {
+  return {
+    picks: catalog.filter((item) => stored.includes(item)),
+    rest: stored.filter((item) => !catalog.includes(item)),
+  };
+}
+
+function healthDraftFrom(profile: PetProfileDraftV1): HealthDraft {
+  const foods = splitByCatalog(COMMON_FOODS, profile.favouriteFoods);
+  const allergies = splitByCatalog(COMMON_ALLERGIES, profile.knownAllergies);
+  const conditions = splitByCatalog(PERMANENT_CONDITIONS, profile.permanentConditions);
+  return {
+    foods: foods.picks,
+    foodsOther: foods.rest.join(", "),
+    allergies: allergies.picks,
+    allergiesOther: allergies.rest.join(", "),
+    trainingLevel: profile.trainingLevel,
+    conditions: [...conditions.picks, ...conditions.rest],
+    conditionsOther: profile.permanentConditionsOther ?? "",
+  };
+}
+
+/** A whole number as the input shows it; no number is an empty box, never "0". */
+function ageField(value: number | null): string {
+  return value === null ? "" : String(value);
+}
+
+function profileDraftsFrom(profile: PetProfileDraftV1, now: Date): ProfileDrafts {
+  // THE AGE THE STORED DATE READS AS TODAY, on Argentina's calendar — the same
+  // function the server uses to decide that an unchanged age keeps the stored
+  // date (`resolveEditedBirthDate`). Posting this back untouched is what stops
+  // every save from re-estimating the birth date, the web bug this change fixed.
+  const age = petAgeFromBirthDate(profile.dateOfBirth, now);
+  return {
+    identityExtras: {
+      sex: profile.sex,
+      ageYears: ageField(age.years),
+      ageMonths: ageField(age.months),
+    },
+    health: healthDraftFrom(profile),
+    publicCredential: {
+      emergencyInfoVisible: profile.emergencyInfoVisible,
+      discloseConditionsPublicly: profile.discloseConditionsPublicly,
+    },
+    insurance: {
+      insuranceCompany: profile.insuranceCompany ?? "",
+      insurancePolicyNumber: profile.insurancePolicyNumber ?? "",
+    },
+    origin: { acquisitionMethod: profile.acquisitionMethod },
+  };
+}
+
+/**
+ * Every draft the screen holds, seeded from the server. `now` is a parameter so
+ * the age is computed ONCE per read: a baseline recomputed on every render would
+ * change at midnight and mark an untouched form as edited.
+ */
+export function editDraftsFrom(payload: PetProfileEditV1, now: Date): EditDrafts {
+  const profile = editableProfile(payload);
+  return {
+    identity: identityDraftFrom(payload),
+    species: speciesDraftFrom(payload),
+    contacts: emergencyDraftFrom(payload),
+    profile: profile === null ? null : profileDraftsFrom(profile, now),
+  };
+}
+
+/** Why the profile sections are not offered, or `null` when they are. */
+export function profileBlockedReason(payload: PetProfileEditV1): string | null {
+  if (editableProfile(payload) !== null) return null;
+  if (payload.capabilities.canEditProfile === true) {
+    // Allowed, and the block did not arrive: a read problem, not a permission.
+    return "No pudimos cargar esta sección.";
+  }
+  if (!payload.capabilities.canEditIdentity) {
+    return "Sos cuidador/a de esta mascota. Estos datos los edita el titular.";
+  }
+  return "Tu acceso a esta mascota no incluye editar esta sección.";
+}
+
+type ProfileSectionKey = keyof ProfileDrafts;
+
+function withProfileSection(
+  current: ProfileDrafts | null,
+  fresh: ProfileDrafts | null,
+  key: ProfileSectionKey,
+): ProfileDrafts | null {
+  if (fresh === null) return null;
+  if (current === null) return fresh;
+  return { ...current, [key]: fresh[key] };
+}
+
+/**
+ * The drafts after `group` was saved and the server re-read: THAT group
+ * re-seeded from what the server stored, every other section as the person left
+ * it. A species correction re-seeds the identity fields too, because the server
+ * may have cleared a breed the new species' catalogue does not carry.
+ */
+export function reseedDrafts(current: EditDrafts, fresh: EditDrafts, group: SaveGroup): EditDrafts {
+  switch (group) {
+    case "identity":
+      return {
+        ...current,
+        identity: fresh.identity,
+        profile: withProfileSection(current.profile, fresh.profile, "identityExtras"),
+      };
+    case "species":
+      return {
+        ...current,
+        species: fresh.species,
+        identity: fresh.identity,
+        profile: withProfileSection(current.profile, fresh.profile, "identityExtras"),
+      };
+    case "contacts":
+      return { ...current, contacts: fresh.contacts };
+    case "health":
+    case "publicCredential":
+    case "insurance":
+    case "origin":
+      return { ...current, profile: withProfileSection(current.profile, fresh.profile, group) };
+  }
+}
+
+/**
+ * Whether two sets of drafts say the same thing — the discard guard's question.
+ *
+ * NOT `sameDraft`: that one is shallow over primitives by design, and these
+ * sections hold lists, where a shallow test would call a new chip "unchanged".
+ * Serialising is exact here because every draft is built by the functions above
+ * and edited by spreading, so two equal drafts have their keys in one order.
+ */
+export function sameEditDrafts(a: EditDrafts, b: EditDrafts): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * Turn a chip on or off. The catalogue's picks come back in CATALOGUE order,
+ * whatever order they were tapped in, so a deselect-reselect is not an edit;
+ * anything selected that the catalogue does not carry (a legacy code) is kept,
+ * after them.
+ */
+export function toggleCatalogPick(
+  catalog: readonly string[],
+  selected: readonly string[],
+  value: string,
+): string[] {
+  const on = new Set(selected);
+  if (on.has(value)) on.delete(value);
+  else on.add(value);
+  return [
+    ...catalog.filter((item) => on.has(item)),
+    ...selected.filter((item) => !catalog.includes(item) && on.has(item)),
+  ];
+}
+
+/** Comma-separated entries, trimmed, blanks dropped — the web parser's rule. */
+function splitEntries(text: string): string[] {
+  return text
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+/** First occurrence wins: a chip and the same word typed again are one entry. */
+function unique(items: readonly string[]): string[] {
+  return [...new Set(items)];
+}
+
+type ProfileSections = Partial<
+  Record<"identity" | "health" | "publicCredential" | "insurance" | "origin", unknown>
+>;
+
+/** `edit_profile` with the given sections and `null` — "leave it" — for the rest. */
+function editProfileWire(sections: ProfileSections) {
+  return {
+    command: "edit_profile",
+    identity: null,
+    health: null,
+    publicCredential: null,
+    insurance: null,
+    origin: null,
+    ...sections,
+  };
+}
+
+/**
+ * GUARDAR IDENTIDAD. The three identity fields plus the sex and the age, posted
+ * as the inputs hold them. Takes the STORED name and colour for the same
+ * grandfathered length rule `buildIdentityEdit` applies.
+ */
+export function buildProfileIdentity(
+  identity: IdentityDraft,
+  extras: IdentityExtrasDraft,
+  stored: StoredPetIdentityText,
+): CommandResult {
+  const name = identity.name.trim();
+  const color = identity.color.trim() || null;
+  const lengths = resolvePetIdentityLengths({ name, color }, stored);
+  if (!lengths.ok) {
+    return { ok: false, code: lengths.code, message: petProfileInputCodeMessage(lengths.code) };
+  }
+  return validated(
+    editProfileWire({
+      identity: {
+        name: identity.name,
+        breed: identity.breed.trim() || null,
+        color,
+        sex: extras.sex,
+        ageYears: extras.ageYears,
+        ageMonths: extras.ageMonths,
+      },
+    }),
+  );
+}
+
+/** GUARDAR SALUD Y CUIDADOS. Chips, then the typed entries, de-duplicated. */
+export function buildProfileHealth(draft: HealthDraft): CommandResult {
+  return validated(
+    editProfileWire({
+      health: {
+        favouriteFoods: unique([...draft.foods, ...splitEntries(draft.foodsOther)]),
+        knownAllergies: unique([...draft.allergies, ...splitEntries(draft.allergiesOther)]),
+        trainingLevel: draft.trainingLevel,
+        permanentConditions: [...draft.conditions],
+        permanentConditionsOther: draft.conditionsOther,
+      },
+    }),
+  );
+}
+
+/** GUARDAR QUÉ MUESTRA LA CREDENCIAL PÚBLICA. The two toggles and nothing else. */
+export function buildProfilePublicCredential(draft: PublicCredentialDraft): CommandResult {
+  return validated(editProfileWire({ publicCredential: { ...draft } }));
+}
+
+/** GUARDAR SEGURO. An emptied field clears it. */
+export function buildProfileInsurance(draft: InsuranceDraft): CommandResult {
+  return validated(editProfileWire({ insurance: { ...draft } }));
+}
+
+/** GUARDAR ORIGEN. One of the six methods, or none. */
+export function buildProfileOrigin(draft: OriginDraft): CommandResult {
+  return validated(editProfileWire({ origin: { ...draft } }));
+}
+
+/**
+ * The "No especificar" answer of a single-choice row. The kit's `Choice` has no
+ * way to un-pick, and the web's selects open on the same option, so the unset
+ * answer is an option of its own — a sentinel that never crosses the wire.
+ */
+export const UNSET_CHOICE = "sin_dato";
+const UNSET_LABEL = "No especificar";
+
+export type TrainingChoice = TrainingLevel | typeof UNSET_CHOICE;
+export const TRAINING_CHOICES: readonly TrainingChoice[] = [UNSET_CHOICE, ...TRAINING_LEVEL_VALUES];
+
+const TRAINING_LABELS: ReadonlyMap<string, string> = new Map(
+  TRAINING_LEVELS.map((level) => [level.value, level.label]),
+);
+
+/** The catalogue's own words for a level; "No especificar" for the unset answer. */
+export function trainingChoiceLabel(choice: TrainingChoice): string {
+  return TRAINING_LABELS.get(choice) ?? UNSET_LABEL;
+}
+
+export type AcquisitionChoice = AcquisitionMethod | typeof UNSET_CHOICE;
+export const ACQUISITION_CHOICES: readonly AcquisitionChoice[] = [
+  UNSET_CHOICE,
+  ...ACQUISITION_ORDER,
+];
+
+/** The alta's own words for a method; "No especificar" for the unset answer. */
+export function acquisitionChoiceLabel(choice: AcquisitionChoice): string {
+  return choice === UNSET_CHOICE ? UNSET_LABEL : acquisitionMethodLabel(choice);
+}
+
+/** A choice back to the draft's value: the sentinel is `null`. */
+export function fromChoice<T extends string>(choice: T | typeof UNSET_CHOICE): T | null {
+  return choice === UNSET_CHOICE ? null : (choice as T);
+}
+
+/** The draft's value as a choice: `null` is the sentinel. */
+export function toChoice<T extends string>(value: T | null): T | typeof UNSET_CHOICE {
+  return value ?? UNSET_CHOICE;
 }

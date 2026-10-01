@@ -8,17 +8,27 @@
 // without a session, and hands off. Every rule about who may edit what lives on
 // the server and arrives as `capabilities`; `PetProfileEditScreen` renders them
 // and invents none.
+//
+// `?seccion=` names the section to open on (owner-pet-actions): the panel's
+// "Contactos de emergencia" row sends `contactos`. AN UNKNOWN SECTION IS NOT AN
+// ERROR, it is the top of the form — the posture the pet document takes with an
+// unknown `?face=`; only the path parameter is worth a refusal.
 
 import { useLocalSearchParams } from "expo-router";
 
 import { useGate } from "../../../src/auth/useGate";
 import { PetProfileEditScreen } from "../../../src/pets/PetProfileEditScreen";
+import { petEditSectionFromParam } from "../../../src/pets/pet-profile-edit-view-model";
 import { ErrorNotice } from "../../../src/ui/components";
 import { Screen } from "../../../src/ui/kit";
+import { PET_EDIT_SECTION_PARAM } from "../../../src/ui/routes";
 
 export default function EditarRoute() {
   const gate = useGate();
-  const params = useLocalSearchParams<{ publicToken?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    publicToken?: string | string[];
+    [PET_EDIT_SECTION_PARAM]?: string | string[];
+  }>();
 
   if (!gate.allowed) return gate.element;
 
@@ -33,5 +43,10 @@ export default function EditarRoute() {
     );
   }
 
-  return <PetProfileEditScreen publicToken={publicToken} />;
+  return (
+    <PetProfileEditScreen
+      publicToken={publicToken}
+      initialSection={petEditSectionFromParam(params[PET_EDIT_SECTION_PARAM])}
+    />
+  );
 }

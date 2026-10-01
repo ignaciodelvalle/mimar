@@ -67,6 +67,7 @@ import { COLORS, RADIUS, SPACE, TOUCH_TARGET, TYPE } from "../ui/theme";
 import { useReturnKeyChain } from "../ui/use-return-key-chain";
 import { LocalityPicker } from "./LocalityPicker";
 import { createAttemptSession } from "./idempotency";
+import { ACQUISITION_OPTIONS, SEX_OPTIONS } from "./pet-field-options";
 import {
   EMPTY_DRAFT,
   type PetDraft,
@@ -82,20 +83,9 @@ import { SPECIES_OPTIONS, speciesLabel } from "./species";
 import { useAltaDraft } from "./use-alta-draft";
 import { DISCARD_COPY, useDiscardGuard } from "./use-discard-guard";
 
-const SEX_OPTIONS = [
-  { value: "female", label: "Hembra" },
-  { value: "male", label: "Macho" },
-  { value: "unknown", label: "No sé" },
-] as const;
-
-const ACQUISITION_OPTIONS = [
-  { value: "adopted", label: "Adopción" },
-  { value: "purchased", label: "Compra" },
-  { value: "found_stray", label: "La encontré" },
-  { value: "gift", label: "Regalo" },
-  { value: "born_in_litter", label: "Nació en casa" },
-  { value: "other", label: "Otro" },
-] as const;
+// `SEX_OPTIONS` and `ACQUISITION_OPTIONS` moved to `pet-field-options.ts`
+// (owner-pet-actions): "Editar datos" asks the same two questions and must use
+// the same words.
 
 type Submission =
   | { phase: "idle" }

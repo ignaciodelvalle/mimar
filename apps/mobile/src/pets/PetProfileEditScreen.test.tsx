@@ -1,27 +1,31 @@
 // `PetProfileEditScreen` — the render tests for the first native screen that
-// CORRECTS something the app already recorded.
+// CORRECTS something the app already recorded, sectioned since owner-pet-actions.
 //
 // WHAT THESE HAVE TO PROVE, beyond "it renders"
 // ---------------------------------------------------------------------------
-//   1. THE TWO HALVES ARE GATED SEPARATELY, from `capabilities` and never from
-//      "this pet is mine". The case that matters is the FOSTER: allowed to
-//      correct the animal's name, not allowed anywhere near the titular's own
-//      vet and phone. A screen that reasoned from one flag gets exactly this
-//      person wrong.
+//   1. THE HALVES ARE GATED SEPARATELY, from `capabilities` and never from "this
+//      pet is mine". The case that matters is the FOSTER: allowed to correct
+//      the animal's data, not allowed anywhere near the titular's own vet and
+//      phone. A screen that reasoned from one flag gets exactly this person
+//      wrong.
 //   2. NO CONTROL IS OFFERED THAT CAN ONLY BE REFUSED. Where a flag is false the
 //      screen renders the REASON, not a disabled form and not a form whose save
 //      answers 403.
-//   3. THE FORM IS RE-SEEDED FROM THE SERVER AFTER A SAVE, so a value the server
-//      normalised (a breed folded to its canonical label) is what the field ends
-//      up showing — not what the person typed.
-//   4. "NOTHING CHANGED" IS SAID OUT LOUD rather than dressed as success.
-//   5. THE STORED BREED IS REACHABLE even when the catalog has lost it (QA A5).
+//   3. EACH SECTION'S GUARDAR SENDS ITS OWN SECTION and `null` for the rest, and
+//      re-seeds only that section from the server, so what was typed in another
+//      section survives the save.
+//   4. THE AGE IS POSTED BACK AS SHOWN, so an untouched age keeps the stored
+//      birth date (the drift the web had).
+//   5. "NOTHING CHANGED" IS SAID OUT LOUD rather than dressed as success.
+//   6. THE STORED BREED IS REACHABLE even when the catalog has lost it (QA A5).
+//   7. A LINK THAT NAMES A SECTION OPENS THE SCREEN ON IT (`?seccion=`).
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
-import { Alert, Keyboard } from "react-native";
+import { Alert, Keyboard, ScrollView } from "react-native";
 
 import { createNavigationFake } from "../ui/navigation-fake";
+import { SPACE } from "../ui/theme";
 
 const mockFetch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockSend = jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -43,11 +47,40 @@ jest.mock("../api/endpoints", () => ({
 
 jest.mock("../auth/session-store", () => ({ sessionPort: {} }));
 
-import type { PetProfileEditV1 } from "@dim/contract/api";
+import type { PetProfileDraftV1, PetProfileEditV1 } from "@dim/contract/api";
 
 import { PetProfileEditScreen } from "./PetProfileEditScreen";
 
 const TOKEN = "DIM-PAMP-0001";
+
+/**
+ * The profile block. No birth date by default, so nothing on screen depends on
+ * the day the suite runs; the age round trip has its own test.
+ */
+const PROFILE: PetProfileDraftV1 = {
+  sex: "female",
+  dateOfBirth: null,
+  birthDateIsEstimated: false,
+  favouriteFoods: ["Comida seca (balanceada)"],
+  knownAllergies: ["Pollo"],
+  trainingLevel: "basic",
+  permanentConditions: [],
+  permanentConditionsOther: null,
+  emergencyInfoVisible: true,
+  discloseConditionsPublicly: false,
+  insuranceCompany: "Mapfre Mascotas",
+  insurancePolicyNumber: "POL-123",
+  acquisitionMethod: "adopted",
+};
+
+const ALL_ALLOWED = {
+  canEditIdentity: true,
+  canEditEmergencyContacts: true,
+  canCorrectSpecies: true,
+  canTogglePhysicalTagInterest: true,
+  canManageServiceDog: true,
+  canEditProfile: true,
+};
 
 function payload(over: Partial<PetProfileEditV1> = {}): PetProfileEditV1 {
   return {
@@ -69,19 +102,57 @@ function payload(over: Partial<PetProfileEditV1> = {}): PetProfileEditV1 {
       emergencyContactName: "Mamá",
       emergencyContactPhone: "1199887766",
     },
-    capabilities: {
-      canEditIdentity: true,
-      canEditEmergencyContacts: true,
-      canCorrectSpecies: true,
-      canTogglePhysicalTagInterest: true,
-      canManageServiceDog: true,
-      canEditProfile: true,
-    },
+    capabilities: ALL_ALLOWED,
     physicalTagInterest: { interested: false, requestedAt: null },
     serviceDog: { designation: null },
+    profile: PROFILE,
     ...over,
   } as PetProfileEditV1;
 }
+
+/** `edit_profile` with every section null but the ones given. */
+const onlySection = (sections: Record<string, unknown>) => ({
+  command: "edit_profile",
+  identity: null,
+  health: null,
+  publicCredential: null,
+  insurance: null,
+  origin: null,
+  ...sections,
+});
+
+/**
+ * Every string the screen renders, in reading order — exact text nodes, so a
+ * title cannot be "found" inside a placeholder or a hint that mentions it.
+ */
+function readingOrder(): string[] {
+  const out: string[] = [];
+  const walk = (node: unknown): void => {
+    if (typeof node === "string") {
+      out.push(node);
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const child of node) walk(child);
+      return;
+    }
+    if (typeof node === "object" && node !== null && "children" in node) {
+      walk((node as { children: unknown }).children);
+    }
+  };
+  walk(screen.toJSON());
+  return out;
+}
+
+/** The identity section as the default fixture posts it, untouched. */
+const IDENTITY_AS_STORED = {
+  name: "Pampa",
+  breed: "Mestizo",
+  color: "Atigrada",
+  sex: "female",
+  ageYears: null,
+  ageMonths: null,
+};
 
 beforeEach(() => {
   mockFetch.mockReset();
@@ -89,32 +160,65 @@ beforeEach(() => {
   mockFetch.mockResolvedValue({ outcome: "ok", payload: payload() });
   mockSend.mockResolvedValue({
     outcome: "ok",
-    payload: { command: "edit_identity", changed: true },
+    payload: { command: "edit_profile", changed: true },
   });
 });
 
-describe("PetProfileEditScreen — the two halves are gated separately", () => {
-  it("pre-fills both forms from the server's own values", async () => {
+describe("PetProfileEditScreen — the six sections, in the plan's order", () => {
+  it("draws Identidad, Salud y cuidados, Contactos, Qué muestra la credencial pública, Seguro, Origen", async () => {
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    await screen.findByDisplayValue("Pampa");
+
+    const titles = [
+      "Identidad",
+      "Salud y cuidados",
+      "Contactos de emergencia",
+      "Qué muestra la credencial pública",
+      "Seguro",
+      "Origen",
+    ];
+    const order = readingOrder();
+    const at = titles.map((title) => order.indexOf(title));
+    // Each title is on the screen, and after the one before it.
+    expect(at.every((index) => index >= 0)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+  });
+
+  it("pre-fills every section from the server's own values", async () => {
     render(<PetProfileEditScreen publicToken={TOKEN} />);
     expect(await screen.findByDisplayValue("Pampa")).toBeOnTheScreen();
     expect(screen.getByDisplayValue("Atigrada")).toBeOnTheScreen();
     expect(screen.getByDisplayValue("Vet Norte")).toBeOnTheScreen();
+    expect(screen.getByDisplayValue("Mapfre Mascotas")).toBeOnTheScreen();
+    expect(screen.getByDisplayValue("POL-123")).toBeOnTheScreen();
+    expect(screen.getByRole("radio", { name: "Hembra" }).props.accessibilityState.checked).toBe(
+      true,
+    );
+    expect(screen.getByRole("checkbox", { name: "Pollo" }).props.accessibilityState.checked).toBe(
+      true,
+    );
+    expect(screen.getByRole("radio", { name: "Adopción" }).props.accessibilityState.checked).toBe(
+      true,
+    );
+    expect(
+      screen.getByLabelText("Mostrar aviso de emergencia médica en la credencial pública").props
+        .value,
+    ).toBe(true);
   });
+});
 
-  it("gives a FOSTER the identity form and refuses the contacts, with the reason", async () => {
+describe("PetProfileEditScreen — the halves are gated separately", () => {
+  it("gives a FOSTER the sections and refuses the contacts, with the reason", async () => {
     // THE CASE A SINGLE FLAG GETS WRONG. A foster is a Path-1 holder: they may
-    // correct the animal's name (requireTitularAccess admits them) and must not
-    // see the legal owner's vet and phone (the writer's join says role='owner').
+    // correct the animal's data and must not see the legal owner's vet and
+    // phone (the writer's join says role='owner').
     mockFetch.mockResolvedValue({
       outcome: "ok",
       payload: payload({
         capabilities: {
-          canEditIdentity: true,
+          ...ALL_ALLOWED,
           canEditEmergencyContacts: false,
-          canCorrectSpecies: true,
-          canTogglePhysicalTagInterest: true,
           canManageServiceDog: false,
-          canEditProfile: true,
         },
         emergencyContacts: null,
         emergencyAccountDefault: null,
@@ -122,32 +226,63 @@ describe("PetProfileEditScreen — the two halves are gated separately", () => {
     });
     render(<PetProfileEditScreen publicToken={TOKEN} />);
     expect(await screen.findByDisplayValue("Pampa")).toBeOnTheScreen();
-    // The form that IS theirs is live…
-    expect(screen.getByText("Guardar datos")).toBeOnTheScreen();
+    // The forms that ARE theirs are live…
+    expect(screen.getByText("Guardar identidad")).toBeOnTheScreen();
+    expect(screen.getByText("Guardar seguro")).toBeOnTheScreen();
     // …and the one that is not shows a sentence instead of a control.
     expect(screen.queryByText("Guardar contactos")).toBeNull();
     expect(screen.getByText(/Solo esa persona puede cambiarlos/)).toBeOnTheScreen();
   });
 
-  it("refuses the identity form on its own flag, with a different sentence", async () => {
+  it("refuses the identity form and the profile sections to a caretaker, each with its sentence", async () => {
     mockFetch.mockResolvedValue({
       outcome: "ok",
       payload: payload({
         capabilities: {
+          ...ALL_ALLOWED,
           canEditIdentity: false,
-          canEditEmergencyContacts: true,
           canCorrectSpecies: false,
-          canTogglePhysicalTagInterest: true,
-          canManageServiceDog: true,
           canEditProfile: false,
         },
+        profile: null,
       }),
     });
     render(<PetProfileEditScreen publicToken={TOKEN} />);
     expect(await screen.findByText(/solo del titular/)).toBeOnTheScreen();
-    expect(screen.queryByText("Guardar datos")).toBeNull();
+    expect(screen.queryByText("Guardar identidad")).toBeNull();
+    // Four sections, one reason each, and no control behind any of them.
+    expect(screen.getAllByText(/Estos datos los edita el titular/)).toHaveLength(4);
+    for (const save of ["Guardar salud y cuidados", "Guardar visibilidad", "Guardar seguro"]) {
+      expect([save, screen.queryByText(save)]).toEqual([save, null]);
+    }
     // The other half is untouched by that refusal.
     expect(screen.getByText("Guardar contactos")).toBeOnTheScreen();
+  });
+
+  it("keeps the old three-field identity form where the server sends no profile block", async () => {
+    // An org-path holder passes `canEditIdentity` and not `canEditProfile`; an
+    // older server sends no `profile` at all. Either way the name, breed and
+    // colour stay editable through the command they always used.
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ capabilities: { ...ALL_ALLOWED, canEditProfile: false }, profile: null }),
+    });
+    mockSend.mockResolvedValue({
+      outcome: "ok",
+      payload: { command: "edit_identity", changed: true },
+    });
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    fireEvent.changeText(await screen.findByDisplayValue("Pampa"), "Pampita");
+    // No sex or age without the block — they would post to a command that has none.
+    expect(screen.queryByRole("radio", { name: "Hembra" })).toBeNull();
+    fireEvent.press(screen.getByText("Guardar identidad"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalled());
+    expect(mockSend).toHaveBeenCalledWith({}, TOKEN, {
+      command: "edit_identity",
+      name: "Pampita",
+      breed: "Mestizo",
+      color: "Atigrada",
+    });
   });
 });
 
@@ -175,11 +310,16 @@ describe("PetProfileEditScreen — the discard guard (A2-alta-asentar-08)", () =
   });
 
   it("watches the CONTACTS half too, which saves separately", async () => {
-    // Two save groups, one question: somebody may have saved the identity and
-    // still be holding an unsaved phone number, and a guard that watched only
-    // the first would let that one go.
     render(<PetProfileEditScreen publicToken={TOKEN} />);
     fireEvent.changeText(await screen.findByDisplayValue("Vet Norte"), "Vet Sur");
+    expect(mockNav.pressBack().blocked).toBe(true);
+  });
+
+  it("watches a CHIP, which no text field records", async () => {
+    // A shallow comparison of the section would call a new allergy unchanged.
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    await screen.findByDisplayValue("Pampa");
+    fireEvent.press(screen.getByRole("checkbox", { name: "Cerdo" }));
     expect(mockNav.pressBack().blocked).toBe(true);
   });
 
@@ -193,7 +333,7 @@ describe("PetProfileEditScreen — the discard guard (A2-alta-asentar-08)", () =
       outcome: "ok",
       payload: payload({ identity: { name: "Pampita", breed: "Mestizo", color: "Atigrada" } }),
     });
-    fireEvent.press(screen.getByText("Guardar datos"));
+    fireEvent.press(screen.getByText("Guardar identidad"));
     // WAIT ON THE RE-READ, not on the field: the input already shows "Pampita"
     // from the local edit, so `findByDisplayValue` resolves before the save has
     // even been sent and the assertion below would read a draft that is
@@ -205,19 +345,120 @@ describe("PetProfileEditScreen — the discard guard (A2-alta-asentar-08)", () =
   });
 });
 
-describe("PetProfileEditScreen — saving", () => {
-  it("posts the identity command with the fields as typed", async () => {
+describe("PetProfileEditScreen — each Guardar sends its own section", () => {
+  it("Identidad: the five fields as typed, and nothing else", async () => {
     render(<PetProfileEditScreen publicToken={TOKEN} />);
-    const name = await screen.findByDisplayValue("Pampa");
-    fireEvent.changeText(name, "Pampita");
-    fireEvent.press(screen.getByText("Guardar datos"));
+    fireEvent.changeText(await screen.findByDisplayValue("Pampa"), "Pampita");
+    fireEvent.press(screen.getByRole("radio", { name: "Macho" }));
+    fireEvent.press(screen.getByText("Guardar identidad"));
     await waitFor(() => expect(mockSend).toHaveBeenCalled());
-    expect(mockSend).toHaveBeenCalledWith({}, TOKEN, {
-      command: "edit_identity",
-      name: "Pampita",
-      breed: "Mestizo",
-      color: "Atigrada",
+    expect(mockSend).toHaveBeenCalledWith(
+      {},
+      TOKEN,
+      onlySection({ identity: { ...IDENTITY_AS_STORED, name: "Pampita", sex: "male" } }),
+    );
+  });
+
+  it("Salud y cuidados: a chip and the typed rest", async () => {
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    await screen.findByDisplayValue("Pampa");
+    fireEvent.press(screen.getByRole("checkbox", { name: "Cerdo" }));
+    fireEvent.changeText(screen.getByLabelText("Otras alergias"), "Ácaros");
+    fireEvent.press(screen.getByText("Guardar salud y cuidados"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalled());
+    expect(mockSend).toHaveBeenCalledWith(
+      {},
+      TOKEN,
+      onlySection({
+        health: {
+          favouriteFoods: ["Comida seca (balanceada)"],
+          knownAllergies: ["Pollo", "Cerdo", "Ácaros"],
+          trainingLevel: "basic",
+          permanentConditions: [],
+          permanentConditionsOther: null,
+        },
+      }),
+    );
+  });
+
+  it("Salud y cuidados: 'Otra' asks for its description, and is refused locally without one", async () => {
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    await screen.findByDisplayValue("Pampa");
+    expect(screen.queryByLabelText("Especificá la condición, obligatorio")).toBeNull();
+    fireEvent.press(screen.getByRole("checkbox", { name: "Otra (especificar)" }));
+    expect(screen.getByLabelText("Especificá la condición, obligatorio")).toBeOnTheScreen();
+
+    fireEvent.press(screen.getByText("Guardar salud y cuidados"));
+    expect(await screen.findByText("Describí la otra condición.")).toBeOnTheScreen();
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("Qué muestra la credencial pública: the two toggles, alone", async () => {
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    await screen.findByDisplayValue("Pampa");
+    fireEvent(
+      screen.getByLabelText("Mostrar aviso de emergencia médica en la credencial pública"),
+      "valueChange",
+      false,
+    );
+    fireEvent.press(screen.getByText("Guardar visibilidad"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalled());
+    expect(mockSend).toHaveBeenCalledWith(
+      {},
+      TOKEN,
+      onlySection({
+        publicCredential: { emergencyInfoVisible: false, discloseConditionsPublicly: false },
+      }),
+    );
+  });
+
+  it("Seguro: an emptied field clears it", async () => {
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    fireEvent.changeText(await screen.findByDisplayValue("POL-123"), "");
+    fireEvent.press(screen.getByText("Guardar seguro"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalled());
+    expect(mockSend).toHaveBeenCalledWith(
+      {},
+      TOKEN,
+      onlySection({
+        insurance: { insuranceCompany: "Mapfre Mascotas", insurancePolicyNumber: null },
+      }),
+    );
+  });
+
+  it("Origen: the method picked, or none with 'No especificar'", async () => {
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    await screen.findByDisplayValue("Pampa");
+    fireEvent.press(screen.getByRole("radio", { name: "La encontré" }));
+    fireEvent.press(screen.getByText("Guardar origen"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalled());
+    expect(mockSend).toHaveBeenLastCalledWith(
+      {},
+      TOKEN,
+      onlySection({ origin: { acquisitionMethod: "found_stray" } }),
+    );
+  });
+
+  it("keeps what was typed in ANOTHER section when one section's save lands", async () => {
+    // Six Guardar buttons on one screen: a person fills Seguro, decides to save
+    // Origen first, and must not find Seguro reset by the re-read.
+    mockNav.reset();
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    fireEvent.changeText(await screen.findByDisplayValue("POL-123"), "POL-999");
+    fireEvent.press(screen.getByRole("radio", { name: "Regalo" }));
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ profile: { ...PROFILE, acquisitionMethod: "gift" } }),
     });
+    fireEvent.press(screen.getByText("Guardar origen"));
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByDisplayValue("POL-999")).toBeOnTheScreen();
+    expect(screen.getByRole("radio", { name: "Regalo" }).props.accessibilityState.checked).toBe(
+      true,
+    );
+    // And the unsaved one is still unsaved, so the guard still asks.
+    expect(mockNav.pressBack().blocked).toBe(true);
   });
 
   it("re-reads after a save instead of trusting the ack", async () => {
@@ -229,7 +470,7 @@ describe("PetProfileEditScreen — saving", () => {
       outcome: "ok",
       payload: payload({ identity: { name: "Pampita", breed: "Mestizo", color: "Atigrada" } }),
     });
-    fireEvent.press(screen.getByText("Guardar datos"));
+    fireEvent.press(screen.getByText("Guardar identidad"));
     expect(await screen.findByDisplayValue("Pampita")).toBeOnTheScreen();
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
@@ -237,11 +478,11 @@ describe("PetProfileEditScreen — saving", () => {
   it("says nothing needed saving when the server reports no change", async () => {
     mockSend.mockResolvedValue({
       outcome: "ok",
-      payload: { command: "edit_identity", changed: false },
+      payload: { command: "edit_profile", changed: false },
     });
     render(<PetProfileEditScreen publicToken={TOKEN} />);
     await screen.findByDisplayValue("Pampa");
-    fireEvent.press(screen.getByText("Guardar datos"));
+    fireEvent.press(screen.getByText("Guardar seguro"));
     expect(await screen.findByText(/nada que cambiar/)).toBeOnTheScreen();
   });
 
@@ -249,15 +490,51 @@ describe("PetProfileEditScreen — saving", () => {
     render(<PetProfileEditScreen publicToken={TOKEN} />);
     const name = await screen.findByDisplayValue("Pampa");
     fireEvent.changeText(name, "   ");
-    fireEvent.press(screen.getByText("Guardar datos"));
+    fireEvent.press(screen.getByText("Guardar identidad"));
     expect(await screen.findByText(/El nombre no puede quedar vacío/)).toBeOnTheScreen();
     expect(mockSend).not.toHaveBeenCalled();
   });
+});
 
+describe("PetProfileEditScreen — the age is posted back as shown", () => {
+  it("sends the years and months the inputs hold, so an untouched age keeps the stored date", async () => {
+    // THE DRIFT FIX, from the phone's side: the server keeps the stored birth
+    // date when the posted age is the age that date reads as. Whatever the
+    // inputs show is therefore what must leave the phone — a screen that
+    // rounded, or re-derived the age at save time, would move the date.
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ profile: { ...PROFILE, dateOfBirth: "2019-07-20" } }),
+    });
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    await screen.findByDisplayValue("Pampa");
+    const years = screen.getByLabelText("Años").props.value as string;
+    const months = screen.getByLabelText("Meses").props.value as string;
+    // Non-vacuity: a stored date shows SOME age, not two empty boxes.
+    expect(years).toMatch(/^\d+$/);
+    expect(months).toMatch(/^\d+$/);
+
+    fireEvent.press(screen.getByText("Guardar identidad"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalled());
+    expect(mockSend).toHaveBeenCalledWith(
+      {},
+      TOKEN,
+      onlySection({
+        identity: { ...IDENTITY_AS_STORED, ageYears: Number(years), ageMonths: Number(months) },
+      }),
+    );
+  });
+});
+
+describe("PetProfileEditScreen — the species and the contacts keep their own commands", () => {
   it("posts the species correction as its OWN command, never as a field of the identity edit", async () => {
-    // FULL-LOCK (PO decision #40): `edit_identity` refuses the species, so the
+    // FULL-LOCK (PO decision #40): the identity edit refuses the species, so the
     // card has its own chips and its own button, and what leaves the phone is
     // `correct_species` and nothing else.
+    mockSend.mockResolvedValue({
+      outcome: "ok",
+      payload: { command: "correct_species", changed: true },
+    });
     render(<PetProfileEditScreen publicToken={TOKEN} />);
     await screen.findByDisplayValue("Pampa");
     fireEvent.press(screen.getByRole("radio", { name: "Gato" }));
@@ -292,6 +569,7 @@ describe("PetProfileEditScreen — saving", () => {
           canManageServiceDog: false,
           canEditProfile: false,
         },
+        profile: null,
       }),
     });
     render(<PetProfileEditScreen publicToken={TOKEN} />);
@@ -328,6 +606,47 @@ describe("PetProfileEditScreen — saving", () => {
   });
 });
 
+describe("PetProfileEditScreen — opens on the section the link names (`?seccion=`)", () => {
+  const scrollTo = jest.spyOn(ScrollView.prototype, "scrollTo");
+  const layoutAt = (y: number) => ({
+    nativeEvent: { layout: { x: 0, y, width: 320, height: 400 } },
+  });
+
+  beforeEach(() => {
+    scrollTo.mockClear();
+  });
+
+  it("scrolls to Contactos when the panel's Contactos row opened the screen", async () => {
+    render(<PetProfileEditScreen publicToken={TOKEN} initialSection="contactos" />);
+    await screen.findByDisplayValue("Pampa");
+    // jest has no layout: the section reports where it landed, as Yoga would.
+    fireEvent(screen.getByText("Contactos de emergencia"), "layout", layoutAt(900));
+    expect(scrollTo).toHaveBeenCalledWith({ y: 900 - SPACE.lg, animated: false });
+  });
+
+  it("does not scroll for a section the link did not name, nor when none was named", async () => {
+    const named = render(<PetProfileEditScreen publicToken={TOKEN} initialSection="seguro" />);
+    await screen.findByDisplayValue("Pampa");
+    fireEvent(screen.getByText("Contactos de emergencia"), "layout", layoutAt(900));
+    expect(scrollTo).not.toHaveBeenCalled();
+    named.unmount();
+
+    render(<PetProfileEditScreen publicToken={TOKEN} />);
+    await screen.findByDisplayValue("Pampa");
+    fireEvent(screen.getByText("Contactos de emergencia"), "layout", layoutAt(900));
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("scrolls ONCE — a later layout (a breed list growing above) does not yank the reader back", async () => {
+    render(<PetProfileEditScreen publicToken={TOKEN} initialSection="contactos" />);
+    await screen.findByDisplayValue("Pampa");
+    const title = screen.getByText("Contactos de emergencia");
+    fireEvent(title, "layout", layoutAt(900));
+    fireEvent(title, "layout", layoutAt(1300));
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("PetProfileEditScreen — the breed the catalog forgot", () => {
   it("offers a stored off-catalog breed so a name edit cannot wipe it", async () => {
     mockFetch.mockResolvedValue({
@@ -344,22 +663,23 @@ describe("PetProfileEditScreen — the breed the catalog forgot", () => {
     const shown = await screen.findAllByText("Ovejero Inventado");
     expect(shown.length).toBe(2);
     expect(screen.getByText("Quitar")).toBeOnTheScreen();
-    fireEvent.press(screen.getByText("Guardar datos"));
+    fireEvent.press(screen.getByText("Guardar identidad"));
     await waitFor(() => expect(mockSend).toHaveBeenCalled());
-    expect(mockSend).toHaveBeenCalledWith({}, TOKEN, {
-      command: "edit_identity",
-      name: "Pampa",
-      breed: "Ovejero Inventado",
-      color: null,
-    });
+    expect(mockSend).toHaveBeenCalledWith(
+      {},
+      TOKEN,
+      onlySection({
+        identity: { ...IDENTITY_AS_STORED, breed: "Ovejero Inventado", color: null },
+      }),
+    );
   });
 });
 
 describe("PetProfileEditScreen — the breed picker does not dump the catalog (B-01)", () => {
   it("shows only the stored breed until somebody types, then the matches", async () => {
     // MEASURED on the shipped build 10 (shot 102): opening "Editar datos" drew
-    // twelve breeds inline under the filter box and pushed COLOR and "Guardar
-    // datos" a full screen down. The list is an ANSWER to a query; with no
+    // twelve breeds inline under the filter box and pushed COLOR and the save
+    // button a full screen down. The list is an ANSWER to a query; with no
     // query there is nothing to answer. The one row kept is the animal's own
     // stored breed, so "Quitar" stays undoable without spelling it from memory.
     mockFetch.mockResolvedValue({
@@ -383,7 +703,7 @@ describe("PetProfileEditScreen — the breed picker does not dump the catalog (B
   });
 
   it("names itself after its visible label, not 'Buscar raza' (WCAG 2.5.3)", async () => {
-    // The same defect lote 1a fixed on LocalityPicker: a voice user reading
+    // The same defect lote 1a fixed on LocationPicker: a voice user reading
     // "Raza" off the screen and saying it named nothing at all.
     render(<PetProfileEditScreen publicToken={TOKEN} />);
     await screen.findByDisplayValue("Pampa");
@@ -433,21 +753,20 @@ describe("PetProfileEditScreen — a name longer than the cap invented after it"
     render(<PetProfileEditScreen publicToken={TOKEN} />);
     const color = await screen.findByDisplayValue("Atigrada");
     fireEvent.changeText(color, "Blanca");
-    fireEvent.press(screen.getByText("Guardar datos"));
+    fireEvent.press(screen.getByText("Guardar identidad"));
     await waitFor(() => expect(mockSend).toHaveBeenCalled());
-    expect(mockSend).toHaveBeenCalledWith({}, TOKEN, {
-      command: "edit_identity",
-      name: LONG_NAME,
-      breed: "Mestizo",
-      color: "Blanca",
-    });
+    expect(mockSend).toHaveBeenCalledWith(
+      {},
+      TOKEN,
+      onlySection({ identity: { ...IDENTITY_AS_STORED, name: LONG_NAME, color: "Blanca" } }),
+    );
   });
 
   it("still refuses a DIFFERENT over-long name, and does not post it", async () => {
     render(<PetProfileEditScreen publicToken={TOKEN} />);
     const name = await screen.findByDisplayValue(LONG_NAME);
     fireEvent.changeText(name, `${LONG_NAME} y algo más`);
-    fireEvent.press(screen.getByText("Guardar datos"));
+    fireEvent.press(screen.getByText("Guardar identidad"));
     expect(await screen.findByText(/demasiado largo/)).toBeOnTheScreen();
     expect(mockSend).not.toHaveBeenCalled();
   });
@@ -460,7 +779,7 @@ describe("PetProfileEditScreen — the read failing", () => {
     mockFetch.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
     render(<PetProfileEditScreen publicToken={TOKEN} />);
     expect(await screen.findByText(/No pudimos conectarnos/)).toBeOnTheScreen();
-    expect(screen.queryByText("Guardar datos")).toBeNull();
+    expect(screen.queryByText("Guardar identidad")).toBeNull();
     expect(screen.getByText("Reintentar")).toBeOnTheScreen();
   });
 });
