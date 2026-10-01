@@ -170,10 +170,11 @@ export function breedChoicesFor(species: string, storedBreed: string | null): st
 /** Why the identity form is not offered, or `null` when it is. */
 export function identityBlockedReason(payload: PetProfileEditV1): string | null {
   if (payload.capabilities.canEditIdentity) return null;
-  // The one refusal behind this flag today: a caretaker. The sentence names the
-  // ARRANGEMENT rather than the permission, because "no tenés permiso" over an
-  // animal somebody is genuinely looking after reads as a bug.
-  return "Sos cuidador/a de esta mascota. Editar sus datos es solo del titular.";
+  // NEUTRAL, not "sos cuidador/a": this flag refuses more than a caretaker now
+  // (owner-pet-actions, security review of 3babbe25a) — a user-held custody row
+  // and the org path reach it too, and naming either of them a caretaker would
+  // be false.
+  return "Editar sus datos es solo del titular.";
 }
 
 /**

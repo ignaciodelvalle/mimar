@@ -122,7 +122,7 @@ describe("the two capabilities are two different refusals", () => {
     expect(contactsBlockedReason(view())).toBeNull();
   });
 
-  it("names the ARRANGEMENT for identity and the PERSON for the contacts", () => {
+  it("gives a NEUTRAL refusal for identity and names the PERSON for the contacts", () => {
     const blocked = view({
       capabilities: {
         canEditIdentity: false,
@@ -135,10 +135,14 @@ describe("the two capabilities are two different refusals", () => {
     });
     const identity = identityBlockedReason(blocked);
     const contacts = contactsBlockedReason(blocked);
-    expect(identity).toContain("cuidador");
+    // NOT "cuidador/a": this flag refuses more than a caretaker now (owner-pet-
+    // actions, security review of 3babbe25a) — a user-held custody row and the
+    // org path reach it too.
+    expect(identity).toContain("titular");
+    expect(identity).not.toContain("cuidador");
     expect(contacts).toContain("dueño");
     // NOT the same sentence: a co-owner reaches the second and not the first,
-    // and telling them they are a caretaker would be false.
+    // and the two refusals are different facts about the reader.
     expect(identity).not.toEqual(contacts);
   });
 
