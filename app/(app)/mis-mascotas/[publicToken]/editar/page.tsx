@@ -15,10 +15,13 @@ import { notFound, redirect } from "next/navigation";
 
 export default async function EditPetPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ publicToken: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { publicToken } = await params;
+  const { seccion } = await searchParams;
 
   // requireTitularAccess, not requirePetAccess: editing name/species/breed/
   // date-of-birth is deny-list row `identity-field-edits`, and a caretaker
@@ -100,6 +103,15 @@ export default async function EditPetPage({
                 : null
             }
             pppBreedList={pppBreedRule.payload.breeds}
+            // The same two inputs the profile's sheet hands the form: Contactos
+            // opens the emergency sheet for the titular alone (the contacts are
+            // theirs), and a `seccion` in the link is scrolled into view.
+            contactsHref={
+              access.accessPath === "owner" && access.holderRole === "owner"
+                ? `/mis-mascotas/${pet.publicToken}?sheet=emergencia`
+                : null
+            }
+            initialSection={typeof seccion === "string" ? seccion : null}
           />
         </div>
       </LnSheetCard>

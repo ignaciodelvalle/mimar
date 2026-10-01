@@ -45,8 +45,11 @@ function accessAs(accessPath: "owner" | "org", holderRole: string | null) {
   };
 }
 
-function open() {
-  return EditPetPage({ params: Promise.resolve({ publicToken: TOKEN }) });
+function open(searchParams: Record<string, string> = {}) {
+  return EditPetPage({
+    params: Promise.resolve({ publicToken: TOKEN }),
+    searchParams: Promise.resolve(searchParams),
+  });
 }
 
 beforeEach(() => {
@@ -69,6 +72,22 @@ describe("EditPetPage — the form for exactly the viewers who may save it", () 
     control.access = accessAs("owner", "owner");
     const page = await open();
     expect(hasProp(page, "title", "Editar Pampa")).toBe(true);
+  });
+});
+
+describe("EditPetPage — the same inputs the sheet hands the form", () => {
+  it("gives the titular a Contactos door, and lands on the section the link named", async () => {
+    control.access = accessAs("owner", "owner");
+    const page = await open({ seccion: "seguro" });
+    expect(hasProp(page, "contactsHref", `/mis-mascotas/${TOKEN}?sheet=emergencia`)).toBe(true);
+    expect(hasProp(page, "initialSection", "seguro")).toBe(true);
+  });
+
+  it("gives a co-owner no Contactos door — the contacts are the titular's", async () => {
+    control.access = accessAs("owner", "co_owner");
+    const page = await open();
+    expect(hasProp(page, "contactsHref", null)).toBe(true);
+    expect(hasProp(page, "initialSection", null)).toBe(true);
   });
 });
 

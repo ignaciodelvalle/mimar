@@ -92,6 +92,13 @@ export {
   derivePetActions,
   findPetAction,
 } from "./pet-actions.ts";
+export {
+  PET_PROFILE_EDIT_SECTION_IDS,
+  PET_PROFILE_EDIT_SECTIONS,
+  type PetProfileEditSection,
+  type PetProfileEditSectionId,
+  petProfileEditSection,
+} from "./pet-profile-sections.ts";
 export { pluralizeEs } from "./pluralize-es.ts";
 export { PROVINCES, type ReferenceProvince } from "./provinces.ts";
 export {

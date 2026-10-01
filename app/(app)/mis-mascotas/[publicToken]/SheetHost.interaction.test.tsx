@@ -273,6 +273,65 @@ describe("?sheet=editar-mascota — nothing for a viewer the form refuses", () =
   });
 });
 
+// owner-pet-actions: the panel's "Foto" lands on `seccion=foto`, and the form's
+// Contactos section opens the emergency sheet — for the titular, whose contacts
+// these are, and for nobody else.
+describe("?sheet=editar-mascota — the section a link asked for, and Contactos", () => {
+  const editPetData = {
+    existingPet: {
+      publicToken: "abc123",
+      species: "dog",
+      name: "Firulais",
+      sex: "male",
+      breed: null,
+      dateOfBirth: null,
+      permanentConditions: [],
+      jurisdictionProvince: "Buenos Aires",
+      jurisdictionLocality: "La Plata",
+    } as never,
+    existingPhotoUrl: null,
+    pppBreedList: [],
+  };
+
+  it("scrolls to the requested section and links Contactos to the emergency sheet", () => {
+    const original = Element.prototype.scrollIntoView;
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      window.history.replaceState(
+        null,
+        "",
+        "/mis-mascotas/abc123?sheet=editar-mascota&seccion=seguro",
+      );
+      render(<SheetMounter {...baseSheetMounterProps} editPetData={editPetData} />);
+      const dialog = screen.getByRole("dialog");
+      const seguro = dialog.querySelector("#seccion-seguro");
+      expect(seguro).not.toBeNull();
+      expect(scrolled.mock.contexts).toContain(seguro);
+      const contactos = dialog.querySelector("#seccion-contactos") as HTMLElement;
+      expect(within(contactos).getByRole("link")).toHaveAttribute(
+        "href",
+        "/mis-mascotas/abc123?sheet=emergencia",
+      );
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  it("gives Contactos no link when the viewer is not the titular", () => {
+    window.history.replaceState(null, "", "/mis-mascotas/abc123?sheet=editar-mascota");
+    render(
+      <SheetMounter
+        {...baseSheetMounterProps}
+        editPetData={editPetData}
+        emergencyContacts={null}
+      />,
+    );
+    const contactos = screen.getByRole("dialog").querySelector("#seccion-contactos") as HTMLElement;
+    expect(within(contactos).queryByRole("link")).toBeNull();
+  });
+});
+
 // T1-L14 — the mark-found sheet said "Marcar como encontrada" to every animal.
 // The expected words are written out here, not taken from foundParticiple, so
 // a regression in the helper cannot agree with itself.

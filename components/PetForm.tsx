@@ -1,11 +1,18 @@
 "use client";
 
-// Shared pet form. Used by both /mis-mascotas/nueva (create) and
-// /mis-mascotas/[token]/editar (edit). Mode is determined by the `existingPet`
-// prop — present means edit, absent means create. The action prop is bound
-// at the call site so the form doesn't need to know which it's calling.
+// Shared pet form. Mode is determined by the `existingPet` prop — present
+// means edit, absent means create. The action prop is bound at the call site
+// so the form doesn't need to know which it's calling.
 //
-// Field layout (edit path — 3-tier redesign):
+// EDIT IS ITS OWN FORM since owner-pet-actions (PO 2026-10-01): "Editar datos"
+// is drawn by components/pet-form/PetEditForm.tsx in the six sections the app
+// shows, in the app's order, each with its own Guardar. Its two callers are
+// the `?sheet=editar-mascota` sheet and /mis-mascotas/[token]/editar.
+//
+// CREATE is `PetCreateForm` below, kept as it was (the alta flow a person uses
+// is MinimalNewPetForm; this one survives for its tests and the `NewPetForm`
+// re-export). Its `isEdit` branches are unreachable through `PetForm` now and
+// go with a follow-up cleanup rather than with this change. Field layout:
 //   TOP tier      — most-used fields everyone fills: name, species, sex, color, photo, location.
 //   "Otros"       — collapsible <details> block: breed, weight, age, foods, allergies,
 //                   training, acquisition, insurance, microchip.
@@ -13,11 +20,10 @@
 //                   permanent conditions + public disclosure toggles.
 
 import { CustodyKindToggle } from "@/components/CustodyKindToggle";
-import { LnChip, LnChipGroup } from "@/components/ui/Chip";
+import { LnChipGroup } from "@/components/ui/Chip";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { LnCallout } from "@/components/ui/DocElements";
 import { LnField, LnInput, LnSelect } from "@/components/ui/Field";
-import { LnToggle } from "@/components/ui/Toggle";
 import type { Pet } from "@/db";
 import { provinceByName } from "@/lib/reference/ar-provincias";
 import {
@@ -30,52 +36,38 @@ import {
   COMMON_ALLERGIES,
   COMMON_FOODS,
   INSURANCE_COMPANIES,
-  MICROCHIP_LOCATIONS,
   TRAINING_LEVELS,
 } from "@/lib/reference/lookups";
 import {
   PERMANENT_CONDITIONS,
-  PERMANENT_CONDITION_GROUPS,
   type PermanentCondition,
-  permanentConditionGroup,
-  permanentConditionLabel,
 } from "@/lib/reference/permanent-conditions";
 import { useActionRedirect } from "@/lib/ui/use-action-redirect";
 import { useKeptFields } from "@/lib/ui/use-kept-fields";
 import { speciesLabel } from "@/lib/utils/format";
 import type { NewPetFormState } from "@/src/modules/pets/domain/types";
-import { LOCALITY_FIELD_LABEL } from "@dim/contract/reference";
+import { LOCALITY_FIELD_LABEL, petAgeFromBirthDate } from "@dim/contract/reference";
 import { useActionState, useMemo, useRef, useState } from "react";
 import { LocationFields } from "./LocationFields";
+import { PetEditForm } from "./pet-form/PetEditForm";
+import {
+  ConditionOtherField,
+  type ExistingCanonicalChip,
+  LnAgeFields,
+  LnPhotoField,
+  LnReadOnlyField,
+  MicrochipBlock,
+  PermanentConditionChips,
+  PublicDisclosureToggles,
+} from "./pet-form/fields";
+
+export type { ExistingCanonicalChip } from "./pet-form/fields";
 
 const initialState: NewPetFormState = { error: null };
 
 type FormAction = (prev: NewPetFormState, formData: FormData) => Promise<NewPetFormState>;
 
-/**
- * Canonical microchip data for pre-filling the form in edit mode.
- * ARCH-S: replaces the dropped pets.microchipId* columns.
- * Sourced from pet_identifications by the edit page server component.
- */
-export type ExistingCanonicalChip = {
-  code: string | null;
-  isoCountryCode: string | null;
-  recordedAt: string | null;
-  recordedByLabel: string | null;
-  implantationSite: string | null;
-};
-
-export function PetForm({
-  action,
-  existingPet,
-  existingPhotoUrl,
-  existingCanonicalChip,
-  compact,
-  submitLabel,
-  pendingLabel,
-  hiddenFields,
-  pppBreedList,
-}: {
+export type PetFormProps = {
   action: FormAction;
   existingPet?: Pet;
   existingPhotoUrl?: string | null;
@@ -93,7 +85,44 @@ export function PetForm({
    * form. Optional: absent → fall back to the static country-wide list.
    */
   pppBreedList?: readonly string[];
-}) {
+  /**
+   * Edit mode: where "Contactos" leads — the emergency-contacts sheet — or
+   * `null` when this viewer may not edit them (the titular's own vet and person
+   * to call). Ignored by create.
+   */
+  contactsHref?: string | null;
+  /** Edit mode: the section a link landed on (`seccion`), scrolled into view. */
+  initialSection?: string | null;
+};
+
+export function PetForm(props: PetFormProps) {
+  if (props.existingPet) {
+    return (
+      <PetEditForm
+        action={props.action}
+        existingPet={props.existingPet}
+        existingPhotoUrl={props.existingPhotoUrl ?? null}
+        existingCanonicalChip={props.existingCanonicalChip ?? null}
+        pppBreedList={props.pppBreedList}
+        contactsHref={props.contactsHref ?? null}
+        initialSection={props.initialSection ?? null}
+      />
+    );
+  }
+  return <PetCreateForm {...props} />;
+}
+
+function PetCreateForm({
+  action,
+  existingPet,
+  existingPhotoUrl,
+  existingCanonicalChip,
+  compact,
+  submitLabel,
+  pendingLabel,
+  hiddenFields,
+  pppBreedList,
+}: PetFormProps) {
   const isEdit = !!existingPet;
   // forms/react19-reset-data-loss-inventory: "sex" is a <select> with a
   // static defaultValue and no changing key — never safe on its own (a
@@ -206,7 +235,7 @@ export function PetForm({
   }, [species, breed, pppBreedList]);
 
   const initialAge = useMemo(
-    () => ageFromDateOfBirth(existingPet?.dateOfBirth ?? null),
+    () => petAgeFromBirthDate(existingPet?.dateOfBirth ?? null, new Date()),
     [existingPet?.dateOfBirth],
   );
 
@@ -818,322 +847,19 @@ function SensitiveFields({
       <p className="text-sm text-[var(--color-ln-mute)]">
         Marcá si tu mascota convive con alguna condición de por vida (sentidos, motora, médica).
       </p>
-      <div className="flex flex-col gap-2.5">
-        {PERMANENT_CONDITION_GROUPS.map((group) => {
-          const codes = PERMANENT_CONDITIONS.filter((c) => permanentConditionGroup(c) === group.id);
-          if (codes.length === 0) return null;
-          return (
-            <div key={group.id} className="flex flex-col gap-1.5">
-              <p className="font-ln-mono text-xs font-semibold uppercase tracking-[.1em] text-[var(--color-ln-faint)]">
-                {group.label}
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {codes.map((code) => (
-                  <LnChip
-                    key={code}
-                    selected={conditions.has(code)}
-                    onChange={() => onToggleCondition(code)}
-                  >
-                    {permanentConditionLabel(code)}
-                  </LnChip>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <PermanentConditionChips conditions={conditions} onToggle={onToggleCondition} />
       {conditions.has("otra") && (
-        <LnField label="Especificá la condición" required>
-          {({ id, describedBy, invalid }) => (
-            <LnInput
-              id={id}
-              name="permanentConditionsOther"
-              type="text"
-              required
-              maxLength={120}
-              value={conditionsOther}
-              onChange={(e) => onConditionsOtherChange(e.target.value)}
-              aria-describedby={describedBy}
-              invalid={invalid}
-            />
-          )}
-        </LnField>
+        <ConditionOtherField
+          value={conditionsOther}
+          onChange={onConditionsOtherChange}
+          maxLength={120}
+        />
       )}
-      <LnToggle
-        variant="azul"
-        checked={discloseConditions}
-        onChange={onDiscloseChange}
-        label="Compartir estas condiciones en superficies públicas"
-        description="Cuando está marcado, se muestran en la credencial pública y en /adoptar si el refugio publica al pet."
-      />
-      <LnToggle
-        variant="azul"
-        checked={emergencyInfoVisible}
-        onChange={onEmergencyChange}
-        label="Mostrar aviso de emergencia médica en la credencial pública"
-        description="Aparece en la página pública sin revelar tu nombre ni datos sensibles."
-      />
-    </div>
-  );
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/**
- * Read-only display for a locked field (FULL-LOCK: species, jurisdiction).
- * Shows the current value plus a hint explaining the governed change path and
- * an optional action link to that path. `children` carries hidden inputs so the
- * server-side parse still receives the (unchanged) value.
- */
-function LnReadOnlyField({
-  label,
-  value,
-  hint,
-  action,
-  children,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  action?: React.ReactNode;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <p className="font-ln-mono text-xs font-semibold uppercase tracking-[.1em] text-[var(--color-ln-mute)]">
-        {label}
-      </p>
-      <div className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-[var(--color-ln-line)] bg-[var(--color-ln-stripe)] px-3 py-2.5">
-        <span className="text-md text-[var(--color-ln-ink-2)]">{value}</span>
-        <span
-          aria-hidden="true"
-          className="font-ln-mono text-xs uppercase tracking-[.12em] text-[var(--color-ln-faint)]"
-        >
-          Fijo
-        </span>
-      </div>
-      {hint && <p className="font-ln-mono text-sm text-[var(--color-ln-mute)]">{hint}</p>}
-      {action}
-      {children}
-    </div>
-  );
-}
-
-function ageFromDateOfBirth(dob: string | null): {
-  years: number | null;
-  months: number | null;
-} {
-  if (!dob) return { years: null, months: null };
-  const d = new Date(dob);
-  if (Number.isNaN(d.getTime())) return { years: null, months: null };
-  const now = new Date();
-  let totalMonths = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
-  if (now.getDate() < d.getDate()) totalMonths -= 1;
-  if (totalMonths < 0) totalMonths = 0;
-  return {
-    years: Math.floor(totalMonths / 12),
-    months: totalMonths % 12,
-  };
-}
-
-function LnAgeFields({
-  defaultYears,
-  defaultMonths,
-}: {
-  defaultYears: number | null;
-  defaultMonths: number | null;
-}) {
-  const [years, setYears] = useState<string>(defaultYears != null ? String(defaultYears) : "");
-  const [months, setMonths] = useState<string>(defaultMonths != null ? String(defaultMonths) : "");
-  return (
-    <div className="flex flex-col gap-1.5">
-      <p className="font-ln-mono text-xs font-semibold uppercase tracking-[.1em] text-[var(--color-ln-mute)]">
-        Edad aproximada
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-        {/* B-6: aria-label so each input has an accessible name independent of id/label wiring */}
-        <LnInput
-          id="ageYears"
-          name="ageYears"
-          type="number"
-          min="0"
-          max="40"
-          placeholder="Años"
-          aria-label="Años de edad"
-          value={years}
-          onChange={(e) => setYears(e.target.value)}
-        />
-        <LnInput
-          id="ageMonths"
-          name="ageMonths"
-          type="number"
-          min="0"
-          max="11"
-          placeholder="Meses"
-          aria-label="Meses de edad"
-          value={months}
-          onChange={(e) => setMonths(e.target.value)}
-        />
-      </div>
-      <p className="font-ln-mono text-sm text-[var(--color-ln-mute)]">
-        Si no sabés exacto, una estimación está bien.
-      </p>
-    </div>
-  );
-}
-
-function MicrochipBlock({
-  existingCanonicalChip,
-}: {
-  // ARCH-S: canonical chip data replaces dropped pets.microchipId* columns.
-  existingCanonicalChip?: ExistingCanonicalChip | null;
-}) {
-  const [microchipId, setMicrochipId] = useState<string>(existingCanonicalChip?.code ?? "");
-  const [microchipCountryCode, setMicrochipCountryCode] = useState<string>(
-    // 032 = ISO 3166 numeric code for Argentina. 858 (previously used here)
-    // is Uruguay's code — a mislabel fixed in the QA nits sweep 2026-07.
-    existingCanonicalChip?.isoCountryCode ?? "032",
-  );
-  const [microchipImplantedAt, setMicrochipImplantedAt] = useState<string>(
-    existingCanonicalChip?.recordedAt ?? "",
-  );
-  const [microchipImplantedBy, setMicrochipImplantedBy] = useState<string>(
-    existingCanonicalChip?.recordedByLabel ?? "",
-  );
-  const [microchipLocation, setMicrochipLocation] = useState<string>(
-    existingCanonicalChip?.implantationSite ?? "",
-  );
-
-  return (
-    <div className="flex flex-col gap-2.5 border-t border-[var(--color-ln-line-2)] pt-3">
-      <p className="font-ln-mono text-xs font-semibold uppercase tracking-[.12em] text-[var(--color-ln-faint)]">
-        Microchip
-      </p>
-      <LnField label="Número de chip" hint="15 dígitos, ISO 11784/11785">
-        {({ id, describedBy }) => (
-          <LnInput
-            id={id}
-            name="microchipId"
-            type="text"
-            mono
-            autoComplete="off"
-            value={microchipId}
-            onChange={(e) => setMicrochipId(e.target.value)}
-            aria-describedby={describedBy}
-          />
-        )}
-      </LnField>
-      <LnField label="Código de país">
-        {({ id, describedBy }) => (
-          <LnInput
-            id={id}
-            name="microchipCountryCode"
-            type="text"
-            mono
-            value={microchipCountryCode}
-            onChange={(e) => setMicrochipCountryCode(e.target.value)}
-            aria-describedby={describedBy}
-          />
-        )}
-      </LnField>
-      <LnField label="Fecha de implantación">
-        {({ id, describedBy }) => (
-          <LnInput
-            id={id}
-            name="microchipImplantedAt"
-            type="date"
-            mono
-            value={microchipImplantedAt}
-            onChange={(e) => setMicrochipImplantedAt(e.target.value)}
-            aria-describedby={describedBy}
-          />
-        )}
-      </LnField>
-      <LnField label="Implantado por (vet / clínica)">
-        {({ id, describedBy }) => (
-          <LnInput
-            id={id}
-            name="microchipImplantedBy"
-            type="text"
-            value={microchipImplantedBy}
-            onChange={(e) => setMicrochipImplantedBy(e.target.value)}
-            aria-describedby={describedBy}
-          />
-        )}
-      </LnField>
-      <LnField label="Ubicación en el cuerpo">
-        {({ id, describedBy, invalid }) => (
-          <LnSelect
-            id={id}
-            name="microchipLocation"
-            key={`microchipLocation-${microchipLocation}`}
-            defaultValue={microchipLocation}
-            onChange={(e) => setMicrochipLocation(e.target.value)}
-            aria-describedby={describedBy}
-            invalid={invalid}
-          >
-            <option value="">No especificar</option>
-            {MICROCHIP_LOCATIONS.map((l) => (
-              <option key={l.value} value={l.value}>
-                {l.label}
-              </option>
-            ))}
-          </LnSelect>
-        )}
-      </LnField>
-    </div>
-  );
-}
-
-function LnPhotoField({
-  onFileChange,
-  preview,
-}: {
-  onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  preview: string | null;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <p className="font-ln-mono text-xs font-semibold uppercase tracking-[.1em] text-[var(--color-ln-mute)]">
-        Foto{" "}
-        <span className="font-normal lowercase tracking-[.04em] text-[var(--color-ln-faint)]">
-          opcional
-        </span>
-      </p>
-      <label
-        htmlFor="photo"
-        className="flex cursor-pointer items-center gap-3.5 rounded-[var(--radius-sm)] border border-dashed border-[var(--color-ln-line-strong)] p-3 transition-colors hover:bg-[var(--color-ln-stripe)]"
-      >
-        {preview ? (
-          <img
-            src={preview}
-            alt="Vista previa de la mascota"
-            className="h-[72px] w-[72px] flex-shrink-0 rounded-[var(--radius-sm)] object-cover"
-          />
-        ) : (
-          <div className="flex h-[72px] w-[72px] flex-shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-ln-stripe)] text-sm text-[var(--color-ln-mute)]">
-            Sin foto
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="text-md text-[var(--color-ln-ink-2)]">
-            {preview ? "Cambiar foto" : "Tocá para elegir una foto"}
-          </p>
-          <p className="mt-0.5 font-ln-mono text-sm text-[var(--color-ln-mute)]">
-            JPG o PNG, hasta 5 MB
-          </p>
-        </div>
-      </label>
-      <input
-        id="photo"
-        name="photo"
-        type="file"
-        accept="image/*"
-        capture="environment"
-        onChange={onFileChange}
-        className="sr-only"
+      <PublicDisclosureToggles
+        discloseConditions={discloseConditions}
+        emergencyInfoVisible={emergencyInfoVisible}
+        onDiscloseChange={onDiscloseChange}
+        onEmergencyChange={onEmergencyChange}
       />
     </div>
   );

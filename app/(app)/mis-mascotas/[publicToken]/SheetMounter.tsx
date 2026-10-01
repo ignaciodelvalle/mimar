@@ -537,6 +537,13 @@ export function SheetMounter({
           existingPet={editPetData.existingPet}
           existingPhotoUrl={editPetData.existingPhotoUrl}
           pppBreedList={editPetData.pppBreedList}
+          // Contactos is the emergency sheet, for the titular alone — the
+          // contacts are theirs, and `emergencyContacts` is null for anybody
+          // else (the same gate the emergencia branch below backstops).
+          contactsHref={emergencyContacts ? `/mis-mascotas/${petToken}?sheet=emergencia` : null}
+          // The panel's "Foto" lands on `seccion=foto`; any section a link
+          // names is scrolled into view when the sheet opens.
+          initialSection={searchParams.get("seccion")}
         />
       </Sheet>
     );

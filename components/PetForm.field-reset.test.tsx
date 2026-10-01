@@ -23,7 +23,7 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/app/actions/localities", () => ({
@@ -131,5 +131,43 @@ describe("<PetForm> — survives the React 19 post-error reset", () => {
     expect((container.querySelector('select[name="breed"]') as HTMLSelectElement).value).toBe(
       "Mixto / Cruza",
     );
+  });
+
+  // owner-pet-actions: "Editar datos" is one form in six sections, and every
+  // section's Guardar submits all of it. A refusal pressed from ONE section must
+  // not cost the person what they typed in ANOTHER — the reset React 19 runs on
+  // the whole <form>, which is exactly where a sectioned layout could lose it.
+  it("keeps what was typed in other sections after a refusal pressed from one", async () => {
+    actionMock.mockResolvedValue({ error: "No se pudo guardar la mascota." });
+    const existingPet = {
+      publicToken: "DIM-PAMP-0001",
+      species: "dog",
+      name: "Firulais",
+      sex: "male",
+      permanentConditions: [],
+    } as unknown as Pet;
+    const { container } = render(<PetForm action={actionMock} existingPet={existingPet} />);
+
+    const company = container.querySelector('input[name="insuranceCompany"]') as HTMLInputElement;
+    fireEvent.change(company, { target: { value: "Mapfre Mascotas" } });
+    const training = container.querySelector('select[name="trainingLevel"]') as HTMLSelectElement;
+    fireEvent.change(training, { target: { value: "advanced" } });
+    const origin = container.querySelector('select[name="acquisitionMethod"]') as HTMLSelectElement;
+    fireEvent.change(origin, { target: { value: "purchased" } });
+
+    const originSection = container.querySelector("#seccion-origen") as HTMLElement;
+    fireEvent.click(within(originSection).getByRole("button", { name: /Guardar/ }));
+    await waitFor(() => expect(actionMock).toHaveBeenCalled());
+    await screen.findByText("No se pudo guardar la mascota.");
+
+    expect(
+      (container.querySelector('input[name="insuranceCompany"]') as HTMLInputElement).value,
+    ).toBe("Mapfre Mascotas");
+    expect(
+      (container.querySelector('select[name="trainingLevel"]') as HTMLSelectElement).value,
+    ).toBe("advanced");
+    expect(
+      (container.querySelector('select[name="acquisitionMethod"]') as HTMLSelectElement).value,
+    ).toBe("purchased");
   });
 });
