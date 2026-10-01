@@ -1,5 +1,7 @@
 // Real files, handed to the OS share sheet — the poster PDF and the art. 14
-// export (M13).
+// export (M13), and the travel PDF the server renders (viajes-fase-2, 6.5),
+// which is DOWNLOADED and written here with the same `File.write` the JSON
+// export uses. No module beyond these three.
 //
 // WHY THESE THREE MODULES, AND WHY `expo-file-system` IS NOT THE RISK IT WAS
 // ---------------------------------------------------------------------------
@@ -147,6 +149,36 @@ export async function shareTextFile(
     return { outcome: "failed", detail: detailOf(err) };
   }
   return openSheet(uri, options);
+}
+
+/**
+ * Download a PDF the SERVER rendered (a signed link, no auth header) into the
+ * shared directory under `fileName`, and share it.
+ *
+ * The bytes travel as a `Uint8Array` from `arrayBuffer()` into `File.write` —
+ * the path the photo upload settled on for React Native (no Blob anywhere) —
+ * and nothing is re-rendered on the phone: the file shared is the file the web
+ * hands out. A non-2xx answer is a failure, never a file: a Storage error body
+ * written under a `.pdf` name would share a broken document.
+ */
+export async function sharePdfFromUrl(
+  url: string,
+  fileName: string,
+  dialogTitle: string,
+): Promise<ShareFileOutcome> {
+  let uri: string;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return { outcome: "failed", detail: `HTTP ${response.status}` };
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const file = new FileSystem.File(sharedDir(), fileName);
+    file.create({ overwrite: true });
+    file.write(bytes);
+    uri = file.uri;
+  } catch (err) {
+    return { outcome: "failed", detail: detailOf(err) };
+  }
+  return openSheet(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle });
 }
 
 /**

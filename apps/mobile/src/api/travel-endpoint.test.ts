@@ -1,7 +1,8 @@
 // `fetchPetTravel` / `sendPetTravelCommand` — the URL and the header ARE the
 // contract with `/api/v1/pets/{token}/travel`: `?trip=` selects the trip the
 // semáforo reads, and every command carries its `Idempotency-Key`, without
-// which the server answers 400 `idempotency_key_required`.
+// which the server answers 400 `idempotency_key_required`. The export
+// (`requestPetTravelExport`) is the one POST that carries neither body nor key.
 
 import { describe, expect, it, jest } from "@jest/globals";
 
@@ -11,7 +12,7 @@ jest.mock("@sentry/react-native", () => ({
 }));
 
 import type { SessionPort } from "./client";
-import { fetchPetTravel, sendPetTravelCommand } from "./endpoints";
+import { fetchPetTravel, requestPetTravelExport, sendPetTravelCommand } from "./endpoints";
 
 type Captured = { url: string; init: RequestInit | undefined };
 
@@ -103,5 +104,30 @@ describe("sendPetTravelCommand", () => {
     expect(init?.method).toBe("POST");
     expect(header(init, "idempotency-key")).toBe(key);
     expect(JSON.parse(String(init?.body))).toMatchObject({ command: "cancel_trip" });
+  });
+});
+
+describe("requestPetTravelExport", () => {
+  it("posts for the PDF of the trip on screen, with no body and no key", async () => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    const { url, init } = await capture(
+      () => requestPetTravelExport(fakeSession(), "DIM-PAMP-0001", id),
+      { pdfUrl: "https://storage.example/viaje.pdf?token=x", expiresAt: "2026-10-01T00:00:00Z" },
+    );
+    const parsed = new URL(url);
+    expect(parsed.pathname).toBe("/api/v1/pets/DIM-PAMP-0001/travel/export");
+    expect(parsed.searchParams.get("trip")).toBe(id);
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBeUndefined();
+    // Nothing lands on the spine: the server takes no key for an export.
+    expect(header(init, "idempotency-key")).toBeNull();
+  });
+
+  it("leaves the trip to the server when none is asked for", async () => {
+    const { url } = await capture(
+      () => requestPetTravelExport(fakeSession(), "DIM-PAMP-0001", null),
+      { pdfUrl: "https://storage.example/viaje.pdf", expiresAt: "2026-10-01T00:00:00Z" },
+    );
+    expect(new URL(url).searchParams.has("trip")).toBe(false);
   });
 });

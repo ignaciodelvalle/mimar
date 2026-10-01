@@ -125,6 +125,7 @@ import {
   type PetReturnV1,
   type PetSharesV1,
   type PetTravelCommandAckV1,
+  type PetTravelExportV1,
   type PetTravelV1,
   type RehomeCommandAckV1,
   type ShareCommandAckV1,
@@ -2041,6 +2042,28 @@ export function sendPetTravelCommand(
       method: "POST",
       body: input,
       headers: { "idempotency-key": idempotencyKey },
+    },
+    session,
+  );
+}
+
+/**
+ * `POST /pets/{publicToken}/travel/export` — the travel PDF the web's /viaje
+ * hands out, for the trip on screen. Answers a signed download link, not the
+ * file: the server renders the PDF from the same reading `fetchPetTravel`
+ * returns, so paper and screen cannot disagree. No `Idempotency-Key`: nothing
+ * lands on the spine, and a retry only makes a second copy of the same PDF.
+ */
+export function requestPetTravelExport(
+  session: SessionPort,
+  publicToken: string,
+  tripEventId: string | null,
+): Promise<ApiResult<PetTravelExportV1>> {
+  const query = tripEventId === null ? "" : `?trip=${encodeURIComponent(tripEventId)}`;
+  return apiRequest<PetTravelExportV1>(
+    {
+      path: `/api/v1/pets/${encodeURIComponent(publicToken)}/travel/export${query}`,
+      method: "POST",
     },
     session,
   );

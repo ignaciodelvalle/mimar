@@ -10,8 +10,10 @@
 //      re-read that fails keeps the screen under a stale banner.
 //   5. `canRecord: false` takes the forms and the cancel away.
 //   6. NOTHING SENDS ANYBODY TO THE WEB (PO rule: owner flows are native).
+//   7. THE PDF IS THE SERVER'S: the app downloads the file the web hands out
+//      and shares it; a failed download is never shared as a PDF.
 
-import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
 import type { PetTravelV1 } from "@dim/contract/api";
@@ -20,6 +22,7 @@ import { createNavigationFake } from "../ui/navigation-fake";
 
 const mockFetch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockSend = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockExport = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockOpenURL = jest.fn<(url: string) => Promise<unknown>>();
 const mockNav = createNavigationFake();
 
@@ -31,6 +34,7 @@ jest.mock("expo-router", () => ({
 jest.mock("../api/endpoints", () => ({
   fetchPetTravel: (...args: unknown[]) => mockFetch(...args),
   sendPetTravelCommand: (...args: unknown[]) => mockSend(...args),
+  requestPetTravelExport: (...args: unknown[]) => mockExport(...args),
 }));
 
 jest.mock("../auth/session-store", () => ({ sessionPort: {} }));
@@ -345,5 +349,84 @@ describe("TravelScreen — cancelling a trip", () => {
     fireEvent.press(screen.getByText("Volver"));
     expect(screen.getByText("Cancelar este viaje")).toBeOnTheScreen();
     expect(mockSend).not.toHaveBeenCalled();
+  });
+});
+
+describe("TravelScreen — the travel PDF, from the phone (task 6.5)", () => {
+  // The file modules are the global spies from jest.setup.js; their defaults
+  // are the happy path (a share target exists, the sheet closes).
+  const Sharing = require("expo-sharing") as {
+    shareAsync: jest.Mock<(uri: string, options?: unknown) => Promise<void>>;
+    isAvailableAsync: jest.Mock<() => Promise<boolean>>;
+  };
+  const PDF_URL = "https://storage.example/travel-exports/viaje.pdf?token=signed";
+  const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // "%PDF"
+  const originalFetch = globalThis.fetch;
+  const download = jest.fn<(url: string) => Promise<unknown>>();
+
+  beforeEach(() => {
+    mockExport.mockReset();
+    mockExport.mockResolvedValue({
+      outcome: "ok",
+      payload: { pdfUrl: PDF_URL, expiresAt: "2026-10-01T10:00:00.000Z" },
+    });
+    download.mockReset();
+    download.mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => PDF_BYTES.buffer,
+    });
+    globalThis.fetch = ((url: string) => download(url)) as unknown as typeof fetch;
+    Sharing.shareAsync.mockReset();
+    Sharing.shareAsync.mockResolvedValue(undefined);
+    Sharing.isAvailableAsync.mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("asks the server for the PDF of the trip on screen and shares that very file", async () => {
+    render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Revisar pendientes");
+    fireEvent.press(screen.getByText("Exportar PDF"));
+    await waitFor(() => expect(Sharing.shareAsync).toHaveBeenCalledTimes(1));
+    expect(mockExport).toHaveBeenCalledWith({}, TOKEN, TRIP_A);
+    expect(download).toHaveBeenCalledWith(PDF_URL);
+    const [uri, options] = Sharing.shareAsync.mock.calls[0] as [string, { mimeType: string }];
+    expect(uri).toBe("file:///cache/compartidos/viaje-pampa.pdf");
+    expect(options.mimeType).toBe("application/pdf");
+    // The bytes shared are the server's PDF — nothing is drawn on the phone.
+    const written = (require("expo-file-system") as { __written: Map<string, unknown> }).__written;
+    expect(written.get(uri)).toEqual(PDF_BYTES);
+    expect(await screen.findByText(/podés volver a exportarlo/)).toBeOnTheScreen();
+  });
+
+  it("is not offered while there is no trip to print", async () => {
+    mockFetch.mockResolvedValue({ outcome: "ok", payload: EMPTY });
+    render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Todavía no hay un viaje registrado");
+    expect(screen.queryByText("Exportar PDF")).toBeNull();
+  });
+
+  it("says the server's refusal in its sentence and shares nothing", async () => {
+    mockExport.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
+    render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Revisar pendientes");
+    fireEvent.press(screen.getByText("Exportar PDF"));
+    expect(await screen.findByText(/conexión/)).toBeOnTheScreen();
+    expect(download).not.toHaveBeenCalled();
+    expect(Sharing.shareAsync).not.toHaveBeenCalled();
+  });
+
+  it("never shares a failed download as if it were the PDF", async () => {
+    download.mockResolvedValue({ ok: false, status: 400, arrayBuffer: async () => PDF_BYTES });
+    render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Revisar pendientes");
+    fireEvent.press(screen.getByText("Exportar PDF"));
+    expect(
+      await screen.findByText("No pudimos traer el PDF del viaje. Probá de nuevo."),
+    ).toBeOnTheScreen();
+    expect(Sharing.shareAsync).not.toHaveBeenCalled();
   });
 });

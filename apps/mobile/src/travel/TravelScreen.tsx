@@ -57,6 +57,7 @@ import { type ReadyState, loaded, reloadFailed } from "../ui/reload-state";
 import { useDraftDiscardGuard } from "../ui/use-draft-discard-guard";
 import { useScrollToError } from "../ui/use-scroll-to-error";
 
+import { shareTravelExport } from "./travel-export-share";
 import {
   type CviDraft,
   EMPTY_CVI_DRAFT,
@@ -92,6 +93,13 @@ import {
 
 const FAILED = "No pudimos leer el viaje.";
 const WRITE_FAILED = "No pudimos guardar el cambio.";
+
+const EXPORT_BUTTON_LABEL = "Exportar PDF";
+const EXPORT_CARD_BODY =
+  "Un PDF con este viaje, el semáforo y lo que pide cada requisito, con sus fuentes. Guardalo o mandalo por WhatsApp.";
+/** After the share sheet closes. It cannot know whether something was sent. */
+const EXPORT_SHEET_CLOSED =
+  "Si cerraste sin elegir una app, podés volver a exportarlo cuando quieras.";
 
 /** One sentence per failure arm; none of them quotes the server. */
 type ScreenState =
@@ -346,7 +354,68 @@ export function TravelScreen({ publicToken }: { publicToken: string }) {
           )}
         </Card>
       ) : null}
+
+      {trip !== null ? (
+        <ExportCard
+          // Keyed by trip: a "PDF listo" line belongs to the trip it was made for.
+          key={trip.tripEventId}
+          publicToken={publicToken}
+          petName={view.petName}
+          tripEventId={trip.tripEventId}
+          disabled={busy !== null}
+        />
+      ) : null}
     </Screen>
+  );
+}
+
+type ExportState =
+  | { phase: "idle" }
+  | { phase: "working" }
+  | { phase: "closed" }
+  | { phase: "failed"; message: string };
+
+/**
+ * "Documentación para llevar" — the web's section of the same name: the travel
+ * PDF of the trip on screen, into the share sheet (task 6.5). The server makes
+ * the PDF (`travel-export-share.ts`); this card only reports how the attempt
+ * went, and "closed" never says "enviado" — the sheet cannot tell.
+ */
+function ExportCard({
+  publicToken,
+  petName,
+  tripEventId,
+  disabled,
+}: {
+  publicToken: string;
+  petName: string;
+  tripEventId: string;
+  disabled: boolean;
+}) {
+  const [state, setState] = useState<ExportState>({ phase: "idle" });
+  const onExport = useCallback(async () => {
+    setState({ phase: "working" });
+    const result = await shareTravelExport(sessionPort, publicToken, petName, tripEventId);
+    setState(
+      result.kind === "closed" ? { phase: "closed" } : { phase: "failed", message: result.message },
+    );
+  }, [petName, publicToken, tripEventId]);
+
+  return (
+    <Card title="Documentación para llevar">
+      <Body>{EXPORT_CARD_BODY}</Body>
+      {state.phase === "failed" ? (
+        <Callout tone="err">
+          <Body>{state.message}</Body>
+        </Callout>
+      ) : null}
+      {state.phase === "closed" ? <Body>{EXPORT_SHEET_CLOSED}</Body> : null}
+      <SecondaryButton
+        label={state.phase === "working" ? "Armando el PDF…" : EXPORT_BUTTON_LABEL}
+        disabled={disabled || state.phase === "working"}
+        onPress={() => void onExport()}
+      />
+    </Card>
   );
 }
 
