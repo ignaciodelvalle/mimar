@@ -247,6 +247,182 @@ describe("the catalogue itself", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// The gate matrix — role × status × species × PPP (owner-pet-actions 6.1)
+// ---------------------------------------------------------------------------
+//
+// The scenarios above each vary one fact. This walks EVERY combination the
+// catalogue reads — five roles, four statuses (one of them unread), three
+// species (one unread) and three PPP facts (one unread): 180 panels — against
+// an oracle written from the PO's plan (sdd/owner-pet-actions/design), NOT from
+// `RULES`. Two encodings of one rule that agree on all 180 cells are evidence;
+// one encoding checked against itself is not. The app's runner walks the same
+// matrix through its own panel (apps/mobile/src/pets/OwnerActionPanel.test.tsx).
+
+type Expected = "live" | `inert:${string}` | "absent";
+
+const MATRIX_ROLES = ["owner", "co_owner", "foster", "caretaker", "org_member"] as const;
+const MATRIX_STATUSES = ["active", "lost", "deceased", null] as const;
+const MATRIX_SPECIES = ["dog", "cat", null] as const;
+const MATRIX_PPP = [true, false, null] as const;
+
+const GATE_MATRIX: PetActionContext[] = MATRIX_ROLES.flatMap((viewerRole) =>
+  MATRIX_STATUSES.flatMap((petStatus) =>
+    MATRIX_SPECIES.flatMap((species) =>
+      MATRIX_PPP.map((pppDoor) => ({
+        viewerRole,
+        isTitular: viewerRole === "owner",
+        petStatus,
+        species,
+        pppDoor,
+      })),
+    ),
+  ),
+);
+
+/** The four doors a deceased animal keeps (PO). */
+const DECEASED_KEEPS: readonly PetActionId[] = ["share", "edit", "photo", "contacts"];
+
+/**
+ * The plan, restated row by row. Each line names the PO decision or the server
+ * rule it comes from, so a disagreement with the catalogue says which side
+ * moved.
+ */
+function oracle(id: PetActionId, ctx: PetActionContext): Expected {
+  // An organization member acts from the org portal: Compartir, and nothing else.
+  if (ctx.viewerRole === "org_member") return id === "share" ? "live" : "absent";
+  // A deceased animal keeps Compartir, Editar datos, Foto and Contactos (PO).
+  if (ctx.petStatus === "deceased" && !DECEASED_KEEPS.includes(id)) return "absent";
+  const titular = ctx.isTitular;
+  const caretaker = ctx.viewerRole === "caretaker";
+  switch (id) {
+    // Every holder, while the animal is alive (or for any animal: share, photo).
+    case "record":
+    case "share":
+    case "lost":
+    case "photo":
+    case "physical_tag":
+    case "vaccine_reminders":
+    case "return":
+    case "death":
+      return "live";
+    // requireTitularAccess refuses a caretaker and nobody else on this path.
+    case "edit":
+      return caretaker ? "inert:caretaker" : "live";
+    // The titular's own vet and person to call.
+    case "contacts":
+      return titular ? "live" : "inert:titular_only";
+    // Dogs only — a cat's owner is not "refused" a dog credential; unread
+    // species keeps the row.
+    case "service_dog":
+      if (ctx.species !== null && ctx.species !== "dog") return "absent";
+      return titular ? "live" : "inert:titular_only";
+    // TRAVEL_TITULAR_ROLES: owner, co-owner, foster.
+    case "travel":
+      return caretaker ? "inert:caretaker" : "live";
+    // Titular-only, and only for an animal not KNOWN to be lost.
+    case "caretaker":
+    case "transfer":
+      if (!titular) return "inert:titular_only";
+      return ctx.petStatus === "lost" ? "inert:not_active" : "live";
+    // Two audiences for one page: the foster's ask and the titular's.
+    case "find_home":
+      return titular || ctx.viewerRole === "foster" ? "live" : "inert:titular_only";
+  }
+}
+
+function matrixName(ctx: PetActionContext): string {
+  return `${ctx.viewerRole}/${ctx.petStatus ?? "unread"}/${ctx.species ?? "unread"}/ppp:${ctx.pppDoor ?? "unread"}`;
+}
+
+describe("derivePetActions — the whole gate matrix agrees with the plan", () => {
+  it("walks every role, status, species and PPP fact: 180 panels", () => {
+    expect(GATE_MATRIX).toHaveLength(180);
+  });
+
+  it("gives every action, in every cell, the state the plan gives it", () => {
+    const offences: string[] = [];
+    let inert = 0;
+    let absent = 0;
+    for (const ctx of GATE_MATRIX) {
+      const derived = derivePetActions(ctx);
+      for (const id of PET_ACTION_IDS) {
+        const want = oracle(id, ctx);
+        const got = stateOf(derived, id);
+        if (got !== want) offences.push(`${matrixName(ctx)} ${id}: ${got}, plan says ${want}`);
+        if (want.startsWith("inert")) inert += 1;
+        if (want === "absent") absent += 1;
+      }
+    }
+    // Non-vacuity: the matrix exercises all three states, many times over.
+    expect(inert).toBeGreaterThan(100);
+    expect(absent).toBeGreaterThan(100);
+    expect(offences).toEqual([]);
+  });
+
+  it("captions every grey row with its reason, and no live row but the death row", () => {
+    const offences: string[] = [];
+    for (const ctx of GATE_MATRIX) {
+      const derived = derivePetActions(ctx);
+      for (const action of [...derived.primary, ...derived.groups.flatMap((g) => g.actions)]) {
+        const want =
+          action.state.kind === "inert"
+            ? PET_ACTION_INERT_CAPTIONS[action.state.reason]
+            : action.id === "death"
+              ? "Cierra el registro del animal"
+              : null;
+        if (action.caption !== want) offences.push(`${matrixName(ctx)} ${action.id}`);
+      }
+    }
+    expect(offences).toEqual([]);
+  });
+
+  it("keeps the panel's shape in every cell: primary row, group order, no empty group", () => {
+    // Spelled out, not read off PET_ACTION_GROUPS: the order is the plan's.
+    const groupOrder: string[] = ["pet", "health", "trips", "custody", "closing"];
+    const primaryRow: PetActionId[] = ["record", "share", "lost"];
+    for (const ctx of GATE_MATRIX) {
+      const derived = derivePetActions(ctx);
+      const name = matrixName(ctx);
+      expect([name, derived.primary.map((a) => a.id)]).toEqual([
+        name,
+        primaryRow.filter((id) => oracle(id, ctx) !== "absent"),
+      ]);
+      const groups: string[] = derived.groups.map((g) => g.id);
+      expect([name, groups]).toEqual([name, groupOrder.filter((id) => groups.includes(id))]);
+      for (const group of derived.groups) {
+        expect([name, group.id, group.actions.length > 0]).toEqual([name, group.id, true]);
+      }
+    }
+  });
+
+  it("opens the attestation door exactly when the regime is KNOWN to apply to a live animal", () => {
+    for (const ctx of GATE_MATRIX) {
+      expect([matrixName(ctx), derivePetActions(ctx).attestationDoor]).toEqual([
+        matrixName(ctx),
+        ctx.pppDoor === true && ctx.petStatus !== "deceased",
+      ]);
+    }
+  });
+
+  it("names the rehoming row by who asks: the foster's 'Buscar hogar', everyone else's adoption", () => {
+    let named = 0;
+    for (const ctx of GATE_MATRIX) {
+      const row = findPetAction(derivePetActions(ctx), "find_home");
+      if (row === null) continue;
+      named += 1;
+      expect([matrixName(ctx), row.label]).toEqual([
+        matrixName(ctx),
+        ctx.viewerRole === "foster" ? "Buscar hogar" : "Acompañamiento de adopción",
+      ]);
+    }
+    // Every person-path cell on a live animal carries the row.
+    expect(named).toBe(
+      GATE_MATRIX.filter((c) => c.viewerRole !== "org_member" && c.petStatus !== "deceased").length,
+    );
+  });
+});
+
 describe("the platform caption — a door one platform does not have yet", () => {
   it("is never derived: the catalogue knows nothing about platforms", () => {
     const reasons = new Set<string>();
