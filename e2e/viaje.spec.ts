@@ -232,21 +232,26 @@ test.describe
       // The never-certain rule, over the whole screen.
       await expect(page.locator("main")).not.toContainText(TRAVEL_FORBIDDEN_COPY);
 
-      // ---- required documents read AMBER until ticked (PO 2026-10-01) -------
+      // ---- tick one required document ("Lo tengo", PO 2026-10-01) -----------
       // Chile's corridor lists required_documents: a WARNING (never a blocker
-      // on its own) until the titular ticks "Lo tengo" for each one. Untouched
-      // is what a freshly recorded trip shows, so that is what this asserts.
-      // NOT EXERCISING THE CLICK: confirmed by manual repro against a :3147
-      // production build (outside this spec) that submitting "Lo tengo" here
-      // writes the confirmation server-side (a reload shows it) but never
-      // navigates client-side — useActionRedirect's window.location.assign
-      // does not fire a reload inside this trip's UrlTabs panel, so the button
-      // stays disabled forever with no error and no console message. Reported
-      // to the team separately; add the click step once that is fixed.
+      // on its own) until the titular ticks "Lo tengo" for each one. Ticking is
+      // a correction (confirm_trip_document) that reloads the page like every
+      // other write here — fixed 2026-10-01 after this exact submit hung
+      // forever on staging: TripDocumentsChecklist's sibling rows all bound the
+      // IDENTICAL server action, which broke useActionState's own redirect; it
+      // now calls the action directly and navigates with useActionNavigate,
+      // like DenunciaWizard/ResetCodeStep (lib/ui/use-action-redirect.ts).
       const documentsList = page.getByRole("list", { name: "Documentos del viaje" });
       await expect(documentsList).toBeVisible();
       await expect(page.getByText("Confirmá que tenés cada documento")).toBeVisible();
-      await expect(documentsList.getByRole("button", { name: "Lo tengo" }).first()).toBeVisible();
+      await documentsList.getByRole("button", { name: "Lo tengo" }).first().click();
+      // The OUTCOME, not the URL: the ticked row flips to "Desmarcar" once the
+      // reload lands. No untick needed afterwards — V3 cancels this run's own
+      // trip regardless, taking every tick on it along.
+      await expect(documentsList.getByRole("button", { name: "Desmarcar" })).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(documentsList.getByText("Lo tenés, según indicaste")).toBeVisible();
 
       // The trip's event id, for V2 (the caretaker opening it by URL) — the
       // cancel form carries it, and "Volver" leaves the trip untouched. Scoped
