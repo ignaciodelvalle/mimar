@@ -29,6 +29,7 @@ import type {
   OwnerPetStatusSection,
   VaccineReminderCommandAckV1,
 } from "@dim/contract/api";
+import type { PetProfileIconName } from "@dim/contract/icons";
 import type {
   VaccineReminderCommandInput,
   VaccineReminderCommandInputCode,
@@ -37,9 +38,33 @@ import {
   firstVaccineReminderCommandInputCode,
   vaccineReminderCommandInputSchema,
 } from "@dim/contract/input";
+import {
+  type DerivedPetAction,
+  PET_ACTION_INERT_CAPTIONS,
+  type PetActionContext,
+  type PetActionGroupId,
+  type PetActionId,
+  derivePetActions,
+  findPetAction,
+} from "@dim/contract/reference";
 
 import { dateInputToIso } from "../ui/date-input";
 import { unknownEnumLabel } from "../ui/enum-label";
+import {
+  caretakerPetRoute,
+  editPetRoute,
+  lostModeRoute,
+  petPhotoRoute,
+  physicalTagInterestRoute,
+  recordEventRoute,
+  rehomeRoute,
+  returnPetRoute,
+  serviceDogRoute,
+  sharesRoute,
+  transferPetRoute,
+  travelRoute,
+  vaccineRemindersRoute,
+} from "../ui/routes";
 
 /** The es-AR sentence every unavailable section shows. Decided once. */
 export const SECTION_UNAVAILABLE_MESSAGE = "No se pudo leer esta sección.";
@@ -469,8 +494,8 @@ export type OwnerFaceView = {
   publicToken: string;
   /** `null` for a titular reading their own document — see `viewerRoleLabel`. */
   viewerLabel: string | null;
-  /** The raw viewer role — the disabled-row gates key off it (a dead control
-   *  has no server to refuse it, so the client mirrors the web's own gates). */
+  /** The raw viewer role — the panel's catalogue reads it (`ownerPanelView`):
+   *  which rows exist for this viewer, and which are grey and why. */
   viewerRole: OwnerPetDetailViewerRole;
   isTitular: boolean;
   identity: SectionView<OwnerPetIdentitySection>;
@@ -505,189 +530,192 @@ export type OwnerFaceView = {
 };
 
 // ---------------------------------------------------------------------------
-// What the face may offer (A3-documento-credencial-04)
+// What the panel below the card offers (owner-pet-actions, PO plan 2026-10-01)
 // ---------------------------------------------------------------------------
+//
+// WHO GETS WHICH ROW IS NOT DECIDED HERE ANY MORE. Until owner-pet-actions this
+// file computed `ownerFaceGates`, the app's copy of the web's row gates, beside
+// the two copies the web kept (`MasSheet.helpers.ts` and the Anotar catalogue's
+// "Perfil" category). Three copies of one rule is how they came to disagree, and
+// each was internally consistent, so no test could see it. The rule now lives
+// once, in the contract — `derivePetActions` in `@dim/contract/reference`, with
+// its own gate matrix — and both platforms draw from it: live, grey with a
+// reason, or absent.
+//
+// WHAT IS LEFT FOR THIS FILE is what is genuinely the app's:
+//   · the CONTEXT the catalogue reads, off this payload's sections, where an
+//     unread section is "no fact" and never "not active" (the catalogue's rule,
+//     and the one `ownerFaceGates` founded);
+//   · the DESTINATIONS, as an exhaustive record over `PetActionId`, so an action
+//     added to the catalogue fails to compile here until somebody says where it
+//     goes on a phone;
+//   · the one row this build has NO screen for — the foster's "Buscar hogar" —
+//     drawn grey with the catalogue's own `web_only` caption, never a browser.
 
 /**
- * The web's own action gates, computed from the two facts the payload carries
- * and this face was ignoring: `status.data.petStatus` and who the viewer is.
- *
- * WHAT WAS WRONG. The footer gated on `viewerRole` for the ORG path only, so a
- * titular whose animal is registered as fallecida was offered a red "Modo
- * perdida" pill and "Transferir la titularidad" — the second answers 409 "Abrí
- * su ficha para ver por qué" while the person IS in the ficha — and a co-owner,
- * a foster or the neighbour caring for the dog filled in the whole transfer form
- * before a refusal the browser never lets them reach. Two "Disponible en la web"
- * rows pointed at pages the web hides for a deceased animal, which is worse than
- * a dead row: it is a promise about somewhere else.
- *
- * THE GATES ARE THE WEB'S, LINE FOR LINE. `PetActionRow.tsx:43-67` for the row
- * (person path AND not deceased for Anotar/Editar; plus `petStatus === "active"`
- * for Marcar como perdida) and `MasSheet.helpers.ts:67-118` for the sheet (the
- * deceased early-return keeps corrections and who-to-call and nothing else;
- * Transferir and Cuidador require `ownershipRole === "owner"` AND an active
- * animal). `isTitular` IS that `ownershipRole === "owner"` — the contract says
- * so and says a co-owner is deliberately false there.
- *
- * MODO PERDIDA IS THE ONE DELIBERATE DIVERGENCE. The web drops it on a LOST
- * animal because "Marcar como encontrada" lives prominently in its
- * `LostCaseBlock`; this app has no such block — the row IS the cockpit for both
- * directions — so it stays for `lost` and goes only for `deceased`.
- *
- * A FAILED STATUS READ TAKES NOTHING AWAY. `unavailable` means the server could
- * not read the section, which is this file's founding distinction, so an outage
- * must not remove a control: the client gates only on what it KNOWS, and the
- * server refusal is still the backstop it always was.
+ * The sections the panel reads. A narrow pick, so a test can build one without
+ * a whole face and the panel cannot quietly start reading a section it does not
+ * declare.
  */
-export type OwnerFaceGates = {
-  /** KNOWN to be fallecida. False while the status section failed to load. */
-  isDeceased: boolean;
+export type OwnerPanelSource = Pick<
+  OwnerFaceView,
+  "publicToken" | "viewerRole" | "isTitular" | "status" | "identity" | "pppRegistries"
+>;
+
+/**
+ * Where a tap goes, in the shape `router.push` takes. The object form carries
+ * the animal's name to the two screens that open addressed by it ("Transferir a
+ * Pampa"); an identity read that failed sends empty params rather than a name
+ * nobody read.
+ */
+export type PanelTarget = string | { pathname: string; params: { name?: string } };
+
+export type OwnerPanelRow = {
+  id: PetActionId;
+  label: string;
+  /** What the row does, for a screen reader. */
+  hint: string;
+  /** The reason under a grey row, a live row's standing note, or `null`. */
+  caption: string | null;
+  /** The primary row's glyph; `null` for the rows of the groups. */
+  icon: PetProfileIconName | null;
+  tone: "default" | "danger";
   /**
-   * KNOWN to be in a situation other than `active` — lost or deceased. An
-   * UNREAD status is neither `isDeceased` nor this: both are phrased as "the
-   * server said so", which is what keeps an outage from removing a control.
+   * `null` = the row is drawn INERT: grey, announcing `disabled`, with its
+   * caption saying why. Never omitted for that reason — absence is the
+   * catalogue's call, not this file's.
    */
-  isNotActive: boolean;
-  /** `ownershipRole === "owner"`: a co-owner is deliberately NOT one. */
-  isTitular: boolean;
-  canRecordEvent: boolean;
-  canOpenLostMode: boolean;
-  canEditIdentity: boolean;
-  /** The who-to-call row. Same audience as `canEditIdentity` — one destination. */
-  canSeeEmergencyContacts: boolean;
-  /**
-   * The foster's "Buscar hogar" row and the titular's "Acompañamiento de
-   * adopción" row — ONE destination, two labels, and two DIFFERENT audiences
-   * (finding F2, review 2026-09-07).
-   *
-   * They are two gates rather than an if/else on the role because the else arm
-   * is what went wrong: it covered `owner` AND `co_owner` AND `org_member`, so a
-   * co-owner read "Acompañamiento de adopción — Disponible en la web", opened a
-   * browser and got a 404. `buscar-hogar/page.tsx` filters its ownership row to
-   * `owner` or `foster` and `notFound()`s everything else, and the web's own row
-   * gates on `ownershipRole === "owner"` (`MasSheet.helpers.ts:134-146`) for
-   * exactly that reason — a titular tapped a live row and got a 404 on
-   * 2026-08-20, and this is the same defect on the role axis.
-   */
-  canSeeFindHome: boolean;
-  canSeeAdoptionSupport: boolean;
-  canTransfer: boolean;
-  canDesignateCaretaker: boolean;
-  canOpenReturn: boolean;
-  /**
-   * "Viaje y movilidad" (viajes-fase-2, task 6.3) — a door to `TravelScreen`,
-   * replacing the inert "Próximamente" row.
-   *
-   * THE WEB ROW'S OWN AUDIENCE: `MAS_SHEET_TRAVEL_ROLES` (owner, co-owner,
-   * foster — the server's `TRAVEL_TITULAR_ROLES`), after the sheet's deceased
-   * early-return. A CARETAKER is left out on purpose: they are often the person
-   * keeping the animal while the family is away, and the family's trip is not
-   * theirs to read. The org path is left out because `canAccessTravel` admits
-   * the person path only. Unlike a titular-only row, this one is HIDDEN rather
-   * than captioned: the web hides it, and an inert row would say something
-   * exists that this viewer may never open.
-   */
-  canPlanTravel: boolean;
-  /**
-   * "Reportar fallecimiento" — the terminal asiento, from the ⋯ Más list.
-   *
-   * A GATE OF ITS OWN AND NOT `canRecordEvent`, though today the two compute
-   * the same boolean. They answer different questions: `canRecordEvent` opens
-   * the PICKER of routine acts, and this one opens the single form that CLOSES
-   * the record. Folding them into one flag would mean that the day either
-   * audience changes — a caretaker losing the picker, a jurisdiction gating the
-   * death form — the other would move with it silently. `titular-only.ts`
-   * already says these are not the same audience: `death_recorded` is
-   * EXPLICITLY allowed to a caretaker, so no titular gate belongs here.
-   *
-   * DECEASED IS THE ONLY THING THAT TAKES IT AWAY, and the server agrees: a
-   * second death on one animal is a 409 from `checkWriteGuard`.
-   */
-  canRecordDeath: boolean;
-  /**
-   * "Registrar atestación" — the PPP door, from the compliance card.
-   *
-   * GATED ON `pppRegistries`, WHICH IS THE FACT AND NOT A LABEL. The contract's
-   * own docblock asks for exactly this: `data: null` means "this animal is not
-   * under the PPP regime", so "a client can gate the attestation door on this
-   * one field instead of pattern-matching a compliance card's label".
-   *
-   * AND A FAILED READ TAKES THE DOOR AWAY, which is the OPPOSITE of the
-   * three-state rule `conditionalKinds` follows for the pregnancy rows — said
-   * out loud because the two look alike and are not. There, an unknown fact
-   * costs a round trip and a refusal sentence. Here the form exists only for an
-   * animal the regime applies to, and the regime applies to a small minority of
-   * dogs: offering it on an unread section would put "Atestación de raza
-   * peligrosa" in front of almost everybody, which is the "form that refuses
-   * most animals" the same docblock refuses to build.
-   */
-  canAttestDangerousBreed: boolean;
-  /**
-   * D2 (2026-09-25) — the §4.20 physical-tag interest row. Mirrors
-   * `togglePhysicalTagInterestAction`'s own check (`accessPath !== "owner"`
-   * refuses) translated to this payload's viewer vocabulary: PERSON PATH, not
-   * the legal owner alone — owner, co-owner, foster and caretaker all pass,
-   * only the org path does not. This is what a "deceased alone" gate cannot
-   * express: the web page this row's sheet lives on
-   * is person-path ONLY by construction, so the web's `!isDeceased` gate never
-   * had to also exclude an org member — this face does, because ONE
-   * component serves both viewer paths.
-   */
-  canRequestPhysicalTag: boolean;
-  /**
-   * D3 (2026-09-25) — "Perro de asistencia". The web's own row condition,
-   * `MasSheet.helpers.ts`: `pet.species === "dog" && ownershipRole === "owner"`,
-   * placed after that helper's deceased early-return — so a DOG, the LEGAL
-   * OWNER, and not deceased. The owner half is also the server's
-   * `canManageServiceDog`; the species half is read off the identity section
-   * and, like every sibling gate, an unread section is "no fact" and leaves the
-   * row offered (the screen itself says when the law does not apply).
-   */
-  canManageServiceDog: boolean;
+  target: PanelTarget | null;
 };
 
-/**
- * Who is offered "Viaje y movilidad" — the web's `MAS_SHEET_TRAVEL_ROLES`, in
- * this payload's viewer vocabulary. See `canPlanTravel`.
- */
-const TRAVEL_VIEWER_ROLES: readonly OwnerPetDetailViewerRole[] = ["owner", "co_owner", "foster"];
+export type OwnerPanelGroup = {
+  id: PetActionGroupId;
+  /** `null` for the closing group, drawn as a separator rather than a category. */
+  heading: string | null;
+  rows: OwnerPanelRow[];
+};
 
-export function ownerFaceGates(view: {
-  viewerRole: OwnerPetDetailViewerRole;
-  isTitular: boolean;
-  status: SectionView<OwnerPetStatusSection>;
-  pppRegistries: SectionView<OwnerPetPppRegistriesSection>;
-  /** Optional so callers that gate nothing on species need not build one. */
-  identity?: SectionView<OwnerPetIdentitySection>;
-}): OwnerFaceGates {
-  // `null` = the section did not load. Every gate below reads it as "no fact",
-  // never as "not active": the permissive direction is the correct one here
-  // because the server refusal is still in place behind every one of them.
-  const petStatus = view.status.state === "ok" ? view.status.data.petStatus : null;
-  const isDeceased = petStatus === "deceased";
-  const isNotActive = petStatus !== null && petStatus !== "active";
-  const isCaretaker = view.viewerRole === "caretaker";
-  const species = view.identity?.state === "ok" ? view.identity.data.species : null;
+export type OwnerPanelView = {
+  /** The row directly under the card: Anotar, Compartir, Modo perdida. */
+  primary: OwnerPanelRow[];
+  /** Only the groups with at least one row, in panel order. */
+  groups: OwnerPanelGroup[];
+  /** The compliance card's "Registrar atestación" door. Never a panel row (PO). */
+  attestationDoor: boolean;
+  /**
+   * The photo frame's door: the Foto row's own target, so the frame and the row
+   * cannot disagree about who may change the picture. `null` where the panel has
+   * no Foto row at all (the organization path).
+   */
+  photoTarget: PanelTarget | null;
+};
+
+/** The catalogue's context, read off this payload. `null` = the section did not load. */
+function panelContext(view: OwnerPanelSource): PetActionContext {
   return {
-    isDeceased,
-    isNotActive,
+    viewerRole: view.viewerRole,
     isTitular: view.isTitular,
-    canRecordEvent: !isDeceased,
-    canOpenLostMode: !isDeceased,
-    canEditIdentity: !isCaretaker,
-    canSeeEmergencyContacts: !isCaretaker,
-    canSeeFindHome: view.viewerRole === "foster" && !isDeceased,
-    canSeeAdoptionSupport: view.isTitular && !isDeceased,
-    canTransfer: view.isTitular && !isNotActive,
-    canDesignateCaretaker: view.isTitular && !isNotActive,
-    canOpenReturn: !isDeceased,
-    canPlanTravel: !isDeceased && TRAVEL_VIEWER_ROLES.includes(view.viewerRole),
-    canRecordDeath: !isDeceased,
-    canAttestDangerousBreed:
-      !isDeceased && view.pppRegistries.state === "ok" && view.pppRegistries.data !== null,
-    canRequestPhysicalTag: !isDeceased && view.viewerRole !== "org_member",
-    canManageServiceDog:
-      !isDeceased && view.viewerRole === "owner" && (species === null || species === "dog"),
+    petStatus: view.status.state === "ok" ? view.status.data.petStatus : null,
+    species: view.identity.state === "ok" ? view.identity.data.species : null,
+    // `data: null` is the contract's own "this animal is not under the regime";
+    // an unread section stays `null`, which the catalogue reads as a CLOSED door.
+    pppDoor: view.pppRegistries.state === "ok" ? view.pppRegistries.data !== null : null,
+  };
+}
+
+/** A screen of this app, or the admission that the action has none here yet. */
+type NativeDestination = { kind: "screen"; target: PanelTarget } | { kind: "web_only" };
+
+type DestinationInput = {
+  publicToken: string;
+  petName: string | null;
+  viewerRole: OwnerPetDetailViewerRole;
+};
+
+function toScreen(target: PanelTarget): NativeDestination {
+  return { kind: "screen", target };
+}
+
+function named(pathname: string, petName: string | null): PanelTarget {
+  return { pathname, params: petName === null ? {} : { name: petName } };
+}
+
+/**
+ * Where each action goes on a phone.
+ *
+ * A `Record` OVER EVERY `PetActionId`, so the catalogue cannot grow a row the
+ * app has not placed: a new id is a compile error here, the same way the web's
+ * own destination table fails on its side.
+ *
+ * Every route below is the screen the old "Más" list already opened, with two
+ * changes the PO plan asked for: "Contactos de emergencia" now opens Editar
+ * datos ON ITS SECTION (`?seccion=contactos`) instead of at the top of a form
+ * about something else, and "Credencial pública" is gone — it was the QR tap
+ * again, one row down.
+ */
+const NATIVE_DESTINATIONS: Readonly<
+  Record<PetActionId, (input: DestinationInput) => NativeDestination>
+> = {
+  record: (i) => toScreen(recordEventRoute(i.publicToken)),
+  share: (i) => toScreen(sharesRoute(i.publicToken)),
+  lost: (i) => toScreen(lostModeRoute(i.publicToken)),
+  edit: (i) => toScreen(editPetRoute(i.publicToken)),
+  photo: (i) => toScreen(petPhotoRoute(i.publicToken)),
+  contacts: (i) => toScreen(editPetRoute(i.publicToken, { seccion: "contactos" })),
+  service_dog: (i) => toScreen(serviceDogRoute(i.publicToken)),
+  physical_tag: (i) => toScreen(physicalTagInterestRoute(i.publicToken)),
+  vaccine_reminders: (i) => toScreen(vaccineRemindersRoute(i.publicToken)),
+  travel: (i) => toScreen(travelRoute(i.publicToken)),
+  caretaker: (i) => toScreen(named(caretakerPetRoute(i.publicToken), i.petName)),
+  return: (i) => toScreen(returnPetRoute(i.publicToken)),
+  // ONE DESTINATION ON THE WEB, TWO ASKS. The titular's "Acompañamiento de
+  // adopción" is `RehomeScreen` (`GET|POST /pets/{token}/rehome`). The foster's
+  // "Buscar hogar" is `foster`'s `sendRehomeRequest`, a different action with
+  // no v1 route yet (a named follow-up of this change), so it stays grey — and
+  // never opens a browser: a tester sent out of the app mid-flow does not come
+  // back (PO, 2026-09-11).
+  find_home: (i) =>
+    i.viewerRole === "foster" ? { kind: "web_only" } : toScreen(rehomeRoute(i.publicToken)),
+  transfer: (i) => toScreen(named(transferPetRoute(i.publicToken), i.petName)),
+  // NOT the picker: the picker and this form differ only in `?kind=death`, and
+  // a terminal act is not one more option among the routine ones.
+  death: (i) => toScreen(recordEventRoute(i.publicToken, { kind: "death" })),
+};
+
+function panelRow(action: DerivedPetAction, input: DestinationInput): OwnerPanelRow {
+  const base = {
+    id: action.id,
+    label: action.label,
+    hint: action.hint,
+    icon: action.icon,
+    tone: action.tone,
+  };
+  if (action.state.kind === "inert") return { ...base, caption: action.caption, target: null };
+  const destination = NATIVE_DESTINATIONS[action.id](input);
+  if (destination.kind === "web_only") {
+    return { ...base, caption: PET_ACTION_INERT_CAPTIONS.web_only, target: null };
+  }
+  return { ...base, caption: action.caption, target: destination.target };
+}
+
+/** The whole panel for this face: the catalogue's rows, with this app's doors behind them. */
+export function ownerPanelView(view: OwnerPanelSource): OwnerPanelView {
+  const derived = derivePetActions(panelContext(view));
+  const input: DestinationInput = {
+    publicToken: view.publicToken,
+    petName: view.identity.state === "ok" ? view.identity.data.name : null,
+    viewerRole: view.viewerRole,
+  };
+  const photo = findPetAction(derived, "photo");
+  return {
+    primary: derived.primary.map((action) => panelRow(action, input)),
+    groups: derived.groups.map((group) => ({
+      id: group.id,
+      heading: group.heading,
+      rows: group.actions.map((action) => panelRow(action, input)),
+    })),
+    attestationDoor: derived.attestationDoor,
+    photoTarget: photo === null ? null : panelRow(photo, input).target,
   };
 }
 
@@ -695,9 +723,11 @@ export function ownerFaceGates(view: {
  * Does THIS obligation card carry the attestation door?
  *
  * A FUNCTION AND NOT AN INLINE CONDITION IN THE RENDERER, for the reason
- * finding F6 gave about the "Editar datos" row: a rule read off `gates`
+ * finding F6 gave about the "Editar datos" row: a rule read off one source
  * everywhere except in one component that re-derives it is a rule with two
- * homes. It is also the only way to test the placement without rendering.
+ * homes. WHO may file comes from the catalogue (`ownerPanelView`'s
+ * `attestationDoor`, owner-pet-actions); WHICH card carries the door is this.
+ * It is also the only way to test the placement without rendering.
  *
  * `tone === "ok"` IS "ALREADY ATTESTED, AND IT COUNTS" — which since T4-I1 /
  * #753 is a narrower thing than "an attestation exists". `derivePpp` now gives
@@ -733,24 +763,9 @@ export function ownerFaceGates(view: {
  */
 export function isAttestationDoorCard(
   card: OwnerPetObligationCardV1,
-  gates: OwnerFaceGates,
+  attestationDoor: boolean,
 ): boolean {
-  return (
-    gates.canAttestDangerousBreed && card.key === "ppp" && card.tone !== "ok" && !card.dataUnknown
-  );
-}
-
-/**
- * WHY a titular-only row is inert, in one short line under its label.
- *
- * `null` when the row is live. The two reasons are kept apart because the moves
- * are different: a co-owner has to ask the titular, and a titular whose animal
- * is lost has to find it first.
- */
-export function titularOnlyRowCaption(gates: OwnerFaceGates): string | null {
-  if (!gates.isTitular) return "Solo el titular";
-  if (gates.isNotActive) return "No se puede en esta situación";
-  return null;
+  return attestationDoor && card.key === "ppp" && card.tone !== "ok" && !card.dataUnknown;
 }
 
 /**
@@ -764,12 +779,13 @@ export function titularOnlyRowCaption(gates: OwnerFaceGates): string | null {
  * these two paths. Rendering them as plain text would delete an affordance the
  * person really has; leaving them inert was the worst of the three.
  *
- * THE CALLER'S GATES ARE WHAT MAKE THE LINK SAFE, and they were reasoned out
- * before this function existed (see the two comments above the rows in
- * `OwnerFace.tsx`): a deceased animal drops both rows, whose
- * destinations the web suppresses too, and `canSeeFindHome` is `foster`-only
- * because `buscar-hogar/page.tsx` `notFound()`s every other role. A link that
- * 404s is worse than an inert row, and the gates are why neither of these can.
+ * THE CALLER'S GATES WOULD BE WHAT MAKES THE LINK SAFE: a deceased animal has
+ * neither row, whose destinations the web suppresses too, and the foster's
+ * "Buscar hogar" is the foster's alone because `buscar-hogar/page.tsx`
+ * `notFound()`s every other role. Since owner-pet-actions those gates are the
+ * contract's catalogue (`derivePetActions`), and the foster's row is drawn grey
+ * with its `web_only` caption (`ownerPanelView`). A link that 404s is worse than
+ * an inert row.
  *
  * NOT IN `deepLinkMap`, and that is the table's own rule rather than an
  * omission: "A destination belongs here when something OUTSIDE the rendering

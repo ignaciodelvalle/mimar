@@ -404,9 +404,10 @@ export function credentialRoute(
  * A ROUTE AND NOT A FACE, since the two-face rewrite (PO decision, 2026-08-28):
  * the web's card has exactly two faces (Credencial · frente, Libreta · dorso)
  * and its public document lives one tap away at `/p/{token}`. This is that tap,
- * reached from the profile's QR block and from "Más" — mirroring where the web
- * puts it rather than surfacing the public page as a third tab beside the two
- * faces it is not one of.
+ * reached from the profile's QR block — mirroring where the web puts it rather
+ * than surfacing the public page as a third tab beside the two faces it is not
+ * one of. (The "Credencial pública" row of the old "Más" list opened it too, and
+ * went with that list in owner-pet-actions: it was the QR tap again.)
  */
 export function publicCredentialRoute(publicToken: string): `/mascotas/${string}/credencial` {
   return `/mascotas/${encodeURIComponent(publicToken)}/credencial`;
@@ -598,9 +599,10 @@ export function vaccineRemindersRoute(publicToken: string): `/mascotas/${string}
  * EL PATH COINCIDE CON EL DE LA WEB (`/mis-mascotas/{token}/buscar-hogar`),
  * aunque el encabezado diga "Acompañamiento de adopción": la web pone las dos
  * preguntas — la del foster ("Buscar hogar") y la del titular — en una misma
- * ruta y decide adentro a quién le habla. Acá sólo entra el titular (la fila de
- * "Más" del foster sigue diciendo "Disponible en la web"), pero el día que
- * entre un deep link las dos formas ya van a estar de acuerdo en la palabra.
+ * ruta y decide adentro a quién le habla. Acá sólo entra el titular (la fila
+ * "Buscar hogar" del foster, en el panel, sigue gris con "Se hace desde la
+ * web"), pero el día que entre un deep link las dos formas ya van a estar de
+ * acuerdo en la palabra.
  */
 export function rehomeRoute(publicToken: string): `/mascotas/${string}/buscar-hogar` {
   return `/mascotas/${encodeURIComponent(publicToken)}/buscar-hogar`;

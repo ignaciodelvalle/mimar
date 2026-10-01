@@ -3,14 +3,18 @@ import type {
   OwnerPetBannersSection,
   OwnerPetCasesSection,
   OwnerPetComplianceSection,
+  OwnerPetDetailViewerRole,
   OwnerPetIdentitySection,
-  OwnerPetPppRegistriesSection,
   OwnerPetStatusSection,
 } from "@dim/contract/api";
+import type { PetActionId } from "@dim/contract/reference";
 import { describe, expect, it } from "@jest/globals";
 
 import {
   EMPTY_SCHEDULE_REMINDER_DRAFT,
+  type OwnerPanelRow,
+  type OwnerPanelSource,
+  type OwnerPanelView,
   SECTION_UNAVAILABLE_MESSAGE,
   alertHeadline,
   alertTone,
@@ -25,7 +29,7 @@ import {
   complianceSummaryLabel,
   findHomeWebUrl,
   isAttestationDoorCard,
-  ownerFaceGates,
+  ownerPanelView,
   petTagWebUrl,
   rehomeBannerLine,
   reminderCancelledMessage,
@@ -422,7 +426,9 @@ describe("petTagWebUrl / findHomeWebUrl — the pages the Más sheet hands off t
 // way to file one. The web twin (ComplianceObligationsPanel's
 // `showPppRegister`) reads the same `tone` so the two surfaces answer alike.
 describe("isAttestationDoorCard — three card states (#753)", () => {
-  const gates = { canAttestDangerousBreed: true } as Parameters<typeof isAttestationDoorCard>[1];
+  // The panel's `attestationDoor`, from the catalogue. `true` = the regime
+  // covers this living animal and this viewer may file.
+  const OPEN = true;
 
   const card = (state: string, tone: string, dataUnknown = false) =>
     ({ key: "ppp", label: "Atestación PPP", state, tone, dataUnknown }) as Parameters<
@@ -430,23 +436,20 @@ describe("isAttestationDoorCard — three card states (#753)", () => {
     >[0];
 
   it("opens when nothing is on record", () => {
-    expect(isAttestationDoorCard(card("Atestación requerida", "due"), gates)).toBe(true);
+    expect(isAttestationDoorCard(card("Atestación requerida", "due"), OPEN)).toBe(true);
   });
 
   it("STAYS OPEN on a Declarada card — that is how the number gets added", () => {
-    expect(isAttestationDoorCard(card("Declarada", "neutral"), gates)).toBe(true);
+    expect(isAttestationDoorCard(card("Declarada", "neutral"), OPEN)).toBe(true);
   });
 
   it("closes once the attestation counts", () => {
-    expect(isAttestationDoorCard(card("Atestada", "ok"), gates)).toBe(false);
+    expect(isAttestationDoorCard(card("Atestada", "ok"), OPEN)).toBe(false);
   });
 
-  it("stays shut for a viewer the gate denies, whatever the card says", () => {
-    const denied = { canAttestDangerousBreed: false } as Parameters<
-      typeof isAttestationDoorCard
-    >[1];
-    expect(isAttestationDoorCard(card("Atestación requerida", "due"), denied)).toBe(false);
-    expect(isAttestationDoorCard(card("Declarada", "neutral"), denied)).toBe(false);
+  it("stays shut when the catalogue closed the door, whatever the card says", () => {
+    expect(isAttestationDoorCard(card("Atestación requerida", "due"), false)).toBe(false);
+    expect(isAttestationDoorCard(card("Declarada", "neutral"), false)).toBe(false);
   });
 
   // THE FOURTH CARD derivePpp can return, and the one `tone !== "ok"` alone
@@ -455,157 +458,294 @@ describe("isAttestationDoorCard — three card states (#753)", () => {
   // in the dangerous-breed registry answers a question nobody asked. The web
   // twin excluded it all along via the same flag.
   it("stays shut on the 'Faltan datos' nudge", () => {
-    expect(isAttestationDoorCard(card("Faltan datos", "due", true), gates)).toBe(false);
+    expect(isAttestationDoorCard(card("Faltan datos", "due", true), OPEN)).toBe(false);
   });
 
   it("is not offered on another obligation's card", () => {
     const rabies = { key: "rabies", label: "Antirrábica", state: "Vencida", tone: "over" };
-    expect(
-      isAttestationDoorCard(rabies as Parameters<typeof isAttestationDoorCard>[0], gates),
-    ).toBe(false);
+    expect(isAttestationDoorCard(rabies as Parameters<typeof isAttestationDoorCard>[0], OPEN)).toBe(
+      false,
+    );
   });
 });
 
-describe("ownerFaceGates — D2's canRequestPhysicalTag", () => {
-  const okStatus = (petStatus: string): { state: "ok"; data: OwnerPetStatusSection } => ({
-    state: "ok",
-    data: { petStatus } as OwnerPetStatusSection,
-  });
-  const noPpp: { state: "ok"; data: OwnerPetPppRegistriesSection } = {
-    state: "ok",
-    data: null,
-  };
+// ---------------------------------------------------------------------------
+// The owner panel — the contract's catalogue, with this app's doors behind it
+// (owner-pet-actions 5.2)
+// ---------------------------------------------------------------------------
+//
+// WHAT MOVED. Until owner-pet-actions this file computed `ownerFaceGates`, its
+// own copy of who gets which row, beside the web's two other copies. The
+// catalogue in `@dim/contract/reference` (`derivePetActions`) now decides that
+// for both platforms, with its own gate matrix in the contract's tests. What is
+// left HERE is what is genuinely the app's: WHERE each row goes on a phone, and
+// what a row this build has no screen for says instead. These tests pin those
+// doors, plus as much of the matrix as it takes to prove the app reads the
+// catalogue rather than a copy of it.
+//
+// EVERY EXPECTED ROUTE IS A LITERAL, not a call to the route builders. The
+// contacts row and the death row differ from their neighbours only in a query
+// string (`?seccion=contactos`, `?kind=death`); a panel that dropped it would
+// still navigate, and only a spelled-out string notices.
 
-  it("admits every PERSON-path role — owner, co-owner, foster and caretaker alike", () => {
-    for (const viewerRole of ["owner", "co_owner", "foster", "caretaker"] as const) {
-      const gates = ownerFaceGates({
-        viewerRole,
-        isTitular: viewerRole === "owner",
-        status: okStatus("active"),
-        pppRegistries: noPpp,
-      });
-      expect(gates.canRequestPhysicalTag).toBe(true);
-    }
-  });
+const UNREAD = { state: "unavailable", message: SECTION_UNAVAILABLE_MESSAGE } as const;
 
-  it("is the ONE role togglePhysicalTagInterestAction's own check excludes: org", () => {
-    const gates = ownerFaceGates({
-      viewerRole: "org_member",
-      isTitular: false,
-      status: okStatus("active"),
-      pppRegistries: noPpp,
-    });
-    expect(gates.canRequestPhysicalTag).toBe(false);
-  });
-
-  it("hides on a DECEASED animal, same as the web's own chapita placement", () => {
-    const gates = ownerFaceGates({
-      viewerRole: "owner",
-      isTitular: true,
-      status: okStatus("deceased"),
-      pppRegistries: noPpp,
-    });
-    expect(gates.canRequestPhysicalTag).toBe(false);
-  });
-
-  it("stays offered while the status read has not answered — permissive, like every sibling gate", () => {
-    const gates = ownerFaceGates({
-      viewerRole: "owner",
-      isTitular: true,
-      status: { state: "unavailable", message: SECTION_UNAVAILABLE_MESSAGE },
-      pppRegistries: noPpp,
-    });
-    expect(gates.canRequestPhysicalTag).toBe(true);
-  });
-});
-
-describe("ownerFaceGates — D3's canManageServiceDog", () => {
-  // The web row's own condition (`MasSheet.helpers.ts`): a dog, the legal
-  // owner, and after the sheet's deceased early-return.
-  const okStatus = (petStatus: string): { state: "ok"; data: OwnerPetStatusSection } => ({
-    state: "ok",
-    data: { petStatus } as OwnerPetStatusSection,
-  });
-  const noPpp: { state: "ok"; data: OwnerPetPppRegistriesSection } = { state: "ok", data: null };
-  const identity = (species: string): { state: "ok"; data: OwnerPetIdentitySection } => ({
-    state: "ok",
-    data: { species } as OwnerPetIdentitySection,
-  });
-  const gatesFor = (over: {
-    viewerRole?: "owner" | "co_owner" | "foster" | "caretaker" | "org_member";
-    petStatus?: string;
+/** What the panel reads off the face, with every section loaded by default. */
+function source(
+  over: {
+    viewerRole?: OwnerPetDetailViewerRole;
+    isTitular?: boolean;
+    /** `null` = the status section did not load. */
+    petStatus?: string | null;
+    /** `null` = the identity section did not load. */
     species?: string | null;
-  }) =>
-    ownerFaceGates({
-      viewerRole: over.viewerRole ?? "owner",
-      isTitular: (over.viewerRole ?? "owner") === "owner",
-      status: okStatus(over.petStatus ?? "active"),
-      pppRegistries: noPpp,
-      identity:
-        over.species === null
-          ? { state: "unavailable", message: SECTION_UNAVAILABLE_MESSAGE }
-          : identity(over.species ?? "dog"),
+    /** `unread` = the registries section did not load. */
+    ppp?: "applies" | "none" | "unread";
+  } = {},
+): OwnerPanelSource {
+  const viewerRole = over.viewerRole ?? "owner";
+  const ppp = over.ppp ?? "none";
+  return {
+    publicToken: "DIM-PAMP-0001",
+    viewerRole,
+    isTitular: over.isTitular ?? viewerRole === "owner",
+    status:
+      over.petStatus === null
+        ? UNREAD
+        : {
+            state: "ok",
+            data: { petStatus: over.petStatus ?? "active" } as OwnerPetStatusSection,
+          },
+    identity:
+      over.species === null
+        ? UNREAD
+        : {
+            state: "ok",
+            data: { name: "Pampa", species: over.species ?? "dog" } as OwnerPetIdentitySection,
+          },
+    pppRegistries:
+      ppp === "unread"
+        ? UNREAD
+        : {
+            state: "ok",
+            data:
+              ppp === "applies"
+                ? [{ id: "caba_ley_4078", label: "CABA · Ley 4078", required: true }]
+                : null,
+          },
+  } as OwnerPanelSource;
+}
+
+const panelOf = (over: Parameters<typeof source>[0] = {}) => ownerPanelView(source(over));
+
+/** One row wherever it sits, or `null` when the panel does not draw it. */
+function rowOf(panel: OwnerPanelView, id: PetActionId): OwnerPanelRow | null {
+  for (const row of panel.primary) if (row.id === id) return row;
+  for (const group of panel.groups) {
+    for (const row of group.rows) if (row.id === id) return row;
+  }
+  return null;
+}
+
+/** Every row the panel draws, in reading order. */
+function idsOf(panel: OwnerPanelView): PetActionId[] {
+  return [...panel.primary, ...panel.groups.flatMap((group) => group.rows)].map((row) => row.id);
+}
+
+describe("ownerPanelView — the titular of an active dog gets every door, in the catalogue's order", () => {
+  it("draws the primary row as Anotar, Compartir and Modo perdida, each to its own screen", () => {
+    const panel = panelOf();
+    expect(panel.primary.map((row) => [row.label, row.target])).toEqual([
+      ["Anotar", "/mascotas/DIM-PAMP-0001/asentar"],
+      ["Compartir", "/mascotas/DIM-PAMP-0001/compartir"],
+      ["Modo perdida", "/mascotas/DIM-PAMP-0001/perdida"],
+    ]);
+    // The emergency reads as one, and the other two do not.
+    expect(panel.primary.map((row) => row.tone)).toEqual(["default", "default", "danger"]);
+  });
+
+  it("draws the groups under their headings, the death row alone and last", () => {
+    expect(panelOf().groups.map((group) => [group.heading, group.rows.map((r) => r.id)])).toEqual([
+      ["La mascota", ["edit", "photo", "contacts", "service_dog", "physical_tag"]],
+      ["Salud", ["vaccine_reminders"]],
+      ["Viajes", ["travel"]],
+      ["Custodia", ["caretaker", "return", "find_home", "transfer"]],
+      [null, ["death"]],
+    ]);
+  });
+
+  it("sends every group row to the app's own screen for it", () => {
+    const targets = Object.fromEntries(
+      panelOf().groups.flatMap((group) => group.rows.map((row) => [row.id, row.target])),
+    );
+    expect(targets).toEqual({
+      edit: "/mascotas/DIM-PAMP-0001/editar",
+      photo: "/mascotas/DIM-PAMP-0001/foto",
+      // One screen with Editar datos, opened on its own section (PO plan 7).
+      contacts: "/mascotas/DIM-PAMP-0001/editar?seccion=contactos",
+      service_dog: "/mascotas/DIM-PAMP-0001/asistencia",
+      physical_tag: "/mascotas/DIM-PAMP-0001/chapita",
+      vaccine_reminders: "/mascotas/DIM-PAMP-0001/vacunas",
+      travel: "/mascotas/DIM-PAMP-0001/viaje",
+      caretaker: { pathname: "/mascotas/DIM-PAMP-0001/cuidado", params: { name: "Pampa" } },
+      return: "/mascotas/DIM-PAMP-0001/devolucion",
+      find_home: "/mascotas/DIM-PAMP-0001/buscar-hogar",
+      transfer: { pathname: "/mascotas/DIM-PAMP-0001/transferir", params: { name: "Pampa" } },
+      death: "/mascotas/DIM-PAMP-0001/asentar?kind=death",
     });
-
-  it("is offered to the legal owner of a living dog", () => {
-    expect(gatesFor({}).canManageServiceDog).toBe(true);
   });
 
-  it("is refused to every other holder — the web row gates on role 'owner'", () => {
-    for (const viewerRole of ["co_owner", "foster", "caretaker", "org_member"] as const) {
-      expect(gatesFor({ viewerRole }).canManageServiceDog).toBe(false);
-    }
+  it("says what the death row does BEFORE the tap, and captions no other live row", () => {
+    const panel = panelOf();
+    expect(rowOf(panel, "death")?.caption).toBe("Cierra el registro del animal");
+    expect(rowOf(panel, "edit")?.caption).toBeNull();
+    expect(rowOf(panel, "transfer")?.caption).toBeNull();
   });
 
-  it("is not offered for a cat, nor for a deceased dog", () => {
-    expect(gatesFor({ species: "cat" }).canManageServiceDog).toBe(false);
-    expect(gatesFor({ petStatus: "deceased" }).canManageServiceDog).toBe(false);
-  });
-
-  it("stays offered while the identity read has not answered — permissive, like its siblings", () => {
-    expect(gatesFor({ species: null }).canManageServiceDog).toBe(true);
+  it("carries no name when the identity read failed — empty params, never the word undefined", () => {
+    expect(rowOf(panelOf({ species: null }), "transfer")?.target).toEqual({
+      pathname: "/mascotas/DIM-PAMP-0001/transferir",
+      params: {},
+    });
   });
 });
 
-describe("ownerFaceGates — viajes-fase-2's canPlanTravel", () => {
-  // The web row's audience (`MAS_SHEET_TRAVEL_ROLES`): owner, co-owner and
-  // foster, after the sheet's deceased early-return.
-  const okStatus = (petStatus: string): { state: "ok"; data: OwnerPetStatusSection } => ({
-    state: "ok",
-    data: { petStatus } as OwnerPetStatusSection,
+describe("ownerPanelView — a row that does not apply is grey, with its reason", () => {
+  it("draws a co-owner's titular-only rows inert, each saying 'Solo el titular'", () => {
+    const panel = panelOf({ viewerRole: "co_owner" });
+    for (const id of ["contacts", "service_dog", "caretaker", "find_home", "transfer"] as const) {
+      expect([id, rowOf(panel, id)?.target, rowOf(panel, id)?.caption]).toEqual([
+        id,
+        null,
+        "Solo el titular",
+      ]);
+    }
+    // The control: what a co-owner MAY do is still a door.
+    expect(rowOf(panel, "edit")?.target).toBe("/mascotas/DIM-PAMP-0001/editar");
   });
-  const noPpp: { state: "ok"; data: OwnerPetPppRegistriesSection } = { state: "ok", data: null };
-  const gatesFor = (
-    viewerRole: "owner" | "co_owner" | "foster" | "caretaker" | "org_member",
-    petStatus: string | null = "active",
-  ) =>
-    ownerFaceGates({
-      viewerRole,
-      isTitular: viewerRole === "owner",
-      status:
-        petStatus === null
-          ? { state: "unavailable", message: SECTION_UNAVAILABLE_MESSAGE }
-          : okStatus(petStatus),
-      pppRegistries: noPpp,
-    });
 
-  it("is offered to the three travel titulars", () => {
-    for (const role of ["owner", "co_owner", "foster"] as const) {
-      expect(gatesFor(role).canPlanTravel).toBe(true);
+  it("tells a titular whose animal is LOST to find it first, and keeps the cockpit", () => {
+    const panel = panelOf({ petStatus: "lost" });
+    expect(rowOf(panel, "transfer")?.caption).toBe("No se puede en esta situación");
+    expect(rowOf(panel, "caretaker")?.target).toBeNull();
+    // Kept on a lost animal: the row is the cockpit for both directions.
+    expect(rowOf(panel, "lost")?.target).toBe("/mascotas/DIM-PAMP-0001/perdida");
+  });
+
+  it("names the arrangement for a caretaker, and keeps what a caretaker MAY do live", () => {
+    const panel = panelOf({ viewerRole: "caretaker" });
+    expect(rowOf(panel, "edit")?.caption).toBe("No disponible para cuidadores");
+    expect(rowOf(panel, "edit")?.target).toBeNull();
+    // `titular-only.ts` lists photos and the death record among a caretaker's acts.
+    expect(rowOf(panel, "photo")?.target).toBe("/mascotas/DIM-PAMP-0001/foto");
+    expect(rowOf(panel, "death")?.target).toBe("/mascotas/DIM-PAMP-0001/asentar?kind=death");
+  });
+});
+
+describe("ownerPanelView — a deceased animal keeps Compartir, Editar datos, Foto and Contactos (PO)", () => {
+  it("draws those four and nothing else, all of them live", () => {
+    const panel = panelOf({ petStatus: "deceased" });
+    expect(idsOf(panel)).toEqual(["share", "edit", "photo", "contacts"]);
+    expect(rowOf(panel, "contacts")?.target).toBe(
+      "/mascotas/DIM-PAMP-0001/editar?seccion=contactos",
+    );
+  });
+
+  it("closes the attestation door even where the regime applies", () => {
+    expect(panelOf({ petStatus: "deceased", ppp: "applies" }).attestationDoor).toBe(false);
+    expect(panelOf({ ppp: "applies" }).attestationDoor).toBe(true);
+  });
+});
+
+describe("ownerPanelView — one destination, two asks, and only one has a screen here", () => {
+  it("shows the FOSTER's 'Buscar hogar' grey, saying where it lives, and sends nobody anywhere", () => {
+    // `foster`'s `sendRehomeRequest` has no v1 route yet (a follow-up of this
+    // change); `RehomeScreen` serves the titular's ask, not this one.
+    const row = rowOf(panelOf({ viewerRole: "foster" }), "find_home");
+    expect([row?.label, row?.target, row?.caption]).toEqual([
+      "Buscar hogar",
+      null,
+      "Se hace desde la web",
+    ]);
+  });
+
+  it("sends the titular's 'Acompañamiento de adopción' to the native screen", () => {
+    const row = rowOf(panelOf(), "find_home");
+    expect([row?.label, row?.target]).toEqual([
+      "Acompañamiento de adopción",
+      "/mascotas/DIM-PAMP-0001/buscar-hogar",
+    ]);
+  });
+});
+
+describe("ownerPanelView — the trip is the travel titulars' (TRAVEL_TITULAR_ROLES)", () => {
+  // THE PIN, kept from `ownerFaceGates.canPlanTravel` (the web's twin lived in
+  // `MasSheet.helpers.test.ts`): the server's `TRAVEL_TITULAR_ROLES`
+  // (`lib/infra/travel-private-events.ts`) is owner, co-owner and foster. A
+  // caretaker is often the person keeping the animal while the family travels.
+  it("is a door for the three travel titulars", () => {
+    for (const viewerRole of ["owner", "co_owner", "foster"] as const) {
+      expect([viewerRole, rowOf(panelOf({ viewerRole }), "travel")?.target]).toEqual([
+        viewerRole,
+        "/mascotas/DIM-PAMP-0001/viaje",
+      ]);
     }
   });
 
-  it("is refused to a caretaker and to the organisation path", () => {
-    expect(gatesFor("caretaker").canPlanTravel).toBe(false);
-    expect(gatesFor("org_member").canPlanTravel).toBe(false);
+  it("is grey for a caretaker and absent from the organization path", () => {
+    expect(rowOf(panelOf({ viewerRole: "caretaker" }), "travel")?.caption).toBe(
+      "No disponible para cuidadores",
+    );
+    expect(rowOf(panelOf({ viewerRole: "org_member" }), "travel")).toBeNull();
   });
 
-  it("is gone for a deceased animal and stays for a lost one", () => {
-    expect(gatesFor("owner", "deceased").canPlanTravel).toBe(false);
-    expect(gatesFor("owner", "lost").canPlanTravel).toBe(true);
+  it("stays a door on a LOST animal — only a death takes it away", () => {
+    expect(rowOf(panelOf({ petStatus: "lost" }), "travel")?.target).toBe(
+      "/mascotas/DIM-PAMP-0001/viaje",
+    );
+    expect(rowOf(panelOf({ petStatus: "deceased" }), "travel")).toBeNull();
+  });
+});
+
+describe("ownerPanelView — an organization member gets Compartir and acts from the portal", () => {
+  it("draws Compartir alone, with no groups and no photo door", () => {
+    const panel = panelOf({ viewerRole: "org_member" });
+    expect(idsOf(panel)).toEqual(["share"]);
+    expect(panel.groups).toEqual([]);
+    expect(panel.photoTarget).toBeNull();
+  });
+});
+
+describe("ownerPanelView — a section that did not load takes nothing away", () => {
+  it("keeps every titular door while the status is unread", () => {
+    const panel = panelOf({ petStatus: null });
+    expect(rowOf(panel, "transfer")?.target).toEqual({
+      pathname: "/mascotas/DIM-PAMP-0001/transferir",
+      params: { name: "Pampa" },
+    });
+    expect(rowOf(panel, "lost")?.target).toBe("/mascotas/DIM-PAMP-0001/perdida");
   });
 
-  it("stays offered while the status read has not answered — permissive, like its siblings", () => {
-    expect(gatesFor("co_owner", null).canPlanTravel).toBe(true);
+  it("keeps 'Perro de asistencia' while the species is unread, and drops it for a known cat", () => {
+    expect(rowOf(panelOf({ species: null }), "service_dog")?.target).toBe(
+      "/mascotas/DIM-PAMP-0001/asistencia",
+    );
+    expect(rowOf(panelOf({ species: "cat" }), "service_dog")).toBeNull();
+  });
+
+  it("is the ONE exception for the attestation door: an unread registry closes it", () => {
+    // The regime covers a small minority of dogs; offering its form on an
+    // outage would put it in front of almost every owner.
+    expect(panelOf({ ppp: "unread" }).attestationDoor).toBe(false);
+  });
+});
+
+describe("ownerPanelView — the photo frame is a door with the Foto row's own gate", () => {
+  it("opens the photo screen for every person-path holder, a caretaker and a fallecida included", () => {
+    for (const over of [{}, { viewerRole: "caretaker" as const }, { petStatus: "deceased" }]) {
+      const panel = panelOf(over);
+      expect(panel.photoTarget).toBe("/mascotas/DIM-PAMP-0001/foto");
+      expect(panel.photoTarget).toBe(rowOf(panel, "photo")?.target);
+    }
   });
 });
