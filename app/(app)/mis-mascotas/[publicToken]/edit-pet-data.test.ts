@@ -16,7 +16,7 @@ import { editPetDataFor } from "./edit-pet-data";
 
 const PET = {
   id: "pet-1",
-  publicToken: "DIM-PAMP-0001",
+  publicToken: "DIM-TEST-0001",
   name: "Pampa",
   insuranceCompany: "Sancor Seguros",
   insurancePolicyNumber: "POL-1",

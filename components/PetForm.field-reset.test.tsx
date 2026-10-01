@@ -140,7 +140,7 @@ describe("<PetForm> — survives the React 19 post-error reset", () => {
   it("keeps what was typed in other sections after a refusal pressed from one", async () => {
     actionMock.mockResolvedValue({ error: "No se pudo guardar la mascota." });
     const existingPet = {
-      publicToken: "DIM-PAMP-0001",
+      publicToken: "DIM-TEST-0001",
       species: "dog",
       name: "Firulais",
       sex: "male",

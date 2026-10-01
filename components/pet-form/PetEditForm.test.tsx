@@ -35,7 +35,7 @@ import {
 const actionMock = vi.fn();
 
 const PET = {
-  publicToken: "DIM-PAMP-0001",
+  publicToken: "DIM-TEST-0001",
   species: "dog",
   name: "Pampa",
   sex: "female",
@@ -131,7 +131,7 @@ describe("Editar datos on the web — the app's six sections, in its order", () 
 
 describe("Editar datos on the web — Contactos opens its own sheet", () => {
   it("links to the emergency-contacts sheet when the viewer may edit them", () => {
-    const href = "/mis-mascotas/DIM-PAMP-0001?sheet=emergencia";
+    const href = `/mis-mascotas/${PET.publicToken}?sheet=emergencia`;
     const { container } = render(
       <PetForm action={actionMock} existingPet={PET} contactsHref={href} />,
     );
