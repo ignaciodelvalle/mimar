@@ -97,6 +97,29 @@ describe("PetPhotoSheet — the save", () => {
     );
   });
 
+  it("takes the chosen picture off the preview when the save is refused (the input was reset)", async () => {
+    updatePetPhotoAction.mockResolvedValue({ error: "La foto pesa más de 5 MB." });
+    const { container } = render(
+      <PetPhotoSheet petPublicToken={TOKEN} existingPhotoUrl="https://s.test/pampa.jpg" />,
+    );
+    const input = container.querySelector('input[name="photo"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(["x"], "grande.jpg")] } });
+    expect(screen.getByAltText("Vista previa de la mascota")).toHaveAttribute(
+      "src",
+      "blob:preview",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Guardar foto" }));
+    await screen.findByRole("alert");
+    // React 19 emptied the file input; the preview must not still claim the file.
+    await waitFor(() =>
+      expect(screen.getByAltText("Vista previa de la mascota")).toHaveAttribute(
+        "src",
+        "https://s.test/pampa.jpg",
+      ),
+    );
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:preview");
+  });
+
   it("stays busy while the document leaves, so a second tap cannot post twice", () => {
     useActionRedirect.mockReturnValue(true);
     render(<PetPhotoSheet petPublicToken={TOKEN} existingPhotoUrl={null} />);

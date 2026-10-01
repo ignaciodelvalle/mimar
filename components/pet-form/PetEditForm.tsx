@@ -69,6 +69,7 @@ import {
   petProfileEditSection,
   pluralizeEs,
 } from "@dim/contract/reference";
+import { usePhotoPreview } from "./use-photo-preview";
 
 import {
   ConditionOtherField,
@@ -106,6 +107,8 @@ type SaveState = {
   /** The section whose Guardar was pressed last, and the refusal it got. */
   saving: WebSectionId | null;
   error: string | null;
+  /** The action's answer when it was a refusal — a fresh object per answer. */
+  refusal: object | null;
   onSave: (id: WebSectionId) => void;
 };
 
@@ -137,6 +140,7 @@ export function PetEditForm({
     saving,
     // Shown once the save has answered, in the section that asked.
     error: isPending ? null : state.error,
+    refusal: !isPending && state.error ? state : null,
     onSave: setSaving,
   };
   const [conditions, setConditions] = useState<Set<PermanentCondition>>(
@@ -270,12 +274,7 @@ function PhotoSection({
   existingPhotoUrl: string | null;
   save: SaveState;
 }) {
-  const [preview, setPreview] = useState<string | null>(existingPhotoUrl);
-  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview);
-    setPreview(file ? URL.createObjectURL(file) : existingPhotoUrl);
-  }
+  const { preview, onFileChange } = usePhotoPreview(existingPhotoUrl, save.refusal);
   return (
     <EditSection id="foto" title={PET_ACTION_COPY.photo.label} saveLabel="Guardar foto" save={save}>
       <LnPhotoField onFileChange={onFileChange} preview={preview} />

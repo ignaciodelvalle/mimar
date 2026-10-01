@@ -12,10 +12,11 @@
 // ON SUCCESS THE DOCUMENT NAVIGATES (useActionRedirect): the credential is
 // drawn on the server, and a full load is how it shows the new photo.
 
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
 
 import { type PetPhotoFormState, updatePetPhotoAction } from "@/app/actions/pet-photo";
 import { LnPhotoField } from "@/components/pet-form/fields";
+import { usePhotoPreview } from "@/components/pet-form/use-photo-preview";
 import { LnButton } from "@/components/ui/Button";
 import { useActionRedirect } from "@/lib/ui/use-action-redirect";
 
@@ -33,13 +34,7 @@ export function PetPhotoSheet({ petPublicToken, existingPhotoUrl }: Props) {
     IDLE,
   );
   const navigating = useActionRedirect(state.redirectTo, state);
-  const [preview, setPreview] = useState<string | null>(existingPhotoUrl);
-
-  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview);
-    setPreview(file ? URL.createObjectURL(file) : existingPhotoUrl);
-  }
+  const { preview, onFileChange } = usePhotoPreview(existingPhotoUrl, state.error ? state : null);
 
   const busy = pending || navigating;
   return (

@@ -104,6 +104,24 @@ describe("Editar datos on the web — the app's six sections, in its order", () 
     }
   });
 
+  it("takes a chosen picture off the Foto preview when the save is refused (the input was reset)", async () => {
+    const createObjectURL = vi.fn(() => "blob:elegida");
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = vi.fn();
+    actionMock.mockResolvedValue({ error: "Algo salio mal." });
+    const { container } = render(
+      <PetForm action={actionMock} existingPet={PET} existingPhotoUrl="https://s.test/pampa.jpg" />,
+    );
+    const foto = sectionOf(container, "foto");
+    const preview = () => within(foto).getByAltText("Vista previa de la mascota");
+    const input = foto.querySelector('input[name="photo"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(["x"], "nueva.jpg")] } });
+    expect(preview()).toHaveAttribute("src", "blob:elegida");
+    fireEvent.click(within(foto).getByRole("button", { name: /Guardar/ }));
+    await waitFor(() => expect(preview()).toHaveAttribute("src", "https://s.test/pampa.jpg"));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:elegida");
+  });
+
   it("saves the WHOLE form from any section — the writer stores every column", async () => {
     actionMock.mockResolvedValue({ error: null });
     const { container } = render(<PetForm action={actionMock} existingPet={PET} />);
