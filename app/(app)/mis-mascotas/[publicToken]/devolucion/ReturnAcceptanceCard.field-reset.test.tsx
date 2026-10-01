@@ -55,7 +55,7 @@ describe("<ReturnAcceptanceCard> — survives the React 19 post-error reset", ()
     rejectMock.mockResolvedValue({ error: "No se pudo enviar el rechazo." });
     const { container } = render(<ReturnAcceptanceCard {...BASE_PROPS} />);
 
-    fireEvent.click(screen.getByText("Rechazar propuesta"));
+    fireEvent.click(screen.getByText("Rechazar la devolución"));
 
     const reason = container.querySelector('textarea[name="reason"]') as HTMLTextAreaElement;
     const rejectForm = reason.closest("form") as HTMLFormElement;

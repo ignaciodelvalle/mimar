@@ -4,7 +4,7 @@
 //
 // Renders:
 //   - Proposal details (actor name, notes, date)
-//   - "Marcar como recibida" button → ownerAcceptReturnFormAction
+//   - "Ya tengo a {pet}" button → ownerAcceptReturnFormAction
 //   - Reject section → ownerRejectReturnFormAction
 //
 // When accept returns autoCancelled=true, shows an explanation banner instead
@@ -26,6 +26,12 @@ import { LnSuccessScreen } from "@/components/ui/SuccessScreen";
 import { useKeptFields } from "@/lib/ui/use-kept-fields";
 import { AR_TIME_ZONE } from "@/lib/utils/format";
 import { useActionState, useState } from "react";
+import {
+  type ReturnActorKind,
+  acceptedSentence,
+  confirmSentence,
+  rejectSentence,
+} from "./return-copy";
 
 const acceptInitial: AcceptReturnFormState = { error: null };
 const rejectInitial: RejectReturnFormState = { error: null };
@@ -34,6 +40,7 @@ export function ReturnAcceptanceCard({
   petPublicToken,
   petName,
   actorName,
+  actorKind = "person",
   proposalNotes,
   proposedAt,
   backUrl,
@@ -41,6 +48,7 @@ export function ReturnAcceptanceCard({
   petPublicToken: string;
   petName: string;
   actorName: string;
+  actorKind?: ReturnActorKind;
   proposalNotes: string | null;
   proposedAt: string;
   backUrl: string;
@@ -65,7 +73,7 @@ export function ReturnAcceptanceCard({
     return (
       <LnSuccessScreen
         title="Devolución confirmada"
-        description={`${petName} está de vuelta con vos. La custodia de ${actorName} quedó cerrada y le avisamos que la recibiste.`}
+        description={`${acceptedSentence(petName)} Le avisamos a ${actorName}.`}
         next={[
           { label: `Ver la libreta de ${petName}`, href: `/mis-mascotas/${petPublicToken}` },
           { label: "Ir a mis mascotas", href: backUrl },
@@ -92,7 +100,7 @@ export function ReturnAcceptanceCard({
     return (
       <div className="rounded-[var(--radius-sm)] border border-[var(--color-ln-line-strong)] bg-[var(--color-ln-stripe)] p-4 space-y-2">
         <p className="text-[var(--color-ln-ink)] font-medium">
-          Propuesta rechazada. {actorName} fue notificado.
+          Propuesta rechazada. Le avisamos a {actorName}.
         </p>
         <a href={backUrl} className="text-sm underline text-[var(--color-ln-ink-2)]">
           Volver a mis mascotas
@@ -108,9 +116,6 @@ export function ReturnAcceptanceCard({
         <div className="space-y-1">
           <p className="text-sm text-[var(--color-ln-mute)] uppercase tracking-wide">
             Propuesta de devolución
-          </p>
-          <p className="text-base font-semibold">
-            {actorName} está listo para devolverte a {petName}
           </p>
           <p className="text-xs text-[var(--color-ln-mute)]">
             Propuesta el{" "}
@@ -135,13 +140,15 @@ export function ReturnAcceptanceCard({
         </p>
       )}
 
+      <p className="text-sm text-[var(--color-ln-ink-2)]">{confirmSentence(actorKind, petName)}</p>
+
       <form action={acceptFormAction}>
         <button
           type="submit"
           disabled={acceptPending}
           className="w-full py-3 rounded-[var(--radius-pill)] bg-[var(--color-ln-ok)] text-white hover:opacity-90 disabled:opacity-50 font-medium transition-colors"
         >
-          {acceptPending ? "Confirmando…" : "Marcar como recibida"}
+          {acceptPending ? "Confirmando…" : `Ya tengo a ${petName}`}
         </button>
       </form>
 
@@ -152,7 +159,7 @@ export function ReturnAcceptanceCard({
           onClick={() => setShowRejectForm(true)}
           className="text-sm text-[var(--color-ln-mute)] underline hover:text-[var(--color-ln-ink-2)]"
         >
-          Rechazar propuesta
+          Rechazar la devolución
         </button>
       )}
 
@@ -161,6 +168,7 @@ export function ReturnAcceptanceCard({
           action={rejectFormAction}
           className="space-y-3 rounded-[var(--radius-sm)] border border-[var(--color-ln-line)] p-4"
         >
+          <p className="text-sm text-[var(--color-ln-ink-2)]">{rejectSentence(actorKind)}</p>
           <div className="space-y-1">
             <label
               htmlFor="reason"
@@ -175,7 +183,7 @@ export function ReturnAcceptanceCard({
               required
               maxLength={500}
               defaultValue={kept("reason")}
-              placeholder="Explicá por qué rechazás la propuesta…"
+              placeholder="No puedo recibirla ahora…"
               className="w-full rounded-[var(--radius-sm)] border border-[var(--color-ln-line-strong)] bg-[var(--color-ln-card)] px-3 py-2 text-sm resize-y outline-none focus:border-[var(--color-ln-azul)] focus:shadow-[0_0_0_3px_var(--color-ln-celeste-050)]"
             />
           </div>

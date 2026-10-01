@@ -16,6 +16,7 @@ vi.mock("@/app/actions/return-to-owner-form", () => ({
 }));
 
 import { ReturnAcceptanceCard } from "./ReturnAcceptanceCard";
+import { acceptedSentence, confirmSentence, rejectSentence, returnHeadline } from "./return-copy";
 
 const PROPS = {
   petPublicToken: "DIM-PAMP-0001",
@@ -35,7 +36,7 @@ afterEach(() => cleanup());
 describe("confirming the return", () => {
   it("renders the receipt: what happened, who was told, and where to go", async () => {
     render(<ReturnAcceptanceCard {...PROPS} />);
-    fireEvent.click(screen.getByRole("button", { name: "Marcar como recibida" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ya tengo a Pampa" }));
     await waitFor(() => expect(acceptAction).toHaveBeenCalled());
     expect(acceptAction.mock.calls[0][0]).toBe("DIM-PAMP-0001");
 
@@ -43,9 +44,7 @@ describe("confirming the return", () => {
       await screen.findByRole("heading", { name: "Devolución confirmada" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "Pampa está de vuelta con vos. La custodia de Refugio Sur quedó cerrada y le avisamos que la recibiste.",
-      ),
+      screen.getByText("¡Listo! Pampa ya está en casa con vos. Le avisamos a Refugio Sur."),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ver la libreta de Pampa" })).toHaveAttribute(
       "href",
@@ -64,7 +63,7 @@ describe("confirming the return", () => {
       autoCancelReason: "La mascota ya no está bajo esa custodia.",
     });
     render(<ReturnAcceptanceCard {...PROPS} />);
-    fireEvent.click(screen.getByRole("button", { name: "Marcar como recibida" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ya tengo a Pampa" }));
 
     expect(await screen.findByText("La propuesta ya no es válida")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Devolución confirmada" })).toBeNull();
@@ -73,9 +72,48 @@ describe("confirming the return", () => {
   it("an error keeps the card and shows it", async () => {
     acceptAction.mockResolvedValue({ error: "No se pudo confirmar." });
     render(<ReturnAcceptanceCard {...PROPS} />);
-    fireEvent.click(screen.getByRole("button", { name: "Marcar como recibida" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ya tengo a Pampa" }));
 
     expect(await screen.findByText("No se pudo confirmar.")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Devolución confirmada" })).toBeNull();
+  });
+});
+
+describe("the sentences by who proposed", () => {
+  it("a shelter's proposal reads as the pet being safe and waiting", () => {
+    render(<ReturnAcceptanceCard {...PROPS} actorKind="organization" />);
+    expect(
+      screen.getByText(
+        "Tocá el botón cuando ya tengas a Pampa con vos. Ahí el refugio deja de cuidarla.",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Rechazar la devolución"));
+    expect(
+      screen.getByText("Si no es tu mascota o algo no está bien, contale el motivo al refugio."),
+    ).toBeInTheDocument();
+  });
+
+  it("a person's proposal reads as the end of a temporary care", () => {
+    render(<ReturnAcceptanceCard {...PROPS} actorKind="person" />);
+    expect(
+      screen.getByText(
+        "Tocá el botón cuando ya tengas a Pampa con vos. Ahí termina su cuidado temporal.",
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("web and mobile say the same thing", () => {
+  it.each(["organization", "person"] as const)("%s proposer", async (kind) => {
+    const mobile = await import("../../../../../apps/mobile/src/custody/devolucion-view-model");
+    const state = { kind: "inbound_pending", actorName: "Refugio Sur", actorKind: kind } as never;
+    expect(returnHeadline(kind, "Refugio Sur", "Pampa")).toBe(
+      mobile.returnStateHeadline(state, "Pampa"),
+    );
+    expect(confirmSentence(kind, "Pampa")).toBe(mobile.confirmReturnSentence(state, "Pampa"));
+    expect(rejectSentence(kind)).toBe(mobile.rejectReturnSentence(state));
+    expect(acceptedSentence("Pampa")).toBe(
+      mobile.acceptedMessage({ autoCancelled: false, reason: null }, "Pampa").message,
+    );
   });
 });

@@ -18,6 +18,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { OwnerInitiateReturnForm } from "./OwnerInitiateReturnForm";
 import { ReturnAcceptanceCard } from "./ReturnAcceptanceCard";
+import { type ReturnActorKind, returnHeadline } from "./return-copy";
 
 const ROLE_LABELS: Record<string, string> = {
   shelter_custody: "custodia temporal (tránsito)",
@@ -290,6 +291,9 @@ export default async function DevolucionPage({
     (proposalPayload.proposed_at as string | null) ?? latestProposal.occurredAt.toISOString();
 
   let actorName = "Alguien";
+  // Same rule as read-return-state's proposerIdentity: a user id wins; only a
+  // resolved organisation reads as one.
+  let actorKind: ReturnActorKind = "person";
   if (fromUserId) {
     const [profile] = await db
       .select({ displayName: profiles.displayName })
@@ -303,7 +307,10 @@ export default async function DevolucionPage({
       .from(organizations)
       .where(eq(organizations.id, fromOrgId))
       .limit(1);
-    if (org) actorName = org.displayName;
+    if (org) {
+      actorName = org.displayName;
+      actorKind = "organization";
+    }
   }
 
   return (
@@ -314,7 +321,7 @@ export default async function DevolucionPage({
           Devolución de {pet.name}
         </h1>
         <p className="mt-[5px] text-md text-[var(--color-ln-mute)]">
-          Alguien tiene a {pet.name} y quiere devolvértela. Confirmá cuando la tengas físicamente.
+          {returnHeadline(actorKind, actorName, pet.name)}
         </p>
       </div>
 
@@ -322,6 +329,7 @@ export default async function DevolucionPage({
         petPublicToken={publicToken}
         petName={pet.name}
         actorName={actorName}
+        actorKind={actorKind}
         proposalNotes={proposalNotes}
         proposedAt={proposedAt}
         backUrl="/mis-mascotas"
