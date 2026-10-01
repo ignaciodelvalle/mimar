@@ -706,7 +706,16 @@ export async function correctPetSpeciesAction(
 ): Promise<NewPetFormState> {
   const access = await requireTitularAccess(publicToken);
   if (!access.ok) return { error: access.error };
-  const { user, pet, eventAuthorship } = access;
+  const { user, pet, eventAuthorship, accessPath, holderRole } = access;
+
+  // web = app (owner-pet-actions, security review of 3babbe25a): species
+  // correction now shares canEditPetProfile with identity and the sectioned
+  // edit. Narrower than the titular gate above (which a user-held custody row
+  // and the org path pass), and BEHIND it, so the titular-only fence still
+  // sees that guard.
+  if (!canEditPetProfile(accessPath, holderRole)) {
+    return { error: PROFILE_EDIT_REFUSED };
+  }
 
   const result = await correctPetSpecies(
     {

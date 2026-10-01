@@ -1048,4 +1048,52 @@ describe("correctPetSpeciesAction", () => {
       expect.objectContaining({ country: "AR" }),
     );
   });
+
+  // web = app (owner-pet-actions, security review of 3babbe25a): the species
+  // correction now shares canEditPetProfile with "Editar datos" and the
+  // sectioned edit — the titular gate above still runs first; this narrows
+  // behind it exactly like updatePetAction's own gate.
+  describe("who may correct — the app's edit gate", () => {
+    async function asHolder(accessPath: "owner" | "org", holderRole: string | null) {
+      const petAccessMod = await import("@/lib/infra/pet-access");
+      petAccessMod.requireTitularAccess = mockPetAccess({});
+      const base = await vi.mocked(petAccessMod.requireTitularAccess)("DIM-TEST-0001");
+      petAccessMod.requireTitularAccess = vi.fn().mockResolvedValue({
+        ...base,
+        accessPath,
+        holderRole,
+      });
+    }
+
+    it.each([
+      ["a user-held custody row", "owner", "shelter_custody"],
+      ["the org path", "org", null],
+    ] as const)("refuses %s, and writes nothing", async (_who, accessPath, holderRole) => {
+      await asHolder(accessPath, holderRole);
+      const { PetsRepository } = await import("@/src/modules/pets/infrastructure/pets-repository");
+
+      const result = (await correctPetSpeciesAction(
+        "DIM-TEST-0001",
+        { error: null },
+        makeSpeciesFormData("cat"),
+      )) as { error: string };
+
+      expect(result.error).toMatch(/no podés editar/i);
+      expect(PetsRepository.correctSpecies).not.toHaveBeenCalled();
+    });
+
+    it.each(["co_owner", "foster"])("still corrects for a %s", async (holderRole) => {
+      await asHolder("owner", holderRole);
+      const { PetsRepository } = await import("@/src/modules/pets/infrastructure/pets-repository");
+
+      const state = await correctPetSpeciesAction(
+        "DIM-TEST-0001",
+        { error: null },
+        makeSpeciesFormData("cat"),
+      );
+
+      expect(state.redirectTo).toBe("/mis-mascotas/DIM-TEST-0001");
+      expect(PetsRepository.correctSpecies).toHaveBeenCalledTimes(1);
+    });
+  });
 });

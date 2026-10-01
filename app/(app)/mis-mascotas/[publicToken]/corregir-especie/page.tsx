@@ -1,10 +1,11 @@
 import { Icon } from "@/components/Icon";
 import { NotTitularNotice } from "@/components/pet-profile/NotTitularNotice";
 import { LnSheetCard, LnSheetHeader, LnSheetWrap } from "@/components/ui/Sheet";
+import { canEditPetProfile } from "@/lib/domain/profile-editors";
 import { requireTitularAccess } from "@/lib/infra/pet-access";
 import { correctPetSpeciesAction } from "@/src/modules/pets/actions";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { CorrectSpeciesForm } from "./CorrectSpeciesForm";
 
 export default async function CorrectSpeciesPage({
@@ -28,6 +29,15 @@ export default async function CorrectSpeciesPage({
       );
     }
     notFound();
+  }
+  // web = app (owner-pet-actions, security review of 3babbe25a): the species
+  // correction for exactly the viewers who may save it (`canEditPetProfile`,
+  // the rule `correctPetSpeciesAction` and the app read share). A user-held
+  // custody row and the org path pass the titular gate above but not this one;
+  // they hold or reach the animal, so a 404 would be a lie — the profile is
+  // where "Editar datos" shows them its reason.
+  if (!canEditPetProfile(access.accessPath, access.holderRole)) {
+    redirect(`/mis-mascotas/${publicToken}`);
   }
   const { pet } = access;
 

@@ -19,7 +19,7 @@
 
 import { canEditPetProfile } from "@/lib/domain/profile-editors";
 import { apiV1Envelope } from "@/lib/infra/api-v1";
-import { type PetHolderAccess, isTitularHolder } from "@/lib/infra/pet-access";
+import type { PetHolderAccess } from "@/lib/infra/pet-access";
 import type { PhysicalTagInterestState } from "@/lib/infra/physical-tag-interest";
 import type { OwnerPetViewerContactsRead } from "@/src/modules/pets/application/read/owner-pet-detail-queries";
 import type { ServiceDogDesignationRow } from "@/src/modules/pets/application/service-dog/read-service-dog";
@@ -85,13 +85,14 @@ export function isLegalOwner(access: ResolvedProfileAccess): boolean {
  *     `isTitularHolder` instead, which admits the org path and a user-held
  *     `shelter_custody` row — a door the web never opened for them
  *     (verify-report W1).
- *   · CORRECT SPECIES keeps mirroring `requireTitularAccess` — `isTitularHolder`
- *     is the guard's OWN predicate, exported from `lib/infra/pet-access.ts` and
- *     called by `requireTitularAccess` itself, so the two cannot drift into
- *     disagreeing about who a titular is. This is `CorrectSpeciesPage`'s own
- *     web gate, a separately-governed action, and NOT a stand-in for
- *     `canEditPetProfile`: it happened to equal IDENTITY's old value, and now
- *     parts ways from it instead — see the note by `canCorrectSpecies` below.
+ *   · CORRECT SPECIES now shares `canEditPetProfile` too (security review of
+ *     3babbe25a). It used to keep mirroring `requireTitularAccess` on its own,
+ *     separately-governed web gate (`CorrectSpeciesPage`), which admitted the
+ *     org path and a user-held `shelter_custody` row — the same drift IDENTITY
+ *     had before IT moved. The web's `correctPetSpeciesAction` still runs
+ *     `requireTitularAccess` first (the fence `scripts/check-titular-gate.ts`
+ *     watches for) and narrows behind it, the same two-step `updatePetAction`
+ *     already takes — see the note by `canCorrectSpecies` below.
  *   · CONTACTS is not a `requireTitularAccess` question at all and cannot be
  *     expressed as one: the writer's own query joins `ownerships` on
  *     `role = 'owner'`, so co-owner, foster and the entire org path are outside
@@ -129,11 +130,12 @@ export function petProfileCapabilities(
   // holder resolver calls it `kind`, the cookie guard `accessPath` — and
   // `holderRole` exists only on the owner arm, which is exactly the arm the
   // predicate reads.
-  const titular = isTitularHolder(access.kind, access.kind === "owner" ? access.holderRole : null);
-  // IDENTITY and THE SECTIONED PROFILE EDIT are one predicate now (owner-pet-
-  // actions, PO 2026-10-01: web = app) — both write the same owner data through
-  // the web's single `updatePetAction` gate, so the API must not offer either
-  // door to a holder the web refuses.
+  //
+  // IDENTITY, CORRECT SPECIES and THE SECTIONED PROFILE EDIT are one predicate
+  // now (owner-pet-actions; species joined by the security review of
+  // 3babbe25a) — all three write or rewrite the owner's pet data through a web
+  // door gated on `canEditPetProfile`, so the API must not offer any of them to
+  // a holder the web refuses.
   const editsProfile = canEditPetProfile(
     access.kind,
     access.kind === "owner" ? access.holderRole : null,
@@ -141,11 +143,12 @@ export function petProfileCapabilities(
   return {
     canEditIdentity: editsProfile,
     canEditEmergencyContacts: access.kind === "owner" && access.holderRole === "owner",
-    // The web's `corregir-especie` page guards with `requireTitularAccess`
-    // ALONE (`CorrectSpeciesPage`) — its own, separately-governed gate, not
-    // `canEditPetProfile`. It used to equal `canEditIdentity` by coincidence;
-    // now that IDENTITY has moved, the two part ways exactly as planned.
-    canCorrectSpecies: titular,
+    // The web's `corregir-especie` page (`CorrectSpeciesPage`) narrows with
+    // `canEditPetProfile` too now, behind its own `requireTitularAccess` — the
+    // same predicate as IDENTITY and THE SECTIONED PROFILE EDIT (security
+    // review of 3babbe25a: the org path and a user-held `shelter_custody` row
+    // do not edit the owner's pet data, species included).
+    canCorrectSpecies: editsProfile,
     canTogglePhysicalTagInterest: access.kind === "owner",
     canManageServiceDog: isLegalOwner(access) && access.pet.status !== "deceased",
     canEditProfile: editsProfile,

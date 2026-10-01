@@ -6,12 +6,14 @@
 //   1. THE GUARDS ARE THE WEB'S, AND THEY ARE TWO GUARDS, NOT ONE. Identity is
 //      `canEditPetProfile` (owner-pet-actions, PO 2026-10-01: web = app) — a
 //      caretaker, the ORG path and a user-held `shelter_custody` row refused; a
-//      CO-OWNER and a FOSTER admitted. `correct_species` is the one surface
-//      still on `requireTitularAccess` (`CorrectSpeciesPage`'s own, separate web
-//      gate): same caretaker refusal, but the ORG path and `shelter_custody`
-//      pass it. Contacts are the LEGAL owner alone: co-owner, foster and org all
-//      refused, which is narrower than either and cannot be expressed as one. A
-//      single rule would be wrong for somebody either way.
+//      CO-OWNER and a FOSTER admitted. `correct_species` now shares that SAME
+//      predicate (security review of 3babbe25a): it used to stay on
+//      `requireTitularAccess` alone (`CorrectSpeciesPage`'s own, separate web
+//      gate), which let the ORG path and `shelter_custody` through — the same
+//      drift identity had before it moved. Contacts are the LEGAL owner alone:
+//      co-owner, foster and org all refused, which is narrower than either and
+//      cannot be expressed as one. A single rule would be wrong for somebody
+//      either way.
 //   2. THE READ AND THE WRITE AGREE. The capability flags the read reports are
 //      the same two booleans the write enforces, so a client can never be
 //      offered a control that answers 403.
@@ -396,7 +398,8 @@ describe("GET — what the form pre-fills with", () => {
     expect(body.capabilities).toEqual({
       canEditIdentity: false,
       canEditEmergencyContacts: false,
-      // The web's `CorrectSpeciesPage` guards with `requireTitularAccess` too.
+      // The web's `CorrectSpeciesPage` shares `canEditPetProfile` with identity
+      // now (security review of 3babbe25a), behind its own `requireTitularAccess`.
       canCorrectSpecies: false,
       // D2: `togglePhysicalTagInterestAction` never drew this finer line — a
       // caretaker passes its own check exactly as a co-owner does.
@@ -406,26 +409,27 @@ describe("GET — what the form pre-fills with", () => {
     });
   });
 
-  it("refuses the ORG path the identity half too — canEditPetProfile, not requireTitularAccess", async () => {
+  it("refuses the ORG path both halves — canEditPetProfile, not requireTitularAccess", async () => {
     control.access = asOrg();
     const body = await (await read()).json();
     expect(body.capabilities.canEditIdentity).toBe(false);
     expect(body.capabilities.canEditEmergencyContacts).toBe(false);
-    // `correct_species` is the one surface that still mirrors
-    // `requireTitularAccess` — `CorrectSpeciesPage`'s own, separately-governed
-    // web gate — so the org path keeps passing THAT one.
-    expect(body.capabilities.canCorrectSpecies).toBe(true);
+    // Used to be the one surface where `correct_species` still mirrored
+    // `requireTitularAccess` alone and let the org path through (verify-report
+    // W1 fixed identity; this gate was fixed next, by the security review of
+    // 3babbe25a).
+    expect(body.capabilities.canCorrectSpecies).toBe(false);
   });
 
-  it("refuses a user-held shelter_custody row the identity half — same rule as owner-pet-actions", async () => {
+  it("refuses a user-held shelter_custody row both halves — same rule as owner-pet-actions", async () => {
     control.access = asRole("shelter_custody");
     const body = await (await read()).json();
     expect(body.capabilities.canEditIdentity).toBe(false);
     expect(body.capabilities.canEditProfile).toBe(false);
-    // Unlike identity, `requireTitularAccess` never denied a user-held
-    // shelter_custody row (it only denies `caretaker`), so correct_species
-    // still admits it.
-    expect(body.capabilities.canCorrectSpecies).toBe(true);
+    // `requireTitularAccess` alone never denied a user-held shelter_custody row
+    // (it only denies `caretaker`) — `canCorrectSpecies` now does, sharing
+    // `canEditPetProfile` with identity (security review of 3babbe25a).
+    expect(body.capabilities.canCorrectSpecies).toBe(false);
   });
 });
 
@@ -676,14 +680,18 @@ describe("POST — corregir especie, the FULL-LOCK command", () => {
     });
   });
 
-  it("stamps the org path with the authorship the resolver computed", async () => {
-    control.access = asOrg();
-    expect((await send(SPECIES)).status).toBe(200);
-    expect((control.writes[0].input.actor as Record<string, unknown>).eventAuthorship).toEqual({
-      authorRole: "shelter",
-      authorOrganizationId: "org-1",
-      authorVerified: false,
-    });
+  it("refuses the ORG path and a user-held shelter_custody row, and writes nothing (security review of 3babbe25a)", async () => {
+    // `canEditPetProfile`, not `requireTitularAccess`/`isTitularHolder` — the
+    // latter would admit both, which used to be this command's own drift: the
+    // web's `CorrectSpeciesPage` gates behind `canEditPetProfile` too now, so
+    // neither holder ever reaches the use-case to have an authorship stamped.
+    for (const access of [asOrg(), asRole("shelter_custody")]) {
+      control.access = access;
+      const response = await send(SPECIES);
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: "profile_forbidden" });
+      expect(control.writes).toHaveLength(0);
+    }
   });
 
   it("reports changed:false for the species the animal already has — a replay, not a refusal", async () => {

@@ -2,11 +2,14 @@
 // 2026-10-01: web = app).
 //
 // ONE rule for every door that enforces it: the web's `updatePetAction` and its
-// two forms (the `?sheet=editar-mascota` sheet and `/editar`), and the app's
+// two forms (the `?sheet=editar-mascota` sheet and `/editar`), the app's
 // `edit_profile` (`canEditProfile` in
-// app/api/v1/pets/[publicToken]/profile/payload.ts). It is the owner panel's
-// `edit` row as a predicate, and `__tests__/pet-actions-server-gates.test.ts`
-// pins the two together for every role the database knows.
+// app/api/v1/pets/[publicToken]/profile/payload.ts), and — since the security
+// review of 3babbe25a — `correctPetSpeciesAction` / `CorrectSpeciesPage` and the
+// app's `correct_species` (`canCorrectSpecies`, same file). It is the owner
+// panel's `edit` row as a predicate, and
+// `__tests__/pet-actions-server-gates.test.ts` pins the two together for every
+// role the database knows.
 //
 // PURE, AND HERE RATHER THAN BESIDE THE GUARDS in lib/infra/pet-access.ts: the
 // rule has no I/O, and a predicate a test can import without the guards' DB

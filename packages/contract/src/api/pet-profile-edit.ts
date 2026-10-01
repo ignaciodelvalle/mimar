@@ -130,12 +130,12 @@ export type PetProfileEditCapabilitiesV1 = {
   /** The legal owner alone — `ownerships.role = 'owner'` on the person path. */
   canEditEmergencyContacts: boolean;
   /**
-   * `requireTitularAccess` again — the web's `corregir-especie` page and
-   * `correctPetSpeciesAction` both guard with it, so this is the SAME rule as
+   * `canEditPetProfile` now too (security review of 3babbe25a) — the web's
+   * `corregir-especie` page and `correctPetSpeciesAction` both narrow with it,
+   * behind their own `requireTitularAccess`, so this is the SAME rule as
    * `canEditIdentity` and is reported as its own flag anyway: a client renders
    * the species card from this one, and the day the web narrows the correction
-   * (it is a rewrite of what the animal IS) the flag moves without the identity
-   * form moving with it.
+   * further the flag can move without the identity form moving with it.
    */
   canCorrectSpecies: boolean;
   /**
