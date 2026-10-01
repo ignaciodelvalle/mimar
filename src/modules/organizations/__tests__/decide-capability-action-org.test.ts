@@ -11,8 +11,14 @@
 // first and B LAST, so the session default is B; the grant lives in A; the form
 // names A. The approval must land in A, and the audit row and the requester's
 // notification must both be bound to A.
+//
+// The twin is pinned at the bottom for a different reason (2026-10-01): its
+// form sits on the org dashboard, whose revalidated re-render never commits in
+// a production build, so requestCapabilityAction answers `redirectTo` and must
+// not call revalidatePath at all.
 
 import { and, eq, inArray, like, or, sql } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockRequireLiveUser = vi.fn();
@@ -31,7 +37,10 @@ import {
   organizations,
   profiles,
 } from "@/db";
-import { decideCapabilityAction } from "@/src/modules/organizations/actions";
+import {
+  decideCapabilityAction,
+  requestCapabilityAction,
+} from "@/src/modules/organizations/actions";
 
 const ADMIN_ID = "7a1e0000-0000-4000-8000-00000000a012";
 const REQUESTER_ID = "7a1e0000-0000-4000-8000-00000000b012";
@@ -224,5 +233,59 @@ describe("decideCapabilityAction — org resolved from the request (T1-L12)", ()
     expect(notes[0].ctaUrl).toBe(`/org/${TOKEN_A}`);
     expect(notes[0].body).toContain("Refugio L12 A");
     expect(notes[0].body).not.toContain("Refugio L12 B");
+  });
+});
+
+describe("requestCapabilityAction — reloads the dashboard instead of revalidating it", () => {
+  it("files the request in the org the form names and answers that org's dashboard", async () => {
+    mockRequireLiveUser.mockResolvedValue({
+      ok: true,
+      supabase: {},
+      user: { id: REQUESTER_ID, email: "l12-requester@dim-test.local" },
+      profile: {
+        id: REQUESTER_ID,
+        role: "owner",
+        accountType: "personal",
+        deactivatedAt: null,
+        deletedAt: null,
+      },
+      sessionStartedAt: new Date(),
+    });
+    vi.mocked(revalidatePath).mockClear();
+
+    const result = await requestCapabilityAction(
+      { error: null },
+      form({ orgToken: TOKEN_A, capability: "custody.transfer", reason: "Traslados" }),
+    );
+
+    expect(result).toEqual({ error: null, ok: true, redirectTo: `/org/${TOKEN_A}` });
+    // Any revalidatePath — even of another page — makes Next re-render the page
+    // the form is ON into the response, and on the dashboard that never commits.
+    expect(revalidatePath).not.toHaveBeenCalled();
+
+    const grants = await db
+      .select({
+        organizationId: organizationCapabilityGrants.organizationId,
+        status: organizationCapabilityGrants.status,
+      })
+      .from(organizationCapabilityGrants)
+      .where(
+        and(
+          inArray(organizationCapabilityGrants.organizationId, [orgA, orgB]),
+          eq(organizationCapabilityGrants.capability, "custody.transfer"),
+        ),
+      );
+    expect(grants).toEqual([{ organizationId: orgA, status: "pending" }]);
+  });
+
+  it("a refused request answers no destination, so the form stays put with its error", async () => {
+    // The admin holds every capability; requesting one is refused.
+    vi.mocked(revalidatePath).mockClear();
+    const result = await requestCapabilityAction(
+      { error: null },
+      form({ orgToken: TOKEN_A, capability: "custody.transfer" }),
+    );
+    expect(result).toEqual({ error: "Como administrador ya tenés todos los permisos." });
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 });

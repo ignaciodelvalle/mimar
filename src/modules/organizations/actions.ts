@@ -603,7 +603,12 @@ export async function submitOrgContactAction(
 // requestCapabilityAction
 // ---------------------------------------------------------------------------
 
-export type CapabilityActionState = { error: string | null; ok?: boolean };
+export type CapabilityActionState = {
+  error: string | null;
+  ok?: boolean;
+  /** N3 contract: where the form navigates as a full document after a success. */
+  redirectTo?: string;
+};
 
 export async function requestCapabilityAction(
   _previous: CapabilityActionState,
@@ -675,9 +680,15 @@ export async function requestCapabilityAction(
 
   await flushNotifications(result.notifications);
 
-  revalidatePath(`/org/${active.organization.publicToken}`);
-  revalidatePath(`/org/${active.organization.publicToken}/admin/permisos`);
-  return { error: null, ok: true };
+  // NO revalidatePath — not even for /admin/permisos. RequestCapabilityForm sits
+  // on the org dashboard, and ANY revalidatePath in an action makes Next ship
+  // the CURRENT page re-rendered with the response. Measured 2026-10-01 against
+  // a production build: the dashboard's re-render never commits (header
+  // `x-action-revalidated: [[],1,0]`, the grant row written, "Enviando…" frozen
+  // 4 runs out of 4 — the same response handed over unstreamed committed fine).
+  // The form reloads the dashboard as a full document instead (contract N3), and
+  // /admin/permisos is a dynamic page that reads the grants fresh on every visit.
+  return { error: null, ok: true, redirectTo: `/org/${active.organization.publicToken}` };
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 "use client";
 
 import { OpButton, OpTextarea } from "@/components/ui/dashboard";
+import { useActionNavigate } from "@/lib/ui/use-action-redirect";
 import { useKeptFields } from "@/lib/ui/use-kept-fields";
 import {
   type CapabilityActionState,
@@ -19,10 +20,23 @@ export function RequestCapabilityForm({
   label: string;
   orgToken: string;
 }) {
+  // A success reloads the dashboard as a full document (contract N3): the row
+  // then reads "Pendiente" from the server. It used to wait on the action's
+  // revalidation of this page, which never commits in a production build — the
+  // request was saved and the button said "Enviando…" forever (measured
+  // 2026-10-01, see requestCapabilityAction). The navigation fires from inside
+  // the action, as soon as the answer arrives, not from an effect on the
+  // settled state: it cannot depend on the very commit this exists to avoid.
+  const [navigate, navigating] = useActionNavigate();
   // forms/react19-reset-data-loss-inventory: "reason" is a bare uncontrolled
   // field — a rejected submit wipes it.
-  const { boundAction, kept } = useKeptFields<CapabilityActionState>(requestCapabilityAction);
+  const { boundAction, kept } = useKeptFields<CapabilityActionState>(async (previous, formData) => {
+    const result = await requestCapabilityAction(previous, formData);
+    if (result.redirectTo) navigate(result.redirectTo);
+    return result;
+  });
   const [state, formAction, isPending] = useActionState(boundAction, initialState);
+  const busy = isPending || navigating;
   const [expanded, setExpanded] = useState(false);
 
   if (!expanded) {
@@ -48,8 +62,8 @@ export function RequestCapabilityForm({
         size="xs"
       />
       <div className="flex items-center gap-2">
-        <OpButton type="submit" variant="primary" size="sm" disabled={isPending}>
-          {isPending ? "Enviando…" : "Enviar pedido"}
+        <OpButton type="submit" variant="primary" size="sm" disabled={busy}>
+          {busy ? "Enviando…" : "Enviar pedido"}
         </OpButton>
         <button
           type="button"

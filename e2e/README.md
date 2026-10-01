@@ -78,6 +78,14 @@ explicit `env:` block is untouched. See `scripts/run-e2e.ts`; a bare
   movilidad" row, the titular notice on `/viaje`, and `branded-not-found` on
   the trip's own event URL. The export needs the `travel-exports` bucket,
   which `pnpm db:bootstrap` creates from `db/exports_storage.sql`.
+- `org-forms-settle.spec.ts` — org-portal forms whose action revalidates the
+  page they sit on must come back after a save in a PRODUCTION build: the
+  configuración profile, an agenda rule, and a member's permission request
+  followed by the admin's decision. The request form froze on "Enviando…"
+  until 2026-10-01; the other two are guards. The agenda needs an approved
+  service offering, which only an authority approval produces, so
+  `_agenda-fixture.ts` writes one into a local Postgres — that test skips
+  elsewhere. Each test undoes what it changed, so it can run again.
 - `public-smoke.spec.ts`, `auth.spec.ts`, `auth-bypass.spec.ts`,
   `create-pet.spec.ts`, `cross-tenant-isolation.spec.ts`,
   `owner-shell.spec.ts`, `admin-topbar.spec.ts`, `executive-smoke.spec.ts`,
