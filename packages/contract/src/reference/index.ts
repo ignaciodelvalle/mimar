@@ -48,6 +48,28 @@ export {
   homeLocalityChipReason,
   localityOptionLabel,
 } from "./locality-copy.ts";
+export { detectContactInfoInFreeText } from "./contact-in-free-text.ts";
+export {
+  PERMANENT_CONDITIONS,
+  PERMANENT_CONDITIONS_SET,
+  PERMANENT_CONDITION_GROUPS,
+  type PermanentCondition,
+  isPermanentCondition,
+  permanentConditionGroup,
+  permanentConditionLabel,
+  permanentConditionShortLabel,
+  resolveLostSpecialConditions,
+  sanitizeConditionCodes,
+} from "./permanent-conditions.ts";
+export { type PetAge, estimatedBirthDateFromAge, petAgeFromBirthDate } from "./pet-age.ts";
+export {
+  COMMON_ALLERGIES,
+  COMMON_FOODS,
+  INSURANCE_COMPANIES,
+  TRAINING_LEVELS,
+  TRAINING_LEVEL_VALUES,
+  type TrainingLevel,
+} from "./pet-profile-options.ts";
 export {
   type DerivedPetAction,
   type DerivedPetActionGroup,

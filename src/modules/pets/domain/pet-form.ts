@@ -6,8 +6,12 @@ import { canonicalProvinceNameForStorage } from "@/lib/domain/jurisdiction-canon
 import { parseLocationFromFormData } from "@/lib/domain/location-value";
 import {
   type PermanentCondition,
+  TRAINING_LEVEL_VALUES,
+  type TrainingLevel,
+  detectContactInfoInFreeText,
+  estimatedBirthDateFromAge,
   sanitizeConditionCodes,
-} from "@/lib/reference/permanent-conditions";
+} from "@dim/contract/reference";
 import type { ParsedPet } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -30,9 +34,6 @@ const ACQUISITION_METHODS: readonly AcquisitionMethod[] = [
   "born_in_litter",
   "other",
 ];
-
-const TRAINING_LEVELS = ["none", "basic", "intermediate", "advanced", "professional"] as const;
-type TrainingLevel = (typeof TRAINING_LEVELS)[number];
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -68,31 +69,10 @@ export function normalizeConditionsOther(parsed: ParsedPet): string | null {
   return parsed.permanentConditionsOther;
 }
 
-// Email: anything shaped like local@domain.tld.
-const EMAIL_PATTERN = /[^\s@]+@[^\s@]+\.[^\s@]{2,}/;
-// Phone candidate: a run of digits with common separators. Flagged only when
-// the run contains 9+ digits — AR numbers have 10 (or 8 local + area handled
-// by the +9 threshold), while dates ("01/02/2020" splits on "/") and dosage
-// counts stay well below it.
-const PHONE_CANDIDATE_PATTERN = /\+?\d[\d\s().-]*\d/g;
-
-/**
- * Privacy guard for owner free text that can render on PUBLIC surfaces
- * (permanentConditionsOther shows on /p/[publicToken] via
- * discloseConditionsPublicly and the Tier-2 medical view). Detects contact
- * info an owner may have pasted by accident so the save path can reject it
- * instead of publishing PII (Ley 25.326 hardening, 2026-07-04).
- *
- * Pure function — conservative heuristics, no external imports.
- */
-export function detectContactInfoInFreeText(text: string): "email" | "phone" | null {
-  if (EMAIL_PATTERN.test(text)) return "email";
-  for (const candidate of text.match(PHONE_CANDIDATE_PATTERN) ?? []) {
-    const digits = candidate.replace(/\D/g, "");
-    if (digits.length >= 9) return "phone";
-  }
-  return null;
-}
+// The privacy guard on "otra condición" (`detectContactInfoInFreeText`) and the
+// age → birth-date arithmetic (`estimatedBirthDateFromAge`) moved to
+// `@dim/contract/reference` (owner-pet-actions, 2026-10-01), unchanged, so the
+// app's "Editar datos" and the v1 alta run the same rule this parser runs.
 
 // ---------------------------------------------------------------------------
 // Main export
@@ -143,15 +123,8 @@ export function parsePetForm(
   const ageMonthsRaw = String(formData.get("ageMonths") ?? "").trim();
   const ageYears = ageYearsRaw ? Math.max(0, Number.parseInt(ageYearsRaw, 10) || 0) : null;
   const ageMonths = ageMonthsRaw ? Math.max(0, Number.parseInt(ageMonthsRaw, 10) || 0) : null;
-  let dateOfBirth: string | null = null;
-  let birthDateIsEstimated = false;
-  if (ageYears !== null || ageMonths !== null) {
-    const totalMonths = (ageYears ?? 0) * 12 + (ageMonths ?? 0);
-    const dob = new Date();
-    dob.setMonth(dob.getMonth() - totalMonths);
-    dateOfBirth = dob.toISOString().slice(0, 10);
-    birthDateIsEstimated = true;
-  }
+  const dateOfBirth = estimatedBirthDateFromAge({ years: ageYears, months: ageMonths }, new Date());
+  const birthDateIsEstimated = dateOfBirth !== null;
 
   const breed = String(formData.get("breed") ?? "").trim() || null;
   const microchipId = String(formData.get("microchipId") ?? "").trim() || null;
@@ -181,7 +154,7 @@ export function parsePetForm(
   ];
 
   const trainingLevelRaw = String(formData.get("trainingLevel") ?? "").trim();
-  const trainingLevel: TrainingLevel | null = (TRAINING_LEVELS as readonly string[]).includes(
+  const trainingLevel: TrainingLevel | null = (TRAINING_LEVEL_VALUES as readonly string[]).includes(
     trainingLevelRaw,
   )
     ? (trainingLevelRaw as TrainingLevel)

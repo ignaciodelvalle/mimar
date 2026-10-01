@@ -91,6 +91,7 @@
 
 import { type PetRegisteredV1, isValidIdempotencyKey } from "@dim/contract/api";
 import { registerPetInputSchema } from "@dim/contract/input";
+import { estimatedBirthDateFromAge } from "@dim/contract/reference";
 
 import { db } from "@/db";
 import { resolveBreedForWrite } from "@/lib/domain/breed-validation";
@@ -527,19 +528,16 @@ function buildParsedPet(
   },
   resolved: { province: string; breed: string | null },
 ): ParsedPet {
-  // Estimated age → an estimated date of birth, byte-identical to the wizard's
-  // arithmetic. `birthDateIsEstimated` is what keeps the credential honest about
-  // where the date came from; a derived date stored without it would read as a
-  // recorded fact.
-  let dateOfBirth: string | null = null;
-  let birthDateIsEstimated = false;
-  if (input.ageYears !== null || input.ageMonths !== null) {
-    const totalMonths = (input.ageYears ?? 0) * 12 + (input.ageMonths ?? 0);
-    const dob = new Date();
-    dob.setMonth(dob.getMonth() - totalMonths);
-    dateOfBirth = dob.toISOString().slice(0, 10);
-    birthDateIsEstimated = true;
-  }
+  // Estimated age → an estimated date of birth, through the SAME function the
+  // wizard's parser calls (`@dim/contract/reference`), so the two doors cannot
+  // drift into different arithmetic. `birthDateIsEstimated` is what keeps the
+  // credential honest about where the date came from; a derived date stored
+  // without it would read as a recorded fact.
+  const dateOfBirth = estimatedBirthDateFromAge(
+    { years: input.ageYears, months: input.ageMonths },
+    new Date(),
+  );
+  const birthDateIsEstimated = dateOfBirth !== null;
 
   return {
     name: input.name,
