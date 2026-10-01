@@ -71,6 +71,7 @@ export {
   type OwnerPetStatusSection,
   type OwnerPetTagV1,
   type OwnerPetTransitBannerV1,
+  toViewerRole,
 } from "./owner-pet-detail.ts";
 export {
   EVENT_ATTACHMENT_LINK_TTL_SECONDS,

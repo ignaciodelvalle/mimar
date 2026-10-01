@@ -445,3 +445,18 @@ describe("CredentialFace — credential QR (client-side, native-readiness Track 
     expect(qrPath(other)).not.toBe(qrPath(a));
   });
 });
+
+describe("CredentialFace — the acts sit BELOW the credential (owner-pet-actions)", () => {
+  it("has no actions slot: a node handed to it anyway is not drawn inside the card", () => {
+    const state = deriveComplianceState(complianceInput());
+    const html = renderToStaticMarkup(
+      <CredentialFace
+        {...baseProps}
+        complianceState={state}
+        // @ts-expect-error — the slot is gone on purpose; typecheck fails if it returns.
+        actions={<a href="/x">Acto de prueba</a>}
+      />,
+    );
+    expect(html).not.toContain("Acto de prueba");
+  });
+});

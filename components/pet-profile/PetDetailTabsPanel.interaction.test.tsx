@@ -291,3 +291,40 @@ describe("PetDetailTabsPanel — legacy #hash mount migration (replaceTabUrl, ro
     expect(routerPush).not.toHaveBeenCalled();
   });
 });
+
+// owner-pet-actions (PO 2026-10-01): the acts come OUT of the card and sit
+// below it — on the credencial face only. The libreta is a record to read; its
+// back carries no panel of doors.
+describe("PetDetailTabsPanel — the actions below the credential", () => {
+  function renderWithActions(initialFace: "credencial" | "libreta") {
+    return render(
+      <PetDetailTabsPanel
+        petPublicToken="abc123"
+        credencialContent={<div>CREDENCIAL-CONTENT</div>}
+        libretaContent={<div>LIBRETA-CONTENT</div>}
+        credencialActions={<a href="/mis-mascotas/abc123?sheet=anotar">Anotar</a>}
+        initialFace={initialFace}
+        isOwner
+      />,
+    );
+  }
+
+  it("draws them OUTSIDE the flip card, under it, while the credencial is shown", () => {
+    renderWithActions("credencial");
+    const link = screen.getByRole("link", { name: "Anotar" });
+    expect(link).toBeVisible();
+    // Below the card, not inside either face.
+    expect(link.closest('[data-section="flip-card"]')).toBeNull();
+    const card = document.querySelector('[data-section="flip-card"]') as Element;
+    expect(card.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("hides them on the libreta face, and brings them back on the way to the credencial", () => {
+    // The face follows the URL (the sync effect), so the libreta is a URL fact.
+    window.history.replaceState(null, "", "/mis-mascotas/abc123?tab=libreta");
+    renderWithActions("libreta");
+    expect(screen.queryByRole("link", { name: "Anotar" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Girar a Credencial" }));
+    expect(screen.getByRole("link", { name: "Anotar" })).toBeVisible();
+  });
+});

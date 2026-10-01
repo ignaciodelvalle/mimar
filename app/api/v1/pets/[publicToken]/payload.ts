@@ -38,7 +38,6 @@ import type {
   OwnerPetCasesSection,
   OwnerPetComplianceSection,
   OwnerPetDetailV1,
-  OwnerPetDetailViewerRole,
   OwnerPetIdentitySection,
   OwnerPetObligationCardV1,
   OwnerPetPostAdoptionCheckinSection,
@@ -54,6 +53,7 @@ import {
   OWNER_PET_DETAIL_PAYLOAD_VERSION,
   OWNER_PET_DETAIL_STALE_AFTER_MS,
   PUBLIC_PET_STATUSES,
+  toViewerRole,
 } from "@dim/contract/api";
 
 /**
@@ -91,37 +91,12 @@ function toOwnerPetCaseKind(caseKind: string): OwnerPetCaseKind {
 }
 
 /**
- * The viewer's role.
- *
- * The organization path has no ownership row of its own — the ORGANIZATION
- * holds the animal and the caller is a member of it — so it reports
- * `org_member` rather than borrowing the org's ownership role, which would tell
- * a client that a volunteer is the titular.
- *
- * EXPORTED (WU-J) because the libreta face answers the same question about the
- * same caller. Two mappings of `ownerships.role` onto the wire vocabulary is
- * how one endpoint starts calling a co-owner a caretaker while its sibling does
- * not, on the same request.
+ * The viewer's role — the contract's own mapping, re-exported for the libreta
+ * and profile payloads beside this one. It moved to `@dim/contract/api` with
+ * owner-pet-actions so the WEB pet page derives its action panel from the same
+ * mapping without importing a route's module (see its docblock there).
  */
-export function toViewerRole(
-  accessPath: "owner" | "org",
-  ownershipRole: string | null,
-): OwnerPetDetailViewerRole {
-  if (accessPath === "org") return "org_member";
-  switch (ownershipRole) {
-    case "owner":
-    case "co_owner":
-    case "foster":
-    case "caretaker":
-      return ownershipRole;
-    default:
-      // An owner-path access with a role this contract has no word for. It
-      // still HELD the pet (requirePetAccess proved that), so refuse the
-      // titular affordances rather than the read: `caretaker` is the least
-      // privileged holder word available, and isTitular below is false anyway.
-      return "caretaker";
-  }
-}
+export { toViewerRole };
 
 function toObligationCard(
   card: OwnerPetDetail["compliance"]["cards"][number],

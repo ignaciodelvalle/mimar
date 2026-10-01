@@ -128,7 +128,19 @@ type Props = {
    * band tint + state chip. Null = default blue band.
    */
   situation?: ChromeSituation | null;
+  /**
+   * The owner's acts — the primary row and the grouped panel (owner-pet-
+   * actions, PO 2026-10-01: "los botones salen de la tarjeta"). Drawn BELOW the
+   * flip card, outside both faces, and only while the credencial is shown: the
+   * libreta is a record to read, and a panel turning over with the card would
+   * be a panel of doors on the back of a document. Server-rendered, like both
+   * faces.
+   */
+  credencialActions?: ReactNode;
 };
+
+/** The element the acts sit in — where the old `?sheet=mas` link now lands. */
+export const CREDENCIAL_ACTIONS_ID = "acciones";
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -141,6 +153,7 @@ export function PetDetailTabsPanel({
   initialFace,
   isOwner,
   situation,
+  credencialActions,
 }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -265,6 +278,15 @@ export function PetDetailTabsPanel({
         onFaceShown={focusShownFace}
         situation={situation}
       />
+      {credencialActions && activeFace === "credencial" ? (
+        <div
+          id={CREDENCIAL_ACTIONS_ID}
+          data-section="credencial-actions"
+          className="ln-doc-actions"
+        >
+          {credencialActions}
+        </div>
+      ) : null}
     </div>
   );
 }

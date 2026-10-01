@@ -2266,6 +2266,102 @@ a.ln-qr-link:focus-visible .ln-qr-frame {
 .ln-act-spacer {
   flex: 1;
 }
+/* A grey act: shown with its reason, never pressable (owner-pet-actions). */
+.ln-act--inert,
+.ln-act--inert:hover {
+  cursor: default;
+  color: var(--color-ln-mute);
+  border-color: var(--color-ln-line);
+  background: var(--color-ln-stripe);
+}
+.ln-act-caption {
+  font-weight: 400;
+  font-size: var(--text-sm);
+}
+
+/* ---- Owner action panel — below the credential (owner-pet-actions) -------
+   The primary row, then the former "⋯ Más" shown inline under its themes.
+   Rows are 48px tall (the plan's target, above the 44px floor). */
+.ln-doc-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 16px;
+}
+.ln-actpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ln-actgroup-h {
+  margin: 0 0 6px;
+  font-family: var(--font-ln-mono);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  /* The catalogue writes headings in sentence case; the eyebrow is a STYLE, so
+     a screen reader reads a word instead of spelling capitals. */
+  text-transform: uppercase;
+  color: var(--color-ln-mute);
+}
+.ln-actgroup--closing {
+  padding-top: 14px;
+  border-top: 1px solid var(--color-ln-line);
+}
+.ln-actlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-ln-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-ln-card);
+  overflow: hidden;
+}
+.ln-actlist > li + li {
+  border-top: 1px solid var(--color-ln-line-2);
+}
+.ln-actline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 14px;
+  color: var(--color-ln-ink-2);
+  font-family: var(--font-ln-sans);
+  font-size: var(--text-md);
+  font-weight: 500;
+  text-decoration: none;
+  transition: color var(--motion-base) ease, background var(--motion-base) ease;
+}
+.ln-actline:hover {
+  color: var(--color-ln-azul);
+  background: var(--color-ln-celeste-050);
+}
+.ln-actline:focus-visible {
+  outline: 2px solid var(--color-ln-azul);
+  outline-offset: -2px;
+}
+.ln-actline-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ln-actline-caption {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--color-ln-mute);
+}
+.ln-actline-chev {
+  flex-shrink: 0;
+  color: var(--color-ln-mute);
+}
+.ln-actline--inert {
+  cursor: default;
+  color: var(--color-ln-mute);
+  background: var(--color-ln-stripe);
+}
 
 /* ---- Vaccination drill-down (interactive Estado de vacunación) ------------ */
 .ln-vac-badge {

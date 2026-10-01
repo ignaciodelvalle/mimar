@@ -63,6 +63,42 @@ export const OWNER_PET_DETAIL_VIEWER_ROLES = [
 export type OwnerPetDetailViewerRole = (typeof OWNER_PET_DETAIL_VIEWER_ROLES)[number];
 
 /**
+ * The viewer's role, from the access path and the `ownerships.role` it holds.
+ *
+ * The organization path has no ownership row of its own — the ORGANIZATION
+ * holds the animal and the caller is a member of it — so it reports
+ * `org_member` rather than borrowing the org's ownership role, which would tell
+ * a client that a volunteer is the titular.
+ *
+ * ONE HOME, THREE CALLERS. It lived in the v1 owner-face payload (exported
+ * there in WU-J because the libreta face answers the same question) until
+ * owner-pet-actions: the WEB pet page derives its action panel from this role
+ * too, and a page importing an API route's module to get it would have been
+ * the seam the wrong way round. Two mappings of `ownerships.role` onto this
+ * vocabulary is how one surface starts calling a co-owner a caretaker while
+ * its sibling does not, on the same request.
+ */
+export function toViewerRole(
+  accessPath: "owner" | "org",
+  ownershipRole: string | null,
+): OwnerPetDetailViewerRole {
+  if (accessPath === "org") return "org_member";
+  switch (ownershipRole) {
+    case "owner":
+    case "co_owner":
+    case "foster":
+    case "caretaker":
+      return ownershipRole;
+    default:
+      // An owner-path access with a role this contract has no word for — a
+      // user-held `shelter_custody` row today. It still HELD the pet, so the
+      // titular affordances are refused rather than the read: `caretaker` is
+      // the least privileged holder word available, and `isTitular` is false.
+      return "caretaker";
+  }
+}
+
+/**
  * Who is reading, and what that buys them.
  *
  * `isTitular` is the gate every titular-only affordance hangs off. It is TRUE

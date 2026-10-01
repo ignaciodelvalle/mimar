@@ -79,30 +79,51 @@ describe("OpRail — help entry reaches a person (T1-P5)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// PetActionRow — labeled action bar (PO 2026-07-05: relabeled from icon-only
-// circles to the handoff's `.actionbar` — Compartir · Editar datos · Marcar
-// como perdida · Más). Full coverage lives in
-// components/pet-profile/PetActionRow.test.tsx; this asserts the cross-cutting
-// 44px touch-target invariant this sweep exists to guard. The 44px min-height
-// now lives on the shared `.ln-act` class (globals.css) rather than a
-// min-h-11 utility, so this checks every action carries `ln-act`.
-// "Marcar como encontrada" moved to LostCaseBlock as a prominent primary CTA
+// The owner's acts below the credential (owner-pet-actions, PO 2026-10-01):
+// the primary row (Anotar · Compartir · Modo perdida) and the grouped panel.
+// Full coverage lives in components/pet-profile/PetActionRow.test.tsx and
+// PetActionPanel.test.tsx; this asserts the cross-cutting touch-target
+// invariant this sweep exists to guard. The heights live on shared classes in
+// globals.css — `.ln-act` (44px) for the row, `.ln-actline` (48px) for the
+// panel — so this checks every act carries its class.
+// "Marcar como encontrada" lives in LostCaseBlock as a prominent primary CTA
 // (its 44px/48px sizing lives on `.ln-found-cta`).
 // ---------------------------------------------------------------------------
 
+import { PetActionPanel } from "@/components/pet-profile/PetActionPanel";
 import { PetActionRow } from "@/components/pet-profile/PetActionRow";
+import { resolveWebPetActions } from "@/components/pet-profile/pet-action-web";
+import { derivePetActions } from "@dim/contract/reference";
 
-describe("PetActionRow — labeled buttons clear 44px (UX 2.1)", () => {
-  it("every action link uses .ln-act (min-height:44px in globals.css)", () => {
-    const html = renderToStaticMarkup(
-      <PetActionRow petPublicToken="abc" isOwner isDeceased={false} petStatus="active" />,
-    );
+const TITULAR_ACTIONS = resolveWebPetActions(
+  derivePetActions({
+    viewerRole: "owner",
+    isTitular: true,
+    petStatus: "active",
+    species: "dog",
+    pppDoor: false,
+  }),
+  { petPublicToken: "abc", petStatus: "active" },
+);
+
+describe("the owner's acts — every one clears the touch floor (UX 2.1)", () => {
+  it("every primary act uses .ln-act (min-height:44px in globals.css)", () => {
+    const html = renderToStaticMarkup(<PetActionRow actions={TITULAR_ACTIONS.primary} />);
     const anchors = html.match(/<a [^>]*>/g) ?? [];
-    // Owner + active: Anotar · Compartir · Editar datos · Marcar como perdida · Más
-    // (Anotar added by the 3b redesign, task #10 — the mid-face capture shortcut).
-    expect(anchors.length).toBe(5);
+    // Titular + active: Anotar · Compartir · Modo perdida.
+    expect(anchors.length).toBe(3);
     for (const anchor of anchors) {
       expect(anchor).toContain("ln-act");
+    }
+  });
+
+  it("every panel row, live or grey, uses .ln-actline (min-height:48px in globals.css)", () => {
+    const html = renderToStaticMarkup(<PetActionPanel groups={TITULAR_ACTIONS.groups} />);
+    const rows = TITULAR_ACTIONS.groups.flatMap((g) => g.actions);
+    const anchors = html.match(/<a [^>]*>/g) ?? [];
+    expect(anchors.length).toBe(rows.length);
+    for (const anchor of anchors) {
+      expect(anchor).toContain("ln-actline");
     }
   });
 });

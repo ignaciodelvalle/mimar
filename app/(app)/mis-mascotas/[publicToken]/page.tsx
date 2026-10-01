@@ -8,6 +8,7 @@ import {
   type LibretaFaceEmergencyContacts,
 } from "@/components/pet-profile/LibretaFace";
 import { LostCaseBlock } from "@/components/pet-profile/LostCaseBlock";
+import { PetActionPanel } from "@/components/pet-profile/PetActionPanel";
 import { PetActionRow } from "@/components/pet-profile/PetActionRow";
 import { type PetAlert, PetAlertStrip } from "@/components/pet-profile/PetAlertStrip";
 import { PetCredentialCarousel } from "@/components/pet-profile/PetCredentialCarousel";
@@ -26,6 +27,7 @@ import {
   PetSwitcherAvatars,
 } from "@/components/pet-profile/PetSwitcherAvatars";
 import { PppExportAffordance } from "@/components/pet-profile/PppExportAffordance";
+import { LOST_CASE_ANCHOR, resolveWebPetActions } from "@/components/pet-profile/pet-action-web";
 import { DegradedFallback } from "@/components/ui/DegradedFallback";
 import { AnalyticsLoadFallback } from "@/components/ui/dashboard/AnalyticsLoadFallback";
 import { db } from "@/db";
@@ -56,6 +58,8 @@ import {
 } from "@/src/modules/pets/application/read/load-owner-pet-detail";
 import { getLibretaFaceData } from "@/src/modules/pets/application/tab-data/get-libreta-face-data";
 import { fetchPendingReturnProposalForOwner } from "@/src/modules/return-to-owner/application/proposal-queries";
+import { toViewerRole } from "@dim/contract/api";
+import { derivePetActions } from "@dim/contract/reference";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
@@ -289,6 +293,25 @@ export default async function PetDetailPage({
   } = detail;
   const complianceState = detail.compliance;
   const petActiveReminders = detail.reminders;
+
+  // THE OWNER'S ACTS (owner-pet-actions, PO 2026-10-01). One catalogue, shared
+  // with the app, decides which rows this viewer gets — live, or grey with the
+  // reason — from the same role mapping the app's API uses; the web only
+  // resolves where each row leads. Derived ONCE, so the primary row, the panel
+  // and the credential's photo frame cannot disagree about a door.
+  const petStatus = pet.status as "active" | "lost" | "deceased";
+  const petActions = resolveWebPetActions(
+    derivePetActions({
+      viewerRole: toViewerRole(accessPath === "org" ? "org" : "owner", ownershipRole),
+      isTitular: isOwner && ownershipRole === "owner",
+      petStatus,
+      species: pet.species,
+      // The catalogue's `attestationDoor` is not read on the web: the door is the
+      // compliance card's own, decided from its PPP card (ComplianceObligationsPanel).
+      pppDoor: null,
+    }),
+    { petPublicToken: pet.publicToken, petStatus },
+  );
   const { lostEpisode, lostScans, alertsOriginShelter } = detail.lost;
   // Both photoUrl and editPhotoUrl come from the same single read.
   const photoUrl = detail.identity.photoUrl;
@@ -395,20 +418,24 @@ export default async function PetDetailPage({
   // each one renders: a strip of React is not something an API can serve.
   const alertNodes: Record<OwnerPetAlertId, () => PetAlert["node"]> = {
     lost: () => (
-      <LostCaseBlock
-        pet={pet}
-        photoUrl={photoUrl}
-        episode={lostEpisode}
-        scans={lostScans}
-        ownerFirstName={ownerFirstName}
-        alertsOriginShelter={alertsOriginShelter}
-        isOwner={isOwner}
-        // The LEGAL owner only. A caretaker keeps the rest of this block —
-        // including "Marcar como encontrada" — but the disclosure toggles
-        // govern the TITULAR's own name, phone and location.
-        canManageDisclosure={ownershipRole === "owner"}
-        caretakerConsentName={caretakerConsentName}
-      />
+      // "Modo perdida" on an animal already lost lands here: this block IS the
+      // cockpit for the way back (last seen, sightings, Marcar como encontrada).
+      <div id={LOST_CASE_ANCHOR} className="scroll-mt-20">
+        <LostCaseBlock
+          pet={pet}
+          photoUrl={photoUrl}
+          episode={lostEpisode}
+          scans={lostScans}
+          ownerFirstName={ownerFirstName}
+          alertsOriginShelter={alertsOriginShelter}
+          isOwner={isOwner}
+          // The LEGAL owner only. A caretaker keeps the rest of this block —
+          // including "Marcar como encontrada" — but the disclosure toggles
+          // govern the TITULAR's own name, phone and location.
+          canManageDisclosure={ownershipRole === "owner"}
+          caretakerConsentName={caretakerConsentName}
+        />
+      </div>
     ),
     // D1 (PO 2026-08-23): the owner has no in-product way to lift an observation
     // opened in error, so the banner must at least name who opened it.
@@ -606,28 +633,36 @@ export default async function PetDetailPage({
         isOwner={isOwner}
         situation={chromeSituation}
         libretaContent={libretaContent}
+        // The acts sit BELOW the card, scrolling with the page (PO: "los
+        // botones salen de la tarjeta"): the primary row, then the former
+        // "⋯ Más" shown inline under its themes. An org member gets Compartir
+        // and no panel; a deceased animal keeps Compartir, Editar datos, Foto
+        // and Contactos — the catalogue's own rules, not this page's.
+        credencialActions={
+          <>
+            <PetActionRow actions={petActions.primary} />
+            <PetActionPanel groups={petActions.groups} />
+          </>
+        }
         credencialContent={
           // The whole front face is ONE framed sheet ("Una sola libreta"):
-          // identity → Cumplimiento → Avisos → Anotar → action row, bound by
-          // labeled hairline dividers inside CredentialFace. H1 provenance
-          // gates the stamp row. Deceased (ADR-15/REQ-9.3): `anotar` is null
-          // (a closed life record accepts no new events) and `actions`
-          // collapses to [Compartir][Más]; org viewers get the same read-only
-          // object with a null `anotar`.
+          // identity → Cumplimiento → Avisos → Anotar, bound by labeled
+          // hairline dividers inside CredentialFace. H1 provenance gates the
+          // stamp row. Deceased (ADR-15/REQ-9.3): `anotar` is null (a closed
+          // life record accepts no new events); org viewers get the same
+          // read-only object with a null `anotar`.
           <CredentialFace
             heroProps={{
               name: pet.name,
               status: lnPetStatus,
               breed: breedLine,
               photoSrc: photoUrl ?? undefined,
-              // Empty-state shortcut: with no photo, the 132px placeholder is
-              // the tap target that opens the edit sheet already mounted on
-              // this page — same form, same file input, same action. Gated on
-              // isOwner because this page also renders for a vet or a shelter
-              // reading the credential, and they cannot save it.
-              addPhotoHref: isOwner
-                ? `/mis-mascotas/${pet.publicToken}?sheet=editar-mascota`
-                : undefined,
+              // The photo frame is the "Foto" row's own door — empty: "+ Foto",
+              // with a photo: change it — and the catalogue decides it like
+              // every other door: absent for a vet or a shelter reading the
+              // credential, and for a holder the web's edit form refuses (the
+              // app has their photo door).
+              addPhotoHref: petActions.photoHref ?? undefined,
               tags: heroTags,
             }}
             complianceState={complianceState}
@@ -660,18 +695,9 @@ export default async function PetDetailPage({
             // REMOVED to declutter the front. Capture now lives in the fixed
             // "Asentar un hecho" bar (CitizenTabBar, mobile — task #9) and, as
             // a pet-specific one-tap shortcut on every breakpoint, in the
-            // PetActionRow "Anotar" quiet link below (opens ?sheet=anotar for
+            // primary row's "Anotar" below the card (opens ?sheet=anotar for
             // THIS pet). No `anotar` node is passed, so CredentialFace's inline
-            // "Anotar" section stays dormant (owners still write while lost —
-            // the /anotar sheet is gated on owner + not-deceased, unchanged).
-            actions={
-              <PetActionRow
-                petPublicToken={pet.publicToken}
-                isOwner={isOwner}
-                isDeceased={isDeceased}
-                petStatus={pet.status as "active" | "lost" | "deceased"}
-              />
-            }
+            // "Anotar" section stays dormant.
           />
         }
       />

@@ -59,7 +59,10 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
+import { PetActionPanel } from "@/components/pet-profile/PetActionPanel";
 import { PetActionRow } from "@/components/pet-profile/PetActionRow";
+import { resolveWebPetActions } from "@/components/pet-profile/pet-action-web";
+import { derivePetActions } from "@dim/contract/reference";
 import { SheetMounter } from "./SheetMounter";
 
 const baseSheetMounterProps = {
@@ -97,10 +100,23 @@ const baseSheetMounterProps = {
   showPregnancyStartOption: false,
 };
 
+/** The titular's real acts for an active dog — the row and the panel the page mounts. */
+const ACTIONS = resolveWebPetActions(
+  derivePetActions({
+    viewerRole: "owner",
+    isTitular: true,
+    petStatus: "active",
+    species: "dog",
+    pppDoor: false,
+  }),
+  { petPublicToken: "abc123", petStatus: "active" },
+);
+
 function Harness() {
   return (
     <>
-      <PetActionRow petPublicToken="abc123" isOwner isDeceased={false} petStatus="active" />
+      <PetActionRow actions={ACTIONS.primary} />
+      <PetActionPanel groups={ACTIONS.groups} />
       <SheetMounter {...baseSheetMounterProps} />
     </>
   );
@@ -154,26 +170,26 @@ afterEach(() => {
 });
 
 describe("PetActionRow + SheetMounter — client-driven sheet open/close (router-hot-path fix)", () => {
-  // Trigger via the "Más" labeled action button (PO 2026-07-05 relabeled the
-  // action bar; the Anotar trigger moved to CredentialFace's dedicated capture
-  // section). Assert on the URL + the dialog's own "Cerrar" button so the test
-  // stays content-agnostic across whichever sheet a button opens.
+  // Trigger via the panel's "Chapa física" row — a `?sheet=` door like the
+  // old "⋯ Más" button it replaced (owner-pet-actions moved the overflow
+  // inline, below the card). Assert on the URL + the dialog's own "Cerrar"
+  // button so the test stays content-agnostic across whichever sheet opens.
   it("clicking an action trigger opens the sheet and updates the URL — no router involved", () => {
     render(<Harness />);
 
     expect(window.location.search).toBe("");
     expect(screen.queryByRole("button", { name: "Cerrar" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("link", { name: "Más" }));
+    fireEvent.click(screen.getByRole("link", { name: "Chapa física" }));
 
-    expect(window.location.search).toContain("sheet=mas");
+    expect(window.location.search).toContain("sheet=chapita");
     expect(screen.getByRole("button", { name: "Cerrar" })).toBeInTheDocument();
   });
 
   it("closing via the sheet's Cerrar button strips the URL param and stays on the profile", async () => {
     render(<Harness />);
-    fireEvent.click(screen.getByRole("link", { name: "Más" }));
-    expect(window.location.search).toContain("sheet=mas");
+    fireEvent.click(screen.getByRole("link", { name: "Chapa física" }));
+    expect(window.location.search).toContain("sheet=chapita");
 
     // Opened via pushSheetUrl, so closing goes through history.back() —
     // jsdom (like real browsers) processes history navigation as a queued
@@ -189,7 +205,7 @@ describe("PetActionRow + SheetMounter — client-driven sheet open/close (router
 
   it("the back button (a real popstate from history.back()) closes an opened sheet", async () => {
     render(<Harness />);
-    fireEvent.click(screen.getByRole("link", { name: "Más" }));
+    fireEvent.click(screen.getByRole("link", { name: "Chapa física" }));
     expect(screen.getByRole("button", { name: "Cerrar" })).toBeInTheDocument();
 
     act(() => {
@@ -204,7 +220,7 @@ describe("PetActionRow + SheetMounter — client-driven sheet open/close (router
 
   it("a modified click (ctrl+click, e.g. open-in-new-tab intent) is left alone — sheet stays closed", () => {
     render(<Harness />);
-    fireEvent.click(screen.getByRole("link", { name: "Más" }), { ctrlKey: true });
+    fireEvent.click(screen.getByRole("link", { name: "Chapa física" }), { ctrlKey: true });
 
     expect(window.location.search).toBe("");
     expect(screen.queryByRole("button", { name: "Cerrar" })).not.toBeInTheDocument();

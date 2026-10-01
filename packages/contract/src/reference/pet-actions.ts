@@ -200,6 +200,7 @@ export const PET_ACTION_INERT_REASONS = [
   "not_active",
   "caretaker",
   "web_only",
+  "app_only",
 ] as const;
 export type PetActionInertReason = (typeof PET_ACTION_INERT_REASONS)[number];
 
@@ -208,16 +209,20 @@ export type PetActionInertReason = (typeof PET_ACTION_INERT_REASONS)[number];
  * co-owner has to ask the titular, a titular whose animal is lost has to find
  * it first, and a caretaker is holding someone else's animal.
  *
- * `web_only` is never produced by `derivePetActions`, which knows nothing about
- * platforms: it is the caption a platform uses for a destination it does not
- * have yet (the app's foster "Buscar hogar"), kept here so that copy has one
- * home like every other line on the panel.
+ * `web_only` and `app_only` are never produced by `derivePetActions`, which
+ * knows nothing about platforms: each is the caption a platform uses for a
+ * destination it does not have yet — the app's foster "Buscar hogar"
+ * (`web_only`), the web's photo for a holder its edit form does not admit, a
+ * caretaker's (`app_only`: the web's only photo field lives inside "Editar
+ * datos", while the app has a photo door of its own). Kept here so that copy
+ * has one home like every other line on the panel.
  */
 export const PET_ACTION_INERT_CAPTIONS: Readonly<Record<PetActionInertReason, string>> = {
   titular_only: "Solo el titular",
   not_active: "No se puede en esta situación",
   caretaker: "No disponible para cuidadores",
   web_only: "Se hace desde la web",
+  app_only: "Se hace desde la app",
 };
 
 /**

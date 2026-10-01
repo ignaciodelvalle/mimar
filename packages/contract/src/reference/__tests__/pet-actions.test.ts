@@ -12,6 +12,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { toViewerRole } from "../../api/owner-pet-detail.ts";
 import {
   type DerivedPetActions,
   PET_ACTION_IDS,
@@ -242,5 +243,55 @@ describe("the catalogue itself", () => {
     for (const action of [...derived.primary, ...derived.groups.flatMap((g) => g.actions)]) {
       expect(action.hint.length, action.id).toBeGreaterThan(10);
     }
+  });
+});
+
+describe("the platform captions — a door one platform does not have yet", () => {
+  it("are never derived: the catalogue knows nothing about platforms", () => {
+    const reasons = new Set<string>();
+    for (const viewerRole of ["owner", "co_owner", "foster", "caretaker", "org_member"] as const) {
+      for (const petStatus of ["active", "lost", "deceased", null] as const) {
+        const derived = derivePetActions({
+          viewerRole,
+          isTitular: viewerRole === "owner",
+          petStatus,
+          species: "dog",
+          pppDoor: false,
+        });
+        for (const action of [...derived.primary, ...derived.groups.flatMap((g) => g.actions)]) {
+          if (action.state.kind === "inert") reasons.add(action.state.reason);
+        }
+      }
+    }
+    // The matrix did produce grey rows, so the two absences below are real.
+    expect(reasons.size).toBeGreaterThan(0);
+    expect(reasons.has("web_only")).toBe(false);
+    expect(reasons.has("app_only")).toBe(false);
+  });
+
+  it("name the platform that does have the door", () => {
+    expect(PET_ACTION_INERT_CAPTIONS.web_only).toBe("Se hace desde la web");
+    expect(PET_ACTION_INERT_CAPTIONS.app_only).toBe("Se hace desde la app");
+  });
+});
+
+describe("toViewerRole — the role the catalogue reads, one mapping for the web and the API", () => {
+  it("passes the four holder roles through", () => {
+    for (const role of ["owner", "co_owner", "foster", "caretaker"] as const) {
+      expect(toViewerRole("owner", role)).toBe(role);
+    }
+  });
+
+  it("reads the org path as a member, whatever role the organization's row holds", () => {
+    expect(toViewerRole("org", null)).toBe("org_member");
+    expect(toViewerRole("org", "shelter_custody")).toBe("org_member");
+  });
+
+  it("reads any other person-path role as a caretaker — the least privileged holder word", () => {
+    // A user-held shelter_custody row (the vecino who picked up a stray), a
+    // role added tomorrow, and no role at all.
+    expect(toViewerRole("owner", "shelter_custody")).toBe("caretaker");
+    expect(toViewerRole("owner", "guardian")).toBe("caretaker");
+    expect(toViewerRole("owner", null)).toBe("caretaker");
   });
 });

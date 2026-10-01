@@ -9,7 +9,12 @@
 //   — Cumplimiento —  ComplianceObligationsPanel (bare) + ppp/service-dog rows
 //   — Avisos —        the prioritized alert strip (only when non-empty)
 //   — Anotar —        the embedded free-text capture (owner + active only)
-//   — (actions) —     the icon action row
+//
+// NO ACTIONS INSIDE THE CARD (owner-pet-actions, PO 2026-10-01): the action
+// row and the grouped panel sit BELOW the credential, scrolling with the page
+// (PetActionRow + PetActionPanel, mounted by the page through
+// PetDetailTabsPanel's `credencialActions`). The one door left on the card is
+// the photo frame, and the page decides it from the same catalogue.
 //
 // H1 (provenance gate): the compliance grid is ComplianceObligationsPanel,
 // re-hosted verbatim — its `tone: "ok"` only ever comes from
@@ -17,8 +22,8 @@
 // event. This component does not derive compliance itself.
 //
 // Org-path viewers receive the exact same read-only object — the caller passes
-// `anotar={null}` and an org-scoped `actions` node (no capture, no ⋯ Más), so
-// this face never grows an owner-only affordance on its own.
+// `anotar={null}` and no photo door, so this face never grows an owner-only
+// affordance on its own.
 
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -106,8 +111,6 @@ export type CredentialFaceProps = {
    * touching every caller again; `null`/absent → no "Anotar" section renders.
    */
   anotar?: ReactNode;
-  /** Action row node (PetActionRow). Always rendered as the sheet footer. */
-  actions?: ReactNode;
   /**
    * "Primeros pasos" owner-onboarding checklist (pending rows only — see
    * lib/projections/first-steps-checklist.ts). Owner-only, non-deceased;
@@ -135,7 +138,6 @@ export function CredentialFace({
   situation,
   avisos,
   anotar,
-  actions,
   petSex,
   firstSteps,
   pppExport = null,
@@ -513,14 +515,6 @@ export function CredentialFace({
             </span>
           </div>
           <div className="ln-sec">{anotar}</div>
-        </>
-      )}
-
-      {/* Action row — the sheet footer. */}
-      {actions && (
-        <>
-          <div className="ln-divider" />
-          <div className="ln-sec">{actions}</div>
         </>
       )}
     </div>

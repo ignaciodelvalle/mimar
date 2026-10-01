@@ -594,9 +594,12 @@ async function settleOnCleanProfile(page: Page, token: string): Promise<void> {
  * having count 0 is also true of a login redirect, a 404, or any other page
  * that is not this pet's profile — a dropped session in the `finally` this
  * helper runs from would report success without the profile ever having been
- * checked. `PetActionRow`'s "Marcar como perdida" control only renders for
- * the OWNER on an ACTIVE pet, so seeing it proves both facts the absence
- * check alone cannot: this is the profile, and the pet is active.
+ * checked. `PetActionRow`'s "Modo perdida" act opens the MARK-LOST sheet only
+ * for a holder of an ACTIVE pet (on a lost one it jumps to the case block
+ * instead, and an org member has no such act), so seeing that link proves both
+ * facts the absence check alone cannot: this is the profile, and the pet is
+ * active. The marker is the link's DESTINATION, not just its label, for that
+ * reason: since owner-pet-actions the label is the same in both states.
  */
 export async function ensurePetFound(page: Page, token: string): Promise<void> {
   await page
@@ -682,8 +685,10 @@ export async function ensurePetFound(page: Page, token: string): Promise<void> {
   }
   await settleOnCleanProfile(page, token);
   await expect(
-    page.getByRole("link", { name: /marcar como perdida/i }),
-    `pet ${token} does not show the owner's "Marcar como perdida" control after the mark-found cleanup — this is not the pet's profile in its active state (dropped session, wrong page, or the write failed)`,
+    page
+      .locator('[data-section="action-row"] a[href*="sheet=marcar-perdida"]')
+      .filter({ hasText: /modo perdida/i }),
+    `pet ${token} does not show the owner's "Modo perdida" act opening the mark-lost sheet after the mark-found cleanup — this is not the pet's profile in its active state (dropped session, wrong page, or the write failed)`,
   ).toBeVisible({ timeout: 20_000 });
   await expect(
     page.locator('[data-section="lost-case-block"]'),
