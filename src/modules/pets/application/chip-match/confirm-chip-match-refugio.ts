@@ -4,9 +4,24 @@
 // Org-side confirmation: a refugio actor sees a matched pet after a microchip cross-check
 // during intake and decides whether it's the same animal.
 //
-// decision='same': inserts shelter_custody ownership + shelter_intake_recorded event +
-//   chip_match_notification_owner notification (post-tx, best-effort).
+// decision='same': inserts shelter_custody ownership + shelter_intake_recorded event
+//   + (when the member holds custody.transfer) the refugio's return proposal to
+//   the owner, all in ONE transaction; then the chip_match_notification_owner
+//   notification (post-tx, best-effort).
 // decision='not_same': emits a dismissal note_added event. No state change.
+//
+// THE RETURN PROPOSAL (PO 2026-10-01). A refugio that confirms it has
+// somebody's lost animal leaves the return proposal addressed to that owner in
+// the same transaction as the intake, through the proposal writer's own
+// tx-level helper (writeRefugioReturnProposalInTx — lock, one pending at most,
+// the org's authorship). Without it the owner's "Coordinar devolución" opened
+// the `can_propose` arm: the owner offering to hand the animal TO the refugio.
+// It needs what a manual proposal needs: proposeReturnToOwnerAction requires
+// custody.transfer, so the match proposes only when `auth.granted` — the set
+// requireCapability already resolved for this member — holds it. A writer
+// reached with no granted set proposes nothing. ONE notice: the
+// "¡Encontraron a …!" below already carries the "Coordinar devolución" CTA, so
+// the proposal writer's own "Devolución propuesta de …" is not sent here.
 //
 // §2.2: notifications accumulate in pendingNotifications[] inside the tx
 // and are inserted AFTER the transaction commits (best-effort, logged on failure).
@@ -19,6 +34,7 @@ import {
   findLiveOrgShelterCustody,
   isOrgCustodyCollision,
 } from "@/lib/infra/org-custody";
+import { writeRefugioReturnProposalInTx } from "@/src/modules/return-to-owner/application/propose-return-as-refugio";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import type { ConfirmChipMatchResult } from "./types";
@@ -34,6 +50,11 @@ export async function confirmChipMatchAsRefugioWriter({
   auth: {
     user: { id: string };
     organization: { id: string; displayName: string; verified: boolean };
+    /**
+     * The member's capabilities, as requireCapability resolved them. Holding
+     * custody.transfer is what lets the match leave the return proposal.
+     */
+    granted?: ReadonlySet<string> | null;
   };
   orgToken: string;
   claim?: string;
@@ -42,6 +63,7 @@ export async function confirmChipMatchAsRefugioWriter({
   notes?: string;
 }): Promise<ConfirmChipMatchResult> {
   const { user, organization } = auth;
+  const proposeReturn = auth.granted?.has("custody.transfer") ?? false;
   const now = new Date();
 
   // Cross-tenant write guard (review 24 HIGH #7): both decisions mutate the
@@ -191,7 +213,22 @@ export async function confirmChipMatchAsRefugioWriter({
         .returning({ id: petEvents.id });
       custodyEventId = intakeEvent.id;
 
-      // 3. Notify the original owner if we have a userId.
+      // 3. The return proposal to the owner, in this same transaction: the
+      //    custody row it requires was inserted above. A proposal already
+      //    pending on the pet means nothing is written and the intake stands.
+      if (proposeReturn && ownerOwnership?.ownerUserId) {
+        await writeRefugioReturnProposalInTx(tx, {
+          petId: matchedPet.id,
+          userId: user.id,
+          organizationId: organization.id,
+          ownerUserId: ownerOwnership.ownerUserId,
+          notes: null,
+          now,
+        });
+      }
+
+      // 4. Notify the original owner if we have a userId — the ONE notice for
+      //    both the intake and the proposal.
       if (ownerOwnership?.ownerUserId) {
         pendingNotifications.push({
           userId: ownerOwnership.ownerUserId,

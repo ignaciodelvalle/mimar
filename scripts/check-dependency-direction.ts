@@ -156,6 +156,16 @@ export const ALLOWED_EDGES = new Set<string>([
   // implementation. `events` imports nothing from `welfare`, so the graph
   // stays acyclic.
   "welfare:events",
+  // pets → return-to-owner (added 2026-10-01, PO decision): a refugio that
+  // confirms a chip match leaves the return proposal for the owner in the
+  // intake's own transaction (confirm-chip-match-refugio.ts). It calls the
+  // proposal writer's tx-level helper, writeRefugioReturnProposalInTx, so the
+  // lock, the one-pending rule and the org's authorship have ONE definition —
+  // a copy in pets would be a second writer of custody_transfer_proposed.
+  // Spelled "return" because MODULE_IMPORT_RE stops at the hyphen (the same
+  // reason "pets:custody" above means custody-disputes). return-to-owner
+  // imports nothing from pets, so the graph stays acyclic.
+  "pets:return",
 ]);
 
 // All module names (directory names under src/modules/).

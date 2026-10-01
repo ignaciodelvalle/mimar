@@ -7,13 +7,14 @@
 //   3. Integration tests — createIntakeAction cross-check paths
 //   4. Integration tests — createPetAction cross-check (found_stray)
 //   5. Integration tests — confirmChipMatchAction
+//   5a. The refugio's match leaves the return proposal (PO 2026-10-01)
 //
 // Database setup mirrors admin-revocations.test.ts (ephemeral users) and
 // role-upgrade.test.ts (transaction tests). All rows created here are deleted
 // in afterAll.
 
 import { createClient } from "@supabase/supabase-js";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { confirmChipMatchAction } from "@/app/actions/chip-match";
@@ -28,6 +29,7 @@ import {
   pets,
   profiles,
 } from "@/db";
+import { validateEventPayload } from "@/lib/events/event-schemas";
 import { attemptedChipMatchesPet, lookupByChip } from "@/lib/infra/chip-lookup";
 import { generateIntakeMatchClaim } from "@/lib/infra/intake-match-claim";
 import { generateForceToken, validateForceToken } from "@/lib/infra/microchip-force-token";
@@ -38,6 +40,7 @@ import { confirmChipMatchAsRefugioWriter } from "@/src/modules/pets/application/
 import { confirmChipMatchAsVecinoWriter } from "@/src/modules/pets/application/chip-match/confirm-chip-match-vecino";
 import { recordChipDisputeAgainstActivePet } from "@/src/modules/pets/application/chip-match/record-chip-dispute";
 import { createIntake } from "@/src/modules/pets/application/intake/create-intake";
+import { readPetReturnState } from "@/src/modules/return-to-owner/application/read-return-state";
 import { withMutationOverride } from "./_helpers/db-overrides";
 import { createFreshTestUser } from "./_helpers/fresh-test-user";
 
@@ -778,6 +781,203 @@ describe("confirmChipMatchAction", () => {
         ),
       );
     expect(custodyRows.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5a. The refugio's match leaves the return proposal (PO 2026-10-01)
+// ---------------------------------------------------------------------------
+//
+// Before this, the owner's "Coordinar devolución" opened the `can_propose`
+// arm — the owner offering to hand the animal TO the refugio — because the
+// match wrote custody and an intake and no proposal. Now the refugio's
+// confirmation leaves the proposal addressed to the owner, through the
+// proposal writer's own tx-level helper, in the intake's transaction.
+
+describe("refugio decision='same' leaves the return proposal for the owner", () => {
+  const ORG_NAME = "Chip Match Refugio";
+
+  // `granted` is what requireCapability resolves for the acting member; the
+  // match proposes only when it holds custody.transfer, the capability a
+  // manual proposal (proposeReturnToOwnerAction) requires.
+  function confirmAsRefugio(
+    matchedToken: string,
+    opts: { decision?: "same" | "not_same"; granted?: string[] } = {},
+  ) {
+    return confirmChipMatchAsRefugioWriter({
+      auth: {
+        user: { id: refugioMemberUserId },
+        organization: { id: orgId, displayName: ORG_NAME, verified: true },
+        granted: new Set(opts.granted ?? ["intake.create", "custody.transfer"]),
+      },
+      orgToken,
+      claim: generateIntakeMatchClaim(orgToken, matchedToken),
+      matchedPetToken: matchedToken,
+      decision: opts.decision ?? "same",
+    });
+  }
+
+  function eventsOf(petId: string, eventType: string) {
+    return db
+      .select()
+      .from(petEvents)
+      .where(and(eq(petEvents.petId, petId), eq(petEvents.eventType, eventType)));
+  }
+
+  function ownerNoticesFor(petId: string) {
+    return db
+      .select()
+      .from(notifications)
+      .where(and(eq(notifications.userId, ownerUserId), eq(notifications.relatedPetId, petId)));
+  }
+
+  it("writes the proposal in the intake's transaction, authored by the org, addressed to the owner", async () => {
+    const { petId, publicToken } = await insertPetWithChip({
+      microchipId: `CHIP-PROP-ATOMIC-${Date.now()}`,
+      status: "lost",
+      ownerUserId,
+      tokenSuffix: "PATOM",
+    });
+
+    const result = await confirmAsRefugio(publicToken);
+    expect(result).toMatchObject({ ok: true });
+
+    const proposals = await eventsOf(petId, "custody_transfer_proposed");
+    expect(proposals).toHaveLength(1);
+    const proposal = proposals[0];
+    expect(proposal.authorRole).toBe("shelter");
+    expect(proposal.authorOrganizationId).toBe(orgId);
+    expect(proposal.recordedByUserId).toBe(refugioMemberUserId);
+    expect(proposal.payload).toMatchObject({
+      from_user_id: null,
+      from_organization_id: orgId,
+      to_user_id: ownerUserId,
+      to_organization_id: null,
+      reason: "return_to_original_owner",
+      notes: null,
+    });
+
+    const intakes = await eventsOf(petId, "shelter_intake_recorded");
+    expect(intakes).toHaveLength(1);
+    // ONE transaction: Postgres stamps every row a transaction writes with that
+    // transaction's id (xmin). Two commits would carry two ids.
+    const rows = (await db.execute(sql`
+      SELECT xmin::text AS xmin FROM pet_events
+      WHERE id IN (${proposal.id}, ${intakes[0].id})
+    `)) as unknown as Array<{ xmin: string }>;
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.xmin).toBe(rows[1]?.xmin);
+  });
+
+  it("the owner's devolución reads inbound_pending, from the refugio", async () => {
+    const { petId, publicToken } = await insertPetWithChip({
+      microchipId: `CHIP-PROP-STATE-${Date.now()}`,
+      status: "lost",
+      ownerUserId,
+      tokenSuffix: "PSTATE",
+    });
+    await confirmAsRefugio(publicToken);
+
+    const state = await readPetReturnState({
+      pet: { id: petId },
+      userId: ownerUserId,
+      holderRole: "owner",
+    });
+    expect(state).toMatchObject({ kind: "inbound_pending", actorName: ORG_NAME, notes: null });
+  });
+
+  it("the owner gets exactly ONE notice for the match and the proposal", async () => {
+    const { petId, publicToken } = await insertPetWithChip({
+      microchipId: `CHIP-PROP-NOTICE-${Date.now()}`,
+      status: "lost",
+      ownerUserId,
+      tokenSuffix: "PNOTE",
+    });
+    await confirmAsRefugio(publicToken);
+
+    const notices = await ownerNoticesFor(petId);
+    expect(notices).toHaveLength(1);
+    expect(notices[0].notificationType).toBe("chip_match_notification_owner");
+    expect(notices[0].ctaUrl).toBe(`/mis-mascotas/${publicToken}/devolucion`);
+  });
+
+  it("a retry is idempotent: no second proposal, intake or notice", async () => {
+    const { petId, publicToken } = await insertPetWithChip({
+      microchipId: `CHIP-PROP-RETRY-${Date.now()}`,
+      status: "lost",
+      ownerUserId,
+      tokenSuffix: "PRETRY",
+    });
+    expect(await confirmAsRefugio(publicToken)).toMatchObject({ ok: true });
+    expect(await confirmAsRefugio(publicToken)).toMatchObject({ ok: true });
+
+    expect(await eventsOf(petId, "custody_transfer_proposed")).toHaveLength(1);
+    expect(await eventsOf(petId, "shelter_intake_recorded")).toHaveLength(1);
+    expect(await ownerNoticesFor(petId)).toHaveLength(1);
+  });
+
+  it("'not_same' leaves no proposal", async () => {
+    const { petId, publicToken } = await insertPetWithChip({
+      microchipId: `CHIP-PROP-NOTSAME-${Date.now()}`,
+      status: "lost",
+      ownerUserId,
+      tokenSuffix: "PNOTS",
+    });
+    expect(await confirmAsRefugio(publicToken, { decision: "not_same" })).toMatchObject({
+      ok: true,
+    });
+    expect(await eventsOf(petId, "custody_transfer_proposed")).toHaveLength(0);
+  });
+
+  it("a member without custody.transfer takes the intake but proposes nothing", async () => {
+    const { petId, publicToken } = await insertPetWithChip({
+      microchipId: `CHIP-PROP-NOCAP-${Date.now()}`,
+      status: "lost",
+      ownerUserId,
+      tokenSuffix: "PNOCAP",
+    });
+    expect(await confirmAsRefugio(publicToken, { granted: ["intake.create"] })).toMatchObject({
+      ok: true,
+    });
+    expect(await eventsOf(petId, "shelter_intake_recorded")).toHaveLength(1);
+    expect(await eventsOf(petId, "custody_transfer_proposed")).toHaveLength(0);
+  });
+
+  it("a proposal already pending stays the only one, and the intake still lands", async () => {
+    const { petId, publicToken } = await insertPetWithChip({
+      microchipId: `CHIP-PROP-PENDING-${Date.now()}`,
+      status: "lost",
+      ownerUserId,
+      tokenSuffix: "PPEND",
+    });
+    const earlier = new Date(Date.now() - 60_000);
+    const [pending] = await db
+      .insert(petEvents)
+      .values({
+        petId,
+        eventType: "custody_transfer_proposed",
+        occurredAt: earlier,
+        recordedAt: earlier,
+        recordedByUserId: vecinoUserId,
+        authorRole: "finder",
+        payload: validateEventPayload("custody_transfer_proposed", {
+          from_user_id: vecinoUserId,
+          from_organization_id: null,
+          to_user_id: ownerUserId,
+          to_organization_id: null,
+          reason: "return_to_original_owner",
+          notes: null,
+          matched_against_pet_id: petId,
+          proposed_at: earlier.toISOString(),
+        }),
+      })
+      .returning({ id: petEvents.id });
+
+    expect(await confirmAsRefugio(publicToken)).toMatchObject({ ok: true });
+
+    const proposals = await eventsOf(petId, "custody_transfer_proposed");
+    expect(proposals.map((p) => p.id)).toEqual([pending.id]);
+    expect(await eventsOf(petId, "shelter_intake_recorded")).toHaveLength(1);
   });
 });
 
