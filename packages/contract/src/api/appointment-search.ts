@@ -273,6 +273,28 @@ export type AppointmentSearchV1 = {
    * never chose their barrio.
    */
   jurisdictionSource: "requested" | "defaulted-from-pet" | "none";
+  /**
+   * Where `results` came from when that is NOT the applied locality, and `null`
+   * otherwise — which includes every response to a caller that did not ask.
+   *
+   * `"city"` (F-3, native review 2026-09-23): the applied locality is a barrio of
+   * a province that IS one city — CABA, the one province INDEC models as a
+   * single locality — it had nothing for this service, and the caller sent
+   * `ampliar=ciudad`, so the server searched the whole city instead. `results`
+   * are then the city-wide search's and may STILL be empty, which is a different
+   * fact from "nothing in Palermo": changing the barrio will not help.
+   *
+   * WHY A BARRIO MISSES WHAT THE CITY HAS. A whole-city offering already answers
+   * every barrio search (`localitiesCoveringSearch`, by subsumption); what a
+   * barrio search can never reach is an offering tagged to ANOTHER barrio. That
+   * is what this widening adds, and only when the barrio itself has nothing.
+   *
+   * OPT-IN ON THE WIRE, which is what keeps the field additive: a client that
+   * does not send `ampliar=ciudad` gets exactly the results it always got, so no
+   * build that predates this field draws city-wide offerings under a label that
+   * names one barrio.
+   */
+  widenedTo: "city" | null;
   /** Empty when no service was chosen, and empty when the service has no slots. */
   results: BookableOfferingV1[];
   /** Seven, carried so a client can say "en 7 días" without inventing it. */

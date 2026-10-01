@@ -86,6 +86,7 @@ export function buildAppointmentSearchV1(input: {
   appliedProvince: string | null;
   appliedLocality: string | null;
   jurisdictionSource: AppointmentSearchV1["jurisdictionSource"];
+  widenedTo: AppointmentSearchV1["widenedTo"];
   results: BookableOfferingSummary[];
   now: Date;
 }): AppointmentSearchV1 {
@@ -103,6 +104,7 @@ export function buildAppointmentSearchV1(input: {
     appliedProvince: input.appliedProvince,
     appliedLocality: input.appliedLocality,
     jurisdictionSource: input.jurisdictionSource,
+    widenedTo: input.widenedTo,
     results: input.results.map(toOfferingV1),
     windowDays: APPOINTMENT_SEARCH_LIST_WINDOW_DAYS,
   };

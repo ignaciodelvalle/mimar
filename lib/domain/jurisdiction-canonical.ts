@@ -359,3 +359,31 @@ export function offeringCoverageLabel(
   if (isWholeProvinceLocality(province, locality)) return province;
   return locality || province;
 }
+
+/**
+ * Whether an EMPTY appointment search at `(province, locality)` may look again
+ * across the whole city — the opt-in `ampliar=ciudad` of `/api/v1/appointments`
+ * (F-3, native review 2026-09-23).
+ *
+ * `localitiesCoveringSearch` already lifts a barrio search UP to a whole-city
+ * offering; it deliberately never reaches SIDEWAYS to another barrio's. So a
+ * barrio with nothing of its own showed "no hay turnos" while a campaign ran
+ * two barrios away, and the person had no way to know which barrio to try.
+ * This is the sideways step, and it is taken only when asked and only here.
+ *
+ * ONLY A PROVINCE THAT IS ONE CITY. That is the provinces INDEC models as a
+ * single locality — today CABA alone, read off `WHOLE_PROVINCE_LOCALITY` rather
+ * than spelled again — because only there is "the rest of the province" still
+ * near: widening Buenos Aires the same way would answer La Plata with Bahía
+ * Blanca. A search with no locality is already province-wide and has nothing
+ * to widen. Fail-closed like the rest of this module: a non-canonical province
+ * never widens.
+ */
+export function searchWidensToWholeCity(
+  province: string | null | undefined,
+  locality: string | null | undefined,
+): boolean {
+  if (!province || !locality) return false;
+  if (!CANONICAL_PROVINCE_NAMES.has(province)) return false;
+  return WHOLE_PROVINCE_LOCALITY[province] !== WHOLE_PROVINCE_SENTINEL;
+}

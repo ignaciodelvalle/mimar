@@ -31,7 +31,14 @@
 // heading. React escaped the markup, so it was never injection — it was the page
 // asserting a service that does not exist. Here the payload carries
 // `serviceKind: null` and the full catalogue, so a client redraws the picker.
+//
+// ONE BEHAVIOUR THE WEB DOES NOT HAVE: `ampliar=ciudad` (F-3). An empty search in
+// a CABA barrio may be re-run across the whole city and says so in `widenedTo`.
+// It is opt-in so the payload stays additive, and the web's `/turnos/buscar`
+// (`app/(app)/turnos/buscar/page.tsx:104-121`) still has no such fallback — a
+// parity gap, recorded rather than closed from here.
 
+import { searchWidensToWholeCity } from "@/lib/domain/jurisdiction-canonical";
 import { apiV1Error, apiV1Json } from "@/lib/infra/api-v1";
 import {
   API_V1_AUTHENTICATED_READ_IP_LIMIT,
@@ -44,6 +51,7 @@ import { reportError } from "@/lib/infra/report-error";
 import { findServiceKind } from "@/lib/reference/service-kinds";
 import { createClientFromBearer } from "@/lib/supabase/bearer";
 import { searchBookableOfferings } from "@/src/modules/events/application/booking/search-bookable-slots";
+import type { AppointmentSearchV1 } from "@dim/contract/api";
 
 import { buildAppointmentSearchV1 } from "./payload";
 import { defaultJurisdictionForUser, parseSearchQuery } from "./query";
@@ -135,6 +143,7 @@ export async function GET(request: Request) {
         appliedProvince: null,
         appliedLocality: null,
         jurisdictionSource: "none",
+        widenedTo: null,
         results: [],
         now,
       }),
@@ -157,7 +166,7 @@ export async function GET(request: Request) {
             "api-v1-appointment-search-jurisdiction",
           );
 
-    const results = await withDbBudgetOrThrow(
+    let results = await withDbBudgetOrThrow(
       searchBookableOfferings({
         serviceKind: query.serviceKind,
         province: jurisdiction.province,
@@ -170,6 +179,34 @@ export async function GET(request: Request) {
       "api-v1-appointment-search",
     );
 
+    // THE CITY, WHEN THE BARRIO HAS NOTHING (F-3). Asked for (`ampliar=ciudad`),
+    // and only where `searchWidensToWholeCity` allows it — a province that is one
+    // city. The second read is the SAME use-case with the locality dropped, so
+    // province equality, approval, the slot window and every other predicate are
+    // the first read's; nothing about which offerings may be shown is decided
+    // here. `widenedTo` says so even when the city has nothing either, because
+    // "nothing in CABA" tells a person something "nothing in Palermo" does not.
+    let widenedTo: AppointmentSearchV1["widenedTo"] = null;
+    if (
+      results.length === 0 &&
+      query.widenToCity &&
+      searchWidensToWholeCity(jurisdiction.province, jurisdiction.locality)
+    ) {
+      results = await withDbBudgetOrThrow(
+        searchBookableOfferings({
+          serviceKind: query.serviceKind,
+          province: jurisdiction.province,
+          locality: null,
+          fromDate: query.fromDate,
+          freeOnly: query.freeOnly,
+          now,
+        }),
+        SEARCH_BUDGET_MS,
+        "api-v1-appointment-search-city",
+      );
+      widenedTo = "city";
+    }
+
     return apiV1Json(
       buildAppointmentSearchV1({
         // NON-NULL BY CONSTRUCTION: an unrecognised code already returned the
@@ -179,6 +216,7 @@ export async function GET(request: Request) {
         appliedProvince: jurisdiction.province,
         appliedLocality: jurisdiction.locality,
         jurisdictionSource: jurisdiction.source,
+        widenedTo,
         results,
         now,
       }),

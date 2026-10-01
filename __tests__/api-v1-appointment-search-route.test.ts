@@ -42,6 +42,13 @@ const control = vi.hoisted(() => ({
   /** What the search use-case answers, or a thrower. */
   searchResult: [] as unknown,
   searchThrows: null as null | (() => never),
+  /**
+   * Per-CALL answers, consumed in order before `searchResult` applies — the
+   * `ampliar=ciudad` cases need the barrio read and the city read to answer
+   * differently. A function entry is called instead of returned, so one read of
+   * the two can exceed its budget while the other does not.
+   */
+  searchQueue: [] as unknown[],
   /** Every call the search use-case received. */
   searchCalls: [] as Array<Record<string, unknown>>,
   /** What the jurisdiction prefill answers. */
@@ -99,6 +106,10 @@ vi.mock("@/src/modules/events/application/booking/search-bookable-slots", () => 
   searchBookableOfferings: async (args: Record<string, unknown>) => {
     control.searchCalls.push(args);
     if (control.searchThrows) control.searchThrows();
+    if (control.searchQueue.length > 0) {
+      const next = control.searchQueue.shift();
+      return typeof next === "function" ? next() : next;
+    }
     return control.searchResult;
   },
   readBookableOffering: async (args: Record<string, unknown>) => {
@@ -162,6 +173,7 @@ beforeEach(() => {
   control.spent = [];
   control.searchResult = [];
   control.searchThrows = null;
+  control.searchQueue = [];
   control.searchCalls = [];
   control.jurisdiction = { province: null, locality: null, source: "none" };
   control.jurisdictionCalls = [];
@@ -177,6 +189,7 @@ describe("GET /appointments — the picker, and an unknown service", () => {
     expect(body.serviceKind).toBe(null);
     expect(body.results).toEqual([]);
     expect(body.jurisdictionSource).toBe("none");
+    expect(body.widenedTo).toBe(null);
     expect(body.serviceKinds.map((k) => k.code)).toEqual(SERVICE_KINDS.map((k) => k.code));
     // NO QUERY RAN. A picker that also searched would spend a pooler round trip
     // to answer a twelve-item constant.
@@ -307,6 +320,117 @@ describe("GET /appointments — the query string the web already publishes", () 
     expect(control.searchCalls[0]?.now).toEqual(NOW);
     expect(body.issuedAt).toBe(NOW.toISOString());
     expect(new Date(body.staleAfter).getTime()).toBe(NOW.getTime() + 30_000);
+  });
+});
+
+describe("GET /appointments — ampliar=ciudad, the city when the barrio has nothing (F-3)", () => {
+  // Native review 2026-09-23 (N-02B-01): a CABA barrio with no offering of its
+  // own answered "no hay turnos" while another barrio had one. A whole-CABA
+  // offering already reached every barrio by subsumption; an offering tagged to
+  // ANOTHER barrio never could. The use-case is mocked here, so what these pin
+  // is the DOOR's decision: when the second read runs, with what, and what the
+  // payload says about it. The predicate itself is `searchWidensToWholeCity`'s
+  // test; the SQL is `search-bookable-slots.test.ts`'s.
+  const PALERMO = "?service_kind=vaccination_rabies&province=CABA&locality=Palermo";
+  const caballito = { ...offering, offeringToken: "SVO-CABA-LLTO", coverageLabel: "Caballito" };
+
+  it("re-runs an EMPTY barrio search across the city, with the locality dropped and nothing else", async () => {
+    control.searchQueue = [[], [caballito]];
+    const body = (await (
+      await search(`${PALERMO}&fecha_desde=2026-09-01&solo_gratis=true&ampliar=ciudad`)
+    ).json()) as AppointmentSearchV1;
+
+    expect(control.searchCalls).toHaveLength(2);
+    // The SAME read, minus the barrio: every predicate the first one carried is
+    // still there, so the widening cannot show an offering the first read's
+    // rules would refuse.
+    const { locality: firstLocality, ...firstRest } = control.searchCalls[0] ?? {};
+    const { locality: cityLocality, ...cityRest } = control.searchCalls[1] ?? {};
+    expect(firstLocality).toBe("Palermo");
+    expect(cityLocality).toBe(null);
+    expect(cityRest).toEqual(firstRest);
+    expect(cityRest).toMatchObject({ province: "CABA", freeOnly: true });
+
+    expect(body.widenedTo).toBe("city");
+    expect(body.results.map((r) => r.offeringToken)).toEqual(["SVO-CABA-LLTO"]);
+    // The place the person searched is still reported as the place they searched.
+    expect(body.appliedLocality).toBe("Palermo");
+    expect(body.jurisdictionSource).toBe("requested");
+  });
+
+  it("says it widened even when the city has nothing either", async () => {
+    // "Nothing in CABA" is a different fact from "nothing in Palermo": the first
+    // tells a person that trying another barrio will not help.
+    control.searchQueue = [[], []];
+    const body = (await (await search(`${PALERMO}&ampliar=ciudad`)).json()) as AppointmentSearchV1;
+
+    expect(control.searchCalls).toHaveLength(2);
+    expect(body.widenedTo).toBe("city");
+    expect(body.results).toEqual([]);
+  });
+
+  it("widens a GUESSED barrio too — the pet's zone is the one most likely to be empty", async () => {
+    control.jurisdiction = { province: "CABA", locality: "Palermo", source: "defaulted-from-pet" };
+    control.searchQueue = [[], [caballito]];
+    const body = (await (
+      await search("?service_kind=vaccination_rabies&ampliar=ciudad")
+    ).json()) as AppointmentSearchV1;
+
+    expect(control.searchCalls[1]).toMatchObject({ province: "CABA", locality: null });
+    expect(body.widenedTo).toBe("city");
+    expect(body.jurisdictionSource).toBe("defaulted-from-pet");
+  });
+
+  it("does NOT widen without the opt-in: a build that predates the field gets what it always got", async () => {
+    control.searchQueue = [[], [caballito]];
+    const body = (await (await search(PALERMO)).json()) as AppointmentSearchV1;
+
+    expect(control.searchCalls).toHaveLength(1);
+    expect(body.widenedTo).toBe(null);
+    expect(body.results).toEqual([]);
+  });
+
+  it("does NOT widen a barrio that has something of its own", async () => {
+    control.searchQueue = [[offering], [caballito]];
+    const body = (await (await search(`${PALERMO}&ampliar=ciudad`)).json()) as AppointmentSearchV1;
+
+    expect(control.searchCalls).toHaveLength(1);
+    expect(body.widenedTo).toBe(null);
+    expect(body.results.map((r) => r.offeringToken)).toEqual(["SVO-7K2M-9QX4"]);
+  });
+
+  it("does NOT widen a province that is not one city", async () => {
+    control.searchQueue = [[], [offering]];
+    const body = (await (
+      await search(
+        "?service_kind=vaccination_rabies&province=Buenos+Aires&locality=La+Plata&ampliar=ciudad",
+      )
+    ).json()) as AppointmentSearchV1;
+
+    expect(control.searchCalls).toHaveLength(1);
+    expect(body.widenedTo).toBe(null);
+  });
+
+  it("reads `ampliar` as the literal value and nothing else, like solo_gratis", async () => {
+    control.searchQueue = [[], [caballito]];
+    await search(`${PALERMO}&ampliar=1`);
+    expect(control.searchCalls).toHaveLength(1);
+  });
+
+  it("answers 503, not the empty barrio, when the CITY read exceeds its budget", async () => {
+    // The barrio's empty answer is not a fallback for a city read that could not
+    // be asked: rendering it would say "no hay turnos" over a pooler outage.
+    const { DbBudgetExceededError } = await import("@/lib/infra/db-budget");
+    control.searchQueue = [
+      [],
+      () => {
+        throw new DbBudgetExceededError("api-v1-appointment-search-city", 8_000);
+      },
+    ];
+
+    const response = await search(`${PALERMO}&ampliar=ciudad`);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "temporarily_unavailable" });
   });
 });
 

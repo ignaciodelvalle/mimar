@@ -39,6 +39,16 @@ export type AppointmentSearchQuery = {
   /** The earliest day to show, or `null`. Never moves the window backwards. */
   fromDate: Date | null;
   freeOnly: boolean;
+  /**
+   * `ampliar=ciudad` — when the applied barrio has nothing, search its whole city
+   * (F-3; see `searchWidensToWholeCity` and `AppointmentSearchV1.widenedTo`).
+   *
+   * THE ONE PARAM THE WEB DOES NOT PUBLISH, because the web has no such fallback
+   * yet; it is named in the web's vocabulary anyway (Spanish, `snake_case`-safe)
+   * so the day `/turnos/buscar` grows it, a shared search reads the same on both.
+   * Read like `solo_gratis`: the literal value and nothing else.
+   */
+  widenToCity: boolean;
 };
 
 /**
@@ -88,6 +98,7 @@ export function parseSearchQuery(params: URLSearchParams): AppointmentSearchQuer
     fromDate,
     // The web's own truthiness: `params.solo_gratis === "true"` and nothing else.
     freeOnly: params.get("solo_gratis") === "true",
+    widenToCity: params.get("ampliar") === "ciudad",
   };
 }
 

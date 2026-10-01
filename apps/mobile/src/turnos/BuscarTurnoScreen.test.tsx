@@ -73,6 +73,7 @@ function payload(over: Partial<AppointmentSearchV1> = {}): AppointmentSearchV1 {
     appliedProvince: null,
     appliedLocality: null,
     jurisdictionSource: "none",
+    widenedTo: null,
     results: [],
     windowDays: 7,
     ...over,
