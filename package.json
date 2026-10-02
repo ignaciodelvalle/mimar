@@ -97,6 +97,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "check:function-parity": "tsx scripts/check-function-parity.ts",
+    "place:legacy-grants": "tsx scripts/place-legacy-grants.ts",
     "db:migrate:status": "tsx scripts/migrate.ts --status",
     "db:migrate:check": "tsx scripts/migrate.ts --check",
     "db:migrate:baseline": "tsx scripts/migrate.ts --baseline",

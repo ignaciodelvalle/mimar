@@ -55,6 +55,8 @@ const MENTIONS: Readonly<Record<string, "writer" | "reader">> = {
   "lib/infra/rule-place-labels.ts": "reader",
   // The legal-baseline seed reads only rules keyed to no row and no unit.
   "scripts/seed-legal-baseline.ts": "reader",
+  // The read-only CABA/Córdoba check: lists active grants NOT on a unit.
+  "scripts/place-legacy-grants.ts": "reader",
   // Readers: the id-path consumers and the scope loader.
   "lib/infra/approval-routing.ts": "reader",
   "lib/infra/business-rules-resolver.ts": "reader",

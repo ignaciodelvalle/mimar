@@ -20,6 +20,7 @@ import { useRef, useState } from "react";
 import { createInstitutionalAccountAction } from "@/app/actions/admin-institutional";
 import { LocalityPickerAcross } from "@/components/LocalityPickerAcross";
 import { MagicLinkResultPanel } from "@/components/institutional/MagicLinkResultPanel";
+import { UnitAssignmentNudge } from "@/components/institutional/UnitAssignmentNudge";
 import { OpButton, OpInput } from "@/components/ui/dashboard";
 import { OpIconButton } from "@/components/ui/dashboard/OpIconButton";
 import { emailConfirmationProblem } from "@/lib/domain/email-confirmation";
@@ -61,6 +62,8 @@ type SuccessState = {
   email: string;
   inviteEmailSent: boolean;
   role: GovtScreenRole;
+  /** The provinces the account was granted (a national observer gets none). */
+  provinces: string[];
 };
 
 /** A jurisdiction admin's form: one province, municipal officials only. */
@@ -144,6 +147,7 @@ export function CreateGovtForm({ scope }: { scope?: CreateGovtScope } = {}) {
           email: email.trim(),
           inviteEmailSent: result.inviteEmailSent,
           role,
+          provinces: role === "national" ? [] : validLocalities.map((l) => l.province),
         });
         notifySaved(
           role === "national" ? "Observador nacional creado" : "Cuenta de gobierno creada",
@@ -169,18 +173,22 @@ export function CreateGovtForm({ scope }: { scope?: CreateGovtScope } = {}) {
 
   if (success) {
     return (
-      <MagicLinkResultPanel
-        magicLink={success.magicLink}
-        displayName={success.displayName}
-        email={success.email}
-        profileId={success.profileId}
-        // A national observer has the same detail page as a govt (it is
-        // where its deactivation and credential reset live).
-        detailPath={`${scope?.detailBase ?? "/admin/govts"}/${success.profileId}`}
-        variant="create"
-        inviteEmailSent={success.inviteEmailSent}
-        onCreateAnother={handleCreateAnother}
-      />
+      <div className="space-y-4">
+        {/* CABA/Córdoba grants are born matching by name: say the second step. */}
+        <UnitAssignmentNudge provinces={success.provinces} canConfirmUnits={!scope} />
+        <MagicLinkResultPanel
+          magicLink={success.magicLink}
+          displayName={success.displayName}
+          email={success.email}
+          profileId={success.profileId}
+          // A national observer has the same detail page as a govt (it is
+          // where its deactivation and credential reset live).
+          detailPath={`${scope?.detailBase ?? "/admin/govts"}/${success.profileId}`}
+          variant="create"
+          inviteEmailSent={success.inviteEmailSent}
+          onCreateAnother={handleCreateAnother}
+        />
+      </div>
     );
   }
 
