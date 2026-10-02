@@ -94,7 +94,7 @@ const TIERS: FeatureTier[] = [
       },
       {
         name: "Vecino en tránsito",
-        line: "Si cuidás a un animal sin dueño, lo registrás a tu cargo y editás sus datos mientras no aparezca un titular.",
+        line: "Si cuidás a un animal sin dueño, lo registrás a tu cargo desde la web. En la web y en la app editás sus datos mientras no aparezca un titular.",
         platform: "web-app",
       },
       {
