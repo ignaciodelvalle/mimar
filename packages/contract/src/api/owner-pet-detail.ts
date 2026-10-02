@@ -118,6 +118,19 @@ export function toViewerRole(
 export type OwnerPetDetailViewer = {
   role: OwnerPetDetailViewerRole;
   isTitular: boolean;
+  /**
+   * Whether this viewer may edit the animal's data ("Editar datos") — the
+   * server's `canEditPetProfile`, the SAME predicate `POST /profile` enforces.
+   * A role cannot answer it alone: a user-held `shelter_custody` row (the
+   * vecino en tránsito, reported as `caretaker` above) edits while the animal
+   * has no titular and reads once one exists (PO 2026-10-01).
+   *
+   * OPTIONAL ON THE WIRE for back-compat: a server older than this field omits
+   * it, and a client then falls back to the role rule (`derivePetActions`'s
+   * `canEditProfile` context), which is this verdict for every animal that has
+   * a titular.
+   */
+  canEditProfile?: boolean;
 };
 
 // ---------------------------------------------------------------------------

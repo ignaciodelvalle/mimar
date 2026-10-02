@@ -174,6 +174,72 @@ describe("derivePetActions — what does not apply is shown grey, with the reaso
   });
 });
 
+describe("derivePetActions — Editar datos is the server's verdict when it sends one", () => {
+  // The vecino en tránsito (a user-held custody row) reaches the catalogue as
+  // `caretaker`; only the server knows whether the animal has a titular.
+  const VECINO: PetActionContext = {
+    ...OWNER_ACTIVE_DOG,
+    viewerRole: "caretaker",
+    isTitular: false,
+  };
+
+  it("opens the row for the vecino while the animal has no titular, and nothing else", () => {
+    const derived = derivePetActions({ ...VECINO, canEditProfile: true });
+    expect(stateOf(derived, "edit")).toBe("live");
+    expect(findPetAction(derived, "edit")?.caption).toBeNull();
+    // Every other row is still the caretaker's world.
+    const withoutVerdict = derivePetActions(VECINO);
+    for (const id of PET_ACTION_IDS.filter((id) => id !== "edit")) {
+      expect(stateOf(derived, id), id).toBe(stateOf(withoutVerdict, id));
+    }
+  });
+
+  it("greys it once the animal has a titular", () => {
+    expect(stateOf(derivePetActions({ ...VECINO, canEditProfile: false }), "edit")).toBe(
+      "inert:caretaker",
+    );
+  });
+
+  it("a refusal of a non-caretaker role reads 'Solo el titular'", () => {
+    const derived = derivePetActions({
+      ...OWNER_ACTIVE_DOG,
+      viewerRole: "co_owner",
+      isTitular: false,
+      canEditProfile: false,
+    });
+    expect(stateOf(derived, "edit")).toBe("inert:titular_only");
+  });
+
+  it("absent or null (an older server) keeps the role rule", () => {
+    for (const canEditProfile of [undefined, null]) {
+      expect(stateOf(derivePetActions({ ...VECINO, canEditProfile }), "edit")).toBe(
+        "inert:caretaker",
+      );
+      expect(
+        stateOf(
+          derivePetActions({
+            ...OWNER_ACTIVE_DOG,
+            viewerRole: "foster",
+            isTitular: false,
+            canEditProfile,
+          }),
+          "edit",
+        ),
+      ).toBe("live");
+    }
+  });
+
+  it("never opens the row to an organization member", () => {
+    const derived = derivePetActions({
+      ...OWNER_ACTIVE_DOG,
+      viewerRole: "org_member",
+      isTitular: false,
+      canEditProfile: true,
+    });
+    expect(findPetAction(derived, "edit")).toBeNull();
+  });
+});
+
 describe("derivePetActions — rows that are not this viewer's world are absent", () => {
   it("an organization member gets Compartir and no panel at all", () => {
     const derived = derivePetActions({
@@ -306,7 +372,8 @@ function oracle(id: PetActionId, ctx: PetActionContext): Expected {
     case "return":
     case "death":
       return "live";
-    // requireTitularAccess refuses a caretaker and nobody else on this path.
+    // No server verdict in this matrix: the role fallback, which refuses a
+    // caretaker and nobody else (the verdict has its own describe above).
     case "edit":
       return caretaker ? "inert:caretaker" : "live";
     // The titular's own vet and person to call.

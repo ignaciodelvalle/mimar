@@ -244,6 +244,20 @@ export type PetActionContext = {
    * outage would put it in front of almost every owner.
    */
   pppDoor: boolean | null;
+  /**
+   * The SERVER's verdict on "Editar datos" — `canEditPetProfile` as the
+   * reader resolved it (`viewer.canEditProfile` on the owner face). It is the
+   * one row a role cannot decide: the vecino en tránsito (a user-held
+   * `shelter_custody` row, which `toViewerRole` reports as `caretaker`) edits
+   * while the animal has NO titular and reads once one exists (PO 2026-10-01).
+   *
+   * Absent or `null` — an older server that does not send it — falls back to
+   * the role rule this row had before: live for owner, co-owner and foster,
+   * grey for a caretaker. That is the server's own answer whenever the animal
+   * has a titular, so the fallback can only under-offer the vecino, never
+   * over-offer anybody.
+   */
+  canEditProfile?: boolean | null;
 };
 
 export type PetActionState = { kind: "live" } | { kind: "inert"; reason: PetActionInertReason };
@@ -290,6 +304,8 @@ type Facts = {
   role: OwnerPetDetailViewerRole;
   /** Known to be a species other than a dog. False while the species is unread. */
   knownNotDog: boolean;
+  /** The server's "Editar datos" verdict; `null` when it did not send one. */
+  editsProfile: boolean | null;
 };
 
 const LIVE: PetActionState = { kind: "live" };
@@ -324,10 +340,13 @@ const RULES: Readonly<Record<PetActionId, Rule>> = {
   share: () => LIVE,
   // Kept on a LOST animal: the row is the cockpit for both directions.
   lost: personWhileAlive,
-  // `requireTitularAccess` denies a caretaker and nobody else on this path.
+  // The server's verdict (`canEditPetProfile`) when it sent one; otherwise the
+  // role rule, which is that verdict for every animal that has a titular.
   edit: (f) => {
     if (!f.person) return null;
-    return f.role === "caretaker" ? inert("caretaker") : LIVE;
+    if (f.editsProfile === null) return f.role === "caretaker" ? inert("caretaker") : LIVE;
+    if (f.editsProfile) return LIVE;
+    return inert(f.role === "caretaker" ? "caretaker" : "titular_only");
   },
   // Any holder: `titular-only.ts` lists photos among what a caretaker MAY do.
   photo: (f) => (f.person ? LIVE : null),
@@ -368,6 +387,7 @@ function factsOf(ctx: PetActionContext): Facts {
     isTitular: ctx.isTitular,
     role: ctx.viewerRole,
     knownNotDog: ctx.species !== null && ctx.species !== "dog",
+    editsProfile: ctx.canEditProfile ?? null,
   };
 }
 
