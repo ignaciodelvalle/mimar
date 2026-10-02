@@ -7,8 +7,8 @@
 // first thing that happens is a type error for an import that is perfectly
 // correct:
 //
-//   components/landing/BondBand.tsx: error TS2307
-//   Cannot find module '@/public/landing/portada.jpg'
+//   components/landing/BondBand.tsx: error TS2307   (a landing photo band,
+//   Cannot find module '@/public/landing/portada.jpg'   removed 2026-10-02)
 //
 // It went unnoticed because CI had not run since 2026-06-12 and no local
 // checkout is ever truly fresh. Found 2026-07-27, the first time CI ran again.

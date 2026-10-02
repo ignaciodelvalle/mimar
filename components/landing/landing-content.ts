@@ -652,6 +652,63 @@ export const CONSOLE_KPIS = [
 ] as const;
 
 // ---------------------------------------------------------------------------
+// Crisis doors — the three situations a visitor in a hurry arrives with
+// ---------------------------------------------------------------------------
+
+export type CrisisDoor = {
+  /** Tints the icon tile (app/landing.css, .lp-hero-door[data-t]). */
+  t: "perdi" | "encontre" | "maltrato";
+  icon: IconName;
+  label: string;
+  /** One short line under the label (one line at ~190px, three doors across):
+   *  what happens next, never a promise the product does not keep. */
+  sub: string;
+  href: string;
+};
+
+/**
+ * The anonymous visitor in crisis is the highest-value visitor (benchmark L1):
+ * three doors, no account, no code to remember. They live in the HERO, in place
+ * of the old CTA row (PO 2026-10-02), so they are on the first screen at every
+ * width; the separate crisis band that used to carry them below the fold was
+ * removed in the same change, and the nav's "Crear mi miMAR" is the one sign-up
+ * entry above the fold.
+ *
+ * The copy does NOT promise intervention. A denuncia is registered and issued a
+ * tracking code; it is not dispatched to an organism yet (the Ley 14.346
+ * integration is still in development, disclosed in the wizard's final step
+ * and on /denuncias/seguimiento). Nor does marking a pet lost alert neighbours:
+ * it notifies the verified orgs whose coverage matches its jurisdiction
+ * (lib/infra/lost-pet-broadcast.ts).
+ */
+export const CRISIS_DOORS: readonly CrisisDoor[] = [
+  // The owner's job ("activá el modo perdido") lands on the owner's pets, not
+  // the finder board — /mis-mascotas preserves the destination through the
+  // auth flow.
+  {
+    t: "perdi",
+    icon: "perdida",
+    label: "Perdí una mascota",
+    sub: "Activá el modo perdido.",
+    href: "/mis-mascotas",
+  },
+  {
+    t: "encontre",
+    icon: "qr",
+    label: "Encontré una mascota",
+    sub: "Escaneá su QR. Sin cuenta.",
+    href: "/perdidas",
+  },
+  {
+    t: "maltrato",
+    icon: "denuncia",
+    label: "Vi un caso de maltrato",
+    sub: "Denunciá sin cuenta.",
+    href: "/denuncias/nueva",
+  },
+];
+
+// ---------------------------------------------------------------------------
 // Features — life moments (LifeSG naming; NO law citations in copy)
 // ---------------------------------------------------------------------------
 
@@ -662,8 +719,8 @@ export type LifeMoment = {
 };
 
 export const LIFE_MOMENTS: LifeMoment[] = [
-  // "Vi un caso de maltrato" was cut (copy review 2026-09-30, D6): CrisisBand
-  // already has this exact door above the fold, and this card's own body
+  // "Vi un caso de maltrato" was cut (copy review 2026-09-30, D6): the hero's
+  // crisis doors (CRISIS_DOORS) already carry this exact door, and this card's own body
   // said "el caso lo toma la autoridad" — which contradicts
   // app/(public)/denuncias/seguimiento/page.tsx ("aún no fue enviada a la
   // herramienta gubernamental").

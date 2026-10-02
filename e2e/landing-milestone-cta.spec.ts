@@ -189,8 +189,6 @@ test("milestone CTA hides at the last milestone; FAQ and footer stay unobstructe
  */
 const MILESTONE_NAMES = [
   "La credencial",
-  "Emergencias, sin cuenta",
-  "El vínculo",
   "Una mascota, muchas manos",
   "Para cada situación",
   "Empezar",
@@ -221,12 +219,18 @@ function milestoneIndex(ariaLabel: string | null): number {
 // that the affordance moved FORWARD, and raised the skip with the PO as the
 // product question it was.
 //
-// v3 — this one. The PO ruled (PO-5, 2026-08-05): the CTA advances from the
-// milestone it NAVIGATED TO, not from whatever the spy happens to highlight, so
-// "El vínculo" is now the correct SETTLED answer and is asserted as such —
-// after `waitForScrollToSettle`, never mid-flight. The forward-motion assertion
-// from v2 is kept below as a second case, over a MANUAL scroll, because that is
-// the scenario the scroll-spy still governs.
+// v3. The PO ruled (PO-5, 2026-08-05): the CTA advances from the milestone it
+// NAVIGATED TO, not from whatever the spy happens to highlight, so "El
+// vínculo" became the correct SETTLED answer and was asserted as such — after
+// `waitForScrollToSettle`, never mid-flight. The forward-motion assertion from
+// v2 is kept below as a second case, over a MANUAL scroll, because that is the
+// scenario the scroll-spy still governs.
+//
+// v4 — this one (PO 2026-10-02). The crisis band moved into the hero and the
+// bond band was removed, so the sequence is credencial → idea → features →
+// empezar and the first click parks #idea. The rule asserted is v3's,
+// unchanged: the settled CTA offers the milestone after the one it navigated
+// to.
 test("milestone CTA scrolls to the milestone it names and then offers the one after it", async ({
   page,
 }) => {
@@ -234,27 +238,27 @@ test("milestone CTA scrolls to the milestone it names and then offers the one af
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const cta = page.getByRole("button", { name: CTA_NAME });
-  await expect(cta).toHaveAccessibleName(/Emergencias, sin cuenta/);
+  await expect(cta).toHaveAccessibleName(/Una mascota, muchas manos/);
 
   await armScrollWatcher(page);
   await cta.click();
   await waitForScrollToSettle(page);
 
-  // (1) The click did what it named: the crisis band is parked under the
+  // (1) The click did what it named: the story section is parked under the
   // sticky nav (NAV_OFFSET_PX = 84 in MilestoneNav; bounded loosely so a nav
   // height tweak is not a false failure).
-  const crisisTop = await page
-    .locator("#crisis")
+  const ideaTop = await page
+    .locator("#idea")
     .evaluate((el) => Math.round(el.getBoundingClientRect().top));
-  expect(crisisTop, "the CTA did not park #crisis under the sticky nav").toBeGreaterThanOrEqual(0);
-  expect(crisisTop, "the CTA did not park #crisis under the sticky nav").toBeLessThanOrEqual(120);
+  expect(ideaTop, "the CTA did not park #idea under the sticky nav").toBeGreaterThanOrEqual(0);
+  expect(ideaTop, "the CTA did not park #idea under the sticky nav").toBeLessThanOrEqual(120);
 
   // (2) The settled affordance offers the milestone that FOLLOWS the one the
-  // click navigated to — no skip, whatever the spy makes of a 163px band.
+  // click navigated to — no skip, whatever the spy makes of the geometry.
   // `expect.poll` covers the React render tick after the final scroll event.
   await expect
     .poll(async () => await cta.getAttribute("aria-label"), { timeout: 5_000 })
-    .toMatch(/El vínculo$/);
+    .toMatch(/Para cada situación$/);
 });
 
 // The other half of the rule: the latch is not a permanent takeover. Once the
@@ -278,7 +282,7 @@ test("a scroll away from the clicked milestone hands the CTA back to the scroll-
   // Not the CTA this time: the page moves off the parked position on its own,
   // the way a visitor's wheel, keyboard or scrollbar moves it.
   await armScrollWatcher(page);
-  await page.locator("#idea").scrollIntoViewIfNeeded();
+  await page.locator("#features").scrollIntoViewIfNeeded();
   await waitForScrollToSettle(page);
 
   await expect

@@ -73,7 +73,9 @@
 // (PO decision: keep it, make the page around it calmer). Don't "fix" it back
 // to a Poncho display font.
 
+import { Icon } from "@/components/Icon";
 import {
+  CRISIS_DOORS,
   HERO_CREDENTIAL_FIELDS,
   HERO_LIBRETA_ROWS,
   PAMPA,
@@ -370,9 +372,9 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
               {/* width/height are the asset's real pixel dimensions (Google's
                   own PNG, 646×250) — required because this import resolves to
                   a plain public-URL string, not a bundler-probed
-                  StaticImageData object (the file lives in public/, like
-                  portada.jpg above; unlike that one, this image isn't shown
-                  with `fill`, so next/image needs the box explicitly). CSS
+                  StaticImageData object (the file lives in public/, and this
+                  image isn't shown with `fill`, so next/image needs the box
+                  explicitly). CSS
                   (.lp-hero-badge img, app/landing.css) then scales it by
                   height only, so the true aspect ratio is preserved. */}
               <Image
@@ -382,20 +384,33 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                 height={250}
               />
             </div>
-            <div className="lp-hero-cta lp-reveal" data-d="3">
-              {/* ONE primary action, for the owner (critique 2026-09-29, C2).
-                  The 2026-07-21 removal left the hero with a ghost button
-                  only: "Gratis para siempre" sat under it with nothing to
-                  click, and on a phone the nav's signup button is a short
-                  "Crear cuenta" that says nothing about the pet. This one
-                  names what you get. "Cómo funciona" stays as the secondary. */}
-              <Link href="/registro" className="lp-btn lp-btn--primary">
-                Crear la libreta de mi mascota
-              </Link>
-              <a href="#idea" className="lp-btn lp-btn--ghost">
-                Cómo funciona
-              </a>
-            </div>
+            {/* The three crisis doors (PO 2026-10-02), in place of the old
+                "Crear la libreta de mi mascota" / "Cómo funciona" row: the
+                nav's "Crear mi miMAR" is the sign-up entry above the fold, and
+                the separate crisis band that carried these doors below the
+                fold is gone, so a visitor in a hurry finds them on the first
+                screen at every width. Real links, one row on desktop and a
+                compact stack on a phone (app/landing.css, .lp-hero-doors). The
+                aria-label is the one the band carried, which
+                e2e/csp-smoke.spec.ts anchors the landing's marker on. */}
+            <nav
+              className="lp-hero-doors lp-reveal"
+              data-d="3"
+              aria-label="Emergencias — sin cuenta"
+              data-section="crisis-doors"
+            >
+              {CRISIS_DOORS.map((door) => (
+                <Link key={door.t} className="lp-hero-door" data-t={door.t} href={door.href}>
+                  <span className="lp-hero-door-ic" aria-hidden="true">
+                    <Icon name={door.icon} size="sm" decorative />
+                  </span>
+                  <span className="lp-hero-door-txt">
+                    <b>{door.label}</b>
+                    <span className="lp-hero-door-sub">{door.sub}</span>
+                  </span>
+                </Link>
+              ))}
+            </nav>
             {/* Hero triad — exact copy is a PO-locked decision (#4), revised by
                 the PO 2026-09-29 (critique M3): "Datos abiertos" beside a pet's
                 credential read as "my pet's data is open", which the FAQ

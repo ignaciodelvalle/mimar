@@ -33,26 +33,12 @@ vi.mock("next/link", () => ({
   }) => React.createElement("a", { href, className, ...rest }, children),
 }));
 
-// The bond band's photo is a static import; Vite hands tests a bare URL
-// string, which next/image rejects for placeholder="blur". Give it the shape
-// Next's loader produces.
-vi.mock("@/public/landing/portada.jpg", () => ({
-  default: {
-    src: "/landing/portada.jpg",
-    width: 1600,
-    height: 900,
-    blurDataURL: "data:image/jpeg;base64,AA==",
-  },
-}));
-
 vi.mock("next/navigation", () => ({
   useRouter: vi.fn(() => ({ push: vi.fn() })),
   usePathname: vi.fn(() => "/"),
 }));
 
 import { ICON_MAP } from "@/components/Icon";
-import { BondBand } from "@/components/landing/BondBand";
-import { CrisisBand } from "@/components/landing/CrisisBand";
 import { EmpezarSection } from "@/components/landing/EmpezarSection";
 import { FaqSection } from "@/components/landing/FaqSection";
 import { FeaturesSection } from "@/components/landing/FeaturesSection";
@@ -232,35 +218,51 @@ describe("landing hero — the credential is miMAR's own document", () => {
   });
 });
 
-describe("crisis band — three doors, no account", () => {
-  it("renders all three crisis doors", () => {
-    const html = renderToStaticMarkup(<CrisisBand />);
+// The doors left their own band for the hero on 2026-10-02 (PO): on every
+// screen the band sat below the fold, and the hero's CTA row repeated what the
+// nav already offers. Same three doors, same destinations, no account.
+describe("crisis doors — three doors in the hero, no account", () => {
+  function doors(html: string): string {
+    const start = html.indexOf('data-section="crisis-doors"');
+    expect(start).toBeGreaterThan(-1);
+    return html.slice(start, html.indexOf("</nav>", start));
+  }
+
+  it("renders all three crisis doors inside the hero", () => {
+    const html = doors(renderHero());
     expect(html).toContain("Perdí una mascota");
     expect(html).toContain("Encontré una mascota");
     // Third door, added 2026-08-19. The band already accepted DEN- tracking
     // codes while the entry to MAKING a denuncia sat in the footer — it
     // offered the follow-up to a thing it gave you no way to start.
     expect(html).toContain("Vi un caso de maltrato");
-    expect(html).toContain("/denuncias/nueva");
+    expect(html.match(/<a /g)).toHaveLength(3);
+    for (const href of ['href="/mis-mascotas"', 'href="/perdidas"', 'href="/denuncias/nueva"']) {
+      expect(html).toContain(href);
+    }
   });
 
-  it("promises registration and a code — never intervention", () => {
+  it("the doors render the same with or without a demo pet", () => {
+    expect(doors(renderHeroWithoutDemoPet())).toBe(doors(renderHero()));
+  });
+
+  it("promises no account — never intervention", () => {
     // A denuncia is registered and issued a tracking code. It is NOT dispatched
     // to an organism yet (the Ley 14.346 integration is still in development,
     // disclosed in the wizard's last step and on /denuncias/seguimiento). The
     // blind QA run found that the moment of "success" already oversells this;
     // the landing must not be the place that oversells it first.
-    const html = renderToStaticMarkup(<CrisisBand />);
-    expect(html).toContain("código para seguirla");
+    const html = doors(renderHero());
+    expect(html).toContain("Denunciá sin cuenta.");
     expect(html).not.toMatch(/avisá a la autoridad|intervención|denuncia enviada/i);
   });
 
-  it("carries no typed code lookup — the band is doors only", () => {
+  it("carries no typed code lookup — doors only", () => {
     // PO decision 2026-08-19: the code lookup left the landing. Both of its
     // jobs have a better-labelled door (/denuncias/buscar explains the DEN case
     // in a sentence; the "Encontré" card is the finder's path) and it occupied
     // the widest column of the highest-traffic page in the product.
-    const html = renderToStaticMarkup(<CrisisBand />);
+    const html = doors(renderHero());
     expect(html).not.toContain("<input");
     expect(html).not.toContain("¿Tenés un código?");
   });
@@ -269,7 +271,7 @@ describe("crisis band — three doors, no account", () => {
 describe("denuncia code lookup — PO-locked decision #2 (no 15-digit ISO chip)", () => {
   // SCOPE, stated exactly, because the first version of this block overclaimed
   // it (caught in the pre-push review, 2026-08-19): this covers the CODE
-  // LOOKUP controls — the landing band, which no longer has one, and
+  // LOOKUP controls — the landing's crisis doors, which have none, and
   // /denuncias/buscar, which does. It does NOT cover every public input that
   // accepts a chip number.
   //
@@ -294,7 +296,7 @@ describe("denuncia code lookup — PO-locked decision #2 (no 15-digit ISO chip)"
 
   it("no public lookup advertises a chip number", () => {
     expect(SEARCH_FORM).not.toMatch(/chip iso|15 dígitos|\d{15}/i);
-    expect(renderToStaticMarkup(<CrisisBand />)).not.toMatch(/chip iso|15 dígitos/i);
+    expect(renderHero()).not.toMatch(/chip iso|15 dígitos/i);
   });
 });
 
@@ -471,21 +473,31 @@ describe("story — CastFila + 6 chapters + rail", () => {
   });
 });
 
-describe("bond band — a real heading, no standfirst (copy review 2026-09-30, option C)", () => {
-  it("is an H2 naming its section, with the photo carrying the rest", () => {
-    const html = renderToStaticMarkup(<BondBand />);
-    expect(html).toMatch(/<h2 id="vinculo-titulo"[^>]*>Un vínculo para toda la vida\.<\/h2>/);
-    expect(html).toContain('aria-labelledby="vinculo-titulo"');
-    // The standfirst sentence was cut entirely (option C): the eyebrow, the
-    // title and the photo already make the point without repeating the
-    // "cada vacuna, cada consulta, cada vuelta a casa" triad chapter 5 states.
-    expect(html).not.toContain("lp-bond-sub");
-    expect(html).not.toContain("cada vuelta a casa");
-    // The "Conocé la historia de Pampa →" link was removed earlier
-    // (PO 2026-09-30) and stays gone now that the sentence it sat in is gone too.
-    expect(html).not.toContain("Conocé la historia");
-    expect(html).not.toContain('href="#idea"');
-    expect(html).not.toContain("Todo lo que miMAR protege empieza acá.");
+// "El porqué" — the full-bleed photo band between the hero and the story —
+// was removed entirely (PO 2026-10-02), photo and CSS with it.
+describe("the 'El porqué' band is gone", () => {
+  const PAGE = readFileSync(join(process.cwd(), "app", "page.tsx"), "utf8");
+  const CSS = readFileSync(join(process.cwd(), "app", "landing.css"), "utf8");
+
+  it("the page mounts neither of the two bands that used to sit under the hero", () => {
+    expect(PAGE).not.toMatch(/BondBand|CrisisBand/);
+    expect(CSS).not.toMatch(/\.lp-bond|\.lp-crisis/);
+  });
+
+  it("the photo and its components are deleted, not just unmounted", () => {
+    for (const file of [
+      ["public", "landing", "portada.jpg"],
+      ["components", "landing", "BondBand.tsx"],
+      ["components", "landing", "CrisisBand.tsx"],
+    ]) {
+      expect(() => readFileSync(join(process.cwd(), ...file)), file.join("/")).toThrow();
+    }
+  });
+
+  it("no rendered section still says it", () => {
+    const html = [renderHero(), renderToStaticMarkup(<StorySection />)].join(" ");
+    expect(html).not.toContain("El porqué");
+    expect(html).not.toContain("Un vínculo para toda la vida");
   });
 });
 
@@ -507,7 +519,7 @@ describe("life moments + FAQ + trust row", () => {
       "Te dice qué le falta según el país y la aerolínea, con lo que ya está en su libreta.",
     );
     // "Vi un caso de maltrato" was cut here (copy review 2026-09-30, D6):
-    // CrisisBand already carries this exact door above the fold, and this
+    // the hero's crisis doors already carry this exact door, and this
     // card's own body contradicted the real denuncia flow.
     expect(html).not.toContain("Vi un caso de maltrato");
     // No law citations in feature copy (README §6).
@@ -651,7 +663,6 @@ describe("copy review 2026-09-30 — removed overclaims stay removed", () => {
   function reviewedSections(): string {
     return [
       renderHero(),
-      renderToStaticMarkup(<BondBand />),
       renderToStaticMarkup(<StorySection />),
       renderToStaticMarkup(<FeaturesSection />),
       renderToStaticMarkup(<FaqSection />),

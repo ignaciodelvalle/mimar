@@ -18,7 +18,6 @@
     "app/org/[orgToken]/mascotas/[publicToken]/eligibility/EligibilityForm.tsx": 1,
     "app/org/[orgToken]/miembros/LeaveOrgButton.tsx": 1,
     "app/r/invite/[token]/AcceptButton.tsx": 1,
-    "components/landing/CrisisBand.tsx": 2,
     "components/pet-profile/PetCredentialCarousel.tsx": 1,
     "components/pet-profile/PetSwitcherAvatars.tsx": 1,
     "components/ui/dashboard/OpOmnibox.tsx": 1

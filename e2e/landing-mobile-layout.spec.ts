@@ -17,11 +17,11 @@
 //      `contain-intrinsic-size`. A reading taken only at load measures the
 //      placeholders. Scrolling through makes every section lay out for real.
 //   3. The first screen (C3): at 390×690 — a phone's usable height once the
-//      browser chrome is gone — the H1 and the primary CTA are visible
+//      browser chrome is gone — the H1 and the nav's sign-up CTA are visible
 //      without scrolling, and the sticky nav stays one row (≤ 64px) instead
-//      of eating a fifth of the screen. The hero's own "¿Perdiste o
-//      encontraste una mascota?" line (C4) was removed from the hero
-//      (PO 2026-09-29): the crisis band below the fold is the one door now.
+//      of eating a fifth of the screen. The hero's own CTA row was replaced
+//      by the three crisis doors (PO 2026-10-02): at 390×844 — the size the
+//      PO named — all three sit on the first screen with the H1 and the lead.
 
 import { type Page, expect, test } from "@playwright/test";
 
@@ -86,11 +86,33 @@ test("a 390×690 la primera pantalla dice qué es miMAR y ofrece la acción (C3)
   await page.goto("/");
   await expect(page.locator("h1")).toBeVisible();
   expect(await fullyInFirstScreen(page, "h1"), "the H1 is below the fold").toBe(true);
-  await expect(page.getByRole("link", { name: "Crear la libreta de mi mascota" })).toBeVisible();
+  // The hero no longer carries its own sign-up button: the sticky nav's is
+  // the one, and it must be on screen from the start.
+  await expect(page.locator('header.lp-nav a[href="/registro"]')).toBeVisible();
   expect(
-    await fullyInFirstScreen(page, '.lp-hero-cta a[href="/registro"]'),
-    "the primary CTA is below the fold",
+    await fullyInFirstScreen(page, 'header.lp-nav a[href="/registro"]'),
+    "the nav's sign-up CTA is off screen",
   ).toBe(true);
+});
+
+test("a 390×844 las tres puertas de emergencia entran en la primera pantalla", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const doors = page.locator('[data-section="crisis-doors"] a');
+  await expect(doors).toHaveCount(3);
+  for (const selector of ["h1", ".lp-hero-copy .lp-lead"]) {
+    expect(await fullyInFirstScreen(page, selector), `${selector} is below the fold`).toBe(true);
+  }
+  for (let i = 0; i < 3; i++) {
+    const href = await doors.nth(i).getAttribute("href");
+    expect(
+      await fullyInFirstScreen(page, `[data-section="crisis-doors"] a[href="${href}"]`),
+      `the crisis door to ${href} is below the fold`,
+    ).toBe(true);
+    // A finger, not a cursor: every door is a 44px target at least.
+    const box = await doors.nth(i).boundingBox();
+    expect(box?.height ?? 0, `the door to ${href} is under 44px tall`).toBeGreaterThanOrEqual(44);
+  }
 });
 
 for (const width of PHONE_WIDTHS) {

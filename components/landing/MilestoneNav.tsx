@@ -3,9 +3,10 @@
 // Milestone orchestrator — the landing's progressive-reveal choreography
 // (PO-approved design 2026-08-02).
 //
-// The public landing reads as SIX milestones (existing sections — this is
-// choreography, not new content): credential hero → crisis band → bond band →
-// story → life moments → empezar. FAQ + footer stay OUTSIDE the sequence:
+// The public landing reads as FOUR milestones (existing sections — this is
+// choreography, not new content): credential hero → story → life moments →
+// empezar. (Six until 2026-10-02: the crisis band moved into the hero and the
+// bond band was removed, PO decision.) FAQ + footer stay OUTSIDE the sequence:
 // always reachable below, never a jump target, and the CTA disappears once the
 // last milestone is reached so nothing floats over the closing content.
 //
@@ -22,7 +23,7 @@
 //  - Fail-open: the button renders nothing until hydration (a no-JS visitor
 //    must never see an affordance that cannot work), and every section stays
 //    server-rendered and reachable by native scroll regardless.
-//  - Milestone 4 jumps INTO the story section; the story's own rail/scroll-spy
+//  - Milestone 2 jumps INTO the story section; the story's own rail/scroll-spy
 //    handles navigation within its six chapters.
 //
 // Active tracking mirrors StorySection's scroll-spy (the milestone whose
@@ -32,7 +33,7 @@
 // ...with ONE exception, the click latch (PO-5, 2026-08-05). The scroll-spy is
 // a good answer to "where am I reading?" and a bad answer to "where did the
 // button just take me?": a section shorter than 45% of the viewport (the crisis
-// band is 163px at 1440×800) is already overhung by the NEXT section's top when
+// band was 163px at 1440×800, when it was a section) is already overhung by the NEXT section's top when
 // the CTA parks it under the nav, so the spy reports the section AFTER the one
 // the visitor was sent to and the CTA offers the one after THAT — a milestone
 // skipped per click. So a click LATCHES its own destination as the CTA's base,
@@ -50,8 +51,6 @@ export type LandingMilestone = {
 // Order mirrors app/page.tsx section order. FAQ is deliberately absent.
 export const MILESTONES: LandingMilestone[] = [
   { id: "top", name: "La credencial" },
-  { id: "crisis", name: "Emergencias, sin cuenta" },
-  { id: "vinculo", name: "El vínculo" },
   { id: "idea", name: "Una mascota, muchas manos" },
   { id: "features", name: "Para cada situación" },
   { id: "empezar", name: "Empezar" },

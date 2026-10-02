@@ -279,7 +279,7 @@
 }
 /* CSS-7 (panorama/CSS audit 2026-08-04): six hardcoded `transition-delay`
  * rules (0.08s * data-d, data-d 1..6 — life-moment cards 1..6, FAQ items
- * 1..5, the hero/empezar/bond-band beats) unified into one 80ms-per-step
+ * 1..5, the hero/empezar beats) unified into one 80ms-per-step
  * formula. `--d` is set per step (still keyed off the existing `data-d`
  * attribute the 13 JSX call sites already render — none of them change);
  * the multiplier now lives in exactly one place instead of six. A plain
@@ -597,11 +597,106 @@
 .lp .lp-hero-copy .lp-lead {
   margin-top: 22px;
 }
-.lp .lp-hero-cta {
+/* The three crisis doors (PO 2026-10-02) — they replaced the hero's CTA row
+   and the crisis band that used to carry them below the fold. One row of three
+   equal doors where the copy column is wide enough, a compact stack on a
+   phone, so all three sit on the first screen at 390×844 with the H1 and the
+   lead. `min(100%, 190px)`, not a bare 190px: a fixed minimum wider than the
+   container would overflow the viewport. */
+.lp .lp-hero-doors {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 8px;
+  margin-top: 26px;
+}
+.lp .lp-hero-door {
   display: flex;
   gap: 10px;
-  flex-wrap: wrap;
-  margin-top: 30px;
+  align-items: flex-start;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-ln-line);
+  border-radius: 12px;
+  background: var(--color-ln-card);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
+}
+@media (hover: hover) {
+  .lp .lp-hero-door:hover {
+    border-color: var(--color-ln-ink);
+    box-shadow: var(--shadow-md);
+  }
+}
+.lp .lp-hero-door-ic {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.lp .lp-hero-door[data-t="perdi"] .lp-hero-door-ic {
+  background: var(--color-ln-err-050);
+  color: var(--color-ln-err);
+}
+.lp .lp-hero-door[data-t="encontre"] .lp-hero-door-ic {
+  background: var(--color-ln-celeste-050);
+  color: var(--color-ln-azul);
+}
+.lp .lp-hero-door[data-t="maltrato"] .lp-hero-door-ic {
+  background: var(--color-ln-warn-025);
+  color: var(--color-ln-warn);
+}
+.lp .lp-hero-door-txt {
+  min-width: 0;
+}
+.lp .lp-hero-door b {
+  display: block;
+  font-size: 14px;
+  line-height: 1.3;
+  color: var(--color-ln-ink);
+}
+.lp .lp-hero-door-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--color-ln-mute);
+}
+/* On a phone the doors stack; icon and text center on one line each so the
+   stack stays compact. */
+@media (max-width: 640px) {
+  .lp .lp-hero-doors {
+    margin-top: 20px;
+  }
+  .lp .lp-hero-door {
+    align-items: center;
+    padding: 8px 12px;
+  }
+}
+/* Three across, each door is ~210px: a 30px tile beside the label wrapped
+   "Encontré una mascota" onto two lines and made every door 94px tall. Here
+   the tile shrinks to a 22px glyph on the label's own line, and the subline
+   runs under both. */
+@media (min-width: 641px) {
+  .lp .lp-hero-door {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 8px;
+    align-items: center;
+  }
+  .lp .lp-hero-door-ic {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+  }
+  .lp .lp-hero-door-txt {
+    display: contents;
+  }
+  .lp .lp-hero-door-sub {
+    grid-column: 1 / -1;
+  }
 }
 .lp .lp-hero-kill {
   margin-top: 16px;
@@ -1243,162 +1338,6 @@
    trailing margin so it sits in the phone's padded flex column. */
 .lp .lp-cred-embed > div {
   margin-bottom: 0;
-}
-
-/* ============ crisis band (L1) ============================================ */
-.lp .lp-crisis {
-  background: var(--color-ln-card);
-  border-top: 1px solid var(--color-ln-line);
-  border-bottom: 1px solid var(--color-ln-line);
-  padding-block: 20px;
-}
-/* Three peer cards, so the track count is derived, not counted. This grid used
-   to be `1fr 1fr 1.15fr` with a `1fr` override at 940px: two consequences we
-   measured on 2026-08-19. Adding a card meant editing the CSS (which is what
-   made the third door a layout question instead of a copy question), and the
-   collapse was binary — three columns straight to one, with no two-column
-   state for the tablet widths where it actually runs out of room.
-
-   `min(100%, 260px)` rather than a bare `260px`: below 260px a fixed minimum
-   track is wider than its container and the grid overflows the viewport. */
-.lp .lp-crisis-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
-  gap: 14px;
-  align-items: stretch;
-}
-.lp .lp-crisis-card {
-  display: flex;
-  gap: 13px;
-  align-items: center;
-  border: 1px solid var(--color-ln-line);
-  border-radius: 12px;
-  padding: 14px 16px;
-  text-decoration: none;
-  color: inherit;
-  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
-}
-@media (hover: hover) {
-  .lp .lp-crisis-card:hover {
-    border-color: var(--color-ln-ink);
-    box-shadow: var(--shadow-md);
-  }
-}
-.lp .lp-crisis-card .lp-cic {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-}
-.lp .lp-crisis-card[data-t="perdi"] .lp-cic {
-  background: var(--color-ln-err-050);
-  color: var(--color-ln-err);
-}
-.lp .lp-crisis-card[data-t="encontre"] .lp-cic {
-  background: var(--color-ln-celeste-050);
-  color: var(--color-ln-azul);
-}
-.lp .lp-crisis-card[data-t="maltrato"] .lp-cic {
-  background: var(--color-ln-warn-025);
-  color: var(--color-ln-warn);
-}
-.lp .lp-crisis-card b {
-  display: block;
-  font-size: 15px;
-  color: var(--color-ln-ink);
-}
-.lp .lp-crisis-card .lp-crisis-sub {
-  font-size: 12.5px;
-  color: var(--color-ln-mute);
-  line-height: 1.4;
-  display: block;
-}
-.lp .lp-crisis-card .lp-ar {
-  margin-left: auto;
-  color: var(--color-ln-faint);
-  transition: transform var(--motion-fast), color var(--motion-fast);
-}
-@media (hover: hover) {
-  .lp .lp-crisis-card:hover .lp-ar {
-    transform: translateX(3px);
-    color: var(--color-ln-azul);
-  }
-}
-/* ============ bond band — full-bleed emotional bridge ===================== */
-/* The one bold, full-bleed moment: the human–animal bond the product exists to
-   protect. Photo bleeds edge-to-edge; the copy respects the page's content
-   column (lp-wrap-wide). A warm scrim keeps the light text legible over sun. */
-.lp .lp-bond {
-  position: relative;
-  isolation: isolate;
-  display: flex;
-  align-items: flex-end;
-  min-height: clamp(430px, 62vh, 600px);
-  overflow: hidden;
-  background: var(--color-ln-ink);
-}
-.lp .lp-bond-media {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-}
-.lp .lp-bond-img {
-  object-fit: cover;
-  /* keep the two touching noses + both faces in frame across crops */
-  object-position: 60% 40%;
-}
-.lp .lp-bond-scrim {
-  position: absolute;
-  inset: 0;
-  /* warm brown-black to harmonize with the golden light, not pure black */
-  background: linear-gradient(
-      100deg,
-      rgba(26, 18, 12, 0.74) 0%,
-      rgba(26, 18, 12, 0.46) 34%,
-      rgba(26, 18, 12, 0) 62%
-    ), linear-gradient(to top, rgba(26, 18, 12, 0.6) 0%, rgba(26, 18, 12, 0) 46%);
-}
-.lp .lp-bond-inner {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  padding-block: clamp(30px, 5vw, 56px);
-}
-.lp .lp-bond-copy {
-  max-width: 30ch;
-}
-.lp .lp-bond-eyebrow {
-  color: rgba(255, 255, 255, 0.82);
-}
-.lp .lp-bond-title {
-  color: #fff;
-  font-size: clamp(30px, 4.4vw, 54px);
-  margin-top: 12px;
-  text-shadow: 0 1px 30px rgba(26, 18, 12, 0.4);
-}
-.lp .lp-bond-sub {
-  margin-top: 14px;
-  font-size: clamp(15px, 1.5vw, 18px);
-  line-height: 1.5;
-  color: rgba(255, 255, 255, 0.9);
-}
-.lp .lp-bond-sub a {
-  display: inline-block;
-  padding-block: 3px;
-  color: var(--color-ln-card);
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-@media (max-width: 640px) {
-  .lp .lp-bond {
-    min-height: 76vh;
-  }
-  .lp .lp-bond-img {
-    object-position: 62% 34%;
-  }
 }
 
 /* ============ cast — fila editorial (PO-locked variant) =================== */
@@ -3367,7 +3306,7 @@
    exist under (hover: hover), so a tap needs its own acknowledgement. */
 .lp .lp-btn:active,
 .lp .lp-milestone-cta:active,
-.lp .lp-crisis-card:active,
+.lp .lp-hero-door:active,
 .lp .lp-rail-step:active,
 .lp .lp-mun-btn--line:active {
   transform: translateY(1px);
@@ -3380,7 +3319,7 @@
 @media (prefers-reduced-motion: reduce) {
   .lp .lp-btn:active,
   .lp .lp-milestone-cta:active,
-  .lp .lp-crisis-card:active,
+  .lp .lp-hero-door:active,
   .lp .lp-rail-step:active,
   .lp .lp-mun-btn--line:active {
     transform: none;

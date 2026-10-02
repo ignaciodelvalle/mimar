@@ -108,8 +108,9 @@ describe("<LandingHero> — no demo pet to resolve (RA-6 finding 1)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Design critique 2026-09-29 — C2 (primary CTA), C3 (copy first), C4 (urgency
-// line), M4 (state word, distinct dot names, live region for people only).
+// Design critique 2026-09-29 — C3 (copy first), M4 (state word, distinct dot
+// names, live region for people only); C2's primary CTA row was replaced by
+// the crisis doors (PO 2026-10-02).
 // ---------------------------------------------------------------------------
 
 function renderDemoHero() {
@@ -118,22 +119,45 @@ function renderDemoHero() {
   );
 }
 
-describe("<LandingHero> — one primary action for the owner (C2)", () => {
-  it("has exactly one primary-styled button, and it leads to /registro", () => {
-    const { container } = renderDemoHero();
-    const primaries = container.querySelectorAll(".lp-hero-cta .lp-btn--primary");
-    expect(primaries).toHaveLength(1);
-    const cta = screen.getByRole("link", { name: "Crear la libreta de mi mascota" });
-    expect(cta).toBe(primaries[0]);
-    expect(cta).toHaveAttribute("href", "/registro");
+describe("<LandingHero> — the three crisis doors replace the CTA row (PO 2026-10-02)", () => {
+  it("offers the three doors as real links, to the same places the old band did", () => {
+    renderDemoHero();
+    const doors = screen.getByRole("navigation", { name: "Emergencias — sin cuenta" });
+    const links = within(doors).getAllByRole("link");
+    expect(links.map((l) => l.getAttribute("href"))).toEqual([
+      "/mis-mascotas",
+      "/perdidas",
+      "/denuncias/nueva",
+    ]);
+    expect(within(doors).getByRole("link", { name: /^Perdí una mascota/ })).toBeInTheDocument();
+    expect(within(doors).getByRole("link", { name: /^Encontré una mascota/ })).toBeInTheDocument();
+    expect(
+      within(doors).getByRole("link", { name: /^Vi un caso de maltrato/ }),
+    ).toBeInTheDocument();
   });
 
-  it("keeps 'Cómo funciona' as the secondary, next to it", () => {
+  it("no longer carries the sign-up button or 'Cómo funciona' — the nav owns sign-up", () => {
     const { container } = renderDemoHero();
-    const how = screen.getByRole("link", { name: "Cómo funciona" });
-    expect(how).toHaveAttribute("href", "#idea");
-    expect(how).toHaveClass("lp-btn--ghost");
-    expect(container.querySelector(".lp-hero-cta")).toContainElement(how);
+    expect(screen.queryByRole("link", { name: "Crear la libreta de mi mascota" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Cómo funciona" })).toBeNull();
+    expect(container.querySelector(".lp-hero-cta")).toBeNull();
+    expect(container.querySelector('a[href="/registro"]')).toBeNull();
+  });
+
+  it("keeps the Play badge and the kill line around the doors", () => {
+    const { container } = renderDemoHero();
+    const badge = container.querySelector(".lp-hero-badge");
+    const doors = container.querySelector('[data-section="crisis-doors"]');
+    const kill = container.querySelector(".lp-hero-kill");
+    expect(badge).not.toBeNull();
+    expect(kill).toHaveTextContent("Gratis para siempre.");
+    // Source order: badge → doors → kill line.
+    expect((badge as Node).compareDocumentPosition(doors as Node)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect((doors as Node).compareDocumentPosition(kill as Node)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 
   it("reads copy before the credential, in source order (C3)", () => {

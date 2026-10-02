@@ -58,11 +58,13 @@ const PUBLIC_PAGES: ReadonlyArray<{
   marker: (page: Page) => ReturnType<Page["locator"]>;
 }> = [
   {
-    // Landing: the crisis band is above the fold on every viewport and is the
-    // landing's own markup, not shared chrome. Anchored on the band's landmark
-    // label rather than its copy: a60e4f1a rewrote the copy ("three doors, no
-    // code lookup") and this marker kept chasing the old sentence for three
-    // pushes — a label names WHAT the region is, so it survives a rewording.
+    // Landing: the crisis doors are above the fold on every viewport and are
+    // the landing's own markup, not shared chrome. Anchored on the doors'
+    // landmark label rather than their copy: a60e4f1a rewrote the copy ("three
+    // doors, no code lookup") and this marker kept chasing the old sentence for
+    // three pushes — a label names WHAT the region is, so it survives a
+    // rewording. The label moved with the doors from their band into the hero
+    // (PO 2026-10-02), unchanged.
     path: "/",
     marker: (page) => page.getByLabel(/^emergencias — sin cuenta$/i).first(),
   },

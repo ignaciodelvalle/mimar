@@ -34,7 +34,8 @@ explicit `env:` block is untouched. See `scripts/run-e2e.ts`; a bare
 ## Layout
 
 - `crisis-public.spec.ts` — PUBLIC crisis-path surfaces, no auth: the
-  landing CrisisBand code lookup, and the lost-vs-non-lost contrast on
+  landing hero's three crisis doors (no typed lookup), the code lookups at
+  the surfaces that own them, and the lost-vs-non-lost contrast on
   `/p/[publicToken]`. Real tokens are discovered at runtime from `/adoptar`
   and `/perdidas` (never hardcoded); tests skip cleanly when the seed has no
   matching pet.
