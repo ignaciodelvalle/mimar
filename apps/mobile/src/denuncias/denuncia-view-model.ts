@@ -489,6 +489,16 @@ export const DENUNCIA_NO_MATCHES =
  * stronger property, and a person who needs it deserves to be told where it is
  * rather than reassured.
  */
+/**
+ * Who sees the contact a reporter leaves (legal review 2026-10-02, P6). Ley
+ * 25.326 art. 6 asks the form to say who receives the data. The truth, read
+ * from the server: every government operator whose scope covers the report
+ * (decision D2); never the accused, never an organization, never public. The
+ * web wizard (Step5Contact.tsx) says the same thing.
+ */
+export const DENUNCIA_CONTACT_VISIBILITY =
+  "Tu correo o teléfono no se publica ni lo ve la persona denunciada. Lo ven los funcionarios de la autoridad de la zona que tramitan la denuncia, para poder contactarte.";
+
 export const DENUNCIA_ANONYMOUS_CAVEAT =
   "Anónima significa que no guardamos ningún dato tuyo en la denuncia: ni tu cuenta, ni tu nombre, ni tu contacto. Como estás usando la app, iniciaste sesión para llegar hasta acá. Si necesitás que ni siquiera eso quede registrado, podés denunciar desde el navegador sin iniciar sesión.";
 

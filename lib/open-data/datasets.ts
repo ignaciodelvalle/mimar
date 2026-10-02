@@ -1,4 +1,4 @@
-// Public open-data datasets (Epic B, items 2-3) — Ley 27.275 active transparency.
+// Public open-data datasets (Epic B, items 2-3) — voluntary open data (not Ley 27.275).
 //
 // Five province-level AGGREGATE datasets, each computed from the SAME canonical
 // fetcher the authenticated government dashboards use (so the public figures can

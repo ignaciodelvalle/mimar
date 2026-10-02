@@ -88,6 +88,14 @@ legal obligation is invoked to refuse an erasure request. Pinned by
 `__tests__/privacy-retention-claim.guard.test.ts`. **Behaviour is unchanged**:
 `erase_subject_data` still retains the events.
 
+**What changed (2026-10-02).** The three copies (web `/privacidad`,
+`/cuenta/privacidad`, the Android privacy screen) also promised "si querés que
+borremos esos registros, pedínoslo". The append-only trigger on `pet_events`
+makes that promise impossible to keep, so it was removed. The copy now says the
+records are not erased, that an error is corrected by a new record, and that a
+request about a specific record is reviewed — still with no legal obligation
+invoked. The final wording waits for counsel.
+
 **New open question this errata adds to the decision.** `pet_events` carries no
 `retention_until` column and is absent from the table above, yet it is now the
 only record class whose post-erasure retention we promise the user we are

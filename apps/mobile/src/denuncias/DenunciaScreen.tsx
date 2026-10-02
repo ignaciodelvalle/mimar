@@ -78,6 +78,7 @@ import { useScrollToError } from "../ui/use-scroll-to-error";
 import { EvidencePhotos } from "./EvidencePhotos";
 import {
   DENUNCIA_ANONYMOUS_CAVEAT,
+  DENUNCIA_CONTACT_VISIBILITY,
   DENUNCIA_EVIDENCE_NOTE,
   DENUNCIA_NO_MATCHES,
   type DenunciaFormValues,
@@ -495,6 +496,9 @@ export function DenunciaScreen({
         </Callout>
       ) : (
         <>
+          <Callout tone="neutral" title="Quién ve tu contacto">
+            <Body>{DENUNCIA_CONTACT_VISIBILITY}</Body>
+          </Callout>
           <TextField
             {...contactChain(0)}
             label="Correo"

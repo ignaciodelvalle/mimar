@@ -6,7 +6,7 @@
 // WHY (finding S-2, PO decision 6A, 2026-09-24): Ley 25.326 art. 6 requires
 // telling the holder who receives their data, and art. 12 forbids a transfer to
 // a country without adequate protection unless the holder consents expressly.
-// Brazil and the US are not on the AAIP adequacy list (Disposición 60/2016).
+// Brazil and the US are not on the AAIP adequacy list (Disposición DNPDP 60-E/2016, art. 3).
 // Before this change the page named no provider and said nothing about the
 // transfer, and Google Play's Data safety form has to match what this page says.
 //
@@ -86,7 +86,8 @@ describe("/privacidad — providers and the international transfer", () => {
 
   it("rests the transfer on express consent under art. 12, without claiming adequacy", () => {
     const body = text(providersSection());
-    expect(body).toContain("Disposición AAIP 60/2016");
+    expect(body).toContain("Disposición DNPDP 60-E/2016");
+    expect(body).not.toContain("Disposición AAIP");
     expect(body).toContain("consentimiento expreso");
     expect(body).toContain("art. 12 de la Ley 25.326");
     // No contract or clause is on file in this repo, so none may be claimed.

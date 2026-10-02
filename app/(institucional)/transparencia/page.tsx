@@ -7,7 +7,7 @@ import { DATASET_DESCRIPTORS, DATASET_IDS, OPEN_DATA_LICENSE } from "@/lib/open-
 export const metadata: Metadata = {
   title: "Transparencia activa — miMAR",
   description:
-    "Datos abiertos de salud y bienestar animal por provincia, publicados bajo la Ley 27.275. Descargá los conjuntos en CSV o JSON, con su metodología y licencia.",
+    "Datos abiertos de salud y bienestar animal por provincia: estadísticas agregadas y disociadas. Descargá los conjuntos en CSV o JSON, con su metodología y licencia.",
 };
 
 /** A single dataset card: title, summary, columns, cadence, and CSV/JSON links. */
@@ -67,10 +67,10 @@ export default function TransparenciaPage() {
             Transparencia activa
           </h1>
           <p className="text-md leading-relaxed text-[var(--color-ln-ink-2)]">
-            En el marco de la <strong>Ley 27.275 de acceso a la información pública</strong>, miMAR
-            publica de forma abierta y reutilizable los indicadores de salud y bienestar animal que
-            produce. Son datos <strong>agregados por provincia</strong>: no contienen datos
-            personales, ni información de una mascota individual, ni ubicaciones exactas.
+            miMAR publica de forma abierta y reutilizable los indicadores de salud y bienestar
+            animal que produce. Son estadísticas <strong>agregadas por provincia</strong> y
+            disociadas (Ley 25.326, arts. 2 y 11 inc. 3.e): no contienen datos personales, ni
+            información de una mascota individual, ni ubicaciones exactas.
           </p>
         </header>
 
@@ -195,15 +195,6 @@ export default function TransparenciaPage() {
             >
               centro de ayuda
             </Link>
-            . Los pedidos formales de acceso a la información pública se rigen por la{" "}
-            <a
-              href="https://www.argentina.gob.ar/aaip/acceso-informacion-publica"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline underline-offset-4 hover:text-[var(--color-ln-azul)]"
-            >
-              Ley 27.275
-            </a>
             .
           </p>
         </section>

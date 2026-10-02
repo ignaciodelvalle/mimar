@@ -167,12 +167,20 @@ describe("privacy retention claim — no invented legal obligation to conserve",
       expect(page()).toMatch(/estamos definiendo por cuánto tiempo se conservan/);
     });
 
-    it("states plainly that no legal obligation is invoked to refuse the erasure", () => {
-      expect(page()).toMatch(/no invocamos ninguna obligación legal de conservación/);
+    // 2026-10-02 (legal review P2): the page used to promise "si querés que
+    // borremos esos registros, pedínoslo". The append-only spine cannot keep
+    // that promise, so it is gone; what replaces it says what the system does.
+    it("no longer promises to erase sanitary records on request", () => {
+      expect(page()).not.toMatch(/borremos/);
+      expect(page()).not.toMatch(/pedínoslo/);
     });
 
-    it("offers the assessment as a request, not as a discretionary favour under audit law", () => {
-      expect(page()).toMatch(/pedínoslo y lo revisamos/);
+    it("explains that an error is corrected by a new record, not erased", () => {
+      expect(page()).toContain("se corrige con un registro nuevo y el original se conserva");
+    });
+
+    it("offers a review of a specific record as a request, not as a discretionary favour under audit law", () => {
+      expect(page()).toMatch(/escribinos a[\s\S]*?y lo revisamos con vos/);
     });
 
     it("PrivacyActions points at the note instead of asserting a norm", () => {

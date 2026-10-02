@@ -330,7 +330,7 @@ export function SignupForm({
               an ergonomics call. */}
           {/* THE TRANSFER CLAUSE (Ley 25.326 art. 12, PO decision 6A,
               2026-09-24). Brazil and the US are not on the AAIP adequacy list
-              (Disposición 60/2016), so the international transfer to the
+              (Disposición DNPDP 60-E/2016, art. 3), so the international transfer to the
               providers listed on /privacidad#proveedores rests on express
               consent — and a consent the sentence does not NAME is not express.
               It rides on this same box rather than a second one: the act is the

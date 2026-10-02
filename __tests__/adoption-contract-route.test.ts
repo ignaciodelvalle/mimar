@@ -324,6 +324,12 @@ describe("printable adoption contract route (POST /adoption/contrato)", () => {
     expect(html).toContain("6 meses");
     // Print trigger — the browser produces the PDF, not the server.
     expect(html).toContain("window.print()");
+    // Legal review 2026-10-02, P7: Ley 14.346 does not make abandoning a pet an
+    // offence. The clause cites it for maltrato only and names the CABA
+    // contravention for abandono.
+    expect(html).not.toContain("infracción a la Ley 14.346");
+    expect(html).toContain("El maltrato puede constituir delito (Ley 14.346)");
+    expect(html).toMatch(/art\. 141 del Código\s+Contravencional/);
 
     // Stateless read (spec 3.5): printing wrote NOTHING to the record.
     expect(await totalEventCount()).toBe(eventsBefore);

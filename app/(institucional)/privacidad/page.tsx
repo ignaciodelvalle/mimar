@@ -124,10 +124,10 @@ export default function PrivacidadPage() {
               se derivan a la autoridad jurisdiccional que corresponde según la ubicación reportada.
             </li>
             <li>
-              <strong>Datos abiertos:</strong> publicamos estadísticas agregadas en el marco de la
-              Ley 27.275 de Acceso a la Información Pública. Antes de publicar se suprimen los
-              grupos pequeños (k-anonimato), de modo que ningún dato publicado permita identificarte
-              a vos ni a tu mascota.
+              <strong>Datos abiertos:</strong> publicamos estadísticas agregadas y disociadas (Ley
+              25.326, arts. 2 y 11 inc. 3.e). Antes de publicar se suprimen los grupos pequeños
+              (k-anonimato), de modo que ningún dato publicado permita identificarte a vos ni a tu
+              mascota.
             </li>
           </ul>
         </section>
@@ -137,7 +137,8 @@ export default function PrivacidadPage() {
           (2026-09-24). Ley 25.326 art. 6 requires telling the holder who
           receives the data; art. 12 forbids a transfer to a country without
           adequate protection unless the holder consents expressly. Brazil and
-          the US are not on the AAIP adequacy list (Disposición 60/2016). Google
+          the US are not on the adequacy list (Disposición DNPDP 60-E/2016, art. 3,
+          as amended by Res. AAIP 34/2019). Google
           Play's Data safety form must also match this list.
 
           EVERY LINE WAS CHECKED AGAINST THE CODE, and each is scoped to what the
@@ -256,13 +257,13 @@ export default function PrivacidadPage() {
           </p>
           <p className="text-sm text-[var(--color-ln-ink-2)] leading-relaxed">
             <strong>Transferencia internacional.</strong> Brasil y Estados Unidos no figuran entre
-            los países que la Agencia de Acceso a la Información Pública considera con un nivel de
-            protección adecuado (Disposición AAIP 60/2016). Por eso pedimos tu consentimiento
-            expreso para enviar tus datos a estos proveedores (art. 12 de la Ley 25.326): lo das al
-            crear tu cuenta, cuando aceptás esta versión de la política. Si usás miMAR sin cuenta
-            —por ejemplo, para escanear un código QR o hacer una denuncia anónima—, lo que envíes
-            también pasa por estos proveedores. En todos los casos podés ejercer tus derechos ante
-            miMAR, como se explica a continuación.
+            los países con un nivel de protección adecuado (Disposición DNPDP 60-E/2016, art. 3,
+            texto según Res. AAIP 34/2019). Por eso pedimos tu consentimiento expreso para enviar
+            tus datos a estos proveedores (art. 12 de la Ley 25.326): lo das al crear tu cuenta,
+            cuando aceptás esta versión de la política. Si usás miMAR sin cuenta —por ejemplo, para
+            escanear un código QR o hacer una denuncia anónima—, lo que envíes también pasa por
+            estos proveedores. En todos los casos podés ejercer tus derechos ante miMAR, como se
+            explica a continuación.
           </p>
           {/* PO-DECISION: the express consent above exists ONLY for accounts
               whose signup sentence named the transfer (profiles.tos_version >=
@@ -297,6 +298,14 @@ export default function PrivacidadPage() {
             . Para otros ejercicios de derechos, escribinos a la dirección de contacto indicada más
             abajo. Respondemos dentro de los plazos que establece la ley.
           </p>
+          {/* Mandatory legend, verbatim: Res. AAIP 14/2018, art. 3 (checked
+              against InfoLEG 307621, 2026-10-02). Do not paraphrase it. */}
+          <p className="text-sm text-[var(--color-ln-ink-2)] leading-relaxed border-l-2 border-[var(--color-ln-line-strong)] pl-3">
+            LA AGENCIA DE ACCESO A LA INFORMACIÓN PÚBLICA, en su carácter de órgano de Control de la
+            Ley N° 25.326, tiene la atribución de atender las denuncias y reclamos que interpongan
+            quienes resulten afectados en sus derechos por incumplimiento de las normas vigentes en
+            materia de protección de datos personales.
+          </p>
         </section>
 
         {/*
@@ -322,6 +331,17 @@ export default function PrivacidadPage() {
           looser paraphrase here would be a second version of a promise whose
           whole value is that there is one, so this section says the same thing
           in the same terms and links onward for the rest.
+
+          NO PROMISE TO ERASE SANITARY RECORDS (2026-10-02, legal review P2). The
+          three copies used to say "si querés que borremos esos registros,
+          pedínoslo". The append-only trigger on pet_events makes that promise
+          impossible to keep, so it was removed from all three surfaces at once
+          (this page, /cuenta/privacidad, apps/mobile PrivacyScreen). The copy
+          now says what the system does: the records are not erased, an error is
+          corrected by a new record, and a request about a specific record is
+          reviewed. It still invokes NO legal obligation to conserve. The final
+          wording (third-party interests, Ley 25.326 art. 16 inc. 5) waits for
+          counsel; do not cite that article here before then.
 
           WHY LEGAL_VERSION WAS NOT BUMPED FOR THIS SECTION (the providers
           section above WAS a bump, 2026-09-24 — its comment says why the two
@@ -371,13 +391,13 @@ export default function PrivacidadPage() {
             enviado o recibido, tu inscripción como hogar de tránsito, tus dispositivos con
             notificaciones y el contenido de los mensajes que le hayas escrito a una organización.
             Las credenciales públicas de tus mascotas dejan de resolver. Los eventos sanitarios de
-            esas mascotas (libreta, vacunas, observaciones antirrábicas) se conservan por una razón
-            práctica: son el historial de salud del animal, y ese historial lo acompaña aunque
-            cambie de responsable. Dentro de esos eventos, el texto libre que hayas escrito vos se
-            reemplaza por un aviso de contenido eliminado. Si querés que borremos también esos
-            registros sanitarios, pedínoslo:{" "}
-            <strong>no invocamos ninguna obligación legal de conservación</strong> para negarte ese
-            borrado.
+            esas mascotas (libreta, vacunas, observaciones antirrábicas) no se borran: son el
+            historial de salud del animal, que lo acompaña aunque cambie de responsable, y muchos
+            los registró otra persona, como la veterinaria que aplicó una vacuna. Dentro de esos
+            eventos, el texto libre que hayas escrito vos se reemplaza por un aviso de contenido
+            eliminado. Si un registro tiene un error, no se edita ni se borra: se corrige con un
+            registro nuevo y el original se conserva. Si tenés un pedido sobre un registro en
+            particular, escribinos y lo revisamos con vos.
           </p>
         </section>
 

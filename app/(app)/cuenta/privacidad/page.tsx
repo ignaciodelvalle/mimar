@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import { LnCard, LnCardBody, LnCardHead } from "@/components/ui/Card";
 import { requireUserOrRedirect } from "@/lib/infra/auth-guards";
+import { CONTACT_EMAILS, mailtoHref } from "@/lib/ui/contact";
 import { PrivacyActions } from "./PrivacyActions";
 
 export const metadata = {
@@ -56,14 +57,20 @@ export default async function PrivacidadPage() {
           <p className="text-md leading-[1.6] text-[var(--color-ln-ink-2)]">
             La supresión es <strong>soft-delete con hash de PII</strong>: nombre, teléfono y DNI
             quedan anonimizados; tu cuenta sale de las consultas habituales. Los eventos sanitarios
-            de tus mascotas (libreta, vacunas, observaciones antirrábicas) se conservan por una
-            razón práctica: son el historial de salud del animal, y ese historial lo acompaña aunque
-            cambie de responsable. Todavía estamos definiendo por cuánto tiempo se conservan después
-            de un pedido de borrado; cuando esté decidido lo vamos a publicar en la política de
-            privacidad. Si querés que borremos también esos registros sanitarios, pedínoslo y lo
-            revisamos con vos:{" "}
-            <strong>no invocamos ninguna obligación legal de conservación</strong> para negarte ese
-            borrado.
+            de tus mascotas (libreta, vacunas, observaciones antirrábicas) no se borran: son el
+            historial de salud del animal, que lo acompaña aunque cambie de responsable, y muchos
+            los registró otra persona, como la veterinaria que aplicó una vacuna. Todavía estamos
+            definiendo por cuánto tiempo se conservan después de un pedido de borrado; cuando esté
+            decidido lo vamos a publicar en la política de privacidad. Si un registro tiene un
+            error, no se edita ni se borra: se corrige con un registro nuevo y el original se
+            conserva. Si tenés un pedido sobre un registro en particular, escribinos a{" "}
+            <a
+              href={mailtoHref(CONTACT_EMAILS.privacy)}
+              className="underline underline-offset-4 hover:text-[var(--color-ln-azul)]"
+            >
+              {CONTACT_EMAILS.privacy}
+            </a>{" "}
+            y lo revisamos con vos.
           </p>
           <p className="mt-3 text-md leading-[1.6] text-[var(--color-ln-ink-2)]">
             Dentro de esos eventos preservados, el texto libre que hayas escrito vos (notas,

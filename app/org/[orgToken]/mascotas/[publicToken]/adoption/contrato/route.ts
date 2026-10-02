@@ -322,9 +322,11 @@ export async function POST(
         sanitario y la vacunación antirrábica conforme a la normativa vigente (Ley 22.953).
       </li>
       <li>
-        <strong>Prohibición de maltrato y abandono.</strong> El abandono o maltrato del animal
-        constituye infracción a la Ley 14.346 y habilita a la Organización a iniciar las acciones
-        correspondientes.
+        <strong>Prohibición de maltrato y abandono.</strong> La Persona Adoptante se compromete a
+        no maltratar ni abandonar al animal. El maltrato puede constituir delito (Ley 14.346); en
+        la Ciudad de Buenos Aires, el abandono es además una contravención (art. 141 del Código
+        Contravencional, texto según Ley 6.839). El incumplimiento habilita a la Organización a
+        iniciar las acciones correspondientes.
       </li>
       <li>
         <strong>Esterilización.</strong> Si el animal no estuviera esterilizado al momento de la

@@ -3956,7 +3956,7 @@
       "wired": "test:verified",
       "status": "ENFORCED",
       "clause": "R1",
-      "statusBasis": "__tests__/privacy-retention-claim.guard.test.ts:139-149 bans nine retention-obligation phrasings and the three norm citations (41.831 / 14.072 / SENASA) on both citizen subject-rights files, comments stripped (:56-62); :170-172 requires the page to state 'no invocamos ninguna obligación legal de conservación' and :162-176 the rest of the honest replacement, so deleting the paragraph does not satisfy it.",
+      "statusBasis": "__tests__/privacy-retention-claim.guard.test.ts:139-149 bans nine retention-obligation phrasings and the three norm citations (41.831 / 14.072 / SENASA) on both citizen subject-rights files, comments stripped (:56-62); :173-176 bans the old promise to erase sanitary records on request ('borremos', 'pedínoslo'), :178-180 requires the correction-by-new-record sentence and :162-184 the rest of the honest replacement, so deleting the paragraph does not satisfy it.",
       "notes": "The art.16 anonymization half of the rule rests on scripts/check-subject-rights-coverage.ts (verify gate lint:subject-rights) plus the erase_subject_data migrations — not opened in this pass, so that half is asserted, not verified here.",
       "confidence": 0.65,
       "verifiedAt": "d7dbf25f7"

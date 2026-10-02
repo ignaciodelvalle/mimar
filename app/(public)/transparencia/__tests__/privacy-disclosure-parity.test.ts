@@ -3,8 +3,8 @@
 // A3 (2026-07-31). `/transparencia` is the citizen-facing statement of the
 // open-data privacy policy: "k-anonimato con k = 5", "la celda muestra
 // «suprimido por privacidad» — nunca un 0", "supresión complementaria a nivel
-// nacional". Every one of those clauses is a legal claim under Ley 27.275
-// (transparencia activa) and Ley 25.326, and every one of them was written by
+// nacional". Every one of those clauses is a public privacy claim under Ley
+// 25.326, and every one of them was written by
 // hand into JSX while the behaviour it describes lives in constants three
 // directories away.
 //

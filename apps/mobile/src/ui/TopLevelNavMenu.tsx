@@ -116,7 +116,7 @@ export const TOP_LEVEL_DESTINATIONS: readonly TopLevelDestination[] = [
   {
     label: "Denunciar maltrato",
     route: ROUTES.denunciar,
-    accessibilityHint: "Denunciar maltrato o abandono de un animal ante la autoridad. Ley 14.346.",
+    accessibilityHint: "Denunciar maltrato o abandono de un animal ante la autoridad.",
     civicAction: true,
   },
   { label: "Ajustes", route: ROUTES.ajustes },

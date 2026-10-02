@@ -251,7 +251,16 @@ describe("art. 16 — eliminar mi cuenta", () => {
   it("names what SURVIVES it, rather than implying everything goes", () => {
     render(<PrivacyScreen />);
 
-    expect(screen.getByText(/se conservan como historial de salud del animal/)).toBeTruthy();
+    expect(screen.getByText(/no se borran: son el historial de salud del animal/)).toBeTruthy();
+  });
+
+  it("does not promise to erase the sanitary records on request (legal review P2)", () => {
+    // The append-only spine cannot keep that promise; an error is corrected by
+    // a new record instead.
+    render(<PrivacyScreen />);
+
+    expect(screen.queryByText(/borremos/)).toBeNull();
+    expect(screen.getByText(/se corrige con un registro nuevo/)).toBeTruthy();
   });
 
   it("refuses to run with a motivo under the contract's minimum", () => {

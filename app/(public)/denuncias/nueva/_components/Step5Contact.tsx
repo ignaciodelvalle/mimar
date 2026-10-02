@@ -192,7 +192,7 @@ export function Step5Contact({
                 Sumar mi contacto (más útil)
               </span>
               <span className="block text-xs text-[var(--color-ln-mute)] mt-0.5">
-                Email o teléfono. Sin DNI. El equipo puede contactarte para más info.
+                Email o teléfono. Sin DNI. La autoridad puede contactarte para pedirte más datos.
               </span>
             </span>
             <span
@@ -210,9 +210,15 @@ export function Step5Contact({
       {/* Contact fields — shown when mode is with_contact */}
       {contactMode === "with_contact" && (
         <div className="rounded-[var(--radius-md)] border border-[var(--color-ln-line)] bg-[var(--color-ln-stripe)] p-4 space-y-4">
+          {/* Who really sees the contact (legal review 2026-10-02, P6): every
+              government operator whose scope covers the report (decision D2,
+              lib/analytics/welfare-exports.ts), never the accused, never an
+              organization (lib/infra/welfare-org-projection.ts), never public.
+              It is NOT anonymous, so the copy may not call it that. */}
           <p className="text-xs text-[var(--color-ln-ink-2)] leading-relaxed">
-            Tu contacto es anónimo en el sentido de que no pedimos DNI ni nombre. Solo para que
-            podamos avisarte si avanza la denuncia.
+            Tu correo o teléfono no se publica ni lo ve la persona denunciada. Lo ven los
+            funcionarios de la autoridad de la zona que tramitan la denuncia, y lo usamos para
+            avisarte si avanza.
           </p>
           <div className="space-y-1.5">
             <label

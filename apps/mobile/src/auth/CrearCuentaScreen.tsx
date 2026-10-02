@@ -116,7 +116,7 @@ import {
  * cannot say two different things.
  *
  * The transfer clause (Ley 25.326 art. 12, PO decision 6A, 2026-09-24): Brazil
- * and the US are not on the AAIP adequacy list (Disposición 60/2016), so the
+ * and the US are not on the AAIP adequacy list (Disposición DNPDP 60-E/2016, art. 3), so the
  * international transfer to the providers the privacy policy lists rests on
  * express consent, and a consent the sentence does not NAME is not express. It
  * is the same words as the web form (app/(auth)/registro/SignupForm.tsx) —

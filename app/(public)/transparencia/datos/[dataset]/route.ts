@@ -1,5 +1,6 @@
 // GET /transparencia/datos/[dataset]?format=csv|json — PUBLIC, unauthenticated
-// open-data downloads (Epic B, item 2). Ley 27.275 active transparency.
+// open-data downloads (Epic B, item 2). Voluntary open data: miMAR is a private
+// operator, not a body bound by Ley 27.275 (legal review 2026-10-02, P4).
 //
 // Only the five province-level AGGREGATE datasets, already k=5 suppressed in
 // lib/open-data/datasets.ts. No auth, no PII, no per-pet rows — the response is
@@ -65,9 +66,8 @@ function metadataHeaders(meta: DatasetMeta): Record<string, string> {
   };
 }
 
-// @no-auth-required: public open data under Ley 27.275 (active transparency) —
-// requiring an account would defeat the legal obligation the endpoint exists to
-// discharge. It serves only the five province-level AGGREGATE datasets, already
+// @no-auth-required: public open data (aggregated, k=5 suppressed statistics) —
+// requiring an account would defeat the purpose the endpoint exists to serve. It serves only the five province-level AGGREGATE datasets, already
 // k=5 suppressed in lib/open-data/datasets.ts: no PII, no per-pet rows, nothing
 // subject-identifying. Abuse is bounded by the per-IP limit below (30/min,
 // 200/hour) applied BEFORE slug validation, so unknown-id probing is not free.

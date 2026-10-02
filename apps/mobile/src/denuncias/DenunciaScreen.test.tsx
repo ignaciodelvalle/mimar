@@ -188,6 +188,20 @@ describe("what the screen says before it asks anything", () => {
     render(<DenunciaScreen />);
     expect(screen.getByText(/iniciaste sesión para llegar hasta acá/)).toBeTruthy();
   });
+
+  it("says who sees the contact, and never calls it anonymous (legal review P6)", () => {
+    // Ley 25.326 art. 6: the form must say who receives the data. The contact
+    // reaches the zone's government operators — so it is not anónimo.
+    render(<DenunciaScreen />);
+    fireEvent.press(screen.getByText("Con mi contacto"));
+    expect(screen.getByText("Quién ve tu contacto")).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Lo ven los funcionarios de la autoridad de la zona que tramitan la denuncia/,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/no se publica ni lo ve la persona denunciada/)).toBeTruthy();
+  });
 });
 
 describe("the place comes from a tap, never from this app", () => {

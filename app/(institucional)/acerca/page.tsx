@@ -85,8 +85,8 @@ export default function AcercaPage() {
           </h2>
           <p className="text-md text-[var(--color-ln-ink-2)] leading-relaxed">
             miMAR publica datos abiertos de salud y bienestar animal por provincia, bajo licencia{" "}
-            <strong>CC BY 4.0</strong> (Ley 27.275 de Acceso a la Información Pública), junto con la
-            metodología que los produce. Podés consultarlos y descargarlos en{" "}
+            <strong>CC BY 4.0</strong>, junto con la metodología que los produce. Podés consultarlos
+            y descargarlos en{" "}
             <Link
               href="/transparencia"
               className="text-[var(--color-ln-azul)] no-underline hover:underline"

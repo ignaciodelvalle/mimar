@@ -32,8 +32,8 @@
 //     cells and complementarySuppress sees zero suppressed rows, promotes no
 //     complement, and the differencing defence silently stops firing.
 //
-// Ley 27.275 active transparency still requires the same province aggregates be
-// re-published OPEN to anonymous users. That re-publication is what this module
+// The open-data commitment still re-publishes the same province aggregates OPEN
+// to anonymous users (voluntary: miMAR is not bound by Ley 27.275). That re-publication is what this module
 // protects — protected MORE than the map, not instead of it.
 //
 // Third member of the family, named so it is findable: lib/metrics/

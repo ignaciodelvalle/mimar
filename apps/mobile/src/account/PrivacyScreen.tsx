@@ -229,11 +229,13 @@ export function PrivacyScreen() {
           hasheados y tu cuenta sale del sistema. Ley 25.326, art. 16 (derecho de supresión).
         </Body>
         <Body>
-          Los eventos sanitarios de tus mascotas se conservan como historial de salud del animal —
-          ese historial lo acompaña aunque cambie de responsable. Dentro de esos eventos, el texto
-          libre que escribiste vos se reemplaza por un aviso de contenido eliminado. Si querés que
-          borremos también los registros sanitarios, pedínoslo: no invocamos ninguna obligación
-          legal de conservación para negarte ese borrado.
+          Los eventos sanitarios de tus mascotas no se borran: son el historial de salud del animal,
+          que lo acompaña aunque cambie de responsable, y muchos los registró otra persona, como la
+          veterinaria que aplicó una vacuna. Dentro de esos eventos, el texto libre que escribiste
+          vos se reemplaza por un aviso de contenido eliminado. Si un registro tiene un error, se
+          corrige con un registro nuevo y el original se conserva. Si tenés un pedido sobre un
+          registro en particular, escribinos a la casilla de privacidad que figura en la política de
+          privacidad y lo revisamos con vos.
         </Body>
         <Body>Es definitivo. No hay forma de deshacerlo ni de recuperar la cuenta después.</Body>
 
