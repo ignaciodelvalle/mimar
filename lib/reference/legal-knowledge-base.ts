@@ -202,7 +202,7 @@ export const LEGAL_KNOWLEDGE_GROUPS: LegalKnowledgeGroup[] = [
         whatItSays:
           "Declara de interés nacional la lucha contra la rabia transmitida por perros y gatos. La edad mínima y la frecuencia de la vacuna las fijan las normas de cada provincia y municipio.",
         whoItAppliesTo:
-          "Al Estado nacional, las provincias y los municipios, que organizan la vacunación.",
+          "Es una ley nacional: rige en todo el país y es la base de las campañas antirrábicas.",
         mimarObligation:
           "miMAR registra cada vacuna antirrábica en la libreta de tu mascota y te recuerda cuándo vence.",
         sourceLabel: "Ley 22.953/1983 — texto completo",
@@ -250,7 +250,7 @@ export const LEGAL_KNOWLEDGE_GROUPS: LegalKnowledgeGroup[] = [
           "Incluye, entre otras, brucelosis canina, dirofilariosis, esporotricosis, leishmaniasis visceral canina, leptospirosis, micobacteriosis, rabia animal y la sospecha de SARS-CoV-2. Pide notificar de forma inmediata al Centro de Zoonosis municipal.",
         whoItAppliesTo: "Veterinarios matriculados en la Provincia de Buenos Aires.",
         mimarObligation:
-          "Cuando una veterinaria de la Provincia registra una de estas enfermedades, miMAR le muestra el plazo y el canal de notificación.",
+          "Cuando una veterinaria de la Provincia registra una enfermedad de esta lista que está en el catálogo de miMAR, el sistema le muestra el plazo y el canal de notificación. La sospecha de SARS-CoV-2 todavía no está en ese catálogo.",
         sourceLabel: "Manual ENO del CVPBA (act. 05/2020) — documento",
         sourceUrl: "https://cvpba.org/wp-content/uploads/2022/03/ENO-05-2020-1.pdf",
       },
@@ -357,7 +357,9 @@ export const LEGAL_KNOWLEDGE_GROUPS: LegalKnowledgeGroup[] = [
       {
         // Describes art. 16 inc. 5; does NOT invoke it against a request —
         // whether it covers records signed by a professional is a question
-        // for counsel. Matches what /privacidad says.
+        // for counsel. So the law's text (whatItSays) and miMAR's practice
+        // (mimarObligation) are kept apart: the practice sentence names no
+        // legal basis and says a request is reviewed. Matches /privacidad.
         id: "ley-25326",
         lawLabel: "Ley Nacional 25.326 / 2000",
         jurisdictionBadge: "Nacional",
@@ -368,7 +370,7 @@ export const LEGAL_KNOWLEDGE_GROUPS: LegalKnowledgeGroup[] = [
         whoItAppliesTo:
           "Cualquier responsable de una base de datos personales en la Argentina, incluida miMAR. El órgano de control es la Agencia de Acceso a la Información Pública (AAIP).",
         mimarObligation:
-          "Desde tu cuenta podés descargar tus datos o eliminar tu cuenta. Los registros sanitarios no se borran: un error se corrige con un registro nuevo. Si eliminás tu cuenta, tus datos personales se anonimizan.",
+          "Desde tu cuenta podés descargar tus datos o eliminar tu cuenta; tus datos personales se anonimizan. Los registros sanitarios de tu mascota no se borran: un error se corrige con un registro nuevo. Si tenés un pedido sobre un registro, lo revisamos con vos.",
         sourceLabel: "Ley 25.326 — texto actualizado",
         sourceUrl:
           "https://servicios.infoleg.gob.ar/infolegInternet/anexos/60000-64999/64790/texact.htm",
