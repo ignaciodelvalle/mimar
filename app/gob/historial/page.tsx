@@ -84,6 +84,7 @@ import { auditActionLabel } from "@/lib/ui/audit-action-labels";
 import { buildAuditActionOptions, parseAuditActions } from "@/lib/ui/audit-filters";
 import { groupConsecutiveAuditRows } from "@/lib/ui/audit-row-grouping";
 import { buildTargetLinkInfo, businessRuleTargetSummary } from "@/lib/ui/audit-target-link";
+import { redactDniText } from "@/lib/utils/dni-redact";
 import { formatDateTimeNumericAr, pluralizeEs } from "@/lib/utils/format";
 import { decodeCursor, newerHref, olderHref } from "@/lib/utils/keyset-pagination";
 import { trimmedSearchParam } from "@/lib/utils/search-params";
@@ -497,7 +498,15 @@ export default async function GobHistorialPage({
                 const p = entry.payload as Record<string, unknown>;
                 const surface = typeof p.surface === "string" ? p.surface : null;
                 const count = typeof p.result_count === "number" ? p.result_count : null;
-                const query = isOwnRow && typeof p.query === "string" ? p.query : null;
+                // Rows written before the audit writer redacted may still hold a raw
+                // DNI (append-only, never rewritten) — mask it on the way out too.
+                // The adopter desk check already stores an HMAC (hex), which must not be rewritten.
+                const query =
+                  isOwnRow && typeof p.query === "string"
+                    ? surface === "adopter_dni_check"
+                      ? p.query
+                      : redactDniText(p.query)
+                    : null;
                 const parts: string[] = [];
                 if (query) parts.push(`"${query}"`);
                 if (surface) parts.push(surface);

@@ -4,6 +4,8 @@
 // same file because of that tight coupling.
 
 import { auditLog, db } from "@/db";
+import { dniLast4, hashDni } from "@/lib/utils/dni-hash";
+import { redactDni } from "@/lib/utils/dni-redact";
 
 // Logged on every PII read so it leaves a trail. Callers await this so the
 // audit row (the Ley 25.326 accountability guarantee) is durable before the
@@ -47,8 +49,42 @@ export async function logPiiQueryForAuthority(
   await db.insert(auditLog).values({
     actorUserId,
     action: "pii_queried",
-    payload: { query, result_count: resultCount, surface, ...extra },
+    payload: {
+      ...redactQueryForAudit(query, surface),
+      result_count: resultCount,
+      surface,
+      ...extra,
+    },
   });
+}
+
+/**
+ * The chokepoint for invariant 5 on this trail: whatever an operator typed,
+ * no DNI-shaped token reaches `audit_log` (append-only — it could never be
+ * removed). Every DNI-shaped token in `query` becomes `[DNI ···5678]`; the
+ * payload also carries `dni_hash` + `dni_last4` when exactly one DNI was typed
+ * (the same two keys the identity columns use, so a sweep over one person is
+ * still countable), or `dni_hashes` when several were. A query with no DNI
+ * passes through untouched.
+ *
+ * `adopter_dni_check` is exempt on purpose: its caller already hands over the
+ * HMAC of the DNI as `query`, and a 64-hex string can contain 7-8 digit runs
+ * that must not be rewritten.
+ */
+function redactQueryForAudit(query: string, surface: PiiSurface): Record<string, unknown> {
+  if (surface === "adopter_dni_check") return { query };
+  const { text, dnis } = redactDni(query);
+  if (dnis.length === 0) return { query };
+  try {
+    if (dnis.length === 1) {
+      return { query: text, dni_hash: hashDni(dnis[0]), dni_last4: dniLast4(dnis[0]) };
+    }
+    return { query: text, dni_hashes: dnis.map((d) => hashDni(d)) };
+  } catch {
+    // A misconfigured pepper must not cost the trail its row: the redacted
+    // text is already safe on its own, so write that and skip the hash.
+    return { query: text };
+  }
 }
 
 // AC2: safe wrapper for list-page PII logging. Awaited so the audit row is
