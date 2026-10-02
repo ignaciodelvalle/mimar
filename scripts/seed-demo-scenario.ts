@@ -167,6 +167,7 @@ const {
 const { registerPet } = await import("@/src/modules/pets/application/register-pet");
 const { PetsRepository } = await import("@/src/modules/pets/infrastructure/pets-repository");
 const { resolveCanonicalJurisdiction } = await import("@/lib/infra/jurisdiction-validation");
+const { resolvePlace } = await import("@/lib/place/resolve-place");
 type ParsedPetInput = import("@/src/modules/pets/domain/types").ParsedPet;
 
 // ---------------------------------------------------------------------------
@@ -545,6 +546,10 @@ async function seedFocalDecomisos(govtUserId: string, sanitaryOrgId: string): Pr
   ];
 
   let created = 0;
+  // The focal pair's catalogue row (the seizing authority's place), resolved
+  // the way the app's case writers resolve a name: only when it names one row.
+  const focalPlace = await resolvePlace({ province: FOCAL_PROVINCE, locality: FOCAL_LOCALITY });
+  const focalLocalityId = focalPlace.status === "resolved" ? focalPlace.localityId : null;
 
   for (const spec of specs) {
     const pet = demoPets[spec.petIndex];
@@ -568,6 +573,7 @@ async function seedFocalDecomisos(govtUserId: string, sanitaryOrgId: string): Pr
       jurisdictionCountry: "AR",
       jurisdictionProvince: FOCAL_PROVINCE,
       jurisdictionLocality: FOCAL_LOCALITY,
+      localityId: focalLocalityId,
       openedByUserId: govtUserId,
       openedByOrganizationId: sanitaryOrgId,
       receiverOrganizationId: spec.withReceiver && receiverOrgId ? receiverOrgId : null,

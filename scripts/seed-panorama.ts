@@ -212,6 +212,9 @@ const { findOpenCasesOfKind, selectPetsWithoutOpenCase, selectSeedPetsOrdered } 
 const { registerPet } = await import("@/src/modules/pets/application/register-pet");
 const { PetsRepository } = await import("@/src/modules/pets/infrastructure/pets-repository");
 const { resolveCanonicalJurisdiction } = await import("@/lib/infra/jurisdiction-validation");
+// Cases name their catalogue row the way the app's case writers do: the one
+// resolver (lib/place/), a name only when it names exactly one row.
+const { resolvePlace } = await import("@/lib/place/resolve-place");
 type ParsedPetInput = import("@/src/modules/pets/domain/types").ParsedPet;
 
 // ---------------------------------------------------------------------------
@@ -503,6 +506,22 @@ async function resolveLocalityId(
   }
   localityIdCache.set(key, resolved);
   return resolved;
+}
+
+/**
+ * The catalogue row a seeded case that is NOT at a pet's home names
+ * (localidades CABA + Córdoba, 2026-10): the row its place was drawn from when
+ * that is a real catalogue row, else the name — only when it names exactly
+ * one row. A homonym stays NULL, as the app's writers leave it.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+async function caseLocalityId(
+  provinceName: string,
+  loc: { id: string; localityName: string },
+): Promise<string | null> {
+  if (UUID_RE.test(loc.id)) return loc.id;
+  const place = await resolvePlace({ province: provinceName, locality: loc.localityName });
+  return place.status === "resolved" ? place.localityId : null;
 }
 
 /** Everything the seed knows about a pet before it is registered. */
@@ -2977,6 +2996,7 @@ async function seedLostPetEpisodeCases(
       publicToken: pets.publicToken,
       jurisdictionProvince: pets.jurisdictionProvince,
       jurisdictionLocality: pets.jurisdictionLocality,
+      localityId: pets.localityId,
     })
     .from(pets)
     .where(eq(pets.status, "lost"));
@@ -3043,6 +3063,9 @@ async function seedLostPetEpisodeCases(
       jurisdictionCountry: "AR",
       jurisdictionProvince: pet.jurisdictionProvince ?? "Buenos Aires",
       jurisdictionLocality: pet.jurisdictionLocality,
+      // The home pair's own row, whole — as setPetLost files it. A pet with no
+      // province falls back to a pair that is not its own: no row.
+      localityId: pet.jurisdictionProvince ? pet.localityId : null,
       openedByUserId: ownership?.ownerUserId ?? fallbackOwnerUserId,
       // Visible "Motivo de apertura" — plain es-AR, no English and no seed tag
       // leaking into a user-facing field (Cowork B4). Idempotency is keyed on
@@ -3132,6 +3155,7 @@ async function seedEnforcementCases(): Promise<{ decomisos: number; disputes: nu
       jurisdictionCountry: "AR",
       jurisdictionProvince: prov,
       jurisdictionLocality: pet.locality,
+      localityId: pet.province ? pet.localityId : null,
       // Must match the decomiso writer's grammar EXACTLY — the display layer
       // recognizes `auto: decomiso motivo=(\S+) judicial_ref=(...)` and the
       // "(Ley 14.346)" this used to insert broke the `\S+`, so the row fell to
@@ -3176,6 +3200,8 @@ async function seedEnforcementCases(): Promise<{ decomisos: number; disputes: nu
         jurisdictionCountry: "AR",
         jurisdictionProvince: prov,
         jurisdictionLocality: locality,
+        // "Sin especificar" names no row; neither does a borrowed province.
+        localityId: pet.province && pet.locality ? pet.localityId : null,
         openedReason: "auto: disputa de custodia entre partes",
         openedAt: raisedAt,
       } as Parameters<typeof db.insert<typeof cases>>[0] extends {
@@ -4599,6 +4625,7 @@ async function seedHistoryWelfareAndCases(
             jurisdictionCountry: "AR",
             jurisdictionProvince: provinceName,
             jurisdictionLocality: loc.localityName,
+            localityId: await caseLocalityId(provinceName, loc),
             // Matches the real decomiso writer's grammar exactly (see :2325) so
             // the display layer translates it. The "(Ley 14.346) seed histórico"
             // this carried broke the regex twice over and surfaced raw.
@@ -4639,6 +4666,7 @@ async function seedHistoryWelfareAndCases(
           jurisdictionCountry: "AR",
           jurisdictionProvince: provinceName,
           jurisdictionLocality: loc.localityName,
+          localityId: await caseLocalityId(provinceName, loc),
           openedReason: "auto: disputa de custodia entre partes",
           openedAt,
           ...(disIsClosed && disClosedAt
@@ -5136,6 +5164,8 @@ async function seedFeedVarietyTail(ownerUserId: string, shelterOrgs: PanoOrg[]):
       jurisdictionCountry: "AR",
       jurisdictionProvince: disputeProv,
       jurisdictionLocality: disputeLocality,
+      localityId:
+        disputeTarget.province && disputeTarget.locality ? disputeTarget.localityId : null,
       openedReason: "auto: disputa de custodia entre partes",
       openedAt: now,
     } as Parameters<typeof db.insert<typeof cases>>[0] extends {

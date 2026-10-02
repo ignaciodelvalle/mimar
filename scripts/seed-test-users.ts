@@ -1317,6 +1317,7 @@ async function seedLostPet(ownerUserId: string): Promise<void> {
       status: pets.status,
       province: pets.jurisdictionProvince,
       locality: pets.jurisdictionLocality,
+      localityId: pets.localityId,
     })
     .from(pets)
     .innerJoin(ownerships, eq(ownerships.petId, pets.id))
@@ -1350,6 +1351,8 @@ async function seedLostPet(ownerUserId: string): Promise<void> {
       jurisdictionCountry: "AR",
       jurisdictionProvince: pet.province,
       jurisdictionLocality: pet.locality,
+      // The home pair's own row, whole — as setPetLost files it.
+      localityId: pet.localityId,
       openedByUserId: ownerUserId,
       openedReason: `Pet ${pet.publicToken} marked as lost by owner — se escapó por el portón`,
     })

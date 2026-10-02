@@ -58,6 +58,8 @@ export type GuardedPet = {
   publicToken: string;
   province: string | null;
   locality: string | null;
+  /** The pet's catalogue row — a case filed at the pet's home pair carries it. */
+  localityId: string | null;
 };
 
 const PET_COLUMNS = {
@@ -65,6 +67,7 @@ const PET_COLUMNS = {
   publicToken: pets.publicToken,
   province: pets.jurisdictionProvince,
   locality: pets.jurisdictionLocality,
+  localityId: pets.localityId,
 };
 
 /**

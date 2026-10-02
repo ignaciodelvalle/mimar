@@ -7,14 +7,18 @@
 // the home name and dropped its id, which hid 15 CABA lost cases from the
 // Palermo holder on staging; several other writers never passed an id at all.
 //
-// So every `openCase(` call either names `localityId` in the input it builds,
-// or sits in a file allowlisted below with an exact call count, a reason, and
-// a SHAPE the scan checks:
+// So every `openCase(` call — and every direct `.insert(cases).values(`, which
+// is how the seed scripts open cases (their homonym-free rows are what a local
+// gate and a staging smoke read) — either names `localityId` in the input it
+// builds, or sits in a file allowlisted below with an exact call count, a
+// reason, and a SHAPE the scan checks:
 //   - "place-less": the case carries no jurisdiction pair at all, so it has no
 //     id to carry — and the call must indeed name no `jurisdictionLocality`;
 //   - "forwarder": a composition root or the helper that forwards a use
 //     case's input unchanged — the call must not build an object literal (the
 //     use case's own call, which does, is scanned on its own).
+//   A "place-less" seed insert may carry a province alone: with no locality
+//   name there is no row to name, which the shape check still enforces.
 //
 // Scanned: app, lib, src, scripts (TypeScript, not tests); comments stripped.
 
@@ -25,6 +29,8 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = process.cwd();
 const CALL_RE = /\b(?:openCase|libOpenCase)\(/g;
+/** A direct insert into `cases`; the scanned argument is the one to `.values(`. */
+const INSERT_RE = /\.insert\(\s*cases\s*\)\s*\.values\(/g;
 
 type Allowed = { calls: number; shape: "place-less" | "forwarder"; reason: string };
 
@@ -58,6 +64,21 @@ const WITHOUT_ID: Readonly<Record<string, Allowed>> = {
     calls: 1,
     shape: "forwarder",
     reason: "composition root: forwards report-bite's input unchanged",
+  },
+  "src/modules/cases/infrastructure/cases-repository.ts": {
+    calls: 1,
+    shape: "forwarder",
+    reason: "CasesRepository.openCase itself: inserts the values it built from openCase's input",
+  },
+  "scripts/seed-panorama.ts": {
+    calls: 1,
+    shape: "place-less",
+    reason: "the rabies-observation bite cases carry a province and no locality name",
+  },
+  "scripts/seed-test-users.ts": {
+    calls: 1,
+    shape: "place-less",
+    reason: "the adoption_listing case carries no jurisdiction pair at all",
   },
 };
 
@@ -103,6 +124,9 @@ function scan(): Call[] {
       if (/(?:async|function)\s+$/.test(src.slice(Math.max(0, at - 16), at))) continue;
       calls.push({ file: rel, arg: firstArg(src, at + m[0].length) });
     }
+    for (const m of src.matchAll(INSERT_RE)) {
+      calls.push({ file: rel, arg: firstArg(src, (m.index ?? 0) + m[0].length) });
+    }
   }
   return calls;
 }
@@ -127,7 +151,7 @@ function violations(calls: Call[]): string[] {
   for (const [file, list] of Object.entries(withoutId)) {
     const allowed = WITHOUT_ID[file];
     if (!allowed || allowed.calls !== list.length) {
-      bad.push(`${file}: ${list.length} openCase call(s) without localityId`);
+      bad.push(`${file}: ${list.length} case write(s) without localityId`);
       continue;
     }
     for (const c of list) {
@@ -150,17 +174,24 @@ describe("every case writer stores the place's catalogue id", () => {
   });
 
   it("is not vacuous: it sees the writers it was written for", () => {
-    // 27 calls, 17 of them naming localityId, on 2026-10-02.
-    expect(calls.length).toBeGreaterThanOrEqual(25);
-    expect(calls.filter((c) => /\blocalityId\b/.test(c.arg)).length).toBeGreaterThanOrEqual(17);
+    // 27 openCase calls (17 naming localityId) and 12 direct inserts (9 naming
+    // it) on 2026-10-02.
+    expect(calls.length).toBeGreaterThanOrEqual(37);
+    expect(calls.filter((c) => /\blocalityId\b/.test(c.arg)).length).toBeGreaterThanOrEqual(26);
     const files = new Set(calls.map((c) => c.file));
     for (const writer of [
       "src/modules/events/application/lifecycle/set-pet-lost-use-case.ts",
       "src/modules/surveillance/application/report-bite.ts",
       "src/modules/surveillance/application/outbreak-investigation.ts",
       "src/modules/foster/infrastructure/foster-repository.ts",
+      "src/modules/cases/infrastructure/cases-repository.ts",
+      "scripts/seed-panorama.ts",
+      "scripts/seed-test-users.ts",
     ]) {
       expect(files.has(writer), writer).toBe(true);
     }
+    // The insert scan itself sees every seed writer (a broken INSERT_RE reads 0).
+    const inserts = calls.filter((c) => c.file.startsWith("scripts/"));
+    expect(inserts.length).toBeGreaterThanOrEqual(11);
   });
 });

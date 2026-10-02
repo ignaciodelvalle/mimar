@@ -124,6 +124,7 @@ const {
   serviceOfferings,
   ownerships,
 } = await import("../db");
+const { resolvePlace } = await import("@/lib/place/resolve-place");
 
 // ---------------------------------------------------------------------------
 // 4. Helpers
@@ -278,6 +279,9 @@ async function seedLostPet(ownerUserId: string): Promise<void> {
       }
     }
 
+    // The pair's catalogue row, only when the name names one row (never a
+    // homonym) — what the app's case writers store.
+    const place = await resolvePlace({ province: "Buenos Aires", locality: "Palermo" });
     const [caseRow] = await db
       .insert(cases)
       .values({
@@ -289,6 +293,7 @@ async function seedLostPet(ownerUserId: string): Promise<void> {
         jurisdictionCountry: "AR",
         jurisdictionProvince: "Buenos Aires",
         jurisdictionLocality: "Palermo",
+        localityId: place.status === "resolved" ? place.localityId : null,
         openedByUserId: ownerUserId,
         // The trailing "— seed-owner-demo" is captured by the rule as the
         // owner's free-text reason, so the screen showed "Mascota … reportada
