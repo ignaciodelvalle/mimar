@@ -41,7 +41,14 @@ import {
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
-const PET_BATCH = 500;
+// Pets per transaction. 500 is right next to the database; across a WAN each
+// pet costs ~4 round trips, so a remote run (staging from a laptop) needs a
+// smaller page or the pooler closes the transaction (measured 2026-10-02:
+// CONNECTION_CLOSED at ~2 min with 500). Override with PLACE_BACKFILL_PET_BATCH.
+const PET_BATCH = (() => {
+  const raw = Number(process.env.PLACE_BACKFILL_PET_BATCH);
+  return Number.isInteger(raw) && raw > 0 ? raw : 500;
+})();
 
 export type BackfillCounts = {
   petsScanned: number;
