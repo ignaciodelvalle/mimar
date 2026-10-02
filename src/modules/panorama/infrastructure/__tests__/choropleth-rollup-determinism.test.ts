@@ -30,11 +30,20 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import type { DashboardActor } from "@/lib/metrics";
 
-import { SIN_LOCALIDAD, panoramaAttributionMode, rollupKey } from "../place-attribution";
+import { panoramaAttributionMode } from "../place-attribution";
 import { metricPredicate, rollupPetsPerLocality } from "../repository-choropleth";
 import { PER_LAYER_CAP, petsScope } from "../repository-scope";
 
 const ADMIN: DashboardActor = { role: "admin" };
+
+// The oracle's key format and bucket label, written out here rather than
+// imported from the module under test: an oracle that borrows the code's own
+// helpers agrees with the code by construction, whatever the code does.
+// On the id path a cell is (province, locality, catalogue row) — homonyms
+// apart — and an unresolved pet falls in its province's "Sin localidad" cell.
+const SIN_LOCALIDAD = "Sin localidad";
+const cellKey = (province: string, locality: string, localityId: string | null): string =>
+  localityId ? `${province}|${locality}|${localityId}` : `${province}|${locality}`;
 
 /** The rollup under test, at admin-national scope. */
 async function microchipRollup() {
@@ -48,11 +57,8 @@ async function microchipRollup() {
  * ones it kept are the largest.
  */
 async function trueCounts(): Promise<Map<string, number>> {
-  // Grouped the way the attribution path the loader serves groups: by name on
-  // the name path; by catalogue row on the id path (the factory default since
-  // migration 0276), where an unresolved pet falls in its province's
-  // "Sin localidad" cell and each homonym is its own cell.
-  const byId = (await panoramaAttributionMode()) === "id";
+  // Grouped by catalogue row: the id path is the factory default since
+  // migration 0276, and the test below pins that it is the path served.
   const rows = await db.execute<{
     province: string;
     locality: string;
@@ -60,8 +66,8 @@ async function trueCounts(): Promise<Map<string, number>> {
     n: string;
   }>(sql`
     SELECT jurisdiction_province AS province,
-           ${byId ? sql`CASE WHEN locality_id IS NULL THEN ${SIN_LOCALIDAD} ELSE jurisdiction_locality END` : sql`jurisdiction_locality`} AS locality,
-           ${byId ? sql`locality_id::text` : sql`NULL::text`} AS locality_id,
+           CASE WHEN locality_id IS NULL THEN ${SIN_LOCALIDAD} ELSE jurisdiction_locality END AS locality,
+           locality_id::text AS locality_id,
            COUNT(DISTINCT id) AS n
     FROM pets
     WHERE jurisdiction_locality IS NOT NULL
@@ -73,10 +79,14 @@ async function trueCounts(): Promise<Map<string, number>> {
       )
     GROUP BY 1, 2, 3
   `);
-  return new Map(rows.map((r) => [rollupKey(r.province, r.locality, r.locality_id), Number(r.n)]));
+  return new Map(rows.map((r) => [cellKey(r.province, r.locality, r.locality_id), Number(r.n)]));
 }
 
 describe("locality rollup — the cap keeps the largest localities, deterministically", () => {
+  it("serves the id path — the one the oracle below groups by", async () => {
+    expect(await panoramaAttributionMode()).toBe("id");
+  });
+
   it("truncates at the cap, ordered by count DESC, with no duplicate cells", async () => {
     const rows = await microchipRollup();
 
