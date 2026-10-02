@@ -732,6 +732,32 @@ export class SurveillanceRepository {
   }
 
   /**
+   * The catalogue row a user's ACTIVE grant on (province, locality) recorded
+   * (govt_assignments.locality_id, migration 0246), or null when it recorded
+   * none — or when several active grants on that pair disagree, which is not
+   * this reader's to settle. Used to file an outbreak under the row the
+   * opener's own grant governs instead of re-resolving its name.
+   */
+  async findGrantLocalityId(
+    userId: string,
+    province: string,
+    locality: string,
+  ): Promise<string | null> {
+    const rows = await db
+      .selectDistinct({ localityId: govtAssignments.localityId })
+      .from(govtAssignments)
+      .where(
+        and(
+          eq(govtAssignments.userId, userId),
+          eq(govtAssignments.jurisdictionProvince, province),
+          eq(govtAssignments.jurisdictionLocality, locality),
+          isNull(govtAssignments.revokedAt),
+        ),
+      );
+    return rows.length === 1 ? (rows[0]?.localityId ?? null) : null;
+  }
+
+  /**
    * Find the most recent case_event of type 'final_report' for a case.
    */
   async findFinalReport(caseId: string): Promise<{ id: string } | null> {

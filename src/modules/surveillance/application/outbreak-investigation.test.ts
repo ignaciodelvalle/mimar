@@ -18,7 +18,9 @@ import {
   addInvestigationNote,
   closeInvestigation,
   escalateInvestigation,
+  isInScope,
   openOutbreakInvestigation,
+  openerGrant,
 } from "./outbreak-investigation";
 
 type FakeRepo = Partial<Record<keyof SurveillanceRepository, ReturnType<typeof vi.fn>>>;
@@ -35,6 +37,7 @@ function makeCaseRow(
     caseKind: string;
     jurisdictionProvince: string | null;
     jurisdictionLocality: string | null;
+    localityId: string | null;
     openedReason: string | null;
   }> = {},
 ) {
@@ -45,6 +48,7 @@ function makeCaseRow(
     caseKind: "outbreak_investigation",
     jurisdictionProvince: "Buenos Aires",
     jurisdictionLocality: "La Plata",
+    localityId: "loc-la-plata",
     openedReason: "manual [rabies]: Cluster detectado en zona norte",
     ...overrides,
   };
@@ -54,6 +58,8 @@ function makeRepo(overrides: FakeRepo = {}): SurveillanceRepository {
   return {
     findOpenInvestigationsForDisease: vi.fn().mockResolvedValue([]),
     findInvestigationByCode: vi.fn().mockResolvedValue(makeCaseRow()),
+    // A legacy grant that recorded no row: the opener falls back to the name.
+    findGrantLocalityId: vi.fn().mockResolvedValue(null),
     findFinalReport: vi.fn().mockResolvedValue(null),
     insertCaseEvent: vi.fn().mockResolvedValue({ id: "ce-1" }),
     insertOutbreakAuditLog: vi.fn().mockResolvedValue(undefined),
@@ -701,5 +707,229 @@ describe("closeInvestigation — validation errors", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error).toMatch(/informe/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The id path — homonyms (security review F1 + code review M1, 2026-10)
+// ---------------------------------------------------------------------------
+//
+// Córdoba has two localities named San Pedro in different departments. A
+// unit grant compares by catalogue row; the name must never decide.
+
+const SAN_PEDRO_A = "loc-san-pedro-a";
+const SAN_PEDRO_B = "loc-san-pedro-b";
+
+const GOVT_SAN_PEDRO_A_UNIT = {
+  profile: { id: "govt-sp-a", role: "govt" as const },
+  jurisdictions: [
+    {
+      province: "Córdoba",
+      locality: "San Pedro",
+      place: { path: "locality" as const, provinceCode: "AR-X", localityIds: [SAN_PEDRO_A] },
+    },
+  ],
+};
+
+const sanPedroCase = (localityId: string | null) =>
+  makeCaseRow({
+    jurisdictionProvince: "Córdoba",
+    jurisdictionLocality: "San Pedro",
+    localityId,
+  });
+
+describe("outbreak scope on the id path — homonyms", () => {
+  it("REFUSES a San Pedro (A) unit holder acting on San Pedro (B) by its code", async () => {
+    for (const run of [
+      (deps: OutbreakInvestigationDeps) =>
+        addInvestigationNote(
+          {
+            casePublicCode: "INV-SP-B",
+            entryType: "classification",
+            notes: "Nota de clasificación",
+            actor: GOVT_SAN_PEDRO_A_UNIT,
+          },
+          deps,
+        ),
+      (deps: OutbreakInvestigationDeps) =>
+        escalateInvestigation(
+          {
+            casePublicCode: "INV-SP-B",
+            reason: "Escalamos por contagio",
+            actor: GOVT_SAN_PEDRO_A_UNIT,
+          },
+          deps,
+        ),
+      (deps: OutbreakInvestigationDeps) =>
+        closeInvestigation(
+          {
+            casePublicCode: "INV-SP-B",
+            outcome: "dismissed",
+            reason: "Descartado tras revisión",
+            actor: GOVT_SAN_PEDRO_A_UNIT,
+          },
+          deps,
+        ),
+    ]) {
+      const deps = makeDeps({
+        findInvestigationByCode: vi.fn().mockResolvedValue(sanPedroCase(SAN_PEDRO_B)),
+      });
+      const result = await run(deps);
+      expect(result.ok).toBe(false);
+      if (result.ok) continue;
+      expect(result.error).toMatch(/jurisdicci/i);
+      expect(deps.transaction).not.toHaveBeenCalled();
+    }
+  });
+
+  it("allows the same holder on their own San Pedro (A) case", async () => {
+    const deps = makeDeps({
+      findInvestigationByCode: vi.fn().mockResolvedValue(sanPedroCase(SAN_PEDRO_A)),
+    });
+    const result = await addInvestigationNote(
+      {
+        casePublicCode: "INV-SP-A",
+        entryType: "classification",
+        notes: "Nota de clasificación",
+        actor: GOVT_SAN_PEDRO_A_UNIT,
+      },
+      deps,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("an unresolved San Pedro case (no row) reaches the provincial unit, not a municipal one", () => {
+    const provincial = [
+      {
+        province: "Córdoba",
+        locality: "",
+        place: { path: "province" as const, provinceCode: "AR-X" },
+      },
+    ];
+    expect(isInScope(sanPedroCase(null), GOVT_SAN_PEDRO_A_UNIT.jurisdictions)).toBe(false);
+    expect(isInScope(sanPedroCase(null), provincial)).toBe(true);
+    expect(isInScope(sanPedroCase(SAN_PEDRO_B), provincial)).toBe(true);
+  });
+
+  it("a LEGACY grant keeps the name rule, unchanged (both San Pedros, by name)", () => {
+    const legacy = [{ province: "Córdoba", locality: "San Pedro" }];
+    expect(isInScope(sanPedroCase(SAN_PEDRO_A), legacy)).toBe(true);
+    expect(isInScope(sanPedroCase(SAN_PEDRO_B), legacy)).toBe(true);
+    expect(isInScope(sanPedroCase(null), legacy)).toBe(true);
+    expect(
+      isInScope(sanPedroCase(SAN_PEDRO_A), [{ province: "Córdoba", locality: "Jesús María" }]),
+    ).toBe(false);
+  });
+
+  it("keeps spec §I: national case → any govt; province-wide case → any holder of the province", () => {
+    const national = makeCaseRow({
+      jurisdictionProvince: null,
+      jurisdictionLocality: null,
+      localityId: null,
+    });
+    const provinceWide = makeCaseRow({
+      jurisdictionProvince: "Córdoba",
+      jurisdictionLocality: null,
+      localityId: null,
+    });
+    expect(isInScope(national, GOVT_SAN_PEDRO_A_UNIT.jurisdictions)).toBe(true);
+    expect(isInScope(provinceWide, GOVT_SAN_PEDRO_A_UNIT.jurisdictions)).toBe(true);
+    expect(isInScope(provinceWide, [{ province: "Salta", locality: "Cafayate" }])).toBe(false);
+  });
+});
+
+describe("openOutbreakInvestigation — the opener's row, never a guessed homonym", () => {
+  it("a unit holder on a homonym files under the row the grant recorded", async () => {
+    const deps = makeDeps({ findGrantLocalityId: vi.fn().mockResolvedValue(SAN_PEDRO_A) });
+    const result = await openOutbreakInvestigation(
+      { diseaseCode: "rabies", reason: "Casos confirmados en zona", actor: GOVT_SAN_PEDRO_A_UNIT },
+      deps,
+    );
+    expect(result.ok).toBe(true);
+    expect(deps.openCase).toHaveBeenCalledWith(
+      expect.objectContaining({ jurisdictionLocality: "San Pedro", localityId: SAN_PEDRO_A }),
+      "fake-tx",
+    );
+    // The name is never consulted when the grant knows its row.
+    expect(deps.resolveLocalityId).not.toHaveBeenCalled();
+    // And the opener keeps the case in scope on the id path.
+    expect(isInScope(sanPedroCase(SAN_PEDRO_A), GOVT_SAN_PEDRO_A_UNIT.jurisdictions)).toBe(true);
+  });
+
+  it("a single-locality unit grant with no recorded row still files under its member", async () => {
+    const deps = makeDeps();
+    await openOutbreakInvestigation(
+      { diseaseCode: "rabies", reason: "Casos confirmados en zona", actor: GOVT_SAN_PEDRO_A_UNIT },
+      deps,
+    );
+    expect(deps.openCase).toHaveBeenCalledWith(
+      expect.objectContaining({ localityId: SAN_PEDRO_A }),
+      "fake-tx",
+    );
+  });
+
+  it("a recorded row the unit no longer governs is not used", async () => {
+    const deps = makeDeps({ findGrantLocalityId: vi.fn().mockResolvedValue(SAN_PEDRO_B) });
+    await openOutbreakInvestigation(
+      { diseaseCode: "rabies", reason: "Casos confirmados en zona", actor: GOVT_SAN_PEDRO_A_UNIT },
+      deps,
+    );
+    expect(deps.openCase).toHaveBeenCalledWith(
+      expect.objectContaining({ localityId: SAN_PEDRO_A }),
+      "fake-tx",
+    );
+  });
+
+  it("a legacy homonym grant with no recorded row stays NULL (name names two rows)", async () => {
+    const deps = makeDeps();
+    await openOutbreakInvestigation(
+      {
+        diseaseCode: "rabies",
+        reason: "Casos confirmados en zona",
+        actor: {
+          profile: { id: "govt-legacy", role: "govt" as const },
+          jurisdictions: [{ province: "Córdoba", locality: "San Pedro" }],
+        },
+      },
+      deps,
+    );
+    expect(deps.openCase).toHaveBeenCalledWith(
+      expect.objectContaining({ jurisdictionLocality: "San Pedro", localityId: null }),
+      "fake-tx",
+    );
+  });
+
+  it("a whole-CABA grant opens a province-level case pinned to no row", async () => {
+    const deps = makeDeps({ findGrantLocalityId: vi.fn().mockResolvedValue("loc-whatever") });
+    await openOutbreakInvestigation(
+      {
+        diseaseCode: "rabies",
+        reason: "Casos confirmados en zona",
+        actor: {
+          profile: { id: "govt-caba", role: "govt" as const },
+          jurisdictions: [{ province: "CABA", locality: "Ciudad Autónoma de Buenos Aires" }],
+        },
+      },
+      deps,
+    );
+    expect(deps.openCase).toHaveBeenCalledWith(
+      expect.objectContaining({ jurisdictionProvince: "CABA", localityId: null }),
+      "fake-tx",
+    );
+    expect(deps.repo.findGrantLocalityId).not.toHaveBeenCalled();
+    expect(deps.resolveLocalityId).not.toHaveBeenCalled();
+  });
+
+  it("several grants: the choice is stable whatever order they arrive in, widest first", () => {
+    const palermo = { province: "CABA", locality: "Palermo" };
+    const recoleta = { province: "CABA", locality: "Recoleta" };
+    const wholeCaba = { province: "CABA", locality: "Ciudad Autónoma de Buenos Aires" };
+    const laPlata = { province: "Buenos Aires", locality: "La Plata" };
+    expect(openerGrant([recoleta, palermo])).toBe(palermo);
+    expect(openerGrant([palermo, recoleta])).toBe(palermo);
+    expect(openerGrant([palermo, laPlata])).toBe(laPlata);
+    expect(openerGrant([laPlata, palermo])).toBe(laPlata);
+    expect(openerGrant([palermo, wholeCaba, laPlata])).toBe(wholeCaba);
+    expect(openerGrant([])).toBeNull();
   });
 });

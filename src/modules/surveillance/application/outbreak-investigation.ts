@@ -4,8 +4,10 @@
 // Auth (requireAdminOrGovtOrRedirect) handled by caller (actions.ts).
 //
 // CRITICAL auth scope (spec §I):
-//   - isInScope: national case (no province) → any govt; else province match AND
-//     (no locality OR locality match). admin = universal.
+//   - isInScope: national case (no province) → any govt; province-wide case (no
+//     locality) → any govt of that province; a located case → the grant must
+//     cover it (jurisdictionScopeContains: by catalogue row for a unit grant,
+//     by name pair for a legacy grant). admin = universal.
 //   - All 4 actions enforce isInScope for govt actors — REJECT out-of-jurisdiction.
 //
 // AUDIT_LOG: All 4 actions write inside tx with v1_noop:true (where applicable).
@@ -13,7 +15,11 @@
 // Legal frame: Ley 15.465/60 + Decreto 3640/64.
 // External notification (SNVS/SENASA/zoonosis) NOT integrated — v1_noop=true.
 
-import { isWholeProvinceLocality } from "@/lib/domain/jurisdiction-canonical";
+import {
+  isWholeProvinceLocality,
+  jurisdictionScopeContains,
+} from "@/lib/domain/jurisdiction-canonical";
+import type { GrantPlace } from "@/lib/place/govt-scope";
 
 import type { OpenedReason } from "@/src/modules/cases/domain/opened-reason";
 import { isEnoCode } from "../domain/eno-catalog";
@@ -33,9 +39,12 @@ export type InvestigationNoteEntryType =
   | "external_notification"
   | "system";
 
+/** One grant: its name pair, plus its id-path place when it is a unit grant. */
+type ActorGrant = { province: string; locality: string; place?: GrantPlace };
+
 type Actor = {
   profile: { id: string; role: "admin" | "govt" };
-  jurisdictions: ReadonlyArray<{ province: string; locality: string }>;
+  jurisdictions: ReadonlyArray<ActorGrant>;
 };
 
 type CaseRow = {
@@ -52,6 +61,7 @@ export type OutbreakInvestigationDeps = {
     SurveillanceRepository,
     | "findOpenInvestigationsForDisease"
     | "findInvestigationByCode"
+    | "findGrantLocalityId"
     | "findFinalReport"
     | "insertCaseEvent"
     | "insertOutbreakAuditLog"
@@ -71,9 +81,9 @@ export type OutbreakInvestigationDeps = {
     tx: unknown,
   ) => Promise<{ id: string; publicCode: string }>;
   /**
-   * The catalogue row the opener's grant pair names, or null when it names
-   * none or several (a whole-province grant, a homonym). Never a guess: the
-   * case is then province-level, which the province's holders see.
+   * The catalogue row a (province, NAME) pair names, or null when it names
+   * none or several (a homonym). Never a guess. Used only when the opener's
+   * grant records no row of its own (openerLocalityId below).
    */
   resolveLocalityId: (province: string | null, locality: string | null) => Promise<string | null>;
   closeCase: (
@@ -110,22 +120,85 @@ export function isInScope(
   caseRow: {
     jurisdictionProvince: string | null;
     jurisdictionLocality: string | null;
+    /** The case's catalogue row; null = its place never resolved. */
+    localityId: string | null;
   },
-  jurisdictions: ReadonlyArray<{ province: string; locality: string }>,
+  jurisdictions: ReadonlyArray<ActorGrant>,
 ): boolean {
-  // National-scope case (no province) — any govt may act.
+  // National-scope case (no province) — any govt may act (spec §I).
   if (!caseRow.jurisdictionProvince) return true;
-  // Located case: province must match, and the operator must cover the case's
-  // locality. Subsumption-aware — a whole-province assignment (e.g. whole-CABA)
-  // covers every barrio in it, so a case tagged to a barrio is in scope. A case
-  // with no locality (province-wide) matches any operator in that province.
-  return jurisdictions.some(
-    (j) =>
-      j.province === caseRow.jurisdictionProvince &&
-      (!caseRow.jurisdictionLocality ||
-        isWholeProvinceLocality(j.province, j.locality) ||
-        j.locality === caseRow.jurisdictionLocality),
+  // A case with no locality (province-wide) matches any operator in that
+  // province (spec §I).
+  if (!caseRow.jurisdictionLocality) {
+    return jurisdictions.some((j) => j.province === caseRow.jurisdictionProvince);
+  }
+  // A located case: the same predicate the list and the detail read with.
+  // A unit grant compares by catalogue row — San Pedro (dept A) never covers
+  // San Pedro (dept B), and an unresolved row (localityId null) reaches only
+  // the province's unit. A legacy grant keeps the name rule, whole-province
+  // subsumption included (a whole-CABA operator covers every barrio).
+  //
+  // The cases are loaded by public code with no RLS in front
+  // (findInvestigationByCode), so this guard is the only fence: matching the
+  // NAME here let a unit holder act on a homonym's case by its code
+  // (security review F1, localidades CABA + Córdoba, 2026-10).
+  return jurisdictionScopeContains(
+    jurisdictions,
+    caseRow.jurisdictionProvince,
+    caseRow.jurisdictionLocality,
+    caseRow.localityId ?? null,
   );
+}
+
+/**
+ * The grant an outbreak opener files under. A govt user may hold several and
+ * the open form names none, so the choice must at least be STABLE (the grant
+ * list arrives in no particular order): the widest first — a whole-province
+ * grant covers every other grant of its province — then by province and
+ * locality name.
+ *
+ * Exported for tests only.
+ */
+export function openerGrant(jurisdictions: ReadonlyArray<ActorGrant>): ActorGrant | null {
+  const rank = (g: ActorGrant) => (isWholeProvinceLocality(g.province, g.locality) ? 0 : 1);
+  const sorted = [...jurisdictions].sort(
+    (a, b) =>
+      rank(a) - rank(b) ||
+      a.province.localeCompare(b.province, "es") ||
+      a.locality.localeCompare(b.locality, "es"),
+  );
+  return sorted[0] ?? null;
+}
+
+/**
+ * The catalogue row an outbreak opened under `grant` carries — a row the
+ * grant itself governs, so the opener always keeps the case in scope:
+ *   - a whole-province grant (or a provincial unit): none. The case is
+ *     province-level; pinning it to one locality row would hide it from the
+ *     rest of the province (for whole-CABA, from every other barrio).
+ *   - the row the grant RECORDED (govt_assignments.locality_id) — no name
+ *     lookup when the grant knows its row. A unit grant always recorded one
+ *     (grant-unit.ts moves only grants whose row is a member).
+ *   - a unit grant over exactly one locality: that one.
+ *   - otherwise the pair's name, only when it names one row (and, for a unit
+ *     grant, a row the unit governs). A homonym is null: never a guess.
+ */
+async function openerLocalityId(
+  grant: ActorGrant,
+  userId: string,
+  deps: Pick<OutbreakInvestigationDeps, "repo" | "resolveLocalityId">,
+): Promise<string | null> {
+  if (isWholeProvinceLocality(grant.province, grant.locality)) return null;
+  if (grant.place?.path === "province") return null;
+  const members = grant.place?.path === "locality" ? grant.place.localityIds : null;
+  const governed = (id: string | null): id is string =>
+    id !== null && (members === null || members.includes(id));
+
+  const recorded = await deps.repo.findGrantLocalityId(userId, grant.province, grant.locality);
+  if (governed(recorded)) return recorded;
+  if (members?.length === 1) return members[0] ?? null;
+  const named = await deps.resolveLocalityId(grant.province, grant.locality);
+  return governed(named) ? named : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,16 +235,19 @@ export async function openOutbreakInvestigation(
   // 3. Resolve jurisdiction.
   let jurisdictionProvince: string | null = null;
   let jurisdictionLocality: string | null = null;
+  let localityId: string | null = null;
 
   if (actor.profile.role === "govt") {
-    if (actor.jurisdictions.length === 0) {
+    const grant = openerGrant(actor.jurisdictions);
+    if (!grant) {
       return {
         ok: false,
         error: "No tenés jurisdicciones activas asignadas. Contactá al administrador.",
       };
     }
-    jurisdictionProvince = actor.jurisdictions[0].province;
-    jurisdictionLocality = actor.jurisdictions[0].locality;
+    jurisdictionProvince = grant.province;
+    jurisdictionLocality = grant.locality;
+    localityId = await openerLocalityId(grant, actor.profile.id, deps);
   }
 
   // 4. Dedupe check.
@@ -200,7 +276,6 @@ export async function openOutbreakInvestigation(
     note: input.reason.trim(),
   };
   let createdPublicCode = "";
-  const localityId = await deps.resolveLocalityId(jurisdictionProvince, jurisdictionLocality);
 
   try {
     await transaction(async (tx) => {

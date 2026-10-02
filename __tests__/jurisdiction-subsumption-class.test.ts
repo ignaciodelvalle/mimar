@@ -218,8 +218,9 @@ describe("subsumption class — isWholeProvinceLocality primitive", () => {
     caseProvince: string | null,
     caseLocality: string | null,
   ): boolean =>
+    // Legacy grants (no `place`): the name rule decides, so the row id is moot.
     isInScope(
-      { jurisdictionProvince: caseProvince, jurisdictionLocality: caseLocality },
+      { jurisdictionProvince: caseProvince, jurisdictionLocality: caseLocality, localityId: null },
       jurisdictions,
     );
 
