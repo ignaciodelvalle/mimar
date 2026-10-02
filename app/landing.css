@@ -761,6 +761,7 @@
 }
 
 .lp .lp-hcardwrap {
+  position: relative;
   perspective: 1200px;
   width: min(400px, 92vw);
   /* The card sizes its photo, QR and token from its OWN width (the @container
@@ -770,8 +771,10 @@
      2026-08-02). CSS-only via @starting-style, which keeps it fail-open by
      construction: no JS involved, it always resolves to the visible state, and
      the repo's global prefers-reduced-motion rule collapses the transition to
-     an instant render. Lives on the WRAP, not .lp-hcard — the card's own
-     transform channel belongs to the imperative edge-on flip. */
+     an instant render. Lives on the WRAP: every transform channel inside it
+     is taken (hint/float, pointer tilt, the imperative edge-on flip on
+     .lp-hcard-slab). The wrap is the perspective root, OUTSIDE the
+     preserve-3d chain, so its opacity fade flattens nothing. */
   transition: opacity var(--motion-deliberate) var(--ease-editorial), transform
     var(--motion-deliberate) var(--ease-editorial);
 }
@@ -788,10 +791,15 @@
   background: var(--color-ln-card);
   border: 1.5px solid var(--htone, var(--color-ln-celeste-100));
   box-shadow: var(--shadow-lg);
-  transition: transform var(--motion-slow) var(--ease-standard), border-color
-    var(--motion-deliberate);
+  transition: border-color var(--motion-deliberate);
   transform-style: flat;
   overflow: hidden;
+  /* Safari: a rounded overflow clip inside a 3D-transformed ancestor can stop
+     clipping its corners (the band's gradient would square them off). An
+     isolated group clips reliably. Safe here because the card is the LEAF of
+     the preserve-3d chain: flattening its own children is exactly what it
+     already does. */
+  isolation: isolate;
   /* Fixed outer box, front or back (PO 2026-09-30): both faces stack in the
      SAME grid cell, so the implicit row sizes to the taller of the two and
      the card never resizes — or shifts the page — when it flips. Simpler and
@@ -799,7 +807,8 @@
      is actually taller at each viewport with no magic numbers to keep in
      sync. Not the preserve-3d/backface-visibility stacking the FlipCard
      comment above warns off — this is a flat grid overlap, and the turn's
-     rotateY still applies to the whole .lp-hcard as one plane. */
+     rotateY (on .lp-hcard-slab) still carries the whole .lp-hcard as one
+     plane. */
   display: grid;
 }
 /* lost keeps a subtle border pulse (the old halo's data-status="lost" wink) */
@@ -813,6 +822,129 @@
   }
   50% {
     box-shadow: var(--shadow-lg), 0 0 0 4px var(--color-ln-err-050);
+  }
+}
+
+/* ---- a held card: hint, float, tilt, thickness (PO 2026-10-02) ------------
+   Layer map in LandingHero.tsx's header comment: wrap (perspective) → float
+   (hint + float) → tilt (pointer) → slab (flip + edge layers) → card. Every
+   layer from float to slab is preserve-3d, so none of them may carry
+   overflow, opacity < 1, filter, clip-path, mask or isolation: each of those
+   flattens the 3D context in Chromium AND WebKit, and the edge layers would
+   collapse into the card's plane. Motion here is transform/opacity only. */
+.lp .lp-hcard-float,
+.lp .lp-hcard-tilt,
+.lp .lp-hcard-slab {
+  position: relative;
+  transform-style: preserve-3d;
+  /* Hit-testing is 3D too: once the card leans, the part of it that recedes
+     sits BEHIND these wrappers' own (invisible, flat) planes, and a click on
+     the turn button landed on .lp-hcard-float instead (measured in Chromium).
+     The wrappers are transparent to the pointer; the card takes it back. */
+  pointer-events: none;
+}
+.lp .lp-hcard {
+  pointer-events: auto;
+}
+/* Thickness: five plain layers stacked behind the card, a fifth of
+   --lp-hcard-depth apart. A real carnet is ~1% of its width thick (3.5px
+   here); 8px exaggerates it just enough that a 10° lean shows a rim and the
+   edge-on moment of the flip shows a slab instead of vanishing. The stack
+   shades from the paper line by the face to a darker core at the back, so
+   even a 1px sliver reads as an edge against the paper. Flat-on, the
+   perspective draws each layer a hair smaller than the card: none of them
+   peeks out at rest. */
+.lp .lp-hcard-slab {
+  --lp-hcard-depth: 8px;
+  /* The edge-on turn (LandingHero's flip writes the transform). */
+  transition: transform var(--motion-slow) var(--ease-standard);
+}
+.lp .lp-hcard-edge {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-card);
+  background: var(--color-ln-line);
+  pointer-events: none;
+}
+.lp .lp-hcard-edge:nth-child(1) {
+  transform: translateZ(calc(var(--lp-hcard-depth) * -0.2));
+}
+.lp .lp-hcard-edge:nth-child(2) {
+  transform: translateZ(calc(var(--lp-hcard-depth) * -0.4));
+}
+.lp .lp-hcard-edge:nth-child(3) {
+  transform: translateZ(calc(var(--lp-hcard-depth) * -0.6));
+  background: var(--color-ln-line-strong);
+}
+.lp .lp-hcard-edge:nth-child(4) {
+  transform: translateZ(calc(var(--lp-hcard-depth) * -0.8));
+  background: var(--color-ln-line-strong);
+}
+.lp .lp-hcard-edge:nth-child(5) {
+  transform: translateZ(calc(var(--lp-hcard-depth) * -1));
+  background: color-mix(in srgb, var(--color-ln-line-strong) 70%, var(--color-ln-ink));
+}
+/* The soft shadow the card casts on the paper. Absolutely positioned under
+   the wrap, so it never takes layout room (no CLS) and stays inside the
+   card's own width (no horizontal overflow at 390px). */
+.lp .lp-hcard-ground {
+  position: absolute;
+  inset-inline: 8%;
+  bottom: -14px;
+  height: 28px;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--color-ln-ink) 14%, transparent),
+    transparent
+  );
+  pointer-events: none;
+}
+/* First sight, once (data-alive is set by an IntersectionObserver that then
+   disconnects): one gentle turn that previews the flip's own direction, after
+   the entrance has settled, and two slow breaths of float that end exactly at
+   rest: 2 × 6s, then the card is still for good. Gated on .lp-motion like
+   every other landing motion, so no-JS and reduced motion never start it. */
+@media (prefers-reduced-motion: no-preference) {
+  .lp.lp-motion .lp-hcardwrap[data-alive="true"] .lp-hcard-float {
+    animation: lp-hcard-peek calc(var(--motion-slow) * 3) var(--ease-standard)
+      var(--motion-deliberate), lp-hcard-float calc(var(--motion-ambient) * 4) ease-in-out 2;
+  }
+  .lp.lp-motion .lp-hcardwrap[data-alive="true"] .lp-hcard-ground {
+    animation: lp-hcard-ground calc(var(--motion-ambient) * 4) ease-in-out 2;
+  }
+}
+/* `rotate` and `translate`, the individual transform properties, so the hint
+   and the float share one element without either overwriting the other's
+   `transform`. */
+@keyframes lp-hcard-peek {
+  0%,
+  100% {
+    rotate: y 0deg;
+  }
+  45% {
+    rotate: y 18deg;
+  }
+}
+@keyframes lp-hcard-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -4px;
+  }
+}
+/* The shadow answers the float: tighter and fainter as the card rises. */
+@keyframes lp-hcard-ground {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.92);
+    opacity: 0.7;
   }
 }
 
@@ -1320,6 +1452,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .lp .lp-hcard,
+  .lp .lp-hcard-slab,
+  .lp .lp-hcard-float,
+  .lp .lp-hcard-ground,
   .lp .lp-hcard-front,
   .lp .lp-hcard-tone,
   .lp .lp-hcard-photo,

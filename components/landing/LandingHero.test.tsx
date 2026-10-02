@@ -10,6 +10,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LandingHero } from "./LandingHero";
+import { HERO_TILT_MAX_DEG, smoothTilt, tiltTowardPointer } from "./hero-card-tilt";
 
 const SAMPLE_SVG = '<svg viewBox="0 0 100 100"><rect width="100" height="100"/></svg>';
 
@@ -239,5 +240,257 @@ describe("<LandingHero> — the state reads in words, not only colour (M4)", () 
     expect(liveRegion()).toHaveTextContent(
       "Estado de la credencial: En tratamiento. Plan en el historial.",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A held card (PO 2026-10-02): first-sight hint + float, pointer tilt,
+// thickness. The motion itself is CSS and is checked in a real browser; what
+// a unit test CAN pin is when it starts, how often, for whom, and how far the
+// card is ever allowed to lean.
+// ---------------------------------------------------------------------------
+
+describe("tiltTowardPointer — the hard cap on the lean", () => {
+  // A 400×250 box, the card's desktop size. Expected values are stated, not
+  // re-derived from the helper's own formula.
+  const W = 400;
+  const H = 250;
+
+  it("caps the lean at 10° (the brief allows at most 10–12°)", () => {
+    expect(HERO_TILT_MAX_DEG).toBe(10);
+  });
+
+  it("is flat with the pointer at the centre", () => {
+    expect(tiltTowardPointer(200, 125, W, H)).toEqual({ rx: 0, ry: 0 });
+  });
+
+  it("turns the face toward a pointer on the right edge: the right edge recedes", () => {
+    expect(tiltTowardPointer(400, 125, W, H)).toEqual({ rx: 0, ry: 10 });
+  });
+
+  it("turns the face toward a pointer on the bottom edge: the bottom edge recedes", () => {
+    expect(tiltTowardPointer(200, 250, W, H)).toEqual({ rx: -10, ry: 0 });
+  });
+
+  it("leans a corner exactly as far as an edge, never 10·√2 ≈ 14.1°", () => {
+    const { rx, ry } = tiltTowardPointer(0, 0, W, H);
+    expect(Math.hypot(rx, ry)).toBeCloseTo(10, 9);
+    // Top-left: the top edge and the left edge recede, equally.
+    expect(rx).toBeCloseTo(7.0711, 4);
+    expect(ry).toBeCloseTo(-7.0711, 4);
+  });
+
+  it("never exceeds the cap, even for a pointer far outside the box", () => {
+    for (const [x, y] of [
+      [-5000, 125],
+      [5000, 9000],
+      [200, -300],
+      [Number.NaN, 0],
+    ] as const) {
+      const { rx, ry } = tiltTowardPointer(x, y, W, H);
+      expect(Math.hypot(rx, ry)).toBeLessThanOrEqual(10 + 1e-9);
+    }
+  });
+
+  it("is linear inside the box: half-way to the edge is half the lean (no snap)", () => {
+    expect(tiltTowardPointer(300, 125, W, H)).toEqual({ rx: 0, ry: 5 });
+  });
+
+  it("stays flat for a box with no size (not laid out yet)", () => {
+    expect(tiltTowardPointer(10, 10, 0, 0)).toEqual({ rx: 0, ry: 0 });
+  });
+});
+
+describe("smoothTilt — frame-rate independent easing", () => {
+  it("moves as far in two 8ms frames as in one 16ms frame", () => {
+    const from = { rx: 0, ry: 0 };
+    const to = { rx: 0, ry: 10 };
+    const twoSteps = smoothTilt(smoothTilt(from, to, 8), to, 8);
+    const oneStep = smoothTilt(from, to, 16);
+    expect(twoSteps.ry).toBeCloseTo(oneStep.ry, 9);
+  });
+
+  it("closes ~63% of the gap in one time constant and never overshoots", () => {
+    const step = smoothTilt({ rx: 0, ry: 0 }, { rx: 0, ry: 10 }, 90, 90);
+    expect(step.ry).toBeCloseTo(6.3212, 4);
+    const late = smoothTilt({ rx: 0, ry: 0 }, { rx: 0, ry: 10 }, 100_000, 90);
+    expect(late.ry).toBeLessThanOrEqual(10);
+  });
+});
+
+type IOCallback = (entries: Array<{ isIntersecting: boolean }>) => void;
+
+class FakeIntersectionObserver {
+  static instances: FakeIntersectionObserver[] = [];
+  callback: IOCallback;
+  observe = vi.fn();
+  disconnect = vi.fn();
+  unobserve = vi.fn();
+  constructor(callback: IOCallback) {
+    this.callback = callback;
+    FakeIntersectionObserver.instances.push(this);
+  }
+}
+
+function setMedia({ reduced, fine }: { reduced: boolean; fine: boolean }) {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => {
+    let matches = false;
+    if (query.includes("prefers-reduced-motion")) matches = reduced;
+    else if (query.includes("pointer: fine")) matches = fine;
+    return {
+      matches,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+  }) as unknown as typeof window.matchMedia;
+}
+
+describe("<LandingHero> — a held card: hint, float, tilt, thickness", () => {
+  const originalMatchMedia = window.matchMedia;
+  const originalIO = window.IntersectionObserver;
+
+  function wrap(): HTMLElement {
+    return document.querySelector(".lp-hcardwrap") as HTMLElement;
+  }
+  function tiltLayer(): HTMLElement {
+    return document.querySelector(".lp-hcard-tilt") as HTMLElement;
+  }
+  function card(): HTMLElement {
+    return document.querySelector('[data-section="hero-credential"]') as HTMLElement;
+  }
+  function installObserver() {
+    FakeIntersectionObserver.instances = [];
+    window.IntersectionObserver =
+      FakeIntersectionObserver as unknown as typeof IntersectionObserver;
+  }
+
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
+    window.IntersectionObserver = originalIO;
+    FakeIntersectionObserver.instances = [];
+    vi.restoreAllMocks();
+  });
+
+  it("draws the card's thickness as decorative layers inside the turning slab", () => {
+    renderDemoHero();
+    const slab = document.querySelector(".lp-hcard-slab") as HTMLElement;
+    const edges = slab.querySelectorAll(":scope > .lp-hcard-edge");
+    expect(edges).toHaveLength(5);
+    for (const edge of edges) expect(edge).toHaveAttribute("aria-hidden", "true");
+    // The card rides in the same slab, so the edge turns WITH it.
+    expect(slab).toContainElement(card());
+  });
+
+  it("is still before it has been seen: no data-alive", () => {
+    installObserver();
+    setMedia({ reduced: false, fine: true });
+    renderDemoHero();
+    expect(wrap()).not.toHaveAttribute("data-alive");
+  });
+
+  it("plays the first-sight hint once per page view, then stops watching", () => {
+    installObserver();
+    setMedia({ reduced: false, fine: false });
+    renderDemoHero();
+    expect(FakeIntersectionObserver.instances).toHaveLength(1);
+    const io = FakeIntersectionObserver.instances[0] as FakeIntersectionObserver;
+    expect(io.observe).toHaveBeenCalledWith(wrap());
+
+    // The initial callback, still below the fold: nothing yet.
+    act(() => io.callback([{ isIntersecting: false }]));
+    expect(wrap()).not.toHaveAttribute("data-alive");
+
+    act(() => io.callback([{ isIntersecting: true }]));
+    expect(wrap()).toHaveAttribute("data-alive", "true");
+    expect(io.disconnect).toHaveBeenCalled();
+
+    // Scrolling away and back does not replay it: the attribute never toggles
+    // (removing and re-adding it would restart the CSS animation).
+    act(() => io.callback([{ isIntersecting: false }]));
+    act(() => io.callback([{ isIntersecting: true }]));
+    expect(wrap()).toHaveAttribute("data-alive", "true");
+    expect(FakeIntersectionObserver.instances).toHaveLength(1);
+  });
+
+  it("under reduced motion: no hint, no tilt, and the flip still works by button, instantly", () => {
+    installObserver();
+    setMedia({ reduced: true, fine: true });
+    const raf = vi.spyOn(window, "requestAnimationFrame");
+    renderDemoHero();
+
+    expect(FakeIntersectionObserver.instances).toHaveLength(0);
+    expect(wrap()).not.toHaveAttribute("data-alive");
+
+    wrap().dispatchEvent(new MouseEvent("pointermove", { clientX: 10, clientY: 10 }));
+    expect(raf).not.toHaveBeenCalled();
+    expect(tiltLayer().style.transform).toBe("");
+
+    fireEvent.click(screen.getByRole("button", { name: "Girar credencial" }));
+    expect(card()).toHaveAttribute("data-face", "back");
+    fireEvent.click(screen.getByRole("button", { name: "Volver a la credencial" }));
+    expect(card()).toHaveAttribute("data-face", "front");
+  });
+
+  it("never tilts for a touch-only device", () => {
+    setMedia({ reduced: false, fine: false });
+    const raf = vi.spyOn(window, "requestAnimationFrame");
+    renderDemoHero();
+    wrap().dispatchEvent(new MouseEvent("pointermove", { clientX: 10, clientY: 10 }));
+    expect(raf).not.toHaveBeenCalled();
+    expect(tiltLayer().style.transform).toBe("");
+  });
+
+  it("leans toward a fine pointer within the cap, and settles flat when it leaves", () => {
+    setMedia({ reduced: false, fine: true });
+    // A manual frame queue: the loop runs exactly as many frames as we flush.
+    let queue: FrameRequestCallback[] = [];
+    let now = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      queue.push(cb);
+      return queue.length;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const flush = (frames: number) => {
+      for (let i = 0; i < frames && queue.length > 0; i++) {
+        const batch = queue;
+        queue = [];
+        now += 16;
+        for (const cb of batch) cb(now);
+      }
+    };
+
+    renderDemoHero();
+    vi.spyOn(wrap(), "getBoundingClientRect").mockReturnValue({
+      left: 100,
+      top: 50,
+      width: 400,
+      height: 250,
+      right: 500,
+      bottom: 300,
+      x: 100,
+      y: 50,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    // Pointer on the box's top-left corner.
+    wrap().dispatchEvent(new MouseEvent("pointermove", { clientX: 100, clientY: 50 }));
+    flush(200);
+    const match = /rotateX\((-?[\d.]+)deg\) rotateY\((-?[\d.]+)deg\)/.exec(
+      tiltLayer().style.transform,
+    );
+    expect(match).not.toBeNull();
+    const rx = Number(match?.[1]);
+    const ry = Number(match?.[2]);
+    expect(rx).toBeGreaterThan(0); // the top edge recedes
+    expect(ry).toBeLessThan(0); // the left edge recedes
+    expect(Math.hypot(rx, ry)).toBeLessThanOrEqual(10.01);
+    // Settled: the loop stopped asking for frames.
+    expect(queue).toHaveLength(0);
+
+    wrap().dispatchEvent(new MouseEvent("pointerleave"));
+    flush(200);
+    expect(tiltLayer().style.transform).toBe("");
+    expect(queue).toHaveLength(0);
   });
 });

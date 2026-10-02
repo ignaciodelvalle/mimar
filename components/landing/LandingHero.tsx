@@ -53,6 +53,20 @@
 // advances, and the flip swaps instantly. The "lost" state keeps a subtle
 // border pulse (motion-gated).
 //
+// A held card, not a picture of one (PO 2026-10-02). Four nested layers, each
+// owning ONE transform channel so none of them fights another for it:
+//   .lp-hcardwrap    perspective + the one-time CSS entrance (@starting-style)
+//   .lp-hcard-float  the first-sight hint, one gentle turn (`rotate`) that says
+//                    "this turns", and a slow float (`translate`) that stops by
+//                    itself after two breaths. Both are CSS animations, started
+//                    ONCE, when the card first comes into view (data-alive).
+//   .lp-hcard-tilt   the desktop pointer tilt (`transform`, written per frame)
+//   .lp-hcard-slab   the edge-on flip (`transform`), carrying the card AND the
+//                    stacked edge layers that give it a carnet's thickness
+// The chain is preserve-3d end to end, so nothing in it may carry a property
+// that flattens 3D (overflow, opacity < 1, filter, clip-path, mask). The
+// card's own overflow clip is fine: it is the LEAF of the chain.
+//
 // The QR is REAL and scannable — WHEN the deployment has one to offer:
 // server-generated SVG (qrcode package, same pattern as
 // /mis-mascotas/[publicToken]) pointing at the demo pet this deployment
@@ -74,6 +88,7 @@
 // to a Poncho display font.
 
 import { Icon } from "@/components/Icon";
+import { type HeroTilt, smoothTilt, tiltTowardPointer } from "@/components/landing/hero-card-tilt";
 import {
   CRISIS_DOORS,
   HERO_CREDENTIAL_FIELDS,
@@ -166,8 +181,8 @@ const CYCLE_MS = 2600;
 /**
  * The hero card's edge-on turn, in milliseconds.
  *
- * COUPLED TO CSS: the turn itself is `.lp-hcard { transition: transform … }`
- * in app/globals.css, which reads --motion-slow (300ms) after the MOT-1 token
+ * COUPLED TO CSS: the turn itself is `.lp-hcard-slab { transition: transform … }`
+ * in app/landing.css, which reads --motion-slow (300ms) after the MOT-1 token
  * migration collapsed its old 0.28s into the motion scale. The flip timers
  * below must fire just BEYOND this — a timer that fires mid-turn swaps the
  * face while it is still visible. A setTimeout cannot read a CSS custom
@@ -180,6 +195,23 @@ function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
+
+/** A mouse or trackpad that can hover: the only input the pointer tilt
+ *  answers. Touch screens never get it: a finger has no hover, and a tilt that
+ *  followed a drag would fight the page's own scroll. */
+function hasFinePointer(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+}
+
+/** How much of the card must be on screen before the first-sight hint plays. */
+const ALIVE_THRESHOLD = 0.6;
+
+/** The stacked layers behind the card that read as its edge when it leans.
+ *  Each layer's depth lives in CSS (.lp-hcard-edge:nth-child). */
+const EDGE_LAYERS = [1, 2, 3, 4, 5] as const;
+
+const FLAT: HeroTilt = { rx: 0, ry: 0 };
 
 /**
  * The credential's flip trigger — one component for both faces so the two
@@ -210,7 +242,15 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
   // a screen-reader user was still reaching the H1 (critique 2026-09-29, M4).
   const [announcement, setAnnouncement] = useState("");
 
-  const cardRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const tiltRef = useRef<HTMLDivElement>(null);
+  const slabRef = useRef<HTMLDivElement>(null);
+  // Wakes the tilt loop (set by the tilt effect). A flip calls it so the card
+  // settles flat while it turns edge-on.
+  const wakeTiltRef = useRef<(() => void) | null>(null);
+  // Set the first time the card is really on screen, never unset: starts the
+  // CSS hint + float exactly once per page view.
+  const [alive, setAlive] = useState(false);
   const cycleRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const flipTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const flippingRef = useRef(false);
@@ -252,6 +292,95 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
     );
   }, [face]);
 
+  // First sight: once most of the card is on screen, play the hint and the
+  // float, once. No observer (old browser, jsdom) or reduced motion: the card
+  // stays still, which is exactly the no-JS rendering.
+  useEffect(() => {
+    if (prefersReducedMotion()) return;
+    const el = wrapRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setAlive(true);
+          io.disconnect();
+        }
+      },
+      { threshold: ALIVE_THRESHOLD },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  // Pointer tilt, desktop only. The listeners only RECORD the pointer; one
+  // requestAnimationFrame loop reads the box, smooths toward the target and
+  // writes a single transform, then stops itself once the card has settled.
+  useEffect(() => {
+    if (prefersReducedMotion() || !hasFinePointer()) return;
+    const wrap = wrapRef.current;
+    const tilt = tiltRef.current;
+    if (!wrap || !tilt) return;
+
+    let pointer: { x: number; y: number } | null = null;
+    let current: HeroTilt = FLAT;
+    let frame = 0;
+    let last = 0;
+
+    const tick = (now: number) => {
+      const dt = last === 0 ? 16 : now - last;
+      last = now;
+      let target = FLAT;
+      if (pointer && !flippingRef.current) {
+        const box = wrap.getBoundingClientRect();
+        target = tiltTowardPointer(
+          pointer.x - box.left,
+          pointer.y - box.top,
+          box.width,
+          box.height,
+        );
+      }
+      current = smoothTilt(current, target, dt);
+      const settled =
+        Math.abs(current.rx - target.rx) < 0.02 && Math.abs(current.ry - target.ry) < 0.02;
+      if (settled) current = target;
+      tilt.style.transform =
+        current.rx === 0 && current.ry === 0
+          ? ""
+          : `rotateX(${current.rx.toFixed(2)}deg) rotateY(${current.ry.toFixed(2)}deg)`;
+      // Settled on its target: stop. The next pointer event wakes it again,
+      // so a still pointer over a still card costs nothing.
+      if (settled) {
+        frame = 0;
+        last = 0;
+        return;
+      }
+      frame = window.requestAnimationFrame(tick);
+    };
+    const wake = () => {
+      if (frame === 0) frame = window.requestAnimationFrame(tick);
+    };
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType === "touch") return;
+      pointer = { x: e.clientX, y: e.clientY };
+      wake();
+    };
+    const onLeave = () => {
+      pointer = null;
+      wake();
+    };
+
+    wakeTiltRef.current = wake;
+    wrap.addEventListener("pointermove", onMove, { passive: true });
+    wrap.addEventListener("pointerleave", onLeave, { passive: true });
+    return () => {
+      wakeTiltRef.current = null;
+      wrap.removeEventListener("pointermove", onMove);
+      wrap.removeEventListener("pointerleave", onLeave);
+      if (frame !== 0) window.cancelAnimationFrame(frame);
+      tilt.style.transform = "";
+    };
+  }, []);
+
   const selectState = useCallback(
     (i: number) => {
       stopCycle();
@@ -272,19 +401,23 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
     if (flippingRef.current) return;
     flippingRef.current = true;
     stopCycle();
-    const el = cardRef.current;
+    const el = slabRef.current;
     const swap = () => setFace((f) => (f === "front" ? "back" : "front"));
     if (!el || prefersReducedMotion()) {
       swap();
       flippingRef.current = false;
       return;
     }
+    // The pointer tilt settles flat while the card turns, so lean + turn never
+    // add up past edge-on (the card's reverse would show, mirrored).
+    wakeTiltRef.current?.();
     el.style.transform = "rotateY(90deg)";
     const t1 = setTimeout(() => {
       swap();
       el.style.transform = "rotateY(0deg)";
       const t2 = setTimeout(() => {
         flippingRef.current = false;
+        wakeTiltRef.current?.();
       }, TURN_MS + 20);
       flipTimersRef.current.push(t2);
     }, TURN_MS + 10);
@@ -423,166 +556,188 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
 
           <div className="lp-hero-photo lp-reveal" data-d="2">
             <div className="flex w-full flex-col items-center">
-              <div className="lp-hcardwrap">
-                <div
-                  ref={cardRef}
-                  className="lp-hcard"
-                  data-section="hero-credential"
-                  data-tone={state.tone}
-                  data-face={face}
-                  aria-label={`Credencial de ${PAMPA.name} — estado: ${word}`}
-                >
-                  {/* Live region for the changes a PERSON makes: a state dot,
+              <div className="lp-hcardwrap" ref={wrapRef} data-alive={alive ? "true" : undefined}>
+                {/* The soft shadow the card casts on the paper; it breathes
+                    with the float (CSS only). */}
+                <span className="lp-hcard-ground" aria-hidden="true" />
+                <div className="lp-hcard-float">
+                  <div className="lp-hcard-tilt" ref={tiltRef}>
+                    <div className="lp-hcard-slab" ref={slabRef}>
+                      {/* The carnet's thickness: plain layers stacked BEHIND
+                          the card in depth. Flat-on they hide behind it;
+                          leaning or turning edge-on, their rims read as the
+                          card's edge. */}
+                      {EDGE_LAYERS.map((n) => (
+                        <span key={n} className="lp-hcard-edge" aria-hidden="true" />
+                      ))}
+                      <div
+                        className="lp-hcard"
+                        data-section="hero-credential"
+                        data-tone={state.tone}
+                        data-face={face}
+                        aria-label={`Credencial de ${PAMPA.name} — estado: ${word}`}
+                      >
+                        {/* Live region for the changes a PERSON makes: a state dot,
                       the flip. The automatic cycle is not announced, it would
                       talk over the H1. The aria-label above carries the
                       CURRENT state for a reader that lands on the card, and
                       the visible state word below carries it for everyone. */}
-                  <span className="sr-only" aria-live="polite">
-                    {announcement}
-                  </span>
-                  {/* FRONT — the credential the QR opens, in miniature: the
+                        <span className="sr-only" aria-live="polite">
+                          {announcement}
+                        </span>
+                        {/* FRONT — the credential the QR opens, in miniature: the
                       guilloche band and issuing line, photo and QR rising out
                       of the band, name and token between them, the identity
                       fields the public page prints, the one state row, and
                       miMAR's own machine-readable strip. */}
-                  <div className="lp-hcard-front">
-                    <div className="lp-hcard-band">
-                      <span className="lp-hcard-issuer">
-                        {/* The real mark, decorative: the issuing line beside
+                        <div className="lp-hcard-front">
+                          <div className="lp-hcard-band">
+                            <span className="lp-hcard-issuer">
+                              {/* The real mark, decorative: the issuing line beside
                             it is the text. */}
-                        <span className="lp-hcard-mark" aria-hidden="true">
-                          {/* <=24px surface: the small-size cut, not the main
+                              <span className="lp-hcard-mark" aria-hidden="true">
+                                {/* <=24px surface: the small-size cut, not the main
                               mark scaled down — see public/logo-mimar-mark-small.svg. */}
-                          <img src="/logo-mimar-mark-small.svg" alt="" width={18} height={18} />
-                        </span>
-                        <span>
-                          <span className="lp-hcard-issuer-name">Credencial miMAR</span>
-                          <span className="lp-hcard-issuer-sub">Libreta sanitaria · frente</span>
-                        </span>
-                      </span>
-                      <span className="lp-hcard-trim-r">
-                        {/* The status seal/badge was removed (PO 2026-09-25:
+                                <img
+                                  src="/logo-mimar-mark-small.svg"
+                                  alt=""
+                                  width={18}
+                                  height={18}
+                                />
+                              </span>
+                              <span>
+                                <span className="lp-hcard-issuer-name">Credencial miMAR</span>
+                                <span className="lp-hcard-issuer-sub">
+                                  Libreta sanitaria · frente
+                                </span>
+                              </span>
+                            </span>
+                            <span className="lp-hcard-trim-r">
+                              {/* The status seal/badge was removed (PO 2026-09-25:
                             "no me gusta el chip"). The state now reads through
                             the card's own background colour (lost) plus the
                             border pulse, photo ring and contextual row that
                             already tinted per state — see the sr-only live
                             region above for the accessible carrier. */}
-                        <FlipButton label="Girar credencial" onFlip={flip} />
-                      </span>
-                    </div>
-                    {/* The per-state rule under the band — the public card's
+                              <FlipButton label="Girar credencial" onFlip={flip} />
+                            </span>
+                          </div>
+                          {/* The per-state rule under the band — the public card's
                         8px strip recolouring by situation, in miniature. */}
-                    <div className="lp-hcard-tone" aria-hidden="true" />
+                          <div className="lp-hcard-tone" aria-hidden="true" />
 
-                    <div className="lp-hcard-body">
-                      <span className="lp-hcard-photo">
-                        <Image
-                          src="/landing/pampa-hero.jpg"
-                          alt={
-                            state.tone === "lost"
-                              ? `${PAMPA.name}, ${lostThirdPersonPhrase(PAMPA.sexEnum)}`
-                              : `${PAMPA.name}, ${PAMPA.speciesNoun}`
-                          }
-                          fill
-                          // The box it paints into is 96px (.lp-hcard-photo);
-                          // "76px" asked for an image smaller than the box and
-                          // scaled it up (critique 2026-09-29, m3).
-                          sizes="96px"
-                          // Above the fold on phones and desktop alike.
-                          // fetchPriority alone left next/image's default
-                          // loading="lazy" in place; `priority` loads it
-                          // eagerly and preloads it.
-                          priority
-                          className="object-cover"
-                        />
-                      </span>
-                      <span className="lp-hcard-id">
-                        <span className="lp-hcard-name">{PAMPA.name}</span>
-                        <span className="lp-hcard-token">{displayToken}</span>
-                      </span>
-                      {scannable ? (
-                        <Link
-                          href={publicHref}
-                          aria-label="Ver la credencial pública de demostración"
-                          title="Escaneame — QR real de demostración"
-                          className="lp-hcard-qr"
-                          // biome-ignore lint/security/noDangerouslySetInnerHtml: server-generated QR SVG from the qrcode package, no user input.
-                          dangerouslySetInnerHTML={{ __html: qrSvg }}
-                        />
-                      ) : (
-                        // Inert QR glyph — decorative finder patterns only, no
-                        // encoded data and no link. Reuses .lp-hcard-qr so the
-                        // card's `64px 1fr auto` grid keeps its shape.
-                        <span className="lp-hcard-qr" aria-hidden="true">
-                          <svg viewBox="0 0 29 29" fill="none">
-                            <title>Ilustración de un código QR</title>
-                            <g fill="var(--color-ln-line)">
-                              <path d="M0 0h9v9H0zM20 0h9v9h-9zM0 20h9v9H0z" />
-                            </g>
-                            <g fill="var(--color-ln-card)">
-                              <path d="M2 2h5v5H2zM22 2h5v5h-5zM2 22h5v5H2z" />
-                            </g>
-                            <g fill="var(--color-ln-line)">
-                              <path d="M3.5 3.5h2v2h-2zM23.5 3.5h2v2h-2zM3.5 23.5h2v2h-2z" />
-                              <path d="M12 0h2v2h-2zM12 4h2v2h-2zM12 8h2v2h-2zM16 12h2v2h-2zM12 12h2v2h-2zM8 12h2v2h-2zM4 12h2v2h-2zM0 12h2v2H0zM20 12h2v2h-2zM24 12h2v2h-2zM12 16h2v2h-2zM12 20h2v2h-2zM12 24h2v2h-2zM16 16h2v2h-2zM20 20h2v2h-2zM24 24h2v2h-2zM16 24h2v2h-2zM24 16h2v2h-2z" />
-                            </g>
-                          </svg>
-                        </span>
-                      )}
-                    </div>
+                          <div className="lp-hcard-body">
+                            <span className="lp-hcard-photo">
+                              <Image
+                                src="/landing/pampa-hero.jpg"
+                                alt={
+                                  state.tone === "lost"
+                                    ? `${PAMPA.name}, ${lostThirdPersonPhrase(PAMPA.sexEnum)}`
+                                    : `${PAMPA.name}, ${PAMPA.speciesNoun}`
+                                }
+                                fill
+                                // The box it paints into is 96px (.lp-hcard-photo);
+                                // "76px" asked for an image smaller than the box and
+                                // scaled it up (critique 2026-09-29, m3).
+                                sizes="96px"
+                                // Above the fold on phones and desktop alike.
+                                // fetchPriority alone left next/image's default
+                                // loading="lazy" in place; `priority` loads it
+                                // eagerly and preloads it.
+                                priority
+                                className="object-cover"
+                              />
+                            </span>
+                            <span className="lp-hcard-id">
+                              <span className="lp-hcard-name">{PAMPA.name}</span>
+                              <span className="lp-hcard-token">{displayToken}</span>
+                            </span>
+                            {scannable ? (
+                              <Link
+                                href={publicHref}
+                                aria-label="Ver la credencial pública de demostración"
+                                title="Escaneame — QR real de demostración"
+                                className="lp-hcard-qr"
+                                // biome-ignore lint/security/noDangerouslySetInnerHtml: server-generated QR SVG from the qrcode package, no user input.
+                                dangerouslySetInnerHTML={{ __html: qrSvg }}
+                              />
+                            ) : (
+                              // Inert QR glyph — decorative finder patterns only, no
+                              // encoded data and no link. Reuses .lp-hcard-qr so the
+                              // card's `64px 1fr auto` grid keeps its shape.
+                              <span className="lp-hcard-qr" aria-hidden="true">
+                                <svg viewBox="0 0 29 29" fill="none">
+                                  <title>Ilustración de un código QR</title>
+                                  <g fill="var(--color-ln-line)">
+                                    <path d="M0 0h9v9H0zM20 0h9v9h-9zM0 20h9v9H0z" />
+                                  </g>
+                                  <g fill="var(--color-ln-card)">
+                                    <path d="M2 2h5v5H2zM22 2h5v5h-5zM2 22h5v5H2z" />
+                                  </g>
+                                  <g fill="var(--color-ln-line)">
+                                    <path d="M3.5 3.5h2v2h-2zM23.5 3.5h2v2h-2zM3.5 23.5h2v2h-2z" />
+                                    <path d="M12 0h2v2h-2zM12 4h2v2h-2zM12 8h2v2h-2zM16 12h2v2h-2zM12 12h2v2h-2zM8 12h2v2h-2zM4 12h2v2h-2zM0 12h2v2H0zM20 12h2v2h-2zM24 12h2v2h-2zM12 16h2v2h-2zM12 20h2v2h-2zM12 24h2v2h-2zM16 16h2v2h-2zM20 20h2v2h-2zM24 24h2v2h-2zM16 24h2v2h-2zM24 16h2v2h-2z" />
+                                  </g>
+                                </svg>
+                              </span>
+                            )}
+                          </div>
 
-                    {/* Identity fields — the public credential's own labels. */}
-                    <dl className="lp-hcard-fields">
-                      {HERO_CREDENTIAL_FIELDS.map((f) => (
-                        <div key={f.label}>
-                          <dt>{f.label}</dt>
-                          <dd>{f.value}</dd>
-                        </div>
-                      ))}
-                    </dl>
+                          {/* Identity fields — the public credential's own labels. */}
+                          <dl className="lp-hcard-fields">
+                            {HERO_CREDENTIAL_FIELDS.map((f) => (
+                              <div key={f.label}>
+                                <dt>{f.label}</dt>
+                                <dd>{f.value}</dd>
+                              </div>
+                            ))}
+                          </dl>
 
-                    <div key={index} className="lp-hcard-ctx" data-section="hero-state-line">
-                      <span className="lp-hcard-ctx-chev" aria-hidden="true">
-                        ▸
-                      </span>
-                      <span>
-                        <b className="lp-hcard-ctx-state">{word}</b> · {state.row}
-                      </span>
-                    </div>
+                          <div key={index} className="lp-hcard-ctx" data-section="hero-state-line">
+                            <span className="lp-hcard-ctx-chev" aria-hidden="true">
+                              ▸
+                            </span>
+                            <span>
+                              <b className="lp-hcard-ctx-state">{word}</b> · {state.row}
+                            </span>
+                          </div>
 
-                    {/* miMAR's own machine-readable strip (see heroMrzLines):
+                          {/* miMAR's own machine-readable strip (see heroMrzLines):
                         decorative, so hidden from assistive tech — and still
                         drawn at full contrast, because a low-vision reader
                         can see it (review L-5). */}
-                    <div className="lp-hcard-mrz" aria-hidden="true">
-                      <span>{mrz[0]}</span>
-                      <span>{mrz[1]}</span>
-                    </div>
-                  </div>
+                          <div className="lp-hcard-mrz" aria-hidden="true">
+                            <span>{mrz[0]}</span>
+                            <span>{mrz[1]}</span>
+                          </div>
+                        </div>
 
-                  {/* BACK — the mini libreta sanitaria */}
-                  <div className="lp-hcard-back">
-                    <div className="lp-hcard-libhead">
-                      <b>Libreta sanitaria</b>
-                      <span className="lp-hcard-trim-r">
-                        <span className="lp-hcard-libmeta">
-                          {PAMPA.name} · {displayToken}
-                        </span>
-                        <FlipButton label="Volver a la credencial" onFlip={flip} />
-                      </span>
-                    </div>
+                        {/* BACK — the mini libreta sanitaria */}
+                        <div className="lp-hcard-back">
+                          <div className="lp-hcard-libhead">
+                            <b>Libreta sanitaria</b>
+                            <span className="lp-hcard-trim-r">
+                              <span className="lp-hcard-libmeta">
+                                {PAMPA.name} · {displayToken}
+                              </span>
+                              <FlipButton label="Volver a la credencial" onFlip={flip} />
+                            </span>
+                          </div>
 
-                    {/* The three newest vet-signed entries of Pampa's
+                          {/* The three newest vet-signed entries of Pampa's
                         libreta, from the seed's data module. */}
-                    {HERO_LIBRETA_ROWS.map((row) => (
-                      <div className="lp-hcard-librow" key={`${row.what}-${row.who}`}>
-                        <span>
-                          <span className="lp-hcard-libwhat">{row.what}</span>
-                          <span className="lp-hcard-libwho">{row.who}</span>
-                        </span>
-                        <span className="lp-hcard-libstamp">FIRMADA</span>
+                          {HERO_LIBRETA_ROWS.map((row) => (
+                            <div className="lp-hcard-librow" key={`${row.what}-${row.who}`}>
+                              <span>
+                                <span className="lp-hcard-libwhat">{row.what}</span>
+                                <span className="lp-hcard-libwho">{row.who}</span>
+                              </span>
+                              <span className="lp-hcard-libstamp">FIRMADA</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    ))}
+                    </div>
                   </div>
                 </div>
               </div>
