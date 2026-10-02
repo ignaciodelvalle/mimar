@@ -3,6 +3,7 @@ import type {
   OwnerPetBannersSection,
   OwnerPetCasesSection,
   OwnerPetComplianceSection,
+  OwnerPetDetailV1,
   OwnerPetDetailViewerRole,
   OwnerPetIdentitySection,
   OwnerPetStatusSection,
@@ -19,6 +20,7 @@ import {
   alertHeadline,
   alertTone,
   buildCancelReminder,
+  buildOwnerFaceView,
   buildScheduleReminder,
   caretakerBannerLines,
   caseKindLabel,
@@ -495,6 +497,8 @@ function source(
   over: {
     viewerRole?: OwnerPetDetailViewerRole;
     isTitular?: boolean;
+    /** The server's "Editar datos" verdict; `null` = an older server sent none. */
+    canEditProfile?: boolean | null;
     /** `null` = the status section did not load. */
     petStatus?: string | null;
     /** `null` = the identity section did not load. */
@@ -509,6 +513,7 @@ function source(
     publicToken: "DIM-PAMP-0001",
     viewerRole,
     isTitular: over.isTitular ?? viewerRole === "owner",
+    canEditProfile: over.canEditProfile ?? null,
     status:
       over.petStatus === null
         ? UNREAD
@@ -639,6 +644,59 @@ describe("ownerPanelView — a row that does not apply is grey, with its reason"
     // `titular-only.ts` lists photos and the death record among a caretaker's acts.
     expect(rowOf(panel, "photo")?.target).toBe("/mascotas/DIM-PAMP-0001/foto");
     expect(rowOf(panel, "death")?.target).toBe("/mascotas/DIM-PAMP-0001/asentar?kind=death");
+  });
+});
+
+describe("ownerPanelView — Editar datos follows the server's verdict (vecino en tránsito, PO 2026-10-01)", () => {
+  // A user-held custody row reaches the app as `caretaker`; the verdict is what
+  // tells the vecino of an animal with no titular from a real caretaker.
+  it("opens Editar datos for the vecino while the animal has no titular", () => {
+    const panel = panelOf({ viewerRole: "caretaker", canEditProfile: true });
+    expect(rowOf(panel, "edit")?.target).toBe("/mascotas/DIM-PAMP-0001/editar");
+    expect(rowOf(panel, "edit")?.caption).toBeNull();
+    // Nothing else moves: the titular's rows stay the titular's.
+    expect(rowOf(panel, "transfer")?.target).toBeNull();
+  });
+
+  it("greys it once the animal has a titular", () => {
+    const panel = panelOf({ viewerRole: "caretaker", canEditProfile: false });
+    expect(rowOf(panel, "edit")?.target).toBeNull();
+    expect(rowOf(panel, "edit")?.caption).toBe("No disponible para cuidadores");
+  });
+
+  it("an older server (no verdict) keeps the role rule", () => {
+    expect(rowOf(panelOf({ viewerRole: "caretaker" }), "edit")?.target).toBeNull();
+    expect(rowOf(panelOf({ viewerRole: "foster" }), "edit")?.target).toBe(
+      "/mascotas/DIM-PAMP-0001/editar",
+    );
+  });
+
+  it("reads the verdict off the payload, and an absent one as `null`", () => {
+    const gone = { status: "unavailable" } as const;
+    const base = {
+      publicToken: "DIM-PAMP-0001",
+      issuedAt: "2026-10-01T12:00:00Z",
+      identity: gone,
+      status: gone,
+      alerts: gone,
+      compliance: gone,
+      reminders: gone,
+      banners: gone,
+      cases: gone,
+      pregnancy: gone,
+      carousel: gone,
+      pppRegistries: gone,
+    };
+    const withVerdict = buildOwnerFaceView({
+      ...base,
+      viewer: { role: "caretaker", isTitular: false, canEditProfile: true },
+    } as unknown as OwnerPetDetailV1);
+    expect(withVerdict.canEditProfile).toBe(true);
+    const older = buildOwnerFaceView({
+      ...base,
+      viewer: { role: "caretaker", isTitular: false },
+    } as unknown as OwnerPetDetailV1);
+    expect(older.canEditProfile).toBeNull();
   });
 });
 

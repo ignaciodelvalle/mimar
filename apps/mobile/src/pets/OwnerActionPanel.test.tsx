@@ -67,6 +67,7 @@ function sourceFor(ctx: PetActionContext): OwnerPanelSource {
     publicToken: TOKEN,
     viewerRole: ctx.viewerRole,
     isTitular: ctx.isTitular,
+    canEditProfile: ctx.canEditProfile ?? null,
     status:
       ctx.petStatus === null
         ? UNREAD

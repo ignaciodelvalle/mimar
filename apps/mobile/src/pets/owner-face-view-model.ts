@@ -498,6 +498,13 @@ export type OwnerFaceView = {
    *  which rows exist for this viewer, and which are grey and why. */
   viewerRole: OwnerPetDetailViewerRole;
   isTitular: boolean;
+  /**
+   * The server's "Editar datos" verdict (`viewer.canEditProfile`), or `null`
+   * when a server older than the field did not send it — the catalogue then
+   * falls back to the role. It is what lets the vecino en tránsito (reported
+   * as `caretaker`) edit while the animal has no titular (PO 2026-10-01).
+   */
+  canEditProfile: boolean | null;
   identity: SectionView<OwnerPetIdentitySection>;
   status: SectionView<OwnerPetStatusSection>;
   alerts: SectionView<{ items: OwnerPetAlertV1[] }>;
@@ -559,7 +566,13 @@ export type OwnerFaceView = {
  */
 export type OwnerPanelSource = Pick<
   OwnerFaceView,
-  "publicToken" | "viewerRole" | "isTitular" | "status" | "identity" | "pppRegistries"
+  | "publicToken"
+  | "viewerRole"
+  | "isTitular"
+  | "canEditProfile"
+  | "status"
+  | "identity"
+  | "pppRegistries"
 >;
 
 /**
@@ -615,6 +628,7 @@ function panelContext(view: OwnerPanelSource): PetActionContext {
   return {
     viewerRole: view.viewerRole,
     isTitular: view.isTitular,
+    canEditProfile: view.canEditProfile,
     petStatus: view.status.state === "ok" ? view.status.data.petStatus : null,
     species: view.identity.state === "ok" ? view.identity.data.species : null,
     // `data: null` is the contract's own "this animal is not under the regime";
@@ -840,6 +854,8 @@ export function buildOwnerFaceView(payload: OwnerPetDetailV1): OwnerFaceView {
     viewerLabel: viewerRoleLabel(payload.viewer.role),
     viewerRole: payload.viewer.role,
     isTitular: payload.viewer.isTitular,
+    // Absent from an older server: `null`, the catalogue's "no verdict".
+    canEditProfile: payload.viewer.canEditProfile ?? null,
     identity: sectionView(payload.identity),
     status: sectionView(payload.status),
     alerts: sectionView(payload.alerts),
