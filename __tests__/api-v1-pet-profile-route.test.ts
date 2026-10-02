@@ -1283,24 +1283,35 @@ describe("POST — editar datos por sección", () => {
   });
 
   it("estimates a new birth date, flagged as one, when the age itself changed", async () => {
-    await send({
-      ...NO_SECTIONS,
-      identity: {
-        name: "Pampa",
-        breed: "Caniche",
-        color: "Atigrada",
-        sex: "male",
-        ageYears: 11,
-        ageMonths: 0,
-      },
-    });
-    const parsed = composed();
-    expect(parsed.sex).toBe("male");
-    expect(parsed.birthDateIsEstimated).toBe(true);
-    expect(petAgeFromBirthDate(parsed.dateOfBirth as string, new Date())).toEqual({
-      years: 11,
-      months: 0,
-    });
+    // Midday, frozen: between 21:00 and 24:00 in Argentina the UTC day is
+    // already tomorrow, and pet-age.ts documents that an estimate made in that
+    // window does not read back as the age it came from. The clock is pinned
+    // so this asserts the arithmetic, not the hour the suite happens to run.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
+    try {
+      await send({
+        ...NO_SECTIONS,
+        identity: {
+          name: "Pampa",
+          breed: "Caniche",
+          color: "Atigrada",
+          sex: "male",
+          ageYears: 11,
+          ageMonths: 0,
+        },
+      });
+      const parsed = composed();
+      expect(parsed.sex).toBe("male");
+      expect(parsed.birthDateIsEstimated).toBe(true);
+      expect(parsed.dateOfBirth).toBe("2015-10-15");
+      expect(petAgeFromBirthDate(parsed.dateOfBirth as string, new Date())).toEqual({
+        years: 11,
+        months: 0,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports changed:false for an edit that names no section", async () => {
