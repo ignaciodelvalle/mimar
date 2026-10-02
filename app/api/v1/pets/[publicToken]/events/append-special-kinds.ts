@@ -639,6 +639,7 @@ export async function appendBite(
         rabiesObservationStatus: pet.rabiesObservationStatus ?? null,
         jurisdictionProvince: pet.jurisdictionProvince ?? null,
         jurisdictionLocality: pet.jurisdictionLocality ?? null,
+        localityId: pet.localityId ?? null,
       },
       user: { id: ctx.userId },
       eventAuthorship: access.kind === "org" ? access.eventAuthorship : OWNER_AUTHORSHIP,

@@ -183,6 +183,7 @@ export async function transferCustody(
           petId: petRow.pet.id,
           jurisdictionProvince: petRow.pet.jurisdictionProvince,
           jurisdictionLocality: petRow.pet.jurisdictionLocality,
+          localityId: petRow.pet.localityId ?? null,
           openedByUserId: user.id,
           openedByOrganizationId: organization.id,
           receiverOrganizationId: destination.id,

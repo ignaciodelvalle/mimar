@@ -64,11 +64,18 @@ export type OutbreakInvestigationDeps = {
       jurisdictionCountry: string;
       jurisdictionProvince: string | null;
       jurisdictionLocality: string | null;
+      localityId: string | null;
       openedByUserId: string;
       openedReason: OpenedReason;
     },
     tx: unknown,
   ) => Promise<{ id: string; publicCode: string }>;
+  /**
+   * The catalogue row the opener's grant pair names, or null when it names
+   * none or several (a whole-province grant, a homonym). Never a guess: the
+   * case is then province-level, which the province's holders see.
+   */
+  resolveLocalityId: (province: string | null, locality: string | null) => Promise<string | null>;
   closeCase: (
     input: { caseId: string; reason: "resolved" | "cancelled"; closedByUserId: string },
     tx: unknown,
@@ -193,6 +200,7 @@ export async function openOutbreakInvestigation(
     note: input.reason.trim(),
   };
   let createdPublicCode = "";
+  const localityId = await deps.resolveLocalityId(jurisdictionProvince, jurisdictionLocality);
 
   try {
     await transaction(async (tx) => {
@@ -204,6 +212,7 @@ export async function openOutbreakInvestigation(
           jurisdictionCountry: "AR",
           jurisdictionProvince,
           jurisdictionLocality,
+          localityId,
           openedByUserId: actor.profile.id,
           openedReason,
         },

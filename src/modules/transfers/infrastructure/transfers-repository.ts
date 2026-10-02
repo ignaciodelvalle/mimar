@@ -96,6 +96,8 @@ type OpenHandshakeCaseArgs = {
   petId: string;
   jurisdictionProvince?: string | null;
   jurisdictionLocality?: string | null;
+  /** The home's catalogue row (`pets.locality_id`), carried with the home pair. */
+  localityId: string | null;
   openedByUserId: string;
   openedByOrganizationId: string;
   receiverOrganizationId: string;
@@ -708,6 +710,7 @@ export const TransfersRepository = {
         primaryPetId: args.petId,
         jurisdictionProvince: args.jurisdictionProvince,
         jurisdictionLocality: args.jurisdictionLocality,
+        localityId: args.localityId,
         openedByUserId: args.openedByUserId,
         openedByOrganizationId: args.openedByOrganizationId,
         receiverOrganizationId: args.receiverOrganizationId,

@@ -103,6 +103,7 @@ const baseParams = {
   petColor: "yellow",
   petJurisdictionProvince: "Buenos Aires",
   petJurisdictionLocality: "La Plata",
+  petJurisdictionLocalityId: "loc-la-plata",
   ownerUserId: userId,
   ownerDisplayName: "Jane Doe",
   fromStatus: "active",
@@ -256,21 +257,26 @@ describe("setPetLostWriter", () => {
         }),
       ).toEqual({ province: "Córdoba", locality: "Villa Carlos Paz", localityId: "loc-vcp" });
       mockOpenCase.mockClear();
-      // The home fallback carries no id from here: the id names the INCIDENT.
+      // The home fallback never takes the INCIDENT's id: it carries the
+      // home's own row, with the home pair.
       expect(await run({ eventLocalityId: "loc-vcp" })).toEqual({
         province: "Buenos Aires",
         locality: "La Plata",
-        localityId: null,
+        localityId: "loc-la-plata",
       });
     });
 
     it("falls back to the animal's home jurisdiction when nobody said", async () => {
       // "No sé exactamente dónde" is a real answer from somebody in a panic, and
       // the fallback is defined behaviour rather than a hole.
+      //
+      // The home's catalogue row travels with the home pair (2026-10): it used
+      // to be dropped, so 15 CABA lost cases on staging carried "Palermo" and
+      // no id — invisible to the Palermo holder once scope reads ids.
       expect(await run({})).toEqual({
         province: "Buenos Aires",
         locality: "La Plata",
-        localityId: null,
+        localityId: "loc-la-plata",
       });
     });
 
@@ -409,7 +415,7 @@ describe("setPetLostWriter", () => {
       expect(await run({ eventJurisdictionLocality: "Villa Carlos Paz" })).toEqual({
         province: "Buenos Aires",
         locality: "La Plata",
-        localityId: null,
+        localityId: "loc-la-plata",
       });
     });
   });

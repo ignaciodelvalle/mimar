@@ -1021,6 +1021,7 @@ export async function setPetLostAction(
       petColor: pet.color,
       petJurisdictionProvince: pet.jurisdictionProvince,
       petJurisdictionLocality: pet.jurisdictionLocality,
+      petJurisdictionLocalityId: pet.localityId ?? null,
       ownerUserId: user.id,
       ownerDisplayName: "",
       fromStatus: pet.status,

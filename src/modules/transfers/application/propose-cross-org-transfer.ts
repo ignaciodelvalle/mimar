@@ -146,6 +146,7 @@ export async function proposeCrossOrgTransfer(
           petId: pet.id,
           jurisdictionProvince: pet.jurisdictionProvince,
           jurisdictionLocality: pet.jurisdictionLocality,
+          localityId: pet.localityId ?? null,
           openedByUserId: user.id,
           openedByOrganizationId: organization.id,
           receiverOrganizationId: receiver.id,

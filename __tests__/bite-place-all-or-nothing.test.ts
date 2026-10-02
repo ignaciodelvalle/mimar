@@ -37,7 +37,13 @@ import {
 import type { SurveillanceRepository } from "@/src/modules/surveillance/infrastructure/surveillance-repository";
 
 /** A pet that lives in Mendoza / San Martín and bites somebody in San Juan. */
-const PET_HOME = { jurisdictionProvince: "Mendoza", jurisdictionLocality: "San Martín" };
+const HOME_ID = "a0000000-0000-4000-8000-00000000a001";
+const INCIDENT_ID = "a0000000-0000-4000-8000-00000000a002";
+const PET_HOME = {
+  jurisdictionProvince: "Mendoza",
+  jurisdictionLocality: "San Martín",
+  localityId: HOME_ID,
+};
 
 function makeRepo(): SurveillanceRepository {
   return {
@@ -138,13 +144,21 @@ const ORG_INPUT: ReportBiteFromOrgInput = {
   clientIdempotencyKey: null,
 };
 
-type OpenCaseCall = { jurisdictionProvince: string | null; jurisdictionLocality: string | null };
+type OpenCaseCall = {
+  jurisdictionProvince: string | null;
+  jurisdictionLocality: string | null;
+  localityId?: string | null;
+};
 
+// The catalogue id is part of the place: it travels with the pair it names,
+// whole (2026-10 — the home fallback used to keep the home NAME and drop its
+// id, which hides the case from every municipal/comuna holder on the id path).
 function casePair(deps: ReturnType<typeof makeDeps>): OpenCaseCall {
   const [input] = deps.openCase.mock.calls[0] as [OpenCaseCall];
   return {
     jurisdictionProvince: input.jurisdictionProvince,
     jurisdictionLocality: input.jurisdictionLocality,
+    localityId: input.localityId,
   };
 }
 
@@ -155,6 +169,25 @@ describe("owner bite writer: the case place is one source", () => {
     expect(casePair(deps)).toEqual({
       jurisdictionProvince: "San Juan",
       jurisdictionLocality: null,
+      localityId: null,
+    });
+  });
+
+  it("a resolved incident place carries the incident's id, never the home's", async () => {
+    const deps = makeDeps();
+    await reportBite(
+      {
+        ...OWNER_INPUT,
+        eventJurisdictionProvince: "San Juan",
+        eventJurisdictionLocality: "San Martín",
+        eventLocalityId: INCIDENT_ID,
+      },
+      deps,
+    );
+    expect(casePair(deps)).toEqual({
+      jurisdictionProvince: "San Juan",
+      jurisdictionLocality: "San Martín",
+      localityId: INCIDENT_ID,
     });
   });
 
@@ -164,6 +197,7 @@ describe("owner bite writer: the case place is one source", () => {
     expect(casePair(deps)).toEqual({
       jurisdictionProvince: "Mendoza",
       jurisdictionLocality: "San Martín",
+      localityId: HOME_ID,
     });
   });
 });
@@ -175,6 +209,7 @@ describe("org bite writer: the case place is one source", () => {
     expect(casePair(deps)).toEqual({
       jurisdictionProvince: "San Juan",
       jurisdictionLocality: null,
+      localityId: null,
     });
   });
 
@@ -184,6 +219,7 @@ describe("org bite writer: the case place is one source", () => {
     expect(casePair(deps)).toEqual({
       jurisdictionProvince: "Mendoza",
       jurisdictionLocality: "San Martín",
+      localityId: HOME_ID,
     });
   });
 });

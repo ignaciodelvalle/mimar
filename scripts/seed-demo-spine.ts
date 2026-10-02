@@ -1084,6 +1084,12 @@ async function seedCustodyDisputeDemo(): Promise<void> {
 
   let disputeToken = "";
   await db.transaction(async (tx) => {
+    // The same home row the pet carries, as the production writer passes it.
+    const [home] = await tx
+      .select({ localityId: schemas.pets.localityId })
+      .from(schemas.pets)
+      .where(eq(schemas.pets.id, resolvedPetId))
+      .limit(1);
     const disputeCase = await openCase(
       {
         kind: "custody_dispute",
@@ -1091,6 +1097,7 @@ async function seedCustodyDisputeDemo(): Promise<void> {
         primaryPetId: resolvedPetId,
         jurisdictionProvince: "CABA",
         jurisdictionLocality: "Palermo",
+        localityId: home?.localityId ?? null,
         openedByUserId: claimant.id,
         openedByOrganizationId: null,
         openedReason: { code: "custody_dispute_raised", raisedByRole: "owner" },

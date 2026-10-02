@@ -375,6 +375,7 @@ describe("FosterRepository.insertAssignFoster — idempotency guard", () => {
       petName: pet.name,
       petJurisdictionProvince: null,
       petJurisdictionLocality: null,
+      petLocalityId: null,
       fosterUserId: helperUserId,
       expectedWeeks: 4,
       notes: null,

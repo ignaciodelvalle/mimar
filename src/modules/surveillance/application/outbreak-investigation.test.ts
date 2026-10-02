@@ -66,6 +66,11 @@ function makeDeps(repoOverrides: FakeRepo = {}): OutbreakInvestigationDeps {
   return {
     repo,
     openCase: vi.fn().mockResolvedValue({ id: "case-1", publicCode: "INV-2024-001" }),
+    resolveLocalityId: vi
+      .fn()
+      .mockImplementation(async (province: string | null, locality: string | null) =>
+        province === "Buenos Aires" && locality === "La Plata" ? "loc-la-plata" : null,
+      ),
     closeCase: vi.fn().mockResolvedValue(undefined),
     escalateCase: vi.fn().mockResolvedValue(undefined),
     transaction: vi
@@ -127,9 +132,13 @@ describe("openOutbreakInvestigation — happy path", () => {
         kind: "outbreak_investigation",
         jurisdictionProvince: "Buenos Aires",
         jurisdictionLocality: "La Plata",
+        // The catalogue row the grant pair names travels with it, or a
+        // municipal holder on the id path would never see the case.
+        localityId: "loc-la-plata",
       }),
       "fake-tx",
     );
+    expect(deps.resolveLocalityId).toHaveBeenCalledWith("Buenos Aires", "La Plata");
   });
 
   it("calls openCase with null jurisdiction for admin (national scope)", async () => {
@@ -142,6 +151,7 @@ describe("openOutbreakInvestigation — happy path", () => {
       expect.objectContaining({
         jurisdictionProvince: null,
         jurisdictionLocality: null,
+        localityId: null,
       }),
       "fake-tx",
     );

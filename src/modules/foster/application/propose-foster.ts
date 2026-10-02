@@ -111,6 +111,7 @@ export async function proposeFoster(
     id: string;
     jurisdictionProvince?: string | null;
     jurisdictionLocality?: string | null;
+    localityId?: string | null;
   };
 
   const matchPet = {
@@ -138,6 +139,7 @@ export async function proposeFoster(
           petName: pet.name,
           petJurisdictionProvince: pet.jurisdictionProvince ?? null,
           petJurisdictionLocality: pet.jurisdictionLocality ?? null,
+          petLocalityId: pet.localityId ?? null,
           volunteerUserId: input.volunteerUserId,
           proposedByUserId: user.id,
           orgId: organization.id,

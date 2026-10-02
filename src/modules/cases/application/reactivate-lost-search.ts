@@ -25,6 +25,8 @@ export type ReactivateLostSearchParams = {
   petStatus: string;
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
+  /** The home's catalogue row, which travels with the home pair (`pets.locality_id`). */
+  localityId: string | null;
   openedByUserId: string;
 };
 
@@ -42,6 +44,7 @@ export async function reactivateLostSearch(
     petStatus,
     jurisdictionProvince,
     jurisdictionLocality,
+    localityId,
     openedByUserId,
   } = params;
 
@@ -67,6 +70,7 @@ export async function reactivateLostSearch(
     primaryPetId: petId,
     jurisdictionProvince,
     jurisdictionLocality,
+    localityId,
     openedByUserId,
     // The one writer that already spoke es-AR — it rendered correctly BY
     // ACCIDENT, via the free-text passthrough, with no rule at all. Naming a

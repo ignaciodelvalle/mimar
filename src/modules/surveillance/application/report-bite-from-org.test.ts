@@ -72,6 +72,7 @@ const BASE_INPUT: ReportBiteFromOrgInput = {
     rabiesObservationStatus: null,
     jurisdictionProvince: "CABA",
     jurisdictionLocality: "Palermo",
+    localityId: null,
   },
   user: { id: "user-org-1" },
   organization: {

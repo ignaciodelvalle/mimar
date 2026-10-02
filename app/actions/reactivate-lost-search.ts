@@ -24,6 +24,7 @@ export async function reactivateLostSearchAction(publicToken: string): Promise<v
     petStatus: pet.status,
     jurisdictionProvince: pet.jurisdictionProvince ?? null,
     jurisdictionLocality: pet.jurisdictionLocality ?? null,
+    localityId: pet.localityId ?? null,
     openedByUserId: user.id,
   });
 

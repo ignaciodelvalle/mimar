@@ -759,6 +759,8 @@ export const FosterRepository = {
       petName: string;
       petJurisdictionProvince: string | null;
       petJurisdictionLocality: string | null;
+      /** The home's catalogue row (`pets.locality_id`), carried with the home pair. */
+      petLocalityId: string | null;
       fosterUserId: string;
       expectedWeeks: number | null;
       notes: string | null;
@@ -807,6 +809,7 @@ export const FosterRepository = {
         primaryPetId: args.petId,
         jurisdictionProvince: args.petJurisdictionProvince,
         jurisdictionLocality: args.petJurisdictionLocality,
+        localityId: args.petLocalityId,
         openedByUserId: args.actorUserId,
         openedByOrganizationId: args.actorOrgId,
         openedReason: {
@@ -866,6 +869,8 @@ export const FosterRepository = {
       petName: string;
       petJurisdictionProvince: string | null;
       petJurisdictionLocality: string | null;
+      /** The home's catalogue row (`pets.locality_id`), carried with the home pair. */
+      petLocalityId: string | null;
       volunteerUserId: string;
       proposedByUserId: string;
       orgId: string;
@@ -890,6 +895,7 @@ export const FosterRepository = {
         openedByOrganizationId: args.orgId,
         jurisdictionProvince: args.petJurisdictionProvince,
         jurisdictionLocality: args.petJurisdictionLocality,
+        localityId: args.petLocalityId,
         // The volunteer + org ids are AUDIT-only: they belong in the prose
         // (as they always have) but never in params, so the renderer cannot
         // reach them. Hence no params on this code.

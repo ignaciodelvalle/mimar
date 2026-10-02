@@ -59,6 +59,7 @@ import { reportError } from "@/lib/infra/report-error";
 import { resolveSignerProvenance } from "@/lib/infra/signer-provenance";
 import { toEventPlaceOrNull } from "@/lib/place/event-place";
 import { resolveMapFormPlace, resolveReportedPlace } from "@/lib/place/reported-place";
+import { resolvePlace } from "@/lib/place/resolve-place";
 import { checkboxOn } from "@/lib/ui/form-checkbox";
 import { parseDateInput } from "@/lib/utils/format";
 import { requireCapabilityForOrgToken } from "@/src/modules/organizations/infrastructure/authz-resolver";
@@ -690,11 +691,20 @@ function makeOutbreakDeps(revalidateFn: (path: string) => void) {
         jurisdictionCountry: string;
         jurisdictionProvince: string | null;
         jurisdictionLocality: string | null;
+        localityId: string | null;
         openedByUserId: string;
         openedReason: OpenedReason;
       },
       tx: unknown,
     ) => openCase(input as Parameters<typeof openCase>[0], tx as Parameters<typeof openCase>[1]),
+    resolveLocalityId: async (
+      province: string | null,
+      locality: string | null,
+    ): Promise<string | null> => {
+      if (!province || !locality) return null;
+      const place = await resolvePlace({ province, locality });
+      return place.status === "resolved" ? place.localityId : null;
+    },
     closeCase: async (
       args: { caseId: string; reason: "resolved" | "cancelled"; closedByUserId: string },
       tx: unknown,

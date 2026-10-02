@@ -216,6 +216,7 @@ export async function submitClaimDisputeForUser(
       inCustodyDispute: pets.inCustodyDispute,
       jurisdictionProvince: pets.jurisdictionProvince,
       jurisdictionLocality: pets.jurisdictionLocality,
+      localityId: pets.localityId,
     })
     .from(petIdentifications)
     .innerJoin(pets, and(eq(pets.id, petIdentifications.petId), isNull(pets.deletedAt)))
@@ -383,6 +384,7 @@ export async function submitClaimDisputeForUser(
           primaryPetId: pet.id,
           jurisdictionProvince: pet.jurisdictionProvince ?? "",
           jurisdictionLocality: pet.jurisdictionLocality ?? "",
+          localityId: pet.localityId ?? null,
           openedByUserId: userId,
           openedByOrganizationId: null,
           // This writer only ever raises `owner`. The union carries the role

@@ -358,6 +358,8 @@ export async function executeDecomiso(
       jurisdictionCountry: "AR",
       jurisdictionProvince: govtOrg.jurisdictionProvince,
       jurisdictionLocality: govtOrg.jurisdictionLocality,
+      // The case sits where the seizing authority is: its organisation's row.
+      localityId: govtOrg.localityId ?? null,
       openedByUserId: user.id,
       openedByOrganizationId: govtOrg.id,
       receiverOrganizationId: receiverOrg.id,

@@ -107,6 +107,7 @@ export async function assignFoster(
             (petRow as { jurisdictionProvince?: string | null }).jurisdictionProvince ?? null,
           petJurisdictionLocality:
             (petRow as { jurisdictionLocality?: string | null }).jurisdictionLocality ?? null,
+          petLocalityId: (petRow as { localityId?: string | null }).localityId ?? null,
           fosterUserId: validated.fosterUserId,
           expectedWeeks: validated.expectedWeeks,
           notes: validated.notes,

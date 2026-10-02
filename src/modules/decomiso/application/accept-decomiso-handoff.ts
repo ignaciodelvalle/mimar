@@ -258,6 +258,7 @@ export async function acceptDecomisoHandoffInTx(
       primaryPetId: caseRow.primaryPetId,
       jurisdictionProvince: caseRow.jurisdictionProvince,
       jurisdictionLocality: caseRow.jurisdictionLocality,
+      localityId: caseRow.localityId ?? null,
       jurisdictionCountry: caseRow.jurisdictionCountry ?? "AR",
       openedByUserId: ctx.user.id,
       openedByOrganizationId: ctx.organization.id,

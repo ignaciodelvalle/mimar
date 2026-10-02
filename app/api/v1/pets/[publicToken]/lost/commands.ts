@@ -426,6 +426,7 @@ async function markLost(
       petColor: pet.color,
       petJurisdictionProvince: pet.jurisdictionProvince,
       petJurisdictionLocality: pet.jurisdictionLocality,
+      petJurisdictionLocalityId: pet.localityId ?? null,
       ownerUserId: ctx.userId,
       // The web passes an empty string too: the broadcast copy names the ANIMAL,
       // not the person looking for it.
@@ -715,6 +716,7 @@ async function reactivate(ctx: CommandContext, pet: PetRow) {
     petStatus: pet.status,
     jurisdictionProvince: pet.jurisdictionProvince,
     jurisdictionLocality: pet.jurisdictionLocality,
+    localityId: pet.localityId ?? null,
     openedByUserId: ctx.userId,
   });
 

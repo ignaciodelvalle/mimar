@@ -235,6 +235,7 @@ export async function replaceMicrochipForUser(
             primaryPetId: pet.id,
             jurisdictionProvince: pet.jurisdictionProvince,
             jurisdictionLocality: pet.jurisdictionLocality,
+            localityId: pet.localityId ?? null,
             openedByUserId: userId,
             openedReason: {
               code: "microchip_replaced",

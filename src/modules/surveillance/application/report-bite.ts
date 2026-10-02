@@ -33,6 +33,8 @@ export type ReportBiteInput = {
     rabiesObservationStatus: string | null;
     jurisdictionProvince: string | null;
     jurisdictionLocality: string | null;
+    /** The home's catalogue row (`pets.locality_id`): a home-fallback case carries it. */
+    localityId: string | null;
   };
   user: { id: string };
   eventAuthorship: {
@@ -220,12 +222,14 @@ export async function reportBite(input: ReportBiteInput, deps: Deps): Promise<Re
           primaryPetId: pet.id,
           jurisdictionProvince: caseProvince,
           jurisdictionLocality: caseLocality,
-          // The id names the INCIDENT locality, so it travels only when the
-          // case routes there (no field-by-field fallback to the pet's home).
-          localityId:
-            hasEventPlace && input.eventJurisdictionLocality !== null
+          // The id travels with the pair it names, whole: the INCIDENT's row
+          // when the case routes there (never a field-by-field mix), the
+          // home's row when the case falls back to the home pair.
+          localityId: usesEventPlace
+            ? hasEventPlace && input.eventJurisdictionLocality !== null
               ? (input.eventLocalityId ?? null)
-              : null,
+              : null
+            : pet.localityId,
           openedByUserId: user.id,
           openedReason: {
             code: "bite_reported_owner",

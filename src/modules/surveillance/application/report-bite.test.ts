@@ -56,6 +56,7 @@ const BASE_INPUT: ReportBiteInput = {
     rabiesObservationStatus: null,
     jurisdictionProvince: "Buenos Aires",
     jurisdictionLocality: "Lomas de Zamora",
+    localityId: null,
   },
   user: { id: "user-1" },
   eventAuthorship: { authorRole: "owner", authorOrganizationId: null, authorVerified: false },

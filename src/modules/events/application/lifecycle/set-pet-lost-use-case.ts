@@ -60,6 +60,13 @@ export type SetPetLostWriterParams = {
   petColor?: string | null;
   petJurisdictionProvince?: string | null;
   petJurisdictionLocality?: string | null;
+  /**
+   * The animal's home catalogue row (`pets.locality_id`). It travels with the
+   * home pair, whole: a case filed at home carries the home's id, or a
+   * municipal/comuna holder on the id path would never see it (2026-10: 15
+   * CABA lost cases on staging had the home name and no id).
+   */
+  petJurisdictionLocalityId?: string | null;
   ownerUserId?: string;
   ownerDisplayName?: string;
   fromStatus: string;
@@ -108,7 +115,8 @@ export type SetPetLostWriterParams = {
   /**
    * `ar_localities` id of the incident place when it resolved to ONE catalogue
    * row. Stamped on the case (`cases.locality_id`, migration 0147) only when
-   * the case routes to the incident's place — a home fallback gets no id here.
+   * the case routes to the incident's place — a home fallback takes the
+   * home's id (`petJurisdictionLocalityId`) instead, never this one.
    */
   eventLocalityId?: string | null;
   /**
@@ -166,6 +174,7 @@ export async function setPetLostWriter(
     petColor = null,
     petJurisdictionProvince = null,
     petJurisdictionLocality = null,
+    petJurisdictionLocalityId = null,
     ownerUserId = "",
     ownerDisplayName = "",
     fromStatus,
@@ -201,7 +210,11 @@ export async function setPetLostWriter(
       ? eventJurisdictionLocality
       : null
     : petJurisdictionLocality;
-  const caseLocalityId = hasEventJurisdiction ? eventLocalityId : null;
+  const caseLocalityId = usesEventPlace
+    ? hasEventJurisdiction
+      ? eventLocalityId
+      : null
+    : petJurisdictionLocalityId;
 
   if (petStatus === "lost") return { error: "Esta mascota ya está marcada como perdida." };
   if (petStatus === "deceased")
