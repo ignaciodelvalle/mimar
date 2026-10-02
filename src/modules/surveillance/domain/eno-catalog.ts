@@ -4,8 +4,10 @@
 // revised by the PO's legal research of 2026-09-26 (health chain S6 + addendum):
 //   - Res. SENASA 422/2003 is DEROGATED (art. 22, Res. SENASA 153/2021) and is
 //     no longer cited anywhere.
-//   - Res. CVPBA 05/2020 (PBA small animals) says "inmediata" for its whole
-//     list, cited as 24 h — the same figure as SENASA 153/2021 Grupo I and Ley
+//   - The CVPBA ENO manual (PBA small animals, act. 05/2020 — a manual of the
+//     Colegio, not a resolution; legal review 2026-10, errata E16) says
+//     "inmediata" for its whole list, cited as 24 h; the hour figure itself is
+//     anchored in the national Manual (Disp. DE-MSAL 1/2026: inmediata = 24 h) — the same figure as SENASA 153/2021 Grupo I and Ley
 //     PBA 5325. The old 48 h / 72 h windows had no source.
 //   - A window with no source for the disease is kept but flagged
 //     `deadline.status: "a_confirmar"` (hidatidosis). Outside PBA the CVPBA
@@ -55,7 +57,8 @@ export type EnoDisease = {
   legalAnchor: string;
 };
 
-const CVPBA_24H = "Res. CVPBA 05/2020 («inmediata») = 24 h en PBA; fuera de PBA a confirmar";
+const CVPBA_24H =
+  "Manual ENO CVPBA (act. 05/2020, «inmediata») = 24 h en PBA (Disp. DE-MSAL 1/2026); fuera de PBA a confirmar";
 
 export const ENO_DISEASES_AR: readonly EnoDisease[] = [
   {
@@ -67,7 +70,7 @@ export const ENO_DISEASES_AR: readonly EnoDisease[] = [
     stigmaSensitive: false,
     vetOnly: false,
     authority: "zoonosis",
-    legalAnchor: "Ley 22.953 (control rabia) + Res. CVPBA 05/2020 (PBA)",
+    legalAnchor: "Ley 22.953 (control rabia) + Manual ENO CVPBA, act. 05/2020 (PBA)",
   },
   {
     code: "leptospirosis",
@@ -78,7 +81,7 @@ export const ENO_DISEASES_AR: readonly EnoDisease[] = [
     stigmaSensitive: false,
     vetOnly: false,
     authority: "zoonosis",
-    legalAnchor: "Ley 15.465 (ENO nacional) + Res. CVPBA 05/2020 (PBA)",
+    legalAnchor: "Ley 15.465 (ENO nacional) + Manual ENO CVPBA, act. 05/2020 (PBA)",
   },
   {
     code: "hidatidosis",
@@ -87,13 +90,16 @@ export const ENO_DISEASES_AR: readonly EnoDisease[] = [
     notifyHours: 48,
     deadline: {
       source:
-        "Plazo sin confirmar: la Res. CVPBA 05/2020 no la lista y no se halló norma que fije horas",
+        "Plazo sin confirmar: el manual ENO del CVPBA no la lista; en el Manual nacional (Disp. DE-MSAL 1/2026) es semanal, como evento humano",
       status: "a_confirmar",
     },
     stigmaSensitive: false,
     vetOnly: false,
     authority: "zoonosis",
-    legalAnchor: "Res. MS 546/85 + Ley PBA 6115/1959",
+    // Res. MS 546/85 and Ley PBA 6115 dropped as anchors (legal review
+    // 2026-10, E17): the first was not found in any official source, the
+    // second is brucellosis prophylaxis and fixes no reporting duty.
+    legalAnchor: "Res. MS 1811/2011 + Disp. DE-MSAL 1/2026 (semanal)",
   },
   {
     code: "brucelosis_canina",
@@ -104,7 +110,7 @@ export const ENO_DISEASES_AR: readonly EnoDisease[] = [
     stigmaSensitive: true,
     vetOnly: false,
     authority: "zoonosis",
-    legalAnchor: "Res. CVPBA 05/2020 (PBA) + Ley PBA 6115/1959",
+    legalAnchor: "Manual ENO CVPBA, act. 05/2020 (PBA) + Ley PBA 6115/1959",
   },
   {
     code: "leishmaniasis",
@@ -115,7 +121,7 @@ export const ENO_DISEASES_AR: readonly EnoDisease[] = [
     stigmaSensitive: true,
     vetOnly: false,
     authority: "zoonosis",
-    legalAnchor: "Res. CVPBA 05/2020 (PBA) + Res. MS 1811/2011",
+    legalAnchor: "Manual ENO CVPBA, act. 05/2020 (PBA) + Res. MS 1811/2011",
   },
   {
     // PO S6 (2026-09-26): "micobacteriosis en pequeños animales" in the CVPBA
@@ -129,7 +135,7 @@ export const ENO_DISEASES_AR: readonly EnoDisease[] = [
     stigmaSensitive: false,
     vetOnly: false,
     authority: "zoonosis",
-    legalAnchor: "Res. CVPBA 05/2020 (micobacterias) + Ley PBA 6115/1959",
+    legalAnchor: "Manual ENO CVPBA, act. 05/2020 (micobacterias) + Ley PBA 6115/1959",
   },
   {
     // Carbunco: very rare in dogs and cats (rural, from carcasses). The
@@ -159,7 +165,7 @@ export const ENO_DISEASES_AR: readonly EnoDisease[] = [
     stigmaSensitive: true,
     vetOnly: false,
     authority: "zoonosis",
-    legalAnchor: "Res. CVPBA 05/2020 (PBA)",
+    legalAnchor: "Manual ENO CVPBA, act. 05/2020 (PBA)",
   },
   {
     // Low priority; a lab finding — only a vet or a lab raises it.
@@ -171,7 +177,7 @@ export const ENO_DISEASES_AR: readonly EnoDisease[] = [
     stigmaSensitive: false,
     vetOnly: true,
     authority: "zoonosis",
-    legalAnchor: "Res. CVPBA 05/2020 (PBA)",
+    legalAnchor: "Manual ENO CVPBA, act. 05/2020 (PBA)",
   },
 ] as const;
 

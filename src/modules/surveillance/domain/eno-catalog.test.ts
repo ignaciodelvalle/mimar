@@ -50,9 +50,10 @@ describe("ENO_DISEASES_AR", () => {
     expect(ENO_DISEASES_AR).toHaveLength(9);
   });
 
-  it("tuberculosis cites Res. CVPBA 05/2020 and Ley PBA 6115", () => {
+  it("tuberculosis cites the CVPBA ENO manual and Ley PBA 6115", () => {
     const tb = ENO_DISEASES_AR.find((d) => d.code === "tuberculosis");
-    expect(tb?.legalAnchor).toContain("CVPBA 05/2020");
+    expect(tb?.legalAnchor).toContain("Manual ENO CVPBA, act. 05/2020");
+    expect(tb?.legalAnchor).not.toContain("Res. CVPBA");
     expect(tb?.legalAnchor).toContain("6115");
   });
 

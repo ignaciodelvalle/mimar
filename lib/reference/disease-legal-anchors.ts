@@ -59,13 +59,6 @@ const RES_MS_1811: LegalReference = {
   jurisdiction: "national",
 };
 
-const RES_MS_546: LegalReference = {
-  id: "res_ms_546_85",
-  label: "Res. MS 546 / 1985",
-  scope: "Manual de procedimientos para el control de hidatidosis",
-  jurisdiction: "national",
-};
-
 const DL_8056_PBA: LegalReference = {
   id: "dl_8056_73_pba",
   label: "DL 8056 / 1973 (PBA)",
@@ -92,7 +85,9 @@ const LEY_5325_PBA: LegalReference = {
 
 const RES_CVPBA_05: LegalReference = {
   id: "res_cvpba_05_2020",
-  label: "Res. CVPBA 05 / 2020",
+  // A manual of the Colegio updated in 05/2020, not a resolution (legal
+  // review 2026-10, errata E16). Id kept: audit rows cite it.
+  label: "Manual ENO CVPBA (act. 05/2020)",
   scope:
     "ENO en pequeños animales (PBA), notificación inmediata al Centro de Zoonosis municipal: brucelosis canina, dirofilariosis, esporotricosis, leishmaniasis visceral, leptospirosis, micobacteriosis, rabia",
   jurisdiction: "province",
@@ -124,7 +119,7 @@ const RES_SENASA_153_G2: LegalReference = {
 const LEY_6115_PBA: LegalReference = {
   id: "ley_6115_59_pba",
   label: "Ley 6115 / 1959 (PBA)",
-  scope: "Profilaxis obligatoria de zoonosis (brucelosis, hidatidosis, TBC)",
+  scope: "Profilaxis de la brucelosis; no fija un deber de denuncia ni un plazo",
   jurisdiction: "province",
   appliesTo: { province: "Buenos Aires" },
 };
@@ -135,7 +130,9 @@ export const DISEASE_LEGAL_ANCHORS: Record<string, readonly LegalReference[]> = 
   leptospirosis: [LEY_15465, RES_MS_1715, RES_CVPBA_05, LEY_5325_PBA],
   canine_brucellosis: [RES_CVPBA_05, LEY_6115_PBA],
   visceral_leishmaniasis: [RES_MS_1811, RES_CVPBA_05],
-  hydatidosis: [RES_MS_1811, RES_MS_546, LEY_6115_PBA],
+  // Res. MS 546/85 dropped (not found in any official source) and Ley 6115
+  // dropped (brucellosis only): legal review 2026-10, errata E17.
+  hydatidosis: [RES_MS_1811],
   tuberculosis: [RES_SENASA_153_G2, RES_CVPBA_05, LEY_6115_PBA],
   // Animal side: SENASA Grupo I (Ley 15.465 obliges for HUMAN cases only).
   anthrax: [RES_SENASA_153_G1],
