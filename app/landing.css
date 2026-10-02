@@ -680,6 +680,12 @@
    the tile shrinks to a 22px glyph on the label's own line, and the subline
    runs under both. */
 @media (min-width: 641px) {
+  /* Always three across here. auto-fit broke 2+1 between ~901 and ~1139px,
+     where the two-column hero leaves the copy column narrower than three
+     190px doors; a label wrapping to two lines is better than an orphan. */
+  .lp .lp-hero-doors {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   .lp .lp-hero-door {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);

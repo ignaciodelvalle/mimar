@@ -696,7 +696,7 @@ export const CRISIS_DOORS: readonly CrisisDoor[] = [
     t: "encontre",
     icon: "qr",
     label: "Encontré una mascota",
-    sub: "Escaneá su QR. Sin cuenta.",
+    sub: "Escaneá su QR o buscala por señas.",
     href: "/perdidas",
   },
   {
