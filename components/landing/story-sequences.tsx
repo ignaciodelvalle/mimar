@@ -917,9 +917,10 @@ export const LOST_SEQUENCE: SequenceSpec = sequence({
  * 1 · Ingresos, step 1 "Identificación" (app/org/[orgToken]/intake/IntakeForm.tsx):
  * the wizard's counter and step label (components/ui/WizardShell.tsx:86-92,
  * STEP_LABELS :45), the step's own sentence (:335-338 — it is the one that
- * says a chip match leaves this form for the match flow), the chip and its
- * country (:340, :351) and the step's button (:376). The tattoo field
- * (:362) is omitted. The real match page comes after the wizard's other
+ * says a chip match leaves this form for the match flow), the chip (:340)
+ * and the step's button (:376). The tattoo field (:362) and the chip's
+ * country (:351) are omitted (the country PO 2026-10-02: the screen shows the
+ * two ways in, chip number or QR, side by side). The real match page comes after the wizard's other
  * three steps and its submit; the story cuts from here to it.
  *
  * No "Verificada" badge: nothing under app/org/** prints one here
@@ -945,14 +946,14 @@ function IntakeChipScreen() {
           mascota perdida en miMAR, vamos a redirigirte para confirmar la identidad.
         </p>
         <div className="lp-vf-form">
-          <div className="lp-vf">
-            <span className="lp-vf-l">Número de microchip</span>
-            <span className="lp-vf-i">{PAMPA_CHIP}</span>
-          </div>
-          <span className="lp-vf-submit lp-vf-submit--ghost">Escanear QR</span>
-          <div className="lp-vf">
-            <span className="lp-vf-l">País del chip</span>
-            <span className="lp-vf-i" />
+          {/* Two ways in, side by side: [ Número de microchip ]  o  [ Escanear QR ]. */}
+          <div className="lp-vf-or">
+            <div className="lp-vf">
+              <span className="lp-vf-l">Número de microchip</span>
+              <span className="lp-vf-i">{PAMPA_CHIP}</span>
+            </div>
+            <span className="lp-vf-l lp-vf-or-sep">o</span>
+            <span className="lp-vf-submit lp-vf-submit--ghost">Escanear QR</span>
           </div>
           <span className="lp-vf-submit">Continuar (chequearemos el chip al confirmar)</span>
         </div>

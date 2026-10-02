@@ -3859,6 +3859,27 @@ html:has([data-landing-root]) {
 .lp .lp-vf--full {
   grid-column: 1 / -1;
 }
+/* Two ways in, side by side (the refugio's intake, PO 2026-10-02):
+   [ field ]  o  [ button ]. Spans the tablet's two-column form; the button
+   sits on the field's baseline and matches its box. */
+.lp .lp-vf-or {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 10px;
+}
+.lp .lp-vf-or .lp-vf-submit {
+  /* The tablet's own submit rule spans the full form; inside the pair it is
+     one cell. */
+  grid-column: auto;
+  margin-top: 0;
+  min-height: 28px;
+  padding-block: 5px;
+}
+.lp .lp-vf-or-sep {
+  padding-bottom: 6px;
+}
 .lp .lp-vf-submit--ok {
   background: var(--color-ln-ok);
 }

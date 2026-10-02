@@ -622,7 +622,7 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       "Ingreso al refugio",
       `Registrado por ${PAMPA_SHELTER}`,
       // Refugio — the intake wizard (app/org/[orgToken]/intake/IntakeForm.tsx
-      // :45, :335-338, :340, :351, :376; components/ui/WizardShell.tsx:88).
+      // :45, :335-338, :340, :376; components/ui/WizardShell.tsx:88).
       "Paso 1 de 4",
       "Identificación",
       // Chip-or-QR identification: ahead of the product (PO 2026-10-01, debt pending) —
@@ -631,7 +631,6 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       "vamos a redirigirte para confirmar la identidad.",
       "Escanear QR",
       "Número de microchip",
-      "País del chip",
       "Continuar (chequearemos el chip al confirmar)",
       // The match page (match/[matchedPetToken]/page.tsx:129) and its card
       // (MatchConfirmationCard.tsx:80-83, :154, :163).
@@ -657,6 +656,14 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
     // has "sin cuenta y sin app" — that is prose about the real flow, not a
     // second device label, and stays true regardless of how the mock renders.)
     expect(html).not.toContain("Celular del vecino");
+    // The intake's first screen (PO 2026-10-02): no chip-country field, and the
+    // two ways in side by side — [ Número de microchip ]  o  [ Escanear QR ].
+    expect(html).not.toContain("País del chip");
+    const intakeRow = html.slice(html.indexOf('<div class="lp-vf-or">'));
+    const sep = intakeRow.indexOf('lp-vf-or-sep">o</span>');
+    expect(intakeRow.indexOf("Número de microchip")).toBeGreaterThan(-1);
+    expect(intakeRow.indexOf("Número de microchip")).toBeLessThan(sep);
+    expect(sep).toBeLessThan(intakeRow.indexOf("Escanear QR"));
   });
 
   it("the vet's typed note is what the real matcher turns into the card drawn", () => {
