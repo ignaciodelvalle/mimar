@@ -1,4 +1,6 @@
-// Who may emit the RUPPPA registration PDF (CABA, Ley 5470 / Ord. 41.831) from
+// Who may emit the CABA PPP registration PDF (Registro de Propietarios de Perros
+// Potencialmente Peligrosos, Ley CABA 4.078 — not Ley 5470, which is cremation,
+// and not "RUPPPA", an acronym no official source uses; legal review 2026-10) from
 // the owner's pet page — and what the page says to everyone else.
 //
 // Pure and client-safe on purpose: the owner page needs the gate, and the PDF
@@ -21,7 +23,7 @@ export const CABA_PROVINCE = "CABA";
 export type PppExportAvailability = { kind: "available" } | { kind: "unavailable"; reason: string };
 
 export const PPP_EXPORT_OUTSIDE_CABA =
-  "La constancia para el registro RUPPPA es de la Ciudad de Buenos Aires. Para la jurisdicción de esta mascota todavía no la emitimos: consultá el registro de tu municipio.";
+  "La constancia para el registro de perros potencialmente peligrosos es de la Ciudad de Buenos Aires. Para la jurisdicción de esta mascota todavía no la emitimos: consultá el registro de tu municipio.";
 
 /**
  * `null` when the PPP export does not concern this viewer at all (not the legal

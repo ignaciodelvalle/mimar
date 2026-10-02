@@ -1,4 +1,6 @@
-// PDF renderer for the PPP CABA RUPPPA export (Chunk F, F2).
+// PDF renderer for the PPP CABA registry export (Chunk F, F2). The registry is the
+// Registro de Propietarios de Perros Potencialmente Peligrosos (Ley CABA 4.078); the
+// acronym "RUPPPA" appears in no official source (legal review 2026-10, E12).
 //
 // Decision F-D3+D4: CABA only in v1. Prov BA is NOT implemented in this PR.
 //   See TODO(F2-prov-ba-v2) below for the deferred channel.
@@ -160,7 +162,7 @@ function drawPppSection(
 }
 
 /**
- * Renders a PPP CABA RUPPPA registration PDF and returns the raw bytes.
+ * Renders a PPP CABA registration PDF and returns the raw bytes.
  * Only call after validating pet.jurisdictionProvince === CABA_PROVINCE.
  */
 export async function generatePppCabaPdf(dto: PppCabaDto): Promise<Uint8Array> {
@@ -186,7 +188,7 @@ export async function generatePppCabaPdf(dto: PppCabaDto): Promise<Uint8Array> {
     color: rgb(0.1, 0.1, 0.6),
   });
   y -= 18;
-  page.drawText("REGISTRO RUPPPA — CIUDAD AUTÓNOMA DE BUENOS AIRES", {
+  page.drawText("REGISTRO DE PROPIETARIOS DE PERROS POTENCIALMENTE PELIGROSOS — CABA", {
     x: margin,
     y,
     size: 10,
@@ -344,7 +346,7 @@ export async function generatePppCabaPdf(dto: PppCabaDto): Promise<Uint8Array> {
   });
   y = drawPppField(page, {
     label: "Registro destino",
-    value: "Registro Único de Perros Potencialmente Peligrosos (RUPPPA) — CABA",
+    value: "Registro de Propietarios de Perros Potencialmente Peligrosos — CABA",
     x: margin,
     y,
     boldFont,
@@ -415,7 +417,7 @@ export async function generatePppCabaPdf(dto: PppCabaDto): Promise<Uint8Array> {
     },
   );
   y -= 12;
-  page.drawText("en la comuna o registro RUPPPA correspondiente de CABA.", {
+  page.drawText("en el registro de perros potencialmente peligrosos de CABA.", {
     x: margin,
     y,
     size: 8,

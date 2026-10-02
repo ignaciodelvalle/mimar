@@ -65,7 +65,7 @@ const LEGAL_CHECKS: Array<{ id: string; label: string }> = [
   {
     id: "check_rupppa",
     label:
-      "Entiendo que debo inscribir a mi mascota en el registro RUPPPA (o provincial equivalente) y mantener la inscripción vigente.",
+      "Entiendo que debo inscribir a mi mascota en el registro de perros potencialmente peligrosos de mi jurisdicción y mantener la inscripción vigente.",
   },
   {
     id: "check_muzzle",

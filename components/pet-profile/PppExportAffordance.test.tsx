@@ -17,7 +17,7 @@ vi.mock("@/app/actions/ppp-export-caba", () => ({
 
 import { PppExportAffordance } from "./PppExportAffordance";
 
-const BUTTON = "Emitir constancia RUPPPA (PDF)";
+const BUTTON = "Emitir constancia para el registro (PDF)";
 
 beforeEach(() => {
   generatePppExportAction.mockReset();
@@ -45,7 +45,9 @@ describe("eligible owner (CABA)", () => {
     fireEvent.click(screen.getByRole("button", { name: BUTTON }));
 
     await waitFor(() => expect(generatePppExportAction).toHaveBeenCalledWith("DIM-PPP-0001"));
-    const link = await screen.findByRole("link", { name: "Descargar la constancia RUPPPA (PDF)" });
+    const link = await screen.findByRole("link", {
+      name: "Descargar la constancia para el registro (PDF)",
+    });
     expect(link).toHaveAttribute(
       "href",
       "https://storage.example/ppp-exports/DIM-PPP-0001/caba/1.pdf?token=x",

@@ -1,8 +1,10 @@
 "use client";
 
-// PppExportAffordance — the owner's way to emit the RUPPPA registration PDF
-// (CABA's registry; its legal basis lives in lib/analytics/ppp-exports.ts — no
-// citation is written in this module, see the fence in pet-compliance.test.ts)
+// PppExportAffordance — the owner's way to emit the registration PDF for CABA's
+// Registro de Propietarios de Perros Potencialmente Peligrosos (the acronym
+// "RUPPPA" appears in no official source — legal review 2026-10, E12; the legal
+// basis lives in lib/analytics/ppp-exports.ts — no citation is written in this
+// module, see the fence in pet-compliance.test.ts)
 // from the PPP card of the pet's compliance
 // panel (L-11). generatePppExportAction existed complete — render, upload,
 // signed URL, audit — and no component invoked it, so no PPP owner in CABA
@@ -26,7 +28,7 @@ const ERROR_COPY: Record<string, string> = {
   not_found: "No encontramos esta mascota a tu nombre.",
   pet_not_ppp_for_jurisdiction: "Esta mascota no figura como potencialmente peligrosa.",
   ppp_prov_ba_not_implemented:
-    "La constancia para el registro RUPPPA es de la Ciudad de Buenos Aires; para esta jurisdicción todavía no la emitimos.",
+    "La constancia para el registro de perros potencialmente peligrosos es de la Ciudad de Buenos Aires; para esta jurisdicción todavía no la emitimos.",
 };
 const GENERIC_ERROR = "No pudimos generar el PDF. Probá de nuevo en unos minutos.";
 
@@ -73,7 +75,7 @@ export function PppExportAffordance({
           rel="noopener noreferrer"
           className="font-ln-sans text-sm font-semibold text-[var(--color-ln-azul)] underline"
         >
-          Descargar la constancia RUPPPA (PDF)
+          Descargar la constancia para el registro (PDF)
         </a>
         <p className="font-ln-sans text-xs text-[var(--color-ln-mute)]">
           El enlace vale 24 horas. Después, generala de nuevo desde acá.
@@ -93,7 +95,7 @@ export function PppExportAffordance({
         loading={pending}
         className="w-fit"
       >
-        {pending ? "Generando el PDF…" : "Emitir constancia RUPPPA (PDF)"}
+        {pending ? "Generando el PDF…" : "Emitir constancia para el registro (PDF)"}
       </LnButton>
       <p className="font-ln-sans text-xs text-[var(--color-ln-mute)]">
         Formulario para inscribir a tu perro en el registro de la Ciudad.

@@ -15,7 +15,7 @@ export const GLOSSARY: Record<string, string> = {
   PII: "Información Personal Identificable — datos que permiten identificar a una persona (nombre, DNI, contacto). Su acceso se audita.",
   PPP: "Perro Potencialmente Peligroso — perro de una raza incluida en el régimen legal de tenencia responsable (Ley CABA 4078 / Ley Prov. 14.107).",
   RUPPPA:
-    "Registro Único de Perros Potencialmente Peligrosos — el padrón provincial de perros PPP (CABA, Ley 4078).",
+    "Sigla de uso informal, que no figura en ninguna norma, para el Registro de Propietarios de Perros Potencialmente Peligrosos de la Ciudad de Buenos Aires (Ley CABA 4.078).",
   "k<5":
     "Protección de privacidad (k-anonimato): se ocultan las celdas con menos de 5 casos para que un dato agregado no permita identificar a una persona o animal individual.",
   P75: "Percentil 75 — el valor por debajo del cual queda el 75% de los casos. Sirve para ver la 'cola' de casos lentos, no solo el promedio.",
