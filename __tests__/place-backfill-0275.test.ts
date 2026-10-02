@@ -13,6 +13,14 @@
 //   - a unique name gets its row (0251's rule) — the CABA lost cases;
 //   - a row a writer declared `unresolved` is left alone;
 //   - a second run changes nothing.
+//
+// KNOWN EDGE, accepted (review 2026-10-02): the "moved after the case opened"
+// guard reads `movement_recorded.recorded_at` only. A move recorded BEFORE the
+// case opened and AMENDED after it (event_amended — movement_recorded is
+// amendable) is not seen, so such a case can take the pet's current id. It is
+// noted here and not in the migration's own header because 0275 is already
+// applied to the local databases, and scripts/migrate.ts treats a checksum
+// change on an applied file as fatal drift.
 
 import { readFileSync } from "node:fs";
 
