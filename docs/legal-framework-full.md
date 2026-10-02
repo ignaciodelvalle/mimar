@@ -4,7 +4,7 @@
 >
 > Estructura: **Nacional → Provincia de Buenos Aires → CABA → Internacional**. Dentro de cada jurisdicción, por categoría temática.
 >
-> Última verificación: 2026-05-18.
+> Última verificación: 2026-05-18. **Erratas de la revisión legal de octubre de 2026 aplicadas el 2026-10-02** (E1 a E24): cada corrección lleva su fuente entre paréntesis. Lo que esa revisión no pudo leer en el texto oficial queda marcado **(a confirmar)** y no se usa como fundamento de nada en el producto.
 
 ---
 
@@ -12,7 +12,7 @@
 
 ### 1.1 Bienestar animal / crueldad
 
-- **Ley 14.346 / 1954** — Malos tratos y actos de crueldad contra los animales. Tipifica penalmente actos de maltrato (Art. 1) y crueldad (Art. 3); pena de 15 días a 1 año de prisión. Base del derecho penal animal argentino ("Ley Sarmiento/Benítez"). [Fuente](https://www.argentina.gob.ar/normativa/nacional/ley-14346-153011/texto)
+- **Ley 14.346 / 1954** — Malos tratos y actos de crueldad contra los animales. Tipifica penalmente actos de maltrato (Art. 1) y crueldad (Art. 3); pena de 15 días a 1 año de prisión. **No tipifica el abandono de animales de compañía:** solo menciona el abandono de animales de experimentación (art. 3 inc. 5). *(Corregido 2026-10: se quitó el apodo "Ley Sarmiento/Benítez"; "Ley Sarmiento" designa a la Ley 2.786 de 1891, su antecedente — fuente: fundamentos del Expte. HCDN 5273-D-2019.)* [Fuente](https://www.argentina.gob.ar/normativa/nacional/ley-14346-153011/texto)
   - **DIM:** `maltreatment_reported.payload` debería poder anclarse a un eventual circuito de denuncia 14.346.
 
 - **Ley 27.330 / 2016** — Prohibición de carreras de perros en todo el territorio nacional. Pena de 3 meses a 4 años + multa. Complementaria del Código Penal. Promulgada por Decreto 1221/2016. [Fuente](https://www.argentina.gob.ar/normativa/nacional/ley-27330-268503/texto)
@@ -22,7 +22,7 @@
 ### 1.2 Zoonosis y salud pública
 
 - **Ley 22.953 / 1983** — Lucha antirrábica. Declara de interés nacional la lucha contra la rabia transmitida por perros y gatos; base legal de las campañas antirrábicas. [Fuente](https://www.argentina.gob.ar/normativa/nacional/ley-22953-184650)
-  - **DIM:** ancla legal de `antirabies_vaccinated` y de la obligatoriedad de la vacuna anual desde los 3 meses.
+  - **DIM:** ancla legal de `antirabies_vaccinated`. La edad mínima y la frecuencia anual de la vacuna las fijan normas provinciales y municipales (DL 8056/73 en PBA, Ord. 41.831 en CABA); atribuirlas a esta ley queda **(a confirmar)**.
 
 - **Ley 12.732 / 1941** — Profilaxis de la hidatidosis (equinococosis). Zoonosis con reservorio canino. [Fuente](https://argentina.gob.ar/normativa/nacional/ley-12732-196049/texto)
 
@@ -40,7 +40,10 @@
 
 - **Resolución MS 1811 / 2011** — Programa Nacional de Control de Enfermedades Zoonóticas (hidatidosis, triquinosis, hantavirus, leishmaniasis visceral, psitacosis). [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/185000-189999/189688/norma.htm)
 
-- **Resolución MS 546 / 1985** — Manual de procedimientos de control de hidatidosis. [Fuente](http://www.legisalud.gov.ar/atlas/categorias/zoonosis.html)
+- **Resolución MS 546 / 1985** — Manual de procedimientos de control de hidatidosis. **(a confirmar)**: la revisión de 2026-10 no encontró su texto en ninguna fuente oficial. No se usa como fuente de un plazo de notificación. [Fuente](http://www.legisalud.gov.ar/atlas/categorias/zoonosis.html)
+
+- **Disposición DE-MSAL 1 / 2026** — Sustituye los anexos I y II de la Res. MSAL 2827/2022 (Manual de normas y procedimientos de vigilancia de ENO). Define la periodicidad: **inmediata** = dentro de las 24 h de la atención del caso; **semanal** = dentro de los 7 días. Obliga también a los médicos veterinarios que participan en la detección o seguimiento de una ENO. *(Agregado 2026-10; fuente: InfoLEG 425539.)* [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/verNorma.do?id=425539) · [Anexo II](https://servicios.infoleg.gob.ar/infolegInternet/anexos/425000-429999/425539/disp1-anexo2.pdf)
+  - **DIM:** es el ancla del número "24 h" del catálogo ENO. Brucelosis, leptospirosis y leishmaniasis canina figuran como **semanales**; la hidatidosis también (evento humano; falta confirmar si cubre el hallazgo canino).
 
 ### 1.3 Ejercicio veterinario y productos veterinarios
 
@@ -68,6 +71,9 @@
 - **Res. SENASA 80 / 2025** — Receta Electrónica Veterinaria. Obligatoria para fosfomicina y polimixina B (antibióticos críticos). Vigente desde 17/03/2025. [Fuente](https://www.boletinoficial.gob.ar/detalleAviso/primera/321082/20250213)
   - **DIM:** primer sistema digital nacional de trazabilidad de medicamentos veterinarios. Integración futura natural con `treatment_administered.payload`.
 
+- **Res. SENASA 654 / 2026** (BO 21/07/2026) — Crea el SIGTRAZAVET y extiende la Receta Electrónica Veterinaria a los **animales de compañía** (art. 17), según los principios activos que vaya incorporando la Dirección Nacional de Sanidad Animal (esa disposición no se halló). Tipo "Prescripción en mascotas" con nombre y DNI del titular (art. 18 d) y código CUVE (art. 18 e). Permite usar el botiquín sin receta electrónica si se lleva una **ficha clínica** (art. 20). **No deroga** la Res. 80/2025. *(Agregado 2026-10; verificado en el Boletín Oficial.)* [Fuente](https://www.boletinoficial.gob.ar/detalleAviso/primera/344632/20260721)
+  - **DIM:** miMAR no emite recetas ni es la ficha clínica del art. 20. Una receta en la libreta solo puede ser una **referencia** a la emitida en SENASA (CUVE, fecha, principio activo, vigencia), sin copiar el DNI del titular.
+
 - **Res. SENASA 433 / 2025** — Certificado de Inscripción y Elaboración o Importación (CIE) de biológicos veterinarios. [Fuente](https://www.boletinoficial.gob.ar/detalleAviso/primera/326943/20250613)
 
 - **Res. SENASA 333 / 2025 y 338 / 2025** — Autorización por equivalencia de biológicos veterinarios. [Fuente](https://www.boletinoficial.gob.ar/detalleAviso/primera/325427/20250516)
@@ -88,8 +94,8 @@
 
 - **Decreto 792 / 2019** — Reglamenta Ley 26.858; designa a ANDIS como autoridad de aplicación. [Fuente](https://www.saij.gob.ar/792-nacional-reglamentacion-ley-26858-sobre-derecho-acceso-deambulacion-permanencia-lugares-publicos-privados-acceso-publico-servicios-transporte-publico-toda-persona-discapacidad-acompanada-perro-guia-asistencia-designacion-como-autoridad-aplicacion-agencia-nacional-discapacidad-andis-dn20190000792-2019-11-27/123456789-0abc-297-0000-9102soterced)
 
-- **Res. SENASA 580 / 2014** — Documentación para traslado de perros y gatos / formulario antirrábico. Constancia en poder del propietario. [Fuente](https://www.argentina.gob.ar/senasa/consideraciones-generales-y-legislacion)
-  - **DIM:** este formulario es exactamente lo que la Libreta digitaliza.
+- **Res. SENASA 580 / 2014** — Exime a los **animales de servicio o asistencia** del cobro de servicios extraordinarios en el ingreso, egreso o tránsito; exige documentación que identifique al animal y su función, y el certificado de discapacidad. **No regula** la documentación general de traslado ni ningún formulario antirrábico. *(Corregido 2026-10; fuente: InfoLEG 239892.)* [Fuente](http://servicios.infoleg.gob.ar/infolegInternet/anexos/235000-239999/239892/norma.htm)
+  - **DIM:** no es ancla de la constancia antirrábica ni del CVI. Para el traslado interno, la referencia es la página de SENASA "Traslados de perros y/o gatos dentro de Argentina" y la Res. MEcon 2076/2025, Anexo, art. 4.
 
 - **Res. ex-SENASA 1354 / 1994** — Requisitos para ingreso de perros y gatos a Argentina; CVI traducido. [Fuente](http://www.senasa.gob.ar/normativas/resolucion-1354-1994-senasa-servicio-nacional-de-sanidad-y-calidad-agroalimentaria)
 
@@ -97,13 +103,13 @@
 
 - **Res. SENASA 76 / 2019** — Procedimiento para ingreso definitivo de caninos y felinos. Certificación antirrábica >3 meses, 30 días antes del ingreso. [Fuente](http://www.senasa.gob.ar/normativas/resolucion-76-2019-senasa-servicio-nacional-de-sanidad-y-calidad-agroalimentaria)
 
-- **Res. MAGyP 727 / 2015** — Traslado al exterior de perros y gatos. CVI internacional; articula con Res. GMC MERCOSUR 17/2015. [Fuente](https://www.ecofield.net/Legales/Sanidad_vegetal/res727-15_MAGyP.htm)
+- **Res. MAGyP 727 / 2015** — Incorpora la Res. GMC 17/2015: requisitos de **ingreso** de perros y gatos entre los Estados del Mercosur, que en espejo rigen los viajes de la Argentina a Brasil, Paraguay y Uruguay (CVI de la autoridad del país exportador, válido 60 días; examen clínico dentro de los 10 días previos). El egreso a otros destinos sigue los requisitos de cada país, certificados por SENASA (Res. ex-SENASA 1353/1994). *(Corregido 2026-10; fuente: InfoLEG 253664.)* [Fuente](https://www.ecofield.net/Legales/Sanidad_vegetal/res727-15_MAGyP.htm)
 
-- **Res. SENASA 923 / 2019** — Trámites urgentes y fuera de horario en SENASA (mascotas incluidas). [Fuente](https://www.boletinoficial.gob.ar/detalleAviso/primera/212974/20190806)
+- **Res. SENASA 923 / 2019** — Trámites urgentes y fuera de horario en SENASA (mascotas incluidas). **(a confirmar)** si sigue vigente: las modalidades de urgencia vigentes son las de la Res. SENASA 440/2026 (que derogó la 453/2024), con base en la Res. SAGyP 54/2026. [Fuente](https://www.boletinoficial.gob.ar/detalleAviso/primera/212974/20190806)
 
-- **Res. Secretaría de Transporte 2076 / 2025** — Traslado de animales domésticos en micros y trenes de larga distancia y aviones de jurisdicción nacional. Un animal por pasajero adulto; vacuna antirrábica obligatoria; mínimo 4 meses; excluye razas braquicéfalas; excepción para perros guía/asistencia. [Fuente](https://www.boletinoficial.gob.ar/detalleAviso/primera/336643/20251223)
+- **Res. Ministerio de Economía 2076 / 2025** (BO 23/12/2025) — Autoriza el traslado de animales domésticos en **ómnibus y trenes de larga distancia** de jurisdicción nacional. Anexo, art. 4: portar la constancia antirrábica; art. 5: un animal por pasajero adulto; art. 7: cada empresa fija las restricciones de especie, raza, peso y tamaño. *(Corregido 2026-10; organismo y alcance verificados en el Boletín Oficial. Se quitaron "aviones", "mínimo 4 meses" y "excluye braquicéfalas": el cuerpo de la norma no los menciona; **(a confirmar)** en el anexo.)* [Fuente](https://www.boletinoficial.gob.ar/detalleAviso/primera/336643/20251223)
 
-- **Res. SENASA 284 / 2024** — Identificación electrónica animal (microchips ISO 11784/11785). Foco en équidos pero estándar técnico de referencia. [Fuente](https://www.argentina.gob.ar/normativa/nacional/resoluci%C3%B3n-284-2024-398615/texto)
+- **Res. SENASA 284 / 2024** — Identificación electrónica animal (microchips ISO 11784/11785). Foco en équidos pero estándar técnico de referencia. No crea una obligación de identificar perros y gatos: **no hay una obligación nacional general de microchip**; en PBA, los perros potencialmente peligrosos deben identificarse con chip **o** tatuaje (Ley 14.107, art. 8 b), y algunos municipios lo exigen por ordenanza. [Fuente](https://www.argentina.gob.ar/normativa/nacional/resoluci%C3%B3n-284-2024-398615/texto)
   - **DIM:** estándar ISO 11784/11785 es el que debe leer la app para `microchip_implanted.payload.iso_id`.
 
 - **Ley 24.449 / 1994** — Ley Nacional de Tránsito. Prohíbe animales sueltos en la vía pública; requisitos de transporte. [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/0-4999/818/texact.htm)
@@ -115,7 +121,7 @@
 - **CCyCN Art. 227** — Cosas muebles. [Fuente](https://leyfacil.com.ar/codigo-civil-y-comercial/articulo-227/)
 
 - **CCyCN Art. 1.947** — Apropiación. Los animales domésticos y domesticados NO son susceptibles de apropiación aunque escapen. [Fuente](https://codigocivilonline.com.ar/articulo-1947/)
-  - **DIM:** clave para el caso "vecino encuentra perro en la calle" → no se vuelve dueño por apropiación; sostiene la `Ownership.role='shelter_custody'` con `owner_user_id`.
+  - **DIM:** clave para el caso "vecino encuentra perro en la calle" → no se vuelve dueño por apropiación. **(a confirmar en la edición oficial del CCyC):** el art. 1955 haría al hallador que toma la cosa depositario, obligado a restituirla o a entregarla a la policía, que da intervención al juez; el dueño puede reclamar (arts. 1955 y 1956). Que el modelo use la custodia y no la titularidad es una decisión de miMAR, no una regla que imponga el art. 1947.
 
 - **CCyCN Art. 1.948** — Caza; animal salvaje o domesticado que recobra libertad. [Fuente](https://codigocivilonline.com.ar/etiquetas/articulo-1948/)
 
@@ -123,6 +129,8 @@
   - **DIM:** justifica la centralidad del dato `potentially_dangerous_breed` y la atestación.
 
 - **CCyCN Art. 1.757** — Hecho de las cosas y actividades riesgosas. [Fuente](https://www.rpba.gob.ar/files/Normas/Leyes/CCCN1757-1759.pdf)
+
+- **Ley 26.944 / 2014** — Responsabilidad del Estado. La Ciudad de Buenos Aires tiene ley propia, la **Ley CABA 6.325** (2020), con el mismo estándar de "deber expreso y determinado" (art. 2 inc. d). Que la Provincia de Buenos Aires no adhirió es **(a confirmar)**. *(Agregado 2026-10.)* [Ley CABA 6.325](https://documentosboletinoficial.buenosaires.gob.ar/publico/ck_PL-LEY-LCABA-LCBA-6325-20-5957.pdf)
 
 - **Ley 22.939 / 1983** — Régimen de marcas y señales de ganado. Marco federal de identificación de semovientes (referencia doctrinal). [Fuente](https://www.argentina.gob.ar/normativa/nacional/ley-22939-56748/texto)
 
@@ -145,9 +153,17 @@
 
 - **Ley 25.326, art. 21** — Inscripción de las bases de datos en el Registro Nacional de la AAIP. Alcanza a bases públicas y privadas destinadas a dar información sobre personas; la única exención es el uso exclusivamente personal, sin excepción por tamaño ni por ser persona humana. [Trámites](https://www.argentina.gob.ar/aaip/datospersonales/tramites)
   - **DIM:** el registro muestra datos de terceros (página del QR, autoridad, veterinaria), así que la exención no aplica. La política de privacidad no debe decir "inscripta" hasta contar con el certificado.
-- **Transferencia internacional** — Brasil no figura entre los países con protección adecuada (Disp. 60/2016 y Res. AAIP 34/2019). Una transferencia allí requiere un mecanismo de la **Res. AAIP 198/2023**, por ejemplo cláusulas contractuales modelo; usadas tal cual no requieren aprobación previa, y un contrato que se aparta del modelo se presenta a la AAIP dentro de los 30 días. [Fuente](https://www.argentina.gob.ar/transferencias-internacionales)
+- **Transferencia internacional** — Hay transferencia a Brasil (Supabase; funciones de Vercel) y a Estados Unidos (Vercel Inc., Sentry, Expo, Google FCM, Resend), ninguno con nivel de protección adecuado, y al Reino Unido (OpenStreetMap), que sí lo tiene. La lista está en la **Disp. DNPDP 60-E/2016, art. 3** (texto según Res. AAIP 34/2019). Cláusulas modelo: los Anexos I y II de la 60-E/2016 y las de la Red Iberoamericana (Res. AAIP 198/2023), que coexisten; usadas tal cual no requieren aprobación. Un contrato que se aparta del modelo debe **someterse a aprobación** de la AAIP dentro de los 30 días corridos (Disp. 60-E/2016, art. 2). La alternativa es el consentimiento expreso (Dec. 1558/2001, art. 12). *(Corregido 2026-10: la disposición la dictó la Dirección Nacional, no la AAIP, y el plazo de 30 días es para pedir la aprobación; Disp. 60-E/2016 verificada en InfoLEG.)* [Fuente](https://www.argentina.gob.ar/transferencias-internacionales)
   - **DIM:** la infraestructura corre en São Paulo: las transferencias a esos proveedores necesitan ese mecanismo.
 - **Res. AAIP 47/2018** — Medidas de seguridad recomendadas para el tratamiento de datos personales; se declaran en la inscripción de la base. [Trámites](https://www.argentina.gob.ar/aaip/datospersonales/tramites)
+- **Res. AAIP 14/2018, arts. 2 y 3** — Obliga a exhibir la información del art. 6 de la Ley 25.326 antes de recolectar datos y a incluir una **leyenda textual** sobre la AAIP como órgano de control. *(Agregado 2026-10; verificado en InfoLEG.)* [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/305000-309999/307621/norma.htm)
+  - **DIM:** la leyenda está en `/privacidad`, sección "Tus derechos", copiada textual.
+- **Res. AAIP 4/2019, Anexo I** — Criterios orientadores: el Criterio 3 trata la disociación (cuándo una persona no es determinable); el Criterio 5, el consentimiento de los menores de edad según su autonomía progresiva. [Anexo](https://servicios.infoleg.gob.ar/infolegInternet/anexos/315000-319999/318874/res4AAIP.pdf)
+- **Ley 27.483** (Convenio 108 y su Protocolo Adicional, vigentes) y **Ley 27.699** (Protocolo que modifica el Convenio 108, "108+"; ratificado y todavía no vigente en el plano internacional). [Ley 27.699](https://www.argentina.gob.ar/normativa/nacional/ley-27699-375738/texto)
+- **Ley 27.275** (acceso a la información pública) — **No alcanza a miMAR:** un operador privado no es sujeto obligado (art. 7). Los datos abiertos de miMAR son voluntarios y se apoyan en la disociación (Ley 25.326, arts. 2 y 11 inc. 3.e). *(Agregado 2026-10.)*
+- **Disp. SSCyDC 377/2026** (BO 11/03/2026) — Sustituye el anexo de la Res. 53/2003 y declara abusivas, entre otras, la modificación unilateral de las condiciones (inc. b), la limitación de responsabilidad (inc. g) y la aceptación "por la simple navegación" (inc. p). *(Agregado 2026-10; verificado.)* [Fuente](https://www.argentina.gob.ar/normativa/nacional/disposici%C3%B3n-377-2026-423801/texto)
+- **Dec. PBA 961/2026** — Marco Provincial de Gobernanza de Datos: crea el Registro de Bases de Datos de la Provincia, obligatorio para la administración provincial (art. 4), e invita a los municipios a adherir (art. 5). Su anexo no se leyó. *(Agregado 2026-10; verificado.)* [Fuente](https://normas.gba.gob.ar/documentos/0Z7XeYFE.html)
+- **Ley CABA 1845** — Protección de datos personales en el sector público de la Ciudad de Buenos Aires. *(Agregado 2026-10.)*
 
 ---
 
@@ -171,10 +187,10 @@
 
 - **Ley 5325 / 1948** — Denuncia obligatoria de enfermedades contagiosas/transmisibles dentro de las 24 hs. [Fuente](https://normas.gba.gob.ar/documentos/BKaq1Co0.html)
 
-- **Ley 6115 / 1959** — Profilaxis obligatoria de brucelosis, hidatidosis, tuberculosis y triquinosis. [Fuente](https://normas.gba.gob.ar/documentos/0vGaATex.html)
+- **Ley 6115 / 1959** — Profilaxis de la **brucelosis**. Su art. 9 encarga a una comisión extender la profilaxis a otras zoonosis, entre ellas la hidatidosis. **No fija un deber de denuncia ni un plazo.** *(Corregido 2026-10; leída en normas.gba.)* [Fuente](https://normas.gba.gob.ar/documentos/0vGaATex.html)
 
-- **Resolución CVPBA 05 / 2020** — Enfermedades de denuncia obligatoria en pequeños animales: brucelosis canina, clamidiosis aviar, dirofilariosis, esporotricosis, leishmaniasis visceral canina, leptospirosis canina, micobacteriosis en pequeños animales (tuberculosis), rabia animal y SARS-CoV-2 (sospecha clínica). **Plazo único para toda la lista:** el profesional informa "de forma inmediata". **Canal:** formulario web o planilla al Centro de Zoonosis municipal, que sigue a Zoonosis Urbanas (Ministerio de Salud PBA) y al SNVS 2.0. **Alcance:** obliga a los matriculados de PBA; no rige en CABA ni en otras provincias. Vigente según la página ENO del Colegio. [Fuente](https://cvpba.org/wp-content/uploads/2022/03/ENO-05-2020-1.pdf) · [cvpba.org/eno](https://cvpba.org/eno/)
-  - **DIM:** "inmediata" se toma como **24 h** en el catálogo ENO (la misma cifra que SENASA 153/2021 Grupo I y la Ley PBA 5325); fuera de PBA el plazo queda marcado "a confirmar". Esporotricosis y dirofilariosis entraron al catálogo; la clamidiosis aviar queda fuera de alcance porque el registro no toma aves; SARS-CoV-2 no se incorporó hasta confirmar su vigencia. La hidatidosis no está en esta lista: la respaldan la Res. MS 546/85 y la Ley PBA 6115, con plazo sin confirmar.
+- **Manual de notificación de ENO en pequeños animales del CVPBA (actualización 05/2020)** — No es una resolución: es un manual del Colegio que remite a la Res. CVPBA 44/2016. *(Corregido 2026-10; fuente: cvpba.org.)* Enfermedades de denuncia obligatoria en pequeños animales: brucelosis canina, clamidiosis aviar, dirofilariosis, esporotricosis, leishmaniasis visceral canina, leptospirosis canina, micobacteriosis en pequeños animales (tuberculosis), rabia animal y SARS-CoV-2 (sospecha clínica). **Plazo único para toda la lista:** el profesional informa "de forma inmediata". **Canal:** formulario web o planilla al Centro de Zoonosis municipal, que sigue a Zoonosis Urbanas (Ministerio de Salud PBA) y al SNVS 2.0. **Alcance:** obliga a los matriculados de PBA; no rige en CABA ni en otras provincias. Vigente según la página ENO del Colegio. [Fuente](https://cvpba.org/wp-content/uploads/2022/03/ENO-05-2020-1.pdf) · [cvpba.org/eno](https://cvpba.org/eno/)
+  - **DIM:** "inmediata" se toma como **24 h** en el catálogo ENO. El número se ancla en el Manual nacional (Disp. DE-MSAL 1/2026: inmediata = 24 h desde la atención), no en este manual, que no define horas; coincide con SENASA 153/2021 Grupo I y la Ley PBA 5325. Fuera de PBA el plazo queda marcado "a confirmar". Esporotricosis y dirofilariosis entraron al catálogo; la clamidiosis aviar queda fuera de alcance porque el registro no toma aves; SARS-CoV-2 no se incorporó hasta confirmar su vigencia. La hidatidosis no está en esta lista: en el Manual nacional 2026 es un evento **semanal** (7 días). Ni la Res. MS 546/85 (a confirmar) ni la Ley PBA 6115 fijan un plazo.
 
 ### 2.3 Ejercicio veterinario
 
@@ -184,14 +200,19 @@
 
 - **Ley 10.526 / 1987** — Establecimientos donde se ejerce la medicina veterinaria. Condiciones edilicias, venta de zooterápicos, depósitos, locales de venta de animales. [Fuente](https://normas.gba.gob.ar/documentos/xq98GIpx.html)
 
-- **Decreto 154 / 1989** (mod. Decreto 1546/1992) — Reglamenta Ley 10.526. [Fuente](https://normas.gba.gob.ar/documentos/0zQGbwT8.html)
+- **Decreto 154 / 1989** (mod. Decreto 1546/1992) — Reglamenta Ley 10.526. Arts. 12 y 16: las **clínicas, hospitales y sanatorios** veterinarios (no los consultorios) llevan un registro **foliado y rubricado** de historias clínicas; el art. 40 delega el plazo de conservación en la Dirección de Ganadería (no se halló esa norma). *(Ampliado 2026-10; verificado en normas.gba.)* [Fuente](https://normas.gba.gob.ar/documentos/0zQGbwT8.html)
+  - **DIM:** la libreta de miMAR no es ese registro rubricado ni lo reemplaza.
+
+- **Decreto 1420 / 1983, arts. 44-45 y 66** — Receta con firma y sello; despacho contra receta (arts. 44-45). El art. 66 prohíbe delegar actos profesionales. *(Agregado 2026-10.)*
+
+- **Decreto-Ley 9686 / 1981, art. 84** — Los certificados del art. 78 inc. 8 se extienden en formularios del Colegio. **(a confirmar con el CVPBA):** SENASA acepta certificados en cualquier formato con firma y sello, y el Colegio llama "orientativos" a sus modelos; nadie reconcilió las dos cosas.
 
 ### 2.4 Específico de animales de compañía
 
-- **Ley 14.107 / 2010** — Régimen de tenencia de perros potencialmente peligrosos. Registro Provincial; inscripción <6 meses; identificación por microchip o tatuaje obligatoria; correa <1 m; bozal y collar. Lista de razas en Anexo I. [Fuente](https://normas.gba.gob.ar/documentos/0PNzEIAB.html)
-  - **DIM:** matriz canónica de `potentially_dangerous_breed=true` para residentes en PBA + obligatoriedad de chip → `microchip_implanted` no es opcional.
+- **Ley 14.107 / 2010** — Régimen de tenencia de perros potencialmente peligrosos. Registro Provincial con delegaciones municipales; inscripción <6 meses; identificación por chip **o** tatuaje (art. 8 b); correa <1 m; bozal y collar; prohíbe el abandono de estos perros (art. 8 f). Lista de razas en Anexo I. No se halló reglamentación ni autoridad de aplicación designada (art. 13). *(Corregido 2026-10.)* [Fuente](https://normas.gba.gob.ar/documentos/0PNzEIAB.html)
+  - **DIM:** matriz canónica de `potentially_dangerous_breed=true` para residentes en PBA. La identificación se cumple con `microchip_implanted` **o** con `tattoo_registered`.
 
-- **Ley 13.879 / 2008** — Tenencia responsable (también en 2.1). Esterilización como único método de control poblacional. [Fuente](https://normas.gba.gob.ar/documentos/BK86vtoV.html)
+- **Ley 13.879 / 2008** — (También en 2.1.) Prohíbe el sacrificio de perros y gatos en dependencias oficiales (art. 1), fija la esterilización quirúrgica como único método de control poblacional (art. 3) y declara obligatorio el tratamiento antiparasitario (art. 4). **No impone deberes de tenencia a los dueños:** su reglamento (Dec. 400/2011, Anexo, art. 5) define la "tenencia responsable" solo como contenido de campañas. *(Corregido 2026-10.)* [Fuente](https://normas.gba.gob.ar/documentos/BK86vtoV.html)
 
 - **Ley 15.409 / 2022** — Perros de asistencia para personas con discapacidad. Crea Registro Provincial. [Fuente](https://normas.gba.gob.ar/documentos/xq9nMXCp.html)
 
@@ -207,9 +228,9 @@
 
 ### 3.1 Bienestar animal / crueldad
 
-- **Ley CABA 6173 / 2019** — Protección y cuidado de animales domésticos. Incorpora Título VI Libro II del Código Contravencional (Ley 1472): tipifica omisión de cuidados (Art. 126), abandono (Art. 127), instalaciones inadecuadas, hostigamiento. [Fuente](https://boletinoficial.buenosaires.gob.ar/normativaba/norma/479417)
+- **Ley CABA 6173 / 2019** — Protección y cuidado de animales domésticos. Incorpora Título VI Libro II del Código Contravencional (Ley 1472): tipifica omisión de cuidados (Art. 126), abandono (Art. 127), instalaciones inadecuadas, hostigamiento. *(Nota 2026-10: el abandono, incorporado como art. 127 por esta ley, es hoy el **art. 141** del Código Contravencional, texto según Ley 6.839; no se identificó la ley de consolidación que renumeró.)* [Fuente](https://boletinoficial.buenosaires.gob.ar/normativaba/norma/479417)
 
-- **Ley CABA 6839 / 2025** ("Ley Huellas") — Endurece sanciones por maltrato, abandono y cría ilegal. Arts. 142 bis y 143 bis (animal encerrado en vehículo, cría ilegal). Crea el "Registro de infractores a la Ley de Maltrato Animal" dentro del Registro de Contravenciones. Multas hasta $8M, trabajo comunitario hasta 60 días. [Fuente](https://boletinoficial.buenosaires.gob.ar/normativaba/norma/819902)
+- **Ley CABA 6839 / 2025** (BO 20/10/2025) — Modifica el Código Contravencional: reescribe los arts. 140 a 143 e incorpora el 142 bis y el 143 bis (animal encerrado en vehículo, cría ilegal). **Abandono (art. 141):** 60 a 90 días de trabajo de utilidad pública, o multa de 3.000 a 5.000 unidades fijas, o 15 a 30 días de arresto. Crea el "Registro de infractores a la Ley de Maltrato Animal" dentro del Registro de Contravenciones. Prescripción de la acción contravencional: 18 meses (art. 43 del Código). *(Corregido 2026-10: las multas se fijan en unidades fijas, no en pesos; el abandono tiene 60 a 90 días, no "hasta 60"; se quitó el apodo "Ley Huellas", que no figura en ninguna fuente oficial.)* [Fuente](https://boletinoficial.buenosaires.gob.ar/normativaba/norma/819902) · [Texto](https://documentosboletinoficial.buenosaires.gob.ar/publico/ck_PL-LEY-LCABA-LCBA-6839-25-7228.pdf)
   - **DIM:** registro de infractores es un dato externo a integrar eventualmente en verificación de adoptantes.
 
 - **Ley CABA 1472 / 2004** — Código Contravencional. Marco general donde se insertan los tipos de maltrato y abandono. [Fuente](https://boletinoficial.buenosaires.gob.ar/normativaba/norma/62598)
@@ -376,9 +397,9 @@
 
 Los instrumentos más estructurantes para el modelo de datos y eventos:
 
-1. **Identificación canina** — el estándar técnico de microchip es ISO 11784/11785 (Res. SENASA 284/2024 + WOAH Cap. 7.7 + Res. GMC 17/15). Para residentes en PBA, el chip es obligatorio para razas listadas en la Ley 14.107; en CABA, la Ordenanza 41.831 admite tatuaje o microchip; a nivel nacional aún no hay obligatoriedad universal.
+1. **Identificación canina** — el estándar técnico de microchip es ISO 11784/11785 (Res. SENASA 284/2024 + WOAH Cap. 7.7 + Res. GMC 17/15). Para residentes en PBA, las razas listadas en la Ley 14.107 deben identificarse con chip **o** tatuaje (art. 8 b); en CABA, la Ordenanza 41.831 admite tatuaje o microchip; a nivel nacional aún no hay obligatoriedad universal.
 
-2. **Vacunación antirrábica** — obligatoria desde los 3 meses, anual; ancla: Ley nac. 22.953 + Res. MS 1144/2018 + Res. SENASA 580/2014 + DL 8056/73 (PBA) + Ord. 41.831 (CABA).
+2. **Vacunación antirrábica** — obligatoria desde los 3 meses, anual; ancla: Ley nac. 22.953 + Res. MS 1144/2018 + DL 8056/73 (PBA) + Ord. 41.831 (CABA). *(2026-10: se quitó la Res. SENASA 580/2014, que trata de animales de asistencia.)*
 
 3. **Perros potencialmente peligrosos** — doble régimen: Ley 14.107 (PBA, registro provincial) y Ley 4078 (CABA, registro local + seguro RC). DIM debe modelar ambos.
 
@@ -386,11 +407,11 @@ Los instrumentos más estructurantes para el modelo de datos y eventos:
 
 5. **Cremación** — Ley CABA 5470/2015 es la única jurisdicción que la regula explícitamente. `death_recorded.payload.disposition_method` debe poder anclar a esta norma.
 
-6. **Movimiento internacional** — Res. GMC MERCOSUR 17/15 + Res. SENASA 76/2019 (ingreso) + Res. MAGyP 727/2015 (egreso) + reconocimiento UE Pet Passport.
+6. **Movimiento internacional** — Res. GMC MERCOSUR 17/15, incorporada por la Res. MAGyP 727/2015 (ingreso entre Estados del Mercosur, en espejo para los viajes a BR, PY y UY) + Res. SENASA 76/2019 (ingreso) + requisitos de cada destino, certificados por SENASA (egreso) + reconocimiento UE Pet Passport.
 
-7. **Estatuto jurídico** — Hoy "cosa mueble" (Art. 227 CCyCN); proyecto "Ley Sintientes" (2025) busca reclasificación. El Art. 1.947 CCyCN sostiene la figura de "vecino en custodia temporal".
+7. **Estatuto jurídico** — Hoy "cosa mueble" (Art. 227 CCyCN); proyecto "Ley Sintientes" (2025) busca reclasificación. El Art. 1.947 CCyCN impide que quien encuentra un animal doméstico se lo apropie; que el modelo hable de "vecino en custodia temporal" es una decisión de miMAR (sobre los arts. 1955 y 1956, **a confirmar** en la edición oficial).
 
-8. **Maltrato y denuncia** — Ley nac. 14.346 (penal) + Ley CABA 6173 / 6839 (contravencional) + Resolución CVPBA 05/2020 (denuncia obligatoria de zoonosis).
+8. **Maltrato y denuncia** — Ley nac. 14.346 (penal, maltrato y crueldad) + Código Contravencional de CABA, arts. 140 a 143 bis (texto Ley 6.839; abandono en el art. 141) + Manual ENO del CVPBA (act. 05/2020) y Manual nacional (Disp. DE-MSAL 1/2026) para la notificación de zoonosis.
 
 ---
 
@@ -411,7 +432,7 @@ Cada flujo lista: (1) actor que lo inicia, (2) qué se dispara, (3) anclaje norm
 
 ### 6.2 Vacunación antirrábica (anual, desde 3 meses)
 
-- Owner → Vet matriculado → constancia oficial (formulario Res. SENASA 580/2014) → queda en poder del propietario.
+- Owner → Vet matriculado → constancia antirrábica con firma y sello con matrícula → queda en poder del propietario.
 - Vet → carga la dosis en sistema municipal cuando aplica (campañas Mascotas BA, dispensarios antirrábicos PBA).
 - Estado (Min. Salud Nac. / GCBA / municipios PBA) → coordina campañas masivas y gratuitas; Instituto Pasteur produce y distribuye antirrábica en CABA. Ley 22.953/1983; DL 8056/1973 (PBA); Ord. 41.831/1987 (CABA); Decreto GCBA 5334/1988.
   - DIM: `antirabies_vaccinated` con `vet_matricula`, `vaccine_batch`, `valid_until` (próximo vencimiento anual).
@@ -431,13 +452,13 @@ Cada flujo lista: (1) actor que lo inicia, (2) qué se dispara, (3) anclaje norm
 
 ### 6.5 Notificación de Enfermedades de Denuncia Obligatoria (ENO)
 
-- Vet → carga caso → autoridad sanitaria (Min. Salud nac. y/o provincial) en <24 hs. Ley 15.465/1960 (Decreto 3640/64); Ley 5325/1948 (PBA); Res. MS 1715/2007; Res. CVPBA 05/2020 (inmediata); Res. SENASA 153/2021 (lado animal, Grupo I 24 h a SENASA).
+- Vet → carga caso → autoridad sanitaria (Min. Salud nac. y/o provincial): inmediata (24 h) o semanal (7 días) según la enfermedad. Ley 15.465/1960 (Decreto 3640/64); Disp. DE-MSAL 1/2026 (Manual nacional); Ley 5325/1948 (PBA); Res. MS 1715/2007; Manual ENO del CVPBA, act. 05/2020 (inmediata); Res. SENASA 153/2021 (lado animal, Grupo I 24 h a SENASA).
   - DIM: el veterinario registra el diagnóstico (`clinical_info_logged`, `sub_kind='disease_diagnosis'`) desde la ficha clínica o desde Atender; eso abre el aviso en la Cola ENO con el plazo de la enfermedad contado desde la fecha del diagnóstico. Lo que escribe el tutor o un denunciante es una **señal** para la autoridad, nunca un aviso legal. Mientras no exista un receptor, el aviso queda pendiente hasta que la autoridad lo marca "recibido" desde su bandeja.
 
 ### 6.6 Receta veterinaria
 
-- Vet → emite receta → si incluye antibiótico crítico (fosfomicina, polimixina B), receta electrónica obligatoria en sistema SENASA → farmacia veterinaria valida. Res. SENASA 80/2025.
-  - DIM: `treatment_administered.payload.senasa_prescription_id` cuando aplica.
+- Vet → emite receta → si incluye un principio activo alcanzado, receta electrónica obligatoria en el sistema de SENASA → farmacia veterinaria valida. Res. SENASA 80/2025 (fosfomicina, polimixina B) y Res. SENASA 654/2026 (SIGTRAZAVET; extiende la receta electrónica a los animales de compañía, art. 17, con CUVE y DNI del titular, art. 18).
+  - DIM: `treatment_administered.payload.senasa_prescription_id` cuando aplica: una referencia a la receta emitida en SENASA, nunca una copia (la copia lleva el DNI del titular).
 
 ### 6.7 Muerte y cremación
 
@@ -446,28 +467,29 @@ Cada flujo lista: (1) actor que lo inicia, (2) qué se dispara, (3) anclaje norm
 
 ### 6.8 Custodia, adopción y transferencia
 
-- **Vecino encuentra animal**: ciudadano → custodia temporal sin volverse "dueño" (CCyCN Art. 1.947) → puede entregar a refugio o devolver. DIM: `Ownership.role='shelter_custody'` con `owner_user_id`.
-- **Refugio adopta animal**: refugio → custodia → adopción → transfer Ownership a persona. Refugios nunca son `owner` (Ley 13.879 PBA + práctica nacional).
+- **Vecino encuentra animal**: ciudadano → custodia temporal sin volverse "dueño" (CCyCN Art. 1.947: no hay apropiación) → puede entregar a refugio o devolver. DIM: `Ownership.role='shelter_custody'` con `owner_user_id`.
+- **Refugio adopta animal**: refugio → custodia → adopción → transfer Ownership a persona. Que un refugio no figure como `owner` es una **decisión de modelado** de miMAR para animales hallados: quien recibe un animal perdido no es su dueño (CCyC arts. 1947 y 1955, **a confirmar** el 1955 en la edición oficial). Ninguna norma impide que un refugio sea dueño, por ejemplo si el dueño le cede el animal. *(Corregido 2026-10: la Ley PBA 13.879 y el Dec. 400/2011 no mencionan refugios.)*
   - DIM: `custody_transferred` + `adoption_finalized`.
 - **Foster**: refugio → asigna fostering a un voluntario con `organization_membership` activa. DIM: `foster_assigned` / `foster_ended`.
 
 ### 6.9 Denuncia de maltrato / abandono → decomiso
 
-- Cualquier persona → Fiscalía (Ley nac. 14.346 — penal) o autoridad local (Ley CABA 6173 + 6839 — contravencional). En CABA interviene **UFEMA**.
+- **Maltrato:** cualquier persona → Fiscalía (Ley 14.346, arts. 1 a 3). En CABA interviene **UFEMA**. La Ley 14.346 no tipifica el abandono de mascotas (solo el de animales de experimentación, art. 3 inc. 5).
+- **Abandono:** en CABA es contravención (Código Contravencional, art. 141, texto Ley 6.839; arts. 140 a 143 bis para el resto de las figuras). En PBA no hay una figura general: solo la Ley 14.107, art. 8 f, para los perros potencialmente peligrosos.
 - Fiscalía / autoridad → decomiso del animal → autoridad de bienestar → refugio (vía `custody_transferred`).
 - Sanción + inscripción en **Registro de infractores a la Ley de Maltrato Animal** (Ley CABA 6839/2025).
   - DIM: `maltreatment_reported` / `abandonment_reported` + cadena de `custody_transferred` para reflejar el flujo decomiso→refugio.
 
 ### 6.10 Movimiento internacional
 
-- **Egreso**: Owner → Vet matriculado emite CVI nacional → SENASA endosa antes del viaje (Res. 727/2015 + Res. 580/2014). Para MERCOSUR: chip ISO obligatorio (Uruguay), antirrábica ≥21 días pre-viaje, desparasitación 15 días, validez CVI 60 días (Res. GMC 17/15).
+- **Egreso**: Owner → Vet matriculado emite el certificado de salud, la constancia antirrábica y los demás certificados del destino, con firma y sello con matrícula → **SENASA emite el CVI** (presencial o digital) sobre esa documentación. Para MERCOSUR (Res. GMC 17/2015, incorporada por la Res. MAGyP 727/2015): CVI de la autoridad del país exportador, validez 60 días, examen clínico dentro de los 10 días previos; chip ISO obligatorio (Uruguay), antirrábica ≥21 días pre-viaje, desparasitación 15 días. *(Corregido 2026-10: el veterinario no emite el CVI; se quitó la Res. 580/2014.)*
 - **Ingreso**: Vet del país origen emite CVI → SENASA puesto fronterizo valida (Res. SENASA 76/2019). Reconocimiento UE Pet Passport para ingresos temporales (Reg. UE 576/2013).
   - DIM: `travel_certificate_issued` + `border_crossed`. Útil para diseñar interoperabilidad de la credencial pública DIM con el CVI digital SENASA.
 
 ### 6.11 Transporte interno (público y privado)
 
 - **Subte CABA**: Owner → 1 animal por adulto + contenedor + antirrábica vigente. Ley 5687/2016 + Decreto GCBA 31/2017.
-- **Larga distancia nacional**: Owner → contenedor + antirrábica + edad ≥4 meses + no raza braquicéfala (excepción asistencia). Res. Transporte 2076/2025.
+- **Larga distancia nacional (ómnibus y trenes)**: Owner → constancia antirrábica (Anexo, art. 4) + un animal por pasajero adulto (art. 5); cada empresa fija sus restricciones de especie, raza, peso y tamaño (art. 7). Res. MEcon 2076/2025.
 - **Discapacidad — perro guía/asistencia**: acceso sin contenedor; ANDIS autoridad de aplicación. Ley 26.858/2013 + Decreto 792/2019; Ley PBA 15.409/2022.
   - DIM: campo `assistance_dog: bool` + `antirabies_valid_until` accesible vía credential pública para presentación en transporte.
 
@@ -493,20 +515,20 @@ Cada flujo lista: (1) actor que lo inicia, (2) qué se dispara, (3) anclaje norm
 
 ## 7. Información del animal que la ley exige conocer
 
-El esquema mínimo que ninguna "libreta sanitaria" o credencial pública en Argentina puede omitir surge de la intersección de Ord. 41.831, Ley 4078, Ley 14.107, Res. SENASA 580/2014, Res. GMC MERCOSUR 17/15 y Ley CABA 5470. Cuadro por procedimiento:
+El esquema mínimo que ninguna "libreta sanitaria" o credencial pública en Argentina puede omitir surge de la intersección de Ord. 41.831, Ley 4078, Ley 14.107, Res. GMC MERCOSUR 17/15 y Ley CABA 5470. Cuadro por procedimiento:
 
 | Procedimiento | Datos exigidos por la norma | Anclaje |
 |---|---|---|
 | Inscripción municipal CABA | Nombre, especie, raza, sexo, color, marcas distintivas, fecha de nacimiento (o edad estimada), tatuaje o microchip, datos del propietario (DNI, domicilio). | Ord. 41.831/1987 |
 | Inscripción PPP CABA | Todo lo anterior + foto del animal, número de microchip, vacuna antirrábica vigente, número y vencimiento de póliza de seguro RC, comprobante de curso virtual del propietario. | Ley 4078/2012; Res. 93/APRA/2021 |
-| Inscripción PPP PBA | Identificación por microchip o tatuaje (obligatoria), datos del propietario, edad <6 meses al registrar. | Ley 14.107/2010 |
-| Constancia antirrábica | Fecha de vacunación, marca/lote de la vacuna, veterinario matriculado (matrícula + jurisdicción), especie, sexo, edad, identificación del animal, datos del propietario. | Res. SENASA 580/2014 |
+| Inscripción PPP PBA | Identificación por microchip **o** tatuaje (obligatoria, art. 8 b), datos del propietario, edad <6 meses al registrar. Sin reglamentación hallada. | Ley 14.107/2010 |
+| Constancia antirrábica | Fecha de vacunación, marca/lote de la vacuna, veterinario matriculado (matrícula + jurisdicción), especie, sexo, edad, identificación del animal, datos del propietario. | Página de SENASA "Traslados de perros y/o gatos dentro de Argentina"; Res. MEcon 2076/2025, Anexo, art. 4 (la Res. SENASA 580/2014 no la regula) |
 | CVI MERCOSUR (perros y gatos) | Chip ISO 11784/11785 (obligatorio para perros >90 días destino Uruguay); raza, sexo, color, edad; vacuna antirrábica con fecha, lote, marca, validez; desparasitación interna y externa con fecha, principio activo y dosis; examen clínico pre-embarque; datos completos del propietario y del destinatario. | Res. GMC 17/15; Res. SENASA 76/2019 |
 | Cremación CABA | Identificación del animal, fecha y causa probable de muerte, datos del propietario, profesional veterinario firmante, plazo ≥24 hs salvo excepción sanitaria, crematorio habilitado. | Ley CABA 5470/2015 |
 | Observación antirrábica (mordedura) | Identificación del animal, antirrábica vigente o no, datos del propietario, datos del mordido, fecha y lugar del hecho. | DL 4669/1973 PBA; Ord. 41.831 CABA; Res. MS 1144/2018 |
-| Denuncia ENO | Caso clínico, agente etiológico sospechado, especie, edad, sexo, fecha de inicio, lugar geográfico, propietario, vet notificante. | Ley 15.465; Res. MS 1715/2007; Res. CVPBA 05/2020 |
+| Denuncia ENO | Caso clínico, agente etiológico sospechado, especie, edad, sexo, fecha de inicio, lugar geográfico, propietario, vet notificante. | Ley 15.465; Res. MS 1715/2007; Disp. DE-MSAL 1/2026; Manual ENO del CVPBA (act. 05/2020) |
 | Patente canina PBA | Identificación, antirrábica del año en curso, propietario; comprobante portado físicamente. | Ley 5664/1952 |
-| Receta electrónica veterinaria | Identificación del animal, especie, peso, principio activo, dosis y posología, vet matriculado, propietario. | Res. SENASA 80/2025 |
+| Receta electrónica veterinaria | Identificación del animal, especie, peso, principio activo, dosis y posología, vet matriculado, propietario (nombre y DNI del titular en la "Prescripción en mascotas", art. 18 d), CUVE. | Res. SENASA 80/2025 y 654/2026 |
 | Perro guía / asistencia | Certificación de adiestramiento, certificación veterinaria (esterilizado + vacunado + desparasitado), beneficiario humano. | Ley 26.858/2013; Ley PBA 15.409/2022 |
 
 ### 7.1 Campos canónicos consolidados (qué espera DIM modelar)
@@ -540,7 +562,7 @@ El esquema mínimo que ninguna "libreta sanitaria" o credencial pública en Arge
 - DNI / CUIT (persona humana o jurídica)
 - Domicilio (jurisdicción crítica: CABA / PBA / otra determina qué marco normativo aplica)
 - Teléfono / canal de contacto
-- Para refugios: personería jurídica, CUIT, rol `shelter_custody` (nunca `owner`)
+- Para refugios: personería jurídica, CUIT, rol `shelter_custody` (por decisión de modelado de miMAR para animales hallados, no por una norma)
 
 **Transferencia**
 - Custodia / adopción / decomiso: fecha, actor cedente, actor receptor, motivo
@@ -555,8 +577,8 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 
 **Genéricas (todo el país)**
 - No incurrir en maltrato ni crueldad. Ley nac. 14.346 — penal, 15 días a 1 año de prisión.
-- Tenencia responsable: alimento, agua, refugio, atención veterinaria. Ley CABA 6173/2019 + 6839/2025; Ley PBA 13.879/2008.
-- No abandonar al animal. Ley CABA 6173 art. 127; práctica derivada de Ley 13.879 PBA.
+- Tenencia responsable: alimento, agua, refugio, atención veterinaria. Código Contravencional de CABA, arts. 140 a 143 bis (texto Ley 6.839). *(2026-10: se quitó la Ley PBA 13.879, que no impone deberes a los dueños.)*
+- No abandonar al animal: Código Contravencional de CABA, art. 141 (texto según Ley 6.839, BO 20/10/2025). En PBA no hay una figura general (solo Ley 14.107, art. 8 f, para PPP).
 
 **Identificación y registración**
 - CABA: inscripción en el Registro Municipal al 4° mes; chip o tatuaje. Ord. 41.831/1987.
@@ -565,7 +587,7 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 - CABA PPP: Registro 4078 antes de los 3 meses + póliza de seguro RC vigente + curso virtual + foto + chip + renovación anual + notificación de incidentes <48 hs.
 
 **Vacunación**
-- Antirrábica obligatoria desde 3 meses, anual, con constancia en poder del propietario. Ley nac. 22.953; Res. SENASA 580/2014; DL 8056/1973 PBA; Ord. 41.831 CABA.
+- Antirrábica obligatoria desde 3 meses, anual, con constancia en poder del propietario. Ley nac. 22.953; DL 8056/1973 PBA; Ord. 41.831 CABA.
 
 **Vía pública**
 - Correa obligatoria. Ley CABA 5471/2015 + DL provincial.
@@ -575,8 +597,8 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 
 **Transporte**
 - Subte CABA: contenedor + antirrábica + 1 mascota por adulto. Ley 5687/2016.
-- Larga distancia nacional (micro/tren/avión nacional): contenedor, antirrábica, edad ≥4 meses, exclusión de braquicéfalos. Res. 2076/2025.
-- Internacional: CVI vigente. Res. GMC 17/15 + nacional Res. 580/2014, 76/2019, 727/2015.
+- Larga distancia nacional (ómnibus y trenes): constancia antirrábica, un animal por pasajero adulto; restricciones de cada empresa. Res. MEcon 2076/2025.
+- Internacional: CVI vigente, emitido por SENASA. Res. GMC 17/15 (incorporada por la Res. MAGyP 727/2015); Res. SENASA 76/2019 (ingreso).
 
 **Mordedura**
 - Someter al animal a observación antirrábica de 10 días.
@@ -594,7 +616,7 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 
 **Sanciones aplicables al propietario**
 - Penal: prisión 15 días a 1 año (Ley 14.346); 3 meses a 4 años + multa (Ley 27.330, carreras de perros).
-- Contravencional CABA (Huellas): multas hasta $8M, trabajo comunitario hasta 60 días, arresto en casos graves, inscripción en Registro de Infractores.
+- Contravencional CABA (Código Contravencional, texto Ley 6.839): abandono (art. 141) con 60 a 90 días de trabajo de utilidad pública, o multa de 3.000 a 5.000 unidades fijas, o 15 a 30 días de arresto; inscripción en el Registro de Infractores. La acción prescribe a los 18 meses (art. 43).
 - Faltas CABA: multas + decomiso + clausura comercial.
 - Tránsito: retención del animal si circula suelto (Ley 24.449).
 
@@ -604,17 +626,18 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 - Matrícula vigente. Ley nac. 14.072/1951 (CABA + jurisdicción federal); DL 9686/1981 PBA + Dec. 1420/83 (CVPBA).
 - Habilitación edilicia y de actividad. Ley PBA 10.526/1987 + Dec. 154/1989; en CABA bajo Ord. 41.831.
 - BPM si elabora productos veterinarios. Res. SENASA 416/2024.
-- Receta electrónica para antibióticos críticos (fosfomicina, polimixina B). Res. SENASA 80/2025.
-- Asentar antirrábica en formulario oficial SENASA. Res. 580/2014.
-- Emitir CVI nacional para traslados. Res. 580/2014, 727/2015, 76/2019.
-- Notificar ENO en <24 hs. Ley nac. 15.465; Ley PBA 5325; Res. CVPBA 05/2020.
+- Receta electrónica para los principios activos alcanzados: fosfomicina y polimixina B (Res. SENASA 80/2025) y los que la Res. SENASA 654/2026 extiende a los animales de compañía. Con la 654/2026, el botiquín sin receta electrónica exige ficha clínica (art. 20).
+- Extender la constancia antirrábica con firma y sello con matrícula. *(2026-10: la Res. 580/2014 no regula un formulario antirrábico.)*
+- Extender el certificado de salud y la constancia antirrábica que SENASA pide para emitir el CVI (el CVI lo emite SENASA). Res. MAGyP 727/2015; Res. SENASA 76/2019.
+- Notificar ENO: inmediata (24 h) o semanal (7 días) según la enfermedad. Ley nac. 15.465; Disp. DE-MSAL 1/2026; Ley PBA 5325; Manual ENO del CVPBA (act. 05/2020).
+- PBA, clínicas, hospitales y sanatorios: registro foliado y rubricado de historias clínicas. Dec. 154/1989, art. 16.
 - Documentar productos veterinarios. Dec. 583/67; Res. SENASA 11/2025.
 - Bioterios: BPM y principio 3R. Disp. ANMAT 9236/2023.
 
 **Refugios y redes de rescate**
 - Personería jurídica para operar formalmente.
-- No actuar como "dueños" — custodia temporal pendiente adopción (CCyCN Art. 1.947 + Ley 13.879 + práctica).
-- Tenencia responsable de cada animal bajo custodia. Ley 13.879 + Ley nac. 14.346.
+- Para animales hallados, custodia temporal pendiente adopción: el refugio es depositario (CCyC arts. 1947 y 1955, **a confirmar** el 1955) y el dueño puede reclamar (arts. 1955 y 1956). Que no figure como "dueño" es una decisión de modelado de miMAR; si el dueño le cede el animal, la regla puede ser otra.
+- No maltratar a ningún animal bajo custodia. Ley nac. 14.346; en CABA, Código Contravencional, arts. 140 a 143 bis.
 - No exhibición vidrieras (CABA). Ley 6194/2019.
 - No cría ilegal (CABA). Ley 6839/2025.
 - Inscripción operativa en Animales BA (CABA, no normativa pero exigida en programas públicos).
@@ -634,17 +657,17 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 - Habilitación municipal estándar.
 
 **Empresas de transporte**
-- Aceptación de contenedores conforme Res. 2076/2025 (nacional) y Ley CABA 5687 (subte).
+- Fijar sus restricciones de especie, raza, peso y tamaño (Res. MEcon 2076/2025, Anexo, art. 7, ómnibus y trenes de larga distancia) y aceptar contenedores conforme a la Ley CABA 5687 (subte).
 - Excepción y acceso obligatorio para perros guía/asistencia. Ley 26.858; Ley PBA 15.409.
 
 ### 8.3 Oficinas gubernamentales
 
 **SENASA (federal)**
 - Mantener Registro Nacional de Productos Veterinarios. Dec. 583/67; Res. 11/2025.
-- Emitir/endosar CVI internacional. Res. 76/2019, 580/2014, 727/2015.
+- Emitir el CVI (presencial o digital) sobre la documentación del veterinario. Res. MAGyP 727/2015 (Mercosur); Res. SENASA 76/2019 (ingreso).
 - Internalizar resoluciones GMC MERCOSUR. Res. GMC 17/15.
 - Sanidad fronteriza para ingreso de mascotas.
-- Operar el sistema de receta electrónica veterinaria. Res. 80/2025.
+- Operar el sistema de receta electrónica veterinaria (SIGTRAZAVET). Res. 80/2025 y 654/2026.
 - Vigilancia zoonosis a nivel federal (One Health MoU).
 
 **Ministerio de Salud de la Nación**
@@ -656,7 +679,7 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 **Ministerio de Salud PBA**
 - Autoridad de aplicación de Ley 13.879. Decreto 400/2011.
 - Operar dispensarios antirrábicos provinciales y articular con municipales. DL 8056/1973.
-- Profilaxis zoonosis provincial. Ley 6115/1959.
+- Profilaxis de la brucelosis. Ley 6115/1959 (no fija deber de denuncia ni plazo).
 - Recibir denuncias ENO provinciales. Ley 5325/1948.
 
 **Ministerio de Asuntos Agrarios PBA**
@@ -664,7 +687,7 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 
 **Colegio de Veterinarios PBA (CVPBA)**
 - Matriculación y régimen ético-disciplinario. DL 9686/1981; Decreto 1420/1983.
-- Difusión y reglamentación de ENO en pequeños animales. Res. CVPBA 05/2020.
+- Difusión de ENO en pequeños animales: Manual de notificación del CVPBA (act. 05/2020), que remite a la Res. CVPBA 44/2016.
 
 **Consejo Profesional de Médicos Veterinarios (CPMV — CABA)**
 - Matriculación de veterinarios en jurisdicción nacional / CABA. Ley nac. 14.072.
@@ -715,7 +738,7 @@ Cruzando los §6–§8 con el modelo de eventos descripto en `AGENTS.md`:
 - **`Pet`** necesita: jurisdicción explícita (`AR-C` vs `AR-B` cambia el registro PPP aplicable), chip ISO obligatorio para PPP en PBA, foto + póliza para PPP en CABA.
 - **Eventos** que la ley *exige* trazar (no son opcionales si DIM se toma en serio el rol de libreta oficial): `pet_registered`, `microchip_implanted`, `antirabies_vaccinated` (con vencimiento), `sterilization_performed`, `bite_inflicted` + `rabies_observation_*`, `death_recorded` + `disposition_method`, `dangerous_breed_attested`, `custody_transferred`, `adoption_finalized`, `disease_diagnosed` con flag ENO, `travel_certificate_issued`, `maltreatment_reported` / `abandonment_reported`.
 - **Constancia digital legalmente útil**: la credencial pública debe mostrar al menos chip, antirrábica vigente, PPP flag, esterilización y datos del titular — porque eso es lo que pide ver cualquier organismo o transporte.
-- **Interoperabilidad futura**: receta electrónica SENASA (Res. 80/2025), CVI digital SENASA, Animales BA (CABA), Registro PPP de cada jurisdicción.
+- **Interoperabilidad futura**: receta electrónica SENASA (Res. 80/2025 y 654/2026, como referencia y sin copiar el DNI del titular), CVI digital SENASA, Animales BA (CABA), Registro PPP de cada jurisdicción.
 
 ---
 
