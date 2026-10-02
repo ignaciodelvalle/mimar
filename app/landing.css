@@ -2338,8 +2338,9 @@
  * app/landing.css already uses for .lp-reveal (line ~263): a second, CSS-only
  * guarantee in case the JS check is ever bypassed.
  *
- * Chronological fill (PO, 2026-09-25): the oldest row plays first and each
- * newer one enters ABOVE it. An unplayed row takes NO height, so a row that
+ * Chronological fill (PO, 2026-09-25): the oldest rows are already written
+ * (the first five, PO 2026-10-02, never carry a reveal class) and each
+ * newer one enters ABOVE them. An unplayed row takes NO height, so a row that
  * enters expands in place and visibly pushes the earlier ones down. The feed
  * reserves its settled height from JS (min-height, released once settled),
  * so the expansion happens inside a box that never changes size (no CLS).

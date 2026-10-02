@@ -1,15 +1,17 @@
 "use client";
 
-// LibretaFeed — chapter 6 "the libreta fills up" animation (WU3, PO-approved
-// landing plan). Reveals Pampa's libreta entries one by one, once the chapter
-// is ~40% in view. Plays ONCE, then stays settled.
+// LibretaFeed — chapter 5 "the libreta fills up" animation (WU3, PO-approved
+// landing plan). Pampa's libreta opens with its first ALREADY_WRITTEN entries
+// on the page (PO 2026-10-02: alta, chip, vacuna, castración, se perdió), and
+// the rest are added one by one once the chapter is ~40% in view. Plays ONCE,
+// then stays settled.
 //
 // ORDER (PO, 2026-09-25): chronological, the way a libreta fills. `events`
 // arrives in DISPLAY order — newest on top (story-screens.tsx reverses the
 // chronological constant) — and the reveal walks it from the END: the oldest
-// entry appears first, alone at the top; each newer one then enters ABOVE it
-// and pushes the earlier ones down, until the settled list is the same
-// newest-on-top list SSR renders. The DOM order never changes: an unrevealed
+// entries are already there, at the top of the list as a libreta opens; each
+// newer one then enters ABOVE them and pushes them down, until the settled
+// list is the same newest-on-top list SSR renders. The DOM order never changes: an unrevealed
 // row is collapsed to zero height (.lp-lib-row--pending) and an entering row
 // expands in place, so the push-down is the rows below it moving.
 //
@@ -20,8 +22,10 @@
 //  - The very first client render (before any effect runs) matches SSR
 //    exactly, so hydration never mismatches.
 //  - Only a client effect — and only when prefers-reduced-motion allows it
-//    and IntersectionObserver exists — switches unplayed entries into a
-//    hidden "pending" state and starts the staggered reveal. That flip
+//    and IntersectionObserver exists — switches the entries after the
+//    already-written ones into a hidden "pending" state and starts the
+//    staggered reveal. The already-written rows are never hidden and never
+//    animate: they keep the plain SSR class throughout. That flip
 //    happens in useLayoutEffect (pre-paint), the same trick CountUp uses to
 //    avoid a flash of the full list before it hides.
 //  - If the observer never calls back AT ALL within ~1.4s (RevealManager's
@@ -84,6 +88,11 @@ export function NativeAsiento({
 
 /** Interval between two consecutive entries entering. */
 const STEP_MS = 700;
+/**
+ * How many of the OLDEST entries are already on the page when the chapter
+ * opens (PO 2026-10-02). Only the newer ones play in.
+ */
+export const ALREADY_WRITTEN = 5;
 /** Same fail-open window RevealManager uses for its own IntersectionObserver. */
 const FAIL_OPEN_MS = 1400;
 /** "About 40% in view" — measured against the chapter section, not just the phone mock. */
@@ -109,17 +118,22 @@ export function LibretaFeed({ events, now }: { events: LibretaEvent[]; now: Date
   const [playedCount, setPlayedCount] = useState(events.length);
   const [animate, setAnimate] = useState(false);
 
+  // The oldest entries are already written; only the rest play in.
+  const alreadyWritten = Math.min(ALREADY_WRITTEN, events.length);
+
   useLayoutEffect(() => {
     if (prefersReducedMotion()) return;
     if (typeof IntersectionObserver === "undefined") return;
+    // Nothing left to add: stay exactly as SSR rendered it.
+    if (events.length <= ALREADY_WRITTEN) return;
     // Reserve the settled list's height BEFORE collapsing any row (still
     // pre-paint), so the page below never moves. Written through the CSSOM,
     // not a `style` prop: nothing about it belongs in the SSR markup.
     const el = containerRef.current;
     if (el) el.style.minHeight = `${el.offsetHeight}px`;
     setAnimate(true);
-    setPlayedCount(0);
-  }, []);
+    setPlayedCount(Math.min(ALREADY_WRITTEN, events.length));
+  }, [events.length]);
 
   useEffect(() => {
     if (!animate) return;
@@ -141,23 +155,23 @@ export function LibretaFeed({ events, now }: { events: LibretaEvent[]; now: Date
     const releaseReservedHeight = () => {
       el.style.minHeight = "";
     };
-    // Normal path: the chapter crossed the threshold — stage the entries in
-    // one by one, ~STEP_MS apart. May fire well after the fallback window if
+    // Normal path: the chapter crossed the threshold — stage the entries
+    // after the already-written ones in, one by one, ~STEP_MS apart; the first
+    // one STEP_MS after the threshold, so the opened libreta reads first. May fire well after the fallback window if
     // the visitor simply hasn't scrolled there yet — that is expected, not a
     // failure the fallback needs to catch.
     const playStaggered = () => {
       if (played) return;
       played = true;
-      for (let i = 0; i < events.length; i++) {
+      const toAdd = events.length - ALREADY_WRITTEN;
+      for (let k = 1; k <= toAdd; k++) {
         timers.push(
           window.setTimeout(() => {
-            setPlayedCount((c) => Math.max(c, i + 1));
-          }, i * STEP_MS),
+            setPlayedCount((c) => Math.max(c, ALREADY_WRITTEN + k));
+          }, k * STEP_MS),
         );
       }
-      timers.push(
-        window.setTimeout(releaseReservedHeight, (events.length - 1) * STEP_MS + ROW_SETTLE_MS),
-      );
+      timers.push(window.setTimeout(releaseReservedHeight, toAdd * STEP_MS + ROW_SETTLE_MS));
     };
     // Fail-open path: the observer itself never reported back at all — show
     // every entry AT ONCE, exactly like RevealManager's own revealAll() (no
@@ -207,12 +221,13 @@ export function LibretaFeed({ events, now }: { events: LibretaEvent[]; now: Date
   return (
     <div className="lp-app-body lp-lib-feed" ref={containerRef}>
       {events.map((e, i) => {
-        // Revealed from the END of the display order: the oldest (last) row
-        // plays first, the newest (first) row plays last.
+        // Revealed from the END of the display order: the oldest (last) rows
+        // are already written, the newest (first) row plays last.
+        const written = i >= events.length - alreadyWritten;
         const played = i >= events.length - playedCount;
         const rowClass = [
           "lp-lib-row",
-          animate && (played ? "lp-lib-row--in" : "lp-lib-row--pending"),
+          animate && !written && (played ? "lp-lib-row--in" : "lp-lib-row--pending"),
         ]
           .filter(Boolean)
           .join(" ");
