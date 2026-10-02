@@ -20,3 +20,16 @@ export function resolvePlayStoreUrl(env: Record<string, string | undefined>): st
     return null;
   }
 }
+
+/**
+ * Whether a `User-Agent` header comes from an Android device.
+ *
+ * Used only to decide how loudly a page offers the Play listing (primary on a
+ * phone that can install it, a quiet line elsewhere) — never to hide it, and
+ * never for anything that matters. A spoofed or frozen UA costs nothing but a
+ * differently-sized badge. Chrome's reduced User-Agent still carries "Android"
+ * on Android, so the plain token test holds.
+ */
+export function isAndroidUserAgent(userAgent: string | null | undefined): boolean {
+  return /\bAndroid\b/i.test(userAgent ?? "");
+}

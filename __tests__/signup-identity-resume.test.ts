@@ -27,7 +27,8 @@
 // also asserts the captured TARGET, and every stay case asserts redirect was
 // never called at all.
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockRedirect } = vi.hoisted(() => ({
   mockRedirect: vi.fn((url: string): never => {
@@ -54,6 +55,16 @@ vi.mock("@/lib/infra/request-cache", () => ({
   getProfileCached: (userId: string) => mockGetProfileCached(userId),
 }));
 
+// The Play Store callout reads the request's User-Agent. `headers()` only
+// exists inside a request, so the unit tests stand in for it.
+const { mockUserAgent } = vi.hoisted(() => ({ mockUserAgent: vi.fn((): string | null => null) }));
+vi.mock("next/headers", () => ({
+  headers: async () => ({
+    get: (name: string) => (name === "user-agent" ? mockUserAgent() : null),
+  }),
+}));
+
+import { PlayStoreCallout } from "@/app/(auth)/registro/PlayStoreCallout";
 import SignupPage from "@/app/(auth)/registro/page";
 
 const EMAIL = "qa-maintainer+cursor-owner2@example.com";
@@ -74,7 +85,13 @@ async function renderPage(searchParams: Record<string, string> = {}) {
   return SignupPage({ searchParams: Promise.resolve(searchParams) });
 }
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 beforeEach(() => {
+  mockUserAgent.mockReset();
+  mockUserAgent.mockReturnValue(null);
   mockRedirect.mockClear();
   mockGetUser.mockReset();
   mockGetProfileCached.mockReset();
@@ -312,6 +329,110 @@ describe("/registro — the app handoff (?from=app), signed out", () => {
 
     expect(text).not.toContain("Ya tenés cuenta en miMAR");
     expect(text).toContain("Completá tu perfil");
+  });
+});
+
+// The Android app, offered above the form (PO 2026-10-02). It is gated on the
+// Play listing: until NEXT_PUBLIC_PLAY_STORE_URL resolves the page says nothing
+// about an app at all.
+describe("/registro — the Play Store callout", () => {
+  const PLAY_URL = "https://play.google.com/store/apps/details?id=ar.mimar.app";
+  const ANDROID_UA =
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
+  const DESKTOP_UA =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+  const IPHONE_UA =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+
+  async function html(): Promise<string> {
+    return renderToStaticMarkup(await PlayStoreCallout());
+  }
+
+  function componentName(n: Node): string | undefined {
+    return typeof n.type === "function" ? (n.type as { name?: string }).name : undefined;
+  }
+
+  function hasCallout(tree: unknown): boolean {
+    let found = false;
+    walk(tree, (n) => {
+      if (componentName(n) === "PlayStoreCallout") found = true;
+    });
+    return found;
+  }
+
+  it("renders nothing while the listing is not published", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PLAY_STORE_URL", "");
+    mockUserAgent.mockReturnValue(ANDROID_UA);
+
+    expect(await PlayStoreCallout()).toBeNull();
+    expect(await html()).toBe("");
+  });
+
+  it("renders nothing for a value that is not a Play URL", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PLAY_STORE_URL", "https://example.com/app");
+
+    expect(await html()).toBe("");
+  });
+
+  it("renders the title, the line and a real link to the listing once it is set", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PLAY_STORE_URL", PLAY_URL);
+    mockUserAgent.mockReturnValue(DESKTOP_UA);
+
+    const out = await html();
+
+    expect(out).toContain("¿Lo vas a usar en el celular?");
+    expect(out).toContain("Bajá la app de miMAR para Android.");
+    expect(out).toContain(`href="${PLAY_URL}"`);
+    expect(out).toContain('alt="Disponible en Google Play"');
+    // The image is INSIDE the anchor: the link's accessible name is the alt text.
+    expect(out).toMatch(/<a [^>]*>\s*<img [^>]*alt="Disponible en Google Play"/);
+  });
+
+  it("is the prominent card on an Android phone", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PLAY_STORE_URL", PLAY_URL);
+    mockUserAgent.mockReturnValue(ANDROID_UA);
+
+    expect(await html()).toContain('data-variant="android"');
+  });
+
+  it("is a compact secondary line on desktop, on iOS and with no User-Agent", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PLAY_STORE_URL", PLAY_URL);
+
+    for (const ua of [DESKTOP_UA, IPHONE_UA, null]) {
+      mockUserAgent.mockReturnValue(ua);
+      expect(await html()).toContain('data-variant="compact"');
+    }
+  });
+
+  it("sits above the signup form on the default face and on an intent face", async () => {
+    anonymous();
+
+    const faces: Record<string, string>[] = [
+      {},
+      { intent: "apply", returnTo: "/adoptar/DIM-X/postular" },
+    ];
+    for (const params of faces) {
+      const tree = await renderPage(params);
+      expect(hasCallout(tree)).toBe(true);
+      let index = 0;
+      let calloutAt = -1;
+      let formAt = -1;
+      walk(tree, (n) => {
+        const position = index++;
+        if (componentName(n) === "PlayStoreCallout") calloutAt = position;
+        if (componentName(n) === "SignupForm" && formAt === -1) formAt = position;
+      });
+      expect(calloutAt).toBeGreaterThanOrEqual(0);
+      expect(calloutAt).toBeLessThan(formAt);
+    }
+  });
+
+  it("is left off the two mid-registration faces", async () => {
+    anonymous();
+    expect(hasCallout(await renderPage({ from: "app" }))).toBe(false);
+
+    authenticatedWith(PROVISIONAL);
+    expect(hasCallout(await renderPage())).toBe(false);
   });
 });
 

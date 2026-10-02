@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { CAPABILITIES, QUESTIONS, faqs, pilotSteps } from "@/app/municipios/content";
-import { resolvePlayStoreUrl } from "@/lib/ui/play-store";
+import { isAndroidUserAgent, resolvePlayStoreUrl } from "@/lib/ui/play-store";
 
 const PLAY = "https://play.google.com/store/apps/details?id=ar.com.mimar";
 
@@ -42,6 +42,23 @@ describe("resolvePlayStoreUrl", () => {
 
   it("returns the listing when it is a Play URL", () => {
     expect(resolvePlayStoreUrl({ NEXT_PUBLIC_PLAY_STORE_URL: ` ${PLAY} ` })).toBe(PLAY);
+  });
+
+  it("recognises an Android User-Agent and nothing else", () => {
+    expect(
+      isAndroidUserAgent(
+        "Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/130.0.0.0 Mobile Safari/537.36",
+      ),
+    ).toBe(true);
+    expect(isAndroidUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130.0.0.0")).toBe(
+      false,
+    );
+    expect(isAndroidUserAgent("Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X)")).toBe(
+      false,
+    );
+    expect(isAndroidUserAgent("")).toBe(false);
+    expect(isAndroidUserAgent(null)).toBe(false);
+    expect(isAndroidUserAgent(undefined)).toBe(false);
   });
 });
 

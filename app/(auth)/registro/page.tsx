@@ -5,6 +5,7 @@ import { safeReturnTo } from "@/lib/infra/role-landing";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { PlayStoreCallout } from "./PlayStoreCallout";
 import { SignupForm } from "./SignupForm";
 
 // `intent=apply` + `returnTo=/adoptar/{token}/postular` come from the
@@ -187,6 +188,11 @@ export default async function SignupPage({
             {copy.subcopy}
           </p>
         </div>
+        {/* The Android app, offered above the form once it is published (renders
+            nothing until NEXT_PUBLIC_PLAY_STORE_URL resolves). Left out of the
+            two mid-registration faces: someone finishing step 2, or sent here
+            by the app itself, already has the app. */}
+        {!identityPending && !appHandoff && <PlayStoreCallout />}
         {/* THE LOGIN DOOR FIRST, AND THE SIGNUP FORM SECOND (native QA batch 2,
             D6). Somebody who got here from the app HAS an account: the app sent
             them precisely because the server answered `profilePending: true` for
