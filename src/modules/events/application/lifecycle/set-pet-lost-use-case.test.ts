@@ -341,6 +341,34 @@ describe("setPetLostWriter", () => {
       });
     });
 
+    it("a homonym home (San Pedro, Córdoba) alerts by the home's row, not the shared name", async () => {
+      // Nobody said where: the case falls back to the home pair WITH its row,
+      // and the alert follows the case. On the name path the organisations of
+      // both San Pedros would be alerted for one town's lost dog.
+      const repo = makeRepo();
+      await setPetLostWriter(
+        {
+          ...baseParams,
+          petJurisdictionProvince: "Córdoba",
+          petJurisdictionLocality: "San Pedro",
+          petJurisdictionLocalityId: "loc-san-pedro-a",
+        } as typeof baseParams,
+        {
+          repo: repo as unknown as Pick<
+            EventsRepository,
+            "insertEvent" | "updatePetLostProjection" | "insertIdentification"
+          >,
+          transaction: makeTransaction(),
+          broadcastLostPet: mockBroadcastLostPet,
+        },
+      );
+      expect(mockBroadcastLostPet.mock.calls.at(-1)?.[3]).toEqual({
+        province: "Córdoba",
+        locality: "San Pedro",
+        localityId: "loc-san-pedro-a",
+      });
+    });
+
     // localidades-por-id A8: the status_changed event keeps where it was lost,
     // as entered and as resolved — the case's pair alone says neither.
     it("keeps the incident's place on the status_changed payload", async () => {

@@ -502,8 +502,10 @@ export async function reportBiteFromOrg(
     const authorityIds = await findAuthoritiesForJurisdiction({
       province: caseProvince ?? "",
       locality: caseLocality ?? "",
-      // Same rule as report-bite.ts (localidades-por-id D3).
-      ...incidentPlaceId,
+      // Same rule as report-bite.ts (localidades-por-id D3): the row the CASE
+      // carries — on the home fallback the pet's home row, so a homonym's
+      // authority is never paged; only a home with no row keeps the name path.
+      ...(usesEventPlace ? incidentPlaceId : pet.localityId ? { localityId: pet.localityId } : {}),
     });
     for (const authorityId of authorityIds) {
       pendingNotifications.push({

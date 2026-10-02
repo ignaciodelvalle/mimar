@@ -372,10 +372,11 @@ export async function reportBite(input: ReportBiteInput, deps: Deps): Promise<Re
     const authorityIds = await findAuthoritiesForJurisdiction({
       province: caseProvince ?? "",
       locality: caseLocality ?? "",
-      // The incident's catalogue row, or null when the incident place did not
-      // resolve (localidades-por-id D3). A case that took the pet's home pair
-      // passes nothing and keeps the name path: that pair's id is the pet's,
-      // not read here.
+      // The row the CASE carries (localidades-por-id D3), so the page goes
+      // where the case is filed: the incident's row, or null when the incident
+      // place did not resolve; on the home fallback, the pet's home row. Only a
+      // home with no row keeps the name path — on the name path a homonym
+      // (San Pedro, dept A vs dept B) would page both towns' authorities.
       ...(usesEventPlace
         ? {
             localityId:
@@ -383,7 +384,9 @@ export async function reportBite(input: ReportBiteInput, deps: Deps): Promise<Re
                 ? (input.eventLocalityId ?? null)
                 : null,
           }
-        : {}),
+        : pet.localityId
+          ? { localityId: pet.localityId }
+          : {}),
     });
     for (const authorityId of authorityIds) {
       pendingNotifications.push({

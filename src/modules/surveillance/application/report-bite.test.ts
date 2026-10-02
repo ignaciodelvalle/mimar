@@ -253,6 +253,34 @@ describe("reportBite — authority fan-out", () => {
     });
   });
 
+  it("a homonym home (San Pedro, Córdoba) pages by the home's row, not the shared name", async () => {
+    // No incident place: the case falls back to the home pair WITH its row,
+    // and the page must follow the case. On the name path both San Pedros'
+    // authorities would be paged for one town's bite.
+    const deps = makeDeps();
+    await reportBite(
+      {
+        ...BASE_INPUT,
+        pet: {
+          ...BASE_INPUT.pet,
+          jurisdictionProvince: "Córdoba",
+          jurisdictionLocality: "San Pedro",
+          localityId: "loc-san-pedro-a",
+        },
+      },
+      deps,
+    );
+    expect(deps.openCase).toHaveBeenCalledWith(
+      expect.objectContaining({ localityId: "loc-san-pedro-a" }),
+      "fake-tx",
+    );
+    expect(deps.findAuthoritiesForJurisdiction).toHaveBeenCalledWith({
+      province: "Córdoba",
+      locality: "San Pedro",
+      localityId: "loc-san-pedro-a",
+    });
+  });
+
   it("includes authority notifications when authorities found (severity=warning for minor)", async () => {
     const deps = makeDeps();
     deps.findAuthoritiesForJurisdiction = vi.fn().mockResolvedValue(["auth-user-1"]);

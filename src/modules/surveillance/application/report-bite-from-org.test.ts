@@ -443,6 +443,27 @@ describe("reportBiteFromOrg — incident jurisdiction overrides pet home jurisdi
     });
   });
 
+  it("a homonym home (San Pedro, Córdoba) pages by the home's row, not the shared name", async () => {
+    const deps = makeDeps();
+    await reportBiteFromOrg(
+      {
+        ...BASE_INPUT,
+        pet: {
+          ...BASE_INPUT.pet,
+          jurisdictionProvince: "Córdoba",
+          jurisdictionLocality: "San Pedro",
+          localityId: "loc-san-pedro-a",
+        },
+      },
+      deps,
+    );
+    expect(deps.findAuthoritiesForJurisdiction).toHaveBeenLastCalledWith({
+      province: "Córdoba",
+      locality: "San Pedro",
+      localityId: "loc-san-pedro-a",
+    });
+  });
+
   // T1-G2 (localidad plan L2·1): the resolved incident locality id rides onto
   // the case — only when the case routes to the incident locality.
   it("stamps the resolved incident locality id on the case, and none on a home fallback", async () => {

@@ -495,13 +495,15 @@ export async function setPetLostWriter(
         // Falls back on its own: when nobody said where, `caseProvince` IS the
         // pet's pair, so this reads exactly as it did before.
         //
-        // The incident's catalogue row rides along (localidades-por-id D5) only
-        // when the case took the incident place; the pet-home fallback passes
-        // none and keeps the name path.
+        // The case's catalogue row rides along (localidades-por-id D5): the
+        // incident's when the case took the incident place (null = unresolved),
+        // the home's when it fell back to the home pair and the home has one.
+        // Only a home with no row keeps the name path — on the name path a
+        // homonym (San Pedro, dept A vs dept B) would alert both towns.
         {
           province: caseProvince,
           locality: caseLocality,
-          ...(hasEventJurisdiction ? { localityId: caseLocalityId ?? null } : {}),
+          ...(hasEventJurisdiction || caseLocalityId ? { localityId: caseLocalityId ?? null } : {}),
         },
         { episodeKey: episodeCaseId },
       );
