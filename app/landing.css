@@ -820,43 +820,100 @@
 .lp .lp-hcard {
   pointer-events: auto;
 }
-/* Thickness: five plain layers stacked behind the card, a fifth of
-   --lp-hcard-depth apart. A real carnet is ~1% of its width thick (3.5px
-   here); 8px exaggerates it just enough that a 10° lean shows a rim and the
-   edge-on moment of the flip shows a slab instead of vanishing. The stack
-   shades from the paper line by the face to a darker core at the back, so
-   even a 1px sliver reads as an edge against the paper. Flat-on, the
+/* Thickness: five layers stacked behind the card, a fifth of --lp-hcard-depth
+   apart. A real carnet is ~1% of its width thick (3.5px here); 8px
+   exaggerates it just enough that the turn shows a slab instead of a
+   hairline. The edge is DESIGNED, not an extrusion (PO 2026-10-02, v2): it
+   reads like the core of a printed card — paper laminate at both faces, the
+   band's navy for the core, and one celeste stripe through the middle — so
+   the colour that shows mid-turn is the brand's, never a grey. Flat-on, the
    perspective draws each layer a hair smaller than the card: none of them
    peeks out at rest. */
 .lp .lp-hcard-slab {
   --lp-hcard-depth: 8px;
-  /* The edge-on turn (LandingHero's flip writes the transform). */
-  transition: transform var(--motion-slow) var(--ease-standard);
+  /* The turn pivots on the slab's MIDDLE, like a real card, so the face that
+     arrives at the far edge lands exactly where the departing one left: the
+     edge stack keeps one footprint through the face swap. */
+  transform-origin: 50% 50% calc(var(--lp-hcard-depth) * -0.5);
 }
 .lp .lp-hcard-edge {
   position: absolute;
   inset: 0;
   border-radius: var(--radius-card);
-  background: var(--color-ln-line);
+  background: var(--color-ln-azul-900);
   pointer-events: none;
 }
 .lp .lp-hcard-edge:nth-child(1) {
   transform: translateZ(calc(var(--lp-hcard-depth) * -0.2));
+  background: var(--color-ln-paper);
 }
 .lp .lp-hcard-edge:nth-child(2) {
   transform: translateZ(calc(var(--lp-hcard-depth) * -0.4));
 }
 .lp .lp-hcard-edge:nth-child(3) {
   transform: translateZ(calc(var(--lp-hcard-depth) * -0.6));
-  background: var(--color-ln-line-strong);
+  background: var(--color-ln-celeste);
 }
 .lp .lp-hcard-edge:nth-child(4) {
   transform: translateZ(calc(var(--lp-hcard-depth) * -0.8));
-  background: var(--color-ln-line-strong);
 }
 .lp .lp-hcard-edge:nth-child(5) {
   transform: translateZ(calc(var(--lp-hcard-depth) * -1));
-  background: color-mix(in srgb, var(--color-ln-line-strong) 70%, var(--color-ln-ink));
+  background: var(--color-ln-paper-2);
+}
+/* The lifted card's deeper shadow, behind the whole stack. A LEAF of the 3D
+   chain (no children), so its opacity flattens nothing. */
+.lp .lp-hcard-lift {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-lg);
+  transform: translate3d(0, 8px, calc(var(--lp-hcard-depth) * -1.1));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-deliberate) var(--ease-editorial);
+}
+/* The half-turn (LandingHero's flip sets data-turn and data-dir; the face
+   swaps between the two halves). "out" accelerates from flat into the edge;
+   "in" leaves the far edge at the same speed and lands, carrying a few
+   degrees past flat before it settles — the momentum of a real flick. Front
+   → back turns one way (fwd), back → front the other (rev). */
+.lp .lp-hcard-slab[data-turn] {
+  --lp-turn: 1;
+}
+.lp .lp-hcard-slab[data-dir="rev"] {
+  --lp-turn: -1;
+}
+.lp .lp-hcard-slab[data-turn="out"] {
+  /* Slow start, fastest at the edge (the curve ends steep). */
+  animation: lp-hcard-turn-out calc(var(--motion-slow) * 0.9) cubic-bezier(0.55, 0, 0.85, 0.36)
+    forwards;
+}
+.lp .lp-hcard-slab[data-turn="in"] {
+  animation: lp-hcard-turn-in calc(var(--motion-deliberate) * 0.75) linear forwards;
+}
+@keyframes lp-hcard-turn-out {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(calc(90deg * var(--lp-turn)));
+  }
+}
+@keyframes lp-hcard-turn-in {
+  0% {
+    transform: rotateY(calc(-90deg * var(--lp-turn)));
+    /* Leaves the edge at the speed "out" arrived with, then brakes. */
+    animation-timing-function: cubic-bezier(0.16, 0.62, 0.4, 1);
+  }
+  64% {
+    /* The overshoot: past flat (past 180° of the whole turn), a few degrees. */
+    transform: rotateY(calc(3.5deg * var(--lp-turn)));
+    animation-timing-function: cubic-bezier(0.45, 0, 0.4, 1);
+  }
+  100% {
+    transform: rotateY(0deg);
+  }
 }
 /* The soft shadow the card casts on the paper. Absolutely positioned under
    the wrap, so it never takes layout room (no CLS) and stays inside the
@@ -881,23 +938,54 @@
    every other landing motion, so no-JS and reduced motion never start it. */
 @media (prefers-reduced-motion: no-preference) {
   .lp.lp-motion .lp-hcardwrap[data-alive="true"] .lp-hcard-float {
-    animation: lp-hcard-peek calc(var(--motion-slow) * 3) var(--ease-standard)
-      var(--motion-deliberate), lp-hcard-float calc(var(--motion-ambient) * 4) ease-in-out 2;
+    animation: lp-hcard-peek calc(var(--motion-slow) * 4) linear var(--motion-deliberate),
+      lp-hcard-float calc(var(--motion-ambient) * 4) ease-in-out 2;
   }
   .lp.lp-motion .lp-hcardwrap[data-alive="true"] .lp-hcard-ground {
     animation: lp-hcard-ground calc(var(--motion-ambient) * 4) ease-in-out 2;
   }
 }
+/* Hover, desktop only: the card lifts a few pixels off the paper and its
+   shadow deepens (translate + opacity; the tilt layer's `transform` stays the
+   pointer's). The wrap keeps its own box, so the hover holds while the card
+   is edge-on mid-turn. */
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .lp.lp-motion .lp-hcard-tilt {
+    transition: translate var(--motion-deliberate) var(--ease-editorial);
+  }
+  .lp.lp-motion .lp-hcardwrap:hover .lp-hcard-tilt {
+    translate: 0 -4px;
+  }
+  .lp.lp-motion .lp-hcardwrap:hover .lp-hcard-lift {
+    opacity: 1;
+  }
+  .lp.lp-motion .lp-hcard-ground {
+    transition: scale var(--motion-deliberate) var(--ease-editorial);
+  }
+  .lp.lp-motion .lp-hcardwrap:hover .lp-hcard-ground {
+    scale: 0.94;
+  }
+}
 /* `rotate` and `translate`, the individual transform properties, so the hint
    and the float share one element without either overwriting the other's
-   `transform`. */
+   `transform`. The hint has the turn's own physics (v2): it eases out of rest,
+   swings, and on the way back carries a couple of degrees past flat before it
+   settles — a nudge with weight, not a wobble. */
 @keyframes lp-hcard-peek {
-  0%,
+  0% {
+    rotate: y 0deg;
+    animation-timing-function: cubic-bezier(0.45, 0, 0.3, 1);
+  }
+  38% {
+    rotate: y 18deg;
+    animation-timing-function: cubic-bezier(0.5, 0, 0.3, 1);
+  }
+  78% {
+    rotate: y -2deg;
+    animation-timing-function: cubic-bezier(0.45, 0, 0.4, 1);
+  }
   100% {
     rotate: y 0deg;
-  }
-  45% {
-    rotate: y 18deg;
   }
 }
 @keyframes lp-hcard-float {
@@ -973,28 +1061,49 @@
   pointer-events: auto;
 }
 
+/* ---- the security hatch (PO 2026-10-02, v2) --------------------------------
+   A very fine diagonal hatch (╲) in the brand blue, printed under everything
+   on both faces: almost invisible until you look, the way the fine print of a
+   real card is. Deliberately NOT a hologram, a sheen or a seal — miMAR is not
+   an official document and must not borrow one's cues. Pure CSS: a repeating
+   gradient whose stripes run perpendicular to its 45° axis. It shows on the
+   white of the face; the band, the state row and the MRZ paint over it.
+   It is its own layer so the parallax can slide it (--lp-sec-x/-y, written
+   by LandingHero's tilt loop, away from the pointer); the 4px overscan keeps
+   its edge out of sight at full slide. Both faces are positioned so the hatch
+   sits under their content, which is lifted above it below. */
+.lp .lp-hcard-front,
+.lp .lp-hcard-back {
+  position: relative;
+}
+.lp .lp-hcard-front > :not(.lp-hcard-sec),
+.lp .lp-hcard-back > :not(.lp-hcard-sec) {
+  position: relative;
+}
+.lp .lp-hcard-sec {
+  position: absolute;
+  inset: -4px;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--color-ln-azul) 6%, transparent) 0 1px,
+    transparent 1px 5px
+  );
+  translate: var(--lp-sec-x, 0px) var(--lp-sec-y, 0px);
+}
+
 /* ---- band: the document's guilloche head ---------------------------------
    Same construction as the owner app's .ln-band (hairline diagonals over an
    azul-900 → azul → celeste sweep), plus a rosette of fine concentric rings at
    the right edge — the security-print motif, drawn in CSS, no image. The band
    does NOT change colour with the state: the document is the same document
-   whatever happens to the pet. The state lives in the seal, the strip under
-   the band, the photo ring and the one state row. */
+   whatever happens to the pet. The state lives in the strip under the band,
+   the photo ring and the one state row. */
 .lp .lp-hcard-band {
   position: relative;
-  /* Two rows: issuing line + turn button, then the seal on its own row at the
-     right. The seal is as wide as its state (AL DÍA … EN OBSERVACIÓN), and
-     sharing a row with the issuing line it overlapped it at phone widths;
-     alone on its row it can change width through the cycle without moving
-     anything else. */
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 10px;
-  row-gap: 6px;
-  align-items: start;
   /* Bottom padding is the room the photo and QR rise into (.lp-hcard-body's
      negative margin); change one, change the other. */
-  padding: 12px 14px 52px 16px;
+  padding: 10px 12px 50px 16px;
   background: repeating-radial-gradient(
       circle at 108% 130%,
       color-mix(in srgb, var(--color-ln-card) 16%, transparent) 0 1px,
@@ -1012,77 +1121,93 @@
       var(--color-ln-celeste)
     );
 }
+/* The issuer line, both faces (PO 2026-10-02, v2): issuer left, document type
+   centred, the turn control right — small, letter-spaced, one quiet ink, so it
+   reads as printing ON the band rather than a title over it. The 1fr / auto /
+   1fr columns keep the document type on the card's true centre whatever the
+   issuer's width.
+   Ink: celeste-100 at 82% over the band. Measured against the band's sweep
+   where the centred label sits (≈#0d518a): 5.2:1, AA for small text; the
+   issuer, over the darker azul-900 end, sits higher. Quiet by size, weight and
+   tracking — not by failing contrast. */
+.lp .lp-hcard-head {
+  --lp-head-ink: color-mix(in srgb, var(--color-ln-celeste-100) 82%, transparent);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  min-height: 24px;
+  color: var(--lp-head-ink);
+}
 .lp .lp-hcard-issuer {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 6px;
   min-width: 0;
 }
-/* The mark on a paper tile — the masthead's recipe (AppCitizenMasthead): the
-   asset paints brand blue and an <img> cannot recolour it, so it sits on paper
-   instead of vanishing into the navy. */
+/* The real small-size cut of the mark (public/logo-mimar-mark-small.svg — the
+   ≤24px drawing, not the main mark scaled down), used as a mask so it prints
+   in the band's own ink like the rest of the line. The asset is monochrome by
+   design (one path, currentColor), so this recolours nothing it was not
+   drawn to take. */
 .lp .lp-hcard-mark {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
-  border-radius: var(--radius-md);
-  background: var(--color-ln-paper);
+  background: currentColor;
+  -webkit-mask: url("/logo-mimar-mark-small.svg") center / contain no-repeat;
+  mask: url("/logo-mimar-mark-small.svg") center / contain no-repeat;
 }
 .lp .lp-hcard-issuer-name {
-  display: block;
-  font-family: var(--font-ln-serif);
+  font-family: var(--font-ln-sans);
   font-weight: 600;
-  font-size: var(--text-md);
-  line-height: 1.15;
-  color: var(--color-ln-card);
-}
-/* celeste-100 on the band's dark end, not white at an opacity: the masthead's
-   own measurement (~10:1 on azul-900). The line sits over the left, darkest
-   part of the sweep at every card width. */
-.lp .lp-hcard-issuer-sub {
-  display: block;
-  margin-top: 1px;
-  font-family: var(--font-ln-mono);
-  font-size: var(--text-xs);
-  letter-spacing: 0.06em;
-  color: var(--color-ln-celeste-100);
+  font-size: var(--text-sm);
+  line-height: 1;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
-/* A layout-only wrapper (turn button in source order); its children are
-   placed on the band grid directly. Used to also carry the status seal
-   (removed, PO 2026-09-25 — see .lp-hcard-front's data-tone="lost" background
-   further down for its replacement). */
+.lp .lp-hcard-doctype {
+  font-family: var(--font-ln-mono);
+  font-size: var(--text-xs);
+  line-height: 1;
+  letter-spacing: 0.22em;
+  /* The tracking pads the last letter too; this pulls the label back onto
+     the centre. */
+  margin-right: -0.22em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+/* A layout-only wrapper (turn button in source order). Used to also carry the
+   status seal (removed, PO 2026-09-25 — see .lp-hcard-front's data-tone="lost"
+   background further down for its replacement). */
 .lp .lp-hcard-trim-r {
-  display: contents;
+  display: flex;
+  justify-content: flex-end;
 }
-.lp .lp-hcard-band .lp-hcard-flip {
-  grid-row: 1;
-  grid-column: 2;
-}
+/* The turn control: a quiet ring in the line's own ink, 22px visual. */
 .lp .lp-hcard-flip {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   position: relative;
   flex-shrink: 0;
   border-radius: 50%;
-  border: 1.5px solid color-mix(in srgb, var(--color-ln-card) 55%, transparent);
-  background: color-mix(in srgb, var(--color-ln-card) 22%, transparent);
-  color: var(--color-ln-card);
-  font-size: var(--text-md);
+  border: 1px solid color-mix(in srgb, var(--color-ln-celeste-100) 45%, transparent);
+  background: transparent;
+  color: var(--lp-head-ink, var(--color-ln-celeste-100));
+  font-size: var(--text-sm);
   line-height: 1;
   cursor: pointer;
   display: grid;
   place-items: center;
   padding: 0;
   transition: transform var(--motion-base), background var(--motion-base), border-color
-    var(--motion-base);
+    var(--motion-base), color var(--motion-base);
 }
 @media (hover: hover) {
   .lp .lp-hcard-flip:hover {
-    background: color-mix(in srgb, var(--color-ln-card) 34%, transparent);
-    border-color: var(--color-ln-card);
+    background: color-mix(in srgb, var(--color-ln-card) 14%, transparent);
+    border-color: var(--color-ln-celeste-100);
+    color: var(--color-ln-card);
     transform: rotate(180deg);
   }
 }
@@ -1090,15 +1215,15 @@
   outline: 2px solid var(--color-ln-card);
   outline-offset: 2px;
 }
-/* Hit-area extension (critique 2026-07-27, A2): the flip trigger measured
-   26×26 — under the 44px touch floor on the control that turns the whole
-   credential. The visual stays 26px; the invisible ::after pads the target to
-   44×44 (26 + 9 + 9). Nothing interactive sits within 9px of it — the badge
-   beside it is read-only — so the bigger target can't shadow a neighbor. */
+/* Hit-area extension (critique 2026-07-27, A2): the flip trigger's visual is
+   22×22 — under the 44px touch floor on the control that turns the whole
+   credential. The invisible ::after pads the target to 44×44 (22 + 11 + 11).
+   Nothing interactive sits within 11px of it — the document-type label beside
+   it is read-only — so the bigger target can't shadow a neighbor. */
 .lp .lp-hcard-flip::after {
   content: "";
   position: absolute;
-  inset: -9px;
+  inset: -11px;
   border-radius: 50%;
 }
 
@@ -1148,8 +1273,15 @@
   outline: 2px solid var(--htone, var(--color-ln-ok));
   transition: outline-color var(--motion-deliberate);
 }
+/* The photo sits a hair ABOVE the card's surface: under the pointer it slides
+   up to 3px inside its window, toward the pointer (--lp-photo-x/-y, written by
+   LandingHero's tilt loop). The 1.08 scale is the slack that slide needs
+   (96 × 0.08 / 2 ≈ 3.8px a side), so the window never shows an edge; it is
+   static, the same with or without JS. */
 .lp .lp-hcard-photo img {
   object-fit: cover;
+  scale: 1.08;
+  translate: var(--lp-photo-x, 0px) var(--lp-photo-y, 0px);
 }
 .lp .lp-hcard-id {
   min-width: 0;
@@ -1300,11 +1432,9 @@
 /* back — the mini libreta: the same band, shorter, so the two faces read as
    two sides of one document. */
 .lp .lp-hcard-libhead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 12px 14px 12px 16px;
+  /* The front band's issuer line (.lp-hcard-head), on a band with no room
+     for the photo to rise into: same padding top and sides as the front. */
+  padding: 10px 12px 10px 16px;
   background: repeating-linear-gradient(
       135deg,
       color-mix(in srgb, var(--color-ln-card) 12%, transparent) 0 1px,
@@ -1317,16 +1447,28 @@
       var(--color-ln-celeste)
     );
 }
-.lp .lp-hcard-libhead b {
+/* Whose libreta this is: the name the front prints, and its token. */
+.lp .lp-hcard-libmeta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--color-ln-line);
+}
+.lp .lp-hcard-libname {
   font-family: var(--font-ln-serif);
   font-weight: 600;
-  font-size: var(--text-md);
-  color: var(--color-ln-card);
+  font-size: var(--text-lg);
+  line-height: 1.1;
+  color: var(--color-ln-ink);
 }
-.lp .lp-hcard-libmeta {
+.lp .lp-hcard-libtoken {
   font-family: var(--font-ln-mono);
   font-size: var(--text-xs);
-  color: var(--color-ln-celeste-100);
+  letter-spacing: 0.04em;
+  color: var(--color-ln-ink-2);
+  white-space: nowrap;
 }
 .lp .lp-hcard-librow {
   display: flex;
@@ -1427,8 +1569,10 @@
 @media (prefers-reduced-motion: reduce) {
   .lp .lp-hcard,
   .lp .lp-hcard-slab,
+  .lp .lp-hcard-slab[data-turn],
   .lp .lp-hcard-float,
   .lp .lp-hcard-ground,
+  .lp .lp-hcard-lift,
   .lp .lp-hcard-front,
   .lp .lp-hcard-tone,
   .lp .lp-hcard-photo,

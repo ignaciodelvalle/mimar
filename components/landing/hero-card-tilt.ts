@@ -1,23 +1,46 @@
-// Pointer-tilt math for the landing hero's "credencial viva" card.
+// Pointer-tilt and parallax math for the landing hero's "credencial viva" card.
 //
 // Pure on purpose: the component only records the pointer and paints, so the
-// one rule that must never drift — the HARD cap on how far the card leans —
-// lives here where a unit test can pin it without a browser.
+// rules that must never drift — the HARD cap on how far the card leans and how
+// far its inner layers may slide — live here where a unit test can pin them
+// without a browser.
 
 /** The furthest the card may lean toward the pointer, in degrees, on ANY axis
  *  combination. Corners are capped too: without the radial clamp below, a
- *  pointer in a corner would lean the card max * sqrt(2) ≈ 14°. */
-export const HERO_TILT_MAX_DEG = 10;
+ *  pointer in a corner would lean the card max * sqrt(2).
+ *
+ *  1.5° (PO 2026-10-02, v2): the card itself barely moves; the depth comes from
+ *  the layers INSIDE it sliding at different rates (see heroParallax). v1 used
+ *  10°, which read as the whole card swinging rather than a held object. */
+export const HERO_TILT_MAX_DEG = 1.5;
 
-/** Exponential smoothing time constant for the tilt, in milliseconds. ~90ms
- *  follows the hand without lag and without the jitter of a raw 1:1 map. */
-export const HERO_TILT_SMOOTHING_MS = 90;
+/** Exponential smoothing time constant for the tilt, in milliseconds. A touch
+ *  slower than a raw follow so the card answers the hand with some weight,
+ *  without lag and without the jitter of a 1:1 map. */
+export const HERO_TILT_SMOOTHING_MS = 120;
+
+/** How far the pet photo slides inside its window at full lean, in px. It sits
+ *  ABOVE the card's surface, so it moves TOWARD the pointer. */
+export const HERO_PARALLAX_PHOTO_PX = 3;
+
+/** How far the security hatch slides at full lean, in px. It sits UNDER the
+ *  surface, so it moves AWAY from the pointer, at half the photo's rate. */
+export const HERO_PARALLAX_PATTERN_PX = 1.5;
 
 export type HeroTilt = {
   /** rotateX in degrees (CSS): positive brings the BOTTOM edge toward the viewer. */
   rx: number;
   /** rotateY in degrees (CSS): positive sends the RIGHT edge away from the viewer. */
   ry: number;
+};
+
+export type HeroOffset = { x: number; y: number };
+
+export type HeroParallax = {
+  /** Photo offset in px (toward the pointer). */
+  photo: HeroOffset;
+  /** Security-hatch offset in px (away from the pointer). */
+  pattern: HeroOffset;
 };
 
 function clampUnit(n: number): number {
@@ -74,5 +97,32 @@ export function smoothTilt(
   return {
     rx: current.rx + (target.rx - current.rx) * alpha,
     ry: current.ry + (target.ry - current.ry) * alpha,
+  };
+}
+
+/**
+ * The inner layers' offsets for a given (smoothed) tilt — the parallax stack.
+ *
+ * Derived from the tilt rather than from the pointer, so the layers ride the
+ * SAME smoothed value the card does and settle with it: one motion seen at
+ * three depths, never three motions. The lean is normalised by `max` and
+ * clamped to the unit disc, so no layer can slide further than its own
+ * constant, whatever tilt it is handed.
+ */
+export function heroParallax(tilt: HeroTilt, max: number = HERO_TILT_MAX_DEG): HeroParallax {
+  if (!(max > 0)) return { photo: { x: 0, y: 0 }, pattern: { x: 0, y: 0 } };
+  // Back to the pointer's direction: +ry means the pointer is right (+x);
+  // -rx means it is below (+y).
+  let nx = Number.isFinite(tilt.ry) ? tilt.ry / max : 0;
+  let ny = Number.isFinite(tilt.rx) ? -tilt.rx / max : 0;
+  const magnitude = Math.hypot(nx, ny);
+  if (magnitude > 1) {
+    nx /= magnitude;
+    ny /= magnitude;
+  }
+  // `+ 0` normalises -0, as in tiltTowardPointer.
+  return {
+    photo: { x: nx * HERO_PARALLAX_PHOTO_PX + 0, y: ny * HERO_PARALLAX_PHOTO_PX + 0 },
+    pattern: { x: -nx * HERO_PARALLAX_PATTERN_PX + 0, y: -ny * HERO_PARALLAX_PATTERN_PX + 0 },
   };
 }

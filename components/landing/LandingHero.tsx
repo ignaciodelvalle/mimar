@@ -42,10 +42,14 @@
 // and just shows that state — no auto-resume; once a person has taken the
 // wheel, the card stays wherever they left it.
 //
-// Flip: the card turns edge-on (rotateY → 90°), swaps the visible face, then
-// turns back — the same single-painted-face mechanism the product's FlipCard
-// uses (never two faces in a preserve-3d/backface context; see the FlipCard
-// comment + .ln-doc-turn in globals.css). The back is a mini libreta.
+// Flip: the card turns edge-on (rotateY → 90°), swaps the visible face, and
+// keeps turning the SAME way from the far edge (-90° → 0°) — one continuous
+// half-turn, drawn with the single-painted-face mechanism the product's
+// FlipCard uses (never two faces in a preserve-3d/backface context; see the
+// FlipCard comment + .ln-doc-turn in globals.css). The back is a mini libreta.
+// The two halves are CSS keyframes (app/landing.css, lp-hcard-turn-out/-in)
+// shaped like a real flick (PO 2026-10-02, v2): slow start, fastest at the
+// edge, a slow landing that carries a few degrees past flat and settles.
 //
 // Motion contract: the one-shot cycle and the turn only run when motion is
 // allowed. Under prefers-reduced-motion (or before hydration / no-JS / SSR)
@@ -61,8 +65,12 @@
 //                    itself after two breaths. Both are CSS animations, started
 //                    ONCE, when the card first comes into view (data-alive).
 //   .lp-hcard-tilt   the desktop pointer tilt (`transform`, written per frame)
-//   .lp-hcard-slab   the edge-on flip (`transform`), carrying the card AND the
-//                    stacked edge layers that give it a carnet's thickness
+//                    plus the parallax offsets its children read (custom
+//                    properties written in the same frame) and the hover lift
+//                    (`translate`, CSS :hover)
+//   .lp-hcard-slab   the edge-on flip (`animation` on `transform`), carrying
+//                    the card AND the stacked edge layers that give it a
+//                    carnet's thickness
 // The chain is preserve-3d end to end, so nothing in it may carry a property
 // that flattens 3D (overflow, opacity < 1, filter, clip-path, mask). The
 // card's own overflow clip is fine: it is the LEAF of the chain.
@@ -88,7 +96,12 @@
 // to a Poncho display font.
 
 import { Icon } from "@/components/Icon";
-import { type HeroTilt, smoothTilt, tiltTowardPointer } from "@/components/landing/hero-card-tilt";
+import {
+  type HeroTilt,
+  heroParallax,
+  smoothTilt,
+  tiltTowardPointer,
+} from "@/components/landing/hero-card-tilt";
 import {
   CRISIS_DOORS,
   HERO_CREDENTIAL_FIELDS,
@@ -186,17 +199,19 @@ function capitalize(text: string): string {
 const CYCLE_MS = 2600;
 
 /**
- * The hero card's edge-on turn, in milliseconds.
+ * The two halves of the hero card's turn, in milliseconds.
  *
- * COUPLED TO CSS: the turn itself is `.lp-hcard-slab { transition: transform … }`
- * in app/landing.css, which reads --motion-slow (300ms) after the MOT-1 token
- * migration collapsed its old 0.28s into the motion scale. The flip timers
- * below must fire just BEYOND this — a timer that fires mid-turn swaps the
- * face while it is still visible. A setTimeout cannot read a CSS custom
- * property, so this is a hand-maintained pair: change --motion-slow, change
- * this constant.
+ * COUPLED TO CSS: the halves are the lp-hcard-turn-out / lp-hcard-turn-in
+ * animations on `.lp-hcard-slab[data-turn]` in app/landing.css, timed
+ * `calc(var(--motion-slow) * 0.9)` (300 × 0.9 = 270ms, accelerating into the
+ * edge) and `calc(var(--motion-deliberate) * 0.75)` (600 × 0.75 = 450ms,
+ * landing with the overshoot). The timers below must fire just BEYOND each
+ * half — a timer that fires mid-turn swaps the face while it is still
+ * visible. A setTimeout cannot read a CSS custom property, so these are
+ * hand-maintained pairs: change a token or a factor, change the constant.
  */
-const TURN_MS = 300;
+const TURN_OUT_MS = 270;
+const TURN_IN_MS = 450;
 
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
@@ -219,6 +234,23 @@ const ALIVE_THRESHOLD = 0.6;
 const EDGE_LAYERS = [1, 2, 3, 4, 5] as const;
 
 const FLAT: HeroTilt = { rx: 0, ry: 0 };
+
+/** The parallax offsets the card's layers read, as custom properties on the
+ *  tilt layer (app/landing.css: .lp-hcard-photo img, .lp-hcard-sec). */
+const PARALLAX_VARS = ["--lp-photo-x", "--lp-photo-y", "--lp-sec-x", "--lp-sec-y"] as const;
+
+/** The issuer line both faces print (PO 2026-10-02, v2): the mark and the
+ *  name, small and quiet, the way an issuer reads on a printed card. The mark
+ *  is drawn as a CSS mask of the real small-size cut so it takes the band's
+ *  ink instead of sitting on a paper tile. */
+function IssuerMark() {
+  return (
+    <span className="lp-hcard-issuer">
+      <span className="lp-hcard-mark" aria-hidden="true" />
+      <span className="lp-hcard-issuer-name">miMAR</span>
+    </span>
+  );
+}
 
 /**
  * The credential's flip trigger — one component for both faces so the two
@@ -350,10 +382,19 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
       const settled =
         Math.abs(current.rx - target.rx) < 0.02 && Math.abs(current.ry - target.ry) < 0.02;
       if (settled) current = target;
-      tilt.style.transform =
-        current.rx === 0 && current.ry === 0
-          ? ""
-          : `rotateX(${current.rx.toFixed(2)}deg) rotateY(${current.ry.toFixed(2)}deg)`;
+      if (current.rx === 0 && current.ry === 0) {
+        tilt.style.transform = "";
+        for (const name of PARALLAX_VARS) tilt.style.removeProperty(name);
+      } else {
+        tilt.style.transform = `rotateX(${current.rx.toFixed(3)}deg) rotateY(${current.ry.toFixed(3)}deg)`;
+        // The same smoothed lean, seen at two more depths: the photo rides
+        // above the surface, the security hatch below it.
+        const { photo, pattern } = heroParallax(current);
+        tilt.style.setProperty("--lp-photo-x", `${photo.x.toFixed(2)}px`);
+        tilt.style.setProperty("--lp-photo-y", `${photo.y.toFixed(2)}px`);
+        tilt.style.setProperty("--lp-sec-x", `${pattern.x.toFixed(2)}px`);
+        tilt.style.setProperty("--lp-sec-y", `${pattern.y.toFixed(2)}px`);
+      }
       // Settled on its target: stop. The next pointer event wakes it again,
       // so a still pointer over a still card costs nothing.
       if (settled) {
@@ -385,6 +426,7 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
       wrap.removeEventListener("pointerleave", onLeave);
       if (frame !== 0) window.cancelAnimationFrame(frame);
       tilt.style.transform = "";
+      for (const name of PARALLAX_VARS) tilt.style.removeProperty(name);
     };
   }, []);
 
@@ -402,14 +444,24 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
     [stopCycle],
   );
 
-  // Edge-on flip: turn to 90°, swap the face at the invisible edge, turn back.
-  // Icon-only trigger; both faces carry one. Instant swap under reduced motion.
+  // The face showing, readable from the flip without re-creating it. Only the
+  // flip's own swap changes the face, so the swap keeps this in step.
+  const faceRef = useRef<"front" | "back">("front");
+
+  // Half-turn: accelerate into the edge (data-turn="out"), swap the face at the
+  // invisible edge, land from the far edge with a little overshoot
+  // (data-turn="in"). Front → back turns one way, back → front the other, the
+  // way a hand turns a card over and back. Icon-only trigger; both faces carry
+  // one. Instant swap under reduced motion.
   const flip = useCallback(() => {
     if (flippingRef.current) return;
     flippingRef.current = true;
     stopCycle();
     const el = slabRef.current;
-    const swap = () => setFace((f) => (f === "front" ? "back" : "front"));
+    const swap = () => {
+      faceRef.current = faceRef.current === "front" ? "back" : "front";
+      setFace(faceRef.current);
+    };
     if (!el || prefersReducedMotion()) {
       swap();
       flippingRef.current = false;
@@ -418,16 +470,18 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
     // The pointer tilt settles flat while the card turns, so lean + turn never
     // add up past edge-on (the card's reverse would show, mirrored).
     wakeTiltRef.current?.();
-    el.style.transform = "rotateY(90deg)";
+    el.dataset.dir = faceRef.current === "front" ? "fwd" : "rev";
+    el.dataset.turn = "out";
     const t1 = setTimeout(() => {
       swap();
-      el.style.transform = "rotateY(0deg)";
+      el.dataset.turn = "in";
       const t2 = setTimeout(() => {
+        delete el.dataset.turn;
         flippingRef.current = false;
         wakeTiltRef.current?.();
-      }, TURN_MS + 20);
+      }, TURN_IN_MS + 20);
       flipTimersRef.current.push(t2);
-    }, TURN_MS + 10);
+    }, TURN_OUT_MS + 10);
     flipTimersRef.current.push(t1);
   }, [stopCycle]);
 
@@ -556,13 +610,17 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                 <div className="lp-hcard-float">
                   <div className="lp-hcard-tilt" ref={tiltRef}>
                     <div className="lp-hcard-slab" ref={slabRef}>
-                      {/* The carnet's thickness: plain layers stacked BEHIND
-                          the card in depth. Flat-on they hide behind it;
-                          leaning or turning edge-on, their rims read as the
-                          card's edge. */}
+                      {/* The carnet's thickness: layers stacked BEHIND the card
+                          in depth, coloured like a printed card's core (paper
+                          laminate, navy core, one celeste stripe). Flat-on
+                          they hide behind it; turning edge-on, their rims read
+                          as the card's edge. */}
                       {EDGE_LAYERS.map((n) => (
                         <span key={n} className="lp-hcard-edge" aria-hidden="true" />
                       ))}
+                      {/* The deeper shadow of a card lifted off the paper: it
+                          fades in on hover (opacity only) behind the stack. */}
+                      <span className="lp-hcard-lift" aria-hidden="true" />
                       <div
                         className="lp-hcard"
                         data-section="hero-credential"
@@ -584,36 +642,28 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                       fields the public page prints, the one state row, and
                       miMAR's own machine-readable strip. */}
                         <div className="lp-hcard-front">
+                          {/* The security hatch, printed UNDER everything on the
+                          face (miMAR's own, not a State seal: no hologram, no
+                          iridescence). Its own layer so the parallax can slide
+                          it. */}
+                          <span className="lp-hcard-sec" aria-hidden="true" />
                           <div className="lp-hcard-band">
-                            <span className="lp-hcard-issuer">
-                              {/* The real mark, decorative: the issuing line beside
-                            it is the text. */}
-                              <span className="lp-hcard-mark" aria-hidden="true">
-                                {/* <=24px surface: the small-size cut, not the main
-                              mark scaled down — see public/logo-mimar-mark-small.svg. */}
-                                <img
-                                  src="/logo-mimar-mark-small.svg"
-                                  alt=""
-                                  width={18}
-                                  height={18}
-                                />
-                              </span>
-                              <span>
-                                <span className="lp-hcard-issuer-name">Credencial miMAR</span>
-                                <span className="lp-hcard-issuer-sub">
-                                  Libreta sanitaria · frente
-                                </span>
-                              </span>
-                            </span>
-                            <span className="lp-hcard-trim-r">
-                              {/* The status seal/badge was removed (PO 2026-09-25:
+                            {/* The issuer line (PO 2026-10-02, v2): quiet, small,
+                            letter-spaced — it says who issued the card and then
+                            gets out of the way of the pet. */}
+                            <div className="lp-hcard-head">
+                              <IssuerMark />
+                              <span className="lp-hcard-doctype">Credencial digital</span>
+                              <span className="lp-hcard-trim-r">
+                                {/* The status seal/badge was removed (PO 2026-09-25:
                             "no me gusta el chip"). The state now reads through
                             the card's own background colour (lost) plus the
                             border pulse, photo ring and contextual row that
                             already tinted per state — see the sr-only live
                             region above for the accessible carrier. */}
-                              <FlipButton label="Girar credencial" onFlip={flip} />
-                            </span>
+                                <FlipButton label="Girar credencial" onFlip={flip} />
+                              </span>
+                            </div>
                           </div>
                           {/* The per-state rule under the band — the public card's
                         8px strip recolouring by situation, in miniature. */}
@@ -707,14 +757,21 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
 
                         {/* BACK — the mini libreta sanitaria */}
                         <div className="lp-hcard-back">
+                          <span className="lp-hcard-sec" aria-hidden="true" />
+                          {/* The same quiet issuer line as the front, on a
+                          shorter band: two sides of one document. */}
                           <div className="lp-hcard-libhead">
-                            <b>Libreta sanitaria</b>
-                            <span className="lp-hcard-trim-r">
-                              <span className="lp-hcard-libmeta">
-                                {PAMPA.name} · {displayToken}
+                            <div className="lp-hcard-head">
+                              <IssuerMark />
+                              <span className="lp-hcard-doctype">Libreta sanitaria</span>
+                              <span className="lp-hcard-trim-r">
+                                <FlipButton label="Volver a la credencial" onFlip={flip} />
                               </span>
-                              <FlipButton label="Volver a la credencial" onFlip={flip} />
-                            </span>
+                            </div>
+                          </div>
+                          <div className="lp-hcard-libmeta">
+                            <span className="lp-hcard-libname">{PAMPA.name}</span>
+                            <span className="lp-hcard-libtoken">{displayToken}</span>
                           </div>
 
                           {/* The three newest vet-signed entries of Pampa's

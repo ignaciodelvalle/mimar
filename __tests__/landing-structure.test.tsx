@@ -179,7 +179,12 @@ describe("landing hero — the credential is miMAR's own document", () => {
 
   it("carries the issuing line and the identity fields the public credential prints", () => {
     const html = renderHero();
-    expect(html).toContain("Credencial miMAR");
+    // The quiet issuer line (PO 2026-10-02, v2): miMAR as issuer, the document
+    // type centred; the old serif title and its subtitle are gone.
+    expect(html).toContain('<span class="lp-hcard-issuer-name">miMAR</span>');
+    expect(html).toContain('<span class="lp-hcard-doctype">Credencial digital</span>');
+    expect(html).not.toContain("Credencial miMAR");
+    expect(html).not.toContain("Libreta sanitaria · frente");
     for (const label of ["Raza", "Microchip"]) {
       expect(html, label).toContain(`<dt>${label}</dt>`);
     }
