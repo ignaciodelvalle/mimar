@@ -915,6 +915,38 @@
     transform: rotateY(0deg);
   }
 }
+/* The ↻ turns WITH the card (PO 2026-10-02): same durations, same curves,
+   same overshoot, so icon and card read as one gesture and the tap answers
+   at once. The leaving face's icon spins into the edge; the arriving face's
+   icon lands with the card's few-degree overshoot. */
+.lp .lp-hcard-slab[data-turn="out"] .lp-hcard-flip {
+  animation: lp-hcard-icon-out calc(var(--motion-slow) * 0.9) cubic-bezier(0.55, 0, 0.85, 0.36)
+    forwards;
+}
+.lp .lp-hcard-slab[data-turn="in"] .lp-hcard-flip {
+  animation: lp-hcard-icon-in calc(var(--motion-deliberate) * 0.75) linear forwards;
+}
+@keyframes lp-hcard-icon-out {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(calc(90deg * var(--lp-turn)));
+  }
+}
+@keyframes lp-hcard-icon-in {
+  0% {
+    transform: rotate(calc(-90deg * var(--lp-turn)));
+    animation-timing-function: cubic-bezier(0.16, 0.62, 0.4, 1);
+  }
+  64% {
+    transform: rotate(calc(12deg * var(--lp-turn)));
+    animation-timing-function: cubic-bezier(0.45, 0, 0.4, 1);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
 /* The soft shadow the card casts on the paper. Absolutely positioned under
    the wrap, so it never takes layout room (no CLS) and stays inside the
    card's own width (no horizontal overflow at 390px). */
@@ -1576,7 +1608,8 @@
   .lp .lp-hcard-front,
   .lp .lp-hcard-tone,
   .lp .lp-hcard-photo,
-  .lp .lp-hcard-ctx {
+  .lp .lp-hcard-ctx,
+  .lp .lp-hcard-flip {
     transition: none;
     animation: none;
   }
