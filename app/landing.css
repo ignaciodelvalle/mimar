@@ -915,6 +915,12 @@
     transform: rotateY(0deg);
   }
 }
+/* A flip ends the first-sight hint and float (LandingHero sets data-hint-done
+   when the card is turned), so the hint's rotation never adds to the turn. */
+.lp.lp-motion .lp-hcardwrap[data-alive][data-hint-done] .lp-hcard-float,
+.lp.lp-motion .lp-hcardwrap[data-alive][data-hint-done] .lp-hcard-ground {
+  animation: none;
+}
 /* The ↻ turns WITH the card (PO 2026-10-02): same durations, same curves,
    same overshoot, so icon and card read as one gesture and the tap answers
    at once. The leaving face's icon spins into the edge; the arriving face's

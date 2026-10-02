@@ -226,7 +226,7 @@ describe("landing hero — the credential is miMAR's own document", () => {
 
 // The doors left their own band for the hero on 2026-10-02 (PO): on every
 // screen the band sat below the fold, and the hero's CTA row repeated what the
-// nav already offers. Same three doors, same destinations, no account.
+// nav already offers. The same day they became four public doors, no account.
 describe("quick doors — four doors in the hero, no account", () => {
   function doors(html: string): string {
     const start = html.indexOf('data-section="crisis-doors"');

@@ -9,7 +9,7 @@ import Image from "next/image";
 // GATED ON THE LISTING. The app is approved on Play but not published, so
 // until NEXT_PUBLIC_PLAY_STORE_URL resolves (lib/ui/play-store.ts) this renders
 // NOTHING: no title, no badge, no mention of an app. The day the PO sets the
-// variable the block appears with no code change. Same doctrine as the landing
+// variable the block appears with no code change (the variable is inlined at build time, so setting it needs a redeploy). Same doctrine as the landing
 // hero, which shows the badge as an inert image rather than a dead link.
 //
 // ANDROID vs EVERYTHING ELSE. The only thing the User-Agent decides is how

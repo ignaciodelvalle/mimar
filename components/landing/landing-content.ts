@@ -681,8 +681,8 @@ export type CrisisDoor = {
  *
  * "Refugios y vets cerca" is AHEAD of the product by days (PO decision
  * 2026-10-02, landing may lead): /refugios lists verified shelters today; opted-in
- * veterinary clinics join it with the public-directory opt-in (branch
- * directorio-vets, migration 0277).
+ * veterinary clinics join it with the public-directory opt-in (pending
+ * branch directorio-vets).
  */
 export const CRISIS_DOORS: readonly CrisisDoor[] = [
   {

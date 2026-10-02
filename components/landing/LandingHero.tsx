@@ -254,7 +254,7 @@ function IssuerMark() {
 
 /**
  * The credential's flip trigger — one component for both faces so the two
- * triggers can never drift apart (visual 26px, but the CSS ::after extends the
+ * triggers can never drift apart (visual 22px, but the CSS ::after extends the
  * hit area to 44×44 — critique 2026-07-27 item A2; the raw <button> is counted
  * once instead of twice by the citizen ratchet, offsetting MilestoneNav's).
  */
@@ -458,9 +458,26 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
     flippingRef.current = true;
     stopCycle();
     const el = slabRef.current;
+    // A tap during the first-sight hint would add the hint's 18° to the turn
+    // and show the reverse mirrored for a few frames: the hint ends here.
+    if (wrapRef.current) wrapRef.current.dataset.hintDone = "true";
     const swap = () => {
+      // The face that held keyboard focus is about to be hidden; hand focus to
+      // the arriving face's flip button so a keyboard user is not dropped to
+      // <body> (review 2026-10-02).
+      const refocus = !!el && el.contains(document.activeElement);
       faceRef.current = faceRef.current === "front" ? "back" : "front";
       setFace(faceRef.current);
+      if (refocus) {
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            const next = Array.from(
+              el?.querySelectorAll<HTMLButtonElement>(".lp-hcard-flip") ?? [],
+            ).find((b) => getComputedStyle(b).visibility !== "hidden");
+            next?.focus();
+          }),
+        );
+      }
     };
     if (!el || prefersReducedMotion()) {
       swap();

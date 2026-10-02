@@ -218,6 +218,14 @@ describe("<LandingHero> — four quick doors replace the CTA row (PO 2026-10-02)
     );
   });
 
+  it("a flip ends the first-sight hint so its rotation never adds to the turn", () => {
+    const { container } = renderDemoHero();
+    const wrap = container.querySelector(".lp-hcardwrap") as HTMLElement;
+    expect(wrap.dataset.hintDone).toBeUndefined();
+    fireEvent.click(screen.getByRole("button", { name: "Girar credencial" }));
+    expect(wrap.dataset.hintDone).toBe("true");
+  });
+
   it("keeps the Play badge a plain image while there is no listing URL", () => {
     const { container } = renderDemoHero();
     const badge = container.querySelector(".lp-hero-badge");
