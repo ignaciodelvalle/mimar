@@ -172,6 +172,22 @@ export type ReportBiteFromOrgResult = UseCaseResult<{
   casePublicCode: string;
 }>;
 
+/**
+ * What ROUTING is told (localidades-por-id D3): the row the CASE carries. The
+ * incident's row (null = unresolved) when the case took the incident place;
+ * on the home fallback the pet's home row, so a homonym's authority (San
+ * Pedro, dept A vs dept B) is never paged. Only a home with no row keeps the
+ * name path.
+ */
+function routingPlace(
+  usesEventPlace: boolean,
+  incidentLocalityId: string | null,
+  homeLocalityId: string | null,
+): { localityId?: string | null } {
+  if (usesEventPlace) return { localityId: incidentLocalityId };
+  return homeLocalityId === null ? {} : { localityId: homeLocalityId };
+}
+
 // ---------------------------------------------------------------------------
 // Use-case
 // ---------------------------------------------------------------------------
@@ -214,10 +230,11 @@ export async function reportBiteFromOrg(
     hasEventPlace && input.eventJurisdictionLocality !== null
       ? (input.eventLocalityId ?? null)
       : null;
-  // What routing and the coverage arm are told (localidades-por-id D3/D5): the
-  // incident's row (or null, unresolved); a pet-home fallback tells nothing,
-  // which keeps both on the name path.
+  // What the coverage arm is told (localidades-por-id D5): the incident's row
+  // (or null, unresolved); a pet-home fallback tells nothing, which keeps it
+  // on the name path.
   const incidentPlaceId = usesEventPlace ? { localityId: incidentLocalityId } : {};
+  const routingPlaceId = routingPlace(usesEventPlace, incidentLocalityId, pet.localityId);
   const caseProvince = usesEventPlace ? input.eventJurisdictionProvince : pet.jurisdictionProvince;
   const caseLocality = usesEventPlace
     ? hasEventPlace
@@ -502,10 +519,8 @@ export async function reportBiteFromOrg(
     const authorityIds = await findAuthoritiesForJurisdiction({
       province: caseProvince ?? "",
       locality: caseLocality ?? "",
-      // Same rule as report-bite.ts (localidades-por-id D3): the row the CASE
-      // carries — on the home fallback the pet's home row, so a homonym's
-      // authority is never paged; only a home with no row keeps the name path.
-      ...(usesEventPlace ? incidentPlaceId : pet.localityId ? { localityId: pet.localityId } : {}),
+      // Same rule as report-bite.ts (localidades-por-id D3).
+      ...routingPlaceId,
     });
     for (const authorityId of authorityIds) {
       pendingNotifications.push({
