@@ -190,17 +190,19 @@ describe("what the screen says before it asks anything", () => {
   });
 
   it("says who sees the contact, and never calls it anonymous (legal review P6)", () => {
-    // Ley 25.326 art. 6: the form must say who receives the data. The contact
-    // reaches the zone's government operators — so it is not anónimo.
+    // Ley 25.326 art. 6: the form must say who receives the data. This mode
+    // attaches the account too, and the zone's operators, the national roles
+    // and the platform team read it — so it is not anónimo.
     render(<DenunciaScreen />);
     fireEvent.press(screen.getByText("Con mi contacto"));
     expect(screen.getByText("Quién ve tu contacto")).toBeTruthy();
+    const notice = screen.getByText(/no se publican ni los ve la persona denunciada/);
+    expect(notice).toBeTruthy();
+    expect(screen.getByText(/Tu nombre, tu correo y tu teléfono/)).toBeTruthy();
     expect(
-      screen.getByText(
-        /Lo ven los funcionarios de la autoridad de la zona que tramitan la denuncia/,
-      ),
+      screen.getByText(/en la zona del hecho o en todo el país, y el equipo de miMAR/),
     ).toBeTruthy();
-    expect(screen.getByText(/no se publica ni lo ve la persona denunciada/)).toBeTruthy();
+    expect(screen.queryByText(/anónim[oa] en el sentido/)).toBeNull();
   });
 });
 

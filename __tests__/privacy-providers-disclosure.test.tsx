@@ -100,3 +100,37 @@ describe("/privacidad — providers and the international transfer", () => {
     expect(LEGAL_VERSION).toBe("2026-09-24");
   });
 });
+
+// Legal review 2026-10-02 (P2, P3, P6). The rest of the page, pinned on the
+// rendered text so a rewrite cannot drop a mandatory legend or bring back a
+// promise the append-only record cannot keep.
+describe("/privacidad — mandatory legend and honest promises", () => {
+  function pageText(): string {
+    const view = render(<PrivacidadPage />);
+    return text(view.container);
+  }
+
+  it("carries the AAIP legend verbatim (Res. AAIP 14/2018, art. 3)", () => {
+    expect(pageText()).toContain(
+      "LA AGENCIA DE ACCESO A LA INFORMACIÓN PÚBLICA, en su carácter de órgano de Control de la Ley N° 25.326, tiene la atribución de atender las denuncias y reclamos que interpongan quienes resulten afectados en sus derechos por incumplimiento de las normas vigentes en materia de protección de datos personales.",
+    );
+  });
+
+  it("does not promise to erase sanitary records on request", () => {
+    const body = pageText();
+    expect(body).not.toContain("pedínoslo");
+    expect(body).not.toContain("borremos");
+    expect(body).toContain("se corrige con un registro nuevo y el original se conserva");
+  });
+
+  it("does not call the follow-up contact of a denuncia anonymous or unlinked", () => {
+    const body = pageText();
+    expect(body).not.toContain("no a ningún perfil de usuario");
+    expect(body).toContain("si iniciaste sesión, tu cuenta");
+    expect(body).toContain("y el equipo de miMAR");
+  });
+
+  it("does not invoke Ley 27.275, which does not reach a private operator", () => {
+    expect(pageText()).not.toContain("27.275");
+  });
+});

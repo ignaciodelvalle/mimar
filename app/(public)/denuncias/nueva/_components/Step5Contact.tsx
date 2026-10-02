@@ -210,15 +210,22 @@ export function Step5Contact({
       {/* Contact fields — shown when mode is with_contact */}
       {contactMode === "with_contact" && (
         <div className="rounded-[var(--radius-md)] border border-[var(--color-ln-line)] bg-[var(--color-ln-stripe)] p-4 space-y-4">
-          {/* Who really sees the contact (legal review 2026-10-02, P6): every
-              government operator whose scope covers the report (decision D2,
-              lib/analytics/welfare-exports.ts), never the accused, never an
-              organization (lib/infra/welfare-org-projection.ts), never public.
-              It is NOT anonymous, so the copy may not call it that. */}
+          {/* Who really sees it (legal review 2026-10-02, P6). This mode
+              attaches the contact AND, with a session, the account
+              (src/modules/welfare/actions.ts: reporterUserId), whose name the
+              inspector view shows (lib/infra/welfare-inspector-detail.ts).
+              Readers: government operators whose scope covers the report,
+              plus the admin and national roles, which read every zone
+              (hasNationalReadScope). Never an organization, never the
+              accused, never public. It is NOT anonymous. Status notices go to
+              the ACCOUNT's notification centre only (start/triage/close
+              use-cases), never to this e-mail or phone — so the copy does not
+              promise a notice through it. Same words as the app's
+              DENUNCIA_CONTACT_VISIBILITY. */}
           <p className="text-xs text-[var(--color-ln-ink-2)] leading-relaxed">
-            Tu correo o teléfono no se publica ni lo ve la persona denunciada. Lo ven los
-            funcionarios de la autoridad de la zona que tramitan la denuncia, y lo usamos para
-            avisarte si avanza.
+            Tu correo o teléfono —y tu nombre, si iniciaste sesión— no se publican ni los ve la
+            persona denunciada. Los ven los funcionarios que tramitan denuncias en la zona del hecho
+            o en todo el país, y el equipo de miMAR, para poder contactarte por la denuncia.
           </p>
           <div className="space-y-1.5">
             <label

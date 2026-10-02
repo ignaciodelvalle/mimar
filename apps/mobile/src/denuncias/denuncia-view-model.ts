@@ -489,18 +489,25 @@ export const DENUNCIA_NO_MATCHES =
  * stronger property, and a person who needs it deserves to be told where it is
  * rather than reassured.
  */
-/**
- * Who sees the contact a reporter leaves (legal review 2026-10-02, P6). Ley
- * 25.326 art. 6 asks the form to say who receives the data. The truth, read
- * from the server: every government operator whose scope covers the report
- * (decision D2); never the accused, never an organization, never public. The
- * web wizard (Step5Contact.tsx) says the same thing.
- */
-export const DENUNCIA_CONTACT_VISIBILITY =
-  "Tu correo o teléfono no se publica ni lo ve la persona denunciada. Lo ven los funcionarios de la autoridad de la zona que tramitan la denuncia, para poder contactarte.";
-
 export const DENUNCIA_ANONYMOUS_CAVEAT =
   "Anónima significa que no guardamos ningún dato tuyo en la denuncia: ni tu cuenta, ni tu nombre, ni tu contacto. Como estás usando la app, iniciaste sesión para llegar hasta acá. Si necesitás que ni siquiera eso quede registrado, podés denunciar desde el navegador sin iniciar sesión.";
+
+/**
+ * Who sees what a reporter leaves in "Con mi contacto" mode (legal review
+ * 2026-10-02, P6; Ley 25.326 art. 6 asks the form to say who receives the
+ * data). Read from the server, not assumed:
+ *   - this mode attaches the ACCOUNT, not only the contact
+ *     (app/api/v1/welfare-reports/commands.ts: reporterUserId = userId), and
+ *     the inspector view shows the account's name next to the contact
+ *     (lib/infra/welfare-inspector-detail.ts, `reporter`);
+ *   - the inspector view is scoped to the report's zone, EXCEPT for the
+ *     admin and national roles, which read every zone (hasNationalReadScope);
+ *   - organizations never get it (lib/infra/welfare-org-projection.ts), the
+ *     accused has no surface that shows it, and nothing publishes it.
+ * The web wizard (Step5Contact.tsx) says the same thing.
+ */
+export const DENUNCIA_CONTACT_VISIBILITY =
+  "Tu nombre, tu correo y tu teléfono no se publican ni los ve la persona denunciada. Los ven los funcionarios que tramitan denuncias en la zona del hecho o en todo el país, y el equipo de miMAR, para poder contactarte por la denuncia.";
 
 /**
  * What the evidence block says (M12).

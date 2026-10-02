@@ -74,9 +74,11 @@ export default function PrivacidadPage() {
               90 días.
             </li>
             <li>
-              <strong>Denuncias anónimas:</strong> las denuncias de maltrato pueden enviarse sin
-              sesión. Si dejás un contacto de seguimiento, se asocia únicamente al código de la
-              denuncia y no a ningún perfil de usuario.
+              <strong>Denuncias:</strong> las denuncias de maltrato pueden enviarse sin sesión. Si
+              elegís enviarla de forma anónima, la denuncia no guarda ningún dato tuyo. Si dejás tu
+              contacto, la denuncia guarda tu correo o teléfono y, si iniciaste sesión, tu cuenta.
+              Esos datos no se publican ni los ve la persona denunciada: los ven los funcionarios
+              que tramitan denuncias en la zona del hecho o en todo el país, y el equipo de miMAR.
             </li>
           </ul>
         </section>
