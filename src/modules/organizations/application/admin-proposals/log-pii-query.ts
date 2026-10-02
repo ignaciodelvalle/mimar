@@ -50,12 +50,30 @@ export async function logPiiQueryForAuthority(
     actorUserId,
     action: "pii_queried",
     payload: {
+      // `extra` goes FIRST and loses its reserved keys: it adds grain, it can
+      // never replace the redacted query, its DNI keys or the row's own
+      // count and surface (security review F3, 2026-10).
+      ...withoutReservedKeys(extra),
       ...redactQueryForAudit(query, surface),
       result_count: resultCount,
       surface,
-      ...extra,
     },
   });
+}
+
+/** Payload keys only this writer sets — never taken from `extra`. */
+const RESERVED_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
+  "query",
+  "dni_hash",
+  "dni_hashes",
+  "dni_last4",
+  "result_count",
+  "surface",
+]);
+
+function withoutReservedKeys(extra: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!extra) return {};
+  return Object.fromEntries(Object.entries(extra).filter(([k]) => !RESERVED_PAYLOAD_KEYS.has(k)));
 }
 
 /**

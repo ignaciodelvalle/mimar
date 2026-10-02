@@ -143,6 +143,36 @@ describe("logPiiQueryForAuthority — DNI never reaches audit_log (invariant 5)"
     });
   });
 
+  it("extra can never overwrite the redacted query, the DNI keys, the count or the surface", async () => {
+    insertValues.mockResolvedValueOnce(undefined);
+    await logPiiQueryForAuthority("actor-1", "30111222", 3, "omnibox", {
+      query: "30111222",
+      dni_hash: "forged",
+      dni_hashes: ["forged"],
+      dni_last4: "0000",
+      result_count: 99,
+      surface: "users",
+      organization_id: "org-1",
+    });
+    const payload = insertValues.mock.calls[0][0].payload as Record<string, unknown>;
+    expect(payload).toEqual({
+      query: "[DNI ···1222]",
+      dni_hash: hashDni("30111222"),
+      dni_last4: "1222",
+      result_count: 3,
+      surface: "omnibox",
+      organization_id: "org-1",
+    });
+    expect(JSON.stringify(payload)).not.toContain("30111222");
+  });
+
+  it("a no-DNI query takes no DNI key from extra either", async () => {
+    insertValues.mockResolvedValueOnce(undefined);
+    await logPiiQueryForAuthority("actor-1", "garcia", 1, "users", { dni_hash: "forged" });
+    const payload = insertValues.mock.calls[0][0].payload as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("dni_hash");
+  });
+
   it("does not touch the adopter desk check, whose query is already the DNI HMAC", async () => {
     // A hex digest can hold a 7-8 digit run; rewriting it would corrupt the key.
     const hashed = `ab${"12345678"}cd${"0".repeat(52)}`;
@@ -176,6 +206,62 @@ describe("redactDni", () => {
     expect(redactDni("123456789").dnis).toEqual([]);
     expect(redactDni("123456").dnis).toEqual([]);
     expect(redactDni("1.234.567").dnis).toEqual(["1234567"]);
+  });
+
+  it("redacts every separator an operator types: dash, comma, space, dot", () => {
+    for (const typed of [
+      "12-345-678",
+      "12,345,678",
+      "12 345 678",
+      "12.345.678",
+      "12.345-678",
+      // A single separator, anywhere.
+      "12.345678",
+      "12345.678",
+      "12-345678",
+      "12345,678",
+    ]) {
+      const r = redactDni(`dni ${typed} vecino`);
+      expect(r.text, typed).toBe("dni [DNI ···5678] vecino");
+      expect(r.dnis, typed).toEqual(["12345678"]);
+    }
+    expect(redactDni("1-234-567").dnis).toEqual(["1234567"]);
+  });
+
+  it("masks a CUIT/CUIL whole — bare, dashed, dotted or spaced — and keeps its DNI for the hash", () => {
+    for (const typed of [
+      "20123456789",
+      "20-12345678-9",
+      "20-12.345.678-9",
+      "20.12345678.9",
+      "20 12345678 9",
+      "27123456789",
+    ]) {
+      const r = redactDni(`cuit ${typed}`);
+      expect(r.text, typed).toBe("cuit [CUIT ···6789]");
+      expect(r.dnis, typed).toEqual(["12345678"]);
+      expect(r.text, typed).not.toContain("12345678");
+    }
+  });
+
+  it("leaves non-DNI digit runs alone: phones, 9-10 digits, 11 digits with no CUIT prefix, 12+", () => {
+    for (const untouched of [
+      "11-4567-8901",
+      "011 4567-8901",
+      "15 4567 8901",
+      "4567-8901",
+      "123456789",
+      "1234567890",
+      "11234567890",
+      "201234567891",
+      "123456",
+      "12.345",
+      "DIM-TEST-0001",
+    ]) {
+      const r = redactDni(untouched);
+      expect(r.text, untouched).toBe(untouched);
+      expect(r.dnis, untouched).toEqual([]);
+    }
   });
 });
 
