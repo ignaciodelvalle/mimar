@@ -9,7 +9,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const control = vi.hoisted(() => ({ access: null as unknown }));
+const control = vi.hoisted(() => ({ access: null as unknown, petHasTitular: true }));
 
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((url: string) => {
@@ -22,6 +22,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/infra/pet-access", () => ({
   requireTitularAccess: vi.fn(async () => control.access),
+  resolvePetHasTitularFact: vi.fn(async () => control.petHasTitular),
 }));
 
 vi.mock("@/lib/infra/pet-identifiers", () => ({
@@ -54,11 +55,12 @@ function open(searchParams: Record<string, string> = {}) {
 
 beforeEach(() => {
   control.access = null;
+  control.petHasTitular = true;
 });
 
 describe("EditPetPage — the form for exactly the viewers who may save it", () => {
   it.each([
-    ["a user-held custody row", "owner", "shelter_custody"],
+    ["a user-held custody row on an animal with a titular", "owner", "shelter_custody"],
     ["the org path", "org", null],
   ] as const)(
     "sends %s back to the profile, where the grey row says why",
@@ -67,6 +69,15 @@ describe("EditPetPage — the form for exactly the viewers who may save it", () 
       await expect(open()).rejects.toThrow(`REDIRECT:/mis-mascotas/${TOKEN}`);
     },
   );
+
+  it("renders the form for the vecino en tránsito while the animal has no titular", async () => {
+    control.access = accessAs("owner", "shelter_custody");
+    control.petHasTitular = false;
+    const page = await open();
+    expect(hasProp(page, "title", "Editar Pampa")).toBe(true);
+    // The contacts stay the titular's own: no door to them for the vecino.
+    expect(hasProp(page, "contactsHref", null)).toBe(true);
+  });
 
   it("renders the form for the titular — the refusal is about the role, not the page", async () => {
     control.access = accessAs("owner", "owner");

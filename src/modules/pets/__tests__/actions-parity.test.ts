@@ -94,6 +94,9 @@ vi.mock("@/lib/infra/pet-access", () => ({
     accessPath: "owner",
     holderRole: "owner",
   }),
+  // The titular fact the vecino-en-tránsito branch of canEditPetProfile reads.
+  // `true` (the animal has one) unless a test says otherwise.
+  resolvePetHasTitularFact: vi.fn(async () => true),
 }));
 
 vi.mock("@/lib/infra/uploads", () => ({
@@ -875,7 +878,11 @@ describe("updatePetAction", () => {
   // viewers the app's edit_profile admits — `canEditPetProfile`, one predicate.
   // The titular gate still runs first; this narrows behind it.
   describe("who may save — the app's edit gate", () => {
-    async function asHolder(accessPath: "owner" | "org", holderRole: string | null) {
+    async function asHolder(
+      accessPath: "owner" | "org",
+      holderRole: string | null,
+      petHasTitular = true,
+    ) {
       const petAccessMod = await import("@/lib/infra/pet-access");
       const base = await vi.mocked(petAccessMod.requireTitularAccess)("DIM-TEST-0001");
       petAccessMod.requireTitularAccess = vi.fn().mockResolvedValue({
@@ -883,10 +890,11 @@ describe("updatePetAction", () => {
         accessPath,
         holderRole,
       });
+      petAccessMod.resolvePetHasTitularFact = vi.fn().mockResolvedValue(petHasTitular);
     }
 
     it.each([
-      ["a user-held custody row", "owner", "shelter_custody"],
+      ["a user-held custody row on an animal with a titular", "owner", "shelter_custody"],
       ["the org path", "org", null],
     ] as const)("refuses %s, and writes nothing", async (_who, accessPath, holderRole) => {
       await asHolder(accessPath, holderRole);
@@ -896,6 +904,22 @@ describe("updatePetAction", () => {
 
       expect(result.error).toMatch(/no podés editar/i);
       expect(updatePet).not.toHaveBeenCalled();
+    });
+
+    it("saves for the vecino en tránsito while the animal has no titular, asking the server for that fact", async () => {
+      await asHolder("owner", "shelter_custody", false);
+      const petAccessMod = await import("@/lib/infra/pet-access");
+      const { updatePet } = await import("@/src/modules/pets/application/update-pet");
+
+      const state = await updatePetAction("DIM-TEST-0001", { error: null }, makeUpdateFormData());
+
+      expect(state.redirectTo).toBe("/mis-mascotas/DIM-TEST-0001");
+      expect(updatePet).toHaveBeenCalledTimes(1);
+      expect(petAccessMod.resolvePetHasTitularFact).toHaveBeenCalledWith({
+        accessPath: "owner",
+        holderRole: "shelter_custody",
+        petId: "pet-existing",
+      });
     });
 
     it.each(["co_owner", "foster"])("still saves for a %s", async (holderRole) => {
@@ -1103,7 +1127,11 @@ describe("correctPetSpeciesAction", () => {
   // sectioned edit — the titular gate above still runs first; this narrows
   // behind it exactly like updatePetAction's own gate.
   describe("who may correct — the app's edit gate", () => {
-    async function asHolder(accessPath: "owner" | "org", holderRole: string | null) {
+    async function asHolder(
+      accessPath: "owner" | "org",
+      holderRole: string | null,
+      petHasTitular = true,
+    ) {
       const petAccessMod = await import("@/lib/infra/pet-access");
       petAccessMod.requireTitularAccess = mockPetAccess({});
       const base = await vi.mocked(petAccessMod.requireTitularAccess)("DIM-TEST-0001");
@@ -1112,10 +1140,25 @@ describe("correctPetSpeciesAction", () => {
         accessPath,
         holderRole,
       });
+      petAccessMod.resolvePetHasTitularFact = vi.fn().mockResolvedValue(petHasTitular);
     }
 
+    it("corrects for the vecino en tránsito while the animal has no titular", async () => {
+      await asHolder("owner", "shelter_custody", false);
+      const { PetsRepository } = await import("@/src/modules/pets/infrastructure/pets-repository");
+
+      const state = await correctPetSpeciesAction(
+        "DIM-TEST-0001",
+        { error: null },
+        makeSpeciesFormData("cat"),
+      );
+
+      expect(state.redirectTo).toBe("/mis-mascotas/DIM-TEST-0001");
+      expect(PetsRepository.correctSpecies).toHaveBeenCalledTimes(1);
+    });
+
     it.each([
-      ["a user-held custody row", "owner", "shelter_custody"],
+      ["a user-held custody row on an animal with a titular", "owner", "shelter_custody"],
       ["the org path", "org", null],
     ] as const)("refuses %s, and writes nothing", async (_who, accessPath, holderRole) => {
       await asHolder(accessPath, holderRole);

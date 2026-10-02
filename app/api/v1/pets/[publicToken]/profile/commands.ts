@@ -74,6 +74,7 @@ import { createNotificationsBulk } from "@/lib/infra/notification-service";
 import {
   OWNER_AUTHORSHIP,
   type PetHolderAccess,
+  resolvePetHasTitularFact,
   resolvePetHolderAccess,
 } from "@/lib/infra/pet-access";
 import { fetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
@@ -103,7 +104,12 @@ import {
   resolvePetProfileTextLengths,
 } from "@dim/contract/input";
 
-import { type ResolvedProfileAccess, isLegalOwner, petProfileCapabilities } from "./payload";
+import {
+  type ResolvedProfileAccess,
+  isLegalOwner,
+  petProfileCapabilities,
+  profileTitularFactInput,
+} from "./payload";
 
 /**
  * The pre-write reads: the access query, the canonical-chip probe, the PPP rule.
@@ -123,6 +129,25 @@ export function unavailable() {
   return apiV1Error("temporarily_unavailable", 503, {
     "retry-after": String(UNAVAILABLE_RETRY_AFTER_SECONDS),
   });
+}
+
+/**
+ * The titular fact the vecino-en-tránsito branch of `canEditPetProfile` reads
+ * (PO 2026-10-01) — from the rows, under the pre-write budget. `null` when the
+ * budget ran out: the caller answers 503, never a guessed capability. The GET
+ * reads it through here too, so the two doors cannot read it differently.
+ */
+export async function readPetHasTitular(access: ResolvedProfileAccess): Promise<boolean | null> {
+  try {
+    return await withDbBudgetOrThrow(
+      resolvePetHasTitularFact(profileTitularFactInput(access)),
+      RESOLVE_BUDGET_MS,
+      "api-v1-profile-titular",
+    );
+  } catch (err) {
+    if (err instanceof DbBudgetExceededError) return null;
+    throw err;
+  }
 }
 
 export type CommandContext = {
@@ -149,7 +174,9 @@ export async function runPetProfileCommand(ctx: CommandContext) {
   // IDENTICALLY, as every other endpoint on this surface does.
   if (access.kind === "none") return apiV1Error("not_found", 404);
 
-  const capabilities = petProfileCapabilities(access);
+  const petHasTitular = await readPetHasTitular(access);
+  if (petHasTitular === null) return unavailable();
+  const capabilities = petProfileCapabilities(access, petHasTitular);
 
   if (ctx.input.command === "edit_identity") {
     if (!capabilities.canEditIdentity) return apiV1Error("profile_forbidden", 403);

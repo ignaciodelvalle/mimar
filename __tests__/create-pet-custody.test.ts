@@ -13,9 +13,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { isTransitRole } from "@/components/PetCard.helpers";
 import { db, notifications, ownerships, petEvents, pets } from "@/db";
+import { canEditPetProfile } from "@/lib/domain/profile-editors";
 import { validateEventPayload } from "@/lib/events/event-schemas";
+import {
+  petHasActiveTitular,
+  resolvePetHasTitularFact,
+  resolvePetHolderAccess,
+} from "@/lib/infra/pet-access";
 import { withMutationOverride } from "./_helpers/db-overrides";
-import { createFreshTestUser } from "./_helpers/fresh-test-user";
+import { createFreshTestUser, deleteTestUser } from "./_helpers/fresh-test-user";
 
 const SUPABASE_URL = "http://127.0.0.1:54321";
 const SECRET = "sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz";
@@ -243,5 +249,91 @@ describe("createPet — custody path", () => {
       publicTokenSuffix: "OWNER-BADGE",
     });
     expect(isTransitRole(ownershipRole)).toBe(false);
+  });
+});
+
+// PO decision 2026-10-01: the vecino en tránsito (a user-held shelter_custody
+// row) edits the animal's data ONLY while it has no titular. The predicate is
+// pure; this block pins the FACT it reads, against real rows, across the
+// transition a chip match produces — a titular appearing under the vecino.
+describe("the vecino en tránsito edits only while the animal has no titular", () => {
+  const OWNER_EMAIL = "custody-transit-titular@dim-test.local";
+  let titularId: string;
+  const createdPetIds: string[] = [];
+
+  beforeAll(async () => {
+    const { data, error } = await createFreshTestUser(admin, {
+      email: OWNER_EMAIL,
+      password: PASS,
+      email_confirm: true,
+    });
+    if (error || !data.user) throw new Error(`createUser: ${error?.message}`);
+    titularId = data.user.id;
+  });
+
+  afterAll(async () => {
+    await withMutationOverride(async (tx) => {
+      for (const id of createdPetIds) await tx.delete(pets).where(eq(pets.id, id));
+    });
+    await deleteTestUser(admin, db, OWNER_EMAIL);
+  });
+
+  it("flips the vecino to read-only the moment a titular appears, and back when it ends", async () => {
+    const { petId } = await createPetWithCustody({
+      custodyKind: "foster_in_transit",
+      publicTokenSuffix: "VECINO-EDIT",
+    });
+    createdPetIds.push(petId);
+
+    // The guard resolves the vecino through the person path, as shelter_custody.
+    const held = await resolvePetHolderAccess("CUST-VECINO-EDIT", userId);
+    expect(held.kind === "owner" ? held.holderRole : held.kind).toBe("shelter_custody");
+    const asVecino = { accessPath: "owner", holderRole: "shelter_custody", petId } as const;
+    const vecinoEdits = async () =>
+      canEditPetProfile("owner", "shelter_custody", await resolvePetHasTitularFact(asVecino));
+
+    // A stray nobody owns: the vecino's own custody row is not a titular.
+    expect(await petHasActiveTitular(petId)).toBe(false);
+    expect(await vecinoEdits()).toBe(true);
+
+    // The owner turns up (a chip match, a transfer): a live owner row.
+    const [titularRow] = await db
+      .insert(ownerships)
+      .values({ petId, ownerUserId: titularId, role: "owner" })
+      .returning({ id: ownerships.id });
+    expect(await petHasActiveTitular(petId)).toBe(true);
+    expect(await vecinoEdits()).toBe(false);
+    // The titular edits; the fact is irrelevant to them.
+    expect(canEditPetProfile("owner", "owner", true)).toBe(true);
+
+    // An ENDED titular row is history, not a titular.
+    await withMutationOverride(async (tx) => {
+      await tx
+        .update(ownerships)
+        .set({ endedAt: new Date() })
+        .where(eq(ownerships.id, titularRow.id));
+    });
+    expect(await petHasActiveTitular(petId)).toBe(false);
+    expect(await vecinoEdits()).toBe(true);
+  });
+
+  it("never reads the fact for a holder whose answer does not depend on it", async () => {
+    // `true` without a query: the conservative value, so a misuse only refuses.
+    for (const holderRole of ["owner", "co_owner", "foster", "caretaker"]) {
+      expect(
+        await resolvePetHasTitularFact({
+          accessPath: "owner",
+          holderRole,
+          petId: "00000000-0000-4000-8000-000000000000",
+        }),
+      ).toBe(true);
+    }
+    expect(
+      await resolvePetHasTitularFact({
+        accessPath: "org",
+        holderRole: "shelter_custody",
+        petId: "00000000-0000-4000-8000-000000000000",
+      }),
+    ).toBe(true);
   });
 });

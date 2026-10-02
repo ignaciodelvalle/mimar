@@ -30,15 +30,41 @@ export const PROFILE_EDITOR_ROLES = [
 ] as const satisfies readonly OwnershipRole[];
 
 /**
+ * Whether the answer of `canEditPetProfile` depends on `petHasTitular` for this
+ * holder — true only for a USER-held `shelter_custody` row (the "vecino en
+ * tránsito"). Every other holder's answer is fixed by the role alone, so a door
+ * reads the titular fact from the database only when this says so.
+ */
+export function profileEditReadsTitular(
+  accessPath: "owner" | "org" | null,
+  holderRole: OwnershipRole | string | null,
+): boolean {
+  return accessPath === "owner" && holderRole === "shelter_custody";
+}
+
+/**
  * Whether the viewer edits the animal's profile.
  *
  * NARROWER than `isTitularHolder`, and an ALLOW like `canAccessTravel`: the
- * person path in PROFILE_EDITOR_ROLES only. It refuses a caretaker (deny-list
- * row `identity-field-edits`), a user-held shelter_custody row (PO: "a
- * shelter_custody holder does not edit the owner's data on the web either"),
- * any role added later, and the org path, which the panel never offers
- * "Editar datos" and which acts on custody from the org portal. What this
- * edits includes the owner's insurance contract and medical free text.
+ * person path in PROFILE_EDITOR_ROLES, plus ONE conditional holder. It refuses
+ * a caretaker (deny-list row `identity-field-edits`), any role added later, and
+ * the org path, which the panel never offers "Editar datos" and which acts on
+ * custody from the org portal. What this edits includes the owner's insurance
+ * contract and medical free text.
+ *
+ * THE VECINO EN TRÁNSITO (PO decision 2026-10-01). A user-held
+ * `shelter_custody` row — a neighbour holding a stray with no known owner —
+ * edits the animal's data ONLY WHILE THE ANIMAL HAS NO TITULAR: no live
+ * `owner`, `co_owner` or `foster` row, held by anybody. Nobody else can fill
+ * the record in. The moment a titular exists (a chip match finds the owner,
+ * a transfer lands) the data is the titular's again and the vecino reads it.
+ * Before this decision the row was refused outright ("a shelter_custody holder
+ * does not edit the owner's data") — which is still the answer whenever there
+ * IS an owner whose data it would be.
+ *
+ * `petHasTitular` is a SERVER fact (`resolvePetHasTitularFact` in
+ * lib/infra/pet-access.ts reads the live ownership rows); no door may take it
+ * from a client. It is ignored for every holder but the one above.
  *
  * On the web's write, `requireTitularAccess` still runs first: that guard is
  * what scripts/check-titular-gate.ts watches for, and this narrows behind it.
@@ -46,10 +72,9 @@ export const PROFILE_EDITOR_ROLES = [
 export function canEditPetProfile(
   accessPath: "owner" | "org" | null,
   holderRole: OwnershipRole | string | null,
+  petHasTitular: boolean,
 ): boolean {
-  return (
-    accessPath === "owner" &&
-    holderRole !== null &&
-    (PROFILE_EDITOR_ROLES as readonly string[]).includes(holderRole)
-  );
+  if (accessPath !== "owner" || holderRole === null) return false;
+  if ((PROFILE_EDITOR_ROLES as readonly string[]).includes(holderRole)) return true;
+  return profileEditReadsTitular(accessPath, holderRole) && !petHasTitular;
 }

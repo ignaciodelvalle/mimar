@@ -75,13 +75,14 @@ function access(kind: "owner" | "org", holderRole: string | null): ResolvedProfi
   return { kind, holderRole, pet: { status: "active" } } as unknown as ResolvedProfileAccess;
 }
 
-function payloadFor(viewer: ResolvedProfileAccess) {
+function payloadFor(viewer: ResolvedProfileAccess, petHasTitular = true) {
   return buildPetProfileEditV1({
     pet: ROW,
     access: viewer,
     accountContacts: null,
     physicalTagInterest: null,
     serviceDog: null,
+    petHasTitular,
     now: new Date("2026-10-01T12:00:00Z"),
   });
 }
@@ -158,7 +159,18 @@ describe("the profile block — personal data only under the capability", () => 
     }
   });
 
-  it("appears NOWHERE in the payload a caretaker, a user-held custody row or the org path reads", () => {
+  it("reaches the vecino en tránsito only while the animal has no titular", () => {
+    const vecino = access("owner", "shelter_custody");
+    const json = JSON.stringify(payloadFor(vecino, false));
+    for (const key of PERSONAL_KEYS) expect(json).toContain(`"${key}"`);
+    // The fact opens nobody else's door.
+    for (const viewer of [access("owner", "caretaker"), access("org", null)]) {
+      const other = JSON.stringify(payloadFor(viewer, false));
+      for (const key of PERSONAL_KEYS) expect(other).not.toContain(`"${key}"`);
+    }
+  });
+
+  it("appears NOWHERE in the payload a caretaker, a user-held custody row on an animal with a titular or the org path reads", () => {
     for (const viewer of [
       access("owner", "caretaker"),
       access("owner", "shelter_custody"),

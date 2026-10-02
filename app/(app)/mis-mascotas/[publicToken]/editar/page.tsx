@@ -5,7 +5,7 @@ import { LnSheetCard, LnSheetHeader, LnSheetWrap } from "@/components/ui/Sheet";
 import { attachments, db } from "@/db";
 import { canEditPetProfile } from "@/lib/domain/profile-editors";
 import { resolveBusinessRule } from "@/lib/infra/business-rules-resolver";
-import { requireTitularAccess } from "@/lib/infra/pet-access";
+import { requireTitularAccess, resolvePetHasTitularFact } from "@/lib/infra/pet-access";
 import { fetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
 import { petPhotoUrl } from "@/lib/infra/storage";
 import { updatePetAction } from "@/src/modules/pets/actions";
@@ -47,7 +47,14 @@ export default async function EditPetPage({
   // user-held custody row and the org path pass the titular gate above but not
   // this one; they hold or reach the animal, so a 404 would be a lie — the
   // profile is where "Editar datos" shows them its reason.
-  if (!canEditPetProfile(access.accessPath, access.holderRole)) {
+  // The vecino en tránsito (user-held custody) edits only while the animal has
+  // no titular (PO 2026-10-01) — the fact read from the rows, never the client.
+  const petHasTitular = await resolvePetHasTitularFact({
+    accessPath: access.accessPath,
+    holderRole: access.holderRole,
+    petId: access.pet.id,
+  });
+  if (!canEditPetProfile(access.accessPath, access.holderRole, petHasTitular)) {
     redirect(`/mis-mascotas/${publicToken}`);
   }
   const { pet } = access;

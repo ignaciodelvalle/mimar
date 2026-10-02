@@ -35,11 +35,13 @@ import { resolveEmergencyContacts } from "@/lib/domain/emergency-contacts";
 import { type CarouselPet, shouldShowCarousel } from "@/lib/domain/owner-carousel";
 import { buildFromLostRedirectTarget, resolvePetFace } from "@/lib/domain/pet-face-nav";
 import { pppExportAvailability } from "@/lib/domain/ppp-export-eligibility";
+import { canEditPetProfile } from "@/lib/domain/profile-editors";
 import { isPetAdoptedByUser } from "@/lib/infra/adoption-checkin";
 import {
   type PetAccessSuccess,
   getFormerOwnerReadAccess,
   requirePetAccess,
+  resolvePetHasTitularFact,
 } from "@/lib/infra/pet-access";
 import { resolvePhysicalCredentialChannels } from "@/lib/infra/physical-credential-channels";
 import { getPhysicalTagInterest } from "@/lib/infra/physical-tag-interest";
@@ -299,10 +301,17 @@ export default async function PetDetailPage({
   // resolves where each row leads. Derived ONCE, so the primary row, the panel
   // and the credential's photo frame cannot disagree about a door.
   const petStatus = pet.status as "active" | "lost" | "deceased";
+  // "Editar datos" is the server's own verdict (`canEditPetProfile`), not a
+  // role guess: the vecino en tránsito edits only while the animal has no
+  // titular (PO 2026-10-01), and that fact is read from the rows here — the
+  // same answer the edit sheet's data and the write below it are gated on.
+  const petHasTitular = await resolvePetHasTitularFact({ accessPath, holderRole, petId: pet.id });
+  const editsProfile = canEditPetProfile(accessPath, holderRole, petHasTitular);
   const petActions = resolveWebPetActions(
     derivePetActions({
       viewerRole: toViewerRole(accessPath === "org" ? "org" : "owner", ownershipRole),
       isTitular: isOwner && ownershipRole === "owner",
+      canEditProfile: editsProfile,
       petStatus,
       species: pet.species,
       // The catalogue's `attestationDoor` is not read on the web: the door is the
@@ -787,10 +796,12 @@ export default async function PetDetailPage({
         // Client props reach EVERY viewer of this route: the row carries the
         // owner's insurance and condition text, so it ships only to a viewer
         // the edit form admits — `null` for a caretaker, a user-held custody
-        // row and the org path (owner-pet-actions; see edit-pet-data.ts).
+        // row on an animal with a titular and the org path (owner-pet-actions;
+        // see edit-pet-data.ts).
         editPetData={editPetDataFor({
           accessPath: accessPath === "org" ? "org" : "owner",
           holderRole,
+          petHasTitular,
           pet,
           existingPhotoUrl: editPhotoUrl,
           pppBreedList: pppBreedRule.payload.breeds,

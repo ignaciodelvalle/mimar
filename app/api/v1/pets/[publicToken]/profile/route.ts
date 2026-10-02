@@ -62,7 +62,7 @@ import { readViewerContacts } from "@/src/modules/pets/application/read/owner-pe
 import { readServiceDogDesignation } from "@/src/modules/pets/application/service-dog/read-service-dog";
 import { petProfileCommandInputSchema } from "@dim/contract/input";
 
-import { runPetProfileCommand, unavailable } from "./commands";
+import { readPetHasTitular, runPetProfileCommand, unavailable } from "./commands";
 import { buildPetProfileEditV1, petProfileCapabilities } from "./payload";
 
 export const dynamic = "force-dynamic";
@@ -190,7 +190,11 @@ export async function GET(
   //     is who the web page shows it to. A failed read is not "no designation"
   //     either: that one invites a person to fill in a form over a row they
   //     already have.
-  const capabilities = petProfileCapabilities(access);
+  // The titular fact behind the three edit capabilities — a query only for the
+  // vecino en tránsito, a constant for everybody else.
+  const petHasTitular = await readPetHasTitular(access);
+  if (petHasTitular === null) return unavailable();
+  const capabilities = petProfileCapabilities(access, petHasTitular);
   const contactsRead = await gatedRead(
     capabilities.canEditEmergencyContacts,
     () => readViewerContacts(live.user.id),
@@ -217,6 +221,7 @@ export async function GET(
       accountContacts: contactsRead.value,
       physicalTagInterest: tagRead.value,
       serviceDog: serviceDogRead.value,
+      petHasTitular,
       now: new Date(),
     }),
     { status: 200 },

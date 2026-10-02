@@ -33,6 +33,7 @@ import {
   pets,
   profiles,
 } from "@/db";
+import { PROFILE_EDITOR_ROLES, profileEditReadsTitular } from "@/lib/domain/profile-editors";
 import { findOpenCaseForPetAndKind } from "@/lib/infra/case-helpers";
 import {
   type LiveUserFailure,
@@ -42,7 +43,7 @@ import {
 import { isTravelTitularRole } from "@/lib/infra/travel-private-events";
 import type { createClient } from "@/lib/supabase/server";
 import { getGrantedCapabilities } from "@/src/modules/organizations/infrastructure/authz-resolver";
-import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
 export type PetAccessPath = "owner" | "org";
 
@@ -334,8 +335,9 @@ export async function resolvePetHolderAccess(
   // ownership.role — owner / co_owner / foster / caretaker all qualify for
   // ACCESS. What changed with custodia-temporal is that the role is now
   // RETURNED, so a titular-only writer can refuse a caretaker without this
-  // helper narrowing anybody's access. The shelter_custody role is impossible
-  // on this path (it requires owner_organization_id).
+  // helper narrowing anybody's access. A USER-held shelter_custody row (the
+  // vecino en tránsito: a stray they registered, or a chip-matched animal they
+  // confirmed) also resolves here, ranked last.
   //
   // The ORDER BY is not cosmetic. This query was `.limit(1)` with no ordering:
   // harmless while the result was role-agnostic, a coin flip the moment `role`
@@ -543,6 +545,46 @@ export function canAccessTravel(
   holderRole: OwnershipRole | string | null,
 ): boolean {
   return accessPath === "owner" && isTravelTitularRole(holderRole);
+}
+
+/**
+ * Whether the animal has a TITULAR right now: a live `ownerships` row in
+ * PROFILE_EDITOR_ROLES (owner, co-owner, foster), held by a person or an
+ * organization. The fact `canEditPetProfile` reads for the vecino en tránsito
+ * (PO 2026-10-01) — read here, from the rows, and never from a client.
+ *
+ * A caretaker or a `shelter_custody` row (user- or org-held) is not a titular:
+ * the first borrows the animal from one, the second holds it pending a home.
+ */
+export async function petHasActiveTitular(petId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: ownerships.id })
+    .from(ownerships)
+    .where(
+      and(
+        eq(ownerships.petId, petId),
+        isNull(ownerships.endedAt),
+        inArray(ownerships.role, [...PROFILE_EDITOR_ROLES]),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * The `petHasTitular` argument of `canEditPetProfile`, for one holder — read
+ * from the database ONLY when the predicate's answer depends on it
+ * (`profileEditReadsTitular`: a user-held `shelter_custody` row). For every
+ * other holder the predicate ignores the argument, and this answers `true`
+ * without a query: the conservative value, so a misuse can only refuse.
+ */
+export async function resolvePetHasTitularFact(input: {
+  accessPath: PetAccessPath | null;
+  holderRole: OwnershipRole | string | null;
+  petId: string;
+}): Promise<boolean> {
+  if (!profileEditReadsTitular(input.accessPath, input.holderRole)) return true;
+  return petHasActiveTitular(input.petId);
 }
 
 export async function requireTitularAccess(publicToken: string): Promise<PetAccessResult> {

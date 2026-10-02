@@ -73,6 +73,13 @@ const control = vi.hoisted(() => ({
   notified: [] as Array<Record<string, unknown>>,
   /** When set, the notification service throws instead of answering. */
   notifyThrows: false,
+  /**
+   * The server's titular fact (`resolvePetHasTitularFact`) — what lets the
+   * vecino en tránsito edit while the animal has none (PO 2026-10-01).
+   */
+  petHasTitular: true,
+  /** Every titular-fact read, with the holder it was asked about. */
+  titularReads: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("@/lib/infra/live-user", async (importOriginal) => {
@@ -97,6 +104,10 @@ vi.mock("@/lib/infra/pet-access", async (importOriginal) => {
     ...actual,
     resolvePetHolderAccess: async () =>
       control.access ? control.access() : { kind: "owner", pet: petRow(), holderRole: "owner" },
+    resolvePetHasTitularFact: async (input: Record<string, unknown>) => {
+      control.titularReads.push(input);
+      return control.petHasTitular;
+    },
   };
 });
 
@@ -312,6 +323,8 @@ beforeEach(() => {
   control.writes = [];
   control.notified = [];
   control.notifyThrows = false;
+  control.petHasTitular = true;
+  control.titularReads = [];
 });
 
 describe("GET — what the form pre-fills with", () => {
@@ -421,7 +434,7 @@ describe("GET — what the form pre-fills with", () => {
     expect(body.capabilities.canCorrectSpecies).toBe(false);
   });
 
-  it("refuses a user-held shelter_custody row both halves — same rule as owner-pet-actions", async () => {
+  it("refuses a user-held shelter_custody row on an animal WITH a titular, both halves — same rule as owner-pet-actions", async () => {
     control.access = asRole("shelter_custody");
     const body = await (await read()).json();
     expect(body.capabilities.canEditIdentity).toBe(false);
@@ -430,6 +443,34 @@ describe("GET — what the form pre-fills with", () => {
     // (it only denies `caretaker`) — `canCorrectSpecies` now does, sharing
     // `canEditPetProfile` with identity (security review of 3babbe25a).
     expect(body.capabilities.canCorrectSpecies).toBe(false);
+  });
+
+  it("opens the three edit capabilities to the vecino en tránsito while the animal has NO titular (PO 2026-10-01)", async () => {
+    control.access = asRole("shelter_custody");
+    control.petHasTitular = false;
+    const body = await (await read()).json();
+    expect(body.capabilities.canEditIdentity).toBe(true);
+    expect(body.capabilities.canCorrectSpecies).toBe(true);
+    expect(body.capabilities.canEditProfile).toBe(true);
+    expect(body.profile).not.toBeNull();
+    // The contacts stay the titular's own, whoever edits the animal.
+    expect(body.capabilities.canEditEmergencyContacts).toBe(false);
+    expect(body.emergencyContacts).toBeNull();
+    // The fact came from the server's reader, asked about this holder.
+    expect(control.titularReads).toEqual([
+      { accessPath: "owner", holderRole: "shelter_custody", petId: PET_ID },
+    ]);
+  });
+
+  it("keeps a caretaker and the org path out even when the animal has no titular", async () => {
+    control.petHasTitular = false;
+    for (const access of [asRole("caretaker"), asOrg()]) {
+      control.access = access;
+      const body = await (await read()).json();
+      expect(body.capabilities.canEditProfile).toBe(false);
+      expect(body.capabilities.canEditIdentity).toBe(false);
+      expect(body.capabilities.canCorrectSpecies).toBe(false);
+    }
   });
 });
 
@@ -546,6 +587,21 @@ describe("POST — editar identidad", () => {
       expect((await send(IDENTITY)).status).toBe(200);
       expect(control.writes).toHaveLength(1);
     }
+  });
+
+  it("admits the vecino en tránsito while the animal has no titular, and refuses it once one exists", async () => {
+    control.access = asRole("shelter_custody");
+    control.petHasTitular = false;
+    expect((await send(IDENTITY)).status).toBe(200);
+    expect(control.writes).toHaveLength(1);
+
+    // A chip match found the owner: the same holder is read-only now.
+    control.writes = [];
+    control.petHasTitular = true;
+    const response = await send(IDENTITY);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "profile_forbidden" });
+    expect(control.writes).toHaveLength(0);
   });
 
   it("refuses the ORG path and a user-held shelter_custody row, and writes nothing (verify-report W1)", async () => {
@@ -678,6 +734,13 @@ describe("POST — corregir especie, the FULL-LOCK command", () => {
       userId: OWNER_ID,
       eventAuthorship: { authorRole: "owner", authorOrganizationId: null, authorVerified: false },
     });
+  });
+
+  it("corrects for the vecino en tránsito while the animal has no titular (PO 2026-10-01)", async () => {
+    control.access = asRole("shelter_custody");
+    control.petHasTitular = false;
+    expect((await send(SPECIES)).status).toBe(200);
+    expect(control.writes).toHaveLength(1);
   });
 
   it("refuses the ORG path and a user-held shelter_custody row, and writes nothing (security review of 3babbe25a)", async () => {
@@ -1410,6 +1473,18 @@ describe("POST — editar datos por sección", () => {
       expect((await send(NO_SECTIONS)).status).toBe(200);
       expect(control.writes).toHaveLength(1);
     }
+  });
+
+  it("admits the vecino en tránsito only while the animal has no titular", async () => {
+    control.access = asRole("shelter_custody");
+    control.petHasTitular = false;
+    expect((await send(NO_SECTIONS)).status).toBe(200);
+    expect(control.writes).toHaveLength(1);
+
+    control.writes = [];
+    control.petHasTitular = true;
+    expect((await send(NO_SECTIONS)).status).toBe(403);
+    expect(control.writes).toHaveLength(0);
   });
 
   it("refuses a caretaker, a user-held custody row and the org path, writing nothing", async () => {

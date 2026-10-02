@@ -27,10 +27,11 @@ const PET = {
   emergencyContactPhone: "1199887766",
 } as unknown as Pet;
 
-function dataFor(accessPath: "owner" | "org", holderRole: string | null) {
+function dataFor(accessPath: "owner" | "org", holderRole: string | null, petHasTitular = true) {
   return editPetDataFor({
     accessPath,
     holderRole,
+    petHasTitular,
     pet: PET,
     existingPhotoUrl: "https://x.test/pampa.jpg",
     pppBreedList: ["Pit Bull Terrier"],
@@ -40,7 +41,7 @@ function dataFor(accessPath: "owner" | "org", holderRole: string | null) {
 describe("editPetDataFor — the edit sheet's data only reaches who may save it", () => {
   it.each([
     ["a caretaker", "owner", "caretaker"],
-    ["a user-held custody row", "owner", "shelter_custody"],
+    ["a user-held custody row on an animal with a titular", "owner", "shelter_custody"],
     ["an organization member", "org", null],
   ] as const)("ships nothing to %s", (_who, accessPath, holderRole) => {
     expect(dataFor(accessPath, holderRole)).toBeNull();
@@ -51,6 +52,13 @@ describe("editPetDataFor — the edit sheet's data only reaches who may save it"
     expect(data?.existingPet.insuranceCompany).toBe("Sancor Seguros");
     expect(data?.existingPhotoUrl).toBe("https://x.test/pampa.jpg");
     expect(data?.pppBreedList).toEqual(["Pit Bull Terrier"]);
+  });
+
+  it("ships the form's data to the vecino en tránsito while the animal has no titular", () => {
+    expect(dataFor("owner", "shelter_custody", false)?.existingPet.name).toBe("Pampa");
+    // The fact moves nobody else: a caretaker and the org path stay refused.
+    expect(dataFor("owner", "caretaker", false)).toBeNull();
+    expect(dataFor("org", null, false)).toBeNull();
   });
 
   it("never carries the pet-level emergency contacts, even to the titular", () => {

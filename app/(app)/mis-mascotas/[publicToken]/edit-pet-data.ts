@@ -26,11 +26,13 @@ export type EditPetData = {
 export function editPetDataFor(input: {
   accessPath: "owner" | "org";
   holderRole: string | null;
+  /** The server's titular fact (`resolvePetHasTitularFact`) — never a client's. */
+  petHasTitular: boolean;
   pet: Pet;
   existingPhotoUrl: string | null;
   pppBreedList: readonly string[];
 }): EditPetData | null {
-  if (!canEditPetProfile(input.accessPath, input.holderRole)) return null;
+  if (!canEditPetProfile(input.accessPath, input.holderRole, input.petHasTitular)) return null;
   return {
     existingPet: {
       ...input.pet,

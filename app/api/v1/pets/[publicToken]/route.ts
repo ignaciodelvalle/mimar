@@ -42,7 +42,7 @@ import {
 } from "@/lib/infra/api-v1-limits";
 import { DbBudgetExceededError, withDbBudgetOrThrow } from "@/lib/infra/db-budget";
 import { requireLiveUser } from "@/lib/infra/live-user";
-import { resolvePetHolderAccess } from "@/lib/infra/pet-access";
+import { resolvePetHasTitularFact, resolvePetHolderAccess } from "@/lib/infra/pet-access";
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { createClientFromBearer } from "@/lib/supabase/bearer";
 import { loadOwnerPetDetail } from "@/src/modules/pets/application/read/load-owner-pet-detail";
@@ -202,21 +202,29 @@ export async function GET(
   const accessPath = access.kind === "owner" ? "owner" : "org";
 
   let detail: Awaited<ReturnType<typeof loadOwnerPetDetail>>;
+  // The titular fact behind `viewer.canEditProfile` (the vecino en tránsito,
+  // PO 2026-10-01) — a query only for a user-held custody row, a constant for
+  // everybody else — read beside the detail, under the same budget.
+  let petHasTitular: boolean;
+  const holderRole = access.kind === "owner" ? access.holderRole : null;
   try {
-    detail = await withDbBudgetOrThrow(
-      loadOwnerPetDetail(
-        {
-          user: { id: live.user.id },
-          pet: access.pet,
-          accessPath,
-          // The guard RANKED this row (owner < co_owner < foster < caretaker)
-          // because one user can hold two on one animal. The reader used to
-          // re-query it with no ORDER BY and resolve at random — see
-          // `OwnerPetDetailInput.holderRole`.
-          holderRole: access.kind === "owner" ? access.holderRole : null,
-        },
-        ownerPetDetailPorts,
-      ),
+    [detail, petHasTitular] = await withDbBudgetOrThrow(
+      Promise.all([
+        loadOwnerPetDetail(
+          {
+            user: { id: live.user.id },
+            pet: access.pet,
+            accessPath,
+            // The guard RANKED this row (owner < co_owner < foster < caretaker)
+            // because one user can hold two on one animal. The reader used to
+            // re-query it with no ORDER BY and resolve at random — see
+            // `OwnerPetDetailInput.holderRole`.
+            holderRole,
+          },
+          ownerPetDetailPorts,
+        ),
+        resolvePetHasTitularFact({ accessPath, holderRole, petId: access.pet.id }),
+      ]),
       DETAIL_BUDGET_MS,
       "api-v1-pet-detail-load",
     );
@@ -245,6 +253,7 @@ export async function GET(
       petId: access.pet.id,
       userId: live.user.id,
     }),
+    petHasTitular,
     now: new Date(),
   });
 

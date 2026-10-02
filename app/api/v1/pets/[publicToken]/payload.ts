@@ -28,6 +28,7 @@
 // geolocation, the finder photos and the viewer's own phone numbers do not cross
 // — and the chip code does, inside `compliance.detail`.
 
+import { canEditPetProfile } from "@/lib/domain/profile-editors";
 import { apiV1Envelope } from "@/lib/infra/api-v1";
 import type { OwnerPetDetail } from "@/src/modules/pets/application/read/load-owner-pet-detail";
 import type {
@@ -147,6 +148,12 @@ export function buildOwnerPetDetailV1(input: {
    * database read with its own budget and its own `unavailable`.
    */
   postAdoptionCheckin: CredentialSection<OwnerPetPostAdoptionCheckinSection>;
+  /**
+   * Whether the animal has a titular, as the route read it
+   * (`resolvePetHasTitularFact`) — the one fact `canEditPetProfile` needs
+   * beyond the role, for the vecino en tránsito (PO 2026-10-01).
+   */
+  petHasTitular: boolean;
   now: Date;
 }): OwnerPetDetailV1 {
   const { detail, now } = input;
@@ -324,6 +331,13 @@ export function buildOwnerPetDetailV1(input: {
       // animal; a caretaker is trusted with it; neither gets to see who else the
       // owner trusts, and an org member never does.
       isTitular: input.accessPath === "owner" && detail.ownershipRole === "owner",
+      // "Editar datos", from the predicate `POST /profile` enforces — so the
+      // panel's row and the write cannot disagree about the vecino en tránsito.
+      canEditProfile: canEditPetProfile(
+        input.accessPath,
+        detail.ownershipRole,
+        input.petHasTitular,
+      ),
     },
     identity: { status: "ok", data: identity },
     status: { status: "ok", data: status },

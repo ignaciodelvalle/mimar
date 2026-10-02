@@ -51,9 +51,10 @@ function detailStub(
     truncated: boolean;
   },
   openCases: Array<{ publicCode: string; caseKind: string; status: string }> = [],
+  ownershipRole = "owner",
 ): OwnerPetDetail {
   return {
-    ownershipRole: "owner",
+    ownershipRole,
     isTransit: false,
     isDeceased: false,
     identity: {
@@ -92,15 +93,18 @@ function build(input: {
   pppRegistries?: CredentialSection<OwnerPetPppRegistriesSection>;
   postAdoptionCheckin?: CredentialSection<OwnerPetPostAdoptionCheckinSection>;
   openCases?: Array<{ publicCode: string; caseKind: string; status: string }>;
+  ownershipRole?: string;
+  petHasTitular?: boolean;
 }) {
   return buildOwnerPetDetailV1({
     publicToken: SELF,
     petStatus: input.petStatus ?? "active",
     pregnancyStatus: null,
     accessPath: input.accessPath ?? "owner",
-    detail: detailStub(input.carousel, input.openCases),
+    detail: detailStub(input.carousel, input.openCases, input.ownershipRole),
     pppRegistries: input.pppRegistries ?? { status: "ok", data: null },
     postAdoptionCheckin: input.postAdoptionCheckin ?? { status: "ok", data: { pending: false } },
+    petHasTitular: input.petHasTitular ?? true,
     now: NOW,
   });
 }
@@ -110,6 +114,48 @@ function build(input: {
 // ---------------------------------------------------------------------------
 
 const NO_CAROUSEL = { items: [], total: 0, truncated: false };
+
+// ---------------------------------------------------------------------------
+// The viewer's "Editar datos" verdict
+// ---------------------------------------------------------------------------
+
+describe("buildOwnerPetDetailV1 — viewer.canEditProfile is the server's predicate", () => {
+  it("is true for the vecino en tránsito while the animal has no titular", () => {
+    const payload = build({
+      carousel: NO_CAROUSEL,
+      ownershipRole: "shelter_custody",
+      petHasTitular: false,
+    });
+    // The role still reads `caretaker` (no titular affordances); the verdict
+    // is what opens "Editar datos".
+    expect(payload.viewer).toEqual({ role: "caretaker", isTitular: false, canEditProfile: true });
+  });
+
+  it("flips to false once the animal has a titular", () => {
+    const payload = build({
+      carousel: NO_CAROUSEL,
+      ownershipRole: "shelter_custody",
+      petHasTitular: true,
+    });
+    expect(payload.viewer.canEditProfile).toBe(false);
+  });
+
+  it("does not move for a caretaker, the org path or the titular", () => {
+    expect(
+      build({ carousel: NO_CAROUSEL, ownershipRole: "caretaker", petHasTitular: false }).viewer
+        .canEditProfile,
+    ).toBe(false);
+    expect(
+      build({
+        carousel: NO_CAROUSEL,
+        accessPath: "org",
+        ownershipRole: "owner",
+        petHasTitular: false,
+      }).viewer.canEditProfile,
+    ).toBe(false);
+    expect(build({ carousel: NO_CAROUSEL }).viewer.canEditProfile).toBe(true);
+  });
+});
 
 describe("buildOwnerPetDetailV1 — the open cases carry their CODES", () => {
   it("hands back the CAS- code, the kind and the status of every open case", () => {

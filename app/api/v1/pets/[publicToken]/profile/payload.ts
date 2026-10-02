@@ -65,6 +65,20 @@ type PetProfileDraftColumns = {
 /** The access record, minus the `none` arm the caller has already turned into a 404. */
 export type ResolvedProfileAccess = Exclude<PetHolderAccess, { kind: "none" }>;
 
+/**
+ * What `resolvePetHasTitularFact` needs from this access record — the titular
+ * fact `canEditPetProfile` reads for the vecino en tránsito (PO 2026-10-01).
+ * The route and the command path read it under their own budgets; this is the
+ * one place that says which holder it is read for.
+ */
+export function profileTitularFactInput(access: ResolvedProfileAccess) {
+  return {
+    accessPath: access.kind,
+    holderRole: access.kind === "owner" ? access.holderRole : null,
+    petId: access.pet.id,
+  };
+}
+
 /** The person path, as the legal owner (`ownerships.role = 'owner'`). */
 export function isLegalOwner(access: ResolvedProfileAccess): boolean {
   return access.kind === "owner" && access.holderRole === "owner";
@@ -116,7 +130,9 @@ export function isLegalOwner(access: ResolvedProfileAccess): boolean {
  *     says so up front rather than offering a form that can only be refused.
  *   · THE SECTIONED PROFILE EDIT (owner-pet-actions) is `canEditPetProfile`,
  *     the predicate the web's `updatePetAction` and its forms read too (web =
- *     app): the person path as owner, co-owner or foster. Not
+ *     app): the person path as owner, co-owner or foster — and the vecino en
+ *     tránsito (user-held `shelter_custody`) while the animal has NO titular
+ *     (PO 2026-10-01; `petHasTitular` below). Not
  *     `isTitularHolder`: that deny admits the org path and a user-held
  *     `shelter_custody` row, and the owner panel offers neither an "Editar
  *     datos". This block serves the owner's insurance and medical text; it goes
@@ -125,6 +141,12 @@ export function isLegalOwner(access: ResolvedProfileAccess): boolean {
  */
 export function petProfileCapabilities(
   access: ResolvedProfileAccess,
+  /**
+   * Whether the animal has a titular — the server fact
+   * (`resolvePetHasTitularFact`) that lets the vecino en tránsito edit while
+   * there is none (PO 2026-10-01). Ignored for every other holder.
+   */
+  petHasTitular: boolean,
 ): PetProfileEditCapabilitiesV1 {
   // `kind` and `accessPath` are the same discriminator under two names — the
   // holder resolver calls it `kind`, the cookie guard `accessPath` — and
@@ -139,6 +161,7 @@ export function petProfileCapabilities(
   const editsProfile = canEditPetProfile(
     access.kind,
     access.kind === "owner" ? access.holderRole : null,
+    petHasTitular,
   );
   return {
     canEditIdentity: editsProfile,
@@ -179,6 +202,8 @@ export type BuildPetProfileEditInput = {
    * denies: the row says the owner has a disability (Ley 25.326 Art. 7).
    */
   serviceDog: ServiceDogDesignationRow | null;
+  /** The titular fact `petProfileCapabilities` reads — see there. */
+  petHasTitular: boolean;
   now: Date;
 };
 
@@ -188,9 +213,10 @@ export function buildPetProfileEditV1({
   accountContacts,
   physicalTagInterest,
   serviceDog,
+  petHasTitular,
   now,
 }: BuildPetProfileEditInput): PetProfileEditV1 {
-  const capabilities = petProfileCapabilities(access);
+  const capabilities = petProfileCapabilities(access, petHasTitular);
   const mayReadContacts = capabilities.canEditEmergencyContacts;
 
   return {

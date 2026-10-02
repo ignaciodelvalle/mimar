@@ -41,6 +41,7 @@ import {
   type SupabaseServerClient,
   requirePetAccess,
   requireTitularAccess,
+  resolvePetHasTitularFact,
 } from "@/lib/infra/pet-access";
 import { fetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
 import { resolvePppClassificationForJurisdiction } from "@/lib/infra/ppp-classification";
@@ -436,7 +437,14 @@ export async function updatePetAction(
   // app's `edit_profile` admits — the owner panel's "Editar datos" row. Narrower
   // than the titular gate above (which a user-held custody row and the org path
   // pass), and BEHIND it, so the titular-only fence still sees that guard.
-  if (!canEditPetProfile(accessPath, access.holderRole)) {
+  // The vecino en tránsito (user-held custody) passes it only while the animal
+  // has no titular — a server fact, read here (PO 2026-10-01).
+  const petHasTitular = await resolvePetHasTitularFact({
+    accessPath,
+    holderRole: access.holderRole,
+    petId: existingPet.id,
+  });
+  if (!canEditPetProfile(accessPath, access.holderRole, petHasTitular)) {
     return { error: PROFILE_EDIT_REFUSED };
   }
 
@@ -720,8 +728,10 @@ export async function correctPetSpeciesAction(
   // correction now shares canEditPetProfile with identity and the sectioned
   // edit. Narrower than the titular gate above (which a user-held custody row
   // and the org path pass), and BEHIND it, so the titular-only fence still
-  // sees that guard.
-  if (!canEditPetProfile(accessPath, holderRole)) {
+  // sees that guard. The vecino en tránsito passes it only while the animal has
+  // no titular (PO 2026-10-01).
+  const petHasTitular = await resolvePetHasTitularFact({ accessPath, holderRole, petId: pet.id });
+  if (!canEditPetProfile(accessPath, holderRole, petHasTitular)) {
     return { error: PROFILE_EDIT_REFUSED };
   }
 

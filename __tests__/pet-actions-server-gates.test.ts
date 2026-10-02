@@ -26,14 +26,23 @@ import { type PetActionId, derivePetActions, findPetAction } from "@dim/contract
 
 const ROLES = ownershipRoleEnum.enumValues;
 
-/** The row's state for a person-path holder of `role`, on an active dog. */
-function rowFor(id: PetActionId, role: string): "live" | "inert" | "absent" {
+/**
+ * The row's state for a person-path holder of `role`, on an active dog.
+ * `canEditProfile` is the server's verdict as the owner face carries it;
+ * omitted, the catalogue falls back to the role (an older server).
+ */
+function rowFor(
+  id: PetActionId,
+  role: string,
+  canEditProfile?: boolean,
+): "live" | "inert" | "absent" {
   const derived = derivePetActions({
     viewerRole: toViewerRole("owner", role),
     isTitular: role === "owner",
     petStatus: "active",
     species: "dog",
     pppDoor: false,
+    canEditProfile,
   });
   const action = findPetAction(derived, id);
   return action === null ? "absent" : action.state.kind;
@@ -45,7 +54,25 @@ describe("Editar datos — the panel's row, the web's form and the app's command
   });
 
   it.each(ROLES)("a %s holder: the row is live exactly when the server lets them save", (role) => {
-    expect(rowFor("edit", role) === "live").toBe(canEditPetProfile("owner", role));
+    for (const petHasTitular of [true, false]) {
+      const verdict = canEditPetProfile("owner", role, petHasTitular);
+      expect(rowFor("edit", role, verdict) === "live").toBe(verdict);
+    }
+  });
+
+  it.each(ROLES)(
+    "a %s holder on an older server (no verdict): the role fallback is the server's answer for an animal WITH a titular",
+    (role) => {
+      expect(rowFor("edit", role) === "live").toBe(canEditPetProfile("owner", role, true));
+    },
+  );
+
+  it("the vecino en tránsito: live while the animal has no titular, grey once one exists", () => {
+    // A user-held custody row reaches the catalogue as `caretaker` (toViewerRole).
+    expect(canEditPetProfile("owner", "shelter_custody", false)).toBe(true);
+    expect(canEditPetProfile("owner", "shelter_custody", true)).toBe(false);
+    expect(rowFor("edit", "shelter_custody", true)).toBe("live");
+    expect(rowFor("edit", "shelter_custody", false)).toBe("inert");
   });
 
   it("the org path: no row, and no save", () => {
@@ -57,14 +84,21 @@ describe("Editar datos — the panel's row, the web's form and the app's command
       pppDoor: false,
     });
     expect(findPetAction(member, "edit")).toBeNull();
-    expect(canEditPetProfile("org", null)).toBe(false);
+    expect(canEditPetProfile("org", null, false)).toBe(false);
+    expect(canEditPetProfile("org", "shelter_custody", false)).toBe(false);
   });
 
-  it("refuses a user-held custody row and a caretaker, and admits the three titular roles", () => {
+  it("with a titular: refuses a user-held custody row and a caretaker, and admits the three titular roles", () => {
     // Spelled out once, so the walk above cannot pass by both sides being wrong
     // the same way.
-    expect(ROLES.filter((role) => canEditPetProfile("owner", role)).sort()).toEqual(
+    expect(ROLES.filter((role) => canEditPetProfile("owner", role, true)).sort()).toEqual(
       ["co_owner", "foster", "owner"].sort(),
+    );
+  });
+
+  it("without a titular: the vecino en tránsito joins them, and a caretaker still does not", () => {
+    expect(ROLES.filter((role) => canEditPetProfile("owner", role, false)).sort()).toEqual(
+      ["co_owner", "foster", "owner", "shelter_custody"].sort(),
     );
   });
 });
