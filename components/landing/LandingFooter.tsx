@@ -1,6 +1,8 @@
-// Landing footer — brand + 3 columns + legal line + closing GobStripe.
+// Landing footer — brand + 4 short columns + a small bottom legal row + closing
+// GobStripe (PO 2026-10-02). Rendered on `/`, /municipios and every page of
+// the (institucional) group.
 
-import { FOOTER_NAV } from "@/components/landing/landing-content";
+import { FOOTER_LEGAL, FOOTER_NAV } from "@/components/landing/landing-content";
 import { GobStripe } from "@/components/layout/GobStripe";
 import Link from "next/link";
 
@@ -9,7 +11,7 @@ export function LandingFooter() {
     <footer className="lp-foot" data-section="landing-footer">
       <div className="lp-wrap-wide">
         <div className="lp-foot-grid">
-          <div>
+          <div className="lp-foot-brand">
             <div className="lp-brand mb-3">
               <span className="lp-brand-mark" aria-hidden="true">
                 <img src="/logo-mimar-mark.svg" alt="" width={26} height={26} />
@@ -36,30 +38,27 @@ export function LandingFooter() {
               La libreta sanitaria digital de tu mascota.
             </p>
             {/* PO decision, orchestrator review 2026-09-24 (reverses D7): the
-                celeste-and-white stripe, the "Estado" chapter and (once WU5
-                ships) a "para municipios" page read together as an official
-                signature — enough that Play's listing review could read it as
-                implied government affiliation. This line forecloses that
-                reading without claiming anything about who runs miMAR beyond
-                "not the State".
-                Corrected 2026-09-24 (fresh review): this used to duplicate
-                the disclaimer that lived in .lp-foot-legal below, with a
-                different noun ("proyecto" here, "servicio" there) — two
-                sentences saying almost the same thing in two places. Merged
-                into ONE line, kept here (near the brand, above the fold of
-                the footer) because it is more visible than the small-print
-                legal row; state-endorsement-fence.test.ts still pins this
-                exact substring's presence in THIS file. */}
+                celeste-and-white stripe, the "Estado" chapter and the "para
+                municipios" page read together as an official signature —
+                enough that Play's listing review could read it as implied
+                government affiliation. This line forecloses that reading
+                without claiming anything about who runs miMAR beyond "not the
+                State". It is the footer's ONE disclaimer, kept near the brand
+                because that is more visible than the small-print row;
+                state-endorsement-fence.test.ts pins this exact substring's
+                presence in THIS file. */}
             <p className="mt-2 text-md leading-relaxed text-[var(--color-ln-mute)]">
               miMAR es un proyecto independiente: no es un sitio oficial del Estado argentino.
             </p>
           </div>
           {FOOTER_NAV.map(([heading, items]) => (
             <div key={heading}>
-              <h4>{heading}</h4>
+              {/* The column headings are small caps, except the brand's own: uppercase
+                  would print "MIMAR", and the brand is always "miMAR". */}
+              <h4 className={heading === "miMAR" ? "lp-foot-h-brand" : undefined}>{heading}</h4>
               <ul>
                 {items.map(([label, href]) => (
-                  <li key={label}>
+                  <li key={href}>
                     <Link href={href}>{label}</Link>
                   </li>
                 ))}
@@ -67,23 +66,19 @@ export function LandingFooter() {
             </div>
           ))}
         </div>
-        {/* This line used to open with "Ministerio de Salud · República
-            Argentina" and the ministry's own domain, which stated an
-            endorsement that does not exist. The independence disclaimer that
-            replaced it lived here too, duplicating the brand-block line
-            above with a different noun ("servicio" vs "proyecto") — merged
-            into that one line above (fresh review, 2026-09-24). What's left
-            here is a norm citation, which claims nothing about who backs the
-            product. */}
+        {/* The small legal row (PO 2026-10-02). The sentence that used to sit
+            here — "Las denuncias de maltrato se encuadran en la Ley 14.346. Tus
+            datos se tratan según la Ley 25.326." — was removed: /privacidad,
+            /terminos, /leyes and the denuncia flow already say it where it
+            applies, and the footer has its one disclaimer above. */}
         <div className="lp-foot-legal">
-          {/* PO 2026-09-29 (critique M3): a platform does not "operate under"
-              Ley 14.346, the criminal law on animal cruelty. What is true: the
-              cruelty reports it takes fall under that law, and personal data
-              is handled under Ley 25.326. */}
-          <span>
-            Las denuncias de maltrato se encuadran en la Ley 14.346. Tus datos se tratan según la
-            Ley 25.326.
-          </span>
+          <ul>
+            {FOOTER_LEGAL.map(([label, href]) => (
+              <li key={href}>
+                <Link href={href}>{label}</Link>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
       <GobStripe height={6} />

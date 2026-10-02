@@ -1,7 +1,8 @@
 // Fitness test — the two footers must withhold the same dead ends.
 //
 // The product ships TWO footers: `LandingFooter` (marketing chrome, columns
-// Ciudadanía / Operadores / Institucional, rendered on `/`) and `AppFooter`
+// Para vos / Ayuda / Organizaciones / miMAR plus a legal row, rendered on `/`
+// and the institutional pages) and `AppFooter`
 // (Producto / Información / Legales, rendered everywhere else). Different
 // taxonomies is a deliberate design call; different DEAD ENDS is not.
 //
@@ -19,7 +20,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { FOOTER_NAV } from "@/components/landing/landing-content";
+import { FOOTER_LEGAL, FOOTER_NAV } from "@/components/landing/landing-content";
 import { DEFAULT_COLUMNS } from "@/components/layout/AppFooter";
 
 /**
@@ -33,7 +34,11 @@ import { DEFAULT_COLUMNS } from "@/components/layout/AppFooter";
  */
 const DEAD_END_ROUTES: Array<{ href: string; why: string }> = [];
 
-const landingHrefs = FOOTER_NAV.flatMap(([, links]) => links.map(([, href]) => href));
+// The legal row is part of the landing footer too (PO 2026-10-02).
+const landingHrefs = [
+  ...FOOTER_NAV.flatMap(([, links]) => links.map(([, href]) => href)),
+  ...FOOTER_LEGAL.map(([, href]) => href),
+];
 const appHrefs = DEFAULT_COLUMNS.flatMap((column) => column.links.map((link) => link.href));
 
 describe("footer dead ends", () => {
@@ -50,6 +55,7 @@ describe("footer dead ends", () => {
     expect(landingHrefs.length).toBeGreaterThan(5);
     expect(appHrefs.length).toBeGreaterThan(5);
     expect(landingHrefs).toContain("/denuncias/nueva");
+    expect(landingHrefs).toContain("/privacidad");
     expect(appHrefs).toContain("/privacidad");
   });
 });

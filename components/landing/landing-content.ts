@@ -892,17 +892,29 @@ export const ROLES: LandingRole[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Footer nav — 3 columns, real routes only
+// Footer nav — 4 short columns + a bottom legal row, real routes only
+// (PO 2026-10-02). Every route the old 3-column footer linked is still here;
+// the legal pages moved out of the columns into the row at the bottom.
 // ---------------------------------------------------------------------------
 
 export const FOOTER_NAV: Array<[string, Array<[string, string]>]> = [
   [
-    "Ciudadanía",
+    "Para vos",
     [
       ["Crear mi miMAR", "/registro"],
       ["Mascotas perdidas", "/perdidas"],
       ["Adoptar", "/adoptar"],
+      // The public directory of shelters and rescue networks. Its own label,
+      // so it never reads as the organizations' access request in the next
+      // column ("Refugios y veterinarias").
+      ["Buscar un refugio", "/refugios"],
       ["Denunciar maltrato", "/denuncias/nueva"],
+    ],
+  ],
+  [
+    "Ayuda",
+    [
+      ["Centro de ayuda", "/ayuda"],
       // The return path for someone who already denounced. It used to be the
       // DEN- half of the crisis band's code lookup; when that lookup came out
       // of the band (2026-08-19) the follow-up had no door left on the home
@@ -910,7 +922,6 @@ export const FOOTER_NAV: Array<[string, Array<[string, string]>]> = [
       // /denuncias/buscar explains the case in a sentence, which an input
       // with a placeholder never did.
       ["Seguir mi denuncia", "/denuncias/buscar"],
-      ["Centro de ayuda", "/ayuda"],
       // "Sugerencias" removed (blind QA 2026-08-19): /sugerencias renders a
       // "muy pronto" placeholder with no submission mechanism. AppFooter had
       // already dropped it for exactly that reason ("link hidden to avoid dead
@@ -922,25 +933,28 @@ export const FOOTER_NAV: Array<[string, Array<[string, string]>]> = [
     ],
   ],
   [
-    "Operadores",
+    "Organizaciones",
     [
-      ["Organizaciones", "/organizaciones/solicitar-acceso"],
-      ["Refugios", "/refugios"],
+      ["Refugios y veterinarias", "/organizaciones/solicitar-acceso"],
+      ["Municipios", "/municipios"],
       ["Iniciar sesión", "/iniciar-sesion"],
     ],
   ],
   [
-    "Institucional",
+    "miMAR",
     [
-      ["Municipios", "/municipios"],
-      ["Acerca de miMAR", "/acerca"],
-      ["Transparencia y datos", "/transparencia"],
+      ["Acerca", "/acerca"],
       ["Funcionalidades", "/funcionalidades"],
+      ["Transparencia y datos", "/transparencia"],
       ["Marco legal", "/leyes"],
-      ["Privacidad", "/privacidad"],
-      ["Términos", "/terminos"],
-      ["Cookies", "/cookies"],
-      ["Accesibilidad", "/accesibilidad"],
     ],
   ],
+];
+
+/** The small legal row at the very bottom of the footer. */
+export const FOOTER_LEGAL: Array<[string, string]> = [
+  ["Privacidad", "/privacidad"],
+  ["Términos", "/terminos"],
+  ["Cookies", "/cookies"],
+  ["Accesibilidad", "/accesibilidad"],
 ];

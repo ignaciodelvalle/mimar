@@ -26,10 +26,10 @@ export function FaqSection() {
           ))}
         </div>
         <div className="lp-trust-row lp-reveal" data-section="trust-row">
-          {/* "Gratis para siempre" and "Ley 25.326" already live in the
-              hero/FAQ answer and the footer legal line respectively (PO
-              copy-trim decision 2026-07-21) — kept out of this row so the
-              same claims aren't repeated a third/second time. */}
+          {/* "Gratis para siempre" already lives in the hero and the FAQ
+              answer, and "Ley 25.326" in /privacidad (PO copy-trim decision
+              2026-07-21; the footer's norm line was removed 2026-10-02) —
+              kept out of this row so the same claims aren't repeated. */}
           {/* Was "Operado por la autoridad sanitaria nacional" — no sanitary
               authority operates miMAR. The slot wants a trust claim the
               product can back: the event spine is append-only, which is the

@@ -3183,6 +3183,8 @@
 }
 
 /* ============ footer ====================================================== */
+/* Brand + four short columns (PO 2026-10-02). Wide: one row. Tablet: the
+   brand takes its own row above the four columns. Phone: two by two. */
 .lp .lp-foot {
   background: var(--color-ln-card);
   border-top: 1px solid var(--color-ln-line);
@@ -3190,13 +3192,22 @@
 }
 .lp .lp-foot-grid {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr;
-  gap: 36px;
+  grid-template-columns: 1.6fr repeat(4, minmax(0, 1fr));
+  gap: 32px;
 }
-@media (max-width: 820px) {
+@media (max-width: 1020px) {
   .lp .lp-foot-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 28px;
+  }
+  .lp .lp-foot-brand {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 640px) {
+  .lp .lp-foot-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px 20px;
   }
 }
 .lp .lp-foot h4 {
@@ -3206,6 +3217,13 @@
   text-transform: uppercase;
   color: var(--color-ln-mute);
   margin: 0 0 12px;
+}
+.lp .lp-foot h4.lp-foot-h-brand {
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-size: 12px;
+  /* The other headings' line box (10px type), so the four lists start level. */
+  line-height: 12px;
 }
 .lp .lp-foot ul {
   list-style: none;
@@ -3238,17 +3256,21 @@
     color: var(--color-ln-azul);
   }
 }
+/* The small legal row: Privacidad · Términos · Cookies · Accesibilidad. */
 .lp .lp-foot-legal {
   margin-top: 34px;
-  padding-top: 20px;
+  padding-top: 16px;
+  padding-bottom: 26px;
   border-top: 1px solid var(--color-ln-line-2);
-  display: flex;
-  gap: 14px;
+}
+.lp .lp-foot .lp-foot-legal ul {
+  flex-direction: row;
   flex-wrap: wrap;
-  align-items: center;
+  column-gap: 20px;
+}
+.lp .lp-foot .lp-foot-legal a {
   font-size: 12.5px;
   color: var(--color-ln-mute);
-  padding-bottom: 30px;
 }
 
 /* ---------------------------------------------------------------------------

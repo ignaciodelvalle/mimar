@@ -1,7 +1,8 @@
 // Landing chrome (lp-* layer), same as app/page.tsx and app/municipios. Imported
 // here because this group is a landing-family surface: the pages the landing
-// footer's "Institucional" column links to read as a continuation of the
-// landing, not as a jump into the app shell. See app/landing.css.
+// footer links to (its "miMAR" and "Ayuda" columns and its legal row) read as
+// a continuation of the landing, not as a jump into the app shell. See
+// app/landing.css.
 import "@/app/landing.css";
 
 import { LandingFooter } from "@/components/landing/LandingFooter";

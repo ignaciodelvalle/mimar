@@ -552,8 +552,8 @@ describe("life moments + FAQ + trust row", () => {
     expect(html).toContain("Estadísticas abiertas");
     expect(html).not.toContain("Datos abiertos");
     expect(html).toContain(">beta<");
-    // Copy-trim decision (2026-07-21): "Ley 25.326" lives ONLY in the footer
-    // legal line now — the trust row's repeat of it was removed. Likewise
+    // Copy-trim decision (2026-07-21): the trust row's "Ley 25.326" was
+    // removed (and the footer's norm line went too, 2026-10-02). Likewise
     // "Gratis para siempre" stays in the hero + this section's cost FAQ
     // answer only, not as a third badge here.
     expect(html).not.toContain("Ley 25.326");
@@ -676,15 +676,88 @@ describe("the phone FAQ", () => {
 });
 
 describe("footer", () => {
-  it("renders brand + 3 nav columns + legal line", () => {
+  // PO 2026-10-02: four short columns and a small legal row at the bottom.
+  function columns(html: string): Array<{ heading: string; hrefs: string[] }> {
+    return html
+      .split(/<h4[^>]*>/)
+      .slice(1)
+      .map((chunk) => ({
+        heading: chunk.slice(0, chunk.indexOf("</h4>")),
+        hrefs: [...chunk.slice(0, chunk.indexOf("</ul>")).matchAll(/href="([^"]+)"/g)].map(
+          (m) => m[1],
+        ),
+      }));
+  }
+
+  it("renders the brand + 4 columns, each with the PO's links in order", () => {
     const html = renderToStaticMarkup(<LandingFooter />);
     expect(html).toContain("miMAR");
-    expect(html).toContain("Ciudadanía");
-    expect(html).toContain("Operadores");
-    expect(html).toContain("Institucional");
-    expect(html).toContain("Ley 25.326");
-    expect(html).toContain('href="/perdidas"');
-    expect(html).toContain('href="/accesibilidad"');
+    expect(columns(html)).toEqual([
+      {
+        heading: "Para vos",
+        hrefs: ["/registro", "/perdidas", "/adoptar", "/refugios", "/denuncias/nueva"],
+      },
+      { heading: "Ayuda", hrefs: ["/ayuda", "/denuncias/buscar"] },
+      {
+        heading: "Organizaciones",
+        hrefs: ["/organizaciones/solicitar-acceso", "/municipios", "/iniciar-sesion"],
+      },
+      {
+        heading: "miMAR",
+        hrefs: ["/acerca", "/funcionalidades", "/transparencia", "/leyes"],
+      },
+    ]);
+    for (const label of [
+      "Crear mi miMAR",
+      "Mascotas perdidas",
+      "Adoptar",
+      "Denunciar maltrato",
+      "Centro de ayuda",
+      "Seguir mi denuncia",
+      "Refugios y veterinarias",
+      "Municipios",
+      "Iniciar sesión",
+      "Acerca",
+      "Funcionalidades",
+      "Transparencia y datos",
+      "Marco legal",
+    ]) {
+      expect(html, label).toContain(`>${label}</a>`);
+    }
+  });
+
+  it("the brand's column heading keeps the brand's casing", () => {
+    const html = renderToStaticMarkup(<LandingFooter />);
+    expect(html).toContain('<h4 class="lp-foot-h-brand">miMAR</h4>');
+    const css = readFileSync(join(process.cwd(), "app", "landing.css"), "utf8");
+    expect(css).toMatch(/\.lp \.lp-foot h4\.lp-foot-h-brand \{\s*text-transform: none;/);
+  });
+
+  it("closes on a small legal row: Privacidad · Términos · Cookies · Accesibilidad", () => {
+    const html = renderToStaticMarkup(<LandingFooter />);
+    const legal = html.slice(html.indexOf('class="lp-foot-legal"'));
+    expect([...legal.matchAll(/href="([^"]+)"/g)].map((m) => m[1])).toEqual([
+      "/privacidad",
+      "/terminos",
+      "/cookies",
+      "/accesibilidad",
+    ]);
+    // None of them is repeated up in the columns.
+    for (const { hrefs } of columns(html)) {
+      for (const href of ["/privacidad", "/terminos", "/cookies", "/accesibilidad"]) {
+        expect(hrefs).not.toContain(href);
+      }
+    }
+  });
+
+  it("keeps the independence line and drops the norm line (Ley 14.346 / Ley 25.326)", () => {
+    const html = renderToStaticMarkup(<LandingFooter />);
+    expect(html).toContain(
+      "miMAR es un proyecto independiente: no es un sitio oficial del Estado argentino.",
+    );
+    expect(html).not.toContain("Ley 25.326");
+    expect(html).not.toContain("Ley 14.346");
+    expect(html).not.toContain("se encuadran");
   });
 
   // Copy review 2026-09-30 (D1/D2/D3): the footer used to repeat the
