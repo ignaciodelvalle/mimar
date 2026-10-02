@@ -54,6 +54,18 @@ describe("LeyesPage — structure", () => {
     }
   });
 
+  it("dates the content and says it is general information", () => {
+    const html = renderToStaticMarkup(<LeyesPage />);
+    expect(html).toContain("Última revisión: octubre de 2026");
+    expect(html).toContain("no reemplaza el asesoramiento legal");
+  });
+
+  it("no longer carries the QR promotion inside the legal page", () => {
+    const html = renderToStaticMarkup(<LeyesPage />);
+    expect(html).not.toContain("Una mirada urbano-rural");
+    expect(html).not.toContain("sin instalar ninguna app");
+  });
+
   it("renders a back-to-home link", () => {
     const html = renderToStaticMarkup(<LeyesPage />);
     expect(html).toMatch(/<a href="\/"[^>]*>/);

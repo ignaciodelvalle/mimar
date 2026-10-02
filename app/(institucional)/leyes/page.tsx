@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import {
   LEGAL_KNOWLEDGE_GROUPS,
+  LEGAL_KNOWLEDGE_REVIEWED_LABEL,
   type LegalKnowledgeEntry,
   type LegalKnowledgeGroup,
 } from "@/lib/reference/legal-knowledge-base";
@@ -11,7 +12,7 @@ import {
 export const metadata: Metadata = {
   title: "Marco legal — miMAR",
   description:
-    "Qué leyes argentinas rigen la tenencia, la salud y el bienestar de tu mascota, explicadas en lenguaje simple.",
+    "Qué normas argentinas rigen la identificación, la salud, el bienestar y los viajes de tu mascota, y cómo se aplican en miMAR.",
 };
 
 const JURISDICTION_BADGE_STYLES: Record<LegalKnowledgeEntry["jurisdictionBadge"], string> = {
@@ -120,11 +121,14 @@ export default function LeyesPage() {
             Marco legal
           </h1>
           <p className="text-md leading-relaxed text-[var(--color-ln-ink-2)]">
-            La tenencia de una mascota en la Argentina no es solo una decisión personal: hay leyes
-            nacionales, provinciales y municipales que definen identificación, vacunación, bienestar
-            y datos personales. Acá te contamos, en lenguaje simple, qué dice cada norma y cómo se
-            refleja en miMAR. Esta página es informativa — no reemplaza el asesoramiento legal ni la
-            consulta con la autoridad de tu jurisdicción.
+            La tenencia de una mascota en la Argentina está regulada por normas nacionales,
+            provinciales y municipales sobre identificación, vacunación, bienestar, viajes y datos
+            personales. En esta página resumimos, en lenguaje claro, qué establece cada norma y cómo
+            se aplica en miMAR.
+          </p>
+          <p className="text-sm leading-relaxed text-[var(--color-ln-mute)]">
+            Información general: no reemplaza el asesoramiento legal ni la consulta con la autoridad
+            de tu jurisdicción. Última revisión: {LEGAL_KNOWLEDGE_REVIEWED_LABEL}.
           </p>
         </header>
 
@@ -139,33 +143,6 @@ export default function LeyesPage() {
             </a>
           ))}
         </nav>
-
-        <div
-          className="flex gap-3 rounded-lg border border-[var(--color-ln-celeste-100)] bg-[var(--color-ln-celeste-050)] p-4"
-          role="note"
-        >
-          <Icon
-            name="info"
-            size="md"
-            decorative
-            className="mt-0.5 shrink-0 text-[var(--color-ln-azul)]"
-          />
-          <p className="text-sm leading-relaxed text-[var(--color-ln-ink-2)]">
-            <strong>Una mirada urbano-rural:</strong> la hidatidosis —una de las zoonosis
-            históricamente vigiladas por norma (ver{" "}
-            <a
-              href="#zoonosis-heading"
-              className="underline underline-offset-4 hover:text-[var(--color-ln-azul)]"
-            >
-              Zoonosis y salud pública
-            </a>
-            )— se transmite en el ciclo perro-oveja, típico de zonas de cría rural. Ahí la
-            credencial QR de miMAR tiene una ventaja concreta:{" "}
-            <strong>se lee desde cualquier teléfono con cámara, sin instalar ninguna app</strong>.
-            Quien encuentre al animal escanea el código y accede a los datos básicos de la mascota —
-            sin descargar ni configurar nada.
-          </p>
-        </div>
 
         {LEGAL_KNOWLEDGE_GROUPS.map((group) => (
           <LegalGroupSection key={group.id} group={group} />

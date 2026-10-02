@@ -31,7 +31,7 @@
 
 ### Guía del refugio (`guia-refugio.md`)
 
-- **Chequeo de postulantes contra el registro de infractores (Ley Huellas CABA 6839).** La base de conocimiento legal lo marca como integración futura (`lib/reference/legal-knowledge-base.ts`, entrada `ley-caba-6839`). La guía aclara que la evaluación del adoptante es del refugio.
+- **Chequeo de postulantes contra el registro de infractores (Ley CABA 6.839).** Es una integración futura: todavía no hay una vía de acceso institucional a ese registro. La guía aclara que la evaluación del adoptante es del refugio.
 - **Donaciones / pagos.** No existe.
 - **Push al celular por defecto.** Web push v1 existe pero con flag `NEXT_PUBLIC_PUSH_ENABLED` default OFF y solo para severidad urgente (feature inventory, "Infra"). La guía promete la campanita in-app, no push.
 

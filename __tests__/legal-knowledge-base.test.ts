@@ -76,6 +76,90 @@ describe("legal-knowledge-base — entry completeness", () => {
     expect(labels.some((l) => l.includes("25.326"))).toBe(true); // datos personales
     expect(labels.some((l) => l.includes("5470"))).toBe(true); // cremación CABA
     expect(labels.some((l) => l.includes("4.669") || l.includes("4669"))).toBe(true); // Decreto 4669/1973
-    expect(labels.some((l) => l.includes("284"))).toBe(true); // Res. SENASA 284/2024 — ISO 11784/11785
+    expect(labels.some((l) => l.includes("14.107"))).toBe(true); // PPP PBA, chip o tatuaje
+    expect(labels.some((l) => l.includes("art. 141"))).toBe(true); // abandono, CABA
+    expect(labels.some((l) => l.includes("654/2026"))).toBe(true); // receta electrónica
+    expect(labels.some((l) => l.includes("2076/2025"))).toBe(true); // viajes en ómnibus y tren
+  });
+});
+
+// The October 2026 legal review found citations that no official text
+// supports, and copy that read like code or like a chat. These pin the
+// corrections so a later edit cannot quietly bring them back.
+describe("legal-knowledge-base — revision of 2026-10", () => {
+  const entries = getAllLegalKnowledgeEntries();
+  const fieldsOf = (e: (typeof entries)[number]) =>
+    [e.lawLabel, e.plainMeaning, e.whatItSays, e.whoItAppliesTo, e.mimarObligation] as const;
+  const allText = () =>
+    [
+      ...LEGAL_KNOWLEDGE_GROUPS.flatMap((g) => [g.title, g.intro]),
+      ...entries.flatMap(fieldsOf),
+    ].join("\n");
+
+  it("does not present the equine Res. SENASA 284/2024 as the pet-chip standard", () => {
+    expect(allText()).not.toContain("284");
+  });
+
+  it("does not cite the unfound Res. MS 546/1985", () => {
+    expect(allText()).not.toContain("546");
+  });
+
+  it("does not call the CVPBA manual a resolution", () => {
+    expect(allText()).not.toMatch(/Resoluci[oó]n CVPBA 05/);
+    expect(allText()).toContain("Manual de enfermedades de notificación obligatoria del CVPBA");
+  });
+
+  it("drops the unverified nickname and the peso figure of Ley CABA 6.839", () => {
+    expect(allText()).not.toContain("Huellas");
+    expect(allText()).not.toMatch(/\$\s?8/);
+    expect(allText()).toContain("60 a 90 días");
+  });
+
+  it("says Ley 14.346 does not punish abandonment as its own offence", () => {
+    const entry = entries.find((e) => e.id === "ley-14346");
+    expect(entry?.whatItSays).toContain("No castiga el abandono");
+  });
+
+  it("names the AAIP as the data-protection control body", () => {
+    const entry = entries.find((e) => e.id === "ley-25326");
+    expect(entry?.whoItAppliesTo).toContain("Agencia de Acceso a la Información Pública");
+  });
+
+  it.each(entries.map((e) => [e.id, e] as const))(
+    "%s shows no code identifiers to the public",
+    (_id, entry) => {
+      for (const field of fieldsOf(entry)) {
+        expect(field).not.toContain("`");
+        expect(field).not.toMatch(/\b[a-z]+_[a-z_]+\b/);
+        expect(field).not.toMatch(/\blib\//);
+        expect(field).not.toMatch(/\.tsx?\b/);
+      }
+    },
+  );
+
+  it.each(entries.map((e) => [e.id, e] as const))(
+    "%s keeps every field at 45 words or fewer",
+    (_id, entry) => {
+      for (const field of [
+        entry.plainMeaning,
+        entry.whatItSays,
+        entry.whoItAppliesTo,
+        entry.mimarObligation,
+      ]) {
+        expect(field.trim().split(/\s+/).length, field).toBeLessThanOrEqual(45);
+      }
+    },
+  );
+
+  it("keeps the colloquial phrases out", () => {
+    for (const phrase of [
+      "sí o sí",
+      "se enteran y ya",
+      "cualquier lado",
+      "probablemente",
+      "hace poco",
+    ]) {
+      expect(allText()).not.toContain(phrase);
+    }
   });
 });
