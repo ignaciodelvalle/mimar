@@ -605,6 +605,60 @@ describe("reportBiteFromOrg — the reporting org must be verified AND connected
     expect((await reportBiteFromOrg(incident, byName)).ok).toBe(true);
   });
 
+  // The HOME fallback (no incident place) compares the pet's home ROW, not its
+  // home NAME: Córdoba has two San Pedros, and an org covering one of them must
+  // not open an observation on an animal from the other.
+  describe("on the id path, a homonym home (San Pedro, Córdoba) with no incident place", () => {
+    const cordobaOrg = { ...BASE_INPUT.organization, jurisdictionProvince: "Córdoba" };
+    const sanPedroAPet = {
+      ...BASE_INPUT,
+      organization: cordobaOrg,
+      pet: {
+        ...BASE_INPUT.pet,
+        jurisdictionProvince: "Córdoba",
+        jurisdictionLocality: "San Pedro",
+        localityId: "loc-san-pedro-a",
+      },
+    };
+    const zoneOn = (localityId: string) => ({
+      jurisdictionProvince: "Córdoba",
+      jurisdictionLocality: "San Pedro",
+      localityId,
+    });
+
+    it("REFUSES an org whose zone is the other San Pedro", async () => {
+      const deps = makeDeps();
+      deps.loadOrgPetAuthority.mockResolvedValue({
+        hasPetRelation: false,
+        coverageAreas: [zoneOn("loc-san-pedro-b")],
+        coverageMode: "id",
+      });
+      const result = await reportBiteFromOrg(sanPedroAPet, deps);
+      expect(result.ok).toBe(false);
+      expect(deps.transaction).not.toHaveBeenCalled();
+    });
+
+    it("LETS the org whose zone is the pet's own San Pedro", async () => {
+      const deps = makeDeps();
+      deps.loadOrgPetAuthority.mockResolvedValue({
+        hasPetRelation: false,
+        coverageAreas: [zoneOn("loc-san-pedro-a")],
+        coverageMode: "id",
+      });
+      expect((await reportBiteFromOrg(sanPedroAPet, deps)).ok).toBe(true);
+    });
+
+    it("keeps the name rule for a legacy zone that recorded no row", async () => {
+      const deps = makeDeps();
+      deps.loadOrgPetAuthority.mockResolvedValue({
+        hasPetRelation: false,
+        coverageAreas: [{ jurisdictionProvince: "Córdoba", jurisdictionLocality: "San Pedro" }],
+        coverageMode: "id",
+      });
+      expect((await reportBiteFromOrg(sanPedroAPet, deps)).ok).toBe(true);
+    });
+  });
+
   it("REFUSES coverage the org minted outside the province it was verified in", async () => {
     // U3 (2026-08-22): addCoverageZoneAction lets any admin/coordinator add ANY
     // province, so this row is self-asserted. Anchoring the arm to

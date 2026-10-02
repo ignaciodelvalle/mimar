@@ -173,13 +173,14 @@ export type ReportBiteFromOrgResult = UseCaseResult<{
 }>;
 
 /**
- * What ROUTING is told (localidades-por-id D3): the row the CASE carries. The
- * incident's row (null = unresolved) when the case took the incident place;
- * on the home fallback the pet's home row, so a homonym's authority (San
- * Pedro, dept A vs dept B) is never paged. Only a home with no row keeps the
+ * The row the CASE carries, as the coverage arm (localidades-por-id D5) and
+ * routing (D3) are told it: the incident's row (null = unresolved) when the
+ * case took the incident place; on the home fallback the pet's home row, so a
+ * homonym (San Pedro, dept A vs dept B) neither authorizes the other town's
+ * org nor pages the other town's authority. Only a home with no row keeps the
  * name path.
  */
-function routingPlace(
+function casePlace(
   usesEventPlace: boolean,
   incidentLocalityId: string | null,
   homeLocalityId: string | null,
@@ -230,11 +231,7 @@ export async function reportBiteFromOrg(
     hasEventPlace && input.eventJurisdictionLocality !== null
       ? (input.eventLocalityId ?? null)
       : null;
-  // What the coverage arm is told (localidades-por-id D5): the incident's row
-  // (or null, unresolved); a pet-home fallback tells nothing, which keeps it
-  // on the name path.
-  const incidentPlaceId = usesEventPlace ? { localityId: incidentLocalityId } : {};
-  const routingPlaceId = routingPlace(usesEventPlace, incidentLocalityId, pet.localityId);
+  const casePlaceId = casePlace(usesEventPlace, incidentLocalityId, pet.localityId);
   const caseProvince = usesEventPlace ? input.eventJurisdictionProvince : pet.jurisdictionProvince;
   const caseLocality = usesEventPlace
     ? hasEventPlace
@@ -262,12 +259,14 @@ export async function reportBiteFromOrg(
     orgJurisdictionProvince: organization.jurisdictionProvince ?? null,
     hasPetRelation: orgAuthority.hasPetRelation,
     coverageAreas: orgAuthority.coverageAreas,
-    // The incident's catalogue row when the case took the incident place
-    // (localidades-por-id D5); the pet-home fallback passes none.
+    // The case's catalogue row (casePlace). On the home fallback it is the
+    // pet's home row: matching the home NAME let an org covering San Pedro
+    // (dept B) report a bite on a San Pedro (dept A) pet. A legacy coverage
+    // zone that recorded no row keeps the name rule (orgCoversZone).
     incidentZone: {
       province: caseProvince,
       locality: caseLocality,
-      ...incidentPlaceId,
+      ...casePlaceId,
     },
     coverageMode: orgAuthority.coverageMode ?? "name",
   });
@@ -520,7 +519,7 @@ export async function reportBiteFromOrg(
       province: caseProvince ?? "",
       locality: caseLocality ?? "",
       // Same rule as report-bite.ts (localidades-por-id D3).
-      ...routingPlaceId,
+      ...casePlaceId,
     });
     for (const authorityId of authorityIds) {
       pendingNotifications.push({
