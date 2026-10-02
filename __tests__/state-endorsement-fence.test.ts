@@ -287,9 +287,12 @@ describe("the disclaimers that replaced the claims are actually shipped", () => 
     expect(stripComments(source)).toContain(DISCLAIMER);
   });
 
-  it("the hero eyebrow describes the credential, not an endorsement", () => {
+  it("the hero claims no state backing above the headline", () => {
+    // The eyebrow that once read "República Argentina · Ministerio de Salud"
+    // was removed entirely (PO 2026-10-02); the hero now opens with the H1.
     const source = stripComments(readFileSync("components/landing/LandingHero.tsx", "utf8"));
-    expect(source).toContain("Credencial digital · QR público verificable");
+    expect(source).not.toMatch(/Ministerio|República Argentina|Gobierno de|oficial/i);
+    expect(source).not.toContain("lp-eyebrow");
   });
 
   it("the phone credential's foot names no issuing authority", () => {

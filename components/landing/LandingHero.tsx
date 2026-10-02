@@ -96,11 +96,18 @@ import {
   PAMPA,
   heroMrzLines,
 } from "@/components/landing/landing-content";
+import { resolvePlayStoreUrl } from "@/lib/ui/play-store";
 import { lostThirdPersonPhrase } from "@/lib/utils/format";
 import googlePlayBadge from "@/public/landing/google-play-badge-es419.png";
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+
+// Read once at module scope by LITERAL access so Next inlines the value into
+// this client bundle; null keeps the badge a plain image.
+const playStoreUrl = resolvePlayStoreUrl({
+  NEXT_PUBLIC_PLAY_STORE_URL: process.env.NEXT_PUBLIC_PLAY_STORE_URL,
+});
 
 type LandingHeroProps = {
   /** Pre-rendered QR SVG markup (qrcode's toString({ type: "svg" })), or null
@@ -444,17 +451,11 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
               right with no `order` reordering at all, which also retires the
               focus-order trade-off the 2026-08-10 inversion had to make. */}
           <div className="lp-hero-copy">
-            {/* Eyebrow: describes the artifact the hero card is already
-                drawing. It used to read "República Argentina · Ministerio de
-                Salud" — an endorsement nobody granted (there is no convenio
-                with any state body, and the Mi Argentina agreement is still an
-                open prerequisite). A claim of state backing on the first line
-                above the headline is exactly what Play treats as impersonation
-                and what a funcionario would read as a signature they never
-                gave. Replaced with what the product actually is. */}
-            <p className="lp-eyebrow lp-eyebrow--dot lp-reveal">
-              Credencial digital · QR público verificable
-            </p>
+            {/* No eyebrow (PO 2026-10-02): the H1 opens the hero. The eyebrow
+                once claimed state backing ("República Argentina · Ministerio de
+                Salud", an endorsement nobody granted) and later described the
+                card the hero already draws; neither earns the first line.
+                state-endorsement-fence keeps any endorsement from coming back. */}
             <h1 className="lp-display lp-h-hero lp-reveal" data-d="1">
               Toda una vida,
               <br />
@@ -484,52 +485,15 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
               La libreta de tu mascota en el teléfono, con un QR que cualquiera puede escanear si se
               pierde.
             </p>
-            {/* Google Play badge (PO 2026-09-30): the Android app is approved
-                on Play, but there is no listing URL yet — this renders the
-                OFFICIAL es-419 badge asset as a plain image, never an anchor,
-                so nothing here looks clickable before there is somewhere to
-                click. Do not wrap this in a disabled/dead <a>: an inert link
-                is worse than an inert image (same doctrine as the hero QR
-                never scanning to a 404, see demo-pet.ts). The asset is
-                Google's own PNG, downloaded unmodified from Google's badge
-                service (play.google.com/intl/en_us/badges/static/images/
-                badges/es-419_badge_web_generic.png — Google Play and the
-                Google Play logo are trademarks of Google LLC; this badge is
-                used per Google's brand guidelines, unaltered), sized in
-                landing.css (.lp-hero-badge) by CSS height only so its aspect
-                ratio, colors and clear space are never distorted. Once
-                NEXT_PUBLIC_PLAY_STORE_URL resolves (lib/ui/play-store.ts),
-                wrap this same image in that link — do not build a second
-                badge element. */}
-            <div className="lp-hero-badge lp-reveal" data-d="2">
-              {/* width/height are the asset's real pixel dimensions (Google's
-                  own PNG, 646×250) — required because this import resolves to
-                  a plain public-URL string, not a bundler-probed
-                  StaticImageData object (the file lives in public/, and this
-                  image isn't shown with `fill`, so next/image needs the box
-                  explicitly). CSS
-                  (.lp-hero-badge img, app/landing.css) then scales it by
-                  height only, so the true aspect ratio is preserved. */}
-              <Image
-                src={googlePlayBadge}
-                alt="Disponible en Google Play"
-                width={646}
-                height={250}
-              />
-            </div>
-            {/* The three crisis doors (PO 2026-10-02), in place of the old
-                "Crear la libreta de mi mascota" / "Cómo funciona" row: the
-                nav's "Crear mi miMAR" is the sign-up entry above the fold, and
-                the separate crisis band that carried these doors below the
-                fold is gone, so a visitor in a hurry finds them on the first
-                screen at every width. Real links, one row on desktop and a
-                compact stack on a phone (app/landing.css, .lp-hero-doors). The
-                aria-label is the one the band carried, which
-                e2e/csp-smoke.spec.ts anchors the landing's marker on. */}
+            {/* Quick doors (PO 2026-10-02): four public entry points in a 2×2
+                grid, no account needed — Encontré, Adoptar, Refugios y vets
+                cerca, Maltrato (landing-content.ts, CRISIS_DOORS). Real links
+                (app/landing.css, .lp-hero-doors). The aria-label anchors the
+                landing's marker in e2e/csp-smoke.spec.ts. */}
             <nav
               className="lp-hero-doors lp-reveal"
               data-d="3"
-              aria-label="Emergencias — sin cuenta"
+              aria-label="Accesos rápidos — sin cuenta"
               data-section="crisis-doors"
             >
               {CRISIS_DOORS.map((door) => (
@@ -544,6 +508,35 @@ export function LandingHero({ qrSvg, publicHref, publicToken }: LandingHeroProps
                 </Link>
               ))}
             </nav>
+            {/* Google Play badge, aligned under the doors grid (PO
+                2026-10-02). Google's own es-419 PNG, unmodified (Google Play
+                and the Google Play logo are trademarks of Google LLC; used per
+                Google's brand guidelines), sized by CSS height only
+                (.lp-hero-badge img). It becomes a link only once
+                NEXT_PUBLIC_PLAY_STORE_URL resolves to a real listing
+                (lib/ui/play-store.ts); until then it stays a plain image —
+                an inert link is worse than an inert image. The env var is read
+                by literal access so Next inlines it into this client bundle.
+                width/height are the asset's real pixels (646×250). */}
+            <div className="lp-hero-badge lp-reveal" data-d="3">
+              {playStoreUrl ? (
+                <a href={playStoreUrl} rel="noopener">
+                  <Image
+                    src={googlePlayBadge}
+                    alt="Disponible en Google Play"
+                    width={646}
+                    height={250}
+                  />
+                </a>
+              ) : (
+                <Image
+                  src={googlePlayBadge}
+                  alt="Disponible en Google Play"
+                  width={646}
+                  height={250}
+                />
+              )}
+            </div>
             {/* Hero triad — exact copy is a PO-locked decision (#4), revised by
                 the PO 2026-09-29 (critique M3): "Datos abiertos" beside a pet's
                 credential read as "my pet's data is open", which the FAQ

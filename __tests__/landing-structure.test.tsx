@@ -222,23 +222,30 @@ describe("landing hero — the credential is miMAR's own document", () => {
 // The doors left their own band for the hero on 2026-10-02 (PO): on every
 // screen the band sat below the fold, and the hero's CTA row repeated what the
 // nav already offers. Same three doors, same destinations, no account.
-describe("crisis doors — three doors in the hero, no account", () => {
+describe("quick doors — four doors in the hero, no account", () => {
   function doors(html: string): string {
     const start = html.indexOf('data-section="crisis-doors"');
     expect(start).toBeGreaterThan(-1);
     return html.slice(start, html.indexOf("</nav>", start));
   }
 
-  it("renders all three crisis doors inside the hero", () => {
+  it("renders the four quick doors inside the hero (PO 2026-10-02)", () => {
     const html = doors(renderHero());
-    expect(html).toContain("Perdí una mascota");
+    expect(html).not.toContain("Perdí una mascota");
     expect(html).toContain("Encontré una mascota");
+    expect(html).toContain("Adoptar");
+    expect(html).toContain("Refugios y vets cerca");
     // Third door, added 2026-08-19. The band already accepted DEN- tracking
     // codes while the entry to MAKING a denuncia sat in the footer — it
     // offered the follow-up to a thing it gave you no way to start.
     expect(html).toContain("Vi un caso de maltrato");
-    expect(html.match(/<a /g)).toHaveLength(3);
-    for (const href of ['href="/mis-mascotas"', 'href="/perdidas"', 'href="/denuncias/nueva"']) {
+    expect(html.match(/<a /g)).toHaveLength(4);
+    for (const href of [
+      'href="/perdidas"',
+      'href="/adoptar"',
+      'href="/refugios"',
+      'href="/denuncias/nueva"',
+    ]) {
       expect(html).toContain(href);
     }
   });

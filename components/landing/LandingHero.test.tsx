@@ -120,18 +120,21 @@ function renderDemoHero() {
   );
 }
 
-describe("<LandingHero> — the three crisis doors replace the CTA row (PO 2026-10-02)", () => {
-  it("offers the three doors as real links, to the same places the old band did", () => {
+describe("<LandingHero> — four quick doors replace the CTA row (PO 2026-10-02)", () => {
+  it("offers the four doors as real links, in reading order", () => {
     renderDemoHero();
-    const doors = screen.getByRole("navigation", { name: "Emergencias — sin cuenta" });
+    const doors = screen.getByRole("navigation", { name: "Accesos rápidos — sin cuenta" });
     const links = within(doors).getAllByRole("link");
     expect(links.map((l) => l.getAttribute("href"))).toEqual([
-      "/mis-mascotas",
       "/perdidas",
+      "/adoptar",
+      "/refugios",
       "/denuncias/nueva",
     ]);
-    expect(within(doors).getByRole("link", { name: /^Perdí una mascota/ })).toBeInTheDocument();
+    expect(within(doors).queryByRole("link", { name: /^Perdí una mascota/ })).toBeNull();
     expect(within(doors).getByRole("link", { name: /^Encontré una mascota/ })).toBeInTheDocument();
+    expect(within(doors).getByRole("link", { name: /^Adoptar/ })).toBeInTheDocument();
+    expect(within(doors).getByRole("link", { name: /^Refugios y vets cerca/ })).toBeInTheDocument();
     expect(
       within(doors).getByRole("link", { name: /^Vi un caso de maltrato/ }),
     ).toBeInTheDocument();
@@ -145,20 +148,34 @@ describe("<LandingHero> — the three crisis doors replace the CTA row (PO 2026-
     expect(container.querySelector('a[href="/registro"]')).toBeNull();
   });
 
-  it("keeps the Play badge and the kill line around the doors", () => {
+  it("puts the Play badge under the doors and keeps the kill line after it", () => {
     const { container } = renderDemoHero();
     const badge = container.querySelector(".lp-hero-badge");
     const doors = container.querySelector('[data-section="crisis-doors"]');
     const kill = container.querySelector(".lp-hero-kill");
     expect(badge).not.toBeNull();
     expect(kill).toHaveTextContent("Gratis para siempre.");
-    // Source order: badge → doors → kill line.
-    expect((badge as Node).compareDocumentPosition(doors as Node)).toBe(
+    // Source order: doors → badge → kill line (PO 2026-10-02).
+    expect((doors as Node).compareDocumentPosition(badge as Node)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    expect((doors as Node).compareDocumentPosition(kill as Node)).toBe(
+    expect((badge as Node).compareDocumentPosition(kill as Node)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
+  });
+
+  it("keeps the Play badge a plain image while there is no listing URL", () => {
+    const { container } = renderDemoHero();
+    const badge = container.querySelector(".lp-hero-badge");
+    expect(badge?.querySelector("img")).not.toBeNull();
+    expect(badge?.querySelector("a")).toBeNull();
+  });
+
+  it("opens with the H1 — no eyebrow above it", () => {
+    const { container } = renderDemoHero();
+    const copy = container.querySelector(".lp-hero-copy");
+    expect(copy?.firstElementChild?.tagName).toBe("H1");
+    expect(container.textContent).not.toContain("Credencial digital · QR público verificable");
   });
 
   it("reads copy before the credential, in source order (C3)", () => {

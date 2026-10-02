@@ -123,27 +123,6 @@
 .lp .lp-eyebrow--blue {
   color: var(--color-ln-azul);
 }
-.lp .lp-eyebrow--dot {
-  display: inline-flex;
-  /* flex-start + a first-line offset, not `center`: when the eyebrow wraps to
-     two lines (hero at ~390px), `center` floated the dot between the lines
-     (critique 2026-07-27, J3). 0.55em centers the 6px dot on the first line
-     box (12px × 1.6 line-height → (19.2 − 6) / 2 ≈ 6.6px), so the single-line
-     rendering is unchanged. */
-  align-items: flex-start;
-  gap: 9px;
-}
-.lp .lp-eyebrow--dot::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  flex-shrink: 0;
-  margin-top: 0.55em;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.7;
-}
-
 .lp .lp-display {
   font-family: var(--lp-serif);
   font-weight: 600;
@@ -580,24 +559,19 @@
    and .lp-lead, which is why the Tailwind mt-* utilities that used to sit on
    them did nothing: the lead touched the H1's descenders (~10px, critique
    2026-09-29, m1). */
-.lp .lp-hero-copy .lp-eyebrow {
-  margin-top: 20px;
-}
 .lp .lp-hero-copy .lp-h-hero {
   margin-top: 16px;
 }
 .lp .lp-hero-copy .lp-lead {
   margin-top: 22px;
 }
-/* The three crisis doors (PO 2026-10-02) — they replaced the hero's CTA row
-   and the crisis band that used to carry them below the fold. One row of three
-   equal doors where the copy column is wide enough, a compact stack on a
-   phone, so all three sit on the first screen at 390×844 with the H1 and the
-   lead. `min(100%, 190px)`, not a bare 190px: a fixed minimum wider than the
-   container would overflow the viewport. */
+/* Quick doors (PO 2026-10-02): a 2×2 grid at every width, so the four
+   public entry points sit on the first screen at 390×844 with the H1 and the
+   lead. Two columns on a phone keep the stack short; minmax(0, 1fr) lets a
+   long label wrap instead of overflowing. */
 .lp .lp-hero-doors {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 26px;
 }
@@ -628,13 +602,17 @@
   place-items: center;
   flex-shrink: 0;
 }
-.lp .lp-hero-door[data-t="perdi"] .lp-hero-door-ic {
-  background: var(--color-ln-err-050);
-  color: var(--color-ln-err);
-}
 .lp .lp-hero-door[data-t="encontre"] .lp-hero-door-ic {
   background: var(--color-ln-celeste-050);
   color: var(--color-ln-azul);
+}
+.lp .lp-hero-door[data-t="adoptar"] .lp-hero-door-ic {
+  background: var(--color-ln-rosa-050);
+  color: var(--color-ln-rosa);
+}
+.lp .lp-hero-door[data-t="refugios"] .lp-hero-door-ic {
+  background: var(--color-ln-ok-050);
+  color: var(--color-ln-ok-700);
 }
 .lp .lp-hero-door[data-t="maltrato"] .lp-hero-door-ic {
   background: var(--color-ln-warn-025);
@@ -656,44 +634,32 @@
   line-height: 1.35;
   color: var(--color-ln-mute);
 }
-/* On a phone the doors stack; icon and text center on one line each so the
-   stack stays compact. */
+/* Compact door at every width: a 22px glyph on the label's own line and
+   the subline running under both, so two doors fit side by side even at
+   390px without growing tall. */
+.lp .lp-hero-door {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: center;
+}
+.lp .lp-hero-door-ic {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+.lp .lp-hero-door-txt {
+  display: contents;
+}
+.lp .lp-hero-door-sub {
+  grid-column: 1 / -1;
+}
 @media (max-width: 640px) {
   .lp .lp-hero-doors {
     margin-top: 20px;
   }
   .lp .lp-hero-door {
-    align-items: center;
-    padding: 8px 12px;
-  }
-}
-/* Three across, each door is ~210px: a 30px tile beside the label wrapped
-   "Encontré una mascota" onto two lines and made every door 94px tall. Here
-   the tile shrinks to a 22px glyph on the label's own line, and the subline
-   runs under both. */
-@media (min-width: 641px) {
-  /* Always three across here. auto-fit broke 2+1 between ~901 and ~1139px,
-     where the two-column hero leaves the copy column narrower than three
-     190px doors; a label wrapping to two lines is better than an orphan. */
-  .lp .lp-hero-doors {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .lp .lp-hero-door {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    column-gap: 8px;
-    align-items: center;
-  }
-  .lp .lp-hero-door-ic {
-    width: 22px;
-    height: 22px;
-    border-radius: 6px;
-  }
-  .lp .lp-hero-door-txt {
-    display: contents;
-  }
-  .lp .lp-hero-door-sub {
-    grid-column: 1 / -1;
+    padding: 8px 10px;
   }
 }
 .lp .lp-hero-kill {
@@ -706,12 +672,20 @@
   color: var(--color-ln-ink);
   font-weight: 600;
 }
-/* Google Play badge (PO 2026-09-30) — plain image, never an anchor (see the
-   comment beside its markup in LandingHero.tsx). Sized by height only so the
-   badge's own aspect ratio is never stretched or squashed; the margin below
-   approximates Google's brand-guideline clear space around the mark. */
+/* Google Play badge, aligned under the doors grid (PO 2026-10-02): a plain
+   image until the listing URL exists, then the same image as a link (see its
+   markup in LandingHero.tsx). Sized by height only so the badge's aspect ratio
+   is never distorted; the margin approximates Google's clear space. */
 .lp .lp-hero-badge {
-  margin-top: 14px;
+  margin-top: 12px;
+}
+.lp .lp-hero-badge a {
+  display: inline-block;
+  border-radius: 8px;
+}
+.lp .lp-hero-badge a:focus-visible {
+  outline: 2px solid var(--color-ln-azul);
+  outline-offset: 3px;
 }
 .lp .lp-hero-badge img {
   height: 44px;

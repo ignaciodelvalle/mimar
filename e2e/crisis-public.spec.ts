@@ -64,11 +64,13 @@ test.describe("crisis entry — public credential + denuncia lookup (no login)",
 
   // The doors left their band for the hero on 2026-10-02 (PO), so they are on
   // the first screen at every width.
-  test("the landing hero offers the three crisis doors and no typed lookup", async ({ page }) => {
+  test("the landing hero offers the four quick doors and no typed lookup", async ({ page }) => {
     await page.goto("/");
     const band = page.locator('[data-section="crisis-doors"]');
-    await expect(band.locator('[data-t="perdi"]')).toBeVisible();
+    await expect(band.locator('[data-t="perdi"]')).toHaveCount(0);
     await expect(band.locator('[data-t="encontre"]')).toBeVisible();
+    await expect(band.locator('[data-t="adoptar"]')).toBeVisible();
+    await expect(band.locator('[data-t="refugios"]')).toBeVisible();
     await expect(band.locator('[data-t="maltrato"]')).toBeVisible();
     await expect(band.locator("input")).toHaveCount(0);
   });

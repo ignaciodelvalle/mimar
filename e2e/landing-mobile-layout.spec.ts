@@ -95,15 +95,15 @@ test("a 390×690 la primera pantalla dice qué es miMAR y ofrece la acción (C3)
   ).toBe(true);
 });
 
-test("a 390×844 las tres puertas de emergencia entran en la primera pantalla", async ({ page }) => {
+test("a 390×844 los cuatro accesos rápidos entran en la primera pantalla", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   const doors = page.locator('[data-section="crisis-doors"] a');
-  await expect(doors).toHaveCount(3);
+  await expect(doors).toHaveCount(4);
   for (const selector of ["h1", ".lp-hero-copy .lp-lead"]) {
     expect(await fullyInFirstScreen(page, selector), `${selector} is below the fold`).toBe(true);
   }
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 4; i++) {
     const href = await doors.nth(i).getAttribute("href");
     expect(
       await fullyInFirstScreen(page, `[data-section="crisis-doors"] a[href="${href}"]`),

@@ -657,47 +657,54 @@ export const CONSOLE_KPIS = [
 
 export type CrisisDoor = {
   /** Tints the icon tile (app/landing.css, .lp-hero-door[data-t]). */
-  t: "perdi" | "encontre" | "maltrato";
+  t: "encontre" | "adoptar" | "refugios" | "maltrato";
   icon: IconName;
   label: string;
-  /** One short line under the label (one line at ~190px, three doors across):
+  /** One short line under the label (two lines at most in a 2×2 grid):
    *  what happens next, never a promise the product does not keep. */
   sub: string;
   href: string;
 };
 
 /**
- * The anonymous visitor in crisis is the highest-value visitor (benchmark L1):
- * three doors, no account, no code to remember. They live in the HERO, in place
- * of the old CTA row (PO 2026-10-02), so they are on the first screen at every
- * width; the separate crisis band that used to carry them below the fold was
- * removed in the same change, and the nav's "Crear mi miMAR" is the one sign-up
+ * Quick doors for the visitor WITHOUT an account (PO 2026-10-02): four public
+ * entry points in a 2×2 grid in the HERO, on the first screen at every width.
+ * "Perdí una mascota" was dropped the same day: an owner who lost a pet already
+ * has an account and acts from the pet's own page, so the door only bounced an
+ * anonymous visitor to a login. The nav's "Crear mi miMAR" is the one sign-up
  * entry above the fold.
  *
  * The copy does NOT promise intervention. A denuncia is registered and issued a
  * tracking code; it is not dispatched to an organism yet (the Ley 14.346
  * integration is still in development, disclosed in the wizard's final step
- * and on /denuncias/seguimiento). Nor does marking a pet lost alert neighbours:
- * it notifies the verified orgs whose coverage matches its jurisdiction
- * (lib/infra/lost-pet-broadcast.ts).
+ * and on /denuncias/seguimiento).
+ *
+ * "Refugios y vets cerca" is AHEAD of the product by days (PO decision
+ * 2026-10-02, landing may lead): /refugios lists verified shelters today; opted-in
+ * veterinary clinics join it with the public-directory opt-in (branch
+ * directorio-vets, migration 0277).
  */
 export const CRISIS_DOORS: readonly CrisisDoor[] = [
-  // The owner's job ("activá el modo perdido") lands on the owner's pets, not
-  // the finder board — /mis-mascotas preserves the destination through the
-  // auth flow.
-  {
-    t: "perdi",
-    icon: "perdida",
-    label: "Perdí una mascota",
-    sub: "Activá el modo perdido.",
-    href: "/mis-mascotas",
-  },
   {
     t: "encontre",
     icon: "qr",
     label: "Encontré una mascota",
     sub: "Escaneá su QR o buscala por señas.",
     href: "/perdidas",
+  },
+  {
+    t: "adoptar",
+    icon: "corazon",
+    label: "Adoptar",
+    sub: "Perros y gatos que buscan familia.",
+    href: "/adoptar",
+  },
+  {
+    t: "refugios",
+    icon: "map-pin",
+    label: "Refugios y vets cerca",
+    sub: "Encontrá los de tu provincia.",
+    href: "/refugios",
   },
   {
     t: "maltrato",

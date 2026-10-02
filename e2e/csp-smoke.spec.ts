@@ -64,9 +64,10 @@ const PUBLIC_PAGES: ReadonlyArray<{
     // doors, no code lookup") and this marker kept chasing the old sentence for
     // three pushes — a label names WHAT the region is, so it survives a
     // rewording. The label moved with the doors from their band into the hero
-    // (PO 2026-10-02), unchanged.
+    // (PO 2026-10-02) and was renamed the same day when the doors became
+    // four public entry points (not only emergencies).
     path: "/",
-    marker: (page) => page.getByLabel(/^emergencias — sin cuenta$/i).first(),
+    marker: (page) => page.getByLabel(/^accesos rápidos — sin cuenta$/i).first(),
   },
   {
     path: "/adoptar",
