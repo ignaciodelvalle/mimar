@@ -24,6 +24,7 @@ import type { EventType } from "@/db/schema";
 import type { DashboardActor, DashboardJurisdiction } from "@/lib/metrics";
 
 import { withMutationOverride } from "../../../../../__tests__/_helpers/db-overrides";
+import { SIN_LOCALIDAD, panoramaAttributionMode } from "../place-attribution";
 import { loadChoroplethByLevel, loadUnitHistory } from "../repository";
 
 const PROVINCE = "Santa Fe";
@@ -242,7 +243,14 @@ describe("ppp-compliance choropleth — a bare attestation does not count (#753)
     // ("Santa Fe|loc:PANORAMA-SEMP-ISO") whose spelling is the loader's
     // business, and a test that pins it would fail on a formatting change that
     // broke nothing.
-    const cell = rows.cells.find((c) => c.locality === LOCALITY);
+    //
+    // The synthetic locality is not in the catalogue, so its pets carry no
+    // catalogue row: on the id path (the factory default since migration 0276)
+    // they are counted in the province's "Sin localidad" cell — never guessed
+    // into a real locality. The govt scope is this test's own name pair, so
+    // that cell holds exactly these pets either way.
+    const cellName = (await panoramaAttributionMode()) === "id" ? SIN_LOCALIDAD : LOCALITY;
+    const cell = rows.cells.find((c) => c.locality === cellName);
     return cell?.value ?? null;
   }
 });

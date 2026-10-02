@@ -30,6 +30,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import type { DashboardActor } from "@/lib/metrics";
 
+import { SIN_LOCALIDAD, panoramaAttributionMode, rollupKey } from "../place-attribution";
 import { metricPredicate, rollupPetsPerLocality } from "../repository-choropleth";
 import { PER_LAYER_CAP, petsScope } from "../repository-scope";
 
@@ -47,9 +48,20 @@ async function microchipRollup() {
  * ones it kept are the largest.
  */
 async function trueCounts(): Promise<Map<string, number>> {
-  const rows = await db.execute<{ province: string; locality: string; n: string }>(sql`
+  // Grouped the way the attribution path the loader serves groups: by name on
+  // the name path; by catalogue row on the id path (the factory default since
+  // migration 0276), where an unresolved pet falls in its province's
+  // "Sin localidad" cell and each homonym is its own cell.
+  const byId = (await panoramaAttributionMode()) === "id";
+  const rows = await db.execute<{
+    province: string;
+    locality: string;
+    locality_id: string | null;
+    n: string;
+  }>(sql`
     SELECT jurisdiction_province AS province,
-           jurisdiction_locality AS locality,
+           ${byId ? sql`CASE WHEN locality_id IS NULL THEN ${SIN_LOCALIDAD} ELSE jurisdiction_locality END` : sql`jurisdiction_locality`} AS locality,
+           ${byId ? sql`locality_id::text` : sql`NULL::text`} AS locality_id,
            COUNT(DISTINCT id) AS n
     FROM pets
     WHERE jurisdiction_locality IS NOT NULL
@@ -59,9 +71,9 @@ async function trueCounts(): Promise<Map<string, number>> {
           AND pi.kind = 'microchip_iso'
           AND pi.status = 'active'
       )
-    GROUP BY 1, 2
+    GROUP BY 1, 2, 3
   `);
-  return new Map(rows.map((r) => [`${r.province}|${r.locality}`, Number(r.n)]));
+  return new Map(rows.map((r) => [rollupKey(r.province, r.locality, r.locality_id), Number(r.n)]));
 }
 
 describe("locality rollup — the cap keeps the largest localities, deterministically", () => {

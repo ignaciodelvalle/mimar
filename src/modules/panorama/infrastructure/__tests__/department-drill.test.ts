@@ -15,7 +15,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { arLocalities, db, petEvents, pets } from "@/db";
+import { arLocalities, db, eventPlaces, petEvents, pets } from "@/db";
 import type { EventType } from "@/db/schema";
 import { validateEventPayload } from "@/lib/events/event-schemas";
 import type { DashboardActor, DashboardJurisdiction } from "@/lib/metrics";
@@ -43,18 +43,32 @@ let petAId = "";
 let petBId = "";
 let petDecoyId = "";
 
-async function insertSighting(petId: string): Promise<void> {
-  await db.insert(petEvents).values({
+// Where each sighting happened, as the event_places projection records it
+// (the place backfill derives it from the pet's home). Panorama attributes by
+// catalogue row on the id path, the factory default since migration 0276.
+async function insertSighting(petId: string, localityId: string): Promise<void> {
+  const [event] = await db
+    .insert(petEvents)
+    .values({
+      petId,
+      eventType: "note_added" as EventType,
+      occurredAt: new Date(),
+      payload: validateEventPayload("note_added", {
+        category: "otro",
+        text: "avistaje",
+        kind: "sighting",
+      }) as Record<string, unknown>,
+      authorRole: "owner",
+      recordedByUserId: null,
+    })
+    .returning({ id: petEvents.id });
+  await db.insert(eventPlaces).values({
+    eventId: event.id,
     petId,
-    eventType: "note_added" as EventType,
-    occurredAt: new Date(),
-    payload: validateEventPayload("note_added", {
-      category: "otro",
-      text: "avistaje",
-      kind: "sighting",
-    }) as Record<string, unknown>,
-    authorRole: "owner",
-    recordedByUserId: null,
+    provinceCode: PROVINCE_CODE,
+    localityId,
+    method: "spine_rederived",
+    entered: { province: PROVINCE, locality: null, source: "spine", spine_event_id: event.id },
   });
 }
 
@@ -62,21 +76,25 @@ async function insertLocality(
   name: string,
   departmentName = DEPARTMENT,
   departmentCode = DEPARTMENT_CODE,
-): Promise<void> {
-  await db.insert(arLocalities).values({
-    provinceCode: PROVINCE_CODE,
-    departmentName,
-    departmentCode,
-    localityName: name,
-    localitySlug: `${departmentCode}-${name.toLowerCase()}`,
-    category: "localidad",
-    source: "bahra",
-    latitude: "-31.6",
-    longitude: "-60.7",
-  });
+): Promise<string> {
+  const [row] = await db
+    .insert(arLocalities)
+    .values({
+      provinceCode: PROVINCE_CODE,
+      departmentName,
+      departmentCode,
+      localityName: name,
+      localitySlug: `${departmentCode}-${name.toLowerCase()}`,
+      category: "localidad",
+      source: "bahra",
+      latitude: "-31.6",
+      longitude: "-60.7",
+    })
+    .returning({ id: arLocalities.id });
+  return row.id;
 }
 
-async function makePet(token: string, locality: string): Promise<string> {
+async function makePet(token: string, locality: string, localityId: string): Promise<string> {
   const [row] = await db
     .insert(pets)
     .values({
@@ -87,6 +105,7 @@ async function makePet(token: string, locality: string): Promise<string> {
       status: "active",
       jurisdictionProvince: PROVINCE,
       jurisdictionLocality: locality,
+      localityId,
     })
     .returning({ id: pets.id });
   return row.id;
@@ -117,22 +136,22 @@ async function cleanup(): Promise<void> {
 
 beforeAll(async () => {
   await cleanup();
-  await insertLocality(LOCALITY_A);
-  await insertLocality(LOCALITY_B);
+  const locA = await insertLocality(LOCALITY_A);
+  const locB = await insertLocality(LOCALITY_B);
   // Decoy: a locality named exactly like DEPARTMENT but in a DIFFERENT department.
-  await insertLocality(DECOY_LOCALITY, DECOY_DEPARTMENT, DECOY_DEPARTMENT_CODE);
-  petAId = await makePet("DIM-PANO-DEPT-A", LOCALITY_A);
-  petBId = await makePet("DIM-PANO-DEPT-B", LOCALITY_B);
-  petDecoyId = await makePet("DIM-PANO-DEPT-DECOY", DECOY_LOCALITY);
+  const locDecoy = await insertLocality(DECOY_LOCALITY, DECOY_DEPARTMENT, DECOY_DEPARTMENT_CODE);
+  petAId = await makePet("DIM-PANO-DEPT-A", LOCALITY_A, locA);
+  petBId = await makePet("DIM-PANO-DEPT-B", LOCALITY_B, locB);
+  petDecoyId = await makePet("DIM-PANO-DEPT-DECOY", DECOY_LOCALITY, locDecoy);
   // 3 sightings in locality A + 3 in locality B → each locality below k=5, but the
   // department sums to 6 (>= 5) → visible when drilled by department. The decoy pet
   // gets 5 sightings (would clear k on its own if wrongly pulled in).
   for (let i = 0; i < 3; i++) {
-    await insertSighting(petAId);
-    await insertSighting(petBId);
+    await insertSighting(petAId, locA);
+    await insertSighting(petBId, locB);
   }
   for (let i = 0; i < 5; i++) {
-    await insertSighting(petDecoyId);
+    await insertSighting(petDecoyId, locDecoy);
   }
 });
 

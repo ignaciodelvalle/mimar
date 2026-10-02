@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-10-02",
-  "sha": "c82503969",
+  "sha": "c8d4c7c70",
   "facts": {
     "event_types": {
       "value": 56,
@@ -43,7 +43,7 @@
       "method": "files named exactly `layout.tsx` anywhere under `app/`."
     },
     "migrations": {
-      "value": 274,
+      "value": 275,
       "source": "db/migrations/*.sql",
       "method": "files ending in `.sql` under `db/migrations/`. Migrations are forward-only and immutable, so this only ever grows."
     },

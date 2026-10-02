@@ -2,10 +2,12 @@
 //
 // One closed list of consumers, in three places that must agree: the CHECK on
 // public.place_read_flags, the rows seeded in it, and PLACE_READ_CONSUMERS in
-// lib/place/flags.ts. Every consumer is SEEDED on the name path — no consumer
-// reaches the id path by default; a flip is an operator act after the parity
-// sweep. And whatever the table says that is not a known mode, the reader
-// answers 'name', the only safe fallback.
+// lib/place/flags.ts. 0257 seeded every consumer on the name path; 0276 made
+// the id path the factory default for every consumer that has a reader
+// (localidades CABA + Córdoba, direct cut, PO 2026-10-02), and left
+// public_filters — which nothing reads — on 'name'. And whatever the table
+// says that is not a known mode, the reader answers 'name', the only safe
+// fallback.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -33,6 +35,20 @@ const MIGRATION = readFileSync(
   join(process.cwd(), "db/migrations/0257_govt_scope_and_place_flags.sql"),
   "utf8",
 );
+const DEFAULT_ID = readFileSync(
+  join(process.cwd(), "db/migrations/0276_place_read_flags_default_id.sql"),
+  "utf8",
+);
+
+/** The factory mode of each consumer since 0276. */
+const FACTORY: Readonly<Record<(typeof PLACE_READ_CONSUMERS)[number], "name" | "id">> = {
+  scope: "id",
+  routing: "id",
+  rules: "id",
+  coverage: "id",
+  panorama: "id",
+  public_filters: "name",
+};
 
 describe("place_read_flags", () => {
   it("the live table holds exactly the known consumers", async () => {
@@ -55,6 +71,28 @@ describe("place_read_flags", () => {
     const seeded = [...MIGRATION.matchAll(/\('([a-z_]+)', '([a-z]+)'\)/g)].map((m) => [m[1], m[2]]);
     expect(seeded.map(([c]) => c).sort()).toEqual([...PLACE_READ_CONSUMERS].sort());
     for (const [consumer, mode] of seeded) expect(mode, consumer).toBe("name");
+  });
+
+  it("0276 seeds the factory modes: id for every consumer with a reader, public_filters name", () => {
+    const seeded = Object.fromEntries(
+      [...DEFAULT_ID.matchAll(/\('([a-z_]+)', '([a-z]+)'\)/g)].map((m) => [m[1], m[2]]),
+    );
+    expect(seeded).toEqual(FACTORY);
+    // The UPDATE flips exactly the id consumers on an environment 0257 seeded.
+    const updated = /WHERE consumer IN \(([^)]*)\)/.exec(DEFAULT_ID)?.[1] ?? "";
+    expect([...updated.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort()).toEqual(
+      Object.entries(FACTORY)
+        .filter(([, mode]) => mode === "id")
+        .map(([c]) => c)
+        .sort(),
+    );
+  });
+
+  it("the live table serves the factory modes", async () => {
+    const rows = (await db.execute(
+      sql`select consumer, mode from public.place_read_flags`,
+    )) as unknown as Array<{ consumer: keyof typeof FACTORY; mode: string }>;
+    expect(Object.fromEntries(rows.map((r) => [r.consumer, r.mode]))).toEqual(FACTORY);
   });
 
   it("the reader serves what the row says, and 'name' for a missing row", async () => {

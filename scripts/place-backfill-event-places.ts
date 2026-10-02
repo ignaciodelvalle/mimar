@@ -18,6 +18,9 @@
  *   pnpm place:backfill-event-places              dry run (rolled back), prints counts
  *   pnpm place:backfill-event-places --apply      write (local database)
  *   pnpm place:backfill-event-places --apply --allow-remote   non-local host
+ *
+ * Re-run it after any seed that writes events without a `place` (a staging
+ * reseed included): seed:panorama already does, at its end.
  */
 
 import "./_load-env";
@@ -160,9 +163,11 @@ export async function backfillEventPlaces(tx: Tx): Promise<BackfillCounts> {
 /**
  * Apply mode: one transaction per pet page, so a long run neither holds one
  * giant transaction nor loses finished pages on a late failure. Safe to
- * re-run: only events without a row are planned.
+ * re-run: only events without a row are planned. Exported for the seed chain
+ * (scripts/seed-panorama.ts runs it last, so a seeded database never shows
+ * Panorama as all "Sin localidad" on the id path).
  */
-async function applyInPages(): Promise<BackfillCounts> {
+export async function applyInPages(): Promise<BackfillCounts> {
   const counts = emptyCounts();
   let after: string | null = null;
   for (;;) {

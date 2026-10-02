@@ -46,8 +46,15 @@ condition. Pick by what you're doing:
 | `pnpm seed:demo` | Demo dataset for funcionario outreach |
 | `pnpm seed:demo:scenario` | Full demo scenario (uses `--conditions=react-server`) |
 | `pnpm seed:flagship` | Flagship pet `DIM-PAMP-0001` (uses `--conditions=react-server`) |
-| `pnpm seed:panorama` | Panorama/analytics dataset |
+| `pnpm seed:panorama` | Panorama/analytics dataset; ends by placing its events (`event_places`) |
 | `pnpm seed:coverage` | Compliance-coverage dataset for dashboards |
+| `pnpm place:backfill-event-places --apply` | Places every event that has no `event_places` row yet, from the pet's home per spine (idempotent) |
+
+Panorama attributes events by catalogue id (`place_read_flags.panorama = 'id'`
+since migration 0276), through the `event_places` projection. Only events that
+carry a `place` get a row by trigger, so after any seed that writes events
+without one, run `pnpm place:backfill-event-places --apply` last, or the map
+shows those events as "Sin localidad". `seed:panorama` already runs it.
 
 For a one-command QA environment (checks containers, build freshness vs HEAD,
 starts the prod server on :3000, smoke-tests routes, verifies seed accounts):

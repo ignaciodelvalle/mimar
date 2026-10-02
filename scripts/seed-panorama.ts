@@ -5434,6 +5434,20 @@ async function main(): Promise<void> {
   `);
   log("OK", `Deceased cache reconciled — ${reconciled.length ?? 0} row(s) aligned to the spine.`);
 
+  // Where every seeded event happened (localidades CABA + Córdoba, 2026-10).
+  // Panorama reads `event_places` on the id path (migration 0276), and only
+  // the events that carry a `place` get a row by trigger: everything else this
+  // seed wrote would be "Sin localidad". The backfill derives each one from
+  // the pet's home per spine at that time, never guessing a homonym, and is
+  // idempotent — the same one staging runs after a reseed.
+  log("STEP", "Placing seeded events (event_places backfill)…");
+  const { applyInPages: backfillEventPlaces } = await import("./place-backfill-event-places");
+  const placed = await backfillEventPlaces();
+  log(
+    "OK",
+    `event_places: +${placed.inserted} row(s) (${placed.resolved} by the spine, ${placed.unresolved} unresolved, ${placed.skippedUnknownId} skipped).`,
+  );
+
   // Seed-hygiene gate (C5) — run at the END of the seed flow, in-process
   // (same DB connection semantics as the CLI/test), so a re-seed that
   // regresses a generator is caught right here, not just later in CI.
