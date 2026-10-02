@@ -8,7 +8,8 @@
 //      abiertas, sin datos personales." (PO revision 2026-09-29, critique M3)
 //   5. Estado map = silhouette cartogram tinted celeste (single hue steps)
 // Plus structural invariants: 6 chapters + scroll-spy rail, 5 FAQ objections,
-// Empezar has EXACTLY 2 doors (no government door), real scannable QR.
+// Empezar has 3 equal doors (the municipio one is an information page, never a
+// government sign-up), real scannable QR.
 //
 // Rendering strategy mirrors the repo's other structure tests: components →
 // react-dom/server static HTML, no jsdom.
@@ -560,36 +561,64 @@ describe("life moments + FAQ + trust row", () => {
   });
 });
 
-describe("empezar — three doors", () => {
+describe("empezar — one row of three equal doors (PO 2026-10-02)", () => {
   // Landing redesign WU4 (PO, 2026-09-24) reverses the old "no government
   // door" rule: the third door leads to /municipios, a PUBLIC information page,
   // never to sign-up — institutional accounts stay invite-only.
-  it("renders EXACTLY 3 role cards: dueño, organización, municipio — none signs a government up", () => {
+  function cards(html: string): string[] {
+    return html.split(/<article class="lp-role-card/).slice(1);
+  }
+
+  it("renders EXACTLY 3 cards — dueño, organización, municipio — each with one line and one button", () => {
     const html = renderToStaticMarkup(<EmpezarSection />);
-    // The cards carry entrance-choreography classes (lp-reveal + data-d) since
-    // 2026-08-02, so match on the class NAME, not the exact attribute value.
-    const cards = html.match(/class="lp-role-card[^"]*"/g) ?? [];
-    expect(cards.length).toBe(3);
-    expect(html).toContain("Soy dueño");
-    expect(html).toContain("Soy organización");
-    expect(html).toContain("Soy municipio o provincia");
-    expect(html).toContain('href="/municipios"');
-    expect(html).not.toContain("Soy gobierno");
-    expect(html).toContain('href="/registro"');
+    const all = cards(html);
+    expect(all).toHaveLength(3);
+    expect(all.map((c) => c.match(/<h3>([^<]*)<\/h3>/)?.[1])).toEqual([
+      "Tu mascota",
+      "Refugios y veterinarias",
+      "Municipios y provincias",
+    ]);
+    expect(html).toContain("Su credencial con QR, lista en minutos.");
+    expect(html).toContain("Custodia, adopciones y atención, con acceso verificado.");
+    expect(html).toContain("Campañas, cobertura y casos de tu jurisdicción.");
+    for (const card of all) {
+      expect(card.match(/<p>/g), "one line per card").toHaveLength(1);
+      expect(card.match(/<a /g), "one button per card").toHaveLength(1);
+    }
   });
 
-  // Critique 2026-09-29, M8 (PO-approved).
-  it("puts the owner first and alone as the primary door; the organization asks, it does not sign up", () => {
+  it("each button goes where the PO decided, and only the owner's is primary", () => {
     const html = renderToStaticMarkup(<EmpezarSection />);
-    const primary = html.match(/class="lp-role-card[^"]*lp-role-card--primary[^"]*"/g) ?? [];
-    expect(primary).toHaveLength(1);
-    const owner = html.slice(html.indexOf('data-tone="dueno"'), html.indexOf('data-tone="org"'));
-    expect(owner).toContain("lp-btn lp-btn--primary");
-    // Only the owner door carries the primary button style.
-    expect(html.match(/lp-btn--primary/g)).toHaveLength(1);
-    const org = html.slice(html.indexOf('data-tone="org"'), html.indexOf('data-tone="gob"'));
+    const [owner, org, gob] = cards(html);
+    expect(owner).toContain('href="/registro"');
+    expect(owner).toContain("Crear mi miMAR");
+    expect(owner).toContain("lp-btn--primary");
     expect(org).toContain('href="/organizaciones/solicitar-acceso"');
-    expect(org).not.toContain('href="/registro"');
+    expect(org).toContain("Solicitar acceso");
+    expect(gob).toContain('href="/municipios"');
+    expect(gob).toContain("Conocer más");
+    expect(html.match(/lp-btn--primary/g)).toHaveLength(1);
+    expect(html.match(/class="lp-role-card[^"]*lp-role-card--primary[^"]*"/g)).toHaveLength(1);
+  });
+
+  it("no card says 'Ya tengo cuenta', lists steps, or signs a government up", () => {
+    const html = renderToStaticMarkup(<EmpezarSection />);
+    expect(html).not.toContain("Ya tengo cuenta");
+    expect(html).not.toContain('href="/iniciar-sesion"');
+    expect(html).not.toContain("<ol");
+    expect(html).not.toContain("empezar-steps");
+    expect(html).not.toContain("Soy gobierno");
+    const gob = cards(html)[2];
+    expect(gob).not.toContain('href="/registro"');
+  });
+
+  it("the cards sit in one row of three on a wide screen", () => {
+    const css = readFileSync(join(process.cwd(), "app", "landing.css"), "utf8");
+    expect(css).toMatch(
+      /\.lp \.lp-role-grid \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/,
+    );
+    // No card spans the row any more.
+    expect(css).not.toMatch(/\.lp \.lp-role-card--primary \{[^}]*grid-column/);
   });
 
   it("the organization's request route exists", () => {
@@ -624,13 +653,6 @@ describe("how the QR reaches the collar (M1)", () => {
     ]) {
       expect(() => readFileSync(join(process.cwd(), ...route), "utf8")).not.toThrow();
     }
-  });
-
-  it("the owner's door ends its steps on the QR", () => {
-    const html = renderToStaticMarkup(<EmpezarSection />);
-    const steps = html.slice(html.indexOf('data-section="empezar-steps"'));
-    expect(steps.match(/<li>/g)?.length).toBe(3);
-    expect(steps).toContain("Imprimí su chapita con el QR");
   });
 });
 

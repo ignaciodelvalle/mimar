@@ -829,73 +829,56 @@ export const FAQS: Array<[string, string]> = [
 ];
 
 // ---------------------------------------------------------------------------
-// Empezar — 3 doors (owner + organization + municipio/provincia, WU4).
+// Empezar — 3 equal doors (owner + organization + municipio/provincia).
 //
 // The third door does NOT reverse "gov/admin accounts are invite-only": it
 // leads to /municipios, a PUBLIC information page about the offering, never
 // to sign-up. Institutional accounts stay invite-only; this door only lets a
 // funcionario learn what miMAR offers before anyone invites them (landing
 // redesign 2026-09-24, WU4).
+//
+// PO 2026-10-02: one row of three equal cards, one line each and one button.
+// The "Ya tengo cuenta" links left every card (the nav's "Iniciar sesión" is
+// the way back in) and the owner's numbered steps left with them; how the QR
+// reaches the collar is the FAQ's "¿Cómo le pongo el QR?".
 // ---------------------------------------------------------------------------
 
 export type LandingRole = {
   tone: "dueno" | "org" | "gob";
   icon: IconName;
-  eyebrow: string;
   title: string;
-  /** Optional: the owner door's intro sentence was cut (copy review
-   *  2026-09-30) — its 3 steps below already say what it said. */
-  body?: string;
+  /** One line. */
+  body: string;
   cta: string;
   ctaHref: string;
-  cta2: string;
-  cta2Href: string;
-  /** How it starts, in order (the owner door only). */
-  steps?: string[];
 };
 
 export const ROLES: LandingRole[] = [
   {
     tone: "dueno",
     icon: "corazon",
-    eyebrow: "Soy dueño",
-    title: "miMAR para tu mascota",
-    // M1 (critique 2026-09-29): the last step is the physical QR, the one the
-    // page's whole lost-pet promise depends on. See the "¿Cómo le pongo el
-    // QR?" FAQ for the two real paths.
-    steps: [
-      "Creá tu cuenta.",
-      "Registrá a tu mascota: su credencial con QR se crea al terminar.",
-      "Imprimí su chapita con el QR, o activá la chapa que te entregaron, y ponésela en el collar.",
-    ],
-    cta: "Crear cuenta",
+    title: "Tu mascota",
+    body: "Su credencial con QR, lista en minutos.",
+    cta: "Crear mi miMAR",
     ctaHref: "/registro",
-    cta2: "Ya tengo cuenta",
-    cta2Href: "/iniciar-sesion",
   },
   {
     tone: "org",
     icon: "edificio",
-    eyebrow: "Soy organización",
-    title: "Solicitá acceso verificado",
-    body: "Refugios, veterinarias, redes de rescate: custodia, adopciones y eventos sanitarios firmados.",
+    title: "Refugios y veterinarias",
+    body: "Custodia, adopciones y atención, con acceso verificado.",
     cta: "Solicitar acceso",
     // Its own request form (critique 2026-09-29, M8): /registro is the
     // OWNER's sign-up, so an organization used to land in the wrong flow.
     ctaHref: "/organizaciones/solicitar-acceso",
-    cta2: "Ya tengo cuenta",
-    cta2Href: "/iniciar-sesion",
   },
   {
     tone: "gob",
     icon: "edificio",
-    eyebrow: "Soy municipio o provincia",
-    title: "miMAR para tu jurisdicción",
-    body: "Coordiná campañas y seguí la cobertura de tu jurisdicción.",
-    cta: "Conocer miMAR para municipios",
+    title: "Municipios y provincias",
+    body: "Campañas, cobertura y casos de tu jurisdicción.",
+    cta: "Conocer más",
     ctaHref: "/municipios",
-    cta2: "Ya tengo cuenta institucional",
-    cta2Href: "/iniciar-sesion",
   },
 ];
 

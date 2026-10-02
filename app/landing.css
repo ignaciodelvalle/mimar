@@ -2859,47 +2859,46 @@
   color: var(--color-ln-azul);
 }
 
-/* ============ empezar — 2 doors =========================================== */
-/* Two peer doors. Same reason as .lp-feat-grid: the breakpoint was restating
-   what the content already implies. Capped at 880px, so a door never exceeds
-   ~430px and the minimum only bites on small screens. */
-/* Owner full width on top, two equal secondary doors below (critique
-   2026-09-29, M8). One column on phones. */
+/* ============ empezar — 3 equal doors ===================================== */
+/* One row of three equal cards (PO 2026-10-02), one column on phones. The
+   owner's card stays told apart by its border and its primary button, not by
+   its size: the full-width owner door above two secondary ones (critique
+   2026-09-29, M8) gave way to three peers with one line each. */
 .lp .lp-role-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
-  max-width: 880px;
+  max-width: 1040px;
   margin-inline: auto;
 }
-@media (max-width: 720px) {
+@media (max-width: 820px) {
   .lp .lp-role-grid {
     grid-template-columns: minmax(0, 1fr);
+    max-width: 480px;
   }
-}
-.lp .lp-role-card--primary {
-  grid-column: 1 / -1;
-  border: 2px solid var(--color-ln-azul);
-  box-shadow: var(--shadow-md);
-}
-.lp .lp-role-card--primary h3 {
-  font-size: clamp(26px, 3vw, 32px);
 }
 .lp .lp-role-card {
   background: var(--color-ln-card);
   border: 1px solid var(--color-ln-line);
   border-radius: var(--radius-card);
-  padding: 30px 28px;
+  padding: 26px 24px;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+}
+/* After the base rule: same specificity, so order decides — placed before it,
+   the base border silently won and the owner card lost its azul edge. */
+.lp .lp-role-card--primary {
+  border: 2px solid var(--color-ln-azul);
+  box-shadow: var(--shadow-md);
 }
 .lp .lp-role-card .lp-ric {
-  width: 52px;
-  height: 52px;
+  width: 48px;
+  height: 48px;
   border-radius: 12px;
   display: grid;
   place-items: center;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 .lp .lp-role-card[data-tone="dueno"] .lp-ric {
   background: var(--lp-seal-bg);
@@ -2911,39 +2910,21 @@
 }
 .lp .lp-role-card h3 {
   font-family: var(--lp-serif);
-  font-size: 25px;
+  font-size: 23px;
   font-weight: 600;
-  margin: 0 0 10px;
+  margin: 0 0 8px;
   letter-spacing: -0.015em;
   line-height: 1.15;
 }
 .lp .lp-role-card p {
   font-size: 14.5px;
   color: var(--color-ln-ink-2);
-  line-height: 1.55;
+  line-height: 1.5;
   flex: 1;
   margin: 0 0 18px;
 }
-/* The owner's three steps (critique 2026-09-29, M1): the last one is the QR
-   on the collar, which the whole lost-pet promise depends on. */
-.lp .lp-role-steps {
-  margin: -6px 0 20px;
-  padding-left: 1.3em;
-  /* Tailwind's preflight strips list markers; the numbers are the point. */
-  list-style: decimal;
-  font-size: 14.5px;
-  line-height: 1.55;
-  color: var(--color-ln-ink-2);
-}
-.lp .lp-role-steps li + li {
-  margin-top: 4px;
-}
-.lp .lp-role-steps li::marker {
-  color: var(--color-ln-azul);
-  font-weight: 700;
-}
 
-/* Third door (WU4): "Soy municipio o provincia". It used to be a navy card,
+/* Third door (WU4): "Municipios y provincias". It used to be a navy card,
    the heaviest of the three, on a page whose audience is the owner (critique
    2026-09-29, M8); it is now the organization door's equal, told apart only
    by its icon tile. */
