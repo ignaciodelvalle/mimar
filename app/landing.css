@@ -222,14 +222,6 @@
     border-color: var(--color-ln-ink);
   }
 }
-.lp .lp-btn .lp-ar {
-  transition: transform var(--motion-base);
-}
-@media (hover: hover) {
-  .lp .lp-btn:hover .lp-ar {
-    transform: translateX(3px);
-  }
-}
 .lp .lp-btn--compact {
   font-size: 14px;
   padding: 11px 18px;

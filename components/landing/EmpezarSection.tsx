@@ -43,7 +43,7 @@ export function EmpezarSection() {
                   href={r.ctaHref}
                   className={`lp-btn lp-btn--compact ${primary ? "lp-btn--primary" : "lp-btn--ghost"}`}
                 >
-                  {r.cta} <span className="lp-ar">→</span>
+                  {r.cta}
                 </Link>
               </article>
             );

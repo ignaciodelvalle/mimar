@@ -33,7 +33,7 @@ export function FeaturesSection() {
         </div>
         <p className="lp-feat-more lp-reveal">
           ¿Qué funciona en tu localidad?{" "}
-          <Link href="/funcionalidades">Todas las funcionalidades →</Link>
+          <Link href="/funcionalidades">Ver todas las funcionalidades</Link>
         </p>
       </div>
     </section>

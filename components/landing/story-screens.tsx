@@ -281,7 +281,7 @@ export function EstadoConsole({ bridge }: { bridge?: string }) {
           </span>
         </p>
         <Link href="/municipios" className="lp-estado-more">
-          Ver más para municipios <span aria-hidden="true">→</span>
+          Ver más para municipios
         </Link>
       </div>
 
