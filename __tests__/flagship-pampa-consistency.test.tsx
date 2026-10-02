@@ -631,7 +631,9 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
       "vamos a redirigirte para confirmar la identidad.",
       "Escanear QR",
       "Número de microchip",
-      "Continuar (chequearemos el chip al confirmar)",
+      // Plain "Continuar" (PO 2026-10-02): the real IntakeForm.tsx:376 still adds
+      // "(chequearemos el chip al confirmar)"; the landing mock deliberately says less.
+      'lp-vf-submit">Continuar</span>',
       // The match page (match/[matchedPetToken]/page.tsx:129) and its card
       // (MatchConfirmationCard.tsx:80-83, :154, :163).
       "Coincidencia de microchip",
@@ -659,6 +661,7 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
     // The intake's first screen (PO 2026-10-02): no chip-country field, and the
     // two ways in side by side — [ Número de microchip ]  o  [ Escanear QR ].
     expect(html).not.toContain("País del chip");
+    expect(html).not.toContain("chequearemos el chip");
     const intakeRow = html.slice(html.indexOf('<div class="lp-vf-or">'));
     const sep = intakeRow.indexOf('lp-vf-or-sep">o</span>');
     expect(intakeRow.indexOf("Número de microchip")).toBeGreaterThan(-1);

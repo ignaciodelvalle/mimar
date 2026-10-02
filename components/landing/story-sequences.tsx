@@ -955,7 +955,7 @@ function IntakeChipScreen() {
             <span className="lp-vf-l lp-vf-or-sep">o</span>
             <span className="lp-vf-submit lp-vf-submit--ghost">Escanear QR</span>
           </div>
-          <span className="lp-vf-submit">Continuar (chequearemos el chip al confirmar)</span>
+          <span className="lp-vf-submit">Continuar</span>
         </div>
       </div>
     </>
