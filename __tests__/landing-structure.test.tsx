@@ -638,14 +638,21 @@ describe("empezar — one row of three equal doors (PO 2026-10-02)", () => {
 // lost" and never said how the QR reaches the collar.
 describe("how the QR reaches the collar (M1)", () => {
   it("the FAQ answers it with the two paths that exist: self-print and a pre-issued tag", () => {
+    // The self-print channel really is on by default, for every jurisdiction.
+    const defaults = readFileSync(
+      join(process.cwd(), "lib", "domain", "business-rules-defaults.ts"),
+      "utf8",
+    );
+    expect(defaults).toMatch(/physical_credential_channels: \{\s*printable_qr: true,/);
     const html = renderToStaticMarkup(<FaqSection />);
     expect(html).toContain("¿Cómo le pongo el QR?");
-    expect(html).toContain("imprimís su chapita con el QR");
-    expect(html).toContain("si tu jurisdicción lo habilita");
-    // Copy review 2026-09-30 shortened this answer, dropping the
-    // recortala/plastificala/número-de-serie detail already covered by the
-    // owner door's own steps (empezar-steps).
-    expect(html).toContain("la activás desde tu cuenta");
+    // PO 2026-10-02: the exact answer, without the jurisdiction qualifier —
+    // the printable sheet's channel defaults to ON everywhere
+    // (lib/domain/business-rules-defaults.ts, physical_credential_channels).
+    expect(html).toContain(
+      "Desde la ficha de tu mascota imprimís su chapita con el QR. Si te dieron una chapa miMAR, la activás desde tu cuenta.",
+    );
+    expect(html).not.toContain("si tu jurisdicción lo habilita");
     // Both paths are real routes today.
     for (const route of [
       ["app", "(app)", "mis-mascotas", "[publicToken]", "chapita", "page.tsx"],
@@ -653,6 +660,18 @@ describe("how the QR reaches the collar (M1)", () => {
     ]) {
       expect(() => readFileSync(join(process.cwd(), ...route), "utf8")).not.toThrow();
     }
+  });
+});
+
+// PO 2026-10-02: the phone question covers changing or losing it, not only theft.
+describe("the phone FAQ", () => {
+  it("asks about changing or losing the phone and says the libreta lives in the account", () => {
+    const html = renderToStaticMarkup(<FaqSection />);
+    expect(html).toContain("¿Y si cambio o pierdo el teléfono?");
+    expect(html).toContain(
+      "No pasa nada: tu libreta está en tu cuenta, no en el teléfono. Entrás desde cualquier dispositivo y el QR sigue funcionando igual.",
+    );
+    expect(html).not.toContain("¿Y si me roban el teléfono?");
   });
 });
 

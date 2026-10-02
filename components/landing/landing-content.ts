@@ -806,14 +806,21 @@ export const FAQS: Array<[string, string]> = [
     // Critique 2026-09-29, M1: the whole "anyone can scan it if she gets lost"
     // promise rests on a physical QR, and the page never said how to get one.
     // Only the two paths that exist today: the self-print sheet at
-    // /mis-mascotas/[token]/chapita (on unless the jurisdiction turns its
-    // printable_qr channel off, lib/domain/business-rules-defaults.ts) and the
-    // pre-issued tag activated at /cuenta/chapas/activar with its serial and
-    // the code printed on the envelope.
+    // /mis-mascotas/[token]/chapita and the pre-issued tag activated at
+    // /cuenta/chapas/activar with its serial and the code printed on the
+    // envelope.
+    //
+    // No "si tu jurisdicción lo habilita" any more (PO 2026-10-02, automatic
+    // jurisdiction opt-in). Checked before dropping it: the self-print sheet
+    // rides the physical_credential_channels rule, whose hardcoded default is
+    // printable_qr: TRUE (lib/domain/business-rules-defaults.ts), resolved
+    // locality > province > country > default
+    // (lib/infra/physical-credential-channels.ts), and no migration or seed
+    // writes a jurisdiction row for it. So it is already on everywhere unless
+    // a jurisdiction explicitly turns it off — the qualifier described an
+    // opt-out as if it were an opt-in. No product change was needed.
     "¿Cómo le pongo el QR?",
-    // Copy review 2026-09-30: 45 words down to the two real paths, without
-    // repeating step 3 of "Empezar" (recortala/plastificala, número de serie).
-    "Desde la ficha de tu mascota imprimís su chapita con el QR, si tu jurisdicción lo habilita. Si te dieron una chapa miMAR, la activás desde tu cuenta.",
+    "Desde la ficha de tu mascota imprimís su chapita con el QR. Si te dieron una chapa miMAR, la activás desde tu cuenta.",
   ],
   [
     "¿Reemplaza la libreta de papel?",
@@ -823,8 +830,10 @@ export const FAQS: Array<[string, string]> = [
     "Tiene la misma información, firmada por tu veterinaria con su matrícula verificada. Por ahora, conservá también la libreta de papel.",
   ],
   [
-    "¿Y si me roban el teléfono?",
-    "Tu libreta no está en el teléfono: entrás desde cualquier dispositivo, y el QR sigue funcionando.",
+    // PO 2026-10-02: wider than theft — changing or losing the phone is the
+    // same question.
+    "¿Y si cambio o pierdo el teléfono?",
+    "No pasa nada: tu libreta está en tu cuenta, no en el teléfono. Entrás desde cualquier dispositivo y el QR sigue funcionando igual.",
   ],
 ];
 
