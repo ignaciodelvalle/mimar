@@ -684,7 +684,9 @@ const styles = StyleSheet.create({
   photoStage: { alignItems: "center" },
   /**
    * Outer mount: hairline outline + soft drop. Inner `photo` clips the image
-   * and wears the white surface ring.
+   * and wears the white surface ring. No Android `elevation` here: the mount
+   * sits inside the turning card, whose `CARD_LIFT` is the ONE light layer the
+   * J7 pays for. The iOS shadow is a cheap layer property and stays.
    */
   photoMount: {
     width: PHOTO_MOUNT.size,
@@ -704,7 +706,6 @@ const styles = StyleSheet.create({
         shadowRadius: PHOTO_MOUNT.shadowRadius,
         shadowOffset: { width: 0, height: PHOTO_MOUNT.shadowOffsetY },
       },
-      android: { elevation: PHOTO_MOUNT.elevation },
       default: {},
     }),
   },

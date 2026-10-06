@@ -11,8 +11,8 @@
 //     dropped them with the landing carnet recipe.
 //   · The mark is the mask path from `logo-mimar-mark-mask.svg`, filled in
 //     sunk ink (CSS mask has no RN twin).
-//   · The escarapela is a bundled PNG raster of `landing-escarapela.svg`
-//     (the SVG is ~1MB; Metro cannot treat it as a cheap watermark).
+//   · The paper grain and the escarapela watermark are OFF on the phone (J7
+//     paint cost); their PNG rasters were removed from the bundle 2026-10-06.
 //
 // THE SITUATION IS SERVER-DECIDED. `situation` arrives as the contract's
 // `OwnerPetSituationV1` — key, tone, icon and an already-gender-agreed label —
@@ -48,6 +48,21 @@ import { COLORS, RADIUS } from "../ui/theme";
 import { CARD_LIFT, ESCARAPELA, LATENT_BRAND, MIMAR_MARK, PAPER } from "./chrome-visual";
 
 const OWNER_CHROME = chromeForSurface("owner");
+
+/**
+ * The band names the DOCUMENT TYPE of the face on show — "Credencial · frente"
+ * / "Libreta · dorso" (PO-approved band). The owner recipe is two-faced, so
+ * its back subtitle is never null; there is deliberately no `?? title`
+ * fallback (it was unreachable, and a fence that asserted the title was
+ * asserting a string nobody saw). If the contract ever drops the back, fail
+ * at load instead of painting an unnamed band.
+ */
+function ownerBackDoctype(): string {
+  const back = OWNER_CHROME.subtitleBack;
+  if (back === null) throw new Error("owner credential chrome has no back-face doctype");
+  return back;
+}
+const OWNER_BACK_DOCTYPE = ownerBackDoctype();
 
 /** Web `--color-ln-memorial-chip-bg`. */
 const MEMORIAL_CHIP_BG = COLORS.memorialSurface;
@@ -437,15 +452,18 @@ function TurnHit({
   children,
 }: {
   onPress: () => void;
+  /** Name the TARGET face ("Girar a …"), or say what a secondary control is
+   *  ("Marca miMAR: …") — never two controls, one name. */
   label: string;
-  selected: boolean;
+  /** Toggle state. Give it to ONE control per band; omit on the others. */
+  selected?: boolean;
   children: ReactNode;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ selected }}
+      accessibilityState={selected === undefined ? undefined : { selected }}
       onPress={onPress}
       hitSlop={11}
       style={styles.turnHit}
@@ -463,14 +481,20 @@ export function DocumentChromeNative({
   children,
 }: DocumentChromeNativeProps) {
   const isCredencial = face === "credencial";
-  const bandSubtitle = isCredencial ? OWNER_CHROME.subtitleFront : OWNER_CHROME.subtitleBack;
+  const doctype = isCredencial ? OWNER_CHROME.subtitleFront : OWNER_BACK_DOCTYPE;
   // The accessible name always names the TARGET face — the web's exact wording.
   const turnAria = isCredencial ? "Girar a Libreta" : "Girar a Credencial";
+  // The mark turns the sheet too, but it is a SECOND control: two controls
+  // sharing one name and one toggle state read to TalkBack as the same control
+  // listed twice. The flip glyph owns "Girar a …" and the selected state; the
+  // mark says what it is and what it does — the web's `markAria`, verbatim.
+  const markAria = isCredencial
+    ? "Marca miMAR: mostrar la libreta"
+    : "Marca miMAR: mostrar la credencial";
   const showBackChip = !isCredencial && situation != null && OWNER_CHROME.showSituationChip;
-  const doctype = bandSubtitle ?? OWNER_CHROME.title;
 
   const markControl = (
-    <TurnHit onPress={onTurn} label={turnAria} selected={isLibretaActive}>
+    <TurnHit onPress={onTurn} label={markAria}>
       <MimarMark />
     </TurnHit>
   );

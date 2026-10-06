@@ -206,15 +206,13 @@ function theStage(): RenderedNode {
 }
 
 /**
- * The band carries two turn controls with the same label (the mark and the
- * arrow both turn the sheet), so the query is getAll. This returns the first
- * and fails with a readable message when there is none, instead of a
- * `[0]` that is `undefined` to the type checker and a TypeError at runtime.
+ * The band carries two turn controls (the mark and the arrow both turn the
+ * sheet), but only the arrow is named "Girar a …" and carries the toggle
+ * state — the mark says "Marca miMAR: …". So this is a getBy: a second
+ * "Girar a …" control is itself the regression.
  */
 function firstTurnControl(label: "Girar a Libreta" | "Girar a Credencial") {
-  const [first] = screen.getAllByLabelText(label);
-  if (!first) throw new Error(`no "${label}" control on screen`);
-  return first;
+  return screen.getByLabelText(label);
 }
 
 const OK = <T,>(data: T) => ({ status: "ok", data }) as const;
@@ -376,13 +374,16 @@ describe("PetDocumentScreen — two faces of one document", () => {
   });
 
   it("draws mark and flip as dual 22px turn controls (web band parity)", async () => {
-    // Web: `.pc-band-mark-hit` + `.pc-band-flip` — both 22×22 sunk hits, both
-    // named "Girar a …", hitSlop expands the thumb target. Asserted on the
-    // RENDERED controls so the style reaches them.
+    // Web: `.pc-band-mark-hit` + `.pc-band-flip` — both 22×22 sunk hits; the
+    // flip is named "Girar a …", the mark "Marca miMAR: …"; hitSlop expands
+    // the thumb target. Asserted on the RENDERED controls so the style
+    // reaches them.
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
-    const turns = screen.getAllByLabelText("Girar a Libreta");
-    expect(turns).toHaveLength(2);
+    const turns = [
+      screen.getByLabelText("Girar a Libreta"),
+      screen.getByLabelText("Marca miMAR: mostrar la libreta"),
+    ];
     for (const turn of turns) {
       const style = StyleSheet.flatten(turn.props.style);
       expect(style.width).toBe(22);

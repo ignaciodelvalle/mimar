@@ -26,6 +26,7 @@ import {
   documentChromeStyles,
 } from "./DocumentChromeNative";
 import { ownerFaceStyles } from "./OwnerFace";
+import { PHOTO_MOUNT } from "./chrome-visual";
 
 describe("the band's height is the padding recipe", () => {
   it("sums pad-top + head + pad-bottom", () => {
@@ -64,6 +65,13 @@ describe("the StyleSheets carry the constants the recipe quotes", () => {
   it("pins the centred photo mount to the band rise (QR left the face)", () => {
     expect(StyleSheet.flatten(ownerFaceStyles.photoMount).marginTop).toBe(-IDENTITY_POKE_OUT);
     expect(StyleSheet.flatten(ownerFaceStyles.photoMount).width).toBe(116);
+  });
+
+  it("gives the photo mount no elevation of its own — the card lift is the one light layer", () => {
+    // A second Android elevation nested inside the rotating card is a second
+    // shadow layer the J7 repaints every frame of the turn.
+    expect(PHOTO_MOUNT).not.toHaveProperty("elevation");
+    expect(StyleSheet.flatten(ownerFaceStyles.photoMount)).not.toHaveProperty("elevation");
   });
 
   it("pins the turn hit to the web's 22px mark size", () => {

@@ -23,11 +23,7 @@
 // · `.pc-photo-mount` phone 116×116; desktop 156×156
 // · Situation chip / face border tints per `data-situation`
 
-/** Raster of public/landing-passport-paper.svg (tiled on the sheet). */
-export const PAPER_TEXTURE = require("../../assets/landing-passport-paper.png");
-
-/** Raster of public/landing-escarapela.svg (512px palette PNG). */
-export const ESCARAPELA_TEXTURE = require("../../assets/landing-escarapela.png");
+// The paper and escarapela layers were turned off for the J7, and their PNG assets were removed (2026-10-06).
 
 /**
  * Paper grain. Web tiles at 180×112; RN Image does not CSS-tile, so we stretch
@@ -78,8 +74,8 @@ export const PHOTO_MOUNT = {
   ring: 4,
   /** Corner radius of the mount. */
   radius: 14,
-  /** Soft drop under the photo (Android elevation). */
-  elevation: 4,
+  /** Soft drop under the photo — iOS only; Android gets no nested elevation
+   *  inside the rotating card (one light layer: `CARD_LIFT`). */
   shadowOpacity: 0.2,
   shadowRadius: 5,
   shadowOffsetY: 2,

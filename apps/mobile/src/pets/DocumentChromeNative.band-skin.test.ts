@@ -22,7 +22,12 @@ import { describe, expect, it } from "@jest/globals";
 import { render, screen } from "@testing-library/react-native";
 import { createElement } from "react";
 
-import { DocumentChromeNative, bandSkin, credentialBandSkin } from "./DocumentChromeNative";
+import {
+  DocumentChromeNative,
+  type DocumentFace,
+  bandSkin,
+  credentialBandSkin,
+} from "./DocumentChromeNative";
 
 const prenada = { key: "prenada", tone: "info", icon: "perdida", label: "Preñada" };
 
@@ -125,7 +130,7 @@ describe("the painted band stays navy", () => {
     expect(screen.getByText("Preñada")).toBeOnTheScreen();
   });
 
-  it("matches the web band: no pinstripes, latent miMAR, dual Girar hits", () => {
+  it("matches the web band: no pinstripes, latent miMAR, mark + flip turn hits", () => {
     render(
       createElement(DocumentChromeNative, {
         face: "credencial",
@@ -145,6 +150,61 @@ describe("the painted band stays navy", () => {
       screen.getAllByText("miMAR", { includeHiddenElements: true }).length,
     ).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Credencial · frente")).toBeOnTheScreen();
-    expect(screen.getAllByLabelText("Girar a Libreta")).toHaveLength(2);
+    expect(screen.getByLabelText("Girar a Libreta")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Marca miMAR: mostrar la libreta")).toBeOnTheScreen();
   });
+
+  // The native twin of the web fence in __tests__/state-endorsement-fence.test.ts:
+  // the band paints the DOCUMENT TYPE of the face on show. Literals, not the
+  // contract recipe — the point is what the band says, not what a constant holds.
+  it("names the document type on both faces", () => {
+    const front = render(
+      createElement(DocumentChromeNative, {
+        face: "credencial",
+        isLibretaActive: false,
+        onTurn: () => {},
+        situation: null,
+      }),
+    );
+    expect(screen.getByText("Credencial · frente")).toBeOnTheScreen();
+    front.unmount();
+    render(
+      createElement(DocumentChromeNative, {
+        face: "libreta",
+        isLibretaActive: true,
+        onTurn: () => {},
+        situation: null,
+      }),
+    );
+    expect(screen.getByText("Libreta · dorso")).toBeOnTheScreen();
+    expect(screen.queryByText("Libreta Sanitaria")).toBeNull();
+  });
+
+  // Two controls sharing one name and one toggle state read to TalkBack as
+  // the same control listed twice (web parity: DocumentChrome's markAria).
+  const TURN_CASES: Array<[DocumentFace, boolean, string, string]> = [
+    ["credencial", false, "Girar a Libreta", "Marca miMAR: mostrar la libreta"],
+    ["libreta", true, "Girar a Credencial", "Marca miMAR: mostrar la credencial"],
+  ];
+  it.each(TURN_CASES)(
+    "on the %s face, mark and flip have distinct names and only the flip carries the state",
+    (face, isLibretaActive, flipLabel, markLabel) => {
+      render(
+        createElement(DocumentChromeNative, {
+          face,
+          isLibretaActive,
+          onTurn: () => {},
+          situation: null,
+        }),
+      );
+      const buttons = screen.getAllByRole("button");
+      expect(buttons.map((b) => b.props.accessibilityLabel).sort()).toEqual(
+        [flipLabel, markLabel].sort(),
+      );
+      const stateful = buttons.filter((b) => b.props.accessibilityState?.selected !== undefined);
+      expect(stateful).toHaveLength(1);
+      expect(stateful[0]?.props.accessibilityLabel).toBe(flipLabel);
+      expect(stateful[0]?.props.accessibilityState.selected).toBe(isLibretaActive);
+    },
+  );
 });
