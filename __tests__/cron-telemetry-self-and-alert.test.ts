@@ -42,7 +42,7 @@ function boundParams(cond: SQL): unknown[] {
   return dialect.sqlToQuery(cond).params;
 }
 
-function installFakeDb(rows: FakeRow[], opts: { sweepFails?: boolean } = {}) {
+function installFakeDb(rows: FakeRow[], opts: { sweepFails?: boolean; sweepHangs?: boolean } = {}) {
   const updates: Record<string, unknown>[] = [];
   // Raw statements (the abandoned-run sweep), kept apart from `updates` so the
   // finalize assertions below keep reading only withCronRun's own UPDATE.
@@ -54,6 +54,7 @@ function installFakeDb(rows: FakeRow[], opts: { sweepFails?: boolean } = {}) {
       db: {
         execute: async (q: SQL) => {
           if (opts.sweepFails) throw new Error("sweep: pooler gone");
+          if (opts.sweepHangs) return new Promise(() => {});
           executed.push(q);
           return [];
         },
@@ -239,47 +240,125 @@ describe("refresh-cube never leaves its row 'running' (2026-10 hang)", () => {
     perMetric: {},
     kpi: { status: "ok" },
   };
+  const TIMED_OUT = {
+    ...OK,
+    status: "error",
+    rowCount: 0,
+    error: "canceling statement due to statement timeout (57014)",
+    kpi: { status: "error", error: "layer build failed" },
+  };
+
+  /** The builder's module surface the route uses; the retry consults the
+   * statement timeout to decide whether a second attempt still fits. */
+  function mockBuilder(refreshCube: (...args: unknown[]) => Promise<unknown>) {
+    const fn = vi.fn(refreshCube);
+    vi.doMock("@/src/modules/panorama/infrastructure/cube-builder", () => ({
+      refreshCube: fn,
+      cubeBuilderStatementTimeoutMs: () => 120_000,
+    }));
+    return fn;
+  }
+
+  function settle(p: Promise<unknown>): Promise<string> {
+    return p.then(
+      () => "resolved",
+      (e: Error) => e.message,
+    );
+  }
 
   // The staging failure: the build's promise never settled (a pipelined query
   // through the transaction pooler lost its response), the platform killed the
   // function at maxDuration, and withCronRun's catch never ran — 8 rows stuck
   // at 'running', no alert. A deadline below maxDuration must turn that hang
   // into a finalized, paged failure that says what happened.
-  it("a build that never settles is finalized as failed, with the reason, and pages", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  it("the deadline aborts the build; the build unwinds and the row closes failed", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     const updates = installFakeDb([]);
-    vi.doMock("@/src/modules/panorama/infrastructure/cube-builder", () => ({
-      refreshCube: vi.fn(() => new Promise(() => {})),
-    }));
+    let seen: AbortSignal | undefined;
+    // A builder that behaves like the real one under abort: its queries reject
+    // when the clients are destroyed, and it RETURNS a structured error.
+    const refresh = mockBuilder((opts) => {
+      seen = (opts as { signal: AbortSignal }).signal;
+      return new Promise((resolve) => {
+        seen?.addEventListener("abort", () =>
+          resolve({ ...TIMED_OUT, error: "aborted (deadline): CONNECTION_DESTROYED" }),
+        );
+      });
+    });
 
     const { GET, maxDuration } = await import("@/app/api/cron/refresh-cube/route");
-    const outcome = GET(request("/api/cron/refresh-cube") as never).then(
-      () => "resolved",
-      (e: Error) => e.message,
-    );
+    const outcome = GET(request("/api/cron/refresh-cube") as never);
 
     // Not yet: a slow-but-alive build is not cut short early.
-    await vi.advanceTimersByTimeAsync(200_000);
+    await vi.advanceTimersByTimeAsync(239_000);
+    expect(seen?.aborted).toBe(false);
     expect(updates).toEqual([]);
 
-    // The deadline fires strictly inside maxDuration, leaving time to finalize.
-    await vi.advanceTimersByTimeAsync(40_000);
-    const message = await outcome;
-    expect(message).toMatch(/did not finish within 240s/);
+    // At 240s — strictly inside maxDuration — the build is aborted, unwinds
+    // with its own structured error (meta stamped by the builder), and the
+    // route finalizes THAT result as a failed, paged run.
+    await vi.advanceTimersByTimeAsync(1_000);
+    const res = await outcome;
+    expect(seen?.aborted).toBe(true);
     expect(240_000).toBeLessThan(maxDuration * 1000);
+    expect(res.status).toBe(500);
+    // No retry once aborted, even though the result is an error.
+    expect(refresh).toHaveBeenCalledTimes(1);
     expect(updates).toEqual([
-      expect.objectContaining({ status: "failed", details: { error: message } }),
+      expect.objectContaining({
+        status: "failed",
+        details: expect.objectContaining({ error: "aborted (deadline): CONNECTION_DESTROYED" }),
+      }),
     ]);
     expect(updates[0].finishedAt).toBeInstanceOf(Date);
     expect(sendCronAlert).toHaveBeenCalledTimes(1);
-    expect(sendCronAlert.mock.calls[0][0]).toMatchObject({ job: "refresh_cube", error: message });
+    expect(sendCronAlert.mock.calls[0][0]).toMatchObject({ job: "refresh_cube" });
+  });
+
+  it("a build that ignores the abort still closes the row after a bounded drain", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const updates = installFakeDb([]);
+    mockBuilder(() => new Promise(() => {}));
+
+    const { GET, maxDuration } = await import("@/app/api/cron/refresh-cube/route");
+    const outcome = settle(GET(request("/api/cron/refresh-cube") as never));
+
+    await vi.advanceTimersByTimeAsync(240_000);
+    expect(updates).toEqual([]); // still draining
+    await vi.advanceTimersByTimeAsync(15_000);
+    const message = await outcome;
+    expect(message).toMatch(/did not finish within 240s/);
+    expect(255_000).toBeLessThan(maxDuration * 1000);
+    expect(updates).toEqual([expect.objectContaining({ status: "failed" })]);
+    expect(sendCronAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a statement timeout only while a whole statement timeout still fits", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    installFakeDb([]);
+    // First attempt times out FAST: 240s - ~0s left > 120s → one retry.
+    const quick = mockBuilder(() => Promise.resolve(TIMED_OUT));
+    let { GET } = await import("@/app/api/cron/refresh-cube/route");
+    await settle(GET(request("/api/cron/refresh-cube") as never));
+    expect(quick).toHaveBeenCalledTimes(2);
+
+    // First attempt times out after 200s: 40s left < 120s → no retry, so a
+    // second write transaction can never start after the reads already failed.
+    vi.resetModules();
+    installFakeDb([]);
+    const late = mockBuilder(
+      () => new Promise((resolve) => setTimeout(() => resolve(TIMED_OUT), 200_000)),
+    );
+    ({ GET } = await import("@/app/api/cron/refresh-cube/route"));
+    const outcome = settle(GET(request("/api/cron/refresh-cube") as never));
+    await vi.advanceTimersByTimeAsync(200_000);
+    await outcome;
+    expect(late).toHaveBeenCalledTimes(1);
   });
 
   it("closes this cron's abandoned 'running' rows before it starts", async () => {
     const updates = installFakeDb([]);
-    vi.doMock("@/src/modules/panorama/infrastructure/cube-builder", () => ({
-      refreshCube: vi.fn().mockResolvedValue(OK),
-    }));
+    mockBuilder(() => Promise.resolve(OK));
 
     const { GET } = await import("@/app/api/cron/refresh-cube/route");
     const res = await GET(request("/api/cron/refresh-cube") as never);
@@ -287,20 +366,14 @@ describe("refresh-cube never leaves its row 'running' (2026-10 hang)", () => {
     expect(res.status).toBe(200);
     expect(updates).toEqual([expect.objectContaining({ status: "ok" })]);
     expect(executedSql).toHaveLength(1);
-    const q = dialect.sqlToQuery(executedSql[0]);
-    expect(q.sql).toMatch(/UPDATE cron_runs/);
-    expect(q.sql).toMatch(/status = 'failed'/);
-    expect(q.sql).toMatch(/status = 'running'/);
-    // Scoped to this cron, and only rows far older than any live invocation
-    // (15 min = 3x maxDuration) — a concurrent live run is never touched.
-    expect(q.params).toEqual(["refresh_cube", 900]);
+    // The row-selection semantics are pinned against Postgres in the DB-backed
+    // test below; this one only proves the route runs the sweep for ITSELF.
+    expect(dialect.sqlToQuery(executedSql[0]).params).toEqual(["refresh_cube", 900]);
   });
 
   it("a failing sweep never blocks the build", async () => {
     const updates = installFakeDb([], { sweepFails: true });
-    vi.doMock("@/src/modules/panorama/infrastructure/cube-builder", () => ({
-      refreshCube: vi.fn().mockResolvedValue(OK),
-    }));
+    mockBuilder(() => Promise.resolve(OK));
 
     const { GET } = await import("@/app/api/cron/refresh-cube/route");
     const res = await GET(request("/api/cron/refresh-cube") as never);
@@ -308,5 +381,123 @@ describe("refresh-cube never leaves its row 'running' (2026-10 hang)", () => {
     expect(res.status).toBe(200);
     expect(updates).toEqual([expect.objectContaining({ status: "ok", itemsProcessed: 42 })]);
     expect(sendCronAlert).not.toHaveBeenCalled();
+  });
+
+  it("a HUNG sweep is abandoned after 10s and the run still opens and closes its row", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const updates = installFakeDb([], { sweepHangs: true });
+    mockBuilder(() => Promise.resolve(OK));
+
+    const { GET } = await import("@/app/api/cron/refresh-cube/route");
+    const outcome = GET(request("/api/cron/refresh-cube") as never);
+    await vi.advanceTimersByTimeAsync(10_000);
+    const res = await outcome;
+
+    expect(res.status).toBe(200);
+    expect(updates).toEqual([expect.objectContaining({ status: "ok", itemsProcessed: 42 })]);
+  });
+});
+
+describe("closeAbandonedCronRuns against Postgres", () => {
+  // Pattern-matching the SQL cannot tell `<` from `>`; Postgres can. Seed the
+  // four cases with started_at computed BY THE DATABASE (no host clock).
+  it("closes only this cron's running rows older than the threshold", async () => {
+    const postgres = (await import("postgres")).default;
+    const sql = postgres(process.env.DATABASE_URL as string, { max: 1, prepare: false });
+    const other = `zz_sweep_other_${Date.now()}`;
+    const ids: string[] = [];
+    try {
+      const seed = async (cron: string, status: string, ageMinutes: number) => {
+        const [row] = await sql<{ id: string }[]>`
+          insert into cron_runs (cron_name, status, started_at, finished_at)
+          values (${cron}, ${status}, now() - make_interval(mins => ${ageMinutes}),
+                  case when ${status} = 'running' then null else now() end)
+          returning id`;
+        ids.push(row.id);
+        return row.id;
+      };
+      const oldRunning = await seed("refresh_cube", "running", 60);
+      const freshRunning = await seed("refresh_cube", "running", 1);
+      const otherOldRunning = await seed(other, "running", 60);
+      const oldOk = await seed("refresh_cube", "ok", 60);
+
+      const { closeAbandonedCronRuns } = await import("@/lib/infra/case-cron");
+      await closeAbandonedCronRuns("refresh_cube", 15 * 60 * 1000);
+
+      const rows = await sql<
+        { id: string; status: string; closed: boolean; error: string | null }[]
+      >`
+        select id, status, finished_at is not null as closed, details->>'error' as error
+          from cron_runs where id = any(${ids})`;
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      expect(byId.get(oldRunning)).toMatchObject({ status: "failed", closed: true });
+      expect(byId.get(oldRunning)?.error).toMatch(/^abandoned:/);
+      expect(byId.get(freshRunning)).toMatchObject({
+        status: "running",
+        closed: false,
+        error: null,
+      });
+      expect(byId.get(otherOldRunning)).toMatchObject({ status: "running", closed: false });
+      expect(byId.get(oldOk)).toMatchObject({ status: "ok", error: null });
+    } finally {
+      if (ids.length) await sql`delete from cron_runs where id = any(${ids})`;
+      await sql.end({ timeout: 5 });
+    }
+  });
+});
+
+describe("cube-builder abort plumbing", () => {
+  it("an abort destroys the clients: in-flight AND queued queries reject at once", async () => {
+    const postgres = (await import("postgres")).default;
+    const { endClientsOnAbort } = await import(
+      "@/src/modules/panorama/infrastructure/cube-builder"
+    );
+    const client = postgres(process.env.DATABASE_URL as string, {
+      max: 1,
+      prepare: false,
+      onnotice: () => {},
+    });
+    const controller = new AbortController();
+    const unbind = endClientsOnAbort(controller.signal, [client]);
+    const t0 = Date.now();
+    const inFlight = client`select pg_sleep(30)`.then(
+      () => "resolved",
+      (e: { code?: string }) => e.code ?? "rejected",
+    );
+    const queued = client`select 1`.then(
+      () => "resolved",
+      (e: { code?: string }) => e.code ?? "rejected",
+    );
+    await new Promise((r) => setTimeout(r, 300));
+    controller.abort("deadline");
+    expect(await inFlight).toBe("CONNECTION_DESTROYED");
+    expect(await queued).toMatch(/CONNECTION_(DESTROYED|ENDED)/);
+    expect(Date.now() - t0).toBeLessThan(10_000);
+    unbind();
+  });
+
+  it("an already-aborted signal ends the clients immediately; no signal binds nothing", async () => {
+    const { endClientsOnAbort } = await import(
+      "@/src/modules/panorama/infrastructure/cube-builder"
+    );
+    const end = vi.fn(async () => undefined);
+    endClientsOnAbort(undefined, [{ end }]);
+    expect(end).not.toHaveBeenCalled();
+    const c = new AbortController();
+    c.abort();
+    endClientsOnAbort(c.signal, [{ end }, { end }]);
+    expect(end).toHaveBeenCalledTimes(2);
+    expect(end).toHaveBeenCalledWith({ timeout: 0 });
+  });
+
+  it("the read handle refuses .transaction() loudly and passes everything else through", async () => {
+    const { forbidTransactions } = await import(
+      "@/src/modules/panorama/infrastructure/cube-builder"
+    );
+    const inner = { transaction: vi.fn(), select: () => "selected" };
+    const guarded = forbidTransactions(inner);
+    expect(() => guarded.transaction()).toThrow(/transactions are not allowed/);
+    expect(inner.transaction).not.toHaveBeenCalled();
+    expect(guarded.select()).toBe("selected");
   });
 });

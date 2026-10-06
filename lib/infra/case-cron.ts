@@ -270,13 +270,25 @@ export async function withCronRun<T>(
  * the platform's hard kill at maxDuration skips every `finally` — so the row
  * stays 'running' forever and nothing pages. Racing the work against a
  * deadline set BELOW maxDuration turns the hang into an ordinary throw that
- * withCronRun finalizes and alerts on. The hung promise is abandoned, not
- * cancelled; the invocation ends right after the response.
+ * withCronRun finalizes and alerts on. withDeadline itself only stops
+ * WAITING; cancelling the work is the caller's job, via `onTimeout`.
  */
-export async function withDeadline<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+export async function withDeadline<T>(
+  work: Promise<T>,
+  ms: number,
+  message: string,
+  /** Runs when the deadline fires, BEFORE the rejection (e.g. abort the work
+   * and give it a bounded moment to unwind). Its own failure is ignored. */
+  onTimeout?: () => Promise<void>,
+): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), ms);
+    timer = setTimeout(() => {
+      Promise.resolve()
+        .then(onTimeout)
+        .catch(() => undefined)
+        .finally(() => reject(new Error(message)));
+    }, ms);
   });
   try {
     return await Promise.race([work, deadline]);

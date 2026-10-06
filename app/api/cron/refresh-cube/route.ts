@@ -34,7 +34,10 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { authorizeCronRequest } from "@/lib/domain/cron-auth";
 import { closeAbandonedCronRuns, withCronRun, withDeadline } from "@/lib/infra/case-cron";
-import { refreshCube } from "@/src/modules/panorama/infrastructure/cube-builder";
+import {
+  cubeBuilderStatementTimeoutMs,
+  refreshCube,
+} from "@/src/modules/panorama/infrastructure/cube-builder";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -47,6 +50,16 @@ const CRON_NAME = "refresh_cube";
 // the row stayed 'running' forever: 8 of 10 nightly runs on staging, with no
 // alert and no error message anywhere.
 const BUILD_DEADLINE_MS = 240_000;
+
+// At the deadline the build is ABORTED (its DB clients are destroyed, so its
+// pending queries reject and its own catch stamps the cube meta 'error'), and
+// the route waits this long for that unwinding before finalizing the row.
+// 240s + 15s still lands well inside maxDuration.
+const ABORT_DRAIN_MS = 15_000;
+
+// The abandoned-run sweep is a one-row UPDATE; a hang there must not eat the
+// budget of the run that has not even opened its row yet.
+const SWEEP_DEADLINE_MS = 10_000;
 
 // A 'running' row older than this cannot belong to a live invocation (3x
 // maxDuration). The sweep closes such rows as 'failed' at the next run.
@@ -75,16 +88,36 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   //
   // An earlier invocation killed at maxDuration never finalized its row; close
   // it so the history reads 'failed', not 'running' forever.
-  await closeAbandonedCronRuns(CRON_NAME, ABANDONED_AFTER_MS);
+  // Best-effort and bounded: its failure or hang never blocks the run.
+  await withDeadline(
+    closeAbandonedCronRuns(CRON_NAME, ABANDONED_AFTER_MS),
+    SWEEP_DEADLINE_MS,
+    "abandoned-run sweep timed out",
+  ).catch(() => null);
 
   const result = await withCronRun(
     CRON_NAME,
-    () =>
-      withDeadline(
-        buildWithRetry(),
+    () => {
+      const controller = new AbortController();
+      const startedAt = Date.now();
+      const work = buildWithRetry(controller.signal, startedAt);
+      return withDeadline(
+        work,
         BUILD_DEADLINE_MS,
-        `refresh_cube did not finish within ${BUILD_DEADLINE_MS / 1000}s (maxDuration ${maxDuration}s): the build hung`,
-      ),
+        `refresh_cube did not finish within ${BUILD_DEADLINE_MS / 1000}s (maxDuration ${maxDuration}s): the build hung and was aborted`,
+        async () => {
+          controller.abort("deadline");
+          await withDeadline(
+            work.then(
+              () => undefined,
+              () => undefined,
+            ),
+            ABORT_DRAIN_MS,
+            "abort drain timed out",
+          ).catch(() => undefined);
+        },
+      );
+    },
     (r) => ({
       itemsProcessed: r.rowCount,
       details:
@@ -115,21 +148,33 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   );
 }
 
-async function buildWithRetry(): Promise<Awaited<ReturnType<typeof refreshCube>>> {
+async function buildWithRetry(
+  signal: AbortSignal,
+  startedAt: number,
+): Promise<Awaited<ReturnType<typeof refreshCube>>> {
   // One retry on a statement timeout (SQLSTATE 57014). Builder reads now run
   // on a dedicated long-timeout client (task #22), so this should be rare —
   // it covers a genuinely pathological query (cold cache + contention past
   // even the long ceiling). A failed build is already fail-safe (read errors
   // return a structured error result, last-good cube preserved, reader falls
   // to live) — the retry just avoids wasting the whole run on one cold query.
-  let r = await refreshCube();
+  let r = await refreshCube({ signal });
   // The KPI-strip phase (own failure domain inside the builder) participates
   // in the retry too: a cold-query timeout in its fan-out is exactly as
   // retryable as one in the layer loaders.
   const timedOut = (x: typeof r) =>
     /57014|statement timeout/i.test(`${x.error ?? ""} ${x.kpi.error ?? ""}`);
-  if ((r.status !== "ok" || r.kpi.status !== "ok") && timedOut(r)) {
-    r = await refreshCube();
+  // Retry only when a whole statement timeout still fits before the deadline:
+  // a retry cut short by the abort would just be a second failure, and one
+  // that started too late could race the route's finalize.
+  const timeLeftMs = BUILD_DEADLINE_MS - (Date.now() - startedAt);
+  if (
+    (r.status !== "ok" || r.kpi.status !== "ok") &&
+    timedOut(r) &&
+    !signal.aborted &&
+    timeLeftMs > cubeBuilderStatementTimeoutMs()
+  ) {
+    r = await refreshCube({ signal });
   }
   return r;
 }

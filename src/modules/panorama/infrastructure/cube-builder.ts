@@ -158,9 +158,13 @@ export function cubeBuilderStatementTimeoutMs(
  * the client's Options because the library leaves `max_pipeline` undeclared. */
 const NO_PIPELINING = { max_pipeline: 0 } as unknown as postgres.Options<Record<string, never>>;
 
-/** Construct the dedicated read client. Session pooler (honors the startup GUC —
- * same reasoning as the write client), tiny pool, long timeout. Lazy by design:
- * called per refreshCube invocation, never at module load. */
+/** Construct the dedicated read client: tiny pool, long timeout, no pipelining.
+ * It connects to ANALYTICS_DATABASE_URL — intended to be the SESSION pooler
+ * (5432), which honors the startup GUC — and falls back to DATABASE_URL, the
+ * TRANSACTION pooler (6543), which ignores it. Which port staging's analytics
+ * URL actually uses is unconfirmed: the variable is Sensitive in Vercel and
+ * cannot be read back. Lazy by design: called per refreshCube invocation,
+ * never at module load. */
 function createBuilderReadClient(): ReturnType<typeof postgres> {
   const readUrl = (process.env.ANALYTICS_DATABASE_URL ?? process.env.DATABASE_URL) as string;
   const timeoutMs = cubeBuilderStatementTimeoutMs();
@@ -172,17 +176,21 @@ function createBuilderReadClient(): ReturnType<typeof postgres> {
     // and total wall-clock (not per-query latency) is what matters.
     max: 3,
     // NO PIPELINING (2026-10). postgres.js pipelines a query onto a busy
-    // connection when every connection is busy, and through Supavisor's
-    // transaction pooler (6543) a pipelined query that returns ZERO rows never
-    // gets its response: the promise hangs forever while Postgres shows the
-    // statement finished. The build fans out 4 queries over 3 connections, so
-    // an empty no-locality residual hung the cron until the 300s hard kill
-    // (8 of 10 staging runs, 2026-09-27..10-06). max_pipeline: 0 sends one
-    // query per connection at a time; extra queries wait in the client queue.
+    // connection when every connection is busy. Through Supavisor's TRANSACTION
+    // pooler (6543) a pipelined query that returns ZERO rows never gets its
+    // response: the promise hangs forever while Postgres shows the statement
+    // finished. Reproduced against staging's 6543 pooler; the session pooler
+    // (5432) does not hang. The build fans out 4 queries over 3 connections, and
+    // an empty no-locality residual matches the cron's 300s hard kills (8 of 10
+    // staging runs, 2026-09-27..10-06) — consistent with the analytics URL
+    // resolving to 6543, which could not be confirmed (Sensitive in Vercel).
+    // max_pipeline: 0 sends one query per connection at a time; extra queries
+    // wait in the client queue.
     // CAVEAT (postgres.js 3.4.9): with max_pipeline 0 a `.transaction()` on
-    // this client crashes (the begin never hands over its connection). The
-    // read phase runs no transactions; the WRITE client below keeps the default
-    // because its transactions issue their statements one at a time anyway.
+    // this client crashes the process (the begin never hands over its
+    // connection), so the read handle refuses transactions outright
+    // (forbidTransactions). The WRITE client below keeps the default: its
+    // transactions issue their statements one at a time anyway.
     // `max_pipeline` is a runtime option postgres.js does not declare in its
     // types (src/index.js parses it, default 100) — hence the spread below.
     ...NO_PIPELINING,
@@ -197,6 +205,59 @@ function createBuilderReadClient(): ReturnType<typeof postgres> {
     },
     onnotice: () => {},
   });
+}
+
+/** A fresh single-connection client for the error stamps after an abort (the
+ * builder's own clients are destroyed by then). Short timeouts: the stamp is a
+ * one-row UPDATE and the invocation is already near its deadline. */
+function createStampClient(): ReturnType<typeof postgres> {
+  const url = (process.env.ANALYTICS_DATABASE_URL ?? process.env.DATABASE_URL) as string;
+  return postgres(url, {
+    prepare: false,
+    max: 1,
+    connect_timeout: 5,
+    idle_timeout: 1,
+    connection: { options: statementTimeoutOptions(10_000), application_name: "cube-builder" },
+    onnotice: () => {},
+  });
+}
+
+/** Wrap the read handle so a `.transaction()` throws a clear error instead of
+ * crashing the process from inside postgres.js (see the max_pipeline CAVEAT).
+ * Every other property passes through untouched. Exported for tests. */
+export function forbidTransactions<T extends object>(handle: T): T {
+  return new Proxy(handle, {
+    get(target, prop, receiver) {
+      if (prop === "transaction") {
+        return () => {
+          throw new Error(
+            "cube-builder read handle: transactions are not allowed (the client runs with max_pipeline 0, which breaks postgres.js transactions); use the write client",
+          );
+        };
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+}
+
+/** End clients the moment `signal` aborts: `end({ timeout: 0 })` destroys
+ * their connections, so every in-flight or queued query rejects
+ * (CONNECTION_DESTROYED) and a hung build unwinds through its own catch.
+ * Returns the unbind function. Exported for tests. */
+export function endClientsOnAbort(
+  signal: AbortSignal | undefined,
+  clients: readonly { end: (opts: { timeout: number }) => Promise<unknown> }[],
+): () => void {
+  if (!signal) return () => {};
+  const onAbort = () => {
+    for (const c of clients) void c.end({ timeout: 0 }).catch(() => {});
+  };
+  if (signal.aborted) {
+    onAbort();
+    return () => {};
+  }
+  signal.addEventListener("abort", onAbort, { once: true });
+  return () => signal.removeEventListener("abort", onAbort);
 }
 
 /** Map with bounded concurrency (the analytics pool is small; don't fan out 24
@@ -477,7 +538,50 @@ async function stampKpiError(
  * error result is returned — an honest, detectable degradation the reader's
  * staleness gate catches.
  */
-export async function refreshCube(): Promise<CubeBuildResult> {
+/** The failure text stored on the run: the error, prefixed when an abort
+ * (the cron deadline) is what made the queries reject. */
+function buildFailureMessage(err: unknown, signal: AbortSignal | undefined): string {
+  const base = err instanceof Error ? err.message : String(err);
+  return signal?.aborted ? `aborted (${String(signal.reason ?? "deadline")}): ${base}` : base;
+}
+
+/** Stamp BOTH metas 'error' after a failed build (best-effort) and return the
+ * KPI phase stat. An abort destroyed the builder's own write connection, so
+ * the stamps then go through a fresh single-use client. */
+async function stampBuildFailure(
+  writeDb: PostgresJsDatabase<typeof schema>,
+  signal: AbortSignal | undefined,
+  t0: number,
+  message: string,
+): Promise<CubeKpiBuildStat> {
+  const stampClient = signal?.aborted ? createStampClient() : null;
+  const stampDb = stampClient ? drizzle(stampClient, { schema }) : writeDb;
+  try {
+    await stampDb
+      .update(panoramaCubeMeta)
+      .set({ status: "error" })
+      .where(sql`${panoramaCubeMeta.id} = 1` as SQL);
+  } catch {
+    // best-effort; the build already failed.
+  }
+  // The KPI phase either never ran (layer read phase threw first) or its
+  // swap never happened (layer write threw). Stamp its meta too so the KPI
+  // reader's gate falls back to live rather than trusting a stale 'ok'.
+  const kpi = await stampKpiError(stampDb, t0, `layer build failed: ${message}`);
+  await stampClient?.end({ timeout: 5 }).catch(() => {});
+  return kpi;
+}
+
+export type RefreshCubeOptions = {
+  /** Aborting ends both builder clients at once: pending queries reject, the
+   * catch below stamps the meta 'error' (on a fresh connection, the builder's
+   * own being gone) and returns a structured error result. The cron route
+   * aborts this at its deadline. */
+  signal?: AbortSignal;
+};
+
+export async function refreshCube(opts: RefreshCubeOptions = {}): Promise<CubeBuildResult> {
+  const { signal } = opts;
   const t0 = Date.now();
   const builtAt = new Date();
 
@@ -485,7 +589,7 @@ export async function refreshCube(): Promise<CubeBuildResult> {
   // not connect until first query, and env (URLs, timeout override) is read at
   // call time — never baked at module load like the shared analyticsDb pool.
   const readClient = createBuilderReadClient();
-  const readDb = drizzle(readClient, { schema });
+  const readDb = forbidTransactions(drizzle(readClient, { schema }));
 
   // Dedicated write client: session pooler (honors the GUC), generous timeout.
   const writeUrl = (process.env.ANALYTICS_DATABASE_URL ?? process.env.DATABASE_URL) as string;
@@ -506,6 +610,7 @@ export async function refreshCube(): Promise<CubeBuildResult> {
     onnotice: () => {},
   });
   const writeDb = drizzle(writeClient, { schema });
+  const unbindAbort = endClientsOnAbort(signal, [readClient, writeClient]);
 
   let watermark: Date | null = null;
 
@@ -616,19 +721,8 @@ export async function refreshCube(): Promise<CubeBuildResult> {
     // rolled back. Either way the last-good cube is intact. Record the failure so
     // the reader's staleness gate falls back to live (status != 'ok') and return a
     // structured result (the cron route's 57014 retry inspects `error`).
-    const message = err instanceof Error ? err.message : String(err);
-    try {
-      await writeDb
-        .update(panoramaCubeMeta)
-        .set({ status: "error" })
-        .where(sql`${panoramaCubeMeta.id} = 1` as SQL);
-    } catch {
-      // best-effort; the build already failed.
-    }
-    // The KPI phase either never ran (layer read phase threw first) or its
-    // swap never happened (layer write threw). Stamp its meta too so the KPI
-    // reader's gate falls back to live rather than trusting a stale 'ok'.
-    const kpi = await stampKpiError(writeDb, t0, `layer build failed: ${message}`);
+    const message = buildFailureMessage(err, signal);
+    const kpi = await stampBuildFailure(writeDb, signal, t0, message);
     return {
       status: "error",
       rowCount: 0,
@@ -640,6 +734,7 @@ export async function refreshCube(): Promise<CubeBuildResult> {
       error: message,
     };
   } finally {
+    unbindAbort();
     await Promise.all([readClient.end({ timeout: 5 }), writeClient.end({ timeout: 5 })]);
   }
 }
