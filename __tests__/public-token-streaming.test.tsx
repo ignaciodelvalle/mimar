@@ -97,7 +97,11 @@ vi.mock("@/lib/events/event-confidence", () => ({
   computeConfidence: vi.fn(() => "self_reported"),
   isAtLeast: vi.fn(() => false),
 }));
-vi.mock("@/lib/utils/format", () => ({
+// The REAL module underneath, so a renderer the leak test runs for real
+// (Tier2MedicalView: pluralizeEs, sterilizedLabel, AR_TIME_ZONE) finds what it
+// imports. The overrides below are what every other test already relied on.
+vi.mock("@/lib/utils/format", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   sexLabel: vi.fn(() => ""),
   speciesLabel: vi.fn(() => "perro"),
   statusLabel: vi.fn(() => "activo"),
@@ -110,7 +114,8 @@ vi.mock("@/lib/utils/format", () => ({
   foundReportPrompt: vi.fn(() => "¿La encontraste? Reportala"),
 }));
 vi.mock("@/lib/domain/location", () => ({ readPoint: vi.fn(() => null) }));
-vi.mock("@/lib/reference/permanent-conditions", () => ({
+vi.mock("@/lib/reference/permanent-conditions", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   isPermanentCondition: vi.fn(() => false),
   permanentConditionShortLabel: vi.fn(() => ""),
   permanentConditionLabel: vi.fn(() => ""),
@@ -189,13 +194,25 @@ vi.mock("@/lib/infra/business-rules-resolver", () => ({
   resolveBusinessRule: mockResolveBusinessRule,
 }));
 
+// One switch for the leak test (2b): with it ON, the renderer and the
+// medication derivation run FOR REAL, so the rows it plants travel the same
+// path a live page uses. Every other test keeps the spies below.
+const { REAL_PATH } = vi.hoisted(() => ({ REAL_PATH: { on: false } }));
+
 // Tier2MedicalView — prop-dumping spy so the characterization test can assert
-// the exact derivation CredentialTier2Medical forwards.
-vi.mock("@/app/(public)/p/[publicToken]/Tier2MedicalView", () => ({
-  Tier2MedicalView: vi.fn((props: Record<string, unknown>) =>
-    React.createElement("div", { "data-testid": "tier2-view-spy" }, JSON.stringify(props)),
-  ),
-}));
+// the exact derivation CredentialTier2Medical forwards (the real view when
+// REAL_PATH is on).
+vi.mock("@/app/(public)/p/[publicToken]/Tier2MedicalView", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/app/(public)/p/[publicToken]/Tier2MedicalView")>();
+  return {
+    Tier2MedicalView: vi.fn((props: React.ComponentProps<typeof actual.Tier2MedicalView>) =>
+      REAL_PATH.on
+        ? React.createElement(actual.Tier2MedicalView, props)
+        : React.createElement("div", { "data-testid": "tier2-view-spy" }, JSON.stringify(props)),
+    ),
+  };
+});
 
 // Shared vaccination derivation — mocked to fixed outputs so the characterization
 // asserts on the FORWARDING, not the derivation internals (covered elsewhere).
@@ -205,8 +222,14 @@ vi.mock("@/lib/domain/libreta-health-status", () => ({
 }));
 vi.mock("@/lib/infra/amendment", () => ({ overlayAmendments: vi.fn((e: unknown) => e) }));
 vi.mock("@/lib/domain/credential-badges", async (importOriginal) => {
-  const actual = await importOriginal<object>();
-  return { ...actual, deriveActiveMedications: vi.fn(() => ["Meloxicam"]) };
+  const actual = await importOriginal<typeof import("@/lib/domain/credential-badges")>();
+  return {
+    ...actual,
+    deriveActiveMedications: vi.fn(
+      (events: Parameters<typeof actual.deriveActiveMedications>[0]) =>
+        REAL_PATH.on ? actual.deriveActiveMedications(events) : ["Meloxicam"],
+    ),
+  };
 });
 
 const PET_PHOTO_URL = "http://127.0.0.1:54321/storage/v1/object/public/pet-photos/pampa.jpg";
@@ -271,9 +294,74 @@ function buildSelectChain(firstResult: unknown[]) {
   return chain;
 }
 
+// Rows planted for the leak test (2b) on every event-shaped query the page and
+// its streamed sections run — the rabies semaphore's vaccination rows, the
+// latest-vaccination provenance, the vaccination-existence and sterilization
+// probes, and the tier2 vaccine / medication / amendment reads. Each carries
+// what must never reach a stranger (a vet, a clinic, a replaced chip, its own
+// id) beside one value that MAY (the drug name, the rabies record itself),
+// which is what proves the rows were really read.
+const PLANTED_RABIES = {
+  id: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+  eventType: "vaccination_administered",
+  payload: {
+    vaccine_name: "Antirrábica",
+    vet_name: "Dra. Fixture Leakwood",
+    clinic_name: "Clinica Fixture Leakwood",
+  },
+  occurredAt: new Date("2026-04-01T12:00:00Z"),
+  authorRole: "owner",
+  authorVerified: false,
+  authorOrganizationId: null,
+};
+const PLANTED_MEDICATION = {
+  id: "cccccccc-dddd-4eee-8fff-000000000000",
+  eventType: "medication_started",
+  payload: { drug_name: "Fixturol", prescribed_by: "Dra. Fixture Leakwood" },
+  occurredAt: new Date("2026-04-02T12:00:00Z"),
+  authorRole: "vet",
+  authorVerified: true,
+  authorOrganizationId: null,
+};
+const PLANTED_EVENTS = [PLANTED_RABIES, PLANTED_MEDICATION, ...LEAKY_EVENTS];
+
+/**
+ * Answers each query by the SHAPE it selects — the only handle a mock has,
+ * since `@/db`'s tables are stubs and the where clauses carry no readable
+ * column. The pet lookup gets the pet; an `{ id }` probe gets a hit; anything
+ * selecting `payload` gets every planted event; the rest get nothing.
+ */
+function buildPlantedChain(pet: Record<string, unknown>) {
+  return (fields?: Record<string, unknown>) => {
+    const keys = fields ? Object.keys(fields) : [];
+    const rows: unknown[] = keys.includes("pet")
+      ? [{ pet, photo: { storagePath: "pampa.jpg" } }]
+      : keys.length === 1 && keys[0] === "id"
+        ? [{ id: PLANTED_RABIES.id }]
+        : keys.includes("payload")
+          ? PLANTED_EVENTS
+          : [];
+    const chain = {
+      from: vi.fn(() => chain),
+      leftJoin: vi.fn(() => chain),
+      innerJoin: vi.fn(() => chain),
+      where: vi.fn(() => chain),
+      orderBy: vi.fn(() => chain),
+      limit: vi.fn(async () => rows),
+      // biome-ignore lint/suspicious/noThenProperty: intentional thenable — mocks drizzle's awaitable query chain
+      then: (
+        onFulfilled?: (value: unknown[]) => unknown,
+        onRejected?: (reason: unknown) => unknown,
+      ) => Promise.resolve(rows).then(onFulfilled, onRejected),
+    };
+    return chain;
+  };
+}
+
 describe("/p/[publicToken] — #16a streaming + next/image", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    REAL_PATH.on = false;
     mockEnforceRateLimit.mockResolvedValue(undefined);
     mockResolveOriginOrg.mockResolvedValue(null);
     mockShouldShowOriginOrgBadge.mockReturnValue(false);
@@ -352,16 +440,15 @@ describe("/p/[publicToken] — #16a streaming + next/image", () => {
 
   // -------------------------------------------------------------------------
   // 2b. Privacy pin (review 2026-10-06): the FULLY streamed nivel-2 page — every
-  //     Suspense boundary resolved — prints no per-event history. The libreta
-  //     door is stocked with a replaced chip, a vet and a clinic; none of it,
-  //     nor an event id, may reach an anonymous viewer.
+  //     Suspense boundary resolved — prints no per-event history. Every
+  //     event-shaped query is stocked with a replaced chip, a vet, a clinic and
+  //     the events' ids (buildPlantedChain), the REAL Tier2MedicalView and the
+  //     REAL medication derivation run, and none of it may reach an anonymous
+  //     viewer. The libreta door is stocked too, and must never be opened.
   // -------------------------------------------------------------------------
   it("nivel 2 fully streamed: no previous chip number, vet, clinic or event id reaches the page", async () => {
-    mockDbSelect.mockImplementation(() =>
-      buildSelectChain([
-        { pet: { ...BASE_PET, tier2PublicPermanent: true }, photo: { storagePath: "pampa.jpg" } },
-      ]),
-    );
+    REAL_PATH.on = true;
+    mockDbSelect.mockImplementation(buildPlantedChain({ ...BASE_PET, tier2PublicPermanent: true }));
     const { default: PublicCredentialPage } = await import("@/app/(public)/p/[publicToken]/page");
     const element = await PublicCredentialPage({
       params: Promise.resolve({ publicToken: BASE_PET.publicToken }),
@@ -370,13 +457,25 @@ describe("/p/[publicToken] — #16a streaming + next/image", () => {
     await stream.allReady;
     const html = await new Response(stream).text();
 
-    // Non-vacuity: the streamed medical summary DID resolve (spy, not skeleton).
-    expect(html).toContain('data-testid="tier2-view-spy"');
+    // Non-vacuity: the planted rows DID travel the real path. The medical
+    // summary resolved through the real view (not the spy, not the skeleton,
+    // not the degraded strip) and lists the planted drug; the rabies stamp
+    // reads the planted dose instead of "Sin registro".
+    expect(html).not.toContain('data-testid="tier2-view-spy"');
+    expect(html).not.toContain('data-section="tier2-degraded"');
+    expect(html).toContain("Fixturol");
+    expect(html).toMatch(/data-section="rabies-semaphore"[\s\S]*?Con registro declarado/);
+
+    // The leak itself.
     expect(html).not.toContain("Anterior:");
     expect(html).not.toContain("982000111111111");
     expect(html).not.toContain("Leakwood");
     expect(html).not.toContain("Sintoma fixture privado");
-    for (const event of LEAKY_EVENTS) expect(html).not.toContain(event.id);
+    for (const event of PLANTED_EVENTS) expect(html).not.toContain(event.id);
+
+    // And the per-event door stays shut on /p/.
+    const { loadSharedLibretaEvents } = await import("@/lib/infra/libreta-share-events");
+    expect(loadSharedLibretaEvents).not.toHaveBeenCalled();
   });
 
   // -------------------------------------------------------------------------
