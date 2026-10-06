@@ -8,7 +8,6 @@
     "components/panorama/PanoramaConsole.tsx": 4874,
     "components/panorama/SituationalMap.tsx": 3319,
     "lib/metrics/kpi-catalog.ts": 2469,
-    "lib/analytics/owner-dashboard.ts": 2002,
     "src/modules/foster/infrastructure/foster-repository.ts": 1560
   }
 }

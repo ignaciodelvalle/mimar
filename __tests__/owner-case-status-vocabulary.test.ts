@@ -13,7 +13,8 @@
  * shared home (`requestOutcomeLabel`) to migrate to when someone does that
  * refactor.
  *
- * Source-scan for the call sites, because owner-dashboard.ts is DB-bound.
+ * Source-scan for the call sites, because owner-cases.ts is DB-bound. (The case
+ * rows moved there from owner-dashboard.ts under the file-size fence, 2026-10-06.)
  */
 
 import { readFileSync } from "node:fs";
@@ -22,14 +23,11 @@ import { describe, expect, it } from "vitest";
 
 import { requestOutcomeLabel } from "@/lib/utils/format";
 
-const OWNER_DASHBOARD = readFileSync(
-  join(process.cwd(), "lib", "analytics", "owner-dashboard.ts"),
-  "utf8",
-);
+const OWNER_CASES = readFileSync(join(process.cwd(), "lib", "analytics", "owner-cases.ts"), "utf8");
 
 describe("requestOutcomeLabel", () => {
   it("names every status the owner's rows can actually carry", () => {
-    // fosterProposals resolved set (owner-dashboard.ts fetchResolvedFosterProposals)
+    // fosterProposals resolved set (owner-cases.ts fetchResolvedFosterProposals)
     expect(requestOutcomeLabel("accepted")).toBe("Aceptada");
     expect(requestOutcomeLabel("rejected")).toBe("Rechazada");
     expect(requestOutcomeLabel("cancelled")).toBe("Cancelada");
@@ -62,9 +60,9 @@ describe("the owner's case rows no longer interpolate a status enum", () => {
   it("does not build a subtitle out of the raw status", () => {
     // Catches the literal regression AND any re-wording of it, e.g.
     // `Estado: ${r.status}` -> `Resultado: ${r.status}`.
-    const leaks = [
-      ...OWNER_DASHBOARD.matchAll(/subtitle:\s*`[^`]*\$\{[^}]*\bstatus\b[^}]*\}/g),
-    ].map((m) => m[0]);
+    const leaks = [...OWNER_CASES.matchAll(/subtitle:\s*`[^`]*\$\{[^}]*\bstatus\b[^}]*\}/g)].map(
+      (m) => m[0],
+    );
     expect(
       leaks,
       "a subtitle that interpolates a status field prints the database enum onto " +
@@ -73,7 +71,7 @@ describe("the owner's case rows no longer interpolate a status enum", () => {
   });
 
   it("routes both resolved-request rows through the shared label", () => {
-    const uses = OWNER_DASHBOARD.match(/requestOutcomeLabel\(/g) ?? [];
+    const uses = OWNER_CASES.match(/requestOutcomeLabel\(/g) ?? [];
     expect(uses.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -81,6 +79,6 @@ describe("the owner's case rows no longer interpolate a status enum", () => {
     // That one was already translated, with copy specific to its domain
     // ("No avanzó" is not "Rechazada"). Flattening it into the shared label
     // would be a regression dressed as consistency.
-    expect(OWNER_DASHBOARD).toContain('"No avanzó"');
+    expect(OWNER_CASES).toContain('"No avanzó"');
   });
 });
