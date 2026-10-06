@@ -91,51 +91,133 @@ describe("libreta asiento facts — unbounded payload values must break", () => 
   });
 });
 
+const FICHA_CSS = readFileSync(
+  join(__dirname, "..", "app", "(public)", "design", "ficha-estados", "ficha.css"),
+  "utf8",
+);
+
+type CssRule = { selector: string; body: string };
+
 /**
- * The declaration block of `selector` inside the `@media (max-width: 440px)`
- * block that restyles the credential identity row. Throws when either is
- * missing, for the same reason `rule()` does.
+ * Every rule inside every at-rule block whose header is exactly `header`
+ * (e.g. `@container (min-width: 572px)`), comments stripped, braces matched.
+ * Throws when no such block exists — a renamed query must fail loudly.
  */
-function phoneRule(selector: string): string {
-  const mediaRe = /@media \(max-width: 440px\) \{((?:[^{}]*\{[^{}]*\})*)[^{}]*\}/g;
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const ruleRe = new RegExp(`(?:^|\\})\\s*${escaped}\\s*\\{([^{}]*)\\}`);
-  for (const block of GLOBALS.matchAll(mediaRe)) {
-    const match = ruleRe.exec(block[1] ?? "");
-    if (match) return match[1] ?? "";
+function rulesIn(css: string, header: string): CssRule[] {
+  const source = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const rules: CssRule[] = [];
+  let at = source.indexOf(`${header} {`);
+  if (at === -1) throw new Error(`no "${header}" block`);
+  while (at !== -1) {
+    let i = source.indexOf("{", at) + 1;
+    const open = i;
+    let depth = 1;
+    while (depth > 0 && i < source.length) {
+      if (source[i] === "{") depth++;
+      else if (source[i] === "}") depth--;
+      i++;
+    }
+    const inner = source.slice(open, i - 1);
+    for (const m of inner.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      rules.push({ selector: (m[1] ?? "").trim(), body: m[2] ?? "" });
+    }
+    at = source.indexOf(`${header} {`, i);
   }
-  throw new Error(`selector not found under @media (max-width: 440px): ${selector}`);
+  return rules;
 }
 
-function phoneDeclares(selector: string, prop: string): string | null {
-  const found = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`, "i").exec(phoneRule(selector));
-  return found ? found[1].trim() : null;
+function prop(body: string, name: string): string | null {
+  const found = new RegExp(`(?:^|;)\\s*${name}\\s*:\\s*([^;]+)`, "i").exec(body);
+  return found ? (found[1] ?? "").trim() : null;
 }
 
-// The /p/ and owner-face identity row (`.pc-id`). The card is ≤428px wide at
-// every viewport (/p/ caps it at max-w-[460px] px-4), so a name column between
-// two mounts was 37-56px on desktop and ~118px on phones: long names broke
-// mid-word and the nowrap token ran under the opaque QR. The name + token take
-// their own full-width row at EVERY width, not only under the phone query.
-describe("credential identity row — the name gets a full-width row at every width", () => {
-  it("default (desktop card): photo and right cell share row 1 in two 156px tracks", () => {
-    expect(declares(".pc-id", "grid-template-columns")).toBe("156px 156px");
+function inBlock(css: string, header: string, selector: string, name: string): string | null {
+  const rule = rulesIn(css, header).find((r) => r.selector === selector);
+  if (!rule) throw new Error(`"${selector}" not found in "${header}"`);
+  return prop(rule.body, name);
+}
+
+/** Top-level track count of a grid-template-columns value. */
+function trackCount(value: string): number {
+  return value
+    .replace(/\([^()]*\)/g, "X")
+    .trim()
+    .split(/\s+/).length;
+}
+
+const WIDE = "@container (min-width: 572px)";
+const PHONE = "@media (max-width: 440px)";
+const FICHA_PHONE = "@container (max-width: 440px)";
+
+/** A rule that sets columns must never outrank the deceased one-track rule. */
+function respectsDeceased(selector: string): boolean {
+  return (
+    selector === ".pc-id" ||
+    selector.includes('[data-photo="hero"]') ||
+    selector.includes(':not([data-cell="none"])')
+  );
+}
+
+// The /p/ and owner-face identity row (`.pc-id`), laid out by the CARD's width
+// (`.pc-cred` is an inline-size container), not the viewport. /p/ caps the card
+// at ≤428px; the owner face fills a ~830px column on desktop. A narrow card
+// with three tracks left the name 37-56px and the nowrap token ran under the
+// opaque QR; a wide card with two rows pinned photo and QR to the far edges.
+describe("credential identity row — laid out by the card's width", () => {
+  it("the card is the container", () => {
+    expect(declares(".pc-cred", "container-type")).toBe("inline-size");
   });
 
-  it("default (desktop card): name + token take a full-width second row", () => {
+  it("narrow card (default): photo and right cell share row 1 in two 156px tracks", () => {
+    expect(declares(".pc-id", "grid-template-columns")).toBe("156px 156px");
     expect(declares('.pc-id:not([data-photo="hero"]) .pc-id-copy', "grid-column")).toBe("1 / -1");
     expect(declares('.pc-id:not([data-photo="hero"]) .pc-id-copy', "grid-row")).toBe("2");
   });
 
-  it("≤440px: the same two tracks shrink to 116px, and no rule re-opens a name column", () => {
-    expect(phoneDeclares(".pc-id", "grid-template-columns")).toBe("116px 116px");
-    expect(() => phoneRule('.pc-id:not([data-photo="hero"]) .pc-id-copy')).toThrow();
+  it("wide card (≥572px = 372px of mounts, gaps and padding + a 200px name): one row, three tracks", () => {
+    expect(inBlock(GLOBALS, WIDE, ".pc-id", "grid-template-columns")).toBe(
+      "156px minmax(0, 1fr) 156px",
+    );
+    expect(inBlock(GLOBALS, WIDE, '.pc-id:not([data-photo="hero"]) .pc-id-copy', "grid-row")).toBe(
+      "1",
+    );
+    expect(
+      inBlock(GLOBALS, WIDE, '.pc-id:not([data-photo="hero"]) .pc-id-copy', "grid-column"),
+    ).toBe("2");
   });
 
-  it("deceased (data-cell=none): one fluid track, lone photo centred, name keeps the full row", () => {
+  it("≤440px viewport: the narrow card's two tracks shrink to 116px", () => {
+    expect(inBlock(GLOBALS, PHONE, ".pc-id", "grid-template-columns")).toBe("116px 116px");
+  });
+
+  it("no narrow block declares a three-track identity grid — every declaration checked", () => {
+    const narrow = [
+      ...rulesIn(GLOBALS, PHONE).map((r) => ({ ...r, where: `globals ${PHONE}` })),
+      ...rulesIn(FICHA_CSS, FICHA_PHONE).map((r) => ({ ...r, where: `ficha ${FICHA_PHONE}` })),
+    ];
+    const columns = narrow.filter((r) => prop(r.body, "grid-template-columns") !== null);
+    // Non-vacuity: both blocks really set identity columns.
+    expect(columns.length).toBeGreaterThanOrEqual(3);
+    const threeTrack = columns
+      .filter((r) => trackCount(prop(r.body, "grid-template-columns") ?? "") >= 3)
+      .map((r) => `${r.where}: ${r.selector}`);
+    expect(threeTrack).toEqual([]);
+  });
+
+  it("deceased (data-cell=none): one fluid track that no width rule overrides", () => {
     expect(declares('.pc-id[data-cell="none"]', "grid-template-columns")).toBe("minmax(0, 1fr)");
     expect(declares('.pc-id[data-cell="none"] .pc-photo-mount', "justify-self")).toBe("center");
-    expect(() => phoneRule('.pc-id[data-cell="none"]')).toThrow();
+    const overriders = [
+      ...rulesIn(GLOBALS, WIDE),
+      ...rulesIn(GLOBALS, PHONE),
+      ...rulesIn(FICHA_CSS, FICHA_PHONE),
+    ]
+      .filter((r) => prop(r.body, "grid-template-columns") !== null)
+      .filter((r) => !respectsDeceased(r.selector))
+      .map((r) => r.selector);
+    expect(overriders).toEqual([]);
+    // In the wide card the deceased name goes back under the lone photo.
+    expect(inBlock(GLOBALS, WIDE, '.pc-id[data-cell="none"] .pc-id-copy', "grid-row")).toBe("2");
   });
 
   it("wraps the name at word boundaries, breaking a word only as a last resort", () => {

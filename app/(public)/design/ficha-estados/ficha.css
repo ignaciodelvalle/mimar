@@ -270,8 +270,11 @@
   border-color: var(--color-ln-line);
   color: var(--color-ln-ink);
 }
-/* The 390 frame is a column on a wide screen, so the viewport query that
-   steps /p/ down to 96px never fires. The frame is its own container. */
+/* The 390 frame is a column on a wide screen, so the VIEWPORT query that
+   steps /p/ to 116px mounts never fires. The frame (and the card inside it,
+   `.pc-cred`) is a container; the block below replays globals.css's
+   `@media (max-width: 440px)` identity rules exactly — two rows, deceased one
+   fluid track, lost hero two tracks — so the preview mirrors a phone. */
 .fp-frame {
   container-type: inline-size;
 }
@@ -280,8 +283,10 @@
   max-width: 100%;
 }
 @container (max-width: 440px) {
+  .fp .pc-id:not([data-cell="none"]):not([data-photo="hero"]) {
+    grid-template-columns: 116px 116px;
+  }
   .fp .pc-id {
-    grid-template-columns: 116px minmax(0, 1fr) 116px;
     gap: 8px;
     margin-top: -14px;
     padding: 0 12px 12px;
@@ -291,11 +296,10 @@
     width: 116px;
     height: 116px;
   }
-  .fp .pc-id-copy {
-    margin-top: 42px;
-  }
-  .fp .pc-id-token {
-    font-size: var(--text-xs);
+  .fp .pc-id[data-photo="hero"] {
+    grid-template-columns: minmax(0, 1fr) 116px;
+    margin-top: 0;
+    padding-top: 12px;
   }
 }
 @media (max-width: 980px) {

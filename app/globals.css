@@ -1454,8 +1454,12 @@ body {
    the chip and a hair of card-border, matching owner DocumentChrome's
    attribute. Medical/household states never tint this surface (R3.3).
    Parity of the attribute is guarded by public-token-landing-structure.test.tsx. */
+/* `container-type`: the identity row (.pc-id) is laid out by the CARD's width,
+   not the viewport — /p/ caps the card at ≤428px, the owner face fills a
+   ~830px column on desktop. See the .pc-id rules. */
 .pc-cred {
   position: relative;
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1829,11 +1833,13 @@ body {
   }
 }
 
-/* TWO ROWS AT EVERY WIDTH (round 2, 2026-10-06). The card is capped at
-   max-w-[460px] minus px-4 on /p/ (≤428px) and the owner face is no wider, so
-   a name column between two 156px mounts was 37-56px and the nowrap token ran
-   under the opaque QR. Photo + right cell share row 1 (2 × 156 + gap + padding
-   = 358px, fits the 428px card); name + token take a full-width row 2. */
+/* THE IDENTITY ROW FOLLOWS THE CARD'S WIDTH (.pc-cred is the container).
+   NARROW CARD (default; /p/ is always ≤428px): two rows. Photo + right cell
+   share row 1 (2 × 156 + gap + padding = 358px fits); name + token take a
+   full-width row 2. Three tracks there left the name 37-56px and the nowrap
+   token ran under the opaque QR.
+   WIDE CARD (≥572px — the owner face on desktop, ~830px): the one-row layout
+   `photo | name | cell` (see the @container rule below). */
 .pc-id {
   display: grid;
   grid-template-columns: 156px 156px;
@@ -1979,8 +1985,27 @@ body {
   padding: 0 16px 12px;
   text-align: center;
 }
-/* Phones (≤440px): the same two rows, with 116px mounts and tighter gutters.
-   Same grid on /p/ and the owner face (CredentialFace). */
+/* Wide card: ONE row, the name between the mounts. 572px = 2 × 156 mounts +
+   2 × 14 gap + 2 × 16 padding (372) + a 200px name column. Deceased keeps its
+   single fluid track (`.pc-id[data-cell="none"]` outranks `.pc-id`), and the
+   lost hero row keeps its own two tracks (`[data-photo="hero"]`). */
+@container (min-width: 572px) {
+  .pc-id {
+    grid-template-columns: 156px minmax(0, 1fr) 156px;
+  }
+  .pc-id:not([data-photo="hero"]) .pc-id-copy {
+    grid-column: 2;
+    grid-row: 1;
+    margin-top: 48px;
+  }
+  .pc-id[data-cell="none"] .pc-id-copy {
+    grid-column: 1;
+    grid-row: 2;
+    margin-top: 0;
+  }
+}
+/* Phones (≤440px viewport): the narrow card's two rows, with 116px mounts and
+   tighter gutters. Same grid on /p/ and the owner face (CredentialFace). */
 @media (max-width: 440px) {
   .pc-id {
     grid-template-columns: 116px 116px;
