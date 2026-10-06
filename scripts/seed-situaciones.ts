@@ -30,7 +30,10 @@
  *   faked.
  *
  * ─── IDEMPOTENCY ────────────────────────────────────────────────────────────
- *   Pets are found by their fixed DIM-QSIT-* token. Each step either carries a
+ *   Pets are found by their fixed DIM-QSIT-* token. A pet found under a name
+ *   that is not the plan's (the QA names changed on 2026-10-06) is renamed
+ *   through `updatePet`, the use case "Editar datos" calls, so the correction
+ *   is a `pet_profile_updated` event and not a raw column write. Each step either carries a
  *   fixed client idempotency key (the use case's own replay guard) or checks
  *   the state it would create (already lost, grant already there, custody
  *   episode already open) and skips.
@@ -92,6 +95,9 @@ const { and, eq, inArray } = await import("drizzle-orm");
 const { db, pets, petCaretakerGrants, organizations, profiles } = await import("../db");
 
 const { registerPet } = await import("@/src/modules/pets/application/register-pet");
+const { updatePet } = await import("@/src/modules/pets/application/update-pet");
+const { composePetIdentityEdit } = await import("@/src/modules/pets/domain/pet-identity-edit");
+const { fetchActiveIdentifications } = await import("@/lib/infra/pet-identifiers");
 const { PetsRepository } = await import("@/src/modules/pets/infrastructure/pets-repository");
 const { EventsRepository } = await import("@/src/modules/events/infrastructure/events-repository");
 const { flushNotifications } = await import("@/src/modules/events/application/writers");
@@ -270,7 +276,7 @@ async function ensurePet(
   } = {},
 ): Promise<PetRow> {
   const existing = await petByToken(qa.token);
-  if (existing) return existing;
+  if (existing) return ensureQaName(qa, existing, titularId);
 
   const province = opts.province ?? HOME_PROVINCE;
   const locality = opts.locality === undefined ? HOME_LOCALITY : opts.locality;
@@ -324,6 +330,49 @@ async function ensurePet(
   if (!result.ok) throw new Error(`registerPet: ${result.error}`);
   const row = await petByToken(qa.token);
   if (!row) throw new Error("registerPet reported ok but the pet row is not there");
+  return row;
+}
+
+/**
+ * The plan's name on a pet seeded under an older one, through `updatePet` —
+ * the use case the web's "Editar datos" and the app's `edit_identity` both end
+ * in — with the identity composer the app uses, so only the name moves and the
+ * correction lands as an event. Idempotent: a pet that already carries the
+ * plan's name is returned untouched (and `updatePet` itself no-ops on no diff).
+ */
+async function ensureQaName(qa: QaPet, pet: PetRow, titularId: string): Promise<PetRow> {
+  if (pet.name === qa.name) return pet;
+  const parsed = composePetIdentityEdit(pet, {
+    name: qa.name,
+    breed: pet.breed,
+    color: pet.color,
+  });
+  const ids = await fetchActiveIdentifications(pet.id);
+  const result = await updatePet(
+    {
+      petId: pet.id,
+      parsed,
+      potentiallyDangerousBreed: pet.potentiallyDangerousBreed,
+      uploadedPath: null,
+      uploadMimeType: null,
+      uploadSize: null,
+    },
+    {
+      repo: PetsRepository,
+      actor: {
+        user: { id: titularId },
+        accessPath: "owner",
+        eventAuthorship: OWNER_AUTHORSHIP,
+        existingPet: pet,
+        existingCanonicalIds: { hasMicrochip: ids.microchip !== null },
+      },
+      transaction,
+    },
+  );
+  if (!result.ok) throw new Error(`updatePet (renombre a "${qa.name}"): ${result.error}`);
+  const row = await petByToken(qa.token);
+  if (!row || row.name !== qa.name) throw new Error(`el renombre a "${qa.name}" no quedó`);
+  console.log(`[OK  ] ${qa.token} renombrada: "${pet.name}" → "${qa.name}"`);
   return row;
 }
 
@@ -459,6 +508,12 @@ async function stepPregnancy(pet: PetRow, userId: string): Promise<void> {
 /** Owner bite report — opens the rabies observation and the bite case. */
 async function stepBite(pet: PetRow, userId: string): Promise<void> {
   const current = (await petByToken(pet.publicToken)) ?? pet;
+  // A re-run must SKIP, not replay: reportBite opens the bite case BEFORE its
+  // idempotency check, so a second call with the same key hits
+  // cases_open_per_pet_kind_idx instead of returning the noop (measured
+  // 2026-10-06 on the second run of this seed). The open observation is the
+  // state this step creates, so its presence is the skip.
+  if (current.rabiesObservationStatus === "in_progress") return;
   const repo = new SurveillanceRepository();
   const result = await reportBite(
     {

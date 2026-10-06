@@ -11,6 +11,16 @@
  * where owner@dim.test is not the titular. Every pet has a FIXED public token
  * so the battery can address it and a re-run converges instead of duplicating.
  *
+ * NAMES. Every one starts with "QA " and says what the pet is for ("QA Al día",
+ * "QA Perdido con punto"…). They used to be plain pet names (Alba, Kiwi…), and
+ * e2e specs pick owner@dim.test's pets off /mis-mascotas by their position and
+ * name: on a DB with this seed layered on, crisis-owner-lost-flow picked
+ * "Kiwi" (DIM-QSIT-0011) instead of the e2e fixture it was written for. A name
+ * nobody would give a real animal cannot pass for a fixture, and
+ * __tests__/seed-situaciones-plan.test.ts holds that no QA name collides with a
+ * pet name the e2e fixtures or the other seeds use. The runner renames a pet
+ * seeded under an older name through the production edit use case.
+ *
  * TOKENS. `DIM-QSIT-NNNN` — "QA situaciones". Valid against the public token
  * shape (DIM-XXXX-XXXX), absent from every demo/storyline prefix that
  * __tests__/seed-precondition-contract.test.ts tracks, and distinct from the
@@ -65,7 +75,7 @@ export type QaPet = {
 export const QA_PETS: readonly QaPet[] = [
   {
     token: "DIM-QSIT-0001",
-    name: "Alba",
+    name: "QA Al día",
     sex: "female",
     situation: "al-dia",
     label: "Al día, antirrábica vigente (declarada)",
@@ -74,7 +84,7 @@ export const QA_PETS: readonly QaPet[] = [
   },
   {
     token: "DIM-QSIT-0002",
-    name: "Bruno",
+    name: "QA Perdido con punto",
     sex: "male",
     situation: "perdida",
     label: "Perdido, lugar compartido con punto en el mapa",
@@ -83,7 +93,7 @@ export const QA_PETS: readonly QaPet[] = [
   },
   {
     token: "DIM-QSIT-0003",
-    name: "Coco",
+    name: "QA Perdido sin punto",
     sex: "male",
     situation: "perdida",
     label: "Perdido, lugar compartido sin coordenadas",
@@ -92,7 +102,7 @@ export const QA_PETS: readonly QaPet[] = [
   },
   {
     token: "DIM-QSIT-0004",
-    name: "Dina",
+    name: "QA Perdida reservada",
     sex: "female",
     situation: "perdida",
     label: "Perdida, lugar NO compartido",
@@ -101,7 +111,7 @@ export const QA_PETS: readonly QaPet[] = [
   },
   {
     token: "DIM-QSIT-0005",
-    name: "Elsa",
+    name: "QA Decomiso",
     sex: "female",
     situation: "custodia-oficial",
     label: "Custodia oficial (decomiso de la autoridad sanitaria)",
@@ -110,7 +120,7 @@ export const QA_PETS: readonly QaPet[] = [
   },
   {
     token: "DIM-QSIT-0006",
-    name: "Fito",
+    name: "QA Observación",
     sex: "male",
     situation: "observacion-antirrabica",
     label: "En observación antirrábica (mordedura reportada)",
@@ -119,7 +129,7 @@ export const QA_PETS: readonly QaPet[] = [
   },
   {
     token: "DIM-QSIT-0007",
-    name: "Gala",
+    name: "QA Tratamiento",
     sex: "female",
     situation: "en-tratamiento",
     label: "En tratamiento (medicación en curso)",
@@ -128,7 +138,7 @@ export const QA_PETS: readonly QaPet[] = [
   },
   {
     token: "DIM-QSIT-0008",
-    name: "Hebe",
+    name: "QA Preñada",
     sex: "female",
     situation: "prenada",
     label: "Preñada",
@@ -137,7 +147,7 @@ export const QA_PETS: readonly QaPet[] = [
   },
   {
     token: "DIM-QSIT-0009",
-    name: "Ivo",
+    name: "QA En tránsito",
     sex: "male",
     situation: "en-transito",
     label: "En tránsito (lo tiene un vecino que lo encontró)",
@@ -146,7 +156,7 @@ export const QA_PETS: readonly QaPet[] = [
   },
   {
     token: "DIM-QSIT-0010",
-    name: "Juana",
+    name: "QA Fallecida",
     sex: "female",
     situation: "fallecida",
     label: "Fallecida",
@@ -155,7 +165,7 @@ export const QA_PETS: readonly QaPet[] = [
   },
   {
     token: "DIM-QSIT-0011",
-    name: "Kiwi",
+    name: "QA Recién registrado",
     sex: "male",
     situation: "al-dia",
     label: "Recién registrado, sin asientos",
@@ -164,7 +174,7 @@ export const QA_PETS: readonly QaPet[] = [
   },
   {
     token: "DIM-QSIT-0012",
-    name: "Lola",
+    name: "QA Muchos avisos",
     sex: "female",
     situation: "perdida",
     label: "Muchos avisos a la vez (preñez, observación, cuidador, perdida)",
@@ -173,7 +183,7 @@ export const QA_PETS: readonly QaPet[] = [
   },
   {
     token: "DIM-QSIT-0013",
-    name: "Milo",
+    name: "QA Cuidador",
     sex: "male",
     situation: "al-dia",
     label: "owner@ NO es titular: cuidador temporal aceptado",

@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import { DIM_TOKEN_PATTERN } from "@/lib/domain/dim-token";
 import { PET_SITUATIONS, type PetSituationKey } from "@/lib/ui/pet-situation";
+import { findSeedMarker } from "@/scripts/hygiene-rules";
 import {
   QA_PETS,
   QA_TOKEN_PREFIX,
@@ -45,8 +46,79 @@ describe("seed:situaciones — tokens", () => {
     for (const source of sources) expect(source).not.toContain(QA_TOKEN_PREFIX);
   });
 
-  it("names are plain pet names — no seed markers in a renderable column", () => {
-    for (const pet of QA_PETS) expect(pet.name).toMatch(/^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+$/);
+  it("names say they are QA — and still carry no seed marker in a renderable column", () => {
+    // "QA …" is a word a person reads, not a marker the hygiene fence hunts
+    // (PANO-, -Seed-, n-<digits>): it renders cleanly AND cannot pass for a pet.
+    for (const pet of QA_PETS) {
+      expect(pet.name).toMatch(/^QA [A-ZÁÉÍÓÚÑ][A-Za-záéíóúñ ]+$/);
+      expect(findSeedMarker(pet.name), pet.name).toBe(null);
+    }
+    const names = QA_PETS.map((p) => p.name);
+    expect(new Set(names).size).toBe(names.length);
+  });
+});
+
+/**
+ * Every pet name the OTHER fixtures use, read out of their sources — never a
+ * hand-copied list, which would rot the day a fixture gains a pet. A pet is an
+ * object literal that carries a `name` / `display_name` string AND something
+ * only an animal has beside it (`species`, `sex`, `breed`, a public token), plus
+ * the `petName` / `*PET_NAME` constants specs keep. The scan is deliberately wide
+ * (every other seed, every e2e file): a false hit costs a rename, a miss costs
+ * an e2e run that picks the wrong animal.
+ */
+function fixturePetNames(): Map<string, string> {
+  const files: string[] = [];
+  for (const f of readdirSync("scripts")) {
+    if (/^seed-.*\.ts$/.test(f) && !f.startsWith("seed-situaciones"))
+      files.push(join("scripts", f));
+  }
+  for (const f of readdirSync("e2e", { recursive: true, encoding: "utf8" })) {
+    if (f.endsWith(".ts")) files.push(join("e2e", f));
+  }
+  const names = new Map<string, string>();
+  for (const file of files) {
+    const src = readFileSync(file, "utf8");
+    for (const m of src.matchAll(/\b(?:display_)?name:\s*"([^"\n]+)"/g)) {
+      const at = m.index ?? 0;
+      const close = src.indexOf("}", at);
+      const body = src.slice(src.lastIndexOf("{", at), close === -1 ? at + 400 : close);
+      const isPet = /\b(species|sex|breed|public_?[tT]oken|token):/.test(body);
+      if (isPet && m[1] && !names.has(m[1])) names.set(m[1], file);
+    }
+    for (const m of src.matchAll(/\b(?:[A-Za-z_]*PET_NAME|petName)\s*[:=]\s*"([^"\n]+)"/g)) {
+      if (m[1] && !names.has(m[1])) names.set(m[1], file);
+    }
+  }
+  return names;
+}
+
+describe("seed:situaciones — names never pass for a fixture's pet", () => {
+  const fixtures = fixturePetNames();
+
+  it("non-vacuity: the scan finds the e2e owner's pets and the demo seeds' pets", () => {
+    // seed-test-users seeds owner@dim.test with these three; the specs lean on them.
+    for (const name of ["Firulais", "Michi", "Atún"]) expect(fixtures.has(name), name).toBe(true);
+    expect(fixtures.size).toBeGreaterThan(20);
+  });
+
+  it("no QA name equals, contains or is contained by a fixture pet name", () => {
+    // Containment, not just equality: Playwright's `name:` matches substrings,
+    // so "QA Kiwi" next to a fixture "Kiwi" would still be found by a spec.
+    const clashes: string[] = [];
+    for (const pet of QA_PETS) {
+      const qa = pet.name.toLowerCase();
+      for (const [fixture, file] of fixtures) {
+        const other = fixture.toLowerCase();
+        const word = new RegExp(
+          `(^|[^a-záéíóúñ])${other.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-záéíóúñ])`,
+        );
+        if (qa === other || word.test(qa) || other.includes(qa)) {
+          clashes.push(`${pet.token} "${pet.name}" vs "${fixture}" (${file})`);
+        }
+      }
+    }
+    expect(clashes).toEqual([]);
   });
 });
 
