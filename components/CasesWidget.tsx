@@ -1,18 +1,25 @@
-import Link from "next/link";
-
 import { Icon } from "@/components/Icon";
 import { LnListRow } from "@/components/ui/ListRow";
+import { LnPetPhoto } from "@/components/ui/RegRow";
 import type { WorkflowItem, WorkflowKind } from "@/lib/analytics/owner-dashboard";
-import { AR_TIME_ZONE, calendarDaysAgoInAr } from "@/lib/utils/format";
+import { AR_TIME_ZONE, calendarDaysAgoInAr, formatDateShort } from "@/lib/utils/format";
+import { type CasePetCluster, clusterCaseRowsByPet, splitOpenCaseRows } from "@dim/contract/api";
 
-// CasesWidget — the owner's cases list.
+// CasesWidget — the owner's casos in the /mis-mascotas Bandeja, grouped by whose
+// turn it is (PO decision 2026-10-06):
 //
-// Used on /inicio (open cases, with a "Ver historial →" link) and on
-// /cuenta/casos (rendered twice: open + closed/past history). Accepts the
-// adapted CaseRow shape; the WorkflowItem→CaseRow adapter is exported here so
-// both call sites share one mapping.
+//   · "Te toca a vos" — the rows that wait on the owner (`needsAction`), the
+//     earliest deadline first, then the newest;
+//   · "En curso" — the rows that wait on somebody else, newest first;
+//   · "Historial" — closed rows, collapsed behind a native <details>.
 //
-// Spec: docs/owner-home-plan-2026-05-20.md — v3 revision.
+// Inside each group one pet's rows gather under the pet, with a count, once
+// there are two or more; a single row carries the pet's photo and name inline.
+// The ordering and the clustering are the contract's (`splitOpenCaseRows`,
+// `clusterCaseRowsByPet`), the same two calls the app's casos make, so the two
+// surfaces cannot group the same rows two ways. The per-pet
+// `PetOpenCasesSection` on a pet's own page is a different block and stays as
+// it is.
 
 export type CaseRow = {
   /** Unique key for React. */
@@ -29,6 +36,14 @@ export type CaseRow = {
   severity: "info" | "warning" | "danger" | "success";
   /** Optional case-kind icon (emoji in v1; Icon webfont pending). */
   icon?: string;
+  /** The owner's turn — decided server-side from the kind. */
+  needsAction: boolean;
+  /** Deadline for the owner's answer, or `null`. */
+  dueAt: Date | null;
+  /** The pet's public token — the clustering key — or `null` for an account-level row. */
+  petId: string | null;
+  petName: string | null;
+  petPhotoUrl: string | null;
 };
 
 /** Case-kind → icon name for the Icon component. */
@@ -59,24 +74,28 @@ export function adaptWorkflow(w: WorkflowItem): CaseRow {
     since: w.since,
     severity: w.severity === "urgent" ? "danger" : w.severity,
     icon: WORKFLOW_KIND_ICON[w.kind],
+    needsAction: w.needsAction,
+    dueAt: w.dueAt,
+    petId: w.pet?.publicToken ?? null,
+    petName: w.pet?.name ?? null,
+    petPhotoUrl: w.pet?.photoUrl ?? null,
   };
 }
 
 export function CasesWidget({
-  cases,
+  open,
+  history = [],
   title = "Mis casos",
-  emptyText = "Sin casos abiertos. Cualquier denuncia, postulación o pérdida que empieces va a aparecer acá.",
-  historyHref,
 }: {
-  cases: CaseRow[];
+  /** Every open cycle — split here into "Te toca a vos" and "En curso". */
+  open: CaseRow[];
+  /** Closed cycles, newest first — drawn collapsed. */
+  history?: CaseRow[];
   /** Section heading. */
   title?: string;
-  /** Copy shown when there are no cases. */
-  emptyText?: string;
-  /** When set, renders a "Ver historial →" link in the header. */
-  historyHref?: string;
 }) {
-  const total = cases.length;
+  const { yourTurn, inProgress } = splitOpenCaseRows(open);
+  const total = open.length;
 
   return (
     <section aria-label={title} className="rounded-2xl border border-ln-line bg-ln-card p-4">
@@ -85,49 +104,168 @@ export function CasesWidget({
           {title}
           {total > 0 && (
             <span className="ml-2 text-xs font-normal text-ln-mute">
-              · {total} {total === 1 ? "caso" : "casos"}
+              · {total} {total === 1 ? "abierto" : "abiertos"}
             </span>
           )}
         </h2>
-        {historyHref && (
-          <Link
-            href={historyHref}
-            className="shrink-0 text-xs font-medium text-ln-azul hover:underline"
-          >
-            Ver historial →
-          </Link>
-        )}
       </div>
 
-      {cases.length === 0 ? (
+      {total === 0 ? (
         <p className="rounded-xl border border-dashed border-ln-line-strong p-6 text-center text-sm text-ln-mute">
-          {emptyText}
+          No tenés casos abiertos. Cualquier denuncia, postulación o pérdida que empieces va a
+          aparecer acá.
         </p>
       ) : (
-        <ul className="divide-y divide-ln-line">
-          {cases.map((c) => (
-            <li key={c.id}>
-              <LnListRow
-                href={c.ctaUrl}
-                className="py-3 transition-colors hover:bg-ln-stripe"
-                icon={<CaseIcon severity={c.severity} icon={c.icon} />}
-                trailing={
-                  <p
-                    className="shrink-0 text-sm text-ln-mute"
-                    title={c.since.toLocaleString("es-AR", { timeZone: AR_TIME_ZONE })}
-                  >
-                    {relativeShort(c.since)}
-                  </p>
-                }
-              >
-                <p className="truncate text-sm font-medium text-ln-ink">{c.title}</p>
-                <p className="mt-0.5 truncate text-xs text-ln-mute">{c.subtitle}</p>
-              </LnListRow>
-            </li>
-          ))}
-        </ul>
+        <div className="flex flex-col gap-5">
+          <CaseGroup
+            id="casos-te-toca"
+            title="Te toca a vos"
+            hint="Necesitan una respuesta o un paso tuyo."
+            rows={yourTurn}
+            emptyText="Nada pendiente de tu parte por ahora."
+          />
+          {inProgress.length > 0 && (
+            <CaseGroup
+              id="casos-en-curso"
+              title="En curso"
+              // Neutral on purpose: this group holds rows waiting on a refugio
+              // or the authority AND procedures that simply run their course
+              // (a bite observation), so it cannot say who is being waited on.
+              hint="Siguen su curso; te avisamos si hace falta algo tuyo."
+              rows={inProgress}
+            />
+          )}
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <details className="mt-5 border-t border-ln-line pt-4">
+          <summary className="cursor-pointer text-sm font-semibold text-ln-ink">
+            Historial
+            <span className="ml-2 text-xs font-normal text-ln-mute">
+              · {history.length} {history.length === 1 ? "cerrado" : "cerrados"}
+            </span>
+          </summary>
+          <div className="mt-3">
+            <CaseClusterList rows={history} />
+          </div>
+        </details>
       )}
     </section>
+  );
+}
+
+function CaseGroup({
+  id,
+  title,
+  hint,
+  rows,
+  emptyText,
+}: {
+  /** The heading's id — the section is labelled by its own <h3>. One widget per page. */
+  id: string;
+  title: string;
+  hint: string;
+  rows: CaseRow[];
+  emptyText?: string;
+}) {
+  return (
+    <section aria-labelledby={id}>
+      <h3 id={id} className="text-sm font-semibold text-ln-ink">
+        {title}
+        {rows.length > 0 && (
+          <span className="ml-2 text-xs font-normal text-ln-mute">· {rows.length}</span>
+        )}
+      </h3>
+      <p className="mt-0.5 text-xs text-ln-mute">{rows.length > 0 ? hint : emptyText}</p>
+      {rows.length > 0 && (
+        <div className="mt-2">
+          <CaseClusterList rows={rows} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CaseClusterList({ rows }: { rows: CaseRow[] }) {
+  const clusters = clusterCaseRowsByPet(rows);
+  return (
+    <ul className="divide-y divide-ln-line">
+      {clusters.map((cluster) => {
+        const [only] = cluster.rows;
+        if (cluster.rows.length === 1 && only) {
+          return (
+            <li key={only.id}>
+              <CaseLine row={only} showPet />
+            </li>
+          );
+        }
+        return (
+          <li key={`pet:${cluster.petId}`}>
+            <PetCluster cluster={cluster} />
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** Two or more rows about one pet: the pet once, with a count, and its rows under it. */
+function PetCluster({ cluster }: { cluster: CasePetCluster<CaseRow> }) {
+  return (
+    <div className="py-3">
+      <div className="flex items-center gap-2">
+        <LnPetPhoto src={cluster.petPhotoUrl ?? undefined} alt="" size={28} />
+        {/* A real heading: a screen-reader user can jump between the pets. */}
+        <h4 className="truncate text-sm font-semibold text-ln-ink">
+          {cluster.petName}
+          <span className="ml-2 text-xs font-normal text-ln-mute">
+            · {cluster.rows.length} casos
+          </span>
+        </h4>
+      </div>
+      <ul className="ml-3.5 mt-1 border-l border-ln-line pl-3">
+        {cluster.rows.map((row) => (
+          <li key={row.id}>
+            <CaseLine row={row} showPet={false} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function CaseLine({ row, showPet }: { row: CaseRow; showPet: boolean }) {
+  return (
+    <LnListRow
+      href={row.ctaUrl}
+      className="py-3 transition-colors hover:bg-ln-stripe"
+      icon={<CaseIcon severity={row.severity} icon={row.icon} />}
+      trailing={
+        <p
+          className="shrink-0 text-sm text-ln-mute"
+          title={row.since.toLocaleString("es-AR", { timeZone: AR_TIME_ZONE })}
+        >
+          {relativeShort(row.since)}
+        </p>
+      }
+    >
+      <p className="truncate text-sm font-medium text-ln-ink">{row.title}</p>
+      {row.subtitle !== "" && (
+        <p className="mt-0.5 truncate text-xs text-ln-mute">{row.subtitle}</p>
+      )}
+      {row.dueAt && (
+        <p className="mt-0.5 text-xs font-medium text-ln-warn">
+          Vence el {formatDateShort(row.dueAt)}
+        </p>
+      )}
+      {showPet && row.petName && (
+        <div className="mt-1 flex items-center gap-1.5 text-xs text-ln-mute">
+          <LnPetPhoto src={row.petPhotoUrl ?? undefined} alt="" size={20} />
+          <span className="truncate">{row.petName}</span>
+        </div>
+      )}
+    </LnListRow>
   );
 }
 

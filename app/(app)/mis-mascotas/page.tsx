@@ -429,9 +429,12 @@ export default async function MisMascotasPage({
         <LnSectionHead num="01" title="Bandeja" className="mb-4" />
 
         <div className="flex flex-col gap-5">
-          {/* Open workflows — foster proposals, denuncias, custody, approvals.
-              Self-empties with an explanatory line. */}
-          <CasesWidget cases={openCases} title="Casos abiertos" />
+          {/* Casos, grouped by whose turn it is (PO 2026-10-06): "Te toca a
+              vos", "En curso", and the closed-cases history collapsed at the
+              end (it lived on the removed /cuenta/casos via
+              fetchPreviousWorkflows; P1 knowingly orphaned it until this inbox
+              landed). Self-empties with an explanatory line. */}
+          <CasesWidget open={openCases} history={previousCases} />
 
           {/* Inbound transfers + adoption postulaciones — both about pets you
               do not own yet. hideWhenZero keeps transfers quiet at zero. */}
@@ -462,17 +465,6 @@ export default async function MisMascotasPage({
               hideWhenZero={pendingTransfersCount === 0 && outgoingTransfersCount === 0}
             />
           </div>
-
-          {/* Closed-cases history — restored here (it lived on the removed
-              /cuenta/casos via fetchPreviousWorkflows; P1 knowingly orphaned
-              it until this inbox landed). Only when there is history. */}
-          {previousCases.length > 0 && (
-            <CasesWidget
-              cases={previousCases}
-              title="Historial"
-              emptyText="Sin casos anteriores."
-            />
-          )}
 
           {/* Denunciar maltrato — about someone else's animal, so it can never
               live on your own credential (§9.2). The /inicio entry point lands
