@@ -13,6 +13,11 @@
 //        read access with a predicate that never references auth.uid() — that
 //        is a bucket enumeration grant. See "check 4" below.
 //
+// And, for every public table anon can SELECT through a policy:
+//   6. The columns anon can read stay inside the table's ANON_READ_SURFACE
+//        declaration — a policy picks rows, only the grant picks columns.
+//        See "check 6" below (migration 0278).
+//
 // WHY 3 EXISTS (2026-08-05). Checks 1 and 2 are existence checks: RLS on, at
 // least one policy. That is a COUNT, and a count cannot tell you who the policy
 // lets in. Ten live policies were found with no TO clause at all — across
@@ -347,6 +352,141 @@ export function evaluateStorageReadPolicies(rows: StoragePolicyRow[]): {
   }
 
   return { violations, allowlisted };
+}
+
+// ---------------------------------------------------------------------------
+// Anonymous read surface — check 6
+// ---------------------------------------------------------------------------
+//
+// WHY 6 EXISTS (2026-10-06, migration 0278). Checks 1-3 ask whether a table has
+// policies and whether each names its roles. "Verified orgs are publicly
+// readable" passed all three for two years: RLS on, a policy, `TO anon,
+// authenticated` written out. What none of them could see is WHAT that policy
+// returned — a policy chooses rows, the GRANT chooses columns, and Supabase
+// grants anon every column of every public table. So the publishable key read
+// the email, phone, CUIT and coordinates of every verified organization, the
+// coordinates even when the org had asked for its address to stay hidden.
+//
+// THE RULE: every public table with a SELECT/ALL policy that admits anon (or
+// PUBLIC) is declared in ANON_READ_SURFACE, with the exact columns anon may
+// read — or "*" and a reason for a table whose whole row is public. The live
+// column grants (has_column_privilege) must stay inside the declaration. An
+// entry for a table that is no longer an anon surface is stale and must go:
+// the list only shrinks by being edited.
+
+/** One declared anonymous read surface: the columns anon may read, and why. */
+export type AnonReadSurfaceEntry = {
+  columns: readonly string[] | "*";
+  reason: string;
+};
+
+export const ANON_READ_SURFACE: Record<string, AnonReadSurfaceEntry> = {
+  organizations: {
+    columns: ["id", "verified"],
+    reason:
+      "0278: exactly what the organization_coverage policy's sub-select reads. Every other column (contact, CUIT, coordinates) is server-side only, over Drizzle.",
+  },
+  organization_coverage: {
+    columns: "*",
+    reason:
+      "Coverage zones of verified orgs (org id + jurisdiction); no personal data. Filtered to verified parents by its policy.",
+  },
+  service_offerings: {
+    columns: "*",
+    reason:
+      "PRE-EXISTING, NOT AUDITED COLUMN BY COLUMN (frozen 2026-10-06): approved public service catalogue. The row also carries provider_user_id, reviewed_by_user_id and rejection_reason; narrowing it to a column grant is open follow-up work, and this entry must shrink, not grow.",
+  },
+  time_slots: {
+    columns: "*",
+    reason: "Bookable slot times and capacity counters for public offerings; no personal data.",
+  },
+};
+
+export type AnonReadRow = {
+  table_name: string;
+  anon_columns: string[];
+};
+
+export async function fetchAnonReadSurface(client: postgres.Sql): Promise<AnonReadRow[]> {
+  return await client<AnonReadRow[]>`
+    SELECT c.relname::text AS table_name,
+           coalesce(
+             array_agg(a.attname::text ORDER BY a.attnum)
+               FILTER (WHERE has_column_privilege('anon', c.oid, a.attnum, 'SELECT')),
+             '{}'
+           ) AS anon_columns
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+    WHERE n.nspname = 'public'
+      AND c.relkind = 'r'
+      AND EXISTS (
+        SELECT 1 FROM pg_policies p
+        WHERE p.schemaname = 'public'
+          AND p.tablename = c.relname
+          AND p.cmd IN ('SELECT', 'ALL')
+          AND p.roles && ARRAY['anon', 'public']::name[]
+      )
+    GROUP BY c.relname
+    ORDER BY c.relname
+  `;
+}
+
+export type AnonReadViolation =
+  | { kind: "undeclared"; table_name: string; anon_columns: string[] }
+  | { kind: "columns"; table_name: string; extra_columns: string[] }
+  | { kind: "stale"; table_name: string };
+
+/**
+ * Tables anon can read through a policy that are undeclared, read more columns
+ * than declared, or declarations that no longer match an anon surface.
+ */
+export function evaluateAnonReadSurface(
+  rows: AnonReadRow[],
+  declared: Record<string, AnonReadSurfaceEntry> = ANON_READ_SURFACE,
+): { violations: AnonReadViolation[]; surfaced: string[] } {
+  const violations: AnonReadViolation[] = [];
+  const surfaced: string[] = [];
+  const live = new Set<string>();
+
+  for (const row of rows) {
+    live.add(row.table_name);
+    const entry = Object.hasOwn(declared, row.table_name) ? declared[row.table_name] : undefined;
+    if (entry === undefined) {
+      violations.push({
+        kind: "undeclared",
+        table_name: row.table_name,
+        anon_columns: row.anon_columns,
+      });
+      continue;
+    }
+    if (entry.columns !== "*") {
+      const allowed = new Set(entry.columns);
+      const extra = row.anon_columns.filter((c) => !allowed.has(c));
+      if (extra.length > 0) {
+        violations.push({ kind: "columns", table_name: row.table_name, extra_columns: extra });
+        continue;
+      }
+    }
+    surfaced.push(row.table_name);
+  }
+
+  for (const table of Object.keys(declared)) {
+    if (!live.has(table)) violations.push({ kind: "stale", table_name: table });
+  }
+
+  return { violations, surfaced };
+}
+
+function describeAnonReadViolation(v: AnonReadViolation): string {
+  switch (v.kind) {
+    case "undeclared":
+      return `✗ ${v.table_name} — a policy lets anon (the publishable key) SELECT from this table, and it is not declared in ANON_READ_SURFACE. anon can read ${v.anon_columns.length} column(s): ${v.anon_columns.join(", ")}. A policy chooses rows, not columns: either narrow the grant in a forward-only migration (REVOKE ALL ... FROM anon; GRANT SELECT (<public columns>) ... TO anon — see 0278) and declare those columns, or drop anon from the policy.`;
+    case "columns":
+      return `✗ ${v.table_name} — anon can read column(s) beyond its ANON_READ_SURFACE declaration: ${v.extra_columns.join(", ")}. A table-level grant came back (Supabase grants anon every column of a new table) or a column grant was added. REVOKE it in a forward-only migration — see 0278.`;
+    case "stale":
+      return `✗ ${v.table_name} — declared in ANON_READ_SURFACE but no longer an anon read surface (no SELECT/ALL policy admits anon). Remove the entry: the declaration only shrinks by being edited.`;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -695,7 +835,7 @@ type Violation = {
 // ---------------------------------------------------------------------------
 
 const SKIPPED_CHECKS =
-  "  NOT run: RLS-enabled, policy-count and policy-roles coverage over every public table, storage.objects bucket-read scoping, and the LIVE half of the platform-admin predicate check (the static half over db/*.sql still ran).";
+  "  NOT run: RLS-enabled, policy-count and policy-roles coverage over every public table, storage.objects bucket-read scoping, the anon read-surface column check, and the LIVE half of the platform-admin predicate check (the static half over db/*.sql still ran).";
 
 /**
  * The static half of check 5 runs BEFORE the database is consulted and fails
@@ -732,6 +872,7 @@ async function fetchCoverage(
   policies: PolicyRoleRow[];
   storagePolicies: StoragePolicyRow[];
   authorityTexts: AuthorityTextRow[];
+  anonReadSurface: AnonReadRow[];
 } | null> {
   const sql = postgres(rawUrl, { max: 1, connect_timeout: 5 });
   try {
@@ -740,6 +881,7 @@ async function fetchCoverage(
       policies: await fetchPolicyRoles(sql),
       storagePolicies: await fetchStoragePolicies(sql),
       authorityTexts: await fetchAuthorityTexts(sql),
+      anonReadSurface: await fetchAnonReadSurface(sql),
     };
   } catch (err) {
     // A DB-less box is not a failure — but it is not a pass either, and it has
@@ -833,6 +975,7 @@ export async function runCheck(argv: string[] = []): Promise<void> {
   const livePredicates = scanAuthorityTexts(fetched.authorityTexts);
   const adminCheck = evaluatePlatformAdminPredicates(livePredicates);
   const adminScanVacuous = livePredicates.length < MIN_ADMIN_PREDICATES_IN_CATALOG;
+  const anonCheck = evaluateAnonReadSurface(fetched.anonReadSurface);
 
   if (
     !staticAdminClean ||
@@ -840,7 +983,8 @@ export async function runCheck(argv: string[] = []): Promise<void> {
     roleCheck.violations.length > 0 ||
     storageCheck.violations.length > 0 ||
     adminCheck.violations.length > 0 ||
-    adminScanVacuous
+    adminScanVacuous ||
+    anonCheck.violations.length > 0
   ) {
     for (const v of violations) {
       if (v.kind === "rls_disabled") {
@@ -864,6 +1008,7 @@ export async function runCheck(argv: string[] = []): Promise<void> {
       );
     }
     for (const v of adminCheck.violations) console.error(describeAdminViolation(v));
+    for (const v of anonCheck.violations) console.error(describeAnonReadViolation(v));
     if (adminScanVacuous) {
       console.error(
         `✗ platform-admin predicate scan found only ${livePredicates.length} test(s) in the live catalog (floor ${MIN_ADMIN_PREDICATES_IN_CATALOG}). An empty inventory reads exactly like a clean one — the scanner or the catalog query is broken.`,
@@ -874,7 +1019,8 @@ export async function runCheck(argv: string[] = []): Promise<void> {
         "",
         `✗ RLS coverage check FAILED — ${violations.length} table violation(s), ` +
           `${roleCheck.violations.length} PUBLIC-role policy violation(s), ` +
-          `${storageCheck.violations.length} storage-bucket read violation(s) and ` +
+          `${storageCheck.violations.length} storage-bucket read violation(s), ` +
+          `${anonCheck.violations.length} anon read-surface violation(s) and ` +
           `${adminCheck.violations.length} platform-admin predicate violation(s) (live${staticAdminClean ? "" : "; the static db/*.sql scan failed too, see above"}) across ${totalTables} tables, ` +
           `${fetched.policies.length} public policies and ${fetched.storagePolicies.length} storage.objects policies. ` +
           `Allowlisted deny-all tables (excluded): ${allowlisted.length}.`,
@@ -899,6 +1045,9 @@ export async function runCheck(argv: string[] = []): Promise<void> {
       : "";
   console.log(
     `✓ Storage bucket reads scoped — ${fetched.storagePolicies.length} storage.objects policies checked, no caller-role READ grant without auth.uid()${storageAllowNote}.`,
+  );
+  console.log(
+    `✓ Anon read surface declared — ${anonCheck.surfaced.length} table(s) anon can read through a policy, each inside its ANON_READ_SURFACE column set: ${anonCheck.surfaced.join(", ")}.`,
   );
   console.log(
     `✓ Platform-authority predicates (live) — ${livePredicates.length} role = 'admin' / 'govt' tests on profiles across ${fetched.authorityTexts.length} policy predicates + function bodies, every one carries deleted_at + deactivated_at.`,

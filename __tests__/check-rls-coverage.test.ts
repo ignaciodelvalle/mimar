@@ -10,9 +10,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ANON_READ_SURFACE,
   MIN_ADMIN_PREDICATES_IN_SOURCE,
   PUBLIC_ROLE_ALLOWLIST,
   type PolicyRoleRow,
+  evaluateAnonReadSurface,
   evaluateCoverage,
   evaluatePlatformAdminPredicates,
   evaluatePolicyRoles,
@@ -99,6 +101,92 @@ describe("evaluateCoverage (unchanged contract — db:doctor shares it)", () => 
     ]);
     expect(violations).toEqual([]);
     expect(allowlisted).toEqual(["rate_limit_buckets"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Check 6 — anon read surface (migration 0278). The negative fixture is the
+// pre-0278 catalog: a verified-orgs policy for anon over a table whose every
+// column anon held through Supabase's default table grant.
+// ---------------------------------------------------------------------------
+
+const PRE_0278_ORG_COLUMNS = [
+  "id",
+  "public_token",
+  "legal_name",
+  "display_name",
+  "cuit",
+  "email",
+  "phone",
+  "verified",
+  "disclose_address",
+  "location_lat",
+  "location_lng",
+];
+
+describe("evaluateAnonReadSurface", () => {
+  const declared = {
+    organizations: { columns: ["id", "verified"], reason: "0278" },
+    organization_coverage: { columns: "*" as const, reason: "no personal data" },
+  };
+
+  it("flags the pre-0278 organizations grant — every column, contact and coordinates included", () => {
+    const { violations } = evaluateAnonReadSurface(
+      [
+        { table_name: "organizations", anon_columns: PRE_0278_ORG_COLUMNS },
+        { table_name: "organization_coverage", anon_columns: ["id", "organization_id"] },
+      ],
+      declared,
+    );
+    expect(violations).toEqual([
+      {
+        kind: "columns",
+        table_name: "organizations",
+        extra_columns: PRE_0278_ORG_COLUMNS.filter((c) => c !== "id" && c !== "verified"),
+      },
+    ]);
+  });
+
+  it("accepts the 0278 shape — (id, verified) only", () => {
+    const { violations, surfaced } = evaluateAnonReadSurface(
+      [
+        { table_name: "organizations", anon_columns: ["id", "verified"] },
+        { table_name: "organization_coverage", anon_columns: ["id", "organization_id"] },
+      ],
+      declared,
+    );
+    expect(violations).toEqual([]);
+    expect(surfaced).toEqual(["organizations", "organization_coverage"]);
+  });
+
+  it("flags a NEW anon-readable table nobody declared", () => {
+    const { violations } = evaluateAnonReadSurface(
+      [
+        { table_name: "organizations", anon_columns: ["id"] },
+        { table_name: "organization_coverage", anon_columns: ["id"] },
+        { table_name: "brand_new_public_table", anon_columns: ["id", "email"] },
+      ],
+      declared,
+    );
+    expect(violations).toEqual([
+      { kind: "undeclared", table_name: "brand_new_public_table", anon_columns: ["id", "email"] },
+    ]);
+  });
+
+  it("flags a declaration whose table is no longer an anon surface (shrink by editing)", () => {
+    const { violations } = evaluateAnonReadSurface(
+      [{ table_name: "organization_coverage", anon_columns: ["id"] }],
+      declared,
+    );
+    expect(violations).toEqual([{ kind: "stale", table_name: "organizations" }]);
+  });
+
+  it("ships with organizations pinned to exactly (id, verified), and every entry carries a reason", () => {
+    expect(ANON_READ_SURFACE.organizations?.columns).toEqual(["id", "verified"]);
+    const unreasoned = Object.entries(ANON_READ_SURFACE)
+      .filter(([, entry]) => entry.reason.trim().length === 0)
+      .map(([table]) => table);
+    expect(unreasoned).toEqual([]);
   });
 });
 

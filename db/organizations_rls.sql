@@ -20,30 +20,33 @@
 -- ============================================================================
 alter table public.organizations enable row level security;
 
--- Verified orgs are publicly readable (powers public org pages and tier-0
--- branding on credentials). Unverified orgs stay invisible to PostgREST.
+-- Since 0278: caller roles read (id, verified) and NOTHING else. A policy picks
+-- rows, not columns; until 0278 "Verified orgs are publicly readable" handed
+-- anon the whole row (email, phone, CUIT, coordinates). Public org pages,
+-- the directory and tier-0 branding all read over Drizzle, server-side.
+revoke all on public.organizations from public, anon, authenticated;
+grant select (id, verified) on public.organizations to anon, authenticated;
+
+-- Verified org ids are publicly readable — exactly what the
+-- organization_coverage policy below sub-selects.
 drop policy if exists "Verified orgs are publicly readable" on public.organizations;
-create policy "Verified orgs are publicly readable"
+drop policy if exists "Verified org ids are publicly readable" on public.organizations;
+create policy "Verified org ids are publicly readable"
   on public.organizations
   for select
   to anon, authenticated
   using (verified = true);
 
 -- Org members can read their own org regardless of verification status.
+-- Through the caller-only definer helper (0273): a direct subquery on
+-- organization_memberships re-enters its self-referential peers policy and
+-- raised infinite recursion on every authenticated read until 0278.
 drop policy if exists "Members can read their own org" on public.organizations;
 create policy "Members can read their own org"
   on public.organizations
   for select
   to authenticated
-  using (
-    exists (
-      select 1
-      from public.organization_memberships m
-      where m.organization_id = organizations.id
-        and m.user_id = auth.uid()
-        and m.left_at is null
-    )
-  );
+  using (public.caller_is_active_org_member(id));
 
 -- No insert / update / delete in v1. Admin-only via Studio until verified-invite
 -- flow lands.
@@ -69,23 +72,18 @@ create policy "Coverage readable when parent org is verified"
     )
   );
 
--- Org members can read their own coverage regardless of verification.
+-- Org members can read their own coverage regardless of verification (helper:
+-- see the organizations member policy above, 0278).
 drop policy if exists "Members can read their org coverage" on public.organization_coverage;
 create policy "Members can read their org coverage"
   on public.organization_coverage
   for select
   to authenticated
-  using (
-    exists (
-      select 1
-      from public.organization_memberships m
-      where m.organization_id = organization_coverage.organization_id
-        and m.user_id = auth.uid()
-        and m.left_at is null
-    )
-  );
+  using (public.caller_is_active_org_member(organization_id));
 
--- No insert / update / delete in v1.
+-- No insert / update / delete; since 0278 caller roles hold no write grant.
+revoke insert, update, delete, truncate, references, trigger
+  on public.organization_coverage from public, anon, authenticated;
 
 -- ============================================================================
 -- organization_memberships
