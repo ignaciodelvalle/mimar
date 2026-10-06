@@ -80,6 +80,11 @@ const WITHOUT_ID: Readonly<Record<string, Allowed>> = {
     shape: "place-less",
     reason: "the adoption_listing case carries no jurisdiction pair at all",
   },
+  "scripts/seed-situaciones.ts": {
+    calls: 1,
+    shape: "forwarder",
+    reason: "QA seed: hands openCase to reportBite as its dependency, input unchanged",
+  },
 };
 
 function walk(dir: string, out: string[]): void {
