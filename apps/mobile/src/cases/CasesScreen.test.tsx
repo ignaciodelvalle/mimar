@@ -34,6 +34,11 @@ function aRow(over: Partial<MyCaseRowV1> = {}): MyCaseRowV1 {
     severity: "info",
     since: "2026-09-01T12:00:00.000Z",
     route: "/casos/CAS-TEST-0001",
+    petId: null,
+    petName: null,
+    petPhotoUrl: null,
+    needsAction: false,
+    dueAt: null,
     ...over,
   };
 }

@@ -78,6 +78,13 @@ function toRowV1(item: WorkflowItem): MyCaseRowV1 {
     severity: item.severity,
     since: item.since.toISOString(),
     route: appRouteForWebPath(item.ctaUrl),
+    // The pet by its PUBLIC token — the identity every owner read already
+    // hands the app — never `pets.id`.
+    petId: item.pet?.publicToken ?? null,
+    petName: item.pet?.name ?? null,
+    petPhotoUrl: item.pet?.photoUrl ?? null,
+    needsAction: item.needsAction,
+    dueAt: item.dueAt === null ? null : item.dueAt.toISOString(),
   };
 }
 

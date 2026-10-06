@@ -153,6 +153,13 @@ function workflow(overrides: Record<string, unknown> = {}) {
     ctaUrl: "/casos/CAS-TEST-0001",
     since: new Date("2026-09-01T12:00:00.000Z"),
     severity: "info",
+    pet: {
+      publicToken: "DIM-PAMP-0001",
+      name: "Pampa",
+      photoUrl: "https://storage.test/pets/pampa.jpg",
+    },
+    needsAction: false,
+    dueAt: null,
     ...overrides,
   };
 }
@@ -303,6 +310,7 @@ describe("GET /api/v1/me/cases — the list", () => {
         id: "approval_request_pending:y",
         kind: "approval_request_pending",
         ctaUrl: "/cuenta/solicitudes",
+        pet: null,
       }),
     ];
     const body = (await (await GET_LIST(req("/api/v1/me/cases"))).json()) as MyCasesV1;
@@ -310,7 +318,19 @@ describe("GET /api/v1/me/cases — the list", () => {
     expect(body.payloadVersion).toBe(MY_CASES_PAYLOAD_VERSION);
     expect(body.open).toHaveLength(3);
     expect(Object.keys(body.open[0] ?? {}).sort()).toEqual(
-      ["kind", "route", "severity", "since", "subtitle", "title"].sort(),
+      [
+        "kind",
+        "route",
+        "severity",
+        "since",
+        "subtitle",
+        "title",
+        "petId",
+        "petName",
+        "petPhotoUrl",
+        "needsAction",
+        "dueAt",
+      ].sort(),
     );
     expect(body.open[1]).toMatchObject({
       kind: "bite_observation_open",
@@ -321,6 +341,41 @@ describe("GET /api/v1/me/cases — the list", () => {
     // No app screen for the account-requests inbox: plain text, not a button.
     expect(body.open[2]?.route).toBe(null);
     expect(JSON.stringify(body)).not.toContain(CASE_UUID);
+    expect(JSON.stringify(body)).not.toContain(PET_UUID);
+  });
+
+  it("names the pet by its public token, and leaves an account-level row without one", async () => {
+    control.open = () => [
+      workflow({
+        id: "foster_proposal:z",
+        kind: "foster_proposal_pending",
+        ctaUrl: "/cuenta/transitos/propuestas/TP-1",
+        needsAction: true,
+        dueAt: new Date("2026-10-09T15:00:00.000Z"),
+      }),
+      workflow({
+        id: "welfare_report:w",
+        kind: "welfare_report_open",
+        ctaUrl: "/denuncias/codigo/DEN-1",
+        pet: null,
+      }),
+    ];
+    const body = (await (await GET_LIST(req("/api/v1/me/cases"))).json()) as MyCasesV1;
+
+    expect(body.open[0]).toMatchObject({
+      petId: "DIM-PAMP-0001",
+      petName: "Pampa",
+      petPhotoUrl: "https://storage.test/pets/pampa.jpg",
+      needsAction: true,
+      dueAt: "2026-10-09T15:00:00.000Z",
+    });
+    expect(body.open[1]).toMatchObject({
+      petId: null,
+      petName: null,
+      petPhotoUrl: null,
+      needsAction: false,
+      dueAt: null,
+    });
   });
 
   it("bounds the history and says when older rows exist", async () => {

@@ -14,6 +14,7 @@ import {
   count,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   isNotNull,
@@ -72,6 +73,7 @@ import {
 } from "@/lib/infra/notification-reconcile";
 import { viewerHoldsPetClause } from "@/lib/infra/pet-holder-clause";
 import { batchFetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
+import { petPhotoUrl } from "@/lib/infra/storage";
 import {
   type ComplianceEvent,
   type ComplianceState,
@@ -81,6 +83,7 @@ import {
 } from "@/lib/projections/pet-compliance";
 import { formatWeightKg, lostReportedTitle, requestOutcomeLabel } from "@/lib/utils/format";
 import { TERMINAL_STATUSES } from "@/src/modules/welfare/domain/welfare-status-rules";
+import { caseKindNeedsAction } from "@dim/contract/api";
 
 // ---------------------------------------------------------------------------
 // Pets
@@ -438,6 +441,14 @@ export type WorkflowKind =
   | "adoption_application_resolved"
   | "approval_request_decided";
 
+/** The pet a workflow row is about — its public identity, never `pets.id`. */
+export type WorkflowPet = {
+  publicToken: string;
+  name: string;
+  /** Public photo url (`petPhotoUrl`), or `null` when the pet has none. */
+  photoUrl: string | null;
+};
+
 export type WorkflowItem = {
   id: string;
   kind: WorkflowKind;
@@ -446,27 +457,73 @@ export type WorkflowItem = {
   ctaUrl: string;
   since: Date;
   severity: "info" | "warning" | "urgent";
+  /** The pet this row is about, or `null` for an account-level row (a denuncia, an approval). */
+  pet: WorkflowPet | null;
+  /**
+   * The owner's turn. `caseKindNeedsAction(kind)` by default, set in ONE place
+   * (`withTurn`); a fetcher overrides it only where the kind alone cannot say
+   * whose turn it is — today one: a devolución proposal, whose direction decides.
+   */
+  needsAction: boolean;
+  /** Deadline for the owner's answer, or `null` when the cycle has none. */
+  dueAt: Date | null;
 };
+
+/**
+ * What each source fetcher builds; `withTurn` adds the rest from the kind. A
+ * fetcher sets `needsAction` itself only when the row's own data decides it.
+ */
+type WorkflowDraft = Omit<WorkflowItem, "needsAction" | "dueAt"> & {
+  dueAt?: Date | null;
+  needsAction?: boolean;
+};
+
+function withTurn(draft: WorkflowDraft): WorkflowItem {
+  return {
+    ...draft,
+    dueAt: draft.dueAt ?? null,
+    needsAction: draft.needsAction ?? caseKindNeedsAction(draft.kind),
+  };
+}
+
+/** A pet row's identity as a workflow row carries it. */
+function workflowPet(
+  publicToken: string | null,
+  name: string | null,
+  photoStoragePath: string | null,
+): WorkflowPet | null {
+  if (publicToken === null || name === null) return null;
+  return { publicToken, name, photoUrl: petPhotoUrl(photoStoragePath) };
+}
 
 async function fetchPendingFosterProposals(
   userId: string,
   petIdFilter?: string,
-): Promise<WorkflowItem[]> {
+): Promise<WorkflowDraft[]> {
   const rows = await db
     .select({
       id: fosterProposals.id,
       publicToken: fosterProposals.publicToken,
       proposedAt: fosterProposals.proposedAt,
+      expiresAt: fosterProposals.expiresAt,
       petName: pets.name,
+      petPublicToken: pets.publicToken,
+      petPhotoPath: attachments.storagePath,
       orgName: organizations.displayName,
     })
     .from(fosterProposals)
     .innerJoin(pets, eq(pets.id, fosterProposals.petId))
+    .leftJoin(attachments, eq(attachments.id, pets.primaryPhotoId))
     .innerJoin(organizations, eq(organizations.id, fosterProposals.organizationId))
     .where(
       and(
         eq(fosterProposals.volunteerUserId, userId),
         eq(fosterProposals.status, "pending"),
+        // A proposal past `expires_at` can no longer be answered, whether or
+        // not a sweep has flipped its status yet — the volunteer hub treats it
+        // as expired too (list-foster-hub-for-volunteer.ts). Listing it would
+        // print "Vence el" a date already gone.
+        gt(fosterProposals.expiresAt, sql`now()`),
         ...(petIdFilter ? [eq(fosterProposals.petId, petIdFilter)] : []),
       ),
     );
@@ -478,12 +535,15 @@ async function fetchPendingFosterProposals(
     ctaUrl: `/cuenta/transitos/propuestas/${r.publicToken}`,
     since: r.proposedAt,
     severity: "warning" as const,
+    pet: workflowPet(r.petPublicToken, r.petName, r.petPhotoPath),
+    // The proposal lapses on its own at `expires_at`: that is the owner's deadline.
+    dueAt: r.expiresAt,
   }));
 }
 
 // Consolidated query: pets requiring attention — lost + pending PPP attestation.
 // Replaces fetchLostPets(owner-dashboard) + fetchPendingPppAttestations (2 → 1 query).
-async function fetchPetAlerts(userId: string, petIdFilter?: string): Promise<WorkflowItem[]> {
+async function fetchPetAlerts(userId: string, petIdFilter?: string): Promise<WorkflowDraft[]> {
   // owner-ia-redesign P3: optional pet scoping — the profile reuses this for
   // its own open cycles. Nested sql fragment is inert when no filter is set.
   const petClause = petIdFilter ? sql`AND p.id = ${petIdFilter}` : sql``;
@@ -493,6 +553,7 @@ async function fetchPetAlerts(userId: string, petIdFilter?: string): Promise<Wor
     pet_name: string;
     pet_sex: string | null;
     pet_public_token: string;
+    pet_photo_path: string | null;
     since_ts: string;
   }>(sql`
     -- Lost pets owned by user
@@ -502,8 +563,10 @@ async function fetchPetAlerts(userId: string, petIdFilter?: string): Promise<Wor
       p.name            AS pet_name,
       p.sex::text       AS pet_sex,
       p.public_token    AS pet_public_token,
+      ph.storage_path   AS pet_photo_path,
       p.updated_at::text AS since_ts
     FROM pets p
+    LEFT JOIN attachments ph ON ph.id = p.primary_photo_id
     JOIN ownerships o ON o.pet_id = p.id
      AND o.owner_user_id = ${userId}
      AND o.role = 'owner'
@@ -532,8 +595,10 @@ async function fetchPetAlerts(userId: string, petIdFilter?: string): Promise<Wor
       p.name            AS pet_name,
       p.sex::text       AS pet_sex,
       p.public_token    AS pet_public_token,
+      ph.storage_path   AS pet_photo_path,
       p.created_at::text AS since_ts
     FROM pets p
+    LEFT JOIN attachments ph ON ph.id = p.primary_photo_id
     JOIN ownerships o ON o.pet_id = p.id
      AND o.owner_user_id = ${userId}
      AND o.role = 'owner'
@@ -561,6 +626,7 @@ async function fetchPetAlerts(userId: string, petIdFilter?: string): Promise<Wor
         ctaUrl: `/mis-mascotas/${r.pet_public_token}`,
         since: new Date(r.since_ts),
         severity: "urgent" as const,
+        pet: workflowPet(r.pet_public_token, r.pet_name, r.pet_photo_path),
       };
     }
     return {
@@ -577,11 +643,12 @@ async function fetchPetAlerts(userId: string, petIdFilter?: string): Promise<Wor
       ctaUrl: `/mis-mascotas/${r.pet_public_token}/eventos/atestar-raza-peligrosa`,
       since: new Date(r.since_ts),
       severity: "warning" as const,
+      pet: workflowPet(r.pet_public_token, r.pet_name, r.pet_photo_path),
     };
   });
 }
 
-async function fetchOpenWelfareReports(userId: string): Promise<WorkflowItem[]> {
+async function fetchOpenWelfareReports(userId: string): Promise<WorkflowDraft[]> {
   const rows = await db
     .select({
       id: welfareReports.id,
@@ -608,6 +675,9 @@ async function fetchOpenWelfareReports(userId: string): Promise<WorkflowItem[]> 
     ctaUrl: `/denuncias/codigo/${r.referenceCode}`,
     since: r.createdAt,
     severity: "info" as const,
+    // A denuncia is about somebody else's animal, often one with no record at
+    // all: an account-level row, never clustered under a pet.
+    pet: null,
   }));
 }
 
@@ -616,7 +686,7 @@ async function fetchOpenWelfareReports(userId: string): Promise<WorkflowItem[]> 
 async function fetchPendingPetEventWorkflows(
   userId: string,
   petIdFilter?: string,
-): Promise<WorkflowItem[]> {
+): Promise<WorkflowDraft[]> {
   // owner-ia-redesign P3: optional pet scoping (inert fragment when unset).
   const petClause = petIdFilter ? sql`AND p.id = ${petIdFilter}` : sql``;
   const rows = await db.execute<{
@@ -625,7 +695,10 @@ async function fetchPendingPetEventWorkflows(
     pet_id: string;
     pet_name: string;
     pet_public_token: string;
+    pet_photo_path: string | null;
     since_ts: string;
+    owner_must_act: boolean;
+    waiting_on_org: string | null;
   }>(sql`
     -- Pending adoption applications submitted by this user
     SELECT
@@ -634,9 +707,13 @@ async function fetchPendingPetEventWorkflows(
       p.id::text                           AS pet_id,
       p.name                               AS pet_name,
       p.public_token                       AS pet_public_token,
-      e.recorded_at::text                  AS since_ts
+      ph.storage_path                      AS pet_photo_path,
+      e.recorded_at::text                  AS since_ts,
+      FALSE                                AS owner_must_act,
+      NULL::text                           AS waiting_on_org
     FROM pet_events e
     JOIN pets p ON p.id = e.pet_id
+    LEFT JOIN attachments ph ON ph.id = p.primary_photo_id
     WHERE e.event_type = 'adoption_application_submitted'
       AND e.payload->>'applicant_user_id' = ${userId}
       ${petClause}
@@ -654,16 +731,32 @@ async function fetchPendingPetEventWorkflows(
 
     UNION ALL
 
-    -- Custody transfer proposals on pets the user owns, not yet resolved
+    -- Custody transfer proposals on pets the user owns, not yet resolved.
+    --
+    -- WHOSE TURN IS IN THE PAYLOAD. A proposal addressed to this user
+    -- (to_user_id) waits on them: they confirm or reject the devolución. One
+    -- the owner SENT (owner-propose-return-to-org: from_user_id = owner,
+    -- to_organization_id = the refugio) waits on the organization, and the
+    -- owner only follows it.
+    --
+    -- RESOLVED = transferred OR cancelled. A rejection by either side and a
+    -- withdrawal all write custody_transfer_cancelled naming the proposal
+    -- (proposal_event_id), the same structured check hasPendingProposal makes;
+    -- without it a refused proposal stayed open here forever.
     SELECT
       'custody_transfer_pending'::text AS kind,
-      p.id::text                       AS item_id,
+      e.id::text                       AS item_id,
       p.id::text                       AS pet_id,
       p.name                           AS pet_name,
       p.public_token                   AS pet_public_token,
-      e.occurred_at::text              AS since_ts
+      ph.storage_path                  AS pet_photo_path,
+      e.occurred_at::text              AS since_ts,
+      COALESCE(e.payload->>'to_user_id' = ${userId}, FALSE) AS owner_must_act,
+      org.display_name                 AS waiting_on_org
     FROM pet_events e
     JOIN pets p ON p.id = e.pet_id
+    LEFT JOIN attachments ph ON ph.id = p.primary_photo_id
+    LEFT JOIN organizations org ON org.id::text = e.payload->>'to_organization_id'
     JOIN ownerships o ON o.pet_id = p.id
      AND o.owner_user_id = ${userId}
      AND o.role = 'owner'
@@ -675,6 +768,12 @@ async function fetchPendingPetEventWorkflows(
         WHERE t.pet_id = e.pet_id
           AND t.event_type = 'custody_transferred'
           AND t.occurred_at >= e.occurred_at
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM pet_events c
+        WHERE c.pet_id = e.pet_id
+          AND c.event_type = 'custody_transfer_cancelled'
+          AND c.payload->>'proposal_event_id' = e.id::text
       )
 
     ORDER BY since_ts DESC
@@ -690,21 +789,28 @@ async function fetchPendingPetEventWorkflows(
         ctaUrl: "/mis-mascotas/postulaciones",
         since: new Date(r.since_ts),
         severity: "info" as const,
+        pet: workflowPet(r.pet_public_token, r.pet_name, r.pet_photo_path),
       };
     }
+    // The one per-row override of the kind table: the direction decides.
+    const ownerMustAct = r.owner_must_act === true;
     return {
-      id: `custody_transfer:${r.pet_id}`,
+      id: `custody_transfer:${r.item_id}`,
       kind: "custody_transfer_pending" as const,
       title: `Propuesta de devolución para ${r.pet_name}`,
-      subtitle: "Alguien intenta devolverla — confirmá la transferencia",
+      subtitle: ownerMustAct
+        ? "Alguien intenta devolverla — confirmá la transferencia"
+        : `Esperando que ${r.waiting_on_org ?? "la otra parte"} responda`,
       ctaUrl: `/mis-mascotas/${r.pet_public_token}/devolucion`,
       since: new Date(r.since_ts),
-      severity: "warning" as const,
+      severity: ownerMustAct ? ("warning" as const) : ("info" as const),
+      pet: workflowPet(r.pet_public_token, r.pet_name, r.pet_photo_path),
+      needsAction: ownerMustAct,
     };
   });
 }
 
-async function fetchPendingApprovalRequests(userId: string): Promise<WorkflowItem[]> {
+async function fetchPendingApprovalRequests(userId: string): Promise<WorkflowDraft[]> {
   const rows = await db
     .select({
       id: approvalRequests.id,
@@ -730,13 +836,14 @@ async function fetchPendingApprovalRequests(userId: string): Promise<WorkflowIte
     ctaUrl: "/cuenta/solicitudes",
     since: r.createdAt,
     severity: "info" as const,
+    pet: null,
   }));
 }
 
 async function fetchOpenCustodyDisputes(
   userId: string,
   petIdFilter?: string,
-): Promise<WorkflowItem[]> {
+): Promise<WorkflowDraft[]> {
   const rows = await db
     .select({
       id: custodyDisputes.id,
@@ -749,10 +856,12 @@ async function fetchOpenCustodyDisputes(
       petPublicToken: pets.publicToken,
       createdAt: custodyDisputes.createdAt,
       petName: pets.name,
+      petPhotoPath: attachments.storagePath,
     })
     .from(custodyDisputeParties)
     .innerJoin(custodyDisputes, eq(custodyDisputes.id, custodyDisputeParties.disputeId))
     .innerJoin(pets, eq(pets.id, custodyDisputes.petId))
+    .leftJoin(attachments, eq(attachments.id, pets.primaryPhotoId))
     .where(
       and(
         eq(custodyDisputeParties.partyUserId, userId),
@@ -768,6 +877,7 @@ async function fetchOpenCustodyDisputes(
     ctaUrl: `/mis-mascotas/${r.petPublicToken}`,
     since: r.createdAt,
     severity: "warning" as const,
+    pet: workflowPet(r.petPublicToken, r.petName, r.petPhotoPath),
   }));
 }
 
@@ -786,7 +896,7 @@ const CASES_HANDLED_BY_OTHER_FETCHERS = [
 // Consolidated query: open cases connected to the user — bite_incident
 // (rabies observation) + any other open case kind not handled by a dedicated
 // fetcher. Replaces fetchOpenBiteCases + fetchOpenCasesGenericSweep (2 → 1 query).
-async function fetchOpenCasesSweep(userId: string, petIdFilter?: string): Promise<WorkflowItem[]> {
+async function fetchOpenCasesSweep(userId: string, petIdFilter?: string): Promise<WorkflowDraft[]> {
   const rows = await db
     .selectDistinct({
       caseId: cases.id,
@@ -795,9 +905,11 @@ async function fetchOpenCasesSweep(userId: string, petIdFilter?: string): Promis
       openedAt: cases.openedAt,
       petName: pets.name,
       petPublicToken: pets.publicToken,
+      petPhotoPath: attachments.storagePath,
     })
     .from(cases)
     .leftJoin(pets, eq(pets.id, cases.primaryPetId))
+    .leftJoin(attachments, eq(attachments.id, pets.primaryPhotoId))
     .leftJoin(
       ownerships,
       and(
@@ -839,6 +951,7 @@ async function fetchOpenCasesSweep(userId: string, petIdFilter?: string): Promis
         ctaUrl: r.petPublicToken ? `/mis-mascotas/${r.petPublicToken}` : `/casos/${r.publicCode}`,
         since: r.openedAt,
         severity: "warning" as const,
+        pet: workflowPet(r.petPublicToken, r.petName, r.petPhotoPath),
       };
     }
     return {
@@ -849,6 +962,7 @@ async function fetchOpenCasesSweep(userId: string, petIdFilter?: string): Promis
       ctaUrl: `/casos/${r.publicCode}`,
       since: r.openedAt,
       severity: "info" as const,
+      pet: workflowPet(r.petPublicToken, r.petName, r.petPhotoPath),
     };
   });
 }
@@ -910,7 +1024,9 @@ export async function fetchOpenWorkflows(
     ...approval,
     ...disputes,
     ...casesSweep,
-  ].sort((a, b) => b.since.getTime() - a.since.getTime());
+  ]
+    .map(withTurn)
+    .sort((a, b) => b.since.getTime() - a.since.getTime());
 }
 
 // ---------------------------------------------------------------------------
@@ -920,7 +1036,7 @@ export async function fetchOpenWorkflows(
 async function fetchResolvedFosterProposals(
   userId: string,
   limit: number,
-): Promise<WorkflowItem[]> {
+): Promise<WorkflowDraft[]> {
   const rows = await db
     .select({
       id: fosterProposals.id,
@@ -929,9 +1045,13 @@ async function fetchResolvedFosterProposals(
       respondedAt: fosterProposals.respondedAt,
       proposedAt: fosterProposals.proposedAt,
       petName: pets.name,
+      petPublicToken: pets.publicToken,
+      petPhotoPath: attachments.storagePath,
+      viewerHolds: sql<boolean>`${viewerHoldsPetClause(userId, pets.id)}`,
     })
     .from(fosterProposals)
     .innerJoin(pets, eq(pets.id, fosterProposals.petId))
+    .leftJoin(attachments, eq(attachments.id, pets.primaryPhotoId))
     .where(
       and(
         eq(fosterProposals.volunteerUserId, userId),
@@ -951,10 +1071,14 @@ async function fetchResolvedFosterProposals(
     ctaUrl: `/cuenta/transitos/propuestas/${r.publicToken}`,
     since: r.respondedAt ?? r.proposedAt,
     severity: "info" as const,
+    // HISTORY NAMES ONLY A PET THE VIEWER STILL HOLDS. A declined or lapsed
+    // tránsito is about somebody else's animal now; its token and its current
+    // photo are not this person's to keep seeing. The title still names it.
+    pet: r.viewerHolds ? workflowPet(r.petPublicToken, r.petName, r.petPhotoPath) : null,
   }));
 }
 
-async function fetchClosedWelfareReports(userId: string, limit: number): Promise<WorkflowItem[]> {
+async function fetchClosedWelfareReports(userId: string, limit: number): Promise<WorkflowDraft[]> {
   const rows = await db
     .select({
       id: welfareReports.id,
@@ -974,26 +1098,34 @@ async function fetchClosedWelfareReports(userId: string, limit: number): Promise
     ctaUrl: `/denuncias/codigo/${r.referenceCode}`,
     since: r.closedAt ?? r.createdAt,
     severity: "info" as const,
+    pet: null,
   }));
 }
 
 async function fetchResolvedAdoptionApplications(
   userId: string,
   limit: number,
-): Promise<WorkflowItem[]> {
+): Promise<WorkflowDraft[]> {
   const rows = await db.execute<{
     application_id: string;
     pet_name: string;
+    pet_public_token: string;
+    pet_photo_path: string | null;
+    viewer_holds: boolean;
     outcome: string;
     decided_at: string;
   }>(sql`
     SELECT
       s.id::text AS application_id,
       p.name AS pet_name,
+      p.public_token AS pet_public_token,
+      ph.storage_path AS pet_photo_path,
+      ${viewerHoldsPetClause(userId, sql`p.id`)} AS viewer_holds,
       d.payload->>'outcome' AS outcome,
       d.recorded_at::text AS decided_at
     FROM pet_events s
     JOIN pets p ON p.id = s.pet_id
+    LEFT JOIN attachments ph ON ph.id = p.primary_photo_id
     JOIN pet_events d
       ON d.pet_id = s.pet_id
      AND d.event_type = 'adoption_application_resolved'
@@ -1011,13 +1143,19 @@ async function fetchResolvedAdoptionApplications(
     ctaUrl: "/mis-mascotas/postulaciones",
     since: new Date(r.decided_at),
     severity: "info" as const,
+    // A rejected applicant must never see the adopting family's photo of the
+    // animal: only an applicant who now HOLDS the pet gets it on the row.
+    pet:
+      r.viewer_holds === true
+        ? workflowPet(r.pet_public_token, r.pet_name, r.pet_photo_path)
+        : null,
   }));
 }
 
 async function fetchDecidedApprovalRequests(
   userId: string,
   limit: number,
-): Promise<WorkflowItem[]> {
+): Promise<WorkflowDraft[]> {
   const rows = await db
     .select({
       id: approvalRequests.id,
@@ -1041,6 +1179,7 @@ async function fetchDecidedApprovalRequests(
     ctaUrl: "/cuenta/solicitudes",
     since: r.decidedAt ?? r.createdAt,
     severity: "info" as const,
+    pet: null,
   }));
 }
 
@@ -1052,6 +1191,7 @@ export async function fetchPreviousWorkflows(userId: string, limit = 10): Promis
     fetchDecidedApprovalRequests(userId, limit),
   ]);
   return [...foster, ...welfare, ...adoption, ...approval]
+    .map(withTurn)
     .sort((a, b) => b.since.getTime() - a.since.getTime())
     .slice(0, limit);
 }
