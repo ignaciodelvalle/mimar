@@ -177,6 +177,16 @@ export {
   type NotificationPetV1,
 } from "./my-notifications.ts";
 export {
+  NOTIFICATION_TARGET_OUTCOMES,
+  NOTIFICATION_TARGET_PAYLOAD_VERSION,
+  NOTIFICATION_TARGET_STALE_AFTER_MS,
+  type NotificationTargetOutcomeV1,
+  type NotificationTargetV1,
+  notificationExplanationAppRoute,
+  notificationExplanationWebPath,
+  notificationOpenWebPath,
+} from "./notification-target.ts";
+export {
   MY_CASES_HISTORY_LIMIT,
   MY_CASES_PAYLOAD_VERSION,
   MY_CASES_STALE_AFTER_MS,

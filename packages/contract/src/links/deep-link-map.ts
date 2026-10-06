@@ -133,6 +133,14 @@ export type DeepLinkDestination = {
    * against `apps/mobile/app/` exactly as it checks `appPath`.
    */
   readonly signedInAppPath?: string;
+  /**
+   * A FIXED query string `appRoutePath` appends to the in-app route, without
+   * the `?`. For a destination whose web page is one form of a screen the app
+   * serves for several (`asentar` writes every kind of asiento): the web path
+   * names the kind in its segments, the app names it in `?kind=`. Never carries
+   * a value from the matched path — those are placeholders, not queries.
+   */
+  readonly appQuery?: string;
 };
 
 /**
@@ -164,7 +172,16 @@ export const DEEP_LINK_MAP = {
    * mechanisms answering "does a screen exist for this" differently is exactly
    * why `appointment` needed the same distinction spelled out below.
    */
-  credential: { webPath: "/p/:publicToken", appPath: null, access: "public" },
+  credential: {
+    webPath: "/p/:publicToken",
+    appPath: null,
+    access: "public",
+    // notificaciones-destinos (2026-10): the lost-pet broadcast, the "volvió a
+    // casa" broadcast and the origin-shelter notice all store `/p/{token}` as
+    // their CTA. For a person already inside the app that is the app's own
+    // credential screen; the `mimar://` form stays absent (see `appPath`).
+    signedInAppPath: "p/:publicToken",
+  },
 
   /** "I have this animal" — the finder-in-possession flow. */
   credentialFinder: { webPath: "/p/:publicToken/encontre", appPath: null, access: "public" },
@@ -199,7 +216,17 @@ export const DEEP_LINK_MAP = {
   },
 
   /** A welfare report tracked by the reference code handed to the reporter. */
-  welfareReport: { webPath: "/denuncias/codigo/:referenceCode", appPath: null, access: "public" },
+  welfareReport: {
+    webPath: "/denuncias/codigo/:referenceCode",
+    appPath: null,
+    access: "public",
+    // notificaciones-destinos (2026-10): `welfare_report_status_changed` goes
+    // to the REPORTER, and the app's `denuncias/{code}` screen is the
+    // reporter's own detail (it reads `/api/v1/me/welfare-reports`, which
+    // answers only for the person who filed it). The web page behind the code
+    // deliberately hides the status; the app screen shows the reporter theirs.
+    signedInAppPath: "denuncias/:referenceCode",
+  },
 
   /** A revocable share of a pet's health record. */
   libretaShare: { webPath: "/libreta/compartir/:shareToken", appPath: null, access: "public" },
@@ -438,6 +465,61 @@ export const DEEP_LINK_MAP = {
    * differ, so this never resolves to `pet` with `publicToken: "reclamar"`.
    */
   claimDispute: { webPath: "/mis-mascotas/reclamar", appPath: "reclamar", access: "session" },
+
+  // -------------------------------------------------------------------------
+  // notificaciones-destinos (2026-10) — destinations notification writers name
+  // (or the server resolver opens) and this table did not carry. With no row,
+  // `matchWebPath` answered null and the inbox drew the CTA as "abrilo desde la
+  // web" while the app had the screen all along.
+  // -------------------------------------------------------------------------
+
+  /** "Registrá la vacuna" — `vaccine_due` (lib/infra/notifications.ts). */
+  vaccineRecord: {
+    webPath: "/mis-mascotas/:publicToken/eventos/nuevo/vacuna",
+    appPath: "mascotas/:publicToken/asentar",
+    access: "session",
+    appQuery: "kind=vaccination",
+  },
+
+  /** The adopter's follow-up — `post_adoption_checkin_due`. */
+  postAdoptionCheckin: {
+    webPath: "/mis-mascotas/:publicToken/eventos/nuevo/checkin",
+    appPath: "mascotas/:publicToken/asentar",
+    access: "session",
+    appQuery: "kind=post_adoption_checkin",
+  },
+
+  /** The PPP attestation the three `ppp_*` notices ask the titular for. */
+  pppAttestation: {
+    webPath: "/mis-mascotas/:publicToken/eventos/atestar-raza-peligrosa",
+    appPath: "mascotas/:publicToken/asentar",
+    access: "session",
+    appQuery: "kind=dangerous_breed_attestation",
+  },
+
+  /** The assistance-animal credential — `service_dog_credential_revoked`. */
+  serviceDog: {
+    webPath: "/mis-mascotas/:publicToken/asistencia",
+    appPath: "mascotas/:publicToken/asistencia",
+    access: "session",
+  },
+
+  /**
+   * The tránsito hub WITHOUT a proposal token — the expired/cancelled notices
+   * link the list. Same hub as `fosterProposal`, for the same reason.
+   */
+  fosterProposals: {
+    webPath: "/cuenta/transitos/propuestas",
+    appPath: "cuenta/transito",
+    access: "session",
+  },
+
+  /** The tránsito history — `foster_ended_by_transfer`. Folded into the same hub. */
+  fosterHistory: {
+    webPath: "/cuenta/transitos/historial",
+    appPath: "cuenta/transito",
+    access: "session",
+  },
 } as const satisfies Record<string, DeepLinkDestination>;
 
 export type DeepLinkName = keyof typeof DEEP_LINK_MAP;
@@ -766,7 +848,8 @@ export function appRoutePath<N extends DeepLinkName>(
   const path = entry.appPath ?? entry.signedInAppPath ?? null;
   if (path === null) return null;
   if (APP_PATH_NAMES_NO_SCREEN.has(name)) return null;
-  return `/${fillPattern(path, params as Record<string, string>, name)}`;
+  const query = entry.appQuery ? `?${entry.appQuery}` : "";
+  return `/${fillPattern(path, params as Record<string, string>, name)}${query}`;
 }
 
 /**

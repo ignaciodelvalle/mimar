@@ -31,10 +31,10 @@
     ]
   },
   "stats": {
-    "rows": 529,
+    "rows": 530,
     "byStatus": {
       "UNENFORCED": 248,
-      "ENFORCED": 186,
+      "ENFORCED": 187,
       "PARTIAL": 95
     },
     "byScopeStatus": {
@@ -55,7 +55,7 @@
       },
       "web": {
         "UNENFORCED": 41,
-        "ENFORCED": 90,
+        "ENFORCED": 91,
         "PARTIAL": 39
       },
       "mobile": {
@@ -76,7 +76,7 @@
     "wired": {
       "none": 247,
       "ci": 10,
-      "verify": 140,
+      "verify": 141,
       "test:verified": 112,
       "manual": 6,
       "db": 14
@@ -9676,6 +9676,26 @@
       "notes": "SDD change jurisdiction-admin, Phase 7 (2026-09-27). The Phase-6 source-reading guard inventory of the administration actions was absorbed into rule 4. Three platform-only writers (admin deactivation, credential and MFA reset) still read the actor's profile outside their transaction through the pure predicates canCreateInstitutional / canResetCredentials; the fence accepts them only because their definition returns isPlatformAdmin.",
       "confidence": 0.9,
       "verifiedAt": "39fd26030"
+    },
+    {
+      "id": "CANON-543",
+      "rule": "Every notificationType a writer under app/, lib/ or src/ emits must be a key of NOTIFICATION_KINDS (@dim/contract/notifications), written as a literal (or an UPPER_CASE constant) the fence can read; every registry entry must name a primary destination and the copy its pending actor needs, and must still be emitted by some writer.",
+      "scope": "web",
+      "sources": [
+        "scripts/check-notification-kinds.ts:1-40"
+      ],
+      "enforcer": [
+        "scripts/check-notification-kinds.ts",
+        "scripts/check-notification-kinds.test.ts"
+      ],
+      "enforcementKind": "lint-script",
+      "wired": "verify",
+      "status": "ENFORCED",
+      "clause": "R6",
+      "statusBasis": "scripts/check-notification-kinds.ts scans app/**, lib/**, src/** (comments stripped) for `notificationType:` / `notificationType =`, resolves literals, ternaries and UPPER_CASE constants, refuses computed types, and fails on a kind missing from NOTIFICATION_KINDS, an entry with no destination or missing action/counterpartyAction/informational copy, or an entry no writer emits. lint:notification-kinds is in verify and ci.yml.",
+      "notes": "notificaciones-destinos (2026-10). The registry is what resolveNotificationTarget reads at tap time; SQL-written kinds are listed in SQL_WRITTEN_KINDS and checked against db/migrations.",
+      "confidence": 0.85,
+      "verifiedAt": "a12f3dfcf"
     }
   ],
   "recommendations": [

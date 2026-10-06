@@ -38,6 +38,15 @@ export interface DecideCapabilityRepo {
 
 type Decision = "approved" | "denied" | "revoked";
 
+// One literal per decision, rather than `capability_${decision}`: the
+// notification-kind fence (scripts/check-notification-kinds.ts) reads every
+// writer's type statically, and a computed type is one it cannot see.
+const CAPABILITY_DECISION_NOTIFICATION_TYPE = {
+  approved: "capability_approved",
+  denied: "capability_denied",
+  revoked: "capability_revoked",
+} as const satisfies Record<Decision, string>;
+
 type ActiveOrgContext = {
   organization: {
     id: string;
@@ -238,7 +247,7 @@ export async function decideCapability(
         const { verb, severity } = DECISION_VERBS[input.decision];
         pendingNotifications.push({
           userId: requesterUserId,
-          notificationType: `capability_${input.decision}`,
+          notificationType: CAPABILITY_DECISION_NOTIFICATION_TYPE[input.decision],
           title: `Permiso ${verb}: ${labelFor(capability)}`,
           body: input.reason
             ? `Tu solicitud para "${labelFor(capability)}" en ${input.active.organization.displayName} fue ${verb}. Motivo: ${input.reason}`

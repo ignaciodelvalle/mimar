@@ -215,6 +215,13 @@ jobs:
         # notifications consistency review.
         run: pnpm lint:notifications
 
+      - name: Lint (notification kinds have a destination)
+        # Every notificationType a writer emits must be in NOTIFICATION_KINDS
+        # (@dim/contract/notifications), and every entry must name where it
+        # leads and who acts. See scripts/check-notification-kinds.ts and the
+        # notificaciones-destinos plan (2026-10).
+        run: pnpm lint:notification-kinds
+
       - name: Lint (atender walk-in owner alerts)
         # The Atender walk-in writes clinical events with NO custody check — the
         # PO's accepted mitigation is that the owner is always told. This derives

@@ -336,13 +336,28 @@ describe("the table is unambiguous", () => {
     );
   });
 
-  // Only the one row argued for carries the field. A second is a decision to
-  // make next to its reason, not something to slip in.
+  // Only the rows argued for carry the field. Another is a decision to make next
+  // to its reason, not something to slip in. `credential` and `welfareReport`
+  // joined in notificaciones-destinos (2026-10): notification CTAs name both, and
+  // the app has a signed-in screen for each — see their own comments.
   it("carries signedInAppPath on exactly the destinations argued for", () => {
     const carrying = NAMES.filter(
       (n) => (DEEP_LINK_MAP[n] as DeepLinkDestination).signedInAppPath !== undefined,
     );
-    expect(carrying).toEqual(["welfareCase"]);
+    expect(carrying).toEqual(["credential", "welfareCase", "welfareReport"]);
+  });
+
+  // `appQuery` rides only on rows whose app screen is shared by several web
+  // pages (`asentar`), and it is appended verbatim — never a matched value.
+  it("appends a row's fixed appQuery to the in-app route", () => {
+    expect(appRoutePath("vaccineRecord", { publicToken: "DIM-PAMP-0001" })).toBe(
+      "/mascotas/DIM-PAMP-0001/asentar?kind=vaccination",
+    );
+    const match = matchWebPath("/mis-mascotas/DIM-PAMP-0001/eventos/nuevo/vacuna?reminderId=r1");
+    expect(match).toEqual({ name: "vaccineRecord", params: { publicToken: "DIM-PAMP-0001" } });
+    expect(appRoutePath("pppAttestation", { publicToken: "DIM-PAMP-0001" })).toBe(
+      "/mascotas/DIM-PAMP-0001/asentar?kind=dangerous_breed_attestation",
+    );
   });
 
   // The exception list is a list of DECISIONS, not a place to park failures, so
@@ -686,8 +701,16 @@ describe("appRoutePath", () => {
 
   it("answers null when the app has no screen for the destination", () => {
     // No `mimar://` form at all — genuinely nowhere to send a phone.
-    expect(appRoutePath("credential", { publicToken: "DIM-PAMP-0001" })).toBe(null);
+    expect(appRoutePath("credentialFinder", { publicToken: "DIM-PAMP-0001" })).toBe(null);
     expect(appRoutePath("orgInvitation", { invitationToken: "INV-1" })).toBe(null);
+  });
+
+  it("opens the credential's signed-in screen without a mimar:// form", () => {
+    // notificaciones-destinos: the lost-pet broadcasts store `/p/{token}`.
+    expect(appRoutePath("credential", { publicToken: "DIM-PAMP-0001" })).toBe("/p/DIM-PAMP-0001");
+    expect(() => deepLinkAppUrl("credential", { publicToken: "DIM-PAMP-0001" })).toThrow(
+      /no mimar:\/\/ form/,
+    );
   });
 
   it("refuses `appointment` even though its own screen exists (fresh review 2026-09-24)", () => {
