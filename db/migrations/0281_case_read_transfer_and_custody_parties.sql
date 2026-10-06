@@ -49,9 +49,19 @@
 -- __tests__/notification-target-matrix.test.ts (SQL false before, true after;
 -- TS true before, with notes withheld).
 --
--- NOT in this change, deliberately (PO / legal decision pending): the org that
--- OPENED a welfare_denuncia, and a co_owner on any case. The notification
--- resolver explains those refusals instead of widening them.
+-- welfare_denuncia OPENED BY AN ORG — PO decision 2026-10-06: the organization
+-- that filed a denuncia (opened_by_organization_id) reads its OWN denuncia,
+-- through its active admins and coordinators, WITHOUT third-party data. That
+-- read is TypeScript ONLY (lib/infra/case-access.ts isWelfareReportingOrgReader,
+-- redacted by readCaseForViewer). This function deliberately has NO arm for it:
+-- RLS reads raw pet_events and attachments and cannot redact the subject
+-- owner's identity, third parties' data, attachments or the exact place, so
+-- under the org's own JWT can_read_case keeps answering false. The 2026-08-17
+-- legal review stands: the subject owner and anonymous viewers never read it.
+-- Pinned by __tests__/notification-target-matrix.test.ts (TS true, SQL false).
+--
+-- NOT in this change, deliberately: a co_owner on any case (titular-only,
+-- design F2). The notification resolver explains that refusal.
 --
 -- Everything else is 0259's body VERBATIM: the admin and govt_scope branches,
 -- the subject-owner branch, the per-kind arms, SECURITY DEFINER,

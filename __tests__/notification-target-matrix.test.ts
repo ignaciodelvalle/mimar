@@ -71,6 +71,8 @@ const USERS = {
   receiverCoordinator: "notif-matrix-receiver-coord@dim-test.local",
   receiverVolunteer: "notif-matrix-receiver-vol@dim-test.local",
   reporterOrg: "notif-matrix-reporter@dim-test.local",
+  reporterCoordinator: "notif-matrix-reporter-coord@dim-test.local",
+  reporterVolunteer: "notif-matrix-reporter-vol@dim-test.local",
 } as const;
 type UserKey = keyof typeof USERS;
 const PASS = "NotifMatrix_2026!";
@@ -270,6 +272,19 @@ beforeAll(async () => {
       role: "admin",
       canWritePetEvents: true,
     },
+    // PO 2026-10-06: the filing org's admins and coordinators read its denuncia.
+    {
+      organizationId: orgIds.reporter,
+      userId: ids.reporterCoordinator,
+      role: "coordinator",
+      canWritePetEvents: true,
+    },
+    {
+      organizationId: orgIds.reporter,
+      userId: ids.reporterVolunteer,
+      role: "volunteer",
+      canWritePetEvents: false,
+    },
     {
       organizationId: orgIds.stranger,
       userId: ids.stranger,
@@ -382,12 +397,21 @@ beforeAll(async () => {
       payload: { note: PAYLOAD_OPEN },
     },
     { caseId: caseIds.handshakeClosed, entryType: "org_intervention_note", notes: NOTE_CLOSED },
+    // Third-party data on the denuncia: an investigator's note naming the
+    // subject owner and a place. The filing org must never read it.
+    {
+      caseId: caseIds.denuncia,
+      entryType: "org_intervention_note",
+      notes: DENUNCIA_NOTE,
+      payload: { note: DENUNCIA_NOTE, lat: -34.9, lng: -57.95 },
+    },
   ]);
 }, 120_000);
 
 const NOTE_OPEN = "Nota interna: la familia vive en Calle Falsa 123.";
 const PAYLOAD_OPEN = "Texto libre en el payload: Calle Falsa 123, timbre B.";
 const NOTE_CLOSED = "Nota interna posterior a la aceptación.";
+const DENUNCIA_NOTE = "El titular Juan Pérez, DNI terminado en 1234, vive en Calle 7 n.º 900.";
 
 afterAll(async () => {
   await purgeFixtures();
@@ -589,12 +613,20 @@ const MATRIX: Cell[] = [
   },
   // ---- welfare denuncia opened by an org -----------------------------------
   {
-    name: "the reporting org is told the expediente is the investigators' (PO/legal pending)",
-    user: "reporterOrg",
+    // PO 2026-10-06: no longer "reserved" — the filing org reads its denuncia.
+    name: "the reporting org opens its own denuncia",
+    user: "reporterCoordinator",
     type: "welfare_org_side_confirmed_reporter",
     cta: caseUrl("denuncia"),
-    expect: { outcome: "explain", reason: "case_reserved_to_investigators" },
+    expect: { outcome: "case" },
     actor: /^Lo decide la autoridad de La Plata\./,
+  },
+  {
+    name: "a volunteer of the reporting org is refused, plainly",
+    user: "reporterVolunteer",
+    type: "welfare_org_side_confirmed_reporter",
+    cta: caseUrl("denuncia"),
+    expect: { outcome: "explain", reason: "case_not_available", actorCopy: null },
   },
   {
     // Artificial (no writer sends this kind to the titular): it pins that the
@@ -643,6 +675,40 @@ describe("notification destinations — every cell lands somewhere the reader ca
 
 // S2 — an org party admitted by the 0281 arms reads the timeline WITHOUT the
 // free-form notes until the hand-off is accepted (the case closed 'resolved').
+// PO 2026-10-06 — the org that filed a welfare_denuncia reads it WITHOUT
+// third-party data; the subject owner, other orgs and volunteers do not read it.
+describe("a welfare denuncia read by the org that filed it", () => {
+  it("the filing org's coordinator reads it, with no third-party data", async () => {
+    const read = await readCaseForViewer(caseCodes.denuncia, viewer("reporterCoordinator"));
+    expect(read.kind).toBe("readable");
+    if (read.kind !== "readable") return;
+    expect(read.detail.status).toBe("open");
+    expect(read.timelineEvents.length).toBeGreaterThan(0);
+    expect(read.detail.primaryLocationLat).toBeNull();
+    expect(read.detail.closedByUser).toBeNull();
+    const everything = JSON.stringify(read);
+    expect(everything).not.toContain("Juan Pérez");
+    expect(everything).not.toContain("Calle 7");
+    expect(everything).not.toContain("-57.95");
+    // The subject owner's identity never rides on this read.
+    expect(everything).not.toContain(ids.titular);
+  });
+
+  it.each(["reporterVolunteer", "titular", "stranger", "coOwner"] as const)(
+    "%s does not read it",
+    async (user) => {
+      const read = await readCaseForViewer(caseCodes.denuncia, viewer(user));
+      expect(read.kind).not.toBe("readable");
+    },
+  );
+
+  it("anonymous does not read it", async () => {
+    const detail = await getCaseDetailByPublicCode(caseCodes.denuncia);
+    expect(detail).not.toBeNull();
+    if (detail) expect(await canReadCase(detail, null)).toBe(false);
+  });
+});
+
 describe("case notes for a hand-off org party (S2)", () => {
   it("withholds the notes before acceptance", async () => {
     const read = await readCaseForViewer(caseCodes.handshakeOpen, viewer("receiverCoordinator"));
@@ -714,7 +780,13 @@ describe("public.can_read_case agrees with canReadCase on the 0281 arms", () => 
     ["handshakeOpen", "stranger", false, false],
     ["episode", "oldReceiver", false, false],
     ["episode", "formerOwner", false, false],
-    ["denuncia", "reporterOrg", false, false],
+    // PO 2026-10-06: TS admits the filing org (redacted read); SQL does not —
+    // RLS cannot redact raw pet_events / attachments. See the 0281 header.
+    ["denuncia", "reporterOrg", true, false],
+    ["denuncia", "reporterCoordinator", true, false],
+    ["denuncia", "reporterVolunteer", false, false],
+    ["denuncia", "titular", false, false],
+    ["denuncia", "stranger", false, false],
     ["bite", "coOwner", false, false],
     ["bite", "titular", true, true],
   ];

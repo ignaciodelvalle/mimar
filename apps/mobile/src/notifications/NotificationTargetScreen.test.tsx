@@ -112,7 +112,7 @@ describe("NotificationTargetScreen", () => {
       outcome: "ok",
       payload: aTarget({
         outcome: "explain",
-        reason: "case_reserved_to_investigators",
+        reason: "case_titular_only",
         reasonCopy: "La denuncia quedó registrada.",
         actorCopy: "Lo decide la autoridad de Rosario. Te avisamos cuando haya novedades.",
       }),

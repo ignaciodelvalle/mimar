@@ -147,6 +147,46 @@ const HANDOFF_PARTY_KINDS: ReadonlySet<string> = new Set([
  * timeline without the notes. Authorities (admin, national, govt) and the
  * subject's titular read as before.
  */
+/**
+ * An active admin or coordinator of the organization that OPENED this
+ * welfare_denuncia, who holds no live row on the denounced pet (PO 2026-10-06).
+ */
+export async function isWelfareReportingOrgReader(
+  detail: CaseDetail,
+  viewer: CaseViewer,
+): Promise<boolean> {
+  if (detail.caseKind !== "welfare_denuncia" || !detail.openedByOrganization) return false;
+  if (!(await isActiveOrgCaseParty(detail.openedByOrganization.id, viewer.userId))) return false;
+  if (!detail.pet) return true;
+  const [anyHolderRow] = await db
+    .select({ id: ownerships.id })
+    .from(ownerships)
+    .where(
+      and(
+        eq(ownerships.petId, detail.pet.id),
+        eq(ownerships.ownerUserId, viewer.userId),
+        isNull(ownerships.endedAt),
+      ),
+    )
+    .limit(1);
+  return !anyHolderRow;
+}
+
+/**
+ * Whether this viewer reads the case WITHOUT third-party data (PO 2026-10-06):
+ * the org that filed a welfare_denuncia, admitted ONLY through
+ * `isWelfareReportingOrgReader`. Authorities read it whole. What is withheld,
+ * and what is kept, is `withholdThirdPartyData` in case-read.ts.
+ */
+export async function caseThirdPartyDataWithheldFor(
+  detail: CaseDetail,
+  viewer: CaseViewer | null,
+): Promise<boolean> {
+  if (!viewer || detail.caseKind !== "welfare_denuncia") return false;
+  if (hasNationalReadScope(viewer.role) || viewer.role === "govt") return false;
+  return isWelfareReportingOrgReader(detail, viewer);
+}
+
 export async function caseNotesWithheldFor(
   detail: CaseDetail,
   viewer: CaseViewer | null,
@@ -355,9 +395,24 @@ export async function canReadCase(detail: CaseDetail, viewer: CaseViewer | null)
     if (await isActiveOrgCaseParty(detail.receiverOrganization.id, viewer.userId)) return true;
   }
 
-  // NOT HERE, deliberately (PO / legal decision pending): the organization that
-  // OPENED a welfare_denuncia, and a co_owner on any case. The notification
-  // resolver explains those refusals in words rather than widening them.
+  // welfare_denuncia — the ORGANIZATION THAT FILED IT reads its own denuncia
+  // (PO 2026-10-06), through its active admins and coordinators, and WITHOUT
+  // third-party data: readCaseForViewer strips it (`caseThirdPartyDataWithheldFor`).
+  //
+  // The 2026-08-17 legal review at the top of this file still stands in full:
+  // the SUBJECT owner never reads the denuncia (the subject-owner branch above
+  // already returned false for them), nobody anonymous reads it
+  // (PUBLIC_ANONYMOUS_KINDS), and a member of the opening org who ALSO holds the
+  // denounced pet is refused here too — being on both sides is being the subject.
+  //
+  // TS ONLY. The SQL `can_read_case` (migration 0281) deliberately has no such
+  // arm: RLS reads raw pet_events and attachments and cannot redact them, so a
+  // PostgREST read under the org's JWT would hand over exactly the third-party
+  // data this arm withholds. App reads go through Drizzle (BYPASSRLS).
+  if (await isWelfareReportingOrgReader(detail, viewer)) return true;
+
+  // NOT HERE, deliberately: a co_owner on any case (cases are titular-only,
+  // design F2). The notification resolver explains that refusal in words.
 
   return false;
 }

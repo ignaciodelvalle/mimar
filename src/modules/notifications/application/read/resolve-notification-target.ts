@@ -289,26 +289,19 @@ async function canEnterSection(
 }
 
 /**
- * The two case refusals that are DECISIONS rather than gaps, each with its own
- * sentence: the org that filed a welfare denuncia (the 2026-08-17 legal review
- * shaped that reader set), and a co-holder of the pet — co_owner, foster or
- * caretaker — on a titular-only case (design F2). Widening either is pending
- * with the PO / legal; until then the viewer is told why, not "no existe".
+ * The case refusal that is a DECISION rather than a gap, with its own
+ * sentence: a co-holder of the pet — co_owner, foster or caretaker — on a
+ * titular-only case (design F2). The viewer is told why, not "no existe".
+ * (The org that filed a welfare denuncia used to be the second one; PO
+ * 2026-10-06 let it read its own denuncia without third-party data.)
  */
 async function reservedCaseExplanation(
   caseFacts: CaseFacts,
   probes: NotificationTargetProbes,
 ): Promise<{ reason: NotificationTargetReason; copy: string } | null> {
-  if (caseFacts.caseKind === "welfare_denuncia" && caseFacts.openedByOrganization) {
-    if (await probes.isActiveOrgMember(caseFacts.openedByOrganization.id)) {
-      return {
-        reason: "case_reserved_to_investigators",
-        copy: NOTIFICATION_REASON_COPY.case_reserved_to_investigators(
-          caseFacts.jurisdictionLocality,
-        ),
-      };
-    }
-  }
+  // The org that filed a welfare denuncia reads it now (PO 2026-10-06), so a
+  // refusal on one is an ordinary one — a volunteer, or a member who left —
+  // and no longer "reserved to the investigators".
   if (caseFacts.petId && (await probes.liveNonTitularRole(caseFacts.petId)) !== null) {
     return {
       reason: "case_titular_only",

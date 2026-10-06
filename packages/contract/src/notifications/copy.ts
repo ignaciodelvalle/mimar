@@ -43,8 +43,6 @@ export const NOTIFICATION_TARGET_REASONS = [
   "pet_no_longer_held",
   /** A case the viewer is not a party to (no rule grants them a read). */
   "case_not_available",
-  /** A welfare denuncia read by the org that filed it (PO/legal decision pending). */
-  "case_reserved_to_investigators",
   /** A case read by a co-holder of the pet: cases are titular-only. */
   "case_titular_only",
   /** The viewer left (or was removed from) the organization the notice was for. */
@@ -68,10 +66,6 @@ export const NOTIFICATION_REASON_COPY = {
     }`,
   case_not_available: (): string =>
     "Este caso no está disponible para tu cuenta: sólo lo ven las partes y la autoridad que interviene.",
-  case_reserved_to_investigators: (locality: string | null): string =>
-    `La denuncia quedó registrada. El expediente lo ven sólo quienes la investigan en ${
-      locality ?? "tu jurisdicción"
-    }; te avisamos cuando haya novedades.`,
   case_titular_only: (petName: string | null): string =>
     `Los casos de ${petName ?? "esta mascota"} los ve sólo la persona titular. Si necesitás el detalle, pedíselo a quien figura como titular.`,
   membership_ended: (org: string | null): string =>

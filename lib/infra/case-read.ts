@@ -20,6 +20,7 @@ import {
   type CaseViewer,
   canReadCase,
   caseNotesWithheldFor,
+  caseThirdPartyDataWithheldFor,
   holdsActiveCaretakerRow,
 } from "@/lib/infra/case-access";
 import {
@@ -85,6 +86,32 @@ export function withholdFreeText(detail: CaseDetail): CaseDetail {
   };
 }
 
+/**
+ * A welfare_denuncia as the ORGANIZATION THAT FILED IT reads it (PO
+ * 2026-10-06): its status, its timeline STEPS (type and date), its own opening
+ * (the structured opened reason, the report's reference and status) and the
+ * outcome (status, closed reason, closed date). Withheld:
+ *   · every event's notes and payload — they carry the investigators' notes,
+ *     the subject owner's identity and contact, third parties' personal data,
+ *     attachments' references and places;
+ *   · who closed it (an authority operator's name);
+ *   · the exact location (the case's coordinates; the pet's last-seen opt-in);
+ *   · the opened reason's free prose, which is rebuilt from the structured code
+ *     by the renderers, so the stored text is not needed.
+ * The denouncer IS the org here; its own identity (openedByOrganization and the
+ * member who filed, openedByUser) stays.
+ */
+export function withholdThirdPartyData(detail: CaseDetail): CaseDetail {
+  return {
+    ...detail,
+    primaryLocationLat: null,
+    primaryLocationLng: null,
+    closedByUser: null,
+    pet: detail.pet ? { ...detail.pet, discloseLastLocationWhenLost: false } : null,
+    events: detail.events.map((e) => ({ ...e, notes: null, payload: {} })),
+  };
+}
+
 export async function readCaseForViewer(
   publicCode: string,
   viewer: CaseViewer | null,
@@ -127,6 +154,19 @@ export async function readCaseForViewer(
   // free-text reasons), and no judicial reference in the opened reason. Every
   // renderer reads THIS result — the web case page, /api/v1/me/cases and the
   // app's case screen through it — so the cut is made once.
+  // The org that filed a welfare_denuncia reads it WITHOUT third-party data
+  // (PO 2026-10-06) — see `withholdThirdPartyData`.
+  if (await caseThirdPartyDataWithheldFor(detail, viewer)) {
+    const safe = withholdThirdPartyData(detail);
+    return {
+      kind: "readable",
+      detail: safe,
+      viewer,
+      isAuthorityViewer,
+      timelineEvents: safe.events.filter((e) => e.eventType !== "finder_tip"),
+    };
+  }
+
   if (await caseNotesWithheldFor(detail, viewer)) {
     const timelineEvents = visibleEvents.map((e) => ({ ...e, notes: null, payload: {} }));
     return {

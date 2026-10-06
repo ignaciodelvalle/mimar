@@ -300,7 +300,29 @@ describe("resolveNotificationTarget — the explanation state", () => {
     );
   });
 
-  it("explains the welfare denuncia to the org that filed it (reader set pending PO/legal)", async () => {
+  // PO 2026-10-06: the org that filed a welfare denuncia reads it (canReadCase
+  // admits its coordinators). Once readable, it is an ordinary case outcome
+  // with the authority as the pending actor.
+  it("opens the welfare denuncia to the org that filed it", async () => {
+    const target = await resolveNotificationTarget(
+      row({
+        notificationType: "welfare_org_side_confirmed_reporter",
+        ctaUrl: "/casos/CAS-AAAA-BBBB",
+      }),
+      OWNER,
+      probes({
+        cases: [caseFacts({ caseKind: "welfare_denuncia", receiverOrganization: null })],
+        readableCases: ["CAS-AAAA-BBBB"],
+        memberOf: ["org-sender"],
+      }),
+    );
+    expect(target).toMatchObject({ outcome: "case", webHref: "/casos/CAS-AAAA-BBBB" });
+    expect(target.actorCopy).toBe(
+      "Lo decide la autoridad de Rosario. Te avisamos cuando haya novedades.",
+    );
+  });
+
+  it("refuses it to anyone else as an ordinary refusal, never as 'reserved'", async () => {
     const target = await resolveNotificationTarget(
       row({
         notificationType: "welfare_org_side_confirmed_reporter",
@@ -310,15 +332,13 @@ describe("resolveNotificationTarget — the explanation state", () => {
       probes({
         cases: [caseFacts({ caseKind: "welfare_denuncia", receiverOrganization: null })],
         memberOf: ["org-sender"],
-        pets: [PAMPA],
-        heldPets: ["DIM-PAMP-0001"],
       }),
     );
-    expect(target).toMatchObject({ outcome: "explain", reason: "case_reserved_to_investigators" });
-    expect(target.reasonCopy).toMatch(/Rosario/);
-    expect(target.actorCopy).toBe(
-      "Lo decide la autoridad de Rosario. Te avisamos cuando haya novedades.",
-    );
+    expect(target).toMatchObject({
+      outcome: "explain",
+      reason: "case_not_available",
+      actorCopy: null,
+    });
   });
 
   it("explains a titular-only case to a co-owner instead of falling to the pet", async () => {
