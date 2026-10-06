@@ -11,6 +11,7 @@
 // ---------------------------------------------------------------------------
 
 import { db, notifications } from "@/db";
+import { withNotificationIds } from "@/lib/infra/notification-ids";
 import { enqueueEnoTrigger as _enqueueEnoTrigger } from "@/src/modules/surveillance/application/enqueue-eno-trigger";
 import { SurveillanceRepository } from "@/src/modules/surveillance/infrastructure/surveillance-repository";
 import { EventsRepository } from "../infrastructure/events-repository";
@@ -20,7 +21,6 @@ import { setPetLostWriter as _setPetLostWriter } from "./lifecycle/set-pet-lost-
 import type { SetPetLostWriterParams } from "./lifecycle/set-pet-lost-use-case";
 import { createSymptomObservedWriter as _createSymptomObservedWriter } from "./surveillance/symptom-observed-use-case";
 import type { CreateSymptomObservedWriterParams } from "./surveillance/symptom-observed-use-case";
-import { withNotificationIds } from "@/lib/infra/notification-ids";
 
 function makeTransaction(): <T>(cb: (tx: unknown) => Promise<T>) => Promise<T> {
   return <T>(cb: (tx: unknown) => Promise<T>) =>

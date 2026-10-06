@@ -9,9 +9,9 @@ import { cases, db, notifications, ownerships, petEvents, pets, profiles } from 
 import { validateEventPayload } from "@/lib/events/event-schemas";
 import { unerasedPetByToken } from "@/lib/infra/public-pet-lookup";
 
+import { withNotificationIds } from "@/lib/infra/notification-ids";
 import type { ProposeReturnResult } from "../domain/types";
 import { hasPendingProposal } from "./proposal-queries";
-import { withNotificationIds } from "@/lib/infra/notification-ids";
 
 export async function proposeReturnAsVecinoUseCase({
   userId,

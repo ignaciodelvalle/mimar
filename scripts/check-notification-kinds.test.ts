@@ -107,7 +107,7 @@ describe("check-notification-kinds", () => {
       {
         "src/a.ts": `const KIND_X = "kind_a";`,
         "src/b.ts": `const KIND_X = "kind_b";`,
-        "src/c.ts": `x({ notificationType: KIND_X });`,
+        "src/c.ts": "x({ notificationType: KIND_X });",
       },
       { kind_a: SECTION, kind_b: SECTION },
     );

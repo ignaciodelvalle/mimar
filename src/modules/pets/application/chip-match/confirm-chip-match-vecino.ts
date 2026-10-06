@@ -35,8 +35,8 @@ import { attemptedChipMatchesPet } from "@/lib/infra/chip-lookup";
 import { generateForceToken } from "@/lib/infra/microchip-force-token";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
-import type { ConfirmChipMatchResult } from "./types";
 import { withNotificationIds } from "@/lib/infra/notification-ids";
+import type { ConfirmChipMatchResult } from "./types";
 
 /** Uniform refusal — says nothing about which precondition failed. */
 const NO_PROOF_ERROR =

@@ -60,6 +60,7 @@ import { canReceiveDerivedWelfare } from "@/src/modules/welfare/domain/derivatio
 import { generateReferenceCode } from "@/src/modules/welfare/domain/reference-code";
 import { and, eq, isNull } from "drizzle-orm";
 
+import { withNotificationIds } from "@/lib/infra/notification-ids";
 import { welfareSymptomSurveillance } from "@/src/modules/events/application/surveillance/welfare-symptom-surveillance";
 import { addInterventionNote } from "./application/add-intervention-note";
 import { addReporterComment } from "./application/add-reporter-comment";
@@ -82,7 +83,6 @@ import { triageWelfareReport } from "./application/triage-welfare-report";
 import { unassignWelfare } from "./application/unassign-welfare";
 import { deriveWelfareToOrg } from "./infrastructure/derive-to-org-writer";
 import { WelfareRepository } from "./infrastructure/welfare-repository";
-import { withNotificationIds } from "@/lib/infra/notification-ids";
 
 // ---------------------------------------------------------------------------
 // Re-export types that existing consumers import from the old action files.

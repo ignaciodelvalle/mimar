@@ -10,10 +10,10 @@ import { validateEventPayload } from "@/lib/events/event-schemas";
 import { findOpenCaseForPetAndKind } from "@/lib/infra/case-helpers";
 import { unerasedPetByToken } from "@/lib/infra/public-pet-lookup";
 
+import { withNotificationIds } from "@/lib/infra/notification-ids";
 import type { OwnerProposeReturnToOrgResult } from "../domain/types";
 import { hasPendingProposal } from "./proposal-queries";
 import { resolveReturnTargetOrg } from "./resolve-return-target-org";
-import { withNotificationIds } from "@/lib/infra/notification-ids";
 
 export async function ownerProposeReturnToOrgUseCase({
   userId,

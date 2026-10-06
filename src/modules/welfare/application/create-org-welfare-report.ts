@@ -32,12 +32,12 @@
 
 import { validateEventPayload } from "@/lib/events/event-schemas";
 import type { EventPlace } from "@/lib/events/place-payload";
+import { withNotificationIds } from "@/lib/infra/notification-ids";
 import type { OpenedReason } from "@/src/modules/cases/domain/opened-reason";
 import { MALTREATMENT_KINDS, derivePrimarySubjectKind } from "../domain/report-classification";
 import type { WelfareSymptomSurveillance } from "../domain/symptom-surveillance-port";
 import type { WelfareRepository } from "../infrastructure/welfare-repository";
 import type { NewNotification } from "./types";
-import { withNotificationIds } from "@/lib/infra/notification-ids";
 
 // ---------------------------------------------------------------------------
 // Types

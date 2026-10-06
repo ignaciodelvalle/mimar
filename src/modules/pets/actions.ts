@@ -61,6 +61,7 @@ function parseEstimatedWeightKg(raw: string | null): number | null {
   return Number.isNaN(n) ? null : n;
 }
 
+import { withNotificationIds } from "@/lib/infra/notification-ids";
 import { recordPostAdoptionCheckin } from "./application/checkin/record-post-adoption-checkin";
 import type { CheckinFormState } from "./application/checkin/types";
 import { recordChipDisputeAgainstActivePet } from "./application/chip-match/record-chip-dispute";
@@ -72,7 +73,6 @@ import { parseAgeFromFormData, parsePetForm } from "./domain/pet-form";
 import { resolveEditedBirthDate, withStoredLegacyConditionCodes } from "./domain/pet-profile-edit";
 import type { NewNotification, NewPetFormState } from "./domain/types";
 import { PetsRepository } from "./infrastructure/pets-repository";
-import { withNotificationIds } from "@/lib/infra/notification-ids";
 
 // Duplicate-chip gate (data-quality gate P3). A microchip is a globally-unique
 // identity: if it already exists in miMAR, the pet exists — the owner must
