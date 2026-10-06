@@ -33,6 +33,13 @@ export {
 } from "./auth.ts";
 export { API_V1_ERROR_CODES, type ApiV1Error, type ApiV1ErrorCode } from "./errors.ts";
 export {
+  FORMER_OWNER_FACE_PARAM,
+  FORMER_OWNER_FACE_VALUE,
+  FORMER_OWNER_PET_READ_PAYLOAD_VERSION,
+  FORMER_OWNER_PET_READ_STALE_AFTER_MS,
+  type FormerOwnerPetReadV1,
+} from "./former-owner-pet-read.ts";
+export {
   OWNER_PET_ALERT_IDS,
   OWNER_PET_CASE_KINDS,
   OWNER_PET_CASE_STATUSES,

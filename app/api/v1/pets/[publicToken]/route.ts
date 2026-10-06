@@ -41,11 +41,12 @@ import {
   API_V1_AUTHENTICATED_READ_USER_LIMIT,
 } from "@/lib/infra/api-v1-limits";
 import { DbBudgetExceededError, withDbBudgetOrThrow } from "@/lib/infra/db-budget";
-import { requireLiveUser } from "@/lib/infra/live-user";
+import { type LiveUserFailureReason, requireLiveUser } from "@/lib/infra/live-user";
 import { resolvePetHasTitularFact, resolvePetHolderAccess } from "@/lib/infra/pet-access";
 import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { createClientFromBearer } from "@/lib/supabase/bearer";
 import { loadOwnerPetDetail } from "@/src/modules/pets/application/read/load-owner-pet-detail";
+import { formerOwnerFaceResponse, wantsFormerOwnerFace } from "./former-owner-payload";
 import { buildOwnerPetDetailV1 } from "./payload";
 import { resolvePostAdoptionCheckin } from "./post-adoption-checkin";
 import { resolvePppRegistries } from "./ppp-registries";
@@ -143,26 +144,7 @@ export async function GET(
     throw err;
   }
 
-  if (!live.ok) {
-    switch (live.reason) {
-      case "NO_SESSION":
-        return apiV1Error("auth_expired", 401);
-      case "ACCOUNT_ERASED":
-        return apiV1Error("account_erased", 403);
-      case "DEACTIVATED":
-        return apiV1Error("account_deactivated", 403);
-      case "SHIFT_EXPIRED":
-        return apiV1Error("session_shift_expired", 401);
-      case "MAINTENANCE":
-        return apiV1Error("temporarily_unavailable", 503, {
-          "retry-after": String(UNAVAILABLE_RETRY_AFTER_SECONDS),
-        });
-      default: {
-        const unhandled: never = live.reason;
-        throw new Error(`Unhandled liveness refusal: ${JSON.stringify(unhandled)}`);
-      }
-    }
-  }
+  if (!live.ok) return liveUserRefusal(live.reason);
 
   // Per-user budget, spent only once the caller is KNOWN. It cannot run earlier
   // — there is no user id before the guard answers — so an unauthenticated
@@ -176,6 +158,21 @@ export async function GET(
   } catch (err) {
     if (err instanceof RateLimitError) return apiV1Error("rate_limited", 429);
     console.error("[api-v1-pet-detail] user rate limiter unavailable, failing open:", err);
+  }
+
+  // THE FORMER-OWNER FACE (notificaciones-destinos, 2026-10). Asked for
+  // explicitly, and answered EXCLUSIVELY: with the parameter this door returns
+  // the read-only custody face or `not_found`, never the holder detail, so a
+  // client parsing the answer always knows which shape it holds. The rule is
+  // the web page's own — `getFormerOwnerReadAccess` — see the contract's
+  // `former-owner-pet-read.ts`.
+  if (wantsFormerOwnerFace(request)) {
+    return formerOwnerFaceResponse(
+      publicToken,
+      live.user.id,
+      ACCESS_BUDGET_MS,
+      UNAVAILABLE_RETRY_AFTER_SECONDS,
+    );
   }
 
   let access: Awaited<ReturnType<typeof resolvePetHolderAccess>>;
@@ -259,4 +256,31 @@ export async function GET(
   });
 
   return apiV1Json(payload, { status: 200 });
+}
+
+/**
+ * The liveness guard's refusals, mapped to the statuses and codes every sibling
+ * on this surface uses. Lifted out of the handler when the former-owner face
+ * (notificaciones-destinos) pushed its body past the complexity ceiling; the
+ * guard CALL stays in the handler, where `check-api-v1-envelope` looks for it.
+ */
+function liveUserRefusal(reason: LiveUserFailureReason) {
+  switch (reason) {
+    case "NO_SESSION":
+      return apiV1Error("auth_expired", 401);
+    case "ACCOUNT_ERASED":
+      return apiV1Error("account_erased", 403);
+    case "DEACTIVATED":
+      return apiV1Error("account_deactivated", 403);
+    case "SHIFT_EXPIRED":
+      return apiV1Error("session_shift_expired", 401);
+    case "MAINTENANCE":
+      return apiV1Error("temporarily_unavailable", 503, {
+        "retry-after": String(UNAVAILABLE_RETRY_AFTER_SECONDS),
+      });
+    default: {
+      const unhandled: never = reason;
+      throw new Error(`Unhandled liveness refusal: ${JSON.stringify(unhandled)}`);
+    }
+  }
 }

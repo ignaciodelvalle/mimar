@@ -29,6 +29,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const control = vi.hoisted(() => ({
   live: null as null | (() => unknown),
   access: null as null | (() => unknown),
+  former: null as null | (() => unknown),
   detail: null as null | (() => unknown),
 }));
 
@@ -63,6 +64,7 @@ vi.mock("@/lib/infra/pet-access", async (importOriginal) => {
     ...actual,
     resolvePetHolderAccess: async () =>
       control.access ? control.access() : { kind: "owner", pet: petRow(), holderRole: "owner" },
+    getFormerOwnerReadAccess: async () => (control.former ? control.former() : { ok: false }),
   };
 });
 
@@ -106,6 +108,7 @@ beforeEach(() => {
   control.live = null;
   control.access = null;
   control.detail = null;
+  control.former = null;
 });
 
 // ---------------------------------------------------------------------------
@@ -250,5 +253,55 @@ describe("GET /api/v1/pets/{token} — a bounded read that fails answers 503, ne
       throw new Error("constraint violation nobody expected");
     };
     await expect(call()).rejects.toThrow("constraint violation nobody expected");
+  });
+});
+
+// notificaciones-destinos (2026-10): the former owner keeps a READ during an
+// open custody episode on the web; the bearer door now answers the same face,
+// but only when asked for it, so installed builds never see a new shape.
+describe("GET /api/v1/pets/{token}?face=former_owner — the read-only custody face", () => {
+  function callFace() {
+    return GET(
+      new Request(`https://www.mimar.com.ar/api/v1/pets/${TOKEN}?face=former_owner`, {
+        headers: { authorization: "Bearer tok" },
+      }),
+      { params: Promise.resolve({ publicToken: TOKEN }) },
+    );
+  }
+
+  it("answers the narrow face for the immediate former owner", async () => {
+    control.former = () => ({
+      ok: true,
+      pet: petRow({ species: "dog", breed: null, sex: "female", dateOfBirth: "2020-01-01" }),
+      accessPath: "former-owner-during-custody",
+      readOnly: true,
+      custodyCase: { id: "c-1", publicCode: "CAS-CUST-0001" },
+    });
+    const response = await callFace();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      payloadVersion: 1,
+      face: "former_owner_during_custody",
+      pet: { publicToken: TOKEN, name: "Pampa", sex: "female", dateOfBirth: "2020-01-01" },
+      custodyCase: { publicCode: "CAS-CUST-0001" },
+    });
+    // Nothing of the holder face rides along.
+    expect(body.viewer).toBeUndefined();
+  });
+
+  it("answers not_found for anybody else, even a holder — the face is exclusive", async () => {
+    const response = await callFace();
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "not_found" });
+  });
+
+  it("leaves the ordinary read alone: a former owner without the parameter still gets 404", async () => {
+    control.access = () => ({ kind: "none" });
+    control.former = () => {
+      throw new Error("the former-owner read must not run without the parameter");
+    };
+    const response = await call();
+    expect(response.status).toBe(404);
   });
 });
