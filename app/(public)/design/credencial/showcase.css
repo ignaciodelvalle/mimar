@@ -1,0 +1,27 @@
+/* Side-by-side family. Each column is one document, not a page. */
+
+.sc-row {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  overflow-x: auto;
+  padding: 0 1rem 3rem;
+}
+
+.sc-col {
+  flex: 0 0 390px;
+  min-width: 0;
+}
+
+.sc-col[data-kind="landing"] {
+  flex-basis: 340px;
+}
+
+.sc-kicker {
+  margin: 0 0 0.35rem;
+  font-family: var(--font-ln-mono);
+  font-size: var(--text-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ln-mute);
+}

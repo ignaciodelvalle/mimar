@@ -1,8 +1,7 @@
-import { redirect } from "next/navigation";
-
 import { Icon } from "@/components/Icon";
 import { LnButton } from "@/components/ui/Button";
 import { IconSearch } from "./IconSearch";
+import { gateDesignPreview } from "./preview-gate";
 
 /**
  * Internal design reference page.
@@ -142,7 +141,7 @@ function SwatchCard({ s }: { s: Swatch }) {
 }
 
 export default function DesignPage() {
-  if (process.env.NODE_ENV === "production") redirect("/");
+  gateDesignPreview();
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-12">
@@ -153,6 +152,20 @@ export default function DesignPage() {
         <p className="lead mt-2 text-ln-ink-2">
           Paleta, tipografía e íconos del sistema de diseño portados a Next.js + Tailwind v4.
         </p>
+        <nav className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-sm" aria-label="Vistas previas">
+          <a href="/design/credencial" className="text-ln-azul underline-offset-4 hover:underline">
+            La credencial, junta
+          </a>
+          <a href="/design/p-niveles" className="text-ln-azul underline-offset-4 hover:underline">
+            Credencial pública · niveles
+          </a>
+          <a
+            href="/design/ficha-estados"
+            className="text-ln-azul underline-offset-4 hover:underline"
+          >
+            Ficha del dueño · situaciones
+          </a>
+        </nav>
       </header>
 
       {/* Tipografía */}
