@@ -3,8 +3,37 @@
 // disclose_*_when_lost preference columns on the pets row, per spec §7 and
 // AGENTS.md → "Privacy tiers".
 //
-// Privacy posture (active pets): NO owner PII, NO microchip number, NO medical
-// details, NO scan history.
+// Three public levels of ONE card (PO 2026-10-03, cell rule 2026-10-04).
+// Same paper, band, photo · name · right-hand cell. The card is the document;
+// finder verbs sit BELOW it (same law as the owner PetActionRow).
+//
+// The right-hand cell is `resolveCredentialRightCell`:
+//   qr    the pet's own /p/ URL, drawn server-side. Default, and also Tier 2.
+//   ping  lost, last location disclosed, and a coordinate exists.
+//   none  deceased — no mount; the name stays centred.
+// Never an empty box. Tier 2's "Nivel 2 · Datos médicos" is a chip beside
+// the situation pill, not the cell.
+//
+//   0  default scan — breed/age; Microchip only if Sí; Color if set; QR.
+//      Found tile under the card.
+//   1  lost on top of 0 — situation chip + PublicLostSections (facts only).
+//      Ping when last-seen coords are disclosed; otherwise the QR.
+//      Lo tengo · Lo vi · Llamar under the card. No map, no Google Maps.
+//   2  owner opt-in (`tier2Public*`) — the same single face as 0/1 plus the
+//      "Nivel 2 · Datos médicos" chip and the AGGREGATE medical summary
+//      (Tier2MedicalView). Lost + nivel 2 keeps the nivel-1 lost body, and a
+//      disclosed point still takes the cell (ping) while the chip stays.
+//
+// No level flips, prints an MRZ, lists per-event history or shows trips. Those
+// were parked by the privacy review of 2026-10-06 (dim-interno
+// docs/plans/parked/p-libreta-viajes-mrz-cursor-2026-10.patch): the per-row
+// history carried the previous microchip number, vet and clinic names and
+// clinical free text to anonymous viewers, and the MRZ encodes the birth month.
+//
+// Privacy posture (active pets): NO owner PII, NO microchip number, NO scan
+// history, NO locality (that is a lost-mode disclosure, gated by
+// discloseLastLocationWhenLost inside PublicLostSections). Medical data is the
+// aggregate Tier-2 summary only.
 //
 // The TATTOO code is the deliberate exception, and only on the lost branch
 // (ratified 2026-08-01 after an audit read the omission as an oversight). A
@@ -45,17 +74,16 @@ import "./credential-print.css";
 
 import { Icon } from "@/components/Icon";
 import { PppPublicBadge } from "@/components/PppPublicBadge";
-import { ConfidenceBadge } from "@/components/event/ConfidenceBadge";
+import { PublicDocumentBand } from "@/components/credential/PublicDocumentBand";
 import { PublicLostSections, formatLostSince } from "@/components/pet-profile/PublicLostSections";
 import { DegradedFallback } from "@/components/ui/DegradedFallback";
 import { LnVstamp } from "@/components/ui/StatusFlag";
 import { deriveRabiesSemaphore, isRabiesAtRisk } from "@/lib/domain/credential-badges";
 import { publicPlaceReference } from "@/lib/domain/public-place-reference";
-import { computeConfidence, isAtLeast } from "@/lib/events/event-confidence";
 import { publicTokenThrottle } from "@/lib/infra/public-token-throttle";
+import { credentialQrUrl } from "@/lib/infra/site-url";
 import { resolveLostSpecialConditions } from "@/lib/reference/permanent-conditions";
 import { BRANDING } from "@/lib/ui/branding";
-import { DISPUTE_TIP_INTRO } from "@/lib/ui/dispute-copy";
 import { derivePetSituation } from "@/lib/ui/pet-situation";
 import {
   AR_TIME_ZONE,
@@ -67,18 +95,23 @@ import {
   sightingPhrase,
   situationLabelForSex,
   speciesLabel,
-  statusLabel,
 } from "@/lib/utils/format";
 import { lookupPublicCredential } from "@/src/modules/pets/application/read/lookup-public-credential";
 import { isObservationOpen } from "@/src/modules/surveillance/domain/rabies-observation";
+import {
+  chromeForSurface,
+  credentialSituationKey,
+  fieldSlots,
+  mayAnnounceSituation,
+  resolveCredentialRightCell,
+} from "@dim/contract/credential";
 import { notFound } from "next/navigation";
+import QRCode from "qrcode";
 import { Suspense } from "react";
 import {
   CredentialActionBar,
   type CredentialActionBarProps,
-  DISPUTE_SECTION_ID,
   MEDICAL_SECTION_ID,
-  REPORT_SECTION_ID,
 } from "./CredentialActionBar";
 import { CredentialPhoto } from "./CredentialPhoto";
 import {
@@ -87,8 +120,7 @@ import {
   CredentialTier2MedicalSkeleton,
 } from "./CredentialStreamedSections";
 import { DegradedCredentialCard } from "./DegradedCredentialCard";
-import { DisputeTipForm } from "./DisputeTipForm";
-import { FoundPetForm } from "./FoundPetForm";
+import { PublicCredentialActions } from "./PublicCredentialActions";
 import { ScanLogger } from "./ScanLogger";
 import {
   PermanentConditionsBanner,
@@ -277,8 +309,6 @@ export default async function PublicCredentialPage({
   const { pet, photoUrl, data } = lookup;
   const {
     canonicalIds,
-    hasVaccinations,
-    latestVaccinationRows,
     openCustodyEpisodeRows,
     rabiesEvents,
     serviceDog,
@@ -287,28 +317,14 @@ export default async function PublicCredentialPage({
     registryClaim,
   } = data;
 
-  // Tri-state antirrábica vigencia for the identity grid (R4). One boolean of
-  // the single legally-mandated vaccine — no dates, no vet, no other vaccine
-  // (privacy proportionality argued in the spec).
+  // Tri-state antirrábica vigencia (pet-state-header R4). One boolean of the
+  // single legally-mandated vaccine — no dates, no vet, no other vaccine
+  // (privacy proportionality argued in the spec). Every render, and the LOST
+  // one above all: a finder bitten while catching the animal needs it for the
+  // bite protocol. Cursor's redesign dropped it; restored 2026-10-06.
   const rabiesSemaphore = deriveRabiesSemaphore(rabiesEvents, new Date());
 
   const hasMicrochip = canonicalIds.microchip !== null;
-  const hasTattoo = canonicalIds.tattoo !== null;
-
-  const [latestVaccination] = latestVaccinationRows;
-
-  const latestVaccinationTier = latestVaccination
-    ? computeConfidence({
-        authorRole: latestVaccination.authorRole,
-        authorVerified: latestVaccination.authorVerified,
-        authorOrganizationId: latestVaccination.authorOrganizationId,
-        payload: (latestVaccination.payload ?? {}) as Record<string, unknown>,
-      })
-    : null;
-
-  // Gate: only institutional_verified or professional_verified (plan §A.4)
-  const showVaccinationConfidence =
-    latestVaccinationTier !== null && isAtLeast(latestVaccinationTier, "professional_verified");
 
   // Approximate age — year only (Tier 0 doesn't expose exact DOB).
   //
@@ -348,6 +364,33 @@ export default async function PublicCredentialPage({
     : null;
   const tier2Active =
     pet.tier2PublicPermanent || (!!tier2EnabledUntil && tier2EnabledUntil > new Date());
+  // Nivel 2 wins over 1: a lost pet whose owner opened the medical face is
+  // still the locked nivel-2 card, with the lost body on the front.
+  const publicLevel: 0 | 1 | 2 = tier2Active ? 2 : isLost ? 1 : 0;
+
+  const rightCell = resolveCredentialRightCell({
+    status: pet.status,
+    discloseLastLocation: pet.discloseLastLocationWhenLost,
+    lastLocation: lostContext ? { lat: lostContext.lostLat, lng: lostContext.lostLng } : null,
+  });
+  // Same absolute-URL + inline-SVG pattern as the landing hero. Only the QR
+  // cell needs it; a ping or a memorial does not encode a code.
+  const qrSvg =
+    rightCell === "qr"
+      ? await QRCode.toString(credentialQrUrl(pet.publicToken), {
+          type: "svg",
+          margin: 1,
+          width: 160,
+          errorCorrectionLevel: "Q",
+        })
+      : null;
+  const tier2ChipTitle = !tier2Active
+    ? null
+    : pet.tier2PublicPermanent
+      ? "El dueño habilitó la libreta médica de forma permanente"
+      : tier2EnabledUntil
+        ? `Habilitada hasta el ${tier2EnabledUntil.toLocaleString("es-AR", { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: AR_TIME_ZONE })}`
+        : "Libreta médica visible";
 
   // #16a — the Tier-2 medical projection (FULL vaccination history + medications
   // + sterilization, folded with event_amended corrections) is the heaviest read
@@ -424,7 +467,12 @@ export default async function PublicCredentialPage({
     rabiesObservationStatus: pet.rabiesObservationStatus,
     underOfficialCustody: isUnderOfficialCustody,
   });
-  const publicSituation = publicSituationRaw.isDefault ? null : publicSituationRaw;
+  const situationKey = credentialSituationKey(publicSituationRaw.key);
+  const publicSituation =
+    situationKey && !publicSituationRaw.isDefault && mayAnnounceSituation("public", situationKey)
+      ? publicSituationRaw
+      : null;
+  const publicChrome = chromeForSurface("public");
 
   // ---------------------------------------------------------------------------
   // Credential — LN "warm libreta / document credential" render (single card
@@ -435,6 +483,54 @@ export default async function PublicCredentialPage({
     .filter(Boolean)
     .join(" · ");
   const ageLabel = ageYears !== null ? `${ageYears} ${pluralizeEs(ageYears, "año")}` : null;
+
+  // PROVENANCE RIDES WITH THE CLAIM (2026-08-17, restored 2026-10-06). A dose
+  // the owner typed in must not wear the same green VIGENTE seal as one a
+  // matriculated vet signed: a declared dose keeps its factual word but takes
+  // the neutral tone, and the `detail` suffix says which of the two it is, so
+  // the qualifier never rides on colour alone. Never "Validado" for a
+  // self-declared record.
+  const rabiesStampValue =
+    rabiesSemaphore.estado === "vigente" ? (
+      rabiesSemaphore.respaldo === "profesional" ? (
+        <LnVstamp variant="ok" detail="firmada" />
+      ) : (
+        <LnVstamp variant="unknown" label="VIGENTE" detail="declarada" />
+      )
+    ) : rabiesSemaphore.estado === "vencida" ? (
+      <LnVstamp
+        variant="over"
+        detail={rabiesSemaphore.respaldo === "profesional" ? "firmada" : "declarada"}
+      />
+    ) : rabiesSemaphore.estado === "sin-vencimiento" ? (
+      rabiesSemaphore.respaldo === "profesional" ? (
+        "Con registro firmado"
+      ) : (
+        "Con registro declarado"
+      )
+    ) : (
+      "Sin registro"
+    );
+  // The same claim as text — the slot value. Never "", so the antirrábica
+  // stamp is always drawn.
+  const rabiesStampText =
+    rabiesSemaphore.estado === "vigente" || rabiesSemaphore.estado === "vencida"
+      ? `${rabiesSemaphore.estado === "vigente" ? "Vigente" : "Vencida"} · ${rabiesSemaphore.respaldo === "profesional" ? "firmada" : "declarada"}`
+      : rabiesSemaphore.estado === "sin-vencimiento"
+        ? rabiesSemaphore.respaldo === "profesional"
+          ? "Con registro firmado"
+          : "Con registro declarado"
+        : "Sin registro";
+
+  // Identity stamps come from the contract's public catalogue (PUBLIC_FIELDS
+  // in packages/contract/src/credential/document.ts) — the page fills values,
+  // it does not choose fields. A slot with no value is not drawn: Microchip
+  // only when Sí (presence, never the number), Color only when set.
+  const identitySlots = fieldSlots("public", {
+    rabies: rabiesStampText,
+    microchipPresence: hasMicrochip ? "Sí" : "",
+    color: pet.color ?? "",
+  }).filter((slot) => slot.value !== "");
 
   // Sticky primary CTA (mobile <sm) — cursor citizen review P3: one verb for
   // the street scanner, per state. EVERY disclosure decision is resolved HERE,
@@ -487,16 +583,6 @@ export default async function PublicCredentialPage({
           (PO 2026-09-24) retired device location everywhere, so a finder's
           sighting point is placed by hand in the sighting flow. */}
       <ScanLogger publicToken={publicToken} />
-
-      {/* Guilloché band — LN security stripe */}
-      <div
-        aria-hidden="true"
-        className="h-[4px] flex-shrink-0 opacity-90"
-        style={{
-          background:
-            "repeating-linear-gradient(90deg,var(--color-ln-azul) 0 2px,transparent 2px 4px),var(--color-ln-celeste)",
-        }}
-      />
 
       {/* When the sticky bar renders, mobile bottom padding grows so the last
           content (credential footer) is never hidden behind the fixed bar. */}
@@ -606,403 +692,257 @@ export default async function PublicCredentialPage({
         {/* ------------------------------------------------------------------ */}
         {/* CREDENTIAL CARD                                                     */}
         {/* ------------------------------------------------------------------ */}
-        <div
-          className="pc-cred overflow-hidden rounded-[var(--radius-input)] border border-ln-line-strong bg-ln-card shadow-[0_6px_18px_rgba(20,40,60,.08)]"
-          data-situation={publicSituation?.key}
-        >
-          {/* Guilloché top band — the 8px strip is half the public masthead
-              (pet-state-header D2): its default background lives in .pc-strip
-              (globals.css) so the .pc-cred[data-situation] variants can recolor
-              it per situation. */}
-          <div aria-hidden="true" className="pc-strip h-[8px]" />
+        <div className="pc-cred" data-level={publicLevel} data-situation={publicSituation?.key}>
+          {(() => {
+            const credentialFront = (
+              <>
+                {/* LOST: the photo goes back to full width, as it was on main.
+                    A finder standing over an animal matches it by its face; a
+                    156px tile is not enough (PO default, review 2026-10-06).
+                    Every other situation keeps the tile in the identity row. */}
+                {isLost ? (
+                  <div className="pc-photo-hero" data-section="lost-photo">
+                    <CredentialPhoto src={photoUrl ?? null} petName={pet.name} variant="hero" />
+                  </div>
+                ) : null}
+                <div className="pc-id" data-cell={rightCell} data-photo={isLost ? "hero" : "tile"}>
+                  {isLost ? null : (
+                    <div className="pc-photo-mount">
+                      <CredentialPhoto src={photoUrl ?? null} petName={pet.name} />
+                    </div>
+                  )}
+                  <div className="pc-id-copy">
+                    <h1>{pet.name}</h1>
+                    <p className="pc-id-token">{pet.publicToken}</p>
+                  </div>
+                  {rightCell === "qr" && qrSvg ? (
+                    <div
+                      className="pc-qr-mount"
+                      data-slot="qr"
+                      role="img"
+                      aria-label={`Código QR de la credencial de ${pet.name}`}
+                    >
+                      {/* biome-ignore lint/security/noDangerouslySetInnerHtml: server-generated QR SVG from the qrcode package, no user input. */}
+                      <span aria-hidden="true" dangerouslySetInnerHTML={{ __html: qrSvg }} />
+                    </div>
+                  ) : rightCell === "ping" ? (
+                    <div className="pc-qr-mount" data-slot="ping" aria-hidden="true">
+                      <div className="pc-ping">
+                        <span className="pc-ping-grid" />
+                        <span className="pc-ping-dot" />
+                        <span className="pc-ping-ring" />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="pc-name">
+                  <p className="pc-name-meta">
+                    {breedLine}
+                    {ageLabel && ` · ${ageLabel}`}
+                  </p>
+                </div>
 
-          {/* Official header row: crest + brand + tier chip (+ situation chip) */}
-          <div className="pc-head flex flex-wrap items-center gap-2 border-b border-ln-line-2 px-4 py-2.5">
-            {/* Crest circle */}
-            <div
-              aria-hidden="true"
-              className="grid h-[26px] w-[26px] flex-shrink-0 place-items-center rounded-full border-[1.5px] border-ln-azul bg-ln-celeste-050 font-ln-serif text-sm font-semibold text-ln-azul"
-            >
-              m
-            </div>
-            {/* `basis-[7rem]` is what makes the row WRAP instead of crushing.
-                Measured at exactly 390px: this block was flex-1 min-w-0 against
-                two chips that cannot shrink (a flex item defaults to
-                min-width:auto, so their intrinsic text width is a floor). It
-                therefore absorbed the whole deficit and collapsed — clientWidth
-                2px against a scrollWidth of 58px, i.e. "Credencial pública"
-                rendered into a 2-pixel-wide box. Giving it a basis floor makes
-                the flex-wrap already on .pc-head do its job: the chips drop to a
-                second line. `truncate` is the last-resort guard below it. */}
-            {/* RA-10 (b): the label was an 8 px literal — the smallest type on
-                the flagship public surface, two steps under the `--text-xs`
-                (10px) floor the type scale declares for micro labels. It is now
-                the token.
-                THE BASIS MOVED WITH IT, and it had to. Measured on the running
-                build at 390px: at 10px the tracked uppercase run is 133px wide
-                inside a 123px box, so the `truncate` below would have clipped it
-                to "CREDENCIAL PÚBLIC…" — trading an unreadable label for a
-                mutilated one on the credential's own identity band. `8rem`
-                (128px) is the first basis that exceeds what fits beside the
-                nowrap tier chip, which is exactly the mechanism the note above
-                describes: the chip drops to a second line and the block takes
-                the full width. Costs ~30px of masthead height at 390px; at
-                desktop widths the row has room and nothing wraps. */}
-            <div className="min-w-0 flex-1 basis-[8rem]">
-              <span className="font-ln-serif text-md font-semibold text-ln-ink">miMAR</span>
-              <span className="block truncate font-ln-mono text-xs uppercase tracking-[.14em] text-ln-mute">
-                Credencial pública
-              </span>
-            </div>
-            {/* Tier chip — nowrap so it never breaks "NIVEL 2 · DATOS MÉDICOS"
-                mid-label; it wraps as a whole unit or not at all. */}
-            <span
-              className={`whitespace-nowrap rounded-full border px-2 py-[3px] font-ln-mono text-xs font-semibold tracking-[.08em] ${tier2Active ? "border-ln-ok-100 bg-ln-ok-050 text-ln-ok" : "border-ln-celeste-100 bg-ln-celeste-050 text-ln-azul"}`}
-            >
-              {tier2Active ? "NIVEL 2 · DATOS MÉDICOS" : "NIVEL 0 · IDENTIDAD"}
-            </span>
-            {/* Situation chip (pet-state-header R3.2) — icon + gendered label,
-                never color alone. role="alert" only for perdida: a finder must
-                hear the urgent state immediately; the other public states are
-                informational. Recency rides the chip for lost pets. */}
-            {publicSituation && (
-              <span
-                className="pc-sit-chip"
-                data-section="masthead-situation-chip"
-                role={publicSituation.key === "perdida" ? "alert" : undefined}
-              >
-                <Icon name={publicSituation.icon} size="sm" decorative />
-                {situationLabelForSex(publicSituation.label, pet.sex)}
-                {isLost && lostContext && (
-                  <span className="pc-sit-chip-recency">
-                    · {formatLostSince(lostContext.lostSince ?? new Date())}
-                  </span>
-                )}
-              </span>
-            )}
-          </div>
+                {publicSituation || tier2ChipTitle ? (
+                  <div className="pc-chips">
+                    {publicSituation ? (
+                      <span
+                        className="pc-sit-chip"
+                        data-section="masthead-situation-chip"
+                        role={publicSituation.key === "perdida" ? "alert" : undefined}
+                      >
+                        <Icon name={publicSituation.icon} size="sm" decorative />
+                        {situationLabelForSex(publicSituation.label, pet.sex)}
+                        {isLost && lostContext && (
+                          <span className="pc-sit-chip-recency">
+                            · {formatLostSince(lostContext.lostSince ?? new Date())}
+                          </span>
+                        )}
+                      </span>
+                    ) : null}
+                    {tier2ChipTitle ? (
+                      <span className="pc-tier2-chip" title={tier2ChipTitle}>
+                        Nivel 2 · Datos médicos
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
 
-          {/* Photo — LCP element on the busiest path in the product (every QR
-              scan lands here, mostly mobile). next/image `priority` preloads +
-              eager-loads it, preserving the deliberate eager LCP choice, while
-              the optimizer serves a device-sized WebP — byte-smaller than the
-              raw Supabase original on a phone, never larger. `sizes` reflects the
-              card: full-width up to the 460px cap. The Supabase storage host is
-              allowlisted in next.config (images.remotePatterns). */}
-          <CredentialPhoto src={photoUrl ?? null} petName={pet.name} />
-          {/* CredentialPhoto also owns the no-photo placeholder, so a URL that
-              404s at request time degrades to the same initial-letter card
-              instead of a broken-image glyph. */}
-
-          {/* Name bar */}
-          <div className="px-4 pt-[15px] pb-3">
-            {/* h1: this is the most-scanned public page in the product (QR landing) —
-                it must expose a page-level heading (WCAG 1.3.1 / 2.4.6). */}
-            {/* The status DOT that used to sit here is gone (UI review, PO
-                2026-08-06). It was an unlabeled colour with no legend on the
-                most-scanned public page in the product: a finder had no way to
-                learn what green vs amber vs red meant, and every state it could
-                express was already spelled out in words one line above (the
-                masthead situation chip, which carries icon + label + recency
-                and role="alert" for perdida) and again in the identity grid
-                below. Removing it costs no information and one fewer thing to
-                decode. It was `aria-hidden` decorative, so no accessible name
-                was lost — the chip already owns the state for screen readers. */}
-            <h1 className="font-ln-serif text-3xl font-semibold leading-none tracking-[-0.02em] text-ln-ink">
-              {pet.name}
-            </h1>
-            <p className="mt-[5px] text-md text-ln-ink-2">
-              {breedLine}
-              {ageLabel && ` · ${ageLabel}`}
-            </p>
-          </div>
-
-          {/* Lost body sections (pet-state-header R3.4) — CTA row + última vez
+                {/* Lost body sections (pet-state-header R3.4) — CTA row + última vez
               vista + tattoo + description + welfare box, directly under the
               name bar. Every disclosure gate resolved server-side above. */}
-          {isLost && lostContext && (
-            <PublicLostSections
-              petName={pet.name}
-              petSex={pet.sex}
-              identityLine={lostIdentityLine}
-              // cursor UX D2: titularidad en revisión — never disclose the
-              // contested owner's name/phone/email while a custody dispute is
-              // open. Red-team hardening 2026-07: the reporting CTAs
-              // (finderFormHref / sightingFormHref) now ALSO go null — both
-              // flows relay the finder's contact to the contested owner
-              // (notification and/or owner-visible timeline payload), which
-              // takes sides in a legal dispute. custodyDisputed renders the
-              // neutral authority notice in their place.
-              custodyDisputed={pet.inCustodyDispute}
-              ownerFirstName={
-                pet.discloseFirstNameWhenLost && !pet.inCustodyDispute
-                  ? lostContext.ownerFirstName
-                  : null
-              }
-              ownerPhoneE164={
-                pet.disclosePhoneWhenLost && !pet.inCustodyDispute ? lostContext.phone : null
-              }
-              ownerEmail={
-                pet.discloseEmailWhenLost && !pet.inCustodyDispute ? lostContext.email : null
-              }
-              // Already null unless BOTH keys hold and no dispute is open —
-              // resolved once in the loader rather than re-derived here, so
-              // there is exactly one place the rule can be got wrong.
-              caretakerContact={lostContext.caretakerContact}
-              // THE DOOR COMES OFF HERE, at the publication boundary and not at
-              // capture (PO decision 2026-09-16). The full address and the
-              // coordinates keep doing their jobs: the coordinate routes the case
-              // and alerts organisations by proximity, and the operator working it
-              // still sees the address. What a STRANGER reads is the landmark
-              // without the number.
-              // The reasoning is the PO's and it is the good kind: by the time
-              // anybody reads this line, the animal has moved. It is not where the
-              // animal is, it is where to start looking — so exactness buys nothing
-              // against a search, and costs a home address on an open page, because
-              // a pet very often goes missing from its own door.
-              lastSeenPlaceName={
-                pet.discloseLastLocationWhenLost
-                  ? publicPlaceReference(lostContext.locationText)
-                  : null
-              }
-              lastSeenLocality={
-                pet.discloseLastLocationWhenLost ? (pet.jurisdictionLocality ?? null) : null
-              }
-              lastSeenCoords={pet.discloseLastLocationWhenLost ? lostContext.lastSeenCoords : null}
-              lastSeenAt={pet.discloseLastLocationWhenLost ? lostContext.lastSeenAt : null}
-              distinguishingFeatures={pet.distinguishingFeatures}
-              finderFormHref={
-                pet.allowFinderFormWhenLost && !pet.inCustodyDispute
-                  ? `/p/${publicToken}/encontre`
-                  : null
-              }
-              sightingFormHref={pet.inCustodyDispute ? null : `/p/${publicToken}/sighting`}
-              lastSeenLat={pet.discloseLastLocationWhenLost ? lostContext.lostLat : null}
-              lastSeenLng={pet.discloseLastLocationWhenLost ? lostContext.lostLng : null}
-              lostSince={lostContext.lostSince ?? new Date()}
-              tattooCode={canonicalIds.tattoo?.code ?? null}
-              tattooLocation={canonicalIds.tattoo?.tattooLocation ?? null}
-              tattooDescription={canonicalIds.tattoo?.tattooDescription ?? null}
-              tattooPhotoUrl={lostTattooPhotoUrl}
-              lostDescription={lostContext.lostDescription}
-              specialConditions={lostSpecialConditions}
-            />
-          )}
+                {isLost && lostContext && (
+                  <PublicLostSections
+                    petName={pet.name}
+                    petSex={pet.sex}
+                    identityLine={lostIdentityLine}
+                    // cursor UX D2: titularidad en revisión — never disclose the
+                    // contested owner's name/phone/email while a custody dispute is
+                    // open. Red-team hardening 2026-07: the reporting CTAs
+                    // (finderFormHref / sightingFormHref) now ALSO go null — both
+                    // flows relay the finder's contact to the contested owner
+                    // (notification and/or owner-visible timeline payload), which
+                    // takes sides in a legal dispute. custodyDisputed renders the
+                    // neutral authority notice in their place.
+                    custodyDisputed={pet.inCustodyDispute}
+                    ownerFirstName={
+                      pet.discloseFirstNameWhenLost && !pet.inCustodyDispute
+                        ? lostContext.ownerFirstName
+                        : null
+                    }
+                    ownerPhoneE164={
+                      pet.disclosePhoneWhenLost && !pet.inCustodyDispute ? lostContext.phone : null
+                    }
+                    ownerEmail={
+                      pet.discloseEmailWhenLost && !pet.inCustodyDispute ? lostContext.email : null
+                    }
+                    // Already null unless BOTH keys hold and no dispute is open —
+                    // resolved once in the loader rather than re-derived here, so
+                    // there is exactly one place the rule can be got wrong.
+                    caretakerContact={lostContext.caretakerContact}
+                    // THE DOOR COMES OFF HERE, at the publication boundary and not at
+                    // capture (PO decision 2026-09-16). The full address and the
+                    // coordinates keep doing their jobs: the coordinate routes the case
+                    // and alerts organisations by proximity, and the operator working it
+                    // still sees the address. What a STRANGER reads is the landmark
+                    // without the number.
+                    // The reasoning is the PO's and it is the good kind: by the time
+                    // anybody reads this line, the animal has moved. It is not where the
+                    // animal is, it is where to start looking — so exactness buys nothing
+                    // against a search, and costs a home address on an open page, because
+                    // a pet very often goes missing from its own door.
+                    lastSeenPlaceName={
+                      pet.discloseLastLocationWhenLost
+                        ? publicPlaceReference(lostContext.locationText)
+                        : null
+                    }
+                    lastSeenLocality={
+                      pet.discloseLastLocationWhenLost ? (pet.jurisdictionLocality ?? null) : null
+                    }
+                    lastSeenCoords={
+                      pet.discloseLastLocationWhenLost ? lostContext.lastSeenCoords : null
+                    }
+                    lastSeenAt={pet.discloseLastLocationWhenLost ? lostContext.lastSeenAt : null}
+                    distinguishingFeatures={pet.distinguishingFeatures}
+                    finderFormHref={
+                      pet.allowFinderFormWhenLost && !pet.inCustodyDispute
+                        ? `/p/${publicToken}/encontre`
+                        : null
+                    }
+                    sightingFormHref={pet.inCustodyDispute ? null : `/p/${publicToken}/sighting`}
+                    lastSeenLat={pet.discloseLastLocationWhenLost ? lostContext.lostLat : null}
+                    lastSeenLng={pet.discloseLastLocationWhenLost ? lostContext.lostLng : null}
+                    lostSince={lostContext.lostSince ?? new Date()}
+                    tattooCode={canonicalIds.tattoo?.code ?? null}
+                    tattooLocation={canonicalIds.tattoo?.tattooLocation ?? null}
+                    tattooDescription={canonicalIds.tattoo?.tattooDescription ?? null}
+                    tattooPhotoUrl={lostTattooPhotoUrl}
+                    lostDescription={lostContext.lostDescription}
+                    specialConditions={lostSpecialConditions}
+                  />
+                )}
 
-          {/* Tier 2 — enabled notice + streamed medical summary (#16a), wrapped
-              with the sticky bar's "Ver resumen médico" scroll target. The
-              wrapper is style-neutral (the seam divs inside are unchanged);
-              scroll-mt clears the sticky emergency banner when present. */}
-          {tier2Active && (
-            <div id={MEDICAL_SECTION_ID} className="scroll-mt-24">
-              <div className="flex items-center gap-[7px] border-t border-ln-celeste-100 bg-ln-celeste-050 px-4 py-2.5 font-ln-mono text-xs leading-[1.5] tracking-[.02em] text-ln-azul-700">
-                <Icon name="unlock" size="sm" decorative />
-                {pet.tier2PublicPermanent
-                  ? "El dueño habilitó la libreta médica de forma permanente"
-                  : tier2EnabledUntil
-                    ? `El dueño habilitó la libreta médica hasta el ${tier2EnabledUntil.toLocaleString("es-AR", { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: AR_TIME_ZONE })}`
-                    : null}
-              </div>
+                {/* Identity stamps. The heading is the ADR-7 claim tier (CT1/CT2,
+                    lib/domain/credential-claims.ts): the unqualified
+                    "registrada" only where a registry rule backs it AND the
+                    animal carries an identifier. The antirrábica stamp leads
+                    and is on every render (bite protocol). */}
+                <section
+                  className="pc-ident"
+                  data-section="identity"
+                  aria-labelledby="pc-ident-heading"
+                >
+                  <p id="pc-ident-heading" className="pc-ident-head">
+                    {registryClaim.identityHeading}
+                  </p>
+                  <dl className="pc-stamps">
+                    {identitySlots.map((slot) => (
+                      <div
+                        key={slot.id}
+                        data-section={slot.id === "rabies" ? "rabies-semaphore" : undefined}
+                      >
+                        <dt>{slot.label}</dt>
+                        <dd>{slot.id === "rabies" ? rabiesStampValue : slot.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
 
-              {/* The shell (photo, name, identity) paints first; this heavy
-                  vaccination projection streams in behind a skeleton that
-                  reserves its height so the sections below do not jump.
-                  degraded-states: the fallback escalates to waiting text /
-                  degraded card if the stream stalls (pure CSS). The OriginOrg
-                  fallback={null} boundary below stays UNWRAPPED on purpose —
-                  the badge is absent for most pets, so any fallback UI there
-                  would flash then vanish. */}
-              <Suspense
-                fallback={
-                  <DegradedFallback>
-                    <CredentialTier2MedicalSkeleton />
-                  </DegradedFallback>
-                }
-              >
-                <CredentialTier2Medical
-                  petId={pet.id}
-                  sex={pet.sex}
-                  species={pet.species}
-                  jurisdictionProvince={pet.jurisdictionProvince}
-                  jurisdictionLocality={pet.jurisdictionLocality}
-                  enabledUntil={tier2EnabledUntil}
-                  permanentConditions={pet.permanentConditions ?? []}
-                  permanentConditionsOther={pet.permanentConditionsOther}
-                />
-              </Suspense>
-            </div>
-          )}
-
-          {/* Identity section */}
-          <div className="border-t border-ln-line-2 px-4 py-[13px]">
-            {/* Claim tiering (ADR-7, CT1/CT2) — see lib/domain/credential-claims.ts. */}
-            <p className="mb-[9px] font-ln-mono text-xs font-semibold uppercase tracking-[.1em] text-ln-mute">
-              {registryClaim.identityHeading}
-            </p>
-            <div className="grid grid-cols-2 gap-x-3.5 gap-y-[11px]">
-              <CredField label="Credencial" value={statusLabel(pet.status)} mono={false} />
-              <CredField
-                label="Vacunación"
-                value={hasVaccinations ? "Con registros" : "Sin registros"}
-                mono={false}
-              />
-              {/* Rabies semaphore (pet-state-header R4) — tri-state vigencia of
-                  the single legally-mandated vaccine (Ley 22.953 framework).
-                  LnVstamp for vigente/vencida (icon-free stamp + text label —
-                  never color alone); plain honest text otherwise. No dates on
-                  Tier 0. */}
-              <div data-section="rabies-semaphore">
-                <p className="m-0 font-ln-mono text-xs uppercase tracking-[.06em] text-ln-faint">
-                  Antirrábica
-                </p>
-                {/* PROVENANCE RIDES WITH THE CLAIM (2026-08-17). A dose the
-                    owner typed in used to render the same green VIGENTE seal as
-                    one a matriculated vet signed, and the only provenance
-                    signal on the page appeared exclusively when the record was
-                    ALREADY verified — present when unnecessary, absent when it
-                    mattered. An unqualified green stamp on the one legally
-                    mandated vaccine is a verification this registry never
-                    performed.
-
-                    A declared dose keeps its factual word — the date IS current
-                    — but loses the OK tone, reusing the neutral variant the
-                    stamp already has for "we do not know". Same reasoning as
-                    that variant's own note: what is unconfirmed must never read
-                    as confirmed. The `detail` suffix says which of the two it
-                    is, so the qualifier cannot be missed by reading colour
-                    alone. */}
-                <p className="mt-px text-md font-medium text-ln-ink">
-                  {rabiesSemaphore.estado === "vigente" ? (
-                    rabiesSemaphore.respaldo === "profesional" ? (
-                      <LnVstamp variant="ok" detail="firmada" />
-                    ) : (
-                      <LnVstamp variant="unknown" label="VIGENTE" detail="declarada" />
-                    )
-                  ) : rabiesSemaphore.estado === "vencida" ? (
-                    <LnVstamp
-                      variant="over"
-                      detail={rabiesSemaphore.respaldo === "profesional" ? "firmada" : "declarada"}
-                    />
-                  ) : rabiesSemaphore.estado === "sin-vencimiento" ? (
-                    rabiesSemaphore.respaldo === "profesional" ? (
-                      "Con registro firmado"
-                    ) : (
-                      "Con registro declarado"
-                    )
-                  ) : (
-                    "Sin registro"
-                  )}
-                </p>
-              </div>
-              <CredField label="Microchip" value={hasMicrochip ? "Sí" : "No"} mono={false} />
-              <CredField label="Tatuaje" value={hasTattoo ? "Sí" : "No"} mono={false} />
-              <CredField label="Libreta" value={`LIB-AR-${pet.publicToken.toUpperCase()}`} mono />
-            </div>
-          </div>
-
-          {/* A.4: Vaccination confidence badge */}
-          {showVaccinationConfidence && latestVaccinationTier && (
-            <div className="flex items-center gap-2 border-t border-ln-line-2 px-4 py-2.5">
-              <span className="font-ln-mono text-xs font-semibold uppercase tracking-[.08em] text-ln-mute">
-                Vacunación:
-              </span>
-              <ConfidenceBadge tier={latestVaccinationTier} />
-            </div>
-          )}
-
-          {/* T-4.3: Origin-org badge — STREAMED (#16a). Below the fold and off
-              the LCP path; resolveOriginOrg walks up to three rows. null fallback
-              — the badge is absent for most pets, so a skeleton would only flash
-              then vanish. Same resolver + gate + markup as the former block. */}
-          <Suspense fallback={null}>
-            <CredentialOriginOrg petId={pet.id} />
-          </Suspense>
-
-          {/* "Found this pet?" action area. Disputed pets (D2 hardening,
-              red-team 2026-07) never get the owner-contact-relay form: while
-              titularidad is under review the system must not relay a finder's
-              name/contact to the contested owner. PO 2026-07-24: instead of a
-              dead-end notice, they get the neutral dispute-tip form — the
-              submission lands on the dispute case for the reviewing authority
-              only (see DisputeTipForm / report-dispute-tip.ts).
-
-              A DECEASED pet gets neither. There is no street action for an
-              animal that died, and asking a stranger to "avisarle al dueño" that
-              they found it is the cruelest thing this page could say to the
-              person who registered the death. The sticky action bar already had
-              this rule (CredentialActionBar: "deceased → page renders NO bar");
-              this inline block, one screen below it, never received it — so
-              Kabosu (2024), Hachikō (1935) and a pet whose death was recorded
-              minutes earlier all still offered it (master test CIU, B0b/B0c/
-              B5-c — three independent sightings of one missing guard). */}
-          {pet.status === "deceased" ? null : pet.inCustodyDispute ? (
-            <div
-              data-section="found-form-disputed"
-              className="border-t border-ln-line bg-ln-stripe px-4 py-3.5"
-            >
-              {/* id: the sticky bar's "dispute" action opens + scrolls here;
-                  scroll-mt clears the sticky emergency banner when present. */}
-              <details id={DISPUTE_SECTION_ID} className="group scroll-mt-24">
-                <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3">
-                  <div>
-                    <p className="m-0 font-ln-serif text-md font-semibold text-ln-ink">
-                      ¿Tenés información sobre esta mascota?
-                    </p>
-                    <p className="mt-0.5 text-sm text-ln-mute">{DISPUTE_TIP_INTRO}</p>
+                {/* Nivel 2 — the AGGREGATE medical summary (vaccine counts,
+                    sterilization, active drug names, disclosed conditions).
+                    Streamed behind Suspense (#16a) so it never blocks the
+                    shell / LCP photo. Never per-event rows. */}
+                {publicLevel === 2 ? (
+                  <div id={MEDICAL_SECTION_ID} className="scroll-mt-24">
+                    <Suspense
+                      fallback={
+                        <DegradedFallback>
+                          <CredentialTier2MedicalSkeleton />
+                        </DegradedFallback>
+                      }
+                    >
+                      <CredentialTier2Medical
+                        petId={pet.id}
+                        sex={pet.sex}
+                        species={pet.species}
+                        jurisdictionProvince={pet.jurisdictionProvince}
+                        jurisdictionLocality={pet.jurisdictionLocality}
+                        enabledUntil={tier2EnabledUntil}
+                        permanentConditions={pet.permanentConditions ?? []}
+                        permanentConditionsOther={pet.permanentConditionsOther}
+                      />
+                    </Suspense>
                   </div>
-                  <span
-                    aria-hidden="true"
-                    className="flex-shrink-0 text-lg text-ln-mute transition-transform group-open:rotate-90"
-                  >
-                    ›
-                  </span>
-                </summary>
-                <div className="mt-3 border-t border-ln-line pt-3.5">
-                  <DisputeTipForm publicToken={publicToken} />
-                </div>
-              </details>
-            </div>
-          ) : (
-            <div className="border-t border-ln-line bg-ln-stripe px-4 py-3.5">
-              {/* id: the sticky bar's tier-0 "report" action opens + scrolls to
-                this existing form (no new flow); scroll-mt clears the sticky
-                emergency banner when present. */}
-              <details id={REPORT_SECTION_ID} className="group scroll-mt-24">
-                <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3">
-                  <div>
-                    <p className="m-0 font-ln-serif text-md font-semibold text-ln-ink">
-                      ¿Encontraste a esta mascota?
-                    </p>
-                    <p className="mt-0.5 text-sm text-ln-mute">Tocá acá para avisarle al dueño.</p>
-                  </div>
-                  <span
-                    aria-hidden="true"
-                    className="flex-shrink-0 text-lg text-ln-mute transition-transform group-open:rotate-90"
-                  >
-                    ›
-                  </span>
-                </summary>
-                <div className="mt-3 border-t border-ln-line pt-3.5">
-                  <FoundPetForm publicToken={publicToken} />
-                </div>
-              </details>
-            </div>
-          )}
+                ) : null}
 
-          {/* Credential footer */}
-          <div className="px-4 py-3 text-center font-ln-mono text-xs leading-[1.7] tracking-[.02em] text-ln-faint">
-            {/* "· República Argentina" used to close this line. On a card
-                composed as an identity document it named the State as the
-                issuing authority, which no convenio grants. The token stands
-                on its own; the product's own name is already above it.
-                "· Registro Nacional de Mascotas" is gone the same way (PO,
-                2026-09-24): it named a national registry nobody delegated. */}
-            CREDENCIAL PÚBLICA · miMAR
-            <br />
-            {pet.publicToken.toUpperCase()}
-          </div>
+                {/* T-4.3: Origin-org badge — STREAMED (#16a). Every public level.
+              Below the fold; resolveOriginOrg walks up to three rows. null
+              fallback — the badge is absent for most pets. */}
+                <Suspense fallback={null}>
+                  <CredentialOriginOrg petId={pet.id} />
+                </Suspense>
+              </>
+            );
+            return (
+              <>
+                <PublicDocumentBand subtitle={publicChrome.subtitleFront} />
+                {credentialFront}
+              </>
+            );
+          })()}
         </div>
-        {/* END CREDENTIAL CARD */}
+        {/* END CREDENTIAL CARD — finder verbs sit below the paper. */}
+        {pet.status === "deceased" ? null : pet.inCustodyDispute ? (
+          <PublicCredentialActions mode="dispute" publicToken={publicToken} />
+        ) : isLost ? (
+          <PublicCredentialActions
+            mode="lost"
+            petSex={pet.sex}
+            finderFormHref={
+              pet.allowFinderFormWhenLost && !pet.inCustodyDispute
+                ? `/p/${publicToken}/encontre`
+                : null
+            }
+            sightingFormHref={pet.inCustodyDispute ? null : `/p/${publicToken}/sighting`}
+            ownerPhoneE164={
+              pet.disclosePhoneWhenLost && !pet.inCustodyDispute
+                ? (lostContext?.phone ?? null)
+                : null
+            }
+            ownerEmail={
+              pet.discloseEmailWhenLost && !pet.inCustodyDispute
+                ? (lostContext?.email ?? null)
+                : null
+            }
+            ownerFirstName={
+              pet.discloseFirstNameWhenLost && !pet.inCustodyDispute
+                ? (lostContext?.ownerFirstName ?? null)
+                : null
+            }
+            caretakerContact={lostContext?.caretakerContact ?? null}
+          />
+        ) : (
+          <PublicCredentialActions mode="found" publicToken={publicToken} petSex={pet.sex} />
+        )}
       </div>
 
       {/* Sticky primary CTA — mobile only (<sm); desktop keeps the inline
@@ -1023,52 +963,21 @@ export default async function PublicCredentialPage({
 function ThrottleNotice() {
   return (
     // Landing shell (AppShell variant=landing) owns #main-content + min-height.
-    <div className="flex min-h-screen items-center justify-center bg-ln-paper font-ln-sans">
-      <div className="mx-auto max-w-[400px] px-6 py-12 text-center text-ln-ink">
-        {/* Real h1 (not just a styled <p>) — a screen-reader user throttled
-            before any pet data loads still needs page orientation. No pet
-            name is known at this point, so a generic heading is honest. */}
-        <h1 className="mb-3 font-ln-serif text-lg font-semibold">Demasiadas consultas</h1>
-        <p className="text-md leading-[1.6] text-ln-ink-2">
-          Estás realizando demasiadas consultas desde esta conexión. Esperá unos minutos y volvé a
-          intentarlo.
-        </p>
+    <div className="min-h-screen bg-ln-paper font-ln-sans">
+      <div className="mx-auto max-w-[460px] px-4 py-6 pb-14">
+        <div className="pc-cred">
+          <PublicDocumentBand compact subtitle={chromeForSurface("public").subtitleFront} />
+          <div className="px-5 pb-6">
+            <h1 className="mb-3 font-ln-serif text-lg font-semibold text-ln-ink">
+              Demasiadas consultas
+            </h1>
+            <p className="text-md leading-[1.6] text-ln-ink-2">
+              Estás realizando demasiadas consultas desde esta conexión. Esperá unos minutos y volvé
+              a intentarlo.
+            </p>
+          </div>
+        </div>
       </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// CredField — mono label + value row inside the identity grid
-//
-// Typography roles (UI review M2 consolidation): the label is the document's
-// mono micro-label step (text-xs / 10px, the floor the type scale declares) and
-// the value is the body step (text-md / 14px). The `mono` variant steps the
-// VALUE down one step to text-sm: it renders the LIB-AR-XXXXXXXX token, whose
-// fixed-advance glyphs are materially wider than the sans face at the same
-// nominal size, and the grid cell is half of a two-column layout at 390px.
-// That is an optical fit for one variant of the value role, not a second role.
-// ---------------------------------------------------------------------------
-
-function CredField({
-  label,
-  value,
-  mono = false,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div>
-      <p className="m-0 font-ln-mono text-xs uppercase tracking-[.06em] text-ln-faint">{label}</p>
-      <p
-        className={`mt-px break-words font-medium text-ln-ink ${
-          mono ? "font-ln-mono text-sm" : "font-ln-sans text-md"
-        }`}
-      >
-        {value}
-      </p>
     </div>
   );
 }

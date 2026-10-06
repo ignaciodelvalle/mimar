@@ -35,6 +35,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { ConfidenceBadge } from "@/components/event/ConfidenceBadge";
+import { chromeForSurface } from "@dim/contract/credential";
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8");
 
@@ -42,46 +43,53 @@ const CREDENTIAL = read("app", "(public)", "p", "[publicToken]", "page.tsx");
 const GLOBALS = read("app", "globals.css");
 
 /**
- * The masthead identity block, from its opening div to its close. Anchored on
- * the flex classes rather than on the copy: "Credencial pública" also appears in
- * this file's generateMetadata titles, and slicing on the first occurrence
- * silently measured the wrong region.
+ * The masthead moved out of the page (redesign 2026-10): the label is the
+ * `.pc-band-doctype` span of the shared PublicDocumentBand, styled in
+ * globals.css. Same two defects to guard, new home: the label must sit on the
+ * 10px floor, and it must never be clipped at 390px.
  */
-const MASTHEAD_BLOCK = (() => {
-  const start = CREDENTIAL.indexOf('<div className="min-w-0 flex-1 basis-');
-  if (start === -1) throw new Error("masthead identity block not found in the credential page");
-  return CREDENTIAL.slice(start, CREDENTIAL.indexOf("</div>", start));
-})();
+const BAND = read("components", "credential", "PublicDocumentBand.tsx");
+
+/** One CSS rule body, by its exact selector. */
+function cssRule(selector: string): string {
+  const start = GLOBALS.indexOf(`\n${selector} {`);
+  if (start === -1) throw new Error(`${selector} not found in globals.css`);
+  return GLOBALS.slice(start, GLOBALS.indexOf("}", start));
+}
 
 describe("RA-10 (b) — the credential's smallest type sits on the floor", () => {
   it("the type scale still puts the floor at 10px", () => {
-    // The premise. If --text-xs ever moves, `text-xs` below moves with it and
+    // The premise. If --text-xs ever moves, the token below moves with it and
     // this file should be revisited rather than silently guarding a new number.
     expect(GLOBALS).toMatch(/--text-xs:\s*10px/);
   });
 
   it("the masthead label is tokenized, not an 8px literal", () => {
-    expect(MASTHEAD_BLOCK).toContain("Credencial pública");
-    expect(MASTHEAD_BLOCK).toContain("text-xs");
-    expect(MASTHEAD_BLOCK).not.toContain("text-[8px]");
+    expect(chromeForSurface("public").subtitleFront).toBe("Credencial pública");
+    // The page hands the contract's subtitle to the band; the band prints it
+    // in the doctype span; the span is sized by the token.
+    expect(CREDENTIAL).toContain("subtitle={publicChrome.subtitleFront}");
+    expect(BAND).toContain('<span className="pc-band-doctype">{subtitle}</span>');
+    expect(cssRule(".pc-band-doctype")).toContain("font-size: var(--text-xs)");
   });
 
   it("no sub-floor 8px literal survives anywhere on the credential", () => {
     expect(CREDENTIAL).not.toContain("text-[8px]");
+    expect(BAND).not.toContain("text-[8px]");
+    expect(cssRule(".pc-band-doctype")).not.toMatch(/font-size:\s*[0-9]px/);
   });
 
-  it("the flex basis was raised with it, or `truncate` clips the label", () => {
-    // The half that is easy to lose in a later cleanup: the basis looks like
-    // dead weight next to `flex-1` until you measure it at 390px.
-    const basis = /basis-\[(\d+)rem\]/.exec(MASTHEAD_BLOCK);
-    expect(basis).not.toBeNull();
-    expect(Number(basis?.[1])).toBeGreaterThanOrEqual(8);
-  });
-
-  it("the label still truncates as a last resort", () => {
-    // The basis makes the tier chip wrap; `truncate` is the guard under it for
-    // narrower-than-390px or larger text settings. Both stay.
-    expect(MASTHEAD_BLOCK).toContain("truncate");
+  it("the label cannot be clipped: an auto track between two shrinkable ones", () => {
+    // The old masthead needed a raised flex basis because `truncate` would
+    // otherwise cut "CREDENCIAL PÚBLIC…" at 390px. The band head is a grid now:
+    // the label owns the `auto` middle track at its natural width, and the two
+    // side tracks (mark, flip) are the ones that yield.
+    expect(cssRule(".pc-band-head")).toContain(
+      "grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr)",
+    );
+    const doctype = cssRule(".pc-band-doctype");
+    expect(doctype).toContain("white-space: nowrap");
+    expect(doctype).not.toMatch(/overflow:|text-overflow:/);
   });
 });
 

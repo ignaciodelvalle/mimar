@@ -147,7 +147,12 @@ const OPERATOR_LABEL = "operator (app/gob, app/admin, app/org)";
 // "Usar mi ubicación" link. The third was already gone on main when W8 was
 // measured (306 at the branch point); its source was not located, and it is
 // banked here only because the ratchet should hold what the tree really has.
-const CITIZEN_BASELINE = 302;
+// 2026-10-06 (credencial-unificada): 302 → 301. The redesign had added seven
+// hand-rolled card-turn buttons (band flip + brand mark on /p/ and the owner
+// page, the landing carnet's flip, the /design preview's actions); they now
+// render through components/credential/CardTurnButton.tsx (one tag for every
+// turn control) and LnButton, which nets one below where main stood.
+const CITIZEN_BASELINE = 301;
 const CITIZEN_SCAN_GLOB =
   "{components,app/(app),app/(public),app/(institucional),app/(auth)}/**/*.tsx";
 const CITIZEN_LABEL =

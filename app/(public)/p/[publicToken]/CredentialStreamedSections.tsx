@@ -42,8 +42,8 @@ import { Tier2MedicalView } from "./Tier2MedicalView";
 // Mirrors the former page.tsx tier2 block: FULL vaccination history feeds the
 // SAME computeVaccinationSummary the owner libreta uses (bug 3), with the pet's
 // event_amended rows overlaid so a corrected dose/medication supersedes on the
-// public credential too. Wrapper <div className="border-t border-ln-line-2">
-// is preserved so the section keeps its exact card seam.
+// public credential too. Wrapper `.pc-rule-block` is the medical block; the
+// only dashed rule on this face is the MRZ.
 // ---------------------------------------------------------------------------
 
 export async function CredentialTier2Medical({
@@ -92,7 +92,7 @@ export async function CredentialTier2Medical({
     return (
       <output
         data-section="tier2-degraded"
-        className="block border-t border-ln-line-2 bg-ln-warn-050 px-4 py-3"
+        className="pc-rule-block block bg-ln-warn-050 px-4 py-3"
       >
         <p className="m-0 font-ln-mono text-xs font-semibold uppercase tracking-[.1em] text-ln-warn">
           Datos incompletos
@@ -115,7 +115,7 @@ export async function CredentialTier2Medical({
   );
 
   return (
-    <div className="border-t border-ln-line-2">
+    <div className="pc-rule-block">
       <Tier2MedicalView
         enabledUntil={enabledUntil}
         vaccineSummary={{
@@ -213,11 +213,7 @@ function runTier2Queries(
 
 export function CredentialTier2MedicalSkeleton() {
   return (
-    <output
-      aria-busy="true"
-      aria-label="Cargando…"
-      className="block border-t border-ln-line-2 px-4 py-3.5"
-    >
+    <output aria-busy="true" aria-label="Cargando…" className="pc-rule-block block px-4 py-3.5">
       <span className="sr-only">Cargando…</span>
       <Skeleton w="62%" h="10px" radius="3px" className="mb-1.5" />
       <Skeleton w="48%" h="16px" radius="3px" className="mb-1" />
@@ -267,7 +263,7 @@ export async function CredentialOriginOrg({ petId }: { petId: string }) {
   return (
     <div
       data-section="origin-org-badge"
-      className="flex items-center gap-2.5 border-t border-ln-line-2 px-4 py-3"
+      className="pc-rule-block flex items-center gap-2.5 px-4 py-3"
     >
       {originOrg.avatarUrl && (
         // eslint-disable-next-line @next/next/no-img-element

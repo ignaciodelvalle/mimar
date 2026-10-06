@@ -650,6 +650,10 @@ describe("/p/[publicToken] — Tier-0 PII contract (task #33)", () => {
 
     expect(html).toContain("Credencial pública"); // sanity: card rendered
     expect(html).toContain('data-situation="fallecida"');
+    // Memorial: no right-hand cell. The name stays in the row; nothing fills the hole.
+    expect(html).toContain('data-cell="none"');
+    expect(html).not.toContain("pc-qr-mount");
+    expect(html).not.toContain('data-slot="qr"');
     // No finder CTAs: the lost branch (and only the lost branch) carries them.
     expect(html).not.toContain("/encontre");
     expect(html).not.toContain("/sighting");

@@ -24,7 +24,7 @@
 // priority/preload output is asserted.
 
 import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -133,6 +133,42 @@ vi.mock("@/components/pet-profile/PublicLostSections", () => ({
 }));
 vi.mock("@/app/(public)/p/[publicToken]/FoundPetForm", () => ({ FoundPetForm: vi.fn(() => null) }));
 vi.mock("@/app/(public)/p/[publicToken]/ScanLogger", () => ({ ScanLogger: vi.fn(() => null) }));
+
+// The per-event libreta door (/libreta/compartir). Nothing on /p/ may read it:
+// the rows below carry exactly what the parked nivel-2 back face leaked to
+// anonymous viewers (privacy review 2026-10-06) — a previous microchip number
+// (eventPayloadSummary prints it as "Anterior: <chip>"), a vet and a clinic.
+// Served here so that a door re-opened on /p/ prints them and the leak test
+// below goes red.
+const { LEAKY_EVENTS } = vi.hoisted(() => ({
+  LEAKY_EVENTS: [
+    {
+      id: "11111111-2222-4333-8444-555555555555",
+      eventType: "microchip_replaced",
+      payload: { previous_chip_number: "982000111111111", new_chip_number: "982000222222222" },
+      occurredAt: new Date("2026-05-01T12:00:00Z"),
+      authorRole: "vet",
+      authorVerified: true,
+      authorOrganizationId: null,
+    },
+    {
+      id: "66666666-7777-4888-8999-aaaaaaaaaaaa",
+      eventType: "vet_visit",
+      payload: {
+        vet_name: "Dra. Fixture Leakwood",
+        clinic_name: "Clinica Fixture Leakwood",
+        reason: "Sintoma fixture privado",
+      },
+      occurredAt: new Date("2026-06-01T12:00:00Z"),
+      authorRole: "vet",
+      authorVerified: true,
+      authorOrganizationId: null,
+    },
+  ],
+}));
+vi.mock("@/lib/infra/libreta-share-events", () => ({
+  loadSharedLibretaEvents: vi.fn(async () => LEAKY_EVENTS),
+}));
 
 // Origin-org resolver — configured per-test.
 const mockResolveOriginOrg = vi.fn(async (_petId: string) => null as unknown);
@@ -249,8 +285,8 @@ describe("/p/[publicToken] — #16a streaming + next/image", () => {
       source: "default",
       matchedRow: null,
     });
-    // Default fixture pet carries NO identifier (its credential body prints
-    // "Microchip: No" / "Tatuaje: No") — tests that need one say so.
+    // Default fixture pet carries NO identifier (slot body prints Microchip No)
+    // — tests that need a chip say so.
     mockFetchActiveIdentifications.mockResolvedValue({ microchip: null, tattoo: null });
   });
 
@@ -294,14 +330,53 @@ describe("/p/[publicToken] — #16a streaming + next/image", () => {
     });
     const html = renderToStaticMarkup(element as React.ReactElement);
 
-    // Shell paints synchronously: name + identity section are present now.
+    // Nivel 2 shell: the same single face as 0/1 — QR cell + medical chip.
+    // No flip, no back face, no MRZ, no slots (parked 2026-10-06).
     expect(html).toMatch(/<h1[^>]*>[\s\S]*Pampa/);
-    expect(html).toContain("Identidad registrada");
+    expect(html).toContain('data-level="2"');
+    expect(html).toContain('data-slot="qr"');
+    expect(html).toContain("pc-tier2-chip");
+    expect(html).toContain("Nivel 2 · Datos médicos");
+    expect(html).not.toContain("pc-share-plaque");
+    expect(html).not.toContain("pc-slots");
+    expect(html).not.toContain("pc-mrz");
+    expect(html).not.toContain("pc-band-flip");
+    expect(html).not.toContain("pc-turn");
+    expect(html).not.toContain("pc-lib");
     // The heavy medical body is deferred — its aria-busy skeleton shows instead
     // of the resolved <Tier2MedicalView> (spy) in this synchronous render.
     expect(html).toContain('aria-busy="true"');
     expect(html).toContain("Cargando");
     expect(html).not.toContain('data-testid="tier2-view-spy"');
+  });
+
+  // -------------------------------------------------------------------------
+  // 2b. Privacy pin (review 2026-10-06): the FULLY streamed nivel-2 page — every
+  //     Suspense boundary resolved — prints no per-event history. The libreta
+  //     door is stocked with a replaced chip, a vet and a clinic; none of it,
+  //     nor an event id, may reach an anonymous viewer.
+  // -------------------------------------------------------------------------
+  it("nivel 2 fully streamed: no previous chip number, vet, clinic or event id reaches the page", async () => {
+    mockDbSelect.mockImplementation(() =>
+      buildSelectChain([
+        { pet: { ...BASE_PET, tier2PublicPermanent: true }, photo: { storagePath: "pampa.jpg" } },
+      ]),
+    );
+    const { default: PublicCredentialPage } = await import("@/app/(public)/p/[publicToken]/page");
+    const element = await PublicCredentialPage({
+      params: Promise.resolve({ publicToken: BASE_PET.publicToken }),
+    });
+    const stream = await renderToReadableStream(element as React.ReactElement);
+    await stream.allReady;
+    const html = await new Response(stream).text();
+
+    // Non-vacuity: the streamed medical summary DID resolve (spy, not skeleton).
+    expect(html).toContain('data-testid="tier2-view-spy"');
+    expect(html).not.toContain("Anterior:");
+    expect(html).not.toContain("982000111111111");
+    expect(html).not.toContain("Leakwood");
+    expect(html).not.toContain("Sintoma fixture privado");
+    for (const event of LEAKY_EVENTS) expect(html).not.toContain(event.id);
   });
 
   // -------------------------------------------------------------------------
@@ -338,8 +413,7 @@ describe("/p/[publicToken] — #16a streaming + next/image", () => {
     // renderToStaticMarkup HTML-escapes the spy's JSON quotes — decode to assert.
     const decoded = html.replace(/&quot;/g, '"');
 
-    // Exact card seam preserved.
-    expect(html).toContain("border-t border-ln-line-2");
+    expect(html).toContain("pc-rule-block");
     // Forwarded props (from the spy JSON dump) match the derivation the inline
     // block produced: the summary, the record flag, sterilization (empty → No),
     // active meds, and the pet-row conditions passed through untouched.
@@ -393,6 +467,8 @@ describe("/p/[publicToken] — #16a streaming + next/image", () => {
   // 5. Credential claim tiering (ADR-7, spec CT1/CT2): the identity heading's
   //    unqualified "registrada" claim renders only where a registry rule backs
   //    it; a province with no rule resolved gets the miMAR-scoped claim.
+  //    The redesign dropped the heading and these tests; restored 2026-10-06
+  //    on the new identity stamps.
   // -------------------------------------------------------------------------
   async function renderCredentialHtml(): Promise<string> {
     mockDbSelect.mockImplementation(() =>
@@ -405,10 +481,15 @@ describe("/p/[publicToken] — #16a streaming + next/image", () => {
     return renderToStaticMarkup(element as React.ReactElement);
   }
 
+  /** The heading text only — the stamps below it are asserted separately. */
+  function identityHeading(html: string): string | null {
+    return html.match(/id="pc-ident-heading"[^>]*>([^<]*)</)?.[1] ?? null;
+  }
+
   it("no registry rule resolved → the identity claim scopes itself to miMAR (CT1)", async () => {
     // Default resolver mock: matchedRow null (nothing resolves in the cascade).
     const html = await renderCredentialHtml();
-    expect(html).toContain("Identidad registrada en miMAR");
+    expect(identityHeading(html)).toBe("Identidad registrada en miMAR");
   });
 
   /** Mandatory microchip rule resolved for the pet's province. */
@@ -427,27 +508,25 @@ describe("/p/[publicToken] — #16a streaming + next/image", () => {
 
   it("mandatory + registry-backed + pet IDENTIFIED → preserves the full claim (CT2)", async () => {
     mockMandatoryRegistryRule();
-    // The claim's second half (T6 review M4): a chip actually on record. The
-    // fixture's default is an UNIDENTIFIED pet, which is the case below.
+    // The claim's second half (T6 review M4): a chip actually on record.
     mockFetchActiveIdentifications.mockResolvedValue({
       microchip: { code: "982000123456789" },
       tattoo: null,
     });
     const html = await renderCredentialHtml();
-    expect(html).toContain("Identidad registrada");
-    expect(html).not.toContain("Identidad registrada en miMAR");
+    expect(identityHeading(html)).toBe("Identidad registrada");
+    // Presence only — the chip NUMBER never reaches the public page.
+    expect(html).not.toContain("982000123456789");
   });
 
-  // T6 review M4. This test used to assert the OPPOSITE — it rendered the
-  // unqualified "Identidad registrada" over a credential whose own body says
-  // "Microchip: No" and "Tatuaje: No". The rule proves the OBLIGATION exists in
-  // CABA; it says nothing about whether THIS animal is in any registry.
+  // T6 review M4. The rule proves the OBLIGATION exists in CABA; it says
+  // nothing about whether THIS animal is in any registry.
   it("mandatory rule but the pet has NO identifier → the claim stays scoped to miMAR", async () => {
     mockMandatoryRegistryRule();
     mockFetchActiveIdentifications.mockResolvedValue({ microchip: null, tattoo: null });
     const html = await renderCredentialHtml();
-    expect(html).toContain("Identidad registrada en miMAR");
-    // The credential must not contradict the field printed a few lines below it.
-    expect(html).toContain("Microchip</p>");
+    expect(identityHeading(html)).toBe("Identidad registrada en miMAR");
+    // The card must not contradict the claim: no "Microchip · Sí" stamp.
+    expect(html).not.toMatch(/<dt>Microchip<\/dt><dd>Sí<\/dd>/);
   });
 });

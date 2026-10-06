@@ -1,18 +1,13 @@
 // Tier 2 medical view — owner-opt-in widened public projection.
 //
-// Rendered on /p/[publicToken] while the Tier 2 window is active — either a
-// bounded window (tier2PublicEnabledUntil in the future) or the permanent
-// "siempre" option (tier2PublicPermanent = true). Surfaces a curated medical
-// summary on top of the Tier 0 identity rollups the credential normally shows.
+// Template face: two paper tiles (vacunación / esterilización) carry the
+// semaphore in the wash, a translucent icon, and the passport-paper fiber.
+// Extra blocks (medicación, condiciones) stay as quieter paper slips.
 //
-// Privacy boundary: name + photo + species + breed are already public
-// (Tier 0). This view adds vaccines vigentes, esterilización, medicación
-// activa, condiciones permanentes — NEVER owner contact, address, DNI,
-// or free-text notes.
-//
-// AGGREGATE ONLY: active vaccine count + sterilized yes/no. Per-vaccine
-// rows are NOT shown here — the projection doesn't expose them at this tier.
+// Privacy boundary: NEVER owner contact, address, DNI, or free-text notes.
+// AGGREGATE ONLY: active vaccine count + sterilized yes/no.
 
+import { Icon } from "@/components/Icon";
 import {
   PERMANENT_CONDITIONS,
   type PermanentCondition,
@@ -78,9 +73,6 @@ export function Tier2MedicalView({
       })
     : null;
 
-  // Determine vaccine tone based on summary. Zero registered doses is a
-  // NEUTRAL empty state ("Sin vacunas registradas") — never a fabricated
-  // count or an alarm derived from catalog-only "missing" entries.
   const vaccineTone: "ok" | "warn" | "danger" | "neutral" = !hasVaccineRecords
     ? "neutral"
     : vaccineSummary.expired > 0
@@ -109,30 +101,26 @@ export function Tier2MedicalView({
           : `${vaccineSummary.active} ${pluralizeEs(vaccineSummary.active, "vigente")}`;
 
   return (
-    <section aria-labelledby="tier2-h" className="px-4 py-[13px]">
-      {/* Section eyebrow */}
-      <p className="mb-1 font-ln-mono text-xs font-semibold uppercase tracking-[.1em] text-ln-ok">
-        Información médica · habilitada por el dueño
-      </p>
-      <h2 id="tier2-h" className="m-0 mb-0.5 font-ln-serif text-base font-semibold text-ln-ink">
-        Resumen médico vigente
+    <section aria-labelledby="tier2-h" className="pc-facts">
+      <h2 id="tier2-h" className="sr-only">
+        Resumen médico
       </h2>
-      <p className="m-0 mb-3 text-sm text-ln-mute">
-        {untilLabel ? (
-          <>
-            Visible hasta el <strong className="text-ln-ink-2">{untilLabel}</strong>.
-          </>
-        ) : (
-          <strong className="text-ln-ink-2">Siempre visible</strong>
-        )}
-      </p>
+      {untilLabel ? (
+        <p className="pc-facts-until">
+          Visible hasta el <strong>{untilLabel}</strong>.
+        </p>
+      ) : null}
 
-      {/* Aggregate stats grid */}
-      <dl
-        className={`grid grid-cols-2 gap-x-3 gap-y-2.5 ${conditionLabels.length > 0 || activeMedications.length > 0 ? "mb-3" : ""}`}
-      >
-        <MedStat label="Vacunación" value={vaccineValue} sub={vaccineSubLabel} tone={vaccineTone} />
+      <dl className="pc-fact-grid">
         <MedStat
+          icon="vacuna"
+          label="Vacunación"
+          value={vaccineValue}
+          sub={vaccineSubLabel}
+          tone={vaccineTone}
+        />
+        <MedStat
+          icon="esterilizacion"
           label="Esterilización"
           value={isSterilized ? "Sí" : "No"}
           sub={isSterilized ? sterilizedLabel(sex) : "No registrada"}
@@ -140,7 +128,6 @@ export function Tier2MedicalView({
         />
       </dl>
 
-      {/* Active medications */}
       {activeMedications.length > 0 && (
         <MedBlock label="Medicación activa">
           {/* role="list" is NOT redundant here: WebKit/VoiceOver drops the
@@ -149,15 +136,10 @@ export function Tier2MedicalView({
               to know how many drugs the animal is on (native review C-3). */}
           {/* biome-ignore lint/a11y/noRedundantRoles: restores list semantics WebKit drops under list-style: none */}
           {/* biome-ignore lint/a11y/useSemanticElements: it IS the semantic element; the role only re-asserts it for WebKit */}
-          <ul role="list" className="m-0 list-none p-0">
+          <ul role="list" className="pc-med-list">
             {activeMedications.map((drug) => (
-              <li
-                key={drug}
-                className="flex items-center gap-[7px] border-b border-ln-line-2 py-1 text-md text-ln-ink"
-              >
-                <span aria-hidden="true" className="text-xs text-ln-azul">
-                  •
-                </span>
+              <li key={drug}>
+                <span aria-hidden="true">•</span>
                 {drug}
               </li>
             ))}
@@ -165,68 +147,44 @@ export function Tier2MedicalView({
         </MedBlock>
       )}
 
-      {/* Permanent conditions */}
       {conditionLabels.length > 0 && (
         <MedBlock label="Condiciones permanentes">
-          <p className="m-0 text-md leading-[1.5] text-ln-ink">{conditionLabels.join(" · ")}</p>
+          <p className="pc-med-copy">{conditionLabels.join(" · ")}</p>
         </MedBlock>
       )}
-
-      {/* Privacy notice */}
-      <p className="mt-2.5 font-ln-mono text-xs leading-[1.5] tracking-[.02em] text-ln-faint">
-        Esta vista no expone contacto del dueño, dirección ni notas privadas.
-      </p>
     </section>
   );
 }
 
-// ---------------------------------------------------------------------------
-// MedStat — aggregate stat cell (vaccine count / sterilized flag)
-// ---------------------------------------------------------------------------
-
 function MedStat({
+  icon,
   label,
   value,
   sub,
   tone,
 }: {
+  icon: "vacuna" | "esterilizacion";
   label: string;
   value: string;
   sub: string;
   tone: "ok" | "warn" | "danger" | "neutral";
 }) {
-  const valueClass =
-    tone === "danger"
-      ? "text-ln-err"
-      : tone === "warn"
-        ? "text-ln-warn"
-        : tone === "ok"
-          ? "text-ln-ok"
-          : "text-ln-ink-2";
-
   return (
-    <div className="rounded-[var(--radius-sm)] border border-ln-line bg-ln-stripe px-3 py-2.5">
-      <dt className="mb-1 font-ln-mono text-xs font-semibold uppercase tracking-[.08em] text-ln-mute">
-        {label}
-      </dt>
-      <dd className={`m-0 font-ln-serif text-title font-semibold leading-none ${valueClass}`}>
-        {value}
-      </dd>
-      <p className="mt-[3px] text-sm text-ln-mute">{sub}</p>
+    <div className="pc-fact" data-tone={tone}>
+      <span className="pc-fact-mark" aria-hidden="true">
+        <Icon name={icon} size="lg" decorative />
+      </span>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+      <p>{sub}</p>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// MedBlock — labeled content block inside Tier2MedicalView
-// ---------------------------------------------------------------------------
-
 function MedBlock({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="mb-2.5 rounded-[var(--radius-sm)] border border-ln-line bg-ln-stripe px-3 py-2.5">
-      <p className="mb-1.5 font-ln-mono text-xs font-semibold uppercase tracking-[.08em] text-ln-mute">
-        {label}
-      </p>
+    <div className="pc-slip">
+      <p className="pc-slip-label">{label}</p>
       {children}
     </div>
   );

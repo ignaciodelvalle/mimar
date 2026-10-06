@@ -142,6 +142,7 @@ vi.mock("@/lib/utils/format", () => ({
   foundPossessivePhrase: vi.fn(() => "La tengo conmigo"),
   sightingPhrase: vi.fn(() => "La vi cerca de acá"),
   foundReportPrompt: vi.fn(() => "¿La encontraste? Reportala"),
+  lastSeenHeadingLabel: vi.fn(() => "Última vez visto"),
 }));
 // LostPublicCredential deps (lost render path).
 vi.mock("@/lib/reference/lookups", () => ({ tattooLocationLabel: vi.fn(() => null) }));
@@ -170,6 +171,9 @@ vi.mock("@/app/(public)/p/[publicToken]/FoundPetForm", () => ({ FoundPetForm: vi
 vi.mock("@/app/(public)/p/[publicToken]/ScanLogger", () => ({ ScanLogger: vi.fn(() => null) }));
 vi.mock("@/app/(public)/p/[publicToken]/Tier2MedicalView", () => ({
   Tier2MedicalView: vi.fn(() => null),
+}));
+vi.mock("@/components/ui/CredentialQr", () => ({
+  CredentialQr: vi.fn(() => null),
 }));
 
 // ---------------------------------------------------------------------------
@@ -264,14 +268,38 @@ describe("/p/[publicToken] — landing-shell structure (Item 7, Phase C2)", () =
     expect(countMainContentIds(html)).toBe(0);
     // Sanity: the credential actually rendered (active content present).
     expect(html).toContain("Credencial pública");
+    expect(html).toContain("pc-band");
+    expect(html).toContain("pc-band-mark");
     // The most-scanned public page in the product must expose a page-level
     // heading (WCAG 1.3.1 / 2.4.6) — exactly one <h1>, carrying the pet name.
     expect((html.match(/<h1(\s|>)/g) ?? []).length).toBe(1);
     expect(html).toMatch(/<h1[^>]*>[\s\S]*Firulais/);
+    // Nivel 0: the right-hand cell is this pet's QR; the photo is the tile in
+    // the identity row. No slots, MRZ or flip on any public level (parked
+    // 2026-10-06).
+    expect(html).toContain('data-level="0"');
+    expect(html).toContain('data-cell="qr"');
+    expect(html).toContain('data-slot="qr"');
+    expect(html).toContain("<svg");
+    expect(html).not.toContain('data-slot="empty"');
+    expect(html).toContain('data-photo="tile"');
+    expect(html).not.toContain('data-section="lost-photo"');
+    expect(html).toContain("¿Lo encontraste?");
+    expect(html).not.toContain("Vacunación");
+    expect(html).not.toContain("pc-slots");
+    expect(html).not.toContain("pc-mrz");
+    expect(html).not.toContain("pc-band-flip");
+    expect(html).not.toContain("pc-photo-ovd");
+    expect(html).not.toContain("pc-band-holo");
     // Rabies semaphore row (pet-state-header R4) — present on the active
-    // render; no doses mocked → honest "Sin registro".
+    // render; no doses mocked → honest "Sin registro". Restored 2026-10-06.
+    expect(html).toContain('data-section="rabies-semaphore"');
     expect(html).toContain("Antirrábica");
     expect(html).toContain("Sin registro");
+    // ADR-7 claim heading rides the identity stamps (CT1/CT2 pinned in
+    // public-token-streaming.test.tsx).
+    expect(html).toContain('data-section="identity"');
+    expect(html).toContain("Identidad registrada");
   });
 
   it("THROTTLE (rate-limited) render path emits NO page-owned <main> / #main-content", async () => {
@@ -359,11 +387,27 @@ describe("/p/[publicToken] — LOST path renders the single-card structure (pet-
     // render here.
     expect(html).not.toContain('data-section="lost-urgent-banner"');
 
-    // The normal credential body still renders (identity grid + footer).
-    expect(html).toContain("Identidad registrada");
+    // Nivel 1: same single-face card as 0, plus the lost body. No flip / MRZ.
+    // This fixture discloses no location, so the cell stays the QR (no ping).
     expect(html).toContain("Credencial pública");
+    expect(html).toContain("pc-band");
+    expect(html).toContain("pc-band-mark");
+    expect(html).toContain('data-level="1"');
+    expect(html).toContain('data-slot="qr"');
+    expect(html).not.toContain('data-slot="ping"');
+    expect(html).toContain("La vi cerca de acá");
+    expect(html).not.toContain("Vacunación");
+    expect(html).not.toContain("pc-slots");
+    expect(html).not.toContain("pc-mrz");
+    expect(html).not.toContain("pc-band-flip");
+    // LOST keeps the large photo a finder can match (as on main): it spans
+    // the card above the identity row, and the row loses its 156px tile.
+    expect(html).toContain('data-section="lost-photo"');
+    expect(html).toContain('data-photo="hero"');
+    expect(html).not.toContain("pc-photo-mount");
     // Rabies semaphore row (pet-state-header R4) — present on the LOST render
-    // too (finder-relevant: bite protocol).
+    // too (finder-relevant: bite protocol). Restored 2026-10-06.
+    expect(html).toContain('data-section="rabies-semaphore"');
     expect(html).toContain("Antirrábica");
     expect(html).toContain("Sin registro");
   });

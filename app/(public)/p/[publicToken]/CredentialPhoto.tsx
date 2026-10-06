@@ -26,8 +26,23 @@ import { useState } from "react";
  * mobile LCP audit, R-2) — without it the browser's fetch scheduler has no
  * signal to prefer this image over the page's fonts/scripts under
  * contention, even though it is the LCP element on this route.
+ *
+ * TWO SIZES. `tile` is the 156px square of the identity row (every situation
+ * but lost). `hero` is the full-width 4:3 photo the LOST render keeps: a finder
+ * standing over an animal has to recognise it, and a thumbnail is not enough
+ * to match a face (PO default, review 2026-10-06 — the photo was large on main).
+ * Both stay `priority` + `fetchPriority="high"`: in either size it is the LCP
+ * element, and `sizes` tells the optimizer which width to serve.
  */
-export function CredentialPhoto({ src, petName }: { src: string | null; petName: string }) {
+export function CredentialPhoto({
+  src,
+  petName,
+  variant = "tile",
+}: {
+  src: string | null;
+  petName: string;
+  variant?: "tile" | "hero";
+}) {
   const [failed, setFailed] = useState(false);
 
   if (!src || failed) {
@@ -38,16 +53,32 @@ export function CredentialPhoto({ src, petName }: { src: string | null; petName:
     );
   }
 
+  if (variant === "hero") {
+    return (
+      <Image
+        src={src}
+        alt={petName}
+        width={460}
+        height={345}
+        priority
+        fetchPriority="high"
+        sizes="(max-width: 480px) 100vw, 460px"
+        className="block w-full aspect-[4/3] object-cover"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
   return (
     <Image
       src={src}
       alt={petName}
-      width={460}
-      height={345}
+      width={320}
+      height={320}
       priority
       fetchPriority="high"
-      sizes="(max-width: 480px) 100vw, 460px"
-      className="block w-full aspect-[4/3] object-cover"
+      sizes="156px"
+      className="block h-full w-full object-cover"
       onError={() => setFailed(true)}
     />
   );

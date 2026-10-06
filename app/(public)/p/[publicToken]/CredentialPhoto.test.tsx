@@ -41,6 +41,22 @@ describe("CredentialPhoto", () => {
     expect(screen.getByText("R")).toBeInTheDocument();
   });
 
+  it("tile (default) asks the optimizer for the 156px cell", () => {
+    render(<CredentialPhoto src={PHOTO} petName="Pampa" />);
+    expect(screen.getByRole("img", { name: "Pampa" })).toHaveAttribute("sizes", "156px");
+  });
+
+  // Lost render (review 2026-10-06): a finder has to recognise the animal, so
+  // the photo goes back to full width — and the optimizer must be told so, or
+  // it serves a 156px thumbnail stretched across the card.
+  it("hero (lost) is full-width 4:3 with a viewport-wide sizes hint", () => {
+    render(<CredentialPhoto src={PHOTO} petName="Pampa" variant="hero" />);
+    const img = screen.getByRole("img", { name: "Pampa" });
+    expect(img).toHaveAttribute("sizes", "(max-width: 480px) 100vw, 460px");
+    expect(img.className).toContain("w-full");
+    expect(img.className).toContain("aspect-[4/3]");
+  });
+
   it("uppercases the initial regardless of how the name was typed", () => {
     render(<CredentialPhoto src={null} petName="ñandú" />);
     expect(screen.getByText("Ñ")).toBeInTheDocument();

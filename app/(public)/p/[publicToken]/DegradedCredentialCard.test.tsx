@@ -27,6 +27,7 @@ describe("DegradedCredentialCard", () => {
     expect(screen.getByText(/DIM-PAMP-0001/)).toBeInTheDocument();
     // Retry goes back to the same credential URL.
     expect(screen.getByRole("link", { name: "Reintentar" })).toHaveAttribute("href", `/p/${TOKEN}`);
+    expect(document.querySelector(".pc-band-mark")).not.toBeNull();
   });
 
   it("falls back to a generic h1 (page orientation) and shows no lost CTAs when the pet row never resolved", () => {
