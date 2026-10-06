@@ -10,9 +10,14 @@
 //      plugin's `imageWidth`, read from app.json below) on the SAME ground,
 //      centred in the same full-screen window. Underneath the native splash it
 //      is pixel-for-pixel what the native splash already shows.
-//   3. On its first layout it releases the native splash — exactly once. On
-//      Android the native side fades out over `NATIVE_SPLASH_FADE_MS` on top of
-//      an identical picture, so the fade is invisible.
+//   3. Once it is laid out AND its image has painted (`onLoad`), it releases
+//      the native splash — exactly once. On Android the native side fades out
+//      over `NATIVE_SPLASH_FADE_MS` on top of an identical picture, so the fade
+//      is invisible. Releasing on layout alone was NOT: on a J7 (EAS preview,
+//      2026-10-06) the fade uncovered an overlay whose image had not decoded
+//      yet, and the logo dipped to half opacity for ~100ms. If the image never
+//      reports a load, `LAUNCH_MARK_HANDOFF_FALLBACK_MS` after layout the splash
+//      is released anyway — a failed decode must not trap anybody.
 //   4. After that fade, and only if the system allows motion, the logo shrinks
 //      to `LAUNCH_MARK_REST_SCALE` and stays there.
 //   5. When the app is ready (and the shrink has landed) the overlay fades out
@@ -94,6 +99,11 @@ export const LAUNCH_MARK_FADE_MS = 200;
 export const NATIVE_SPLASH_FADE_MS = 200;
 /** The hard ceiling: past this, the overlay goes whatever `ready` says. */
 export const LAUNCH_MARK_TIMEOUT_MS = 8000;
+/**
+ * After layout, how long the hand-off waits for the overlay image's `onLoad`
+ * before releasing the native splash anyway (a decode that never reports).
+ */
+export const LAUNCH_MARK_HANDOFF_FALLBACK_MS = 600;
 
 /**
  * Whether a cold start at `pathname` should keep the mark up through the
@@ -183,6 +193,11 @@ export function LaunchMark({ ready }: { ready: boolean }) {
   const scale = useRef(new Animated.Value(1)).current;
   const opacity = useRef(new Animated.Value(1)).current;
   const released = useRef(false);
+  // The hand-off's two preconditions: the overlay is laid out, and its image
+  // has painted. Plus the fallback that releases without the second.
+  const laidOut = useRef(false);
+  const imagePainted = useRef(false);
+  const handoffFallback = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reduceMotion = useReduceMotion();
   const [handedOff, setHandedOff] = useState(false);
   const [settled, setSettled] = useState(false);
@@ -245,13 +260,39 @@ export function LaunchMark({ ready }: { ready: boolean }) {
   // Only an unmount stops the exit fade.
   useEffect(() => () => exitFade.current?.stop(), []);
 
+  // An unmount also drops a pending hand-off fallback.
+  useEffect(
+    () => () => {
+      if (handoffFallback.current !== null) clearTimeout(handoffFallback.current);
+    },
+    [],
+  );
+
   if (gone || LAUNCH_MARK_SIZE_DP === null) return null;
 
-  const onLayout = () => {
+  // Exactly once, whichever arrives last (layout, image paint) or the fallback.
+  const handOff = (force: boolean) => {
     if (released.current) return;
+    if (!force && !(laidOut.current && imagePainted.current)) return;
     released.current = true;
+    if (handoffFallback.current !== null) {
+      clearTimeout(handoffFallback.current);
+      handoffFallback.current = null;
+    }
     releaseNativeSplash();
     setHandedOff(true);
+  };
+
+  const onLayout = () => {
+    if (laidOut.current) return;
+    laidOut.current = true;
+    handoffFallback.current = setTimeout(() => handOff(true), LAUNCH_MARK_HANDOFF_FALLBACK_MS);
+    handOff(false);
+  };
+
+  const onImageLoad = () => {
+    imagePainted.current = true;
+    handOff(false);
   };
 
   return (
@@ -270,6 +311,7 @@ export function LaunchMark({ ready }: { ready: boolean }) {
       <Animated.Image
         testID="launch-mark-logo"
         source={SPLASH_IMAGE}
+        onLoad={onImageLoad}
         resizeMode="contain"
         style={{
           width: LAUNCH_MARK_SIZE_DP,

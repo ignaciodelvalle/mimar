@@ -5,6 +5,7 @@ import { AccessibilityInfo, Animated, Text, View } from "react-native";
 
 import {
   LAUNCH_MARK_FADE_MS,
+  LAUNCH_MARK_HANDOFF_FALLBACK_MS,
   LAUNCH_MARK_REST_SCALE,
   LAUNCH_MARK_SHRINK_MS,
   LAUNCH_MARK_SIZE_DP,
@@ -43,6 +44,12 @@ function advance(ms: number) {
   act(() => {
     jest.advanceTimersByTime(ms);
   });
+}
+
+/** The overlay is laid out AND its image has painted — the hand-off's trigger. */
+function handOff() {
+  fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
+  fireEvent(screen.getByTestId("launch-mark-logo"), "load");
 }
 
 function shrinkCalls(timing: jest.SpiedFunction<typeof Animated.timing>) {
@@ -103,19 +110,60 @@ describe("launchMarkReady — a public route does not wait for the session", () 
 });
 
 describe("LaunchMark — the hand-off", () => {
-  it("hides the native splash exactly once, on its first layout", async () => {
+  it("hides the native splash exactly once, after layout AND the image's load", async () => {
     reduceMotion(false);
     const { rerender } = render(<LaunchMark ready={false} />);
     await settleQuery();
     expect(hide).not.toHaveBeenCalled();
 
-    const overlay = screen.getByTestId("launch-mark");
-    fireEvent(overlay, "layout", LAYOUT);
-    fireEvent(overlay, "layout", LAYOUT);
+    handOff();
+    handOff();
     rerender(<LaunchMark ready={false} />);
-    fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
-    advance(UNTIL_SETTLED);
+    handOff();
+    advance(UNTIL_SETTLED + LAUNCH_MARK_HANDOFF_FALLBACK_MS);
 
+    expect(hide).toHaveBeenCalledTimes(1);
+  });
+
+  // J7, EAS preview (2026-10-06): releasing on layout alone let the native
+  // fade uncover an overlay whose image had not painted — a visible dip.
+  it("does not hide the native splash on layout alone — only once the image has loaded", async () => {
+    reduceMotion(false);
+    render(<LaunchMark ready={false} />);
+    await settleQuery();
+    fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
+    advance(LAUNCH_MARK_HANDOFF_FALLBACK_MS - 1);
+    expect(hide).not.toHaveBeenCalled();
+
+    fireEvent(screen.getByTestId("launch-mark-logo"), "load");
+    expect(hide).toHaveBeenCalledTimes(1);
+    advance(LAUNCH_MARK_HANDOFF_FALLBACK_MS);
+    expect(hide).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for layout even when the image loads first", async () => {
+    reduceMotion(false);
+    render(<LaunchMark ready={false} />);
+    await settleQuery();
+    fireEvent(screen.getByTestId("launch-mark-logo"), "load");
+    expect(hide).not.toHaveBeenCalled();
+
+    fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
+    expect(hide).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the native splash on the fallback when the image never reports a load", async () => {
+    reduceMotion(false);
+    render(<LaunchMark ready={false} />);
+    await settleQuery();
+    fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
+    advance(LAUNCH_MARK_HANDOFF_FALLBACK_MS - 1);
+    expect(hide).not.toHaveBeenCalled();
+
+    advance(1);
+    expect(hide).toHaveBeenCalledTimes(1);
+    // A late load does not hand off a second time.
+    fireEvent(screen.getByTestId("launch-mark-logo"), "load");
     expect(hide).toHaveBeenCalledTimes(1);
   });
 
@@ -124,7 +172,7 @@ describe("LaunchMark — the hand-off", () => {
     const timing = jest.spyOn(Animated, "timing");
     render(<LaunchMark ready={false} />);
     await settleQuery();
-    fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
+    handOff();
     advance(UNTIL_SETTLED);
 
     const shrinks = shrinkCalls(timing);
@@ -145,7 +193,7 @@ describe("LaunchMark — the hand-off", () => {
     const timing = jest.spyOn(Animated, "timing");
     const { rerender } = render(<LaunchMark ready={false} />);
     await settleQuery();
-    fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
+    handOff();
     advance(UNTIL_SETTLED);
     expect(shrinkCalls(timing)).toHaveLength(0);
 
@@ -160,7 +208,7 @@ describe("LaunchMark — the hand-off", () => {
       .mockReturnValue(new Promise<boolean>(() => {}));
     const timing = jest.spyOn(Animated, "timing");
     render(<LaunchMark ready={false} />);
-    fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
+    handOff();
     advance(UNTIL_SETTLED);
     expect(shrinkCalls(timing)).toHaveLength(0);
   });
@@ -194,11 +242,11 @@ describe("LaunchMark — survives the root layout's loading → app switch", () 
     const timing = jest.spyOn(Animated, "timing");
     const { rerender } = render(<Root loading ready={false} />);
     await settleQuery();
-    fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
+    handOff();
     advance(UNTIL_SETTLED);
 
     rerender(<Root loading={false} ready={false} />);
-    fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
+    handOff();
     await settleQuery();
     advance(UNTIL_SETTLED);
 
@@ -212,7 +260,7 @@ describe("LaunchMark — leaving", () => {
     reduceMotion(false);
     const { rerender } = render(<LaunchMark ready={false} />);
     await settleQuery();
-    fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
+    handOff();
     advance(UNTIL_SETTLED + 2000);
     expect(screen.getByTestId("launch-mark")).toBeTruthy();
 
@@ -225,7 +273,7 @@ describe("LaunchMark — leaving", () => {
     reduceMotion(false);
     render(<LaunchMark ready />);
     await settleQuery();
-    fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
+    handOff();
     advance(NATIVE_SPLASH_FADE_MS);
     expect(screen.getByTestId("launch-mark")).toBeTruthy();
 
@@ -255,7 +303,7 @@ describe("LaunchMark — leaving", () => {
     });
     const { rerender } = render(<LaunchMark ready={false} />);
     await settleQuery();
-    fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
+    handOff();
     advance(UNTIL_SETTLED);
 
     rerender(<LaunchMark ready />);
@@ -276,7 +324,7 @@ describe("LaunchMark — leaving", () => {
     reduceMotion(false);
     render(<LaunchMark ready={false} />);
     await settleQuery();
-    fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
+    handOff();
     advance(LAUNCH_MARK_TIMEOUT_MS - 1);
     expect(screen.getByTestId("launch-mark")).toBeTruthy();
 
