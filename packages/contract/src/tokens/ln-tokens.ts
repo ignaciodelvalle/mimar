@@ -60,6 +60,7 @@ export const LN_CSS_TOKENS = {
   "--color-ln-azul": "#0e5a99",
   "--color-ln-azul-700": "#0a4576",
   "--color-ln-azul-900": "#0a3556",
+  "--color-ln-band-sunk": "#041422",
   "--color-ln-celeste": "#4e97d1",
   "--color-ln-celeste-100": "#dcebf7",
   "--color-ln-celeste-050": "#eff6fc",
@@ -115,6 +116,7 @@ export const LN_CSS_TOKENS = {
   "--color-ln-memorial-sepia": "#5d5240",
   "--color-ln-memorial-chip-text": "#6a5a3f",
   "--color-ln-memorial-chip-bd": "#e0d4b8",
+  "--color-ln-memorial-chip-bg": "#f0ead9",
 
   // ---- Radius -------------------------------------------------------------
   "--radius-xs": "2px",
@@ -242,6 +244,10 @@ export const LN_COLORS = {
   memorialText: LN_CSS_TOKENS["--color-ln-memorial-chip-text"],
   /** The `fallecida` face's border. */
   memorialBorder: LN_CSS_TOKENS["--color-ln-memorial-chip-bd"],
+  /** The `fallecida` "En memoria" chip's background. */
+  memorialChipBg: LN_CSS_TOKENS["--color-ln-memorial-chip-bg"],
+  /** Engraved ink on the credential band: the latent wordmark and turn arc. */
+  bandSunk: LN_CSS_TOKENS["--color-ln-band-sunk"],
 } as const;
 
 /**

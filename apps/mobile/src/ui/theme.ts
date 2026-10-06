@@ -106,6 +106,10 @@ export const COLORS = {
   memorialSepia: LN_COLORS.memorialSepia,
   memorialText: LN_COLORS.memorialText,
   memorialBorder: LN_COLORS.memorialBorder,
+  /** The "En memoria" chip's background on the memorial band. */
+  memorialSurface: LN_COLORS.memorialChipBg,
+  /** Engraved ink on the credential band (web `--pc-sunk`). */
+  bandSunk: LN_COLORS.bandSunk,
 } as const;
 
 /**

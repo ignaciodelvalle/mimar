@@ -699,7 +699,7 @@ const styles = StyleSheet.create({
     zIndex: 3,
     ...Platform.select({
       ios: {
-        shadowColor: "#000",
+        shadowColor: COLORS.ink,
         shadowOpacity: PHOTO_MOUNT.shadowOpacity,
         shadowRadius: PHOTO_MOUNT.shadowRadius,
         shadowOffset: { width: 0, height: PHOTO_MOUNT.shadowOffsetY },

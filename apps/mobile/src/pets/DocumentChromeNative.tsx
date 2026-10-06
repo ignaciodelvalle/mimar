@@ -49,14 +49,14 @@ import { CARD_LIFT, ESCARAPELA, LATENT_BRAND, MIMAR_MARK, PAPER } from "./chrome
 
 const OWNER_CHROME = chromeForSurface("owner");
 
-/** Web `--color-ln-memorial-chip-bg` — not yet exported on `LN_COLORS`. */
-const MEMORIAL_CHIP_BG = "#f0ead9";
+/** Web `--color-ln-memorial-chip-bg`. */
+const MEMORIAL_CHIP_BG = COLORS.memorialSurface;
 
 /**
- * Sunk/lasered ink on the navy band — web `--pc-sunk` / landing `#041422`.
- * Literal, not a token: the web mixes at paint time.
+ * Sunk/lasered ink on the navy band — the native twin of web `--pc-sunk`
+ * (which the web mixes at paint time) and landing `--lp-sunk-ink`.
  */
-const SUNK_INK = "#041422";
+const SUNK_INK = COLORS.bandSunk;
 /** Highlight edge of the engraved ink (web `--pc-sunk-lo` / celeste mix). */
 const SUNK_LO = "rgba(215, 243, 255, 0.42)";
 /** Web `--pc-head-ink`: celeste-100 at ~82% over the navy. */
@@ -593,7 +593,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.card,
     ...Platform.select({
       ios: {
-        shadowColor: "#000",
+        shadowColor: COLORS.ink,
         shadowOpacity: CARD_LIFT.shadowOpacity,
         shadowRadius: CARD_LIFT.shadowRadius,
         shadowOffset: { width: 0, height: CARD_LIFT.shadowOffsetY },
