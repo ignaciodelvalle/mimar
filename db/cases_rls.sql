@@ -163,12 +163,14 @@ begin
   -- custody_transfer_handshake — the two organization parties the handshake's
   -- notifications are addressed to: the sending org (opened_by_organization_id)
   -- and the receiving org (receiver_organization_id, the column the accept
-  -- path authorizes against). Active members only. Migration 0281.
+  -- path authorizes against). Active ADMINS and COORDINATORS only — the roles
+  -- those writers notify (S2, PO confirmation pending). Migration 0281.
   if c.case_kind = 'custody_transfer_handshake' then
     return exists (
       select 1 from public.organization_memberships m
       where m.user_id = p_user_id
         and m.left_at is null
+        and m.role in ('admin', 'coordinator')
         and m.organization_id in (c.opened_by_organization_id, c.receiver_organization_id)
     );
   end if;
@@ -176,13 +178,14 @@ begin
   -- custody_episode — the receiving org of a decomiso handoff
   -- (receiver_organization_id). The opening govt org reads through the
   -- govt_scope branch above; a reassigned-away receiver no longer matches.
-  -- Migration 0281.
+  -- Admins and coordinators only (S2, PO confirmation pending). Migration 0281.
   if c.case_kind = 'custody_episode' and c.receiver_organization_id is not null then
     return exists (
       select 1 from public.organization_memberships m
       where m.organization_id = c.receiver_organization_id
         and m.user_id = p_user_id
         and m.left_at is null
+        and m.role in ('admin', 'coordinator')
     );
   end if;
 

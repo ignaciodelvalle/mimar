@@ -15,10 +15,26 @@
 --
 -- THE CHANGE — only parties the notifications are addressed to
 -- ---------------------------------------------------------------------------
---   custody_transfer_handshake  active members of opened_by_organization_id
---                               (sender) or receiver_organization_id (receiver)
---   custody_episode             active members of receiver_organization_id
---                               (the shelter the authority handed the animal to)
+--   custody_transfer_handshake  active admins/coordinators of
+--                               opened_by_organization_id (sender) or
+--                               receiver_organization_id (receiver)
+--   custody_episode             active admins/coordinators of
+--                               receiver_organization_id (the shelter the
+--                               authority handed the animal to)
+--
+-- TWO CONSERVATIVE CHOICES, PENDING PO CONFIRMATION (security review S2)
+-- ---------------------------------------------------------------------------
+--   1. ROLES. The writers notify each org's ADMINS and COORDINATORS
+--      (transfers-repository orgCoordinatorAdminUserIds; execute-decomiso /
+--      reassign-decomiso), so the arms admit exactly those roles and not every
+--      active member: a volunteer of a party org does not read the case.
+--   2. NOTES. An org party admitted ONLY by these arms reads the timeline
+--      WITHOUT the free-form event notes until the hand-off is accepted (the
+--      case closed as 'resolved'). That cut is applied by the readers
+--      (lib/infra/case-access.ts caseNotesWithheldFor, through readCaseForViewer
+--      for the web page and /api/v1/me/cases); this function decides only WHO
+--      reads the case.
+--   Either can be widened later by a forward migration once the PO decides.
 --
 -- NOT in this change, deliberately (PO / legal decision pending): the org that
 -- OPENED a welfare_denuncia, and a co_owner on any case. The notification
@@ -171,12 +187,14 @@ begin
   -- custody_transfer_handshake — the two organization parties the handshake's
   -- notifications are addressed to: the sending org (opened_by_organization_id)
   -- and the receiving org (receiver_organization_id, the column the accept
-  -- path authorizes against). Active members only. Migration 0281.
+  -- path authorizes against). Active ADMINS and COORDINATORS only — the roles
+  -- those writers notify (S2, PO confirmation pending). Migration 0281.
   if c.case_kind = 'custody_transfer_handshake' then
     return exists (
       select 1 from public.organization_memberships m
       where m.user_id = p_user_id
         and m.left_at is null
+        and m.role in ('admin', 'coordinator')
         and m.organization_id in (c.opened_by_organization_id, c.receiver_organization_id)
     );
   end if;
@@ -184,13 +202,14 @@ begin
   -- custody_episode — the receiving org of a decomiso handoff
   -- (receiver_organization_id). The opening govt org reads through the
   -- govt_scope branch above; a reassigned-away receiver no longer matches.
-  -- Migration 0281.
+  -- Admins and coordinators only (S2, PO confirmation pending). Migration 0281.
   if c.case_kind = 'custody_episode' and c.receiver_organization_id is not null then
     return exists (
       select 1 from public.organization_memberships m
       where m.organization_id = c.receiver_organization_id
         and m.user_id = p_user_id
         and m.left_at is null
+        and m.role in ('admin', 'coordinator')
     );
   end if;
 
@@ -215,6 +234,7 @@ BEGIN
       AND p.prosrc LIKE '%and p.deleted_at is null%'
       AND p.prosrc LIKE '%c.case_kind = ''custody_transfer_handshake''%'
       AND p.prosrc LIKE '%m.organization_id in (c.opened_by_organization_id, c.receiver_organization_id)%'
+      AND p.prosrc LIKE '%m.role in (''admin'', ''coordinator'')%'
       AND p.prosrc LIKE '%c.case_kind = ''custody_episode'' and c.receiver_organization_id is not null%'
       AND p.prosrc LIKE '%cdp.party_organization_id%'
   ) THEN

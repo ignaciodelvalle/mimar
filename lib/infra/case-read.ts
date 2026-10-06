@@ -16,7 +16,12 @@
 // personal party names, notes) stays with the caller that renders it, because
 // only the web has an anonymous branch — the API requires a session.
 
-import { type CaseViewer, canReadCase, holdsActiveCaretakerRow } from "@/lib/infra/case-access";
+import {
+  type CaseViewer,
+  canReadCase,
+  caseNotesWithheldFor,
+  holdsActiveCaretakerRow,
+} from "@/lib/infra/case-access";
 import {
   type CaseDetail,
   type CaseEventRow,
@@ -93,9 +98,14 @@ export async function readCaseForViewer(
   // for the reviewing authority ONLY. The disputing parties pass canReadCase
   // for the case, so the filter lives here: everyone else must not even learn
   // a tip exists.
-  const timelineEvents = detail.events.filter(
+  const visibleEvents = detail.events.filter(
     (e) => e.eventType !== "finder_tip" || isAuthorityViewer,
   );
+  // A hand-off org party reads the timeline WITHOUT the free-form notes until it
+  // has accepted (security review S2) — see `caseNotesWithheldFor`.
+  const timelineEvents = (await caseNotesWithheldFor(detail, viewer))
+    ? visibleEvents.map((e) => ({ ...e, notes: null }))
+    : visibleEvents;
 
   return { kind: "readable", detail, viewer, isAuthorityViewer, timelineEvents };
 }

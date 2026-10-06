@@ -29,6 +29,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  caseEvents,
   cases,
   db,
   notifications,
@@ -40,9 +41,12 @@ import {
 import { type CaseViewer, canReadCase, isActiveOrgMember } from "@/lib/infra/case-access";
 import { closeCase, openCase } from "@/lib/infra/case-helpers";
 import { getCaseDetailByPublicCode } from "@/lib/infra/case-queries";
+import { readCaseForViewer } from "@/lib/infra/case-read";
 import { getFormerOwnerReadAccess, resolvePetHolderAccess } from "@/lib/infra/pet-access";
 import type { ResolvedNotificationTarget } from "@/src/modules/notifications/application/read/resolve-notification-target";
 import { resolveOwnNotificationTarget } from "@/src/modules/notifications/infrastructure/notification-target-probes";
+
+import { notificationTargetPorts } from "@/app/_composition/notification-target-ports";
 
 import { withMutationOverride } from "./_helpers/db-overrides";
 import { createFreshTestUser, deleteTestUser } from "./_helpers/fresh-test-user";
@@ -64,6 +68,8 @@ const USERS = {
   receiverLeft: "notif-matrix-receiver-left@dim-test.local",
   oldReceiver: "notif-matrix-old-receiver@dim-test.local",
   stranger: "notif-matrix-stranger@dim-test.local",
+  receiverCoordinator: "notif-matrix-receiver-coord@dim-test.local",
+  receiverVolunteer: "notif-matrix-receiver-vol@dim-test.local",
   reporterOrg: "notif-matrix-reporter@dim-test.local",
 } as const;
 type UserKey = keyof typeof USERS;
@@ -114,6 +120,11 @@ async function purgeFixtures(): Promise<void> {
   await withMutationOverride(async (tx) => {
     for (const { id } of petRows) {
       await tx.delete(notifications).where(eq(notifications.relatedPetId, id));
+      const petCases = await tx
+        .select({ id: cases.id })
+        .from(cases)
+        .where(eq(cases.primaryPetId, id));
+      for (const c of petCases) await tx.delete(caseEvents).where(eq(caseEvents.caseId, c.id));
       await tx.delete(cases).where(eq(cases.primaryPetId, id));
       await tx.delete(ownerships).where(eq(ownerships.petId, id));
       await tx.delete(pets).where(eq(pets.id, id));
@@ -234,6 +245,19 @@ beforeAll(async () => {
       canWritePetEvents: false,
       leftAt: new Date(),
     },
+    // S2: the hand-off arms admit admins and coordinators — the roles notified.
+    {
+      organizationId: orgIds.receiver,
+      userId: ids.receiverCoordinator,
+      role: "coordinator",
+      canWritePetEvents: true,
+    },
+    {
+      organizationId: orgIds.receiver,
+      userId: ids.receiverVolunteer,
+      role: "volunteer",
+      canWritePetEvents: false,
+    },
     {
       organizationId: orgIds.oldReceiver,
       userId: ids.oldReceiver,
@@ -349,7 +373,15 @@ beforeAll(async () => {
     const [row] = await db.select({ code: cases.publicCode }).from(cases).where(eq(cases.id, id));
     caseCodes[key] = row.code;
   }
+  // S2: a free-form note on the open and on the accepted (closed) hand-off.
+  await db.insert(caseEvents).values([
+    { caseId: caseIds.handshakeOpen, entryType: "org_intervention_note", notes: NOTE_OPEN },
+    { caseId: caseIds.handshakeClosed, entryType: "org_intervention_note", notes: NOTE_CLOSED },
+  ]);
 }, 120_000);
+
+const NOTE_OPEN = "Nota interna: la familia vive en Calle Falsa 123.";
+const NOTE_CLOSED = "Nota interna posterior a la aceptación.";
 
 afterAll(async () => {
   await purgeFixtures();
@@ -361,7 +393,11 @@ async function resolveFor(
   user: UserKey,
   notificationId: string,
 ): Promise<ResolvedNotificationTarget> {
-  const target = await resolveOwnNotificationTarget(notificationId, viewer(user));
+  const target = await resolveOwnNotificationTarget(
+    notificationId,
+    viewer(user),
+    notificationTargetPorts,
+  );
   if (target === null) throw new Error(`no target for ${notificationId}`);
   return target;
 }
@@ -471,11 +507,26 @@ const MATRIX: Cell[] = [
     actor: /^Te toca a vos: aceptá o rechazá recibir al animal\.$/,
   },
   {
-    name: "REASSIGNED · the previous receiver is no longer a party",
+    name: "REASSIGNED · the previous receiver is no longer a party, and is told to do nothing",
     user: "oldReceiver",
     type: "decomiso_handoff_proposed_receiver",
     cta: caseUrl("episode"),
-    expect: { outcome: "explain", reason: "case_not_available" },
+    // R4: a refused case names nobody to act.
+    expect: { outcome: "explain", reason: "case_not_available", actorCopy: null },
+  },
+  {
+    name: "S2 · a coordinator of the receiving org reads the hand-off case",
+    user: "receiverCoordinator",
+    type: "decomiso_handoff_proposed_receiver",
+    cta: caseUrl("episode"),
+    expect: { outcome: "case" },
+  },
+  {
+    name: "S2 · a volunteer of the receiving org is not a party to the hand-off",
+    user: "receiverVolunteer",
+    type: "cross_org_transfer_proposed_receiver",
+    cta: caseUrl("handshakeOpen"),
+    expect: { outcome: "explain", reason: "case_not_available", actorCopy: null },
   },
   {
     name: "TRANSFERRED (seized) · the former owner keeps the read-only pet face",
@@ -578,7 +629,33 @@ describe("notification destinations — every cell lands somewhere the reader ca
     const id = await notify("receiver", "cross_org_transfer_proposed_receiver", {
       ctaUrl: `/casos/${caseCodes.handshakeOpen}`,
     });
-    expect(await resolveOwnNotificationTarget(id, viewer("stranger"))).toBeNull();
+    expect(
+      await resolveOwnNotificationTarget(id, viewer("stranger"), notificationTargetPorts),
+    ).toBeNull();
+  });
+});
+
+// S2 — an org party admitted by the 0281 arms reads the timeline WITHOUT the
+// free-form notes until the hand-off is accepted (the case closed 'resolved').
+describe("case notes for a hand-off org party (S2)", () => {
+  it("withholds the notes before acceptance", async () => {
+    const read = await readCaseForViewer(caseCodes.handshakeOpen, viewer("receiverCoordinator"));
+    expect(read.kind).toBe("readable");
+    if (read.kind !== "readable") return;
+    expect(read.timelineEvents.some((e) => e.notes === NOTE_OPEN)).toBe(false);
+    expect(read.timelineEvents.length).toBeGreaterThan(0);
+  });
+
+  it("shows them once the hand-off was accepted", async () => {
+    const read = await readCaseForViewer(caseCodes.handshakeClosed, viewer("receiverCoordinator"));
+    expect(read.kind).toBe("readable");
+    if (read.kind !== "readable") return;
+    expect(read.timelineEvents.some((e) => e.notes === NOTE_CLOSED)).toBe(true);
+  });
+
+  it("denies a volunteer the case outright", async () => {
+    const read = await readCaseForViewer(caseCodes.handshakeOpen, viewer("receiverVolunteer"));
+    expect(read.kind).toBe("not_found");
   });
 });
 
@@ -594,7 +671,23 @@ async function sqlCanReadCase(caseId: string, userId: string): Promise<boolean> 
 }
 
 describe("public.can_read_case agrees with canReadCase on the 0281 arms", () => {
+  // R7: not a regression when the migration is simply not applied — say so.
+  beforeAll(async () => {
+    const rows = (await db.execute(sql`
+      select count(*)::int as n from pg_proc
+      where proname = 'can_read_case'
+        and prosrc like '%custody_transfer_handshake%'
+        and prosrc like '%m.role in (''admin'', ''coordinator'')%'
+    `)) as unknown as Array<{ n: number }>;
+    if ((rows[0]?.n ?? 0) === 0) {
+      throw new Error("0281 no está aplicada en esta base (pnpm db:migrate)");
+    }
+  });
+
   const cells: Array<[keyof typeof caseIds, UserKey, boolean]> = [
+    ["handshakeOpen", "receiverCoordinator", true],
+    ["handshakeOpen", "receiverVolunteer", false],
+    ["episode", "receiverVolunteer", false],
     ["handshakeOpen", "sender", true],
     ["handshakeOpen", "receiver", true],
     ["handshakeClosed", "receiver", true],

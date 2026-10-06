@@ -15,7 +15,7 @@
 // welfare_denuncia used to be a fourth entry; see the note on
 // PUBLIC_ANONYMOUS_KINDS for why it is gone.
 
-import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 import { custodyDisputeParties, db, organizationMemberships, ownerships } from "@/db";
 import {
@@ -93,6 +93,73 @@ export async function isActiveOrgMember(orgId: string, userId: string): Promise<
     )
     .limit(1);
   return Boolean(memberRow);
+}
+
+/**
+ * The org roles a custody hand-off's notifications are addressed to — and so
+ * the only roles the 0281 arms admit (security review S2, pending PO
+ * confirmation). Mirrored verbatim in SQL (`m.role in ('admin', 'coordinator')`).
+ */
+export const CASE_PARTY_ORG_ROLES = ["admin", "coordinator"] as const;
+
+/** An ACTIVE membership in this org, in one of `CASE_PARTY_ORG_ROLES`. */
+export async function isActiveOrgCaseParty(orgId: string, userId: string): Promise<boolean> {
+  const [memberRow] = await db
+    .select({ id: organizationMemberships.id })
+    .from(organizationMemberships)
+    .where(
+      and(
+        eq(organizationMemberships.organizationId, orgId),
+        eq(organizationMemberships.userId, userId),
+        isNull(organizationMemberships.leftAt),
+        inArray(organizationMemberships.role, [...CASE_PARTY_ORG_ROLES]),
+      ),
+    )
+    .limit(1);
+  return Boolean(memberRow);
+}
+
+/** The kinds whose org parties were admitted by migration 0281. */
+const HANDOFF_PARTY_KINDS: ReadonlySet<string> = new Set([
+  "custody_transfer_handshake",
+  "custody_episode",
+]);
+
+/**
+ * Whether this viewer must NOT see the case's free-form event notes (security
+ * review S2, conservative default pending PO/legal).
+ *
+ * Notes are free text — internal coordination, addresses, the reasons behind a
+ * seizure. An org party admitted ONLY by the 0281 hand-off arms reads the case
+ * to decide whether to accept it; until the hand-off is ACCEPTED (the case
+ * closed as `resolved` — both accept paths close it that way) it reads the
+ * timeline without the notes. Authorities (admin, national, govt) and the
+ * subject's titular read as before.
+ */
+export async function caseNotesWithheldFor(
+  detail: CaseDetail,
+  viewer: CaseViewer | null,
+): Promise<boolean> {
+  if (!viewer) return false;
+  if (!HANDOFF_PARTY_KINDS.has(detail.caseKind)) return false;
+  if (hasNationalReadScope(viewer.role) || viewer.role === "govt") return false;
+  if (detail.status === "closed" && detail.closedReason === "resolved") return false;
+  if (detail.pet) {
+    const [ownerRow] = await db
+      .select({ id: ownerships.id })
+      .from(ownerships)
+      .where(
+        and(
+          eq(ownerships.petId, detail.pet.id),
+          eq(ownerships.ownerUserId, viewer.userId),
+          eq(ownerships.role, "owner"),
+          isNull(ownerships.endedAt),
+        ),
+      )
+      .limit(1);
+    if (ownerRow) return false;
+  }
+  return true;
 }
 
 export async function canReadCase(detail: CaseDetail, viewer: CaseViewer | null): Promise<boolean> {
@@ -246,10 +313,13 @@ export async function canReadCase(detail: CaseDetail, viewer: CaseViewer | null)
   // Every cross_org_transfer_* notification sends their members to
   // /casos/<code>, and with no arm here each one landed on notFound()
   // (notificaciones-destinos audit, 2026-10-06). Mirrored in SQL by migration
-  // 0281. Only the parties the notifications are addressed to — nobody else.
+  // 0281. Only the parties the notifications are addressed to — nobody else:
+  // the cross_org_transfer_* writers notify the org's ADMINS and COORDINATORS
+  // (transfers-repository orgCoordinatorAdminUserIds), so a volunteer of either
+  // org does not read the case (security review S2; PO confirmation pending).
   if (detail.caseKind === "custody_transfer_handshake") {
     for (const org of [detail.openedByOrganization, detail.receiverOrganization]) {
-      if (org && (await isActiveOrgMember(org.id, viewer.userId))) return true;
+      if (org && (await isActiveOrgCaseParty(org.id, viewer.userId))) return true;
     }
   }
 
@@ -258,9 +328,10 @@ export async function canReadCase(detail: CaseDetail, viewer: CaseViewer | null)
   // _accepted_receiver link the case for that shelter's members. The opening
   // govt org reads through the govt branch above; a receiver the authority
   // reassigned away no longer matches the column and is a stranger again.
-  // Mirrored in SQL by migration 0281.
+  // Mirrored in SQL by migration 0281. Admins and coordinators only, the roles
+  // execute-decomiso / reassign-decomiso notify (security review S2).
   if (detail.caseKind === "custody_episode" && detail.receiverOrganization) {
-    if (await isActiveOrgMember(detail.receiverOrganization.id, viewer.userId)) return true;
+    if (await isActiveOrgCaseParty(detail.receiverOrganization.id, viewer.userId)) return true;
   }
 
   // NOT HERE, deliberately (PO / legal decision pending): the organization that
