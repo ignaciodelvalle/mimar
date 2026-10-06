@@ -154,6 +154,10 @@ export function cubeBuilderStatementTimeoutMs(
   return Number.isFinite(n) && n > 0 ? n : CUBE_BUILDER_DEFAULT_STATEMENT_TIMEOUT_MS;
 }
 
+/** postgres.js option that disables pipelining (see the read client). Typed as
+ * the client's Options because the library leaves `max_pipeline` undeclared. */
+const NO_PIPELINING = { max_pipeline: 0 } as unknown as postgres.Options<Record<string, never>>;
+
 /** Construct the dedicated read client. Session pooler (honors the startup GUC —
  * same reasoning as the write client), tiny pool, long timeout. Lazy by design:
  * called per refreshCube invocation, never at module load. */
@@ -167,6 +171,21 @@ function createBuilderReadClient(): ReturnType<typeof postgres> {
     // backend per connection, so keep it small; the build is off the request path
     // and total wall-clock (not per-query latency) is what matters.
     max: 3,
+    // NO PIPELINING (2026-10). postgres.js pipelines a query onto a busy
+    // connection when every connection is busy, and through Supavisor's
+    // transaction pooler (6543) a pipelined query that returns ZERO rows never
+    // gets its response: the promise hangs forever while Postgres shows the
+    // statement finished. The build fans out 4 queries over 3 connections, so
+    // an empty no-locality residual hung the cron until the 300s hard kill
+    // (8 of 10 staging runs, 2026-09-27..10-06). max_pipeline: 0 sends one
+    // query per connection at a time; extra queries wait in the client queue.
+    // CAVEAT (postgres.js 3.4.9): with max_pipeline 0 a `.transaction()` on
+    // this client crashes (the begin never hands over its connection). The
+    // read phase runs no transactions; the WRITE client below keeps the default
+    // because its transactions issue their statements one at a time anyway.
+    // `max_pipeline` is a runtime option postgres.js does not declare in its
+    // types (src/index.js parses it, default 100) — hence the spread below.
+    ...NO_PIPELINING,
     connect_timeout: 15,
     idle_timeout: 5,
     max_lifetime: 300,

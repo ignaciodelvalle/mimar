@@ -8,7 +8,7 @@
 // scan/process pair. The route itself owns the `NextResponse.json` shape
 // so we can keep this helper framework-agnostic and unit-testable.
 
-import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 
 import { cronRuns, db } from "@/db";
 import { authorizeCronRequest } from "@/lib/domain/cron-auth";
@@ -261,6 +261,59 @@ export async function withCronRun<T>(
       .where(eq(cronRuns.id, run.id));
     await sendCronAlert({ job: cronName, severity: "critical", error: message });
     throw err;
+  }
+}
+
+/**
+ * Rejects with `message` when `work` has not settled within `ms`. A build that
+ * HANGS (a promise that never settles) never reaches withCronRun's catch, and
+ * the platform's hard kill at maxDuration skips every `finally` — so the row
+ * stays 'running' forever and nothing pages. Racing the work against a
+ * deadline set BELOW maxDuration turns the hang into an ordinary throw that
+ * withCronRun finalizes and alerts on. The hung promise is abandoned, not
+ * cancelled; the invocation ends right after the response.
+ */
+export async function withDeadline<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Closes this cron's runs that are still 'running' long after any invocation
+ * could be alive (`olderThanMs` must exceed the route's maxDuration). Such a
+ * row is an invocation the platform killed before withCronRun could finalize
+ * it; leaving it 'running' hides the failure. Best-effort: a sweep failure
+ * must never block the run itself. Returns the number of rows closed, or null
+ * when the sweep could not run.
+ */
+export async function closeAbandonedCronRuns(
+  cronName: string,
+  olderThanMs: number,
+): Promise<number | null> {
+  try {
+    const seconds = Math.ceil(olderThanMs / 1000);
+    const closed = await db.execute(sql`
+      UPDATE cron_runs
+         SET status = 'failed',
+             finished_at = now(),
+             details = details || jsonb_build_object(
+               'error', 'abandoned: the invocation ended without finalizing its row (killed at maxDuration or crashed)'
+             )
+       WHERE cron_name = ${cronName}
+         AND status = 'running'
+         AND started_at < now() - (${seconds}::int * interval '1 second')
+      RETURNING id
+    `);
+    return Array.from(closed as Iterable<unknown>).length;
+  } catch {
+    return null;
   }
 }
 

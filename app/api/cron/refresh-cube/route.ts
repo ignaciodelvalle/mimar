@@ -33,13 +33,24 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { authorizeCronRequest } from "@/lib/domain/cron-auth";
-import { withCronRun } from "@/lib/infra/case-cron";
+import { closeAbandonedCronRuns, withCronRun, withDeadline } from "@/lib/infra/case-cron";
 import { refreshCube } from "@/src/modules/panorama/infrastructure/cube-builder";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const CRON_NAME = "refresh_cube";
+
+// The whole build (retry included) must settle 60s before maxDuration, so a
+// HUNG build still leaves time to finalize the cron_runs row and page. Before
+// this deadline (2026-10) a hang ran into the platform's hard kill at 300s and
+// the row stayed 'running' forever: 8 of 10 nightly runs on staging, with no
+// alert and no error message anywhere.
+const BUILD_DEADLINE_MS = 240_000;
+
+// A 'running' row older than this cannot belong to a live invocation (3x
+// maxDuration). The sweep closes such rows as 'failed' at the next run.
+const ABANDONED_AFTER_MS = 15 * 60 * 1000;
 
 /**
  * A run is 'ok' only when BOTH cubes swapped — a KPI-only failure is a real
@@ -61,26 +72,19 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   // left the row at 'running' until cron-health's stuck threshold noticed.
   // withCronRun finalizes on throw, and `failed` below turns a structured
   // failure into the same page.
+  //
+  // An earlier invocation killed at maxDuration never finalized its row; close
+  // it so the history reads 'failed', not 'running' forever.
+  await closeAbandonedCronRuns(CRON_NAME, ABANDONED_AFTER_MS);
+
   const result = await withCronRun(
     CRON_NAME,
-    async () => {
-      // One retry on a statement timeout (SQLSTATE 57014). Builder reads now run
-      // on a dedicated long-timeout client (task #22), so this should be rare —
-      // it covers a genuinely pathological query (cold cache + contention past
-      // even the long ceiling). A failed build is already fail-safe (read errors
-      // return a structured error result, last-good cube preserved, reader falls
-      // to live) — the retry just avoids wasting the whole run on one cold query.
-      let r = await refreshCube();
-      // The KPI-strip phase (own failure domain inside the builder) participates
-      // in the retry too: a cold-query timeout in its fan-out is exactly as
-      // retryable as one in the layer loaders.
-      const timedOut = (x: typeof r) =>
-        /57014|statement timeout/i.test(`${x.error ?? ""} ${x.kpi.error ?? ""}`);
-      if ((r.status !== "ok" || r.kpi.status !== "ok") && timedOut(r)) {
-        r = await refreshCube();
-      }
-      return r;
-    },
+    () =>
+      withDeadline(
+        buildWithRetry(),
+        BUILD_DEADLINE_MS,
+        `refresh_cube did not finish within ${BUILD_DEADLINE_MS / 1000}s (maxDuration ${maxDuration}s): the build hung`,
+      ),
     (r) => ({
       itemsProcessed: r.rowCount,
       details:
@@ -109,4 +113,23 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       headers: { "cache-control": "no-store" },
     },
   );
+}
+
+async function buildWithRetry(): Promise<Awaited<ReturnType<typeof refreshCube>>> {
+  // One retry on a statement timeout (SQLSTATE 57014). Builder reads now run
+  // on a dedicated long-timeout client (task #22), so this should be rare —
+  // it covers a genuinely pathological query (cold cache + contention past
+  // even the long ceiling). A failed build is already fail-safe (read errors
+  // return a structured error result, last-good cube preserved, reader falls
+  // to live) — the retry just avoids wasting the whole run on one cold query.
+  let r = await refreshCube();
+  // The KPI-strip phase (own failure domain inside the builder) participates
+  // in the retry too: a cold-query timeout in its fan-out is exactly as
+  // retryable as one in the layer loaders.
+  const timedOut = (x: typeof r) =>
+    /57014|statement timeout/i.test(`${x.error ?? ""} ${x.kpi.error ?? ""}`);
+  if ((r.status !== "ok" || r.kpi.status !== "ok") && timedOut(r)) {
+    r = await refreshCube();
+  }
+  return r;
 }

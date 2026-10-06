@@ -34,18 +34,29 @@ type FakeRow = {
 
 const dialect = new PgDialect();
 
+/** Raw statements the last installFakeDb saw through db.execute. */
+let executedSql: SQL[] = [];
+
 /** Every value bound into the WHERE clause the route built. */
 function boundParams(cond: SQL): unknown[] {
   return dialect.sqlToQuery(cond).params;
 }
 
-function installFakeDb(rows: FakeRow[]) {
+function installFakeDb(rows: FakeRow[], opts: { sweepFails?: boolean } = {}) {
   const updates: Record<string, unknown>[] = [];
+  // Raw statements (the abandoned-run sweep), kept apart from `updates` so the
+  // finalize assertions below keep reading only withCronRun's own UPDATE.
+  const executed: SQL[] = [];
   vi.doMock("@/db", async () => {
     const schema = await import("@/db/schema");
     return {
       cronRuns: schema.cronRuns,
       db: {
+        execute: async (q: SQL) => {
+          if (opts.sweepFails) throw new Error("sweep: pooler gone");
+          executed.push(q);
+          return [];
+        },
         insert: () => ({ values: () => ({ returning: async () => [{ id: SELF_RUN_ID }] }) }),
         update: () => ({
           set: (v: Record<string, unknown>) => {
@@ -76,6 +87,7 @@ function installFakeDb(rows: FakeRow[]) {
       },
     };
   });
+  executedSql = executed;
   return updates;
 }
 
@@ -89,6 +101,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.doUnmock("@/db");
   vi.doUnmock("@/lib/infra/cron-alert");
   vi.doUnmock("@/lib/domain/cron-auth");
@@ -205,6 +218,88 @@ describe("refresh-cube runs inside withCronRun (C04-4)", () => {
     const updates = installFakeDb([]);
     vi.doMock("@/src/modules/panorama/infrastructure/cube-builder", () => ({
       refreshCube: vi.fn().mockResolvedValue({ ...OK_LAYER, kpi: { status: "ok" } }),
+    }));
+
+    const { GET } = await import("@/app/api/cron/refresh-cube/route");
+    const res = await GET(request("/api/cron/refresh-cube") as never);
+
+    expect(res.status).toBe(200);
+    expect(updates).toEqual([expect.objectContaining({ status: "ok", itemsProcessed: 42 })]);
+    expect(sendCronAlert).not.toHaveBeenCalled();
+  });
+});
+
+describe("refresh-cube never leaves its row 'running' (2026-10 hang)", () => {
+  const OK = {
+    status: "ok",
+    rowCount: 42,
+    durationMs: 1000,
+    watermark: null,
+    builtAt: null,
+    perMetric: {},
+    kpi: { status: "ok" },
+  };
+
+  // The staging failure: the build's promise never settled (a pipelined query
+  // through the transaction pooler lost its response), the platform killed the
+  // function at maxDuration, and withCronRun's catch never ran — 8 rows stuck
+  // at 'running', no alert. A deadline below maxDuration must turn that hang
+  // into a finalized, paged failure that says what happened.
+  it("a build that never settles is finalized as failed, with the reason, and pages", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const updates = installFakeDb([]);
+    vi.doMock("@/src/modules/panorama/infrastructure/cube-builder", () => ({
+      refreshCube: vi.fn(() => new Promise(() => {})),
+    }));
+
+    const { GET, maxDuration } = await import("@/app/api/cron/refresh-cube/route");
+    const outcome = GET(request("/api/cron/refresh-cube") as never).then(
+      () => "resolved",
+      (e: Error) => e.message,
+    );
+
+    // Not yet: a slow-but-alive build is not cut short early.
+    await vi.advanceTimersByTimeAsync(200_000);
+    expect(updates).toEqual([]);
+
+    // The deadline fires strictly inside maxDuration, leaving time to finalize.
+    await vi.advanceTimersByTimeAsync(40_000);
+    const message = await outcome;
+    expect(message).toMatch(/did not finish within 240s/);
+    expect(240_000).toBeLessThan(maxDuration * 1000);
+    expect(updates).toEqual([
+      expect.objectContaining({ status: "failed", details: { error: message } }),
+    ]);
+    expect(updates[0].finishedAt).toBeInstanceOf(Date);
+    expect(sendCronAlert).toHaveBeenCalledTimes(1);
+    expect(sendCronAlert.mock.calls[0][0]).toMatchObject({ job: "refresh_cube", error: message });
+  });
+
+  it("closes this cron's abandoned 'running' rows before it starts", async () => {
+    const updates = installFakeDb([]);
+    vi.doMock("@/src/modules/panorama/infrastructure/cube-builder", () => ({
+      refreshCube: vi.fn().mockResolvedValue(OK),
+    }));
+
+    const { GET } = await import("@/app/api/cron/refresh-cube/route");
+    const res = await GET(request("/api/cron/refresh-cube") as never);
+
+    expect(res.status).toBe(200);
+    expect(updates).toEqual([expect.objectContaining({ status: "ok" })]);
+    expect(executedSql).toHaveLength(1);
+    const q = dialect.sqlToQuery(executedSql[0]);
+    expect(q.sql).toMatch(/UPDATE cron_runs/);
+    expect(q.sql).toMatch(/status = 'failed'/);
+    expect(q.sql).toMatch(/status = 'running'/);
+    // Scoped to this cron, and only rows far older than any live invocation
+    // (15 min = 3x maxDuration) — a concurrent live run is never touched.
+    expect(q.params).toEqual(["refresh_cube", 900]);
+  });
+
+  it("a failing sweep never blocks the build", async () => {
+    const updates = installFakeDb([], { sweepFails: true });
+    vi.doMock("@/src/modules/panorama/infrastructure/cube-builder", () => ({
+      refreshCube: vi.fn().mockResolvedValue(OK),
     }));
 
     const { GET } = await import("@/app/api/cron/refresh-cube/route");
