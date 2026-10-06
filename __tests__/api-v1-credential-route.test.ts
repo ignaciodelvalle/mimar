@@ -434,6 +434,28 @@ describe("GET /api/v1/pets/[publicToken]/credential — status mapping", () => {
     // not make. It says so rather than rendering as an empty history.
     expect(seen.body.tier2.data.medical).toBe("not_included");
   });
+
+  // Contract (public-credential.ts, CredentialTier2Section.enabledUntil): null
+  // for a permanent window — even when the row still carries a stale bounded
+  // date from before the owner switched to "siempre".
+  it("sends enabledUntil null for a permanent Nivel 2, whatever date the row keeps", async () => {
+    control.rateLimit = ALLOW;
+    const permanentPet = {
+      ...ACTIVE_PET,
+      tier2PublicPermanent: true,
+      tier2PublicEnabledUntil: new Date("2026-01-01T12:00:00Z"),
+    } as unknown as Pet;
+    control.door = () => ({ ...OK_LOOKUP, pet: permanentPet });
+
+    const seen = await observe(await get(TOKEN));
+
+    expect(seen.status).toBe(200);
+    expect(seen.body.tier2.data).toMatchObject({
+      enabled: true,
+      permanent: true,
+      enabledUntil: null,
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

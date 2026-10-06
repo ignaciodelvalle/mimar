@@ -372,7 +372,9 @@ export function buildPublicCredentialV1(
       data: {
         enabled: pet.tier2PublicPermanent || (!!tier2EnabledUntil && tier2EnabledUntil > now),
         permanent: pet.tier2PublicPermanent,
-        enabledUntil: tier2EnabledUntil?.toISOString() ?? null,
+        // The contract: null for a permanent window. A permanent opt-in whose
+        // row still carries an old bounded date must not advertise it.
+        enabledUntil: pet.tier2PublicPermanent ? null : (tier2EnabledUntil?.toISOString() ?? null),
         medical: "not_included",
       },
     },
