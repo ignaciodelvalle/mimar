@@ -91,15 +91,24 @@ test.describe("public credential — lost vs non-lost contrast", () => {
     const response = await page.goto(`/p/${token}`);
     expect(response?.status()).toBeLessThan(400);
 
-    // Tier 0 identity chip, no lost-mode banner/CTAs. The chip copy reads
-    // "NIVEL 0 · IDENTIDAD" in the es-AR UI; accept the legacy "TIER 0" wording
-    // too so the guard is resilient to either.
-    await expect(page.getByText(/(nivel|tier) 0 · identidad/i)).toBeVisible();
+    // Non-lost credential (redesign 2026-10): the "NIVEL 0 · IDENTIDAD" chip
+    // left the band. The card states its public level on .pc-cred, and an
+    // adoptable pet is never lost, so the level is 0 — or 2 when the owner
+    // opened the medical summary. Never 1 (the lost level).
+    const card = page.locator(".pc-cred").first();
+    await expect(card).toBeVisible();
+    await expect(card).toHaveAttribute("data-level", /^[02]$/);
+    await expect(page.getByText("Credencial pública", { exact: true }).first()).toBeVisible();
     await expect(page.locator('[data-section="lost-urgent-strip"]')).toHaveCount(0);
+    await expect(page.locator('[data-section="lost-cta-row"]')).toHaveCount(0);
     await expect(page.getByText(/estoy perdid[oa]/i)).not.toBeVisible();
-    // The "found this pet?" affordance is the active-credential equivalent
-    // of the lost-mode finder CTAs — present here instead.
-    await expect(page.getByText(/¿encontraste a esta mascota\?/i)).toBeVisible();
+    // The "found this pet?" tile under the card is the active-credential
+    // equivalent of the lost-mode finder CTAs. Its copy is gendered now
+    // (PublicCredentialActions foundTileLabel): "¿Lo encontraste?",
+    // "¿La encontraste?", or "¿Encontraste a esta mascota?" for an unknown sex.
+    await expect(
+      page.getByText(/^¿(lo|la) encontraste\?$|^¿encontraste a esta mascota\?$/i),
+    ).toBeVisible();
   });
 
   test("/p/[token] lost pet shows the lost state with finder CTAs (regression guard)", async ({
@@ -124,25 +133,28 @@ test.describe("public credential — lost vs non-lost contrast", () => {
     expect(response?.status()).toBeLessThan(500);
     await expect(page.getByText(/application error/i)).not.toBeVisible();
 
-    // A lost credential must expose SOME finder pathway — but the shape depends
-    // on the pet's credential tier, and /perdidas can surface any tier. Higher
-    // tiers render the lost-urgent-strip plus explicit finder channels; Tier 0
-    // ("identidad") deliberately renders the "¿Encontraste a esta mascota?"
-    // affordance instead (asserted in the Tier-0 case above). Accept either so
-    // this guard stays green regardless of which tier the first lost pet is.
-    const urgentBanner = page.locator('[data-section="lost-urgent-strip"]');
-    const foundAffordance = page.getByText(/¿encontraste a esta mascota\?/i);
-    await expect(urgentBanner.or(foundAffordance).first()).toBeVisible();
+    // A lost credential is public level 1 (or 2 when the owner also opened the
+    // medical summary), carries the lost body on the paper and the finder
+    // verbs UNDER it (redesign 2026-10: the paper never carries verbs). The
+    // "¿Encontraste…?" tile is the NON-lost affordance now and never renders
+    // on a lost card.
+    const card = page.locator(".pc-cred").first();
+    await expect(card).toHaveAttribute("data-situation", "perdida");
+    await expect(card).toHaveAttribute("data-level", /^[12]$/);
+    await expect(page.locator('[data-section="lost-urgent-strip"]')).toBeVisible();
 
-    // When the higher-tier banner is present, assert at least one explicit
-    // finder channel (call / finder form / sighting form) rides along with it.
-    if ((await urgentBanner.count()) > 0) {
-      const hasCallBtn = await page.getByRole("link", { name: /llamar/i }).count();
-      const hasFinderForm = await page
-        .getByRole("link", { name: /(la|lo) tengo conmigo|está conmigo/i })
-        .count();
-      const hasSightingForm = await page.getByRole("link", { name: /la vi cerca de acá/i }).count();
-      expect(hasCallBtn + hasFinderForm + hasSightingForm).toBeGreaterThan(0);
-    }
+    // At least one finder channel (call / finder form / sighting form). The
+    // copy is gendered (lib/utils/format.ts foundPossessivePhrase /
+    // sightingPhrase), with neutral forms for an unknown sex. A pet under a
+    // custody dispute offers only the authority tip ("Tengo información").
+    const hasCallBtn = await page.getByRole("link", { name: /^llamar$/i }).count();
+    const hasFinderForm = await page
+      .getByRole("link", { name: /(la|lo) tengo conmigo|está conmigo/i })
+      .count();
+    const hasSightingForm = await page
+      .getByRole("link", { name: /(la|lo) vi cerca de acá|vi a la mascota cerca de acá/i })
+      .count();
+    const hasDisputeTip = await page.getByText("Tengo información", { exact: true }).count();
+    expect(hasCallBtn + hasFinderForm + hasSightingForm + hasDisputeTip).toBeGreaterThan(0);
   });
 });
