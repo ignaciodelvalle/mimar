@@ -264,6 +264,31 @@ describe("sendExpoPushForNotifications — what it puts on the wire", () => {
     expect(messages[0].data).toEqual({ url: "/mis-mascotas/DIM-PAMP-0001" });
   });
 
+  // notificaciones-destinos: a current build resolves the tap by id; an
+  // installed older build keeps reading `url`, which must ride unchanged.
+  it("carries the notification id beside the url when the row has one", async () => {
+    enableExpo();
+    mockTargets = [target("t1")];
+
+    await sendExpoPushForNotifications([
+      {
+        ...URGENT,
+        notificationType: "rabies_observation_escalation_owner",
+        title: "URGENTE",
+        ctaUrl: "/mis-mascotas/DIM-PAMP-0001",
+        id: "22222222-2222-4222-8222-222222222222",
+      },
+    ]);
+
+    const [messages] = sendPushNotificationsAsyncMock.mock.calls[0] as [
+      Array<Record<string, unknown>>,
+    ];
+    expect(messages[0].data).toEqual({
+      url: "/mis-mascotas/DIM-PAMP-0001",
+      notificationId: "22222222-2222-4222-8222-222222222222",
+    });
+  });
+
   it("addresses the Android channel the app creates, by the shared constant", async () => {
     enableExpo();
     mockTargets = [target("t1")];

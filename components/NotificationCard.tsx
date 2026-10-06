@@ -6,6 +6,8 @@ import { isQuickReplyEligible } from "@/components/notification-quick-reply-elig
 import type { Notification, Pet } from "@/db";
 import { petLinkAvailable } from "@/lib/domain/notification-pet-link";
 import { notificationSeverityLabel, notificationTypeLabel, relativeTime } from "@/lib/utils/format";
+import { notificationOpenWebPath } from "@dim/contract/api";
+import { notificationKindSpec } from "@dim/contract/notifications";
 
 // Shared notification card. Used by /notificaciones (full list) and
 // /inicio (dashboard widget, top 5 unread). Server component because
@@ -46,6 +48,7 @@ export function NotificationCard({
   const tone = severityClasses(notification.severity);
   const markRead = markNotificationReadAction.bind(null, notification.id);
   const archive = archiveNotificationAction.bind(null, notification.id);
+  const cta = notificationCta(notification);
   const showQuickReply = isQuickReplyEligible(
     notification.notificationType,
     notification.relatedPetId,
@@ -80,15 +83,15 @@ export function NotificationCard({
         )}
 
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          {notification.ctaLabel && notification.ctaUrl && (
+          {cta && (
             <a
-              href={notification.ctaUrl}
-              target={notification.ctaUrl.startsWith("http") ? "_blank" : undefined}
-              rel={notification.ctaUrl.startsWith("http") ? "noopener noreferrer" : undefined}
+              href={cta.href}
+              target={cta.external ? "_blank" : undefined}
+              rel={cta.external ? "noopener noreferrer" : undefined}
               className="px-3 py-1.5 rounded-lg bg-ln-azul  text-white  text-xs font-medium hover:bg-ln-azul-700  transition-colors"
             >
-              {notification.ctaLabel}
-              {notification.ctaUrl.startsWith("http") && " ↗"}
+              {cta.label}
+              {cta.external && " ↗"}
             </a>
           )}
           {petLinkTarget && (
@@ -128,6 +131,41 @@ export function NotificationCard({
       </div>
     </article>
   );
+}
+
+/**
+ * The card's call to action (notificaciones-destinos, 2026-10).
+ *
+ * AN INTERNAL CTA GOES THROUGH `/notificaciones/{id}/abrir`, never straight to
+ * the stored `cta_url`. That string was chosen when the notification was written
+ * and is never re-read; the redirect asks the resolver where the reader can
+ * actually go NOW — the case, the pet, a section, or the explanation page — so a
+ * transfer accepted or a membership ended no longer turns the button into a
+ * link to "no encontramos esta página".
+ *
+ * An EXTERNAL link keeps opening in a new tab: it is not ours to resolve.
+ *
+ * A row the writer gave NO CTA still gets "Ver detalle" when its kind leads
+ * somewhere (the registry's `primaryDestination` is not `none`): the PO's rule
+ * is that every notification takes its reader to the related case or pet.
+ */
+function notificationCta(
+  notification: Notification,
+): { href: string; label: string; external: boolean } | null {
+  const { ctaLabel, ctaUrl } = notification;
+  if (ctaLabel && ctaUrl) {
+    const external = ctaUrl.startsWith("http");
+    return {
+      href: external ? ctaUrl : notificationOpenWebPath(notification.id),
+      label: ctaLabel,
+      external,
+    };
+  }
+  // A redacted row (erasure nulls both CTA columns) says nothing more.
+  if (ctaLabel || ctaUrl) return null;
+  const spec = notificationKindSpec(notification.notificationType);
+  if (spec === null || spec.primaryDestination === "none") return null;
+  return { href: notificationOpenWebPath(notification.id), label: "Ver detalle", external: false };
 }
 
 function severityClasses(severity: string) {

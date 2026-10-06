@@ -978,6 +978,9 @@ export const API_V1_IP_BUCKET_FAMILIES: Readonly<Record<string, ApiV1IpFamily>> 
   // against handing over an animal and this is marking a notification read.
   api_v1_me_notifications_read_ip: "authenticated-read",
   api_v1_me_notifications_write_ip: "inbox-state",
+  // Added by notificaciones-destinos with the per-notification target read: one
+  // tap, one row, a handful of access reads — an ordinary authenticated read.
+  api_v1_me_notification_target_ip: "authenticated-read",
 
   // Added by M11 with the owner's casos in the native app. Both are ordinary
   // authenticated reads — the list the web's bandeja shows and one case detail —

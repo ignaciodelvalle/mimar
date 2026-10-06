@@ -30,6 +30,7 @@ import { db, pushSubscriptions } from "@/db";
 import { sendExpoPushForNotifications } from "@/lib/infra/expo-push";
 import { isPushEligible } from "@/lib/infra/push-eligibility";
 import { reportError } from "@/lib/infra/report-error";
+import { notificationOpenWebPath } from "@dim/contract/api";
 import { and, eq, isNull } from "drizzle-orm";
 
 /** Plain-data push payload — deliberately transport-agnostic (title/body/url
@@ -57,7 +58,21 @@ export type PushCandidateRow = {
   body?: string | null;
   ctaUrl?: string | null;
   dedupeKey?: string | null;
+  /**
+   * `notifications.id`, when the caller has it (the service's insert paths
+   * return it). With it, a tap opens the resolver — `/notificaciones/{id}/abrir`
+   * on the web, `GET /api/v1/me/notifications/{id}/target` on the phone — rather
+   * than the stored `cta_url` (notificaciones-destinos, 2026-10). Without it the
+   * stored link is used, exactly as before.
+   */
+  id?: string | null;
 };
+
+/** Where a tap on a pushed notification opens, on the web. */
+export function webPushUrlFor(row: Pick<PushCandidateRow, "id" | "ctaUrl">): string | null {
+  if (row.id) return notificationOpenWebPath(row.id);
+  return row.ctaUrl ?? null;
+}
 
 function flagEnabled(): boolean {
   const flag = process.env.NEXT_PUBLIC_PUSH_ENABLED;
@@ -192,7 +207,7 @@ export async function sendPushForNotifications(rows: PushCandidateRow[]): Promis
       await sendWebPush(row.userId, {
         title: row.title,
         body: row.body ?? null,
-        url: row.ctaUrl ?? null,
+        url: webPushUrlFor(row),
         tag: row.dedupeKey ?? null,
       });
     }

@@ -1203,7 +1203,11 @@ describe("/api/v1 rate-limit families — the numbers the derivation committed t
     // 19.704 WITH THE TRAVEL PDF (`POST pets/{token}/travel/export`,
     // viajes-fase-2 task 6.5). One authenticated-write bucket (18 × 120 =
     // 2.160), and 19.584 + 120 = 19.704 agrees.
-    expect(API_V1_CGNAT_FAMILY_IP_CEILING_PER_MINUTE).toBe(19_704);
+    //
+    // 20.304 WITH THE NOTIFICATION TARGET READ (`GET me/notifications/{id}/
+    // target`, notificaciones-destinos). One authenticated-read bucket (27 × 600
+    // = 16.200), and 19.704 + 600 = 20.304 agrees.
+    expect(API_V1_CGNAT_FAMILY_IP_CEILING_PER_MINUTE).toBe(20_304);
   });
 
   it("keeps pet-disclosure-write at N callers on BOTH windows", () => {

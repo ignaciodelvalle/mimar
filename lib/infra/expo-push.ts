@@ -74,7 +74,27 @@ export type ExpoPushCandidateRow = {
   body?: string | null;
   ctaUrl?: string | null;
   dedupeKey?: string | null;
+  /** `notifications.id`, when the caller has it — see `PushCandidateRow.id`. */
+  id?: string | null;
 };
+
+/**
+ * What a tap carries back to the app.
+ *
+ * `notificationId` IS NEW (notificaciones-destinos, 2026-10) and is what a
+ * current build reads: it asks `GET /api/v1/me/notifications/{id}/target` at tap
+ * time, so the destination is decided by today's server rather than by the
+ * stored link. `url` STAYS, verbatim, for every build already installed — those
+ * read only `url` and must keep landing where they always did.
+ */
+export function pushDataFor(
+  row: Pick<ExpoPushCandidateRow, "id" | "ctaUrl">,
+): { url?: string; notificationId?: string } | undefined {
+  const data: { url?: string; notificationId?: string } = {};
+  if (row.ctaUrl) data.url = row.ctaUrl;
+  if (row.id) data.notificationId = row.id;
+  return Object.keys(data).length > 0 ? data : undefined;
+}
 
 /** One message, and the row it must be reconciled against when tickets return. */
 type Addressed = { targetId: string; message: ExpoPushMessage };
@@ -413,7 +433,7 @@ function messageFor(token: string, row: ExpoPushCandidateRow): ExpoPushMessage {
     // The deep link the notification opens, carried as data rather than in the
     // body: the OS renders title and body, the app reads this when the person
     // taps.
-    data: row.ctaUrl ? { url: row.ctaUrl } : undefined,
+    data: pushDataFor(row),
     // `collapseId` is the cross-platform one — it becomes APNs's collapse-id
     // and FCM's collapse_key — and it plays the role the web leg gives `tag`: a
     // second notification carrying the same key REPLACES the first on the shade

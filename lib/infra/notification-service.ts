@@ -164,7 +164,9 @@ export async function createNotification(
       // row that never committed. Tx callers get push when their outer flow
       // re-notifies via the pool-backed path.
       if (client === defaultDb && !input.suppressPush) {
-        await sendPushForNotifications([values]);
+        // The id rides so a tap opens the resolver rather than the stored link
+        // (notificaciones-destinos) — see `PushCandidateRow.id`.
+        await sendPushForNotifications([{ ...values, id: inserted[0].id }]);
       }
       return { status: "inserted", id: inserted[0].id };
     }
@@ -238,9 +240,13 @@ export async function createNotificationsBulk(
           target: notifications.dedupeKey,
           where: sql`${notifications.dedupeKey} IS NOT NULL`,
         })
-        .returning({ id: notifications.id });
+        .returning({ id: notifications.id, dedupeKey: notifications.dedupeKey });
       insertedCount += inserted.length;
       duplicateCount += values.length - inserted.length;
+      // dedupe_key is unique and every bulk input carries one, so it maps a
+      // returned id back to its input (notificaciones-destinos: the push carries
+      // the id). A dedupe no-op has no row and keeps no id.
+      const idByDedupeKey = new Map(inserted.map((row) => [row.dedupeKey, row.id] as const));
       // Web Push leg — urgent-only, best-effort. When a chunk mixes new rows
       // and dedupe no-ops we cannot map returned ids back to inputs, so we
       // push for every urgent input in a chunk that inserted at least one row;
@@ -251,7 +257,9 @@ export async function createNotificationsBulk(
       // an input that opted out of push must not be pushed just because it rode
       // the bulk path. values[i] and chunk[i] are index-aligned.
       if (inserted.length > 0 && client === defaultDb) {
-        const pushable = values.filter((_, idx) => !chunk[idx].suppressPush);
+        const pushable = values
+          .filter((_, idx) => !chunk[idx].suppressPush)
+          .map((v) => ({ ...v, id: idByDedupeKey.get(v.dedupeKey) ?? null }));
         if (pushable.length > 0) await sendPushForNotifications(pushable);
       }
     } catch (err) {
