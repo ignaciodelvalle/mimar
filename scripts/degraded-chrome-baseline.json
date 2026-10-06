@@ -1,4 +1,8 @@
 {
+  "app/(app)/mis-mascotas/[publicToken]/page.tsx": {
+    "reason": "Falso positivo de alcance, no una omision. La rama if (!load.ok) es de LibretaFaceSection, la seccion de la cara 2 que va dentro de su propio <Suspense> y devuelve un TabErrorState en el lugar de la libreta. El <h1> que esta reja pide es el de la PAGINA (titulo de la cara 1 y de la vista de ex-titular), que vive mas abajo en el mismo archivo: la reja toma todo lo que sigue a la rama, hasta el final del archivo, como camino exitoso. La seccion nunca renderizo un <h1>, y la cara 1 no espera esta lectura, asi que el titulo sigue en pantalla cuando la libreta degrada.",
+    "chrome": ["h1"]
+  },
   "app/admin/admins/AdminsScreen.tsx": {
     "reason": "Deuda anotada, no exencion. Pantalla de operador con barra de filtros sobre lecturas sin presupuesto (select de profiles + buildAuthEmailMap); con el pooler degradado queda en el esqueleto para siempre. Existia antes de que esta reja contara las pantallas sin envoltorio (T1-L6, 2026-09-18) y quedo fuera de ese item, que cubrio casos, Actividad e historial de gob. Sacarla de aca en el mismo commit que la envuelva.",
     "chrome": ["budget-wrapper"]

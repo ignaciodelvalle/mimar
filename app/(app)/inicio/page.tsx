@@ -34,6 +34,7 @@
 
 import { redirect } from "next/navigation";
 
+import { loadWithTimeout } from "@/lib/analytics/analytics-load";
 import {
   fetchComplianceStatesForPets,
   fetchLivePetsForCarouselRanking,
@@ -71,13 +72,23 @@ export default async function InicioPage({
     else if (Array.isArray(value)) for (const v of value) forwarded.append(key, v);
   }
   const query = forwarded.toString();
+  const indexHref = `/mis-mascotas${query ? `?${query}` : ""}`;
+
+  // Both reads below are BOUNDED (2026-10). This page renders nothing: it only
+  // picks a redirect target, so an unbounded read here is a blank screen on the
+  // app's front door. When either read times out or fails, the honest landing
+  // is the index: it bounds its own reads and shows its own degraded state,
+  // and every pet stays one tap away. Ranking without compliance would land the
+  // owner on a pet chosen by a partial order, which is not the promise here.
 
   // The carousel source: EVERY live pet the owner can move between (foster/
   // transit included — no role filter, no cap). Ranking must see the whole
   // household or a most-urgent pet beyond the newest 50 would never surface
   // (QA ronda 4 CONFIRMED). Deceased pets never enter the swipe (decision 6);
   // they live in the index's "En memoria".
-  const livePets = await fetchLivePetsForCarouselRanking(user.id);
+  const livePetsLoad = await loadWithTimeout(fetchLivePetsForCarouselRanking(user.id));
+  if (!livePetsLoad.ok) redirect(indexHref);
+  const livePets = livePetsLoad.value;
 
   // No live pet → the index+inbox is the home. Forward the query for
   // consistency with the profile branch below (harmless — preserves any other
@@ -86,16 +97,20 @@ export default async function InicioPage({
   // SheetMounter. The index's own "Registrar mascota" CTA is the right next
   // step for a zero-pet owner.
   if (livePets.length === 0) {
-    redirect(`/mis-mascotas${query ? `?${query}` : ""}`);
+    redirect(indexHref);
   }
 
   // Compliance over the live set — the SAME projection the index and the
   // profile read (deriveComplianceState → lnPetStatusFromCompliance), so the
   // urgency order here can never disagree with the carousel dots.
-  const complianceByPet = await fetchComplianceStatesForPets(
-    user.id,
-    livePets.map((p) => p.id),
+  const complianceLoad = await loadWithTimeout(
+    fetchComplianceStatesForPets(
+      user.id,
+      livePets.map((p) => p.id),
+    ),
   );
+  if (!complianceLoad.ok) redirect(indexHref);
+  const complianceByPet = complianceLoad.value;
 
   const carouselInput: CarouselPetInput[] = livePets.map((p) => {
     const compliance = complianceByPet.get(p.id);

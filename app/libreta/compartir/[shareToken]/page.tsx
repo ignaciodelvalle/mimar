@@ -8,6 +8,7 @@ import { LibretaSanitariaView } from "@/app/(app)/mis-mascotas/[publicToken]/lib
 import { Icon } from "@/components/Icon";
 import { LnCallout } from "@/components/ui/DocElements";
 import { attachments, db, libretaShareTokens, pets, profiles } from "@/db";
+import { loadWithTimeout } from "@/lib/analytics/analytics-load";
 import { overlayAmendments } from "@/lib/infra/amendment";
 import { groupLibretaEvents } from "@/lib/infra/libreta-sanitaria";
 import { loadSharedLibretaEvents } from "@/lib/infra/libreta-share-events";
@@ -149,13 +150,42 @@ export default async function PublicLibretaPage({
   if (status === "expired") return <ExpiredView context={context} />;
   if (pet.status === "deceased") return <DeceasedView context={context} />;
 
-  // Libreta events and canonical identifiers in parallel.
-  const [events, identifications] = await Promise.all([
-    // The shared read, with every clause it carries, lives in one loader so
-    // it can be tested (reported items, denuncia bridge events).
-    loadSharedLibretaEvents(pet.id),
-    fetchActiveIdentifications(pet.id),
-  ]);
+  // Libreta events and canonical identifiers in parallel. BOUNDED (2026-10):
+  // the vet opening a shared link gets a notice with a retry when the reads
+  // time out or fail, not a page that never finishes. No view is logged then:
+  // nothing of the libreta was shown.
+  const load = await loadWithTimeout(
+    Promise.all([
+      // The shared read, with every clause it carries, lives in one loader so
+      // it can be tested (reported items, denuncia bridge events).
+      loadSharedLibretaEvents(pet.id),
+      fetchActiveIdentifications(pet.id),
+    ]),
+  );
+  if (!load.ok) {
+    // Same shape as ThrottleNotice below, plus a retry to this same link.
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center bg-[var(--color-ln-paper)] p-6">
+        <div className="mx-auto max-w-[400px] px-6 py-12 text-center">
+          <h1 className="mb-3 font-ln-serif text-lg font-semibold text-[var(--color-ln-ink)]">
+            {load.reason === "timeout"
+              ? "La libreta está tardando más de lo normal"
+              : "No pudimos cargar la libreta"}
+          </h1>
+          <p className="text-md leading-[1.6] text-[var(--color-ln-ink-2)]">
+            El enlace sigue siendo válido. Probá de nuevo en unos segundos.
+          </p>
+          <a
+            href={`/libreta/compartir/${shareToken}`}
+            className="mt-4 inline-block text-md text-[var(--color-ln-azul)] underline"
+          >
+            Reintentar
+          </a>
+        </div>
+      </div>
+    );
+  }
+  const [events, identifications] = load.value;
 
   // Project corrections BEFORE grouping (D2 at the read boundary — same
   // pattern as get-libreta-face-data.ts). Without this, the vet-facing shared

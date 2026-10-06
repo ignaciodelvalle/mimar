@@ -109,7 +109,24 @@ async function LibretaFaceSection({
   isOwner: boolean;
   emergencyContacts: LibretaFaceEmergencyContacts | null;
 }) {
-  const result = await getLibretaFaceData({ user, pet, accessPath, organization, holderRole });
+  // Bounded (2026-10): this section streams inside its own <Suspense>, so an
+  // unbounded read here is a libreta skeleton that never resolves. On a
+  // timeout or a rejection the face says so instead; Face 1 is unaffected.
+  const load = await loadWithTimeout(
+    getLibretaFaceData({ user, pet, accessPath, organization, holderRole }),
+  );
+  if (!load.ok) {
+    return (
+      <TabErrorState
+        message={
+          load.reason === "timeout"
+            ? "La libreta está tardando más de lo normal. Recargá la página en unos segundos."
+            : "No pudimos cargar la libreta. Recargá la página para reintentar."
+        }
+      />
+    );
+  }
+  const result = load.value;
   if (!result.ok) return <TabErrorState message={result.error} />;
   return (
     <div className="op-fade-in">

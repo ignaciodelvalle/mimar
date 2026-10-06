@@ -50,7 +50,21 @@ describe("/inicio folds into the profile (decision 7)", () => {
     // CTA is the correct landing for a pets-less owner (W1 review fix bar
     // 2026-07-15 — the prior comment's "fixes the capture sheet for zero-pet
     // owners" claim was false; this only pins the forward+redirect mechanics).
-    expect(inicioSrc).toMatch(/redirect\(`\/mis-mascotas\$\{query \? `\?\$\{query\}` : ""\}`\)/);
+    // The index href (query forwarded) is built once; the zero-pet branch and
+    // the degraded-read branches below all redirect to it.
+    expect(inicioSrc).toMatch(
+      /const indexHref = `\/mis-mascotas\$\{query \? `\?\$\{query\}` : ""\}`;/,
+    );
+    expect(inicioSrc).toMatch(/livePets\.length === 0\) \{\s*redirect\(indexHref\);/);
+  });
+
+  it("lands on the index when either read times out or fails (2026-10, bounded reads)", () => {
+    // /inicio renders nothing of its own, so an unbounded read here was a blank
+    // front door. Both reads race loadWithTimeout and a miss falls back to the
+    // index, which bounds its own reads and shows its own degraded state.
+    expect(inicioSrc).toContain("loadWithTimeout(fetchLivePetsForCarouselRanking(user.id))");
+    expect(inicioSrc).toMatch(/if \(!livePetsLoad\.ok\) redirect\(indexHref\);/);
+    expect(inicioSrc).toMatch(/if \(!complianceLoad\.ok\) redirect\(indexHref\);/);
   });
 
   it("forwards its searchParams (e.g. ?sheet=anotar) onto the target profile redirect", () => {

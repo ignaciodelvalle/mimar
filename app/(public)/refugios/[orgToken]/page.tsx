@@ -16,6 +16,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { db, organizationMemberships } from "@/db";
+import { loadWithTimeout } from "@/lib/analytics/analytics-load";
 import { queryPublicOfferings } from "@/lib/infra/org-public-offerings";
 import { queryOrgPublicProfile } from "@/lib/infra/org-public-profile";
 import { PUBLIC_BROWSE_READ_LIMIT } from "@/lib/infra/public-browse-limits";
@@ -88,6 +89,83 @@ export async function generateMetadata({
   };
 }
 
+/** "Locality, Province" for the hero and the sheets; whichever half exists
+ * when the other is missing. Lifted out of the page to keep it under the
+ * complexity ceiling once its reads gained a degraded branch (2026-10). */
+function resolveLocalityLabel(org: {
+  jurisdictionProvince: string | null;
+  jurisdictionLocality: string | null;
+}): string | null {
+  const provinceLabel =
+    (org.jurisdictionProvince && PROVINCE_BY_NAME.get(org.jurisdictionProvince)?.name) ||
+    org.jurisdictionProvince ||
+    null;
+  return org.jurisdictionLocality && provinceLabel
+    ? `${org.jurisdictionLocality}, ${provinceLabel}`
+    : (provinceLabel ?? org.jurisdictionLocality ?? null);
+}
+
+/** True when `userId` is an active admin or coordinator of the org. Bounded
+ * (3s): the banner it drives is a staff shortcut, so a timeout or a failure
+ * reads as "no banner", never as a page that waits. */
+async function viewerIsOrgStaff(userId: string, organizationId: string): Promise<boolean> {
+  const membershipLoad = await loadWithTimeout(
+    db
+      .select({ id: organizationMemberships.id })
+      .from(organizationMemberships)
+      .where(
+        and(
+          eq(organizationMemberships.userId, userId),
+          eq(organizationMemberships.organizationId, organizationId),
+          isNull(organizationMemberships.leftAt),
+          inArray(organizationMemberships.role, ["admin", "coordinator"]),
+        ),
+      )
+      .limit(1),
+    3_000,
+  );
+  return membershipLoad.ok && membershipLoad.value.length > 0;
+}
+
+// Shown when the profile reads time out or fail (2026-10). The page has no
+// chrome that survives without the org row (the hero, the panels and every
+// sheet are built from it), so the honest answer is a notice with a retry and
+// the way back to the directory, never a page that streams forever.
+function RefugioUnavailableNotice({
+  orgToken,
+  reason,
+}: {
+  orgToken: string;
+  reason: "timeout" | "error";
+}) {
+  return (
+    <main className="min-h-screen bg-[var(--color-ln-paper)]">
+      <div className="mx-auto max-w-lg px-6 py-12 text-center space-y-3">
+        <h1 className="font-ln-serif text-xl font-semibold text-[var(--color-ln-ink)]">
+          {reason === "timeout"
+            ? "El perfil del refugio está tardando más de lo normal"
+            : "No pudimos cargar el perfil del refugio"}
+        </h1>
+        <p className="text-sm text-[var(--color-ln-ink-2)]">Probá de nuevo en unos segundos.</p>
+        <div className="flex flex-wrap items-center justify-center gap-4">
+          <a
+            href={`/refugios/${orgToken}`}
+            className="inline-block text-sm text-[var(--color-ln-azul)] underline"
+          >
+            Reintentar
+          </a>
+          <Link
+            href="/refugios"
+            className="inline-block text-sm text-[var(--color-ln-azul)] underline"
+          >
+            Ver todos los refugios
+          </Link>
+        </div>
+      </div>
+    </main>
+  );
+}
+
 function RefugioThrottleNotice() {
   return (
     <main className="min-h-screen bg-[var(--color-ln-paper)]">
@@ -146,43 +224,30 @@ export default async function RefugioPage({
   const isAuthed = Boolean(user);
 
   // Fan out the three queries — visibility gate + adoption listing +
-  // public offerings (P2-5 consumer).
-  const [org, { items, nextCursor }, offerings] = await Promise.all([
-    queryOrgPublicProfile(orgToken),
-    queryAdoptionListing({ organizationToken: orgToken }, null, 24),
-    queryPublicOfferings(orgToken, { limit: 9 }),
-  ]);
+  // public offerings (P2-5 consumer). BOUNDED (2026-10): an anonymous public
+  // page, three concurrent reads, often empty (a shelter with no listings).
+  const load = await loadWithTimeout(
+    Promise.all([
+      queryOrgPublicProfile(orgToken),
+      queryAdoptionListing({ organizationToken: orgToken }, null, 24),
+      queryPublicOfferings(orgToken, { limit: 9 }),
+    ]),
+  );
+  if (!load.ok) return <RefugioUnavailableNotice orgToken={orgToken} reason={load.reason} />;
+  const [org, { items, nextCursor }, offerings] = load.value;
 
   if (!org) notFound();
 
   // Admin/coordinator banner (handoff P2-11 + D5: only admins and
   // coordinators of THIS org see it — volunteers / fosters / non-members
   // / anon don't).
-  let viewerIsAdminOrCoordinator = false;
-  if (user) {
-    const [membership] = await db
-      .select({ id: organizationMemberships.id })
-      .from(organizationMemberships)
-      .where(
-        and(
-          eq(organizationMemberships.userId, user.id),
-          eq(organizationMemberships.organizationId, org.id),
-          isNull(organizationMemberships.leftAt),
-          inArray(organizationMemberships.role, ["admin", "coordinator"]),
-        ),
-      )
-      .limit(1);
-    viewerIsAdminOrCoordinator = Boolean(membership);
-  }
+  //
+  // Bounded too: the banner is a shortcut for the org's own staff, and the
+  // public page must not wait on it. A timeout or failure hides the banner;
+  // the staff still reach the portal from their own navigation.
+  const viewerIsAdminOrCoordinator = user ? await viewerIsOrgStaff(user.id, org.id) : false;
 
-  const provinceLabel =
-    (org.jurisdictionProvince && PROVINCE_BY_NAME.get(org.jurisdictionProvince)?.name) ||
-    org.jurisdictionProvince ||
-    null;
-  const localityLabel =
-    org.jurisdictionLocality && provinceLabel
-      ? `${org.jurisdictionLocality}, ${provinceLabel}`
-      : (provinceLabel ?? org.jurisdictionLocality ?? null);
+  const localityLabel = resolveLocalityLabel(org);
 
   // Per-request CSP nonce (set by middleware, Item #64) so this inline JSON-LD
   // script is allowed under script-src 'nonce-…' / 'strict-dynamic'.

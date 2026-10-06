@@ -40,6 +40,7 @@ import { cases, db, ownerships, petIdentifications, pets, welfareReports } from 
 import { DIM_TOKEN_PATTERN } from "@/lib/domain/dim-token";
 import { searchUsers } from "@/lib/infra/admin-search";
 import type { AdminOrGovtJurisdiction } from "@/lib/infra/auth-guards";
+import { withDbBudget } from "@/lib/infra/db-budget";
 import { jurisdictionPairClause, withoutSyntheticRows } from "@/lib/metrics/scope";
 import { likeContains } from "@/lib/utils/like-helpers";
 
@@ -87,9 +88,19 @@ export type OmniboxResults = {
   cases: OmniboxCaseResult[];
   /** Total across all groups — convenience for the empty/no-results state. */
   total: number;
+  /** Set when the search did not finish within its budget: the empty groups
+   * mean "we could not look", not "nothing matched", and the dropdown says so. */
+  degraded?: true;
 };
 
 const EMPTY_RESULTS: OmniboxResults = { pets: [], persons: [], cases: [], total: 0 };
+
+/** Time budget for one omnibox search (2026-10). It is typed into a search box
+ * and debounced, so a few seconds is already a long wait; past this the
+ * dropdown answers "la búsqueda está tardando" instead of spinning forever. */
+export const OMNIBOX_BUDGET_MS = 8_000;
+
+const DEGRADED_RESULTS: OmniboxResults = { ...EMPTY_RESULTS, degraded: true };
 
 function caseJurisdictionScope(scope: Extract<OmniboxScope, { role: "admin" } | { role: "govt" }>) {
   if (scope.role === "admin") return undefined;
@@ -412,14 +423,38 @@ export async function searchOmnibox(query: string, scope: OmniboxScope): Promise
   if (!trimmed) return EMPTY_RESULTS;
 
   if (scope.role === "org") {
-    const petResults = await searchOrgPets(trimmed, scope);
-    return { pets: petResults, persons: [], cases: [], total: petResults.length };
+    return withDbBudget<OmniboxResults>(
+      searchOrgPets(trimmed, scope).then((petResults) => ({
+        pets: petResults,
+        persons: [],
+        cases: [],
+        total: petResults.length,
+      })),
+      OMNIBOX_BUDGET_MS,
+      "omnibox search (org)",
+      DEGRADED_RESULTS,
+    );
   }
 
   // admin / govt branch. govt-with-no-assignments must see nothing without
   // touching the DB — fail-closed, no unscoped pet/person/case leak.
   if (scope.role === "govt" && scope.jurisdictions.length === 0) return EMPTY_RESULTS;
 
+  // Bounded (2026-10): four concurrent reads, most of which return zero rows,
+  // on the pool that hung on exactly that shape. A budget overrun answers
+  // DEGRADED_RESULTS; a rejection propagates and the client says the same.
+  return withDbBudget<OmniboxResults>(
+    searchAdminGovt(trimmed, scope),
+    OMNIBOX_BUDGET_MS,
+    "omnibox search (admin/govt)",
+    DEGRADED_RESULTS,
+  );
+}
+
+async function searchAdminGovt(
+  trimmed: string,
+  scope: Extract<OmniboxScope, { role: "admin" } | { role: "govt" }>,
+): Promise<OmniboxResults> {
   const [petResults, personResults, caseResults, welfareResults] = await Promise.all([
     searchAdminGovtPets(trimmed, scope),
     searchPersons(trimmed, scope),

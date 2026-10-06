@@ -26,6 +26,8 @@
 //   typing     → debounced; spinner while the request is in flight.
 //   loading    → inline spinner inside the dropdown.
 //   no results → "Sin coincidencias en tu jurisdicción".
+//   degraded   → the search timed out or failed: say so, never "sin
+//                coincidencias" (an empty list we could not fill is not a miss).
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -53,6 +55,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const EMPTY_RESULTS: OmniboxResults = { pets: [], persons: [], cases: [], total: 0 };
+const DEGRADED_RESULTS: OmniboxResults = { ...EMPTY_RESULTS, degraded: true };
 
 type Group = {
   key: "pets" | "persons" | "cases";
@@ -152,7 +155,7 @@ export function OpOmnibox({
         setActiveIndex(-1);
       } catch {
         if (cancelled) return;
-        setResults(EMPTY_RESULTS);
+        setResults(DEGRADED_RESULTS);
         setSearched(true);
       } finally {
         if (!cancelled) setLoading(false);
@@ -228,7 +231,8 @@ export function OpOmnibox({
   }
 
   const showDropdown = open && query.trim().length >= MIN_QUERY_LENGTH;
-  const noResults = searched && !loading && results.total === 0;
+  const degraded = searched && !loading && results.degraded === true;
+  const noResults = searched && !loading && results.total === 0 && !degraded;
   const queriedDimToken = DIM_TOKEN_PATTERN.test(query.trim());
   const activeDescendant =
     activeIndex >= 0 && flatItems[activeIndex] ? `${optionBaseId}-${activeIndex}` : undefined;
@@ -345,6 +349,15 @@ export function OpOmnibox({
                     className="h-3 w-3 animate-spin rounded-full border-2 border-ln-op-line border-t-ln-op-azul"
                   />
                   Buscando…
+                </div>
+              )}
+
+              {degraded && (
+                <div role="status" className="px-4 py-3 text-sm text-ln-op-mute">
+                  <p>La búsqueda está tardando más de lo normal.</p>
+                  <p className="mt-1 text-xs text-ln-op-mute">
+                    No pudimos completarla. Probá de nuevo en unos segundos.
+                  </p>
                 </div>
               )}
 

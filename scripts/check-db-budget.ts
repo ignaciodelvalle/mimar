@@ -215,6 +215,18 @@ export const DASHBOARD_PAGES = [
   // reason the discovery scan never flagged it while it ran with no deadline at
   // all. Registered so the requirement does not depend on the fan-out's width.
   "app/sitemap.ts",
+  // The postgres.js pipelining hang (2026-10, engram
+  // infra/postgres-pipelining-supavisor-hang): a zero-row query pipelined onto
+  // a busy connection never answers through the transaction pooler. The pools
+  // stopped pipelining in the same pass, and these hot paths, each a fan-out or
+  // a front-door read with no deadline, were bounded and registered with it.
+  // The pet profile above was already registered; its Libreta face read was the
+  // unbounded one, which the call-anywhere rule could not see.
+  "app/(app)/inicio/page.tsx",
+  "lib/infra/omnibox-search.ts",
+  "app/(public)/refugios/[orgToken]/page.tsx",
+  "app/libreta/compartir/[shareToken]/page.tsx",
+  "app/org/[orgToken]/agenda/page.tsx",
 ] as const;
 
 // The route-handler globs scanned.
