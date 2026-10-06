@@ -5,6 +5,9 @@
 // too (the old `:has(.ln-cred[data-situation])` scoping never matched it).
 // Render via react-dom/server (repo convention — no jsdom).
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -70,7 +73,7 @@ describe("<DocumentChrome> — situation band", () => {
     );
     // The front label lives under the name, in CredentialFace. Repeating it
     // in this chrome would put the state on the page twice.
-    expect(html).not.toContain("ln-band-chip");
+    expect(html).not.toContain("band-situation-chip");
     expect(html).not.toContain("Perdido");
   });
 
@@ -81,7 +84,7 @@ describe("<DocumentChrome> — situation band", () => {
       </DocumentChrome>,
     );
     expect(html).not.toContain("data-situation");
-    expect(html).not.toContain("ln-band-chip");
+    expect(html).not.toContain("band-situation-chip");
   });
 
   it("the libreta face carries the chip, outside the band, with its icon", () => {
@@ -104,11 +107,70 @@ describe("<DocumentChrome> — situation band", () => {
     );
     expect(html).toContain('aria-label="Marca miMAR: mostrar la credencial"');
     expect(html).toContain("Perdido");
-    const chipAt = html.indexOf("ln-band-chip");
+    const chipAt = html.indexOf("band-situation-chip");
     const bodyAt = html.indexOf(">BODY<");
     expect(chipAt).toBeGreaterThan(html.indexOf("pc-band"));
     expect(chipAt).toBeLessThan(bodyAt);
-    expect(html).toMatch(/ln-band-chip[^>]*>\s*<svg/);
+    expect(html).toMatch(/band-situation-chip[^>]*>\s*<svg/);
+  });
+
+  // Browser QA 2026-10-06 (390px): the dorso chip was `position: absolute`
+  // (.ln-band-chip, top: 82px) and landed 11-40px over "Estado de vacunación"
+  // on every pet with a situation. It now sits in normal flow, in its own row
+  // under the band — the native app's layout — so it reserves its own space.
+  it("the dorso chip is in normal flow, never absolutely positioned over the body", () => {
+    const html = renderToStaticMarkup(
+      <DocumentChrome
+        face="libreta"
+        onFlip={() => {}}
+        isLibretaActive={true}
+        situation={lostSituation}
+      >
+        <div>BODY</div>
+      </DocumentChrome>,
+    );
+    const chip = /<span class="([^"]*)" data-section="band-situation-chip"/.exec(html);
+    expect(chip?.[1]).toBe("pc-sit-chip");
+    // Its row is a sibling between the band and the body, not inside either.
+    expect(html).toMatch(
+      /<\/div><div class="pc-chips"><span class="pc-sit-chip"[\s\S]*?<\/div><div class="ln-body">/,
+    );
+
+    const css = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    // No rule that can reach the chip or its row positions it out of flow.
+    const reaching = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, selector]) =>
+      /\.pc-sit-chip(?![\w-])|\.pc-chips(?![\w-])|band-situation-chip/.test(selector ?? ""),
+    );
+    expect(reaching.length).toBeGreaterThan(0);
+    for (const [, selector, body] of reaching) {
+      expect(`${selector?.trim()} → ${body}`).not.toMatch(/position\s*:\s*(absolute|fixed)/);
+    }
+    expect(css).not.toContain(".ln-band-chip");
+  });
+
+  // Keyboard order = visual order (browser QA 2026-10-06): the dorso shows the
+  // flip on the left and the mark on the right, so the DOM says so too.
+  it.each([
+    ["credencial", "pc-band-mark-hit", "pc-band-flip"],
+    ["libreta", "pc-band-flip", "pc-band-mark-hit"],
+  ] as const)("on the %s face the DOM order is the visual order", (face, first, second) => {
+    const html = renderToStaticMarkup(
+      <DocumentChrome
+        face={face}
+        onFlip={() => {}}
+        isLibretaActive={face === "libreta"}
+        situation={null}
+      >
+        <div>BODY</div>
+      </DocumentChrome>,
+    );
+    const firstAt = html.indexOf(`class="${first}"`);
+    const secondAt = html.indexOf(`class="${second}"`);
+    expect(firstAt).toBeGreaterThan(-1);
+    expect(secondAt).toBeGreaterThan(firstAt);
   });
 
   it("renders the band + chip on BOTH faces via FlipCard (flip never loses the state)", () => {
@@ -125,7 +187,7 @@ describe("<DocumentChrome> — situation band", () => {
     expect(occurrences).toBe(2);
     // Front content in this fixture is a plain div, so the only chip is the
     // libreta face's. The real front paints its own, inside CredentialFace.
-    const chips = html.split("ln-band-chip").length - 1;
+    const chips = html.split("band-situation-chip").length - 1;
     expect(chips).toBe(1);
   });
 
@@ -139,7 +201,7 @@ describe("<DocumentChrome> — situation band", () => {
       />,
     );
     expect(html).not.toContain("data-situation");
-    expect(html).not.toContain("ln-band-chip");
+    expect(html).not.toContain("band-situation-chip");
   });
 });
 
@@ -177,7 +239,7 @@ describe("<DocumentChrome> — band renders no carousel dots (PO correction, dot
       />,
     );
     expect(html).not.toContain('data-section="band-dots"');
-    expect(html.split("ln-band-chip").length - 1).toBe(1);
+    expect(html.split("band-situation-chip").length - 1).toBe(1);
     // Flip control + brand mark hit, on both FlipCard faces.
     expect(html.split("pc-band-flip").length - 1).toBeGreaterThanOrEqual(2);
     expect(html.split("pc-band-mark-hit").length - 1).toBeGreaterThanOrEqual(2);

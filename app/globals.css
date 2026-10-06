@@ -1416,36 +1416,6 @@ body {
    top-right, and the photo/QR poke up into the bottom corners on the front
    face. Mirrors the turn button's translucent treatment so it reads as part
    of the document chrome. */
-.ln-band-chip {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  /* Anchored to the BAND (120px tall), not the card. The chip is a sibling of
-     .ln-band inside the relatively-positioned .ln-face, so `bottom` resolved
-     against the whole card and dropped the chip onto the action row at the
-     card's foot (PO QA 2026-08-02 "se superpone"). `top` lands it in the band
-     like .ln-band-title / .ln-turn — ~12px above the band's lower edge. */
-  top: 82px;
-  z-index: 4;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  max-width: calc(100% - 220px);
-  padding: 6px 12px;
-  border-radius: var(--radius-pill);
-  background: rgba(0, 0, 0, 0.22);
-  border: 1px solid rgba(255, 255, 255, 0.38);
-  color: #fff;
-  font-family: var(--font-ln-mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.ln-band-chip svg {
-  flex-shrink: 0;
-}
 
 /* ---- Public document family (/p/, /t/, degraded) ------------------------- */
 /* Same paper as the landing carnet, sheet format: navy band + printed photo
@@ -1587,13 +1557,14 @@ body {
 }
 /* Back face: mark and flip swap sides (landing lp-hcard[data-face=back]).
    The printed corner stays "the same" after the turn — logo left / flip right
-   on the front becomes flip left / logo right on the dorso. */
-.pc-cred[data-face="back"] .pc-band-trim,
+   on the front becomes flip left / logo right on the dorso. The OWNER face
+   (.pc-cred, DocumentChrome) swaps them in the DOM, so the Tab order follows
+   the picture; only the design-preview turn (.pc-turn) still swaps by CSS
+   `order`. */
 .pc-turn[data-face="back"] .pc-band-trim {
   order: -1;
   justify-content: flex-start;
 }
-.pc-cred[data-face="back"] .pc-band-balance,
 .pc-turn[data-face="back"] .pc-band-balance {
   order: 1;
   justify-self: end;

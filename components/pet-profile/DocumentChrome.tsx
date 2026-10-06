@@ -75,6 +75,17 @@ export function DocumentChrome({
   // so the same words ride here and the flip does not drop the state.
   const showBackChip = !isCredencial && situation != null && OWNER_CHROME.showSituationChip;
 
+  const markButton = (
+    <CardTurnButton skin="pc-band-mark-hit" onClick={onFlip} label={markAria}>
+      <PublicCredentialBrandMark />
+    </CardTurnButton>
+  );
+  const flipButton = (
+    <CardTurnButton skin="pc-band-flip" onClick={onFlip} label={turnAria} pressed={isLibretaActive}>
+      {isCredencial ? "↻" : "↺"}
+    </CardTurnButton>
+  );
+
   return (
     <div
       className="pc-cred ln-face"
@@ -83,26 +94,17 @@ export function DocumentChrome({
     >
       <PublicDocumentBand
         subtitle={bandSubtitle}
-        brand={
-          <CardTurnButton skin="pc-band-mark-hit" onClick={onFlip} label={markAria}>
-            <PublicCredentialBrandMark />
-          </CardTurnButton>
-        }
-        flip={
-          <CardTurnButton
-            skin="pc-band-flip"
-            onClick={onFlip}
-            label={turnAria}
-            pressed={isLibretaActive}
-          >
-            {isCredencial ? "↻" : "↺"}
-          </CardTurnButton>
-        }
+        // The corners mirror on the dorso (flip left, mark right), and they
+        // mirror in the DOM too: a CSS `order` swap left the Tab order mark →
+        // flip, the reverse of what a keyboard user sees (browser QA,
+        // 2026-10-06). Start slot first, end slot second, on both faces.
+        brand={isCredencial ? markButton : flipButton}
+        flip={isCredencial ? flipButton : markButton}
       />
       {showBackChip && situation ? (
         <div className="pc-chips">
           <span
-            className="pc-sit-chip ln-band-chip"
+            className="pc-sit-chip"
             data-section="band-situation-chip"
             role={situation.key === "perdida" ? "alert" : undefined}
           >
