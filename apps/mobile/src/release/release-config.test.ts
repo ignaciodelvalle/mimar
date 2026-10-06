@@ -760,28 +760,48 @@ describe("app identity assets", () => {
     // and forces a compensating number here anyway. So the mark stays flush to
     // the canvas and we render it smaller.
     //
-    // 1.082 is geometry, not a guess: a regular octagon measured flat-to-flat at
-    // W has circumradius W / (2·cos 22.5°) = 0.541W, so the circle that contains
-    // it is 1.082W across. 176 × 1.082 = 190.4dp, inside 192 with room for the
-    // resampler's soft edge; 200 needed 216 and was over by 24.
+    // 176 DID NOT FIX IT, AND THE REASON IS THE CONSTANT THAT USED TO SIT HERE
+    // (2026-10-06). It was 1.082 — the circumscribed diameter of a REGULAR
+    // octagon, W / cos 22.5°. The plaque is not one: its corners are cut by 10
+    // of 90 ink units (round 3), so its farthest vertex is sqrt(45² + 35²) =
+    // 57.0 units from centre, a circumradius of 0.633 x its width, not 0.541.
+    // 176dp therefore put the corners at 111.5dp against a 96dp window, and the
+    // PO saw it on the Samsung J7 (Android 8): flat edges intact, eight corners
+    // shaved to an arc.
     //
-    // HONEST ABOUT ITS PROVENANCE: 192 comes from Android's published splash
-    // spec, not from a measurement on a device. It is a floor-and-ceiling pair
-    // now, so if a real phone says otherwise the number moves HERE, with the
-    // observation written next to it — not by quietly repadding the asset.
-    const OCTAGON_CIRCUMSCRIBED_RATIO = 1.082;
-    const ANDROID_12_MASKED_DIAMETER_DP = 192;
-    expect((imageWidthDp as number) * OCTAGON_CIRCUMSCRIBED_RATIO).toBeLessThanOrEqual(
-      ANDROID_12_MASKED_DIAMETER_DP,
+    // MEASURED, BOTH ENDS, so no constant can be wrong in that way again:
+    //
+    //   · the WINDOW: core-splashscreen 1.2.0 (what expo-splash-screen 57
+    //     depends on) draws the icon on a 288dp canvas and masks it, on API < 31,
+    //     with an oval of 410dp carrying a 109dp stroke in the background colour
+    //     (`compat_splash_screen_no_icon_background.xml`) — an open window of
+    //     205 − 109 = 96dp radius, the same 192dp circle Android 12's spec
+    //     publishes. The J7's boot screenshot agrees: ink max radius 191.8px at
+    //     xhdpi = 95.9dp.
+    //   · the MARK: `ink.maxRadius` below, read off this very file, not
+    //     restated from the SVG.
+    //
+    // 4dp of clearance on the radius, for the resampler's soft edge and the
+    // mask's own anti-aliasing. At 144dp the corners sit at 91.2dp — 4.8dp
+    // inside; the largest width that would still fit at zero clearance is
+    // 151.5dp. 144 is the 8dp-grid value under that line.
+    const ANDROID_SPLASH_MASK_RADIUS_DP = 96;
+    const SPLASH_MASK_CLEARANCE_DP = 4;
+    const splashInk = inkBounds("assets/splash-icon.png");
+    const cornerRadiusDp = (splashInk.maxRadius / splash.width) * (imageWidthDp as number);
+    expect(cornerRadiusDp).toBeLessThanOrEqual(
+      ANDROID_SPLASH_MASK_RADIUS_DP - SPLASH_MASK_CLEARANCE_DP,
     );
+    // Non-vacuity: a mark shrunk to a dot also clears the window. Below ~80dp
+    // of corner radius the logo is being given away for nothing.
+    expect(cornerRadiusDp).toBeGreaterThan(80);
 
     // TIGHT CROP, asserted against the ink rather than declared. expo-splash-
     // screen renders this file at `imageWidth` dp, so transparent padding baked
     // into it would silently shrink the mark inside its own declared width and
     // force a compensating number in app.json. Allow a few pixels of slack for
     // the resampler's soft edge; anything more is padding.
-    const ink = inkBounds("assets/splash-icon.png");
-    expect(splash.width - ink.width).toBeLessThanOrEqual(4);
+    expect(splash.width - splashInk.width).toBeLessThanOrEqual(4);
 
     // Same mark, same shape: whatever the splash was scaled to must still carry
     // the source's aspect ratio. This is what would catch a second,
