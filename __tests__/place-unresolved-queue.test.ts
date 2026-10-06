@@ -101,6 +101,45 @@ describe("the unresolved-place queue", () => {
     });
   });
 
+  it("carries the decision context: kind, code, creator role, pin and candidate centroids", async () => {
+    await inRolledBackTx(async (tx) => {
+      const id = await unresolvedCase(tx, "Buenos Aires", "Mechita");
+      await tx.execute(
+        sql`update public.cases set primary_subject_kind = 'location', location_lat = -35.1,
+                location_lng = -60.3 where id = ${id}::uuid`,
+      );
+      const queue = await listUnresolvedPlaces(tx, { provinceCode: "AR-B" });
+      const item = queue.find((q) => q.subjectId === id);
+      expect(item?.context).toMatchObject({
+        kind: "bite_incident",
+        lat: -35.1,
+        lng: -60.3,
+        creatorRole: null,
+        creatorViaOrganization: false,
+        petLocality: null,
+      });
+      expect(item?.context.code).toMatch(/^CAS-/);
+      expect(item?.context.caseCode).toBe(item?.context.code);
+      // The queue adds no personal data: only role, kind, code and places.
+      expect(Object.keys(item?.context ?? {}).sort()).toEqual(
+        [
+          "address",
+          "caseCode",
+          "code",
+          "creatorRole",
+          "creatorViaOrganization",
+          "kind",
+          "lat",
+          "linkedPlace",
+          "lng",
+          "petLocality",
+          "welfareReportId",
+        ].sort(),
+      );
+      expect(item?.candidates.every((c) => "latitude" in c && "longitude" in c)).toBe(true);
+    });
+  });
+
   it("an admin resolves it to one row: a place_resolutions row plus the cache, and it leaves the queue", async () => {
     await inRolledBackTx(async (tx) => {
       const admin = await profileOf(tx, "admin");

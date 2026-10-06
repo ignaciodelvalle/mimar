@@ -1,4 +1,4 @@
-// /admin/localidades/pendientes â€” the unresolved-place queue
+// /admin/localidades/pendientes — the unresolved-place queue
 // (localidades-por-id D9, spec "unresolved-place-queue").
 //
 // A case or a report whose place did not resolve to ONE catalogue row is not
@@ -25,18 +25,13 @@ import { db } from "@/db";
 import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
 import { listUnresolvedPlaces } from "@/lib/place/unresolved-queue";
 import { PROVINCES, provinceByCode } from "@/lib/reference/ar-provincias";
-import { formatDateShort, pluralizeEs } from "@/lib/utils/format";
+import { pluralizeEs } from "@/lib/utils/format";
 
-import { ResolvePlaceForm } from "../_components/ResolvePlaceForm";
+import { PendingPlaceCard } from "../_components/PendingPlaceCard";
 
 export const dynamic = "force-dynamic";
 
 const DEFAULT_PROVINCE = "AR-B";
-
-const SUBJECT_LABELS: Record<string, string> = {
-  cases: "Caso",
-  welfare_reports: "Denuncia",
-};
 
 export default async function UnresolvedPlacesPage({
   searchParams,
@@ -63,10 +58,10 @@ export default async function UnresolvedPlacesPage({
       <div>
         <h1 className="m-0 text-xl font-semibold text-ln-op-ink">Lugares sin resolver</h1>
         <p className="mt-1 text-sm text-ln-op-mute">
-          Casos y denuncias cuyo lugar no se pudo asignar a una sola localidad del catÃ¡logo.
-          Mientras esperan acÃ¡, los ve la autoridad de la provincia. ElegÃ­ la localidad que
-          corresponde: queda registrado quiÃ©n lo resolviÃ³, cuÃ¡ndo y por quÃ©, y el registro
-          original no se modifica.
+          Casos y denuncias cuyo lugar no se pudo asignar a una sola localidad del catálogo.
+          Mientras esperan acá, los ve la autoridad de la provincia. Elegí la localidad que
+          corresponde: queda registrado quién lo resolvió, cuándo y por qué, y el registro original
+          no se modifica.
         </p>
       </div>
 
@@ -115,20 +110,11 @@ export default async function UnresolvedPlacesPage({
           ) : (
             <ul className="divide-y divide-ln-op-line">
               {queue.map((q) => (
-                <li key={`${q.subjectTable}-${q.subjectId}`} className="space-y-2 py-3">
-                  <p className="m-0 text-sm text-ln-op-ink">
-                    {SUBJECT_LABELS[q.subjectTable] ?? q.subjectTable}: Â«{q.enteredLocality}Â»
-                    <span className="ml-2 text-xs text-ln-op-mute">
-                      {formatDateShort(q.createdAt)}
-                    </span>
-                  </p>
-                  <ResolvePlaceForm
-                    subjectTable={q.subjectTable}
-                    subjectId={q.subjectId}
-                    provinceCode={provinceCode}
-                    candidates={q.candidates}
-                  />
-                </li>
+                <PendingPlaceCard
+                  key={`${q.subjectTable}-${q.subjectId}`}
+                  item={q}
+                  provinceCode={provinceCode}
+                />
               ))}
             </ul>
           )}

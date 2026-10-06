@@ -44,7 +44,14 @@ export type QueueExecutor = typeof db | Tx;
 export const QUEUE_SUBJECT_TABLES = ["cases", "welfare_reports"] as const;
 export type QueueSubjectTable = (typeof QUEUE_SUBJECT_TABLES)[number];
 
-export type QueueCandidate = { localityId: string; name: string; department: string | null };
+export type QueueCandidate = {
+  localityId: string;
+  name: string;
+  department: string | null;
+  /** Catalogue centroid; the distance from the pin is derived from it. */
+  latitude: number | null;
+  longitude: number | null;
+};
 
 export type QueueItem = {
   subjectTable: QueueSubjectTable;
@@ -53,6 +60,32 @@ export type QueueItem = {
   enteredLocality: string;
   createdAt: Date;
   candidates: QueueCandidate[];
+  /**
+   * What the admin needs to decide, next to the button. Role and kind only:
+   * no creator name, no contact, no DNI (the queue adds no PII).
+   */
+  context: QueueContext;
+};
+
+export type QueueContext = {
+  /** Public code (case) or reference code (denuncia), the way the admin screens show it. */
+  code: string | null;
+  /** Raw case_kind / welfare kind; labelled by lib/place/queue-context. */
+  kind: string | null;
+  /** Public code of the case to link to; null when the subject has none. */
+  caseCode: string | null;
+  /** Denuncia id, to link to its moderation view when there is no case. */
+  welfareReportId: string | null;
+  creatorRole: string | null;
+  creatorViaOrganization: boolean;
+  /** The pin, when the subject recorded coordinates. */
+  lat: number | null;
+  lng: number | null;
+  address: string | null;
+  /** Home locality of the subject pet, when there is a pet. */
+  petLocality: { name: string; department: string | null } | null;
+  /** The place the linked case / denuncia recorded, as entered text. */
+  linkedPlace: string | null;
 };
 
 export type QueueError =
@@ -95,26 +128,61 @@ export async function listUnresolvedPlaces(
            coalesce(
              (select json_agg(json_build_object(
                        'localityId', l.id::text, 'name', l.locality_name,
-                       'department', l.department_name)
+                       'department', l.department_name,
+                       'latitude', l.latitude::float8, 'longitude', l.longitude::float8)
                      order by l.department_name nulls first, l.id)
                 from public.ar_localities l
                where l.province_code = ${province.code}
                  and l.removed_at is null
                  and l.locality_name_norm = btrim(regexp_replace(lower(translate(
                        public.immutable_unaccent(q.entered), '.', '')), '\\s+', ' ', 'g'))),
-             '[]'::json) as candidates
+             '[]'::json) as candidates,
+           json_build_object(
+             'code', q.code, 'kind', q.kind, 'caseCode', q.case_code,
+             'welfareReportId', q.welfare_report_id,
+             'creatorRole', q.creator_role,
+             'creatorViaOrganization', q.creator_org,
+             'lat', q.lat::float8, 'lng', q.lng::float8, 'address', q.address,
+             'petLocality', (select json_build_object('name', pl.locality_name,
+                                                      'department', pl.department_name)
+                               from public.pets pt
+                               join public.ar_localities pl on pl.id = pt.locality_id
+                              where pt.id = q.pet_id),
+             'linkedPlace', q.linked_place) as context
       from (
         select 'cases'::text as subject_table, c.id as subject_id,
                c.jurisdiction_province as province, c.jurisdiction_locality as entered,
-               c.created_at
+               c.created_at,
+               c.public_code as code, c.case_kind as kind, c.public_code as case_code,
+               c.welfare_report_id::text as welfare_report_id,
+               (select pr.role::text from public.profiles pr where pr.id = c.opened_by_user_id)
+                 as creator_role,
+               (c.opened_by_organization_id is not null) as creator_org,
+               c.location_lat as lat, c.location_lng as lng, null::text as address,
+               c.primary_pet_id as pet_id,
+               (select concat_ws(', ', nullif(btrim(w.location_address), ''),
+                                 nullif(btrim(w.jurisdiction_locality), ''),
+                                 nullif(btrim(w.jurisdiction_province), ''))
+                  from public.welfare_reports w where w.id = c.welfare_report_id) as linked_place
           from public.cases c
          where c.locality_id is null
            and c.jurisdiction_province = ${province.name}
            and nullif(btrim(c.jurisdiction_locality), '') is not null
         union all
         select 'welfare_reports', w.id, w.jurisdiction_province, w.jurisdiction_locality,
-               w.created_at
+               w.created_at,
+               w.reference_code, w.kind::text, lc.public_code, w.id::text,
+               (select pr.role::text from public.profiles pr where pr.id = w.reporter_user_id),
+               (w.reporter_organization_id is not null),
+               w.location_lat, w.location_lng, w.location_address,
+               w.subject_pet_id,
+               (select concat_ws(', ', nullif(btrim(c2.jurisdiction_locality), ''),
+                                 nullif(btrim(c2.jurisdiction_province), ''))
+                  from public.cases c2 where c2.welfare_report_id = w.id limit 1)
           from public.welfare_reports w
+          left join lateral (select c3.public_code from public.cases c3
+                              where c3.welfare_report_id = w.id order by c3.created_at limit 1) lc
+            on true
          where w.locality_id is null
            and w.jurisdiction_province = ${province.name}
            and nullif(btrim(w.jurisdiction_locality), '') is not null

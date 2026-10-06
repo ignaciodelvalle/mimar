@@ -4,7 +4,7 @@
 //
 // The candidates are every live row of the province whose name matches what
 // was entered, each labelled with its department; none is pre-selected (P1:
-// the admin chooses, the system never does). A reason is required â€” it is
+// the admin chooses, the system never does). A reason is required — it is
 // what the place_resolutions row keeps next to who and when.
 
 import { useState } from "react";
@@ -14,13 +14,20 @@ import { OpButton, OpField, OpFormAlert, OpSelect, OpTextarea } from "@/componen
 
 import { useUnitAction } from "@/components/institutional/UnitEditorForms";
 
+import { formatDistanceKm } from "@/lib/place/queue-context";
 import { resolvedPlaceUrl } from "./resolved-place-url";
 
 export type ResolvePlaceFormProps = {
   subjectTable: "cases" | "welfare_reports";
   subjectId: string;
   provinceCode: string;
-  candidates: Array<{ localityId: string; name: string; department: string | null }>;
+  /** Nearest first when the subject has a pin; `distanceKm` is null otherwise. */
+  candidates: Array<{
+    localityId: string;
+    name: string;
+    department: string | null;
+    distanceKm?: number | null;
+  }>;
 };
 
 export function ResolvePlaceForm({
@@ -37,8 +44,8 @@ export function ResolvePlaceForm({
   if (candidates.length === 0) {
     return (
       <p className="m-0 text-sm text-ln-op-mute">
-        Ninguna localidad del catÃ¡logo tiene ese nombre en la provincia. Queda en la provincia
-        hasta que se corrija el lugar.
+        Ninguna localidad del catálogo tiene ese nombre en la provincia. Queda en la provincia hasta
+        que se corrija el lugar.
       </p>
     );
   }
@@ -62,11 +69,12 @@ export function ResolvePlaceForm({
       <OpField label="Localidad">
         {({ id }) => (
           <OpSelect id={id} value={localityId} onChange={(e) => setLocalityId(e.target.value)}>
-            <option value="">ElegÃ­ la localidadâ€¦</option>
+            <option value="">Elegí la localidad…</option>
             {candidates.map((c) => (
               <option key={c.localityId} value={c.localityId}>
                 {c.name}
                 {c.department ? ` (${c.department})` : ""}
+                {typeof c.distanceKm === "number" ? ` · a ${formatDistanceKm(c.distanceKm)}` : ""}
               </option>
             ))}
           </OpSelect>
