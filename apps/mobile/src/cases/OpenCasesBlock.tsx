@@ -5,16 +5,22 @@
 // above the pets, and an empty box above the animals would be furniture on the
 // screen people open most. The full list — open and history — is one tap away
 // on the casos screen, which the footer link opens.
+//
+// GROUPED like the web (PO 2026-10-06): "Te toca a vos", then "En curso", one
+// pet's cases gathered under the pet. Rows are normalized first, so a server
+// that predates the grouping still draws (every row on its own, the turn read
+// from the contract's table).
 
 import type { MyCasesV1 } from "@dim/contract/api";
+import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { FONTS } from "../ui/fonts";
 import { Eyebrow, LinkText } from "../ui/kit";
 import { COLORS, SPACE, TYPE } from "../ui/theme";
 
-import { CaseRow } from "./CaseRow";
-import { caseCountLabel, hasOpenCases } from "./cases-view-model";
+import { OpenCaseGroups } from "./CaseGroups";
+import { caseCountLabel, hasOpenCases, normalizeCaseRow } from "./cases-view-model";
 
 export function OpenCasesBlock({
   cases,
@@ -25,19 +31,15 @@ export function OpenCasesBlock({
   onOpenRoute: (route: string) => void;
   onOpenAll: () => void;
 }) {
+  const open = useMemo(() => (cases === null ? [] : cases.open.map(normalizeCaseRow)), [cases]);
   if (!hasOpenCases(cases)) return null;
   return (
     <View style={styles.block}>
       <View style={styles.head}>
         <Eyebrow>Casos abiertos</Eyebrow>
-        <Text style={styles.count}>{caseCountLabel(cases.open.length)}</Text>
+        <Text style={styles.count}>{caseCountLabel(open.length)}</Text>
       </View>
-      {cases.open.map((row, index) => (
-        // No id crosses the wire (see the contract); the server's order is the
-        // row's identity for as long as this payload is on screen.
-        // biome-ignore lint/suspicious/noArrayIndexKey: positional rows by design
-        <CaseRow key={index} row={row} onOpenRoute={onOpenRoute} />
-      ))}
+      <OpenCaseGroups rows={open} onOpenRoute={onOpenRoute} />
       <LinkText onPress={onOpenAll}>Ver todos mis casos</LinkText>
     </View>
   );

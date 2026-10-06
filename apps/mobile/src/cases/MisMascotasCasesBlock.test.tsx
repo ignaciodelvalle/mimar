@@ -149,6 +149,22 @@ describe("Casos abiertos on Mis mascotas", () => {
     expect(await screen.findByText("Casos abiertos")).toBeTruthy();
   });
 
+  it("groups the block like the web: the owner's turn first, one pet's cases under the pet", async () => {
+    const pampa = { petId: "DIM-PAMP-0001", petName: "Pampa", petPhotoUrl: null };
+    mockFetchMyCases.mockResolvedValue(
+      cases([
+        aRow({ title: "Postulación pendiente", kind: "adoption_application_pending" }),
+        aRow({ title: "Pampa está perdida", needsAction: true, ...pampa }),
+        aRow({ title: "Atestá la raza de Pampa", needsAction: true, ...pampa }),
+      ]),
+    );
+    render(<MisMascotasScreen />);
+    expect(await screen.findByText("Te toca a vos")).toBeTruthy();
+    expect(screen.getByText("En curso")).toBeTruthy();
+    expect(screen.getByLabelText("Pampa, 2 casos")).toBeTruthy();
+    expect(screen.getByText("3 casos")).toBeTruthy();
+  });
+
   it("draws a row the app cannot open as text, not as a dead button", async () => {
     mockFetchMyCases.mockResolvedValue(
       cases([

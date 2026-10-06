@@ -1,28 +1,42 @@
 // Mis casos — every open cycle plus the recent history (M11), the web's
-// `/mis-mascotas#inbox` "Casos abiertos" and "Historial" on a screen of their own.
+// `/mis-mascotas#inbox` casos on a screen of their own.
 //
 // FOUR STATES, and the one that matters is that a FAILED read is never drawn as
 // an empty one: "no tenés casos abiertos" over a pooler outage would hide an open
 // bite observation from the person it binds. Once rows are on screen a failed
 // refresh keeps them and says so (`reload-state.ts`).
+//
+// GROUPED like the web's Bandeja (PO 2026-10-06): "Te toca a vos", "En curso",
+// and the history collapsed behind a toggle — one pet's cases gathered under
+// the pet in each. The payload is normalized on arrival, so a server that
+// predates the grouping still draws.
 
 import type { MyCasesV1 } from "@dim/contract/api";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { apiFailureMessage } from "../api/client";
 import { fetchMyCases } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, EmptyState, StaleNotice } from "../ui/components";
-import { Callout, Eyebrow, Screen, SecondaryButton, Title, pullToRefresh } from "../ui/kit";
+import { FONTS } from "../ui/fonts";
+import {
+  Callout,
+  Eyebrow,
+  Screen,
+  SecondaryButton,
+  Title,
+  pressedOpacity,
+  pullToRefresh,
+} from "../ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../ui/reload-state";
 import { ListSkeleton } from "../ui/skeleton";
-import { SPACE } from "../ui/theme";
+import { COLORS, SPACE, TOUCH_TARGET, TYPE } from "../ui/theme";
 import { useReconnect } from "../ui/use-reconnect";
 
-import { CaseRow } from "./CaseRow";
-import { historyTruncationNote } from "./cases-view-model";
+import { CaseClusterList, OpenCaseGroups } from "./CaseGroups";
+import { historyTruncationNote, normalizeMyCases } from "./cases-view-model";
 
 type ScreenState =
   | { phase: "loading" }
@@ -32,6 +46,7 @@ type ScreenState =
 export function CasesScreen({ onOpenRoute }: { onOpenRoute: (route: string) => void }) {
   const [state, setState] = useState<ScreenState>({ phase: "loading" });
   const [refreshing, setRefreshing] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const generation = useRef(0);
 
   const load = useCallback(async (mode: "initial" | "refresh") => {
@@ -42,7 +57,7 @@ export function CasesScreen({ onOpenRoute }: { onOpenRoute: (route: string) => v
     if (mine !== generation.current) return;
     setRefreshing(false);
     if (result.outcome === "ok") {
-      setState(loaded(result.payload));
+      setState(loaded(normalizeMyCases(result.payload)));
       return;
     }
     setState((current) =>
@@ -104,26 +119,37 @@ export function CasesScreen({ onOpenRoute }: { onOpenRoute: (route: string) => v
             body="Cualquier denuncia, postulación o pérdida que empieces va a aparecer acá."
           />
         ) : (
-          open.map((row, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: no id crosses the wire; see the contract
-            <CaseRow key={index} row={row} onOpenRoute={onOpenRoute} />
-          ))
+          <OpenCaseGroups rows={open} onOpenRoute={onOpenRoute} />
         )}
       </View>
 
-      {/* Drawn only when it has rows — an empty "Historial" is furniture. */}
+      {/* Drawn only when it has rows — an empty "Historial" is furniture. Closed
+          by default, like the web's <details>: what is done should not push
+          what is open off the screen. */}
       {history.rows.length > 0 && (
         <View style={styles.section}>
-          <Eyebrow>Historial</Eyebrow>
-          {history.rows.map((row, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: no id crosses the wire; see the contract
-            <CaseRow key={index} row={row} onOpenRoute={onOpenRoute} />
-          ))}
-          {truncation === null ? null : (
-            <Card>
-              <Body>{truncation}</Body>
-            </Card>
-          )}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: historyOpen }}
+            accessibilityLabel={`Historial, ${history.rows.length} ${history.rows.length === 1 ? "cerrado" : "cerrados"}`}
+            onPress={() => setHistoryOpen((v) => !v)}
+            style={(s) => [styles.toggle, pressedOpacity(s)]}
+          >
+            <Eyebrow>Historial</Eyebrow>
+            <Text style={styles.toggleHint}>
+              {historyOpen ? "Ocultar" : `Ver ${history.rows.length}`}
+            </Text>
+          </Pressable>
+          {historyOpen ? (
+            <>
+              <CaseClusterList rows={history.rows} onOpenRoute={onOpenRoute} />
+              {truncation === null ? null : (
+                <Card>
+                  <Body>{truncation}</Body>
+                </Card>
+              )}
+            </>
+          ) : null}
         </View>
       )}
     </Screen>
@@ -132,4 +158,11 @@ export function CasesScreen({ onOpenRoute }: { onOpenRoute: (route: string) => v
 
 const styles = StyleSheet.create({
   section: { gap: SPACE.sm, marginTop: SPACE.lg },
+  toggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: TOUCH_TARGET,
+  },
+  toggleHint: { fontFamily: FONTS.sans, fontSize: TYPE.sm, color: COLORS.accent },
 });

@@ -30,7 +30,7 @@ function tableSource(rows: string): string {
   ].join("\n");
 }
 
-/** The current table's twenty rows, verbatim in their file order. */
+/** The current table's twenty-one rows, verbatim in their file order. */
 const CURRENT_ROWS = [
   "  // Document chrome",
   '  girar: "RefreshCw",',
@@ -54,6 +54,9 @@ const CURRENT_ROWS = [
   "",
   "  // Section dividers",
   '  alert: "AlertTriangle",',
+  "",
+  "  // Casos",
+  '  info: "Info",',
   "",
   "  // Action footer",
   '  libreta: "BookOpen",',
@@ -85,7 +88,8 @@ describe("check-mobile-icon-vocabulary — the fence is not vacuous", () => {
   it("passes the current vocabulary (the control every other case is read against)", () => {
     // Non-vacuity in the plainest form: if this went red, every "fires on X"
     // case below could be passing for the wrong reason.
-    expect(parseTable(current)).toHaveLength(20);
+    // 21 since `info: Info` (the app's grouped casos, 2026-10-06).
+    expect(parseTable(current)).toHaveLength(21);
     expect(evaluate(current)).toEqual([]);
   });
 });
@@ -120,9 +124,9 @@ describe("Rule C — the pin names what changed", () => {
     expect(pinned).toHaveLength(1);
     expect(pinned[0]).toContain("- embarazo:CalendarHeart");
     expect(pinned[0]).toContain("+ embarazo:Baby");
-    // The count did not move — twenty rows before and after — which is exactly
-    // the class of change a pinned COUNT reports as clean.
-    expect(parseTable(swapped)).toHaveLength(20);
+    // The count did not move — twenty-one rows before and after — which is
+    // exactly the class of change a pinned COUNT reports as clean.
+    expect(parseTable(swapped)).toHaveLength(21);
   });
 
   it("(c) yields exactly ONE failure for a source it could not read", () => {
@@ -135,9 +139,9 @@ describe("Rule C — the pin names what changed", () => {
 
   it("(d) fails naming the missing row when a key becomes unparseable, not on the count", () => {
     // A key the regex cannot match (`a.b`) drops one row silently. The count
-    // moves to 19 here, but the message that matters is WHICH pair vanished —
+    // moves to 20 here, but the message that matters is WHICH pair vanished —
     // and a parser change that dropped a row while adding a junk one would
-    // keep the count at 20 and still be caught by the pair list.
+    // keep the count at 21 and still be caught by the pair list.
     const hostile = tableSource(CURRENT_ROWS.replace('  ver: "Eye",', '  "a.b": "Eye",'));
     const failures = evaluate(hostile);
     const named = failures.filter((f) => f.includes("- ver:Eye"));

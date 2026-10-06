@@ -67,6 +67,11 @@ export const PET_PROFILE_ICONS = {
   // Section dividers
   alert: "AlertTriangle",
 
+  // Casos (grouped inbox, 2026-10-06) — the severity glyph of a case row that
+  // is neither urgent nor a warning. Urgent and warning rows wear
+  // `alert-triangle` in their own tone.
+  info: "Info",
+
   // Action footer
   libreta: "BookOpen",
   share: "Share2",

@@ -127,7 +127,7 @@ const MIN_ENTRIES = 15;
  * Exact `key:glyph` pairs, sorted by key, as of the last reviewed change; update
  * it in the SAME commit that changes any glyph or key, so the swap lands in THIS
  * file's diff next to the rules that decide what a glyph may mean. Last change:
- * `fallecimiento: HeartOff → Flower2` — a crossed heart is not how you mourn.
+ * `info: Info` (grouped casos 2026-10-06); before it, `fallecimiento → Flower2`.
  */
 const PINNED_TABLE = [
   "alert:AlertTriangle",
@@ -141,6 +141,7 @@ const PINNED_TABLE = [
   "embarazo:CalendarHeart",
   "fallecimiento:Flower2",
   "girar:RefreshCw",
+  "info:Info",
   "libreta:BookOpen",
   "map-pin:MapPin",
   "medicacion:Pill",

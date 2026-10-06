@@ -26,6 +26,12 @@ jest.mock("../auth/session-store", () => ({ sessionPort: {} }));
 
 import { CasesScreen } from "./CasesScreen";
 
+// The thumbs and severity tiles are hidden from the accessibility tree on
+// purpose (the row label already says it all), so they are found only with
+// hidden elements included. Without this a `queryBy…` asserting absence would
+// pass vacuously.
+const HIDDEN = { includeHiddenElements: true };
+
 function aRow(over: Partial<MyCaseRowV1> = {}): MyCaseRowV1 {
   return {
     kind: "case_generic_open",
@@ -92,10 +98,117 @@ describe("CasesScreen", () => {
     fireEvent.press(await screen.findByText("Caso CAS-TEST-0001 · Pampa"));
     expect(onOpenRoute).toHaveBeenCalledWith("/casos/CAS-TEST-0001");
 
+    // The history is collapsed until asked for.
+    expect(screen.getByText("Historial")).toBeTruthy();
+    expect(screen.queryByText("Denuncia de bienestar cerrada")).toBeNull();
+    fireEvent.press(screen.getByRole("button", { name: /^Historial, 1 cerrado/ }));
+
     fireEvent.press(screen.getByText("Denuncia de bienestar cerrada"));
     expect(onOpenRoute).toHaveBeenCalledTimes(1);
 
-    expect(screen.getByText("Historial")).toBeTruthy();
     expect(screen.getByText(/Los anteriores se ven desde la web/)).toBeTruthy();
+  });
+
+  it("puts the owner's turn first, the earliest deadline on top", async () => {
+    mockFetch.mockResolvedValue(
+      ok({
+        open: [
+          aRow({ title: "Denuncia de bienestar animal", kind: "welfare_report_open" }),
+          aRow({ title: "Sin plazo", needsAction: true, since: "2026-10-05T12:00:00.000Z" }),
+          aRow({ title: "Plazo corto", needsAction: true, dueAt: "2026-10-09T15:00:00.000Z" }),
+        ],
+      }),
+    );
+    render(<CasesScreen onOpenRoute={jest.fn()} />);
+    await screen.findByText("Te toca a vos");
+
+    const order = [
+      "Te toca a vos",
+      "Plazo corto",
+      "Sin plazo",
+      "En curso",
+      "Denuncia de bienestar animal",
+    ];
+    const texts = screen
+      .getAllByText(/^(Te toca a vos|Plazo corto|Sin plazo|En curso|Denuncia de bienestar animal)$/)
+      .map((n) => n.props.children);
+    expect(texts).toEqual(order);
+    expect(screen.getByText(/^Vence el /)).toBeTruthy();
+  });
+
+  it("gathers one pet's cases under the pet, with its photo and a count", async () => {
+    const pampa = {
+      petId: "DIM-PAMP-0001",
+      petName: "Pampa",
+      petPhotoUrl: "https://storage.test/pets/pampa.jpg",
+      needsAction: true,
+    };
+    mockFetch.mockResolvedValue(
+      ok({
+        open: [
+          aRow({ title: "Pampa está reportada como perdida", severity: "urgent", ...pampa }),
+          aRow({ title: "Atestá la raza de Pampa", severity: "warning", ...pampa, route: null }),
+        ],
+      }),
+    );
+    const onOpenRoute = jest.fn();
+    render(<CasesScreen onOpenRoute={onOpenRoute} />);
+
+    expect(await screen.findByLabelText("Pampa, 2 casos")).toBeTruthy();
+    // Named once, at the head — not again on each of her rows.
+    expect(screen.getAllByText("Pampa")).toHaveLength(1);
+    expect(screen.getAllByTestId("pet-thumb", HIDDEN)).toHaveLength(1);
+    // The severity is drawn on every row, in its own tone.
+    expect(screen.getByTestId("case-severity-urgent", HIDDEN)).toBeTruthy();
+    expect(screen.getByTestId("case-severity-warning", HIDDEN)).toBeTruthy();
+    // An inert row stays inert inside a cluster.
+    fireEvent.press(screen.getByText("Atestá la raza de Pampa"));
+    expect(onOpenRoute).not.toHaveBeenCalled();
+  });
+
+  it("draws an account-level row with no pet, and a single pet row with its pet inline", async () => {
+    mockFetch.mockResolvedValue(
+      ok({
+        open: [
+          aRow({ title: "Denuncia de bienestar animal", kind: "welfare_report_open" }),
+          aRow({
+            title: "Tu postulación para Luna",
+            petId: "DIM-LUNA-0003",
+            petName: "Luna",
+            petPhotoUrl: null,
+          }),
+        ],
+      }),
+    );
+    render(<CasesScreen onOpenRoute={jest.fn()} />);
+    await screen.findByText("Denuncia de bienestar animal");
+    expect(screen.getByText("Luna")).toBeTruthy();
+    // The pet is part of what a screen reader hears for the row that shows it.
+    expect(
+      screen.getByRole("button", { name: /^Tu postulación para Luna\. .*Luna\./ }),
+    ).toBeTruthy();
+    // Luna has no photo: the paw stands in. The denuncia has no pet at all.
+    expect(screen.getAllByTestId("pet-thumb-fallback", HIDDEN)).toHaveLength(1);
+    expect(screen.queryByTestId("pet-thumb", HIDDEN)).toBeNull();
+    expect(screen.getByText(/Nada pendiente de tu parte/)).toBeTruthy();
+    expect(screen.getAllByTestId("case-severity-info", HIDDEN)).toHaveLength(2);
+  });
+
+  it("still draws a payload from a server that predates the grouping", async () => {
+    const legacy = {
+      kind: "pet_lost",
+      title: "Pampa está reportada como perdida",
+      subtitle: "Avisanos cuando aparezca",
+      severity: "urgent",
+      since: "2026-09-01T12:00:00.000Z",
+      route: "/mascotas/DIM-PAMP-0001",
+    } as unknown as MyCaseRowV1;
+    mockFetch.mockResolvedValue(ok({ open: [legacy] }));
+    render(<CasesScreen onOpenRoute={jest.fn()} />);
+    expect(await screen.findByText("Pampa está reportada como perdida")).toBeTruthy();
+    // The turn comes from the contract's table: a lost pet is the owner's.
+    expect(screen.getByText("Te toca a vos")).toBeTruthy();
+    expect(screen.queryByText("En curso")).toBeNull();
+    expect(screen.queryByTestId("pet-thumb", HIDDEN)).toBeNull();
   });
 });
