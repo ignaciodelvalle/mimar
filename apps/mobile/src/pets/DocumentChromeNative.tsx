@@ -40,8 +40,8 @@
 
 import type { OwnerPetSituationV1 } from "@dim/contract/api";
 import { chromeForSurface } from "@dim/contract/credential";
-import type { ReactNode } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { type ReactNode, useState } from "react";
+import { type LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 
 import { Icon } from "../ui/Icon";
@@ -255,15 +255,48 @@ export function situationChipSkin(situationKey: string): {
 }
 
 /** Landing-sweep band ground — gradient only, no pinstripes. */
+/**
+ * The band's gradient. NUMERIC SIZE, INSIDE AN ABSOLUTE WRAPPER — never a
+ * `width="100%" height="100%"` Svg that is itself absolutely positioned: on
+ * Android react-native-svg resolved those percentages to a partial box, and the
+ * J7 (EAS preview, 2026-10-06) painted a ~613×45px strip with the rest of the
+ * 106px band white, doctype and latent miMAR on white. The wrapper fills the
+ * band and measures it; the Svg gets the measured width and `BAND_H`. Until the
+ * first layout the wrapper itself is the first stop's navy, so the band is
+ * never white even for a frame.
+ */
 function BandBackground() {
   const skin = credentialBandSkin();
+  const [width, setWidth] = useState(0);
+  const onLayout = (event: LayoutChangeEvent) => {
+    const measured = Math.round(event.nativeEvent.layout.width);
+    if (measured > 0 && measured !== width) setWidth(measured);
+  };
+  return (
+    <View
+      testID="band-background"
+      pointerEvents="none"
+      onLayout={onLayout}
+      style={[styles.bandBackground, { backgroundColor: skin.stops[0]?.color }]}
+    >
+      {width > 0 ? <BandGradient width={width} skin={skin} /> : null}
+    </View>
+  );
+}
+
+function BandGradient({
+  width,
+  skin,
+}: {
+  width: number;
+  skin: ReturnType<typeof credentialBandSkin>;
+}) {
   return (
     <Svg
-      width="100%"
-      height="100%"
+      width={width}
+      height={BAND_H}
       viewBox={`0 0 ${BAND_VIEWBOX_W} ${BAND_H}`}
       preserveAspectRatio="xMidYMid slice"
-      style={StyleSheet.absoluteFill}
     >
       <Defs>
         {/* 118deg on the web. A mild vertical fall (y2) lets the celeste edge
@@ -644,6 +677,11 @@ const styles = StyleSheet.create({
     borderColor: COLORS.borderSoft,
     borderRadius: 9,
     zIndex: 5,
+  },
+  /** Fills the band; the gradient Svg inside it carries numeric dimensions. */
+  bandBackground: {
+    ...StyleSheet.absoluteFill,
+    overflow: "hidden",
   },
   band: {
     height: BAND_H,

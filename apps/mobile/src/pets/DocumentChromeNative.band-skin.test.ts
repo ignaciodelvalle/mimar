@@ -19,8 +19,9 @@
 // on the libreta face loses that rosa.
 
 import { describe, expect, it } from "@jest/globals";
-import { render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import { createElement } from "react";
+import { StyleSheet } from "react-native";
 
 import {
   DocumentChromeNative,
@@ -30,6 +31,13 @@ import {
 } from "./DocumentChromeNative";
 
 const prenada = { key: "prenada", tone: "info", icon: "perdida", label: "Preñada" };
+
+/** jest has no Yoga: hand the band background the width a phone would. */
+function layOutBand(width = 360) {
+  fireEvent(screen.getByTestId("band-background"), "layout", {
+    nativeEvent: { layout: { x: 0, y: 0, width, height: 106 } },
+  });
+}
 
 describe("bandSkin — prenada (T4-M6)", () => {
   it("is a FLAT rosa tint, not the shared default navy band", () => {
@@ -104,6 +112,7 @@ describe("the painted band stays navy", () => {
         situation: prenada,
       }),
     );
+    layOutBand();
     const dumped = JSON.stringify(screen.toJSON());
     // react-native-svg stores a stop as a signed int. -16108202 is #0a3556
     // (navy); -4896386 is #b5497e (prenada). The chip is not on this face.
@@ -121,6 +130,7 @@ describe("the painted band stays navy", () => {
         situation: prenada,
       }),
     );
+    layOutBand();
     const dumped = JSON.stringify(screen.toJSON());
     expect(dumped).toContain("-16108202");
     // Pill uses stripe fill + rosa border + ink (web `.pc-sit-chip` prenada) —
@@ -139,6 +149,7 @@ describe("the painted band stays navy", () => {
         situation: null,
       }),
     );
+    layOutBand();
     const dumped = JSON.stringify(screen.toJSON());
     // Pinstripe era drew SVG <Line> hairlines; landing recipe is gradient only.
     expect(dumped).not.toContain('"type":"Line"');
@@ -207,4 +218,46 @@ describe("the painted band stays navy", () => {
       expect(stateful[0]?.props.accessibilityState.selected).toBe(isLibretaActive);
     },
   );
+});
+
+// J7, EAS preview (2026-10-06): an absolutely positioned Svg sized "100%" ×
+// "100%" painted a ~613×45px strip of the band on Android and left the rest
+// white. jest cannot paint, so the STRUCTURE is pinned: an absolute wrapper
+// fills the band, and the Svg inside it has numeric dimensions and no
+// positioning of its own.
+describe("band background — the gradient covers the whole band on Android", () => {
+  it("is an absolute wrapper holding a numerically sized, unpositioned Svg", () => {
+    render(
+      createElement(DocumentChromeNative, {
+        face: "credencial",
+        isLibretaActive: false,
+        onTurn: () => {},
+        situation: null,
+      }),
+    );
+    const wrapper = screen.getByTestId("band-background");
+    const wrapperStyle = StyleSheet.flatten(wrapper.props.style);
+    expect(wrapperStyle).toMatchObject({
+      position: "absolute",
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+    });
+    // Navy before the first layout: never a white band, not even for a frame.
+    expect(wrapperStyle.backgroundColor).toBe("#0a3556");
+
+    layOutBand(343);
+    const svgs = screen
+      .getByTestId("band-background")
+      .findAll((node) => typeof node.props?.viewBox === "string");
+    expect(svgs.length).toBeGreaterThan(0);
+    for (const svg of svgs) {
+      expect(typeof svg.props.width).toBe("number");
+      expect(typeof svg.props.height).toBe("number");
+      expect(svg.props.width).toBe(343);
+      const own = StyleSheet.flatten(svg.props.style) ?? {};
+      expect(own.position).not.toBe("absolute");
+    }
+  });
 });
