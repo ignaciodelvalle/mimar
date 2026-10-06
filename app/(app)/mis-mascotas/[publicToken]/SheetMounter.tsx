@@ -42,7 +42,7 @@ import { Sheet } from "@/components/ui/VaulSheet";
 import { scrollIntoViewRespectingMotion } from "@/lib/ui/reduced-motion-scroll";
 import { buildCloseSheetUrl } from "@/lib/ui/sheet-helpers";
 import { closeSheetNav, closeSheetNavWithFullReload } from "@/lib/ui/sheet-nav";
-import { useActionRedirect } from "@/lib/ui/use-action-redirect";
+import { useActionNavigate } from "@/lib/ui/use-action-redirect";
 import { foundParticiple, markLostActionLabel } from "@/lib/utils/format";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -664,8 +664,25 @@ function MarkFoundConfirmation({
   // and this form performs the full document navigation (see
   // lib/ui/use-action-redirect.ts) — which also closes this sheet by loading
   // the profile URL without the ?sheet= param.
-  const [state, formAction, isPending] = useActionState(action, { error: null });
-  useActionRedirect(state.redirectTo, state);
+  //
+  // FIRED FROM INSIDE THE ACTION, NOT FROM AN EFFECT ON ITS STATE (2026-10-06).
+  // setPetFoundAction revalidates, so its response re-renders this profile, and
+  // the profile now passes petStatus "active": the sheet above swaps this form
+  // for PetNotLostNotice. An effect-based useActionRedirect lived in the form
+  // that swap unmounts, so the navigation could die with it and leave the owner
+  // reading "no figura en modo perdido, no hay nada que marcar" right after
+  // marking the pet found. The wrapper below runs after the await whether or
+  // not the form is still mounted.
+  const [navigate, navigating] = useActionNavigate();
+  const [state, formAction, isPending] = useActionState(
+    async (previous: EventFormState, formData: FormData) => {
+      const result = await action(previous, formData);
+      if (result.redirectTo) navigate(result.redirectTo);
+      return result;
+    },
+    { error: null },
+  );
+  const busy = isPending || navigating;
 
   return (
     <div className="space-y-4">
@@ -682,10 +699,10 @@ function MarkFoundConfirmation({
         </p>
       )}
       <form action={formAction} className="flex gap-2">
-        <LnButton type="submit" variant="ok" disabled={isPending}>
-          {isPending ? "Guardando…" : `Marcar como ${foundParticiple(petSex)}`}
+        <LnButton type="submit" variant="ok" disabled={busy}>
+          {busy ? "Guardando…" : `Marcar como ${foundParticiple(petSex)}`}
         </LnButton>
-        <LnButton type="button" variant="ghost" onClick={onCancel} disabled={isPending}>
+        <LnButton type="button" variant="ghost" onClick={onCancel} disabled={busy}>
           Cancelar
         </LnButton>
       </form>
