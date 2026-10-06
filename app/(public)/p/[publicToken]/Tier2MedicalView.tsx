@@ -119,7 +119,7 @@ export function Tier2MedicalView({
         )}
       </p>
 
-      <dl className="pc-fact-grid">
+      <div className="pc-fact-grid">
         <MedStat
           icon="vacuna"
           label="Vacunación"
@@ -134,7 +134,7 @@ export function Tier2MedicalView({
           sub={isSterilized ? sterilizedLabel(sex) : "No registrada"}
           tone={isSterilized ? "ok" : "neutral"}
         />
-      </dl>
+      </div>
 
       {activeMedications.length > 0 && (
         <MedBlock label="Medicación activa">
@@ -177,14 +177,20 @@ function MedStat({
   sub: string;
   tone: "ok" | "warn" | "danger" | "neutral";
 }) {
+  // One <dl> per tile: a <dl> may hold only dt/dd (or div wrappers of them),
+  // and the tile also carries the decorative watermark — axe flagged the old
+  // `dl > div > span + dt + dd + p` as a serious definition-list violation
+  // (browser QA 2026-10-06). The sub line is a second <dd> of the same term.
   return (
     <div className="pc-fact" data-tone={tone}>
       <span className="pc-fact-mark" aria-hidden="true">
         <Icon name={icon} size="lg" decorative />
       </span>
-      <dt>{label}</dt>
-      <dd>{value}</dd>
-      <p>{sub}</p>
+      <dl>
+        <dt>{label}</dt>
+        <dd>{value}</dd>
+        <dd className="pc-fact-sub">{sub}</dd>
+      </dl>
     </div>
   );
 }

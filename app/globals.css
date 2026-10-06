@@ -2113,9 +2113,11 @@ body {
   width: 52px;
   height: 52px;
 }
+.pc-fact dl {
+  margin: 0;
+}
 .pc-fact dt,
-.pc-fact dd,
-.pc-fact p {
+.pc-fact dd {
   position: relative;
   z-index: 1;
 }
@@ -2145,9 +2147,15 @@ body {
 .pc-fact[data-tone="danger"] dd {
   color: var(--color-ln-err);
 }
-.pc-fact p {
+/* The sub line is the term's second <dd> (a <p> is not allowed in a <dl>);
+   it undoes the value's serif display face. After the tone rules on purpose:
+   same specificity, and the sub line stays muted whatever the tone. */
+.pc-fact dd.pc-fact-sub {
   margin: 4px 0 0;
+  font-family: inherit;
   font-size: var(--text-sm);
+  font-weight: 400;
+  line-height: inherit;
   color: var(--color-ln-mute);
 }
 .pc-slip {

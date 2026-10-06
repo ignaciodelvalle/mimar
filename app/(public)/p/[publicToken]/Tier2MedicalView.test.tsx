@@ -64,3 +64,39 @@ describe("<Tier2MedicalView> — the owner's consent is visible text", () => {
     expect(line).not.toHaveTextContent("Siempre visible");
   });
 });
+
+// axe `definition-list` (serious) on /p/DIM-PAMP-0001, browser QA 2026-10-06:
+// the grid was a <dl> whose children were div > span + dt + dd + p. Every <dl>
+// here may hold only <dt>/<dd> — or <div> wrappers holding only <dt>/<dd>.
+describe("<Tier2MedicalView> — definition lists are well formed", () => {
+  it("every <dl> holds only dt/dd (or div wrappers of dt/dd), and each term has its value", () => {
+    const { container } = render(
+      <Tier2MedicalView
+        enabledUntil={null}
+        vaccineSummary={{ active: 1, expired: 0, dueSoon: 0, missing: 0 }}
+        hasVaccineRecords
+        isSterilized
+        sex="female"
+        activeMedications={[]}
+        permanentConditions={[]}
+        permanentConditionsOther={null}
+      />,
+    );
+    const lists = [...container.querySelectorAll("dl")];
+    expect(lists.length).toBeGreaterThanOrEqual(2);
+    const allowed = (el: Element) => el.tagName === "DT" || el.tagName === "DD";
+    for (const dl of lists) {
+      for (const child of [...dl.children]) {
+        const ok =
+          allowed(child) || (child.tagName === "DIV" && [...child.children].every(allowed));
+        expect(ok, `<dl> child <${child.tagName.toLowerCase()} class="${child.className}">`).toBe(
+          true,
+        );
+      }
+    }
+    const vacuna = screen.getByText("Vacunación");
+    expect(vacuna.tagName).toBe("DT");
+    expect(vacuna.parentElement?.querySelector("dd")?.textContent).toBe("1");
+    expect(screen.getByText("1 vigente").tagName).toBe("DD");
+  });
+});

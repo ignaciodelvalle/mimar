@@ -269,12 +269,12 @@ export function publicLevelSheets(qrs: {
                 <dl className="pc-fact" data-tone="warn">
                   <dt>Vacunación</dt>
                   <dd>1</dd>
-                  <p className="pc-med-copy">2 faltantes</p>
+                  <dd className="pc-fact-sub">2 faltantes</dd>
                 </dl>
                 <dl className="pc-fact" data-tone="ok">
                   <dt>Esterilización</dt>
                   <dd>Sí</dd>
-                  <p className="pc-med-copy">Castrada</p>
+                  <dd className="pc-fact-sub">Castrada</dd>
                 </dl>
               </div>
             </div>
