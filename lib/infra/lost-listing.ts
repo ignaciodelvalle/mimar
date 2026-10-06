@@ -56,8 +56,12 @@ export function lostTimeLabel(markedLostAt: Date | null, now: Date = new Date())
   const days = Math.floor(hours / 24);
   // Below one month: always days (never "0 meses"). days >= 1 here (hours >= 24).
   if (days < 30) return days === 1 ? "hace 1 día" : `hace ${days} días`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return months === 1 ? "hace 1 mes" : `hace ${months} meses`;
+  // Below one year: always months (never "0 años"). The bound is the year
+  // divisor itself — `months < 12` let days 360-364 through to floor(d/365)=0.
+  if (days < 365) {
+    const months = Math.floor(days / 30);
+    return months === 1 ? "hace 1 mes" : `hace ${months} meses`;
+  }
   const years = Math.floor(days / 365);
   return years === 1 ? "hace 1 año" : `hace ${years} años`;
 }

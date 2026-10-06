@@ -8,7 +8,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PublicLostSections } from "./PublicLostSections";
 
@@ -67,6 +67,16 @@ describe("PublicLostSections — owner name disclosure (M1)", () => {
 });
 
 describe("PublicLostSections — last-seen reads place-first (M3)", () => {
+  // The recency is relative to Date.now(); pin the clock so "hace 3 meses" is
+  // what these tests read on any day the suite runs (the fixture date is fixed).
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-14T12:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   const LOCATED = {
     ...BASE_PROPS,
     lastSeenPlaceName: null,
@@ -81,7 +91,7 @@ describe("PublicLostSections — last-seen reads place-first (M3)", () => {
   it("leads with the place and the recency, not the coordinate pair", () => {
     render(<PublicLostSections {...LOCATED} />);
 
-    expect(screen.getByText(/^Ushuaia · hace \d+ (días|día|meses|mes)$/)).toBeInTheDocument();
+    expect(screen.getByText("Ushuaia · hace 3 meses")).toBeInTheDocument();
   });
 
   it("does not publish coordinates, a map, or a Google Maps link", () => {
@@ -97,9 +107,7 @@ describe("PublicLostSections — last-seen reads place-first (M3)", () => {
   it("says 'Punto marcado en el mapa' with the recency when there is only a disclosed pin", () => {
     const { container } = render(<PublicLostSections {...LOCATED} lastSeenLocality={null} />);
 
-    expect(
-      screen.getByText(/^Punto marcado en el mapa · hace \d+ (días|día|meses|mes)$/),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Punto marcado en el mapa · hace 3 meses")).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/-54\.80|-68\.30/);
   });
 

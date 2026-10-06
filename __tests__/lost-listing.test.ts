@@ -180,4 +180,12 @@ describe("lib/lost-listing — lostTimeLabel", () => {
     expect(lostTimeLabel(new Date(now.getTime() - 400 * dayMs), now)).toBe("hace 1 año");
     expect(lostTimeLabel(new Date(now.getTime() - 800 * dayMs), now)).toBe("hace 2 años");
   });
+
+  it("never says 'hace 0 años' — months run until the year divisor (365 days)", () => {
+    const dayMs = 24 * 60 * 60 * 1000;
+    expect(lostTimeLabel(new Date(now.getTime() - 359 * dayMs), now)).toBe("hace 11 meses");
+    expect(lostTimeLabel(new Date(now.getTime() - 360 * dayMs), now)).toBe("hace 12 meses");
+    expect(lostTimeLabel(new Date(now.getTime() - 364 * dayMs), now)).toBe("hace 12 meses");
+    expect(lostTimeLabel(new Date(now.getTime() - 365 * dayMs), now)).toBe("hace 1 año");
+  });
 });
