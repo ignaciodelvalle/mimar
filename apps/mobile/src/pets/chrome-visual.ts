@@ -7,50 +7,25 @@
 // 2. Re-run the geometry / band-skin / PetDocumentScreen jest suites under
 //    apps/mobile (they import these constants where the recipe is fenced).
 // 3. Install a preview and check on a mid-range phone AND a low-DPI one (J7):
-//    grain and escarapela wash out on cheap panels; do not "fix" by cranking
-//    opacity until a flagship looks muddy.
+//    cheap panels wash out low-opacity ink; do not "fix" by cranking opacity
+//    until a flagship looks muddy.
 //
 // WHAT LIVES HERE vs WHAT STAYS IN DocumentChromeNative
 // -----------------------------------------------------
 // · HERE: opacity / position / size / elevation knobs that a PO can ask to
-//   "subí un poco" / "bajá la escarapela" without redesigning the sheet.
+//   "subí un poco" without redesigning the sheet.
 // · DocumentChromeNative: structure (band recipe, mark path, FaceDivider,
 //   LatentBrand dual-text). Do not move layout arithmetic here.
 //
 // WEB PARITY ANCHORS (app/globals.css)
 // ------------------------------------
-// · `.pc-cred` paper tile 180×112, escarapela opacity 0.28 at 50% / 42%
 // · `.pc-photo-mount` phone 116×116; desktop 156×156
 // · Situation chip / face border tints per `data-situation`
 
-// The paper and escarapela layers were turned off for the J7, and their PNG assets were removed (2026-10-06).
-
-/**
- * Paper grain. Web tiles at 180×112; RN Image does not CSS-tile, so we stretch
- * a 512 tile across the sheet. On a J7 the grain is almost invisible — leave
- * it ON and tune on a better phone; lower opacity before raising it.
- */
-export const PAPER = {
-  /** 0 = off, 1 = full. Web reads the SVG at native ink strength over card. */
-  opacity: 0.55,
-} as const;
-
-/**
- * Escarapela watermark on the paper (NOT on the navy band).
- * Web: opacity 0.28, position 50% 42%, size 100% auto.
- *
- * These % values are resolved against the absoluteFill watermark LAYER in
- * DocumentChromeNative — never against the phone window. Putting them on a
- * bare absolute Image of the face grew the card to ~70% of the screen on
- * Android (mimar AVD, 2026-10-05).
- */
-export const ESCARAPELA = {
-  opacity: 0.28,
-  /** Top of the watermark box, as a % of the card height. */
-  topPct: 18,
-  /** Height of the watermark box, as a % of the card height. */
-  heightPct: 70,
-} as const;
+// The paper and escarapela layers were turned off for the J7, and their PNG
+// assets, knobs and styles were removed (2026-10-06). Re-adding the textures
+// means re-adding the assets (the web's `.pc-cred` paper tile is 180×112, the
+// escarapela opacity 0.28 at 50% / 42%).
 
 /**
  * Soft lift under the whole credential. Android uses `elevation`; iOS uses

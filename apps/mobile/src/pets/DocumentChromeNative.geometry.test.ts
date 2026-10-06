@@ -11,6 +11,9 @@
 // anything out — so this measures nothing about pixels. What it pins is that
 // the constants the chrome exports ARE the numbers the StyleSheets carry.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "@jest/globals";
 import { StyleSheet, type TextStyle } from "react-native";
 
@@ -71,7 +74,17 @@ describe("the StyleSheets carry the constants the recipe quotes", () => {
     // A second Android elevation nested inside the rotating card is a second
     // shadow layer the J7 repaints every frame of the turn.
     expect(PHOTO_MOUNT).not.toHaveProperty("elevation");
-    expect(StyleSheet.flatten(ownerFaceStyles.photoMount)).not.toHaveProperty("elevation");
+    // Source-read, not the flattened style: jest-expo resolves Platform.select
+    // to its iOS arm, so an `android: { elevation }` arm would never show up
+    // in `StyleSheet.flatten` here (same posture as HeaderBackButton.test.tsx).
+    const source = readFileSync(join(__dirname, "OwnerFace.tsx"), "utf8").replace(
+      /\/\*[\s\S]*?\*\/|\/\/.*$/gm,
+      "",
+    );
+    const mount = /photoMount:\s*\{([\s\S]*?)\n {2}\},/.exec(source)?.[1];
+    expect(mount).toBeDefined();
+    expect(mount).toContain("PHOTO_MOUNT.size");
+    expect(mount).not.toMatch(/elevation/);
   });
 
   it("pins the turn hit to the web's 22px mark size", () => {

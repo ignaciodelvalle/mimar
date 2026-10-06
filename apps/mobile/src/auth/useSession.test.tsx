@@ -17,6 +17,9 @@
 // stops it. The refresh POLICY itself (what a failed refresh means) is pinned in
 // session-store.test.ts and client.test.ts.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { act, render } from "@testing-library/react-native";
 import { AppState, type AppStateStatus } from "react-native";
@@ -173,5 +176,17 @@ describe("useSessionPhase", () => {
     // reads this hook so its <Stack> does not re-render here.
     publish({ phase: "signed-in", user: { id: "u1" } });
     expect(seen).toEqual(["starting", "signed-in"]);
+  });
+
+  // Source-read, not a render of `_layout.tsx` (same posture as
+  // HeaderBackButton.test.tsx): the root layout must subscribe to the PHASE,
+  // never to the whole session, or every token refresh re-renders its <Stack>.
+  it("is what the root layout reads — never the whole-session hook", () => {
+    const layoutSource = readFileSync(
+      join(__dirname, "..", "..", "app", "_layout.tsx"),
+      "utf8",
+    ).replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
+    expect(layoutSource).toMatch(/const sessionPhase = useSessionPhase\(\);/);
+    expect(layoutSource).not.toMatch(/\buseSession\(\)/);
   });
 });

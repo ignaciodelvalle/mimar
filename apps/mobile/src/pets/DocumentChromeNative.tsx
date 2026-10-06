@@ -4,15 +4,17 @@
 // THE REFERENCE IS THE WEB'S `DocumentChrome` + `PublicDocumentBand` + the
 // `.pc-band*` / `.pc-cred::before` rules in app/globals.css. Same anatomy: the
 // navy landing-sweep band with sunk mark + doctype + flip (both corners turn),
-// latent "miMAR", the escarapela watermark on the paper, the situation chip on
-// the libreta face, and the body. What differs is only the drawing tool:
+// latent "miMAR", the situation chip on the libreta face, and the body (the
+// web's paper grain and escarapela watermark are not drawn here — see below).
+// What differs is only the drawing tool:
 //
 //   · The band is an SVG linear gradient (118deg) — no pinstripes. The web
 //     dropped them with the landing carnet recipe.
 //   · The mark is the mask path from `logo-mimar-mark-mask.svg`, filled in
 //     sunk ink (CSS mask has no RN twin).
-//   · The paper grain and the escarapela watermark are OFF on the phone (J7
-//     paint cost); their PNG rasters were removed from the bundle 2026-10-06.
+//   · No paper grain and no escarapela watermark: both were turned off for
+//     the J7 and their PNG rasters, knobs and styles were REMOVED 2026-10-06.
+//     Re-adding them means re-adding the assets to apps/mobile/assets too.
 //
 // THE SITUATION IS SERVER-DECIDED. `situation` arrives as the contract's
 // `OwnerPetSituationV1` — key, tone, icon and an already-gender-agreed label —
@@ -45,7 +47,7 @@ import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { Icon } from "../ui/Icon";
 import { FONTS } from "../ui/fonts";
 import { COLORS, RADIUS } from "../ui/theme";
-import { CARD_LIFT, ESCARAPELA, LATENT_BRAND, MIMAR_MARK, PAPER } from "./chrome-visual";
+import { CARD_LIFT, LATENT_BRAND, MIMAR_MARK } from "./chrome-visual";
 
 const OWNER_CHROME = chromeForSurface("owner");
 
@@ -510,12 +512,12 @@ export function DocumentChromeNative({
   // Outer shell carries the soft lift; inner face clips band/paper to the
   // card radius. (overflow:hidden on the same node as elevation eats the shadow.)
   //
-  // PAPER + ESCARAPELA WATERMARKS ARE OFF until we can paint them without
-  // inflating the face. On Android, a %-height absolute Image of the escarapela
-  // (even nested under absoluteFill) grew this card to ~window height — band
-  // crushed to the bottom, identity unreadable (mimar AVD, 2026-10-05). The
-  // styles (`watermarkLayer` / `paper` / `escarapela`) stay so the re-entry is
-  // one JSX block once the safe paint path is settled.
+  // NO PAPER / ESCARAPELA TEXTURES. They were turned off for the J7 and their
+  // assets, knobs and styles were removed (2026-10-06); re-adding them means
+  // re-adding the PNGs. If they come back: on Android a %-height absolute Image
+  // of the escarapela (even nested under absoluteFill) grew this card to
+  // ~window height (mimar AVD, 2026-10-05) — paint it inside an absoluteFill
+  // layer that cannot contribute to the face's height.
   return (
     <View style={styles.faceLift}>
       <View style={[styles.face, { borderColor: faceBorder }]}>
@@ -631,26 +633,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: RADIUS.card,
     overflow: "hidden",
-  },
-  /**
-   * Sizes to the face without contributing to its height. Paper + escarapela
-   * sit inside so their % geometry cannot inflate the card (see render note).
-   */
-  watermarkLayer: {
-    ...StyleSheet.absoluteFill,
-    zIndex: 0,
-  },
-  /** Passport grain — knobs in `PAPER` (chrome-visual.ts). */
-  paper: {
-    ...StyleSheet.absoluteFill,
-    opacity: PAPER.opacity,
-  },
-  /** Escarapela watermark — knobs in `ESCARAPELA` (chrome-visual.ts). */
-  escarapela: {
-    ...StyleSheet.absoluteFill,
-    // Nudge down to ~web's 42% centre without %-height (see render note).
-    top: `${ESCARAPELA.topPct}%`,
-    opacity: ESCARAPELA.opacity,
   },
   frame: {
     position: "absolute",
