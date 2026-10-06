@@ -337,35 +337,59 @@ function BandGradient({
 /** Numeric geometry of the two watermark Images inside a measured face box. */
 export type FaceWatermarkGeometry = {
   /**
-   * The grain is laid out as a WIDTH×WIDTH square and stretched to the face's
-   * height by `scaleY`. A transform moves no layout and asks for no new
-   * bitmap: the decoded size follows the laid-out box, and the width is the
-   * one dimension the turn never changes (credencial and libreta faces differ
-   * in HEIGHT). Sizing the Image to width×height would re-decode on every flip.
+   * The grain is laid out as SIDE×SIDE squares, each stretched vertically by
+   * its own `scaleY` and stacked down the face. A transform moves no layout
+   * and asks for no new bitmap: the decoded size follows the laid-out box, and
+   * every tile has the same box, so Android decodes the 512px tile ONCE and
+   * reuses it. The side follows the width — the one dimension the turn never
+   * changes (credencial and libreta faces differ in HEIGHT) — so a flip asks
+   * for the same bitmap too. Sizing one Image to width×height would re-decode
+   * on every flip.
    */
-  paper: { width: number; height: number; top: number; scaleY: number };
+  paper: {
+    side: number;
+    /** `top` is the LAYOUT top of the square; the transform (which pivots on
+     *  its centre) lands its painted edges on whole-dp tile boundaries. */
+    tiles: ReadonlyArray<{ top: number; scaleY: number }>;
+  };
   /** A square, centred in the `ESCARAPELA` box (`topPct` / `heightPct`). */
   escarapela: { left: number; top: number; size: number };
 };
 
 /**
+ * How far one grain tile may be stretched. Past ~2× the 512px tile reads as
+ * vertical streaks, not paper — a long libreta (2000+ dp) would stretch a
+ * single tile 6× or more. Taller faces stack more tiles instead.
+ */
+export const PAPER_MAX_STRETCH = 2;
+
+/**
  * The watermark knobs (`PAPER`, `ESCARAPELA`) resolved against the face's
  * MEASURED box, into plain numbers. No % string ever reaches a style.
+ *
+ * The grain overshoots the box by up to 2dp (ceil + 1) on the right and the
+ * bottom, so a fractional measurement never leaves an un-grained hairline at
+ * the edge; the layer's `overflow: hidden` clips the excess.
  */
 export function faceWatermarkGeometry(width: number, height: number): FaceWatermarkGeometry {
+  const side = Math.ceil(width) + 1;
+  const cover = Math.ceil(height) + 1;
+  const count = Math.max(1, Math.ceil(cover / (side * PAPER_MAX_STRETCH)));
+  // Whole-dp segments, so neighbouring tiles meet on a pixel edge (no
+  // antialiased seam) and none overlaps (no doubled-alpha line).
+  const segment = Math.ceil(cover / count);
+  const tiles = Array.from({ length: count }, (_, index) => ({
+    // Centre the square on its segment; scaleY pivots on that centre.
+    top: index * segment + (segment - side) / 2,
+    scaleY: segment / side,
+  }));
+
   const boxTop = (height * ESCARAPELA.topPct) / 100;
   const boxHeight = (height * ESCARAPELA.heightPct) / 100;
   // `size: 100% auto` on the web, bounded by the box on a short face.
   const size = Math.round(Math.min(width, boxHeight));
   return {
-    paper: {
-      width,
-      height: width,
-      // scaleY pivots on the centre, so centring the square on the face makes
-      // the scaled grain cover exactly 0…height.
-      top: Math.round((height - width) / 2),
-      scaleY: height / width,
-    },
+    paper: { side, tiles },
     escarapela: {
       left: Math.round((width - size) / 2),
       top: Math.round(boxTop + (boxHeight - size) / 2),
@@ -389,19 +413,25 @@ export function faceWatermarkGeometry(width: number, height: number): FaceWaterm
  *     non-zero box — no % size, no aspectRatio, nothing that can grow;
  *   · each Image gets numeric width/height from `faceWatermarkGeometry`.
  *
- * J7 COST: one Image per layer, no blur, `resizeMethod="resize"` so Android
+ * J7 COST: one bitmap per layer, no blur, `resizeMethod="resize"` so Android
  * decodes at most the laid-out size (and never above the 512px source), no
- * fade-in. The sources are module-level requires, and `memo` keeps a turn —
+ * fade-in. A phone-sized face is one or two grain tiles; a long libreta stacks
+ * more, all the same box and source, so they share that one decode. The sources are module-level requires, and `memo` keeps a turn —
  * which re-renders the chrome — from touching these Images at all.
  */
 const FaceWatermark = memo(function FaceWatermark() {
   const [box, setBox] = useState<{ width: number; height: number } | null>(null);
   const onLayout = (event: LayoutChangeEvent) => {
-    const width = Math.round(event.nativeEvent.layout.width);
-    const height = Math.round(event.nativeEvent.layout.height);
+    const { width, height } = event.nativeEvent.layout;
     if (width <= 0 || height <= 0) return;
+    // Rounded ONLY to decide "same box": a sub-dp jitter must not re-render.
+    // The geometry itself gets the exact measure (it ceils outward).
     setBox((prev) =>
-      prev !== null && prev.width === width && prev.height === height ? prev : { width, height },
+      prev !== null &&
+      Math.round(prev.width) === Math.round(width) &&
+      Math.round(prev.height) === Math.round(height)
+        ? prev
+        : { width, height },
     );
   };
   const geometry = box === null ? null : faceWatermarkGeometry(box.width, box.height);
@@ -416,24 +446,29 @@ const FaceWatermark = memo(function FaceWatermark() {
     >
       {geometry === null ? null : (
         <>
-          <Image
-            testID="face-paper"
-            source={PAPER_TEXTURE}
-            resizeMode="stretch"
-            resizeMethod="resize"
-            fadeDuration={0}
-            style={[
-              styles.watermarkImage,
-              {
-                left: 0,
-                top: geometry.paper.top,
-                width: geometry.paper.width,
-                height: geometry.paper.height,
-                opacity: PAPER.opacity,
-                transform: [{ scaleY: geometry.paper.scaleY }],
-              },
-            ]}
-          />
+          {geometry.paper.tiles.map((tile, index) => (
+            <Image
+              // Tiles are positional and the count only changes with the box.
+              // biome-ignore lint/suspicious/noArrayIndexKey: positional tiles
+              key={index}
+              testID="face-paper"
+              source={PAPER_TEXTURE}
+              resizeMode="stretch"
+              resizeMethod="resize"
+              fadeDuration={0}
+              style={[
+                styles.watermarkImage,
+                {
+                  left: 0,
+                  top: tile.top,
+                  width: geometry.paper.side,
+                  height: geometry.paper.side,
+                  opacity: PAPER.opacity,
+                  transform: [{ scaleY: tile.scaleY }],
+                },
+              ]}
+            />
+          ))}
           <Image
             testID="face-escarapela"
             source={ESCARAPELA_TEXTURE}

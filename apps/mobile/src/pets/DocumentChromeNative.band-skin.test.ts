@@ -329,6 +329,8 @@ describe("paper + escarapela — painted without moving the card", () => {
     const layer = screen.getByTestId("face-watermark", { includeHiddenElements: true });
     expect(layer.props.pointerEvents).toBe("none");
     expect(layer.props.accessibilityElementsHidden).toBe(true);
+    // The prop TalkBack reads (accessibilityElementsHidden is iOS's).
+    expect(layer.props.importantForAccessibility).toBe("no-hide-descendants");
     expect(StyleSheet.flatten(layer.props.style)).toMatchObject({
       position: "absolute",
       top: 0,
@@ -342,8 +344,12 @@ describe("paper + escarapela — painted without moving the card", () => {
   it("gives each Image numeric width and height — never %, never aspectRatio", () => {
     renderChrome();
     layOutFace(343, 760);
-    for (const id of ["face-paper", "face-escarapela"]) {
-      const image = screen.getByTestId(id, { includeHiddenElements: true });
+    const images = [
+      ...screen.getAllByTestId("face-paper", { includeHiddenElements: true }),
+      screen.getByTestId("face-escarapela", { includeHiddenElements: true }),
+    ];
+    for (const image of images) {
+      const id = image.props.testID;
       const style = StyleSheet.flatten(image.props.style);
       expect(style.position).toBe("absolute");
       expect(typeof style.width).toBe("number");
@@ -356,11 +362,16 @@ describe("paper + escarapela — painted without moving the card", () => {
       }
       expect(image.props.resizeMethod).toBe("resize");
     }
-    expect(
-      StyleSheet.flatten(
-        screen.getByTestId("face-paper", { includeHiddenElements: true }).props.style,
-      ),
-    ).toMatchObject({ width: 343, height: 343, opacity: 0.55 });
+    // Grain: ceil + 1dp past the box (the layer clips it), two ≤2× tiles at 760dp.
+    const tiles = screen.getAllByTestId("face-paper", { includeHiddenElements: true });
+    expect(tiles).toHaveLength(2);
+    for (const tile of tiles) {
+      expect(StyleSheet.flatten(tile.props.style)).toMatchObject({
+        width: 344,
+        height: 344,
+        opacity: 0.55,
+      });
+    }
     expect(
       StyleSheet.flatten(
         screen.getByTestId("face-escarapela", { includeHiddenElements: true }).props.style,
@@ -390,7 +401,12 @@ describe("paper + escarapela — painted without moving the card", () => {
   it("keeps the same sources and bitmap size across a turn", () => {
     const view = renderChrome("credencial");
     layOutFace(343, 900);
-    const frontPaper = screen.getByTestId("face-paper", { includeHiddenElements: true }).props;
+    const paperOf = () =>
+      screen.getAllByTestId("face-paper", { includeHiddenElements: true }).map((n) => n.props);
+    const frontPapers = paperOf();
+    const frontPaper = frontPapers[0] ?? {};
+    // Every tile shares the one source and the one box — one decode.
+    for (const tile of frontPapers) expect(tile.source).toBe(frontPaper.source);
     const frontMark = screen.getByTestId("face-escarapela", { includeHiddenElements: true }).props;
     view.rerender(
       createElement(DocumentChromeNative, {
@@ -401,18 +417,18 @@ describe("paper + escarapela — painted without moving the card", () => {
       }),
     );
     // Still drawn after the turn: the layer stayed mounted with its measurement.
-    const turnedPaper = screen.getByTestId("face-paper", { includeHiddenElements: true }).props;
-    expect(turnedPaper.source).toBe(frontPaper.source);
+    expect(paperOf()[0]?.source).toBe(frontPaper.source);
     layOutFace(343, 640);
-    const backPaper = screen.getByTestId("face-paper", { includeHiddenElements: true }).props;
     const backMark = screen.getByTestId("face-escarapela", { includeHiddenElements: true }).props;
-    expect(backPaper.source).toBe(frontPaper.source);
     expect(backMark.source).toBe(frontMark.source);
     const size = (props: Record<string, unknown>) => {
       const s = StyleSheet.flatten(props.style as StyleProp<ViewStyle>);
       return [s.width, s.height];
     };
-    expect(size(backPaper)).toEqual(size(frontPaper));
+    for (const backPaper of paperOf()) {
+      expect(backPaper.source).toBe(frontPaper.source);
+      expect(size(backPaper)).toEqual(size(frontPaper));
+    }
     expect(size(backMark)).toEqual(size(frontMark));
   });
 });

@@ -21,7 +21,9 @@ queda para un rebuild nativo. No agrega módulos, fuentes, ni Reanimated.
 
 - **Coordenadas del último lugar.** El payload trae la clase de celda
   (`rightCell`), no el punto. El ping es el dibujo; no abre un mapa.
-- **Holograma, escarapela, OVD.** Piden assets. La marca es la palabra miMAR.
+- **Holograma, OVD.** Piden assets. La marca es la palabra miMAR. (La
+  escarapela y el papel sí: desde 2026-10-06 la credencial del teléfono los
+  pinta, en `DocumentChromeNative.tsx`.)
 - **Reanimated, módulos nativos, fuentes nuevas.** El giro sigue en
   `Animated` de React Native.
 - **`/t/`.** Fuera de este trabajo.

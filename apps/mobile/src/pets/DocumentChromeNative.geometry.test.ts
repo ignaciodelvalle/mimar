@@ -25,7 +25,9 @@ import {
   BAND_PAD_BOTTOM,
   BAND_PAD_TOP,
   FACE_SECTION_PAD_V,
+  type FaceWatermarkGeometry,
   IDENTITY_POKE_OUT,
+  PAPER_MAX_STRETCH,
   documentChromeStyles,
   faceWatermarkGeometry,
 } from "./DocumentChromeNative";
@@ -181,15 +183,56 @@ describe("the watermark knobs are the ones the device pass tuned", () => {
   });
 });
 
+/** Where each grain tile actually PAINTS: scaleY pivots on the square's centre. */
+function paintedSpans(paper: FaceWatermarkGeometry["paper"]): Array<[number, number]> {
+  return paper.tiles.map((tile) => {
+    const centre = tile.top + paper.side / 2;
+    const half = (paper.side * tile.scaleY) / 2;
+    return [centre - half, centre + half];
+  });
+}
+
+/** The tiles leave no gap and no overlap, and cover 0 … at least `height`. */
+function expectGrainCovers(paper: FaceWatermarkGeometry["paper"], height: number) {
+  const spans = paintedSpans(paper);
+  expect(spans[0]?.[0]).toBeCloseTo(0, 5);
+  for (let i = 1; i < spans.length; i++) {
+    expect(spans[i]?.[0]).toBeCloseTo(spans[i - 1]?.[1] ?? Number.NaN, 5);
+    // Whole-dp seams: neighbouring tiles meet on a pixel edge.
+    expect(Math.abs((spans[i]?.[0] ?? 0) - Math.round(spans[i]?.[0] ?? 0))).toBeLessThan(1e-6);
+  }
+  expect(spans.at(-1)?.[1]).toBeGreaterThanOrEqual(height + 1);
+}
+
 describe("faceWatermarkGeometry — plain numbers from the measured box", () => {
-  it("stretches the grain over exactly 0…height of a phone-sized face", () => {
+  it("stretches the grain over a phone-sized face in at most 2× tiles", () => {
     const { paper } = faceWatermarkGeometry(360, 800);
-    expect(paper).toEqual({ width: 360, height: 360, top: 220, scaleY: 800 / 360 });
-    // scaleY pivots on the centre of the laid-out square.
-    const centre = paper.top + paper.height / 2;
-    const half = (paper.height * paper.scaleY) / 2;
-    expect(centre - half).toBeCloseTo(0, 5);
-    expect(centre + half).toBeCloseTo(800, 5);
+    expect(paper.side).toBe(361);
+    expect(paper.tiles).toHaveLength(2);
+    for (const tile of paper.tiles) expect(tile.scaleY).toBeLessThanOrEqual(PAPER_MAX_STRETCH);
+    expectGrainCovers(paper, 800);
+  });
+
+  it("stacks tiles on a 2400dp libreta instead of stretching one 6× into streaks", () => {
+    const { paper } = faceWatermarkGeometry(343, 2400);
+    expect(paper.tiles.length).toBe(4);
+    for (const tile of paper.tiles) {
+      expect(tile.scaleY).toBeGreaterThan(0);
+      expect(tile.scaleY).toBeLessThanOrEqual(PAPER_MAX_STRETCH);
+    }
+    expectGrainCovers(paper, 2400);
+  });
+
+  it("overshoots a fractional box on the right and bottom — no un-grained hairline", () => {
+    for (const [width, height] of [
+      [342.6, 799.4],
+      [343.5, 640.5],
+      [359.01, 2400.99],
+    ] as const) {
+      const { paper } = faceWatermarkGeometry(width, height);
+      expect(paper.side).toBeGreaterThanOrEqual(width + 1);
+      expectGrainCovers(paper, height);
+    }
   });
 
   it("centres a full-width escarapela square in the 18%…88% box", () => {
@@ -207,13 +250,14 @@ describe("faceWatermarkGeometry — plain numbers from the measured box", () => 
   it("asks for the same bitmap on both faces — the turn changes height, not width", () => {
     const front = faceWatermarkGeometry(343, 900);
     const back = faceWatermarkGeometry(343, 640);
-    expect([back.paper.width, back.paper.height]).toEqual([front.paper.width, front.paper.height]);
+    expect(back.paper.side).toBe(front.paper.side);
     expect(back.escarapela.size).toBe(front.escarapela.size);
   });
 
   it("returns only finite numbers", () => {
     const g = faceWatermarkGeometry(343, 761);
-    for (const value of [...Object.values(g.paper), ...Object.values(g.escarapela)]) {
+    const tileNumbers = g.paper.tiles.flatMap((tile) => [tile.top, tile.scaleY]);
+    for (const value of [g.paper.side, ...tileNumbers, ...Object.values(g.escarapela)]) {
       expect(typeof value).toBe("number");
       expect(Number.isFinite(value)).toBe(true);
     }
