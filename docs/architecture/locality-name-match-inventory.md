@@ -40,7 +40,7 @@ comparison is what the six rows still count.
 | 3 | `custody_dispute_parties` · "custody_dispute_parties select by parties and authorities" | policy, SELECT | the parties of those disputes | same |
 | 4 | `pet_identifications` · "pet_identifications read by govt in jurisdiction" | policy, SELECT | a govt operator reads a pet's identifications through the pet's locality | same |
 | 5 | `pet_service_dog` · "service_dog select by owner or authority" | policy, SELECT | the service-dog credential, same way | same |
-| 6 | `can_read_case(uuid, uuid)` | function, **SECURITY DEFINER** | the govt branch of case visibility; called by the `cases` SELECT policy and the case-scoped policies on `pet_events` and `attachments` | same |
+| 6 | `can_read_case(uuid, uuid)` | function, **SECURITY DEFINER** | the govt branch of case visibility; called by the `cases` SELECT policy and the case-scoped policies on `pet_events` and `attachments` | `db/migrations/0281_case_read_transfer_and_custody_parties.sql` (0259's body plus two org-party arms keyed on ids) |
 | 7 | `erase_subject_data(uuid, text)` | function, **SECURITY DEFINER** | nothing — it WRITES `jurisdiction_locality = NULL` during erasure. Listed because it is privileged and touches the column | `db/migrations/0228_dead_letter_error_message_redaction.sql` |
 | 8 | `welfare_report_content` | view | nothing — it projects the column | — |
 | 9 | `govt_scope(uuid)` | function, SQL STABLE | nothing by itself — it RETURNS a legacy grant's name pair; the six predicates above compare it | `db/migrations/0257_govt_scope_and_place_flags.sql` |
@@ -49,8 +49,8 @@ comparison is what the six rows still count.
 
 The ~21 matches the plan counted in the SQL **source** are the history of
 these six predicates: each policy was re-created by later migrations
-(`0086`, `0137`, `0140`, `0215`, `0216`, `0241`, `0259`), and the two `db/*.sql` source files
-(`db/rls.sql`, `db/cases_rls.sql`) still carry their original text. The frozen
+(`0086`, `0137`, `0140`, `0215`, `0216`, `0241`, `0259`, and `0281` for `can_read_case`), and the two `db/*.sql` source files
+(`db/rls.sql`, `db/cases_rls.sql`) carry their text — `db/cases_rls.sql` now 0281's body, kept identical because the provisioner applies it after the replay. The frozen
 list in `scripts/check-locality-name-join.ts` holds all of them, file by file.
 
 ## How each one fails — read before promising anything

@@ -458,7 +458,12 @@ async function explanationFor(attempt: Attempt): Promise<ResolvedNotificationTar
     );
   }
 
-  if (deniedPet !== null) {
+  // "Ya no tenés a {mascota} a cargo" is the honest sentence only when the
+  // notification was ABOUT the reader's pet. When it was about a case the
+  // reader is not a party to, the pet fallback was a courtesy that failed too,
+  // and the case is what to explain — the reader may never have held the pet.
+  const caseFirst = deniedCase !== null && spec.primaryDestination === "case";
+  if (deniedPet !== null && !caseFirst) {
     return explained(
       attempt,
       "pet_no_longer_held",

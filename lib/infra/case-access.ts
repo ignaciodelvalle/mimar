@@ -240,6 +240,33 @@ export async function canReadCase(detail: CaseDetail, viewer: CaseViewer | null)
     }
   }
 
+  // custody_transfer_handshake — the two ORGANIZATION parties of a cross-org
+  // transfer: the sending org (opened_by) and the receiving org
+  // (receiver_organization_id, the column the accept path authorizes against).
+  // Every cross_org_transfer_* notification sends their members to
+  // /casos/<code>, and with no arm here each one landed on notFound()
+  // (notificaciones-destinos audit, 2026-10-06). Mirrored in SQL by migration
+  // 0281. Only the parties the notifications are addressed to — nobody else.
+  if (detail.caseKind === "custody_transfer_handshake") {
+    for (const org of [detail.openedByOrganization, detail.receiverOrganization]) {
+      if (org && (await isActiveOrgMember(org.id, viewer.userId))) return true;
+    }
+  }
+
+  // custody_episode — the RECEIVING org of a decomiso handoff
+  // (receiver_organization_id). decomiso_handoff_proposed_receiver and
+  // _accepted_receiver link the case for that shelter's members. The opening
+  // govt org reads through the govt branch above; a receiver the authority
+  // reassigned away no longer matches the column and is a stranger again.
+  // Mirrored in SQL by migration 0281.
+  if (detail.caseKind === "custody_episode" && detail.receiverOrganization) {
+    if (await isActiveOrgMember(detail.receiverOrganization.id, viewer.userId)) return true;
+  }
+
+  // NOT HERE, deliberately (PO / legal decision pending): the organization that
+  // OPENED a welfare_denuncia, and a co_owner on any case. The notification
+  // resolver explains those refusals in words rather than widening them.
+
   return false;
 }
 

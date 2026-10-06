@@ -1,36 +1,44 @@
--- Cases RLS — Fase F (expanded). Production rules per kind.
+-- Migration 0281 — can_read_case admits the organization parties of a
+-- custody_transfer_handshake and the receiving organization of a decomiso
+-- custody_episode (notificaciones-destinos, 2026-10).
 --
--- NOTE (V0-4): This file is now REFERENCE ONLY. The source of truth for
--- applying RLS is db/migrations/0094_cases_rls.sql (applied by db:migrate
--- and replayed by db:bootstrap step 2). This file is no longer applied by
--- db-bootstrap.ts. Keep edits here in sync with migration 0094.
+-- THE DEFECT
+-- ---------------------------------------------------------------------------
+-- Cross-org transfer notifications (cross_org_transfer_proposed_receiver,
+-- _proposed_sender, _accepted_*, _rejected_sender, _expired_*) and the decomiso
+-- handoff proposal (decomiso_handoff_proposed_receiver, _accepted_receiver)
+-- link /casos/{code} for members of the organizations involved. Neither
+-- lib/infra/case-access.ts canReadCase nor this function had an arm for those
+-- kinds, so every one of those links answered notFound() — audit 2026-10-06
+-- (engram notifications/destinations-audit). Precedent: the custody_dispute org
+-- arm (case-access.ts, closing the same TS/SQL drift from the other side).
 --
--- `can_read_case(case_id, user_id)` is the single hook every related
--- policy composes with (pet_events SELECT, attachments SELECT). The
--- function returns true for admin, govt-in-scope, subject-pet-owner
--- (except welfare_denuncia), and per-kind parties (foster, org member,
--- applicant, dispute party).
+-- THE CHANGE — only parties the notifications are addressed to
+-- ---------------------------------------------------------------------------
+--   custody_transfer_handshake  active members of opened_by_organization_id
+--                               (sender) or receiver_organization_id (receiver)
+--   custody_episode             active members of receiver_organization_id
+--                               (the shelter the authority handed the animal to)
 --
--- Drizzle (server-side) bypasses RLS via the service role. These
--- policies guard PostgREST and any future RLS-aware reader.
+-- NOT in this change, deliberately (PO / legal decision pending): the org that
+-- OPENED a welfare_denuncia, and a co_owner on any case. The notification
+-- resolver explains those refusals instead of widening them.
 --
--- Idempotent — safe to re-run.
+-- Everything else is 0259's body VERBATIM: the admin and govt_scope branches,
+-- the subject-owner branch, the per-kind arms, SECURITY DEFINER,
+-- `SET search_path = ''` and the ACL (CREATE OR REPLACE keeps grants).
+-- scripts/check-function-parity.ts compares prosrc against the LAST defining
+-- migration — this file now — so the body below is what must be live.
+--
+-- db/cases_rls.sql, which scripts/deploy-provision.ts applies AFTER the replay,
+-- carries the same body: a provision must not put an older function back.
+--
+-- Mirrored in TypeScript by lib/infra/case-access.ts canReadCase (same commit).
+-- Forward-only and idempotent. Behavioural fence:
+-- __tests__/notification-target-matrix.test.ts.
 
--- ===========================================================================
--- Enable RLS on cases
--- ===========================================================================
+BEGIN;
 
-alter table public.cases enable row level security;
-
--- ===========================================================================
--- can_read_case — expanded
--- ===========================================================================
-
--- Body kept byte-identical to the LAST defining migration (0281 at the time
--- of writing): scripts/deploy-provision.ts applies this file AFTER the
--- migration replay, so an older body here would silently replace the live one
--- on every fresh provision (it did: until 0281 this file still carried the
--- 0094-era body, without govt_scope or `SET search_path = ''`).
 create or replace function public.can_read_case(p_case_id uuid, p_user_id uuid)
   returns boolean
   language plpgsql
@@ -193,16 +201,26 @@ begin
 end;
 $$;
 
--- ===========================================================================
--- cases SELECT — delegate to can_read_case
--- ===========================================================================
+-- ---------------------------------------------------------------------------
+-- Post-condition: ask the catalog ("aplicada no es cerrada").
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'can_read_case'
+      AND p.prosecdef
+      AND p.proconfig @> ARRAY['search_path=""']
+      AND p.prosrc LIKE '%public.govt_scope(p.id) s%'
+      AND p.prosrc LIKE '%and p.deleted_at is null%'
+      AND p.prosrc LIKE '%c.case_kind = ''custody_transfer_handshake''%'
+      AND p.prosrc LIKE '%m.organization_id in (c.opened_by_organization_id, c.receiver_organization_id)%'
+      AND p.prosrc LIKE '%c.case_kind = ''custody_episode'' and c.receiver_organization_id is not null%'
+      AND p.prosrc LIKE '%cdp.party_organization_id%'
+  ) THEN
+    RAISE EXCEPTION 'Migration 0281 did not close: public.can_read_case lacks the custody_transfer_handshake / custody_episode org arms, the govt_scope branch, SECURITY DEFINER or search_path = ''''';
+  END IF;
+END
+$$;
 
-drop policy if exists cases_select_subject_owner on public.cases;
-drop policy if exists cases_select_admin on public.cases;
-drop policy if exists cases_select_visible on public.cases;
-
-create policy cases_select_visible on public.cases for select
-  using (public.can_read_case(id, auth.uid()));
-
--- No INSERT / UPDATE / DELETE policies at this stage — every writer goes
--- through Drizzle on the server which bypasses RLS via service role.
+COMMIT;

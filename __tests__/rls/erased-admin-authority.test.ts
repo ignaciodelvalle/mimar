@@ -34,7 +34,7 @@
 //   · cron_runs           policy that checked deactivated_at only
 //   · audit_log           policy that checked NEITHER marker (actor NULL, so
 //                         only the admin branch can serve the row)
-//   · can_read_case       the function db/cases_rls.sql owns (:49)
+//   · can_read_case       the function db/cases_rls.sql owns (:55)
 //   · pii.caller_is_admin the subject-rights RPC guard
 //
 // THE GOVT TWIN (0216). The govt branches 0215 copied verbatim had the same
@@ -692,7 +692,7 @@ describe("erased admin — deleted_at set, deactivated_at NULL (what erase_subje
   it("can_read_case says no", async () => {
     expect(
       await canReadCase(),
-      "can_read_case still grants universal scope to an erased admin (db/cases_rls.sql:49)",
+      "can_read_case still grants universal scope to an erased admin (db/cases_rls.sql:55)",
     ).toBe(false);
   });
 

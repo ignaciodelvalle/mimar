@@ -1,0 +1,619 @@
+// Notification destinations against a REAL database — the matrix behind
+// notificaciones-destinos (2026-10).
+//
+// WHY THIS HITS POSTGRES (the `db` vitest project, serial)
+// ---------------------------------------------------------------------------
+// The unit test (`resolve-notification-target.test.ts`) pins the RULE over fake
+// probes. The claim the PO made is about the real thing: a notification never
+// sends its reader to a page they cannot open. That claim lives in four access
+// functions reading memberships, ownerships and cases — `canReadCase`,
+// `resolvePetHolderAccess`, `getFormerOwnerReadAccess`, the org membership read
+// — and only real rows can show they agree with the resolver.
+//
+// THE MATRIX. One recipient per notification kind family, in the states that
+// break stored links: OPEN, RESOLVED, TRANSFERRED (custody left the reader) and
+// MEMBERSHIP REVOKED (the reader left the org). For every cell the resolver's
+// destination is re-checked with the destination's own access function: a
+// `case` outcome must be readable, a `pet` outcome must be held (or the
+// former-owner read must grant it), an org `section` must belong to an active
+// membership. `explain` is always openable by construction.
+//
+// THE SQL MIRROR (last describe) needs migration
+// 0281_case_read_transfer_and_custody_parties.sql APPLIED to the local
+// database: it asserts `public.can_read_case` agrees with the TypeScript rule
+// for the two new org-party arms. Before 0281 is applied it fails on exactly
+// those cells, which is the point of it.
+
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { eq, inArray, sql } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import {
+  cases,
+  db,
+  notifications,
+  organizationMemberships,
+  organizations,
+  ownerships,
+  pets,
+} from "@/db";
+import { type CaseViewer, canReadCase, isActiveOrgMember } from "@/lib/infra/case-access";
+import { closeCase, openCase } from "@/lib/infra/case-helpers";
+import { getCaseDetailByPublicCode } from "@/lib/infra/case-queries";
+import { getFormerOwnerReadAccess, resolvePetHolderAccess } from "@/lib/infra/pet-access";
+import type { ResolvedNotificationTarget } from "@/src/modules/notifications/application/read/resolve-notification-target";
+import { resolveOwnNotificationTarget } from "@/src/modules/notifications/infrastructure/notification-target-probes";
+
+import { withMutationOverride } from "./_helpers/db-overrides";
+import { createFreshTestUser, deleteTestUser } from "./_helpers/fresh-test-user";
+
+const SUPABASE_URL = "http://127.0.0.1:54321";
+const SECRET = "sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz";
+const supabaseAdmin = createSupabaseClient(SUPABASE_URL, SECRET, {
+  auth: { persistSession: false },
+});
+
+const USERS = {
+  titular: "notif-matrix-titular@dim-test.local",
+  coOwner: "notif-matrix-coowner@dim-test.local",
+  formerOwner: "notif-matrix-former@dim-test.local",
+  sold: "notif-matrix-sold@dim-test.local",
+  buyer: "notif-matrix-buyer@dim-test.local",
+  sender: "notif-matrix-sender@dim-test.local",
+  receiver: "notif-matrix-receiver@dim-test.local",
+  receiverLeft: "notif-matrix-receiver-left@dim-test.local",
+  oldReceiver: "notif-matrix-old-receiver@dim-test.local",
+  stranger: "notif-matrix-stranger@dim-test.local",
+  reporterOrg: "notif-matrix-reporter@dim-test.local",
+} as const;
+type UserKey = keyof typeof USERS;
+const PASS = "NotifMatrix_2026!";
+
+const ORG_TOKENS = {
+  sender: "DIM-NTMX-0001",
+  receiver: "DIM-NTMX-0002",
+  oldReceiver: "DIM-NTMX-0003",
+  authority: "DIM-NTMX-0004",
+  reporter: "DIM-NTMX-0005",
+  stranger: "DIM-NTMX-0006",
+} as const;
+type OrgKey = keyof typeof ORG_TOKENS;
+
+const PET_TOKENS = {
+  home: "DIM-NTMX-PET1", // titular + co_owner; a bite case and a denuncia
+  seized: "DIM-NTMX-PET2", // decomiso: former owner, custody_episode open
+  sold: "DIM-NTMX-PET3", // transferred from `sold` to `buyer`
+  shelter: "DIM-NTMX-PET4", // held by the sender org, in a cross-org handshake
+} as const;
+type PetKey = keyof typeof PET_TOKENS;
+
+const ids = {} as Record<UserKey, string>;
+const orgIds = {} as Record<OrgKey, string>;
+const petIds = {} as Record<PetKey, string>;
+const caseIds = {} as Record<
+  "handshakeOpen" | "handshakeClosed" | "episode" | "bite" | "denuncia",
+  string
+>;
+const caseCodes = {} as Record<keyof typeof caseIds, string>;
+
+const viewer = (key: UserKey): CaseViewer => ({
+  userId: ids[key],
+  role: "owner",
+  jurisdictions: [],
+});
+
+async function purgeFixtures(): Promise<void> {
+  const petRows = await db
+    .select({ id: pets.id })
+    .from(pets)
+    .where(inArray(pets.publicToken, Object.values(PET_TOKENS)));
+  const orgRows = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(inArray(organizations.publicToken, Object.values(ORG_TOKENS)));
+  await withMutationOverride(async (tx) => {
+    for (const { id } of petRows) {
+      await tx.delete(notifications).where(eq(notifications.relatedPetId, id));
+      await tx.delete(cases).where(eq(cases.primaryPetId, id));
+      await tx.delete(ownerships).where(eq(ownerships.petId, id));
+      await tx.delete(pets).where(eq(pets.id, id));
+    }
+    for (const { id } of orgRows) {
+      await tx.delete(cases).where(eq(cases.openedByOrganizationId, id));
+      await tx
+        .delete(organizationMemberships)
+        .where(eq(organizationMemberships.organizationId, id));
+      await tx.delete(organizations).where(eq(organizations.id, id));
+    }
+  });
+}
+
+async function purgeUsers(): Promise<void> {
+  for (const email of Object.values(USERS)) {
+    const rows = (await db.execute(
+      sql`select id from auth.users where email = ${email}`,
+    )) as unknown as Array<{ id: string }>;
+    for (const row of rows) {
+      await db.delete(notifications).where(eq(notifications.userId, row.id));
+      await db.delete(organizationMemberships).where(eq(organizationMemberships.userId, row.id));
+    }
+    await deleteTestUser(supabaseAdmin, db, email);
+  }
+}
+
+async function insertOrg(key: OrgKey, displayName: string): Promise<void> {
+  const token = ORG_TOKENS[key];
+  const [org] = await db
+    .insert(organizations)
+    .values({
+      publicToken: token,
+      legalName: `${displayName} SRL`,
+      displayName,
+      orgType: "shelter",
+      email: `${token.toLowerCase()}@dim-test.local`,
+      verified: true,
+    })
+    .returning({ id: organizations.id });
+  orgIds[key] = org.id;
+}
+
+async function insertPet(key: PetKey, name: string): Promise<void> {
+  const [pet] = await db
+    .insert(pets)
+    .values({
+      publicToken: PET_TOKENS[key],
+      name,
+      species: "dog",
+      sex: "female",
+      potentiallyDangerousBreed: false,
+      jurisdictionProvince: "Buenos Aires",
+      jurisdictionLocality: "La Plata",
+      inCustodyDispute: false,
+      rabiesObservationStatus: null,
+    })
+    .returning({ id: pets.id });
+  petIds[key] = pet.id;
+}
+
+async function notify(
+  user: UserKey,
+  notificationType: string,
+  extra: { ctaUrl?: string | null; pet?: PetKey; caseKey?: keyof typeof caseIds; body?: string },
+): Promise<string> {
+  const [row] = await db
+    .insert(notifications)
+    .values({
+      userId: ids[user],
+      notificationType,
+      title: `Matriz: ${notificationType}`,
+      body: extra.body ?? null,
+      severity: "info",
+      ctaLabel: extra.ctaUrl ? "Ver" : null,
+      ctaUrl: extra.ctaUrl ?? null,
+      relatedPetId: extra.pet ? petIds[extra.pet] : null,
+      relatedCaseId: extra.caseKey ? caseIds[extra.caseKey] : null,
+    })
+    .returning({ id: notifications.id });
+  return row.id;
+}
+
+const HOUR = 60 * 60 * 1000;
+
+beforeAll(async () => {
+  await purgeFixtures();
+  await purgeUsers();
+
+  for (const [key, email] of Object.entries(USERS) as Array<[UserKey, string]>) {
+    const r = await createFreshTestUser(supabaseAdmin, {
+      email,
+      password: PASS,
+      email_confirm: true,
+    });
+    if (r.error || !r.data.user) throw new Error(`createUser ${key}: ${r.error?.message}`);
+    ids[key] = r.data.user.id;
+  }
+
+  await insertOrg("sender", "Refugio Emisor");
+  await insertOrg("receiver", "Refugio Receptor");
+  await insertOrg("oldReceiver", "Refugio Anterior");
+  await insertOrg("authority", "Municipio de Prueba");
+  await insertOrg("reporter", "Proteccionista Denunciante");
+  await insertOrg("stranger", "Refugio Ajeno");
+  await db.insert(organizationMemberships).values([
+    { organizationId: orgIds.sender, userId: ids.sender, role: "admin", canWritePetEvents: true },
+    {
+      organizationId: orgIds.receiver,
+      userId: ids.receiver,
+      role: "admin",
+      canWritePetEvents: true,
+    },
+    {
+      organizationId: orgIds.receiver,
+      userId: ids.receiverLeft,
+      role: "volunteer",
+      canWritePetEvents: false,
+      leftAt: new Date(),
+    },
+    {
+      organizationId: orgIds.oldReceiver,
+      userId: ids.oldReceiver,
+      role: "admin",
+      canWritePetEvents: true,
+    },
+    {
+      organizationId: orgIds.reporter,
+      userId: ids.reporterOrg,
+      role: "admin",
+      canWritePetEvents: true,
+    },
+    {
+      organizationId: orgIds.stranger,
+      userId: ids.stranger,
+      role: "admin",
+      canWritePetEvents: true,
+    },
+  ]);
+
+  await insertPet("home", "Luna");
+  await insertPet("seized", "Toto");
+  await insertPet("sold", "Kira");
+  await insertPet("shelter", "Bruno");
+  const longAgo = new Date(Date.now() - 48 * HOUR);
+  const anHourAgo = new Date(Date.now() - HOUR);
+  await db.insert(ownerships).values([
+    { petId: petIds.home, ownerUserId: ids.titular, role: "owner", startedAt: longAgo },
+    { petId: petIds.home, ownerUserId: ids.coOwner, role: "co_owner", startedAt: longAgo },
+    // The decomiso ended the titular's row; the episode below is still open.
+    {
+      petId: petIds.seized,
+      ownerUserId: ids.formerOwner,
+      role: "owner",
+      startedAt: longAgo,
+      endedAt: anHourAgo,
+    },
+    // Transferred: `sold` handed Kira to `buyer`.
+    {
+      petId: petIds.sold,
+      ownerUserId: ids.sold,
+      role: "owner",
+      startedAt: longAgo,
+      endedAt: anHourAgo,
+    },
+    { petId: petIds.sold, ownerUserId: ids.buyer, role: "owner", startedAt: anHourAgo },
+    // Bruno lives at the sender org.
+    {
+      petId: petIds.shelter,
+      ownerOrganizationId: orgIds.sender,
+      role: "shelter_custody",
+      startedAt: longAgo,
+    },
+  ]);
+
+  const handshakeReason = { code: "cross_org_transfer_proposed", reason: "other" } as const;
+  // RESOLVED first: the open-per-pet-kind index admits one open handshake.
+  const closed = await openCase({
+    kind: "custody_transfer_handshake",
+    primarySubjectKind: "registered_pet",
+    primaryPetId: petIds.shelter,
+    openedByOrganizationId: orgIds.sender,
+    receiverOrganizationId: orgIds.receiver,
+    openedReason: handshakeReason,
+  });
+  await closeCase({ caseId: closed.id, reason: "resolved" });
+  const open = await openCase({
+    kind: "custody_transfer_handshake",
+    primarySubjectKind: "registered_pet",
+    primaryPetId: petIds.shelter,
+    openedByOrganizationId: orgIds.sender,
+    receiverOrganizationId: orgIds.receiver,
+    openedReason: handshakeReason,
+  });
+  // The decomiso, REASSIGNED: oldReceiver was proposed first, receiver now.
+  const episode = await openCase({
+    kind: "custody_episode",
+    primarySubjectKind: "registered_pet",
+    primaryPetId: petIds.seized,
+    openedByOrganizationId: orgIds.authority,
+    receiverOrganizationId: orgIds.receiver,
+    jurisdictionProvince: "Buenos Aires",
+    jurisdictionLocality: "La Plata",
+    openedReason: { code: "decomiso_executed", motive: "maltrato_fisico", judicialRef: null },
+  });
+  const bite = await openCase({
+    kind: "bite_incident",
+    primarySubjectKind: "registered_pet",
+    primaryPetId: petIds.home,
+    jurisdictionProvince: "Buenos Aires",
+    jurisdictionLocality: "La Plata",
+    openedReason: { code: "bite_reported_owner", victimKind: "human", severity: "minor" },
+  });
+  const denuncia = await openCase({
+    kind: "welfare_denuncia",
+    primarySubjectKind: "registered_pet",
+    primaryPetId: petIds.home,
+    openedByOrganizationId: orgIds.reporter,
+    jurisdictionProvince: "Buenos Aires",
+    jurisdictionLocality: "La Plata",
+    openedReason: {
+      code: "welfare_report_org",
+      referenceCode: "DEN-NTMX-0001",
+      orgDisplayName: "Proteccionista Denunciante",
+    },
+  });
+  caseIds.handshakeClosed = closed.id;
+  caseIds.handshakeOpen = open.id;
+  caseIds.episode = episode.id;
+  caseIds.bite = bite.id;
+  caseIds.denuncia = denuncia.id;
+  for (const [key, id] of Object.entries(caseIds) as Array<[keyof typeof caseIds, string]>) {
+    const [row] = await db.select({ code: cases.publicCode }).from(cases).where(eq(cases.id, id));
+    caseCodes[key] = row.code;
+  }
+}, 120_000);
+
+afterAll(async () => {
+  await purgeFixtures();
+  await purgeUsers();
+}, 120_000);
+
+/** Resolve the row for its own recipient — the path both front doors run. */
+async function resolveFor(
+  user: UserKey,
+  notificationId: string,
+): Promise<ResolvedNotificationTarget> {
+  const target = await resolveOwnNotificationTarget(notificationId, viewer(user));
+  if (target === null) throw new Error(`no target for ${notificationId}`);
+  return target;
+}
+
+/**
+ * The invariant, checked with each destination's OWN access function: the
+ * resolver never hands a reader somewhere that would refuse them.
+ */
+async function assertOpenable(user: UserKey, target: ResolvedNotificationTarget): Promise<void> {
+  const segments = target.webHref.split("?")[0].split("/");
+  if (target.outcome === "case") {
+    const detail = await getCaseDetailByPublicCode(decodeURIComponent(segments[2]));
+    expect(detail, target.webHref).not.toBeNull();
+    if (detail) expect(await canReadCase(detail, viewer(user)), target.webHref).toBe(true);
+  } else if (target.outcome === "pet") {
+    const token = decodeURIComponent(segments[2]);
+    const held = (await resolvePetHolderAccess(token, ids[user])).kind !== "none";
+    const former = (await getFormerOwnerReadAccess(token, ids[user])).ok;
+    expect(held || former, target.webHref).toBe(true);
+  } else if (target.outcome === "section" && segments[1] === "org") {
+    const [org] = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.publicToken, decodeURIComponent(segments[2])));
+    expect(await isActiveOrgMember(org.id, ids[user]), target.webHref).toBe(true);
+  } else if (target.outcome === "explain") {
+    expect(target.webHref).toBe(`/notificaciones/${target.notificationId}`);
+    expect(target.reasonCopy).toBeTruthy();
+  }
+}
+
+type Cell = {
+  name: string;
+  user: UserKey;
+  type: string;
+  cta?: () => string | null;
+  pet?: PetKey;
+  caseKey?: keyof typeof caseIds;
+  body?: string;
+  expect: Partial<ResolvedNotificationTarget>;
+  actor?: RegExp;
+};
+
+const caseUrl = (key: keyof typeof caseIds) => () => `/casos/${caseCodes[key]}`;
+
+const MATRIX: Cell[] = [
+  // ---- cross-org transfer (custody_transfer_handshake) --------------------
+  {
+    name: "OPEN · receiver org member reads the proposal's case",
+    user: "receiver",
+    type: "cross_org_transfer_proposed_receiver",
+    cta: caseUrl("handshakeOpen"),
+    expect: { outcome: "case" },
+    actor: /^Te toca a vos: aceptá o rechazá el traspaso\.$/,
+  },
+  {
+    name: "OPEN · sender org member reads it and is told the receiver must act",
+    user: "sender",
+    type: "cross_org_transfer_proposed_sender",
+    cta: caseUrl("handshakeOpen"),
+    expect: { outcome: "case" },
+    actor: /^Falta que Refugio Receptor acepte el traspaso\./,
+  },
+  {
+    name: "RESOLVED · the sender reads the closed case and is told it is resolved",
+    user: "sender",
+    type: "cross_org_transfer_accepted_sender",
+    cta: caseUrl("handshakeClosed"),
+    expect: { outcome: "case" },
+    actor: /^Esto ya se resolvió/,
+  },
+  {
+    name: "MEMBERSHIP REVOKED · a receiver member who left gets the explanation",
+    user: "receiverLeft",
+    type: "cross_org_transfer_proposed_receiver",
+    cta: caseUrl("handshakeOpen"),
+    expect: { outcome: "explain", reason: "membership_ended" },
+  },
+  {
+    name: "a member of an unrelated org gets the explanation, never the case",
+    user: "stranger",
+    type: "cross_org_transfer_proposed_receiver",
+    cta: caseUrl("handshakeOpen"),
+    expect: { outcome: "explain", reason: "case_not_available" },
+  },
+  {
+    name: "cancelled receiver notice opens the org's received list for a member",
+    user: "receiver",
+    type: "cross_org_transfer_cancelled_receiver",
+    cta: () => `/org/${ORG_TOKENS.receiver}/transferencias/recibidas`,
+    expect: { outcome: "section", webOnly: true },
+  },
+  {
+    name: "MEMBERSHIP REVOKED · the same list for an ex-member explains",
+    user: "receiverLeft",
+    type: "cross_org_transfer_cancelled_receiver",
+    cta: () => `/org/${ORG_TOKENS.receiver}/transferencias/recibidas`,
+    expect: { outcome: "explain", reason: "membership_ended" },
+  },
+  // ---- decomiso (custody_episode) -----------------------------------------
+  {
+    name: "OPEN · the receiving shelter reads the handoff case",
+    user: "receiver",
+    type: "decomiso_handoff_proposed_receiver",
+    cta: caseUrl("episode"),
+    expect: { outcome: "case" },
+    actor: /^Te toca a vos: aceptá o rechazá recibir al animal\.$/,
+  },
+  {
+    name: "REASSIGNED · the previous receiver is no longer a party",
+    user: "oldReceiver",
+    type: "decomiso_handoff_proposed_receiver",
+    cta: caseUrl("episode"),
+    expect: { outcome: "explain", reason: "case_not_available" },
+  },
+  {
+    name: "TRANSFERRED (seized) · the former owner keeps the read-only pet face",
+    user: "formerOwner",
+    type: "decomiso_owner_lost_custody",
+    cta: () => `/mis-mascotas/${PET_TOKENS.seized}`,
+    pet: "seized",
+    expect: { outcome: "pet", webHref: `/mis-mascotas/${PET_TOKENS.seized}` },
+    actor: /^Lo decide la autoridad/,
+  },
+  // ---- citizen transfer ----------------------------------------------------
+  {
+    name: "TRANSFERRED · the seller is told the pet left them, with what happened",
+    user: "sold",
+    type: "pet_transfer_accepted",
+    cta: () => "/mis-mascotas",
+    pet: "sold",
+    body: "La transferencia de Kira fue aceptada.",
+    expect: { outcome: "explain", reason: "pet_no_longer_held" },
+  },
+  {
+    name: "the buyer's pet notice opens the pet",
+    user: "buyer",
+    type: "first_stranger_scan",
+    cta: () => `/mis-mascotas/${PET_TOKENS.sold}`,
+    pet: "sold",
+    expect: { outcome: "pet", appRoute: `/mascotas/${PET_TOKENS.sold}` },
+  },
+  // ---- cases on a co-held pet ---------------------------------------------
+  {
+    name: "the titular reads a case about their pet",
+    user: "titular",
+    type: "custody_dispute_raised_against_you",
+    cta: caseUrl("bite"),
+    pet: "home",
+    caseKey: "bite",
+    expect: { outcome: "case" },
+  },
+  {
+    name: "a co_owner is told cases are titular-only (PO/legal pending), not 404",
+    user: "coOwner",
+    type: "custody_dispute_raised_against_you",
+    cta: caseUrl("bite"),
+    pet: "home",
+    expect: { outcome: "explain", reason: "case_titular_only" },
+  },
+  {
+    name: "the co_owner's pet-scoped notice opens the pet",
+    user: "coOwner",
+    type: "vaccine_due",
+    cta: () => `/mis-mascotas/${PET_TOKENS.home}/eventos/nuevo/vacuna?reminderId=x`,
+    pet: "home",
+    expect: { outcome: "pet", appRoute: `/mascotas/${PET_TOKENS.home}/asentar?kind=vaccination` },
+  },
+  // ---- welfare denuncia opened by an org -----------------------------------
+  {
+    name: "the reporting org is told the expediente is the investigators' (PO/legal pending)",
+    user: "reporterOrg",
+    type: "welfare_org_side_confirmed_reporter",
+    cta: caseUrl("denuncia"),
+    expect: { outcome: "explain", reason: "case_reserved_to_investigators" },
+    actor: /^Lo decide la autoridad de La Plata\./,
+  },
+  {
+    // Artificial (no writer sends this kind to the titular): it pins that the
+    // subject's owner falls back to their OWN pet, never to the denuncia.
+    name: "the titular of the denounced pet lands on their pet, never on the denuncia",
+    user: "titular",
+    type: "welfare_org_side_confirmed_reporter",
+    cta: caseUrl("denuncia"),
+    expect: { outcome: "pet", webHref: `/mis-mascotas/${PET_TOKENS.home}` },
+  },
+  // ---- informational -------------------------------------------------------
+  {
+    name: "an informational kind explains itself",
+    user: "buyer",
+    type: "pet_transfer_cancelled",
+    pet: "sold",
+    expect: { outcome: "explain", reason: "informational" },
+  },
+];
+
+describe("notification destinations — every cell lands somewhere the reader can open", () => {
+  for (const cell of MATRIX) {
+    it(cell.name, async () => {
+      const id = await notify(cell.user, cell.type, {
+        ctaUrl: cell.cta ? cell.cta() : null,
+        pet: cell.pet,
+        caseKey: cell.caseKey,
+        body: cell.body,
+      });
+      const target = await resolveFor(cell.user, id);
+      expect(target).toMatchObject(cell.expect);
+      if (cell.actor) expect(target.actorCopy ?? "").toMatch(cell.actor);
+      await assertOpenable(cell.user, target);
+    });
+  }
+
+  it("answers null — not somebody else's destination — for a row the caller does not own", async () => {
+    const id = await notify("receiver", "cross_org_transfer_proposed_receiver", {
+      ctaUrl: `/casos/${caseCodes.handshakeOpen}`,
+    });
+    expect(await resolveOwnNotificationTarget(id, viewer("stranger"))).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The SQL mirror — REQUIRES migration 0281 applied to the local database.
+// ---------------------------------------------------------------------------
+
+async function sqlCanReadCase(caseId: string, userId: string): Promise<boolean> {
+  const rows = (await db.execute(
+    sql`select public.can_read_case(${caseId}::uuid, ${userId}::uuid) as ok`,
+  )) as unknown as Array<{ ok: boolean }>;
+  return rows[0]?.ok === true;
+}
+
+describe("public.can_read_case agrees with canReadCase on the 0281 arms", () => {
+  const cells: Array<[keyof typeof caseIds, UserKey, boolean]> = [
+    ["handshakeOpen", "sender", true],
+    ["handshakeOpen", "receiver", true],
+    ["handshakeClosed", "receiver", true],
+    ["handshakeOpen", "receiverLeft", false],
+    ["handshakeOpen", "stranger", false],
+    ["episode", "receiver", true],
+    ["episode", "oldReceiver", false],
+    ["episode", "formerOwner", false],
+    ["denuncia", "reporterOrg", false],
+    ["bite", "coOwner", false],
+    ["bite", "titular", true],
+  ];
+  for (const [caseKey, user, expected] of cells) {
+    it(`${caseKey} × ${user} → ${expected}`, async () => {
+      const detail = await getCaseDetailByPublicCode(caseCodes[caseKey]);
+      expect(detail).not.toBeNull();
+      if (!detail) return;
+      expect(await canReadCase(detail, viewer(user))).toBe(expected);
+      expect(await sqlCanReadCase(caseIds[caseKey], ids[user])).toBe(expected);
+    });
+  }
+});

@@ -67,6 +67,10 @@ export const FROZEN_NAME_JOINS: Readonly<Record<string, number>> = {
   // comparison; the live set is unchanged. The 7th hit is the expected
   // can_read_case text inside its post-condition. Stage E retires them.
   "db/migrations/0259_rls_by_govt_scope.sql": 7,
+  // 0281 (notificaciones-destinos) re-defines can_read_case with 0259's body
+  // VERBATIM plus two org-party arms keyed on organization ids. The one hit is
+  // 0259's legacy-grant branch carried along; no new name comparison.
+  "db/migrations/0281_case_read_transfer_and_custody_parties.sql": 1,
 };
 
 /** Non-vacuity floor: the sum of the frozen list. A broken regex reads 0. */
