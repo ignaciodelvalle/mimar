@@ -41,7 +41,7 @@ import {
   LAUNCH_GATE_UPDATING_MESSAGE,
   useLaunchUpdateGate,
 } from "../src/account/launch-update-gate";
-import { useSessionBootstrap } from "../src/auth/useSession";
+import { useSession, useSessionBootstrap } from "../src/auth/useSession";
 // THE ONE MODULE IN THIS FILE THAT MAY NOT BE IMPORTED ANYWHERE ELSE. Its own
 // header explains why: `expo-image-manipulator` evaluates a native module at
 // import time and throws in a process that has none. This file already runs in
@@ -61,6 +61,7 @@ import { usePushTapNavigation } from "../src/notifications/push-tap";
 import { initSentry } from "../src/observability/sentry";
 import { useNavigationBreadcrumb } from "../src/observability/use-navigation-breadcrumb";
 import { HeaderBackButton } from "../src/ui/HeaderBackButton";
+import { LaunchMark, holdNativeSplash } from "../src/ui/LaunchMark";
 import { OfflineBanner } from "../src/ui/OfflineBanner";
 import { HeaderMenuButton } from "../src/ui/TopLevelNavMenu";
 import { FONTS, useLnFonts } from "../src/ui/fonts";
@@ -72,6 +73,13 @@ import { COLORS, TYPE } from "../src/ui/theme";
 // no DSN — local dev and the emulator stay silent by design; see
 // src/observability/sentry.ts for everything that is deliberately off.
 initSentry();
+
+// THE NATIVE SPLASH IS HELD, AND HANDED TO `LaunchMark` BELOW. At module scope
+// because it has to happen before the first React frame, which is when the
+// splash would otherwise auto-hide. `src/ui/LaunchMark.tsx` carries the whole
+// hand-off, including the deadline that keeps the splash from ever trapping a
+// launch whose overlay never mounts.
+holdNativeSplash();
 
 // THE SEAM IS FLIPPED HERE, AND ONLY HERE (docs/mobile/camera-modules-handback.md,
 // "The wiring — two lines at bootstrap"). At module scope for the same reason
@@ -181,6 +189,9 @@ function RootLayout() {
   // common one and the one a manual test never produces. Called before the font
   // gate returns early, like the two hooks above and for the same reason.
   usePushTapNavigation();
+  // Read for the launch mark only (see `launchReady` below). The gate itself
+  // stays in the screens, as this file's header says.
+  const sessionPhase = useSession().phase;
 
   // THE FIRST PAINT WAITS FOR THE TYPEFACE, and the alternative is worse than a
   // pause. React Native draws immediately with the system face and re-lays-out
@@ -195,32 +206,54 @@ function RootLayout() {
   // fetching, one sentence says so. A bare `Text` and not the kit's `Body`,
   // for the reason `expo-updates-port.ts` gives: the root layout must not pull
   // in the UI kit to draw a spinner.
-  if (!fontsReady || launchGate !== "done") {
+  const loading = !fontsReady || launchGate !== "done";
+
+  // THE LAUNCH MARK LEAVES WHEN THE COLD START IS OVER — the font and launch
+  // gates above, and the session's first answer (`starting` is what `useGate`
+  // draws its own spinner for, so holding the logo through it replaces one
+  // loading picture with the other instead of stacking them). EXCEPT while an
+  // OTA is downloading: that state has a sentence to say, and the logo would
+  // cover it. `LaunchMark` carries its own 8 s ceiling either way.
+  const launchReady = launchGate === "updating" || (!loading && sessionPhase !== "starting");
+
+  const loadingBody = (
+    <View
+      style={{
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: COLORS.canvas,
+      }}
+    >
+      <ActivityIndicator color={COLORS.accent} />
+      {launchGate === "updating" ? (
+        <Text
+          style={{
+            marginTop: 16,
+            color: COLORS.inkSoft,
+            fontFamily: fontsReady ? FONTS.sans : undefined,
+            fontSize: TYPE.md,
+          }}
+        >
+          {LAUNCH_GATE_UPDATING_MESSAGE}
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  // THE SAME `key` IN BOTH TREES, and it is load-bearing. The loading tree and
+  // the app tree put the overlay at different child positions; without a key
+  // React would match it by position, remount it at the switch, restart the
+  // shrink and try to hand off a splash that is already gone. A key is matched
+  // across positions under the same parent, so the one overlay survives.
+  const launchMark = <LaunchMark key="launch-mark" ready={launchReady} />;
+
+  if (loading) {
     return (
       <SafeAreaProvider>
         <StatusBar style="dark" />
-        <View
-          style={{
-            flex: 1,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: COLORS.canvas,
-          }}
-        >
-          <ActivityIndicator color={COLORS.accent} />
-          {launchGate === "updating" ? (
-            <Text
-              style={{
-                marginTop: 16,
-                color: COLORS.inkSoft,
-                fontFamily: fontsReady ? FONTS.sans : undefined,
-                fontSize: TYPE.md,
-              }}
-            >
-              {LAUNCH_GATE_UPDATING_MESSAGE}
-            </Text>
-          ) : null}
-        </View>
+        {loadingBody}
+        {launchMark}
       </SafeAreaProvider>
     );
   }
@@ -588,6 +621,7 @@ function RootLayout() {
             misma frase en el encabezado y en la página). */}
         <Stack.Screen name="+not-found" options={{ title: "No pudimos abrir ese link" }} />
       </Stack>
+      {launchMark}
     </SafeAreaProvider>
   );
 }
