@@ -6,10 +6,18 @@
 // These tests pin the honest rule: "por vencer" counts ONLY registered doses
 // approaching next_due; zero records renders the empty state.
 
+import { readFileSync } from "node:fs";
 import type { VaccineSnapshot } from "@/lib/domain/libreta-health-status";
 import { computeVaccinationSummary, hasAnyVaccineRecord } from "@/lib/domain/libreta-health-status";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { deriveVacunasBadgeCounts, isSuggestedLapse, metaFor } from "./VacunasStatusBadges";
+import {
+  VacunasStatusBadges,
+  deriveVacunasBadgeCounts,
+  isSuggestedLapse,
+  metaFor,
+} from "./VacunasStatusBadges";
 
 const NOW = new Date("2026-03-15T00:00:00Z");
 
@@ -94,6 +102,64 @@ describe("metaFor / isSuggestedLapse — estimate vs vet-signed vencida", () => 
     const v = expired("derived", null);
     expect(isSuggestedLapse(v)).toBe(false);
     expect(metaFor(v)).toBe("Vencida");
+  });
+});
+
+describe("VacunasStatusBadges — a zero stays quiet", () => {
+  const dose: VaccineSnapshot = {
+    vaccineName: "Antirrábica",
+    lastDoseAt: new Date("2026-03-01T12:00:00Z"),
+    nextDueAt: new Date("2027-03-01T12:00:00Z"),
+    status: "active",
+    dueSource: "payload",
+  };
+
+  it("paints the live count and leaves the three zeros on the paper", () => {
+    const html = renderToStaticMarkup(
+      createElement(VacunasStatusBadges, {
+        summary: {
+          active: 1,
+          dueSoon: 0,
+          expired: 0,
+          missing: 2,
+          unconfirmed: 0,
+          otherCount: 0,
+          perVaccine: [dose],
+        },
+      }),
+    );
+    expect(html).toContain("ln-vac-badges");
+    expect(html.match(/data-quiet="true"/g)?.length).toBe(3);
+    expect(html).toContain("var(--color-ln-ok)");
+    expect(html).not.toContain("var(--color-ln-err");
+    expect(html).toContain("2 vacunas del calendario recomendado sin aplicar");
+  });
+
+  it("keeps a real vencida in the alarm color", () => {
+    const html = renderToStaticMarkup(
+      createElement(VacunasStatusBadges, {
+        summary: {
+          active: 0,
+          dueSoon: 0,
+          expired: 1,
+          missing: 0,
+          unconfirmed: 0,
+          otherCount: 0,
+          perVaccine: [{ ...dose, status: "expired", nextDueAt: new Date("2026-01-01T12:00:00Z") }],
+        },
+      }),
+    );
+    expect(html).toContain("var(--color-ln-err-050)");
+    expect(html.match(/data-quiet="true"/g)?.length).toBe(3);
+  });
+
+  it("lays four cells in one row, and two by two under 640px", () => {
+    const css = readFileSync("app/globals.css", "utf8");
+    const base = /\.ln-vac-badges\s*\{([^}]+)\}/.exec(css)?.[1] ?? "";
+    expect(base).toContain("repeat(2, minmax(0, 1fr))");
+    const wide =
+      /@media \(min-width: 640px\)\s*\{\s*\.ln-vac-badges\s*\{([^}]+)\}/.exec(css)?.[1] ?? "";
+    expect(wide).toContain("repeat(4, minmax(0, 1fr))");
   });
 });
 

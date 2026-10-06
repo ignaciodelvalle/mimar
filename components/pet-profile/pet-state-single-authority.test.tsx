@@ -3,8 +3,8 @@
 // The PO found "Bajo custodia oficial" (and other states) repeated several
 // times across the owner pet profile. The standard is now:
 //
-//   1. The MASTHEAD band chip (DocumentChrome) is the single textual carrier
-//      of the pet's situation on the credential document.
+//   1. On the credencial face the chip under the name (CredentialFace) is the
+//      single textual carrier. DocumentChrome does not repeat it there.
 //   2. At most ONE contextual action panel per state may name it again, and
 //      only when it carries a unique action or datum (e.g. LostCaseBlock's
 //      "Apareció" CTA). Those panels live in the alert strip, outside this
@@ -79,7 +79,6 @@ describe("pet-state single authority — masthead is the only in-document carrie
   it("custody: 'Bajo custodia oficial' renders exactly once (the masthead chip)", () => {
     const html = renderDocument("custodia-oficial", "male");
     expect(countOccurrences(html, "Bajo custodia oficial")).toBe(1);
-    // The chip is the masthead's, not a face-body repeat.
     expect(html).toContain('data-section="band-situation-chip"');
     // The face keeps its tint hook — color may repeat, text may not.
     expect(html).toContain('data-situation="custodia-oficial"');

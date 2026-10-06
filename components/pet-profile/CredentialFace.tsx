@@ -35,11 +35,12 @@ import { FirstStepsChecklist } from "@/components/pet-profile/FirstStepsChecklis
 import { LnAlert } from "@/components/ui/Alert";
 import { CredentialQr } from "@/components/ui/CredentialQr";
 import type { LnHeroProps } from "@/components/ui/Hero";
-import { LnMemorialChip, LnVstamp } from "@/components/ui/StatusFlag";
+import { LnVstamp } from "@/components/ui/StatusFlag";
 import type { FirstStepItem } from "@/lib/projections/first-steps-checklist";
 import type { ComplianceState } from "@/lib/projections/pet-compliance";
 import type { PetSituation } from "@/lib/ui/pet-situation";
-import { registeredAdjective } from "@/lib/utils/format";
+import { situationLabelForSex } from "@/lib/utils/format";
+import type { CredentialRightCell } from "@dim/contract/credential";
 
 export type CredentialFacePppInfo = {
   attested: boolean;
@@ -73,6 +74,11 @@ export type CredentialFaceProps = {
    * scannable credential to a server round-trip.
    */
   credentialUrl: string;
+  /**
+   * Right-hand cell, from `resolveCredentialRightCell`. Omitted means `qr`
+   * (the default of that rule). A memorial forces `none` either way.
+   */
+  rightCell?: CredentialRightCell;
   /** Public credential page URL. E.g. /p/{token} */
   publicHref: string;
   /**
@@ -127,10 +133,127 @@ export type CredentialFaceProps = {
   pppExport?: ReactNode;
 };
 
+function OwnerPaperHead({
+  name,
+  photoSrc,
+  addPhotoHref,
+  breed,
+  tags,
+  publicToken,
+  publicHref,
+  credentialUrl,
+  cell,
+  memorialLabel,
+  situation,
+  situationLabel,
+}: {
+  name: string;
+  photoSrc?: string;
+  addPhotoHref?: string;
+  breed?: string;
+  tags?: { key: string; label: string }[];
+  publicToken: string;
+  publicHref: string;
+  credentialUrl: string;
+  cell: CredentialRightCell;
+  memorialLabel: string | null;
+  situation: PetSituation | null;
+  situationLabel: string | null;
+}) {
+  const photo = photoSrc ? (
+    <img src={photoSrc} alt={name} />
+  ) : (
+    <span className="ln-photo-empty">
+      {addPhotoHref ? (
+        <>
+          <span aria-hidden className="ln-photo-add-plus">
+            +
+          </span>
+          <span className="ln-photo-add">Foto</span>
+        </>
+      ) : (
+        <Icon name="paw" size="lg" decorative />
+      )}
+    </span>
+  );
+
+  return (
+    <>
+      <div className="pc-id" data-cell={cell} data-swipe-zone>
+        <div className="pc-photo-mount">
+          {addPhotoHref ? (
+            <Link
+              href={addPhotoHref}
+              className="ln-photo-link"
+              aria-label={photoSrc ? `Cambiar foto de ${name}` : `Agregar foto de ${name}`}
+            >
+              {photo}
+            </Link>
+          ) : (
+            photo
+          )}
+        </div>
+        <div className="pc-id-copy">
+          <h1>{name}</h1>
+          <p className="pc-id-token">{publicToken}</p>
+        </div>
+        {cell === "qr" ? (
+          <Link
+            href={publicHref}
+            aria-label="Ver credencial pública"
+            className="pc-qr-mount no-underline"
+            data-slot="qr"
+          >
+            <CredentialQr
+              value={credentialUrl}
+              size={156}
+              label={`Código QR de la credencial pública de ${name}`}
+            />
+          </Link>
+        ) : cell === "ping" ? (
+          <div className="pc-qr-mount" data-slot="ping" aria-hidden="true">
+            <div className="pc-ping">
+              <span className="pc-ping-grid" />
+              <span className="pc-ping-dot" />
+              <span className="pc-ping-ring" />
+            </div>
+          </div>
+        ) : null}
+      </div>
+      <div className="pc-name">
+        {breed ? <p className="pc-name-meta">{breed}</p> : null}
+        {tags && tags.length > 0 ? (
+          <p className="pc-name-meta">{tags.map((tag) => tag.label).join(" · ")}</p>
+        ) : null}
+      </div>
+      {memorialLabel ? (
+        <div className="pc-chips">
+          <span className="pc-sit-chip" data-section="memorial-ribbon">
+            {memorialLabel}
+          </span>
+        </div>
+      ) : null}
+      {situationLabel && situation ? (
+        <div className="pc-chips">
+          <span
+            className="pc-sit-chip"
+            data-section="band-situation-chip"
+            role={situation.key === "perdida" ? "alert" : undefined}
+          >
+            <Icon name={situation.icon} size="sm" decorative />
+            {situationLabel}
+          </span>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 export function CredentialFace({
   heroProps,
   complianceState,
   credentialUrl,
+  rightCell = "qr",
   publicHref,
   serviceDog,
   petPublicToken,
@@ -147,17 +270,15 @@ export function CredentialFace({
       ? `${memorial.birthYear}–${memorial.deathYear}`
       : null;
 
-  const publicLabel = publicHref.replace(/^\//, "");
-
   // The situation skin only engages for a genuine, non-default situation. The
   // default `al-dia` and the deceased/memorial case resolve to no skin (the
   // caller already passes null for deceased, but guard on isDefault too so a
   // stray al-dia never tints the credential green as if it were an alert).
   const activeSituation = situation && !situation.isDefault ? situation : null;
-
-  // Gender-agree the "Registrado/a" registration adjective with the pet's
-  // recorded sex. QA histórico 2026-07-08 #2.
-  const registeredWord = registeredAdjective(petSex);
+  const cell: CredentialRightCell = memorial ? "none" : rightCell;
+  const situationLabel = activeSituation
+    ? situationLabelForSex(activeSituation.label, petSex)
+    : null;
 
   // 3b improvement B — mobile compliance disclosure. The collapsed summary is
   // derived from the SAME complianceState the panel renders below (the
@@ -237,139 +358,23 @@ export function CredentialFace({
   ) : null;
 
   return (
-    <div
-      className="ln-cred"
-      data-situation={activeSituation?.key}
-      style={memorial ? { filter: "grayscale(0.35) sepia(0.2)" } : undefined}
-    >
-      {memorial && (
-        <div data-section="memorial-ribbon" className="flex justify-center pt-4">
-          <LnMemorialChip>
-            En memoria{memorialYearRange ? ` · ${memorialYearRange}` : ""}
-          </LnMemorialChip>
-        </div>
-      )}
-
-      {/* Situation skin (#42, standardized 2026-07-16): the face carries the
-          situation's TINT only (`data-situation` CSS variants). Its text lives
-          exclusively in the masthead band chip (DocumentChrome) — the single
-          state authority. The old `.ln-sit` status line repeated the identical
-          icon + label right under that chip, which is exactly the "estado
-          repetido varias veces" the PO flagged, so it was removed. */}
-
-      {/* Identity row — the photo pokes up into the band (negative margin).
-          `data-swipe-zone` marks this header/identity band as one of the
-          constrained horizontal-swipe surfaces for the owner credential
-          carousel (owner-ia-redesign P4): PetCredentialCarousel's delegated
-          pointer handler only starts a swipe when the gesture begins inside a
-          `[data-swipe-zone]`, so the long document's vertical scroll never
-          fights the swipe. Inert for non-owner viewers (the shell — and thus
-          the handler — is never mounted for them). */}
-      <div className="ln-sec" data-swipe-zone>
-        <div className="ln-idrow">
-          <div className="ln-photo">
-            {(() => {
-              // The photo itself. Empty state shows a "+ Foto" cue only when
-              // the owner can act (addPhotoHref set) — a vet/shelter reading
-              // the credential sees the plain paw placeholder.
-              const photo = heroProps.photoSrc ? (
-                <img src={heroProps.photoSrc} alt={heroProps.name} />
-              ) : (
-                <span className="ln-photo-empty">
-                  {heroProps.addPhotoHref ? (
-                    <>
-                      <span aria-hidden className="ln-photo-add-plus">
-                        +
-                      </span>
-                      <span className="ln-photo-add">Foto</span>
-                    </>
-                  ) : (
-                    <Icon name="paw" size="lg" decorative />
-                  )}
-                </span>
-              );
-              // Owner: the whole thumbnail opens the edit sheet already mounted
-              // on this page (same form, same file input, same action) — add
-              // when empty, change when present. The PO ask evolved from
-              // "only when missing" (2026-07) to "let me tap it" (QA
-              // 2026-08-02) because every demo pet carries a generated avatar,
-              // so the empty-only affordance never appeared in practice.
-              return heroProps.addPhotoHref ? (
-                <Link
-                  href={heroProps.addPhotoHref}
-                  className="ln-photo-link"
-                  aria-label={
-                    heroProps.photoSrc
-                      ? `Cambiar foto de ${heroProps.name}`
-                      : `Agregar foto de ${heroProps.name}`
-                  }
-                >
-                  {photo}
-                </Link>
-              ) : (
-                photo
-              );
-            })()}
-          </div>
-
-          <div className="ln-idmeta">
-            <h1 className="ln-idname">
-              {heroProps.name}
-              {/* Default state: "Registrada" is the prominent badge next to the
-                  name. When a situation skin is active it is DEMOTED to the
-                  quiet secondary marker below — the situation is the headline,
-                  registration is the footnote (no two competing badges). */}
-              {!activeSituation && (
-                <span className="ln-badge-reg">
-                  <Icon name="check" size="sm" decorative />
-                  {registeredWord}
-                </span>
-              )}
-            </h1>
-            {activeSituation && (
-              <div className="ln-reg-quiet">
-                <Icon name="check" size="sm" decorative />
-                {registeredWord}
-              </div>
-            )}
-            {heroProps.breed && <div className="ln-idsub">{heroProps.breed}</div>}
-            {heroProps.tags && heroProps.tags.length > 0 && (
-              <div className="ln-chips">
-                {heroProps.tags.map((tag) => (
-                  <span key={tag.key} className="ln-chip">
-                    {tag.key === "loc" && <Icon name="map-pin" size="sm" decorative />}
-                    {tag.label}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="ln-qr">
-            <Link
-              href={publicHref}
-              aria-label="Ver credencial pública"
-              className="ln-qr-link no-underline"
-            >
-              <span className="ln-qr-frame">
-                {/* `size` writes the svg's intrinsic width/height attributes;
-                    `.ln-qr-frame svg` in globals.css still sizes the rendered
-                    box (76px, 104px at md) because CSS beats SVG presentation
-                    attributes. */}
-                <CredentialQr
-                  value={credentialUrl}
-                  size={76}
-                  label={`Código QR de la credencial pública de ${heroProps.name}`}
-                />
-              </span>
-            </Link>
-            <div className="ln-qr-cap">
-              <b>Credencial pública</b>
-              {publicLabel}
-            </div>
-          </div>
-        </div>
-      </div>
+    <div data-situation={activeSituation?.key ?? (memorial ? "fallecida" : undefined)}>
+      <OwnerPaperHead
+        name={heroProps.name}
+        photoSrc={heroProps.photoSrc}
+        addPhotoHref={heroProps.addPhotoHref}
+        breed={heroProps.breed}
+        tags={heroProps.tags}
+        publicToken={petPublicToken}
+        publicHref={publicHref}
+        credentialUrl={credentialUrl}
+        cell={cell}
+        memorialLabel={
+          memorial ? `En memoria${memorialYearRange ? ` · ${memorialYearRange}` : ""}` : null
+        }
+        situation={activeSituation}
+        situationLabel={situationLabel}
+      />
 
       {/* Primeros pasos — owner-onboarding checklist (setup tasks, never a
           legal obligation on their own). Rendered ABOVE Cumplimiento: a new
@@ -377,17 +382,10 @@ export function CredentialFace({
           state, and the section fully vanishes once every step is done or
           dismissed — a permanent, empty divider never lingers here. */}
       {firstSteps && firstSteps.length > 0 && (
-        <>
-          <div className="ln-divider">
-            <span className="ln-divider-label">
-              <Icon name="star" size="sm" decorative />
-              Primeros pasos
-            </span>
-          </div>
-          <div className="ln-sec">
-            <FirstStepsChecklist items={firstSteps} petPublicToken={petPublicToken} />
-          </div>
-        </>
+        <section className="pc-sec" data-section="first-steps">
+          <h2 className="pc-sec-eyebrow">Primeros pasos</h2>
+          <FirstStepsChecklist items={firstSteps} petPublicToken={petPublicToken} />
+        </section>
       )}
 
       {/* Cumplimiento — the provenance-gated obligation grid, bare (the divider
@@ -403,92 +401,79 @@ export function CredentialFace({
           (they still feed the hero's status mapper); they are simply not shown
           to a person in mourning. */}
       {complianceState.cards.length > 0 && !memorial && (
-        <>
-          <div className="ln-divider">
-            <span className="ln-divider-label">
-              <Icon name="shield" size="sm" decorative />
-              Cumplimiento
-            </span>
+        <section className="pc-sec" data-section="compliance-block">
+          {/* Cumplimiento dedup (PO 2026-07-18): this eyebrow is the ONE surface
+              owning the section label, and each breakpoint variant renders the
+              "N de M al día" counter exactly once. The bare panel itself is
+              headerless — it used to repeat "Estado de cumplimiento" + the
+              counter a second (and on mobile a third) time. */}
+          <h2 className="pc-sec-eyebrow">Cumplimiento</h2>
+
+          {/* Desktop (≥md) has the room: one summary row above the full
+              provenance-gated grid, inline. */}
+          <div className="hidden md:block">
+            {/* Cumplimiento dedup, second pass (PO 2026-08-11). The counter
+                stays; the STAMP does not. `complianceStamp` is `worstTone`,
+                and the card carrying that worst tone renders its own stamp
+                with the same word in the grid IMMEDIATELY below — so on a pet
+                with one expired vaccine this row said VENCIDA and the next
+                row said VENCIDA again, ~40px apart, about the same dose.
+                "0 de 4 al día" already carries the severity at a glance.
+
+                The mobile variant below KEEPS its stamp on purpose: there the
+                grid is collapsed inside a <details>, so the stamp is the only
+                severity signal until the reader expands it. Same data, two
+                breakpoints, different amounts of context on screen. */}
+            <div
+              data-section="compliance-summary"
+              className="mb-2.5 flex items-center justify-between gap-3"
+            >
+              <p className="m-0 text-sm font-medium text-[var(--color-ln-ink-2)]">
+                {complianceSummary}
+              </p>
+            </div>
+            <ComplianceObligationsPanel
+              state={complianceState}
+              petPublicToken={petPublicToken}
+              bare
+              pppExport={pppExport}
+            />
+            {serviceDogRow}
           </div>
-          <div className="ln-sec">
-            {/* Cumplimiento dedup (PO 2026-07-18): the "Cumplimiento" divider
-                above is the ONE surface owning the section label, and each
-                breakpoint variant renders the "N de M al día" counter exactly
-                once. The bare panel itself is headerless — it used to repeat
-                "Estado de cumplimiento" + the counter a second (and on mobile a
-                third) time. */}
 
-            {/* Desktop (≥md) has the room: one summary row (counter + stamp)
-                above the full provenance-gated grid, inline. */}
-            <div className="hidden md:block">
-              {/* Cumplimiento dedup, second pass (PO 2026-08-11). The counter
-                  stays; the STAMP does not. `complianceStamp` is `worstTone`,
-                  and the card carrying that worst tone renders its own stamp
-                  with the same word in the grid IMMEDIATELY below — so on a pet
-                  with one expired vaccine this row said VENCIDA and the next
-                  row said VENCIDA again, ~40px apart, about the same dose.
-                  "0 de 4 al día" already carries the severity at a glance.
+          {/* Mobile (<md): a glanceable summary row that expands inline to the
+              SAME provenance-gated panel. Titled "Obligaciones" — a NAME, not a
+              repeat of the eyebrow's "Cumplimiento" label family.
 
-                  The mobile variant below KEEPS its stamp on purpose: there the
-                  grid is collapsed inside a <details>, so the stamp is the only
-                  severity signal until the reader expands it. Same data, two
-                  breakpoints, different amounts of context on screen. */}
-              <div
-                data-section="compliance-summary"
-                className="mb-2.5 flex items-center justify-between gap-3"
+              The md:hidden lives on a plain WRAPPER div, not on DiscList:
+              `.ln-disc-list` sets `display:flex` as an UNLAYERED rule in
+              globals.css, and unlayered author CSS beats Tailwind's layered
+              utilities — `md:hidden` on the DiscList itself silently lost,
+              mounting BOTH the expanded panel and this collapsed disclosure
+              on desktop (double compliance widget on /inicio). */}
+          <div className="md:hidden">
+            <DiscList>
+              <DiscRow
+                icon="shield"
+                title="Obligaciones"
+                summary={complianceSummary}
+                trailing={
+                  complianceStamp ? (
+                    <LnVstamp variant={complianceStamp} label={complianceStampLabel} />
+                  ) : undefined
+                }
               >
-                <p className="m-0 text-sm font-medium text-[var(--color-ln-ink-2)]">
-                  {complianceSummary}
-                </p>
-              </div>
-              <ComplianceObligationsPanel
-                state={complianceState}
-                petPublicToken={petPublicToken}
-                bare
-                pppExport={pppExport}
-              />
-              {serviceDogRow}
-            </div>
-
-            {/* Mobile (<md): a glanceable summary row that expands inline to the
-                SAME provenance-gated panel. This is the 3b craft win — the front
-                becomes scannable, depth is one tap away, integrity is untouched
-                (the disclosure wraps the identical ComplianceObligationsPanel,
-                same tone/gate). The disclosure is a native <details>, so it is
-                keyboard-operable with no client JS (CredentialFace stays a
-                server component). Titled "Obligaciones" — a NAME, not a repeat
-                of the divider's "Cumplimiento" label family.
-
-                The md:hidden lives on a plain WRAPPER div, not on DiscList:
-                `.ln-disc-list` sets `display:flex` as an UNLAYERED rule in
-                globals.css, and unlayered author CSS beats Tailwind's layered
-                utilities — `md:hidden` on the DiscList itself silently lost,
-                mounting BOTH the expanded panel and this collapsed disclosure
-                on desktop (double compliance widget on /inicio). */}
-            <div className="md:hidden">
-              <DiscList>
-                <DiscRow
-                  icon="shield"
-                  title="Obligaciones"
-                  summary={complianceSummary}
-                  trailing={
-                    complianceStamp ? (
-                      <LnVstamp variant={complianceStamp} label={complianceStampLabel} />
-                    ) : undefined
-                  }
-                >
-                  <ComplianceObligationsPanel
-                    state={complianceState}
-                    petPublicToken={petPublicToken}
-                    bare
-                    pppExport={pppExport}
-                  />
-                  {serviceDogRow}
-                </DiscRow>
-              </DiscList>
-            </div>
+                <ComplianceObligationsPanel
+                  state={complianceState}
+                  petPublicToken={petPublicToken}
+                  bare
+                  pppExport={pppExport}
+                />
+                {serviceDogRow}
+              </DiscRow>
+            </DiscList>
           </div>
-        </>
+        </section>
       )}
 
       {/* Avisos — only when the strip carries at least one alert (the caller

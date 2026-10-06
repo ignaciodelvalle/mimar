@@ -1,12 +1,9 @@
-// AsientoCard — one rich, immutable libreta record ("Una sola libreta"
-// redesign). Renders the full field set its event type carries (see
-// asiento-fields.toAsientoView): a head (icon · mono kind eyebrow · serif
-// title · relative+absolute date), a 2-column facts grid (mono key eyebrow +
-// value, missing data shown faint), an optional full-width handwritten note or
-// weight sparkline, and a foot carrying the provenance stamp (green "Verificado"
-// vs neutral "Cargado por vos"), an optional amber verification warning, and a
-// "Ver detalle" action on every row, plus "Pedir verificación" for a
-// self-declared rabies dose.
+// AsientoCard — one immutable libreta line. A booklet row: the title, the date
+// on the right, and the kind eyebrow only when it says something the title
+// does not. Clinical facts, the handwritten note and the weight sparkline stay.
+// A date fact that repeats the head is not drawn again. The foot carries the
+// provenance ("Verificado" vs "Cargado por vos"), an optional warning, and
+// "Ver detalle", plus "Pedir verificación" for a self-declared rabies dose.
 //
 // Append-only: an asiento is never edited. A correction is a NEW asiento; when
 // a later amendment supersedes this row, the foot notes "corregido" and links
@@ -97,16 +94,20 @@ export function AsientoCard({
   eventHref?: string;
   weightSamples?: WeightSample[];
 }) {
-  const hasFacts = view.facts.length > 0 || view.handwrittenNote || view.showSparkline;
+  // The date already sits in the head. A "Fecha" / "Aplicada" fact with that
+  // same day is the line repeating itself (every scan did this three times).
+  const facts = view.facts.filter(
+    (f) => !((f.key === "Fecha" || f.key === "Aplicada") && f.value === view.whenAbsolute),
+  );
+  const hasFacts = facts.length > 0 || view.handwrittenNote || view.showSparkline;
+  const showKind =
+    view.kind.trim().toLocaleLowerCase("es") !== view.title.trim().toLocaleLowerCase("es");
 
   return (
     <article className="ln-asiento" data-section="asiento">
       <div className="ln-asiento-head">
-        <span className={`ln-asiento-ic ${view.tint}`}>
-          <Icon name={view.icon} size="sm" decorative />
-        </span>
         <div className="ln-asiento-h">
-          <div className="ln-asiento-kind">{view.kind}</div>
+          {showKind ? <div className="ln-asiento-kind">{view.kind}</div> : null}
           <div className="ln-asiento-title">{view.title}</div>
         </div>
         <div className="ln-asiento-when">
@@ -126,7 +127,7 @@ export function AsientoCard({
               </div>
             </div>
           )}
-          {view.facts.map((f) => (
+          {facts.map((f) => (
             <div key={f.key} className="ln-fact">
               <div className="ln-k">{f.key}</div>
               <div

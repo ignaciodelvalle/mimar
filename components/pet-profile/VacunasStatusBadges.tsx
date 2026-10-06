@@ -165,6 +165,11 @@ export function VacunasStatusBadges({ summary }: { summary: VaccinationSummary }
 
   const openBadge = badges.find((b) => b.key === open) ?? null;
 
+  // A zero is a fact, not an alarm. Color is reserved for a count above zero
+  // so a red "0 vencida" does not shout over an empty bucket. The four states
+  // share one grid (four across, two-by-two on a phone) so the fourth never
+  // sits alone under a row of three.
+
   // Zero registered doses → honest empty state, never a fabricated count
   // (shared predicate with the public share view — hasAnyVaccineRecord).
   if (!counts.hasRecords) {
@@ -204,29 +209,40 @@ export function VacunasStatusBadges({ summary }: { summary: VaccinationSummary }
       <p className="mb-2 text-xs" style={{ color: "var(--color-ln-mute)" }}>
         {VACCINE_LENS.currency.note}
       </p>
-      <div className="grid grid-cols-3 gap-2">
-        {badges.map((b) => (
-          <button
-            key={b.key}
-            type="button"
-            className="ln-vac-badge"
-            style={{ background: b.bg, borderColor: b.border, color: b.text }}
-            aria-expanded={open === b.key}
-            aria-controls="vacunas-drilldown"
-            disabled={b.count === 0}
-            onClick={() => setOpen(open === b.key ? null : b.key)}
-          >
-            <span className="ln-vac-badge-count">{b.count}</span>
-            <span className="ln-vac-badge-label">
-              {b.label}
-              {b.count > 0 && (
-                <span className="ln-vac-caret" aria-hidden>
-                  ›
-                </span>
-              )}
-            </span>
-          </button>
-        ))}
+      <div className="ln-vac-badges">
+        {badges.map((b) => {
+          const quiet = b.count === 0;
+          const tone = quiet
+            ? {
+                bg: "var(--color-ln-paper-2)",
+                border: "var(--color-ln-line)",
+                text: "var(--color-ln-mute)",
+              }
+            : b;
+          return (
+            <button
+              key={b.key}
+              type="button"
+              className="ln-vac-badge"
+              data-quiet={quiet ? "true" : undefined}
+              style={{ background: tone.bg, borderColor: tone.border, color: tone.text }}
+              aria-expanded={open === b.key}
+              aria-controls="vacunas-drilldown"
+              disabled={b.count === 0}
+              onClick={() => setOpen(open === b.key ? null : b.key)}
+            >
+              <span className="ln-vac-badge-count">{b.count}</span>
+              <span className="ln-vac-badge-label">
+                {b.label}
+                {b.count > 0 && (
+                  <span className="ln-vac-caret" aria-hidden>
+                    ›
+                  </span>
+                )}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Drill-down panel — one state at a time. Always present (stable

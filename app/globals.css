@@ -1237,33 +1237,7 @@ body {
   box-shadow: 0 22px 50px -26px rgba(20, 16, 10, 0.5);
   overflow: hidden;
 }
-/* certificate inner hairline — ties the whole sheet together as one document */
-.ln-frame {
-  position: absolute;
-  inset: 7px;
-  border: 1px solid var(--color-ln-line-2);
-  border-radius: 9px;
-  pointer-events: none;
-  z-index: 5;
-}
-
 /* ---- Blue band ----------------------------------------------------------- */
-.ln-band {
-  position: relative;
-  height: 120px;
-  overflow: hidden;
-  background: repeating-linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.5) 0 1px,
-      transparent 1px 11px
-    ),
-    linear-gradient(
-      118deg,
-      var(--color-ln-azul-900),
-      var(--color-ln-azul) 58%,
-      var(--color-ln-celeste)
-    );
-}
 /* Top-LEFT of the band (mirrors the turn button top-right). It used to sit
    bottom-right, where the QR card — which pokes up into the band like the
    photo — covered it on the credential face ("LIBRETA SANI…", PO QA 2026-07-15).
@@ -1290,49 +1264,6 @@ body {
   color: rgba(255, 255, 255, 0.6);
   margin-top: 3px;
 }
-/* The SINGLE flip control (tarjeta-todo — the segmented switcher above the
-   card is gone), promoted accordingly: a larger hit target (~40px tall, up
-   from ~34) and a stronger fill/border so the affordance reads without any
-   supporting text. */
-.ln-turn {
-  position: absolute;
-  right: 16px;
-  top: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.22);
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  color: #fff;
-  padding: 10px 16px 10px 13px;
-  border-radius: var(--radius-pill);
-  font-family: var(--font-ln-sans);
-  font-weight: 600;
-  font-size: var(--text-md);
-  -webkit-backdrop-filter: blur(3px);
-  backdrop-filter: blur(3px);
-  transition: background var(--motion-base) ease;
-}
-.ln-turn:hover {
-  background: rgba(255, 255, 255, 0.32);
-}
-.ln-turn:focus-visible {
-  outline: 2px solid #fff;
-  outline-offset: 2px;
-}
-.ln-turn svg {
-  transition: transform var(--motion-deliberate) ease;
-}
-.ln-turn:hover svg {
-  transform: rotate(180deg);
-}
-@media (prefers-reduced-motion: reduce) {
-  .ln-turn svg {
-    transition: none;
-  }
-}
-
 /* Pet switcher nav (PO correction 2026-07-18, reversing the tarjeta-todo
    dots-in-band placement — ".ln-band-dots" is gone): "El carousel lo quiero
    FUERA de la credencial. No tiene nada que ver la navegación en la app con
@@ -1380,34 +1311,6 @@ body {
 }
 
 /* ---- Identity row -------------------------------------------------------- */
-/* 3b craft (improvement A): a SYMMETRIC credential — the photo and the public
-   QR are equal-weight side elements that BOTH poke up out of the blue band,
-   with the identity centered between them. This reads as a real government
-   credential (balanced, the QR elevated to identity weight) rather than a photo
-   with a small QR bolted to the side. Both frames share the same white ring +
-   shadow and the same negative margin-top so the poke-out is exactly mirrored. */
-.ln-idrow {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: start;
-  justify-items: center;
-}
-.ln-photo {
-  width: 84px;
-  height: 84px;
-  margin-top: -56px;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 0 0 4px #fff, 0 10px 24px -12px rgba(20, 16, 10, 0.5);
-  background: var(--color-ln-stripe);
-}
-.ln-photo img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
 .ln-photo-empty {
   width: 100%;
   height: 100%;
@@ -1443,25 +1346,6 @@ body {
 .ln-photo-link:hover .ln-photo-empty {
   color: var(--color-ln-ink-2);
   background: var(--color-ln-stripe);
-}
-.ln-idmeta {
-  min-width: 0;
-  padding-top: 2px;
-  text-align: center;
-}
-.ln-idname {
-  font-family: var(--font-ln-serif);
-  font-weight: 600;
-  font-size: 22px;
-  letter-spacing: -0.02em;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  line-height: 1.06;
-  color: var(--color-ln-ink);
 }
 .ln-badge-reg {
   font-family: var(--font-ln-mono);
@@ -1500,13 +1384,6 @@ body {
    only the gradient underneath changes. Tokens only — no new color literals. */
 .ln-face[data-situation="perdida"] {
   border-color: var(--color-ln-err-100);
-}
-.ln-face[data-situation="perdida"] .ln-band {
-  background: repeating-linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.5) 0 1px,
-      transparent 1px 11px
-    ), linear-gradient(135deg, var(--color-ln-seal), var(--color-ln-err));
 }
 /* Custody + treatment share the warn/amber family (PO direction — custody is
    an official intervention, not an emergency). The chip's icon + label keep
@@ -2516,60 +2393,11 @@ body {
    textual carrier of the situation; the face keeps only its
    `data-situation` tint. */
 
-/* Demoted registration marker — quiet mono footnote when a situation is active,
-   replacing the prominent "Registrada" badge next to the name. */
-.ln-reg-quiet {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 6px;
-  font-family: var(--font-ln-mono);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--color-ln-mute);
-}
-.ln-reg-quiet svg {
-  color: var(--color-ln-faint);
-}
-
-.ln-idsub {
-  color: var(--color-ln-mute);
-  font-size: 14px;
-  margin-top: 7px;
-}
-.ln-chips {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 12px;
-}
-.ln-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: var(--text-md);
-  font-weight: 500;
-  color: var(--color-ln-ink-2);
-  background: var(--color-ln-stripe);
-  border: 1px solid var(--color-ln-line);
-  padding: 6px 12px;
-  border-radius: var(--radius-pill);
-}
-.ln-chip svg {
-  color: var(--color-ln-mute);
-}
-
 /* ---- QR block ------------------------------------------------------------ */
 /* 3b craft (improvement A): the QR is a mirror of the photo — same white ring +
    shadow, same negative margin-top so it pokes out of the band by the same
    amount. It IS the credential (the public, verifiable face), so it carries
    equal identity weight, one on each side of the centered name. */
-.ln-qr {
-  text-align: center;
-}
 .ln-qr-frame {
   display: inline-block;
   border-radius: 12px;
@@ -2584,14 +2412,6 @@ body {
   height: 76px;
   display: block;
   border-radius: 6px;
-}
-a.ln-qr-link:hover .ln-qr-frame {
-  transform: translateY(-1px);
-  box-shadow: 0 0 0 4px #fff, 0 12px 22px -10px rgba(20, 16, 10, 0.55);
-}
-a.ln-qr-link:focus-visible .ln-qr-frame {
-  outline: 2px solid var(--color-ln-azul);
-  outline-offset: 3px;
 }
 .ln-qr-cap {
   font-family: var(--font-ln-mono);
@@ -2613,17 +2433,6 @@ a.ln-qr-link:focus-visible .ln-qr-frame {
    stay exactly mirrored (same size + same margin-top). Breakpoint matches the
    Tailwind `md` (768px) used for the compliance disclosure below. */
 @media (min-width: 768px) {
-  .ln-idrow {
-    gap: 24px;
-  }
-  .ln-photo {
-    width: 116px;
-    height: 116px;
-    margin-top: -68px;
-  }
-  .ln-idname {
-    font-size: 30px;
-  }
   .ln-qr-frame {
     margin-top: -68px;
   }
@@ -2772,31 +2581,35 @@ a.ln-qr-link:focus-visible .ln-qr-frame {
   background: var(--color-ln-line);
 }
 
-/* ---- Rich asiento record cards ------------------------------------------- */
+/* ---- Libreta ledger (booklet rows, not stacked cards) -------------------- */
+.ln-proximo {
+  margin-top: 14px;
+  border-left: 3px solid var(--color-ln-azul);
+  padding-left: 10px;
+}
 .ln-asientos {
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  border-top: 1px solid var(--color-ln-line);
 }
 .ln-asiento {
-  border: 1px solid var(--color-ln-line);
-  border-radius: 11px;
-  background: var(--color-ln-card);
+  border-bottom: 1px solid var(--color-ln-line);
+  background: transparent;
   overflow: hidden;
+  padding: 10px 0 8px;
+}
+.ln-atencion {
+  border-bottom: 1px solid var(--color-ln-line);
+  padding: 8px 0 2px;
+}
+.ln-atencion .ln-asiento:last-child {
+  border-bottom: 0;
+  padding-bottom: 2px;
 }
 .ln-asiento-head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 12px;
-  padding: 13px 15px 12px;
-}
-.ln-asiento-ic {
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
 }
 .ln-asiento-h {
   flex: 1;
@@ -2810,14 +2623,14 @@ a.ln-qr-link:focus-visible .ln-qr-frame {
   text-transform: uppercase;
   color: var(--color-ln-faint);
 }
-.ln-asiento-title {
-  font-family: var(--font-ln-serif);
-  font-weight: 600;
-  font-size: 16px;
-  letter-spacing: -0.01em;
-  color: var(--color-ln-ink);
+.ln-asiento-kind + .ln-asiento-title {
   margin-top: 2px;
-  line-height: 1.15;
+}
+.ln-asiento-title {
+  font-weight: 600;
+  font-size: var(--text-base);
+  color: var(--color-ln-ink);
+  line-height: 1.25;
 }
 .ln-asiento-when {
   font-family: var(--font-ln-mono);
@@ -2829,11 +2642,10 @@ a.ln-qr-link:focus-visible .ln-qr-frame {
   flex-shrink: 0;
 }
 .ln-asiento-facts {
-  padding: 13px 15px;
-  border-top: 1px solid var(--color-ln-line-2);
+  padding: 8px 0 0;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 13px 22px;
+  gap: 8px 16px;
 }
 .ln-fact {
   min-width: 0;
@@ -2905,8 +2717,7 @@ a.ln-qr-link:focus-visible .ln-qr-frame {
   display: flex;
   align-items: center;
   gap: 8px 12px;
-  padding: 11px 15px;
-  border-top: 1px dashed var(--color-ln-line);
+  padding: 6px 0 0;
   flex-wrap: wrap;
 }
 .ln-asiento-foot .ln-warnnote {
@@ -2930,19 +2741,12 @@ a.ln-qr-link:focus-visible .ln-qr-frame {
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  padding: 4px 9px;
-  border-radius: var(--radius-pill);
-  border: 1px solid;
 }
 .ln-prov[data-k="verified"] {
-  background: var(--color-ln-ok-bg);
   color: var(--color-ln-ok);
-  border-color: var(--color-ln-ok-100);
 }
 .ln-prov[data-k="self"] {
-  background: var(--color-ln-stripe);
-  color: var(--color-ln-ink-2);
-  border-color: var(--color-ln-line-strong);
+  color: var(--color-ln-mute);
 }
 
 /* ---- Event icon tints (shared by ledger rows + asiento heads) ------------ */
@@ -3025,6 +2829,28 @@ a.ln-qr-link:focus-visible .ln-qr-frame {
 .ln-act:focus-visible {
   outline: 2px solid var(--color-ln-azul);
   outline-offset: 2px;
+}
+.ln-act--primary {
+  border-color: var(--color-ln-azul);
+  background: var(--color-ln-azul);
+  color: var(--color-ln-card);
+}
+.ln-act--primary svg {
+  color: var(--color-ln-card);
+}
+.ln-act--primary:hover {
+  border-color: var(--color-ln-azul-700);
+  background: var(--color-ln-azul-700);
+  color: var(--color-ln-card);
+}
+.ln-act--primary:hover svg {
+  color: var(--color-ln-card);
+}
+summary.ln-act {
+  list-style: none;
+}
+summary.ln-act::-webkit-details-marker {
+  display: none;
 }
 .ln-act--danger {
   color: var(--color-ln-seal);
@@ -3142,12 +2968,24 @@ a.ln-qr-link:focus-visible .ln-qr-frame {
 }
 
 /* ---- Vaccination drill-down (interactive Estado de vacunación) ------------ */
+/* Four equal cells. A 3-column grid left "Sin confirmar" alone on a second
+   row. One row from 640px; two-by-two below that, where four labels do not fit. */
+.ln-vac-badges {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+@media (min-width: 640px) {
+  .ln-vac-badges {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
 .ln-vac-badge {
   display: block;
   width: 100%;
   border-radius: var(--radius-md);
   border: 1px solid;
-  padding: 10px 12px;
+  padding: 10px 8px;
   text-align: center;
   cursor: pointer;
   font-family: var(--font-ln-sans);
@@ -3156,6 +2994,12 @@ a.ln-qr-link:focus-visible .ln-qr-frame {
 }
 .ln-vac-badge:hover {
   filter: brightness(0.98);
+}
+.ln-vac-badge:disabled {
+  cursor: default;
+}
+.ln-vac-badge:disabled:hover {
+  filter: none;
 }
 .ln-vac-badge:focus-visible {
   outline: 2px solid var(--color-ln-azul);
@@ -3178,7 +3022,9 @@ a.ln-qr-link:focus-visible .ln-qr-frame {
   letter-spacing: 0.05em;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
+  text-wrap: balance;
 }
 .ln-vac-caret {
   transition: transform var(--motion-fast) ease;
@@ -3259,25 +3105,6 @@ a.ln-qr-link:focus-visible .ln-qr-frame {
 @media (max-width: 720px) {
   .ln-sec {
     padding: 20px 18px;
-  }
-  .ln-idrow {
-    flex-wrap: wrap;
-  }
-  /* A touch smaller so the name + "Registrada" badge breathe beside the photo
-     on a narrow screen. */
-  .ln-idname {
-    font-size: 26px;
-  }
-  /* The QR takes its OWN full-width row below the identity, centered like a
-     stamp. Without flex-basis:100% the QR stayed on row 1 and the flex:1
-     idmeta collapsed to nothing, so the 32px name overflowed *under* the QR
-     (the reported overlap). Full-basis forces the wrap; width:100% overrides
-     the 118px desktop column so the centered frame sits in the middle. */
-  .ln-qr {
-    order: 3;
-    flex-basis: 100%;
-    width: 100%;
-    margin-top: 14px;
   }
   .ln-asiento-facts {
     grid-template-columns: 1fr;

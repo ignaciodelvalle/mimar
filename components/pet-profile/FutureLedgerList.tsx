@@ -218,7 +218,7 @@ export function FutureLedgerList({
   const hasOverdue = visible.some((item) => daysUntil(item.dueAt, now) < 0);
 
   return (
-    <div data-section="future-ledger">
+    <div className="ln-proximo" data-section="future-ledger">
       <p className="mb-2 font-ln-mono text-xs uppercase tracking-[.06em] font-semibold text-[var(--color-ln-mute)]">
         {hasOverdue ? "Vencido y próximo" : "Próximo"}
       </p>

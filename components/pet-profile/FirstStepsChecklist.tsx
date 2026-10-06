@@ -24,7 +24,6 @@
 import { useState, useTransition } from "react";
 
 import { dismissFirstStepAction } from "@/app/actions/pet-onboarding";
-import { Icon } from "@/components/Icon";
 import { SheetTriggerLink } from "@/components/pet-profile/SheetTriggerLink";
 import type { FirstStepItem } from "@/lib/projections/first-steps-checklist";
 import { notifySaved } from "@/lib/ui/action-feedback";
@@ -51,22 +50,14 @@ function FirstStepRow({
   }
 
   return (
-    <li className="flex items-center gap-3 py-2.5">
+    <li className="pc-step">
       <span
-        aria-hidden
-        className={[
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-md)]",
-          item.star
-            ? "bg-[var(--color-ln-warn-050)] text-[var(--color-ln-warn)]"
-            : "bg-[var(--color-ln-stripe)] text-[var(--color-ln-ink-2)]",
-        ].join(" ")}
-      >
-        <Icon name={item.star ? "star" : "circle-dot"} size="sm" decorative />
-      </span>
-      <span className="min-w-0 flex-1 text-sm font-medium text-[var(--color-ln-ink)]">
-        {item.label}
-      </span>
-      <span className="flex shrink-0 items-center gap-3">
+        className="pc-step-tick"
+        data-star={item.star ? "true" : undefined}
+        aria-hidden="true"
+      />
+      <span className="pc-step-label">{item.label}</span>
+      <span className="pc-step-actions">
         <SheetTriggerLink
           href={item.actionHref}
           className="font-ln-mono text-xs uppercase tracking-[.06em] text-[var(--color-ln-azul)] no-underline hover:underline"
@@ -100,7 +91,10 @@ export function FirstStepsChecklist({
   if (visible.length === 0) return null;
 
   return (
-    <ul data-section="first-steps-list" className="divide-y divide-[var(--color-ln-line)]">
+    <ul
+      data-section="first-steps-list"
+      className="m-0 list-none divide-y divide-[var(--color-ln-line-2)] p-0"
+    >
       {visible.map((item) => (
         <FirstStepRow
           key={item.key}

@@ -36,6 +36,33 @@ describe("<AsientoCard> — action slot", () => {
     expect(html).toContain('href="/eventos/e1"');
   });
 
+  it("hides the kind when it repeats the title, and drops a date that repeats the head", () => {
+    const html = renderToStaticMarkup(
+      <AsientoCard
+        view={view({
+          kind: "Credencial escaneada",
+          title: "Credencial escaneada",
+          facts: [
+            { key: "Fecha", value: "18 ago 2026" },
+            { key: "Lote", value: "A1" },
+          ],
+        })}
+        eventHref="/eventos/e3"
+      />,
+    );
+    expect(html).not.toContain("ln-asiento-kind");
+    expect(html).not.toContain(">Fecha<");
+    expect(html).toContain("Credencial escaneada");
+    expect(html).toContain("Lote");
+    expect(html).toContain("18 ago 2026");
+  });
+
+  it("keeps a kind that the title does not already say", () => {
+    const html = renderToStaticMarkup(<AsientoCard view={view()} eventHref="/eventos/e4" />);
+    expect(html).toContain("ln-asiento-kind");
+    expect(html).toContain("Antirrábica");
+  });
+
   it("a plain asiento shows only 'Ver detalle'", () => {
     const html = renderToStaticMarkup(<AsientoCard view={view()} eventHref="/eventos/e2" />);
     expect(html).not.toContain("Pedir verificación");

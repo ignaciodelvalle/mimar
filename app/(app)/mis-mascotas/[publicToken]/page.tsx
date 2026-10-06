@@ -59,6 +59,7 @@ import {
 } from "@/src/modules/pets/application/read/load-owner-pet-detail";
 import { getLibretaFaceData } from "@/src/modules/pets/application/tab-data/get-libreta-face-data";
 import { toViewerRole } from "@dim/contract/api";
+import { resolveCredentialRightCell } from "@dim/contract/credential";
 import { derivePetActions } from "@dim/contract/reference";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -672,6 +673,13 @@ export default async function PetDetailPage({
             // browser (native-readiness Track 2 — the QR is a pure function of
             // a cached string, so it survives an offline load).
             credentialUrl={credentialQrUrl(pet.publicToken)}
+            rightCell={resolveCredentialRightCell({
+              status: pet.status,
+              discloseLastLocation: pet.discloseLastLocationWhenLost,
+              lastLocation: lostEpisode
+                ? { lat: lostEpisode.lastSeenLat, lng: lostEpisode.lastSeenLng }
+                : null,
+            })}
             publicHref={`/p/${pet.publicToken}`}
             serviceDog={
               serviceDogRow &&

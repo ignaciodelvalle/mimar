@@ -106,7 +106,7 @@ const OBSOLETE_V21_PAGE_SECTIONS = [
 // The acts are not a block of the card since owner-pet-actions — where they
 // render now is the "acts below the card" describe at the end of this file.
 const CREDENTIAL_BLOCK_ORDER = [
-  { name: "identity", marker: 'className="ln-idrow"' },
+  { name: "identity", marker: 'className="pc-id"' },
   { name: "cumplimiento", marker: "<ComplianceObligationsPanel" },
   { name: "avisos", marker: "{avisos && (" },
   { name: "anotar", marker: "{anotar && (" },
@@ -300,7 +300,7 @@ describe("CredentialFace block order — source guard (AGENTS.md rule 5)", () =>
 
   it("identity is the FIRST block — no compliance/avisos/anotar precedes it", () => {
     const src = read(CREDENTIAL_FACE_TSX);
-    const identityAt = sourceIndex(src, 'className="ln-idrow"');
+    const identityAt = sourceIndex(src, 'className="pc-id"');
     for (const { name, marker } of CREDENTIAL_BLOCK_ORDER) {
       if (name === "identity") continue;
       expect(
@@ -312,7 +312,7 @@ describe("CredentialFace block order — source guard (AGENTS.md rule 5)", () =>
 
   it("avisos (alerts) come AFTER identity and compliance — below the credential, not above", () => {
     const src = read(CREDENTIAL_FACE_TSX);
-    const identityAt = sourceIndex(src, 'className="ln-idrow"');
+    const identityAt = sourceIndex(src, 'className="pc-id"');
     const cumplimientoAt = sourceIndex(src, "<ComplianceObligationsPanel");
     const avisosAt = sourceIndex(src, "{avisos && (");
     expect(avisosAt).toBeGreaterThan(identityAt);

@@ -14,11 +14,14 @@
 // that bug, and it is exactly the mockup's mechanic (a single visible face
 // that swaps at edge-on).
 //
-// THE TURN (mockup §Interactions). On an activeFace change we turn the sheet
-// edge-on, swap which face is shown at the invisible edge, then turn back:
-//   rotateY(0 → 87°) ease-in .2s  →  swap shown face + jump to -87° (no anim)
-//   →  rotateY(-87° → 0°) ease-out .26s   (~485ms, `turningRef` re-entrancy
-//   guard; if activeFace changed again mid-turn it reconciles on completion).
+// THE TURN. On an activeFace change we turn the sheet using the shared
+// document plan in `@dim/contract/credential` (`TURN_OUT_MS` / `TURN_IN_MS` /
+// `TURN_EDGE_ON_DEG` — 200/260/87, never 90: a single painted face would
+// read mirrored past edge-on):
+//   rotateY(0 → edge) ease-in  →  swap shown face + jump to the far edge
+//   →  rotateY(far → 0) ease-out   (`TURN_SETTLE_AT_MS` hands control back;
+//   `turningRef` blocks re-entrancy; if activeFace changed again mid-turn it
+//   reconciles on completion). Under reduced-motion the swap is instant.
 // Reduced motion: instant swap, no rotation (read at turn time — never during
 // render — so the initial tree stays hydration-deterministic).
 //
@@ -26,6 +29,13 @@
 // flow, so the container auto-sizes to it (and to the Libreta face growing from
 // its loading skeleton to real content).
 
+import {
+  TURN_EDGE_ON_DEG,
+  TURN_IN_MS,
+  TURN_OUT_MS,
+  TURN_SETTLE_AT_MS,
+  TURN_SWAP_AT_MS,
+} from "@dim/contract/credential";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { type ChromeSituation, DocumentChrome } from "./DocumentChrome";
 
@@ -139,29 +149,30 @@ export function FlipCard({
     }
 
     turningRef.current = true;
-    // Phase 1: turn the sheet edge-on.
-    el.style.transition = "transform 0.2s ease-in";
-    el.style.transform = "rotateY(87deg)";
+    // Phase 1: turn the sheet edge-on. Durations and angle come from
+    // `@dim/contract/credential` (same plan the native DocumentTurn walks).
+    el.style.transition = `transform ${TURN_OUT_MS / 1000}s ease-in`;
+    el.style.transform = `rotateY(${TURN_EDGE_ON_DEG}deg)`;
     timersRef.current.push(
       setTimeout(() => {
         // At edge-on: swap the shown face (to the LATEST target) and jump to the
         // opposite edge without animating.
         commit(activeRef.current);
         el.style.transition = "none";
-        el.style.transform = "rotateY(-87deg)";
+        el.style.transform = `rotateY(${-TURN_EDGE_ON_DEG}deg)`;
         // Force reflow so the jump isn't coalesced with the turn-in below.
         void el.offsetWidth;
         // Phase 2: turn the new face in.
-        el.style.transition = "transform 0.26s ease-out";
+        el.style.transition = `transform ${TURN_IN_MS / 1000}s ease-out`;
         el.style.transform = "rotateY(0deg)";
         timersRef.current.push(
           setTimeout(() => {
             turningRef.current = false;
             // Reconcile if activeFace changed again during the turn.
             maybeTurn();
-          }, 280),
+          }, TURN_SETTLE_AT_MS),
         );
-      }, 205),
+      }, TURN_SWAP_AT_MS),
     );
   }, [commit]);
 

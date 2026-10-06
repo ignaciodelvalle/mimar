@@ -5,6 +5,8 @@
 // react-dom/server — this file stubs them globally before each render so the
 // component's effects don't throw during SSR-style rendering.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -178,5 +180,19 @@ describe("<FlipCard> — single painted face (paint-bug fix)", () => {
     expect(html).not.toContain("preserve-3d");
     expect(html).not.toContain("backface-visibility");
     expect(html).not.toContain("rotateY(180deg)");
+  });
+});
+
+describe("FlipCard walks the shared document turn plan", () => {
+  it("imports timings and angle from @dim/contract/credential, not literals", () => {
+    const src = readFileSync(
+      join(process.cwd(), "components", "pet-profile", "FlipCard.tsx"),
+      "utf8",
+    );
+    expect(src).toContain('from "@dim/contract/credential"');
+    expect(src).toContain("TURN_EDGE_ON_DEG");
+    expect(src).toContain("TURN_SWAP_AT_MS");
+    expect(src).not.toMatch(/rotateY\(87deg\)/);
+    expect(src).not.toMatch(/setTimeout\([^,]+,\s*205\)/);
   });
 });

@@ -355,40 +355,23 @@ describe("CredentialFace — In-Memoriam skin (ADR-15)", () => {
   });
 });
 
-// QA histórico 2026-07-08 item 2 (round 2): "Rocco Inscripta" — the
-// registration badge disagreed with a male pet's sex. It must now render
-// "Registrado" for male, "Registrada" for female, and the neutral
-// "Registrado/a" when sex is unrecorded — and the same word must agree in BOTH
-// render paths (the prominent badge next to the name, and the quiet marker used
-// when a situation skin is active).
-// The word itself moved from "Inscripto/a" to "Registrado/a" (PO 2026-07-30).
-describe("CredentialFace — Registrado/a gender agreement", () => {
-  it("renders Registrado for a male pet", () => {
+// The approved owner paper (2026-10) does not paint "Registrado/a" beside the
+// name. Al día has no chip. A real situation is the one label, and it still
+// agrees with the pet's sex (Perdido / Perdida) — that is the agreement the
+// old badge used to get wrong ("Rocco Inscripta", QA 2026-07-08).
+describe("CredentialFace — situation chip, no registration badge", () => {
+  it("does not paint Registrado beside the name when the pet is al día", () => {
     const state = deriveComplianceState(complianceInput());
     const html = renderToStaticMarkup(
       <CredentialFace {...baseProps} complianceState={state} petSex="male" />,
     );
-    expect(html).toContain("Registrado");
-    expect(html).not.toContain("Registrada");
+    expect(html).toContain("Firulais");
+    expect(html).toContain('data-cell="qr"');
+    expect(html).not.toContain("Registrado");
+    expect(html).not.toContain("ln-badge-reg");
   });
 
-  it("renders Registrada for a female pet", () => {
-    const state = deriveComplianceState(complianceInput());
-    const html = renderToStaticMarkup(
-      <CredentialFace {...baseProps} complianceState={state} petSex="female" />,
-    );
-    expect(html).toContain("Registrada");
-  });
-
-  it("renders the neutral Registrado/a when sex is unrecorded", () => {
-    const state = deriveComplianceState(complianceInput());
-    const html = renderToStaticMarkup(
-      <CredentialFace {...baseProps} complianceState={state} petSex={null} />,
-    );
-    expect(html).toContain("Registrado/a");
-  });
-
-  it("genders the quiet marker too, when a situation skin demotes the badge", () => {
+  it("genders the situation chip for a male pet and does not repeat a feminine form", () => {
     const state = deriveComplianceState(complianceInput());
     const html = renderToStaticMarkup(
       <CredentialFace
@@ -404,15 +387,31 @@ describe("CredentialFace — Registrado/a gender agreement", () => {
         }}
       />,
     );
-    expect(html).toContain("Registrado");
-    expect(html).not.toContain("Registrada");
-    // Pet-state standardization (PO 2026-07-16): the situation LABEL must NOT
-    // render here — the masthead band chip (DocumentChrome) is the single
-    // textual carrier of the state. The face keeps only its data-situation
-    // tint hook and the demoted registration marker asserted above.
-    expect(html).not.toContain("Perdido");
+    expect(html).toContain("Perdido");
     expect(html).not.toContain("Perdida");
+    expect(html).not.toContain("Registrado");
     expect(html).toContain('data-situation="perdida"');
+    expect(html).toContain('data-section="band-situation-chip"');
+  });
+
+  it("keeps the feminine chip when the pet is female", () => {
+    const state = deriveComplianceState(complianceInput());
+    const html = renderToStaticMarkup(
+      <CredentialFace
+        {...baseProps}
+        complianceState={state}
+        petSex="female"
+        situation={{
+          key: "perdida",
+          tone: "alerta",
+          label: "Perdida",
+          icon: "perdida",
+          isDefault: false,
+        }}
+      />,
+    );
+    expect(html).toContain("Perdida");
+    expect(html).not.toContain("Perdido");
   });
 });
 
@@ -420,8 +419,7 @@ describe("CredentialFace — credential QR (client-side, native-readiness Track 
   it("renders a real <svg role=img> QR named after the pet — no injected markup", () => {
     const html = render(deriveComplianceState(complianceInput()));
 
-    // The QR is now DRAWN, not injected: a real svg element with an accessible
-    // name, inside the existing .ln-qr-frame link.
+    // The QR is DRAWN, not injected: a real svg with an accessible name.
     expect(html).toContain('role="img"');
     expect(html).toContain('aria-label="Código QR de la credencial pública de Firulais"');
     expect(html).toMatch(/<svg[^>]*role="img"[^>]*>\s*<path fill="currentColor"/);
@@ -443,6 +441,36 @@ describe("CredentialFace — credential QR (client-side, native-readiness Track 
       />,
     );
     expect(qrPath(other)).not.toBe(qrPath(a));
+  });
+});
+
+describe("CredentialFace — right-hand cell", () => {
+  it("draws no mount when the pet is deceased", () => {
+    const html = renderToStaticMarkup(
+      <CredentialFace
+        {...baseProps}
+        complianceState={deriveComplianceState(complianceInput())}
+        memorial={{ birthYear: 2019, deathYear: 2026 }}
+        rightCell="qr"
+      />,
+    );
+    expect(html).toContain('data-cell="none"');
+    expect(html).not.toContain("pc-qr-mount");
+    expect(html).toContain("En memoria");
+    expect(html).toContain("2019");
+    expect(html).toContain("2026");
+  });
+
+  it("draws the ping when the caller resolved the cell to a map", () => {
+    const html = renderToStaticMarkup(
+      <CredentialFace
+        {...baseProps}
+        complianceState={deriveComplianceState(complianceInput())}
+        rightCell="ping"
+      />,
+    );
+    expect(html).toContain('data-slot="ping"');
+    expect(html).not.toContain('data-slot="qr"');
   });
 });
 

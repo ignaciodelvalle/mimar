@@ -24,7 +24,6 @@ import type {
   ResolvedEmergencyPair,
 } from "@/lib/domain/emergency-contacts";
 import { libretaChipCounts } from "@/lib/infra/libreta-sanitaria";
-import { speciesLabel } from "@/lib/utils/format";
 import type { LibretaFaceData } from "@/src/modules/pets/application/tab-data/types";
 import { useState } from "react";
 import { toAsientoView } from "./asiento-fields";
@@ -115,20 +114,14 @@ export function LibretaFace({ data, petPublicToken, isOwner, emergencyContacts }
     />
   );
 
-  const speciesLine = [
-    speciesLabel(data.identity.species),
-    data.identity.sex === "male" ? "macho" : data.identity.sex === "female" ? "hembra" : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
   return (
     <div className="ln-sec">
-      {/* Libreta head — the ledger's masthead. */}
+      {/* Libreta head — name + token only. Species/sex already live on the
+          front under the name; repeating "perro · hembra" here crowded the
+          dorso without adding a fact the reader lacked. */}
       <div className="ln-lib-head">
         <h2>{data.identity.name}</h2>
         <span className="ln-lib-code">{data.identity.publicToken}</span>
-        {speciesLine && <span className="ln-lib-titular">{speciesLine}</span>}
       </div>
 
       <div className="mt-4">
@@ -180,7 +173,7 @@ export function LibretaFace({ data, petPublicToken, isOwner, emergencyContacts }
                       key={`visit-${entry.visitId}`}
                       aria-label={entry.header}
                       data-section="libreta-atencion"
-                      className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-ln-line-2)] p-2"
+                      className="ln-atencion"
                     >
                       <p className="px-1 font-ln-mono text-xs uppercase tracking-[.06em] text-[var(--color-ln-mute)]">
                         {entry.header}

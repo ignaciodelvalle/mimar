@@ -40,7 +40,7 @@ const lostSituation = {
 };
 
 describe("<DocumentChrome> — situation band", () => {
-  it("stamps data-situation on .ln-face and renders the state chip (icon + label)", () => {
+  it("stamps data-situation and the paper subtitle; the front chip is not here", () => {
     const html = renderToStaticMarkup(
       <DocumentChrome
         face="credencial"
@@ -52,11 +52,26 @@ describe("<DocumentChrome> — situation band", () => {
       </DocumentChrome>,
     );
     expect(html).toContain('data-situation="perdida"');
-    expect(html).toContain("ln-band-chip");
-    expect(html).toContain("Perdido");
-    // Icon = the non-color signal (WCAG: never color alone). The chip renders
-    // an svg next to the label.
-    expect(html).toMatch(/ln-band-chip[^>]*>\s*<svg/);
+    expect(html).toContain('data-face="front"');
+    expect(html).toContain("pc-band-mark");
+    expect(html).toContain("pc-band-mark-hit");
+    expect(html).toContain("pc-band-balance");
+    expect(html).toContain("Credencial · frente");
+    // Both band corners turn the card, but they are two controls with two
+    // names: the flip owns "Girar a …" and the toggle state, the mark says
+    // what it is. One name on two buttons reads as one control listed twice.
+    expect(html.match(/aria-label="Girar a Libreta"/g)?.length).toBe(1);
+    expect(html.match(/aria-pressed=/g)?.length).toBe(1);
+    expect(html).toMatch(
+      /class="pc-band-flip"[^>]*aria-label="Girar a Libreta"[^>]*aria-pressed="false"/,
+    );
+    expect(html).toMatch(
+      /class="pc-band-mark-hit"[^>]*aria-label="Marca miMAR: mostrar la libreta"/,
+    );
+    // The front label lives under the name, in CredentialFace. Repeating it
+    // in this chrome would put the state on the page twice.
+    expect(html).not.toContain("ln-band-chip");
+    expect(html).not.toContain("Perdido");
   });
 
   it("renders no chip and no data-situation when situation is null", () => {
@@ -69,7 +84,7 @@ describe("<DocumentChrome> — situation band", () => {
     expect(html).not.toContain("ln-band-chip");
   });
 
-  it("keeps the chip OUTSIDE the aria-hidden band wrapper (accessible text)", () => {
+  it("the libreta face carries the chip, outside the band, with its icon", () => {
     const html = renderToStaticMarkup(
       <DocumentChrome
         face="libreta"
@@ -80,11 +95,20 @@ describe("<DocumentChrome> — situation band", () => {
         <div>BODY</div>
       </DocumentChrome>,
     );
-    // The aria-hidden band div must CLOSE before the chip opens — the chip is a
-    // sibling overlay (same pattern as the turn button), not band content.
-    const bandEnd = html.indexOf("</div>", html.indexOf("ln-band-title"));
+    expect(html).toContain('data-face="back"');
+    expect(html).toContain("Libreta · dorso");
+    expect(html).toContain("pc-band-mark-hit");
+    expect(html.match(/aria-label="Girar a Credencial"/g)?.length).toBe(1);
+    expect(html).toMatch(
+      /class="pc-band-flip"[^>]*aria-label="Girar a Credencial"[^>]*aria-pressed="true"/,
+    );
+    expect(html).toContain('aria-label="Marca miMAR: mostrar la credencial"');
+    expect(html).toContain("Perdido");
     const chipAt = html.indexOf("ln-band-chip");
-    expect(chipAt).toBeGreaterThan(bandEnd);
+    const bodyAt = html.indexOf(">BODY<");
+    expect(chipAt).toBeGreaterThan(html.indexOf("pc-band"));
+    expect(chipAt).toBeLessThan(bodyAt);
+    expect(html).toMatch(/ln-band-chip[^>]*>\s*<svg/);
   });
 
   it("renders the band + chip on BOTH faces via FlipCard (flip never loses the state)", () => {
@@ -99,8 +123,10 @@ describe("<DocumentChrome> — situation band", () => {
     );
     const occurrences = html.split('data-situation="perdida"').length - 1;
     expect(occurrences).toBe(2);
+    // Front content in this fixture is a plain div, so the only chip is the
+    // libreta face's. The real front paints its own, inside CredentialFace.
     const chips = html.split("ln-band-chip").length - 1;
-    expect(chips).toBe(2);
+    expect(chips).toBe(1);
   });
 
   it("defaults to no situation when FlipCard receives none (today's exact look)", () => {
@@ -151,7 +177,9 @@ describe("<DocumentChrome> — band renders no carousel dots (PO correction, dot
       />,
     );
     expect(html).not.toContain('data-section="band-dots"');
-    expect(html.split("ln-band-chip").length - 1).toBe(2);
-    expect(html.split("ln-turn").length - 1).toBeGreaterThanOrEqual(2);
+    expect(html.split("ln-band-chip").length - 1).toBe(1);
+    // Flip control + brand mark hit, on both FlipCard faces.
+    expect(html.split("pc-band-flip").length - 1).toBeGreaterThanOrEqual(2);
+    expect(html.split("pc-band-mark-hit").length - 1).toBeGreaterThanOrEqual(2);
   });
 });

@@ -227,9 +227,20 @@ function ObligationCardView({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-[var(--radius-lg)] border border-[var(--color-ln-celeste-100)] bg-[var(--color-ln-celeste-050)] text-[var(--color-ln-azul)]">
-            <Icon name={ICON_FOR[card.key]} size="sm" decorative />
-          </span>
+          {bare ? (
+            // On the credential paper, a tinted tile reads as a badge stuck on
+            // the sheet. Bare mode keeps the glyph as ink only.
+            <Icon
+              name={ICON_FOR[card.key]}
+              size="sm"
+              decorative
+              className="flex-shrink-0 text-[var(--color-ln-mute)]"
+            />
+          ) : (
+            <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-[var(--radius-lg)] border border-[var(--color-ln-celeste-100)] bg-[var(--color-ln-celeste-050)] text-[var(--color-ln-azul)]">
+              <Icon name={ICON_FOR[card.key]} size="sm" decorative />
+            </span>
+          )}
           <p className="font-ln-sans text-md font-semibold leading-tight text-[var(--color-ln-ink)]">
             {card.label}
           </p>
