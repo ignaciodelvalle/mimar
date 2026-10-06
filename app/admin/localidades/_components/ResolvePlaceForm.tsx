@@ -4,7 +4,7 @@
 //
 // The candidates are every live row of the province whose name matches what
 // was entered, each labelled with its department; none is pre-selected (P1:
-// the admin chooses, the system never does). A reason is required — it is
+// the admin chooses, the system never does). A reason is required â€” it is
 // what the place_resolutions row keeps next to who and when.
 
 import { useState } from "react";
@@ -13,6 +13,8 @@ import { resolvePlaceFromQueueAction } from "@/app/actions/authority-units";
 import { OpButton, OpField, OpFormAlert, OpSelect, OpTextarea } from "@/components/ui/dashboard";
 
 import { useUnitAction } from "@/components/institutional/UnitEditorForms";
+
+import { resolvedPlaceUrl } from "./resolved-place-url";
 
 export type ResolvePlaceFormProps = {
   subjectTable: "cases" | "welfare_reports";
@@ -35,8 +37,8 @@ export function ResolvePlaceForm({
   if (candidates.length === 0) {
     return (
       <p className="m-0 text-sm text-ln-op-mute">
-        Ninguna localidad del catálogo tiene ese nombre en la provincia. Queda en la provincia hasta
-        que se corrija el lugar.
+        Ninguna localidad del catÃ¡logo tiene ese nombre en la provincia. Queda en la provincia
+        hasta que se corrija el lugar.
       </p>
     );
   }
@@ -49,14 +51,18 @@ export function ResolvePlaceForm({
         if (!canSubmit) return;
         run(
           () => resolvePlaceFromQueueAction({ subjectTable, subjectId, localityId, reason }),
-          () => `/admin/localidades/pendientes?provincia=${provinceCode}`,
+          () =>
+            resolvedPlaceUrl(
+              provinceCode,
+              candidates.find((c) => c.localityId === localityId),
+            ),
         );
       }}
     >
       <OpField label="Localidad">
         {({ id }) => (
           <OpSelect id={id} value={localityId} onChange={(e) => setLocalityId(e.target.value)}>
-            <option value="">Elegí la localidad…</option>
+            <option value="">ElegÃ­ la localidadâ€¦</option>
             {candidates.map((c) => (
               <option key={c.localityId} value={c.localityId}>
                 {c.name}

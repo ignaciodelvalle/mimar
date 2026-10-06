@@ -143,7 +143,12 @@ export async function resolvePlaceFromQueueAction(input: {
     } catch (err) {
       console.error("[place-queue] re-routing after resolution failed", err);
     }
-    revalidatePath("/admin/localidades/pendientes");
+    // No revalidatePath on the queue page, deliberately: the form lives ON
+    // that page and the caller leaves it by a full document navigation (N3).
+    // Revalidating it re-renders the page inside the action response while the
+    // row the form belongs to has just left the queue, so the client flashed
+    // the segment error boundary before the navigation landed. The page is
+    // force-dynamic, so the navigation reads fresh data anyway.
   }
   return result;
 }

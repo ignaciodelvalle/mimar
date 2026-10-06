@@ -1,4 +1,4 @@
-// /admin/localidades/pendientes — the unresolved-place queue
+// /admin/localidades/pendientes â€” the unresolved-place queue
 // (localidades-por-id D9, spec "unresolved-place-queue").
 //
 // A case or a report whose place did not resolve to ONE catalogue row is not
@@ -13,7 +13,14 @@
 
 import Link from "next/link";
 
-import { OpButton, OpCard, OpCardBody, OpCardHead, OpSelect } from "@/components/ui/dashboard";
+import {
+  OpButton,
+  OpCallout,
+  OpCard,
+  OpCardBody,
+  OpCardHead,
+  OpSelect,
+} from "@/components/ui/dashboard";
 import { db } from "@/db";
 import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
 import { listUnresolvedPlaces } from "@/lib/place/unresolved-queue";
@@ -34,10 +41,10 @@ const SUBJECT_LABELS: Record<string, string> = {
 export default async function UnresolvedPlacesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ provincia?: string }>;
+  searchParams: Promise<{ provincia?: string; resuelto?: string }>;
 }) {
   await requireAdminOrRedirect();
-  const { provincia } = await searchParams;
+  const { provincia, resuelto } = await searchParams;
   const province =
     provinceByCode(provincia ?? DEFAULT_PROVINCE) ?? provinceByCode(DEFAULT_PROVINCE);
   const provinceCode = province?.code ?? DEFAULT_PROVINCE;
@@ -56,12 +63,18 @@ export default async function UnresolvedPlacesPage({
       <div>
         <h1 className="m-0 text-xl font-semibold text-ln-op-ink">Lugares sin resolver</h1>
         <p className="mt-1 text-sm text-ln-op-mute">
-          Casos y denuncias cuyo lugar no se pudo asignar a una sola localidad del catálogo.
-          Mientras esperan acá, los ve la autoridad de la provincia. Elegí la localidad que
-          corresponde: queda registrado quién lo resolvió, cuándo y por qué, y el registro original
-          no se modifica.
+          Casos y denuncias cuyo lugar no se pudo asignar a una sola localidad del catÃ¡logo.
+          Mientras esperan acÃ¡, los ve la autoridad de la provincia. ElegÃ­ la localidad que
+          corresponde: queda registrado quiÃ©n lo resolviÃ³, cuÃ¡ndo y por quÃ©, y el registro
+          original no se modifica.
         </p>
       </div>
+
+      {resuelto && resuelto.trim() !== "" && (
+        <output className="block">
+          <OpCallout title={`Lugar resuelto: ${resuelto.trim().slice(0, 120)}`} />
+        </output>
+      )}
 
       <form method="get" className="flex items-end gap-2">
         <div>
@@ -104,7 +117,7 @@ export default async function UnresolvedPlacesPage({
               {queue.map((q) => (
                 <li key={`${q.subjectTable}-${q.subjectId}`} className="space-y-2 py-3">
                   <p className="m-0 text-sm text-ln-op-ink">
-                    {SUBJECT_LABELS[q.subjectTable] ?? q.subjectTable}: «{q.enteredLocality}»
+                    {SUBJECT_LABELS[q.subjectTable] ?? q.subjectTable}: Â«{q.enteredLocality}Â»
                     <span className="ml-2 text-xs text-ln-op-mute">
                       {formatDateShort(q.createdAt)}
                     </span>
