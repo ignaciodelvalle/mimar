@@ -27,6 +27,7 @@
 import { sql } from "drizzle-orm";
 
 import type { db } from "@/db";
+import { safePayloadUuid } from "@/lib/infra/sql-fragments";
 import {
   type ClassifiedPair,
   type EnteredShape,
@@ -153,7 +154,7 @@ async function spineSources(
            count(distinct s.id)::int as "spineEvents",
            count(*)::int as rows
       from public.event_places p
-      join public.pet_events s on s.id = (p.entered ->> 'spine_event_id')::uuid
+      join public.pet_events s on s.id = ${safePayloadUuid(sql`p.entered ->> 'spine_event_id'`)}
      where p.method = 'unresolved'
        and p.entered ->> 'source' = 'spine' ${scopeClause(scope)}
      group by 1, 2
