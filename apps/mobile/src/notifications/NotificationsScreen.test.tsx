@@ -630,3 +630,27 @@ describe("NotificationsScreen — switching tabs keeps the chrome (S-2b)", () =>
     expect(screen.getByText("Avistaje de Pampa")).toBeTruthy();
   });
 });
+
+// R11 — an erased row (Ley 25.326 art. 16) says nothing more: no button at all.
+describe("NotificationsScreen — an erased row", () => {
+  it("offers no open button", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        total: 1,
+        notifications: [
+          aNotification({
+            title: "[eliminado]",
+            body: "[contenido eliminado a pedido del titular]",
+            cta: null,
+            pet: null,
+            petLinkAvailable: false,
+          }),
+        ],
+      }),
+    });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText("[eliminado]")).toBeTruthy());
+    expect(screen.queryByText("Ver detalle")).toBeNull();
+  });
+});

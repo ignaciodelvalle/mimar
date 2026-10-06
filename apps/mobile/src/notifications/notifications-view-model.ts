@@ -40,6 +40,7 @@ import {
 import {
   type NotificationGroup,
   groupForDisplay,
+  isErasedNotification,
   notificationKindSpec,
   sortForDisplay,
   wireNotificationFacts,
@@ -62,8 +63,12 @@ export type NotificationEntry = NotificationGroup<MyNotificationV1>;
  * gets nothing — its body is already everything it has to say.
  */
 export function notificationOpenAction(
-  notification: Pick<MyNotificationV1, "id" | "notificationType" | "cta">,
+  notification: Pick<MyNotificationV1, "id" | "notificationType" | "cta" | "title">,
 ): { label: string; route: string } | null {
+  // An ERASED row (Ley 25.326 art. 16) says nothing more: no button (R11).
+  if (isErasedNotification(notification)) return null;
+  // An outside CTA goes through `aviso` too: the server answers `external` with
+  // the validated address and the screen opens it with Linking (R5).
   const route = notificationExplanationAppRoute(notification.id);
   if (notification.cta !== null) return { label: notification.cta.label, route };
   const spec = notificationKindSpec(notification.notificationType);

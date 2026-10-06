@@ -33,6 +33,8 @@ function aTarget(over: Partial<NotificationTargetV1> = {}): NotificationTargetV1
     reasonCopy: null,
     actorCopy: "Te toca a vos: aceptá o rechazá el traspaso.",
     pendingActor: "recipient",
+    externalUrl: null,
+    externalLabel: null,
     title: "Propuesta de traspaso",
     body: "Refugio Norte propone traspasar a Bruno.",
     ...over,
@@ -42,6 +44,7 @@ function aTarget(over: Partial<NotificationTargetV1> = {}): NotificationTargetV1
 function renderScreen(handlers: {
   onReplace?: (route: string) => void;
   onOpenWeb?: (target: NotificationTargetV1) => void;
+  onOpenExternal?: (url: string) => void;
   onOpenInbox?: () => void;
 }) {
   return render(
@@ -49,6 +52,7 @@ function renderScreen(handlers: {
       notificationId={ID}
       onReplace={handlers.onReplace ?? (() => undefined)}
       onOpenWeb={handlers.onOpenWeb ?? (() => undefined)}
+      onOpenExternal={handlers.onOpenExternal ?? (() => undefined)}
       onOpenInbox={handlers.onOpenInbox ?? (() => undefined)}
     />,
   );
@@ -147,7 +151,74 @@ describe("NotificationTargetScreen", () => {
       retryAfterSeconds: null,
     });
     renderScreen({});
-    expect(await screen.findByText(/No encontramos esta notificación en tu cuenta/)).toBeTruthy();
+    expect(
+      await screen.findByText(
+        "No encontramos esta notificación en tu cuenta. Puede que se haya borrado o que sea de otra cuenta.",
+      ),
+    ).toBeTruthy();
     expect(screen.getByText("Ir a notificaciones")).toBeTruthy();
+    // R6: retrying cannot make somebody else's notification theirs.
+    expect(screen.queryByText("Volver a intentar")).toBeNull();
+  });
+});
+
+// Review fixes R5 (external links) and R10 (one read per notification).
+describe("NotificationTargetScreen — review fixes", () => {
+  it("opens an outside link with the system and keeps the explanation", async () => {
+    const url = "https://www.argentina.gob.ar/salud/glosario/rabia";
+    mockFetchTarget.mockResolvedValue({
+      outcome: "ok",
+      payload: aTarget({
+        outcome: "external",
+        reason: "external",
+        externalUrl: url,
+        externalLabel: "Información oficial — Min. Salud",
+        webHref: `/notificaciones/${ID}`,
+        appRoute: `/aviso/${ID}`,
+        reasonCopy:
+          "Este aviso enlaza un sitio externo (Información oficial — Min. Salud). Se abre fuera de miMAR.",
+        actorCopy: null,
+      }),
+    });
+    const opened: string[] = [];
+    const replaced: string[] = [];
+    renderScreen({ onOpenExternal: (u) => opened.push(u), onReplace: (r) => replaced.push(r) });
+    await waitFor(() => expect(opened).toEqual([url]));
+    fireEvent.press(await screen.findByText("Información oficial — Min. Salud"));
+    expect(opened).toEqual([url, url]);
+    expect(replaced).toEqual([]);
+  });
+
+  it("refuses an outside link that is not a well-formed http(s) address", async () => {
+    mockFetchTarget.mockResolvedValue({
+      outcome: "ok",
+      payload: aTarget({
+        outcome: "external",
+        externalUrl: "javascript:alert(1)",
+        reasonCopy: "x",
+      }),
+    });
+    const opened: string[] = [];
+    renderScreen({ onOpenExternal: (u) => opened.push(u) });
+    await screen.findByText("Ir a notificaciones");
+    expect(opened).toEqual([]);
+  });
+
+  it("does not fetch or replace again when the parent re-renders with new callbacks", async () => {
+    mockFetchTarget.mockResolvedValue({ outcome: "ok", payload: aTarget() });
+    const replaced: string[] = [];
+    const view = renderScreen({ onReplace: (r) => replaced.push(r) });
+    await waitFor(() => expect(replaced).toHaveLength(1));
+    view.rerender(
+      <NotificationTargetScreen
+        notificationId={ID}
+        onReplace={(r) => replaced.push(r)}
+        onOpenWeb={() => undefined}
+        onOpenExternal={() => undefined}
+        onOpenInbox={() => undefined}
+      />,
+    );
+    await waitFor(() => expect(mockFetchTarget).toHaveBeenCalledTimes(1));
+    expect(replaced).toHaveLength(1);
   });
 });

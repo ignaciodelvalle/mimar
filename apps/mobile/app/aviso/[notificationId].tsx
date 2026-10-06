@@ -41,7 +41,12 @@ export default function AvisoRoute() {
       // The route came from the server's resolver, built from the same contract
       // this build carries — an in-app path, never a web one.
       onReplace={(route) => router.replace(route as Parameters<typeof router.replace>[0])}
-      onOpenWeb={(target) => void Linking.openURL(webOnlyUrl(API_BASE_URL, target))}
+      onOpenWeb={(target) => {
+        const url = webOnlyUrl(API_BASE_URL, target);
+        if (url !== null) void Linking.openURL(url);
+      }}
+      // Validated http(s) by the view-model before it gets here.
+      onOpenExternal={(url) => void Linking.openURL(url)}
       onOpenInbox={() => router.dismissTo(ROUTES.notificaciones)}
     />
   );
