@@ -131,6 +131,7 @@
     "seed:demo:scenario": "node --conditions=react-server --import tsx scripts/seed-demo-scenario.ts",
     "seed:turnos-testers": "node --conditions=react-server --import tsx scripts/seed-turnos-testers.ts",
     "seed:flagship": "node --conditions=react-server --import tsx scripts/seed-flagship-pampa.ts",
+    "seed:situaciones": "node --conditions=react-server --import tsx scripts/seed-situaciones.ts",
     "seed:play-reviewer": "node --conditions=react-server --import tsx scripts/seed-play-reviewer.ts",
     "seed:legal-baseline": "node --conditions=react-server --import tsx scripts/seed-legal-baseline.ts",
     "demo:verify": "node --conditions=react-server --import tsx scripts/demo-verify.ts",
