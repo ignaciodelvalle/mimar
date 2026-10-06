@@ -89,7 +89,16 @@ export type PushTokenResult =
  * `null` for a notification with no deep link: a tap still means "open the app",
  * which is a real outcome and not an absence.
  */
-export type PushTap = { url: string | null };
+export type PushTap = {
+  url: string | null;
+  /**
+   * `notifications.id`, when the server sent it (notificaciones-destinos,
+   * 2026-10). With it the tap asks the server where to go NOW
+   * (`GET /api/v1/me/notifications/{id}/target`) instead of trusting the stored
+   * `url`. Absent on pushes from an older server, which keep using `url`.
+   */
+  notificationId?: string;
+};
 
 export type PushPort = {
   /** Stable identifier, e.g. "module-missing" or "expo-notifications". */

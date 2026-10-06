@@ -374,6 +374,10 @@ function RootLayout() {
         {/* The inbox, a sibling for the same reason and a stronger one: a
             notification is addressed to a person, not to an animal. */}
         <Stack.Screen name="notificaciones" options={{ title: "Notificaciones" }} />
+        {/* One notification's destination (notificaciones-destinos). Usually
+            replaced by the case or the pet before anybody reads the header; when
+            it stays, it is explaining a notification, and says so. */}
+        <Stack.Screen name="aviso/[notificationId]" options={{ title: "Notificación" }} />
         {/* THE DEEP-LINK DESTINATION. A person can arrive here from a
             notification with no history behind them, so the header says what the
             screen IS rather than naming a step in a flow they did not walk. */}

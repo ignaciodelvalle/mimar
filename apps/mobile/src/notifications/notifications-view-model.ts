@@ -26,10 +26,11 @@
 // through the deep-link table, which knows which destinations the app has screens
 // for and which it does not.
 
-import type {
-  MyNotificationV1,
-  MyNotificationsV1,
-  NotificationCategoryV1,
+import {
+  type MyNotificationV1,
+  type MyNotificationsV1,
+  type NotificationCategoryV1,
+  notificationExplanationAppRoute,
 } from "@dim/contract/api";
 import type { NotificationCommandInput, NotificationCommandInputCode } from "@dim/contract/input";
 import {
@@ -39,11 +40,36 @@ import {
 import {
   type NotificationGroup,
   groupForDisplay,
+  notificationKindSpec,
   sortForDisplay,
   wireNotificationFacts,
 } from "@dim/contract/notifications";
 
 export type NotificationEntry = NotificationGroup<MyNotificationV1>;
+
+/**
+ * The row's "open" button (notificaciones-destinos, 2026-10): its label, and the
+ * route it pushes — ALWAYS `aviso/{id}`, never the stored `cta.route`.
+ *
+ * `cta.route` was the stored web path matched against this build's deep-link
+ * table, which answered two questions badly: whether the app has a screen (only
+ * as well as the table bundled into THIS build) and whether the reader may still
+ * open it (not at all — a transfer accepted since then is a 404). `aviso/{id}`
+ * asks the server both, at tap time, and replaces itself with the answer.
+ *
+ * A row the writer gave no CTA still gets "Ver detalle" when its kind leads
+ * somewhere; an informational kind (`primaryDestination: "none"`) with no CTA
+ * gets nothing — its body is already everything it has to say.
+ */
+export function notificationOpenAction(
+  notification: Pick<MyNotificationV1, "id" | "notificationType" | "cta">,
+): { label: string; route: string } | null {
+  const route = notificationExplanationAppRoute(notification.id);
+  if (notification.cta !== null) return { label: notification.cta.label, route };
+  const spec = notificationKindSpec(notification.notificationType);
+  if (spec === null || spec.primaryDestination === "none") return null;
+  return { label: "Ver detalle", route };
+}
 
 /**
  * The page, in the order a person reads it, collapsed the way the web collapses

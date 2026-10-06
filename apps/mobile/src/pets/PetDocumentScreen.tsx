@@ -43,13 +43,13 @@
 // household's other animals) is a different privacy class and none of that
 // reasoning carries over. A failed read says so and offers a retry.
 
-import type { OwnerPetSituationV1 } from "@dim/contract/api";
+import type { FormerOwnerPetReadV1, OwnerPetSituationV1 } from "@dim/contract/api";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { BackHandler, StyleSheet, Text, View } from "react-native";
 
 import { apiFailureMessage } from "../api/client";
-import { fetchOwnerPetDetail } from "../api/endpoints";
+import { fetchFormerOwnerPetRead, fetchOwnerPetDetail } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, Loading, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
@@ -59,6 +59,7 @@ import { COLORS, LEADING, SPACE, TYPE } from "../ui/theme";
 import { useReconnect } from "../ui/use-reconnect";
 import { DocumentChromeNative, type DocumentFace } from "./DocumentChromeNative";
 import { TurningSheet, useDocumentTurn } from "./DocumentTurn";
+import { FormerOwnerFace } from "./FormerOwnerFace";
 import { LibretaScreen } from "./LibretaScreen";
 import { OwnerActionPanel } from "./OwnerActionPanel";
 import { OwnerCredentialFace, OwnerExtraSections } from "./OwnerFace";
@@ -148,6 +149,14 @@ export function PetDocumentScreen({
   );
   const [owner, setOwner] = useState<OwnerState>({ phase: "loading" });
   /**
+   * The FORMER owner's read-only face (notificaciones-destinos, 2026-10): set
+   * only when the owner read answered `not_found` and the server granted the
+   * custody-episode read the web's pet page has had since PO 2026-07-18. While
+   * it is set the document is not drawn at all — this person holds nothing to
+   * draw it from — and the read-only view takes the screen.
+   */
+  const [former, setFormer] = useState<FormerOwnerPetReadV1 | null>(null);
+  /**
    * The PLATFORM spinner's flag, and it is a different thing from
    * `owner.phase === "loading"` — which is what it used to be wired to, and
    * the bug that cost the document two ways at once. Bound to the read's
@@ -206,8 +215,20 @@ export function PetDocumentScreen({
       // spinner of the newer read that superseded it.
       if (mode === "refresh") setRefreshing(false);
       if (result.outcome === "ok") {
+        setFormer(null);
         setOwner(loaded(buildOwnerFaceView(result.payload)));
         return;
+      }
+      // NOT FOUND MAY BE A FORMER OWNER, not a stranger: a seized animal's
+      // titular keeps a read while the custody episode is open. Asked only
+      // now, with its own parameter, so the two shapes never mix.
+      if (result.outcome === "api-error" && result.code === "not_found") {
+        const face = await fetchFormerOwnerPetRead(sessionPort, publicToken);
+        if (mine !== generation.current) return;
+        if (face.outcome === "ok") {
+          setFormer(face.payload);
+          return;
+        }
       }
       // KEEPING THE DOCUMENT ON SCREEN (S-2 / A3-documento-credencial-07). A
       // pull-to-refresh that failed used to replace the credential — chip,
@@ -249,6 +270,14 @@ export function PetDocumentScreen({
 
   const view = owner.phase === "ready" ? owner.view : null;
   const panel = useMemo(() => (view === null ? null : ownerPanelView(view)), [view]);
+
+  if (former !== null) {
+    return (
+      <Screen refreshControl={pullToRefresh(() => void load("refresh"), refreshing)}>
+        <FormerOwnerFace read={former} />
+      </Screen>
+    );
+  }
 
   return (
     // PULL TO REFRESH, and no button. A national credential's only blue

@@ -97,6 +97,7 @@ import {
   interpretPermission,
   interpretPermissionPeek,
   interpretTokenFailure,
+  notificationIdFromNotificationData,
   tapFromResponse,
 } from "./expo-push-adapter";
 
@@ -663,6 +664,22 @@ describe("deepLinkFromNotificationData — the payload is not trusted", () => {
     // A notification with no CTA is still a tap, and a tap still means "open the
     // app". Collapsing it to null would make the two indistinguishable.
     expect(tapFromResponse({ notification: { request: { content: {} } } })).toEqual({ url: null });
+  });
+
+  // notificaciones-destinos (2026-10): a current server also sends the row's id,
+  // which `push-tap.ts` turns into a route — so it is read as strictly as the url.
+  it("carries the notification id beside the url, and only a uuid-shaped one", () => {
+    const id = "44444444-4444-4444-8444-444444444444";
+    expect(
+      tapFromResponse({
+        notification: {
+          request: { content: { data: { url: "/mis-turnos", notificationId: id } } },
+        },
+      }),
+    ).toEqual({ url: "/mis-turnos", notificationId: id });
+    expect(notificationIdFromNotificationData({ notificationId: "../../admin" })).toBeNull();
+    expect(notificationIdFromNotificationData({ notificationId: 7 })).toBeNull();
+    expect(notificationIdFromNotificationData(null)).toBeNull();
   });
 });
 

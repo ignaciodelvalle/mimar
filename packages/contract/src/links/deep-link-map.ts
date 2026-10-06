@@ -520,6 +520,20 @@ export const DEEP_LINK_MAP = {
     appPath: "cuenta/transito",
     access: "session",
   },
+
+  /**
+   * One notification's explanation — where the resolver sends a reader whose
+   * case or pet is gone, or whose destination exists only on the web. The app's
+   * screen also resolves and replaces itself when there IS somewhere to go. The
+   * two paths differ (`aviso`, not `notificaciones/…`) because the app's inbox is
+   * a single route file; `notificationExplanationAppRoute` in
+   * `@dim/contract/api` builds the same string.
+   */
+  notificationDetail: {
+    webPath: "/notificaciones/:notificationId",
+    appPath: "aviso/:notificationId",
+    access: "session",
+  },
 } as const satisfies Record<string, DeepLinkDestination>;
 
 export type DeepLinkName = keyof typeof DEEP_LINK_MAP;

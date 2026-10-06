@@ -30,10 +30,10 @@ export default function NotificacionesRoute() {
 
   return (
     <NotificationsScreen
-      // The routes pushed here are already IN-APP paths: a CTA's came from
-      // `appRoutePath` on the server (null when the app has no screen, in which
-      // case the screen never offers the tap) and a pet link's came from
-      // `credentialRoute`. Nothing web-shaped reaches this cast.
+      // The routes pushed here are already IN-APP paths: a CTA's is
+      // `aviso/{id}` (`notificationExplanationAppRoute`, which asks the server
+      // where to go at tap time — notificaciones-destinos) and a pet link's came
+      // from `credentialRoute`. Nothing web-shaped reaches this cast.
       onOpenRoute={(route) => router.push(route as Parameters<typeof router.push>[0])}
       // `dismissTo` (NAV-4): the empty inbox's way out. The pet list is nearly
       // always the screen the inbox was opened from, and pushing a second copy

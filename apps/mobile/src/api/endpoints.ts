@@ -60,6 +60,10 @@ import {
   type CaretakerCommandAckV1,
   type EventAmendedV1,
   type EventRecordedV1,
+  FORMER_OWNER_FACE_PARAM,
+  FORMER_OWNER_FACE_VALUE,
+  FORMER_OWNER_PET_READ_PAYLOAD_VERSION,
+  type FormerOwnerPetReadV1,
   type FosterCommandAckV1,
   type GeocodingAckV1,
   type IdentityCompletedV1,
@@ -96,7 +100,9 @@ import {
   type MyTransfersV1,
   type MyWelfareReportDetailV1,
   type MyWelfareReportsV1,
+  NOTIFICATION_TARGET_PAYLOAD_VERSION,
   type NotificationCommandAckV1,
+  type NotificationTargetV1,
   OWNER_PET_DETAIL_PAYLOAD_VERSION,
   type OwnerPetDetailV1,
   PET_EVENT_DETAIL_PAYLOAD_VERSION,
@@ -398,6 +404,29 @@ export function fetchOwnerPetDetail(
     {
       path: `/api/v1/pets/${encodeURIComponent(publicToken)}`,
       expectedPayloadVersion: OWNER_PET_DETAIL_PAYLOAD_VERSION,
+    },
+    session,
+  );
+}
+
+/**
+ * `GET /pets/{publicToken}?face=former_owner` — the read-only face a FORMER
+ * owner keeps while an official custody episode is open (notificaciones-
+ * destinos, 2026-10; PO 2026-07-18). The same rule the web's pet page applies
+ * through `getFormerOwnerReadAccess`.
+ *
+ * ASKED ONLY AFTER `fetchOwnerPetDetail` ANSWERED `not_found`: with the
+ * parameter the server answers this face or `not_found`, never the holder
+ * detail, so the two shapes never mix.
+ */
+export function fetchFormerOwnerPetRead(
+  session: SessionPort,
+  publicToken: string,
+): Promise<ApiResult<FormerOwnerPetReadV1>> {
+  return apiRequest<FormerOwnerPetReadV1>(
+    {
+      path: `/api/v1/pets/${encodeURIComponent(publicToken)}?${FORMER_OWNER_FACE_PARAM}=${FORMER_OWNER_FACE_VALUE}`,
+      expectedPayloadVersion: FORMER_OWNER_PET_READ_PAYLOAD_VERSION,
     },
     session,
   );
@@ -1394,6 +1423,29 @@ export function fetchMyNotifications(
     {
       path: `/api/v1/me/notifications${suffix}`,
       expectedPayloadVersion: MY_NOTIFICATIONS_PAYLOAD_VERSION,
+    },
+    session,
+  );
+}
+
+/**
+ * `GET /me/notifications/{id}/target` — where one notification leads, decided
+ * by the server NOW (notificaciones-destinos, 2026-10).
+ *
+ * The push tap and the inbox CTA both open `aviso/{id}`, which calls this and
+ * replaces itself with `appRoute` — or stays and prints `reasonCopy` and
+ * `actorCopy` when the outcome is `explain` or the destination is web-only. A
+ * `not_found` means the row is not this person's; never "the destination is
+ * gone", which is an `explain` outcome with a 200.
+ */
+export function fetchNotificationTarget(
+  session: SessionPort,
+  notificationId: string,
+): Promise<ApiResult<NotificationTargetV1>> {
+  return apiRequest<NotificationTargetV1>(
+    {
+      path: `/api/v1/me/notifications/${encodeURIComponent(notificationId)}/target`,
+      expectedPayloadVersion: NOTIFICATION_TARGET_PAYLOAD_VERSION,
     },
     session,
   );

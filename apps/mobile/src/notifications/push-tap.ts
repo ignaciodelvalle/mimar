@@ -47,6 +47,7 @@ import { useEffect } from "react";
 
 import { useRouter } from "expo-router";
 
+import { notificationExplanationAppRoute } from "@dim/contract/api";
 import { type DeepLinkName, appRoutePath, matchWebPath } from "@dim/contract/links";
 
 import { type PushTap, lastPushTapSafely, onPushTapSafely } from "../native/push-port";
@@ -100,6 +101,27 @@ export function appRouteForPushUrl(url: string | null | undefined): string | nul
 }
 
 /**
+ * Where a tap goes (notificaciones-destinos, 2026-10).
+ *
+ * WITH AN ID, THE SERVER DECIDES AT TAP TIME. A push from a current server
+ * carries `notificationId`, and the tap opens the `aviso/{id}` screen, which
+ * asks `GET /api/v1/me/notifications/{id}/target` where the reader can go NOW
+ * and replaces itself with that screen — or stays and explains why the case or
+ * the pet is gone and who has to act. That deliberately overrides the header's
+ * "resolved here" for these pushes: the stored `url` was decided at send time,
+ * and the transfer accepted or the membership ended since then is exactly what
+ * turned it into "No disponible". The route itself still comes from the
+ * contract this build carries, so it cannot name a screen the build lacks.
+ *
+ * WITHOUT ONE (an older server's push), the stored `url` is matched exactly as
+ * before.
+ */
+export function appRouteForPushTap(tap: PushTap): string | null {
+  if (tap.notificationId) return notificationExplanationAppRoute(tap.notificationId);
+  return appRouteForPushUrl(tap.url);
+}
+
+/**
  * Whether this tap has already been acted on.
  *
  * IT IS MODULE STATE BECAUSE THE PROBLEM IS, and a ref would not have reached
@@ -145,7 +167,7 @@ export function usePushTapNavigation(): void {
     let cancelled = false;
 
     const go = (tap: PushTap): void => {
-      const route = appRouteForPushUrl(tap.url);
+      const route = appRouteForPushTap(tap);
       if (route === null) return;
       router.push(route as never);
     };

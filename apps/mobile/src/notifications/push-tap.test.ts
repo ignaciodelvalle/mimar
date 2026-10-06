@@ -26,7 +26,12 @@ jest.mock("expo-router", () => ({
 
 import type { PushPort, PushTap } from "../native/push-port";
 import { resetPushPort, setPushPort } from "../native/push-port";
-import { appRouteForPushUrl, resetPushTapHandling, usePushTapNavigation } from "./push-tap";
+import {
+  appRouteForPushTap,
+  appRouteForPushUrl,
+  resetPushTapHandling,
+  usePushTapNavigation,
+} from "./push-tap";
 
 /** Taps handed to whatever subscribed, so a test can deliver one on demand. */
 let listeners: Array<(tap: PushTap) => void> = [];
@@ -115,8 +120,14 @@ describe("appRouteForPushUrl", () => {
 
   it("answers null for a destination this app has no screen for", () => {
     // Most of the deep-link table is web-only and will stay that way. The tap
-    // still opens the app; it just does not navigate.
-    expect(appRouteForPushUrl("/p/DIM-PAMP-0001")).toBeNull();
+    // still opens the app; it just does not navigate. (`/p/{token}` used to be
+    // the example here; notificaciones-destinos gave the credential a signed-in
+    // screen — see the test below.)
+    expect(appRouteForPushUrl("/r/invite/INV-1")).toBeNull();
+  });
+
+  it("opens the app's credential screen for a lost-pet broadcast's /p/ link", () => {
+    expect(appRouteForPushUrl("/p/DIM-PAMP-0001")).toBe("/p/DIM-PAMP-0001");
   });
 
   it("does NOT open the front-desk fallback for a turno reminder's own link", () => {
@@ -155,6 +166,27 @@ describe("appRouteForPushUrl", () => {
 // ---------------------------------------------------------------------------
 // Arrival 1: the app was already running
 // ---------------------------------------------------------------------------
+
+// notificaciones-destinos (2026-10): a push from a current server carries the
+// notification's id, and the tap asks the server where to go NOW through the
+// `aviso/{id}` screen. A push without one (an older server) keeps the url.
+describe("appRouteForPushTap", () => {
+  const ID = "33333333-3333-4333-8333-333333333333";
+
+  it("opens aviso/{id} when the push carries the notification id, whatever the url says", () => {
+    expect(appRouteForPushTap({ url: "/mis-mascotas/DIM-PAMP-0001", notificationId: ID })).toBe(
+      `/aviso/${ID}`,
+    );
+    expect(appRouteForPushTap({ url: null, notificationId: ID })).toBe(`/aviso/${ID}`);
+  });
+
+  it("falls back to the stored url for a push with no id", () => {
+    expect(appRouteForPushTap({ url: "/mis-mascotas/DIM-PAMP-0001" })).toBe(
+      "/mascotas/DIM-PAMP-0001",
+    );
+    expect(appRouteForPushTap({ url: "/r/invite/INV-1" })).toBeNull();
+  });
+});
 
 describe("usePushTapNavigation — a tap on a running app", () => {
   it("opens the screen the notification pointed at", async () => {
@@ -195,7 +227,7 @@ describe("usePushTapNavigation — a tap on a running app", () => {
     await mount();
 
     act(() => {
-      for (const listener of listeners) listener({ url: "/p/DIM-PAMP-0001" });
+      for (const listener of listeners) listener({ url: "/r/invite/INV-1" });
     });
 
     expect(mockPush).not.toHaveBeenCalled();

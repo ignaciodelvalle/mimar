@@ -268,11 +268,33 @@ export function deepLinkFromNotificationData(data: unknown): string | null {
   return typeof url === "string" && url.length > 0 ? url : null;
 }
 
+/**
+ * The notification's id, when the server put one in the payload
+ * (notificaciones-destinos, 2026-10) — or `null`.
+ *
+ * Same posture as the url above: data from outside the app, read as `unknown`.
+ * UUID-SHAPED OR NOTHING, because `push-tap.ts` builds a route from it; a
+ * payload that lost or mangled the field degrades to the url, never to a route
+ * nobody wrote.
+ */
+export function notificationIdFromNotificationData(data: unknown): string | null {
+  if (typeof data !== "object" || data === null) return null;
+  const id = (data as { notificationId?: unknown }).notificationId;
+  return typeof id === "string" && UUID_SHAPE.test(id) ? id : null;
+}
+
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** One module response, as the port's `PushTap`. Exported for its own test. */
 export function tapFromResponse(response: {
   notification?: { request?: { content?: { data?: unknown } } };
 }): PushTap {
-  return { url: deepLinkFromNotificationData(response.notification?.request?.content?.data) };
+  const data = response.notification?.request?.content?.data;
+  const notificationId = notificationIdFromNotificationData(data);
+  return {
+    url: deepLinkFromNotificationData(data),
+    ...(notificationId === null ? {} : { notificationId }),
+  };
 }
 
 /**

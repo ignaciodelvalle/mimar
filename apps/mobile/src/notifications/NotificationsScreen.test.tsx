@@ -290,7 +290,10 @@ describe("NotificationsScreen — the affordances are the server's", () => {
     expect(screen.queryByText("Ver Pampa")).toBeNull();
   });
 
-  it("pushes the CTA's NATIVE route and never a web path", async () => {
+  // notificaciones-destinos (2026-10): the CTA no longer pushes the stored
+  // route — it opens `aviso/{id}`, which asks the server where to go at tap
+  // time. Still a NATIVE route, still never a web path.
+  it("pushes the CTA through aviso/{id}, a native route, never a web path", async () => {
     const pushed: string[] = [];
     mockFetch.mockResolvedValue({
       outcome: "ok",
@@ -306,10 +309,10 @@ describe("NotificationsScreen — the affordances are the server's", () => {
     renderScreen((route) => pushed.push(route));
     await waitFor(() => expect(screen.getByText("Ver el registro")).toBeTruthy());
     fireEvent.press(screen.getByText("Ver el registro"));
-    expect(pushed).toEqual(["/mascotas/DIM-PAMP-0001/eventos/ev-1"]);
+    expect(pushed).toEqual(["/aviso/n-1"]);
   });
 
-  it("renders a routeless CTA as inert text rather than a tap onto a blank stack", async () => {
+  it("makes a routeless CTA a real button onto aviso/{id}, never inert text", async () => {
     const pushed: string[] = [];
     mockFetch.mockResolvedValue({
       outcome: "ok",
@@ -319,15 +322,36 @@ describe("NotificationsScreen — the affordances are the server's", () => {
       }),
     });
     renderScreen((route) => pushed.push(route));
-    // AND IT SAYS SO (A5-ciudadanas-03). A bare greyed label read as a broken
-    // button to a sighted person and announced nothing at all to a screen reader
-    // — `<Text>` is not a control and carries no state. Three of the CTAs that
-    // landed here were the app's own destinations missing from `DEEP_LINK_MAP`,
-    // now rows in the table; what is left is the genuinely un-openable case (an
-    // absolute `https://` CTA), and the hint names the only thing that works.
-    const inert = await screen.findByText(/Leer la resolución · abrilo desde la web/);
-    fireEvent.press(inert);
-    expect(pushed).toEqual([]);
+    // notificaciones-destinos replaced the "abrilo desde la web" text
+    // (A5-ciudadanas-03's honest stopgap): the explanation screen now resolves
+    // the destination, and for a web-only one says so and offers the browser.
+    const button = await screen.findByRole("button", { name: "Leer la resolución" });
+    expect(screen.queryByText(/abrilo desde la web/)).toBeNull();
+    fireEvent.press(button);
+    expect(pushed).toEqual(["/aviso/n-1"]);
+  });
+
+  it("offers 'Ver detalle' on a row the writer gave no CTA, unless the kind is informational", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        total: 2,
+        notifications: [
+          aNotification({ id: "n-1", cta: null }),
+          aNotification({
+            id: "n-2",
+            notificationType: "pet_transfer_cancelled",
+            title: "Transferencia cancelada",
+            cta: null,
+            pet: null,
+            petLinkAvailable: false,
+          }),
+        ],
+      }),
+    });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText("Transferencia cancelada")).toBeTruthy());
+    expect(screen.getAllByText("Ver detalle")).toHaveLength(1);
   });
 
   it("offers 'marcar como leída' only while the row is unread", async () => {

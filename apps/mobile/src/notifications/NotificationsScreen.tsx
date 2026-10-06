@@ -25,9 +25,9 @@
 // order from the browser.
 //
 // EVERY AFFORDANCE COMES FROM THE SERVER. `petLinkAvailable` folds in a denylist
-// of notification types whose recipient no longer holds the animal, and
-// `cta.route` is a stored WEB path matched back through the deep-link table to a
-// screen this app actually has. A screen that derived either from what is on the
+// of notification types whose recipient no longer holds the animal, and the CTA
+// opens `aviso/{id}`, whose destination the server resolves at tap time
+// (notificaciones-destinos). A screen that derived either from what is on the
 // row would offer a link to "No encontramos esta página".
 //
 // OPTIMISM IS DELIBERATELY ABSENT. A tap on "marcar como leída" waits for the
@@ -70,6 +70,7 @@ import {
   emptyTitle,
   inboxSummary,
   notificationDateLabel,
+  notificationOpenAction,
   notificationsForDisplay,
   rowsOf,
   severityLabel,
@@ -488,6 +489,7 @@ function NotificationRow({
 }) {
   const unread = !notification.read;
   const tone = severityTone(notification.severity);
+  const openAction = notificationOpenAction(notification);
 
   return (
     <View style={[styles.row, unread ? tone.unread : styles.rowRead]}>
@@ -503,30 +505,21 @@ function NotificationRow({
         {notification.body !== null && <Text style={styles.rowBody}>{notification.body}</Text>}
 
         <View style={styles.actions}>
-          {/* The notification's own CTA, only when the app HAS the screen it
-              names. A label with no route is rendered as inert text below —
-              pushing a web path would open the app onto a blank stack. */}
-          {notification.cta !== null &&
-            (notification.cta.route !== null ? (
-              <RowAction
-                label={notification.cta.label}
-                emphasis
-                disabled={busy}
-                onPress={() => onOpenRoute(notification.cta?.route ?? "")}
-              />
-            ) : (
-              // AN INERT CTA SAYS SO NOW (A5-ciudadanas-03). It used to be a bare
-              // greyed label: sighted people read it as a broken button, and a
-              // screen reader announced nothing at all, because plain `<Text>` is
-              // not a control and carries no state. Three of these were the app's
-              // own destinations missing from `DEEP_LINK_MAP` — fixed at the
-              // contract — and what is left is the genuinely un-openable case, an
-              // absolute `https://` CTA the inbox cannot route. The hint names
-              // the only thing that does work.
-              <Text accessibilityRole="text" style={styles.inertCta}>
-                {`${notification.cta.label} · abrilo desde la web`}
-              </Text>
-            ))}
+          {/* The notification's own CTA, and it is NEVER inert any more
+              (notificaciones-destinos, 2026-10). It opens the `aviso/{id}`
+              screen, which asks the server where this notification leads NOW
+              and replaces itself with that screen — or explains why the case or
+              the pet is gone, who has to act, and offers the browser when the
+              destination exists only on the web. The old "abrilo desde la web"
+              text was a CTA the app had given up on. */}
+          {openAction !== null && (
+            <RowAction
+              label={openAction.label}
+              emphasis
+              disabled={busy}
+              onPress={() => onOpenRoute(openAction.route)}
+            />
+          )}
 
           {notification.petLinkAvailable && notification.pet !== null && (
             <RowAction
@@ -691,10 +684,4 @@ const styles = StyleSheet.create({
   },
   actionLabel: { fontFamily: FONTS.sans, fontSize: TYPE.sm, color: COLORS.inkSoft },
   actionLabelEmphasis: { fontFamily: FONTS.sans, fontSize: TYPE.sm, color: COLORS.surface },
-  inertCta: {
-    fontFamily: FONTS.sans,
-    fontSize: TYPE.sm,
-    color: COLORS.inkFaint,
-    paddingVertical: SPACE.sm,
-  },
 });

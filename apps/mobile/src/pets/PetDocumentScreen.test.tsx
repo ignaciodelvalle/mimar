@@ -27,6 +27,7 @@ const mockPush = jest.fn();
 // assertion.
 const mockOpenURL = jest.fn<(url: string) => Promise<unknown>>().mockResolvedValue(undefined);
 const mockFetchOwnerPetDetail = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockFetchFormerOwnerPetRead = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockFetchPetLibreta = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockSendReminder = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
@@ -111,6 +112,7 @@ jest.mock("expo-router", () => ({
 
 jest.mock("../api/endpoints", () => ({
   fetchOwnerPetDetail: (...args: unknown[]) => mockFetchOwnerPetDetail(...args),
+  fetchFormerOwnerPetRead: (...args: unknown[]) => mockFetchFormerOwnerPetRead(...args),
   fetchPetLibreta: (...args: unknown[]) => mockFetchPetLibreta(...args),
   sendVaccineReminderCommand: (...args: unknown[]) => mockSendReminder(...args),
 }));
@@ -295,6 +297,12 @@ beforeEach(() => {
   // the whole point of the mock and `mockReset` would strip it.
   mockOpenURL.mockClear();
   mockFetchOwnerPetDetail.mockReset();
+  mockFetchFormerOwnerPetRead.mockReset();
+  mockFetchFormerOwnerPetRead.mockResolvedValue({
+    outcome: "api-error",
+    code: "not_found",
+    retryAfterSeconds: null,
+  });
   mockFetchPetLibreta.mockReset();
   mockFocusCallbacks.length = 0;
   mockBackHandlers.length = 0;
@@ -1806,5 +1814,60 @@ describe("the compliance card prints its datum, not just its verdict", () => {
     expect(screen.getByText("Vacuna antirrábica")).toBeOnTheScreen();
     expect(screen.queryByText("—")).not.toBeOnTheScreen();
     expect(screen.queryByText("null")).not.toBeOnTheScreen();
+  });
+});
+
+// notificaciones-destinos (2026-10): a seized animal's former titular keeps a
+// READ while the custody episode is open (PO 2026-07-18). The owner read says
+// not_found for them; the screen then asks for the former-owner face instead of
+// stopping at "No disponible".
+describe("PetDocumentScreen — the former owner's read-only face", () => {
+  it("shows the custody banner and the animal when the server grants the read", async () => {
+    mockFetchOwnerPetDetail.mockResolvedValue({
+      outcome: "api-error",
+      code: "not_found",
+      retryAfterSeconds: null,
+    });
+    mockFetchFormerOwnerPetRead.mockResolvedValue({
+      outcome: "ok",
+      payload: {
+        payloadVersion: 1,
+        issuedAt: "2026-10-06T00:00:00.000Z",
+        staleAfter: "2026-10-06T00:01:00.000Z",
+        face: "former_owner_during_custody",
+        pet: {
+          publicToken: TOKEN,
+          name: "Toto",
+          species: "dog",
+          breed: null,
+          sex: "male",
+          dateOfBirth: null,
+        },
+        custodyCase: { publicCode: "CAS-CUST-0001" },
+      },
+    });
+    render(<PetDocumentScreen publicToken={TOKEN} />);
+    expect(await screen.findByText("Custodia oficial en curso")).toBeOnTheScreen();
+    expect(screen.getByText("Toto")).toBeOnTheScreen();
+    expect(screen.getByText(/Caso CAS-CUST-0001/)).toBeOnTheScreen();
+    expect(screen.queryByText("No disponible")).not.toBeOnTheScreen();
+    expect(mockFetchFormerOwnerPetRead).toHaveBeenCalledWith({}, TOKEN);
+  });
+
+  it("keeps the refusal for a stranger: no grant, no face", async () => {
+    mockFetchOwnerPetDetail.mockResolvedValue({
+      outcome: "api-error",
+      code: "not_found",
+      retryAfterSeconds: null,
+    });
+    render(<PetDocumentScreen publicToken={TOKEN} />);
+    expect(await screen.findByText("No disponible")).toBeOnTheScreen();
+    expect(screen.queryByText("Custodia oficial en curso")).not.toBeOnTheScreen();
+  });
+
+  it("never asks for the former-owner face when the owner read succeeds", async () => {
+    render(<PetDocumentScreen publicToken={TOKEN} />);
+    await waitFor(() => expect(mockFetchOwnerPetDetail).toHaveBeenCalled());
+    expect(mockFetchFormerOwnerPetRead).not.toHaveBeenCalled();
   });
 });
