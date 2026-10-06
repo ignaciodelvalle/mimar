@@ -1411,12 +1411,6 @@ body {
   border-color: var(--color-ln-memorial-chip-bd);
 }
 
-/* The band state chip — white-on-band, icon + label (WCAG: never color alone).
-   Bottom-CENTER of the band: the title owns top-left, the turn button
-   top-right, and the photo/QR poke up into the bottom corners on the front
-   face. Mirrors the turn button's translucent treatment so it reads as part
-   of the document chrome. */
-
 /* ---- Public document family (/p/, /t/, degraded) ------------------------- */
 /* Same paper as the landing carnet, sheet format: navy band + printed photo
    mount + situation chip. The band does NOT recolor with state (landing
@@ -2300,6 +2294,11 @@ body {
   gap: 8px;
   align-items: center;
   padding: 0 16px 14px;
+}
+/* The dorso's situation chip sits in flow right under the band (browser QA
+   2026-10-06): give it air from the band edge, like the app's backChipRow. */
+.pc-cred[data-face="back"] > .pc-chips {
+  padding-top: 12px;
 }
 
 /* The masthead state chip — icon + label (+ recency), never color alone. */

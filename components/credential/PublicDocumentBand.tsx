@@ -14,20 +14,24 @@ export function PublicDocumentBand({
   /** No photo rising into the band — /t/ and fail-soft sheets. */
   compact?: boolean;
   /**
-   * Left-column control (usually the mark). When null, paints the decorative
-   * mark. Callers that can turn the card pass a button with the same mark so
-   * both corners flip.
+   * START (left) slot. On a front face this is the mark; a caller that turns
+   * the card and mirrors it on the back passes the flip control here instead,
+   * so the DOM order (and Tab order) matches what is drawn. When null, paints
+   * the decorative mark.
    */
   brand?: ReactNode;
-  /** Landing-style turn control. Null on compact / throttle / degraded. */
+  /**
+   * END (right) slot: the turn control on a front face, the mark on a mirrored
+   * back face. Null on compact / throttle / degraded.
+   */
   flip?: ReactNode;
 }) {
   return (
     <div className={compact ? "pc-band pc-band--compact" : "pc-band"}>
       {!compact && <span className="pc-band-latent" aria-hidden="true" />}
       <div className="pc-band-head">
-        {/* Balance column — order swaps with .pc-band-trim on data-face="back"
-            (landing lp-hcard-head-balance), so mark and flip stay mirrored. */}
+        {/* Balance column = the start slot. Mirroring happens in the caller's
+            DOM order (DocumentChrome), not with CSS `order`. */}
         <span className="pc-band-balance">{brand ?? <PublicCredentialBrandMark />}</span>
         <span className="pc-band-doctype">{subtitle}</span>
         <span className="pc-band-trim">{flip}</span>
