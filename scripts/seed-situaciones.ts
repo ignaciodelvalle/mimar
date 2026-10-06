@@ -42,6 +42,8 @@
  * Usage: pnpm seed:situaciones
  */
 
+import { createHash } from "node:crypto";
+
 import { config as loadEnv } from "dotenv";
 
 import { resolveSeedPassword } from "./_env-target";
@@ -178,8 +180,15 @@ const transaction: Transaction = <T>(cb: (tx: unknown) => Promise<T>) =>
 const DAY_MS = 24 * 60 * 60 * 1000;
 const daysAgo = (n: number) => new Date(Date.now() - n * DAY_MS);
 const daysAhead = (n: number) => new Date(Date.now() + n * DAY_MS);
-/** The use cases' own replay guard: one fixed key per pet and step. */
-const idemKey = (token: string, step: string) => `seed-situaciones:${token}:${step}`;
+/**
+ * The use cases' own replay guard: one fixed key per pet and step. The column
+ * is a uuid, so the readable name is hashed into a stable UUID-shaped value
+ * (same input, same key, on every run).
+ */
+const idemKey = (token: string, step: string) => {
+  const hex = createHash("sha256").update(`seed-situaciones:${token}:${step}`).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+};
 
 const supabase = createSdkClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
