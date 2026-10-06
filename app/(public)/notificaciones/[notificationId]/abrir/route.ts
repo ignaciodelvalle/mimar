@@ -26,6 +26,8 @@ import { notificationTargetPorts } from "@/app/_composition/notification-target-
 import { caseViewerFromProfile } from "@/lib/infra/case-read";
 import { DbBudgetExceededError, withDbBudgetOrThrow } from "@/lib/infra/db-budget";
 import { type LiveUserResult, requireLiveUser } from "@/lib/infra/live-user";
+import { NOTIFICATION_DOOR_READ_LIMIT } from "@/lib/infra/public-browse-limits";
+import { RateLimitError, callerIp, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { reportError } from "@/lib/infra/report-error";
 import { sameOriginRedirect } from "@/lib/infra/same-origin-redirect";
 import { FIRST_ACCESS_PATH } from "@/src/modules/auth/domain/first-access";
@@ -36,6 +38,21 @@ import { notificationExplanationWebPath, notificationOpenWebPath } from "@dim/co
 export const dynamic = "force-dynamic";
 
 const RESOLVE_BUDGET_MS = 8_000;
+
+/** What a throttled tap gets: a plain, honest 429, not a redirect that would spend again. */
+function throttled(): Response {
+  return new Response(
+    "Recibimos muchas consultas desde tu conexión en poco tiempo. Esperá un minuto y volvé a intentarlo.",
+    {
+      status: 429,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Retry-After": "60",
+      },
+    },
+  );
+}
 
 /**
  * Where a refused session goes, mirroring `requireUserOrRedirect`
@@ -73,6 +90,21 @@ export async function GET(
 ) {
   const { notificationId } = await params;
   const explanation = notificationExplanationWebPath(notificationId);
+
+  // The limiter BEFORE the session read: the URL carries an identifier, this
+  // route sits in `(public)`, and `requireLiveUser()` is a GoTrue round-trip.
+  // Number and derivation: lib/infra/public-browse-limits.ts. Fails OPEN on a
+  // limiter fault, like every public-tree limiter: the limiter is a DB write.
+  try {
+    await enforceRateLimit(
+      "notification_open",
+      callerIp(request.headers),
+      NOTIFICATION_DOOR_READ_LIMIT,
+    );
+  } catch (err) {
+    if (err instanceof RateLimitError) return throttled();
+    reportError("notification-open-limiter", err);
+  }
 
   const live = await requireLiveUser();
   if (!live.ok) {

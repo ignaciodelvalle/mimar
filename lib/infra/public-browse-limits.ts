@@ -80,3 +80,37 @@ export const PUBLIC_BROWSE_READ_LIMIT: RateLimitConfig = {
   maxPerMinute: 120,
   maxPerHour: 3_600,
 };
+
+// ---------------------------------------------------------------------------
+// THE NOTIFICATION DOORS — a different caller, so a different number
+// ---------------------------------------------------------------------------
+//   /notificaciones/{id}/abrir  bucket `notification_open`         (route)
+//   /notificaciones/{id}        bucket `notification_explanation`  (page)
+//
+// Both live in `(public)` (the `(app)` layout bounces admin and govt accounts,
+// who receive notifications too), so the URL's identifier reaches them before
+// any session does, and `requireLiveUser()` / `requireUserOrRedirect()` is a
+// GoTrue round-trip. The limiter runs ahead of it, per the route census in
+// __tests__/public-token-throttle-coverage.test.ts.
+//
+// THE CALLER is a signed-in person tapping their own notification, not a
+// crawler: robots.txt has nothing to index here and every response is per
+// viewer. The crowd is a BROADCAST — an outbreak signal or a vaccination
+// campaign landing on everybody in a jurisdiction at once — seen from one
+// carrier gateway (the 1,000-subscriber planning figure above). Say 100 of
+// them use the product and all get the push. One tap is at most three renders:
+// the door, the explanation page, and the return from a login bounce.
+//
+//   per minute  120 = a quarter of them tapping inside the same minute,
+//                     two renders each (50), with the headroom above
+//   per hour  1,200 = all hundred, three renders each (300), four times over
+//
+// The buckets are separate for the same reason as above: the counters say
+// which door is being hit, and one cannot spend the other's budget.
+// FAILS OPEN on limiter failure, like the rest of this file.
+
+/** Per IP, for `notification_open` and `notification_explanation`. Derivation above. */
+export const NOTIFICATION_DOOR_READ_LIMIT: RateLimitConfig = {
+  maxPerMinute: 120,
+  maxPerHour: 1_200,
+};

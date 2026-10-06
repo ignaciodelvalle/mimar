@@ -8,6 +8,10 @@
 //     goes there, not to a login that would bounce it straight back.
 //   · R2 — the explanation page lives outside `(app)`, whose layout bounces
 //     admin and govt accounts to their portals; both roles can read it.
+//   · Both spend their own per-IP limiter BEFORE the session read — they sit
+//     in `(public)` with an identifier in the URL (route census in
+//     public-token-throttle-coverage.test.ts) — and a throttled caller reaches
+//     no session read and no resolve.
 
 import { readdirSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -19,20 +23,48 @@ const control = vi.hoisted(() => ({
   live: null as null | (() => unknown),
   target: null as null | (() => unknown),
   role: "admin" as string,
+  throttled: false,
+  limiterFault: false,
+  sessionReads: 0,
+  limiterCalls: [] as Array<{ bucket: string; key?: string }>,
 }));
+
+vi.mock("@/lib/infra/rate-limit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/infra/rate-limit")>();
+  return {
+    ...actual,
+    enforceRateLimit: async (bucket: string, key: string) => {
+      control.limiterCalls.push({ bucket, key });
+      if (control.limiterFault) throw new Error("rate_limit_buckets is unavailable");
+      if (control.throttled) throw new actual.RateLimitError(new Date(), "test");
+    },
+  };
+});
+vi.mock("@/lib/infra/public-token-throttle", () => ({
+  isPublicTokenReadThrottled: async (bucket: string) => {
+    control.limiterCalls.push({ bucket });
+    return control.throttled;
+  },
+}));
+vi.mock("@/lib/infra/report-error", () => ({ reportError: () => undefined }));
 
 vi.mock("@/lib/infra/live-user", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/infra/live-user")>();
   return {
     ...actual,
-    requireLiveUser: async () =>
-      control.live
+    requireLiveUser: async () => {
+      control.sessionReads += 1;
+      return control.live
         ? control.live()
-        : { ok: true, user: { id: "u-1" }, profile: { id: "u-1", role: control.role } },
+        : { ok: true, user: { id: "u-1" }, profile: { id: "u-1", role: control.role } };
+    },
   };
 });
 vi.mock("@/lib/infra/auth-guards", () => ({
-  requireUserOrRedirect: async () => ({ supabase: {}, user: { id: "u-1" } }),
+  requireUserOrRedirect: async () => {
+    control.sessionReads += 1;
+    return { supabase: {}, user: { id: "u-1" } };
+  },
 }));
 vi.mock("@/lib/infra/request-cache", () => ({
   getProfileCached: async () => ({ id: "u-1", role: control.role }),
@@ -80,15 +112,22 @@ function target(over: Partial<ResolvedNotificationTarget> = {}): ResolvedNotific
 }
 
 async function open(): Promise<Response> {
-  return openNotification(new Request(`${BASE}/notificaciones/${ID}/abrir`), {
-    params: Promise.resolve({ notificationId: ID }),
-  });
+  return openNotification(
+    new Request(`${BASE}/notificaciones/${ID}/abrir`, { headers: { "x-real-ip": "203.0.113.9" } }),
+    {
+      params: Promise.resolve({ notificationId: ID }),
+    },
+  );
 }
 
 beforeEach(() => {
   control.live = null;
   control.target = null;
   control.role = "admin";
+  control.throttled = false;
+  control.limiterFault = false;
+  control.sessionReads = 0;
+  control.limiterCalls = [];
 });
 
 describe("sameOriginPath (S1)", () => {
@@ -154,7 +193,44 @@ describe("/notificaciones/{id}/abrir", () => {
   });
 });
 
+describe("/notificaciones/{id}/abrir — the limiter runs first", () => {
+  it("spends its own bucket, keyed on the caller's address", async () => {
+    control.target = () => target({ outcome: "case", webHref: "/casos/CAS-AAAA-BBBB" });
+    await open();
+    expect(control.limiterCalls).toEqual([{ bucket: "notification_open", key: "203.0.113.9" }]);
+  });
+
+  it("answers a throttled caller 429 before any session read", async () => {
+    control.throttled = true;
+    const response = await open();
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("60");
+    expect(response.headers.get("location")).toBeNull();
+    expect(control.sessionReads).toBe(0);
+  });
+
+  it("fails OPEN when the limiter itself is broken", async () => {
+    control.limiterFault = true;
+    control.target = () => target({ outcome: "case", webHref: "/casos/CAS-AAAA-BBBB" });
+    const location = new URL((await open()).headers.get("location") ?? "");
+    expect(location.pathname).toBe("/casos/CAS-AAAA-BBBB");
+  });
+});
+
 describe("/notificaciones/{id} — the explanation page (R2)", () => {
+  it("spends its own bucket, and a throttled caller gets the notice and no session read", async () => {
+    control.throttled = true;
+    control.target = () => target();
+    const element = await NotificationExplanationPage({
+      params: Promise.resolve({ notificationId: ID }),
+    });
+    const html = renderToStaticMarkup(element);
+    expect(control.limiterCalls).toEqual([{ bucket: "notification_explanation" }]);
+    expect(control.sessionReads).toBe(0);
+    expect(html).toContain("Esperá un minuto");
+    expect(html).not.toContain("Señal de brote");
+  });
+
   it("does not live under (app), whose layout bounces admin and govt", () => {
     const appGroup = readdirSync("app/(app)/notificaciones");
     expect(appGroup).not.toContain("[notificationId]");

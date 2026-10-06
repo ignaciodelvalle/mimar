@@ -24,6 +24,8 @@ import { notificationTargetPorts } from "@/app/_composition/notification-target-
 import { requireUserOrRedirect } from "@/lib/infra/auth-guards";
 import { caseViewerFromProfile } from "@/lib/infra/case-read";
 import { DbBudgetExceededError, withDbBudgetOrThrow } from "@/lib/infra/db-budget";
+import { NOTIFICATION_DOOR_READ_LIMIT } from "@/lib/infra/public-browse-limits";
+import { isPublicTokenReadThrottled } from "@/lib/infra/public-token-throttle";
 import { getProfileCached } from "@/lib/infra/request-cache";
 import { resolveOwnNotificationTarget } from "@/src/modules/notifications/infrastructure/notification-target-probes";
 import { notificationExplanationWebPath } from "@dim/contract/api";
@@ -42,6 +44,19 @@ export default async function NotificationExplanationPage({
   params: Promise<{ notificationId: string }>;
 }) {
   const { notificationId } = await params;
+  // The limiter BEFORE the session read: the URL carries an identifier and this
+  // page sits in `(public)`, so anybody can reach it, and `getUser()` is a
+  // GoTrue round-trip. Number and derivation: lib/infra/public-browse-limits.ts.
+  if (await isPublicTokenReadThrottled("notification_explanation", NOTIFICATION_DOOR_READ_LIMIT)) {
+    return (
+      <Shell>
+        <p className="text-md text-[var(--color-ln-ink-2)]" data-section="notification-throttled">
+          Recibimos muchas consultas desde tu conexión en poco tiempo. Esperá un minuto y volvé a
+          intentarlo.
+        </p>
+      </Shell>
+    );
+  }
   const { user } = await requireUserOrRedirect(notificationExplanationWebPath(notificationId));
   const profile = await getProfileCached(user.id);
   if (!profile) redirect("/notificaciones");

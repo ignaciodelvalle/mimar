@@ -87,6 +87,15 @@ export const NO_STORE_PREFIXES: readonly string[] = [
   // coordinator banner on top: the cookie-dependent-variant hazard `/casos/`
   // is listed for.
   "/refugios",
+  // A notification's two web doors (notificaciones-destinos, 2026-10): the
+  // `/notificaciones/{id}/abrir` redirect and the `/notificaciones/{id}`
+  // explanation page. Both answer ONE viewer about ONE of their own rows — the
+  // title, the body and where they may go — so a shared cache keeping either
+  // would hand one person's notification, or one person's redirect, to the
+  // next. They sit in `(public)` only to escape the `(app)` layout's portal
+  // bounce. The trailing slash leaves the inbox itself (`/notificaciones`)
+  // alone; anything else under it in `(app)` is per-viewer too.
+  "/notificaciones/",
 ];
 
 // Exact paths (no subtree) that must always be live.
