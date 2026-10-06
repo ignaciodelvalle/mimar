@@ -10,10 +10,6 @@
 import { describe, expect, it } from "@jest/globals";
 
 import {
-  TURN_EDGE_ON_DEG as CONTRACT_EDGE,
-  TURN_OUT_MS as CONTRACT_OUT,
-} from "@dim/contract/credential";
-import {
   TURN_EDGE_ON_DEG,
   TURN_IN_MS,
   TURN_OUT_MS,
@@ -29,15 +25,12 @@ import {
 const animated = turnPlan(false);
 const reduced = turnPlan(true);
 
-// The numbers live in `@dim/contract/credential`. This file still names the
+// The numbers live in `@dim/contract/credential`. This file names the
 // literals so a re-export that pointed at the wrong binding would go red, and
 // so the native suite does not depend on the contract test having run.
+// (Comparing the re-export to the contract's own binding proved nothing — the
+// two are the same binding by construction.)
 describe("the numbers are the document plan in @dim/contract", () => {
-  it("re-exports the contract's document turn, not a second copy", () => {
-    expect(TURN_OUT_MS).toBe(CONTRACT_OUT);
-    expect(TURN_EDGE_ON_DEG).toBe(CONTRACT_EDGE);
-  });
-
   it("carries FlipCard's four durations, not approximations of them", () => {
     // FlipCard.tsx:143 `transform 0.2s ease-in`, :164 `setTimeout(…, 205)`,
     // :155 `transform 0.26s ease-out`, :162 `setTimeout(…, 280)`.
