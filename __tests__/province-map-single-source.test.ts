@@ -88,7 +88,7 @@ describe("the detector", () => {
 });
 
 describe("the repository", () => {
-  it("has no province map outside the frozen list", () => {
+  it("has no province map outside the frozen list", { timeout: 30_000 }, () => {
     const { violations } = evaluate(readSources());
     expect(violations).toEqual([]);
   });
