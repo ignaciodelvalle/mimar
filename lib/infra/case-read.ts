@@ -65,6 +65,26 @@ export type CaseReadOutcome =
       timelineEvents: CaseEventRow[];
     };
 
+/**
+ * The case header with its free text removed, for a reader who has not accepted
+ * the hand-off yet: the events lose notes and payloads, and the opened reason
+ * keeps its structured motive but not the judicial reference.
+ */
+export function withholdFreeText(detail: CaseDetail): CaseDetail {
+  const params =
+    typeof detail.openedReasonParams === "object" && detail.openedReasonParams !== null
+      ? { ...(detail.openedReasonParams as Record<string, unknown>), judicialRef: null }
+      : detail.openedReasonParams;
+  return {
+    ...detail,
+    openedReasonParams: params,
+    openedReason: detail.openedReason
+      ? detail.openedReason.replace(/judicial_ref=\S+/g, "judicial_ref=sin_ref")
+      : detail.openedReason,
+    events: detail.events.map((e) => ({ ...e, notes: null, payload: {} })),
+  };
+}
+
 export async function readCaseForViewer(
   publicCode: string,
   viewer: CaseViewer | null,
@@ -101,11 +121,22 @@ export async function readCaseForViewer(
   const visibleEvents = detail.events.filter(
     (e) => e.eventType !== "finder_tip" || isAuthorityViewer,
   );
-  // A hand-off org party reads the timeline WITHOUT the free-form notes until it
-  // has accepted (security review S2) — see `caseNotesWithheldFor`.
-  const timelineEvents = (await caseNotesWithheldFor(detail, viewer))
-    ? visibleEvents.map((e) => ({ ...e, notes: null }))
-    : visibleEvents;
+  // A hand-off org party reads the case WITHOUT free text until it has accepted
+  // (security review S2 + re-review): no event notes, no event payloads (the
+  // summaries and labels are built from them — complaint prose, addresses,
+  // free-text reasons), and no judicial reference in the opened reason. Every
+  // renderer reads THIS result — the web case page, /api/v1/me/cases and the
+  // app's case screen through it — so the cut is made once.
+  if (await caseNotesWithheldFor(detail, viewer)) {
+    const timelineEvents = visibleEvents.map((e) => ({ ...e, notes: null, payload: {} }));
+    return {
+      kind: "readable",
+      detail: withholdFreeText(detail),
+      viewer,
+      isAuthorityViewer,
+      timelineEvents,
+    };
+  }
 
-  return { kind: "readable", detail, viewer, isAuthorityViewer, timelineEvents };
+  return { kind: "readable", detail, viewer, isAuthorityViewer, timelineEvents: visibleEvents };
 }

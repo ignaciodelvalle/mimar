@@ -375,12 +375,18 @@ beforeAll(async () => {
   }
   // S2: a free-form note on the open and on the accepted (closed) hand-off.
   await db.insert(caseEvents).values([
-    { caseId: caseIds.handshakeOpen, entryType: "org_intervention_note", notes: NOTE_OPEN },
+    {
+      caseId: caseIds.handshakeOpen,
+      entryType: "org_intervention_note",
+      notes: NOTE_OPEN,
+      payload: { note: PAYLOAD_OPEN },
+    },
     { caseId: caseIds.handshakeClosed, entryType: "org_intervention_note", notes: NOTE_CLOSED },
   ]);
 }, 120_000);
 
 const NOTE_OPEN = "Nota interna: la familia vive en Calle Falsa 123.";
+const PAYLOAD_OPEN = "Texto libre en el payload: Calle Falsa 123, timbre B.";
 const NOTE_CLOSED = "Nota interna posterior a la aceptación.";
 
 afterAll(async () => {
@@ -644,6 +650,11 @@ describe("case notes for a hand-off org party (S2)", () => {
     if (read.kind !== "readable") return;
     expect(read.timelineEvents.some((e) => e.notes === NOTE_OPEN)).toBe(false);
     expect(read.timelineEvents.length).toBeGreaterThan(0);
+    // Re-review item 3: free-text PAYLOAD fields go with the notes — the
+    // timeline summary, the API and the app all render from this result.
+    const everything = JSON.stringify(read);
+    expect(everything).not.toContain(PAYLOAD_OPEN);
+    expect(everything).not.toContain("Calle Falsa");
   });
 
   it("shows them once the hand-off was accepted", async () => {
@@ -678,35 +689,42 @@ describe("public.can_read_case agrees with canReadCase on the 0281 arms", () => 
       where proname = 'can_read_case'
         and prosrc like '%custody_transfer_handshake%'
         and prosrc like '%m.role in (''admin'', ''coordinator'')%'
+        and prosrc like '%c.closed_reason = ''resolved'' and exists%'
     `)) as unknown as Array<{ n: number }>;
     if ((rows[0]?.n ?? 0) === 0) {
       throw new Error("0281 no está aplicada en esta base (pnpm db:migrate)");
     }
   });
 
-  const cells: Array<[keyof typeof caseIds, UserKey, boolean]> = [
-    ["handshakeOpen", "receiverCoordinator", true],
-    ["handshakeOpen", "receiverVolunteer", false],
-    ["episode", "receiverVolunteer", false],
-    ["handshakeOpen", "sender", true],
-    ["handshakeOpen", "receiver", true],
-    ["handshakeClosed", "receiver", true],
-    ["handshakeOpen", "receiverLeft", false],
-    ["handshakeOpen", "stranger", false],
-    ["episode", "receiver", true],
-    ["episode", "oldReceiver", false],
-    ["episode", "formerOwner", false],
-    ["denuncia", "reporterOrg", false],
-    ["bite", "coOwner", false],
-    ["bite", "titular", true],
+  // [case, reader, TypeScript canReadCase, SQL can_read_case]. The two differ
+  // ON PURPOSE for an org party of an UNACCEPTED hand-off: TS admits it (the app
+  // shows the case with notes and payloads withheld), SQL does not (pet_events /
+  // attachments RLS delegates to it, and a party's JWT would read raw notes over
+  // PostgREST). After acceptance both admit it. See the 0281 header.
+  const cells: Array<[keyof typeof caseIds, UserKey, boolean, boolean]> = [
+    ["handshakeOpen", "receiverCoordinator", true, false],
+    ["handshakeOpen", "sender", true, false],
+    ["handshakeOpen", "receiver", true, false],
+    ["episode", "receiver", true, false],
+    ["handshakeClosed", "receiver", true, true],
+    ["handshakeClosed", "sender", true, true],
+    ["handshakeOpen", "receiverVolunteer", false, false],
+    ["episode", "receiverVolunteer", false, false],
+    ["handshakeOpen", "receiverLeft", false, false],
+    ["handshakeOpen", "stranger", false, false],
+    ["episode", "oldReceiver", false, false],
+    ["episode", "formerOwner", false, false],
+    ["denuncia", "reporterOrg", false, false],
+    ["bite", "coOwner", false, false],
+    ["bite", "titular", true, true],
   ];
-  for (const [caseKey, user, expected] of cells) {
-    it(`${caseKey} × ${user} → ${expected}`, async () => {
+  for (const [caseKey, user, ts, sqlVerdict] of cells) {
+    it(`${caseKey} × ${user} → TS ${ts}, SQL ${sqlVerdict}`, async () => {
       const detail = await getCaseDetailByPublicCode(caseCodes[caseKey]);
       expect(detail).not.toBeNull();
       if (!detail) return;
-      expect(await canReadCase(detail, viewer(user))).toBe(expected);
-      expect(await sqlCanReadCase(caseIds[caseKey], ids[user])).toBe(expected);
+      expect(await canReadCase(detail, viewer(user))).toBe(ts);
+      expect(await sqlCanReadCase(caseIds[caseKey], ids[user])).toBe(sqlVerdict);
     });
   }
 });

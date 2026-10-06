@@ -119,6 +119,17 @@ export async function isActiveOrgCaseParty(orgId: string, userId: string): Promi
   return Boolean(memberRow);
 }
 
+/**
+ * Whether a hand-off case was ACCEPTED: both accept paths close the case as
+ * `resolved` (accept-cross-org-transfer, accept-decomiso-handoff). THE ONE
+ * predicate for "after acceptance" — the notes cut below, the decomiso evidence
+ * gate, and the SQL `can_read_case` arms of migration 0281
+ * (`c.status = 'closed' and c.closed_reason = 'resolved'`) all mean this.
+ */
+export function handoffAccepted(detail: { status: string; closedReason: string | null }): boolean {
+  return detail.status === "closed" && detail.closedReason === "resolved";
+}
+
 /** The kinds whose org parties were admitted by migration 0281. */
 const HANDOFF_PARTY_KINDS: ReadonlySet<string> = new Set([
   "custody_transfer_handshake",
@@ -143,7 +154,7 @@ export async function caseNotesWithheldFor(
   if (!viewer) return false;
   if (!HANDOFF_PARTY_KINDS.has(detail.caseKind)) return false;
   if (hasNationalReadScope(viewer.role) || viewer.role === "govt") return false;
-  if (detail.status === "closed" && detail.closedReason === "resolved") return false;
+  if (handoffAccepted(detail)) return false;
   if (detail.pet) {
     const [ownerRow] = await db
       .select({ id: ownerships.id })
@@ -317,6 +328,15 @@ export async function canReadCase(detail: CaseDetail, viewer: CaseViewer | null)
   // the cross_org_transfer_* writers notify the org's ADMINS and COORDINATORS
   // (transfers-repository orgCoordinatorAdminUserIds), so a volunteer of either
   // org does not read the case (security review S2; PO confirmation pending).
+  //
+  // DELIBERATE TS/SQL DIVERGENCE (security re-review): this arm admits the
+  // party BEFORE acceptance, so the app can show the case with its notes and
+  // free-text payloads withheld (`caseNotesWithheldFor`, readCaseForViewer).
+  // The SQL mirror in 0281 admits it only AFTER acceptance (`handoffAccepted`),
+  // because RLS on pet_events / attachments delegates to can_read_case and a
+  // party's own JWT would otherwise read the raw notes over PostgREST. Server
+  // reads go through Drizzle (BYPASSRLS), so the app is unaffected. Pinned by
+  // __tests__/notification-target-matrix.test.ts ("SQL admits only after").
   if (detail.caseKind === "custody_transfer_handshake") {
     for (const org of [detail.openedByOrganization, detail.receiverOrganization]) {
       if (org && (await isActiveOrgCaseParty(org.id, viewer.userId))) return true;
@@ -329,7 +349,8 @@ export async function canReadCase(detail: CaseDetail, viewer: CaseViewer | null)
   // govt org reads through the govt branch above; a receiver the authority
   // reassigned away no longer matches the column and is a stranger again.
   // Mirrored in SQL by migration 0281. Admins and coordinators only, the roles
-  // execute-decomiso / reassign-decomiso notify (security review S2).
+  // execute-decomiso / reassign-decomiso notify (security review S2). Same
+  // deliberate TS/SQL divergence as the handshake arm above.
   if (detail.caseKind === "custody_episode" && detail.receiverOrganization) {
     if (await isActiveOrgCaseParty(detail.receiverOrganization.id, viewer.userId)) return true;
   }

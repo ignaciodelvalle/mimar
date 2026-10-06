@@ -93,7 +93,7 @@ import {
   profiles,
 } from "@/db";
 import { validateEventPayload } from "@/lib/events/event-schemas";
-import { openCase } from "@/lib/infra/case-helpers";
+import { closeCase, openCase } from "@/lib/infra/case-helpers";
 import { withholdUnreadableDecomisoEvidence } from "@/lib/infra/decomiso-evidence-access";
 import { generatePublicToken } from "@/lib/infra/publicToken";
 import { generateUniqueToken } from "@/lib/infra/unique-token";
@@ -779,7 +779,10 @@ describe("executeDecomisoAction — unowned_animal jurisdiction", () => {
 // ---------------------------------------------------------------------------
 
 describe("withholdUnreadableDecomisoEvidence — D7 read rule", () => {
-  async function stubProfile(opts: { receiverMember: boolean }): Promise<string> {
+  async function stubProfile(opts: {
+    receiverMember: boolean;
+    role?: "coordinator" | "volunteer";
+  }): Promise<string> {
     const id = randomUUID();
     await db.insert(profiles).values({
       id,
@@ -792,7 +795,7 @@ describe("withholdUnreadableDecomisoEvidence — D7 read rule", () => {
       await db.insert(organizationMemberships).values({
         userId: id,
         organizationId: receiverOrgId,
-        role: "coordinator",
+        role: opts.role ?? "coordinator",
       });
     }
     return id;
@@ -816,14 +819,14 @@ describe("withholdUnreadableDecomisoEvidence — D7 read rule", () => {
     ]);
   });
 
-  it("a member of the receiver org reads the evidence", async () => {
+  // Security re-review (notificaciones-destinos): the receiving shelter decides
+  // on the case summary; the evidence — and its GPS — opens to its admins and
+  // coordinators only AFTER it accepted the hand-off, the rule the 0281 case
+  // arms follow. The acceptance itself is the last test of this block.
+  it("a receiver coordinator does NOT read the evidence before accepting", async () => {
     const member = await stubProfile({ receiverMember: true });
     const visible = await withholdUnreadableDecomisoEvidence(rows(), member);
-    expect(visible.map((r) => r.storagePath)).toEqual([
-      "decomiso/dir/legacy.jpg",
-      "decomiso-evidence/dir/acta.pdf",
-      "pet/vacuna.jpg",
-    ]);
+    expect(visible.map((r) => r.storagePath)).toEqual(["pet/vacuna.jpg"]);
   });
 
   it("the pet's later titular (an adopter) does NOT read the seizure evidence", async () => {
@@ -848,5 +851,20 @@ describe("withholdUnreadableDecomisoEvidence — D7 read rule", () => {
       const visible = await withholdUnreadableDecomisoEvidence(rows(), viewer);
       expect(visible.map((r) => r.storagePath)).toEqual(["pet/vacuna.jpg"]);
     }
+  });
+
+  it("after acceptance a receiver coordinator reads the evidence, a volunteer still does not", async () => {
+    const coordinator = await stubProfile({ receiverMember: true, role: "coordinator" });
+    const volunteer = await stubProfile({ receiverMember: true, role: "volunteer" });
+    // Both accept paths close the hand-off case as resolved (handoffAccepted).
+    await closeCase({ caseId, reason: "resolved", closedByUserId: govtUserId });
+    const forCoordinator = await withholdUnreadableDecomisoEvidence(rows(), coordinator);
+    expect(forCoordinator.map((r) => r.storagePath)).toEqual([
+      "decomiso/dir/legacy.jpg",
+      "decomiso-evidence/dir/acta.pdf",
+      "pet/vacuna.jpg",
+    ]);
+    const forVolunteer = await withholdUnreadableDecomisoEvidence(rows(), volunteer);
+    expect(forVolunteer.map((r) => r.storagePath)).toEqual(["pet/vacuna.jpg"]);
   });
 });

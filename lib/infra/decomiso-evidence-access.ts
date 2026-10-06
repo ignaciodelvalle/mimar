@@ -32,7 +32,7 @@ import {
   jurisdictionScopeContains,
 } from "@/lib/domain/jurisdiction-canonical";
 import { isDecomisoEvidencePath } from "@/lib/infra/attachment-location";
-import { type canReadCase, isActiveOrgMember } from "@/lib/infra/case-access";
+import { type canReadCase, handoffAccepted, isActiveOrgCaseParty } from "@/lib/infra/case-access";
 import { getCaseDetailByPublicCode } from "@/lib/infra/case-queries";
 import { getJurisdictionsCached, getProfileCached } from "@/lib/infra/request-cache";
 
@@ -111,7 +111,11 @@ async function readableEvidenceEventIds(
  * authority and the receiver, so only these read it:
  *   · admin / national (universal read scope);
  *   · govt whose jurisdiction contains the case;
- *   · an active member of the receiver organization.
+ *   · an active ADMIN or COORDINATOR of the receiver organization, and only
+ *     AFTER it accepted the hand-off (`handoffAccepted`) — the rule the case
+ *     arms of migration 0281 follow (security re-review): before accepting, a
+ *     receiving shelter decides on the case summary, not on the evidence and
+ *     its GPS.
  * No titular branch at all — current or former.
  */
 async function viewerReadsDecomiso(
@@ -129,7 +133,6 @@ async function viewerReadsDecomiso(
       detail.localityId,
     );
   }
-  return detail.receiverOrganization
-    ? isActiveOrgMember(detail.receiverOrganization.id, viewer.userId)
-    : false;
+  if (!detail.receiverOrganization || !handoffAccepted(detail)) return false;
+  return isActiveOrgCaseParty(detail.receiverOrganization.id, viewer.userId);
 }

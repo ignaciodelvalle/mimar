@@ -165,8 +165,10 @@ begin
   -- and the receiving org (receiver_organization_id, the column the accept
   -- path authorizes against). Active ADMINS and COORDINATORS only — the roles
   -- those writers notify (S2, PO confirmation pending). Migration 0281.
+  -- Admitted only AFTER acceptance (closed as 'resolved'): see the header's
+  -- "DELIBERATE DIVERGENCE FROM canReadCase".
   if c.case_kind = 'custody_transfer_handshake' then
-    return exists (
+    return c.status = 'closed' and c.closed_reason = 'resolved' and exists (
       select 1 from public.organization_memberships m
       where m.user_id = p_user_id
         and m.left_at is null
@@ -179,8 +181,9 @@ begin
   -- (receiver_organization_id). The opening govt org reads through the
   -- govt_scope branch above; a reassigned-away receiver no longer matches.
   -- Admins and coordinators only (S2, PO confirmation pending). Migration 0281.
+  -- Admitted only AFTER acceptance, like the handshake arm above.
   if c.case_kind = 'custody_episode' and c.receiver_organization_id is not null then
-    return exists (
+    return c.status = 'closed' and c.closed_reason = 'resolved' and exists (
       select 1 from public.organization_memberships m
       where m.organization_id = c.receiver_organization_id
         and m.user_id = p_user_id

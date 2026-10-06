@@ -36,6 +36,19 @@
 --      reads the case.
 --   Either can be widened later by a forward migration once the PO decides.
 --
+-- DELIBERATE DIVERGENCE FROM canReadCase (security re-review)
+-- ---------------------------------------------------------------------------
+-- The arms below admit the org party only AFTER acceptance — the hand-off case
+-- closed as 'resolved' (both accept paths close it that way; TS names the same
+-- predicate handoffAccepted). lib/infra/case-access.ts canReadCase admits the
+-- same party BEFORE acceptance too, so the app can show the case with notes and
+-- free-text payloads withheld. The SQL cannot do that: the pet_events and
+-- attachments SELECT policies (db/rls.sql) delegate to this function, and a
+-- party's own JWT would read raw notes and payloads over PostgREST. App reads go
+-- through Drizzle (BYPASSRLS) and are unaffected. The divergence is pinned by
+-- __tests__/notification-target-matrix.test.ts (SQL false before, true after;
+-- TS true before, with notes withheld).
+--
 -- NOT in this change, deliberately (PO / legal decision pending): the org that
 -- OPENED a welfare_denuncia, and a co_owner on any case. The notification
 -- resolver explains those refusals instead of widening them.
@@ -189,8 +202,10 @@ begin
   -- and the receiving org (receiver_organization_id, the column the accept
   -- path authorizes against). Active ADMINS and COORDINATORS only — the roles
   -- those writers notify (S2, PO confirmation pending). Migration 0281.
+  -- Admitted only AFTER acceptance (closed as 'resolved'): see the header's
+  -- "DELIBERATE DIVERGENCE FROM canReadCase".
   if c.case_kind = 'custody_transfer_handshake' then
-    return exists (
+    return c.status = 'closed' and c.closed_reason = 'resolved' and exists (
       select 1 from public.organization_memberships m
       where m.user_id = p_user_id
         and m.left_at is null
@@ -203,8 +218,9 @@ begin
   -- (receiver_organization_id). The opening govt org reads through the
   -- govt_scope branch above; a reassigned-away receiver no longer matches.
   -- Admins and coordinators only (S2, PO confirmation pending). Migration 0281.
+  -- Admitted only AFTER acceptance, like the handshake arm above.
   if c.case_kind = 'custody_episode' and c.receiver_organization_id is not null then
-    return exists (
+    return c.status = 'closed' and c.closed_reason = 'resolved' and exists (
       select 1 from public.organization_memberships m
       where m.organization_id = c.receiver_organization_id
         and m.user_id = p_user_id
@@ -235,6 +251,7 @@ BEGIN
       AND p.prosrc LIKE '%c.case_kind = ''custody_transfer_handshake''%'
       AND p.prosrc LIKE '%m.organization_id in (c.opened_by_organization_id, c.receiver_organization_id)%'
       AND p.prosrc LIKE '%m.role in (''admin'', ''coordinator'')%'
+      AND p.prosrc LIKE '%return c.status = ''closed'' and c.closed_reason = ''resolved'' and exists (%'
       AND p.prosrc LIKE '%c.case_kind = ''custody_episode'' and c.receiver_organization_id is not null%'
       AND p.prosrc LIKE '%cdp.party_organization_id%'
   ) THEN
