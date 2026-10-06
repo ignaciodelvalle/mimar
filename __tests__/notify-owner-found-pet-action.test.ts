@@ -169,7 +169,11 @@ function insertChain(table: unknown): Chain {
   let written: Row[] = [{}];
   const settle = (): Promise<Row[]> => {
     if (failing) return Promise.reject(new Error("pool blip: connection terminated"));
-    return Promise.resolve(written.map((_, i) => ({ id: `notif-${i + 1}` })));
+    // RETURNING answers with what the row was written with, as Postgres does:
+    // the bulk path maps ids back to inputs by `dedupeKey`.
+    return Promise.resolve(
+      written.map((row, i) => ({ id: `notif-${i + 1}`, dedupeKey: row.dedupeKey ?? null })),
+    );
   };
   const chain: Chain = {
     values: (v: Row | Row[]) => {
