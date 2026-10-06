@@ -373,6 +373,17 @@ export function evaluateStorageReadPolicies(rows: StoragePolicyRow[]): {
 // column grants (has_column_privilege) must stay inside the declaration. An
 // entry for a table that is no longer an anon surface is stale and must go:
 // the list only shrinks by being edited.
+//
+// A COLUMN GRANT IS NOT A DURABLE FIX (0280). 0278 narrowed organizations to a
+// column grant under an anon row policy; scripts/deploy-provision.ts replays
+// the migrations and THEN re-grants ALL on every public table to anon, so a
+// fresh provision served the whole row again. The durable fix for a table
+// whose rows anon must not read is to have NO policy that admits anon (RLS
+// holds whatever the grants are); a policy on another table that needs a fact
+// about it asks a SECURITY DEFINER helper (0280's org_is_verified). The
+// provisioner runs this same check after its re-grant
+// (anonReadProvisionShortfalls), so an entry with a column list would fail
+// every provision — that is intended.
 
 /** One declared anonymous read surface: the columns anon may read, and why. */
 export type AnonReadSurfaceEntry = {
@@ -381,11 +392,9 @@ export type AnonReadSurfaceEntry = {
 };
 
 export const ANON_READ_SURFACE: Record<string, AnonReadSurfaceEntry> = {
-  organizations: {
-    columns: ["id", "verified"],
-    reason:
-      "0278: exactly what the organization_coverage policy's sub-select reads. Every other column (contact, CUIT, coordinates) is server-side only, over Drizzle.",
-  },
+  // organizations left this list in 0280: no policy admits anon any more. In
+  // 0278 it was declared as (id, verified) behind a column grant, which the
+  // provisioner's re-grant undid.
   organization_coverage: {
     columns: "*",
     reason:
@@ -476,12 +485,37 @@ export function evaluateAnonReadSurface(
   return { violations, surfaced };
 }
 
+/**
+ * The provisioning half of check 6, run by scripts/deploy-provision.ts AFTER
+ * its blanket re-grant: one shortfall line per undeclared anon surface or per
+ * table whose anon columns exceed the declaration. Stale declarations are not
+ * a provisioning failure (nothing is exposed by them); lint:rls reports those.
+ */
+export function anonReadProvisionShortfalls(
+  rows: AnonReadRow[],
+  declared: Record<string, AnonReadSurfaceEntry> = ANON_READ_SURFACE,
+): string[] {
+  const shortfalls: string[] = [];
+  for (const v of evaluateAnonReadSurface(rows, declared).violations) {
+    if (v.kind === "undeclared") {
+      shortfalls.push(
+        `anon can SELECT ${v.table_name} through a row policy and it is not declared in ANON_READ_SURFACE (${v.anon_columns.length} column(s) readable)`,
+      );
+    } else if (v.kind === "columns") {
+      shortfalls.push(
+        `anon can read ${v.table_name} column(s) beyond its ANON_READ_SURFACE declaration after the re-grant: ${v.extra_columns.join(", ")}`,
+      );
+    }
+  }
+  return shortfalls;
+}
+
 function describeAnonReadViolation(v: AnonReadViolation): string {
   switch (v.kind) {
     case "undeclared":
-      return `✗ ${v.table_name} — a policy lets anon (the publishable key) SELECT from this table, and it is not declared in ANON_READ_SURFACE. anon can read ${v.anon_columns.length} column(s): ${v.anon_columns.join(", ")}. A policy chooses rows, not columns: either narrow the grant in a forward-only migration (REVOKE ALL ... FROM anon; GRANT SELECT (<public columns>) ... TO anon — see 0278) and declare those columns, or drop anon from the policy.`;
+      return `✗ ${v.table_name} — a policy lets anon (the publishable key) SELECT from this table, and it is not declared in ANON_READ_SURFACE. anon can read ${v.anon_columns.length} column(s): ${v.anon_columns.join(", ")}. A policy chooses rows, not columns, and a column REVOKE is undone by deploy-provision's re-grant: drop anon from the policy in a forward-only migration (a policy elsewhere that needs a fact about these rows asks a SECURITY DEFINER helper — see 0280), or, if the whole row is genuinely public, declare it with "*" and a reason.`;
     case "columns":
-      return `✗ ${v.table_name} — anon can read column(s) beyond its ANON_READ_SURFACE declaration: ${v.extra_columns.join(", ")}. A table-level grant came back (Supabase grants anon every column of a new table) or a column grant was added. REVOKE it in a forward-only migration — see 0278.`;
+      return `✗ ${v.table_name} — anon can read column(s) beyond its ANON_READ_SURFACE declaration: ${v.extra_columns.join(", ")}. A column grant does not survive deploy-provision's re-grant — remove the anon row policy instead (see 0280).`;
     case "stale":
       return `✗ ${v.table_name} — declared in ANON_READ_SURFACE but no longer an anon read surface (no SELECT/ALL policy admits anon). Remove the entry: the declaration only shrinks by being edited.`;
   }

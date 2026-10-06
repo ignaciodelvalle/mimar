@@ -69,6 +69,8 @@ import path from "node:path";
 import { config as loadEnv } from "dotenv";
 import postgres from "postgres";
 
+import { anonReadProvisionShortfalls, fetchAnonReadSurface } from "./check-rls-coverage";
+
 loadEnv({ path: ".env.local" });
 loadEnv({ path: ".env" });
 
@@ -607,6 +609,7 @@ interface VerificationReport {
   piiRetentionColumns: number;
   bucketsPresent: string[];
   bucketsMissing: string[];
+  anonSurfaceShortfalls: string[];
   shortfalls: string[];
 }
 
@@ -700,6 +703,14 @@ async function verifyProvision(sql: Sql): Promise<VerificationReport> {
   if (bucketsMissing.length > 0)
     shortfalls.push(`storage buckets missing: ${bucketsMissing.join(", ")}`);
 
+  // ---- Anon read surface, AFTER applySchemaGrants (0280) --------------------
+  // applySchemaGrants re-grants ALL on every public table to anon, which undid
+  // 0278's column grant on organizations while its anon row policy stayed. So
+  // the anon surface is judged here, on the grants this run actually left —
+  // the same rule as check 6 of scripts/check-rls-coverage.ts.
+  const anonSurfaceShortfalls = anonReadProvisionShortfalls(await fetchAnonReadSurface(sql));
+  shortfalls.push(...anonSurfaceShortfalls);
+
   return {
     functions,
     indexes,
@@ -717,6 +728,7 @@ async function verifyProvision(sql: Sql): Promise<VerificationReport> {
     piiRetentionColumns,
     bucketsPresent,
     bucketsMissing,
+    anonSurfaceShortfalls,
     shortfalls,
   };
 }
@@ -745,6 +757,9 @@ function printVerificationReport(r: VerificationReport): void {
   );
   console.log(
     `    storage buckets       : ${r.bucketsPresent.length}/${REQUIRED_BUCKETS.length} — ${r.bucketsPresent.join(", ") || "(none)"}${r.bucketsMissing.length ? ` — MISSING: ${r.bucketsMissing.join(", ")}` : ""}`,
+  );
+  console.log(
+    `    anon read surface     : ${r.anonSurfaceShortfalls.length === 0 ? "every anon-readable table declared, inside its columns (after re-grant)" : `${r.anonSurfaceShortfalls.length} VIOLATION(S)`}`,
   );
 }
 
@@ -801,7 +816,7 @@ async function main(): Promise<void> {
     console.log("  WOULD run: NOTIFY pgrst, 'reload schema'");
     header("Step 6/8 — post-provision verification");
     console.log(
-      "  WOULD count functions/indexes/triggers/census/extensions/grants and FAIL if short.",
+      "  WOULD count functions/indexes/triggers/census/extensions/grants, judge the anon read surface after the re-grant, and FAIL if short.",
     );
   } else {
     const sql = postgres(DB_URL, { prepare: false, max: 1, onnotice: () => {} });

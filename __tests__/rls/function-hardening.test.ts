@@ -74,7 +74,14 @@ const NO_ANON_EXECUTE: ReadonlyArray<string> = [
 // only be reached by firing the trigger, which is itself RLS-gated. That is
 // what excludes handle_new_user — it is not RPC-reachable by construction, so
 // naming it in an allowlist would claim a decision nobody has to make.
-const ANON_EXECUTE_ALLOWED: ReadonlyArray<string> = [];
+const ANON_EXECUTE_ALLOWED: ReadonlyArray<string> = [
+  // 0280: backs the anon-readable organization_coverage policy, so that no row
+  // policy on organizations has to admit anon (a row policy plus the
+  // provisioner's blanket re-grant re-opened the whole row — see 0280). It
+  // answers only "is this organization id verified", which the anon-readable
+  // coverage rows already disclose: they exist for verified parents only.
+  "org_is_verified",
+];
 
 type ProcConfigRow = { proname: string; args: string; has_search_path: boolean };
 type ProcAclRow = { proname: string; args: string; anon_can_execute: boolean };

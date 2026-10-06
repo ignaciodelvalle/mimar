@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-10-06",
-  "sha": "86c634e96",
+  "sha": "b802817f3",
   "facts": {
     "event_types": {
       "value": 56,
@@ -43,7 +43,7 @@
       "method": "files named exactly `layout.tsx` anywhere under `app/`."
     },
     "migrations": {
-      "value": 277,
+      "value": 278,
       "source": "db/migrations/*.sql",
       "method": "files ending in `.sql` under `db/migrations/`. Migrations are forward-only and immutable, so this only ever grows."
     },
@@ -63,7 +63,7 @@
       "method": "distinct table names matched by /ALTER TABLE … ENABLE ROW LEVEL SECURITY/i over the whole SQL surface with comments stripped, minus any later DISABLE (there are none at this snapshot). This is the DECLARED count. It is not the number of tables — a table can exist without RLS — and it is not a live catalog reading."
     },
     "security_definer_functions": {
-      "value": 16,
+      "value": 17,
       "source": "db/*.sql + db/migrations/*.sql (declared); the LIVE truth is `__tests__/rls/*`",
       "method": "distinct function names whose `CREATE [OR REPLACE] FUNCTION … $$` header carries `SECURITY DEFINER`, over the whole SQL surface with comments stripped, minus any `DROP FUNCTION` by name. Declared, not read from `pg_proc`."
     },

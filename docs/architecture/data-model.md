@@ -6,7 +6,7 @@
 
 `db/schema.ts` declares <!-- fact:tables -->63<!-- /fact --> tables and
 <!-- fact:enums -->22<!-- /fact --> enums, over
-<!-- fact:migrations -->277<!-- /fact --> forward-only SQL migrations under
+<!-- fact:migrations -->278<!-- /fact --> forward-only SQL migrations under
 `db/migrations`. This document is about the handful of them that carry the
 system's meaning, and about the one distinction the rest of the pack depends on:
 **which rows are the record, and which rows are a copy of the record kept for
@@ -352,7 +352,7 @@ inventory.
   <!-- fact:rls_enabled_tables -->67<!-- /fact --> tables are DECLARED with
   `ENABLE ROW LEVEL SECURITY` across `db/rls.sql` and `db/migrations`; the live
   catalog reading lives in `__tests__/rls` and is the only authority on a running
-  database. <!-- fact:security_definer_functions -->16<!-- /fact --> functions are
+  database. <!-- fact:security_definer_functions -->17<!-- /fact --> functions are
   declared `SECURITY DEFINER`.
 
 <!-- fact:service_role_call_sites -->46<!-- /fact --> call sites construct the

@@ -14,6 +14,7 @@ import {
   MIN_ADMIN_PREDICATES_IN_SOURCE,
   PUBLIC_ROLE_ALLOWLIST,
   type PolicyRoleRow,
+  anonReadProvisionShortfalls,
   evaluateAnonReadSurface,
   evaluateCoverage,
   evaluatePlatformAdminPredicates,
@@ -186,7 +187,6 @@ describe("evaluateAnonReadSurface", () => {
     // default grant must therefore go red as UNDECLARED, not pass silently.
     const { violations } = evaluateAnonReadSurface(
       [
-        { table_name: "organizations", anon_columns: ["id", "verified"] },
         { table_name: "organization_coverage", anon_columns: ["id"] },
         { table_name: "time_slots", anon_columns: ["id"] },
         {
@@ -205,18 +205,69 @@ describe("evaluateAnonReadSurface", () => {
     ]);
   });
 
-  it("ships with organizations pinned to exactly (id, verified), and every entry carries a reason", () => {
-    expect(ANON_READ_SURFACE.organizations?.columns).toEqual(["id", "verified"]);
-    // 0279: service_offerings is not an anon surface at all any more.
-    expect(Object.keys(ANON_READ_SURFACE).sort()).toEqual([
-      "organization_coverage",
-      "organizations",
-      "time_slots",
+  it("flags the 0278 catalog once organizations left the declaration (0280)", () => {
+    // 0278 kept an anon row policy on organizations behind a column grant; the
+    // provisioner's re-grant then exposed every column. With the entry gone, a
+    // database still carrying that policy is UNDECLARED, whatever its grants.
+    const { violations } = evaluateAnonReadSurface(
+      [
+        { table_name: "organizations", anon_columns: ["id", "verified"] },
+        { table_name: "organization_coverage", anon_columns: ["id"] },
+        { table_name: "time_slots", anon_columns: ["id"] },
+      ],
+      ANON_READ_SURFACE,
+    );
+    expect(violations).toEqual([
+      { kind: "undeclared", table_name: "organizations", anon_columns: ["id", "verified"] },
     ]);
+  });
+
+  it("ships declaring only whole-row public tables, each with a reason (0279, 0280)", () => {
+    expect(Object.keys(ANON_READ_SURFACE).sort()).toEqual(["organization_coverage", "time_slots"]);
+    // A column list would not survive deploy-provision's re-grant (0280): every
+    // remaining entry is "*".
+    expect(Object.values(ANON_READ_SURFACE).map((e) => e.columns)).toEqual(["*", "*"]);
     const unreasoned = Object.entries(ANON_READ_SURFACE)
       .filter(([, entry]) => entry.reason.trim().length === 0)
       .map(([table]) => table);
     expect(unreasoned).toEqual([]);
+  });
+});
+
+describe("anonReadProvisionShortfalls (deploy-provision, after the re-grant)", () => {
+  it("fails the provision the 0278 way: a re-granted organizations under an anon row policy", () => {
+    const shortfalls = anonReadProvisionShortfalls([
+      { table_name: "organizations", anon_columns: PRE_0278_ORG_COLUMNS },
+      { table_name: "organization_coverage", anon_columns: ["id"] },
+      { table_name: "time_slots", anon_columns: ["id"] },
+    ]);
+    expect(shortfalls).toHaveLength(1);
+    expect(shortfalls[0]).toContain("organizations");
+    expect(shortfalls[0]).toContain("not declared");
+  });
+
+  it("fails on anon columns beyond a column-list declaration", () => {
+    const shortfalls = anonReadProvisionShortfalls(
+      [{ table_name: "organizations", anon_columns: ["id", "verified", "email"] }],
+      { organizations: { columns: ["id", "verified"], reason: "fixture" } },
+    );
+    expect(shortfalls).toEqual([
+      "anon can read organizations column(s) beyond its ANON_READ_SURFACE declaration after the re-grant: email",
+    ]);
+  });
+
+  it("passes the post-0280 catalog, and does not fail a provision on a stale declaration", () => {
+    expect(
+      anonReadProvisionShortfalls([
+        { table_name: "organization_coverage", anon_columns: PRE_0278_ORG_COLUMNS },
+        { table_name: "time_slots", anon_columns: ["id"] },
+      ]),
+    ).toEqual([]);
+    expect(
+      anonReadProvisionShortfalls([], {
+        gone_table: { columns: "*", reason: "fixture" },
+      }),
+    ).toEqual([]);
   });
 });
 

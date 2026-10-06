@@ -20,22 +20,15 @@
 -- ============================================================================
 alter table public.organizations enable row level security;
 
--- Since 0278: caller roles read (id, verified) and NOTHING else. A policy picks
--- rows, not columns; until 0278 "Verified orgs are publicly readable" handed
--- anon the whole row (email, phone, CUIT, coordinates). Public org pages,
--- the directory and tier-0 branding all read over Drizzle, server-side.
-revoke all on public.organizations from public, anon, authenticated;
-grant select (id, verified) on public.organizations to anon, authenticated;
-
--- Verified org ids are publicly readable — exactly what the
--- organization_coverage policy below sub-selects.
+-- Since 0280: NO row policy admits anon. Until 0278 "Verified orgs are publicly
+-- readable" handed anon the whole row (email, phone, CUIT, coordinates); 0278
+-- narrowed the column grant instead, which scripts/deploy-provision.ts undoes
+-- (applySchemaGrants re-grants ALL after the replay — and this file is
+-- applied by that same provisioner, after the replay). RLS holds whatever the
+-- grants are. Public org pages, the directory and tier-0 branding all read
+-- over Drizzle, server-side.
 drop policy if exists "Verified orgs are publicly readable" on public.organizations;
 drop policy if exists "Verified org ids are publicly readable" on public.organizations;
-create policy "Verified org ids are publicly readable"
-  on public.organizations
-  for select
-  to anon, authenticated
-  using (verified = true);
 
 -- Org members can read their own org regardless of verification status.
 -- Through the caller-only definer helper (0273): a direct subquery on
@@ -57,20 +50,15 @@ create policy "Members can read their own org"
 alter table public.organization_coverage enable row level security;
 
 -- Coverage rows are readable when the parent org is verified (powers the
--- adoption-listing and broadcast-target filters).
+-- adoption-listing and broadcast-target filters). Through the definer helper
+-- public.org_is_verified (0280): a sub-select on organizations would need an
+-- anon row policy there, and that is what 0280 removed.
 drop policy if exists "Coverage readable when parent org is verified" on public.organization_coverage;
 create policy "Coverage readable when parent org is verified"
   on public.organization_coverage
   for select
   to anon, authenticated
-  using (
-    exists (
-      select 1
-      from public.organizations o
-      where o.id = organization_coverage.organization_id
-        and o.verified = true
-    )
-  );
+  using (public.org_is_verified(organization_id));
 
 -- Org members can read their own coverage regardless of verification (helper:
 -- see the organizations member policy above, 0278).
