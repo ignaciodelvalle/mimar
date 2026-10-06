@@ -11,6 +11,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./api": "./src/api/index.ts",
+    "./credential": "./src/credential/index.ts",
     "./events": "./src/events/index.ts",
     "./icons": "./src/icons/index.ts",
     "./input": "./src/input/index.ts",

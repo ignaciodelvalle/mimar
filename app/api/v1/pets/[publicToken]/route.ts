@@ -254,6 +254,7 @@ export async function GET(
       userId: live.user.id,
     }),
     petHasTitular,
+    discloseLastLocationWhenLost: access.pet.discloseLastLocationWhenLost,
     now: new Date(),
   });
 

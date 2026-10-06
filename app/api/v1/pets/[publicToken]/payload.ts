@@ -56,6 +56,7 @@ import {
   PUBLIC_PET_STATUSES,
   toViewerRole,
 } from "@dim/contract/api";
+import { resolveCredentialRightCell } from "@dim/contract/credential";
 
 /**
  * `pets.status` narrowed to the three states a client knows.
@@ -154,6 +155,11 @@ export function buildOwnerPetDetailV1(input: {
    * beyond the role, for the vecino en tránsito (PO 2026-10-01).
    */
   petHasTitular: boolean;
+  /**
+   * The owner's disclose flag for the lost last-seen point. The cell kind
+   * crosses the wire; the coordinates themselves do not.
+   */
+  discloseLastLocationWhenLost: boolean;
   now: Date;
 }): OwnerPetDetailV1 {
   const { detail, now } = input;
@@ -175,8 +181,10 @@ export function buildOwnerPetDetailV1(input: {
     tags: detail.identity.tags.map((t) => ({ key: t.key, label: t.label })),
   };
 
+  const petStatus = toPublicPetStatus(input.petStatus);
+  const episode = detail.lost?.lostEpisode ?? null;
   const status: OwnerPetStatusSection = {
-    petStatus: toPublicPetStatus(input.petStatus),
+    petStatus,
     ringStatus: detail.ringStatus,
     // The MASTHEAD situation, which is the one that also tints for a deceased
     // animal — the face body's `situation` is null there because the memorial
@@ -185,6 +193,11 @@ export function buildOwnerPetDetailV1(input: {
     situation: detail.chromeSituation,
     memorial: detail.memorial,
     pregnancyStatus: input.pregnancyStatus,
+    rightCell: resolveCredentialRightCell({
+      status: petStatus,
+      discloseLastLocation: input.discloseLastLocationWhenLost,
+      lastLocation: episode ? { lat: episode.lastSeenLat, lng: episode.lastSeenLng } : null,
+    }),
   };
 
   const alerts: OwnerPetAlertsSection = { items: detail.alerts };

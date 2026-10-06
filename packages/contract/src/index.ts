@@ -10,6 +10,7 @@
 //   import { SCALE_BLUE_SEQ } from "@dim/contract/viz";
 //   import { createIntakeInputSchema } from "@dim/contract/input";
 //   import type { PublicCredentialV1 } from "@dim/contract/api";
+//   import { fieldsForSurface } from "@dim/contract/credential";
 //   import { breedsForSpecies } from "@dim/contract/reference";
 //   import { deepLinkPath } from "@dim/contract/links";
 //   import { sortForDisplay } from "@dim/contract/notifications";
@@ -20,6 +21,7 @@
 // that only reads the event vocabulary, the scales, the static catalogs, the
 // `/api/v1` wire shapes or the deep-link table never loads it.
 export * from "./api/index.ts";
+export * from "./credential/index.ts";
 export * from "./events/index.ts";
 export * from "./icons/index.ts";
 export * from "./input/index.ts";

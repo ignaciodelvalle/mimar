@@ -52,6 +52,7 @@ function detailStub(
   },
   openCases: Array<{ publicCode: string; caseKind: string; status: string }> = [],
   ownershipRole = "owner",
+  lostEpisode: { lastSeenLat: string | null; lastSeenLng: string | null } | null = null,
 ): OwnerPetDetail {
   return {
     ownershipRole,
@@ -82,6 +83,11 @@ function detailStub(
     caretakerConsentName: null,
     rehomeState: null,
     observationOpenedByOrgName: null,
+    lost: {
+      lostEpisode,
+      lostScans: [],
+      alertsOriginShelter: false,
+    },
   } as unknown as OwnerPetDetail;
 }
 
@@ -95,16 +101,24 @@ function build(input: {
   openCases?: Array<{ publicCode: string; caseKind: string; status: string }>;
   ownershipRole?: string;
   petHasTitular?: boolean;
+  discloseLastLocationWhenLost?: boolean;
+  lostEpisode?: { lastSeenLat: string | null; lastSeenLng: string | null } | null;
 }) {
   return buildOwnerPetDetailV1({
     publicToken: SELF,
     petStatus: input.petStatus ?? "active",
     pregnancyStatus: null,
     accessPath: input.accessPath ?? "owner",
-    detail: detailStub(input.carousel, input.openCases, input.ownershipRole),
+    detail: detailStub(
+      input.carousel,
+      input.openCases,
+      input.ownershipRole,
+      input.lostEpisode ?? null,
+    ),
     pppRegistries: input.pppRegistries ?? { status: "ok", data: null },
     postAdoptionCheckin: input.postAdoptionCheckin ?? { status: "ok", data: { pending: false } },
     petHasTitular: input.petHasTitular ?? true,
+    discloseLastLocationWhenLost: input.discloseLastLocationWhenLost ?? false,
     now: NOW,
   });
 }
@@ -296,6 +310,35 @@ describe("buildOwnerPetDetailV1 — the carousel is the owner's OTHER pets", () 
     const section = payload.carousel;
     if (section.status !== "ok") throw new Error("carousel section must be ok");
     expect(section.data.total).toBe(0);
+  });
+});
+
+describe("buildOwnerPetDetailV1 — the identity right-hand cell", () => {
+  it("is qr by default, none when deceased, and ping only with a disclosed point", () => {
+    expect(build({ carousel: NO_CAROUSEL }).status).toMatchObject({
+      status: "ok",
+      data: { rightCell: "qr" },
+    });
+    expect(build({ carousel: NO_CAROUSEL, petStatus: "deceased" }).status).toMatchObject({
+      status: "ok",
+      data: { rightCell: "none" },
+    });
+    expect(
+      build({
+        carousel: NO_CAROUSEL,
+        petStatus: "lost",
+        discloseLastLocationWhenLost: true,
+        lostEpisode: { lastSeenLat: "-34.6", lastSeenLng: "-58.4" },
+      }).status,
+    ).toMatchObject({ status: "ok", data: { rightCell: "ping" } });
+    expect(
+      build({
+        carousel: NO_CAROUSEL,
+        petStatus: "lost",
+        discloseLastLocationWhenLost: true,
+        lostEpisode: { lastSeenLat: null, lastSeenLng: null },
+      }).status,
+    ).toMatchObject({ status: "ok", data: { rightCell: "qr" } });
   });
 });
 

@@ -26,6 +26,7 @@
 // a reminder is a thing the owner acts on ("posponer 7 días", "registrar") and
 // an actionable row a client cannot name is a row it cannot offer.
 
+import type { CredentialRightCell } from "../credential/document.ts";
 import type { PetSex } from "../input/intake.ts";
 import type { CredentialSection, PublicPetStatus } from "./public-credential.ts";
 
@@ -188,6 +189,12 @@ export type OwnerPetStatusSection = {
   situation: OwnerPetSituationV1 | null;
   memorial: OwnerPetMemorialV1 | null;
   pregnancyStatus: string | null;
+  /**
+   * The identity row's right-hand cell. Server-decided with
+   * `resolveCredentialRightCell` — the client paints it and does not re-derive
+   * it. Coordinates themselves never cross this wire; only the cell kind does.
+   */
+  rightCell: CredentialRightCell;
 };
 
 // ---------------------------------------------------------------------------
