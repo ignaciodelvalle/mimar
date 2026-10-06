@@ -9,7 +9,7 @@
 
 import { useState } from "react";
 
-import { resolvePlaceFromQueueAction } from "@/app/actions/authority-units";
+import { resolvePlaceFromQueueAction } from "@/app/actions/resolve-place";
 import { OpButton, OpField, OpFormAlert, OpSelect, OpTextarea } from "@/components/ui/dashboard";
 
 import { useUnitAction } from "@/components/institutional/UnitEditorForms";

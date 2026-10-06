@@ -17,7 +17,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/infra/auth-guards", () => ({
   requireAdminOrRedirect: vi.fn(async () => ({ user: { id: "admin-1" } })),
 }));
-vi.mock("@/app/actions/authority-units", () => ({ resolvePlaceFromQueueAction: vi.fn() }));
+vi.mock("@/app/actions/resolve-place", () => ({ resolvePlaceFromQueueAction: vi.fn() }));
 vi.mock("@/components/maps/StaticFirstMap", () => ({
   StaticFirstMap: (p: { lat: number; lng: number; precision?: string }) => (
     <div data-testid="static-map" data-lat={p.lat} data-lng={p.lng} data-precision={p.precision} />

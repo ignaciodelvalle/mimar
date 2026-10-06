@@ -207,6 +207,8 @@ export const ACTION_GUARD_INVENTORY: Readonly<Record<string, Readonly<Record<str
     renameAuthorityUnitAction: PRINCIPAL_GUARD,
     confirmAuthorityUnitAction: PRINCIPAL_GUARD,
     confirmGrantUnitAction: PRINCIPAL_GUARD,
+  },
+  "app/actions/resolve-place.ts": {
     resolvePlaceFromQueueAction: PLATFORM_GUARD,
   },
   "app/actions/authority-unit-reversals.ts": {

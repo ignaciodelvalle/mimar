@@ -19,7 +19,7 @@ vi.mock("@/lib/place/unresolved-queue", () => ({
   resolvePlaceFromQueue: vi.fn(async () => ({ ok: true })),
 }));
 
-import { resolvePlaceFromQueueAction } from "@/app/actions/authority-units";
+import { resolvePlaceFromQueueAction } from "@/app/actions/resolve-place";
 import { resolvedPlaceUrl } from "@/app/admin/localidades/_components/resolved-place-url";
 
 describe("resolvePlaceFromQueueAction", () => {
@@ -43,5 +43,21 @@ describe("resolvePlaceFromQueueAction", () => {
     expect(resolvedPlaceUrl("AR-B", undefined)).toBe(
       "/admin/localidades/pendientes?provincia=AR-B",
     );
+  });
+
+  it("refuses a non-admin before touching the writer", async () => {
+    const { requireAdminOrRedirect } = await import("@/lib/infra/auth-guards");
+    const { resolvePlaceFromQueue } = await import("@/lib/place/unresolved-queue");
+    vi.mocked(resolvePlaceFromQueue).mockClear();
+    vi.mocked(requireAdminOrRedirect).mockRejectedValueOnce(new Error("NEXT_REDIRECT"));
+    await expect(
+      resolvePlaceFromQueueAction({
+        subjectTable: "cases",
+        subjectId: "00000000-0000-4000-8000-000000000001",
+        localityId: "00000000-0000-4000-8000-000000000002",
+        reason: "x",
+      }),
+    ).rejects.toThrow("NEXT_REDIRECT");
+    expect(resolvePlaceFromQueue).not.toHaveBeenCalled();
   });
 });

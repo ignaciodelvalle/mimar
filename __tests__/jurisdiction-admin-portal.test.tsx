@@ -89,6 +89,7 @@ import * as institutionalActions from "@/app/actions/admin-institutional";
 import * as reversalActions from "@/app/actions/authority-unit-reversals";
 import * as unitActions from "@/app/actions/authority-units";
 import * as appointmentActions from "@/app/actions/jurisdiction-admin";
+import * as resolvePlaceActions from "@/app/actions/resolve-place";
 import FuncionarioPage from "@/app/gob/administracion/funcionarios/[userId]/page";
 import NuevoFuncionarioPage from "@/app/gob/administracion/funcionarios/nuevo/page";
 import FuncionariosPage from "@/app/gob/administracion/funcionarios/page";
@@ -363,7 +364,7 @@ function platformOnlyActions(w: World): Array<[string, () => Promise<unknown>]> 
     [
       "resolvePlaceFromQueueAction",
       () =>
-        unitActions.resolvePlaceFromQueueAction({
+        resolvePlaceActions.resolvePlaceFromQueueAction({
           subjectTable: "cases",
           subjectId: randomUUID(),
           localityId: randomUUID(),

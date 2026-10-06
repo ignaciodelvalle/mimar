@@ -15,11 +15,6 @@ import {
   requireAdminOrRedirect,
   requireAdministrationPrincipalOrRedirect,
 } from "@/lib/infra/auth-guards";
-import {
-  notifyNewlyCoveringAuthorities,
-  retargetPendingOutbox,
-} from "@/lib/place/resolution-rerouting";
-import { type QueueSubjectTable, resolvePlaceFromQueue } from "@/lib/place/unresolved-queue";
 import { confirmGrantUnit } from "@/src/modules/organizations/application/authority-units/grant-unit";
 import {
   confirmAuthorityUnit,
@@ -124,31 +119,3 @@ export async function confirmGrantUnitAction(input: {
  * platform-admin capability and writes the place_resolutions row with the
  * row's cache columns in one transaction.
  */
-export async function resolvePlaceFromQueueAction(input: {
-  subjectTable: QueueSubjectTable;
-  subjectId: string;
-  localityId: string;
-  reason: string;
-}) {
-  const { user } = await requireAdminOrRedirect();
-  const result = await resolvePlaceFromQueue(db, user.id, input);
-  if ("ok" in result) {
-    // After the commit, best effort: pending outbox rows snapshotted while the
-    // place was unresolved take the resolved row (W7), and an OPEN case whose
-    // place is now known reaches the unit that governs it (D9). Neither ever
-    // un-notifies anyone.
-    try {
-      await retargetPendingOutbox(db, input);
-      await notifyNewlyCoveringAuthorities(db, input);
-    } catch (err) {
-      console.error("[place-queue] re-routing after resolution failed", err);
-    }
-    // No revalidatePath on the queue page, deliberately: the form lives ON
-    // that page and the caller leaves it by a full document navigation (N3).
-    // Revalidating it re-renders the page inside the action response while the
-    // row the form belongs to has just left the queue, so the client flashed
-    // the segment error boundary before the navigation landed. The page is
-    // force-dynamic, so the navigation reads fresh data anyway.
-  }
-  return result;
-}
