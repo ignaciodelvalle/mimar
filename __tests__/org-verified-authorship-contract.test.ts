@@ -75,13 +75,13 @@ function orgVerifiedAuthorshipSites(): Site[] {
 }
 
 describe("organization.verified may back an institutional claim, not a professional one", () => {
-  it("finds the sites at all", () => {
+  it("finds the sites at all", { timeout: 30_000 }, () => {
     // NON-VACUITY. If the walk breaks or the pattern stops matching, the
     // assertion below would pass over an empty list forever.
     expect(orgVerifiedAuthorshipSites().length).toBeGreaterThanOrEqual(5);
   });
 
-  it('stamps the literal "shelter" at every one of them', () => {
+  it('stamps the literal "shelter" at every one of them', { timeout: 30_000 }, () => {
     // A variable — `reporterRole === "vet" ? "vet" : "shelter"`, or anything
     // read from org_type — is the defect, whatever it evaluates to today. Only
     // the literal is accepted, because only the literal cannot start meaning
@@ -95,5 +95,5 @@ describe("organization.verified may back an institutional claim, not a professio
     // fix or reintroduced the pattern next to it.
     const files = orgVerifiedAuthorshipSites().map((s) => s.file);
     expect(files).not.toContain("src/modules/surveillance/application/report-bite-from-org.ts");
-  });
+  }, 30_000);
 });

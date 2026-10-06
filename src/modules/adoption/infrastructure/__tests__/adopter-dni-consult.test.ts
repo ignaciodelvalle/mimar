@@ -110,5 +110,5 @@ describe("the raw DNI lookup has no other door", () => {
       );
     expect(offenders).toEqual([]);
     expect(files.length).toBeGreaterThan(500);
-  });
+  }, 30_000);
 });

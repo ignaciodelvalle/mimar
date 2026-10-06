@@ -74,5 +74,5 @@ describe("no raw JS Date interpolated into sql`` (WP2/P1 guard)", () => {
       violations,
       `Raw JS Date interpolated into a sql\`\` fragment (bind .toISOString() instead):\n${violations.join("\n")}`,
     ).toEqual([]);
-  });
+  }, 30_000);
 });

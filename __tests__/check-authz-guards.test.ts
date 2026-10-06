@@ -1313,7 +1313,7 @@ describe("findShadowedGuardDefinitions", () => {
     expect(guardHomeViolations()).toEqual([]);
   });
 
-  it("the real tree defines no guard outside its home", () => {
+  it("the real tree defines no guard outside its home", { timeout: 30_000 }, () => {
     const files = listGuardShadowScanFiles();
     // NON-VACUITY: the scan is tree-wide (app/, src/, lib/), not the action
     // list — a shadow imported from a helper is the same hole one hop away.

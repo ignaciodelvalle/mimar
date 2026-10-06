@@ -102,18 +102,18 @@ function handRolledSites(): string[] {
 }
 
 describe("the notification-recipient predicate has one home", () => {
-  it("scans a real source tree", () => {
+  it("scans a real source tree", { timeout: 30_000 }, () => {
     // NON-VACUITY: without this, a broken walk turns every assertion below into
     // a pass over an empty list.
     expect(sourceFiles().length).toBeGreaterThan(500);
   });
 
-  it("adds no NEW hand-rolled copy outside the baseline", () => {
+  it("adds no NEW hand-rolled copy outside the baseline", { timeout: 30_000 }, () => {
     const unexpected = handRolledSites().filter((f) => !BASELINE.includes(f));
     expect(unexpected).toEqual([]);
   });
 
-  it("keeps the baseline honest — a migrated file must leave the list", () => {
+  it("keeps the baseline honest — a migrated file must leave the list", { timeout: 30_000 }, () => {
     // The other direction. A file that no longer hand-rolls the query but is
     // still listed makes the debt look larger than it is, and the next reader
     // wastes a pass discovering that.
@@ -130,7 +130,7 @@ describe("the notification-recipient predicate has one home", () => {
     expect(stale).toEqual([]);
   });
 
-  it("keeps the two silent-loss escalations OFF the list", () => {
+  it("keeps the two silent-loss escalations OFF the list", { timeout: 30_000 }, () => {
     // These are the ones where a padded recipient set suppressed the
     // empty-fan-out trace, so an escalation could reach nobody and leave no
     // evidence. They are migrated; this asserts they stay migrated.

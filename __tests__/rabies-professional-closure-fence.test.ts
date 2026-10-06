@@ -81,7 +81,7 @@ function productionSources(): string[] {
 }
 
 describe("rabies observation — clinical outcome fence", () => {
-  it("scans a non-trivial number of source files (non-vacuity)", () => {
+  it("scans a non-trivial number of source files (non-vacuity)", { timeout: 30_000 }, () => {
     expect(productionSources().length).toBeGreaterThan(200);
   });
 
@@ -104,7 +104,7 @@ describe("rabies observation — clinical outcome fence", () => {
       }
     }
     expect(offenders).toEqual([]);
-  });
+  }, 30_000);
 
   it("every reference-not-write entry reaches the event only through an allowed writer", () => {
     for (const [rel, { via }] of Object.entries(REFERENCES_NOT_WRITES)) {
@@ -147,7 +147,7 @@ describe("rabies observation — clinical outcome fence", () => {
       }
     }
     expect(offenders).toEqual([]);
-  });
+  }, 30_000);
 
   it("the owner close path is gone — no action named ownerClose* survives", () => {
     const offenders: string[] = [];
@@ -156,5 +156,5 @@ describe("rabies observation — clinical outcome fence", () => {
       if (/ownerClose(Rabies)?Observation/.test(src)) offenders.push(rel.replace(/\\/g, "/"));
     }
     expect(offenders).toEqual([]);
-  });
+  }, 30_000);
 });

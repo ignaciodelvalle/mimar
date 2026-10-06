@@ -67,7 +67,7 @@ describe("op-hit-24 — the touch-target extension is real, not just a class nam
     expect(glyphPx + extension * 2).toBeGreaterThanOrEqual(24);
   });
 
-  it("is actually used — a rule nothing references protects nothing", () => {
+  it("is actually used — a rule nothing references protects nothing", { timeout: 30_000 }, () => {
     // NON-VACUITY. Without this, deleting every usage would leave the two
     // assertions above passing forever while the app has no extended targets
     // left. The repo has been bitten by fences that scan zero files and pass.

@@ -689,7 +689,7 @@ function guardPrecedesLookup(src: string): boolean {
 const SCAN_BUDGET = { timeout: 30_000 };
 
 describe("public-token routes are rate limited", SCAN_BUDGET, () => {
-  it("finds every public-token resolver across app/ AND src/", () => {
+  it("finds every public-token resolver across app/ AND src/", SCAN_BUDGET, () => {
     // NON-VACUITY. If the walk or the lookup match breaks, every assertion
     // below passes over an empty list — the exact failure shape this repo keeps
     // rediscovering in its own fences.

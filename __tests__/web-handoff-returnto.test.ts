@@ -146,7 +146,7 @@ describe("web pages the app hands off to carry a returnTo", () => {
     expect(HANDOFF_PATHS).toContain("/p/:publicToken/sighting");
   });
 
-  it("never leaves a guard bare on a page the app hands off to", () => {
+  it("never leaves a guard bare on a page the app hands off to", { timeout: 30_000 }, () => {
     const bare: string[] = [];
     const guarded: string[] = [];
 

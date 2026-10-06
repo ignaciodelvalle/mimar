@@ -88,5 +88,5 @@ describe("authority routing callers offer the place's locality id", () => {
     expect(bad).toEqual([]);
     // Non-vacuity: the inventory of 2026-09-26 counts 22 calls.
     expect(calls).toBeGreaterThanOrEqual(20);
-  });
+  }, 30_000);
 });

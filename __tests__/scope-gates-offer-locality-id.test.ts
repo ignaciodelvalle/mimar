@@ -131,5 +131,5 @@ describe("per-row scope gates pass the row's locality id", () => {
     expect(bad).toEqual([]);
     // Non-vacuity: 33 calls on 2026-09-26.
     expect(calls).toBeGreaterThanOrEqual(30);
-  });
+  }, 30_000);
 });

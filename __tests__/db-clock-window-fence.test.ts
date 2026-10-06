@@ -191,7 +191,7 @@ describe("db clock windows — Postgres's clock on both sides, or no window at a
         "clocks may drift, and the drift is unbounded.",
       ].join("\n"),
     ).toEqual([]);
-  });
+  }, 30_000);
 
   it("the detector really detects — it is not passing because it matches nothing", () => {
     // The rule above is currently expected to be GREEN, which makes it exactly

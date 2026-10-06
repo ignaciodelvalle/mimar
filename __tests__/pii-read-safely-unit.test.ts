@@ -286,7 +286,7 @@ describe("pii_queried writers — the set is pinned", () => {
     }
   }
 
-  it("finds exactly the known writers", () => {
+  it("finds exactly the known writers", { timeout: 30_000 }, () => {
     const files: string[] = [];
     for (const r of ROOTS) walk(path.resolve(process.cwd(), r), files);
     const writers = files

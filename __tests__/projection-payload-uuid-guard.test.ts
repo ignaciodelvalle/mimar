@@ -38,5 +38,5 @@ describe("projection payload uuid casts", () => {
       walk(join(ROOT, dir), hits);
     }
     expect(hits).toEqual([]);
-  });
+  }, 30_000);
 });

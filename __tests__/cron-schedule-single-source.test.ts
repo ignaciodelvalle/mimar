@@ -103,7 +103,7 @@ describe("cron schedules have one source", () => {
     expect(wrong, wrong.join(" · ")).toEqual([]);
   });
 
-  it("no second table of cron schedules exists outside the registry", () => {
+  it("no second table of cron schedules exists outside the registry", { timeout: 30_000 }, () => {
     // A cron expression is five space-separated fields. Any file other than the
     // registry holding a MAP of them is, by construction, a copy that can drift
     // — which is exactly what happened. Matching on the literal shape rather

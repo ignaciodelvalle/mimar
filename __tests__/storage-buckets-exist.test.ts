@@ -118,7 +118,7 @@ describe("storage buckets", () => {
     expect(Object.keys(DECOMISO_EVIDENCE_TYPES)).toEqual([...DECOMISO_EVIDENCE_MIME_LIST]);
   });
 
-  it("every hardcoded storage.from(...) target exists", () => {
+  it("every hardcoded storage.from(...) target exists", { timeout: 30_000 }, () => {
     const missing: string[] = [];
     for (const [bucket, files] of literalBucketsInCode()) {
       if (!DECLARED.has(bucket)) missing.push(`${bucket} (${files.join(", ")})`);
@@ -129,7 +129,7 @@ describe("storage buckets", () => {
     ).toEqual([]);
   });
 
-  it("scans a non-empty corpus", () => {
+  it("scans a non-empty corpus", { timeout: 30_000 }, () => {
     expect(literalBucketsInCode().size).toBeGreaterThan(0);
   });
 });

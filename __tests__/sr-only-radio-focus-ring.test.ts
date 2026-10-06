@@ -104,7 +104,7 @@ describe("card-style radios — the focus ring reaches the card", () => {
     expect(rule?.[1]).toMatch(/outline:\s*var\(--focus-ring-width\)/);
   });
 
-  it("covers exactly the files known to use the shape", () => {
+  it("covers exactly the files known to use the shape", { timeout: 30_000 }, () => {
     // Named, not counted. The previous version asserted `length > 0`, which the
     // detector satisfied while silently missing three files — and the fence
     // reported "five files" in a comment that was simply wrong. A regex that

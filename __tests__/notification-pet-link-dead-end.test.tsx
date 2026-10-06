@@ -108,7 +108,7 @@ describe("PET_LINK_DEAD_FOR_RECIPIENT — every entry names a real writer", () =
     // regression. The scan is the point of the test, so it gets real headroom.
   }, 60_000);
 
-  it("is not vacuous — the writer scan finds types", () => {
+  it("is not vacuous — the writer scan finds types", { timeout: 30_000 }, () => {
     // A broken walk would return an empty set and make the assertion above
     // pass by finding nothing to compare against.
     const writers = notificationTypesWithWriters();

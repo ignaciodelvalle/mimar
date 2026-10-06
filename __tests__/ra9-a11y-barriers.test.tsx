@@ -67,7 +67,7 @@ function* walk(dir: string): Generator<string> {
 const BARE_DIALOG_OPEN = /<dialog\b[^>]*?\sopen(?=[\s>/])/s;
 
 describe("BR-1 — every <dialog> in the repo is driven by showModal()", () => {
-  it("no .tsx renders a <dialog> with a literal `open` attribute", () => {
+  it("no .tsx renders a <dialog> with a literal `open` attribute", { timeout: 30_000 }, () => {
     const offenders: string[] = [];
     for (const dir of ["app", "components", "src"]) {
       const abs = join(ROOT, dir);

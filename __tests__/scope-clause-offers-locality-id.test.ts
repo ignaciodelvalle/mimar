@@ -102,5 +102,5 @@ function offenders(): string[] {
 describe("scope clauses offer the table's locality_id", () => {
   it("every table-keyed jurisdictionPairClause passes the locality-id column", () => {
     expect(offenders()).toEqual([]);
-  });
+  }, 30_000);
 });

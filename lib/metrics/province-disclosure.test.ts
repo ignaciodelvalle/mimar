@@ -523,7 +523,7 @@ describe("the consumer enumeration fails CLOSED", () => {
   // array let three surfaces ship the same leak because nobody remembered to
   // append — and a guard you have to remember is the same control as a comment.
 
-  it("every derived consumer is classified", () => {
+  it("every derived consumer is classified", { timeout: 30_000 }, () => {
     const unclassified = deriveConsumers().filter((f) => !CLASSIFIED.includes(f));
     expect(
       unclassified,
@@ -534,7 +534,7 @@ describe("the consumer enumeration fails CLOSED", () => {
     ).toEqual([]);
   });
 
-  it("no classified entry has gone stale", () => {
+  it("no classified entry has gone stale", { timeout: 30_000 }, () => {
     // The inverse rot: a bucket entry for a file that no longer consumes a
     // decider is an assertion quietly passing about nothing.
     const derived = deriveConsumers();

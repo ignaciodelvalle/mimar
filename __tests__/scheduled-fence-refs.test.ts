@@ -679,7 +679,7 @@ describe("the real tree, against the default branch's copy of itself", () => {
       if (row.pinnedHere && !row.pinnedThere) expect(inert.has(row.file), row.file).toBe(true);
       if (row.alertedHere && !row.alertedThere) expect(inert.has(row.file), row.file).toBe(true);
     }
-  });
+  }, 30_000);
 });
 
 describe("the fence runs where it matters", () => {

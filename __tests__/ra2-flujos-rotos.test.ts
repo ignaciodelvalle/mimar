@@ -160,7 +160,7 @@ describe("RA-2 F13 — service-dog revoke revalidates both directorio routes", (
     revalidatePathMock.mockClear();
   });
 
-  it("revalidates /admin/directorio as well as /gob/directorio", async () => {
+  it("revalidates /admin/directorio as well as /gob/directorio", { timeout: 30_000 }, async () => {
     vi.doMock("next/cache", () => ({ revalidatePath: revalidatePathMock }));
     vi.doMock("@/lib/infra/auth-guards", () => ({
       requireUserOrRedirect: vi.fn().mockResolvedValue({ user: { id: "admin-1" } }),
@@ -233,7 +233,7 @@ describe("RA-2 F12 — bulk revoke revalidates the pages that host the control",
         `revalidatePath("${route}")`,
       );
     }
-  });
+  }, 30_000);
 });
 
 // ---------------------------------------------------------------------------

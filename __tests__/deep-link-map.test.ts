@@ -488,7 +488,7 @@ describe("the table is unambiguous", () => {
     // NON-VACUITY: the derivation decided most of the table, rather than
     // answering "undecidable" for everything and passing.
     expect(NAMES.length - undecidable.length).toBeGreaterThanOrEqual(MIN_MAP_ENTRIES - 2);
-  });
+  }, 30_000);
 });
 
 describe("deepLinkPath", () => {

@@ -257,7 +257,7 @@ describe("travel-private read coverage", () => {
     expect(twice).toEqual([]);
   });
 
-  it("NO read that can carry a travel row is outside the lists", () => {
+  it("NO read that can carry a travel row is outside the lists", { timeout: 30_000 }, () => {
     const unaccounted = files.filter((f) => {
       if (ALL_LISTS.includes(f)) return false;
       const src = read(f);
@@ -269,7 +269,7 @@ describe("travel-private read coverage", () => {
     expect(unaccounted).toEqual([]);
   });
 
-  it("no module keeps a private copy of the travel predicate", () => {
+  it("no module keeps a private copy of the travel predicate", { timeout: 30_000 }, () => {
     const copies = files.filter(
       (f) => f !== CLAUSE_MODULE && /IN \('transport_recorded', 'cvi_issued'\)/.test(read(f)),
     );

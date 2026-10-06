@@ -684,7 +684,7 @@ describe("/api/v1 rate-limit families — the numbers the derivation committed t
     );
   });
 
-  it("keeps account-security's two per-user anchors identical", async () => {
+  it("keeps account-security's two per-user anchors identical", { timeout: 30_000 }, async () => {
     // One family, one anchor, held in two places: the route-level constant
     // `/me/reactivate` spends and the use-case-level one `revokeAllSessions`
     // spends. If they drift, the 12× above is true of one member and false of

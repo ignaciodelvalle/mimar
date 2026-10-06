@@ -500,7 +500,7 @@ describe("link-integrity: no shipped link points at a redirect-only route", () =
           "\n",
         )}\n\nEach one costs the visitor a hop we could have skipped. Fix by:\n  - Pointing the href at the real destination the redirect resolves to, OR\n  - Adding the route to REDIRECT_LINK_ALLOWLIST with a reason that says WHY the hop is wanted.`,
     ).toEqual([]);
-  });
+  }, 30_000);
 
   it("no nav entry points at a redirect-only route", () => {
     // The worst instance of this shape, and the one F9 removed: a nav item
@@ -565,14 +565,14 @@ describe("link integrity — ctaUrl destinations resolve to a real route", () =>
     return found;
   }
 
-  it("finds the ctaUrl call sites at all", () => {
+  it("finds the ctaUrl call sites at all", { timeout: 30_000 }, () => {
     // NON-VACUITY. A regex that stops matching would turn the assertion below
     // into a pass over an empty list — the exact failure this file keeps
     // catching elsewhere.
     expect(collectCtaUrls().length).toBeGreaterThan(5);
   });
 
-  it("every ctaUrl points at a route that exists", () => {
+  it("every ctaUrl points at a route that exists", { timeout: 30_000 }, () => {
     const rotos = collectCtaUrls()
       .filter(({ probe }) => !shouldSkip(probe) && !resolves(probe))
       .map(({ where, raw }) => `${where} → ${raw}`);

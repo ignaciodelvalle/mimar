@@ -301,5 +301,5 @@ describe("content-report read coverage", () => {
       return !src.includes("notReportedClause()");
     });
     expect(unaccounted).toEqual([]);
-  });
+  }, 30_000);
 });

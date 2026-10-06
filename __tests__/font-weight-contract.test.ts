@@ -241,7 +241,7 @@ describe("font-weight contract (app/layout.tsx ⊇ what the app requests)", () =
     expect(loaded.serif, "IBM Plex Serif 700 — font-bold on font-ln-serif").toContain(700);
   });
 
-  it("requests no font-weight it has not loaded (.tsx)", () => {
+  it("requests no font-weight it has not loaded (.tsx)", { timeout: 30_000 }, () => {
     const dead = scanTsx().filter((r) => !loaded[r.family].includes(r.weight));
     expect(
       dead.map((r) => `${r.where}  font-ln-${r.family} @ ${r.weight}`),
@@ -257,9 +257,9 @@ describe("font-weight contract (app/layout.tsx ⊇ what the app requests)", () =
       "these weights are requested but not loaded — the browser silently renders " +
         "the nearest loaded face instead. Add the weight to app/layout.tsx.",
     ).toEqual([]);
-  });
+  }, 30_000);
 
-  it("sees the `font:` shorthand, not only `font-weight:`", () => {
+  it("sees the `font:` shorthand, not only `font-weight:`", { timeout: 30_000 }, () => {
     // Mutation guard: scanCss() must not be reducible to a `font-weight:` scan.
     // Filtering by (family, weight) alone does NOT prove this — `.ln-ledlbl`
     // independently declares mono@700 as a normal family+weight pair, so a
@@ -307,7 +307,7 @@ describe("font-weight contract (app/layout.tsx ⊇ what the app requests)", () =
     }
   });
 
-  it("scans a non-empty corpus", () => {
+  it("scans a non-empty corpus", { timeout: 30_000 }, () => {
     // Guard against a silently-empty scan making the checks above vacuous
     // (a bad SKIP_DIRS entry or a broken regex would turn them green).
     expect(scanTsx().length).toBeGreaterThan(20);

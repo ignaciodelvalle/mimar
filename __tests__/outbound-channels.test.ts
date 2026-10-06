@@ -224,14 +224,14 @@ describe("estado restringido — clave puesta, sin dominio propio", () => {
 // de existencia. O sea, el peor lugar posible para esconder una dirección
 // inválida. Ahora sale de configuración y esta fence lo mantiene así.
 describe("el remitente sale de configuración, no del código", () => {
-  it("ningún archivo fija una dirección de envío", () => {
+  it("ningún archivo fija una dirección de envío", { timeout: 30_000 }, () => {
     const culpables = archivosFuente()
       .filter((rel) => rel !== CANONICO)
       .flatMap((rel) => lineasConRemitenteFijo(rel).map((l) => `${rel} → ${l}`));
     expect(culpables).toEqual([]);
   });
 
-  it("escanea un árbol real, y el fallback vive en un solo lugar", () => {
+  it("escanea un árbol real, y el fallback vive en un solo lugar", { timeout: 30_000 }, () => {
     // NO VACUIDAD en las dos mitades: si el escaneo dejara de encontrar
     // archivos, la aserción de arriba pasaría sobre una lista vacía; y el
     // literal que SÍ debe existir tiene que seguir existiendo.

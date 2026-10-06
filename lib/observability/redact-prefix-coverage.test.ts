@@ -72,7 +72,7 @@ const SCAN_BUDGET = { timeout: 30_000 };
 const SUITE = "credential prefix coverage — the redaction list cannot go stale in silence";
 
 describe(SUITE, SCAN_BUDGET, () => {
-  it("finds the prefixes it is supposed to find (the fence's own smoke test)", () => {
+  it("finds the prefixes it is supposed to find (the fence's own smoke test)", SCAN_BUDGET, () => {
     // If the extraction regexes rot, every other assertion here passes
     // vacuously. Anchor on prefixes minted from three DIFFERENT places: the
     // central generator, a call site in src/modules, and the welfare module.
@@ -85,7 +85,7 @@ describe(SUITE, SCAN_BUDGET, () => {
     expect(minted.size).toBeGreaterThanOrEqual(12);
   });
 
-  it("redacts EVERY prefix the repo mints", () => {
+  it("redacts EVERY prefix the repo mints", SCAN_BUDGET, () => {
     const covered = new Set(CREDENTIAL_TOKEN_PREFIXES.map((p) => p.replace(/-$/, "")));
     const uncovered = [...mintedPrefixes()].filter((p) => !covered.has(p)).sort();
 
@@ -94,7 +94,7 @@ describe(SUITE, SCAN_BUDGET, () => {
     expect(uncovered).toEqual([]);
   });
 
-  it("does not carry prefixes the repo no longer mints", () => {
+  it("does not carry prefixes the repo no longer mints", SCAN_BUDGET, () => {
     // The other direction. A stale entry is not a leak, but it is a claim
     // about the product that stopped being true, and this module's whole
     // problem was a header describing intent as if it were behavior.

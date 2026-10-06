@@ -347,5 +347,5 @@ describe("selectPublicCredentialPetRow — the caller set is pinned", () => {
       }
     }
     expect(callers.sort((a, b) => a.localeCompare(b))).toEqual(EXPECTED_CALLERS);
-  });
+  }, 30_000);
 });

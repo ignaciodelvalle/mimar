@@ -105,7 +105,7 @@ describe("reserved seed accounts — single source of truth", SCAN_BUDGET, () =>
     expect(definition).toContain(ZERO_PET_OWNER_EMAIL);
   });
 
-  it("is hardcoded nowhere else — every consumer imports the constant", () => {
+  it("is hardcoded nowhere else — every consumer imports the constant", SCAN_BUDGET, () => {
     expect(
       filesHardcodingReservedEmail(),
       [

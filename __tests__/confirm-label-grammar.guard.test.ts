@@ -141,7 +141,7 @@ function scanRepo(): string[] {
 }
 
 describe('grammar of confirmation — no button labelled exactly "Confirmar"', () => {
-  it("finds zero offenders across app/, components/, src/ and lib/", () => {
+  it("finds zero offenders across app/, components/, src/ and lib/", { timeout: 30_000 }, () => {
     expect(scanRepo()).toEqual([]);
   });
 

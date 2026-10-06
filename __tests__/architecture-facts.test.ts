@@ -126,7 +126,7 @@ const HISTORICAL_PATHS = new Set([
 // ---------------------------------------------------------------------------
 
 describe("architecture facts — the file matches the tree", () => {
-  it("(a) recomputing the generator reproduces facts.json exactly", () => {
+  it("(a) recomputing the generator reproduces facts.json exactly", { timeout: 30_000 }, () => {
     expect(
       computeFacts(REPO_ROOT),
       "docs/architecture/facts.json is stale — run `pnpm facts:write` and commit the result",
@@ -217,7 +217,7 @@ describe("architecture facts — the docs cite paths that exist", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("(c) every backticked repo path under docs/architecture exists", () => {
+  it("(c) every backticked repo path under docs/architecture exists", { timeout: 30_000 }, () => {
     const dangling = cited
       .filter((c) => !HISTORICAL_PATHS.has(c.path) && !existsSync(join(REPO_ROOT, c.path)))
       .map((c) => `${c.rel}: \`${c.span}\``);
