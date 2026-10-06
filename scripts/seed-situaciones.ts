@@ -139,7 +139,7 @@ const { ATTACHMENT_BUCKET } = await import("@/src/modules/decomiso/domain/types"
 const { findOpenCaseForPetAndKind, openCase } = await import("@/lib/infra/case-helpers");
 const { findAuthoritiesForJurisdiction } = await import("@/lib/infra/approval-routing");
 const { resolveBusinessRule } = await import("@/lib/infra/business-rules-resolver");
-const { resolveCanonicalJurisdiction } = await import("@/lib/infra/jurisdiction-validation");
+const { resolvePlace } = await import("@/lib/place/resolve-place");
 const { getJurisdictionsCached } = await import("@/lib/infra/request-cache");
 const { writeAuditLog } = await import("@/lib/infra/audit-log");
 const { decomisoEvidenceRowPath } = await import("@/lib/infra/attachment-location");
@@ -248,16 +248,11 @@ async function petByToken(token: string): Promise<PetRow | null> {
 
 async function localityIdFor(province: string, locality: string | null): Promise<string | null> {
   if (!locality) return null;
-  try {
-    const canonical = await resolveCanonicalJurisdiction({
-      rawProvince: province,
-      rawLocality: locality,
-    });
-    return canonical.locality.id;
-  } catch {
-    // A real registration outside the INDEC catalogue keeps a NULL FK too.
-    return null;
-  }
+  // The one sanctioned name lookup: a row only when the name names one, never
+  // the first homonym. Unresolved keeps a NULL FK, like a real registration
+  // outside the INDEC catalogue.
+  const place = await resolvePlace({ province, locality });
+  return place.status === "resolved" ? place.localityId : null;
 }
 
 /**
@@ -283,7 +278,7 @@ async function ensurePet(
     name: qa.name,
     species: "dog",
     sex: qa.sex,
-    breed: "Mestizo",
+    breed: "Mixto / Cruza",
     dateOfBirth: "2022-03-01",
     birthDateIsEstimated: true,
     color: "Marrón",
