@@ -181,8 +181,38 @@ describe("evaluateAnonReadSurface", () => {
     expect(violations).toEqual([{ kind: "stale", table_name: "organizations" }]);
   });
 
+  it("flags the pre-0279 catalog once service_offerings left the declaration", () => {
+    // 0279 removed the entry; a database still on the 0086 policy and the
+    // default grant must therefore go red as UNDECLARED, not pass silently.
+    const { violations } = evaluateAnonReadSurface(
+      [
+        { table_name: "organizations", anon_columns: ["id", "verified"] },
+        { table_name: "organization_coverage", anon_columns: ["id"] },
+        { table_name: "time_slots", anon_columns: ["id"] },
+        {
+          table_name: "service_offerings",
+          anon_columns: ["id", "provider_user_id", "reviewed_by_user_id", "rejection_reason"],
+        },
+      ],
+      ANON_READ_SURFACE,
+    );
+    expect(violations).toEqual([
+      {
+        kind: "undeclared",
+        table_name: "service_offerings",
+        anon_columns: ["id", "provider_user_id", "reviewed_by_user_id", "rejection_reason"],
+      },
+    ]);
+  });
+
   it("ships with organizations pinned to exactly (id, verified), and every entry carries a reason", () => {
     expect(ANON_READ_SURFACE.organizations?.columns).toEqual(["id", "verified"]);
+    // 0279: service_offerings is not an anon surface at all any more.
+    expect(Object.keys(ANON_READ_SURFACE).sort()).toEqual([
+      "organization_coverage",
+      "organizations",
+      "time_slots",
+    ]);
     const unreasoned = Object.entries(ANON_READ_SURFACE)
       .filter(([, entry]) => entry.reason.trim().length === 0)
       .map(([table]) => table);

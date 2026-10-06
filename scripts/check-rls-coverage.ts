@@ -391,11 +391,9 @@ export const ANON_READ_SURFACE: Record<string, AnonReadSurfaceEntry> = {
     reason:
       "Coverage zones of verified orgs (org id + jurisdiction); no personal data. Filtered to verified parents by its policy.",
   },
-  service_offerings: {
-    columns: "*",
-    reason:
-      "PRE-EXISTING, NOT AUDITED COLUMN BY COLUMN (frozen 2026-10-06): approved public service catalogue. The row also carries provider_user_id, reviewed_by_user_id and rejection_reason; narrowing it to a column grant is open follow-up work, and this entry must shrink, not grow.",
-  },
+  // service_offerings left this list in 0279: anon holds no privilege on it
+  // and no policy admits anon. Its whole row (provider, reviewer, rejection
+  // reason) had been readable here since 0086.
   time_slots: {
     columns: "*",
     reason: "Bookable slot times and capacity counters for public offerings; no personal data.",

@@ -14,25 +14,25 @@
 -- ============================================================================
 alter table public.service_offerings enable row level security;
 
--- Approved offerings are publicly readable (owners need to search them).
+-- Since 0279: anon holds nothing on this table, and authenticated holds
+-- SELECT on (id, organization_id, provider_user_id) only — what the
+-- appointments / service_schedule_rules policies sub-select. The public
+-- catalogue (search, org page, booking) is rendered server-side over Drizzle;
+-- "service_offerings read approved publicly" used to hand anon the whole row
+-- (provider, reviewer, rejection reason) and was dropped.
+revoke all on public.service_offerings from public, anon, authenticated;
+grant select (id, organization_id, provider_user_id) on public.service_offerings to authenticated;
 drop policy if exists "service_offerings read approved publicly" on public.service_offerings;
-create policy "service_offerings read approved publicly"
-  on public.service_offerings for select
-  to anon, authenticated
-  using (status = 'approved');
 
 -- Org members can read all their org's offerings regardless of status
--- (so they can see pending/rejected state in the dashboard).
+-- (so they can see pending/rejected state in the dashboard). Through the
+-- caller-only definer helper (0273): a direct subquery on
+-- organization_memberships recursed into its peers policy until 0279.
 drop policy if exists "service_offerings read by org members" on public.service_offerings;
 create policy "service_offerings read by org members"
   on public.service_offerings for select
   to authenticated
-  using (
-    organization_id in (
-      select organization_id from public.organization_memberships
-      where user_id = auth.uid() and left_at is null
-    )
-  );
+  using (public.caller_is_active_org_member(organization_id));
 
 -- Independent-vet provider can read their own offerings.
 drop policy if exists "service_offerings read by provider vet" on public.service_offerings;
