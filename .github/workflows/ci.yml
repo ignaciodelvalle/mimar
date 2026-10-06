@@ -325,6 +325,14 @@ jobs:
         # a new one fails. See scripts/check-action-redirect.ts.
         run: pnpm lint:action-redirect
 
+      - name: Lint (success screen held in state behind a revalidating action)
+        # A revalidating server action re-renders the CURRENT route; a page that
+        # branches on what the action changed unmounts the calling component,
+        # and a success screen kept in its state never shows. The owner of a
+        # lost pet never saw "Activamos la búsqueda". See
+        # scripts/check-success-state-refresh.ts.
+        run: pnpm lint:success-refresh
+
       - name: Lint ("use server" export shapes)
         # Next validates EVERY export of a "use server" module and throws AT
         # MODULE LOAD on anything that is not an async function. It is not a

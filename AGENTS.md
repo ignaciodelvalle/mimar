@@ -699,7 +699,7 @@ A conditional whose justification NAMES a specific flow becomes wrong the day th
 - `app/gob/layout.tsx` swapped the ADMIN rail in for an admin viewer, because an admin used to arrive via `/admin/moderacion`'s **redirect**. The F1 fusion (2026-07-22) removed that redirect. What was left: the switcher offered "Ir a Gobierno" and the layout then served 19 links back to `/admin`, so the sections never changed and every click bounced. A door the product opened and then refused.
 - `lib/ui/shell-nav.ts` pointed the operator's "Volver a mi app" at `/mis-mascotas`, calling it a "personal escape hatch" — while `app/(app)/layout.tsx` redirects govt→`/gob` and admin→`/admin` before that page renders. The link advertised a destination the product refuses to serve.
 
-**The rule**: when you delete or reroute a flow, `rg` its name (route, redirect, entry point) across **comments**, not just code. The justification for someone else's `if` is written in prose, so it will not show up in a type error, a test, or any of the <!-- fact:verify_fences -->86<!-- /fact --> fences.
+**The rule**: when you delete or reroute a flow, `rg` its name (route, redirect, entry point) across **comments**, not just code. The justification for someone else's `if` is written in prose, so it will not show up in a type error, a test, or any of the <!-- fact:verify_fences -->87<!-- /fact --> fences.
 
 **The tell**: two pieces of the product disagreeing about whether a state is reachable. One offers it, the other denies it. When you find that, one of the two is stale — establish which before picking a side. Both bugs above also had the correct helper sitting in the same file (`roleHome()`), already used by a sibling branch.
 
@@ -1568,7 +1568,7 @@ All migrations use `IF EXISTS` / `IF NOT EXISTS` guards — do not remove them.
 
 ### Fences (the `pnpm verify` chain)
 
-`pnpm verify` is `typecheck && lint` + **every `lint:*` fence in package.json** (<!-- fact:verify_fences -->86<!-- /fact --> — counted out of the `verify` script itself by `pnpm facts:write`; package.json remains the source of truth and this marker is regenerated from it) + `build`, in
+`pnpm verify` is `typecheck && lint` + **every `lint:*` fence in package.json** (<!-- fact:verify_fences -->87<!-- /fact --> — counted out of the `verify` script itself by `pnpm facts:write`; package.json remains the source of truth and this marker is regenerated from it) + `build`, in
 that order (`package.json` → `verify` script is the literal source of truth —
 read it before assuming this list, it grows). Each fence is a standalone
 `pnpm lint:<name>` script so it can be run in isolation while iterating.
@@ -1588,6 +1588,7 @@ script name — read `package.json`, do not trust an inventory here):
 | `lint:lib-root` | **Nothing new goes in `lib/` root.** Every module lives in a bucket by role: `lib/domain` (pure rules), `lib/infra` (I/O, DB, external services), `lib/reference` (static catalogs), `lib/analytics`, `lib/events`, `lib/ui`, `lib/utils`. This is why a doc citing `lib/foo.ts` is always stale. |
 | `lint:spine` | Invariant #3, checked against the live DB: every `pets` row must have its `pet_registered` event. A cache row with no spine event is a cache outranking the log. |
 | `lint:action-redirect` | Server actions RETURN `redirectTo` (the N3 contract); they do not call `redirect()` themselves. |
+| `lint:success-refresh` | A client component may not hold its success screen in state (`setSubmitted(true)` → `<LnSuccessScreen>`) behind an action that revalidates: the revalidation re-renders the current route and can unmount it. End the flow on a success route rendered from the database and navigate there from the submit handler (`useActionNavigate`). |
 | `lint:csp-prerender` | No prerendered page may exist — every route needs a per-request CSP nonce. |
 | `lint:amendment-overlay` | Every reader of an AMENDABLE payload folds corrections: a `replayPetWeight/Pregnancy/Jurisdiction` caller calls `overlayAmendments` and fetches `event_amended`; any other raw `petEvents.payload` reader of an amendable type is classified in the script (via / other-type / raw-by-design / debt). A new raw reader fails. |
 | `lint:ci-parity` | The fences CI runs must equal the fences `verify` runs; drift here is how a gate goes quiet. |
