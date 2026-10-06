@@ -32,6 +32,7 @@ import { type PostgresJsDatabase, drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import {
+  NO_PIPELINING,
   panoramaCube,
   panoramaCubeMeta,
   panoramaKpiCube,
@@ -154,10 +155,6 @@ export function cubeBuilderStatementTimeoutMs(
   return Number.isFinite(n) && n > 0 ? n : CUBE_BUILDER_DEFAULT_STATEMENT_TIMEOUT_MS;
 }
 
-/** postgres.js option that disables pipelining (see the read client). Typed as
- * the client's Options because the library leaves `max_pipeline` undeclared. */
-const NO_PIPELINING = { max_pipeline: 0 } as unknown as postgres.Options<Record<string, never>>;
-
 /** Construct the dedicated read client: tiny pool, long timeout, no pipelining.
  * It connects to ANALYTICS_DATABASE_URL — intended to be the SESSION pooler
  * (5432), which honors the startup GUC — and falls back to DATABASE_URL, the
@@ -167,8 +164,12 @@ const NO_PIPELINING = { max_pipeline: 0 } as unknown as postgres.Options<Record<
  * never at module load. */
 function createBuilderReadClient(): ReturnType<typeof postgres> {
   const readUrl = (process.env.ANALYTICS_DATABASE_URL ?? process.env.DATABASE_URL) as string;
-  const timeoutMs = cubeBuilderStatementTimeoutMs();
-  return postgres(readUrl, {
+  return postgres(readUrl, builderReadClientOptions(cubeBuilderStatementTimeoutMs()));
+}
+
+/** Options for the read client. Pure; exported so a test can pin them. */
+export function builderReadClientOptions(timeoutMs: number) {
+  return {
     prepare: false,
     // max: 3 — the per-metric fan-out (province + residual in parallel, then 6-way
     // mapLimit over provinces) multiplexes over these. Session mode pins one
@@ -185,14 +186,9 @@ function createBuilderReadClient(): ReturnType<typeof postgres> {
     // staging runs, 2026-09-27..10-06) — consistent with the analytics URL
     // resolving to 6543, which could not be confirmed (Sensitive in Vercel).
     // max_pipeline: 0 sends one query per connection at a time; extra queries
-    // wait in the client queue.
-    // CAVEAT (postgres.js 3.4.9): with max_pipeline 0 a `.transaction()` on
-    // this client crashes the process (the begin never hands over its
-    // connection), so the read handle refuses transactions outright
-    // (forbidTransactions). The WRITE client below keeps the default: its
-    // transactions issue their statements one at a time anyway.
-    // `max_pipeline` is a runtime option postgres.js does not declare in its
-    // types (src/index.js parses it, default 100) — hence the spread below.
+    // wait in the client queue. NO_PIPELINING is the one value db/index.ts
+    // spreads into every app pool; the write client below uses it too, which
+    // patches/postgres.patch makes safe for its transaction.
     ...NO_PIPELINING,
     connect_timeout: 15,
     idle_timeout: 5,
@@ -204,7 +200,30 @@ function createBuilderReadClient(): ReturnType<typeof postgres> {
       application_name: "cube-builder-read",
     },
     onnotice: () => {},
-  });
+  };
+}
+
+/** Options for the write client (one connection; its transaction holds it).
+ * Pure; exported so a test can pin them. No pipelining here either: with
+ * patches/postgres.patch a transaction works under max_pipeline 0. */
+export function builderWriteClientOptions(timeoutMs: number) {
+  return {
+    prepare: false,
+    max: 1,
+    ...NO_PIPELINING,
+    connect_timeout: 15,
+    idle_timeout: 5,
+    max_lifetime: 300,
+    connection: {
+      // A background build, not a request. Session mode honors this GUC.
+      options: statementTimeoutOptions(timeoutMs),
+      // Distinct name exempts the build from the stuck-backend reaper
+      // (migration 0136 targets application_name='Supavisor' only). The write
+      // txn is seconds-long anyway; this is belt-and-braces.
+      application_name: "cube-builder",
+    },
+    onnotice: () => {},
+  };
 }
 
 /** A fresh single-connection client for the error stamps after an abort (the
@@ -215,6 +234,7 @@ function createStampClient(): ReturnType<typeof postgres> {
   return postgres(url, {
     prepare: false,
     max: 1,
+    ...NO_PIPELINING,
     connect_timeout: 5,
     idle_timeout: 1,
     connection: { options: statementTimeoutOptions(10_000), application_name: "cube-builder" },
@@ -222,16 +242,17 @@ function createStampClient(): ReturnType<typeof postgres> {
   });
 }
 
-/** Wrap the read handle so a `.transaction()` throws a clear error instead of
- * crashing the process from inside postgres.js (see the max_pipeline CAVEAT).
- * Every other property passes through untouched. Exported for tests. */
+/** Wrap the read handle so a `.transaction()` throws a clear error: the read
+ * phase runs no transactions, and a write that drifts onto the read client
+ * must fail loudly instead of committing through the wrong connection. Every
+ * other property passes through untouched. Exported for tests. */
 export function forbidTransactions<T extends object>(handle: T): T {
   return new Proxy(handle, {
     get(target, prop, receiver) {
       if (prop === "transaction") {
         return () => {
           throw new Error(
-            "cube-builder read handle: transactions are not allowed (the client runs with max_pipeline 0, which breaks postgres.js transactions); use the write client",
+            "cube-builder read handle: transactions are not allowed (the read phase is read-only); use the write client",
           );
         };
       }
@@ -593,22 +614,10 @@ export async function refreshCube(opts: RefreshCubeOptions = {}): Promise<CubeBu
 
   // Dedicated write client: session pooler (honors the GUC), generous timeout.
   const writeUrl = (process.env.ANALYTICS_DATABASE_URL ?? process.env.DATABASE_URL) as string;
-  const writeClient = postgres(writeUrl, {
-    prepare: false,
-    max: 1,
-    connect_timeout: 15,
-    idle_timeout: 5,
-    max_lifetime: 300,
-    connection: {
-      // A background build, not a request. Session mode honors this GUC.
-      options: statementTimeoutOptions(cubeBuilderStatementTimeoutMs()),
-      // Distinct name exempts the build from the stuck-backend reaper
-      // (migration 0136 targets application_name='Supavisor' only). The write
-      // txn is seconds-long anyway; this is belt-and-braces.
-      application_name: "cube-builder",
-    },
-    onnotice: () => {},
-  });
+  const writeClient = postgres(
+    writeUrl,
+    builderWriteClientOptions(cubeBuilderStatementTimeoutMs()),
+  );
   const writeDb = drizzle(writeClient, { schema });
   const unbindAbort = endClientsOnAbort(signal, [readClient, writeClient]);
 

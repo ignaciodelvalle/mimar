@@ -25,6 +25,20 @@ import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { availableParallelism, totalmem } from "node:os";
+import { fileURLToPath } from "node:url";
+
+import { unpatchedPostgresFiles, unpatchedPostgresMessage } from "./lib/postgres-patch-check.mjs";
+
+// FIRST, before any heap arithmetic: refuse to build without the postgres.js
+// patch. The app's pools run with max_pipeline 0 and upstream cannot run a
+// transaction that way, so an unpatched build deploys a site whose every write
+// transaction fails. A stale build cache is the likely way here; see
+// scripts/lib/postgres-patch-check.mjs.
+const unpatched = unpatchedPostgresFiles(fileURLToPath(new URL("..", import.meta.url)));
+if (unpatched.length > 0) {
+  console.error(unpatchedPostgresMessage(unpatched));
+  process.exit(1);
+}
 
 /**
  * The most a single process may be told it can use.

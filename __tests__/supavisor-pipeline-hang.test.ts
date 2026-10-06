@@ -26,28 +26,11 @@
 // The two-query shape that hung staging (one slow query, one empty one, max 1)
 // did NOT hang on this local Supavisor; the wider fan-out did.
 //
-// To run it (none of this touches the shared stack or its database's schema;
-// Supavisor keeps its own metadata in its own container):
-//
-//   docker run -d --name pipeline-supavisor-meta --network supabase_network_DIM \
-//     -e POSTGRES_PASSWORD=<meta password> postgres:17-alpine
-//   docker run -d --name pipeline-supavisor --network supabase_network_DIM \
-//     -p 54329:6543 -e PORT=4000 -e PROXY_PORT_TRANSACTION=6543 \
-//     -e DATABASE_URL=ecto://postgres:<meta password>@pipeline-supavisor-meta:5432/postgres \
-//     -e CLUSTER_POSTGRES=true -e REGION=local -e ERL_AFLAGS="-proto_dist inet_tcp" \
-//     -e SECRET_KEY_BASE=<96 hex chars> -e VAULT_ENC_KEY=<32 hex chars> \
-//     -e API_JWT_SECRET=local -e METRICS_JWT_SECRET=local -e POOLER_EXS="<script>" \
-//     --entrypoint sh public.ecr.aws/supabase/supavisor:2.7.4 \
-//     -c '/app/bin/migrate && /app/bin/supavisor eval "$POOLER_EXS" && /app/bin/server'
-//
-// where <script> creates tenant "pipeline" (db_host supabase_db_DIM, port 5432,
-// require_user true, one user: the local stack's postgres role and password, mode_type "transaction",
-// pool_size 3) through Supavisor.Tenants.create_tenant. Then:
-//
-//   SUPAVISOR_TRANSACTION_URL=postgresql://postgres.pipeline:<local db password>@127.0.0.1:54329/postgres \
-//     pnpm exec vitest run __tests__/supavisor-pipeline-hang.test.ts
-//
-// Remove both containers afterwards.
+// To run it: dim-interno:docs/ops/supavisor-repro.md has the exact tenant
+// script, the two docker commands (Supavisor plus its own metadata Postgres,
+// neither touching the shared stack or its schema), the URL to export as
+// SUPAVISOR_TRANSACTION_URL, and the cleanup. Wait for any gate on the shared
+// database first: the test opens real connections through the sidecar.
 
 import postgres from "postgres";
 import { describe, expect, it } from "vitest";

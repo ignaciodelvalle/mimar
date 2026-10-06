@@ -78,8 +78,9 @@ const isTest = process.env.VITEST === "true" || process.env.NODE_ENV === "test";
 // (BEGIN never reserved its connection: UNSAFE_TRANSACTION, or a TypeError at
 // max: 1), so `db` depends on patches/postgres.patch, which runs begin's
 // connection hand-over regardless of the pipeline condition. The library leaves
-// the option out of its typings, hence the cast.
-const NO_PIPELINING = { max_pipeline: 0 } as unknown as postgres.Options<
+// the option out of its typings, hence the cast. Exported: every postgres()
+// client the app builds (the cube builder's included) spreads this one value.
+export const NO_PIPELINING = { max_pipeline: 0 } as unknown as postgres.Options<
   Record<string, postgres.PostgresType>
 >;
 

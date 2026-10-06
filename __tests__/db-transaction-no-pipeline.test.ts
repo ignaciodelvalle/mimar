@@ -80,6 +80,29 @@ describe("the app pool (db) runs transactions with max_pipeline 0", () => {
     expect(rows[0].ok).toBe(1);
   });
 
+  it("runs nested savepoints (tx.transaction) inside db.transaction, undoing only the failed one", async () => {
+    const kept = await db.transaction(async (tx) => {
+      // Temp table, dropped at COMMIT: nothing outlives the test.
+      await tx.execute(sql`create temp table no_pipeline_sp (x int) on commit drop`);
+      await tx.execute(sql`insert into no_pipeline_sp values (1)`);
+      await expect(
+        tx.transaction(async (inner) => {
+          await inner.execute(sql`insert into no_pipeline_sp values (2)`);
+          throw new Error("inner boom");
+        }),
+      ).rejects.toThrow("inner boom");
+      await tx.transaction(async (inner) => {
+        await Promise.all([
+          inner.execute(sql`insert into no_pipeline_sp values (3)`),
+          inner.execute(sql`select 1 where false`),
+        ]);
+      });
+      const rows = await tx.execute<{ x: number }>(sql`select x from no_pipeline_sp order by x`);
+      return rows.map((r) => r.x);
+    });
+    expect(kept).toEqual([1, 3]);
+  });
+
   it("runs several transactions and plain queries concurrently on the shared pool", async () => {
     const work = Array.from({ length: 6 }, (_, i) =>
       i % 2 === 0
