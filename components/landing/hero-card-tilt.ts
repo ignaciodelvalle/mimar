@@ -9,23 +9,40 @@
  *  combination. Corners are capped too: without the radial clamp below, a
  *  pointer in a corner would lean the card max * sqrt(2).
  *
- *  1.5° (PO 2026-10-02, v2): the card itself barely moves; the depth comes from
- *  the layers INSIDE it sliding at different rates (see heroParallax). v1 used
- *  10°, which read as the whole card swinging rather than a held object. */
+ *  1.5° is the math default for callers that omit `max` (tests, helpers).
+ *  The landing credential passes its fixed 8° cap explicitly. */
 export const HERO_TILT_MAX_DEG = 1.5;
 
-/** Exponential smoothing time constant for the tilt, in milliseconds. A touch
- *  slower than a raw follow so the card answers the hand with some weight,
- *  without lag and without the jitter of a 1:1 map. */
+/** Exponential smoothing time constants, in milliseconds. rotateX (the
+ *  head↔foot axis) is slower: the MRZ end is the heavier end of a carnet.
+ *  rotateY answers first. Passing an explicit tau to `smoothTilt` still
+ *  drives both axes (tests, and anything that wants a single spring). */
 export const HERO_TILT_SMOOTHING_MS = 120;
+export const HERO_TILT_SMOOTHING_RX_MS = 168;
+export const HERO_TILT_SMOOTHING_RY_MS = 96;
 
-/** How far the pet photo slides inside its window at full lean, in px. It sits
- *  ABOVE the card's surface, so it moves TOWARD the pointer. */
-export const HERO_PARALLAX_PHOTO_PX = 3;
+/** How far the QR glyph slides at full lean, in px. Tiny: printed on the
+ *  stock, not a sticker. */
+export const HERO_PARALLAX_QR_PX = 3;
 
-/** How far the security hatch slides at full lean, in px. It sits UNDER the
- *  surface, so it moves AWAY from the pointer, at half the photo's rate. */
-export const HERO_PARALLAX_PATTERN_PX = 1.5;
+/** How far the band mark lattice slides at full lean, in px. It sits IN the
+ *  blue band, under the issuer line, and moves AWAY from the pointer.
+ *  18 is a trial: large enough to read while the card leans. */
+export const HERO_PARALLAX_PATTERN_PX = 18;
+
+/** How far the pivot slides toward the receding (pressed) edge, in percent.
+ *  Modest: a 32% slide plus 16° of lean threw the far edge (the MRZ) off the
+ *  carnet like a loose sheet. */
+export const HERO_PIVOT_TRAVEL_PCT = 16;
+
+/** Extra scale at full lean. Applied after the pivot, so the near edge grows
+ *  more than the pressed edge. A carnet, not a poster. */
+export const HERO_NEAR_SCALE_TRAVEL = 0.022;
+
+/** Finger-give at full lean: the face sinks toward the table and squashes a
+ *  hair. Net scale is near-travel minus this, so the far edge barely grows. */
+export const HERO_PRESS_SINK_PX = 1.2;
+export const HERO_PRESS_SQUASH = 0.012;
 
 export type HeroTilt = {
   /** rotateX in degrees (CSS): positive brings the BOTTOM edge toward the viewer. */
@@ -37,9 +54,9 @@ export type HeroTilt = {
 export type HeroOffset = { x: number; y: number };
 
 export type HeroParallax = {
-  /** Photo offset in px (toward the pointer). */
-  photo: HeroOffset;
-  /** Security-hatch offset in px (away from the pointer). */
+  /** QR offset in px (toward the pointer). */
+  qr: HeroOffset;
+  /** Holographic security-mark offset in px (away from the pointer). */
   pattern: HeroOffset;
 };
 
@@ -91,12 +108,16 @@ export function smoothTilt(
   current: HeroTilt,
   target: HeroTilt,
   dtMs: number,
-  tauMs: number = HERO_TILT_SMOOTHING_MS,
+  tauMs?: number,
 ): HeroTilt {
-  const alpha = 1 - Math.exp(-Math.max(0, dtMs) / tauMs);
+  const dt = Math.max(0, dtMs);
+  const tauX = tauMs ?? HERO_TILT_SMOOTHING_RX_MS;
+  const tauY = tauMs ?? HERO_TILT_SMOOTHING_RY_MS;
+  const alphaX = 1 - Math.exp(-dt / tauX);
+  const alphaY = 1 - Math.exp(-dt / tauY);
   return {
-    rx: current.rx + (target.rx - current.rx) * alpha,
-    ry: current.ry + (target.ry - current.ry) * alpha,
+    rx: current.rx + (target.rx - current.rx) * alphaX,
+    ry: current.ry + (target.ry - current.ry) * alphaY,
   };
 }
 
@@ -104,15 +125,13 @@ export function smoothTilt(
  * The inner layers' offsets for a given (smoothed) tilt — the parallax stack.
  *
  * Derived from the tilt rather than from the pointer, so the layers ride the
- * SAME smoothed value the card does and settle with it: one motion seen at
- * three depths, never three motions. The lean is normalised by `max` and
- * clamped to the unit disc, so no layer can slide further than its own
- * constant, whatever tilt it is handed.
+ * SAME smoothed value the card does and settle with it. The lean is
+ * normalised by `max` and clamped to the unit disc, so no layer can slide
+ * further than its own constant, whatever tilt it is handed.
  */
-export function heroParallax(tilt: HeroTilt, max: number = HERO_TILT_MAX_DEG): HeroParallax {
-  if (!(max > 0)) return { photo: { x: 0, y: 0 }, pattern: { x: 0, y: 0 } };
-  // Back to the pointer's direction: +ry means the pointer is right (+x);
-  // -rx means it is below (+y).
+function leanDirection(tilt: HeroTilt, max: number): HeroOffset {
+  if (!(max > 0)) return { x: 0, y: 0 };
+  // +ry means the pointer is right (+x); -rx means it is below (+y).
   let nx = Number.isFinite(tilt.ry) ? tilt.ry / max : 0;
   let ny = Number.isFinite(tilt.rx) ? -tilt.rx / max : 0;
   const magnitude = Math.hypot(nx, ny);
@@ -120,9 +139,63 @@ export function heroParallax(tilt: HeroTilt, max: number = HERO_TILT_MAX_DEG): H
     nx /= magnitude;
     ny /= magnitude;
   }
-  // `+ 0` normalises -0, as in tiltTowardPointer.
+  return { x: nx + 0, y: ny + 0 };
+}
+
+const STILL_PARALLAX: HeroParallax = {
+  qr: { x: 0, y: 0 },
+  pattern: { x: 0, y: 0 },
+};
+
+export function heroParallax(tilt: HeroTilt, max: number = HERO_TILT_MAX_DEG): HeroParallax {
+  if (!(max > 0)) return STILL_PARALLAX;
+  const { x: nx, y: ny } = leanDirection(tilt, max);
   return {
-    photo: { x: nx * HERO_PARALLAX_PHOTO_PX + 0, y: ny * HERO_PARALLAX_PHOTO_PX + 0 },
+    qr: { x: nx * HERO_PARALLAX_QR_PX + 0, y: ny * HERO_PARALLAX_QR_PX + 0 },
     pattern: { x: -nx * HERO_PARALLAX_PATTERN_PX + 0, y: -ny * HERO_PARALLAX_PATTERN_PX + 0 },
+  };
+}
+
+/** Transform origin as percent: sits on the receding (pressed) edge so the
+ *  opposite edge lifts toward the camera. */
+export function heroPivot(tilt: HeroTilt, max: number = HERO_TILT_MAX_DEG): HeroOffset {
+  const { x: nx, y: ny } = leanDirection(tilt, max);
+  return {
+    x: 50 + nx * HERO_PIVOT_TRAVEL_PCT + 0,
+    y: 50 + ny * HERO_PIVOT_TRAVEL_PCT + 0,
+  };
+}
+
+/** Uniform scale at this lean. With the pivot on the pressed edge, the near
+ *  edge is the one that grows. The painted scale is `heroPress().scale`, which
+ *  subtracts the finger-squash so the far edge barely grows. */
+export function heroNearScale(tilt: HeroTilt, max: number = HERO_TILT_MAX_DEG): number {
+  const mag = magOf(tilt, max);
+  return 1 + mag * HERO_NEAR_SCALE_TRAVEL + 0;
+}
+
+function magOf(tilt: HeroTilt, max: number): number {
+  const { x: nx, y: ny } = leanDirection(tilt, max);
+  return Math.min(1, Math.hypot(nx, ny));
+}
+
+export type HeroPress = {
+  mag: number;
+  sinkPx: number;
+  scale: number;
+  rimX: number;
+  rimY: number;
+};
+
+/** Finger-give + the rim highlight vector (px, for an inset box-shadow). */
+export function heroPress(tilt: HeroTilt, max: number = HERO_TILT_MAX_DEG): HeroPress {
+  const { x: nx, y: ny } = leanDirection(tilt, max);
+  const mag = Math.min(1, Math.hypot(nx, ny));
+  return {
+    mag: mag + 0,
+    sinkPx: mag * HERO_PRESS_SINK_PX + 0,
+    scale: 1 + mag * (HERO_NEAR_SCALE_TRAVEL - HERO_PRESS_SQUASH) + 0,
+    rimX: nx + 0,
+    rimY: ny + 0,
   };
 }

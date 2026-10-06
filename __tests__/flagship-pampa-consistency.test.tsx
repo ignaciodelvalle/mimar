@@ -66,6 +66,7 @@ import {
 } from "@/scripts/flagship-pampa-data";
 import { stripComments } from "@/scripts/lib/strip-comments.mjs";
 import type { HistorialEventRow } from "@/src/modules/pets/application/tab-data/types";
+import { credentialFieldLabel, fieldsForSurface } from "@dim/contract/credential";
 
 const FROZEN_EVENTS = [
   {
@@ -686,6 +687,9 @@ describe("flagship Pampa — the landing reads its facts from the module", () =>
   });
 
   it("the hero credential's identity fields are the seed's pet row", () => {
+    expect(HERO_CREDENTIAL_FIELDS.map((f) => f.label)).toEqual(
+      fieldsForSurface("landing").map(credentialFieldLabel),
+    );
     const byLabel = Object.fromEntries(HERO_CREDENTIAL_FIELDS.map((f) => [f.label, f.value]));
     // The native credential's own labels (CredentialScreen.tsx:375, :383).
     expect(byLabel).not.toHaveProperty("Especie y raza");

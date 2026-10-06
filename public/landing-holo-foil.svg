@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="iris" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f4fdff"/>
+      <stop offset="16%" stop-color="#3ec8ff"/>
+      <stop offset="34%" stop-color="#ffe27a"/>
+      <stop offset="50%" stop-color="#ff6ec7"/>
+      <stop offset="66%" stop-color="#5dffa0"/>
+      <stop offset="82%" stop-color="#9b8cff"/>
+      <stop offset="100%" stop-color="#fff4c8"/>
+    </linearGradient>
+    <filter id="crumple" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+      <feTurbulence type="turbulence" baseFrequency="0.02" numOctaves="4" seed="4" result="warp"/>
+      <feDisplacementMap in="SourceGraphic" in2="warp" scale="46" xChannelSelector="R" yChannelSelector="G" result="bent"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.11" numOctaves="2" seed="9" result="spark"/>
+      <feColorMatrix in="spark" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  1.6 -0.55 0 0 -0.42" result="spec"/>
+      <feBlend in="bent" in2="spec" mode="screen"/>
+    </filter>
+  </defs>
+  <rect width="256" height="256" fill="url(#iris)" filter="url(#crumple)"/>
+</svg>

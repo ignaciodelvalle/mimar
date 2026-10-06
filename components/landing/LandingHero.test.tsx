@@ -4,6 +4,9 @@
 // wording): "Escanealo para ver más sobre Pampa" sits between the hero
 // credential and its state dots.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import "@testing-library/jest-dom/vitest";
 
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -11,10 +14,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LandingHero } from "./LandingHero";
 import {
+  HERO_NEAR_SCALE_TRAVEL,
   HERO_PARALLAX_PATTERN_PX,
-  HERO_PARALLAX_PHOTO_PX,
+  HERO_PARALLAX_QR_PX,
+  HERO_PIVOT_TRAVEL_PCT,
+  HERO_PRESS_SINK_PX,
+  HERO_PRESS_SQUASH,
   HERO_TILT_MAX_DEG,
+  heroNearScale,
   heroParallax,
+  heroPivot,
+  heroPress,
   smoothTilt,
   tiltTowardPointer,
 } from "./hero-card-tilt";
@@ -41,6 +51,14 @@ describe("<LandingHero> — curiosity-hook microcopy", () => {
 
     const qrLink = screen.getByRole("link", { name: "Ver la credencial pública de demostración" });
     expect(qrLink).toHaveAttribute("href", "/p/DIM-PAMP-0001");
+    expect(qrLink).not.toHaveAttribute("data-qr-hook");
+    expect(document.querySelector(".lp-hcardwrap")).not.toHaveAttribute("data-tilt");
+    expect(document.querySelector(".lp-hcardwrap")).not.toHaveAttribute("data-light");
+    expect(document.querySelector(".lp-hcardwrap")).not.toHaveAttribute("data-mark");
+    expect(document.querySelector(".lp-hcardwrap")).not.toHaveAttribute("data-join");
+    expect(document.querySelector(".lp-hcardwrap")).not.toHaveAttribute("data-flip");
+    expect(document.querySelector(".lp-hcardwrap")).not.toHaveAttribute("data-glass");
+    expect(document.querySelector(".lp-hcardwrap")).not.toHaveAttribute("data-optic");
   });
 });
 
@@ -66,8 +84,12 @@ describe("<LandingHero> — credential controls keep their accessible contract",
 
     const front = screen.getByRole("button", { name: "Girar credencial" });
     const back = screen.getByRole("button", { name: "Volver a la credencial" });
-    expect(front).toHaveClass("lp-hcard-flip");
-    expect(back).toHaveClass("lp-hcard-flip");
+    expect(front).toHaveAttribute("title", "Girar credencial");
+    expect(back).toHaveAttribute("title", "Volver a la credencial");
+    expect(document.querySelector(".lp-hcard")).toHaveAttribute(
+      "aria-label",
+      "Credencial de Pampa — estado: Al día",
+    );
   });
 
   it("renders the four owner-state dots as named, pressable controls, in order", () => {
@@ -75,7 +97,7 @@ describe("<LandingHero> — credential controls keep their accessible contract",
       <LandingHero qrSvg={SAMPLE_SVG} publicHref="/p/DIM-PAMP-0001" publicToken="DIM-PAMP-0001" />,
     );
 
-    const toolbar = screen.getByRole("toolbar", { name: "Estados de la credencial" });
+    const toolbar = screen.getByRole("group", { name: "Estados de la credencial" });
     const dots = within(toolbar).getAllByRole("button");
     // Owner states only (PO 2026-09-29, critique M4): no PPP jurisdiction
     // paperwork. "DE VUELTA EN CASA" was removed the same day: it resolved
@@ -96,22 +118,26 @@ describe("<LandingHero> — credential controls keep their accessible contract",
   });
 });
 
-describe("<LandingHero> — the quiet issuer line (PO 2026-10-02, v2)", () => {
+describe("<LandingHero> — band head (window · doctype · turn)", () => {
   function head(face: "front" | "back"): HTMLElement {
     return document.querySelector(`.lp-hcard-${face} .lp-hcard-head`) as HTMLElement;
   }
 
-  it("reads issuer · document type · turn control, on both faces", () => {
-    renderDemoHero();
+  it("reads document type and turn control, on both faces — no printed issuer", () => {
+    const { container } = renderDemoHero();
     const front = head("front");
-    expect(within(front).getByText("miMAR")).toHaveClass("lp-hcard-issuer-name");
+    expect(front.querySelector(".lp-hcard-head-balance")).toBeTruthy();
     expect(within(front).getByText("Credencial digital")).toHaveClass("lp-hcard-doctype");
-    expect(within(front).getByRole("button", { name: "Girar credencial" })).toBeInTheDocument();
+    expect(within(front).getByRole("button", { name: "Girar credencial" })).toHaveTextContent("↻");
+    expect(container.querySelector(".lp-hcard-issuer-name")).toBeNull();
+    expect(container.querySelector(".lp-hcard-latent-mark")).toBeTruthy();
+    expect(container.querySelector(".lp-hcard-window")).toBeNull();
+    expect(container.querySelector(".lp-hcard-ovd")).toBeTruthy();
 
     const back = head("back");
-    expect(within(back).getByText("miMAR")).toHaveClass("lp-hcard-issuer-name");
     expect(within(back).getByText("Libreta sanitaria")).toHaveClass("lp-hcard-doctype");
     expect(back.querySelector(".lp-hcard-flip")).toHaveAccessibleName("Volver a la credencial");
+    expect(back.querySelector(".lp-hcard-flip")).toHaveTextContent("↺");
   });
 
   it("drops the old title and subtitle", () => {
@@ -271,14 +297,14 @@ describe("<LandingHero> — the state reads in words, not only colour (M4)", () 
 
   it("says 'Está perdida' on the card body when the lost state is shown", () => {
     renderDemoHero();
-    const toolbar = screen.getByRole("toolbar", { name: "Estados de la credencial" });
+    const toolbar = screen.getByRole("group", { name: "Estados de la credencial" });
     fireEvent.click(within(toolbar).getByRole("button", { name: "PERDIDA" }));
     expect(stateLine()).toHaveTextContent("Está perdida · Llamar al dueño");
   });
 
   it("reuses the product's own 'observacion-antirrabica' label and tints celeste/vigilancia (M4 follow-up)", () => {
     renderDemoHero();
-    const toolbar = screen.getByRole("toolbar", { name: "Estados de la credencial" });
+    const toolbar = screen.getByRole("group", { name: "Estados de la credencial" });
     fireEvent.click(within(toolbar).getByRole("button", { name: "EN OBSERVACIÓN ANTIRRÁBICA" }));
     // Same wording lib/ui/pet-situation.ts uses for the real credential's
     // "observacion-antirrabica" situation — the landing must not invent its own.
@@ -292,7 +318,7 @@ describe("<LandingHero> — the state reads in words, not only colour (M4)", () 
 
   it("names every state dot differently", () => {
     renderDemoHero();
-    const toolbar = screen.getByRole("toolbar", { name: "Estados de la credencial" });
+    const toolbar = screen.getByRole("group", { name: "Estados de la credencial" });
     const names = within(toolbar)
       .getAllByRole("button")
       .map((b) => b.getAttribute("aria-label"));
@@ -314,7 +340,7 @@ describe("<LandingHero> — the state reads in words, not only colour (M4)", () 
 
   it("announces a state the person picks", () => {
     renderDemoHero();
-    const toolbar = screen.getByRole("toolbar", { name: "Estados de la credencial" });
+    const toolbar = screen.getByRole("group", { name: "Estados de la credencial" });
     fireEvent.click(within(toolbar).getByRole("button", { name: "EN TRATAMIENTO" }));
     expect(liveRegion()).toHaveTextContent(
       "Estado de la credencial: En tratamiento. Plan en el historial.",
@@ -396,45 +422,49 @@ describe("smoothTilt — frame-rate independent easing", () => {
     const late = smoothTilt({ rx: 0, ry: 0 }, { rx: 0, ry: 10 }, 100_000, 90);
     expect(late.ry).toBeLessThanOrEqual(10);
   });
+
+  it("lets rotateY (the band) answer before rotateX (the foot)", () => {
+    const step = smoothTilt({ rx: 0, ry: 0 }, { rx: 10, ry: 10 }, 16);
+    expect(Math.abs(step.ry)).toBeGreaterThan(Math.abs(step.rx));
+  });
 });
 
 describe("heroParallax — the layers slide at different depths, within bounds", () => {
-  it("keeps the photo's slide within the brief's 2–4px and the hatch's under it", () => {
-    expect(HERO_PARALLAX_PHOTO_PX).toBe(3);
-    expect(HERO_PARALLAX_PATTERN_PX).toBe(1.5);
+  it("keeps the QR slide tiny and the band mark's slide at 18px", () => {
+    expect(HERO_PARALLAX_QR_PX).toBe(3);
+    expect(HERO_PARALLAX_PATTERN_PX).toBe(18);
   });
 
   it("is still when the card is flat", () => {
     expect(heroParallax({ rx: 0, ry: 0 })).toEqual({
-      photo: { x: 0, y: 0 },
+      qr: { x: 0, y: 0 },
       pattern: { x: 0, y: 0 },
     });
   });
 
-  it("slides the photo TOWARD the pointer and the hatch AWAY from it", () => {
-    // Full lean toward a pointer on the right edge (tiltTowardPointer's ry: 1.5).
+  it("slides the hatch AWAY from the pointer and the QR toward it", () => {
     expect(heroParallax({ rx: 0, ry: 1.5 })).toEqual({
-      photo: { x: 3, y: 0 },
-      pattern: { x: -1.5, y: 0 },
+      qr: { x: 3, y: 0 },
+      pattern: { x: -18, y: 0 },
     });
-    // Full lean toward a pointer on the bottom edge (rx: -1.5).
     expect(heroParallax({ rx: -1.5, ry: 0 })).toEqual({
-      photo: { x: 0, y: 3 },
-      pattern: { x: 0, y: -1.5 },
+      qr: { x: 0, y: 3 },
+      pattern: { x: 0, y: -18 },
     });
   });
 
-  it("follows the lean linearly: half the lean is half the slide", () => {
-    expect(heroParallax({ rx: 0, ry: 0.75 }).photo).toEqual({ x: 1.5, y: 0 });
+  it("follows the lean linearly on the hatch: half the lean is half the slide", () => {
+    expect(heroParallax({ rx: 0, ry: 0.75 }).pattern).toEqual({ x: -9, y: 0 });
+    expect(heroParallax({ rx: 0, ry: 0.75 }).qr).toEqual({ x: 1.5, y: 0 });
   });
 
-  it("agrees with the pointer it came from: a corner slides the photo into that corner", () => {
-    const { photo, pattern } = heroParallax(tiltTowardPointer(0, 0, 400, 250));
-    expect(photo.x).toBeCloseTo(-2.1213, 4);
-    expect(photo.y).toBeCloseTo(-2.1213, 4);
-    expect(Math.hypot(photo.x, photo.y)).toBeCloseTo(3, 9);
+  it("agrees with the pointer it came from: a corner slides the hatch the other way", () => {
+    const { qr, pattern } = heroParallax(tiltTowardPointer(0, 0, 400, 250));
+    expect(qr.x).toBeLessThan(0);
+    expect(qr.y).toBeLessThan(0);
     expect(pattern.x).toBeGreaterThan(0);
     expect(pattern.y).toBeGreaterThan(0);
+    expect(Math.hypot(pattern.x, pattern.y)).toBeCloseTo(18, 9);
   });
 
   it("never slides past its constant, whatever tilt it is handed", () => {
@@ -444,10 +474,48 @@ describe("heroParallax — the layers slide at different depths, within bounds",
       { rx: Number.NaN, ry: 1.5 },
       { rx: Number.POSITIVE_INFINITY, ry: 0 },
     ]) {
-      const { photo, pattern } = heroParallax(tilt);
-      expect(Math.hypot(photo.x, photo.y)).toBeLessThanOrEqual(3 + 1e-9);
-      expect(Math.hypot(pattern.x, pattern.y)).toBeLessThanOrEqual(1.5 + 1e-9);
+      const { qr, pattern } = heroParallax(tilt);
+      expect(Math.hypot(qr.x, qr.y)).toBeLessThanOrEqual(3 + 1e-9);
+      expect(Math.hypot(pattern.x, pattern.y)).toBeLessThanOrEqual(18 + 1e-9);
     }
+  });
+});
+
+describe("heroPivot / heroNearScale — the opposite of the press comes closer", () => {
+  it("stays centred and unscaled when the card is flat", () => {
+    expect(heroPivot({ rx: 0, ry: 0 })).toEqual({ x: 50, y: 50 });
+    expect(heroNearScale({ rx: 0, ry: 0 })).toBe(1);
+  });
+
+  it("pivots on the receding edge so the far side of the press can grow", () => {
+    expect(HERO_PIVOT_TRAVEL_PCT).toBe(16);
+    expect(HERO_NEAR_SCALE_TRAVEL).toBe(0.022);
+    // Pointer at the bottom: the bottom recedes, the top comes closer.
+    expect(heroPivot({ rx: -1.5, ry: 0 })).toEqual({ x: 50, y: 66 });
+    expect(heroNearScale({ rx: -1.5, ry: 0 })).toBeCloseTo(1.022, 9);
+    // Pointer on the right: the right recedes, the left grows.
+    expect(heroPivot({ rx: 0, ry: 1.5 })).toEqual({ x: 66, y: 50 });
+    expect(heroNearScale({ rx: 0, ry: 1.5 })).toBeCloseTo(1.022, 9);
+  });
+
+  it("follows the same lean the pointer produced, including at 8° and 28°", () => {
+    const bottomLight = tiltTowardPointer(200, 250, 400, 250, 8);
+    expect(heroPivot(bottomLight, 8).y).toBeCloseTo(66, 9);
+    expect(heroPivot(bottomLight, 8).x).toBeCloseTo(50, 9);
+    const bottomIntense = tiltTowardPointer(200, 250, 400, 250, 28);
+    expect(heroPivot(bottomIntense, 28).y).toBeCloseTo(66, 9);
+    expect(heroNearScale(bottomIntense, 28)).toBeCloseTo(1.022, 9);
+  });
+});
+
+describe("heroPress — finger-give on a carnet, not a poster", () => {
+  it("sinks 1.2px and nets ~1% scale at full lean", () => {
+    expect(HERO_PRESS_SINK_PX).toBe(1.2);
+    expect(HERO_PRESS_SQUASH).toBe(0.012);
+    const press = heroPress({ rx: -1.5, ry: 0 });
+    expect(press.mag).toBeCloseTo(1, 9);
+    expect(press.sinkPx).toBeCloseTo(1.2, 9);
+    expect(press.scale).toBeCloseTo(1.01, 9);
   });
 });
 
@@ -511,18 +579,20 @@ describe("<LandingHero> — a held card: hint, float, tilt, thickness", () => {
     const edges = slab.querySelectorAll(":scope > .lp-hcard-edge");
     expect(edges).toHaveLength(5);
     for (const edge of edges) expect(edge).toHaveAttribute("aria-hidden", "true");
-    // The hover shadow rides in the slab too, decorative.
-    expect(slab.querySelector(":scope > .lp-hcard-lift")).toHaveAttribute("aria-hidden", "true");
+    // The ground shadow is the sole cast shadow; no second slab shadow.
+    expect(slab.querySelector(":scope > .lp-hcard-lift")).not.toBeInTheDocument();
     // The card rides in the same slab, so the edge turns WITH it.
     expect(slab).toContainElement(card());
   });
 
-  it("prints the security hatch under both faces, as decoration only", () => {
+  it("prints four restrained holographic marks in both blue bands", () => {
     renderDemoHero();
-    for (const face of [".lp-hcard-front", ".lp-hcard-back"]) {
-      const hatch = card().querySelector(`${face} > .lp-hcard-sec`);
-      expect(hatch, face).toHaveAttribute("aria-hidden", "true");
-      expect(hatch, face).toBeEmptyDOMElement();
+    const hosts = [".lp-hcard-band", ".lp-hcard-libhead"];
+    for (const host of hosts) {
+      const layer = card().querySelector(`${host} > .lp-hcard-sec`);
+      expect(layer, host).toHaveAttribute("aria-hidden", "true");
+      expect(layer?.querySelector(".lp-hcard-circuit")).not.toBeInTheDocument();
+      expect(layer?.querySelectorAll(".lp-hcard-sec-mark")).toHaveLength(4);
     }
   });
 
@@ -620,32 +690,54 @@ describe("<LandingHero> — a held card: hint, float, tilt, thickness", () => {
     // Pointer on the box's top-left corner.
     wrap().dispatchEvent(new MouseEvent("pointermove", { clientX: 100, clientY: 50 }));
     flush(200);
-    const match = /rotateX\((-?[\d.]+)deg\) rotateY\((-?[\d.]+)deg\)/.exec(
-      tiltLayer().style.transform,
-    );
+    const match =
+      /translateZ\((-?[\d.]+)px\) rotateX\((-?[\d.]+)deg\) rotateY\((-?[\d.]+)deg\) scale\(([\d.]+)\)/.exec(
+        tiltLayer().style.transform,
+      );
     expect(match).not.toBeNull();
-    const rx = Number(match?.[1]);
-    const ry = Number(match?.[2]);
+    const sink = Number(match?.[1]);
+    const rx = Number(match?.[2]);
+    const ry = Number(match?.[3]);
+    const scale = Number(match?.[4]);
     expect(rx).toBeGreaterThan(0); // the top edge recedes
     expect(ry).toBeLessThan(0); // the left edge recedes
-    expect(Math.hypot(rx, ry)).toBeLessThanOrEqual(1.51);
-    // The parallax rides the same frame: the photo slides toward the pointer
-    // (up-left), the hatch away from it, each within its own bound.
-    const px = (name: string) => Number.parseFloat(tiltLayer().style.getPropertyValue(name));
-    expect(px("--lp-photo-x")).toBeLessThan(0);
-    expect(px("--lp-photo-y")).toBeLessThan(0);
-    expect(Math.hypot(px("--lp-photo-x"), px("--lp-photo-y"))).toBeLessThanOrEqual(3.01);
+    expect(Math.hypot(rx, ry)).toBeGreaterThan(7.9);
+    expect(Math.hypot(rx, ry)).toBeLessThanOrEqual(8.01);
+    expect(sink).toBeLessThan(0);
+    expect(scale).toBeCloseTo(1.01, 4);
+    // Pivot sits on the receding corner (top-left), so the opposite corner
+    // is the one that grows toward the camera.
+    const origin = tiltLayer().style.transformOrigin;
+    const originMatch = /([\d.]+)% ([\d.]+)%/.exec(origin);
+    expect(originMatch).not.toBeNull();
+    expect(Number(originMatch?.[1])).toBeLessThan(50);
+    expect(Number(originMatch?.[2])).toBeLessThan(50);
+    // The hatch still rides the tilt (away from the pointer). The photo stays
+    // printed on the card.
+    const px = (name: string) => Number.parseFloat(wrap().style.getPropertyValue(name));
     expect(px("--lp-sec-x")).toBeGreaterThan(0);
     expect(px("--lp-sec-y")).toBeGreaterThan(0);
-    expect(Math.hypot(px("--lp-sec-x"), px("--lp-sec-y"))).toBeLessThanOrEqual(1.51);
+    expect(Math.hypot(px("--lp-sec-x"), px("--lp-sec-y"))).toBeLessThanOrEqual(18.01);
+    expect(px("--lp-press")).toBeGreaterThan(0);
+    expect(wrap().style.getPropertyValue("--lp-emb-x")).not.toBe("");
+    expect(wrap().style.getPropertyValue("--lp-emb-y")).not.toBe("");
     // Settled: the loop stopped asking for frames.
     expect(queue).toHaveLength(0);
 
     wrap().dispatchEvent(new MouseEvent("pointerleave"));
     flush(200);
     expect(tiltLayer().style.transform).toBe("");
-    for (const name of ["--lp-photo-x", "--lp-photo-y", "--lp-sec-x", "--lp-sec-y"]) {
-      expect(tiltLayer().style.getPropertyValue(name), name).toBe("");
+    expect(tiltLayer().style.transformOrigin).toBe("");
+    for (const name of [
+      "--lp-qr-x",
+      "--lp-qr-y",
+      "--lp-sec-x",
+      "--lp-sec-y",
+      "--lp-press",
+      "--lp-emb-x",
+      "--lp-emb-y",
+    ]) {
+      expect(wrap().style.getPropertyValue(name), name).toBe("");
     }
     expect(queue).toHaveLength(0);
   });
@@ -662,6 +754,8 @@ describe("<LandingHero> — a held card: hint, float, tilt, thickness", () => {
       expect(slab).toHaveAttribute("data-turn", "out");
       expect(slab).toHaveAttribute("data-dir", "fwd");
       expect(card()).toHaveAttribute("data-face", "front");
+      expect(document.querySelector(".lp-hcardwrap")).toHaveAttribute("data-turning", "true");
+      expect(wrap().style.getPropertyValue("--lp-edge")).toBe("0.000");
 
       // Past the first half (270ms): the face swapped at the invisible edge
       // and the landing half runs.
@@ -680,6 +774,8 @@ describe("<LandingHero> — a held card: hint, float, tilt, thickness", () => {
         vi.advanceTimersByTime(480);
       });
       expect(slab).not.toHaveAttribute("data-turn");
+      expect(document.querySelector(".lp-hcardwrap")).not.toHaveAttribute("data-turning");
+      expect(wrap().style.getPropertyValue("--lp-edge")).toBe("");
 
       // Turning back goes the other way, like a hand turning a card back over.
       fireEvent.click(screen.getByRole("button", { name: "Volver a la credencial" }));
@@ -692,5 +788,118 @@ describe("<LandingHero> — a held card: hint, float, tilt, thickness", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("a tap on the card face turns it; a cancelled press does not", () => {
+    vi.useFakeTimers();
+    try {
+      setMedia({ reduced: false, fine: false });
+      renderDemoHero();
+      const faceEl = document.querySelector(".lp-hcard-front") as HTMLElement;
+      const slab = document.querySelector(".lp-hcard-slab") as HTMLElement;
+
+      fireEvent.pointerDown(faceEl, { pointerId: 8, button: 0, clientX: 40, clientY: 40 });
+      fireEvent.pointerCancel(faceEl, { pointerId: 8, button: 0, clientX: 41, clientY: 41 });
+      expect(card()).toHaveAttribute("data-face", "front");
+      expect(slab).not.toHaveAttribute("data-turn");
+
+      fireEvent.pointerDown(faceEl, { pointerId: 9, button: 0, clientX: 40, clientY: 40 });
+      fireEvent.pointerUp(faceEl, { pointerId: 9, button: 0, clientX: 42, clientY: 41 });
+      expect(slab).toHaveAttribute("data-turn", "out");
+      act(() => {
+        vi.advanceTimersByTime(800);
+      });
+      expect(card()).toHaveAttribute("data-face", "back");
+      expect(screen.getByText("Girala para volver a la credencial")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("<LandingHero> — carnet flick is the named hook plan, not the document turn", () => {
+  it("timers come from CARNET_HOOK_* in @dim/contract/credential", () => {
+    const src = readFileSync(
+      join(process.cwd(), "components", "landing", "LandingHero.tsx"),
+      "utf8",
+    );
+    expect(src).toContain("CARNET_HOOK_TURN_OUT_MS");
+    expect(src).toContain("CARNET_HOOK_TURN_IN_MS");
+    expect(src).not.toMatch(/const TURN_OUT_MS = 270/);
+    expect(src).not.toMatch(/const TURN_IN_MS = 450/);
+    expect(src).not.toContain("settles flat while the card turns");
+    expect(src).toContain("frozenLeanRef");
+    expect(src).toContain("LandingHeroCopy");
+    expect(src).toContain("TAP_FLIP_PX");
+    expect(src).toContain("--lp-emb-x");
+    expect(src).not.toContain("landingOpticFromEnv");
+  });
+});
+
+describe("landing carnet — laminate light and paper shadow (not gyro)", () => {
+  it("the CSS reads the wrap's light vector on both bands and peeks the edge on hover", () => {
+    const css = readFileSync(join(process.cwd(), "app", "landing.css"), "utf8");
+    expect(css).toContain("--lp-band-light");
+    expect(css).toContain("translate: 0 0 2px");
+    expect(css).not.toContain('[data-tilt="intense"]');
+    expect(css).not.toContain('[data-light="spill"]');
+    expect(css).not.toContain('[data-light="rich"]');
+    expect(css).not.toContain("--lp-spill-x");
+    expect(css).toContain("logo-mimar-mark-small.svg");
+    expect(css).toContain("lp-hcard-sec-mark");
+    expect(css).not.toContain("lp-hcard-circuit");
+    expect(css).toContain("lp-hcard-librow::after");
+    expect(css).toContain("rotateX(var(--mrx");
+    expect(css).not.toContain('[data-mark="backslash"]');
+    expect(css).not.toContain('[data-join="fileteado"]');
+    expect(css).not.toContain("lp-hcard-join-filete");
+    expect(css).toContain('[data-turning="true"]');
+    expect(css).toContain("lp-hcard-shimmer");
+    expect(css).toContain("--lp-qr-x");
+    expect(css).toContain("calc(0.22 + var(--lp-press, 0) * 0.32)");
+    expect(css).not.toContain("lp-hcard-lost-ring");
+    expect(css).not.toContain("lp-hcard-lift");
+    expect(css).not.toContain("lp-hcard-qr-quiet");
+    expect(css).not.toContain("lp-hcard-qr-bold");
+    expect(css).toContain("lp-hcard-ctx-marker");
+    expect(css).not.toMatch(/\.lp \.lp-hcard \{[^}]*box-shadow/s);
+    expect(css).toContain("--lp-press");
+    expect(css).toContain("user-select: none");
+    expect(css).toContain("inset 0 1px 2px");
+    expect(css).toContain("--lp-turn-out: 270ms");
+    expect(css).toContain("--lp-turn-in: 450ms");
+    expect(css).toContain("lp-hcard-latent");
+    expect(css).toContain("lp-hcard-latent-mark");
+    expect(css).not.toContain("lp-hcard-window");
+    expect(css).toContain("lp-hcard-ovd");
+    expect(css).toContain("--lp-emb-x");
+    expect(css).toContain("multiply");
+    expect(css).not.toContain('[data-glass="deep"]');
+    expect(css).toContain("width: 88%");
+    expect(css).toContain("right: -7%");
+    expect(css).toContain("calc(var(--lp-press, 0) * var(--lp-press, 0) * 0.62)");
+    expect(css).not.toContain("calc(var(--lp-press, 0) * var(--lp-press, 0) * 0.55)");
+    // The seal's fade floor is a named landing value (design-token fence C8:
+    // no raw duration in a declaration); the 420ms it carries is the pin.
+    expect(css).toContain("--lp-seal-fade: 420ms");
+    expect(css).toContain("transition: opacity var(--lp-seal-fade) ease-out");
+    expect(css).not.toContain("(var(--lp-press, 0) - 0.62) / 0.38");
+    expect(css).not.toContain("lp-hcard-micro");
+    expect(css).not.toContain("lp-hcard-kine");
+    expect(css).not.toContain('[data-optic="full"]');
+    expect(css).not.toContain("feTurbulence");
+    expect(css).not.toContain("--lp-rim-x");
+    expect(css).not.toContain("calc(0.07 + var(--lp-press, 0) * 0.5)");
+    expect(css).toContain("--lp-ground-ink");
+    expect(css).toContain("var(--color-ln-warn-700)");
+    expect(css).toContain("padding-bottom: 22px");
+    expect(css).toContain("bottom: 2px");
+    expect(css).toContain("height: 36px");
+    expect(css).toContain("--lp-edge");
+    expect(css).toContain("(1 - var(--lp-edge, 0) * 0.9)");
+    expect(css).not.toContain("color-mix(in srgb, var(--color-ln-ink) 14%, transparent)");
+    expect(css).toContain("calc(var(--motion-ambient) * 8)");
+    expect(css).toMatch(/lp-hcard-float[\s\S]{0,180}infinite/);
+    expect(css).not.toContain("lp-hcard-float calc(var(--motion-ambient) * 4) ease-in-out 2");
   });
 });

@@ -39,6 +39,7 @@ import {
   VET_LICENSE,
   VET_NAME,
 } from "@/scripts/flagship-pampa-data";
+import { fieldSlots } from "@dim/contract/credential";
 
 // ---------------------------------------------------------------------------
 // Pampa's facts — derived from the flagship seed's data module
@@ -312,16 +313,13 @@ export const PAMPA = {
  * point; breed and microchip are the two that a person scanning a lost-pet
  * QR actually needs.
  */
-export const HERO_CREDENTIAL_FIELDS: ReadonlyArray<{ label: string; value: string }> = [
-  // "Raza" and "Microchip" are the labels the native credential prints
-  // (apps/mobile/src/credential/CredentialScreen.tsx:375, :383). "Especie y
-  // raza" was a label no product surface has (landing-vs-app audit 2026-09-30).
-  { label: "Raza", value: PAMPA_PET.breed },
-  {
-    label: "Microchip",
-    value: PAMPA_EVENTS.some((e) => e.eventType === "microchip_implanted") ? "Sí" : "No",
-  },
-];
+export const HERO_CREDENTIAL_FIELDS = fieldSlots("landing", {
+  breed: PAMPA_PET.breed,
+  microchipPresence: PAMPA_EVENTS.some((e) => e.eventType === "microchip_implanted") ? "Sí" : "No",
+});
+
+/** Shown in place of a real token when there is no demo pet to resolve. */
+export const HERO_MASKED_TOKEN = "DIM-••••-••••";
 
 /** Width of each machine-readable line on the hero card. */
 export const HERO_MRZ_WIDTH = 30;

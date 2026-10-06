@@ -54,6 +54,20 @@
   --lp-navy-ink: var(--color-ln-op-rail-text);
   --lp-navy-mute: var(--color-ln-op-rail-mute);
   --lp-seal-bg: #fbf1e6; /* warm seal tint — no ln-* token yet (handoff value) */
+  /* Carnet band "sunk" marks (latent miMAR, latent logo, flip glyph): the ink
+     pressed into the laminate and the light catch on its lower lip. The /p/
+     band's twin is --pc-sunk in globals.css. */
+  --lp-sunk-ink: #041422;
+  --lp-sunk-catch: color-mix(in srgb, #d7f3ff 42%, transparent);
+  --lp-sunk-shade: color-mix(in srgb, black 62%, transparent);
+  /* OVD seal foil — the same three inks the holo marks cycle (--mc1..3). */
+  --lp-foil-gold: #fde68a;
+  --lp-foil-cyan: #67e8f9;
+  --lp-foil-magenta: #e879f9;
+  /* The OVD seal's fade floor: a jump in --lp-press still eases in over this.
+     Tuned by eye on the hero (pinned in LandingHero.test.tsx); not a motion
+     step, so it lives here as a named landing value, not as --motion-*. */
+  --lp-seal-fade: 420ms;
   /* Device case colours, one per person in the story (PO 2026-09-30; see
      .lp-seq-case). Distinct hue per actor, each dark enough to read as a
      case on paper. Dark theme below. */
@@ -62,10 +76,9 @@
   --lp-case-vet: var(--color-ln-op-navy);
   --lp-case-shelter: var(--color-ln-ok-700);
   /* Device chrome (PO 2026-09-30, "que se funda con el fondo como la
-     credencial"). The shadow speaks the hero credential's language
-     (.lp-hcard: --shadow-lg, soft and layered at low opacity) plus one wide,
-     faint, negatively-spread layer so a 640px device settles on the paper
-     instead of floating over it. Geometry is concentric by construction:
+     credencial"). One wide, faint, negatively-spread layer lets a 640px
+     device settle on the paper instead of floating over it. Geometry is
+     concentric by construction:
      each inner radius is the outer one minus the ring around it. */
   --lp-device-shadow: 0 22px 48px -24px rgba(24, 28, 36, 0.16), var(--shadow-lg);
   --lp-device-rim: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 0 0 1px
@@ -702,9 +715,10 @@
    card's per-situation strip under it (.pc-strip), photo and QR rising out of
    the band as in .ln-idrow, the identity fields /p prints, and a
    machine-readable strip in miMAR's own format. It auto-cycles through the
-   states a real pet moves through over a life (PO redesign 2026-07-04). The WHOLE card tints per state via data-tone →
-   --htone / --htone-soft / --htone-bd (token map below); the front carries ONE
-   contextual row, the back is a mini libreta. The turn is edge-on (LandingHero
+   states a real pet moves through over a life (PO redesign 2026-07-04).
+   State colour is contained in ONE inset plaque via data-tone → --htone /
+   --htone-soft / --htone-bd (token map below); the card perimeter and media
+   mounts stay neutral. The back is a mini libreta. The turn is edge-on (LandingHero
    drives rotateY imperatively; same single-painted-face mechanic as FlipCard /
    .ln-doc-turn). Motion — cycle, turn, lost-pulse — is gated on .lp-motion. */
 
@@ -738,6 +752,8 @@
   position: relative;
   perspective: 1200px;
   width: min(400px, 92vw);
+  /* The final treatment keeps the band matte; OVD marks carry the security catch. */
+  --lp-band-light: linear-gradient(transparent, transparent);
   /* The card sizes its photo, QR and token from its OWN width (the @container
      rule under .lp-hcard-qr), not the viewport's. */
   container-type: inline-size;
@@ -751,6 +767,8 @@
      preserve-3d chain, so its opacity fade flattens nothing. */
   transition: opacity var(--motion-deliberate) var(--ease-editorial), transform
     var(--motion-deliberate) var(--ease-editorial);
+  /* Room for the 7pm penumbra so it does not sit on the caption. */
+  padding-bottom: 22px;
 }
 @starting-style {
   .lp .lp-hcardwrap {
@@ -763,9 +781,7 @@
   width: 100%;
   border-radius: var(--radius-card);
   background: var(--color-ln-card);
-  border: 1.5px solid var(--htone, var(--color-ln-celeste-100));
-  box-shadow: var(--shadow-lg);
-  transition: border-color var(--motion-deliberate);
+  border: 1px solid var(--color-ln-line);
   transform-style: flat;
   overflow: hidden;
   /* Safari: a rounded overflow clip inside a 3D-transformed ancestor can stop
@@ -784,19 +800,6 @@
      rotateY (on .lp-hcard-slab) still carries the whole .lp-hcard as one
      plane. */
   display: grid;
-}
-/* lost keeps a subtle border pulse (the old halo's data-status="lost" wink) */
-.lp.lp-motion .lp-hcard[data-tone="lost"] {
-  animation: lp-hcard-lost var(--motion-ambient) ease-in-out infinite;
-}
-@keyframes lp-hcard-lost {
-  0%,
-  100% {
-    box-shadow: var(--shadow-lg), 0 0 0 0 var(--color-ln-err-100);
-  }
-  50% {
-    box-shadow: var(--shadow-lg), 0 0 0 4px var(--color-ln-err-050);
-  }
 }
 
 /* ---- a held card: hint, float, tilt, thickness (PO 2026-10-02) ------------
@@ -819,18 +822,26 @@
 }
 .lp .lp-hcard {
   pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.lp .lp-hcardwrap {
+  cursor: grab;
+}
+.lp .lp-hcardwrap[data-turning="true"] {
+  cursor: grabbing;
 }
 /* Thickness: five layers stacked behind the card, a fifth of --lp-hcard-depth
-   apart. A real carnet is ~1% of its width thick (3.5px here); 8px
-   exaggerates it just enough that the turn shows a slab instead of a
-   hairline. The edge is DESIGNED, not an extrusion (PO 2026-10-02, v2): it
-   reads like the core of a printed card — paper laminate at both faces, the
-   band's navy for the core, and one celeste stripe through the middle — so
-   the colour that shows mid-turn is the brand's, never a grey. Flat-on, the
-   perspective draws each layer a hair smaller than the card: none of them
-   peeks out at rest. */
+   apart. A real carnet is ~1% of its width thick (≈4px here). The edge is
+   DESIGNED, not an extrusion (PO 2026-10-02, v2): paper laminate at both
+   faces, the band's navy for the core, one celeste stripe through the
+   middle. Flat-on, perspective draws each layer a hair smaller than the
+   card: none of them peeks out at rest. */
 .lp .lp-hcard-slab {
-  --lp-hcard-depth: 8px;
+  --lp-hcard-depth: 4px;
+  /* Named durations the JS timers (CARNET_HOOK_TURN_*_MS) must match. */
+  --lp-turn-out: 270ms;
+  --lp-turn-in: 450ms;
   /* The turn pivots on the slab's MIDDLE, like a real card, so the face that
      arrives at the far edge lands exactly where the departing one left: the
      edge stack keeps one footprint through the face swap. */
@@ -842,10 +853,21 @@
   border-radius: var(--radius-card);
   background: var(--color-ln-azul-900);
   pointer-events: none;
+  visibility: hidden;
+}
+.lp .lp-hcardwrap[data-turning="true"] .lp-hcard-edge {
+  visibility: visible;
 }
 .lp .lp-hcard-edge:nth-child(1) {
   transform: translateZ(calc(var(--lp-hcard-depth) * -0.2));
   background: var(--color-ln-paper);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-ln-card) 45%, transparent);
+}
+.lp.lp-motion .lp-hcard-front,
+.lp.lp-motion .lp-hcard-back {
+  /* Resting top catch only. Pointer-driven rim was a per-frame box-shadow
+     paint of the whole face (grain included). */
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-ln-card) 58%, transparent);
 }
 .lp .lp-hcard-edge:nth-child(2) {
   transform: translateZ(calc(var(--lp-hcard-depth) * -0.4));
@@ -861,18 +883,6 @@
   transform: translateZ(calc(var(--lp-hcard-depth) * -1));
   background: var(--color-ln-paper-2);
 }
-/* The lifted card's deeper shadow, behind the whole stack. A LEAF of the 3D
-   chain (no children), so its opacity flattens nothing. */
-.lp .lp-hcard-lift {
-  position: absolute;
-  inset: 0;
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-lg);
-  transform: translate3d(0, 8px, calc(var(--lp-hcard-depth) * -1.1));
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--motion-deliberate) var(--ease-editorial);
-}
 /* The half-turn (LandingHero's flip sets data-turn and data-dir; the face
    swaps between the two halves). "out" accelerates from flat into the edge;
    "in" leaves the far edge at the same speed and lands, carrying a few
@@ -886,11 +896,10 @@
 }
 .lp .lp-hcard-slab[data-turn="out"] {
   /* Slow start, fastest at the edge (the curve ends steep). */
-  animation: lp-hcard-turn-out calc(var(--motion-slow) * 0.9) cubic-bezier(0.55, 0, 0.85, 0.36)
-    forwards;
+  animation: lp-hcard-turn-out var(--lp-turn-out) cubic-bezier(0.55, 0, 0.85, 0.36) forwards;
 }
 .lp .lp-hcard-slab[data-turn="in"] {
-  animation: lp-hcard-turn-in calc(var(--motion-deliberate) * 0.75) linear forwards;
+  animation: lp-hcard-turn-in var(--lp-turn-in) linear forwards;
 }
 @keyframes lp-hcard-turn-out {
   from {
@@ -915,93 +924,126 @@
     transform: rotateY(0deg);
   }
 }
-/* A flip ends the first-sight hint and float (LandingHero sets data-hint-done
-   when the card is turned), so the hint's rotation never adds to the turn. */
+/* A flip eases the first-sight peek/float to rest (LandingHero writes the
+   computed rotate/translate, then this transition runs). Instant `animation:
+   none` used to jump the card. */
 .lp.lp-motion .lp-hcardwrap[data-alive][data-hint-done] .lp-hcard-float,
 .lp.lp-motion .lp-hcardwrap[data-alive][data-hint-done] .lp-hcard-ground {
   animation: none;
+  transition: rotate var(--motion-base) ease-out, translate var(--motion-base) ease-out, transform
+    var(--motion-base) ease-out, opacity var(--motion-base) ease-out;
 }
-/* The ↻ turns WITH the card (PO 2026-10-02): same durations, same curves,
-   same overshoot, so icon and card read as one gesture and the tap answers
-   at once. The leaving face's icon spins into the edge; the arriving face's
-   icon lands with the card's few-degree overshoot. */
+/* The latent turn mark is printed on each face: it inherits the card's 3D
+   turn and never spins independently. A short ink catch bridges the two
+   mirrored glyphs at the invisible edge, then returns to its resting value. */
 .lp .lp-hcard-slab[data-turn="out"] .lp-hcard-flip {
-  animation: lp-hcard-icon-out calc(var(--motion-slow) * 0.9) cubic-bezier(0.55, 0, 0.85, 0.36)
-    forwards;
+  animation: lp-hcard-icon-catch-out var(--lp-turn-out) ease-in forwards;
 }
 .lp .lp-hcard-slab[data-turn="in"] .lp-hcard-flip {
-  animation: lp-hcard-icon-in calc(var(--motion-deliberate) * 0.75) linear forwards;
+  animation: lp-hcard-icon-catch-in var(--lp-turn-in) ease-out forwards;
 }
-@keyframes lp-hcard-icon-out {
+@keyframes lp-hcard-icon-catch-out {
   from {
-    transform: rotate(0deg);
+    opacity: 0.5;
   }
   to {
-    transform: rotate(calc(90deg * var(--lp-turn)));
+    opacity: 0.9;
   }
 }
-@keyframes lp-hcard-icon-in {
-  0% {
-    transform: rotate(calc(-90deg * var(--lp-turn)));
-    animation-timing-function: cubic-bezier(0.16, 0.62, 0.4, 1);
+@keyframes lp-hcard-icon-catch-in {
+  from {
+    opacity: 0.9;
   }
-  64% {
-    transform: rotate(calc(12deg * var(--lp-turn)));
-    animation-timing-function: cubic-bezier(0.45, 0, 0.4, 1);
-  }
-  100% {
-    transform: rotate(0deg);
+  to {
+    opacity: 0.5;
   }
 }
-/* The soft shadow the card casts on the paper. Absolutely positioned under
-   the wrap, so it never takes layout room (no CLS) and stays inside the
-   card's own width (no horizontal overflow at 390px). */
+/* Cast on the paper, same key as the laminate's top catch (from above),
+   warmed and lowered like 7pm: a short amber contact umbra plus a longer
+   penumbra a hair down-right. Box model carries the offset so motion can
+   still use scale/translate. Stays inside the wrap (no 390px overflow). */
 .lp .lp-hcard-ground {
+  --lp-ground-ink: color-mix(in srgb, var(--color-ln-ink) 58%, var(--color-ln-warn-700));
   position: absolute;
-  inset-inline: 8%;
-  bottom: -14px;
-  height: 28px;
+  left: 12%;
+  right: 0;
+  bottom: 2px;
+  height: 36px;
   border-radius: 50%;
   background: radial-gradient(
-    closest-side,
-    color-mix(in srgb, var(--color-ln-ink) 14%, transparent),
-    transparent
-  );
+      72% 82% at 44% 34%,
+      color-mix(in srgb, var(--lp-ground-ink) 38%, transparent),
+      transparent 74%
+    ),
+    radial-gradient(
+      closest-side at 56% 48%,
+      color-mix(in srgb, var(--color-ln-warn-700) 24%, transparent),
+      transparent
+    );
   pointer-events: none;
+  /* --lp-edge is 0 on a face and 1 at the invisible edge. The puddle
+     narrows with the turn so an edge-on card does not sit on a wide oval. */
+  translate: calc(6px * (1 - var(--lp-edge, 0))) calc(2px * (1 - var(--lp-edge, 0)));
+  scale: calc((1 - var(--lp-edge, 0) * 0.9) * (0.98 + var(--lp-press, 0) * 0.04))
+    calc((1 - var(--lp-edge, 0) * 0.35) * (0.98 + var(--lp-press, 0) * 0.04));
+  opacity: calc(1 - var(--lp-edge, 0) * 0.12);
 }
-/* First sight, once (data-alive is set by an IntersectionObserver that then
-   disconnects): one gentle turn that previews the flip's own direction, after
-   the entrance has settled, and two slow breaths of float that end exactly at
-   rest: 2 × 6s, then the card is still for good. Gated on .lp-motion like
-   every other landing motion, so no-JS and reduced motion never start it. */
+.lp .lp-hcardwrap[data-turning="true"] .lp-hcard-ground {
+  animation: none;
+}
+/* First sight (data-alive, set once by IntersectionObserver): a peek that
+   previews the flip, then an infrequent idle breath so the card still reads
+   as held and waiting. One short lift every 8 × --motion-ambient (12s); the
+   rest of the cycle is still. A flip writes data-hint-done and
+   settleHeroMotion eases it to rest — they already know it turns. The
+   ground puddle is NOT on this loop: hover and --lp-edge own it, and an
+   infinite keyframe on scale/translate would win over hover. Gated on
+   .lp-motion so no-JS and reduced motion never start it. */
 @media (prefers-reduced-motion: no-preference) {
   .lp.lp-motion .lp-hcardwrap[data-alive="true"] .lp-hcard-float {
-    animation: lp-hcard-peek calc(var(--motion-slow) * 4) linear var(--motion-deliberate),
-      lp-hcard-float calc(var(--motion-ambient) * 4) ease-in-out 2;
-  }
-  .lp.lp-motion .lp-hcardwrap[data-alive="true"] .lp-hcard-ground {
-    animation: lp-hcard-ground calc(var(--motion-ambient) * 4) ease-in-out 2;
+    animation: lp-hcard-peek calc(var(--motion-slow) * 4) linear var(--motion-deliberate) 1,
+      lp-hcard-float calc(var(--motion-ambient) * 8) ease-in-out
+      calc(var(--motion-deliberate) + var(--motion-slow) * 4) infinite;
   }
 }
-/* Hover, desktop only: the card lifts a few pixels off the paper and its
-   shadow deepens (translate + opacity; the tilt layer's `transform` stays the
-   pointer's). The wrap keeps its own box, so the hover holds while the card
-   is edge-on mid-turn. */
+/* Hover, desktop only: the card lifts a few pixels off the paper while the
+   single ground shadow stretches (low 7pm sun). The tilt layer's
+   `transform` stays the pointer's; the wrap keeps its own box through an
+   edge-on turn. */
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .lp.lp-motion .lp-hcard-tilt {
     transition: translate var(--motion-deliberate) var(--ease-editorial);
   }
-  .lp.lp-motion .lp-hcardwrap:hover .lp-hcard-tilt {
-    translate: 0 -4px;
+  .lp.lp-motion .lp-hcard {
+    transition: translate var(--motion-deliberate) var(--ease-editorial);
   }
-  .lp.lp-motion .lp-hcardwrap:hover .lp-hcard-lift {
-    opacity: 1;
+  .lp.lp-motion .lp-hcardwrap:hover .lp-hcard-tilt {
+    translate: 0 -2px;
+  }
+  .lp.lp-motion .lp-hcardwrap:hover .lp-hcard-edge {
+    visibility: visible;
+  }
+  .lp.lp-motion .lp-hcardwrap:hover .lp-hcard {
+    /* A hair of carnet edge: the face steps toward the camera so the rims
+       show while the card is still almost flat. */
+    translate: 0 0 2px;
   }
   .lp.lp-motion .lp-hcard-ground {
-    transition: scale var(--motion-deliberate) var(--ease-editorial);
+    transition: scale var(--motion-deliberate) var(--ease-editorial), translate
+      var(--motion-deliberate) var(--ease-editorial), opacity var(--motion-deliberate)
+      var(--ease-editorial);
   }
+  /* Low sun: the card lifts toward the camera, the shadow stays on the
+     paper and stretches a little farther from the light — unless the
+     turn already owns the puddle. */
   .lp.lp-motion .lp-hcardwrap:hover .lp-hcard-ground {
-    scale: 0.94;
+    scale: calc((1 - var(--lp-edge, 0) * 0.9) * 1.04) calc((1 - var(--lp-edge, 0) * 0.35) * 1.14);
+    translate: calc(5px * (1 - var(--lp-edge, 0))) calc(3px * (1 - var(--lp-edge, 0)));
+    opacity: calc(0.78 * (1 - var(--lp-edge, 0) * 0.12));
+  }
+  .lp.lp-motion .lp-hcardwrap[data-turning="true"] .lp-hcard-ground {
+    animation: none;
+    transition: none;
   }
 }
 /* `rotate` and `translate`, the individual transform properties, so the hint
@@ -1028,54 +1070,21 @@
 }
 @keyframes lp-hcard-float {
   0%,
+  12%,
   100% {
     translate: 0 0;
   }
-  50% {
-    translate: 0 -4px;
-  }
-}
-/* The shadow answers the float: tighter and fainter as the card rises. */
-@keyframes lp-hcard-ground {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(0.92);
-    opacity: 0.7;
+  6% {
+    translate: 0 -3px;
   }
 }
 
-/* Lost-state BACKGROUND (PO 2026-09-25: the removed status chip's
-   replacement signal — "que cambie el fondo, como en la app real"). Same
-   token the owner app already uses for its OWN lost tint: --color-ln-err-050
-   is exactly .pc-cred[data-situation="perdida"] .pc-head's background
-   (app/globals.css) and LnStatusFlag's `lost` variant bg
-   (components/ui/StatusFlag.tsx) — never a new red. Scoped to .lp-hcard-front
-   (not the outer .lp-hcard) so the back face — the mini libreta, which a
-   person CAN flip to while the card is mid-cycle on "perdida" — keeps its own
-   white ground; only the credential front reads as tinted, same as the real
-   app never tints anything past its masthead row either. */
 .lp .lp-hcard-front {
   grid-area: 1 / 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
   background: var(--color-ln-card);
-  transition: background var(--motion-deliberate);
-}
-.lp .lp-hcard[data-tone="lost"] .lp-hcard-front {
-  background: var(--color-ln-err-050);
-}
-/* Contrast guard: .lp-hcard-fields dt normally sits on white at
-   --color-ln-mute (measured 5.02:1 there). On the lost tint that ratio drops
-   under 4.5:1 (WCAG AA, normal text) because --color-ln-err-050 is lighter
-   than white's usual pairing partner assumed elsewhere. Swap the SAME family's
-   darker ink-2 token (7.7:1 on err-050) rather than inventing a new shade —
-   the app itself never tints this deep (its own lost tint stops at the
-   masthead row), so there is no app usage to mirror for this one pairing. */
-.lp .lp-hcard[data-tone="lost"] .lp-hcard-fields dt {
-  color: var(--color-ln-ink-2);
 }
 
 /* single-painted-face swap (mirrors FlipCard) — both faces occupy the SAME
@@ -1099,59 +1108,225 @@
   pointer-events: auto;
 }
 
-/* ---- the security hatch (PO 2026-10-02, v2) --------------------------------
-   A very fine diagonal hatch (╲) in the brand blue, printed under everything
-   on both faces: almost invisible until you look, the way the fine print of a
-   real card is. Deliberately NOT a hologram, a sheen or a seal — miMAR is not
-   an official document and must not borrow one's cues. Pure CSS: a repeating
-   gradient whose stripes run perpendicular to its 45° axis. It shows on the
-   white of the face; the band, the state row and the MRZ paint over it.
-   It is its own layer so the parallax can slide it (--lp-sec-x/-y, written
-   by LandingHero's tilt loop, away from the pointer); the 4px overscan keeps
-   its edge out of sight at full slide. Both faces are positioned so the hatch
-   sits under their content, which is lifted above it below. */
+/* ---- escarapela on the paper --------------------------------------------- */
 .lp .lp-hcard-front,
 .lp .lp-hcard-back {
   position: relative;
 }
-.lp .lp-hcard-front > :not(.lp-hcard-sec),
-.lp .lp-hcard-back > :not(.lp-hcard-sec) {
-  position: relative;
-}
-.lp .lp-hcard-sec {
+.lp .lp-hcard-shimmer {
   position: absolute;
-  inset: -4px;
+  inset: 0;
+  z-index: 1;
   pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  mix-blend-mode: overlay;
+  transition: opacity var(--motion-fast) linear;
   background: repeating-linear-gradient(
-    45deg,
-    color-mix(in srgb, var(--color-ln-azul) 6%, transparent) 0 1px,
-    transparent 1px 5px
+    118deg,
+    transparent 0 11px,
+    color-mix(in srgb, var(--color-ln-azul) 14%, transparent) 11px 12px,
+    transparent 12px 23px
   );
-  translate: var(--lp-sec-x, 0px) var(--lp-sec-y, 0px);
+}
+.lp .lp-hcard-slab[data-turn] .lp-hcard-shimmer {
+  opacity: 0.22;
+}
+.lp .lp-hcardwrap[data-turning="true"] .lp-hcard-shimmer {
+  opacity: calc(sin(3.14159265 * var(--lp-flip-p, 0.5)) * 0.28);
+}
+.lp .lp-hcard-back {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-ln-paper);
+}
+.lp .lp-hcard-front::before,
+.lp .lp-hcard-back::before {
+  /* Security-print escarapela: 14-lobe contours continue beyond every
+     edge. Broad zones come only from gradual stroke-color variation. */
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0.76;
+  background-image: url("/landing-escarapela.svg?v=23");
+  background-repeat: no-repeat;
+  background-position: 50% 50%;
+  background-size: 100% auto;
+}
+.lp .lp-hcard-front > *,
+.lp .lp-hcard-back > * {
+  position: relative;
+  z-index: 2;
 }
 
-/* ---- band: the document's guilloche head ---------------------------------
-   Same construction as the owner app's .ln-band (hairline diagonals over an
-   azul-900 → azul → celeste sweep), plus a rosette of fine concentric rings at
-   the right edge — the security-print motif, drawn in CSS, no image. The band
-   does NOT change colour with the state: the document is the same document
-   whatever happens to the pet. The state lives in the strip under the band,
-   the photo ring and the one state row. */
+/* Band latent, portrait OVD — miMAR stock, never a State hologram or seal.
+   One placement on both faces: under the title, same distance from the
+   top edge, so a flip does not slide the word. Dark ink + a lower lip of
+   light reads as type sunk into the laminate, not printed on it. */
+.lp .lp-hcard-latent {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 42px;
+  z-index: 0;
+  font-family: var(--font-ln-serif);
+  font-weight: 700; /* the heaviest loaded serif face; 800 rendered as 700 anyway */
+  font-size: 15px;
+  letter-spacing: 0.34em;
+  text-align: center;
+  color: var(--lp-sunk-ink);
+  text-shadow: 0 -1px 0 var(--lp-sunk-shade), 0 1px 0 var(--lp-sunk-catch);
+  pointer-events: none;
+  opacity: calc(0.42 + var(--lp-press, 0) * 0.28);
+}
+.lp .lp-hcard-latent::after {
+  content: "miMAR";
+}
+.lp .lp-hcard-photo .lp-hcard-ovd {
+  position: absolute;
+  /* The larger seal, same tilt. Shifted into the corner so a small share
+     crosses the photo edge; overflow on .lp-hcard-photo cuts the holo.
+     It does not paint past the portrait. */
+  right: -7%;
+  top: -5%;
+  width: 88%;
+  height: 88%;
+  z-index: 3;
+  pointer-events: none;
+  transform: rotate(-18deg);
+  -webkit-mask: url("/logo-mimar-mark-small.svg") center / contain no-repeat;
+  mask: url("/logo-mimar-mark-small.svg") center / contain no-repeat;
+  /* Crumpled foil, only inside the logo. The conic still shifts with the lean. */
+  background-image: url("/landing-holo-foil.svg"),
+    conic-gradient(
+      from calc(var(--lp-press, 0) * 140deg),
+      var(--lp-foil-gold),
+      var(--lp-foil-cyan),
+      var(--lp-foil-magenta),
+      var(--lp-foil-gold)
+    );
+  background-size: 220% 220%, auto;
+  background-position: center;
+  background-blend-mode: hard-light, normal;
+  /* Multiply is what still tints a white coat. The seal never pops:
+     opacity is press squared, so the first lean is only a dim, and the
+     transition is the floor — a jump in --lp-press still fades in. */
+  mix-blend-mode: multiply;
+  opacity: calc(var(--lp-press, 0) * var(--lp-press, 0) * 0.62);
+  transition: opacity var(--lp-seal-fade) ease-out;
+  filter: saturate(1.7) contrast(1.08) hue-rotate(calc(var(--lp-press, 0) * 140deg));
+}
+
+/* ---- holographic security marks in the blue band -------------------------
+   Four discrete paw plaques share one clipped plane. Their sparse, asymmetric
+   placement reads as a security-print feature rather than a repeating motif. */
+.lp .lp-hcard-sec {
+  position: absolute;
+  inset: -28% -18%;
+  z-index: 0;
+  pointer-events: none;
+  perspective: 220px;
+  transform-style: preserve-3d;
+  opacity: calc(0.22 + var(--lp-press, 0) * 0.32);
+}
+.lp .lp-hcard-sec-mark {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  /* The same foil, cropped differently on each mark, and only inside the logo. */
+  background-image: url("/landing-holo-foil.svg");
+  background-size: 320% 320%;
+  background-repeat: no-repeat;
+  mix-blend-mode: screen;
+  -webkit-mask: url("/logo-mimar-mark-small.svg") center / contain no-repeat;
+  mask: url("/logo-mimar-mark-small.svg") center / contain no-repeat;
+  transform: translate3d(
+      calc(var(--lp-sec-x, 0px) * var(--md, 1)),
+      calc(var(--lp-sec-y, 0px) * var(--md, 1)),
+      var(--mz, 0px)
+    )
+    rotateX(var(--mrx, 0deg)) rotateY(var(--mry, 0deg)) rotateZ(var(--mrz, 0deg))
+    scale(var(--ms, 1));
+}
+/* Soft: a loose scatter, sunk into the band (negative Z), clear of the
+   latent paw and centred wordmark. */
+.lp .lp-hcard-sec-mark:nth-child(1) {
+  left: 30%;
+  top: 8%;
+  background-position: 0% 20%;
+  --mang: 40deg;
+  --mc1: #7ee7ff;
+  --mc2: #ffe38a;
+  --mc3: #67e8f9;
+  --mrx: -28deg;
+  --mry: 18deg;
+  --mrz: -12deg;
+  --mz: -22px;
+  --md: 0.5;
+  --ms: 0.82;
+}
+.lp .lp-hcard-sec-mark:nth-child(2) {
+  left: 84%;
+  top: 14%;
+  background-position: 80% 0%;
+  --mang: 160deg;
+  --mc1: #f0abfc;
+  --mc2: #67e8f9;
+  --mc3: #fde68a;
+  --mrx: 20deg;
+  --mry: -24deg;
+  --mrz: 16deg;
+  --mz: -16px;
+  --md: 1.15;
+  --ms: 1.05;
+}
+.lp .lp-hcard-sec-mark:nth-child(3) {
+  left: 18%;
+  top: 62%;
+  background-position: 12% 80%;
+  --mang: 90deg;
+  --mc1: #fde68a;
+  --mc2: #a5f3fc;
+  --mc3: #e879f9;
+  --mrx: -12deg;
+  --mry: 16deg;
+  --mrz: 22deg;
+  --mz: -26px;
+  --md: 0.7;
+  --ms: 0.7;
+}
+.lp .lp-hcard-sec-mark:nth-child(4) {
+  left: 62%;
+  top: 68%;
+  background-position: 70% 55%;
+  --mang: 200deg;
+  --mc1: #c4b5fd;
+  --mc2: #7ee7ff;
+  --mc3: #fde68a;
+  --mrx: 22deg;
+  --mry: -10deg;
+  --mrz: -18deg;
+  --mz: -12px;
+  --md: 1.3;
+  --ms: 1.15;
+}
+/* ---- band: the document's colour head ------------------------------------
+   Azul-900 → azul → celeste sweep plus the laminate catch. The hairline
+   hatch and the rosette came off (PO): the ghost plaques carry the print.
+   The band does NOT change colour with the state. */
 .lp .lp-hcard-band {
   position: relative;
+  overflow: hidden;
   /* Bottom padding is the room the photo and QR rise into (.lp-hcard-body's
      negative margin); change one, change the other. */
   padding: 10px 12px 50px 16px;
-  background: repeating-radial-gradient(
-      circle at 108% 130%,
-      color-mix(in srgb, var(--color-ln-card) 16%, transparent) 0 1px,
-      transparent 1px 6px
-    ),
-    repeating-linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--color-ln-card) 12%, transparent) 0 1px,
-      transparent 1px 11px
-    ),
+  /* Laminate catching window light — one soft paper spot, not a hologram or
+     a seal (those cues stay off this product). `--lp-band-light` lives on the
+     wrap so both faces share the same lean. */
+  background: var(--lp-band-light),
     linear-gradient(
       118deg,
       var(--color-ln-azul-900),
@@ -1159,17 +1334,16 @@
       var(--color-ln-celeste)
     );
 }
-/* The issuer line, both faces (PO 2026-10-02, v2): issuer left, document type
-   centred, the turn control right — small, letter-spaced, one quiet ink, so it
-   reads as printing ON the band rather than a title over it. The 1fr / auto /
-   1fr columns keep the document type on the card's true centre whatever the
-   issuer's width.
+/* Band head, both faces: latent paw mark left, document type centred, latent
+   turn control right. The 1fr / auto / 1fr columns keep the document type on
+   the card's true centre.
    Ink: celeste-100 at 82% over the band. Measured against the band's sweep
-   where the centred label sits (≈#0d518a): 5.2:1, AA for small text; the
-   issuer, over the darker azul-900 end, sits higher. Quiet by size, weight and
-   tracking — not by failing contrast. */
+   where the centred label sits (≈#0d518a): 5.2:1, AA for small text. Quiet
+   by size, weight and tracking — not by failing contrast. */
 .lp .lp-hcard-head {
   --lp-head-ink: color-mix(in srgb, var(--color-ln-celeste-100) 82%, transparent);
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
@@ -1177,32 +1351,19 @@
   min-height: 24px;
   color: var(--lp-head-ink);
 }
-.lp .lp-hcard-issuer {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.lp .lp-hcard-head-balance {
+  display: block;
   min-width: 0;
 }
-/* The real small-size cut of the mark (public/logo-mimar-mark-small.svg — the
-   ≤24px drawing, not the main mark scaled down), used as a mask so it prints
-   in the band's own ink like the rest of the line. The asset is monochrome by
-   design (one path, currentColor), so this recolours nothing it was not
-   drawn to take. */
-.lp .lp-hcard-mark {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  background: currentColor;
-  -webkit-mask: url("/logo-mimar-mark-small.svg") center / contain no-repeat;
-  mask: url("/logo-mimar-mark-small.svg") center / contain no-repeat;
-}
-.lp .lp-hcard-issuer-name {
-  font-family: var(--font-ln-sans);
-  font-weight: 600;
-  font-size: var(--text-sm);
-  line-height: 1;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
+.lp .lp-hcard-latent-mark {
+  width: 24px;
+  height: 24px;
+  justify-self: start;
+  background: var(--lp-sunk-ink);
+  -webkit-mask: url("/logo-mimar-mark-mask.svg") center / contain no-repeat;
+  mask: url("/logo-mimar-mark-mask.svg") center / contain no-repeat;
+  opacity: calc(0.42 + var(--lp-press, 0) * 0.22);
+  filter: drop-shadow(0 -0.5px 0 var(--lp-sunk-shade)) drop-shadow(0 0.7px 0 var(--lp-sunk-catch));
 }
 .lp .lp-hcard-doctype {
   font-family: var(--font-ln-mono);
@@ -1215,43 +1376,60 @@
   text-transform: uppercase;
   white-space: nowrap;
 }
-/* A layout-only wrapper (turn button in source order). Used to also carry the
-   status seal (removed, PO 2026-09-25 — see .lp-hcard-front's data-tone="lost"
-   background further down for its replacement). */
+/* A layout-only wrapper for the turn button in source order. */
 .lp .lp-hcard-trim-r {
   display: flex;
   justify-content: flex-end;
 }
-/* The turn control: a quiet ring in the line's own ink, 22px visual. */
+/* Libreta is the other face of the same card, so the turn control and the
+   latent paw swap sides. The title stays centred: both side columns are 1fr. */
+.lp .lp-hcard[data-face="back"] .lp-hcard-trim-r {
+  order: -1;
+  justify-content: flex-start;
+}
+.lp .lp-hcard[data-face="back"] .lp-hcard-head-balance {
+  order: 1;
+  justify-self: end;
+}
+.lp .lp-hcard[data-face="back"] .lp-hcard-band,
+.lp .lp-hcard[data-face="back"] .lp-hcard-libhead {
+  padding-right: 16px;
+  padding-left: 12px;
+}
+/* The turn control uses the same sunk-ink language as the latent miMAR and
+   paw. Hover/focus raises its contrast so the printed mark still reads as
+   interactive; the invisible 44px target remains unchanged. */
 .lp .lp-hcard-flip {
   width: 22px;
   height: 22px;
   position: relative;
   flex-shrink: 0;
   border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--color-ln-celeste-100) 45%, transparent);
+  border: 0;
   background: transparent;
-  color: var(--lp-head-ink, var(--color-ln-celeste-100));
-  font-size: var(--text-sm);
+  color: var(--lp-sunk-ink);
+  font-size: 18px;
+  font-weight: 700;
   line-height: 1;
+  text-shadow: 0 -1px 0 var(--lp-sunk-shade), 0 1px 0 var(--lp-sunk-catch);
+  opacity: calc(0.5 + var(--lp-press, 0) * 0.2);
   cursor: pointer;
   display: grid;
   place-items: center;
   padding: 0;
-  transition: transform var(--motion-base), background var(--motion-base), border-color
-    var(--motion-base), color var(--motion-base);
+  transition: background var(--motion-base), color var(--motion-base), opacity var(--motion-base);
 }
 @media (hover: hover) {
   .lp .lp-hcard-flip:hover {
-    background: color-mix(in srgb, var(--color-ln-card) 14%, transparent);
-    border-color: var(--color-ln-celeste-100);
-    color: var(--color-ln-card);
-    transform: rotate(180deg);
+    background: color-mix(in srgb, var(--color-ln-card) 10%, transparent);
+    color: var(--lp-sunk-ink);
+    opacity: 0.92;
   }
 }
 .lp .lp-hcard-flip:focus-visible {
   outline: 2px solid var(--color-ln-card);
   outline-offset: 2px;
+  opacity: 1;
 }
 /* Hit-area extension (critique 2026-07-27, A2): the flip trigger's visual is
    22×22 — under the 44px touch floor on the control that turns the whole
@@ -1265,17 +1443,15 @@
   border-radius: 50%;
 }
 
-/* The per-state strip under the band — .pc-strip's per-situation recolour on
-   the public card, in miniature: hairline stripes of the tone over its soft
-   tint. */
+/* The join between the blue band and the cream body. The old 4px dashed
+   status hatch (.pc-strip miniature) is gone — it read as a drawing.
+   A 1px continuous filete separates the colours. It does NOT take --htone:
+   status lives only in the inset plaque. */
 .lp .lp-hcard-tone {
-  height: 4px;
-  background: repeating-linear-gradient(
-      90deg,
-      var(--htone, var(--color-ln-ok)) 0 2px,
-      transparent 2px 4px
-    ), var(--htone-soft, var(--color-ln-ok-bg));
-  transition: background var(--motion-deliberate);
+  height: 1px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-ln-celeste-100) 45%, transparent);
+  transition: none;
 }
 
 /* body: photo · name + token · QR, the photo and QR rising into the band
@@ -1285,51 +1461,51 @@
      overlaps by the negative margin. */
   position: relative;
   display: grid;
-  /* Photo column MUST equal the QR's own box (96px, 80px in the narrow
-     @container variant below) — PO 2026-09-25: "misma medida que el QR, en
-     todos los anchos". Kept as one literal per breakpoint rather than a
-     shared custom property so grep can diff the two at a glance. */
-  grid-template-columns: 96px minmax(0, 1fr) auto;
+  /* Photo column MUST equal the QR's own box (120px, 100px in the narrow
+     @container variant below). They grew together so the front fills the
+     card; they stay the same size at every width. Kept as one literal per
+     breakpoint rather than a shared custom property so grep can diff them. */
+  grid-template-columns: 120px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: start;
   margin-top: -40px;
   padding: 0 16px 12px;
 }
-.lp .lp-hcard-photo {
+.lp .lp-hcard-photo,
+.lp .lp-hcard-qr {
   position: relative;
-  width: 96px;
-  height: 96px;
-  /* Same radius treatment as the QR frame (.lp-hcard-qr, --radius-lg) — the
-     two rise out of the band together and read as one pair of document
-     windows, not two different corner geometries. */
+  width: 120px;
+  height: 120px;
+  /* One neutral ivory mount for both document windows. The QR alone keeps
+     internal padding as its functional quiet zone. */
   border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--color-ln-stripe);
-  /* White ring (the card), then the state's colour — the ring is what makes
-     the photo read as mounted on the document. */
   border: 3px solid var(--color-ln-card);
-  outline: 2px solid var(--htone, var(--color-ln-ok));
-  transition: outline-color var(--motion-deliberate);
+  outline: 1px solid var(--color-ln-line);
+  background: var(--color-ln-card);
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--color-ln-ink) 22%, transparent), inset 0 -1px
+    0 color-mix(in srgb, var(--color-ln-card) 80%, transparent);
 }
-/* The photo sits a hair ABOVE the card's surface: under the pointer it slides
-   up to 3px inside its window, toward the pointer (--lp-photo-x/-y, written by
-   LandingHero's tilt loop). The 1.08 scale is the slack that slide needs
-   (96 × 0.08 / 2 ≈ 3.8px a side), so the window never shows an edge; it is
-   static, the same with or without JS. */
+.lp .lp-hcard-photo {
+  background: var(--color-ln-stripe);
+}
+/* The photo is printed on the card: no inner slide. Scale 1 so the window
+   shows the crop as-shot, not a 8% zoom that used to hide a 3px parallax. */
 .lp .lp-hcard-photo img {
   object-fit: cover;
-  scale: 1.08;
-  translate: var(--lp-photo-x, 0px) var(--lp-photo-y, 0px);
+  scale: 1;
 }
 .lp .lp-hcard-id {
   min-width: 0;
   /* Starts just below the band + strip (the 40px overlap, plus air), so the
-     name is always on white while photo and QR rise past it. */
-  margin-top: 48px;
+     name is always on white while photo and QR rise past it. Tuned so the
+     name still sits in the lower half of the 120px portrait. */
+  margin-top: 68px;
   text-align: center;
 }
 .lp .lp-hcard-name {
   display: block;
+  overflow-wrap: anywhere;
   font-family: var(--font-ln-serif);
   font-weight: 600;
   font-size: var(--text-title);
@@ -1346,43 +1522,52 @@
   color: var(--color-ln-ink-2);
   white-space: nowrap;
 }
+/* Tactile relief (PRADO raised/laser engraving): opposing 0-blur edges, not
+   a drop shadow under the type. The wrap's --lp-emb-* follows the hover
+   light; at rest a desk-lamp 0.35px catch from above. */
+.lp .lp-hcard-name,
+.lp .lp-hcard-token,
+.lp .lp-hcard-libname,
+.lp .lp-hcard-libtoken,
+.lp .lp-hcard-mrz {
+  text-shadow: calc(var(--lp-emb-x, 0px) * -1) calc(var(--lp-emb-y, 0.35px) * -1) 0
+    color-mix(in srgb, var(--color-ln-card) 82%, white), var(--lp-emb-x, 0px)
+    var(--lp-emb-y, 0.35px) 0 color-mix(in srgb, var(--color-ln-ink) 26%, transparent);
+}
 .lp .lp-hcard-qr {
-  /* 96px: the size the PO asked for so the real hero QR scans off a screen
-     (58px was too small). The card body's third column is `auto`, so the QR
-     sets its own width. */
-  width: 96px;
-  height: 96px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-ln-line);
-  background: var(--color-ln-card);
-  outline: 3px solid var(--color-ln-card);
+  /* The quiet zone sits inside the shared mount and is not a second frame. */
   padding: 6px;
   display: block;
   flex-shrink: 0;
-  overflow: hidden;
 }
 .lp .lp-hcard-qr svg {
   display: block;
   width: 100%;
   height: 100%;
+  transform: translate3d(var(--lp-qr-x, 0px), var(--lp-qr-y, 0px), 0);
 }
-/* Narrow cards (a 320-360px phone): photo, QR and token step down one size so
-   name and token keep their column. The QR stays at 80px, still scannable off
-   a screen at arm's length. */
-@container (max-width: 340px) {
+
+/* Narrow cards (a 320-390px phone): photo, QR and token step down one size so
+   name and token keep their column. The QR stays at 100px, still the photo's
+   twin and still scannable off a screen at arm's length. At 390px the card is
+   ~358px wide, and the 120px cells left the name 61px: "Pampa" was clipped. */
+@container (max-width: 400px) {
   .lp .lp-hcard-body {
-    grid-template-columns: 80px minmax(0, 1fr) auto;
+    grid-template-columns: 100px minmax(0, 1fr) auto;
     gap: 10px;
   }
   .lp .lp-hcard-photo {
-    /* Still the QR's own size at this width (80px) — see the note on
+    /* Still the QR's own size at this width (100px) — see the note on
        .lp-hcard-body above. */
-    width: 80px;
-    height: 80px;
+    width: 100px;
+    height: 100px;
+  }
+  .lp .lp-hcard-id {
+    margin-top: 56px;
   }
   .lp .lp-hcard-qr {
-    width: 80px;
-    height: 80px;
+    width: 100px;
+    height: 100px;
     padding: 5px;
   }
   .lp .lp-hcard-token {
@@ -1398,7 +1583,6 @@
   gap: 9px 14px;
   margin: 0 16px;
   padding: 11px 0 12px;
-  border-top: 1px solid var(--color-ln-line-2);
 }
 .lp .lp-hcard-fields dt {
   font-family: var(--font-ln-mono);
@@ -1414,16 +1598,20 @@
   color: var(--color-ln-ink);
 }
 
-/* one contextual read-only row, tinted, morphing per state */
+/* One inset document plaque: state colour lives here, not on the carnet
+   perimeter or media mounts. The translucent wash preserves the guilloché. */
 .lp .lp-hcard-ctx {
   display: flex;
   align-items: center;
   gap: 9px;
   margin: 0 16px 12px;
   padding: 9px 12px;
-  border-radius: var(--radius-lg);
-  background: var(--htone-soft, var(--color-ln-ok-bg));
+  border: 1px solid color-mix(in srgb, var(--htone-bd, var(--color-ln-ok-100)) 82%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--htone-soft, var(--color-ln-ok-bg)) 76%, transparent);
   color: var(--htone, var(--color-ln-ok));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-ln-card) 76%, transparent), inset 0 -1px
+    0 color-mix(in srgb, var(--htone, var(--color-ln-ok)) 12%, transparent);
   font-weight: 700;
   font-size: var(--text-md);
   /* Every state's copy is short enough to be exactly one line at every
@@ -1431,11 +1619,17 @@
      only floors the row so the one-shot cycle never moves anything below the
      card, it does not reserve room for a 2nd line. */
   min-height: 38px;
-  transition: background var(--motion-deliberate), color var(--motion-deliberate);
+  transition: background-color var(--motion-deliberate), border-color var(--motion-deliberate),
+    color var(--motion-deliberate);
   animation: lp-hstate-in var(--motion-slow) ease both;
 }
-.lp .lp-hcard-ctx-chev {
-  font-size: var(--text-xs);
+.lp .lp-hcard-ctx-marker {
+  width: 3px;
+  height: 18px;
+  flex: 0 0 3px;
+  border-radius: var(--radius-pill);
+  background: var(--htone, var(--color-ln-ok));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-ln-card) 42%, transparent);
 }
 /* The state word leads the row (M4): the row itself steps down to regular
    weight so the word is what the eye lands on. */
@@ -1455,9 +1649,16 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* The strip is the foot of the front face. The libreta does not carry it,
+     so any spare height on the credencial sits above this block. */
+  margin-top: auto;
   padding: 9px 16px 11px;
-  border-top: 1px dashed var(--color-ln-line-strong);
-  background: var(--color-ln-paper-2);
+  border-top: 1px dashed var(--color-ln-celeste);
+  /* Passport paper: a pale celeste ground under the mono, with a quiet
+     fiber. The ink stays darker than the sheet so the lines read clearer. */
+  background-color: var(--color-ln-celeste-050);
+  background-image: url("/landing-passport-paper.svg");
+  background-size: 180px 112px;
   font-family: var(--font-ln-mono);
   font-size: var(--text-xs);
   line-height: 1.3;
@@ -1470,20 +1671,12 @@
 /* back — the mini libreta: the same band, shorter, so the two faces read as
    two sides of one document. */
 .lp .lp-hcard-libhead {
-  /* The front band's issuer line (.lp-hcard-head), on a band with no room
-     for the photo to rise into: same padding top and sides as the front. */
-  padding: 10px 12px 10px 16px;
-  background: repeating-linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--color-ln-card) 12%, transparent) 0 1px,
-      transparent 1px 11px
-    ),
-    linear-gradient(
-      118deg,
-      var(--color-ln-azul-900),
-      var(--color-ln-azul) 58%,
-      var(--color-ln-celeste)
-    );
+  /* Same top inset as the front band, plus room under the latent so
+     "Libreta sanitaria" and the sunk miMAR do not share a line. */
+  position: relative;
+  overflow: hidden;
+  padding: 10px 12px 46px 16px;
+  background: var(--lp-band-light), var(--color-ln-azul);
 }
 /* Whose libreta this is: the name the front prints, and its token. */
 .lp .lp-hcard-libmeta {
@@ -1499,7 +1692,7 @@
   font-weight: 600;
   font-size: var(--text-lg);
   line-height: 1.1;
-  color: var(--color-ln-ink);
+  color: var(--color-ln-azul);
 }
 .lp .lp-hcard-libtoken {
   font-family: var(--font-ln-mono);
@@ -1509,18 +1702,58 @@
   white-space: nowrap;
 }
 .lp .lp-hcard-librow {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 11px 16px;
+  position: relative;
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 10px;
+  padding: 11px 16px 11px 12px;
   border-bottom: 1px solid var(--color-ln-line);
   font-size: var(--text-md);
+}
+.lp .lp-hcard-librow::before {
+  content: "";
+  position: relative;
+  z-index: 1;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--color-ln-azul);
+  border-radius: 50%;
+  background: var(--color-ln-card);
+  box-shadow: 0 0 0 3px var(--color-ln-card);
+}
+.lp .lp-hcard-librow::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  left: 15px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--color-ln-celeste-100) 76%, transparent);
+}
+.lp .lp-hcard-libmeta + .lp-hcard-librow::after {
+  top: 50%;
+}
+.lp .lp-hcard-librow:nth-last-child(2)::after {
+  bottom: 50%;
+}
+.lp .lp-hcard-librow > span {
+  position: relative;
+  z-index: 1;
+}
+/* Only the empty foot of the libreta. The rows above stay on the white paper. */
+.lp .lp-hcard-libpaper {
+  flex: 1 1 auto;
+  min-height: 0;
+  background-color: var(--color-ln-celeste-050);
+  background-image: url("/landing-passport-paper.svg");
+  background-size: 180px 112px;
 }
 .lp .lp-hcard-libwhat {
   display: block;
   font-weight: 700;
-  color: var(--color-ln-ink);
+  color: var(--color-ln-azul);
 }
 .lp .lp-hcard-libwho {
   display: block;
@@ -1610,7 +1843,6 @@
   .lp .lp-hcard-slab[data-turn],
   .lp .lp-hcard-float,
   .lp .lp-hcard-ground,
-  .lp .lp-hcard-lift,
   .lp .lp-hcard-front,
   .lp .lp-hcard-tone,
   .lp .lp-hcard-photo,
@@ -1618,9 +1850,6 @@
   .lp .lp-hcard-flip {
     transition: none;
     animation: none;
-  }
-  .lp .lp-hcard-flip:hover {
-    transform: none;
   }
 }
 
