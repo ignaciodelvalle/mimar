@@ -21,6 +21,11 @@
  *
  * Re-run it after any seed that writes events without a `place` (a staging
  * reseed included): seed:panorama already does, at its end.
+ *
+ * Then run the name pass (scripts/place-resolve-event-places-by-name.ts): it
+ * gives the unresolved rows this script wrote their id where the recorded
+ * name names exactly one catalogue row. A projection rebuild is both steps,
+ * in that order (docs/ops/local-dev-runbook.md).
  */
 
 import "./_load-env";

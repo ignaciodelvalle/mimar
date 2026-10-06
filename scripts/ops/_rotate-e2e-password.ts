@@ -33,8 +33,10 @@
  * Nothing in here ever logs the password — not on success, not in an error.
  */
 
-/** The staging project. The script refuses any other target. */
-export const STAGING_PROJECT_REF = "agnwyifsdxxoznodutgq";
+import { STAGING_PROJECT_REF } from "../_env-target";
+
+/** The staging project (defined once, in scripts/_env-target.ts). The script refuses any other target. */
+export { STAGING_PROJECT_REF };
 
 /** The name of the GitHub Actions secret the nightly e2e job reads. */
 export const SECRET_NAME = "E2E_STAGING_PASSWORD";

@@ -3,17 +3,22 @@
 // Reads every unresolved row's `entered` name (lib/place/event-place-names.ts),
 // asks THE resolver once per distinct (province, name) pair (resolveName: one
 // live row of the province, or nothing — never the first homonym), and, in
-// apply mode, writes the catalogue id ONLY on rows whose pair names exactly
-// one row, with method `legacy_unique_name` (0251 / 0275 rule B's word for
-// "the id came from a unique historical name"). Ambiguous and unknown names
-// are never touched: they stay province-level for a person.
+// apply mode, writes the catalogue id ONLY on SPINE-SHAPED rows (the
+// historic backfill's) whose pair names exactly one row, with the resolver's
+// own method (exact_name_unique / folded_name_unique). Rows in the 0250
+// trigger's shape are counted and never written: "unresolved" there can be a
+// deliberate policy verdict (lib/place/reported-place.ts). Ambiguous and
+// unknown names are never touched: they stay province-level for a person.
 //
 // event_places is a declared projection (0250): the events are never touched
 // (P2). Each batch is its own transaction of at most APPLY_BATCH rows (the
 // staging session pooler closed a 500-row transaction), and every UPDATE
-// re-checks `method = 'unresolved' AND locality_id IS NULL` and that the row
-// is still live in the catalogue, so a re-run, or a run resumed after a
-// failure, writes only what is still missing.
+// re-checks that the row is still unresolved and spine-shaped and that its
+// catalogue row is still live with no homonym, so a re-run, or a run resumed
+// after a failure, writes only what is still missing.
+//
+// A projection REBUILD (delete the rows, re-run place:backfill-event-places)
+// brings the name-only homes back as unresolved: re-run this pass after it.
 //
 // Executor-first, so a test can run it inside a rolled-back transaction (each
 // batch is then a savepoint). The operator door is
@@ -25,6 +30,7 @@ import type { db } from "@/db";
 import {
   type ClassifiedPair,
   type EnteredShape,
+  type NameMethod,
   type Projection,
   extractEnteredName,
   project,
@@ -78,8 +84,11 @@ export type NamePassInventory = {
   /** Unique pairs by how the resolver matched (exact catalogue spelling or folded). */
   uniqueBy: { exact_name_unique: number; folded_name_unique: number };
   projection: Projection;
-  /** event ids per unique pair key — what apply writes. */
-  uniqueTargets: Map<string, { localityId: string; provinceCode: string; eventIds: string[] }>;
+  /** Spine-shaped event ids per unique pair key — what apply writes. */
+  uniqueTargets: Map<
+    string,
+    { localityId: string; provinceCode: string; method: NameMethod; eventIds: string[] }
+  >;
 };
 
 function pairKey(code: string | null, locality: string | null): string {
@@ -207,7 +216,9 @@ export async function inventoryNamePass(
       provinceCode: string | null;
       enteredProvince: string | null;
       locality: string | null;
-      eventIds: string[];
+      rows: number;
+      /** Spine-shaped rows only: the only ones the pass may write. */
+      spineEventIds: string[];
     }
   >();
   for (const r of rows) {
@@ -218,9 +229,11 @@ export async function inventoryNamePass(
       provinceCode: name.provinceCode,
       enteredProvince: name.enteredProvince,
       locality: name.locality,
-      eventIds: [],
+      rows: 0,
+      spineEventIds: [],
     };
-    g.eventIds.push(r.eventId);
+    g.rows += 1;
+    if (name.shape === "spine") g.spineEventIds.push(r.eventId);
     groups.set(key, g);
   }
 
@@ -232,29 +245,37 @@ export async function inventoryNamePass(
       provinceCode: g.provinceCode,
       enteredProvince: g.enteredProvince,
       locality: g.locality,
-      rows: g.eventIds.length,
+      rows: g.rows,
+      writableRows: g.spineEventIds.length,
+      localityId: null,
+      method: null,
+      noneReason: null,
     };
     const missing = unaskable(g);
     if (missing) {
-      pairs.push({ ...base, verdict: "none", localityId: null, noneReason: missing });
+      pairs.push({ ...base, verdict: "none", noneReason: missing });
       continue;
     }
     const answer = await resolveName(g.provinceCode as string, g.locality as string);
     const verdict = verdictOf(answer);
     if (verdict === "unique" && answer.localityId && answer.provinceCode) {
-      if (answer.method === "exact_name_unique") uniqueBy.exact_name_unique += 1;
-      else uniqueBy.folded_name_unique += 1;
-      pairs.push({ ...base, verdict, localityId: answer.localityId, noneReason: null });
-      uniqueTargets.set(key, {
-        localityId: answer.localityId,
-        provinceCode: answer.provinceCode,
-        eventIds: g.eventIds,
-      });
+      const method: NameMethod =
+        answer.method === "folded_name_unique" ? "folded_name_unique" : "exact_name_unique";
+      uniqueBy[method] += 1;
+      pairs.push({ ...base, verdict, localityId: answer.localityId, method });
+      if (g.spineEventIds.length > 0) {
+        uniqueTargets.set(key, {
+          localityId: answer.localityId,
+          provinceCode: answer.provinceCode,
+          method,
+          eventIds: g.spineEventIds,
+        });
+      }
     } else if (verdict === "ambiguous") {
-      pairs.push({ ...base, verdict, localityId: null, noneReason: null });
+      pairs.push({ ...base, verdict });
     } else {
       const noneReason = answer.reason === "none_entered" ? "unknown_province" : "not_in_catalogue";
-      pairs.push({ ...base, verdict: "none", localityId: null, noneReason });
+      pairs.push({ ...base, verdict: "none", noneReason });
     }
   }
   lap(`pairs asked of the resolver: ${groups.size}`);
@@ -274,9 +295,11 @@ export async function inventoryNamePass(
 export type ApplyResult = { batches: number; updated: number; skipped: number };
 
 /**
- * Write the unique targets, APPLY_BATCH rows per transaction. A row that is no
- * longer unresolved (an earlier run, the admin queue), or whose catalogue row
- * was removed meanwhile, is skipped, not overwritten.
+ * Write the unique targets, APPLY_BATCH rows per transaction, each with the
+ * resolver's own method. Every UPDATE re-checks, inside its transaction, that
+ * the row is still unresolved and spine-shaped, and that its catalogue row is
+ * still live AND still has no homonym in its province (same slug or same
+ * case-folded name). A row failing any of those is skipped, never overwritten.
  */
 export async function applyNamePass(
   exec: NamePassExecutor,
@@ -284,16 +307,29 @@ export async function applyNamePass(
   onBatch?: (done: ApplyResult) => void,
 ): Promise<ApplyResult> {
   const result: ApplyResult = { batches: 0, updated: 0, skipped: 0 };
-  const work: Array<{ eventId: string; localityId: string; provinceCode: string }> = [];
+  const work: Array<{
+    eventId: string;
+    localityId: string;
+    provinceCode: string;
+    method: NameMethod;
+  }> = [];
   for (const t of inventory.uniqueTargets.values()) {
     for (const eventId of t.eventIds) {
-      work.push({ eventId, localityId: t.localityId, provinceCode: t.provinceCode });
+      work.push({
+        eventId,
+        localityId: t.localityId,
+        provinceCode: t.provinceCode,
+        method: t.method,
+      });
     }
   }
   for (let i = 0; i < work.length; i += APPLY_BATCH) {
     const batch = work.slice(i, i + APPLY_BATCH);
     const values = sql.join(
-      batch.map((w) => sql`(${w.eventId}::uuid, ${w.localityId}::uuid, ${w.provinceCode}::text)`),
+      batch.map(
+        (w) =>
+          sql`(${w.eventId}::uuid, ${w.localityId}::uuid, ${w.provinceCode}::text, ${w.method}::text)`,
+      ),
       sql`, `,
     );
     const updated = await exec.transaction(async (tx) => {
@@ -301,16 +337,25 @@ export async function applyNamePass(
         update public.event_places p
            set locality_id = v.locality_id,
                province_code = v.province_code,
-               method = 'legacy_unique_name'
-          from (values ${values}) as v(event_id, locality_id, province_code)
+               method = v.method
+          from (values ${values}) as v(event_id, locality_id, province_code, method)
          where p.event_id = v.event_id
            and p.method = 'unresolved'
            and p.locality_id is null
+           and p.entered ->> 'source' = 'spine'
+           and p.entered ? 'spine_event_id'
            and exists (
              select 1 from public.ar_localities l
               where l.id = v.locality_id
                 and l.province_code = v.province_code
-                and l.removed_at is null)
+                and l.removed_at is null
+                and not exists (
+                  select 1 from public.ar_localities h
+                   where h.province_code = l.province_code
+                     and h.removed_at is null
+                     and h.id <> l.id
+                     and (h.locality_slug = l.locality_slug
+                          or lower(h.locality_name) = lower(l.locality_name))))
         returning p.event_id
       `)) as unknown as unknown[];
       return res.length;

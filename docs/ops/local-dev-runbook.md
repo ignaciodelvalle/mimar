@@ -49,12 +49,28 @@ condition. Pick by what you're doing:
 | `pnpm seed:panorama` | Panorama/analytics dataset; ends by placing its events (`event_places`) |
 | `pnpm seed:coverage` | Compliance-coverage dataset for dashboards |
 | `pnpm place:backfill-event-places --apply` | Places every event that has no `event_places` row yet, from the pet's home per spine (idempotent) |
+| `pnpm place:resolve-event-places-by-name --target local` | Dry run of the name pass over the backfill's UNRESOLVED rows; add `--apply --expect-unique <n>` to write (idempotent) |
 
 Panorama attributes events by catalogue id (`place_read_flags.panorama = 'id'`
 since migration 0276), through the `event_places` projection. Only events that
 carry a `place` get a row by trigger, so after any seed that writes events
 without one, run `pnpm place:backfill-event-places --apply` last, or the map
 shows those events as "Sin localidad". `seed:panorama` already runs it.
+
+The backfill writes a home the spine recorded by NAME alone (no locality id:
+older seeds) as unresolved, on purpose. The name pass gives those rows their
+id where the name names exactly one catalogue row of the province (method
+`exact_name_unique` / `folded_name_unique`); homonyms, unknown names and rows
+the trigger projected are never written. So the full rebuild of the
+projection is two steps, in this order:
+
+1. `pnpm place:backfill-event-places --apply`
+2. `pnpm place:resolve-event-places-by-name --target <env>` (dry run: read
+   "rows to write"), then the same with `--apply --expect-unique <that number>`.
+
+`seed:panorama` runs only step 1: its events record ids, so step 2 finds
+nothing there. Run step 2 after any rebuild or reseed of an environment whose
+spine carries name-only homes.
 
 For a one-command QA environment (checks containers, build freshness vs HEAD,
 starts the prod server on :3000, smoke-tests routes, verifies seed accounts):

@@ -16,12 +16,18 @@
 // a name only when it names exactly one live row of the province, never the
 // first homonym) answered into three verdicts:
 //
-//   unique     one row: the pass may write it (method legacy_unique_name, the
-//              same word 0251 and 0275 rule B use for "the id came from a
-//              unique historical name, never from a person or a geocoder");
+//   unique     one row: the pass may write it, with the resolver's own method
+//              (exact_name_unique or folded_name_unique);
 //   ambiguous  two or more rows share the name: left alone, for a person;
 //   none       the catalogue does not know it, or there is no name / no
 //              province to look it up in: left alone.
+//
+// ONLY SPINE-SHAPED ROWS ARE EVER WRITTEN. A row in the 0250 trigger's shape
+// is the projection of an event's own `place`, and "unresolved" there can be a
+// deliberate verdict of the report policy (lib/place/reported-place.ts: a pin
+// that disagrees with the typed name, for one), not a missing id. 0275
+// excludes such rows for the same reason. They are counted, never written:
+// `writableRows` is the spine-shaped part of a pair.
 //
 // Pure: no database. The pass is lib/place/event-places-name-pass.ts and the
 // operator door is scripts/place-resolve-event-places-by-name.ts.
@@ -110,16 +116,23 @@ export function verdictOf(answer: Pick<ResolvedPlace, "status" | "localityId">):
   return "none";
 }
 
+/** The resolver methods a name match can carry (both allowed by the 0250 CHECK). */
+export type NameMethod = "exact_name_unique" | "folded_name_unique";
+
 export type ClassifiedPair = {
   provinceCode: string | null;
   /** The first entered province text seen for the pair (report only). */
   enteredProvince: string | null;
   locality: string | null;
-  /** How many unresolved rows carry this pair. */
+  /** How many unresolved rows carry this pair, whatever their shape. */
   rows: number;
+  /** How many of them are spine-shaped: the only rows the pass may write. */
+  writableRows: number;
   verdict: NameVerdict;
   /** Set only on `unique`. */
   localityId: string | null;
+  /** How the resolver matched; set only on `unique`. */
+  method: NameMethod | null;
   /** Set only on `none`. */
   noneReason: NoneReason | null;
 };
@@ -128,13 +141,17 @@ export type Projection = {
   pairs: { unique: number; ambiguous: number; none: number };
   rows: { unique: number; ambiguous: number; none: number };
   noneRowsBy: Record<NoneReason, number>;
+  /** Unique rows the pass writes (spine-shaped), split by resolver method. */
+  write: { rows: number; exactRows: number; foldedRows: number };
+  /** Unique rows held back because they are not spine-shaped. */
+  heldUniqueRows: number;
   before: { resolved: number; unresolved: number };
   after: { resolved: number; unresolved: number };
 };
 
 /**
- * Totals before and after the pass would write every `unique` pair. `resolved`
- * and `unresolved` are the table's counts now; only unique rows move.
+ * Totals before and after the pass writes every spine-shaped `unique` row.
+ * `resolved` and `unresolved` are the table's counts now; only those rows move.
  */
 export function project(
   pairs: readonly ClassifiedPair[],
@@ -144,6 +161,8 @@ export function project(
     pairs: { unique: 0, ambiguous: 0, none: 0 },
     rows: { unique: 0, ambiguous: 0, none: 0 },
     noneRowsBy: { no_locality: 0, unknown_province: 0, not_in_catalogue: 0 },
+    write: { rows: 0, exactRows: 0, foldedRows: 0 },
+    heldUniqueRows: 0,
     before: { ...before },
     after: { ...before },
   };
@@ -151,10 +170,16 @@ export function project(
     out.pairs[p.verdict] += 1;
     out.rows[p.verdict] += p.rows;
     if (p.verdict === "none") out.noneRowsBy[p.noneReason ?? "not_in_catalogue"] += p.rows;
+    if (p.verdict === "unique") {
+      out.write.rows += p.writableRows;
+      if (p.method === "folded_name_unique") out.write.foldedRows += p.writableRows;
+      else out.write.exactRows += p.writableRows;
+      out.heldUniqueRows += p.rows - p.writableRows;
+    }
   }
   out.after = {
-    resolved: before.resolved + out.rows.unique,
-    unresolved: before.unresolved - out.rows.unique,
+    resolved: before.resolved + out.write.rows,
+    unresolved: before.unresolved - out.write.rows,
   };
   return out;
 }

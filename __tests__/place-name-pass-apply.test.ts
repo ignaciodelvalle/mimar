@@ -1,9 +1,10 @@
 // The name pass, applied (PO decision 2026-10-06): over unresolved
 // event_places rows in the spine backfill's shape, ONLY a name that names
-// exactly one live catalogue row in its province gets its id (method
-// legacy_unique_name). A homonym and an unknown name are left exactly as they
-// were. The write goes in batches of APPLY_BATCH rows, and a second run
-// writes nothing.
+// exactly one live catalogue row in its province gets its id, with the
+// resolver's own method. A homonym, an unknown name, and any row the 0250
+// trigger projected from an event's own `place` are left exactly as they were.
+// The write goes in batches of APPLY_BATCH rows, and a second run writes
+// nothing.
 //
 // The homonym is Mechita (Buenos Aires: partido Alberti and partido Bragado).
 // "San Martín" is NOT a homonym in this catalogue — it names one row in each
@@ -52,22 +53,31 @@ async function aCleanPet(tx: Tx): Promise<string> {
   return (rows[0] as { id: string }).id;
 }
 
-/** An event with no place, and the unresolved spine-shaped row the backfill would write. */
-async function seedUnresolved(
+async function insertEvent(tx: Tx, petId: string, payload: unknown): Promise<string> {
+  const [ev] = (await tx.execute(sql`
+    insert into public.pet_events (pet_id, event_type, occurred_at, author_role, payload)
+    values (${petId}::uuid, 'note_added', now(), 'system', ${JSON.stringify(payload)}::jsonb)
+    returning id::text as id
+  `)) as unknown as Array<{ id: string }>;
+  return (ev as { id: string }).id;
+}
+
+/**
+ * An event with no place, and the unresolved spine-shaped row the backfill
+ * would write for it. `provinceCode` null = the backfill could not code the
+ * entered province, so the pass must read the entered text itself.
+ */
+async function seedSpineRow(
   tx: Tx,
   petId: string,
+  provinceCode: string | null,
   province: string,
   locality: string,
 ): Promise<string> {
-  const [ev] = (await tx.execute(sql`
-    insert into public.pet_events (pet_id, event_type, occurred_at, author_role, payload)
-    values (${petId}::uuid, 'note_added', now(), 'system', '{"text":"name pass fence"}'::jsonb)
-    returning id::text as id
-  `)) as unknown as Array<{ id: string }>;
-  const eventId = (ev as { id: string }).id;
+  const eventId = await insertEvent(tx, petId, { text: "name pass fence" });
   await tx.execute(sql`
     insert into public.event_places (event_id, pet_id, province_code, locality_id, method, entered)
-    values (${eventId}::uuid, ${petId}::uuid, 'AR-B', null, 'unresolved',
+    values (${eventId}::uuid, ${petId}::uuid, ${provinceCode}, null, 'unresolved',
             jsonb_build_object('province', ${province}::text, 'locality', ${locality}::text,
                                'source', 'spine', 'spine_event_id', ${eventId}::text))
   `);
@@ -82,8 +92,8 @@ async function placeOf(tx: Tx, eventId: string) {
   return row;
 }
 
-describe("the name pass writes only names that name one row", () => {
-  it("resolves the unique name in batches, leaves the homonym and the unknown name, and is idempotent", async () => {
+describe("the name pass writes only spine rows whose name names one row", () => {
+  it("resolves the unique name in batches, leaves the homonym, the unknown name and the trigger's row, and is idempotent", async () => {
     await inRolledBackTx(async (tx) => {
       // Preconditions straight from the catalogue, not from the resolver.
       const quilmes = await liveRows(tx, "AR-B", "Quilmes");
@@ -95,16 +105,36 @@ describe("the name pass writes only names that name one row", () => {
       const petId = await aCleanPet(tx);
       const uniqueIds: string[] = [];
       for (let i = 0; i < APPLY_BATCH + 1; i++) {
-        uniqueIds.push(await seedUnresolved(tx, petId, "Buenos Aires", "Quilmes"));
+        uniqueIds.push(await seedSpineRow(tx, petId, "AR-B", "Buenos Aires", "Quilmes"));
       }
-      const homonym = await seedUnresolved(tx, petId, "Buenos Aires", "Mechita");
-      const unknown = await seedUnresolved(tx, petId, "Buenos Aires", "Villa Que No Existe");
-      const homonymBefore = await placeOf(tx, homonym);
-      const unknownBefore = await placeOf(tx, unknown);
+      const homonym = await seedSpineRow(tx, petId, "AR-B", "Buenos Aires", "Mechita");
+      const unknown = await seedSpineRow(tx, petId, "AR-B", "Buenos Aires", "Villa Que No Existe");
+      // The 0250 trigger projects an event's own place: same unique name, but
+      // "unresolved" there is the writer's verdict, not a missing id.
+      const triggered = await insertEvent(tx, petId, {
+        text: "name pass fence",
+        place: { entered: { province: "Buenos Aires", locality: "Quilmes", indec_id: null } },
+      });
+      const before = {
+        homonym: await placeOf(tx, homonym),
+        unknown: await placeOf(tx, unknown),
+        triggered: await placeOf(tx, triggered),
+      };
+      expect(before.triggered, "the trigger must have projected it").toMatchObject({
+        province_code: "AR-B",
+        locality_id: null,
+        method: "unresolved",
+      });
 
       const inv = await inventoryNamePass(tx, { petIds: [petId] });
-      expect(inv.projection.rows).toEqual({ unique: APPLY_BATCH + 1, ambiguous: 1, none: 1 });
-      expect(inv.projection.after.unresolved).toBe(inv.projection.before.unresolved - 51);
+      expect(inv.rowsByShape).toEqual({ spine: APPLY_BATCH + 3, event_place: 1, unknown: 0 });
+      expect(inv.projection.rows).toEqual({ unique: APPLY_BATCH + 2, ambiguous: 1, none: 1 });
+      expect(inv.projection.write).toEqual({
+        rows: APPLY_BATCH + 1,
+        exactRows: APPLY_BATCH + 1,
+        foldedRows: 0,
+      });
+      expect(inv.projection.heldUniqueRows).toBe(1);
 
       const first = await applyNamePass(tx, inv);
       expect(first).toEqual({ batches: 2, updated: APPLY_BATCH + 1, skipped: 0 });
@@ -113,22 +143,52 @@ describe("the name pass writes only names that name one row", () => {
         expect(await placeOf(tx, id)).toMatchObject({
           province_code: "AR-B",
           locality_id: quilmes[0],
-          method: "legacy_unique_name",
+          method: "exact_name_unique",
         });
       }
-      expect(await placeOf(tx, homonym)).toEqual(homonymBefore);
-      expect(await placeOf(tx, unknown)).toEqual(unknownBefore);
-      expect(homonymBefore).toMatchObject({ locality_id: null, method: "unresolved" });
+      expect(await placeOf(tx, homonym)).toEqual(before.homonym);
+      expect(await placeOf(tx, unknown)).toEqual(before.unknown);
+      expect(await placeOf(tx, triggered)).toEqual(before.triggered);
 
       // A re-run (or a resumed one) finds nothing left to write.
       const again = await inventoryNamePass(tx, { petIds: [petId] });
-      expect(again.projection.rows).toEqual({ unique: 0, ambiguous: 1, none: 1 });
+      expect(again.projection.write.rows).toBe(0);
       expect(await applyNamePass(tx, again)).toEqual({ batches: 0, updated: 0, skipped: 0 });
       // Even a stale inventory replayed writes nothing: every row is re-checked.
       expect(await applyNamePass(tx, inv)).toEqual({
         batches: 2,
         updated: 0,
         skipped: APPLY_BATCH + 1,
+      });
+    });
+  });
+
+  it("reads an uncoded entered province by name or alias, and lands on that province's row", async () => {
+    await inRolledBackTx(async (tx) => {
+      const villaMaria = await liveRows(tx, "AR-X", "Villa María");
+      const palermo = await liveRows(tx, "AR-C", "Palermo");
+      expect(villaMaria, "Villa María must name one live Córdoba row").toHaveLength(1);
+      expect(palermo, "Palermo must name one live CABA row").toHaveLength(1);
+
+      const petId = await aCleanPet(tx);
+      // No province_code on the row: the pass must code "Córdoba" (a name)
+      // and "Capital Federal" (an alias of CABA) itself.
+      const byName = await seedSpineRow(tx, petId, null, "Córdoba", "Villa María");
+      const byAlias = await seedSpineRow(tx, petId, null, "Capital Federal", "Palermo");
+
+      const inv = await inventoryNamePass(tx, { petIds: [petId] });
+      expect(inv.projection.write.rows).toBe(2);
+      expect(await applyNamePass(tx, inv)).toEqual({ batches: 1, updated: 2, skipped: 0 });
+
+      expect(await placeOf(tx, byName)).toMatchObject({
+        province_code: "AR-X",
+        locality_id: villaMaria[0],
+        method: "exact_name_unique",
+      });
+      expect(await placeOf(tx, byAlias)).toMatchObject({
+        province_code: "AR-C",
+        locality_id: palermo[0],
+        method: "exact_name_unique",
       });
     });
   });

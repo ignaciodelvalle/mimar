@@ -4,7 +4,8 @@
 // The fixtures are written by hand from the shapes the staging dry run found
 // (2026-10-06): every unresolved row there was the spine backfill's
 // {province, locality, source: "spine", spine_event_id}; the 0250 trigger's
-// {province, locality, indec_id} is covered because the pass reads both.
+// {province, locality, indec_id} is read too, but only counted: the pass
+// never writes it.
 
 import { describe, expect, it } from "vitest";
 
@@ -17,8 +18,10 @@ import {
   verdictOf,
 } from "./event-place-names";
 
+import { STAGING_PROJECT_REF } from "@/scripts/_env-target";
 import {
   describeHost,
+  expectUniqueProblem,
   projectRef,
   targetProblem,
 } from "@/scripts/place-resolve-event-places-by-name";
@@ -164,70 +167,82 @@ describe("verdictOf", () => {
 });
 
 describe("project", () => {
+  const base = {
+    enteredProvince: "Buenos Aires",
+    localityId: null,
+    method: null,
+    noneReason: null,
+  };
   const pairs: ClassifiedPair[] = [
     {
+      ...base,
       provinceCode: "AR-B",
-      enteredProvince: "Buenos Aires",
       locality: "Quilmes",
       rows: 120,
+      writableRows: 120,
       verdict: "unique",
       localityId: "5d4c1b2a-0000-4000-8000-00000000abcd",
-      noneReason: null,
+      method: "exact_name_unique",
     },
     {
-      provinceCode: "AR-X",
+      // 30 rows, 4 of them projected by the 0250 trigger: those are held back.
+      ...base,
       enteredProvince: "Córdoba",
-      locality: "Córdoba",
+      provinceCode: "AR-X",
+      locality: "Cordoba",
       rows: 30,
+      writableRows: 26,
       verdict: "unique",
       localityId: "5d4c1b2a-0000-4000-8000-00000000abce",
-      noneReason: null,
+      method: "folded_name_unique",
     },
     {
+      ...base,
       provinceCode: "AR-B",
-      enteredProvince: "Buenos Aires",
       locality: "Mechita",
       rows: 7,
+      writableRows: 7,
       verdict: "ambiguous",
-      localityId: null,
-      noneReason: null,
     },
     {
+      ...base,
       provinceCode: "AR-B",
-      enteredProvince: "Buenos Aires",
       locality: null,
       rows: 5,
+      writableRows: 5,
       verdict: "none",
-      localityId: null,
       noneReason: "no_locality",
     },
     {
-      provinceCode: null,
+      ...base,
       enteredProvince: "Provincia Inventada",
+      provinceCode: null,
       locality: "Tandil",
       rows: 2,
+      writableRows: 2,
       verdict: "none",
-      localityId: null,
       noneReason: "unknown_province",
     },
     {
+      ...base,
       provinceCode: "AR-B",
-      enteredProvince: "Buenos Aires",
       locality: "Villa Que No Existe",
       rows: 1,
+      writableRows: 0,
       verdict: "none",
-      localityId: null,
       noneReason: "not_in_catalogue",
     },
   ];
 
-  it("moves only the unique rows from unresolved to resolved", () => {
+  it("moves only the spine-shaped unique rows, split by resolver method", () => {
     expect(project(pairs, { resolved: 10, unresolved: 165 })).toEqual({
       pairs: { unique: 2, ambiguous: 1, none: 3 },
       rows: { unique: 150, ambiguous: 7, none: 8 },
       noneRowsBy: { no_locality: 5, unknown_province: 2, not_in_catalogue: 1 },
+      write: { rows: 146, exactRows: 120, foldedRows: 26 },
+      heldUniqueRows: 4,
       before: { resolved: 10, unresolved: 165 },
-      after: { resolved: 160, unresolved: 15 },
+      after: { resolved: 156, unresolved: 19 },
     });
   });
 
@@ -236,6 +251,8 @@ describe("project", () => {
       pairs: { unique: 0, ambiguous: 0, none: 0 },
       rows: { unique: 0, ambiguous: 0, none: 0 },
       noneRowsBy: { no_locality: 0, unknown_province: 0, not_in_catalogue: 0 },
+      write: { rows: 0, exactRows: 0, foldedRows: 0 },
+      heldUniqueRows: 0,
       before: { resolved: 4, unresolved: 0 },
       after: { resolved: 4, unresolved: 0 },
     });
@@ -243,37 +260,60 @@ describe("project", () => {
 });
 
 describe("the operator door's target guard", () => {
-  // Fabricated, credential-free URLs in the shapes Supabase uses.
-  const ref = "abcdefghijklmnopqrst";
+  // Credential-free URLs in the shapes Supabase uses. The staging ref is the
+  // real one (public in this repo); the other is a made-up production-like ref
+  // on the SAME pooler host, which is exactly the confusion the guard exists for.
+  const ref = STAGING_PROJECT_REF;
   const otherRef = "zyxwvutsrqponmlkjihg";
-  const pooler = `postgresql://postgres.${ref}:pw@aws-1-sa-east-1.pooler.supabase.com:6543/postgres`;
-  const api = `https://${ref}.supabase.co`;
+  const pooler = (r: string) =>
+    `postgresql://postgres.${r}:pw@aws-1-sa-east-1.pooler.supabase.com:6543/postgres`;
+  const api = (r: string) => `https://${r}.supabase.co`;
   const localDb = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
   const localApi = "http://127.0.0.1:54321";
 
-  it("staging: both remote and the same project, or it refuses", () => {
-    expect(targetProblem("staging", pooler, api)).toBeNull();
-    expect(targetProblem("staging", pooler, localApi)).toMatch(/BOTH hosts remote/);
-    expect(targetProblem("staging", localDb, api)).toMatch(/BOTH hosts remote/);
-    expect(targetProblem("staging", pooler, `https://${otherRef}.supabase.co`)).toMatch(
-      /DIFFERENT projects/,
-    );
-    expect(targetProblem("staging", pooler, undefined)).toMatch(/NEXT_PUBLIC_SUPABASE_URL/);
-    expect(targetProblem("staging", undefined, api)).toMatch(/DATABASE_URL/);
+  it("staging: both remote, the same project, and that project is staging", () => {
+    expect(targetProblem("staging", pooler(ref), api(ref))).toBeNull();
+    expect(targetProblem("staging", pooler(ref), localApi)).toMatch(/BOTH hosts remote/);
+    expect(targetProblem("staging", localDb, api(ref))).toMatch(/BOTH hosts remote/);
+    expect(targetProblem("staging", pooler(ref), api(otherRef))).toMatch(/DIFFERENT projects/);
+    expect(targetProblem("staging", pooler(ref), undefined)).toMatch(/NEXT_PUBLIC_SUPABASE_URL/);
+    expect(targetProblem("staging", undefined, api(ref))).toMatch(/DATABASE_URL/);
+  });
+
+  it("refuses another project on the same pooler host, even when both URLs agree", () => {
+    expect(targetProblem("staging", pooler(otherRef), api(otherRef))).toMatch(/NOT staging/);
   });
 
   it("local: both local, or it refuses", () => {
     expect(targetProblem("local", localDb, localApi)).toBeNull();
-    expect(targetProblem("local", pooler, localApi)).toMatch(/BOTH hosts local/);
-    expect(targetProblem("local", localDb, api)).toMatch(/BOTH hosts local/);
+    expect(targetProblem("local", pooler(ref), localApi)).toMatch(/BOTH hosts local/);
+    expect(targetProblem("local", localDb, api(ref))).toMatch(/BOTH hosts local/);
   });
 
   it("prints a host and a 6-character ref prefix, never the password or the full ref", () => {
-    expect(projectRef(pooler)).toBe(ref);
-    expect(projectRef(api)).toBe(ref);
-    expect(describeHost(pooler)).toBe("aws-1-sa-east-1.pooler.supabase.com:6543 (ref abcdef…)");
-    expect(describeHost(api)).toBe("abcdef….supabase.co (ref abcdef…)");
-    expect(describeHost(pooler)).not.toContain("pw");
+    const short = `${ref.slice(0, 6)}…`;
+    expect(projectRef(pooler(ref))).toBe(ref);
+    expect(projectRef(api(ref))).toBe(ref);
+    expect(describeHost(pooler(ref))).toBe(
+      `aws-1-sa-east-1.pooler.supabase.com:6543 (ref ${short})`,
+    );
+    expect(describeHost(api(ref))).toBe(`${short}.supabase.co (ref ${short})`);
+    expect(describeHost(pooler(ref))).not.toContain("pw");
+    expect(describeHost(api(ref))).not.toContain(ref);
     expect(describeHost(localDb)).toBe("127.0.0.1:54322");
+  });
+});
+
+describe("--apply needs the dry run's number", () => {
+  it("refuses without --expect-unique, with a non-number, or with a different count", () => {
+    expect(expectUniqueProblem(null, 10)).toMatch(/needs --expect-unique/);
+    expect(expectUniqueProblem("ten", 10)).toMatch(/whole number/);
+    expect(expectUniqueProblem("-1", 10)).toMatch(/whole number/);
+    expect(expectUniqueProblem("9", 10)).toMatch(/finds 10 rows to write/);
+  });
+
+  it("accepts the exact count", () => {
+    expect(expectUniqueProblem("10", 10)).toBeNull();
+    expect(expectUniqueProblem("0", 0)).toBeNull();
   });
 });

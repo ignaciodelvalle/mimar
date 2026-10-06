@@ -6,19 +6,28 @@
  * per spine was recorded by name alone. On staging that left 141,427 of
  * 141,935 rows province-level. This pass asks THE resolver (resolveName: one
  * live row of the province, never the first homonym) once per distinct
- * (province, name) pair and, with --apply, writes the id only where the pair
- * names exactly one row, method `legacy_unique_name`. Ambiguous and unknown
- * names are never touched. The logic is lib/place/event-places-name-pass.ts.
+ * (province, name) pair and, with --apply, writes the id only on the
+ * backfill's own (spine-shaped) rows whose pair names exactly one row, with
+ * the resolver's method (exact_name_unique / folded_name_unique). Rows the
+ * 0250 trigger projected, ambiguous names and unknown names are never
+ * touched. The logic is lib/place/event-places-name-pass.ts.
+ *
+ * RE-RUN IT AFTER EVERY PROJECTION REBUILD: place:backfill-event-places
+ * writes name-only homes unresolved by design, and this pass is what gives
+ * the unique ones their id.
  *
  *   pnpm place:resolve-event-places-by-name --target local
  *       dry run (the default) against the local database: zero writes.
  *   pnpm place:resolve-event-places-by-name --target staging [--env-file <path>]
  *       dry run against staging. Loads ONLY the env file (default
  *       .env.staging.local), and refuses unless BOTH the database and the
- *       Supabase URL are remote and name the same project.
- *   ... --apply
- *       write, 50 rows per transaction; idempotent and resumable. Against
- *       staging only after the PO has seen the dry run.
+ *       Supabase URL are remote and name the STAGING project
+ *       (STAGING_PROJECT_REF — production shares the pooler host).
+ *   ... --apply --expect-unique <n>
+ *       write, 50 rows per transaction; idempotent and resumable. <n> is the
+ *       "rows to write" a dry run printed: the run refuses when the fresh
+ *       inventory finds a different number. Against staging only after the PO
+ *       has seen the dry run.
  *
  * Without --target it refuses: there is no default environment.
  * Prints hosts and a project ref prefix, never a credential.
@@ -30,7 +39,7 @@ import { config as loadEnv } from "dotenv";
 
 import type { NamePassInventory } from "@/lib/place/event-places-name-pass";
 
-import { isLocalUrl } from "./_env-target";
+import { STAGING_PROJECT_REF, isLocalUrl } from "./_env-target";
 
 const LABEL = "place-resolve-event-places-by-name";
 
@@ -70,6 +79,7 @@ export function targetProblem(
   target: Target,
   databaseUrl: string | undefined,
   supabaseUrl: string | undefined,
+  stagingRef: string = STAGING_PROJECT_REF,
 ): string | null {
   if (!databaseUrl) return "DATABASE_URL is not set";
   if (!supabaseUrl) return "NEXT_PUBLIC_SUPABASE_URL is not set";
@@ -83,6 +93,21 @@ export function targetProblem(
   const apiRef = projectRef(supabaseUrl);
   if (!dbRef || !apiRef) return "cannot read the project ref from both URLs";
   if (dbRef !== apiRef) return "the database and the Supabase URL name DIFFERENT projects";
+  if (dbRef !== stagingRef) return "the project is NOT staging (production shares the pooler host)";
+  return null;
+}
+
+/**
+ * Why an apply must not start, or null: it needs --expect-unique with the
+ * number of rows the dry run said it would write, and the fresh inventory must
+ * find exactly that many.
+ */
+export function expectUniqueProblem(expected: string | null, actual: number): string | null {
+  if (expected === null) return "--apply needs --expect-unique <rows to write, from the dry run>";
+  if (!/^\d+$/.test(expected)) return `--expect-unique must be a whole number, got "${expected}"`;
+  if (Number(expected) !== actual) {
+    return `--expect-unique ${expected} but the inventory finds ${actual} rows to write`;
+  }
   return null;
 }
 
@@ -146,6 +171,10 @@ async function main(): Promise<void> {
 
   printInventory(inv);
 
+  if (apply) {
+    const mismatch = expectUniqueProblem(argValue("--expect-unique"), inv.projection.write.rows);
+    if (mismatch) fail(`refusing: ${mismatch}`);
+  }
   if (!apply) {
     console.log(`\n[${LABEL}] dry run: nothing written.`);
     return;
@@ -155,7 +184,7 @@ async function main(): Promise<void> {
     if (r.batches % 200 === 0) console.log(`  ${r.batches} batches, ${r.updated} rows updated`);
   });
   console.log(
-    `  done: ${res.batches} batches; updated ${res.updated}; skipped (no longer unresolved, or catalogue row gone) ${res.skipped}`,
+    `  done: ${res.batches} batches; updated ${res.updated}; skipped (no longer unresolved, catalogue row gone, or a homonym appeared) ${res.skipped}`,
   );
 }
 
@@ -188,6 +217,9 @@ function printInventory(inv: NamePassInventory): void {
   console.log(`\ndistinct (province, locality) pairs: ${inv.pairs.length}`);
   console.log(
     `  unique    ${String(p.pairs.unique).padStart(6)} pairs  ${String(p.rows.unique).padStart(8)} rows  (exact spelling ${inv.uniqueBy.exact_name_unique} pairs, folded ${inv.uniqueBy.folded_name_unique})`,
+  );
+  console.log(
+    `            rows to write (spine-shaped): ${p.write.rows} (exact_name_unique ${p.write.exactRows}, folded_name_unique ${p.write.foldedRows}); held back (trigger-shaped) ${p.heldUniqueRows}`,
   );
   console.log(
     `  ambiguous ${String(p.pairs.ambiguous).padStart(6)} pairs  ${String(p.rows.ambiguous).padStart(8)} rows`,

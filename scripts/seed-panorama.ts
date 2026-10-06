@@ -5469,7 +5469,11 @@ async function main(): Promise<void> {
   // the events that carry a `place` get a row by trigger: everything else this
   // seed wrote would be "Sin localidad". The backfill derives each one from
   // the pet's home per spine at that time, never guessing a homonym, and is
-  // idempotent — the same one staging runs after a reseed.
+  // idempotent — the same one staging runs after a reseed. It leaves a home
+  // recorded by NAME alone unresolved; the second step of the rebuild,
+  // `place:resolve-event-places-by-name`, is not chained here because this
+  // seed's homes carry ids (nothing for it to do). An environment whose spine
+  // has name-only homes runs it after this (docs/ops/local-dev-runbook.md).
   log("STEP", "Placing seeded events (event_places backfill)…");
   const { applyInPages: backfillEventPlaces } = await import("./place-backfill-event-places");
   const placed = await backfillEventPlaces();

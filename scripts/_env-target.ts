@@ -31,6 +31,15 @@ export type EnvTarget = {
   supabaseHost: string;
 };
 
+/**
+ * The staging Supabase project. Production shares the pooler HOST with it
+ * (see describeTarget below), so a script that may only touch staging must
+ * compare this ref, never the host. Shared by
+ * scripts/ops/_rotate-e2e-password.ts and
+ * scripts/place-resolve-event-places-by-name.ts.
+ */
+export const STAGING_PROJECT_REF = "agnwyifsdxxoznodutgq";
+
 /** Hostnames that mean "this machine". Compared EXACTLY, never as substrings. */
 const LOCAL_HOSTNAMES = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
