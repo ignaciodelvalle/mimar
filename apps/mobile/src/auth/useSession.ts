@@ -21,6 +21,19 @@ export function useSession(): SessionState {
   return useSyncExternalStore(subscribeToSession, getSessionState, getSessionState);
 }
 
+const getSessionPhase = (): SessionState["phase"] => getSessionState().phase;
+
+/**
+ * The session's PHASE only — for a caller that must not re-render on every
+ * store write. The snapshot is a string, so a token refresh that replaces the
+ * state object without changing the phase is not a change to this hook. The
+ * root layout reads it for the launch mark: subscribing it to the whole
+ * session re-rendered the app's `<Stack>` on every background refresh.
+ */
+export function useSessionPhase(): SessionState["phase"] {
+  return useSyncExternalStore(subscribeToSession, getSessionPhase, getSessionPhase);
+}
+
 /**
  * Mount-once wiring for the whole app. Called by the root layout.
  *

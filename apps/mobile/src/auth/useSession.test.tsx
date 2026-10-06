@@ -18,7 +18,7 @@
 // session-store.test.ts and client.test.ts.
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { render } from "@testing-library/react-native";
+import { act, render } from "@testing-library/react-native";
 import { AppState, type AppStateStatus } from "react-native";
 
 const mockBootstrapSession = jest.fn<() => Promise<void>>();
@@ -26,17 +26,26 @@ const mockStartAutoRefresh = jest.fn<() => Promise<void>>();
 const mockStopAutoRefresh = jest.fn<() => Promise<void>>();
 const mockAuthClient = jest.fn<() => unknown>();
 
+type MockState = { phase: string; user?: { id: string } };
+let mockState: MockState = { phase: "starting" };
+const mockListeners = new Set<() => void>();
+
 jest.mock("./session-store", () => ({
   bootstrapSession: () => mockBootstrapSession(),
-  getSessionState: () => ({ phase: "starting" }),
-  subscribeToSession: () => () => undefined,
+  getSessionState: () => mockState,
+  subscribeToSession: (listener: () => void) => {
+    mockListeners.add(listener);
+    return () => {
+      mockListeners.delete(listener);
+    };
+  },
 }));
 
 jest.mock("./supabase-auth", () => ({
   authClient: () => mockAuthClient(),
 }));
 
-import { useSessionBootstrap } from "./useSession";
+import { useSessionBootstrap, useSessionPhase } from "./useSession";
 
 function Probe() {
   useSessionBootstrap();
@@ -136,5 +145,33 @@ describe("useSessionBootstrap", () => {
     expect(() => mountWith("active")).not.toThrow();
     expect(mockBootstrapSession).toHaveBeenCalledTimes(1);
     expect(mockStartAutoRefresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("useSessionPhase", () => {
+  function publish(next: MockState) {
+    mockState = next;
+    act(() => {
+      for (const listener of mockListeners) listener();
+    });
+  }
+
+  it("re-renders on a phase change, not on a store write that keeps the phase", () => {
+    mockState = { phase: "starting" };
+    const seen: string[] = [];
+    function PhaseProbe() {
+      seen.push(useSessionPhase());
+      return null;
+    }
+    render(<PhaseProbe />);
+    expect(seen).toEqual(["starting"]);
+
+    publish({ phase: "signed-in", user: { id: "u1" } });
+    expect(seen).toEqual(["starting", "signed-in"]);
+
+    // A token refresh: a NEW state object, the same phase. The root layout
+    // reads this hook so its <Stack> does not re-render here.
+    publish({ phase: "signed-in", user: { id: "u1" } });
+    expect(seen).toEqual(["starting", "signed-in"]);
   });
 });

@@ -187,6 +187,14 @@ export function LaunchMark({ ready }: { ready: boolean }) {
   const [handedOff, setHandedOff] = useState(false);
   const [settled, setSettled] = useState(false);
   const [gone, setGone] = useState(false);
+  // The exit is ONE-WAY. Once the fade starts it is latched here and nothing
+  // stops it but an unmount: `ready` can flip back (the session phase leaving
+  // `starting` and returning, a route change re-deciding the wait), and an
+  // effect cleanup that stopped the fade left the overlay half-faded and
+  // opaque to touch until the 8 s ceiling.
+  const exitStarted = useRef(false);
+  const exitFade = useRef<Animated.CompositeAnimation | null>(null);
+  const [exiting, setExiting] = useState(false);
 
   // The ceiling. Releases the native splash too, in case no layout ever came.
   useEffect(() => {
@@ -218,18 +226,24 @@ export function LaunchMark({ ready }: { ready: boolean }) {
     return () => shrink.stop();
   }, [handedOff, reduceMotion, scale]);
 
-  // The exit, once the app is ready and the logo has landed.
+  // The exit, once the app is ready and the logo has landed — started once,
+  // never cancelled by a later `ready={false}` (see `exitStarted`).
   useEffect(() => {
-    if (!ready || !settled) return;
+    if (exitStarted.current || !ready || !settled) return;
+    exitStarted.current = true;
+    setExiting(true);
     const fade = Animated.timing(opacity, {
       toValue: 0,
       duration: LAUNCH_MARK_FADE_MS,
       easing: Easing.out(Easing.quad),
       useNativeDriver: true,
     });
+    exitFade.current = fade;
     fade.start(() => setGone(true));
-    return () => fade.stop();
   }, [ready, settled, opacity]);
+
+  // Only an unmount stops the exit fade.
+  useEffect(() => () => exitFade.current?.stop(), []);
 
   if (gone || LAUNCH_MARK_SIZE_DP === null) return null;
 
@@ -246,8 +260,8 @@ export function LaunchMark({ ready }: { ready: boolean }) {
       onLayout={onLayout}
       // Opaque over the app while it loads, so a stray tap cannot land on a
       // screen nobody can see yet; transparent to touch from the moment it
-      // starts to leave.
-      pointerEvents={ready && settled ? "none" : "auto"}
+      // starts to leave — and from then on, whatever `ready` does next.
+      pointerEvents={exiting || (ready && settled) ? "none" : "auto"}
       accessible
       accessibilityRole="progressbar"
       accessibilityLabel="Cargando"

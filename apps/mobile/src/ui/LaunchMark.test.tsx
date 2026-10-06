@@ -236,6 +236,42 @@ describe("LaunchMark — leaving", () => {
     expect(screen.queryByTestId("launch-mark")).toBeNull();
   });
 
+  it("finishes leaving once it has started, even if ready flips back", async () => {
+    reduceMotion(false);
+    // The fade is held open by hand: under jest the real timing lands within a
+    // tick, so "mid-fade" only exists if the test owns the animation.
+    const realTiming = Animated.timing;
+    let finishFade: Animated.EndCallback | undefined;
+    const stopFade = jest.fn();
+    jest.spyOn(Animated, "timing").mockImplementation((value, config) => {
+      if (config.toValue !== 0) return realTiming(value, config);
+      return {
+        start: (callback?: Animated.EndCallback) => {
+          finishFade = callback;
+        },
+        stop: stopFade,
+        reset: () => {},
+      };
+    });
+    const { rerender } = render(<LaunchMark ready={false} />);
+    await settleQuery();
+    fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
+    advance(UNTIL_SETTLED);
+
+    rerender(<LaunchMark ready />);
+    expect(finishFade).toBeDefined();
+    expect(screen.getByTestId("launch-mark").props.pointerEvents).toBe("none");
+
+    // Mid-fade, the app un-readies. The exit is latched: the fade is not
+    // stopped, the overlay stays transparent to touch, and when the fade runs
+    // out the overlay goes — not stuck half-faded until the 8 s ceiling.
+    rerender(<LaunchMark ready={false} />);
+    expect(stopFade).not.toHaveBeenCalled();
+    expect(screen.getByTestId("launch-mark").props.pointerEvents).toBe("none");
+    act(() => finishFade?.({ finished: true }));
+    expect(screen.queryByTestId("launch-mark")).toBeNull();
+  });
+
   it("unmounts on the timeout when the app never gets ready", async () => {
     reduceMotion(false);
     render(<LaunchMark ready={false} />);

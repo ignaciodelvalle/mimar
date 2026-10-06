@@ -41,7 +41,7 @@ import {
   LAUNCH_GATE_UPDATING_MESSAGE,
   useLaunchUpdateGate,
 } from "../src/account/launch-update-gate";
-import { useSession, useSessionBootstrap } from "../src/auth/useSession";
+import { useSessionBootstrap, useSessionPhase } from "../src/auth/useSession";
 // THE ONE MODULE IN THIS FILE THAT MAY NOT BE IMPORTED ANYWHERE ELSE. Its own
 // header explains why: `expo-image-manipulator` evaluates a native module at
 // import time and throws in a process that has none. This file already runs in
@@ -191,8 +191,10 @@ function RootLayout() {
   // gate returns early, like the two hooks above and for the same reason.
   usePushTapNavigation();
   // Read for the launch mark only (see `launchReady` below). The gate itself
-  // stays in the screens, as this file's header says.
-  const sessionPhase = useSession().phase;
+  // stays in the screens, as this file's header says. The PHASE only: the
+  // whole-session hook re-rendered this layout — and its `<Stack>` — on every
+  // token refresh, which replaces the state object without changing the phase.
+  const sessionPhase = useSessionPhase();
 
   // THE FIRST PAINT WAITS FOR THE TYPEFACE, and the alternative is worse than a
   // pause. React Native draws immediately with the system face and re-lays-out
