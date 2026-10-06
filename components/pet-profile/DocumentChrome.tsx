@@ -11,6 +11,21 @@ import type { FlipCardFace } from "./FlipCard";
 
 const OWNER_CHROME = chromeForSurface("owner");
 
+/**
+ * The band names the DOCUMENT TYPE of the face on show — "Credencial · frente"
+ * / "Libreta · dorso" (PO-approved band). The owner recipe is two-faced, so
+ * its back subtitle is never null; there is deliberately no `?? title`
+ * fallback (it was unreachable, and a fence that asserted the title was
+ * asserting a string nobody saw). If the contract ever drops the back, fail
+ * at load instead of painting an unnamed band.
+ */
+function ownerBackDoctype(): string {
+  const back = OWNER_CHROME.subtitleBack;
+  if (back === null) throw new Error("owner credential chrome has no back-face doctype");
+  return back;
+}
+const OWNER_BACK_DOCTYPE = ownerBackDoctype();
+
 /** The band's situation payload (pet-state-header). The LABEL arrives already
  *  gender-agreed (situationLabelForSex at the caller) so the chrome stays dumb
  *  — it never re-derives copy, it just paints band + chip. */
@@ -43,7 +58,7 @@ export function DocumentChrome({
   children,
 }: DocumentChromeProps) {
   const isCredencial = face === "credencial";
-  const bandSubtitle = isCredencial ? OWNER_CHROME.subtitleFront : OWNER_CHROME.subtitleBack;
+  const bandSubtitle = isCredencial ? OWNER_CHROME.subtitleFront : OWNER_BACK_DOCTYPE;
   // The accessible name always names the TARGET face (unchanged wording — the
   // flip interaction is keyed off "Girar a …" elsewhere in the profile).
   const turnAria = isCredencial ? "Girar a Libreta" : "Girar a Credencial";
@@ -67,7 +82,7 @@ export function DocumentChrome({
       data-situation={situation?.key}
     >
       <PublicDocumentBand
-        subtitle={bandSubtitle ?? OWNER_CHROME.title}
+        subtitle={bandSubtitle}
         brand={
           <CardTurnButton skin="pc-band-mark-hit" onClick={onFlip} label={markAria}>
             <PublicCredentialBrandMark />

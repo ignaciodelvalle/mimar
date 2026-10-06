@@ -69,8 +69,11 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
+import { DocumentChrome } from "@/components/pet-profile/DocumentChrome";
 import { OPEN_DATA_LICENSE } from "@/lib/open-data/datasets";
-import { chromeForSurface } from "@dim/contract/credential";
 
 // ---------------------------------------------------------------------------
 // The rule
@@ -299,16 +302,40 @@ describe("the disclaimers that replaced the claims are actually shipped", () => 
   // The foot itself left the phone face (PO annotate 2026-10-05, OwnerFace.tsx
   // header: it repeated the band, the locality chip and Cumplimiento). What it
   // used to carry — the document's name WITHOUT an issuing authority — now
-  // rides only the band, which the native chrome draws from the contract's
-  // owner recipe. So the presence half of this pin moves with it: the band
-  // names the document, and neither the face nor the band names an issuer.
-  it("the phone credential names the document, never an issuing authority", () => {
+  // rides only the band. So the presence half of this pin moves with it: the
+  // band names the document, and neither the face nor the band names an issuer.
+  //
+  // PRESENCE IS ASSERTED ON RENDERED TEXT, not on a contract constant. This pin
+  // used to check `chromeForSurface("owner").title`, which both band painters
+  // only reached through an unreachable `?? title` fallback — the band never
+  // painted it, so the check stayed green whatever the band said. The web band
+  // is rendered here, on both faces, and the literals are the PO-approved
+  // band copy. The native band's twin of this check renders
+  // DocumentChromeNative under jest (DocumentChromeNative.band-skin.test.ts,
+  // "names the document type on both faces") — vitest cannot render RN.
+  it("the owner band names the document type on both faces", () => {
+    const band = (face: "credencial" | "libreta") =>
+      renderToStaticMarkup(
+        createElement(DocumentChrome, {
+          face,
+          onFlip: () => {},
+          isLibretaActive: face === "libreta",
+          situation: null,
+          // biome-ignore lint/correctness/noChildrenProp: a .ts file has no JSX, and DocumentChrome's props type requires children
+          children: null,
+        }),
+      );
+    const doctype = (html: string) =>
+      /<span class="pc-band-doctype">([^<]*)<\/span>/.exec(html)?.[1] ?? null;
+    expect(doctype(band("credencial"))).toBe("Credencial · frente");
+    expect(doctype(band("libreta"))).toBe("Libreta · dorso");
+  });
+
+  it("the phone credential never names an issuing authority", () => {
     const face = stripComments(readFileSync("apps/mobile/src/pets/OwnerFace.tsx", "utf8"));
     const band = stripComments(
       readFileSync("apps/mobile/src/pets/DocumentChromeNative.tsx", "utf8"),
     );
-    expect(band).toContain('chromeForSurface("owner")');
-    expect(chromeForSurface("owner").title).toBe("Libreta Sanitaria");
     for (const source of [face, band]) {
       expect(source).not.toMatch(/footAuthority/);
       expect(source).not.toMatch(/Ministerio|República Argentina|Gobierno de|Registro Nacional/i);
