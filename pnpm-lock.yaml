@@ -13,6 +13,9 @@ overrides:
   esbuild@0.28: ^0.28.1
   tar: ^7.5.18
 
+patchedDependencies:
+  postgres: c0b2f0d03b01cabccea6867605ef4edc8592e4fc16f15f71cee2950c1133334a
+
 importers:
 
   .:
@@ -31,7 +34,7 @@ importers:
         version: 7.0.2
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(postgres@3.4.9)
+        version: 0.45.2(postgres@3.4.9(patch_hash=c0b2f0d03b01cabccea6867605ef4edc8592e4fc16f15f71cee2950c1133334a))
       expo-server-sdk:
         specifier: ^7.2.0
         version: 7.2.0
@@ -49,7 +52,7 @@ importers:
         version: 1.17.1
       postgres:
         specifier: ^3.4.0
-        version: 3.4.9
+        version: 3.4.9(patch_hash=c0b2f0d03b01cabccea6867605ef4edc8592e4fc16f15f71cee2950c1133334a)
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
@@ -10372,9 +10375,9 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.22.0
 
-  drizzle-orm@0.45.2(postgres@3.4.9):
+  drizzle-orm@0.45.2(postgres@3.4.9(patch_hash=c0b2f0d03b01cabccea6867605ef4edc8592e4fc16f15f71cee2950c1133334a)):
     optionalDependencies:
-      postgres: 3.4.9
+      postgres: 3.4.9(patch_hash=c0b2f0d03b01cabccea6867605ef4edc8592e4fc16f15f71cee2950c1133334a)
 
   dunder-proto@1.0.1:
     dependencies:
@@ -12595,7 +12598,7 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  postgres@3.4.9: {}
+  postgres@3.4.9(patch_hash=c0b2f0d03b01cabccea6867605ef4edc8592e4fc16f15f71cee2950c1133334a): {}
 
   potpack@2.1.0: {}
 

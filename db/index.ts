@@ -60,6 +60,29 @@ function missingDbProxy(handle: "db" | "analyticsDb"): PostgresJsDatabase<typeof
 // front anyway.
 const isTest = process.env.VITEST === "true" || process.env.NODE_ENV === "test";
 
+// NO PIPELINING, on every pool in this file (2026-10, engram
+// infra/postgres-pipelining-supavisor-hang).
+//
+// postgres.js pipelines: when every connection is busy it writes the next query
+// onto a connection that is still waiting for an earlier answer (up to
+// `max_pipeline`, default 100), and a cold pool does the same when a connection
+// opens with queries queued. Through Supavisor's TRANSACTION pooler (6543) a
+// pipelined query that returns ZERO rows never gets its response: the promise
+// never settles, and the connection is poisoned, because end() waits for the
+// unanswered query too. Measured on staging, where it hung the Panorama cube
+// cron on 8 of 10 nights. Any app request that runs two queries at once can hit
+// it; an empty result is the most ordinary outcome there is.
+//
+// `max_pipeline: 0` sends one query per connection at a time; the rest wait in
+// the client's own queue. Upstream 3.4.9 broke `.begin()` with that setting
+// (BEGIN never reserved its connection: UNSAFE_TRANSACTION, or a TypeError at
+// max: 1), so `db` depends on patches/postgres.patch, which runs begin's
+// connection hand-over regardless of the pipeline condition. The library leaves
+// the option out of its typings, hence the cast.
+const NO_PIPELINING = { max_pipeline: 0 } as unknown as postgres.Options<
+  Record<string, postgres.PostgresType>
+>;
+
 // Dev-only HMR guard: Next.js re-evaluates this module on every hot reload. Without
 // caching the client, each recompile spins up a NEW postgres-js pool (default max 10)
 // without closing the previous one — leaked pools accumulate until Postgres runs out
@@ -101,12 +124,12 @@ const globalForDb = globalThis as unknown as {
 //     pooler) is where it actually bites in production.
 // Tests keep the tighter, no-statement-timeout profile (local direct DB, serial
 // runner) — a 15s statement_timeout could flake a legitimately slow suite.
-const client =
-  globalForDb.__dimPgClient ??
-  // Cast: when DATABASE_URL is unset this pool is never queried (the `db` export
-  // is the missing-url proxy), and postgres() constructs lazily either way.
-  postgres(process.env.DATABASE_URL as string, {
+/** Options for the OLTP pool behind `db`. Pure; exported so a test can pin the
+ * production profile (no pipelining included) without constructing a pool. */
+export function oltpPoolOptions(test: boolean) {
+  return {
     prepare: false,
+    ...NO_PIPELINING, // see NO_PIPELINING above; needs the postgres.js patch for .transaction()
     // keep_alive: TCP SO_KEEPALIVE probe delay. Without it, a socket silently
     // dropped by a NAT/pooler between packets becomes a zombie: the pool never
     // learns it died and the next query queues forever behind it (observed
@@ -115,7 +138,7 @@ const client =
     // it, and the next query reconnects. Short-lived serverless connections
     // never reach the first probe, so this is a no-op in lambdas.
     keep_alive: 30,
-    ...(isTest
+    ...(test
       ? {
           max: 3,
           idle_timeout: 20, // seconds — return idle connections quickly between files
@@ -135,7 +158,14 @@ const client =
             options: "-c statement_timeout=15000 -c idle_in_transaction_session_timeout=15000",
           },
         }),
-  });
+  };
+}
+
+const client =
+  globalForDb.__dimPgClient ??
+  // Cast: when DATABASE_URL is unset this pool is never queried (the `db` export
+  // is the missing-url proxy), and postgres() constructs lazily either way.
+  postgres(process.env.DATABASE_URL as string, oltpPoolOptions(isTest));
 
 if (process.env.NODE_ENV === "development") globalForDb.__dimPgClient = client;
 
@@ -204,41 +234,54 @@ export function statementTimeoutOptions(ms: number): string {
 
 const ANALYTICS_STATEMENT_TIMEOUT_MS = analyticsStatementTimeoutMs();
 
+/** Options for the analytics pool. Pure; exported so a test can pin the
+ * production profile, which the test run never constructs (see below). */
+export function analyticsPoolOptions(statementTimeoutMs: number) {
+  return {
+    prepare: false, // harmless on session mode; keeps the DATABASE_URL fallback transaction-pooler-safe
+    // See NO_PIPELINING above. ANALYTICS_DATABASE_URL should be the session
+    // pooler, where the hang does not reproduce, but it falls back to
+    // DATABASE_URL (6543) and its port cannot be read back from Vercel.
+    ...NO_PIPELINING,
+    // max: 2 — MEASURED ON STAGING (2026-07-09), retuned after perf 1.1/1.2.
+    // The old max: 1 hard-bounded backends back when a load fanned out to the
+    // page SSR + ~5 concurrent /api/panorama/[layer] lambdas; at max 3 each,
+    // that burst exhausted the session pooler's pool_size (15) with
+    // EMAXCONNSESSION → every layer 503'd ("Sin datos para esta capa") and the
+    // KPI fan-out starved past its budget (degraded tiles). After 1.1
+    // (cross-request layer cache) + 1.2 (first-visit preset seed) a cold
+    // panorama load is now only ~4 analytics lambdas: the page SSR + the
+    // /api/panorama/kpis route + at most 2 layer cache-misses. At max 2 that is
+    // ~8 backends per cold user; 3 concurrent cold users ≈ 24, comfortably
+    // under the raised pool_size (30, up from 15). The 2nd connection lets the
+    // ~11-statement KPI fan-out and a layer aggregate progress in parallel
+    // instead of serializing over one warm backend, without re-risking
+    // EMAXCONNSESSION.
+    max: 2,
+    keep_alive: 30, // TCP probes — evict silently-dropped sockets (see main client note)
+    connect_timeout: 10, // seconds — fail fast when the pooler is saturated
+    idle_timeout: 5, // seconds — release session-pooler backends fast (was 10; see max note)
+    max_lifetime: 300, // seconds — recycle to avoid stale/degraded connections
+    connection: {
+      // Session mode honors this startup GUC (verified: SQLSTATE 57014). 15s is
+      // the request-path backstop, ALWAYS. A background builder (the panorama
+      // cube refresh) does NOT raise it here — it brings its own lazy read client
+      // with a long timeout and routes reads to it via runWithAnalyticsReadHandle
+      // (task #22; see cube-builder.ts).
+      options: statementTimeoutOptions(statementTimeoutMs),
+    },
+  };
+}
+
 // In tests both exports share ONE pool (max 3): the analytics split is a
 // production concern, and a second pool would double connections per test file.
 const analyticsClient = isTest
   ? client
   : (globalForDb.__dimPgAnalyticsClient ??
-    postgres((process.env.ANALYTICS_DATABASE_URL ?? process.env.DATABASE_URL) as string, {
-      prepare: false, // harmless on session mode; keeps the DATABASE_URL fallback transaction-pooler-safe
-      // max: 2 — MEASURED ON STAGING (2026-07-09), retuned after perf 1.1/1.2.
-      // The old max: 1 hard-bounded backends back when a load fanned out to the
-      // page SSR + ~5 concurrent /api/panorama/[layer] lambdas; at max 3 each,
-      // that burst exhausted the session pooler's pool_size (15) with
-      // EMAXCONNSESSION → every layer 503'd ("Sin datos para esta capa") and the
-      // KPI fan-out starved past its budget (degraded tiles). After 1.1
-      // (cross-request layer cache) + 1.2 (first-visit preset seed) a cold
-      // panorama load is now only ~4 analytics lambdas: the page SSR + the
-      // /api/panorama/kpis route + at most 2 layer cache-misses. At max 2 that is
-      // ~8 backends per cold user; 3 concurrent cold users ≈ 24, comfortably
-      // under the raised pool_size (30, up from 15). The 2nd connection lets the
-      // ~11-statement KPI fan-out and a layer aggregate progress in parallel
-      // instead of serializing over one warm backend, without re-risking
-      // EMAXCONNSESSION.
-      max: 2,
-      keep_alive: 30, // TCP probes — evict silently-dropped sockets (see main client note)
-      connect_timeout: 10, // seconds — fail fast when the pooler is saturated
-      idle_timeout: 5, // seconds — release session-pooler backends fast (was 10; see max note)
-      max_lifetime: 300, // seconds — recycle to avoid stale/degraded connections
-      connection: {
-        // Session mode honors this startup GUC (verified: SQLSTATE 57014). 15s is
-        // the request-path backstop, ALWAYS. A background builder (the panorama
-        // cube refresh) does NOT raise it here — it brings its own lazy read client
-        // with a long timeout and routes reads to it via runWithAnalyticsReadHandle
-        // (task #22; see cube-builder.ts).
-        options: statementTimeoutOptions(ANALYTICS_STATEMENT_TIMEOUT_MS),
-      },
-    }));
+    postgres(
+      (process.env.ANALYTICS_DATABASE_URL ?? process.env.DATABASE_URL) as string,
+      analyticsPoolOptions(ANALYTICS_STATEMENT_TIMEOUT_MS),
+    ));
 
 if (process.env.NODE_ENV === "development") globalForDb.__dimPgAnalyticsClient = analyticsClient;
 
@@ -315,10 +358,32 @@ export function resolveAnalyticsReadHandle(): PostgresJsDatabase<typeof schema> 
  * Dispatch note: this is a thin per-call proxy over `resolveAnalyticsReadHandle()`
  * so a background builder's read-handle override (above) is honored transparently.
  * With no override installed it is behaviorally identical to the raw handle.
+ *
+ * No transactions: `.transaction()` here, and `.begin()` on its
+ * `$client`, throw ANALYTICS_NO_TRANSACTIONS. A read-only pool has no use for
+ * one, and the 15s session-level idle-transaction ceiling plus the session
+ * pooler make a transaction here a resource hazard. Writes belong on `db`.
  */
+export const ANALYTICS_NO_TRANSACTIONS =
+  "analyticsDb is a read-only analytics pool and does not run transactions: use `db.transaction()` (and `db` for every write).";
+
+function refuseAnalyticsTransaction(): never {
+  throw new Error(ANALYTICS_NO_TRANSACTIONS);
+}
+
 export const analyticsDb: PostgresJsDatabase<typeof schema> = new Proxy(realAnalyticsDb, {
   get(_target, prop) {
+    if (prop === "transaction") return refuseAnalyticsTransaction;
     const active = resolveAnalyticsReadHandle();
+    if (prop === "$client") {
+      const raw = Reflect.get(active as object, prop, active) as object;
+      return new Proxy(raw, {
+        get(target, key) {
+          if (key === "begin") return refuseAnalyticsTransaction;
+          return Reflect.get(target, key, target);
+        },
+      });
+    }
     const value = Reflect.get(active as object, prop, active);
     // Bind methods to the RESOLVED handle so drizzle's internal `this` stays
     // consistent (never the proxy). Fluent chains continue on `active` directly.

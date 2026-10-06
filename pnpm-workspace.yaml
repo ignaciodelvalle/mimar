@@ -162,3 +162,35 @@ overrides:
   js-yaml@4: ^4.3.2
   esbuild@0.28: ^0.28.1
   tar: ^7.5.18
+
+# ===========================================================================
+# patchedDependencies — one patch, on postgres.js
+# ===========================================================================
+# db/index.ts runs every pool with max_pipeline: 0. postgres.js pipelines a
+# query onto a busy connection by default, and through Supavisor's transaction
+# pooler a pipelined query that returns zero rows never gets its answer (it
+# hung the staging cube cron on 8 of 10 nights; engram
+# infra/postgres-pipelining-supavisor-hang).
+#
+# Upstream 3.4.9 (the latest release) cannot run sql.begin() with that
+# setting: execute() calls begin's onexecute hook, the one that reserves the
+# connection for the transaction, only when the pipeline condition holds, so
+# BEGIN fails with UNSAFE_TRANSACTION. The patch calls the hook regardless and
+# keeps execute()'s return value as it was. Its three hunks are the same edit
+# in the ESM, CJS and Cloudflare builds.
+#
+# Keyed by name, not by version, so it follows a postgres upgrade. That is safe
+# in pnpm 11: a patch that no longer applies always fails the install (v11
+# removed ignorePatchFailures). Written against 3.4.9; if an upgrade still
+# applies it cleanly, __tests__/db-transaction-no-pipeline.test.ts is what
+# proves transactions still work, and it fails on an unpatched install.
+# (The exact-version key, postgres@<semver>, was dropped because the lockfile
+# line it produces reads as an e-mail beside a password-shaped hash to
+# lint:public-boundary's credential_pair rule.)
+#
+# GOTCHA (pnpm 11.1.1): adding this entry did not reach node_modules. `pnpm
+# install` took its "Already up to date" fast path until
+# node_modules/.pnpm-workspace-state-v1.json was deleted; the lockfile then
+# gained the patch hash. Any checkout installing this lockfile gets the patch.
+patchedDependencies:
+  postgres: patches/postgres.patch
