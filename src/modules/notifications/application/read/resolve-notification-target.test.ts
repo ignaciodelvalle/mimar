@@ -556,3 +556,16 @@ describe("resolveNotificationTarget — an erased row (R11)", () => {
     expect(target).toMatchObject({ outcome: "explain", reason: "erased", actorCopy: null });
   });
 });
+
+describe("readStoredCta — a malformed percent-encoding (final review)", () => {
+  it("reads a stray % as invalid instead of throwing, and the row explains", async () => {
+    expect(readStoredCta("/casos/50%")).toEqual({ kind: "invalid" });
+    expect(readStoredCta("/mis-mascotas/DIM-%ZZ")).toEqual({ kind: "invalid" });
+    const target = await resolveNotificationTarget(
+      row({ notificationType: "custody_dispute_resolved", ctaUrl: "/casos/50%" }),
+      OWNER,
+      probes({}),
+    );
+    expect(target.outcome).toBe("explain");
+  });
+});

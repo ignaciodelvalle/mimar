@@ -1,36 +1,42 @@
--- Cases RLS — Fase F (expanded). Production rules per kind.
+-- Migration 0282 — can_read_case reads ACCEPTANCE from the acceptance event,
+-- not from a 'resolved' close (notificaciones-destinos, final security review
+-- F1, 2026-10-06).
 --
--- NOTE (V0-4): This file is now REFERENCE ONLY. The source of truth for
--- applying RLS is db/migrations/0094_cases_rls.sql (applied by db:migrate
--- and replayed by db:bootstrap step 2). This file is no longer applied by
--- db-bootstrap.ts. Keep edits here in sync with migration 0094.
+-- THE DEFECT IN 0281
+-- ---------------------------------------------------------------------------
+-- 0281 admitted a hand-off org party after acceptance, and read "accepted" as
+-- `status = 'closed' and closed_reason = 'resolved'`. For a custody_episode
+-- that is false: return-custody-to-owner and adoption-finalize close the
+-- episode as 'resolved' WITHOUT clearing receiver_organization_id, so a
+-- proposed shelter that never accepted would read the case — and, through the
+-- pet_events / attachments RLS that delegates here, its raw notes, payloads
+-- (judicial reference, seizure detail, to_user_id) and evidence.
 --
--- `can_read_case(case_id, user_id)` is the single hook every related
--- policy composes with (pet_events SELECT, attachments SELECT). The
--- function returns true for admin, govt-in-scope, subject-pet-owner
--- (except welfare_denuncia), and per-kind parties (foster, org member,
--- applicant, dispute party).
+-- THE CHANGE
+-- ---------------------------------------------------------------------------
+-- Both 0281 arms now require the ACCEPTANCE EVENT itself, a custody_transferred
+-- pet_event on THIS case addressed to the receiver:
+--   custody_episode             payload reason = 'org_to_org_handoff' and
+--                               to_organization_id = receiver_organization_id
+--                               (accept-decomiso-handoff)
+--   custody_transfer_handshake  to_organization_id = receiver_organization_id
+--                               (accept-cross-org-transfer; its reason is the
+--                               proposal's, so it is not matched)
+-- Events are append-only, so no later close can undo or fake it. Everything
+-- else is 0281's body VERBATIM — the admin/coordinator role filter, the
+-- TS/SQL divergence its header documents (TS admits before acceptance with
+-- notes and payloads withheld; SQL only after), the absent welfare_denuncia
+-- opening-org arm (PO 2026-10-06, TS only), SECURITY DEFINER and
+-- `SET search_path = ''` (CREATE OR REPLACE keeps the ACL).
 --
--- Drizzle (server-side) bypasses RLS via the service role. These
--- policies guard PostgREST and any future RLS-aware reader.
---
--- Idempotent — safe to re-run.
+-- The same predicate in TypeScript: lib/infra/case-access.ts handoffAccepted.
+-- scripts/check-function-parity.ts compares prosrc against the LAST defining
+-- migration — this file now — and db/cases_rls.sql carries the same body.
+-- Forward-only and idempotent. Behavioural fence:
+-- __tests__/notification-target-matrix.test.ts.
 
--- ===========================================================================
--- Enable RLS on cases
--- ===========================================================================
+BEGIN;
 
-alter table public.cases enable row level security;
-
--- ===========================================================================
--- can_read_case — expanded
--- ===========================================================================
-
--- Body kept byte-identical to the LAST defining migration (0282 at the time
--- of writing): scripts/deploy-provision.ts applies this file AFTER the
--- migration replay, so an older body here would silently replace the live one
--- on every fresh provision (it did: until 0281 this file still carried the
--- 0094-era body, without govt_scope or `SET search_path = ''`).
 create or replace function public.can_read_case(p_case_id uuid, p_user_id uuid)
   returns boolean
   language plpgsql
@@ -214,16 +220,25 @@ begin
 end;
 $$;
 
--- ===========================================================================
--- cases SELECT — delegate to can_read_case
--- ===========================================================================
+-- ---------------------------------------------------------------------------
+-- Post-condition: ask the catalog ("aplicada no es cerrada").
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'can_read_case'
+      AND p.prosecdef
+      AND p.proconfig @> ARRAY['search_path=""']
+      AND p.prosrc LIKE '%public.govt_scope(p.id) s%'
+      AND p.prosrc LIKE '%m.role in (''admin'', ''coordinator'')%'
+      AND p.prosrc LIKE '%pe.payload->>''reason'' = ''org_to_org_handoff''%'
+      AND p.prosrc LIKE '%pe.payload->>''to_organization_id'' = c.receiver_organization_id::text%'
+      AND p.prosrc NOT LIKE '%c.closed_reason = ''resolved'' and exists%'
+  ) THEN
+    RAISE EXCEPTION 'Migration 0282 did not close: public.can_read_case still reads acceptance from a resolved close, or lost the govt_scope branch, the role filter, SECURITY DEFINER or search_path = ''''';
+  END IF;
+END
+$$;
 
-drop policy if exists cases_select_subject_owner on public.cases;
-drop policy if exists cases_select_admin on public.cases;
-drop policy if exists cases_select_visible on public.cases;
-
-create policy cases_select_visible on public.cases for select
-  using (public.can_read_case(id, auth.uid()));
-
--- No INSERT / UPDATE / DELETE policies at this stage — every writer goes
--- through Drizzle on the server which bypasses RLS via service role.
+COMMIT;

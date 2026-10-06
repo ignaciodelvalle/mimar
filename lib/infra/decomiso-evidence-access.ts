@@ -133,6 +133,6 @@ async function viewerReadsDecomiso(
       detail.localityId,
     );
   }
-  if (!detail.receiverOrganization || !handoffAccepted(detail)) return false;
+  if (!detail.receiverOrganization || !(await handoffAccepted(detail))) return false;
   return isActiveOrgCaseParty(detail.receiverOrganization.id, viewer.userId);
 }

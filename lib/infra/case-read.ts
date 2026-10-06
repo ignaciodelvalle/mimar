@@ -80,7 +80,9 @@ export function withholdFreeText(detail: CaseDetail): CaseDetail {
     ...detail,
     openedReasonParams: params,
     openedReason: detail.openedReason
-      ? detail.openedReason.replace(/judicial_ref=\S+/g, "judicial_ref=sin_ref")
+      ? // Everything after the key: a judicial reference is free text and may
+        // carry spaces (final security review F2).
+        detail.openedReason.replace(/judicial_ref=[\s\S]*$/, "judicial_ref=sin_ref")
       : detail.openedReason,
     events: detail.events.map((e) => ({ ...e, notes: null, payload: {} })),
   };

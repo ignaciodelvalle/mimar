@@ -36,12 +36,13 @@ import {
   organizationMemberships,
   organizations,
   ownerships,
+  petEvents,
   pets,
 } from "@/db";
 import { type CaseViewer, canReadCase, isActiveOrgMember } from "@/lib/infra/case-access";
 import { closeCase, openCase } from "@/lib/infra/case-helpers";
 import { getCaseDetailByPublicCode } from "@/lib/infra/case-queries";
-import { readCaseForViewer } from "@/lib/infra/case-read";
+import { readCaseForViewer, withholdFreeText } from "@/lib/infra/case-read";
 import { getFormerOwnerReadAccess, resolvePetHolderAccess } from "@/lib/infra/pet-access";
 import type { ResolvedNotificationTarget } from "@/src/modules/notifications/application/read/resolve-notification-target";
 import { resolveOwnNotificationTarget } from "@/src/modules/notifications/infrastructure/notification-target-probes";
@@ -92,6 +93,7 @@ const PET_TOKENS = {
   seized: "DIM-NTMX-PET2", // decomiso: former owner, custody_episode open
   sold: "DIM-NTMX-PET3", // transferred from `sold` to `buyer`
   shelter: "DIM-NTMX-PET4", // held by the sender org, in a cross-org handshake
+  returned: "DIM-NTMX-PET5", // decomiso episodes: one returned to its owner, one accepted
 } as const;
 type PetKey = keyof typeof PET_TOKENS;
 
@@ -99,7 +101,13 @@ const ids = {} as Record<UserKey, string>;
 const orgIds = {} as Record<OrgKey, string>;
 const petIds = {} as Record<PetKey, string>;
 const caseIds = {} as Record<
-  "handshakeOpen" | "handshakeClosed" | "episode" | "bite" | "denuncia",
+  | "handshakeOpen"
+  | "handshakeClosed"
+  | "episode"
+  | "episodeReturned"
+  | "episodeAccepted"
+  | "bite"
+  | "denuncia",
   string
 >;
 const caseCodes = {} as Record<keyof typeof caseIds, string>;
@@ -127,6 +135,7 @@ async function purgeFixtures(): Promise<void> {
         .from(cases)
         .where(eq(cases.primaryPetId, id));
       for (const c of petCases) await tx.delete(caseEvents).where(eq(caseEvents.caseId, c.id));
+      await tx.delete(petEvents).where(eq(petEvents.petId, id));
       await tx.delete(cases).where(eq(cases.primaryPetId, id));
       await tx.delete(ownerships).where(eq(ownerships.petId, id));
       await tx.delete(pets).where(eq(pets.id, id));
@@ -211,6 +220,34 @@ async function notify(
 }
 
 const HOUR = 60 * 60 * 1000;
+
+/** The custody_transferred event an accept path writes on a hand-off case. */
+async function insertAcceptance(
+  petId: string,
+  caseId: string,
+  toOrganizationId: string,
+  reason: string,
+): Promise<void> {
+  await db.insert(petEvents).values({
+    petId,
+    caseId,
+    eventType: "custody_transferred",
+    occurredAt: new Date(),
+    authorRole: "shelter",
+    payload: {
+      from_user_id: null,
+      from_organization_id: null,
+      to_user_id: null,
+      to_organization_id: toOrganizationId,
+      from_role: "shelter_custody",
+      to_role: "shelter_custody",
+      reason,
+      matched_against_pet_id: null,
+      foster_ended_event_id: null,
+      notes: null,
+    },
+  });
+}
 
 beforeAll(async () => {
   await purgeFixtures();
@@ -297,6 +334,7 @@ beforeAll(async () => {
   await insertPet("seized", "Toto");
   await insertPet("sold", "Kira");
   await insertPet("shelter", "Bruno");
+  await insertPet("returned", "Coco");
   const longAgo = new Date(Date.now() - 48 * HOUR);
   const anHourAgo = new Date(Date.now() - HOUR);
   await db.insert(ownerships).values([
@@ -338,6 +376,9 @@ beforeAll(async () => {
     receiverOrganizationId: orgIds.receiver,
     openedReason: handshakeReason,
   });
+  // ACCEPTED: the event accept-cross-org-transfer writes on the case (F1 — a
+  // 'resolved' close alone is not acceptance), then the close.
+  await insertAcceptance(petIds.shelter, closed.id, orgIds.receiver, "other");
   await closeCase({ caseId: closed.id, reason: "resolved" });
   const open = await openCase({
     kind: "custody_transfer_handshake",
@@ -384,6 +425,36 @@ beforeAll(async () => {
   caseIds.episode = episode.id;
   caseIds.bite = bite.id;
   caseIds.denuncia = denuncia.id;
+
+  // F1 — two decomiso episodes addressed to the receiver org on one pet. The
+  // first is RETURNED to its owner: closed 'resolved' with no acceptance (what
+  // return-custody-to-owner does). The second is ACCEPTED, then closed.
+  const decomisoReason = {
+    code: "decomiso_executed",
+    motive: "maltrato_fisico",
+    judicialRef: null,
+  } as const;
+  const returned = await openCase({
+    kind: "custody_episode",
+    primarySubjectKind: "registered_pet",
+    primaryPetId: petIds.returned,
+    openedByOrganizationId: orgIds.authority,
+    receiverOrganizationId: orgIds.receiver,
+    openedReason: decomisoReason,
+  });
+  await closeCase({ caseId: returned.id, reason: "resolved" });
+  const accepted = await openCase({
+    kind: "custody_episode",
+    primarySubjectKind: "registered_pet",
+    primaryPetId: petIds.returned,
+    openedByOrganizationId: orgIds.authority,
+    receiverOrganizationId: orgIds.receiver,
+    openedReason: decomisoReason,
+  });
+  await insertAcceptance(petIds.returned, accepted.id, orgIds.receiver, "org_to_org_handoff");
+  await closeCase({ caseId: accepted.id, reason: "resolved" });
+  caseIds.episodeReturned = returned.id;
+  caseIds.episodeAccepted = accepted.id;
   for (const [key, id] of Object.entries(caseIds) as Array<[keyof typeof caseIds, string]>) {
     const [row] = await db.select({ code: cases.publicCode }).from(cases).where(eq(cases.id, id));
     caseCodes[key] = row.code;
@@ -397,6 +468,8 @@ beforeAll(async () => {
       payload: { note: PAYLOAD_OPEN },
     },
     { caseId: caseIds.handshakeClosed, entryType: "org_intervention_note", notes: NOTE_CLOSED },
+    { caseId: caseIds.episodeReturned, entryType: "org_intervention_note", notes: NOTE_RETURNED },
+    { caseId: caseIds.episodeAccepted, entryType: "org_intervention_note", notes: NOTE_ACCEPTED },
     // Third-party data on the denuncia: an investigator's note naming the
     // subject owner and a place. The filing org must never read it.
     {
@@ -411,6 +484,8 @@ beforeAll(async () => {
 const NOTE_OPEN = "Nota interna: la familia vive en Calle Falsa 123.";
 const PAYLOAD_OPEN = "Texto libre en el payload: Calle Falsa 123, timbre B.";
 const NOTE_CLOSED = "Nota interna posterior a la aceptación.";
+const NOTE_RETURNED = "Nota del decomiso devuelto a su dueño, nunca aceptado.";
+const NOTE_ACCEPTED = "Nota del decomiso aceptado por el refugio.";
 const DENUNCIA_NOTE = "El titular Juan Pérez, DNI terminado en 1234, vive en Calle 7 n.º 900.";
 
 afterAll(async () => {
@@ -723,6 +798,35 @@ describe("case notes for a hand-off org party (S2)", () => {
     expect(everything).not.toContain("Calle Falsa");
   });
 
+  // F1 — a 'resolved' close is not acceptance: an episode returned to its
+  // owner keeps the notes from the shelter that was only proposed.
+  it("withholds them on an episode returned to its owner without acceptance", async () => {
+    const read = await readCaseForViewer(caseCodes.episodeReturned, viewer("receiver"));
+    expect(read.kind).toBe("readable");
+    if (read.kind !== "readable") return;
+    expect(JSON.stringify(read)).not.toContain(NOTE_RETURNED);
+  });
+
+  it("shows them on an episode the shelter accepted", async () => {
+    const read = await readCaseForViewer(caseCodes.episodeAccepted, viewer("receiver"));
+    expect(read.kind).toBe("readable");
+    if (read.kind !== "readable") return;
+    expect(read.timelineEvents.some((e) => e.notes === NOTE_ACCEPTED)).toBe(true);
+  });
+
+  // F2 — a judicial reference is free text; everything after the key goes.
+  it("strips the whole judicial reference from the opened-reason prose", () => {
+    const detail = {
+      openedReason:
+        "auto: decomiso motivo=maltrato_fisico judicial_ref=Causa 123/2026 Juzgado N.º 4",
+      openedReasonParams: { judicialRef: "Causa 123/2026 Juzgado N.º 4" },
+      events: [],
+    } as unknown as Parameters<typeof withholdFreeText>[0];
+    const safe = withholdFreeText(detail);
+    expect(safe.openedReason).toBe("auto: decomiso motivo=maltrato_fisico judicial_ref=sin_ref");
+    expect(JSON.stringify(safe)).not.toContain("Juzgado");
+  });
+
   it("shows them once the hand-off was accepted", async () => {
     const read = await readCaseForViewer(caseCodes.handshakeClosed, viewer("receiverCoordinator"));
     expect(read.kind).toBe("readable");
@@ -755,10 +859,10 @@ describe("public.can_read_case agrees with canReadCase on the 0281 arms", () => 
       where proname = 'can_read_case'
         and prosrc like '%custody_transfer_handshake%'
         and prosrc like '%m.role in (''admin'', ''coordinator'')%'
-        and prosrc like '%c.closed_reason = ''resolved'' and exists%'
+        and prosrc like '%pe.payload->>''reason'' = ''org_to_org_handoff''%'
     `)) as unknown as Array<{ n: number }>;
     if ((rows[0]?.n ?? 0) === 0) {
-      throw new Error("0281 no está aplicada en esta base (pnpm db:migrate)");
+      throw new Error("0282 no está aplicada en esta base (pnpm db:migrate)");
     }
   });
 
@@ -774,6 +878,11 @@ describe("public.can_read_case agrees with canReadCase on the 0281 arms", () => 
     ["episode", "receiver", true, false],
     ["handshakeClosed", "receiver", true, true],
     ["handshakeClosed", "sender", true, true],
+    // F1: returned to its owner without acceptance — SQL denies; TS reads it
+    // with the notes withheld. Accepted, then closed — both admit it.
+    ["episodeReturned", "receiver", true, false],
+    ["episodeAccepted", "receiver", true, true],
+    ["episodeAccepted", "receiverVolunteer", false, false],
     ["handshakeOpen", "receiverVolunteer", false, false],
     ["episode", "receiverVolunteer", false, false],
     ["handshakeOpen", "receiverLeft", false, false],

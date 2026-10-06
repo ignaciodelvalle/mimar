@@ -856,8 +856,34 @@ describe("withholdUnreadableDecomisoEvidence — D7 read rule", () => {
   it("after acceptance a receiver coordinator reads the evidence, a volunteer still does not", async () => {
     const coordinator = await stubProfile({ receiverMember: true, role: "coordinator" });
     const volunteer = await stubProfile({ receiverMember: true, role: "volunteer" });
-    // Both accept paths close the hand-off case as resolved (handoffAccepted).
+    // F1 — a 'resolved' close is NOT acceptance (return-custody-to-owner closes
+    // the episode that way too): still no evidence for the proposed shelter.
     await closeCase({ caseId, reason: "resolved", closedByUserId: govtUserId });
+    const beforeAccepting = await withholdUnreadableDecomisoEvidence(rows(), coordinator);
+    expect(beforeAccepting.map((r) => r.storagePath)).toEqual(["pet/vacuna.jpg"]);
+
+    // The acceptance itself: the custody_transferred event accept-decomiso-handoff
+    // writes on the episode, to the receiver, reason 'org_to_org_handoff'.
+    await db.insert(petEvents).values({
+      petId: createdPetId,
+      caseId,
+      eventType: "custody_transferred",
+      occurredAt: new Date(),
+      authorRole: "shelter",
+      authorOrganizationId: receiverOrgId,
+      payload: {
+        from_user_id: null,
+        from_organization_id: govtOrgId,
+        to_user_id: null,
+        to_organization_id: receiverOrgId,
+        from_role: "shelter_custody",
+        to_role: "shelter_custody",
+        reason: "org_to_org_handoff",
+        matched_against_pet_id: null,
+        foster_ended_event_id: null,
+        notes: null,
+      },
+    });
     const forCoordinator = await withholdUnreadableDecomisoEvidence(rows(), coordinator);
     expect(forCoordinator.map((r) => r.storagePath)).toEqual([
       "decomiso/dir/legacy.jpg",

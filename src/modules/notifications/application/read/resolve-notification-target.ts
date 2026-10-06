@@ -153,12 +153,27 @@ export function readStoredCta(ctaUrl: string | null): StoredCta | null {
   const pathOnly = trimTrailingSlash(url.split("#")[0]?.split("?")[0] ?? "");
   const segments = pathOnly.split("/");
   if (segments[1] === "casos" && segments[2] && segments.length === 3) {
-    return { kind: "case", publicCode: decodeURIComponent(segments[2]), path: url };
+    const publicCode = decodeSegment(segments[2]);
+    return publicCode === null ? { kind: "invalid" } : { kind: "case", publicCode, path: url };
   }
   if (segments[1] === "mis-mascotas" && segments[2] && !MY_PETS_STATIC_SEGMENTS.has(segments[2])) {
-    return { kind: "pet", publicToken: decodeURIComponent(segments[2]), path: url };
+    const publicToken = decodeSegment(segments[2]);
+    return publicToken === null ? { kind: "invalid" } : { kind: "pet", publicToken, path: url };
   }
   return { kind: "section", path: url };
+}
+
+/**
+ * `decodeURIComponent` that answers `null` for a malformed `%` instead of
+ * throwing: a bad stored row costs itself (it explains), never the request.
+ */
+function decodeSegment(segment: string): string | null {
+  try {
+    return decodeURIComponent(segment);
+  } catch (error) {
+    if (error instanceof URIError) return null;
+    throw error;
+  }
 }
 
 const resolveAppRoute = appRoutePath as (
@@ -268,7 +283,8 @@ async function canEnterSection(
       return access.roles.includes(viewer.role) ? { ok: true } : { ok: false, endedOrg: null };
     case "org": {
       const orgToken = match.params.orgToken;
-      const org = orgToken ? await probes.findOrgByToken(decodeURIComponent(orgToken)) : null;
+      const decoded = orgToken ? decodeSegment(orgToken) : null;
+      const org = decoded ? await probes.findOrgByToken(decoded) : null;
       if (org === null) return { ok: false, endedOrg: null };
       if (await probes.isActiveOrgMember(org.id)) {
         if (!access.capability) return { ok: true };

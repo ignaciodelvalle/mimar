@@ -15,9 +15,9 @@
 // welfare_denuncia used to be a fourth entry; see the note on
 // PUBLIC_ANONYMOUS_KINDS for why it is gone.
 
-import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
-import { custodyDisputeParties, db, organizationMemberships, ownerships } from "@/db";
+import { custodyDisputeParties, db, organizationMemberships, ownerships, petEvents } from "@/db";
 import {
   hasNationalReadScope,
   jurisdictionScopeContains,
@@ -120,14 +120,42 @@ export async function isActiveOrgCaseParty(orgId: string, userId: string): Promi
 }
 
 /**
- * Whether a hand-off case was ACCEPTED: both accept paths close the case as
- * `resolved` (accept-cross-org-transfer, accept-decomiso-handoff). THE ONE
- * predicate for "after acceptance" — the notes cut below, the decomiso evidence
- * gate, and the SQL `can_read_case` arms of migration 0281
- * (`c.status = 'closed' and c.closed_reason = 'resolved'`) all mean this.
+ * Whether a hand-off case was ACCEPTED by the org it is addressed to — read from
+ * the acceptance ITSELF, never from how the case was closed (final security
+ * review F1). A `resolved` close is not acceptance: return-custody-to-owner
+ * and adoption-finalize close a custody_episode as `resolved` and leave
+ * `receiver_organization_id` pointing at a shelter that never accepted.
+ *
+ * The acceptance is the `custody_transferred` pet_event the accept path writes
+ * ON THIS CASE, to the receiver:
+ *   · custody_episode — accept-decomiso-handoff, `reason = 'org_to_org_handoff'`;
+ *   · custody_transfer_handshake — accept-cross-org-transfer (its reason is
+ *     the proposal's, so only the case and the receiver are matched).
+ * Events are append-only, so the answer cannot be undone by a later close.
+ *
+ * THE ONE predicate for "after acceptance": the notes cut below, the decomiso
+ * evidence gate, and the SQL `can_read_case` arms of migration 0282, which spell
+ * the same `exists (… pet_events …)`.
  */
-export function handoffAccepted(detail: { status: string; closedReason: string | null }): boolean {
-  return detail.status === "closed" && detail.closedReason === "resolved";
+export async function handoffAccepted(
+  detail: Pick<CaseDetail, "id" | "caseKind" | "receiverOrganizationId">,
+): Promise<boolean> {
+  if (!HANDOFF_PARTY_KINDS.has(detail.caseKind) || !detail.receiverOrganizationId) return false;
+  const [row] = await db
+    .select({ id: petEvents.id })
+    .from(petEvents)
+    .where(
+      and(
+        eq(petEvents.caseId, detail.id),
+        eq(petEvents.eventType, "custody_transferred"),
+        sql`${petEvents.payload}->>'to_organization_id' = ${detail.receiverOrganizationId}`,
+        detail.caseKind === "custody_episode"
+          ? sql`${petEvents.payload}->>'reason' = 'org_to_org_handoff'`
+          : undefined,
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
 }
 
 /** The kinds whose org parties were admitted by migration 0281. */
@@ -194,7 +222,7 @@ export async function caseNotesWithheldFor(
   if (!viewer) return false;
   if (!HANDOFF_PARTY_KINDS.has(detail.caseKind)) return false;
   if (hasNationalReadScope(viewer.role) || viewer.role === "govt") return false;
-  if (handoffAccepted(detail)) return false;
+  if (await handoffAccepted(detail)) return false;
   if (detail.pet) {
     const [ownerRow] = await db
       .select({ id: ownerships.id })
@@ -372,7 +400,7 @@ export async function canReadCase(detail: CaseDetail, viewer: CaseViewer | null)
   // DELIBERATE TS/SQL DIVERGENCE (security re-review): this arm admits the
   // party BEFORE acceptance, so the app can show the case with its notes and
   // free-text payloads withheld (`caseNotesWithheldFor`, readCaseForViewer).
-  // The SQL mirror in 0281 admits it only AFTER acceptance (`handoffAccepted`),
+  // The SQL mirror (0282) admits it only AFTER acceptance (`handoffAccepted`),
   // because RLS on pet_events / attachments delegates to can_read_case and a
   // party's own JWT would otherwise read the raw notes over PostgREST. Server
   // reads go through Drizzle (BYPASSRLS), so the app is unaffected. Pinned by

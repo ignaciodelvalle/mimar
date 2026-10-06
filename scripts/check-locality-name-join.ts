@@ -71,6 +71,9 @@ export const FROZEN_NAME_JOINS: Readonly<Record<string, number>> = {
   // VERBATIM plus two org-party arms keyed on organization ids. The one hit is
   // 0259's legacy-grant branch carried along; no new name comparison.
   "db/migrations/0281_case_read_transfer_and_custody_parties.sql": 1,
+  // 0282 (notificaciones-destinos F1) re-defines can_read_case with 0281's body;
+  // only the two hand-off arms change, keyed on ids and an acceptance event.
+  "db/migrations/0282_case_read_acceptance_event.sql": 1,
 };
 
 /** Non-vacuity floor: the sum of the frozen list. A broken regex reads 0. */
