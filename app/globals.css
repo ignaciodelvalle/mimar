@@ -1829,11 +1829,15 @@ body {
   }
 }
 
+/* TWO ROWS AT EVERY WIDTH (round 2, 2026-10-06). The card is capped at
+   max-w-[460px] minus px-4 on /p/ (≤428px) and the owner face is no wider, so
+   a name column between two 156px mounts was 37-56px and the nowrap token ran
+   under the opaque QR. Photo + right cell share row 1 (2 × 156 + gap + padding
+   = 358px, fits the 428px card); name + token take a full-width row 2. */
 .pc-id {
   display: grid;
-  /* Three tracks even when data-cell="none" (deceased paints no third child).
-     The empty track is margin, so the name stays centred. It is not a box. */
-  grid-template-columns: 156px minmax(0, 1fr) 156px;
+  grid-template-columns: 156px 156px;
+  justify-content: space-between;
   gap: 14px;
   align-items: start;
   /* Shallower poke than before — mounts sit a bit lower and read larger. */
@@ -1921,8 +1925,20 @@ body {
 }
 .pc-id-copy {
   min-width: 0;
-  margin-top: 48px;
+  margin-top: 0;
   text-align: center;
+}
+.pc-id:not([data-photo="hero"]) .pc-id-copy {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+/* Deceased paints no right cell: ONE fluid track, so the name row keeps the
+   card's full width, and the lone photo is centred in it. */
+.pc-id[data-cell="none"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.pc-id[data-cell="none"] .pc-photo-mount {
+  justify-self: center;
 }
 /* LOST: the photo leaves the row and spans the card (4:3, as on main) so a
    finder can match the animal's face. The row keeps name + right cell. */
@@ -1944,13 +1960,13 @@ body {
 .pc-id[data-photo="hero"] .pc-id-copy {
   margin-top: 0;
 }
-/* Names wrap at WORD boundaries (balanced), hyphenate by the page's es-AR
-   lang, and break inside a word only when one word alone overflows the row —
-   `anywhere` split "Firulais" mid-word on phones. */
+/* Names wrap at WORD boundaries (balanced), never auto-hyphenated (a pet's
+   name is not dictionary Spanish), and break inside a word only when one word
+   alone overflows the row — `anywhere` split "Firulais" mid-word on phones. */
 .pc-id-copy h1 {
   margin: 0;
   overflow-wrap: break-word;
-  hyphens: auto;
+  hyphens: manual;
   text-wrap: balance;
   font-family: var(--font-ln-serif);
   font-size: var(--text-title);
@@ -1963,34 +1979,19 @@ body {
   padding: 0 16px 12px;
   text-align: center;
 }
-/* Phones (≤440px): between two 116px cells the name column was ~118px wide —
-   long names broke mid-word and the token wrapped. The photo and the right
-   cell share the first row; name + token take a full-width row under them.
+/* Phones (≤440px): the same two rows, with 116px mounts and tighter gutters.
    Same grid on /p/ and the owner face (CredentialFace). */
 @media (max-width: 440px) {
   .pc-id {
     grid-template-columns: 116px 116px;
-    justify-content: space-between;
     gap: 8px;
     margin-top: -14px;
     padding: 0 12px 12px;
-  }
-  /* Deceased paints no right cell: the photo stands alone, centred. */
-  .pc-id[data-cell="none"] {
-    grid-template-columns: 116px;
-    justify-content: center;
   }
   .pc-photo-mount,
   .pc-qr-mount {
     width: 116px;
     height: 116px;
-  }
-  .pc-id-copy {
-    margin-top: 0;
-  }
-  .pc-id:not([data-photo="hero"]) .pc-id-copy {
-    grid-column: 1 / -1;
-    grid-row: 2;
   }
   .pc-id[data-photo="hero"] {
     grid-template-columns: minmax(0, 1fr) 116px;

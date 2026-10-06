@@ -886,7 +886,9 @@ export default async function PublicCredentialPage({
                         species={pet.species}
                         jurisdictionProvince={pet.jurisdictionProvince}
                         jurisdictionLocality={pet.jurisdictionLocality}
-                        enabledUntil={tier2EnabledUntil}
+                        // A permanent Nivel 2 has no window: a stale bounded
+                        // date left on the row must never print "Visible hasta".
+                        enabledUntil={pet.tier2PublicPermanent ? null : tier2EnabledUntil}
                         permanentConditions={pet.permanentConditions ?? []}
                         permanentConditionsOther={pet.permanentConditionsOther}
                       />

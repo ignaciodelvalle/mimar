@@ -112,24 +112,36 @@ function phoneDeclares(selector: string, prop: string): string | null {
   return found ? found[1].trim() : null;
 }
 
-// The /p/ and owner-face identity row (`.pc-id`). Between a 116px photo and a
-// 116px QR, a 390px card left the name ~118px: long names broke mid-word and
-// the DIM token wrapped. On phones the name + token take their own row.
-describe("credential identity row — the name gets a full-width row on phones", () => {
-  it("puts photo and right cell on the first row, two tracks, no name column", () => {
-    expect(phoneDeclares(".pc-id", "grid-template-columns")).toBe("116px 116px");
+// The /p/ and owner-face identity row (`.pc-id`). The card is ≤428px wide at
+// every viewport (/p/ caps it at max-w-[460px] px-4), so a name column between
+// two mounts was 37-56px on desktop and ~118px on phones: long names broke
+// mid-word and the nowrap token ran under the opaque QR. The name + token take
+// their own full-width row at EVERY width, not only under the phone query.
+describe("credential identity row — the name gets a full-width row at every width", () => {
+  it("default (desktop card): photo and right cell share row 1 in two 156px tracks", () => {
+    expect(declares(".pc-id", "grid-template-columns")).toBe("156px 156px");
   });
 
-  it("puts the name + token block on its own full-width second row", () => {
-    expect(phoneDeclares('.pc-id:not([data-photo="hero"]) .pc-id-copy', "grid-column")).toBe(
-      "1 / -1",
-    );
-    expect(phoneDeclares('.pc-id:not([data-photo="hero"]) .pc-id-copy', "grid-row")).toBe("2");
+  it("default (desktop card): name + token take a full-width second row", () => {
+    expect(declares('.pc-id:not([data-photo="hero"]) .pc-id-copy', "grid-column")).toBe("1 / -1");
+    expect(declares('.pc-id:not([data-photo="hero"]) .pc-id-copy', "grid-row")).toBe("2");
+  });
+
+  it("≤440px: the same two tracks shrink to 116px, and no rule re-opens a name column", () => {
+    expect(phoneDeclares(".pc-id", "grid-template-columns")).toBe("116px 116px");
+    expect(() => phoneRule('.pc-id:not([data-photo="hero"]) .pc-id-copy')).toThrow();
+  });
+
+  it("deceased (data-cell=none): one fluid track, lone photo centred, name keeps the full row", () => {
+    expect(declares('.pc-id[data-cell="none"]', "grid-template-columns")).toBe("minmax(0, 1fr)");
+    expect(declares('.pc-id[data-cell="none"] .pc-photo-mount', "justify-self")).toBe("center");
+    expect(() => phoneRule('.pc-id[data-cell="none"]')).toThrow();
   });
 
   it("wraps the name at word boundaries, breaking a word only as a last resort", () => {
     expect(declares(".pc-id-copy h1", "overflow-wrap")).toBe("break-word");
-    expect(declares(".pc-id-copy h1", "hyphens")).toBe("auto");
+    expect(declares(".pc-id-copy h1", "hyphens")).toBe("manual");
+    expect(declares(".pc-id-copy h1", "text-wrap")).toBe("balance");
   });
 
   it("never wraps the token", () => {

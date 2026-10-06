@@ -464,7 +464,11 @@ describe("/p/[publicToken] — #16a streaming + next/image", () => {
     expect(html).not.toContain('data-testid="tier2-view-spy"');
     expect(html).not.toContain('data-section="tier2-degraded"');
     expect(html).toContain("Fixturol");
-    expect(html).toMatch(/data-section="rabies-semaphore"[\s\S]*?Con registro declarado/);
+    // Scoped to the rabies stamp's own element: the words must come from THAT
+    // cell, not from anywhere after it on the page.
+    const rabiesCell = /<div data-section="rabies-semaphore">([\s\S]*?)<\/div>/.exec(html)?.[1];
+    expect(rabiesCell).toBeDefined();
+    expect(rabiesCell).toContain("Con registro declarado");
 
     // The leak itself.
     expect(html).not.toContain("Anterior:");
@@ -476,6 +480,34 @@ describe("/p/[publicToken] — #16a streaming + next/image", () => {
     // And the per-event door stays shut on /p/.
     const { loadSharedLibretaEvents } = await import("@/lib/infra/libreta-share-events");
     expect(loadSharedLibretaEvents).not.toHaveBeenCalled();
+  });
+
+  // A permanent Nivel 2 whose row still carries an old bounded window (the
+  // owner switched from "hasta…" to "siempre") says "Siempre visible", never
+  // "Visible hasta <a past date>".
+  it("permanent nivel 2 ignores a stale bounded window on the row", async () => {
+    REAL_PATH.on = true;
+    mockDbSelect.mockImplementation(
+      buildPlantedChain({
+        ...BASE_PET,
+        tier2PublicPermanent: true,
+        tier2PublicEnabledUntil: "2026-01-01T12:00:00Z",
+      }),
+    );
+    const { default: PublicCredentialPage } = await import("@/app/(public)/p/[publicToken]/page");
+    const element = await PublicCredentialPage({
+      params: Promise.resolve({ publicToken: BASE_PET.publicToken }),
+    });
+    const stream = await renderToReadableStream(element as React.ReactElement);
+    await stream.allReady;
+    const html = await new Response(stream).text();
+
+    expect(html).toContain('data-section="tier2-consent"');
+    // React marks text-node seams with <!-- --> in streamed HTML; drop them.
+    expect(html.replace(/<!-- -->/g, "")).toContain(
+      "Habilitada por el dueño · <strong>Siempre visible</strong>",
+    );
+    expect(html).not.toContain("Visible hasta");
   });
 
   // -------------------------------------------------------------------------
