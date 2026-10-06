@@ -172,6 +172,12 @@ const NOT_A_LOST_NOTE_READ: readonly string[] = [
   // WRITES a system note ("auto-expirada: el destinatario no respondió") when a
   // transfer proposal lapses. An insert, not a read.
   "src/modules/transfers/infrastructure/transfers-repository.ts",
+  // `handoffAccepted` (notificaciones-destinos F1, 2026-10): asks whether a
+  // hand-off case carries its acceptance event. Filtered by case id AND
+  // `event_type = 'custody_transferred'` AND the receiving org in the payload,
+  // it selects `pet_events.id` and nothing else, and only its existence is
+  // used. No `note_added` row can match and no payload text leaves the query.
+  "lib/infra/case-access.ts",
 ];
 
 /** Every non-test source file under the app's own roots. */
