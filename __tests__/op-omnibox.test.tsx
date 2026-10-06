@@ -52,7 +52,11 @@ vi.mock("@/app/actions/omnibox-search", () => ({
   searchOmniboxOrgAction: vi.fn(),
 }));
 
-import { OpOmnibox } from "@/components/ui/dashboard/OpOmnibox";
+import {
+  OMNIBOX_CLIENT_TIMEOUT_MS,
+  OpOmnibox,
+  withClientTimeout,
+} from "@/components/ui/dashboard/OpOmnibox";
 
 const EMPTY: OmniboxResults = { pets: [], persons: [], cases: [], total: 0 };
 
@@ -236,5 +240,77 @@ describe("<OpOmnibox> — grouped results", () => {
     expect(html).toContain("Luna");
     expect(html).toContain("Juan Pérez");
     expect(html).toContain("CASO-2026-001");
+  });
+});
+
+describe("<OpOmnibox> — degraded state (2026-10, bounded search)", () => {
+  // A search that timed out or failed comes back as `{ degraded: true }` (from
+  // the server's budget, or from the client's own catch/timeout). Empty groups
+  // there mean "we could not look", so the dropdown must never claim a miss.
+  const DEGRADED: OmniboxResults = { ...EMPTY, degraded: true };
+
+  it("says the search is taking too long, never 'Sin coincidencias'", () => {
+    const html = renderWithState({
+      query: "luna",
+      results: DEGRADED,
+      open: true,
+      loading: false,
+      activeIndex: -1,
+      searched: true,
+    });
+    expect(html).toContain("La búsqueda está tardando más de lo normal.");
+    expect(html).toContain('role="status"');
+    expect(html).not.toContain("Sin coincidencias");
+    expect(html).not.toContain("No encontramos esa mascota");
+  });
+
+  it("still shows the honest miss when the search did run and found nothing", () => {
+    const html = renderWithState({
+      query: "luna",
+      results: EMPTY,
+      open: true,
+      loading: false,
+      activeIndex: -1,
+      searched: true,
+    });
+    expect(html).toContain("Sin coincidencias");
+    expect(html).not.toContain("tardando");
+  });
+
+  it("shows the spinner, not the degraded copy, while a search is in flight", () => {
+    const html = renderWithState({
+      query: "luna",
+      results: DEGRADED,
+      open: true,
+      loading: true,
+      activeIndex: -1,
+      searched: true,
+    });
+    expect(html).toContain("Buscando…");
+    expect(html).not.toContain("tardando");
+  });
+});
+
+describe("withClientTimeout — the client never spins forever", () => {
+  it("rejects a round-trip that never settles once the ceiling passes", async () => {
+    vi.useFakeTimers();
+    try {
+      const never = new Promise<OmniboxResults>(() => {});
+      const raced = withClientTimeout(never, OMNIBOX_CLIENT_TIMEOUT_MS);
+      const assertion = expect(raced).rejects.toThrow(/exceeded/);
+      await vi.advanceTimersByTimeAsync(OMNIBOX_CLIENT_TIMEOUT_MS);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("passes a timely answer through untouched", async () => {
+    await expect(withClientTimeout(Promise.resolve(EMPTY), 1_000)).resolves.toBe(EMPTY);
+  });
+
+  it("sits above every server budget, so an honest server answer is never cut off", () => {
+    // Server: 5s session, 8s search (OMNIBOX_BUDGET_MS), 5s audit write.
+    expect(OMNIBOX_CLIENT_TIMEOUT_MS).toBeGreaterThan(8_000);
   });
 });

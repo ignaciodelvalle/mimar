@@ -221,7 +221,9 @@ export const DASHBOARD_PAGES = [
   // stopped pipelining in the same pass, and these hot paths, each a fan-out or
   // a front-door read with no deadline, were bounded and registered with it.
   // The pet profile above was already registered; its Libreta face read was the
-  // unbounded one, which the call-anywhere rule could not see.
+  // unbounded one, which the call-anywhere rule could not see. That section now
+  // lives in its own file, registered here so its wrapper cannot be dropped.
+  "app/(app)/mis-mascotas/[publicToken]/LibretaFaceSection.tsx",
   "app/(app)/inicio/page.tsx",
   "lib/infra/omnibox-search.ts",
   "app/(public)/refugios/[orgToken]/page.tsx",

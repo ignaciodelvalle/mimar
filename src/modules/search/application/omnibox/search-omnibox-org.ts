@@ -4,9 +4,11 @@
 // orgToken is read from session.organization.publicToken.
 
 import type { OrgAccessSession } from "@/lib/infra/auth-guards";
+import { withDbBudgetOrThrow } from "@/lib/infra/db-budget";
 import { type OmniboxResults, searchOmnibox } from "@/lib/infra/omnibox-search";
 import { logPiiQueryForAuthority } from "@/src/modules/organizations/application/admin-proposals/log-pii-query";
 import { getGrantedCapabilities } from "@/src/modules/organizations/infrastructure/authz-resolver";
+import { OMNIBOX_AUDIT_BUDGET_MS } from "./search-omnibox";
 
 // Minimum query length before we touch the DB or log a PII read. A single
 // character is too broad to be a meaningful lookup and would log noise.
@@ -33,7 +35,12 @@ export async function searchOmniboxOrg(
     orgToken: organization.publicToken,
   });
 
-  await logPiiQueryForAuthority(user.id, trimmed, results.total, "omnibox");
+  // Awaited and bounded: see OMNIBOX_AUDIT_BUDGET_MS.
+  await withDbBudgetOrThrow(
+    logPiiQueryForAuthority(user.id, trimmed, results.total, "omnibox"),
+    OMNIBOX_AUDIT_BUDGET_MS,
+    "omnibox pii_queried audit (org)",
+  );
 
   return results;
 }

@@ -58,7 +58,15 @@ export async function generateMetadata({
   params: Promise<{ orgToken: string }>;
 }): Promise<Metadata> {
   const { orgToken } = await params;
-  const org = await queryOrgPublicProfile(orgToken);
+  // Bounded (2026-10): metadata resolves before the page streams, so an
+  // unbounded read here held the whole response, budgeted page included. On a
+  // timeout or failure the page still renders (and degrades on its own) under
+  // a generic title; crawlers get the real one on their next visit.
+  // undefined = the read did not answer in time; null = no such public org.
+  const org = await loadWithTimeout(queryOrgPublicProfile(orgToken), 3_000).then((load) =>
+    load.ok ? load.value : undefined,
+  );
+  if (org === undefined) return { title: "Refugio — miMAR" };
   if (!org) return { title: "Refugio no disponible — miMAR" };
 
   const locality = org.jurisdictionLocality ?? org.jurisdictionProvince ?? "Argentina";

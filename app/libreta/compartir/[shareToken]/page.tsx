@@ -65,23 +65,10 @@ type TerminalPetContext = {
   expiresAtIso: string | null;
 };
 
-export default async function PublicLibretaPage({
-  params,
-}: {
-  params: Promise<{ shareToken: string }>;
-}) {
-  const { shareToken } = await params;
-
-  // WAVE D4: rate-limit per IP BEFORE the token lookup so no share/pet/event row
-  // is read until the caller is under the limit. Soft throttle notice on breach.
-  const ip = await callerIpFromHeaders();
-  try {
-    await enforceRateLimit("libreta_share_page", ip, LIBRETA_SHARE_PAGE_LIMIT);
-  } catch (err) {
-    if (err instanceof RateLimitError) return <ThrottleNotice />;
-    throw err;
-  }
-
+/** The share row (with the owner's first name), its pet and the pet's photo.
+ * null when the token or the pet does not exist (or the pet was erased): the
+ * page answers that with notFound(). Raced by the page as one load. */
+async function loadShareHead(shareToken: string) {
   // Resolve share token via Drizzle (bypasses RLS by design — see D7 in plan).
   // Join profiles to get the owner's first name for the "Compartido por" chip.
   // We surface first name only (PII-minimised — same pattern as LostPublicCredential).
@@ -99,7 +86,7 @@ export default async function PublicLibretaPage({
     .where(eq(libretaShareTokens.shareToken, shareToken))
     .limit(1);
 
-  if (!share) notFound();
+  if (!share) return null;
 
   // Always load the pet so terminal views (revoked / expired / deceased) can
   // show context. If the pet row vanished (cascade or hard delete), fall back
@@ -116,7 +103,7 @@ export default async function PublicLibretaPage({
     .from(pets)
     .where(and(eq(pets.id, share.petId), isNull(pets.deletedAt)))
     .limit(1);
-  if (!pet) notFound();
+  if (!pet) return null;
 
   let photoUrl: string | null = null;
   if (pet.primaryPhotoId) {
@@ -127,6 +114,61 @@ export default async function PublicLibretaPage({
       .limit(1);
     photoUrl = petPhotoUrl(attachment?.storagePath);
   }
+
+  return { share, pet, photoUrl };
+}
+
+export default async function PublicLibretaPage({
+  params,
+}: {
+  params: Promise<{ shareToken: string }>;
+}) {
+  const { shareToken } = await params;
+
+  // The degraded render for both bounded loads below. Same shape as
+  // ThrottleNotice, plus a retry to this same link. `linkChecked` is true only
+  // once the share row has been read and validated.
+  const unavailable = (reason: "timeout" | "error", linkChecked: boolean) => (
+    <div className="flex min-h-[70vh] items-center justify-center bg-[var(--color-ln-paper)] p-6">
+      <div className="mx-auto max-w-[400px] px-6 py-12 text-center">
+        <h1 className="mb-3 font-ln-serif text-lg font-semibold text-[var(--color-ln-ink)]">
+          {reason === "timeout"
+            ? "La libreta está tardando más de lo normal"
+            : "No pudimos cargar la libreta"}
+        </h1>
+        <p className="text-md leading-[1.6] text-[var(--color-ln-ink-2)]">
+          {linkChecked
+            ? "El enlace sigue siendo válido. Probá de nuevo en unos segundos."
+            : "Probá de nuevo en unos segundos."}
+        </p>
+        <a
+          href={`/libreta/compartir/${shareToken}`}
+          className="mt-4 inline-block text-md text-[var(--color-ln-azul)] underline"
+        >
+          Reintentar
+        </a>
+      </div>
+    </div>
+  );
+
+  // WAVE D4: rate-limit per IP BEFORE the token lookup so no share/pet/event row
+  // is read until the caller is under the limit. Soft throttle notice on breach.
+  const ip = await callerIpFromHeaders();
+  try {
+    await enforceRateLimit("libreta_share_page", ip, LIBRETA_SHARE_PAGE_LIMIT);
+  } catch (err) {
+    if (err instanceof RateLimitError) return <ThrottleNotice />;
+    throw err;
+  }
+
+  // Share row, pet row and photo, BOUNDED as one load (2026-10): until they
+  // answer nothing can render, so a hang here was a page that never finished.
+  // On a timeout or failure the vet gets a notice with a retry; the link's
+  // validity is unknown at this point, so the notice does not claim it.
+  const head = await loadWithTimeout(loadShareHead(shareToken));
+  if (!head.ok) return unavailable(head.reason, false);
+  if (head.value === null) notFound();
+  const { share, pet, photoUrl } = head.value;
 
   const context: TerminalPetContext = {
     name: pet.name,
@@ -162,29 +204,7 @@ export default async function PublicLibretaPage({
       fetchActiveIdentifications(pet.id),
     ]),
   );
-  if (!load.ok) {
-    // Same shape as ThrottleNotice below, plus a retry to this same link.
-    return (
-      <div className="flex min-h-[70vh] items-center justify-center bg-[var(--color-ln-paper)] p-6">
-        <div className="mx-auto max-w-[400px] px-6 py-12 text-center">
-          <h1 className="mb-3 font-ln-serif text-lg font-semibold text-[var(--color-ln-ink)]">
-            {load.reason === "timeout"
-              ? "La libreta está tardando más de lo normal"
-              : "No pudimos cargar la libreta"}
-          </h1>
-          <p className="text-md leading-[1.6] text-[var(--color-ln-ink-2)]">
-            El enlace sigue siendo válido. Probá de nuevo en unos segundos.
-          </p>
-          <a
-            href={`/libreta/compartir/${shareToken}`}
-            className="mt-4 inline-block text-md text-[var(--color-ln-azul)] underline"
-          >
-            Reintentar
-          </a>
-        </div>
-      </div>
-    );
-  }
+  if (!load.ok) return unavailable(load.reason, true);
   const [events, identifications] = load.value;
 
   // Project corrections BEFORE grouping (D2 at the read boundary — same

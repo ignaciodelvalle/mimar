@@ -11,13 +11,16 @@
 
 import { requireAdminOrGovtOrRedirect, requireOrgAccessByToken } from "@/lib/infra/auth-guards";
 import type { OmniboxResults } from "@/lib/infra/omnibox-search";
-import { searchOmnibox } from "@/src/modules/search/application/omnibox/search-omnibox";
+import {
+  boundOmniboxSession,
+  searchOmnibox,
+} from "@/src/modules/search/application/omnibox/search-omnibox";
 import { searchOmniboxOrg } from "@/src/modules/search/application/omnibox/search-omnibox-org";
 
 export type { OmniboxResults } from "@/lib/infra/omnibox-search";
 
 export async function searchOmniboxAction(query: string): Promise<OmniboxResults> {
-  const session = await requireAdminOrGovtOrRedirect();
+  const session = await boundOmniboxSession(requireAdminOrGovtOrRedirect());
   return searchOmnibox(session, query);
 }
 
@@ -25,6 +28,6 @@ export async function searchOmniboxOrgAction(
   orgToken: string,
   query: string,
 ): Promise<OmniboxResults> {
-  const session = await requireOrgAccessByToken(orgToken);
+  const session = await boundOmniboxSession(requireOrgAccessByToken(orgToken));
   return searchOmniboxOrg(session, query);
 }

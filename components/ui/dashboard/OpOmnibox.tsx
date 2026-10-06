@@ -44,6 +44,22 @@ import { speciesLabel } from "@/lib/utils/format";
 import { caseKindLabel } from "@/src/modules/cases/domain/case-kinds";
 
 const DEBOUNCE_MS = 250;
+
+/** Client-side ceiling on one search round-trip (2026-10). The server bounds
+ * its own reads, but a request that never comes back (a hung lambda, a lost
+ * connection) would otherwise leave "Buscando…" spinning forever. Past this the
+ * dropdown shows the degraded state. Above the server's budgets (5s session,
+ * 8s search, 5s audit) so a server that answers honestly is never cut off. */
+export const OMNIBOX_CLIENT_TIMEOUT_MS = 10_000;
+
+/** Rejects when `promise` has not settled within `ms`. */
+export function withClientTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`omnibox search exceeded ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
 const MIN_QUERY_LENGTH = 2;
 
 // Person-result role labels (same values as profiles.role across the app).
@@ -146,9 +162,10 @@ export function OpOmnibox({
     setLoading(true);
     const handle = setTimeout(async () => {
       try {
-        const r = orgToken
-          ? await searchOmniboxOrgAction(orgToken, trimmed)
-          : await searchOmniboxAction(trimmed);
+        const r = await withClientTimeout(
+          orgToken ? searchOmniboxOrgAction(orgToken, trimmed) : searchOmniboxAction(trimmed),
+          OMNIBOX_CLIENT_TIMEOUT_MS,
+        );
         if (cancelled) return;
         setResults(r);
         setSearched(true);
