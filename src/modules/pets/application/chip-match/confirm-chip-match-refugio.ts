@@ -39,6 +39,7 @@ import { writeRefugioReturnProposalInTx } from "@/src/modules/return-to-owner/ap
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import type { ConfirmChipMatchResult } from "./types";
+import { withNotificationIds } from "@/lib/infra/notification-ids";
 
 export async function confirmChipMatchAsRefugioWriter({
   auth,
@@ -254,10 +255,12 @@ export async function confirmChipMatchAsRefugioWriter({
 
   if (pendingNotifications.length > 0) {
     try {
-      await db.insert(notifications).values(pendingNotifications);
+      // Ids minted before the insert, so the push carries the row's own id.
+      const rows = withNotificationIds(pendingNotifications);
+      await db.insert(notifications).values(rows);
       // Web Push leg (ADR 2026-07-18 §4): urgent custodia, best-effort, never throws.
       const { sendPushForNotifications } = await import("@/lib/infra/web-push");
-      await sendPushForNotifications(pendingNotifications);
+      await sendPushForNotifications(rows);
     } catch (e) {
       console.error("notifications insert failed (action did succeed)", e);
     }

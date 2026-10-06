@@ -72,6 +72,7 @@ import { parseAgeFromFormData, parsePetForm } from "./domain/pet-form";
 import { resolveEditedBirthDate, withStoredLegacyConditionCodes } from "./domain/pet-profile-edit";
 import type { NewNotification, NewPetFormState } from "./domain/types";
 import { PetsRepository } from "./infrastructure/pets-repository";
+import { withNotificationIds } from "@/lib/infra/notification-ids";
 
 // Duplicate-chip gate (data-quality gate P3). A microchip is a globally-unique
 // identity: if it already exists in miMAR, the pet exists — the owner must
@@ -98,12 +99,12 @@ export type { NewPetFormState } from "./domain/types";
 async function flushNotifications(pending: NewNotification[]): Promise<void> {
   if (pending.length === 0) return;
   try {
-    await db
-      .insert(notifications)
-      .values(pending as unknown as (typeof notifications.$inferInsert)[]);
+    // Ids minted before the insert, so the push carries the row's own id.
+    const rows = withNotificationIds(pending as unknown as (typeof notifications.$inferInsert)[]);
+    await db.insert(notifications).values(rows);
     // Web Push leg (ADR 2026-07-18 §4): urgent-only, best-effort, never throws.
     const { sendPushForNotifications } = await import("@/lib/infra/web-push");
-    await sendPushForNotifications(pending as unknown as (typeof notifications.$inferInsert)[]);
+    await sendPushForNotifications(rows);
   } catch (e) {
     console.error("[pets/actions] notifications insert failed (action did succeed):", e);
   }

@@ -82,6 +82,7 @@ import { triageWelfareReport } from "./application/triage-welfare-report";
 import { unassignWelfare } from "./application/unassign-welfare";
 import { deriveWelfareToOrg } from "./infrastructure/derive-to-org-writer";
 import { WelfareRepository } from "./infrastructure/welfare-repository";
+import { withNotificationIds } from "@/lib/infra/notification-ids";
 
 // ---------------------------------------------------------------------------
 // Re-export types that existing consumers import from the old action files.
@@ -125,11 +126,13 @@ async function flushNotifications(
 ): Promise<void> {
   if (pending.length === 0) return;
   try {
-    await repo.insertNotifications(pending as (typeof notifications.$inferInsert)[]);
+    // Ids minted before the insert, so the push carries the row's own id.
+    const rows = withNotificationIds(pending);
+    await repo.insertNotifications(rows as (typeof notifications.$inferInsert)[]);
     // Web Push leg — urgent-only filtering happens inside the seam;
     // best-effort, never throws into the action path.
     const { sendPushForNotifications } = await import("@/lib/infra/web-push");
-    await sendPushForNotifications(pending);
+    await sendPushForNotifications(rows);
   } catch (e) {
     console.error("[welfare/actions] notifications insert failed (action did succeed):", e);
   }

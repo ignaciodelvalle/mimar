@@ -37,6 +37,7 @@ import { MALTREATMENT_KINDS, derivePrimarySubjectKind } from "../domain/report-c
 import type { WelfareSymptomSurveillance } from "../domain/symptom-surveillance-port";
 import type { WelfareRepository } from "../infrastructure/welfare-repository";
 import type { NewNotification } from "./types";
+import { withNotificationIds } from "@/lib/infra/notification-ids";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -469,14 +470,14 @@ export async function createOrgWelfareReport(
   // 4. POST-tx: insertNotifications (best-effort)
   if (pendingNotifications.length > 0) {
     try {
-      await repo.insertNotifications(
-        pendingNotifications as Parameters<typeof repo.insertNotifications>[0],
-      );
+      // Ids minted before the insert, so the push carries the row's own id.
+      const rows = withNotificationIds(pendingNotifications);
+      await repo.insertNotifications(rows as Parameters<typeof repo.insertNotifications>[0]);
       // Web Push leg — urgent-only filtering happens inside the seam (the
       // critical-report fan-out above is severity "urgent"); best-effort,
       // never throws into the action path. Runs AFTER the tx committed.
       const { sendPushForNotifications } = await import("@/lib/infra/web-push");
-      await sendPushForNotifications(pendingNotifications);
+      await sendPushForNotifications(rows);
     } catch (e) {
       console.error("[welfare] notifications insert failed (action did succeed)", e);
     }

@@ -7,7 +7,11 @@ import type { Notification, Pet } from "@/db";
 import { petLinkAvailable } from "@/lib/domain/notification-pet-link";
 import { notificationSeverityLabel, notificationTypeLabel, relativeTime } from "@/lib/utils/format";
 import { notificationOpenWebPath } from "@dim/contract/api";
-import { notificationKindSpec } from "@dim/contract/notifications";
+import {
+  isErasedNotification,
+  isSafeExternalUrl,
+  notificationKindSpec,
+} from "@dim/contract/notifications";
 
 // Shared notification card. Used by /notificaciones (full list) and
 // /inicio (dashboard widget, top 5 unread). Server component because
@@ -149,19 +153,22 @@ export function NotificationCard({
  * somewhere (the registry's `primaryDestination` is not `none`): the PO's rule
  * is that every notification takes its reader to the related case or pet.
  */
-function notificationCta(
-  notification: Notification,
+export function notificationCta(
+  notification: Pick<Notification, "id" | "notificationType" | "title" | "ctaLabel" | "ctaUrl">,
 ): { href: string; label: string; external: boolean } | null {
+  // An ERASED row (Ley 25.326 art. 16: `erase_subject_data` rewrites the title
+  // to the sentinel and nulls both CTA columns) says nothing more: no button.
+  if (isErasedNotification(notification)) return null;
   const { ctaLabel, ctaUrl } = notification;
   if (ctaLabel && ctaUrl) {
-    const external = ctaUrl.startsWith("http");
-    return {
-      href: external ? ctaUrl : notificationOpenWebPath(notification.id),
-      label: ctaLabel,
-      external,
-    };
+    // An outside link opens in a new tab as before — only a well-formed
+    // http(s) one; anything else is not a link we hand out.
+    if (!ctaUrl.startsWith("/")) {
+      return isSafeExternalUrl(ctaUrl) ? { href: ctaUrl, label: ctaLabel, external: true } : null;
+    }
+    return { href: notificationOpenWebPath(notification.id), label: ctaLabel, external: false };
   }
-  // A redacted row (erasure nulls both CTA columns) says nothing more.
+  // Half a CTA is not a state a writer produces; it opens nothing.
   if (ctaLabel || ctaUrl) return null;
   const spec = notificationKindSpec(notification.notificationType);
   if (spec === null || spec.primaryDestination === "none") return null;

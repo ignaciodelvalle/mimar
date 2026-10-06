@@ -31,6 +31,7 @@ import { sendExpoPushForNotifications } from "@/lib/infra/expo-push";
 import { isPushEligible } from "@/lib/infra/push-eligibility";
 import { reportError } from "@/lib/infra/report-error";
 import { notificationOpenWebPath } from "@dim/contract/api";
+import { isSafeExternalUrl } from "@dim/contract/notifications";
 import { and, eq, isNull } from "drizzle-orm";
 
 /** Plain-data push payload — deliberately transport-agnostic (title/body/url
@@ -59,19 +60,27 @@ export type PushCandidateRow = {
   ctaUrl?: string | null;
   dedupeKey?: string | null;
   /**
-   * `notifications.id`, when the caller has it (the service's insert paths
-   * return it). With it, a tap opens the resolver — `/notificaciones/{id}/abrir`
-   * on the web, `GET /api/v1/me/notifications/{id}/target` on the phone — rather
-   * than the stored `cta_url` (notificaciones-destinos, 2026-10). Without it the
-   * stored link is used, exactly as before.
+   * `notifications.id` — REQUIRED (notificaciones-destinos review R3). A tap
+   * opens the resolver with it — `/notificaciones/{id}/abrir` on the web,
+   * `GET /api/v1/me/notifications/{id}/target` on the phone — rather than the
+   * stored `cta_url`. Being required is the fence: a writer that pushes a row
+   * without the id it inserted is a type error. Writers that insert directly
+   * give their rows ids first with `withNotificationIds`.
    */
-  id?: string | null;
+  id: string;
 };
 
-/** Where a tap on a pushed notification opens, on the web. */
+/**
+ * Where a tap on a pushed notification opens, on the web: the resolver for
+ * anything of ours, and — as before — the writer's own outside link when the
+ * CTA is one (an official information page). Only a well-formed http(s) one.
+ */
 export function webPushUrlFor(row: Pick<PushCandidateRow, "id" | "ctaUrl">): string | null {
-  if (row.id) return notificationOpenWebPath(row.id);
-  return row.ctaUrl ?? null;
+  const cta = row.ctaUrl ?? null;
+  if (cta !== null && cta !== "" && !cta.startsWith("/")) {
+    return isSafeExternalUrl(cta) ? cta : notificationOpenWebPath(row.id);
+  }
+  return notificationOpenWebPath(row.id);
 }
 
 function flagEnabled(): boolean {

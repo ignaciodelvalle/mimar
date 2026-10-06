@@ -16,6 +16,7 @@
 // belonging to somebody else and one belonging to nobody answer identically, so
 // this endpoint is no oracle over other people's notification ids.
 
+import { notificationTargetPorts } from "@/app/_composition/notification-target-ports";
 import { apiV1Envelope, apiV1Error, apiV1Json } from "@/lib/infra/api-v1";
 import {
   API_V1_AUTHENTICATED_READ_IP_LIMIT,
@@ -145,7 +146,7 @@ export async function GET(
       (async () => {
         const viewer = await caseViewerFromProfile(profile);
         if (!viewer) return null;
-        return resolveOwnNotificationTarget(notificationId, viewer);
+        return resolveOwnNotificationTarget(notificationId, viewer, notificationTargetPorts);
       })(),
       RESOLVE_BUDGET_MS,
       "api-v1-me-notification-target-resolve",

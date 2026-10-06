@@ -58,11 +58,24 @@ function factsOf(detail: CaseDetail): CaseFacts {
 }
 
 /**
+ * What the probes need from OTHER modules, expressed as ports so this module
+ * takes no edge into `organizations` (check-dependency-direction). Satisfied by
+ * `app/_composition/notification-target-ports.ts`, the layer allowed to know both.
+ */
+export type NotificationTargetPorts = {
+  /** Whether the user's ACTIVE membership in the org holds the capability. */
+  hasOrgCapability(orgId: string, userId: string, capability: string): Promise<boolean>;
+};
+
+/**
  * The probes for one viewer. Case details are memoised per resolution: the
  * resolver asks `findCase` and then `canReadCase` about the same case, and the
  * detail read is the widest query here.
  */
-export function notificationTargetProbes(viewer: CaseViewer): NotificationTargetProbes {
+export function notificationTargetProbes(
+  viewer: CaseViewer,
+  ports: NotificationTargetPorts,
+): NotificationTargetProbes {
   const details = new Map<string, CaseDetail | null>();
   const detailByCode = async (publicCode: string): Promise<CaseDetail | null> => {
     if (!details.has(publicCode))
@@ -144,6 +157,10 @@ export function notificationTargetProbes(viewer: CaseViewer): NotificationTarget
       return isActiveOrgMember(orgId, viewer.userId);
     },
 
+    hasOrgCapability(orgId, capability) {
+      return ports.hasOrgCapability(orgId, viewer.userId, capability);
+    },
+
     async hadEndedMembership(orgId) {
       if (await isActiveOrgMember(orgId, viewer.userId)) return false;
       const [row] = await db
@@ -173,6 +190,7 @@ export async function findOwnNotification(
       notificationType: notifications.notificationType,
       title: notifications.title,
       body: notifications.body,
+      ctaLabel: notifications.ctaLabel,
       ctaUrl: notifications.ctaUrl,
       relatedPetId: notifications.relatedPetId,
       relatedCaseId: notifications.relatedCaseId,
@@ -191,6 +209,7 @@ export async function findOwnNotification(
 export async function resolveOwnNotificationTarget(
   notificationId: string,
   viewer: CaseViewer,
+  ports: NotificationTargetPorts,
 ): Promise<ResolvedNotificationTarget | null> {
   if (!isUuid(notificationId)) return null;
   const row = await findOwnNotification(notificationId, viewer.userId);
@@ -198,6 +217,6 @@ export async function resolveOwnNotificationTarget(
   return resolveNotificationTarget(
     row,
     { userId: viewer.userId, role: viewer.role },
-    notificationTargetProbes(viewer),
+    notificationTargetProbes(viewer, ports),
   );
 }

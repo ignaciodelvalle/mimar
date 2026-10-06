@@ -8,6 +8,10 @@
 // and no next step. Here the reader gets the notification itself, the reason in
 // words, and — when something is still pending — who has to act.
 //
+// LIVES IN `(public)` and not `(app)` (code review R2): the `(app)` layout
+// bounces admin and govt accounts to their portals, and operators receive
+// notifications too. The session check is this page's own.
+//
 // The sentences come from the server resolver (`resolveNotificationTarget`),
 // built from `@dim/contract/notifications`' copy table, so the app's explanation
 // screen prints exactly the same words.
@@ -16,12 +20,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { notificationTargetPorts } from "@/app/_composition/notification-target-ports";
 import { requireUserOrRedirect } from "@/lib/infra/auth-guards";
 import { caseViewerFromProfile } from "@/lib/infra/case-read";
 import { DbBudgetExceededError, withDbBudgetOrThrow } from "@/lib/infra/db-budget";
 import { getProfileCached } from "@/lib/infra/request-cache";
 import { resolveOwnNotificationTarget } from "@/src/modules/notifications/infrastructure/notification-target-probes";
 import { notificationExplanationWebPath } from "@dim/contract/api";
+import { isSafeExternalUrl, isSafeInternalPath } from "@dim/contract/notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +51,9 @@ export default async function NotificationExplanationPage({
     target = await withDbBudgetOrThrow(
       (async () => {
         const viewer = await caseViewerFromProfile(profile);
-        return viewer ? resolveOwnNotificationTarget(notificationId, viewer) : null;
+        return viewer
+          ? resolveOwnNotificationTarget(notificationId, viewer, notificationTargetPorts)
+          : null;
       })(),
       RESOLVE_BUDGET_MS,
       "notification-explanation-resolve",
@@ -64,7 +72,18 @@ export default async function NotificationExplanationPage({
   // Not the caller's notification: the inbox, never a 404.
   if (target === null) redirect("/notificaciones");
 
-  const opensElsewhere = target.outcome !== "explain";
+  // SAME ORIGIN OR NO LINK (security review S1): the resolver builds
+  // same-origin paths, and this re-checks before anything becomes an href.
+  const internalHref =
+    target.outcome !== "explain" &&
+    target.outcome !== "external" &&
+    isSafeInternalPath(target.webHref)
+      ? target.webHref
+      : null;
+  const externalHref =
+    target.outcome === "external" && target.externalUrl && isSafeExternalUrl(target.externalUrl)
+      ? target.externalUrl
+      : null;
 
   return (
     <Shell>
@@ -95,13 +114,24 @@ export default async function NotificationExplanationPage({
           </p>
         ) : null}
 
-        {opensElsewhere ? (
+        {internalHref ? (
           <Link
-            href={target.webHref}
+            href={internalHref}
             className={`${LINK_CLASS} bg-ln-azul text-white hover:bg-ln-azul-700`}
           >
             Abrir
           </Link>
+        ) : null}
+
+        {externalHref ? (
+          <a
+            href={externalHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`${LINK_CLASS} bg-ln-azul text-white hover:bg-ln-azul-700`}
+          >
+            {target.externalLabel ?? "Abrir enlace"} ↗
+          </a>
         ) : null}
       </article>
     </Shell>

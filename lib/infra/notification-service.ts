@@ -259,7 +259,11 @@ export async function createNotificationsBulk(
       if (inserted.length > 0 && client === defaultDb) {
         const pushable = values
           .filter((_, idx) => !chunk[idx].suppressPush)
-          .map((v) => ({ ...v, id: idByDedupeKey.get(v.dedupeKey) ?? null }));
+          .flatMap((v) => {
+            // Only rows that really landed: a dedupe no-op has no id to carry.
+            const id = idByDedupeKey.get(v.dedupeKey);
+            return id ? [{ ...v, id }] : [];
+          });
         if (pushable.length > 0) await sendPushForNotifications(pushable);
       }
     } catch (err) {

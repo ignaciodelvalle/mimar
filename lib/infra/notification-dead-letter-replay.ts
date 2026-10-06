@@ -105,6 +105,8 @@ export type ReplayOutcome = "inserted" | "duplicate" | "dead_lettered" | "erased
  * push_subscriptions row left to send to.
  */
 export async function replayLocked(id: string, input: CreateNotificationInput, now: Date) {
+  // The new row's id, for the push (notificaciones-destinos R3).
+  let insertedId: string | null = null;
   const outcome = await db.transaction(async (tx): Promise<ReplayOutcome> => {
     const [profile] = await tx
       .select({ deletedAt: profiles.deletedAt })
@@ -133,15 +135,17 @@ export async function replayLocked(id: string, input: CreateNotificationInput, n
     // single bad row cannot poison the batch. suppressPush keeps the push leg
     // out of this transaction (see the function doc above).
     const result = await createNotification({ ...input, suppressPush: true });
+    insertedId = result.id;
     await resolveAndRedact(tx, id, now);
     return result.status;
   });
   // Only a row that actually landed as a NEW notification gets pushed — a
   // "duplicate" outcome must not re-push (same rule createNotification itself
   // applies), and "gone" / "erased" never had a row to push for.
-  if (outcome === "inserted") {
+  if (outcome === "inserted" && insertedId !== null) {
     await sendPushForNotifications([
       {
+        id: insertedId,
         userId: input.userId,
         severity: input.severity ?? "info",
         notificationType: input.notificationType,

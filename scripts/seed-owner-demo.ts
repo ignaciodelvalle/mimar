@@ -24,7 +24,7 @@
  *   ITEM-1: pets.status = 'lost' check
  *   ITEM-2: existing event with source='seed-owner-demo' + same date
  *   ITEM-3: existing appointment with note_from_owner='seed-owner-demo'
- *   ITEM-4: existing notification with notification_type='seed_owner_demo_*'
+ *   ITEM-4: existing notification with the same notification_type AND title
  *   ITEM-5: existing pending pet_transfer from owner for that pet
  *
  * ─── LOCAL-ONLY GUARD ─────────────────────────────────────────────────────
@@ -664,9 +664,11 @@ async function seedAppointment(ownerUserId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 // ITEM-4: Notifications (3 rows)
 //
-// Inserts realistic notifications for the owner. Idempotency keyed on a
-// stable notificationType value with 'seed_owner_demo_' prefix — unlikely
-// to collide with real app-generated types.
+// Inserts realistic notifications for the owner, under REAL kinds from
+// NOTIFICATION_KINDS (lint:notification-kinds scans scripts/ too: a seed kind
+// the registry does not name is a demo notification that resolves nowhere).
+// Idempotency is keyed on kind + title, so a real row of the same kind does
+// not suppress the demo one.
 //
 // notification_type is a free-text column (no enum migration needed).
 // severity enum: 'info' | 'success' | 'warning' | 'urgent'
@@ -675,7 +677,7 @@ async function seedAppointment(ownerUserId: string): Promise<void> {
 
 const DEMO_NOTIFICATIONS = [
   {
-    notificationType: "seed_owner_demo_vaccine_reminder",
+    notificationType: "vaccine_due",
     title: "Recordatorio: vacuna antirrábica próxima a vencer",
     body: "La vacuna antirrábica de Firulais vence en 30 días. Coordiná con tu veterinario.",
     severity: "warning" as const,
@@ -685,7 +687,7 @@ const DEMO_NOTIFICATIONS = [
     category: "health",
   },
   {
-    notificationType: "seed_owner_demo_scan_alert",
+    notificationType: "first_stranger_scan",
     title: "Tu mascota fue escaneada",
     body: "Alguien escaneó el QR de Firulais en Palermo, Buenos Aires.",
     severity: "info" as const,
@@ -695,7 +697,7 @@ const DEMO_NOTIFICATIONS = [
     category: "health",
   },
   {
-    notificationType: "seed_owner_demo_custody_info",
+    notificationType: "pet_transfer_received",
     title: "Información sobre transferencias",
     body: "Tenés una transferencia de titularidad pendiente de respuesta.",
     severity: "info" as const,
@@ -729,6 +731,7 @@ async function seedNotifications(ownerUserId: string): Promise<void> {
         and(
           eq(notifications.userId, ownerUserId),
           eq(notifications.notificationType, notif.notificationType),
+          eq(notifications.title, notif.title),
         ),
       )
       .limit(1);

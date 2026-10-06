@@ -9692,7 +9692,7 @@
       "wired": "verify",
       "status": "ENFORCED",
       "clause": "R6",
-      "statusBasis": "scripts/check-notification-kinds.ts scans app/**, lib/**, src/** (comments stripped) for `notificationType:` / `notificationType =`, resolves literals, ternaries and UPPER_CASE constants, refuses computed types, and fails on a kind missing from NOTIFICATION_KINDS, an entry with no destination or missing action/counterpartyAction/informational copy, or an entry no writer emits. lint:notification-kinds is in verify and ci.yml.",
+      "statusBasis": "scripts/check-notification-kinds.ts scans app/**, lib/**, src/** and scripts/** (comments stripped) for notificationType: / notificationType =, resolves literals, ternaries whose EVERY arm is a literal or constant, and UPPER_CASE constants per file (an ambiguous name fails); only x.notificationType or String(x.notificationType) passes through. It also parses every SQL insert into public.notifications in db/triggers.sql and db/migrations. It fails on an unregistered kind, a computed one, an entry with no destination or missing action/counterpartyAction/informational copy, or an entry no writer emits. lint:notification-kinds is in verify and ci.yml.",
       "notes": "notificaciones-destinos (2026-10). The registry is what resolveNotificationTarget reads at tap time; SQL-written kinds are listed in SQL_WRITTEN_KINDS and checked against db/migrations.",
       "confidence": 0.85,
       "verifiedAt": "a12f3dfcf"

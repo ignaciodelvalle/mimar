@@ -37,7 +37,12 @@ import {
   type NotificationPendingActor,
   type NotificationTargetReason,
   UNKNOWN_NOTIFICATION_KIND_SPEC,
+  isErasedNotification,
+  isSafeExternalUrl,
+  isSafeInternalPath,
+  matchNotificationSection,
   notificationKindSpec,
+  trimTrailingSlash,
 } from "@dim/contract/notifications";
 
 /** The columns of one `notifications` row the resolver reads. */
@@ -46,6 +51,7 @@ export type NotificationTargetRow = {
   notificationType: string;
   title: string;
   body: string | null;
+  ctaLabel: string | null;
   ctaUrl: string | null;
   relatedPetId: string | null;
   relatedCaseId: string | null;
@@ -86,6 +92,8 @@ export type NotificationTargetProbes = {
   liveNonTitularRole(petId: string): Promise<string | null>;
   findOrgByToken(orgToken: string): Promise<{ id: string; displayName: string } | null>;
   isActiveOrgMember(orgId: string): Promise<boolean>;
+  /** Whether the viewer's ACTIVE membership in the org holds this capability. */
+  hasOrgCapability(orgId: string, capability: string): Promise<boolean>;
   /** A membership that existed and has ended (`left_at` set), with no live one. */
   hadEndedMembership(orgId: string): Promise<boolean>;
 };
@@ -102,6 +110,8 @@ export type ResolvedNotificationTarget = {
   reasonCopy: string | null;
   actorCopy: string | null;
   pendingActor: NotificationPendingActor;
+  externalUrl: string | null;
+  externalLabel: string | null;
   title: string;
   body: string | null;
 };
@@ -121,14 +131,26 @@ export type StoredCta =
   | { kind: "case"; publicCode: string; path: string }
   | { kind: "pet"; publicToken: string; path: string }
   | { kind: "section"; path: string }
-  | { kind: "external" };
+  | { kind: "external"; url: string }
+  /** Neither a safe same-origin path nor a valid http(s) URL. Opens nothing. */
+  | { kind: "invalid" };
 
-/** What the writer's `cta_url` names, read structurally. `null` for no CTA. */
+/**
+ * What the writer's `cta_url` names, read structurally. `null` for no CTA.
+ *
+ * SAME-ORIGIN OR NOTHING (security review, 2026-10): a path is internal only
+ * when `isSafeInternalPath` says so — `/\t/evil.com` and `/\\evil.com`
+ * parse to another origin in a browser and are refused here, before any
+ * redirect or `<Link>` can be built from them. An absolute URL is `external`
+ * only when it is a well-formed http(s) one; anything else is `invalid`.
+ */
 export function readStoredCta(ctaUrl: string | null): StoredCta | null {
   if (ctaUrl === null || ctaUrl.trim() === "") return null;
   const url = ctaUrl.trim();
-  if (!url.startsWith("/") || url.startsWith("//")) return { kind: "external" };
-  const pathOnly = url.split("#")[0]?.split("?")[0] ?? "";
+  if (!url.startsWith("/"))
+    return isSafeExternalUrl(url) ? { kind: "external", url } : { kind: "invalid" };
+  if (!isSafeInternalPath(url)) return { kind: "invalid" };
+  const pathOnly = trimTrailingSlash(url.split("#")[0]?.split("?")[0] ?? "");
   const segments = pathOnly.split("/");
   if (segments[1] === "casos" && segments[2] && segments.length === 3) {
     return { kind: "case", publicCode: decodeURIComponent(segments[2]), path: url };
@@ -182,6 +204,11 @@ async function counterpartyName(
   return null;
 }
 
+/**
+ * The «who must act» sentence. `caseFacts` must be a case the viewer CAN
+ * read: a refused case lends neither its state («Esto ya se resolvió: …») nor
+ * its parties' names — the caller passes `null` for one (security review S3).
+ */
 async function actorCopyFor(
   spec: NotificationKindSpec,
   caseFacts: CaseFacts | null,
@@ -217,37 +244,48 @@ async function actorCopyFor(
 
 type SectionVerdict = { ok: true } | { ok: false; endedOrg: string | null };
 
+/**
+ * Whether the viewer can enter a stored section, by the rule the PAGE applies.
+ *
+ * ONLY KNOWN SECTIONS (`NOTIFICATION_SECTIONS`): a path the list does not name
+ * — a renamed route, an `/org/…` subpage nobody declared — is refused and
+ * falls to the explanation state, because handing it out on faith is how a
+ * notification turns into a 404 the day a route moves.
+ */
 async function canEnterSection(
   path: string,
   viewer: NotificationTargetViewer,
   probes: NotificationTargetProbes,
 ): Promise<SectionVerdict> {
-  const segments = (path.split("#")[0]?.split("?")[0] ?? "").split("/");
-  const root = segments[1] ?? "";
-  if (root === "admin") {
-    return viewer.role === "admin" || viewer.role === "national"
-      ? { ok: true }
-      : { ok: false, endedOrg: null };
+  const match = matchNotificationSection(path);
+  if (match === null) return { ok: false, endedOrg: null };
+  const { access } = match.section;
+  switch (access.kind) {
+    case "public":
+    case "session":
+      return { ok: true };
+    case "roles":
+      return access.roles.includes(viewer.role) ? { ok: true } : { ok: false, endedOrg: null };
+    case "org": {
+      const orgToken = match.params.orgToken;
+      const org = orgToken ? await probes.findOrgByToken(decodeURIComponent(orgToken)) : null;
+      if (org === null) return { ok: false, endedOrg: null };
+      if (await probes.isActiveOrgMember(org.id)) {
+        if (!access.capability) return { ok: true };
+        return (await probes.hasOrgCapability(org.id, access.capability))
+          ? { ok: true }
+          : { ok: false, endedOrg: null };
+      }
+      return {
+        ok: false,
+        endedOrg: (await probes.hadEndedMembership(org.id)) ? org.displayName : null,
+      };
+    }
+    default: {
+      const unhandled: never = access;
+      throw new Error(`Unhandled section access: ${JSON.stringify(unhandled)}`);
+    }
   }
-  if (root === "gob") {
-    return viewer.role === "govt" || viewer.role === "admin" || viewer.role === "national"
-      ? { ok: true }
-      : { ok: false, endedOrg: null };
-  }
-  if (root === "org" && segments[2]) {
-    const org = await probes.findOrgByToken(decodeURIComponent(segments[2]));
-    if (org === null) return { ok: false, endedOrg: null };
-    if (await probes.isActiveOrgMember(org.id)) return { ok: true };
-    return {
-      ok: false,
-      endedOrg: (await probes.hadEndedMembership(org.id)) ? org.displayName : null,
-    };
-  }
-  // Everything else is a session page about the viewer's own account
-  // (`/cuenta/…`, `/mis-turnos`, `/transferencias/{token}`, `/cuidado/{token}`)
-  // or a public one (`/p/{token}`, `/adoptar`): each renders its own state for
-  // whoever holds the session or the link, and none of them 404s its addressee.
-  return { ok: true };
 }
 
 /**
@@ -299,6 +337,8 @@ type Attempt = {
   stored: StoredCta | null;
   /** The case the row is about, once found (readable or not). */
   caseFacts: CaseFacts | null;
+  /** The same case, only when the viewer may read it — the one copy may cite. */
+  readableCase: CaseFacts | null;
   deniedCase: CaseFacts | null;
   deniedPet: PetFacts | null;
   endedOrg: string | null;
@@ -320,7 +360,9 @@ async function landed(
     webOnly: appRoute === null,
     reason: appRoute === null ? "web_only" : "destination",
     reasonCopy: appRoute === null ? NOTIFICATION_REASON_COPY.web_only() : null,
-    actorCopy: await actorCopyFor(attempt.spec, attempt.caseFacts, attempt.probes),
+    actorCopy: await actorCopyFor(attempt.spec, attempt.readableCase, attempt.probes),
+    externalUrl: null,
+    externalLabel: null,
   };
 }
 
@@ -339,6 +381,8 @@ function explained(
     reason,
     reasonCopy,
     actorCopy,
+    externalUrl: null,
+    externalLabel: null,
   };
 }
 
@@ -361,6 +405,7 @@ async function tryCase(attempt: Attempt): Promise<ResolvedNotificationTarget | n
   if (found === null) return null;
   attempt.caseFacts = found;
   if (await probes.canReadCase(found.publicCode)) {
+    attempt.readableCase = found;
     const href = `/casos/${encodeURIComponent(found.publicCode)}`;
     return landed(attempt, "case", href, appRouteForWebPath(href));
   }
@@ -370,12 +415,14 @@ async function tryCase(attempt: Attempt): Promise<ResolvedNotificationTarget | n
   // the PO / legal (plan notificaciones-destinos-2026-10).
   const reserved = await reservedCaseExplanation(found, probes);
   if (reserved === null) return null;
-  return explained(
-    attempt,
-    reserved.reason,
-    reserved.copy,
-    await actorCopyFor(spec, found, probes),
-  );
+  // The refused case lends no state and no party names (S3). Its LOCALITY is
+  // the one fact the reserved sentence already states, so the authority line
+  // may name it too.
+  const actorCopy =
+    spec.pendingActor === "authority"
+      ? NOTIFICATION_ACTOR_COPY.authority(found.jurisdictionLocality)
+      : await actorCopyFor(spec, null, probes);
+  return explained(attempt, reserved.reason, reserved.copy, actorCopy);
 }
 
 async function tryPet(attempt: Attempt): Promise<ResolvedNotificationTarget | null> {
@@ -473,23 +520,20 @@ async function explanationFor(attempt: Attempt): Promise<ResolvedNotificationTar
   }
 
   if (deniedCase !== null) {
+    // Refused: nobody here can tell the reader to act on a case they may not
+    // read (code review R4), so there is no actor sentence.
     return explained(
       attempt,
       "case_not_available",
       NOTIFICATION_REASON_COPY.case_not_available(),
-      await actorCopyFor(spec, deniedCase, probes),
+      null,
     );
   }
 
   // Nothing to look at: no case, no pet, no section the stored CTA names (an
   // erased row, an external link, a writer that stored nothing). Say so, and
   // who acts if the registry knows.
-  return explained(
-    attempt,
-    "informational",
-    NOTIFICATION_REASON_COPY.informational(null),
-    await actorCopyFor(spec, attempt.caseFacts, probes),
-  );
+  return explained(attempt, "informational", NOTIFICATION_REASON_COPY.informational(null), null);
 }
 
 export async function resolveNotificationTarget(
@@ -505,10 +549,33 @@ export async function resolveNotificationTarget(
     spec,
     stored: readStoredCta(row.ctaUrl),
     caseFacts: null,
+    readableCase: null,
     deniedCase: null,
     deniedPet: null,
     endedOrg: null,
   };
+
+  // An erased row (Ley 25.326 art. 16) says nothing more and opens nothing.
+  if (isErasedNotification(row)) {
+    return explained(attempt, "erased", NOTIFICATION_REASON_COPY.erased(), null);
+  }
+
+  // The writer linked an outside site: keep it, labelled, but never as a
+  // redirect target — `webHref`/`appRoute` stay on the explanation, and the
+  // address rides in `externalUrl` for a client to open deliberately.
+  if (attempt.stored?.kind === "external") {
+    return {
+      ...explained(
+        attempt,
+        "external",
+        NOTIFICATION_REASON_COPY.external(row.ctaLabel),
+        await actorCopyFor(spec, null, probes),
+      ),
+      outcome: "external",
+      externalUrl: attempt.stored.url,
+      externalLabel: row.ctaLabel,
+    };
+  }
 
   if (spec.primaryDestination !== "none") {
     const order = [

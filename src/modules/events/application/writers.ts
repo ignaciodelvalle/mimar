@@ -20,6 +20,7 @@ import { setPetLostWriter as _setPetLostWriter } from "./lifecycle/set-pet-lost-
 import type { SetPetLostWriterParams } from "./lifecycle/set-pet-lost-use-case";
 import { createSymptomObservedWriter as _createSymptomObservedWriter } from "./surveillance/symptom-observed-use-case";
 import type { CreateSymptomObservedWriterParams } from "./surveillance/symptom-observed-use-case";
+import { withNotificationIds } from "@/lib/infra/notification-ids";
 
 function makeTransaction(): <T>(cb: (tx: unknown) => Promise<T>) => Promise<T> {
   return <T>(cb: (tx: unknown) => Promise<T>) =>
@@ -79,11 +80,13 @@ export async function flushNotifications(
 ): Promise<void> {
   if (pending.length === 0) return;
   try {
+    // Ids minted before the insert, so the push carries the row's own id.
+    const rows = withNotificationIds(pending);
     // biome-ignore lint/suspicious/noExplicitAny: NewNotification is structurally compatible with notifications.$inferInsert
-    await db.insert(notifications).values(pending as any[]);
+    await db.insert(notifications).values(rows as any[]);
     // Web Push leg (ADR 2026-07-18 §4): urgent-only, best-effort, never throws.
     const { sendPushForNotifications } = await import("@/lib/infra/web-push");
-    await sendPushForNotifications(pending);
+    await sendPushForNotifications(rows);
   } catch (e) {
     console.error("notifications insert failed (writer succeeded)", e);
   }

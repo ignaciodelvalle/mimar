@@ -608,11 +608,13 @@ async function flushNotifications(
   if (pending.length === 0) return;
   const { notifications } = await import("@/db");
   try {
+    // Ids minted before the insert, so the push carries the row's own id.
+    const rows = withNotificationIds(pending);
     // biome-ignore lint/suspicious/noExplicitAny: NewNotification is structurally compatible with notifications.$inferInsert
-    await db.insert(notifications).values(pending as any[]);
+    await db.insert(notifications).values(rows as any[]);
     // Web Push leg (ADR 2026-07-18 §4): urgent-only, best-effort, never throws.
     const { sendPushForNotifications } = await import("@/lib/infra/web-push");
-    await sendPushForNotifications(pending);
+    await sendPushForNotifications(rows);
   } catch (e) {
     console.error("notifications insert failed (action did succeed)", e);
   }
@@ -1067,6 +1069,7 @@ export type {
   UpdateLostLastSeenParams,
   UpdateLostLastSeenResult,
 } from "./application/lifecycle/update-lost-last-seen-use-case";
+import { withNotificationIds } from "@/lib/infra/notification-ids";
 
 export async function updateLostLastSeenAction(
   publicToken: string,

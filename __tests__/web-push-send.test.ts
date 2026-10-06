@@ -90,13 +90,20 @@ vi.mock("@/db", async () => {
 });
 
 import { PUSH_ELIGIBLE_NOTIFICATION_TYPE, isPushEligible } from "@/lib/infra/push-eligibility";
-import { sendPushForNotifications, sendWebPush } from "@/lib/infra/web-push";
+import {
+  type PushCandidateRow,
+  sendPushForNotifications,
+  sendWebPush,
+  webPushUrlFor,
+} from "@/lib/infra/web-push";
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
 const USER_ID = "user-0000-0000-0000-000000000001";
+/** Every pushed row carries its notification id (notificaciones-destinos R3). */
+const ROW_ID = "66666666-6666-4666-8666-666666666666";
 
 function activeSub(id: string) {
   return {
@@ -237,10 +244,11 @@ describe("sendPushForNotifications", () => {
     mockSubs = [activeSub("sub-1")];
 
     await sendPushForNotifications([
-      { userId: USER_ID, severity: "info", title: "Bienvenida" },
-      { userId: USER_ID, severity: "warning", title: "Vacuna próxima" },
-      { userId: USER_ID, severity: "success", title: "Listo" },
+      { id: ROW_ID, userId: USER_ID, severity: "info", title: "Bienvenida" },
+      { id: ROW_ID, userId: USER_ID, severity: "warning", title: "Vacuna próxima" },
+      { id: ROW_ID, userId: USER_ID, severity: "success", title: "Listo" },
       {
+        id: ROW_ID,
         userId: USER_ID,
         severity: "urgent",
         title: "¡Encontraron a Pampa!",
@@ -255,7 +263,8 @@ describe("sendPushForNotifications", () => {
     expect(JSON.parse(body)).toEqual({
       title: "¡Encontraron a Pampa!",
       body: "Contactalo ya",
-      url: "/mis-mascotas/DIM-PAMP-0001",
+      // The tap opens the resolver, not the stored link (notificaciones-destinos).
+      url: `/notificaciones/${ROW_ID}/abrir`,
       tag: "found:abc",
     });
   });
@@ -266,13 +275,20 @@ describe("sendPushForNotifications", () => {
 
     await sendPushForNotifications([
       {
+        id: ROW_ID,
         userId: USER_ID,
         severity: "warning",
         notificationType: "pet_sighting",
         title: "Avistaje de Pampa",
       },
       // A warning row of any OTHER type still does not push.
-      { userId: USER_ID, severity: "warning", notificationType: "vaccine_due", title: "Vacuna" },
+      {
+        id: ROW_ID,
+        userId: USER_ID,
+        severity: "warning",
+        notificationType: "vaccine_due",
+        title: "Vacuna",
+      },
     ]);
 
     expect(sendNotificationMock).toHaveBeenCalledTimes(1);
@@ -284,14 +300,16 @@ describe("sendPushForNotifications", () => {
     enablePushEnv();
     mockSubs = [activeSub("sub-1")];
 
-    await sendPushForNotifications([{ userId: USER_ID, title: "Sin severidad" }]);
+    await sendPushForNotifications([{ id: ROW_ID, userId: USER_ID, title: "Sin severidad" }]);
 
     expect(sendNotificationMock).not.toHaveBeenCalled();
   });
 
   it("no-ops entirely when push is disabled", async () => {
     vi.stubEnv("NEXT_PUBLIC_PUSH_ENABLED", "");
-    await sendPushForNotifications([{ userId: USER_ID, severity: "urgent", title: "X" }]);
+    await sendPushForNotifications([
+      { id: ROW_ID, userId: USER_ID, severity: "urgent", title: "X" },
+    ]);
     expect(sendNotificationMock).not.toHaveBeenCalled();
   });
 });
@@ -317,8 +335,8 @@ describe("sendPushForNotifications — the second leg", () => {
     mockSubs = [activeSub("sub-1")];
 
     await sendPushForNotifications([
-      { userId: USER_ID, severity: "info", title: "Bienvenida" },
-      { userId: USER_ID, severity: "urgent", title: "¡Encontraron a Pampa!" },
+      { id: ROW_ID, userId: USER_ID, severity: "info", title: "Bienvenida" },
+      { id: ROW_ID, userId: USER_ID, severity: "urgent", title: "¡Encontraron a Pampa!" },
     ]);
 
     expect(expoLegCalls).toHaveLength(1);
@@ -338,7 +356,9 @@ describe("sendPushForNotifications — the second leg", () => {
     vi.stubEnv("VAPID_PRIVATE_KEY", "");
     mockSubs = [activeSub("sub-1")];
 
-    await sendPushForNotifications([{ userId: USER_ID, severity: "urgent", title: "Hallazgo" }]);
+    await sendPushForNotifications([
+      { id: ROW_ID, userId: USER_ID, severity: "urgent", title: "Hallazgo" },
+    ]);
 
     expect(sendNotificationMock).not.toHaveBeenCalled();
     expect(expoLegCalls).toHaveLength(1);
@@ -349,7 +369,9 @@ describe("sendPushForNotifications — the second leg", () => {
     enablePushEnv();
     mockSubs = [activeSub("sub-1")];
 
-    await sendPushForNotifications([{ userId: USER_ID, severity: "info", title: "Bienvenida" }]);
+    await sendPushForNotifications([
+      { id: ROW_ID, userId: USER_ID, severity: "info", title: "Bienvenida" },
+    ]);
 
     // The early return above both legs. A call with an empty array would be a
     // round trip through a sender that has nothing to send.
@@ -369,7 +391,9 @@ describe("sendPushForNotifications — the second leg", () => {
     enablePushEnv();
     mockSubs = [activeSub("sub-1")];
 
-    await sendPushForNotifications([{ userId: USER_ID, severity: "urgent", title: "Hallazgo" }]);
+    await sendPushForNotifications([
+      { id: ROW_ID, userId: USER_ID, severity: "urgent", title: "Hallazgo" },
+    ]);
     order.push(...expoLegCalls.map(() => "native"));
 
     expect(order).toEqual(["web", "native"]);
@@ -431,15 +455,40 @@ describe("isPushEligible", () => {
     // Guards the extraction itself: if somebody re-inlines a divergent copy into
     // `sendPushForNotifications`, the block above keeps passing and this fails.
     const rows = [
-      { userId: USER_ID, severity: "urgent" as const, title: "a" },
+      { id: ROW_ID, userId: USER_ID, severity: "urgent" as const, title: "a" },
       {
+        id: ROW_ID,
         userId: USER_ID,
         severity: "warning" as const,
         notificationType: "pet_sighting",
         title: "b",
       },
-      { userId: USER_ID, severity: "info" as const, title: "c" },
+      { id: ROW_ID, userId: USER_ID, severity: "info" as const, title: "c" },
     ];
     expect(rows.filter(isPushEligible).map((r) => r.title)).toEqual(["a", "b"]);
+  });
+});
+
+// notificaciones-destinos review (R3, R5): the id is REQUIRED on every pushed
+// row — that is the fence, at the type level — and an outside CTA (an official
+// information page) keeps opening where the writer pointed it.
+describe("webPushUrlFor", () => {
+  const resolverUrl = `/notificaciones/${ROW_ID}/abrir`;
+
+  it("opens the resolver for anything of ours", () => {
+    expect(webPushUrlFor({ id: ROW_ID, ctaUrl: "/mis-mascotas/DIM-PAMP-0001" })).toBe(resolverUrl);
+    expect(webPushUrlFor({ id: ROW_ID, ctaUrl: null })).toBe(resolverUrl);
+  });
+
+  it("keeps a writer's outside link, and only a well-formed one", () => {
+    const ministry = "https://www.argentina.gob.ar/salud/glosario/rabia";
+    expect(webPushUrlFor({ id: ROW_ID, ctaUrl: ministry })).toBe(ministry);
+    expect(webPushUrlFor({ id: ROW_ID, ctaUrl: "javascript:alert(1)" })).toBe(resolverUrl);
+  });
+
+  it("refuses, at compile time, a pushed row without its notification id", () => {
+    // @ts-expect-error — `id` is required on PushCandidateRow.
+    const row: PushCandidateRow = { userId: USER_ID, title: "sin id" };
+    expect(row.title).toBe("sin id");
   });
 });

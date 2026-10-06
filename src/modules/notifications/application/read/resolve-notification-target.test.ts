@@ -24,6 +24,7 @@ function row(over: Partial<NotificationTargetRow>): NotificationTargetRow {
     notificationType: "pet_sighting",
     title: "Avistaje",
     body: "Alguien vio a Pampa.",
+    ctaLabel: null,
     ctaUrl: null,
     relatedPetId: null,
     relatedCaseId: null,
@@ -56,6 +57,8 @@ type FakeWorld = {
   orgs?: Record<string, { id: string; displayName: string }>;
   memberOf?: string[];
   leftOrgs?: string[];
+  /** "orgId:capability" pairs the viewer holds. */
+  capabilities?: string[];
 };
 
 function probes(world: FakeWorld): NotificationTargetProbes {
@@ -91,6 +94,9 @@ function probes(world: FakeWorld): NotificationTargetProbes {
     async isActiveOrgMember(orgId) {
       return (world.memberOf ?? []).includes(orgId);
     },
+    async hasOrgCapability(orgId, capability) {
+      return (world.capabilities ?? []).includes(`${orgId}:${capability}`);
+    },
     async hadEndedMembership(orgId) {
       return (world.leftOrgs ?? []).includes(orgId);
     },
@@ -114,7 +120,10 @@ describe("readStoredCta", () => {
       kind: "section",
       path: "/mis-mascotas/postulaciones",
     });
-    expect(readStoredCta("https://www.argentina.gob.ar/x")).toEqual({ kind: "external" });
+    expect(readStoredCta("https://www.argentina.gob.ar/x")).toEqual({
+      kind: "external",
+      url: "https://www.argentina.gob.ar/x",
+    });
     expect(readStoredCta(null)).toBe(null);
   });
 
@@ -195,13 +204,9 @@ describe("resolveNotificationTarget — outcomes", () => {
     });
   });
 
-  it("pet: an external stored link gives way to the registry's pet face", async () => {
+  it("pet: with no stored link, the registry's pet face opens", async () => {
     const target = await resolveNotificationTarget(
-      row({
-        notificationType: "ppp_registration_reminder",
-        ctaUrl: "https://www.argentina.gob.ar/ley",
-        relatedPetId: "pet-1",
-      }),
+      row({ notificationType: "ppp_registration_reminder", relatedPetId: "pet-1" }),
       OWNER,
       probes({ pets: [PAMPA], heldPets: ["DIM-PAMP-0001"] }),
     );
@@ -395,5 +400,139 @@ describe("resolveNotificationTarget — the explanation state", () => {
       probes({}),
     );
     expect(govt).toMatchObject({ outcome: "section", webHref: "/gob/cola", webOnly: true });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review fixes (security S1/S3, code review R4/R5/R9/R11), 2026-10
+// ---------------------------------------------------------------------------
+
+describe("resolveNotificationTarget — never off-origin (S1)", () => {
+  it.each(["/\t/evil.com", "/\\evil.com", "//evil.com", "/\u0000/evil.com"])(
+    "refuses %j as a destination",
+    async (cta) => {
+      expect(readStoredCta(cta)).toEqual({ kind: "invalid" });
+      const target = await resolveNotificationTarget(
+        row({ notificationType: "tag_activated", ctaUrl: cta }),
+        OWNER,
+        probes({}),
+      );
+      expect(target.outcome).toBe("explain");
+      expect(target.webHref).toBe("/notificaciones/11111111-1111-4111-8111-111111111111");
+    },
+  );
+
+  it("treats https://evil.com as an external link, never as a redirect target", async () => {
+    const target = await resolveNotificationTarget(
+      row({ notificationType: "tag_activated", ctaUrl: "https://evil.com", ctaLabel: "Ver" }),
+      OWNER,
+      probes({}),
+    );
+    expect(target).toMatchObject({
+      outcome: "external",
+      externalUrl: "https://evil.com",
+      webHref: "/notificaciones/11111111-1111-4111-8111-111111111111",
+      appRoute: "/aviso/11111111-1111-4111-8111-111111111111",
+    });
+  });
+});
+
+describe("resolveNotificationTarget — external links (R5)", () => {
+  it("keeps the ministry's information page and its label", async () => {
+    const url = "https://www.argentina.gob.ar/salud/glosario/rabia";
+    const target = await resolveNotificationTarget(
+      row({
+        notificationType: "disease_public_alert",
+        ctaUrl: url,
+        ctaLabel: "Información oficial — Min. Salud",
+        relatedPetId: "pet-1",
+      }),
+      OWNER,
+      probes({ pets: [PAMPA], heldPets: ["DIM-PAMP-0001"] }),
+    );
+    expect(target).toMatchObject({
+      outcome: "external",
+      externalUrl: url,
+      externalLabel: "Información oficial — Min. Salud",
+      reason: "external",
+    });
+  });
+
+  it("keeps the PPP 'Más info' link the registration writes", async () => {
+    const url = "https://www.argentina.gob.ar/justicia/derechofacil/leysimple/maltrato-animales";
+    const target = await resolveNotificationTarget(
+      row({ notificationType: "ppp_registration_reminder", ctaUrl: url, ctaLabel: "Más info" }),
+      OWNER,
+      probes({}),
+    );
+    expect(target).toMatchObject({
+      outcome: "external",
+      externalUrl: url,
+      externalLabel: "Más info",
+    });
+  });
+});
+
+describe("resolveNotificationTarget — sections are known or explained (R9)", () => {
+  it("reads a trailing slash on a case link as the case", async () => {
+    expect(readStoredCta("/casos/CAS-AAAA-BBBB/")).toMatchObject({
+      kind: "case",
+      publicCode: "CAS-AAAA-BBBB",
+    });
+  });
+
+  it("explains an /org subpage nobody declared instead of opening it", async () => {
+    const target = await resolveNotificationTarget(
+      row({ notificationType: "org_contact_message", ctaUrl: "/org/ORG-1/pagina-renombrada" }),
+      OWNER,
+      probes({ orgs: { "ORG-1": { id: "org-1", displayName: "Refugio" } }, memberOf: ["org-1"] }),
+    );
+    expect(target.outcome).toBe("explain");
+  });
+
+  it("requires the capability a hard-gated org page needs", async () => {
+    const world = {
+      orgs: { "ORG-1": { id: "org-1", displayName: "Refugio" } },
+      memberOf: ["org-1"],
+    };
+    const cta = "/org/ORG-1/admin/permisos";
+    const without = await resolveNotificationTarget(
+      row({ notificationType: "capability_request", ctaUrl: cta }),
+      OWNER,
+      probes(world),
+    );
+    expect(without.outcome).toBe("explain");
+    const withCap = await resolveNotificationTarget(
+      row({ notificationType: "capability_request", ctaUrl: cta }),
+      OWNER,
+      probes({ ...world, capabilities: ["org-1:capability.grant"] }),
+    );
+    expect(withCap.outcome).toBe("section");
+  });
+});
+
+describe("resolveNotificationTarget — a refused case lends nothing (S3, R4)", () => {
+  it("never prints a refused case's state, and names nobody to act", async () => {
+    const target = await resolveNotificationTarget(
+      row({
+        notificationType: "cross_org_transfer_proposed_receiver",
+        ctaUrl: "/casos/CAS-AAAA-BBBB",
+      }),
+      OWNER,
+      probes({ cases: [caseFacts({ status: "closed", closedReason: "resolved" })] }),
+    );
+    expect(target).toMatchObject({ outcome: "explain", reason: "case_not_available" });
+    expect(target.actorCopy).toBeNull();
+  });
+});
+
+describe("resolveNotificationTarget — an erased row (R11)", () => {
+  it("opens nothing and says why", async () => {
+    const target = await resolveNotificationTarget(
+      row({ title: "[eliminado]", ctaUrl: null, relatedPetId: "pet-1" }),
+      OWNER,
+      probes({ pets: [PAMPA], heldPets: ["DIM-PAMP-0001"] }),
+    );
+    expect(target).toMatchObject({ outcome: "explain", reason: "erased", actorCopy: null });
   });
 });
