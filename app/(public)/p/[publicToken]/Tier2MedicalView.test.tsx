@@ -37,3 +37,30 @@ describe("<Tier2MedicalView> — active medications", () => {
     expect(within(list).getAllByRole("listitem")).toHaveLength(2);
   });
 });
+
+describe("<Tier2MedicalView> — the owner's consent is visible text", () => {
+  const props = {
+    vaccineSummary: { active: 1, expired: 0, dueSoon: 0, missing: 0 },
+    hasVaccineRecords: true,
+    isSterilized: false,
+    sex: "female",
+    activeMedications: [],
+    permanentConditions: [],
+    permanentConditionsOther: null,
+  };
+
+  it("says 'Habilitada por el dueño · Siempre visible' for the permanent option", () => {
+    const { container } = render(<Tier2MedicalView {...props} enabledUntil={null} />);
+    const line = container.querySelector('[data-section="tier2-consent"]');
+    expect(line).toHaveTextContent(/^Habilitada por el dueño · Siempre visible$/);
+  });
+
+  it("says 'Habilitada por el dueño · Visible hasta el …' for a bounded window", () => {
+    const { container } = render(
+      <Tier2MedicalView {...props} enabledUntil={new Date("2026-10-20T18:30:00Z")} />,
+    );
+    const line = container.querySelector('[data-section="tier2-consent"]');
+    expect(line).toHaveTextContent(/^Habilitada por el dueño · Visible hasta el .*20.*15:30\.$/);
+    expect(line).not.toHaveTextContent("Siempre visible");
+  });
+});

@@ -1944,9 +1944,14 @@ body {
 .pc-id[data-photo="hero"] .pc-id-copy {
   margin-top: 0;
 }
+/* Names wrap at WORD boundaries (balanced), hyphenate by the page's es-AR
+   lang, and break inside a word only when one word alone overflows the row —
+   `anywhere` split "Firulais" mid-word on phones. */
 .pc-id-copy h1 {
   margin: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  text-wrap: balance;
   font-family: var(--font-ln-serif);
   font-size: var(--text-title);
   font-weight: 600;
@@ -1958,14 +1963,22 @@ body {
   padding: 0 16px 12px;
   text-align: center;
 }
-/* Phones (390px): the two large cells left the name too narrow and clipped
-   it ("Firulais", "Pampa"). Step down so the name keeps a column. */
+/* Phones (≤440px): between two 116px cells the name column was ~118px wide —
+   long names broke mid-word and the token wrapped. The photo and the right
+   cell share the first row; name + token take a full-width row under them.
+   Same grid on /p/ and the owner face (CredentialFace). */
 @media (max-width: 440px) {
   .pc-id {
-    grid-template-columns: 116px minmax(0, 1fr) 116px;
+    grid-template-columns: 116px 116px;
+    justify-content: space-between;
     gap: 8px;
     margin-top: -14px;
     padding: 0 12px 12px;
+  }
+  /* Deceased paints no right cell: the photo stands alone, centred. */
+  .pc-id[data-cell="none"] {
+    grid-template-columns: 116px;
+    justify-content: center;
   }
   .pc-photo-mount,
   .pc-qr-mount {
@@ -1973,7 +1986,11 @@ body {
     height: 116px;
   }
   .pc-id-copy {
-    margin-top: 42px;
+    margin-top: 0;
+  }
+  .pc-id:not([data-photo="hero"]) .pc-id-copy {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
   .pc-id[data-photo="hero"] {
     grid-template-columns: minmax(0, 1fr) 116px;
@@ -2261,9 +2278,12 @@ body {
   white-space: nowrap;
   overflow: hidden;
 }
+/* The token is one identifier: it never wraps (`DIM-XXXX-XXXX` is 13 mono
+   characters, well inside the narrowest row). */
 .pc-id-token {
   display: block;
   margin-top: 4px;
+  white-space: nowrap;
   font-family: var(--font-ln-mono);
   font-size: var(--text-sm);
   letter-spacing: 0.04em;

@@ -72,6 +72,8 @@ export function PublicLostSections({
   lastSeenPlaceName,
   lastSeenLocality,
   lastSeenAt = null,
+  lastSeenLat = null,
+  lastSeenLng = null,
   distinguishingFeatures,
   tattooCode = null,
   tattooLocation = null,
@@ -81,10 +83,26 @@ export function PublicLostSections({
   specialConditions = null,
 }: Props) {
   const tattooLocLabel = tattooLocationLabel(tattooLocation);
-  const lastSeenPlace = [lastSeenPlaceName, lastSeenLocality].filter(Boolean).join(" · ");
-  const lastSeenLead = lastSeenPlace
-    ? [lastSeenPlace, lastSeenAt ? formatLostSince(lastSeenAt) : null].filter(Boolean).join(" · ")
-    : "";
+  // Lat/lng arrive only when the owner disclosed the last location (page.tsx
+  // gates them on `discloseLastLocationWhenLost`), so a pin here IS disclosed.
+  const hasLastSeenCoords =
+    lastSeenLat != null &&
+    lastSeenLng != null &&
+    Number.isFinite(lastSeenLat) &&
+    Number.isFinite(lastSeenLng);
+  // WHERE + HOW FRESH, in that order (UI review M3). Pin-only records (a map
+  // tap, no address) say so in words — the same phrase the owner surface uses
+  // — instead of leading with a bare recency or the raw coordinate pair, which
+  // never reach this line.
+  const lastSeenWhere =
+    lastSeenPlaceName ??
+    (!lastSeenLocality && hasLastSeenCoords ? "Punto marcado en el mapa" : null);
+  const lastSeenLead =
+    lastSeenWhere || lastSeenLocality
+      ? [lastSeenWhere, lastSeenLocality, lastSeenAt ? formatLostSince(lastSeenAt) : null]
+          .filter(Boolean)
+          .join(" · ")
+      : "";
 
   return (
     <div data-section="lost-sections">

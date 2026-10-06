@@ -105,11 +105,19 @@ export function Tier2MedicalView({
       <h2 id="tier2-h" className="sr-only">
         Resumen médico
       </h2>
-      {untilLabel ? (
-        <p className="pc-facts-until">
-          Visible hasta el <strong>{untilLabel}</strong>.
-        </p>
-      ) : null}
+      {/* The owner's consent, said in VISIBLE text — the "Nivel 2" chip's
+          tooltip is not reachable on touch and not read by every screen
+          reader. Main's wording: "habilitada por el dueño" + the window. */}
+      <p className="pc-facts-until" data-section="tier2-consent">
+        Habilitada por el dueño ·{" "}
+        {untilLabel ? (
+          <>
+            Visible hasta el <strong>{untilLabel}</strong>.
+          </>
+        ) : (
+          <strong>Siempre visible</strong>
+        )}
+      </p>
 
       <dl className="pc-fact-grid">
         <MedStat

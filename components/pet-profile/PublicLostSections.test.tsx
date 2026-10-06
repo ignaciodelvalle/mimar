@@ -92,11 +92,31 @@ describe("PublicLostSections — last-seen reads place-first (M3)", () => {
     expect(screen.queryByText(/-54\.806060/)).toBeNull();
   });
 
-  it("hides the last-seen block when there is only a pin and no place text", () => {
-    render(<PublicLostSections {...LOCATED} lastSeenLocality={null} />);
+  // A disclosed pin with no place name and no locality (a map tap) says so in
+  // words, with the recency — main's wording. The pair itself never prints.
+  it("says 'Punto marcado en el mapa' with the recency when there is only a disclosed pin", () => {
+    const { container } = render(<PublicLostSections {...LOCATED} lastSeenLocality={null} />);
+
+    expect(
+      screen.getByText(/^Punto marcado en el mapa · hace \d+ (días|día|meses|mes)$/),
+    ).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/-54\.80|-68\.30/);
+  });
+
+  // The page nulls lat/lng when the owner did not disclose the last location,
+  // so no pin and no place text means no last-seen block at all.
+  it("hides the last-seen block when there is neither a place nor a disclosed pin", () => {
+    render(
+      <PublicLostSections
+        {...LOCATED}
+        lastSeenLocality={null}
+        lastSeenLat={null}
+        lastSeenLng={null}
+      />,
+    );
 
     expect(screen.queryByText(/Punto marcado en el mapa/)).toBeNull();
-    expect(screen.queryByText(/^hace/)).toBeNull();
+    expect(screen.queryByText(/hace/)).toBeNull();
   });
 });
 

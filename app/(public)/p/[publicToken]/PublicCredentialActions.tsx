@@ -19,15 +19,15 @@
 
 import { Icon } from "@/components/Icon";
 import { DISPUTE_TIP_INTRO } from "@/lib/ui/dispute-copy";
-
-export const PHONE_PRIVACY_NOTE =
-  "Por privacidad no mostramos el teléfono del dueño: completá uno de estos avisos y le llega al instante.";
-export const NO_CHANNELS_WARNING = "Esta mascota no tiene canales de contacto habilitados.";
 import { foundPossessivePhrase, normalizePhoneForTel, sightingPhrase } from "@/lib/utils/format";
 
 import { DISPUTE_SECTION_ID, REPORT_SECTION_ID } from "./CredentialActionBar";
 import { DisputeTipForm } from "./DisputeTipForm";
 import { FoundPetForm } from "./FoundPetForm";
+
+export const PHONE_PRIVACY_NOTE =
+  "Por privacidad no mostramos el teléfono del dueño: completá uno de estos avisos y le llega al instante.";
+export const NO_CHANNELS_WARNING = "Esta mascota no tiene canales de contacto habilitados.";
 
 function foundTileLabel(sex: string | null): string {
   if (sex === "male") return "¿Lo encontraste?";

@@ -91,6 +91,52 @@ describe("libreta asiento facts — unbounded payload values must break", () => 
   });
 });
 
+/**
+ * The declaration block of `selector` inside the `@media (max-width: 440px)`
+ * block that restyles the credential identity row. Throws when either is
+ * missing, for the same reason `rule()` does.
+ */
+function phoneRule(selector: string): string {
+  const mediaRe = /@media \(max-width: 440px\) \{((?:[^{}]*\{[^{}]*\})*)[^{}]*\}/g;
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const ruleRe = new RegExp(`(?:^|\\})\\s*${escaped}\\s*\\{([^{}]*)\\}`);
+  for (const block of GLOBALS.matchAll(mediaRe)) {
+    const match = ruleRe.exec(block[1] ?? "");
+    if (match) return match[1] ?? "";
+  }
+  throw new Error(`selector not found under @media (max-width: 440px): ${selector}`);
+}
+
+function phoneDeclares(selector: string, prop: string): string | null {
+  const found = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`, "i").exec(phoneRule(selector));
+  return found ? found[1].trim() : null;
+}
+
+// The /p/ and owner-face identity row (`.pc-id`). Between a 116px photo and a
+// 116px QR, a 390px card left the name ~118px: long names broke mid-word and
+// the DIM token wrapped. On phones the name + token take their own row.
+describe("credential identity row — the name gets a full-width row on phones", () => {
+  it("puts photo and right cell on the first row, two tracks, no name column", () => {
+    expect(phoneDeclares(".pc-id", "grid-template-columns")).toBe("116px 116px");
+  });
+
+  it("puts the name + token block on its own full-width second row", () => {
+    expect(phoneDeclares('.pc-id:not([data-photo="hero"]) .pc-id-copy', "grid-column")).toBe(
+      "1 / -1",
+    );
+    expect(phoneDeclares('.pc-id:not([data-photo="hero"]) .pc-id-copy', "grid-row")).toBe("2");
+  });
+
+  it("wraps the name at word boundaries, breaking a word only as a last resort", () => {
+    expect(declares(".pc-id-copy h1", "overflow-wrap")).toBe("break-word");
+    expect(declares(".pc-id-copy h1", "hyphens")).toBe("auto");
+  });
+
+  it("never wraps the token", () => {
+    expect(declares(".pc-id-token", "white-space")).toBe("nowrap");
+  });
+});
+
 describe("the premise these CSS fixes rest on", () => {
   it("the 'unconfirmed' meta really is long enough to need wrapping", () => {
     // If this copy is ever shortened, revisit the rules above rather than

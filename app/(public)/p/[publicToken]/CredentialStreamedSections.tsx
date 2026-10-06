@@ -42,8 +42,7 @@ import { Tier2MedicalView } from "./Tier2MedicalView";
 // Mirrors the former page.tsx tier2 block: FULL vaccination history feeds the
 // SAME computeVaccinationSummary the owner libreta uses (bug 3), with the pet's
 // event_amended rows overlaid so a corrected dose/medication supersedes on the
-// public credential too. Wrapper `.pc-rule-block` is the medical block; the
-// only dashed rule on this face is the MRZ.
+// public credential too. Wrapper `.pc-rule-block` is the medical block.
 // ---------------------------------------------------------------------------
 
 export async function CredentialTier2Medical({
