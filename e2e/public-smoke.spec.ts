@@ -103,8 +103,8 @@ test("/p/[invalid token] → branded Spanish not-found (not the English default)
 // the QR of a LOST pet got "Algo salió mal" instead of the contact/sighting
 // credential. The lost render path threw in a Server Components render.
 // /perdidas lists lost pets and links each to /p/[token]; we discover one
-// (no hardcoded DB token) and assert the lost path no longer throws. Skips
-// cleanly when no lost pets are seeded so it never flakes on an empty DB.
+// (no hardcoded DB token) and assert the lost path no longer throws. Every
+// seed profile carries a lost pet (seed-test-users seedLostPet).
 test("/p/[token] lost-mode credential → 200, no error boundary (UX 0.1 regression)", async ({
   page,
 }) => {
@@ -139,17 +139,17 @@ test("/p/[token] lost-mode credential → 200, no error boundary (UX 0.1 regress
 // A11y on a VALID lost-mode credential — the hero moment, and Ley 26.653 applies.
 // The file header notes /p/[token] was not axe-tested directly because it isn't
 // linked from any public page; /perdidas DOES link lost credentials, so we can
-// now cover the lost-mode render. Skips cleanly when no lost pets are seeded.
+// now cover the lost-mode render. Every seed profile carries a lost pet.
 test("a11y(axe) /p/[token] lost-mode credential — WCAG 2.1 AA", async ({ page }) => {
   await page.goto("/perdidas");
   await page.waitForLoadState("networkidle");
 
   const credLink = page.locator('a[href^="/p/"]').first();
   // A SKIP HERE MEANS THIS SURFACE HAS NO COVERAGE ON THIS RUN. `pnpm
-  // db:bootstrap` (all the CI e2e job runs) seeds reference data plus
-  // scripts/seed-test-users.ts, and neither marks a pet lost — so /perdidas is
-  // empty in CI and this scan, on the surface the file itself calls "the hero
-  // moment" under Ley 26.653, had almost certainly never executed there.
+  // db:bootstrap` (all the CI e2e job runs) used to seed no lost pet, so this
+  // scan, on the surface the file itself calls "the hero moment" under Ley
+  // 26.653, never executed in CI. seed-test-users now marks one lost
+  // (seedLostPet), so a skip here means that step regressed.
   //
   // That fixture gap must be closed in scripts/, not here, so absence still
   // skips under the bootstrap seed. But it is no longer keyed on the DATA: on

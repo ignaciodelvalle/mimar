@@ -37,8 +37,8 @@ explicit `env:` block is untouched. See `scripts/run-e2e.ts`; a bare
   landing hero's three crisis doors (no typed lookup), the code lookups at
   the surfaces that own them, and the lost-vs-non-lost contrast on
   `/p/[publicToken]`. Real tokens are discovered at runtime from `/adoptar`
-  and `/perdidas` (never hardcoded); tests skip cleanly when the seed has no
-  matching pet.
+  and `/perdidas` (never hardcoded); every seed profile carries at least one
+  of each, so these tests wait for the link instead of skipping.
 - `crisis-owner-lost-flow.spec.ts` — AUTHENTICATED owner flow: logs in as
   `owner@dim.test`, drives the real "Marcar como perdida" wizard on the
   seeded pet Michi, then opens a **fresh browser context** (no session) to
@@ -105,8 +105,9 @@ coverage. They need no secret beyond the public `STAGING_URL`.
 ## Conventions
 
 - **CI's fresh-seed DB is the judge, not your laptop.** `pnpm db:bootstrap`
-  seeds reference data + `scripts/seed-test-users.ts` and STOPS — no cases, no
-  lost pets, no share tokens, and none of the demo/storyline seeds. A dev DB
+  seeds reference data + `scripts/seed-test-users.ts` and STOPS — exactly one
+  lost pet and one adoption listing (with their two cases), no share tokens,
+  and none of the demo/storyline seeds. A dev DB
   accumulates state (a lost first pet, an emptied refugio, same-day duplicate
   events) that makes local runs of some specs fail or pass for reasons the code
   has nothing to do with. Iterate locally on ONE spec; trust the CI verdict for
@@ -119,8 +120,10 @@ coverage. They need no secret beyond the public `STAGING_URL`.
   `e2e/_seed-profile.ts` instead: it resolves a **seed profile** and turns a
   missing fixture into a skip only where absence is documented.
   - `bootstrap` (the default): `pnpm db:bootstrap` and nothing else — what CI's
-    e2e job runs. No lost pets, no adoption listings, no cases, no share
-    tokens. A missing fixture SKIPS, with a reason that names the coverage hole.
+    e2e job runs. One lost pet and one adoption listing (and their two cases),
+    no share tokens. A missing fixture SKIPS, with a reason that names the
+    coverage hole — except the lost pet and the listing, which every profile
+    guarantees.
   - `full`: the deployed staging origin the nightly pass drives (`STAGING_URL`
     set → inferred automatically). It carries the demo/storyline seeds — 317
     lost pets and 3 adoption listings when this was measured (2026-08-04). A

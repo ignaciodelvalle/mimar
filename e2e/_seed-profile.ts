@@ -26,9 +26,9 @@
 //     STOPS. Exactly one lost pet and one adoption listing (seed-test-users
 //     seedLostPet / its adoption step); no other cases, no share tokens.
 //     This is what CI's e2e job runs (.github/workflows/ci.yml) and what the
-//     local :3333 config builds against. An empty /perdidas here is the
-//     DOCUMENTED state of the seed, not a defect — the fixture gap is real but
-//     it must be closed in scripts/, not papered over with a red spec.
+//     local :3333 config builds against. Only the absences listed above are
+//     documented; anything else missing is a seed defect, closed in scripts/,
+//     never papered over with a red spec or a quiet skip.
 //   · "full" — the deployed staging origin the nightly pass drives
 //     (dim-interno:.github/workflows/e2e-nightly.yml → playwright.staging.config.ts).
 //     It carries the demo/storyline seeds: measured 2026-08-04, /perdidas
