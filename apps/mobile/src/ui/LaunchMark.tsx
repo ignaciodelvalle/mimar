@@ -46,11 +46,13 @@
 // KEPT SHALLOW ON PURPOSE: one Animated.View, one Animated.Image, no shadows.
 // It is the first thing a 2 GB Android 8 phone draws.
 
+import { DEEP_LINK_MAP, matchWebPath } from "@dim/contract/links";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, Animated, Easing, StyleSheet } from "react-native";
 
 import appJson from "../../app.json";
+import type { LaunchGatePhase } from "../account/launch-update-gate";
 import { COLORS } from "./theme";
 
 type SplashPluginOptions = { imageWidth?: unknown; backgroundColor?: unknown };
@@ -92,6 +94,40 @@ export const LAUNCH_MARK_FADE_MS = 200;
 export const NATIVE_SPLASH_FADE_MS = 200;
 /** The hard ceiling: past this, the overlay goes whatever `ready` says. */
 export const LAUNCH_MARK_TIMEOUT_MS = 8000;
+
+/**
+ * Whether a cold start at `pathname` should keep the mark up through the
+ * session's first answer.
+ *
+ * NOT for a public destination. A finder who scanned a QR lands on
+ * `/p/{token}`, a screen that needs no session at all, and every millisecond
+ * the logo holds there is a millisecond between a stranger and the owner's
+ * phone number. "Public" is not a second list kept here: it is the contract's
+ * deep-link map — the path resolved by `matchWebPath`, the same matcher the
+ * push-tap router uses, and that row's `access`. A path the map does not know
+ * (`/`, `/mascotas`, …) waits, which is the conservative answer.
+ */
+export function launchWaitsForSession(pathname: string): boolean {
+  const match = matchWebPath(pathname);
+  return match === null || DEEP_LINK_MAP[match.name].access !== "public";
+}
+
+/**
+ * When the cold start is over, for the mark's purposes. Fonts and the launch
+ * update gate always; the session's first answer only where the route needs a
+ * session (`launchWaitsForSession`). While an OTA downloads the mark leaves at
+ * once: that state has a sentence to say, and the logo would cover it.
+ */
+export function launchMarkReady(state: {
+  fontsReady: boolean;
+  launchGate: LaunchGatePhase;
+  sessionStarting: boolean;
+  pathname: string;
+}): boolean {
+  if (state.launchGate === "updating") return true;
+  if (!state.fontsReady || state.launchGate !== "done") return false;
+  return !state.sessionStarting || !launchWaitsForSession(state.pathname);
+}
 
 let nativeSplashDeadline: ReturnType<typeof setTimeout> | null = null;
 

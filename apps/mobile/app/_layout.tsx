@@ -61,7 +61,7 @@ import { usePushTapNavigation } from "../src/notifications/push-tap";
 import { initSentry } from "../src/observability/sentry";
 import { useNavigationBreadcrumb } from "../src/observability/use-navigation-breadcrumb";
 import { HeaderBackButton } from "../src/ui/HeaderBackButton";
-import { LaunchMark, holdNativeSplash } from "../src/ui/LaunchMark";
+import { LaunchMark, holdNativeSplash, launchMarkReady } from "../src/ui/LaunchMark";
 import { OfflineBanner } from "../src/ui/OfflineBanner";
 import { HeaderMenuButton } from "../src/ui/TopLevelNavMenu";
 import { FONTS, useLnFonts } from "../src/ui/fonts";
@@ -162,7 +162,8 @@ function RootLayout() {
   // One breadcrumb per screen change, ids stripped (OBS-5). Called BEFORE the
   // font gate returns early — a hook that runs conditionally is not a hook, and
   // the cold-start screens are the ones whose order matters most.
-  useNavigationBreadcrumb(usePathname());
+  const pathname = usePathname();
+  useNavigationBreadcrumb(pathname);
   // THE FIRST LAUNCH OF A FRESH INSTALL WAITS FOR A PENDING OTA (2026-09-09).
   // A Play install runs the bundle baked into the binary on its first open, and
   // `fallbackToCacheTimeout: 0` means whatever was published since applies on
@@ -209,12 +210,18 @@ function RootLayout() {
   const loading = !fontsReady || launchGate !== "done";
 
   // THE LAUNCH MARK LEAVES WHEN THE COLD START IS OVER — the font and launch
-  // gates above, and the session's first answer (`starting` is what `useGate`
-  // draws its own spinner for, so holding the logo through it replaces one
-  // loading picture with the other instead of stacking them). EXCEPT while an
-  // OTA is downloading: that state has a sentence to say, and the logo would
-  // cover it. `LaunchMark` carries its own 8 s ceiling either way.
-  const launchReady = launchGate === "updating" || (!loading && sessionPhase !== "starting");
+  // gates above, and, on a route that needs a session, the session's first
+  // answer (`starting` is what `useGate` draws its own spinner for, so holding
+  // the logo through it replaces one loading picture with the other instead of
+  // stacking them). A PUBLIC route — a finder's QR scan landing on `/p/…` —
+  // does not wait for it. `launchMarkReady` carries the rule and its tests;
+  // `LaunchMark` carries its own 8 s ceiling either way.
+  const launchReady = launchMarkReady({
+    fontsReady,
+    launchGate,
+    sessionStarting: sessionPhase === "starting",
+    pathname,
+  });
 
   const loadingBody = (
     <View

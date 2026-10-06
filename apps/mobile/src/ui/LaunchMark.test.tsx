@@ -13,6 +13,8 @@ import {
   NATIVE_SPLASH_BACKGROUND,
   NATIVE_SPLASH_FADE_MS,
   holdNativeSplash,
+  launchMarkReady,
+  launchWaitsForSession,
 } from "./LaunchMark";
 import { COLORS } from "./theme";
 
@@ -63,6 +65,40 @@ describe("LaunchMark — the same picture as the native splash", () => {
     // build rasterised; a mismatch is a jump on every cold start.
     expect(LAUNCH_MARK_SIZE_DP).toBe(144);
     expect(String(NATIVE_SPLASH_BACKGROUND).toLowerCase()).toBe(COLORS.canvas.toLowerCase());
+  });
+});
+
+describe("launchMarkReady — a public route does not wait for the session", () => {
+  const QR = "/p/DIM-ABCD-2345";
+  const done = { fontsReady: true, launchGate: "done" as const };
+
+  it("reads 'public' off the deep-link map, not off a list of its own", () => {
+    expect(launchWaitsForSession(QR)).toBe(false);
+    expect(launchWaitsForSession(`${QR}/encontre`)).toBe(false);
+    // Paths the map does not know, or knows as session-only, wait.
+    expect(launchWaitsForSession("/")).toBe(true);
+    expect(launchWaitsForSession("/mascotas")).toBe(true);
+    expect(launchWaitsForSession("/mis-mascotas")).toBe(true);
+  });
+
+  it("leaves a QR landing as soon as fonts and the update check are done", () => {
+    expect(launchMarkReady({ ...done, sessionStarting: true, pathname: QR })).toBe(true);
+  });
+
+  it("still holds a QR landing for the fonts and the update check", () => {
+    const qr = { sessionStarting: false, pathname: QR };
+    expect(launchMarkReady({ ...qr, fontsReady: false, launchGate: "done" })).toBe(false);
+    expect(launchMarkReady({ ...qr, fontsReady: true, launchGate: "deciding" })).toBe(false);
+  });
+
+  it("holds a signed-in route until the session's first answer", () => {
+    expect(launchMarkReady({ ...done, sessionStarting: true, pathname: "/" })).toBe(false);
+    expect(launchMarkReady({ ...done, sessionStarting: false, pathname: "/" })).toBe(true);
+  });
+
+  it("gives way to the OTA download sentence", () => {
+    const cold = { fontsReady: false, sessionStarting: true, pathname: "/" };
+    expect(launchMarkReady({ ...cold, launchGate: "updating" })).toBe(true);
   });
 });
 
