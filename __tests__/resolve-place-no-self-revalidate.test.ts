@@ -37,8 +37,8 @@ describe("resolvePlaceFromQueueAction", () => {
   });
 
   it("lands on the queue carrying the resolved locality for the confirmation", () => {
-    expect(resolvedPlaceUrl("AR-B", { name: "San Martín", department: "General San Martín" })).toBe(
-      "/admin/localidades/pendientes?provincia=AR-B&resuelto=San+Mart%C3%ADn+%28General+San+Mart%C3%ADn%29",
+    expect(resolvedPlaceUrl("AR-B", { localityId: "11111111-1111-4111-8111-111111111111" })).toBe(
+      "/admin/localidades/pendientes?provincia=AR-B&resuelto=11111111-1111-4111-8111-111111111111",
     );
     expect(resolvedPlaceUrl("AR-B", undefined)).toBe(
       "/admin/localidades/pendientes?provincia=AR-B",

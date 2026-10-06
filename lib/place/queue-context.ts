@@ -19,12 +19,19 @@ export function haversineKm(
   return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
-/** "850 m" under a kilometre, "12,3 km" under 100, "148 km" beyond. */
+/** "850 m" under a kilometre, "12,3 km" under 100, "148 km" beyond. Rounds first, then branches. */
 export function formatDistanceKm(km: number): string {
+  const meters = Math.round(km * 100) * 10;
   if (km < 0.1) return "menos de 100 m";
-  if (km < 1) return `${Math.round(km * 100) * 10} m`;
-  if (km < 100) return `${km.toFixed(1).replace(".", ",")} km`;
+  if (meters < 1000) return `${meters} m`;
+  const tenths = Math.round(km * 10) / 10;
+  if (tenths < 100) return `${tenths.toFixed(1).replace(".", ",")} km`;
   return `${Math.round(km)} km`;
+}
+
+/** ~1 km grid: a denuncia's pin is never drawn or ranked at its exact point. */
+export function coarsePin(pin: { lat: number; lng: number }): { lat: number; lng: number } {
+  return { lat: Math.round(pin.lat * 100) / 100, lng: Math.round(pin.lng * 100) / 100 };
 }
 
 type RawCandidate = {
@@ -41,6 +48,8 @@ export type CandidateWithDistance = {
   department: string | null;
   /** Null when there is no pin or the candidate has no centroid. */
   distanceKm: number | null;
+  /** True when there is a pin but this candidate has no centroid to measure from. */
+  noCentroid: boolean;
 };
 
 function finite(v: number | string | null | undefined): number | null {
@@ -64,7 +73,13 @@ export function rankCandidates(
     const distanceKm = pin && lat !== null && lng !== null ? haversineKm(pin, { lat, lng }) : null;
     return {
       index,
-      row: { localityId: c.localityId, name: c.name, department: c.department, distanceKm },
+      row: {
+        localityId: c.localityId,
+        name: c.name,
+        department: c.department,
+        distanceKm,
+        noCentroid: pin !== null && distanceKm === null,
+      },
     };
   });
   if (pin) {
@@ -116,16 +131,20 @@ const CREATOR_ROLE_WORDS: Record<string, string> = {
 };
 
 /**
- * Who created the subject, by ROLE only (never a name). An organization is
- * named as such; no user and no organization reads as anonymous for a
- * denuncia and as the system for a case.
+ * Who created the subject. A denuncia only says "Anónimo" or "Con cuenta": role
+ * plus date plus place could single out a denouncer in a small locality, and
+ * moderación drops the reporter fields for the same reason. A case shows the
+ * ROLE only (never a name).
  */
 export function creatorLabel(input: {
   subjectTable: "cases" | "welfare_reports";
   role: string | null;
   viaOrganization: boolean;
 }): string {
+  if (input.subjectTable === "welfare_reports") {
+    return input.role || input.viaOrganization ? "Con cuenta" : "Anónimo";
+  }
   if (input.viaOrganization) return "Organización";
   if (input.role) return CREATOR_ROLE_WORDS[input.role] ?? input.role;
-  return input.subjectTable === "welfare_reports" ? "Anónimo" : "Sistema";
+  return "Sistema";
 }

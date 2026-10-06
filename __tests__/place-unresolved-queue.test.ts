@@ -119,7 +119,12 @@ describe("the unresolved-place queue", () => {
         petLocality: null,
       });
       expect(item?.context.code).toMatch(/^CAS-/);
-      expect(item?.context.caseCode).toBe(item?.context.code);
+      const stored = await first<{ code: string }>(
+        tx,
+        sql`select public_code as code from public.cases where id = ${id}::uuid`,
+      );
+      expect(item?.context.code).toBe(stored.code);
+      expect(item?.context.caseCode).toBe(stored.code);
       // The queue adds no personal data: only role, kind, code and places.
       expect(Object.keys(item?.context ?? {}).sort()).toEqual(
         [

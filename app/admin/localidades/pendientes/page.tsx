@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dashboard";
 import { db } from "@/db";
 import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
-import { listUnresolvedPlaces } from "@/lib/place/unresolved-queue";
+import { listUnresolvedPlaces, resolvedPlaceLabel } from "@/lib/place/unresolved-queue";
 import { PROVINCES, provinceByCode } from "@/lib/reference/ar-provincias";
 import { pluralizeEs } from "@/lib/utils/format";
 
@@ -44,6 +44,7 @@ export default async function UnresolvedPlacesPage({
     provinceByCode(provincia ?? DEFAULT_PROVINCE) ?? provinceByCode(DEFAULT_PROVINCE);
   const provinceCode = province?.code ?? DEFAULT_PROVINCE;
   const queue = await listUnresolvedPlaces(db, { provinceCode });
+  const resolvedLabel = await resolvedPlaceLabel(db, resuelto);
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
@@ -65,9 +66,9 @@ export default async function UnresolvedPlacesPage({
         </p>
       </div>
 
-      {resuelto && resuelto.trim() !== "" && (
+      {resolvedLabel && (
         <output className="block">
-          <OpCallout title={`Lugar resuelto: ${resuelto.trim().slice(0, 120)}`} />
+          <OpCallout title={`Lugar resuelto: ${resolvedLabel}`} />
         </output>
       )}
 

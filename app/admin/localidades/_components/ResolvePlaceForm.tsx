@@ -27,6 +27,7 @@ export type ResolvePlaceFormProps = {
     name: string;
     department: string | null;
     distanceKm?: number | null;
+    noCentroid?: boolean;
   }>;
 };
 
@@ -74,7 +75,11 @@ export function ResolvePlaceForm({
               <option key={c.localityId} value={c.localityId}>
                 {c.name}
                 {c.department ? ` (${c.department})` : ""}
-                {typeof c.distanceKm === "number" ? ` · a ${formatDistanceKm(c.distanceKm)}` : ""}
+                {typeof c.distanceKm === "number"
+                  ? ` · a ${formatDistanceKm(c.distanceKm)}`
+                  : c.noCentroid
+                    ? " · sin ubicación registrada"
+                    : ""}
               </option>
             ))}
           </OpSelect>

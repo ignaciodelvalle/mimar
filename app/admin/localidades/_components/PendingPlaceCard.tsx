@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { StaticFirstMap } from "@/components/maps/StaticFirstMap";
 import {
   type CandidateWithDistance,
+  coarsePin,
   creatorLabel,
   formatDistanceKm,
   rankCandidates,
@@ -36,9 +37,11 @@ function CandidateList({ candidates }: { candidates: CandidateWithDistance[] }) 
         <li key={c.localityId}>
           {c.name}
           {c.department ? ` (${c.department})` : " (sin departamento)"}
-          {c.distanceKm !== null && (
+          {c.distanceKm !== null ? (
             <span className="text-ln-op-mute"> · a {formatDistanceKm(c.distanceKm)} del punto</span>
-          )}
+          ) : c.noCentroid ? (
+            <span className="text-ln-op-mute"> · sin ubicación registrada</span>
+          ) : null}
         </li>
       ))}
     </ul>
@@ -53,7 +56,11 @@ export function PendingPlaceCard({
   provinceCode: string;
 }) {
   const { context: ctx } = item;
-  const pin = ctx.lat !== null && ctx.lng !== null ? { lat: ctx.lat, lng: ctx.lng } : null;
+  const isDenuncia = item.subjectTable === "welfare_reports";
+  const exactPin = ctx.lat !== null && ctx.lng !== null ? { lat: ctx.lat, lng: ctx.lng } : null;
+  // A denuncia's point is sensitive (Ley 14.346): drawn and ranked on a ~1 km
+  // grid, labelled approximate, with no street address.
+  const pin = exactPin && isDenuncia ? coarsePin(exactPin) : exactPin;
   const candidates = rankCandidates(item.candidates, pin);
   const kind = subjectKindLabel(item.subjectTable, ctx.kind);
   const href = ctx.caseCode
@@ -93,7 +100,7 @@ export function PendingPlaceCard({
             viaOrganization: ctx.creatorViaOrganization,
           })}
         </Fact>
-        {ctx.address && <Fact label="Dirección declarada">{ctx.address}</Fact>}
+        {ctx.address && !isDenuncia && <Fact label="Dirección declarada">{ctx.address}</Fact>}
         {ctx.petLocality && (
           <Fact label="Localidad de la mascota">
             {ctx.petLocality.name}
@@ -108,7 +115,7 @@ export function PendingPlaceCard({
           lat={pin.lat}
           lng={pin.lng}
           label={`Punto registrado de «${item.enteredLocality}»`}
-          precision="exact"
+          precision={isDenuncia ? "approx" : "exact"}
           heightClassName="h-40"
         />
       ) : (

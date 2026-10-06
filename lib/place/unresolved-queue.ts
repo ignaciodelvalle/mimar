@@ -98,6 +98,27 @@ export type QueueError =
 const QUEUE_LIMIT = 200;
 
 /**
+ * "Name (Department)" of a live catalogue locality, for the confirmation banner
+ * after a resolution. Null when the id is not a uuid or names no live row, so a
+ * forged `?resuelto=` renders nothing.
+ */
+export async function resolvedPlaceLabel(
+  exec: QueueExecutor,
+  localityId: string | undefined,
+): Promise<string | null> {
+  const parsed = z.string().uuid().safeParse(localityId);
+  if (!parsed.success) return null;
+  const rows = (await exec.execute(sql`
+    select locality_name as name, department_name as department
+      from public.ar_localities
+     where id = ${parsed.data}::uuid and removed_at is null
+  `)) as unknown as Array<{ name: string; department: string | null }>;
+  const row = rows[0];
+  if (!row) return null;
+  return row.department ? `${row.name} (${row.department})` : row.name;
+}
+
+/**
  * The provinces whose unresolved queue a govt user may READ (D9): those a
  * provincial authority unit grant covers — the only grants an unresolved
  * place reaches on the id path. A municipal or legacy grant reads none here.

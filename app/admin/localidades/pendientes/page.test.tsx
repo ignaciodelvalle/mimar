@@ -19,13 +19,20 @@ vi.mock("@/lib/infra/auth-guards", () => ({
 }));
 vi.mock("@/app/actions/authority-units", () => ({ resolvePlaceFromQueueAction: vi.fn() }));
 vi.mock("@/components/maps/StaticFirstMap", () => ({
-  StaticFirstMap: (p: { lat: number; lng: number }) => (
-    <div data-testid="static-map" data-lat={p.lat} data-lng={p.lng} />
+  StaticFirstMap: (p: { lat: number; lng: number; precision?: string }) => (
+    <div data-testid="static-map" data-lat={p.lat} data-lng={p.lng} data-precision={p.precision} />
   ),
 }));
-vi.mock("@/lib/place/unresolved-queue", () => ({ listUnresolvedPlaces: vi.fn() }));
+vi.mock("@/lib/place/unresolved-queue", () => ({
+  listUnresolvedPlaces: vi.fn(),
+  resolvedPlaceLabel: vi.fn(),
+}));
 
-import { type QueueItem, listUnresolvedPlaces } from "@/lib/place/unresolved-queue";
+import {
+  type QueueItem,
+  listUnresolvedPlaces,
+  resolvedPlaceLabel,
+} from "@/lib/place/unresolved-queue";
 
 import UnresolvedPlacesPage from "./page";
 
@@ -75,7 +82,11 @@ async function render(searchParams: Record<string, string> = {}) {
 }
 
 describe("/admin/localidades/pendientes", () => {
-  beforeEach(() => vi.mocked(listUnresolvedPlaces).mockReset());
+  beforeEach(() => {
+    vi.mocked(listUnresolvedPlaces).mockReset();
+    vi.mocked(resolvedPlaceLabel).mockReset();
+    vi.mocked(resolvedPlaceLabel).mockResolvedValue(null);
+  });
 
   it("puts the decision context next to the button, candidates nearest first", async () => {
     vi.mocked(listUnresolvedPlaces).mockResolvedValue([
@@ -113,10 +124,61 @@ describe("/admin/localidades/pendientes", () => {
     expect(html).toContain("Resolver el lugar");
   });
 
-  it("confirms the resolved place on the list", async () => {
+  it("confirms the resolved place from a server-side lookup, never from the URL text", async () => {
     vi.mocked(listUnresolvedPlaces).mockResolvedValue([]);
-    const html = await render({ provincia: "AR-B", resuelto: "Mechita (Bragado)" });
+    vi.mocked(resolvedPlaceLabel).mockResolvedValue("Mechita (Bragado)");
+    const id = "11111111-1111-4111-8111-111111111111";
+    const html = await render({ provincia: "AR-B", resuelto: id });
     expect(html).toContain("Lugar resuelto: Mechita (Bragado)");
-    expect(await render({ provincia: "AR-B" })).not.toContain("Lugar resuelto");
+    expect(resolvedPlaceLabel).toHaveBeenCalledWith(expect.anything(), id);
+  });
+
+  it("renders no banner when the id resolves to nothing (a forged label)", async () => {
+    vi.mocked(listUnresolvedPlaces).mockResolvedValue([]);
+    const html = await render({ provincia: "AR-B", resuelto: "Sitio oficial: llamá al 0800" });
+    expect(html).not.toContain("Lugar resuelto");
+    expect(html).not.toContain("0800");
+  });
+
+  it("never discloses a denunciante's role or exact point, and flags candidates without centroid", async () => {
+    vi.mocked(listUnresolvedPlaces).mockResolvedValue([
+      {
+        ...item({
+          code: "DEN-ABCD-1234",
+          kind: "neglect",
+          caseCode: null,
+          welfareReportId: "00000000-0000-4000-8000-0000000000aa",
+          creatorRole: "vet",
+          lat: -35.19412,
+          lng: -60.49488,
+          address: "Calle 9 123",
+        }),
+        subjectTable: "welfare_reports",
+        candidates: [
+          {
+            localityId: "a",
+            name: "Mechita",
+            department: "Alberti",
+            latitude: null,
+            longitude: null,
+          },
+          {
+            localityId: "b",
+            name: "Mechita",
+            department: "Bragado",
+            latitude: -35.2,
+            longitude: -60.5,
+          },
+        ],
+      } as QueueItem,
+    ]);
+    const html = await render();
+    expect(html).toContain("Con cuenta");
+    expect(html).not.toContain("Veterinario/a");
+    expect(html).not.toContain("Calle 9 123");
+    expect(html).toContain('data-lat="-35.19"');
+    expect(html).not.toContain("-35.19412");
+    expect(html).toContain('data-precision="approx"');
+    expect(html).toContain("sin ubicación registrada");
   });
 });

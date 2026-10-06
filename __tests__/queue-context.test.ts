@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  coarsePin,
   creatorLabel,
   formatDistanceKm,
   haversineKm,
@@ -27,6 +28,12 @@ describe("queue decision context", () => {
     expect(ranked[2]?.distanceKm).toBeNull();
   });
 
+  it("flags a candidate with no centroid once there is a pin", () => {
+    const ranked = rankCandidates(CANDIDATES, { lat: -35.19, lng: -60.49 });
+    expect(ranked.map((c) => c.noCentroid)).toEqual([false, false, true]);
+    expect(rankCandidates(CANDIDATES, null).some((c) => c.noCentroid)).toBe(false);
+  });
+
   it("degrades without a pin: input order kept, no distances", () => {
     const ranked = rankCandidates(CANDIDATES, null);
     expect(ranked.map((c) => c.localityId)).toEqual(["a", "b", "c"]);
@@ -38,6 +45,10 @@ describe("queue decision context", () => {
     expect(formatDistanceKm(0.85)).toBe("850 m");
     expect(formatDistanceKm(12.34)).toBe("12,3 km");
     expect(formatDistanceKm(148.4)).toBe("148 km");
+    // Round first, then branch: no "1000 m" and no "100,0 km".
+    expect(formatDistanceKm(0.996)).toBe("1,0 km");
+    expect(formatDistanceKm(99.96)).toBe("100 km");
+    expect(formatDistanceKm(99.94)).toBe("99,9 km");
   });
 
   it("words the subject and its creator by role, never by name", () => {
@@ -46,6 +57,11 @@ describe("queue decision context", () => {
     expect(
       creatorLabel({ subjectTable: "welfare_reports", role: null, viaOrganization: false }),
     ).toBe("Anónimo");
+    // A denuncia never discloses the role: only anonymous or with an account.
+    expect(
+      creatorLabel({ subjectTable: "welfare_reports", role: "vet", viaOrganization: false }),
+    ).toBe("Con cuenta");
+    expect(coarsePin({ lat: -35.19412, lng: -60.49488 })).toEqual({ lat: -35.19, lng: -60.49 });
     expect(creatorLabel({ subjectTable: "cases", role: "vet", viaOrganization: false })).toBe(
       "Veterinario/a",
     );
