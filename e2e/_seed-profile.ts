@@ -23,7 +23,8 @@
 // e2e environments in this project (e2e/README.md · Conventions):
 //
 //   · "bootstrap" — `pnpm db:bootstrap`: reference data + seed-test-users and
-//     STOPS. No cases, no lost pets, no adoption listings, no share tokens.
+//     STOPS. Exactly one lost pet and one adoption listing (seed-test-users
+//     seedLostPet / its adoption step); no other cases, no share tokens.
 //     This is what CI's e2e job runs (.github/workflows/ci.yml) and what the
 //     local :3333 config builds against. An empty /perdidas here is the
 //     DOCUMENTED state of the seed, not a defect — the fixture gap is real but

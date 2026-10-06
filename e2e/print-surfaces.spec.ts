@@ -78,13 +78,10 @@ test.describe("print surfaces keep the meaning that lives in colour", () => {
     await page.goto("/perdidas");
     await page.waitForLoadState("networkidle").catch(() => {});
     const lostLink = page.locator('a[href^="/p/"]').first();
-    const verdict = seedFixtureVerdict(
-      await lostLink.count(),
-      "lost-pet credential link on /perdidas",
-      "the sticky action bar's print opt-out",
-    );
-    test.skip(verdict.verdict === "skip", verdict.verdict === "skip" ? verdict.reason : "");
-    expect(verdict.verdict, verdict.verdict === "fail" ? verdict.reason : "").not.toBe("fail");
+    // Every seed profile guarantees a lost pet (seed-test-users seedLostPet),
+    // and /perdidas streams: a one-shot count() could read the skeleton and
+    // turn into a green skip (e2e/README.md bans that shape). Wait for it.
+    await expect(lostLink, "seed-test-users seeds a lost pet").toBeVisible({ timeout: 20_000 });
 
     // The bar is mobile-only (`sm:hidden`), so give it a viewport where it
     // renders at all — otherwise this test would pass for the wrong reason.
