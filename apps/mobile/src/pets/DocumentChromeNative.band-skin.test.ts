@@ -13,15 +13,18 @@
 // this package, because no test named the exact colour either case resolves
 // to. This file is that fence.
 //
-// THE VALUES ARE PINNED AGAINST THE WEB'S OWN CSS, not re-derived from the
-// token file that also feeds this function — `app/globals.css`'s
-// `.ln-face[data-situation="prenada"] .ln-band` and `[...="fallecida"] .ln-band`
-// rules are the source of truth this native chrome mirrors, and the literals
-// below are transcribed from them.
+// THE VALUES ARE THE CHIP'S INK, transcribed from the old band tints. The
+// painted band is navy for every key (`credentialBandSkin`). A render below
+// fails if prenada's rosa moves back onto the stripe, and fails if the chip
+// on the libreta face loses that rosa.
 
 import { describe, expect, it } from "@jest/globals";
+import { render, screen } from "@testing-library/react-native";
+import { createElement } from "react";
 
-import { bandSkin } from "./DocumentChromeNative";
+import { DocumentChromeNative, bandSkin, credentialBandSkin } from "./DocumentChromeNative";
+
+const prenada = { key: "prenada", tone: "info", icon: "perdida", label: "Preñada" };
 
 describe("bandSkin — prenada (T4-M6)", () => {
   it("is a FLAT rosa tint, not the shared default navy band", () => {
@@ -78,5 +81,70 @@ describe("bandSkin — the fallback is still honest", () => {
 
   it("resolves the same default for `undefined` (no active situation)", () => {
     expect(bandSkin(undefined)).toEqual(bandSkin("something-unrecognised"));
+  });
+});
+
+describe("the painted band stays navy", () => {
+  it("does not borrow prenada's rosa for the stripe", () => {
+    expect(credentialBandSkin().stops[0]?.color).toBe("#0a3556");
+    expect(bandSkin("prenada").stops[0]?.color).not.toBe(credentialBandSkin().stops[0]?.color);
+  });
+
+  it("paints navy on the credencial face even when the situation is prenada", () => {
+    render(
+      createElement(DocumentChromeNative, {
+        face: "credencial",
+        isLibretaActive: false,
+        onTurn: () => {},
+        situation: prenada,
+      }),
+    );
+    const dumped = JSON.stringify(screen.toJSON());
+    // react-native-svg stores a stop as a signed int. -16108202 is #0a3556
+    // (navy); -4896386 is #b5497e (prenada). The chip is not on this face.
+    expect(dumped).toContain("-16108202");
+    expect(dumped).not.toContain("-4896386");
+    expect(dumped).not.toContain("#b5497e");
+  });
+
+  it("keeps prenada's rosa border on the libreta-face pill, and the band navy", () => {
+    render(
+      createElement(DocumentChromeNative, {
+        face: "libreta",
+        isLibretaActive: true,
+        onTurn: () => {},
+        situation: prenada,
+      }),
+    );
+    const dumped = JSON.stringify(screen.toJSON());
+    expect(dumped).toContain("-16108202");
+    // Pill uses stripe fill + rosa border + ink (web `.pc-sit-chip` prenada) —
+    // not rosa as the chip fill (that was the old bare-text ink).
+    expect(dumped).toContain("#f1c8dd");
+    expect(dumped).not.toContain("#b5497e");
+    expect(screen.getByText("Preñada")).toBeOnTheScreen();
+  });
+
+  it("matches the web band: no pinstripes, latent miMAR, dual Girar hits", () => {
+    render(
+      createElement(DocumentChromeNative, {
+        face: "credencial",
+        isLibretaActive: false,
+        onTurn: () => {},
+        situation: null,
+      }),
+    );
+    const dumped = JSON.stringify(screen.toJSON());
+    // Pinstripe era drew SVG <Line> hairlines; landing recipe is gradient only.
+    expect(dumped).not.toContain('"type":"Line"');
+    // Unicode ↻ paints as emoji-refresh on Android — flip is an SVG Path now.
+    expect(dumped).not.toContain("↻");
+    expect(dumped).not.toContain("↺");
+    // Dual-layer engraved latent (hi + ink) — both say miMAR.
+    expect(
+      screen.getAllByText("miMAR", { includeHiddenElements: true }).length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Credencial · frente")).toBeOnTheScreen();
+    expect(screen.getAllByLabelText("Girar a Libreta")).toHaveLength(2);
   });
 });

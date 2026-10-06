@@ -7,7 +7,8 @@
 // while the server said "we could not read them" — the exact dishonesty this
 // screen's own header is written against, and invisible to a pure test.
 //
-// The other thing only a render test sees is the WRITE this face now offers.
+// The other thing only a render test sees is how the face fails — a section
+// drawn as empty vs a refusal — which the view-model alone cannot prove.
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
@@ -39,32 +40,6 @@ import { LibretaScreen } from "./LibretaScreen";
 
 const TOKEN = "DIM-PAMP-0001";
 const EVENT_ID = "33333333-3333-4333-8333-333333333333";
-
-/**
- * Every rendered string, in the order the tree draws them.
- *
- * `getByText` answers "is it there", which is the wrong question for a control
- * whose defect was WHERE it was. The rendered JSON is the only thing that
- * carries document order, so the walk is over that rather than over queries.
- */
-function renderedTextsInOrder(): string[] {
-  const found: string[] = [];
-  const walk = (node: unknown): void => {
-    if (typeof node === "string") {
-      found.push(node);
-      return;
-    }
-    if (Array.isArray(node)) {
-      for (const child of node) walk(child);
-      return;
-    }
-    if (node !== null && typeof node === "object" && "children" in node) {
-      walk((node as { children: unknown }).children);
-    }
-  };
-  walk(screen.toJSON());
-  return found;
-}
 
 function entry(overrides: Record<string, unknown> = {}) {
   return {
@@ -124,8 +99,8 @@ describe("LibretaScreen — what a read that worked shows", () => {
   it("renders the animal, its vaccination verdict and its asientos", async () => {
     render(<LibretaScreen publicToken={TOKEN} />);
     expect(await screen.findByText("Pampa")).toBeOnTheScreen();
-    expect(screen.getByText(TOKEN)).toBeOnTheScreen();
-    expect(screen.getByText("AL DÍA")).toBeOnTheScreen();
+    expect(screen.queryByText(TOKEN)).toBeNull();
+    expect(screen.getAllByText("Vigente").length).toBeGreaterThan(0);
     expect(screen.getByText("Séxtuple")).toBeOnTheScreen();
     expect(screen.getByText("Antirrábica")).toBeOnTheScreen();
   });
@@ -145,29 +120,56 @@ describe("LibretaScreen — what a read that worked shows", () => {
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/eventos/${EVENT_ID}`);
   });
 
-  it("offers ANOTAR, and sends the person to the writer with no kind pre-picked", async () => {
-    render(<LibretaScreen publicToken={TOKEN} />);
-    fireEvent.press(await screen.findByText("Anotar"));
-    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/asentar`);
-  });
-
-  it("draws ANOTAR BEFORE the ledger, so a long history cannot bury it", async () => {
-    // D2 (native QA batch 1). The button used to be this face's last child, and
-    // this face renders inside `PetDocumentScreen`'s single scroll view — so on
-    // a pet with 26 asientos the only act the libreta offers sat under the whole
-    // history, with no per-face scroll to pin it to.
-    //
-    // ORDER, not presence: every case around this one already proves the button
-    // renders. Asserted against the masthead ("Pampa", the first thing the body
-    // draws) AND against a timeline entry, because passing only the second would
-    // still allow it to sit between the vaccination card and the ledger.
+  it("does not offer Anotar on the dorso — that door lives on the credential face", async () => {
+    // PO annotate 2026-10-05: one Anotar, below the front card. The ledger
+    // face used to carry a second PrimaryButton that opened the same picker.
     render(<LibretaScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
+    expect(screen.queryByText("Anotar")).toBeNull();
+  });
 
-    const order = renderedTextsInOrder();
-    expect(order).toContain("Anotar");
-    expect(order.indexOf("Anotar")).toBeLessThan(order.indexOf("Pampa"));
-    expect(order.indexOf("Anotar")).toBeLessThan(order.indexOf("Antirrábica"));
+  it("does not repeat Libreta sanitaria or the DIM token in the masthead", async () => {
+    render(<LibretaScreen publicToken={TOKEN} />);
+    await screen.findByText("Pampa");
+    expect(screen.queryByText("Libreta sanitaria")).toBeNull();
+    expect(screen.queryByText(TOKEN)).toBeNull();
+  });
+
+  it("hides Próximo when nothing is due — no 'nada programado' empty box", async () => {
+    render(<LibretaScreen publicToken={TOKEN} />);
+    await screen.findByText("Pampa");
+    expect(screen.queryByText("Próximo")).toBeNull();
+    expect(screen.queryByText("No hay nada programado.")).toBeNull();
+  });
+
+  it("does not repeat the title as the kind, or the head date as a fact", async () => {
+    mockFetchPetLibreta.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        timeline: {
+          status: "ok",
+          data: {
+            entries: [
+              entry({
+                kind: "Antirrábica",
+                title: "Antirrábica",
+                facts: [
+                  { key: "Fecha", value: "20 de agosto de 2026", missing: false, mono: false },
+                  { key: "Lote", value: "AB-1", missing: false, mono: true },
+                ],
+              }),
+            ],
+            total: 1,
+            truncated: false,
+          },
+        },
+      }),
+    });
+    render(<LibretaScreen publicToken={TOKEN} />);
+    expect(await screen.findByText("Lote")).toBeOnTheScreen();
+    expect(screen.getByText("AB-1")).toBeOnTheScreen();
+    expect(screen.queryByText("Fecha")).toBeNull();
+    expect(screen.getAllByText("Antirrábica")).toHaveLength(1);
   });
 });
 
@@ -196,22 +198,18 @@ describe("LibretaScreen — a failure is never drawn as an absence", () => {
     expect(await screen.findByText(/El servidor no pudo responder/)).toBeOnTheScreen();
   });
 
-  it("still offers ANOTAR after a failed read", async () => {
-    // A section this app could not load says nothing about whether the animal
-    // was vaccinated this morning, and the server is the one that decides
-    // whether the write is allowed. Hiding the affordance would be the client
-    // guessing on the server's behalf.
+  it("does not invent an Anotar door after a failed read either", async () => {
     mockFetchPetLibreta.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
     render(<LibretaScreen publicToken={TOKEN} />);
     await screen.findByText(/Revisá tu conexión/);
-    fireEvent.press(screen.getByText("Anotar"));
-    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/asentar`);
+    expect(screen.queryByText("Anotar")).toBeNull();
   });
 
   it("re-reads when the screen is entered, not only when it is first built", async () => {
-    // Since "Anotar" pushes a route on top of this one, coming back must show
-    // what was just written. A mount-only effect would leave the owner staring
-    // at the libreta they just added to, unchanged.
+    // Writing an asiento (from the credential's Anotar) pushes a route on top
+    // of this face; coming back must show what was just written. A mount-only
+    // effect would leave the owner staring at the libreta they just added to,
+    // unchanged.
     render(<LibretaScreen publicToken={TOKEN} />);
     await waitFor(() => expect(mockFetchPetLibreta).toHaveBeenCalledTimes(1));
     expect(mockFetchPetLibreta).toHaveBeenCalledWith({}, TOKEN);
@@ -248,7 +246,7 @@ describe("a deceased animal's ledger", () => {
 
     render(<LibretaScreen publicToken={TOKEN} deceased />);
 
-    await waitFor(() => expect(screen.getByText("Libreta sanitaria")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Pampa")).toBeTruthy());
     expect(screen.queryByText("Próximo")).toBeNull();
     expect(screen.queryByText(/Recordatorio · Antirrábica/)).toBeNull();
   });

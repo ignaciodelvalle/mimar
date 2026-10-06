@@ -37,17 +37,34 @@ describe("PetRow", () => {
     resetPetRowRenderCountForTests();
   });
 
-  it("renders the name, species and status, and calls onPress with the public token", () => {
+  it("renders the name, species · token, and calls onPress with the public token", () => {
     const onPress = jest.fn<(token: string) => void>();
     render(<PetRow pet={pet()} onPress={onPress} />);
 
     expect(screen.getByText("Firulais")).toBeTruthy();
-    expect(screen.getByText("Perro")).toBeTruthy();
+    expect(screen.getByText("Perro · DIM-TEST-0001")).toBeTruthy();
     expect(screen.getByText("Sin foto")).toBeTruthy();
+    // Al día: no status chip — the › is the affordance (lean list, 2026-10-05).
+    expect(screen.queryByText("Activa")).toBeNull();
+    // Decorative › is a11y-hidden (web's aria-hidden); still painted.
+    expect(screen.getByText("›", { includeHiddenElements: true })).toBeTruthy();
 
     fireEvent.press(screen.getByRole("button"));
     expect(onPress).toHaveBeenCalledTimes(1);
     expect(onPress).toHaveBeenCalledWith("DIM-TEST-0001");
+  });
+
+  it("chips only lost and deceased — not the quiet active default", () => {
+    const onPress = jest.fn<(token: string) => void>();
+    const { rerender } = render(<PetRow pet={pet({ status: "active" })} onPress={onPress} />);
+    expect(screen.queryByText("Activa")).toBeNull();
+
+    rerender(<PetRow pet={pet({ status: "lost" })} onPress={onPress} />);
+    expect(screen.getByText("Perdida")).toBeTruthy();
+
+    rerender(<PetRow pet={pet({ status: "deceased" })} onPress={onPress} />);
+    expect(screen.queryByText("Perdida")).toBeNull();
+    expect(screen.getByText("Fallecida")).toBeTruthy();
   });
 
   it("does NOT re-render when an unrelated parent state changes (same pet, same onPress)", () => {

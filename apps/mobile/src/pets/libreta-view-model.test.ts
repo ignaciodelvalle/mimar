@@ -73,7 +73,7 @@ describe("otherVaccinesNote — a dose the catalog could not name must not vanis
 
 describe("vaccineStatusLabel — every state has a word", () => {
   it("words each of the five", () => {
-    expect(vaccineStatusLabel("active")).toBe("Al día");
+    expect(vaccineStatusLabel("active")).toBe("Vigente");
     expect(vaccineStatusLabel("due_soon")).toBe("Por vencer");
     expect(vaccineStatusLabel("expired")).toBe("Vencida");
     expect(vaccineStatusLabel("missing")).toBe("Nunca aplicada");

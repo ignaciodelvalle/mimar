@@ -131,7 +131,10 @@ export function vaccineStatusLabel(
 ): string {
   switch (status) {
     case "active":
-      return "Al día";
+      // "Vigente", not "Al día". This row classifies dose recency. "Al día"
+      // is the compliance stamp's claim, and using it here contradicted that
+      // stamp for an owner-declared dose.
+      return "Vigente";
     case "due_soon":
       return "Por vencer";
     case "expired":

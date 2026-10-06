@@ -1,21 +1,22 @@
 // The FRONT face of the pet document — what the person responsible for the
-// animal sees, composed the way the web's `CredentialFace` composes it:
-// identity row (photo · name · breedLine · tags · QR) → Cumplimiento → Avisos
-// → issuing foot, bound by labeled hairline dividers inside the chrome's
-// framed sheet. (Two-face rewrite, PO decision 2026-08-28 — this file was
-// `OwnerFaceScreen`, a standalone screen; the honesty rules below survived the
-// recomposition unchanged.)
+// animal sees. Composition (PO 2026-10-05, native):
+//   centred photo (pokes into the band) → name / situation / facts →
+//   Cumplimiento → Avisos.
+//
+// THE QR LEFT THIS FACE. The bright public credential lives on
+// `CredentialScreen` (Compartir / the public route), with keep-awake + max
+// brightness. Putting a second QR on the document duplicated that door and
+// stole the centre column on a phone-width card.
 //
 // THE CARD CARRIES NO ACTIONS since owner-pet-actions (PO, 2026-10-01). The
-// pill row and the ⋯ Más list that ended this face moved BELOW the card, into
-// `OwnerActionPanel`. Two doors stay on the document because they are parts of
-// it: the QR (the public credential) and the photo frame (the photo screen).
+// pill row moved BELOW the card into `OwnerActionPanel`. The photo frame stays
+// on the document as the door to the photo screen.
+//
+// THE ISSUING FOOT LEFT TOO (PO annotate 2026-10-05): "Libreta Sanitaria ·
+// place" and "Consultada el …" repeated the band, the locality chip and
+// Cumplimiento.
 //
 // THIS IS NOT THE PUBLIC CREDENTIAL, AND IT DOES NOT REPLACE IT.
-// `CredentialScreen` renders the anonymous public document — identical for the
-// owner and for a stranger who scanned the QR. That document is now a ROUTE
-// (`publicCredentialRoute`), one tap from this face's QR block, exactly where
-// the web puts it (`/p/{token}` behind the owner card's QR).
 //
 // EVERY SECTION FAILS ON ITS OWN. The payload wraps each one, and
 // `unavailable` means the server could not read it — NOT that it is empty.
@@ -25,20 +26,26 @@
 
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { OwnerPetIdentitySection, OwnerPetObligationCardV1 } from "@dim/contract/api";
 import { PET_ACTION_COPY } from "@dim/contract/reference";
 
-import { publicCredentialPageUrl } from "../config/api";
-import { CredentialQr } from "../credential/CredentialQr";
 import { Icon } from "../ui/Icon";
 import { Body, Card, Row, Unavailable } from "../ui/components";
 import { FONTS } from "../ui/fonts";
 import { Callout, LinkText, SecondaryButton, pressedOpacity } from "../ui/kit";
-import { caseRoute, publicCredentialRoute, recordEventRoute } from "../ui/routes";
+import { caseRoute, recordEventRoute } from "../ui/routes";
 import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "../ui/theme";
-import { FaceDivider, FaceSection, IDENTITY_POKE_OUT } from "./DocumentChromeNative";
+import {
+  BAND_MAX_FONT_SCALE,
+  FaceDivider,
+  FaceSection,
+  IDENTITY_POKE_OUT,
+  situationChipSkin,
+  situationPillStyles,
+} from "./DocumentChromeNative";
+import { PHOTO_MOUNT } from "./chrome-visual";
 import {
   type OwnerFaceView,
   type OwnerPanelView,
@@ -52,27 +59,14 @@ import {
   complianceStampLabel,
   complianceSummaryLabel,
   isAttestationDoorCard,
-  registeredBadgeWord,
   rehomeBannerLine,
   reminderDueLabel,
   transitBannerLine,
   truncationNote,
 } from "./owner-face-view-model";
 
-/**
- * The QR code's own size, inside the frame.
- *
- * The frame is 84 and React Native is border-box, so the 4-point surface ring
- * leaves 84 − 2×4 = 76 — the same 76 the photo's image fills, and the web's own
- * `.ln-qr-frame svg { width: 76px }`. The quiet zone is already inside the SVG
- * (`CredentialQr`'s QUIET_ZONE), so no padding is owed here.
- *
- * It was 64 between 61c4978f3 and 2026-09-03, under a docblock claiming the
- * smaller code was what landed the outer box on the photo's 84. That sentence
- * was false — `width: 84` is what sets the box — and the code has been restored
- * to the web's value. `PetDocumentScreen.test.tsx` pins the arithmetic.
- */
-export const QR_SIZE = 76;
+/** Photo mount size — web phone `.pc-photo-mount` (116). Tunable in chrome-visual. */
+export const PHOTO_SIZE = PHOTO_MOUNT.size;
 
 // ---------------------------------------------------------------------------
 // The face
@@ -157,13 +151,6 @@ export function OwnerCredentialFace({
           </FaceSection>
         </>
       ) : null}
-
-      {/* NO ACTION FOOTER since owner-pet-actions: the actions are the panel
-          BELOW the card (`OwnerActionPanel`), and the document ends where a
-          certificate does — with its issuer. */}
-
-      {/* ISSUING FOOT ---------------------------------------------------- */}
-      <IssuingFoot view={view} />
     </>
   );
 }
@@ -235,101 +222,21 @@ function ComplianceCardRow({
 }
 
 /**
- * The line that makes this a document issued BY somebody rather than a screen
- * about an animal.
- *
- * Four things separate a credential from a card, and until 2026-09-03 this face
- * carried none of them: the issuing authority, the jurisdiction, the date of
- * issue, and a seal. This is the first three. A funcionario asked to accept an
- * identification looks for exactly these, and their absence is why the
- * 2026-09-03 review answered "no" to whether this reads as a national document.
- *
- * THE AUTHORITY IS A CONSTANT, NOT A FIELD, and saying so matters. The payload
- * has no `authority`; it is the same for every credential this system issues,
- * so a constant is the honest home for it. The other two ARE data:
- * `jurisdictionProvince`/`jurisdictionLocality` ride the identity section, and
- * `issuedAt` is a payload-envelope field — which is why it survives an identity
- * read that failed, and why the foot still names the issuer on a broken card.
+ * The issuing foot used to close the front face ("Libreta Sanitaria · place"
+ * + "Consultada el …"). Removed 2026-10-05 (PO annotate): both lines repeated
+ * what the band, the Belgrano chip and Cumplimiento already say, and the
+ * consult date is envelope freshness, not a document fact the owner needs.
  */
-function IssuingFoot({ view }: { view: OwnerFaceView }) {
-  const identity = view.identity.state === "ok" ? view.identity.data : null;
-  const place = [identity?.jurisdictionLocality, identity?.jurisdictionProvince]
-    .filter((part): part is string => typeof part === "string" && part.length > 0)
-    .join(", ");
-
-  // "CONSULTADA", NOT "EMITIDA" (A3-documento-credencial-06). `issuedAt` is the
-  // envelope's freshness stamp — the moment the SERVER COMPOSED THIS READ
-  // (`app/api/v1/pets/[publicToken]/payload.ts`, `issuedAt: now`) — and printing
-  // it under "date of issue" told a funcionario that a pet registered in 2024
-  // had its libreta issued today, and something different again tomorrow. The
-  // contract carries no real issuance date (the identity section has no
-  // registration date), so the honest move is to name the date for what it is:
-  // this is when the copy in your hand was read.
-  //
-  // An unreadable date does not become "Consultada el —". A document either
-  // states the date or does not raise the subject; a dash where a date belongs
-  // is the empty-state-as-fact this file's header argues against.
-  const readOn = formatIsoDate(view.issuedAt);
-
-  return (
-    // The foot used to open with "REPÚBLICA ARGENTINA" in the slot a real
-    // credential reserves for its ISSUING AUTHORITY — the style was even named
-    // `footAuthority`. On the screen this file's own header calls "the thing a
-    // funcionario is asked to accept as identification", that line stated the
-    // State had issued this document. No convenio exists with any state body,
-    // so the line was not a design flourish, it was a false attribution — and
-    // the one Play reads as government impersonation. It is gone; the document
-    // names only itself.
-    //
-    // "NACIONAL" DROPPED FROM THE NAME ITSELF (PO, 2026-09-24) for the same
-    // reason: "Libreta Sanitaria Nacional" reads as a State-issued document —
-    // Play checks for exactly that pattern — and the same false attribution
-    // the line above already removed once. "Libreta Sanitaria" names what the
-    // document is without claiming who issued it.
-    <View style={styles.foot}>
-      <Text style={styles.footLine}>Libreta Sanitaria{place ? ` · ${place}` : ""}</Text>
-      {readOn === "—" ? null : <Text style={styles.footLine}>Consultada el {readOn}</Text>}
-    </View>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Identity row
 // ---------------------------------------------------------------------------
 
 /**
- * The identity row: photo · name · QR, both frames rising into the band by the
- * same amount, with everything else full width underneath. It is the
- * composition of an identity document, and that is the point — this screen is
- * the thing a funcionario is asked to accept as identification.
- *
- * WHAT IT REPLACED, AND WHY THE OLD DOCBLOCK WAS WRONG. This file used to say,
- * as fact, that the web's phone layout put "the QR on its OWN full-width
- * centered row below". That was true of a flex layout the web no longer has.
- * `app/globals.css:1358` is now `display: grid` with
- * `grid-template-columns: auto minmax(0,1fr) auto` — a symmetric three-column
- * row — and the phone override that used to force the wrap
- * (`.ln-idrow { flex-wrap }`, `.ln-qr { flex-basis: 100% }`) applies FLEX
- * properties to a GRID and is inert. Mobile faithfully transcribed a rule that
- * had stopped firing, which is the cost of transcribing CSS by hand with
- * nothing fencing the result: token parity is fenced, layout parity is not.
- *
- * The visible symptom was a wasted column. The photo is 84 wide but only
- * contributes 28 points of layout height (the rest is pulled up into the
- * band), so the tall meta column beside it left an empty 84-wide rectangle
- * underneath — the "se pierde mucho espacio" in the 2026-09-03 review.
- *
- * WHY THE CENTRE COLUMN CARRIES ONLY THE NAME. A 360dp card is ~312 wide;
- * photo (84) + QR (84) + two 12 gaps leaves ~120 for the middle. The breed
- * line and the tag chips do not fit in 120 and would wrap into a ragged
- * stack, so they move BELOW the row where the full width is. The name and its
- * registration marker stay, centred, which is where a document puts them.
- *
- * THE QR IS UNCONDITIONAL AND TAPPABLE. It renders from the token alone, so a
- * degraded identity read must not take down the one block that links to the
- * public document a stranger can already see — hence the standalone arm below.
- * Tapping it opens the public credential route: an inert QR on a screen is a
- * control-shaped decoration.
+ * Identity block: centred photo poking into the band, then name + facts full
+ * width underneath (PO 2026-10-05). No QR on this face — Compartir opens the
+ * bright public credential. When `rightCell === "ping"`, a compact last-seen
+ * mark sits with the facts (not a second mount).
  */
 function IdentityRow({
   view,
@@ -339,112 +246,88 @@ function IdentityRow({
   /** The photo frame's door, from the panel; `null` = the frame is a picture only. */
   photoTarget: PanelTarget | null;
 }) {
-  const router = useRouter();
-
   const status = view.status.state === "ok" ? view.status.data : null;
-  const situationActive = status?.situation != null;
-  const showBadge = status?.petStatus === "active";
-  const badgeWord = registeredBadgeWord(
-    view.identity.state === "ok" ? view.identity.data.sex : null,
-  );
+  const showPing = status?.rightCell === "ping";
+  const memorial =
+    status?.memorial?.birthYear && status.memorial.deathYear
+      ? `En memoria · ${status.memorial.birthYear}–${status.memorial.deathYear}`
+      : status?.memorial
+        ? "En memoria"
+        : null;
+  const situationSkin = status?.situation ? situationChipSkin(status.situation.key) : null;
 
-  /**
-   * The QR block, in whichever of the two arms is drawing it.
-   *
-   * `inRow` is not a style preference: the rise into the band belongs to the
-   * flanking row, where there IS a band above the frame. In the standalone arm
-   * the thing above the QR is the identity refusal box, and a frame that rose
-   * 56 points there covered most of the sentence a reader is meant to read.
-   */
-  const renderQr = (inRow: boolean) => (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="Ver credencial pública"
-      accessibilityHint="Abre el documento público que ve cualquier persona que escanea el código."
-      onPress={() => router.push(publicCredentialRoute(view.publicToken))}
-      style={inRow ? [styles.qrFrame, styles.qrFrameInRow] : styles.qrFrame}
-    >
-      <CredentialQr
-        value={publicCredentialPageUrl(view.publicToken)}
-        size={QR_SIZE}
-        label={`Código QR de la credencial pública de ${view.publicToken}`}
-      />
-    </Pressable>
-  );
+  if (view.identity.state === "unavailable") {
+    return (
+      <View style={styles.idWrap}>
+        <Unavailable title="Identidad" message={view.identity.message} />
+      </View>
+    );
+  }
+
+  // Locality only in the hero chips. "Microchip verificado" used to sit here
+  // AND again under Cumplimiento — PO annotate 2026-10-05 keeps the obligation
+  // card as the one place that names the chip.
+  const placeTags = view.identity.data.tags.filter((tag) => tag.key === "loc");
 
   return (
     <View style={styles.idWrap}>
-      {view.identity.state === "unavailable" ? (
-        <>
-          <Unavailable title="Identidad" message={view.identity.message} />
-          {/* The row cannot be built without an identity, but the public
-              document exists regardless, so the QR keeps its old standalone
-              form here rather than disappearing with the read that failed. */}
-          <View style={styles.qrStandalone}>
-            {renderQr(false)}
-            <Text style={styles.qrCaption}>
-              <Text style={styles.qrCaptionStrong}>Credencial pública{"\n"}</Text>
-              {view.publicToken}
+      <View style={styles.photoStage}>
+        <PhotoFrame identity={view.identity.data} target={photoTarget} />
+      </View>
+
+      <View style={styles.idFacts}>
+        <Text style={styles.petName}>{view.identity.data.name}</Text>
+        {status?.situation && situationSkin ? (
+          <View
+            accessibilityRole={status.situation.key === "perdida" ? "alert" : undefined}
+            style={[
+              situationPillStyles.pill,
+              {
+                backgroundColor: situationSkin.backgroundColor,
+                borderColor: situationSkin.borderColor,
+              },
+            ]}
+          >
+            <Icon name={status.situation.icon} size="sm" color={situationSkin.color} />
+            <Text
+              maxFontSizeMultiplier={BAND_MAX_FONT_SCALE}
+              style={[situationPillStyles.text, { color: situationSkin.color }]}
+            >
+              {status.situation.label}
             </Text>
           </View>
-        </>
-      ) : (
-        <View style={styles.idRow}>
-          <PhotoFrame identity={view.identity.data} target={photoTarget} />
-          {renderQr(true)}
-        </View>
-      )}
-
-      {/* EVERYTHING ELSE IS BELOW THE FRAMES, AT FULL WIDTH, AND THE NAME
-          LEADS IT. Measured on a real 360dp device on 2026-09-03: with the
-          name in a centre column between the two frames it had ~120 points and
-          "Pampa" — FIVE characters at the 26px serif step — was already
-          truncating. The estimate in this file said ~120 would be tight; the
-          phone said it was not enough, and the phone is the instrument.
-
-          The frames still flank, which is the part that reads as a document,
-          and the name gets the whole card width instead of the gap between
-          them. Centred, because a document centres its subject. */}
-      {view.identity.state === "unavailable" ? null : (
-        <View style={styles.idFacts}>
-          <View style={styles.nameRow}>
-            <Text style={styles.petName}>{view.identity.data.name}</Text>
-            {/* Default state: the registration badge sits beside the name.
-                With an active situation it is DEMOTED to the quiet marker
-                below — the situation (in the band chip) is the headline,
-                registration the footnote. The web's exact demotion. */}
-            {showBadge && !situationActive ? (
-              <View style={styles.badgeReg}>
-                <Icon name="check" size="sm" color={COLORS.accent} />
-                <Text style={styles.badgeRegText}>{badgeWord}</Text>
+        ) : null}
+        {memorial ? <Text style={styles.memorial}>{memorial}</Text> : null}
+        {showPing ? <PingBadge /> : null}
+        {view.identity.data.breedLine ? <Body>{view.identity.data.breedLine}</Body> : null}
+        {placeTags.length > 0 ? (
+          <View style={styles.chipRow}>
+            {placeTags.map((tag) => (
+              <View key={tag.key} style={styles.chip}>
+                <Icon name="map-pin" size="sm" color={COLORS.inkSoft} />
+                <Text style={styles.chipText}>{tag.label}</Text>
               </View>
-            ) : null}
+            ))}
           </View>
-          {showBadge && situationActive ? (
-            <View style={styles.regQuiet}>
-              <Icon name="check" size="sm" color={COLORS.inkMuted} />
-              <Text style={styles.regQuietText}>{badgeWord}</Text>
-            </View>
-          ) : null}
-          {view.identity.data.breedLine ? <Body>{view.identity.data.breedLine}</Body> : null}
-          {view.identity.data.tags.length > 0 ? (
-            <View style={styles.chipRow}>
-              {view.identity.data.tags.map((tag) => (
-                <View key={tag.key} style={styles.chip}>
-                  {tag.key === "loc" ? (
-                    <Icon name="map-pin" size="sm" color={COLORS.inkSoft} />
-                  ) : null}
-                  <Text style={styles.chipText}>{tag.label}</Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-          <Text style={styles.qrCaption}>
-            <Text style={styles.qrCaptionStrong}>Credencial pública · </Text>
-            {view.publicToken}
-          </Text>
-        </View>
-      )}
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+/** Compact last-seen mark when the server resolved the right cell to a ping. */
+function PingBadge() {
+  return (
+    <View
+      accessibilityRole="image"
+      accessibilityLabel="Último lugar conocido"
+      style={styles.pingBadge}
+    >
+      <View style={styles.ping}>
+        <View style={styles.pingGrid} />
+        <View style={styles.pingRing} />
+        <View style={styles.pingDot} />
+      </View>
     </View>
   );
 }
@@ -505,7 +388,13 @@ function PhotoFrame({
       </View>
     );
 
-  if (target === null) return <View style={styles.photo}>{picture}</View>;
+  const mount = (
+    <View style={styles.photoMount}>
+      <View style={styles.photo}>{picture}</View>
+    </View>
+  );
+
+  if (target === null) return mount;
 
   return (
     <Pressable
@@ -517,14 +406,18 @@ function PhotoFrame({
       }
       accessibilityHint={PET_ACTION_COPY.photo.hint}
       onPress={() => router.push(target)}
-      style={(state) => [styles.photo, pressedOpacity(state)]}
+      style={(state) => [pressedOpacity(state)]}
     >
-      {picture}
-      {showImage ? (
-        <View style={styles.photoBadge}>
-          <Icon name="edit" size="sm" color={COLORS.accent} />
+      <View style={styles.photoMount}>
+        <View style={styles.photo}>
+          {picture}
+          {showImage ? (
+            <View style={styles.photoBadge}>
+              <Icon name="edit" size="sm" color={COLORS.accent} />
+            </View>
+          ) : null}
         </View>
-      ) : null}
+      </View>
     </Pressable>
   );
 }
@@ -784,65 +677,44 @@ function formatIsoDate(iso: string): string {
 
 const styles = StyleSheet.create({
   stack: { gap: SPACE.sm },
-  /**
-   * The issuing foot. Quiet on purpose — an authority line that shouts is a
-   * letterhead, not a seal. It sits on the document's ground with a hairline
-   * above it so it reads as part of the sheet rather than as another block,
-   * and it is the last thing on the face because that is where a certificate
-   * puts its issuer.
-   */
-  foot: {
-    gap: 2,
-    alignItems: "center",
-    paddingHorizontal: 18,
-    paddingTop: 14,
-    paddingBottom: 20,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.borderSoft,
-    marginHorizontal: 16,
-  },
-  // `footAuthority` (the uppercase issuing-authority line) was removed with the
-  // "República Argentina" text it styled — see the note at the foot's render.
-  footLine: {
-    fontFamily: FONTS.mono,
-    fontSize: TYPE.xs,
-    color: COLORS.inkFaint,
-    textAlign: "center",
-  },
 
-  // Identity row — the two frames flank the card's edges and everything else
-  // sits full width underneath; see IdentityRow's docblock for why the web's
-  // "QR on its own row" was a rule that had already stopped firing. The photo
-  // pokes up into the band (negative margin), ringed in the card's white like
-  // the web's box-shadow ring. 84 / -56 / 12 are the web's own `.ln-photo`
-  // values.
+  // Centred photo + facts below (PO 2026-10-05). Size / shadow knobs live in
+  // `chrome-visual.ts` → `PHOTO_MOUNT`. Rise matches the taller band poke.
   idWrap: { gap: SPACE.md },
+  photoStage: { alignItems: "center" },
   /**
-   * The two frames, flanking. `space-between` and nothing between them: the
-   * photo takes the left edge, the QR the right, both rising into the band by
-   * IDENTITY_POKE_OUT. Nothing lives in the gap — see the note at the facts
-   * block for why the name came out of it.
+   * Outer mount: hairline outline + soft drop. Inner `photo` clips the image
+   * and wears the white surface ring.
    */
-  idRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" },
-  /**
-   * The photo frame, which is also a door since owner-pet-actions (the
-   * Pressable in `PhotoFrame`). 84 is the web's `.ln-photo` box; the
-   * `TOUCH_TARGET` floor is what keeps the door thumb-sized (48dp, A-1) if that
-   * box is ever shrunk — Yoga lets `min*` win over a smaller `width`/`height`.
-   * The QR frame carries the same floor, because the two frames mirror.
-   */
-  photo: {
-    width: 84,
-    height: 84,
+  photoMount: {
+    width: PHOTO_MOUNT.size,
+    height: PHOTO_MOUNT.size,
     minWidth: TOUCH_TARGET,
     minHeight: TOUCH_TARGET,
     marginTop: -IDENTITY_POKE_OUT,
-    borderRadius: 12,
-    borderWidth: 4,
+    borderRadius: PHOTO_MOUNT.radius,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.borderStrong,
+    backgroundColor: COLORS.surface,
+    zIndex: 3,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOpacity: PHOTO_MOUNT.shadowOpacity,
+        shadowRadius: PHOTO_MOUNT.shadowRadius,
+        shadowOffset: { width: 0, height: PHOTO_MOUNT.shadowOffsetY },
+      },
+      android: { elevation: PHOTO_MOUNT.elevation },
+      default: {},
+    }),
+  },
+  photo: {
+    flex: 1,
+    borderRadius: PHOTO_MOUNT.radius - 1,
+    borderWidth: PHOTO_MOUNT.ring,
     borderColor: COLORS.surface,
     backgroundColor: COLORS.stripe,
     overflow: "hidden",
-    zIndex: 3,
   },
   photoImage: { width: "100%", height: "100%" },
   photoEmpty: { flex: 1, alignItems: "center", justifyContent: "center", gap: SPACE.xs },
@@ -859,11 +731,6 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     textAlign: "center",
   },
-  /**
-   * The pencil on a frame that HAS a photo, so the frame reads as changeable
-   * without a caption covering the animal. Inside the 76 the ring leaves, in the
-   * corner furthest from the band.
-   */
   photoBadge: {
     position: "absolute",
     right: 4,
@@ -875,52 +742,61 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: COLORS.surface,
   },
-  /** The name and the facts, full width under the frames, centred. */
   idFacts: { gap: SPACE.xs, alignItems: "center" },
-  nameRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-  },
   petName: {
     fontFamily: FONTS.serif,
-    // The web's phone step for the credential name — globals.css
-    // `@media (max-width: 720px) .ln-idname { font-size: 26px }`. Not a
-    // named token on either side.
     fontSize: 26,
     lineHeight: 26 * 1.06,
     letterSpacing: 26 * TRACKING.tight,
     color: COLORS.ink,
+    textAlign: "center",
   },
-  badgeReg: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: COLORS.celeste100,
-    backgroundColor: COLORS.focusRing,
-  },
-  badgeRegText: {
-    fontFamily: FONTS.monoSemibold,
-    fontSize: TYPE.xs,
-    letterSpacing: TYPE.xs * 0.12,
-    textTransform: "uppercase",
-    color: COLORS.accent,
-  },
-  regQuiet: { flexDirection: "row", alignItems: "center", gap: 6 },
-  regQuietText: {
-    fontFamily: FONTS.mono,
-    fontSize: TYPE.xs,
-    letterSpacing: TYPE.xs * 0.12,
-    textTransform: "uppercase",
+  memorial: {
+    fontFamily: FONTS.sans,
+    fontSize: TYPE.sm,
     color: COLORS.inkMuted,
   },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: SPACE.xs },
+  pingBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.border,
+  },
+  ping: {
+    flex: 1,
+    overflow: "hidden",
+    backgroundColor: COLORS.focusRing,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pingGrid: {
+    ...StyleSheet.absoluteFill,
+    opacity: 0.35,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.border,
+  },
+  pingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.danger,
+  },
+  pingRing: {
+    position: "absolute",
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.dangerBorder,
+  },
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACE.xs,
+    justifyContent: "center",
+  },
   chip: {
     flexDirection: "row",
     alignItems: "center",
@@ -933,57 +809,6 @@ const styles = StyleSheet.create({
     paddingVertical: SPACE.xs,
   },
   chipText: { fontFamily: FONTS.mono, fontSize: TYPE.sm, color: COLORS.inkSoft },
-
-  /** The degraded-identity arm, where the QR is the only thing left to draw. */
-  qrStandalone: { alignItems: "center", gap: SPACE.xs, marginTop: SPACE.sm },
-  /**
-   * The QR frame MIRRORS THE PHOTO in everything that is about the FRAME: same
-   * 84 box, same 12 radius, same 4-point surface ring. Two matched frames at
-   * the two edges of the row with the name centred between them is the
-   * composition of an identity document, and the mirroring is what makes it
-   * read as one rather than as a photo with a decoration beside it. Change one
-   * of those three numbers and change both.
-   *
-   * WHAT IS NOT HERE, AND WHY. The -56 rise is NOT part of the frame; it is
-   * part of being IN THE ROW, so it lives in `qrFrameInRow` below and only the
-   * row arm applies it. It used to sit here, shared by both arms, and the
-   * degraded-identity arm — where the QR stands alone under the identity
-   * refusal, with no band above it — pulled the frame up over that refusal's
-   * own text. A frame that rises into a band that is not there is not a
-   * mirror, it is a bug (2026-09-03 review, B1).
-   *
-   * The code inside is `QR_SIZE` (76): 84 minus the 4-point ring on each side,
-   * border-box. See that constant for the arithmetic and the web parity.
-   *
-   * The frame is a door (the public credential), so it carries the photo's
-   * `TOUCH_TARGET` floor too.
-   */
-  qrFrame: {
-    width: 84,
-    height: 84,
-    minWidth: TOUCH_TARGET,
-    minHeight: TOUCH_TARGET,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.surface,
-    borderWidth: 4,
-    borderColor: COLORS.surface,
-    borderRadius: 12,
-  },
-  /**
-   * The rise, and ONLY in the flanking row — exactly what `photo` carries, so
-   * the two frames enter the band together. Mirror any change to `photo`'s
-   * marginTop/zIndex here; that pairing is what `DocumentChromeNative`'s band
-   * budget assumes, and `DocumentChromeNative.geometry.test.ts` pins it.
-   */
-  qrFrameInRow: { marginTop: -IDENTITY_POKE_OUT, zIndex: 3 },
-  qrCaption: {
-    fontFamily: FONTS.mono,
-    fontSize: TYPE.xs,
-    color: COLORS.inkMuted,
-    textAlign: "center",
-  },
-  qrCaptionStrong: { fontFamily: FONTS.monoSemibold, color: COLORS.inkSoft },
 
   calloutBody: {
     fontFamily: FONTS.sans,

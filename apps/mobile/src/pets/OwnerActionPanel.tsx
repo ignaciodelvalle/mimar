@@ -43,7 +43,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Icon } from "../ui/Icon";
 import { FONTS } from "../ui/fonts";
 import { Eyebrow, ListRow, pressedOpacity } from "../ui/kit";
-import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TYPE } from "../ui/theme";
+import { COLORS, LEADING, SPACE, TOUCH_TARGET, TYPE } from "../ui/theme";
 import type {
   OwnerPanelGroup,
   OwnerPanelRow,
@@ -79,19 +79,21 @@ export function OwnerActionPanel({
 }
 
 /**
- * One pill of the primary row — the web's `.ln-act`, icon over label so three
- * fit a 360dp phone side by side.
+ * One act of the primary strip — web `.ln-act`: icon beside label, card fill,
+ * strong warm border, 10px radius. Full-width stack under the credential so
+ * "Modo perdida" never wraps into a cramped third on a 360dp phone.
  *
- * With no target the pill is the honest-disabled rendering: same pill, muted,
+ * With no target the act is the honest-disabled rendering: same chrome, muted,
  * announcing `disabled`. The catalogue never makes a primary action grey today
  * (each is live or absent), and the arm stays so a future rule cannot draw a
- * live-looking pill that does nothing.
+ * live-looking control that does nothing.
  */
 function PrimaryAction({ row, onGo }: { row: OwnerPanelRow; onGo: Go }) {
   const { target } = row;
   const inert = target === null;
   const danger = row.tone === "danger";
-  const ink = inert ? COLORS.inkMuted : danger ? COLORS.seal : COLORS.ink;
+  const ink = inert ? COLORS.inkMuted : danger ? COLORS.seal : COLORS.inkSoft;
+  const iconInk = inert ? COLORS.inkMuted : danger ? COLORS.seal : COLORS.inkMuted;
   return (
     <Pressable
       accessibilityRole="button"
@@ -105,11 +107,13 @@ function PrimaryAction({ row, onGo }: { row: OwnerPanelRow; onGo: Go }) {
         pressedOpacity(state),
       ]}
     >
-      {row.icon === null ? null : <Icon name={row.icon} size="sm" color={ink} />}
-      <Text numberOfLines={2} style={[styles.primaryLabel, { color: ink }]}>
-        {row.label}
-      </Text>
-      {row.caption === null ? null : <Text style={styles.primaryCaption}>{row.caption}</Text>}
+      {row.icon === null ? null : <Icon name={row.icon} size="sm" color={iconInk} />}
+      <View style={styles.primaryTextCol}>
+        <Text numberOfLines={1} style={[styles.primaryLabel, { color: ink }]}>
+          {row.label}
+        </Text>
+        {row.caption === null ? null : <Text style={styles.primaryCaption}>{row.caption}</Text>}
+      </View>
     </Pressable>
   );
 }
@@ -154,38 +158,36 @@ function ActionGroup({ group, onGo }: { group: OwnerPanelGroup; onGo: Go }) {
 
 const styles = StyleSheet.create({
   /**
-   * THREE EQUAL CELLS, NOT A WRAP. The old face grid was `flexBasis: 48%` over
-   * four pills; with the "Más" pill gone the row is three acts, and `flex: 1`
-   * gives each a third whatever its label says — a grid reads ordered because
-   * the eye can find the column. A deceased animal's or an org member's single
-   * "Compartir" takes the whole row, which reads as the one act it is.
+   * Full-width stack under the card — same grammar as web `.ln-act` on a
+   * narrow phone (icon + label, card surface, strong border). Three equal
+   * columns crushed "Modo perdida" on the J7; a stack keeps each act at the
+   * credential's own visual weight. A single "Compartir" (deceased / org) is
+   * still one full-width act.
    */
-  primaryRow: { flexDirection: "row", gap: SPACE.sm },
+  primaryRow: { gap: 10 },
   primaryAction: {
-    flex: 1,
     minHeight: TOUCH_TARGET,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: SPACE.xs,
-    paddingHorizontal: SPACE.xs,
-    paddingVertical: SPACE.sm,
+    gap: 9,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderWidth: 1,
     borderColor: COLORS.borderStrong,
-    borderRadius: RADIUS.control,
+    borderRadius: 10,
     backgroundColor: COLORS.surface,
   },
   primaryActionDanger: { borderColor: COLORS.dangerBorder },
+  primaryTextCol: { flex: 1, minWidth: 0, gap: 2 },
   primaryLabel: {
     fontFamily: FONTS.sansSemibold,
-    fontSize: TYPE.sm,
-    lineHeight: TYPE.sm * LEADING.sm,
-    textAlign: "center",
+    fontSize: 13,
+    lineHeight: 13 * LEADING.sm,
   },
   primaryCaption: {
     fontFamily: FONTS.sans,
     fontSize: TYPE.xs,
     color: COLORS.inkMuted,
-    textAlign: "center",
   },
   group: { gap: SPACE.xs },
   separator: {

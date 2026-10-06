@@ -10,6 +10,10 @@
 import { describe, expect, it } from "@jest/globals";
 
 import {
+  TURN_EDGE_ON_DEG as CONTRACT_EDGE,
+  TURN_OUT_MS as CONTRACT_OUT,
+} from "@dim/contract/credential";
+import {
   TURN_EDGE_ON_DEG,
   TURN_IN_MS,
   TURN_OUT_MS,
@@ -25,17 +29,15 @@ import {
 const animated = turnPlan(false);
 const reduced = turnPlan(true);
 
-// THE COPY IS THE POINT, SO THE COPY IS WHAT IS FENCED. There is nothing to
-// import from the web app and nothing in `@dim/contract/tokens` that carries
-// motion, so these seven values were transcribed by hand from
-// components/pet-profile/FlipCard.tsx and app/globals.css. The module's header
-// says they are "copied here on purpose, named, and fenced"; every relational
-// assertion below (`SWAP > OUT`, `IN > OUT`, `|angle| < 90`) reads the constants
-// on BOTH sides and so survives any transcription error that keeps the ordering
-// — four of the five numbers could be edited one at a time with the whole suite
-// green. These are the only assertions in this file that name a literal, and
-// they are the only ones that can catch a wrong copy.
-describe("the numbers are the web's, transcribed", () => {
+// The numbers live in `@dim/contract/credential`. This file still names the
+// literals so a re-export that pointed at the wrong binding would go red, and
+// so the native suite does not depend on the contract test having run.
+describe("the numbers are the document plan in @dim/contract", () => {
+  it("re-exports the contract's document turn, not a second copy", () => {
+    expect(TURN_OUT_MS).toBe(CONTRACT_OUT);
+    expect(TURN_EDGE_ON_DEG).toBe(CONTRACT_EDGE);
+  });
+
   it("carries FlipCard's four durations, not approximations of them", () => {
     // FlipCard.tsx:143 `transform 0.2s ease-in`, :164 `setTimeout(…, 205)`,
     // :155 `transform 0.26s ease-out`, :162 `setTimeout(…, 280)`.

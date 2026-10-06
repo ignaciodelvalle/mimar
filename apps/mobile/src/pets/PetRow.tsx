@@ -28,6 +28,13 @@
 // that path. THIS IS NOT CONFIRMED AS THE MEASURED CAUSE — it is the one
 // concrete defect the code shows; the J7 needs to re-run TN-3 (the jank
 // measurement) at N4 on the next build to say whether it moved the number.
+//
+// LEAN LIST CARD (2026-10-05). The credential document got the paper treatment;
+// this row stays a LIST row (not a mini-carnet) but borrows three cues from the
+// web's `PetCard` and the credential mounts: a slightly larger rounded photo,
+// species · token on the second line, a status chip ONLY when the animal is
+// not al día, and a quiet ›. No shadow, no elevation — J7 budget.
+
 import { memo, useMemo, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -37,6 +44,9 @@ import { petStatusLabel } from "../credential/credential-view-model";
 import { FONTS } from "../ui/fonts";
 import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "../ui/theme";
 import { speciesLabel } from "./species";
+
+/** Photo mount — a step up from the old 52, still well under the credential's 84. */
+const PHOTO = 64;
 
 // TEST-ONLY INSTRUMENTATION. `React.memo`'s whole job is to skip calling the
 // wrapped function when props are shallow-equal, and there is no public React
@@ -79,10 +89,17 @@ function PetRowImpl({
     [pet.photoUrl],
   );
 
+  const species = speciesLabel(pet.species);
+  const status = petStatusLabel(pet.status);
+  // Chip only when the row is not "al día" — same priority idea as web PetCard
+  // (lost / deceased matter; active is the default and needs no badge).
+  // Narrowed to a value, not a boolean, so StatusChip's prop type holds.
+  const chipStatus = pet.status === "lost" || pet.status === "deceased" ? pet.status : null;
+
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${pet.name}, ${speciesLabel(pet.species)}, ${petStatusLabel(pet.status)}`}
+      accessibilityLabel={`${pet.name}, ${species}, ${status}`}
       onPress={() => onPress(pet.publicToken)}
       style={styles.petRow}
     >
@@ -116,23 +133,25 @@ function PetRowImpl({
         />
       )}
 
-      {/* ONE LINE EACH (S-6). The row is a photo, a text column and a status
-          chip in a fixed-height row; `pets.name` is unbounded `text` with no cap
-          anywhere in the web's writer (see PetProfileEditScreen's header), so a
-          long name wrapped to three lines, pushed the species under the chip and
-          left the list looking broken for the one owner who has such a name. The
-          full name is still on the row's accessibilityLabel above, and one tap
+      {/* ONE LINE EACH (S-6). The row is a photo, a text column and optional
+          status; `pets.name` is unbounded `text` with no cap anywhere in the
+          web's writer (see PetProfileEditScreen's header), so a long name
+          wrapped to three lines and left the list looking broken. The full
+          name is still on the row's accessibilityLabel above, and one tap
           away on the document. */}
       <View style={styles.petText}>
         <Text numberOfLines={1} style={styles.petName}>
           {pet.name}
         </Text>
-        <Text numberOfLines={1} style={styles.petSpecies}>
-          {speciesLabel(pet.species)}
+        <Text numberOfLines={1} style={styles.petMeta}>
+          {species} · {pet.publicToken}
         </Text>
       </View>
 
-      <StatusChip status={pet.status} />
+      {chipStatus ? <StatusChip status={chipStatus} /> : null}
+      <Text style={styles.chevron} accessibilityElementsHidden importantForAccessibility="no">
+        ›
+      </Text>
     </Pressable>
   );
 }
@@ -146,13 +165,14 @@ function PetRowImpl({
 export const PetRow = memo(PetRowImpl);
 
 /**
- * The status chip.
+ * The status chip — only for states that are not the quiet default.
  *
- * "Perdida" and "Fallecida" are not decorated the same way as "Activa", and that
- * is not styling: a lost animal is the state the whole product exists for, and a
- * list where it reads like every other row buries the one row that matters.
+ * "Perdida" and "Fallecida" are not decorated the same way, and that is not
+ * styling: a lost animal is the state the whole product exists for, and a list
+ * where it reads like every other row buries the one row that matters.
+ * "Activa" is the default and carries no chip (the › is enough).
  */
-function StatusChip({ status }: { status: MyPetsV1Item["status"] }) {
+function StatusChip({ status }: { status: Exclude<MyPetsV1Item["status"], "active"> }) {
   const tone = status === "lost" ? styles.chipAlert : styles.chipQuiet;
   const label = status === "lost" ? styles.chipAlertLabel : styles.chipQuietLabel;
   return (
@@ -168,34 +188,41 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: SPACE.md,
     backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.control,
+    borderRadius: RADIUS.card,
     borderWidth: 1,
     borderColor: COLORS.border,
     padding: SPACE.md,
-    // The 44dp floor, stated (CA-3). A row with a 52pt photo clears it today by
-    // accident, and the day somebody renders a row for a pet with no photo and
-    // a one-line name it stops clearing it silently. The a11y fence now walks
-    // `app/` too, and this is the discipline it asks every pressable file for.
+    // The 44dp floor, stated (CA-3). A row with a 64pt photo clears it today by
+    // accident, and the day somebody shrinks the mount it stops clearing it
+    // silently. The a11y fence now walks `app/` too, and this is the discipline
+    // it asks every pressable file for.
     minHeight: TOUCH_TARGET,
   },
-  photo: { width: 52, height: 52, borderRadius: RADIUS.control, backgroundColor: COLORS.stripe },
+  photo: {
+    width: PHOTO,
+    height: PHOTO,
+    borderRadius: 12,
+    backgroundColor: COLORS.stripe,
+  },
   photoFallback: {
-    width: 52,
-    height: 52,
-    borderRadius: RADIUS.control,
+    width: PHOTO,
+    height: PHOTO,
+    borderRadius: 12,
     backgroundColor: COLORS.stripe,
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 4,
   },
   photoFallbackText: {
     fontFamily: FONTS.mono,
     fontSize: TYPE.xs,
     letterSpacing: TYPE.xs * TRACKING.wide,
     color: COLORS.inkFaint,
+    textAlign: "center",
   },
-  petText: { flex: 1, gap: 2 },
+  petText: { flex: 1, gap: 2, minWidth: 0 },
   // Serif, because a pet's name is the display element of this row — the same
   // role the web gives it on the credential document.
   petName: {
@@ -204,12 +231,18 @@ const styles = StyleSheet.create({
     lineHeight: TYPE.lg * LEADING.lg,
     color: COLORS.ink,
   },
-  petSpecies: { fontFamily: FONTS.sans, fontSize: TYPE.md, color: COLORS.inkMuted },
+  petMeta: {
+    fontFamily: FONTS.mono,
+    fontSize: TYPE.sm,
+    letterSpacing: TYPE.sm * TRACKING.wide,
+    color: COLORS.inkMuted,
+  },
   chip: {
     borderRadius: RADIUS.chip,
     borderWidth: 1,
     paddingHorizontal: SPACE.sm,
     paddingVertical: SPACE.xs,
+    flexShrink: 0,
   },
   chipQuiet: { backgroundColor: COLORS.stripe, borderColor: COLORS.border },
   chipAlert: { backgroundColor: COLORS.dangerSurface, borderColor: COLORS.dangerBorder },
@@ -221,4 +254,10 @@ const styles = StyleSheet.create({
   },
   chipQuietLabel: { color: COLORS.inkMuted },
   chipAlertLabel: { color: COLORS.danger },
+  chevron: {
+    fontFamily: FONTS.sans,
+    fontSize: TYPE.lg,
+    color: COLORS.inkFaint,
+    flexShrink: 0,
+  },
 });

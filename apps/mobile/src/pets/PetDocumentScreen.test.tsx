@@ -127,7 +127,7 @@ jest.mock("../auth/session-store", () => ({ sessionPort: {} }));
 
 import { BAND_MAX_FONT_SCALE, IDENTITY_POKE_OUT } from "./DocumentChromeNative";
 import { ownerActionPanelStyles } from "./OwnerActionPanel";
-import { QR_SIZE, ownerFaceStyles } from "./OwnerFace";
+import { PHOTO_SIZE, ownerFaceStyles } from "./OwnerFace";
 import { PetDocumentScreen } from "./PetDocumentScreen";
 import { VacunasScreen } from "./VacunasScreen";
 import { TURN_PERSPECTIVE } from "./document-turn";
@@ -205,6 +205,18 @@ function theStage(): RenderedNode {
   return stage;
 }
 
+/**
+ * The band carries two turn controls with the same label (the mark and the
+ * arrow both turn the sheet), so the query is getAll. This returns the first
+ * and fails with a readable message when there is none, instead of a
+ * `[0]` that is `undefined` to the type checker and a TypeError at runtime.
+ */
+function firstTurnControl(label: "Girar a Libreta" | "Girar a Credencial") {
+  const [first] = screen.getAllByLabelText(label);
+  if (!first) throw new Error(`no "${label}" control on screen`);
+  return first;
+}
+
 const OK = <T,>(data: T) => ({ status: "ok", data }) as const;
 const UNAVAILABLE = { status: "unavailable" } as const;
 
@@ -236,6 +248,7 @@ function payload(overrides: Partial<Record<string, unknown>> = {}): OwnerPetDeta
       situation: null,
       memorial: null,
       pregnancyStatus: null,
+      rightCell: "qr",
     }),
     alerts: OK({ items: [] }),
     compliance: OK({
@@ -308,8 +321,8 @@ describe("PetDocumentScreen — two faces of one document", () => {
     ).toBeOnTheScreen();
     expect(screen.getByText("Cumplimiento")).toBeOnTheScreen();
     expect(screen.getByText("AL DÍA")).toBeOnTheScreen();
-    // The registration badge, beside the name, gender-agreed.
-    expect(screen.getByText("Registrada")).toBeOnTheScreen();
+    expect(screen.queryByText("Registrada")).toBeNull();
+    expect(screen.queryByText("Registrado/a")).toBeNull();
   });
 
   it("opens on Libreta · dorso when the caller asked for that face", async () => {
@@ -326,14 +339,14 @@ describe("PetDocumentScreen — two faces of one document", () => {
     ).toBeOnTheScreen();
     // And the turn button offers the OTHER face, so the reader is really there
     // rather than looking at a mislabelled front.
-    expect(screen.getByLabelText("Girar a Credencial")).toBeOnTheScreen();
+    expect(firstTurnControl("Girar a Credencial")).toBeOnTheScreen();
   });
 
   it("turns to Libreta · dorso and back, and the button carries the toggle state", async () => {
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
 
-    const turn = screen.getByLabelText("Girar a Libreta");
+    const turn = firstTurnControl("Girar a Libreta");
     expect(turn.props.accessibilityState.selected).toBe(false);
 
     fireEvent.press(turn);
@@ -341,13 +354,13 @@ describe("PetDocumentScreen — two faces of one document", () => {
     // band, which names the face actually painted, is still on the front for
     // the ~205ms the sheet spends turning. The two disagreeing here is the
     // design (see DocumentChromeNative's header), not a lag.
-    expect(screen.getByLabelText("Girar a Libreta").props.accessibilityState.selected).toBe(true);
+    expect(firstTurnControl("Girar a Libreta").props.accessibilityState.selected).toBe(true);
 
     // Same 5s room as every other post-turn wait in this file: the turn is
     // ~485ms of real timers, and the default 1000ms is only ~2× that on a box
     // shared with every other agent's suite.
     await screen.findByText("Libreta · dorso", { includeHiddenElements: true }, { timeout: 5000 });
-    const turnBack = screen.getByLabelText("Girar a Credencial");
+    const turnBack = firstTurnControl("Girar a Credencial");
     expect(turnBack.props.accessibilityState.selected).toBe(true);
 
     fireEvent.press(turnBack);
@@ -362,49 +375,45 @@ describe("PetDocumentScreen — two faces of one document", () => {
     ).toBeOnTheScreen();
   });
 
-  it("draws the flip control as a centred square touch target", async () => {
-    // It was a PILL built around a label until 2026-09-03. The label went that
-    // day and what survived it did not: a `gap` separating one child from
-    // nothing, and 13/16 horizontal padding balancing text that is no longer
-    // there — a 47-wide box, off centre by 3 points, around a 16-point glyph.
-    // Asserted on the RENDERED control rather than on the StyleSheet, so it
-    // also proves the style reaches it.
+  it("draws mark and flip as dual 22px turn controls (web band parity)", async () => {
+    // Web: `.pc-band-mark-hit` + `.pc-band-flip` — both 22×22 sunk hits, both
+    // named "Girar a …", hitSlop expands the thumb target. Asserted on the
+    // RENDERED controls so the style reaches them.
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
-    const style = StyleSheet.flatten(screen.getByLabelText("Girar a Libreta").props.style);
-    expect(style.width).toBe(TOUCH_TARGET);
-    expect(style.height).toBe(TOUCH_TARGET);
-    expect(style.gap).toBeUndefined();
-    expect(style.paddingLeft ?? 0).toBe(style.paddingRight ?? 0);
+    const turns = screen.getAllByLabelText("Girar a Libreta");
+    expect(turns).toHaveLength(2);
+    for (const turn of turns) {
+      const style = StyleSheet.flatten(turn.props.style);
+      expect(style.width).toBe(22);
+      expect(style.height).toBe(22);
+    }
   });
 
-  it("navigates to the public credential route from the QR block", async () => {
-    // The QR was INERT before the two-face rewrite — a control-shaped
-    // decoration. Now it is the tap the web's QR block is.
+  it("centres the photo into the band — the QR left this face (PO 2026-10-05)", async () => {
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
-    // THE POSITIVE HALF OF THE PAIR the standalone-QR test below completes.
-    // In the identity ROW the QR mirrors the photo and rises into the band; a
-    // fix that removed the rise from both arms would still pass that test and
-    // would take the flanking composition apart, so the rise is pinned here.
-    expect(screen.getByLabelText("Ver credencial pública")).toHaveStyle({
+    // No QR mount on the credential face — Compartir owns the bright public
+    // credential. The photo is the only identity frame, and it rises into the band.
+    expect(screen.queryByLabelText("Ver credencial pública")).toBeNull();
+    expect(StyleSheet.flatten(ownerFaceStyles.photoMount)).toMatchObject({
       marginTop: -IDENTITY_POKE_OUT,
+      width: PHOTO_SIZE,
+      height: PHOTO_SIZE,
       zIndex: 3,
     });
-    fireEvent.press(screen.getByLabelText("Ver credencial pública"));
-    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/credencial`);
+    expect(screen.getByLabelText("Agregar una foto de Pampa")).toBeOnTheScreen();
   });
 
-  it("keeps the QR as the one door to the public credential — the duplicate row is gone", async () => {
-    // owner-pet-actions (PO): the "Credencial pública" row of the old Más list
-    // opened exactly what the QR opens, one scroll further down. The caption
-    // under the name still names the document; nothing else is a second door.
+  it("opens the public credential from Compartir — not a second door on the card", async () => {
+    // PO 2026-10-05: the face no longer draws a QR. Compartir is the door to
+    // the bright public credential; the token caption under the name is not a tap.
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
-    expect(screen.queryByText("Credencial pública")).toBeNull();
+    expect(screen.queryByLabelText("Ver credencial pública")).toBeNull();
     expect(screen.queryByText("Más")).toBeNull();
-    fireEvent.press(screen.getByLabelText("Ver credencial pública"));
-    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/credencial`);
+    fireEvent.press(screen.getByText("Compartir"));
+    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/compartir`);
   });
 
   it("paints the server-decided situation on the band chip, on BOTH faces", async () => {
@@ -417,6 +426,7 @@ describe("PetDocumentScreen — two faces of one document", () => {
           situation: { key: "perdida", tone: "alerta", icon: "perdida", label: "Perdida" },
           memorial: null,
           pregnancyStatus: null,
+          rightCell: "qr",
         }),
       }),
     });
@@ -427,7 +437,7 @@ describe("PetDocumentScreen — two faces of one document", () => {
     // textual carrier of the state. It must also survive the TURN itself: the
     // chip lives in the chrome, which rotates with the sheet rather than being
     // rebuilt at the swap.
-    fireEvent.press(screen.getByLabelText("Girar a Libreta"));
+    fireEvent.press(firstTurnControl("Girar a Libreta"));
     expect(screen.getByText("Perdida")).toBeOnTheScreen();
     await screen.findByText("Libreta · dorso", { includeHiddenElements: true }, { timeout: 5000 });
     expect(screen.getByText("Perdida")).toBeOnTheScreen();
@@ -449,7 +459,7 @@ describe("PetDocumentScreen — the hardware back button turns the card back ove
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
 
-    fireEvent.press(screen.getByLabelText("Girar a Libreta"));
+    fireEvent.press(firstTurnControl("Girar a Libreta"));
     await screen.findByText("Libreta · dorso", { includeHiddenElements: true }, { timeout: 5000 });
 
     // `true`: the hardware key did the same thing the turn button does.
@@ -459,7 +469,7 @@ describe("PetDocumentScreen — the hardware back button turns the card back ove
       { includeHiddenElements: true },
       { timeout: 5000 },
     );
-    expect(screen.getByLabelText("Girar a Libreta").props.accessibilityState.selected).toBe(false);
+    expect(firstTurnControl("Girar a Libreta").props.accessibilityState.selected).toBe(false);
   });
 
   it("does nothing when the document opened on Libreta and never turned — the initial face is not 'the front'", async () => {
@@ -518,7 +528,7 @@ describe("PetDocumentScreen — the credential is mounted ON the sheet that turn
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
 
-    fireEvent.press(screen.getByLabelText("Girar a Libreta"));
+    fireEvent.press(firstTurnControl("Girar a Libreta"));
     await screen.findByText("Libreta · dorso", { includeHiddenElements: true }, { timeout: 5000 });
 
     // Still exactly one stage, now carrying the other face — the sheet is the
@@ -546,7 +556,7 @@ describe("PetDocumentScreen — the sheet and what sits under it turn together",
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
 
-    fireEvent.press(screen.getByLabelText("Girar a Libreta"));
+    fireEvent.press(firstTurnControl("Girar a Libreta"));
     expect(screen.getByText("Recordatorios")).toBeOnTheScreen();
     // The action panel is the credential's too, and turns with it.
     expect(screen.getByText("Editar datos")).toBeOnTheScreen();
@@ -590,66 +600,41 @@ describe("PetDocumentScreen — a failure is never drawn as an absence", () => {
     expect(
       screen.getByText("Credencial · frente", { includeHiddenElements: true }),
     ).toBeOnTheScreen();
-    expect(screen.getByLabelText("Girar a Libreta")).toBeOnTheScreen();
-    // And the QR block still stands — it renders from the token alone, and
-    // the public document exists whether or not this read worked.
-    expect(screen.getByLabelText("Ver credencial pública")).toBeOnTheScreen();
+    expect(firstTurnControl("Girar a Libreta")).toBeOnTheScreen();
+    // Token caption left the face (PO annotate 2026-10-05); QR mount was
+    // already gone (Compartir / the public route own that door).
+    expect(screen.queryByText(TOKEN)).toBeNull();
+    expect(screen.queryByLabelText("Ver credencial pública")).toBeNull();
   });
 
-  it("names itself, its jurisdiction and its date at the foot — and claims no state issuer", async () => {
-    // The marks that separate a credential from a card; a funcionario asked to
-    // accept an identification looks for exactly these.
-    //
-    // The foot used to lead with "República Argentina" in the issuing-authority
-    // slot, and this test asserted it. It was a false attribution — no state
-    // body issues this document — so the assertion is inverted: the line must
-    // be ABSENT, and the two lines that are true must still be present.
+  it("ends the document after Avisos — no issuing foot repeating place or consult date", async () => {
+    // PO annotate 2026-10-05: "Libreta Sanitaria · Belgrano, CABA" and
+    // "Consultada el …" repeated the band, the locality chip and Cumplimiento.
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
 
     expect(screen.queryByText("República Argentina")).toBeNull();
-    expect(screen.getByText("Libreta Sanitaria · Palermo, CABA")).toBeOnTheScreen();
-    expect(screen.getByText("Consultada el 03/09/2026")).toBeOnTheScreen();
-    // NOT "Emitida": the envelope stamp is when the server composed THIS READ,
-    // not when the libreta was issued (A3-documento-credencial-06).
+    expect(screen.queryByText(/Libreta Sanitaria/)).toBeNull();
+    expect(screen.queryByText(/Consultada el/)).toBeNull();
     expect(screen.queryByText(/Emitida el/)).toBeNull();
   });
 
-  it("keeps the foot when the identity read failed, minus the jurisdiction", async () => {
-    // `issuedAt` rides the payload ENVELOPE, so the document can still name
-    // itself and say when it was read even though it cannot say whose animal
-    // it is. The jurisdiction lives in the identity section and correctly
-    // disappears with it — the line degrades, it does not invent a place.
+  it("does not invent an issuing foot when the identity read failed", async () => {
     mockFetchOwnerPetDetail.mockResolvedValue({
       outcome: "ok",
       payload: payload({ identity: UNAVAILABLE }),
     });
     render(<PetDocumentScreen publicToken={TOKEN} />);
-    await screen.findByText("Libreta Sanitaria");
+    await screen.findByText("Identidad");
 
     expect(screen.queryByText("República Argentina")).toBeNull();
-    expect(screen.getByText("Consultada el 03/09/2026")).toBeOnTheScreen();
-    // NOT "Emitida": the envelope stamp is when the server composed THIS READ,
-    // not when the libreta was issued (A3-documento-credencial-06).
-    expect(screen.queryByText(/Emitida el/)).toBeNull();
-    expect(screen.queryByText(/Palermo/)).toBeNull();
+    expect(screen.queryByText(/Libreta Sanitaria/)).toBeNull();
+    expect(screen.queryByText(/Consultada el/)).toBeNull();
   });
 
   it("caps the band's chrome text so it cannot overrun a fixed-height band (B-06)", async () => {
-    // MEASURED on build 10 at the system font size "Máximo" (scale 1.5, shot
-    // 146 vs 142): "LIBRETA SANITARIA NACIONAL" wrapped to three lines, ran past
-    // the band's `height: BAND_H` and cut "CREDENCIAL · FRENTE" in half. Clean
-    // at 1.3.
-    //
-    // The cap goes on these three and nowhere else: they are 8-10pt uppercase
-    // mono CHROME inside a geometry whose budget `DocumentChromeNative.geometry.
-    // test.ts` fences at 8 points of clearance. Every sentence the person READS
-    // still scales without a ceiling.
-    // A SITUATION, so the THIRD capped node exists to be read. The chip is only
-    // rendered when the server decided one, and it is the node carrying the
-    // longest strings in the band ("Bajo custodia oficial", "En observación
-    // antirrábica") — so a fixture with no situation left the widest text in the
-    // fenced geometry unexercised (nit N1, review 2026-09-07).
+    // Letterhead cap (decision 17A): latent brand, doctype, and the situation
+    // chip under the name. Body copy still scales without a ceiling.
     mockFetchOwnerPetDetail.mockResolvedValue({
       outcome: "ok",
       payload: payload({
@@ -659,42 +644,39 @@ describe("PetDocumentScreen — a failure is never drawn as an absence", () => {
           situation: { key: "perdida", tone: "alerta", icon: "perdida", label: "Perdida" },
           memorial: null,
           pregnancyStatus: null,
+          rightCell: "qr",
         }),
       }),
     });
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
 
-    // THE ASSERTION WITH TEETH IS THE NUMBER, and it is the only one kept.
-    // `toBe(BAND_MAX_FONT_SCALE)` compared the constant to itself through the
-    // render: raising it to 3 would have kept that test green while re-opening
-    // the exact overrun it was written for. What the cap has to be is BOUNDED,
-    // and what the nodes have to be is CAPPED AT ALL.
     expect(BAND_MAX_FONT_SCALE).toBeLessThanOrEqual(1.3);
-    for (const text of ["Libreta Sanitaria", "Credencial · frente", "Perdida"]) {
-      const node = screen.getByText(text, { includeHiddenElements: true });
-      expect(node.props.maxFontSizeMultiplier).toBeLessThanOrEqual(1.3);
+    for (const text of ["miMAR", "Credencial · frente", "Perdida"]) {
+      const nodes = screen.getAllByText(text, { includeHiddenElements: true });
+      expect(nodes.length).toBeGreaterThanOrEqual(1);
+      for (const node of nodes) {
+        if (node.props.maxFontSizeMultiplier != null) {
+          expect(node.props.maxFontSizeMultiplier).toBeLessThanOrEqual(1.3);
+        }
+      }
     }
   });
 
-  it("keeps the standalone QR on the sheet when the identity read failed — it does not rise into the band", async () => {
+  it("shows the identity refusal without a DIM token caption when the read failed", async () => {
+    // Token + "Credencial pública" left the front (PO annotate 2026-10-05) —
+    // they duplicated Cumplimiento / Compartir. A failed identity still names
+    // the refusal; it does not invent a caption.
     mockFetchOwnerPetDetail.mockResolvedValue({
       outcome: "ok",
       payload: payload({ identity: UNAVAILABLE }),
     });
     render(<PetDocumentScreen publicToken={TOKEN} />);
-    // "Pampa" never renders in this arm; the document's foot is the marker its
-    // sibling test above already uses.
-    await screen.findByText("Libreta Sanitaria");
-    const frame = screen.getByLabelText("Ver credencial pública");
-    // The rise and the stacking belong to the flanking ROW, where the band is
-    // above the frame. Below a refusal box there is no band to rise into —
-    // only the refusal's own text to cover, which is the message the
-    // "a failure is never drawn as an absence" doctrine exists to protect.
-    expect(frame).not.toHaveStyle({ marginTop: -IDENTITY_POKE_OUT });
-    expect(frame).not.toHaveStyle({ zIndex: 3 });
-    // …and the fix may not shrink the frame to dodge the overlap.
-    expect(frame).toHaveStyle({ width: 84, height: 84 });
+    await screen.findByText("Identidad");
+    expect(screen.queryByText(TOKEN)).toBeNull();
+    expect(screen.queryByText(/Credencial pública/)).toBeNull();
+    expect(screen.queryByLabelText("Ver credencial pública")).toBeNull();
+    expect(screen.queryByLabelText("Agregar una foto de Pampa")).toBeNull();
   });
 
   it("draws nothing for a section that is ok and empty, and still draws its refusal", async () => {
@@ -784,7 +766,7 @@ describe("PetDocumentScreen — a failure is never drawn as an absence", () => {
     expect(await screen.findByText(/El servidor no pudo responder/)).toBeOnTheScreen();
     // The libreta face has its own read; a failed front face must not
     // imprison the reader on it.
-    fireEvent.press(screen.getByLabelText("Girar a Libreta"));
+    fireEvent.press(firstTurnControl("Girar a Libreta"));
     expect(
       await screen.findByText(
         "Libreta · dorso",
@@ -937,18 +919,17 @@ describe("PetDocumentScreen — the photo frame is a door (owner-pet-actions)", 
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/foto`);
   });
 
-  it("keeps both identity doors at least a thumb-sized target (48dp, A-1)", async () => {
-    // The frames are the web's 84 box; the `TOUCH_TARGET` floor is what holds
-    // each door at 48dp if that box is ever shrunk. Asserted on the RENDERED
-    // Pressables, like the flip control, so it also proves the style reaches them.
+  it("keeps the photo door at least a thumb-sized target (48dp, A-1)", async () => {
+    // The mount is the web phone's 116 box; `TOUCH_TARGET` on photoMount holds
+    // the door at 48dp if that box is ever shrunk. The QR door left this face.
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
-    for (const door of ["Agregar una foto de Pampa", "Ver credencial pública"]) {
-      const style = StyleSheet.flatten(screen.getByLabelText(door).props.style);
-      expect([door, style.minWidth, style.minHeight]).toEqual([door, TOUCH_TARGET, TOUCH_TARGET]);
-      expect(style.width).toBeGreaterThanOrEqual(TOUCH_TARGET);
-      expect(style.height).toBeGreaterThanOrEqual(TOUCH_TARGET);
-    }
+    expect(screen.queryByLabelText("Ver credencial pública")).toBeNull();
+    const mount = StyleSheet.flatten(ownerFaceStyles.photoMount);
+    expect(mount.minWidth).toBe(TOUCH_TARGET);
+    expect(mount.minHeight).toBe(TOUCH_TARGET);
+    expect(mount.width).toBeGreaterThanOrEqual(TOUCH_TARGET);
+    expect(screen.getByLabelText("Agregar una foto de Pampa")).toBeOnTheScreen();
   });
 
   it("is a door for a caretaker too — the Foto row's own gate — and for nobody on the org path", async () => {
@@ -1038,9 +1019,30 @@ describe("PetDocumentScreen — the panel reads petStatus and the role", () => {
         situation: null,
         memorial: null,
         pregnancyStatus: null,
+        rightCell: petStatus === "deceased" ? "none" : "qr",
       }),
     };
   }
+
+  it("paints the last-seen cell when the server said ping", async () => {
+    mockFetchOwnerPetDetail.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        status: OK({
+          petStatus: "lost",
+          ringStatus: "alerta",
+          situation: { key: "perdida", tone: "alerta", icon: "perdida", label: "Perdida" },
+          memorial: null,
+          pregnancyStatus: null,
+          rightCell: "ping",
+        }),
+      }),
+    });
+    render(<PetDocumentScreen publicToken={TOKEN} />);
+    await screen.findByText("Pampa");
+    expect(screen.getByLabelText("Último lugar conocido")).toBeOnTheScreen();
+    expect(screen.queryByLabelText("Ver credencial pública")).toBeNull();
+  });
 
   it("keeps only Compartir, Editar datos, Foto and Contactos for a FALLECIDA animal (PO)", async () => {
     // The titular of a deceased animal used to be offered a red "Modo perdida"
@@ -1052,6 +1054,7 @@ describe("PetDocumentScreen — the panel reads petStatus and the role", () => {
     });
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
+    expect(screen.queryByLabelText("Ver credencial pública")).toBeNull();
 
     for (const kept of ["Compartir", "Editar datos", "Foto", "Contactos de emergencia"]) {
       expect(screen.getByText(kept)).toBeOnTheScreen();
@@ -1289,7 +1292,7 @@ describe("PetDocumentScreen — a pull re-reads the document without taking it a
   it("re-reads the libreta from the back face without taking the face away", async () => {
     render(<PetDocumentScreen publicToken={TOKEN} />);
     await screen.findByText("Pampa");
-    fireEvent.press(screen.getByLabelText("Girar a Libreta"));
+    fireEvent.press(firstTurnControl("Girar a Libreta"));
     await screen.findByText("Libreta · dorso", { includeHiddenElements: true }, { timeout: 5000 });
     await waitFor(() => expect(mockFetchPetLibreta).toHaveBeenCalledTimes(1));
 
@@ -1308,11 +1311,10 @@ describe("PetDocumentScreen — a pull re-reads the document without taking it a
     // one. The placeholder is the witness that it was: it only renders while
     // the libreta's own state is `loading`.
     expect(screen.queryByText("Leyendo la libreta…")).toBeNull();
-    // "Anotar" is the reason a person opens this face, and it is disabled
-    // while the read is loading. A refresh must not take it away either.
-    expect(screen.getByRole("button", { name: "Anotar" }).props.accessibilityState.disabled).toBe(
-      false,
-    );
+    // NO WRITE BUTTON ON THIS FACE (PO annotate 2026-10-05, LibretaScreen.tsx):
+    // Anotar moved to the front face's primary row. Pinned as an absence so a
+    // second Anotar cannot creep back onto the ledger during a refresh.
+    expect(screen.queryByRole("button", { name: "Anotar" })).toBeNull();
     expect(mockFetchPetLibreta).toHaveBeenCalledTimes(2);
     expect(mockFetchOwnerPetDetail).toHaveBeenCalledTimes(2);
 
@@ -1338,21 +1340,19 @@ describe("PetDocumentScreen — a pull re-reads the document without taking it a
     // a nonce that arrives already set is a fact about an EARLIER pull, not a
     // new one to honour, and mounting must not fire the focus read AND a
     // spurious "refresh" on top of it.
-    fireEvent.press(screen.getByLabelText("Girar a Libreta"));
+    fireEvent.press(firstTurnControl("Girar a Libreta"));
     await screen.findByText("Libreta · dorso", { includeHiddenElements: true }, { timeout: 5000 });
     expect(mockFetchPetLibreta).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("OwnerFace — the QR frame's ring arithmetic", () => {
-  it("leaves the code enough room inside the ring", () => {
-    // The frame is 84 and React Native is border-box, so the 4-point surface
-    // ring leaves 76 — which is `QR_SIZE`, and the web's own
-    // `.ln-qr-frame svg { width: 76px }`. jest has no Yoga, so this is
-    // arithmetic over the real style object rather than a measurement; what it
-    // pins is that the box, the ring and the code cannot drift apart silently.
-    const frame = ownerFaceStyles.qrFrame;
-    expect(frame.width - 2 * frame.borderWidth).toBeGreaterThanOrEqual(QR_SIZE);
+describe("OwnerFace — the photo mount matches the web phone recipe", () => {
+  it("is 116 with a surface ring inside the outlined mount", () => {
+    const mount = StyleSheet.flatten(ownerFaceStyles.photoMount);
+    const photo = StyleSheet.flatten(ownerFaceStyles.photo);
+    expect(mount.width).toBe(PHOTO_SIZE);
+    expect(mount.height).toBe(PHOTO_SIZE);
+    expect(photo.borderWidth).toBe(4);
   });
 });
 
@@ -1646,6 +1646,7 @@ describe("PetDocumentScreen — the two contextual doors", () => {
           situation: null,
           memorial: null,
           pregnancyStatus: null,
+          rightCell: "none",
         }),
       }),
     });

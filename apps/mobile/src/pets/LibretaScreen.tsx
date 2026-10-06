@@ -29,30 +29,26 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import type { LibretaEntryV1 } from "@dim/contract/api";
+import type { LibretaEntryV1, LibretaVaccinationSection } from "@dim/contract/api";
 import { apiFailureMessage } from "../api/client";
 import { fetchPetLibreta } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, Loading, Row, StaleNotice, Unavailable } from "../ui/components";
 import { FONTS } from "../ui/fonts";
-import { PrimaryButton } from "../ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../ui/reload-state";
-import { libretaEventRoute, recordEventRoute } from "../ui/routes";
+import { libretaEventRoute } from "../ui/routes";
 import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "../ui/theme";
 import {
   LEDGER_EMPTY_LABEL,
   LIBRETA_EMPTY_LABEL,
   LIBRETA_TRUNCATED_NOTE,
   type LibretaView,
-  UPCOMING_EMPTY_LABEL,
   amendedLabel,
   buildLibretaView,
   ledgerCountLabel,
   otherVaccinesNote,
-  speciesLine,
   upcomingDueLabel,
   upcomingKindLabel,
-  vaccinationHeadline,
   vaccineStatusLabel,
 } from "./libreta-view-model";
 import type { SectionView } from "./owner-face-view-model";
@@ -90,7 +86,6 @@ export function LibretaScreen({
    *  platform spinner stops on the read the reader is actually looking at. */
   onRefreshSettled?: () => void;
 }) {
-  const router = useRouter();
   const [state, setState] = useState<ScreenState>({ phase: "loading" });
   // Guards against a stale response overwriting a newer one when a focus and a
   // pull overlap — the same generation counter its sibling screens use, for
@@ -106,8 +101,7 @@ export function LibretaScreen({
     async (mode: "initial" | "refresh" = "initial") => {
       const mine = ++generation.current;
       // A refresh leaves the ledger on screen; only a first read has nothing
-      // to show. `PrimaryButton`'s "Anotar" keys off this phase too, so
-      // resetting it on a pull also disabled the one control this face offers.
+      // to show.
       if (mode === "initial") setState({ phase: "loading" });
       const result = await fetchPetLibreta(sessionPort, publicToken);
       if (mine !== generation.current) return;
@@ -126,11 +120,11 @@ export function LibretaScreen({
     [publicToken],
   );
 
-  // ON FOCUS, NOT ONLY ON MOUNT, and that changed the day this screen grew a
-  // write. "Anotar" pushes a route on top of this one; coming back does not
-  // remount, so a plain mount effect would leave the owner staring at the
-  // libreta they just added to, unchanged, wondering whether it saved. The
-  // generation counter already makes a redundant load harmless.
+  // ON FOCUS, NOT ONLY ON MOUNT: writing an asiento pushes a route on top of
+  // this face (from the credential's Anotar); coming back does not remount, so
+  // a plain mount effect would leave the owner staring at the libreta they
+  // just added to, unchanged. The generation counter already makes a
+  // redundant load harmless.
   useFocusEffect(
     useCallback(() => {
       void load();
@@ -153,43 +147,12 @@ export function LibretaScreen({
 
   // No <Screen> of its own since the two-face rewrite: PetDocumentScreen owns
   // the one scroll view, and this face renders inside the card's body.
+  //
+  // NO WRITE BUTTON HERE (PO annotate 2026-10-05). Anotar lives on the
+  // credential face's primary row below the card — one door, one verb. The
+  // dorso is the ledger.
   return (
     <View style={styles.faceBody}>
-      {/* THE WRITE, offered from the face it writes into, and now the ONLY
-          control here. It is the reason a person opens the libreta on a phone,
-          so it keeps its primary weight. Offered even while the read failed —
-          a section this app could not load says nothing about whether the
-          animal was vaccinated this morning, and the server is the one that
-          decides whether the write is allowed.
-          "Actualizar" used to sit under it and is gone (2026-09-03). The two
-          were never the same kind of thing: this is an act, that was
-          maintenance dressed as one, and the platform already has a gesture
-          for maintenance. The read still has a way to happen —
-          `PetDocumentScreen` hands this face a refresh nonce, and a pull
-          re-runs the read underneath the ledger instead of replacing it.
-
-          ABOVE THE LEDGER, NOT UNDER IT (native QA batch 1, D2). It used to be
-          the LAST child of this face, which is fine on the pet the fixtures use
-          and wrong on a real one: an animal with 26 asientos puts its whole
-          history between the reader and the only thing they came here to do,
-          and this face lives inside `PetDocumentScreen`'s single scroll view,
-          so there is no per-face scroll for it to sit at the bottom of. The
-          ledger has no fixed height and the action does, so the action is the
-          one that can be placed. Kept as the same PrimaryButton in the same
-          flow rather than pinned: the kit has no sticky-footer primitive, and
-          inventing one for a control that now needs no scrolling would be a new
-          pattern bought for nothing. */}
-      {/* "Anotar", not "Asentar" (U-2, native review, one verb for recording
-          events): the credential's front pill (`OwnerFace.tsx`) and this
-          button open the exact same picker, and the two used to disagree —
-          which reads as two different actions to someone who has only ever
-          seen one of the two faces. "Anotar" won because it is the front's,
-          and the front is what most people see first. */}
-      <PrimaryButton
-        label="Anotar"
-        onPress={() => router.push(recordEventRoute(publicToken))}
-        disabled={state.phase === "loading"}
-      />
       {state.phase === "loading" ? <Loading label="Leyendo la libreta…" /> : null}
       {state.phase === "failed" ? (
         <Card title="No disponible">
@@ -234,22 +197,29 @@ function LibretaBody({ view, deceased }: { view: LibretaView; deceased: boolean 
 
   return (
     <>
-      {/* THE MASTHEAD ---------------------------------------------------- */}
-      <Section view={view.identity} title="Libreta sanitaria">
-        {(identity) => (
-          <>
-            <Text style={styles.petName}>{identity.name}</Text>
-            <Text style={styles.token}>{identity.publicToken}</Text>
-            {speciesLine(identity) ? <Body>{speciesLine(identity)}</Body> : null}
-          </>
-        )}
-      </Section>
+      {/* THE MASTHEAD — name only. The band already says "Libreta · dorso";
+          repeating "Libreta sanitaria" + the DIM token here was noise
+          (PO annotate 2026-10-05). */}
+      {view.identity.state === "unavailable" ? (
+        <Unavailable title="Identidad" message={view.identity.message} />
+      ) : (
+        <View style={styles.masthead}>
+          <Text style={styles.petName}>{view.identity.data.name}</Text>
+        </View>
+      )}
 
       {/* VACUNAS ---------------------------------------------------------- */}
-      <Section view={view.vaccination} title="Vacunación">
+      <Section view={view.vaccination} title="Estado de vacunación">
         {(vaccination) => (
           <>
-            <Text style={styles.stamp}>{vaccinationHeadline(vaccination)}</Text>
+            <VaccineCounts vaccination={vaccination} />
+            {vaccination.missing > 0 ? (
+              <Body>
+                {vaccination.missing === 1
+                  ? "1 vacuna del calendario recomendado sin aplicar"
+                  : `${vaccination.missing} vacunas del calendario recomendado sin aplicar`}
+              </Body>
+            ) : null}
             {vaccination.perVaccine.length === 0 ? (
               <Body>No hay vacunas del catálogo registradas.</Body>
             ) : (
@@ -281,24 +251,24 @@ function LibretaBody({ view, deceased }: { view: LibretaView; deceased: boolean 
           días" under the name of an animal whose memorial is on the other face.
           The history STAYS: the asientos below are the record, and the record
           does not end when the animal does. It is only the FUTURE that is no
-          longer anybody's to act on. */}
-      {deceased ? null : (
+          longer anybody's to act on.
+
+          EMPTY → NOTHING (PO annotate 2026-10-05). "No hay nada programado."
+          was a titled box announcing an absence; hide the section until there
+          is something due. A FAILED read still surfaces its refusal. */}
+      {deceased ? null : view.upcoming.state === "ok" && upcomingItems.length === 0 ? null : (
         <Section view={view.upcoming} title="Próximo">
-          {(upcoming) =>
-            upcoming.items.length === 0 ? (
-              <Body>{UPCOMING_EMPTY_LABEL}</Body>
-            ) : (
-              <>
-                {upcoming.items.map((item) => (
-                  <Row
-                    key={item.id}
-                    label={`${upcomingKindLabel(item.kind)} · ${item.label}`}
-                    value={upcomingDueLabel(item.dueAt, now)}
-                  />
-                ))}
-              </>
-            )
-          }
+          {(upcoming) => (
+            <View style={styles.upcoming}>
+              {upcoming.items.map((item) => (
+                <Row
+                  key={item.id}
+                  label={`${upcomingKindLabel(item.kind)} · ${item.label}`}
+                  value={upcomingDueLabel(item.dueAt, now)}
+                />
+              ))}
+            </View>
+          )}
         </Section>
       )}
 
@@ -344,7 +314,77 @@ function LibretaBody({ view, deceased }: { view: LibretaView; deceased: boolean 
  * name, because "Ver detalle" repeated eleven times tells a screen reader
  * nothing.
  */
+function VaccineCounts({ vaccination }: { vaccination: LibretaVaccinationSection }) {
+  const cells: Array<{
+    label: string;
+    count: number;
+    ink: string;
+    surface: string;
+    border: string;
+  }> = [
+    {
+      label: "Vigente",
+      count: vaccination.active,
+      ink: COLORS.okInk,
+      surface: COLORS.okSurface,
+      border: COLORS.okBorder,
+    },
+    {
+      label: "Por vencer",
+      count: vaccination.dueSoon,
+      ink: COLORS.warnInk,
+      surface: COLORS.warnSurface,
+      border: COLORS.warnBorder,
+    },
+    {
+      label: "Vencida",
+      count: vaccination.expired,
+      ink: COLORS.danger,
+      surface: COLORS.dangerSurface,
+      border: COLORS.dangerBorder,
+    },
+    {
+      label: "Sin confirmar",
+      count: vaccination.unconfirmed,
+      ink: COLORS.inkSoft,
+      surface: COLORS.canvas2,
+      border: COLORS.border,
+    },
+  ];
+  return (
+    <View style={styles.vacGrid}>
+      {cells.map((cell) => {
+        const quiet = cell.count === 0;
+        return (
+          <View
+            key={cell.label}
+            style={[
+              styles.vacCell,
+              quiet
+                ? { backgroundColor: COLORS.canvas2, borderColor: COLORS.border }
+                : { backgroundColor: cell.surface, borderColor: cell.border },
+            ]}
+          >
+            <Text style={[styles.vacCount, { color: quiet ? COLORS.inkMuted : cell.ink }]}>
+              {cell.count}
+            </Text>
+            <Text style={[styles.vacLabel, { color: quiet ? COLORS.inkMuted : cell.ink }]}>
+              {cell.label}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function EntryCard({ entry, onOpen }: { entry: LibretaEntryV1; onOpen: () => void }) {
+  const showKind =
+    entry.kind.trim().toLocaleLowerCase("es") !== entry.title.trim().toLocaleLowerCase("es");
+  const facts = entry.facts.filter(
+    (fact) =>
+      !((fact.key === "Fecha" || fact.key === "Aplicada") && fact.value === entry.whenAbsolute),
+  );
   return (
     <Pressable
       onPress={onOpen}
@@ -352,13 +392,19 @@ function EntryCard({ entry, onOpen }: { entry: LibretaEntryV1; onOpen: () => voi
       accessibilityLabel={`${entry.title}, ${entry.whenAbsolute}. Ver detalle`}
       style={styles.entry}
     >
-      <Text style={styles.entryKind}>{entry.kind}</Text>
-      <Text style={styles.entryTitle}>{entry.title}</Text>
-      <Text style={styles.entryWhen}>
-        {entry.whenRelative} · {entry.whenAbsolute}
-      </Text>
+      <View style={styles.entryHead}>
+        <View style={styles.entryTitles}>
+          {showKind ? <Text style={styles.entryKind}>{entry.kind}</Text> : null}
+          <Text style={styles.entryTitle}>{entry.title}</Text>
+        </View>
+        <Text style={styles.entryWhen}>
+          {entry.whenRelative}
+          {"\n"}
+          {entry.whenAbsolute}
+        </Text>
+      </View>
 
-      {entry.facts.map((fact) => (
+      {facts.map((fact) => (
         <FactRow key={fact.key} fact={fact} />
       ))}
 
@@ -404,23 +450,29 @@ const styles = StyleSheet.create({
   // The face's inner rhythm — the web's `.ln-sec` phone padding (20/18), with
   // the Screen's old inter-block gap kept between sections.
   faceBody: { paddingVertical: 20, paddingHorizontal: 18, gap: SPACE.lg },
+  masthead: { gap: SPACE.xs },
   petName: {
     fontFamily: FONTS.serif,
     fontSize: TYPE.xl2,
     lineHeight: TYPE.xl2 * LEADING.xl2,
     color: COLORS.ink,
   },
-  token: {
-    fontFamily: FONTS.mono,
-    fontSize: TYPE.sm,
-    letterSpacing: TYPE.sm * TRACKING.wide,
-    color: COLORS.inkMuted,
+  vacGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  vacCell: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderWidth: 1,
+    borderRadius: RADIUS.control,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: "center",
   },
-  stamp: {
-    fontFamily: FONTS.monoSemibold,
-    fontSize: TYPE.lg,
-    letterSpacing: TYPE.lg * TRACKING.wide,
-    color: COLORS.ink,
+  vacCount: { fontFamily: FONTS.monoSemibold, fontSize: TYPE.lg },
+  vacLabel: { fontFamily: FONTS.sans, fontSize: TYPE.xs, textAlign: "center" },
+  upcoming: {
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.accent,
+    paddingLeft: 10,
   },
   divider: {
     fontFamily: FONTS.mono,
@@ -429,7 +481,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingVertical: SPACE.xs,
   },
-  entries: { gap: SPACE.sm },
+  entries: { gap: 0 },
   ledgerCount: { fontFamily: FONTS.mono, fontSize: TYPE.sm, color: COLORS.inkMuted },
   factRow: { flexDirection: "row", justifyContent: "space-between", gap: SPACE.md },
   factLabel: { fontFamily: FONTS.sans, fontSize: TYPE.sm, color: COLORS.inkMuted },
@@ -444,13 +496,13 @@ const styles = StyleSheet.create({
   factMono: { fontFamily: FONTS.mono },
   entry: {
     minHeight: TOUCH_TARGET,
-    borderRadius: RADIUS.control,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.canvas2,
-    padding: SPACE.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
+    paddingVertical: SPACE.sm,
     gap: SPACE.xs,
   },
+  entryHead: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  entryTitles: { flex: 1, gap: 2 },
   entryKind: {
     fontFamily: FONTS.mono,
     fontSize: TYPE.xs,
@@ -459,12 +511,17 @@ const styles = StyleSheet.create({
     color: COLORS.inkMuted,
   },
   entryTitle: {
-    fontFamily: FONTS.serif,
-    fontSize: TYPE.lg,
-    lineHeight: TYPE.lg * LEADING.lg,
+    fontFamily: FONTS.sansSemibold,
+    fontSize: 15,
+    lineHeight: 15 * 1.25,
     color: COLORS.ink,
   },
-  entryWhen: { fontFamily: FONTS.sans, fontSize: TYPE.sm, color: COLORS.inkMuted },
+  entryWhen: {
+    fontFamily: FONTS.sans,
+    fontSize: TYPE.sm,
+    color: COLORS.inkMuted,
+    textAlign: "right",
+  },
   provenance: { fontFamily: FONTS.sans, fontSize: TYPE.sm, color: COLORS.inkSoft },
   warning: { fontFamily: FONTS.sansSemibold, fontSize: TYPE.sm, color: COLORS.warnInk },
   amended: { fontFamily: FONTS.sansSemibold, fontSize: TYPE.sm, color: COLORS.accent },

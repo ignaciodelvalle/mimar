@@ -1,39 +1,35 @@
 // DocumentChromeNative — the framed-sheet chrome that makes both faces read as
 // ONE physical two-sided credential, drawn by React Native.
 //
-// THE REFERENCE IS THE WEB'S `DocumentChrome` + the `.ln-*` rules in
-// app/globals.css, at the PHONE layout (`@media (max-width: 720px)`) — a phone
-// is always ≤720. Same anatomy: the blue pinstripe band carrying the
-// certificate title and the turn button, the situation chip, the certificate
-// inner hairline frame, and the body. What differs is only the drawing tool:
+// THE REFERENCE IS THE WEB'S `DocumentChrome` + `PublicDocumentBand` + the
+// `.pc-band*` / `.pc-cred::before` rules in app/globals.css. Same anatomy: the
+// navy landing-sweep band with sunk mark + doctype + flip (both corners turn),
+// latent "miMAR", the escarapela watermark on the paper, the situation chip on
+// the libreta face, and the body. What differs is only the drawing tool:
 //
-//   · The band's `repeating-linear-gradient` pinstripes have no RN equivalent,
-//     so the band is an SVG (react-native-svg, already a dependency): one
-//     linear gradient underneath, one set of diagonal hairlines on top.
-//   · The white-translucency literals (rgba(255,255,255,.22) on the turn
-//     button, rgba(0,0,0,.22) on the chip, the .5-alpha pinstripe) are the
-//     web's own values from globals.css, copied — not invented. They are not
-//     tokens on the web either.
+//   · The band is an SVG linear gradient (118deg) — no pinstripes. The web
+//     dropped them with the landing carnet recipe.
+//   · The mark is the mask path from `logo-mimar-mark-mask.svg`, filled in
+//     sunk ink (CSS mask has no RN twin).
+//   · The escarapela is a bundled PNG raster of `landing-escarapela.svg`
+//     (the SVG is ~1MB; Metro cannot treat it as a cheap watermark).
 //
 // THE SITUATION IS SERVER-DECIDED. `situation` arrives as the contract's
 // `OwnerPetSituationV1` — key, tone, icon and an already-gender-agreed label —
-// and this chrome paints it without re-deriving anything. The band tint per
-// key mirrors the `.ln-face[data-situation]` variants; every key this chrome
-// recognises has its own band now (T4-M6, 2026-09-22) — `prenada` and
-// `fallecida` used to keep the DEFAULT band here because their tint tokens
-// (--color-ln-rosa*, --color-ln-memorial-*) were not in `@dim/contract/tokens`
-// yet, and this file invents no value. They are, now: only the five values
-// this band actually needs crossed (see the token file's own note), not the
-// whole rosa/memorial scale. The chip still carries the state as icon + text
-// regardless, so nothing has ever rested on color alone (WCAG) — this closes
-// a debt in the shared layer, not a real gap a reader could see.
+// and this chrome paints it without re-deriving anything. The BAND is navy for
+// every key (`credentialBandSkin`): the approved owner paper does not recolor
+// the stripe. The situation's own colour lives on the chip (`bandSkin`), which
+// this file draws on the libreta face only — the credencial face has no
+// identity row here, so its chip sits under the name in `OwnerFace`. Al día
+// sends `situation: null` and gets no chip. Icon + text, never colour alone.
 //
 // THIS CHROME OWNS THE BUTTON, NOT THE MOTION. The turn itself lives in
 // `DocumentTurn.tsx` (React Native core `Animated`, never Reanimated — this
 // repo lost a production build to the worklets runtime, see
 // src/release/release-config.test.ts). What that split costs this file is one
 // extra prop, and it is the web's split exactly: `face` is the face PAINTED on
-// the sheet right now and names the button ("Dar vuelta" / "Girar a Libreta"),
+// the sheet right now and names the button ("Girar a Libreta" / "Girar a
+// Credencial"; the control itself is the glyph),
 // while `isLibretaActive` is the face the reader has REQUESTED and carries the
 // toggle state. They disagree for the ~205ms the sheet spends turning, and
 // during that gap the toggle is the honest one — the press registered, the
@@ -41,13 +37,34 @@
 // values into the same two places, for the same reason.
 
 import type { OwnerPetSituationV1 } from "@dim/contract/api";
+import { chromeForSurface } from "@dim/contract/credential";
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import Svg, { Defs, Line, LinearGradient, Rect, Stop } from "react-native-svg";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 
 import { Icon } from "../ui/Icon";
 import { FONTS } from "../ui/fonts";
-import { COLORS, LABEL_TRACKING_EM, RADIUS, TOUCH_TARGET } from "../ui/theme";
+import { COLORS, RADIUS } from "../ui/theme";
+import { CARD_LIFT, ESCARAPELA, LATENT_BRAND, MIMAR_MARK, PAPER } from "./chrome-visual";
+
+const OWNER_CHROME = chromeForSurface("owner");
+
+/** Web `--color-ln-memorial-chip-bg` — not yet exported on `LN_COLORS`. */
+const MEMORIAL_CHIP_BG = "#f0ead9";
+
+/**
+ * Sunk/lasered ink on the navy band — web `--pc-sunk` / landing `#041422`.
+ * Literal, not a token: the web mixes at paint time.
+ */
+const SUNK_INK = "#041422";
+/** Highlight edge of the engraved ink (web `--pc-sunk-lo` / celeste mix). */
+const SUNK_LO = "rgba(215, 243, 255, 0.42)";
+/** Web `--pc-head-ink`: celeste-100 at ~82% over the navy. */
+const HEAD_INK = "rgba(186, 224, 242, 0.88)";
+
+/** Path from public/logo-mimar-mark-mask.svg (frame + paw). */
+const MIMAR_MARK_PATH =
+  "M16.25 6.25H83.75L93.75 16.25V83.75L83.75 93.75H16.25L6.25 83.75V16.25ZM21.43 18.75H78.57L81.25 21.43V78.57L78.57 81.25H21.43L18.75 78.57V21.43ZM41.3 30.07C42.75 29.9 44.29 30.5 45.41 31.71C46.53 32.92 47.23 34.75 47.37 36.64C47.51 38.53 47.09 40.49 46.29 41.94C45.5 43.39 44.33 44.32 43.07 44.47C41.81 44.63 40.45 44.01 39.33 42.79C38.21 41.58 37.32 39.78 37 37.91C36.68 36.04 36.92 34.1 37.71 32.66C38.51 31.21 39.86 30.25 41.3 30.07ZM58.66 29.64C60.11 29.87 61.44 30.88 62.2 32.38C62.96 33.87 63.14 35.84 62.77 37.73C62.39 39.61 61.44 41.41 60.26 42.59C59.07 43.78 57.65 44.36 56.36 44.16C55.07 43.95 53.9 42.96 53.14 41.47C52.38 39.97 52.04 37.97 52.26 36.06C52.48 34.15 53.27 32.34 54.45 31.15C55.63 29.96 57.21 29.41 58.66 29.64ZM26.14 40.56C27.2 39.79 28.66 39.59 30.06 40.05C31.46 40.52 32.78 41.65 33.7 43.07C34.62 44.49 35.14 46.21 35.15 47.68C35.16 49.16 34.66 50.38 33.76 51.04C32.85 51.7 31.53 51.79 30.14 51.33C28.74 50.86 27.26 49.84 26.19 48.53C25.12 47.21 24.46 45.6 24.45 44.13C24.44 42.66 25.08 41.32 26.14 40.56ZM73.51 39.92C74.62 40.64 75.34 41.96 75.41 43.45C75.48 44.95 74.91 46.63 73.9 48.02C72.9 49.42 71.46 50.53 70.07 51.07C68.67 51.62 67.32 51.58 66.35 50.96C65.38 50.33 64.8 49.1 64.72 47.61C64.65 46.11 65.09 44.34 65.95 42.86C66.82 41.37 68.12 40.17 69.51 39.62C70.91 39.08 72.4 39.2 73.51 39.92ZM50.29 48.13C52.57 48.14 54.87 48.8 56.98 49.9C59.1 50.99 61.04 52.53 62.53 54.37C64.03 56.21 65.07 58.35 65.4 60.4C65.73 62.45 65.34 64.4 64.26 65.91C63.17 67.42 61.39 68.49 58.99 68.51C56.6 68.53 53.59 67.5 50.48 67.47C47.36 67.45 44.13 68.43 41.58 68.41C39.03 68.39 37.15 67.36 36.03 65.81C34.91 64.26 34.53 62.19 34.88 60.09C35.23 57.99 36.3 55.85 37.85 54.06C39.4 52.27 41.44 50.83 43.59 49.79C45.74 48.76 48 48.12 50.29 48.13Z";
 
 export type DocumentFace = "credencial" | "libreta";
 
@@ -73,10 +90,10 @@ export function isDocumentFace(raw: string): raw is DocumentFace {
  * The band's gradient stops + the face's border tint, per situation key —
  * mirroring the `.ln-face[data-situation]` CSS variants, tokens only.
  *
- * Exported for `DocumentChromeNative.band-skin.test.ts`, which is the one
- * fence proving `prenada` and `fallecida` still resolve to their OWN skin and
- * not to the shared default — the situation this file's header explains was
- * true until T4-M6 closed it.
+ * The CHIP's colour, not the band's. Exported for
+ * `DocumentChromeNative.band-skin.test.ts`: `prenada` and `fallecida` still
+ * resolve to their own ink, and the painted band (`credentialBandSkin`) stays
+ * the navy default for every key.
  */
 export function bandSkin(situationKey: string | undefined): {
   stops: ReadonlyArray<{ offset: string; color: string }>;
@@ -153,14 +170,76 @@ export function bandSkin(situationKey: string | undefined): {
   }
 }
 
-/** The pinstriped band background. The web's repeating-linear-gradient(135deg,
- *  rgba(255,255,255,.5) 0 1px, transparent 1px 11px) becomes diagonal SVG
- *  hairlines over the gradient — 11px period, measured perpendicular like the
- *  CSS does, so the x-step is 11/cos(45°) ≈ 15.5. */
-function BandBackground({ situationKey }: { situationKey: string | undefined }) {
-  const skin = bandSkin(situationKey);
-  const lines: number[] = [];
-  for (let x = 0; x <= BAND_VIEWBOX_W + BAND_H; x += 15.5) lines.push(x);
+/** The band the sheet actually paints: navy, for every situation. */
+export function credentialBandSkin(): ReturnType<typeof bandSkin> {
+  return bandSkin(undefined);
+}
+
+/** Ink for a situation chip sitting on the paper. The band stays navy. */
+export function situationChipInk(situationKey: string): string {
+  return situationChipSkin(situationKey).color;
+}
+
+/**
+ * Pill fill / border / ink for a situation chip — web `.pc-sit-chip` per
+ * `data-situation`. Perdida is solid white-on-red; the rest are quiet tints.
+ */
+export function situationChipSkin(situationKey: string): {
+  backgroundColor: string;
+  borderColor: string;
+  color: string;
+} {
+  switch (situationKey) {
+    case "perdida":
+      return {
+        backgroundColor: COLORS.danger,
+        borderColor: COLORS.danger,
+        color: COLORS.onDark,
+      };
+    case "custodia-oficial":
+    case "en-tratamiento":
+      return {
+        backgroundColor: COLORS.warnSurface,
+        borderColor: COLORS.warnBorder,
+        color: COLORS.warnInk,
+      };
+    case "observacion-antirrabica":
+      return {
+        backgroundColor: COLORS.focusRing,
+        borderColor: COLORS.celeste100,
+        color: COLORS.accent,
+      };
+    case "fallecida":
+      return {
+        backgroundColor: MEMORIAL_CHIP_BG,
+        borderColor: COLORS.memorialBorder,
+        color: COLORS.memorialText,
+      };
+    case "prenada":
+      return {
+        backgroundColor: COLORS.stripe,
+        borderColor: COLORS.rosaBorder,
+        color: COLORS.ink,
+      };
+    case "en-adopcion":
+    case "en-transito":
+      return {
+        backgroundColor: COLORS.stripe,
+        borderColor: COLORS.border,
+        color: COLORS.ink,
+      };
+    default:
+      return {
+        backgroundColor: COLORS.stripe,
+        borderColor: COLORS.border,
+        color: bandSkin(situationKey).stops[0]?.color ?? COLORS.ink,
+      };
+  }
+}
+
+/** Landing-sweep band ground — gradient only, no pinstripes. */
+function BandBackground() {
+  const skin = credentialBandSkin();
   return (
     <Svg
       width="100%"
@@ -170,8 +249,10 @@ function BandBackground({ situationKey }: { situationKey: string | undefined }) 
       style={StyleSheet.absoluteFill}
     >
       <Defs>
-        {/* 118deg on the web — mostly horizontal, falling slightly. */}
-        <LinearGradient id="band" x1="0" y1="0" x2="1" y2="0.35">
+        {/* 118deg on the web. A mild vertical fall (y2) lets the celeste edge
+            read across the taller pad-bottom without washing the latent
+            miMAR zone out of navy. */}
+        <LinearGradient id="band" x1="0" y1="0" x2="1" y2="0.22">
           {skin.stops.map((stop) => (
             <Stop
               key={`${stop.offset}-${stop.color}`}
@@ -182,120 +263,116 @@ function BandBackground({ situationKey }: { situationKey: string | undefined }) 
         </LinearGradient>
       </Defs>
       <Rect x="0" y="0" width={BAND_VIEWBOX_W} height={BAND_H} fill="url(#band)" />
-      {lines.map((x) => (
-        <Line
-          key={x}
-          x1={x}
-          y1={BAND_H + 10}
-          x2={x + BAND_H + 10}
-          y2={-10}
-          stroke="rgba(255,255,255,0.5)"
-          strokeWidth={1}
-        />
-      ))}
+    </Svg>
+  );
+}
+
+/** Dual Path — ink + celeste hi edge — approximates the web mark's sunk shadow. */
+function MimarMark() {
+  return (
+    <Svg width={BAND_MARK_SIZE} height={BAND_MARK_SIZE} viewBox="0 0 100 100">
+      <Path
+        d={MIMAR_MARK_PATH}
+        fill={SUNK_LO}
+        fillRule="evenodd"
+        opacity={MIMAR_MARK.hiOpacity}
+        transform={`translate(0 ${MIMAR_MARK.hiTranslate})`}
+      />
+      <Path
+        d={MIMAR_MARK_PATH}
+        fill={SUNK_INK}
+        fillRule="evenodd"
+        opacity={MIMAR_MARK.inkOpacity}
+      />
     </Svg>
   );
 }
 
 /**
- * Band height, and it is a LAYOUT BUDGET rather than a taste.
+ * Card-turn mark — NOT unicode ↻ / Icon `girar` (RefreshCw).
  *
- * Four things share this strip and three of them are absolutely positioned, so
- * the number has to be derived rather than picked. Every row below is
- * band-relative y on a 360dp card, measured from the face's content box (inside
- * the 1px border), with IBM Plex Mono at its shipped 1.30em line height, AT THE
- * DEVICE'S UNSCALED FONT (system font scale 1.0 — see the A-2 note below for
- * why the scaled case needs its own row):
- *
- * THE TITLE IS "Libreta Sanitaria" NOW — 17 characters, "Nacional" dropped by
- * the PO on 2026-09-24 (it read as State issuance; see the render call
- * below). THE ROW BELOW STILL SIZES THE BUDGET AGAINST THE OLD 26-char
- * "Libreta Sanitaria Nacional" ON PURPOSE: that was the WORST CASE the 2-line
- * wrap and the whole clearance budget were derived from, and 17 characters
- * can only need LESS width and wrap LESS, never more. The budget stays where
- * it is rather than being re-derived tighter from a title the PO could still
- * shorten again — a shorter title only helps, so there is nothing to buy by
- * chasing it.
- *
- *   | Element        | Derivation                                        | y       |
- *   |----------------|---------------------------------------------------|---------|
- *   | Title block    | top 16; sized against the OLD 26-char "…Nacional"  | [16,~56]|
- *   |                | title, which needs 218pt at 55% of 310 = 170       |         |
- *   |                | available and so WRAPS: 2 × 13.0 lines + 3         |         |
- *   |                | marginTop + the 10.4 subtitle line. The CURRENT    |         |
- *   |                | 17-char title fits in less and is not the binding  |         |
- *   |                | case — see the paragraph above.                    |         |
- *   | Flip control   | top 14; a TOUCH_TARGET square (48 since A-1)       | [14,62] |
- *   | Situation chip | top BAND_CHIP_TOP; 2×1 border + 2×6 padding +      | [72,102]|
- *   |                | max(icon 16, text 13) — the 16px ICON_SM is the    |         |
- *   |                | tallest child at THIS scale, NOT the 10px text     |         |
- *   | Frames enter   | BAND_H + FACE_SECTION_PAD_V − IDENTITY_POKE_OUT    | 116     |
- *
- * So the clearance between the chip's bottom and the frames' white ring is
- * `BAND_H + 20 − 56 − 102` = 14 points at BAND_H 152 — 6 points ABOVE the
- * geometry test's 8-point floor (`MIN_CLEARANCE`), not AT it: the floor is
- * the minimum the test accepts, the 14 is what this budget actually leaves.
- * The floor is exactly what it was before this pass; only the margin above
- * it changed, because raising `BAND_CHIP_TOP` for A-2 (below) pushed the chip
- * 10 points lower and `BAND_H` had to rise to keep the frames' entry point
- * 10 points below it too.
- *
- * WHAT THE PREVIOUS VERSION OF THIS DOCBLOCK GOT WRONG, because the numbers it
- * quoted are still quoted elsewhere in this repo. It said the title ended at
- * 42, the chip at 87, the frames entered at 96, and that the clearance was 9 —
- * and every one of those was off for one of two reasons. It omitted
- * `FaceSection`'s own paddingVertical, so the frames were placed 20 points
- * higher than they are; and it took the chip's 10px TEXT as the tallest child
- * when the 16px icon beside it is taller, so the chip measured 25 instead of
- * 30. The two errors happened to cancel into a plausible-looking 9. At the old
- * BAND_H of 152 the real clearance was 24, not 9 — the layout was SAFER than
- * its own justification claimed, which is exactly as dangerous, because the
- * next person to move a constant would have been trusting arithmetic that did
- * not describe the layout.
- *
- * HISTORY. It was 120 until 2026-09-03, with the chip at top:82: that put the
- * frames at 84 while the chip ran [82,112], so 28 of the chip's 30 points were
- * under the photo — the occlusion described at the chip. Raising it to 152
- * fixed that and left 24 points of unplanned slack; 136 was the same fix with
- * the slack spent, keeping the 8-point clearance the geometry test pinned.
- *
- * A-2 (2026-09-24, M7 accessibility pass, PO decision 17A). The table above —
- * and the geometry test that mirrored it — was arithmetic for the UNSCALED
- * title only. It never asked what happens at the font-scale CAP this file
- * already imposes (`BAND_MAX_FONT_SCALE`, 1.3): at that cap the title's own
- * fontSize is 10 × 1.3 = 13, its line height ~1.3 × 13 ≈ 17 (not the unscaled
- * 13), and the chip's text — capped the same way — grows past `ICON_SM` (16)
- * to ~17 as well, so the chip's OWN tallest child changes at that scale too.
- * Recomputed at the cap: the title's two lines + margin + subtitle end at
- * `16 + 2×17 + 3 + 14` = 67, and the chip (tallest child 17 now, not 16) runs
- * `[BAND_CHIP_TOP, BAND_CHIP_TOP + 2×1 + 2×6 + 17]`. The OLD `BAND_CHIP_TOP`
- * of 62 was measured to clear only the UNSCALED title (ends at 56) — 6 points
- * of margin that the SCALED title (ends at 67) ate entirely and then some: the
- * title overran the chip's own line by 5 points at scale 1.3, which is what a
- * reader on a Samsung J7 at system font "Grande" actually saw. Compounding it,
- * A-1's `TOUCH_TARGET` move (44 → 48) pushed the flip control's own bottom
- * edge from 58 to 62 — no longer clear of the old chip top at all. Both fixed
- * the same way this file has fixed the class before: `BAND_CHIP_TOP` moved to
- * 72 (5 points clear of the scaled title's 67, 10 clear of the flip control's
- * 62) and `BAND_H` moved back to 152 to keep the frame clearance ABOVE its
- * unchanged 8-point floor (`MIN_CLEARANCE` in the geometry test) once the
- * chip sits 10 points lower — the floor itself never moved, `BAND_H` rose by
- * the same 10 points the chip did, which is why the margin above the floor
- * (14 unscaled, 13 at the cap — see the table above) reads close to what it
- * was before rather than shrinking. The title's own font-scale
- * CAP stays exactly where it was — a letterhead is allowed to stop growing;
- * see `BAND_MAX_FONT_SCALE`'s own docblock for why. What changed is that this
- * budget now accounts for the scale IT ITSELF ALLOWS, up to that cap, instead
- * of pretending every reader is at 1.0.
- * `DocumentChromeNative.geometry.test.ts` computes both the unscaled and the
- * capped-scale case from these exported constants.
- *
- * Anything that lowers this constant, deepens the poke-out, moves the chip or
- * changes the section padding has to redo this arithmetic — and does not have
- * to redo it by hand: `DocumentChromeNative.geometry.test.ts` computes it from
- * the exported constants and fails when either clearance goes under budget.
+ * On Android, U+21BB often paints as an emoji-style refresh and ignores our
+ * sunk colour (J7 review 2026-10-05: a white circular refresh). An open arc
+ * with an arrowhead reads as "girar el carnet", not "recargar".
  */
-export const BAND_H = 152;
+function FlipGlyph({ back }: { back: boolean }) {
+  return (
+    <Svg
+      width={BAND_MARK_SIZE}
+      height={BAND_MARK_SIZE}
+      viewBox="0 0 22 22"
+      style={back ? styles.flipMirrored : undefined}
+    >
+      <Path
+        d="M15.2 6.1a6.1 6.1 0 1 0 1.2 7.2"
+        stroke={SUNK_INK}
+        strokeWidth={2}
+        strokeLinecap="round"
+        fill="none"
+        opacity={0.62}
+      />
+      <Path
+        d="M14.6 3.6 L17.6 6.5 L14.6 9.4"
+        stroke={SUNK_INK}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+        opacity={0.62}
+      />
+    </Svg>
+  );
+}
+
+/** Engraved latent brand — dual Text so RN can approximate the web's two-way text-shadow. */
+function LatentBrand({ label }: { label: string }) {
+  return (
+    <View
+      pointerEvents="none"
+      style={styles.bandLatentWrap}
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+    >
+      <Text
+        maxFontSizeMultiplier={BAND_MAX_FONT_SCALE}
+        style={[styles.bandLatentHi, { opacity: LATENT_BRAND.hiOpacity }]}
+      >
+        {label}
+      </Text>
+      <Text
+        maxFontSizeMultiplier={BAND_MAX_FONT_SCALE}
+        style={[styles.bandLatent, { opacity: LATENT_BRAND.inkOpacity }]}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Band height — web `.pc-band` padding recipe, not the old absolute-title
+ * budget.
+ *
+ *   pad-top 10 + head min 24 + pad-bottom 72 = 106
+ *
+ * The bottom pad is the room the identity frames rise into
+ * (`IDENTITY_POKE_OUT` ≤ pad-bottom). Mark and flip sit in the head row; the
+ * situation chip is NOT in the band (under the name on the front, below the
+ * band on the back). `DocumentChromeNative.geometry.test.ts` fences the sum.
+ */
+export const BAND_PAD_TOP = 10;
+/**
+ * Bottom pad of the navy sweep — room the photo rises into on the front
+ * (`IDENTITY_POKE_OUT`), and the visible gradient fall on both faces.
+ * Raised from the web's 50 so the landing sweep reads as a real header on a
+ * phone-width card (PO annotate, 2026-10-05), not a thin stripe.
+ */
+export const BAND_PAD_BOTTOM = 72;
+export const BAND_PAD_INLINE_OUTER = 16;
+export const BAND_PAD_INLINE_INNER = 12;
+export const BAND_HEAD_MIN_H = 24;
+export const BAND_MARK_SIZE = 22;
+export const BAND_H = BAND_PAD_TOP + BAND_HEAD_MIN_H + BAND_PAD_BOTTOM;
 
 /**
  * The one place in this app that caps text scaling, and why it is this one.
@@ -303,57 +380,40 @@ export const BAND_H = 152;
  * DECISION 17A — MEMBRETE (PO): this cap is a letterhead, not body copy, and
  * it stays. A credential's engraved wordmark does not grow past a fixed point
  * just because the reader's system font does — a printed document has the
- * same constraint for the same reason. This docblock is about the cap ITSELF,
- * which A-2 (below) leaves untouched; A-2 fixed a LAYOUT bug the cap exposed,
- * not the cap.
+ * same constraint for the same reason.
  *
- * B-06 / A6-cuenta-resiliencia-15, MEASURED on the shipped build 10 at the
- * system font size "Máximo" (scale 1.5, shot 146 vs 142): "LIBRETA SANITARIA
- * NACIONAL" wrapped to three lines inside a `maxWidth: 55%` box positioned
- * absolutely at top 16, ran past the band's fixed `height: BAND_H`, and cut
- * "CREDENCIAL · FRENTE" in half. The chip's label overprinted at the same
- * scale.
- *
- * NOT ACTUALLY "clean at 1.3", which is what this line claimed until A-2
- * (2026-09-24). The three-line overrun this cap exists to stop was gone at
- * 1.3 — but the cap only bounds how far the TITLE can grow; it says nothing
- * about whether the band's OTHER absolutely-positioned children (the chip)
- * left it room, and at the cap they did not: `BAND_H`'s own docblock has the
- * arithmetic for the 5-point overlap this measured. The cap was doing its one
- * job correctly the whole time — the budget around it was the part that had
- * not caught up.
- *
- * WHY A CAP AND NOT A CONTENT-DRIVEN HEIGHT. `BAND_H` is not a spacing
- * preference — it is one term in a published budget (the identity frames' -56
- * poke-out, `FACE_SECTION_PAD_V`, `BAND_CHIP_TOP`) that
- * `DocumentChromeNative.geometry.test.ts` recomputes and fences. A
- * `minHeight` here would move the band's floor at runtime and every one of
- * those absolute positions with it, silently, per device.
- *
- * WHY IT IS DEFENSIBLE HERE AND NOWHERE ELSE. These three are 8-10pt uppercase
- * mono CHROME — the engraved wordmark on a document, not its content. The
- * animal's name, the sections, the libreta's rows and every sentence the person
- * reads still scale without a ceiling. A printed credential has the same
- * constraint for the same reason.
+ * B-06 measured a three-line title overrun at scale 1.5 on the OLD absolute
+ * band. The band is now a single-line doctype + latent brand; the cap still
+ * bounds those chrome glyphs so a scaled letterhead cannot push the head past
+ * the pad budget. Body copy still scales without a ceiling.
  */
 export const BAND_MAX_FONT_SCALE = 1.3;
 
-/** How far the identity frames rise into the band. See BAND_H. */
-export const IDENTITY_POKE_OUT = 56;
+/**
+ * How far the identity frames rise into the band — web `.pc-id { margin-top:
+ * -18px }` (shallower poke; mounts sit lower and read larger on web). Must
+ * stay ≤ `BAND_PAD_BOTTOM` or the frames collide with the head row.
+ *
+ * With the taller pad-bottom (72) the photo nests deeper in the navy sweep so
+ * the gradient reads as an extended header behind it (PO annotate 2026-10-05).
+ */
+export const IDENTITY_POKE_OUT = 36;
 
-/** `FaceSection`'s vertical padding — the frames' first parent, and the term
- *  the old band arithmetic omitted. See BAND_H. */
+/** `FaceSection`'s vertical padding — the frames' first parent. */
 export const FACE_SECTION_PAD_V = 20;
 
-/** The situation chip's own line in the band. See BAND_H — raised 62 → 72 by
- *  A-2 to clear the title at the `BAND_MAX_FONT_SCALE` cap, not just unscaled. */
-export const BAND_CHIP_TOP = 72;
-export const BAND_CHIP_PAD_V = 6;
-export const BAND_CHIP_BORDER = 1;
+// The in-band chip line (BAND_CHIP_TOP / _PAD_V / _BORDER, ICON_SM and the
+// `bandChip` styles) is gone with the chip itself (2026-10-06): the situation
+// chip sits under the name on the front and below the band on the back, so
+// nothing in the band has to clear it any more. The geometry fence budgets
+// the head row instead, at every system font scale.
 
-/** `Icon size="sm"` in points — the chip's tallest child. Mirrors the `sm`
- *  branch of `resolveSize` in ../ui/Icon.tsx. */
-export const ICON_SM = 16;
+/**
+ * Latent miMAR sits just under the head row, still inside the navy pad —
+ * web uses top:42; on a phone-width card that lands in washed celeste, so we
+ * keep it one step higher (J7 review 2026-10-05). Tunable in `chrome-visual.ts`.
+ */
+export const BAND_LATENT_TOP = LATENT_BRAND.top;
 
 const BAND_VIEWBOX_W = 400;
 
@@ -367,8 +427,33 @@ type DocumentChromeNativeProps = {
   /** Server-decided situation (key/tone/icon/label) — or null for the default
    *  blue band and no chip. Never re-derived client-side. */
   situation: OwnerPetSituationV1 | null;
-  children: ReactNode;
+  children?: ReactNode;
 };
+
+function TurnHit({
+  onPress,
+  label,
+  selected,
+  children,
+}: {
+  onPress: () => void;
+  label: string;
+  selected: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      hitSlop={11}
+      style={styles.turnHit}
+    >
+      {children}
+    </Pressable>
+  );
+}
 
 export function DocumentChromeNative({
   face,
@@ -378,96 +463,112 @@ export function DocumentChromeNative({
   children,
 }: DocumentChromeNativeProps) {
   const isCredencial = face === "credencial";
-  const bandSubtitle = isCredencial ? "Credencial · frente" : "Libreta · dorso";
+  const bandSubtitle = isCredencial ? OWNER_CHROME.subtitleFront : OWNER_CHROME.subtitleBack;
   // The accessible name always names the TARGET face — the web's exact wording.
   const turnAria = isCredencial ? "Girar a Libreta" : "Girar a Credencial";
-  const skin = bandSkin(situation?.key);
+  const showBackChip = !isCredencial && situation != null && OWNER_CHROME.showSituationChip;
+  const doctype = bandSubtitle ?? OWNER_CHROME.title;
 
+  const markControl = (
+    <TurnHit onPress={onTurn} label={turnAria} selected={isLibretaActive}>
+      <MimarMark />
+    </TurnHit>
+  );
+  const flipControl = (
+    <TurnHit onPress={onTurn} label={turnAria} selected={isLibretaActive}>
+      <FlipGlyph back={!isCredencial} />
+    </TurnHit>
+  );
+
+  const faceBorder = situation ? bandSkin(situation.key).border : COLORS.border;
+  const backChip = situation ? situationChipSkin(situation.key) : null;
+
+  // Outer shell carries the soft lift; inner face clips band/paper to the
+  // card radius. (overflow:hidden on the same node as elevation eats the shadow.)
+  //
+  // PAPER + ESCARAPELA WATERMARKS ARE OFF until we can paint them without
+  // inflating the face. On Android, a %-height absolute Image of the escarapela
+  // (even nested under absoluteFill) grew this card to ~window height — band
+  // crushed to the bottom, identity unreadable (mimar AVD, 2026-10-05). The
+  // styles (`watermarkLayer` / `paper` / `escarapela`) stay so the re-entry is
+  // one JSX block once the safe paint path is settled.
   return (
-    <View style={[styles.face, { borderColor: skin.border }]}>
-      <View style={styles.band}>
-        <BandBackground situationKey={situation?.key} />
-        <View style={styles.bandTitle} accessibilityElementsHidden importantForAccessibility="no">
-          <Text maxFontSizeMultiplier={BAND_MAX_FONT_SCALE} style={styles.bandTitleText}>
-            Libreta Sanitaria
-          </Text>
-          <Text maxFontSizeMultiplier={BAND_MAX_FONT_SCALE} style={styles.bandSubtitleText}>
-            {bandSubtitle}
-          </Text>
-        </View>
-        {/* State chip — icon + label, never color alone. OUTSIDE the hidden
-            title wrapper: on the back face this chip is the only textual
-            carrier of the state, so it must stay accessible text.
-
-            IT HAS ITS OWN LINE IN THE BAND, and that is a fix, not a
-            preference. Until 2026-09-03 it sat at top:82 centred, inside the
-            vertical range the identity photo occupies once its -56 margin
-            pulls it up over the band. The photo lives in `body` (zIndex 2) and
-            the chip in `band` (no zIndex), so the parent stacking context
-            decides and the chip's own zIndex:4 never mattered: the photo
-            painted over it. On a 360dp device the photo held x∈[18,102] and
-            every label longer than about eight characters reached under it —
-            "En tratamiento", "Bajo custodia oficial", "En adopción", "En
-            observación antirrábica". The credential's single most important
-            signal was partially hidden for most of its own vocabulary, and it took a
-            geometry read to see it because the SHORT label ("Perdida") clears
-            by a few pixels and is the one anybody tests with. */}
-        {situation === null ? null : (
-          <View style={styles.bandChip}>
-            <Icon name={situation.icon} size="sm" color={COLORS.onDark} />
-            <Text
-              maxFontSizeMultiplier={BAND_MAX_FONT_SCALE}
-              style={styles.bandChipText}
-              numberOfLines={1}
-            >
-              {situation.label}
-            </Text>
-          </View>
-        )}
-        {/* The single flip control. `selected` carries the toggle state the
-            web expresses with aria-pressed — off the REQUESTED face, so it
-            answers the press immediately instead of waiting out the turn. */}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={turnAria}
-          accessibilityState={{ selected: isLibretaActive }}
-          onPress={onTurn}
-          style={styles.turn}
+    <View style={styles.faceLift}>
+      <View style={[styles.face, { borderColor: faceBorder }]}>
+        <View
+          style={[
+            styles.band,
+            isCredencial
+              ? { paddingLeft: BAND_PAD_INLINE_OUTER, paddingRight: BAND_PAD_INLINE_INNER }
+              : { paddingLeft: BAND_PAD_INLINE_INNER, paddingRight: BAND_PAD_INLINE_OUTER },
+          ]}
         >
-          {/* ICON ONLY since 2026-09-03. Three names for one control was two
-              too many: the visible text said "Dar vuelta" then "Ver
-              credencial", while the accessible name said "Girar a Libreta" —
-              and the web calls it Girar. The accessible name is the one that
-              survives, because it names the TARGET face and is what a screen
-              reader announces; the visible text was the least precise of the
-              three and the one competing with a title, a subtitle and the
-              state chip inside the band's height budget. */}
-          <Icon name="girar" size="sm" color={COLORS.onDark} />
-        </Pressable>
+          <BandBackground />
+          <LatentBrand label={OWNER_CHROME.brand} />
+          <View style={styles.bandHead}>
+            {/* Back face: mark and flip swap sides (web order on balance/trim). */}
+            <View style={[styles.bandSlot, styles.bandSlotStart]}>
+              {isCredencial ? markControl : flipControl}
+            </View>
+            <Text maxFontSizeMultiplier={BAND_MAX_FONT_SCALE} style={styles.bandDoctype}>
+              {doctype}
+            </Text>
+            <View style={[styles.bandSlot, styles.bandSlotEnd]}>
+              {isCredencial ? flipControl : markControl}
+            </View>
+          </View>
+        </View>
+
+        {showBackChip && situation && backChip ? (
+          <View style={styles.backChipRow}>
+            <View
+              accessibilityRole={situation.key === "perdida" ? "alert" : undefined}
+              style={[
+                styles.situationPill,
+                {
+                  backgroundColor: backChip.backgroundColor,
+                  borderColor: backChip.borderColor,
+                },
+              ]}
+            >
+              <Icon name={situation.icon} size="sm" color={backChip.color} />
+              <Text
+                maxFontSizeMultiplier={BAND_MAX_FONT_SCALE}
+                style={[styles.situationPillText, { color: backChip.color }]}
+                numberOfLines={1}
+              >
+                {situation.label}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        <View style={styles.body}>{children}</View>
+
+        {/* Certificate inner hairline — last so it paints over the body edge;
+            pointerEvents none so it never eats a tap. */}
+        <View pointerEvents="none" style={styles.frame} />
       </View>
-
-      <View style={styles.body}>{children}</View>
-
-      {/* Certificate inner hairline — last so it paints over the body edge;
-          pointerEvents none so it never eats a tap. */}
-      <View pointerEvents="none" style={styles.frame} />
     </View>
   );
 }
 
 /**
- * A labeled hairline divider — the web's `.ln-divider` + `.ln-divider-label`.
- * Exported from here because it is document chrome: both faces bind their
- * sections with it so the sheet reads as one credential, not a stack of cards.
+ * Section eyebrow — web `.pc-sec-eyebrow`. Lean: uppercase mono label, no
+ * floating chip punched through a hairline. `icon` is accepted and ignored so
+ * call sites stay compatible while the chrome stays quiet.
  */
-export function FaceDivider({ icon, label }: { icon?: string; label?: string }) {
-  if (label === undefined) return <View style={styles.divider} />;
+export function FaceDivider({
+  icon: _icon,
+  label,
+}: {
+  icon?: string;
+  label?: string;
+}) {
+  if (label === undefined) return <View style={styles.secRule} />;
   return (
-    <View style={styles.divider}>
-      <View style={styles.dividerLabel}>
-        {icon === undefined ? null : <Icon name={icon} size="sm" color={COLORS.inkFaint} />}
-        <Text style={styles.dividerLabelText}>{label}</Text>
-      </View>
+    <View style={styles.secEyebrowWrap}>
+      <Text style={styles.secEyebrow}>{label}</Text>
     </View>
   );
 }
@@ -478,11 +579,54 @@ export function FaceSection({ children }: { children: ReactNode }) {
 }
 
 const styles = StyleSheet.create({
+  /**
+   * Soft lift under the card. Lives OUTSIDE the clipped face so Android
+   * elevation / iOS shadow are not eaten by `overflow: "hidden"`.
+   * Knobs: `CARD_LIFT` in chrome-visual.ts.
+   */
+  /**
+   * Soft lift under the card. Lives OUTSIDE the clipped face so Android
+   * elevation / iOS shadow are not eaten by `overflow: "hidden"`.
+   * Knobs: `CARD_LIFT` in chrome-visual.ts.
+   */
+  faceLift: {
+    borderRadius: RADIUS.card,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOpacity: CARD_LIFT.shadowOpacity,
+        shadowRadius: CARD_LIFT.shadowRadius,
+        shadowOffset: { width: 0, height: CARD_LIFT.shadowOffsetY },
+      },
+      android: { elevation: CARD_LIFT.elevation },
+      default: {},
+    }),
+  },
   face: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderRadius: RADIUS.card,
     overflow: "hidden",
+  },
+  /**
+   * Sizes to the face without contributing to its height. Paper + escarapela
+   * sit inside so their % geometry cannot inflate the card (see render note).
+   */
+  watermarkLayer: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 0,
+  },
+  /** Passport grain — knobs in `PAPER` (chrome-visual.ts). */
+  paper: {
+    ...StyleSheet.absoluteFill,
+    opacity: PAPER.opacity,
+  },
+  /** Escarapela watermark — knobs in `ESCARAPELA` (chrome-visual.ts). */
+  escarapela: {
+    ...StyleSheet.absoluteFill,
+    // Nudge down to ~web's 42% centre without %-height (see render note).
+    top: `${ESCARAPELA.topPct}%`,
+    opacity: ESCARAPELA.opacity,
   },
   frame: {
     position: "absolute",
@@ -497,83 +641,98 @@ const styles = StyleSheet.create({
   },
   band: {
     height: BAND_H,
+    paddingTop: BAND_PAD_TOP,
+    paddingBottom: BAND_PAD_BOTTOM,
     overflow: "hidden",
+    zIndex: 1,
   },
-  bandTitle: {
+  bandLatentWrap: {
     position: "absolute",
-    left: 22,
-    top: 16,
-    maxWidth: "55%",
-  },
-  bandTitleText: {
-    fontFamily: FONTS.monoSemibold,
-    fontSize: 10,
-    letterSpacing: 10 * 0.24,
-    textTransform: "uppercase",
-    color: "rgba(255,255,255,0.9)",
-  },
-  bandSubtitleText: {
-    fontFamily: FONTS.mono,
-    fontSize: 8,
-    letterSpacing: 8 * 0.16,
-    textTransform: "uppercase",
-    color: "rgba(255,255,255,0.6)",
-    marginTop: 3,
-  },
-  bandChip: {
-    position: "absolute",
-    // Its own line: below the wrapped title (ends ~55) and the flip control
-    // (ends 58), above the identity poke-out (enters at BAND_H + 20 − 56 =
-    // 100). See BAND_H for the whole budget and where each number comes from.
-    top: BAND_CHIP_TOP,
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    // Nothing else occupies this line, so the longest label in the vocabulary
-    // ("En observación antirrábica") gets the width it needs instead of being
-    // truncated by a cap that existed to dodge the photo.
-    maxWidth: "88%",
-    paddingHorizontal: 12,
-    paddingVertical: BAND_CHIP_PAD_V,
-    borderRadius: RADIUS.button,
-    backgroundColor: "rgba(0,0,0,0.22)",
-    borderWidth: BAND_CHIP_BORDER,
-    borderColor: "rgba(255,255,255,0.38)",
-    zIndex: 4,
-  },
-  bandChipText: {
-    fontFamily: FONTS.monoSemibold,
-    fontSize: 10,
-    letterSpacing: 10 * LABEL_TRACKING_EM,
-    textTransform: "uppercase",
-    color: COLORS.onDark,
-  },
-  /**
-   * The flip control: a CENTRED SQUARE, since 2026-09-03.
-   *
-   * It was a pill built for a label — `flexDirection: "row"` with a `gap: 9`
-   * between an icon and text, and asymmetric 13/16 horizontal padding to
-   * balance that text optically. The label was removed the same day (see the
-   * note at the control), which left the gap separating one child from
-   * nothing, the padding off-centre by 3 points, and a 47-wide target for a
-   * 16-point glyph. `TOUCH_TARGET` on both axes with the icon centred is what
-   * the control has actually been since the text went: the height it already
-   * had, and 48 rather than 47 across (44 before A-1 raised the floor), with
-   * the glyph at exactly (24,24).
-   */
-  turn: {
-    position: "absolute",
-    right: 16,
-    top: 14,
-    width: TOUCH_TARGET,
-    height: TOUCH_TARGET,
+    left: 0,
+    right: 0,
+    top: BAND_LATENT_TOP,
+    zIndex: 0,
     alignItems: "center",
     justifyContent: "center",
+  },
+  /** Celeste highlight edge under the engraved ink (web's sunk-lo shadow). */
+  bandLatentHi: {
+    position: "absolute",
+    fontFamily: FONTS.serif,
+    fontSize: LATENT_BRAND.fontSize,
+    lineHeight: LATENT_BRAND.fontSize,
+    letterSpacing: LATENT_BRAND.letterSpacing,
+    textAlign: "center",
+    color: SUNK_LO,
+    transform: [{ translateY: 1 }],
+  },
+  bandLatent: {
+    fontFamily: FONTS.serif,
+    fontSize: LATENT_BRAND.fontSize,
+    lineHeight: LATENT_BRAND.fontSize,
+    letterSpacing: LATENT_BRAND.letterSpacing,
+    textAlign: "center",
+    color: SUNK_INK,
+    textShadowColor: "rgba(0,0,0,0.65)",
+    textShadowOffset: { width: 0, height: -1 },
+    textShadowRadius: 0,
+  },
+  bandHead: {
+    position: "relative",
+    zIndex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: BAND_HEAD_MIN_H,
+    columnGap: 8,
+  },
+  bandSlot: {
+    flex: 1,
+    minHeight: BAND_MARK_SIZE,
+    justifyContent: "center",
+  },
+  bandSlotStart: { alignItems: "flex-start" },
+  bandSlotEnd: { alignItems: "flex-end" },
+  bandDoctype: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    lineHeight: 10,
+    letterSpacing: 10 * 0.22,
+    textTransform: "uppercase",
+    color: HEAD_INK,
+    flexShrink: 0,
+  },
+  turnHit: {
+    width: BAND_MARK_SIZE,
+    height: BAND_MARK_SIZE,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: BAND_MARK_SIZE / 2,
+  },
+  flipMirrored: {
+    transform: [{ scaleX: -1 }],
+  },
+  backChipRow: {
+    alignItems: "center",
+    paddingTop: 12,
+    paddingBottom: 0,
+    zIndex: 2,
+  },
+  /** Shared pill for front (OwnerFace) and back situation chips. */
+  situationPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    maxWidth: "88%",
+    paddingHorizontal: 9,
+    paddingVertical: 3,
     borderRadius: RADIUS.button,
-    backgroundColor: "rgba(255,255,255,0.22)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.55)",
+  },
+  situationPillText: {
+    fontFamily: FONTS.monoSemibold,
+    fontSize: 9,
+    letterSpacing: 9 * 0.08,
+    textTransform: "uppercase",
   },
   body: {
     zIndex: 2,
@@ -582,39 +741,40 @@ const styles = StyleSheet.create({
     paddingVertical: FACE_SECTION_PAD_V,
     paddingHorizontal: 18,
   },
-  divider: {
-    borderTopWidth: 1,
+  /** Quiet rule when a section has no label. */
+  secRule: {
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: COLORS.borderSoft,
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 0,
+    marginHorizontal: 20,
+    marginTop: 4,
   },
-  dividerLabel: {
-    position: "absolute",
-    top: -8,
-    left: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: 10,
+  /** Web `.pc-sec-eyebrow` — lean section title, no punched chip. */
+  secEyebrowWrap: {
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 0,
+    zIndex: 2,
   },
-  dividerLabelText: {
+  secEyebrow: {
     fontFamily: FONTS.monoSemibold,
     fontSize: 10,
-    letterSpacing: 10 * 0.18,
+    letterSpacing: 10 * 0.1,
     textTransform: "uppercase",
     color: COLORS.inkMuted,
   },
 });
 
+/** Exported so OwnerFace can reuse the same pill geometry as the libreta face. */
+export const situationPillStyles = {
+  pill: styles.situationPill,
+  text: styles.situationPillText,
+};
+
 /**
  * The chrome's StyleSheet, exported for the geometry fence.
  *
- * jest has no Yoga, so the band budget in `BAND_H`'s docblock can only be kept
- * honest by arithmetic over the real style objects —
- * `DocumentChromeNative.geometry.test.ts` reads the chip's top, padding and
- * border from HERE and compares them against the exported constants, so a
- * literal that drifts from the number the docblock quotes fails.
+ * jest has no Yoga, so the band budget can only be kept honest by arithmetic
+ * over the real style objects — `DocumentChromeNative.geometry.test.ts` reads
+ * pad / height / poke from HERE.
  */
 export const documentChromeStyles = styles;

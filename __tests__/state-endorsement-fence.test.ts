@@ -70,6 +70,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { OPEN_DATA_LICENSE } from "@/lib/open-data/datasets";
+import { chromeForSurface } from "@dim/contract/credential";
 
 // ---------------------------------------------------------------------------
 // The rule
@@ -295,10 +296,23 @@ describe("the disclaimers that replaced the claims are actually shipped", () => 
     expect(source).not.toContain("lp-eyebrow");
   });
 
-  it("the phone credential's foot names no issuing authority", () => {
-    const source = stripComments(readFileSync("apps/mobile/src/pets/OwnerFace.tsx", "utf8"));
-    expect(source).toContain("Libreta Sanitaria");
-    expect(source).not.toMatch(/footAuthority/);
+  // The foot itself left the phone face (PO annotate 2026-10-05, OwnerFace.tsx
+  // header: it repeated the band, the locality chip and Cumplimiento). What it
+  // used to carry — the document's name WITHOUT an issuing authority — now
+  // rides only the band, which the native chrome draws from the contract's
+  // owner recipe. So the presence half of this pin moves with it: the band
+  // names the document, and neither the face nor the band names an issuer.
+  it("the phone credential names the document, never an issuing authority", () => {
+    const face = stripComments(readFileSync("apps/mobile/src/pets/OwnerFace.tsx", "utf8"));
+    const band = stripComments(
+      readFileSync("apps/mobile/src/pets/DocumentChromeNative.tsx", "utf8"),
+    );
+    expect(band).toContain('chromeForSurface("owner")');
+    expect(chromeForSurface("owner").title).toBe("Libreta Sanitaria");
+    for (const source of [face, band]) {
+      expect(source).not.toMatch(/footAuthority/);
+      expect(source).not.toMatch(/Ministerio|República Argentina|Gobierno de|Registro Nacional/i);
+    }
   });
 
   it("no rendered string in app/, components/ (excluding landing/) or the phone app carries a 'Nacional' claim", () => {

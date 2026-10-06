@@ -173,18 +173,6 @@ export function viewerRoleLabel(role: OwnerPetDetailViewerRole): string | null {
   }
 }
 
-/**
- * The registration badge's word, gender-agreed with the animal's recorded sex —
- * the same rule the web's `registeredAdjective` (lib/utils/format.ts) applies
- * to the identical badge. Presentational agreement, not a state decision: the
- * STATE (active) comes from the payload.
- */
-export function registeredBadgeWord(sex: string | null): string {
-  if (sex === "male") return "Registrado";
-  if (sex === "female") return "Registrada";
-  return "Registrado/a";
-}
-
 // ---------------------------------------------------------------------------
 // Compliance
 // ---------------------------------------------------------------------------
