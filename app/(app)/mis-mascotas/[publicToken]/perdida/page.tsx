@@ -13,6 +13,11 @@
 //     "Marcar encontrada" for this state, so redirecting there is correct —
 //     there's nothing for this route to update.
 //   - status === 'deceased': unchanged — always redirect to the profile.
+//
+// The success screen is NOT on this route: it is ./activada. This page flips to
+// the update form the moment the pet is lost, and the mark-lost action's own
+// revalidation re-renders it while the wizard is still waiting on the result —
+// so any confirmation kept as wizard state was unmounted before it showed.
 
 import Link from "next/link";
 import { redirect } from "next/navigation";

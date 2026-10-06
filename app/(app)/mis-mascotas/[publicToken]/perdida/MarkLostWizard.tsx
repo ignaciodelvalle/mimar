@@ -13,7 +13,6 @@
 // instead of falling back to petDefaults. LostDisclosureCard (rendered in
 // the lost block post-mark) remains the place to tune prefs afterwards.
 
-import { deepLinkUrl } from "@dim/contract/links";
 import { useRef, useState, useTransition } from "react";
 
 import { Icon } from "@/components/Icon";
@@ -21,16 +20,13 @@ import { LocationFields, type LocationSuggestion } from "@/components/LocationFi
 import { LnCallout } from "@/components/ui/DocElements";
 import { LnField, LnInput, LnSelect, LnTextarea } from "@/components/ui/Field";
 import { LnGroupLabel, LnSheetBody, LnSheetHeader, LnSubCard } from "@/components/ui/Sheet";
-import { LnSuccessScreen } from "@/components/ui/SuccessScreen";
 import { LnToggleGroup } from "@/components/ui/Toggle";
 import { TATTOO_LOCATIONS } from "@/lib/reference/lookups";
+import { useActionNavigate } from "@/lib/ui/use-action-redirect";
 import { useStepFocus } from "@/lib/ui/use-step-focus";
-import {
-  lostThirdPersonPhrase,
-  markLostActionLabel,
-  markLostTitleForPet,
-} from "@/lib/utils/format";
+import { markLostActionLabel, markLostTitleForPet } from "@/lib/utils/format";
 import type { EventFormState } from "@/src/modules/events/actions";
+import { lostActivatedPath } from "./lost-activation";
 
 type FormAction = (prev: EventFormState, formData: FormData) => Promise<EventFormState>;
 
@@ -150,7 +146,12 @@ export function MarkLostWizard({
   });
   const [isPending, startTransition] = useTransition();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+  // Success is a ROUTE, never state held here: the action's revalidation
+  // re-renders whichever page mounts this wizard, and both of them unmount it
+  // once the pet is lost (see lostActivatedPath). The navigation is fired from
+  // the submit handler itself, not from an effect, so it runs even when the
+  // refresh has already taken this component away.
+  const [navigate, navigating] = useActionNavigate();
   const formRef = useRef<HTMLFormElement>(null);
   // A11y fix (2026-07 audit): this wizard hand-rolls its own step state (all
   // steps stay mounted, hidden via sr-only/inert) instead of using
@@ -176,7 +177,8 @@ export function MarkLostWizard({
     // Disclosure fields are ALWAYS submitted (hidden inputs carry explicit
     // "true"/"false") so setPetLostAction persists the owner's affirmative
     // choices instead of falling back to the permissive petDefaults.
-    // Signal to setPetLostAction to skip the redirect.
+    // Signal to setPetLostAction to skip its redirectTo: the wizard navigates to
+    // the confirmation route itself.
     formData.set("noRedirect", "1");
     startTransition(async () => {
       // A THROW used to escape this transition unhandled: the network dies, the
@@ -199,40 +201,13 @@ export function MarkLostWizard({
         return;
       }
       if (result?.ok) {
-        setSubmitted(true);
+        navigate(lostActivatedPath(petPublicToken));
         return;
       }
       setErrorMessage(
         "No pudimos activar la búsqueda. Volvé a intentar en un momento. Lo que cargaste sigue acá.",
       );
     });
-  }
-
-  if (submitted) {
-    const profileHref = `/mis-mascotas/${petPublicToken}`;
-    const printHref = `/mis-mascotas/${petPublicToken}/cartel`;
-    const shareText = lostShareText(petName, petSex);
-    // The credential url comes from the deep-link table: this is the link a
-    // lost-pet post carries into WhatsApp, so it is the single string in this
-    // wizard that has to survive a route rename. `origin` is still empty during
-    // SSR, which yields the same relative path this line always produced.
-    const credentialUrl = deepLinkUrl(
-      typeof window !== "undefined" ? window.location.origin : "",
-      "credential",
-      { publicToken: petPublicToken },
-    );
-    const shareUrl = `https://wa.me/?text=${encodeURIComponent(`${shareText} ${credentialUrl}`)}`;
-    return (
-      <LnSuccessScreen
-        title={`Activamos la búsqueda de ${petName}`}
-        description="Su perfil público ya muestra el aviso con la información que elegiste compartir. Podés ajustar qué se ve (teléfono, ubicación, email) desde su perfil cuando quieras."
-        next={[
-          { label: "Compartir por WhatsApp", href: shareUrl },
-          { label: "Imprimir cartel A4", href: printHref, variant: "secondary" },
-          { label: "Volver al perfil", href: profileHref, variant: "tertiary" },
-        ]}
-      />
-    );
   }
 
   const isLastStep = step === totalSteps;
@@ -566,11 +541,11 @@ export function MarkLostWizard({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={isPending}
-            aria-busy={isPending || undefined}
+            disabled={isPending || navigating}
+            aria-busy={isPending || navigating || undefined}
             className="inline-flex cursor-pointer items-center justify-center gap-[7px] rounded-[var(--radius-pill)] border border-[var(--color-ln-seal)] bg-[var(--color-ln-seal)] px-4 py-[9px] text-md font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isPending ? (
+            {isPending || navigating ? (
               <>
                 <span
                   aria-hidden="true"
@@ -586,17 +561,4 @@ export function MarkLostWizard({
       </div>
     </>
   );
-}
-
-/**
- * The text the success screen's "Compartir por WhatsApp" pre-fills (T1-L14).
- *
- * It said "{nombre} está perdida — ayudanos a encontrarla" to every animal: a
- * male dog's lost post went out feminine into every group chat it was shared
- * to. The adjective now comes from lostThirdPersonPhrase ("está perdido" /
- * "está perdida" / "se perdió" for an unknown sex), and the second clause is
- * pronoun-free so it needs no gender at all.
- */
-export function lostShareText(petName: string, petSex: string | null | undefined): string {
-  return `${petName} ${lostThirdPersonPhrase(petSex)} — ayudanos a que vuelva a casa. Su perfil público:`;
 }

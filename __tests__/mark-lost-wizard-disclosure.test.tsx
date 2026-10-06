@@ -21,10 +21,8 @@ vi.mock("@/components/LocationFields", () => ({
   LocationFields: () => React.createElement("div", { "data-testid": "location-fields" }),
 }));
 
-import {
-  MarkLostWizard,
-  lostShareText,
-} from "@/app/(app)/mis-mascotas/[publicToken]/perdida/MarkLostWizard";
+import { MarkLostWizard } from "@/app/(app)/mis-mascotas/[publicToken]/perdida/MarkLostWizard";
+import { lostShareText } from "@/app/(app)/mis-mascotas/[publicToken]/perdida/lost-activation";
 
 const BASE_PROPS = {
   action: vi.fn(async () => ({ error: null })),
