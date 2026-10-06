@@ -159,15 +159,26 @@ async function clearExistingGrant(page: Page): Promise<void> {
   }
 }
 
-/** Open the invitation the way a real invitee does: from their notification. */
+/**
+ * Open the invitation the way a real invitee does: from their notification.
+ *
+ * The card's CTA goes through `/notificaciones/{id}/abrir`, which resolves
+ * where the reader may go at click time and redirects there — so the href is
+ * the door, and the DESTINATION is what this asserts: after the click, the
+ * browser is on `/cuidado/{token}` with the invitation on screen.
+ */
 async function openInvitation(page: Page): Promise<void> {
   await page.goto("/notificaciones", { waitUntil: "domcontentloaded" });
-  const invite = page.locator('a[href^="/cuidado/"]').first();
+  const card = page
+    .locator("article")
+    .filter({ hasText: /te propone cuidar a/ })
+    .first();
   await expect(
-    invite,
-    "the invitee's notification carries the /cuidado link — this IS the delivery path",
+    card,
+    "the invitee's notification is in their inbox — this IS the delivery path",
   ).toBeVisible();
-  await invite.click();
+  await card.getByRole("link", { name: "Ver invitación" }).click();
+  await page.waitForURL(/\/cuidado\/[^/?#]+$/);
   await expect(page.getByRole("heading", { name: /Te invitaron a cuidar a/ })).toBeVisible();
 }
 

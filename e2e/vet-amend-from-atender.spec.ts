@@ -137,18 +137,24 @@ test("vet corrects her own vaccine from Atender; the owner is told", async ({ pa
   // (4) The owner: a notice naming the organization, and the corrected record.
   await relogin(page, ACCOUNTS.owner);
   const title = `Se corrigió un registro de ${PET_NAME}`;
-  let recordHref = "";
   await expect(async () => {
     await page.goto("/notificaciones", { waitUntil: "domcontentloaded" });
     const card = page.locator("article, li").filter({ hasText: title }).first();
     await expect(card).toBeVisible({ timeout: 5_000 });
     await expect(card).toContainText("Motivo: Lote mal transcripto de la caja");
-    const link = card.getByRole("link", { name: /Ver el registro/ }).first();
-    recordHref = (await link.getAttribute("href")) ?? "";
-    expect(recordHref).toMatch(new RegExp(`/mis-mascotas/${petToken}/eventos/`));
   }, "the owner is told about the correction").toPass({ timeout: 60_000 });
 
-  await page.goto(recordHref, { waitUntil: "domcontentloaded" });
+  // The CTA goes through `/notificaciones/{id}/abrir`, which redirects to
+  // wherever the owner may go at click time: assert where it LANDS — the
+  // corrected record itself.
+  await page
+    .locator("article, li")
+    .filter({ hasText: title })
+    .first()
+    .getByRole("link", { name: /Ver el registro/ })
+    .first()
+    .click();
+  await page.waitForURL(new RegExp(`/mis-mascotas/${petToken}/eventos/[^/?#]+`));
   await expect(page.getByText(/Corregido el/)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(LOTE_FIXED).first()).toBeVisible();
   await expect(page.getByText(/Fue corregido por un profesional/)).toBeVisible();

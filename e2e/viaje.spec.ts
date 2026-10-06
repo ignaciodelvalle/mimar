@@ -181,10 +181,16 @@ async function designateCaretaker(page: Page): Promise<void> {
 }
 
 async function acceptInvitation(page: Page): Promise<void> {
+  // The card's CTA goes through `/notificaciones/{id}/abrir`, which redirects
+  // to wherever the reader may go at click time: assert where it LANDS.
   await page.goto("/notificaciones", { waitUntil: "domcontentloaded" });
-  const invite = page.locator('a[href^="/cuidado/"]').first();
-  await expect(invite, "the invitee's notification carries the /cuidado link").toBeVisible();
-  await invite.click();
+  const card = page
+    .locator("article")
+    .filter({ hasText: /te propone cuidar a/ })
+    .first();
+  await expect(card, "the invitee's notification is in their inbox").toBeVisible();
+  await card.getByRole("link", { name: "Ver invitación" }).click();
+  await page.waitForURL(/\/cuidado\/[^/?#]+$/);
   await expect(page.getByRole("heading", { name: /Te invitaron a cuidar a/ })).toBeVisible();
   await page.getByRole("button", { name: "Aceptar el cuidado" }).click();
   await page.getByRole("button", { name: "Confirmar el cuidado" }).click();
