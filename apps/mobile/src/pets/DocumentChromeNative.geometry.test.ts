@@ -11,7 +11,7 @@
 // anything out — so this measures nothing about pixels. What it pins is that
 // the constants the chrome exports ARE the numbers the StyleSheets carry.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "@jest/globals";
@@ -27,9 +27,10 @@ import {
   FACE_SECTION_PAD_V,
   IDENTITY_POKE_OUT,
   documentChromeStyles,
+  faceWatermarkGeometry,
 } from "./DocumentChromeNative";
 import { ownerFaceStyles } from "./OwnerFace";
-import { PHOTO_MOUNT } from "./chrome-visual";
+import { ESCARAPELA, PAPER, PHOTO_MOUNT } from "./chrome-visual";
 
 describe("the band's height is the padding recipe", () => {
   it("sums pad-top + head + pad-bottom", () => {
@@ -156,5 +157,91 @@ describe("A-2: the band head holds at any system font scale", () => {
     // If this ever equalled the unscaled line, BAND_MAX_FONT_SCALE broke or the
     // helper stopped reading it, and the loop above checks one budget thrice.
     expect(doctypeLineAt(1.3)).toBeGreaterThan(doctypeLineAt(1.0));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Paper grain + escarapela (PO 2026-10-06: both textures come back).
+// ---------------------------------------------------------------------------
+//
+// On Android a %-height absolute Image of the escarapela grew the card to ~window
+// height (mimar AVD, 2026-10-05). The cure is that every watermark number is
+// computed here, from the measured face box, and no % string reaches a style.
+
+describe("the watermark knobs are the ones the device pass tuned", () => {
+  it("keeps the paper and escarapela values from the original recipe", () => {
+    expect(PAPER).toEqual({ opacity: 0.55 });
+    expect(ESCARAPELA).toEqual({ opacity: 0.28, topPct: 18, heightPct: 70 });
+  });
+
+  it("ships both rasters in the bundle", () => {
+    for (const name of ["landing-passport-paper.png", "landing-escarapela.png"]) {
+      expect(existsSync(join(__dirname, "..", "..", "assets", name))).toBe(true);
+    }
+  });
+});
+
+describe("faceWatermarkGeometry — plain numbers from the measured box", () => {
+  it("stretches the grain over exactly 0…height of a phone-sized face", () => {
+    const { paper } = faceWatermarkGeometry(360, 800);
+    expect(paper).toEqual({ width: 360, height: 360, top: 220, scaleY: 800 / 360 });
+    // scaleY pivots on the centre of the laid-out square.
+    const centre = paper.top + paper.height / 2;
+    const half = (paper.height * paper.scaleY) / 2;
+    expect(centre - half).toBeCloseTo(0, 5);
+    expect(centre + half).toBeCloseTo(800, 5);
+  });
+
+  it("centres a full-width escarapela square in the 18%…88% box", () => {
+    expect(faceWatermarkGeometry(360, 800).escarapela).toEqual({ left: 0, top: 244, size: 360 });
+  });
+
+  it("bounds the escarapela by the box on a short face instead of growing past it", () => {
+    const { escarapela } = faceWatermarkGeometry(360, 300);
+    expect(escarapela.size).toBe(210);
+    expect(escarapela.left).toBe(75);
+    expect(escarapela.top).toBe(54);
+    expect(escarapela.top + escarapela.size).toBeLessThanOrEqual(300);
+  });
+
+  it("asks for the same bitmap on both faces — the turn changes height, not width", () => {
+    const front = faceWatermarkGeometry(343, 900);
+    const back = faceWatermarkGeometry(343, 640);
+    expect([back.paper.width, back.paper.height]).toEqual([front.paper.width, front.paper.height]);
+    expect(back.escarapela.size).toBe(front.escarapela.size);
+  });
+
+  it("returns only finite numbers", () => {
+    const g = faceWatermarkGeometry(343, 761);
+    for (const value of [...Object.values(g.paper), ...Object.values(g.escarapela)]) {
+      expect(typeof value).toBe("number");
+      expect(Number.isFinite(value)).toBe(true);
+    }
+  });
+});
+
+describe("the watermark layer cannot size the face", () => {
+  it("is an absoluteFill layer under everything, with no size of its own", () => {
+    const layer = StyleSheet.flatten(documentChromeStyles.watermarkLayer);
+    expect(layer).toMatchObject({ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 });
+    expect(layer.zIndex).toBe(0);
+    for (const key of ["width", "height", "minHeight", "aspectRatio", "flex"]) {
+      expect(layer).not.toHaveProperty(key);
+    }
+  });
+
+  it("gives the Images a position and nothing else — their box is numeric, per render", () => {
+    expect(StyleSheet.flatten(documentChromeStyles.watermarkImage)).toEqual({
+      position: "absolute",
+    });
+  });
+
+  it("uses absoluteFill, which exists in RN 0.86 (absoluteFillObject does not)", () => {
+    const source = readFileSync(join(__dirname, "DocumentChromeNative.tsx"), "utf8").replace(
+      /\/\*[\s\S]*?\*\/|\/\/.*$/gm,
+      "",
+    );
+    expect(source).not.toContain("absoluteFillObject");
+    expect(source).toContain("StyleSheet.absoluteFill");
   });
 });

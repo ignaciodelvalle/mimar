@@ -4,17 +4,18 @@
 // THE REFERENCE IS THE WEB'S `DocumentChrome` + `PublicDocumentBand` + the
 // `.pc-band*` / `.pc-cred::before` rules in app/globals.css. Same anatomy: the
 // navy landing-sweep band with sunk mark + doctype + flip (both corners turn),
-// latent "miMAR", the situation chip on the libreta face, and the body (the
-// web's paper grain and escarapela watermark are not drawn here — see below).
-// What differs is only the drawing tool:
+// latent "miMAR", the paper grain and the escarapela watermark under the body,
+// the situation chip on the libreta face, and the body. What differs is only
+// the drawing tool:
 //
 //   · The band is an SVG linear gradient (118deg) — no pinstripes. The web
 //     dropped them with the landing carnet recipe.
 //   · The mark is the mask path from `logo-mimar-mark-mask.svg`, filled in
 //     sunk ink (CSS mask has no RN twin).
-//   · No paper grain and no escarapela watermark: both were turned off for
-//     the J7 and their PNG rasters, knobs and styles were REMOVED 2026-10-06.
-//     Re-adding them means re-adding the assets to apps/mobile/assets too.
+//   · The paper grain and the escarapela are bundled PNG rasters of
+//     `landing-passport-paper.svg` / `landing-escarapela.svg`, painted by
+//     `FaceWatermark` in a measured absolute layer that cannot size the card
+//     (see its note for the Android failure it is built around).
 //
 // THE SITUATION IS SERVER-DECIDED. `situation` arrives as the contract's
 // `OwnerPetSituationV1` — key, tone, icon and an already-gender-agreed label —
@@ -40,14 +41,30 @@
 
 import type { OwnerPetSituationV1 } from "@dim/contract/api";
 import { chromeForSurface } from "@dim/contract/credential";
-import { type ReactNode, useState } from "react";
-import { type LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { type ReactNode, memo, useState } from "react";
+import {
+  Image,
+  type LayoutChangeEvent,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 
 import { Icon } from "../ui/Icon";
 import { FONTS } from "../ui/fonts";
 import { COLORS, RADIUS } from "../ui/theme";
-import { CARD_LIFT, LATENT_BRAND, MIMAR_MARK } from "./chrome-visual";
+import {
+  CARD_LIFT,
+  ESCARAPELA,
+  ESCARAPELA_TEXTURE,
+  LATENT_BRAND,
+  MIMAR_MARK,
+  PAPER,
+  PAPER_TEXTURE,
+} from "./chrome-visual";
 
 const OWNER_CHROME = chromeForSurface("owner");
 
@@ -317,6 +334,129 @@ function BandGradient({
   );
 }
 
+/** Numeric geometry of the two watermark Images inside a measured face box. */
+export type FaceWatermarkGeometry = {
+  /**
+   * The grain is laid out as a WIDTH×WIDTH square and stretched to the face's
+   * height by `scaleY`. A transform moves no layout and asks for no new
+   * bitmap: the decoded size follows the laid-out box, and the width is the
+   * one dimension the turn never changes (credencial and libreta faces differ
+   * in HEIGHT). Sizing the Image to width×height would re-decode on every flip.
+   */
+  paper: { width: number; height: number; top: number; scaleY: number };
+  /** A square, centred in the `ESCARAPELA` box (`topPct` / `heightPct`). */
+  escarapela: { left: number; top: number; size: number };
+};
+
+/**
+ * The watermark knobs (`PAPER`, `ESCARAPELA`) resolved against the face's
+ * MEASURED box, into plain numbers. No % string ever reaches a style.
+ */
+export function faceWatermarkGeometry(width: number, height: number): FaceWatermarkGeometry {
+  const boxTop = (height * ESCARAPELA.topPct) / 100;
+  const boxHeight = (height * ESCARAPELA.heightPct) / 100;
+  // `size: 100% auto` on the web, bounded by the box on a short face.
+  const size = Math.round(Math.min(width, boxHeight));
+  return {
+    paper: {
+      width,
+      height: width,
+      // scaleY pivots on the centre, so centring the square on the face makes
+      // the scaled grain cover exactly 0…height.
+      top: Math.round((height - width) / 2),
+      scaleY: height / width,
+    },
+    escarapela: {
+      left: Math.round((width - size) / 2),
+      top: Math.round(boxTop + (boxHeight - size) / 2),
+      size,
+    },
+  };
+}
+
+/**
+ * Passport grain + escarapela, painted UNDER the band and the body.
+ *
+ * BUILT AROUND AN ANDROID FAILURE. A %-height absolute Image of the escarapela
+ * — even nested under an absoluteFill layer — grew the card to ~window height
+ * on Android (mimar AVD, 2026-10-05): band crushed to the bottom, identity
+ * unreadable. The band's gradient hit the sibling bug (a "100%" Svg painted a
+ * strip, J7 2026-10-06). So this follows the band's cure, step for step:
+ *
+ *   · the layer is `StyleSheet.absoluteFill` — an absolute node never sizes
+ *     its parent in Yoga, whatever it holds;
+ *   · it measures itself with onLayout, and NOTHING is drawn until it has a
+ *     non-zero box — no % size, no aspectRatio, nothing that can grow;
+ *   · each Image gets numeric width/height from `faceWatermarkGeometry`.
+ *
+ * J7 COST: one Image per layer, no blur, `resizeMethod="resize"` so Android
+ * decodes at most the laid-out size (and never above the 512px source), no
+ * fade-in. The sources are module-level requires, and `memo` keeps a turn —
+ * which re-renders the chrome — from touching these Images at all.
+ */
+const FaceWatermark = memo(function FaceWatermark() {
+  const [box, setBox] = useState<{ width: number; height: number } | null>(null);
+  const onLayout = (event: LayoutChangeEvent) => {
+    const width = Math.round(event.nativeEvent.layout.width);
+    const height = Math.round(event.nativeEvent.layout.height);
+    if (width <= 0 || height <= 0) return;
+    setBox((prev) =>
+      prev !== null && prev.width === width && prev.height === height ? prev : { width, height },
+    );
+  };
+  const geometry = box === null ? null : faceWatermarkGeometry(box.width, box.height);
+  return (
+    <View
+      testID="face-watermark"
+      pointerEvents="none"
+      onLayout={onLayout}
+      style={styles.watermarkLayer}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      {geometry === null ? null : (
+        <>
+          <Image
+            testID="face-paper"
+            source={PAPER_TEXTURE}
+            resizeMode="stretch"
+            resizeMethod="resize"
+            fadeDuration={0}
+            style={[
+              styles.watermarkImage,
+              {
+                left: 0,
+                top: geometry.paper.top,
+                width: geometry.paper.width,
+                height: geometry.paper.height,
+                opacity: PAPER.opacity,
+                transform: [{ scaleY: geometry.paper.scaleY }],
+              },
+            ]}
+          />
+          <Image
+            testID="face-escarapela"
+            source={ESCARAPELA_TEXTURE}
+            resizeMode="contain"
+            resizeMethod="resize"
+            fadeDuration={0}
+            style={[
+              styles.watermarkImage,
+              {
+                left: geometry.escarapela.left,
+                top: geometry.escarapela.top,
+                width: geometry.escarapela.size,
+                height: geometry.escarapela.size,
+                opacity: ESCARAPELA.opacity,
+              },
+            ]}
+          />
+        </>
+      )}
+    </View>
+  );
+});
+
 /** Dual Path — ink + celeste hi edge — approximates the web mark's sunk shadow. */
 function MimarMark() {
   return (
@@ -544,16 +684,12 @@ export function DocumentChromeNative({
 
   // Outer shell carries the soft lift; inner face clips band/paper to the
   // card radius. (overflow:hidden on the same node as elevation eats the shadow.)
-  //
-  // NO PAPER / ESCARAPELA TEXTURES. They were turned off for the J7 and their
-  // assets, knobs and styles were removed (2026-10-06); re-adding them means
-  // re-adding the PNGs. If they come back: on Android a %-height absolute Image
-  // of the escarapela (even nested under absoluteFill) grew this card to
-  // ~window height (mimar AVD, 2026-10-05) — paint it inside an absoluteFill
-  // layer that cannot contribute to the face's height.
+  // The watermark goes FIRST, so it paints under the band and the body even
+  // where zIndex is ignored.
   return (
     <View style={styles.faceLift}>
-      <View style={[styles.face, { borderColor: faceBorder }]}>
+      <View testID="document-face" style={[styles.face, { borderColor: faceBorder }]}>
+        <FaceWatermark />
         <View
           style={[
             styles.band,
@@ -666,6 +802,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: RADIUS.card,
     overflow: "hidden",
+  },
+  /**
+   * Fills the face without contributing to its height; holds the paper and
+   * the escarapela, whose sizes are numbers measured from THIS box.
+   */
+  watermarkLayer: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 0,
+    overflow: "hidden",
+  },
+  /** Position only — the numeric box comes from `faceWatermarkGeometry`. */
+  watermarkImage: {
+    position: "absolute",
   },
   frame: {
     position: "absolute",

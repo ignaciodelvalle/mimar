@@ -21,7 +21,7 @@
 import { describe, expect, it } from "@jest/globals";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { createElement } from "react";
-import { StyleSheet } from "react-native";
+import { type StyleProp, StyleSheet, type ViewStyle } from "react-native";
 
 import {
   DocumentChromeNative,
@@ -259,5 +259,160 @@ describe("band background — the gradient covers the whole band on Android", ()
       const own = StyleSheet.flatten(svg.props.style) ?? {};
       expect(own.position).not.toBe("absolute");
     }
+  });
+});
+
+// PO 2026-10-06: the paper grain and the escarapela come back. On Android a
+// %-height absolute Image of the escarapela grew the card to ~window height
+// (mimar AVD, 2026-10-05). jest has no Yoga, so the STRUCTURE that makes that
+// impossible is pinned: an absolute, measured layer; nothing until measured;
+// numeric Image boxes; and a face whose in-flow children are the same with and
+// without the textures.
+describe("paper + escarapela — painted without moving the card", () => {
+  type JsonNode = { type: string; props: Record<string, unknown>; children: unknown[] | null };
+
+  function renderChrome(face: DocumentFace = "credencial") {
+    return render(
+      createElement(DocumentChromeNative, {
+        face,
+        isLibretaActive: face === "libreta",
+        onTurn: () => {},
+        situation: null,
+      }),
+    );
+  }
+
+  function layOutFace(width: number, height: number) {
+    fireEvent(screen.getByTestId("face-watermark", { includeHiddenElements: true }), "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, width, height } },
+    });
+  }
+
+  function findJson(node: unknown, testID: string): JsonNode | null {
+    if (node === null || typeof node !== "object") return null;
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        const hit = findJson(child, testID);
+        if (hit) return hit;
+      }
+      return null;
+    }
+    const json = node as JsonNode;
+    if (json.props?.testID === testID) return json;
+    return findJson(json.children, testID);
+  }
+
+  /** The face's direct host children that take part in its layout. */
+  function inFlowChildren(): string {
+    const face = findJson(screen.toJSON(), "document-face");
+    expect(face).not.toBeNull();
+    const children = (face?.children ?? []) as JsonNode[];
+    return JSON.stringify(
+      children.filter(
+        (child) =>
+          StyleSheet.flatten(child.props.style as StyleProp<ViewStyle>)?.position !== "absolute",
+      ),
+    );
+  }
+
+  it("draws nothing until the layer has been measured, and nothing for a zero box", () => {
+    renderChrome();
+    expect(screen.getByTestId("face-watermark", { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.queryByTestId("face-paper", { includeHiddenElements: true })).toBeNull();
+    expect(screen.queryByTestId("face-escarapela", { includeHiddenElements: true })).toBeNull();
+    layOutFace(0, 0);
+    expect(screen.queryByTestId("face-paper", { includeHiddenElements: true })).toBeNull();
+  });
+
+  it("is an absolute, untouchable, hidden layer", () => {
+    renderChrome();
+    const layer = screen.getByTestId("face-watermark", { includeHiddenElements: true });
+    expect(layer.props.pointerEvents).toBe("none");
+    expect(layer.props.accessibilityElementsHidden).toBe(true);
+    expect(StyleSheet.flatten(layer.props.style)).toMatchObject({
+      position: "absolute",
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      zIndex: 0,
+    });
+  });
+
+  it("gives each Image numeric width and height — never %, never aspectRatio", () => {
+    renderChrome();
+    layOutFace(343, 760);
+    for (const id of ["face-paper", "face-escarapela"]) {
+      const image = screen.getByTestId(id, { includeHiddenElements: true });
+      const style = StyleSheet.flatten(image.props.style);
+      expect(style.position).toBe("absolute");
+      expect(typeof style.width).toBe("number");
+      expect(typeof style.height).toBe("number");
+      expect(style).not.toHaveProperty("aspectRatio");
+      for (const [key, value] of Object.entries(style)) {
+        if (typeof value === "string" && value.includes("%")) {
+          throw new Error(`${id}.${key} is a percentage: ${value}`);
+        }
+      }
+      expect(image.props.resizeMethod).toBe("resize");
+    }
+    expect(
+      StyleSheet.flatten(
+        screen.getByTestId("face-paper", { includeHiddenElements: true }).props.style,
+      ),
+    ).toMatchObject({ width: 343, height: 343, opacity: 0.55 });
+    expect(
+      StyleSheet.flatten(
+        screen.getByTestId("face-escarapela", { includeHiddenElements: true }).props.style,
+      ),
+    ).toMatchObject({ width: 343, height: 343, opacity: 0.28 });
+  });
+
+  it("paints first in the face, so the band and the body sit over it", () => {
+    renderChrome();
+    const face = findJson(screen.toJSON(), "document-face");
+    const first = (face?.children ?? [])[0] as JsonNode | undefined;
+    expect(first?.props.testID).toBe("face-watermark");
+  });
+
+  it("leaves the face's in-flow content identical with and without the textures", () => {
+    renderChrome();
+    const before = inFlowChildren();
+    layOutFace(343, 760);
+    expect(screen.getByTestId("face-escarapela", { includeHiddenElements: true })).toBeTruthy();
+    expect(inFlowChildren()).toBe(before);
+    // The face itself never takes a height from anyone.
+    const faceStyle = StyleSheet.flatten(screen.getByTestId("document-face").props.style);
+    expect(faceStyle).not.toHaveProperty("height");
+    expect(faceStyle).not.toHaveProperty("minHeight");
+  });
+
+  it("keeps the same sources and bitmap size across a turn", () => {
+    const view = renderChrome("credencial");
+    layOutFace(343, 900);
+    const frontPaper = screen.getByTestId("face-paper", { includeHiddenElements: true }).props;
+    const frontMark = screen.getByTestId("face-escarapela", { includeHiddenElements: true }).props;
+    view.rerender(
+      createElement(DocumentChromeNative, {
+        face: "libreta",
+        isLibretaActive: true,
+        onTurn: () => {},
+        situation: null,
+      }),
+    );
+    // Still drawn after the turn: the layer stayed mounted with its measurement.
+    const turnedPaper = screen.getByTestId("face-paper", { includeHiddenElements: true }).props;
+    expect(turnedPaper.source).toBe(frontPaper.source);
+    layOutFace(343, 640);
+    const backPaper = screen.getByTestId("face-paper", { includeHiddenElements: true }).props;
+    const backMark = screen.getByTestId("face-escarapela", { includeHiddenElements: true }).props;
+    expect(backPaper.source).toBe(frontPaper.source);
+    expect(backMark.source).toBe(frontMark.source);
+    const size = (props: Record<string, unknown>) => {
+      const s = StyleSheet.flatten(props.style as StyleProp<ViewStyle>);
+      return [s.width, s.height];
+    };
+    expect(size(backPaper)).toEqual(size(frontPaper));
+    expect(size(backMark)).toEqual(size(frontMark));
   });
 });
