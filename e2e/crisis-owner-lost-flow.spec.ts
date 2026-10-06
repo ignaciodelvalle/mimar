@@ -124,19 +124,38 @@ test("owner marks a pet lost — public credential flips to lost state for a str
       const response = await strangerPage.goto(`/p/${token}`);
       expect(response?.status()).toBeLessThan(400);
 
-      const banner = strangerPage.locator('[data-section="lost-urgent-strip"]');
-      await expect(banner).toBeVisible();
-      // Headline is sex-dependent (lostBannerHeadline): "ESTÁ PERDIDO" (male),
-      // "ESTÁ PERDIDA" (female) or "SE PERDIÓ" (unknown) — match any variant.
-      await expect(banner).toContainText(/perdid[oa]|se perdió/i);
-      await expect(strangerPage.getByText(new RegExp(`soy ${petName}`, "i"))).toBeVisible();
+      // The credential IS the lost one: the card carries the situation, and
+      // the lost body (PublicLostSections) is on the paper.
+      await expect(strangerPage.locator(".pc-cred").first()).toHaveAttribute(
+        "data-situation",
+        "perdida",
+      );
+      await expect(strangerPage.locator('[data-section="lost-urgent-strip"]')).toBeAttached();
 
-      // Disclosed channel: the call CTA is present (phone was enabled).
-      await expect(strangerPage.getByRole("link", { name: /llamar/i })).toBeVisible();
+      // What tells a finder the pet is lost is the situation chip in the
+      // identity row (the red urgent strip and its headline left the paper in
+      // the 2026-10 redesign). Its words are PET_SITUATIONS.perdida.label
+      // ("Perdida", lib/ui/pet-situation.ts) gendered by situationLabelForSex
+      // (lib/utils/format.ts): "Perdido" for a male pet, "Perdida" otherwise —
+      // followed by the recency ("· recién", "· hace …"). It is an alert.
+      const lostChip = strangerPage.locator('[data-section="masthead-situation-chip"]');
+      await expect(lostChip).toBeVisible();
+      await expect(lostChip).toHaveText(/^(Perdido|Perdida)\b/);
+      await expect(lostChip).toHaveAttribute("role", "alert");
+      await expect(strangerPage.getByRole("heading", { level: 1, name: petName })).toBeVisible();
+
+      // Disclosed channel: the call CTA is present (phone was enabled). Scoped
+      // to the finder verbs under the card — the sticky bar repeats "Llamar".
+      await expect(
+        strangerPage
+          .locator('[data-section="lost-cta-row"]')
+          .getByRole("link", { name: /^llamar$/i }),
+      ).toBeVisible();
 
       // NOT disclosed: no last-seen location section renders (both the
-      // location field and its disclosure toggle were left off).
-      await expect(strangerPage.getByText(/última vez vista/i)).not.toBeVisible();
+      // location field and its disclosure toggle were left off). The heading
+      // is gendered (lastSeenHeadingLabel): visto / vista / visto/a.
+      await expect(strangerPage.getByText(/última vez vist[oa]/i)).not.toBeVisible();
     } finally {
       await strangerContext.close();
     }

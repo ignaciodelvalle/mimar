@@ -71,21 +71,29 @@ test.describe("print surfaces keep the meaning that lives in colour", () => {
   });
 
   test("the sticky action bar does not print over the credential", async ({ page }) => {
-    await page.goto("/adoptar");
+    // The bar renders for a LOST pet (page.tsx `actionBar`: tier-0 active pets
+    // get none since PO 2026-07-24), so the pet comes from /perdidas — the
+    // e2e seed (scripts/seed-test-users.ts) marks one of owner@dim.test's
+    // pets lost. An adoptable pet never had the bar, and this test skipped.
+    await page.goto("/perdidas");
     await page.waitForLoadState("networkidle").catch(() => {});
-    const petLink = page.locator('a[href^="/adoptar/DIM"]').first();
-    test.skip((await petLink.count()) === 0, "No adoptable pets seeded — no credential to print.");
+    const lostLink = page.locator('a[href^="/p/"]').first();
+    const verdict = seedFixtureVerdict(
+      await lostLink.count(),
+      "lost-pet credential link on /perdidas",
+      "the sticky action bar's print opt-out",
+    );
+    test.skip(verdict.verdict === "skip", verdict.verdict === "skip" ? verdict.reason : "");
+    expect(verdict.verdict, verdict.verdict === "fail" ? verdict.reason : "").not.toBe("fail");
 
-    const href = await petLink.getAttribute("href");
-    const token = (href ?? "").split("/").filter(Boolean).pop();
-    test.skip(!token, "Could not derive a public token from the adoption listing.");
-
-    await page.goto(`/p/${token}`);
     // The bar is mobile-only (`sm:hidden`), so give it a viewport where it
     // renders at all — otherwise this test would pass for the wrong reason.
     await page.setViewportSize({ width: 390, height: 780 });
+    await page.goto((await lostLink.getAttribute("href")) ?? "");
+    await expect(page.locator(".pc-cred").first()).toHaveAttribute("data-situation", "perdida");
     const bar = page.locator('[data-section="sticky-action-bar"]');
-    test.skip((await bar.count()) === 0, "Action bar not rendered for this pet's state.");
+    // A lost pet ALWAYS gets the bar — asserted, not skipped.
+    await expect(bar.first()).toBeVisible();
 
     await page.emulateMedia({ media: "print" });
 
