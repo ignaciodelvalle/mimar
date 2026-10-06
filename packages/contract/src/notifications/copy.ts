@@ -53,6 +53,10 @@ export const NOTIFICATION_TARGET_REASONS = [
   "informational",
   /** The destination exists but only on the web; the app explains and offers the browser. */
   "web_only",
+  /** The writer linked an outside site (an official information page); it opens there. */
+  "external",
+  /** The row was erased at its subject's request (Ley 25.326 art. 16): nothing to open. */
+  "erased",
 ] as const;
 export type NotificationTargetReason = (typeof NOTIFICATION_TARGET_REASONS)[number];
 
@@ -76,4 +80,7 @@ export const NOTIFICATION_REASON_COPY = {
     text ?? "Esta notificación es sólo un aviso: no hay nada más para abrir.",
   web_only: (): string =>
     "Esto se gestiona desde la web. Abrilo en el navegador con tu misma cuenta.",
+  external: (label: string | null): string =>
+    `Este aviso enlaza un sitio externo${label ? ` (${label})` : ""}. Se abre fuera de miMAR.`,
+  erased: (): string => "Esta notificación se eliminó a pedido de su titular.",
 } as const;

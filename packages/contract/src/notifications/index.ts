@@ -41,4 +41,15 @@ export {
   severityRank,
   sortForDisplay,
 } from "./ordering.ts";
+export {
+  ERASED_NOTIFICATION_TITLE,
+  NOTIFICATION_SECTIONS,
+  type NotificationSection,
+  type NotificationSectionAccess,
+  isErasedNotification,
+  isSafeExternalUrl,
+  isSafeInternalPath,
+  matchNotificationSection,
+  trimTrailingSlash,
+} from "./sections.ts";
 export { wireNotificationFacts } from "./wire.ts";

@@ -25,8 +25,19 @@ export const NOTIFICATION_TARGET_PAYLOAD_VERSION = 1;
 /** Short: the answer reflects access state that can change at any moment. */
 export const NOTIFICATION_TARGET_STALE_AFTER_MS = 15_000;
 
-/** What the resolver landed on. */
-export const NOTIFICATION_TARGET_OUTCOMES = ["case", "pet", "section", "explain"] as const;
+/**
+ * What the resolver landed on. `external` is a writer's link to an outside
+ * site (an official information page): `webHref` / `appRoute` still name the
+ * explanation, and the outside address rides in `externalUrl` — a redirect
+ * never leaves the origin.
+ */
+export const NOTIFICATION_TARGET_OUTCOMES = [
+  "case",
+  "pet",
+  "section",
+  "explain",
+  "external",
+] as const;
 export type NotificationTargetOutcomeV1 = (typeof NOTIFICATION_TARGET_OUTCOMES)[number];
 
 /**
@@ -79,6 +90,10 @@ export type NotificationTargetV1 = {
   /** es-AR «who must act» sentence, or `null` when nothing is pending. */
   actorCopy: string | null;
   pendingActor: NotificationPendingActor;
+  /** The outside address, only for `external` (absolute http(s), validated). */
+  externalUrl: string | null;
+  /** The writer's button label for that address, when it set one. */
+  externalLabel: string | null;
   /** Verbatim from the row, so the explanation screen needs no second read. */
   title: string;
   body: string | null;

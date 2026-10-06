@@ -34,6 +34,7 @@ import {
   matchWebPath,
   pathParamNames,
 } from "@dim/contract/links";
+import { NOTIFICATION_SECTIONS } from "@dim/contract/notifications";
 import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -157,6 +158,16 @@ function discoverAccessByShape(): Map<string, DeepLinkAccess | null> {
  */
 const ACCESS_NOT_DERIVABLE: DeepLinkName[] = ["libretaShare", "orgInvitation"];
 
+/**
+ * Session pages that live in `(public)` DELIBERATELY and run their own session
+ * check. `notificationDetail` (`/notificaciones/{id}`) is the one: the `(app)`
+ * layout bounces admin and govt accounts to their portals, and operators
+ * receive notifications too (notificaciones-destinos review R2), so the page
+ * sits where every role can reach it and calls `requireUserOrRedirect` itself.
+ * Pinned like the list above: another entry is a decision made next to its reason.
+ */
+const SELF_GATED_IN_PUBLIC: DeepLinkName[] = ["notificationDetail"];
+
 // ---------------------------------------------------------------------------
 // The SECOND corpus, derived from apps/mobile/app/
 // ---------------------------------------------------------------------------
@@ -232,6 +243,15 @@ describe("the corpus is real", () => {
   it("recognises the credential route specifically", () => {
     expect(ROUTES.has("/p/*")).toBe(true);
     expect(ROUTES.has("/p/*/encontre")).toBe(true);
+  });
+});
+
+// notificaciones-destinos review (2026-10): the resolver opens a stored section
+// only when it matches `NOTIFICATION_SECTIONS`, so a renamed route must turn
+// THIS red rather than turning old notifications into 404s.
+describe("every notification section resolves to a real route", () => {
+  it.each(NOTIFICATION_SECTIONS.map((s) => s.pattern))("%s", (pattern) => {
+    expect(ROUTES.has(eraseParams(pattern)), `${pattern} matches no page under app/`).toBe(true);
   });
 });
 
@@ -444,7 +464,13 @@ describe("the table is unambiguous", () => {
         undecidable.push(name);
         continue;
       }
-      if (fromTree !== DEEP_LINK_MAP[name].access) {
+      // A session page that sits in `(public)` ON PURPOSE and checks the session
+      // itself — see SELF_GATED_IN_PUBLIC.
+      const selfGated =
+        SELF_GATED_IN_PUBLIC.includes(name) &&
+        fromTree === "public" &&
+        DEEP_LINK_MAP[name].access === "session";
+      if (fromTree !== DEEP_LINK_MAP[name].access && !selfGated) {
         mismatches.push(
           `${name}: the table says "${DEEP_LINK_MAP[name].access}", app/ says "${fromTree}"`,
         );
