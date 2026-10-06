@@ -16,14 +16,17 @@
 //      product (PO decision 3): the titular keeps everything, including the
 //      power to end the arrangement unilaterally and instantly.
 //
-// Contract N3: the action returns, this component renders LnSuccessScreen. No
-// redirect(), no router.refresh().
+// Contract N3: the action returns and this form navigates to the success ROUTE
+// (cuidado/invitacion-enviada). No redirect(), no router.refresh(), and no
+// success screen held in state here: the action's revalidation re-renders
+// `/cuidado`, which unmounts this form once the invitation is pending — see
+// caretakerInviteSentPath.
 
 import { useState, useTransition } from "react";
 
 import { LnButton } from "@/components/ui/Button";
 import { LnField, LnInput, LnTextarea } from "@/components/ui/Field";
-import { LnSuccessScreen } from "@/components/ui/SuccessScreen";
+import { useActionNavigate } from "@/lib/ui/use-action-redirect";
 import { designateCaretakerAction } from "@/src/modules/caretakers/actions";
 import {
   CARETAKER_SCOPE_ALLOWED,
@@ -33,6 +36,7 @@ import {
   MAX_GRANT_DURATION_DAYS,
   caretakerEndDateBounds,
 } from "@/src/modules/caretakers/domain/grant-rules";
+import { caretakerInviteSentPath } from "./invite-sent-path";
 
 type Props = {
   petPublicToken: string;
@@ -44,7 +48,10 @@ type Props = {
 export function DesignateCaretakerForm({ petPublicToken, petName, todayIso }: Props) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [sentTo, setSentTo] = useState<string | null>(null);
+  // Fired from the transition, not from an effect: it must run even when the
+  // refresh has already unmounted this form.
+  const [navigate, navigating] = useActionNavigate();
+  const busy = pending || navigating;
 
   const [inviteeEmail, setInviteeEmail] = useState("");
   const [startsAt, setStartsAt] = useState(todayIso);
@@ -67,21 +74,8 @@ export function DesignateCaretakerForm({ petPublicToken, petName, todayIso }: Pr
         setError(result.error);
         return;
       }
-      setSentTo(inviteeEmail.trim());
+      navigate(caretakerInviteSentPath(petPublicToken));
     });
-  }
-
-  if (sentTo) {
-    return (
-      <LnSuccessScreen
-        title="Invitación enviada"
-        description={`Le avisamos a ${sentTo}. Hasta que acepte no cambia nada: ${petName} sigue siendo solo tuya y podés retirar la invitación cuando quieras.`}
-        next={[
-          { label: `Volver a ${petName}`, href: `/mis-mascotas/${petPublicToken}` },
-          { label: "Ver mis mascotas", href: "/mis-mascotas", variant: "secondary" },
-        ]}
-      />
-    );
   }
 
   return (
@@ -185,8 +179,8 @@ export function DesignateCaretakerForm({ petPublicToken, petName, todayIso }: Pr
       {error && <output className="block text-sm text-[var(--color-ln-err)]">{error}</output>}
 
       <div className="flex flex-wrap gap-2">
-        <LnButton type="submit" variant="primary" disabled={pending}>
-          {pending ? "Enviando…" : "Invitar como cuidador/a"}
+        <LnButton type="submit" variant="primary" disabled={busy}>
+          {busy ? "Enviando…" : "Invitar como cuidador/a"}
         </LnButton>
         <LnButton href={`/mis-mascotas/${petPublicToken}`} variant="ghost">
           Volver

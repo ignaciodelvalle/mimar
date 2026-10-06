@@ -22,6 +22,9 @@ vi.mock("@/src/modules/caretakers/actions", () => ({
   designateCaretakerAction: (...args: unknown[]) => designateAction(...args),
 }));
 
+const navigateAfterActionSuccess = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/ui/full-page-action-nav", () => ({ navigateAfterActionSuccess }));
+
 import { DesignateCaretakerForm } from "./DesignateCaretakerForm";
 
 const PROPS = {
@@ -32,6 +35,7 @@ const PROPS = {
 
 beforeEach(() => {
   designateAction.mockReset().mockResolvedValue({ grantToken: "CG-abc123" });
+  navigateAfterActionSuccess.mockReset();
 });
 
 afterEach(() => cleanup());
@@ -99,12 +103,29 @@ describe("submitting", () => {
     );
   });
 
-  it("ends on a success screen naming who was invited — never a silent redirect", async () => {
-    render(<DesignateCaretakerForm {...PROPS} />);
+  // The success screen is a ROUTE that names the invitee from the database
+  // (cuidado/invitacion-enviada). It used to be state in this form, and the
+  // action's revalidation unmounted the form before it showed: /cuidado renders
+  // the withdraw controls once an invitation is pending.
+  it("ends on the success route, even when the refresh unmounted the form first", async () => {
+    let resolveResult!: (value: unknown) => void;
+    designateAction.mockImplementation(
+      () =>
+        new Promise((r) => {
+          resolveResult = r;
+        }),
+    );
+    const view = render(<DesignateCaretakerForm {...PROPS} />);
     fill();
     fireEvent.click(screen.getByRole("button", { name: "Invitar como cuidador/a" }));
-    await waitFor(() => expect(screen.getByText(/ana@example.com/)).toBeInTheDocument());
-    expect(screen.getByText(/Invitación enviada/)).toBeInTheDocument();
+    await waitFor(() => expect(designateAction).toHaveBeenCalledTimes(1));
+    view.unmount();
+    resolveResult({ grantToken: "CG-abc123" });
+    await waitFor(() =>
+      expect(navigateAfterActionSuccess).toHaveBeenCalledWith(
+        "/mis-mascotas/DIM-TEST-0001/cuidado/invitacion-enviada",
+      ),
+    );
   });
 
   it("says nothing happened when the action refuses", async () => {
@@ -119,7 +140,7 @@ describe("submitting", () => {
         screen.getByText("Ya hay una invitación de cuidado pendiente para esta mascota."),
       ).toBeInTheDocument(),
     );
-    expect(screen.queryByText(/Invitación enviada/)).not.toBeInTheDocument();
+    expect(navigateAfterActionSuccess).not.toHaveBeenCalled();
   });
 });
 
