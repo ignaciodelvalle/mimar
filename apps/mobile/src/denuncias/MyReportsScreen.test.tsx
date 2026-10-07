@@ -57,8 +57,15 @@ function ok(over: Partial<MyWelfareReportsV1> = {}) {
 function renderScreen() {
   const onOpenReport = jest.fn();
   const onNewReport = jest.fn();
-  render(<MyReportsScreen onOpenReport={onOpenReport} onNewReport={onNewReport} />);
-  return { onOpenReport, onNewReport };
+  const onFindByCode = jest.fn();
+  render(
+    <MyReportsScreen
+      onOpenReport={onOpenReport}
+      onNewReport={onNewReport}
+      onFindByCode={onFindByCode}
+    />,
+  );
+  return { onOpenReport, onNewReport, onFindByCode };
 }
 
 describe("MyReportsScreen", () => {
@@ -83,6 +90,23 @@ describe("MyReportsScreen", () => {
     renderScreen();
     expect(await screen.findByText("Aún no enviaste denuncias.")).toBeTruthy();
     expect(screen.getByText("¿Enviaste una denuncia anónima?")).toBeTruthy();
+  });
+
+  it("says the absence once — no count line over the empty state", async () => {
+    mockFetch.mockResolvedValue(ok());
+    renderScreen();
+    expect(await screen.findByText("Aún no enviaste denuncias.")).toBeTruthy();
+    expect(screen.queryByText("Sin denuncias enviadas.")).toBeNull();
+    // Nor a body title: the stack header names the screen.
+    expect(screen.queryByText("Mis denuncias")).toBeNull();
+  });
+
+  it("the anonymous callout leads somewhere: the code search", async () => {
+    mockFetch.mockResolvedValue(ok());
+    const { onFindByCode } = renderScreen();
+    await screen.findByText("¿Enviaste una denuncia anónima?");
+    fireEvent.press(screen.getByRole("link", { name: "Buscar mi denuncia con el código" }));
+    expect(onFindByCode).toHaveBeenCalledTimes(1);
   });
 
   it("never draws a failed read as an empty list", async () => {
@@ -137,7 +161,7 @@ describe("MyReportsScreen — Nueva denuncia", () => {
   ])("is the first control on the screen, once, %s", async (_state, arrange) => {
     arrange();
     const { onNewReport } = renderScreen();
-    await screen.findByText("Mis denuncias");
+    await screen.findByText(/^(1 denuncia enviada\.|Aún no enviaste denuncias\.|Reintentar)$/);
 
     const buttons = screen.getAllByRole("button");
     expect(buttons[0]).toBe(screen.getByRole("button", { name: "Nueva denuncia" }));
