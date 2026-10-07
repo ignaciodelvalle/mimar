@@ -340,16 +340,17 @@ const factsShape = {
     .optional()
     .transform((value) => value ?? null),
   /**
-   * The idempotency key for the pet-event bridge, passed straight through.
+   * The submit's idempotency key (plan A5f, migration 0289).
    *
-   * It bounds NOTHING on this transport today and it is here anyway, which needs
-   * saying so nobody reads it as a retry promise. The bridge inserts it guards
-   * only fire for `subjectKind === "registered_pet"`, which this door does not
-   * accept — so on every request this door can make, the key is carried and
-   * never consulted. Re-sending a denuncia after a timeout creates a SECOND
-   * denuncia with a second reference code, and `computeFlagReasons` catches the
-   * pair as `duplicate_within_24h`. The field exists so the day this door grows
-   * a registered-pet member it does not also have to grow a wire field.
+   * A key of at least 32 characters (a UUID) makes a re-send after a timeout
+   * land on the denuncia it already filed instead of a second one: an
+   * identified reporter gets the original's ack back (201, same reference
+   * code); an anonymous one gets `welfare_report_already_filed` (409) and
+   * nothing about the original — the key is the anonymous scope's only proof.
+   * Mint it with a CSPRNG once per denuncia and reuse it only for re-sends of
+   * that same denuncia. A shorter key, or none, bounds nothing: the re-send
+   * files a second denuncia, which `computeFlagReasons` catches as
+   * `duplicate_within_24h`.
    */
   clientIdempotencyKey: z
     .string()

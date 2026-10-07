@@ -500,6 +500,11 @@ export function apiErrorMessage(code: ApiV1ErrorCode): string {
       // and comes back as the code above — never as a second letter in the
       // shelter's queue.
       return "No pudimos enviar tu postulación. Volvé a intentar.";
+    // The re-send of an anonymous denuncia that already landed. Nothing about
+    // the original comes back (the contract says why), so the sentence only
+    // says it arrived and that sending it again is not needed.
+    case "welfare_report_already_filed":
+      return "Esta denuncia ya había sido recibida; no hace falta volver a enviarla.";
     case "welfare_report_failed":
       // TWO SERVER STATES BEHIND ONE CODE, and the copy has to be true in both:
       // either nothing was written, or the denuncia landed and the case over it
