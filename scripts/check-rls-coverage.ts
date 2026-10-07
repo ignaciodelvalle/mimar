@@ -407,10 +407,10 @@ export const ANON_READ_SURFACE: Record<string, AnonReadSurfaceEntry> = {
   // service_offerings left this list in 0279: anon holds no privilege on it
   // and no policy admits anon. Its whole row (provider, reviewer, rejection
   // reason) had been readable here since 0086.
-  time_slots: {
-    columns: "*",
-    reason: "Bookable slot times and capacity counters for public offerings; no personal data.",
-  },
+  // time_slots left it in 0286: its USING (true) policy for anon and
+  // authenticated became org-member / provider-vet reads TO authenticated —
+  // nobody read slots through PostgREST, and the policy published the live
+  // occupancy of every agenda.
 };
 
 export type AnonReadRow = {

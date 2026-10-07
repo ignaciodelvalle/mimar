@@ -79,15 +79,37 @@ create policy "schedule_rules read by provider vet"
 -- ============================================================================
 -- time_slots
 -- ============================================================================
--- Availability is open data: any authenticated or anonymous user can see slots
--- (they need this to search for bookable times).
+-- Since 0286 (byte-identical to that migration): the offering's org members
+-- and its provider vet only, the audience of service_schedule_rules. The old
+-- "time_slots read publicly" (TO anon, authenticated USING (true)) handed the
+-- capacity and live occupancy of every agenda to the publishable key. Owner
+-- search and booking read slots server-side over Drizzle, never PostgREST.
 alter table public.time_slots enable row level security;
+revoke all on public.time_slots from anon;
 
 drop policy if exists "time_slots read publicly" on public.time_slots;
-create policy "time_slots read publicly"
+
+drop policy if exists "time_slots read by org members" on public.time_slots;
+create policy "time_slots read by org members"
   on public.time_slots for select
-  to anon, authenticated
-  using (true);
+  to authenticated
+  using (
+    service_offering_id in (
+      select id from public.service_offerings
+      where public.caller_is_active_org_member(organization_id)
+    )
+  );
+
+drop policy if exists "time_slots read by provider vet" on public.time_slots;
+create policy "time_slots read by provider vet"
+  on public.time_slots for select
+  to authenticated
+  using (
+    service_offering_id in (
+      select id from public.service_offerings
+      where provider_user_id = (select auth.uid())
+    )
+  );
 
 -- ============================================================================
 -- appointments
