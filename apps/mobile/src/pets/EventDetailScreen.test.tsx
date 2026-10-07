@@ -32,7 +32,11 @@ jest.mock("../api/endpoints", () => ({
 jest.mock("../auth/session-store", () => ({ sessionPort: {} }));
 
 import { EventDetailScreen } from "./EventDetailScreen";
-import { AMEND_READ_ONLY_TITLE } from "./event-detail-view-model";
+import {
+  AMEND_READ_ONLY_TITLE,
+  buildEventDetailView,
+  eventDetailActions,
+} from "./event-detail-view-model";
 
 const TOKEN = "DIM-PAMP-0001";
 const EVENT_ID = "33333333-3333-4333-8333-333333333333";
@@ -358,5 +362,118 @@ describe("EventDetailScreen — the rows a correction may not touch", () => {
 
     expect(await screen.findByText(/«Nota» no puede quedar vacío/)).toBeOnTheScreen();
     expect(mockAmendPetEvent).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pulido-avisos — the Viaje treatment: ONE primary, the rest as rows under
+// "Más acciones", and every action that existed before still reachable.
+// ---------------------------------------------------------------------------
+
+describe("EventDetailScreen — every action stays reachable", () => {
+  it("lists a vaccine's actions: Corregir as the one primary, Actualizar as a row", async () => {
+    render(<EventDetailScreen publicToken={TOKEN} eventId={EVENT_ID} />);
+    await screen.findByText("Antirrábica");
+
+    expect(screen.getByText("Corregir registro")).toBeOnTheScreen();
+    expect(screen.getByText("Más acciones")).toBeOnTheScreen();
+    expect(screen.getByText("Actualizar el registro")).toBeOnTheScreen();
+    // "Actualizar" is no longer a full-width primary button.
+    expect(screen.queryByText("Actualizar")).toBeNull();
+
+    fireEvent.press(screen.getByText("Actualizar el registro"));
+    await waitFor(() => expect(mockFetchPetEventDetail).toHaveBeenCalledTimes(2));
+  });
+
+  it("lists a treatment's actions: Terminar as the primary, Actualizar as a row", async () => {
+    mockFetchPetEventDetail.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        eventType: "medication_started",
+        kind: "Medicación",
+        title: "Amoxicilina",
+        facts: [{ field: "name", label: "Medicamento", value: "Amoxicilina" }],
+      }),
+    });
+    render(<EventDetailScreen publicToken={TOKEN} eventId={EVENT_ID} />);
+    await screen.findByText("Terminar medicación");
+    const reachable = ["Terminar medicación", "Actualizar el registro"];
+    for (const label of reachable) expect(screen.getByText(label)).toBeOnTheScreen();
+  });
+
+  it("lists a microchip's actions, and the replacement is one tap away", async () => {
+    mockFetchPetEventDetail.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        eventType: "microchip_implanted",
+        kind: "Microchip",
+        title: "Microchip colocado",
+        facts: [],
+      }),
+    });
+    render(<EventDetailScreen publicToken={TOKEN} eventId={EVENT_ID} />);
+    // With no editable row the microchip door is the only act — the primary.
+    fireEvent.press(await screen.findByText("Reemplazar el microchip"));
+    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/asentar?kind=microchip_replace`);
+    expect(screen.getByText("Actualizar el registro")).toBeOnTheScreen();
+  });
+
+  it("opens the correction in place, and Volver brings the primary back", async () => {
+    render(<EventDetailScreen publicToken={TOKEN} eventId={EVENT_ID} />);
+    fireEvent.press(await screen.findByText("Corregir registro"));
+    expect(screen.getByText("Confirmar corrección")).toBeOnTheScreen();
+    // The rows stay while the form is open.
+    expect(screen.getByText("Actualizar el registro")).toBeOnTheScreen();
+
+    fireEvent.press(screen.getByText("Volver"));
+    expect(screen.queryByText("Confirmar corrección")).toBeNull();
+    expect(screen.getByText("Corregir registro")).toBeOnTheScreen();
+  });
+
+  it("opens a non-image attachment from a row that says where it opens", async () => {
+    mockFetchPetEventDetail.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        attachments: {
+          status: "ok",
+          data: {
+            items: [
+              {
+                attachmentId: "att-1",
+                kind: "file",
+                mimeType: "application/pdf",
+                url: "https://files.example/att-1.pdf",
+                expiresAt: "2099-01-01T00:00:00.000Z",
+              },
+            ],
+          },
+        },
+      }),
+    });
+    render(<EventDetailScreen publicToken={TOKEN} eventId={EVENT_ID} />);
+    expect(await screen.findByText("Ver adjunto (application/pdf)")).toBeOnTheScreen();
+  });
+});
+
+describe("eventDetailActions", () => {
+  it("never makes the reload the primary, and always keeps it reachable", () => {
+    const view = buildEventDetailView(
+      payload({ amend: { canAmend: false, refusal: "No." }, facts: [] }),
+    );
+    const { primary, more } = eventDetailActions(view);
+    expect(primary).toBeNull();
+    expect(more.map((action) => action.id)).toEqual(["refresh"]);
+  });
+
+  it("orders the acts: end the treatment, then correct, then the reload", () => {
+    const view = buildEventDetailView(
+      payload({
+        eventType: "medication_started",
+        facts: [{ field: "name", label: "Medicamento", value: "Amoxicilina" }],
+      }),
+    );
+    const { primary, more } = eventDetailActions(view);
+    expect(primary?.id).toBe("end_medication");
+    expect(more.map((action) => action.id).at(-1)).toBe("refresh");
   });
 });

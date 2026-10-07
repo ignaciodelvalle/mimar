@@ -572,3 +572,76 @@ export function buildAmendEventCommand(values: {
   const code = firstAmendEventInputCode(parsed.error) ?? "CHANGES_REQUIRED";
   return { ok: false, code, message: amendInputMessage(code) };
 }
+
+// ---------------------------------------------------------------------------
+// THE ACTIONS — one primary, the rest as rows (pulido-avisos, the Viaje treatment)
+// ---------------------------------------------------------------------------
+
+export type EventDetailActionId = "end_medication" | "amend" | "replace_microchip" | "refresh";
+
+export type EventDetailAction = {
+  id: EventDetailActionId;
+  label: string;
+  /** The full sentence, drawn above the button when this is the primary. */
+  note: string | null;
+  /** The two-line version, drawn under the label when this is a row. */
+  caption: string;
+};
+
+const END_MEDICATION_ACTION: EventDetailAction = {
+  id: "end_medication",
+  label: "Terminar medicación",
+  note: "Registrá el fin de este tratamiento. Se cancelan los recordatorios de las dosis que faltaban; el asiento del inicio queda igual.",
+  caption: "Cancela los recordatorios de las dosis que faltaban. El inicio queda igual.",
+};
+
+const AMEND_ACTION: EventDetailAction = {
+  id: "amend",
+  label: "Corregir registro",
+  note: AMEND_IMMUTABILITY_NOTE,
+  caption: "Agrega un registro nuevo con el valor correcto. El original queda visible.",
+};
+
+const REPLACE_MICROCHIP_ACTION: EventDetailAction = {
+  id: "replace_microchip",
+  label: "Reemplazar el microchip",
+  note: "Si este chip dejó de leerse, se salió o quedó anulado, registrá el reemplazo. Este asiento queda igual: el chip nuevo se anota aparte y pasa a ser el de la credencial.",
+  caption: "Si dejó de leerse, se salió o quedó anulado. Este asiento queda igual.",
+};
+
+const REFRESH_ACTION: EventDetailAction = {
+  id: "refresh",
+  label: "Actualizar el registro",
+  note: null,
+  caption: "Lo vuelve a leer y renueva los enlaces de los adjuntos.",
+};
+
+/**
+ * What this asiento offers, as ONE primary and the rest.
+ *
+ * THE ORDER IS THE PRIORITY. Ending a treatment is the act a medication asiento
+ * is opened for, while it runs; a correction is what any other amendable record
+ * is opened for; a microchip replacement is rare and stays a row unless it is
+ * the only act there is. "Actualizar el registro" is never the primary — a
+ * reload is not an act a record offers (see `pullToRefresh`), and the screen
+ * takes the pull gesture as well — but it stays reachable as a row for whoever
+ * does not know the gesture, because an expired attachment link tells the
+ * person to refresh.
+ *
+ * A correction is offered only when the server allows it AND at least one row
+ * is editable from here; otherwise the screen says why instead
+ * (`amendRefusal`, `amendNoEditableFactsNote`).
+ */
+export function eventDetailActions(view: EventDetailView): {
+  primary: EventDetailAction | null;
+  more: EventDetailAction[];
+} {
+  const acts: EventDetailAction[] = [];
+  if (canEndMedication(view)) acts.push(END_MEDICATION_ACTION);
+  if (view.canAmend && amendableFacts(view.eventType, view.facts).length > 0) {
+    acts.push(AMEND_ACTION);
+  }
+  if (canReplaceMicrochip(view)) acts.push(REPLACE_MICROCHIP_ACTION);
+  const [primary = null, ...rest] = acts;
+  return { primary, more: [...rest, REFRESH_ACTION] };
+}

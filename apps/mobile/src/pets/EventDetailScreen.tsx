@@ -16,6 +16,14 @@
 // anywhere, and the moment one is past its stated expiry the screen stops
 // offering it and says to refresh instead of showing a thumbnail that 400s.
 //
+// ONE PRIMARY ACTION, THE REST AS ROWS (pulido-avisos, the Viaje treatment).
+// The screen used to end in up to three cards of their own — "Fin del
+// tratamiento", "Reemplazo del microchip", "Corregir" — plus a full-width
+// primary that said "Actualizar". Now `eventDetailActions` picks ONE primary
+// for what this asiento is opened for and lists the rest as rows under "Más
+// acciones"; reloading is the pull gesture (and a row). What the viewer may not
+// do is said in a Callout, never left as a missing control.
+//
 // A PDF OPENS IN THE BROWSER, and the screen says that before the tap. This app
 // has no PDF viewer; a tap that silently did nothing, or a blank viewer, would
 // be worse than an honest handoff.
@@ -23,17 +31,26 @@
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
 
 import type { EventAttachmentV1 } from "@dim/contract/api";
 import { apiFailureMessage } from "../api/client";
 import { amendPetEvent, fetchPetEventDetail } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, ErrorNotice, Loading, Row, Unavailable } from "../ui/components";
-import { FONTS } from "../ui/fonts";
-import { Callout, PrimaryButton, Screen, SecondaryButton, TextField } from "../ui/kit";
+import {
+  Callout,
+  Eyebrow,
+  ListRow,
+  PrimaryButton,
+  Screen,
+  SecondaryButton,
+  TextField,
+  Title,
+  pullToRefresh,
+} from "../ui/kit";
 import { recordEventRoute } from "../ui/routes";
-import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "../ui/theme";
+import { COLORS, RADIUS, SPACE } from "../ui/theme";
 import {
   AMENDMENTS_EMPTY_LABEL,
   AMENDMENT_NO_VISIBLE_CHANGE,
@@ -44,6 +61,7 @@ import {
   ATTACHMENTS_EMPTY_LABEL,
   ATTACHMENT_EXTERNAL_HINT,
   ATTACHMENT_UNAVAILABLE_LABEL,
+  type EventDetailAction,
   type EventDetailView,
   amendNoEditableFactsNote,
   amendRequiredFactMessage,
@@ -55,9 +73,8 @@ import {
   buildAmendChanges,
   buildAmendEventCommand,
   buildEventDetailView,
-  canEndMedication,
-  canReplaceMicrochip,
   clearedRequiredFact,
+  eventDetailActions,
   initialAmendEdits,
   readOnlyFacts,
 } from "./event-detail-view-model";
@@ -78,29 +95,41 @@ export function EventDetailScreen({
   eventId: string;
 }) {
   const [state, setState] = useState<ScreenState>({ phase: "loading" });
+  const [refreshing, setRefreshing] = useState(false);
   const generation = useRef(0);
 
-  const load = useCallback(async () => {
-    const mine = ++generation.current;
-    setState({ phase: "loading" });
-    const result = await fetchPetEventDetail(sessionPort, publicToken, eventId);
-    if (mine !== generation.current) return;
-    if (result.outcome === "ok") {
-      setState({ phase: "ready", view: buildEventDetailView(result.payload) });
-      return;
-    }
-    setState({
-      phase: "failed",
-      message: apiFailureMessage(result) ?? "No pudimos leer este registro.",
-    });
-  }, [publicToken, eventId]);
+  // `refresh` keeps the record on screen and spins the pull control instead of
+  // blanking to the loading line — the same split every list screen makes.
+  const load = useCallback(
+    async (mode: "initial" | "refresh" = "initial") => {
+      const mine = ++generation.current;
+      if (mode === "initial") setState({ phase: "loading" });
+      else setRefreshing(true);
+      const result = await fetchPetEventDetail(sessionPort, publicToken, eventId);
+      if (mine !== generation.current) return;
+      setRefreshing(false);
+      if (result.outcome === "ok") {
+        setState({ phase: "ready", view: buildEventDetailView(result.payload) });
+        return;
+      }
+      setState({
+        phase: "failed",
+        message: apiFailureMessage(result) ?? "No pudimos leer este registro.",
+      });
+    },
+    [publicToken, eventId],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
 
   return (
-    <Screen>
+    <Screen
+      refreshControl={
+        state.phase === "ready" ? pullToRefresh(() => void load("refresh"), refreshing) : undefined
+      }
+    >
       {state.phase === "loading" ? <Loading label="Leyendo el registro…" /> : null}
       {state.phase === "failed" ? (
         <ErrorNotice message={state.message} onRetry={() => void load()} />
@@ -109,11 +138,9 @@ export function EventDetailScreen({
         <EventDetailBody
           view={state.view}
           publicToken={publicToken}
+          onRefresh={() => void load("refresh")}
           onAmended={() => void load()}
         />
-      ) : null}
-      {state.phase === "ready" ? (
-        <PrimaryButton label="Actualizar" onPress={() => void load()} />
       ) : null}
     </Screen>
   );
@@ -135,10 +162,12 @@ function Section<T>({
 function EventDetailBody({
   view,
   publicToken,
+  onRefresh,
   onAmended,
 }: {
   view: EventDetailView;
   publicToken: string;
+  onRefresh: () => void;
   onAmended: () => void;
 }) {
   // Frozen at mount: an expiry countdown that recomputed on every keystroke in
@@ -149,45 +178,38 @@ function EventDetailBody({
   return (
     <>
       <View style={styles.masthead}>
-        <Text style={styles.kind}>{view.kind}</Text>
-        <Text style={styles.title}>{view.title}</Text>
+        <Eyebrow>{view.kind}</Eyebrow>
+        <Title>{view.title}</Title>
         {view.subtitle ? <Body>{view.subtitle}</Body> : null}
-        <Text style={styles.author}>{view.authorLine}</Text>
+        <Body>{view.authorLine}</Body>
       </View>
 
-      {/* FECHAS ----------------------------------------------------------- */}
+      {/* DETALLE ---------------------------------------------------------- */}
       {/* Two dates and they are DIFFERENT questions: when it happened, and when
           somebody wrote it down. They can be years apart on an imported record,
-          and collapsing them would hide exactly that. */}
-      <Card title="Fechas">
+          and collapsing them would hide exactly that. One card with the fields
+          under them, rather than a card per heading. */}
+      <Card title="Detalle">
         <Row label="Ocurrió" value={formatArDate(view.occurredAt)} />
         <Row label="Registrado" value={formatArDate(view.recordedAt)} />
-      </Card>
-
-      {/* DETALLE ---------------------------------------------------------- */}
-      <Card title="Detalle">
-        {view.facts.length === 0 ? (
-          <Body>Sin campos adicionales.</Body>
-        ) : (
-          view.facts.map((fact) => <Row key={fact.field} label={fact.label} value={fact.value} />)
-        )}
+        {view.facts.map((fact) => (
+          <Row key={fact.field} label={fact.label} value={fact.value} />
+        ))}
+        {view.location ? (
+          // No map: this app ships no map library. The coordinate is the fact
+          // the record carries, and printing it beats implying a map that is
+          // not there.
+          <Row
+            label="Coordenadas"
+            value={`${view.location.lat.toFixed(5)}, ${view.location.lng.toFixed(5)}`}
+          />
+        ) : null}
+        {view.facts.length === 0 ? <Body>Sin campos adicionales.</Body> : null}
       </Card>
 
       {view.notes ? (
         <Card title="Notas">
           <Body>{view.notes}</Body>
-        </Card>
-      ) : null}
-
-      {view.location ? (
-        <Card title="Ubicación">
-          {/* No map: this app ships no map library. The coordinate is the fact
-              the record carries, and printing it beats implying a map that is
-              not there. */}
-          <Row
-            label="Coordenadas"
-            value={`${view.location.lat.toFixed(5)}, ${view.location.lng.toFixed(5)}`}
-          />
         </Card>
       ) : null}
 
@@ -215,7 +237,7 @@ function EventDetailBody({
             <View style={styles.amendments}>
               {amendments.items.map((step) => (
                 <View key={step.amendmentId} style={styles.amendStep}>
-                  <Text style={styles.amendHeadline}>{amendmentHeadline(step)}</Text>
+                  <Eyebrow>{amendmentHeadline(step)}</Eyebrow>
                   {step.changes.length === 0 ? (
                     <Body>{AMENDMENT_NO_VISIBLE_CHANGE}</Body>
                   ) : (
@@ -231,110 +253,135 @@ function EventDetailBody({
         }
       </Section>
 
-      <EndMedicationBlock view={view} publicToken={publicToken} />
-
-      <ReplaceMicrochipBlock view={view} publicToken={publicToken} />
-
-      <AmendBlock view={view} publicToken={publicToken} onAmended={onAmended} />
+      <EventActions
+        view={view}
+        publicToken={publicToken}
+        onRefresh={onRefresh}
+        onAmended={onAmended}
+      />
     </>
   );
 }
 
 /**
- * "Terminar medicación", offered only on the asiento that STARTED one.
+ * The acts on this asiento: ONE primary, then "Más acciones" as rows.
  *
- * IT LIVES HERE AND NOT IN THE "ASENTAR" PICKER because ending a treatment
- * needs the identifier of the event it ends, and this screen is the only place
- * a person already holds it. A picker would have to build a list of open
- * treatments from a second read — a second source for something the ledger
- * already says, and one more thing to keep in agreement.
+ * "TERMINAR MEDICACIÓN" AND "REEMPLAZAR EL MICROCHIP" LIVE HERE AND NOT IN THE
+ * "ASENTAR" PICKER because each needs the record it acts from, and this screen
+ * is the only place a person already holds it: ending a treatment needs the
+ * identifier of the event it ends, and the chip number appears in this app only
+ * as the `Número` fact on the implant asiento (`canReplaceMicrochip`). Both are
+ * appends, like everything else — the original asiento stays in the libreta.
  *
- * ENDING IS AN APPEND, like everything else: it writes a `medication_stopped`
- * event that references this one and cancels the dose reminders still ahead.
- * The original treatment stays in the libreta forever.
+ * NO `sourceEventId` FOR THE MICROCHIP, unlike the medication end. The
+ * contract's `microchipReplace` carries no reference to the event it supersedes
+ * and no `previousChipNumber`; the endpoint reads the animal's canonical chip
+ * server-side, so the route carries the kind alone.
+ *
+ * THE CORRECTION OPENS IN PLACE. While its form is open, the form's own
+ * "Confirmar corrección" is the screen's one primary, so the primary slot steps
+ * aside; the other rows stay where they were.
+ *
+ * WHEN THE VIEWER MAY NOT CORRECT, THE REASON IS SHOWN, in a Callout:
+ * `amend.refusal` carries an es-AR sentence for every case the server refuses,
+ * and when the server allows it but no row is editable from here
+ * (A2-alta-asentar-02) the form is not offered either — a form with zero boxes
+ * could only ever answer "no modificaste ningún campo". A disabled control with
+ * no explanation reads as a bug; no control at all reads as a missing feature.
  */
-function EndMedicationBlock({
+function EventActions({
   view,
   publicToken,
+  onRefresh,
+  onAmended,
 }: {
   view: EventDetailView;
   publicToken: string;
+  onRefresh: () => void;
+  onAmended: () => void;
 }) {
   const router = useRouter();
-  if (!canEndMedication(view)) return null;
+  const [amending, setAmending] = useState(false);
+  const { primary, more } = eventDetailActions(view);
+
+  const run = (action: EventDetailAction) => {
+    switch (action.id) {
+      case "end_medication":
+        router.push(
+          recordEventRoute(publicToken, { kind: "medication_end", sourceEventId: view.eventId }),
+        );
+        return;
+      case "replace_microchip":
+        router.push(recordEventRoute(publicToken, { kind: "microchip_replace" }));
+        return;
+      case "amend":
+        setAmending(true);
+        return;
+      case "refresh":
+        onRefresh();
+        return;
+    }
+  };
+
+  // TWO SENTENCES for the no-editable-row case, because the reason differs: an
+  // asiento whose rows are all formatted is told exactly that; one with NO
+  // curated rows — `medication_started` and `clinical_info_logged` render none —
+  // is not, because the card above just said "Sin campos adicionales".
+  let amendNotice: string | null = null;
+  if (!view.canAmend) amendNotice = view.amendRefusal;
+  else if (amendableFacts(view.eventType, view.facts).length === 0) {
+    amendNotice = amendNoEditableFactsNote(view.facts);
+  }
 
   return (
-    <Card title="Fin del tratamiento">
-      <Body>
-        Registrá el fin de este tratamiento. Se cancelan los recordatorios de las dosis que
-        faltaban; el asiento del inicio queda igual.
-      </Body>
-      <SecondaryButton
-        label="Terminar medicación"
-        onPress={() =>
-          router.push(
-            recordEventRoute(publicToken, { kind: "medication_end", sourceEventId: view.eventId }),
-          )
-        }
-      />
-    </Card>
-  );
-}
+    <>
+      {amendNotice ? (
+        <Callout tone="neutral">
+          <Body>{amendNotice}</Body>
+        </Callout>
+      ) : null}
 
-/**
- * "Reemplazar el microchip", offered only on the asiento that recorded one.
- *
- * THE SAME DOOR SHAPE AS `EndMedicationBlock` ABOVE, and deliberately: both are
- * acts reached from the asiento that originated them rather than from the
- * "Asentar" picker. `WRITABLE_KINDS` (record-event-view-model.ts) names this
- * home itself — "`microchip_replace` — from the microchip the animal already
- * has. There is nothing to replace otherwise, and the server refuses with 409."
- * The chip number is on THIS screen, as the `Número` fact, and nowhere else in
- * the app. See `canReplaceMicrochip` for why the implant asiento and not the
- * replacement one.
- *
- * NO `sourceEventId`, unlike "Terminar medicación". The contract's
- * `microchipReplace` carries no reference to the event it supersedes and no
- * `previousChipNumber` — the endpoint reads the animal's canonical chip
- * server-side. Passing this event's id would be the client asserting a fact the
- * server already holds, and a mismatch would have to be adjudicated by
- * somebody. The route therefore carries the kind alone.
- *
- * REPLACEMENT AND REVOCATION ARE ONE FORM, which is why the copy names both:
- * the kind's own `reason` chips decide which of the two this is, and a person
- * whose chip was removed rather than swapped must recognise this as their door.
- */
-function ReplaceMicrochipBlock({
-  view,
-  publicToken,
-}: {
-  view: EventDetailView;
-  publicToken: string;
-}) {
-  const router = useRouter();
-  if (!canReplaceMicrochip(view)) return null;
+      {amending ? (
+        <AmendForm
+          view={view}
+          publicToken={publicToken}
+          onCancel={() => setAmending(false)}
+          onDone={() => {
+            setAmending(false);
+            onAmended();
+          }}
+        />
+      ) : primary !== null ? (
+        <View style={styles.primary}>
+          {primary.note ? <Body>{primary.note}</Body> : null}
+          <PrimaryButton label={primary.label} onPress={() => run(primary)} />
+        </View>
+      ) : null}
 
-  return (
-    <Card title="Reemplazo del microchip">
-      <Body>
-        Si este chip dejó de leerse, se salió o quedó anulado, registrá el reemplazo. Este asiento
-        queda igual: el chip nuevo se anota aparte y pasa a ser el de la credencial.
-      </Body>
-      <SecondaryButton
-        label="Reemplazar el microchip"
-        accessibilityHint="Registrar que este microchip se reemplazó por otro, o que quedó anulado."
-        onPress={() => router.push(recordEventRoute(publicToken, { kind: "microchip_replace" }))}
-      />
-    </Card>
+      <View style={styles.more}>
+        <Eyebrow>Más acciones</Eyebrow>
+        {more
+          .filter((action) => !(amending && action.id === "amend"))
+          .map((action) => (
+            <ListRow
+              key={action.id}
+              label={action.label}
+              caption={action.caption}
+              onPress={() => run(action)}
+            />
+          ))}
+      </View>
+    </>
   );
 }
 
 /**
  * One file.
  *
- * An image renders inline; anything else is a labelled handoff to the browser.
- * A link past its expiry renders neither: it says the link is gone and points at
- * the refresh, because a broken thumbnail teaches people the app does not work.
+ * An image renders inline; anything else is a labelled handoff to the browser,
+ * drawn as a row that says so before the tap. A link past its expiry renders
+ * neither: it says the link is gone and points at the refresh, because a broken
+ * thumbnail teaches people the app does not work.
  */
 function AttachmentRow({ attachment, now }: { attachment: EventAttachmentV1; now: Date }) {
   const expired = attachmentExpired(attachment, now);
@@ -343,8 +390,8 @@ function AttachmentRow({ attachment, now }: { attachment: EventAttachmentV1; now
   if (expired || attachment.url === null) {
     return (
       <View style={styles.attachment}>
-        <Text style={styles.attachmentLabel}>{ATTACHMENT_UNAVAILABLE_LABEL}</Text>
-        <Text style={styles.attachmentMeta}>{expiry}</Text>
+        <Body>{ATTACHMENT_UNAVAILABLE_LABEL}</Body>
+        <Body>{expiry}</Body>
       </View>
     );
   }
@@ -359,93 +406,18 @@ function AttachmentRow({ attachment, now }: { attachment: EventAttachmentV1; now
           resizeMode="cover"
           accessibilityLabel="Archivo adjunto de este registro"
         />
-        <Text style={styles.attachmentMeta}>{expiry}</Text>
+        <Body>{expiry}</Body>
       </View>
     );
   }
 
   const url = attachment.url;
   return (
-    <Pressable
+    <ListRow
+      label={`Ver adjunto (${attachment.mimeType})`}
+      caption={`${ATTACHMENT_EXTERNAL_HINT}. ${expiry}`}
+      accessibilityHint={`Abre el archivo adjunto. ${ATTACHMENT_EXTERNAL_HINT}.`}
       onPress={() => void Linking.openURL(url)}
-      accessibilityRole="button"
-      accessibilityLabel={`Abrir el archivo adjunto. ${ATTACHMENT_EXTERNAL_HINT}`}
-      style={styles.attachmentButton}
-    >
-      <Text style={styles.attachmentLabel}>Ver adjunto ({attachment.mimeType})</Text>
-      <Text style={styles.attachmentMeta}>{ATTACHMENT_EXTERNAL_HINT}</Text>
-      <Text style={styles.attachmentMeta}>{expiry}</Text>
-    </Pressable>
-  );
-}
-
-/**
- * The correction affordance, and the form behind it.
- *
- * WHEN THE VIEWER MAY NOT CORRECT, THE REASON IS SHOWN. `amend.refusal` carries
- * an es-AR sentence for every case the server refuses — a deceased animal, a
- * type that has its own reversal path, a viewer who only holds the pet through
- * an organization. A disabled control with no explanation reads as a bug; no
- * control at all reads as a missing feature.
- *
- * AND WHEN THE SERVER ALLOWS IT BUT NO ROW IS EDITABLE FROM HERE
- * (A2-alta-asentar-02), the form is not offered either — for the same reason,
- * one step further in. A peso's only curated row is the FORMATTED weight, so the
- * form would open with zero boxes and its submit could only ever answer "no
- * modificaste ningún campo": the contract requires at least one change. A dead
- * end with a button is worse than a sentence naming where the correction lives.
- */
-function AmendBlock({
-  view,
-  publicToken,
-  onAmended,
-}: {
-  view: EventDetailView;
-  publicToken: string;
-  onAmended: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-
-  if (!view.canAmend) {
-    return view.amendRefusal ? (
-      <Callout tone="neutral">
-        <Text style={styles.calloutBody}>{view.amendRefusal}</Text>
-      </Callout>
-    ) : null;
-  }
-
-  if (amendableFacts(view.eventType, view.facts).length === 0) {
-    return (
-      <Card title="Corregir">
-        {/* TWO SENTENCES, because the reason differs. An asiento whose rows are
-            all formatted is told exactly that; one with NO curated rows —
-            `medication_started` and `clinical_info_logged` render none — is not,
-            because the screen just said "Sin campos adicionales" and "los que
-            tiene se muestran con formato" would be a false statement about a
-            record that has none. The destination is the same either way. */}
-        <Body>{amendNoEditableFactsNote(view.facts)}</Body>
-      </Card>
-    );
-  }
-
-  if (!open) {
-    return (
-      <Card title="Corregir">
-        <Body>{AMEND_IMMUTABILITY_NOTE}</Body>
-        <SecondaryButton label="Corregir registro" onPress={() => setOpen(true)} />
-      </Card>
-    );
-  }
-
-  return (
-    <AmendForm
-      view={view}
-      publicToken={publicToken}
-      onCancel={() => setOpen(false)}
-      onDone={() => {
-        setOpen(false);
-        onAmended();
-      }}
     />
   );
 }
@@ -561,7 +533,7 @@ function AmendForm({
           forgotten a field, and they would keep looking for it. */}
       {readOnly.length > 0 ? (
         <View style={styles.readOnlyBlock}>
-          <Text style={styles.readOnlyTitle}>{AMEND_READ_ONLY_TITLE}</Text>
+          <Eyebrow>{AMEND_READ_ONLY_TITLE}</Eyebrow>
           {readOnly.map((fact) => (
             <Row key={fact.field} label={fact.label} value={fact.value} />
           ))}
@@ -584,7 +556,7 @@ function AmendForm({
 
       {error ? (
         <Callout tone="err">
-          <Text style={styles.calloutBody}>{error}</Text>
+          <Body>{error}</Body>
         </Callout>
       ) : null}
 
@@ -600,33 +572,10 @@ function AmendForm({
 
 const styles = StyleSheet.create({
   masthead: { gap: SPACE.xs },
-  kind: {
-    fontFamily: FONTS.mono,
-    fontSize: TYPE.xs,
-    letterSpacing: TYPE.xs * TRACKING.wider,
-    textTransform: "uppercase",
-    color: COLORS.inkMuted,
-  },
-  title: {
-    fontFamily: FONTS.serif,
-    fontSize: TYPE.xl2,
-    lineHeight: TYPE.xl2 * LEADING.xl2,
-    color: COLORS.ink,
-  },
-  author: { fontFamily: FONTS.sans, fontSize: TYPE.sm, color: COLORS.inkSoft },
+  primary: { gap: SPACE.sm },
+  more: { gap: SPACE.xs },
   attachments: { gap: SPACE.sm },
   attachment: { gap: SPACE.xs },
-  attachmentButton: {
-    minHeight: TOUCH_TARGET,
-    borderRadius: RADIUS.control,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.canvas2,
-    padding: SPACE.md,
-    gap: SPACE.xs,
-  },
-  attachmentLabel: { fontFamily: FONTS.sansSemibold, fontSize: TYPE.md, color: COLORS.accent },
-  attachmentMeta: { fontFamily: FONTS.sans, fontSize: TYPE.sm, color: COLORS.inkMuted },
   image: {
     width: "100%",
     height: 192,
@@ -641,7 +590,6 @@ const styles = StyleSheet.create({
     borderLeftColor: COLORS.border,
     paddingLeft: SPACE.sm,
   },
-  amendHeadline: { fontFamily: FONTS.monoSemibold, fontSize: TYPE.sm, color: COLORS.inkSoft },
   // Set apart from the editable boxes above it by a rule and a ground, so the
   // boundary between "you can change this" and "you cannot" is visible without
   // reading a word.
@@ -650,18 +598,5 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: COLORS.border,
     paddingTop: SPACE.md,
-  },
-  readOnlyTitle: {
-    fontFamily: FONTS.monoSemibold,
-    fontSize: TYPE.xs,
-    letterSpacing: TYPE.xs * TRACKING.wider,
-    textTransform: "uppercase",
-    color: COLORS.inkMuted,
-  },
-  calloutBody: {
-    fontFamily: FONTS.sans,
-    fontSize: TYPE.md,
-    lineHeight: TYPE.md * LEADING.md,
-    color: COLORS.ink,
   },
 });
