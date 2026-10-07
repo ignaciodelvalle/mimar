@@ -54,8 +54,8 @@ and enforced by `pnpm lint:public-boundary`.
    [`docs/architecture/privacy-controls.md`](./docs/architecture/privacy-controls.md);
    Row Level Security backs the application-layer authorization.
 4. **Four kinds of users.** Owners (and vets through their clinic), organisations
-   (shelters, clinics, rescue networks), local-authority operators scoped to
-   their jurisdiction, and administrators.
+   (shelters, clinics, rescue networks), authority operators — local ones scoped
+   to their jurisdiction, plus a read-only national viewer — and administrators.
 
 The full design — data model, event catalog, roles, privacy checklist, legal
 framework — is in [`AGENTS.md`](./AGENTS.md) (start with its slim index) and
