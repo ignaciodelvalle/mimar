@@ -435,3 +435,50 @@ describe("cuidados — caretaker invitations", () => {
     expect(screen.queryByText("No tenés invitaciones a cuidar mascotas pendientes.")).toBeNull();
   });
 });
+
+describe("empty sections are one grey line, after the ones with content", () => {
+  /** Every text node, in render order. */
+  function textsInOrder(): string[] {
+    const out: string[] = [];
+    const walk = (node: unknown): void => {
+      if (typeof node === "string") out.push(node);
+      else if (Array.isArray(node)) for (const child of node) walk(child);
+      else if (typeof node === "object" && node !== null && "children" in node) {
+        walk((node as { children: unknown }).children);
+      }
+    };
+    walk(screen.toJSON());
+    return out;
+  }
+
+  it("draws a section with rows before the empty ones, which keep only their headline", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        outgoing: [aTransfer({ direction: "outgoing", transferToken: "PTR-OUT-0001" })],
+      }),
+    });
+    mockFetchGrants.mockResolvedValue({ outcome: "ok", payload: caretakerGrantsPayload() });
+    render(<TransfersScreen onOpen={noop} onOpenCaretakerGrant={noop} />);
+    await waitFor(() => expect(screen.getByText("Enviadas")).toBeTruthy());
+
+    const texts = textsInOrder();
+    const at = (text: string) => texts.indexOf(text);
+    expect(at("Enviadas")).toBeGreaterThanOrEqual(0);
+    expect(at("Enviadas")).toBeLessThan(at("Recibidas · Pendientes"));
+    expect(at("Enviadas")).toBeLessThan(at("Cuidados · Invitaciones"));
+    // Compact: the headline only. The old paragraph under each one is gone.
+    expect(screen.getByText("No tenés transferencias pendientes.")).toBeTruthy();
+    expect(screen.queryByText(/Cuando alguien te ofrezca la titularidad/)).toBeNull();
+    expect(screen.queryByText(/Cuando alguien te proponga cuidar/)).toBeNull();
+  });
+
+  it("does not repeat 'Transferencias' in the body — the header says it", async () => {
+    mockFetch.mockResolvedValue({ outcome: "ok", payload: payload() });
+    mockFetchGrants.mockResolvedValue({ outcome: "ok", payload: caretakerGrantsPayload() });
+    render(<TransfersScreen onOpen={noop} onOpenCaretakerGrant={noop} />);
+    await waitFor(() => expect(screen.getByText("Enviadas")).toBeTruthy());
+    expect(screen.queryByText("Transferencias")).toBeNull();
+    expect(screen.getByText("Transferencias de mascotas recibidas y enviadas.")).toBeTruthy();
+  });
+});

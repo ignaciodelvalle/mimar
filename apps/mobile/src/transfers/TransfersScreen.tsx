@@ -18,7 +18,7 @@
 // would tell the sender of a proposal that they can accept it.
 
 import { useFocusEffect } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 
 import type {
@@ -33,7 +33,7 @@ import { fetchMyCaretakerGrants, fetchMyTransfers } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
 import { Body, Card, EmptyState, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
-import { Callout, Eyebrow, Screen, SecondaryButton, Title } from "../ui/kit";
+import { Callout, Eyebrow, Screen, SecondaryButton } from "../ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../ui/reload-state";
 import { ListSkeleton } from "../ui/skeleton";
 import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "../ui/theme";
@@ -165,7 +165,6 @@ export function TransfersScreen({
   if (state.phase === "failed") {
     return (
       <Screen>
-        <Title>Transferencias</Title>
         {/* NOT an empty list. A read that failed and a person with no proposals
             are different facts, and "no tenés transferencias pendientes" over a
             server outage hides a seven-day window that closes by itself. */}
@@ -182,80 +181,86 @@ export function TransfersScreen({
   const caretakerInvitations = caretakerIncoming.filter((g) => g.status === "pending");
   const activeCaretakerGrants = caretakerIncoming.filter((g) => g.status === "accepted");
 
+  // EVERY SECTION IN ONE LIST, so the order rule below has one place to live.
+  // `empty` is the compact line an empty section shows, or `null` for the
+  // history-like sections that are simply not drawn when they have no rows (an
+  // empty "Historial" is furniture).
+  const sections: HubSection[] = [
+    {
+      key: "incoming-pending",
+      eyebrow: "Recibidas · Pendientes",
+      empty: emptyIncomingLabel(),
+      rows: incoming.pending.map((transfer) => (
+        <TransferRow key={transfer.transferToken} transfer={transfer} onOpen={onOpen} />
+      )),
+    },
+    {
+      key: "incoming-history",
+      eyebrow: "Recibidas · Historial",
+      empty: null,
+      rows: incoming.history.map((transfer) => (
+        <TransferRow key={transfer.transferToken} transfer={transfer} onOpen={onOpen} />
+      )),
+    },
+    // CUIDADOS — invitaciones de cuidado temporal, lado del invitado (T4-M4).
+    {
+      key: "caretaker-invitations",
+      eyebrow: "Cuidados · Invitaciones",
+      empty: "No tenés invitaciones a cuidar mascotas pendientes.",
+      rows: caretakerInvitations.map((grant) => (
+        <CaretakerGrantRow key={grant.grantToken} grant={grant} onOpen={onOpenCaretakerGrant} />
+      )),
+    },
+    {
+      key: "caretaker-active",
+      eyebrow: "Cuidados · Activos",
+      empty: null,
+      rows: activeCaretakerGrants.map((grant) => (
+        <CaretakerGrantRow key={grant.grantToken} grant={grant} onOpen={onOpenCaretakerGrant} />
+      )),
+    },
+    {
+      key: "outgoing",
+      eyebrow: "Enviadas",
+      empty: emptyOutgoingLabel(),
+      rows: outgoing.map((transfer) => (
+        <TransferRow key={transfer.transferToken} transfer={transfer} onOpen={onOpen} />
+      )),
+    },
+  ];
+
+  // SECTIONS WITH CONTENT FIRST, the empty ones after them as one grey line
+  // each (pulido-kit-listas, 2026-10-07). Three full empty-state boxes used to
+  // stand between a person and the one proposal they came to answer — the
+  // screen with the least in it was the longest. Within each half the order
+  // above holds, so a section never jumps past its sibling for any other reason.
+  const filled = sections.filter((section) => section.rows.length > 0);
+  const empty = sections.filter((section) => section.rows.length === 0 && section.empty !== null);
+
   return (
     <Screen refreshControl={refresher}>
-      <Title>Transferencias</Title>
+      {/* No body title: the stack header already says "Transferencias". */}
       <Body>Transferencias de mascotas recibidas y enviadas.</Body>
 
       {state.staleFailure === null ? null : (
         <StaleNotice message={state.staleFailure} onRetry={() => void load("refresh")} />
       )}
 
-      <View style={styles.section}>
-        <Eyebrow>Recibidas · Pendientes</Eyebrow>
-        {incoming.pending.length === 0 ? (
-          <EmptyState
-            headline={emptyIncomingLabel()}
-            body="Cuando alguien te ofrezca la titularidad de una mascota, la propuesta aparece acá."
-          />
-        ) : (
-          incoming.pending.map((transfer) => (
-            <TransferRow key={transfer.transferToken} transfer={transfer} onOpen={onOpen} />
-          ))
-        )}
-      </View>
-
-      {/* Drawn only when it has rows — an empty "Historial" is furniture. */}
-      {incoming.history.length > 0 && (
-        <View style={styles.section}>
-          <Eyebrow>Recibidas · Historial</Eyebrow>
-          {incoming.history.map((transfer) => (
-            <TransferRow key={transfer.transferToken} transfer={transfer} onOpen={onOpen} />
-          ))}
+      {[...filled, ...empty].map((section) => (
+        <View key={section.key} style={styles.section}>
+          <Eyebrow>{section.eyebrow}</Eyebrow>
+          {section.rows.length > 0 ? (
+            section.rows
+          ) : (
+            <EmptyState compact headline={section.empty ?? ""} />
+          )}
         </View>
-      )}
-
-      {/* CUIDADOS — invitaciones de cuidado temporal, lado del invitado (T4-M4). */}
-      <View style={styles.section}>
-        <Eyebrow>Cuidados · Invitaciones</Eyebrow>
-        {caretakerInvitations.length === 0 ? (
-          <EmptyState
-            headline="No tenés invitaciones a cuidar mascotas pendientes."
-            body="Cuando alguien te proponga cuidar a su mascota, la invitación aparece acá."
-          />
-        ) : (
-          caretakerInvitations.map((grant) => (
-            <CaretakerGrantRow key={grant.grantToken} grant={grant} onOpen={onOpenCaretakerGrant} />
-          ))
-        )}
-      </View>
-
-      {/* Drawn only when it has rows — an empty section is furniture. */}
-      {activeCaretakerGrants.length > 0 && (
-        <View style={styles.section}>
-          <Eyebrow>Cuidados · Activos</Eyebrow>
-          {activeCaretakerGrants.map((grant) => (
-            <CaretakerGrantRow key={grant.grantToken} grant={grant} onOpen={onOpenCaretakerGrant} />
-          ))}
-        </View>
-      )}
-
-      <View style={styles.section}>
-        <Eyebrow>Enviadas</Eyebrow>
-        {outgoing.length === 0 ? (
-          <EmptyState
-            headline={emptyOutgoingLabel()}
-            body="Podés ofrecer la titularidad de una mascota desde su ficha."
-          />
-        ) : (
-          outgoing.map((transfer) => (
-            <TransferRow key={transfer.transferToken} transfer={transfer} onOpen={onOpen} />
-          ))
-        )}
-      </View>
+      ))}
     </Screen>
   );
 }
+
+type HubSection = { key: string; eyebrow: string; empty: string | null; rows: ReactNode[] };
 
 /**
  * One proposal, as a row.
