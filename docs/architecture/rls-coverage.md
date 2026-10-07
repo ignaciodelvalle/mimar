@@ -66,9 +66,9 @@ RLS declared in a migration and no row here yet. Absence from this table means
 | jurisdiction_admin_appointments | Y | Y (read) | own row or platform admin, aal2-restricted (`0268`). No write policy and INSERT/UPDATE/DELETE revoked from anon/authenticated: written by service-role Drizzle only. Append-only by trigger (revoked once, never deleted). Retained accountability — an official appointment; declared a subject-rights gap like `govt_assignments`. Every function or policy that consults it must also compare a place — pinned from the catalog by `__tests__/jurisdiction-admin-db-fence.test.ts` (with the audit guard's platform-only / delegated action lists). |
 | govt_business_rules | Y | **deny-all** | reference data; deny-all via advisor remediation (`0113`). |
 | service_offerings | Y | Y | public-approved, org members, provider vet (`scheduling_rls.sql`). |
-| service_schedule_rules | Y | Y | org members, provider vet. |
-| time_slots | Y | Y | public read. |
-| appointments | Y | Y | owner, org members, provider vet. |
+| service_schedule_rules | Y | Y | org members (through `caller_is_active_org_member` since `0285` — the direct `organization_memberships` subquery recursed), provider vet. |
+| time_slots | Y | Y | org members of the offering (`caller_is_active_org_member`), provider vet; TO authenticated only (`0286` — was `USING (true)` to anon). No PostgREST reader: search and booking read slots over Drizzle. |
+| appointments | Y | Y | owner, org members (through `caller_is_active_org_member` since `0285`), provider vet. |
 | ar_localities | Y | Y | authenticated select — `RLS_INTENTIONALLY_EXCLUDED` (non-PII reference). |
 | ar_localities_import_runs | Y | Y | admin select — bookkeeping. |
 | foster_volunteers | Y | Y | self, org coordinators, admin (`foster_rls.sql`). |
