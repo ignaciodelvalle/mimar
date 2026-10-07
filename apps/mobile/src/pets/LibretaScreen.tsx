@@ -33,20 +33,13 @@ import type { LibretaEntryV1, LibretaVaccinationSection } from "@dim/contract/ap
 import { apiFailureMessage } from "../api/client";
 import { fetchPetLibreta } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
-import {
-  Body,
-  Card,
-  LABEL_VALUE_FLEX,
-  Loading,
-  Row,
-  StaleNotice,
-  Unavailable,
-} from "../ui/components";
+import { Body, Card, LABEL_VALUE_FLEX, Row, StaleNotice, Unavailable } from "../ui/components";
 import { FONTS } from "../ui/fonts";
 import { LinkText } from "../ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../ui/reload-state";
 import { ROUTES, libretaEventRoute } from "../ui/routes";
 import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TRACKING, TYPE } from "../ui/theme";
+import { LibretaFaceSkeleton } from "./DocumentSkeletons";
 import {
   LEDGER_EMPTY_LABEL,
   LIBRETA_EMPTY_LABEL,
@@ -166,7 +159,7 @@ export function LibretaScreen({
   // dorso is the ledger.
   return (
     <View style={styles.faceBody}>
-      {state.phase === "loading" ? <Loading label="Leyendo la libreta…" /> : null}
+      {state.phase === "loading" ? <LibretaFaceSkeleton /> : null}
       {state.phase === "failed" ? (
         <Card title="No disponible">
           <Body>{state.message}</Body>

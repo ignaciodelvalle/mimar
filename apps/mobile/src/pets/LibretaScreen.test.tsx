@@ -386,3 +386,23 @@ describe("LibretaScreen — trip papers ticks", () => {
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/eventos/t-3`);
   });
 });
+
+describe("LibretaScreen — the first read", () => {
+  it("shows a skeleton the shape of the libreta, not a spinner", () => {
+    mockFetchPetLibreta.mockReturnValue(new Promise(() => {}));
+    render(<LibretaScreen publicToken={TOKEN} />);
+    // Announced once, with the sentence the spinner carried…
+    expect(screen.getByRole("progressbar", { name: "Leyendo la libreta…" })).toBeOnTheScreen();
+    // …and drawn as the face itself, not as a line of text.
+    expect(
+      screen.getByTestId("libreta-face-skeleton", { includeHiddenElements: true }),
+    ).toBeTruthy();
+    expect(screen.queryByText("Leyendo la libreta…")).toBeNull();
+  });
+
+  it("replaces the skeleton with the ledger when the read lands", async () => {
+    render(<LibretaScreen publicToken={TOKEN} />);
+    expect(await screen.findByText("Pampa")).toBeOnTheScreen();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+});
