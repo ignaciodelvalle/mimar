@@ -103,6 +103,10 @@ export const NO_STORE_EXACT: readonly string[] = [
   // Lost-pet public listing. Reflects live lost/found state — a recovered pet
   // must not linger in the grid, and the KPI counts must be current.
   "/perdidas",
+  // "Encontré un animal" (P4). Its content is the same for everyone, but it
+  // renders inside the auth-aware (public) layout — a signed-in visitor's HTML
+  // carries THEIR nav and name chip, the hazard `/refugios` is listed for.
+  "/encontre-un-animal",
 ];
 
 /**

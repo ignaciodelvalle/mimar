@@ -157,8 +157,8 @@ describe("app/sitemap.ts — every read is bounded", () => {
     expect(urls).toContain("https://mimar.example.ar/adoptar/DIM-ADPT-2345");
     expect(urls).toContain("https://mimar.example.ar/p/DIM-LOST-2345");
     expect(urls).toContain("https://mimar.example.ar/refugios/ORG-REFU-2345");
-    // Five static entries plus one per row.
-    expect(entries).toHaveLength(8);
+    // Six static entries plus one per row.
+    expect(entries).toHaveLength(9);
 
     // lastModified survives as the same instant whether it arrived as a Date
     // (a cache miss) or as the JSON string a cache hit returns.
@@ -225,6 +225,7 @@ describe("robots.txt never forbids what the sitemap advertises", () => {
         "/",
         "/adoptar",
         "/perdidas",
+        "/encontre-un-animal",
         "/denuncias/nueva",
         "/adoptar/DIM-ADPT-2345",
         "/p/DIM-LOST-2345",

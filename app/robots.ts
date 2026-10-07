@@ -41,7 +41,8 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         // Everything public is open on purpose: the credential (/p), the lost
-        // board (/perdidas), adoption (/adoptar), shelters (/refugios) and the
+        // board (/perdidas) and its guide for an untagged animal
+        // (/encontre-un-animal), adoption (/adoptar), shelters (/refugios) and the
         // institutional pages are the reunification and transparency surfaces.
         allow: "/",
         disallow: [

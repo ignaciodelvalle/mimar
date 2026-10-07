@@ -687,8 +687,12 @@ export const CRISIS_DOORS: readonly CrisisDoor[] = [
     t: "encontre",
     icon: "qr",
     label: "Encontré una mascota",
-    sub: "Escaneá su QR o buscala por señas.",
-    href: "/perdidas",
+    // P4 (2026-10-07): the door opens the guide for an untagged animal — the
+    // chip, then the lost board filtered to the place, then who receives found
+    // animals nearby. It used to land straight on /perdidas, which the guide
+    // links as its second step.
+    sub: "Revisá si tiene chip y buscá a su familia.",
+    href: "/encontre-un-animal",
   },
   {
     t: "adoptar",
