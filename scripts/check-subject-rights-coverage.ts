@@ -71,9 +71,9 @@
 // WHY "gap" EXISTS AT ALL
 // ---------------------------------------------------------------------------
 // The gap state is the point. A design without it forces every uncovered
-// table into EXEMPT, and there are eighteen tables here that hold real
+// table into EXEMPT, and there are nineteen tables here that hold real
 // subject data the RPCs do not touch. Writing "exempt" next to each of them
-// would be eighteen false statements in the one file whose whole job is to
+// would be nineteen false statements in the one file whose whole job is to
 // stop a false statement about coverage. KNOWN_GAP names the debt, prints it on
 // every run, and still fails on a table with no classification — so the NEXT
 // pet_caretaker_grants cannot arrive unnoticed, and the existing ones cannot be
@@ -86,7 +86,9 @@
 // physical_tag_interest and organization_invitations, and 0226 closed
 // notification_dead_letter; 0250 added place_resolutions (append-only, so
 // the erasure cannot reach it) and 0268 added jurisdiction_admin_appointments
-// (the same shape as govt_assignments, which is a gap too), so it is eighteen. The
+// (the same shape as govt_assignments, which is a gap too), and 0292 added
+// org_found_animal_intake (an org's PUBLISHED contact, the same footing as
+// organizations.phone), so it is nineteen. The
 // number the CI line prints has always been computed from the list; what used
 // to be maintained by hand — these sentences — is now fenced against it too.
 //
@@ -311,6 +313,13 @@ export const CLASSIFICATION: Readonly<Record<string, Classification>> = {
   // shows what art. 16 is about to destroy.
   operator_feed_watermarks: BOTH_COVERED,
   org_contact_messages: BOTH_COVERED,
+  // 0292 (P4): whether an org receives found animals, and the contact it chose
+  // to publish for it. No column names a person — who changed it is in
+  // audit_log — but the published channel is a gap for the same reason
+  // organizations.phone is one.
+  org_found_animal_intake: bothGap(
+    "`public_contact_value` is the channel the organization chose to publish, which for a one-person org may be a natural person's phone or e-mail.",
+  ),
   organization_capability_grants: bothGap("`requested_reason` and `decision_reason` free text."),
   organization_coverage: bothExempt("An organization's declared coverage zones."),
   // 0208: REDACTED, not deleted. The invitee email is sentinelled and

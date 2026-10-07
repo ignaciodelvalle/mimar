@@ -892,6 +892,54 @@ export const organizations = pgTable(
   }),
 );
 
+// Whether an organization receives found animals — the finder's plan-B list
+// (migration 0292, P4). One row per org, OFF by default. RLS: org members
+// read, org ADMINS insert/update, anon nothing; the public reads through one
+// server-side projection (src/modules/organizations/infrastructure/
+// found-animal-help-read.ts). Every change is audited by a ROW TRIGGER
+// (org_found_animal_intake_changed), which also refuses a write with no actor:
+// Drizzle writers set the transaction-local `app.actor_user_id` first.
+export const orgFoundAnimalIntake = pgTable(
+  "org_found_animal_intake",
+  {
+    organizationId: uuid("organization_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    accepting: boolean("accepting").notNull().default(false),
+    capacityStatus: text("capacity_status").notNull().default("recibimos"),
+    publicContactKind: text("public_contact_kind"),
+    publicContactValue: text("public_contact_value"),
+    publicHours: text("public_hours"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    acceptingIdx: index("org_found_animal_intake_accepting_idx")
+      .on(table.organizationId)
+      .where(sql`${table.accepting}`),
+    capacityValid: check(
+      "org_found_animal_intake_capacity_valid",
+      sql`${table.capacityStatus} IN ('recibimos', 'consultar', 'sin_lugar')`,
+    ),
+    contactKindValid: check(
+      "org_found_animal_intake_contact_kind_valid",
+      sql`${table.publicContactKind} IS NULL OR ${table.publicContactKind} IN ('telefono', 'whatsapp', 'email', 'web')`,
+    ),
+    contactPair: check(
+      "org_found_animal_intake_contact_pair",
+      sql`(${table.publicContactKind} IS NULL) = (${table.publicContactValue} IS NULL)`,
+    ),
+    contactLength: check(
+      "org_found_animal_intake_contact_length",
+      sql`${table.publicContactValue} IS NULL OR length(${table.publicContactValue}) BETWEEN 3 AND 200`,
+    ),
+    hoursLength: check(
+      "org_found_animal_intake_hours_length",
+      sql`${table.publicHours} IS NULL OR length(${table.publicHours}) <= 120`,
+    ),
+  }),
+);
+
 // Inbound contact messages from anonymous visitors to the public
 // refugio profile (handoff P2-8). Server actions write here under
 // rate-limit guards; reads gated to org members via RLS (added in
@@ -2982,6 +3030,15 @@ export const AUDIT_LOG_ACTIONS = [
   //     { org_id, before_values: { public_directory_opt_in },
   //       after_values: { public_directory_opt_in } }
   "org_public_directory_opt_in_changed",
+  // Migration 0292: an org admin changed whether (and how) the org receives
+  // found animals — the plan-B list a finder sees. Written by a ROW TRIGGER on
+  // org_found_animal_intake, never by application code, so the RLS write path
+  // is audited too. Only when a governed column changes.
+  //   org_found_animal_intake_changed payload:
+  //     { org_id, before_values: { accepting, capacity_status,
+  //       public_contact_kind, public_contact_value, public_hours } | null,
+  //       after_values: { …same keys } }
+  "org_found_animal_intake_changed",
   // V1-9: org-side PII access trail. Emitted when an org reviewer opens an
   // adoption application and reads the applicant's full identity (name, phone,
   // housing). One row per page view (server-component fetch — fires once per
