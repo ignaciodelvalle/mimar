@@ -57,6 +57,11 @@
 -- Forward-only and idempotent; the post-condition asks the catalog by SHAPE.
 -- ────────────────────────────────────────────────────────────────────────────
 
+-- Each drop/create below takes ACCESS EXCLUSIVE on its table. Fail fast
+-- rather than queue every reader behind a long-running transaction; the
+-- runner wraps the file in one transaction, so this is scoped to it.
+SET LOCAL lock_timeout = '5s';
+
 -- >>> scheduling_rls.sql mirror: service_offerings provider vet (0290)
 drop policy if exists "service_offerings read by provider vet" on public.service_offerings;
 create policy "service_offerings read by provider vet"
