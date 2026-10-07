@@ -117,7 +117,7 @@ Places where two documents, or a document and the code, say different things.
 
 ### Event catalog: type count and declaration site
 
-- **The doc says:** AGENTS.md:34 says the EVENT_TYPES const IS the count ('48 at last read') and names db/schema.ts as its home; AGENTS.md:685 repeats the db/schema.ts location.
+- **The doc says:** AGENTS.md:34 says the EVENT_TYPES const IS the count ('48 at last read') and names db/schema.ts as its home; AGENTS.md:695 repeats the db/schema.ts location.
 - **The tree says:** 55 entries, declared at packages/contract/src/events/event-types.ts:20 and only re-exported by db/schema.ts:277,289 (which is what the fence imports). AGENTS.md:83 and :680 already say 'Event catalog — 55 types' elsewhere in the same file.
 - **Evidence:** db/schema.ts:277,289; packages/contract/src/events/event-types.ts:20; __tests__/event-catalog-count.test.ts:26,36,43 (the fence pins 'Event catalog — N types' phrasing only, so AGENTS.md:34's '(48 at last read)' phrasing escapes it)
 
@@ -135,7 +135,7 @@ Places where two documents, or a document and the code, say different things.
 
 ### Application-fence exemption-list count and target
 
-- **The doc says:** AGENTS.md:1581 says 'the goal is 0' exemptions; a separate header note in the fence cites a closed 2026-08-20 historical incident (46-vs-44) as the reason the ratchet exists.
+- **The doc says:** AGENTS.md:1591 says 'the goal is 0' exemptions; a separate header note in the fence cites a closed 2026-08-20 historical incident (46-vs-44) as the reason the ratchet exists.
 - **The tree says:** 34 exemptions today, pinned by EQUALITY (not a floor heading toward 0) — scripts/application-fence-baseline.json:2 = {"exemptions":34}; check-application-fence.ts:36-39,308 fails any count other than exactly 34. Neither 46/44 nor the stated goal of 0 is the live number.
 - **Evidence:** scripts/application-fence-baseline.json:2; scripts/check-application-fence.ts:36-39,308 (affects CANON-283)
 
@@ -177,9 +177,9 @@ Places where two documents, or a document and the code, say different things.
 
 ### How many of the three payload-evolution rules lint:events actually enforces
 
-- **The doc says:** AGENTS.md:894 — 'Three rules, enforced by pnpm lint:events (scripts/check-event-payload-parity.ts) in the verify pipeline.'
+- **The doc says:** AGENTS.md:904 — 'Three rules, enforced by pnpm lint:events (scripts/check-event-payload-parity.ts) in the verify pipeline.'
 - **The tree says:** One. check-event-payload-parity.ts:10-11 enforces only rule 2 (reader keys must be writable); :13-21 declares it a FLAT key set with no per-event-type precision.
-- **Evidence:** scripts/check-event-payload-parity.ts:10-21,448; AGENTS.md:894-898 (affects CANON-256, CANON-257, CANON-258)
+- **Evidence:** scripts/check-event-payload-parity.ts:10-21,448; AGENTS.md:904-908 (affects CANON-256, CANON-257, CANON-258)
 
 ### packages/contract 'The One Rule': nothing in dependencies
 
@@ -275,7 +275,7 @@ Ids folded into another row during extraction. Kept so an old citation still res
 
 - **Merged into:** CANON-196
 - **Rule:** A caller holding an ownership row on a pet whose role is caretaker may not perform a titular-only database effect (declared spine event, restricted pet column update, or restricted insert table).
-- **Reason:** One prohibition, two framings of the same deny-list: the six user-facing titular-only actions (196, sourced AGENTS.md:436) and the three DB effect classes the fence enumerates (419, sourced check-titular-gate.ts:8). Same enforcer lines (check-titular-gate.ts:51,79-82,91 + db/rls.sql + migration 0199) and same status. Kept 196 as the fuller doc statement; 419's quote and sources preserved in mergedFrom.
+- **Reason:** One prohibition, two framings of the same deny-list: the six user-facing titular-only actions (196, sourced AGENTS.md:445) and the three DB effect classes the fence enumerates (419, sourced check-titular-gate.ts:8). Same enforcer lines (check-titular-gate.ts:51,79-82,91 + db/rls.sql + migration 0199) and same status. Kept 196 as the fuller doc statement; 419's quote and sources preserved in mergedFrom.
 
 ### CANON-299
 

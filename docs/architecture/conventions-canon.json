@@ -465,7 +465,7 @@
       "rule": "DIM is the stable code/schema/token identifier and must never be renamed; MiMAR is the user-facing brand shown in app metadata, copy, and marketing.",
       "scope": "process",
       "sources": [
-        "AGENTS.md:1276"
+        "AGENTS.md:1286"
       ],
       "enforcer": [
         "scripts/check-brand-casing.ts:31-34",
@@ -486,7 +486,7 @@
       "rule": "Any new UI exception to these conventions must be written into the PR description and linked from the relevant design critique doc, never left as a silent, un-tracked exception.",
       "scope": "process",
       "sources": [
-        "AGENTS.md:1405"
+        "AGENTS.md:1415"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -500,7 +500,7 @@
       "rule": "Do not remove the globalSetup entry from vitest.config.ts; its teardown is an intentional no-op, but the entry still sets VITEST=true before the first db/index.ts import, forces DATABASE_URL to the local stack, and sweeps eventless pet rows.",
       "scope": "process",
       "sources": [
-        "AGENTS.md:1501"
+        "AGENTS.md:1511"
       ],
       "enforcer": [
         "vitest.config.ts:124",
@@ -520,7 +520,7 @@
       "rule": "The set of `lint:*` and `verify:*` gates `pnpm verify` chains must equal the set that actually runs somewhere in the CI workflow YAML, checked by a literal `pnpm lint:<name>` token match — a comment merely mentioning a lint does not count as running it.",
       "scope": "process",
       "sources": [
-        "AGENTS.md:1553",
+        "AGENTS.md:1563",
         "scripts/check-ci-lint-parity.ts:16",
         "scripts/check-ci-lint-parity.ts:39",
         "__tests__/check-ci-lint-parity.test.ts:1-9,70-119"
@@ -544,7 +544,7 @@
       "rule": "No test may assert an expected value re-derived from the same code/template path under test; assert against an independently-stated expected value.",
       "scope": "process",
       "sources": [
-        "AGENTS.md:1590",
+        "AGENTS.md:1600",
         "docs/agents/README.md:81-88"
       ],
       "enforcementKind": "none",
@@ -559,7 +559,7 @@
       "rule": "Always read AGENTS.md first in a new session.",
       "scope": "process",
       "sources": [
-        "AGENTS.md:1760"
+        "AGENTS.md:1770"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -573,7 +573,7 @@
       "rule": "Never break a core principle without explicit user agreement and a corresponding update to AGENTS.md.",
       "scope": "process",
       "sources": [
-        "AGENTS.md:1762"
+        "AGENTS.md:1772"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -587,7 +587,7 @@
       "rule": "If asked to 'fix' historical event data, push back; the correct fix is a correction event, never a mutation.",
       "scope": "process",
       "sources": [
-        "AGENTS.md:1763"
+        "AGENTS.md:1773"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -602,7 +602,7 @@
       "rule": "When asking the non-technical user to run a command, explain in one sentence what it does; when showing an error, explain it in plain language before suggesting a fix.",
       "scope": "process",
       "sources": [
-        "AGENTS.md:1765"
+        "AGENTS.md:1775"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -830,7 +830,7 @@
       "rule": "Writing a migration file is agent work; applying a migration to a remote database is Ignacio's — it must be handed over, never run by the agent.",
       "scope": "process",
       "sources": [
-        "CLAUDE.md:45",
+        "CLAUDE.md:47",
         "docs/agents/collaborating-writer.md:43-44"
       ],
       "enforcementKind": "none",
@@ -845,7 +845,7 @@
       "rule": "Delivery strategy defaults to single-pr with size:exception; when an SDD forecast recommends chained PRs, note it in the summary but do not stop to ask.",
       "scope": "process",
       "sources": [
-        "CLAUDE.md:51"
+        "CLAUDE.md:53"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -859,7 +859,7 @@
       "rule": "Every agent must be routed to its one-page role contract (`docs/agents/README.md`) before it acts, and must be pointed at its own page when briefed.",
       "scope": "process",
       "sources": [
-        "CLAUDE.md:55",
+        "CLAUDE.md:57",
         "docs/agents/README.md:1-23"
       ],
       "enforcementKind": "none",
@@ -874,7 +874,7 @@
       "rule": "Every Agent tool delegation call must carry an explicit model, using sonnet for mechanical work.",
       "scope": "process",
       "sources": [
-        "CLAUDE.md:55"
+        "CLAUDE.md:57"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -888,7 +888,7 @@
       "rule": "Code descends from documents: the feature lifecycle proceeds spec (`specs/`, reviewed/locked) → plan (`plans/`, executable) → Claude Code execution; raise tension with what's written before coding around it.",
       "scope": "process",
       "sources": [
-        "CLAUDE.md:56",
+        "CLAUDE.md:58",
         "docs/superpowers/README.md:10-15"
       ],
       "enforcementKind": "none",
@@ -903,7 +903,7 @@
       "rule": "Engram is the SDD artifact store, using topic keys sdd/{change}/*, and session summaries are mandatory.",
       "scope": "process",
       "sources": [
-        "CLAUDE.md:57"
+        "CLAUDE.md:59"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -917,7 +917,7 @@
       "rule": "Poll every background child within the same turn it was launched; a turn may not end with a live child unpolled.",
       "scope": "process",
       "sources": [
-        "CLAUDE.md:58",
+        "CLAUDE.md:60",
         "docs/agents/README.md:30-35"
       ],
       "enforcementKind": "none",
@@ -932,7 +932,7 @@
       "rule": "Before pushing a commit range, run a fresh-context, read-only adversarial reviewer over it — pointed at the writer's own new tests and fences, since that is what the writer is least able to audit itself.",
       "scope": "process",
       "sources": [
-        "CLAUDE.md:59",
+        "CLAUDE.md:61",
         "docs/agents/README.md:50-63",
         "docs/agents/collaborating-writer.md:45-49"
       ],
@@ -948,7 +948,7 @@
       "rule": "A second parallel writer may run only in its own git worktree with disjoint file territory and its own targeted tests, landing through a serial integration merge gate.",
       "scope": "process",
       "sources": [
-        "CLAUDE.md:60",
+        "CLAUDE.md:62",
         "docs/agents/README.md:64-69"
       ],
       "enforcementKind": "none",
@@ -963,7 +963,7 @@
       "rule": "Before treating a fresh-worktree gate as evidence, run supabase status -o env to cure the missing .env.local, which otherwise makes __tests__/rls/*.test.ts report broken with credential-shaped errors.",
       "scope": "process",
       "sources": [
-        "CLAUDE.md:60"
+        "CLAUDE.md:62"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -978,7 +978,7 @@
       "rule": "When a tested constant disagrees with a design-handoff token table, the validated code is the source of truth — flag the handoff rather than following it.",
       "scope": "process",
       "sources": [
-        "CLAUDE.md:61",
+        "CLAUDE.md:63",
         "docs/agents/README.md:70-76"
       ],
       "enforcementKind": "none",
@@ -2536,7 +2536,7 @@
       "scope": "db",
       "sources": [
         "CLAUDE.md:14",
-        "AGENTS.md:501",
+        "AGENTS.md:510",
         "docs/architecture/rls-coverage.md#table-by-table-45-tables",
         "docs/agents/collaborating-writer.md:40-42"
       ],
@@ -2585,7 +2585,7 @@
       "scope": "db",
       "sources": [
         "CLAUDE.md:17",
-        "AGENTS.md:1603-1610",
+        "AGENTS.md:1613-1620",
         "docs/agents/collaborating-writer.md:58-59"
       ],
       "enforcer": [
@@ -2636,7 +2636,7 @@
       "rule": "Do not change the pet-cache fitness sweep back to selecting all pets in the DB; scope it to seed pets whose publicToken starts with DIM-.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1512"
+        "AGENTS.md:1522"
       ],
       "enforcer": [
         "__tests__/pet-cache-rederivation.test.ts:163-177"
@@ -2655,7 +2655,7 @@
       "rule": "Use generatePublicToken() from lib/infra/publicToken.ts for any seed pet whose cache fitness should be enforced by CI.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1518"
+        "AGENTS.md:1528"
       ],
       "enforcer": [
         "__tests__/pet-cache-rederivation.test.ts:153,163-177"
@@ -2674,7 +2674,7 @@
       "rule": "All migrations must use IF EXISTS / IF NOT EXISTS guards; do not remove them.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1528"
+        "AGENTS.md:1538"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -2689,7 +2689,7 @@
       "rule": "Every `pets` row must have a corresponding `pet_registered` event in the append-only spine, with no grandfather baseline for existing rows — a cache row with no spine event is forbidden.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1550",
+        "AGENTS.md:1560",
         "scripts/check-spine-integrity.ts:3"
       ],
       "enforcer": [
@@ -2711,7 +2711,7 @@
       "rule": "Institutional accounts must have dni_hash IS NULL, CHECK-enforced by the profiles_institutional_no_pii constraint.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1612"
+        "AGENTS.md:1622"
       ],
       "enforcer": [
         "db/schema.ts:442-445",
@@ -2731,7 +2731,7 @@
       "rule": "Set DNI_HASH_PEPPER in the Vercel environment before real DNI data lands; a mismatched pepper makes every stored hash mismatch and reversible via rainbow table.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1614"
+        "AGENTS.md:1624"
       ],
       "enforcer": [
         "__tests__/dni-hash-pepper.test.ts:1-16,24"
@@ -2750,7 +2750,7 @@
       "rule": "Every table (especially a new PII/tenant-scoped one) must have Row Level Security ENABLED in its migration, and be classified as either carrying at least one RLS policy or explicitly allowlisted as intentional deny-all (`DENY_ALL_ALLOWLIST` / `RLS_INTENTIONALLY_EXCLUDED`, with a reason); a public table left unclassified, or an `RLS_REQUIRED` table that loses catalog-level RLS, must fail CI; owner-scoped tables are also added to the cross-tenant e2e probes.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1616-1623",
+        "AGENTS.md:1626-1633",
         "scripts/check-rls-coverage.ts:5",
         "docs/architecture/rls-coverage.md#authz-contract-two-layers",
         "__tests__/rls/coverage.test.ts:1-20,226-317"
@@ -2777,7 +2777,7 @@
       "rule": "Never return a raw event payload JSONB blob to a caller; project only the fields callers need.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1627-1629"
+        "AGENTS.md:1637-1639"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -2792,7 +2792,7 @@
       "rule": "Push visibility/privacy decisions into the SQL query, not into render-layer redaction after fetch.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1636-1638"
+        "AGENTS.md:1646-1648"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -2806,7 +2806,7 @@
       "rule": "Scan events must never carry the raw IP; scanner-role payloads are limited to is_self_scan, viewer_authenticated, scan_ip_area, scan_coords?, scan_accuracy_m?.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1651"
+        "AGENTS.md:1661"
       ],
       "enforcer": [
         "lib/events/event-schemas.ts:844-848 (credentialScanned, .strict())",
@@ -2826,7 +2826,7 @@
       "rule": "No scan writer may capture scan_coords/scan_accuracy_m (W8, PO 2026-09-24: no device location anywhere); the fields stay in the schema only so pre-W8 scan events keep validating until the 90-day purge.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1653"
+        "AGENTS.md:1663"
       ],
       "enforcer": [
         "__tests__/log-scan-location.test.ts:233,245,256"
@@ -2845,7 +2845,7 @@
       "rule": "Scanner-role event rows must always have recorded_by_user_id = NULL, with no scanner identity link even when authenticated.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1654"
+        "AGENTS.md:1664"
       ],
       "enforcer": [
         "__tests__/log-scan-location.test.ts:192,206",
@@ -2866,7 +2866,7 @@
       "rule": "Scan events (`pet_events` rows with `event_type='credential_scanned'`, `author_role='scanner'`) must be purged after a 90-day retention window via the audited cron job; self-scans (`author_role='owner'`) are never purged, and every purged row produces an `audit_log` entry (`action='scan_event_purged'`).",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1656-1658",
+        "AGENTS.md:1666-1668",
         "docs/architecture/rls-coverage.md#sensitive-set--backstop-status"
       ],
       "enforcer": [
@@ -2890,7 +2890,7 @@
       "rule": "caretaker_email must be shown only to the titular in their own care panel, never on a public surface or to a third party.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1677"
+        "AGENTS.md:1687"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -2904,7 +2904,7 @@
       "rule": "erase_subject_data must never touch the caretaker_email of the grantor (the third party's own email), only that of the invited caretaker as subject.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1686"
+        "AGENTS.md:1696"
       ],
       "enforcer": [
         "__tests__/subject-rights-caretaker-foster-contact.test.ts"
@@ -2923,7 +2923,7 @@
       "rule": "Ending an accepted caretaker grant must always go through endCaretakerGrantAtomically() as the single writer, never a bare SQL status flip without the paired event.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1687"
+        "AGENTS.md:1697"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -2938,7 +2938,7 @@
       "rule": "Every table in the public schema must carry a classification of BOTH rights — its art. 14 side (export) and its art. 16 side (erase) — each side `covered` (verified both ways against the live `export_subject_data`/`erase_subject_data` function bodies), `covered_outside_sql` (with the TypeScript site that reaches it), `exempt` (with a reason) or `gap` (with a note); live storage buckets are classified the same way; the count of tables with any gap side must not grow past its declared ceiling (16) without the ceiling being raised in the same commit.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1691",
+        "AGENTS.md:1701",
         "scripts/check-subject-rights-coverage.ts:14",
         "__tests__/check-subject-rights-coverage.test.ts:1-9,74-171"
       ],
@@ -2962,7 +2962,7 @@
       "rule": "The subject-rights coverage fence proves table mention only, not that the redaction predicate is correct.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1691"
+        "AGENTS.md:1701"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -2977,7 +2977,7 @@
       "rule": "The `KNOWN_GAP` table count must live in exactly one place in AGENTS.md (§7), fenced against `Object.keys(KNOWN_GAP).length` so it cannot silently go stale; every number stated in the subject-rights-coverage header must itself be derived/fenced, not hand-typed.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1693",
+        "AGENTS.md:1703",
         "scripts/check-subject-rights-coverage.ts:38"
       ],
       "enforcer": [
@@ -2998,7 +2998,7 @@
       "rule": "Reporting content must be a derivation on read (notReportedClause subtracting the flagged event id), never a mutation of the reported event.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1705"
+        "AGENTS.md:1715"
       ],
       "enforcer": [
         "__tests__/content-report-read-coverage.test.ts:222,225,287-290",
@@ -3018,7 +3018,7 @@
       "rule": "Every production read of `pet_events` that can surface a lost-feed `note_added` message must apply `notReportedClause()` — or be a declared exemption with a written reason, or be triaged as not-a-lost-note-read — with the full enumeration derived from code and verified in both directions; no such reader may be unaccounted for.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1709",
+        "AGENTS.md:1719",
         "__tests__/content-report-read-coverage.test.ts:1-25,281-293"
       ],
       "enforcer": [
@@ -3039,7 +3039,7 @@
       "rule": "Subject access (art. 14) and erasure (art. 16) must be served only through the export_subject_data / erase_subject_data RPCs, never ad hoc queries.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1740-1741"
+        "AGENTS.md:1750-1751"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -3054,7 +3054,7 @@
       "rule": "submitter_ip must expire after 30 days for everyone, not only for a subject who requested erasure.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1745"
+        "AGENTS.md:1755"
       ],
       "enforcer": [
         "lib/infra/data-lifecycle.ts:118 ORG_CONTACT_IP_TTL_DAYS",
@@ -3075,7 +3075,7 @@
       "rule": "The account must not store province or locality; jurisdiction is a fact of the pet, not the account.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1746"
+        "AGENTS.md:1756"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -3090,7 +3090,7 @@
       "rule": "pet_events is append-only by design and therefore exempt from soft-delete.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1747"
+        "AGENTS.md:1757"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -3104,7 +3104,7 @@
       "rule": "Every pet-holder access resolver must filter isNull(pets.deletedAt) on both the person and org paths so a soft-deleted pet resolves to 404 everywhere in one place.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1748"
+        "AGENTS.md:1758"
       ],
       "enforcer": [
         "__tests__/public-soft-delete-resolution.test.ts"
@@ -3123,7 +3123,7 @@
       "rule": "Enabling or tightening an RLS policy can never break the app: the action edge (Drizzle via the `BYPASSRLS` postgres role) is the sole authoritative authorization layer for all tables, and RLS is defense-in-depth for the PostgREST surface only — it never governs the action edge, so enabling deny-all for PostgREST writes is always safe.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1004-1009",
+        "AGENTS.md:1014-1019",
         "docs/architecture/rls-coverage.md#authz-contract-two-layers"
       ],
       "enforcementKind": "none",
@@ -3138,7 +3138,7 @@
       "rule": "Owner-facing RLS policies in db/rls.sql must be applied via Supabase Studio, never via pnpm db:push, which would propose dropping unmodeled policies.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:1026"
+        "AGENTS.md:1036"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -3152,7 +3152,7 @@
       "rule": "When a data-model field list in AGENTS.md disagrees with db/schema.ts, the schema wins and the AGENTS.md sketch is treated as the bug.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:358-360"
+        "AGENTS.md:367-369"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -3166,7 +3166,7 @@
       "rule": "Exactly one of owner_user_id or owner_organization_id must be set per ownerships row, CHECK-enforced.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:425"
+        "AGENTS.md:434"
       ],
       "enforcer": [
         "db/schema.ts:1122-1125"
@@ -3185,7 +3185,7 @@
       "rule": "At most one active ownerships row per pet may have role='owner', enforced by a partial unique index.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:426"
+        "AGENTS.md:435"
       ],
       "enforcer": [
         "db/schema.ts:1126-1128"
@@ -3204,7 +3204,7 @@
       "rule": "At most one active caretaker ownerships row per pet is allowed, enforced by a partial unique index, duplicating the cap already held by pet_caretaker_grants because ownerships is what RLS and reads join against.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:435"
+        "AGENTS.md:444"
       ],
       "enforcer": [
         "db/schema.ts:1134-1136"
@@ -3223,7 +3223,7 @@
       "rule": "A caretaker must never be able to transfer, list for adoption, change jurisdiction, edit identity, issue a libreta link, or designate another caretaker; the deny-list lives in lib/domain/titular-only.ts and is enforced by requireTitularAccess and the RLS function has_titular_write_access().",
       "scope": "db",
       "sources": [
-        "AGENTS.md:436",
+        "AGENTS.md:445",
         "scripts/check-titular-gate.ts:8"
       ],
       "enforcer": [
@@ -3248,7 +3248,7 @@
       "rule": "opened_reason_params must be {} when a reason code has no params; a CHECK constraint makes 'code without params' unrepresentable.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:446"
+        "AGENTS.md:455"
       ],
       "enforcer": [
         "db/schema.ts:4626-4629"
@@ -3268,7 +3268,7 @@
       "rule": "Only one pending PetTransfer per pet is allowed, enforced by a partial unique index on (pet_id) WHERE status='pending'.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:474"
+        "AGENTS.md:483"
       ],
       "enforcer": [
         "db/schema.ts:4952-4954"
@@ -3287,7 +3287,7 @@
       "rule": "A microchip code must be unique among active pet_identifications rows, enforced by a partial unique index on (code) WHERE kind='microchip_iso' AND status='active'; tattoo codes may legitimately collide.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:487"
+        "AGENTS.md:496"
       ],
       "enforcer": [
         "db/schema.ts:5040-5042"
@@ -3306,7 +3306,7 @@
       "rule": "An event with a real-world location must populate the top-level PetEvent.location_point column, never duplicate it inside payload.",
       "scope": "db",
       "sources": [
-        "AGENTS.md:841"
+        "AGENTS.md:851"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -3372,7 +3372,7 @@
       "rule": "Migrations are forward-only and immutable (`db/migrations/NNNN_*.sql`); recount the next free integer at write time — never hardcode one from an earlier plan.",
       "scope": "db",
       "sources": [
-        "CLAUDE.md:45",
+        "CLAUDE.md:47",
         "docs/agents/collaborating-writer.md:41-43"
       ],
       "enforcementKind": "none",
@@ -4216,7 +4216,7 @@
       "rule": "Adding a new event type is a one-line edit to the EVENT_TYPES const with no database migration required, but the Zod schema must land in lib/events/event-schemas.ts in the same PR.",
       "scope": "contract",
       "sources": [
-        "AGENTS.md:685"
+        "AGENTS.md:695"
       ],
       "enforcer": [
         "__tests__/event-schemas.test.ts:27-40",
@@ -4236,7 +4236,7 @@
       "rule": "Deprecated event types must be removed from both EVENT_TYPES and the Zod registry so no flow can write them.",
       "scope": "contract",
       "sources": [
-        "AGENTS.md:828,831"
+        "AGENTS.md:838,841"
       ],
       "enforcer": [
         "__tests__/event-schemas.test.ts:27-40"
@@ -4256,7 +4256,7 @@
       "rule": "The deprecated incident_type value 'dog_attack' must remain in the Zod enum to preserve historical rows, even though new writes use 'bite_suffered'.",
       "scope": "contract",
       "sources": [
-        "AGENTS.md:837"
+        "AGENTS.md:847"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -4271,7 +4271,7 @@
       "rule": "A *_started/*_ended bounded-process pair must write a denormalized status column at open and flip it at close, with a daily idempotent cron auto-closing the happy path.",
       "scope": "contract",
       "sources": [
-        "AGENTS.md:847-854"
+        "AGENTS.md:857-864"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -4286,7 +4286,7 @@
       "rule": "A *_signal system-emitted event must set author_role='system' (or the acting party for authenticated scans) and be classified as non-libreta.",
       "scope": "contract",
       "sources": [
-        "AGENTS.md:859,860"
+        "AGENTS.md:869,870"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -4300,7 +4300,7 @@
       "rule": "A *_proposed/*_executed two-phase transfer must auto-cancel lazily at accept time if the receiver's precondition check fails, emitting a note_added event and notifying the original proposer, with no separate sweep job.",
       "scope": "contract",
       "sources": [
-        "AGENTS.md:870"
+        "AGENTS.md:880"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -4314,7 +4314,7 @@
       "rule": "A new event with three or more semantically-similar variants should use a single *_reported umbrella type with a discriminator field, not N separate event_types.",
       "scope": "contract",
       "sources": [
-        "AGENTS.md:881"
+        "AGENTS.md:891"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -4329,7 +4329,7 @@
       "rule": "UI preference flips (e.g. emergencyInfoVisible, disclose_*_when_lost) are mutable entity state, not events; do not emit events for preference flips.",
       "scope": "contract",
       "sources": [
-        "AGENTS.md:886"
+        "AGENTS.md:896"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -4343,13 +4343,13 @@
       "rule": "A payload key, once shipped for an event type, must keep its meaning forever; a later change that needs a different shape must add a new key or discriminator variant, never redefine an existing key.",
       "scope": "contract",
       "sources": [
-        "AGENTS.md:897"
+        "AGENTS.md:907"
       ],
       "enforcementKind": "none",
       "wired": "none",
       "status": "UNENFORCED",
       "statusBasis": "lint:events cannot fail on this: check-event-payload-parity.ts:10-11 checks only that a read key is WRITABLE by some schema, and :13-21 declares the check is a FLAT key set, not per-event-type. Redefining a key's meaning while keeping its name and its writer passes every arm of the fence.",
-      "notes": "Downgraded from draft ENFORCED. AGENTS.md:894 says 'Three rules, enforced by pnpm lint:events' but only rule 2 (CANON-257) carries a mechanism — AGENTS.md:897 itself is the only one that says 'enforced mechanically'. Recorded in contradictionsFound.",
+      "notes": "Downgraded from draft ENFORCED. AGENTS.md:904 says 'Three rules, enforced by pnpm lint:events' but only rule 2 (CANON-257) carries a mechanism — AGENTS.md:907 itself is the only one that says 'enforced mechanically'. Recorded in contradictionsFound.",
       "confidence": 0.85,
       "verifiedAt": "d7dbf25f7"
     },
@@ -4358,7 +4358,7 @@
       "rule": "A payload key may only be read (SQL payload->>'key' or JS .payload.key) if some writer schema in lib/events/event-schemas.ts is capable of emitting it, unless it is a documented legacy exception in scripts/event-parity-baseline.json with a mandatory reason.",
       "scope": "contract",
       "sources": [
-        "AGENTS.md:898"
+        "AGENTS.md:908"
       ],
       "enforcer": [
         "scripts/check-event-payload-parity.ts:10-11,112,401-402,448",
@@ -4380,7 +4380,7 @@
       "rule": "A payload schema's meaning must evolve only via read-side upcasters (bumping payload_version and adding a mapping in lib/events/event-upcasters.ts), never by rewriting existing event rows.",
       "scope": "contract",
       "sources": [
-        "AGENTS.md:899"
+        "AGENTS.md:909"
       ],
       "enforcer": [
         "__tests__/event-upcaster-coverage.test.ts:1-22,122-167",
@@ -4589,7 +4589,7 @@
       "rule": "`router.push()`/`router.replace()` must never be used for query-only navigation state; existing per-file call-site counts are frozen and may only shrink, never grow.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1305",
+        "AGENTS.md:1315",
         "scripts/check-router-refresh.ts:21"
       ],
       "enforcer": [
@@ -4610,7 +4610,7 @@
       "rule": "`router.refresh()` must never be used as a substitute for post-mutation UI truth — zero call sites allowed, empty allowlist.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1306",
+        "AGENTS.md:1316",
         "scripts/check-router-refresh.ts:16"
       ],
       "enforcer": [
@@ -4631,7 +4631,7 @@
       "rule": "A server action must never call raw `redirect()` — it returns the `redirectTo` contract instead, and the calling form performs a full document navigation via `useActionRedirect` (contract N3).",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1308",
+        "AGENTS.md:1318",
         "scripts/check-action-redirect.ts:12"
       ],
       "enforcer": [
@@ -4654,7 +4654,7 @@
       "rule": "Never invent a new location-capture mode beyond L1 and L2; raise it in design instead.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1324"
+        "AGENTS.md:1334"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -4668,7 +4668,7 @@
       "rule": "Every CTA must use one of four verb shapes (Continuar, Confirmar X, Crear X, or a domain-specific verb with its object); never a bare verb like Aceptar or Guardar alone.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1328-1333"
+        "AGENTS.md:1338-1343"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -4683,7 +4683,7 @@
       "rule": "Multi-step flows with three or more sections, or any destructive step, must use WizardShell as the only multi-step chrome.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1339"
+        "AGENTS.md:1349"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -4698,7 +4698,7 @@
       "rule": "Trámite-style flows (denuncia, adoption application, intake, devolución, mordedura) must end on SuccessScreen; silent redirects after the final submit are forbidden.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1345"
+        "AGENTS.md:1355"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -4712,7 +4712,7 @@
       "rule": "Every non-empty omnibox query must log one pii_queried audit row; never add a parallel search path that skips the scope or the log.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1355-1356"
+        "AGENTS.md:1365-1366"
       ],
       "enforcer": [
         "scripts/check-audit-log-coverage.ts:14-20"
@@ -4732,7 +4732,7 @@
       "rule": "Destructive bulk actions must require a reason whose minimum length matches the corresponding server action's own minimum, and the UI must never weaken those minimums.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1359"
+        "AGENTS.md:1369"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -4746,7 +4746,7 @@
       "rule": "AppShell must remain the single role-variant application chrome; do not reintroduce per-surface chrome wrappers or per-component nav literals.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1373,1374"
+        "AGENTS.md:1383,1384"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -4760,7 +4760,7 @@
       "rule": "The #main-content skip-link target must be preserved in every AppShell variant.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1382"
+        "AGENTS.md:1392"
       ],
       "enforcer": [
         "__tests__/public-token-landing-structure.test.tsx:241-262"
@@ -4780,7 +4780,7 @@
       "rule": "'Limpiar todo' and 'Limpiar filtros' are deliberately distinct mechanisms and must not be unified into one string.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1393"
+        "AGENTS.md:1403"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -4795,7 +4795,7 @@
       "rule": "The 44px touch floor applies only to the md density of Field/OpField, never to LnButton/OpButton, which must state their own height at the call site when they need to match a field.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1397,1398"
+        "AGENTS.md:1407,1408"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -4811,7 +4811,7 @@
       "rule": "Nothing new may go in `lib/` root — every module lives in a bucket by role; a new `.ts` file directly under `lib/` must appear in the grandfathered baseline or the check fails.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1549",
+        "AGENTS.md:1559",
         "scripts/check-lib-root-files.ts:7"
       ],
       "enforcer": [
@@ -4833,7 +4833,7 @@
       "rule": "New use-cases added to src/modules/*/application/** may not be added to the noRestrictedImports off-override allowlist; the goal for that list is zero entries.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1582"
+        "AGENTS.md:1592"
       ],
       "enforcer": [
         "scripts/check-application-fence.ts:36-39",
@@ -4854,7 +4854,7 @@
       "rule": "Every jurisdiction-grouped public or analyst aggregate (and every locality-grouped Pattern-B output that exposes counts per jurisdiction) must pass through `suppressSmallCells` with k=5.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1662,1665",
+        "AGENTS.md:1672,1675",
         "docs/architecture/hexagonal-lite.md#k-anonymity-invariant"
       ],
       "enforcer": [
@@ -4878,7 +4878,7 @@
       "rule": "Every aggregate must name what it excludes and against which denominator it is computed.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1669"
+        "AGENTS.md:1679"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -4893,7 +4893,7 @@
       "rule": "Publishing a caretaker's contact on a public credential requires two separately-captured consent keys (the caretaker's public_contact_consent_at and the titular's disclose_caretaker_contact_when_lost); the titular's toggle must not even render without the caretaker's key.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1679"
+        "AGENTS.md:1689"
       ],
       "enforcer": [
         "__tests__/caretaker-public-contact.test.ts:12-14,45-57,157-173"
@@ -4913,7 +4913,7 @@
       "rule": "'Bloquear al usuario' is a prohibited mechanism for the lost-feed report function; only per-item reporting is offered, never a per-account block.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1701"
+        "AGENTS.md:1711"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -4927,7 +4927,7 @@
       "rule": "The org path to reporting a lost-feed item must be refused at both doors (the mobile API command guard and the web server action), never relying on a hidden button alone.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:1720,1721"
+        "AGENTS.md:1730,1731"
       ],
       "enforcer": [
         "__tests__/actions/report-lost-feed-item-action-authz.test.ts:101-148",
@@ -4948,7 +4948,7 @@
       "rule": "Every mutation and every sensitive read must go through a Next.js Server Action backed by Drizzle that checks session, role, and ownership before any SQL; `actions.ts` is the security boundary and stays the authoritative, unbypassable authorization gate because Drizzle bypasses Postgres RLS by design.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:990-995",
+        "AGENTS.md:1000-1005",
         "docs/architecture/hexagonal-lite.md:128",
         "docs/architecture/hexagonal-lite.md#a-concrete-walkthrough--finalize-an-adoption"
       ],
@@ -4972,7 +4972,7 @@
       "rule": "Opening a case must pass a structured OpenedReason code, never a free string; opened_reason is audit prose that must never be rendered to a user.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:442,443"
+        "AGENTS.md:451,452"
       ],
       "enforcer": [
         "scripts/check-opened-reason-coverage.ts:21-29"
@@ -4993,7 +4993,7 @@
       "rule": "Adding a new opened-reason writer must add a union member, never a hand-written string; tsc then requires a matching renderer and prose template.",
       "scope": "web",
       "sources": [
-        "AGENTS.md:458"
+        "AGENTS.md:467"
       ],
       "enforcer": [
         "scripts/check-opened-reason-coverage.ts:15-18",
@@ -7271,7 +7271,7 @@
       "scope": "web",
       "sources": [
         "scripts/check-seed-ids.ts:10",
-        "AGENTS.md:1554"
+        "AGENTS.md:1564"
       ],
       "enforcer": [
         "scripts/check-seed-ids.ts:10,94-102,140",
@@ -7553,7 +7553,7 @@
       "rule": "The word 'denunciar' must never appear in the report-an-item copy; only 'reportar' is used.",
       "scope": "mobile",
       "sources": [
-        "AGENTS.md:1703"
+        "AGENTS.md:1713"
       ],
       "enforcer": [
         "apps/mobile/src/lost/lost-view-model.test.ts:354,445-446"
@@ -7564,7 +7564,7 @@
       "partialShape": "subset",
       "clause": "R4",
       "statusBasis": "apps/mobile/src/lost/lost-view-model.test.ts:449-456 sweeps an ENUMERATED array — REPORT_ACTION_LABEL, REPORT_INTRO, the category labels, commandDoneLabel/commandUnchangedLabel — for `denunci`. The report sheet's own literals are outside it: LostScreen.tsx:764 `Card title=\"Reportar un mensaje\"`, :773 \"¿Qué pasa con este mensaje?\", :791, :795, :799 never reach that array.",
-      "notes": "AGENTS.md:1702 claims the fence 'recorre toda la copy de la función'; it walks the view-model's exported constants only. The previous basis confirmed the describe and the wiring, which were never in doubt, and did not test the rule's scope. Uncovered part: apps/mobile/src/lost/LostScreen.tsx inline report-sheet copy.",
+      "notes": "AGENTS.md:1712 claims the fence 'recorre toda la copy de la función'; it walks the view-model's exported constants only. The previous basis confirmed the describe and the wiring, which were never in doubt, and did not test the rule's scope. Uncovered part: apps/mobile/src/lost/LostScreen.tsx inline report-sheet copy.",
       "confidence": 0.72,
       "verifiedAt": "d7dbf25f7"
     },
@@ -8108,7 +8108,7 @@
       "rule": "Playwright e2e is not part of pnpm verify; it runs only as CI's own job and nightly against staging.",
       "scope": "e2e",
       "sources": [
-        "CLAUDE.md:47"
+        "CLAUDE.md:49"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -8511,7 +8511,7 @@
       "rule": "Append new locked-in design decisions worth preserving across sessions to AGENTS.md.",
       "scope": "docs",
       "sources": [
-        "AGENTS.md:1761"
+        "AGENTS.md:1771"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -8584,7 +8584,7 @@
       "status": "PARTIAL",
       "partialShape": "subset",
       "clause": "R4",
-      "statusBasis": "__tests__/event-catalog-count.test.ts:36 COUNT_RE matches only 'Event catalog — N types' / 'Event catalog (N types)'. AGENTS.md:34 states a catalog count in a third phrasing — '(48 at last read)' — inside a doc the fence scans, and passes: live is 55 (AGENTS.md:83,680 and CLAUDE.md:70 say 55). The anchor loop :70-81 is complete (a repo-wide rg finds #event-catalog--N-types only in those two docs).",
+      "statusBasis": "__tests__/event-catalog-count.test.ts:36 COUNT_RE matches only 'Event catalog — N types' / 'Event catalog (N types)'. AGENTS.md:34 states a catalog count in a third phrasing — '(48 at last read)' — inside a doc the fence scans, and passes: live is 55 (AGENTS.md:83,690 and CLAUDE.md:72 say 55). The anchor loop :70-81 is complete (a repo-wide rg finds #event-catalog--N-types only in those two docs).",
       "notes": "Changed from my draft ENFORCED after opening AGENTS.md:34, which the v3 basis cited and I had not read. The uncovered occurrence disclaims itself ('never trust a number written here'), so whether it is a live violation is arguable — but the fence recognises two phrasings and would miss an unhedged third the same way (the enumerate-the-forms shape).",
       "confidence": 0.68,
       "verifiedAt": "d7dbf25f7"
@@ -8677,7 +8677,7 @@
       "status": "PARTIAL",
       "partialShape": "subset",
       "clause": "R4",
-      "statusBasis": "__tests__/event-catalog-count.test.ts:32 covers one number across three docs and __tests__/documented-subject-rights-counts.test.ts (:1-32, derived from IN_ERASE/IN_EXPORT/KNOWN_GAP) covers one topic's counts. Every other prose number is transcribed and unfenced — AGENTS.md:1531 '(46 at last read — package.json is the source of truth, this number is not)' is one such, live in the tree.",
+      "statusBasis": "__tests__/event-catalog-count.test.ts:32 covers one number across three docs and __tests__/documented-subject-rights-counts.test.ts (:1-32, derived from IN_ERASE/IN_EXPORT/KNOWN_GAP) covers one topic's counts. Every other prose number is transcribed and unfenced — AGENTS.md:1541 '(46 at last read — package.json is the source of truth, this number is not)' is one such, live in the tree.",
       "notes": "documented-subject-rights-counts.test.ts:20-32 states its own limit: it anchors on SENTENCES, so a claim moved into unknown wording is invisible. The rule's second clause — a same-file census must argue by location instead of count — has no enforcer at all.",
       "confidence": 0.78,
       "verifiedAt": "d7dbf25f7"
@@ -9755,7 +9755,7 @@
   "contradictions": [
     {
       "subject": "Event catalog: type count and declaration site",
-      "docSays": "AGENTS.md:34 says the EVENT_TYPES const IS the count ('48 at last read') and names db/schema.ts as its home; AGENTS.md:685 repeats the db/schema.ts location.",
+      "docSays": "AGENTS.md:34 says the EVENT_TYPES const IS the count ('48 at last read') and names db/schema.ts as its home; AGENTS.md:695 repeats the db/schema.ts location.",
       "liveValue": "55 entries, declared at packages/contract/src/events/event-types.ts:20 and only re-exported by db/schema.ts:277,289 (which is what the fence imports). AGENTS.md:83 and :680 already say 'Event catalog — 55 types' elsewhere in the same file.",
       "evidence": "db/schema.ts:277,289; packages/contract/src/events/event-types.ts:20; __tests__/event-catalog-count.test.ts:26,36,43 (the fence pins 'Event catalog — N types' phrasing only, so AGENTS.md:34's '(48 at last read)' phrasing escapes it)",
       "verdictSource": "refuter-report.json contradictions[0] (confirmed) + G1 + G2 contradictionsFound (affects CANON-246, CANON-248)"
@@ -9776,7 +9776,7 @@
     },
     {
       "subject": "Application-fence exemption-list count and target",
-      "docSays": "AGENTS.md:1581 says 'the goal is 0' exemptions; a separate header note in the fence cites a closed 2026-08-20 historical incident (46-vs-44) as the reason the ratchet exists.",
+      "docSays": "AGENTS.md:1591 says 'the goal is 0' exemptions; a separate header note in the fence cites a closed 2026-08-20 historical incident (46-vs-44) as the reason the ratchet exists.",
       "liveValue": "34 exemptions today, pinned by EQUALITY (not a floor heading toward 0) — scripts/application-fence-baseline.json:2 = {\"exemptions\":34}; check-application-fence.ts:36-39,308 fails any count other than exactly 34. Neither 46/44 nor the stated goal of 0 is the live number.",
       "evidence": "scripts/application-fence-baseline.json:2; scripts/check-application-fence.ts:36-39,308 (affects CANON-283)",
       "verdictSource": "refuter-report.json contradictions[3] (wrong-live-value) + G3 contradictionsFound"
@@ -9825,9 +9825,9 @@
     },
     {
       "subject": "How many of the three payload-evolution rules lint:events actually enforces",
-      "docSays": "AGENTS.md:894 — 'Three rules, enforced by pnpm lint:events (scripts/check-event-payload-parity.ts) in the verify pipeline.'",
+      "docSays": "AGENTS.md:904 — 'Three rules, enforced by pnpm lint:events (scripts/check-event-payload-parity.ts) in the verify pipeline.'",
       "liveValue": "One. check-event-payload-parity.ts:10-11 enforces only rule 2 (reader keys must be writable); :13-21 declares it a FLAT key set with no per-event-type precision.",
-      "evidence": "scripts/check-event-payload-parity.ts:10-21,448; AGENTS.md:894-898 (affects CANON-256, CANON-257, CANON-258)",
+      "evidence": "scripts/check-event-payload-parity.ts:10-21,448; AGENTS.md:904-908 (affects CANON-256, CANON-257, CANON-258)",
       "verdictSource": "G2 contradictionsFound"
     },
     {
@@ -9944,7 +9944,7 @@
     {
       "id": "CANON-419",
       "into": "CANON-196",
-      "reason": "One prohibition, two framings of the same deny-list: the six user-facing titular-only actions (196, sourced AGENTS.md:436) and the three DB effect classes the fence enumerates (419, sourced check-titular-gate.ts:8). Same enforcer lines (check-titular-gate.ts:51,79-82,91 + db/rls.sql + migration 0199) and same status. Kept 196 as the fuller doc statement; 419's quote and sources preserved in mergedFrom.",
+      "reason": "One prohibition, two framings of the same deny-list: the six user-facing titular-only actions (196, sourced AGENTS.md:445) and the three DB effect classes the fence enumerates (419, sourced check-titular-gate.ts:8). Same enforcer lines (check-titular-gate.ts:51,79-82,91 + db/rls.sql + migration 0199) and same status. Kept 196 as the fuller doc statement; 419's quote and sources preserved in mergedFrom.",
       "foldedStatus": "ENFORCED",
       "keptStatus": "ENFORCED",
       "rule": "A caller holding an ownership row on a pet whose role is caretaker may not perform a titular-only database effect (declared spine event, restricted pet column update, or restricted insert table).",

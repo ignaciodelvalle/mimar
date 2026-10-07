@@ -9,7 +9,7 @@ Load this section every session. Load deep sections on demand via the anchors in
 
 ### What this project is
 
-**DIM / MiMAR** — Argentina's digital pet credential system. Internal codename: **DIM** (stays in code, schema, tokens `DIM-XXXX-XXXX`, audit logs). User-facing brand: **MiMAR (Mi Mascota Argentina)**.
+**DIM / miMAR** — Argentina's digital pet credential system. Internal codename: **DIM** (stays in code, schema, tokens `DIM-XXXX-XXXX`, audit logs). User-facing brand: **miMAR (Mi Mascota Argentina)** — lowercase m, capital M-A-R; `pnpm lint:brand` fences the casing in source.
 
 Owner: **Ignacio Del Valle** — non-technical. Claude writes the code; Ignacio drives product decisions and runs commands locally on Windows.
 
@@ -19,7 +19,7 @@ Ultimate trajectory: **Mi Argentina integration** — federation with the Argent
 
 1. **The pet is the credential** — globally-unique `DIM-XXXX-XXXX` public token that resolves to a QR-verifiable public page.
 2. **Events are append-only** — every fact about a pet's life is an immutable event. No event is ever edited or deleted. Corrections are new events.
-3. **Projections are first-class** — every view (owner timeline, public credential, vet record, govt dashboard) is `(events, filters) → view`. No view is source of truth.
+3. **Facts are event-sourced; caches declare themselves** — medical/custody lifecycle facts live only in the append-only event spine; operational caches (`pets.*` columns, ownerships) and curated metadata are dual-written **by design**, with explicit boundaries and drift detection (`rederivePetCache`). No cache ever outranks the spine. (Honest-hybrid rewording, PO 2026-07-24 — the old "every view is a projection" slogan overclaimed; see Core principle 7.)
 4. **Spanish UI, English code** — variable names, function names, comments in English. User-facing strings in Spanish (es-AR).
 5. **No DNI in plaintext** — `profiles.dni_number` was dropped (migration `0106_dni_less_identity.sql`). Use `lib/utils/dni-hash.ts` `hashDni()` for equality, `dniLast4()` for display.
 6. **Mi Argentina alignment** — no design decision breaks the federation premise.
@@ -58,7 +58,7 @@ Two AI agents work this repo, **never in parallel** (one session at a time). The
 - **Single source of truth.** The canonical repo is the one **Claude Code** operates (Ignacio's local Windows machine). Claude Code owns git (commits, branches, merges, stash) and running tests / verify / build / migration files. If the two agents disagree about repo, test, or build state, **Claude Code's live check wins — after verifying, never by assertion.**
 - **Lanes.** *Claude Code* = ground truth: touches files, commits, runs the gate, writes migrations. *Cowork* = thinking: exploration, design, planning, drafting specs/PRDs, research → produces **proposals, not facts**. Cowork must not assert git/test/environment state as settled, and must not "fix" a broken-looking environment from its sandbox — it **flags it as a checkable claim** instead.
 - **Handoffs carry evidence, not narrative.** Stamp every handoff with the **branch + HEAD SHA** it was written against. Separate **DONE (with commit SHA)** from **TODO (unverified)**. Back every claim with a SHA, a `file:line`, or pasted command output. Banned: "git is broken", "X is done" with nothing to check. Required: the command and its output. The receiver **verifies every claim against the live repo before acting — trust SHAs, not prose.**
-- **Shared Definition of Done.** "Done" = `pnpm verify` + `pnpm test` green (with the actual output as evidence) **and committed**. No "should be fine."
+- **Shared Definition of Done.** "Done" = `pnpm verify` + `pnpm test:verified` green (with the actual verdict line as evidence) **and committed**. Not `pnpm test` — its exit code lies in both directions; `CLAUDE.md` § Definition of Done has the verdict rules. No "should be fine."
 - **Human-gated actions.** Agents produce artifacts; **Ignacio authorizes anything that hits prod or external services, or is hard to reverse**: applying migrations to remote Supabase, deploys, pushing to origin / opening PRs, dashboard/account toggles. Writing a migration *file* is agent work; *applying* it to a remote DB is not.
 - **Shared conventions already in force** (see Invariants above): conventional commits, **no `Co-Authored-By` / AI attribution**, Spanish UI / English code, append-only events, forward-only immutable migrations.
 
@@ -90,7 +90,7 @@ Before writing a new event type, walk through `docs/event-design-checklist.md`. 
 | PII baseline & subject rights | [#pii-baseline--subject-rights-ley-25326](#pii-baseline--subject-rights-ley-25326) | New PII tables, Ley 25.326 |
 | SENASA reference vocabularies | [#senasa-reference-vocabularies](#senasa-reference-vocabularies) | Vet events, compliance exports |
 | Feature inventory | [#feature-inventory](#feature-inventory) | "Does X exist?" before building |
-| Naming (DIM vs MiMAR) | [#naming](#naming) | Copy, brand, code identifiers |
+| Naming (DIM vs miMAR) | [#naming](#naming) | Copy, brand, code identifiers |
 | Design rules (UI conventions) | [#design-rules-ui-conventions](#design-rules-ui-conventions) | Forms, buttons, chrome, a11y |
 | Open questions / future work | [#open-questions--future-work](#open-questions--future-work) | What is deferred / out of scope |
 | Test-runner conventions | [#test-runner-conventions-item-29--wave-5](#test-runner-conventions-item-29--wave-5) | Test suite setup, pool, teardown |
@@ -108,7 +108,7 @@ Before writing a new event type, walk through `docs/event-design-checklist.md`. 
 
 At its core: every pet has a verifiable digital identity — a credential that can be scanned via QR, displayed on a phone, printed on a tag. Owners use a PWA to maintain their pets' records (vaccinations, medications, vet visits, microchips, weight, status). The data model is designed from day one to support expansion to veterinary professionals and government health authorities, and ultimately **integration with Mi Argentina** — which is the core premise of the project, not a nice-to-have.
 
-The user-facing brand is **MiMAR (Mi Mascota Argentina)**. The internal codename is **DIM** — it stays in code, schema, token formats, and audit logs. See the **Naming** section below for the full rationale.
+The user-facing brand is **miMAR (Mi Mascota Argentina)**. The internal codename is **DIM** — it stays in code, schema, token formats, and audit logs. See the **Naming** section below for the full rationale.
 
 The owner of the project is **Ignacio Del Valle**, part of the original 2021 team. Ignacio is **non-technical** — Claude writes the code, Ignacio drives product decisions and runs commands locally on Windows.
 
@@ -258,14 +258,14 @@ Ownership follows the layered model as designed:
 
 When multiple rules conflict, **more specific wins**: locality > province > country > hardcoded default, resolved by `resolveBusinessRule` in `lib/infra/business-rules-resolver.ts`. A Belgrano rule overrides a CABA rule overrides an Argentina rule overrides the code default.
 
-**In flight — rules-engine v2 (SDD change `jurisdiction-compliance`):** extends the same table and registry (never a parallel system) with legal obligation types (`rabies_vaccination`, `sterilization`, `microchip_identification`), `requirement_level` tiers + legal metadata columns (migration number TBD — 0118 is already taken by `event_amended_target_idx`; recount the next free integer at write time per the Definition of Done, never hardcode one from a plan), a versioned national legal-baseline dataset with PO sign-off gate, and jurisdiction-aware compliance metrics and nudges. Artifacts in engram under `sdd/jurisdiction-compliance/*`.
+**Shipped — rules-engine v2 (SDD change `jurisdiction-compliance`):** the same table and registry (never a parallel system) carry the legal obligation types (`rabies_vaccination`, `sterilization`, `microchip_required` in `lib/domain/rule-types-registry.ts`), the `requirement_level` tiers + legal metadata columns (migration `0183_jurisdiction_compliance_columns.sql`), and a versioned national legal-baseline dataset under `data/legal-baseline/` applied by `scripts/seed-legal-baseline.ts` behind a PO sign-off gate (`ar-v1` is signed off; `ar-v2` has no `ar-v2.signoff.json` yet, so the fail-closed seed will not apply it). Compliance metrics and nudges read it per jurisdiction. Artifacts in engram under `sdd/jurisdiction-compliance/*`.
 
 ### Hard constraints
 
 These are the invariants the schema and application writers enforce together.
 
 1. **Account type ↔ role match.** `profiles.account_type='personal'` ⟹ `role ∈ {owner, vet}`. `profiles.account_type='institutional'` ⟹ `role ∈ {govt, admin, national}`. **Enforced in the application layer** by every writer that sets these columns (`createInstitutionalAccountForAuthority`, approval mutation handlers, the `handle_new_user` trigger). A DB-level CHECK constraint (`profiles_account_type_role_match`) was added in migration 0015 but **dropped in migration 0016** (`db/migrations/0016_drop_role_match_check.sql`) because Drizzle + postgres-js fires the constraint on the intermediate row state during a two-column UPDATE in the same statement, breaking the test suite. The invariant is intentionally enforced at the app layer only — do NOT add the CHECK back without resolving that Drizzle behavior.
-2. **Institutional accounts have no personal-identity fields.** When `account_type='institutional'`, `dni_hash IS NULL`, `miarg_sub IS NULL`, `matricula_number IS NULL`, `matricula_jurisdiccion IS NULL` — **sólo estas cuatro columnas de texto** están en el CHECK (`db/schema.ts:517-520`); los booleanos `dni_verified`/`matricula_verified` y `dni_last4` quedaron FUERA a propósito (migración 0015) y son enforcement de aplicación. CHECK constraint (`profiles_institutional_no_pii`). Note: `dni_number` was dropped in migration 0106 (Wave 5 Item 25a).
+2. **Institutional accounts have no personal-identity fields.** When `account_type='institutional'`, `dni_hash IS NULL`, `miarg_sub IS NULL`, `matricula_number IS NULL`, `matricula_jurisdiccion IS NULL` — **sólo estas cuatro columnas de texto** están en el CHECK (`db/schema.ts:477-480`); los booleanos `dni_verified`/`matricula_verified` y `dni_last4` quedaron FUERA a propósito (migración 0015) y son enforcement de aplicación. CHECK constraint (`profiles_institutional_no_pii`). Note: `dni_number` was dropped in migration 0106 (Wave 5 Item 25a).
 3. **Institutional accounts cannot own pets.** A trigger on `ownerships` rejects any INSERT or UPDATE that would tie an institutional account to a pet via `owner_user_id`. The trigger uses `errcode='restrict_violation'` (`db/migrations/0015_admin_page_closure.sql:54-83`). El mensaje está en inglés, no en español.
 4. **Last admin cannot be deactivated.** Server-action precondition counts `account_type='institutional' AND role='admin' AND deactivated_at IS NULL` and refuses if the deactivation would leave fewer than one.
 5. **Govt cannot self-deactivate if any locality is uncovered.** Server-action precondition checks coverage for every `govt_assignment` of the deactivating user.
@@ -285,7 +285,7 @@ Institutional accounts do not author `pet_events` in normal operation — they m
 
 **Corrected 2026-09-18 — the old recipe here `insert`ed into `profiles` directly, which collides
 with the `on_auth_user_created` trigger** (`db/triggers.sql:88-92`, wired to `handle_new_user()`,
-created by migration `0134`): every `auth.users` insert already creates a `profiles` row via that
+which migration `0134` made always-owner; 0135 and 0157 later touch only the welcome copy): every `auth.users` insert already creates a `profiles` row via that
 trigger, so a second manual `insert` on the same id is either a duplicate-key error or the wrong
 instrument. The correct recipe, from `dim-interno:docs/ops/production-deploy-plan.md` §1.9 ("First admin
 account (W6)"):
@@ -299,12 +299,21 @@ account (W6)"):
    set role = 'admin', account_type = 'institutional', updated_at = now()
    where id = '<the new user''s auth.users.id>';
    ```
+   Promote only a profile whose `dni_hash`, `miarg_sub`, `matricula_number` and
+   `matricula_jurisdiccion` are all NULL — a plain email signup leaves them so. An operator who
+   also linked DNI / Mi Argentina or a matrícula is rejected by `profiles_institutional_no_pii`
+   (hard constraint 2). Migration `0211` locks PostgREST profile writes; this runs as service
+   role, so it is unaffected.
 3. Do **not** repeat this manual SQL step for additional `admin`/`govt` accounts. Once one admin
-   exists, use the in-app institutional-account flow
-   (`createInstitutionalAccountForAuthority`, `app/actions/admin-institutional.ts`, gated by
-   `requireAdminOrRedirect`) through the UI. The manual SQL flip is a one-time bootstrap.
+   exists, use the in-app institutional-account flow: `createInstitutionalAccountAction`
+   (`app/actions/admin-institutional.ts`, gated by `requireAdministrationPrincipalOrRedirect`),
+   whose use-case `createInstitutionalAccountForAuthority`
+   (`src/modules/organizations/application/admin-institutional/create-institutional-account.ts`)
+   admits `admin`/`national` from the platform admin only and `govt` from the platform admin or
+   the jurisdiction admin of that one province. The manual SQL flip is a one-time bootstrap.
 
-From there, every institutional account is created via the admin page. Every personal account is created via self-serve signup. Both flows go through `auth.users` like any other Supabase auth path.
+From there, every institutional account (`admin`, `govt`, `national`) is created in-app — the
+admin console, or `/gob/administracion/funcionarios` for a jurisdiction admin's `govt` accounts. Every personal account is created via self-serve signup. Both flows go through `auth.users` like any other Supabase auth path.
 
 ### Implementation reference
 
@@ -349,7 +358,7 @@ The vecino-helps-stray case is explicit and intentional. An existing DIM owner c
 
 ## Legal framework
 
-DIM must be designed around — not against — the Argentine legal landscape for animal health and welfare. Four laws bear directly on what the app supports:
+DIM must be designed around — not against — the Argentine legal landscape for animal health and welfare. These norms bear directly on what the app supports:
 
 | Law                              | Scope                                                                                  | What it implies for DIM                                                                                                              |
 | -------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -554,10 +563,10 @@ Notifications often *project from* events (a `pet_registered` event with `potent
 
 Fields:
 - `id`, `user_id`
-- `notification_type` (text — kept free-text not enum so adding new types doesn't need a migration; current values: `welcome`, `ppp_registration_reminder`, planned: `vaccine_due`, `scan_alert`, `system_update`)
+- `notification_type` (text — kept free-text, no CHECK, so adding a type needs no migration). The closed list is the `NOTIFICATION_KINDS` registry in `@dim/contract/notifications` (`packages/contract/src/notifications/kinds.ts`) — one entry per kind: subject, primary destination, pending actor, copy. `pnpm lint:notification-kinds` (`scripts/check-notification-kinds.ts`) fails on a writer emitting an unregistered or computed type, and on a registered kind nobody writes. Do not hand-count it here.
 - `title`, `body` (markdown allowed)
 - `severity` (enum: `info` / `success` / `warning` / `urgent`) — drives badge color in UI
-- `cta_label?`, `cta_url?` — optional call-to-action button
+- `cta_label?`, `cta_url?` — optional call-to-action. `cta_url` is the writer's send-time hint, NOT the link the user follows: the destination is resolved at read time (see "Opening a notification" below)
 - `related_pet_id?`, `related_event_id?` — backlinks to source domain entities
 - `read_at?` — null = unread
 - `archived_at?` — null = visible
@@ -566,15 +575,16 @@ Fields:
 
 Indexes: partial index on `(user_id) where read_at IS NULL AND archived_at IS NULL` for unread-count queries; `(user_id, created_at)` for the inbox list.
 
-**How notifications get created.** Three sources:
-1. **Database triggers** — `welcome` on signup (handle_new_user trigger inserts both the profile row and the welcome notification atomically).
-2. **Server actions** — `createPetAction` and `updatePetAction` insert a `ppp_registration_reminder` when a pet's breed is in the dangerous list.
-3. **Future: scheduled jobs** — `vaccine_due` reminders fire from upcoming `Reminder` rows, generating notifications a few days before the due date.
+**How notifications get created.**
+1. **Database trigger** — `welcome` on signup (`handle_new_user` inserts both the profile row and the welcome notification atomically).
+2. **Application writers** — server actions, use-cases and cron routes (e.g. `app/api/cron/vaccine-due`) go through `createNotification()` / `createNotificationsBulk()` in `lib/infra/notification-service.ts` (idempotent on `dedupe_key`, with a dead-letter table). `pnpm lint:notifications` (`scripts/check-notifications-service.ts`) refuses a new direct `insert(notifications)` outside the shrink-only `scripts/notifications-service-baseline.json`.
+
+**Opening a notification.** The web CTA links `/notificaciones/{id}/abrir` (`app/(public)/notificaciones/[notificationId]/abrir/route.ts`), never the stored `cta_url`. That GET asks `resolveNotificationTarget` (`src/modules/notifications/application/read/resolve-notification-target.ts`) where the viewer can go *now* — the case, the pet, a section, or the explanation page `/notificaciones/{id}` when the destination is gone — and redirects through `sameOriginRedirect`. It never 404s, does not mark the row read (no side effects on GET), runs its own session check (it lives in `(public)` so admin/govt operators are not bounced by the `(app)` layout) and is rate-limited by `NOTIFICATION_DOOR_READ_LIMIT`. The app asks the same resolver through `GET /api/v1/me/notifications/{id}/target`.
 
 UI for browsing notifications is built on **both clients**, and they read through one door:
 
 - **Web** — `/notificaciones` (`app/(app)/notificaciones/page.tsx`): the inbox with category tabs, keyset pagination, per-row CTA / "Ver {nombre}" / marcar leída / archivar, a mark-all-read action, and the quick-reply island for the actionable types.
-- **Native** — `/notificaciones` (`apps/mobile/app/notificaciones.tsx`) over `GET|POST /api/v1/me/notifications`. Same actions minus pagination (no cursor on that surface yet — the payload declares `truncated`) and minus quick reply (that is the capture-console surface, not the inbox). **Eight of the web's eleven pressables come across, not nine.** `d3237b654`'s message enumerated the eleven correctly and then subtracted wrong: pagination is TWO affordances ("← Más recientes" and "Ver más antiguos →"), so dropping it and quick reply drops three. Nine holds only if pull-to-refresh is counted as standing in for "← Más recientes", which it does not — one returns to page 1, the other re-reads the page you are on. The list above is the thing that cannot lie; the number is here only because a wrong one was written down.
+- **Native** — `/notificaciones` (`apps/mobile/app/notificaciones.tsx`) over `GET|POST /api/v1/me/notifications` (+ `GET …/{id}/target` to open one). Same actions minus pagination (no cursor on that surface yet — the payload declares `truncated`) and minus quick reply (that is the capture-console surface, not the inbox). **Eight of the web's eleven pressables come across, not nine.** `d3237b654`'s message enumerated the eleven correctly and then subtracted wrong: pagination is TWO affordances ("← Más recientes" and "Ver más antiguos →"), so dropping it and quick reply drops three. Nine holds only if pull-to-refresh is counted as standing in for "← Más recientes", which it does not — one returns to page 1, the other re-reads the page you are on. The list above is the thing that cannot lie; the number is here only because a wrong one was written down.
 - **The query is one function** — `listNotificationsForUser` (`src/modules/notifications/application/read/`), called by the page and the route, so "what is in the inbox" (own rows, not archived, minus the two read-time reconciliations, optionally one category) has one definition.
 - **The display order is one function** — `@dim/contract/notifications` (`sortForDisplay` + `groupForDisplay`), called by both clients. `__tests__/notification-ordering-parity.test.ts` runs both projections over the same rows and asserts the orders are identical.
 - **The write is not a spine fact.** `read_at` / `archived_at` are operational state on `notifications`; nothing is appended and nothing derives them. The POST family is `inbox-state` in `lib/infra/api-v1-limits.ts` — its own family, because the authenticated-write ceiling is sized against handing over an animal.
@@ -629,7 +639,7 @@ DIM has three user-facing concepts, each backed by the same underlying data:
 
 | Concept | What it is | Backing |
 |---|---|---|
-| **Credencial MiMAR** | The pet's digital identity — name, photo, public token, QR. The animal's *documento* | `pets` row + Tier-0 public page at `/p/{publicToken}` |
+| **Credencial miMAR** | The pet's digital identity — name, photo, public token, QR. The animal's *documento* | `pets` row + Tier-0 public page at `/p/{publicToken}` |
 | **Libreta sanitaria** | The pet's medical history — vacunas, vet visits, peso, medicación. What the vet writes | Projection over `pet_events` filtered to `LIBRETA_SANITARIA_EVENT_TYPES` |
 | **Eventos** | The append-only event log itself, including non-medical entries (registrations, scans, custody transfers, welfare reports). Internal/admin concept | `pet_events` table |
 
@@ -679,7 +689,7 @@ Three surfaces over the same projection:
 
 1. **Section on the pet profile** at `/mis-mascotas/{publicToken}`. The card formerly titled *"Eventos"* renders as **"Libreta sanitaria"** and shows the latest N medical events with a *"Ver libreta completa →"* link.
 2. **Dedicated owner route** at `/mis-mascotas/{publicToken}/libreta`. The full Libreta for the authenticated owner, grouped by clinical purpose (Vacunas, Antiparasitarios, Esterilización, Visitas, Medicación, Cirugías, Estudios, Peso, Alergias y condiciones) with an optional chronological toggle. Print-friendly stylesheet. Header carries pet identity (name, photo, species, sex, microchip if any, dueño first name) **as context** — identity is not part of the Libreta as a concept, but the rendered surface needs the same cover-page context the paper libreta has, otherwise the medical entries float without anchor.
-3. **Public shareable Tier-2 route** at `/libreta/compartir/{shareToken}`. The owner-issued share link of the Privacy-tiers table, materialized. Same Libreta, accessible via a **share token distinct from `pets.publicToken`**, expiring (default 30 days, configurable per share), revocable by the owner at any moment. Footers with `Generada por MiMAR · {timestamp} · vence {expiry}` for vet-presentability. This is the surface a dueño hands to a vet who doesn't know MiMAR yet.
+3. **Public shareable Tier-2 route** at `/libreta/compartir/{shareToken}`. The owner-issued share link of the Privacy-tiers table, materialized. Same Libreta, accessible via a **share token distinct from `pets.publicToken`**, expiring (default 30 days, configurable per share), revocable by the owner at any moment. Footers with `Generada por miMAR · {timestamp} · vence {expiry}` for vet-presentability. This is the surface a dueño hands to a vet who doesn't know miMAR yet.
 
 ### Tokens
 
@@ -1315,11 +1325,11 @@ The operator situational map — jurisdiction-fenced choropleth + graduated symb
 
 DIM has a dual identity by design.
 
-**User-facing brand: MiMAR (Mi Mascota Argentina).** This is what appears in app metadata, signup/login copy, the public credential header, notification titles, future marketing, and the domain (when assigned). The "Mi-" prefix is a deliberate alignment with the Argentine government services pattern (Mi Argentina, Mi AFIP, Mi ANSES) — communicating "your personal portal." The Spanish word "mascota" is what every Argentine pet owner uses; "Mi Mascota Argentina" is warm, familiar, and emotionally legible.
+**User-facing brand: miMAR (Mi Mascota Argentina).** Spelled with a lowercase m and capital M-A-R (PO decision 2026-07-18, matching the landing page); `scripts/check-brand-casing.ts` (`pnpm lint:brand`) fails on "MiMAR", "Mimar" or "MIMAR" in display copy. This is what appears in app metadata, signup/login copy, the public credential header, notification titles, future marketing, and the domain (when assigned). The "mi" prefix is a deliberate alignment with the Argentine government services pattern (Mi Argentina, Mi AFIP, Mi ANSES) — communicating "your personal portal." The Spanish word "mascota" is what every Argentine pet owner uses; "Mi Mascota Argentina" is warm, familiar, and emotionally legible.
 
 **Code identifier: DIM.** The original backronym ("Documento de Identificación para Mascotas") remains in code, schema, server actions, audit logs, internal docs, and the `public_token` format (`DIM-XXXX-XXXX`). DIM is a stable identifier we never rename — every issued token, every audit entry, every database row references it. The institutional descriptor "Documento de Identificación para Mascotas" also appears in the footer of the public credential page when an animal-health professional or government clerk views the document — it reinforces legitimacy in those contexts without changing the user-facing brand for everyday owners.
 
-**Why the duality.** "DIM" alone sounds institutional/legal — good for credibility with vets and govt, cold for an owner adding their dog's first photo. "MiMAR" alone loses the document-credential framing that makes the credencial pública meaningful as official identification. Both names serve different audiences and contexts; keeping both serves the product.
+**Why the duality.** "DIM" alone sounds institutional/legal — good for credibility with vets and govt, cold for an owner adding their dog's first photo. "miMAR" alone loses the document-credential framing that makes the credencial pública meaningful as official identification. Both names serve different audiences and contexts; keeping both serves the product.
 
 **Mi Argentina alignment is the core premise, not a nice-to-have.** This project's reason to exist is to be the missing data layer that government animal-health programs (Mascotas CABA, SENASA zoonosis surveillance, eventually Mi Argentina itself) lack today. The product makes no sense as a standalone PWA forever — its trajectory points at official adoption. Every design decision is filtered through this premise:
 - The credential is real enough that Mi Argentina could eventually issue it
@@ -1421,7 +1431,7 @@ Updated by the pet-profile "two-face" redesign (2026-07-01; spec dim-interno:doc
 - **Three variants:**
   - `citizen` — top masthead with Argentina stripe + footer. Owner portal, public surfaces, marketing landing.
   - `operator` — left navy rail + topbar, no stripe/footer. gob / admin / org portals. **Exception — the situational console** (`/gob|admin/panorama`): a viewport-locked "fixed console" (`100dvh`, no page scroll; the map is fixed like the rail and fills everything except slim bars, with floating overlay chrome + a bottom dock). It is the one operator surface that never page-scrolls (v2C, `#21`).
-  - `landing` — minimal trust chrome for token-landing surfaces (`/p/[publicToken]`, `/libreta/compartir/[shareToken]`, `/r/invite/[token]`): brand + stripe + "Credencial registrada en MiMAR". Auth-independent; a logged-in owner gets a discreet "volver a mi app".
+  - `landing` — minimal trust chrome for token-landing surfaces (`/p/[publicToken]`, `/libreta/compartir/[shareToken]`, `/r/invite/[token]`): brand + stripe + "Credencial registrada en miMAR". Auth-independent; a logged-in owner gets a discreet "volver a mi app".
 - **"Inicio" is disambiguated**: the brand/logo → public landing `/`; the role home → the owner's "Mis mascotas" tab (`/mis-mascotas`; the `/inicio` route still redirects there or into the most-urgent pet), or the operator panel for gob/admin/org.
 - **`#main-content`** (skip-link target) is preserved in every variant — do not drop it.
 

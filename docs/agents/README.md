@@ -60,8 +60,7 @@ the named tip does.
   that did NOT write the code. Independent judgment on the diff, not token
   saving — it catches what the writer's context normalized away.
   - **Instrument (PO decision 2026-08-08):** a read-only subagent, spawned per
-    commit range. This replaces cursor-agent, which the project no longer has.
-    Point it at the range and at the specific claims the writer is least able to
+    commit range. Point it at the range and at the specific claims the writer is least able to
     audit — its own new tests and fences.
   - `/code-review ultra` stays available for a deeper pass, but it is billed and
     only Ignacio can launch it, so it is a pre-deploy step and not this one.
@@ -97,5 +96,4 @@ the named tip does.
 
 Machine-enforced rules (no memory required): `pnpm verify` lints,
 `__tests__/cron-registry-parity.test.ts`, `__tests__/pet-cache-rederivation.test.ts`
-(cache↔events drift), `__tests__/encoding-fitness.test.ts` (mojibake),
-`.cursorignore` (stale-state reads). Prefer adding a check over adding a rule.
+(cache↔events drift), `__tests__/encoding-fitness.test.ts` (mojibake). Prefer adding a check over adding a rule.
