@@ -32,19 +32,35 @@
 // catalogue's rule (a deceased animal, the organization path, a cat's
 // assistance-dog row), not by this file's.
 //
+// EVERY GROUP ROW WEARS A GLYPH AND, WHEN IT GOES SOMEWHERE, A CHEVRON
+// (pulido-kit-listas, 2026-10-07). Twelve text-only rows under the card read as
+// a wall; the glyph is how a person finds "Viaje" without reading eleven labels
+// first. The glyph is the app's — `ROW_ICONS` below — because the catalogue's
+// `icon` names only the primary strip. The chevron is `ListRow`'s own default.
+//
+// A ROW MAY ALSO SAY WHERE IT STANDS, but only from data the face already read:
+// "Sin foto", "2 recordatorios activos". `ownerPanelRowStatus` computes those
+// from the face and the screen hands them in; the catalogue's own caption (a
+// grey row's reason, a live row's standing note) always wins, because a reason
+// is the thing a person must not miss. A section that did not load yields no
+// status at all — "Sin foto" over a failed read would be a lie about the animal.
+// Contactos de emergencia has none: the owner payload carries no contact count.
+//
 // No animation: the groups are always open, so there is nothing to expand. If
 // one is ever added it is core `Animated`, never reanimated — a new native
 // module moves the Expo fingerprint and costs a store build.
 
+import type { PetActionId } from "@dim/contract/reference";
 import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { Icon } from "../ui/Icon";
+import { Icon, type IconName } from "../ui/Icon";
 import { FONTS } from "../ui/fonts";
 import { Eyebrow, ListRow, pressedOpacity } from "../ui/kit";
 import { COLORS, LEADING, SPACE, TOUCH_TARGET, TYPE } from "../ui/theme";
 import type {
+  OwnerFaceView,
   OwnerPanelGroup,
   OwnerPanelRow,
   OwnerPanelView,
@@ -53,11 +69,71 @@ import type {
 
 type Go = (target: PanelTarget) => void;
 
+/** A group row's state line, by action — see the header. */
+export type OwnerPanelRowStatus = Partial<Record<PetActionId, string>>;
+
+/**
+ * The glyph of every row the groups can hold. A `Record` over every id, so a
+ * row the catalogue adds fails to compile here until somebody picks its picture
+ * (the three primary ids are listed too; their strip draws the catalogue's own).
+ */
+const ROW_ICONS: Readonly<Record<PetActionId, IconName>> = {
+  record: "libreta",
+  share: "share",
+  lost: "perdida",
+  photo: "camara",
+  edit: "edit",
+  contacts: "telefono",
+  service_dog: "paw",
+  physical_tag: "tag",
+  vaccine_reminders: "bell",
+  travel: "valija",
+  caretaker: "usuarios",
+  return: "door-open",
+  find_home: "casa",
+  transfer: "trato",
+  death: "fallecimiento",
+};
+
+/**
+ * The state line each group row can show, read off the face. Only sections that
+ * loaded speak; an unread one says nothing rather than something false.
+ */
+export function ownerPanelRowStatus(
+  view: Pick<OwnerFaceView, "identity" | "reminders" | "banners">,
+): OwnerPanelRowStatus {
+  const status: OwnerPanelRowStatus = {};
+  if (view.identity.state === "ok" && view.identity.data.photoUrl === null) {
+    status.photo = "Sin foto";
+  }
+  if (view.reminders.state === "ok") {
+    const { total } = view.reminders.data;
+    status.vaccine_reminders =
+      total === 0
+        ? "Sin recordatorios activos"
+        : total === 1
+          ? "1 recordatorio activo"
+          : `${total} recordatorios activos`;
+  }
+  if (view.banners.state === "ok" && view.banners.data.caretaker !== null) {
+    const { state, caretakerName } = view.banners.data.caretaker;
+    if (state === "active") {
+      status.caretaker = caretakerName === null ? "Activo" : `Activo · ${caretakerName}`;
+    } else if (state === "pending") {
+      status.caretaker = "Invitación pendiente";
+    }
+  }
+  return status;
+}
+
 export function OwnerActionPanel({
   panel,
+  status = {},
   children,
 }: {
   panel: OwnerPanelView;
+  /** State lines for the group rows (`ownerPanelRowStatus`). */
+  status?: OwnerPanelRowStatus;
   /** What sits between the primary row and the groups: the existing sections. */
   children?: ReactNode;
 }) {
@@ -72,7 +148,7 @@ export function OwnerActionPanel({
       </View>
       {children}
       {panel.groups.map((group) => (
-        <ActionGroup key={group.id} group={group} onGo={go} />
+        <ActionGroup key={group.id} group={group} status={status} onGo={go} />
       ))}
     </>
   );
@@ -130,7 +206,15 @@ function PrimaryAction({ row, onGo }: { row: OwnerPanelRow; onGo: Go }) {
  * one act closes the record, and a heading would make it read as one more
  * category of options.
  */
-function ActionGroup({ group, onGo }: { group: OwnerPanelGroup; onGo: Go }) {
+function ActionGroup({
+  group,
+  status,
+  onGo,
+}: {
+  group: OwnerPanelGroup;
+  status: OwnerPanelRowStatus;
+  onGo: Go;
+}) {
   return (
     <View style={styles.group}>
       {group.heading === null ? (
@@ -146,7 +230,9 @@ function ActionGroup({ group, onGo }: { group: OwnerPanelGroup; onGo: Go }) {
           <ListRow
             key={row.id}
             label={row.label}
-            caption={row.caption ?? undefined}
+            // The catalogue's caption first: a reason outranks a state.
+            caption={row.caption ?? status[row.id]}
+            icon={ROW_ICONS[row.id]}
             accessibilityHint={row.hint}
             onPress={target === null ? undefined : () => onGo(target)}
           />

@@ -49,7 +49,7 @@ jest.mock("expo-router", () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
 }));
 
-import { OwnerActionPanel } from "./OwnerActionPanel";
+import { OwnerActionPanel, ownerPanelRowStatus } from "./OwnerActionPanel";
 import {
   type OwnerPanelRow,
   type OwnerPanelSource,
@@ -346,5 +346,97 @@ describe("OwnerActionPanel — every word it shows is the catalogue's", () => {
     const transfer = screen.getByRole("button", { name: /Transferir la titularidad/ });
     expect(transfer.props.accessibilityState).toMatchObject({ disabled: true });
     expect(screen.getAllByText(PET_ACTION_INERT_CAPTIONS.titular_only).length).toBeGreaterThan(0);
+  });
+});
+
+describe("OwnerActionPanel — the group rows wear a glyph and say where they stand", () => {
+  const HIDDEN = { includeHiddenElements: true } as const;
+  const titular = MATRIX[0] as PetActionContext;
+
+  it("draws one glyph per group row, and a chevron on every live one", () => {
+    const panel = ownerPanelView(sourceFor(titular));
+    render(<OwnerActionPanel panel={panel} />);
+    const groupRows = panel.groups.flatMap((group) => group.rows);
+    // Non-vacuity: the titular's panel is the full twelve-plus rows.
+    expect(groupRows.length).toBeGreaterThanOrEqual(12);
+    expect(screen.getAllByTestId("list-row-icon", HIDDEN)).toHaveLength(groupRows.length);
+    const live = groupRows.filter((row) => row.target !== null).length;
+    expect(screen.getAllByTestId("list-row-trailing", HIDDEN)).toHaveLength(live);
+  });
+
+  it("puts a state caption under a live row that has none of its own", () => {
+    const panel = ownerPanelView(sourceFor(titular));
+    render(
+      <OwnerActionPanel
+        panel={panel}
+        status={{ photo: "Sin foto", vaccine_reminders: "2 recordatorios activos" }}
+      />,
+    );
+    expect(screen.getByText("Sin foto")).toBeOnTheScreen();
+    expect(screen.getByText("2 recordatorios activos")).toBeOnTheScreen();
+  });
+
+  it("never lets a state hide the catalogue's reason on a grey row", () => {
+    const panel = ownerPanelView(
+      sourceFor({
+        viewerRole: "co_owner",
+        isTitular: false,
+        petStatus: "active",
+        species: "dog",
+        pppDoor: false,
+      }),
+    );
+    render(<OwnerActionPanel panel={panel} status={{ transfer: "Un estado inventado" }} />);
+    expect(screen.queryByText("Un estado inventado")).toBeNull();
+    expect(screen.getAllByText(PET_ACTION_INERT_CAPTIONS.titular_only).length).toBeGreaterThan(0);
+  });
+});
+
+describe("ownerPanelRowStatus — only what the face actually read", () => {
+  const ok = <T,>(data: T) => ({ state: "ok", data }) as const;
+
+  it("says 'Sin foto', counts reminders and names the caretaker", () => {
+    const status = ownerPanelRowStatus({
+      identity: ok({ photoUrl: null } as OwnerPetIdentitySection),
+      reminders: ok({ items: [], total: 2, truncated: false }),
+      banners: ok({
+        transit: null,
+        rehome: null,
+        caretaker: { state: "active", caretakerName: "Ana", publicContactName: null },
+      }),
+    });
+    expect(status).toEqual({
+      photo: "Sin foto",
+      vaccine_reminders: "2 recordatorios activos",
+      caretaker: "Activo · Ana",
+    });
+  });
+
+  it("singular, zero, and a pending invitation", () => {
+    const one = ownerPanelRowStatus({
+      identity: ok({ photoUrl: "https://x/p.jpg" } as OwnerPetIdentitySection),
+      reminders: ok({ items: [], total: 1, truncated: false }),
+      banners: ok({
+        transit: null,
+        rehome: null,
+        caretaker: { state: "pending", caretakerName: null, publicContactName: null },
+      }),
+    });
+    expect(one).toEqual({
+      vaccine_reminders: "1 recordatorio activo",
+      caretaker: "Invitación pendiente",
+    });
+    const none = ownerPanelRowStatus({
+      identity: ok({ photoUrl: "https://x/p.jpg" } as OwnerPetIdentitySection),
+      reminders: ok({ items: [], total: 0, truncated: false }),
+      banners: ok({ transit: null, rehome: null, caretaker: null }),
+    });
+    expect(none).toEqual({ vaccine_reminders: "Sin recordatorios activos" });
+  });
+
+  it("says nothing about a section that did not load", () => {
+    expect(ownerPanelRowStatus({ identity: UNREAD, reminders: UNREAD, banners: UNREAD })).toEqual(
+      {},
+    );
   });
 });
