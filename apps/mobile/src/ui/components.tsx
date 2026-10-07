@@ -64,13 +64,30 @@ export function Card({ children, title }: { children: ReactNode; title?: string 
  *
  *   · the label is `flex: 1` — basis 0, it takes whatever the value leaves and
  *     wraps inside it;
- *   · the value does NOT shrink below its own width, and is capped at half the
- *     row, so a long value (a note, an email) wraps by WORDS inside its half
- *     instead of pushing the label to nothing.
+ *   · the value does NOT shrink below its own width, and is capped at 50% of
+ *     the row, so a long value (a note) wraps by WORDS inside that cap instead
+ *     of pushing the label to nothing.
  *
- * Half, not 45%: free-text values (a shelter's notes, a caretaker grant's
+ * 50%, not 45%: free-text values (a shelter's notes, a caretaker grant's
  * scope sentence) use this primitive too, and a narrower column made them as
- * tall as the bug did. Neither side can now drop below half the row.
+ * tall as the bug did.
+ *
+ * WHAT THE SPLIT ACTUALLY IS. Yoga resolves the value's 50% against the row's
+ * full content width and does NOT subtract the `gap` first, so a value at its
+ * cap gets 50% and the label gets 50% minus the gap (SPACE.md) — the label is
+ * the one side that can fall a gap's width below half. The value never
+ * exceeds half.
+ *
+ * ROW VALUES ARE PROSE. Words separated by spaces, which is what the cap's
+ * wrap-by-words relies on. A long unbroken token — a URL, a code, an address
+ * without spaces — has no word break inside a capped column and is not what
+ * this primitive is for. No `Row` renders a URL (checked 2026-10-07: no value
+ * is a url/href/link). Two plain Rows do render an email — "Correo" on
+ * MyReportDetailScreen and "Email del receptor" on TransferDetailScreen — and
+ * those are the known exceptions to watch on a narrow phone. A contact a
+ * person must reach belongs in `ContactRow`, whose cap is wider for exactly
+ * this reason; a future URL value goes there, or gets a wrap that breaks
+ * inside the token — never a plain `Row`.
  */
 export const LABEL_VALUE_FLEX = {
   label: { flex: 1, flexShrink: 1 },
