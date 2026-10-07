@@ -1,154 +1,280 @@
 /**
- * Unit tests for scripts/check-authz-scoping.ts helpers.
+ * Unit tests for scripts/check-authz-scoping.ts.
  *
- * Pure fixture tests — no filesystem I/O. Exercises the "guard-called-but-not-
- * jurisdiction-scoped" heuristic against known-bad and known-good inline source
- * strings modelled on the real actions inventoried in
- * dim-interno:docs/design/handoffs/2026-07-04-authz-inventory-raw.md.
+ * Pure fixture tests — no filesystem I/O. The fence decides "scoped" from the
+ * TypeScript AST (A5d): a tenant-guarded action is scoped when a value bound
+ * from the guard or the session reaches its work, or when the guard is pinned
+ * to the row the action acts on. Words in strings, comments or identifiers that
+ * merely spell an authority concept must not count — the old regex fence passed
+ * resolvePlaceFromQueueAction only because a revalidatePath string matched
+ * /localidad/i.
  */
 
 import { describe, expect, it } from "vitest";
 
-import { extractExportedAsyncFunctions } from "@/scripts/check-authz-guards";
+import { GUARD_HOMES } from "@/scripts/check-authz-guards";
 import {
-  SCOPING_MARKERS,
+  MIN_SCOPED,
+  MIN_SUBJECTS,
   TENANT_GUARDS,
-  callsTenantGuard,
+  analyzeActions,
   findScopingOffenders,
-  hasScopingMarker,
-  isScopingOffender,
   ratchet,
   ratchetVerdict,
+  scanSurface,
+  vacuityViolations,
 } from "@/scripts/check-authz-scoping";
 
+const verdict = (src: string) => {
+  const [v] = analyzeActions("app/actions/x.ts", src);
+  return v;
+};
+const lines = (...l: string[]) => l.join("\n");
+
 // ---------------------------------------------------------------------------
-// callsTenantGuard — institutional/capability/org guards only
+// Subjects — who has to prove scoping at all
 // ---------------------------------------------------------------------------
 
-describe("callsTenantGuard", () => {
-  it("matches an admin/govt institutional guard", () => {
-    expect(callsTenantGuard("await requireAdminOrGovtOrRedirect();")).toBe(true);
+describe("subjects", () => {
+  it("an action calling a tenant guard is a subject", () => {
+    const v = verdict(
+      lines(
+        "export async function a(id: string) {",
+        "  await requireAdminOrGovtOrRedirect();",
+        "  return w(id);",
+        "}",
+      ),
+    );
+    expect(v.subject).toBe(true);
   });
 
-  it("matches a capability guard", () => {
-    expect(
-      callsTenantGuard('const { organization } = await requireCapability("intake.create");'),
-    ).toBe(true);
+  it("a personal-tier guard alone does not make a subject", () => {
+    const v = verdict(
+      lines(
+        "export async function bookSlotAction(slotId: string, petId: string) {",
+        "  const { user } = await requireUserOrRedirect();",
+        "  return bookSlotWriter(user.id, slotId, petId);",
+        "}",
+      ),
+    );
+    expect(v.subject).toBe(false);
   });
 
-  it("does NOT treat a personal-tier guard as a tenant guard", () => {
-    // requireUserOrRedirect / requirePetAccess scope to the caller's own
-    // identity — an action gated only by those is never a candidate.
-    expect(callsTenantGuard("const { user } = await requireUserOrRedirect();")).toBe(false);
-    expect(callsTenantGuard("const access = await requirePetAccess(publicToken);")).toBe(false);
+  it("a tenant guard named only in a comment or a string is not a call", () => {
+    const v = verdict(
+      lines(
+        "export async function a(id: string) {",
+        "  // requireAdminOrRedirect() runs upstream",
+        '  const label = "requireAdminOrRedirect()";',
+        "  return w(id, label);",
+        "}",
+      ),
+    );
+    expect(v.subject).toBe(false);
   });
 
-  it("keeps requireAdminUser (file-local admin re-check) in the tenant set", () => {
-    expect(TENANT_GUARDS).toContain("requireAdminUser");
-    expect(callsTenantGuard("const auth = await requireAdminUser();")).toBe(true);
+  it("inner writers and @no-auth-required exports are not subjects", () => {
+    const writer = verdict(
+      lines(
+        "export async function deactivateGovtForAuthority(actorUserId: string, targetId: string) {",
+        "  await requireAdminOrRedirect();",
+        "  return _run(targetId);",
+        "}",
+      ),
+    );
+    const optedOut = verdict(
+      lines(
+        "// @no-auth-required: cron writer, CRON_SECRET-gated route",
+        "export async function materializeAllActiveSlots() {",
+        "  await requireAdminOrRedirect();",
+        "  return run();",
+        "}",
+      ),
+    );
+    expect(writer.subject).toBe(false);
+    expect(optedOut.subject).toBe(false);
+  });
+
+  it("only exported async functions are analysed", () => {
+    const vs = analyzeActions(
+      "app/actions/x.ts",
+      lines(
+        "async function local() { await requireAdminOrRedirect(); }",
+        "export function sync() { return 1; }",
+        "export async function real() { await requireAdminOrRedirect(); }",
+      ),
+    );
+    expect(vs.map((v) => v.name)).toEqual(["real"]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// hasScopingMarker — a visible jurisdiction/tenant/owner predicate
+// Negative fixtures — words are not authority
 // ---------------------------------------------------------------------------
 
-describe("hasScopingMarker", () => {
-  it("detects a tenant-id WHERE predicate", () => {
-    expect(hasScopingMarker("eq(serviceOfferings.organizationId, organization.id)")).toBe(true);
-  });
-
-  it("detects a jurisdiction predicate", () => {
-    expect(hasScopingMarker("session.jurisdictions.some((j) => j.province === petProvince)")).toBe(
-      true,
-    );
-  });
-
-  it("detects the inline authority re-check pattern (Good example in the audit)", () => {
-    expect(
-      hasScopingMarker("if (organization.publicToken !== input.receiverOrgToken) notFound();"),
-    ).toBe(true);
-    expect(hasScopingMarker("if (caseRow.openedByOrganizationId !== govtOrg.id) throw;")).toBe(
-      true,
-    );
-  });
-
-  it("detects an ownerships join", () => {
-    expect(
-      hasScopingMarker("and(eq(ownerships.ownerUserId, user.id), isNull(ownerships.endedAt))"),
-    ).toBe(true);
-  });
-
-  it("returns false for a body that forwards an id with no predicate", () => {
-    expect(hasScopingMarker("return _updateBusinessRuleWriter(input.ruleId, input);")).toBe(false);
-    expect(SCOPING_MARKERS.length).toBeGreaterThan(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// isScopingOffender — the full heuristic
-// ---------------------------------------------------------------------------
-
-const only = (src: string) => extractExportedAsyncFunctions(src)[0];
-
-describe("isScopingOffender", () => {
-  it("FLAGS a tenant-guarded action that forwards an id with no scoping", () => {
-    const src = [
-      "export async function deactivateGovtAction(targetGovtUserId: string) {",
+describe("offenders: the old markers in strings, comments and incidental identifiers", () => {
+  it("FLAGS an unscoped action whose only marker words sit in a string literal and a comment", () => {
+    // Every word the regex fence accepted: localidad, locality, jurisdiction,
+    // organizationId, actorUserId, ownerships. — in a comment, in strings, and
+    // as the NAME of a caller-supplied field. None of it is bound from the guard.
+    const src = lines(
+      "export async function resolvePlaceFromQueueAction(input: { actorUserId: string; localityId: string }) {",
+      "  // scoped by jurisdiction: localidad, locality, organizationId, actorUserId, ownerships.x",
       "  await requireAdminOrRedirect();",
-      "  return deactivateGovtForAuthority(actor, targetGovtUserId);",
+      "  const result = await resolvePlaceFromQueue(db, input.actorUserId, input);",
+      '  revalidatePath("/admin/localidades/pendientes");',
+      '  console.log("jurisdiction ownerships.join organizationId !== token");',
+      "  return result;",
       "}",
-    ].join("\n");
-    expect(isScopingOffender(only(src))).toBe(true);
+    );
+    expect(verdict(src)).toMatchObject({ subject: true, scopedBy: null });
+    expect(findScopingOffenders("app/actions/x.ts", src)).toEqual([
+      "app/actions/x.ts#resolvePlaceFromQueueAction",
+    ]);
   });
 
-  it("does NOT flag a tenant-guarded action that scopes the resource", () => {
-    const src = [
-      "export async function updateOfferingCapacityAction(orgToken: string, input: X) {",
-      '  const { organization } = await requireCapability("service_offering.create");',
+  it("FLAGS a guard result that reaches only revalidatePath / redirect / a log line", () => {
+    const src = lines(
+      "export async function a(id: string) {",
+      "  const { user } = await requireAdminOrRedirect();",
+      "  await w(id);",
+      "  revalidatePath(`/admin/${user.id}`);",
+      "  console.info(user.id);",
+      "  redirect(`/x/${String(user.id)}`);",
+      "}",
+    );
+    expect(verdict(src).scopedBy).toBeNull();
+  });
+
+  it("FLAGS a guard result compared only against a literal (a state check, not a binding)", () => {
+    const src = lines(
+      "export async function a(id: string) {",
+      "  const session = await requireAdminOrGovtOrRedirect();",
+      '  if (session.profile.role === "admin") return w(id);',
+      "  return null;",
+      "}",
+    );
+    expect(verdict(src).scopedBy).toBeNull();
+  });
+
+  it("FLAGS a guard's refusal message copied into a failure row inside a callback", () => {
+    const src = lines(
+      "export async function a(input: { ids: string[]; orgId: string }) {",
+      '  const cap = await requireCapability("x", input.orgId);',
+      "  if (cap.error) return input.ids.map((id) => ({ id, reason: cap.error }));",
+      "  failed.push(cap.error);",
+      "  return w(input.ids);",
+      "}",
+    );
+    expect(verdict(src).scopedBy).toBeNull();
+  });
+
+  it("FLAGS a guard value that only lands in a callback's RESULT (data handed back)", () => {
+    const src = lines(
+      "export async function a(input: { ids: string[] }) {",
+      "  const { user } = await requireAdminOrRedirect();",
+      "  await w(input.ids);",
+      "  return input.ids.map((id) => ({ id, by: user.id }));",
+      "}",
+    );
+    expect(verdict(src).scopedBy).toBeNull();
+  });
+
+  it("FLAGS a capability pinned to a caller-supplied org whose result is thrown away", () => {
+    const src = lines(
+      "export async function a(input: { orgId: string; thingId: string }) {",
+      '  await requireCapability("x", input.orgId);',
+      "  await db.update(things).set({ done: true }).where(eq(things.id, input.thingId));",
+      "}",
+    );
+    expect(verdict(src).scopedBy).toBeNull();
+  });
+
+  it("FLAGS a guard binding shadowed by a callback parameter of the same name", () => {
+    const src = lines(
+      "export async function a(input: { users: { id: string }[] }) {",
+      "  const { user } = await requireAdminOrRedirect();",
+      "  void user;",
+      "  return input.users.map((user) => w(user.id));",
+      "}",
+    );
+    expect(verdict(src).scopedBy).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Positive fixtures — structure that IS scoping
+// ---------------------------------------------------------------------------
+
+describe("scoped: authority reaches the work", () => {
+  it("passes the resolve-place shape: actor bound from the guard and handed to the writer", () => {
+    const src = lines(
+      "export async function resolvePlaceFromQueueAction(input: { subjectId: string }) {",
+      "  const { user } = await requireAdminOrRedirect();",
+      "  const actorUserId = user.id;",
+      "  return resolvePlaceFromQueue(db, actorUserId, input);",
+      "}",
+    );
+    expect(verdict(src).scopedBy).toBe("actorUserId → resolvePlaceFromQueue()");
+  });
+
+  it("passes a tenant id from an org guard used in a WHERE predicate", () => {
+    const src = lines(
+      "export async function updateOfferingCapacityAction(orgToken: string, id: string) {",
+      "  const { organization } = await requireOrgAccessByToken(orgToken);",
       "  await db.update(serviceOfferings).where(eq(serviceOfferings.organizationId, organization.id));",
       "}",
-    ].join("\n");
-    expect(isScopingOffender(only(src))).toBe(false);
+    );
+    expect(verdict(src).scopedBy).toBe("organization → eq()");
   });
 
-  it("does NOT flag an action gated only by a personal-tier guard", () => {
-    const src = [
-      "export async function bookSlotAction(slotId: string, petId: string) {",
-      "  const { user } = await requireUserOrRedirect();",
-      "  return bookSlotWriter(user.id, slotId, petId);",
+  it("passes a whole session handed to a use-case, through a wrapper and a type assertion", () => {
+    const src = lines(
+      "export async function a(query: string) {",
+      "  const raw = await boundSession(requireAdminOrGovtOrRedirect());",
+      "  const session = raw as AdminOrGovtSession;",
+      "  return searchOmnibox(session, query);",
       "}",
-    ].join("\n");
-    expect(isScopingOffender(only(src))).toBe(false);
+    );
+    expect(verdict(src).scopedBy).toBe("session → searchOmnibox()");
   });
 
-  it("does NOT flag an inner writer (guarded upstream)", () => {
-    const src = [
-      "export async function deactivateGovtForAuthority(actorUserId: string, targetId: string) {",
-      "  return _run(actorUserId, targetId);",
+  it("passes the inline identity re-check", () => {
+    const src = lines(
+      "export async function a(input: { receiverOrgToken: string }) {",
+      '  const { organization } = await requireCapability("x");',
+      "  if (organization.publicToken !== input.receiverOrgToken) notFound();",
       "}",
-    ].join("\n");
-    expect(isScopingOffender(only(src))).toBe(false);
+    );
+    expect(verdict(src).scopedBy).toBe("organization → !== comparison");
   });
 
-  it("does NOT flag an action opted out with @no-auth-required", () => {
-    const src = [
-      "// @no-auth-required: cron writer, CRON_SECRET-gated route",
-      "export async function materializeAllActiveSlots() {",
-      "  return run();",
+  it("passes a jurisdiction membership predicate on the session", () => {
+    const src = lines(
+      "export async function a(pet: { province: string }) {",
+      "  const session = await requireAdminOrGovtOrRedirect();",
+      "  if (!session.jurisdictions.some((j) => j.province === pet.province)) notFound();",
       "}",
-    ].join("\n");
-    expect(isScopingOffender(only(src))).toBe(false);
+    );
+    expect(verdict(src).scopedBy).toBe("session → some()");
   });
-});
 
-// ---------------------------------------------------------------------------
-// findScopingOffenders — one line per offender, with location
-// ---------------------------------------------------------------------------
+  it("passes a guard pinned to the row's own tenant (the resource flows INTO the guard)", () => {
+    const src = lines(
+      "export async function markNoShowAction(token: string) {",
+      "  const [appt] = await db.select().from(appointments).where(eq(appointments.publicToken, token));",
+      '  const capResult = await requireCapability("appointment.manage", appt.organizationId);',
+      "  if (capResult.error) return { error: capResult.error };",
+      "  return markNoShow(appt.id);",
+      "}",
+    );
+    expect(verdict(src).scopedBy).toBe(
+      "requireCapability(appt.organizationId) — guard pinned to the row's own tenant",
+    );
+  });
 
-describe("findScopingOffenders", () => {
-  it("returns a located line for each offender and skips scoped siblings", () => {
-    const src = [
+  it("findScopingOffenders keeps the unscoped sibling and drops the scoped one", () => {
+    const src = lines(
       "export async function revokeVetRoleAction(targetUserId: string) {",
       "  await requireAdminOrGovtOrRedirect();",
       "  return revokeVetRoleForAuthority(actor, targetUserId);",
@@ -157,85 +283,86 @@ describe("findScopingOffenders", () => {
       "  const { organization } = await requireOrgAccessByToken(orgToken);",
       "  await db.select().where(eq(t.organizationId, organization.id));",
       "}",
-    ].join("\n");
-    const offenders = findScopingOffenders("app/actions/x.ts", src);
-    expect(offenders).toHaveLength(1);
-    expect(offenders[0]).toContain("revokeVetRoleAction");
-    expect(offenders[0]).toMatch(/app\/actions\/x\.ts:1/);
+    );
+    expect(findScopingOffenders("app/actions/x.ts", src)).toEqual([
+      "app/actions/x.ts#revokeVetRoleAction",
+    ]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// ratchet — per-file GROWTH, and an unrecorded drop in the SUM (A01-8)
+// Non-vacuity
+// ---------------------------------------------------------------------------
+
+describe("non-vacuity", () => {
+  it("a scan that finds too few subjects or scoped actions is a violation, not a clean run", () => {
+    expect(vacuityViolations({ subjects: 0, scoped: 0 })).toHaveLength(2);
+    expect(vacuityViolations({ subjects: MIN_SUBJECTS, scoped: 0 })).toHaveLength(1);
+    expect(vacuityViolations({ subjects: MIN_SUBJECTS, scoped: MIN_SCOPED })).toEqual([]);
+  });
+
+  it("every tenant guard has a home in GUARD_HOMES, and a dead name is refused", () => {
+    expect(vacuityViolations({ subjects: MIN_SUBJECTS, scoped: MIN_SCOPED }, GUARD_HOMES)).toEqual(
+      [],
+    );
+    const withoutAdmin = Object.fromEntries(
+      Object.entries(GUARD_HOMES).filter(([name]) => name !== "requireAdminOrRedirect"),
+    );
+    expect(
+      vacuityViolations({ subjects: MIN_SUBJECTS, scoped: MIN_SCOPED }, withoutAdmin).join("\n"),
+    ).toMatch(/requireAdminOrRedirect/);
+    expect(TENANT_GUARDS.length).toBeGreaterThan(5);
+  });
+
+  it("scanSurface counts subjects and scoped actions across files", () => {
+    const scan = scanSurface([
+      {
+        relPath: "a.ts",
+        src: lines(
+          "export async function s() { const { user } = await requireAdminOrRedirect(); return w(user.id); }",
+          "export async function u(id: string) { await requireAdminOrRedirect(); return w(id); }",
+          "export async function p() { const { user } = await requireUserOrRedirect(); return w(user.id); }",
+        ),
+      },
+    ]);
+    expect(scan.subjects).toBe(2);
+    expect(scan.scoped).toBe(1);
+    expect([...scan.offenders.entries()]).toEqual([["a.ts#u", "a.ts:2"]]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ratchet — identity-keyed, every entry reasoned
 // ---------------------------------------------------------------------------
 
 describe("ratchet", () => {
-  it("passes when a baselined file's offender count is unchanged", () => {
-    const r = ratchet({ "a.ts": 2 }, { "a.ts": ["a.ts:1 x", "a.ts:2 y"] });
-    expect(r.grew).toEqual([]);
-    expect(r.newFiles).toEqual([]);
+  it("clean when the live offenders are exactly the reasoned baseline", () => {
+    const r = ratchet({ "a.ts#x": "delegated to y" }, ["a.ts#x"]);
+    expect(ratchetVerdict(r)).toBe("clean");
   });
 
-  it("flags GROWTH beyond baseline", () => {
-    const r = ratchet({ "a.ts": 1 }, { "a.ts": ["a.ts:1 x", "a.ts:2 y"] });
-    expect(r.grew).toHaveLength(1);
-    expect(r.grew[0]).toMatchObject({ file: "a.ts", baseline: 1, actual: 2 });
-  });
-
-  it("flags a NEW file that introduces an offender", () => {
-    const r = ratchet({}, { "new.ts": ["new.ts:1 z"] });
-    expect(r.newFiles).toHaveLength(1);
-    expect(r.newFiles[0].file).toBe("new.ts");
-  });
-
-  it("flags SLACK when a baselined file shrinks and the baseline was not lowered (A01-8)", () => {
-    // Growth-only let a fixed offender's slot survive for the next regression
-    // in that file to spend. The SUM is ratcheted now.
-    const r = ratchet({ "a.ts": 3 }, { "a.ts": ["a.ts:1 x"] });
-    expect(r.grew).toEqual([]);
-    expect(r.newFiles).toEqual([]);
-    expect(r.slack).toEqual([{ file: "a.ts", baseline: 3, actual: 1 }]);
-    expect(r.baselineTotal).toBe(3);
-    expect(r.actualTotal).toBe(1);
-  });
-
-  it("flags SLACK for a baselined file that is now fully clean (absent from the scan)", () => {
-    const r = ratchet({ "a.ts": 2, "b.ts": 1 }, { "b.ts": ["b.ts:1 z"] });
-    expect(r.slack).toEqual([{ file: "a.ts", baseline: 2, actual: 0 }]);
-  });
-
-  it("an offender MOVED between files is caught even though the sum is unchanged", () => {
-    const r = ratchet({ "a.ts": 1, "b.ts": 1 }, { "b.ts": ["b.ts:1 x", "b.ts:2 y"] });
-    expect(r.grew).toHaveLength(1);
-    expect(r.slack).toHaveLength(1);
-    expect(r.baselineTotal).toBe(r.actualTotal);
-  });
-
-  it("no slack when the baseline matches exactly", () => {
-    const r = ratchet({ "a.ts": 2 }, { "a.ts": ["a.ts:1 x", "a.ts:2 y"] });
-    expect(r.slack).toEqual([]);
-  });
-});
-
-describe("ratchetVerdict — the rule the runner exits on", () => {
-  it("clean when every file matches its baseline", () => {
-    expect(ratchetVerdict(ratchet({ "a.ts": 1 }, { "a.ts": ["a.ts:1 x"] }))).toBe("clean");
-  });
-
-  it("slack when the live SUM is below the baseline SUM and nothing grew (A01-8)", () => {
-    expect(ratchetVerdict(ratchet({ "a.ts": 3 }, { "a.ts": ["a.ts:1 x"] }))).toBe("slack");
-    expect(ratchetVerdict(ratchet({ "a.ts": 1, "b.ts": 1 }, { "b.ts": ["b.ts:1 x"] }))).toBe(
-      "slack",
-    );
-  });
-
-  it("growth wins over slack: a moved offender is a new hole, not a burn-down", () => {
-    const r = ratchet({ "a.ts": 1, "b.ts": 1 }, { "b.ts": ["b.ts:1 x", "b.ts:2 y"] });
+  it("growth for an offender with no entry", () => {
+    const r = ratchet({ "a.ts#x": "delegated" }, ["a.ts#x", "a.ts#y"]);
+    expect(r.added).toEqual(["a.ts#y"]);
     expect(ratchetVerdict(r)).toBe("growth");
   });
 
-  it("growth for a new file even when the sum went down elsewhere", () => {
-    const r = ratchet({ "a.ts": 3 }, { "new.ts": ["new.ts:1 z"] });
+  it("a fix plus a new offender in the same file is NOT a wash (the per-file count hole)", () => {
+    const r = ratchet({ "a.ts#x": "delegated" }, ["a.ts#y"]);
+    expect(r.added).toEqual(["a.ts#y"]);
+    expect(r.stale).toEqual(["a.ts#x"]);
     expect(ratchetVerdict(r)).toBe("growth");
+  });
+
+  it("stale when a baselined export no longer offends (A01-8, per export)", () => {
+    const r = ratchet({ "a.ts#x": "delegated", "b.ts#z": "read-only" }, ["b.ts#z"]);
+    expect(r.stale).toEqual(["a.ts#x"]);
+    expect(ratchetVerdict(r)).toBe("stale");
+  });
+
+  it("unreasoned when an entry's reason is empty or still UNREVIEWED", () => {
+    const r = ratchet({ "a.ts#x": "  ", "b.ts#y": "UNREVIEWED: write why" }, ["a.ts#x", "b.ts#y"]);
+    expect(r.unreasoned).toEqual(["a.ts#x", "b.ts#y"]);
+    expect(ratchetVerdict(r)).toBe("unreasoned");
   });
 });

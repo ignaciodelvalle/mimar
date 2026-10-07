@@ -4954,7 +4954,7 @@
       ],
       "enforcer": [
         "scripts/check-authz-guards.ts:50-106",
-        "scripts/check-authz-scoping.ts:255",
+        "scripts/check-authz-scoping.ts:554",
         "__tests__/server-actions-auth-coverage.test.ts"
       ],
       "enforcementKind": "lint-script",
@@ -6158,15 +6158,15 @@
       ],
       "enforcer": [
         "scripts/check-confused-deputy.ts:9-22",
-        "scripts/check-authz-scoping.ts:255"
+        "scripts/check-authz-scoping.ts:554"
       ],
       "enforcementKind": "lint-script",
       "wired": "verify",
       "status": "PARTIAL",
       "partialShape": "subset",
       "clause": "R4",
-      "statusBasis": "scripts/check-confused-deputy.ts:172-180 fails only one syntactic shape — an action naming orgToken/senderOrgToken/receiverOrgToken (signature or formData) that gates with bare requireCapability; scripts/check-authz-scoping.ts is a report-only ratchet with 44 baselined offenders. 'Never widen authorization scope' is far broader than either predicate.",
-      "notes": "check-authz-scoping.ts:41-57 itself names two uncovered sibling rules (identity-only guard + caller-chosen pet id; role-not-allowed-for-the-effect).",
+      "statusBasis": "scripts/check-confused-deputy.ts:172-180 fails only one syntactic shape — an action naming orgToken/senderOrgToken/receiverOrgToken (signature or formData) that gates with bare requireCapability; scripts/check-authz-scoping.ts is a ratchet over a reasoned, per-export baseline (scripts/authz-scoping-baseline.json). 'Never widen authorization scope' is far broader than either predicate.",
+      "notes": "check-authz-scoping.ts:80-98 itself names two uncovered sibling rules (identity-only guard + caller-chosen pet id; role-not-allowed-for-the-effect).",
       "confidence": 0.8,
       "verifiedAt": "d7dbf25f7"
     },
@@ -6641,10 +6641,10 @@
       "rule": "A server action calling a tenant-level authorization guard and accepting a caller-supplied resource id must contain a visible scoping predicate tying the id to the caller's scope.",
       "scope": "web",
       "sources": [
-        "scripts/check-authz-scoping.ts:8"
+        "scripts/check-authz-scoping.ts:9"
       ],
       "enforcer": [
-        "scripts/check-authz-scoping.ts:59,290",
+        "scripts/check-authz-scoping.ts:100,626",
         "scripts/authz-scoping-baseline.json"
       ],
       "enforcementKind": "ratchet",
@@ -6652,8 +6652,8 @@
       "status": "PARTIAL",
       "partialShape": "ratchet",
       "clause": "R6",
-      "statusBasis": "scripts/check-authz-scoping.ts:288-313 fails only when a file's offender count GROWS or a new action file offends; scripts/authz-scoping-baseline.json grandfathers 44 offenders across 19 files (alert-firings 6, custody-disputes 6, welfare 5...). The rule text is absolute ('must contain a visible scoping predicate'), so a live baseline >0 leaves those unproven.",
-      "notes": "lint:authz-scoping is in the verify chain (package.json:79). Header :79-82 says the ratchet does not prove the existing offenders are correctly scoped. Live baseline sum 44/19 files — kept in the basis text, not as a number (the row has no numberKey).",
+      "statusBasis": "scripts/check-authz-scoping.ts:22-75 decides 'scoped' from the AST since A5d (2026-10-07): a value bound from the guard or the session must reach the action's work (a writer/use-case argument, a predicate, an identity re-check), or the guard must be pinned to the row's own tenant; strings, comments and identifier names do not count. It trusts delegation: a writer handed the actor is not inspected. scripts/authz-scoping-baseline.json tolerates named exports, each with a one-line reason (alert-firings 3, org event wrappers 3, bulk-adoption 2...). The rule text is absolute, so a live baseline >0 leaves those unproven.",
+      "notes": "lint:authz-scoping is in the verify chain (package.json verify). The ratchet is keyed by export since A5d, so a fix plus a new offender in one file no longer nets to zero; stale and UNREVIEWED entries fail. The live count is printed by every run and deliberately not kept here (the row has no numberKey).",
       "confidence": 0.85,
       "verifiedAt": "d7dbf25f7"
     },
