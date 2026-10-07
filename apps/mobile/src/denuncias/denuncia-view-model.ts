@@ -373,9 +373,18 @@ export type DenunciaFormValues = {
  * this file should see the two states as two objects rather than as one object
  * with a flag.
  */
-export function buildFileDenunciaCommand(values: DenunciaFormValues): DenunciaDraft {
+export function buildFileDenunciaCommand(
+  values: DenunciaFormValues,
+  /**
+   * The denuncia's idempotency key (plan A5f): one per denuncia, reused by
+   * every re-send of it, so a re-send after a timeout lands on the denuncia it
+   * already filed instead of a second one. See DenunciaScreen's attempt.
+   */
+  clientIdempotencyKey?: string,
+): DenunciaDraft {
   const facts = {
     command: "file" as const,
+    ...(clientIdempotencyKey ? { clientIdempotencyKey } : {}),
     // The staged photo keys (M12). The schema turns an absent list into [],
     // and a server that predates the field strips it — both read as "none".
     evidence: [...values.evidence],

@@ -647,6 +647,58 @@ describe("a failed call is never a result", () => {
   });
 });
 
+describe("a re-send is the same denuncia (plan A5f)", () => {
+  it("carries ONE key across retries, and a new one only after the denuncia is filed", async () => {
+    // THE MUTATION: build the command with a fresh key per press (or none).
+    // Applied: the second send carries a different key and this fails.
+    render(<DenunciaScreen />);
+    await searchAddress();
+    fireEvent.press(screen.getByText(PLACE_LABEL));
+    fillFacts();
+
+    mockSend.mockResolvedValueOnce({ outcome: "unreachable" });
+    fireEvent.press(screen.getByText("Enviar la denuncia"));
+    await waitFor(() => expect(screen.getByText(/No pudimos conectarnos/)).toBeTruthy());
+
+    mockSend.mockResolvedValueOnce(FILED_ACK);
+    fireEvent.press(screen.getByText("Enviar la denuncia"));
+    await waitFor(() => expect(screen.getByText("DEN-9KSC-MRMZ")).toBeTruthy());
+
+    const first = bodyOf(1).clientIdempotencyKey;
+    expect(first).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(bodyOf(2).clientIdempotencyKey).toBe(first);
+
+    // "Hacer otra denuncia" is a different denuncia: a different key.
+    fireEvent.press(screen.getByText("Hacer otra denuncia"));
+    await searchAddress();
+    fireEvent.press(screen.getByText(PLACE_LABEL));
+    fillFacts();
+    mockSend.mockResolvedValueOnce(FILED_ACK);
+    fireEvent.press(screen.getByText("Enviar la denuncia"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(5));
+    expect(bodyOf(4).clientIdempotencyKey).toEqual(expect.any(String));
+    expect(bodyOf(4).clientIdempotencyKey).not.toBe(first);
+  });
+
+  it("says a re-sent anonymous denuncia already arrived, and draws no receipt", async () => {
+    render(<DenunciaScreen />);
+    await searchAddress();
+    fireEvent.press(screen.getByText(PLACE_LABEL));
+    fillFacts();
+
+    mockSend.mockResolvedValueOnce({
+      outcome: "api-error",
+      code: "welfare_report_already_filed",
+      retryAfterSeconds: null,
+      correlationId: null,
+    });
+    fireEvent.press(screen.getByText("Enviar la denuncia"));
+
+    await waitFor(() => expect(screen.getByText(/ya había sido recibida/)).toBeTruthy());
+    expect(screen.queryByText("Denuncia registrada")).toBeNull();
+  });
+});
+
 describe("the emergency off-ramp", () => {
   it("names 911 when the severity is the urgent one, and not otherwise", () => {
     // Copied from the web's own Step 2: a denuncia is asynchronous, and an
