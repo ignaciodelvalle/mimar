@@ -79,7 +79,6 @@ import { reportBiteFromOrg } from "./application/report-bite-from-org";
 import {
   RABIES_OBSERVATION_DAYS,
   type RabiesObservationOutcome,
-  isObservationOpen,
 } from "./domain/rabies-observation";
 import { OutboxReceiptRepository } from "./infrastructure/outbox-receipt-repository";
 import { SurveillanceRepository } from "./infrastructure/surveillance-repository";
@@ -214,14 +213,10 @@ export async function reportBiteAction(
   if (!access.ok) return { error: access.error };
   const { pet, user, eventAuthorship } = access;
 
-  // 2. Refuse if an observation is already open — including one whose window
-  // expired without a professional closure. That one is unresolved, not over:
-  // opening a second observation on top of it would bury the first.
-  if (isObservationOpen(pet.rabiesObservationStatus)) {
-    return {
-      error: "Esta mascota ya está en observación antirrábica por otra mordedura activa.",
-    };
-  }
+  // 2. The open-observation refusal (an expired-unclosed one included — it is
+  // unresolved, not over) is NOT here: `reportBite` makes it, AFTER asking the
+  // idempotency ledger. Refusing here first turned a retry of a report that
+  // already succeeded into "ya está en observación" on its own success.
 
   // 3. Parse + validate form input.
   const occurredAtRaw = String(formData.get("occurredAt") ?? "").trim();
@@ -401,12 +396,8 @@ export async function reportBiteFromOrgAction(
   if (pet.status === "deceased") {
     return { error: "Esta mascota está registrada como fallecida." };
   }
-  // Same guard as the owner path: an expired-unclosed observation is still open.
-  if (isObservationOpen(pet.rabiesObservationStatus)) {
-    return {
-      error: "Esta mascota ya está en observación antirrábica por otra mordedura activa.",
-    };
-  }
+  // The open-observation refusal lives in `reportBiteFromOrg`, after its replay
+  // check — same reason as the owner path above.
 
   // 3. Parse bite-specific fields.
   const occurredAtRaw = String(formData.get("occurredAt") ?? "").trim();

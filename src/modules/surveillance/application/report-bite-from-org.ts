@@ -23,6 +23,7 @@ import { orgTypeToReporterRole } from "../domain/bite";
 import { assertOrgMayReportBite } from "../domain/bite-authority";
 import { computeObservationUntil, isRabiesVaccineValid } from "../domain/rabies-observation";
 import type { SurveillanceRepository } from "../infrastructure/surveillance-repository";
+import { type BiteGate, gatedOutcome, inGatedTransaction } from "./report-bite";
 import type { NewNotification, UseCaseResult } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -103,6 +104,7 @@ type Deps = {
   repo: Pick<
     SurveillanceRepository,
     | "findLatestRabiesVaccineEvent"
+    | "findIncidentReplay"
     | "insertIncidentEventIdempotent"
     | "insertObservationStarted"
     | "setObservationStatus"
@@ -318,186 +320,197 @@ export async function reportBiteFromOrg(
   // on the case. Same reason as report-bite.ts: keyed on the pet alone, two
   // distinct bites on the same animal would dedupe into one alert.
   let caseId = "";
+  // Replay check before state guard — see `replayThenGuard`. The authority gate
+  // above stays FIRST: it is authorization, not state, and a replay is only for
+  // a caller who may make the request at all.
+  let gate = { kind: "proceed" } as BiteGate;
 
   try {
-    await transaction(async (tx) => {
-      // 2. Open bite_incident case (event jurisdiction overrides pet jurisdiction).
-      const caseRow = await openCase(
-        {
-          kind: "bite_incident",
-          primarySubjectKind: "registered_pet",
-          primaryPetId: pet.id,
-          jurisdictionProvince: caseProvince,
-          jurisdictionLocality: caseLocality,
-          // The id travels with the pair it names, whole: the INCIDENT's row
-          // when the case routes there (never a field-by-field mix), the
-          // home's row when the case falls back to the home pair.
-          localityId: usesEventPlace ? incidentLocalityId : pet.localityId,
-          openedByUserId: user.id,
-          openedByOrganizationId: organization.id,
-          openedReason: {
-            code: "bite_reported_org",
-            orgDisplayName: organization.displayName,
-            reporterRole,
-            victimKind: input.victimKind,
-            severity: input.severity,
+    // 2a/2b. Replay returns the original outcome; a new report meets the guard.
+    gate = await inGatedTransaction(
+      transaction,
+      repo,
+      pet,
+      input.clientIdempotencyKey,
+      async (tx) => {
+        // 2c. Open bite_incident case (event jurisdiction overrides pet jurisdiction).
+        const caseRow = await openCase(
+          {
+            kind: "bite_incident",
+            primarySubjectKind: "registered_pet",
+            primaryPetId: pet.id,
+            jurisdictionProvince: caseProvince,
+            jurisdictionLocality: caseLocality,
+            // The id travels with the pair it names, whole: the INCIDENT's row
+            // when the case routes there (never a field-by-field mix), the
+            // home's row when the case falls back to the home pair.
+            localityId: usesEventPlace ? incidentLocalityId : pet.localityId,
+            openedByUserId: user.id,
+            openedByOrganizationId: organization.id,
+            openedReason: {
+              code: "bite_reported_org",
+              orgDisplayName: organization.displayName,
+              reporterRole,
+              victimKind: input.victimKind,
+              severity: input.severity,
+            },
           },
-        },
-        tx,
-      );
-      casePublicCode = caseRow.publicCode;
-      caseId = caseRow.id;
+          tx,
+        );
+        casePublicCode = caseRow.publicCode;
+        caseId = caseRow.id;
 
-      // 3. Idempotent insert (aligned with owner path — deduplicates on double-submit).
-      const incidentPayload = validateEventPayload("incident_reported", {
-        incident_type: "bite_inflicted",
-        severity: input.severity,
-        injuries_summary: input.injuriesSummary,
-        vet_involved: input.vetInvolved,
-        location_description: input.locationDescription,
-        victim_kind: input.victimKind,
-        victim_contact_name: input.victimContactName,
-        victim_contact_phone: input.victimContactPhone,
-        victim_pet_id: null,
-        victim_age_estimate: input.victimAgeEstimate,
-        context: input.context,
-        rabies_vaccine_valid_at_incident: rabiesVaccineValid,
-        reporter_role: reporterRole,
-        jurisdiction_province: input.eventJurisdictionProvince,
-        jurisdiction_locality: input.eventJurisdictionLocality,
-        ...(input.eventPlace ? { place: input.eventPlace } : {}),
-        location_source: input.locationSource,
-      });
-
-      const { event: biteEvent, wasNoop: biteNoop } = await repo.insertIncidentEventIdempotent(
-        {
-          petId: pet.id,
-          eventType: "incident_reported",
-          occurredAt,
-          recordedAt: now,
-          recordedByUserId: user.id,
-          ...eventAuthorship,
-          payload: incidentPayload,
-          caseId: caseRow.id,
-          clientIdempotencyKey: input.clientIdempotencyKey,
-          // panorama-event-points Slice 2: persist the incident point COLUMNAR (numeric
-          // string), mirroring the sighting writer. Null-coord bites fall into the residual.
-          locationLat: input.locationLat != null ? String(input.locationLat) : null,
-          locationLng: input.locationLng != null ? String(input.locationLng) : null,
-        } as Parameters<typeof repo.insertIncidentEventIdempotent>[0],
-        tx as Parameters<typeof repo.insertIncidentEventIdempotent>[1],
-      );
-
-      // Idempotency: skip observation + notifications when the bite event
-      // already exists (same key — double-submit or retry).
-      if (biteNoop) return;
-
-      // 4. Insert rabies_observation_started.
-      const observationPayload = validateEventPayload("rabies_observation_started", {
-        bite_event_id: biteEvent.id,
-        observation_until: observationUntil.toISOString(),
-        // Record the window that was actually applied, not just its end date:
-        // downstream copy quotes a day count and, until 2026-08-17, quoted the
-        // national 10 at owners whose jurisdiction runs 14.
-        observation_days: rabiesWindow.days,
-        location: "in_situ",
-        official_site_organization_id: null,
-      });
-      await repo.insertObservationStarted(
-        {
-          petId: pet.id,
-          eventType: "rabies_observation_started",
-          occurredAt: now,
-          recordedAt: now,
-          recordedByUserId: user.id,
-          ...eventAuthorship,
-          // Same rule as the owner-side reporter (report-bite.ts, N2-a): the
-          // observation is opened by law, not declared by whoever reported the
-          // bite, so the asiento is authored by the system. Fixed in both
-          // writers at once — one of them keeping the reporter's authorship
-          // would just move the false stamp to the org path.
-          authorRole: "system",
-          authorOrganizationId: null,
-          authorVerified: false,
-          payload: observationPayload,
-          caseId: caseRow.id,
-        } as Parameters<typeof repo.insertObservationStarted>[0],
-        tx as Parameters<typeof repo.insertObservationStarted>[1],
-      );
-
-      // 5. Update pet status.
-      await repo.setObservationStatus(
-        pet.id,
-        "in_progress",
-        now,
-        tx as Parameters<typeof repo.setObservationStatus>[3],
-      );
-
-      // 6. Notify the active owner (inside tx — they need to know their pet was reported by 3rd party).
-      const activeOwnership = await repo.findActiveOwnership(
-        pet.id,
-        tx as Parameters<typeof repo.findActiveOwnership>[1],
-      );
-      if (activeOwnership?.ownerUserId) {
-        // D1 (PO 2026-08-23). The owner has NO in-product way to lift an
-        // observation opened in error — the PO chose the minimal option on
-        // purpose, and the complaint travels outside the system. The price of
-        // that choice is that this notice must be genuinely actionable: it
-        // already named the organization, but it pointed at "el refugio/clínica"
-        // — a CATEGORY, not a route. An owner who reads that still does not know
-        // where to write. So the org's own contact data goes in the body, and
-        // the notice says plainly that the owner cannot close the observation.
-        const orgContact = [organization.email, organization.phone]
-          .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
-          .join(" / ");
-        pendingNotifications.push({
-          userId: activeOwnership.ownerUserId,
-          notificationType: "bite_reported_by_org_owner",
-          severity: "warning",
-          title: `Mordedura reportada por ${organization.displayName} — ${pet.name}`,
-          body: `${organization.displayName} reportó una mordedura del ${occurredAt.toLocaleDateString("es-AR", { timeZone: AR_TIME_ZONE })} en ${pet.name}. Inicia un período de observación antirrábica de ${rabiesWindow.days} días. Cierre estimado: ${observationUntil.toLocaleDateString("es-AR", { timeZone: AR_TIME_ZONE })}. La observación la cierra un veterinario matriculado —llevándole el animal con su credencial— o la autoridad sanitaria de tu localidad: no podés cerrarla vos. Si discrepás con el reporte, escribile a ${organization.displayName} (${orgContact}) o presentate ante la autoridad sanitaria de tu municipio.`,
-          relatedPetId: pet.id,
-          relatedCaseId: caseRow.id,
-          ctaLabel: "Ver mascota",
-          ctaUrl: `/mis-mascotas/${pet.publicToken}`,
+        // 3. Idempotent insert (aligned with owner path — deduplicates on double-submit).
+        const incidentPayload = validateEventPayload("incident_reported", {
+          incident_type: "bite_inflicted",
+          severity: input.severity,
+          injuries_summary: input.injuriesSummary,
+          vet_involved: input.vetInvolved,
+          location_description: input.locationDescription,
+          victim_kind: input.victimKind,
+          victim_contact_name: input.victimContactName,
+          victim_contact_phone: input.victimContactPhone,
+          victim_pet_id: null,
+          victim_age_estimate: input.victimAgeEstimate,
+          context: input.context,
+          rabies_vaccine_valid_at_incident: rabiesVaccineValid,
+          reporter_role: reporterRole,
+          jurisdiction_province: input.eventJurisdictionProvince,
+          jurisdiction_locality: input.eventJurisdictionLocality,
+          ...(input.eventPlace ? { place: input.eventPlace } : {}),
+          location_source: input.locationSource,
         });
-      }
 
-      // 7. Accountability row, in the SAME tx as the observation it describes
-      // (H1, 2026-08-22). Until now this act left NOTHING in audit_log: an
-      // organization imposing a legally consequential status on a third party's
-      // animal was the one operator-grade write with no queryable trace. The
-      // event rows carry `recordedByUserId`, so the act was attributable — but
-      // only to someone who already knew to go looking in the pet's timeline.
-      //
-      // Placed after the idempotency return above on purpose: a deduplicated
-      // retry describes no new mutation, so it must not mint a second row.
-      await repo.insertAuditLog(
-        {
-          action: "bite_reported_by_org",
-          actorUserId: user.id,
-          targetOrganizationId: organization.id,
-          payload: {
-            pet_id: pet.id,
-            pet_public_token: pet.publicToken,
-            case_id: caseRow.id,
-            case_public_code: caseRow.publicCode,
-            bite_event_id: biteEvent.id,
-            reporter_role: reporterRole,
-            victim_kind: input.victimKind,
-            severity: input.severity,
-            jurisdiction_province: caseProvince,
-            jurisdiction_locality: caseLocality,
-            // WHICH arm of the authority gate let this through — the whole
-            // point of a trail is that a later reader can ask "on what basis?".
-            authority_basis: orgAuthority.hasPetRelation ? "pet_relation" : "org_coverage",
+        const { event: biteEvent, wasNoop: biteNoop } = await repo.insertIncidentEventIdempotent(
+          {
+            petId: pet.id,
+            eventType: "incident_reported",
+            occurredAt,
+            recordedAt: now,
+            recordedByUserId: user.id,
+            ...eventAuthorship,
+            payload: incidentPayload,
+            caseId: caseRow.id,
+            clientIdempotencyKey: input.clientIdempotencyKey,
+            // panorama-event-points Slice 2: persist the incident point COLUMNAR (numeric
+            // string), mirroring the sighting writer. Null-coord bites fall into the residual.
+            locationLat: input.locationLat != null ? String(input.locationLat) : null,
+            locationLng: input.locationLng != null ? String(input.locationLng) : null,
+          } as Parameters<typeof repo.insertIncidentEventIdempotent>[0],
+          tx as Parameters<typeof repo.insertIncidentEventIdempotent>[1],
+        );
+
+        // Idempotency: skip observation + notifications when the bite event
+        // already exists (same key — double-submit or retry).
+        if (biteNoop) return;
+
+        // 4. Insert rabies_observation_started.
+        const observationPayload = validateEventPayload("rabies_observation_started", {
+          bite_event_id: biteEvent.id,
+          observation_until: observationUntil.toISOString(),
+          // Record the window that was actually applied, not just its end date:
+          // downstream copy quotes a day count and, until 2026-08-17, quoted the
+          // national 10 at owners whose jurisdiction runs 14.
+          observation_days: rabiesWindow.days,
+          location: "in_situ",
+          official_site_organization_id: null,
+        });
+        await repo.insertObservationStarted(
+          {
+            petId: pet.id,
+            eventType: "rabies_observation_started",
+            occurredAt: now,
+            recordedAt: now,
+            recordedByUserId: user.id,
+            ...eventAuthorship,
+            // Same rule as the owner-side reporter (report-bite.ts, N2-a): the
+            // observation is opened by law, not declared by whoever reported the
+            // bite, so the asiento is authored by the system. Fixed in both
+            // writers at once — one of them keeping the reporter's authorship
+            // would just move the false stamp to the org path.
+            authorRole: "system",
+            authorOrganizationId: null,
+            authorVerified: false,
+            payload: observationPayload,
+            caseId: caseRow.id,
+          } as Parameters<typeof repo.insertObservationStarted>[0],
+          tx as Parameters<typeof repo.insertObservationStarted>[1],
+        );
+
+        // 5. Update pet status.
+        await repo.setObservationStatus(
+          pet.id,
+          "in_progress",
+          now,
+          tx as Parameters<typeof repo.setObservationStatus>[3],
+        );
+
+        // 6. Notify the active owner (inside tx — they need to know their pet was reported by 3rd party).
+        const activeOwnership = await repo.findActiveOwnership(
+          pet.id,
+          tx as Parameters<typeof repo.findActiveOwnership>[1],
+        );
+        if (activeOwnership?.ownerUserId) {
+          // D1 (PO 2026-08-23). The owner has NO in-product way to lift an
+          // observation opened in error — the PO chose the minimal option on
+          // purpose, and the complaint travels outside the system. The price of
+          // that choice is that this notice must be genuinely actionable: it
+          // already named the organization, but it pointed at "el refugio/clínica"
+          // — a CATEGORY, not a route. An owner who reads that still does not know
+          // where to write. So the org's own contact data goes in the body, and
+          // the notice says plainly that the owner cannot close the observation.
+          const orgContact = [organization.email, organization.phone]
+            .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+            .join(" / ");
+          pendingNotifications.push({
+            userId: activeOwnership.ownerUserId,
+            notificationType: "bite_reported_by_org_owner",
+            severity: "warning",
+            title: `Mordedura reportada por ${organization.displayName} — ${pet.name}`,
+            body: `${organization.displayName} reportó una mordedura del ${occurredAt.toLocaleDateString("es-AR", { timeZone: AR_TIME_ZONE })} en ${pet.name}. Inicia un período de observación antirrábica de ${rabiesWindow.days} días. Cierre estimado: ${observationUntil.toLocaleDateString("es-AR", { timeZone: AR_TIME_ZONE })}. La observación la cierra un veterinario matriculado —llevándole el animal con su credencial— o la autoridad sanitaria de tu localidad: no podés cerrarla vos. Si discrepás con el reporte, escribile a ${organization.displayName} (${orgContact}) o presentate ante la autoridad sanitaria de tu municipio.`,
+            relatedPetId: pet.id,
+            relatedCaseId: caseRow.id,
+            ctaLabel: "Ver mascota",
+            ctaUrl: `/mis-mascotas/${pet.publicToken}`,
+          });
+        }
+
+        // 7. Accountability row, in the SAME tx as the observation it describes
+        // (H1, 2026-08-22). Until now this act left NOTHING in audit_log: an
+        // organization imposing a legally consequential status on a third party's
+        // animal was the one operator-grade write with no queryable trace. The
+        // event rows carry `recordedByUserId`, so the act was attributable — but
+        // only to someone who already knew to go looking in the pet's timeline.
+        //
+        // Placed after the idempotency return above on purpose: a deduplicated
+        // retry describes no new mutation, so it must not mint a second row.
+        await repo.insertAuditLog(
+          {
+            action: "bite_reported_by_org",
+            actorUserId: user.id,
+            targetOrganizationId: organization.id,
+            payload: {
+              pet_id: pet.id,
+              pet_public_token: pet.publicToken,
+              case_id: caseRow.id,
+              case_public_code: caseRow.publicCode,
+              bite_event_id: biteEvent.id,
+              reporter_role: reporterRole,
+              victim_kind: input.victimKind,
+              severity: input.severity,
+              jurisdiction_province: caseProvince,
+              jurisdiction_locality: caseLocality,
+              // WHICH arm of the authority gate let this through — the whole
+              // point of a trail is that a later reader can ask "on what basis?".
+              authority_basis: orgAuthority.hasPetRelation ? "pet_relation" : "org_coverage",
+            },
+            before: { rabies_observation_status: pet.rabiesObservationStatus },
+            after: { rabies_observation_status: "in_progress" },
           },
-          before: { rabies_observation_status: pet.rabiesObservationStatus },
-          after: { rabies_observation_status: "in_progress" },
-        },
-        tx as Parameters<typeof repo.insertAuditLog>[1],
-      );
-    });
+          tx as Parameters<typeof repo.insertAuditLog>[1],
+        );
+      },
+    );
   } catch (err) {
     console.error("reportBiteFromOrg tx failed:", err);
     return {
@@ -506,6 +519,15 @@ export async function reportBiteFromOrg(
         err instanceof Error ? err.message : "error desconocido"
       }`,
     };
+  }
+
+  if (gate.kind !== "proceed") {
+    // A replay: nothing written, nothing announced, no second audit row.
+    return gatedOutcome(gate, (replay) => ({
+      petToken: input.noRedirect ? pet.publicToken : undefined,
+      noRedirect: input.noRedirect,
+      casePublicCode: replay.casePublicCode,
+    }));
   }
 
   // 7. Authority fan-out (best-effort — post-tx). Routes to the INCIDENT

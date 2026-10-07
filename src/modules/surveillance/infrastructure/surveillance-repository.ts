@@ -331,6 +331,44 @@ export class SurveillanceRepository {
   }
 
   /**
+   * The idempotency ledger, asked BEFORE anything the first write invalidates.
+   *
+   * A bite report opens a `bite_incident` case and starts an observation, and
+   * both are exactly what the next report on the same pet is refused for (the
+   * open-observation guard, `cases_open_per_pet_kind_idx`). So a retry of the
+   * SAME request — a phone resending after a dropped response — used to fail on
+   * its own success instead of replaying it. Replay check before state guard.
+   *
+   * Takes the same `pg_advisory_xact_lock(hashtext(key))` that
+   * insertEventIdempotent takes (re-entrant within the transaction), so a
+   * concurrent twin waits for the first to commit and then finds its row here
+   * rather than racing it into the unique index. REQUIRES a transaction.
+   *
+   * Returns the original incident and the case it opened, or null.
+   */
+  async findIncidentReplay(
+    petId: string,
+    clientIdempotencyKey: string,
+    executor: DbOrTx,
+  ): Promise<{ eventId: string; caseId: string | null; casePublicCode: string } | null> {
+    await executor.execute(sql`select pg_advisory_xact_lock(hashtext(${clientIdempotencyKey}))`);
+    const [row] = await executor
+      .select({ eventId: petEvents.id, caseId: petEvents.caseId, casePublicCode: cases.publicCode })
+      .from(petEvents)
+      .leftJoin(cases, eq(cases.id, petEvents.caseId))
+      .where(
+        and(
+          eq(petEvents.petId, petId),
+          eq(petEvents.eventType, "incident_reported"),
+          eq(petEvents.clientIdempotencyKey, clientIdempotencyKey),
+        ),
+      )
+      .limit(1);
+    if (!row) return null;
+    return { eventId: row.eventId, caseId: row.caseId, casePublicCode: row.casePublicCode ?? "" };
+  }
+
+  /**
    * Insert an incident_reported event without idempotency (org-bite path).
    * Returns the inserted row. This is the asymmetric parity path — preserve it.
    *

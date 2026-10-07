@@ -508,11 +508,10 @@ async function stepPregnancy(pet: PetRow, userId: string): Promise<void> {
 /** Owner bite report — opens the rabies observation and the bite case. */
 async function stepBite(pet: PetRow, userId: string): Promise<void> {
   const current = (await petByToken(pet.publicToken)) ?? pet;
-  // A re-run must SKIP, not replay: reportBite opens the bite case BEFORE its
-  // idempotency check, so a second call with the same key hits
-  // cases_open_per_pet_kind_idx instead of returning the noop (measured
-  // 2026-10-06 on the second run of this seed). The open observation is the
-  // state this step creates, so its presence is the skip.
+  // A re-run SKIPS on state: the open observation is what this step creates, so
+  // its presence is the skip. (Until plan A5c reportBite opened the case BEFORE
+  // its idempotency check, so a replay hit cases_open_per_pet_kind_idx —
+  // measured 2026-10-06; it now replays, and the skip just saves the call.)
   if (current.rabiesObservationStatus === "in_progress") return;
   const repo = new SurveillanceRepository();
   const result = await reportBite(
