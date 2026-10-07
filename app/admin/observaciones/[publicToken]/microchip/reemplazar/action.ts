@@ -1,13 +1,13 @@
 "use server";
 
 import { db, pets } from "@/db";
-import { findExistingByKey } from "@/lib/events/event-idempotency";
 import { checkOccurredAtPlausible } from "@/lib/events/plausibility";
 import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
 import { fetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
 import { parseDateInput } from "@/lib/utils/format";
 import type { EventFormState } from "@/src/modules/events/actions";
 import { replaceMicrochipForUser } from "@/src/modules/pets/application/microchip/replace-microchip";
+import { findReplayedReplacement } from "@/src/modules/pets/application/microchip/replacement-replay";
 import { and, eq, isNull } from "drizzle-orm";
 
 const ADMIN_REASONS = new Set([
@@ -21,12 +21,6 @@ const ADMIN_REASONS = new Set([
 ]);
 
 const REVOCATION_REASONS = new Set(["owner_request", "device_failure", "fraud_detected"]);
-
-/** Whether this key already wrote a `microchip_replaced` on the pet. */
-async function isReplayedReplacement(petId: string, key: string | null): Promise<boolean> {
-  if (!key) return false;
-  return (await findExistingByKey(petId, "microchip_replaced", key)) !== null;
-}
 
 export async function replaceMicrochipAdminAction(
   publicToken: string,
@@ -62,7 +56,7 @@ export async function replaceMicrochipAdminAction(
     // animal with no active chip, and `fraud_detected` also opens a
     // microchip_remediation case: the retry of a request that SUCCEEDED used to
     // land here and be told the pet has no chip. Ask the ledger first.
-    if (await isReplayedReplacement(pet.id, clientIdempotencyKey)) {
+    if ((await findReplayedReplacement(pet.id, clientIdempotencyKey, user.id)) !== null) {
       return { error: null, ok: true, redirectTo: "/admin/observaciones" };
     }
     return { error: "Esta mascota no tiene microchip registrado." };

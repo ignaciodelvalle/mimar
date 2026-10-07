@@ -68,6 +68,7 @@ import { resolveDeathReportable } from "@/src/modules/events/domain/death-rules"
 import type { EventsRepository } from "@/src/modules/events/infrastructure/events-repository";
 import { recordPostAdoptionCheckin } from "@/src/modules/pets/application/checkin/record-post-adoption-checkin";
 import { replaceMicrochipForUser } from "@/src/modules/pets/application/microchip/replace-microchip";
+import { findReplayedReplacement } from "@/src/modules/pets/application/microchip/replacement-replay";
 import { recordPregnancyEndedWriter } from "@/src/modules/pets/application/pregnancy/record-pregnancy-ended";
 import { recordPregnancyStartedWriter } from "@/src/modules/pets/application/pregnancy/record-pregnancy-started";
 import { createTattooForUser } from "@/src/modules/pets/application/tattoo/create-tattoo";
@@ -191,7 +192,9 @@ export async function appendMicrochipReplace(
     // the one caller the `Idempotency-Key` exists to protect, forever, on a
     // write that already happened. Ask the ledger whether this key wrote before
     // concluding there is nothing to replace.
-    const replayed = await findExistingByKey(pet.id, "microchip_replaced", ctx.idempotencyKey);
+    // The same helper the three web doors ask (replacement-replay.ts): scoped
+    // to the caller, so a key someone else used is not this caller's replay.
+    const replayed = await findReplayedReplacement(pet.id, ctx.idempotencyKey, ctx.userId);
     if (replayed) {
       const replayPayload: EventRecordedV1 = { eventId: replayed.id, wasDuplicate: true };
       return apiV1Json(replayPayload, { status: 201 });

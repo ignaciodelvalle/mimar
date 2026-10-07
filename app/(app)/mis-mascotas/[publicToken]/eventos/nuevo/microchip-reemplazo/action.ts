@@ -6,6 +6,7 @@ import { requireOwnedPetByToken } from "@/lib/infra/pets";
 import { parseDateInput } from "@/lib/utils/format";
 import type { EventFormState } from "@/src/modules/events/actions";
 import { replaceMicrochipForUser } from "@/src/modules/pets/application/microchip/replace-microchip";
+import { findReplayedReplacement } from "@/src/modules/pets/application/microchip/replacement-replay";
 
 const OWNER_REASONS = new Set([
   "damaged",
@@ -56,6 +57,10 @@ export async function replaceMicrochipOwnerAction(
   // ARCH-S: legacy pets.microchipId column dropped — read from canonical.
   const canonicalIds = await fetchActiveIdentifications(pet.id);
   if (!canonicalIds.microchip) {
+    // Replay check before state guard (plan A5c) — see replacement-replay.ts.
+    if ((await findReplayedReplacement(pet.id, clientIdempotencyKey, user.id)) !== null) {
+      return { error: null, ok: true, redirectTo: `/mis-mascotas/${publicToken}` };
+    }
     return { error: "Esta mascota no tiene microchip registrado." };
   }
 
