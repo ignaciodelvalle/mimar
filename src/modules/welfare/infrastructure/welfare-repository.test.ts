@@ -537,7 +537,11 @@ describe("WelfareRepository.findBridgedReportReplay", () => {
   });
 
   afterAll(async () => {
+    // The report and its case point at each other (welfare_reports.case_id is
+    // RESTRICT, cases.welfare_report_id has no action): unlink first, as
+    // welfare-cases-d1.test.ts does.
     await withMutationOverride(async (tx) => {
+      await tx.execute(sql`UPDATE welfare_reports SET case_id = NULL WHERE id = ${reportId}::uuid`);
       await tx.execute(sql`DELETE FROM pet_events WHERE pet_id = ${replayPetId}::uuid`);
       await tx.execute(sql`DELETE FROM cases WHERE primary_pet_id = ${replayPetId}::uuid`);
       await tx.execute(sql`DELETE FROM welfare_reports WHERE id = ${reportId}::uuid`);
