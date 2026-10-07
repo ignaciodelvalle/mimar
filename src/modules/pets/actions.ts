@@ -48,6 +48,7 @@ import { resolvePppClassificationForJurisdiction } from "@/lib/infra/ppp-classif
 import { uploadAttachmentIfPresent } from "@/lib/infra/uploads";
 import { eventPlaceFromGate } from "@/lib/place/event-place";
 import { resolvePetProfileTextLengths } from "@dim/contract/input";
+import { birthDateRefusal } from "@dim/contract/reference";
 
 /**
  * Parses the domain layer's `estimatedWeightKg: string | null` into the
@@ -69,8 +70,13 @@ import { recordMovementWriter } from "./application/movement/record-movement";
 import { correctPetSpecies } from "./application/profile/correct-species";
 import { registerPet } from "./application/register-pet";
 import { updatePet } from "./application/update-pet";
-import { parseAgeFromFormData, parsePetForm, statedAgeErrorFromFormData } from "./domain/pet-form";
-import { resolveEditedBirthDate, withStoredLegacyConditionCodes } from "./domain/pet-profile-edit";
+import {
+  parseAgeFromFormData,
+  parsePetForm,
+  statedAgeErrorFromFormData,
+  statedAgeMessage,
+} from "./domain/pet-form";
+import { gateEditedAge, withStoredLegacyConditionCodes } from "./domain/pet-profile-edit";
 import type { NewNotification, NewPetFormState } from "./domain/types";
 import { PetsRepository } from "./infrastructure/pets-repository";
 
@@ -150,6 +156,16 @@ export async function createPetAction(
   }
   // Safe: parseResult.error === null implies parsed is non-null (discriminated union).
   const parsed = parseResult.parsed as NonNullable<typeof parseResult.parsed>;
+
+  // BACKSTOP on the derived date, the one `POST /api/v1/pets` runs: a date the
+  // species could have been born on. Unreachable once the age gate above has
+  // passed — which is why it is a backstop and not the rule.
+  if (
+    parsed.dateOfBirth !== null &&
+    birthDateRefusal(parsed.dateOfBirth, parsed.species, new Date()) !== null
+  ) {
+    return { error: statedAgeMessage("AGE_TOO_HIGH", parsed.species) };
+  }
 
   // Breed catalog gate (QA A4): the form's control only SUGGESTS; the server
   // decides. Resolve to the canonical catalog label (folding + aliases) or
@@ -464,6 +480,22 @@ export async function updatePetAction(
   // guard doesn't need the dropped pets.microchipId column.
   const existingCanonicalIds = await fetchActiveIdentifications(existingPet.id);
 
+  // The age, BEFORE `parsePetForm`: the parser derives a date from the posted
+  // age with no cap and throws for one like 999999999. An age posted back
+  // untouched keeps the stored date at any value; a typed one is held to the
+  // alta's rule against the PERSISTED species (alta-validacion-edad). The
+  // birth date it resolves is what this save stores — NOT the parser's "today
+  // minus the posted age": re-deriving it on every save moved the date and
+  // turned a recorded one into an estimate (owner-pet-actions). The same gate
+  // the native sectioned edit runs, from the same module.
+  const age = gateEditedAge({
+    stored: existingPet,
+    raw: { ageYears: formData.get("ageYears"), ageMonths: formData.get("ageMonths") },
+    submitted: parseAgeFromFormData(formData),
+    now: new Date(),
+  });
+  if (!age.ok) return { error: statedAgeMessage(age.code, existingPet.species) };
+
   const parseResult = parsePetForm(formData);
   if (parseResult.error !== null) {
     const msg =
@@ -477,18 +509,9 @@ export async function updatePetAction(
   // Safe: parseResult.error === null implies parsed is non-null (discriminated union).
   const parsed = parseResult.parsed as NonNullable<typeof parseResult.parsed>;
 
-  // The birth date, NOT the parser's "today minus the posted age". The form
-  // shows the stored date as an age and posts it back, so re-deriving the date
-  // from it on every save moved the date on each save and turned a recorded
-  // date into an estimate (owner-pet-actions). The same rule the native
-  // sectioned edit runs, from the same module.
-  const birth = resolveEditedBirthDate({
-    stored: existingPet,
-    submitted: parseAgeFromFormData(formData),
-    now: new Date(),
-  });
-  parsed.dateOfBirth = birth.dateOfBirth;
-  parsed.birthDateIsEstimated = birth.birthDateIsEstimated;
+  // The birth date `gateEditedAge` resolved above.
+  parsed.dateOfBirth = age.birth.dateOfBirth;
+  parsed.birthDateIsEstimated = age.birth.birthDateIsEstimated;
 
   // The form posts only the codes the catalogue still names; a stored code it
   // dropped no longer is not the owner's to lose here. The native sectioned

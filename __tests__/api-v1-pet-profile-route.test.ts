@@ -1377,6 +1377,62 @@ describe("POST — editar datos por sección", () => {
     }
   });
 
+  // alta-validacion-edad: the edit door used to CLAMP a typed "3310" to 250 and
+  // store it. A TYPED age is now held to the alta's rule; one posted back as
+  // the stored date reads passes at any value, so no owner is locked out.
+  describe("the age rule, for a TYPED age only", () => {
+    const identityWithAge = (ageYears: unknown, ageMonths: unknown) => ({
+      ...NO_SECTIONS,
+      identity: {
+        name: "Pampa",
+        breed: "Caniche",
+        color: "Blanca",
+        sex: "female",
+        ageYears,
+        ageMonths,
+      },
+    });
+
+    it.each([
+      ["the age QA typed", 3310, 0],
+      ["a dog one year past the cap", 41, null],
+      ["months past 11 beside years", 2, 14],
+    ])("refuses %s with invalid_request, writing nothing", async (_label, years, months) => {
+      const response = await send(identityWithAge(years, months));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "invalid_request" });
+      expect(control.writes).toHaveLength(0);
+    });
+
+    it("keeps an implausible STORED age posted back untouched, and saves the rest", async () => {
+      // A dog whose date was written while the door clamped at 250.
+      control.access = () => ({
+        kind: "owner",
+        pet: petRow({ dateOfBirth: "1950-05-01" }),
+        holderRole: "owner",
+      });
+      const shown = petAgeFromBirthDate("1950-05-01", new Date());
+      expect(shown.years).toBeGreaterThan(40);
+      const response = await send(identityWithAge(shown.years, shown.months));
+      expect(response.status).toBe(200);
+      expect(composed()).toMatchObject({ color: "Blanca", dateOfBirth: "1950-05-01" });
+    });
+
+    it("lets `other` state an age past 40 — a tortuga terrestre", async () => {
+      control.access = () => ({
+        kind: "owner",
+        pet: petRow({ species: "other", breed: null }),
+        holderRole: "owner",
+      });
+      const response = await send({
+        ...identityWithAge(80, 0),
+        identity: { ...identityWithAge(80, 0).identity, breed: null },
+      });
+      expect(response.status).toBe(200);
+      expect(composed()).toMatchObject({ birthDateIsEstimated: true });
+    });
+  });
+
   it("reports changed:false for an edit that names no section", async () => {
     const body = await (await send(NO_SECTIONS)).json();
     expect(body).toEqual({ command: "edit_profile", changed: false });

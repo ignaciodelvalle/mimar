@@ -91,7 +91,7 @@
 
 import { type PetRegisteredV1, isValidIdempotencyKey } from "@dim/contract/api";
 import { registerPetInputSchema } from "@dim/contract/input";
-import { estimatedBirthDateFromAge } from "@dim/contract/reference";
+import { birthDateRefusal, estimatedBirthDateFromAge } from "@dim/contract/reference";
 
 import { db } from "@/db";
 import { resolveBreedForWrite } from "@/lib/domain/breed-validation";
@@ -538,6 +538,14 @@ function buildParsedPet(
     new Date(),
   );
   const birthDateIsEstimated = dateOfBirth !== null;
+  // BACKSTOP on the derived date (alta-validacion-edad): a date the species
+  // could have been born on. Unreachable once the schema has capped the age —
+  // which is why it THROWS: the caller's catch answers `invalid_request` and
+  // reports it, and a report from here means the schema and this rule drifted.
+  if (dateOfBirth !== null) {
+    const refusal = birthDateRefusal(dateOfBirth, input.species, new Date());
+    if (refusal !== null) throw new Error(`derived birth date refused: ${refusal}`);
+  }
 
   return {
     name: input.name,

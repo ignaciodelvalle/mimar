@@ -93,7 +93,7 @@ import { composePetIdentityEdit } from "@/src/modules/pets/domain/pet-identity-e
 import {
   type PetProfileIdentityEdit,
   composePetProfileEdit,
-  resolveEditedBirthDate,
+  gateEditedAge,
 } from "@/src/modules/pets/domain/pet-profile-edit";
 import type { NewNotification, ParsedPet } from "@/src/modules/pets/domain/types";
 import { PetsRepository } from "@/src/modules/pets/infrastructure/pets-repository";
@@ -412,8 +412,9 @@ async function editIdentity(
  * state — the seventeen-column writer is why that composition is the whole job
  * (`pet-identity-edit.ts`'s header). The identity section passes the same breed
  * and length gates `edit_identity` does, and its age goes through
- * `resolveEditedBirthDate`, so posting back the age the screen showed keeps the
- * stored birth date instead of re-deriving one from today.
+ * `gateEditedAge` (`resolveEditedBirthDate` behind the age rule), so posting
+ * back the age the screen showed keeps the stored birth date instead of
+ * re-deriving one from today.
  */
 async function editProfile(
   ctx: CommandContext,
@@ -434,16 +435,24 @@ async function editProfile(
   if (input.identity !== null) {
     const gated = gateIdentityText(access.pet, input.identity);
     if (!gated.ok) return gated.refusal;
+    // The age: an untouched one keeps the stored date at any value, a typed one
+    // is held to the alta's rule (alta-validacion-edad). `invalid_request`
+    // with no field, like the length gates — the client runs `editedAgeRefusal`
+    // first and names the field itself.
+    const submitted = { years: input.identity.ageYears, months: input.identity.ageMonths };
+    const age = gateEditedAge({
+      stored: access.pet,
+      raw: { ageYears: submitted.years, ageMonths: submitted.months },
+      submitted,
+      now: new Date(),
+    });
+    if (!age.ok) return apiV1Error("invalid_request", 400);
     identity = {
       name: input.identity.name,
       breed: gated.breed,
       color: input.identity.color,
       sex: input.identity.sex,
-      ...resolveEditedBirthDate({
-        stored: access.pet,
-        submitted: { years: input.identity.ageYears, months: input.identity.ageMonths },
-        now: new Date(),
-      }),
+      ...age.birth,
     };
   }
 

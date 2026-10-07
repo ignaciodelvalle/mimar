@@ -34,13 +34,15 @@
 // stored medical fact because a catalog entry was renamed is the quiet data loss
 // `composePetIdentityEdit` exists to prevent, so this door keeps it.
 
+import { type StatedAgeCode, editedAgeRefusal } from "@dim/contract/input";
 import {
   type PermanentCondition,
   type PetAge,
   type TrainingLevel,
+  ageMatchesBirthDate,
+  birthDateRefusal,
   estimatedBirthDateFromAge,
   isPermanentCondition,
-  petAgeFromBirthDate,
 } from "@dim/contract/reference";
 
 import type { ParsedPet } from "./types";
@@ -129,13 +131,6 @@ export type PetProfileEdit = {
   origin: PetProfileOriginEdit | null;
 };
 
-/** One day, for the tolerance window below. */
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function totalMonths(age: PetAge): number {
-  return (age.years ?? 0) * 12 + (age.months ?? 0);
-}
-
 /**
  * The birth date an EDIT stores, given the age the form posted.
  *
@@ -165,26 +160,66 @@ export function resolveEditedBirthDate(input: {
   if (submitted.years === null && submitted.months === null) {
     return { dateOfBirth: null, birthDateIsEstimated: false };
   }
-  if (stored.dateOfBirth !== null) {
-    const asked = totalMonths(submitted);
-    for (const offset of [-DAY_MS, 0, DAY_MS]) {
-      const shown = petAgeFromBirthDate(stored.dateOfBirth, new Date(now.getTime() + offset));
-      // A FRESH object with the two fields, never `stored` itself: callers hand
-      // in the whole pet row (it fits the type structurally) and spread the
-      // answer into an edit, so returning `stored` would spread the row's stored
-      // name and colour over the ones the person just typed.
-      if (shown.years !== null && totalMonths(shown) === asked) {
-        return {
-          dateOfBirth: stored.dateOfBirth,
-          birthDateIsEstimated: stored.birthDateIsEstimated,
-        };
-      }
-    }
+  // `ageMatchesBirthDate` is the ±1-day match described above — in the
+  // contract since alta-validacion-edad, so `editedAgeRefusal` reads the same
+  // definition of "untouched" this function keeps the date on.
+  if (stored.dateOfBirth !== null && ageMatchesBirthDate(stored.dateOfBirth, submitted, now)) {
+    // A FRESH object with the two fields, never `stored` itself: callers hand
+    // in the whole pet row (it fits the type structurally) and spread the
+    // answer into an edit, so returning `stored` would spread the row's stored
+    // name and colour over the ones the person just typed.
+    return {
+      dateOfBirth: stored.dateOfBirth,
+      birthDateIsEstimated: stored.birthDateIsEstimated,
+    };
   }
   return {
     dateOfBirth: estimatedBirthDateFromAge(submitted, now),
     birthDateIsEstimated: true,
   };
+}
+
+/**
+ * The age an EDIT may store — the gate both edit doors run BEFORE anything
+ * derives a date from the posted age (alta-validacion-edad, 2026-10-07).
+ *
+ *   1. `editedAgeRefusal`: an age posted back untouched passes at any value (a
+ *      stored date written while the door clamped at 250 must not lock its
+ *      owner out of correcting a colour); a TYPED one is held to the alta's
+ *      rule — whole numbers, months 0..11 beside years, the species' cap.
+ *   2. `resolveEditedBirthDate`: keep the stored date, clear it, or estimate.
+ *   3. BACKSTOP: a NEWLY estimated date must be a date the species could have
+ *      been born on (`birthDateRefusal`). Unreachable after step 1 by
+ *      construction — which is why it is a backstop and not the rule — and run
+ *      only on a changed date, for the same lock-out reason as step 1.
+ *
+ * `raw` is the age as the door received it: FormData strings on the web, the
+ * schema's numbers from the API. Step 1 runs on it before any `Date` arithmetic,
+ * because the web's parser derives a date from an UNCAPPED posted age and
+ * throws a RangeError for one like 999999999.
+ */
+export function gateEditedAge(input: {
+  stored: StoredBirthDate & { species: string };
+  raw: { ageYears: unknown; ageMonths: unknown };
+  submitted: PetAge;
+  now: Date;
+}): { ok: true; birth: StoredBirthDate } | { ok: false; code: StatedAgeCode } {
+  const { stored, raw, submitted, now } = input;
+  const refusal = editedAgeRefusal(
+    { species: stored.species, ageYears: raw.ageYears, ageMonths: raw.ageMonths },
+    stored.dateOfBirth,
+    now,
+  );
+  if (refusal !== null) return { ok: false, code: refusal };
+  const birth = resolveEditedBirthDate({ stored, submitted, now });
+  if (
+    birth.dateOfBirth !== null &&
+    birth.dateOfBirth !== stored.dateOfBirth &&
+    birthDateRefusal(birth.dateOfBirth, stored.species, now) !== null
+  ) {
+    return { ok: false, code: "AGE_TOO_HIGH" };
+  }
+  return { ok: true, birth };
 }
 
 /**

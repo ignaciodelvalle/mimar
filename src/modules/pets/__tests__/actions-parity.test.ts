@@ -671,6 +671,46 @@ describe("updatePetAction", () => {
     });
   });
 
+  // alta-validacion-edad: a TYPED age is held to the alta's rule BEFORE
+  // `parsePetForm` (whose date derivation throws for 999999999); an age posted
+  // back as the stored date reads passes at any value.
+  describe("stated age (edit path)", () => {
+    it.each([
+      [{ ageYears: "3310" }, "Revisá la edad: no puede pasar de 40 años."],
+      [{ ageYears: "999999999" }, "Revisá la edad: no puede pasar de 40 años."],
+      [{ ageYears: "aprox 2" }, "Poné los años como un número entero, por ejemplo 3."],
+    ])("refuses a typed %o with its sentence and writes nothing", async (overrides, message) => {
+      const { updatePet } = await import("@/src/modules/pets/application/update-pet");
+      const result = (await updatePetAction(
+        "DIM-TEST-0001",
+        { error: null },
+        makeUpdateFormData(overrides),
+      )) as { error: string };
+      expect(result.error).toBe(message);
+      expect(updatePet).not.toHaveBeenCalled();
+    });
+
+    it("keeps an implausible STORED age posted back untouched", async () => {
+      const { requireTitularAccess } = await import("@/lib/infra/pet-access");
+      const base = (await (requireTitularAccess as unknown as () => Promise<unknown>)()) as {
+        pet: Record<string, unknown>;
+      };
+      (requireTitularAccess as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        ...base,
+        pet: { ...base.pet, species: "dog", dateOfBirth: "1950-05-01", birthDateIsEstimated: true },
+      });
+      const shown = petAgeFromBirthDate("1950-05-01", new Date());
+      const { updatePet } = await import("@/src/modules/pets/application/update-pet");
+      const result = await updatePetAction(
+        "DIM-TEST-0001",
+        { error: null },
+        makeUpdateFormData({ ageYears: String(shown.years), ageMonths: String(shown.months) }),
+      );
+      expect((result as { error?: string }).error ?? null).toBeNull();
+      expect(updatePet).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("data-quality gate P3 (edit path)", () => {
     it("blocks adding a chip already registered on another pet", async () => {
       const { lookupByChip } = await import("@/lib/infra/chip-lookup");
