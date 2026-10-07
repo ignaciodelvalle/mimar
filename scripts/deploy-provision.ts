@@ -69,7 +69,12 @@ import path from "node:path";
 import { config as loadEnv } from "dotenv";
 import postgres from "postgres";
 
-import { anonReadProvisionShortfalls, fetchAnonReadSurface } from "./check-rls-coverage";
+import {
+  anonReadProvisionShortfalls,
+  callerTruncateProvisionShortfalls,
+  fetchAnonReadSurface,
+  fetchCallerTruncateGrants,
+} from "./check-rls-coverage";
 
 loadEnv({ path: ".env.local" });
 loadEnv({ path: ".env" });
@@ -525,6 +530,9 @@ async function applyExtensions(sql: Sql): Promise<void> {
   }
 }
 
+/** Table privileges anon and authenticated receive: ALL minus TRUNCATE (0284). */
+const CALLER_TABLE_PRIVILEGES = "select, insert, update, delete, references, trigger";
+
 /**
  * Apply Supabase's default public-schema grants. `db:push` (drizzle) creates
  * tables WITHOUT them, so storage RLS policies that reference public tables fail
@@ -532,13 +540,22 @@ async function applyExtensions(sql: Sql): Promise<void> {
  * reproduces the grants the Supabase platform normally applies. Best-effort per
  * statement — the post-provision verification re-checks and fails loud if short.
  */
+//
+// The caller roles get every table privilege EXCEPT TRUNCATE (0284): TRUNCATE
+// skips RLS and row triggers, and no caller-role path needs it. The explicit
+// revoke after the grant strips it from a database an older provisioner
+// already re-granted with `grant all`.
 async function applySchemaGrants(sql: Sql): Promise<void> {
   const grants = [
     "grant usage on schema public to anon, authenticated, service_role;",
-    "grant all on all tables in schema public to anon, authenticated, service_role;",
+    `grant ${CALLER_TABLE_PRIVILEGES} on all tables in schema public to anon, authenticated;`,
+    "grant all on all tables in schema public to service_role;",
+    "revoke truncate on all tables in schema public from public, anon, authenticated;",
     "grant all on all sequences in schema public to anon, authenticated, service_role;",
     "grant all on all functions in schema public to anon, authenticated, service_role;",
-    "alter default privileges in schema public grant all on tables to anon, authenticated, service_role;",
+    `alter default privileges in schema public grant ${CALLER_TABLE_PRIVILEGES} on tables to anon, authenticated;`,
+    "alter default privileges in schema public grant all on tables to service_role;",
+    "alter default privileges in schema public revoke truncate on tables from public, anon, authenticated;",
     "alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;",
     "alter default privileges in schema public grant all on functions to anon, authenticated, service_role;",
   ];
@@ -610,6 +627,7 @@ interface VerificationReport {
   bucketsPresent: string[];
   bucketsMissing: string[];
   anonSurfaceShortfalls: string[];
+  truncateShortfalls: string[];
   shortfalls: string[];
 }
 
@@ -711,6 +729,13 @@ async function verifyProvision(sql: Sql): Promise<VerificationReport> {
   const anonSurfaceShortfalls = anonReadProvisionShortfalls(await fetchAnonReadSurface(sql));
   shortfalls.push(...anonSurfaceShortfalls);
 
+  // ---- Caller-role TRUNCATE, AFTER applySchemaGrants (0284) -----------------
+  // Check 7 of scripts/check-rls-coverage.ts, on the grants this run left.
+  const truncateShortfalls = callerTruncateProvisionShortfalls(
+    await fetchCallerTruncateGrants(sql),
+  );
+  shortfalls.push(...truncateShortfalls);
+
   return {
     functions,
     indexes,
@@ -729,6 +754,7 @@ async function verifyProvision(sql: Sql): Promise<VerificationReport> {
     bucketsPresent,
     bucketsMissing,
     anonSurfaceShortfalls,
+    truncateShortfalls,
     shortfalls,
   };
 }
@@ -760,6 +786,9 @@ function printVerificationReport(r: VerificationReport): void {
   );
   console.log(
     `    anon read surface     : ${r.anonSurfaceShortfalls.length === 0 ? "every anon-readable table declared, inside its columns (after re-grant)" : `${r.anonSurfaceShortfalls.length} VIOLATION(S)`}`,
+  );
+  console.log(
+    `    caller TRUNCATE       : ${r.truncateShortfalls.length === 0 ? "no public table truncatable by anon/authenticated (after re-grant)" : `${r.truncateShortfalls.length} VIOLATION(S)`}`,
   );
 }
 

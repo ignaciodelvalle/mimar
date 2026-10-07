@@ -18,6 +18,10 @@
 //        declaration — a policy picks rows, only the grant picks columns.
 //        See "check 6" below (migration 0278).
 //
+// And, for every public table:
+//   7. Neither anon nor authenticated holds TRUNCATE, which RLS cannot filter.
+//        See "check 7" below (migration 0284).
+//
 // WHY 3 EXISTS (2026-08-05). Checks 1 and 2 are existence checks: RLS on, at
 // least one policy. That is a COUNT, and a count cannot tell you who the policy
 // lets in. Ten live policies were found with no TO clause at all — across
@@ -522,6 +526,57 @@ function describeAnonReadViolation(v: AnonReadViolation): string {
 }
 
 // ---------------------------------------------------------------------------
+// Caller-role TRUNCATE — check 7
+// ---------------------------------------------------------------------------
+//
+// WHY 7 EXISTS (2026-10-07, migration 0284). TRUNCATE is not subject to row
+// level security and fires no row trigger, and Supabase's default privileges
+// plus deploy-provision's old `grant all on all tables` handed it to anon and
+// authenticated on every public table (55 of 65 on a fresh local stack). No
+// caller-role path needs it — PostgREST has no TRUNCATE verb and the app
+// writes through Drizzle. Checks 1-6 judge policies and SELECT columns; none
+// of them sees a table-level privilege that policies cannot filter.
+//
+// THE RULE: no public table is truncatable by anon or authenticated (directly
+// or through PUBLIC). There is no allowlist: a caller role has no reason to
+// empty a table. deploy-provision runs the same rule after its grants
+// (callerTruncateProvisionShortfalls).
+
+/** One public table a caller role can TRUNCATE. */
+export type CallerTruncateRow = {
+  table_name: string;
+  roles: string[];
+};
+
+export async function fetchCallerTruncateGrants(
+  client: postgres.Sql,
+): Promise<CallerTruncateRow[]> {
+  return await client<CallerTruncateRow[]>`
+    SELECT c.relname::text AS table_name,
+           array_agg(r.role::text ORDER BY r.role) AS roles
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    CROSS JOIN unnest(ARRAY['anon', 'authenticated']) AS r(role)
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r', 'p')
+      AND has_table_privilege(r.role, c.oid, 'TRUNCATE')
+    GROUP BY c.relname
+    ORDER BY c.relname
+  `;
+}
+
+/** One shortfall line per table a caller role can TRUNCATE. */
+export function callerTruncateProvisionShortfalls(rows: CallerTruncateRow[]): string[] {
+  return rows.map(
+    (row) => `${row.roles.join("/")} can TRUNCATE public.${row.table_name} (migration 0284)`,
+  );
+}
+
+function describeCallerTruncateViolation(row: CallerTruncateRow): string {
+  return `✗ ${row.table_name} — ${row.roles.join(" and ")} can TRUNCATE this table. TRUNCATE skips RLS and row triggers, and no caller-role path needs it: REVOKE TRUNCATE ON public.${row.table_name} FROM PUBLIC, anon, authenticated; in a forward-only migration (see 0284), and check that nothing re-grants it — deploy-provision's applySchemaGrants grants the caller roles an explicit list without TRUNCATE.`;
+}
+
+// ---------------------------------------------------------------------------
 // Platform-admin predicates — check 5
 // ---------------------------------------------------------------------------
 //
@@ -867,7 +922,7 @@ type Violation = {
 // ---------------------------------------------------------------------------
 
 const SKIPPED_CHECKS =
-  "  NOT run: RLS-enabled, policy-count and policy-roles coverage over every public table, storage.objects bucket-read scoping, the anon read-surface column check, and the LIVE half of the platform-admin predicate check (the static half over db/*.sql still ran).";
+  "  NOT run: RLS-enabled, policy-count and policy-roles coverage over every public table, storage.objects bucket-read scoping, the anon read-surface column check, the caller-role TRUNCATE check, and the LIVE half of the platform-admin predicate check (the static half over db/*.sql still ran).";
 
 /**
  * The static half of check 5 runs BEFORE the database is consulted and fails
@@ -905,6 +960,7 @@ async function fetchCoverage(
   storagePolicies: StoragePolicyRow[];
   authorityTexts: AuthorityTextRow[];
   anonReadSurface: AnonReadRow[];
+  callerTruncate: CallerTruncateRow[];
 } | null> {
   const sql = postgres(rawUrl, { max: 1, connect_timeout: 5 });
   try {
@@ -914,6 +970,7 @@ async function fetchCoverage(
       storagePolicies: await fetchStoragePolicies(sql),
       authorityTexts: await fetchAuthorityTexts(sql),
       anonReadSurface: await fetchAnonReadSurface(sql),
+      callerTruncate: await fetchCallerTruncateGrants(sql),
     };
   } catch (err) {
     // A DB-less box is not a failure — but it is not a pass either, and it has
@@ -963,6 +1020,38 @@ export function evaluateCoverage(rows: TableRlsRow[]): {
   return { violations, allowlisted };
 }
 
+function describeCoverageViolation(v: Violation): string {
+  if (v.kind === "rls_disabled") {
+    return `✗ ${v.table_name} — RLS is DISABLED. Call ALTER TABLE public.${v.table_name} ENABLE ROW LEVEL SECURITY; in a migration, then add at least one policy (or add to DENY_ALL_ALLOWLIST with a documented reason if deny-all is intentional).`;
+  }
+  return `✗ ${v.table_name} — RLS is enabled but has ZERO policies. Add at least one policy to this table, or add it to DENY_ALL_ALLOWLIST in scripts/check-rls-coverage.ts with a one-line reason if deny-all is intentional (e.g. service-role-only access).`;
+}
+
+/** Every live violation, one console line each, grouped by check. */
+function printViolations(found: {
+  coverage: Violation[];
+  roles: ReturnType<typeof evaluatePolicyRoles>["violations"];
+  storage: ReturnType<typeof evaluateStorageReadPolicies>["violations"];
+  admin: ReturnType<typeof evaluatePlatformAdminPredicates>["violations"];
+  anon: AnonReadViolation[];
+  truncate: CallerTruncateRow[];
+}): void {
+  for (const v of found.coverage) console.error(describeCoverageViolation(v));
+  for (const v of found.roles) {
+    console.error(
+      `✗ ${v.table_name} — policy "${v.policy_name}" (${v.cmd}) has NO TO clause, so it applies to PUBLIC: every role, including anon (the key that ships in the client bundle). Name the roles in a forward-only migration — ALTER POLICY "${v.policy_name}" ON public.${v.table_name} TO authenticated; — or, with a reviewed reason, add "${v.table_name}:${v.policy_name}" to PUBLIC_ROLE_ALLOWLIST in scripts/check-rls-coverage.ts. A predicate that happens to reject anon today is not a role set.`,
+    );
+  }
+  for (const v of found.storage) {
+    console.error(
+      `✗ storage.objects — policy "${v.policy_name}" (${v.cmd}, TO ${v.roles}) grants READ with a predicate that never names the caller: ${v.qual}. That is TRUE for every object in the bucket, and POST /storage/v1/object/list/{bucket} is filtered by this policy — so any account with that role can ENUMERATE and download the whole bucket. "Discovery is gated by the SSR layer" is not true of the Storage REST API. Fix: drop the policy in a forward-only migration and sign reads as service role behind a caller that has already authorized (see lib/infra/storage.ts, migrations 0164 and 0172) — or, with a reviewed reason, add "${v.policy_name}" to STORAGE_READ_POLICY_ALLOWLIST in scripts/check-rls-coverage.ts.`,
+    );
+  }
+  for (const v of found.admin) console.error(describeAdminViolation(v));
+  for (const v of found.anon) console.error(describeAnonReadViolation(v));
+  for (const row of found.truncate) console.error(describeCallerTruncateViolation(row));
+}
+
 export async function runCheck(argv: string[] = []): Promise<void> {
   const allowRemote = argv.includes("--allow-remote");
 
@@ -1009,38 +1098,23 @@ export async function runCheck(argv: string[] = []): Promise<void> {
   const adminScanVacuous = livePredicates.length < MIN_ADMIN_PREDICATES_IN_CATALOG;
   const anonCheck = evaluateAnonReadSurface(fetched.anonReadSurface);
 
-  if (
-    !staticAdminClean ||
-    violations.length > 0 ||
-    roleCheck.violations.length > 0 ||
-    storageCheck.violations.length > 0 ||
-    adminCheck.violations.length > 0 ||
-    adminScanVacuous ||
-    anonCheck.violations.length > 0
-  ) {
-    for (const v of violations) {
-      if (v.kind === "rls_disabled") {
-        console.error(
-          `✗ ${v.table_name} — RLS is DISABLED. Call ALTER TABLE public.${v.table_name} ENABLE ROW LEVEL SECURITY; in a migration, then add at least one policy (or add to DENY_ALL_ALLOWLIST with a documented reason if deny-all is intentional).`,
-        );
-      } else {
-        console.error(
-          `✗ ${v.table_name} — RLS is enabled but has ZERO policies. Add at least one policy to this table, or add it to DENY_ALL_ALLOWLIST in scripts/check-rls-coverage.ts with a one-line reason if deny-all is intentional (e.g. service-role-only access).`,
-        );
-      }
-    }
-    for (const v of roleCheck.violations) {
-      console.error(
-        `✗ ${v.table_name} — policy "${v.policy_name}" (${v.cmd}) has NO TO clause, so it applies to PUBLIC: every role, including anon (the key that ships in the client bundle). Name the roles in a forward-only migration — ALTER POLICY "${v.policy_name}" ON public.${v.table_name} TO authenticated; — or, with a reviewed reason, add "${v.table_name}:${v.policy_name}" to PUBLIC_ROLE_ALLOWLIST in scripts/check-rls-coverage.ts. A predicate that happens to reject anon today is not a role set.`,
-      );
-    }
-    for (const v of storageCheck.violations) {
-      console.error(
-        `✗ storage.objects — policy "${v.policy_name}" (${v.cmd}, TO ${v.roles}) grants READ with a predicate that never names the caller: ${v.qual}. That is TRUE for every object in the bucket, and POST /storage/v1/object/list/{bucket} is filtered by this policy — so any account with that role can ENUMERATE and download the whole bucket. "Discovery is gated by the SSR layer" is not true of the Storage REST API. Fix: drop the policy in a forward-only migration and sign reads as service role behind a caller that has already authorized (see lib/infra/storage.ts, migrations 0164 and 0172) — or, with a reviewed reason, add "${v.policy_name}" to STORAGE_READ_POLICY_ALLOWLIST in scripts/check-rls-coverage.ts.`,
-      );
-    }
-    for (const v of adminCheck.violations) console.error(describeAdminViolation(v));
-    for (const v of anonCheck.violations) console.error(describeAnonReadViolation(v));
+  const violationCounts = [
+    violations.length,
+    roleCheck.violations.length,
+    storageCheck.violations.length,
+    adminCheck.violations.length,
+    anonCheck.violations.length,
+    fetched.callerTruncate.length,
+  ];
+  if (!staticAdminClean || adminScanVacuous || violationCounts.some((n) => n > 0)) {
+    printViolations({
+      coverage: violations,
+      roles: roleCheck.violations,
+      storage: storageCheck.violations,
+      admin: adminCheck.violations,
+      anon: anonCheck.violations,
+      truncate: fetched.callerTruncate,
+    });
     if (adminScanVacuous) {
       console.error(
         `✗ platform-admin predicate scan found only ${livePredicates.length} test(s) in the live catalog (floor ${MIN_ADMIN_PREDICATES_IN_CATALOG}). An empty inventory reads exactly like a clean one — the scanner or the catalog query is broken.`,
@@ -1052,7 +1126,8 @@ export async function runCheck(argv: string[] = []): Promise<void> {
         `✗ RLS coverage check FAILED — ${violations.length} table violation(s), ` +
           `${roleCheck.violations.length} PUBLIC-role policy violation(s), ` +
           `${storageCheck.violations.length} storage-bucket read violation(s), ` +
-          `${anonCheck.violations.length} anon read-surface violation(s) and ` +
+          `${anonCheck.violations.length} anon read-surface violation(s), ` +
+          `${fetched.callerTruncate.length} caller-role TRUNCATE violation(s) and ` +
           `${adminCheck.violations.length} platform-admin predicate violation(s) (live${staticAdminClean ? "" : "; the static db/*.sql scan failed too, see above"}) across ${totalTables} tables, ` +
           `${fetched.policies.length} public policies and ${fetched.storagePolicies.length} storage.objects policies. ` +
           `Allowlisted deny-all tables (excluded): ${allowlisted.length}.`,
@@ -1080,6 +1155,9 @@ export async function runCheck(argv: string[] = []): Promise<void> {
   );
   console.log(
     `✓ Anon read surface declared — ${anonCheck.surfaced.length} table(s) anon can read through a policy, each inside its ANON_READ_SURFACE column set: ${anonCheck.surfaced.join(", ")}.`,
+  );
+  console.log(
+    "✓ Caller-role TRUNCATE closed — no public table is truncatable by anon or authenticated.",
   );
   console.log(
     `✓ Platform-authority predicates (live) — ${livePredicates.length} role = 'admin' / 'govt' tests on profiles across ${fetched.authorityTexts.length} policy predicates + function bodies, every one carries deleted_at + deactivated_at.`,
