@@ -48,6 +48,12 @@ export const LIBRETA_TRUNCATED_NOTE = "Mostrando los eventos más recientes.";
 
 export type LibretaView = {
   publicToken: string;
+  /**
+   * The reader came through a person's holding (owner, co-owner, foster,
+   * caretaker), not an organization. "Pedir verificación" is offered only
+   * then: the web strips it on the org path (`WalkInHistory`).
+   */
+  onOwnerPath: boolean;
   /** The viewer's own capability, for the screen's chrome. */
   canAmend: boolean;
   identity: SectionView<LibretaIdentitySection>;
@@ -59,6 +65,7 @@ export type LibretaView = {
 export function buildLibretaView(payload: PetLibretaV1): LibretaView {
   return {
     publicToken: payload.publicToken,
+    onOwnerPath: payload.viewer.role !== "org_member",
     canAmend: payload.viewer.canAmend,
     identity: sectionView(payload.identity),
     vaccination: sectionView(payload.vaccination),
@@ -326,6 +333,11 @@ export function tripPapersGroupLabel(count: number, country: string | null): str
   return [TRIP_PAPERS_UPDATED_LABEL, `${count} ${pluralizeEs(count, "cambio")}`, country]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** One tick's line in an expanded row — the web's `tripPapersTickLabel`. */
+export function tripPapersTickLabel(indexNewestFirst: number, total: number): string {
+  return `Cambio ${total - indexNewestFirst} de ${total}`;
 }
 
 /**
