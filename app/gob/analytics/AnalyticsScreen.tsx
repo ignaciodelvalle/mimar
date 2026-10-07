@@ -588,8 +588,8 @@ export async function AnalyticsScreen({
                     Se marca <strong>desierto de atención</strong> solo por debajo de{" "}
                     {vetAccess.desertThresholdPer1k.toLocaleString("es-AR")} actos / 1.000 activos
                     en este período — el equivalente a 1 acto veterinario por mascota al año, el
-                    piso que implica la antirrábica anual recomendada (la Ley 22.953 la hace
-                    obligatoria sin fijar la frecuencia).
+                    piso que implica la antirrábica anual obligatoria (Ley 22.953; revacunación
+                    anual según la guía nacional, Res. MS 1144/2018).
                   </>
                 ) : (
                   <>

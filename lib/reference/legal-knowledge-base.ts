@@ -138,7 +138,7 @@ export const LEGAL_KNOWLEDGE_GROUPS: LegalKnowledgeGroup[] = [
         plainMeaning:
           "Es la norma general de tenencia de perros y gatos en la Ciudad de Buenos Aires.",
         whatItSays:
-          "Crea el Registro Municipal de Animales Domésticos, hace obligatoria la vacuna antirrábica, con la frecuencia que fije la autoridad sanitaria, y pide identificar al animal.",
+          "Crea el Registro Municipal de Animales Domésticos, hace obligatoria la vacuna antirrábica y pide identificar al animal. La guía nacional del Ministerio de Salud fija la primera dosis a los 3 meses y la revacunación anual.",
         whoItAppliesTo: "Dueños de perros y gatos que viven en la Ciudad de Buenos Aires.",
         mimarObligation:
           "Es la norma de la Ciudad que más se relaciona con lo que registra miMAR: la identificación de tu mascota, sus vacunas y los períodos de observación antirrábica.",
@@ -200,7 +200,7 @@ export const LEGAL_KNOWLEDGE_GROUPS: LegalKnowledgeGroup[] = [
         plainMeaning:
           "Declara de interés nacional la lucha contra la rabia que transmiten perros y gatos, y es la base de las campañas antirrábicas.",
         whatItSays:
-          "Declara de interés nacional la lucha contra la rabia transmitida por perros y gatos. La edad mínima y la frecuencia de la vacuna las fijan las normas de cada provincia y municipio.",
+          "Declara de interés nacional la lucha contra la rabia transmitida por perros y gatos y obliga a vacunarlos. La guía nacional del Ministerio de Salud (Resolución 1144/2018) fija la primera dosis a los 3 meses y la revacunación anual.",
         whoItAppliesTo:
           "Es una ley nacional: rige en todo el país y es la base de las campañas antirrábicas.",
         mimarObligation:
