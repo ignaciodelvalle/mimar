@@ -30,7 +30,7 @@
 // @no-auth-required: signup is by definition pre-authentication.
 
 import type { AuthSessionV1 } from "@dim/contract/api";
-import { MIN_PASSWORD_LENGTH } from "@dim/contract/input";
+import { MIN_PASSWORD_LENGTH, isLegacySignupClient } from "@dim/contract/input";
 
 import { RateLimitError, enforceRateLimit } from "@/lib/infra/rate-limit";
 import { reportError } from "@/lib/infra/report-error";
@@ -51,10 +51,12 @@ export type SignupInput = {
   /**
    * The separate international-transfer box (legal review P10) and the 18+
    * declaration (P9), both required since 2026-10-07 — see
-   * `@dim/contract/input` → `requiredConsent`. Never folded into `tosAccepted`.
+   * `@dim/contract/input`. Never folded into `tosAccepted`. ABSENT only from
+   * the legacy one-box client (`isLegacySignupClient`), which is accepted and
+   * recorded under the older version it displayed.
    */
-  transferAccepted: boolean;
-  adultDeclared: boolean;
+  transferAccepted?: boolean;
+  adultDeclared?: boolean;
   /**
    * The legal version whose consent sentence the CLIENT displayed. The web
    * action passes its own `LEGAL_VERSION` explicitly (it renders the sentence
@@ -129,7 +131,13 @@ export async function signup(input: SignupInput, deps: SignupDeps): Promise<Sign
       "Tenés que aceptar los Términos y la Política de privacidad.",
     );
   }
-  if (!input.transferAccepted) {
+  // THE LEGACY CLIENT (v13 Android, PO 2026-10-07): it predates the two boxes
+  // and must still be able to sign up. It is recorded under the older version
+  // it displayed (below, `resolveAcceptedLegalVersion`), so the re-acceptance
+  // circuit asks it for the current three boxes at its next sign-in. Anybody
+  // else — the web form, v14 — must tick both.
+  const legacy = isLegacySignupClient(input);
+  if (!legacy && input.transferAccepted !== true) {
     return refuse(
       "transfer_not_accepted",
       "Tenés que aceptar la transferencia de tus datos a Brasil y Estados Unidos para crear la cuenta.",
@@ -139,7 +147,7 @@ export async function signup(input: SignupInput, deps: SignupDeps): Promise<Sign
   // 18+ is the review's minimum measure; counsel fixes the real threshold and
   // whether a parent can consent below it. Until then, no declaration, no
   // account.
-  if (!input.adultDeclared) {
+  if (!legacy && input.adultDeclared !== true) {
     return refuse("adult_not_declared", "Para crear una cuenta tenés que tener 18 años o más.");
   }
 

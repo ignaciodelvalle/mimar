@@ -17,6 +17,7 @@ import {
   MIN_PASSWORD_LENGTH,
   SIGNUP_INPUT_CODES,
   firstInputCode,
+  isLegacySignupClient,
   legalAcceptanceInputSchema,
   loginInputSchema,
   signupInputSchema,
@@ -154,12 +155,34 @@ describe("signupInputSchema", () => {
   });
 
   it.each(["transferAccepted", "adultDeclared"] as const)(
-    "rejects an OMITTED %s — the old single-box client is refused, not grandfathered",
+    "rejects an OMITTED %s when the other box is sent — only the whole legacy shape passes",
     (field) => {
       const { [field]: _omitted, ...without } = VALID_SIGNUP;
       expect(signupInputSchema.safeParse(without).success).toBe(false);
     },
   );
+
+  // THE v13 CLIENT (PO 2026-10-07: do not break its signups). It sends neither
+  // box and the version it displayed, 2026-09-24. Accepted, and recorded under
+  // that older version, so the re-acceptance circuit catches the account.
+  it("ACCEPTS the v13 one-box payload, and names it legacy", () => {
+    const { transferAccepted: _t, adultDeclared: _a, ...oneBox } = VALID_SIGNUP;
+    const v13 = { ...oneBox, legalVersion: "2026-09-24" };
+    expect(signupInputSchema.safeParse(v13).success).toBe(true);
+    expect(isLegacySignupClient(v13)).toBe(true);
+    // A bundle from before `legalVersion` existed is the same case.
+    expect(signupInputSchema.safeParse(oneBox).success).toBe(true);
+  });
+
+  it("REFUSES a client that displayed the current version without the boxes (v14)", () => {
+    const { transferAccepted: _t, adultDeclared: _a, ...oneBox } = VALID_SIGNUP;
+    const v14 = { ...oneBox, legalVersion: "2026-10-07" };
+    expect(isLegacySignupClient(v14)).toBe(false);
+    const result = signupInputSchema.safeParse(v14);
+    expect(result.success).toBe(false);
+    if (!result.success)
+      expect(firstInputCode(SIGNUP_INPUT_CODES, result.error)).toBe("TRANSFER_NOT_ACCEPTED");
+  });
 
   it('rejects the string "on" — the form encoding is the ACTION edge\'s to translate', () => {
     // The web checkbox sends "on". If this schema coerced it, the contract

@@ -50,6 +50,7 @@ export {
   type SignupInput,
   type SignupInputCode,
   firstInputCode,
+  isLegacySignupClient,
   legalAcceptanceInputSchema,
   loginInputSchema,
   passwordResetRequestInputSchema,

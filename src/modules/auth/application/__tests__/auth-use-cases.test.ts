@@ -402,6 +402,21 @@ describe("signup — gates, in order", () => {
     expect(trace).toEqual([]);
   });
 
+  // THE v13 CLIENT (PO 2026-10-07): neither box and an older displayed version.
+  // Passes the gates (and is recorded under that version — see the recorder
+  // tests above); the same shape claiming the CURRENT version is refused.
+  it("lets the legacy one-box client through, and refuses the same shape on the current version", async () => {
+    const { transferAccepted: _t, adultDeclared: _a, ...oneBox } = VALID;
+    const legacy = await signup(
+      { ...oneBox, legalVersion: "2026-09-24" },
+      deps(signupPort({ user: { id: "u1" }, session: GOTRUE_SESSION })),
+    );
+    expect(legacy.ok).toBe(true);
+
+    const current = await signup({ ...oneBox, legalVersion: "2026-10-07" }, deps(signupPort({})));
+    expect(current.ok === false && current.error.code).toBe("transfer_not_accepted");
+  });
+
   it("never reaches GoTrue when the budget refuses", async () => {
     limiter.behaviour = () => {
       throw new RateLimitError(new Date(), "auth_signup_ip");

@@ -1005,8 +1005,8 @@ export async function signUp(input: {
   confirmPassword: string;
   tosAccepted: boolean;
   /** The separate transfer box and the 18+ box (2026-10-07, review P10/P9). */
-  transferAccepted: boolean;
-  adultDeclared: boolean;
+  transferAccepted?: boolean;
+  adultDeclared?: boolean;
   /** The legal version whose consent sentence this bundle displayed. */
   legalVersion?: string;
 }): Promise<SignUpResult> {

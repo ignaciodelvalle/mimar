@@ -74,10 +74,11 @@ export async function POST(request: Request) {
   // the backstop for a client out of step with the contract package — including
   // one that tries to omit `tosAccepted`, which the schema requires as a
   // literal boolean because a legal acceptance is never defaulted into being.
-  // The same goes for `transferAccepted` and `adultDeclared` (2026-10-07): a
-  // bundle built before those boxes existed sends neither, and is refused here
-  // with `invalid_request` — whose copy on the phone asks to update the app —
-  // rather than creating an account without them.
+  // `transferAccepted` and `adultDeclared` (2026-10-07) are required from any
+  // client that displayed the current version. The v13 bundle predates them and
+  // sends neither: it is ACCEPTED (PO 2026-10-07, v13 is the Play build until
+  // v14 ships) and recorded under the older version it displayed, so the
+  // re-acceptance circuit catches the account later. See `isLegacySignupClient`.
   const parsed = signupInputSchema.safeParse(body);
   if (!parsed.success) return apiV1Error("invalid_request", 400);
 

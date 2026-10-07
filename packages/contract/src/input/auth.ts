@@ -29,6 +29,8 @@
 
 import { z } from "zod";
 
+import { LEGAL_VERSION } from "../reference/legal-version.ts";
+
 // ---------------------------------------------------------------------------
 // Field helpers
 // ---------------------------------------------------------------------------
@@ -106,16 +108,49 @@ export type SignupInputCode = (typeof SIGNUP_INPUT_CODES)[number];
 
 /**
  * The two boxes added on 2026-10-07 (legal review 2026-10-02, P10 and P9; PO
- * decision D2 = b, conservative interim). Each is its OWN required boolean,
- * never folded into `tosAccepted`: the international transfer must be consented
- * "en forma expresa y destacada" when it is given beside other declarations
- * (Dec. 1558/2001, art. 5 inc. 1), and a box that also accepts the Terms is not
- * that. Required on the wire too, so a client built before these boxes existed
- * is refused (`invalid_request`, whose copy asks to update the app) instead of
- * creating an account with no transfer consent and no age declaration.
+ * decision D2 = b, conservative interim). Each is its OWN boolean, never folded
+ * into `tosAccepted`: the international transfer must be consented "en forma
+ * expresa y destacada" when it is given beside other declarations (Dec.
+ * 1558/2001, art. 5 inc. 1), and a box that also accepts the Terms is not that.
  */
 const requiredConsent = (code: string) =>
   z.boolean({ error: code }).refine((v) => v, { error: code });
+
+/**
+ * A box that is refused when sent FALSE but may be ABSENT — signup only, and
+ * only for the legacy client below.
+ */
+const legacyOptionalConsent = (code: string) =>
+  z
+    .boolean({ error: code })
+    .optional()
+    .refine((v) => v !== false, { error: code });
+
+/**
+ * THE LEGACY CLIENT (PO 2026-10-07: do not break v13 signups). The Android v13
+ * build is the Play build until v14 ships and it predates the two boxes: it
+ * sends `tosAccepted` and `legalVersion: "2026-09-24"` and nothing else. Its
+ * signup is ACCEPTED and recorded under the version it displayed — an older
+ * one — so the re-acceptance circuit asks that account for the current three
+ * boxes at its next web sign-in or in v14 (lib/domain/legal-acceptance.ts).
+ *
+ * Told apart by SHAPE, because the app sends no version header: neither box
+ * present AND a displayed version that is not the current one. A client that
+ * displayed the current version (the web form, v14 and later) must send both,
+ * TRUE. Claiming "legacy" buys nothing: the account is recorded on an old
+ * version and lands on the re-acceptance screen before it can use anything.
+ */
+export function isLegacySignupClient(v: {
+  transferAccepted?: boolean;
+  adultDeclared?: boolean;
+  legalVersion?: string;
+}): boolean {
+  return (
+    v.transferAccepted === undefined &&
+    v.adultDeclared === undefined &&
+    v.legalVersion !== LEGAL_VERSION
+  );
+}
 
 export const signupInputSchema = z
   .object({
@@ -133,10 +168,10 @@ export const signupInputSchema = z
      * describes the boolean.
      */
     tosAccepted: z.boolean(),
-    /** The separate international-transfer box (P10). See `requiredConsent`. */
-    transferAccepted: requiredConsent("TRANSFER_NOT_ACCEPTED"),
-    /** The "Tengo 18 años o más" box (P9, interim). See `requiredConsent`. */
-    adultDeclared: requiredConsent("ADULT_NOT_DECLARED"),
+    /** The separate international-transfer box (P10). Absent only for a legacy client. */
+    transferAccepted: legacyOptionalConsent("TRANSFER_NOT_ACCEPTED"),
+    /** The "Tengo 18 años o más" box (P9, interim). Absent only for a legacy client. */
+    adultDeclared: legacyOptionalConsent("ADULT_NOT_DECLARED"),
     /**
      * The legal version whose consent sentence the client DISPLAYED
      * (`@dim/contract/reference` → `LEGAL_VERSION` at the client's build).
@@ -149,7 +184,13 @@ export const signupInputSchema = z
     legalVersion: z.string().max(32).optional(),
   })
   .refine((v) => v.password === v.confirmPassword, { error: "PASSWORD_MISMATCH" })
-  .refine((v) => v.tosAccepted, { error: "TOS_NOT_ACCEPTED" });
+  .refine((v) => v.tosAccepted, { error: "TOS_NOT_ACCEPTED" })
+  .refine((v) => isLegacySignupClient(v) || v.transferAccepted === true, {
+    error: "TRANSFER_NOT_ACCEPTED",
+  })
+  .refine((v) => isLegacySignupClient(v) || v.adultDeclared === true, {
+    error: "ADULT_NOT_DECLARED",
+  });
 
 export type SignupInput = z.infer<typeof signupInputSchema>;
 
