@@ -699,11 +699,12 @@ export async function appendBite(
   );
 
   // The open-observation refusal is a fact about the ANIMAL, not a fault: a 409
-  // the app can act on, and nothing paged. It runs AFTER the replay check
-  // (plan A5c), so a retry of the bite that opened the observation never lands
-  // here — it answers 201 with `wasDuplicate: true`.
+  // the app can act on, and nothing paged. Its own code, not `event_not_allowed`
+  // — that one's client copy says the animal is deceased. It runs AFTER the
+  // replay check (plan A5c), so a retry of the bite that opened the observation
+  // never lands here — it answers 201 with `wasDuplicate: true`.
   if (!result.ok && result.error === OBSERVATION_OPEN_ERROR) {
-    return apiV1Error("event_not_allowed", 409);
+    return apiV1Error("bite_observation_open", 409);
   }
   if (!result.ok) {
     reportError("api-v1-event", new Error(result.error), { userId: ctx.userId });
