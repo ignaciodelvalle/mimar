@@ -138,22 +138,39 @@ export function isRabiesVaccineName(name: unknown): boolean {
   return RABIES_FAMILY_IN_KEY.test(vaccineNameKey(name));
 }
 
-// Names that say "rabies" and nothing else. Anything longer ("DHPP +
-// antirrábica", "antirrábica refuerzo") may carry other components.
-const PLAIN_RABIES_KEYS: ReadonlySet<string> = new Set([
-  "rabia",
-  "rabies",
-  "antirrabica",
-  "vacuna antirrabica",
-  "vacuna contra la rabia",
+// Words that say nothing about WHICH vaccine a dose was: they may sit beside
+// the rabies word without making the name carry anything else.
+const RABIES_NAME_FILLER: ReadonlySet<string> = new Set([
+  "vacuna",
+  "contra",
+  "la",
+  "anual",
+  "refuerzo",
+  "dosis",
+  "de",
 ]);
 
+// A "+" joins vaccines; parentheses may name one ("Séxtuple (DHPPi-L)") or a
+// brand that makes several ("Nobivac"). Either way the name may carry another
+// vaccine, so it is never plain.
+const MAY_CARRY_ANOTHER_VACCINE = /[+()]/;
+
 /**
- * True when the name is ONLY a rabies vaccine. A rabies-family name that is not
- * plain is a dose that ALSO counts as something unidentified — the libreta
- * keeps it in its off-catalog set so the other core vaccines stay
- * "unconfirmed" instead of being asserted as never given (PO 2026-07-28).
+ * True when the name is ONLY a rabies vaccine: once the rabies word, digits,
+ * punctuation and filler words (vacuna, contra, la, anual, refuerzo, dosis, de)
+ * are stripped, nothing is left. "Vacuna antirrábica anual" and "antirrabica
+ * 2024" are plain; "DHPP + antirrábica" and "Rabia (Nobivac)" are not.
+ *
+ * A rabies-family name that is not plain is a dose that ALSO counts as
+ * something unidentified — the libreta keeps it in its off-catalog set so the
+ * other core vaccines stay "unconfirmed" instead of being asserted as never
+ * given (PO 2026-07-28).
  */
 export function isPlainRabiesVaccineName(name: string): boolean {
-  return PLAIN_RABIES_KEYS.has(vaccineNameKey(name));
+  const key = vaccineNameKey(name);
+  if (!RABIES_FAMILY_IN_KEY.test(key) || MAY_CARRY_ANOTHER_VACCINE.test(key)) return false;
+  const rest = key
+    .split(/[^a-z]+/)
+    .filter((word) => word && !RABIES_FAMILY_IN_KEY.test(word) && !RABIES_NAME_FILLER.has(word));
+  return rest.length === 0;
 }
