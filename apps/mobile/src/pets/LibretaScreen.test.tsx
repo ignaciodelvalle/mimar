@@ -300,3 +300,89 @@ describe("a medication course in Próximo", () => {
     expect(screen.queryByText(/Dosis · /)).toBeNull();
   });
 });
+
+describe("LibretaScreen — Pedir verificación", () => {
+  it("links an unverified rabies dose to finding a turno, as the web does", async () => {
+    mockFetchPetLibreta.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        timeline: {
+          status: "ok",
+          data: {
+            entries: [entry({ warning: "Falta verificación profesional" })],
+            total: 1,
+            truncated: false,
+          },
+        },
+      }),
+    });
+    render(<LibretaScreen publicToken={TOKEN} />);
+    expect(await screen.findByText("Falta verificación profesional")).toBeOnTheScreen();
+    fireEvent.press(screen.getByRole("link", { name: "Pedir verificación" }));
+    expect(mockPush).toHaveBeenCalledWith("/turnos/buscar");
+    // The link is its own control: it does not also open the asiento.
+    expect(mockPush).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers no link for a verified dose or for another vaccine", async () => {
+    mockFetchPetLibreta.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        timeline: {
+          status: "ok",
+          data: {
+            entries: [
+              entry({ eventId: "e-1", provenance: { label: "Verificado", verified: true } }),
+              entry({
+                eventId: "e-2",
+                kind: "Vacuna",
+                title: "Séxtuple",
+                warning: "Falta verificación profesional",
+              }),
+            ],
+            total: 2,
+            truncated: false,
+          },
+        },
+      }),
+    });
+    render(<LibretaScreen publicToken={TOKEN} />);
+    expect(await screen.findByText("Verificado")).toBeOnTheScreen();
+    expect(screen.queryByText("Pedir verificación")).toBeNull();
+  });
+});
+
+describe("LibretaScreen — trip papers ticks", () => {
+  function tick(id: string) {
+    return entry({
+      eventId: id,
+      eventType: "event_amended",
+      kind: "Viaje",
+      title: "Papeles del viaje actualizados",
+      facts: [
+        { key: "Fecha", value: "20 de agosto de 2026", missing: false, mono: false },
+        { key: "Destino", value: "Chile", missing: false, mono: false },
+        { key: "Fecha del viaje", value: "15 de nov de 2026", missing: false, mono: false },
+      ],
+    });
+  }
+
+  it("draws consecutive same-day ticks of one trip as ONE row, opening the newest", async () => {
+    mockFetchPetLibreta.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        timeline: {
+          status: "ok",
+          data: { entries: [tick("t-3"), tick("t-2"), tick("t-1")], total: 3, truncated: false },
+        },
+      }),
+    });
+    render(<LibretaScreen publicToken={TOKEN} />);
+    const row = await screen.findByText("Papeles del viaje actualizados · 3 cambios · Chile");
+    expect(screen.queryByText("Papeles del viaje actualizados")).toBeNull();
+    // The count above the ledger is still the log's: three asientos.
+    expect(screen.getByText("3 registros")).toBeOnTheScreen();
+    fireEvent.press(row);
+    expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/eventos/t-3`);
+  });
+});

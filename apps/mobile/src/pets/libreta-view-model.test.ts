@@ -1,4 +1,5 @@
 import type {
+  LibretaEntryV1,
   LibretaUpcomingItemV1,
   LibretaVaccinationSection,
   PetLibretaV1,
@@ -9,9 +10,13 @@ import {
   amendedLabel,
   buildLibretaView,
   calendarDaysBetweenInAr,
+  groupLedgerEntries,
   ledgerCountLabel,
+  offersVerificationRequest,
   otherVaccinesNote,
   speciesLine,
+  tripPapersGroupLabel,
+  tripPapersTickKey,
   upcomingDueLabel,
   upcomingKindLabel,
   upcomingRemainingLabel,
@@ -233,5 +238,108 @@ describe("an upcoming row's text — the kind is said once", () => {
     // A server from before the collapse sends no count; say nothing rather than guess.
     expect(upcomingRemainingLabel(item({ kind: "medication" }))).toBeNull();
     expect(upcomingRemainingLabel(item({ remainingDoses: null }))).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+function anEntry(over: Partial<LibretaEntryV1> = {}): LibretaEntryV1 {
+  return {
+    eventId: "evt-1",
+    visitId: null,
+    eventType: "vaccination_administered",
+    kind: "Vacuna · obligatoria",
+    title: "Antirrábica",
+    occurredAt: "2026-07-01T15:00:00.000Z",
+    whenRelative: "hace 3 días",
+    whenAbsolute: "1 de jul de 2026",
+    facts: [],
+    note: null,
+    provenance: { verified: false, label: "Declarado por vos" },
+    warning: "Falta verificación profesional",
+    amendedAt: null,
+    hasAttachment: false,
+    canAmend: false,
+    ...over,
+  } as LibretaEntryV1;
+}
+
+function aTick(id: string, over: Partial<LibretaEntryV1> = {}): LibretaEntryV1 {
+  return anEntry({
+    eventId: id,
+    eventType: "event_amended",
+    kind: "Viaje",
+    title: "Papeles del viaje actualizados",
+    warning: null,
+    facts: [
+      { key: "Fecha", value: "1 de jul de 2026", missing: false, mono: false },
+      { key: "Destino", value: "Chile", missing: false, mono: false },
+      { key: "Fecha del viaje", value: "15 de nov de 2026", missing: false, mono: false },
+    ],
+    ...over,
+  });
+}
+
+describe("offersVerificationRequest — the web's verifyHref rule", () => {
+  it("offers it for an unverified rabies dose", () => {
+    expect(offersVerificationRequest(anEntry())).toBe(true);
+  });
+
+  it("does not for a verified one, another vaccine, or another record", () => {
+    expect(
+      offersVerificationRequest(anEntry({ provenance: { verified: true, label: "Verificado" } })),
+    ).toBe(false);
+    expect(offersVerificationRequest(anEntry({ kind: "Vacuna", title: "Séxtuple" }))).toBe(false);
+    expect(offersVerificationRequest(anEntry({ eventType: "deworming_administered" }))).toBe(false);
+  });
+});
+
+describe("groupLedgerEntries — papers ticks drawn as one row", () => {
+  it("collapses a run of same-trip, same-day ticks and names the count and country", () => {
+    const items = groupLedgerEntries([aTick("t3"), aTick("t2"), aTick("t1"), anEntry()]);
+    expect(items).toHaveLength(2);
+    const [first, second] = items;
+    expect(first?.kind).toBe("papers");
+    if (first?.kind !== "papers") throw new Error("expected a papers row");
+    expect(first.label).toBe("Papeles del viaje actualizados · 3 cambios · Chile");
+    expect(first.entries.map((e) => e.eventId)).toEqual(["t3", "t2", "t1"]);
+    expect(second).toEqual({ kind: "entry", entry: anEntry() });
+  });
+
+  it("keeps ticks apart across days, trips, and anything in between", () => {
+    const otherDay = aTick("t0", { whenAbsolute: "30 de jun de 2026" });
+    const otherTrip = aTick("tx", {
+      facts: [{ key: "Destino", value: "Uruguay", missing: false, mono: false }],
+    });
+    const items = groupLedgerEntries([
+      aTick("t2"),
+      otherTrip,
+      aTick("t1"),
+      anEntry(),
+      aTick("tz"),
+      otherDay,
+    ]);
+    expect(items.map((item) => item.kind)).toEqual([
+      "entry",
+      "entry",
+      "entry",
+      "entry",
+      "entry",
+      "entry",
+    ]);
+  });
+
+  it("leaves a single tick as its own asiento, title untouched", () => {
+    expect(groupLedgerEntries([aTick("t1")])).toEqual([{ kind: "entry", entry: aTick("t1") }]);
+  });
+
+  it("does not key a real correction or another record", () => {
+    expect(tripPapersTickKey(anEntry())).toBeNull();
+    expect(tripPapersTickKey(aTick("c", { title: "Corrección" }))).toBeNull();
+    expect(tripPapersTickKey(aTick("t"))).toBe("Chile|15 de nov de 2026|1 de jul de 2026");
+  });
+
+  it("omits an unknown country from the label", () => {
+    expect(tripPapersGroupLabel(2, null)).toBe("Papeles del viaje actualizados · 2 cambios");
   });
 });
