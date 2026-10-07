@@ -33,6 +33,9 @@ export const REQUIRED_COLUMNS: readonly RequiredColumn[] = [
   { table: "govt_assignments", column: "locality_id", migration: "0246" },
   { table: "welfare_reports", column: "place_method", migration: "0248" },
   { table: "welfare_reports", column: "place_entered", migration: "0248" },
+  // Written by the org settings form; also read by every public directory
+  // surface (/refugios, its profiles, the sitemap), which 500 without it.
+  { table: "organizations", column: "public_directory_opt_in", migration: "0283" },
 ];
 
 /**

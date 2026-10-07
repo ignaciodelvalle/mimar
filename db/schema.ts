@@ -835,6 +835,11 @@ export const organizations = pgTable(
     // Used by the matrícula-revocation cascade (D4) to un-verify ONLY matrícula-derived
     // verifications, never institutionally-reviewed ones.
     autoVerifiedViaMatricula: boolean("auto_verified_via_matricula").notNull().default(false),
+    // Clinic opt-in to the public directory at /refugios (migration 0283, PO
+    // 2026-10-02). Read only for verified clinics; shelters and rescue networks
+    // are listed on verification alone. The one predicate is
+    // lib/infra/org-directory.ts → publicDirectoryVisible().
+    publicDirectoryOptIn: boolean("public_directory_opt_in").notNull().default(false),
     jurisdictionCountry: text("jurisdiction_country").notNull().default("AR"),
     jurisdictionProvince: text("jurisdiction_province"),
     jurisdictionLocality: text("jurisdiction_locality"),
@@ -2956,6 +2961,12 @@ export const AUDIT_LOG_ACTIONS = [
   //   org_unverified payload: { org_id, org_display_name, reason? }
   "org_verified",
   "org_unverified",
+  // Migration 0283: a clinic admin switched the clinic's listing in the public
+  // directory at /refugios. Written only when the value actually changes.
+  //   org_public_directory_opt_in_changed payload:
+  //     { org_id, before_values: { public_directory_opt_in },
+  //       after_values: { public_directory_opt_in } }
+  "org_public_directory_opt_in_changed",
   // V1-9: org-side PII access trail. Emitted when an org reviewer opens an
   // adoption application and reads the applicant's full identity (name, phone,
   // housing). One row per page view (server-component fetch — fires once per

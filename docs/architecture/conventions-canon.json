@@ -3169,7 +3169,7 @@
         "AGENTS.md:425"
       ],
       "enforcer": [
-        "db/schema.ts:1117-1120"
+        "db/schema.ts:1122-1125"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3188,7 +3188,7 @@
         "AGENTS.md:426"
       ],
       "enforcer": [
-        "db/schema.ts:1121-1123"
+        "db/schema.ts:1126-1128"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3207,7 +3207,7 @@
         "AGENTS.md:435"
       ],
       "enforcer": [
-        "db/schema.ts:1129-1131"
+        "db/schema.ts:1134-1136"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3251,7 +3251,7 @@
         "AGENTS.md:446"
       ],
       "enforcer": [
-        "db/schema.ts:4615-4618"
+        "db/schema.ts:4626-4629"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3271,7 +3271,7 @@
         "AGENTS.md:474"
       ],
       "enforcer": [
-        "db/schema.ts:4941-4943"
+        "db/schema.ts:4952-4954"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3290,7 +3290,7 @@
         "AGENTS.md:487"
       ],
       "enforcer": [
-        "db/schema.ts:5029-5031"
+        "db/schema.ts:5040-5042"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
@@ -3893,7 +3893,7 @@
         "scripts/check-audit-log-coverage.ts:14-18",
         "package.json:20 lint:audit-log",
         "scripts/check-audit-log-actions-declared.ts",
-        "db/schema.ts:2780"
+        "db/schema.ts:2785"
       ],
       "enforcementKind": "lint-script",
       "wired": "verify",
@@ -4220,7 +4220,7 @@
       ],
       "enforcer": [
         "__tests__/event-schemas.test.ts:27-40",
-        "db/schema.ts:1327"
+        "db/schema.ts:1332"
       ],
       "enforcementKind": "vitest",
       "wired": "test:verified",
