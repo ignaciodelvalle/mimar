@@ -525,7 +525,7 @@ export class WelfareRepository {
     executor: DbOrTx,
   ): Promise<{ reportId: string; referenceCode: string } | null> {
     await executor.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${reporterUserId} || ':' || ${clientIdempotencyKey}))`,
+      sql`SELECT pg_advisory_xact_lock(hashtext('welfare:' || ${reporterUserId} || ':' || ${clientIdempotencyKey}))`,
     );
     return this.findBridgedReportReplay(petId, clientIdempotencyKey, reporterUserId, executor);
   }
@@ -533,8 +533,10 @@ export class WelfareRepository {
   /**
    * Remove the report row a submit inserted when its write turned out to be a
    * concurrent twin's replay (lockAndFindBridgedReportReplay). The row was
-   * inserted before the transaction and never got a case — the guard on
-   * `case_id IS NULL` keeps this from ever touching a filed report.
+   * inserted before the transaction and never got a case. The `case_id IS
+   * NULL` guard skips a report linked from its own side; a row a case points
+   * at (`cases.welfare_report_id`) cannot be deleted at all — the FK refuses —
+   * so a filed report is never removed by this.
    */
   async deleteUnlinkedReport(reportId: string): Promise<void> {
     await db

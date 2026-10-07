@@ -662,7 +662,8 @@ describe("createWelfareReport — same-key twins in parallel (real database)", (
       },
       {
         repo,
-        openCase: async (input) => openCase(input as Parameters<typeof openCase>[0]),
+        openCase: async (input, tx) =>
+          openCase(input as Parameters<typeof openCase>[0], tx as Parameters<typeof openCase>[1]),
         computeFlagReasons: async () => [],
         signal: async () => {},
         transaction: db.transaction.bind(db),

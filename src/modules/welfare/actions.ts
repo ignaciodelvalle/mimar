@@ -830,7 +830,13 @@ const ORG_WELFARE_ROLES = new Set(["admin", "coordinator", "member", "vet_indivi
  */
 async function discardSupersededReport(reportId: string, uploadedPaths: string[]): Promise<void> {
   await removeWelfareEvidence(uploadedPaths);
-  await repo.deleteUnlinkedReport(reportId);
+  // Best-effort: the ORIGINAL report is filed and the person must land on it.
+  // A failed delete leaves an unlinked row (no case), not a failed submit.
+  try {
+    await repo.deleteUnlinkedReport(reportId);
+  } catch (err) {
+    console.warn("[welfare] superseded twin report not removed (original kept):", err);
+  }
 }
 
 export async function createWelfareReportAction(
@@ -1140,7 +1146,8 @@ export async function createWelfareReportAction(
     },
     {
       repo,
-      openCase: async (input) => openCase(input as Parameters<typeof openCase>[0]),
+      openCase: async (input, tx) =>
+        openCase(input as Parameters<typeof openCase>[0], tx as Parameters<typeof openCase>[1]),
       computeFlagReasons,
       signal: async (opts) => {
         await signalWelfareReport(opts);
@@ -1408,7 +1415,8 @@ export async function createOrgWelfareReportAction(
     },
     {
       repo,
-      openCase: async (input) => openCase(input as Parameters<typeof openCase>[0]),
+      openCase: async (input, tx) =>
+        openCase(input as Parameters<typeof openCase>[0], tx as Parameters<typeof openCase>[1]),
       findGovtRecipients: async (opts) =>
         findAuthoritiesForJurisdiction(opts, { route: "welfare_org_side_critical_received" }),
       signal: async (opts) => {

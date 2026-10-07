@@ -586,6 +586,7 @@ describe("createOrgWelfareReport — the case carries the resolved place", () =>
         localityId: RESOLVED_BRAGADO.resolved.locality_id,
         placeMethod: "indec_id",
       }),
+      expect.anything(),
     );
   });
 });
@@ -672,6 +673,8 @@ describe("createOrgWelfareReport — a concurrent twin already filed it", () => 
       {},
     );
     expect(deps.openCase).not.toHaveBeenCalled();
+    // BASE_INPUT carries an attachment: the claim runs before its row too.
+    expect(deps.repo.insertAttachments).not.toHaveBeenCalled();
     expect(deps.repo.insertAudit).not.toHaveBeenCalled();
     expect(deps.repo.insertNotifications).not.toHaveBeenCalled();
   });
