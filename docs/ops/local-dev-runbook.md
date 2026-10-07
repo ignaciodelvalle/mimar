@@ -50,6 +50,7 @@ condition. Pick by what you're doing:
 | `pnpm seed:coverage` | Compliance-coverage dataset for dashboards |
 | `pnpm place:backfill-event-places --apply` | Places every event that has no `event_places` row yet, from the pet's home per spine (idempotent) |
 | `pnpm place:resolve-event-places-by-name --target local` | Dry run of the name pass over the backfill's UNRESOLVED rows; add `--apply --expect-unique <n>` to write (idempotent) |
+| `pnpm place:resolve-event-places-by-coordinates` | Dry run of the coordinate pass over the HOMONYM rows the name pass leaves; add `--apply` to write (idempotent; `--allow-remote` for any non-local database) |
 
 Panorama attributes events by catalogue id (`place_read_flags.panorama = 'id'`
 since migration 0276), through the `event_places` projection. Only events that
@@ -61,15 +62,21 @@ The backfill writes a home the spine recorded by NAME alone (no locality id:
 older seeds) as unresolved, on purpose. The name pass gives those rows their
 id where the name names exactly one catalogue row of the province (method
 `exact_name_unique` / `folded_name_unique`); homonyms, unknown names and rows
-the trigger projected are never written. So the full rebuild of the
-projection is two steps, in this order:
+the trigger projected are never written. The coordinate pass then settles a
+homonym only where the event's own point sits clearly next to one candidate
+(nearest ≤ 20 km, the runner-up ≥ 10 km farther and twice as far), with method
+`homonym_by_coordinates` (migration 0291) and a `place_resolutions` row each;
+everything else, Mechita included, stays unresolved. So the full rebuild of
+the projection is three steps, in this order:
 
 1. `pnpm place:backfill-event-places --apply`
 2. `pnpm place:resolve-event-places-by-name --target <env>` (dry run: read
    "rows to write"), then the same with `--apply --expect-unique <that number>`.
+3. `pnpm place:resolve-event-places-by-coordinates` (dry run), then the same
+   with `--apply` (plus `--env-file <path> --allow-remote` off local).
 
-`seed:panorama` runs only step 1: its events record ids, so step 2 finds
-nothing there. Run step 2 after any rebuild or reseed of an environment whose
+`seed:panorama` runs only step 1: its events record ids, so steps 2 and 3 find
+nothing there. Run them after any rebuild or reseed of an environment whose
 spine carries name-only homes.
 
 For a one-command QA environment (checks containers, build freshness vs HEAD,
