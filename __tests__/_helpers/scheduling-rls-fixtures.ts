@@ -191,19 +191,28 @@ export async function teardownSchedulingWorld(world: SchedulingWorld | undefined
 
 export type Role = "anon" | "authenticated";
 
+/** The token's assurance level; omitted means no `aal` claim at all. */
+export type Aal = "aal1" | "aal2";
+
 /**
  * Run `statement` as a caller role with spoofed PostgREST claims, inside a
  * transaction that ends with the statement. Returns the rows, or the Postgres
- * error code when it raised.
+ * error code when it raised. `aal` adds the assurance-level claim GoTrue signs
+ * (migration 0231 reads it).
  */
 export async function runAs<T = Record<string, unknown>>(
   role: Role,
   userId: string | null,
   statement: ReturnType<typeof sql>,
+  aal?: Aal,
 ): Promise<{ code: string | null; rows: T[] }> {
   try {
     const rows = await db.transaction(async (tx) => {
-      const claims = userId ? { sub: userId, role } : { role };
+      const claims = {
+        ...(userId ? { sub: userId } : {}),
+        role,
+        ...(aal ? { aal } : {}),
+      };
       await tx.execute(
         sql`SELECT set_config('request.jwt.claims', ${JSON.stringify(claims)}, true)`,
       );
@@ -228,6 +237,7 @@ export async function visibleKeys(
   table: "appointments" | "service_schedule_rules" | "time_slots",
   role: Role,
   userId: string | null,
+  aal?: Aal,
 ): Promise<OfferingKey[]> {
   const ids =
     table === "appointments" ? world.appointment : table === "time_slots" ? world.slot : world.rule;
@@ -239,6 +249,7 @@ export async function visibleKeys(
     role,
     userId,
     sql`SELECT id::text AS id FROM ${sql.raw(`public.${table}`)} WHERE id IN (${idList})`,
+    aal,
   );
   if (code !== null) throw new Error(`${role} read of ${table} raised ${code}`);
   return OFFERING_KEYS.filter((k) => rows.some((r) => r.id === ids[k]));
