@@ -13,8 +13,9 @@
 // inserted and lands on the original.
 //
 // Same scope as the lookup: a reporter's key on a registered pet. Anonymous
-// reports and reports with no pet have no ledger to ask (that needs the key on
-// welfare_reports — a migration).
+// reports, reports with no pet, and kinds that write no bridge event (e.g.
+// `other` with no symptoms) have no ledger to ask — that needs the key on
+// welfare_reports, a migration.
 
 import type { WelfareRepository } from "../infrastructure/welfare-repository";
 

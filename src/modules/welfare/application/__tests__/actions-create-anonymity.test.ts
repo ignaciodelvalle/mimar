@@ -75,6 +75,26 @@ vi.mock("@/db", async (importOriginal) => {
   };
 });
 
+// Evidence I/O. The org report REQUIRES a file, so its tests need these; the
+// citizen tests send none and never reach them.
+vi.mock("@/lib/infra/welfare-uploads", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/infra/welfare-uploads")>()),
+  prepareWelfareEvidence: vi.fn(async () => ({ error: null, prepared: [{}] })),
+  uploadPreparedWelfareEvidence: vi.fn(async () => ({
+    error: null,
+    uploaded: [
+      {
+        storagePath: "welfare-evidence/report-2/evidencia.jpg",
+        mimeType: "image/jpeg",
+        fileSize: 1024,
+        originalFilename: "evidencia.jpg",
+      },
+    ],
+    uploadedPaths: ["welfare-evidence/report-2/evidencia.jpg"],
+  })),
+  removeWelfareEvidence: vi.fn(async () => undefined),
+}));
+
 // The org action's session gate. The citizen action never calls it.
 vi.mock("@/lib/infra/auth-guards", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/infra/auth-guards")>()),
@@ -236,7 +256,10 @@ describe("createWelfareReportAction — anonymity fully unlinks the account", ()
     // The report row must NOT carry the account id.
     expect(reporterUserIdFromInsert()).toBeNull();
     // The case opened for it must not attribute an opener either.
-    expect(mockOpenCase).toHaveBeenCalledWith(expect.objectContaining({ openedByUserId: null }));
+    expect(mockOpenCase).toHaveBeenCalledWith(
+      expect.objectContaining({ openedByUserId: null }),
+      expect.anything(),
+    );
     // Lands on the anonymous tracking surface (retrievable by DEN code), NOT
     // /denuncias/mias. Asserted on the RETURNED destination since the B.2
     // migration — the action no longer calls redirect(), whose transition the
@@ -257,6 +280,7 @@ describe("createWelfareReportAction — anonymity fully unlinks the account", ()
     expect(reporterUserIdFromInsert()).toBe("user-123");
     expect(mockOpenCase).toHaveBeenCalledWith(
       expect.objectContaining({ openedByUserId: "user-123" }),
+      expect.anything(),
     );
     expect(state.redirectTo).toBe("/denuncias/mias");
     expect(mockRedirect).not.toHaveBeenCalled();
@@ -467,5 +491,73 @@ describe("createOrgWelfareReportAction — a retry with the same key replays", (
     // required, and this form carries none).
     expect(state.redirectTo).toBeUndefined();
     expect(state.error).toBe("Una denuncia profesional requiere al menos un adjunto de evidencia.");
+  });
+});
+
+// The org door's CONCURRENT half: its pre-check missed, the write's own claim
+// found the twin, and this submit's row and files go.
+describe("createOrgWelfareReportAction — a concurrent twin filed it first", () => {
+  vi.setConfig({ testTimeout: 20_000 });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    const chain = {
+      from: vi.fn(),
+      innerJoin: vi.fn(),
+      where: vi.fn(),
+      limit: vi.fn().mockResolvedValue([
+        {
+          orgId: "org-1",
+          orgDisplayName: "Refugio Test",
+          orgVerified: true,
+          memberRole: "coordinator",
+        },
+      ]),
+    };
+    chain.from.mockReturnValue(chain);
+    chain.innerJoin.mockReturnValue(chain);
+    chain.where.mockReturnValue(chain);
+    mockDbSelect.mockReturnValue(chain);
+    mockRequireUserOrRedirect.mockResolvedValue({ user: { id: "member-1" } });
+    mockFindPetByToken.mockResolvedValue({ id: "pet-1", seedTag: null });
+    mockFindBridgedReportReplay.mockResolvedValue(null);
+    mockInsertReportWithRetry.mockResolvedValue({ id: "report-2", referenceCode: "DEN-TWIN-0002" });
+    mockLockAndFindBridgedReportReplay.mockResolvedValue({
+      reportId: "report-1",
+      referenceCode: REF_CODE,
+    });
+    mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => cb({}));
+  });
+
+  it("discards the row it inserted and lands on the original's EMITIDOS", async () => {
+    const fd = new FormData();
+    fd.set("kind", "physical_abuse");
+    fd.set(
+      "description",
+      "Documentamos durante tres visitas que el animal permanece atado sin agua ni sombra, con lesiones visibles en el lomo y las patas traseras.",
+    );
+    fd.set("subjectKind", "registered_pet");
+    fd.set("subjectPetToken", "DIM-PET1-TEST");
+    fd.set("clientIdempotencyKey", "k-twin");
+    fd.append(
+      "attachment",
+      new File([new Uint8Array([1, 2, 3])], "evidencia.jpg", { type: "image/jpeg" }),
+    );
+
+    const { createOrgWelfareReportAction } = await import("../../actions");
+    const state = await createOrgWelfareReportAction("org-tok-1", { error: null }, fd);
+
+    expect(state).toEqual({
+      error: null,
+      redirectTo: `/org/org-tok-1/maltrato/recibidos?tab=emitidos&creado=${REF_CODE}`,
+    });
+    expect(mockLockAndFindBridgedReportReplay).toHaveBeenCalledWith(
+      "pet-1",
+      "k-twin",
+      "member-1",
+      {},
+    );
+    expect(mockDeleteUnlinkedReport).toHaveBeenCalledWith("report-2");
+    expect(mockOpenCase).not.toHaveBeenCalled();
   });
 });

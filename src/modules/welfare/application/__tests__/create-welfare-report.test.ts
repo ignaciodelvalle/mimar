@@ -589,6 +589,7 @@ describe("createWelfareReport — the case carries the resolved place", () => {
         localityId: RESOLVED_BRAGADO.resolved.locality_id,
         placeMethod: "indec_id",
       }),
+      expect.anything(),
     );
 
     const b = makeDeps();
@@ -605,6 +606,7 @@ describe("createWelfareReport — the case carries the resolved place", () => {
     );
     expect(b.openCase).toHaveBeenCalledWith(
       expect.objectContaining({ localityId: null, placeMethod: "unresolved" }),
+      expect.anything(),
     );
   });
 });
@@ -623,6 +625,15 @@ describe("createWelfareReport — a concurrent twin already filed it", () => {
     subjectPetId: "pet-001" as string | null,
     reporterUserId: "user-001" as string | null,
     clientIdempotencyKey: "key-twin" as string | null,
+    // One file, so "nothing written" covers the attachment rows too.
+    attachments: [
+      {
+        storagePath: "welfare-evidence/twin/evidence.jpg",
+        mimeType: "image/jpeg",
+        fileSize: 1024,
+        originalFilename: "evidencia.jpg",
+      },
+    ],
   };
 
   it("claims the key FIRST in the transaction and, on a hit, writes nothing and answers the original", async () => {

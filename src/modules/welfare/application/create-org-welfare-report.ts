@@ -123,7 +123,13 @@ type Deps = {
     | "findInstitutionalAdmins"
     | "lockAndFindBridgedReportReplay"
   >;
-  openCase: (input: OpenCaseInput) => Promise<{ id: string; publicCode: string }>;
+  /**
+   * Opened INSIDE the write's transaction (plan A5c): outside it, the holder of
+   * the report-key lock needed a second pool connection while same-key twins
+   * waited on the lock holding theirs — a pool-starvation hang no database can
+   * see — and a failed write left the case behind with no report linked.
+   */
+  openCase: (input: OpenCaseInput, tx: unknown) => Promise<{ id: string; publicCode: string }>;
   findGovtRecipients: (opts: {
     province: string;
     locality: string;
@@ -233,31 +239,34 @@ export async function createOrgWelfareReport(
         locationLat,
         locationLng,
       );
-      const caseRow = await openCase({
-        kind: "welfare_denuncia",
-        primarySubjectKind,
-        primaryPetId: primarySubjectKind === "registered_pet" ? subjectPetId : null,
-        locationLat: primarySubjectKind === "location" ? locationLat : null,
-        locationLng: primarySubjectKind === "location" ? locationLng : null,
-        jurisdictionProvince,
-        jurisdictionLocality,
-        // The case is keyed to the place the door resolved, so the id-path
-        // gates see its row (P3). No place given = nothing recorded.
-        ...(eventPlace
-          ? {
-              localityId: eventPlace.resolved?.locality_id ?? null,
-              placeMethod: eventPlace.resolved?.method ?? "unresolved",
-            }
-          : {}),
-        openedByUserId: orgMember.userId,
-        openedByOrganizationId: orgMember.orgId,
-        openedReason: {
-          code: "welfare_report_org",
-          referenceCode,
-          orgDisplayName: orgMember.orgDisplayName,
+      const caseRow = await openCase(
+        {
+          kind: "welfare_denuncia",
+          primarySubjectKind,
+          primaryPetId: primarySubjectKind === "registered_pet" ? subjectPetId : null,
+          locationLat: primarySubjectKind === "location" ? locationLat : null,
+          locationLng: primarySubjectKind === "location" ? locationLng : null,
+          jurisdictionProvince,
+          jurisdictionLocality,
+          // The case is keyed to the place the door resolved, so the id-path
+          // gates see its row (P3). No place given = nothing recorded.
+          ...(eventPlace
+            ? {
+                localityId: eventPlace.resolved?.locality_id ?? null,
+                placeMethod: eventPlace.resolved?.method ?? "unresolved",
+              }
+            : {}),
+          openedByUserId: orgMember.userId,
+          openedByOrganizationId: orgMember.orgId,
+          openedReason: {
+            code: "welfare_report_org",
+            referenceCode,
+            orgDisplayName: orgMember.orgDisplayName,
+          },
+          welfareReportId: reportId,
         },
-        welfareReportId: reportId,
-      });
+        tx,
+      );
 
       // 3c. Link case
       await repo.linkCase(reportId, caseRow.id, tx as Parameters<typeof repo.linkCase>[2]);

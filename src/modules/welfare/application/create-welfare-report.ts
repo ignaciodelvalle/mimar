@@ -123,7 +123,13 @@ type Deps = {
     | "setFlagged"
     | "lockAndFindBridgedReportReplay"
   >;
-  openCase: (input: OpenCaseInput) => Promise<{ id: string; publicCode: string }>;
+  /**
+   * Opened INSIDE the write's transaction (plan A5c): outside it, the holder of
+   * the report-key lock needed a second pool connection while same-key twins
+   * waited on the lock holding theirs — a pool-starvation hang no database can
+   * see — and a failed write left the case behind with no report linked.
+   */
+  openCase: (input: OpenCaseInput, tx: unknown) => Promise<{ id: string; publicCode: string }>;
   computeFlagReasons: (input: ComputeFlagReasonsInput) => Promise<string[]>;
   signal: (input: {
     reportId: string;
@@ -221,36 +227,39 @@ export async function createWelfareReport(
         locationLat,
         locationLng,
       );
-      const caseRow = await openCase({
-        kind: "welfare_denuncia",
-        primarySubjectKind,
-        primaryPetId: primarySubjectKind === "registered_pet" ? subjectPetId : null,
-        locationLat: primarySubjectKind === "location" ? locationLat : null,
-        locationLng: primarySubjectKind === "location" ? locationLng : null,
-        jurisdictionProvince,
-        jurisdictionLocality,
-        // The case is keyed to the place the door resolved, so the id-path
-        // gates see its row (P3). No place given = nothing recorded.
-        ...(eventPlace
-          ? {
-              localityId: eventPlace.resolved?.locality_id ?? null,
-              placeMethod: eventPlace.resolved?.method ?? "unresolved",
-            }
-          : {}),
-        openedByUserId: reporterUserId ?? null,
-        openedReason: {
-          code: "welfare_report_citizen",
-          referenceCode,
-          // `kind`/`severity` arrive as bare `string` on this use-case's input;
-          // welfare/actions.ts validates both against WELFARE_KINDS /
-          // WELFARE_SEVERITIES before calling. Narrowing the port itself is a
-          // separate change. A value that somehow escaped validation fails the
-          // read-side parse and renders from prose, so it degrades, not breaks.
-          kind: kind as OpenedReasonParams<"welfare_report_citizen">["kind"],
-          severity: severity as OpenedReasonParams<"welfare_report_citizen">["severity"],
+      const caseRow = await openCase(
+        {
+          kind: "welfare_denuncia",
+          primarySubjectKind,
+          primaryPetId: primarySubjectKind === "registered_pet" ? subjectPetId : null,
+          locationLat: primarySubjectKind === "location" ? locationLat : null,
+          locationLng: primarySubjectKind === "location" ? locationLng : null,
+          jurisdictionProvince,
+          jurisdictionLocality,
+          // The case is keyed to the place the door resolved, so the id-path
+          // gates see its row (P3). No place given = nothing recorded.
+          ...(eventPlace
+            ? {
+                localityId: eventPlace.resolved?.locality_id ?? null,
+                placeMethod: eventPlace.resolved?.method ?? "unresolved",
+              }
+            : {}),
+          openedByUserId: reporterUserId ?? null,
+          openedReason: {
+            code: "welfare_report_citizen",
+            referenceCode,
+            // `kind`/`severity` arrive as bare `string` on this use-case's input;
+            // welfare/actions.ts validates both against WELFARE_KINDS /
+            // WELFARE_SEVERITIES before calling. Narrowing the port itself is a
+            // separate change. A value that somehow escaped validation fails the
+            // read-side parse and renders from prose, so it degrades, not breaks.
+            kind: kind as OpenedReasonParams<"welfare_report_citizen">["kind"],
+            severity: severity as OpenedReasonParams<"welfare_report_citizen">["severity"],
+          },
+          welfareReportId: reportId,
         },
-        welfareReportId: reportId,
-      });
+        tx,
+      );
 
       // 4c. Link case to the report
       await repo.linkCase(reportId, caseRow.id, tx as Parameters<typeof repo.linkCase>[2]);

@@ -474,7 +474,8 @@ async function fileWelfareReport(userId: string, input: WelfareReportInput) {
     },
     {
       repo,
-      openCase: async (args) => openCase(args as Parameters<typeof openCase>[0]),
+      openCase: async (args, tx) =>
+        openCase(args as Parameters<typeof openCase>[0], tx as Parameters<typeof openCase>[1]),
       computeFlagReasons,
       signal: async (opts) => {
         await signalWelfareReport(opts);
