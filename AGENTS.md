@@ -1054,6 +1054,9 @@ RLS history and coverage:
 
 - `visits` (migration 0273, vet-visit-record): RLS on, `anon` revoked, ONE `SELECT` policy `TO authenticated` — an active member of the visit's organization (through the `SECURITY DEFINER` helper `public.caller_is_active_org_member(uuid)`, because a policy subquery on `organization_memberships` recurses) OR the holder of an active ownership of the pet. No write policies: visits are written only by Drizzle (BYPASSRLS), like `pet_events` after 0212. Pinned by `__tests__/rls/visits-rls.test.ts` (positive owner/member; negative other-org member, ended ownership, stranger, anon, authenticated writes).
 
+- Scheduling (migrations 0285/0286, plan A6): the org-member branches of `appointments` and `service_schedule_rules` ask `public.caller_is_active_org_member(uuid)` — their direct `organization_memberships` subquery recursed, so every authenticated read of either table raised 42P17. `time_slots` lost its `USING (true)` read to anon/authenticated and now has the audience of `service_schedule_rules` (org members of the offering, provider vet; TO authenticated); search and booking read slots over Drizzle. `db/scheduling_rls.sql`, which `deploy-provision` applies after the replay, carries those statements byte-identical to the migrations (pinned by `__tests__/rls/scheduling-org-member-rls.test.ts` and `__tests__/rls/time-slots-read.test.ts`).
+- `TRUNCATE` (migration 0284): neither `anon` nor `authenticated` holds it on any public table — RLS cannot filter it and it fires no row trigger. `applySchemaGrants` grants the caller roles an explicit list without it; check 7 of `scripts/check-rls-coverage.ts` (lint:rls, and the provisioner's post-grant verification) fails on any regression.
+
 When adding a new PII or tenant-scoped table:
 1. Enable RLS in the migration (`ALTER TABLE … ENABLE ROW LEVEL SECURITY`).
 2. Add it to `RLS_REQUIRED` in `__tests__/rls/coverage.test.ts`.
