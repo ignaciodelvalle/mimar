@@ -66,7 +66,8 @@ import { TravelObligationsPanel } from "./TravelObligationsPanel";
 import { TravelSemaforo } from "./TravelSemaforo";
 import { TravelShareToVet } from "./TravelShareToVet";
 import { TripDocumentsChecklist } from "./TripDocumentsChecklist";
-import { TripForm, isShortcutCorridor } from "./TripForm";
+import { TripForm } from "./TripForm";
+import { isShortcutCorridor } from "./trip-form-options";
 import {
   countdownLabel,
   isPastTrip,

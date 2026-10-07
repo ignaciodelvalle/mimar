@@ -237,7 +237,11 @@ describe("travel export — the papers, with what the owner ticked (PO 2026-10-0
     const unticked = dtoAt(now);
     const papers =
       unticked.dto.obligations.find((o) => o.key === "required_documents")?.documents ?? [];
-    expect(papers.length).toBeGreaterThan(1);
+    // Since corridors 2026.4 Chile lists PAPERS only — the CZI; Iberia's hold
+    // adds none — so the checklist is one line, and it flips when ticked.
+    expect(papers.map((d) => d.label)).toEqual([
+      "Certificado Zoosanitario de Importación (CZI) — CVI digital SENASA",
+    ]);
     const [first, ...rest] = papers.map((d) => d.label);
     for (const label of [first, ...rest]) {
       expect(unticked.text).toContain(`[ ] ${label}: sin confirmar`);

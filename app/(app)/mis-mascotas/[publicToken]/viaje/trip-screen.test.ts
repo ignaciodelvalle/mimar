@@ -15,7 +15,7 @@ import {
   isShortcutCorridor,
   modalityOptionLabel,
   modesFor,
-} from "./TripForm";
+} from "./trip-form-options";
 import {
   countdownLabel,
   isPastTrip,

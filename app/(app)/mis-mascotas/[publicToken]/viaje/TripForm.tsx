@@ -38,61 +38,23 @@ import { useActionRedirect } from "@/lib/ui/use-action-redirect";
 import { useKeptFields } from "@/lib/ui/use-kept-fields";
 import type { TravelFormState } from "@/src/modules/pets/application/travel/types";
 import {
-  CORRIDOR_MODES,
-  PET_TRAVEL_MODALITY_LABELS,
   PET_TRAVEL_MODE_LABELS,
-  type PetTravelAirlineModalityV1,
   type PetTravelAirlineOptionV1,
   type PetTravelCorridorOptionV1,
   type PetTravelModeV1,
 } from "@dim/contract/api";
-import type { TravelCorridorId } from "@dim/contract/input";
+
+import {
+  DESTINATION_REQUIREMENTS_URL,
+  OTHER_COUNTRY,
+  airlinesFor,
+  modalityOptionLabel,
+  modesFor,
+} from "./trip-form-options";
 
 const initialState: TravelFormState = { error: null };
 
 type FormAction = (prev: TravelFormState, formData: FormData) => Promise<TravelFormState>;
-
-/** The "Otro país" choice: not a destination, never posted as one. */
-export const OTHER_COUNTRY = "otro";
-
-/** Where the owner looks for a destination miMAR does not check. */
-export const DESTINATION_REQUIREMENTS_URL =
-  "https://www.argentina.gob.ar/senasa/requisitos-particulares-por-destino";
-
-const ALL_MODES: readonly PetTravelModeV1[] = ["air", "land", "sea"];
-
-/** The modes a destination offers; every mode before one is chosen. */
-export function modesFor(corridorId: string): readonly PetTravelModeV1[] {
-  return (CORRIDOR_MODES as Record<string, readonly PetTravelModeV1[]>)[corridorId] ?? ALL_MODES;
-}
-
-/** Suggested airlines for the destination first, then the rest — never fewer. */
-export function airlinesFor(
-  airlines: readonly PetTravelAirlineOptionV1[],
-  corridorId: string,
-  search: string,
-): { suggested: PetTravelAirlineOptionV1[]; others: PetTravelAirlineOptionV1[] } {
-  const isSuggested = (a: PetTravelAirlineOptionV1) =>
-    corridorId !== "" && (a.corridors ?? []).includes(corridorId);
-  const needle = search.trim().toLocaleLowerCase("es-AR");
-  return {
-    suggested: airlines.filter(isSuggested),
-    others: airlines.filter(
-      (a) =>
-        !isSuggested(a) && (needle === "" || a.name.toLocaleLowerCase("es-AR").includes(needle)),
-    ),
-  };
-}
-
-/** "En cabina · hasta 7 kg con el bolso" — what the airline publishes. */
-export function modalityOptionLabel(m: PetTravelAirlineModalityV1): string {
-  const parts = [PET_TRAVEL_MODALITY_LABELS[m.modality]];
-  if (m.maxWeightKg !== null) {
-    parts.push(`hasta ${m.maxWeightKg} kg${m.includesCarrier ? " con el bolso o canil" : ""}`);
-  }
-  if (m.offered === "restricted") parts.push("con restricciones");
-  return parts.join(" · ");
-}
 
 const DAY_MS = 86_400_000;
 
@@ -441,9 +403,4 @@ export function TripForm({
       </LnButton>
     </form>
   );
-}
-
-/** The destination ids a shortcut may preselect. */
-export function isShortcutCorridor(value: unknown): value is TravelCorridorId {
-  return typeof value === "string" && Object.hasOwn(CORRIDOR_MODES, value);
 }
