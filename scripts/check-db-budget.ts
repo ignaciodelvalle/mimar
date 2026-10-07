@@ -229,6 +229,11 @@ export const DASHBOARD_PAGES = [
   "app/(public)/refugios/[orgToken]/page.tsx",
   "app/libreta/compartir/[shareToken]/page.tsx",
   "app/org/[orgToken]/agenda/page.tsx",
+  // The "Esperan tu respuesta" read (2026-10) — the transfers and caretaker hub
+  // reads, run on /mis-mascotas and on the bare /inicio. Both pages register
+  // their own budget above, but this read is started BESIDE their batches, so
+  // its own wrapper is the only thing bounding it.
+  "app/(app)/_lib/pending-incoming.ts",
 ] as const;
 
 // The route-handler globs scanned.

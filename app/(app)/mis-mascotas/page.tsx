@@ -24,6 +24,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { PendingIncomingBanner } from "@/app/(app)/_components/PendingIncomingBanner";
+import { loadPendingIncoming } from "@/app/(app)/_lib/pending-incoming";
 import { ActionLinkCard } from "@/components/ActionLinkCard";
 import { CasesWidget, adaptWorkflow } from "@/components/CasesWidget";
 import { isTransitRole } from "@/components/PetCard.helpers";
@@ -97,6 +99,17 @@ export default async function MisMascotasPage({
   const { data: authData } = await supabase.auth.getUser();
   const userEmail = (authData?.user?.email ?? "").toLowerCase();
 
+  // "Esperan tu respuesta" (staging case 2026-10: an invitation to look after a
+  // ferret that its invitee never saw, because it lived only in the bell and on
+  // /transferencias). STARTED HERE, awaited after the main batch: it runs beside
+  // that batch instead of after it, and it never rejects — its own short budget
+  // resolves `null` and the page renders without the banner.
+  const pendingIncomingRead = loadPendingIncoming({
+    userId: user.id,
+    callerEmail: userEmail,
+    callerEmailConfirmed: authData?.user?.email_confirmed_at != null,
+  });
+
   // BOUNDED (2026-08-09 resilience pass). Seven aggregates on the page an owner
   // opens first, awaited bare: on a degraded pooler this hung with no error and
   // nothing in the logs — the same shape as the /gob outage, on the citizen
@@ -118,6 +131,7 @@ export default async function MisMascotasPage({
       fetchActiveReminders(user.id),
     ]),
   );
+  const pendingIncoming = await pendingIncomingRead;
   if (!load.ok) {
     // The CTA and the search box do NOT depend on `load` — the link is static
     // and `query` comes from searchParams, resolved above. Dropping them left
@@ -134,6 +148,7 @@ export default async function MisMascotasPage({
             + Registrar mascota
           </LnButton>
         </div>
+        <PendingIncomingBanner pending={pendingIncoming} />
         <div className="mb-4">
           <Suspense fallback={null}>
             <PetSearchInput initialQuery={query} />
@@ -156,6 +171,11 @@ export default async function MisMascotasPage({
     previousWorkflows,
     reminders,
   ] = load.value;
+
+  // What the header link and the bandeja card badge: everything that waits on
+  // this person's answer. The banner's read when it arrived; otherwise the
+  // page's own transfer count, so a slow banner never zeroes the badge.
+  const awaitingAnswerCount = pendingIncoming?.items.length ?? pendingTransfersCount;
 
   // Split into active (ok/registered/lost/pregnant) and deceased.
   const activePets = ownedPets.filter(({ pet }) => pet.status !== "deceased");
@@ -254,6 +274,21 @@ export default async function MisMascotasPage({
               deceasedCount: deceasedPets.length,
             })}
           </p>
+          {/* /transferencias is also where caretaker invitations live, and the
+              owner nav does not list it — so the index header always links it,
+              with the count of what is waiting on an answer. */}
+          <Link
+            href="/transferencias"
+            className="mt-1.5 inline-flex items-center gap-2 text-sm text-[var(--color-ln-azul)] no-underline hover:underline"
+          >
+            Transferencias y cuidados
+            {awaitingAnswerCount > 0 && (
+              <LnBadge variant="warning">
+                {awaitingAnswerCount}
+                <span className="sr-only"> sin responder</span>
+              </LnBadge>
+            )}
+          </Link>
         </div>
         {/* "Registrar" — the ONE verb for this act (D.8, ratified as D.9 and
             extended to every surface including the mobile tab bar). This said
@@ -277,6 +312,10 @@ export default async function MisMascotasPage({
             : "Vinculamos tu DNI a tu cuenta. Si esperabas una adopción, pedile al refugio que verifique el DNI cargado."}
         </p>
       )}
+
+      {/* Pending invitations and transfers — what somebody else is waiting on
+          this person to answer. Renders nothing when there is none. */}
+      <PendingIncomingBanner pending={pendingIncoming} />
 
       {/* Resume-application banner — for a pet you don't own yet (§9.2). */}
       <IntentApplyBanner />
@@ -460,9 +499,13 @@ export default async function MisMascotasPage({
               href="/transferencias"
               icon="transferencia"
               title="Transferencias pendientes"
-              description="Mascotas que alguien quiere transferirte, y las que enviaste"
-              badge={pendingTransfersCount > 0 ? pendingTransfersCount : null}
-              hideWhenZero={pendingTransfersCount === 0 && outgoingTransfersCount === 0}
+              description="Mascotas que alguien quiere transferirte o que te pidieron cuidar, y las que enviaste"
+              badge={awaitingAnswerCount > 0 ? awaitingAnswerCount : null}
+              hideWhenZero={
+                awaitingAnswerCount === 0 &&
+                pendingTransfersCount === 0 &&
+                outgoingTransfersCount === 0
+              }
             />
           </div>
 
