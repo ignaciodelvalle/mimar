@@ -140,7 +140,12 @@ const canon: Canon = loadCanon(REPO_ROOT);
 //
 // 22 -> 23 on 2026-10-07 (viaje v14 review): the client-module value-import
 // fence, __tests__/client-module-value-import-fence.test.ts. Same reason.
-const UNMAPPED_COUNT = 23;
+//
+// 23 -> 25 on 2026-10-07 (pulido-documento): the two web/app parity fences,
+// __tests__/mobile-anotar-groups-parity.test.ts (Anotar picker categories)
+// and __tests__/mobile-libreta-trip-papers-parity.test.ts (trip-papers ticks
+// drawn as one row). No canon row states web/app presentation parity yet.
+const UNMAPPED_COUNT = 25;
 
 /**
  * Enforcement the filename glob below cannot see.

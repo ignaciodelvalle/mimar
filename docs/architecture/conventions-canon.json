@@ -10100,6 +10100,18 @@
       "id": "__tests__/client-module-value-import-fence.test.ts",
       "path": "__tests__/client-module-value-import-fence.test.ts",
       "note": "Added 2026-10-07 after the viaje redesign shipped a production render crash that tsc, biome, every verify lint and next build passed: the /viaje page (a server component) called isShortcutCorridor, exported by the \"use client\" TripForm.tsx, and a server component receives client REFERENCES for a client module's exports, not the values. The fence scans the App Router entry files (page, layout, template, default, not-found, loading, route) and \"use server\" files, resolves every named value import, and fails on any non-PascalCase name taken from a \"use client\" module; type-only imports are erased and pass. Its first run found a second, latent instance: the public credential page read MEDICAL_SECTION_ID from the client CredentialActionBar. Floors at 200 entry files and 200 client modules so a broken walk cannot go quietly green; the detector is exercised on synthetic sources. Canon row pending."
+    },
+    {
+      "kind": "fence-test",
+      "id": "__tests__/mobile-anotar-groups-parity.test.ts",
+      "path": "__tests__/mobile-anotar-groups-parity.test.ts",
+      "note": "Added 2026-10-07 with the app's grouped Anotar picker. It reads the web's ALL_CAPTURE_OPTIONS categories and the app's RECORD_KIND_GROUPS and fails when an act sits under a different heading, or in a different heading order, on each side. No canon row states web/app picker parity as a rule yet, so it is listed here."
+    },
+    {
+      "kind": "fence-test",
+      "id": "__tests__/mobile-libreta-trip-papers-parity.test.ts",
+      "path": "__tests__/mobile-libreta-trip-papers-parity.test.ts",
+      "note": "Added 2026-10-07 with the presentation-only grouping of trip-papers ticks in the libreta. It feeds one set of rows through the web grouper (components/pet-profile/asiento-fields.ts) and the app grouper (apps/mobile/src/pets/libreta-view-model.ts, over the same projection the API sends) and fails when the drawn rows differ. No canon row covers libreta presentation parity yet, so it is listed here."
     }
   ]
 }
