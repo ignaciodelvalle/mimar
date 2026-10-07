@@ -35,6 +35,7 @@ import type {
   TravelRuleEnvelopes,
   TravelSpecies,
 } from "@/lib/domain/travel-strictness";
+import { speciesLabelPlural } from "@/lib/utils/format";
 
 // R3.5 staleness disclaimer — rendered on ALL THREE surfaces (checklist,
 // semáforo, exported PDF). es-AR wording pending PO sign-off (design open
@@ -469,10 +470,10 @@ export function assertCorridorCoverage(corridors: readonly Corridor[]): void {
   }
 }
 
-/** "Los perros" when a rule is scoped to dogs only, else "". */
+/** "Perros: " when a rule is scoped to one species, else "". */
 function speciesPrefix(species: readonly TravelSpecies[] | undefined): string {
   if (!species || species.length !== 1) return "";
-  return species[0] === "dog" ? "Perros: " : "Gatos: ";
+  return `${speciesLabelPlural(species[0])}: `;
 }
 
 /**
