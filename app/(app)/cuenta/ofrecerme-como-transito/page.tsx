@@ -12,7 +12,9 @@ import { eq } from "drizzle-orm";
 import { FosterVolunteerWizard } from "./FosterVolunteerWizard";
 
 export default async function OfrecermeComoTransitoPage() {
-  const { user } = await requireUserOrRedirect();
+  // returnTo: the native app's Tránsito screen hands people here, and a sign-in
+  // must land them back on this form, not on /mis-mascotas.
+  const { user } = await requireUserOrRedirect("/cuenta/ofrecerme-como-transito");
 
   const [profile] = await db
     .select({
