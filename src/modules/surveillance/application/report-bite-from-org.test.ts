@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { computeObservationUntil } from "../domain/rabies-observation";
 import type { SurveillanceRepository } from "../infrastructure/surveillance-repository";
-import { OBSERVATION_OPEN_ERROR } from "./report-bite";
+import { KEY_TAKEN_ERROR, OBSERVATION_OPEN_ERROR } from "./report-bite";
 import { type ReportBiteFromOrgInput, reportBiteFromOrg } from "./report-bite-from-org";
 
 const FAKE_BITE_ORG_ID = "a0000000-0000-4000-8000-000000000003";
@@ -726,14 +726,18 @@ describe("reportBiteFromOrg — the reporting org must be verified AND connected
     });
   });
 
-  it("does NOT write an audit row when the bite event deduplicates (no-op retry)", async () => {
+  it("an incident that dedupes inside the write (another actor's key) is refused, no audit row", async () => {
+    // The caller's OWN retry is replayed before any write; a dedupe here is
+    // someone else's key and rolls the whole write back.
     const deps = makeDeps({
       insertIncidentEventIdempotent: vi
         .fn()
         .mockResolvedValue({ event: { id: FAKE_BITE_ORG_ID }, wasNoop: true }),
     });
-    await reportBiteFromOrg(BASE_INPUT, deps);
+    const result = await reportBiteFromOrg(BASE_INPUT, deps);
+    expect(result).toEqual({ ok: false, error: KEY_TAKEN_ERROR });
     expect(deps.repo.insertAuditLog).not.toHaveBeenCalled();
+    expect(deps.repo.insertObservationStarted).not.toHaveBeenCalled();
   });
 });
 

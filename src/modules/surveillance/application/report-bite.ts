@@ -5,7 +5,9 @@
 //
 // Parity quirks:
 //   - Uses insertIncidentEventIdempotent (owner path only — org-bite uses plain insert).
-//   - biteNoop early return: when idempotency key hits, skip observation + notifications.
+//   - A same-key retry is answered BEFORE any write (replayThenGuard). An insert
+//     that still dedupes inside the body means ANOTHER actor's key: rolled back
+//     (assertKeyNotTaken), never a committed case with no incident.
 //   - rabiesVaccineValid computed pre-tx via repo.findLatestRabiesVaccineEvent.
 //   - Authority fan-out is post-tx best-effort — callers must handle.
 //   - AUDIT_LOG: NONE (bite actions never wrote audit_log — preserve absence).
@@ -161,7 +163,27 @@ export type BiteRequest = {
 export type BiteGate =
   | { kind: "proceed" }
   | { kind: "replay"; replay: BiteReplay }
-  | { kind: "refused" };
+  | { kind: "refused" }
+  | { kind: "key_taken" };
+
+/**
+ * The refusal for a key ANOTHER actor already used on this animal. The replay
+ * is scoped to the actor, but `pet_events_idempotency_idx` is not: such a
+ * request would open a case, dedupe its incident onto the other person's row,
+ * and — before this — commit an open bite_incident case with no incident and
+ * no observation, which then blocked every later bite on the pet. It is rolled
+ * back instead, and the person is told to send it again (the form mints a new
+ * key).
+ */
+export const KEY_TAKEN_ERROR =
+  "No se pudo registrar la mordedura: el envío reutilizó una clave ajena. Volvé a abrir el formulario y envialo de nuevo.";
+
+class BiteKeyTakenError extends Error {}
+
+/** Throws (rolling the writer's transaction back) when the incident deduped. */
+export function assertKeyNotTaken(incidentWasNoop: boolean): void {
+  if (incidentWasNoop) throw new BiteKeyTakenError(KEY_TAKEN_ERROR);
+}
 
 export async function replayThenGuard(
   repo: Pick<SurveillanceRepository, "findIncidentReplay">,
@@ -208,6 +230,7 @@ export async function inGatedTransaction(
     });
   } catch (err) {
     if (isOpenBiteCaseRace(err)) return { kind: "refused" };
+    if (err instanceof BiteKeyTakenError) return { kind: "key_taken" };
     throw err;
   }
 }
@@ -220,9 +243,10 @@ export function gatedOutcome<V>(
   gate: Exclude<BiteGate, { kind: "proceed" }>,
   replayValue: (replay: BiteReplay) => V,
 ): UseCaseResult<V> {
-  return gate.kind === "replay"
-    ? { ok: true, value: replayValue(gate.replay), notifications: [] }
-    : { ok: false, error: OBSERVATION_OPEN_ERROR };
+  if (gate.kind === "replay") {
+    return { ok: true, value: replayValue(gate.replay), notifications: [] };
+  }
+  return { ok: false, error: gate.kind === "key_taken" ? KEY_TAKEN_ERROR : OBSERVATION_OPEN_ERROR };
 }
 
 /**
@@ -236,9 +260,9 @@ export function gatedOutcome<V>(
  * The two new ones exist because `POST /api/v1/pets/{token}/events` answers
  * `EventRecordedV1` for every kind, and it can only do that if the writer says
  * which asiento it wrote and whether this call is the one that wrote it. Both
- * are captured INSIDE the transaction, before the `biteNoop` early return —
- * that return is what skips the observation and the fan-out on a replay, and a
- * capture after it would answer `""` on exactly the call the key exists for.
+ * come from the ledger on a replay (`replayThenGuard`, plan A5c) — the replay
+ * is answered before any write, with the ORIGINAL incident's id — and from the
+ * insert on a first write.
  *
  * THE CASE CODE DOES NOT REACH THE APP, and that is a parity gap rather than an
  * oversight: `EventRecordedV1` has no field for it, `OwnerPetCasesSection`
@@ -398,8 +422,9 @@ export async function reportBite(input: ReportBiteInput, deps: Deps): Promise<Re
         biteEventId = biteEvent.id;
         biteWasDuplicate = biteNoop;
 
-        // 4. Idempotency noop — exit early, no observation, no notifications.
-        if (biteNoop) return;
+        // 4. This caller's own key was replayed before any write, so a dedupe
+        //    here is SOMEONE ELSE's key: roll the case back with it.
+        assertKeyNotTaken(biteNoop);
 
         // 5. Insert rabies_observation_started.
         const observationPayload = validateEventPayload("rabies_observation_started", {

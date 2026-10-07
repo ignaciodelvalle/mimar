@@ -23,7 +23,7 @@ import { orgTypeToReporterRole } from "../domain/bite";
 import { assertOrgMayReportBite } from "../domain/bite-authority";
 import { computeObservationUntil, isRabiesVaccineValid } from "../domain/rabies-observation";
 import type { SurveillanceRepository } from "../infrastructure/surveillance-repository";
-import { type BiteGate, gatedOutcome, inGatedTransaction } from "./report-bite";
+import { type BiteGate, assertKeyNotTaken, gatedOutcome, inGatedTransaction } from "./report-bite";
 import type { NewNotification, UseCaseResult } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -399,9 +399,9 @@ export async function reportBiteFromOrg(
           tx as Parameters<typeof repo.insertIncidentEventIdempotent>[1],
         );
 
-        // Idempotency: skip observation + notifications when the bite event
-        // already exists (same key — double-submit or retry).
-        if (biteNoop) return;
+        // This caller's own key was replayed before any write, so a dedupe here
+        // is SOMEONE ELSE's key: roll the case back with it (see report-bite.ts).
+        assertKeyNotTaken(biteNoop);
 
         // 4. Insert rabies_observation_started.
         const observationPayload = validateEventPayload("rabies_observation_started", {

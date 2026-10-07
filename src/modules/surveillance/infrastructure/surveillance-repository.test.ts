@@ -22,7 +22,7 @@ import { cases, db, enoProcessingQueue, petEvents, pets, profiles } from "@/db";
 import { openCase } from "@/lib/infra/case-helpers";
 import { hashDni } from "@/lib/utils/dni-hash";
 import { withMutationOverride } from "../../../../__tests__/_helpers/db-overrides";
-import { OBSERVATION_OPEN_ERROR, reportBite } from "../application/report-bite";
+import { KEY_TAKEN_ERROR, OBSERVATION_OPEN_ERROR, reportBite } from "../application/report-bite";
 import { isRabiesVaccineValid } from "../domain/rabies-observation";
 import { SurveillanceRepository } from "./surveillance-repository";
 
@@ -1064,6 +1064,40 @@ describe("reportBite — concurrency, actor scope, last-stable-wins (real databa
     const stranger = await report(petId, await freshProfile(), key);
 
     expect(stranger).toEqual({ ok: false, error: OBSERVATION_OPEN_ERROR });
+  });
+
+  it("someone else's key AFTER their observation closed: refused and rolled back — no orphan case", async () => {
+    // With the guard out of the way (the first observation closed), the only
+    // thing between this request and a committed case with no incident is the
+    // rollback on a dedupe inside the write.
+    const petId = await freshPet();
+    const key = randomUUID();
+    const first = await report(petId, await freshProfile(), key);
+    expect(first.ok).toBe(true);
+    // Close the first episode the way the outcome writers leave it.
+    await db.update(pets).set({ rabiesObservationStatus: null }).where(eq(pets.id, petId));
+    await db
+      .update(cases)
+      .set({ status: "closed", closedAt: new Date(), closedReason: "resolved" })
+      .where(and(eq(cases.primaryPetId, petId), eq(cases.caseKind, "bite_incident")));
+
+    const stranger = await report(petId, await freshProfile(), key);
+
+    expect(stranger).toEqual({ ok: false, error: KEY_TAKEN_ERROR });
+    const open = await db
+      .select({ id: cases.id })
+      .from(cases)
+      .where(
+        and(
+          eq(cases.primaryPetId, petId),
+          eq(cases.caseKind, "bite_incident"),
+          eq(cases.status, "open"),
+        ),
+      );
+    expect(open).toHaveLength(0);
+    // And the pet still takes a NEW bite: nothing was left blocking it.
+    const next = await report(petId, await freshProfile(), randomUUID());
+    expect(next.ok).toBe(true);
   });
 
   it("same key, different payload: the ORIGINAL result stands (B8 last-stable-wins)", async () => {
