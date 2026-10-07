@@ -77,8 +77,14 @@ export const UPSTREAM_EXECUTE_SHAPE = /\(\s*![\w$]+\.options\.onexecute\s*\|\|/;
 export const TRACED_CONNECTION =
   /(?:^|\/)node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?postgres\/(?:cjs\/)?src\/connection\.js$/;
 
-/** @param {string} dir @param {(path: string) => boolean} keep @returns {string[]} */
-function walk(dir, keep) {
+/**
+ * Every file under `dir` that `keep` accepts, skipping only the directories in
+ * `skip` (exact paths). A directory merely NAMED "cache" elsewhere in the
+ * output is still output, and must be read.
+ * @param {string} dir @param {(path: string) => boolean} keep
+ * @param {ReadonlySet<string>} [skip] @returns {string[]}
+ */
+function walk(dir, keep, skip = new Set()) {
   /** @type {string[]} */
   const out = [];
   let entries;
@@ -90,9 +96,8 @@ function walk(dir, keep) {
   for (const entry of entries) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) {
-      // The webpack cache is not output and may legitimately hold old modules.
-      if (entry.name === "cache") continue;
-      out.push(...walk(path, keep));
+      if (skip.has(path)) continue;
+      out.push(...walk(path, keep, skip));
     } else if (keep(path)) {
       out.push(path);
     }
@@ -109,7 +114,7 @@ export function builtPostgresProblems(nextDir) {
   /** @type {string[]} */
   const problems = [];
   let bundled = 0;
-  for (const file of walk(join(nextDir, "server"), (p) => p.endsWith(".js"))) {
+  for (const file of walk(join(nextDir, "server"), (p) => p.endsWith(".js"), new Set())) {
     const body = readFileSync(file, "utf8");
     if (!body.includes("options.onexecute")) continue;
     bundled++;
@@ -120,7 +125,10 @@ export function builtPostgresProblems(nextDir) {
 
   /** @type {Set<string>} */
   const tracedFiles = new Set();
-  for (const nft of walk(nextDir, (p) => p.endsWith(".nft.json"))) {
+  // `.next/cache` (the webpack build cache) is not output and may legitimately
+  // hold old modules; it is the ONLY directory skipped.
+  const cacheDir = new Set([join(nextDir, "cache")]);
+  for (const nft of walk(nextDir, (p) => p.endsWith(".nft.json"), cacheDir)) {
     let files;
     try {
       files = JSON.parse(readFileSync(nft, "utf8")).files;

@@ -166,8 +166,23 @@ describe("post-build postgres check", () => {
     const dir = nextDir({
       ".next/server/chunks/1.js": MIN_PATCHED,
       ".next/cache/webpack/server-production/0.js": MIN_UPSTREAM,
+      ".next/cache/x.nft.json": trace(["../../node_modules/postgres/src/connection.js"]),
     });
     expect(builtPostgresProblems(dir).problems).toEqual([]);
+  });
+
+  it("reads a directory merely NAMED cache inside the output", () => {
+    const dir = nextDir({
+      ".next/server/app/cache/page.js": MIN_UPSTREAM,
+      ".next/server/app/cache/page.js.nft.json": trace([
+        "../../../../node_modules/postgres/src/connection.js",
+      ]),
+      "node_modules/postgres/src/connection.js": "function execute(q) {}",
+    });
+    const { problems, bundled, traced } = builtPostgresProblems(dir);
+    expect({ bundled, traced }).toEqual({ bundled: 1, traced: 1 });
+    expect(problems.some((p) => p.startsWith("bundled UNPATCHED"))).toBe(true);
+    expect(problems.some((p) => p.startsWith("traced UNPATCHED"))).toBe(true);
   });
 
   it("recognises flat and pnpm-store trace paths, and nothing else", () => {
