@@ -12,11 +12,19 @@
 // render without a session and hands off to the screen, which owns the read
 // and every state.
 
+import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 
 import { useGate } from "../../src/auth/useGate";
+import { API_BASE_URL } from "../../src/config/api";
 import { FosterScreen } from "../../src/foster/FosterScreen";
 import { credentialRoute } from "../../src/ui/routes";
+
+/**
+ * The web's offer form. Derived from API_BASE_URL like every other web page
+ * this app links to (see `config/api.ts`'s note on the shared origin).
+ */
+const OFFER_AS_FOSTER_URL = `${API_BASE_URL}/cuenta/ofrecerme-como-transito`;
 
 export default function TransitoRoute() {
   const gate = useGate();
@@ -25,6 +33,9 @@ export default function TransitoRoute() {
   if (!gate.allowed) return gate.element;
 
   return (
-    <FosterScreen onOpenPet={(petPublicToken) => router.push(credentialRoute(petPublicToken))} />
+    <FosterScreen
+      onOpenPet={(petPublicToken) => router.push(credentialRoute(petPublicToken))}
+      onOfferAsFoster={() => void Linking.openURL(OFFER_AS_FOSTER_URL).catch(() => {})}
+    />
   );
 }
