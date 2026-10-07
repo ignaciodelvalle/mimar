@@ -222,7 +222,8 @@ describe("the coordinate pass, applied", () => {
 });
 
 describe("the operator script, against a remote database", () => {
-  it("refuses --apply without --allow-remote, before connecting", () => {
+  // tsx cold start can take seconds on a slow runner (migrate-runner.test.ts).
+  it("refuses --apply without --allow-remote, before connecting", { timeout: 30_000 }, () => {
     const dir = mkdtempSync(path.join(tmpdir(), "coord-pass-"));
     try {
       const envFile = path.join(dir, ".env.remote");
@@ -248,6 +249,8 @@ describe("the operator script, against a remote database", () => {
       expect(run.status, run.stderr).toBe(2);
       expect(run.stderr).toContain("refusing");
       expect(run.stderr).toContain("--allow-remote to write");
+      // The remote host from the env file, not the unparseable-URL refusal.
+      expect(run.stderr).toContain("db.invalid");
       expect(run.stdout).not.toContain("applying");
     } finally {
       rmSync(dir, { recursive: true, force: true });
