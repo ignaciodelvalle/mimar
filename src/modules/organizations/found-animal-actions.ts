@@ -11,6 +11,7 @@
 //     first. A POST, so nothing about the place rides in a URL or an access log.
 
 import { requireOrgAccessByToken } from "@/lib/infra/auth-guards";
+import { summarizeDeadLetterError } from "@/lib/infra/dead-letter-error-summary";
 import { isFoundHelpLookupThrottled } from "@/lib/infra/found-help-limits";
 import { reportError } from "@/lib/infra/report-error";
 import {
@@ -75,8 +76,9 @@ export async function findNearbyHelpAction(input: {
       { isThrottled: isFoundHelpLookupThrottled },
     );
   } catch (err) {
-    // Reported WITHOUT the input: the locality the finder picked is theirs.
-    reportError("found-help/lookup", err);
+    // Reported WITHOUT the input: the locality the finder picked is theirs, and
+    // a DrizzleQueryError's message carries the query's params.
+    reportError("found-help/lookup", new Error(summarizeDeadLetterError(err)));
     return { ok: false, error: "unavailable" };
   }
 }
