@@ -176,6 +176,7 @@ export async function completeIdentityForUser(
         displayName: string;
         role: "owner" | "vet" | "govt" | "admin" | "national";
         accountType: "personal" | "institutional";
+        tosVersion?: string | null;
       }
     | undefined;
   try {
@@ -188,7 +189,18 @@ export async function completeIdentityForUser(
       // `/gob/historial` row that person appears in; this row is the only record
       // that the relabelling happened and what it replaced.
       const [current] = await tx
-        .select({ displayName: profiles.displayName })
+        .select({
+          displayName: profiles.displayName,
+          // Read for the legal-acceptance audit row below: NULL means THIS
+          // call records the first acceptance.
+          tosAcceptedAt: profiles.tosAcceptedAt,
+          // What step 1 recorded about the boxes, server-written (app_metadata
+          // is service-role-only; see consent-version-recorder.ts).
+          signupBoxes: sql<unknown>`(SELECT u.raw_app_meta_data->'tos_boxes' FROM auth.users u WHERE u.id = ${input.userId}::uuid)`,
+          signupTickedAt: sql<
+            string | null
+          >`(SELECT u.raw_app_meta_data->>'tos_ticked_at' FROM auth.users u WHERE u.id = ${input.userId}::uuid)`,
+        })
         .from(profiles)
         .where(eq(profiles.id, input.userId))
         .limit(1);
@@ -232,6 +244,7 @@ export async function completeIdentityForUser(
           displayName: profiles.displayName,
           role: profiles.role,
           accountType: profiles.accountType,
+          tosVersion: profiles.tosVersion,
         });
       if (row === undefined) return undefined;
 
@@ -253,6 +266,41 @@ export async function completeIdentityForUser(
         before: { displayName: current.displayName },
         after: { displayName },
       });
+
+      // THE ACCEPTANCE ITSELF, ON THE RECORD (security review of
+      // textos-legales-v14, finding 4). When THIS call records the first legal
+      // acceptance (the CASE above stamps only when tos_accepted_at was NULL),
+      // one more row in the same transaction says WHICH boxes were ticked and
+      // WHEN: the terms version, the separate transfer consent and the 18+
+      // declaration. The boxes come from step 1 (app_metadata.tos_boxes); a
+      // legacy v13 signup ticked only the terms box, and says so (`false`). The
+      // time is the client's when it sent one, else step 1's server time, else
+      // now. `=== null`, not `== null`: a caller that did not load the column
+      // records nothing rather than a guess.
+      if (current.tosAcceptedAt === null) {
+        const boxes =
+          current.signupBoxes !== null && typeof current.signupBoxes === "object"
+            ? (current.signupBoxes as { transfer?: unknown; adult?: unknown })
+            : {};
+        await writeAuditLog(tx, {
+          action: "profile_self_updated",
+          actorUserId: input.userId,
+          targetUserId: input.userId,
+          payload: {
+            changed_fields: ["tosAcceptedAt", "tosVersion"],
+            via: "signup_legal_acceptance",
+            tos_version: row.tosVersion,
+            boxes: {
+              terms_privacy: true,
+              international_transfer: boxes.transfer === true,
+              adult_declaration: boxes.adult === true,
+            },
+            ticked_at: current.signupTickedAt ?? new Date().toISOString(),
+          },
+          before: { tosAcceptedAt: null, tosVersion: null },
+          after: { tosVersion: row.tosVersion },
+        });
+      }
 
       return row;
     });
@@ -290,6 +338,9 @@ export async function completeIdentityForUser(
         displayName: updated.displayName,
         role: updated.role,
         accountType: updated.accountType,
+        // So a v13 signup that ticked only the terms box comes out of step 2
+        // already flagged for the re-acceptance.
+        tosVersion: updated.tosVersion,
       },
     }),
   };

@@ -182,6 +182,12 @@ export const signupInputSchema = z
      * an older server is recorded conservatively instead of refused.
      */
     legalVersion: z.string().max(32).optional(),
+    /**
+     * When the boxes were ticked, as the client saw it (ISO-8601). Optional;
+     * the server takes it only when plausible and otherwise records its own
+     * time, for the audit row of the acceptance (2026-10-07).
+     */
+    legalAcceptedAt: z.string().max(40).optional(),
   })
   .refine((v) => v.password === v.confirmPassword, { error: "PASSWORD_MISMATCH" })
   .refine((v) => v.tosAccepted, { error: "TOS_NOT_ACCEPTED" })

@@ -60,6 +60,8 @@ describe("the happy path", () => {
       // Written out: the version whose consent sentences this bundle displays
       // (three separate boxes, 2026-10-07). Bumping it is a deliberate edit here.
       legalVersion: "2026-10-07",
+      // The submit time, for the server's audit row of the acceptance.
+      legalAcceptedAt: expect.any(String),
     });
   });
 

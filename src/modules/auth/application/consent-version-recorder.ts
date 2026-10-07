@@ -20,12 +20,32 @@
 import type { LegalVersion } from "@/lib/reference/legal-version";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+/**
+ * What step 1 saw ticked, for the audit row step 2 writes when it records the
+ * acceptance (security review of textos-legales-v14, finding 4). `tickedAt` is
+ * the client's time when it sent a plausible one, else this server's.
+ */
+export type ConsentBoxes = {
+  transferAccepted: boolean;
+  adultDeclared: boolean;
+  tickedAt: string;
+};
+
 export async function recordConsentVersionWithAdmin(
   userId: string,
   version: LegalVersion,
+  boxes?: ConsentBoxes,
 ): Promise<void> {
   const { error } = await createAdminClient().auth.admin.updateUserById(userId, {
-    app_metadata: { tos_version: version },
+    app_metadata: {
+      tos_version: version,
+      ...(boxes
+        ? {
+            tos_boxes: { transfer: boxes.transferAccepted, adult: boxes.adultDeclared },
+            tos_ticked_at: boxes.tickedAt,
+          }
+        : {}),
+    },
   });
   if (error) throw error;
 }

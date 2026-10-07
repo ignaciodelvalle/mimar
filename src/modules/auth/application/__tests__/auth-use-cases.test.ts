@@ -55,7 +55,7 @@ import { RateLimitError, emailRateLimitKey } from "@/lib/infra/rate-limit";
 
 import { toAuthSessionV1 } from "../gotrue-port";
 import { login } from "../login";
-import { signup } from "../signup";
+import { plausibleTickedAt, signup } from "../signup";
 
 const IP = "10.0.0.1";
 
@@ -325,6 +325,35 @@ describe("signup — records the legal version the CLIENT displayed", () => {
 
   it("records an older KNOWN version as sent, never upgrading it to the current one", async () => {
     expect(await recorded("2026-09-24")).toEqual([["u1", "2026-09-24"]]);
+  });
+
+  it("records which boxes were ticked and when, for the step-2 audit row", async () => {
+    const seen: unknown[] = [];
+    const sentAt = new Date(Date.now() - 5_000).toISOString();
+    await signup(
+      { ...BASE, legalVersion: "2026-10-07", legalAcceptedAt: sentAt },
+      {
+        ...deps({
+          signUp: async () => ({
+            data: { user: { id: "u1" }, session: GOTRUE_SESSION },
+            error: null,
+          }),
+        }),
+        recordConsentVersion: async (_id, _v, boxes) => {
+          seen.push(boxes);
+        },
+      },
+    );
+    expect(seen).toEqual([{ transferAccepted: true, adultDeclared: true, tickedAt: sentAt }]);
+  });
+
+  it("ignores an implausible client tick time and uses the server's", () => {
+    const now = new Date("2026-10-07T12:00:00.000Z");
+    expect(plausibleTickedAt("2030-01-01T00:00:00.000Z", now)).toBe(now.toISOString());
+    expect(plausibleTickedAt("2020-01-01T00:00:00.000Z", now)).toBe(now.toISOString());
+    expect(plausibleTickedAt("not a date", now)).toBe(now.toISOString());
+    expect(plausibleTickedAt(undefined, now)).toBe(now.toISOString());
+    expect(plausibleTickedAt("2026-10-07T11:59:00.000Z", now)).toBe("2026-10-07T11:59:00.000Z");
   });
 
   it("records the PREVIOUS version when the client sent none (a bundle from before the field)", async () => {

@@ -96,6 +96,7 @@ export async function POST(request: Request) {
           // What the native bundle displayed; absent on bundles built before
           // 2026-09-24, which the use-case records as the previous version.
           legalVersion: parsed.data.legalVersion,
+          legalAcceptedAt: parsed.data.legalAcceptedAt,
           callerIp: callerIp(request.headers),
         },
         {

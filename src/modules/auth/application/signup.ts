@@ -65,8 +65,26 @@ export type SignupInput = {
    * or absent records the pre-2026-09-24 version, never the server's current.
    */
   legalVersion?: string;
+  /**
+   * When the client says the boxes were ticked (ISO-8601), for the audit row
+   * step 2 writes. Taken only when plausible — not in the future, not older
+   * than a day — else the server's own time stands in.
+   */
+  legalAcceptedAt?: string;
   callerIp: string;
 };
+
+/** The client's tick time when believable, else `now`. Never trusted blindly. */
+export function plausibleTickedAt(sent: string | undefined, now: Date): string {
+  if (sent) {
+    const at = new Date(sent);
+    const age = now.getTime() - at.getTime();
+    if (!Number.isNaN(at.getTime()) && age >= -60_000 && age <= 86_400_000) {
+      return at.toISOString();
+    }
+  }
+  return now.toISOString();
+}
 
 export type SignupDeps = {
   /** Built only after validation and the rate-limit budget pass. See LoginDeps. */
@@ -78,7 +96,11 @@ export type SignupDeps = {
    * recorded and step 2 stamps the PREVIOUS version: an under-claim, never an
    * over-claim.
    */
-  recordConsentVersion?: (userId: string, version: LegalVersion) => Promise<void>;
+  recordConsentVersion?: (
+    userId: string,
+    version: LegalVersion,
+    boxes: { transferAccepted: boolean; adultDeclared: boolean; tickedAt: string },
+  ) => Promise<void>;
 };
 
 export type SignupErrorCode =
@@ -324,7 +346,11 @@ export async function signup(input: SignupInput, deps: SignupDeps): Promise<Sign
   const userId = data.user?.id;
   if (userId && deps.recordConsentVersion) {
     try {
-      await deps.recordConsentVersion(userId, resolveAcceptedLegalVersion(input.legalVersion));
+      await deps.recordConsentVersion(userId, resolveAcceptedLegalVersion(input.legalVersion), {
+        transferAccepted: input.transferAccepted === true,
+        adultDeclared: input.adultDeclared === true,
+        tickedAt: plausibleTickedAt(input.legalAcceptedAt, new Date()),
+      });
     } catch (err) {
       reportError("auth/signup/consent-version", err, { userId });
     }

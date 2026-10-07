@@ -147,7 +147,9 @@ describe("the legal checkbox", () => {
       ),
     ).toBeTruthy();
     // The art. 6 notice beside the box (legal review T3-1).
-    expect(screen.getByText(/^Para qué: guardar tu cuenta/)).toBeTruthy();
+    expect(screen.getByText(/^Para qué y a quiénes:/)).toBeTruthy();
+    expect(screen.getByText(/^Responsable de los datos: Ignacio Del Valle/)).toBeTruthy();
+    expect(screen.getByText(/^LA AGENCIA DE ACCESO A LA INFORMACIÓN PÚBLICA/)).toBeTruthy();
     expect(screen.getByText(/Podés retirar este consentimiento cuando quieras/)).toBeTruthy();
     fireEvent.press(screen.getByText("Ver qué proveedores son y qué datos reciben"));
     expect(String(mockOpenURL.mock.calls[0]?.[0])).toContain("/privacidad#proveedores");
@@ -194,7 +196,7 @@ describe("validation before the network", () => {
 });
 
 describe("sending", () => {
-  it("hands the store exactly the seven fields the endpoint takes", async () => {
+  it("hands the store exactly the eight fields the endpoint takes", async () => {
     mockSignUp.mockResolvedValue({ ok: true, signedIn: true });
     renderScreen();
     fill();
@@ -209,6 +211,8 @@ describe("sending", () => {
       transferAccepted: true,
       adultDeclared: true,
       legalVersion: "2026-10-07",
+      // The submit time, for the server's audit row of the acceptance.
+      legalAcceptedAt: expect.any(String),
     });
   });
 

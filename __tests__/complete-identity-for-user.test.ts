@@ -215,6 +215,67 @@ describe("completeIdentityForUser — the happy path", () => {
   });
 });
 
+// THE ACCEPTANCE ON THE RECORD (security review of textos-legales-v14,
+// finding 4): when step 2 records the first legal acceptance, one more audit
+// row in the same transaction lists the boxes ticked at step 1 and when.
+describe("completeIdentityForUser — the legal-acceptance audit row", () => {
+  it("lists the terms version, the transfer consent and the 18+ box, with the tick time", async () => {
+    control.current = [
+      {
+        displayName: "ana.perez",
+        tosAcceptedAt: null,
+        signupBoxes: { transfer: true, adult: true },
+        signupTickedAt: "2026-10-07T10:00:00.000Z",
+      },
+    ];
+    control.returning = [{ ...ROW, tosVersion: "2026-10-07" }];
+    await run();
+
+    expect(control.audit).toHaveLength(2);
+    const legal = control.audit[1] as { action: string; payload: Record<string, unknown> };
+    expect(legal.action).toBe("profile_self_updated");
+    expect(legal.payload).toMatchObject({
+      via: "signup_legal_acceptance",
+      tos_version: "2026-10-07",
+      boxes: { terms_privacy: true, international_transfer: true, adult_declaration: true },
+      ticked_at: "2026-10-07T10:00:00.000Z",
+    });
+  });
+
+  it("says so when a v13 signup ticked only the terms box", async () => {
+    control.current = [{ displayName: "ana.perez", tosAcceptedAt: null, signupBoxes: null }];
+    control.returning = [{ ...ROW, tosVersion: "2026-09-24" }];
+    const result = await run();
+
+    const legal = control.audit[1] as { payload: Record<string, unknown> };
+    expect(legal.payload).toMatchObject({
+      tos_version: "2026-09-24",
+      boxes: { terms_privacy: true, international_transfer: false, adult_declaration: false },
+    });
+    expect(typeof legal.payload.ticked_at).toBe("string");
+    // And the account comes out of step 2 already flagged for re-acceptance.
+    expect(result.ok && result.user).toMatchObject({ legalAcceptancePending: true });
+  });
+
+  it("writes no such row on a retry (the acceptance was already recorded)", async () => {
+    control.current = [{ displayName: "ana.perez", tosAcceptedAt: new Date() }];
+    await run();
+    expect(control.audit).toHaveLength(1);
+  });
+
+  it("rolls the whole step back when that row cannot be written", async () => {
+    control.current = [{ displayName: "ana.perez", tosAcceptedAt: null }];
+    let n = 0;
+    control.throwOnAudit = () => {
+      n += 1;
+      if (n === 2) throw new Error("audit_log unavailable");
+      return undefined as never;
+    };
+    expect(await run()).toEqual({ ok: false, error: "WRITE_FAILED" });
+    expect(control.rolledBack).toBe(true);
+  });
+});
+
 describe("completeIdentityForUser — the audit row", () => {
   it("writes profile_self_updated with the prior name as `before`", async () => {
     // `lib/infra/audit-history-query.ts` resolves the actor labels in

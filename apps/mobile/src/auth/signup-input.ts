@@ -115,6 +115,9 @@ export function toSignupInput(draft: SignupDraft): SignupDraftVerdict {
     // what the phone showed, and a bundle that sends nothing is recorded as the
     // pre-2026-09-24 sentence (see @dim/contract/reference/legal-version.ts).
     legalVersion: LEGAL_VERSION,
+    // When the person submitted the ticked boxes, for the server's audit row of
+    // the acceptance; the server takes it only when plausible.
+    legalAcceptedAt: new Date().toISOString(),
   });
 
   if (parsed.success) return { ok: true, input: parsed.data };
