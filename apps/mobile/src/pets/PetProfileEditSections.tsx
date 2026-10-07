@@ -28,6 +28,7 @@ import {
   PERMANENT_CONDITION_GROUPS,
   type PermanentCondition,
   type PetProfileEditSectionId,
+  matchesSearch,
   permanentConditionGroup,
   permanentConditionLabel,
   petProfileEditSection,
@@ -427,7 +428,9 @@ function BreedPicker({
       return storedBreed === null || storedBreed.length === 0 ? [] : [storedBreed];
     }
     // Capped, not scrolled forever: 12 rows is a decision, 180 is a list.
-    return options.filter((b) => b.toLowerCase().includes(needle)).slice(0, 12);
+    // Accents and case folded, like the web's breed search: "dalmata" finds
+    // "Dálmata" (`matchesSearch`, @dim/contract/reference).
+    return options.filter((b) => matchesSearch(b, needle)).slice(0, 12);
   }, [options, needle, storedBreed]);
 
   return (

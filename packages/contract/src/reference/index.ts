@@ -54,6 +54,7 @@ export {
   localityOptionLabel,
 } from "./locality-copy.ts";
 export { detectContactInfoInFreeText } from "./contact-in-free-text.ts";
+export { foldForSearch, matchesSearch } from "./search-fold.ts";
 export {
   PERMANENT_CONDITIONS,
   PERMANENT_CONDITIONS_SET,

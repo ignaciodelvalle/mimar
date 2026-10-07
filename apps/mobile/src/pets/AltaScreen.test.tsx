@@ -178,6 +178,26 @@ describe("AltaScreen — U-6, native review: el picker de raza cierra el teclado
   });
 });
 
+describe("AltaScreen — el buscador de raza ignora tildes y mayusculas (auditoria 2026-10-07)", () => {
+  // It matched with `toLowerCase().includes`, so "dalmata" found nothing while
+  // the web's search found "Dálmata". `matchesSearch` (@dim/contract/reference)
+  // is the shared fold now.
+  it.each([
+    ["dalmata", "Dálmata"],
+    ["frances", "Bulldog Francés"],
+    ["danes", "Gran Danés"],
+    ["LABRADOR", "Labrador"],
+  ])("typing %s finds %s", async (typed, breed) => {
+    await seed(SIGNED_IN_A, { ...EMPTY_DRAFT, name: "Pampa", species: "dog" }, 2);
+
+    render(<AltaScreen />);
+    await screen.findByLabelText("Buscar raza");
+    fireEvent.changeText(screen.getByLabelText("Buscar raza"), typed);
+
+    expect(screen.getByText(breed)).toBeOnTheScreen();
+  });
+});
+
 describe("AltaScreen — Re-2, decision 16A: el borrador sobrevive a la muerte del proceso", () => {
   it("restores the fields AND the step from a draft written to disk", async () => {
     await seed(SIGNED_IN_A, { ...EMPTY_DRAFT, name: "Pampa" }, 0);

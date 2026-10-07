@@ -10,6 +10,8 @@
 // Pure data and string functions, no runtime dependency — the native app
 // imports this directly (see ./index.ts).
 
+import { foldForSearch } from "./search-fold.ts";
+
 /** The field label, web and app alike. */
 export const LOCALITY_FIELD_LABEL = "Ciudad, pueblo o barrio";
 
@@ -28,7 +30,7 @@ export type DescribableLocality = {
 };
 
 function fold(s: string): string {
-  return s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
+  return foldForSearch(s).trim();
 }
 
 /**
