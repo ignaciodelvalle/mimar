@@ -12,10 +12,12 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
+  LEGAL_ACCEPTANCE_INPUT_CODES,
   LOGIN_INPUT_CODES,
   MIN_PASSWORD_LENGTH,
   SIGNUP_INPUT_CODES,
   firstInputCode,
+  legalAcceptanceInputSchema,
   loginInputSchema,
   signupInputSchema,
 } from "../auth.ts";
@@ -25,6 +27,8 @@ const VALID_SIGNUP = {
   password: "supersecreta",
   confirmPassword: "supersecreta",
   tosAccepted: true,
+  transferAccepted: true,
+  adultDeclared: true,
 };
 
 describe("loginInputSchema", () => {
@@ -136,11 +140,61 @@ describe("signupInputSchema", () => {
     expect(signupInputSchema.safeParse(withoutTos).success).toBe(false);
   });
 
+  // THE TWO BOXES ADDED ON 2026-10-07 (legal review 2026-10-02, P10 and P9;
+  // PO decision D2 = b). Each is its own required TRUE, not implied by the
+  // Terms box, and an OMITTED one is refused — which is how a bundle built
+  // before these boxes existed is kept from creating an account without them.
+  it.each([
+    ["transferAccepted", "TRANSFER_NOT_ACCEPTED"],
+    ["adultDeclared", "ADULT_NOT_DECLARED"],
+  ] as const)("rejects %s=false with %s, even with the Terms accepted", (field, code) => {
+    const result = signupInputSchema.safeParse({ ...VALID_SIGNUP, [field]: false });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(firstInputCode(SIGNUP_INPUT_CODES, result.error)).toBe(code);
+  });
+
+  it.each(["transferAccepted", "adultDeclared"] as const)(
+    "rejects an OMITTED %s — the old single-box client is refused, not grandfathered",
+    (field) => {
+      const { [field]: _omitted, ...without } = VALID_SIGNUP;
+      expect(signupInputSchema.safeParse(without).success).toBe(false);
+    },
+  );
+
   it('rejects the string "on" — the form encoding is the ACTION edge\'s to translate', () => {
     // The web checkbox sends "on". If this schema coerced it, the contract
     // would be describing an HTML form encoding to a native client that has no
     // forms. The action edge converts before parsing.
     expect(signupInputSchema.safeParse({ ...VALID_SIGNUP, tosAccepted: "on" }).success).toBe(false);
+  });
+});
+
+describe("legalAcceptanceInputSchema (re-acceptance by an existing account)", () => {
+  const VALID = {
+    tosAccepted: true,
+    transferAccepted: true,
+    adultDeclared: true,
+    legalVersion: "2026-10-07",
+  };
+
+  it("accepts the three boxes and the displayed version", () => {
+    expect(legalAcceptanceInputSchema.safeParse(VALID).success).toBe(true);
+  });
+
+  it.each([
+    ["tosAccepted", "TOS_NOT_ACCEPTED"],
+    ["transferAccepted", "TRANSFER_NOT_ACCEPTED"],
+    ["adultDeclared", "ADULT_NOT_DECLARED"],
+  ] as const)("refuses %s=false with %s", (field, code) => {
+    const result = legalAcceptanceInputSchema.safeParse({ ...VALID, [field]: false });
+    expect(result.success).toBe(false);
+    if (!result.success)
+      expect(firstInputCode(LEGAL_ACCEPTANCE_INPUT_CODES, result.error)).toBe(code);
+  });
+
+  it("requires the version: a client must say which text it displayed", () => {
+    const { legalVersion: _omitted, ...without } = VALID;
+    expect(legalAcceptanceInputSchema.safeParse(without).success).toBe(false);
   });
 });
 

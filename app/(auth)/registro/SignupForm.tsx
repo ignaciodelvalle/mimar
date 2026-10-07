@@ -9,7 +9,8 @@
 //     kept() in lib/ui/use-kept-fields.ts's own docblock, and the pattern
 //     kept() itself was generalized FROM (see LoginForm.tsx).
 //   - password/confirmPassword: genuinely covered by kept() already.
-//   - tosAccepted: uncontrolled with NEITHER checked= NOR defaultChecked=,
+//   - tosAccepted / transferAccepted / adultDeclared: uncontrolled with
+//     NEITHER checked= NOR defaultChecked=,
 //     which is the PO-gated, deliberate choice to NEVER re-tick a consent
 //     on someone's behalf (see the comment at its call site) — not an
 //     omission the fence should ask for a `key`/`kept()` fix on.
@@ -19,7 +20,9 @@ import {
   completeIdentityAction,
   signupAction,
 } from "@/app/actions/auth";
+import { TransferConsentBox } from "@/components/legal/LegalConsentBoxes";
 import { LnCheckbox, LnField, LnInput, LnPasswordInput } from "@/components/ui/Field";
+import { ADULT_DECLARATION_SENTENCE } from "@/lib/reference/legal-version";
 import { useKeptFields } from "@/lib/ui/use-kept-fields";
 import { useStepFocus } from "@/lib/ui/use-step-focus";
 import { IDENTITY_NAME_MAX_LENGTH } from "@dim/contract/input";
@@ -32,7 +35,8 @@ const initialIdentityState: IdentityFormState = { error: null };
 
 // Two-step inline signup per design spec §1.2.
 //
-// Step 1 (account): email + password + repeat password + TOS checkbox.
+// Step 1 (account): email + password + repeat password + three legal boxes
+//   (Terms and Privacy; international transfer; 18 or older).
 //   signupAction creates the auth.users row; profiles.display_name is set
 //   provisionally to the email local-part by the handle_new_user trigger.
 //
@@ -328,15 +332,19 @@ export function SignupForm({
               in their life.
               PO-gated if anybody wants it changed: this is a legal posture, not
               an ergonomics call. */}
-          {/* THE TRANSFER CLAUSE (Ley 25.326 art. 12, PO decision 6A,
-              2026-09-24). Brazil and the US are not on the AAIP adequacy list
-              (Disposición DNPDP 60-E/2016, art. 3), so the international transfer to the
-              providers listed on /privacidad#proveedores rests on express
-              consent — and a consent the sentence does not NAME is not express.
-              It rides on this same box rather than a second one: the act is the
-              same (accepting the policy that discloses the transfer), and the
-              mobile twin (apps/mobile/src/auth/CrearCuentaScreen.tsx) says the
-              same words. Change one, change both. */}
+          {/* THREE BOXES, NOT ONE (2026-10-07; legal review 2026-10-02, rows
+              P9 and P10; PO decision D2 = b, a conservative interim that
+              counsel may loosen). The transfer clause used to ride on the
+              Terms box ("incluida la transferencia…"), on the argument that
+              accepting the policy that discloses it is one act. The review
+              disagrees: Dec. 1558/2001 art. 5 inc. 1 asks a consent given
+              beside other declarations to be "expresa y destacada", so the
+              transfer is its own required box, set apart, naming the two
+              countries. The 18+ box is the review's minimum age measure.
+              The sentences come from @dim/contract/reference so the app
+              (apps/mobile/src/auth/CrearCuentaScreen.tsx) and the
+              re-acceptance screen say the same words. None of the three is
+              restored after a failed submit — see the note above. */}
           <LnCheckbox id="tosAccepted" name="tosAccepted" required>
             Leí y acepto los{" "}
             <Link
@@ -354,15 +362,13 @@ export function SignupForm({
             >
               Política de privacidad
             </Link>
-            , incluida la transferencia de mis datos fuera de la Argentina a los{" "}
-            <Link
-              href="/privacidad#proveedores"
-              target="_blank"
-              className="font-medium text-[var(--color-ln-azul)] underline underline-offset-2"
-            >
-              proveedores que se detallan en ella
-            </Link>
             .
+          </LnCheckbox>
+
+          <TransferConsentBox />
+
+          <LnCheckbox id="adultDeclared" name="adultDeclared" required>
+            {ADULT_DECLARATION_SENTENCE}
           </LnCheckbox>
 
           <button

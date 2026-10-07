@@ -532,6 +532,8 @@ describe("POST /api/v1/auth/signup", () => {
     password: "supersecreta",
     confirmPassword: "supersecreta",
     tosAccepted: true,
+    transferAccepted: true,
+    adultDeclared: true,
   };
 
   // The version the native bundle DISPLAYED reaches the SERVER-ONLY recorder
@@ -539,7 +541,12 @@ describe("POST /api/v1/auth/signup", () => {
   // a bundle from before the field sends none and is recorded as the previous
   // sentence (reviews of 1c1ac9f82 and 2cac7c2ff). Written-out expectations.
   it.each([
-    ["a current bundle", { legalVersion: "2026-09-24" }, "2026-09-24"],
+    ["a current bundle", { legalVersion: "2026-10-07" }, "2026-10-07"],
+    [
+      "a bundle that displayed the 2026-09-24 sentence",
+      { legalVersion: "2026-09-24" },
+      "2026-09-24",
+    ],
     ["a bundle built before the field", {}, "2026-07-23"],
   ])("records the consent version of %s server-side", async (_label, extra, expected) => {
     const userId = randomUUID();
@@ -633,6 +640,23 @@ describe("POST /api/v1/auth/signup", () => {
     expect(control.calls).toEqual([]);
   });
 
+  // A bundle built before the separate transfer and 18+ boxes (2026-10-07,
+  // legal review P10/P9) sends neither. It is refused with `invalid_request` —
+  // whose copy on the phone asks to update the app — instead of creating an
+  // account without them.
+  it.each([
+    ["transferAccepted", { transferAccepted: false }],
+    ["adultDeclared", { adultDeclared: false }],
+    ["an old single-box body", { transferAccepted: undefined, adultDeclared: undefined }],
+  ])("refuses a body without %s before spending anything", async (_label, patch) => {
+    const res = await signupRoute(post("/auth/signup", { ...VALID, ...patch }));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_request" });
+    expect(control.limits).toEqual([]);
+    expect(control.calls).toEqual([]);
+  });
+
   it("answers 429 without reaching GoTrue when the per-IP budget refuses", async () => {
     control.limiterThrows = () => {
       throw new RateLimitError(new Date(), "auth_signup_ip");
@@ -663,6 +687,8 @@ describe("auth_signup_ip — the only bucket this act has", () => {
     password: "supersecreta",
     confirmPassword: "supersecreta",
     tosAccepted: true,
+    transferAccepted: true,
+    adultDeclared: true,
   };
 
   it("spends the derived ceiling itself, not a literal at the call site", async () => {

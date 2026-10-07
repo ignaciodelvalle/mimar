@@ -284,6 +284,8 @@ describe("signup — records the legal version the CLIENT displayed", () => {
     password: "supersecreta",
     confirmPassword: "supersecreta",
     tosAccepted: true,
+    transferAccepted: true,
+    adultDeclared: true,
     callerIp: IP,
   };
 
@@ -318,6 +320,10 @@ describe("signup — records the legal version the CLIENT displayed", () => {
   }
 
   it("records a known version for the new user (the current web form, a current bundle)", async () => {
+    expect(await recorded("2026-10-07")).toEqual([["u1", "2026-10-07"]]);
+  });
+
+  it("records an older KNOWN version as sent, never upgrading it to the current one", async () => {
     expect(await recorded("2026-09-24")).toEqual([["u1", "2026-09-24"]]);
   });
 
@@ -363,6 +369,8 @@ describe("signup — gates, in order", () => {
     password: "supersecreta",
     confirmPassword: "supersecreta",
     tosAccepted: true,
+    transferAccepted: true,
+    adultDeclared: true,
     callerIp: IP,
   };
 
@@ -378,6 +386,10 @@ describe("signup — gates, in order", () => {
     [{ password: "corta12" }, "password_too_short"],
     [{ confirmPassword: "otracosaentera" }, "password_mismatch"],
     [{ tosAccepted: false }, "tos_not_accepted"],
+    // The two boxes added on 2026-10-07 (legal review P10 and P9): each its
+    // own refusal, never implied by the Terms box.
+    [{ transferAccepted: false }, "transfer_not_accepted"],
+    [{ adultDeclared: false }, "adult_not_declared"],
   ])("refuses %o with the coded branch and spends no counter", async (patch, code) => {
     const result = await signup({ ...VALID, ...patch }, deps(signupPort({})));
 
@@ -413,6 +425,8 @@ describe("signup — the enumeration masquerade", () => {
     password: "supersecreta",
     confirmPassword: "supersecreta",
     tosAccepted: true,
+    transferAccepted: true,
+    adultDeclared: true,
     callerIp: IP,
   };
 

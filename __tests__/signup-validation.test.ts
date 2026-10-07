@@ -40,6 +40,8 @@ function buildAuthForm(overrides: Record<string, string> = {}): FormData {
   fd.set("password", "supersecreta");
   fd.set("confirmPassword", "supersecreta");
   fd.set("tosAccepted", "on");
+  fd.set("transferAccepted", "on");
+  fd.set("adultDeclared", "on");
   for (const [k, v] of Object.entries(overrides)) fd.set(k, v);
   return fd;
 }
@@ -89,6 +91,24 @@ describe("signupAction — validation gates", () => {
     fd.delete("tosAccepted");
     const result = await signupAction({ error: null }, fd);
     expect(result.error).toMatch(/Términos/);
+  });
+
+  // The two boxes added on 2026-10-07 (legal review 2026-10-02, P10 and P9).
+  // Each refuses on its own: the Terms box does not imply either.
+  it("rejects when the separate TRANSFER box is not ticked", async () => {
+    const fd = buildAuthForm();
+    fd.delete("transferAccepted");
+    const result = await signupAction({ error: null }, fd);
+    expect(result.error).toBe(
+      "Tenés que aceptar la transferencia de tus datos a Brasil y Estados Unidos para crear la cuenta.",
+    );
+  });
+
+  it("rejects when the 18+ box is not ticked", async () => {
+    const fd = buildAuthForm();
+    fd.delete("adultDeclared");
+    const result = await signupAction({ error: null }, fd);
+    expect(result.error).toBe("Para crear una cuenta tenés que tener 18 años o más.");
   });
 
   it("does not require displayName — validation passes and action reaches Supabase", async () => {

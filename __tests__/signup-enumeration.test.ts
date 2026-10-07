@@ -121,6 +121,8 @@ function signupForm(email: string): FormData {
   fd.set("password", "supersecreta");
   fd.set("confirmPassword", "supersecreta");
   fd.set("tosAccepted", "on");
+  fd.set("transferAccepted", "on");
+  fd.set("adultDeclared", "on");
   return fd;
 }
 

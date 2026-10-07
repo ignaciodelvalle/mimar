@@ -74,6 +74,10 @@ export async function POST(request: Request) {
   // the backstop for a client out of step with the contract package — including
   // one that tries to omit `tosAccepted`, which the schema requires as a
   // literal boolean because a legal acceptance is never defaulted into being.
+  // The same goes for `transferAccepted` and `adultDeclared` (2026-10-07): a
+  // bundle built before those boxes existed sends neither, and is refused here
+  // with `invalid_request` — whose copy on the phone asks to update the app —
+  // rather than creating an account without them.
   const parsed = signupInputSchema.safeParse(body);
   if (!parsed.success) return apiV1Error("invalid_request", 400);
 
@@ -86,6 +90,8 @@ export async function POST(request: Request) {
           password: parsed.data.password,
           confirmPassword: parsed.data.confirmPassword,
           tosAccepted: parsed.data.tosAccepted,
+          transferAccepted: parsed.data.transferAccepted,
+          adultDeclared: parsed.data.adultDeclared,
           // What the native bundle displayed; absent on bundles built before
           // 2026-09-24, which the use-case records as the previous version.
           legalVersion: parsed.data.legalVersion,
@@ -122,7 +128,7 @@ export async function POST(request: Request) {
       // right and the person must change one field.
       case "weak_password":
         return apiV1Error("weak_password", 422);
-      // The four validation branches. All four are the schema's job one line
+      // The validation branches. All of them are the schema's job one line
       // above; the use-case re-checks them because it may not assume its caller
       // validated, and they collapse to one wire code because a client that
       // reaches them is out of step with the contract, not asking which field
@@ -131,6 +137,8 @@ export async function POST(request: Request) {
       case "password_too_short":
       case "password_mismatch":
       case "tos_not_accepted":
+      case "transfer_not_accepted":
+      case "adult_not_declared":
         return apiV1Error("invalid_request", 400);
       default: {
         const unhandled: never = result.error.code;

@@ -95,6 +95,9 @@ export async function signupAction(
       // contract package describes a boolean, because a native client has no
       // checkboxes to encode.
       tosAccepted: formData.get("tosAccepted") === "on",
+      // Two more boxes, each its own act (legal review P10 and P9, 2026-10-07).
+      transferAccepted: formData.get("transferAccepted") === "on",
+      adultDeclared: formData.get("adultDeclared") === "on",
       // EXPLICIT, not defaulted: this form is server-rendered, so the sentence
       // the person ticked is the one this deploy carries. The use-case would
       // record the PREVIOUS version for an absent field (an old native bundle).

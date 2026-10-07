@@ -49,6 +49,13 @@ export type SignupInput = {
   confirmPassword: string;
   tosAccepted: boolean;
   /**
+   * The separate international-transfer box (legal review P10) and the 18+
+   * declaration (P9), both required since 2026-10-07 — see
+   * `@dim/contract/input` → `requiredConsent`. Never folded into `tosAccepted`.
+   */
+  transferAccepted: boolean;
+  adultDeclared: boolean;
+  /**
    * The legal version whose consent sentence the CLIENT displayed. The web
    * action passes its own `LEGAL_VERSION` explicitly (it renders the sentence
    * it is running); the native app sends the one its bundle carries; an old
@@ -77,6 +84,8 @@ export type SignupErrorCode =
   | "password_too_short"
   | "password_mismatch"
   | "tos_not_accepted"
+  | "transfer_not_accepted"
+  | "adult_not_declared"
   | "rate_limited"
   | "weak_password"
   | "signup_failed";
@@ -119,6 +128,19 @@ export async function signup(input: SignupInput, deps: SignupDeps): Promise<Sign
       "tos_not_accepted",
       "Tenés que aceptar los Términos y la Política de privacidad.",
     );
+  }
+  if (!input.transferAccepted) {
+    return refuse(
+      "transfer_not_accepted",
+      "Tenés que aceptar la transferencia de tus datos a Brasil y Estados Unidos para crear la cuenta.",
+    );
+  }
+  // INTERIM (legal review 2026-10-02, row P9; PO decision D2 = b). A declared
+  // 18+ is the review's minimum measure; counsel fixes the real threshold and
+  // whether a parent can consent below it. Until then, no declaration, no
+  // account.
+  if (!input.adultDeclared) {
+    return refuse("adult_not_declared", "Para crear una cuenta tenés que tener 18 años o más.");
   }
 
   // Rate limit per trusted edge IP before creating a GoTrue user. Keyed off the

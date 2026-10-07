@@ -99,8 +99,23 @@ export const SIGNUP_INPUT_CODES = [
   "PASSWORD_TOO_SHORT",
   "PASSWORD_MISMATCH",
   "TOS_NOT_ACCEPTED",
+  "TRANSFER_NOT_ACCEPTED",
+  "ADULT_NOT_DECLARED",
 ] as const;
 export type SignupInputCode = (typeof SIGNUP_INPUT_CODES)[number];
+
+/**
+ * The two boxes added on 2026-10-07 (legal review 2026-10-02, P10 and P9; PO
+ * decision D2 = b, conservative interim). Each is its OWN required boolean,
+ * never folded into `tosAccepted`: the international transfer must be consented
+ * "en forma expresa y destacada" when it is given beside other declarations
+ * (Dec. 1558/2001, art. 5 inc. 1), and a box that also accepts the Terms is not
+ * that. Required on the wire too, so a client built before these boxes existed
+ * is refused (`invalid_request`, whose copy asks to update the app) instead of
+ * creating an account with no transfer consent and no age declaration.
+ */
+const requiredConsent = (code: string) =>
+  z.boolean({ error: code }).refine((v) => v, { error: code });
 
 export const signupInputSchema = z
   .object({
@@ -118,6 +133,10 @@ export const signupInputSchema = z
      * describes the boolean.
      */
     tosAccepted: z.boolean(),
+    /** The separate international-transfer box (P10). See `requiredConsent`. */
+    transferAccepted: requiredConsent("TRANSFER_NOT_ACCEPTED"),
+    /** The "Tengo 18 años o más" box (P9, interim). See `requiredConsent`. */
+    adultDeclared: requiredConsent("ADULT_NOT_DECLARED"),
     /**
      * The legal version whose consent sentence the client DISPLAYED
      * (`@dim/contract/reference` → `LEGAL_VERSION` at the client's build).
@@ -133,6 +152,41 @@ export const signupInputSchema = z
   .refine((v) => v.tosAccepted, { error: "TOS_NOT_ACCEPTED" });
 
 export type SignupInput = z.infer<typeof signupInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Legal re-acceptance (2026-10-07)
+// ---------------------------------------------------------------------------
+
+/**
+ * Failure codes for the re-acceptance screen, in report order: the same three
+ * boxes as signup, in the same order, with the same codes.
+ */
+export const LEGAL_ACCEPTANCE_INPUT_CODES = [
+  "TOS_NOT_ACCEPTED",
+  "TRANSFER_NOT_ACCEPTED",
+  "ADULT_NOT_DECLARED",
+] as const;
+export type LegalAcceptanceInputCode = (typeof LEGAL_ACCEPTANCE_INPUT_CODES)[number];
+
+/**
+ * What an EXISTING account sends to accept the current legal version — the
+ * screen a personal account is sent to when its recorded `tos_version` is not
+ * the current one (Disp. 377/2026 inc. b: a substantive change needs a new
+ * acceptance, not a notice).
+ *
+ * `legalVersion` is REQUIRED here, unlike signup. The server records only its
+ * own current version and refuses any other: an old bundle showing an old
+ * sentence would otherwise either record a text the person never saw, or
+ * record its own old version and leave the person on the gate forever.
+ */
+export const legalAcceptanceInputSchema = z.object({
+  tosAccepted: requiredConsent("TOS_NOT_ACCEPTED"),
+  transferAccepted: requiredConsent("TRANSFER_NOT_ACCEPTED"),
+  adultDeclared: requiredConsent("ADULT_NOT_DECLARED"),
+  legalVersion: z.string().max(32),
+});
+
+export type LegalAcceptanceInput = z.infer<typeof legalAcceptanceInputSchema>;
 
 // ---------------------------------------------------------------------------
 // Password recovery — the REQUEST half

@@ -222,22 +222,73 @@ describe("SignupForm — step 2 (identity) field state", () => {
   });
 });
 
-// The consent sentence is a legal text (Ley 25.326 arts. 5 and 12). The transfer
-// clause was added by PO decision 6A (2026-09-24): Brazil and the US are not on
-// the AAIP adequacy list, so the international transfer rests on the express
-// consent this box records, and a consent the sentence does not name is not
-// express. Written out here, not derived from the component, and kept word for
-// word equal to the mobile twin (apps/mobile/src/auth/CrearCuentaScreen.test.tsx).
-describe("SignupForm — the consent sentence", () => {
-  it("names the international transfer and links to the provider list", () => {
+// The consent sentences are legal texts (Ley 25.326 arts. 5 and 12). Since
+// 2026-10-07 (legal review 2026-10-02, rows P10 and P9; PO decision D2 = b,
+// conservative interim) there are THREE boxes: the Terms and Privacy box no
+// longer carries the transfer clause; the international transfer is its own
+// required box, set apart in a group with a heading and naming Brasil and
+// Estados Unidos (Dec. 1558/2001 art. 5 inc. 1, "expresa y destacada"); and an
+// 18+ declaration is required. Written out here, not derived from the
+// component, and word for word equal to the mobile twin
+// (apps/mobile/src/auth/CrearCuentaScreen.test.tsx).
+function labelText(input: HTMLInputElement): string {
+  const label = input.labels?.[0] ?? null;
+  expect(label, `checkbox ${input.name} has no <label>`).not.toBeNull();
+  return label?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+describe("SignupForm — the three consent boxes", () => {
+  it("the Terms box accepts the Terms and the Policy and NOTHING ELSE", () => {
     const view = renderForm();
     const tos = view.container.querySelector('input[name="tosAccepted"]') as HTMLInputElement;
-    const label = tos.labels?.[0] ?? null;
-    expect(label, "the terms checkbox has no <label>").not.toBeNull();
-    expect(label?.textContent?.replace(/\s+/g, " ").trim()).toBe(
-      "Leí y acepto los Términos y condiciones y la Política de privacidad, incluida la transferencia de mis datos fuera de la Argentina a los proveedores que se detallan en ella.",
+    expect(labelText(tos)).toBe(
+      "Leí y acepto los Términos y condiciones y la Política de privacidad.",
     );
-    const hrefs = Array.from(label?.querySelectorAll("a") ?? []).map((a) => a.getAttribute("href"));
-    expect(hrefs).toEqual(["/terminos", "/privacidad", "/privacidad#proveedores"]);
+    const hrefs = Array.from(tos.labels?.[0]?.querySelectorAll("a") ?? []).map((a) =>
+      a.getAttribute("href"),
+    );
+    expect(hrefs).toEqual(["/terminos", "/privacidad"]);
+  });
+
+  it("the transfer box is its own, set apart, naming both countries", () => {
+    const view = renderForm();
+    const transfer = view.container.querySelector(
+      'input[name="transferAccepted"]',
+    ) as HTMLInputElement;
+    expect(transfer, "no separate transfer checkbox").not.toBeNull();
+    expect(labelText(transfer)).toBe(
+      "Acepto que mis datos se transfieran a proveedores en Brasil y en Estados Unidos, países que no figuran en la lista argentina de países con protección adecuada de datos personales.",
+    );
+    const group = transfer.closest("fieldset");
+    expect(group, "the transfer box is not set apart in its own group").not.toBeNull();
+    expect(group?.querySelector("legend")?.textContent).toBe(
+      "Transferencia internacional de tus datos",
+    );
+    expect(group?.querySelector('a[href="/privacidad#proveedores"]')).not.toBeNull();
+    // The art. 6 notice sits beside the box (legal review T3-1): purpose,
+    // recipients, withdrawal and rights.
+    const groupText = group?.textContent?.replace(/\s+/g, " ") ?? "";
+    expect(groupText).toContain("Para qué: guardar tu cuenta");
+    expect(groupText).toContain("Quiénes los reciben: Supabase y Vercel (servidores en Brasil)");
+    expect(groupText).toContain(
+      "Podés retirar este consentimiento cuando quieras eliminando tu cuenta",
+    );
+    expect(groupText).toContain("Tenés derecho a acceder a tus datos, rectificarlos y suprimirlos");
+  });
+
+  it("asks for the 18+ declaration", () => {
+    const view = renderForm();
+    const adult = view.container.querySelector('input[name="adultDeclared"]') as HTMLInputElement;
+    expect(labelText(adult)).toBe("Tengo 18 años o más.");
+  });
+
+  it("requires all three and pre-ticks none", () => {
+    const view = renderForm();
+    for (const name of ["tosAccepted", "transferAccepted", "adultDeclared"]) {
+      const box = view.container.querySelector(`input[name="${name}"]`) as HTMLInputElement;
+      expect(box.type).toBe("checkbox");
+      expect(box.required, `${name} is not required`).toBe(true);
+      expect(box.checked, `${name} starts ticked`).toBe(false);
+    }
   });
 });

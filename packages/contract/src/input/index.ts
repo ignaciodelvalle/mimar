@@ -36,10 +36,13 @@ export {
   firstAmendEventInputCode,
 } from "./amend-event.ts";
 export {
+  LEGAL_ACCEPTANCE_INPUT_CODES,
   LOGIN_INPUT_CODES,
   MIN_PASSWORD_LENGTH,
   PASSWORD_RESET_REQUEST_INPUT_CODES,
   SIGNUP_INPUT_CODES,
+  type LegalAcceptanceInput,
+  type LegalAcceptanceInputCode,
   type LoginInput,
   type LoginInputCode,
   type PasswordResetRequestInput,
@@ -47,6 +50,7 @@ export {
   type SignupInput,
   type SignupInputCode,
   firstInputCode,
+  legalAcceptanceInputSchema,
   loginInputSchema,
   passwordResetRequestInputSchema,
   signupInputSchema,
