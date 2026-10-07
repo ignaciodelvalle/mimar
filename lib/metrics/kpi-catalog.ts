@@ -376,7 +376,7 @@ export const KPI_CATALOG: Record<KpiId, KpiDefinition> = {
     id: "rabies_coverage_dogs_12m",
     label: "Cobertura antirrábica — perros (12 meses)",
     numerator:
-      "COUNT DISTINCT dogs with ≥1 vaccination_administered event where vaccine_name, folded with unaccent(lower()), matches /antirrab|rabi/ (rabiesVaccineNameSql — the same matcher as the owner's credential) (via the amendment overlay — corrected names count under their current value), occurred_at within the trailing 12 months",
+      "COUNT DISTINCT dogs with ≥1 vaccination_administered event where vaccine_name, folded with lower(unaccent()), matches /antirrab|rabi/ (rabiesVaccineNameSql — the same matcher as the owner's credential) (via the amendment overlay — corrected names count under their current value), occurred_at within the trailing 12 months",
     denominator: "COUNT active/lost dogs (pets.species = 'dog') in scope",
     source: "pets, pet_events (vaccination_administered)",
     fetcherName: "fetchRabiesCoverage",
@@ -423,7 +423,7 @@ export const KPI_CATALOG: Record<KpiId, KpiDefinition> = {
       definition:
         "Porcentaje de perros del padrón (activos/perdidos) en la jurisdicción con al menos una vacunación antirrábica registrada en los últimos 12 meses. El padrón es el primer denominador; el segundo es la población canina estimada. Meta de salud pública: 80%.",
       formula:
-        "COUNT DISTINCT perros con vaccination_administered (unaccent(lower(vaccine_name)) ~ 'antirrab|rabi', últimos 12m) / COUNT DISTINCT perros del padrón. «Cobertura del padrón» = perros del padrón / población canina estimada (censo humano × 0,158 perros/hab.).",
+        "COUNT DISTINCT perros con vaccination_administered (lower(unaccent(vaccine_name)) ~ 'antirrab|rabi', últimos 12m) / COUNT DISTINCT perros del padrón. «Cobertura del padrón» = perros del padrón / población canina estimada (censo humano × 0,158 perros/hab.).",
       caveat:
         "Solo se cuentan vacunas registradas en miMAR. La cobertura real puede ser mayor si existen campañas fuera del sistema. La «población canina estimada» deriva del censo humano INDEC con un factor de tenencia (0,158 perros/hab., GCBA — Encuesta Anual de Hogares 2022, módulo Tenencia responsable) — es una estimación piso (CABA subestima la tenencia nacional), no un censo canino; sin fila de censo se muestra «sin estimación censal». No existe cifra oficial nacional de población canina (ni INDEC, ni SENASA, ni Ministerio de Salud) — este factor NO se atribuye a OMS/OPS. Lente dual: el titular cuenta dosis declaradas (mayormente por dueños); el sub-renglón «firmado por matrícula» muestra la porción con firma de veterinario matriculado — es divulgación junto al declarado, nunca su reemplazo.",
     },
@@ -439,7 +439,7 @@ export const KPI_CATALOG: Record<KpiId, KpiDefinition> = {
     // no-window historical count with no legal target.
     label: "Vacunación histórica (todas las especies, sin ventana)",
     numerator:
-      "COUNT DISTINCT active/lost pets of ANY species with ≥1 vaccination_administered event where unaccent(lower(vaccine_name)) ~ 'antirrab|rabi' (rabiesVaccineNameSql) (via the amendment overlay), NO occurred_at filter — all-time",
+      "COUNT DISTINCT active/lost pets of ANY species with ≥1 vaccination_administered event where lower(unaccent(vaccine_name)) ~ 'antirrab|rabi' (rabiesVaccineNameSql) (via the amendment overlay), NO occurred_at filter — all-time",
     denominator: "COUNT active/lost pets (any species) in scope",
     source: "pets, pet_events (vaccination_administered)",
     fetcherName: "fetchAnalyticsMetrics",
@@ -1897,7 +1897,7 @@ export const KPI_CATALOG: Record<KpiId, KpiDefinition> = {
     id: "outreach_overdue_rabies_count",
     label: "Antirrábica vencida (pipeline)",
     numerator:
-      "COUNT active pets whose latest vaccination_administered event (unaccent(lower(vaccine_name)) ~ 'antirrab|rabi', rabiesVaccineNameSql) is older than the overdue cutoff (~365 days), OR that have no such event ever",
+      "COUNT active pets whose latest vaccination_administered event (lower(unaccent(vaccine_name)) ~ 'antirrab|rabi', rabiesVaccineNameSql) is older than the overdue cutoff (~365 days), OR that have no such event ever",
     denominator: "n/a — absolute count, CAPPED at 500 rows (LIMIT in the underlying query)",
     source: "pets, pet_events (vaccination_administered)",
     fetcherName: "fetchOverdueRabiesVaccine",

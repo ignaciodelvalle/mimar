@@ -766,7 +766,7 @@ export async function getPanoramaKpis(
         definition:
           "Porcentaje de perros del padrón (activos/perdidos) en la jurisdicción con al menos una vacunación antirrábica registrada en los últimos 12 meses. El padrón registrado es el primer denominador; el segundo es la población canina estimada. Obligación legal: Ley 22.953 (vacunación antirrábica obligatoria, vigente en casi todas las jurisdicciones). Meta de salud pública: 80%.",
         formula:
-          "COUNT DISTINCT perros con vaccination_administered (unaccent(lower(vaccine_name)) ~ 'antirrab|rabi', últimos 12m) / COUNT DISTINCT perros del padrón. «Cobertura del padrón» = perros del padrón / población canina estimada (censo humano × 0,158 perros/hab.).",
+          "COUNT DISTINCT perros con vaccination_administered (lower(unaccent(vaccine_name)) ~ 'antirrab|rabi', últimos 12m) / COUNT DISTINCT perros del padrón. «Cobertura del padrón» = perros del padrón / población canina estimada (censo humano × 0,158 perros/hab.).",
         caveat:
           "Solo se cuentan vacunas registradas en miMAR. La cobertura real puede ser mayor si existen campañas fuera del sistema. La «población canina estimada» deriva del censo humano INDEC con un factor de tenencia (0,158 perros/hab., ancla EAH CABA) — es una estimación, no un censo canino; si la jurisdicción no tiene fila de censo se muestra «sin estimación censal». «Firmado por matrícula» es la porción firmada por un veterinario matriculado (author_role='vet', verificado) — la parte que el registro oficial cuenta como «al día».",
       },

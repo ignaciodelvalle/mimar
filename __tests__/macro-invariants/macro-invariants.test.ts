@@ -273,7 +273,7 @@ describe("INV-1 (§2.7) — vaccine sums to animal jurisdiction, not vet jurisdi
         and(
           eq(petEvents.petId, petId),
           eq(petEvents.eventType, "vaccination_administered"),
-          sql`unaccent(lower(${petEvents.payload}->>'vaccine_name')) ~ 'antirrab|rabi'`,
+          sql`lower(unaccent(${petEvents.payload}->>'vaccine_name')) ~ 'antirrab|rabi'`,
           eq(pets.jurisdictionProvince, PROVINCE_A),
           eq(pets.jurisdictionLocality, LOCALITY_A),
         ),
@@ -708,7 +708,7 @@ describe("INV-5 (§2.13) — idempotent submit yields exactly one event and one 
         and(
           eq(petEvents.petId, petId),
           eq(petEvents.eventType, "vaccination_administered"),
-          sql`unaccent(lower(${petEvents.payload}->>'vaccine_name')) ~ 'antirrab|rabi'`,
+          sql`lower(unaccent(${petEvents.payload}->>'vaccine_name')) ~ 'antirrab|rabi'`,
           gte(petEvents.occurredAt, new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)),
         ),
       );

@@ -113,7 +113,7 @@ export const RABIES_VACCINE_NAME = "Antirrábica";
 /**
  * The rabies FAMILY ("antirrab" or "rabi" anywhere in the name) as a POSIX/JS
  * regex source, to be applied ONLY to a folded name: `vaccineNameKey` in
- * TypeScript, `unaccent(lower(name))` in SQL (`rabiesVaccineNameSql` in
+ * TypeScript, `lower(unaccent(name))` in SQL (`rabiesVaccineNameSql` in
  * lib/metrics/rabies.ts). The same source on both sides is what keeps a SQL
  * metric and a TS surface from disagreeing over an accent, a capital, a
  * decomposed "á" or "Rabia" (surface audit 2026-10-07, A).
