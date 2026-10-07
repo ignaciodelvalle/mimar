@@ -1,5 +1,5 @@
 // The coordinate pass over UNRESOLVED event_places rows whose name is a
-// HOMONYM — plan maestro A2, 2026-10-07. DRY RUN ONLY.
+// HOMONYM — plan maestro A2, 2026-10-07.
 //
 // The name pass (lib/place/event-places-name-pass.ts) leaves a row unresolved
 // when its (province, locality) name matches more than one live catalogue row
@@ -29,20 +29,27 @@
 // apart; Córdoba has two such names) — no point can settle those, and the
 // pass says "too close to call" for every one of their rows.
 //
-// ONLY SPINE-SHAPED ROWS WOULD BE WRITTEN — the same rule as the name pass:
-// a row in the 0250 trigger's shape can be a deliberate verdict of the report
-// policy. And nothing is written at all yet: the event_places method CHECK
-// (0250) has no value for "a homonym settled by the event's coordinates"
-// (geocode_unique means a GEOCODED name that the pin corroborated, which is
-// not what happened here), so an apply needs that value decided first. This
-// module only counts.
+// APPLY writes ONLY what the inventory marked resolved, and ONLY on
+// SPINE-SHAPED rows — the same rule as the name pass: a row in the 0250
+// trigger's shape can be a deliberate verdict of the report policy. It writes
+// the method of its own, `homonym_by_coordinates` (migration 0291;
+// geocode_unique means a GEOCODED name that the pin corroborated, which is not
+// what happened here), and, in the same statement, one append-only
+// place_resolutions row per settled row (subject_table 'event_places', no
+// actor, the distances as the reason) — the audit trail every later place
+// resolution keeps (0250). The event is never touched (P2). Each batch is its
+// own transaction of at most APPLY_BATCH rows, and every UPDATE re-checks
+// that the row is still unresolved and spine-shaped and that every candidate
+// it was compared against is still live, so a re-run writes nothing twice.
 //
-// Executor-first, reads only. The operator door is
+// Executor-first, so a test can run it inside a rolled-back transaction (each
+// batch is then a savepoint). The operator door is
 // scripts/place-resolve-event-places-by-coordinates.ts.
 
 import { sql } from "drizzle-orm";
 
 import type { db } from "@/db";
+import type { EventPlaceRepairMethod } from "@/lib/domain/place";
 import { extractEnteredName, unaskable } from "@/lib/place/event-place-names";
 import { resolveName } from "@/lib/place/resolve-place";
 
@@ -58,6 +65,10 @@ export const MIN_RATIO = 2;
 
 /** Rows per read page. */
 const READ_PAGE = 5000;
+/** Rows per write transaction — the name pass's size (the staging pooler closed one at 500). */
+export const APPLY_BATCH = 50;
+/** The method an applied row records (migration 0291). */
+export const COORDINATE_METHOD: EventPlaceRepairMethod = "homonym_by_coordinates";
 
 export type Point = { lat: number; lng: number };
 
@@ -162,7 +173,7 @@ export type HomonymPair = {
   rows: number;
   writableRows: number;
   resolvedRows: number;
-  /** Spine-shaped rows the pass WOULD write (an apply needs a method value first). */
+  /** Spine-shaped resolved rows: what an apply writes. */
   resolvedWritableRows: number;
   byReason: Record<CoordinateUnresolvedReason, number>;
   /** Resolved rows per chosen candidate id. */
@@ -179,7 +190,7 @@ export type CoordinatePassInventory = {
     resolvedWritable: number;
     byReason: Record<CoordinateUnresolvedReason, number>;
   };
-  /** Per-row decisions, for tests and for a later apply. */
+  /** Per-row decisions: what the dry run counts and what apply writes. */
   decisions: Array<{
     eventId: string;
     spine: boolean;
@@ -335,4 +346,131 @@ export async function inventoryCoordinatePass(
     totals,
     decisions,
   };
+}
+
+/** One spine-shaped row the inventory settled — the only shape apply writes. */
+export type CoordinateTarget = {
+  eventId: string;
+  pairKey: string;
+  provinceCode: string;
+  localityId: string;
+  /** Every candidate the point was compared against; all must still be live. */
+  candidateIds: string[];
+  distanceKm: number;
+  runnerUpKm: number;
+};
+
+/** What apply writes: the resolved decisions on spine-shaped rows, nothing else. */
+export function coordinateTargets(
+  inventory: Pick<CoordinatePassInventory, "pairs" | "decisions">,
+): CoordinateTarget[] {
+  const byKey = new Map<string, HomonymPair>(
+    inventory.pairs.map((p) => [`${p.provinceCode}\u0000${p.locality}`, p]),
+  );
+  const out: CoordinateTarget[] = [];
+  for (const d of inventory.decisions) {
+    if (!d.spine || d.decision.verdict !== "resolved") continue;
+    const pair = byKey.get(d.pairKey);
+    if (!pair) continue;
+    out.push({
+      eventId: d.eventId,
+      pairKey: d.pairKey,
+      provinceCode: pair.provinceCode,
+      localityId: d.decision.localityId,
+      candidateIds: pair.candidates.map((c) => c.localityId),
+      distanceKm: d.decision.distanceKm,
+      runnerUpKm: d.decision.runnerUpKm,
+    });
+  }
+  return out;
+}
+
+export type CoordinateApplyResult = {
+  batches: number;
+  updated: number;
+  skipped: number;
+  /** Rows written per pair key. */
+  updatedByPair: Record<string, number>;
+};
+
+/** The place_resolutions reason of one applied row (≤ 1000 chars by 0250's CHECK). */
+export function auditReason(t: Pick<CoordinateTarget, "distanceKm" | "runnerUpKm">): string {
+  return `coordinate pass (plan maestro A2): the event's point is ${t.distanceKm.toFixed(1)} km from this homonym's centroid and ${t.runnerUpKm.toFixed(1)} km from the nearest other one (thresholds ${MAX_DISTANCE_KM} km / +${MIN_MARGIN_KM} km / x${MIN_RATIO})`;
+}
+
+/**
+ * Write the targets, APPLY_BATCH rows per transaction. Each UPDATE re-checks,
+ * inside its transaction, that the row is still unresolved, still
+ * spine-shaped, not in another province, that the chosen row is still live in
+ * that province and that EVERY candidate the decision weighed is still live
+ * (a candidate gone means the comparison is stale). A row failing any of
+ * those is skipped, never overwritten. The same statement appends the
+ * place_resolutions row for each row it actually updated.
+ */
+export async function applyCoordinatePass(
+  exec: CoordinatePassExecutor,
+  targets: readonly CoordinateTarget[],
+  onBatch?: (done: CoordinateApplyResult) => void,
+): Promise<CoordinateApplyResult> {
+  const result: CoordinateApplyResult = { batches: 0, updated: 0, skipped: 0, updatedByPair: {} };
+  const pairOf = new Map(targets.map((t) => [t.eventId, t.pairKey] as const));
+  for (let i = 0; i < targets.length; i += APPLY_BATCH) {
+    const batch = targets.slice(i, i + APPLY_BATCH);
+    const values = sql.join(
+      batch.map(
+        (t) =>
+          sql`(${t.eventId}::uuid, ${t.localityId}::uuid, ${t.provinceCode}::text, ${`{${t.candidateIds.join(",")}}`}::uuid[], ${auditReason(t)}::text)`,
+      ),
+      sql`, `,
+    );
+    const updated = await exec.transaction(async (tx) => {
+      const rows = (await tx.execute(sql`
+        with v(event_id, locality_id, province_code, candidates, reason) as (values ${values}),
+        moved as (
+          update public.event_places p
+             set locality_id = v.locality_id,
+                 province_code = v.province_code,
+                 method = ${COORDINATE_METHOD}
+            from v
+           where p.event_id = v.event_id
+             and p.method = 'unresolved'
+             and p.locality_id is null
+             and (p.province_code is null or p.province_code = v.province_code)
+             and p.entered ->> 'source' = 'spine'
+             and p.entered ? 'spine_event_id'
+             and v.locality_id = any (v.candidates)
+             and exists (
+               select 1 from public.ar_localities l
+                where l.id = v.locality_id
+                  and l.province_code = v.province_code
+                  and l.removed_at is null)
+             and (select count(*) from public.ar_localities c
+                   where c.id = any (v.candidates) and c.removed_at is null)
+                 = cardinality(v.candidates)
+          returning p.event_id, p.locality_id, v.reason
+        ),
+        audited as (
+          insert into public.place_resolutions
+            (subject_table, subject_id, locality_id, method, reason, supersedes_id)
+          select 'event_places', m.event_id, m.locality_id, ${COORDINATE_METHOD}, m.reason,
+                 (select r.id from public.place_resolutions r
+                   where r.subject_table = 'event_places' and r.subject_id = m.event_id
+                   order by r.created_at desc limit 1)
+            from moved m
+          returning subject_id
+        )
+        select subject_id::text as "eventId" from audited
+      `)) as unknown as Array<{ eventId: string }>;
+      return rows.map((r) => r.eventId);
+    });
+    result.batches += 1;
+    result.updated += updated.length;
+    result.skipped += batch.length - updated.length;
+    for (const id of updated) {
+      const key = pairOf.get(id) ?? "";
+      result.updatedByPair[key] = (result.updatedByPair[key] ?? 0) + 1;
+    }
+    onBatch?.(result);
+  }
+  return result;
 }
