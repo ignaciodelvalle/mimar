@@ -22,7 +22,7 @@
 ### 1.2 Zoonosis y salud pública
 
 - **Ley 22.953 / 1983** — Lucha antirrábica. Declara de interés nacional la lucha contra la rabia transmitida por perros y gatos; base legal de las campañas antirrábicas. Art. 6, ap. I, incs. a y b: las personas deben "vacunar a los perros y gatos bajo su tenencia" y a todo otro animal sospechoso de transmitir la rabia, "en la forma que disponga para cada caso su reglamentación". [Fuente](https://www.argentina.gob.ar/normativa/nacional/ley-22953-184650)
-  - **DIM:** ancla legal de `antirabies_vaccinated`. **Ninguna norma leída fija edad ni periodicidad:** ni esta ley, ni la Ord. CABA 41.831 (art. 9, "en el tiempo y forma" que fije la autoridad), ni el Dec. PBA 4669/73 (art. 5, según "los programas y normas técnicas"). "Anual, desde los 3 meses" es criterio técnico: al dueño se le presenta como recomendación. Matiz para PBA: el Dec. 4669/73, art. 2, hace obligatorias las normas técnicas provinciales; si una fija la periodicidad, esa norma sí obliga **(a confirmar: no se halló)**. *(Corregido 2026-10-07, E25; los tres textos leídos en la fuente oficial.)*
+  - **DIM:** ancla legal de `antirabies_vaccinated`. Esta ley no fija edad ni periodicidad, y tampoco lo hacen la Ord. CABA 41.831 (art. 9, "en el tiempo y forma" que determine la Dirección General de Medio Ambiente) ni el Dec. PBA 4669/73 (art. 5, según "los programas y normas técnicas"). **La edad y la periodicidad las fija la guía nacional** aprobada por la Res. MS 1144/2018 (ver abajo): primera dosis a los 3 meses y revacunación anual. *(Corregido 2026-10-07, E25; textos leídos en la fuente oficial.)*
 
 - **Ley 12.732 / 1941** — Profilaxis de la hidatidosis (equinococosis). Zoonosis con reservorio canino. [Fuente](https://argentina.gob.ar/normativa/nacional/ley-12732-196049/texto)
 
@@ -36,7 +36,7 @@
 
 - **Resolución MS 1715 / 2007** — Normas de vigilancia y control de ENO; lista oficial de eventos. Modificada por Res. MS 54/2008, 2827/2022 y 3517/2022. [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/175000-179999/175879/norma.htm)
 
-- **Resolución MS 1144 / 2018** — Guía de Prevención, Vigilancia y Control de la Rabia en Argentina. Define APR (atención post-exposición), profilaxis y técnicas diagnósticas. [Fuente](https://www.argentina.gob.ar/normativa/nacional/resoluci%C3%B3n-1144-2018-311546/texto)
+- **Resolución MS 1144 / 2018** — Guía de Prevención, Vigilancia y Control de la Rabia en Argentina (anexo sustituido por la Res. MS 1223/2018, que corrigió su número). Define APR (atención post-exposición), profilaxis y técnicas diagnósticas. Anexo, p. 33: "La vacunación antirrábica es de carácter OBLIGATORIO en perros y gatos e incluye una primovacunación a los 3 meses de edad y revacunaciones anuales. Corresponde al tenedor responsable del animal el cumplimiento de esta exigencia legal." Es una guía técnica aprobada en ejercicio de la Ley de Ministerios, descripta como "líneas programáticas" para los gobiernos provinciales y municipales. *(Ampliado 2026-10-07; resolución y anexo leídos en argentina.gob.ar.)* [Fuente](https://www.argentina.gob.ar/normativa/nacional/resoluci%C3%B3n-1144-2018-311546/texto)
 
 - **Resolución MS 1811 / 2011** — Programa Nacional de Control de Enfermedades Zoonóticas (hidatidosis, triquinosis, hantavirus, leishmaniasis visceral, psitacosis). [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/185000-189999/189688/norma.htm)
 
@@ -204,7 +204,7 @@
   - art. 28: prohíbe perros y gatos en locales con público, en los días y horarios en que lo hay;
   - art. 42: "Queda prohibida en la vía pública la venta o entrega a título gratuito de perros y/o gatos" (alcanza a las jornadas de adopción en la vía pública);
   - art. 51: todo dueño o tenedor de perros debe inscribirlos y patentarlos en el Registro de Perros de cada comuna, y renovarlo cada año.
-  - **DIM:** la libreta de miMAR no reemplaza la constancia antirrábica válida en PBA (art. 9). Si muerde, el plazo es de 24 h al dispensario, no solo los 10 días.
+  - **DIM:** la libreta de miMAR no reemplaza la constancia antirrábica válida en PBA (art. 9). Si muerde, el plazo es de 24 h al dispensario, no solo los 10 días. La edad y la periodicidad de la vacuna, en la guía nacional (Res. MS 1144/2018, ver §1.2).
 
 - **Ley 5664 / 1951** — Profilaxis de la rabia y patente canina. Inscripción y vacunación gratuitas; obligación de chapa patente del año en curso. Su vigencia está **(a confirmar)**: la inscripción y patente anual de todo perro está hoy en el Dec. 4669/73, art. 51. *(Corregido 2026-10-07, E32.)* [Fuente](https://normas.gba.gob.ar/documentos/BO41rukV.html)
 
@@ -442,7 +442,7 @@ Los instrumentos más estructurantes para el modelo de datos y eventos:
 
 1. **Identificación canina** — el estándar técnico de microchip es ISO 11784/11785 (Res. SENASA 284/2024 + WOAH Cap. 7.7 + Res. GMC 17/15). Para residentes en PBA, las razas listadas en la Ley 14.107 deben identificarse con chip **o** tatuaje (art. 8 b); en CABA, la Ordenanza 41.831 admite tatuaje o microchip; a nivel nacional aún no hay obligatoriedad universal.
 
-2. **Vacunación antirrábica** — obligatoria; ancla: Ley nac. 22.953, art. 6 + DL 8056/73 y Dec. 4669/73, art. 5 (PBA) + Ord. 41.831, art. 9 (CABA). Ninguna de esas normas fija edad ni periodicidad: "desde los 3 meses, anual" es criterio técnico (Res. MS 1144/2018, guía programática) y al dueño se le presenta como recomendación. *(2026-10: se quitó la Res. SENASA 580/2014, que trata de animales de asistencia. 2026-10-07, E25: se quitó "desde los 3 meses, anual" como regla legal.)*
+2. **Vacunación antirrábica** — obligatoria; ancla: Ley nac. 22.953, art. 6 + DL 8056/73 y Dec. 4669/73, art. 5 (PBA) + Ord. 41.831, art. 9 (CABA). Esas normas no fijan edad ni periodicidad; la primera dosis a los 3 meses y la **revacunación anual** las fija la guía nacional, Res. MS 1144/2018 (anexo según Res. MS 1223/2018, p. 33). *(2026-10: se quitó la Res. SENASA 580/2014, que trata de animales de asistencia. 2026-10-07, E25: la periodicidad se ancla en la guía nacional.)*
 
 3. **Perros potencialmente peligrosos** — doble régimen: Ley 14.107 (PBA, registro provincial) y Ley 4078 (CABA, registro local + seguro RC). DIM debe modelar ambos.
 
@@ -473,15 +473,15 @@ Cada flujo lista: (1) actor que lo inicia, (2) qué se dispara, (3) anclaje norm
 - **CABA — registro PPP**: Owner → APrA via TAD (foto, chip, antirrábica vigente, póliza de seguro RC, curso virtual), antes de los 3 meses; renovación anual; notificación de incidentes <48 hs. Ley 4078/2012, Res. 93/APRA/2021.
   - DIM: `dangerous_breed_attested` con `jurisdiction_city='AR-C'` y payload de póliza.
 
-### 6.2 Vacunación antirrábica (obligatoria; la frecuencia la fija la autoridad sanitaria)
+### 6.2 Vacunación antirrábica (obligatoria; primera dosis a los 3 meses, revacunación anual)
 
-> *(Corregido 2026-10-07, E25: ninguna norma leída fija "anual, desde los 3 meses"; ver §1.2. Se recomienda vacunar desde los 3 meses y revacunar cada año, o cuando indique el veterinario.)*
+> *(Corregido 2026-10-07, E25: la edad y la revacunación anual no están en la Ley 22.953 ni en la Ord. 41.831, sino en la guía nacional, Res. MS 1144/2018 (anexo según Res. MS 1223/2018, p. 33); ver §1.2.)*
 
 
 - Owner → Vet matriculado → constancia antirrábica con firma y sello con matrícula → queda en poder del propietario.
 - Vet → carga la dosis en sistema municipal cuando aplica (campañas Mascotas BA, dispensarios antirrábicos PBA).
 - Estado (Min. Salud Nac. / GCBA / municipios PBA) → coordina campañas masivas y gratuitas; Instituto Pasteur produce y distribuye antirrábica en CABA. Ley 22.953/1983; DL 8056/1973 (PBA); Ord. 41.831/1987 (CABA); Decreto GCBA 5334/1988.
-  - DIM: `antirabies_vaccinated` con `vet_matricula`, `vaccine_batch`, `valid_until` (próximo vencimiento recomendado, no un plazo legal salvo que la regla de la jurisdicción cite la norma que lo fija).
+  - DIM: `antirabies_vaccinated` con `vet_matricula`, `vaccine_batch`, `valid_until` (próximo vencimiento anual, según la guía nacional, Res. MS 1144/2018).
   - En PBA, la constancia de un veterinario privado solo vale en el formulario del Colegio (Dec. 4669/73, art. 9).
 
 ### 6.3 Mordedura → observación antirrábica de 10 días
@@ -592,7 +592,7 @@ El esquema mínimo que ninguna "libreta sanitaria" o credencial pública en Arge
 - Fotografía actual (legalmente exigida sólo para PPP CABA, pero estándar)
 
 **Eventos sanitarios**
-- Antirrábica: fecha, marca, lote, vet matrícula, fecha de próximo vencimiento (recomendado anual; ninguna norma leída lo fija)
+- Antirrábica: fecha, marca, lote, vet matrícula, fecha de próximo vencimiento (anual, según la guía nacional, Res. MS 1144/2018)
 - Otras vacunas (séxtuple canina, triple felina, etc.): no obligatorias por ley pero estándar veterinario
 - Desparasitación interna y externa: fecha, principio activo, dosis
 - Esterilización: fecha, lugar, profesional, técnica
@@ -635,7 +635,7 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 - CABA PPP: Registro 4078 antes de los 3 meses + póliza de seguro RC vigente + curso virtual + foto + chip + renovación anual + notificación de incidentes <48 hs.
 
 **Vacunación**
-- Antirrábica obligatoria, con constancia en poder del propietario. Ley nac. 22.953, art. 6; Dec. 4669/1973, art. 5 (PBA); Ord. 41.831, art. 9 (CABA). La edad y la frecuencia ("desde los 3 meses, anual") son recomendación técnica, no texto legal. En PBA, la constancia de un veterinario privado va en el formulario del Colegio (Dec. 4669/73, art. 9). *(Corregido 2026-10-07, E25.)*
+- Antirrábica obligatoria, con constancia en poder del propietario. Ley nac. 22.953, art. 6; Dec. 4669/1973, art. 5 (PBA); Ord. 41.831, art. 9 (CABA). Primera dosis a los 3 meses y revacunación anual, según la guía nacional, Res. MS 1144/2018 (anexo según Res. MS 1223/2018, p. 33); la ley y la ordenanza no fijan el intervalo. En PBA, la constancia de un veterinario privado va en el formulario del Colegio (Dec. 4669/73, art. 9). *(Corregido 2026-10-07, E25.)*
 
 **Vía pública**
 - Correa obligatoria. CABA: Ord. 41.831, art. 29, y Régimen de Faltas 1.3.12 (multa de 150 a 1.000 unidades fijas). PBA: sin correa o cadena el perro puede ser recogido (Dec. 4669/73, arts. 11 y 12). *(Corregido 2026-10-07, E28.)*
@@ -784,8 +784,9 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 **Nación**
 
 - **Ley 14.346, art. 2 inc. 1** — Es maltrato "no alimentar en cantidad y calidad suficiente a los animales domésticos o cautivos". Art. 3 inc. 3: es crueldad operar sin anestesia y sin título de veterinario. Art. 3 inc. 2: es crueldad mutilar, salvo "fines de mejoramiento, marcación o higiene de la respectiva especie" o "motivos de piedad"; que esa excepción no cubra el corte estético de orejas o cola es **(a confirmar)**: no se halló jurisprudencia. Pena: 15 días a 1 año de prisión (art. 1). *(Verificado.)* [Fuente](https://www.argentina.gob.ar/normativa/nacional/ley-14346-153011/texto)
-- **Ley 22.953, art. 6, ap. I, incs. a y b** — Las personas deben vacunar contra la rabia a los perros y gatos bajo su tenencia, y a cualquier otro animal sospechoso de transmitirla, "en la forma que disponga para cada caso su reglamentación". La ley **no fija edad ni periodicidad**, y no se halló reglamentación que lo haga. *(Verificado.)* [Fuente](https://www.argentina.gob.ar/normativa/nacional/184650/texto)
-  - **DIM:** "anual desde los 3 meses" es criterio técnico, no texto legal; el recordatorio lo presenta como recomendación.
+- **Ley 22.953, art. 6, ap. I, incs. a y b** — Las personas deben vacunar contra la rabia a los perros y gatos bajo su tenencia, y a cualquier otro animal sospechoso de transmitirla, "en la forma que disponga para cada caso su reglamentación". La ley no fija edad ni periodicidad. *(Verificado.)* [Fuente](https://www.argentina.gob.ar/normativa/nacional/184650/texto)
+  - **Res. MS 1144/2018, anexo** (texto según Res. MS 1223/2018, p. 33) — "La vacunación antirrábica es de carácter OBLIGATORIO en perros y gatos e incluye una primovacunación a los 3 meses de edad y revacunaciones anuales. Corresponde al tenedor responsable del animal el cumplimiento de esta exigencia legal." Es una guía técnica aprobada por resolución ministerial. *(Verificado.)* [Fuente](https://www.argentina.gob.ar/normativa/nacional/norma-311546/texto)
+  - **DIM:** el recordatorio usa ese plazo anual.
 - **Ley 3.959, art. 4** — El propietario o quien tenga a su cargo animales con una enfermedad contagiosa, o sospechosos de tenerla, debe declararlo de inmediato. Ámbito federal (art. 1). *(Verificado; pensada para el ganado: su aplicación a mascotas es de confianza media.)* [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/45000-49999/49274/norma.htm)
 - **Ley 24.449, art. 48 inc. s** — Prohíbe "dejar animales sueltos" en la vía pública. Jurisdicción federal y jurisdicciones adheridas (art. 1). *(Verificado.)* [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/0-4999/818/texact.htm)
 - **Ley 22.421, arts. 3, 4, 6, 25, 27 y 34** — La tenencia, posesión, tránsito y comercio de fauna silvestre (incluidos los animales "bravíos o salvajes que viven bajo control del hombre") quedan sujetos a la ley (art. 4). Prohíbe liberarlos sin conformidad de la autoridad (art. 6). Es delito en todo el país (art. 34) comprar, vender o transportar "a sabiendas" productos de la caza furtiva (art. 27): prisión de 2 meses a 2 años e inhabilitación de hasta 5 años (art. 25). Que "piezas" incluya a un animal vivo es interpretación: al dueño, "puede ser delito". *(Verificado.)* [Fuente](https://www.argentina.gob.ar/normativa/nacional/norma-38116/texto)
@@ -851,7 +852,7 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 - ley que prohíba las mutilaciones estéticas en las jurisdicciones relevadas;
 - norma que fije un máximo de animales por vivienda;
 - ley nacional de criaderos;
-- norma que fije la edad o la periodicidad de la vacuna antirrábica.
+- ley u ordenanza que fije por sí la edad o la periodicidad de la vacuna antirrábica (las fija la guía nacional, Res. MS 1144/2018).
 
 ---
 
