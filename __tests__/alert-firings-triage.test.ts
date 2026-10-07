@@ -61,6 +61,7 @@ import {
   evaluateAndRecordFiringsForAllAdmins,
   recordFiringsForUser,
 } from "@/src/modules/alerts/application/firings/record-firings";
+import { acknowledgeFiring } from "@/src/modules/alerts/application/firings/triage";
 import { createFreshTestUser } from "./_helpers/fresh-test-user";
 
 // ---------------------------------------------------------------------------
@@ -572,6 +573,46 @@ describe("triage — contact authority", () => {
 
     // Cleanup the seeded govt assignment.
     await db.delete(govtAssignments).where(eq(govtAssignments.userId, govtId));
+  });
+});
+
+// Review of A12: each use case reads its firing FOR UPDATE inside the
+// transaction that writes it. Without the lock, two clicks both read
+// "disparada", both transition and both audit from_status "disparada"; two
+// seguimientos both read the same notes and the second overwrites the first.
+describe("triage — concurrent clicks serialise on the firing row", () => {
+  it("two concurrent acknowledges: one wins, one is refused, ONE audit row", async () => {
+    const id = await seedFiring("open_welfare_reports", "disparada");
+    // The use case itself, not the action: the action's session check adds
+    // enough latency to serialise the two calls by accident and hide a race.
+    const results = await Promise.all([
+      acknowledgeFiring(adminUserId, id),
+      acknowledgeFiring(adminUserId, id),
+    ]);
+
+    expect(results.filter((r) => "ok" in r)).toHaveLength(1);
+    expect(results.filter((r) => "error" in r)).toHaveLength(1);
+    const audit = await triageAudit(id);
+    expect(audit).toHaveLength(1);
+    expect(audit[0].payload).toMatchObject({ from_status: "disparada", to_status: "reconocida" });
+  });
+
+  it("two concurrent seguimientos: both notes survive, each with its audit row", async () => {
+    const id = await seedFiring("microchip_penetration_pct", "reconocida");
+    const results = await Promise.all([
+      registerFollowupFiringAction(id, "Primera nota concurrente."),
+      registerFollowupFiringAction(id, "Segunda nota concurrente."),
+    ]);
+    expect(results).toEqual([{ ok: true }, { ok: true }]);
+
+    const [row] = await db.select().from(alertFirings).where(eq(alertFirings.id, id));
+    expect(row.notes).toContain("Primera nota concurrente.");
+    expect(row.notes).toContain("Segunda nota concurrente.");
+    const audit = await triageAudit(id);
+    expect(audit.map((a) => (a.payload as { note: string }).note).sort()).toEqual([
+      "Primera nota concurrente.",
+      "Segunda nota concurrente.",
+    ]);
   });
 });
 

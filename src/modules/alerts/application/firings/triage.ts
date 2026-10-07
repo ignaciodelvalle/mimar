@@ -55,9 +55,23 @@ function jurisdictionLabel(province: string | null, locality: string | null): st
   return "nivel nacional";
 }
 
-/** Load a firing by id (admin scope — no row-level filter beyond existence). */
-async function loadFiring(id: string): Promise<AlertFiring | null> {
-  const [row] = await db.select().from(alertFirings).where(eq(alertFirings.id, id)).limit(1);
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Load a firing by id (admin scope — no row-level filter beyond existence),
+ * LOCKED for the rest of the transaction. Every use case below reads its
+ * firing this way and decides inside the same transaction, so two concurrent
+ * clicks serialise: the second one sees the first one's status and notes, and
+ * can neither write a second audit row claiming the same from_status nor
+ * overwrite a seguimiento note it never read.
+ */
+async function lockFiring(tx: Tx, id: string): Promise<AlertFiring | null> {
+  const [row] = await tx
+    .select()
+    .from(alertFirings)
+    .where(eq(alertFirings.id, id))
+    .limit(1)
+    .for("update");
   return row ?? null;
 }
 
@@ -115,21 +129,20 @@ export async function acknowledgeFiring(
   userId: string,
   firingId: string,
 ): Promise<FiringActionResult> {
-  const firing = await loadFiring(firingId);
-  if (!firing) return { error: "Alerta no encontrada" };
+  return db.transaction(async (tx): Promise<FiringActionResult> => {
+    const firing = await lockFiring(tx, firingId);
+    if (!firing) return { error: "Alerta no encontrada" };
 
-  const t = resolveTransition(firing, "acknowledge");
-  if ("error" in t) return t;
+    const t = resolveTransition(firing, "acknowledge");
+    if ("error" in t) return t;
 
-  await db.transaction(async (tx) => {
     await tx
       .update(alertFirings)
       .set({ status: t.next, acknowledgedAt: new Date(), acknowledgedBy: userId })
       .where(eq(alertFirings.id, firingId));
     await auditTriage(tx, userId, firing, "acknowledge", t.next);
+    return { ok: true };
   });
-
-  return { ok: true };
 }
 
 /**
@@ -142,33 +155,37 @@ export async function openInvestigationFiring(
   userId: string,
   firingId: string,
 ): Promise<FiringActionResult> {
-  const firing = await loadFiring(firingId);
-  if (!firing) return { error: "Alerta no encontrada" };
+  return db.transaction(async (tx): Promise<FiringActionResult> => {
+    const firing = await lockFiring(tx, firingId);
+    if (!firing) return { error: "Alerta no encontrada" };
 
-  if (!metricOpensInvestigation(firing.metricKey)) {
-    return {
-      error: "Esta métrica no abre un expediente. Usá “Registrar seguimiento” en su lugar.",
-    };
-  }
+    if (!metricOpensInvestigation(firing.metricKey)) {
+      return {
+        error: "Esta métrica no abre un expediente. Usá “Registrar seguimiento” en su lugar.",
+      };
+    }
 
-  const diseaseCode = investigationDiseaseCode(firing.metricKey);
-  if (!diseaseCode) return { error: "No hay enfermedad mapeada para esta métrica." };
+    const diseaseCode = investigationDiseaseCode(firing.metricKey);
+    if (!diseaseCode) return { error: "No hay enfermedad mapeada para esta métrica." };
 
-  const t = resolveTransition(firing, "open_investigation");
-  if ("error" in t) return t;
+    const t = resolveTransition(firing, "open_investigation");
+    if ("error" in t) return t;
 
-  const metricLabel = METRIC_LABEL_ES[firing.metricKey] ?? firing.metricKey;
-  const where = jurisdictionLabel(firing.jurisdictionProvince, firing.jurisdictionLocality);
+    const metricLabel = METRIC_LABEL_ES[firing.metricKey] ?? firing.metricKey;
+    const where = jurisdictionLabel(firing.jurisdictionProvince, firing.jurisdictionLocality);
 
-  // Reuse the full investigations flow — opens the expediente + notifies govts.
-  const opened = await openOutbreakInvestigationAction({
-    diseaseCode,
-    reason: `Alerta ${metricLabel} en ${where}`,
-    linkedSignalEventId: null,
-  });
-  if ("error" in opened) return { error: opened.error };
+    // Reuse the full investigations flow — opens the expediente + notifies
+    // govts. It runs on its own connection WHILE this row stays locked, so a
+    // second click waits here and then sees en_investigacion: one expediente
+    // per firing, not one per click. (The expediente is not undone if the
+    // update below fails — same as before the lock.)
+    const opened = await openOutbreakInvestigationAction({
+      diseaseCode,
+      reason: `Alerta ${metricLabel} en ${where}`,
+      linkedSignalEventId: null,
+    });
+    if ("error" in opened) return { error: opened.error };
 
-  await db.transaction(async (tx) => {
     await tx
       .update(alertFirings)
       .set({ status: t.next, investigationCode: opened.publicCode })
@@ -176,9 +193,8 @@ export async function openInvestigationFiring(
     await auditTriage(tx, userId, firing, "open_investigation", t.next, {
       investigation_code: opened.publicCode,
     });
+    return { ok: true };
   });
-
-  return { ok: true };
 }
 
 /**
@@ -195,31 +211,31 @@ export async function registerFollowupFiring(
   const trimmed = note.trim();
   if (!trimmed) return { error: "Escribí una nota de seguimiento." };
 
-  const firing = await loadFiring(firingId);
-  if (!firing) return { error: "Alerta no encontrada" };
+  return db.transaction(async (tx): Promise<FiringActionResult> => {
+    const firing = await lockFiring(tx, firingId);
+    if (!firing) return { error: "Alerta no encontrada" };
 
-  if (metricOpensInvestigation(firing.metricKey)) {
-    return {
-      error: "Esta métrica abre un expediente. Usá “Abrir investigación”.",
-    };
-  }
+    if (metricOpensInvestigation(firing.metricKey)) {
+      return {
+        error: "Esta métrica abre un expediente. Usá “Abrir investigación”.",
+      };
+    }
 
-  // Firing must be acknowledged first (a note belongs to a worked alert).
-  if (firing.status !== "reconocida" && firing.status !== "en_investigacion") {
-    return { error: "Reconocé la alerta antes de registrar un seguimiento." };
-  }
+    // Firing must be acknowledged first (a note belongs to a worked alert).
+    if (firing.status !== "reconocida" && firing.status !== "en_investigacion") {
+      return { error: "Reconocé la alerta antes de registrar un seguimiento." };
+    }
 
-  // The author rides on the note itself (the column is free text and a note
-  // has no *_by column) AND on the audit row, which is the queryable record.
-  const stamped = followupNoteLine(new Date(), userId, trimmed);
-  const merged = firing.notes ? `${firing.notes}\n${stamped}` : stamped;
+    // The author rides on the note itself (the column is free text and a note
+    // has no *_by column) AND on the audit row, which is the queryable record.
+    // Merged onto the LOCKED row's notes: a concurrent seguimiento is kept.
+    const stamped = followupNoteLine(new Date(), userId, trimmed);
+    const merged = firing.notes ? `${firing.notes}\n${stamped}` : stamped;
 
-  await db.transaction(async (tx) => {
     await tx.update(alertFirings).set({ notes: merged }).where(eq(alertFirings.id, firingId));
     await auditTriage(tx, userId, firing, "followup", firing.status, { note: trimmed });
+    return { ok: true };
   });
-
-  return { ok: true };
 }
 
 /**
@@ -233,36 +249,36 @@ export async function contactAuthorityFiring(
   userId: string,
   firingId: string,
 ): Promise<FiringActionResult> {
-  const firing = await loadFiring(firingId);
-  if (!firing) return { error: "Alerta no encontrada" };
-
-  const t = resolveTransition(firing, "contact_authority");
-  if ("error" in t) return t;
-
-  // A jurisdiction is required to resolve an authority. Global metrics
-  // (queue_oldest_days) have no province — cannot route a local authority.
-  if (!firing.jurisdictionProvince || !firing.jurisdictionLocality) {
-    return {
-      error: "Esta alerta no tiene jurisdicción local; no hay autoridad a contactar.",
-    };
-  }
-
-  const recipients = await findAuthoritiesForJurisdiction({
-    province: firing.jurisdictionProvince,
-    locality: firing.jurisdictionLocality,
-    // The firing's catalogue row (localidades-por-id D3).
-    localityId: firing.localityId ?? null,
-  });
-  if (recipients.length === 0) {
-    return { error: "No encontramos autoridades para esta jurisdicción." };
-  }
-
-  const metricLabel = METRIC_LABEL_ES[firing.metricKey] ?? firing.metricKey;
-  const where = jurisdictionLabel(firing.jurisdictionProvince, firing.jurisdictionLocality);
-
   // Notifications, transition and audit row commit together: no govt is
   // notified of an escalation the register does not attribute to anybody.
-  await db.transaction(async (tx) => {
+  return db.transaction(async (tx): Promise<FiringActionResult> => {
+    const firing = await lockFiring(tx, firingId);
+    if (!firing) return { error: "Alerta no encontrada" };
+
+    const t = resolveTransition(firing, "contact_authority");
+    if ("error" in t) return t;
+
+    // A jurisdiction is required to resolve an authority. Global metrics
+    // (queue_oldest_days) have no province — cannot route a local authority.
+    if (!firing.jurisdictionProvince || !firing.jurisdictionLocality) {
+      return {
+        error: "Esta alerta no tiene jurisdicción local; no hay autoridad a contactar.",
+      };
+    }
+
+    const recipients = await findAuthoritiesForJurisdiction({
+      province: firing.jurisdictionProvince,
+      locality: firing.jurisdictionLocality,
+      // The firing's catalogue row (localidades-por-id D3).
+      localityId: firing.localityId ?? null,
+    });
+    if (recipients.length === 0) {
+      return { error: "No encontramos autoridades para esta jurisdicción." };
+    }
+
+    const metricLabel = METRIC_LABEL_ES[firing.metricKey] ?? firing.metricKey;
+    const where = jurisdictionLabel(firing.jurisdictionProvince, firing.jurisdictionLocality);
+
     // In-app outbox notification (v1 channel — decision K-D5).
     await tx.insert(notifications).values(
       recipients.map((recipientId) => ({
@@ -290,9 +306,8 @@ export async function contactAuthorityFiring(
       recipients: recipients.length,
       first_recipient_user_id: recipients[0],
     });
+    return { ok: true };
   });
-
-  return { ok: true };
 }
 
 /** Resolver — close the firing with notes → resuelta. */
@@ -319,20 +334,20 @@ async function _closeFiring(
   transition: "resolve" | "dismiss",
   notes: string,
 ): Promise<FiringActionResult> {
-  const firing = await loadFiring(firingId);
-  if (!firing) return { error: "Alerta no encontrada" };
+  return db.transaction(async (tx): Promise<FiringActionResult> => {
+    const firing = await lockFiring(tx, firingId);
+    if (!firing) return { error: "Alerta no encontrada" };
 
-  const t = resolveTransition(firing, transition);
-  if ("error" in t) return t;
+    const t = resolveTransition(firing, transition);
+    if ("error" in t) return t;
 
-  const trimmed = notes.trim();
-  const merged = trimmed
-    ? firing.notes
-      ? `${firing.notes}\n[cierre] ${trimmed}`
-      : `[cierre] ${trimmed}`
-    : firing.notes;
+    const trimmed = notes.trim();
+    const merged = trimmed
+      ? firing.notes
+        ? `${firing.notes}\n[cierre] ${trimmed}`
+        : `[cierre] ${trimmed}`
+      : firing.notes;
 
-  await db.transaction(async (tx) => {
     await tx
       .update(alertFirings)
       .set({
@@ -343,7 +358,6 @@ async function _closeFiring(
       })
       .where(eq(alertFirings.id, firingId));
     await auditTriage(tx, userId, firing, transition, t.next, trimmed ? { note: trimmed } : {});
+    return { ok: true };
   });
-
-  return { ok: true };
 }
