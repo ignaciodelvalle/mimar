@@ -42,6 +42,14 @@ describe("pppRegistrationNotice", () => {
     expect(`${title} ${body}`).not.toMatch(/provincial/i);
   });
 
+  it("names the pet in the title instead of assuming its gender ('inscribila')", () => {
+    expect(notice("CABA").title).toBe("Inscribí a Rocco en el registro de PPP de la Ciudad");
+    expect(notice("Buenos Aires").title).toBe("Inscribí a Rocco en el registro provincial de PPP");
+    for (const province of ["CABA", "Buenos Aires", "Córdoba", "Mendoza"]) {
+      expect(notice(province).title).not.toMatch(/inscribil[ao]/i);
+    }
+  });
+
   it("does not claim a registry the Córdoba law does not create", () => {
     expect(notice("Córdoba").body).not.toMatch(/registro|inscrib/i);
   });
