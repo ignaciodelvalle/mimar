@@ -153,7 +153,7 @@ Places where two documents, or a document and the code, say different things.
 
 ### Public brand spelling: MiMAR vs miMAR
 
-- **The doc says:** CLAUDE.md and CANON-024 spell the user-facing brand 'MiMAR'.
+- **The doc says:** CLAUDE.md, AGENTS.md and CANON-024 spelled the user-facing brand 'MiMAR' until 2026-10-07, when they were recased; other docs (e.g. docs/testing/PLAN.md, docs/datos-abiertos/*) still do.
 - **The tree says:** The live fence BANS 'MiMAR' as wrong-cased and pins 'miMAR' (lowercase m) as canonical, per the PO decision of 2026-07-18; the fence's scope excludes .md so the docs are never scanned.
 - **Evidence:** scripts/check-brand-casing.ts:69-72,140 (WRONG_CASE_BRAND regex bans MiMAR/Mimar/MIMAR), :143 REMEDY
 
@@ -196,8 +196,8 @@ Places where two documents, or a document and the code, say different things.
 ### Where the native-directory .easignore listing lives
 
 - **The doc says:** docs/mobile/eas-build-profiles.md — 'apps/mobile/.easignore must list the same two paths.'
-- **The tree says:** There is no apps/mobile/.easignore. The listing is in the ROOT .easignore:188-189 (apps/mobile/android/, apps/mobile/ios/); EAS reads .easignore only from the repository root.
-- **Evidence:** apps/mobile/.gitignore:42-43; <repo root>/.easignore:188-189; apps/mobile/src/release/release-config.test.ts:661-666 (affects CANON-442)
+- **The tree says:** There is no apps/mobile/.easignore. The listing is in the ROOT .easignore:220-221 (apps/mobile/android/, apps/mobile/ios/); EAS reads .easignore only from the repository root.
+- **Evidence:** apps/mobile/.gitignore:42-43; <repo root>/.easignore:220-221; apps/mobile/src/release/release-config.test.ts:661-666 (affects CANON-442)
 
 ### Hexagonal-lite coverage thresholds (CANON-357)
 

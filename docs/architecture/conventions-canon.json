@@ -462,10 +462,10 @@
     },
     {
       "id": "CANON-024",
-      "rule": "DIM is the stable code/schema/token identifier and must never be renamed; MiMAR is the user-facing brand shown in app metadata, copy, and marketing.",
+      "rule": "DIM is the stable code/schema/token identifier and must never be renamed; miMAR is the user-facing brand shown in app metadata, copy, and marketing.",
       "scope": "process",
       "sources": [
-        "AGENTS.md:1286"
+        "AGENTS.md:1328"
       ],
       "enforcer": [
         "scripts/check-brand-casing.ts:31-34",
@@ -477,7 +477,7 @@
       "partialShape": "subset",
       "clause": "R4",
       "statusBasis": "scripts/check-brand-casing.ts:140 (wrong-cased brand) and :186/:324-331 (bare DIM codename) fail on the user-facing-brand half over {app,components,lib,packages,src}/**/*.ts(x). Nothing fails on the other half — 'DIM is the stable code/schema/token identifier, never renamed': lib/infra/publicToken.ts:68 generatePrefixedToken(\"DIM\") is unpinned, and packages/contract/src/input/__tests__/transfer.test.ts:33 only uses a literal fixture.",
-      "notes": "The v2 basis reached ENFORCED from the same two fence rules but never asks what fails if the DIM identifier is renamed — I searched for a token-prefix pin and found none. The rule text also spells the brand 'MiMAR', which the fence itself FAILS on (canonical casing is miMAR, :143): that sentence is stale, the fence is the live authority.",
+      "notes": "The v2 basis reached ENFORCED from the same two fence rules but never asks what fails if the DIM identifier is renamed — I searched for a token-prefix pin and found none. The rule text spelled the brand 'MiMAR' until 2026-10-07, when it was recased to the fence's canonical miMAR (:143); the fence is the live authority.",
       "confidence": 0.62,
       "verifiedAt": "d7dbf25f7"
     },
@@ -545,7 +545,7 @@
       "scope": "process",
       "sources": [
         "AGENTS.md:1600",
-        "docs/agents/README.md:81-88"
+        "docs/agents/README.md:80-87"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -933,7 +933,7 @@
       "scope": "process",
       "sources": [
         "CLAUDE.md:61",
-        "docs/agents/README.md:50-63",
+        "docs/agents/README.md:50-62",
         "docs/agents/collaborating-writer.md:45-49"
       ],
       "enforcementKind": "none",
@@ -949,7 +949,7 @@
       "scope": "process",
       "sources": [
         "CLAUDE.md:62",
-        "docs/agents/README.md:64-69"
+        "docs/agents/README.md:63-68"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -979,7 +979,7 @@
       "scope": "process",
       "sources": [
         "CLAUDE.md:63",
-        "docs/agents/README.md:70-76"
+        "docs/agents/README.md:69-75"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -5658,7 +5658,7 @@
       "rule": "Anchor `lib/ui/audit-filters.ts` date filters at Argentine midnight (fixed -03:00, no DST), never at UTC midnight.",
       "scope": "web",
       "sources": [
-        "docs/agents/README.md:77-80"
+        "docs/agents/README.md:76-79"
       ],
       "enforcementKind": "none",
       "wired": "none",
@@ -7835,14 +7835,14 @@
       ],
       "enforcer": [
         "apps/mobile/.gitignore:42-43",
-        ".easignore:188-189",
+        ".easignore:220-221",
         "apps/mobile/src/release/release-config.test.ts:681-707"
       ],
       "enforcementKind": "jest",
       "wired": "test:verified",
       "status": "ENFORCED",
       "clause": "R1",
-      "statusBasis": "Both halves are pinned by real assertions the v3 pass did not reach. apps/mobile/src/release/release-config.test.ts:849-854 reads apps/mobile/.gitignore FROM MOBILE_ROOT, splits it into trimmed non-comment lines, and expects the array to contain `/android/` and `/ios/` — the load-bearing location. :722-729 expects the root .easignore rule set to contain `apps/mobile/android/` and `apps/mobile/ios/`. Live files agree (apps/mobile/.gitignore:42-43, .easignore:188-189).",
+      "statusBasis": "Both halves are pinned by real assertions the v3 pass did not reach. apps/mobile/src/release/release-config.test.ts:849-854 reads apps/mobile/.gitignore FROM MOBILE_ROOT, splits it into trimmed non-comment lines, and expects the array to contain `/android/` and `/ios/` — the load-bearing location. :722-729 expects the root .easignore rule set to contain `apps/mobile/android/` and `apps/mobile/ios/`. Live files agree (apps/mobile/.gitignore:42-43, .easignore:220-221).",
       "notes": "The v3 basis capped this at PARTIAL on the ground that release-config.test.ts:694-707 (the gitignore-parity and credential-path tests) does not cover the two entries — correct about :694-707, but it missed the two dedicated tests at :722-729 and :841-854, which I opened after reading the basis and which do exactly that. Mobile jest file; runs via pnpm verify -> verify:mobile -> `pnpm --filter mimar test` (package.json:78-79), which R8 buckets as test:verified. The basis is right that the rule's second path is loose: the .easignore is at the repo root, not apps/mobile/.easignore.",
       "confidence": 0.85,
       "verifiedAt": "d7dbf25f7"
@@ -9797,7 +9797,7 @@
     },
     {
       "subject": "Public brand spelling: MiMAR vs miMAR",
-      "docSays": "CLAUDE.md and CANON-024 spell the user-facing brand 'MiMAR'.",
+      "docSays": "CLAUDE.md, AGENTS.md and CANON-024 spelled the user-facing brand 'MiMAR' until 2026-10-07, when they were recased; other docs (e.g. docs/testing/PLAN.md, docs/datos-abiertos/*) still do.",
       "liveValue": "The live fence BANS 'MiMAR' as wrong-cased and pins 'miMAR' (lowercase m) as canonical, per the PO decision of 2026-07-18; the fence's scope excludes .md so the docs are never scanned.",
       "evidence": "scripts/check-brand-casing.ts:69-72,140 (WRONG_CASE_BRAND regex bans MiMAR/Mimar/MIMAR), :143 REMEDY",
       "verdictSource": "G1 contradictionsFound (verified by G1 directly against the fence source)"
@@ -9847,8 +9847,8 @@
     {
       "subject": "Where the native-directory .easignore listing lives",
       "docSays": "docs/mobile/eas-build-profiles.md — 'apps/mobile/.easignore must list the same two paths.'",
-      "liveValue": "There is no apps/mobile/.easignore. The listing is in the ROOT .easignore:188-189 (apps/mobile/android/, apps/mobile/ios/); EAS reads .easignore only from the repository root.",
-      "evidence": "apps/mobile/.gitignore:42-43; <repo root>/.easignore:188-189; apps/mobile/src/release/release-config.test.ts:661-666 (affects CANON-442)",
+      "liveValue": "There is no apps/mobile/.easignore. The listing is in the ROOT .easignore:220-221 (apps/mobile/android/, apps/mobile/ios/); EAS reads .easignore only from the repository root.",
+      "evidence": "apps/mobile/.gitignore:42-43; <repo root>/.easignore:220-221; apps/mobile/src/release/release-config.test.ts:661-666 (affects CANON-442)",
       "verdictSource": "G2 contradictionsFound; refuter CANON-442 verdict (upgrade-to-PARTIAL) independently confirms the live fact"
     },
     {

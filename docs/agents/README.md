@@ -60,8 +60,8 @@ the named tip does.
   that did NOT write the code. Independent judgment on the diff, not token
   saving — it catches what the writer's context normalized away.
   - **Instrument (PO decision 2026-08-08):** a read-only subagent, spawned per
-    commit range. Point it at the range and at the specific claims the writer is least able to
-    audit — its own new tests and fences.
+    commit range. Point it at the range and at the specific claims the writer is
+    least able to audit — its own new tests and fences.
   - `/code-review ultra` stays available for a deeper pass, but it is billed and
     only Ignacio can launch it, so it is a pre-deploy step and not this one.
   - The gate is not a substitute. `pnpm verify` + the suite prove the code does
