@@ -53,8 +53,13 @@ test("an owner on an old legal version re-accepts before using the portal", asyn
     // The OUTCOME, not the post-action URL (e2e/README.md): the acceptance is
     // on record under the current version, and the portal opens.
     await expect.poll(() => legalVersionForEmail(EMAIL), { timeout: 15_000 }).toBe(LEGAL_VERSION);
-    await page.goto("/mis-mascotas");
-    expect(new URL(page.url()).pathname).toBe("/mis-mascotas");
+    // A NEW TAB, not this one: the action's own full-page navigation to the
+    // returnTo is still in flight here, and a goto on the same page races it
+    // (net::ERR_ABORTED). Same browser context, so the same session.
+    const portal = await page.context().newPage();
+    await portal.goto("/mis-mascotas");
+    expect(new URL(portal.url()).pathname).toBe("/mis-mascotas");
+    await portal.close();
   } finally {
     await setLegalVersionForEmail(EMAIL, LEGAL_VERSION);
   }
