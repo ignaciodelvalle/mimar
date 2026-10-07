@@ -25,6 +25,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react-nativ
 const mockFetch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockSend = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
+const mockOpenUrl = jest.fn<(url: string) => Promise<void>>();
+
+jest.mock("expo-linking", () => ({
+  openURL: (url: string) => mockOpenUrl(url),
+}));
+
 jest.mock("expo-router", () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
 }));
@@ -84,6 +90,8 @@ function readsBack(appointment: MyAppointmentV1) {
 beforeEach(() => {
   mockFetch.mockReset();
   mockSend.mockReset();
+  mockOpenUrl.mockReset();
+  mockOpenUrl.mockResolvedValue(undefined);
 });
 
 describe("the check-in QR", () => {
@@ -157,7 +165,7 @@ describe("cancelling", () => {
 
     await waitFor(() => expect(screen.getByText("Cancelar el turno")).toBeTruthy());
     fireEvent.press(screen.getByText("Cancelar el turno"));
-    fireEvent.press(screen.getByText("Sí, cancelar el turno"));
+    fireEvent.press(screen.getByText("Confirmar cancelación"));
 
     await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
     // TWO ARGUMENTS AND NOT THREE. The endpoint does not read an idempotency
@@ -180,7 +188,7 @@ describe("cancelling", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
     fireEvent.press(screen.getByText("Cancelar el turno"));
-    fireEvent.press(screen.getByText("Sí, cancelar el turno"));
+    fireEvent.press(screen.getByText("Confirmar cancelación"));
 
     // A SECOND READ. Not a retry of the write — that is the one thing a client
     // without an idempotency key must not do.
@@ -199,7 +207,7 @@ describe("cancelling", () => {
 
     await waitFor(() => expect(screen.getByText("Cancelar el turno")).toBeTruthy());
     fireEvent.press(screen.getByText("Cancelar el turno"));
-    fireEvent.press(screen.getByText("Sí, cancelar el turno"));
+    fireEvent.press(screen.getByText("Confirmar cancelación"));
 
     await waitFor(() => expect(screen.getByText(/ya pasó/i)).toBeTruthy());
   });
@@ -256,5 +264,57 @@ describe("the states this screen has to describe rather than imply", () => {
 
     await waitFor(() => expect(screen.getByText("Reintentar")).toBeTruthy());
     expect(screen.getByText(/Revisá tu conexión/i)).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pulido-avisos — the Viaje treatment: one primary, the rest as rows, every
+// action still reachable.
+// ---------------------------------------------------------------------------
+
+describe("every action stays reachable", () => {
+  it("lists the confirmed turno's actions: the QR, the calendar, the cancel and its two steps", async () => {
+    readsBack(anAppointment());
+    render(<TurnoDetailScreen appointmentToken={TOKEN} />);
+
+    await waitFor(() => expect(screen.getByText("Check-in en la clínica")).toBeTruthy(), {
+      timeout: 10_000,
+    });
+    const reachable = ["Check-in en la clínica", "Agregar al calendario", "Cancelar el turno"];
+    for (const label of reachable) expect(screen.getByText(label)).toBeTruthy();
+
+    fireEvent.press(screen.getByText("Agregar al calendario"));
+    expect(mockOpenUrl).toHaveBeenCalledTimes(1);
+
+    fireEvent.press(screen.getByText("Cancelar el turno"));
+    expect(screen.getByText("Confirmar cancelación")).toBeTruthy();
+    fireEvent.press(screen.getByText("Volver"));
+    // Backing out sends nothing and puts the row back.
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(screen.getByText("Cancelar el turno")).toBeTruthy();
+  });
+
+  it("says the status in a Callout, under the title", async () => {
+    readsBack(anAppointment({ capabilities: { canCancel: false, canCheckIn: false } }));
+    render(<TurnoDetailScreen appointmentToken={TOKEN} />);
+    await waitFor(() => expect(screen.getByText("Confirmado")).toBeTruthy());
+    // The kind is the eyebrow over the title, not a lost row in the detail.
+    expect(screen.getByText("Vacunación antirrábica")).toBeTruthy();
+  });
+
+  it("offers Reintentar on both the failed and the missing read", async () => {
+    mockFetch.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
+    const failed = render(<TurnoDetailScreen appointmentToken={TOKEN} />);
+    await waitFor(() => expect(screen.getByText("Reintentar")).toBeTruthy());
+    failed.unmount();
+
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: hubWith(anAppointment({ appointmentToken: "APT-OTHER" })),
+    });
+    render(<TurnoDetailScreen appointmentToken={TOKEN} />);
+    await waitFor(() => expect(screen.getByText(/No encontramos este turno/i)).toBeTruthy());
+    fireEvent.press(screen.getByText("Reintentar"));
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(3));
   });
 });
