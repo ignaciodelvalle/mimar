@@ -12,7 +12,7 @@
 //                            followed by a medication_stopped for the
 //                            same drug name
 
-import { findVaccineByName, vaccinesForSpecies } from "@/lib/reference/lookups";
+import { findVaccineByName, vaccineNameKey, vaccinesForSpecies } from "@/lib/reference/lookups";
 import { addCalendarMonths } from "@/lib/utils/calendar-months";
 import { isoDateInAr, parseDateInput } from "@/lib/utils/format";
 
@@ -197,7 +197,9 @@ export function computeVaccinationSummary(
   now: Date = new Date(),
   dueSoonWindowDays: number = DUE_SOON_WINDOW_DAYS,
 ): VaccinationSummary {
-  // Latest event per vaccine name (case-insensitive match against the catalog).
+  // Latest event per vaccine name (accent-, case- and spacing-insensitive match
+  // against the catalog — findVaccineByName, the same key the credential front
+  // reads the rabies dose by).
   const latestByVaccine = new Map<
     string,
     { occurredAt: Date; nextDueAt: Date | null; dueSource: "payload" | "derived" | undefined }
@@ -216,7 +218,7 @@ export function computeVaccinationSummary(
       // Free-text vaccine outside the catalog — count it (deduped by name) so
       // it appears in the libreta instead of disappearing. We deliberately do
       // NOT fuzzy-match against the catalog.
-      const normalized = rawName.trim().toLowerCase();
+      const normalized = vaccineNameKey(rawName);
       if (normalized) otherNames.add(normalized);
       continue;
     }
@@ -268,7 +270,7 @@ export function computeVaccinationSummary(
       // could plausibly be it.
       //
       // The catalog entry is "Séxtuple (DHPPi-L)"; a vet signed a dose named
-      // "Séxtuple". findVaccineByName is exact equality, so the signed dose
+      // "Séxtuple". findVaccineByName is key equality, so the signed dose
       // landed in `otherNames` and this core entry reported `missing` — the
       // libreta told the owner "2 vacunas del calendario recomendado sin
       // aplicar" roughly five centimetres above the matrícula-signed record of
