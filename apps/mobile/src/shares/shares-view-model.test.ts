@@ -20,6 +20,8 @@ import {
   buildRevokeShare,
   buildRevokeTier2,
   createBlockedReason,
+  credentialShareMessage,
+  durationChoiceKey,
   libretaShareUrl,
   shareExpiryLabel,
   shareInputCodeMessage,
@@ -288,6 +290,23 @@ describe("token hygiene", () => {
     }
     expect(libretaShareUrl("https://example.test", A_SHARE.shareToken)).toContain(
       A_SHARE.shareToken,
+    );
+  });
+});
+
+describe("durationChoiceKey", () => {
+  it("gives every offered duration a distinct key, 'sin vencimiento' included", () => {
+    const keys = SHARE_DURATION_CHOICES.map((choice) => durationChoiceKey(choice.days));
+    expect(new Set(keys).size).toBe(SHARE_DURATION_CHOICES.length);
+    expect(durationChoiceKey(null)).toBe("sin-vencimiento");
+    expect(durationChoiceKey(30)).toBe("30");
+  });
+});
+
+describe("credentialShareMessage", () => {
+  it("names the animal and carries the url verbatim", () => {
+    expect(credentialShareMessage("Pampa", "https://mimar.test/p/DIM-PAMP-0001")).toBe(
+      "Credencial de Pampa en miMAR: https://mimar.test/p/DIM-PAMP-0001",
     );
   });
 });

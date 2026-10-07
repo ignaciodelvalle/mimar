@@ -76,6 +76,23 @@ export const SHARE_DURATION_CHOICES: ReadonlyArray<{
 ];
 
 /**
+ * A duration as a `Choice` key. `Choice` takes strings, and `null` ("sin
+ * vencimiento") is a real option rather than "nothing picked", so it gets a
+ * key of its own instead of collapsing into the control's empty state.
+ */
+export function durationChoiceKey(days: number | null): string {
+  return days === null ? "sin-vencimiento" : String(days);
+}
+
+/**
+ * What the OS share sheet carries for the PUBLIC credential: the pet's name,
+ * so the recipient knows whose it is, and the url the QR encodes.
+ */
+export function credentialShareMessage(petName: string, url: string): string {
+  return `Credencial de ${petName} en miMAR: ${url}`;
+}
+
+/**
  * The Tier-2 windows, bounded ones first and `siempre` LAST AND MARKED.
  *
  * The web puts the permanent option behind an "Avanzado" expander

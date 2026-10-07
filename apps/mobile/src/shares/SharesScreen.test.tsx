@@ -17,7 +17,7 @@
 //      ack carries a token is the moment somebody is standing in front of a vet.
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 
 const mockFetch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockSend = jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -199,7 +199,12 @@ describe("capabilities decide the affordances", () => {
     render(<SharesScreen publicToken={TOKEN} />);
 
     await waitFor(() => expect(screen.getByText("Siempre visible")).toBeTruthy());
-    expect(screen.getByText("Avanzado")).toBeTruthy();
+    // The recommended window is where the picker starts…
+    expect(screen.getByText(/^Recomendado\./)).toBeTruthy();
+    expect(screen.queryByText(/^Avanzado ·/)).toBeNull();
+    // …and choosing the permanent one says what kind of choice it is.
+    fireEvent.press(screen.getByText("Siempre visible"));
+    expect(screen.getByText(/^Avanzado · Sin vencimiento\./)).toBeTruthy();
   });
 });
 
@@ -257,8 +262,8 @@ describe("the commands", () => {
     });
     render(<SharesScreen publicToken={TOKEN} />);
 
-    await waitFor(() => expect(screen.getByText("24 horas")).toBeTruthy());
-    fireEvent.press(screen.getByText("24 horas"));
+    await waitFor(() => expect(screen.getByText("Mostrar la libreta")).toBeTruthy());
+    fireEvent.press(screen.getByText("Mostrar la libreta"));
 
     await waitFor(() => expect(screen.getByText("Esa ventana ya estaba abierta.")).toBeTruthy());
   });
@@ -344,5 +349,105 @@ describe("failures", () => {
     render(<SharesScreen publicToken={TOKEN} />);
 
     await waitFor(() => expect(screen.getByText(/en 20 segundos/)).toBeTruthy());
+  });
+});
+
+describe("the public credential", () => {
+  it("leads the screen with a row that sends the QR's url", async () => {
+    mockFetch.mockResolvedValue(ok(payload()));
+    render(<SharesScreen publicToken={TOKEN} />);
+
+    const row = await screen.findByText("Enviar la credencial pública");
+    // FIRST: above both mechanisms that expose more than the tag already does.
+    // Queries return matches in tree order, so this is the reading order.
+    const headings = screen
+      .getAllByText(/^(Enviar la credencial pública|Credencial pública|Links de la libreta)$/)
+      .map((node) => node.props.children);
+    expect(headings).toEqual([
+      "Enviar la credencial pública",
+      "Credencial pública",
+      "Links de la libreta",
+    ]);
+
+    fireEvent.press(row);
+    await waitFor(() => expect(mockShare).toHaveBeenCalledTimes(1));
+    const message = String(
+      (mockShare.mock.calls[0]?.[0] as { message?: string } | undefined)?.message ?? "",
+    );
+    expect(message).toContain(`/p/${TOKEN}`);
+    // The public url, never a libreta share secret.
+    expect(message).not.toContain(SHARE_TOKEN);
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("swallows a dismissed share sheet for the credential too", async () => {
+    mockFetch.mockResolvedValue(ok(payload()));
+    mockShare.mockRejectedValue(new Error("User did not share"));
+    render(<SharesScreen publicToken={TOKEN} />);
+
+    fireEvent.press(await screen.findByText("Enviar la credencial pública"));
+    await waitFor(() => expect(mockShare).toHaveBeenCalled());
+    expect(screen.queryByText(/User did not share/)).toBeNull();
+  });
+});
+
+describe("the duration pickers are segmented choices", () => {
+  it("draws the windows and the link durations as radios, with no '— elegido' label", async () => {
+    mockFetch.mockResolvedValue(ok(payload()));
+    render(<SharesScreen publicToken={TOKEN} />);
+    await screen.findByText("Crear link");
+
+    expect(screen.queryByText(/— elegido/)).toBeNull();
+    // "7 días" and "30 días" exist in BOTH pickers, so each is read inside its
+    // own group — which is also the claim: two groups, each a set of radios.
+    const windows = within(screen.getByLabelText("¿Por cuánto tiempo?"));
+    const durations = within(screen.getByLabelText("Vence en"));
+    expect(windows.getAllByRole("radio")).toHaveLength(4);
+    expect(durations.getAllByRole("radio")).toHaveLength(4);
+    expect(windows.getByRole("radio", { name: "24 horas", checked: true })).toBeTruthy();
+    expect(durations.getByRole("radio", { name: "30 días", checked: true })).toBeTruthy();
+  });
+
+  it("sends the window that was chosen, only when asked to", async () => {
+    mockFetch.mockResolvedValue(ok(payload()));
+    mockSend.mockResolvedValue({
+      outcome: "ok",
+      payload: { command: "enable_tier2", changed: true, shareToken: null, tier2Window: "7d" },
+    });
+    render(<SharesScreen publicToken={TOKEN} />);
+    await screen.findByText("Mostrar la libreta");
+
+    const windows = within(screen.getByLabelText("¿Por cuánto tiempo?"));
+    fireEvent.press(windows.getByRole("radio", { name: "7 días" }));
+    // Picking is not sending.
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(windows.getByRole("radio", { name: "7 días", checked: true })).toBeTruthy();
+
+    fireEvent.press(screen.getByText("Mostrar la libreta"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+    expect(mockSend.mock.calls[0]?.[2]).toEqual({ command: "enable_tier2", window: "7d" });
+  });
+
+  it("creates the link with the duration that was chosen, including no expiry", async () => {
+    mockFetch.mockResolvedValue(ok(payload()));
+    mockSend.mockResolvedValue({
+      outcome: "ok",
+      payload: {
+        command: "create_libreta_share",
+        changed: true,
+        shareToken: null,
+        tier2Window: null,
+      },
+    });
+    render(<SharesScreen publicToken={TOKEN} />);
+    await screen.findByText("Crear link");
+
+    fireEvent.press(screen.getByRole("radio", { name: "Sin vencimiento" }));
+    fireEvent.press(screen.getByText("Crear link"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+    expect(mockSend.mock.calls[0]?.[2]).toMatchObject({
+      command: "create_libreta_share",
+      expiresInDays: null,
+    });
   });
 });
