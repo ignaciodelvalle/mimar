@@ -279,6 +279,9 @@ importers:
       react:
         specifier: 19.2.3
         version: 19.2.3
+      react-dom:
+        specifier: 19.2.6
+        version: 19.2.6(react@19.2.3)
       react-native:
         specifier: 0.86.3
         version: 0.86.3(@babel/core@7.29.7)(@react-native/jest-preset@0.86.2(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.14)(react@19.2.3)
@@ -319,6 +322,9 @@ importers:
       '@types/react':
         specifier: ~19.2.2
         version: 19.2.14
+      '@types/react-dom':
+        specifier: 19.2.3
+        version: 19.2.3(@types/react@19.2.14)
       jest:
         specifier: ^29.7.0
         version: 29.7.0(@types/node@22.19.19)
