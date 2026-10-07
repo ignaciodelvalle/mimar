@@ -174,6 +174,8 @@ describe("ServiceDogScreen — the acts, per state", () => {
         "Motivo de revocación: Credencial presentada con datos inconsistentes.",
       ),
     ).toBeOnTheScreen();
+    // The fields fold behind their module on an existing credential.
+    fireEvent.press(screen.getByText("Datos de la credencial"));
     fireEvent.press(screen.getByText("Guardar datos"));
     expect(mockSend).not.toHaveBeenCalled();
     expect(screen.queryByText("Retirar del servicio")).toBeNull();
@@ -205,6 +207,8 @@ describe("ServiceDogScreen — saving", () => {
       payload: payload({ serviceDog: { designation: designation() } }),
     });
     render(<ServiceDogScreen publicToken={TOKEN} />);
+    // The fields fold behind their module on an existing credential.
+    fireEvent.press(await screen.findByText("Datos de la credencial"));
     // Pre-filled from the row, the date in the format a person reads.
     expect(await screen.findByDisplayValue("10/03/2025")).toBeOnTheScreen();
     fireEvent.changeText(screen.getByDisplayValue("Bocalan Argentina"), "Centro Nuevo");
@@ -244,5 +248,89 @@ describe("ServiceDogScreen — saving", () => {
     render(<ServiceDogScreen publicToken={TOKEN} />);
     fireEvent.press(await screen.findByText("Solicitar verificación"));
     expect(await screen.findByText(/Puede que ya haya una solicitud pendiente/)).toBeOnTheScreen();
+  });
+});
+
+// THE INVENTORY, taken from the screen BEFORE the custody polish (2026-10-07)
+// turned it from eight stacked buttons into one primary per state, rows, and a
+// folded "Datos de la credencial". Presentation changed; reachability may not.
+//
+//   unavailable          · Volver a intentar
+//   nothing saved        · Tipo de servicio · Guardar datos
+//   pending, in service  · Solicitar verificación · Retirar del servicio →
+//                          Confirmar retiro · Cancelar · Guardar datos
+//   vigente, private     · Activar banner público · Retirar del servicio · Guardar datos
+//   vigente, banner on   · Mantener privado · Retirar del servicio · Guardar datos
+describe("ServiceDogScreen — every action the old screen offered is still reachable", () => {
+  function escapeRegExp(text: string) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  /** The control whose accessible name STARTS with the label (a row adds its caption). */
+  function expectReachable(label: string) {
+    const control = screen.getByRole("button", { name: new RegExp(`^${escapeRegExp(label)}`) });
+    expect(control).toBeEnabled();
+    return control;
+  }
+
+  function loads(over: Partial<ServiceDogDesignationV1> | null) {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ serviceDog: { designation: over === null ? null : designation(over) } }),
+    });
+  }
+
+  it("draws a skeleton, not a spinner, while it reads", () => {
+    mockFetch.mockReturnValue(new Promise(() => {}));
+    render(<ServiceDogScreen publicToken={TOKEN} />);
+    expect(screen.getByLabelText("Leyendo…")).toBeOnTheScreen();
+  });
+
+  it("unavailable: Volver a intentar", async () => {
+    mockFetch.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
+    render(<ServiceDogScreen publicToken={TOKEN} />);
+    expect(await screen.findByText("Volver a intentar")).toBeOnTheScreen();
+    expectReachable("Volver a intentar");
+  });
+
+  it("nothing saved: the type and Guardar datos, unfolded", async () => {
+    loads(null);
+    render(<ServiceDogScreen publicToken={TOKEN} />);
+    await screen.findByText("Registrar como perro de asistencia");
+    expect(screen.getByRole("radio", { name: "Guía (discapacidad visual)" })).toBeEnabled();
+    expectReachable("Guardar datos");
+  });
+
+  it("pending: verification, retire with its confirmation, and the data", async () => {
+    loads({});
+    render(<ServiceDogScreen publicToken={TOKEN} />);
+    await screen.findByText("Pendiente de verificación");
+    expectReachable("Solicitar verificación");
+
+    fireEvent.press(expectReachable("Retirar del servicio"));
+    expectReachable("Confirmar retiro");
+    fireEvent.press(expectReachable("Cancelar"));
+
+    fireEvent.press(expectReachable("Datos de la credencial"));
+    expectReachable("Guardar datos");
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("vigente: the banner both ways, retire, and the data", async () => {
+    loads({ credentialStatus: "vigente" });
+    const first = render(<ServiceDogScreen publicToken={TOKEN} />);
+    await screen.findByText("Vigente");
+    expectReachable("Activar banner público");
+    expectReachable("Retirar del servicio");
+    fireEvent.press(expectReachable("Datos de la credencial"));
+    expectReachable("Guardar datos");
+    first.unmount();
+
+    loads({ credentialStatus: "vigente", publicVisibility: "full_banner" });
+    render(<ServiceDogScreen publicToken={TOKEN} />);
+    await screen.findByText("Vigente");
+    expectReachable("Mantener privado");
+    expectReachable("Retirar del servicio");
+    expect(mockSend).not.toHaveBeenCalled();
   });
 });
