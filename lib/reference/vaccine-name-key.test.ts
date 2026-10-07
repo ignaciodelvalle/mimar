@@ -137,6 +137,31 @@ describe("front and back agree on the same asiento", () => {
     expect(backStatus("Antirrabica", "Quíntuple (DHPPi)")).toBe("missing");
   });
 
+  // ONE rabies rule on both faces (PO decision 2026-10-07): the front's verdict
+  // "a rabies dose is on file" equals the back's "the rabies entry has a dose".
+  it.each([
+    ["Antirrábica", true],
+    ["Antirrabica", true],
+    ["ANTIRRABICA", true],
+    ["Rabia", true],
+    ["DHPP + antirrábica", true],
+    ["Séxtuple (DHPPi-L)", false],
+  ])("parity for %j: front and back both say rabies=%s", (raw, isRabies) => {
+    const frontHasRabies = front(raw).state !== "Sin registro";
+    const rabiesStatus = backStatus(raw, RABIES_VACCINE_NAME);
+    const backHasRabies = rabiesStatus !== "missing" && rabiesStatus !== "unconfirmed";
+    expect(frontHasRabies).toBe(isRabies);
+    expect(backHasRabies).toBe(isRabies);
+  });
+
+  it("a combined entry counts for rabies only — its other components are not inferred", () => {
+    const summary = back("DHPP + antirrábica");
+    expect(backStatus("DHPP + antirrábica", RABIES_VACCINE_NAME)).toBe("active");
+    expect(backStatus("DHPP + antirrábica", "Séxtuple (DHPPi-L)")).toBe("missing");
+    expect(backStatus("DHPP + antirrábica", "Quíntuple (DHPPi)")).toBe("missing");
+    expect(summary.otherCount).toBe(0);
+  });
+
   it("dedupes off-catalog names by the same key", () => {
     const summary = computeVaccinationSummary(
       [ownerDose("Leptospira canina"), ownerDose("LEPTOSPIRA  canina ")],

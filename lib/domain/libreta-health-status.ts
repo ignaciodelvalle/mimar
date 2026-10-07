@@ -12,7 +12,13 @@
 //                            followed by a medication_stopped for the
 //                            same drug name
 
-import { findVaccineByName, vaccineNameKey, vaccinesForSpecies } from "@/lib/reference/lookups";
+import {
+  RABIES_VACCINE_NAME,
+  findVaccineByName,
+  isRabiesVaccineName,
+  vaccineNameKey,
+  vaccinesForSpecies,
+} from "@/lib/reference/lookups";
 import { addCalendarMonths } from "@/lib/utils/calendar-months";
 import { isoDateInAr, parseDateInput } from "@/lib/utils/format";
 
@@ -213,7 +219,14 @@ export function computeVaccinationSummary(
     const payload = (e.payload ?? {}) as Record<string, unknown>;
     const rawName = typeof payload.vaccine_name === "string" ? payload.vaccine_name : null;
     if (!rawName) continue;
-    const def = findVaccineByName(rawName);
+    // ONE rabies rule on both faces (PO decision 2026-10-07): a name the
+    // catalog does not resolve but the credential front reads as rabies
+    // ("Rabia", "DHPP + antirrábica") counts as the catalog's rabies entry here
+    // too. A combined entry counts for rabies ONLY — its other components are
+    // never inferred.
+    const def =
+      findVaccineByName(rawName) ??
+      (isRabiesVaccineName(rawName) ? findVaccineByName(RABIES_VACCINE_NAME) : null);
     if (!def) {
       // Free-text vaccine outside the catalog — count it (deduped by name) so
       // it appears in the libreta instead of disappearing. We deliberately do
