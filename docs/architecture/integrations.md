@@ -165,10 +165,12 @@ ships identifying data by accident) and tracing (`tracesSampleRate: 0`,
 because the pilot's question is "does it crash", not "is it fast", and
 performance spans would drown the free-tier quota).
 
-Web errors have their own, separate, unresolved state — not Sentry, not any
-vendor — documented in
-`docs/architecture/client-error-sink-pending-decision.md`: server errors
-reach Vercel function logs, but a web client error dies in the visitor's tab.
+Web errors have their own state, documented in
+`docs/architecture/client-error-sink-pending-decision.md` (decided despite the
+filename): server errors reach Vercel function logs, and since 2026-09-17 web
+client errors do too, through `app/api/telemetry/client-error/route.ts`
+(option B). The PO chose Sentry for the web as well (option C, 2026-09-17); it
+is not wired yet — it waits on a DSN and the legal sign-off that document names.
 
 ## 7. Email (Resend) — STATUS: live, env-gated, can degrade to restricted
 
