@@ -66,6 +66,7 @@ export {
   MAX_STATED_AGE_YEARS,
   MAX_STATED_AGE_YEARS_OTHER,
   type PetAge,
+  ageMatchesBirthDate,
   birthDateRefusal,
   estimatedBirthDateFromAge,
   maxStatedAgeYears,

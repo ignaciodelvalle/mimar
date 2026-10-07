@@ -77,12 +77,7 @@ import { PET_SEXES } from "./intake.ts";
 // length caps, so importing it back from here closes a cycle — and both files
 // build zod schemas at module-evaluation time, where a cycle turns the other
 // side's constants into `undefined`. See `pet-species.ts`.
-import {
-  ACQUISITION_METHODS,
-  MAX_PET_AGE_MONTHS,
-  MAX_PET_AGE_YEARS,
-  ageCount,
-} from "./pet-profile-fields.ts";
+import { ACQUISITION_METHODS } from "./pet-profile-fields.ts";
 import { PET_SPECIES } from "./pet-species.ts";
 import {
   SERVICE_DOG_NOTES_MAX,
@@ -93,6 +88,7 @@ import {
   optionalServiceDogDay,
   optionalServiceDogText,
 } from "./service-dog.ts";
+import { STATED_AGE_CODES, statedAgeCount } from "./stated-age.ts";
 import { isWritableName } from "./writable-name.ts";
 
 /**
@@ -154,6 +150,10 @@ export const PET_PROFILE_COMMAND_INPUT_CODES = [
   "ACQUISITION_METHOD_INVALID",
   "CONDITION_OTHER_REQUIRED",
   "CONDITION_OTHER_HAS_CONTACT",
+  // alta-validacion-edad — the identity section's age. The schema raises the
+  // two shape codes; the range codes come from `editedAgeRefusal`, which needs
+  // the stored date, and are listed so a client's copy covers all four.
+  ...STATED_AGE_CODES,
 ] as const;
 export type PetProfileCommandInputCode = (typeof PET_PROFILE_COMMAND_INPUT_CODES)[number];
 
@@ -432,8 +432,13 @@ const profileIdentity = z.object({
   // The age the screen shows, posted back. The server keeps the stored birth
   // date when this is the age that date reads as, and estimates a new one only
   // when it is not (`resolveEditedBirthDate`). Both blank clears the date.
-  ageYears: ageCount(MAX_PET_AGE_YEARS),
-  ageMonths: ageCount(MAX_PET_AGE_MONTHS),
+  //
+  // SHAPE ONLY HERE, and refused rather than clamped (alta-validacion-edad):
+  // the RANGE depends on the stored date — an age posted back untouched passes
+  // at any value, a TYPED one is held to the alta's cap — and this schema sees
+  // no row. The server and both clients run `editedAgeRefusal` for it.
+  ageYears: statedAgeCount("AGE_YEARS_INVALID"),
+  ageMonths: statedAgeCount("AGE_MONTHS_INVALID"),
 });
 
 /**

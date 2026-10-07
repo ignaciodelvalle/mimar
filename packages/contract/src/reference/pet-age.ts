@@ -59,6 +59,27 @@ export function petAgeFromBirthDate(dateOfBirth: string | null, now: Date): PetA
   return { years: Math.floor(totalMonths / 12), months: totalMonths % 12 };
 }
 
+/** One day, for the tolerance window below. */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whether `age` is the age an animal born on `dateOfBirth` reads as `now` —
+ * give or take a day, because the form computed the age it showed at one
+ * instant and the server compares at another, and the two can straddle a
+ * midnight. This is how an EDIT tells an age the person posted back untouched
+ * from one they typed: `resolveEditedBirthDate` keeps the stored date on a
+ * match, and `editedAgeRefusal` lets a stored (possibly odd) age through.
+ * Moved here from `resolveEditedBirthDate` so the two read one definition.
+ */
+export function ageMatchesBirthDate(dateOfBirth: string, age: PetAge, now: Date): boolean {
+  const asked = (age.years ?? 0) * 12 + (age.months ?? 0);
+  for (const offset of [-DAY_MS, 0, DAY_MS]) {
+    const shown = petAgeFromBirthDate(dateOfBirth, new Date(now.getTime() + offset));
+    if (shown.years !== null && shown.years * 12 + (shown.months ?? 0) === asked) return true;
+  }
+  return false;
+}
+
 function parseDay(value: string): { year: number; month: number; day: number } | null {
   const match = DAY_PATTERN.exec(value);
   if (match === null) return null;

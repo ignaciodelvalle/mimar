@@ -349,11 +349,16 @@ export {
   type PetSpecies,
   type RegisterPetInput,
   type RegisterPetInputCode,
-  type StatedAgeCode,
   firstRegisterPetInputCode,
   registerPetInputSchema,
-  statedAgeRefusal,
 } from "./register-pet.ts";
+export {
+  type RawStatedAge,
+  STATED_AGE_CODES,
+  type StatedAgeCode,
+  editedAgeRefusal,
+  statedAgeRefusal,
+} from "./stated-age.ts";
 export {
   REHOME_COMMAND_INPUT_CODES,
   REHOME_COMMANDS_REQUIRING_IDEMPOTENCY_KEY,

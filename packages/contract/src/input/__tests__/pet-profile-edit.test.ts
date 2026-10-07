@@ -332,12 +332,23 @@ describe("edit_profile — Editar datos by section (owner-pet-actions)", () => {
     });
   });
 
-  it("clamps an age the way the alta does, so a typo cannot reach the date arithmetic", () => {
+  // alta-validacion-edad: it CLAMPED ("3000" → 250), which let a typo become a
+  // different stored number. Now the SHAPE is refused here and the RANGE is
+  // `editedAgeRefusal`'s — it needs the stored date this schema never sees.
+  it("refuses a malformed age instead of clamping it, and leaves the range to the stored-date gate", () => {
+    expect(codeFor({ ...NOTHING, identity: { ...IDENTITY, ageMonths: -3 } })).toBe(
+      "AGE_MONTHS_INVALID",
+    );
+    expect(codeFor({ ...NOTHING, identity: { ...IDENTITY, ageYears: "aprox 2" } })).toBe(
+      "AGE_YEARS_INVALID",
+    );
+    // A large WHOLE number is a shape the schema accepts, unclamped: an age
+    // posted back untouched may legitimately read as more than any cap.
     const parsed = petProfileCommandInputSchema.parse({
       ...NOTHING,
-      identity: { ...IDENTITY, ageYears: 3000, ageMonths: -3 },
+      identity: { ...IDENTITY, ageYears: 3000, ageMonths: 0 },
     });
-    expect(parsed).toMatchObject({ identity: { ageYears: 250, ageMonths: 0 } });
+    expect(parsed).toMatchObject({ identity: { ageYears: 3000, ageMonths: 0 } });
   });
 
   it("parses its own output back to itself", () => {
