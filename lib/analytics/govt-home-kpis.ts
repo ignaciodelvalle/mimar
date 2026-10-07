@@ -510,8 +510,9 @@ export async function fetchRabiesCoverageByProvince(
   const dogsCondition = dogsInScopeCondition(ctx);
 
   // Rabies vaccination event conditions — SAME shared predicate as
-  // fetchRabiesCoverage (regex, not ILIKE, to match the accented canonical form
-  // "Antirrábica"; amendment overlay over BOTH vaccine_name and next_due_at)
+  // fetchRabiesCoverage (rabiesVaccineNameSql: lower(unaccent()) against the one
+  // rabies pattern, so "Antirrábica", "Rabia" and a decomposed accent all match;
+  // amendment overlay over BOTH vaccine_name and next_due_at)
   // so the choropleth per-province rates never diverge from the national KPI.
   const rabiesVaccConditions = [
     eq(petEvents.eventType, "vaccination_administered"),
