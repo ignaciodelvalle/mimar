@@ -230,10 +230,9 @@ describe("service_offerings — reads", () => {
   it("the provider-vet sub-select on service_schedule_rules is not refused by the column grant", async () => {
     // "schedule_rules read by provider vet" sub-selects service_offerings.id
     // WHERE provider_user_id = auth.uid(); that is why authenticated keeps
-    // those columns. The table's OTHER policy ("read by org members") still
-    // sub-selects organization_memberships directly and may raise 42P17
-    // (infinite recursion) — a pre-existing defect 0279 does not touch. What
-    // this pins is that the failure, if any, is never a 42501 from 0279.
+    // those columns. The table's OTHER policy ("read by org members") raised
+    // 42P17 (infinite recursion) until 0285 routed it through
+    // caller_is_active_org_member, so the read now has to succeed outright.
     await db.execute(sql`
       INSERT INTO public.service_schedule_rules
         (service_offering_id, days_of_week, start_time_local, end_time_local, effective_from)
@@ -245,8 +244,8 @@ describe("service_offerings — reads", () => {
       sql`SELECT service_offering_id::text AS id FROM public.service_schedule_rules
            WHERE service_offering_id = ${ids.providerOffering}::uuid`,
     );
-    expect(code).not.toBe("42501");
-    if (code === null) expect(rows).toEqual([{ id: ids.providerOffering }]);
+    expect(code).toBeNull();
+    expect(rows).toEqual([{ id: ids.providerOffering }]);
   });
 });
 

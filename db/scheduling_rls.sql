@@ -49,7 +49,10 @@ create policy "service_offerings read by provider vet"
 -- ============================================================================
 alter table public.service_schedule_rules enable row level security;
 
--- Org members can read rules for their org's offerings.
+-- Org members can read rules for their org's offerings. Through the
+-- caller-only definer helper since 0285 (byte-identical to that migration):
+-- a direct subquery on organization_memberships recursed into its peers
+-- policy and made every authenticated read of this table raise.
 drop policy if exists "schedule_rules read by org members" on public.service_schedule_rules;
 create policy "schedule_rules read by org members"
   on public.service_schedule_rules for select
@@ -57,10 +60,7 @@ create policy "schedule_rules read by org members"
   using (
     service_offering_id in (
       select id from public.service_offerings
-      where organization_id in (
-        select organization_id from public.organization_memberships
-        where user_id = auth.uid() and left_at is null
-      )
+      where public.caller_is_active_org_member(organization_id)
     )
   );
 
@@ -101,17 +101,14 @@ create policy "appointments read by owner"
   to authenticated
   using (owner_user_id = auth.uid());
 
--- Org members can read appointments for their org's offerings.
+-- Org members can read appointments for their org's offerings. Through the
+-- caller-only definer helper since 0285 (byte-identical to that migration),
+-- for the same recursion as service_schedule_rules above.
 drop policy if exists "appointments read by org members" on public.appointments;
 create policy "appointments read by org members"
   on public.appointments for select
   to authenticated
-  using (
-    organization_id in (
-      select organization_id from public.organization_memberships
-      where user_id = auth.uid() and left_at is null
-    )
-  );
+  using (public.caller_is_active_org_member(organization_id));
 
 -- Independent-vet provider can read appointments for their offerings.
 drop policy if exists "appointments read by provider vet" on public.appointments;
