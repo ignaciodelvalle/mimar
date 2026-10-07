@@ -112,3 +112,46 @@ describe("MyReportsScreen", () => {
     expect(screen.queryByText("Mostrar más")).toBeNull();
   });
 });
+
+// "Nueva denuncia" is the primary action at the TOP of the list, in every state
+// (inicio-app-rediseno, PO 2026-10-07): the menu's one Comunidad row for
+// denuncias lands here, so filing must be the first thing on the screen — and a
+// failed or slow read of past denuncias must never stand in front of it.
+describe("MyReportsScreen — Nueva denuncia", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  it.each([
+    ["with denuncias", () => mockFetch.mockResolvedValue(ok({ reports: [aRow()] }))],
+    ["with none", () => mockFetch.mockResolvedValue(ok())],
+    [
+      "when the read failed",
+      () =>
+        mockFetch.mockResolvedValue({
+          outcome: "api-error",
+          code: "temporarily_unavailable",
+          retryAfterSeconds: 5,
+        }),
+    ],
+  ])("is the first control on the screen, once, %s", async (_state, arrange) => {
+    arrange();
+    const { onNewReport } = renderScreen();
+    await screen.findByText("Mis denuncias");
+
+    const buttons = screen.getAllByRole("button");
+    expect(buttons[0]).toBe(screen.getByRole("button", { name: "Nueva denuncia" }));
+    expect(screen.getAllByText("Nueva denuncia")).toHaveLength(1);
+
+    fireEvent.press(screen.getByRole("button", { name: "Nueva denuncia" }));
+    expect(onNewReport).toHaveBeenCalledTimes(1);
+  });
+
+  it("is there while the list is still loading", () => {
+    mockFetch.mockReturnValue(new Promise(() => undefined));
+    const { onNewReport } = renderScreen();
+
+    fireEvent.press(screen.getByRole("button", { name: "Nueva denuncia" }));
+    expect(onNewReport).toHaveBeenCalledTimes(1);
+  });
+});

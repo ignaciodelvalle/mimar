@@ -1,12 +1,26 @@
 // Mis mascotas — the list, and the four things it can honestly be.
 //
-//   loading   — a spinner with a sentence, not a bare spinner.
+//   loading   — a skeleton of the cards to come (`ListSkeleton`, the shape
+//               Denuncias and Tránsito already use), read aloud as a sentence.
 //   failed    — the server's own message plus a retry. NEVER an empty list:
 //               "no tenés mascotas" is a claim, and a failed read has not earned
 //               the right to make it. That confusion is the single most likely
 //               way this screen could lie, because both states draw nothing.
-//   empty     — an invitation, not a statement of absence.
+//   empty     — an invitation, not a statement of absence — plus, since the
+//               redesign, "¿Ya la registró un veterinario o un refugio?" with a
+//               link to Reclamar: exactly the question of somebody arriving
+//               with an animal another person already recorded.
 //   loaded    — the pets, growing on its own as the list scrolls (D5).
+//
+// THE ORDER OF THE LOADED SCREEN (inicio-app-rediseno, PO 2026-10-07, see
+// `dim-interno:docs/reviews/2026-10-home-app/rediseno-home.html`). First what
+// somebody else is waiting on ("Esperan tu respuesta"), then what the person
+// has to do ("Te toca a vos"), then "En curso" folded into one row, then the
+// animals under "Tus mascotas · N", and the screen ENDS at "Registrar otra
+// mascota". There is no footer of destinations in any of the three states any
+// more: every other door is in the header — the bell, and the ☰
+// (`src/ui/HeaderActions.tsx`) — which never scrolls. Anything that is empty
+// is simply not drawn.
 //
 // `truncated`/`total` STILL RIDE THE PAYLOAD (D5 kept them, additive), but this
 // screen no longer reads them to draw a "no hay paginado, entrá desde la web"
@@ -46,7 +60,7 @@
 import type { MyCasesV1, MyPetsV1 } from "@dim/contract/api";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
+import { FlatList, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { apiFailureMessage } from "../../src/api/client";
@@ -57,6 +71,7 @@ import { OpenCasesBlock } from "../../src/cases/OpenCasesBlock";
 import { hasOpenCases } from "../../src/cases/cases-view-model";
 import { useOpenCases } from "../../src/cases/use-open-cases";
 import { BiteDraftBanner } from "../../src/pets/BiteDraftBanner";
+import { MovedToMenuNotice, useHomeMenuNotice } from "../../src/pets/MovedToMenuNotice";
 import { PetRow } from "../../src/pets/PetRow";
 import {
   type BiteDraftBanner as BiteDraftInfo,
@@ -65,12 +80,13 @@ import {
 import { PendingIncomingCard } from "../../src/transfers/PendingIncomingCard";
 import type { PendingIncomingRow } from "../../src/transfers/pending-incoming-view-model";
 import { usePendingIncoming } from "../../src/transfers/use-pending-incoming";
-import { DestinationsFooter } from "../../src/ui/TopLevelNavMenu";
 import { EmptyState, ErrorNotice, Loading, StaleNotice } from "../../src/ui/components";
-import { PrimaryButton, Screen, pullToRefresh } from "../../src/ui/kit";
+import { FONTS } from "../../src/ui/fonts";
+import { Eyebrow, PrimaryButton, Screen, pullToRefresh } from "../../src/ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../../src/ui/reload-state";
 import { ROUTES, credentialRoute, recordEventRoute } from "../../src/ui/routes";
-import { COLORS, SPACE } from "../../src/ui/theme";
+import { ListSkeleton } from "../../src/ui/skeleton";
+import { COLORS, SPACE, TYPE } from "../../src/ui/theme";
 import { useReconnect } from "../../src/ui/use-reconnect";
 
 type ListState = { phase: "loading" } | ReadyState<MyPetsV1> | { phase: "failed"; message: string };
@@ -223,6 +239,11 @@ export default function MisMascotasScreen() {
     routerRef.current.push(route);
   }, []);
   const handleOpenTransfers = useCallback(() => routerRef.current.push(ROUTES.transferencias), []);
+  const handleOpenClaim = useCallback(() => routerRef.current.push(ROUTES.reclamar), []);
+
+  // "LO QUE ESTABA ABAJO AHORA ESTÁ EN EL MENÚ ☰" — once, until closed
+  // (PO 2026-10-07). See `MovedToMenuNotice.tsx`.
+  const menuNotice = useHomeMenuNotice();
 
   if (!gate.allowed) return gate.element;
 
@@ -230,20 +251,17 @@ export default function MisMascotasScreen() {
     return (
       <Screen refreshControl={pullToRefresh(() => void load("refresh"), refreshing)}>
         {state.phase === "loading" ? (
-          <Loading label="Buscando tus mascotas…" />
+          <ListSkeleton rows={3} label="Buscando tus mascotas…" />
         ) : (
           // NOT an empty list. See the header. Only the FIRST read reaches this:
           // once there are animals on screen they stay.
           <ErrorNotice message={state.message} onRetry={() => void load("initial")} />
         )}
-        {/* THE FOOTER STAYS, EVEN HERE (review fix, 2026-09-24). It used to
-            render only from the loaded arm's `ListFooterComponent` below —
-            which meant a person offline on first open, or hitting a real
-            server failure, saw an `ErrorNotice` and no way out of the screen
-            but the hardware back button. `DestinationsFooter` is the SAME
-            component the loaded arm uses (`src/ui/TopLevelNavMenu.tsx`), not
-            a second copy, so the two arms cannot drift apart again. */}
-        <DestinationsFooter />
+        {/* NO FOOTER HERE ANY MORE, AND NO WAY OUT IS LOST. The destinations
+            footer used to be repeated in this arm so a person offline on first
+            open was not stuck with an `ErrorNotice` and the back button. The
+            header's bell and ☰ (`HeaderActions`) are drawn over all three
+            states of this screen, so that exit no longer depends on the body. */}
       </Screen>
     );
   }
@@ -270,6 +288,9 @@ export default function MisMascotasScreen() {
       onOpenCases={handleOpenCases}
       onOpenPendingRoute={handleOpenPendingRoute}
       onOpenTransfers={handleOpenTransfers}
+      onOpenClaim={handleOpenClaim}
+      showMenuNotice={menuNotice.visible}
+      onDismissMenuNotice={menuNotice.dismiss}
     />
   );
 }
@@ -295,6 +316,9 @@ function PetListScreen({
   onOpenCases,
   onOpenPendingRoute,
   onOpenTransfers,
+  onOpenClaim,
+  showMenuNotice,
+  onDismissMenuNotice,
 }: {
   view: MyPetsV1;
   staleFailure: string | null;
@@ -314,6 +338,9 @@ function PetListScreen({
   onOpenCases: () => void;
   onOpenPendingRoute: (route: PendingIncomingRow["route"]) => void;
   onOpenTransfers: () => void;
+  onOpenClaim: () => void;
+  showMenuNotice: boolean;
+  onDismissMenuNotice: () => void;
 }) {
   const { pets } = view;
 
@@ -353,6 +380,9 @@ function PetListScreen({
             pendingIncoming={pendingIncoming}
             onOpenPendingRoute={onOpenPendingRoute}
             onOpenTransfers={onOpenTransfers}
+            petCount={pets.length === 0 ? 0 : Math.max(view.total, pets.length)}
+            showMenuNotice={showMenuNotice}
+            onDismissMenuNotice={onDismissMenuNotice}
           />
         }
         ListEmptyComponent={
@@ -361,6 +391,11 @@ function PetListScreen({
             body="Registrala una vez y su credencial queda disponible para siempre: un QR que cualquiera puede escanear si se pierde."
             actionLabel="Registrar una mascota"
             onAction={onRegister}
+            secondary={{
+              prompt: "¿Ya la registró un veterinario o un refugio?",
+              linkLabel: "Reclamala con su chip o tatuaje",
+              onPress: onOpenClaim,
+            }}
           />
         }
         ListFooterComponent={
@@ -384,10 +419,11 @@ function PetListScreen({
 /**
  * Everything that sits ABOVE the pets themselves, now the `FlatList`'s
  * `ListHeaderComponent` so it renders once — same reasoning as `ListFooter`
- * below. Two banners and one block can coexist here: a stale read, an unsent
- * bite draft and an open case are unrelated facts about the account, and none
- * of them being true says anything about the others. The banners come first —
- * they are about THIS screen's state — and the casos block after them.
+ * below. Several facts can coexist here and none of them being true says
+ * anything about the others. In order: what is about THIS screen (a stale read,
+ * the one-time menu notice), what somebody else is waiting on, an unsent bite
+ * draft, the casos (only "Te toca a vos" open; "En curso" folded), and last the
+ * "Tus mascotas · N" eyebrow that heads the list itself.
  */
 function ListHeader({
   staleFailure,
@@ -400,6 +436,9 @@ function ListHeader({
   pendingIncoming,
   onOpenPendingRoute,
   onOpenTransfers,
+  petCount,
+  showMenuNotice,
+  onDismissMenuNotice,
 }: {
   staleFailure: string | null;
   onRefresh: () => void;
@@ -411,13 +450,25 @@ function ListHeader({
   pendingIncoming: PendingIncomingRow[];
   onOpenPendingRoute: (route: PendingIncomingRow["route"]) => void;
   onOpenTransfers: () => void;
+  /** 0 on the empty state, where the `EmptyState` speaks instead of an eyebrow. */
+  petCount: number;
+  showMenuNotice: boolean;
+  onDismissMenuNotice: () => void;
 }) {
   const showCases = hasOpenCases(openCases);
-  if (staleFailure === null && biteDraft === null && !showCases && pendingIncoming.length === 0)
+  if (
+    staleFailure === null &&
+    !showMenuNotice &&
+    biteDraft === null &&
+    !showCases &&
+    pendingIncoming.length === 0 &&
+    petCount === 0
+  )
     return null;
   return (
     <View style={styles.headerGap}>
       {staleFailure === null ? null : <StaleNotice message={staleFailure} onRetry={onRefresh} />}
+      {showMenuNotice ? <MovedToMenuNotice onDismiss={onDismissMenuNotice} /> : null}
       {/* What somebody else is waiting on this person to answer — first among
           the facts about the account, because it is the only one with a
           deadline set by someone else. */}
@@ -430,6 +481,13 @@ function ListHeader({
         <BiteDraftBanner onPress={() => onOpenBiteDraft(biteDraft.publicToken)} />
       )}
       <OpenCasesBlock cases={openCases} onOpenRoute={onOpenCaseRoute} onOpenAll={onOpenCases} />
+      {petCount === 0 ? null : (
+        // The same Eyebrow + count shape the casos block heads itself with.
+        <View style={styles.petsHead} accessibilityRole="header">
+          <Eyebrow>Tus mascotas</Eyebrow>
+          <Text style={styles.petsCount}>{petCount}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -438,6 +496,10 @@ function ListHeader({
  * Everything the old `ListBody` rendered AFTER the pets themselves, now the
  * `FlatList`'s `ListFooterComponent` so it renders once, however many rows are
  * mounted, instead of once per row the way an item inside `data` would.
+ *
+ * ONE ACTION, AND IT IS THE LAST THING ON THE SCREEN (inicio-app-rediseno):
+ * "Registrar otra mascota" is the only action that belongs to this place. The
+ * nine destination buttons that used to follow it are the header's ☰ now.
  *
  * D5 — the "La lista está incompleta … entrá desde la web" card is GONE. It
  * existed because there was nowhere else to go for the rest of the list;
@@ -462,13 +524,6 @@ function ListFooter({
           <PrimaryButton label="Registrar otra mascota" onPress={onRegister} />
         </>
       ) : null}
-
-      {/* THE SHARED FOOTER (`src/ui/TopLevelNavMenu.tsx`'s
-          `DestinationsFooter`) — see that file for why Tránsito sits beside
-          Transferencias, why Reclamar is not beside "Registrar otra mascota",
-          why Denunciar runs last, and why this is now the SAME component the
-          loading/failed arms render above, not a second copy. */}
-      <DestinationsFooter />
     </View>
   );
 }
@@ -480,4 +535,6 @@ const styles = StyleSheet.create({
   listContent: { padding: SPACE.xl2, gap: SPACE.lg },
   headerGap: { gap: SPACE.lg },
   footerGap: { gap: SPACE.lg },
+  petsHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
+  petsCount: { fontFamily: FONTS.sans, fontSize: TYPE.sm, color: COLORS.inkMuted },
 });

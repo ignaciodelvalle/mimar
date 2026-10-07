@@ -5,8 +5,8 @@
 //
 // QUIET WHEN IT FAILS, for `use-open-cases.ts`'s reason: the pets are what that
 // screen is for, and a failed read here must not replace them with an error. The
-// card keeps whatever it last showed (usually nothing); Transferencias, one tap
-// away in the footer, is where a failed read is reported with a retry. A read
+// card keeps whatever it last showed (usually nothing); Transferencias, in the
+// header's ☰ menu, is where a failed read is reported with a retry. A read
 // that throws instead of answering is swallowed the same way — a banner is never
 // worth a crash on the screen people open most.
 //

@@ -29,7 +29,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 
 import { type ContactLink, contactLink, contactParts } from "./contact-link";
 import { FONTS } from "./fonts";
-import { PrimaryButton, RIPPLE, SecondaryButton } from "./kit";
+import { LinkText, PrimaryButton, RIPPLE, SecondaryButton } from "./kit";
 import { COLORS, LABEL_TRACKING_EM, LEADING, RADIUS, SPACE, TOUCH_TARGET, TYPE } from "./theme";
 
 /**
@@ -290,17 +290,26 @@ export function StaleNotice({ message, onRetry }: { message: string; onRetry?: (
   );
 }
 
+/**
+ * A second, quieter way forward under the primary action: a sentence that
+ * names the situation and a link (Mis mascotas' empty state asks whether a vet
+ * or a shelter already registered the animal, and links to Reclamar).
+ */
+export type EmptyStateSecondary = { prompt: string; linkLabel: string; onPress: () => void };
+
 /** An absence that offers a next step. See the header. */
 export function EmptyState({
   headline,
   body,
   actionLabel,
   onAction,
+  secondary,
 }: {
   headline: string;
   body: string;
   actionLabel?: string;
   onAction?: () => void;
+  secondary?: EmptyStateSecondary;
 }) {
   return (
     <View style={styles.empty}>
@@ -309,6 +318,12 @@ export function EmptyState({
       {actionLabel !== undefined && onAction !== undefined ? (
         <PrimaryButton label={actionLabel} onPress={onAction} />
       ) : null}
+      {secondary === undefined ? null : (
+        <View style={styles.emptySecondary}>
+          <Text style={styles.emptySecondaryPrompt}>{secondary.prompt}</Text>
+          <LinkText onPress={secondary.onPress}>{secondary.linkLabel}</LinkText>
+        </View>
+      )}
     </View>
   );
 }
@@ -431,6 +446,19 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.sans,
     fontSize: TYPE.md,
     lineHeight: TYPE.md * LEADING.md,
+    color: COLORS.inkSoft,
+  },
+  emptySecondary: {
+    alignSelf: "stretch",
+    gap: SPACE.xs,
+    paddingTop: SPACE.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderSoft,
+  },
+  emptySecondaryPrompt: {
+    fontFamily: FONTS.sans,
+    fontSize: TYPE.sm,
+    lineHeight: TYPE.sm * LEADING.md,
     color: COLORS.inkSoft,
   },
   loading: { paddingVertical: SPACE.xl3 + SPACE.sm, alignItems: "center", gap: SPACE.sm + 2 },

@@ -1,14 +1,13 @@
 // `app/mascotas/index.tsx`'s loaded arm, now a `FlatList` (M3 / R-1).
 //
-// WHY THIS FILE EXISTS. `MisMascotasFooter.test.tsx` only ever renders an EMPTY
-// payload, so it never exercised the one thing that actually changed when the
-// screen moved off `ScrollView`: pet rows and the footer are now two different
-// kinds of `FlatList` slot (`data` vs `ListFooterComponent`) rather than two
-// plain siblings in the same scroll container. This file renders a NON-EMPTY
-// payload and checks the two survived the move: the rows still show, the
-// footer's eight destinations still render AFTER them, and a stale-but-outage
-// refresh does not force a memoized row to re-render (the defect this whole
-// change exists to close — see `PetRow.tsx`'s header).
+// WHY THIS FILE EXISTS. Pet rows and the footer are two different kinds of
+// `FlatList` slot (`data` vs `ListFooterComponent`) rather than two plain
+// siblings in the same scroll container. This file renders a NON-EMPTY payload
+// and checks the list survived that: the rows still show, the footer's one
+// action ("Registrar otra mascota" — the destinations footer was deleted by
+// inicio-app-rediseno, its rows live in the header's ☰ now) still renders
+// AFTER them, and a stale-but-outage refresh does not force a memoized row to
+// re-render (the defect this whole change exists to close — see `PetRow.tsx`).
 //
 // It runs under JEST, same as `MisMascotasFooter.test.tsx`.
 
@@ -49,7 +48,7 @@ jest.mock("../auth/session-store", () => ({ sessionPort: {} }));
 jest.mock("../auth/useGate", () => ({ useGate: () => ({ allowed: true }) }));
 
 import MisMascotasScreen from "../../app/mascotas/index";
-import { TOP_LEVEL_DESTINATIONS } from "../ui/TopLevelNavMenu";
+import { NAV_DESTINATIONS } from "../ui/TopLevelNavMenu";
 import { getPetRowRenderCountForTests, resetPetRowRenderCountForTests } from "./PetRow";
 
 /**
@@ -121,50 +120,45 @@ describe("the /mascotas list (FlatList)", () => {
     resetPetRowRenderCountForTests();
   });
 
-  it("renders every pet AND every footer destination, footer last", async () => {
+  it("renders every pet AND the footer's one action, footer last", async () => {
     mockFetchMyPets.mockResolvedValue(twoPets());
     render(<MisMascotasScreen />);
 
     await screen.findByText("Firulais");
     expect(screen.getByText("Michi")).toBeTruthy();
 
-    // The footer is now a `ListFooterComponent`, not a sibling `View` in the
-    // same `ScrollView` — this is the assertion that it still shows up, and
-    // still after the rows, not swallowed by the switch to `FlatList`.
-    for (const destination of TOP_LEVEL_DESTINATIONS) {
-      expect(screen.getByRole("button", { name: destination.label })).toBeTruthy();
-    }
-
-    // AND STILL AFTER THE ROWS, BY POSITION — the assertion above only proves
-    // presence, and `ListFooterComponent`/`data` could in principle land in
-    // either order in the rendered tree. `getAllByRole("button")` returns
-    // matches in tree order, so the last pet row's index must be BELOW the
-    // first destination's.
+    // AFTER THE ROWS, BY POSITION — `ListFooterComponent`/`data` could in
+    // principle land in either order in the rendered tree.
+    // `getAllByRole("button")` returns matches in tree order, so the last pet
+    // row's index must be BELOW the footer action's, and that action is the
+    // last button on the screen.
     const names = screen.getAllByRole("button").map(accessibleName);
     const lastPetIndex = Math.max(
       names.findIndex((name) => name.startsWith("Firulais")),
       names.findIndex((name) => name.startsWith("Michi")),
     );
-    const firstDestinationIndex = names.findIndex((name) =>
-      TOP_LEVEL_DESTINATIONS.some((destination) => name === destination.label),
-    );
+    const registerIndex = names.indexOf("Registrar otra mascota");
     expect(lastPetIndex).toBeGreaterThanOrEqual(0);
-    expect(firstDestinationIndex).toBeGreaterThan(lastPetIndex);
+    expect(registerIndex).toBeGreaterThan(lastPetIndex);
+    expect(registerIndex).toBe(names.length - 1);
+
+    // And none of the menu's destinations is drawn in the body any more.
+    for (const destination of NAV_DESTINATIONS) {
+      expect(screen.queryByRole("button", { name: destination.label })).toBeNull();
+    }
   });
 
-  it("keeps the destinations footer reachable when the FIRST read fails", async () => {
-    // THE GAP THE REVIEW CAUGHT: the loading/failed arms used to render on
-    // `Screen` with nothing after the `ErrorNotice` — a person offline on
-    // first open had no way out of this screen but the hardware back button,
-    // even though the loaded arm always offered all eight destinations.
+  it("draws only the error and its retry when the FIRST read fails — the header is the way out", async () => {
+    // The destinations footer used to be repeated here so a person offline on
+    // first open had a way out besides the back button. The header's bell and
+    // ☰ (`HeaderActions`) cover all three states now, so the body draws no
+    // destination at all.
     mockFetchMyPets.mockResolvedValueOnce({ outcome: "unreachable", detail: "sin red" });
     render(<MisMascotasScreen />);
 
     await screen.findByText("No pudimos conectarnos. Revisá tu conexión.");
 
-    for (const destination of TOP_LEVEL_DESTINATIONS) {
-      expect(screen.getByRole("button", { name: destination.label })).toBeTruthy();
-    }
+    expect(screen.getAllByRole("button").map(accessibleName)).toEqual(["Volver a intentar"]);
   });
 
   it("does not re-render a pet row when a pull-to-refresh fails as an outage (stale payload kept)", async () => {
