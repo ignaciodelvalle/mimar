@@ -799,7 +799,10 @@ function makeStatefulOrgDeps() {
   const openCases: { id: string; publicCode: string }[] = [];
   let observationStatus: string | null = null;
   const deps = makeDeps({
-    findIncidentReplay: vi.fn(async (_petId: string, key: string) => ledger.get(key) ?? null),
+    findIncidentReplay: vi.fn(
+      async ({ clientIdempotencyKey }: { clientIdempotencyKey: string }) =>
+        ledger.get(clientIdempotencyKey) ?? null,
+    ),
     insertIncidentEventIdempotent: vi.fn(
       async (values: { clientIdempotencyKey: string; caseId: string }) => {
         const eventId = `a0000000-0000-4000-8000-0000000002${String(ledger.size + 1).padStart(2, "0")}`;

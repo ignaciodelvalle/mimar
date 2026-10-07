@@ -12,6 +12,7 @@
 
 import { validateEventPayload } from "@/lib/events/event-schemas";
 import type { EventPlace } from "@/lib/events/place-payload";
+import { matchesDbError } from "@/lib/infra/db-errors";
 import { AR_TIME_ZONE, speciesLabel } from "@/lib/utils/format";
 
 import type { OpenedReason } from "@/src/modules/cases/domain/opened-reason";
@@ -146,8 +147,17 @@ export type BiteReplay = { eventId: string; caseId: string | null; casePublicCod
  * included: unresolved, not over) is refused.
  *
  * Runs INSIDE the writer's transaction: `findIncidentReplay` takes the key's
- * advisory lock, so a concurrent twin waits and then replays.
+ * advisory lock, so a concurrent twin waits and then replays. Scoped to the
+ * ACTOR as well as the pet and key: a key someone else used on this animal is
+ * not this caller's request, so it meets the guard like any new one.
  */
+export type BiteRequest = {
+  pet: { id: string; rabiesObservationStatus: string | null };
+  clientIdempotencyKey: string | null;
+  /** Who is reporting — the replay is theirs or it is no replay. */
+  actorUserId: string;
+};
+
 export type BiteGate =
   | { kind: "proceed" }
   | { kind: "replay"; replay: BiteReplay }
@@ -155,20 +165,28 @@ export type BiteGate =
 
 export async function replayThenGuard(
   repo: Pick<SurveillanceRepository, "findIncidentReplay">,
-  pet: { id: string; rabiesObservationStatus: string | null },
-  clientIdempotencyKey: string | null,
+  { pet, clientIdempotencyKey, actorUserId }: BiteRequest,
   tx: unknown,
 ): Promise<BiteGate> {
   if (clientIdempotencyKey) {
     const replay = await repo.findIncidentReplay(
-      pet.id,
-      clientIdempotencyKey,
-      tx as Parameters<typeof repo.findIncidentReplay>[2],
+      { petId: pet.id, clientIdempotencyKey, recordedByUserId: actorUserId },
+      tx as Parameters<typeof repo.findIncidentReplay>[1],
     );
     if (replay) return { kind: "replay", replay };
   }
   if (isObservationOpen(pet.rabiesObservationStatus)) return { kind: "refused" };
   return { kind: "proceed" };
+}
+
+/**
+ * Two reports with DIFFERENT keys at once: both pass the guard on the same
+ * stale snapshot, and the second meets `cases_open_per_pet_kind_idx` when the
+ * first commits. That is the guard's answer arriving late, not a fault — the
+ * pet's observation IS open now — so it is answered as the guard would.
+ */
+export function isOpenBiteCaseRace(err: unknown): boolean {
+  return matchesDbError(err, { code: "23505", constraint: /cases_open_per_pet_kind_idx/ });
 }
 
 /**
@@ -179,15 +197,19 @@ export async function replayThenGuard(
 export async function inGatedTransaction(
   transaction: <T>(cb: (tx: unknown) => Promise<T>) => Promise<T>,
   repo: Pick<SurveillanceRepository, "findIncidentReplay">,
-  pet: { id: string; rabiesObservationStatus: string | null },
-  clientIdempotencyKey: string | null,
+  request: BiteRequest,
   body: (tx: unknown) => Promise<void>,
 ): Promise<BiteGate> {
-  return transaction(async (tx) => {
-    const gate = await replayThenGuard(repo, pet, clientIdempotencyKey, tx);
-    if (gate.kind === "proceed") await body(tx);
-    return gate;
-  });
+  try {
+    return await transaction(async (tx) => {
+      const gate = await replayThenGuard(repo, request, tx);
+      if (gate.kind === "proceed") await body(tx);
+      return gate;
+    });
+  } catch (err) {
+    if (isOpenBiteCaseRace(err)) return { kind: "refused" };
+    throw err;
+  }
 }
 
 /**
@@ -303,8 +325,7 @@ export async function reportBite(input: ReportBiteInput, deps: Deps): Promise<Re
     gate = await inGatedTransaction(
       transaction,
       repo,
-      pet,
-      input.clientIdempotencyKey,
+      { pet, clientIdempotencyKey: input.clientIdempotencyKey, actorUserId: user.id },
       async (tx) => {
         // 2c. Open bite_incident case (incident jurisdiction overrides pet jurisdiction).
         const caseRow = await openCase(
