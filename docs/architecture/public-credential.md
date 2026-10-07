@@ -98,7 +98,7 @@ Rendering has two implementations, on purpose:
 | surface | how the symbol is produced | path |
 |---|---|---|
 | owner credential, mobile, appointment | `QRCode.create()` in the browser, serialised to one SVG path | `components/ui/CredentialQr.tsx:111` |
-| printable chapa sheet | `QRCode.toString({ type: "svg" })` on the server | `app/(app)/mis-mascotas/[publicToken]/chapita/page.tsx:64` |
+| printable chapa sheet | `QRCode.toString({ type: "svg" })` on the server | `app/(app)/mis-mascotas/[publicToken]/chapita/page.tsx:65` |
 | lost-pet poster | `QRCode.toString({ type: "svg" })` on the server | `app/(app)/mis-mascotas/[publicToken]/cartel/page.tsx:107` |
 
 `components/ui/CredentialQr.tsx:3-39` records why the client version exists:
