@@ -26,7 +26,6 @@ import {
   Eyebrow,
   Screen,
   SecondaryButton,
-  Title,
   pressedOpacity,
   pullToRefresh,
 } from "../ui/kit";
@@ -87,7 +86,6 @@ export function CasesScreen({ onOpenRoute }: { onOpenRoute: (route: string) => v
   if (state.phase === "failed") {
     return (
       <Screen>
-        <Title>Mis casos</Title>
         <Callout tone="err">
           <Body>{state.message}</Body>
         </Callout>
@@ -101,7 +99,7 @@ export function CasesScreen({ onOpenRoute }: { onOpenRoute: (route: string) => v
 
   return (
     <Screen refreshControl={pullToRefresh(() => void load("refresh"), refreshing)}>
-      <Title>Mis casos</Title>
+      {/* No body title: the stack header already says "Mis casos". */}
       <Body>
         Todo lo que tenés en curso: denuncias, postulaciones, pérdidas y expedientes sobre tus
         mascotas.
