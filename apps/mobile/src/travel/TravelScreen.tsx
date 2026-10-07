@@ -1198,6 +1198,9 @@ function TripSwitcherSheet({
               key={t.tripEventId}
               label={tripLabel(t)}
               caption={t.tripEventId === selected ? "Es el que estás viendo" : undefined}
+              // A pick, not a destination: no chevron (ListRow's default since
+              // 2026-10-07 is for rows that open another screen).
+              trailing={null}
               onPress={
                 disabled || t.tripEventId === selected ? undefined : () => onSelect(t.tripEventId)
               }
