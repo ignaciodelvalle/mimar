@@ -47,7 +47,10 @@
 -- An app-side audit row covers the app's write and nothing else; the RLS write
 -- path above would be an unaudited door. So the database writes the row:
 -- org_found_animal_intake_changed, payload { org_id, before_values,
--- after_values }, on INSERT and on any UPDATE that changes a governed column.
+-- after_values, public_contact_value_changed }, on INSERT and on any UPDATE
+-- that changes a governed column. The contact VALUE itself is never copied
+-- there (audit_log is append-only and cannot be redacted; the value may be a
+-- natural person's phone): the payload says it changed, and its kind.
 -- The actor is auth.uid() (a PostgREST write) or the transaction-local
 -- app.actor_user_id the server action sets. A write with NEITHER is refused:
 -- an audit row with no actor is not accountability.
@@ -196,11 +199,15 @@ DECLARE
   v_actor  uuid;
   v_raw    text;
 BEGIN
+  -- The contact VALUE is never copied into audit_log: audit_log is
+  -- append-only and cannot be redacted, and for a one-person org the published
+  -- channel may be a natural person's phone or e-mail. The row records THAT it
+  -- changed and its kind; the value lives only in this table.
   v_after := jsonb_build_object(
     'accepting', NEW.accepting,
     'capacity_status', NEW.capacity_status,
     'public_contact_kind', NEW.public_contact_kind,
-    'public_contact_value', NEW.public_contact_value,
+    'public_contact_published', NEW.public_contact_value IS NOT NULL,
     'public_hours', NEW.public_hours
   );
   IF TG_OP = 'UPDATE' THEN
@@ -208,11 +215,12 @@ BEGIN
       'accepting', OLD.accepting,
       'capacity_status', OLD.capacity_status,
       'public_contact_kind', OLD.public_contact_kind,
-      'public_contact_value', OLD.public_contact_value,
+      'public_contact_published', OLD.public_contact_value IS NOT NULL,
       'public_hours', OLD.public_hours
     );
     -- A re-save with nothing changed is not a change.
-    IF v_before = v_after THEN
+    IF v_before = v_after
+       AND NEW.public_contact_value IS NOT DISTINCT FROM OLD.public_contact_value THEN
       RETURN NULL;
     END IF;
   END IF;
@@ -237,7 +245,9 @@ BEGIN
     jsonb_build_object(
       'org_id', NEW.organization_id,
       'before_values', v_before,
-      'after_values', v_after
+      'after_values', v_after,
+      'public_contact_value_changed',
+        TG_OP = 'INSERT' OR NEW.public_contact_value IS DISTINCT FROM OLD.public_contact_value
     )
   );
   RETURN NULL;
