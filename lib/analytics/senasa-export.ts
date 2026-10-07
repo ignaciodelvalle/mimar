@@ -1,4 +1,4 @@
-// SENASA / LSUCyF batch export — format-agnostic pipeline (pure core).
+// SENASA batch export — format-agnostic pipeline (pure core).
 //
 // See dim-interno:docs/design/sdd/2026-07-07-senasa-lsucyf-batch-export.md.
 //
@@ -243,7 +243,7 @@ export const csvSenasaFormatter: SenasaFormatter = {
 
 /**
  * Formatter registry. This cycle ships exactly one (csv). The real
- * SENASA/LSUCyF formatter is BLOCKED on the real homologation spec (open
+ * SENASA formatter is BLOCKED on the real homologation spec (open
  * question #1) — when it lands, add it HERE and nothing upstream changes.
  */
 export const SENASA_FORMATTERS: Record<string, SenasaFormatter> = {

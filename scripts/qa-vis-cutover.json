@@ -54,7 +54,7 @@
     { "do": "sleep", "ms": 8000 },
     { "do": "shot", "name": "04-vigilancia-semaforo" },
     {
-      "_why": "Semaphore honesty. 'Cumplimiento observacion 10d' is painted against a STATUTORY target of 100 (Ord. CABA 41.831 art. 9 / Decreto 4669/1973 PBA). A failing rate must never render in the ok tone. Read the PNG: the TONE cannot be asserted from text. The tile's PRESENCE can — if it vanishes, nobody is reading a semaphore at all.",
+      "_why": "Semaphore honesty. 'Cumplimiento observacion 10d' is painted against a STATUTORY target of 100 (Ord. CABA 41.831 arts. 13 y 15 / Decreto 4669/1973 PBA). A failing rate must never render in the ok tone. Read the PNG: the TONE cannot be asserted from text. The tile's PRESENCE can — if it vanishes, nobody is reading a semaphore at all.",
       "do": "assert",
       "expr": "document.body.innerText.toLowerCase().indexOf('cumplimiento observaci') >= 0",
       "why": "the compliance tile is absent from /gob/vigilancia — there is no semaphore to judge"

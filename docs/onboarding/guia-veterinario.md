@@ -52,6 +52,6 @@ Resultado concreto: atendiste una mascota real, la vacuna quedó firmada con tu 
 
 - **Vocabularios sanitarios oficiales:** los eventos que firmás usan los códigos de la Libreta Sanitaria Única Canina y Felina (SENASA) y de la Res. SENASA 580/2014 (certificado antirrábico para traslado), para que el día que SENASA homologue la libreta digital, lo tuyo ya esté en el formato correcto.
 - **Res. SENASA 284/2024 (identificación electrónica):** los microchips se registran con sus campos ISO desglosados; si implantás o reemplazás un chip, el sistema valida el formato.
-- **Ordenanza CABA 41.831, art. 9 (observación antirrábica):** el reporte de mordedura abre el período de observación de 10 días que gestiona la autoridad.
+- **Ordenanza CABA 41.831, arts. 13 y 15 (observación antirrábica):** el reporte de mordedura abre el período de observación de 10 días que gestiona la autoridad.
 - **Ley 25.326 (datos personales):** los datos de tus clientes están protegidos por diseño — vos ves lo que necesitás para atender, no más.
 - **Tu matrícula es jurisdiccional:** se registra con la jurisdicción que la emitió y la aprueba la autoridad del territorio donde declarás ejercer.

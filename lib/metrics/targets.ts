@@ -83,7 +83,7 @@ export const TARGETS = {
    */
   ENO_SLA_PCT: 95,
   /** 100% = never missed the 10-day legal observation window. A statutory
-   *  obligation (Ord. CABA 41.831 art. 9 / Decreto 4669/1973 PBA), not a
+   *  obligation (Ord. CABA 41.831 arts. 13 y 15 / Decreto 4669/1973 PBA), not a
    *  programmatic benchmark — anything under it is a legal miss. */
   RABIES_OBSERVATION_COMPLIANCE_PCT: 100,
 
@@ -282,7 +282,7 @@ export function enoSlaHeadline(
  * `sourceKind: "statutory-obligation"` and `semaphore: { paintAgainst:
  * "target" }`. The contract said paint against the target; the screen didn't.
  *
- * Target is 100 — "never missed the legal deadline" (Ord. CABA 41.831 art. 9 /
+ * Target is 100 — "never missed the legal deadline" (Ord. CABA 41.831 arts. 13 y 15 /
  * Decreto 4669/1973 PBA). A live breach still escalates, exactly as the ENO
  * twin does: it is a fact about TODAY, while the percentage is a fact about the
  * period.

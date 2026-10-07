@@ -1,4 +1,4 @@
-// GET /gob/senasa/export — SENASA / LSUCyF batch download for an authorized
+// GET /gob/senasa/export — SENASA batch download for an authorized
 // government operator.
 //
 // This is design D5 of dim-interno:docs/design/sdd/2026-07-07-senasa-lsucyf-batch-export.md,

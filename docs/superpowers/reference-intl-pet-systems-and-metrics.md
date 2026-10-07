@@ -106,5 +106,5 @@ Every metric is a projection over the existing event log. Status: **now** = ship
 - **Ley CABA 4078** / 14.107 (dangerous-breed registry) → C7
 - **Ley CABA 5470** (cremation traceability) → B2/B3/B4
 - **Ley Nacional 14.346** (cruelty) → D1/D5
-- **Ord. CABA 41.831** art. 9 (10-day rabies observation) → A8/A9
+- **Ord. CABA 41.831** arts. 13 y 15 (10-day rabies observation) → A8/A9
 - **Res. SENASA 580/2014, 284/2024, LSUCyF** (ENO vocab, ISO ID) → A6/A7/C2

@@ -4,7 +4,7 @@
 >
 > Estructura: **Nacional → Provincia de Buenos Aires → CABA → Internacional**. Dentro de cada jurisdicción, por categoría temática.
 >
-> Última verificación: 2026-05-18. **Erratas de la revisión legal de octubre de 2026 aplicadas el 2026-10-02** (E1 a E24): cada corrección lleva su fuente entre paréntesis. Lo que esa revisión no pudo leer en el texto oficial queda marcado **(a confirmar)** y no se usa como fundamento de nada en el producto.
+> Última verificación: 2026-05-18. **Erratas de la revisión legal de octubre de 2026 aplicadas el 2026-10-02** (E1 a E24): cada corrección lleva su fuente entre paréntesis. Lo que esa revisión no pudo leer en el texto oficial queda marcado **(a confirmar)** y no se usa como fundamento de nada en el producto. **Segunda tanda, 2026-10-07** (E25 a E40, y la §8.4 "Obligaciones del dueño"): mismo criterio; cada corrección dice si el texto se leyó en la fuente oficial.
 
 ---
 
@@ -21,15 +21,15 @@
 
 ### 1.2 Zoonosis y salud pública
 
-- **Ley 22.953 / 1983** — Lucha antirrábica. Declara de interés nacional la lucha contra la rabia transmitida por perros y gatos; base legal de las campañas antirrábicas. [Fuente](https://www.argentina.gob.ar/normativa/nacional/ley-22953-184650)
-  - **DIM:** ancla legal de `antirabies_vaccinated`. La edad mínima y la frecuencia anual de la vacuna las fijan normas provinciales y municipales (DL 8056/73 en PBA, Ord. 41.831 en CABA); atribuirlas a esta ley queda **(a confirmar)**.
+- **Ley 22.953 / 1983** — Lucha antirrábica. Declara de interés nacional la lucha contra la rabia transmitida por perros y gatos; base legal de las campañas antirrábicas. Art. 6, ap. I, incs. a y b: las personas deben "vacunar a los perros y gatos bajo su tenencia" y a todo otro animal sospechoso de transmitir la rabia, "en la forma que disponga para cada caso su reglamentación". [Fuente](https://www.argentina.gob.ar/normativa/nacional/ley-22953-184650)
+  - **DIM:** ancla legal de `antirabies_vaccinated`. **Ninguna norma leída fija edad ni periodicidad:** ni esta ley, ni la Ord. CABA 41.831 (art. 9, "en el tiempo y forma" que fije la autoridad), ni el Dec. PBA 4669/73 (art. 5, según "los programas y normas técnicas"). "Anual, desde los 3 meses" es criterio técnico: al dueño se le presenta como recomendación. Matiz para PBA: el Dec. 4669/73, art. 2, hace obligatorias las normas técnicas provinciales; si una fija la periodicidad, esa norma sí obliga **(a confirmar: no se halló)**. *(Corregido 2026-10-07, E25; los tres textos leídos en la fuente oficial.)*
 
 - **Ley 12.732 / 1941** — Profilaxis de la hidatidosis (equinococosis). Zoonosis con reservorio canino. [Fuente](https://argentina.gob.ar/normativa/nacional/ley-12732-196049/texto)
 
 - **Ley 11.843 / 1934** — Profilaxis de la peste / exterminio de roedores. Reglamentada por Decreto 92.767. [Fuente](https://www.argentina.gob.ar/normativa/nacional/ley-11843-195173/texto)
 
 - **Ley 15.465 / 1960** — Régimen legal de enfermedades de notificación obligatoria. Reglamentada por Decreto 3640/1964. Incluye rabia, hidatidosis, leptospirosis, leishmaniasis, brucelosis. [Fuente](https://www.argentina.gob.ar/normativa/nacional/ley-15465-195093/texto)
-  - Obliga por **casos humanos**. Su Manual ENO (Res. MS 2827/2022) lista el carbunco cutáneo y extracutáneo y la toxoplasmosis congénita y en embarazadas, siempre como eventos humanos: no hace notificable a un perro o gato con esas enfermedades. [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/425000-429999/425539/disp1-anexo2.pdf)
+  - Obliga por **casos humanos**, y no obliga al dueño de un animal a notificar: ese deber está en la Ley 3.959, art. 4 (ver §1.3). *(Agregado 2026-10-07, E40; confianza media.)* Su Manual ENO (Res. MS 2827/2022) lista el carbunco cutáneo y extracutáneo y la toxoplasmosis congénita y en embarazadas, siempre como eventos humanos: no hace notificable a un perro o gato con esas enfermedades. [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/425000-429999/425539/disp1-anexo2.pdf)
 
 - **Resolución SENASA 153 / 2021** — Enfermedades de denuncia obligatoria del lado animal. **Grupo I** ("enfermedades comunes a varias especies", entre ellas el carbunco): notificación inmediata, dentro de las 24 h de la sospecha, a SENASA; rige para cualquier especie. **Grupo II**: notificación según la norma específica de cada enfermedad (ahí figura la tuberculosis, sin plazo en horas). Su art. 22 **deroga la Res. SENASA 422/2003**. [Fuente](https://www.argentina.gob.ar/normativa/nacional/resoluci%C3%B3n-153-2021-348400/texto) · [Boletín Oficial](https://www.boletinoficial.gob.ar/detalleAviso/primera/242544/20210331)
   - **DIM:** ancla del carbunco en el catálogo ENO (24 h, destino SENASA, sólo lo dispara un veterinario o un laboratorio). La toxoplasmosis no figura en ningún grupo y dejó de marcarse como notificable. Ningún código cita ya la 422/2003.
@@ -52,7 +52,7 @@
 
 - **Ley 13.636 / 1949** — Productos veterinarios. Ley marco de importación, exportación, elaboración, tenencia, distribución y venta. Reglamentada por Decreto 583/1967 y normativa SENASA posterior. [Fuente](https://digesto.senasa.gob.ar/items/show/728)
 
-- **Ley 3.959 / 1900** — Policía Sanitaria Animal. Ley fundacional de la policía sanitaria; base de las atribuciones de SENASA. Modificada por Leyes 14.305 y 17.160. [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/45000-49999/49274/texact.htm)
+- **Ley 3.959 / 1900** — Policía Sanitaria Animal. Ley fundacional de la policía sanitaria; base de las atribuciones de SENASA. Modificada por Leyes 14.305 y 17.160. Art. 4: el propietario o quien tenga a su cargo animales con una enfermedad contagiosa, o sospechosos de tenerla, debe declararlo de inmediato; ámbito federal (art. 1). Es una ley pensada para el ganado: su aplicación a las mascotas es de confianza media. *(Agregado 2026-10-07, E40.)* [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/45000-49999/49274/texact.htm)
 
 - **Decreto-Ley 6.704 / 1963** — Defensa sanitaria animal y vegetal. Complementa la Ley 3.959. [Fuente](https://www.argentina.gob.ar/normativa/nacional/decreto_ley-6704-1963-70723)
 
@@ -103,7 +103,9 @@
 
 - **Res. SENASA 76 / 2019** — Procedimiento para ingreso definitivo de caninos y felinos. Certificación antirrábica >3 meses, 30 días antes del ingreso. [Fuente](http://www.senasa.gob.ar/normativas/resolucion-76-2019-senasa-servicio-nacional-de-sanidad-y-calidad-agroalimentaria)
 
-- **Res. MAGyP 727 / 2015** — Incorpora la Res. GMC 17/2015: requisitos de **ingreso** de perros y gatos entre los Estados del Mercosur, que en espejo rigen los viajes de la Argentina a Brasil, Paraguay y Uruguay (CVI de la autoridad del país exportador, válido 60 días; examen clínico dentro de los 10 días previos). El egreso a otros destinos sigue los requisitos de cada país, certificados por SENASA (Res. ex-SENASA 1353/1994). *(Corregido 2026-10; fuente: InfoLEG 253664.)* [Fuente](https://www.ecofield.net/Legales/Sanidad_vegetal/res727-15_MAGyP.htm)
+- **Res. MAGyP 727 / 2015** — Incorpora la Res. GMC 17/2015: requisitos de **ingreso** de perros y gatos entre los Estados del Mercosur, que en espejo rigen los viajes de la Argentina a Brasil, Paraguay y Uruguay (CVI de la autoridad del país exportador, válido 60 días). El egreso a otros destinos sigue los requisitos de cada país, certificados por SENASA (Res. ex-SENASA 1353/1994). *(Corregido 2026-10; fuente: InfoLEG 253664.)* [Fuente](https://www.ecofield.net/Legales/Sanidad_vegetal/res727-15_MAGyP.htm)
+  - **Documentación que pide SENASA para emitir el CVI del Mercosur:** certificado de salud "emitido por un veterinario matriculado dentro de los 10 (diez) días previos a la emisión del Certificado Veterinario Internacional en el modelo de Certificado oficial provisto por el Consejo o Colegio Profesional, o la declaración de salud en la LUSCyF. En todos los casos con firma y sello del profesional actuante". La antirrábica, también en el modelo del Consejo o Colegio o asentada en la libreta; la desparasitación, dentro de los 15 días previos. *(Corregido 2026-10-07, E37; página de SENASA actualizada el 17/07/2026, leída.)* [Fuente](https://www.argentina.gob.ar/senasa/requisitos-particulares-por-destino/mercosur-brasil-paraguay-uruguay)
+  - **DIM:** miMAR no puede generar el certificado de salud del Mercosur en un formato propio: puede registrarlo y adjuntar el formulario oficial. Los 10 días se cuentan hasta la emisión del CVI, no hasta el viaje.
 
 - **Res. SENASA 923 / 2019** — Trámites urgentes y fuera de horario en SENASA (mascotas incluidas). **(a confirmar)** si sigue vigente: las modalidades de urgencia vigentes son las de la Res. SENASA 440/2026 (que derogó la 453/2024), con base en la Res. SAGyP 54/2026. [Fuente](https://www.boletinoficial.gob.ar/detalleAviso/primera/212974/20190806)
 
@@ -112,20 +114,20 @@
 - **Res. SENASA 284 / 2024** — Identificación electrónica animal (microchips ISO 11784/11785). Foco en équidos pero estándar técnico de referencia. No crea una obligación de identificar perros y gatos: **no hay una obligación nacional general de microchip**; en PBA, los perros potencialmente peligrosos deben identificarse con chip **o** tatuaje (Ley 14.107, art. 8 b), y algunos municipios lo exigen por ordenanza. [Fuente](https://www.argentina.gob.ar/normativa/nacional/resoluci%C3%B3n-284-2024-398615/texto)
   - **DIM:** estándar ISO 11784/11785 es el que debe leer la app para `microchip_implanted.payload.iso_id`.
 
-- **Ley 24.449 / 1994** — Ley Nacional de Tránsito. Prohíbe animales sueltos en la vía pública; requisitos de transporte. [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/0-4999/818/texact.htm)
+- **Ley 24.449 / 1994** — Ley Nacional de Tránsito. Prohíbe "dejar animales sueltos" en la vía pública (art. 48 inc. s); requisitos de transporte. Rige en jurisdicción federal y en las jurisdicciones adheridas (art. 1). *(Corregido 2026-10-07, E39.)* [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/0-4999/818/texact.htm)
 
 ### 1.5 Código Civil y Comercial — estatuto jurídico del animal
 
 - **Ley 26.994 / 2014 — Código Civil y Comercial de la Nación**. Vigente desde 1/8/2015. Animales como "cosas muebles" (semovientes). [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/verNorma.do?id=235975)
 
-- **CCyCN Art. 227** — Cosas muebles. [Fuente](https://leyfacil.com.ar/codigo-civil-y-comercial/articulo-227/)
+- **CCyCN Art. 227** — Cosas muebles. [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/235000-239999/235975/texact.htm)
 
-- **CCyCN Art. 1.947** — Apropiación. Los animales domésticos y domesticados NO son susceptibles de apropiación aunque escapen. [Fuente](https://codigocivilonline.com.ar/articulo-1947/)
-  - **DIM:** clave para el caso "vecino encuentra perro en la calle" → no se vuelve dueño por apropiación. **(a confirmar en la edición oficial del CCyC):** el art. 1955 haría al hallador que toma la cosa depositario, obligado a restituirla o a entregarla a la policía, que da intervención al juez; el dueño puede reclamar (arts. 1955 y 1956). Que el modelo use la custodia y no la titularidad es una decisión de miMAR, no una regla que imponga el art. 1947.
+- **CCyCN Art. 1.947** — Apropiación. Los animales domésticos y domesticados NO son susceptibles de apropiación aunque escapen. [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/235000-239999/235975/texact.htm)
+  - **DIM:** clave para el caso "vecino encuentra perro en la calle" → no se vuelve dueño por apropiación. El art. 1955 hace al hallador que toma la cosa depositario, obligado a restituirla o a entregarla a la policía, que da intervención al juez; a los seis meses procede la subasta (art. 1956). La adquisición de buena fe no alcanza a las cosas perdidas ni a las adquiridas en forma gratuita (art. 1895). Que el modelo use la custodia y no la titularidad es una decisión de miMAR, no una regla que imponga el art. 1947. *(Corregido 2026-10-07, E35: arts. 1895, 1947, 1955 y 1956 leídos en InfoLEG, texto actualizado; se quitó el "a confirmar" y las fuentes privadas.)*
 
-- **CCyCN Art. 1.948** — Caza; animal salvaje o domesticado que recobra libertad. [Fuente](https://codigocivilonline.com.ar/etiquetas/articulo-1948/)
+- **CCyCN Art. 1.948** — Caza; animal salvaje o domesticado que recobra libertad. [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/235000-239999/235975/texact.htm)
 
-- **CCyCN Art. 1.759** — Daño causado por animales (responsabilidad objetiva). [Fuente](http://universojus.com/codigo-civil-comercial-comentado/articulo-1759)
+- **CCyCN Art. 1.759** — Daño causado por animales: se rige por el art. 1757 (responsabilidad objetiva). Responden en forma concurrente el dueño y el guardián, que es quien ejerce "por sí o por terceros, el uso, la dirección y el control" (art. 1758). *(Ampliado 2026-10-07.)* [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/235000-239999/235975/texact.htm)
   - **DIM:** justifica la centralidad del dato `potentially_dangerous_breed` y la atestación.
 
 - **CCyCN Art. 1.757** — Hecho de las cosas y actividades riesgosas. [Fuente](https://www.rpba.gob.ar/files/Normas/Leyes/CCCN1757-1759.pdf)
@@ -137,22 +139,32 @@
 ### 1.6 Marco adyacente (fauna silvestre — relevante para tenencia de exóticos)
 
 - **Ley 22.421 / 1981** — Conservación de la Fauna Silvestre. Reglamentada por Decreto 666/1997. [Fuente](https://www.argentina.gob.ar/normativa/nacional/ley-22421-38116/texto)
+  - La tenencia, posesión, tránsito y comercio de fauna silvestre, incluidos los animales "bravíos o salvajes que viven bajo control del hombre", quedan sujetos a la ley (arts. 3 y 4). Prohíbe liberarlos sin conformidad de la autoridad (art. 6).
+  - **Penal en todo el país:** prisión de 2 meses a 2 años e inhabilitación de hasta 5 años a quien caza especies cuya captura o comercio están prohibidos (art. 25), y las mismas penas a quien "a sabiendas transportare, almacenare, comprare, vendiere… piezas, productos o subproductos provenientes de la caza furtiva" (art. 27). En las provincias no adheridas rigen igual los arts. 1, 20, 24, 25, 26 y 27 (art. 34). Que "piezas" alcance a un animal vivo comprado como mascota es interpretación: al dueño se le dice "puede ser delito". *(Agregado 2026-10-07, E34; leído en la fuente oficial.)*
+  - **Res. ex-SAyDS 513/2007, art. 1** — Prohíbe la caza, la captura, el tránsito interprovincial y el comercio de las especies de sus Anexos I y II. Qué especies lista, **(a confirmar)** (los anexos son imágenes). [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/125000-129999/128435/norma.htm)
+  - **Dec. 666/1997, art. 34** — Guía de tránsito para trasladar fauna silvestre viva a otra provincia **(a confirmar)**.
+  - **DIM:** el alta de una mascota que no sea perro ni gato debería mostrar este aviso.
 
 ### 1.7 Legislación pendiente (proyectos)
 
-- **Proyecto "Ley Sintientes"** (Dip. Sotolano, 19/11/2025) — Reconoce a los animales como personas físicas no humanas; modifica Arts. 16 y 227 CCyCN. [Fuente](https://www.infobae.com/sociedad/2025/12/05/el-proyecto-de-ley-sintientes-llega-al-congreso-la-norma-que-busca-que-los-animales-dejen-de-ser-considerados-cosas/)
-- **Proyecto de Ley de Bienestar Animal** (Min. Ambiente) — Presupuestos mínimos en zoológicos, santuarios, centros de rescate. [Fuente](https://www.argentina.gob.ar/noticias/se-presento-el-primer-proyecto-de-ley-de-bienestar-animal-en-el-congreso-de-la-nacion)
-- **Proyecto "Ley Conan"** (Exp. 2489-D-2024) — Endurece penas de Ley 14.346. [Fuente](https://www4.hcdn.gob.ar/dependencias/dsecretaria/Periodo2024/PDF2024/TP2024/2489-D-2024.pdf)
-- **Proyecto integral de protección y bienestar animal** (Dip. Juliano, 2026) — Penas hasta 3 años; excluye prácticas SENASA. [Fuente](https://www.lanacion.com.ar/economia/campo/seres-sintientes-impulsan-una-nueva-ley-de-proteccion-y-bienestar-animal-con-prision-y-millonarias-nid05032026/)
+> *Actualizado 2026-10-07 (E33), con el buscador oficial de la HCDN: ningún proyecto sobre animales tiene dictamen ni media sanción. Los de 2024 sin sanción caducaron; los de 2025 caducan a fines de febrero de 2027 (Ley 13.640).*
+
+- **Proyecto "Ley Sintientes"** (Exp. 6632-D-2025, 19/11/2025) — Reconoce a los animales como personas físicas no humanas; modifica Arts. 16 y 227 CCyCN. [Fuente](https://www.infobae.com/sociedad/2025/12/05/el-proyecto-de-ley-sintientes-llega-al-congreso-la-norma-que-busca-que-los-animales-dejen-de-ser-considerados-cosas/)
+- **Proyecto de Ley de Bienestar Animal** (Min. Ambiente, 2022) — Presupuestos mínimos en zoológicos, santuarios, centros de rescate. **Sin estado parlamentario.** [Fuente](https://www.argentina.gob.ar/noticias/se-presento-el-primer-proyecto-de-ley-de-bienestar-animal-en-el-congreso-de-la-nacion)
+- **Proyecto "Ley Conan"** (Exp. 0127-D-2024) y **Exp. 2489-D-2024** — Endurecían las penas de la Ley 14.346. **Caducados** (28/02/2026). *(Corregido 2026-10-07: "Ley Conan" es el 0127-D-2024; el 2489-D-2024 es otro proyecto.)* [Fuente](https://www4.hcdn.gob.ar/dependencias/dsecretaria/Periodo2024/PDF2024/TP2024/2489-D-2024.pdf)
+- **Proyecto integral de protección y bienestar animal** (Exp. 0052-D-2026) — Nuevo régimen que derogaría la Ley 14.346; penas hasta 3 años; excluye prácticas SENASA. Sin dictamen. [Fuente](https://www.lanacion.com.ar/economia/campo/seres-sintientes-impulsan-una-nueva-ley-de-proteccion-y-bienestar-animal-con-prision-y-millonarias-nid05032026/)
 - **Proyecto sobre experimentación animal en investigación** (AACyTAL). [Fuente](https://argentinainvestiga.edu.ar/noticia.php?titulo=animales_en_laboratorio_una_cuestin_tica&id=1466)
 - **Proyecto Exp. 1473-D-2019** — Notificación obligatoria de leishmaniasis. [Fuente](https://www2.hcdn.gob.ar/proyectos/proyectoTP.jsp?exp=1473-D-2019)
 - **Proyecto de reforma integral de protección de datos personales** (Exp. 3397-D-2026, reingresado el 16/07/2026) — En etapa temprana; no cambia obligaciones vigentes. [Fuente](https://www.argentina.gob.ar/aaip/datospersonales/proyecto-ley-datos-personales)
-- **Proyectos de microchip nacional obligatorio** — Diversos, sin sanción a la fecha. [Fuente](https://www.infobae.com/tendencias/2022/04/14/caba-proponen-colocar-un-microchip-en-perros-y-gatos-para-su-cuidado-responsable/)
+- **Proyecto de microchip obligatorio y Registro Nacional de Animales Domésticos** (Exp. 6904-D-2025, RENADO) — Comunicar pérdida, muerte, traslado o adopción en 72 horas. Sin dictamen. *(Corregido 2026-10-07.)* [Fuente](https://rest.hcdn.gob.ar/web/tramites-parlamentarios/render/adjunto/69319bd0b26f3.pdf)
+- **Presupuestos mínimos para criaderos, refugios, hogares de tránsito y pensionados** (Exps. 3401-D-2026 y 4309-D-2026) — El tenedor responde por la salud, seguridad y bienestar del animal; el abandono es infracción grave; identificación de todo animal comercializado. Toca a organizaciones y tránsitos. Sin dictamen. *(Agregado 2026-10-07.)*
 
 ### 1.8 Datos personales (AAIP)
 
 - **Ley 25.326 / 2000** — Protección de Datos Personales: acceso (art. 14), rectificación y supresión (art. 16). La supresión no procede cuando pudiera causar perjuicios a derechos o intereses legítimos de terceros, o cuando exista una obligación legal de conservar los datos (art. 16 inc. 5). Órgano de control: la AAIP. [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/60000-64999/64790/texact.htm)
   - **DIM:** si esa excepción alcanza a los registros firmados por un profesional es una pregunta abierta para el asesoramiento legal; hasta entonces el producto no la invoca.
+- **Ley 25.326, art. 3** — "La formación de archivos de datos será lícita cuando se encuentren debidamente inscriptos". **Disp. DNPDP 2/2005, art. 3:** las bases privadas que se conformen después de implementado el Registro "deberán inscribirse con carácter previo a su puesta en marcha" (sus arts. 4 a 8 los derogó la Res. AAIP 132/2018). Tratar datos sin inscripción es infracción leve (Res. AAIP 126/2024, Anexo I, que además deroga la Disp. 7/2005). *(Agregado 2026-10-07, E38; Ley 25.326 y Disp. 2/2005 leídas en InfoLEG; Res. 126/2024 según el cotejo del informe.)* [Disp. 2/2005](https://servicios.infoleg.gob.ar/infolegInternet/anexos/100000-104999/103921/texact.htm)
+  - **DIM:** la base se inscribe antes de que entre el primer dato real de un piloto.
 - **Ley 25.326, art. 21** — Inscripción de las bases de datos en el Registro Nacional de la AAIP. Alcanza a bases públicas y privadas destinadas a dar información sobre personas; la única exención es el uso exclusivamente personal, sin excepción por tamaño ni por ser persona humana. [Trámites](https://www.argentina.gob.ar/aaip/datospersonales/tramites)
   - **DIM:** el registro muestra datos de terceros (página del QR, autoridad, veterinaria), así que la exención no aplica. La política de privacidad no debe decir "inscripta" hasta contar con el certificado.
 - **Transferencia internacional** — Hay transferencia a Brasil (Supabase; funciones de Vercel) y a Estados Unidos (Vercel Inc., Sentry, Expo, Google FCM, Resend), ninguno con nivel de protección adecuado, y al Reino Unido (OpenStreetMap), que sí lo tiene. La lista está en la **Disp. DNPDP 60-E/2016, art. 3** (texto según Res. AAIP 34/2019). Cláusulas modelo: los Anexos I y II de la 60-E/2016 y las de la Red Iberoamericana (Res. AAIP 198/2023), que coexisten; usadas tal cual no requieren aprobación. Un contrato que se aparta del modelo debe **someterse a aprobación** de la AAIP dentro de los 30 días corridos (Disp. 60-E/2016, art. 2). La alternativa es el consentimiento expreso (Dec. 1558/2001, art. 12). *(Corregido 2026-10: la disposición la dictó la Dirección Nacional, no la AAIP, y el plazo de 30 días es para pedir la aprobación; Disp. 60-E/2016 verificada en InfoLEG.)* [Fuente](https://www.argentina.gob.ar/transferencias-internacionales)
@@ -183,9 +195,18 @@
 
 - **Decreto-Ley 8056 / 1973** — Profilaxis de la rabia en PBA. Vacunación obligatoria, dispensarios antirrábicos municipales, notificación obligatoria. [Fuente](https://normas.gba.gob.ar/documentos/eBMP7tqx.html)
 
-- **Decreto 4669 / 1973** — Reglamenta DL 8056. Vacunación antirrábica obligatoria de perros y gatos con asiento habitual, transitorio o circunstancial en PBA; observación antirrábica 10 días para mordedores. [Fuente](https://normas.gba.gob.ar/documentos/VGOWA8fW.html)
+- **Decreto 4669 / 1973** — Reglamenta DL 8056. *(Ampliado 2026-10-07, E27 y E32; artículos leídos en normas.gba.)* [Fuente](https://normas.gba.gob.ar/documentos/VGOWA8fW.html)
+  - art. 2: las normas técnicas de lucha antirrábica "tienen el alcance de medidas mínimas y son de cumplimiento obligatorio";
+  - art. 5: vacunación antirrábica obligatoria de perros y gatos con asiento habitual, transitorio o circunstancial en PBA, "en el tiempo y en la forma que establezcan los programas y normas técnicas correspondientes" (no fija edad ni periodicidad);
+  - arts. 7 a 9: valen las certificaciones de organismos oficiales y las de veterinarios privados; las de los privados van en los formularios de los Colegios Veterinarios, "siendo los únicos válidos y aceptables";
+  - arts. 11 y 12: sin correa o cadena, el perro se considera "vagabundo o callejero sin control" y puede ser recogido; 48 h para retirarlo. El "sacrificio" que prevé el art. 12 choca con la Ley 13.879, art. 1 (inferencia);
+  - art. 19: el animal mordedor va "dentro de las 24 horas de ocurrido el accidente, al Dispensario Antirrábico más próximo", para una observación de al menos 10 días, "aun en el caso de estar vacunados y patentados" (los arts. 20 y 21 admiten la observación domiciliaria con control veterinario);
+  - art. 28: prohíbe perros y gatos en locales con público, en los días y horarios en que lo hay;
+  - art. 42: "Queda prohibida en la vía pública la venta o entrega a título gratuito de perros y/o gatos" (alcanza a las jornadas de adopción en la vía pública);
+  - art. 51: todo dueño o tenedor de perros debe inscribirlos y patentarlos en el Registro de Perros de cada comuna, y renovarlo cada año.
+  - **DIM:** la libreta de miMAR no reemplaza la constancia antirrábica válida en PBA (art. 9). Si muerde, el plazo es de 24 h al dispensario, no solo los 10 días.
 
-- **Ley 5664 / 1952** — Profilaxis de la rabia y patente canina. Inscripción y vacunación gratuitas; obligación de chapa patente del año en curso. [Fuente](https://normas.gba.gob.ar/documentos/BO41rukV.html)
+- **Ley 5664 / 1951** — Profilaxis de la rabia y patente canina. Inscripción y vacunación gratuitas; obligación de chapa patente del año en curso. Su vigencia está **(a confirmar)**: la inscripción y patente anual de todo perro está hoy en el Dec. 4669/73, art. 51. *(Corregido 2026-10-07, E32.)* [Fuente](https://normas.gba.gob.ar/documentos/BO41rukV.html)
 
 - **Ley 5325 / 1948** — Denuncia obligatoria de enfermedades contagiosas/transmisibles dentro de las 24 hs. [Fuente](https://normas.gba.gob.ar/documentos/BKaq1Co0.html)
 
@@ -207,7 +228,7 @@
 
 - **Decreto 1420 / 1983, arts. 44-45 y 66** — Receta con firma y sello; despacho contra receta (arts. 44-45). El art. 66 prohíbe delegar actos profesionales. *(Agregado 2026-10.)*
 
-- **Decreto-Ley 9686 / 1981, art. 84** — Los certificados del art. 78 inc. 8 se extienden en formularios del Colegio. **(a confirmar con el CVPBA):** SENASA acepta certificados en cualquier formato con firma y sello, y el Colegio llama "orientativos" a sus modelos; nadie reconcilió las dos cosas.
+- **Decreto-Ley 9686 / 1981, art. 84** — Los certificados del art. 78 inc. 8 se extienden en formularios del Colegio. **Para el Mercosur está resuelto:** SENASA pide el certificado de salud "en el modelo de Certificado oficial provisto por el Consejo o Colegio Profesional, o la declaración de salud en la LUSCyF", con firma y sello (ver §1.4). Queda **(a confirmar con el CVPBA)** si acepta una versión electrónica. *(Corregido 2026-10-07, E37.)*
 
 ### 2.4 Específico de animales de compañía
 
@@ -216,7 +237,8 @@
 
 - **Ley 13.879 / 2008** — (También en 2.1.) Prohíbe el sacrificio de perros y gatos en dependencias oficiales (art. 1), fija la esterilización quirúrgica como único método de control poblacional (art. 3) y declara obligatorio el tratamiento antiparasitario (art. 4). **No impone deberes de tenencia a los dueños:** su reglamento (Dec. 400/2011, Anexo, art. 5) define la "tenencia responsable" solo como contenido de campañas. *(Corregido 2026-10.)* [Fuente](https://normas.gba.gob.ar/documentos/BK86vtoV.html)
 
-- **Ley 15.409 / 2022** — Perros de asistencia para personas con discapacidad. Crea Registro Provincial. [Fuente](https://normas.gba.gob.ar/documentos/xq9nMXCp.html)
+- **Ley 15.409 / 2022** — Perros de asistencia para personas con discapacidad. Crea Registro Provincial. **No rige todavía:** "La presente Ley entrará en vigencia a partir de su reglamentación" (art. 30), y la ficha oficial no registra ninguna. La Ley 14.964 se deroga "con efectos a partir de la entrada en vigencia de la presente Ley" (art. 31), así que sigue rigiendo, aunque la ficha la marque como derogada. *(Corregido 2026-10-07, E31; leída en normas.gba.)* [Fuente](https://normas.gba.gob.ar/documentos/xq9nMXCp.html)
+  - **DIM:** no mostrar los requisitos de la 15.409 como obligación.
 
 ### 2.5 Ordenanzas municipales notables
 
@@ -232,7 +254,14 @@
 
 - **Ley CABA 6173 / 2019** — Protección y cuidado de animales domésticos. Incorpora Título VI Libro II del Código Contravencional (Ley 1472): tipifica omisión de cuidados (Art. 126), abandono (Art. 127), instalaciones inadecuadas, hostigamiento. *(Nota 2026-10: el abandono, incorporado como art. 127 por esta ley, es hoy el **art. 141** del Código Contravencional, texto según Ley 6.839; no se identificó la ley de consolidación que renumeró.)* [Fuente](https://boletinoficial.buenosaires.gob.ar/normativaba/norma/479417)
 
-- **Ley CABA 6839 / 2025** (BO 20/10/2025) — Modifica el Código Contravencional: reescribe los arts. 140 a 143 e incorpora el 142 bis y el 143 bis (animal encerrado en vehículo, cría ilegal). **Abandono (art. 141):** 60 a 90 días de trabajo de utilidad pública, o multa de 3.000 a 5.000 unidades fijas, o 15 a 30 días de arresto. Crea el "Registro de infractores a la Ley de Maltrato Animal" dentro del Registro de Contravenciones. Prescripción de la acción contravencional: 18 meses (art. 43 del Código). *(Corregido 2026-10: las multas se fijan en unidades fijas, no en pesos; el abandono tiene 60 a 90 días, no "hasta 60"; se quitó el apodo "Ley Huellas", que no figura en ninguna fuente oficial.)* [Fuente](https://boletinoficial.buenosaires.gob.ar/normativaba/norma/819902) · [Texto](https://documentosboletinoficial.buenosaires.gob.ar/publico/ck_PL-LEY-LCABA-LCBA-6839-25-7228.pdf)
+- **Ley CABA 6839 / 2025** (BO 20/10/2025) — Modifica el Código Contravencional: reescribe los arts. 140 a 143 e incorpora el 142 bis y el 143 bis. Todas las figuras rigen "siempre que la conducta no implique delito". *(Ampliado 2026-10-07, E29; leído en el BO.)*
+  - art. 140, omitir recaudos de cuidado de un animal a cargo: 15 a 30 días de trabajo de utilidad pública o 1.000 a 2.500 unidades fijas;
+  - **art. 141, abandono** en espacios públicos, en lugares privados de acceso público o en ocasión de la intervención de Zoonosis: 60 a 90 días de trabajo de utilidad pública, o multa de 3.000 a 5.000 unidades fijas, o 15 a 30 días de arresto;
+  - art. 142, instalaciones o espacios cerrados inadecuados que afecten su salud, higiene o esparcimiento: 30 a 60 días o 2.000 a 3.500 unidades fijas;
+  - art. 142 bis, dejarlo en un vehículo "sin circulación de aire adecuada y por un tiempo desproporcionado": ídem;
+  - art. 143, menoscabar su integridad (teñirlo con fines degradantes, prácticas innecesarias que causen dolor o estrés, exponerlo a peligro o trato degradante): ídem;
+  - art. 143 bis, instalar o mantener criaderos: 60 a 90 días, o 3.000 a 5.000 unidades fijas, o 30 a 60 días de arresto, más el secuestro de los animales;
+  - en los arts. 141, 143 y 143 bis se aplica **siempre** la prohibición de tutela y de contacto con animales domésticos de 6 meses a 2 años. Crea el "Registro de infractores a la Ley de Maltrato Animal" dentro del Registro de Contravenciones. Prescripción de la acción contravencional: 18 meses (art. 43 del Código). *(Corregido 2026-10: las multas se fijan en unidades fijas, no en pesos; el abandono tiene 60 a 90 días, no "hasta 60"; se quitó el apodo "Ley Huellas", que no figura en ninguna fuente oficial.)* [Fuente](https://boletinoficial.buenosaires.gob.ar/normativaba/norma/819902) · [Texto](https://documentosboletinoficial.buenosaires.gob.ar/publico/ck_PL-LEY-LCABA-LCBA-6839-25-7228.pdf)
   - **DIM:** registro de infractores es un dato externo a integrar eventualmente en verificación de adoptantes.
 
 - **Ley CABA 1472 / 2004** — Código Contravencional. Marco general donde se insertan los tipos de maltrato y abandono. [Fuente](https://boletinoficial.buenosaires.gob.ar/normativaba/norma/62598)
@@ -243,7 +272,14 @@
 
 ### 3.2 Zoonosis y salud pública
 
-- **Ordenanza CABA 41.831 / 1987** (texto consolidado por Leyes 5454, 6347 y 6764/2024) — Tenencia de animales domésticos. Registro Municipal de Animales Domésticos, Registro Municipal de Profesionales Veterinarios, vacunación antirrábica obligatoria desde los 3 meses, observación antirrábica, venta/alojamiento/tránsito. Inscripción al 4° mes; identificación por tatuaje o microchip. [Fuente](https://boletinoficial.buenosaires.gob.ar/normativaba/norma/30564)
+- **Ordenanza CABA 41.831 / 1987** (texto consolidado por Leyes 5454, 6347 y 6764/2024) — Tenencia de animales domésticos. Registro Municipal de Animales Domésticos, Registro Municipal de Profesionales Veterinarios, vacunación antirrábica obligatoria, observación antirrábica, venta/alojamiento/tránsito. *(Corregido 2026-10-07, E25 y E26; texto del Digesto leído.)* [Fuente](https://boletinoficial.buenosaires.gob.ar/normativaba/norma/30564) · [Texto, Digesto](https://digesto.buenosaires.gob.ar/documento/download/Ordenanza-41831__75b7880a7d250d498a09df176e00e482d08a2ee4.pdf)
+  - art. 9: antirrábica obligatoria "en el tiempo y forma que la Dirección General de Medio Ambiente determine periódicamente, a todos los animales susceptibles de rabia" (no fija edad ni periodicidad);
+  - arts. 13 y 15: el propietario somete "a observación clínica veterinaria inmediata" al animal que agredió o lesionó, por "un período no inferior a diez (10) días contados desde el momento de la lesión", en el Instituto Pasteur o en el domicilio bajo control de un veterinario inscripto;
+  - art. 22: prohíbe "la existencia y funcionamiento de criaderos de animales";
+  - arts. 23 y 25: inscribir a perros y gatos al cumplir el 4.º mes, identificarlos con el número de registro (el texto dice tatuaje), denunciar transferencia, baja o muerte, y cumplir la antirrábica;
+  - art. 27: venta solo en locales habilitados, con certificado veterinario y desde los 4 meses; las protectoras pueden entregar animales gratis; prohibidas la venta callejera y la entrega como premio o regalo en la vía pública;
+  - art. 28: prohíbe animales en locales de alimentos y de atención al público;
+  - art. 29: ver §3.4.
   - **DIM:** la 41.831 es probablemente la norma operativa más cercana a lo que DIM digitaliza en CABA.
 
 - **Decreto GCBA 5334 / 1988** — Misiones y funciones del Instituto de Zoonosis Luis Pasteur (diagnóstico, prevención, producción antirrábica, observación de mordedores, vigilancia). [Fuente](https://boletinoficial.buenosaires.gob.ar/normativaba/norma/95006)
@@ -268,7 +304,9 @@
 
 **Vía pública, espacios verdes y deyecciones**
 
-- **Ley CABA 5471 / 2015** — Modifica Ordenanza 41.831. Tránsito y permanencia de perros/gatos. Rienda y collar/bozal; plazas/parques solo en caniles; obligación de recoger deyecciones. [Fuente](https://boletinoficial.buenosaires.gob.ar/normativaba/norma/303125)
+- **Ordenanza 41.831, art. 29** (texto consolidado) — En la vía pública, "rienda y pretal o collar y bozal"; en plazas, parques y paseos, solo los lugares reservados para animales; escobilla y bolsa para recoger las deyecciones; en el exterior de los comercios, rienda, pretal o collar y bozal (inc. d). La **Ley CABA 5471/2015** solo agregó el inc. d y quedó incorporada al texto. *(Corregido 2026-10-07, E28: la fuente es el art. 29, no la Ley 5471; texto del Digesto leído.)* [Ley 5471](https://boletinoficial.buenosaires.gob.ar/normativaba/norma/303125)
+- **Régimen de Faltas, 1.3.12** (texto Ley 6.839) — Circular sin identificación, sin correa, sin bozal "cuando corresponda", en sectores no permitidos o sin limpiar la materia fecal: multa de 150 a 1.000 unidades fijas. *(Agregado 2026-10-07; según el cotejo del texto actualizado.)* [Fuente](https://boletinoficialpdf.buenosaires.gob.ar/util/imagen.php?idn=8540&idf=2)
+  - **DIM:** el bozal para todo perro que dice el art. 29 y el "cuando corresponda" del RF no coinciden; qué exige hoy la Ciudad queda **(a confirmar)**. Al dueño: correa y juntar las heces.
 
 **Transporte público**
 
@@ -301,6 +339,9 @@
   - **DIM:** ancla el `death_recorded.payload.disposition_method='cremation'` con `facility` opcional.
 
 ### 3.5 Programas: Mascotas BA / Animales BA / castración gratuita
+
+- **Ley CABA 6.856 / 2025** (BO 09/01/2026) — Plan de Equilibrio Poblacional Ético de perros y gatos. Define al "tutor/a responsable": quien garantiza "una alimentación adecuada en cantidad y calidad, esparcimiento, resguardo, atención veterinaria y trato digno" (art. 3 a). Obliga a la Ciudad a tener una **plataforma oficial** de perros y gatos sin tutela aparente, tránsitos, adopciones y donaciones (arts. 10 a 13), donde los tutores denuncian la pérdida y quien encuentra un animal informa el hallazgo (art. 11). Enlace obligatorio al MPF para denunciar maltrato (art. 14). Datos según la Ley CABA 1845 (art. 15). Tras 21 días sin hallar al tutor, se busca adopción (art. 19 e). Deroga la Ley 6119. *(Agregado 2026-10-07, E36; leído en el BO.)* [Fuente](https://boletinoficial.buenosaires.gob.ar/normativaba/norma/833115)
+  - **DIM:** la plataforma oficial cubre parte de lo que hace miMAR en CABA (modo pérdida, adopciones): coexistir, no competir.
 
 - **Ley CABA 1338 / 2004** — Control de la Población de Animales Domésticos. Marco fundacional de esterilización gratuita, masiva, sistemática y permanente. [Fuente](http://www2.cedom.gov.ar/es/legislacion/normas/leyes/ley1338.html)
 
@@ -401,7 +442,7 @@ Los instrumentos más estructurantes para el modelo de datos y eventos:
 
 1. **Identificación canina** — el estándar técnico de microchip es ISO 11784/11785 (Res. SENASA 284/2024 + WOAH Cap. 7.7 + Res. GMC 17/15). Para residentes en PBA, las razas listadas en la Ley 14.107 deben identificarse con chip **o** tatuaje (art. 8 b); en CABA, la Ordenanza 41.831 admite tatuaje o microchip; a nivel nacional aún no hay obligatoriedad universal.
 
-2. **Vacunación antirrábica** — obligatoria desde los 3 meses, anual; ancla: Ley nac. 22.953 + Res. MS 1144/2018 + DL 8056/73 (PBA) + Ord. 41.831 (CABA). *(2026-10: se quitó la Res. SENASA 580/2014, que trata de animales de asistencia.)*
+2. **Vacunación antirrábica** — obligatoria; ancla: Ley nac. 22.953, art. 6 + DL 8056/73 y Dec. 4669/73, art. 5 (PBA) + Ord. 41.831, art. 9 (CABA). Ninguna de esas normas fija edad ni periodicidad: "desde los 3 meses, anual" es criterio técnico (Res. MS 1144/2018, guía programática) y al dueño se le presenta como recomendación. *(2026-10: se quitó la Res. SENASA 580/2014, que trata de animales de asistencia. 2026-10-07, E25: se quitó "desde los 3 meses, anual" como regla legal.)*
 
 3. **Perros potencialmente peligrosos** — doble régimen: Ley 14.107 (PBA, registro provincial) y Ley 4078 (CABA, registro local + seguro RC). DIM debe modelar ambos.
 
@@ -411,7 +452,7 @@ Los instrumentos más estructurantes para el modelo de datos y eventos:
 
 6. **Movimiento internacional** — Res. GMC MERCOSUR 17/15, incorporada por la Res. MAGyP 727/2015 (ingreso entre Estados del Mercosur, en espejo para los viajes a BR, PY y UY) + Res. SENASA 76/2019 (ingreso) + requisitos de cada destino, certificados por SENASA (egreso) + reconocimiento UE Pet Passport.
 
-7. **Estatuto jurídico** — Hoy "cosa mueble" (Art. 227 CCyCN); proyecto "Ley Sintientes" (2025) busca reclasificación. El Art. 1.947 CCyCN impide que quien encuentra un animal doméstico se lo apropie; que el modelo hable de "vecino en custodia temporal" es una decisión de miMAR (sobre los arts. 1955 y 1956, **a confirmar** en la edición oficial).
+7. **Estatuto jurídico** — Hoy "cosa mueble" (Art. 227 CCyCN); proyecto "Ley Sintientes" (2025) busca reclasificación. El Art. 1.947 CCyCN impide que quien encuentra un animal doméstico se lo apropie; que el modelo hable de "vecino en custodia temporal" es una decisión de miMAR (el hallador es depositario: arts. 1955 y 1956, leídos en InfoLEG; E35).
 
 8. **Maltrato y denuncia** — Ley nac. 14.346 (penal, maltrato y crueldad) + Código Contravencional de CABA, arts. 140 a 143 bis (texto Ley 6.839; abandono en el art. 141) + Manual ENO del CVPBA (act. 05/2020) y Manual nacional (Disp. DE-MSAL 1/2026) para la notificación de zoonosis.
 
@@ -425,25 +466,29 @@ Cada flujo lista: (1) actor que lo inicia, (2) qué se dispara, (3) anclaje norm
 
 - **CABA — registro municipal**: Owner → Vet matriculado (chip/tatuaje + datos sanitarios) → Registro Municipal de Animales Domésticos del GCBA, al 4° mes de edad. Ord. 41.831/1987.
   - DIM: `pet_registered` + `microchip_implanted` (o `tattoo_registered`) + entrada en `Organization`-clinic como autor.
-- **PBA — patente canina**: Owner → Municipio → emisión anual de "chapa patente"; vacunación obligatoria asociada. Ley 5664/1952; DL 8056/1973.
+- **PBA — patente canina**: Owner → Municipio → inscripción y patente de todo perro en el Registro de Perros comunal, renovada cada año. Dec. 4669/73, art. 51 (reglamento del DL 8056/1973); su aplicación depende de cada municipio. La Ley 5664/1951 tiene la vigencia **(a confirmar)**. *(Corregido 2026-10-07, E32.)*
   - DIM: payload `municipal_license` opcional en `pet_registered.payload`.
 - **PBA — registro PPP**: Owner de perro de raza listada → Delegación Municipal del Registro Provincial 14.107, antes de los 6 meses, con identificación obligatoria por chip o tatuaje. Ley 14.107/2010.
   - DIM: `dangerous_breed_attested` con `jurisdiction_province='AR-B'`.
 - **CABA — registro PPP**: Owner → APrA via TAD (foto, chip, antirrábica vigente, póliza de seguro RC, curso virtual), antes de los 3 meses; renovación anual; notificación de incidentes <48 hs. Ley 4078/2012, Res. 93/APRA/2021.
   - DIM: `dangerous_breed_attested` con `jurisdiction_city='AR-C'` y payload de póliza.
 
-### 6.2 Vacunación antirrábica (anual, desde 3 meses)
+### 6.2 Vacunación antirrábica (obligatoria; la frecuencia la fija la autoridad sanitaria)
+
+> *(Corregido 2026-10-07, E25: ninguna norma leída fija "anual, desde los 3 meses"; ver §1.2. Se recomienda vacunar desde los 3 meses y revacunar cada año, o cuando indique el veterinario.)*
+
 
 - Owner → Vet matriculado → constancia antirrábica con firma y sello con matrícula → queda en poder del propietario.
 - Vet → carga la dosis en sistema municipal cuando aplica (campañas Mascotas BA, dispensarios antirrábicos PBA).
 - Estado (Min. Salud Nac. / GCBA / municipios PBA) → coordina campañas masivas y gratuitas; Instituto Pasteur produce y distribuye antirrábica en CABA. Ley 22.953/1983; DL 8056/1973 (PBA); Ord. 41.831/1987 (CABA); Decreto GCBA 5334/1988.
-  - DIM: `antirabies_vaccinated` con `vet_matricula`, `vaccine_batch`, `valid_until` (próximo vencimiento anual).
+  - DIM: `antirabies_vaccinated` con `vet_matricula`, `vaccine_batch`, `valid_until` (próximo vencimiento recomendado, no un plazo legal salvo que la regla de la jurisdicción cite la norma que lo fija).
+  - En PBA, la constancia de un veterinario privado solo vale en el formulario del Colegio (Dec. 4669/73, art. 9).
 
 ### 6.3 Mordedura → observación antirrábica de 10 días
 
 - Mordido (humano) → centro de salud → denuncia obligatoria (Ley 15.465 nac.; Ley 5325 PBA).
 - Centro de salud → autoridad sanitaria local → dispensario antirrábico (PBA) o Instituto Pasteur (CABA).
-- Owner → somete al animal a observación de 10 días, in situ o en sede oficial. DL 4669/1973 (PBA); Ord. 41.831/1987 (CABA); Res. MS 1144/2018.
+- Owner → somete al animal a observación de 10 días, in situ o en sede oficial. En PBA, lo lleva **dentro de las 24 h** al dispensario antirrábico, aunque esté vacunado (Dec. 4669/1973, art. 19; los arts. 20 y 21 admiten la observación domiciliaria). En CABA, observación "inmediata" de al menos 10 días (Ord. 41.831/1987, arts. 13 y 15). Res. MS 1144/2018. *(Corregido 2026-10-07, E26 y E27: la observación de CABA está en los arts. 13 y 15, no en el art. 9.)*
   - DIM: `bite_inflicted` + `rabies_observation_started` / `rabies_observation_ended`.
 
 ### 6.4 Esterilización (control poblacional)
@@ -470,7 +515,7 @@ Cada flujo lista: (1) actor que lo inicia, (2) qué se dispara, (3) anclaje norm
 ### 6.8 Custodia, adopción y transferencia
 
 - **Vecino encuentra animal**: ciudadano → custodia temporal sin volverse "dueño" (CCyCN Art. 1.947: no hay apropiación) → puede entregar a refugio o devolver. DIM: `Ownership.role='shelter_custody'` con `owner_user_id`.
-- **Refugio adopta animal**: refugio → custodia → adopción → transfer Ownership a persona. Que un refugio no figure como `owner` es una **decisión de modelado** de miMAR para animales hallados: quien recibe un animal perdido no es su dueño (CCyC arts. 1947 y 1955, **a confirmar** el 1955 en la edición oficial). Ninguna norma impide que un refugio sea dueño, por ejemplo si el dueño le cede el animal. *(Corregido 2026-10: la Ley PBA 13.879 y el Dec. 400/2011 no mencionan refugios.)*
+- **Refugio adopta animal**: refugio → custodia → adopción → transfer Ownership a persona. Que un refugio no figure como `owner` es una **decisión de modelado** de miMAR para animales hallados: quien recibe un animal perdido no es su dueño (CCyC arts. 1947 y 1955, leídos en InfoLEG). Ninguna norma impide que un refugio sea dueño, por ejemplo si el dueño le cede el animal. *(Corregido 2026-10: la Ley PBA 13.879 y el Dec. 400/2011 no mencionan refugios.)*
   - DIM: `custody_transferred` + `adoption_finalized`.
 - **Foster**: refugio → asigna fostering a un voluntario con `organization_membership` activa. DIM: `foster_assigned` / `foster_ended`.
 
@@ -484,7 +529,7 @@ Cada flujo lista: (1) actor que lo inicia, (2) qué se dispara, (3) anclaje norm
 
 ### 6.10 Movimiento internacional
 
-- **Egreso**: Owner → Vet matriculado emite el certificado de salud, la constancia antirrábica y los demás certificados del destino, con firma y sello con matrícula → **SENASA emite el CVI** (presencial o digital) sobre esa documentación. Para MERCOSUR (Res. GMC 17/2015, incorporada por la Res. MAGyP 727/2015): CVI de la autoridad del país exportador, validez 60 días, examen clínico dentro de los 10 días previos; chip ISO obligatorio (Uruguay), antirrábica ≥21 días pre-viaje, desparasitación 15 días. *(Corregido 2026-10: el veterinario no emite el CVI; se quitó la Res. 580/2014.)*
+- **Egreso**: Owner → Vet matriculado emite el certificado de salud, la constancia antirrábica y los demás certificados del destino, con firma y sello con matrícula → **SENASA emite el CVI** (presencial o digital) sobre esa documentación. Para MERCOSUR (Res. GMC 17/2015, incorporada por la Res. MAGyP 727/2015): CVI de la autoridad del país exportador, validez 60 días; certificado de salud dentro de los 10 días previos **a la emisión del CVI**, en el modelo del Consejo o Colegio o en la LUSCyF, con firma y sello (E37, ver §1.4); chip ISO obligatorio (Uruguay), antirrábica ≥21 días pre-viaje, desparasitación 15 días. *(Corregido 2026-10: el veterinario no emite el CVI; se quitó la Res. 580/2014.)*
 - **Ingreso**: Vet del país origen emite CVI → SENASA puesto fronterizo valida (Res. SENASA 76/2019). Reconocimiento UE Pet Passport para ingresos temporales (Reg. UE 576/2013).
   - DIM: `travel_certificate_issued` + `border_crossed`. Útil para diseñar interoperabilidad de la credencial pública DIM con el CVI digital SENASA.
 
@@ -492,7 +537,7 @@ Cada flujo lista: (1) actor que lo inicia, (2) qué se dispara, (3) anclaje norm
 
 - **Subte CABA**: Owner → 1 animal por adulto + contenedor + antirrábica vigente. Ley 5687/2016 + Decreto GCBA 31/2017.
 - **Larga distancia nacional (ómnibus y trenes)**: Owner → constancia antirrábica (Anexo, art. 4) + un animal por pasajero adulto (art. 5); cada empresa fija sus restricciones de especie, raza, peso y tamaño (art. 7). Res. MEcon 2076/2025.
-- **Discapacidad — perro guía/asistencia**: acceso sin contenedor; ANDIS autoridad de aplicación. Ley 26.858/2013 + Decreto 792/2019; Ley PBA 15.409/2022.
+- **Discapacidad — perro guía/asistencia**: acceso sin contenedor; ANDIS autoridad de aplicación. Ley 26.858/2013 + Decreto 792/2019; en PBA sigue la Ley 14.964, porque la Ley 15.409/2022 no rige hasta su reglamentación (E31).
   - DIM: campo `assistance_dog: bool` + `antirabies_valid_until` accesible vía credential pública para presentación en transporte.
 
 ### 6.12 Habilitación y verificación de organizaciones
@@ -509,7 +554,8 @@ Cada flujo lista: (1) actor que lo inicia, (2) qué se dispara, (3) anclaje norm
 ### 6.14 Comercialización (pet shops, cría)
 
 - Comercio → no exhibir animales vivos en vidrieras (Ley CABA 6194/2019, modificó Régimen de Faltas Ley 451/2000).
-- Cría → prohibida la cría ilegal (Ley CABA 6839/2025); regulada por habilitaciones provinciales/municipales.
+- Cría → en CABA **todo criadero está prohibido** (Ord. 41.831, art. 22; Código Contravencional, art. 143 bis, texto Ley 6839/2025): no hay "cría legal" con registro. En otras jurisdicciones, habilitaciones provinciales o municipales. *(Corregido 2026-10-07, E30.)*
+- Venta → en CABA, solo en locales habilitados, con certificado veterinario y desde los 4 meses (Ord. 41.831, art. 27). En PBA, prohibida la venta o entrega gratuita de perros y gatos en la vía pública (Dec. 4669/73, art. 42).
 - Carreras de perros → prohibidas en todo el país (Ley nac. 27.330/2016).
   - DIM: `pet_registered.payload.acquisition_method` revela tendencia (adoptado vs comprado vs criado).
 
@@ -527,11 +573,11 @@ El esquema mínimo que ninguna "libreta sanitaria" o credencial pública en Arge
 | Constancia antirrábica | Fecha de vacunación, marca/lote de la vacuna, veterinario matriculado (matrícula + jurisdicción), especie, sexo, edad, identificación del animal, datos del propietario. | Página de SENASA "Traslados de perros y/o gatos dentro de Argentina"; Res. MEcon 2076/2025, Anexo, art. 4 (la Res. SENASA 580/2014 no la regula) |
 | CVI MERCOSUR (perros y gatos) | Chip ISO 11784/11785 (obligatorio para perros >90 días destino Uruguay); raza, sexo, color, edad; vacuna antirrábica con fecha, lote, marca, validez; desparasitación interna y externa con fecha, principio activo y dosis; examen clínico pre-embarque; datos completos del propietario y del destinatario. | Res. GMC 17/15; Res. SENASA 76/2019 |
 | Cremación CABA | Identificación del animal, fecha y causa probable de muerte, datos del propietario, profesional veterinario firmante, plazo ≥24 hs salvo excepción sanitaria, crematorio habilitado. | Ley CABA 5470/2015 |
-| Observación antirrábica (mordedura) | Identificación del animal, antirrábica vigente o no, datos del propietario, datos del mordido, fecha y lugar del hecho. | DL 4669/1973 PBA; Ord. 41.831 CABA; Res. MS 1144/2018 |
+| Observación antirrábica (mordedura) | Identificación del animal, antirrábica vigente o no, datos del propietario, datos del mordido, fecha y lugar del hecho. | Dec. 4669/1973 PBA, art. 19; Ord. 41.831 CABA, arts. 13 y 15; Res. MS 1144/2018 |
 | Denuncia ENO | Caso clínico, agente etiológico sospechado, especie, edad, sexo, fecha de inicio, lugar geográfico, propietario, vet notificante. | Ley 15.465; Res. MS 1715/2007; Disp. DE-MSAL 1/2026; Manual ENO del CVPBA (act. 05/2020) |
-| Patente canina PBA | Identificación, antirrábica del año en curso, propietario; comprobante portado físicamente. | Ley 5664/1952 |
+| Patente canina PBA | Identificación, antirrábica, propietario; inscripción y patente renovadas cada año. | Dec. 4669/1973, art. 51 (Ley 5664/1951, vigencia a confirmar) |
 | Receta electrónica veterinaria | Identificación del animal, especie, peso, principio activo, dosis y posología, vet matriculado, propietario (nombre y DNI del titular en la "Prescripción en mascotas", art. 18 d), CUVE. | Res. SENASA 80/2025 y 654/2026 |
-| Perro guía / asistencia | Certificación de adiestramiento, certificación veterinaria (esterilizado + vacunado + desparasitado), beneficiario humano. | Ley 26.858/2013; Ley PBA 15.409/2022 |
+| Perro guía / asistencia | Certificación de adiestramiento, certificación veterinaria (esterilizado + vacunado + desparasitado), beneficiario humano. | Ley 26.858/2013; en PBA, Ley 14.964 (la Ley 15.409/2022 no rige todavía) |
 
 ### 7.1 Campos canónicos consolidados (qué espera DIM modelar)
 
@@ -546,7 +592,7 @@ El esquema mínimo que ninguna "libreta sanitaria" o credencial pública en Arge
 - Fotografía actual (legalmente exigida sólo para PPP CABA, pero estándar)
 
 **Eventos sanitarios**
-- Antirrábica: fecha, marca, lote, vet matrícula, fecha de próximo vencimiento (anual)
+- Antirrábica: fecha, marca, lote, vet matrícula, fecha de próximo vencimiento (recomendado anual; ninguna norma leída lo fija)
 - Otras vacunas (séxtuple canina, triple felina, etc.): no obligatorias por ley pero estándar veterinario
 - Desparasitación interna y externa: fecha, principio activo, dosis
 - Esterilización: fecha, lugar, profesional, técnica
@@ -584,16 +630,16 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 
 **Identificación y registración**
 - CABA: inscripción en el Registro Municipal al 4° mes; chip o tatuaje. Ord. 41.831/1987.
-- PBA: patente canina anual con antirrábica asociada. Ley 5664/1952.
+- PBA: inscripción y patente anual de todo perro en el registro comunal. Dec. 4669/73, art. 51.
 - PBA PPP: chip o tatuaje + Registro Prov. 14.107 antes de los 6 meses.
 - CABA PPP: Registro 4078 antes de los 3 meses + póliza de seguro RC vigente + curso virtual + foto + chip + renovación anual + notificación de incidentes <48 hs.
 
 **Vacunación**
-- Antirrábica obligatoria desde 3 meses, anual, con constancia en poder del propietario. Ley nac. 22.953; DL 8056/1973 PBA; Ord. 41.831 CABA.
+- Antirrábica obligatoria, con constancia en poder del propietario. Ley nac. 22.953, art. 6; Dec. 4669/1973, art. 5 (PBA); Ord. 41.831, art. 9 (CABA). La edad y la frecuencia ("desde los 3 meses, anual") son recomendación técnica, no texto legal. En PBA, la constancia de un veterinario privado va en el formulario del Colegio (Dec. 4669/73, art. 9). *(Corregido 2026-10-07, E25.)*
 
 **Vía pública**
-- Correa obligatoria. Ley CABA 5471/2015 + DL provincial.
-- Recolección de deyecciones. Ley CABA 5471.
+- Correa obligatoria. CABA: Ord. 41.831, art. 29, y Régimen de Faltas 1.3.12 (multa de 150 a 1.000 unidades fijas). PBA: sin correa o cadena el perro puede ser recogido (Dec. 4669/73, arts. 11 y 12). *(Corregido 2026-10-07, E28.)*
+- Recolección de deyecciones. CABA: Ord. 41.831, art. 29 inc. c, y RF 1.3.12.
 - PPP CABA: bozal + correa <2 m.
 - PPP PBA: bozal + correa <1 m + collar.
 
@@ -603,7 +649,7 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 - Internacional: CVI vigente, emitido por SENASA. Res. GMC 17/15 (incorporada por la Res. MAGyP 727/2015); Res. SENASA 76/2019 (ingreso).
 
 **Mordedura**
-- Someter al animal a observación antirrábica de 10 días.
+- Someter al animal a observación antirrábica de 10 días (CABA: Ord. 41.831, arts. 13 y 15). En PBA, llevarlo al dispensario dentro de las 24 h, aunque esté vacunado (Dec. 4669/73, art. 19).
 - Notificación a autoridad sanitaria.
 
 **Muerte / cremación (CABA)**
@@ -611,14 +657,15 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 
 **Comerciales / actividades prohibidas**
 - Carreras de perros prohibidas a nivel nacional. Ley 27.330/2016.
-- Cría ilegal en CABA. Ley 6839/2025.
+- En CABA todo criadero está prohibido (Ord. 41.831, art. 22; Código Contravencional, art. 143 bis, texto Ley 6839/2025).
+- Vender o regalar perros y gatos en la vía pública: prohibido en CABA (Ord. 41.831, art. 27) y en PBA (Dec. 4669/73, art. 42).
 
 **Discapacidad**
-- Garantizar acceso del perro guía/asistencia si lo posee. Ley nac. 26.858; Ley PBA 15.409.
+- Garantizar acceso del perro guía/asistencia si lo posee. Ley nac. 26.858; en PBA, Ley 14.964 (la Ley 15.409 no rige todavía).
 
 **Sanciones aplicables al propietario**
 - Penal: prisión 15 días a 1 año (Ley 14.346); 3 meses a 4 años + multa (Ley 27.330, carreras de perros).
-- Contravencional CABA (Código Contravencional, texto Ley 6.839): abandono (art. 141) con 60 a 90 días de trabajo de utilidad pública, o multa de 3.000 a 5.000 unidades fijas, o 15 a 30 días de arresto; inscripción en el Registro de Infractores. La acción prescribe a los 18 meses (art. 43).
+- Contravencional CABA (Código Contravencional, texto Ley 6.839): omisión de cuidados (art. 140), abandono (art. 141), instalaciones inadecuadas (art. 142), animal en un vehículo sin ventilación (art. 142 bis), menoscabo de su integridad (art. 143) y criaderos (art. 143 bis); el detalle de cada sanción, en §3.1. El abandono: 60 a 90 días de trabajo de utilidad pública, o multa de 3.000 a 5.000 unidades fijas, o 15 a 30 días de arresto. Los arts. 141, 143 y 143 bis suman siempre la prohibición de tutela y de contacto con animales de 6 meses a 2 años; inscripción en el Registro de Infractores. La acción prescribe a los 18 meses (art. 43). *(Ampliado 2026-10-07, E29.)*
 - Faltas CABA: multas + decomiso + clausura comercial.
 - Tránsito: retención del animal si circula suelto (Ley 24.449).
 
@@ -630,7 +677,7 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 - BPM si elabora productos veterinarios. Res. SENASA 416/2024.
 - Receta electrónica para los principios activos alcanzados: fosfomicina y polimixina B (Res. SENASA 80/2025) y los que la Res. SENASA 654/2026 extiende a los animales de compañía. Con la 654/2026, el botiquín sin receta electrónica exige ficha clínica (art. 20).
 - Extender la constancia antirrábica con firma y sello con matrícula. *(2026-10: la Res. 580/2014 no regula un formulario antirrábico.)*
-- Extender el certificado de salud y la constancia antirrábica que SENASA pide para emitir el CVI (el CVI lo emite SENASA). Res. MAGyP 727/2015; Res. SENASA 76/2019.
+- Extender el certificado de salud y la constancia antirrábica que SENASA pide para emitir el CVI (el CVI lo emite SENASA). Res. MAGyP 727/2015; Res. SENASA 76/2019. Para el Mercosur, ambos van en el modelo oficial del Consejo o Colegio o en la LUSCyF, con firma y sello, y el de salud dentro de los 10 días previos a la emisión del CVI (página de SENASA, ver §1.4). *(Ampliado 2026-10-07, E37.)*
 - Notificar ENO: inmediata (24 h) o semanal (7 días) según la enfermedad. Ley nac. 15.465; Disp. DE-MSAL 1/2026; Ley PBA 5325; Manual ENO del CVPBA (act. 05/2020).
 - PBA, clínicas, hospitales y sanatorios: registro foliado y rubricado de historias clínicas. Dec. 154/1989, art. 16.
 - Documentar productos veterinarios. Dec. 583/67; Res. SENASA 11/2025.
@@ -638,10 +685,10 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 
 **Refugios y redes de rescate**
 - Personería jurídica para operar formalmente.
-- Para animales hallados, custodia temporal pendiente adopción: el refugio es depositario (CCyC arts. 1947 y 1955, **a confirmar** el 1955) y el dueño puede reclamar (arts. 1955 y 1956). Que no figure como "dueño" es una decisión de modelado de miMAR; si el dueño le cede el animal, la regla puede ser otra.
+- Para animales hallados, custodia temporal pendiente adopción: el refugio es depositario (CCyC arts. 1947 y 1955) y el dueño puede reclamar (arts. 1955 y 1956). Que no figure como "dueño" es una decisión de modelado de miMAR; si el dueño le cede el animal, la regla puede ser otra.
 - No maltratar a ningún animal bajo custodia. Ley nac. 14.346; en CABA, Código Contravencional, arts. 140 a 143 bis.
 - No exhibición vidrieras (CABA). Ley 6194/2019.
-- No cría ilegal (CABA). Ley 6839/2025.
+- En CABA, ningún criadero es legal (Ord. 41.831, art. 22; Código Contravencional, art. 143 bis, texto Ley 6839/2025).
 - Inscripción operativa en Animales BA (CABA, no normativa pero exigida en programas públicos).
 
 **Crematorios**
@@ -660,7 +707,7 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 
 **Empresas de transporte**
 - Fijar sus restricciones de especie, raza, peso y tamaño (Res. MEcon 2076/2025, Anexo, art. 7, ómnibus y trenes de larga distancia) y aceptar contenedores conforme a la Ley CABA 5687 (subte).
-- Excepción y acceso obligatorio para perros guía/asistencia. Ley 26.858; Ley PBA 15.409.
+- Excepción y acceso obligatorio para perros guía/asistencia. Ley 26.858; en PBA, Ley 14.964 (la Ley 15.409 no rige todavía).
 
 ### 8.3 Oficinas gubernamentales
 
@@ -729,6 +776,82 @@ Catálogo de "qué le exige el sistema legal a cada actor", agrupado por rol. Ú
 - Notificación de enfermedades del Terrestrial Code a WOAH (membresía vía Ley 11.632/1932).
 - Notificación PHEIC a OMS bajo IHR 2005.
 - Armonización SPS con WOAH/Codex/IPPC (Ley 24.425/1994).
+
+### 8.4 Obligaciones del dueño (bienestar animal)
+
+> Qué le exige la norma al dueño o tenedor, por jurisdicción. Cada viñeta indica si el texto se leyó en la fuente oficial (**verificado**) o no. Solo se le muestran al dueño como obligación ("la ley dice") las verificadas de confianza alta; el resto se presenta como recomendación. Lo que solo pudo leerse en fuentes secundarias o sin cotejo quedó afuera. *(Agregado 2026-10-07.)*
+
+**Nación**
+
+- **Ley 14.346, art. 2 inc. 1** — Es maltrato "no alimentar en cantidad y calidad suficiente a los animales domésticos o cautivos". Art. 3 inc. 3: es crueldad operar sin anestesia y sin título de veterinario. Art. 3 inc. 2: es crueldad mutilar, salvo "fines de mejoramiento, marcación o higiene de la respectiva especie" o "motivos de piedad"; que esa excepción no cubra el corte estético de orejas o cola es **(a confirmar)**: no se halló jurisprudencia. Pena: 15 días a 1 año de prisión (art. 1). *(Verificado.)* [Fuente](https://www.argentina.gob.ar/normativa/nacional/ley-14346-153011/texto)
+- **Ley 22.953, art. 6, ap. I, incs. a y b** — Las personas deben vacunar contra la rabia a los perros y gatos bajo su tenencia, y a cualquier otro animal sospechoso de transmitirla, "en la forma que disponga para cada caso su reglamentación". La ley **no fija edad ni periodicidad**, y no se halló reglamentación que lo haga. *(Verificado.)* [Fuente](https://www.argentina.gob.ar/normativa/nacional/184650/texto)
+  - **DIM:** "anual desde los 3 meses" es criterio técnico, no texto legal; el recordatorio lo presenta como recomendación.
+- **Ley 3.959, art. 4** — El propietario o quien tenga a su cargo animales con una enfermedad contagiosa, o sospechosos de tenerla, debe declararlo de inmediato. Ámbito federal (art. 1). *(Verificado; pensada para el ganado: su aplicación a mascotas es de confianza media.)* [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/45000-49999/49274/norma.htm)
+- **Ley 24.449, art. 48 inc. s** — Prohíbe "dejar animales sueltos" en la vía pública. Jurisdicción federal y jurisdicciones adheridas (art. 1). *(Verificado.)* [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/0-4999/818/texact.htm)
+- **Ley 22.421, arts. 3, 4, 6, 25, 27 y 34** — La tenencia, posesión, tránsito y comercio de fauna silvestre (incluidos los animales "bravíos o salvajes que viven bajo control del hombre") quedan sujetos a la ley (art. 4). Prohíbe liberarlos sin conformidad de la autoridad (art. 6). Es delito en todo el país (art. 34) comprar, vender o transportar "a sabiendas" productos de la caza furtiva (art. 27): prisión de 2 meses a 2 años e inhabilitación de hasta 5 años (art. 25). Que "piezas" incluya a un animal vivo es interpretación: al dueño, "puede ser delito". *(Verificado.)* [Fuente](https://www.argentina.gob.ar/normativa/nacional/norma-38116/texto)
+  - **Res. ex-SAyDS 513/2007, art. 1** — Prohíbe la caza, la captura, el tránsito interprovincial y el comercio de las especies de sus Anexos I y II. *(Verificado el artículo; qué especies lista, a confirmar.)* [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/125000-129999/128435/norma.htm)
+  - **DIM:** el alta de una mascota que no sea perro ni gato debería mostrar este aviso.
+- **Ley 26.858, arts. 5, 7 y 8** — El usuario de un perro guía o de asistencia ejerce el derecho de acceso con credencial y distintivo. El perro va sujeto con correa o arnés; el bozal no es obligatorio. Certificación veterinaria anual. El usuario responde por los daños. *(Verificado.)* [Fuente](https://www.argentina.gob.ar/normativa/nacional/216286/texto)
+- **CCyC, arts. 1757 a 1759** — Responsabilidad objetiva por el daño que causan los animales; el dueño y el guardián ("quien ejerce, por sí o por terceros, el uso, la dirección y el control") responden en forma concurrente. *(Verificado en InfoLEG, texto actualizado.)* [Fuente](https://servicios.infoleg.gob.ar/infolegInternet/anexos/235000-239999/235975/texact.htm)
+- **CCyC, arts. 1973, 2046 inc. a y 2047 inc. b** — Las molestias (ruidos, olores) no deben exceder la "normal tolerancia". En propiedad horizontal, el propietario debe cumplir el reglamento y no puede "perturbar la tranquilidad de los demás". *(Verificado; su aplicación a mascotas depende del caso.)*
+
+**CABA**
+
+- **Código Contravencional, arts. 140 a 143 bis (texto Ley 6.839)** — Omisión de cuidados, abandono, instalaciones inadecuadas, animal en un vehículo sin ventilación, menoscabo de su integridad y criaderos; los arts. 141, 143 y 143 bis suman **siempre** la prohibición de tutela y de contacto con animales domésticos de 6 meses a 2 años. Sanciones, en §3.1. *(Verificado; BO 20/10/2025.)* [Fuente](https://documentosboletinoficial.buenosaires.gob.ar/publico/ck_PL-LEY-LCABA-LCBA-6839-25-7228.pdf)
+- **Ley 6.856, art. 3** (BO 09/01/2026) — Define al "tutor/a responsable": garantiza "una alimentación adecuada en cantidad y calidad, esparcimiento, resguardo, atención veterinaria y trato digno". Crea la plataforma oficial de animales perdidos, hallados, tránsitos y adopciones (arts. 10 a 12). *(Verificado.)* [Fuente](https://boletinoficial.buenosaires.gob.ar/normativaba/norma/833115)
+  - **DIM:** la plataforma oficial cubre parte de lo que hace miMAR en CABA: coexistir, no competir.
+- **Ord. 41.831** *(verificado en el Digesto)*:
+  - art. 9: antirrábica obligatoria "en el tiempo y forma" que fije la autoridad;
+  - arts. 13 y 15: observación veterinaria inmediata del animal que agredió o lesionó, por al menos 10 días;
+  - art. 22: **prohíbe los criaderos** en la Ciudad;
+  - art. 25: inscribir al 4.º mes en el Registro Municipal de Animales Domésticos, identificar con el número de registro (el texto dice tatuaje), denunciar transferencia, baja o muerte;
+  - art. 27: venta solo en locales habilitados, con certificado veterinario y desde los 4 meses; prohibidas la venta callejera y la entrega como premio o regalo en la vía pública;
+  - art. 28: prohíbe animales en locales de alimentos y de atención al público;
+  - art. 29: en la vía pública, "rienda y pretal o collar y bozal"; en plazas, solo los lugares reservados; recoger las deyecciones.
+
+  [Fuente](https://digesto.buenosaires.gob.ar/documento/download/Ordenanza-41831__75b7880a7d250d498a09df176e00e482d08a2ee4.pdf)
+- **Régimen de Faltas, 1.3.12 (texto Ley 6.839)** — Circular sin identificación, sin correa, sin bozal "cuando corresponda", en sectores no permitidos o sin limpiar la materia fecal: multa de 150 a 1.000 UF. *(Verificado.)* El bozal para todo perro del art. 29 y el "cuando corresponda" de esta falta no coinciden: al dueño se le dice correa e identificación. [Fuente](https://boletinoficialpdf.buenosaires.gob.ar/util/imagen.php?idn=8540&idf=2)
+
+**Provincia de Buenos Aires**
+
+- **Dec. 4669/73** (reglamento del DL 8056/73) *(verificado en normas.gba)*:
+  - art. 5: vacunación antirrábica obligatoria de perros y gatos con asiento en la Provincia, según los programas y normas técnicas (que el art. 2 hace obligatorias);
+  - art. 9: las constancias de los veterinarios privados, en formularios de los Colegios Veterinarios, "únicos válidos y aceptables" (las de organismos oficiales también valen, art. 7);
+  - arts. 11 y 12: sin correa, el perro es "vagabundo" y puede ser recogido; 48 h para retirarlo;
+  - art. 19: el animal mordedor va al dispensario antirrábico dentro de las 24 h, por al menos 10 días, aun vacunado;
+  - art. 28: prohíbe perros y gatos en locales con público;
+  - art. 42: prohíbe la venta o entrega gratuita de perros y gatos en la vía pública;
+  - art. 51: todo perro se inscribe y patenta en el registro municipal, con renovación anual.
+  - El "sacrificio" que prevé el art. 12 queda desplazado por la Ley 13.879, art. 1 (inferencia).
+
+  [Fuente](https://normas.gba.gob.ar/documentos/VGOWA8fW.html)
+  - **DIM:** el art. 9 implica que la libreta de miMAR no reemplaza la constancia antirrábica válida en PBA. El art. 42 alcanza a las jornadas de adopción en la vía pública.
+- **Código de Faltas (DL 8031/73), art. 46** — Tener un animal peligroso o salvaje: multa del 20 % al 60 % del haber del agente de seguridad, el doble si ataca. *(Verificado.)* [Fuente](https://normas.gba.gob.ar/documentos/ZBOPDhkV.html)
+- **Ley 15.409** (perros de asistencia) — **No rige todavía**: el art. 30 la hace entrar en vigencia con su reglamentación, y la ficha no registra ninguna. Mientras tanto sigue la Ley 14.964 (art. 31). *(Verificado.)* [Fuente](https://normas.gba.gob.ar/documentos/xq9nMXCp.html)
+
+**Córdoba**
+
+- **Ley 9685** (perros potencialmente peligrosos):
+  - nunca sueltos en espacios públicos (art. 5);
+  - correa o cadena de hasta 1,50 m, no extensible, con bozal e identificación (art. 7);
+  - si muerde, entrega al Instituto Provincial Antirrábico dentro de las 24 h (art. 16);
+  - seguro de responsabilidad civil (art. 17).
+
+  *(Verificados los arts. 5, 7, 16 y 17 en SAIJ; reglamentación no hallada.)* [Fuente](https://www.argentina.gob.ar/normativa/provincial/ley-9685-123456789-0abc-defg-586-9000ovorpyel/actualizacion)
+- **Ley 10.326 (Código de Convivencia), arts. 89 y 93** — Tener o circular en zona urbana con animales peligrosos (hasta 6 UM o 3 días de arresto, más secuestro); dejar deambular animales por la vía pública con riesgo de daños (hasta 10 UM o 3 días de arresto). La UM equivale al 10 % del salario mínimo, vital y móvil (art. 29). *(Verificado.)* [Fuente](https://www.argentina.gob.ar/normativa/provincial/ley-10326-123456789-0abc-defg-623-0100ovorpyel/actualizacion)
+- **Ordenanza Villa María 8327/2026** (BO municipal n.º 247), ordenanza notable:
+  - collar y medalla identificadora; inscripción al 4.º mes; correa siempre, y bozal para los PPP; recoger los excrementos, también en la vía pública (art. 13, incs. a, b, d y k);
+  - prohíbe el sacrificio y la eutanasia como control poblacional (art. 3).
+
+  *(Verificado.)* [Fuente](https://www.villamaria.gob.ar/boletin/d/b/fc791f67-f632-4141-a867-cf2c5ff51cfd)
+
+**Lo que no se encontró** (no es prueba de ausencia):
+- figura penal nacional de abandono;
+- figura general de abandono en PBA y en Córdoba;
+- ley que prohíba las mutilaciones estéticas en las jurisdicciones relevadas;
+- norma que fije un máximo de animales por vivienda;
+- ley nacional de criaderos;
+- norma que fije la edad o la periodicidad de la vacuna antirrábica.
 
 ---
 

@@ -1,4 +1,4 @@
-// SENASA / LSUCyF batch export — scoped gather (IO stage).
+// SENASA batch export — scoped gather (IO stage).
 //
 // See dim-interno:docs/design/sdd/2026-07-07-senasa-lsucyf-batch-export.md.
 //

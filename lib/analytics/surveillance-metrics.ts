@@ -58,8 +58,8 @@ export type { ProjectionContext } from "@/lib/metrics";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Legal rabies-observation window: 10 calendar days (Ord. CABA 41.831 art. 9,
- * Decreto 4669/1973 PBA) — the DEFAULT tier of the `rabies_observation_window`
+ * Legal rabies-observation window: 10 calendar days (Ord. CABA 41.831 arts. 13
+ * and 15, Decreto 4669/1973 PBA art. 19) — the DEFAULT tier of the `rabies_observation_window`
  * business rule (admin-rules-console, promoted from this literal constant).
  * This is a CLINICAL window (the rule deadline), NOT a reporting window, so
  * it's documented here next to the metric that uses it, mirroring the

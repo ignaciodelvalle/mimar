@@ -2788,7 +2788,7 @@ export const AUDIT_LOG_ACTIONS = [
   // raw PII pet lists (contrast with analytics_export_generated's storage+email
   // multi-slice bulk export). Payload: { dashboard, row_counts }.
   "gob_dashboard_export_generated",
-  // SENASA / LSUCyF batch export — GET /gob/senasa/export (migration 0220).
+  // SENASA batch export — GET /gob/senasa/export (migration 0220).
   // Payload: { format, scope: { kind, jurisdiction_count, province, locality },
   //            period: { since, until } }.
   //
