@@ -111,10 +111,15 @@ import {
   removeStagedWelfareEvidence,
 } from "@/lib/infra/welfare-evidence-staging";
 import { computeFlagReasons } from "@/lib/infra/welfare-moderation";
-import { prepareWelfareEvidence, uploadPreparedWelfareEvidence } from "@/lib/infra/welfare-uploads";
+import {
+  prepareWelfareEvidence,
+  removeWelfareEvidence,
+  uploadPreparedWelfareEvidence,
+} from "@/lib/infra/welfare-uploads";
 import { resolveDenunciaJurisdiction } from "@/lib/place/denuncia-place";
 import { geocodeAddressPublicOrThrow } from "@/src/modules/localities/application/geocoding/geocoding";
 import { createWelfareReport } from "@/src/modules/welfare/application/create-welfare-report";
+import { findKeyedReport } from "@/src/modules/welfare/application/report-key-claim";
 import { generateReferenceCode } from "@/src/modules/welfare/domain/reference-code";
 import { WELFARE_REPORT_KINDS } from "@/src/modules/welfare/domain/types";
 import { WelfareRepository } from "@/src/modules/welfare/infrastructure/welfare-repository";
@@ -325,6 +330,15 @@ async function fileWelfareReport(userId: string, input: WelfareReportInput) {
   const reporterContactPhone =
     input.contactMode === "with_contact" ? input.reporterContactPhone : null;
 
+  // A RE-SEND OF A DENUNCIA THAT ALREADY LANDED (plan A5f) is answered before
+  // any row, file or case exists. After the budget on purpose — the lookup is
+  // not a free oracle on keys.
+  const keyed = await findKeyedReport(repo, {
+    clientIdempotencyKey: input.clientIdempotencyKey,
+    reporterUserId,
+  });
+  if (keyed) return replayAnswer(reporterUserId ? keyed.referenceCode : null);
+
   // EVIDENCE BEFORE THE ROW, in the web action's order (Fix A, 2026-09-18): the
   // web's own gate — count, type, size, HEIC, and the EXIF/GPS strip that fails
   // closed — runs over every staged photo here, so a refusal leaves NOTHING
@@ -499,6 +513,13 @@ async function fileWelfareReport(userId: string, input: WelfareReportInput) {
     return apiV1Error("welfare_report_failed", 500);
   }
 
+  // A twin of this submit filed it first (plan A5f, report-key-claim.ts): this
+  // request's row was never linked to a case and goes, with its files.
+  if (result.discardInserted) {
+    await discardSupersededTwin(inserted.id, uploaded?.uploadedPaths ?? [], claimed);
+    return replayAnswer("anonymousReplay" in result ? null : result.referenceCode);
+  }
+
   // Filed: the claimed copies have served. Best-effort, never blocks the ack.
   await removeStagedWelfareEvidence(claimed);
 
@@ -506,6 +527,39 @@ async function fileWelfareReport(userId: string, input: WelfareReportInput) {
   // takes no other argument so a later edit cannot widen it without changing a
   // signature somebody has to look at.
   return apiV1Json(buildWelfareReportFiledAck(result.referenceCode), { status: 201 });
+}
+
+/**
+ * The answer to a denuncia that already landed under this submit's key (plan
+ * A5f). An identified reporter gets the ORIGINAL's ack (`referenceCode`); an
+ * anonymous one (`null`) gets 409 and nothing about it — the key is the
+ * anonymous scope's only proof, and a key is not enough to hand its holder
+ * someone's reference code.
+ */
+function replayAnswer(referenceCode: string | null) {
+  return referenceCode === null
+    ? apiV1Error("welfare_report_already_filed", 409)
+    : apiV1Json(buildWelfareReportFiledAck(referenceCode), { status: 201 });
+}
+
+/**
+ * Remove what a superseded twin wrote before its transaction: its uploaded
+ * files, its staged copies and its unlinked row. Best-effort on the row: the
+ * original is filed, and a failed delete leaves an unlinked row (no case),
+ * which is logged rather than turned into a failed answer.
+ */
+async function discardSupersededTwin(
+  reportId: string,
+  uploadedPaths: string[],
+  claimed: Parameters<typeof removeStagedWelfareEvidence>[0],
+) {
+  await removeWelfareEvidence(uploadedPaths);
+  await removeStagedWelfareEvidence(claimed);
+  try {
+    await repo.deleteUnlinkedReport(reportId);
+  } catch (err) {
+    reportError("api-v1-welfare-reports/discard-twin", err);
+  }
 }
 
 /**

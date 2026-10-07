@@ -60,6 +60,12 @@ const control = vi.hoisted(() => ({
   inserted: [] as Array<Record<string, unknown>>,
   /** Make the insert throw, to exercise the 500 arm. */
   insertThrows: false,
+  /** The report-level ledger (A5f): digest → the report filed under it. */
+  keyed: new Map<string, { reportId: string; referenceCode: string }>(),
+  /** What the in-transaction claim finds — a concurrent twin, when set. */
+  claimHit: null as null | { reportId: string; referenceCode: string },
+  /** Report rows the door discarded as a superseded twin. */
+  discarded: [] as string[],
   /** Arguments `openCase` received. */
   cases: [] as Array<Record<string, unknown>>,
   /** Arguments `linkCase` received. */
@@ -254,6 +260,15 @@ vi.mock("@/src/modules/welfare/infrastructure/welfare-repository", () => ({
     async setFlagged(...args: unknown[]) {
       control.flagged.push(args);
     }
+    async findReportByKeyDigest(digest: string) {
+      return control.keyed.get(digest) ?? null;
+    }
+    async lockAndFindReportByKeyDigest() {
+      return control.claimHit;
+    }
+    async deleteUnlinkedReport(id: string) {
+      control.discarded.push(id);
+    }
   },
 }));
 
@@ -423,6 +438,9 @@ beforeEach(() => {
   control.spent = [];
   control.inserted = [];
   control.insertThrows = false;
+  control.keyed = new Map();
+  control.claimHit = null;
+  control.discarded = [];
   control.cases = [];
   control.links = [];
   control.petEvents = [];
@@ -1514,5 +1532,88 @@ describe("the refusals", () => {
     const body = JSON.stringify(await response.json());
     expect(body).toEqual('{"error":"welfare_report_failed"}');
     expect(body).not.toContain("adjunt");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A re-send of a denuncia that already landed (plan A5f, migration 0289).
+// ---------------------------------------------------------------------------
+
+describe("a re-send with the same clientIdempotencyKey lands on what it filed", () => {
+  const KEY = "5c4b3a29-1807-4f6e-9d5c-4b3a29180716";
+  const ORIGINAL = { reportId: "report-original", referenceCode: "DEN-ORIG-0001" };
+
+  it("ANONYMOUS: 409, nothing written, and nothing about the original in the answer", async () => {
+    const { reportKeyDigest } = await import("@/src/modules/welfare/domain/report-key-digest");
+    control.keyed.set(reportKeyDigest(KEY, null) as string, ORIGINAL);
+
+    const response = await post({
+      command: "file",
+      contactMode: "anonymous",
+      clientIdempotencyKey: KEY,
+      ...FACTS,
+    });
+
+    expect(response.status).toBe(409);
+    const body = JSON.stringify(await response.json());
+    expect(body).toBe('{"error":"welfare_report_already_filed"}');
+    expect(body).not.toContain(ORIGINAL.referenceCode);
+    expect(body).not.toContain(ORIGINAL.reportId);
+    expect(control.inserted).toHaveLength(0);
+    expect(control.cases).toHaveLength(0);
+  });
+
+  it("IDENTIFIED: 201 with the ORIGINAL's reference code, nothing written", async () => {
+    const { reportKeyDigest } = await import("@/src/modules/welfare/domain/report-key-digest");
+    control.keyed.set(reportKeyDigest(KEY, ME) as string, ORIGINAL);
+
+    const response = await post({
+      command: "file",
+      contactMode: "with_contact",
+      reporterContactEmail: CONTACT_EMAIL,
+      clientIdempotencyKey: KEY,
+      ...FACTS,
+    });
+
+    expect(response.status).toBe(201);
+    expect(JSON.stringify(await response.json())).toContain(ORIGINAL.referenceCode);
+    expect(control.inserted).toHaveLength(0);
+    expect(control.cases).toHaveLength(0);
+  });
+
+  it("an identified caller holding an ANONYMOUS filing's key reaches their own slot and files", async () => {
+    const { reportKeyDigest } = await import("@/src/modules/welfare/domain/report-key-digest");
+    control.keyed.set(reportKeyDigest(KEY, null) as string, ORIGINAL);
+
+    const response = await post({
+      command: "file",
+      contactMode: "with_contact",
+      reporterContactEmail: CONTACT_EMAIL,
+      clientIdempotencyKey: KEY,
+      ...FACTS,
+    });
+
+    expect(response.status).toBe(201);
+    expect(JSON.stringify(await response.json())).not.toContain(ORIGINAL.referenceCode);
+    expect(control.inserted).toHaveLength(1);
+  });
+
+  it("ANONYMOUS concurrent twin: its own row is discarded, no case, and 409 with nothing about either", async () => {
+    // The pre-check missed (the twin had not committed); the write's claim found it.
+    control.claimHit = ORIGINAL;
+
+    const response = await post({
+      command: "file",
+      contactMode: "anonymous",
+      clientIdempotencyKey: KEY,
+      ...FACTS,
+    });
+
+    expect(response.status).toBe(409);
+    const body = JSON.stringify(await response.json());
+    expect(body).toBe('{"error":"welfare_report_already_filed"}');
+    expect(control.inserted).toHaveLength(1);
+    expect(control.discarded).toEqual(["report-uuid"]);
+    expect(control.cases).toHaveLength(0);
   });
 });

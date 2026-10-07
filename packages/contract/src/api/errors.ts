@@ -1008,6 +1008,21 @@
  *                         is identical either way: try again, and check
  *                         `/denuncias/buscar` if in doubt.
  *
+ * - `welfare_report_already_filed`
+ *                       — an ANONYMOUS denuncia whose `clientIdempotencyKey`
+ *                         already filed one (plan A5f, migration 0289). 409,
+ *                         nothing new written. The retry of a submit whose
+ *                         response was lost. Deliberately carries NOTHING about
+ *                         the original — no reference code: an anonymous
+ *                         submitter has no identity to scope the replay by, so
+ *                         the key is the only proof, and a key is not enough to
+ *                         hand its holder someone's denuncia. What it does tell
+ *                         (that a report under this key was received) reaches
+ *                         only a holder of the exact key (≥ 32 chars; a UUID).
+ *                         An IDENTIFIED reporter's retry does not land here: it
+ *                         answers 201 with the original's reference code. The
+ *                         person's move is to stop resending.
+ *
  * - `bite_location_mismatch`
  *                       — a bite report (`POST /pets/{token}/events`, kind `bite`)
  *                         sent a map pin AND a (province, locality) pair the pin
@@ -1373,6 +1388,7 @@ export const API_V1_ERROR_CODES = [
   "adoption_application_refused",
   "adoption_application_failed",
   "welfare_report_failed",
+  "welfare_report_already_filed",
   "welfare_evidence_refused",
   "bite_location_mismatch",
   "booking_slot_taken",
