@@ -45,11 +45,15 @@
 // refresh anyway (its host renders it unconditionally) goes in ALLOWED with the
 // reason — that is a claim a reviewer can check against one page file.
 //
-// Not covered, and named so nobody assumes it is: an effect-based
-// `useActionRedirect(state.redirectTo, state)` in a component the refresh
-// unmounts has the same failure (the effect never runs); the mark-found sheet
-// was fixed for it in the same pass. A useActionState `state.ok` view is the
-// third shape. Both need the host analysis this fence does not do.
+// SECOND SHAPE — the effect redirect a 404 swallows. A component that
+// navigates from an effect on its action state (`useActionRedirect`), reaches
+// a revalidating action, and is rendered by a PAGE that can call notFound().
+// BookingFormClient was this: booking a capacity-1 slot fills it, the reservar
+// page re-renders as a 404, the form and its effect are gone, and the owner saw
+// "not found" for a booking that went through. The 404 is the one unmount a
+// fence can see without data flow; a host that merely swaps branches (the
+// mark-found sheet) is not detected, and neither is a useActionState
+// `state.ok` view.
 //
 // Run:  pnpm lint:success-refresh
 // Exits 1 naming each component, the action that revalidates, and the fix.
@@ -76,17 +80,21 @@ export const ACTION_GLOBS = [
 export const COMPONENT_GLOBS = ["app/**/*.tsx", "components/**/*.tsx"];
 
 /**
- * Components that match the shape but SURVIVE the refresh, each with the page
- * fact that makes it true — checkable against one host file. Measured
- * 2026-10-06: these three matched; the two that did not survive
- * (MarkLostWizard, DesignateCaretakerForm) were converted instead.
+ * Components that match a shape but SURVIVE the refresh, keyed `file#Component`
+ * (one component, not the whole file), each with the page fact that makes it
+ * true — checkable against one host file. An entry that stops matching fails
+ * the run: an exemption for nothing would quietly cover the next real match.
+ * Measured 2026-10-06: these four matched; the three that did not survive
+ * (MarkLostWizard, DesignateCaretakerForm, BookingFormClient) were converted.
  */
 export const ALLOWED: Record<string, string> = {
-  "app/gob/decomisos/nuevo/_components/DecomisoForm.tsx":
+  "app/gob/decomisos/nuevo/_components/DecomisoForm.tsx#DecomisoForm":
     "app/gob/decomisos/nuevo/page.tsx branches only on the operator's jurisdiction, never on the decomiso the action creates — the form stays mounted.",
-  "app/org/[orgToken]/adopciones/[appEventId]/ReviewButtons.tsx":
+  "app/org/[orgToken]/adopciones/[appEventId]/ReviewButtons.tsx#ReviewButtons":
     "page.tsx renders ReviewButtons ALWAYS, in the same slot, and passes the resolved view in as a prop — written that way so the receipt survives this exact refresh.",
-  "app/org/[orgToken]/transferencias/nueva/ProposeTransferForm.tsx":
+  "app/org/[orgToken]/mascotas/[publicToken]/transfer/TransferCustodyForm.tsx#TransferCustodyForm":
+    "transfer/page.tsx answers notFound() only when the org no longer holds the pet, and transferCustodyAction opens a receiver-consent handshake — the pet stays under the source org until the receiver accepts, so the re-render keeps the form.",
+  "app/org/[orgToken]/transferencias/nueva/ProposeTransferForm.tsx#ProposeTransferForm":
     "Proposing leaves shelter_custody with the sender until the receiver accepts, so nueva/page.tsx (gated on active custody) re-renders the same form.",
 };
 
@@ -270,33 +278,31 @@ export function indexServerActions(corpus: Corpus, actionFiles: string[]): Actio
   return { modules };
 }
 
-function revalidatingActionsUsed(
-  file: string,
-  sf: ts.SourceFile,
-  corpus: Corpus,
-  index: ActionIndex,
-): string[] {
-  const out: string[] = [];
-  for (const [local, spec] of importsOf(sf)) {
-    const target = resolveSpecifier(file, spec, corpus);
-    if (!target) continue;
-    if (index.modules.get(target)?.get(local)) out.push(`${local} (${target})`);
-  }
-  return out;
-}
+export type ViolationKind = "success-state" | "effect-redirect-404";
 
 export type Violation = {
+  /** `file#Component` — the unit ALLOWED is keyed on. */
+  key: string;
   component: string;
-  setter: string;
+  file: string;
+  kind: ViolationKind;
+  /** The setter that raises the success flag, or "useActionRedirect". */
+  via: string;
   actions: string[];
 };
 
-type SuccessShape = { setter: string; componentNames: string[] };
+type ComponentNode = { name: string; node: ts.Node };
 
-/** Does this client file keep a success flag AND draw a success screen itself? */
-function successShape(sf: ts.SourceFile): SuccessShape | null {
+/** Top-level capitalised functions of a file — the components it declares. */
+function componentsOf(sf: ts.SourceFile): ComponentNode[] {
+  return [...topLevelFunctions(sf)]
+    .filter(([name]) => /^[A-Z]/.test(name))
+    .map(([name, node]) => ({ name, node }));
+}
+
+function successSetters(node: ts.Node): Set<string> {
   const setters = new Set<string>();
-  walk(sf, (n) => {
+  walk(node, (n) => {
     if (
       ts.isVariableDeclaration(n) &&
       ts.isArrayBindingPattern(n.name) &&
@@ -310,38 +316,83 @@ function successShape(sf: ts.SourceFile): SuccessShape | null {
       }
     }
   });
-  if (setters.size === 0) return null;
+  return setters;
+}
 
+function isFalsyLiteral(arg: ts.Expression): boolean {
+  return (
+    arg.kind === ts.SyntaxKind.FalseKeyword ||
+    arg.kind === ts.SyntaxKind.NullKeyword ||
+    (ts.isIdentifier(arg) && arg.text === "undefined")
+  );
+}
+
+/**
+ * Shape 1: the component keeps a success flag AND draws a success screen
+ * itself. Returns the setter that raises the flag, or null.
+ */
+function successStateSetter(node: ts.Node): string | null {
+  const setters = successSetters(node);
+  if (setters.size === 0) return null;
   let raised: string | null = null;
   let screen = false;
-  walk(sf, (n) => {
+  walk(node, (n) => {
     if (ts.isCallExpression(n)) {
       const name = calleeName(n);
-      if (name && setters.has(name) && n.arguments.length > 0) {
-        const arg = n.arguments[0];
-        const falsy =
-          arg.kind === ts.SyntaxKind.FalseKeyword ||
-          arg.kind === ts.SyntaxKind.NullKeyword ||
-          (ts.isIdentifier(arg) && arg.text === "undefined");
-        if (!falsy) raised = name;
-      }
+      const arg = n.arguments[0];
+      if (name && setters.has(name) && arg && !isFalsyLiteral(arg)) raised = name;
     }
-    if (ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)) {
-      if (ts.isIdentifier(n.tagName) && SUCCESS_SCREENS.has(n.tagName.text)) screen = true;
+    if (
+      (ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)) &&
+      ts.isIdentifier(n.tagName) &&
+      SUCCESS_SCREENS.has(n.tagName.text)
+    ) {
+      screen = true;
     }
   });
-  if (!raised || !screen) return null;
+  return raised && screen ? raised : null;
+}
 
-  const componentNames: string[] = [];
-  for (const stmt of sf.statements) {
-    if (ts.isFunctionDeclaration(stmt) && stmt.name) componentNames.push(stmt.name.text);
-    if (ts.isVariableStatement(stmt)) {
-      for (const d of stmt.declarationList.declarations) {
-        if (ts.isIdentifier(d.name)) componentNames.push(d.name.text);
-      }
+/** Shape 2's client half: the component navigates from an effect on its action state. */
+function usesEffectRedirect(node: ts.Node): boolean {
+  return calledNames(node).has("useActionRedirect");
+}
+
+/** Identifiers a component node references — to scope file-level imports to it. */
+function referencedNames(node: ts.Node): Set<string> {
+  const out = new Set<string>();
+  walk(node, (n) => {
+    if (ts.isIdentifier(n)) out.add(n.text);
+  });
+  return out;
+}
+
+/** Revalidating actions the component reaches through its own file's imports. */
+function revalidatingActionsUsed(
+  file: string,
+  sf: ts.SourceFile,
+  component: ComponentNode,
+  corpus: Corpus,
+  index: ActionIndex,
+): string[] {
+  // A module-level adapter (BookingFormClient's makeFormAction) calls the action
+  // on the component's behalf, so names referenced by top-level helpers the
+  // component references count as its own.
+  const helpers = topLevelFunctions(sf);
+  const names = referencedNames(component.node);
+  for (const ref of [...names]) {
+    const helper = helpers.get(ref);
+    if (helper && !/^[A-Z]/.test(ref)) {
+      for (const n of referencedNames(helper)) names.add(n);
     }
   }
-  return { setter: raised, componentNames: componentNames.filter((n) => /^[A-Z]/.test(n)) };
+  const out: string[] = [];
+  for (const [local, spec] of importsOf(sf)) {
+    if (!names.has(local)) continue;
+    const target = resolveSpecifier(file, spec, corpus);
+    if (target && index.modules.get(target)?.get(local)) out.push(`${local} (${target})`);
+  }
+  return out;
 }
 
 /** Server actions a HOST binds and hands down: `fooAction.bind(null, …)`. */
@@ -369,35 +420,77 @@ function boundActionsIn(
   return out;
 }
 
-/** Revalidating actions bound by any file that imports and renders the component. */
-function hostBoundActions(
+/** Files that import this component from this file. */
+function hostsOf(
   file: string,
-  shape: SuccessShape,
+  component: string,
   parsed: Map<string, ts.SourceFile>,
   corpus: Corpus,
-  index: ActionIndex,
-): string[] {
-  const out: string[] = [];
+): Array<[string, ts.SourceFile]> {
+  const out: Array<[string, ts.SourceFile]> = [];
   for (const [hostFile, hostSf] of parsed) {
     if (hostFile === file) continue;
-    const hostImports = importsOf(hostSf);
-    const rendersIt = shape.componentNames.some((name) => {
-      const spec = hostImports.get(name);
-      return spec !== undefined && resolveSpecifier(hostFile, spec, corpus) === file;
-    });
-    if (rendersIt) out.push(...boundActionsIn(hostFile, hostSf, corpus, index));
+    const spec = importsOf(hostSf).get(component);
+    if (spec !== undefined && resolveSpecifier(hostFile, spec, corpus) === file) {
+      out.push([hostFile, hostSf]);
+    }
   }
   return out;
 }
 
+/** A host PAGE that can answer notFound() — the render that replaces the whole tree. */
+function hostCanNotFound(hostFile: string, hostSf: ts.SourceFile): boolean {
+  return /\/page\.tsx$/.test(hostFile) && calledNames(hostSf).has("notFound");
+}
+
 export type Analysis = {
+  /** Every match, exemptions included — what ALLOWED is checked against. */
+  raw: Violation[];
+  /** Matches not covered by ALLOWED. */
   violations: Violation[];
+  /** ALLOWED keys that no longer match anything: an exemption for nothing. */
+  staleAllowed: string[];
   actionModules: number;
   revalidatingActions: number;
   clientComponents: number;
 };
 
-export function analyze(corpus: Corpus, actionFiles: string[], componentFiles: string[]): Analysis {
+function classify(
+  file: string,
+  sf: ts.SourceFile,
+  component: ComponentNode,
+  parsed: Map<string, ts.SourceFile>,
+  corpus: Corpus,
+  index: ActionIndex,
+): Violation | null {
+  const setter = successStateSetter(component.node);
+  const effectRedirect = usesEffectRedirect(component.node);
+  if (!setter && !effectRedirect) return null;
+
+  const hosts = hostsOf(file, component.name, parsed, corpus);
+  const actions = new Set(revalidatingActionsUsed(file, sf, component, corpus, index));
+  for (const [hostFile, hostSf] of hosts) {
+    for (const a of boundActionsIn(hostFile, hostSf, corpus, index)) actions.add(a);
+  }
+  if (actions.size === 0) return null;
+
+  const key = `${file}#${component.name}`;
+  const base = { key, component: component.name, file, actions: [...actions].sort() };
+  if (setter) return { ...base, kind: "success-state", via: setter };
+  // Shape 2: an effect-based redirect is only lost when the re-render removes
+  // the component; the certain case a fence can see is a host page that 404s.
+  if (hosts.some(([hostFile, hostSf]) => hostCanNotFound(hostFile, hostSf))) {
+    return { ...base, kind: "effect-redirect-404", via: "useActionRedirect" };
+  }
+  return null;
+}
+
+export function analyze(
+  corpus: Corpus,
+  actionFiles: string[],
+  componentFiles: string[],
+  allowed: Record<string, string> = ALLOWED,
+): Analysis {
   const index = indexServerActions(corpus, actionFiles);
   const parsed = new Map<string, ts.SourceFile>();
   for (const file of componentFiles) {
@@ -406,26 +499,27 @@ export function analyze(corpus: Corpus, actionFiles: string[], componentFiles: s
   }
 
   let clientComponents = 0;
-  const violations: Violation[] = [];
+  const raw: Violation[] = [];
   for (const [file, sf] of parsed) {
     if (!hasDirective(sf, "use client")) continue;
     clientComponents++;
-    const shape = successShape(sf);
-    if (!shape) continue;
-
-    const actions = new Set([
-      ...revalidatingActionsUsed(file, sf, corpus, index),
-      ...hostBoundActions(file, shape, parsed, corpus, index),
-    ]);
-    if (actions.size === 0 || ALLOWED[file]) continue;
-    violations.push({ component: file, setter: shape.setter, actions: [...actions].sort() });
+    for (const component of componentsOf(sf)) {
+      const v = classify(file, sf, component, parsed, corpus, index);
+      if (v) raw.push(v);
+    }
   }
+  raw.sort((a, b) => a.key.localeCompare(b.key));
+  const rawKeys = new Set(raw.map((v) => v.key));
 
   const revalidatingActions = [...index.modules.values()]
     .flatMap((names) => [...names.values()])
     .filter(Boolean).length;
   return {
-    violations: violations.sort((a, b) => a.component.localeCompare(b.component)),
+    raw,
+    violations: raw.filter((v) => !allowed[v.key]),
+    staleAllowed: Object.keys(allowed)
+      .filter((k) => !rawKeys.has(k))
+      .sort(),
     actionModules: index.modules.size,
     revalidatingActions,
     clientComponents,
@@ -476,7 +570,8 @@ export function canaryProblems(): string[] {
     ["app/actions/canary.ts"],
     ["app/canary/Wizard.tsx", "app/canary/page.tsx"],
   );
-  if (a.violations.length === 1 && a.violations[0].component === "app/canary/Wizard.tsx") return [];
+  if (a.violations.length === 1 && a.violations[0].key === "app/canary/Wizard.tsx#Wizard")
+    return [];
   return [
     `✗ canary: the analyzer did not flag the miniature of the 2026-10-06 bug (got ${a.violations.length} violation(s)). The fence has lost its teeth; fix the analyzer before trusting a green run.`,
   ];
@@ -539,19 +634,31 @@ function run(): void {
     process.exit(1);
   }
 
-  const stale = Object.keys(ALLOWED).filter((f) => !corpus.has(f));
+  const stale = analysis.staleAllowed;
   if (analysis.violations.length > 0 || stale.length > 0) {
-    for (const v of analysis.violations) {
+    for (const v of analysis.violations) console.error(describeViolation(v));
+    for (const k of stale) {
       console.error(
-        `✗ ${v.component} — keeps its success screen in state (${v.setter}) and reaches a revalidating action: ${v.actions.join(", ")}.\n    A revalidating action re-renders the CURRENT route; if that page branches on what the\n    action changed, this component is unmounted and the success screen never shows.\n    End the flow on a success ROUTE that renders from the database and navigate there\n    from the submit handler (useActionNavigate) — see perdida/activada.`,
+        `✗ ALLOWED exempts ${k}, which no longer matches anything — the component was fixed, renamed or removed. Delete the entry: an exemption for nothing hides the next real match.`,
       );
     }
-    for (const f of stale) console.error(`✗ ALLOWED names ${f}, which no longer exists.`);
     process.exit(1);
   }
   console.log(
-    `✓ No success screen held in state behind a revalidating action — ${analysis.clientComponents} client component(s), ${analysis.revalidatingActions} revalidating action(s) across ${analysis.actionModules} module(s).`,
+    `✓ No success state or effect redirect lost to a revalidating action — ${analysis.clientComponents} client component(s), ${analysis.revalidatingActions} revalidating action(s) across ${analysis.actionModules} module(s), ${analysis.raw.length} exempted.`,
   );
+}
+
+function describeViolation(v: Violation): string {
+  const why =
+    v.kind === "success-state"
+      ? `keeps its success screen in state (${v.via})`
+      : "navigates from an effect (useActionRedirect) and a page that renders it can answer notFound()";
+  return `✗ ${v.key} — ${why}, and reaches a revalidating action: ${v.actions.join(", ")}.
+    A revalidating action re-renders the CURRENT route; when that render no longer contains
+    this component (another branch, or a 404), its state and its effects die with it.
+    Navigate from inside the action/submit handler (useActionNavigate), and end the flow
+    on a route that renders from the database — see perdida/activada.`;
 }
 
 const isMain =

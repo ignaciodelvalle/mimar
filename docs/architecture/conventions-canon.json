@@ -9699,23 +9699,23 @@
     },
     {
       "id": "CANON-544",
-      "rule": "A client component must not hold its success screen in local state (a set{Submitted,Success,Done,Sent…} flag gating <LnSuccessScreen>) behind a server action that revalidates: in Next 15.5 any revalidation re-renders the current route, and a host that branches on what the action changed unmounts the component with its flag. The flow ends on a success ROUTE rendered from the database, reached by a navigation fired from the submit handler (useActionNavigate), not from an effect.",
+      "rule": "A client component must not lose a success outcome to the refresh a revalidating server action triggers: no success screen held in local state (a set{Submitted,Success,Done,Sent…} flag gating <LnSuccessScreen>), and no effect-based useActionRedirect in a component a page can replace with notFound(). In Next 15.5 any revalidation re-renders the current route, and a host that branches on what the action changed unmounts the component with its state and effects. The flow ends on a route rendered from the database, reached by a navigation fired inside the action/submit handler (useActionNavigate).",
       "scope": "web",
       "sources": [
-        "scripts/check-success-state-refresh.ts:1-54"
+        "scripts/check-success-state-refresh.ts:1-59"
       ],
       "enforcer": [
-        "scripts/check-success-state-refresh.ts:84-91",
-        "scripts/check-success-state-refresh.ts:445-483",
+        "scripts/check-success-state-refresh.ts:90-99",
+        "scripts/check-success-state-refresh.ts:539-578",
         "package.json:79 lint:success-refresh",
-        "__tests__/check-success-state-refresh.test.ts:1-126"
+        "__tests__/check-success-state-refresh.test.ts:1-199"
       ],
       "enforcementKind": "lint-script",
       "wired": "verify",
       "status": "ENFORCED",
       "clause": "R1",
-      "statusBasis": "scripts/check-success-state-refresh.ts parses every \"use server\" module (ACTION_GLOBS), marks each function that calls revalidatePath/revalidateTag directly, through a same-file helper (fixed point) or one hop into an imported module, then flags any \"use client\" component under app/ or components/ that raises a success-named useState flag, renders <LnSuccessScreen>/<SuccessScreen>, and reaches a revalidating action by import or through a host's fooAction.bind(...). Survivors are listed in ALLOWED with the host fact that keeps them mounted (:84-91). A built-in canary (the 2026-10-06 bug in miniature, :445-483) and corpus floors must pass before any verdict. lint:success-refresh is in verify and in .github/workflows/ci.yml.",
-      "notes": "Found 2026-10-06: MarkLostWizard (owner never saw 'Activamos la búsqueda') and DesignateCaretakerForm ('Invitación enviada' never shown); both now end on perdida/activada and cuidado/invitacion-enviada. Not covered: an effect-based useActionRedirect in a component the refresh unmounts (the mark-found sheet was fixed by hand in the same pass) and useActionState `state.ok` views.",
+      "statusBasis": "scripts/check-success-state-refresh.ts parses every \"use server\" module (ACTION_GLOBS), marks each function that calls revalidatePath/revalidateTag directly, through a same-file helper (fixed point) or one hop into an imported module, then checks every top-level component of every \"use client\" file under app/ and components/ that reaches a revalidating action (by an import it or its module-level adapter references, or through a host's fooAction.bind(...)). Shape 1: it raises a success-named useState flag and renders <LnSuccessScreen>/<SuccessScreen>. Shape 2: it calls useActionRedirect and a page.tsx that renders it calls notFound(). Survivors are listed in ALLOWED keyed file#Component with the host fact that keeps them mounted (:90-99); an entry that stops matching fails the run. A built-in canary (:539-578) and corpus floors must pass before any verdict; the test pins that, without ALLOWED, the raw matches are exactly the exempted keys. lint:success-refresh is in verify and in .github/workflows/ci.yml.",
+      "notes": "Found 2026-10-06: MarkLostWizard (owner never saw 'Activamos la búsqueda'), DesignateCaretakerForm ('Invitación enviada' never shown) and BookingFormClient (booking a capacity-1 slot answered 404). Not covered: an effect redirect in a component a host merely swaps for another branch (the mark-found sheet and MarkFoundInlineForm were fixed by hand), and useActionState `state.ok` views.",
       "confidence": 0.85,
       "verifiedAt": "5b2bd731f"
     }
