@@ -13,6 +13,7 @@ import { notFound, redirect } from "next/navigation";
 import { type Organization, type OrganizationMembership, db } from "@/db";
 import type { ActorProfile, AdminAuthority } from "@/lib/domain/institutional-scope";
 import type { GobReadRole } from "@/lib/domain/jurisdiction-canonical";
+import { legalAcceptanceHref } from "@/lib/domain/legal-acceptance";
 import { requireLiveUser } from "@/lib/infra/live-user";
 import {
   type CachedJurisdiction,
@@ -101,11 +102,27 @@ export type AuthenticatedSession = {
 //                    keep a readable surface (the public landing) but NOT
 //                    /cuenta. Their refusal copy says "contactá al equipo de
 //                    miMAR" rather than naming a screen they cannot reach.
-export async function requireUserOrRedirect(returnTo?: string): Promise<AuthenticatedSession> {
-  const live = await requireLiveUser();
+export async function requireUserOrRedirect(
+  returnTo?: string,
+  options?: { allowPendingLegal?: boolean },
+): Promise<AuthenticatedSession> {
+  const live = await requireLiveUser({ allowPendingLegal: options?.allowPendingLegal });
 
   if (!live.ok) {
     if (live.reason === "MAINTENANCE") redirect("/mantenimiento");
+    // The legal re-acceptance (2026-10-07): every page of every portal that
+    // comes through here sends a personal account that owes it to
+    // /aceptar-condiciones — the owner portal, /org and any page that calls this
+    // guard. The pages a person must reach without accepting (the acceptance
+    // itself, /cuenta/privacidad, the data export and deletion) pass
+    // `allowPendingLegal`. CLIENT_UPGRADE_REQUIRED is a bearer-only answer and
+    // cannot reach a page; it is folded into the same redirect for safety.
+    if (live.reason === "LEGAL_ACCEPTANCE_REQUIRED" || live.reason === "CLIENT_UPGRADE_REQUIRED") {
+      // The attempted page, so accepting lands the person back on it (an /org
+      // console, a deep link); /aceptar-condiciones re-checks it with
+      // safeReturnTo before using it.
+      redirect(legalAcceptanceHref(returnTo ?? (await currentReturnTo())));
+    }
     // First access (pilot T1-P3): requireLiveUser refuses a session that still
     // owes its password as NO_SESSION + passwordSetupPending. Checked BEFORE the
     // plain NO_SESSION bounce, which would send the person to a login they have

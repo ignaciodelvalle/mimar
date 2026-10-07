@@ -90,3 +90,51 @@ describe("requireAdminOrRedirect — returnTo preservation (finding #13)", () =>
     );
   });
 });
+
+// THE LEGAL RE-ACCEPTANCE GATE, page side (2026-10-07; security review of
+// textos-legales-v14, finding 2). Every portal that loads through
+// requireUserOrRedirect — the owner portal, /org/[orgToken], /org — sends a
+// personal account that owes the acceptance to /aceptar-condiciones, carrying
+// the page it was on; the exempt pages opt out with `allowPendingLegal`.
+describe("requireUserOrRedirect — legal re-acceptance", () => {
+  async function owesAcceptance() {
+    const { getProfileCached } = await import("@/lib/infra/request-cache");
+    vi.mocked(getProfileCached).mockResolvedValue({
+      id: "user-001",
+      role: "owner",
+      displayName: "Ana Pérez",
+      accountType: "personal",
+      deactivatedAt: null,
+      deletedAt: null,
+      tosAcceptedAt: new Date("2026-09-25T12:00:00Z"),
+      tosVersion: "2026-09-24",
+    });
+    getUserMock.mockResolvedValue({
+      data: { user: { id: "user-001", email: "ana@dim-test.local" } },
+    } as never);
+  }
+
+  it("sends an /org console load to /aceptar-condiciones carrying the attempted page", async () => {
+    await owesAcceptance();
+    redirectMock.mockClear();
+    headersMock.mockReturnValue({
+      get: (name: string) => (name === "x-full-path" ? "/org/DIM-AAAA-BBBB/atender" : null),
+    });
+    const { requireUserOrRedirect } = await import("./auth-guards");
+
+    await expect(requireUserOrRedirect()).rejects.toThrow(/^REDIRECT:/);
+    expect(redirectMock).toHaveBeenCalledWith(
+      `/aceptar-condiciones?returnTo=${encodeURIComponent("/org/DIM-AAAA-BBBB/atender")}`,
+    );
+  });
+
+  it("lets an exempt page through (allowPendingLegal)", async () => {
+    await owesAcceptance();
+    redirectMock.mockClear();
+    const { requireUserOrRedirect } = await import("./auth-guards");
+
+    const session = await requireUserOrRedirect("/cuenta/privacidad", { allowPendingLegal: true });
+    expect(session.user.id).toBe("user-001");
+    expect(redirectMock).not.toHaveBeenCalled();
+  });
+});

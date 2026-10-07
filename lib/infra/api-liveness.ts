@@ -67,6 +67,10 @@ export function liveUserApiResponse(reason: LiveUserFailureReason): NextResponse
       return NextResponse.json({ error: "forbidden" }, { status: 403 });
     case "SHIFT_EXPIRED":
       return NextResponse.json({ error: "session_shift_expired" }, { status: 401 });
+    case "LEGAL_ACCEPTANCE_REQUIRED":
+      return NextResponse.json({ error: "legal_acceptance_required" }, { status: 403 });
+    case "CLIENT_UPGRADE_REQUIRED":
+      return NextResponse.json({ error: "client_upgrade_required" }, { status: 426 });
     case "MAINTENANCE":
       return NextResponse.json(
         { error: "maintenance" },

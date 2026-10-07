@@ -852,7 +852,8 @@ export async function eraseSubjectDataFor(
  * `signOut()` would report success and revoke nothing.
  */
 export async function eraseMySubjectDataAction(reason: string): Promise<EraseSubjectDataResult> {
-  const { user } = await requireUserOrRedirect();
+  // Open while a legal re-acceptance is owed: deleting is the way out.
+  const { user } = await requireUserOrRedirect(undefined, { allowPendingLegal: true });
   const supabase = await createClient();
 
   const result = await eraseSubjectDataFor({ userId: user.id, supabase, reason });

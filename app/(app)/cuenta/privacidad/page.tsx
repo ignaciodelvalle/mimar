@@ -22,7 +22,10 @@ export default async function PrivacidadPage() {
   // handoff always opens a SIGNED-OUT browser. A bare guard sent the person to
   // login and then to `/mis-mascotas`, which is not a deletion page: a store
   // reviewer following the Data-safety link landed on a pet list (L2-11).
-  await requireUserOrRedirect("/cuenta/privacidad");
+  // Reachable while a legal re-acceptance is owed (2026-10-07): somebody who
+  // does not accept the new terms must still be able to export their data and
+  // delete the account (Ley 25.326 arts. 14 and 16).
+  await requireUserOrRedirect("/cuenta/privacidad", { allowPendingLegal: true });
 
   return (
     <div className="mx-auto max-w-2xl px-8 py-7 pb-12">

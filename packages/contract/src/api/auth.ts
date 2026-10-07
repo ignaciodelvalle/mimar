@@ -258,6 +258,13 @@ export type MeV1User =
        * recorded at signup step 2, so this field lives only on this arm.
        */
       legalAcceptancePending?: true;
+      /**
+       * Present exactly when `legalAcceptancePending` is: the legal version this
+       * account last accepted, or null when it never accepted one. The
+       * re-acceptance screen lists what changed since it
+       * (`legalChangesSince`, `@dim/contract/reference`).
+       */
+      acceptedLegalVersion?: string | null;
     };
 
 /**

@@ -62,6 +62,14 @@
 // directly — is what keeps that gap closed, and it is a deployment invariant,
 // not something this module can enforce.
 
+import { headers } from "next/headers";
+
+import { isIdentityPending } from "@/lib/domain/identity-completeness";
+import {
+  APP_VERSION_HEADER,
+  isLegalAcceptancePending,
+  legalGateVerdict,
+} from "@/lib/domain/legal-acceptance";
 import { isMaintenanceMode } from "@/lib/domain/maintenance-mode";
 import {
   OPERATOR_SHIFT_EXPIRED_MESSAGE,
@@ -91,7 +99,15 @@ export type LiveUserFailureReason =
   | "ACCOUNT_ERASED"
   | "MAINTENANCE"
   | "DEACTIVATED"
-  | "SHIFT_EXPIRED";
+  | "SHIFT_EXPIRED"
+  // The account owes an acceptance of the current legal version (2026-10-07,
+  // lib/domain/legal-acceptance.ts). Personal accounts only; LAST, after every
+  // truer refusal. `/api/v1` answers 403 `legal_acceptance_required`; a page
+  // load is sent to /aceptar-condiciones by requireUserOrRedirect.
+  | "LEGAL_ACCEPTANCE_REQUIRED"
+  // Same account state, from the v13 Android build after `LEGAL_V13_SUNSET`:
+  // that build cannot show the screen, so it is told to update (426).
+  | "CLIENT_UPGRADE_REQUIRED";
 
 export type LiveUserSuccess = {
   ok: true;
@@ -203,6 +219,14 @@ export type RequireLiveUserOptions = {
    * to "what may they do" comes from the database.
    */
   accessToken?: string;
+  /**
+   * Let an account that owes a re-acceptance of the current legal version
+   * through (2026-10-07). ONLY for the surfaces a person must reach without
+   * accepting: reading who they are (`GET /me`), the acceptance itself, their
+   * data export, account deletion, and signing out. Everything else refuses
+   * with LEGAL_ACCEPTANCE_REQUIRED.
+   */
+  allowPendingLegal?: boolean;
 };
 
 const MESSAGES: Record<LiveUserFailureReason, string> = {
@@ -227,6 +251,9 @@ const MESSAGES: Record<LiveUserFailureReason, string> = {
   // omission here: the token has not expired, the workday has, and an operator
   // told the former will refresh and be refused again.
   SHIFT_EXPIRED: OPERATOR_SHIFT_EXPIRED_MESSAGE,
+  LEGAL_ACCEPTANCE_REQUIRED:
+    "Actualizamos los términos y la política de privacidad. Para seguir, aceptalos desde la pantalla que te mostramos al entrar.",
+  CLIENT_UPGRADE_REQUIRED: "Actualizá la app desde Google Play para seguir usando miMAR.",
 };
 
 /**
@@ -554,7 +581,63 @@ export async function requireLiveUser(options?: RequireLiveUserOptions): Promise
     }
   }
 
+  // THE LEGAL RE-ACCEPTANCE GATE (2026-10-07; security review of
+  // textos-legales-v14). LAST, so every truer refusal above wins. Personal
+  // accounts only (the predicate says so), never a signup still on step 2 —
+  // its version is recorded there — and never on the surfaces that opt out
+  // (`allowPendingLegal`). The v13 exemption and its sunset are decided by
+  // `legalGateVerdict`; see lib/domain/legal-acceptance.ts.
+  const legalRefusal = await legalGateRefusal(options, profile, user, supabase);
+  if (legalRefusal !== null) return legalRefusal;
+
   return { ok: true, supabase, user: withEmailConfirmed(user), profile, sessionStartedAt };
+}
+
+/**
+ * The legal re-acceptance refusal for this caller, or null when it may pass.
+ * Factored out of `requireLiveUser` only to keep that function readable; the
+ * order (last, after every truer refusal) is decided at the call site.
+ */
+async function legalGateRefusal(
+  options: RequireLiveUserOptions | undefined,
+  profile: CachedProfile | null,
+  user: { id: string; email?: string },
+  supabase: SupabaseServerClient,
+): Promise<LiveUserFailure | null> {
+  if (options?.allowPendingLegal === true || profile === null) return null;
+  if (!isLegalAcceptancePending(profile)) return null;
+  if (isIdentityPending({ displayName: profile.displayName, email: user.email })) return null;
+  const bearer = options?.accessToken !== undefined;
+  const verdict = legalGateVerdict({
+    bearer,
+    appVersion: bearer ? await requestAppVersion() : null,
+    sunset: process.env.LEGAL_V13_SUNSET,
+    now: new Date(),
+  });
+  if (verdict === "allow-legacy-client") return null;
+  const reason =
+    verdict === "upgrade-required" ? "CLIENT_UPGRADE_REQUIRED" : "LEGAL_ACCEPTANCE_REQUIRED";
+  return {
+    ok: false,
+    supabase,
+    user: { id: user.id, email: user.email },
+    reason,
+    error: MESSAGES[reason],
+  };
+}
+
+/**
+ * The `x-app-version` header of the CURRENT request, or null outside a request
+ * scope (a script, a unit test calling a handler directly). Read only on the
+ * bearer path and only to tell v13 (no header) from v14+; it can make the gate
+ * stricter, never open it for the web.
+ */
+async function requestAppVersion(): Promise<string | null> {
+  try {
+    return (await headers()).get(APP_VERSION_HEADER);
+  } catch {
+    return null;
+  }
 }
 
 /**

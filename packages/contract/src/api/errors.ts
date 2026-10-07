@@ -1272,6 +1272,18 @@
  * the animal but is not a travel titular with `not_found`, NOT
  * `travel_forbidden`: it is the web export's answer, and the PDF is the one
  * travel artefact that leaves the app.
+ *
+ * LEGAL RE-ACCEPTANCE (2026-10-07, security review of textos-legales-v14):
+ * - `legal_acceptance_required` — the account accepted an older legal version
+ *                         than the current one and must accept the current one
+ *                         first. 403. Every authenticated route answers it
+ *                         EXCEPT `GET /me`, `POST /me/legal-acceptance`, the
+ *                         data export, account deletion and sign-out. The
+ *                         client sends the person to its re-acceptance screen.
+ * - `client_upgrade_required` — the same account state from a build that sends
+ *                         no `x-app-version` header (Android v13), once
+ *                         `LEGAL_V13_SUNSET` has passed: that build cannot show
+ *                         the screen, so it is told to update. 426.
  */
 export const API_V1_ERROR_CODES = [
   "rate_limited",
@@ -1283,6 +1295,8 @@ export const API_V1_ERROR_CODES = [
   "account_deactivated",
   "account_erased",
   "session_shift_expired",
+  "legal_acceptance_required",
+  "client_upgrade_required",
   "invalid_request",
   "signup_failed",
   "weak_password",

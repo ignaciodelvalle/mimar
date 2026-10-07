@@ -31,6 +31,7 @@
 //     unowned animal (no former owner) is rejected.
 
 import { randomUUID } from "node:crypto";
+import { LEGAL_VERSION } from "@/lib/reference/legal-version";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -143,7 +144,14 @@ beforeAll(async () => {
         role: "govt",
         accountType: "institutional",
       },
-      { id: ownerId, displayName: "RTO Owner", role: "owner", accountType: "personal" },
+      {
+        id: ownerId,
+        displayName: "RTO Owner",
+        role: "owner",
+        accountType: "personal",
+        tosAcceptedAt: new Date(),
+        tosVersion: LEGAL_VERSION,
+      },
     ]);
 
     const [govtOrg] = await tx

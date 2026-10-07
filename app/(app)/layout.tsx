@@ -100,7 +100,10 @@ export default async function AuthenticatedLayout({
   // signed-out visitor to a degraded panel instead of to sign-in.
   const sessionLoad = await loadWithTimeout(
     (async () => {
-      const { user } = await requireUserOrRedirect();
+      // `allowPendingLegal`: THIS layout applies the re-acceptance gate itself,
+      // below, because it is the one place that knows the exempt page
+      // (/cuenta/privacidad) by its path.
+      const { user } = await requireUserOrRedirect(undefined, { allowPendingLegal: true });
       return { user, profile: await getProfileCached(user.id) };
     })(),
     8_000,

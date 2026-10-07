@@ -30,6 +30,7 @@
 //     episode with a different former owner.
 
 import { randomUUID } from "node:crypto";
+import { LEGAL_VERSION } from "@/lib/reference/legal-version";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -116,10 +117,38 @@ beforeAll(async () => {
   await withMutationOverride(async (tx) => {
     await tx.insert(profiles).values([
       { id: govtUserId, displayName: "FOR Govt", role: "govt", accountType: "institutional" },
-      { id: receiverUserId, displayName: "FOR Receiver", role: "owner", accountType: "personal" },
-      { id: ownerAId, displayName: "FOR Owner A", role: "owner", accountType: "personal" },
-      { id: ownerBId, displayName: "FOR Owner B", role: "owner", accountType: "personal" },
-      { id: strangerId, displayName: "FOR Stranger", role: "owner", accountType: "personal" },
+      {
+        id: receiverUserId,
+        displayName: "FOR Receiver",
+        role: "owner",
+        accountType: "personal",
+        tosAcceptedAt: new Date(),
+        tosVersion: LEGAL_VERSION,
+      },
+      {
+        id: ownerAId,
+        displayName: "FOR Owner A",
+        role: "owner",
+        accountType: "personal",
+        tosAcceptedAt: new Date(),
+        tosVersion: LEGAL_VERSION,
+      },
+      {
+        id: ownerBId,
+        displayName: "FOR Owner B",
+        role: "owner",
+        accountType: "personal",
+        tosAcceptedAt: new Date(),
+        tosVersion: LEGAL_VERSION,
+      },
+      {
+        id: strangerId,
+        displayName: "FOR Stranger",
+        role: "owner",
+        accountType: "personal",
+        tosAcceptedAt: new Date(),
+        tosVersion: LEGAL_VERSION,
+      },
     ]);
 
     const [govtOrg] = await tx

@@ -145,6 +145,10 @@ export async function POST(request: Request) {
         break;
       case "SHIFT_EXPIRED":
         return apiV1Error("session_shift_expired", 401);
+      case "LEGAL_ACCEPTANCE_REQUIRED":
+        return apiV1Error("legal_acceptance_required", 403);
+      case "CLIENT_UPGRADE_REQUIRED":
+        return apiV1Error("client_upgrade_required", 426);
       case "MAINTENANCE":
         return unavailable();
       default: {

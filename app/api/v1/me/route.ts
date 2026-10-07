@@ -144,7 +144,12 @@ export async function GET(request: Request) {
   let live: Awaited<ReturnType<typeof requireLiveUser>>;
   try {
     live = await withDbBudgetOrThrow(
-      requireLiveUser({ supabase: client.supabase, accessToken: client.token }),
+      requireLiveUser({
+        supabase: client.supabase,
+        accessToken: client.token,
+        // Reachable while a re-acceptance is owed (live-user.ts, `allowPendingLegal`).
+        allowPendingLegal: true,
+      }),
       ME_BUDGET_MS,
       "api-v1-me",
     );
@@ -171,6 +176,10 @@ export async function GET(request: Request) {
       // `session_shift_expired` in @dim/contract/api.
       case "SHIFT_EXPIRED":
         return apiV1Error("session_shift_expired", 401);
+      case "LEGAL_ACCEPTANCE_REQUIRED":
+        return apiV1Error("legal_acceptance_required", 403);
+      case "CLIENT_UPGRADE_REQUIRED":
+        return apiV1Error("client_upgrade_required", 426);
       case "MAINTENANCE":
         return apiV1Error("temporarily_unavailable", 503, {
           "retry-after": String(UNAVAILABLE_RETRY_AFTER_SECONDS),

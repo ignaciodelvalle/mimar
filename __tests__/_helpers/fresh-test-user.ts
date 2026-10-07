@@ -117,8 +117,40 @@ async function findUserIdByEmail(client: AdminAuthClient, email: string): Promis
 /**
  * `client.auth.admin.createUser(attributes)`, except that a leftover user with
  * the same `@dim-test.local` email is deleted and the create retried once.
+ *
+ * THE FIXTURE ACCEPTS THE CURRENT LEGAL VERSION (2026-10-07). An account made
+ * through the admin SDK never saw the signup boxes, so it holds no legal
+ * acceptance — and since the re-acceptance gate moved into `requireLiveUser`,
+ * such a personal account with a real name is refused by every write. A
+ * fixture stands for an account in good standing, the same reason the seeds
+ * stamp their personas (scripts/lib/seed-legal-acceptance.ts). A test about
+ * the gate itself puts the account on an older version after creating it, or
+ * passes `{ legalAcceptance: "none" }`.
  */
 export async function createFreshTestUser(
+  client: AdminAuthClient,
+  attributes: AdminUserAttributes,
+  options: { legalAcceptance?: "current" | "none" } = {},
+): Promise<UserResponse> {
+  const result = await createFreshAuthUser(client, attributes);
+  const id = result.data.user?.id;
+  if (id && options.legalAcceptance !== "none") await stampCurrentLegalAcceptance(id);
+  return result;
+}
+
+async function stampCurrentLegalAcceptance(userId: string): Promise<void> {
+  const [{ db }, { LEGAL_VERSION }] = await Promise.all([
+    import("@/db"),
+    import("@dim/contract/reference"),
+  ]);
+  await db.execute(sql`
+    update public.profiles
+       set tos_accepted_at = now(), tos_version = ${LEGAL_VERSION}
+     where id = ${userId}::uuid and account_type = 'personal'
+  `);
+}
+
+async function createFreshAuthUser(
   client: AdminAuthClient,
   attributes: AdminUserAttributes,
 ): Promise<UserResponse> {

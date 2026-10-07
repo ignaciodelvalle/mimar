@@ -289,10 +289,6 @@ describe("GET /api/v1/me — a live caller", () => {
       displayName: OWNER_REAL_NAME,
       role: "owner",
       accountType: "personal",
-      // This fixture account was created through the admin SDK, never through
-      // the signup form, so it holds NO legal acceptance — and since
-      // 2026-10-07 that is owed (lib/domain/legal-acceptance.ts).
-      legalAcceptancePending: true,
     });
 
     // §6's three envelope fields. `staleAfter` is not a cache directive — the

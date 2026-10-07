@@ -156,6 +156,11 @@ export function toMeV1User(input: {
     accountType: input.profile.accountType,
     // Only when owed, so an account that owes nothing gets byte-for-byte the
     // payload it got before the field existed (see `MeV1User`).
-    ...(isLegalAcceptancePending(input.profile) ? { legalAcceptancePending: true as const } : {}),
+    ...(isLegalAcceptancePending(input.profile)
+      ? {
+          legalAcceptancePending: true as const,
+          acceptedLegalVersion: input.profile.tosVersion ?? null,
+        }
+      : {}),
   };
 }

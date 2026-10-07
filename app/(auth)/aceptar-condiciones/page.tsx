@@ -52,7 +52,7 @@ export default async function AceptarCondicionesPage({
 }) {
   const sp = await searchParams;
   const returnTo = safeReturnTo(sp.returnTo);
-  const { user } = await requireUserOrRedirect(LEGAL_ACCEPTANCE_PATH);
+  const { user } = await requireUserOrRedirect(LEGAL_ACCEPTANCE_PATH, { allowPendingLegal: true });
   const profile = await getProfileCached(user.id);
 
   // Nothing owed (already accepted, institutional, or a signup still in

@@ -67,3 +67,48 @@ export function legalAcceptanceHref(returnTo: string | null | undefined): string
   if (!returnTo || returnTo === LEGAL_ACCEPTANCE_PATH) return LEGAL_ACCEPTANCE_PATH;
   return `${LEGAL_ACCEPTANCE_PATH}?returnTo=${encodeURIComponent(returnTo)}`;
 }
+
+// ---------------------------------------------------------------------------
+// SERVER ENFORCEMENT (security review of textos-legales-v14, 2026-10-07)
+// ---------------------------------------------------------------------------
+// The screens are not the boundary: `requireLiveUser` refuses an account that
+// owes an acceptance (lib/infra/live-user.ts), so a write cannot slip past the
+// re-acceptance screen by calling a server action or `/api/v1` directly.
+//
+// THE ONE EXCEPTION IS THE v13 ANDROID BUILD, and it is temporary. v13 predates
+// the circuit: it has no screen to send anybody to, so refusing it would lock
+// every v13 user out of the app until v14 is installed. It is recognised by the
+// ABSENCE of the `x-app-version` header, which v14 and later always send, and it
+// is let through until `LEGAL_V13_SUNSET` (an ISO date; unset = no sunset yet —
+// the PO intends "v14 production date + 14 days"). After it, the same request
+// gets 426 and "Actualizá la app desde Google Play". The web never qualifies.
+
+/** The header v14+ sends on every `/api/v1` request. Its PRESENCE is what counts. */
+export const APP_VERSION_HEADER = "x-app-version";
+
+export type LegalGateVerdict = "refuse" | "allow-legacy-client" | "upgrade-required";
+
+/**
+ * What to do with a request from an account that owes an acceptance.
+ *
+ * `bearer` is true on the native path (a bearer token), false on the web's
+ * cookie path. `sunset` is the raw `LEGAL_V13_SUNSET` value; anything that does
+ * not parse as a date reads as "no sunset yet", which is the documented default
+ * and the safe one for v13 users.
+ */
+export function legalGateVerdict(input: {
+  bearer: boolean;
+  appVersion: string | null | undefined;
+  sunset: string | null | undefined;
+  now: Date;
+}): LegalGateVerdict {
+  if (!input.bearer) return "refuse";
+  if (input.appVersion !== null && input.appVersion !== undefined && input.appVersion !== "") {
+    return "refuse";
+  }
+  const raw = input.sunset?.trim();
+  if (!raw) return "allow-legacy-client";
+  const sunset = new Date(raw);
+  if (Number.isNaN(sunset.getTime())) return "allow-legacy-client";
+  return input.now.getTime() >= sunset.getTime() ? "upgrade-required" : "allow-legacy-client";
+}

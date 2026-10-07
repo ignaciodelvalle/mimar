@@ -24,7 +24,8 @@ export async function acceptLegalTermsAction(
   _previous: LegalAcceptanceFormState,
   formData: FormData,
 ): Promise<LegalAcceptanceFormState> {
-  const live = await requireLiveUser();
+  // The one write an account that owes the acceptance must be able to make.
+  const live = await requireLiveUser({ allowPendingLegal: true });
   if (!live.ok) {
     return { error: "Tu sesión terminó. Volvé a iniciar sesión para continuar." };
   }

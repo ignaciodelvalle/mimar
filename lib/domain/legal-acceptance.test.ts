@@ -130,6 +130,7 @@ describe("toMeV1User carries the flag only when owed", () => {
       role: "owner",
       accountType: "personal",
       legalAcceptancePending: true,
+      acceptedLegalVersion: "2026-09-24",
     });
   });
 

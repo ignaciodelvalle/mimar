@@ -522,6 +522,7 @@ describe("POST /api/v1/auth/login — what a native client receives", () => {
         // the signup form, so it holds NO legal acceptance — and since
         // 2026-10-07 that is owed (lib/domain/legal-acceptance.ts).
         legalAcceptancePending: true,
+        acceptedLegalVersion: null,
       });
     });
   });

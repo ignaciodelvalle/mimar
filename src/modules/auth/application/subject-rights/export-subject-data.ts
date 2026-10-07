@@ -128,7 +128,8 @@ export async function exportSubjectDataFor(
 }
 
 export async function exportMySubjectDataAction(): Promise<ExportSubjectDataResult> {
-  const { user } = await requireUserOrRedirect();
+  // Open while a legal re-acceptance is owed: the export is the way out.
+  const { user } = await requireUserOrRedirect(undefined, { allowPendingLegal: true });
   const supabase = await createClient();
 
   return exportSubjectDataFor({ userId: user.id, supabase });

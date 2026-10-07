@@ -63,7 +63,8 @@ import {
  * authorization; it is the first statement and it fails closed.
  */
 export async function revokeAllSessionsAction(): Promise<RevokeSessionsResult> {
-  const live = await requireLiveUser();
+  // Signing out stays open while a legal re-acceptance is owed.
+  const live = await requireLiveUser({ allowPendingLegal: true });
   if (!live.ok) return { ok: false, reason: "failed", error: live.error };
 
   // The token this browser is holding — the one the revocation authorizes with.
