@@ -152,7 +152,8 @@
 //      no longer offend, adds new offenders as UNREVIEWED (which still fails
 //      until someone writes the reason).
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { posix } from "node:path";
 import ts from "typescript";
 
 import {
@@ -265,6 +266,8 @@ export type ActionVerdict = {
   subject: boolean;
   /** How the guard's authority reaches the work, e.g. `user → _approveRequest()`; null when it does not. */
   scopedBy: string | null;
+  /** Set when the export's body could not be found (see exportedActions); the runner fails on it. */
+  unresolved?: string;
 };
 
 function parse(file: string, source: string): ts.SourceFile {
@@ -272,12 +275,42 @@ function parse(file: string, source: string): ts.SourceFile {
   return ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, kind);
 }
 
-/** `foo()` → "foo", `a.b.foo()` → "foo", anything else → null. */
+/**
+ * `foo()` → "foo", `a.b.foo()` → "foo", anything else → null.
+ *
+ * A bare identifier is reported under the name it was IMPORTED as:
+ * `import { requireOrgAccessByToken as guard } from "…"; await guard(t)` is a
+ * call to requireOrgAccessByToken. Before this, renaming a guard on import took
+ * the action out of scope (not a subject) and renaming a session source took
+ * its taint away — the verdict tracked the local spelling, not the binding. A
+ * local declaration that shadows the import is still the local.
+ */
 function calleeName(call: ts.CallExpression | ts.NewExpression): string | null {
   const e = call.expression;
-  if (ts.isIdentifier(e)) return e.text;
+  if (ts.isIdentifier(e)) {
+    if (resolveDeclaration(e) !== null) return e.text;
+    return importAliases(e.getSourceFile()).get(e.text) ?? e.text;
+  }
   if (ts.isPropertyAccessExpression(e)) return e.name.text;
   return null;
+}
+
+const aliasCache = new WeakMap<ts.SourceFile, ReadonlyMap<string, string>>();
+
+/** Local name → imported name, for every renamed named import of the file. */
+function importAliases(sf: ts.SourceFile): ReadonlyMap<string, string> {
+  const cached = aliasCache.get(sf);
+  if (cached !== undefined) return cached;
+  const out = new Map<string, string>();
+  for (const s of sf.statements) {
+    const named = ts.isImportDeclaration(s) ? s.importClause?.namedBindings : undefined;
+    if (named === undefined || !ts.isNamedImports(named)) continue;
+    for (const el of named.elements) {
+      if (el.propertyName !== undefined) out.set(el.name.text, el.propertyName.text);
+    }
+  }
+  aliasCache.set(sf, out);
+  return out;
 }
 
 function rootIdentifier(expr: ts.Expression): string | null {
@@ -742,16 +775,37 @@ function hasNoAuthMarker(fn: ts.Statement, sf: ts.SourceFile): boolean {
   return ranges.some((r) => sf.text.slice(r.pos, r.end).includes(NO_AUTH_COMMENT));
 }
 
-/** One verdict per `export async function` in the file. */
-export function analyzeActions(relPath: string, src: string): ActionVerdict[] {
+/**
+ * One verdict per exported server action in the file, whatever export shape
+ * names it (see {@link exportedActions}). A re-export whose body cannot be
+ * found comes back with `unresolved` set: the fence cannot say whether it is a
+ * subject, and the runner fails closed on it.
+ */
+export function analyzeActions(
+  relPath: string,
+  src: string,
+  resolve: ModuleResolver = resolveFromDisk,
+): ActionVerdict[] {
   const sf = parse(relPath, src);
   const tenantGuards: ReadonlySet<string> = new Set<string>(TENANT_GUARDS);
   const out: ActionVerdict[] = [];
-  for (const { name, stmt, body } of exportedAsyncFunctions(sf)) {
-    const line = sf.getLineAndCharacterOfPosition(stmt.getStart(sf)).line + 1;
+  for (const found of exportedActions(sf, relPath, resolve)) {
+    const line = sf.getLineAndCharacterOfPosition(found.at.getStart(sf)).line + 1;
+    if (found.kind === "unresolved") {
+      out.push({ name: found.name, line, subject: false, scopedBy: null, unresolved: found.why });
+      continue;
+    }
+    const { name, decl, body } = found;
     const subject =
-      !isInnerWriter(name) && !hasNoAuthMarker(stmt, sf) && callsAny(body, tenantGuards);
-    out.push({ name, line, subject, scopedBy: subject ? scopedBy(body, sf) : null });
+      !isInnerWriter(name) &&
+      !hasNoAuthMarker(decl, decl.getSourceFile()) &&
+      callsAny(body, tenantGuards);
+    out.push({
+      name,
+      line,
+      subject,
+      scopedBy: subject ? scopedBy(body, body.getSourceFile()) : null,
+    });
   }
   return out;
 }
@@ -759,29 +813,350 @@ export function analyzeActions(relPath: string, src: string): ActionVerdict[] {
 const hasModifier = (node: ts.Node, kind: ts.SyntaxKind): boolean =>
   ts.canHaveModifiers(node) && (ts.getModifiers(node) ?? []).some((m) => m.kind === kind);
 
+// ---------------------------------------------------------------------------
+// Export shapes (A13, 2026-10-07)
+// ---------------------------------------------------------------------------
+//
+// A client reaches a server action by its EXPORTED name, and TypeScript has
+// more ways to export a name than the `export` modifier. Until A13 this file
+// read only `export async function f` and `export const f = async () => {}`,
+// so each of these took an action out of the fence silently — not an
+// offender, not a subject, just absent:
+//
+//   export { a };  export { a as b };      a local `async function a` above
+//   export const b = a;                    an alias of a local or an import
+//   import { a } from "…"; export { a };   body in another module
+//   export { a } from "…";  export * from "…";
+//
+// Each is now followed to the declaration that carries the body, through as
+// many modules as it takes (MAX_EXPORT_HOPS), and analysed THERE — the module
+// may be outside the action globs entirely (a plain lib/ file with no "use
+// server"), which is exactly how a body escaped the scan. The verdict is keyed
+// by the exported name in the scanned file, because that is the name a client
+// calls. A name that cannot be followed (a package import, a missing file, a
+// name the target does not declare, a chain too deep) is `unresolved`, and
+// the runner FAILS on it rather than guessing: an action the fence cannot read
+// is not an action the fence has cleared.
+
+/** Resolve an import specifier from a repo-relative file to a repo-relative source. */
+export type ModuleResolver = (
+  fromRelPath: string,
+  specifier: string,
+) => { relPath: string; src: string } | null;
+
+const MAX_EXPORT_HOPS = 8;
+const RESOLVE_EXTENSIONS = [".ts", ".tsx", "/index.ts", "/index.tsx"];
+
+/** `@/x` (tsconfig `"@/*": ["./*"]`) and relative specifiers; packages are not followed. */
+export function resolveFromDisk(
+  fromRelPath: string,
+  specifier: string,
+): { relPath: string; src: string } | null {
+  let base: string;
+  if (specifier.startsWith("@/")) base = specifier.slice(2);
+  else if (specifier.startsWith(".")) base = posix.join(posix.dirname(fromRelPath), specifier);
+  else return null;
+  for (const candidate of [base, ...RESOLVE_EXTENSIONS.map((ext) => `${base}${ext}`)]) {
+    if (/\.(ts|tsx)$/.test(candidate) && existsSync(candidate) && statSync(candidate).isFile()) {
+      return { relPath: candidate, src: readFileSync(candidate, "utf8") };
+    }
+  }
+  return null;
+}
+
+type ExportedAction =
+  /** `at` is the node in the SCANNED file the export is written at (for the line). */
+  | { kind: "action"; name: string; at: ts.Node; decl: ts.Statement; body: ts.Block }
+  | { kind: "unresolved"; name: string; at: ts.Node; why: string };
+
+/** What a name declared in a module turns out to be. */
+type Binding =
+  | { kind: "action"; decl: ts.Statement; body: ts.Block }
+  /** Declared, but not an async function (a constant, a sync helper, a class). */
+  | { kind: "other" }
+  | { kind: "unresolved"; why: string };
+
+type Ctx = { resolve: ModuleResolver; hops: number };
+
+/** Every exported server action of `sf`, under the name a client calls it by. */
+function exportedActions(sf: ts.SourceFile, relPath: string, resolve: ModuleResolver) {
+  return collectExports(sf, relPath, { resolve, hops: 0 }).actions;
+}
+
+type ModuleExports = { actions: ExportedAction[]; others: Set<string> };
+
+function addExport(out: ModuleExports, name: string, at: ts.Node, b: Binding): void {
+  if (b.kind === "action")
+    out.actions.push({ kind: "action", name, at, decl: b.decl, body: b.body });
+  else if (b.kind === "unresolved") out.actions.push({ kind: "unresolved", name, at, why: b.why });
+  else out.others.add(name);
+}
+
 /**
- * `export async function f() {}` and `export const f = async () => {}` (or an
- * async function expression). The arrow form is not used by any action today;
- * it is read anyway so adopting it cannot silently take an action out of scope.
+ * The module's exports: async-function ones as actions (or unresolved), and
+ * the NAMES of every other export, so a lookup can tell "exported, but not an
+ * action" from "not exported at all".
  */
-function exportedAsyncFunctions(
-  sf: ts.SourceFile,
-): Array<{ name: string; stmt: ts.Statement; body: ts.Block }> {
-  const out: Array<{ name: string; stmt: ts.Statement; body: ts.Block }> = [];
+function collectExports(sf: ts.SourceFile, relPath: string, ctx: Ctx): ModuleExports {
+  const out: ModuleExports = { actions: [], others: new Set<string>() };
   for (const stmt of sf.statements) {
-    if (!hasModifier(stmt, ts.SyntaxKind.ExportKeyword)) continue;
-    if (ts.isFunctionDeclaration(stmt)) {
-      if (stmt.name === undefined || stmt.body === undefined) continue;
-      if (!hasModifier(stmt, ts.SyntaxKind.AsyncKeyword)) continue;
-      out.push({ name: stmt.name.text, stmt, body: stmt.body });
-    } else if (ts.isVariableStatement(stmt)) {
-      for (const d of stmt.declarationList.declarations) {
-        const body = asyncFunctionBody(d.initializer);
-        if (ts.isIdentifier(d.name) && body !== null) out.push({ name: d.name.text, stmt, body });
-      }
+    if (ts.isExportDeclaration(stmt)) collectExportDeclaration(out, sf, relPath, stmt, ctx);
+    else if (ts.isExportAssignment(stmt)) {
+      // `export default a` — followed like `export { a as default }`.
+      const b: Binding = ts.isIdentifier(stmt.expression)
+        ? resolveLocal(sf, relPath, stmt.expression.text, ctx)
+        : { kind: "other" };
+      addExport(out, "default", stmt, b);
+    } else if (hasModifier(stmt, ts.SyntaxKind.ExportKeyword)) {
+      collectExportedDeclaration(out, sf, relPath, stmt, ctx);
     }
   }
   return out;
+}
+
+/** `export { a, b as c }`, `export { a } from "…"`, `export * from "…"`. */
+function collectExportDeclaration(
+  out: ModuleExports,
+  sf: ts.SourceFile,
+  relPath: string,
+  stmt: ts.ExportDeclaration,
+  ctx: Ctx,
+): void {
+  if (stmt.isTypeOnly) return;
+  const spec = stmt.moduleSpecifier;
+  const from = spec !== undefined && ts.isStringLiteral(spec) ? spec.text : null;
+  const clause = stmt.exportClause;
+  if (clause === undefined) {
+    // `export * from "…"`: every export of the target, under its own name.
+    if (from !== null) collectStarExport(out, relPath, from, stmt, ctx);
+    return;
+  }
+  if (ts.isNamespaceExport(clause)) {
+    // `export * as ns from "…"` exports an object, not a function.
+    out.others.add(clause.name.text);
+    return;
+  }
+  for (const el of clause.elements) {
+    if (el.isTypeOnly) continue;
+    const local = (el.propertyName ?? el.name).text;
+    const b =
+      from === null
+        ? resolveLocal(sf, relPath, local, ctx)
+        : resolveExport(relPath, from, local, ctx);
+    addExport(out, el.name.text, stmt, b);
+  }
+}
+
+function collectStarExport(
+  out: ModuleExports,
+  relPath: string,
+  from: string,
+  stmt: ts.ExportDeclaration,
+  ctx: Ctx,
+): void {
+  const target = followModule(relPath, from, ctx);
+  if ("why" in target) {
+    out.actions.push({ kind: "unresolved", name: `* from "${from}"`, at: stmt, why: target.why });
+    return;
+  }
+  for (const a of target.exports.actions) out.actions.push({ ...a, at: stmt });
+  for (const o of target.exports.others) out.others.add(o);
+}
+
+/** A statement carrying the `export` modifier. */
+function collectExportedDeclaration(
+  out: ModuleExports,
+  sf: ts.SourceFile,
+  relPath: string,
+  stmt: ts.Statement,
+  ctx: Ctx,
+): void {
+  if (ts.isFunctionDeclaration(stmt)) {
+    // A named `export default async function f` keeps the key `f` it always had.
+    const isDefault = hasModifier(stmt, ts.SyntaxKind.DefaultKeyword);
+    const name = stmt.name?.text ?? (isDefault ? "default" : null);
+    if (name !== null) addExport(out, name, stmt, functionBinding(stmt));
+    return;
+  }
+  if (ts.isVariableStatement(stmt)) {
+    for (const d of stmt.declarationList.declarations) {
+      if (ts.isIdentifier(d.name)) {
+        addExport(out, d.name.text, stmt, variableBinding(sf, relPath, stmt, d, ctx));
+      }
+    }
+    return;
+  }
+  if (
+    (ts.isClassDeclaration(stmt) ||
+      ts.isEnumDeclaration(stmt) ||
+      ts.isInterfaceDeclaration(stmt) ||
+      ts.isTypeAliasDeclaration(stmt)) &&
+    stmt.name !== undefined &&
+    ts.isIdentifier(stmt.name)
+  ) {
+    out.others.add(stmt.name.text);
+  }
+}
+
+function functionBinding(fn: ts.FunctionDeclaration): Binding {
+  return fn.body !== undefined && hasModifier(fn, ts.SyntaxKind.AsyncKeyword)
+    ? { kind: "action", decl: fn, body: fn.body }
+    : { kind: "other" };
+}
+
+/** `const f = async () => {}` is an action; `const f = g` is whatever `g` is. */
+function variableBinding(
+  sf: ts.SourceFile,
+  relPath: string,
+  stmt: ts.VariableStatement,
+  d: ts.VariableDeclaration,
+  ctx: Ctx,
+): Binding {
+  const init = d.initializer === undefined ? undefined : unwrapCasts(d.initializer);
+  const body = asyncFunctionBody(init);
+  if (body !== null) return { kind: "action", decl: stmt, body };
+  if (init === undefined) return { kind: "other" };
+  if (ts.isIdentifier(init)) return resolveLocal(sf, relPath, init.text, ctx);
+  // `export const g = withAuth(f)`: the client calls the WRAPPER, whose body
+  // this file cannot see. If any argument is itself an action, say so instead
+  // of reading the export as "not an action" — fail closed.
+  if (ts.isCallExpression(init)) {
+    for (const arg of init.arguments) {
+      const a = unwrapCasts(arg);
+      const inner = ts.isIdentifier(a)
+        ? resolveLocal(sf, relPath, a.text, ctx)
+        : asyncFunctionBody(a) !== null
+          ? ({ kind: "action" } as const)
+          : null;
+      if (inner?.kind === "action") {
+        return {
+          kind: "unresolved",
+          why: `\`${d.name.getText(sf)}\` wraps an action in ${init.expression.getText(sf)}(), whose body is not followed`,
+        };
+      }
+    }
+  }
+  return { kind: "other" };
+}
+
+/** `f as T`, `f!`, `(f)`, `f satisfies T` → `f`. */
+function unwrapCasts(e: ts.Expression): ts.Expression {
+  let x = e;
+  while (
+    ts.isAsExpression(x) ||
+    ts.isNonNullExpression(x) ||
+    ts.isParenthesizedExpression(x) ||
+    ts.isSatisfiesExpression(x) ||
+    ts.isTypeAssertionExpression(x)
+  ) {
+    x = x.expression;
+  }
+  return x;
+}
+
+/** What the module-level name `local` of `sf` is bound to, following imports. */
+function resolveLocal(sf: ts.SourceFile, relPath: string, local: string, ctx: Ctx): Binding {
+  if (ctx.hops >= MAX_EXPORT_HOPS) {
+    return {
+      kind: "unresolved",
+      why: `alias chain deeper than ${MAX_EXPORT_HOPS} at \`${local}\``,
+    };
+  }
+  for (const stmt of sf.statements) {
+    const b = bindingDeclaredBy(stmt, sf, relPath, local, ctx);
+    if (b !== null) return b;
+  }
+  return { kind: "unresolved", why: `\`${local}\` is not declared in ${relPath}` };
+}
+
+/** What `stmt` binds `local` to, or null when it does not declare that name. */
+function bindingDeclaredBy(
+  stmt: ts.Statement,
+  sf: ts.SourceFile,
+  relPath: string,
+  local: string,
+  ctx: Ctx,
+): Binding | null {
+  if (ts.isFunctionDeclaration(stmt)) {
+    // An overload signature has no body; the implementation follows it.
+    return stmt.name?.text === local && stmt.body !== undefined ? functionBinding(stmt) : null;
+  }
+  if (ts.isVariableStatement(stmt)) {
+    const d = stmt.declarationList.declarations.find(
+      (x) => ts.isIdentifier(x.name) && x.name.text === local,
+    );
+    return d === undefined
+      ? null
+      : variableBinding(sf, relPath, stmt, d, { ...ctx, hops: ctx.hops + 1 });
+  }
+  if (ts.isImportDeclaration(stmt)) return importedBinding(stmt, relPath, local, ctx);
+  if (
+    (ts.isClassDeclaration(stmt) ||
+      ts.isEnumDeclaration(stmt) ||
+      ts.isInterfaceDeclaration(stmt) ||
+      ts.isTypeAliasDeclaration(stmt)) &&
+    stmt.name?.text === local
+  ) {
+    return { kind: "other" };
+  }
+  return null;
+}
+
+/** `import a from`, `import { x as a } from`, `import * as a from` — or null. */
+function importedBinding(
+  stmt: ts.ImportDeclaration,
+  relPath: string,
+  local: string,
+  ctx: Ctx,
+): Binding | null {
+  const clause = stmt.importClause;
+  if (clause === undefined || clause.isTypeOnly || !ts.isStringLiteral(stmt.moduleSpecifier)) {
+    return null;
+  }
+  const from = stmt.moduleSpecifier.text;
+  if (clause.name?.text === local) return resolveExport(relPath, from, "default", ctx);
+  const named = clause.namedBindings;
+  if (named === undefined) return null;
+  if (ts.isNamespaceImport(named)) return named.name.text === local ? { kind: "other" } : null;
+  const el = named.elements.find((e) => e.name.text === local && !e.isTypeOnly);
+  return el === undefined
+    ? null
+    : resolveExport(relPath, from, (el.propertyName ?? el.name).text, ctx);
+}
+
+/** What module `from` (imported by `relPath`) exports as `name`. */
+function resolveExport(relPath: string, from: string, name: string, ctx: Ctx): Binding {
+  const target = followModule(relPath, from, ctx);
+  if ("why" in target) return { kind: "unresolved", why: target.why };
+  const hit = target.exports.actions.find((a) => a.name === name);
+  if (hit !== undefined) {
+    return hit.kind === "action"
+      ? { kind: "action", decl: hit.decl, body: hit.body }
+      : { kind: "unresolved", why: hit.why };
+  }
+  if (target.exports.others.has(name)) return { kind: "other" };
+  return { kind: "unresolved", why: `${target.relPath} does not export \`${name}\`` };
+}
+
+function followModule(
+  relPath: string,
+  from: string,
+  ctx: Ctx,
+): { relPath: string; exports: ModuleExports } | { why: string } {
+  if (ctx.hops >= MAX_EXPORT_HOPS) {
+    return { why: `re-export chain deeper than ${MAX_EXPORT_HOPS} modules at "${from}"` };
+  }
+  const target = ctx.resolve(relPath, from);
+  if (target === null) {
+    return {
+      why: `cannot resolve "${from}" from ${relPath} (only @/ and relative paths are followed)`,
+    };
+  }
+  const sf = parse(target.relPath, target.src);
+  return {
+    relPath: target.relPath,
+    exports: collectExports(sf, target.relPath, { ...ctx, hops: ctx.hops + 1 }),
+  };
 }
 
 /** The block body of an async arrow / function expression, else null. */
@@ -793,8 +1168,12 @@ function asyncFunctionBody(init: ts.Expression | undefined): ts.Block | null {
 }
 
 /** Offender identities (`path#name`) in one file. */
-export function findScopingOffenders(relPath: string, src: string): string[] {
-  return analyzeActions(relPath, src)
+export function findScopingOffenders(
+  relPath: string,
+  src: string,
+  resolve: ModuleResolver = resolveFromDisk,
+): string[] {
+  return analyzeActions(relPath, src, resolve)
     .filter((v) => v.subject && v.scopedBy === null)
     .map((v) => `${relPath}#${v.name}`);
 }
@@ -802,23 +1181,33 @@ export function findScopingOffenders(relPath: string, src: string): string[] {
 export type SurfaceScan = {
   /** Offender identity → `path:line` for messages. */
   offenders: Map<string, string>;
+  /** Exports whose body the fence could not follow: identity → `path:line — why`. Fails the run. */
+  unresolved: Map<string, string>;
   subjects: number;
   scoped: number;
 };
 
-export function scanSurface(files: ReadonlyArray<{ relPath: string; src: string }>): SurfaceScan {
+export function scanSurface(
+  files: ReadonlyArray<{ relPath: string; src: string }>,
+  resolve: ModuleResolver = resolveFromDisk,
+): SurfaceScan {
   const offenders = new Map<string, string>();
+  const unresolved = new Map<string, string>();
   let subjects = 0;
   let scoped = 0;
   for (const { relPath, src } of files) {
-    for (const v of analyzeActions(relPath, src)) {
+    for (const v of analyzeActions(relPath, src, resolve)) {
+      if (v.unresolved !== undefined) {
+        unresolved.set(`${relPath}#${v.name}`, `${relPath}:${v.line} — ${v.unresolved}`);
+        continue;
+      }
       if (!v.subject) continue;
       subjects++;
       if (v.scopedBy !== null) scoped++;
       else offenders.set(`${relPath}#${v.name}`, `${relPath}:${v.line}`);
     }
   }
-  return { offenders, subjects, scoped };
+  return { offenders, unresolved, subjects, scoped };
 }
 
 /** Non-vacuity problems; empty when the scan demonstrably looked at something. */
@@ -908,6 +1297,18 @@ function runScan(): void {
       src: readFileSync(f, "utf8"),
     })),
   );
+
+  // Fail closed BEFORE the ratchet: an export the fence cannot follow to its
+  // body is neither cleared nor baselined — it was never read.
+  if (scan.unresolved.size > 0) {
+    for (const [k, where] of scan.unresolved) console.error(`  ${where} (${k.split("#")[1]})`);
+    console.error(
+      "\n✗ authz-scoping cannot follow these exports to the function that implements them." +
+        " Declare the action in the scanned module, or re-export it from an @/ or relative path" +
+        " that declares it — a body the fence cannot read is not a body it has cleared.",
+    );
+    process.exit(1);
+  }
 
   const vacuous = vacuityViolations(scan);
   if (vacuous.length > 0) {
