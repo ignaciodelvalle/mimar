@@ -22,6 +22,7 @@
 
 import { type ExistingCanonicalIds, type ExistingPetSnapshot, diffPet } from "../domain/pet-diff";
 import { isBecamePPP, isChipNewlyAdded, isNoOp } from "../domain/pet-rules";
+import { pppRegistrationNotice } from "../domain/ppp-notice";
 import type { NewNotification, UpdatePetInput, UseCaseResult } from "../domain/types";
 import type { PetsRepository } from "../infrastructure/pets-repository";
 
@@ -121,11 +122,20 @@ export async function updatePet(input: UpdatePetInput, deps: Deps): Promise<UseC
   // PPP reminder only for owner access path. Org-side updates suppress it —
   // the legal obligation belongs to the owner, not the org member editing.
   if (hasContentChanges && becamePPP && accessPath === "owner") {
+    // Copy by the pet's STORED jurisdiction — the profile edit can never move
+    // it (FULL-LOCK, pets-repository updatePetProfile), so the snapshot is the
+    // jurisdiction the PPP list was evaluated against (surface audit 2026-10-07, B).
+    const notice = pppRegistrationNotice({
+      petName: parsed.name,
+      breed: parsed.breed,
+      province: existingPet.jurisdictionProvince,
+      autoMarked: false,
+    });
     pendingNotifications.push({
       userId: user.id,
       notificationType: "ppp_registration_reminder",
-      title: `${parsed.name}: registrá tu PPP en el provincial`,
-      body: `Tu mascota fue marcada como raza potencialmente peligrosa por ${parsed.breed ?? "su raza"}. La Ley CABA 4078 / Ley Provincial 14.107 requiere que la inscribas en el registro provincial correspondiente.`,
+      title: notice.title,
+      body: notice.body,
       severity: "warning",
       ctaLabel: "Más info sobre PPP",
       ctaUrl: "https://www.argentina.gob.ar/justicia/derechofacil/leysimple/maltrato-animales",
