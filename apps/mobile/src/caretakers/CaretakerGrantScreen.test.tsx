@@ -441,3 +441,50 @@ describe("every action the old screen offered is still reachable (custody polish
     expect(mockSend).not.toHaveBeenCalled();
   });
 });
+
+/** Every string the screen draws, in the order it draws them. */
+function textsInOrder(): string[] {
+  const out: string[] = [];
+  const walk = (node: unknown) => {
+    if (node === null || node === undefined) return;
+    if (typeof node === "string") {
+      out.push(node);
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const child of node) walk(child);
+      return;
+    }
+    const children = (node as { children?: unknown }).children;
+    if (children) walk(children);
+  };
+  walk(screen.toJSON());
+  return out;
+}
+
+describe("the scope is BESIDE the button that agrees to it (custody polish review)", () => {
+  it("draws the period and the scope ABOVE the answer", async () => {
+    loads(aGrant());
+    render(<CaretakerGrantScreen grantToken={TOKEN} onAccepted={noop} />);
+    await screen.findByText("Aceptar el cuidado");
+
+    const texts = textsInOrder();
+    const accept = texts.indexOf("Aceptar el cuidado");
+    expect(texts.indexOf("Período")).toBeLessThan(accept);
+    expect(texts.indexOf(SCOPE)).toBeGreaterThan(-1);
+    expect(texts.indexOf(SCOPE)).toBeLessThan(accept);
+  });
+
+  it("repeats the period and both halves of the scope INSIDE the accept confirmation", async () => {
+    loads(aGrant());
+    render(<CaretakerGrantScreen grantToken={TOKEN} onAccepted={noop} />);
+    fireEvent.press(await screen.findByText("Aceptar el cuidado"));
+
+    const texts = textsInOrder();
+    const title = texts.indexOf("¿Aceptás el cuidado?");
+    const confirm = texts.indexOf("Confirmar el cuidado");
+    const inside = texts.slice(title, confirm);
+    expect(inside).toContain("Período");
+    expect(inside).toContain(SCOPE);
+  });
+});
