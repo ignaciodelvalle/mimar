@@ -44,13 +44,18 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 import { db, ownerships, petEvents, pets, profiles } from "@/db";
 import { TRAVEL_FORBIDDEN_COPY, TRAVEL_SEMAFORO_LABELS } from "@/lib/domain/travel-copy";
+import { overlayAmendments } from "@/lib/infra/amendment";
 import { OWNER_AUTHORSHIP } from "@/lib/infra/pet-access";
 import type { TravelTrip } from "@/lib/projections/travel-compliance";
 import { getAirline } from "@/lib/reference/airlines";
 import { getCorridor } from "@/lib/reference/cross-border-corridors";
 import { isoDateInAr } from "@/lib/utils/format";
 import { cancelTrip } from "@/src/modules/pets/application/travel/cancel-trip";
-import { loadTravelView, selectTrip } from "@/src/modules/pets/application/travel/load-travel-view";
+import {
+  buildTravelView,
+  loadTravelView,
+  selectTrip,
+} from "@/src/modules/pets/application/travel/load-travel-view";
 import { recordCvi } from "@/src/modules/pets/application/travel/record-cvi";
 import { recordTrip } from "@/src/modules/pets/application/travel/record-trip";
 import {
@@ -426,5 +431,71 @@ describe("v14 form options — additive, so a v13 app still reads them", () => {
       maxWeightKg: null,
       includesCarrier: false,
     });
+  });
+});
+
+describe("a correction does not sign a dose (review 2026-10-07)", () => {
+  // A vet's event_amended folds onto the owner's row, and the ROW's author
+  // stays the owner: the dose stays declared. Deliberate — a correction edits
+  // values; a vet who confirms the dose from Atender writes a FRESH verified
+  // event, and that one counts.
+  it("an owner's antirrábica a vet later corrected stays declared", () => {
+    const now = new Date("2026-10-07T15:00:00Z");
+    const pet = {
+      id: "00000000-0000-4000-8000-0000000000aa",
+      species: "dog",
+      breed: null,
+      dateOfBirth: "2022-01-01",
+      birthDateIsEstimated: false,
+      jurisdictionCountry: "AR",
+      jurisdictionProvince: null,
+      jurisdictionLocality: null,
+    } as const;
+    const events = overlayAmendments([
+      {
+        id: "00000000-0000-4000-8000-0000000000b1",
+        eventType: "movement_recorded",
+        occurredAt: now,
+        payload: {
+          payload_version: 1,
+          sub_kind: "transport_recorded",
+          corridor_id: "chile",
+          direction: "outbound_from_ar",
+          travel_date: "2026-11-15",
+          mode: "land",
+        },
+        authorRole: "owner",
+        authorVerified: false,
+        authorOrganizationId: null,
+      },
+      {
+        id: "00000000-0000-4000-8000-0000000000b2",
+        eventType: "vaccination_administered",
+        occurredAt: "2026-08-01T15:00:00Z",
+        payload: { vaccine_name: "Antirrabica", next_due_at: null },
+        authorRole: "owner",
+        authorVerified: false,
+        authorOrganizationId: null,
+      },
+      {
+        id: "00000000-0000-4000-8000-0000000000b3",
+        eventType: "event_amended",
+        occurredAt: "2026-09-01T15:00:00Z",
+        payload: {
+          target_event_id: "00000000-0000-4000-8000-0000000000b2",
+          reason: "Nombre corregido",
+          changes: [{ field: "vaccine_name", old: "Antirrabica", new: "Antirrábica" }],
+        },
+        authorRole: "vet",
+        authorVerified: true,
+        authorOrganizationId: null,
+      },
+    ]);
+    const view = buildTravelView({ pet, events, tripId: null, now });
+    const wait = view.compliance?.obligations.find(
+      (o) => o.id === "rabies_vaccination_to_travel_wait_days",
+    );
+    expect(wait?.evidence).toBe("declared");
+    expect(wait?.requirementLevel).toBe("warning");
   });
 });

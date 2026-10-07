@@ -159,12 +159,11 @@ describe("<TravelObligationsPanel> — v14 rows", () => {
       requirementLevel: "warning",
       evidence: "declared",
     };
-    expect(render(<TravelObligationsPanel obligations={[declared]} />)).toContain(
-      PET_TRAVEL_DECLARED_SEAL,
-    );
-    expect(render(<TravelObligationsPanel obligations={[BLOCKER]} />)).not.toContain(
-      PET_TRAVEL_DECLARED_SEAL,
-    );
+    // Literal text, not the constant: a reworded seal must show up here.
+    const seal = "Sin verificación profesional · falta el registro de tu veterinaria";
+    expect(PET_TRAVEL_DECLARED_SEAL).toBe(seal);
+    expect(render(<TravelObligationsPanel obligations={[declared]} />)).toContain(seal);
+    expect(render(<TravelObligationsPanel obligations={[BLOCKER]} />)).not.toContain(seal);
   });
 
   it("folds the rule, who demands it and the footnote behind 'Ver detalle', and draws the action", () => {
@@ -194,5 +193,30 @@ describe("<TravelObligationsPanel> — v14 rows", () => {
     expect(
       render(<TravelObligationsPanel obligations={[papers]} showDocuments={false} />),
     ).not.toContain("Certificado veterinario: sin confirmar");
+  });
+});
+
+describe("<TravelObligationsPanel> — source notes", () => {
+  it("shows what a source adds, inside the detail", () => {
+    const withNote: TravelObligation = {
+      ...BLOCKER,
+      sources: [
+        {
+          kind: "corridor",
+          id: "uruguay",
+          label: "Uruguay",
+          issuerLabel: "SENASA, requisitos para el Mercosur",
+          sourceUrl: "https://example.gov",
+          lastVerifiedAt: "2026-09-30",
+          reviewBy: "2027-03-29",
+          verification: "verified",
+          note: "Antiparasitario interno con praziquantel y externo, hasta 15 días antes del CVI.",
+          freshness: "fresh",
+        },
+      ],
+    };
+    expect(render(<TravelObligationsPanel obligations={[withNote]} />)).toContain(
+      "Antiparasitario interno con praziquantel y externo",
+    );
   });
 });

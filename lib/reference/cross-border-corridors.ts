@@ -258,7 +258,10 @@ export const CORRIDORS: readonly Corridor[] = [
       // Primovacunación aplicada >=21 días antes del ingreso.
       rabies_vaccination_to_travel_wait_days: rule(21, SENASA_MERCOSUR),
       // Antiparasitario interno+externo dentro de los 15 días previos al CVI.
-      parasite_treatment_window_days: rule(15, SENASA_MERCOSUR),
+      // The praziquantel the old papers line named rides on the rule's note.
+      parasite_treatment_window_days: rule(15, SENASA_MERCOSUR, {
+        note: "Antiparasitario interno con praziquantel y externo, hasta 15 días antes del CVI.",
+      }),
       rabies_titer_test_required: rule(false, SENASA_MERCOSUR),
       import_permit_required: rule(false, UY_INGRESO),
       // Microchip obligatorio para perros >90 días (Res. 273 DGSG,
@@ -297,9 +300,11 @@ export const CORRIDORS: readonly Corridor[] = [
     lastVerifiedAt: LAST_VERIFIED,
     reviewBy: REVIEW_BY,
     appliesTo: { species: SPECIES, direction: "outbound_from_ar" },
+    // Brasil's own model, mandatory since 06/09/2025 (comment above) — not the
+    // Mercosur one Uruguay asks for.
     paper: {
-      name: "Certificado Veterinario Internacional (CVI) modelo Mercosur",
-      shortName: "CVI Mercosur",
+      name: "Certificado Veterinario Internacional (CVI) modelo Portaria MAPA n.º 741/2024",
+      shortName: "CVI Portaria 741",
     },
     rules: {
       // CVI válido 60 días desde la emisión.

@@ -91,8 +91,8 @@ export type TravelComplianceEvent = {
   eventType: string;
   payload: unknown;
   occurredAt: Date | string;
-  /** See TravelLibretaEvent.confidenceTier: absent means the caller vouches. */
-  confidenceTier?: ConfidenceTier | null;
+  /** See TravelLibretaEvent.confidenceTier: null (unknown) reads as declared. */
+  confidenceTier: ConfidenceTier | null;
 };
 
 export type TravelComplianceInput = {
@@ -561,7 +561,23 @@ function readsBetter(a: Evaluation, b: Evaluation): boolean {
   return la !== lb ? la > lb : TONE_RANK[a.tone] > TONE_RANK[b.tone];
 }
 
-const DECLARED_TAIL = "Para el viaje cuenta cuando lo registra un veterinario.";
+/**
+ * Said of a requirement met only by entries without professional verification
+ * — the owner's, an organisation's, a vet whose matrícula is not validated. One
+ * wording for all of them (the review of 2026-10-07: "según indicaste" was
+ * false for anyone but the owner), and no pronoun, so it agrees with any item.
+ */
+const DECLARED_TAIL =
+  "sin verificación profesional. Para el viaje cuenta el registro de un veterinario matriculado.";
+
+/**
+ * Rule types whose answer rests on the pet's BIRTH DATE, which the owner types
+ * in: no entry's tier backs it, so they claim no evidence either way.
+ */
+const BIRTH_DATE_CHECKS = new Set<TravelRuleType>([
+  "min_animal_age_days",
+  "rabies_vaccination_min_age_days",
+]);
 
 /**
  * A libreta check run twice (PO 2026-10-07): on the VERIFIED entries, and —
@@ -572,9 +588,10 @@ const DECLARED_TAIL = "Para el viaje cuenta cuando lo registra un veterinario.";
 function evaluateWithEvidence(
   rule: MergedRule,
   env: EvalEnv,
-): { evaluation: Evaluation; evidence: TravelEvidence } | null {
+): { evaluation: Evaluation; evidence: TravelEvidence | null } | null {
   const verified = EVALUATORS[rule.ruleType](rule, env);
   if (!verified) return null;
+  if (BIRTH_DATE_CHECKS.has(rule.ruleType)) return { evaluation: verified, evidence: null };
   if (verified.tone === "ok") return { evaluation: verified, evidence: "verified" };
   const withDeclared = env.ctx.libreta.withDeclared;
   if (withDeclared) {
@@ -583,16 +600,13 @@ function evaluateWithEvidence(
       ctx: { ...env.ctx, libreta: withDeclared },
     });
     if (all && readsBetter(all, verified)) {
-      return {
-        evaluation: {
-          tone: "due",
-          deadlineLapsed: false,
-          state: `${all.state}, según indicaste. ${DECLARED_TAIL}`,
-          detail: all.detail,
-          level: "warning",
-        },
-        evidence: "declared",
-      };
+      const state = `${all.state}, ${DECLARED_TAIL}`;
+      // Never "Ya está" on unverified entries — but never LOWER a blocker either.
+      const evaluation: Evaluation =
+        levelOf(all) === "blocker"
+          ? { ...all, state }
+          : { tone: "due", deadlineLapsed: false, state, detail: all.detail, level: "warning" };
+      return { evaluation, evidence: "declared" };
     }
   }
   return { evaluation: verified, evidence: "none" };

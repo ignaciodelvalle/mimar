@@ -54,10 +54,10 @@ export type TravelLibretaEvent = {
    * Who stands behind the entry (computeConfidence over the row's author
    * columns). For travel, only `professional_verified` and
    * `institutional_verified` VERIFY a fact; anything else only DECLARES it
-   * (PO 2026-10-07). Every reader of the spine passes it — loadTravelView
-   * does. ABSENT means the caller vouches for the entry (pure fixtures).
+   * (PO 2026-10-07). REQUIRED, and null means "not known": an entry nobody
+   * vouched for is treated as declared — the check fails CLOSED.
    */
-  confidenceTier?: ConfidenceTier | null;
+  confidenceTier: ConfidenceTier | null;
 };
 
 /** The tiers that verify a fact for travel (PO 2026-10-07). */
@@ -78,10 +78,9 @@ const MEDICAL_EVENT_TYPES: ReadonlySet<string> = new Set([
   "clinical_info_logged",
 ]);
 
-/** Whether an entry verifies its fact for travel. */
+/** Whether an entry verifies its fact for travel. Unknown tier: it does not. */
 export function verifiesForTravel(e: TravelLibretaEvent): boolean {
-  if (e.confidenceTier === undefined || e.confidenceTier === null) return true;
-  return TRAVEL_VERIFIED_TIERS.has(e.confidenceTier);
+  return e.confidenceTier !== null && TRAVEL_VERIFIED_TIERS.has(e.confidenceTier);
 }
 
 /** The pet facts the travel checks need, from the `pets` row. */
@@ -100,10 +99,15 @@ export type LibretaFacts = {
   rabiesDoses: number[];
   /** Microchip implants, ascending by day. */
   chipImplants: { day: number; dateKnown: boolean }[];
-  /** Any microchip_replaced on record (a replacement or a revocation). */
+  /** Any microchip_replaced on record (a replacement or a revocation) — ANY tier. */
   chipReplaced: boolean;
-  /** The chip on record was revoked with no replacement. */
+  /** The chip on record was revoked with no replacement — ANY tier. */
   chipRevoked: boolean;
+  /**
+   * The latest rabies dose of ANY tier. A newer dose restarts the wait before
+   * travel, so it counts against readiness whoever wrote it.
+   */
+  latestRabiesDoseAnyTier: number | null;
   dewormings: { day: number; type: DewormingType }[];
   /** The most recently issued CVI. */
   latestCvi: { issuedDay: number; validUntilDay: number | null } | null;
@@ -197,10 +201,19 @@ function isTiterRecord(e: TravelLibretaEvent): boolean {
 }
 
 /**
- * Everything the travel checks read from the libreta. Medical facts come from
- * VERIFIED entries only; `withDeclared` re-reads them from every entry when
- * some are merely declared (QA 2026-10-07, bug 1: an owner's own entry closed
- * the requirement).
+ * Everything the travel checks read from the libreta.
+ *
+ * THE ASYMMETRY (PO 2026-10-07, review of viaje-rediseno-web): a fact that
+ * SATISFIES a requirement — a dose, an implant, a deworming, a titre — counts
+ * only from VERIFIED entries; a fact that works AGAINST readiness counts from
+ * ANY tier, because nobody needs a vet's signature to say the chip was revoked:
+ *   · a microchip revocation or replacement (chipRevoked, chipReplaced);
+ *   · a rabies dose newer than the wait allows (latestRabiesDoseAnyTier).
+ * Every other fact the checks read only ever HELPS (a later dose for the
+ * maximum age, an implant before the dose, a deworming in the window), so the
+ * verified reading is the strict one for them. `withDeclared` re-reads the
+ * satisfying facts from every entry when some are merely declared (QA
+ * 2026-10-07, bug 1: an owner's own entry closed the requirement).
  */
 export function readLibreta(events: readonly TravelLibretaEvent[]): LibretaFacts {
   const trusted = events.filter(
@@ -219,7 +232,8 @@ function readFacts(
   const asc = (xs: number[]) => xs.sort((a, b) => a - b);
   const vaccinations = events.filter((e) => e.eventType === "vaccination_administered");
   const vaccineNames = vaccinations.map((e) => fold(str(payloadOf(e).vaccine_name)));
-  const replacements = events
+  // Against readiness: from every entry, whatever its tier.
+  const replacements = all
     .filter((e) => e.eventType === "microchip_replaced")
     .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
   const lastReplacement = replacements[replacements.length - 1];
@@ -237,6 +251,15 @@ function readFacts(
       }))
       .sort((a, b) => a.day - b.day),
     chipReplaced: replacements.length > 0,
+    latestRabiesDoseAnyTier:
+      all
+        .filter(
+          (e) =>
+            e.eventType === "vaccination_administered" &&
+            RABIES.test(fold(str(payloadOf(e).vaccine_name))),
+        )
+        .map((e) => dayOfInstant(e.occurredAt))
+        .sort((a, b) => b - a)[0] ?? null,
     chipRevoked: lastReplacement ? payloadOf(lastReplacement).new_chip_number === null : false,
     dewormings: events
       .filter((e) => e.eventType === "deworming_administered")
@@ -299,6 +322,16 @@ function last(xs: readonly number[]): number | null {
 export function evaluateRabiesWait(waitDays: number, ctx: CheckContext): Evaluation {
   const detail = `Mínimo ${waitDays} días entre la vacuna antirrábica y el viaje`;
   if (ctx.travelDay === null) return withDetail(NO_TRAVEL_DATE, detail);
+  // A newer dose of ANY tier restarts the wait: it counts against readiness.
+  const newest = ctx.libreta.latestRabiesDoseAnyTier;
+  if (newest !== null && newest + waitDays > ctx.travelDay) {
+    return {
+      tone: "over",
+      deadlineLapsed: true,
+      state: "La última dosis no llega a la espera antes del viaje",
+      detail,
+    };
+  }
   const dose = last(ctx.libreta.rabiesDoses);
   if (dose !== null) {
     if (dose + waitDays <= ctx.travelDay) {

@@ -67,6 +67,13 @@ function ObligationDetail({ obligation }: { obligation: TravelObligation }) {
       </summary>
       <div className="mt-1.5 flex flex-col gap-1 rounded-[var(--radius-sm)] bg-[var(--color-ln-paper-2)] px-3 py-2.5 text-sm text-[var(--color-ln-ink-2)]">
         {obligation.detail && <p>{obligation.detail}</p>}
+        {/* What a source adds in its own words (Uruguay's praziquantel, why a
+            datum is unconfirmed) — once each. */}
+        {[...new Set(obligation.sources.map((source) => source.note).filter(Boolean))].map(
+          (note) => (
+            <p key={note}>{note}</p>
+          ),
+        )}
         {obligation.contributingJurisdictions.length > 0 && (
           <p>Exigido por: {obligation.contributingJurisdictions.join(" · ")}</p>
         )}

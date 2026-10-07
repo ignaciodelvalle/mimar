@@ -118,6 +118,12 @@ describe("corridor registry — 2026-09-30 corrections (viajes-fase-2)", () => {
     expect(usa.rules.document_issuance_window_days?.document).toBe("miasis_certificate");
   });
 
+  it("Uruguay's antiparasitic names the praziquantel on its rule", () => {
+    expect(getCorridor("uruguay").rules.parasite_treatment_window_days?.note).toMatch(
+      /praziquantel/,
+    );
+  });
+
   it("Uruguay's microchip is scoped to dogs", () => {
     expect(getCorridor("uruguay").rules.microchip_required?.appliesToSpecies).toEqual(["dog"]);
   });
@@ -137,7 +143,11 @@ describe("v14 additions — paper names, issuers, deadlines, modes (Viaje en pas
   it("each destination names its own paper (QA 2026-10-07 copy 4)", () => {
     expect(getCorridor("chile").paper.shortName).toBe("CZI");
     expect(getCorridor("uruguay").paper.shortName).toBe("CVI Mercosur");
-    expect(getCorridor("brasil").paper.shortName).toBe("CVI Mercosur");
+    // Brasil's own model since 06/09/2025, not the Mercosur one.
+    expect(getCorridor("brasil").paper).toEqual({
+      name: "Certificado Veterinario Internacional (CVI) modelo Portaria MAPA n.º 741/2024",
+      shortName: "CVI Portaria 741",
+    });
     expect(getCorridor("ue_espana").paper.shortName).toBe("Certificado Sanitario UE");
     expect(getCorridor("usa").paper.shortName).toBe("CVI");
     for (const c of CORRIDORS) expect(c.paper.name.length, c.id).toBeGreaterThan(0);

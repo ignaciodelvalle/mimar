@@ -69,10 +69,12 @@ function makeInput(overrides?: Partial<TravelComplianceInput>): TravelCompliance
   };
 }
 
+// Signed by a vet: the fixtures read as verified (an unknown tier would not).
 const rabiesDose = (occurredAt: string) => ({
   eventType: "vaccination_administered",
   payload: { vaccine_name: "Antirrábica" },
   occurredAt,
+  confidenceTier: "professional_verified" as const,
 });
 
 // ---------------------------------------------------------------------------

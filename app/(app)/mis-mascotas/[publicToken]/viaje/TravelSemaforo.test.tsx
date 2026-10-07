@@ -112,7 +112,7 @@ describe("<TravelSemaforo> — the pase (v14)", () => {
       "faltan 39 días",
       "Domingo 15/11/2026 · LATAM, en cabina",
       "3 cosas por resolver · 2 ya están",
-      TRAVEL_SEMAFORO_LABELS.amarillo,
+      "Revisar pendientes",
     ]) {
       expect(html).toContain(text);
     }

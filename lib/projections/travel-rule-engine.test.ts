@@ -102,8 +102,15 @@ function input(overrides: Partial<TravelComplianceInput>): TravelComplianceInput
   };
 }
 
+// Signed by a vet unless a test says otherwise: an UNKNOWN tier reads as
+// declared (the check fails closed), which is not what these tests are about.
 const ev = (eventType: string, occurredAt: string, payload: Record<string, unknown> = {}) =>
-  ({ eventType, occurredAt, payload }) satisfies TravelComplianceEvent;
+  ({
+    eventType,
+    occurredAt,
+    payload,
+    confidenceTier: "professional_verified",
+  }) satisfies TravelComplianceEvent;
 const rabies = (at: string) => ev("vaccination_administered", at, { vaccine_name: "Antirrábica" });
 const chip = (at: string, extra: Record<string, unknown> = {}) =>
   ev("microchip_implanted", at, { chip_number: "032000000000001", ...extra });
@@ -676,7 +683,7 @@ describe("declared vs verified — only a vet or an institution verifies a trave
     expect(o.requirementLevel).toBe("warning");
     expect(o.evidence).toBe("declared");
     expect(o.state).toBe(
-      "Registrada en la libreta, según indicaste. Para el viaje cuenta cuando lo registra un veterinario.",
+      "Registrada en la libreta, sin verificación profesional. Para el viaje cuenta el registro de un veterinario matriculado.",
     );
   });
 
@@ -697,11 +704,31 @@ describe("declared vs verified — only a vet or an institution verifies a trave
     expect(o.state).toBe("Pendiente");
   });
 
-  it("a declared dose that would NOT meet the wait does not dress the requirement up", () => {
-    // Applied 5 days before travel: too recent either way.
-    const o = wait([tiered(rabies("2026-11-10T15:00:00Z"), "self_reported")]);
+  it("a declared dose too recent for the wait counts AGAINST readiness", () => {
+    // Applied 5 days before travel, by the owner: a newer dose restarts the
+    // wait whoever wrote it, even over a vet's older dose that met it.
+    const o = wait([
+      tiered(rabies("2026-09-01T15:00:00Z"), "professional_verified"),
+      tiered(rabies("2026-11-10T15:00:00Z"), "self_reported"),
+    ]);
     expect(o.evidence).toBe("none");
-    expect(o.state).toBe("Pendiente");
+    expect(o.requirementLevel).toBe("blocker");
+    expect(o.state).toBe("La última dosis no llega a la espera antes del viaje");
+  });
+
+  it("a declared AND a verified record: the verified one wins", () => {
+    const o = wait([
+      tiered(rabies("2026-08-01T15:00:00Z"), "self_reported"),
+      tiered(rabies("2026-09-01T15:00:00Z"), "professional_verified"),
+    ]);
+    expect(o.evidence).toBe("verified");
+    expect(o.requirementLevel).toBe("info");
+  });
+
+  it("an entry whose author is unknown reads as declared — the check fails closed", () => {
+    const o = wait([tiered(rabies("2026-09-01T15:00:00Z"), null)]);
+    expect(o.evidence).toBe("declared");
+    expect(o.requirementLevel).toBe("warning");
   });
 
   it("a fully declared Chile libreta never reaches verde, even with every paper ticked", () => {
@@ -740,6 +767,51 @@ describe("declared vs verified — only a vet or an institution verifies a trave
       "document_issuance_window_days:senasa_cvi",
     );
     expect(o.requirementLevel).toBe("info");
+  });
+
+  it("a vet's chip and the OWNER's revocation: no chip, whoever revoked it (review HIGH)", () => {
+    const revoked = ev("microchip_replaced", "2026-09-20T15:00:00Z", {
+      old_chip_number: "032000000000001",
+      new_chip_number: null,
+    });
+    const state = deriveTravelCompliance(
+      input({
+        corridors: chile,
+        events: [chip("2024-01-10T15:00:00Z"), tiered(revoked, "self_reported")],
+      }),
+    );
+    const o = find(state, "microchip_required");
+    expect(o.requirementLevel).not.toBe("info");
+    expect(o.evidence).not.toBe("verified");
+    expect(o.state).toBe("Sin microchip registrado");
+    expect(state.semaforo).not.toBe("verde");
+  });
+
+  it("the owner's chip replacement keeps the chip-before-rabies order amber", () => {
+    const replaced = ev("microchip_replaced", "2026-09-20T15:00:00Z", {
+      old_chip_number: "032000000000001",
+      new_chip_number: "032000000000002",
+    });
+    const o = find(
+      deriveTravelCompliance(
+        input({
+          corridors: [getCorridor("ue_espana")],
+          events: [
+            chip("2024-01-10T15:00:00Z"),
+            rabies("2026-06-01T15:00:00Z"),
+            tiered(replaced, "self_reported"),
+          ],
+        }),
+      ),
+      "microchip_before_vaccination_required",
+    );
+    expect(o.requirementLevel).toBe("warning");
+    expect(o.state).toBe("El microchip fue reemplazado: verificá el orden con tu veterinario");
+  });
+
+  it("an age check rests on the owner-typed birth date: it claims no evidence", () => {
+    const state = deriveTravelCompliance(input({ corridors: [getCorridor("usa")] }));
+    expect(find(state, "min_animal_age_days").evidence).toBeUndefined();
   });
 
   it("only the libreta's answers carry evidence; papers and destination rules do not", () => {

@@ -118,16 +118,22 @@ type ViewEvent = {
   /**
    * The row's author columns. The loader always reads them: they decide
    * whether an entry VERIFIES a travel fact or only declares it (PO
-   * 2026-10-07). Absent only in pure fixtures, where the caller vouches.
+   * 2026-10-07). Absent means unknown, and unknown reads as declared.
+   *
+   * A CORRECTION never changes them: overlayAmendments folds a vet's
+   * event_amended onto the owner's row and the row's author stays the owner,
+   * so the fact stays declared. Deliberate — a correction edits values, it does
+   * not sign the dose; a vet confirming it from Atender writes a FRESH verified
+   * event, and that one counts.
    */
   authorRole?: string;
   authorVerified?: boolean;
   authorOrganizationId?: string | null;
 };
 
-/** The entry's confidence tier, when its author columns were read. */
+/** The entry's confidence tier; null — read as declared — when its author is unknown. */
 function tierOf(e: ViewEvent): TravelComplianceEvent["confidenceTier"] {
-  if (e.authorRole === undefined) return undefined;
+  if (e.authorRole === undefined) return null;
   return computeConfidence({
     authorRole: e.authorRole,
     authorVerified: e.authorVerified ?? false,

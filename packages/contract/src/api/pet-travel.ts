@@ -60,12 +60,16 @@ export const PET_TRAVEL_MODALITY_LABELS: Record<PetTravelModalityV1, string> = {
 };
 
 /**
- * v14 — the seal a requirement carries when the libreta meets it ONLY on the
- * owner's word (`evidence: "declared"`). PO 2026-10-07: for travel, only what a
- * matriculated vet or an institution recorded counts as verified; the owner's
- * own entry, and an organisation without matrícula, are declared.
+ * v14 — the seal a requirement carries when the libreta meets it ONLY through
+ * entries without professional verification (`evidence: "declared"`). PO
+ * 2026-10-07: for travel, only what a matriculated vet or an institution
+ * recorded counts as verified; the owner's own entry, an organisation without
+ * matrícula and a vet whose matrícula is not validated are declared. One
+ * wording for all of them — "Declarado por vos" was false for the last two —
+ * and no pronoun, so it agrees with a vaccine and a microchip alike.
  */
-export const PET_TRAVEL_DECLARED_SEAL = "Declarado por vos · falta que lo registre tu veterinaria";
+export const PET_TRAVEL_DECLARED_SEAL =
+  "Sin verificación profesional · falta el registro de tu veterinaria";
 
 /**
  * How long a client may present a cached copy as current.
