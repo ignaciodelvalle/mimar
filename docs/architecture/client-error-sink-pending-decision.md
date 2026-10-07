@@ -1,10 +1,13 @@
-# Client error telemetry — pending product/legal decision
+# Client error telemetry — decided: Sentry (2026-09-17)
 
 > Snapshot: `c10f4ff03` (`main`) · Facts: `docs/architecture/facts.json` generated 2026-09-02
 > Verified against code on 2026-09-02 by writer D (sonnet subagent) · Status: draft
 > Numbers in this file are `<!-- fact:key -->` markers checked by `__tests__/architecture-facts.test.ts`.
 >
-> Status: PENDING PO DECISION as of 2026-09
+> Status: **DECIDED 2026-09-17 — the PO chose Sentry (option C).** No longer pending; the file keeps its
+> name because other docs cite it. Option B is the live transport until C is wired, and C stays gated
+> on a DSN and the legal sign-off below. Current state: "What changed on 2026-09-17" below and
+> `docs/architecture/integrations.md` §6.
 
 **Status: OPTION B SHIPPED 2026-09-17. C remains open and still needs legal sign-off.**
 **Date raised: 2026-08-29 (observability-sink lane)**
