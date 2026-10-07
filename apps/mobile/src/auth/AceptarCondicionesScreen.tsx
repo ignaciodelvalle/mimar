@@ -50,9 +50,12 @@ import { acceptLegalTerms, signOut } from "./session-store";
 
 export function AceptarCondicionesScreen({
   legalAcceptancePending,
+  acceptedLegalVersion = null,
   next,
 }: {
   legalAcceptancePending: boolean;
+  /** The version this account last accepted, from `/me`; null = never. */
+  acceptedLegalVersion?: string | null;
   /** The destination the gate interrupted; `returnHref` re-checks it. */
   next?: string | string[];
 }) {
@@ -100,11 +103,9 @@ export function AceptarCondicionesScreen({
 
       <Card>
         <Body>Cambió esto:</Body>
-        {/* The CURRENT version's changes. `/me` says only that an acceptance is
-            owed, not which version the account holds, so the app lists what
-            this version changed; the web lists every change since the
-            account's own version. */}
-        {legalChangesSince(null).map((change) => (
+        {/* Every change since the version THIS account accepted (`/me` →
+            `acceptedLegalVersion`), the same list the web shows. */}
+        {legalChangesSince(acceptedLegalVersion).map((change) => (
           <Body key={change}>· {change}</Body>
         ))}
       </Card>

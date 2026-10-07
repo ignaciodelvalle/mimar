@@ -119,3 +119,21 @@ describe("once nothing is owed", () => {
     expect(mockRedirect).toHaveBeenCalledWith("/cuidado/GRT-ABCD-2345");
   });
 });
+
+describe("what changed", () => {
+  it("lists every change since the version the account accepted", () => {
+    render(<AceptarCondicionesScreen legalAcceptancePending acceptedLegalVersion="2026-07-23" />);
+    expect(
+      screen.getByText(
+        "· La política de privacidad nombra a cada proveedor que procesa tus datos y en qué país está.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("· Te pedimos que confirmes que tenés 18 años o más.")).toBeTruthy();
+  });
+
+  it("lists only the newer changes for an account on the previous version", () => {
+    render(<AceptarCondicionesScreen legalAcceptancePending acceptedLegalVersion="2026-09-24" />);
+    expect(screen.queryByText(/nombra a cada proveedor/)).toBeNull();
+    expect(screen.getByText("· Te pedimos que confirmes que tenés 18 años o más.")).toBeTruthy();
+  });
+});

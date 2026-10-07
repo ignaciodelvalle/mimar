@@ -409,6 +409,22 @@ export const sessionPort: SessionPort = {
     return outcome;
   },
 
+  legalAcceptanceRequired() {
+    // The server refused for a legal re-acceptance this device did not know
+    // about yet (accepted on another device's old version, or the version moved
+    // while the app was open). Mark the stored user; `useGate` does the routing.
+    if (state.phase !== "signed-in" || state.user.profilePending) return;
+    if (state.user.legalAcceptancePending === true) return;
+    setState({
+      phase: "signed-in",
+      user: {
+        ...state.user,
+        legalAcceptancePending: true,
+        acceptedLegalVersion: state.user.acceptedLegalVersion ?? null,
+      },
+    });
+  },
+
   async endSession(reason) {
     // A SELF-REVERSIBLE DEACTIVATION DOES NOT END THE SESSION (D4): switching
     // the account back on needs these tokens — see the `account-deactivated`
@@ -1009,6 +1025,8 @@ export async function signUp(input: {
   adultDeclared?: boolean;
   /** The legal version whose consent sentence this bundle displayed. */
   legalVersion?: string;
+  /** When the boxes were ticked (ISO-8601), for the server's audit row. */
+  legalAcceptedAt?: string;
 }): Promise<SignUpResult> {
   const client = authClient();
   if (client === null) {

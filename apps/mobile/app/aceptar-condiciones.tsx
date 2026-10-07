@@ -16,5 +16,11 @@ export default function AceptarCondicionesRoute() {
   if (!gate.allowed) return gate.element;
 
   const pending = !gate.user.profilePending && gate.user.legalAcceptancePending === true;
-  return <AceptarCondicionesScreen next={next} legalAcceptancePending={pending} />;
+  return (
+    <AceptarCondicionesScreen
+      next={next}
+      legalAcceptancePending={pending}
+      acceptedLegalVersion={gate.user.profilePending ? null : gate.user.acceptedLegalVersion}
+    />
+  );
 }

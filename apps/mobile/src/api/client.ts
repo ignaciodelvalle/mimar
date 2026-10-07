@@ -45,6 +45,7 @@
 import type { ApiV1ErrorCode } from "@dim/contract/api";
 
 import { API_BASE_URL } from "../config/api";
+import { APP_VERSION_HEADER, appVersionHeaderValue } from "../config/app-version";
 import { reportHandledFailure, telemetryPath } from "../observability/report";
 import { apiErrorMessage, apiV1ErrorCode, carriesUnknownErrorCode } from "./error-copy";
 
@@ -104,6 +105,13 @@ export type SessionPort = {
   refreshAccessToken(): Promise<RefreshOutcome>;
   /** Drop the local session and send the user to sign-in, with a reason. */
   endSession(reason: SessionEndReason): Promise<void>;
+  /**
+   * The server answered 403 `legal_acceptance_required`: the account owes an
+   * acceptance of the current legal version (2026-10-07). The session is NOT
+   * over — the store marks the user so `useGate` routes to the re-acceptance
+   * screen. Optional so test fakes need not implement it.
+   */
+  legalAcceptanceRequired?(): void;
 };
 
 export type RawResponse =
@@ -194,6 +202,8 @@ export async function performRequest(
         method: spec.method ?? "GET",
         headers: {
           accept: "application/json",
+          // v14+ marker for the legal re-acceptance gate; see config/app-version.ts.
+          [APP_VERSION_HEADER]: appVersionHeaderValue(),
           ...(spec.body === undefined ? {} : { "content-type": "application/json" }),
           ...(init.authorization ? { authorization: init.authorization } : {}),
           ...spec.headers,
@@ -431,6 +441,9 @@ export async function apiRequest<T>(
     // that succeeded and a retry that was still refused means the session is
     // over for a reason a token cannot fix.
     if (reason !== null) await session.endSession(reason);
+    if (result.code === "legal_acceptance_required" && raw.status === 403) {
+      session.legalAcceptanceRequired?.();
+    }
   }
 
   return reportFailure(result, telemetryPath(spec.path));

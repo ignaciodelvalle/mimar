@@ -120,6 +120,13 @@ export function apiErrorMessage(code: ApiV1ErrorCode): string {
     // vocabulary, not one endpoint's subset.
     case "session_shift_expired":
       return "Tu turno de trabajo terminó. Volvé a iniciar sesión para seguir.";
+    // 2026-10-07: the account owes an acceptance of the current legal version.
+    // The store routes to the re-acceptance screen on its own (client.ts →
+    // `legalAcceptanceRequired`); this is the sentence a screen shows meanwhile.
+    case "legal_acceptance_required":
+      return "Actualizamos los términos y la política de privacidad. Aceptalos para seguir.";
+    case "client_upgrade_required":
+      return "Actualizá la app desde Google Play para seguir usando miMAR.";
     case "invalid_request":
       return "La app envió un pedido que el servidor no pudo leer. Actualizá la app.";
     case "signup_failed":

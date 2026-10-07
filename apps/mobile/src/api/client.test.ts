@@ -29,11 +29,13 @@ type StubResponse = { status: number; body: unknown; retryAfter?: string };
 /** Records what was sent, replays a queue of answers. */
 function stubFetch(responses: StubResponse[]) {
   const sentAuthorization: (string | null)[] = [];
+  const sentAppVersion: (string | null)[] = [];
   let call = 0;
 
   const impl = async (_url: string, init: { headers?: Record<string, string> }) => {
     const headers = init?.headers ?? {};
     sentAuthorization.push(headers.authorization ?? null);
+    sentAppVersion.push(headers["x-app-version"] ?? null);
     const answer = responses[Math.min(call, responses.length - 1)];
     call += 1;
     return {
@@ -50,6 +52,7 @@ function stubFetch(responses: StubResponse[]) {
   globalThis.fetch = impl as unknown as typeof fetch;
   return {
     sentAuthorization,
+    sentAppVersion,
     get calls() {
       return call;
     },
@@ -432,5 +435,54 @@ describe("apiRequest — transport vs body", () => {
     } finally {
       globalThis.fetch = original;
     }
+  });
+});
+
+// THE LEGAL RE-ACCEPTANCE GATE, client side (2026-10-07; security review of
+// textos-legales-v14, finding 1). Every request carries `x-app-version` — its
+// presence is what tells this build from v13 — and a 403
+// `legal_acceptance_required` tells the store to route to the re-acceptance
+// screen WITHOUT ending the session.
+describe("apiRequest — the legal re-acceptance gate", () => {
+  it("sends x-app-version on every request", async () => {
+    const fetchStub = stubFetch([{ status: 200, body: ME_OK }]);
+    try {
+      await apiRequest({ path: "/api/v1/me" }, fakeSession());
+      expect(fetchStub.sentAppVersion).toHaveLength(1);
+      expect(fetchStub.sentAppVersion[0]).toBeTruthy();
+    } finally {
+      fetchStub.restore();
+    }
+  });
+
+  it("on 403 legal_acceptance_required asks the store to re-route, and keeps the session", async () => {
+    const fetchStub = stubFetch([{ status: 403, body: { error: "legal_acceptance_required" } }]);
+    const flagged: string[] = [];
+    const session = { ...fakeSession(), legalAcceptanceRequired: () => flagged.push("yes") };
+    try {
+      const result = await apiRequest({ path: "/api/v1/me/pets" }, session);
+      expect(result).toMatchObject({ outcome: "api-error", code: "legal_acceptance_required" });
+      expect(flagged).toEqual(["yes"]);
+      expect(session.ended).toEqual([]);
+    } finally {
+      fetchStub.restore();
+    }
+  });
+
+  it("has es-AR copy for both new codes", () => {
+    expect(
+      apiFailureMessage({
+        outcome: "api-error",
+        code: "client_upgrade_required",
+        retryAfterSeconds: null,
+      }),
+    ).toContain("Actualizá la app desde Google Play");
+    expect(
+      apiFailureMessage({
+        outcome: "api-error",
+        code: "legal_acceptance_required",
+        retryAfterSeconds: null,
+      }),
+    ).toContain("Aceptalos para seguir");
   });
 });
