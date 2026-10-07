@@ -37,7 +37,7 @@
 // mistake — see `@dim/contract/input`'s `welfare-report.ts`.
 
 import * as Linking from "expo-linking";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { WelfareLocationMatchV1 } from "@dim/contract/api";
@@ -56,6 +56,7 @@ import {
 import { apiFailureMessage } from "../api/client";
 import { sendWelfareReportCommand } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
+import { createAttemptSession } from "../pets/idempotency";
 import type { AcceptedImage } from "../pets/pet-photo-view-model";
 import { LocationPicker } from "../ui/LocationPicker";
 import { Body } from "../ui/components";
@@ -138,6 +139,14 @@ export function DenunciaScreen({
   const [matches, setMatches] = useState<WelfareLocationMatchV1[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  // ONE key per denuncia (plan A5f), the same rule AltaScreen's registration
+  // follows (pets/idempotency.ts): every re-send of THIS denuncia — after a
+  // timeout, an unreachable server, a 503 — carries it, so the one that
+  // actually landed answers instead of a second denuncia and a second case.
+  // A new key only once this one is filed; leaving the screen drops the ref.
+  // Same accepted cost as there: an edit after a send that in fact committed
+  // re-sends under the same key and is told it was already received.
+  const attempt = useRef(createAttemptSession());
   // Bumped by "Hacer otra denuncia" so the photo block starts empty again.
   const [evidenceEpoch, setEvidenceEpoch] = useState(0);
   // THE BACK GESTURE MAY NOT DISCARD A TYPED DENUNCIA (critic gap 2). This is
@@ -196,7 +205,7 @@ export function DenunciaScreen({
       setPhase({ name: "form", error: missing });
       return;
     }
-    const draft = buildFileDenunciaCommand(values);
+    const draft = buildFileDenunciaCommand(values, attempt.current.key());
     if (!draft.ok) {
       setPhase({ name: "form", error: denunciaInputMessage(draft.code) });
       return;
@@ -215,6 +224,8 @@ export function DenunciaScreen({
       setPhase({ name: "form", error: "No pudimos enviar la denuncia. Probá de nuevo." });
       return;
     }
+    // Filed: the next denuncia is a different one, with a key of its own.
+    attempt.current.restart();
     setPhase({
       name: "filed",
       referenceCode: result.payload.referenceCode,

@@ -436,3 +436,19 @@ describe("a denuncia's locality picked from the map's candidates", () => {
     expect(draft.ok && draft.input).toMatchObject({ locationLocalityIndecId: null });
   });
 });
+
+describe("the denuncia's idempotency key (plan A5f)", () => {
+  const KEY = "00000000-0000-4000-8000-00000000abcd";
+
+  it("rides the file command when the screen hands one in", () => {
+    const draft = buildFileDenunciaCommand({ ...FILLED, anonymous: true }, KEY);
+    expect(draft.ok && draft.input).toMatchObject({ clientIdempotencyKey: KEY });
+  });
+
+  it("is absent — not an empty string — when none is given", () => {
+    const draft = buildFileDenunciaCommand({ ...FILLED, anonymous: true });
+    expect(
+      draft.ok && (draft.input as { clientIdempotencyKey?: unknown }).clientIdempotencyKey,
+    ).toBeFalsy();
+  });
+});
