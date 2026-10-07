@@ -114,7 +114,7 @@ const ENV_TARGET = resolveEnvTarget(SUPABASE_URL, DATABASE_URL, ALLOW_REMOTE, "s
 // Deferred imports (after env load)
 // ---------------------------------------------------------------------------
 
-const { and, eq, isNull, ne, or } = await import("drizzle-orm");
+const { and, eq, isNull, ne, or, sql } = await import("drizzle-orm");
 // Deferred like the rest: getPepper() reads DNI_HASH_PEPPER from the env this
 // script loads above, and the seed must hash with the same helper the real
 // writer uses — a second implementation here would drift from migration 0106.
@@ -141,6 +141,7 @@ const {
   db,
   govtAssignments,
   notifications,
+  orgFoundAnimalIntake,
   organizationCoverage,
   organizationMemberships,
   organizations,
@@ -619,6 +620,85 @@ async function provisionOrg(
   }
 
   return { orgAdminUserId: orgAdminId, orgId, orgToken: orgRow.publicToken };
+}
+
+// ---------------------------------------------------------------------------
+// Step 12 — P4 fixtures: who receives found animals near the lost pet
+// (DIRECT INSERT — no writer for an org's existence outside verification)
+// ---------------------------------------------------------------------------
+//
+// e2e/found-animal-help.spec.ts drives the finder's plan-B list: the
+// /encontre confirmation, the urgent "vets first" order, and the three blocks
+// of /encontre-un-animal. Both orgs sit in Palermo, a few km from the lost
+// pet's last-seen point and inside the map's default centre radius, so the
+// list is not empty whichever way the e2e's point lands. The intake row goes
+// through the table's audit trigger, which needs an accountable actor: the
+// admin, set transaction-locally exactly as the production writer does.
+
+const P4_RECEIVER_TOKEN = "DIM-P4-RECEPTORA";
+const P4_VET_TOKEN = "DIM-P4-VETERINARIA";
+
+async function ensureP4Org(values: typeof organizations.$inferInsert): Promise<string> {
+  const [existing] = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.publicToken, values.publicToken))
+    .limit(1);
+  if (existing) {
+    log("SKIP", `org ${values.publicToken} ya existe`);
+    return existing.id;
+  }
+  const [row] = await db.insert(organizations).values(values).returning({ id: organizations.id });
+  log("OK", `org ${values.publicToken} creada`);
+  return row.id;
+}
+
+async function seedFoundAnimalReceivers(adminId: string): Promise<void> {
+  log("STEP", "12/12 — receptoras de animales encontrados (e2e fixture: plan B del hallazgo)");
+
+  const receiverId = await ensureP4Org({
+    publicToken: P4_RECEIVER_TOKEN,
+    displayName: "Refugio Receptor Palermo",
+    legalName: "Refugio Receptor Palermo (Test)",
+    orgType: "shelter",
+    email: "receptora@dim.test",
+    verified: true,
+    status: "active",
+    jurisdictionProvince: "CABA",
+    jurisdictionLocality: "Palermo",
+    locationLat: "-34.5810000",
+    locationLng: "-58.4270000",
+  });
+  await ensureP4Org({
+    publicToken: P4_VET_TOKEN,
+    displayName: "Veterinaria Palermo",
+    legalName: "Veterinaria Palermo (Test)",
+    orgType: "clinic",
+    email: "veterinaria-palermo@dim.test",
+    verified: true,
+    status: "active",
+    publicDirectoryOptIn: true,
+    jurisdictionProvince: "CABA",
+    jurisdictionLocality: "Palermo",
+    locationLat: "-34.5880000",
+    locationLng: "-58.4190000",
+  });
+
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.actor_user_id', ${adminId}, true)`);
+    const values = {
+      accepting: true,
+      capacityStatus: "recibimos",
+      publicContactKind: "whatsapp",
+      publicContactValue: "+54 9 11 5555-0102",
+      publicHours: "Lunes a sábado de 10 a 18",
+    };
+    await tx
+      .insert(orgFoundAnimalIntake)
+      .values({ organizationId: receiverId, ...values })
+      .onConflictDoUpdate({ target: orgFoundAnimalIntake.organizationId, set: values });
+  });
+  log("OK", `${P4_RECEIVER_TOKEN} recibe animales encontrados`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1642,6 +1722,7 @@ async function main() {
   await seedShelterPets(orgId, orgAdminUserId);
   await seedLostPet(ownerId);
   await seedAdoptionListing(orgId, orgAdminUserId);
+  await seedFoundAnimalReceivers(adminId);
 
   log("DONE", "seed complete");
   console.log("\n=== Access summary ===");
