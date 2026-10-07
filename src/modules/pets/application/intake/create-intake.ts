@@ -233,9 +233,18 @@ export function parseIntakeForm(formData: FormData) {
 /**
  * The pet a previous submit with this key already registered, or null.
  * The `pet_registered` event is the ledger entry the key anchors on.
+ *
+ * SCOPED TO THE AUTHOR ORGANIZATION, the way the owner alta was scoped in FB-3
+ * (pets-repository.ts findDuplicateRegistration). A key alone is global, and the
+ * CSV import DERIVES its keys (`deriveBulkIdempotencyKey(fileHash, rowIndex)`):
+ * a second org importing the same file would have been handed the FIRST org's
+ * pet tokens and names as its own "replayed" rows. Scoped to the org rather
+ * than the user, because a colleague resubmitting the org's chunk is the same
+ * request.
  */
 async function findIntakeReplay(
   executor: Pick<typeof db, "select">,
+  organizationId: string,
   clientIdempotencyKey: string,
 ): Promise<{ publicToken: string; name: string } | null> {
   const [existing] = await executor
@@ -246,6 +255,7 @@ async function findIntakeReplay(
       and(
         eq(petEvents.eventType, "pet_registered"),
         eq(petEvents.clientIdempotencyKey, clientIdempotencyKey),
+        eq(petEvents.authorOrganizationId, organizationId),
       ),
     )
     .limit(1);
@@ -290,7 +300,7 @@ export async function createIntake(
   // got a failure. So the ledger answers first. The locked re-check inside the
   // transaction still serializes two concurrent twins.
   if (parsed.clientIdempotencyKey) {
-    const replayed = await findIntakeReplay(db, parsed.clientIdempotencyKey);
+    const replayed = await findIntakeReplay(db, organization.id, parsed.clientIdempotencyKey);
     if (replayed) return intakeReplayResult(orgToken, formData, replayed);
   }
 
@@ -453,12 +463,13 @@ export async function createIntake(
       // intake wizard must not create a second pet + idents. The wizard sends a
       // stable clientIdempotencyKey per form session; the pet_registered event
       // anchors it. The advisory lock serializes concurrent same-key submits so
-      // the second one always sees the first one's committed row.
+      // the second one always sees the first one's committed row. Lock and
+      // lookup are both narrowed to (org, key) — see findIntakeReplay.
       if (parsed.clientIdempotencyKey) {
         await tx.execute(
-          sql`SELECT pg_advisory_xact_lock(hashtext(${parsed.clientIdempotencyKey}))`,
+          sql`SELECT pg_advisory_xact_lock(hashtext(${organization.id} || ':' || ${parsed.clientIdempotencyKey}))`,
         );
-        const existing = await findIntakeReplay(tx, parsed.clientIdempotencyKey);
+        const existing = await findIntakeReplay(tx, organization.id, parsed.clientIdempotencyKey);
         if (existing) {
           duplicateOf = existing;
           return;

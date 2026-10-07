@@ -74,6 +74,10 @@ let orgId: string;
 
 // Pets created during tests — tracked for afterAll cleanup.
 const createdPetIds: string[] = [];
+// Extra orgs a test creates — deleted in afterAll AFTER their pets' events go:
+// an org delete SET NULLs pet_events.author_organization_id, which the
+// append-only trigger refuses.
+const extraOrgIds: string[] = [];
 
 async function purgeUser(email: string) {
   const { data: list } = await admin.auth.admin.listUsers({ perPage: 200 });
@@ -157,6 +161,10 @@ afterAll(async () => {
       await tx.delete(pets).where(eq(pets.id, petId));
     }
   });
+
+  for (const extraOrgId of extraOrgIds) {
+    await db.delete(organizations).where(eq(organizations.id, extraOrgId));
+  }
 
   if (orgId) {
     await db
@@ -299,6 +307,74 @@ describe("createIntake — idempotency guard", () => {
     // hard block (either custody wording), not some unrelated refusal.
     expect([chipMatchActiveBlockMessage(null), chipMatchActiveBlockMessage("owner")]).toContain(
       other.error,
+    );
+  });
+
+  // The replay is scoped to the AUTHOR ORG. The CSV import derives its keys
+  // from (fileHash, rowIndex), so two orgs importing the same file present the
+  // same key — and the second must get a pet of its own, never the first org's
+  // token and name.
+  it("the same key from ANOTHER org is not a replay: it registers that org's own pet", async () => {
+    const sharedKey = crypto.randomUUID();
+    const intakeFd = () => {
+      const fd = new FormData();
+      fd.set("name", "Intake Otra Org");
+      fd.set("species", "cat");
+      fd.set("intakeReason", "rescue");
+      fd.set("noRedirect", "1");
+      fd.set("clientIdempotencyKey", sharedKey);
+      return fd;
+    };
+    const [otherOrg] = await db
+      .insert(organizations)
+      .values({
+        publicToken: `IDEM-ORG2-${sharedKey.slice(0, 6).toUpperCase()}`,
+        legalName: "Otro Refugio Idempotencia SRL",
+        displayName: "Otro Refugio Idempotencia",
+        orgType: "shelter",
+        email: `idem-guards-org2-${sharedKey.slice(0, 8)}@dim-test.local`,
+        verified: true,
+      })
+      .returning();
+    extraOrgIds.push(otherOrg.id);
+
+    const first = await createIntake(
+      "IDEMORGTOK",
+      { id: ownerUserId },
+      { id: orgId, displayName: "Refugio Idempotencia", verified: true },
+      intakeFd(),
+    );
+    const second = await createIntake(
+      "IDEMORGTOK2",
+      { id: helperUserId },
+      { id: otherOrg.id, displayName: "Otro Refugio Idempotencia", verified: true },
+      intakeFd(),
+    );
+    for (const r of [first, second]) {
+      const [p] = await db
+        .select({ id: pets.id })
+        .from(pets)
+        .where(eq(pets.publicToken, r.createdPetToken as string))
+        .limit(1);
+      if (p) createdPetIds.push(p.id);
+    }
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    expect(second.createdPetToken).toBeTruthy();
+    expect(second.createdPetToken).not.toBe(first.createdPetToken);
+
+    const registered = await db
+      .select({ authorOrganizationId: petEvents.authorOrganizationId })
+      .from(petEvents)
+      .where(
+        and(
+          eq(petEvents.eventType, "pet_registered"),
+          eq(petEvents.clientIdempotencyKey, sharedKey),
+        ),
+      );
+    expect(registered.map((r) => r.authorOrganizationId).sort()).toEqual(
+      [orgId, otherOrg.id].sort(),
     );
   });
 });
