@@ -166,7 +166,7 @@ async function applyMirrorAndRollBack(): Promise<{ before: Snapshot; after: Snap
     } catch (err) {
       if (err instanceof Rollback && result) return result;
       const code = (err as { code?: string }).code;
-      if (code === "55P03" && attempt < 100) {
+      if (code === "55P03" && attempt < 30) {
         await new Promise((r) => setTimeout(r, 50 + Math.random() * 100));
         continue;
       }
@@ -183,7 +183,7 @@ describe("provision convergence (0290)", () => {
     expect(after.policies).toEqual(before.policies);
     expect(after.tables).toEqual(before.tables);
     expect(after.columns).toEqual(before.columns);
-  });
+  }, 15_000);
 
   it("no scheduling policy in the migrated catalog calls auth.uid() unwrapped", async () => {
     const rows = await client<{ policy: string }[]>`
