@@ -36,10 +36,13 @@ import {
   makeProfile,
   newFoundAnimalFixtures,
   setIntake,
+  sweepLeftovers,
   teardownFoundAnimalFixtures,
 } from "./_helpers/found-animal-fixtures";
 
-const fx: FoundAnimalFixtures = newFoundAnimalFixtures();
+// One prefix per file: sweepLeftovers() may only ever touch this file's rows.
+const PREFIX = "P4READ";
+const fx: FoundAnimalFixtures = newFoundAnimalFixtures(PREFIX);
 
 // The finder's hand-placed point, deliberately OFF the 0.01° grid so a leak of
 // the raw value is recognisable in the output.
@@ -63,6 +66,7 @@ async function org(label: string, spec: Parameters<typeof makeOrg>[1], intake?: 
 }
 
 beforeAll(async () => {
+  await sweepLeftovers(PREFIX);
   actor = await makeProfile(fx, "admin");
   // ~1.1 km and ~5.6 km north of the finder (on the grid): nearest first.
   await org("near", {
@@ -160,7 +164,7 @@ describe("findNearbyHelp — the projection is public-safe", () => {
     // A clinic carries no capacity or contact of its own here: its contact
     // lives on its directory profile.
     expect(help.vets[0].contact).toBeNull();
-    expect(help.vets[0].profileHref).toMatch(/^\/refugios\/P4-/);
+    expect(help.vets[0].profileHref).toMatch(/^\/refugios\/P4READ-/);
 
     const wire = JSON.stringify(help);
     expect(wire).not.toMatch(/Razon Social Privada/);
