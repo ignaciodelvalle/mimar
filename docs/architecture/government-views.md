@@ -107,7 +107,9 @@ Two fences and one ratchet watch this:
   existing ones are baselined in `scripts/scope-discipline-baseline.json`.
 - `scripts/check-scope-authz.ts` — every table the scope layer narrows must have
   RLS enabled in the database, so the app's promise is not decoration.
-- `scripts/check-authz-scoping.ts` — report-only, fails on per-file growth only.
+- `scripts/check-authz-scoping.ts` — AST-based: a tenant-guarded action must
+  thread the guard's result into its work; tolerated exceptions are named,
+  reasoned entries in `scripts/authz-scoping-baseline.json`.
 
 The strongest behavioural evidence in this area is
 `__tests__/gob-pet-subview-jurisdiction-fence.test.ts`: real Postgres, real SQL,

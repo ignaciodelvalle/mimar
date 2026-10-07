@@ -338,15 +338,19 @@ Two fences watch this layer:
   on twenty-seven tables and no screen noticed, because nothing ever compared
   what the app narrows against what the database would hand a direct client.
 
-`scripts/check-authz-scoping.ts` is a third, weaker instrument: a ratchet that
-fails on per-file growth and, since 2026-09-18 (A01-8), on the SUM — a live total
-below the baseline total is red until the baseline is re-recorded, so a burned-down
-offender's slot cannot carry over into a later commit. It counts, it does not track
-which exports offend: a fix and a new offender in the same file in one commit net to
-zero, and nothing but review stops a commit from raising the baseline JSON. The
-recorded total only goes down across commits while every diff to
-`scripts/authz-scoping-baseline.json` is reviewed. It still proves nothing about the
-offenders it tolerates; the burn-down belongs to the pilot loop.
+`scripts/check-authz-scoping.ts` is a third, weaker instrument. Since A5d
+(2026-10-07) it reads the TypeScript AST instead of searching for words: an action
+that calls a tenant guard is scoped only when a value bound from that guard or the
+session reaches its work (a writer or use-case argument, a WHERE predicate, an
+identity re-check), or when the guard is pinned to the row the action acts on.
+Strings, comments and identifier names no longer count — the regex version passed
+`resolvePlaceFromQueueAction` only because a `revalidatePath` string contained
+"localidades". It trusts delegation: a writer handed the actor is not inspected.
+The baseline is keyed by export with a one-line reason per entry; a new offender,
+a stale entry or an unreasoned one is red, so a fix and a new offender in one file
+no longer net to zero. Nothing but review stops a commit from ADDING an entry to
+`scripts/authz-scoping-baseline.json`, and the fence still proves nothing about
+the offenders it tolerates.
 
 ## Layer 5 — the authz fence, and what it accepts
 
