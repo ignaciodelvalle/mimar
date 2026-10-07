@@ -27,6 +27,20 @@
 // capture sheet for zero-pet owners" — it never did). The former /cuenta/casos
 // #casos anchor now points at /mis-mascotas#inbox directly.
 //
+// Something waiting on an answer → the index, too (2026-10). An invitation to
+// look after somebody's animal, or an offer of its titularidad, has no
+// credential to live on — the same reason a pets-less owner lands on the index.
+// A staging invitee "did not see" a pending invitation for a week because the
+// door he opens every day led straight past it into his own pet. So a BARE
+// /inicio (no forwarded query: a deep link such as ?sheet=anotar keeps the
+// destination it asked for) lands on /mis-mascotas while anything is pending,
+// where the "Esperan tu respuesta" banner sits on top. The read matches by
+// ACCOUNT ID ONLY — no second auth.getUser() on the front door — which is the
+// case that matters: an invitation to an address with an account is linked to
+// it. An open e-mail invitation still shows on the index, which reads with the
+// e-mail. The pet profile stays bannerless: its first block is the credential
+// (AGENTS.md design rule 6.1, "no conditional banner precedes it").
+//
 // Vet gate: /inicio is also a post-login landing target, so a dual-role vet can
 // arrive here. It honours the SAME vet-landing gate /mis-mascotas uses
 // (resolveVetLanding unless ?as=owner) so the two owner entry points behave
@@ -34,6 +48,7 @@
 
 import { redirect } from "next/navigation";
 
+import { loadPendingIncoming } from "@/app/(app)/_lib/pending-incoming";
 import { loadWithTimeout } from "@/lib/analytics/analytics-load";
 import {
   fetchComplianceStatesForPets,
@@ -47,6 +62,9 @@ import { resolveVetLanding } from "@/lib/infra/role-landing";
 import { lnPetStatusFromCompliance } from "@/lib/projections/pet-compliance";
 
 export const dynamic = "force-dynamic";
+
+/** The front door waits less than the index does: a slow banner read lands normally. */
+const INICIO_PENDING_BUDGET_MS = 1_500;
 
 export default async function InicioPage({
   searchParams,
@@ -100,6 +118,18 @@ export default async function InicioPage({
     redirect(indexHref);
   }
 
+  // Started only once the index is not already the answer, beside the
+  // compliance read and awaited after it. Never rejects: a slow or failed read
+  // resolves `null` and the owner lands on their pet as before.
+  const pendingRead =
+    query === ""
+      ? loadPendingIncoming(
+          { userId: user.id, callerEmail: "", callerEmailConfirmed: false },
+          undefined,
+          INICIO_PENDING_BUDGET_MS,
+        )
+      : Promise.resolve(null);
+
   // Compliance over the live set — the SAME projection the index and the
   // profile read (deriveComplianceState → lnPetStatusFromCompliance), so the
   // urgency order here can never disagree with the carousel dots.
@@ -111,6 +141,10 @@ export default async function InicioPage({
   );
   if (!complianceLoad.ok) redirect(indexHref);
   const complianceByPet = complianceLoad.value;
+
+  // Something waits on this person's answer → the index, where the banner is.
+  const pending = await pendingRead;
+  if (pending !== null && pending.items.length > 0) redirect(indexHref);
 
   const carouselInput: CarouselPetInput[] = livePets.map((p) => {
     const compliance = complianceByPet.get(p.id);
