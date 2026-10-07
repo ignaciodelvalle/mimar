@@ -15,7 +15,7 @@
 // and the FIRST read that is still allowed to empty the screen.
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { act, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
 const mockFetch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 
@@ -190,5 +190,65 @@ describe("AdoptionDetailScreen — coming back does not delete the ficha (F7)", 
     await waitFor(() => expect(screen.getByText("Ver otras en adopción")).toBeOnTheScreen());
     expect(screen.queryByText("No pudimos actualizar")).toBeNull();
     expect(screen.queryByText("Lola")).toBeNull();
+  });
+});
+
+function withPhotos(photoUrls: string[]): AdoptionDetailV1 {
+  const base = listed();
+  if (base.detail.state !== "listed") throw new Error("fixture is listed");
+  return { ...base, detail: { ...base.detail, photoUrls } };
+}
+
+describe("AdoptionDetailScreen — the photos", () => {
+  it("leads with the paw when the shelter uploaded no photo", async () => {
+    mockFetch.mockResolvedValue({ outcome: "ok", payload: withPhotos([]) });
+    renderScreen();
+    await screen.findByText("Lola");
+    expect(
+      screen.getByTestId("adoption-hero-fallback", { includeHiddenElements: true }),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("adoption-carousel")).toBeNull();
+  });
+
+  it("draws one hero photo, labelled, without a pager", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: withPhotos(["https://cdn.test/lola-1.jpg"]),
+    });
+    renderScreen();
+    const photo = await screen.findByLabelText("Foto de Lola");
+    expect(photo.props.source).toEqual({ uri: "https://cdn.test/lola-1.jpg" });
+    expect(screen.queryByTestId("adoption-carousel")).toBeNull();
+    expect(screen.queryByText("1 de 1")).toBeNull();
+  });
+
+  it("pages through several photos and says which one is showing", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: withPhotos([
+        "https://cdn.test/lola-1.jpg",
+        "https://cdn.test/lola-2.jpg",
+        "https://cdn.test/lola-3.jpg",
+      ]),
+    });
+    renderScreen();
+    await screen.findByText("Lola");
+    const carousel = screen.getByTestId("adoption-carousel");
+    expect(carousel.props.horizontal).toBe(true);
+    expect(carousel.props.pagingEnabled).toBe(true);
+    expect(screen.getByLabelText("Foto 1 de 3 de Lola")).toBeTruthy();
+    expect(screen.getByText("1 de 3")).toBeTruthy();
+  });
+
+  it("falls back to the paw when the hero fails to load", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: withPhotos(["https://cdn.test/broken.jpg"]),
+    });
+    renderScreen();
+    fireEvent(await screen.findByLabelText("Foto de Lola"), "error");
+    expect(
+      screen.getByTestId("adoption-photo-fallback", { includeHiddenElements: true }),
+    ).toBeTruthy();
   });
 });
