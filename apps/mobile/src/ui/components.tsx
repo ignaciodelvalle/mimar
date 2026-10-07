@@ -45,7 +45,39 @@ export function Card({ children, title }: { children: ReactNode; title?: string 
   );
 }
 
-/** A label/value line inside a Card. */
+/**
+ * THE LABEL GIVES WAY; THE VALUE KEEPS ITS WORDS. The flex contract of every
+ * label/value line in the app — `Row`, `ContactRow`, the libreta's fact rows.
+ *
+ * What it replaced, seen on a real J7 (2026-10-07): the label had no flex at
+ * all and the value had `flexShrink: 1`. RN's `flexShrink` defaults to 0, so a
+ * label longer than the row ("Dosis · Antiparasitario de amplio espectro –
+ * Dosis") kept its whole intrinsic width and the VALUE was the only thing
+ * allowed to give way. It gave way to almost nothing: "En 3 días" wrapped one
+ * character per line, the row grew into a tall blank column, and the date — the
+ * one thing the row is for — was unreadable.
+ *
+ * The fix is asymmetric on purpose. Making BOTH sides shrinkable is the trap
+ * `kit.tsx`'s `listRow` docblock already wrote down: Yoga hands out the
+ * negative space in proportion to each child's basis, so a long label and a
+ * short value still starve the short side. Instead:
+ *
+ *   · the label is `flex: 1` — basis 0, it takes whatever the value leaves and
+ *     wraps inside it;
+ *   · the value does NOT shrink below its own width, and is capped at half the
+ *     row, so a long value (a note, an email) wraps by WORDS inside its half
+ *     instead of pushing the label to nothing.
+ *
+ * Half, not 45%: free-text values (a shelter's notes, a caretaker grant's
+ * scope sentence) use this primitive too, and a narrower column made them as
+ * tall as the bug did. Neither side can now drop below half the row.
+ */
+export const LABEL_VALUE_FLEX = {
+  label: { flex: 1, flexShrink: 1 },
+  value: { flexShrink: 0, maxWidth: "50%" },
+} as const;
+
+/** A label/value line inside a Card. See `LABEL_VALUE_FLEX` for its layout. */
 export function Row({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.row}>
@@ -290,18 +322,27 @@ const styles = StyleSheet.create({
     color: COLORS.inkMuted,
   },
   row: { flexDirection: "row", justifyContent: "space-between", gap: SPACE.md },
-  rowLabel: { fontFamily: FONTS.sans, color: COLORS.inkMuted, fontSize: TYPE.md },
+  rowLabel: {
+    ...LABEL_VALUE_FLEX.label,
+    fontFamily: FONTS.sans,
+    color: COLORS.inkMuted,
+    fontSize: TYPE.md,
+  },
   rowValue: {
+    ...LABEL_VALUE_FLEX.value,
     fontFamily: FONTS.sansSemibold,
     color: COLORS.ink,
     fontSize: TYPE.md,
-    flexShrink: 1,
     textAlign: "right",
   },
   // ContactRow: the value reads as the link it is, and the row is a full
   // touch target — a phone or email nobody can hit is worse than plain text.
   contactRow: { minHeight: TOUCH_TARGET, alignItems: "center" },
-  contactValue: { color: COLORS.accent, textDecorationLine: "underline" },
+  // A WIDER cap than a plain Row's half. A contact row's label is always one
+  // short word ("Contacto", "Teléfono"), and its value is an email or a phone
+  // number with no spaces to wrap on — at half the row an ordinary address
+  // broke mid-word. The label still keeps the remaining 30%.
+  contactValue: { color: COLORS.accent, textDecorationLine: "underline", maxWidth: "70%" },
   body: {
     fontFamily: FONTS.sans,
     color: COLORS.inkSoft,

@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { fireEvent, render, screen } from "@testing-library/react-native";
-import { Platform, processColor } from "react-native";
+import { Platform, StyleSheet, processColor } from "react-native";
 
 // Resolved by default: the component chains `.catch()` off the return value,
 // and an unmocked `jest.fn()` resolves that call against `undefined`, not a
@@ -14,7 +14,7 @@ const mockOpenURL = jest.fn<(url: string) => Promise<unknown>>().mockResolvedVal
 
 jest.mock("expo-linking", () => ({ openURL: (url: string) => mockOpenURL(url) }));
 
-import { Alert, ContactRow, ErrorNotice, StaleNotice } from "./components";
+import { Alert, ContactRow, ErrorNotice, LABEL_VALUE_FLEX, Row, StaleNotice } from "./components";
 import { RIPPLE } from "./kit";
 
 // The mock is module-scoped, so without this every `toHaveBeenCalledWith`
@@ -189,5 +189,48 @@ describe("the notices announce themselves", () => {
     // reason both exist, and a change that made this one assertive would be a
     // regression a same-value assertion could never see.
     expect(liveRegionOf(tree)).toBe("polite");
+  });
+});
+
+// THE LABEL GIVES WAY; THE VALUE KEEPS ITS WORDS (`LABEL_VALUE_FLEX`).
+//
+// jest has no layout engine, so these pin the CONTRACT that produces the
+// layout rather than pixels. What they guard against is real: on a J7 the
+// label had no flex and the value was the only side allowed to shrink, so
+// "En 3 días" wrapped one character per line under a long libreta label.
+describe("Row's label/value flex contract", () => {
+  const LONG_LABEL = "Dosis · Antiparasitario de amplio espectro – Dosis de refuerzo trimestral";
+
+  function styleOf(text: string) {
+    return StyleSheet.flatten(screen.getByText(text).props.style);
+  }
+
+  it("lets the label shrink and grow into what the value leaves", () => {
+    render(<Row label="Especie" value="Perro" />);
+    expect(styleOf("Especie")).toMatchObject({ flex: 1, flexShrink: 1 });
+  });
+
+  it("never lets the value shrink, and caps it at half the row so it wraps by words", () => {
+    render(<Row label="Especie" value="Perro" />);
+    const value = styleOf("Perro");
+    expect(value.flexShrink).toBe(0);
+    expect(value.maxWidth).toBe("50%");
+  });
+
+  it("keeps a short value whole beside a long label — the J7 regression", () => {
+    render(<Row label={LONG_LABEL} value="En 3 días" />);
+    // Both on screen, the value as ONE string (not split across lines by a
+    // zero-width column), and each side carrying its half of the contract.
+    expect(screen.getByText("En 3 días")).toBeOnTheScreen();
+    expect(styleOf(LONG_LABEL)).toMatchObject(LABEL_VALUE_FLEX.label);
+    expect(styleOf("En 3 días")).toMatchObject(LABEL_VALUE_FLEX.value);
+  });
+
+  it("gives a contact's value more room than a plain Row, and still never shrinks it", () => {
+    render(<ContactRow label="Contacto" value="juan.perez.gonzalez@example.com" />);
+    const value = styleOf("juan.perez.gonzalez@example.com");
+    expect(value.flexShrink).toBe(0);
+    expect(value.maxWidth).toBe("70%");
+    expect(styleOf("Contacto")).toMatchObject(LABEL_VALUE_FLEX.label);
   });
 });

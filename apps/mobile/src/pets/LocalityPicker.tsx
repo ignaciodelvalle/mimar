@@ -450,17 +450,21 @@ const styles = StyleSheet.create({
   },
   // The chosen row is the institutional blue, not ink: a filled selection is an
   // ACTION's result, and blue is what this design gives to actions.
+  // The place gives way and wraps; the action keeps its width. Neither side had
+  // a flex, so a long locality, or "Provincia: Tierra del Fuego, Antártida e
+  // Islas del Atlántico Sur", pushed "Cambiar" past the row's edge.
   selected: {
     minHeight: TOUCH_TARGET,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: SPACE.md,
     backgroundColor: COLORS.accent,
     borderRadius: RADIUS.control,
     paddingHorizontal: SPACE.md,
     paddingVertical: SPACE.md,
   },
-  selectedText: { gap: 2 },
+  selectedText: { flex: 1, flexShrink: 1, gap: 2 },
   selectedName: { fontFamily: FONTS.sansSemibold, color: COLORS.surface, fontSize: TYPE.base },
   selectedProvince: {
     fontFamily: FONTS.mono,
@@ -469,12 +473,18 @@ const styles = StyleSheet.create({
     letterSpacing: TYPE.xs * TRACKING.wider,
     opacity: 0.85,
   },
-  selectedClear: { fontFamily: FONTS.sansMedium, color: COLORS.surface, fontSize: TYPE.md },
+  selectedClear: {
+    flexShrink: 0,
+    fontFamily: FONTS.sansMedium,
+    color: COLORS.surface,
+    fontSize: TYPE.md,
+  },
   provinceRow: {
     minHeight: TOUCH_TARGET,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: SPACE.md,
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.control,
     borderWidth: 1,
@@ -482,8 +492,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACE.md,
     paddingVertical: SPACE.sm,
   },
-  provinceRowText: { fontFamily: FONTS.sansSemibold, color: COLORS.ink, fontSize: TYPE.md },
-  provinceRowAction: { fontFamily: FONTS.sansMedium, color: COLORS.accent, fontSize: TYPE.md },
+  provinceRowText: {
+    flex: 1,
+    flexShrink: 1,
+    fontFamily: FONTS.sansSemibold,
+    color: COLORS.ink,
+    fontSize: TYPE.md,
+  },
+  provinceRowAction: {
+    flexShrink: 0,
+    fontFamily: FONTS.sansMedium,
+    color: COLORS.accent,
+    fontSize: TYPE.md,
+  },
   // An outlined pill in the action blue: an offer, not yet a choice — the
   // filled blue row above is what a choice looks like.
   homeChip: {

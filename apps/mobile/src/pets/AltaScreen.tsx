@@ -817,17 +817,31 @@ const styles = StyleSheet.create({
     paddingVertical: SPACE.md,
   },
   optionLabel: { fontFamily: FONTS.sans, color: COLORS.ink, fontSize: TYPE.base },
+  // The breed gives way and wraps; "Quitar" keeps its width. Neither Text had a
+  // flex, so a long breed name pushed "Quitar" past the row's edge.
   selected: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: SPACE.md,
     backgroundColor: COLORS.accent,
     borderRadius: RADIUS.control,
     paddingHorizontal: SPACE.md,
     paddingVertical: SPACE.md,
   },
-  selectedLabel: { fontFamily: FONTS.sansSemibold, color: COLORS.surface, fontSize: TYPE.base },
-  selectedClear: { fontFamily: FONTS.sansMedium, color: COLORS.surface, fontSize: TYPE.md },
+  selectedLabel: {
+    flex: 1,
+    flexShrink: 1,
+    fontFamily: FONTS.sansSemibold,
+    color: COLORS.surface,
+    fontSize: TYPE.base,
+  },
+  selectedClear: {
+    flexShrink: 0,
+    fontFamily: FONTS.sansMedium,
+    color: COLORS.surface,
+    fontSize: TYPE.md,
+  },
   dialogActions: { gap: SPACE.sm, marginTop: SPACE.sm },
   nav: { gap: SPACE.sm, marginTop: SPACE.lg },
   blockedReason: {

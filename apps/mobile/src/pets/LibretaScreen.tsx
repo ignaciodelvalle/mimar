@@ -33,7 +33,15 @@ import type { LibretaEntryV1, LibretaVaccinationSection } from "@dim/contract/ap
 import { apiFailureMessage } from "../api/client";
 import { fetchPetLibreta } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
-import { Body, Card, Loading, Row, StaleNotice, Unavailable } from "../ui/components";
+import {
+  Body,
+  Card,
+  LABEL_VALUE_FLEX,
+  Loading,
+  Row,
+  StaleNotice,
+  Unavailable,
+} from "../ui/components";
 import { FONTS } from "../ui/fonts";
 import { type ReadyState, loaded, reloadFailed } from "../ui/reload-state";
 import { libretaEventRoute } from "../ui/routes";
@@ -483,13 +491,20 @@ const styles = StyleSheet.create({
   },
   entries: { gap: 0 },
   ledgerCount: { fontFamily: FONTS.mono, fontSize: TYPE.sm, color: COLORS.inkMuted },
+  // The `Row` primitive's label/value contract (see LABEL_VALUE_FLEX in
+  // ui/components.tsx): the label gives way, the value keeps its words.
   factRow: { flexDirection: "row", justifyContent: "space-between", gap: SPACE.md },
-  factLabel: { fontFamily: FONTS.sans, fontSize: TYPE.sm, color: COLORS.inkMuted },
+  factLabel: {
+    ...LABEL_VALUE_FLEX.label,
+    fontFamily: FONTS.sans,
+    fontSize: TYPE.sm,
+    color: COLORS.inkMuted,
+  },
   factValue: {
+    ...LABEL_VALUE_FLEX.value,
     fontFamily: FONTS.sansSemibold,
     fontSize: TYPE.sm,
     color: COLORS.ink,
-    flexShrink: 1,
     textAlign: "right",
   },
   factMissing: { fontFamily: FONTS.sans, color: COLORS.inkFaint },

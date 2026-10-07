@@ -230,12 +230,17 @@ const styles = StyleSheet.create({
     alignItems: "baseline",
     gap: SPACE.sm,
   },
+  // The name gives way and wraps; the status keeps its width. Neither Text had
+  // a flex, so a long name pushed the status past the card's edge.
   petName: {
+    flex: 1,
+    flexShrink: 1,
     fontFamily: FONTS.serif,
     fontSize: TYPE.lg,
     color: COLORS.ink,
   },
   status: {
+    flexShrink: 0,
     fontFamily: FONTS.mono,
     fontSize: TYPE.xs,
     color: COLORS.inkMuted,

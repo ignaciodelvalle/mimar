@@ -1025,19 +1025,28 @@ const styles = StyleSheet.create({
     lineHeight: TYPE.sm * LEADING.sm,
     color: COLORS.inkMuted,
   },
+  // The breed gives way and wraps; "Quitar" keeps its width (same fix as
+  // AltaScreen's chip — neither Text had a flex).
   selected: {
     minHeight: TOUCH_TARGET,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: SPACE.md,
     borderWidth: 1,
     borderColor: COLORS.accent,
     borderRadius: 4,
     paddingHorizontal: SPACE.sm,
     paddingVertical: SPACE.sm,
   },
-  selectedLabel: { fontFamily: FONTS.sansSemibold, fontSize: TYPE.base, color: COLORS.ink },
-  selectedClear: { fontFamily: FONTS.mono, fontSize: TYPE.sm, color: COLORS.accent },
+  selectedLabel: {
+    flex: 1,
+    flexShrink: 1,
+    fontFamily: FONTS.sansSemibold,
+    fontSize: TYPE.base,
+    color: COLORS.ink,
+  },
+  selectedClear: { flexShrink: 0, fontFamily: FONTS.mono, fontSize: TYPE.sm, color: COLORS.accent },
   option: {
     minHeight: TOUCH_TARGET,
     justifyContent: "center",
