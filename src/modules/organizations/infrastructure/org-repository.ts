@@ -107,6 +107,7 @@ export class OrgRepository {
         | "description"
         | "personeriaJuridicaNumber"
         | "tier0ShowOriginOrg"
+        | "publicDirectoryOptIn"
         // Canonical coordinate columns (location_lat / location_lng).
         // Legacy columns (latitude / longitude) stay in the DB until Phase C drop.
         | "locationLat"

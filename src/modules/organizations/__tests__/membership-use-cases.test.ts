@@ -40,6 +40,10 @@ function makeMembership(overrides: Partial<OrganizationMembership> = {}): Organi
   };
 }
 
+/** Runs the use case's transaction inline, handing it a recognisable tx. */
+const TX = { tx: true };
+const runTx = <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(TX);
+
 function makeOrg() {
   return {
     id: "org-1",
@@ -52,6 +56,7 @@ function makeOrg() {
     description: null,
     personeriaJuridicaNumber: null,
     tier0ShowOriginOrg: false,
+    publicDirectoryOptIn: false,
     orgType: "refugio",
     verified: true,
     status: "active",
@@ -75,7 +80,12 @@ describe("updateOrganization", () => {
         fields: { displayName: "A" },
       },
       {
-        repo: { findMembershipByUserAndOrgToken: vi.fn(), updateOrgProfile: vi.fn() },
+        repo: {
+          findMembershipByUserAndOrgToken: vi.fn(),
+          updateOrgProfile: vi.fn(),
+          insertAuditLog: vi.fn(),
+        },
+        transaction: runTx,
       },
     );
     expect(result).toEqual({ ok: false, error: "El nombre debe tener entre 2 y 100 caracteres." });
@@ -89,7 +99,12 @@ describe("updateOrganization", () => {
         fields: { displayName: "A".repeat(101) },
       },
       {
-        repo: { findMembershipByUserAndOrgToken: vi.fn(), updateOrgProfile: vi.fn() },
+        repo: {
+          findMembershipByUserAndOrgToken: vi.fn(),
+          updateOrgProfile: vi.fn(),
+          insertAuditLog: vi.fn(),
+        },
+        transaction: runTx,
       },
     );
     expect(result).toEqual({ ok: false, error: "El nombre debe tener entre 2 y 100 caracteres." });
@@ -103,7 +118,12 @@ describe("updateOrganization", () => {
         fields: { displayName: "Valid Name", legalName: "   " },
       },
       {
-        repo: { findMembershipByUserAndOrgToken: vi.fn(), updateOrgProfile: vi.fn() },
+        repo: {
+          findMembershipByUserAndOrgToken: vi.fn(),
+          updateOrgProfile: vi.fn(),
+          insertAuditLog: vi.fn(),
+        },
+        transaction: runTx,
       },
     );
     expect(result).toEqual({ ok: false, error: "El nombre legal no puede quedar vacío." });
@@ -117,7 +137,12 @@ describe("updateOrganization", () => {
         fields: { displayName: "Valid Name", email: "not-an-email" },
       },
       {
-        repo: { findMembershipByUserAndOrgToken: vi.fn(), updateOrgProfile: vi.fn() },
+        repo: {
+          findMembershipByUserAndOrgToken: vi.fn(),
+          updateOrgProfile: vi.fn(),
+          insertAuditLog: vi.fn(),
+        },
+        transaction: runTx,
       },
     );
     expect(result).toEqual({ ok: false, error: "El correo electrónico es inválido." });
@@ -127,6 +152,7 @@ describe("updateOrganization", () => {
     const repo = {
       findMembershipByUserAndOrgToken: vi.fn().mockResolvedValue(null),
       updateOrgProfile: vi.fn(),
+      insertAuditLog: vi.fn().mockResolvedValue(undefined),
     };
     const result = await updateOrganization(
       {
@@ -134,7 +160,7 @@ describe("updateOrganization", () => {
         orgToken: "TKN",
         fields: { displayName: "Valid Name" },
       },
-      { repo },
+      { repo, transaction: runTx },
     );
     expect(result).toEqual({ ok: false, error: "No tenés acceso a esta organización." });
   });
@@ -146,6 +172,7 @@ describe("updateOrganization", () => {
         membership: makeMembership({ role: "coordinator" }),
       }),
       updateOrgProfile: vi.fn(),
+      insertAuditLog: vi.fn().mockResolvedValue(undefined),
     };
     const result = await updateOrganization(
       {
@@ -153,7 +180,7 @@ describe("updateOrganization", () => {
         orgToken: "TKN",
         fields: { displayName: "Valid Name" },
       },
-      { repo },
+      { repo, transaction: runTx },
     );
     expect(result).toEqual({
       ok: false,
@@ -168,6 +195,7 @@ describe("updateOrganization", () => {
         membership: makeMembership({ role: "admin" }),
       }),
       updateOrgProfile: vi.fn().mockResolvedValue(undefined),
+      insertAuditLog: vi.fn().mockResolvedValue(undefined),
     };
     const result = await updateOrganization(
       {
@@ -175,10 +203,141 @@ describe("updateOrganization", () => {
         orgToken: "TKN",
         fields: { displayName: "New Name" },
       },
-      { repo },
+      { repo, transaction: runTx },
     );
     expect(result.ok).toBe(true);
     expect(repo.updateOrgProfile).toHaveBeenCalledOnce();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// update-organization — the public directory listing (migration 0283)
+// ---------------------------------------------------------------------------
+
+describe("updateOrganization — publicDirectoryOptIn", () => {
+  function repoFor(orgType: string, role: OrganizationMembership["role"]) {
+    return {
+      findMembershipByUserAndOrgToken: vi.fn().mockResolvedValue({
+        org: { ...makeOrg(), orgType, publicToken: "TKN" },
+        membership: makeMembership({ role }),
+      }),
+      updateOrgProfile: vi.fn().mockResolvedValue(undefined),
+      insertAuditLog: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  const optIn = (value: boolean) => ({
+    userId: "user-1",
+    orgToken: "TKN",
+    fields: { displayName: "Veterinaria Sur", publicDirectoryOptIn: value },
+  });
+
+  it("refuses a non-admin member of the clinic, and writes nothing", async () => {
+    for (const role of ["coordinator", "member", "vet_individual"] as const) {
+      const repo = repoFor("clinic", role);
+      const result = await updateOrganization(optIn(true), { repo, transaction: runTx });
+      expect(result).toEqual({
+        ok: false,
+        error: "Solo los administradores de la organización pueden editar el perfil.",
+      });
+      expect(repo.updateOrgProfile).not.toHaveBeenCalled();
+    }
+  });
+
+  it("refuses a caller with no membership, and writes nothing", async () => {
+    const repo = {
+      findMembershipByUserAndOrgToken: vi.fn().mockResolvedValue(null),
+      updateOrgProfile: vi.fn(),
+      insertAuditLog: vi.fn().mockResolvedValue(undefined),
+    };
+    const result = await updateOrganization(optIn(true), { repo, transaction: runTx });
+    expect(result).toEqual({ ok: false, error: "No tenés acceso a esta organización." });
+    expect(repo.updateOrgProfile).not.toHaveBeenCalled();
+  });
+
+  it("writes the opt-in for the admin of a clinic, both ways", async () => {
+    for (const value of [true, false]) {
+      const repo = repoFor("clinic", "admin");
+      const result = await updateOrganization(optIn(value), { repo, transaction: runTx });
+      expect(result.ok).toBe(true);
+      expect(repo.updateOrgProfile).toHaveBeenCalledWith(
+        "org-1",
+        expect.objectContaining({ publicDirectoryOptIn: value }),
+        TX,
+      );
+    }
+  });
+
+  it("refuses the setting for a shelter or a rescue network — they are listed on verification alone", async () => {
+    for (const orgType of ["shelter", "rescue_network", "sanitary_authority", "other"]) {
+      const repo = repoFor(orgType, "admin");
+      const result = await updateOrganization(optIn(false), { repo, transaction: runTx });
+      expect(result).toEqual({
+        ok: false,
+        error: "Solo las veterinarias eligen si aparecen en el directorio público.",
+      });
+      expect(repo.updateOrgProfile).not.toHaveBeenCalled();
+    }
+  });
+
+  it("leaves the column alone when the form did not carry the setting", async () => {
+    const repo = repoFor("shelter", "admin");
+    const result = await updateOrganization(
+      { userId: "user-1", orgToken: "TKN", fields: { displayName: "Refugio Norte" } },
+      { repo, transaction: runTx },
+    );
+    expect(result.ok).toBe(true);
+    expect(repo.updateOrgProfile.mock.calls[0]?.[1]).not.toHaveProperty("publicDirectoryOptIn");
+  });
+
+  // Migration 0283: switching the listing publishes or withdraws the clinic's
+  // name and contact, so it is audited — who, when, before → after — in the
+  // transaction that writes the column.
+  it("audits a switch of the listing, in the column's transaction, both ways", async () => {
+    for (const [before, after] of [
+      [false, true],
+      [true, false],
+    ] as const) {
+      const repo = repoFor("clinic", "admin");
+      repo.findMembershipByUserAndOrgToken.mockResolvedValue({
+        org: { ...makeOrg(), orgType: "clinic", publicToken: "TKN", publicDirectoryOptIn: before },
+        membership: makeMembership({ role: "admin" }),
+      });
+      const result = await updateOrganization(optIn(after), { repo, transaction: runTx });
+      expect(result.ok).toBe(true);
+      expect(repo.updateOrgProfile.mock.calls[0]?.[2]).toBe(TX);
+      expect(repo.insertAuditLog).toHaveBeenCalledOnce();
+      expect(repo.insertAuditLog).toHaveBeenCalledWith(
+        {
+          actorUserId: "user-1",
+          action: "org_public_directory_opt_in_changed",
+          targetOrganizationId: "org-1",
+          payload: {
+            org_id: "org-1",
+            before_values: { public_directory_opt_in: before },
+            after_values: { public_directory_opt_in: after },
+          },
+        },
+        TX,
+      );
+    }
+  });
+
+  it("writes no audit row when the clinic re-saves the same value", async () => {
+    const repo = repoFor("clinic", "admin"); // makeOrg(): publicDirectoryOptIn false
+    const result = await updateOrganization(optIn(false), { repo, transaction: runTx });
+    expect(result.ok).toBe(true);
+    expect(repo.updateOrgProfile).toHaveBeenCalledOnce();
+    expect(repo.insertAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("writes no audit row when the form did not carry the setting", async () => {
+    const repo = repoFor("shelter", "admin");
+    await updateOrganization(
+      { userId: "user-1", orgToken: "TKN", fields: { displayName: "Refugio Norte" } },
+      { repo, transaction: runTx },
+    );
+    expect(repo.insertAuditLog).not.toHaveBeenCalled();
   });
 });
 

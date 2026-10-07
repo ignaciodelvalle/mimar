@@ -16,6 +16,8 @@ import {
 // the ONE org-type rule and its vocabulary, both zero-dependency leaves.
 import { isRehomingOrgType } from "@/src/modules/organizations/domain/org-type";
 import { orgVocabulary } from "@/src/modules/organizations/domain/org-type-vocabulary";
+// The directory listing is a clinic's setting (migration 0283).
+import { canOptIntoPublicDirectory } from "@/src/modules/organizations/domain/public-directory";
 
 type Props = {
   organization: Pick<
@@ -35,7 +37,10 @@ type Props = {
     | "capacityCats"
     | "capacityOther"
     | "capacityTotal"
-  >;
+  > &
+    // Optional so a caller that predates migration 0283 still type-checks;
+    // absent reads as "not listed" and "not verified".
+    Partial<Pick<Organization, "publicDirectoryOptIn" | "verified">>;
 };
 
 const initialState: UpdateOrgFormState = { error: null };
@@ -196,6 +201,39 @@ export function EditOrgForm({ organization }: Props) {
             its words follow the org type. */}
         <p className="text-sm text-ln-op-mute pl-6">{vocabulary.originOrgToggleHint}</p>
       </div>
+
+      {/* Public directory listing (migration 0283) — clinics only. Shelters and
+          rescue networks are listed on verification alone, so they get no
+          setting here. */}
+      {canOptIntoPublicDirectory(organization.orgType) && (
+        <fieldset className="space-y-2 rounded-[var(--radius-md)] border border-ln-op-line p-4">
+          <legend className="px-1 text-md font-semibold text-ln-op-ink">Directorio público</legend>
+          {/* Marker: an unchecked checkbox posts nothing, so this field is what
+              tells the action the setting was on the form at all. */}
+          <input type="hidden" name="publicDirectoryOptInPresent" value="1" />
+          <LnCheckbox
+            name="publicDirectoryOptIn"
+            value="true"
+            defaultChecked={keptChecked(
+              "publicDirectoryOptIn",
+              organization.publicDirectoryOptIn ?? false,
+              "true",
+            )}
+          >
+            Aparecer en el directorio público de miMAR
+          </LnCheckbox>
+          <p className="text-sm text-ln-op-mute pl-6">
+            Cualquier persona va a poder encontrar tu veterinaria en "Refugios y veterinarias" y ver
+            su perfil público: nombre, logo, localidad, descripción, correo, teléfono, sitio web y
+            servicios publicados. No mostramos la razón social ni la dirección exacta.
+          </p>
+          {organization.verified === false && (
+            <p className="text-sm text-ln-op-mute pl-6">
+              Vas a aparecer cuando miMAR verifique la organización.
+            </p>
+          )}
+        </fieldset>
+      )}
 
       {/* Shelter capacity section (Item 16 D1) — only for shelter / rescue_network orgs */}
       {isShelter && (

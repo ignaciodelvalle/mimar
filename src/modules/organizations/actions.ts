@@ -20,7 +20,7 @@
 // NO audit_log written (parity gap — do NOT add).
 // NO business logic. NO direct Drizzle imports beyond db for notifications.
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { headers } from "next/headers";
 
 import { db, notifications } from "@/db";
@@ -148,6 +148,14 @@ export async function updateOrganizationAction(
         personeriaJuridicaNumber:
           String(formData.get("personeriaJuridicaNumber") ?? "").trim() || null,
         tier0ShowOriginOrg: formData.get("tier0ShowOriginOrg") === "true",
+        // Directory listing (migration 0283). The form renders the checkbox
+        // only for a clinic, and an unchecked checkbox posts NOTHING — so the
+        // marker field, not the checkbox, says whether the setting was on the
+        // form. Without it a shelter's save would post "false" for a setting
+        // it does not have, and the use case refuses that.
+        publicDirectoryOptIn: formData.has("publicDirectoryOptInPresent")
+          ? formData.get("publicDirectoryOptIn") === "true"
+          : undefined,
         // Shelter capacity (Item 16 D1). Only shelter orgs show the section,
         // but the action accepts them from any org (the form gates by orgType).
         capacityDogs: parseCapacity("capacityDogs"),
@@ -156,13 +164,17 @@ export async function updateOrganizationAction(
         capacityTotal: parseCapacity("capacityTotal"),
       },
     },
-    { repo },
+    { repo, transaction: db.transaction.bind(db) },
   );
 
   if (!result.ok) return { error: result.error };
 
   revalidatePath(`/org/${orgToken}/configuracion`);
   revalidatePath(`/org/${orgToken}`);
+  // The public directory caches its roster (Data Cache, tag "org-directory");
+  // a clinic switching its listing — or any listed org renaming itself — must
+  // show there now, not after the 300s window.
+  revalidateTag("org-directory");
 
   return { error: null, ok: true };
 }

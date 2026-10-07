@@ -6,7 +6,9 @@
 // updateOrganizationAction in ./actions.ts, which derives the userId from the
 // session before delegating to the same use-case.
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+
+import { db } from "@/db";
 
 import { updateOrganization } from "./application/update-organization";
 import { OrgRepository } from "./infrastructure/org-repository";
@@ -25,6 +27,7 @@ export type UpdateOrgInput = {
   description?: string | null;
   personeriaJuridicaNumber?: string | null;
   tier0ShowOriginOrg?: boolean;
+  publicDirectoryOptIn?: boolean;
 };
 
 // Testable inner writer: scopes by the caller-supplied userId. The admin-role
@@ -47,15 +50,19 @@ export async function updateOrganizationForUser(
         description: input.description,
         personeriaJuridicaNumber: input.personeriaJuridicaNumber,
         tier0ShowOriginOrg: input.tier0ShowOriginOrg,
+        publicDirectoryOptIn: input.publicDirectoryOptIn,
       },
     },
-    { repo },
+    { repo, transaction: db.transaction.bind(db) },
   );
 
   if (!result.ok) return { error: result.error };
 
   revalidatePath(`/org/${orgToken}/configuracion`);
   revalidatePath(`/org/${orgToken}`);
+  // Same as the action: the directory roster (tag "org-directory") must not
+  // keep serving a clinic that just switched its listing.
+  revalidateTag("org-directory");
 
   return { error: null, ok: true };
 }

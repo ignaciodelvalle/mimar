@@ -5,10 +5,21 @@
 // Inner admin re-check is performed HERE (independent of outer guard — preserve exactly).
 //
 // Field whitelist: displayName, legalName, email, phone, website, description,
-// personeriaJuridicaNumber, tier0ShowOriginOrg, updatedAt.
+// personeriaJuridicaNumber, tier0ShowOriginOrg, publicDirectoryOptIn (clinics
+// only — migration 0283), updatedAt.
 // Excluded: orgType, verified, status, publicToken, jurisdictionProvince, jurisdictionLocality.
+//
+// AUDIT: a change of publicDirectoryOptIn publishes (or withdraws) the clinic's
+// name and contact on /refugios, so it writes one
+// `org_public_directory_opt_in_changed` audit row — who, when, before → after
+// — in the SAME transaction as the column. Re-saving the form with the value
+// unchanged writes none.
 
-import type { OrgRepository } from "@/src/modules/organizations/infrastructure/org-repository";
+import { canOptIntoPublicDirectory } from "@/src/modules/organizations/domain/public-directory";
+import type {
+  Exec,
+  OrgRepository,
+} from "@/src/modules/organizations/infrastructure/org-repository";
 import type { UseCaseResult } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -27,6 +38,9 @@ export type UpdateOrganizationFields = {
   description?: string | null;
   personeriaJuridicaNumber?: string | null;
   tier0ShowOriginOrg?: boolean;
+  // Listing in the public directory at /refugios (migration 0283). Only a
+  // clinic has the setting; undefined means "not submitted" (keep existing).
+  publicDirectoryOptIn?: boolean;
   // Shelter capacity (Item 16 D1). Nullable — org may leave them unset.
   capacityDogs?: number | null;
   capacityCats?: number | null;
@@ -97,10 +111,14 @@ export type UpdateOrganizationInput = {
   fields: UpdateOrganizationFields;
 };
 
-type RepoDeps = Pick<OrgRepository, "findMembershipByUserAndOrgToken" | "updateOrgProfile">;
+type RepoDeps = Pick<
+  OrgRepository,
+  "findMembershipByUserAndOrgToken" | "updateOrgProfile" | "insertAuditLog"
+>;
 
 type Deps = {
   repo: RepoDeps;
+  transaction: <T>(cb: (tx: unknown) => Promise<T>) => Promise<T>;
 };
 
 // ---------------------------------------------------------------------------
@@ -111,7 +129,7 @@ export async function updateOrganization(
   input: UpdateOrganizationInput,
   deps: Deps,
 ): Promise<UseCaseResult<void>> {
-  const { repo } = deps;
+  const { repo, transaction } = deps;
 
   // 1. Validate fields.
   const validationError = validateFields(input.fields);
@@ -128,23 +146,63 @@ export async function updateOrganization(
     };
   }
 
-  // 3. Build whitelisted update fields.
+  // 3. The directory listing is a clinic's choice. Shelters and rescue
+  //    networks are listed on verification alone (see
+  //    domain/public-directory.ts), so the setting does not exist for them —
+  //    refused rather than stored as a value nothing reads.
   const f = input.fields;
-  await repo.updateOrgProfile(row.org.id, {
-    displayName: f.displayName.trim(),
-    legalName: f.legalName?.trim() || undefined,
-    email: f.email?.trim() || undefined,
-    phone: f.phone?.trim() || null,
-    website: f.website?.trim() || null,
-    description: f.description?.trim() || null,
-    personeriaJuridicaNumber: f.personeriaJuridicaNumber?.trim() || null,
-    ...(f.tier0ShowOriginOrg !== undefined && { tier0ShowOriginOrg: f.tier0ShowOriginOrg }),
-    // Capacity columns (Item 16 D1) — undefined means "not submitted" (keep existing).
-    ...(f.capacityDogs !== undefined && { capacityDogs: f.capacityDogs }),
-    ...(f.capacityCats !== undefined && { capacityCats: f.capacityCats }),
-    ...(f.capacityOther !== undefined && { capacityOther: f.capacityOther }),
-    ...(f.capacityTotal !== undefined && { capacityTotal: f.capacityTotal }),
-    updatedAt: new Date(),
+  if (f.publicDirectoryOptIn !== undefined && !canOptIntoPublicDirectory(row.org.orgType)) {
+    return {
+      ok: false,
+      error: "Solo las veterinarias eligen si aparecen en el directorio público.",
+    };
+  }
+
+  // 4. Build whitelisted update fields; the directory switch, when it moves,
+  //    is audited in the same transaction.
+  const optInBefore = row.org.publicDirectoryOptIn;
+  const optInChanged =
+    f.publicDirectoryOptIn !== undefined && f.publicDirectoryOptIn !== optInBefore;
+  await transaction(async (tx) => {
+    const e = tx as Exec;
+    await repo.updateOrgProfile(
+      row.org.id,
+      {
+        displayName: f.displayName.trim(),
+        legalName: f.legalName?.trim() || undefined,
+        email: f.email?.trim() || undefined,
+        phone: f.phone?.trim() || null,
+        website: f.website?.trim() || null,
+        description: f.description?.trim() || null,
+        personeriaJuridicaNumber: f.personeriaJuridicaNumber?.trim() || null,
+        ...(f.tier0ShowOriginOrg !== undefined && { tier0ShowOriginOrg: f.tier0ShowOriginOrg }),
+        ...(f.publicDirectoryOptIn !== undefined && {
+          publicDirectoryOptIn: f.publicDirectoryOptIn,
+        }),
+        // Capacity columns (Item 16 D1) — undefined means "not submitted" (keep existing).
+        ...(f.capacityDogs !== undefined && { capacityDogs: f.capacityDogs }),
+        ...(f.capacityCats !== undefined && { capacityCats: f.capacityCats }),
+        ...(f.capacityOther !== undefined && { capacityOther: f.capacityOther }),
+        ...(f.capacityTotal !== undefined && { capacityTotal: f.capacityTotal }),
+        updatedAt: new Date(),
+      },
+      e,
+    );
+    if (optInChanged) {
+      await repo.insertAuditLog(
+        {
+          actorUserId: input.userId,
+          action: "org_public_directory_opt_in_changed",
+          targetOrganizationId: row.org.id,
+          payload: {
+            org_id: row.org.id,
+            before_values: { public_directory_opt_in: optInBefore },
+            after_values: { public_directory_opt_in: f.publicDirectoryOptIn },
+          },
+        },
+        e,
+      );
+    }
   });
 
   return { ok: true, value: undefined, notifications: [] };

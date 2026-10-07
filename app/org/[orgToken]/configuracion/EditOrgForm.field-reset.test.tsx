@@ -106,3 +106,68 @@ describe("<EditOrgForm> — the origin toggle follows the org type", () => {
     expect(container).not.toHaveTextContent(/refugio de origen/);
   });
 });
+
+// Migration 0283 — the public directory listing is a clinic's setting. A
+// shelter is listed on verification alone, so it gets no toggle AND no marker
+// (the marker is what makes the action write the column at all).
+describe("<EditOrgForm> — the public directory toggle (clinics only)", () => {
+  const CLINIC = {
+    ...ORG,
+    orgType: "clinic",
+    publicDirectoryOptIn: false,
+    verified: true,
+  } as typeof ORG & { publicDirectoryOptIn: boolean; verified: boolean };
+
+  it("renders no toggle and no marker for a shelter", () => {
+    const { container } = render(<EditOrgForm organization={ORG} />);
+    expect(container.querySelector('input[name="publicDirectoryOptIn"]')).toBeNull();
+    expect(container.querySelector('input[name="publicDirectoryOptInPresent"]')).toBeNull();
+    expect(container).not.toHaveTextContent("Aparecer en el directorio público de miMAR");
+  });
+
+  it("renders the toggle, OFF by default, with what becomes public", () => {
+    const { container } = render(<EditOrgForm organization={CLINIC} />);
+    const toggle = container.querySelector(
+      'input[name="publicDirectoryOptIn"]',
+    ) as HTMLInputElement;
+    expect(toggle).not.toBeNull();
+    expect(toggle.checked).toBe(false);
+    expect(container.querySelector('input[name="publicDirectoryOptInPresent"]')).not.toBeNull();
+    expect(container).toHaveTextContent("Aparecer en el directorio público de miMAR");
+    expect(container).toHaveTextContent(/correo, teléfono, sitio web/);
+    // The disclosure matches what the profile serves (lib/infra/org-public-profile.ts):
+    // a clinic's legal name and exact location are withheld, so the consent
+    // must not list them as public — and says they are not.
+    expect(container).toHaveTextContent("No mostramos la razón social ni la dirección exacta.");
+    expect(container).not.toHaveTextContent(/ubicación/);
+    expect(container).not.toHaveTextContent("Vas a aparecer cuando miMAR verifique");
+  });
+
+  it("says an unverified clinic only appears once verified", () => {
+    const { container } = render(
+      <EditOrgForm organization={{ ...CLINIC, verified: false, publicDirectoryOptIn: true }} />,
+    );
+    expect(
+      (container.querySelector('input[name="publicDirectoryOptIn"]') as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(container).toHaveTextContent("Vas a aparecer cuando miMAR verifique la organización.");
+  });
+
+  it("posts the marker and the toggled value, and keeps it after a rejected submit", async () => {
+    actionMock.mockResolvedValue({ error: "No se pudo guardar la organización." });
+    const { container } = render(<EditOrgForm organization={CLINIC} />);
+    const form = container.querySelector("form") as HTMLFormElement;
+
+    fireEvent.click(container.querySelector('input[name="publicDirectoryOptIn"]') as Element);
+    form.requestSubmit();
+    await waitFor(() => expect(actionMock).toHaveBeenCalled());
+    const posted = actionMock.mock.calls[0]?.at(-1) as FormData;
+    expect(posted.get("publicDirectoryOptInPresent")).toBe("1");
+    expect(posted.get("publicDirectoryOptIn")).toBe("true");
+
+    await screen.findByText("No se pudo guardar la organización.");
+    expect(
+      (container.querySelector('input[name="publicDirectoryOptIn"]') as HTMLInputElement).checked,
+    ).toBe(true);
+  });
+});
