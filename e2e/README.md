@@ -81,6 +81,11 @@ explicit `env:` block is untouched. See `scripts/run-e2e.ts`; a bare
   movilidad" row, the titular notice on `/viaje`, and `branded-not-found` on
   the trip's own event URL. The export needs the `travel-exports` bucket,
   which `pnpm db:bootstrap` creates from `db/exports_storage.sql`.
+- `booking-capacity-one.spec.ts` — the owner books the ONLY seat of a slot
+  (capacity 1, the schema default) and must land on `/mis-turnos/<token>`, not on
+  the 404 the reservar page answers once the slot is full. `_booking-fixture.ts`
+  writes the approved offering and its slot into a local Postgres and removes
+  them (appointments first — `slot_id` is RESTRICT); elsewhere the test skips.
 - `org-forms-settle.spec.ts` — org-portal forms whose action revalidates the
   page they sit on must come back after a save in a PRODUCTION build: the
   configuración profile, an agenda rule, and a member's permission request
