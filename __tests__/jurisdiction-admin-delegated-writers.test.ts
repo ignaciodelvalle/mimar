@@ -136,11 +136,22 @@ async function insertGrant(
   return row.id;
 }
 
+// Only a locality whose NAME is unique in its province: the actions under test
+// resolve a typed name, and INDEC really has twins (two "La Puerta" in Córdoba),
+// which that resolver correctly refuses as ambiguous. Ids are random UUIDs, so
+// ordering by id picked a twin on some databases and not on others (CI shard 1).
+// Ordered by name so every database picks the same pair.
 async function localityOf(tx: Tx, code: string, offset: number) {
   const rows = (await tx.execute(sql`
-    select id::text as id, locality_name as name from public.ar_localities
-     where province_code = ${code} and removed_at is null
-     order by id offset ${offset} limit 1`)) as unknown as Array<{ id: string; name: string }>;
+    select l.id::text as id, l.locality_name as name from public.ar_localities l
+     where l.province_code = ${code} and l.removed_at is null
+       and (select count(*) from public.ar_localities t
+             where t.province_code = l.province_code and t.removed_at is null
+               and t.locality_name = l.locality_name) = 1
+     order by l.locality_name, l.id offset ${offset} limit 1`)) as unknown as Array<{
+    id: string;
+    name: string;
+  }>;
   return rows[0];
 }
 
