@@ -736,39 +736,62 @@ describe("createWelfareReport — an anonymous report's raw key stays off the pe
   const KEY = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
   const PET_REPORT = {
     ...BASE_INPUT,
-    kind: "physical_abuse" as const,
     subjectKind: "registered_pet" as const,
     subjectPetId: PET_ID as string | null,
     subjectDescription: null,
     clientIdempotencyKey: KEY as string | null,
   };
 
-  it("anonymous: the bridge event carries NO key — the report-level digest dedupes it", async () => {
-    const deps = makeDeps();
-    await createWelfareReport({ ...PET_REPORT, reporterUserId: null }, deps);
+  // ALL THREE bridge call sites, one case each: reverting any one of them to
+  // the raw key fails exactly its own case. `other` writes no abandonment or
+  // maltreatment event, so its observed symptoms are the only bridge row.
+  const BRIDGES = [
+    { eventType: "abandonment_reported", kind: "abandonment", observedSymptoms: null },
+    { eventType: "maltreatment_reported", kind: "physical_abuse", observedSymptoms: null },
+    { eventType: "symptom_observed", kind: "other", observedSymptoms: "Tose y no come hace días." },
+  ] as const;
 
-    expect(deps.repo.insertPetEventIdempotent).toHaveBeenCalledTimes(1);
-    const [event] = vi.mocked(deps.repo.insertPetEventIdempotent).mock.calls[0];
-    expect(event.clientIdempotencyKey).toBeNull();
-    expect(JSON.stringify(vi.mocked(deps.repo.insertPetEventIdempotent).mock.calls)).not.toContain(
-      KEY,
-    );
-    // …and the digest still claims the report's slot.
-    expect(deps.repo.linkCase).toHaveBeenCalledWith(
-      RPT_ID,
-      "case-001",
-      {},
-      reportKeyDigest(KEY, null),
-    );
-  });
+  function bridgeEvent(deps: ReturnType<typeof makeDeps>, eventType: string) {
+    const calls = vi.mocked(deps.repo.insertPetEventIdempotent).mock.calls;
+    const hits = calls.filter(([event]) => event.eventType === eventType);
+    expect(hits, `exactly one ${eventType} bridge row`).toHaveLength(1);
+    return { event: hits[0][0], calls };
+  }
 
-  it("identified: the bridge keeps the reporter's key, as A5c's ledger needs", async () => {
-    const deps = makeDeps();
-    await createWelfareReport({ ...PET_REPORT, reporterUserId: "user-001" }, deps);
+  it.each(BRIDGES)(
+    "anonymous $eventType: the bridge carries NO key — the report-level digest dedupes it",
+    async ({ eventType, kind, observedSymptoms }) => {
+      const deps = makeDeps();
+      await createWelfareReport(
+        { ...PET_REPORT, kind, observedSymptoms, reporterUserId: null },
+        deps,
+      );
 
-    const [event] = vi.mocked(deps.repo.insertPetEventIdempotent).mock.calls[0];
-    expect(event.clientIdempotencyKey).toBe(KEY);
-  });
+      const { event, calls } = bridgeEvent(deps, eventType);
+      expect(event.clientIdempotencyKey).toBeNull();
+      expect(JSON.stringify(calls)).not.toContain(KEY);
+      // …and the digest still claims the report's slot.
+      expect(deps.repo.linkCase).toHaveBeenCalledWith(
+        RPT_ID,
+        "case-001",
+        {},
+        reportKeyDigest(KEY, null),
+      );
+    },
+  );
+
+  it.each(BRIDGES)(
+    "identified $eventType: the bridge keeps the reporter's key, as A5c's ledger needs",
+    async ({ eventType, kind, observedSymptoms }) => {
+      const deps = makeDeps();
+      await createWelfareReport(
+        { ...PET_REPORT, kind, observedSymptoms, reporterUserId: "user-001" },
+        deps,
+      );
+
+      expect(bridgeEvent(deps, eventType).event.clientIdempotencyKey).toBe(KEY);
+    },
+  );
 });
 
 describe("createWelfareReport — the report-level replay (A5f)", () => {
