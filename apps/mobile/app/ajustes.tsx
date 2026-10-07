@@ -25,10 +25,19 @@
 // ---------------------------------------------------------------------------
 // Two sign-outs and no deletion is the shape Google Play rejects: the rule
 // attaches to account CREATION, and `/crear-cuenta` is native. `AccountDeletion
-// Card` is that third way out. It is placed AFTER the two sign-outs and before
-// the footnote, in escalating order of permanence — end this session, end every
-// session, end the account — so nobody reaches the destructive one by aiming at
-// the mild one.
+// Card` is that third way out.
+//
+// THE ORDER CHANGED ON 2026-10-07 (pulido-kit-listas, PO), AND THE REASON IT
+// USED TO BE THE OTHER WAY IS KEPT HERE. It was "escalating order of
+// permanence — end this session, end every session, end the account — so
+// nobody reaches the destructive one by aiming at the mild one", with the two
+// sign-outs in the middle of the screen. Every settings screen a person has
+// used ends with "Cerrar sesión", and that is where a thumb goes looking for
+// it; so the sign-outs now close the screen. The deletion card still never
+// sits next to them: it stays up with the account's own business, and the
+// heavy red is gone from the second sign-out — "en todos los dispositivos" is
+// a quiet link now, behind the same confirmation, which is the one place the
+// seal button remains.
 //
 // SINCE WU-R IT IS A SIGNPOST AND NOT A DOOR OUT OF THE APP. The card used to
 // open the web page in a browser; it now pushes `/cuenta/privacidad`, which is a
@@ -38,6 +47,7 @@
 // permanent thing this screen can do.
 
 import { useRouter } from "expo-router";
+import * as Updates from "expo-updates";
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -49,7 +59,7 @@ import { API_BASE_URL } from "../src/config/api";
 import { PushNotificationsCard } from "../src/notifications/PushNotificationsCard";
 import { Body, Card, ErrorNotice, Row } from "../src/ui/components";
 import { FONTS } from "../src/ui/fonts";
-import { PrimaryButton, Screen, SecondaryButton } from "../src/ui/kit";
+import { LinkText, ListRow, PrimaryButton, Screen, SecondaryButton } from "../src/ui/kit";
 import { ROUTES } from "../src/ui/routes";
 import { COLORS, LEADING, SPACE, TYPE } from "../src/ui/theme";
 
@@ -103,6 +113,12 @@ export default function AjustesScreen() {
     router.replace("/");
   }
 
+  // THE BACKEND IS NAMED ONLY WHERE IT CAN BE THE WRONG ONE. A tester with
+  // three builds on one phone needs it; a person on the store build has exactly
+  // one server and was being shown a URL that meant nothing to them. `null`
+  // (the dev client, where expo-updates is off) counts as not-production.
+  const showServer = Updates.channel !== "production";
+
   return (
     <Screen>
       <Card title="Tu cuenta">
@@ -123,10 +139,13 @@ export default function AjustesScreen() {
                 methods (2026-09-04): a save here is not signup step 2, which
                 also collects a DNI. So offering the control would be a button
                 whose only outcome is an error. The gate on the route refuses it
-                too; this is what stops a person reaching the refusal at all. */}
+                too; this is what stops a person reaching the refusal at all.
+                A ListRow, not a button: it is a destination, like every other
+                row that opens a screen. */}
             <View style={styles.editRow}>
-              <SecondaryButton
+              <ListRow
                 label="Editar mis datos"
+                icon="edit"
                 onPress={() => router.push(ROUTES.editarCuenta)}
               />
             </View>
@@ -134,14 +153,39 @@ export default function AjustesScreen() {
         )}
       </Card>
 
-      <Card title="Servidor">
-        {/* Shown because a tester with three builds on one phone has no other
-            way to tell which backend they are looking at, and "los datos no
-            aparecen" is otherwise unanswerable. Mono, like every other machine
-            string in this design. */}
-        <Text style={styles.machine}>{API_BASE_URL}</Text>
-      </Card>
+      {/* M4, decision 10A: the door back in for whoever tapped "Ahora no" on
+          the alta priming line, or who registered their only pet before this
+          feature shipped and so was never offered it. Renders nothing once
+          permission is already settled favourably or the build has no push
+          module — see `PushNotificationsCard.tsx`'s header. */}
+      <PushNotificationsCard />
 
+      <AccountDeletionCard />
+
+      {/* B-02, measured on the shipped build 10 (shot 114). This said photos,
+          NOTIFICATIONS and Mi Argentina were all missing, on a build where
+          `notificaciones` is a registered route with a working screen and
+          Mascota → Más offers "Foto de la mascota". A footnote that denies two
+          features the person can reach from the same app teaches them to
+          distrust the third, which is the only one that is actually true. */}
+      <Text style={styles.footnote}>
+        Cargar una foto al registrar una mascota y el ingreso con Mi Argentina todavía no están en
+        la app.
+      </Text>
+
+      <AboutSection />
+
+      {showServer ? (
+        <Card title="Servidor">
+          {/* Shown because a tester with three builds on one phone has no other
+              way to tell which backend they are looking at, and "los datos no
+              aparecen" is otherwise unanswerable. Mono, like every other machine
+              string in this design. */}
+          <Text style={styles.machine}>{API_BASE_URL}</Text>
+        </Card>
+      ) : null}
+
+      {/* THE WAYS OUT, LAST — see the header for why they moved here. */}
       <View style={styles.actions}>
         <SecondaryButton
           label={signingOut ? "Cerrando sesión…" : "Cerrar sesión"}
@@ -184,17 +228,22 @@ export default function AjustesScreen() {
               <SecondaryButton label="Cancelar" onPress={() => setRevoke({ phase: "idle" })} />
             </View>
           </Card>
+        ) : revoke.phase === "sending" ? (
+          // The link has no disabled state, so while the request is out the
+          // control is replaced by what is happening — a second tap has
+          // nothing to land on.
+          <Body>Cerrando sesiones…</Body>
         ) : (
-          <PrimaryButton
-            label={
-              revoke.phase === "sending"
-                ? "Cerrando sesiones…"
-                : "Cerrar sesión en todos los dispositivos"
-            }
-            tone="seal"
-            disabled={revoke.phase === "sending"}
-            onPress={() => setRevoke({ phase: "confirming" })}
-          />
+          // DEMOTED FROM THE HEAVIEST BUTTON ON THE SCREEN. It was a full-width
+          // seal-red pill under a ghost "Cerrar sesión": the rarer, broader act
+          // drawn louder than the everyday one. A link says "this exists" without
+          // asking to be pressed, and the confirmation above still stands
+          // between it and every other device.
+          <View style={styles.revokeLink}>
+            <LinkText onPress={() => setRevoke({ phase: "confirming" })}>
+              Cerrar sesión en todos los dispositivos
+            </LinkText>
+          </View>
         )}
 
         {revoke.phase === "failed" ? (
@@ -204,35 +253,14 @@ export default function AjustesScreen() {
           />
         ) : null}
       </View>
-
-      {/* M4, decision 10A: the door back in for whoever tapped "Ahora no" on
-          the alta priming line, or who registered their only pet before this
-          feature shipped and so was never offered it. Renders nothing once
-          permission is already settled favourably or the build has no push
-          module — see `PushNotificationsCard.tsx`'s header. */}
-      <PushNotificationsCard />
-
-      <AccountDeletionCard />
-
-      {/* B-02, measured on the shipped build 10 (shot 114). This said photos,
-          NOTIFICATIONS and Mi Argentina were all missing, on a build where
-          `notificaciones` is a registered route with a working screen and
-          Mascota → Más offers "Foto de la mascota". A footnote that denies two
-          features the person can reach from the same app teaches them to
-          distrust the third, which is the only one that is actually true. */}
-      <Text style={styles.footnote}>
-        Cargar una foto al registrar una mascota y el ingreso con Mi Argentina todavía no están en
-        la app.
-      </Text>
-
-      <AboutSection />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   editRow: { marginTop: SPACE.md },
-  actions: { gap: SPACE.md, marginTop: SPACE.sm },
+  actions: { gap: SPACE.md, marginTop: SPACE.lg },
+  revokeLink: { alignSelf: "center" },
   confirmActions: { gap: SPACE.sm, marginTop: SPACE.sm },
   machine: {
     fontFamily: FONTS.mono,
