@@ -8,7 +8,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { OpenedReason } from "@/src/modules/cases/domain/opened-reason";
-import { REPORT_KEY_MIN_LENGTH, reportKeyDigest } from "../../domain/report-key-digest";
+import { reportKeyDigest } from "../../domain/report-key-digest";
 import type { WelfareRepository } from "../../infrastructure/welfare-repository";
 import { createWelfareReport } from "../create-welfare-report";
 
@@ -719,11 +719,55 @@ describe("reportKeyDigest — the stored and replayed form of a client key", () 
     expect(reportKeyDigest(KEY, null, "org-1")).toBe(reportKeyDigest(KEY, null));
   });
 
-  it("a key below the minimum length claims no slot", () => {
-    expect(reportKeyDigest("k".repeat(REPORT_KEY_MIN_LENGTH - 1), null)).toBeNull();
-    expect(reportKeyDigest("k".repeat(REPORT_KEY_MIN_LENGTH), null)).not.toBeNull();
+  it("only a UUID claims a slot — a constant or guessable key never swallows later reports", () => {
+    // A buggy client sending one fixed string (long or short) must not turn
+    // every later anonymous report into a "ya la recibimos".
+    expect(reportKeyDigest("k".repeat(36), null)).toBeNull();
+    expect(reportKeyDigest("constant-client-key-that-is-long-enough", null)).toBeNull();
+    expect(reportKeyDigest("key-twin", "user-1")).toBeNull();
+    expect(reportKeyDigest(`${KEY}x`, null)).toBeNull();
+    expect(reportKeyDigest(KEY, null)).not.toBeNull();
     expect(reportKeyDigest(null, null)).toBeNull();
     expect(reportKeyDigest("", "user-1")).toBeNull();
+  });
+});
+
+describe("createWelfareReport — an anonymous report's raw key stays off the pet's events (0289)", () => {
+  const KEY = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
+  const PET_REPORT = {
+    ...BASE_INPUT,
+    kind: "physical_abuse" as const,
+    subjectKind: "registered_pet" as const,
+    subjectPetId: PET_ID as string | null,
+    subjectDescription: null,
+    clientIdempotencyKey: KEY as string | null,
+  };
+
+  it("anonymous: the bridge event carries NO key — the report-level digest dedupes it", async () => {
+    const deps = makeDeps();
+    await createWelfareReport({ ...PET_REPORT, reporterUserId: null }, deps);
+
+    expect(deps.repo.insertPetEventIdempotent).toHaveBeenCalledTimes(1);
+    const [event] = vi.mocked(deps.repo.insertPetEventIdempotent).mock.calls[0];
+    expect(event.clientIdempotencyKey).toBeNull();
+    expect(JSON.stringify(vi.mocked(deps.repo.insertPetEventIdempotent).mock.calls)).not.toContain(
+      KEY,
+    );
+    // …and the digest still claims the report's slot.
+    expect(deps.repo.linkCase).toHaveBeenCalledWith(
+      RPT_ID,
+      "case-001",
+      {},
+      reportKeyDigest(KEY, null),
+    );
+  });
+
+  it("identified: the bridge keeps the reporter's key, as A5c's ledger needs", async () => {
+    const deps = makeDeps();
+    await createWelfareReport({ ...PET_REPORT, reporterUserId: "user-001" }, deps);
+
+    const [event] = vi.mocked(deps.repo.insertPetEventIdempotent).mock.calls[0];
+    expect(event.clientIdempotencyKey).toBe(KEY);
   });
 });
 

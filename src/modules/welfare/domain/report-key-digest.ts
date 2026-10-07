@@ -16,9 +16,12 @@
 // (the reporter session is minted after the report exists; the rate-limit
 // fingerprint is the caller's IP, and an IPv4 hash is a lookup table away from
 // the IP). So the anonymous scope is the key alone, and two things carry it:
-//   - entropy: the web mints crypto.randomUUID() (122 random bits), and a key
-//     shorter than REPORT_KEY_MIN_LENGTH is never stored or replayed at all —
-//     a short or guessable key would be a slot anyone could squat on;
+//   - entropy: the web and the app mint crypto.randomUUID() (122 random bits),
+//     and a key that is not a UUID is never stored or replayed at all — a
+//     short, guessable or constant key (a buggy client sending one fixed
+//     string) would be a slot that silently swallows every later anonymous
+//     report under it. A constant UUID still could; a UUID is the shape every
+//     honest client sends, and the cheapest refusal of the rest;
 //   - an anonymous replay returns nothing about the original (no reference
 //     code, no reporter session), so even a stolen key reveals only that a
 //     report under it was received.
@@ -28,12 +31,11 @@
 
 import { createHash } from "node:crypto";
 
-/** Below this a client key is ignored for the report-level replay. A UUID is 36. */
-export const REPORT_KEY_MIN_LENGTH = 32;
+import { isValidIdempotencyKey } from "@dim/contract/api";
 
 /**
  * The stored digest for (key, reporter[, org]), or null when the key cannot
- * claim a slot (absent or too short) — such a submit files as it always did.
+ * claim a slot (absent, or not a UUID) — such a submit files as it always did.
  * The org only scopes an identified reporter; an anonymous submit has none.
  */
 export function reportKeyDigest(
@@ -41,7 +43,7 @@ export function reportKeyDigest(
   reporterUserId: string | null,
   reporterOrganizationId: string | null = null,
 ): string | null {
-  if (!clientIdempotencyKey || clientIdempotencyKey.length < REPORT_KEY_MIN_LENGTH) return null;
+  if (!clientIdempotencyKey || !isValidIdempotencyKey(clientIdempotencyKey)) return null;
   const user = reporterUserId ? `user:${reporterUserId}` : null;
   const scope = !user
     ? "anon"

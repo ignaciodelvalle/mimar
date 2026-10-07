@@ -285,7 +285,10 @@ export async function createWelfareReport(
         keyDigest,
       );
 
-      // 4d. Pet-event bridge (registered_pet only)
+      // 4d. Pet-event bridge (registered_pet only). An ANONYMOUS reporter's raw
+      // key is never written beside the pet's events (0289): the report-level
+      // claim above deduplicates their retry; the bridge carries no key.
+      const bridgeKey = reporterUserId ? clientIdempotencyKey : null;
       if (subjectKind === "registered_pet" && subjectPetId) {
         const eventOccurredAt = occurredAt ?? new Date();
         const now = new Date();
@@ -317,7 +320,7 @@ export async function createWelfareReport(
               caseId: caseRow.id,
               // The unique index is on (pet_id, event_type, client_idempotency_key),
               // so the same key on different event_type values occupies distinct slots.
-              clientIdempotencyKey,
+              clientIdempotencyKey: bridgeKey,
             },
             tx as Parameters<typeof repo.insertPetEventIdempotent>[1],
           );
@@ -342,7 +345,7 @@ export async function createWelfareReport(
               locationLat,
               locationLng,
               caseId: caseRow.id,
-              clientIdempotencyKey,
+              clientIdempotencyKey: bridgeKey,
             },
             tx as Parameters<typeof repo.insertPetEventIdempotent>[1],
           );
@@ -372,7 +375,7 @@ export async function createWelfareReport(
               locationLat,
               locationLng,
               caseId: caseRow.id,
-              clientIdempotencyKey,
+              clientIdempotencyKey: bridgeKey,
             },
             tx as Parameters<typeof repo.insertPetEventIdempotent>[1],
           );
