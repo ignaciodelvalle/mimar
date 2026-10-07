@@ -25,6 +25,12 @@ export async function shareTravelExport(
   publicToken: string,
   petName: string,
   tripEventId: string | null,
+  /**
+   * The share sheet's title. The default names the trip; "Mandar a mi
+   * veterinaria" passes the suggested message instead, which Android shows
+   * as the chooser's title (the sheet cannot pre-fill the text of a file share).
+   */
+  dialogTitle = `Viaje de ${petName}`,
 ): Promise<TravelExportShareResult> {
   const result = await requestPetTravelExport(session, publicToken, tripEventId);
   if (result.outcome !== "ok") {
@@ -34,7 +40,7 @@ export async function shareTravelExport(
   const shared = await sharePdfFromUrl(
     result.payload.pdfUrl,
     safeFileName(`viaje ${petName}`, "pdf"),
-    `Viaje de ${petName}`,
+    dialogTitle,
   );
   switch (shared.outcome) {
     case "closed":

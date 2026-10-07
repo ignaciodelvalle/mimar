@@ -3,8 +3,10 @@
 // WHAT THESE PROVE
 //   1. The semáforo's colour maps to a tone and nothing more; `sin_datos` is
 //      neutral, never green or amber.
-//   2. The airline group appears only when the trip names an airline, and its
-//      notice is the CONTRACT's wording (shared with the web).
+//   2. The reading is split by what is left to do (pending, done, papers),
+//      the opening rule opens only the first module with work, a requirement
+//      met only on the owner's word wears the contract's seal, and each one
+//      offers the action its rule type maps to.
 //   3. The forms go through the contract's own schema: a blank picker is a
 //      field sentence, a typed DD/MM/AAAA date reaches the wire as YYYY-MM-DD.
 //   4. A replay reads as done, never as a refusal.
@@ -13,7 +15,7 @@
 import { describe, expect, it } from "@jest/globals";
 
 import {
-  PET_TRAVEL_AIRLINE_NOTICE,
+  PET_TRAVEL_DECLARED_SEAL,
   PET_TRAVEL_SEMAFORO_LABELS,
   type PetTravelComplianceV1,
   type PetTravelObligationV1,
@@ -29,15 +31,23 @@ import {
   buildTrip,
   cviIssuedBounds,
   cviLine,
+  declaredSeal,
   documentStatusLine,
+  initialOpenModule,
+  obligationActionLabel,
   obligationDocuments,
-  obligationSections,
+  paperShortName,
+  papersCountLabel,
+  pendingCountLine,
   selectedTrip,
   semaforoTone,
   sourceLine,
+  splitObligations,
   travelAckMessage,
   travelDateBounds,
   tripLabel,
+  tripMetaLine,
+  tripPaper,
   tripSummary,
 } from "./travel-view-model";
 
@@ -107,28 +117,153 @@ describe("reading", () => {
     expect(selectedTrip([], TRIP.tripEventId)).toBeNull();
   });
 
-  it("lists Destino, Aerolínea, Libreta in order, the airline one with the contract's notice", () => {
-    const sections = obligationSections(
+  it("splits by what is left to do: pending, done, and the papers apart", () => {
+    const papers = obligation({
+      id: "required_documents",
+      requirementLevel: "warning",
+      documents: [
+        { label: "CZI", confirmed: true },
+        { label: "Certificado antirrábico", confirmed: false },
+      ],
+    });
+    const split = splitObligations(
       compliance([
-        obligation({ id: "l", group: "libreta" }),
-        obligation({ id: "a", group: "aerolinea" }),
-        obligation({ id: "d", group: "destino" }),
+        obligation({ id: "rabies", requirementLevel: "blocker" }),
+        obligation({ id: "chip", requirementLevel: "warning" }),
+        papers,
+        obligation({ id: "age", requirementLevel: "info" }),
       ]),
-      TRIP,
     );
-    expect(sections.map((s) => s.title)).toEqual(["Destino", "Aerolínea", "Libreta"]);
-    expect(sections[1]?.airlineNotice).toBe(`${PET_TRAVEL_AIRLINE_NOTICE}: LATAM`);
-    expect(sections[0]?.airlineNotice).toBeNull();
+    expect(split.pending.map((o) => o.id)).toEqual(["rabies", "chip"]);
+    expect(split.done.map((o) => o.id)).toEqual(["age"]);
+    expect(split.papers.map((p) => p.document.label)).toEqual(["CZI", "Certificado antirrábico"]);
+    expect(papersCountLabel(split.papers)).toBe("1 de 2");
+    expect(pendingCountLine(split)).toBe("2 cosas por resolver · 1 ya está");
+    expect(splitObligations(null)).toEqual({ pending: [], done: [], papers: [] });
   });
 
-  it("drops the airline group when the trip names no airline, and empty groups except Destino", () => {
-    const sections = obligationSections(compliance([obligation({ id: "a", group: "aerolinea" })]), {
-      ...TRIP,
-      airlineId: null,
-      airlineName: null,
+  it("counts in words that never judge", () => {
+    const one = splitObligations(
+      compliance([obligation({ id: "a", requirementLevel: "warning" })]),
+    );
+    expect(pendingCountLine(one)).toBe("1 cosa por resolver");
+    const none = splitObligations(
+      compliance([
+        obligation({ id: "a", requirementLevel: "info" }),
+        obligation({ id: "b", requirementLevel: "info" }),
+      ]),
+    );
+    expect(pendingCountLine(none)).toBe("2 requisitos revisados");
+    expect(pendingCountLine(splitObligations(compliance([])))).toBeNull();
+  });
+
+  describe("the opening rule: only the first module with work opens", () => {
+    it("opens Lo que falta while something is pending", () => {
+      const split = splitObligations(compliance([obligation({ requirementLevel: "blocker" })]));
+      expect(initialOpenModule(split)).toBe("falta");
     });
-    expect(sections.map((s) => s.group)).toEqual(["destino"]);
-    expect(sections[0]?.obligations).toEqual([]);
+
+    it("opens Para llevar when nothing is pending but a paper is unticked", () => {
+      const split = splitObligations(
+        compliance([
+          obligation({ id: "x", requirementLevel: "info" }),
+          obligation({
+            id: "required_documents",
+            requirementLevel: "warning",
+            documents: [{ label: "CZI", confirmed: false }],
+          }),
+        ]),
+      );
+      expect(initialOpenModule(split)).toBe("llevar");
+    });
+
+    it("opens nothing when everything is done", () => {
+      const split = splitObligations(
+        compliance([
+          obligation({ id: "x", requirementLevel: "info" }),
+          obligation({
+            id: "required_documents",
+            requirementLevel: "info",
+            documents: [{ label: "CZI", confirmed: true }],
+          }),
+        ]),
+      );
+      expect(initialOpenModule(split)).toBeNull();
+    });
+  });
+
+  it("seals a requirement met only on the owner's word, and only that one", () => {
+    expect(declaredSeal(obligation({ evidence: "declared", requirementLevel: "warning" }))).toBe(
+      PET_TRAVEL_DECLARED_SEAL,
+    );
+    expect(declaredSeal(obligation({ evidence: "verified", requirementLevel: "info" }))).toBeNull();
+    // An older server sends no evidence at all: no seal, nothing invented.
+    expect(declaredSeal(obligation({}))).toBeNull();
+  });
+
+  it("offers each requirement the action its rule type maps to, naming the destination's paper", () => {
+    const czi = { name: "Certificado Zoosanitario de Importación (CZI)", shortName: "CZI" };
+    expect(
+      obligationActionLabel(
+        obligation({ id: "document_issuance_window_days:senasa_cvi", requirementLevel: "warning" }),
+        czi,
+      ),
+    ).toEqual({ kind: "record_paper", label: "Cargar el CZI" });
+    expect(
+      obligationActionLabel(
+        obligation({ id: "microchip_required", requirementLevel: "warning" }),
+        null,
+      ),
+    ).toEqual({ kind: "ask_vet", label: "Pedírselo a mi veterinaria" });
+    expect(
+      obligationActionLabel(
+        obligation({
+          id: "rabies_vaccination_to_travel_wait_days",
+          requirementLevel: "warning",
+          evidence: "declared",
+        }),
+        null,
+      ),
+    ).toEqual({ kind: "send_to_vet", label: "Mandar a mi veterinaria" });
+    // Without a paper on the payload (an older server) the button keeps the old name.
+    expect(
+      obligationActionLabel(
+        obligation({ id: "document_issuance_window_days", requirementLevel: "blocker" }),
+        null,
+      )?.label,
+    ).toBe("Cargar el CVI");
+    // Met, or a rule nothing on the phone resolves: no button.
+    expect(
+      obligationActionLabel(
+        obligation({ id: "microchip_required", requirementLevel: "info" }),
+        null,
+      ),
+    ).toBeNull();
+    expect(
+      obligationActionLabel(obligation({ id: "embargo", requirementLevel: "blocker" }), null),
+    ).toBeNull();
+  });
+
+  it("says how the trip goes in the header even without an airline", () => {
+    expect(tripMetaLine(TRIP, "Jue")).toBe("Jue 12/11/2026 · LATAM, en cabina");
+    expect(tripMetaLine({ ...TRIP, airlineId: null, airlineName: null, mode: "land" }, "Jue")).toBe(
+      "Jue 12/11/2026 · En auto o en micro",
+    );
+    expect(
+      tripMetaLine(
+        { ...TRIP, airlineId: null, airlineName: null, mode: null, intendedModality: null },
+        null,
+      ),
+    ).toBe("12/11/2026");
+  });
+
+  it("names the destination's paper, or the CVI when an older server names none", () => {
+    const corridors = [
+      { id: "chile", label: "Chile", paper: { name: "CZI largo", shortName: "CZI" } },
+    ];
+    expect(tripPaper(corridors, "chile")?.shortName).toBe("CZI");
+    expect(tripPaper([{ id: "chile", label: "Chile" }], "chile")).toBeNull();
+    expect(paperShortName(null)).toBe("CVI");
   });
 
   it("prints sources and CVIs with Argentine dates", () => {
@@ -141,6 +276,17 @@ describe("reading", () => {
         freshness: "fresh",
       }),
     ).toBe("Fuente: SENASA, revisada el 01/09/2026");
+    // Who PUBLISHES the rule, when the server names it (QA copy 5).
+    expect(
+      sourceLine({
+        kind: "corridor",
+        label: "Chile",
+        issuerLabel: "SENASA, requisitos para Chile",
+        sourceUrl: "https://www.argentina.gob.ar/senasa",
+        lastVerifiedAt: "2026-09-30",
+        freshness: "fresh",
+      }),
+    ).toBe("Fuente: SENASA, requisitos para Chile, revisada el 30/09/2026");
     expect(
       cviLine({ eventId: "e", cviNumber: "AR-1", issuedDate: "2026-10-01", validUntil: null }),
     ).toBe("AR-1: emitido el 01/10/2026");

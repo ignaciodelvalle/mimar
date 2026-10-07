@@ -1,22 +1,34 @@
-// `TravelScreen` — the owner's whole travel flow, native (viajes-fase-2, 6.4).
+// `TravelScreen` — the owner's whole travel flow, native (viajes-fase-2, 6.4;
+// redesigned in modules and a four-step wizard, PO-approved 2026-10-07).
 //
 // WHAT THESE HAVE TO PROVE, beyond "it renders"
-//   1. THE SEMÁFORO IS THE SERVER'S: its label is drawn verbatim, the
-//      disclaimers with it, and no forbidden promise appears anywhere.
-//   2. EVERY COMMAND CARRIES A KEY, and a retry of the same attempt reuses it;
-//      a landed write restarts it.
-//   3. THE CANCEL CONFIRMS BEFORE IT FIRES, and a replay reads as done.
-//   4. The read is re-done after a write — selecting the new trip — and a
-//      re-read that fails keeps the screen under a stale banner.
-//   5. `canRecord: false` takes the forms and the cancel away.
-//   6. NOTHING SENDS ANYBODY TO THE WEB (PO rule: owner flows are native).
-//   7. THE PDF IS THE SERVER'S: the app downloads the file the web hands out
-//      and shares it; a failed download is never shared as a PDF.
+//   1. THE SEMÁFORO IS THE SERVER'S: its label is drawn verbatim in the pase,
+//      the disclaimers once, and no forbidden promise appears anywhere.
+//   2. THE OPENING RULE: only the first module with work opens by itself; a
+//      requirement met only on the owner's word wears the declared seal.
+//   3. EVERY COMMAND CARRIES A KEY, a retry of the same attempt reuses it, and
+//      a landed write restarts it — through the wizard as through the old form.
+//   4. THE WIZARD trims each question by the last answer, keeps the answers on
+//      back (the on-screen button AND the back gesture), says "Otro país"
+//      honestly without writing anything, refuses a date outside the window
+//      under the field, and maps the server's refusal reason to its sentence.
+//   5. AN OLDER SERVER (no v14 fields) still gets a working wizard with the
+//      full lists.
+//   6. THE CANCEL CONFIRMS BEFORE IT FIRES, and a replay reads as done.
+//   7. `canRecord: false` takes every write away.
+//   8. NOTHING SENDS ANYBODY TO THE WEB, and the PDF is the server's.
+//   9. No height is fixed around text, so a font scale of 1.3 grows rows
+//      instead of clipping them (QA 2026-10-07, bug 2).
 
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 
-import type { PetTravelV1 } from "@dim/contract/api";
+import {
+  PET_TRAVEL_DECLARED_SEAL,
+  PET_TRAVEL_REFUSAL_MESSAGES,
+  type PetTravelObligationV1,
+  type PetTravelV1,
+} from "@dim/contract/api";
 
 import { createNavigationFake } from "../ui/navigation-fake";
 
@@ -24,10 +36,11 @@ const mockFetch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockSend = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockExport = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockOpenURL = jest.fn<(url: string) => Promise<unknown>>();
+const mockPush = jest.fn<(href: string) => void>();
 const mockNav = createNavigationFake();
 
 jest.mock("expo-router", () => ({
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
+  useRouter: () => ({ push: mockPush, replace: jest.fn(), back: jest.fn() }),
   useNavigation: () => mockNav.navigation,
 }));
 
@@ -61,7 +74,7 @@ jest.mock("../pets/idempotency", () => ({
   },
 }));
 
-import { Linking } from "react-native";
+import { Linking, StyleSheet, Text, View } from "react-native";
 
 import { TravelScreen } from "./TravelScreen";
 
@@ -92,6 +105,116 @@ const TRIP_URUGUAY = {
   intendedModality: null,
 };
 
+const RABIES: PetTravelObligationV1 = {
+  id: "rabies_vaccination_to_travel_wait_days",
+  group: "libreta",
+  label: "Vacuna antirrábica",
+  state: "Aplicada el 01/09, según indicaste.",
+  detail: "Al menos 21 días entre la vacuna y el viaje.",
+  requirementLevel: "warning",
+  contributingJurisdictions: ["Chile"],
+  sources: [
+    {
+      kind: "corridor",
+      label: "Chile",
+      issuerLabel: "SENASA, requisitos para Chile",
+      sourceUrl: "https://www.argentina.gob.ar/senasa/chile",
+      lastVerifiedAt: "2026-09-30",
+      freshness: "fresh",
+    },
+  ],
+  freshnessNotice: null,
+  legalFootnote: "Regla del corredor de viaje · Chile",
+  evidence: "declared",
+};
+
+const WINDOW: PetTravelObligationV1 = {
+  id: "document_issuance_window_days:senasa_cvi",
+  group: "destino",
+  label: "Certificado Zoosanitario (CZI)",
+  state: "Pedilo desde el 02/11 y hasta el 12/11.",
+  detail: null,
+  requirementLevel: "blocker",
+  contributingJurisdictions: ["Chile"],
+  sources: [],
+  freshnessNotice: null,
+  legalFootnote: "Regla del corredor de viaje · Chile",
+  evidence: null,
+};
+
+const AGE: PetTravelObligationV1 = {
+  id: "min_age_days",
+  group: "destino",
+  label: "Edad mínima",
+  state: "Cumple la edad mínima registrada",
+  detail: null,
+  requirementLevel: "info",
+  contributingJurisdictions: ["Chile"],
+  sources: [],
+  freshnessNotice: null,
+  legalFootnote: "Regla del corredor de viaje · Chile",
+  evidence: "verified",
+};
+
+const PAPERS: PetTravelObligationV1 = {
+  id: "required_documents",
+  group: "destino",
+  label: "Documentación a presentar",
+  state: "Confirmá que tenés cada documento",
+  detail: null,
+  requirementLevel: "warning",
+  contributingJurisdictions: ["Chile"],
+  sources: [],
+  freshnessNotice: null,
+  legalFootnote: "Regla del corredor de viaje · Chile",
+  documents: [
+    { label: "Certificado veterinario", confirmed: true },
+    { label: "Permiso de importación", confirmed: false },
+  ],
+};
+
+const V14_OPTIONS: PetTravelV1["options"] = {
+  corridors: [
+    {
+      id: "chile",
+      label: "Chile",
+      paper: { name: "Certificado Zoosanitario de Importación (CZI)", shortName: "CZI" },
+      leadHints: ["La antirrábica tiene que tener al menos 21 días el día del viaje."],
+      leadDays: 21,
+    },
+    { id: "uruguay", label: "Uruguay" },
+    { id: "brasil", label: "Brasil" },
+    { id: "ue_espana", label: "España (Unión Europea)" },
+    { id: "usa", label: "Estados Unidos" },
+  ],
+  airlines: [
+    {
+      id: "aerolineas_argentinas",
+      name: "Aerolíneas Argentinas",
+      corridors: ["chile", "brasil", "usa"],
+      modalities: [],
+    },
+    {
+      id: "latam",
+      name: "LATAM",
+      corridors: ["chile", "brasil"],
+      modalities: [
+        { modality: "cabin", offered: "yes", maxWeightKg: 7, includesCarrier: true },
+        { modality: "hold", offered: "yes", maxWeightKg: 32, includesCarrier: true },
+      ],
+    },
+    { id: "iberia", name: "Iberia", corridors: ["ue_espana"], modalities: [] },
+    {
+      id: "emirates",
+      name: "Emirates",
+      corridors: [],
+      modalities: [
+        { modality: "cargo", offered: "yes", maxWeightKg: null, includesCarrier: false },
+      ],
+    },
+  ],
+};
+
 function payload(over: Partial<PetTravelV1> = {}): PetTravelV1 {
   return {
     payloadVersion: 1,
@@ -104,51 +227,12 @@ function payload(over: Partial<PetTravelV1> = {}): PetTravelV1 {
     compliance: {
       semaforo: "amarillo",
       semaforoLabel: "Revisar pendientes",
-      obligations: [
-        {
-          id: "rabies",
-          group: "destino",
-          label: "Vacuna antirrábica",
-          state: "Registrada en la libreta",
-          detail: null,
-          requirementLevel: "blocker",
-          contributingJurisdictions: ["Chile"],
-          sources: [
-            {
-              kind: "corridor",
-              label: "SAG Chile",
-              sourceUrl: "https://www.sag.gob.cl/mascotas",
-              lastVerifiedAt: "2026-09-01",
-              freshness: "fresh",
-            },
-          ],
-          freshnessNotice: null,
-          legalFootnote: "Res. SAG 1234",
-        },
-        {
-          id: "weight",
-          group: "aerolinea",
-          label: "Peso máximo en cabina",
-          state: "Sin peso registrado",
-          detail: null,
-          requirementLevel: "warning",
-          contributingJurisdictions: [],
-          sources: [],
-          freshnessNotice: "Verificá — dato sin confirmar con la fuente",
-          legalFootnote: "Política publicada por la aerolínea",
-        },
-      ],
+      obligations: [WINDOW, RABIES, AGE],
       corridors: [],
     },
     cvis: [{ eventId: "c1", cviNumber: "AR-555", issuedDate: "2026-09-20", validUntil: null }],
-    disclaimers: ["miMAR no reemplaza a SENASA.", "Verificá con tu aerolínea antes de reservar."],
-    options: {
-      corridors: [
-        { id: "chile", label: "Chile" },
-        { id: "uruguay", label: "Uruguay" },
-      ],
-      airlines: [{ id: "latam", name: "LATAM" }],
-    },
+    disclaimers: ["miMAR no reemplaza a la autoridad sanitaria."],
+    options: V14_OPTIONS,
     capabilities: { canRecord: true },
     exportWebUrl: `https://example.test/mis-mascotas/${TOKEN}/viaje`,
     ...over,
@@ -157,59 +241,158 @@ function payload(over: Partial<PetTravelV1> = {}): PetTravelV1 {
 
 const EMPTY = payload({ trips: [], selectedTripEventId: null, compliance: null, cvis: [] });
 
+/** A v13 server: none of the redesign's optional fields. */
+const OLD_OPTIONS: PetTravelV1["options"] = {
+  corridors: V14_OPTIONS.corridors.map(({ id, label }) => ({ id, label })),
+  airlines: [
+    { id: "aerolineas_argentinas", name: "Aerolíneas Argentinas" },
+    { id: "latam", name: "LATAM" },
+    { id: "iberia", name: "Iberia" },
+    { id: "emirates", name: "Emirates" },
+    { id: "gol", name: "GOL" },
+    { id: "sky", name: "Sky Airline" },
+    { id: "copa", name: "Copa Airlines" },
+  ],
+};
+
+function withPapers(over: Partial<PetTravelV1> = {}) {
+  const base = payload(over);
+  if (base.compliance === null) throw new Error("fixture: a trip has a reading");
+  return { ...base, compliance: { ...base.compliance, obligations: [AGE, PAPERS] } };
+}
+
 beforeEach(() => {
+  jest.useFakeTimers({ now: new Date(2026, 9, 7, 13, 5), doNotFake: ["nextTick", "setImmediate"] });
   mockKeyIndex = 0;
+  mockNav.reset();
   mockFetch.mockReset();
   mockSend.mockReset();
+  mockPush.mockReset();
   mockOpenURL.mockReset();
   mockOpenURL.mockResolvedValue(true);
   jest.spyOn(Linking, "openURL").mockImplementation((url: string) => mockOpenURL(url));
   mockFetch.mockResolvedValue({ outcome: "ok", payload: payload() });
 });
 
-describe("TravelScreen — the reading", () => {
-  it("draws the server's semáforo label verbatim, the groups, the CVIs and the disclaimers", async () => {
+afterEach(() => {
+  jest.useRealTimers();
+});
+
+describe("TravelScreen — the trip, in modules", () => {
+  it("draws the pase: destination, countdown, the server's label verbatim and the count", async () => {
     render(<TravelScreen publicToken={TOKEN} />);
     expect(await screen.findByText("Revisar pendientes")).toBeOnTheScreen();
-    expect(screen.getByText("Chile, 12/11/2026 · LATAM, en cabina")).toBeOnTheScreen();
-    expect(screen.getByText("Destino")).toBeOnTheScreen();
-    expect(screen.getByText("Aerolínea")).toBeOnTheScreen();
-    expect(screen.getByText("Verificá con tu aerolínea: LATAM")).toBeOnTheScreen();
-    expect(screen.getByText("Verificá — dato sin confirmar con la fuente")).toBeOnTheScreen();
-    expect(screen.getByText("AR-555: emitido el 20/09/2026")).toBeOnTheScreen();
-    expect(screen.getByText("miMAR no reemplaza a SENASA.")).toBeOnTheScreen();
+    expect(screen.getByText("Chile")).toBeOnTheScreen();
+    expect(screen.getByText("faltan 36 días")).toBeOnTheScreen();
+    expect(screen.getByText("Jue 12/11/2026 · LATAM, en cabina")).toBeOnTheScreen();
+    expect(screen.getByText("2 cosas por resolver · 1 ya está")).toBeOnTheScreen();
+    // The disclaimer, once.
+    expect(screen.getAllByText("miMAR no reemplaza a la autoridad sanitaria.")).toHaveLength(1);
+    // Three quick actions, the paper named the way the destination names it.
+    expect(screen.getByText("Exportar PDF")).toBeOnTheScreen();
+    expect(screen.getAllByText("Cargar el CZI").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Mandar a mi veterinaria").length).toBeGreaterThan(0);
     // The first read leaves the choice of trip to the server.
     expect(mockFetch).toHaveBeenCalledWith({}, TOKEN, null);
+  });
+
+  it("opens only the first module with work, and keeps the rest folded", async () => {
+    render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Revisar pendientes");
+    // Lo que falta is open: its requirements are on screen, worst first.
+    expect(screen.getByText("Vacuna antirrábica")).toBeOnTheScreen();
+    expect(screen.getByText("Certificado Zoosanitario (CZI)")).toBeOnTheScreen();
+    expect(screen.getByText("Bloqueante")).toBeOnTheScreen();
+    // Ya está is folded: its requirement appears only when opened.
+    expect(screen.queryByText("Edad mínima")).toBeNull();
+    fireEvent.press(screen.getByText("Ya está"));
+    expect(screen.getByText("Edad mínima")).toBeOnTheScreen();
+  });
+
+  it("opens Para llevar when nothing is pending but a paper is unticked", async () => {
+    mockFetch.mockResolvedValue({ outcome: "ok", payload: withPapers() });
+    render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Revisar pendientes");
+    expect(screen.getByText("Nada pendiente detectado")).toBeOnTheScreen();
+    expect(screen.getByText("1 de 2")).toBeOnTheScreen();
+    expect(screen.getByRole("checkbox", { name: "Permiso de importación" })).toBeOnTheScreen();
+  });
+
+  it("seals a requirement met only on the owner's word and offers to send it to the vet", async () => {
+    render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Revisar pendientes");
+    expect(screen.getByText(PET_TRAVEL_DECLARED_SEAL)).toBeOnTheScreen();
+    // The declared one asks the vet to record it; it never counts as done.
+    expect(screen.getAllByText("Mandar a mi veterinaria")).toHaveLength(2);
+    expect(screen.getAllByText("Cargar el CZI")).toHaveLength(2);
+  });
+
+  it("shows no seal and no action when an older server sends no evidence", async () => {
+    const old = { ...RABIES, evidence: undefined, sources: [] };
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        options: OLD_OPTIONS,
+        compliance: {
+          semaforo: "amarillo",
+          semaforoLabel: "Revisar pendientes",
+          obligations: [old],
+          corridors: [],
+        },
+      }),
+    });
+    render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Revisar pendientes");
+    expect(screen.queryByText(PET_TRAVEL_DECLARED_SEAL)).toBeNull();
+    expect(screen.getByText("Pedírselo a mi veterinaria")).toBeOnTheScreen();
+    // No paper on the payload: the quick action keeps the old name.
+    expect(screen.getByText("Cargar el CVI")).toBeOnTheScreen();
+  });
+
+  it("opens the detail in place, with who publishes the rule", async () => {
+    render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Revisar pendientes");
+    expect(screen.queryByText(/Fuente:/)).toBeNull();
+    fireEvent.press(screen.getAllByText("Ver detalle")[1] as never);
+    expect(screen.getByText("Exigido por: Chile")).toBeOnTheScreen();
+    fireEvent.press(
+      screen.getByText("Fuente: SENASA, requisitos para Chile, revisada el 30/09/2026"),
+    );
+    expect(mockOpenURL).toHaveBeenCalledWith("https://www.argentina.gob.ar/senasa/chile");
+    expect(screen.getByText("Ocultar detalle")).toBeOnTheScreen();
   });
 
   it("never promises and never sends anybody to the web", async () => {
     render(<TravelScreen publicToken={TOKEN} />);
     await screen.findByText("Revisar pendientes");
-    expect(screen.queryByText(/\bapto\b|\bcumple\b|en orden|listo para viajar/i)).toBeNull();
+    for (const label of screen.getAllByText("Ver detalle")) fireEvent.press(label);
+    expect(screen.queryByText(/\bapto\b|en orden|listo para viajar/i)).toBeNull();
     expect(screen.queryByText(/web|navegador/i)).toBeNull();
-    // The only outbound link is a published SOURCE, a citation — not the flow.
-    fireEvent.press(screen.getByText("Fuente: SAG Chile, revisada el 01/09/2026"));
-    expect(mockOpenURL).toHaveBeenCalledWith("https://www.sag.gob.cl/mascotas");
     expect(mockOpenURL).not.toHaveBeenCalledWith(expect.stringContaining("/mis-mascotas/"));
   });
 
-  it("switches trips by reading the one asked for", async () => {
+  it("switches trips from 'Ver los otros', reading the one asked for", async () => {
     mockFetch.mockResolvedValue({
       outcome: "ok",
       payload: payload({ trips: [TRIP_CHILE, TRIP_URUGUAY] }),
     });
     render(<TravelScreen publicToken={TOKEN} />);
     await screen.findByText("Revisar pendientes");
+    expect(screen.getByText("Viaje 1 de 2")).toBeOnTheScreen();
+    // No chip per trip over the semáforo any more.
+    expect(screen.queryByText("Uruguay, 20/12/2026")).toBeNull();
+    fireEvent.press(screen.getByText("Ver los otros"));
     fireEvent.press(screen.getByText("Uruguay, 20/12/2026"));
     await waitFor(() => expect(mockFetch).toHaveBeenLastCalledWith({}, TOKEN, TRIP_B));
   });
 
-  it("says there is no trip yet and opens the trip form", async () => {
-    mockFetch.mockResolvedValue({ outcome: "ok", payload: EMPTY });
+  it("says the way of travelling in the pase even without an airline", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ trips: [TRIP_URUGUAY], selectedTripEventId: TRIP_B }),
+    });
     render(<TravelScreen publicToken={TOKEN} />);
-    expect(await screen.findByText("Todavía no hay un viaje registrado")).toBeOnTheScreen();
-    expect(screen.getByText("Registrar viaje")).toBeOnTheScreen();
-    expect(screen.queryByText("Cancelar este viaje")).toBeNull();
+    expect(await screen.findByText("Dom 20/12/2026 · En auto o en micro")).toBeOnTheScreen();
   });
 
   it("renders a refusal on the first read as its sentence, with a retry", async () => {
@@ -223,7 +406,7 @@ describe("TravelScreen — the reading", () => {
     expect(screen.queryByText("Revisar pendientes")).toBeNull();
   });
 
-  it("offers no form and no cancel when the server says nothing may be recorded", async () => {
+  it("offers no write when the server says nothing may be recorded", async () => {
     mockFetch.mockResolvedValue({
       outcome: "ok",
       payload: payload({ capabilities: { canRecord: false } }),
@@ -231,23 +414,130 @@ describe("TravelScreen — the reading", () => {
     render(<TravelScreen publicToken={TOKEN} />);
     await screen.findByText("Revisar pendientes");
     expect(screen.queryByText("Cancelar este viaje")).toBeNull();
-    expect(screen.queryByText("Registrar un CVI")).toBeNull();
-    expect(screen.queryByText("Registrar otro viaje")).toBeNull();
+    expect(screen.queryByText("Cargar el CZI")).toBeNull();
+    expect(screen.queryByText("Planear otro viaje")).toBeNull();
+    // Reading and sharing stay: they write nothing.
+    expect(screen.getByText("Exportar PDF")).toBeOnTheScreen();
+    expect(screen.getAllByText("Mandar a mi veterinaria").length).toBeGreaterThan(0);
+  });
+
+  it("fixes no height around text, so a larger font grows rows instead of clipping them", async () => {
+    mockFetch.mockResolvedValue({ outcome: "ok", payload: withPapers() });
+    const { UNSAFE_root } = render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Revisar pendientes");
+    fireEvent.press(screen.getByText("Ya está"));
+    const fixed = UNSAFE_root.findAll(
+      (node) => node.type === View && StyleSheet.flatten(node.props.style)?.height !== undefined,
+    );
+    // Non-vacuous: the chevrons and boxes ARE fixed-size, and hold no text.
+    expect(fixed.length).toBeGreaterThan(0);
+    for (const node of fixed) {
+      expect(node.findAll((child) => child.type === Text)).toEqual([]);
+    }
+    // And no text on this screen is truncated to a line count.
+    const truncated = UNSAFE_root.findAll(
+      (node) => node.type === Text && node.props.numberOfLines !== undefined,
+    );
+    expect(truncated).toEqual([]);
   });
 });
 
-describe("TravelScreen — recording a trip", () => {
-  it("refuses locally, with the field's sentence, before any round trip", async () => {
+describe("TravelScreen — no trip yet", () => {
+  it("puts one call to action first, and the destinations as shortcuts", async () => {
     mockFetch.mockResolvedValue({ outcome: "ok", payload: EMPTY });
     render(<TravelScreen publicToken={TOKEN} />);
-    await screen.findByText("Registrar viaje");
-    fireEvent.press(screen.getByText("Registrar viaje"));
-    expect(await screen.findByText("Elegí el país de destino.")).toBeOnTheScreen();
-    expect(mockSend).not.toHaveBeenCalled();
+    expect(await screen.findByText("Planear un viaje")).toBeOnTheScreen();
+    expect(
+      screen.getByText("Planeá un viaje y te mostramos qué le falta a Pampa"),
+    ).toBeOnTheScreen();
+    expect(screen.getByText("O empezá por el destino")).toBeOnTheScreen();
+    expect(screen.queryByText("Exportar PDF")).toBeNull();
+    expect(screen.queryByText("Cancelar este viaje")).toBeNull();
   });
 
-  it("posts record_trip with a key, reuses it on a retry, and reads the new trip", async () => {
+  it("a destination shortcut opens the wizard on its second step", async () => {
     mockFetch.mockResolvedValue({ outcome: "ok", payload: EMPTY });
+    render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Planear un viaje");
+    fireEvent.press(screen.getByText("Uruguay"));
+    expect(screen.getByText("Paso 2 de 4 · Uruguay")).toBeOnTheScreen();
+    expect(screen.getByText("¿Cómo viajan?")).toBeOnTheScreen();
+    // Uruguay offers the boat; three ways plus "Todavía no sé".
+    expect(screen.getByText("En barco")).toBeOnTheScreen();
+    expect(screen.getByText("En auto o en micro")).toBeOnTheScreen();
+  });
+
+  it("offers no plan when nothing may be recorded", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: { ...EMPTY, capabilities: { canRecord: false } },
+    });
+    render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Planeá un viaje y te mostramos qué le falta a Pampa");
+    expect(screen.queryByText("Planear un viaje")).toBeNull();
+    expect(screen.queryByText("O empezá por el destino")).toBeNull();
+  });
+});
+
+describe("TravelScreen — the four-step wizard", () => {
+  async function openWizard(data: PetTravelV1 = EMPTY) {
+    mockFetch.mockResolvedValue({ outcome: "ok", payload: data });
+    render(<TravelScreen publicToken={TOKEN} />);
+    fireEvent.press(await screen.findByText("Planear un viaje"));
+  }
+
+  it("asks the destination first: the five and an honest 'Otro país', six at most", async () => {
+    await openWizard();
+    expect(screen.getByText("Paso 1 de 4")).toBeOnTheScreen();
+    expect(screen.getByText("¿A dónde viaja Pampa?")).toBeOnTheScreen();
+    expect(screen.getByText("Otro país")).toBeOnTheScreen();
+    expect(screen.getByText("Estados Unidos")).toBeOnTheScreen();
+  });
+
+  it("'Otro país' records nothing and says what miMAR does not do", async () => {
+    await openWizard();
+    fireEvent.changeText(screen.getByLabelText("Destino"), "Perú");
+    expect(screen.getByText("Perú no está entre los destinos que miMAR revisa")).toBeOnTheScreen();
+    fireEvent.press(screen.getByText("Volver a los destinos"));
+    expect(screen.getByText("Chile")).toBeOnTheScreen();
+    fireEvent.press(screen.getByText("Otro país"));
+    expect(
+      screen.getByText("Ese país no está entre los destinos que miMAR revisa"),
+    ).toBeOnTheScreen();
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(screen.queryByText("Crear viaje")).toBeNull();
+  });
+
+  it("finds a destination by another of its names", async () => {
+    await openWizard();
+    fireEvent.changeText(screen.getByLabelText("Destino"), "Europa");
+    expect(screen.getByText("España (Unión Europea)")).toBeOnTheScreen();
+    expect(screen.queryByText("Chile")).toBeNull();
+  });
+
+  it("skips '¿Cómo viajan?' for a destination reached only by air", async () => {
+    await openWizard();
+    fireEvent.press(screen.getByText("España (Unión Europea)"));
+    expect(screen.getByText("Paso 2 de 3 · España (Unión Europea) en avión")).toBeOnTheScreen();
+    expect(screen.getByText("¿Con qué aerolínea?")).toBeOnTheScreen();
+    // The destination's airlines first, then search, then "Todavía no sé".
+    expect(screen.getByText("Iberia")).toBeOnTheScreen();
+    expect(screen.queryByText("LATAM")).toBeNull();
+    expect(screen.getByText("Buscar otra aerolínea")).toBeOnTheScreen();
+  });
+
+  it("searches every airline, not only the suggested ones", async () => {
+    await openWizard();
+    fireEvent.press(screen.getByText("España (Unión Europea)"));
+    fireEvent.press(screen.getByText("Buscar otra aerolínea"));
+    fireEvent.changeText(screen.getByLabelText("Aerolínea"), "emir");
+    fireEvent.press(screen.getByText("Emirates"));
+    // Emirates publishes cargo only: the only modality offered.
+    expect(screen.getByText("Como carga")).toBeOnTheScreen();
+    expect(screen.queryByText("En cabina")).toBeNull();
+  });
+
+  it("creates the trip with a key, reuses it on a retry, and reads the new trip", async () => {
     mockSend.mockResolvedValueOnce({
       outcome: "api-error",
       code: "travel_failed",
@@ -257,29 +547,43 @@ describe("TravelScreen — recording a trip", () => {
       outcome: "ok",
       payload: { command: "record_trip", eventId: NEW_TRIP, replayed: true },
     });
-    render(<TravelScreen publicToken={TOKEN} />);
-    await screen.findByText("Registrar viaje");
-    fireEvent.press(screen.getByText("Uruguay"));
-    fireEvent.changeText(screen.getByLabelText("Fecha de salida, obligatorio"), "20/12/2026");
-    fireEvent.press(screen.getByText("Registrar viaje"));
+    await openWizard();
+    fireEvent.press(screen.getByText("Chile"));
+    fireEvent.press(screen.getByText("En avión"));
+    fireEvent.press(screen.getByText("LATAM"));
+    expect(screen.getByText("¿Dónde viaja Pampa?")).toBeOnTheScreen();
+    expect(screen.getByText("LATAM publica hasta 7 kg con el bolso")).toBeOnTheScreen();
+    expect(screen.queryByText("Como carga")).toBeNull();
+    fireEvent.press(screen.getByText("En cabina"));
+    expect(screen.getByText("Paso 4 de 4 · Chile")).toBeOnTheScreen();
+    expect(
+      screen.getByText("• La antirrábica tiene que tener al menos 21 días el día del viaje."),
+    ).toBeOnTheScreen();
+    fireEvent.changeText(screen.getByLabelText("Fecha de salida, obligatorio"), "15/11/2026");
+    expect(screen.getByText("Domingo 15 de noviembre · faltan 39 días")).toBeOnTheScreen();
+    expect(screen.getByText("Chile · 15/11/2026")).toBeOnTheScreen();
+    expect(screen.getByText("LATAM, en cabina")).toBeOnTheScreen();
+
+    fireEvent.press(screen.getByText("Crear viaje"));
     await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
     expect(mockSend).toHaveBeenLastCalledWith(
       {},
       TOKEN,
       {
         command: "record_trip",
-        corridorId: "uruguay",
-        travelDate: "2026-12-20",
-        mode: null,
-        airlineId: null,
-        intendedModality: null,
+        corridorId: "chile",
+        travelDate: "2026-11-15",
+        mode: "air",
+        airlineId: "latam",
+        intendedModality: "cabin",
       },
       mockKeys[0],
     );
+    // The failure stays in the wizard, under the field.
+    expect(await screen.findByText(/No pudimos guardar el viaje/)).toBeOnTheScreen();
 
     // The retry of the SAME attempt carries the SAME key.
-    await screen.findByText("Registrar viaje");
-    fireEvent.press(screen.getByText("Registrar viaje"));
+    fireEvent.press(screen.getByText("Crear viaje"));
     await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(2));
     expect(mockSend.mock.calls[1]?.[3]).toBe(mockKeys[0]);
 
@@ -288,28 +592,95 @@ describe("TravelScreen — recording a trip", () => {
     await waitFor(() => expect(mockFetch).toHaveBeenLastCalledWith({}, TOKEN, NEW_TRIP));
   });
 
-  it("keeps the screen under a stale banner when the re-read after a write fails", async () => {
-    mockFetch.mockResolvedValueOnce({ outcome: "ok", payload: payload() });
-    mockFetch.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
+  it("'Todavía no sé' how they travel sends mode null and skips the airline", async () => {
     mockSend.mockResolvedValue({
       outcome: "ok",
-      payload: { command: "record_cvi", eventId: "c2", replayed: false },
+      payload: { command: "record_trip", eventId: NEW_TRIP, replayed: false },
     });
-    render(<TravelScreen publicToken={TOKEN} />);
-    await screen.findByText("Revisar pendientes");
-    fireEvent.press(screen.getByText("Registrar un CVI"));
-    fireEvent.changeText(screen.getByLabelText("Número de CVI, obligatorio"), "AR-777");
-    fireEvent.changeText(screen.getByLabelText("Fecha de emisión, obligatorio"), "25/09/2026");
-    fireEvent.press(screen.getByText("Registrar CVI"));
-    expect(await screen.findByText("CVI registrado.")).toBeOnTheScreen();
-    expect(await screen.findByText("No pudimos actualizar")).toBeOnTheScreen();
-    expect(screen.getByText("Revisar pendientes")).toBeOnTheScreen();
-    expect(mockSend).toHaveBeenCalledWith(
-      {},
-      TOKEN,
-      { command: "record_cvi", cviNumber: "AR-777", issuedDate: "2026-09-25", validUntil: null },
-      mockKeys[0],
-    );
+    await openWizard();
+    fireEvent.press(screen.getByText("Chile"));
+    fireEvent.press(screen.getByText("Todavía no sé"));
+    expect(screen.getByText("Paso 3 de 3 · Chile")).toBeOnTheScreen();
+    fireEvent.changeText(screen.getByLabelText("Fecha de salida, obligatorio"), "15/11/2026");
+    fireEvent.press(screen.getByText("Crear viaje"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+    expect(mockSend.mock.calls[0]?.[2]).toEqual({
+      command: "record_trip",
+      corridorId: "chile",
+      travelDate: "2026-11-15",
+      mode: null,
+      airlineId: null,
+      intendedModality: null,
+    });
+  });
+
+  it("refuses a date outside the window under the field, before any round trip", async () => {
+    await openWizard();
+    fireEvent.press(screen.getByText("Chile"));
+    fireEvent.press(screen.getByText("En auto o en micro"));
+    fireEvent.changeText(screen.getByLabelText("Fecha de salida, obligatorio"), "01/10/2026");
+    fireEvent.press(screen.getByText("Crear viaje"));
+    expect(
+      await screen.findByText(PET_TRAVEL_REFUSAL_MESSAGES.TRAVEL_DATE_OUT_OF_RANGE),
+    ).toBeOnTheScreen();
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("says the server's refusal reason in its own sentence, not three causes at once", async () => {
+    mockSend.mockResolvedValue({
+      outcome: "api-error",
+      code: "travel_input_invalid",
+      reason: "AIRLINE_UNKNOWN",
+      retryAfterSeconds: null,
+    });
+    await openWizard();
+    fireEvent.press(screen.getByText("Chile"));
+    fireEvent.press(screen.getByText("En auto o en micro"));
+    fireEvent.changeText(screen.getByLabelText("Fecha de salida, obligatorio"), "15/11/2026");
+    fireEvent.press(screen.getByText("Crear viaje"));
+    expect(await screen.findByText(PET_TRAVEL_REFUSAL_MESSAGES.AIRLINE_UNKNOWN)).toBeOnTheScreen();
+    expect(screen.queryByText(/el CVI no puede tener fecha futura/)).toBeNull();
+  });
+
+  it("goes back a step keeping the answer, with the button and with the back gesture", async () => {
+    await openWizard();
+    fireEvent.press(screen.getByText("Chile"));
+    fireEvent.press(screen.getByText("En avión"));
+    expect(screen.getByText("¿Con qué aerolínea?")).toBeOnTheScreen();
+
+    // The back gesture: one step back, nothing lost, the screen stays.
+    let outcome: { blocked: boolean } = { blocked: false };
+    act(() => {
+      outcome = mockNav.pressBack();
+    });
+    expect(outcome.blocked).toBe(true);
+    expect(screen.getByText("¿Cómo viajan?")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: /En avión/, selected: true })).toBeOnTheScreen();
+
+    // The on-screen "Volver": to the destination, still chosen.
+    fireEvent.press(screen.getByText("Volver"));
+    expect(screen.getByText("¿A dónde viaja Pampa?")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: /Chile/, selected: true })).toBeOnTheScreen();
+  });
+
+  it("shows an older server's full airline list, with no search to fall back on", async () => {
+    await openWizard({ ...EMPTY, options: OLD_OPTIONS });
+    fireEvent.press(screen.getByText("Chile"));
+    // Without v14's suggestion every mode the contract lists is still offered.
+    fireEvent.press(screen.getByText("En avión"));
+    for (const airline of OLD_OPTIONS.airlines) {
+      expect(screen.getByText(airline.name)).toBeOnTheScreen();
+    }
+    expect(screen.queryByText("Buscar otra aerolínea")).toBeNull();
+    fireEvent.press(screen.getByText("GOL"));
+    // No published modalities: all three, as before.
+    expect(screen.getByText("En cabina")).toBeOnTheScreen();
+    expect(screen.getByText("En bodega")).toBeOnTheScreen();
+    expect(screen.getByText("Como carga")).toBeOnTheScreen();
+    fireEvent.press(screen.getByText("En bodega"));
+    // And the date step has no hints to draw, and still creates.
+    expect(screen.getByText("Crear viaje")).toBeOnTheScreen();
+    expect(screen.queryByText(/con tiempo/)).toBeNull();
   });
 });
 
@@ -352,31 +723,8 @@ describe("TravelScreen — cancelling a trip", () => {
   });
 });
 
-describe("TravelScreen — 'Lo tengo' per paper (PO 2026-10-01)", () => {
-  const PAPERS = {
-    id: "required_documents",
-    group: "destino" as const,
-    label: "Documentación a presentar",
-    state: "Confirmá que tenés cada documento",
-    detail: "Sin confirmar: Permiso de importación",
-    requirementLevel: "warning" as const,
-    contributingJurisdictions: ["Chile"],
-    sources: [],
-    freshnessNotice: null,
-    legalFootnote: "Regla del corredor de viaje · Chile",
-    documents: [
-      { label: "Certificado veterinario", confirmed: true },
-      { label: "Permiso de importación", confirmed: false },
-    ],
-  };
-
-  function withPapers(over: Partial<PetTravelV1> = {}) {
-    const base = payload(over);
-    if (base.compliance === null) throw new Error("fixture: a trip has a reading");
-    return { ...base, compliance: { ...base.compliance, obligations: [PAPERS] } };
-  }
-
-  it("shows each paper with what the owner said, and ticks one with confirm_trip_document", async () => {
+describe("TravelScreen — Para llevar, one box per paper", () => {
+  it("ticks a paper with confirm_trip_document, and re-reads", async () => {
     mockFetch.mockResolvedValue({ outcome: "ok", payload: withPapers() });
     mockSend.mockResolvedValue({
       outcome: "ok",
@@ -384,10 +732,10 @@ describe("TravelScreen — 'Lo tengo' per paper (PO 2026-10-01)", () => {
     });
     render(<TravelScreen publicToken={TOKEN} />);
     expect(await screen.findByText("Lo tenés, según indicaste")).toBeOnTheScreen();
-    expect(screen.getByText("Sin confirmar")).toBeOnTheScreen();
-    expect(screen.getByText("Desmarcar")).toBeOnTheScreen();
-
-    fireEvent.press(screen.getByText("Lo tengo"));
+    expect(
+      screen.getByRole("checkbox", { name: "Certificado veterinario", checked: true }),
+    ).toBeOnTheScreen();
+    fireEvent.press(screen.getByRole("checkbox", { name: "Permiso de importación" }));
     await waitFor(() =>
       expect(mockSend).toHaveBeenCalledWith(
         {},
@@ -402,19 +750,18 @@ describe("TravelScreen — 'Lo tengo' per paper (PO 2026-10-01)", () => {
       ),
     );
     expect(await screen.findByText("Documento actualizado.")).toBeOnTheScreen();
-    // The obligation's colour is the server's: the reading is re-done.
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
   });
 
-  it("takes a tick back with confirmed: false, under a key of its own", async () => {
+  it("takes a tick back with confirmed: false", async () => {
     mockFetch.mockResolvedValue({ outcome: "ok", payload: withPapers() });
     mockSend.mockResolvedValue({
       outcome: "ok",
       payload: { command: "confirm_trip_document", tripEventId: TRIP_A, changed: true },
     });
     render(<TravelScreen publicToken={TOKEN} />);
-    await screen.findByText("Desmarcar");
-    fireEvent.press(screen.getByText("Desmarcar"));
+    await screen.findByText("Lo tenés, según indicaste");
+    fireEvent.press(screen.getByRole("checkbox", { name: "Certificado veterinario" }));
     await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
     expect(mockSend.mock.calls[0]?.[2]).toEqual({
       command: "confirm_trip_document",
@@ -430,9 +777,38 @@ describe("TravelScreen — 'Lo tengo' per paper (PO 2026-10-01)", () => {
       payload: withPapers({ capabilities: { canRecord: false } }),
     });
     render(<TravelScreen publicToken={TOKEN} />);
-    expect(await screen.findByText("Permiso de importación")).toBeOnTheScreen();
-    expect(screen.queryByText("Lo tengo")).toBeNull();
-    expect(screen.queryByText("Desmarcar")).toBeNull();
+    const box = await screen.findByRole("checkbox", { name: "Permiso de importación" });
+    fireEvent.press(box);
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+});
+
+describe("TravelScreen — the paper this trip asks for", () => {
+  it("'Cargar el CZI' opens the form in Papeles; a failed re-read keeps the screen", async () => {
+    mockFetch.mockResolvedValueOnce({ outcome: "ok", payload: payload() });
+    mockFetch.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
+    mockSend.mockResolvedValue({
+      outcome: "ok",
+      payload: { command: "record_cvi", eventId: "c2", replayed: false },
+    });
+    render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Revisar pendientes");
+    fireEvent.press(screen.getAllByText("Cargar el CZI")[0] as never);
+    expect(
+      screen.getByText("Chile pide: Certificado Zoosanitario de Importación (CZI)."),
+    ).toBeOnTheScreen();
+    fireEvent.changeText(screen.getByLabelText("Número de CVI, obligatorio"), "AR-777");
+    fireEvent.changeText(screen.getByLabelText("Fecha de emisión, obligatorio"), "25/09/2026");
+    fireEvent.press(screen.getByText("Registrar CVI"));
+    expect(await screen.findByText("CVI registrado.")).toBeOnTheScreen();
+    expect(await screen.findByText("No pudimos actualizar")).toBeOnTheScreen();
+    expect(screen.getByText("Revisar pendientes")).toBeOnTheScreen();
+    expect(mockSend).toHaveBeenCalledWith(
+      {},
+      TOKEN,
+      { command: "record_cvi", cviNumber: "AR-777", issuedDate: "2026-09-25", validUntil: null },
+      mockKeys[0],
+    );
   });
 });
 
@@ -486,10 +862,24 @@ describe("TravelScreen — the travel PDF, from the phone (task 6.5)", () => {
     expect(await screen.findByText(/podés volver a exportarlo/)).toBeOnTheScreen();
   });
 
+  it("'Mandar a mi veterinaria' shares the same PDF and suggests a message to send with it", async () => {
+    render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Revisar pendientes");
+    fireEvent.press(screen.getAllByText("Mandar a mi veterinaria")[0] as never);
+    await waitFor(() => expect(Sharing.shareAsync).toHaveBeenCalledTimes(1));
+    expect(mockExport).toHaveBeenCalledWith({}, TOKEN, TRIP_A);
+    const [, options] = Sharing.shareAsync.mock.calls[0] as [string, { dialogTitle: string }];
+    expect(options.dialogTitle).toBe("PDF del viaje de Pampa, para tu veterinaria");
+    expect(await screen.findByText("Mensaje sugerido para tu veterinaria")).toBeOnTheScreen();
+    expect(
+      screen.getByText(/te mando el PDF del viaje de Pampa a Chile, 12\/11\/2026/),
+    ).toBeOnTheScreen();
+  });
+
   it("is not offered while there is no trip to print", async () => {
     mockFetch.mockResolvedValue({ outcome: "ok", payload: EMPTY });
     render(<TravelScreen publicToken={TOKEN} />);
-    await screen.findByText("Todavía no hay un viaje registrado");
+    await screen.findByText("Planear un viaje");
     expect(screen.queryByText("Exportar PDF")).toBeNull();
   });
 

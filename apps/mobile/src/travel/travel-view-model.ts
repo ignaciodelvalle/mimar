@@ -23,16 +23,23 @@
 // for them are this file's.
 
 import {
-  PET_TRAVEL_AIRLINE_NOTICE,
-  PET_TRAVEL_GROUP_LABELS,
+  PET_TRAVEL_ACTION_LABELS,
+  PET_TRAVEL_DECLARED_SEAL,
+  PET_TRAVEL_MODALITY_LABELS,
+  PET_TRAVEL_MODE_LABELS,
+  type PetTravelActionKindV1,
   type PetTravelCommandAckV1,
   type PetTravelComplianceV1,
+  type PetTravelCorridorOptionV1,
   type PetTravelCviV1,
   type PetTravelDocumentV1,
   type PetTravelObligationV1,
+  type PetTravelPaperV1,
   type PetTravelSemaforoV1,
   type PetTravelSourceV1,
   type PetTravelTripV1,
+  petTravelObligationAction,
+  petTravelRecordPaperLabel,
 } from "@dim/contract/api";
 import {
   type PetTravelCommandInput,
@@ -96,53 +103,138 @@ export function selectedTrip(
   return trips.find((t) => t.tripEventId === selectedTripEventId) ?? null;
 }
 
-export type ObligationSection = {
-  group: ObligationGroup;
-  title: string;
-  /** Only on the airline group: the notice, with the airline's name. */
-  airlineNotice: string | null;
-  obligations: PetTravelObligationV1[];
-};
+/**
+ * "Dom 15/11/2026 · LATAM, en cabina" — the trip header's second line.
+ *
+ * THE WAY OF TRAVELLING IS SAID EVEN WITHOUT AN AIRLINE (QA 2026-10-07, copy
+ * 9): a trip by road read "Chile, 15/10/2026" as if nothing else were known.
+ */
+export function tripMetaLine(trip: PetTravelTripV1, weekday: string | null): string {
+  const date = isoToDateInput(trip.travelDate);
+  const when = weekday === null ? date : `${weekday} ${date}`;
+  if (trip.airlineName !== null) {
+    const where = trip.intendedModality ? `, en ${MODALITY_WORD[trip.intendedModality]}` : "";
+    return `${when} · ${trip.airlineName}${where}`;
+  }
+  if (trip.mode !== null) return `${when} · ${MODE_LABELS[trip.mode]}`;
+  return when;
+}
 
-const GROUP_ORDER: readonly ObligationGroup[] = ["destino", "aerolinea", "libreta"];
+/** One paper of the trip, with the obligation that lists it. */
+export type TripPaper = { document: PetTravelDocumentV1; obligationId: string };
 
 /**
- * The obligations in the web's three lists, in the web's order.
+ * The trip's reading, split by WHAT IS LEFT TO DO rather than by who asks
+ * (Destino, Aerolínea, Libreta was the old split; "Exigido por" keeps the
+ * origin inside each requirement's detail).
  *
- * THE SAME TWO OMISSIONS THE WEB MAKES (`viaje/page.tsx`): the airline group
- * is left out when the trip names no airline — "no airline selected" means no
- * airline section, per spec — and an EMPTY group is left out except Destino,
- * which always answers, even if only to say nothing applies.
+ *   · `pending` — `blocker` and `warning`: something is still missing;
+ *   · `done`    — `info`: nothing left to do;
+ *   · `papers`  — every paper the trip asks to carry, from the obligations
+ *                 that list them. Those obligations are NOT in the other two:
+ *                 a paper is ticked in "Para llevar", not resolved by a vet.
+ *
+ * ARRANGEMENT ONLY: `requirementLevel` is the server's, and so is the order
+ * inside each list (worst first).
  */
-export function obligationSections(
-  compliance: PetTravelComplianceV1,
-  trip: PetTravelTripV1,
-): ObligationSection[] {
-  const sections: ObligationSection[] = [];
-  for (const group of GROUP_ORDER) {
-    if (group === "aerolinea" && trip.airlineName === null) continue;
-    const obligations = compliance.obligations.filter((o) => o.group === group);
-    if (obligations.length === 0 && group !== "destino") continue;
-    sections.push({
-      group,
-      title: PET_TRAVEL_GROUP_LABELS[group],
-      airlineNotice:
-        group === "aerolinea" && trip.airlineName !== null
-          ? `${PET_TRAVEL_AIRLINE_NOTICE}: ${trip.airlineName}`
-          : null,
-      obligations,
-    });
+export type TripReadingSplit = {
+  pending: PetTravelObligationV1[];
+  done: PetTravelObligationV1[];
+  papers: TripPaper[];
+};
+
+export function splitObligations(compliance: PetTravelComplianceV1 | null): TripReadingSplit {
+  const split: TripReadingSplit = { pending: [], done: [], papers: [] };
+  if (compliance === null) return split;
+  for (const obligation of compliance.obligations) {
+    const documents = obligationDocuments(obligation);
+    if (documents.length > 0) {
+      for (const document of documents)
+        split.papers.push({ document, obligationId: obligation.id });
+      continue;
+    }
+    if (obligation.requirementLevel === "info") split.done.push(obligation);
+    else split.pending.push(obligation);
   }
-  return sections;
+  return split;
 }
 
-/** The web's body under the airline notice, with the airline named. */
-export function airlineNoticeBody(airlineName: string): string {
-  return `Lo que sigue es la política que ${airlineName} publica. Puede cambiar sin aviso: confirmala antes de reservar.`;
+/**
+ * "3 cosas por resolver · 2 ya están" under the semáforo. Counting, not
+ * judging: the colour above it is the server's.
+ */
+export function pendingCountLine(split: TripReadingSplit): string | null {
+  const pending = split.pending.length;
+  const done = split.done.length;
+  if (pending === 0 && done === 0) return null;
+  if (pending === 0) return done === 1 ? "1 requisito revisado" : `${done} requisitos revisados`;
+  const left = pending === 1 ? "1 cosa por resolver" : `${pending} cosas por resolver`;
+  if (done === 0) return left;
+  return `${left} · ${done === 1 ? "1 ya está" : `${done} ya están`}`;
 }
 
-/** The web's empty sentence for a group with nothing in it. */
-export const NO_OBLIGATIONS_LINE = "Sin requisitos para el contexto de viaje registrado.";
+/** "2 de 3" — the papers the owner said they have, over the papers asked. */
+export function papersCountLabel(papers: readonly TripPaper[]): string {
+  const ticked = papers.filter((p) => p.document.confirmed).length;
+  return `${ticked} de ${papers.length}`;
+}
+
+export type TripModuleId = "falta" | "llevar" | "listo" | "papeles";
+
+/**
+ * THE OPENING RULE (design, 2026-10-07): only the first module with work in
+ * it opens by itself. With requirements pending, "Lo que falta"; with none,
+ * "Para llevar" while a paper is unticked; with everything done, none — the
+ * night before the trip the screen is the checklist, not the detail.
+ */
+export function initialOpenModule(split: TripReadingSplit): TripModuleId | null {
+  if (split.pending.length > 0) return "falta";
+  if (split.papers.some((p) => !p.document.confirmed)) return "llevar";
+  return null;
+}
+
+/** The seal a requirement met only on the owner's word wears. */
+export function declaredSeal(obligation: PetTravelObligationV1): string | null {
+  return obligation.evidence === "declared" ? PET_TRAVEL_DECLARED_SEAL : null;
+}
+
+/** The paper this trip's destination asks for, when the server names it. */
+export function tripPaper(
+  corridors: readonly PetTravelCorridorOptionV1[],
+  corridorId: string,
+): PetTravelPaperV1 | null {
+  return corridors.find((c) => c.id === corridorId)?.paper ?? null;
+}
+
+/**
+ * The paper's short name for buttons ("Cargar el CZI"). "CVI" when the server
+ * does not name one — what every destination's paper was called before.
+ */
+export function paperShortName(paper: PetTravelPaperV1 | null): string {
+  return paper?.shortName ?? "CVI";
+}
+
+/** The button a requirement offers, or null when nothing on the phone resolves it. */
+export function obligationActionLabel(
+  obligation: PetTravelObligationV1,
+  paper: PetTravelPaperV1 | null,
+): { kind: PetTravelActionKindV1; label: string } | null {
+  const kind = petTravelObligationAction(obligation);
+  if (kind === null || kind === "confirm_papers") return null;
+  const label =
+    kind === "record_paper"
+      ? petTravelRecordPaperLabel(paperShortName(paper))
+      : PET_TRAVEL_ACTION_LABELS[kind];
+  return { kind, label };
+}
+
+/**
+ * The message suggested beside the trip PDF when it goes to the vet. A
+ * suggestion: the share sheet is the owner's, and so is what they send.
+ */
+export function vetShareMessage(petName: string, trip: PetTravelTripV1): string {
+  return `Hola, te mando el PDF del viaje de ${petName} a ${tripLabel(trip)}. Tiene lo que pide el destino y lo que todavía falta registrar en su libreta.`;
+}
 
 const LEVEL_LABEL: Record<PetTravelObligationV1["requirementLevel"], string> = {
   blocker: "Bloqueante",
@@ -161,9 +253,14 @@ export function contributorsLine(obligation: PetTravelObligationV1): string | nu
   return `Exigido por: ${obligation.contributingJurisdictions.join(" · ")}`;
 }
 
-/** "Fuente: SENASA, revisada el 01/09/2026" — the web's source line. */
+/**
+ * "Fuente: SENASA, requisitos para Chile, revisada el 01/09/2026" — who
+ * PUBLISHES the rule, not the country it is about (QA 2026-10-07, copy 5).
+ * An older server sends no `issuerLabel`, and the line falls back to `label`.
+ */
 export function sourceLine(source: PetTravelSourceV1): string {
-  return `Fuente: ${source.label}, revisada el ${isoToDateInput(source.lastVerifiedAt)}`;
+  const who = source.issuerLabel ?? source.label;
+  return `Fuente: ${who}, revisada el ${isoToDateInput(source.lastVerifiedAt)}`;
 }
 
 /**
@@ -185,19 +282,23 @@ export function cviLine(cvi: PetTravelCviV1): string {
   return `${cvi.cviNumber}: emitido el ${isoToDateInput(cvi.issuedDate)}${until}`;
 }
 
-export const NO_TRIP_TITLE = "Todavía no hay un viaje registrado";
-
-export function noTripLine(petName: string): string {
-  return `Registrá el destino y la fecha para ver qué pide el país, qué publica la aerolínea y qué dice la libreta de ${petName}.`;
+/** The empty screen's call, naming the animal. */
+export function noTripTitle(petName: string): string {
+  return `Planeá un viaje y te mostramos qué le falta a ${petName}`;
 }
+
+export const NO_TRIP_LINE =
+  "Comparamos su libreta con lo que pide el destino y lo que publica la aerolínea.";
 
 /**
  * NOT the web's "Lo emite SENASA antes del viaje.": naming a state body with no
  * norm citation is what `state-endorsement-fence.test.ts` refuses on a
  * citizen-facing file, and the sentence reads fine without it.
+ *
+ * NOT "para este viaje" any more (QA 2026-10-07, copy 9): the certificate on
+ * record belongs to the animal, not to one trip.
  */
-export const NO_CVI_LINE =
-  "Todavía no registraste un CVI. Cargalo cuando tengas el certificado para este viaje.";
+export const NO_CVI_LINE = "Todavía no cargaste un CVI.";
 
 // ---------- Forms ------------------------------------------------------------
 
@@ -229,17 +330,10 @@ export type CviDraft = {
 
 export const EMPTY_CVI_DRAFT: CviDraft = { cviNumber: "", issuedDate: "", validUntil: "" };
 
-export const MODE_LABELS: Record<TravelMode, string> = {
-  air: "En avión",
-  land: "Por tierra",
-  sea: "En barco",
-};
+/** The contract's words, shared with the web ("En auto o en micro" is `land`). */
+export const MODE_LABELS: Record<TravelMode, string> = PET_TRAVEL_MODE_LABELS;
 
-export const MODALITY_LABELS: Record<TravelModality, string> = {
-  cabin: "En cabina",
-  hold: "En bodega",
-  cargo: "Como carga",
-};
+export const MODALITY_LABELS: Record<TravelModality, string> = PET_TRAVEL_MODALITY_LABELS;
 
 export type TravelCommandResult =
   | { ok: true; input: PetTravelCommandInput }

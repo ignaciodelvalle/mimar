@@ -1,57 +1,69 @@
-// VIAJE — the owner's trips, the semáforo, and the trip and CVI forms
-// (viajes-fase-2, task 6.2).
+// VIAJE — the owner's trips, the semáforo, the trip wizard and the CVI form
+// (viajes-fase-2, task 6.2; redesigned in modules, PO-approved 2026-10-07).
 //
-// THE WHOLE OWNER FLOW, IN THE APP. The web's /viaje page registers a trip,
-// records a CVI, cancels a trip, ticks "Lo tengo" for each paper the trip asks
-// for, and reads the semáforo; every one of those is
-// here, through `GET|POST /pets/{token}/travel`, which reach the SAME loader and
-// the SAME use-cases the web page reaches. Nothing on this screen sends anybody
-// to a browser.
+// TWO TASKS, NO LONGER MIXED. Planning a trip is a four-step wizard
+// (`TripWizard`, one question per screen); following one is this screen: the
+// "pase" (destination, countdown, the server's semáforo), three quick actions
+// (the PDF one tap away instead of eleven screens down), and folding modules —
+// "Lo que falta", "Para llevar", "Ya está", "Papeles". Every requirement keeps
+// everything it said before (source, who asks, legal note), behind "Ver
+// detalle", in place.
 //
-// THE SEMÁFORO IS DRAWN AS IT COMES. Colour, label, obligations and their
-// freshness are the server's; this screen arranges them (see the view-model's
-// header for why it never derives a verdict). The disclaimers travel with every
-// reading and are drawn with every reading.
+// THE WHOLE OWNER FLOW, IN THE APP. Registering a trip, recording a CVI,
+// cancelling, ticking each paper and reading the semáforo all go through
+// `GET|POST /pets/{token}/travel`, which reach the SAME loader and use-cases
+// the web page reaches. Nothing on this screen sends anybody to a browser.
 //
-// ONE KEY PER ATTEMPT, four kinds of attempt. The trip form and the CVI form
+// THE SEMÁFORO IS DRAWN AS IT COMES. Colour, label, obligations, their level
+// and their evidence are the server's; this screen arranges them (see the
+// view-model's header for why it never derives a verdict). The disclaimers
+// travel with every reading and are drawn once, under the pase.
+//
+// ONE KEY PER ATTEMPT, four kinds of attempt. The trip wizard and the CVI form
 // each hold an attempt session (`pets/idempotency.ts`): the key is minted on the
 // first submit and reused on every retry of that same submit, so a retry that
 // lost its response answers `replayed: true` instead of appending a second trip.
-// A landed write restarts it — the next trip is a different trip. Cancels hold
-// one session PER TRIP, so a cancel of trip B can never reuse the key of an
-// earlier cancel of trip A that may have landed unheard. A paper's tick holds
-// one session per (trip, paper, direction), for the same reason: a tick, its
-// untick and a second tick are three writes, never a replay of one another.
+// A landed write restarts it. Cancels hold one session PER TRIP, and a paper's
+// tick one per (trip, paper, direction), so no write can ever replay another.
 // While any write is in flight every tick is disabled, so two papers are never
 // ticked at once (the server reads the current ticks, then appends the list).
 //
-// THE READ IS RE-DONE AFTER EVERY WRITE, NOT PATCHED — the semáforo of a new
-// trip, or of a trip after a new CVI, is the server's to compute. And a re-read
-// that fails keeps what is on screen (`ui/reload-state.ts`): the ack is true
-// whether or not the refresh behind it lands.
+// THE READ IS RE-DONE AFTER EVERY WRITE, NOT PATCHED, and a re-read that fails
+// keeps what is on screen (`ui/reload-state.ts`).
 //
-// WHO MAY PLAN A TRIP IS NOT DECIDED HERE. The face offers the row to owner,
-// co-owner and foster; the server's `canAccessTravel` is the rule, and a
-// refusal arrives as its sentence. `capabilities.canRecord` (false for a
-// deceased animal) is the one lever the payload hands over, and the forms and
-// the cancel follow it.
+// BACK, INSIDE THE WIZARD, IS ONE STEP BACK and keeps every answer. On its
+// first step it closes the wizard; once a destination is chosen there, the
+// discard guard asks before the screen is left (`useDraftDiscardGuard`).
+//
+// WHO MAY PLAN A TRIP IS NOT DECIDED HERE. `capabilities.canRecord` (false for
+// a deceased animal) is the one lever the payload hands over: without it there
+// is no wizard, no tick, no CVI form, no cancel — and no write quick action.
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Linking, View } from "react-native";
+import { useNavigation, useRouter } from "expo-router";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { Linking, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
-import type { PetTravelObligationV1, PetTravelTripV1, PetTravelV1 } from "@dim/contract/api";
+import type {
+  PetTravelCommandAckV1,
+  PetTravelObligationV1,
+  PetTravelTripV1,
+  PetTravelV1,
+} from "@dim/contract/api";
 import type { PetTravelCommandInput } from "@dim/contract/input";
 
 import { apiFailureMessage } from "../api/client";
 import { fetchPetTravel, sendPetTravelCommand } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
 import { type AttemptSession, createAttemptSession } from "../pets/idempotency";
-import { Body, Card, Loading, Row, StaleNotice } from "../ui/components";
+import { Body, Loading, StaleNotice } from "../ui/components";
+import { FONTS } from "../ui/fonts";
 import {
   Callout,
-  Choice,
+  CollapsibleModule,
   DateField,
+  Eyebrow,
   LinkText,
+  ListRow,
   PrimaryButton,
   Screen,
   SecondaryButton,
@@ -59,24 +71,28 @@ import {
   Title,
 } from "../ui/kit";
 import { type ReadyState, loaded, reloadFailed } from "../ui/reload-state";
+import { recordEventRoute } from "../ui/routes";
+import { COLORS, LEADING, RADIUS, SPACE, TOUCH_TARGET, TYPE } from "../ui/theme";
 import { useDraftDiscardGuard } from "../ui/use-draft-discard-guard";
 import { useScrollToError } from "../ui/use-scroll-to-error";
 
+import { TripWizard } from "./TripWizard";
 import { shareTravelExport } from "./travel-export-share";
+import {
+  FinePrint,
+  GroupLabel,
+  OptionRow,
+  PaperCheckRow,
+  QuickAction,
+  SealLink,
+  TripPase,
+} from "./travel-ui";
 import {
   type CviDraft,
   EMPTY_CVI_DRAFT,
-  EMPTY_TRIP_DRAFT,
-  MODALITY_LABELS,
-  MODE_LABELS,
   NO_CVI_LINE,
-  NO_OBLIGATIONS_LINE,
-  NO_TRIP_TITLE,
-  type ObligationSection,
-  type TravelModality,
-  type TravelMode,
-  type TripDraft,
-  airlineNoticeBody,
+  NO_TRIP_LINE,
+  type TripModuleId,
   buildCancelTrip,
   buildConfirmDocument,
   buildCvi,
@@ -85,26 +101,40 @@ import {
   contributorsLine,
   cviIssuedBounds,
   cviLine,
+  declaredSeal,
   documentStatusLine,
-  noTripLine,
-  obligationDocuments,
-  obligationSections,
+  initialOpenModule,
+  noTripTitle,
+  obligationActionLabel,
+  paperShortName,
+  papersCountLabel,
+  pendingCountLine,
   requirementLevelLabel,
   selectedTrip,
-  semaforoTone,
   sourceLine,
+  splitObligations,
   travelAckMessage,
   travelDateBounds,
   tripLabel,
-  tripSummary,
+  tripMetaLine,
+  tripPaper,
+  vetShareMessage,
 } from "./travel-view-model";
+import {
+  CORRIDOR_CODES,
+  EMPTY_WIZARD_DRAFT,
+  type WizardState,
+  countdownLabel,
+  daysUntil,
+  previousStep,
+  shortWeekday,
+  startWizard,
+  travelDateRangeMessage,
+} from "./trip-wizard-model";
 
 const FAILED = "No pudimos leer el viaje.";
 const WRITE_FAILED = "No pudimos guardar el cambio.";
 
-const EXPORT_BUTTON_LABEL = "Exportar PDF";
-const EXPORT_CARD_BODY =
-  "Un PDF con este viaje, el semáforo y lo que pide cada requisito, con sus fuentes. Guardalo o mandalo por WhatsApp.";
 /** After the share sheet closes. It cannot know whether something was sent. */
 const EXPORT_SHEET_CLOSED =
   "Si cerraste sin elegir una app, podés volver a exportarlo cuando quieras.";
@@ -124,29 +154,63 @@ type Busy =
   | { what: "document"; label: string }
   | null;
 
-/** The picker's "not chosen" option. `Choice` takes strings; `""` is none. */
-const NONE = "";
+/** How the last PDF share went, for the trip it was made for. */
+type ShareState =
+  | { phase: "idle" }
+  | { phase: "working"; kind: "export" | "vet" }
+  | { phase: "closed"; kind: "export" | "vet" }
+  | { phase: "failed"; kind: "export" | "vet"; message: string };
 
-const MODE_OPTIONS = ["", "air", "land", "sea"] as const;
-const MODALITY_OPTIONS = ["", "cabin", "hold", "cargo"] as const;
+type SendOutcome = { ok: true; ack: PetTravelCommandAckV1 } | { ok: false; message: string };
+
+/** React Navigation's object, narrowed to the one event this screen listens to. */
+type BackListenable = {
+  addListener: (
+    type: "beforeRemove",
+    cb: (e: { preventDefault: () => void }) => void,
+  ) => () => void;
+};
 
 export function TravelScreen({ publicToken }: { publicToken: string }) {
+  const router = useRouter();
+  const navigation = useNavigation() as unknown as BackListenable;
   const [state, setState] = useState<ScreenState>({ phase: "loading" });
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState<Busy>(null);
-  const [tripDraft, setTripDraft] = useState<TripDraft>(EMPTY_TRIP_DRAFT);
+  const [wizard, setWizard] = useState<WizardState | null>(null);
+  const [wizardError, setWizardError] = useState<string | null>(null);
   const [cviDraft, setCviDraft] = useState<CviDraft>(EMPTY_CVI_DRAFT);
-  /** The trip form is open by default only while there is no trip — the web's `<details open={!trip}>`. */
-  const [tripFormOpen, setTripFormOpen] = useState(false);
   const [cviFormOpen, setCviFormOpen] = useState(false);
   /** The trip whose cancel is waiting for its second tap. */
   const [confirmingCancel, setConfirmingCancel] = useState<string | null>(null);
-  const { anchorRef: errorAnchor, scrollRef } = useScrollToError(
-    notice !== null && notice.tone === "err" ? notice.message : null,
-  );
-  // THE BACK GESTURE MAY NOT DISCARD A TYPED TRIP OR CVI. Both drafts go back
-  // to their EMPTY constants after a landed write, so the guard lifts itself.
-  useDraftDiscardGuard(tripDraft !== EMPTY_TRIP_DRAFT || cviDraft !== EMPTY_CVI_DRAFT);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+
+  // ONE error on screen at a time, and the screen scrolls to it: the wizard's
+  // under its date field, the reading's at the top (QA 2026-10-07, bug 6).
+  const visibleError =
+    wizard !== null
+      ? wizardError
+      : notice !== null && notice.tone === "err"
+        ? notice.message
+        : null;
+  const { anchorRef: errorAnchor, scrollRef } = useScrollToError(visibleError);
+
+  // THE BACK GESTURE MAY NOT DISCARD A CHOSEN TRIP OR A TYPED CVI — once there
+  // is nothing a step back could return to. Inside the wizard, every step but
+  // the first goes back one step (the listener below), so the guard only asks
+  // on the first step, and only once something was chosen.
+  const wizardAtStart = wizard !== null && previousStep(wizard) === null;
+  const wizardDirty = wizard !== null && wizard.draft !== EMPTY_WIZARD_DRAFT;
+  useDraftDiscardGuard((wizardAtStart && wizardDirty) || cviDraft !== EMPTY_CVI_DRAFT);
+
+  useEffect(() => {
+    if (wizard === null || (wizardAtStart && wizardDirty)) return undefined;
+    return navigation.addListener("beforeRemove", (event) => {
+      event.preventDefault();
+      setWizardError(null);
+      setWizard((current) => (current === null ? null : previousStep(current)));
+    });
+  }, [navigation, wizard, wizardAtStart, wizardDirty]);
 
   // ONE KEY PER ATTEMPT — see the header. `useRef`, so no re-render can mint
   // a different key mid-attempt.
@@ -185,46 +249,83 @@ export function TravelScreen({ publicToken }: { publicToken: string }) {
     (tripEventId: string) => {
       requestedTrip.current = tripEventId;
       setConfirmingCancel(null);
+      setSwitcherOpen(false);
       void load("refresh");
     },
     [load],
   );
 
-  /** Send one command; answers the ack, or null after saying why it failed. */
+  /** Send one command; the ack, or the sentence that says why it failed. */
   const send = useCallback(
-    async (input: PetTravelCommandInput, key: string, what: Busy) => {
-      setNotice(null);
+    async (input: PetTravelCommandInput, key: string, what: Busy): Promise<SendOutcome> => {
       setBusy(what);
       const result = await sendPetTravelCommand(sessionPort, publicToken, input, key);
       setBusy(null);
       if (result.outcome !== "ok") {
-        setNotice({ tone: "err", message: apiFailureMessage(result) ?? WRITE_FAILED });
-        return null;
+        return { ok: false, message: apiFailureMessage(result) ?? WRITE_FAILED };
       }
-      setNotice({ tone: "ok", message: travelAckMessage(result.payload) });
-      return result.payload;
+      return { ok: true, ack: result.payload };
     },
     [publicToken],
   );
 
-  const recordTrip = useCallback(async () => {
+  /** A command from the reading: its answer goes to the notice at the top. */
+  const sendFromReading = useCallback(
+    async (input: PetTravelCommandInput, key: string, what: Busy) => {
+      setNotice(null);
+      const outcome = await send(input, key, what);
+      if (!outcome.ok) {
+        setNotice({ tone: "err", message: outcome.message });
+        return null;
+      }
+      setNotice({ tone: "ok", message: travelAckMessage(outcome.ack) });
+      return outcome.ack;
+    },
+    [send],
+  );
+
+  const openWizard = useCallback((corridorId: string | null) => {
     setNotice(null);
-    // The CONTRACT's schema, locally first, so a missing field gets its own
-    // sentence instead of a round trip answering `invalid_request`.
-    const built = buildTrip(tripDraft);
+    setWizardError(null);
+    setConfirmingCancel(null);
+    setWizard(startWizard(corridorId));
+  }, []);
+
+  const backInWizard = useCallback(() => {
+    setWizardError(null);
+    setWizard((current) => (current === null ? null : previousStep(current)));
+  }, []);
+
+  const createTrip = useCallback(async () => {
+    if (wizard === null) return;
+    setWizardError(null);
+    // The CONTRACT's schema, locally first, then the window the server keeps
+    // — each with its own sentence, under the field, before any round trip.
+    const built = buildTrip(wizard.draft);
     if (!built.ok) {
-      setNotice({ tone: "err", message: built.message });
+      setWizardError(built.message);
       return;
     }
-    const ack = await send(built.input, tripAttempt.current.key(), { what: "trip" });
-    if (ack === null || ack.command !== "record_trip") return;
+    if (built.input.command !== "record_trip") return;
+    const outOfRange = travelDateRangeMessage(built.input.travelDate, travelDateBounds(new Date()));
+    if (outOfRange !== null) {
+      setWizardError(outOfRange);
+      return;
+    }
+    const outcome = await send(built.input, tripAttempt.current.key(), { what: "trip" });
+    if (!outcome.ok) {
+      setWizardError(outcome.message);
+      return;
+    }
+    const ack = outcome.ack;
+    if (ack.command !== "record_trip") return;
     tripAttempt.current.restart();
-    setTripDraft(EMPTY_TRIP_DRAFT);
-    setTripFormOpen(false);
+    setWizard(null);
+    setNotice({ tone: "ok", message: travelAckMessage(ack) });
     // The trip just written is the one the owner wants to read next.
     requestedTrip.current = ack.eventId;
     await load("refresh");
-  }, [tripDraft, send, load]);
+  }, [wizard, send, load]);
 
   const recordCvi = useCallback(async () => {
     setNotice(null);
@@ -233,13 +334,13 @@ export function TravelScreen({ publicToken }: { publicToken: string }) {
       setNotice({ tone: "err", message: built.message });
       return;
     }
-    const ack = await send(built.input, cviAttempt.current.key(), { what: "cvi" });
+    const ack = await sendFromReading(built.input, cviAttempt.current.key(), { what: "cvi" });
     if (ack === null || ack.command !== "record_cvi") return;
     cviAttempt.current.restart();
     setCviDraft(EMPTY_CVI_DRAFT);
     setCviFormOpen(false);
     await load("refresh");
-  }, [cviDraft, send, load]);
+  }, [cviDraft, sendFromReading, load]);
 
   const cancelTrip = useCallback(
     async (trip: PetTravelTripV1) => {
@@ -254,7 +355,7 @@ export function TravelScreen({ publicToken }: { publicToken: string }) {
         session = createAttemptSession();
         sessions.set(trip.tripEventId, session);
       }
-      const ack = await send(built.input, session.key(), {
+      const ack = await sendFromReading(built.input, session.key(), {
         what: "cancel",
         tripEventId: trip.tripEventId,
       });
@@ -265,7 +366,7 @@ export function TravelScreen({ publicToken }: { publicToken: string }) {
       if (requestedTrip.current === trip.tripEventId) requestedTrip.current = null;
       await load("refresh");
     },
-    [send, load],
+    [sendFromReading, load],
   );
 
   const confirmDocument = useCallback(
@@ -282,13 +383,13 @@ export function TravelScreen({ publicToken }: { publicToken: string }) {
         session = createAttemptSession();
         sessions.set(sessionKey, session);
       }
-      const ack = await send(built.input, session.key(), { what: "document", label });
+      const ack = await sendFromReading(built.input, session.key(), { what: "document", label });
       if (ack === null || ack.command !== "confirm_trip_document") return;
       session.restart();
       // The obligation's colour is the server's to recompute.
       await load("refresh");
     },
-    [send, load],
+    [sendFromReading, load],
   );
 
   if (state.phase === "loading") {
@@ -313,23 +414,54 @@ export function TravelScreen({ publicToken }: { publicToken: string }) {
   }
 
   const view = state.view;
-  const trip = selectedTrip(view.trips, view.selectedTripEventId);
-  const canRecord = view.capabilities.canRecord;
   const now = new Date();
-  const showTripForm = canRecord && (trip === null || tripFormOpen);
+
+  if (wizard !== null && view.capabilities.canRecord) {
+    return (
+      // `keyboardAvoiding`: the destination search and the date are typed.
+      <Screen keyboardAvoiding scrollRef={scrollRef}>
+        <TripWizard
+          view={view}
+          state={wizard}
+          onChange={(next) => {
+            setWizardError(null);
+            setWizard(next);
+          }}
+          onBack={backInWizard}
+          onSubmit={() => void createTrip()}
+          now={now}
+          busy={busy?.what === "trip"}
+          error={wizardError}
+          errorAnchor={errorAnchor}
+        />
+      </Screen>
+    );
+  }
+
+  const trip = selectedTrip(view.trips, view.selectedTripEventId);
+  const cviCard = (
+    <PapersModuleBody
+      view={view}
+      trip={trip}
+      draft={cviDraft}
+      onChange={setCviDraft}
+      open={cviFormOpen}
+      onOpen={() => setCviFormOpen(true)}
+      now={now}
+      busy={busy}
+      onSubmit={() => void recordCvi()}
+    />
+  );
 
   return (
-    // `keyboardAvoiding`: the CVI number and the dates are typed down a scroll.
+    // `keyboardAvoiding`: the CVI number and its dates are typed down a scroll.
     <Screen keyboardAvoiding scrollRef={scrollRef}>
-      <Title>Viaje de {view.petName}</Title>
-      <Body>Lo que pide el destino, lo que publica la aerolínea y lo que dice la libreta.</Body>
-
       {state.staleFailure !== null ? (
         <StaleNotice message={state.staleFailure} onRetry={() => void load("refresh")} />
       ) : null}
 
       {notice !== null && (
-        <View ref={errorAnchor}>
+        <View ref={notice.tone === "err" ? errorAnchor : undefined}>
           <Callout tone={notice.tone}>
             <Body>{notice.message}</Body>
           </Callout>
@@ -337,175 +469,351 @@ export function TravelScreen({ publicToken }: { publicToken: string }) {
       )}
 
       {trip === null ? (
-        <Card title={NO_TRIP_TITLE}>
-          <Body>{noTripLine(view.petName)}</Body>
-        </Card>
-      ) : null}
-
-      {trip !== null ? (
+        <EmptyTravel view={view} onPlan={openWizard} papers={cviCard} />
+      ) : (
         <TripReading
+          // Keyed by trip: open modules, open details and the share line all
+          // belong to the trip they were opened on.
+          key={trip.tripEventId}
           view={view}
           trip={trip}
+          now={now}
           busy={busy}
+          publicToken={publicToken}
           confirmingCancel={confirmingCancel === trip.tripEventId}
-          onSelectTrip={selectTrip}
+          onOpenSwitcher={() => setSwitcherOpen(true)}
           onAskCancel={() => setConfirmingCancel(trip.tripEventId)}
           onBackFromCancel={() => setConfirmingCancel(null)}
           onConfirmCancel={() => void cancelTrip(trip)}
           onConfirmDocument={(label, confirmed) => void confirmDocument(trip, label, confirmed)}
+          onPlanAnother={() => openWizard(null)}
+          onLoadPaper={() => {
+            setCviFormOpen(true);
+          }}
+          onRecordWeight={() => router.push(recordEventRoute(publicToken, { kind: "weight" }))}
+          scrollToEnd={() => scrollRef.current?.scrollToEnd?.({ animated: true })}
+          papers={cviCard}
         />
-      ) : null}
+      )}
 
-      {view.disclaimers.map((line) => (
-        <Body key={line}>{line}</Body>
-      ))}
-
-      <CviCard
-        view={view}
-        draft={cviDraft}
-        onChange={setCviDraft}
-        open={cviFormOpen}
-        onOpen={() => setCviFormOpen(true)}
-        now={now}
-        busy={busy}
-        onSubmit={() => void recordCvi()}
-      />
-
-      {canRecord ? (
-        <Card title={trip === null ? "Registrar un viaje" : "Otro viaje"}>
-          {showTripForm ? (
-            <TripForm
-              draft={tripDraft}
-              onChange={setTripDraft}
-              view={view}
-              now={now}
-              busy={busy?.what === "trip"}
-              disabled={busy !== null}
-              onSubmit={() => void recordTrip()}
-            />
-          ) : (
-            <SecondaryButton
-              label="Registrar otro viaje"
-              disabled={busy !== null}
-              onPress={() => setTripFormOpen(true)}
-            />
-          )}
-        </Card>
-      ) : null}
-
-      {trip !== null ? (
-        <ExportCard
-          // Keyed by trip: a "PDF listo" line belongs to the trip it was made for.
-          key={trip.tripEventId}
-          publicToken={publicToken}
-          petName={view.petName}
-          tripEventId={trip.tripEventId}
+      {trip !== null && view.trips.length > 1 ? (
+        <TripSwitcherSheet
+          visible={switcherOpen}
+          trips={view.trips}
+          selected={trip.tripEventId}
           disabled={busy !== null}
+          onSelect={selectTrip}
+          onClose={() => setSwitcherOpen(false)}
         />
       ) : null}
     </Screen>
   );
 }
 
-type ExportState =
-  | { phase: "idle" }
-  | { phase: "working" }
-  | { phase: "closed" }
-  | { phase: "failed"; message: string };
-
 /**
- * "Documentación para llevar" — the web's section of the same name: the travel
- * PDF of the trip on screen, into the share sheet (task 6.5). The server makes
- * the PDF (`travel-export-share.ts`); this card only reports how the attempt
- * went, and "closed" never says "enviado" — the sheet cannot tell.
+ * No trip yet: ONE call to action, at the top (it was under the CVI and the
+ * notices), and the five destinations as shortcuts that open the wizard on its
+ * second step.
  */
-function ExportCard({
-  publicToken,
-  petName,
-  tripEventId,
-  disabled,
+function EmptyTravel({
+  view,
+  onPlan,
+  papers,
 }: {
-  publicToken: string;
-  petName: string;
-  tripEventId: string;
-  disabled: boolean;
+  view: PetTravelV1;
+  onPlan: (corridorId: string | null) => void;
+  papers: ReactNode;
 }) {
-  const [state, setState] = useState<ExportState>({ phase: "idle" });
-  const onExport = useCallback(async () => {
-    setState({ phase: "working" });
-    const result = await shareTravelExport(sessionPort, publicToken, petName, tripEventId);
-    setState(
-      result.kind === "closed" ? { phase: "closed" } : { phase: "failed", message: result.message },
-    );
-  }, [petName, publicToken, tripEventId]);
-
+  const [papersOpen, setPapersOpen] = useState(false);
+  const canRecord = view.capabilities.canRecord;
+  const latest = view.cvis[0];
   return (
-    <Card title="Documentación para llevar">
-      <Body>{EXPORT_CARD_BODY}</Body>
-      {state.phase === "failed" ? (
-        <Callout tone="err">
-          <Body>{state.message}</Body>
-        </Callout>
+    <>
+      <Title>{`Viaje de ${view.petName}`}</Title>
+      <View style={styles.emptyHero}>
+        <Text style={styles.emptyTitle}>{noTripTitle(view.petName)}</Text>
+        <Body>{NO_TRIP_LINE}</Body>
+        {canRecord ? <PrimaryButton label="Planear un viaje" onPress={() => onPlan(null)} /> : null}
+      </View>
+      {canRecord ? (
+        <>
+          <GroupLabel>O empezá por el destino</GroupLabel>
+          <View style={styles.options}>
+            {view.options.corridors.map((c) => (
+              <OptionRow
+                key={c.id}
+                code={(CORRIDOR_CODES as Record<string, string | undefined>)[c.id] ?? null}
+                label={c.label}
+                onPress={() => onPlan(c.id)}
+              />
+            ))}
+          </View>
+        </>
       ) : null}
-      {state.phase === "closed" ? <Body>{EXPORT_SHEET_CLOSED}</Body> : null}
-      <SecondaryButton
-        label={state.phase === "working" ? "Armando el PDF…" : EXPORT_BUTTON_LABEL}
-        disabled={disabled || state.phase === "working"}
-        onPress={() => void onExport()}
-      />
-    </Card>
+      <CollapsibleModule
+        title="Papeles"
+        summary={latest === undefined ? NO_CVI_LINE : cviLine(latest)}
+        open={papersOpen}
+        onToggle={() => setPapersOpen((open) => !open)}
+      >
+        {papers}
+      </CollapsibleModule>
+      {view.disclaimers.map((line) => (
+        <FinePrint key={line}>{line}</FinePrint>
+      ))}
+    </>
   );
 }
 
 /**
- * One trip's reading: the picker when there are several, the semáforo, the
- * cancel, and the three lists — all as the server computed them.
+ * One trip: the pase, the disclaimer once, three quick actions, the modules,
+ * then trip management — "Planear otro viaje" and the cancel, as a link.
  */
 function TripReading({
   view,
   trip,
+  now,
   busy,
+  publicToken,
   confirmingCancel,
-  onSelectTrip,
+  onOpenSwitcher,
   onAskCancel,
   onBackFromCancel,
   onConfirmCancel,
   onConfirmDocument,
+  onPlanAnother,
+  onLoadPaper,
+  onRecordWeight,
+  scrollToEnd,
+  papers,
 }: {
   view: PetTravelV1;
   trip: PetTravelTripV1;
+  now: Date;
   busy: Busy;
+  publicToken: string;
   confirmingCancel: boolean;
-  onSelectTrip: (tripEventId: string) => void;
+  onOpenSwitcher: () => void;
   onAskCancel: () => void;
   onBackFromCancel: () => void;
   onConfirmCancel: () => void;
   onConfirmDocument: (label: string, confirmed: boolean) => void;
+  onPlanAnother: () => void;
+  onLoadPaper: () => void;
+  onRecordWeight: () => void;
+  scrollToEnd: () => void;
+  papers: ReactNode;
 }) {
   const compliance = view.compliance;
+  const split = splitObligations(compliance);
+  const paper = tripPaper(view.options.corridors, trip.corridorId);
+  const canRecord = view.capabilities.canRecord;
+  const days = daysUntil(trip.travelDate, now);
+  const past = days !== null && days < 0;
+  const position = view.trips.findIndex((t) => t.tripEventId === trip.tripEventId);
+
+  // THE OPENING RULE — only the first module with work opens by itself. The
+  // person's own taps win from then on, for this trip (the parent keys this
+  // component by trip, so another trip starts from the rule again).
+  const [opened, setOpened] = useState<Partial<Record<TripModuleId, boolean>>>(() => {
+    const first = initialOpenModule(split);
+    return first === null ? {} : { [first]: true };
+  });
+  const isOpen = (id: TripModuleId) => opened[id] === true;
+  const toggle = (id: TripModuleId) => setOpened((now) => ({ ...now, [id]: !now[id] }));
+
+  const [share, setShare] = useState<ShareState>({ phase: "idle" });
+  const runShare = async (kind: "export" | "vet") => {
+    setShare({ phase: "working", kind });
+    const result = await shareTravelExport(
+      sessionPort,
+      publicToken,
+      view.petName,
+      trip.tripEventId,
+      kind === "vet" ? `PDF del viaje de ${view.petName}, para tu veterinaria` : undefined,
+    );
+    setShare(
+      result.kind === "closed"
+        ? { phase: "closed", kind }
+        : { phase: "failed", kind, message: result.message },
+    );
+  };
+
+  const loadPaper = () => {
+    onLoadPaper();
+    setOpened((now) => ({ ...now, papeles: true }));
+    scrollToEnd();
+  };
+
+  const onAction = (kind: string) => {
+    switch (kind) {
+      case "record_paper":
+        loadPaper();
+        return;
+      case "ask_vet":
+      case "send_to_vet":
+        void runShare("vet");
+        return;
+      case "record_weight":
+        onRecordWeight();
+        return;
+    }
+  };
+
+  const shortName = paperShortName(paper);
+  const sharing = share.phase === "working";
+  const pendingCount = split.pending.length;
+  const unticked = split.papers.filter((p) => !p.document.confirmed);
+
   return (
     <>
       {view.trips.length > 1 ? (
-        <Choice
-          label="Viajes registrados"
-          options={view.trips.map((t) => t.tripEventId)}
-          selected={trip.tripEventId}
-          optionLabel={(id) => {
-            const t = view.trips.find((candidate) => candidate.tripEventId === id);
-            return t === undefined ? id : tripLabel(t);
-          }}
-          onSelect={onSelectTrip}
+        <View style={styles.switcher}>
+          <Text
+            style={styles.switcherLabel}
+          >{`Viaje ${position + 1} de ${view.trips.length}`}</Text>
+          <LinkText onPress={onOpenSwitcher} accessibilityHint="Abre la lista de viajes.">
+            Ver los otros
+          </LinkText>
+        </View>
+      ) : (
+        <Eyebrow>{`Viaje de ${view.petName}`}</Eyebrow>
+      )}
+
+      <TripPase
+        destination={trip.corridorLabel}
+        countdown={countdownLabel(trip.travelDate, now)}
+        meta={tripMetaLine(trip, shortWeekday(trip.travelDate))}
+        semaforo={compliance?.semaforo ?? null}
+        semaforoLabel={compliance?.semaforoLabel ?? null}
+        countLine={pendingCountLine(split)}
+        past={past}
+      />
+
+      {view.disclaimers.map((line) => (
+        <FinePrint key={line}>{line}</FinePrint>
+      ))}
+
+      <View style={styles.quick}>
+        <QuickAction
+          label={share.phase === "working" && share.kind === "export" ? "Armando…" : "Exportar PDF"}
+          disabled={busy !== null || sharing}
+          onPress={() => void runShare("export")}
+        />
+        {canRecord && !past ? (
+          <QuickAction
+            label={`Cargar el ${shortName}`}
+            disabled={busy !== null}
+            onPress={loadPaper}
+          />
+        ) : null}
+        <QuickAction
+          label={
+            share.phase === "working" && share.kind === "vet"
+              ? "Armando…"
+              : "Mandar a mi veterinaria"
+          }
+          disabled={busy !== null || sharing}
+          onPress={() => void runShare("vet")}
+        />
+      </View>
+      <ShareStatus share={share} message={vetShareMessage(view.petName, trip)} />
+
+      <CollapsibleModule
+        title="Lo que falta"
+        summary={pendingCount === 0 ? "Nada pendiente detectado" : null}
+        badge={String(pendingCount)}
+        badgeTone={pendingCount === 0 ? "ok" : split.pending.some(isBlocker) ? "err" : "warn"}
+        open={isOpen("falta")}
+        onToggle={() => toggle("falta")}
+      >
+        {split.pending.map((obligation) => (
+          <ObligationItem
+            key={obligation.id}
+            obligation={obligation}
+            action={offeredAction(obligation, paper, canRecord)}
+            onAction={onAction}
+            disabled={busy !== null || sharing}
+          />
+        ))}
+        {compliance === null ? (
+          <View style={styles.inset}>
+            <Body>Todavía no hay una lectura de este viaje.</Body>
+          </View>
+        ) : null}
+      </CollapsibleModule>
+
+      {split.papers.length > 0 ? (
+        <CollapsibleModule
+          title="Para llevar"
+          summary={
+            unticked.length === 0
+              ? "Todos confirmados, según indicaste"
+              : `Sin confirmar: ${unticked.map((p) => p.document.label).join(", ")}`
+          }
+          badge={papersCountLabel(split.papers)}
+          open={isOpen("llevar")}
+          onToggle={() => toggle("llevar")}
+        >
+          {split.papers.map(({ document }) => (
+            <PaperCheckRow
+              key={document.label}
+              label={document.label}
+              status={documentStatusLine(document)}
+              checked={document.confirmed}
+              busy={busy?.what === "document" && busy.label === document.label}
+              disabled={busy !== null}
+              onToggle={
+                canRecord ? () => onConfirmDocument(document.label, !document.confirmed) : undefined
+              }
+            />
+          ))}
+        </CollapsibleModule>
+      ) : null}
+
+      <CollapsibleModule
+        title="Ya está"
+        badge={String(split.done.length)}
+        badgeTone="ok"
+        open={isOpen("listo")}
+        onToggle={() => toggle("listo")}
+      >
+        {split.done.length === 0 ? (
+          <View style={styles.inset}>
+            <Body>Todavía nada está resuelto para este viaje.</Body>
+          </View>
+        ) : (
+          split.done.map((obligation) => (
+            <ObligationItem
+              key={obligation.id}
+              obligation={obligation}
+              action={null}
+              onAction={onAction}
+              disabled={busy !== null}
+            />
+          ))
+        )}
+      </CollapsibleModule>
+
+      <CollapsibleModule
+        title="Papeles"
+        summary={view.cvis[0] === undefined ? NO_CVI_LINE : cviLine(view.cvis[0])}
+        open={isOpen("papeles")}
+        onToggle={() => toggle("papeles")}
+      >
+        {papers}
+      </CollapsibleModule>
+
+      {canRecord ? (
+        <OptionRow
+          label="Planear otro viaje"
+          variant="quiet"
           disabled={busy !== null}
+          onPress={onPlanAnother}
         />
       ) : null}
 
-      {compliance !== null ? (
-        <Callout tone={semaforoTone(compliance.semaforo)} title={compliance.semaforoLabel}>
-          <Body>{tripSummary(trip)}</Body>
-        </Callout>
-      ) : null}
-
-      {view.capabilities.canRecord ? (
+      {canRecord ? (
         <CancelControl
           trip={trip}
           confirming={confirmingCancel}
@@ -516,26 +824,138 @@ function TripReading({
           onConfirm={onConfirmCancel}
         />
       ) : null}
-
-      {compliance !== null
-        ? obligationSections(compliance, trip).map((section) => (
-            <ObligationGroupCard
-              key={section.group}
-              section={section}
-              trip={trip}
-              canRecord={view.capabilities.canRecord}
-              busy={busy}
-              onConfirmDocument={onConfirmDocument}
-            />
-          ))
-        : null}
     </>
   );
 }
 
-/** The CVIs on record, and the form that records one. */
-function CviCard({
+function isBlocker(obligation: PetTravelObligationV1): boolean {
+  return obligation.requirementLevel === "blocker";
+}
+
+/**
+ * The button a requirement offers HERE. The two that write something (load
+ * the paper, record a weight) need `canRecord`; asking the vet is a share, a
+ * read, and stays.
+ */
+function offeredAction(
+  obligation: PetTravelObligationV1,
+  paper: Parameters<typeof obligationActionLabel>[1],
+  canRecord: boolean,
+): { kind: string; label: string } | null {
+  const action = obligationActionLabel(obligation, paper);
+  if (action === null) return null;
+  const writes = action.kind === "record_paper" || action.kind === "record_weight";
+  return writes && !canRecord ? null : action;
+}
+
+/**
+ * How the last share went. "Closed" never says "enviado" — the sheet cannot
+ * tell. The vet share adds the suggested message, SELECTABLE so it can be
+ * pasted: a file share cannot pre-fill the text on Android.
+ */
+function ShareStatus({ share, message }: { share: ShareState; message: string }) {
+  if (share.phase === "failed") {
+    return (
+      <Callout tone="err">
+        <Body>{share.message}</Body>
+      </Callout>
+    );
+  }
+  if (share.phase === "closed" && share.kind === "export")
+    return <Body>{EXPORT_SHEET_CLOSED}</Body>;
+  if (share.phase === "closed" && share.kind === "vet") {
+    return (
+      <Callout title="Mensaje sugerido para tu veterinaria">
+        <Body selectable>{message}</Body>
+        <Body>{EXPORT_SHEET_CLOSED}</Body>
+      </Callout>
+    );
+  }
+  return null;
+}
+
+/**
+ * One requirement: WHAT, its state, its action — three lines (design pin 18).
+ * Its own `Row`-free layout: the title wraps and the level never shrinks, so
+ * neither breaks letter by letter (QA 2026-10-07, bug 2). The source, who asks
+ * and the legal note stay, behind "Ver detalle", opened in place.
+ */
+function ObligationItem({
+  obligation,
+  action,
+  onAction,
+  disabled,
+}: {
+  obligation: PetTravelObligationV1;
+  action: { kind: string; label: string } | null;
+  onAction: (kind: string) => void;
+  disabled: boolean;
+}) {
+  const [detail, setDetail] = useState(false);
+  const seal = declaredSeal(obligation);
+  const contributors = contributorsLine(obligation);
+  const level = obligation.requirementLevel;
+  return (
+    <View style={styles.obligation}>
+      <View style={styles.obligationHead}>
+        <Text style={styles.obligationTitle}>{obligation.label}</Text>
+        {level === "info" ? null : (
+          <Text style={[styles.level, level === "blocker" ? styles.levelErr : styles.levelWarn]}>
+            {requirementLevelLabel(level)}
+          </Text>
+        )}
+      </View>
+      {seal !== null ? (
+        <View style={styles.seal}>
+          <Text style={styles.sealLabel}>{seal}</Text>
+        </View>
+      ) : null}
+      <Text style={styles.obligationState}>{obligation.state}</Text>
+      {obligation.freshnessNotice ? (
+        // A degraded datum is never drawn as settled (spec travel-reference-
+        // freshness): the notice stays out of the fold, as a warning box.
+        <Callout tone="warn">
+          <Body>{obligation.freshnessNotice}</Body>
+        </Callout>
+      ) : null}
+      <View style={styles.actions}>
+        {action !== null ? (
+          <View style={styles.actionButton}>
+            <SecondaryButton
+              label={action.label}
+              disabled={disabled}
+              onPress={() => onAction(action.kind)}
+            />
+          </View>
+        ) : null}
+        <LinkText onPress={() => setDetail((open) => !open)}>
+          {detail ? "Ocultar detalle" : "Ver detalle"}
+        </LinkText>
+      </View>
+      {detail ? (
+        <View style={styles.detail}>
+          {obligation.detail ? <Body>{obligation.detail}</Body> : null}
+          {contributors !== null ? <Body>{contributors}</Body> : null}
+          {obligation.sources.map((source) => (
+            <LinkText
+              key={`${source.kind}:${source.sourceUrl}:${source.label}`}
+              accessibilityHint="Abre la fuente publicada."
+              onPress={() => void Linking.openURL(source.sourceUrl).catch(() => {})}
+            >
+              {sourceLine(source)}
+            </LinkText>
+          ))}
+          <Body>{obligation.legalFootnote}</Body>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** "Papeles": the CVIs on record, the paper this trip asks for, the form. */
+function PapersModuleBody({
   view,
+  trip,
   draft,
   onChange,
   open,
@@ -545,6 +965,7 @@ function CviCard({
   onSubmit,
 }: {
   view: PetTravelV1;
+  trip: PetTravelTripV1 | null;
   draft: CviDraft;
   onChange: (draft: CviDraft) => void;
   open: boolean;
@@ -554,8 +975,12 @@ function CviCard({
   onSubmit: () => void;
 }) {
   const canRecord = view.capabilities.canRecord;
+  const paper = trip === null ? null : tripPaper(view.options.corridors, trip.corridorId);
   return (
-    <Card title="Certificado Veterinario Internacional (CVI)">
+    <View style={styles.inset}>
+      {paper !== null && trip !== null ? (
+        <Body>{`${trip.corridorLabel} pide: ${paper.name}.`}</Body>
+      ) : null}
       {view.cvis.length === 0 ? (
         <Body>{NO_CVI_LINE}</Body>
       ) : (
@@ -566,10 +991,14 @@ function CviCard({
         ))
       )}
       {canRecord && !open ? (
-        <SecondaryButton label="Registrar un CVI" disabled={busy !== null} onPress={onOpen} />
+        <SecondaryButton
+          label={`Cargar el ${paperShortName(paper)}`}
+          disabled={busy !== null}
+          onPress={onOpen}
+        />
       ) : null}
       {canRecord && open ? (
-        <View style={{ gap: 12 }}>
+        <View style={styles.form}>
           <TextField
             label="Número de CVI"
             required
@@ -598,11 +1027,11 @@ function CviCard({
           />
         </View>
       ) : null}
-    </Card>
+    </View>
   );
 }
 
-/** The web's two-step cancel: the first tap asks, the second confirms. */
+/** The two-step cancel, as a seal-red link at the end: the first tap asks. */
 function CancelControl({
   trip,
   confirming,
@@ -621,11 +1050,11 @@ function CancelControl({
   onConfirm: () => void;
 }) {
   if (!confirming) {
-    return <SecondaryButton label="Cancelar este viaje" disabled={disabled} onPress={onAsk} />;
+    return <SealLink label="Cancelar este viaje" disabled={disabled} onPress={onAsk} />;
   }
   return (
     <Callout>
-      <View style={{ gap: 12 }}>
+      <View style={styles.form}>
         <Body>{cancelQuestion(trip)}</Body>
         <PrimaryButton
           tone="seal"
@@ -639,176 +1068,172 @@ function CancelControl({
   );
 }
 
-/** One of the three lists: Destino, Aerolínea, Libreta. */
-function ObligationGroupCard({
-  section,
-  trip,
-  canRecord,
-  busy,
-  onConfirmDocument,
-}: {
-  section: ObligationSection;
-  trip: PetTravelTripV1;
-  canRecord: boolean;
-  busy: Busy;
-  onConfirmDocument: (label: string, confirmed: boolean) => void;
-}) {
-  return (
-    <Card title={section.title}>
-      {section.airlineNotice !== null && trip.airlineName !== null ? (
-        <Callout tone="warn" title={section.airlineNotice}>
-          <Body>{airlineNoticeBody(trip.airlineName)}</Body>
-        </Callout>
-      ) : null}
-      {section.obligations.length === 0 ? (
-        <Body>{NO_OBLIGATIONS_LINE}</Body>
-      ) : (
-        section.obligations.map((obligation) => (
-          <ObligationItem
-            key={obligation.id}
-            obligation={obligation}
-            canRecord={canRecord}
-            busy={busy}
-            onConfirmDocument={onConfirmDocument}
-          />
-        ))
-      )}
-    </Card>
-  );
-}
-
-function ObligationItem({
-  obligation,
-  canRecord,
-  busy,
-  onConfirmDocument,
-}: {
-  obligation: PetTravelObligationV1;
-  canRecord: boolean;
-  busy: Busy;
-  onConfirmDocument: (label: string, confirmed: boolean) => void;
-}) {
-  const contributors = contributorsLine(obligation);
-  return (
-    <View style={{ gap: 4, paddingVertical: 8 }}>
-      <Row label={obligation.label} value={requirementLevelLabel(obligation.requirementLevel)} />
-      <Body>{obligation.state}</Body>
-      {obligation.detail ? <Body>{obligation.detail}</Body> : null}
-      {obligationDocuments(obligation).map((document) => (
-        // One paper: what the owner said about it, and the tick that says it.
-        <View key={document.label} style={{ gap: 4, paddingVertical: 4 }}>
-          <Row label={document.label} value={documentStatusLine(document)} />
-          {canRecord ? (
-            <SecondaryButton
-              label={
-                busy?.what === "document" && busy.label === document.label
-                  ? "Guardando…"
-                  : document.confirmed
-                    ? "Desmarcar"
-                    : "Lo tengo"
-              }
-              accessibilityHint={`${document.confirmed ? "Desmarca" : "Marca"} ${document.label}.`}
-              disabled={busy !== null}
-              onPress={() => onConfirmDocument(document.label, !document.confirmed)}
-            />
-          ) : null}
-        </View>
-      ))}
-      {obligation.freshnessNotice ? (
-        // A degraded datum is never drawn as settled (spec travel-reference-
-        // freshness): the notice is a warning box, not a grey footnote.
-        <Callout tone="warn">
-          <Body>{obligation.freshnessNotice}</Body>
-        </Callout>
-      ) : null}
-      {contributors !== null ? <Body>{contributors}</Body> : null}
-      {obligation.sources.map((source) => (
-        <LinkText
-          key={`${source.kind}:${source.sourceUrl}:${source.label}`}
-          accessibilityHint="Abre la fuente publicada."
-          onPress={() => void Linking.openURL(source.sourceUrl).catch(() => {})}
-        >
-          {sourceLine(source)}
-        </LinkText>
-      ))}
-      <Body>{obligation.legalFootnote}</Body>
-    </View>
-  );
-}
-
-/** The record-trip form: destination, date, how, airline, where on board. */
-function TripForm({
-  draft,
-  onChange,
-  view,
-  now,
-  busy,
+/**
+ * "Ver los otros": the trips in a bottom sheet, one row each, instead of a
+ * chip per trip stacked over the semáforo (280dp with five trips).
+ */
+function TripSwitcherSheet({
+  visible,
+  trips,
+  selected,
   disabled,
-  onSubmit,
+  onSelect,
+  onClose,
 }: {
-  draft: TripDraft;
-  onChange: (draft: TripDraft) => void;
-  view: PetTravelV1;
-  now: Date;
-  busy: boolean;
+  visible: boolean;
+  trips: readonly PetTravelTripV1[];
+  selected: string;
   disabled: boolean;
-  onSubmit: () => void;
+  onSelect: (tripEventId: string) => void;
+  onClose: () => void;
 }) {
-  const corridorLabel = (id: string) =>
-    view.options.corridors.find((c) => c.id === id)?.label ?? id;
-  const airlineName = (id: string) =>
-    id === NONE
-      ? "Sin aerolínea elegida"
-      : (view.options.airlines.find((a) => a.id === id)?.name ?? id);
   return (
-    <View style={{ gap: 12 }}>
-      <Choice
-        label="Destino"
-        required
-        options={view.options.corridors.map((c) => c.id)}
-        selected={draft.corridorId === NONE ? null : draft.corridorId}
-        optionLabel={corridorLabel}
-        onSelect={(corridorId) => onChange({ ...draft, corridorId })}
-        disabled={disabled}
-      />
-      <DateField
-        label="Fecha de salida"
-        required
-        {...travelDateBounds(now)}
-        value={draft.travelDate}
-        onChangeText={(travelDate) => onChange({ ...draft, travelDate })}
-      />
-      <Choice
-        label="Cómo viaja"
-        options={MODE_OPTIONS}
-        selected={draft.mode}
-        optionLabel={(mode) => (mode === NONE ? "Sin indicar" : MODE_LABELS[mode as TravelMode])}
-        onSelect={(mode) => onChange({ ...draft, mode })}
-        disabled={disabled}
-      />
-      <Body>Si elegís una aerolínea, queda registrado como viaje en avión.</Body>
-      <Choice
-        label="Aerolínea"
-        options={[NONE, ...view.options.airlines.map((a) => a.id)]}
-        selected={draft.airlineId}
-        optionLabel={airlineName}
-        onSelect={(airlineId) => onChange({ ...draft, airlineId })}
-        disabled={disabled}
-      />
-      <Choice
-        label="Dónde viaja la mascota"
-        options={MODALITY_OPTIONS}
-        selected={draft.intendedModality}
-        optionLabel={(m) => (m === NONE ? "Sin indicar" : MODALITY_LABELS[m as TravelModality])}
-        onSelect={(intendedModality) => onChange({ ...draft, intendedModality })}
-        disabled={disabled}
-      />
-      <Body>Cada aerolínea tiene reglas distintas para cabina, bodega y carga.</Body>
-      <PrimaryButton
-        label={busy ? "Registrando…" : "Registrar viaje"}
-        disabled={disabled}
-        onPress={onSubmit}
-      />
-    </View>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.sheetRoot}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Cerrar la lista de viajes"
+          style={styles.sheetScrim}
+          onPress={onClose}
+        />
+        <View style={styles.sheet}>
+          <Text style={styles.sheetTitle}>Tus viajes</Text>
+          {trips.map((t) => (
+            <ListRow
+              key={t.tripEventId}
+              label={tripLabel(t)}
+              caption={t.tripEventId === selected ? "Es el que estás viendo" : undefined}
+              onPress={
+                disabled || t.tripEventId === selected ? undefined : () => onSelect(t.tripEventId)
+              }
+            />
+          ))}
+          <SecondaryButton label="Cerrar" onPress={onClose} />
+        </View>
+      </View>
+    </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  options: { gap: SPACE.sm },
+  form: { gap: SPACE.md },
+  inset: { gap: SPACE.sm, paddingHorizontal: SPACE.md + 2, paddingVertical: SPACE.md },
+  emptyHero: {
+    gap: SPACE.sm + 2,
+    paddingHorizontal: SPACE.lg,
+    paddingVertical: SPACE.lg + 2,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: COLORS.borderStrong,
+    borderRadius: RADIUS.control * 2,
+    backgroundColor: COLORS.surface,
+  },
+  emptyTitle: {
+    fontFamily: FONTS.sansSemibold,
+    fontSize: TYPE.base,
+    lineHeight: TYPE.base * LEADING.base,
+    color: COLORS.ink,
+  },
+  // The line holds the only way to the other trips: a full touch row.
+  switcher: {
+    minHeight: TOUCH_TARGET,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SPACE.sm,
+  },
+  switcherLabel: {
+    flexShrink: 1,
+    fontFamily: FONTS.sans,
+    fontSize: TYPE.md,
+    color: COLORS.inkSoft,
+  },
+  quick: { flexDirection: "row", gap: SPACE.sm },
+  obligation: {
+    gap: SPACE.xs,
+    paddingHorizontal: SPACE.md + 2,
+    paddingVertical: SPACE.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.borderSoft,
+  },
+  obligationHead: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    columnGap: SPACE.sm + 2,
+  },
+  obligationTitle: {
+    flexShrink: 1,
+    fontFamily: FONTS.sansSemibold,
+    fontSize: TYPE.md,
+    lineHeight: TYPE.md * LEADING.md,
+    color: COLORS.ink,
+  },
+  level: { flexShrink: 0, fontFamily: FONTS.sansSemibold, fontSize: TYPE.xs },
+  levelErr: { color: COLORS.danger },
+  levelWarn: { color: COLORS.warnInk },
+  seal: {
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: COLORS.warnInk,
+    borderRadius: RADIUS.chip,
+    backgroundColor: COLORS.warnSurface,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  sealLabel: {
+    fontFamily: FONTS.sansSemibold,
+    fontSize: TYPE.xs,
+    lineHeight: TYPE.xs * LEADING.xs,
+    color: COLORS.warnInk,
+  },
+  obligationState: {
+    fontFamily: FONTS.sans,
+    fontSize: TYPE.sm,
+    lineHeight: TYPE.sm * LEADING.sm,
+    color: COLORS.inkSoft,
+  },
+  actions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: SPACE.md,
+    marginTop: SPACE.xs,
+  },
+  actionButton: { flexShrink: 1 },
+  detail: {
+    marginTop: SPACE.xs,
+    gap: SPACE.xs + 2,
+    paddingHorizontal: SPACE.md,
+    paddingVertical: SPACE.sm + 2,
+    borderRadius: RADIUS.control,
+    backgroundColor: COLORS.canvas2,
+  },
+  sheetRoot: { flex: 1, justifyContent: "flex-end" },
+  sheetScrim: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    // The ink token at 40%: a scrim has to be translucent, which no token is.
+    backgroundColor: "rgba(27, 42, 51, 0.4)",
+  },
+  sheet: {
+    gap: SPACE.sm,
+    padding: SPACE.xl,
+    borderTopLeftRadius: RADIUS.card,
+    borderTopRightRadius: RADIUS.card,
+    backgroundColor: COLORS.canvas,
+  },
+  sheetTitle: {
+    fontFamily: FONTS.serif,
+    fontSize: TYPE.xl,
+    lineHeight: TYPE.xl * LEADING.xl,
+    color: COLORS.ink,
+  },
+});
