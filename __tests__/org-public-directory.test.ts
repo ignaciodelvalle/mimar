@@ -164,8 +164,14 @@ describe("migration 0283 — organizations.public_directory_opt_in", () => {
   });
 
   it("is idempotent: a second run changes nothing", async () => {
+    // Only the column half is re-run. The audit_log CHECK it also redefines
+    // is a whole-list replacement that a later migration (0287) extends, so
+    // replaying 0283's older list on a database that already holds rows with
+    // the newer actions fails by design — that is not this column's contract.
+    const [columnHalf] = MIGRATION.split("ALTER TABLE public.audit_log");
+    expect(columnHalf).toContain("public_directory_opt_in");
     const after = await inRolledBackTx(async (tx) => {
-      await tx.execute(sql.raw(MIGRATION));
+      await tx.execute(sql.raw(columnHalf ?? ""));
       return rows(
         tx,
         sql`select public_directory_opt_in as opt_in from public.organizations
