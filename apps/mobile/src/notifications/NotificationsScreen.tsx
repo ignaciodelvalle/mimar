@@ -76,7 +76,6 @@ import {
   emptyBody,
   emptyTitle,
   inboxSummary,
-  notificationDateLabel,
   notificationDetailRoute,
   notificationRelativeDateLabel,
   notificationsForDisplay,
@@ -100,6 +99,9 @@ import {
 type ReadyInbox = ReadyState<MyNotificationsV1> & {
   category: NotificationCategoryV1 | null;
 };
+
+/** How long a row tap waits for its mark-read before navigating anyway. */
+export const MARK_READ_WAIT_MS = 1500;
 
 type ScreenState = { phase: "loading" } | ReadyInbox | { phase: "failed"; message: string };
 
@@ -254,28 +256,32 @@ export function NotificationsScreen({
   );
 
   /**
-   * A row tap: open the detail, and mark the row read on the way.
+   * A row tap: mark the row read, then open the detail.
    *
    * OPENING IS READING, so the tap does both (pulido-avisos, 2026-10) — the
    * separate "Marcar como leída" button went with the rest of the row's
-   * buttons. The navigation does not wait for the write: the detail resolves
-   * on its own, and this screen re-reads when it regains focus (NAV-3), which
-   * is when the row's dot and the summary have to agree with the server. The
-   * write re-reads too, so a return that beats the write still converges. The
-   * home bell re-reads on ITS focus (`useUnreadCount`), so the badge drops when
-   * the person gets back there.
+   * buttons. THE NAVIGATION WAITS FOR THE WRITE, up to `MARK_READ_WAIT_MS`:
+   * the home bell re-reads on its own focus (`useUnreadCount`), and a person
+   * who opens a notification and comes straight back must not find the old
+   * count there. Past the wait it navigates anyway — a slow network must not
+   * hold the tap hostage — and the write's own re-read, plus this screen's
+   * re-read on focus (NAV-3), still converge the row and the summary.
    *
    * A REFUSED WRITE IS SAID, as every write here is: the row stays unread on
    * the re-read and the banner says why.
    */
+  // One open at a time: a second tap during the wait must not push twice.
+  const opening = useRef(false);
   const open = useCallback(
-    (notification: MyNotificationV1) => {
+    async (notification: MyNotificationV1) => {
+      if (opening.current) return;
+      opening.current = true;
       // A banner from an earlier tap must not outlive the next one.
       setActionError(null);
       if (!notification.read) {
         const command = buildMarkRead([notification.id]);
         if (command.ok) {
-          void (async () => {
+          const write = (async () => {
             const result = await sendNotificationCommand(sessionPort, command.input);
             if (result.outcome !== "ok") {
               setActionError(
@@ -283,10 +289,19 @@ export function NotificationsScreen({
               );
               return;
             }
-            await load(category, "refresh");
+            void load(category, "refresh");
           })();
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          await Promise.race([
+            write,
+            new Promise<void>((resolve) => {
+              timer = setTimeout(resolve, MARK_READ_WAIT_MS);
+            }),
+          ]);
+          clearTimeout(timer);
         }
       }
+      opening.current = false;
       onOpenRoute(notificationDetailRoute(notification));
     },
     [category, load, onOpenRoute],
@@ -326,7 +341,9 @@ export function NotificationsScreen({
       <FlatList
         data={entries}
         keyExtractor={(entry) => rowsOf(entry)[0]?.id ?? "sin-id"}
-        renderItem={({ item }) => <NotificationEntryRow entry={item} now={now} onOpen={open} />}
+        renderItem={({ item }) => (
+          <NotificationEntryRow entry={item} now={now} onOpen={(n) => void open(n)} />
+        )}
         contentContainerStyle={styles.listContent}
         // Native-feel audit (M10) — this list does not go through `Screen`
         // (a `FlatList` cannot nest inside its `ScrollView`), so the same two
@@ -522,12 +539,16 @@ function NotificationRow({
 }) {
   const unread = !notification.read;
   const urgentUnread = unread && notification.severity === "urgent";
+  // WHAT THE ROW SHOWS, NOT MORE. The label used to read the full body and an
+  // absolute date: a screen-reader user heard a paragraph per row while a
+  // sighted one skimmed two lines and "hace 3 h". The body is the detail's job.
+  // "Urgente" is the one word kept beyond the visible text, because the red
+  // ground that says it on screen says nothing to a screen reader.
   const spoken = [
-    unread ? "Sin leer" : null,
-    severityLabel(notification.severity),
+    unread ? "No leída" : null,
+    urgentUnread ? severityLabel(notification.severity) : null,
     notification.title,
-    notification.body,
-    notificationDateLabel(notification.createdAt),
+    notificationRelativeDateLabel(notification.createdAt, now),
   ]
     .filter((part): part is string => part !== null && part.length > 0)
     // A body that already ends in a full stop must not be read as "..".
