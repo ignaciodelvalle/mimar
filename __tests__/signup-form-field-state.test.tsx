@@ -268,12 +268,17 @@ describe("SignupForm — the three consent boxes", () => {
     // The art. 6 notice sits beside the box (legal review T3-1): purpose,
     // recipients, withdrawal and rights.
     const groupText = group?.textContent?.replace(/\s+/g, " ") ?? "";
-    expect(groupText).toContain("Para qué: guardar tu cuenta");
-    expect(groupText).toContain("Quiénes los reciben: Supabase y Vercel (servidores en Brasil)");
+    expect(groupText).toContain("Supabase y Vercel (servidores en Brasil)");
+    expect(groupText).toContain("(Google, Mozilla o Apple)");
     expect(groupText).toContain(
       "Podés retirar este consentimiento cuando quieras eliminando tu cuenta",
     );
-    expect(groupText).toContain("Tenés derecho a acceder a tus datos, rectificarlos y suprimirlos");
+    expect(groupText).toContain("Los eventos sanitarios de tus mascotas no se borran");
+    expect(groupText).toContain("Tenés derecho a acceder a tus datos");
+    expect(groupText).toContain(
+      "Responsable de los datos: Ignacio Del Valle, Av. Raúl Scalabrini Ortiz 1270",
+    );
+    expect(groupText).toContain("LA AGENCIA DE ACCESO A LA INFORMACIÓN PÚBLICA");
   });
 
   it("asks for the 18+ declaration", () => {

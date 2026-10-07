@@ -136,7 +136,11 @@ export function LegalConsentBoxes({
         />
         {/* The art. 6 notice beside the box (legal review T3-1): purpose,
             recipients, withdrawal, rights — the web's same words. */}
-        <Text style={styles.notice}>{TRANSFER_CONSENT_NOTICE}</Text>
+        {TRANSFER_CONSENT_NOTICE.map((paragraph) => (
+          <Text key={paragraph} style={styles.notice}>
+            {paragraph}
+          </Text>
+        ))}
         <View style={styles.links}>
           <LinkText
             accessibilityHint="Se abre en el navegador"

@@ -29,7 +29,11 @@ export function TransferConsentBox({ id = "transferAccepted" }: { id?: string })
       </LnCheckbox>
       {/* The art. 6 notice, BEFORE the person ticks and beside the box
           (legal review T3-1): purpose, recipients, withdrawal, rights. */}
-      <p className="pl-6 text-sm text-[var(--color-ln-ink-2)]">{TRANSFER_CONSENT_NOTICE}</p>
+      <div className="space-y-1 pl-6 text-sm text-[var(--color-ln-ink-2)]">
+        {TRANSFER_CONSENT_NOTICE.map((paragraph) => (
+          <p key={paragraph}>{paragraph}</p>
+        ))}
+      </div>
       <p className="pl-6 text-sm text-[var(--color-ln-ink-2)]">
         <Link
           href="/privacidad#proveedores"

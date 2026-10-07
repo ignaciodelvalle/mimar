@@ -79,15 +79,31 @@ export const TRANSFER_CONSENT_SENTENCE =
   "Acepto que mis datos se transfieran a proveedores en Brasil y en Estados Unidos, países que no figuran en la lista argentina de países con protección adecuada de datos personales.";
 
 /**
- * The short art. 6 notice shown NEXT TO the transfer box (Ley 25.326 art. 6;
- * legal review T3-1: the consent must be "expresa y destacada" AND preceded by
- * the art. 6 information). Purpose, recipients, that it can be withdrawn, and
- * the rights — in that order, plainly. Withdrawing it is deleting the account:
- * the service cannot run without these providers, and the notice says so
- * rather than promising a switch that does not exist.
+ * The art. 6 notice shown NEXT TO the transfer box (Ley 25.326 art. 6; legal
+ * review T3-1: the consent must be "expresa y destacada" AND preceded by the
+ * art. 6 information), one paragraph per element: purpose and recipients;
+ * withdrawal and what survives it; rights; the controller; the AAIP legend.
+ *
+ * REUSED, NOT WRITTEN FRESH (security review of textos-legales-v14, finding 5):
+ *   · the recipients are /privacidad#proveedores's list, including the browser
+ *     push services (Google, Mozilla or Apple);
+ *   · what survives an account deletion is /privacidad's "Qué pasa cuando se
+ *     elimina una cuenta" — sanitary events stay as the animal's history. It is
+ *     NOT presented as a legal obligation to conserve, because /privacidad
+ *     deliberately does not claim one (see the ERRATA in
+ *     src/modules/auth/application/subject-rights/erase-subject-data.ts);
+ *   · the controller and address are /privacidad#responsable's;
+ *   · the AAIP legend is Res. AAIP 14/2018 art. 3, verbatim, as /privacidad
+ *     prints it.
+ * Change /privacidad, change this.
  */
-export const TRANSFER_CONSENT_NOTICE =
-  "Para qué: guardar tu cuenta y los datos de tus mascotas, enviarte correos y avisos, y registrar fallas de la app. Quiénes los reciben: Supabase y Vercel (servidores en Brasil) y Vercel, Sentry, Expo, Google y Resend (Estados Unidos). Podés retirar este consentimiento cuando quieras eliminando tu cuenta, porque sin esos proveedores el servicio no funciona. Tenés derecho a acceder a tus datos, rectificarlos y suprimirlos (Ley 25.326).";
+export const TRANSFER_CONSENT_NOTICE: readonly string[] = [
+  "Para qué y a quiénes: para guardar tu cuenta y los datos de tus mascotas, enviarte correos y avisos y registrar fallas de la app, tus datos pasan por Supabase y Vercel (servidores en Brasil) y por Vercel, Sentry, Expo, Google (Firebase) y Resend, y —si activás los avisos del sitio— por el servicio de notificaciones de tu navegador (Google, Mozilla o Apple), en Estados Unidos.",
+  "Podés retirar este consentimiento cuando quieras eliminando tu cuenta desde Mi cuenta → Privacidad. Los eventos sanitarios de tus mascotas no se borran: son el historial de salud del animal y muchos los registró otra persona; el texto libre que escribiste en ellos se reemplaza por un aviso.",
+  "Tenés derecho a acceder a tus datos, rectificarlos, actualizarlos y suprimirlos (Ley 25.326, art. 14).",
+  "Responsable de los datos: Ignacio Del Valle, Av. Raúl Scalabrini Ortiz 1270, Ciudad Autónoma de Buenos Aires.",
+  "LA AGENCIA DE ACCESO A LA INFORMACIÓN PÚBLICA, en su carácter de órgano de Control de la Ley N° 25.326, tiene la atribución de atender las denuncias y reclamos que interpongan quienes resulten afectados en sus derechos por incumplimiento de las normas vigentes en materia de protección de datos personales.",
+];
 
 /**
  * What changed in each version, in plain es-AR, for the re-acceptance screens
