@@ -431,7 +431,9 @@ describe("registerPetInputSchema — the estimated age", () => {
     // RangeError out of toISOString(). They are now refusals, not clamps.
     expect(ageCode({ ageYears: 3000 })).toBe("AGE_TOO_HIGH");
     expect(ageCode({ ageYears: 300_000 })).toBe("AGE_TOO_HIGH");
-    expect(ageCode({ ageYears: "999999999999999999999999" })).toBe("AGE_TOO_HIGH");
+    expect(ageCode({ ageYears: "999999999" })).toBe("AGE_TOO_HIGH");
+    // Past a safe integer it is not a number this schema can emit and re-read.
+    expect(ageCode({ ageYears: "999999999999999999999999" })).toBe("AGE_YEARS_INVALID");
   });
 
   it("names the age even when another field also failed", () => {

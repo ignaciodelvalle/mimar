@@ -56,7 +56,11 @@ export const statedAgeCount = (code: "AGE_YEARS_INVALID" | "AGE_MONTHS_INVALID")
         if (v === undefined || v === null) return true;
         if (typeof v === "number") return Number.isSafeInteger(v) && v >= 0;
         const trimmed = v.trim();
-        return trimmed === "" || WHOLE_NUMBER.test(trimmed);
+        // SAFE, like the number arm: "99999999999999999999" parses to 1e20,
+        // which this field would then emit and refuse on the way back in —
+        // breaking the round trip (fresh-context review).
+        if (trimmed === "") return true;
+        return WHOLE_NUMBER.test(trimmed) && Number.isSafeInteger(Number.parseInt(trimmed, 10));
       },
       { error: code },
     )
@@ -127,6 +131,8 @@ export function statedAgeRefusal(raw: RawStatedAge): StatedAgeCode | null {
  * same ±1-day match `resolveEditedBirthDate` uses to keep the stored date), or
  * is a plausible new age.
  *
+ * "Untouched" compares the TOTAL, so "2 años 18 meses" posted against a stored
+ * 3y6m passes as untouched — harmless, since the stored date is what is kept.
  * The SHAPE is checked first and always: a form only ever shows whole numbers,
  * so a malformed value was typed, never posted back.
  */
