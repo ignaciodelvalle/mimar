@@ -5,7 +5,8 @@ import { LnBadge } from "@/components/ui/Badge";
 import { LnGuilloche } from "@/components/ui/DocElements";
 import type { OrgPublicProfile } from "@/lib/infra/org-public-profile";
 import { orgLogoUrl } from "@/lib/infra/storage";
-import { BRANDING } from "@/lib/ui/branding";
+
+import { publicProfileCopy } from "./profile-copy";
 
 // Hero del refugio público — Libreta Nacional institutional band look.
 //
@@ -33,8 +34,6 @@ interface Props {
   serviceCount: number;
 }
 
-const TRUST_COPY = `Refugio verificado por ${BRANDING.appName}. Las postulaciones llegan directo al equipo del refugio, que coordina los próximos pasos por email con cada candidato.`;
-
 export function OrgHero({ org, localityLabel, adoptionCount, serviceCount }: Props) {
   const logoUrl = orgLogoUrl(org.logoStoragePath);
   const initial = org.displayName.charAt(0).toUpperCase();
@@ -44,9 +43,12 @@ export function OrgHero({ org, localityLabel, adoptionCount, serviceCount }: Pro
     org.verifiedAt && Date.now() - org.verifiedAt.getTime() > 365 * 24 * 60 * 60 * 1000;
   const verifiedYear = org.verifiedAt?.getFullYear();
 
-  const orgTypeChipLabel = org.orgType === "shelter" ? "Refugio" : "Red de rescate";
+  // Type chip, trust line and CTA follow the org type: a clinic listed in the
+  // directory (migration 0283) is not a refugio and takes no adoptions.
+  const copy = publicProfileCopy(org.orgType);
+  const showAdoptionStat = copy.rehoming;
 
-  const showStats = adoptionCount > 0 || serviceCount > 0;
+  const showStats = (showAdoptionStat && adoptionCount > 0) || serviceCount > 0;
 
   return (
     <header className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-ln-line)] bg-[var(--color-ln-card)]">
@@ -101,7 +103,7 @@ export function OrgHero({ org, localityLabel, adoptionCount, serviceCount }: Pro
               </SheetTriggerLink>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <LnBadge variant="neutral">{orgTypeChipLabel}</LnBadge>
+              <LnBadge variant="neutral">{copy.typeChip}</LnBadge>
               {showYearChip && verifiedYear && (
                 <LnBadge variant="neutral" icon="calendario">
                   Desde {verifiedYear}
@@ -122,7 +124,7 @@ export function OrgHero({ org, localityLabel, adoptionCount, serviceCount }: Pro
 
           {/* Trust copy */}
           <p className="text-sm text-[var(--color-ln-ink-2)] max-w-prose leading-relaxed">
-            {TRUST_COPY}
+            {copy.trustCopy}
           </p>
 
           {/* CTA buttons */}
@@ -132,7 +134,7 @@ export function OrgHero({ org, localityLabel, adoptionCount, serviceCount }: Pro
               className="inline-flex items-center justify-center gap-2 rounded-[var(--radius-sm)] bg-[var(--color-ln-azul)] text-white text-sm font-semibold px-4 py-2.5 hover:bg-[var(--color-ln-azul-700)] focus:outline-none focus-visible:ring-[3px] focus-visible:ring-[var(--color-ln-celeste-050)] transition-colors"
             >
               <Icon name="mail" size="sm" decorative />
-              Contactar al refugio
+              {copy.contactCta}
             </SheetTriggerLink>
             <SheetTriggerLink
               href={`/refugios/${org.publicToken}?sheet=compartir-org`}
@@ -148,12 +150,14 @@ export function OrgHero({ org, localityLabel, adoptionCount, serviceCount }: Pro
       {/* Stats row — only when there's something to show */}
       {showStats && (
         <div className="grid grid-cols-2 border-t border-[var(--color-ln-line)] sm:grid-cols-4">
-          <div className="border-r border-[var(--color-ln-line-2)] px-[18px] py-[15px]">
-            <div className="font-ln-serif text-3xl font-semibold leading-none text-[var(--color-ln-azul)]">
-              {adoptionCount}
+          {showAdoptionStat && (
+            <div className="border-r border-[var(--color-ln-line-2)] px-[18px] py-[15px]">
+              <div className="font-ln-serif text-3xl font-semibold leading-none text-[var(--color-ln-azul)]">
+                {adoptionCount}
+              </div>
+              <div className="mt-[5px] text-sm text-[var(--color-ln-mute)]">En adopción ahora</div>
             </div>
-            <div className="mt-[5px] text-sm text-[var(--color-ln-mute)]">En adopción ahora</div>
-          </div>
+          )}
           {serviceCount > 0 && (
             <div className="border-r border-[var(--color-ln-line-2)] px-[18px] py-[15px] sm:border-r-0 md:border-r">
               <div className="font-ln-serif text-3xl font-semibold leading-none text-[var(--color-ln-azul)]">

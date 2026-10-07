@@ -25,7 +25,7 @@ import { VerificacionInfoSheet } from "./VerificacionInfoSheet";
 describe("<VerificacionInfoSheet> — close (router-hot-path fix)", () => {
   testSheetClosesViaCleanNav({
     render: () => (
-      <VerificacionInfoSheet verifiedByName="Equipo miMAR" verifiedAt={new Date("2026-01-15")} />
+      <VerificacionInfoSheet verifiedVia="mimar_team" verifiedAt={new Date("2026-01-15")} />
     ),
     expectedCloseUrl: "/refugios/refugio-abc?foo=bar",
   });

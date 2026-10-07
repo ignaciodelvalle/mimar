@@ -19,6 +19,8 @@ interface Props {
   orgEmail: string | null;
   orgPhone: string | null;
   jurisdictionLabel: string | null;
+  /** The hero button the no-channels note points at (per org type). */
+  contactCta?: string;
 }
 
 export function ConsultaSinTurnoSheet({
@@ -26,6 +28,7 @@ export function ConsultaSinTurnoSheet({
   orgEmail,
   orgPhone,
   jurisdictionLabel,
+  contactCta = "Contactar al refugio",
 }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -79,7 +82,7 @@ export function ConsultaSinTurnoSheet({
           {!orgPhone && !orgEmail && (
             <p className="text-xs text-[var(--color-ln-mute)]">
               {orgDisplayName} no tiene canales directos publicados. Mandá un mensaje desde el botón
-              "Contactar al refugio" en la parte de arriba.
+              "{contactCta}" en la parte de arriba.
             </p>
           )}
         </div>

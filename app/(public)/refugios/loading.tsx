@@ -1,10 +1,12 @@
 /**
- * loading.tsx — first-paint skeleton for /refugios (public shelter index).
+ * loading.tsx — first-paint skeleton for /refugios (public directory of
+ * shelters, rescue networks and opted-in clinics).
  *
- * The page is force-dynamic and DB-bound (verified shelters + rescue networks,
- * grouped by province), so without this boundary the main area stayed blank
- * until the query resolved. Footprint mirrors page.tsx: header block plus two
- * province sections, each a titled band over a two-column card grid.
+ * The page is force-dynamic and DB-bound (verified orgs grouped by province),
+ * so without this boundary the main area stayed blank until the query
+ * resolved. Footprint mirrors page.tsx: header block, the filter row (type
+ * pills + province select), then two province sections, each a titled band
+ * over a two-column card grid.
  */
 
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -27,6 +29,16 @@ export default function RefugiosLoading() {
           <Skeleton w="360px" h="32px" radius="4px" />
           <Skeleton w="80%" h="16px" radius="3px" />
           <Skeleton w="180px" h="14px" radius="3px" />
+        </div>
+
+        {/* Filter row placeholder */}
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <Skeleton w="72px" h="40px" radius="999px" />
+            <Skeleton w="92px" h="40px" radius="999px" />
+            <Skeleton w="112px" h="40px" radius="999px" />
+          </div>
+          <Skeleton w="320px" h="40px" radius="6px" />
         </div>
 
         {/* Province sections */}

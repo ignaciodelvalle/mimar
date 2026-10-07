@@ -32,7 +32,11 @@ const { cacheRegistration, mockQueryAdoption, mockQueryLost, orgQuery } = vi.hoi
 // The Data Cache needs a Next request context; here it is a pass-through that
 // records how it was registered, which is the part under test.
 vi.mock("next/cache", () => ({
-  unstable_cache: (fn: () => unknown, keys: unknown, options: { revalidate?: unknown }) => {
+  unstable_cache: (
+    fn: () => unknown,
+    keys: unknown,
+    options: { revalidate?: unknown; tags?: unknown },
+  ) => {
     cacheRegistration.keys = keys;
     cacheRegistration.options = options;
     return fn;
@@ -121,6 +125,9 @@ describe("app/sitemap.ts — every read is bounded", () => {
     // data. Asserting the route export is ABSENT is what stops somebody adding
     // the fictional one and reading it as a cache.
     expect(cacheRegistration.options?.revalidate).toBe(900);
+    // Tagged with the directory: a revocation or a clinic's opt-out drops the
+    // org from the sitemap when it drops it from /refugios, not 900s later.
+    expect(cacheRegistration.options?.tags).toEqual(["org-directory"]);
     expect(sitemapModule.dynamic).toBe("force-dynamic");
     expect((sitemapModule as Record<string, unknown>).revalidate).toBeUndefined();
   });

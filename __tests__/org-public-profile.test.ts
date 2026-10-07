@@ -3,10 +3,10 @@
 // reachable at /refugios/[orgToken] — if this test passes, all the
 // downstream panels render against a stable contract.
 
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull, ne } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { db, organizations } from "@/db";
+import { db, organizations, profiles } from "@/db";
 import { queryOrgPublicProfile } from "@/lib/infra/org-public-profile";
 
 const TOKEN_VERIFIED_SHELTER = "DIM-PUB-VFD1";
@@ -143,10 +143,31 @@ describe("queryOrgPublicProfile — projection shape", () => {
     const profile = await queryOrgPublicProfile(TOKEN_VERIFIED_SHELTER);
     expect(profile?.id).toMatch(/^[0-9a-f-]{36}$/);
   });
+});
 
-  it("verifiedBy is null when verified_by_user_id is null (default)", async () => {
+// The verifier is a staff member. Their name is not part of what was
+// verified, and this payload is served to anonymous visitors: the profile
+// names the institution (verifiedVia), never the person.
+describe("queryOrgPublicProfile — no person in the payload", () => {
+  it("carries no verifier name even when verified_by_user_id points at a named profile", async () => {
+    const [staff] = await db
+      .select({ id: profiles.id, displayName: profiles.displayName })
+      .from(profiles)
+      .where(and(isNotNull(profiles.displayName), ne(profiles.displayName, "")))
+      .limit(1);
+    if (!staff?.displayName)
+      throw new Error("no named profile in the local database to verify with");
+
+    await db
+      .update(organizations)
+      .set({ verifiedByUserId: staff.id })
+      .where(eq(organizations.publicToken, TOKEN_VERIFIED_SHELTER));
     const profile = await queryOrgPublicProfile(TOKEN_VERIFIED_SHELTER);
-    expect(profile?.verifiedBy).toBeNull();
+
+    expect(profile).not.toBeNull();
+    expect(profile).not.toHaveProperty("verifiedBy");
+    expect(profile?.verifiedVia).toBe("mimar_team");
+    expect(JSON.stringify(profile)).not.toContain(staff.displayName);
   });
 });
 

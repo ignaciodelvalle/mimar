@@ -14,9 +14,11 @@ import { usePathname, useSearchParams } from "next/navigation";
 interface Props {
   orgToken: string;
   orgDisplayName: string;
+  /** A clinic (migration 0283) has no animals in adoption to advertise. */
+  clinic?: boolean;
 }
 
-export function CompartirOrgSheet({ orgToken, orgDisplayName }: Props) {
+export function CompartirOrgSheet({ orgToken, orgDisplayName, clinic = false }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [copied, setCopied] = useState(false);
@@ -31,7 +33,9 @@ export function CompartirOrgSheet({ orgToken, orgDisplayName }: Props) {
     typeof window !== "undefined"
       ? `${window.location.origin}/refugios/${orgToken}`
       : `${resolveSiteUrl()}/refugios/${orgToken}`;
-  const shareText = `Conocé ${orgDisplayName} en miMAR. Tienen mascotas en adopción y servicios para la comunidad.`;
+  const shareText = clinic
+    ? `Conocé ${orgDisplayName}, veterinaria verificada en miMAR.`
+    : `Conocé ${orgDisplayName} en miMAR. Tienen mascotas en adopción y servicios para la comunidad.`;
 
   async function copy() {
     try {

@@ -86,7 +86,7 @@ const PUBLIC_PAGES: ReadonlyArray<{
   },
   {
     path: "/refugios",
-    marker: (page) => page.getByRole("heading", { name: /refugios y redes de rescate/i, level: 1 }),
+    marker: (page) => page.getByRole("heading", { name: /refugios y veterinarias/i, level: 1 }),
   },
 ];
 

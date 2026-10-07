@@ -7,12 +7,28 @@
 // whether to render based on which optional fields are set.
 //
 // Visibility gate is enforced here — the query returns null for orgs
-// that are not (verified AND orgType in shelter/rescue_network). Caller
-// passes the null straight to notFound().
+// the public directory does not list: verified shelters and rescue networks,
+// plus verified clinics that opted in (migration 0283). The rule is shared
+// with the directory and the sitemap through publicDirectoryVisible().
+// Caller passes the null straight to notFound().
+//
+// PUBLIC FIELDS ONLY, decided HERE so no panel can leak what it never got:
+//   - no PERSON. The verifier used to be joined from profiles.display_name —
+//     a staff member's own name, served to anonymous visitors. The profile
+//     now says HOW the org was verified (verifiedVia), never by whom.
+//   - a clinic's legal name is withheld: for a solo-vet clinic it is the
+//     vet's own full name, and the org's directory consent lists the display
+//     name, not the razón social.
+//   - a clinic never gets coordinates. disclose_address defaults to true and
+//     no form lets a clinic set it, so a true there is a default, not a
+//     choice; the profile shows the locality only. (Shelters keep the rule
+//     they had: disclose_address gates the pin.)
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
-import { db, organizations, profiles } from "@/db";
+import { db, organizations } from "@/db";
+import { publicDirectoryVisible } from "@/lib/infra/org-directory";
+import type { PublicVerificationPath } from "@/src/modules/organizations/domain/public-directory";
 
 export type DonationMethods = {
   cbu?: string;
@@ -22,6 +38,9 @@ export type DonationMethods = {
   btcAddress?: string;
 };
 
+/** The org types a public profile can belong to (see publicDirectoryVisible). */
+export type PublicProfileOrgType = "shelter" | "rescue_network" | "clinic";
+
 export type OrgPublicProfile = {
   /** Internal UUID — never rendered, only used server-side to join other
    * queries (memberships, offerings). Not PII; serializing it client-side
@@ -29,10 +48,11 @@ export type OrgPublicProfile = {
   id: string;
   publicToken: string;
   displayName: string;
+  /** Null for a clinic, whatever is stored (see the header). */
   legalName: string | null;
   description: string | null;
   logoStoragePath: string | null;
-  orgType: "shelter" | "rescue_network";
+  orgType: PublicProfileOrgType;
   jurisdictionProvince: string | null;
   jurisdictionLocality: string | null;
   /** True jurisdictional address — null when disclose_address is false
@@ -46,7 +66,7 @@ export type OrgPublicProfile = {
   phone: string | null;
   website: string | null;
   verifiedAt: Date | null;
-  verifiedBy: { displayName: string } | null;
+  verifiedVia: PublicVerificationPath;
   donationMethods: DonationMethods | null;
 };
 
@@ -72,34 +92,29 @@ export async function queryOrgPublicProfile(orgToken: string): Promise<OrgPublic
       phone: organizations.phone,
       website: organizations.website,
       verifiedAt: organizations.verifiedAt,
-      verifiedByDisplayName: profiles.displayName,
+      autoVerifiedViaMatricula: organizations.autoVerifiedViaMatricula,
       donationMethods: organizations.donationMethods,
     })
     .from(organizations)
-    .leftJoin(profiles, eq(profiles.id, organizations.verifiedByUserId))
-    .where(
-      and(
-        eq(organizations.publicToken, orgToken),
-        eq(organizations.verified, true),
-        inArray(organizations.orgType, ["shelter", "rescue_network"]),
-      ),
-    )
+    .where(and(eq(organizations.publicToken, orgToken), publicDirectoryVisible()))
     .limit(1);
 
   if (!row) return null;
 
   // disclose_address acts as the gate for everything address-derived.
-  // When false, the LocationPanel doesn't render — see handoff P2-6.
-  const showAddress = row.discloseAddress;
+  // When false, the LocationPanel doesn't render — see handoff P2-6. A clinic
+  // never chose it (see the header), so it never shows a pin.
+  const isClinic = row.orgType === "clinic";
+  const showAddress = row.discloseAddress && !isClinic;
 
   return {
     id: row.id,
     publicToken: row.publicToken,
     displayName: row.displayName,
-    legalName: row.legalName,
+    legalName: isClinic ? null : row.legalName,
     description: row.description,
     logoStoragePath: row.logoStoragePath,
-    orgType: row.orgType as "shelter" | "rescue_network",
+    orgType: row.orgType as PublicProfileOrgType,
     jurisdictionProvince: row.jurisdictionProvince,
     jurisdictionLocality: row.jurisdictionLocality,
     jurisdictionAddress: null, // no structured-address column on orgs today
@@ -109,7 +124,7 @@ export async function queryOrgPublicProfile(orgToken: string): Promise<OrgPublic
     phone: row.phone,
     website: row.website,
     verifiedAt: row.verifiedAt,
-    verifiedBy: row.verifiedByDisplayName ? { displayName: row.verifiedByDisplayName } : null,
+    verifiedVia: row.autoVerifiedViaMatricula ? "matricula" : "mimar_team",
     donationMethods: row.donationMethods as DonationMethods | null,
   };
 }

@@ -1,11 +1,11 @@
 import { deepLinkUrl } from "@dim/contract/links";
-import { and, eq, inArray } from "drizzle-orm";
 import type { MetadataRoute } from "next";
 import { unstable_cache } from "next/cache";
 
 import { db, organizations } from "@/db";
 import { loadWithTimeout } from "@/lib/analytics/analytics-load";
 import { withDbBudgetOrThrow } from "@/lib/infra/db-budget";
+import { publicDirectoryVisible } from "@/lib/infra/org-directory";
 import { queryAdoptionListing } from "@/src/modules/adoption/infrastructure/adoption-listing-read";
 import { queryLostListing } from "@/src/modules/lost/infrastructure/lost-listing-read";
 
@@ -97,17 +97,13 @@ async function readSitemapRows(): Promise<SitemapRows> {
   const [{ items: adoptItems }, { items: lostItems }, orgs] = await Promise.all([
     queryAdoptionListing({}, null, SITEMAP_PAGE_SIZE),
     queryLostListing({}, null, SITEMAP_PAGE_SIZE, SITEMAP_PAGE_SIZE),
-    // Public refugio profiles — same visibility gate as queryOrgPublicProfile
-    // (verified AND orgType in shelter | rescue_network). Handoff P2-10.
+    // Public org profiles — the same visibility gate as queryOrgPublicProfile
+    // and the /refugios directory (verified shelters and rescue networks, plus
+    // verified clinics that opted in — migration 0283). Handoff P2-10.
     db
       .select({ token: organizations.publicToken, updatedAt: organizations.updatedAt })
       .from(organizations)
-      .where(
-        and(
-          eq(organizations.verified, true),
-          inArray(organizations.orgType, ["shelter", "rescue_network"]),
-        ),
-      )
+      .where(publicDirectoryVisible())
       .limit(SITEMAP_PAGE_SIZE),
   ]);
 
@@ -127,7 +123,10 @@ async function readSitemapRows(): Promise<SitemapRows> {
 const loadSitemapRowsCached = unstable_cache(
   () => withDbBudgetOrThrow(readSitemapRows(), SITEMAP_DB_BUDGET_MS, "GET /sitemap.xml"),
   ["sitemap-rows"],
-  { revalidate: SITEMAP_REVALIDATE_SECONDS },
+  // "org-directory": the org rows share the directory's visibility rule, so a
+  // verification, a revocation or a clinic's opt-out drops them here as soon
+  // as it drops them from /refugios.
+  { revalidate: SITEMAP_REVALIDATE_SECONDS, tags: ["org-directory"] },
 );
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

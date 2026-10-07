@@ -16,7 +16,7 @@
 // CRITICAL: Every runtime export in a "use server" file must be an async
 // function. Types are re-exported with `export type` (erased at runtime).
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
 import { verifyOrgForAuthority as _verifyOrg } from "@/src/modules/organizations/application/admin-org-verification/verify-org";
@@ -40,6 +40,10 @@ export async function verifyOrgAction(input: { organizationId: string }) {
     // "organizaciones" tab in BOTH portals — revalidate both hub routes.
     revalidatePath("/gob/directorio");
     revalidatePath("/admin/directorio");
+    // A newly verified shelter, or an opted-in clinic, joins the public
+    // /refugios directory and the sitemap (Data Cache, tag "org-directory")
+    // now, not after the 300s window.
+    revalidateTag("org-directory");
   }
   return result;
 }

@@ -62,6 +62,10 @@ export async function revokeVetRoleAction(input: {
     // in BOTH portals — revalidate both hub routes.
     revalidatePath("/gob/directorio");
     revalidatePath("/admin/directorio");
+    // Revoking the role un-verifies the vet's matrícula-derived clinics
+    // (matricula-practices.ts), which drops them from the public /refugios
+    // directory and the sitemap (Data Cache, tag "org-directory") — now.
+    revalidateTag("org-directory");
   }
   return result;
 }

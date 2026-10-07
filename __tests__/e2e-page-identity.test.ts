@@ -114,7 +114,7 @@ describe("NOT_FOUND_HEADING does not fire on real pages", () => {
   const REAL_HEADINGS = [
     "Adoptar en miMAR",
     "Mascotas perdidas",
-    "Refugios y redes de rescate",
+    "Refugios y veterinarias",
     "Credencial pública",
     "Centro de Situación Nacional",
     // The /perdidas EMPTY STATE, which contains "No encontramos" but is a

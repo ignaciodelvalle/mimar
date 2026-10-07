@@ -1,9 +1,14 @@
-// Public shelter profile (handoff Phase 2 — refugio público).
+// Public org profile (handoff Phase 2 — refugio público).
 //
-// Visibility gate (queryOrgPublicProfile): returns null for orgs that
-// are NOT (verified AND orgType in shelter | rescue_network). Caller
+// Visibility gate (queryOrgPublicProfile): returns null for orgs the public
+// directory does not list — anything but a verified shelter or rescue
+// network, or a verified clinic that opted in (migration 0283). Caller
 // 404s — no degraded view, no "Refugio no disponible" placeholder
 // (handoff P2 §"Visibility gate").
+//
+// A clinic gets the same page without the rehoming panels: no adoption list,
+// no "Cómo ayudar" (adopt / foster / donate / volunteer) and no sheets only
+// those panels open. Its words come from ./profile-copy.
 //
 // This file is the P2-1 refactor base — extracts the inline pet-card
 // markup to <AdoptionListingCard> and the inline org-select to
@@ -18,7 +23,7 @@ import { notFound } from "next/navigation";
 import { db, organizationMemberships } from "@/db";
 import { loadWithTimeout } from "@/lib/analytics/analytics-load";
 import { queryPublicOfferings } from "@/lib/infra/org-public-offerings";
-import { queryOrgPublicProfile } from "@/lib/infra/org-public-profile";
+import { type OrgPublicProfile, queryOrgPublicProfile } from "@/lib/infra/org-public-profile";
 import { PUBLIC_BROWSE_READ_LIMIT } from "@/lib/infra/public-browse-limits";
 import { isPublicTokenReadThrottled } from "@/lib/infra/public-token-throttle";
 import { resolveSiteUrl } from "@/lib/infra/site-url";
@@ -43,6 +48,8 @@ import { ContactarSheet } from "./sheets/ContactarSheet";
 import { DonarSheet } from "./sheets/DonarSheet";
 import { SerVoluntarioSheet } from "./sheets/SerVoluntarioSheet";
 import { VerificacionInfoSheet } from "./sheets/VerificacionInfoSheet";
+
+import { publicProfileCopy } from "./profile-copy";
 
 export const dynamic = "force-dynamic";
 
@@ -70,18 +77,22 @@ export async function generateMetadata({
   if (!org) return { title: "Refugio no disponible — miMAR" };
 
   const locality = org.jurisdictionLocality ?? org.jurisdictionProvince ?? "Argentina";
+  const copy = publicProfileCopy(org.orgType);
   const description =
     org.description?.slice(0, 160) ??
-    `Mascotas en adopción publicadas por ${org.displayName}, refugio verificado en ${locality}.`;
+    (copy.rehoming
+      ? `Mascotas en adopción publicadas por ${org.displayName}, refugio verificado en ${locality}.`
+      : `${org.displayName}, veterinaria verificada en ${locality}.`);
   const canonicalUrl = `${SITE_URL}/refugios/${orgToken}`;
   const logoAbsolute = orgLogoUrl(org.logoStoragePath);
+  const title = `${org.displayName} — ${copy.metaKind} en miMAR`;
 
   return {
-    title: `${org.displayName} — Refugio en miMAR`,
+    title,
     description,
     alternates: { canonical: canonicalUrl },
     openGraph: {
-      title: `${org.displayName} — Refugio en miMAR`,
+      title,
       description,
       url: canonicalUrl,
       siteName: "miMAR",
@@ -91,7 +102,7 @@ export async function generateMetadata({
     },
     twitter: {
       card: "summary",
-      title: `${org.displayName} — Refugio en miMAR`,
+      title,
       description,
     },
   };
@@ -196,6 +207,47 @@ function RefugioThrottleNotice() {
   );
 }
 
+// JSON-LD Organization schema for rich-result eligibility on search
+// engines + LinkedIn. Generated server-side and injected via serializeJsonLd()
+// (Next/React do NOT escape dangerouslySetInnerHTML — the helper does).
+const JSON_LD_TYPE: Record<OrgPublicProfile["orgType"], string> = {
+  shelter: "AnimalShelter",
+  rescue_network: "NGO",
+  clinic: "VeterinaryCare",
+};
+
+function buildOrgJsonLd(org: OrgPublicProfile, orgToken: string) {
+  return {
+    "@context": "https://schema.org",
+    "@type": JSON_LD_TYPE[org.orgType],
+    name: org.displayName,
+    legalName: org.legalName ?? undefined,
+    url: `${SITE_URL}/refugios/${orgToken}`,
+    description: org.description ?? undefined,
+    logo: orgLogoUrl(org.logoStoragePath) ?? undefined,
+    email: org.email ?? undefined,
+    telephone: org.phone ?? undefined,
+    sameAs: org.website ? [org.website] : undefined,
+    address:
+      org.jurisdictionLocality || org.jurisdictionProvince
+        ? {
+            "@type": "PostalAddress",
+            addressLocality: org.jurisdictionLocality ?? undefined,
+            addressRegion: org.jurisdictionProvince ?? undefined,
+            addressCountry: "AR",
+          }
+        : undefined,
+    geo:
+      org.latitude != null && org.longitude != null
+        ? {
+            "@type": "GeoCoordinates",
+            latitude: org.latitude,
+            longitude: org.longitude,
+          }
+        : undefined,
+  };
+}
+
 export default async function RefugioPage({
   params,
 }: {
@@ -245,6 +297,7 @@ export default async function RefugioPage({
   const [org, { items, nextCursor }, offerings] = load.value;
 
   if (!org) notFound();
+  const copy = publicProfileCopy(org.orgType);
 
   // Admin/coordinator banner (handoff P2-11 + D5: only admins and
   // coordinators of THIS org see it — volunteers / fosters / non-members
@@ -261,42 +314,11 @@ export default async function RefugioPage({
   // script is allowed under script-src 'nonce-…' / 'strict-dynamic'.
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
-  // JSON-LD Organization schema for rich-result eligibility on search
-  // engines + LinkedIn. Generated server-side and injected via serializeJsonLd()
-  // (Next/React do NOT escape dangerouslySetInnerHTML — the helper does).
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": org.orgType === "shelter" ? "AnimalShelter" : "NGO",
-    name: org.displayName,
-    legalName: org.legalName ?? undefined,
-    url: `${SITE_URL}/refugios/${orgToken}`,
-    description: org.description ?? undefined,
-    logo: orgLogoUrl(org.logoStoragePath) ?? undefined,
-    email: org.email ?? undefined,
-    telephone: org.phone ?? undefined,
-    sameAs: org.website ? [org.website] : undefined,
-    address:
-      org.jurisdictionLocality || org.jurisdictionProvince
-        ? {
-            "@type": "PostalAddress",
-            addressLocality: org.jurisdictionLocality ?? undefined,
-            addressRegion: org.jurisdictionProvince ?? undefined,
-            addressCountry: "AR",
-          }
-        : undefined,
-    geo:
-      org.latitude != null && org.longitude != null
-        ? {
-            "@type": "GeoCoordinates",
-            latitude: org.latitude,
-            longitude: org.longitude,
-          }
-        : undefined,
-  };
+  const jsonLd = buildOrgJsonLd(org, orgToken);
 
   return (
     <>
-      {viewerIsAdminOrCoordinator && <AdminBanner orgToken={orgToken} />}
+      {viewerIsAdminOrCoordinator && <AdminBanner orgToken={orgToken} copy={copy.adminBanner} />}
       <main className="min-h-screen bg-[var(--color-ln-paper)]">
         <div className="max-w-6xl mx-auto px-6 py-10 space-y-10">
           {/* JSON-LD — rendered as a literal script in document head context
@@ -309,10 +331,10 @@ export default async function RefugioPage({
           />
 
           <Link
-            href="/adoptar"
+            href={copy.back.href}
             className="inline-block font-ln-mono text-sm tracking-[.04em] text-[var(--color-ln-azul)] hover:underline focus:outline-none focus-visible:ring-[3px] focus-visible:ring-[var(--color-ln-celeste-050)] mb-4"
           >
-            ← Volver a adopciones
+            {copy.back.label}
           </Link>
 
           <OrgHero
@@ -324,18 +346,20 @@ export default async function RefugioPage({
 
           {org.description && <AboutPanel description={org.description} />}
 
-          <AdoptionPanel
-            orgToken={orgToken}
-            displayName={org.displayName}
-            items={items}
-            hasMore={Boolean(nextCursor)}
-          />
+          {copy.rehoming && (
+            <AdoptionPanel
+              orgToken={orgToken}
+              displayName={org.displayName}
+              items={items}
+              hasMore={Boolean(nextCursor)}
+            />
+          )}
 
           <ServicesPanel orgToken={orgToken} offerings={offerings} />
 
           <LocationPanel org={org} localityLabel={localityLabel} />
 
-          <HelpPanel org={org} isAuthed={isAuthed} />
+          {copy.rehoming && <HelpPanel org={org} isAuthed={isAuthed} />}
         </div>
 
         {/* Sheets — read ?sheet=... from URL and self-mount. Each sheet
@@ -347,24 +371,34 @@ export default async function RefugioPage({
           orgEmail={org.email}
           orgPhone={org.phone}
         />
-        <CompartirOrgSheet orgToken={orgToken} orgDisplayName={org.displayName} />
+        <CompartirOrgSheet
+          orgToken={orgToken}
+          orgDisplayName={org.displayName}
+          clinic={!copy.rehoming}
+        />
         <VerificacionInfoSheet
-          verifiedByName={org.verifiedBy?.displayName ?? null}
+          verifiedVia={org.verifiedVia}
           verifiedAt={org.verifiedAt}
+          clinic={!copy.rehoming}
         />
         <ConsultaSinTurnoSheet
           orgDisplayName={org.displayName}
           orgEmail={org.email}
           orgPhone={org.phone}
           jurisdictionLabel={localityLabel}
+          contactCta={copy.contactCta}
         />
         <ComoLlegarSheet
           orgDisplayName={org.displayName}
           latitude={org.latitude}
           longitude={org.longitude}
         />
-        <DonarSheet orgDisplayName={org.displayName} methods={org.donationMethods} />
-        <SerVoluntarioSheet orgToken={orgToken} orgDisplayName={org.displayName} />
+        {copy.rehoming && (
+          <>
+            <DonarSheet orgDisplayName={org.displayName} methods={org.donationMethods} />
+            <SerVoluntarioSheet orgToken={orgToken} orgDisplayName={org.displayName} />
+          </>
+        )}
       </main>
     </>
   );
