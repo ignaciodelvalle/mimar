@@ -56,6 +56,9 @@ supabase/snippets/Untitled*.sql
 
 # agent/script scratch output (also the launchworthy audit report target)
 tmp/
+# Dot-prefixed scratch directories agents and one-off scripts leave at any
+# depth (.tmp-<run>/). Same status as tmp/ above: never history.
+.tmp-*/
 # Session scratch at the repo root: QA state files, downloaded build artifacts
 # (an AAB is ~80 MB) and one-off notes. Never history; anchored so a future
 # docs/scratchpad/ stays trackable.
