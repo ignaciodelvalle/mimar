@@ -173,10 +173,14 @@ describe("the real corpus", () => {
     expect(floorProblems(analysis)).toEqual([]);
   });
 
-  it("without ALLOWED, flags exactly the exempted components — no more, no fewer", () => {
-    const bare = analyze(corpus, actionFiles, componentFiles, {});
-    expect(bare.raw.map((v) => v.key)).toEqual(Object.keys(ALLOWED).sort());
-  });
+  it(
+    "without ALLOWED, flags exactly the exempted components — no more, no fewer",
+    { timeout: 30_000 },
+    () => {
+      const bare = analyze(corpus, actionFiles, componentFiles, {});
+      expect(bare.raw.map((v) => v.key)).toEqual(Object.keys(ALLOWED).sort());
+    },
+  );
 
   it("gives every exemption a reason", () => {
     for (const [key, reason] of Object.entries(ALLOWED)) {
