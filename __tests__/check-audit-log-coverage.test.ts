@@ -231,8 +231,12 @@ export async function seizeThatAnimalAction(orgToken: string, petId: string) {
   });
 
   // 2026-10-07 (A12) — the alert inbox's local admin guard was not a listed
-  // guard, so its six triage actions were never candidates at all.
-  it("derives the six alert-firing triage actions from the REAL repo, all audited", () => {
+  // guard, so its six triage actions were never candidates at all. What this
+  // proves is the fence's VIEW: each action is now a candidate, and an audit
+  // write is reachable one hop from it (triage.ts names writeAuditLog). It is
+  // not per-action proof that each one writes its row — that is
+  // __tests__/alert-firings-triage.test.ts, which reads the rows back.
+  it("derives the six alert-firing triage actions from the REAL repo as candidates the fence calls audited", () => {
     const { candidates } = scanAll();
     const triage = candidates
       .filter((c) => c.relPath === "app/actions/alert-firings.ts")

@@ -124,6 +124,15 @@ describe("retryOutboxRowAction — audited", () => {
     const row = await makeRow("merged");
     const res = await retryOutboxRowAction(row.id);
     expect(res.error).toBeTruthy();
+
+    const [after] = await db
+      .select({
+        status: eventNotificationOutbox.status,
+        nextRetryAt: eventNotificationOutbox.nextRetryAt,
+      })
+      .from(eventNotificationOutbox)
+      .where(eq(eventNotificationOutbox.id, row.id));
+    expect(after).toEqual({ status: "merged", nextRetryAt: row.nextRetryAt });
     expect(await retryAudit(row.id)).toEqual([]);
   });
 });
