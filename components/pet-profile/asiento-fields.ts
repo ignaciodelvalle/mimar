@@ -31,9 +31,13 @@ import {
 } from "@/lib/domain/visit-labels";
 import { computeConfidence } from "@/lib/events/event-confidence";
 import { upcastPayload } from "@/lib/events/event-upcasters";
-import { eventPayloadDetails, eventPayloadSummary } from "@/lib/events/events";
+import {
+  corridorDisplayLabel,
+  eventPayloadDetails,
+  eventPayloadSummary,
+} from "@/lib/events/events";
 import { isTripPapersAmendment } from "@/lib/infra/amendment";
-import { AR_TIME_ZONE, calendarDaysAgoInAr, eventTypeLabel } from "@/lib/utils/format";
+import { AR_TIME_ZONE, calendarDaysAgoInAr, eventTypeLabel, isoDateInAr } from "@/lib/utils/format";
 import type { HistorialEventRow } from "@/src/modules/pets/application/tab-data/types";
 
 export type AsientoFact = {
@@ -98,6 +102,122 @@ export type AsientoView = {
 
 /** What a papers tick is called in the libreta (QA 2026-10-07, copy 8). */
 export const TRIP_PAPERS_UPDATED_LABEL = "Papeles del viaje actualizados";
+
+// ---------------------------------------------------------------------------
+// Trip papers ticks — presentation-only grouping
+// ---------------------------------------------------------------------------
+//
+// Ticking a trip's checklist ("Lo tengo") writes one `event_amended` per tick,
+// so a person getting a trip's papers in order on one afternoon left five
+// identical "Papeles del viaje actualizados" asientos in a row. The LOG IS
+// UNTOUCHED — every tick stays its own append-only event and keeps its own
+// detail page; what changes is that consecutive ticks of the SAME trip on the
+// SAME Argentine day are DRAWN as one row: "Papeles del viaje actualizados ·
+// 5 cambios · Chile". The app's libreta (apps/mobile/src/pets/
+// libreta-view-model.ts) draws the same row from the same facts.
+
+/** What the libreta knows about the trip a tick points at. */
+export type TripPapersTrip = {
+  /** es-AR destination, e.g. "Chile". */
+  country: string | null;
+  /** The trip's departure day, formatted like every other asiento date. */
+  travelDate: string | null;
+};
+
+/** Trip event id → what the tick asientos print about it. */
+export type TripPapersContext = ReadonlyMap<string, TripPapersTrip>;
+
+/** The fact keys a tick carries, which the app groups on (no ids on the wire). */
+export const TRIP_PAPERS_DESTINATION_KEY = "Destino";
+export const TRIP_PAPERS_TRAVEL_DATE_KEY = "Fecha del viaje";
+
+/** A plain YYYY-MM-DD is a calendar day: read at noon so no zone moves it. */
+function calendarDay(value: unknown): Date | null {
+  if (typeof value !== "string" || value.length === 0) return null;
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00Z`) : new Date(value);
+  return isValidDate(date) ? date : null;
+}
+
+/**
+ * The trips a libreta's rows describe, keyed by event id — read from the
+ * `transport_recorded` movement rows already in the read (no extra query).
+ */
+export function tripPapersContext(rows: ReadonlyArray<HistorialEventRow>): TripPapersContext {
+  const trips = new Map<string, TripPapersTrip>();
+  for (const row of rows) {
+    if (row.eventType !== "movement_recorded") continue;
+    const p = (upcastPayload(row.eventType as EventType, row.payload) ?? {}) as P;
+    if (p.sub_kind !== "transport_recorded") continue;
+    const corridor = str(p, "corridor_id");
+    const day = calendarDay(p.travel_date);
+    trips.set(row.id, {
+      country: corridor ? corridorDisplayLabel(corridor) : null,
+      travelDate: day ? formatAbsolute(day) : null,
+    });
+  }
+  return trips;
+}
+
+/**
+ * The grouping key of a papers tick — its trip and its Argentine day — or null
+ * for every other row. Two ticks group only when this is equal AND they are
+ * adjacent in the timeline.
+ */
+export function tripPapersTickKey(
+  row: Pick<HistorialEventRow, "eventType" | "payload" | "occurredAt">,
+): string | null {
+  if (row.eventType !== "event_amended" || !isTripPapersAmendment(row.payload)) return null;
+  const target = (row.payload as { target_event_id?: unknown } | null)?.target_event_id;
+  const date = new Date(row.occurredAt);
+  if (typeof target !== "string" || !isValidDate(date)) return null;
+  return `${target}|${isoDateInAr(date)}`;
+}
+
+/** "Papeles del viaje actualizados · 3 cambios · Chile". */
+export function tripPapersGroupLabel(count: number, country: string | null): string {
+  return [TRIP_PAPERS_UPDATED_LABEL, count === 1 ? "1 cambio" : `${count} cambios`, country]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+export type TripPapersCollapsed<E> =
+  | { kind: "single"; entry: E }
+  | { kind: "papers"; entries: E[] };
+
+/**
+ * Collapse RUNS of adjacent entries that share a non-null key into one group;
+ * everything else passes through in order. A run of one stays a single entry —
+ * one tick is already one row.
+ */
+export function collapseTripPaperTicks<E>(
+  entries: ReadonlyArray<E>,
+  keyOf: (entry: E) => string | null,
+): TripPapersCollapsed<E>[] {
+  const out: TripPapersCollapsed<E>[] = [];
+  let runKey: string | null = null;
+  let run: E[] = [];
+  const flush = () => {
+    if (run.length === 1) out.push({ kind: "single", entry: run[0] as E });
+    else if (run.length > 1) out.push({ kind: "papers", entries: run });
+    run = [];
+    runKey = null;
+  };
+  for (const entry of entries) {
+    const key = keyOf(entry);
+    if (key !== null && key === runKey) {
+      run.push(entry);
+      continue;
+    }
+    flush();
+    if (key === null) out.push({ kind: "single", entry });
+    else {
+      runKey = key;
+      run = [entry];
+    }
+  }
+  flush();
+  return out;
+}
 
 // ---------------------------------------------------------------------------
 // Dates
@@ -376,6 +496,9 @@ export function toAsientoView(
   petPublicToken: string,
   viewer: AsientoViewer,
   now: Date = new Date(),
+  // The trips the read holds (`tripPapersContext`), so a papers tick can say
+  // which trip it ticked. Optional: without it a tick still renders, unnamed.
+  trips: TripPapersContext = new Map(),
 ): AsientoView {
   const eventType = row.eventType;
   const p = (upcastPayload(eventType as EventType, row.payload) ?? {}) as P;
@@ -396,11 +519,16 @@ export function toAsientoView(
   // A "Lo tengo" tick is the owner keeping a trip's checklist, not a
   // correction: it is named for what it is.
   if (eventType === "event_amended" && isTripPapersAmendment(row.payload)) {
+    const target = (row.payload as { target_event_id?: unknown } | null)?.target_event_id;
+    const trip = typeof target === "string" ? trips.get(target) : undefined;
+    const facts: AsientoFact[] = [{ key: "Fecha", value: aplicada }];
+    if (trip?.country) facts.push({ key: TRIP_PAPERS_DESTINATION_KEY, value: trip.country });
+    if (trip?.travelDate) facts.push({ key: TRIP_PAPERS_TRAVEL_DATE_KEY, value: trip.travelDate });
     return {
       ...base,
       kind: "Viaje",
       title: TRIP_PAPERS_UPDATED_LABEL,
-      facts: [{ key: "Fecha", value: aplicada }],
+      facts,
     };
   }
 

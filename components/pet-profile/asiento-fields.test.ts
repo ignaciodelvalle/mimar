@@ -13,9 +13,15 @@ import type { HistorialEventRow } from "@/src/modules/pets/application/tab-data/
 import { describe, expect, it } from "vitest";
 import {
   type AsientoViewer,
+  TRIP_PAPERS_DESTINATION_KEY,
+  TRIP_PAPERS_TRAVEL_DATE_KEY,
   TRIP_PAPERS_UPDATED_LABEL,
+  collapseTripPaperTicks,
   formatRelative,
   toAsientoView,
+  tripPapersContext,
+  tripPapersGroupLabel,
+  tripPapersTickKey,
 } from "./asiento-fields";
 
 const NOW = new Date("2026-07-04T12:00:00Z");
@@ -499,5 +505,88 @@ describe("toAsientoView — a trip's papers tick reads as what it is (QA 2026-10
     const view = toAsientoView(trip, "TOKEN-1234", SELF, NOW);
     expect(view.amended).toBe(false);
     expect(view.papersUpdated).toBe(true);
+  });
+});
+
+describe("trip papers ticks — one row per trip and day (presentation only)", () => {
+  function tick(id: string, target: string, occurredAt: string): HistorialEventRow {
+    return {
+      id,
+      petId: "pet-1",
+      eventType: "event_amended",
+      payload: {
+        target_event_id: target,
+        reason: "Papeles del viaje",
+        changes: [{ field: "documents_confirmed", old: [], new: ["CZI"] }],
+      },
+      occurredAt: new Date(occurredAt),
+      notes: null,
+      recordedByUserId: GRACIELA,
+      authorRole: "owner",
+      authorVerified: false,
+      authorOrganizationId: null,
+      attachmentUrl: null,
+      hasAttachment: false,
+      amendedAt: null,
+    };
+  }
+  const trip: HistorialEventRow = {
+    ...tick("trip-1", "x", "2026-06-20T12:00:00Z"),
+    eventType: "movement_recorded",
+    payload: { sub_kind: "transport_recorded", corridor_id: "chile", travel_date: "2026-11-15" },
+  };
+
+  it("reads each trip's destination and calendar day from the rows already loaded", () => {
+    const trips = tripPapersContext([trip]);
+    // A plain YYYY-MM-DD is a calendar day: no zone may move it to the 14th.
+    expect(trips.get("trip-1")).toEqual({ country: "Chile", travelDate: "15 de nov de 2026" });
+  });
+
+  it("a tick names its trip in two facts when the trip is in the read", () => {
+    const view = toAsientoView(
+      tick("t1", "trip-1", "2026-07-01T12:00:00Z"),
+      "TOKEN-1234",
+      SELF,
+      NOW,
+      tripPapersContext([trip]),
+    );
+    expect(view.facts).toEqual([
+      { key: "Fecha", value: "1 de jul de 2026" },
+      { key: TRIP_PAPERS_DESTINATION_KEY, value: "Chile" },
+      { key: TRIP_PAPERS_TRAVEL_DATE_KEY, value: "15 de nov de 2026" },
+    ]);
+  });
+
+  it("keys a tick by trip and ARGENTINE day, and every other row by nothing", () => {
+    // 01:00 UTC on the 2nd is still the 1st in Argentina.
+    expect(tripPapersTickKey(tick("t1", "trip-1", "2026-07-02T01:00:00Z"))).toBe(
+      "trip-1|2026-07-01",
+    );
+    expect(tripPapersTickKey(trip)).toBeNull();
+    const correction = {
+      ...tick("c1", "trip-1", "2026-07-01T12:00:00Z"),
+      payload: { target_event_id: "trip-1", changes: [{ field: "travel_date" }] },
+    };
+    expect(tripPapersTickKey(correction)).toBeNull();
+  });
+
+  it("collapses only ADJACENT runs that share a key, and leaves a run of one alone", () => {
+    const rows = ["a", "a", "a", "x", "a", "b", "b", null, null] as const;
+    const out = collapseTripPaperTicks(rows, (key) => key);
+    expect(out.map((e) => (e.kind === "papers" ? `${e.entries.length}×` : e.entry))).toEqual([
+      "3×",
+      "x",
+      "a",
+      "2×",
+      null,
+      null,
+    ]);
+  });
+
+  it("labels a run with its count and destination, and omits an unknown one", () => {
+    expect(tripPapersGroupLabel(3, "Chile")).toBe(
+      "Papeles del viaje actualizados · 3 cambios · Chile",
+    );
+    expect(tripPapersGroupLabel(2, null)).toBe("Papeles del viaje actualizados · 2 cambios");
   });
 });

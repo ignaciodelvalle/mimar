@@ -289,3 +289,73 @@ describe("LibretaFace — Emergencia block (wave-3 P3)", () => {
     expect(html).not.toContain("inmutables");
   });
 });
+
+describe("LibretaFace — trip papers ticks collapse into one row (presentation only)", () => {
+  const trip = pastEvent({
+    id: "trip-1",
+    eventType: "movement_recorded",
+    payload: { sub_kind: "transport_recorded", corridor_id: "chile", travel_date: "2026-11-15" },
+    occurredAt: new Date("2026-06-01T15:00:00Z"),
+    recordedByUserId: OWNER_USER,
+    authorRole: "owner",
+    authorVerified: false,
+  });
+  function tick(id: string, occurredAt: string) {
+    return pastEvent({
+      id,
+      eventType: "event_amended",
+      payload: {
+        target_event_id: "trip-1",
+        reason: "Papeles del viaje",
+        changes: [{ field: "documents_confirmed", old: [], new: [id] }],
+      },
+      occurredAt: new Date(occurredAt),
+      recordedByUserId: OWNER_USER,
+      authorRole: "owner",
+      authorVerified: false,
+    });
+  }
+
+  it("draws three same-day ticks of one trip as ONE row naming the count and country", () => {
+    const html = renderToStaticMarkup(
+      <LibretaFace
+        data={faceData({
+          past: [
+            tick("tick-3", "2026-07-01T18:00:00Z"),
+            tick("tick-2", "2026-07-01T17:00:00Z"),
+            tick("tick-1", "2026-07-01T16:00:00Z"),
+            trip,
+          ],
+        })}
+        petPublicToken="abc"
+        isOwner
+      />,
+    );
+    expect(html).toContain("Papeles del viaje actualizados · 3 cambios · Chile");
+    // One card, linked to the newest tick; the older two are not drawn.
+    expect(html).toContain("/eventos/tick-3");
+    expect(html).not.toContain("/eventos/tick-2");
+    expect(html).not.toContain("/eventos/tick-1");
+    // The trip itself still renders on its own.
+    expect(html).toContain("/eventos/trip-1");
+  });
+
+  it("does not merge ticks from different days", () => {
+    const html = renderToStaticMarkup(
+      <LibretaFace
+        data={faceData({
+          past: [
+            tick("tick-2", "2026-07-02T18:00:00Z"),
+            tick("tick-1", "2026-07-01T16:00:00Z"),
+            trip,
+          ],
+        })}
+        petPublicToken="abc"
+        isOwner
+      />,
+    );
+    expect(html).not.toContain("cambios");
+    expect(html).toContain("/eventos/tick-2");
+    expect(html).toContain("/eventos/tick-1");
+  });
+});

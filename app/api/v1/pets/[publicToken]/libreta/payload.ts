@@ -30,7 +30,7 @@
 //     file EXISTS; the event detail endpoint is where one is handed over, with
 //     an expiry attached.
 
-import { toAsientoView } from "@/components/pet-profile/asiento-fields";
+import { toAsientoView, tripPapersContext } from "@/components/pet-profile/asiento-fields";
 import { pastEventMatchesAudience } from "@/components/pet-profile/libreta-lens";
 import { amendAuthorshipRefusal, canAmendEvent } from "@/lib/infra/amendment";
 import { apiV1Envelope } from "@/lib/infra/api-v1";
@@ -148,13 +148,16 @@ export function buildPetLibretaV1(input: BuildPetLibretaInput): PetLibretaV1 {
   const audience = input.accessPath === "owner" ? "owner" : "org";
   const visible = data.past.filter((row) => pastEventMatchesAudience(row.eventType, audience));
 
+  // The trips the whole read describes, so a papers tick carries "Destino" and
+  // "Fecha del viaje" facts — what the app groups consecutive ticks on.
+  const trips = tripPapersContext(data.past);
   const entries: LibretaEntryV1[] = visible.map((row) => {
     // The SAME projection the web renders — the per-type whitelisted templates,
     // the provenance tier, the AR-calendar date labels. Reused rather than
     // reimplemented because it carries the H3 privacy whitelist inside it: a
     // second projection would be a second place for a hash or an internal id to
     // reach a citizen surface.
-    const view = toAsientoView(row, input.publicToken, data.viewer, now);
+    const view = toAsientoView(row, input.publicToken, data.viewer, now, trips);
     return {
       eventId: row.id,
       // vet-visit-record: the atención grouping key, additive in v1.

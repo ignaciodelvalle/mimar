@@ -26,7 +26,13 @@ import type {
 import { libretaChipCounts } from "@/lib/infra/libreta-sanitaria";
 import type { LibretaFaceData } from "@/src/modules/pets/application/tab-data/types";
 import { useState } from "react";
-import { toAsientoView } from "./asiento-fields";
+import {
+  collapseTripPaperTicks,
+  toAsientoView,
+  tripPapersContext,
+  tripPapersGroupLabel,
+  tripPapersTickKey,
+} from "./asiento-fields";
 import { pastEventMatchesAudience } from "./libreta-lens";
 import { groupPastByVisit } from "./libreta-visit-groups";
 
@@ -92,10 +98,18 @@ export function LibretaFace({ data, petPublicToken, isOwner, emergencyContacts }
   // must not depend on a value that drifts between renders). The absolute
   // dates are already tz-pinned (AR_TIME_ZONE) for the sibling #418 subclass.
   const [now] = useState(() => new Date());
-  const renderAsiento = (row: (typeof visiblePast)[number]) => (
+  // From the WHOLE read, not the chip-filtered slice: a papers tick names its
+  // trip even when the "Viaje" rows are filtered out of view.
+  const trips = tripPapersContext(data.past);
+  // `title` overrides the projection's own — only a collapsed run of papers
+  // ticks passes one ("… · 3 cambios · Chile").
+  const renderAsiento = (row: (typeof visiblePast)[number], title?: string) => (
     <AsientoCard
       key={row.id}
-      view={toAsientoView(row, petPublicToken, data.viewer, now)}
+      view={{
+        ...toAsientoView(row, petPublicToken, data.viewer, now, trips),
+        ...(title === undefined ? {} : { title }),
+      }}
       eventHref={`/mis-mascotas/${petPublicToken}/eventos/${row.id}`}
       // A weight asiento's sparkline shows the TRAILING 12-MONTH
       // curve ending at its own date — every weigh-in in the year
@@ -165,8 +179,25 @@ export function LibretaFace({ data, petPublicToken, isOwner, emergencyContacts }
                 {/* vet-visit-record: the records one vet wrote in one atención
                     read as one block, titled "Atención · fecha · modalidad";
                     everything else renders one by one, as before. */}
-                {groupPastByVisit(visiblePast, data.visits).map((entry) =>
-                  entry.kind === "event" ? (
+                {/* Trip papers ticks: consecutive "Lo tengo" ticks of one
+                    trip on one day draw as ONE row (presentation only — each
+                    tick is still its own event). See asiento-fields.ts. */}
+                {collapseTripPaperTicks(groupPastByVisit(visiblePast, data.visits), (entry) =>
+                  entry.kind === "event" ? tripPapersTickKey(entry.row) : null,
+                ).map((collapsed) => {
+                  if (collapsed.kind === "papers") {
+                    const head = collapsed.entries[0];
+                    if (head?.kind !== "event") return null;
+                    const target = (head.row.payload as { target_event_id?: string } | null)
+                      ?.target_event_id;
+                    const country = target ? (trips.get(target)?.country ?? null) : null;
+                    return renderAsiento(
+                      head.row,
+                      tripPapersGroupLabel(collapsed.entries.length, country),
+                    );
+                  }
+                  const entry = collapsed.entry;
+                  return entry.kind === "event" ? (
                     renderAsiento(entry.row)
                   ) : (
                     <section
@@ -178,10 +209,10 @@ export function LibretaFace({ data, petPublicToken, isOwner, emergencyContacts }
                       <p className="px-1 font-ln-mono text-xs uppercase tracking-[.06em] text-[var(--color-ln-mute)]">
                         {entry.header}
                       </p>
-                      {entry.rows.map(renderAsiento)}
+                      {entry.rows.map((row) => renderAsiento(row))}
                     </section>
-                  ),
-                )}
+                  );
+                })}
               </div>
             </>
           )}
