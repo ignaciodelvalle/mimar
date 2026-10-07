@@ -19,8 +19,11 @@
  *
  *   pnpm place:resolve-event-places-by-coordinates
  *       against the LOCAL database (DATABASE_URL from .env.local, or the
- *       Supabase CLI default). Every read runs in its own READ ONLY
- *       transaction.
+ *       Supabase CLI default). The pass's own reads (event_places with the
+ *       events' points, the candidates' centroids) each run in a short READ
+ *       ONLY transaction. The homonym lookup does NOT: resolveName ->
+ *       localitiesByName queries through the global pool, as plain SELECTs
+ *       outside any transaction. Nothing in this script issues a write.
  *   ... --env-file <path> --allow-remote
  *       against another database, on purpose. A non-local host is refused
  *       without --allow-remote. NOT against staging until the PO asks for it.

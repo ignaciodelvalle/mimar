@@ -8,6 +8,7 @@ import {
   type CandidateCentroid,
   MAX_DISTANCE_KM,
   MIN_MARGIN_KM,
+  MIN_RATIO,
   decideByCoordinates,
   haversineKm,
   usablePoint,
@@ -62,6 +63,16 @@ describe("usablePoint", () => {
 });
 
 describe("decideByCoordinates — settles a homonym only on clear evidence", () => {
+  // The fixtures below are written in literal kilometres. Pinning the
+  // thresholds here is what makes them mean something: a fixture derived
+  // from the constant would move with it, and a loosened threshold would
+  // still read green.
+  it("pins the thresholds the fixtures are written against", () => {
+    expect(MAX_DISTANCE_KM).toBe(20);
+    expect(MIN_MARGIN_KM).toBe(10);
+    expect(MIN_RATIO).toBe(2);
+  });
+
   it("picks the candidate the point sits next to", () => {
     const d = decideByCoordinates(southOf(NORTH, 3), [NORTH, SOUTH]);
     expect(d.verdict).toBe("resolved");
@@ -87,11 +98,15 @@ describe("decideByCoordinates — settles a homonym only on clear evidence", () 
   });
 
   it("a point far from every candidate says nothing about which one is home", () => {
-    const far = southOf(NORTH, MAX_DISTANCE_KM + 5);
     // Nearest is NORTH at 25 km, SOUTH ~125 km: a clear margin, but too far.
-    expect(decideByCoordinates(far, [NORTH, SOUTH])).toMatchObject({
+    expect(decideByCoordinates(southOf(NORTH, 25), [NORTH, SOUTH])).toMatchObject({
       verdict: "unresolved",
       reason: "outside_all",
+    });
+    // 19 km from NORTH, ~131 km from SOUTH: inside the 20 km reach.
+    expect(decideByCoordinates(southOf(NORTH, 19), [NORTH, SOUTH])).toMatchObject({
+      verdict: "resolved",
+      localityId: NORTH.localityId,
     });
   });
 
@@ -120,7 +135,6 @@ describe("decideByCoordinates — settles a homonym only on clear evidence", () 
       localityId: "00000000-0000-4000-8000-00000000000f",
       lat: (NORTH.lat as number) - 11 / 111.195,
     };
-    expect(MIN_MARGIN_KM).toBeGreaterThan(7);
     expect(decideByCoordinates(southOf(NORTH, 2), [a, c])).toMatchObject({
       reason: "too_close_to_call",
     });
