@@ -166,9 +166,9 @@ describe("service_offerings — catalog shape (0279)", () => {
     );
   });
 
-  it("the policies are the provider and org-member SELECTs, TO authenticated, non-recursive", async () => {
+  it("the policies are the provider and org-member SELECTs plus the aal2 restriction (0290), TO authenticated, non-recursive", async () => {
     const rows = (await db.execute(sql`
-      SELECT policyname, cmd, array_to_string(roles, ',') AS roles,
+      SELECT policyname, permissive, cmd, array_to_string(roles, ',') AS roles,
              coalesce(qual, '') LIKE '%organization_memberships%' AS recursive
         FROM pg_policies
        WHERE schemaname = 'public' AND tablename = 'service_offerings'
@@ -176,13 +176,22 @@ describe("service_offerings — catalog shape (0279)", () => {
     `)) as unknown as Array<Record<string, unknown>>;
     expect(rows).toEqual([
       {
+        policyname: "institutional sessions require aal2",
+        permissive: "RESTRICTIVE",
+        cmd: "SELECT",
+        roles: "authenticated",
+        recursive: false,
+      },
+      {
         policyname: "service_offerings read by org members",
+        permissive: "PERMISSIVE",
         cmd: "SELECT",
         roles: "authenticated",
         recursive: false,
       },
       {
         policyname: "service_offerings read by provider vet",
+        permissive: "PERMISSIVE",
         cmd: "SELECT",
         roles: "authenticated",
         recursive: false,
