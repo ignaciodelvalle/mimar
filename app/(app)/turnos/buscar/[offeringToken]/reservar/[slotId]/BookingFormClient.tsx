@@ -6,12 +6,20 @@
 // form navigates (nav contract N3) — it used to redirect() server-side, which
 // the App Router drops in production: the slot was booked and the user was left
 // looking at the form.
+//
+// THE NAVIGATION FIRES INSIDE THE ACTION, NOT FROM AN EFFECT (2026-10-06).
+// bookSlotAction revalidates, so its response re-renders THIS route, and the
+// page calls notFound() once bookingsCount >= capacity — capacity defaults to 1,
+// so booking the slot is exactly what fills it. The form is unmounted by that
+// render, an effect-based useActionRedirect never ran, and the owner saw a 404
+// for a booking that had gone through. Navigating from the adapter runs after
+// the await whether or not the form is still mounted.
 
 import { useActionState, useEffect, useState } from "react";
 
 import { type BookSlotResult, bookSlotAction } from "@/app/actions/booking";
 import { LnButton } from "@/components/ui/Button";
-import { useActionRedirect } from "@/lib/ui/use-action-redirect";
+import { useActionNavigate } from "@/lib/ui/use-action-redirect";
 import { useKeptFields } from "@/lib/ui/use-kept-fields";
 
 type BookingState = { error: string | null; redirectTo?: string | null };
@@ -19,12 +27,13 @@ type BookingState = { error: string | null; redirectTo?: string | null };
 const initialState: BookingState = { error: null };
 
 // Adapter: useActionState requires (prevState, formData) => state.
-function makeFormAction(slotId: string) {
+function makeFormAction(slotId: string, navigate: (targetUrl: string) => void) {
   return async (_prev: BookingState, formData: FormData): Promise<BookingState> => {
     const petId = String(formData.get("petId") ?? "").trim();
     if (!petId) return { error: "Seleccioná una mascota." };
     const result: BookSlotResult = await bookSlotAction(slotId, petId);
     if ("error" in result) return { error: result.error };
+    if (result.redirectTo) navigate(result.redirectTo);
     return { error: null, redirectTo: result.redirectTo ?? null };
   };
 }
@@ -36,13 +45,13 @@ export function BookingFormClient({
   slotId: string;
   userPets: Array<{ id: string; name: string; species: string }>;
 }) {
-  const formAction = makeFormAction(slotId);
+  const [navigate, navigating] = useActionNavigate();
+  const formAction = makeFormAction(slotId, navigate);
   // forms/react19-reset-data-loss-inventory: "petId" is an uncontrolled
   // <select> — a rejected submit (e.g. "Sin cupo disponible.") falls it back
   // to its first (empty) option, discarding whichever pet was chosen.
   const { boundAction, kept } = useKeptFields<BookingState>(formAction);
   const [state, dispatch, pending] = useActionState(boundAction, initialState);
-  useActionRedirect(state.redirectTo, state);
 
   // Hydration gate (the documented task-#39 dropped-click class, QA repro on
   // this form): `dispatch` is a CLIENT closure, so this form gets no
@@ -97,9 +106,9 @@ export function BookingFormClient({
         size="lg"
         block
         disabled={!hydrated}
-        loading={pending}
+        loading={pending || navigating}
       >
-        {pending ? "Reservando…" : "Confirmar reserva"}
+        {pending || navigating ? "Reservando…" : "Confirmar reserva"}
       </LnButton>
     </form>
   );

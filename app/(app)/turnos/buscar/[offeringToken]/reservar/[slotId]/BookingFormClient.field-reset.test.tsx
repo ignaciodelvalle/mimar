@@ -20,6 +20,7 @@ vi.mock("@/app/actions/booking", () => ({
 
 vi.mock("@/lib/ui/use-action-redirect", () => ({
   useActionRedirect: vi.fn(),
+  useActionNavigate: () => [vi.fn(), false],
 }));
 
 import { BookingFormClient } from "./BookingFormClient";
