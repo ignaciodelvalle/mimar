@@ -246,6 +246,42 @@ describe("findNearbyHelp — a picked locality", () => {
   });
 });
 
+describe("findNearbyHelp — a 'Recibimos' nobody confirmed goes stale", () => {
+  it("shows an org not saved in 30 days as 'Consultar antes', the fresh one as 'Recibimos'", async () => {
+    // Backdating is the one direction the stamp trigger lets a writer move
+    // updated_at (it can only make the status read staler). The DB's own now().
+    await db.execute(sql`
+      UPDATE public.org_found_animal_intake i
+         SET updated_at = now() - interval '31 days'
+        FROM public.organizations o
+       WHERE o.id = i.organization_id AND o.public_token = ${`${PREFIX}-${fx.suffix}-NEAR`}
+    `);
+    const help = await findNearbyHelp({ kind: "point", point: FINDER, includeVets: false });
+    const byName = new Map(help?.receivers.map((r) => [r.displayName, r.capacityLabel]));
+    expect(byName.get(names.near)).toBe("Consultar antes");
+    expect(byName.get(names.mid)).toBe("Recibimos");
+
+    // Saving the card again — even with nothing changed — confirms it.
+    await setIntake(
+      (
+        (await db.execute(
+          sql`SELECT id::text AS id FROM public.organizations WHERE public_token = ${`${PREFIX}-${fx.suffix}-NEAR`}`,
+        )) as unknown as Array<{ id: string }>
+      )[0].id,
+      actor,
+      {
+        publicContactKind: "whatsapp",
+        publicContactValue: "+54 9 2945 55-0001",
+        publicHours: "Lunes a viernes de 9 a 13",
+      },
+    );
+    const again = await findNearbyHelp({ kind: "point", point: FINDER, includeVets: false });
+    expect(again?.receivers.find((r) => r.displayName === names.near)?.capacityLabel).toBe(
+      "Recibimos",
+    );
+  });
+});
+
 describe("findNearbyHelp — the empty state walks the jurisdiction cascade", () => {
   it("offers an opted-in municipal service of the place's province, at any distance", async () => {
     const place = await readHelpPlaceNear({ lat: -49.3, lng: -70.1 });
