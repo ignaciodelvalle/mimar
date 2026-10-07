@@ -284,6 +284,10 @@ export function TransferDetailScreen({
         </Callout>
       )}
 
+      {/* THE FACTS FIRST, then the answer: a decision button shows what is
+          being decided beside it (PO rule, custody polish review). */}
+      <TransferFacts transfer={transfer} />
+
       <TransferActions
         transfer={transfer}
         busy={busy}
@@ -294,7 +298,6 @@ export function TransferDetailScreen({
         onRun={runBuilt}
       />
 
-      <TransferFacts transfer={transfer} />
     </Screen>
   );
 }
@@ -310,10 +313,11 @@ export function TransferDetailScreen({
  * independent: an expired proposal can still be rejected but not accepted, and
  * only the SENDER may cancel.
  *
- * THE ANSWER COMES FIRST, the detail after it (custody polish, 2026-10-07): the
- * person arrives from a notification to answer, and the one thing they most
- * likely came to do is the primary — accepting, on an incoming proposal.
- * Rejecting and withdrawing are rows: reachable, and not competing with it.
+ * ONE PRIMARY (custody polish, 2026-10-07): the person arrives from a
+ * notification to answer, and the one thing they most likely came to do is the
+ * primary — accepting, on an incoming proposal. Rejecting and withdrawing are
+ * rows: reachable, and not competing with it. The facts sit ABOVE all of it,
+ * and the ones the decision turns on are repeated inside the confirmation.
  */
 function TransferActions({
   transfer,
@@ -337,6 +341,7 @@ function TransferActions({
   if (pane === "accept" && canAccept) {
     return (
       <Callout tone="warn" title="¿Aceptás la titularidad?">
+        <DecisionFacts transfer={transfer} />
         <Body>
           Al aceptar, {transfer.pet.name} pasa a tu nombre. Es definitivo: no se puede deshacer.
         </Body>
@@ -423,7 +428,24 @@ function TransferActions({
   );
 }
 
-/** The detail, as label/value lines under the answer: read, not acted on. */
+/**
+ * What the irreversible tap is about, INSIDE the confirmation that commits it:
+ * who sends the animal, why, and until when the offer stands.
+ */
+function DecisionFacts({ transfer }: { transfer: MyTransferV1 }) {
+  const counterparty = transferCounterpartyLabel(transfer);
+  const reason = transferReasonLabel(transfer);
+  const deadline = transferDeadlineLabel(transfer);
+  return (
+    <>
+      {counterparty !== null && <Body>{counterparty}</Body>}
+      {reason !== null && <Row label="Motivo" value={reason} />}
+      {deadline !== null && <Row label="Vencimiento" value={deadline} />}
+    </>
+  );
+}
+
+/** The detail, as label/value lines above the answer. */
 function TransferFacts({ transfer }: { transfer: MyTransferV1 }) {
   const counterparty = transferCounterpartyLabel(transfer);
   const reason = transferReasonLabel(transfer);
@@ -455,12 +477,12 @@ function TransferFacts({ transfer }: { transfer: MyTransferV1 }) {
 
 const styles = StyleSheet.create({
   header: { gap: SPACE.xs },
-  // The detail, as a sheet of label/value lines rather than a titled Card: it
-  // is read, not acted on, so it sits under the answer.
+  // The detail, as a sheet of label/value lines rather than a titled Card,
+  // ruled off from the answer under it.
   section: {
     gap: SPACE.sm,
-    paddingTop: SPACE.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.border,
+    paddingBottom: SPACE.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
   },
 });
