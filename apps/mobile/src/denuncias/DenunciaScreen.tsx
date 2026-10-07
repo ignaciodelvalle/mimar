@@ -112,7 +112,14 @@ const EMPTY: DenunciaFormValues = {
 type Phase =
   | { name: "form"; error: string | null }
   | { name: "working" }
-  | { name: "filed"; referenceCode: string; followUpUrl: string };
+  | { name: "filed"; referenceCode: string; followUpUrl: string }
+  /**
+   * An anonymous re-send of a denuncia that already landed (409
+   * `welfare_report_already_filed`, plan A5f). TERMINAL, like `filed`: back on
+   * the form every later send would carry the same key and hear the same 409.
+   * The server returns nothing about the original, so neither does this.
+   */
+  | { name: "already_filed"; message: string };
 
 export function DenunciaScreen({
   onOpenMyReports,
@@ -153,7 +160,11 @@ export function DenunciaScreen({
   // the longest thing a citizen writes in this app and the only one that cannot
   // be re-read from the server afterwards. `filed` clears the guard: the
   // allegation is on record and the screen is a receipt.
-  useDraftDiscardGuard(phase.name !== "filed" && (values !== EMPTY || addressText !== ""));
+  useDraftDiscardGuard(
+    phase.name !== "filed" &&
+      phase.name !== "already_filed" &&
+      (values !== EMPTY || addressText !== ""),
+  );
 
   const patch = useCallback((next: Partial<DenunciaFormValues>) => {
     setValues((current) => ({ ...current, ...next }));
@@ -213,6 +224,13 @@ export function DenunciaScreen({
     setPhase({ name: "working" });
     const result = await sendWelfareReportCommand(sessionPort, draft.input);
 
+    if (result.outcome === "api-error" && result.code === "welfare_report_already_filed") {
+      setPhase({
+        name: "already_filed",
+        message: apiFailureMessage(result) ?? "Esta denuncia ya había sido recibida.",
+      });
+      return;
+    }
     if (result.outcome !== "ok") {
       setPhase({
         name: "form",
@@ -246,6 +264,32 @@ export function DenunciaScreen({
   const searchChain = useReturnKeyChain(1, () => void searchPlace());
   const contactChain = useReturnKeyChain(2);
 
+  // A NEW denuncia: an empty form and a key of its own. The only way out of
+  // either terminal state, and the only place `already_filed` mints a key.
+  const startNew = useCallback(() => {
+    attempt.current.restart();
+    setValues(EMPTY);
+    setAddressText("");
+    setMatches(null);
+    setEvidenceEpoch((epoch) => epoch + 1);
+    setPhase({ name: "form", error: null });
+  }, []);
+
+  if (phase.name === "already_filed") {
+    return (
+      <Screen>
+        <Title>Denuncia ya recibida</Title>
+        <Callout tone="ok" title="No hace falta volver a enviarla">
+          <Body>{phase.message}</Body>
+        </Callout>
+        <Subtitle>
+          La enviaste de forma anónima, así que por tu privacidad no volvemos a mostrar su código.
+        </Subtitle>
+        <SecondaryButton label="Hacer otra denuncia" onPress={startNew} />
+      </Screen>
+    );
+  }
+
   if (phase.name === "filed") {
     return (
       <Screen>
@@ -267,16 +311,7 @@ export function DenunciaScreen({
         >
           Ver la constancia en la web
         </LinkText>
-        <SecondaryButton
-          label="Hacer otra denuncia"
-          onPress={() => {
-            setValues(EMPTY);
-            setAddressText("");
-            setMatches(null);
-            setEvidenceEpoch((epoch) => epoch + 1);
-            setPhase({ name: "form", error: null });
-          }}
-        />
+        <SecondaryButton label="Hacer otra denuncia" onPress={startNew} />
       </Screen>
     );
   }

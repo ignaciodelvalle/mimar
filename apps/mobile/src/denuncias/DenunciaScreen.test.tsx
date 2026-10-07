@@ -680,7 +680,10 @@ describe("a re-send is the same denuncia (plan A5f)", () => {
     expect(bodyOf(4).clientIdempotencyKey).not.toBe(first);
   });
 
-  it("says a re-sent anonymous denuncia already arrived, and draws no receipt", async () => {
+  it("a re-sent anonymous denuncia that already arrived is TERMINAL: no form to 409 again, no receipt", async () => {
+    // THE MUTATION: answer the 409 by returning to the form with its sentence.
+    // Applied: "Enviar la denuncia" is still there and this fails — and every
+    // later tap would carry the same key and hear the same 409.
     render(<DenunciaScreen />);
     await searchAddress();
     fireEvent.press(screen.getByText(PLACE_LABEL));
@@ -694,8 +697,41 @@ describe("a re-send is the same denuncia (plan A5f)", () => {
     });
     fireEvent.press(screen.getByText("Enviar la denuncia"));
 
-    await waitFor(() => expect(screen.getByText(/ya había sido recibida/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Denuncia ya recibida")).toBeTruthy());
+    expect(screen.getByText(/ya había sido recibida/)).toBeTruthy();
+    expect(screen.queryByText("Enviar la denuncia")).toBeNull();
+    // The server returned nothing about the original, and nothing is drawn.
     expect(screen.queryByText("Denuncia registrada")).toBeNull();
+    expect(screen.queryByText("DEN-9KSC-MRMZ")).toBeNull();
+  });
+
+  it("'Hacer otra denuncia' after an already-filed answer starts a NEW denuncia with a NEW key", async () => {
+    render(<DenunciaScreen />);
+    await searchAddress();
+    fireEvent.press(screen.getByText(PLACE_LABEL));
+    fillFacts();
+    mockSend.mockResolvedValueOnce({
+      outcome: "api-error",
+      code: "welfare_report_already_filed",
+      retryAfterSeconds: null,
+      correlationId: null,
+    });
+    fireEvent.press(screen.getByText("Enviar la denuncia"));
+    await waitFor(() => expect(screen.getByText("Denuncia ya recibida")).toBeTruthy());
+    const refusedKey = bodyOf(1).clientIdempotencyKey;
+
+    fireEvent.press(screen.getByText("Hacer otra denuncia"));
+    // An empty form again.
+    expect(screen.queryByDisplayValue(DESCRIPTION)).toBeNull();
+    await searchAddress();
+    fireEvent.press(screen.getByText(PLACE_LABEL));
+    fillFacts();
+    mockSend.mockResolvedValueOnce(FILED_ACK);
+    fireEvent.press(screen.getByText("Enviar la denuncia"));
+    await waitFor(() => expect(screen.getByText("DEN-9KSC-MRMZ")).toBeTruthy());
+
+    expect(bodyOf(3).clientIdempotencyKey).toEqual(expect.any(String));
+    expect(bodyOf(3).clientIdempotencyKey).not.toBe(refusedKey);
   });
 });
 
