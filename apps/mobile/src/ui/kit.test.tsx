@@ -34,6 +34,7 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { useState } from "react";
 import {
   AccessibilityInfo,
   Keyboard,
@@ -47,6 +48,7 @@ import {
 
 import {
   Choice,
+  CollapsibleModule,
   DateField,
   FieldLabel,
   LinkText,
@@ -821,5 +823,47 @@ describe("Screen keyboardAvoiding — the prop reaches a real KeyboardAvoidingVi
       </Screen>,
     );
     expect(screen.UNSAFE_queryAllByType(KeyboardAvoidingView)).toHaveLength(0);
+  });
+});
+
+describe("CollapsibleModule", () => {
+  function Harness({ initiallyOpen }: { initiallyOpen: boolean }) {
+    const [open, setOpen] = useState(initiallyOpen);
+    return (
+      <CollapsibleModule
+        title="Para llevar"
+        summary="Sin confirmar: CZI"
+        badge="2 de 3"
+        open={open}
+        onToggle={() => setOpen((o) => !o)}
+      >
+        <Text>El cuerpo</Text>
+      </CollapsibleModule>
+    );
+  }
+
+  it("says something useful folded, and draws its body only while open", () => {
+    render(<Harness initiallyOpen={false} />);
+    expect(screen.getByText("Para llevar")).toBeOnTheScreen();
+    expect(screen.getByText("Sin confirmar: CZI")).toBeOnTheScreen();
+    expect(screen.getByText("2 de 3")).toBeOnTheScreen();
+    expect(screen.queryByText("El cuerpo")).toBeNull();
+    expect(screen.getByRole("button", { expanded: false })).toBeOnTheScreen();
+    fireEvent.press(screen.getByText("Para llevar"));
+    expect(screen.getByText("El cuerpo")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { expanded: true })).toBeOnTheScreen();
+  });
+
+  it("has a floor and no fixed height, and its title column is the one that wraps", () => {
+    render(<Harness initiallyOpen />);
+    const header = screen.getByRole("button", { expanded: true });
+    const style = StyleSheet.flatten(header.props.style);
+    expect(style.minHeight).toBeGreaterThanOrEqual(48);
+    expect(style.height).toBeUndefined();
+    const title = screen.getByText("Para llevar");
+    const column = StyleSheet.flatten(title.parent?.parent?.props.style);
+    expect(column.flexShrink).toBe(1);
+    const badge = StyleSheet.flatten(screen.getByText("2 de 3").parent?.parent?.props.style);
+    expect(badge.flexShrink).toBe(0);
   });
 });

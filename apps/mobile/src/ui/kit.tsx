@@ -1297,6 +1297,149 @@ export function Callout({
   );
 }
 
+// ---------- Collapsible module ---------------------------------------------
+
+export type ModuleBadgeTone = "neutral" | "ok" | "warn" | "err";
+
+/**
+ * A titled block that folds: the header always says something useful ("2 de
+ * 3", "Todavía no cargaste un CVI") and the body is drawn only while open.
+ * The web draws the same thing with a native `<details>` (viaje redesign,
+ * 2026-10-07): one header row, one body, nothing else.
+ *
+ * CONTROLLED, NOT SELF-OPENING. Which module starts open is a screen rule
+ * (the trip screen opens the first one with pending work), so the screen owns
+ * `open` and this component only reports the tap.
+ *
+ * NO FIXED HEIGHT ANYWHERE. The header has a 56dp FLOOR, the title column
+ * shrinks and wraps, and the badge never shrinks — the shape `Row` settled on
+ * after the letter-per-line defect (QA 2026-10-07, bug 2) — so at font scale
+ * 1.3 the header grows instead of clipping.
+ */
+export function CollapsibleModule({
+  title,
+  summary,
+  badge,
+  badgeTone = "neutral",
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  /** One line under the title, shown open or closed. */
+  summary?: string | null;
+  badge?: string | null;
+  badgeTone?: ModuleBadgeTone;
+  open: boolean;
+  onToggle: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <View style={moduleStyles.module}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        android_ripple={RIPPLE}
+        onPress={onToggle}
+        style={(state) => [moduleStyles.header, pressedOpacityUnlessAndroidRipple(state)]}
+      >
+        <View style={moduleStyles.titleColumn}>
+          <Text style={moduleStyles.title}>{title}</Text>
+          {summary ? <Text style={moduleStyles.summary}>{summary}</Text> : null}
+        </View>
+        {badge ? (
+          <View style={[moduleStyles.badge, MODULE_BADGE_TONE[badgeTone].box]}>
+            <Text style={[moduleStyles.badgeLabel, MODULE_BADGE_TONE[badgeTone].label]}>
+              {badge}
+            </Text>
+          </View>
+        ) : null}
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={moduleStyles.chevronBox}
+        >
+          <View style={[moduleStyles.chevron, open ? moduleStyles.chevronUp : null]} />
+        </View>
+      </Pressable>
+      {open ? <View style={moduleStyles.body}>{children}</View> : null}
+    </View>
+  );
+}
+
+const MODULE_BADGE_TONE: Record<
+  ModuleBadgeTone,
+  { box: { backgroundColor: string; borderColor: string }; label: { color: string } }
+> = {
+  neutral: {
+    box: { backgroundColor: COLORS.stripe, borderColor: COLORS.border },
+    label: { color: COLORS.inkSoft },
+  },
+  ok: {
+    box: { backgroundColor: COLORS.okSurface, borderColor: COLORS.okBorder },
+    label: { color: COLORS.okInk },
+  },
+  warn: {
+    box: { backgroundColor: COLORS.warnSurface, borderColor: COLORS.warnBorder },
+    label: { color: COLORS.warnInk },
+  },
+  err: {
+    box: { backgroundColor: COLORS.dangerSurface, borderColor: COLORS.dangerBorder },
+    label: { color: COLORS.danger },
+  },
+};
+
+const moduleStyles = StyleSheet.create({
+  module: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.control,
+    backgroundColor: COLORS.surface,
+    overflow: "hidden",
+  },
+  header: {
+    minHeight: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACE.sm + 2,
+    paddingHorizontal: SPACE.md + 2,
+    paddingVertical: SPACE.sm,
+  },
+  titleColumn: { flex: 1, flexShrink: 1, gap: 2 },
+  title: {
+    fontFamily: FONTS.sansSemibold,
+    fontSize: TYPE.md,
+    lineHeight: TYPE.md * LEADING.md,
+    color: COLORS.ink,
+  },
+  summary: {
+    fontFamily: FONTS.sans,
+    fontSize: TYPE.sm,
+    lineHeight: TYPE.sm * LEADING.sm,
+    color: COLORS.inkMuted,
+  },
+  badge: {
+    flexShrink: 0,
+    borderWidth: 1,
+    borderRadius: RADIUS.chip,
+    paddingHorizontal: SPACE.sm - 1,
+    paddingVertical: SPACE.xs,
+  },
+  badgeLabel: { fontFamily: FONTS.mono, fontSize: TYPE.xs },
+  chevronBox: { width: 20, height: 20, alignItems: "center", justifyContent: "center" },
+  chevron: {
+    width: 9,
+    height: 9,
+    marginTop: -4,
+    borderRightWidth: 2,
+    borderBottomWidth: 2,
+    borderColor: COLORS.inkMuted,
+    transform: [{ rotate: "45deg" }],
+  },
+  chevronUp: { marginTop: 4, transform: [{ rotate: "-135deg" }] },
+  body: { borderTopWidth: 1, borderTopColor: COLORS.borderSoft },
+});
+
 // ---------- Divider --------------------------------------------------------
 
 /** The web login's rule-word-rule separator: `──── o ────`. */
