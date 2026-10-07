@@ -25,8 +25,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { cases, db, pets, profiles, welfareReportAttachments, welfareReports } from "@/db";
 import { validateEventPayload } from "@/lib/events/event-schemas";
+import { openCase } from "@/lib/infra/case-helpers";
 import { hashDni } from "@/lib/utils/dni-hash";
 import { withMutationOverride } from "../../../../__tests__/_helpers/db-overrides";
+import { createWelfareReport } from "../application/create-welfare-report";
 import { WelfareRepository } from "./welfare-repository";
 
 // ---------------------------------------------------------------------------
@@ -567,5 +569,141 @@ describe("WelfareRepository.findBridgedReportReplay", () => {
     await expect(
       repo.findBridgedReportReplay(replayPetId, randomUUID(), reporterId),
     ).resolves.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Two copies of one denuncia in flight at once (plan A5c), on the real database
+// ---------------------------------------------------------------------------
+//
+// Each "submit" does what the action does: insert its report row, then run the
+// use case's write. Both pre-checks miss (nothing committed yet); the claim
+// inside the write serializes them on (reporter, key), so exactly one files
+// and the other answers the original — and its own row is discarded.
+
+describe("createWelfareReport — same-key twins in parallel (real database)", () => {
+  const twinPetToken = `WFR-TWIN-${randomUUID().slice(0, 8)}`;
+  let twinPetId: string;
+  let twinReporterId: string;
+  const insertedIds: string[] = [];
+
+  beforeAll(async () => {
+    twinReporterId = randomUUID();
+    await db.insert(profiles).values({
+      id: twinReporterId,
+      displayName: "WFR twin reporter",
+      dniHash: hashDni(String(50_000_000 + Math.floor(Math.random() * 9_999_999))),
+      dniVerified: true,
+      role: "owner",
+    });
+    const [pet] = await db
+      .insert(pets)
+      .values({
+        publicToken: twinPetToken,
+        name: "WelfareTwinPet",
+        species: "dog",
+        sex: "unknown",
+        potentiallyDangerousBreed: false,
+      })
+      .returning();
+    twinPetId = pet.id;
+  });
+
+  afterAll(async () => {
+    await withMutationOverride(async (tx) => {
+      await tx.execute(sql`UPDATE welfare_reports SET case_id = NULL
+        WHERE id IN (SELECT welfare_report_id FROM cases WHERE primary_pet_id = ${twinPetId}::uuid)`);
+      await tx.execute(sql`DELETE FROM pet_events WHERE pet_id = ${twinPetId}::uuid`);
+      await tx.execute(sql`DELETE FROM cases WHERE primary_pet_id = ${twinPetId}::uuid`);
+      for (const id of insertedIds) {
+        await tx.execute(sql`DELETE FROM welfare_reports WHERE id = ${id}::uuid`);
+      }
+      await tx.execute(sql`DELETE FROM pets WHERE id = ${twinPetId}::uuid`);
+      await tx.execute(sql`DELETE FROM profiles WHERE id = ${twinReporterId}::uuid`);
+    });
+  });
+
+  async function submit(key: string) {
+    const report = await repo.insertReportWithRetry({
+      referenceCode: `${REF_PREFIX}TW-${randomUUID().slice(0, 8)}`,
+      reporterUserId: twinReporterId,
+      kind: "physical_abuse",
+      severity: "high",
+      description: "Twin fixture: golpes visibles al animal (≥20 chars).",
+      subjectKind: "registered_pet",
+    });
+    insertedIds.push(report.id);
+    const result = await createWelfareReport(
+      {
+        reportId: report.id,
+        referenceCode: report.referenceCode,
+        kind: "physical_abuse",
+        severity: "high",
+        description: "Twin fixture: golpes visibles al animal (≥20 chars).",
+        subjectKind: "registered_pet",
+        subjectPetId: twinPetId,
+        isOwnerOfSubjectPet: false,
+        subjectDescription: null,
+        locationAddress: null,
+        jurisdictionProvince: null,
+        jurisdictionLocality: null,
+        locationLat: null,
+        locationLng: null,
+        occurredAt: new Date("2026-01-10T12:00:00Z"),
+        reporterContactEmail: null,
+        reporterContactPhone: null,
+        observedSymptoms: null,
+        attachments: [],
+        uploadedPaths: [],
+        reporterUserId: twinReporterId,
+        dwellTimeMs: undefined,
+        honeypotValue: "",
+        clientIdempotencyKey: key,
+      },
+      {
+        repo,
+        openCase: async (input) => openCase(input as Parameters<typeof openCase>[0]),
+        computeFlagReasons: async () => [],
+        signal: async () => {},
+        transaction: db.transaction.bind(db),
+        surveillance: {
+          match: async () => {
+            throw new Error("no symptoms in this fixture");
+          },
+          emitSignals: async () => {
+            throw new Error("no symptoms in this fixture");
+          },
+        } as unknown as Parameters<typeof createWelfareReport>[1]["surveillance"],
+      },
+    );
+    if (result.ok && result.discardInserted) await repo.deleteUnlinkedReport(report.id);
+    return { insertedId: report.id, result };
+  }
+
+  it("one files, the other answers the original and leaves no report or case of its own", async () => {
+    const key = randomUUID();
+
+    const [a, b] = await Promise.all([submit(key), submit(key)]);
+
+    expect(a.result.ok && b.result.ok).toBe(true);
+    if (!a.result.ok || !b.result.ok) return;
+    const filed = [a, b].filter((s) => s.result.ok && !s.result.discardInserted);
+    const replayed = [a, b].filter((s) => s.result.ok && s.result.discardInserted);
+    expect(filed).toHaveLength(1);
+    expect(replayed).toHaveLength(1);
+    // The replay names the report that was actually filed.
+    expect(replayed[0].result.ok && replayed[0].result.reportId).toBe(filed[0].insertedId);
+
+    const denuncias = await db
+      .select({ id: cases.id })
+      .from(cases)
+      .where(sql`${cases.primaryPetId} = ${twinPetId} AND ${cases.caseKind} = 'welfare_denuncia'`);
+    expect(denuncias).toHaveLength(1);
+    // The superseded row is gone; the filed one stays.
+    const rows = await db
+      .select({ id: welfareReports.id })
+      .from(welfareReports)
+      .where(eq(welfareReports.reporterUserId, twinReporterId));
+    expect(rows.map((r) => r.id)).toEqual([filed[0].insertedId]);
   });
 });

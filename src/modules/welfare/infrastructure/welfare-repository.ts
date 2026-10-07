@@ -11,7 +11,7 @@
 //   - No auth logic — auth lives at the action / use-case edge.
 //   - Reads return Drizzle row shapes ($inferSelect) — callers expect them.
 
-import { and, desc, eq, gte, inArray, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 
 import {
   auditLog,
@@ -486,8 +486,9 @@ export class WelfareRepository {
     petId: string,
     clientIdempotencyKey: string,
     reporterUserId: string,
+    executor: DbOrTx = db,
   ): Promise<{ reportId: string; referenceCode: string } | null> {
-    const [row] = await db
+    const [row] = await executor
       .select({ reportId: welfareReports.id, referenceCode: welfareReports.referenceCode })
       .from(petEvents)
       .innerJoin(welfareReports, eq(welfareReports.caseId, petEvents.caseId))
@@ -506,6 +507,39 @@ export class WelfareRepository {
       )
       .limit(1);
     return row ?? null;
+  }
+
+  /**
+   * The same ledger question, asked INSIDE the write transaction under a lock on
+   * (reporter, key) — the answer to two copies of one submit in flight at once.
+   * The pre-check in the action runs before any transaction and cannot see a
+   * twin that has not committed yet; this one serializes them, so the second
+   * waits for the first's bridge event and then finds it. Same scope as the
+   * lookup, so two different reporters are never serialized against each other.
+   * REQUIRES a transaction.
+   */
+  async lockAndFindBridgedReportReplay(
+    petId: string,
+    clientIdempotencyKey: string,
+    reporterUserId: string,
+    executor: DbOrTx,
+  ): Promise<{ reportId: string; referenceCode: string } | null> {
+    await executor.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${reporterUserId} || ':' || ${clientIdempotencyKey}))`,
+    );
+    return this.findBridgedReportReplay(petId, clientIdempotencyKey, reporterUserId, executor);
+  }
+
+  /**
+   * Remove the report row a submit inserted when its write turned out to be a
+   * concurrent twin's replay (lockAndFindBridgedReportReplay). The row was
+   * inserted before the transaction and never got a case — the guard on
+   * `case_id IS NULL` keeps this from ever touching a filed report.
+   */
+  async deleteUnlinkedReport(reportId: string): Promise<void> {
+    await db
+      .delete(welfareReports)
+      .where(and(eq(welfareReports.id, reportId), isNull(welfareReports.caseId)));
   }
 
   /**

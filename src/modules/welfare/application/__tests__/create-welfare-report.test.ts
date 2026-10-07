@@ -61,9 +61,11 @@ function makeRepo(
   | "insertPetEventIdempotent"
   | "setFlagged"
   | "insertAudit"
+  | "lockAndFindBridgedReportReplay"
 > {
   return {
     insertAttachments: vi.fn().mockResolvedValue(undefined),
+    lockAndFindBridgedReportReplay: vi.fn().mockResolvedValue(null),
     linkCase: vi.fn().mockResolvedValue(undefined),
     insertPetEvent: vi.fn().mockResolvedValue(undefined),
     insertPetEventIdempotent: vi.fn().mockResolvedValue({ wasNoop: false }),
@@ -78,6 +80,7 @@ function makeRepo(
     | "insertPetEventIdempotent"
     | "setFlagged"
     | "insertAudit"
+    | "lockAndFindBridgedReportReplay"
   >;
 }
 
@@ -603,5 +606,65 @@ describe("createWelfareReport — the case carries the resolved place", () => {
     expect(b.openCase).toHaveBeenCalledWith(
       expect.objectContaining({ localityId: null, placeMethod: "unresolved" }),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Two copies of one submit in flight at once (plan A5c). The action's pre-check
+// cannot see a twin that has not committed; the claim inside the transaction
+// can, and the second copy then writes nothing.
+// ---------------------------------------------------------------------------
+
+describe("createWelfareReport — a concurrent twin already filed it", () => {
+  const PET_INPUT = {
+    ...BASE_INPUT,
+    kind: "physical_abuse" as const,
+    subjectKind: "registered_pet" as const,
+    subjectPetId: "pet-001" as string | null,
+    reporterUserId: "user-001" as string | null,
+    clientIdempotencyKey: "key-twin" as string | null,
+  };
+
+  it("claims the key FIRST in the transaction and, on a hit, writes nothing and answers the original", async () => {
+    const deps = makeDeps({
+      lockAndFindBridgedReportReplay: vi
+        .fn()
+        .mockResolvedValue({ reportId: "rpt-original", referenceCode: "DEN-ORIG-01" }),
+    } as Partial<WelfareRepository>);
+
+    const result = await createWelfareReport(PET_INPUT, deps);
+
+    expect(result).toEqual({
+      ok: true,
+      reportId: "rpt-original",
+      referenceCode: "DEN-ORIG-01",
+      redirectTo: "/denuncias/mias",
+      discardInserted: true,
+    });
+    expect(deps.repo.lockAndFindBridgedReportReplay).toHaveBeenCalledWith(
+      "pet-001",
+      "key-twin",
+      "user-001",
+      {},
+    );
+    expect(deps.openCase).not.toHaveBeenCalled();
+    expect(deps.repo.insertAttachments).not.toHaveBeenCalled();
+    expect(deps.repo.insertPetEventIdempotent).not.toHaveBeenCalled();
+    expect(deps.signal).not.toHaveBeenCalled();
+  });
+
+  it("no twin: files normally, with no discard flag", async () => {
+    const deps = makeDeps();
+    const result = await createWelfareReport(PET_INPUT, deps);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.discardInserted).toBeUndefined();
+    expect(deps.openCase).toHaveBeenCalledOnce();
+  });
+
+  it("an anonymous report has no reporter to scope the key to: no claim", async () => {
+    const deps = makeDeps();
+    await createWelfareReport({ ...PET_INPUT, reporterUserId: null }, deps);
+    expect(deps.repo.lockAndFindBridgedReportReplay).not.toHaveBeenCalled();
   });
 });

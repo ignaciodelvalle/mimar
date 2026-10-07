@@ -35,6 +35,7 @@ import {
 } from "../domain/report-classification";
 import type { WelfareSymptomSurveillance } from "../domain/symptom-surveillance-port";
 import type { WelfareRepository } from "../infrastructure/welfare-repository";
+import { claimReportKey, replayOrFailure } from "./report-key-claim";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -115,7 +116,12 @@ export type CreateWelfareReportInput = {
 type Deps = {
   repo: Pick<
     WelfareRepository,
-    "insertAttachments" | "linkCase" | "insertPetEvent" | "insertPetEventIdempotent" | "setFlagged"
+    | "insertAttachments"
+    | "linkCase"
+    | "insertPetEvent"
+    | "insertPetEventIdempotent"
+    | "setFlagged"
+    | "lockAndFindBridgedReportReplay"
   >;
   openCase: (input: OpenCaseInput) => Promise<{ id: string; publicCode: string }>;
   computeFlagReasons: (input: ComputeFlagReasonsInput) => Promise<string[]>;
@@ -136,7 +142,14 @@ type Deps = {
 };
 
 export type CreateWelfareReportResult =
-  | { ok: true; reportId: string; referenceCode: string; redirectTo: string }
+  | {
+      ok: true;
+      reportId: string;
+      referenceCode: string;
+      redirectTo: string;
+      /** A concurrent twin filed it first: the caller removes the row IT inserted. */
+      discardInserted?: true;
+    }
   | { ok: false; error: string };
 
 // ---------------------------------------------------------------------------
@@ -183,6 +196,9 @@ export async function createWelfareReport(
 
   try {
     await transaction(async (tx) => {
+      // 4·. A twin of this submit already filed it → write nothing (report-key-claim.ts).
+      await claimReportKey(repo, { subjectPetId, clientIdempotencyKey, reporterUserId }, tx);
+
       // 4a. Attachment rows
       if (attachments.length > 0) {
         await repo.insertAttachments(
@@ -346,13 +362,15 @@ export async function createWelfareReport(
         }
       }
     });
-  } catch {
-    // Tx failed — caller (action) is responsible for storage cleanup.
-    return {
-      ok: false,
+  } catch (err) {
+    // Tx failed — caller (action) is responsible for storage cleanup. A twin's
+    // replay is not a failure: it answers the original (authenticated only, so
+    // the redirect is the reporter's list).
+    return replayOrFailure(err, () => "/denuncias/mias", {
+      ok: false as const,
       error:
         "La denuncia se guardó pero no se pudieron registrar los archivos adjuntos. Intentá de nuevo.",
-    };
+    });
   }
 
   // 5. Post-commit auto-flag (anon only, best-effort)

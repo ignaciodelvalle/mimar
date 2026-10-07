@@ -37,6 +37,7 @@ import type { OpenedReason } from "@/src/modules/cases/domain/opened-reason";
 import { MALTREATMENT_KINDS, derivePrimarySubjectKind } from "../domain/report-classification";
 import type { WelfareSymptomSurveillance } from "../domain/symptom-surveillance-port";
 import type { WelfareRepository } from "../infrastructure/welfare-repository";
+import { claimReportKey, replayOrFailure } from "./report-key-claim";
 import type { NewNotification } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -120,6 +121,7 @@ type Deps = {
     | "insertNotifications"
     | "findOpenOtherWelfareCasesForPet"
     | "findInstitutionalAdmins"
+    | "lockAndFindBridgedReportReplay"
   >;
   openCase: (input: OpenCaseInput) => Promise<{ id: string; publicCode: string }>;
   findGovtRecipients: (opts: {
@@ -144,8 +146,23 @@ type Deps = {
   surveillance: WelfareSymptomSurveillance;
 };
 
+/** Where a filed org report lands — the EMITIDOS tab, carrying its code. */
+export function orgReportRedirect(
+  orgToken: string | null | undefined,
+  referenceCode: string,
+): string {
+  return `/org/${orgToken ?? "unknown"}/maltrato/recibidos?tab=emitidos&creado=${encodeURIComponent(referenceCode)}`;
+}
+
 export type CreateOrgWelfareReportResult =
-  | { ok: true; reportId: string; referenceCode: string; redirectTo: string }
+  | {
+      ok: true;
+      reportId: string;
+      referenceCode: string;
+      redirectTo: string;
+      /** A concurrent twin filed it first: the caller removes the row IT inserted. */
+      discardInserted?: true;
+    }
   | { ok: false; error: string };
 
 // ---------------------------------------------------------------------------
@@ -187,6 +204,13 @@ export async function createOrgWelfareReport(
 
   try {
     await transaction(async (tx) => {
+      // 3·. A twin of this submit already filed it → write nothing (report-key-claim.ts).
+      await claimReportKey(
+        repo,
+        { subjectPetId, clientIdempotencyKey, reporterUserId: orgMember.userId },
+        tx,
+      );
+
       // 3a. Attachment rows
       if (attachments.length > 0) {
         await repo.insertAttachments(
@@ -460,11 +484,12 @@ export async function createOrgWelfareReport(
       );
     });
   } catch (err) {
-    // Caller (action) is responsible for storage cleanup on tx failure.
-    return {
-      ok: false,
+    // Caller (action) is responsible for storage cleanup on tx failure. A twin's
+    // replay is not a failure: it answers the original.
+    return replayOrFailure(err, (code) => orgReportRedirect(orgToken, code), {
+      ok: false as const,
       error: `No se pudo registrar la denuncia: ${err instanceof Error ? err.message : "error desconocido"}`,
-    };
+    });
   }
 
   // 4. POST-tx: insertNotifications (best-effort)
@@ -502,14 +527,13 @@ export async function createOrgWelfareReport(
   });
 
   // 6. Redirect target
-  const token = orgToken ?? "unknown";
   // Land on EMITIDOS — the tab that actually contains the report just
   // created — carrying its reference code so the hub can confirm it. The
   // bare hub URL defaulted to "Recibidos" (reports derived TO this org,
   // usually empty), so the professional's critical report vanished into a
   // blank screen with no code and no confirmation (9-role external run,
   // 2026-08-18).
-  const redirectTo = `/org/${token}/maltrato/recibidos?tab=emitidos&creado=${encodeURIComponent(referenceCode)}`;
+  const redirectTo = orgReportRedirect(orgToken, referenceCode);
 
   return { ok: true, reportId, referenceCode, redirectTo };
 }
