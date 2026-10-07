@@ -17,6 +17,7 @@ import { useActionState, useState } from "react";
 
 import { logoutAndReturnAction } from "@/app/actions/auth";
 import { LocationFields } from "@/components/LocationFields";
+import { FinderPlanB } from "@/components/found-help/FinderPlanB";
 import { DateInputAr } from "@/components/ui/DateInputAr";
 import { TimeInputAr } from "@/components/ui/TimeInputAr";
 import { useKeptFields } from "@/lib/ui/use-kept-fields";
@@ -143,12 +144,15 @@ export function FinderInPossessionForm({
         <div className="rounded-lg border border-[var(--color-ln-ok-100)] bg-[var(--color-ln-ok-050)] p-4 text-sm text-[var(--color-ln-ok)]">
           <p className="font-medium">¡Gracias!</p>
           <p className="mt-1 text-xs">
-            Le avisamos al dueño/a con urgencia. Vas a recibir noticias pronto.
+            Ya le avisamos a su familia. Vas a recibir noticias pronto.
           </p>
           {state.warning && (
             <p className="mt-2 text-xs text-[var(--color-ln-warn)]">{state.warning}</p>
           )}
         </div>
+        {/* Plan B (P4): AFTER the family was told, quieter than the line above,
+            never a primary action. Absent when the lookup failed. */}
+        {state.nearbyHelp && <FinderPlanB help={state.nearbyHelp} urgent={state.urgent === true} />}
         <Link
           href={`/p/${publicToken}`}
           className="block text-center text-sm font-medium text-[var(--color-ln-azul)] underline underline-offset-4"

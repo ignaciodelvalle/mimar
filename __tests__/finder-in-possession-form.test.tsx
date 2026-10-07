@@ -208,7 +208,7 @@ describe("<FinderInPossessionForm> — success state", () => {
   it("renders the success thank-you message", () => {
     const html = render(<FinderInPossessionForm {...BASE_PROPS} />);
     expect(html).toContain("¡Gracias!");
-    expect(html).toContain("Le avisamos al dueño/a");
+    expect(html).toContain("Ya le avisamos a su familia");
   });
 
   it("renders the back link to the pet profile", () => {
@@ -229,5 +229,83 @@ describe("<FinderInPossessionForm> — success state", () => {
     ]);
     const html = render(<FinderInPossessionForm {...BASE_PROPS} />);
     expect(html).toContain("No se pudo subir la foto");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Plan B (P4, PO 2026-10-07): AFTER the family was told, quieter, never
+// instead of it. With "necesita_vet_urgente", the nearest vets come FIRST.
+// ---------------------------------------------------------------------------
+
+describe("<FinderInPossessionForm> — plan B under the confirmation", () => {
+  const card = (displayName: string, typeLabel: string) => ({
+    profileHref: null,
+    displayName,
+    typeLabel,
+    locality: "Palermo",
+    distanceLabel: "a unos 3 km",
+    capacityLabel: typeLabel === "Veterinaria" ? null : "Recibimos",
+    contact: null,
+    hours: null,
+  });
+  const help = {
+    vets: [card("Veterinaria Cercana", "Veterinaria")],
+    receivers: [card("Refugio Cercano", "Refugio")],
+    fallback: null,
+    place: { province: "CABA", locality: "Palermo" },
+  };
+  const successWith = (extra: Record<string, unknown>) =>
+    mockUseActionState.mockReturnValue([
+      { ok: true as const, error: null, ...extra },
+      formActionStub,
+      false,
+    ]);
+
+  beforeEach(() => {
+    mockUseState.mockImplementation((initialValue: unknown) => [initialValue, vi.fn()]);
+  });
+
+  it("renders the receivers BELOW the confirmation, with the PO's copy", () => {
+    successWith({ nearbyHelp: help, urgent: false });
+    const html = render(<FinderInPossessionForm {...BASE_PROPS} />);
+    expect(html).toContain("¿No podés tenerla hasta que la busquen?");
+    expect(html).toContain("Estas organizaciones cercanas reciben animales encontrados");
+    expect(html).toContain("Refugio Cercano");
+    expect(html.indexOf("Ya le avisamos a su familia")).toBeLessThan(
+      html.indexOf('data-testid="finder-plan-b"'),
+    );
+    // Not urgent: no vets block, and no primary "take it to a shelter" action.
+    expect(html).not.toContain("Veterinaria Cercana");
+    expect(html).not.toMatch(/llevar al refugio/i);
+  });
+
+  it("puts the nearest vets FIRST when the animal needs a vet urgently", () => {
+    successWith({ nearbyHelp: help, urgent: true });
+    const html = render(<FinderInPossessionForm {...BASE_PROPS} />);
+    const vets = html.indexOf("Veterinaria Cercana");
+    const receivers = html.indexOf("Refugio Cercano");
+    expect(vets).toBeGreaterThan(-1);
+    expect(receivers).toBeGreaterThan(vets);
+  });
+
+  it("shows nothing extra when the lookup failed", () => {
+    successWith({ nearbyHelp: null, urgent: true });
+    const html = render(<FinderInPossessionForm {...BASE_PROPS} />);
+    expect(html).toContain("Ya le avisamos a su familia");
+    expect(html).not.toContain('data-testid="finder-plan-b"');
+  });
+
+  it("falls back to the jurisdiction's guidance when nobody receives nearby", () => {
+    successWith({
+      nearbyHelp: {
+        ...help,
+        receivers: [],
+        fallback: { kind: "local_government", name: "Municipio de La Plata" },
+      },
+      urgent: false,
+    });
+    const html = render(<FinderInPossessionForm {...BASE_PROPS} />);
+    expect(html).toContain("No encontramos organizaciones que reciban animales encontrados");
+    expect(html).toContain("Municipio de La Plata");
   });
 });
