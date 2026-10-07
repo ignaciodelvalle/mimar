@@ -62,6 +62,7 @@
 // Side-effect import — must come FIRST so DATABASE_URL is set before any
 // downstream import evaluates db/index.ts (which throws on missing env).
 // See scripts/_load-env.ts for why.
+import { stampSeedLegalAcceptance } from "./lib/seed-legal-acceptance";
 import "./_load-env";
 
 import { resolveEnvTarget, resolveSeedPassword } from "./_env-target";
@@ -594,6 +595,9 @@ async function seedCarlaVetUpgrade(): Promise<void> {
   } else {
     log("SKIP", `Auth user ${CARLA_EMAIL} ya existe`);
   }
+  // The current legal acceptance (scripts/lib/seed-legal-acceptance.ts): a
+  // seed persona must not land on the re-acceptance screen.
+  await stampSeedLegalAcceptance(db, authId);
 
   // 2) profile
   const [existingProfile] = await db
@@ -1210,6 +1214,9 @@ async function seedAdoptanteMora(): Promise<void> {
   } else {
     log("SKIP", `Auth user ${ADOPTANTE_EMAIL} ya existe`);
   }
+  // The current legal acceptance (scripts/lib/seed-legal-acceptance.ts): a
+  // seed persona must not land on the re-acceptance screen.
+  await stampSeedLegalAcceptance(db, adoptanteId);
 
   const [existingProfile] = await db
     .select({ id: schemas.profiles.id })

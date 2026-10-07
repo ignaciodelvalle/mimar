@@ -58,6 +58,7 @@
 // ---------------------------------------------------------------------------
 
 import { config as loadEnv } from "dotenv";
+import { stampSeedLegalAcceptance } from "./lib/seed-legal-acceptance";
 
 import {
   assertNotSplitEnv,
@@ -213,7 +214,12 @@ async function ensureAuthUser(
   displayName: string,
 ): Promise<{ id: string; created: boolean }> {
   const existing = await findAuthUserIdByEmail(email);
-  if (existing) return { id: existing, created: false };
+  if (existing) {
+    // The current legal acceptance (scripts/lib/seed-legal-acceptance.ts): a
+    // seed persona must not land on the re-acceptance screen.
+    await stampSeedLegalAcceptance(db, existing);
+    return { id: existing, created: false };
+  }
   const { data, error } = await supabase.auth.admin.createUser({
     email,
     password: SHARED_PASSWORD,
@@ -222,6 +228,7 @@ async function ensureAuthUser(
   });
   if (error || !data.user)
     throw new Error(`createUser(${email}) failed: ${error?.message ?? "no user"}`);
+  await stampSeedLegalAcceptance(db, data.user.id);
   return { id: data.user.id, created: true };
 }
 

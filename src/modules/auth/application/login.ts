@@ -34,6 +34,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 
 import { db, organizationMemberships, profiles } from "@/db";
+import { isIdentityPending } from "@/lib/domain/identity-completeness";
 import { isLegalAcceptancePending, legalAcceptanceHref } from "@/lib/domain/legal-acceptance";
 import { RateLimitError, emailRateLimitKey, enforceRateLimit } from "@/lib/infra/rate-limit";
 import {
@@ -279,7 +280,11 @@ export async function login(input: LoginInput, deps: LoginDeps): Promise<LoginRe
   // current one, carrying the destination it would have had. The (app) layout
   // enforces the same rule for a session that is already open; this only saves
   // the person one bounce. See lib/domain/legal-acceptance.ts.
-  const legalPending = profile ? isLegalAcceptancePending(profile) : false;
+  // Not for a signup still on step 2: its version is recorded there.
+  const legalPending =
+    profile !== undefined &&
+    !isIdentityPending({ displayName: profile.displayName, email: accountEmail }) &&
+    isLegalAcceptancePending(profile);
   const land = (path: string) => (legalPending ? legalAcceptanceHref(path) : path);
 
   // Institutional roles ignore returnTo here: their portal guard restores the

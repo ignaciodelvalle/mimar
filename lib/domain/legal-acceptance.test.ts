@@ -61,10 +61,12 @@ describe("isLegalAcceptancePending", () => {
     ).toBe(false);
   });
 
-  it("is FALSE with no recorded acceptance: mid-signup, seed accounts, pre-0087", () => {
+  it("is TRUE with no recorded acceptance: an account older than 0087 never accepted anything", () => {
+    // PO 2026-10-07. Seed personas are stamped by the seeds; a signup still on
+    // step 2 is excluded by the callers' identity check, not here.
     expect(
       isLegalAcceptancePending({ accountType: "personal", tosAcceptedAt: null, tosVersion: null }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("is FALSE when the columns were not loaded at all — never a false gate", () => {

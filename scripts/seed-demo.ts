@@ -46,6 +46,7 @@
 
 import path from "node:path";
 import { config as loadEnv } from "dotenv";
+import { stampSeedLegalAcceptance } from "./lib/seed-legal-acceptance";
 
 import type { EnvTarget } from "./_env-target";
 import { resolveEnvTarget, resolveSeedPassword, seedPasswordForDisplay } from "./_env-target";
@@ -430,7 +431,12 @@ async function ensureAuthUser(
   userRole: "owner" | "admin" = "owner",
 ): Promise<{ id: string; created: boolean }> {
   const existing = await findAuthUserIdByEmail(deps.supabase, email);
-  if (existing) return { id: existing, created: false };
+  if (existing) {
+    // The current legal acceptance (scripts/lib/seed-legal-acceptance.ts): a
+    // seed persona must not land on the re-acceptance screen.
+    await stampSeedLegalAcceptance(deps.db, existing);
+    return { id: existing, created: false };
+  }
   const { data, error } = await deps.supabase.auth.admin.createUser({
     email,
     password: SHARED_PASSWORD,
@@ -439,6 +445,7 @@ async function ensureAuthUser(
   });
   if (error || !data.user)
     throw new Error(`createUser(${email}) failed: ${error?.message ?? "no user"}`);
+  await stampSeedLegalAcceptance(deps.db, data.user.id);
   return { id: data.user.id, created: true };
 }
 

@@ -275,20 +275,18 @@ export default function PrivacidadPage() {
             estos proveedores. En todos los casos podés ejercer tus derechos ante miMAR, como se
             explica a continuación.
           </p>
-          {/* PO-DECISION (updated 2026-10-07). The re-consent step for
-              PERSONAL accounts with a recorded older acceptance now exists
-              (/aceptar-condiciones and the app's twin), which is what the
-              paragraph above promises. Still with NO art. 12 consent on record:
-              (1) personal accounts with no recorded acceptance at all
-              (tos_accepted_at NULL — older than migration 0087), which the gate
-              does not ask; (2) institutional accounts an admin creates
+          {/* PO-DECISION (updated 2026-10-07). Every PERSONAL account whose
+              recorded version is not the current one — including accounts
+              with none recorded (older than migration 0087) — is asked for
+              the three boxes again (/aceptar-condiciones and the app's twin),
+              which is what the paragraph above promises. Still with NO art. 12
+              consent on record, and that is a provider-contract action for the
+              PO, not code (review rows P12/T3-2: the providers' model
+              clauses): (1) institutional accounts an admin creates
               (create-institutional-account.ts), which never see a consent
-              sentence and are not gated; (3) people using miMAR without an
+              sentence and are not gated; (2) people using miMAR without an
               account (QR scans, anonymous denuncias, sightings), whose data
-              still reaches Vercel, Supabase and OpenStreetMap. For (2) and (3)
-              the review's answer is a different legal basis — processors bound
-              by the model clauses (review row P12; none is on file in this
-              repo) — which is a PO and counsel decision, not a box. */}
+              still reaches Vercel, Supabase and OpenStreetMap. */}
         </section>
 
         <section className="space-y-3">

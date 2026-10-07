@@ -35,6 +35,7 @@
 // the limiter drive it explicitly.
 
 import { randomUUID } from "node:crypto";
+import { isLegalAcceptancePending } from "@/lib/domain/legal-acceptance";
 
 import { inArray } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -517,6 +518,10 @@ describe("POST /api/v1/auth/login — what a native client receives", () => {
         displayName: "Ana Pérez",
         role: "owner",
         accountType: "personal",
+        // This fixture account was created through the admin SDK, never through
+        // the signup form, so it holds NO legal acceptance — and since
+        // 2026-10-07 that is owed (lib/domain/legal-acceptance.ts).
+        legalAcceptancePending: true,
       });
     });
   });
@@ -560,6 +565,22 @@ describe("POST /api/v1/auth/signup", () => {
     expect(res.status).toBe(201);
     expect(control.signUpArgs).toEqual([{ email: VALID.email, password: VALID.password }]);
     expect(control.recorded).toEqual([[userId, expected]]);
+  });
+
+  // THE v13 PAYLOAD (PO 2026-10-07: v13 is the Play build until v14 ships, and
+  // its signups must keep working). It is accepted and recorded under the
+  // version it displayed, which the re-acceptance circuit flags.
+  it("accepts a v13-shaped body and records it FLAGGED for re-acceptance", async () => {
+    const userId = randomUUID();
+    control.answer = { data: { user: { id: userId }, session: GOTRUE_SESSION }, error: null };
+    control.recorded = [];
+    const { transferAccepted: _t, adultDeclared: _a, ...oneBox } = VALID;
+    const res = await signupRoute(post("/auth/signup", { ...oneBox, legalVersion: "2026-09-24" }));
+    expect(res.status).toBe(201);
+    expect(control.recorded).toEqual([[userId, "2026-09-24"]]);
+    expect(isLegalAcceptancePending({ accountType: "personal", tosVersion: "2026-09-24" })).toBe(
+      true,
+    );
   });
 
   it("answers 201 with the session for a genuine new account", async () => {
@@ -647,7 +668,10 @@ describe("POST /api/v1/auth/signup", () => {
   it.each([
     ["transferAccepted", { transferAccepted: false }],
     ["adultDeclared", { adultDeclared: false }],
-    ["an old single-box body", { transferAccepted: undefined, adultDeclared: undefined }],
+    [
+      "both boxes from a client that displayed the CURRENT version (v14)",
+      { transferAccepted: undefined, adultDeclared: undefined, legalVersion: "2026-10-07" },
+    ],
   ])("refuses a body without %s before spending anything", async (_label, patch) => {
     const res = await signupRoute(post("/auth/signup", { ...VALID, ...patch }));
 

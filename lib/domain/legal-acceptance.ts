@@ -17,31 +17,28 @@
 // WHO OWES IT
 // ---------------------------------------------------------------------------
 //   pending  <=>  account_type = 'personal'
-//            AND  tos_accepted_at IS NOT NULL
-//            AND  tos_version <> LEGAL_VERSION
+//            AND  tos_version IS DISTINCT FROM LEGAL_VERSION   (NULL included)
 //
 // · PERSONAL ONLY. Institutional accounts (admin, govt, national) are created
-//   by an administrator and never saw a consent sentence; their data is
-//   processed under the employment/agreement relationship, and the transfer for
-//   them is the model-clauses question of review row P12 (a PO and counsel
-//   decision), not a box. They are not gated.
-// · A RECORDED ACCEPTANCE ONLY. `tos_accepted_at IS NULL` means the account
-//   never went through a recorded signup: accounts older than migration 0087,
-//   seed and demo accounts, and a brand-new account between signup step 1 and
-//   step 2 (step 2 records the acceptance — gating that window would send a
-//   person who is mid-signup to a second consent screen). Those are not gated
-//   either. PO-DECISION: personal accounts older than 0087 with a completed
-//   identity hold no recorded acceptance at all; gating them too means
-//   stamping every seed account first, or every e2e and demo login lands on
-//   this screen.
+//   by an administrator; their transfer rests on the providers' model clauses
+//   (review rows P12/T3-2, a PO provider-contract action), not on a box. Not
+//   gated.
+// · NO RECORDED ACCEPTANCE IS NOT AN EXCEPTION (PO 2026-10-07). An account
+//   older than migration 0087 never accepted anything, so it enters the
+//   circuit like any other. Seed and e2e personas are stamped with the current
+//   version by the seeds themselves (scripts/lib/seed-legal-acceptance.ts) so
+//   they do not.
+// · A PENDING IDENTITY IS THE CALLERS' TO EXCLUDE. Between signup step 1 and
+//   step 2 the version is still NULL (step 2 records it); sending that person
+//   to a second consent screen mid-signup would be wrong, so every caller that
+//   gates checks `isIdentityPending` first (the (app) layout, login, and
+//   `toMeV1User`, which answers the pending arm before this).
 // · ANY VERSION OTHER THAN THE CURRENT ONE — not "older than". A version this
-//   build does not know is not evidence of a newer acceptance; it is a value
-//   nothing should have written, and asking again is the safe answer.
+//   build does not know is not evidence of a newer acceptance.
 //
-// Absent fields (`undefined`) read as "not pending". Callers that do not load
-// the two consent columns — test doubles, older selects — must never gate
-// anybody by accident; the columns are loaded by `getProfileCached` and by the
-// login query, which are the two readers that decide.
+// `tosVersion: undefined` (the column was NOT LOADED — a test double, an
+// older select) reads as "nothing owed", never as a false gate. `null` (loaded,
+// nothing recorded) is owed.
 
 import { LEGAL_VERSION } from "@/lib/reference/legal-version";
 
@@ -53,7 +50,7 @@ export type LegalAcceptanceFacts = {
 
 export function isLegalAcceptancePending(facts: LegalAcceptanceFacts): boolean {
   if (facts.accountType !== "personal") return false;
-  if (facts.tosAcceptedAt === undefined || facts.tosAcceptedAt === null) return false;
+  if (facts.tosVersion === undefined) return false;
   return facts.tosVersion !== LEGAL_VERSION;
 }
 

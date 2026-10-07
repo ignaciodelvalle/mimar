@@ -59,6 +59,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { stampSeedLegalAcceptance } from "./lib/seed-legal-acceptance";
 
 import { type SupabaseClient, createClient as createSdkClient } from "@supabase/supabase-js";
 import { config as loadEnv } from "dotenv";
@@ -275,7 +276,12 @@ async function ensureAuthUser(
   userRole: "owner" | "admin" = "owner",
 ): Promise<{ id: string; created: boolean }> {
   const existingId = await findAuthUserIdByEmail(email);
-  if (existingId) return { id: existingId, created: false };
+  if (existingId) {
+    // The current legal acceptance (scripts/lib/seed-legal-acceptance.ts): a
+    // seed persona must not land on the re-acceptance screen.
+    await stampSeedLegalAcceptance(db, existingId);
+    return { id: existingId, created: false };
+  }
 
   const { data, error } = await supabase.auth.admin.createUser({
     email,
@@ -287,6 +293,7 @@ async function ensureAuthUser(
   if (error || !data.user) {
     throw new Error(`createUser(${email}) failed: ${error?.message ?? "no user"}`);
   }
+  await stampSeedLegalAcceptance(db, data.user.id);
   return { id: data.user.id, created: true };
 }
 

@@ -52,6 +52,7 @@ vi.mock("next/navigation", () => ({
 import { loginAction, logoutAction, logoutAndReturnAction } from "@/app/actions/auth";
 import { db, notifications, profiles } from "@/db";
 import { RateLimitError } from "@/lib/infra/rate-limit";
+import { LEGAL_VERSION } from "@/lib/reference/legal-version";
 import { createClient } from "@/lib/supabase/server";
 import { withMutationOverride } from "./_helpers/db-overrides";
 import { createFreshTestUser } from "./_helpers/fresh-test-user";
@@ -119,6 +120,14 @@ beforeAll(async () => {
   });
   if (r.error || !r.data.user) throw new Error(`createUser owner: ${r.error?.message}`);
   ownerUserId = r.data.user.id;
+  // The landing tests below are about an account in good standing, which
+  // since 2026-10-07 includes an acceptance of the CURRENT legal version; an
+  // admin-SDK account has none and would land on /aceptar-condiciones (the
+  // case pinned on its own at the end of the loginAction block).
+  await db
+    .update(profiles)
+    .set({ tosAcceptedAt: new Date(), tosVersion: LEGAL_VERSION })
+    .where(eq(profiles.id, ownerUserId));
 
   // Deactivated institutional admin (task #39 loop guard).
   await purgeUserByEmail(DEACT_ADMIN_EMAIL);
@@ -192,6 +201,23 @@ describe("loginAction", () => {
     expect(state.error).toBeNull();
     expect(signInMock).toHaveBeenCalledWith({ email: OWNER_EMAIL, password: PASS });
     expect(mockRedirect).not.toHaveBeenCalled();
+  });
+
+  it("sends an owner on an OLDER legal version to re-accept first, keeping the destination", async () => {
+    await db.update(profiles).set({ tosVersion: "2026-09-24" }).where(eq(profiles.id, ownerUserId));
+    try {
+      signInMock.mockResolvedValue({ data: { user: { id: ownerUserId } }, error: null });
+      const state = await loginAction(
+        { error: null },
+        loginForm({ returnTo: "/mis-mascotas/abc" }),
+      );
+      expect(state.redirectTo).toBe("/aceptar-condiciones?returnTo=%2Fmis-mascotas%2Fabc");
+    } finally {
+      await db
+        .update(profiles)
+        .set({ tosVersion: LEGAL_VERSION })
+        .where(eq(profiles.id, ownerUserId));
+    }
   });
 
   it("honors a safe returnTo for non-admin/govt roles", async () => {
