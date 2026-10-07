@@ -59,6 +59,8 @@
 
 import { z } from "zod";
 
+import { maxStatedAgeYears } from "../reference/pet-age.ts";
+
 // The sex vocabulary has exactly ONE definition in this package and it is
 // `intake.ts`'s. Re-declaring it here would compile, would look identical, and
 // would be the first day of two lists drifting.
@@ -77,7 +79,6 @@ import {
   type AcquisitionMethod,
   MAX_PET_AGE_MONTHS,
   MAX_PET_AGE_YEARS,
-  ageCount,
 } from "./pet-profile-fields.ts";
 // Imported, not just re-exported: this file's own `registerPetInputSchema` names
 // PET_SPECIES at module-evaluation time, so it needs the local binding too.
@@ -236,10 +237,81 @@ const estimatedWeight = z
 const trimmedEnum = <T extends readonly [string, ...string[]]>(values: T) =>
   z.preprocess((v) => (typeof v === "string" ? v.trim() : v), z.enum(values));
 
-// The age ceilings (`MAX_PET_AGE_YEARS`, `MAX_PET_AGE_MONTHS`) and the age
-// parser (`ageCount`) live in `pet-profile-fields.ts` with their full reasoning
-// — why 250, why clamp rather than refuse — because the edit door parses an age
-// the same way.
+// ---------------------------------------------------------------------------
+// The stated age — REFUSED when implausible, no longer clamped
+// ---------------------------------------------------------------------------
+// The alta used `ageCount` from `pet-profile-fields.ts`, which clamps: "-4" and
+// "aprox 2" became 0 and "3310" became 250. That is how QA, on a real phone,
+// got "3310 años" all the way to the app's confirm step — the confirm row reads
+// the draft, the schema had quietly turned it into 250, and the server would
+// have stored a 250-year-old dog (alta-validacion-edad, 2026-10-07). A clamp
+// that turns a typo into a different number is worse than a refusal: the owner
+// is the only person who knows what they meant to type.
+//
+// So the ALTA refuses, with a code per field the form can point at:
+//   · each field is a whole, non-negative number, or blank;
+//   · when years are stated, months are the remainder (0..11) — "3 años 30
+//     meses" is a typo, not an age. Months ALONE may run past 11 ("18 meses"
+//     is how people talk about a cachorro) up to the cap below;
+//   · the TOTAL is at most `maxStatedAgeYears(species)` — 40 years, or the old
+//     derivation ceiling for `other` (see `reference/pet-age.ts` for why).
+//
+// The EDIT door (`pet-profile-edit.ts`) still parses with the clamping
+// `ageCount`; tightening it is a separate change, because it re-saves STORED
+// ages and a refusal there can lock an owner out of editing an unrelated field.
+
+/** A whole non-negative number as typed: digits only once trimmed. */
+const WHOLE_NUMBER = /^\d+$/;
+
+/** A stated count of years or months: blank → null, otherwise a whole number or refused with `code`. */
+const statedAgeCount = (code: "AGE_YEARS_INVALID" | "AGE_MONTHS_INVALID") =>
+  z
+    .union([z.string(), z.number()])
+    .nullish()
+    .refine(
+      (v) => {
+        if (v === undefined || v === null) return true;
+        if (typeof v === "number") return Number.isSafeInteger(v) && v >= 0;
+        const trimmed = v.trim();
+        return trimmed === "" || WHOLE_NUMBER.test(trimmed);
+      },
+      { error: code },
+    )
+    .transform((v) => {
+      if (v === undefined || v === null) return null;
+      if (typeof v === "number") return v;
+      const trimmed = v.trim();
+      return trimmed === "" ? null : Number.parseInt(trimmed, 10);
+    });
+
+/**
+ * The range half of the stated-age rule: the months remainder and the
+ * species cap. ONE function, run by `registerPetInputSchema` and by
+ * `statedAgeRefusal` (the web's FormData door), so the two cannot drift.
+ *
+ * Reads every value defensively: zod 4 runs an object refinement even after a
+ * NON-fatal field issue (a blank name, a malformed age — measured), so a value
+ * here may be one its own field refused.
+ */
+function refuseImplausibleAge(
+  input: { species?: unknown; ageYears?: unknown; ageMonths?: unknown },
+  ctx: z.RefinementCtx,
+): void {
+  const years = typeof input.ageYears === "number" ? input.ageYears : null;
+  const months = typeof input.ageMonths === "number" ? input.ageMonths : null;
+  if (years !== null && years > 0 && months !== null && months > 11) {
+    ctx.addIssue({ code: "custom", message: "AGE_MONTHS_OUT_OF_RANGE", path: ["ageMonths"] });
+  }
+  const species = typeof input.species === "string" ? input.species.trim() : null;
+  const totalMonths = (years ?? 0) * 12 + (months ?? 0);
+  if (totalMonths > maxStatedAgeYears(species) * 12) {
+    ctx.addIssue({
+      code: "custom",
+      message: "AGE_TOO_HIGH",
+      path: [years !== null && years > 0 ? "ageYears" : "ageMonths"],
+    });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -257,113 +329,160 @@ export const REGISTER_PET_INPUT_CODES = [
   "SPECIES_REQUIRED",
   "PROVINCE_REQUIRED",
   "LOCALITY_REQUIRED",
+  "AGE_YEARS_INVALID",
+  "AGE_MONTHS_INVALID",
+  "AGE_MONTHS_OUT_OF_RANGE",
+  "AGE_TOO_HIGH",
   "COLOR_TOO_LONG",
   "WEIGHT_INVALID",
 ] as const;
 export type RegisterPetInputCode = (typeof REGISTER_PET_INPUT_CODES)[number];
 
-export const registerPetInputSchema = z.object({
-  // Required — the four things a credential cannot exist without.
-  //
-  // THREE RULES, NOT ONE, and the two beyond "not blank" are both doors this
-  // schema was the only one missing:
-  //   · `PET_NAME_MAX` — the EDIT door's cap (A2-alta-asentar-11). Registering a
-  //     90-character name and then being told "máximo 80" the first time you
-  //     rename the animal is two doors disagreeing about one column. Applied
-  //     flat here, unlike `edit_identity`'s grandfather-aware gate: there is no
-  //     stored value to carry over on a pet that does not exist yet.
-  //   · `isWritableName` — no `\p{C}`, at least one `\p{L}` (A2-alta-asentar-09).
-  //     A zero-width space trims to length 1 and renders as nothing, so the
-  //     credential and the public `/p` page show a pet with no name.
-  name: requiredText("NAME_REQUIRED")
-    .max(PET_NAME_MAX, { error: "NAME_TOO_LONG" })
-    .refine(isWritableName, { error: "NAME_INVALID" }),
-  species: z.preprocess(
-    (v) => (typeof v === "string" ? v.trim() : v),
-    z.enum(PET_SPECIES, { error: "SPECIES_REQUIRED" }),
-  ),
-  /**
-   * ISO 3166-2 code as `GET /api/v1/localities` returned it ("AR-C", "AR-B").
-   * NOT the display name: a name can be re-spelled by a catalogue update.
-   */
-  provinceCode: requiredText("PROVINCE_REQUIRED"),
-  /**
-   * Canonical locality name as `GET /api/v1/localities` returned it. Required
-   * because a pet must always carry a jurisdiction (PO decision 2026-07-08: a
-   * national registry needs at least the barrio/localidad as epidemiological
-   * signal), and re-resolved server-side against the INDEC catalogue — a value
-   * that never came from the search will be rejected there, not here.
-   */
-  localityName: requiredText("LOCALITY_REQUIRED"),
-  /**
-   * INDEC's own id for the locality row the person TAPPED, as
-   * `GET /api/v1/localities` returned it (`LocalityV1.indecId`).
-   *
-   * OPTIONAL, AND IT IS THE ONE THAT DECIDES (A2-alta-asentar-03). The name
-   * alone is ambiguous: the catalogue ships 68 (province, name) collisions, the
-   * picker disambiguates them by showing the DEPARTMENT, and the server's
-   * name-only lookup then stored the alphabetically first department regardless
-   * of the row chosen — so a pet in San Martín, Mendoza was registered in San
-   * Martín, Buenos Aires. Jurisdiction decides the responding authority, the PPP
-   * regime and the epidemiological attribution; it is not a display detail.
-   *
-   * Optional rather than required because an installed build does not send it
-   * and must keep registering animals. The server prefers the id when it is
-   * there and falls back to the pair when it is not, so this is additive on both
-   * sides — and `localityName` stays required so the fallback always has a value.
-   */
-  localityIndecId: optionalText,
+export const registerPetInputSchema = z
+  .object({
+    // Required — the four things a credential cannot exist without.
+    //
+    // THREE RULES, NOT ONE, and the two beyond "not blank" are both doors this
+    // schema was the only one missing:
+    //   · `PET_NAME_MAX` — the EDIT door's cap (A2-alta-asentar-11). Registering a
+    //     90-character name and then being told "máximo 80" the first time you
+    //     rename the animal is two doors disagreeing about one column. Applied
+    //     flat here, unlike `edit_identity`'s grandfather-aware gate: there is no
+    //     stored value to carry over on a pet that does not exist yet.
+    //   · `isWritableName` — no `\p{C}`, at least one `\p{L}` (A2-alta-asentar-09).
+    //     A zero-width space trims to length 1 and renders as nothing, so the
+    //     credential and the public `/p` page show a pet with no name.
+    name: requiredText("NAME_REQUIRED")
+      .max(PET_NAME_MAX, { error: "NAME_TOO_LONG" })
+      .refine(isWritableName, { error: "NAME_INVALID" }),
+    species: z.preprocess(
+      (v) => (typeof v === "string" ? v.trim() : v),
+      z.enum(PET_SPECIES, { error: "SPECIES_REQUIRED" }),
+    ),
+    /**
+     * ISO 3166-2 code as `GET /api/v1/localities` returned it ("AR-C", "AR-B").
+     * NOT the display name: a name can be re-spelled by a catalogue update.
+     */
+    provinceCode: requiredText("PROVINCE_REQUIRED"),
+    /**
+     * Canonical locality name as `GET /api/v1/localities` returned it. Required
+     * because a pet must always carry a jurisdiction (PO decision 2026-07-08: a
+     * national registry needs at least the barrio/localidad as epidemiological
+     * signal), and re-resolved server-side against the INDEC catalogue — a value
+     * that never came from the search will be rejected there, not here.
+     */
+    localityName: requiredText("LOCALITY_REQUIRED"),
+    /**
+     * INDEC's own id for the locality row the person TAPPED, as
+     * `GET /api/v1/localities` returned it (`LocalityV1.indecId`).
+     *
+     * OPTIONAL, AND IT IS THE ONE THAT DECIDES (A2-alta-asentar-03). The name
+     * alone is ambiguous: the catalogue ships 68 (province, name) collisions, the
+     * picker disambiguates them by showing the DEPARTMENT, and the server's
+     * name-only lookup then stored the alphabetically first department regardless
+     * of the row chosen — so a pet in San Martín, Mendoza was registered in San
+     * Martín, Buenos Aires. Jurisdiction decides the responding authority, the PPP
+     * regime and the epidemiological attribution; it is not a display detail.
+     *
+     * Optional rather than required because an installed build does not send it
+     * and must keep registering animals. The server prefers the id when it is
+     * there and falls back to the pair when it is not, so this is additive on both
+     * sides — and `localityName` stays required so the fallback always has a value.
+     */
+    localityIndecId: optionalText,
 
-  // Enums that fall back rather than fail. Neither is a claim about the animal
-  // that a wrong guess could corrupt.
-  sex: trimmedEnum(PET_SEXES).catch("unknown"),
+    // Enums that fall back rather than fail. Neither is a claim about the animal
+    // that a wrong guess could corrupt.
+    sex: trimmedEnum(PET_SEXES).catch("unknown"),
 
-  // Optional identity fields. Raw trimmed strings: `breed` is resolved against
-  // the species catalog server-side, and the rest are free text by nature.
-  breed: optionalText,
-  // Capped at the EDIT door's number for the same reason the name is — one
-  // column, one cap. `breed` takes none: it is resolved against the species
-  // catalog server-side, so its length is the catalog's problem, not a person's.
-  color: optionalText.refine((v) => v === null || v.length <= PET_COLOR_MAX, {
-    error: "COLOR_TOO_LONG",
-  }),
-  estimatedWeightKg: estimatedWeight,
+    // Optional identity fields. Raw trimmed strings: `breed` is resolved against
+    // the species catalog server-side, and the rest are free text by nature.
+    breed: optionalText,
+    // Capped at the EDIT door's number for the same reason the name is — one
+    // column, one cap. `breed` takes none: it is resolved against the species
+    // catalog server-side, so its length is the catalog's problem, not a person's.
+    color: optionalText.refine((v) => v === null || v.length <= PET_COLOR_MAX, {
+      error: "COLOR_TOO_LONG",
+    }),
+    estimatedWeightKg: estimatedWeight,
 
-  // Estimated age, from which the server derives an estimated date of birth.
-  ageYears: ageCount(MAX_PET_AGE_YEARS),
-  // Bounded in MONTHS at the same ceiling, not at 11: a client is free to state
-  // the whole age in months, and the wizard never forced the two fields to
-  // partition an age between them.
-  ageMonths: ageCount(MAX_PET_AGE_MONTHS),
+    // Estimated age, from which the server derives an estimated date of birth.
+    // Shape here, range in the object refinement below — the cap depends on the
+    // species, which a field cannot see. See "The stated age" above.
+    ageYears: statedAgeCount("AGE_YEARS_INVALID"),
+    ageMonths: statedAgeCount("AGE_MONTHS_INVALID"),
 
-  /**
-   * Absent or unrecognised → null. Never a reason to refuse a registration.
-   *
-   * Written as a preprocess that can only ever emit a valid member or null,
-   * rather than as `.nullish().catch(null)`. The chain version LOOKED right and
-   * was not: an ABSENT field still reached the inner enum and failed, so every
-   * body that simply omitted this optional field was refused with
-   * `invalid_request`. Caught by the route's happy-path test on the first run.
-   * This shape has no branch where an invalid value reaches the enum at all.
-   */
-  acquisitionMethod: z.preprocess((v) => {
-    const candidate = typeof v === "string" ? v.trim() : "";
-    return (ACQUISITION_METHODS as readonly string[]).includes(candidate) ? candidate : null;
-  }, z.enum(ACQUISITION_METHODS).nullable()),
+    /**
+     * Absent or unrecognised → null. Never a reason to refuse a registration.
+     *
+     * Written as a preprocess that can only ever emit a valid member or null,
+     * rather than as `.nullish().catch(null)`. The chain version LOOKED right and
+     * was not: an ABSENT field still reached the inner enum and failed, so every
+     * body that simply omitted this optional field was refused with
+     * `invalid_request`. Caught by the route's happy-path test on the first run.
+     * This shape has no branch where an invalid value reaches the enum at all.
+     */
+    acquisitionMethod: z.preprocess((v) => {
+      const candidate = typeof v === "string" ? v.trim() : "";
+      return (ACQUISITION_METHODS as readonly string[]).includes(candidate) ? candidate : null;
+    }, z.enum(ACQUISITION_METHODS).nullable()),
 
-  /**
-   * Re-submit after a `duplicate_pet_suspected` refusal, meaning "yes, this is a
-   * different animal".
-   *
-   * A literal boolean with no string coercion, and defaulted rather than
-   * required, so the SAFE value is what a client that has never heard of the
-   * gate sends. Overriding is a deliberate act; the schema makes it look like
-   * one.
-   */
-  duplicateOverride: z.boolean().optional().default(false),
-});
+    /**
+     * Re-submit after a `duplicate_pet_suspected` refusal, meaning "yes, this is a
+     * different animal".
+     *
+     * A literal boolean with no string coercion, and defaulted rather than
+     * required, so the SAFE value is what a client that has never heard of the
+     * gate sends. Overriding is a deliberate act; the schema makes it look like
+     * one.
+     */
+    duplicateOverride: z.boolean().optional().default(false),
+  })
+  // RUNS EVEN WHEN A FIELD FAILED (zod 4 does not abort an object's refinements
+  // on a field issue — measured), so every value is re-checked for its type
+  // instead of trusted. This refinement is also what keeps the server's
+  // `estimatedBirthDateFromAge` inside a well-formed year: the total it allows
+  // is never past `MAX_PET_AGE_YEARS`.
+  .superRefine(refuseImplausibleAge);
 
 export type RegisterPetInput = z.infer<typeof registerPetInputSchema>;
+
+export type StatedAgeCode = Extract<
+  RegisterPetInputCode,
+  "AGE_YEARS_INVALID" | "AGE_MONTHS_INVALID" | "AGE_MONTHS_OUT_OF_RANGE" | "AGE_TOO_HIGH"
+>;
+
+const STATED_AGE_CODES: readonly StatedAgeCode[] = [
+  "AGE_YEARS_INVALID",
+  "AGE_MONTHS_INVALID",
+  "AGE_MONTHS_OUT_OF_RANGE",
+  "AGE_TOO_HIGH",
+];
+
+const statedAgeSchema = z
+  .object({
+    species: z.unknown(),
+    ageYears: statedAgeCount("AGE_YEARS_INVALID"),
+    ageMonths: statedAgeCount("AGE_MONTHS_INVALID"),
+  })
+  .superRefine(refuseImplausibleAge);
+
+/**
+ * The stated-age rule ALONE, for a door that is not this schema — the web
+ * alta's server action reads a `FormData`, not this JSON body, and had no age
+ * rule at all (its parser did `Math.max(0, parseInt(x) || 0)`, uncapped).
+ * Same field helpers, same refinement, same codes, same order.
+ */
+export function statedAgeRefusal(raw: {
+  species: unknown;
+  ageYears: unknown;
+  ageMonths: unknown;
+}): StatedAgeCode | null {
+  const parsed = statedAgeSchema.safeParse(raw);
+  if (parsed.success) return null;
+  const seen = new Set(parsed.error.issues.map((issue) => issue.message));
+  return STATED_AGE_CODES.find((code) => seen.has(code)) ?? "AGE_YEARS_INVALID";
+}
 
 /**
  * The single code a consumer should report for a failed parse, chosen by

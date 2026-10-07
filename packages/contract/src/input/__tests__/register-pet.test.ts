@@ -15,6 +15,12 @@
 
 import { describe, expect, it } from "vitest";
 
+import {
+  MAX_STATED_AGE_YEARS,
+  MAX_STATED_AGE_YEARS_OTHER,
+  estimatedBirthDateFromAge,
+  maxStatedAgeYears,
+} from "../../reference/pet-age.ts";
 import { PET_COLOR_MAX, PET_NAME_MAX } from "../pet-profile-edit.ts";
 import {
   MAX_ESTIMATED_WEIGHT_KG,
@@ -23,6 +29,7 @@ import {
   REGISTER_PET_INPUT_CODES,
   firstRegisterPetInputCode,
   registerPetInputSchema,
+  statedAgeRefusal,
 } from "../register-pet.ts";
 
 /** The smallest body the schema accepts: the four things a credential needs. */
@@ -340,6 +347,11 @@ describe("registerPetInputSchema — the enums that fall back instead of failing
 });
 
 describe("registerPetInputSchema — the estimated age", () => {
+  const ageCode = (body: Record<string, unknown>) => {
+    const result = registerPetInputSchema.safeParse({ ...MINIMAL, ...body });
+    return result.success ? null : firstRegisterPetInputCode(result.error);
+  };
+
   it("accepts a NUMBER, which the FormData path could not", () => {
     // A JSON client has no reason to quote an integer.
     const parsed = registerPetInputSchema.parse({ ...MINIMAL, ageYears: 3, ageMonths: 6 });
@@ -348,68 +360,102 @@ describe("registerPetInputSchema — the estimated age", () => {
   });
 
   it("accepts a STRING, matching the web wizard byte for byte", () => {
-    const parsed = registerPetInputSchema.parse({ ...MINIMAL, ageYears: "3" });
+    const parsed = registerPetInputSchema.parse({ ...MINIMAL, ageYears: " 3 " });
     expect(parsed.ageYears).toBe(3);
-  });
-
-  it("clamps a negative to zero and an unparseable to zero, never refusing", () => {
-    // An age field is an ESTIMATE typed at a kennel door. Rejecting "aprox 2"
-    // outright would block a registration over a guess.
-    expect(registerPetInputSchema.parse({ ...MINIMAL, ageYears: "-4" }).ageYears).toBe(0);
-    expect(registerPetInputSchema.parse({ ...MINIMAL, ageYears: "aprox 2" }).ageYears).toBe(0);
   });
 
   it("treats a blank string as absent, not as zero", () => {
     // Zero years is a claim ("this animal was born this year"); blank is not.
     expect(registerPetInputSchema.parse({ ...MINIMAL, ageYears: "  " }).ageYears).toBeNull();
+    expect(registerPetInputSchema.parse({ ...MINIMAL, ageYears: "0" }).ageYears).toBe(0);
   });
 
   // -------------------------------------------------------------------------
-  // The ceiling (WU-B review FB-2)
+  // alta-validacion-edad (2026-10-07): REFUSE, never clamp.
   // -------------------------------------------------------------------------
-  //
-  // The consumer DERIVES a date of birth from these two with unguarded `Date`
-  // arithmetic. Both of the following were demonstrated against the endpoint
-  // before the bound existed, not theorised:
-  //
-  //   ageYears: 3000    → the malformed date string "-000974-08" on its way into
-  //                       a Postgres `date` column, i.e. a 500;
-  //   ageYears: 300000  → a RangeError thrown out of toISOString(), OUTSIDE any
-  //                       try/catch, so the response was not even the error
-  //                       envelope this surface promises.
-  //
-  // The bound clamps rather than refuses, matching everything else this field
-  // does: an age is an ESTIMATE, and refusing one blocks a registration over a
-  // guess.
-  it("clamps a year count past the ceiling instead of deriving a malformed date", () => {
-    expect(registerPetInputSchema.parse({ ...MINIMAL, ageYears: 3000 }).ageYears).toBe(
-      MAX_PET_AGE_YEARS,
-    );
-    expect(registerPetInputSchema.parse({ ...MINIMAL, ageYears: 300_000 }).ageYears).toBe(
-      MAX_PET_AGE_YEARS,
-    );
-    expect(registerPetInputSchema.parse({ ...MINIMAL, ageYears: "999999999" }).ageYears).toBe(
-      MAX_PET_AGE_YEARS,
-    );
+  // QA on a real phone: "3310 años" reached the app's confirm step, because the
+  // old field CLAMPED it to 250 and called that valid. A clamp turns a typo into
+  // a different number the owner never typed; a refusal lets them fix it.
+
+  it("refuses the exact value QA typed on the phone", () => {
+    expect(ageCode({ ageYears: "3310" })).toBe("AGE_TOO_HIGH");
+    expect(ageCode({ ageYears: 3310 })).toBe("AGE_TOO_HIGH");
   });
 
-  it("clamps months at the same ceiling, expressed in months", () => {
-    // A client may state the whole age in months; the two fields were never
-    // required to partition it.
-    expect(registerPetInputSchema.parse({ ...MINIMAL, ageMonths: 999_999 }).ageMonths).toBe(
-      MAX_PET_AGE_MONTHS,
-    );
-    expect(MAX_PET_AGE_MONTHS).toBe(MAX_PET_AGE_YEARS * 12);
+  it("refuses anything that is not a whole, non-negative number instead of reading it as 0", () => {
+    for (const ageYears of ["-4", "aprox 2", "2.5", "2,5", "1e3", "3 años", -1, 2.5]) {
+      expect(ageCode({ ageYears }), String(ageYears)).toBe("AGE_YEARS_INVALID");
+    }
+    for (const ageMonths of ["-1", "seis", "6.5", -3, 1.5]) {
+      expect(ageCode({ ageMonths }), String(ageMonths)).toBe("AGE_MONTHS_INVALID");
+    }
   });
 
-  // Measured while writing this block, and worth recording because the answer
-  // is not the one the transform suggests: `z.number()` REFUSES a non-finite
-  // value before any transform runs, so Infinity and NaN never reach the clamp
-  // at all — the whole body is rejected and the route answers `invalid_request`.
-  // Which is right: neither is an age, and neither can come out of `JSON.parse`
-  // in the first place. The `Number.isFinite` guard in the transform stays as a
-  // belt for a caller that builds the object in-process rather than from a wire.
-  it("rejects the whole body for a non-finite number rather than clamping it", () => {
+  it("caps every named species at MAX_STATED_AGE_YEARS, inclusive", () => {
+    expect(MAX_STATED_AGE_YEARS).toBe(40);
+    for (const species of ["dog", "cat", "rabbit", "guinea_pig", "ferret"]) {
+      expect(ageCode({ species, ageYears: 40 }), species).toBeNull();
+      expect(ageCode({ species, ageYears: 41 }), species).toBe("AGE_TOO_HIGH");
+      // The TOTAL is what is capped: 40 years and a month is past 40 years.
+      expect(ageCode({ species, ageYears: 40, ageMonths: 1 }), species).toBe("AGE_TOO_HIGH");
+    }
+  });
+
+  // WHY `other` IS THE EXCEPTION. In Argentina "otro" is routinely a tortuga
+  // terrestre — 50-100 years is ordinary, and they are handed down within a
+  // family. It keeps the derivation ceiling the codebase already documented.
+  it("lets `other` state an age past 40, up to the derivation ceiling", () => {
+    expect(maxStatedAgeYears("other")).toBe(MAX_PET_AGE_YEARS);
+    expect(ageCode({ species: "other", ageYears: 80 })).toBeNull();
+    expect(ageCode({ species: "other", ageYears: MAX_PET_AGE_YEARS })).toBeNull();
+    expect(ageCode({ species: "other", ageYears: MAX_PET_AGE_YEARS + 1 })).toBe("AGE_TOO_HIGH");
+    expect(ageCode({ species: "other", ageYears: "3310" })).toBe("AGE_TOO_HIGH");
+  });
+
+  it("lets a cachorro's age be stated in months alone, up to the same cap", () => {
+    expect(registerPetInputSchema.parse({ ...MINIMAL, ageMonths: "18" }).ageMonths).toBe(18);
+    expect(ageCode({ ageMonths: 40 * 12 })).toBeNull();
+    expect(ageCode({ ageMonths: 40 * 12 + 1 })).toBe("AGE_TOO_HIGH");
+    expect(ageCode({ ageMonths: 999_999 })).toBe("AGE_TOO_HIGH");
+  });
+
+  it("refuses months past 11 once years are stated — the remainder, not a second age", () => {
+    expect(ageCode({ ageYears: 3, ageMonths: 11 })).toBeNull();
+    expect(ageCode({ ageYears: 3, ageMonths: 12 })).toBe("AGE_MONTHS_OUT_OF_RANGE");
+    // "0 años 18 meses" is still months alone.
+    expect(ageCode({ ageYears: 0, ageMonths: 18 })).toBeNull();
+  });
+
+  it("refuses huge digit strings rather than overflowing into a malformed date", () => {
+    // The original FB-2 cases — ageYears 3000 produced "-000974-08", 300000 a
+    // RangeError out of toISOString(). They are now refusals, not clamps.
+    expect(ageCode({ ageYears: 3000 })).toBe("AGE_TOO_HIGH");
+    expect(ageCode({ ageYears: 300_000 })).toBe("AGE_TOO_HIGH");
+    expect(ageCode({ ageYears: "999999999999999999999999" })).toBe("AGE_TOO_HIGH");
+  });
+
+  it("names the age even when another field also failed", () => {
+    // zod 4 runs the object refinement despite a field issue; the ORDER of the
+    // codes then decides which one the form shows.
+    const result = registerPetInputSchema.safeParse({ ...MINIMAL, name: "", ageYears: 3310 });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    const messages = result.error.issues.map((issue) => issue.message);
+    expect(messages).toContain("AGE_TOO_HIGH");
+    expect(firstRegisterPetInputCode(result.error)).toBe("NAME_REQUIRED");
+  });
+
+  it("points each refusal at the field that carries it", () => {
+    const pathOf = (body: Record<string, unknown>) => {
+      const result = registerPetInputSchema.safeParse({ ...MINIMAL, ...body });
+      return result.success ? null : result.error.issues[0]?.path;
+    };
+    expect(pathOf({ ageYears: 41 })).toEqual(["ageYears"]);
+    expect(pathOf({ ageMonths: 999 })).toEqual(["ageMonths"]);
+    expect(pathOf({ ageYears: 2, ageMonths: 14 })).toEqual(["ageMonths"]);
+  });
+
+  it("rejects the whole body for a non-finite number", () => {
     expect(
       registerPetInputSchema.safeParse({ ...MINIMAL, ageYears: Number.POSITIVE_INFINITY }).success,
     ).toBe(false);
@@ -418,28 +464,50 @@ describe("registerPetInputSchema — the estimated age", () => {
     );
   });
 
-  // NON-VACUITY: the ceiling must not be clamping ordinary ages. A dog is 12.
-  it("leaves every plausible age untouched", () => {
-    for (const years of [0, 1, 12, 29, 100]) {
+  // NON-VACUITY: the cap must not refuse ordinary ages. A dog is 12.
+  it("accepts every plausible age unchanged", () => {
+    for (const years of [0, 1, 12, 29, 40]) {
       expect(registerPetInputSchema.parse({ ...MINIMAL, ageYears: years }).ageYears).toBe(years);
     }
   });
 
-  // WHY THE CEILING IS 250 AND NOT 40. `species` includes `other`, and in
-  // Argentina that is routinely a tortuga terrestre — 50-100 years is ordinary
-  // for one, and they are handed down within a family. A ceiling tight enough
-  // to look sensible for dogs would silently mangle a legitimate entry.
-  it("clears the longest-lived companion animal by a wide margin", () => {
-    expect(MAX_PET_AGE_YEARS).toBeGreaterThan(150);
+  it("keeps `other`'s cap in step with the derivation ceiling it restates", () => {
+    expect(MAX_STATED_AGE_YEARS_OTHER).toBe(MAX_PET_AGE_YEARS);
+    expect(MAX_PET_AGE_MONTHS).toBe(MAX_PET_AGE_YEARS * 12);
   });
 
-  // The derived date must stay a well-formed four-digit ISO year — the actual
-  // job of the bound. Worst case is both fields at their ceiling: 500 years.
+  // The derived date must stay a well-formed four-digit ISO year. Worst case
+  // the schema now admits: `other` at the full ceiling.
   it("keeps the worst-case derived date representable", () => {
-    const totalMonths = MAX_PET_AGE_YEARS * 12 + MAX_PET_AGE_MONTHS;
-    const dob = new Date();
-    dob.setMonth(dob.getMonth() - totalMonths);
-    expect(dob.toISOString().slice(0, 10)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const dob = estimatedBirthDateFromAge(
+      { years: MAX_STATED_AGE_YEARS_OTHER, months: 0 },
+      new Date(),
+    );
+    expect(dob).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+describe("statedAgeRefusal — the same rule for the web's FormData door", () => {
+  it("answers exactly what the schema answers, as strings from a form", () => {
+    const cases: Array<[Record<string, unknown>, string | null]> = [
+      [{ species: "dog", ageYears: "3310", ageMonths: "" }, "AGE_TOO_HIGH"],
+      [{ species: "dog", ageYears: "3", ageMonths: "2" }, null],
+      [{ species: "dog", ageYears: null, ageMonths: null }, null],
+      [{ species: "cat", ageYears: "aprox 2", ageMonths: null }, "AGE_YEARS_INVALID"],
+      [{ species: "cat", ageYears: "2", ageMonths: "13" }, "AGE_MONTHS_OUT_OF_RANGE"],
+      [{ species: "other", ageYears: "80", ageMonths: null }, null],
+      // An unknown species gets the strict cap, never the tortoise's.
+      [{ species: "dinosaurio", ageYears: "80", ageMonths: null }, "AGE_TOO_HIGH"],
+    ];
+    for (const [raw, expected] of cases) {
+      expect(
+        statedAgeRefusal(raw as Parameters<typeof statedAgeRefusal>[0]),
+        JSON.stringify(raw),
+      ).toBe(expected);
+      if (raw.species === "dinosaurio") continue;
+      const viaSchema = registerPetInputSchema.safeParse({ ...MINIMAL, ...raw });
+      expect(viaSchema.success ? null : firstRegisterPetInputCode(viaSchema.error)).toBe(expected);
+    }
   });
 });
 

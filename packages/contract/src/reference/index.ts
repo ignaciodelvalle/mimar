@@ -61,7 +61,16 @@ export {
   resolveLostSpecialConditions,
   sanitizeConditionCodes,
 } from "./permanent-conditions.ts";
-export { type PetAge, estimatedBirthDateFromAge, petAgeFromBirthDate } from "./pet-age.ts";
+export {
+  type BirthDateRefusal,
+  MAX_STATED_AGE_YEARS,
+  MAX_STATED_AGE_YEARS_OTHER,
+  type PetAge,
+  birthDateRefusal,
+  estimatedBirthDateFromAge,
+  maxStatedAgeYears,
+  petAgeFromBirthDate,
+} from "./pet-age.ts";
 export {
   COMMON_ALLERGIES,
   COMMON_FOODS,
