@@ -1,4 +1,8 @@
-import type { LibretaVaccinationSection, PetLibretaV1 } from "@dim/contract/api";
+import type {
+  LibretaUpcomingItemV1,
+  LibretaVaccinationSection,
+  PetLibretaV1,
+} from "@dim/contract/api";
 import { describe, expect, it } from "@jest/globals";
 
 import {
@@ -10,6 +14,8 @@ import {
   speciesLine,
   upcomingDueLabel,
   upcomingKindLabel,
+  upcomingRemainingLabel,
+  upcomingRowLabel,
   vaccinationHeadline,
   vaccineStatusLabel,
 } from "./libreta-view-model";
@@ -186,5 +192,46 @@ describe("buildLibretaView — a failed section is not an empty one", () => {
     }
     // The viewer's capability is NOT a section and survives a failed read.
     expect(view.canAmend).toBe(true);
+  });
+});
+
+describe("an upcoming row's text — the kind is said once", () => {
+  function item(overrides: Partial<LibretaUpcomingItemV1>): LibretaUpcomingItemV1 {
+    return {
+      id: "x",
+      kind: "reminder",
+      label: "Antirrábica",
+      dueAt: "2026-12-01T03:00:00.000Z",
+      reminderId: null,
+      ...overrides,
+    };
+  }
+
+  it("names a medication course by its drug, as the next dose", () => {
+    const med = item({ kind: "medication", label: "Antiparasitario de amplio espectro" });
+    expect(upcomingRowLabel(med)).toBe("Antiparasitario de amplio espectro · próxima dosis");
+  });
+
+  it("drops the stored '– Dosis' suffix an older server still sends", () => {
+    // The J7 screenshot: "Dosis · Antiparasitario de amplio espectro – Dosis".
+    const med = item({ kind: "medication", label: "Antiparasitario de amplio espectro – Dosis" });
+    expect(upcomingRowLabel(med)).toBe("Antiparasitario de amplio espectro · próxima dosis");
+  });
+
+  it("keeps reminders and turnos as they were", () => {
+    expect(upcomingRowLabel(item({}))).toBe("Recordatorio · Antirrábica");
+    expect(upcomingRowLabel(item({ kind: "appointment", label: "Control" }))).toBe(
+      "Turno · Control",
+    );
+  });
+
+  it("counts what is left of a course only when there is more than the next dose", () => {
+    expect(upcomingRemainingLabel(item({ kind: "medication", remainingDoses: 5 }))).toBe(
+      "quedan 5 dosis",
+    );
+    expect(upcomingRemainingLabel(item({ kind: "medication", remainingDoses: 1 }))).toBeNull();
+    // A server from before the collapse sends no count; say nothing rather than guess.
+    expect(upcomingRemainingLabel(item({ kind: "medication" }))).toBeNull();
+    expect(upcomingRemainingLabel(item({ remainingDoses: null }))).toBeNull();
   });
 });

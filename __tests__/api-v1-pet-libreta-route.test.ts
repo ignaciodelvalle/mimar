@@ -281,6 +281,33 @@ describe("buildPetLibretaV1 — what crosses, and what must not", () => {
     expect(item).not.toHaveProperty("action");
   });
 
+  it("carries a medication course's remaining doses, and null on every other kind", () => {
+    const data = faceData({
+      future: [
+        {
+          id: "med-m1",
+          kind: "medication",
+          label: "Antiparasitario de amplio espectro",
+          dueAt: new Date("2026-09-02T12:00:00Z"),
+          action: { type: "mark-dose", reminderId: "m1" },
+          remainingDoses: 4,
+        },
+        {
+          id: "rem-1",
+          kind: "reminder",
+          label: "Antirrábica anual",
+          dueAt: new Date("2026-09-03T12:00:00Z"),
+          reminderId: "rem-1",
+        },
+      ],
+    });
+    const items = okSection(build({ data }).upcoming).items;
+    expect(items.map((i) => [i.id, i.label, i.remainingDoses])).toEqual([
+      ["med-m1", "Antiparasitario de amplio espectro", 4],
+      ["rem-1", "Antirrábica anual", null],
+    ]);
+  });
+
   it("declares the version and the freshness at the TOP level", () => {
     const payload = build({});
     expect(payload.payloadVersion).toBe(PET_LIBRETA_PAYLOAD_VERSION);

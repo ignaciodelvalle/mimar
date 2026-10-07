@@ -11,6 +11,7 @@
 //   - Dose reminders inserted when schedule is non-empty.
 //   - No outbox. No audit_log.
 
+import { medicationDoseReminderTitle } from "@/lib/domain/medication-dose-title";
 import { validateEventPayload } from "@/lib/events/event-schemas";
 import type { FrequencyKind } from "@/lib/reference/medication-schedule";
 
@@ -136,7 +137,7 @@ export async function createMedicationStart(
           userId: user.id,
           reminderType: "medication" as const,
           dueAt,
-          title: `${drugName} – Dosis`,
+          title: medicationDoseReminderTitle(drugName),
           description: `${dose}${frequencyLabel ? ` · ${frequencyLabel}` : ""}`,
           sourceEventId: event.id,
         })),

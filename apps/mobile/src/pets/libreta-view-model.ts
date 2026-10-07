@@ -189,6 +189,40 @@ export function upcomingKindLabel(kind: LibretaUpcomingItemV1["kind"]): string {
 }
 
 /**
+ * The suffix the server's dose reminders carry ("<drug> – Dosis"). A server
+ * from before the PRÓXIMO collapse still sends it in `label`; the current one
+ * strips it (`lib/domain/medication-dose-title.ts`, which this cannot import).
+ */
+const DOSE_TITLE_SUFFIX_RE = /\s*[–—-]\s*Dosis\s*$/u;
+
+/**
+ * The text of an upcoming row.
+ *
+ * A MEDICATION row names its course, not its kind. It is one row per course
+ * (the server collapses the doses), so "Antiparasitario de amplio espectro ·
+ * próxima dosis" says what the date beside it is the date OF. Prefixing the kind
+ * as well printed "Dosis · Antiparasitario de amplio espectro – Dosis" on a
+ * real phone — the word twice, and neither saying WHICH dose.
+ */
+export function upcomingRowLabel(item: LibretaUpcomingItemV1): string {
+  if (item.kind === "medication") {
+    const drug = item.label.replace(DOSE_TITLE_SUFFIX_RE, "").trim() || item.label;
+    return `${drug} · próxima dosis`;
+  }
+  return `${upcomingKindLabel(item.kind)} · ${item.label}`;
+}
+
+/**
+ * "quedan N dosis" under a medication row whose course has more than the dose
+ * it names; null otherwise, including a server that sends no count.
+ */
+export function upcomingRemainingLabel(item: LibretaUpcomingItemV1): string | null {
+  if (item.kind !== "medication") return null;
+  const remaining = item.remainingDoses ?? null;
+  return remaining !== null && remaining > 1 ? `quedan ${remaining} dosis` : null;
+}
+
+/**
  * How far away an upcoming item is, in ARGENTINE calendar days.
  *
  * Pinned to the Argentine calendar rather than to the device's, so an owner

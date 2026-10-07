@@ -24,6 +24,13 @@ export type FutureLedgerItem = {
    * the canonical reminder-linked vaccine URL).
    */
   reminderId?: string;
+  /**
+   * `kind: "medication"` rows only: how many doses of this course are still
+   * pending, the one this row names included. One course is ONE row (see
+   * `collapseMedicationCourses`), so this is what is left of the course's
+   * flood of per-dose rows.
+   */
+  remainingDoses?: number;
 };
 
 export type FutureReminderInput = {
@@ -42,8 +49,15 @@ export type FutureAppointmentInput = {
 
 export type FutureMedicationDoseInput = {
   reminderId: string;
+  /** The drug's own name — NOT the reminder's stored "<drug> – Dosis" title. */
   drugName: string;
   dueAt: Date;
+  /**
+   * The course this dose belongs to: the `medication_started` event that
+   * scheduled it (`reminders.source_event_id`). Null or absent means the dose
+   * cannot be tied to a course, and it stays a row of its own.
+   */
+  courseId?: string | null;
 };
 
 const RABIES_TITLE_RE = /antirr[aá]b|rabi/i;
@@ -68,8 +82,45 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 export const REMINDER_SURFACE_WINDOW_DAYS = 30;
 
 /**
+ * ONE ROW PER MEDICATION COURSE, not one per dose.
+ *
+ * A course scheduled every 12 hours for ten days writes twenty dose reminders,
+ * and the PRÓXIMO section used to list all twenty — the same drug name twenty
+ * times, burying the reminder and the turno around it (seen on a real phone,
+ * 2026-10-07). What the owner can act on is the NEXT dose; the rest of the
+ * course is a count.
+ *
+ * The row is the course's EARLIEST pending dose, overdue or not: a dose that
+ * was due yesterday and never marked is exactly the one to surface, and its
+ * "Marcar dada" closes it and promotes the next. Doses without a course id
+ * cannot be grouped honestly and each stays a row of its own.
+ *
+ * Done HERE, in the helper both the web page and `/api/v1/.../libreta` read, so
+ * every client — including a phone already in people's hands, which renders
+ * the server's rows as they come — gets the collapsed list.
+ */
+export function collapseMedicationCourses(
+  doses: FutureMedicationDoseInput[],
+): Array<{ next: FutureMedicationDoseInput; remaining: number }> {
+  const courses = new Map<string, FutureMedicationDoseInput[]>();
+  for (const dose of doses) {
+    const key = dose.courseId ? `course:${dose.courseId}` : `dose:${dose.reminderId}`;
+    const course = courses.get(key);
+    if (course) course.push(dose);
+    else courses.set(key, [dose]);
+  }
+  return [...courses.values()].map((course) => {
+    const next = course.reduce((earliest, dose) =>
+      dose.dueAt.getTime() < earliest.dueAt.getTime() ? dose : earliest,
+    );
+    return { next, remaining: course.length };
+  });
+}
+
+/**
  * Merges reminders, confirmed appointments, and pending medication doses into
- * one ascending-by-dueAt ledger. Sort is stable — ties preserve the order in
+ * one ascending-by-dueAt ledger. Medication doses arrive collapsed to one row
+ * per course (`collapseMedicationCourses`). Sort is stable — ties preserve the order in
  * which items were appended (reminders, then appointments, then doses).
  *
  * `now` gates reminders to `REMINDER_SURFACE_WINDOW_DAYS` (see above) —
@@ -108,13 +159,16 @@ export function mergeFutureLedger(
     action: { type: "reschedule", href: `/mis-turnos/${a.publicToken}` },
   }));
 
-  const medicationItems: FutureLedgerItem[] = medicationDoses.map((d) => ({
-    id: `med-${d.reminderId}`,
-    kind: "medication",
-    label: d.drugName,
-    dueAt: d.dueAt,
-    action: { type: "mark-dose", reminderId: d.reminderId },
-  }));
+  const medicationItems: FutureLedgerItem[] = collapseMedicationCourses(medicationDoses).map(
+    ({ next, remaining }) => ({
+      id: `med-${next.reminderId}`,
+      kind: "medication",
+      label: next.drugName,
+      dueAt: next.dueAt,
+      action: { type: "mark-dose", reminderId: next.reminderId },
+      remainingDoses: remaining,
+    }),
+  );
 
   return [...reminderItems, ...appointmentItems, ...medicationItems].sort(
     (a, b) => a.dueAt.getTime() - b.dueAt.getTime(),

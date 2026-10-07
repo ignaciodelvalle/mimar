@@ -42,6 +42,7 @@ import {
 } from "@/db";
 import { fetchActiveRemindersForPet, fetchPetWeightHistory } from "@/lib/analytics/owner-dashboard";
 import { computeVaccinationSummary } from "@/lib/domain/libreta-health-status";
+import { drugNameFromDoseReminderTitle } from "@/lib/domain/medication-dose-title";
 import { excludeAuthorityOnlyClause, excludeSelfScansClause } from "@/lib/events/events";
 import { overlayAmendments } from "@/lib/infra/amendment";
 import { resolveBusinessRule } from "@/lib/infra/business-rules-resolver";
@@ -350,8 +351,13 @@ export async function getLibretaFaceData(
     upcomingAppointments,
     pendingMedicationReminders.map((r) => ({
       reminderId: r.id,
-      drugName: r.title,
+      // The drug, not the reminder's "<drug> – Dosis" title: both clients
+      // already say the row is a dose, and the phone printed the word twice.
+      drugName: drugNameFromDoseReminderTitle(r.title),
       dueAt: r.dueAt,
+      // The scheduling medication_started event — what collapses a course's
+      // doses into the one row PRÓXIMO shows for it.
+      courseId: r.sourceEventId,
     })),
   );
 

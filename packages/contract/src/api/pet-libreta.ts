@@ -151,6 +151,17 @@ export type LibretaUpcomingItemV1 = {
   label: string;
   dueAt: string;
   reminderId: string | null;
+  /**
+   * `kind: "medication"` only: the doses of this course still pending, the one
+   * this row names included. Null on every other kind.
+   *
+   * ONE ROW PER COURSE. The server collapses a medication course's scheduled
+   * doses into the single row for its NEXT dose (`label` is then the drug's
+   * name, `dueAt` that dose's), so a twenty-dose course no longer floods the
+   * section with twenty identical rows. Additive in v1 and OPTIONAL: a server
+   * from before the collapse omits it, and a client reads absent as "no count".
+   */
+  remainingDoses?: number | null;
 };
 
 export type LibretaUpcomingSection = { items: LibretaUpcomingItemV1[] };

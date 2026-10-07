@@ -59,6 +59,17 @@ function daysUntil(date: Date, now: Date): number {
   return Math.round((dayOf(date) - dayOf(now)) / 86_400_000);
 }
 
+/**
+ * " · quedan N dosis" on a medication row whose course has more than the one
+ * dose it names. The server collapses a course to one row
+ * (`collapseMedicationCourses`); this is what is left of the rest of it.
+ */
+function medicationCourseNote(item: FutureLedgerItem): string | null {
+  if (item.kind !== "medication") return null;
+  const remaining = item.remainingDoses ?? 1;
+  return remaining > 1 ? ` · quedan ${remaining} dosis` : null;
+}
+
 // MarkDoseForm — "Marcar dada" per medication row. The action returns
 // `redirectTo` on success (N3 contract) and the form performs the full
 // document navigation; errors render inline under the button.
@@ -260,16 +271,20 @@ export function FutureLedgerList({
               </span>
               {(() => {
                 const d = daysUntil(item.dueAt, now);
+                const course = medicationCourseNote(item);
                 if (d >= 0) {
                   return (
                     <span className="mt-0.5 block text-xs text-[var(--color-ln-mute)]">
+                      {item.kind === "medication" ? "Próxima dosis · " : null}
                       {formatDueAt(item.dueAt)}
+                      {course}
                     </span>
                   );
                 }
                 return (
                   <span className="mt-0.5 block text-xs font-medium text-[var(--color-ln-seal)]">
                     Venció {formatDiasAgo(Math.abs(d))} · {formatDueAt(item.dueAt)}
+                    {course}
                   </span>
                 );
               })()}

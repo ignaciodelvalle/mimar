@@ -56,7 +56,8 @@ import {
   ledgerCountLabel,
   otherVaccinesNote,
   upcomingDueLabel,
-  upcomingKindLabel,
+  upcomingRemainingLabel,
+  upcomingRowLabel,
   vaccineStatusLabel,
 } from "./libreta-view-model";
 import type { SectionView } from "./owner-face-view-model";
@@ -268,13 +269,18 @@ function LibretaBody({ view, deceased }: { view: LibretaView; deceased: boolean 
         <Section view={view.upcoming} title="Próximo">
           {(upcoming) => (
             <View style={styles.upcoming}>
-              {upcoming.items.map((item) => (
-                <Row
-                  key={item.id}
-                  label={`${upcomingKindLabel(item.kind)} · ${item.label}`}
-                  value={upcomingDueLabel(item.dueAt, now)}
-                />
-              ))}
+              {upcoming.items.map((item) => {
+                // One row per medication course; the rest of it is a count.
+                const remaining = upcomingRemainingLabel(item);
+                return (
+                  <View key={item.id}>
+                    <Row label={upcomingRowLabel(item)} value={upcomingDueLabel(item.dueAt, now)} />
+                    {remaining === null ? null : (
+                      <Text style={styles.upcomingNote}>{remaining}</Text>
+                    )}
+                  </View>
+                );
+              })}
             </View>
           )}
         </Section>
@@ -481,7 +487,11 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: COLORS.accent,
     paddingLeft: 10,
+    gap: SPACE.sm,
   },
+  // "quedan N dosis" under a medication course's row: muted, and set under the
+  // LABEL column it qualifies rather than under the date.
+  upcomingNote: { fontFamily: FONTS.sans, fontSize: TYPE.sm, color: COLORS.inkMuted },
   divider: {
     fontFamily: FONTS.mono,
     fontSize: TYPE.sm,

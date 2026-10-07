@@ -133,6 +133,9 @@ export function buildPetLibretaV1(input: BuildPetLibretaInput): PetLibretaV1 {
       label: item.label,
       dueAt: item.dueAt.toISOString(),
       reminderId: item.reminderId ?? null,
+      // One row per medication course (mergeFutureLedger); the rest of the
+      // course travels as a count.
+      remainingDoses: item.kind === "medication" ? (item.remainingDoses ?? 1) : null,
     })),
   };
 

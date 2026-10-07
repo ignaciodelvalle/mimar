@@ -131,3 +131,33 @@ describe("FutureLedgerList — reminder row actions (moved from the under-card b
     });
   });
 });
+
+// One row per medication course (collapseMedicationCourses): the row names the
+// drug once, says the date is the NEXT dose's, and counts the rest.
+describe("FutureLedgerList — a medication course is one row", () => {
+  function medicationItem(remainingDoses: number): FutureLedgerItem {
+    return {
+      id: "med-m1",
+      kind: "medication",
+      label: "Antiparasitario de amplio espectro",
+      dueAt: new Date("2099-08-01T12:00:00Z"),
+      action: { type: "mark-dose", reminderId: "m1" },
+      remainingDoses,
+    };
+  }
+
+  it("names the drug once and counts the doses left in the course", () => {
+    render(<FutureLedgerList items={[medicationItem(4)]} petPublicToken={PET_TOKEN} />);
+
+    expect(screen.getByText("Antiparasitario de amplio espectro")).toBeInTheDocument();
+    expect(screen.getByText(/Próxima dosis · .* · quedan 4 dosis/)).toBeInTheDocument();
+    expect(screen.queryByText(/– Dosis/)).not.toBeInTheDocument();
+  });
+
+  it("says nothing about the rest of a course that has only this dose left", () => {
+    render(<FutureLedgerList items={[medicationItem(1)]} petPublicToken={PET_TOKEN} />);
+
+    expect(screen.getByText(/Próxima dosis · /)).toBeInTheDocument();
+    expect(screen.queryByText(/quedan/)).not.toBeInTheDocument();
+  });
+});

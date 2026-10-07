@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { REMINDER_SURFACE_WINDOW_DAYS, mergeFutureLedger } from "./libreta-future.helpers";
+import {
+  type FutureMedicationDoseInput,
+  REMINDER_SURFACE_WINDOW_DAYS,
+  mergeFutureLedger,
+} from "./libreta-future.helpers";
 
 describe("mergeFutureLedger", () => {
   it("interleaves reminders, appointments, and doses ascending by dueAt", () => {
@@ -253,5 +257,96 @@ describe("mergeFutureLedger — reminder surface window (display-only gate)", ()
       now,
     );
     expect(result.map((r) => r.id).sort()).toEqual(["appt-apt1", "med-m1"]);
+  });
+});
+
+// ONE ROW PER MEDICATION COURSE (collapseMedicationCourses). A course
+// scheduled every 12 hours wrote one PRÓXIMO row per dose — the same drug name
+// down the whole section on a real phone (2026-10-07).
+describe("mergeFutureLedger — a medication course is one row", () => {
+  const now = new Date("2026-10-07T12:00:00Z");
+  const day = (n: number) => new Date(now.getTime() + n * 24 * 60 * 60 * 1000);
+  function dose(
+    reminderId: string,
+    dueAt: Date,
+    courseId: string | null = "course-1",
+    drugName = "Antiparasitario de amplio espectro",
+  ): FutureMedicationDoseInput {
+    return { reminderId, drugName, dueAt, courseId };
+  }
+
+  it("a course with ONE dose left is one row with a count of one", () => {
+    const result = mergeFutureLedger([], [], [dose("m1", day(3))], now);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: "med-m1",
+      kind: "medication",
+      label: "Antiparasitario de amplio espectro",
+      remainingDoses: 1,
+      action: { type: "mark-dose", reminderId: "m1" },
+    });
+  });
+
+  it("a course with N doses is ONE row for the next dose, counting all N", () => {
+    const result = mergeFutureLedger(
+      [],
+      [],
+      // Out of order on purpose: the row is the EARLIEST dose, not the first given.
+      [dose("m3", day(5)), dose("m1", day(3)), dose("m2", day(4))],
+      now,
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]?.id).toBe("med-m1");
+    expect(result[0]?.dueAt).toEqual(day(3));
+    expect(result[0]?.remainingDoses).toBe(3);
+    // "Marcar dada" closes THAT dose, which promotes the next one.
+    expect(result[0]?.action).toEqual({ type: "mark-dose", reminderId: "m1" });
+  });
+
+  it("two courses stay two rows, interleaved with reminders and turnos by date", () => {
+    const result = mergeFutureLedger(
+      [{ reminderId: "r1", title: "Antirrábica", dueAt: day(2), variant: "upcoming" }],
+      [{ publicToken: "apt1", offeringDisplayName: "Control", slotStartsAt: day(6) }],
+      [
+        dose("a1", day(1), "course-a", "Amoxicilina"),
+        dose("a2", day(8), "course-a", "Amoxicilina"),
+        dose("b1", day(4), "course-b", "Meloxicam"),
+        dose("b2", day(5), "course-b", "Meloxicam"),
+        dose("b3", day(9), "course-b", "Meloxicam"),
+      ],
+      now,
+    );
+    expect(result.map((r) => [r.id, r.remainingDoses ?? null])).toEqual([
+      ["med-a1", 2],
+      ["reminder-r1", null],
+      ["med-b1", 3],
+      ["appt-apt1", null],
+    ]);
+  });
+
+  it("a course whose first dose is PAST DUE surfaces that dose, not the next future one", () => {
+    const result = mergeFutureLedger(
+      [],
+      [],
+      [dose("m2", day(1)), dose("m1", day(-2)), dose("m3", day(2))],
+      now,
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]?.id).toBe("med-m1");
+    expect(result[0]?.dueAt).toEqual(day(-2));
+    expect(result[0]?.remainingDoses).toBe(3);
+  });
+
+  it("doses with no course id are not grouped — each stays its own row", () => {
+    const result = mergeFutureLedger(
+      [],
+      [],
+      [dose("x1", day(1), null), dose("x2", day(2), null)],
+      now,
+    );
+    expect(result.map((r) => [r.id, r.remainingDoses])).toEqual([
+      ["med-x1", 1],
+      ["med-x2", 1],
+    ]);
   });
 });

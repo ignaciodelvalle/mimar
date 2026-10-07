@@ -265,3 +265,38 @@ describe("a deceased animal's ledger", () => {
     expect(screen.getByText(/Recordatorio · Antirrábica/)).toBeTruthy();
   });
 });
+
+describe("a medication course in Próximo", () => {
+  it("is one row naming the drug once, with what is left of the course beneath it", async () => {
+    // Seen on a J7: "Dosis · Antiparasitario de amplio espectro – Dosis", once
+    // per scheduled dose. The server now sends one row per course with the
+    // drug's own name and a count.
+    mockFetchPetLibreta.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({
+        upcoming: {
+          status: "ok" as const,
+          data: {
+            items: [
+              {
+                id: "med-r1",
+                kind: "medication" as const,
+                label: "Antiparasitario de amplio espectro",
+                dueAt: "2026-12-01T03:00:00.000Z",
+                reminderId: null,
+                remainingDoses: 4,
+              },
+            ],
+          },
+        },
+      }),
+    });
+
+    render(<LibretaScreen publicToken={TOKEN} />);
+
+    await waitFor(() => expect(screen.getByText("Próximo")).toBeTruthy());
+    expect(screen.getByText("Antiparasitario de amplio espectro · próxima dosis")).toBeTruthy();
+    expect(screen.getByText("quedan 4 dosis")).toBeTruthy();
+    expect(screen.queryByText(/Dosis · /)).toBeNull();
+  });
+});
