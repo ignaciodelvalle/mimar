@@ -624,9 +624,8 @@ const REFRESH_ACTION: EventDetailAction = {
  * is opened for; a microchip replacement is rare and stays a row unless it is
  * the only act there is. "Actualizar el registro" is never the primary — a
  * reload is not an act a record offers (see `pullToRefresh`), and the screen
- * takes the pull gesture as well — but it stays reachable as a row for whoever
- * does not know the gesture, because an expired attachment link tells the
- * person to refresh.
+ * takes the pull gesture. It is listed last so the screen can draw it as a row
+ * beside other acts, and leave the section out when it would be alone.
  *
  * A correction is offered only when the server allows it AND at least one row
  * is editable from here; otherwise the screen says why instead

@@ -12,7 +12,8 @@
 //     or reachable from nonsense, and no pure test would notice either.
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { ScrollView } from "react-native";
 
 import type { PetEventDetailV1 } from "@dim/contract/api";
 
@@ -371,21 +372,48 @@ describe("EventDetailScreen — the rows a correction may not touch", () => {
 // ---------------------------------------------------------------------------
 
 describe("EventDetailScreen — every action stays reachable", () => {
-  it("lists a vaccine's actions: Corregir as the one primary, Actualizar as a row", async () => {
+  it("lists a vaccine's actions: Corregir as the one primary, the reload as the pull gesture", async () => {
     render(<EventDetailScreen publicToken={TOKEN} eventId={EVENT_ID} />);
     await screen.findByText("Antirrábica");
 
     expect(screen.getByText("Corregir registro")).toBeOnTheScreen();
-    expect(screen.getByText("Más acciones")).toBeOnTheScreen();
-    expect(screen.getByText("Actualizar el registro")).toBeOnTheScreen();
-    // "Actualizar" is no longer a full-width primary button.
+    // "Actualizar" is no longer a full-width primary button, and "Más
+    // acciones" is not drawn for the reload alone.
     expect(screen.queryByText("Actualizar")).toBeNull();
+    expect(screen.queryByText("Más acciones")).toBeNull();
+    expect(screen.queryByText("Actualizar el registro")).toBeNull();
 
-    fireEvent.press(screen.getByText("Actualizar el registro"));
-    await waitFor(() => expect(mockFetchPetEventDetail).toHaveBeenCalledTimes(2));
+    const scroll = screen.UNSAFE_getByType(ScrollView);
+    await act(async () => {
+      scroll.props.refreshControl.props.onRefresh();
+    });
+    expect(mockFetchPetEventDetail).toHaveBeenCalledTimes(2);
   });
 
-  it("lists a treatment's actions: Terminar as the primary, Actualizar as a row", async () => {
+  it("keeps the record on screen when a refresh fails, under a banner", async () => {
+    render(<EventDetailScreen publicToken={TOKEN} eventId={EVENT_ID} />);
+    await screen.findByText("Antirrábica");
+
+    mockFetchPetEventDetail.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
+    const scroll = screen.UNSAFE_getByType(ScrollView);
+    await act(async () => {
+      scroll.props.refreshControl.props.onRefresh();
+    });
+
+    expect(await screen.findByText("No pudimos actualizar")).toBeOnTheScreen();
+    expect(screen.getByText("Antirrábica")).toBeOnTheScreen();
+    expect(screen.getByText("L-42")).toBeOnTheScreen();
+
+    // A refresh that lands clears the banner.
+    mockFetchPetEventDetail.mockResolvedValue({ outcome: "ok", payload: payload() });
+    await act(async () => {
+      fireEvent.press(screen.getByText("Volver a intentar"));
+    });
+    expect(mockFetchPetEventDetail).toHaveBeenCalledTimes(3);
+    await waitFor(() => expect(screen.queryByText("No pudimos actualizar")).toBeNull());
+  });
+
+  it("lists a treatment's actions: Terminar as the primary", async () => {
     mockFetchPetEventDetail.mockResolvedValue({
       outcome: "ok",
       payload: payload({
@@ -397,8 +425,7 @@ describe("EventDetailScreen — every action stays reachable", () => {
     });
     render(<EventDetailScreen publicToken={TOKEN} eventId={EVENT_ID} />);
     await screen.findByText("Terminar medicación");
-    const reachable = ["Terminar medicación", "Actualizar el registro"];
-    for (const label of reachable) expect(screen.getByText(label)).toBeOnTheScreen();
+    expect(screen.getByText("Terminar medicación")).toBeOnTheScreen();
   });
 
   it("lists a microchip's actions, and the replacement is one tap away", async () => {
@@ -415,15 +442,12 @@ describe("EventDetailScreen — every action stays reachable", () => {
     // With no editable row the microchip door is the only act — the primary.
     fireEvent.press(await screen.findByText("Reemplazar el microchip"));
     expect(mockPush).toHaveBeenCalledWith(`/mascotas/${TOKEN}/asentar?kind=microchip_replace`);
-    expect(screen.getByText("Actualizar el registro")).toBeOnTheScreen();
   });
 
   it("opens the correction in place, and Volver brings the primary back", async () => {
     render(<EventDetailScreen publicToken={TOKEN} eventId={EVENT_ID} />);
     fireEvent.press(await screen.findByText("Corregir registro"));
     expect(screen.getByText("Confirmar corrección")).toBeOnTheScreen();
-    // The rows stay while the form is open.
-    expect(screen.getByText("Actualizar el registro")).toBeOnTheScreen();
 
     fireEvent.press(screen.getByText("Volver"));
     expect(screen.queryByText("Confirmar corrección")).toBeNull();

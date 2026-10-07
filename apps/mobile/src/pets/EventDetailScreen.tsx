@@ -37,7 +37,7 @@ import type { EventAttachmentV1 } from "@dim/contract/api";
 import { apiFailureMessage } from "../api/client";
 import { amendPetEvent, fetchPetEventDetail } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
-import { Body, Card, ErrorNotice, Loading, Row, Unavailable } from "../ui/components";
+import { Body, Card, ErrorNotice, Loading, Row, StaleNotice, Unavailable } from "../ui/components";
 import {
   Callout,
   Eyebrow,
@@ -84,7 +84,7 @@ import type { SectionView } from "./owner-face-view-model";
 
 type ScreenState =
   | { phase: "loading" }
-  | { phase: "ready"; view: EventDetailView }
+  | { phase: "ready"; view: EventDetailView; staleFailure: string | null }
   | { phase: "failed"; message: string };
 
 export function EventDetailScreen({
@@ -109,13 +109,23 @@ export function EventDetailScreen({
       if (mine !== generation.current) return;
       setRefreshing(false);
       if (result.outcome === "ok") {
-        setState({ phase: "ready", view: buildEventDetailView(result.payload) });
+        setState({
+          phase: "ready",
+          view: buildEventDetailView(result.payload),
+          staleFailure: null,
+        });
         return;
       }
-      setState({
-        phase: "failed",
-        message: apiFailureMessage(result) ?? "No pudimos leer este registro.",
-      });
+      const message = apiFailureMessage(result) ?? "No pudimos leer este registro.";
+      // A FAILED REFRESH KEEPS THE RECORD (S-2, `reload-state.ts`). The pull
+      // gesture used to wipe the asiento off the screen and put a full-screen
+      // error in its place: the record the phone was still holding, deleted
+      // because the network went away. It stays, under a banner that says so.
+      setState((current) =>
+        current.phase === "ready"
+          ? { ...current, staleFailure: message }
+          : { phase: "failed", message },
+      );
     },
     [publicToken, eventId],
   );
@@ -133,6 +143,9 @@ export function EventDetailScreen({
       {state.phase === "loading" ? <Loading label="Leyendo el registro…" /> : null}
       {state.phase === "failed" ? (
         <ErrorNotice message={state.message} onRetry={() => void load()} />
+      ) : null}
+      {state.phase === "ready" && state.staleFailure !== null ? (
+        <StaleNotice message={state.staleFailure} onRetry={() => void load("refresh")} />
       ) : null}
       {state.phase === "ready" ? (
         <EventDetailBody
@@ -303,6 +316,7 @@ function EventActions({
   const router = useRouter();
   const [amending, setAmending] = useState(false);
   const { primary, more } = eventDetailActions(view);
+  const rows = more.filter((action) => !(amending && action.id === "amend"));
 
   const run = (action: EventDetailAction) => {
     switch (action.id) {
@@ -358,11 +372,13 @@ function EventActions({
         </View>
       ) : null}
 
-      <View style={styles.more}>
-        <Eyebrow>Más acciones</Eyebrow>
-        {more
-          .filter((action) => !(amending && action.id === "amend"))
-          .map((action) => (
+      {/* NOT FOR THE RELOAD ALONE. Pull-to-refresh already covers it, and a
+          section headed "Más acciones" whose only entry is "Actualizar" reads
+          as a section with nothing in it. */}
+      {rows.some((action) => action.id !== "refresh") ? (
+        <View style={styles.more}>
+          <Eyebrow>Más acciones</Eyebrow>
+          {rows.map((action) => (
             <ListRow
               key={action.id}
               label={action.label}
@@ -370,7 +386,8 @@ function EventActions({
               onPress={() => run(action)}
             />
           ))}
-      </View>
+        </View>
+      ) : null}
     </>
   );
 }
