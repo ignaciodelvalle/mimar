@@ -103,10 +103,14 @@
 // citation) — this file does not and must not touch it.
 //
 // ADJUDICATED — PO decision 2026-09-18 (D5): CABA rabies revaccination is
-// ANNUAL and SOURCED. The interval is fixed by the national anchors the
-// product's legal framework lists for antirrábica ("obligatoria desde los 3
-// meses, anual": Ley 22.953 + Res. MS 1144/2018 + Res. SENASA 580/2014), and
-// Ord. 41.831 art. 9 applies them locally. The CABA row now carries
+// ANNUAL and SOURCED. The interval is fixed by the national guide approved by
+// Res. MS 1144/2018 (annex as replaced by Res. MS 1223/2018, p. 33: "una
+// primovacunación a los 3 meses de edad y revacunaciones anuales... exigencia
+// legal"), under the Ley 22.953 duty to vaccinate; Ord. 41.831 art. 9 delegates
+// the timing locally. Corrected 2026-10-07: Res. SENASA 580/2014 was dropped —
+// it exempts service animals from SENASA fees and says nothing about rabies.
+// Whether a guide approved under the Ley de Ministerios binds owners is still
+// an open legal question; the behaviour (12-month legal deadline) is unchanged. The CABA row now carries
 // `frequency_months: 12` together with `frequency_legal_basis`, the payload
 // field that says WHICH norm fixes the interval. The compliance projection
 // treats a cadence WITH that field as a legal deadline (Vigente / Vencida,
@@ -277,7 +281,7 @@ export const AR_V2: LegalBaselineDataset = {
       effectiveFrom: null, // TODO 4
       rulePayload: {
         frequency_months: 12,
-        frequency_legal_basis: "Ley 22.953 · Res. MS 1144/2018 · Res. SENASA 580/2014",
+        frequency_legal_basis: "Ley 22.953 · Res. MS 1144/2018 (anexo Res. MS 1223/2018)",
       },
       reviewStatus: "pending_legal_review",
     },
