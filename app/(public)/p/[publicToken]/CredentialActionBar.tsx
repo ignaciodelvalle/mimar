@@ -41,12 +41,14 @@ import { Icon } from "@/components/Icon";
 import { LnButton } from "@/components/ui/Button";
 import { scrollIntoViewRespectingMotion } from "@/lib/ui/reduced-motion-scroll";
 
-/** Scroll target: the Tier-2 medical section wrapper in page.tsx. */
-export const MEDICAL_SECTION_ID = "resumen-medico";
-/** Anchor id of the "¿Encontraste a esta mascota?" <details> in page.tsx. */
-export const REPORT_SECTION_ID = "reportar-hallazgo";
-/** Scroll+reveal target: the dispute-tip <details> in page.tsx (disputed pets). */
-export const DISPUTE_SECTION_ID = "informacion-disputa";
+import { DISPUTE_SECTION_ID, MEDICAL_SECTION_ID } from "./credential-section-ids";
+
+// The ids live in a non-client module the server page can read (see there).
+export {
+  DISPUTE_SECTION_ID,
+  MEDICAL_SECTION_ID,
+  REPORT_SECTION_ID,
+} from "./credential-section-ids";
 
 export type CredentialActionBarProps =
   | {

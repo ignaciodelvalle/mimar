@@ -21,9 +21,9 @@ import { Icon } from "@/components/Icon";
 import { DISPUTE_TIP_INTRO } from "@/lib/ui/dispute-copy";
 import { foundPossessivePhrase, normalizePhoneForTel, sightingPhrase } from "@/lib/utils/format";
 
-import { DISPUTE_SECTION_ID, REPORT_SECTION_ID } from "./CredentialActionBar";
 import { DisputeTipForm } from "./DisputeTipForm";
 import { FoundPetForm } from "./FoundPetForm";
+import { DISPUTE_SECTION_ID, REPORT_SECTION_ID } from "./credential-section-ids";
 
 export const PHONE_PRIVACY_NOTE =
   "Por privacidad no mostramos el teléfono del dueño: completá uno de estos avisos y le llega al instante.";

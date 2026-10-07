@@ -108,11 +108,7 @@ import {
 import { notFound } from "next/navigation";
 import QRCode from "qrcode";
 import { Suspense } from "react";
-import {
-  CredentialActionBar,
-  type CredentialActionBarProps,
-  MEDICAL_SECTION_ID,
-} from "./CredentialActionBar";
+import { CredentialActionBar, type CredentialActionBarProps } from "./CredentialActionBar";
 import { CredentialPhoto } from "./CredentialPhoto";
 import {
   CredentialOriginOrg,
@@ -128,6 +124,7 @@ import {
   ServiceDogBanner,
 } from "./credential-banners";
 import { isRouterPrefetchRender, pageLookupDeps, probePublicCredential } from "./credential-probe";
+import { MEDICAL_SECTION_ID } from "./credential-section-ids";
 
 // The page calls headers() at runtime — mark it dynamic explicitly so Next.js
 // does not attempt to statically render it (matches the sibling encontre /
