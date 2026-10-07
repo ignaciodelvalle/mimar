@@ -21,7 +21,11 @@
 // vocabulary at the parse boundary (`apiV1ErrorCode`) rather than merely
 // asserted by a type, and the switch below is exhaustive.
 
-import { API_V1_ERROR_CODES, type ApiV1ErrorCode } from "@dim/contract/api";
+import {
+  API_V1_ERROR_CODES,
+  type ApiV1ErrorCode,
+  PET_TRAVEL_REFUSAL_MESSAGES,
+} from "@dim/contract/api";
 
 /**
  * The endpoint's error vocabulary, as a runtime set.
@@ -85,6 +89,23 @@ export function apiErrorMessageForWireCode(code: string): string {
   return KNOWN_ERROR_CODES.has(code)
     ? apiErrorMessage(code as ApiV1ErrorCode)
     : UNKNOWN_API_ERROR_MESSAGE;
+}
+
+/**
+ * es-AR copy for a refusal, using the body's `reason` when it names WHICH input
+ * was wrong (v14, `travel_input_invalid`). The sentence is the contract's own
+ * (`PET_TRAVEL_REFUSAL_MESSAGES`), the one the web answers with, so a date out
+ * of range reads "La fecha de viaje tiene que ser desde ayer y hasta dentro de
+ * un año." instead of three causes at once (QA 2026-10-07, copy 1). A reason
+ * this build does not know, or none (an older server), falls back to the
+ * code's sentence.
+ */
+export function apiRefusalMessage(code: ApiV1ErrorCode, reason?: string): string {
+  if (code === "travel_input_invalid" && reason !== undefined) {
+    const specific = (PET_TRAVEL_REFUSAL_MESSAGES as Record<string, string | undefined>)[reason];
+    if (specific !== undefined) return specific;
+  }
+  return apiErrorMessage(code);
 }
 
 /** es-AR copy for each API error code. Exhaustive: every code has a sentence. */
@@ -621,6 +642,9 @@ export function apiErrorMessage(code: ApiV1ErrorCode): string {
     case "travel_not_allowed":
       return "Esta mascota está registrada como fallecida y no acepta nuevos registros.";
     case "travel_input_invalid":
+      // ONLY WHEN THE SERVER SAYS NOTHING MORE. A v14 server adds `reason`,
+      // and `apiRefusalMessage` above answers with that input's own sentence;
+      // this list of every window is for a server that names none.
       return "Revisá los datos: la fecha de viaje va de ayer a un año, el CVI no puede tener fecha futura y la aerolínea tiene que ser de la lista.";
     case "trip_duplicate":
       return "Ya registraste un viaje a ese destino para esa fecha.";

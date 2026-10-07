@@ -47,7 +47,7 @@ import type { ApiV1ErrorCode } from "@dim/contract/api";
 import { API_BASE_URL } from "../config/api";
 import { APP_VERSION_HEADER, appVersionHeaderValue } from "../config/app-version";
 import { reportHandledFailure, telemetryPath } from "../observability/report";
-import { apiErrorMessage, apiV1ErrorCode, carriesUnknownErrorCode } from "./error-copy";
+import { apiRefusalMessage, apiV1ErrorCode, carriesUnknownErrorCode } from "./error-copy";
 
 /** Nothing in this app is worth a spinner that never ends. */
 export const REQUEST_TIMEOUT_MS = 10_000;
@@ -132,7 +132,17 @@ type Correlated = { correlationId?: string };
 
 export type ApiResult<T> =
   | { outcome: "ok"; payload: T }
-  | ({ outcome: "api-error"; code: ApiV1ErrorCode; retryAfterSeconds: number | null } & Correlated)
+  | ({
+      outcome: "api-error";
+      code: ApiV1ErrorCode;
+      retryAfterSeconds: number | null;
+      /**
+       * WHICH input was refused, when the body says (`reason` beside
+       * `travel_input_invalid`, v14). Absent on every other refusal and on an
+       * older server, so every switch over `outcome` compiles unchanged.
+       */
+      reason?: string;
+    } & Correlated)
   /** `received` is `null` when the field was absent or not a number at all. */
   | ({ outcome: "unsupported-version"; received: number | null } & Correlated)
   | ({ outcome: "malformed"; detail: string } & Correlated)
@@ -254,6 +264,13 @@ export async function performRequest(
   }
 }
 
+/** The body's `reason`, when it is a non-empty string; never trusted further. */
+function refusalReason(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) return null;
+  const reason = (body as { reason?: unknown }).reason;
+  return typeof reason === "string" && reason.length > 0 ? reason : null;
+}
+
 /** Maps a transport answer onto the typed result. No session logic here. */
 function interpret<T>(raw: RawResponse, spec: RequestSpec): ApiResult<T> {
   if (raw.transport === "unreachable") return { outcome: "unreachable", detail: raw.detail };
@@ -266,7 +283,13 @@ function interpret<T>(raw: RawResponse, spec: RequestSpec): ApiResult<T> {
     // surface can tell".
     const code = apiV1ErrorCode(raw.body);
     if (code !== null) {
-      return { outcome: "api-error", code, retryAfterSeconds: raw.retryAfterSeconds };
+      const reason = refusalReason(raw.body);
+      return {
+        outcome: "api-error",
+        code,
+        retryAfterSeconds: raw.retryAfterSeconds,
+        ...(reason === null ? {} : { reason }),
+      };
     }
     // A 4xx THAT DECLARED A CODE THIS BUILD DOES NOT KNOW IS VERSION SKEW, not
     // an outage (CANON-451, critic gap 3). `/api/v1` answers every 4xx from a
@@ -507,7 +530,7 @@ function failureSentence(result: ApiResult<unknown>): string | null {
     case "ok":
       return null;
     case "api-error":
-      return apiErrorMessage(result.code);
+      return apiRefusalMessage(result.code, result.reason);
     case "unsupported-version":
       return `Esta versión de la app no entiende la respuesta del servidor (v${
         result.received ?? "desconocida"
