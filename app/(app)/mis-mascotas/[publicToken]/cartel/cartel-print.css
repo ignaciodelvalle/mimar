@@ -17,7 +17,7 @@
      above does not save it: it targets html/body, not descendants.
 
      Scoped to the poster so the rest of the page keeps the browser's ink-saving
-     default. Grayscale mode still works — .print-bw filters on top of this. */
+     default. Grayscale mode (print:grayscale) still works — it filters on top of this. */
   [data-testid="poster-body"],
   [data-testid="poster-body"] * {
     -webkit-print-color-adjust: exact;
@@ -33,9 +33,6 @@
     display: none !important;
   }
 
-  /* Grayscale mode — toggled by the B&W button adding class .print-bw to <body>
-     or via the Tailwind print:grayscale on the poster wrapper. */
-  .print-bw * {
-    filter: grayscale(100%) !important;
-  }
+  /* Grayscale mode is the Tailwind print:grayscale the B&W button toggles on the
+     poster wrapper (PosterPreview.tsx) — no stylesheet rule needed here. */
 }

@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "generatedAt": "2026-09-25",
-    "totalViolations": 247,
+    "generatedAt": "2026-10-07",
+    "totalViolations": 184,
     "description": "Ratchet baseline for the CSS half of the design-token fence (rules C1–C8 in scripts/css-token-scan.ts). Keys are `<path>#<bucket>`; `.lp` (the landing) is counted separately from the rest of the sheet. These counts are GRANDFATHERED debt, not a target — lower them as declarations migrate to tokens, never raise them. Regenerate: pnpm tsx scripts/check-design-tokens.ts --write-css-baseline"
   },
   "buckets": {
@@ -16,22 +16,22 @@
       "duration": 0
     },
     "app/globals.css#core": {
-      "fontSize": 34,
+      "fontSize": 26,
       "fontHalfPx": 3,
-      "fontBelowFloor": 6,
-      "radius": 11,
-      "shadow": 4,
-      "hex": 37,
+      "fontBelowFloor": 5,
+      "radius": 7,
+      "shadow": 2,
+      "hex": 32,
       "deadWeight": 0,
       "duration": 0
     },
     "app/landing.css#lp": {
-      "fontSize": 65,
-      "fontHalfPx": 26,
-      "fontBelowFloor": 8,
-      "radius": 20,
+      "fontSize": 48,
+      "fontHalfPx": 19,
+      "fontBelowFloor": 3,
+      "radius": 17,
       "shadow": 1,
-      "hex": 11,
+      "hex": 6,
       "deadWeight": 0,
       "duration": 0
     }
