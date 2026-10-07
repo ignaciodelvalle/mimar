@@ -1405,3 +1405,80 @@ describe("LostScreen — after a landed 'Sí, la encontré' (review finding)", (
     expect(await screen.findByText("Alguien la vio")).toBeOnTheScreen();
   });
 });
+
+describe("LostScreen — custody polish review follow-ups", () => {
+  it("opens 'Cómo reconocerla' when a refusal may be about a field folded inside it", async () => {
+    // The server validates the microchip's format; the client cannot. A refusal
+    // while that field sits folded would leave "Revisá los datos" pointing at
+    // nothing on screen.
+    mockSend.mockResolvedValue({ outcome: "api-error", code: "lost_forbidden" });
+    render(<LostScreen publicToken={TOKEN} />);
+    fireEvent.press(await screen.findByText("Marcar como perdida"));
+    fireEvent.press(screen.getByText("Cómo reconocerla"));
+    fireEvent.changeText(screen.getByLabelText("Número de microchip"), "123");
+    // Folded again before submitting: the field is off screen.
+    fireEvent.press(screen.getByText("Cómo reconocerla"));
+    expect(screen.queryByLabelText("Número de microchip")).toBeNull();
+
+    fireEvent.press(screen.getByText("Marcar como perdida"));
+
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+    expect(await screen.findByLabelText("Número de microchip")).toBeOnTheScreen();
+    expect(screen.getByDisplayValue("123")).toBeOnTheScreen();
+  });
+
+  it("leaves the fold alone when nothing was typed in it", async () => {
+    mockSend.mockResolvedValue({ outcome: "api-error", code: "lost_forbidden" });
+    render(<LostScreen publicToken={TOKEN} />);
+    fireEvent.press(await screen.findByText("Marcar como perdida"));
+    fireEvent.press(screen.getByText("Marcar como perdida"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+    expect(screen.queryByLabelText("Número de microchip")).toBeNull();
+  });
+
+  it("in perdida, a stale banner and a refusal sit UNDER share and found", async () => {
+    mockFetch.mockResolvedValue(ok(searching()));
+    mockSend.mockResolvedValue({ outcome: "api-error", code: "lost_forbidden" });
+    render(<LostScreen publicToken={TOKEN} />);
+    await screen.findByText("Compartir la búsqueda");
+
+    // A refusal on the found confirmation…
+    fireEvent.press(screen.getByText("Marcar como encontrada"));
+    fireEvent.press(screen.getByText("Sí, la encontré"));
+    await screen.findByText("No se pudo");
+    // The confirmation stays open over a refusal, as it always did, and the
+    // refusal is drawn under it, not above.
+    let texts = textsInOrder();
+    expect(texts.indexOf("No se pudo")).toBeGreaterThan(texts.indexOf("Sí, la encontré"));
+    fireEvent.press(screen.getByText("Cancelar"));
+    // …and a focus re-read that fails over the search.
+    mockFetch.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
+    await refocus();
+    await screen.findByText("No pudimos actualizar");
+
+    texts = textsInOrder();
+    const share = texts.indexOf("Compartir la búsqueda");
+    expect(share).toBeGreaterThan(-1);
+    expect(texts.slice(0, share)).toEqual([
+      "Modo perdida",
+      "Búsqueda",
+      "Pampa está perdida. La búsqueda está activa.",
+    ]);
+    expect(texts.indexOf("No se pudo")).toBeGreaterThan(share);
+    expect(texts.indexOf("No pudimos actualizar")).toBeGreaterThan(share);
+  });
+
+  it("keeps the banners at the top when the animal is not lost", async () => {
+    mockFetch.mockResolvedValue(ok(payload()));
+    render(<LostScreen publicToken={TOKEN} />);
+    await screen.findByText("Marcar como perdida");
+    mockFetch.mockResolvedValue({ outcome: "unreachable", detail: "offline" });
+    await refocus();
+    await screen.findByText("No pudimos actualizar");
+
+    const texts = textsInOrder();
+    expect(texts.indexOf("No pudimos actualizar")).toBeLessThan(
+      texts.indexOf("Marcar como perdida"),
+    );
+  });
+});
