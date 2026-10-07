@@ -91,12 +91,12 @@ virtualStoreDirMaxLength: 60
 # cada uno no es esa etiqueta sino DONDE corre la copia vulnerable:
 #
 #   sharp   — la fija next@15.5 para optimizar imagenes: corre en PRODUCCION.
-#             La app ya declara 0.35.4 por su cuenta, asi que esto UNIFICA en
+#             La app ya declara 0.35.5 por su cuenta, asi que esto UNIFICA en
 #             la version que el repo ya eligio, no introduce una nueva.
 #   undici  — la traen expo-server-sdk (el camino de notificaciones push, que
 #             corre en produccion) y jsdom (tests).
 #   postcss — la fija next para procesar CSS en tiempo de build. La app ya usa
-#             8.5.26; misma unificacion que sharp.
+#             8.5.28; misma unificacion que sharp.
 #   js-yaml — herramientas de desarrollo: la config de cobertura de tests y el
 #             formateador de salida de builds de Expo. El CVE es agotamiento de
 #             CPU parseando YAML; explotarlo pide un YAML hostil en este mismo
@@ -155,9 +155,9 @@ virtualStoreDirMaxLength: 60
 # Se arreglan igual los que se pueden. La distincion de arriba cambia cuanto
 # cuidado merece verificar cada uno, no si se arregla.
 overrides:
-  sharp: ^0.35.4
+  sharp: ^0.35.5
   undici: ^7.29.0
-  postcss: ^8.5.26
+  postcss: ^8.5.28
   js-yaml@3: ^3.15.2
   js-yaml@4: ^4.3.2
   esbuild@0.28: ^0.28.1
