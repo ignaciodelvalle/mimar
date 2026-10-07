@@ -21,6 +21,11 @@ function fakeClient(overrides: Partial<AdminAuthClient["auth"]["admin"]> = {}) {
   return { client: { auth: { admin } } as unknown as AdminAuthClient, admin };
 }
 
+// These fakes hand back ids that are not real accounts, so the helper's
+// legal-acceptance stamp (a real UPDATE) is switched off; the stamp itself is
+// exercised by every DB test that creates a fixture through this helper.
+const NO_STAMP = { legalAcceptance: "none" } as const;
+
 describe("createFreshTestUser", () => {
   it.each([
     "admin@dim.test",
@@ -38,7 +43,7 @@ describe("createFreshTestUser", () => {
 
   it("passes a clean create straight through", async () => {
     const { client, admin } = fakeClient();
-    const res = await createFreshTestUser(client, { email: "a@dim-test.local" });
+    const res = await createFreshTestUser(client, { email: "a@dim-test.local" }, NO_STAMP);
     expect(res.data.user?.id).toBe("new-id");
     expect(admin.listUsers).not.toHaveBeenCalled();
     expect(admin.deleteUser).not.toHaveBeenCalled();
@@ -62,7 +67,7 @@ describe("createFreshTestUser", () => {
       });
     const { client, admin } = fakeClient({ createUser, listUsers });
 
-    const res = await createFreshTestUser(client, { email: "A@dim-test.local" });
+    const res = await createFreshTestUser(client, { email: "A@dim-test.local" }, NO_STAMP);
 
     expect(res.data.user?.id).toBe("fresh");
     expect(listUsers).toHaveBeenCalledTimes(2);
@@ -82,9 +87,9 @@ describe("createFreshTestUser", () => {
         error: { message: "fk violation" },
       })) as never,
     });
-    await expect(createFreshTestUser(client, { email: "a@dim-test.local" })).rejects.toThrow(
-      /could not be deleted: fk violation/,
-    );
+    await expect(
+      createFreshTestUser(client, { email: "a@dim-test.local" }, NO_STAMP),
+    ).rejects.toThrow(/could not be deleted: fk violation/);
   });
 
   it("returns other create errors untouched", async () => {
@@ -93,7 +98,7 @@ describe("createFreshTestUser", () => {
       error: { message: "Password is too weak", code: "weak_password" },
     };
     const { client, admin } = fakeClient({ createUser: vi.fn(async () => weak) as never });
-    const res = await createFreshTestUser(client, { email: "a@dim-test.local" });
+    const res = await createFreshTestUser(client, { email: "a@dim-test.local" }, NO_STAMP);
     expect(res).toBe(weak);
     expect(admin.listUsers).not.toHaveBeenCalled();
   });
