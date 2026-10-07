@@ -342,13 +342,13 @@ const factsShape = {
   /**
    * The submit's idempotency key (plan A5f, migration 0289).
    *
-   * A key of at least 32 characters (a UUID) makes a re-send after a timeout
+   * A UUID key (IDEMPOTENCY_KEY_PATTERN) makes a re-send after a timeout
    * land on the denuncia it already filed instead of a second one: an
    * identified reporter gets the original's ack back (201, same reference
    * code); an anonymous one gets `welfare_report_already_filed` (409) and
    * nothing about the original — the key is the anonymous scope's only proof.
    * Mint it with a CSPRNG once per denuncia and reuse it only for re-sends of
-   * that same denuncia. A shorter key, or none, bounds nothing: the re-send
+   * that same denuncia. Any other key, or none, bounds nothing: the re-send
    * files a second denuncia, which `computeFlagReasons` catches as
    * `duplicate_within_24h`.
    */

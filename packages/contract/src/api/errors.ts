@@ -1018,7 +1018,7 @@
  *                         the key is the only proof, and a key is not enough to
  *                         hand its holder someone's denuncia. What it does tell
  *                         (that a report under this key was received) reaches
- *                         only a holder of the exact key (≥ 32 chars; a UUID).
+ *                         only a holder of the exact key (a UUID).
  *                         An IDENTIFIED reporter's retry does not land here: it
  *                         answers 201 with the original's reference code. The
  *                         person's move is to stop resending.
