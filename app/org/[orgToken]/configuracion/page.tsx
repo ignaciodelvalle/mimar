@@ -28,9 +28,10 @@ export default async function OrgConfigPage({
   // P4 (migration 0292): only the org types that may receive found animals
   // get the card; a never-saved org reads as off.
   const receivesFoundAnimals = canReceiveFoundAnimals(organization.orgType);
-  const intake = receivesFoundAnimals
-    ? ((await readFoundAnimalIntake(organization.id)) ?? FOUND_ANIMAL_INTAKE_OFF)
-    : null;
+  const saved = receivesFoundAnimals ? await readFoundAnimalIntake(organization.id) : null;
+  const intake = receivesFoundAnimals ? (saved ?? FOUND_ANIMAL_INTAKE_OFF) : null;
+  const intakeConfirmationExpired =
+    saved?.accepting === true && saved.capacityStatus === "recibimos" && saved.confirmationExpired;
 
   return (
     <div className="space-y-6">
@@ -62,6 +63,7 @@ export default async function OrgConfigPage({
               orgToken={organization.publicToken}
               settings={intake}
               verified={organization.verified}
+              confirmationExpired={intakeConfirmationExpired}
               hasLocation={
                 (organization.locationLat !== null && organization.locationLng !== null) ||
                 organization.localityId !== null
