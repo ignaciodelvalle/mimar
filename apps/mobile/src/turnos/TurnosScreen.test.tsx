@@ -322,8 +322,11 @@ describe("the empty state", () => {
     render(<TurnosScreen onOpen={jest.fn()} onSearch={jest.fn()} />);
 
     await waitFor(() => expect(screen.getByText("No tenés turnos próximos.")).toBeTruthy());
-    expect(screen.getByText("No tenés turnos reservados.")).toBeTruthy();
-    expect(screen.getByText("Buscar un turno")).toBeTruthy();
+    // SAID ONCE. The count line used to add "No tenés turnos reservados." right
+    // above this empty state — two sentences for one absence.
+    expect(screen.queryByText("No tenés turnos reservados.")).toBeNull();
+    // And the button is the empty state's own action, not a second block.
+    expect(screen.getAllByText("Buscar un turno")).toHaveLength(1);
     // THE SENTENCE THAT MUST NOT COME BACK. A browser link stands in front of a
     // session this app does not share, and it is a second way to do one thing.
     expect(screen.queryByText(/mimar\.com\.ar/i)).toBeNull();
@@ -345,9 +348,10 @@ describe("the empty state", () => {
   });
 
   it("offers the search on a screen that ALREADY has turnos, not only on an empty one", async () => {
-    // The button sits above the sections rather than inside the empty state. A
-    // person with a long history still opens this to book the next one, and a
-    // control reachable only by having nothing is a control most people never see.
+    // With upcoming turnos there is no empty state to carry it, so the button
+    // sits above the sections. A person with a long history still opens this to
+    // book the next one, and a control reachable only by having nothing is a
+    // control most people never see.
     mockFetch.mockResolvedValue({
       outcome: "ok",
       payload: payload({ upcoming: [anAppointment({ appointmentToken: "APT-UP" })] }),
@@ -355,5 +359,17 @@ describe("the empty state", () => {
     render(<TurnosScreen onOpen={jest.fn()} onSearch={jest.fn()} />);
 
     await waitFor(() => expect(screen.getByText("Buscar un turno")).toBeTruthy());
+  });
+});
+
+describe("the header already names the screen", () => {
+  it("draws no body title over the list — 'Mis turnos' is the header's", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ upcoming: [anAppointment({ appointmentToken: "APT-UP" })] }),
+    });
+    render(<TurnosScreen onOpen={jest.fn()} onSearch={jest.fn()} />);
+    await waitFor(() => expect(screen.getByText("1 turno en total.")).toBeTruthy());
+    expect(screen.queryByText("Mis turnos")).toBeNull();
   });
 });
