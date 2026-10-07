@@ -62,6 +62,9 @@ import {
   type BiteDraftBanner as BiteDraftInfo,
   useBiteDraftBanner,
 } from "../../src/pets/use-bite-draft-banner";
+import { PendingIncomingCard } from "../../src/transfers/PendingIncomingCard";
+import type { PendingIncomingRow } from "../../src/transfers/pending-incoming-view-model";
+import { usePendingIncoming } from "../../src/transfers/use-pending-incoming";
 import { DestinationsFooter } from "../../src/ui/TopLevelNavMenu";
 import { EmptyState, ErrorNotice, Loading, StaleNotice } from "../../src/ui/components";
 import { PrimaryButton, Screen, pullToRefresh } from "../../src/ui/kit";
@@ -170,6 +173,14 @@ export default function MisMascotasScreen() {
   const { cases: openCases, refresh: refreshCases } = useOpenCases();
   useFocusEffect(useCallback(() => void refreshCases(), [refreshCases]));
 
+  // ESPERAN TU RESPUESTA (2026-10). Invitations to look after somebody's animal
+  // and offers of its titularidad — the same two reads Transferencias makes. A
+  // staging invitee never saw a pending invitation because it lived only in the
+  // inbox and on that screen; this card puts it on top of the one people open
+  // first. Its own read on every focus, quiet when it fails, like the casos.
+  const { rows: pendingIncoming, refresh: refreshPendingIncoming } = usePendingIncoming();
+  useFocusEffect(useCallback(() => void refreshPendingIncoming(), [refreshPendingIncoming]));
+
   // WHEN THE NETWORK COMES BACK, TRY AGAIN (B-05). The offline banner already
   // clears itself on this exact event; the list used to sit broken beside it
   // until somebody pressed a button. A refresh and not an initial read: whatever
@@ -177,6 +188,7 @@ export default function MisMascotasScreen() {
   useReconnect(() => {
     void load("refresh");
     void refreshCases();
+    void refreshPendingIncoming();
   });
 
   // STABLE ACROSS RENDERS, ON PURPOSE (M3 / R-1). Every `PetRow` in the
@@ -207,6 +219,10 @@ export default function MisMascotasScreen() {
     routerRef.current.push(route as Parameters<typeof router.push>[0]);
   }, []);
   const handleOpenCases = useCallback(() => routerRef.current.push(ROUTES.casos), []);
+  const handleOpenPendingRoute = useCallback((route: PendingIncomingRow["route"]) => {
+    routerRef.current.push(route);
+  }, []);
+  const handleOpenTransfers = useCallback(() => routerRef.current.push(ROUTES.transferencias), []);
 
   if (!gate.allowed) return gate.element;
 
@@ -238,11 +254,13 @@ export default function MisMascotasScreen() {
       staleFailure={state.staleFailure}
       biteDraft={biteDraft}
       openCases={openCases}
+      pendingIncoming={pendingIncoming}
       refreshing={refreshing}
       loadingMore={loadingMore}
       onRefresh={() => {
         void load("refresh");
         void refreshCases();
+        void refreshPendingIncoming();
       }}
       onEndReached={loadMore}
       onOpen={handleOpenPet}
@@ -250,6 +268,8 @@ export default function MisMascotasScreen() {
       onOpenBiteDraft={handleOpenBiteDraft}
       onOpenCaseRoute={handleOpenCaseRoute}
       onOpenCases={handleOpenCases}
+      onOpenPendingRoute={handleOpenPendingRoute}
+      onOpenTransfers={handleOpenTransfers}
     />
   );
 }
@@ -263,6 +283,7 @@ function PetListScreen({
   staleFailure,
   biteDraft,
   openCases,
+  pendingIncoming,
   refreshing,
   loadingMore,
   onRefresh,
@@ -272,11 +293,14 @@ function PetListScreen({
   onOpenBiteDraft,
   onOpenCaseRoute,
   onOpenCases,
+  onOpenPendingRoute,
+  onOpenTransfers,
 }: {
   view: MyPetsV1;
   staleFailure: string | null;
   biteDraft: BiteDraftInfo | null;
   openCases: MyCasesV1 | null;
+  pendingIncoming: PendingIncomingRow[];
   refreshing: boolean;
   /** D5 — a "more" request is in flight; drives the footer spinner. */
   loadingMore: boolean;
@@ -288,6 +312,8 @@ function PetListScreen({
   onOpenBiteDraft: (publicToken: string) => void;
   onOpenCaseRoute: (route: string) => void;
   onOpenCases: () => void;
+  onOpenPendingRoute: (route: PendingIncomingRow["route"]) => void;
+  onOpenTransfers: () => void;
 }) {
   const { pets } = view;
 
@@ -324,6 +350,9 @@ function PetListScreen({
             openCases={openCases}
             onOpenCaseRoute={onOpenCaseRoute}
             onOpenCases={onOpenCases}
+            pendingIncoming={pendingIncoming}
+            onOpenPendingRoute={onOpenPendingRoute}
+            onOpenTransfers={onOpenTransfers}
           />
         }
         ListEmptyComponent={
@@ -368,6 +397,9 @@ function ListHeader({
   openCases,
   onOpenCaseRoute,
   onOpenCases,
+  pendingIncoming,
+  onOpenPendingRoute,
+  onOpenTransfers,
 }: {
   staleFailure: string | null;
   onRefresh: () => void;
@@ -376,12 +408,24 @@ function ListHeader({
   openCases: MyCasesV1 | null;
   onOpenCaseRoute: (route: string) => void;
   onOpenCases: () => void;
+  pendingIncoming: PendingIncomingRow[];
+  onOpenPendingRoute: (route: PendingIncomingRow["route"]) => void;
+  onOpenTransfers: () => void;
 }) {
   const showCases = hasOpenCases(openCases);
-  if (staleFailure === null && biteDraft === null && !showCases) return null;
+  if (staleFailure === null && biteDraft === null && !showCases && pendingIncoming.length === 0)
+    return null;
   return (
     <View style={styles.headerGap}>
       {staleFailure === null ? null : <StaleNotice message={staleFailure} onRetry={onRefresh} />}
+      {/* What somebody else is waiting on this person to answer — first among
+          the facts about the account, because it is the only one with a
+          deadline set by someone else. */}
+      <PendingIncomingCard
+        rows={pendingIncoming}
+        onOpenRoute={onOpenPendingRoute}
+        onOpenAll={onOpenTransfers}
+      />
       {biteDraft === null ? null : (
         <BiteDraftBanner onPress={() => onOpenBiteDraft(biteDraft.publicToken)} />
       )}
