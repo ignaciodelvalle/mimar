@@ -145,6 +145,10 @@ export const AUDIT_ACTION_LABELS = {
   outbreak_investigation_closed_resolved: "Investigación de brote cerrada (resuelta)",
   outbreak_investigation_closed_dismissed: "Investigación de brote cerrada (descartada)",
   outbreak_investigation_note_added: "Nota de investigación de brote añadida",
+  // Alert inbox triage (migration 0287)
+  alert_firing_triaged: "Alerta sanitaria gestionada",
+  // Notification outbox (migration 0287)
+  outbox_row_retry_requested: "Reenvío de notificación solicitado",
   // Rabies observation
   rabies_observation_closed_professional: "Observación antirrábica cerrada por profesional",
   bite_reported_by_org: "Mordedura reportada por organización",

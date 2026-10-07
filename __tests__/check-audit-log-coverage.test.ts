@@ -230,6 +230,24 @@ export async function seizeThatAnimalAction(orgToken: string, petId: string) {
     });
   });
 
+  // 2026-10-07 (A12) — the alert inbox's local admin guard was not a listed
+  // guard, so its six triage actions were never candidates at all.
+  it("derives the six alert-firing triage actions from the REAL repo, all audited", () => {
+    const { candidates } = scanAll();
+    const triage = candidates
+      .filter((c) => c.relPath === "app/actions/alert-firings.ts")
+      .map((c) => ({ name: c.name, audited: c.audited }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    expect(triage).toEqual([
+      { name: "acknowledgeFiringAction", audited: true },
+      { name: "contactAuthorityFiringAction", audited: true },
+      { name: "dismissFiringAction", audited: true },
+      { name: "openInvestigationFiringAction", audited: true },
+      { name: "registerFollowupFiringAction", audited: true },
+      { name: "resolveFiringAction", audited: true },
+    ]);
+  });
+
   it("recognises every operator guard, not just the one the fixtures use", () => {
     for (const guard of OPERATOR_GUARDS) {
       const src = `"use server";

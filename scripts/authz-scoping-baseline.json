@@ -1,12 +1,8 @@
 {
-  "app/actions/alert-firings.ts#contactAuthorityFiringAction": "TODO: admin-global (requireAdminUser) firing transition; contactAuthorityFiring(firingId) is not handed the acting admin, so the transition is unattributed",
-  "app/actions/alert-firings.ts#openInvestigationFiringAction": "TODO: admin-global (requireAdminUser); openInvestigationFiring(firingId) gets no actor and re-guards only through openOutbreakInvestigationAction's own session check",
-  "app/actions/alert-firings.ts#registerFollowupFiringAction": "TODO: admin-global (requireAdminUser); the follow-up note is appended without the acting admin's id",
   "app/actions/bulk-adoption-actions.ts#bulkApproveAdoptionApplicationsAction": "delegated: each item runs approveAdoptionApplicationAction, which re-guards with requireCapabilityForOrgToken('adoption.review', orgToken) and uses its result",
   "app/actions/bulk-adoption-actions.ts#bulkRejectAdoptionApplicationsAction": "delegated: each item runs rejectAdoptionApplicationAction, which re-guards with requireCapabilityForOrgToken('adoption.review', orgToken) and uses its result",
   "app/actions/rule-impact-preview.ts#previewRuleImpact": "admin-global read-only count (countDogsAffectedByRule); writes nothing and has no tenant to bind",
   "app/admin/libro/actions.ts#fetchEventAmendmentChainAction": "admin-global read of the amendment chain by event id; platform admin has universal scope by design",
-  "app/admin/outbox/actions.ts#retryOutboxRowAction": "TODO: admin-global ops retry; reschedules the row without recording which admin asked for it",
   "app/org/[orgToken]/intake/importar/actions.ts#validateIntakeCsvAction": "read-only: parses the uploaded CSV and hands rows back for review; touches no tenant row (the write is importIntakeRowsAction)",
   "app/org/[orgToken]/mascotas/[publicToken]/eventos/actions.ts#orgRecordNoteAction": "delegated: createNoteAction re-derives authority from the session (requirePetAccess + its own event.write check); the capability here is belt and braces",
   "app/org/[orgToken]/mascotas/[publicToken]/eventos/actions.ts#orgRecordVaccinationAction": "delegated: createVaccinationAction re-derives authority from the session (requireAlivePetAccess, which enforces event.write)",

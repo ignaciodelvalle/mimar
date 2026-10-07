@@ -89,7 +89,17 @@
     "FILE is an authority act on a legal record; an attendance mark or an intake",
     "is a clinical or operational fact. The precedent now exists, and each of",
     "those six still owes its own decision — settling them by citing this one",
-    "would be the fiat this file already refused once."
+    "would be the fiat this file already refused once.",
+    "",
+    "FOURTH MEASUREMENT, 2026-10-07 (plan maestro A12, migration 0287).",
+    "",
+    "retryOutboxRowAction leaves the list: a retry can make an authority receive",
+    "the same notice again, so it now writes `outbox_row_retry_requested` in the",
+    "transaction that re-queues the row. And the aperture widened again:",
+    "OPERATOR_GUARDS now names app/actions/alert-firings.ts's local",
+    "requireAdminUser, so the six /admin/alertas triage actions are candidates",
+    "for the first time — all six enter audited (`alert_firing_triaged`), none",
+    "as debt. 70 candidates, 44 audited, 26 baselined."
   ],
   "unaudited": [
     "app/actions/admin-proposals.ts#proposeOrgVerificationAction",
@@ -114,7 +124,6 @@
     "app/actions/service-offerings.ts#rejectServiceOfferingAction",
     "app/actions/service-offerings.ts#unpauseServiceOfferingAction",
     "app/actions/service-offerings.ts#updateOfferingCapacityAction",
-    "app/admin/outbox/actions.ts#retryOutboxRowAction",
     "app/org/[orgToken]/intake/importar/actions.ts#importIntakeRowsAction",
     "app/org/[orgToken]/mascotas/[publicToken]/eventos/actions.ts#orgRecordNoteAction",
     "src/modules/adoption/actions.ts#requestInfoAdoptionApplicationAction",

@@ -6,13 +6,16 @@
 //   - FLEET SWEEP: only live admin owners are evaluated (A10-G3).
 //   - TRIAGE actions: acknowledge / open-investigation guard / contact / resolve /
 //     dismiss, including invalid-transition rejection.
+//   - AUDIT (A12, migration 0287): every triage action writes ONE
+//     alert_firing_triaged row with the acting admin as actor; a refused
+//     action writes none.
 //
 // The evaluator (evaluateAlertSubscriptions) is mocked so "breaching" is
 // deterministic without standing up real metric data. Auth (createClient) is
 // mocked to a seeded admin. next/cache is mocked.
 
 import { createClient as createSupabaseAdmin } from "@supabase/supabase-js";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { AlertMetricKey } from "@/db";
@@ -53,7 +56,7 @@ import {
   registerFollowupFiringAction,
   resolveFiringAction,
 } from "@/app/actions/alert-firings";
-import { alertFirings, alertSubscriptions, db, notifications, profiles } from "@/db";
+import { alertFirings, alertSubscriptions, auditLog, db, notifications, profiles } from "@/db";
 import {
   evaluateAndRecordFiringsForAllAdmins,
   recordFiringsForUser,
@@ -376,6 +379,20 @@ async function seedFiring(
   return row.id;
 }
 
+/** The alert_firing_triaged rows written for one firing, oldest first. */
+async function triageAudit(firingId: string) {
+  return db
+    .select({ actorUserId: auditLog.actorUserId, payload: auditLog.payload })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.action, "alert_firing_triaged"),
+        sql`${auditLog.payload} ->> 'firing_id' = ${firingId}`,
+      ),
+    )
+    .orderBy(auditLog.performedAt);
+}
+
 describe("triage — acknowledge", () => {
   it("disparada → reconocida and stamps acknowledged_at/by", async () => {
     const id = await seedFiring("open_welfare_reports", "disparada");
@@ -386,12 +403,25 @@ describe("triage — acknowledge", () => {
     expect(row.status).toBe("reconocida");
     expect(row.acknowledgedAt).toBeInstanceOf(Date);
     expect(row.acknowledgedBy).toBe(adminUserId);
+
+    const audit = await triageAudit(id);
+    expect(audit).toHaveLength(1);
+    expect(audit[0].actorUserId).toBe(adminUserId);
+    expect(audit[0].payload).toMatchObject({
+      firing_id: id,
+      transition: "acknowledge",
+      from_status: "disparada",
+      to_status: "reconocida",
+      metric_key: "open_welfare_reports",
+    });
   });
 
   it("rejects acknowledging an already-acknowledged firing (invalid transition)", async () => {
     const id = await seedFiring("open_welfare_reports", "reconocida");
     const res = await acknowledgeFiringAction(id);
     expect(res).toHaveProperty("error");
+    // A refused action leaves no trace claiming it happened.
+    expect(await triageAudit(id)).toEqual([]);
   });
 
   it("rejects a caller with no session", async () => {
@@ -421,6 +451,16 @@ describe("triage — open investigation (zoonosis only, K-D2)", () => {
     const [row] = await db.select().from(alertFirings).where(eq(alertFirings.id, id));
     expect(row.status).toBe("en_investigacion");
     expect(row.investigationCode).toBe("INV-TEST-001");
+
+    const audit = await triageAudit(id);
+    expect(audit).toHaveLength(1);
+    expect(audit[0].actorUserId).toBe(adminUserId);
+    expect(audit[0].payload).toMatchObject({
+      transition: "open_investigation",
+      from_status: "reconocida",
+      to_status: "en_investigacion",
+      investigation_code: "INV-TEST-001",
+    });
   });
 
   it("refuses to open an investigation for a non-zoonosis metric", async () => {
@@ -441,12 +481,25 @@ describe("triage — register seguimiento (non-zoonosis note)", () => {
     // Status unchanged (a note, not a transition).
     expect(row.status).toBe("reconocida");
     expect(row.notes).toContain("Llamé a la municipalidad.");
+    // A12: the note names its author — it used to carry only a timestamp.
+    expect(row.notes).toContain(adminUserId);
+
+    const audit = await triageAudit(id);
+    expect(audit).toHaveLength(1);
+    expect(audit[0].actorUserId).toBe(adminUserId);
+    expect(audit[0].payload).toMatchObject({
+      transition: "followup",
+      from_status: "reconocida",
+      to_status: "reconocida",
+      note: "Llamé a la municipalidad.",
+    });
   });
 
   it("refuses a seguimiento on a zoonosis metric (use investigation)", async () => {
     const id = await seedFiring("active_zoonosis", "reconocida");
     const res = await registerFollowupFiringAction(id, "nota");
     expect(res).toHaveProperty("error");
+    expect(await triageAudit(id)).toEqual([]);
   });
 });
 
@@ -504,6 +557,19 @@ describe("triage — contact authority", () => {
       );
     expect(notif.length).toBeGreaterThanOrEqual(1);
 
+    // A12: WHO escalated. contacted_govt_user_id names the recipient; the
+    // acting admin is on the audit row, and nowhere else.
+    const audit = await triageAudit(id);
+    expect(audit).toHaveLength(1);
+    expect(audit[0].actorUserId).toBe(adminUserId);
+    expect(audit[0].payload).toMatchObject({
+      transition: "contact_authority",
+      from_status: "reconocida",
+      to_status: "autoridad_contactada",
+      recipients: 1,
+      first_recipient_user_id: govtId,
+    });
+
     // Cleanup the seeded govt assignment.
     await db.delete(govtAssignments).where(eq(govtAssignments.userId, govtId));
   });
@@ -520,6 +586,15 @@ describe("triage — resolve / dismiss", () => {
     expect(row.resolvedAt).toBeInstanceOf(Date);
     expect(row.resolvedBy).toBe(adminUserId);
     expect(row.notes).toContain("Atendido por el municipio.");
+
+    const audit = await triageAudit(id);
+    expect(audit).toHaveLength(1);
+    expect(audit[0].actorUserId).toBe(adminUserId);
+    expect(audit[0].payload).toMatchObject({
+      transition: "resolve",
+      to_status: "resuelta",
+      note: "Atendido por el municipio.",
+    });
   });
 
   it("dismiss: disparada → descartada", async () => {
@@ -529,6 +604,15 @@ describe("triage — resolve / dismiss", () => {
 
     const [row] = await db.select().from(alertFirings).where(eq(alertFirings.id, id));
     expect(row.status).toBe("descartada");
+
+    const audit = await triageAudit(id);
+    expect(audit).toHaveLength(1);
+    expect(audit[0].actorUserId).toBe(adminUserId);
+    expect(audit[0].payload).toMatchObject({
+      transition: "dismiss",
+      from_status: "disparada",
+      to_status: "descartada",
+    });
   });
 
   it("rejects dismissing an already-investigated firing", async () => {

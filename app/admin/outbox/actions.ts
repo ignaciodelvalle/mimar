@@ -9,13 +9,20 @@
 //
 // Note: calling this on an already-pending row is idempotent — it just
 // moves next_retry_at to now so the drainer re-prioritises the row.
+//
+// AUDITED (plan maestro A12, migration 0287). A retry can make an authority
+// receive the same notice again, so who asked for it is an operator act:
+// `outbox_row_retry_requested`, in the transaction that re-queues the row.
+// It was baselined debt in scripts/audit-log-coverage-baseline.json until then.
+// The write lives in src/modules/surveillance/infrastructure/
+// outbox-retry-repository.ts; this file keeps the guard and the revalidation.
 
-import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
-import { db, eventNotificationOutbox } from "@/db";
 import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
-import { buildRetryPayload } from "@/lib/infra/outbox-list";
+import { OutboxRetryRepository } from "@/src/modules/surveillance/infrastructure/outbox-retry-repository";
+
+const retryRepo = new OutboxRetryRepository();
 
 // ---------------------------------------------------------------------------
 // Server action
@@ -24,29 +31,20 @@ import { buildRetryPayload } from "@/lib/infra/outbox-list";
 export async function retryOutboxRowAction(
   rowId: string,
 ): Promise<{ error?: string; scheduledAt?: string }> {
-  await requireAdminOrRedirect();
+  const { user } = await requireAdminOrRedirect();
 
-  const [row] = await db
-    .select({ id: eventNotificationOutbox.id, status: eventNotificationOutbox.status })
-    .from(eventNotificationOutbox)
-    .where(eq(eventNotificationOutbox.id, rowId))
-    .limit(1);
-
-  if (!row) {
-    return { error: "Fila de outbox no encontrada." };
+  const result = await retryRepo.requeue({ rowId, actorUserId: user.id });
+  if (!result.ok) {
+    // A merged legacy duplicate (migration 0247) lives on its case record now;
+    // re-opening it would send the same notice twice. The page hides the button
+    // (canRetry); this refuses the hand-posted call too.
+    return {
+      error:
+        result.reason === "merged"
+          ? "Esta fila está unificada en otro registro y no se reenvía."
+          : "Fila de outbox no encontrada.",
+    };
   }
-  // A merged legacy duplicate (migration 0247) lives on its case record now;
-  // re-opening it would send the same notice twice. The page hides the button
-  // (canRetry); this refuses the hand-posted call too.
-  if (row.status === "merged") {
-    return { error: "Esta fila está unificada en otro registro y no se reenvía." };
-  }
-
-  const payload = buildRetryPayload();
-  await db
-    .update(eventNotificationOutbox)
-    .set(payload)
-    .where(eq(eventNotificationOutbox.id, rowId));
 
   revalidatePath(`/admin/outbox/${rowId}`);
   revalidatePath("/admin/outbox");
@@ -54,5 +52,5 @@ export async function retryOutboxRowAction(
   // Return the scheduled next_retry_at (ISO) so the caller can confirm inline
   // exactly when the drainer will pick the row up — the action gave zero
   // feedback before, so an operator clicked again thinking it failed (Cowork A1).
-  return { scheduledAt: payload.nextRetryAt.toISOString() };
+  return { scheduledAt: result.scheduledAt.toISOString() };
 }

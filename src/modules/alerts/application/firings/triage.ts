@@ -4,6 +4,13 @@
 // Use-cases receive the authenticated userId + inputs and perform zero auth checks.
 // revalidatePath is also lifted to the shim (Next.js concern, not business logic).
 //
+// AUDIT (plan maestro A12, 2026-10-07). Every use case below writes one
+// `alert_firing_triaged` audit row, actor = the acting admin, in the SAME
+// transaction as the firing change (a rollback takes both). Decision K-D4 kept
+// the trail in the firing's *_by columns only, and two transitions had none:
+// a seguimiento note had no author, and "contactar autoridad" notified every
+// govt of a jurisdiction without recording who escalated.
+//
 // State transitions:
 //   acknowledgeFiring          disparada → reconocida
 //   openInvestigationFiring    (active_zoonosis only) reconocida → en_investigacion
@@ -14,8 +21,9 @@
 
 import { eq } from "drizzle-orm";
 
-import { type AlertFiring, alertFirings, db, notifications } from "@/db";
+import { type AlertFiring, type AlertFiringStatus, alertFirings, db, notifications } from "@/db";
 import { findAuthoritiesForJurisdiction } from "@/lib/infra/approval-routing";
+import { type AuditExecutor, writeAuditLog } from "@/lib/infra/audit-log";
 import {
   type AlertFiringTransition,
   investigationDiseaseCode,
@@ -65,6 +73,39 @@ function resolveTransition(
   return { next };
 }
 
+/**
+ * The one audit row each triage action writes. `locality_id` is the place key
+ * the audit_log province stamp reads (migration 0269), so a jurisdiction's
+ * trail finds the alerts triaged there; omitted when the firing names none.
+ */
+async function auditTriage(
+  executor: AuditExecutor,
+  userId: string,
+  firing: AlertFiring,
+  transition: AlertFiringTransition | "followup",
+  toStatus: AlertFiringStatus,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
+  await writeAuditLog(executor, {
+    action: "alert_firing_triaged",
+    actorUserId: userId,
+    payload: {
+      firing_id: firing.id,
+      transition,
+      from_status: firing.status,
+      to_status: toStatus,
+      metric_key: firing.metricKey,
+      ...(firing.localityId ? { locality_id: firing.localityId } : {}),
+      ...extra,
+    },
+  });
+}
+
+/** A seguimiento line: when and WHO, then the text. */
+export function followupNoteLine(at: Date, userId: string, note: string): string {
+  return `[${at.toISOString()} · ${userId}] ${note}`;
+}
+
 // ---------------------------------------------------------------------------
 // Triage use-cases
 // ---------------------------------------------------------------------------
@@ -80,10 +121,13 @@ export async function acknowledgeFiring(
   const t = resolveTransition(firing, "acknowledge");
   if ("error" in t) return t;
 
-  await db
-    .update(alertFirings)
-    .set({ status: t.next, acknowledgedAt: new Date(), acknowledgedBy: userId })
-    .where(eq(alertFirings.id, firingId));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(alertFirings)
+      .set({ status: t.next, acknowledgedAt: new Date(), acknowledgedBy: userId })
+      .where(eq(alertFirings.id, firingId));
+    await auditTriage(tx, userId, firing, "acknowledge", t.next);
+  });
 
   return { ok: true };
 }
@@ -94,7 +138,10 @@ export async function acknowledgeFiring(
  * openOutbreakInvestigationAction and stores the returned publicCode as
  * investigation_code. Non-zoonosis metrics must use registerFollowupFiring.
  */
-export async function openInvestigationFiring(firingId: string): Promise<FiringActionResult> {
+export async function openInvestigationFiring(
+  userId: string,
+  firingId: string,
+): Promise<FiringActionResult> {
   const firing = await loadFiring(firingId);
   if (!firing) return { error: "Alerta no encontrada" };
 
@@ -121,10 +168,15 @@ export async function openInvestigationFiring(firingId: string): Promise<FiringA
   });
   if ("error" in opened) return { error: opened.error };
 
-  await db
-    .update(alertFirings)
-    .set({ status: t.next, investigationCode: opened.publicCode })
-    .where(eq(alertFirings.id, firingId));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(alertFirings)
+      .set({ status: t.next, investigationCode: opened.publicCode })
+      .where(eq(alertFirings.id, firingId));
+    await auditTriage(tx, userId, firing, "open_investigation", t.next, {
+      investigation_code: opened.publicCode,
+    });
+  });
 
   return { ok: true };
 }
@@ -136,6 +188,7 @@ export async function openInvestigationFiring(firingId: string): Promise<FiringA
  * the lightweight record. Returns an error for zoonosis (use openInvestigation).
  */
 export async function registerFollowupFiring(
+  userId: string,
   firingId: string,
   note: string,
 ): Promise<FiringActionResult> {
@@ -156,10 +209,15 @@ export async function registerFollowupFiring(
     return { error: "Reconocé la alerta antes de registrar un seguimiento." };
   }
 
-  const stamped = `[${new Date().toISOString()}] ${trimmed}`;
+  // The author rides on the note itself (the column is free text and a note
+  // has no *_by column) AND on the audit row, which is the queryable record.
+  const stamped = followupNoteLine(new Date(), userId, trimmed);
   const merged = firing.notes ? `${firing.notes}\n${stamped}` : stamped;
 
-  await db.update(alertFirings).set({ notes: merged }).where(eq(alertFirings.id, firingId));
+  await db.transaction(async (tx) => {
+    await tx.update(alertFirings).set({ notes: merged }).where(eq(alertFirings.id, firingId));
+    await auditTriage(tx, userId, firing, "followup", firing.status, { note: trimmed });
+  });
 
   return { ok: true };
 }
@@ -171,7 +229,10 @@ export async function registerFollowupFiring(
  * and transition to autoridad_contactada. Sets contacted_govt_user_id (first
  * resolved recipient) + contacted_at.
  */
-export async function contactAuthorityFiring(firingId: string): Promise<FiringActionResult> {
+export async function contactAuthorityFiring(
+  userId: string,
+  firingId: string,
+): Promise<FiringActionResult> {
   const firing = await loadFiring(firingId);
   if (!firing) return { error: "Alerta no encontrada" };
 
@@ -199,28 +260,37 @@ export async function contactAuthorityFiring(firingId: string): Promise<FiringAc
   const metricLabel = METRIC_LABEL_ES[firing.metricKey] ?? firing.metricKey;
   const where = jurisdictionLabel(firing.jurisdictionProvince, firing.jurisdictionLocality);
 
-  // In-app outbox notification (v1 channel — decision K-D5).
-  await db.insert(notifications).values(
-    recipients.map((userId) => ({
-      userId,
-      notificationType: "alert_authority_contacted",
-      title: `Alerta sanitaria: ${metricLabel}`,
-      body: `Un administrador escaló una alerta de "${metricLabel}" en ${where}. Revisá la situación en tu jurisdicción.`,
-      severity: "warning" as const,
-      category: "admin",
-      ctaLabel: "Ver vigilancia",
-      ctaUrl: "/gob/vigilancia",
-    })),
-  );
+  // Notifications, transition and audit row commit together: no govt is
+  // notified of an escalation the register does not attribute to anybody.
+  await db.transaction(async (tx) => {
+    // In-app outbox notification (v1 channel — decision K-D5).
+    await tx.insert(notifications).values(
+      recipients.map((recipientId) => ({
+        userId: recipientId,
+        notificationType: "alert_authority_contacted",
+        title: `Alerta sanitaria: ${metricLabel}`,
+        body: `Un administrador escaló una alerta de "${metricLabel}" en ${where}. Revisá la situación en tu jurisdicción.`,
+        severity: "warning" as const,
+        category: "admin",
+        ctaLabel: "Ver vigilancia",
+        ctaUrl: "/gob/vigilancia",
+      })),
+    );
 
-  await db
-    .update(alertFirings)
-    .set({
-      status: t.next,
-      contactedGovtUserId: recipients[0],
-      contactedAt: new Date(),
-    })
-    .where(eq(alertFirings.id, firingId));
+    await tx
+      .update(alertFirings)
+      .set({
+        status: t.next,
+        contactedGovtUserId: recipients[0],
+        contactedAt: new Date(),
+      })
+      .where(eq(alertFirings.id, firingId));
+
+    await auditTriage(tx, userId, firing, "contact_authority", t.next, {
+      recipients: recipients.length,
+      first_recipient_user_id: recipients[0],
+    });
+  });
 
   return { ok: true };
 }
@@ -262,15 +332,18 @@ async function _closeFiring(
       : `[cierre] ${trimmed}`
     : firing.notes;
 
-  await db
-    .update(alertFirings)
-    .set({
-      status: t.next,
-      notes: merged,
-      resolvedAt: new Date(),
-      resolvedBy: userId,
-    })
-    .where(eq(alertFirings.id, firingId));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(alertFirings)
+      .set({
+        status: t.next,
+        notes: merged,
+        resolvedAt: new Date(),
+        resolvedBy: userId,
+      })
+      .where(eq(alertFirings.id, firingId));
+    await auditTriage(tx, userId, firing, transition, t.next, trimmed ? { note: trimmed } : {});
+  });
 
   return { ok: true };
 }

@@ -3069,6 +3069,17 @@ export const AUDIT_LOG_ACTIONS = [
   // The administrator reads one generic sentence; this row is what the
   // platform admin reads. Payload: { role, reason } — never the address.
   "institutional_create_refused",
+  // Plan maestro A12 (migration 0287). Every /admin/alertas triage action —
+  // acknowledge, open investigation, seguimiento, contact authority, resolve,
+  // dismiss — in the transaction that changes the firing, actor = the admin.
+  // Supersedes decision K-D4: seguimiento and contact authority had no *_by
+  // column, so they recorded no actor at all. Payload: { firing_id,
+  // transition, from_status, to_status, metric_key, locality_id?, ... }.
+  "alert_firing_triaged",
+  // An admin re-queued a notification outbox row (/admin/outbox "Reintentar"):
+  // an authority may receive it again. Payload: { outbox_row_id,
+  // before_values.status, after_values.{status, next_retry_at} }.
+  "outbox_row_retry_requested",
 ] as const;
 export type AuditLogAction = (typeof AUDIT_LOG_ACTIONS)[number];
 
@@ -4328,8 +4339,10 @@ export type NewAlertSubscription = typeof alertSubscriptions.$inferInsert;
 // crossed during evaluation (on-page or via the daily evaluate-alerts cron).
 // Each firing carries a triage lifecycle so an admin can acknowledge it, open
 // (or link) an outbreak investigation, contact the jurisdiction's authority,
-// and close it. The transition audit lives in the *_at / *_by columns — there
-// is intentionally NO new AUDIT_LOG_ACTIONS entry (decision K-D4).
+// and close it. The *_at / *_by columns stamp the transitions, and every
+// triage action also writes an `alert_firing_triaged` audit row with the
+// acting admin (plan maestro A12, migration 0287 — superseding decision K-D4,
+// under which seguimiento and contact authority recorded no actor at all).
 //
 // State machine (ALERT_FIRING_STATUSES):
 //   disparada → reconocida → en_investigacion → autoridad_contactada → resuelta

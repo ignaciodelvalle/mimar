@@ -22,10 +22,6 @@
       "kinds": ["insert"],
       "tables": ["operatorFeedWatermarks"]
     },
-    "app/admin/outbox/actions.ts": {
-      "kinds": ["update"],
-      "tables": ["eventNotificationOutbox"]
-    },
     "app/api/cron/auto-expire-approvals/route.ts": {
       "kinds": ["insert", "transaction", "update"],
       "tables": ["approvalRequests", "auditLog", "cronRuns"]

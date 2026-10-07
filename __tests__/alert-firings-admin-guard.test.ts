@@ -95,6 +95,16 @@ describe("alert-firing triage actions — the admin gate", () => {
     expect(result).toEqual({ ok: true });
   });
 
+  // A12: "contactar autoridad" used to receive only the firing id, so the use
+  // case could not record who escalated. The session-bound admin id is handed
+  // down from the guard, never taken from the caller.
+  it("hands the session's admin id to contact authority", async () => {
+    const result = await contactAuthorityFiringAction("firing-001");
+
+    expect(mockContactAuthority).toHaveBeenCalledWith("admin-001", "firing-001");
+    expect(result).toEqual({ ok: true });
+  });
+
   // B9. Every caller of these six is role:"admin" — institutional by
   // definition — so the shift applies to the whole population of this surface,
   // and the guard it used to go through could not apply it to any of them.

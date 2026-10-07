@@ -97,6 +97,14 @@ export const OPERATOR_GUARDS = [
   // does not make the act personal self-service.
   "requireCapability",
   "requireCapabilityForOrgToken",
+  // ADDED 2026-10-07 (plan maestro A12). app/actions/alert-firings.ts gates its
+  // six /admin/alertas triage actions with a LOCAL `requireAdminUser()` (it
+  // returns an error instead of redirecting, so the inbox can show it), which
+  // this list did not name: the six were never candidates, and "seguimiento"
+  // and "contactar autoridad" wrote with no actor and nothing noticed. The
+  // guard admits role admin + institutional account only — the same authority
+  // as requireAdminOrRedirect.
+  "requireAdminUser",
 ] as const;
 
 // A drizzle write. `.insert(auditLog)` is excluded by construction: it is the

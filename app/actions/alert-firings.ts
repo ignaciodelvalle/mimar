@@ -112,7 +112,7 @@ export async function acknowledgeFiringAction(firingId: string) {
 export async function openInvestigationFiringAction(firingId: string) {
   const auth = await requireAdminUser();
   if ("error" in auth) return auth;
-  const result = await openInvestigationFiring(firingId);
+  const result = await openInvestigationFiring(auth.userId, firingId);
   if ("ok" in result) revalidatePath("/admin/alertas");
   return result;
 }
@@ -124,7 +124,7 @@ export async function openInvestigationFiringAction(firingId: string) {
 export async function registerFollowupFiringAction(firingId: string, note: string) {
   const auth = await requireAdminUser();
   if ("error" in auth) return auth;
-  const result = await registerFollowupFiring(firingId, note);
+  const result = await registerFollowupFiring(auth.userId, firingId, note);
   if ("ok" in result) revalidatePath("/admin/alertas");
   return result;
 }
@@ -136,7 +136,7 @@ export async function registerFollowupFiringAction(firingId: string, note: strin
 export async function contactAuthorityFiringAction(firingId: string) {
   const auth = await requireAdminUser();
   if ("error" in auth) return auth;
-  const result = await contactAuthorityFiring(firingId);
+  const result = await contactAuthorityFiring(auth.userId, firingId);
   if ("ok" in result) revalidatePath("/admin/alertas");
   return result;
 }
