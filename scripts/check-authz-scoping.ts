@@ -71,8 +71,16 @@
 //   (a) Or the guard is PINNED TO THE ROW: a tenant guard called with a value
 //     read from the database by a query NOT keyed by the session
 //     (`requireCapability("appointment.manage", appt.organizationId)` after
-//     `const [appt] = await db.select()…where(eq(…publicToken, token))`). The
-//     resource flows into the guard instead of the guard into the work.
+//     `const [appt] = await db.select()…where(eq(…publicToken, token))`), AND
+//     that row then reaches the work (`markNoShow(appt.id)`). The resource
+//     flows into the guard instead of the guard into the work.
+//
+//   NOT SCOPE (security review, 2026-10-07): admission helpers on the
+//   caller's own membership (getGrantedCapabilities, isManagerRole); error
+//   construction and fail(); `if (user.id === targetId) throw` (refuses on a
+//   MATCH — self-protection, not binding); a flag derived by a constant
+//   comparison (`const isAdmin = role === "admin"`); a destructured `error`
+//   from a guard (the refusal channel).
 //
 //   Both `export async function f` and `export const f = async () => {}` are
 //   read.
@@ -206,9 +214,20 @@ export const SESSION_SOURCES: ReadonlySet<string> = new Set<string>([
   "getSession",
 ]);
 
-/** Calls whose arguments are not "the work": a value reaching only these authorises nothing. */
+/**
+ * Calls whose arguments are not "the work": a value reaching only these
+ * authorises nothing. Besides plumbing (cache, navigation, coercion, logging)
+ * this holds:
+ *   - ADMISSION helpers that read the caller's own membership:
+ *     getGrantedCapabilities(membership) and isManagerRole(membership.role)
+ *     answer "may this caller do X at all", never "is THIS resource theirs".
+ *     An action that checks them and then writes `where(eq(pets.id,
+ *     input.petId))` binds nothing (security review, 2026-10-07).
+ *   - REFUSALS: `new Error(…)`, `new FooError(…)`, `fail(…)`. A session value
+ *     interpolated into an error message is the action saying no.
+ */
 const INCIDENTAL_CALLEES =
-  /^(?:revalidate\w*|redirect|permanentRedirect|notFound|forbidden|unauthorized|String|Number|Boolean|encodeURIComponent|captureException)$/;
+  /^(?:revalidate\w*|redirect|permanentRedirect|notFound|forbidden|unauthorized|String|Number|Boolean|encodeURIComponent|captureException|getGrantedCapabilities|isManagerRole|fail|\w*Error)$/;
 const INCIDENTAL_RECEIVERS = new Set(["console", "JSON", "Sentry", "logger", "Math"]);
 /**
  * A guard result's refusal channel. `cap.error` copied into a failure list is
@@ -269,11 +288,8 @@ function rootIdentifier(expr: ts.Expression): string | null {
 
 function isIncidentalCall(call: ts.CallExpression | ts.NewExpression): boolean {
   const name = calleeName(call);
-  if (name !== null && ts.isIdentifier(call.expression) && INCIDENTAL_CALLEES.test(name)) {
-    return true;
-  }
+  if (name !== null && INCIDENTAL_CALLEES.test(name)) return true;
   if (ts.isPropertyAccessExpression(call.expression)) {
-    if (name !== null && /^revalidate\w*$/.test(name)) return true;
     const root = rootIdentifier(call.expression.expression);
     if (root !== null && INCIDENTAL_RECEIVERS.has(root)) return true;
   }
@@ -429,18 +445,48 @@ function referencesTainted(expr: ts.Node, tainted: Taint): boolean {
 function localsBoundFrom(
   body: ts.Block,
   seeds: (init: ts.Expression) => boolean,
+  blocks: (init: ts.Expression) => boolean = () => false,
 ): Set<ts.Identifier> {
   const bound = new Set<ts.Identifier>();
   walk(body, (n) => {
     if (!ts.isVariableDeclaration(n) || n.initializer === undefined) return;
     const init = n.initializer;
+    // `const isAdmin = profile.role === "admin"` derives a STATE flag from the
+    // session, not an identity: it does not inherit taint.
+    if (isConstantComparison(init) || blocks(init)) return;
     if (seeds(init) || referencesTainted(init, bound)) {
       const ids: ts.Identifier[] = [];
       bindingIdentifiers(n.name, ids);
-      for (const id of ids) bound.add(id);
+      for (const id of ids) if (!isRefusalBinding(id)) bound.add(id);
     }
   });
   return bound;
+}
+
+/**
+ * `const { error } = await requireCapabilityForOrgToken(…)`: the destructured
+ * refusal channel, same as `cap.error`. Throwing or returning it is the guard
+ * saying no.
+ */
+function isRefusalBinding(id: ts.Identifier): boolean {
+  const el = id.parent;
+  if (!ts.isBindingElement(el) || !ts.isObjectBindingPattern(el.parent)) return false;
+  const key = el.propertyName ?? el.name;
+  return ts.isIdentifier(key) && REFUSAL_PROPERTIES.has(key.text);
+}
+
+function isConstantComparison(init: ts.Expression): boolean {
+  let e: ts.Expression = init;
+  for (;;) {
+    if (ts.isParenthesizedExpression(e)) e = e.expression;
+    else if (ts.isPrefixUnaryExpression(e)) e = e.operand;
+    else break;
+  }
+  return (
+    ts.isBinaryExpression(e) &&
+    EQUALITY_OPERATORS.has(e.operatorToken.kind) &&
+    (isConstantLike(e.left) || isConstantLike(e.right))
+  );
 }
 
 /** Declarations bound, directly or transitively, from a session source. */
@@ -487,11 +533,18 @@ function guardPinnedToRow(body: ts.Block, sf: ts.SourceFile, session: Taint): st
   // A row keyed by the SESSION (`where(eq(profiles.id, user.id))`) is the
   // caller's own row: pinning a guard to it is the caller's own tenant, not
   // the resource's. Only a read keyed by something else counts.
+  // A guard's RESULT is not the row, even when the row was its argument
+  // (`const cap = await requireCapability("x", appt.organizationId)`).
   const rows = localsBoundFrom(
     body,
     (init) => readsDatabase(init) && !referencesTainted(init, session),
+    (init) => callsAny(init, SESSION_SOURCES, false),
   );
   if (rows.size === 0) return null;
+  // The pinned row must also be what the action WORKS on: checking a
+  // capability against one row and then writing another by input id binds
+  // nothing (security review, 2026-10-07).
+  if (firstSink(body, rows) === null) return null;
   const tenantGuards: ReadonlySet<string> = new Set<string>(TENANT_GUARDS);
   let result: string | null = null;
   walk(body, (n) => {
@@ -504,6 +557,17 @@ function guardPinnedToRow(body: ts.Block, sf: ts.SourceFile, session: Taint): st
         return;
       }
     }
+  });
+  return result;
+}
+
+/** The first reference to a `taint` declaration that reaches a sink, described; else null. */
+function firstSink(body: ts.Block, taint: Taint): { ref: ts.Identifier; sink: ts.Node } | null {
+  let result: { ref: ts.Identifier; sink: ts.Node } | null = null;
+  walk(body, (n) => {
+    if (result !== null || !isTaintedRef(n, taint)) return;
+    const sink = flowSink(n, body, taint);
+    if (sink !== null) result = { ref: n, sink };
   });
   return result;
 }
@@ -570,10 +634,50 @@ function classifyStep(node: ts.Node, child: ts.Node, tainted: Taint): "sink" | "
     // constant (`role === "admin"`, `role === ROLES.admin`, `=== ADMIN_ROLE`)
     // is a state check.
     const other = node.left === child ? node.right : node.left;
-    return isConstantLike(other) ? "stop" : "sink";
+    if (isConstantLike(other)) return "stop";
+    // `if (user.id === targetUserId) throw …` refuses on a MATCH: it stops the
+    // caller acting on THEMSELVES and binds the target to nothing. Only a
+    // comparison that refuses on a mismatch, or gates the work on a match,
+    // ties the resource to the caller.
+    return refusesOnMatch(node) ? "stop" : "sink";
   }
   if (ts.isTaggedTemplateExpression(node) && /(^|\.)sql$/.test(node.tag.getText())) return "sink";
   return "continue";
+}
+
+const MATCH_OPERATORS = new Set([
+  ts.SyntaxKind.EqualsEqualsEqualsToken,
+  ts.SyntaxKind.EqualsEqualsToken,
+]);
+const REFUSAL_CALLS = /^(?:notFound|redirect|permanentRedirect|forbidden|unauthorized|fail)$/;
+
+/** `if (a === b) <refusal>`: the equality is the whole condition and its branch only refuses. */
+function refusesOnMatch(cmp: ts.BinaryExpression): boolean {
+  if (!MATCH_OPERATORS.has(cmp.operatorToken.kind)) return false;
+  let cond: ts.Node = cmp;
+  while (ts.isParenthesizedExpression(cond.parent)) cond = cond.parent;
+  const stmt = cond.parent;
+  return ts.isIfStatement(stmt) && stmt.expression === cond && isRefusal(stmt.thenStatement);
+}
+
+/** A branch that only says no: throw, a bare/data-only return, or notFound()/redirect()/fail(). */
+function isRefusal(s: ts.Statement): boolean {
+  if (ts.isBlock(s)) return s.statements.length > 0 && s.statements.every(isRefusal);
+  if (ts.isThrowStatement(s)) return true;
+  if (ts.isReturnStatement(s)) {
+    const e = s.expression;
+    return (
+      e === undefined ||
+      ts.isObjectLiteralExpression(e) ||
+      ts.isArrayLiteralExpression(e) ||
+      isLiteral(e) ||
+      (ts.isCallExpression(e) && REFUSAL_CALLS.test(calleeName(e) ?? ""))
+    );
+  }
+  if (ts.isExpressionStatement(s) && ts.isCallExpression(s.expression)) {
+    return REFUSAL_CALLS.test(calleeName(s.expression) ?? "");
+  }
+  return false;
 }
 
 function isLiteral(e: ts.Expression): boolean {
@@ -629,13 +733,8 @@ function scopedBy(body: ts.Block, sf: ts.SourceFile): string | null {
   const pinned = guardPinnedToRow(body, sf, tainted);
   if (pinned !== null) return pinned;
   if (tainted.size === 0) return null;
-  let result: string | null = null;
-  walk(body, (n) => {
-    if (result !== null || !isTaintedRef(n, tainted)) return;
-    const sink = flowSink(n, body, tainted);
-    if (sink !== null) result = `${n.text} → ${describeSink(sink, sf)}`;
-  });
-  return result;
+  const hit = firstSink(body, tainted);
+  return hit === null ? null : `${hit.ref.text} → ${describeSink(hit.sink, sf)}`;
 }
 
 function hasNoAuthMarker(fn: ts.Statement, sf: ts.SourceFile): boolean {

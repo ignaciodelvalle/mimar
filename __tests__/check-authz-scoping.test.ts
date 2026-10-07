@@ -236,6 +236,86 @@ describe("offenders: the old markers in strings, comments and incidental identif
     expect(verdict(src).scopedBy).toBeNull();
   });
 
+  it("FLAGS admission helpers on the caller's own membership (getGrantedCapabilities, isManagerRole)", () => {
+    const caps = lines(
+      "export async function a(t: string, input: { petId: string }) {",
+      "  const { membership } = await requireOrgAccessByToken(t);",
+      '  if (!(await getGrantedCapabilities(membership)).has("x")) return { error: "no" };',
+      "  await db.update(pets).set({ x: 1 }).where(eq(pets.id, input.petId));",
+      "}",
+    );
+    const manager = lines(
+      "export async function a(t: string, input: { petId: string }) {",
+      "  const { membership } = await requireOrgAccessByToken(t);",
+      '  if (!isManagerRole(membership.role)) return { error: "no" };',
+      "  await db.update(pets).set({ x: 1 }).where(eq(pets.id, input.petId));",
+      "}",
+    );
+    expect(verdict(caps)).toMatchObject({ subject: true, scopedBy: null });
+    expect(verdict(manager)).toMatchObject({ subject: true, scopedBy: null });
+  });
+
+  it("FLAGS a session value that only reaches an error construction or fail()", () => {
+    const src = lines(
+      "export async function a(input: { petId: string }) {",
+      "  const { user } = await requireAdminOrRedirect();",
+      "  if (!input.petId) throw new Error(`missing pet for ${user.id}`);",
+      "  if (input.petId === 'x') throw new ForbiddenError(user.id);",
+      "  if (input.petId === 'y') return fail(user.id);",
+      "  await db.update(pets).set({ x: 1 }).where(eq(pets.id, input.petId));",
+      "}",
+    );
+    expect(verdict(src).scopedBy).toBeNull();
+  });
+
+  it("FLAGS a self-protection check that refuses on a MATCH", () => {
+    const src = lines(
+      "export async function a(input: { targetUserId: string }) {",
+      "  const { user } = await requireAdminOrRedirect();",
+      "  if (user.id === input.targetUserId) throw new Error('no self');",
+      "  if ((input.targetUserId === user.id)) return { error: 'no self' };",
+      "  await db.update(profiles).set({ x: 1 }).where(eq(profiles.id, input.targetUserId));",
+      "}",
+    );
+    expect(verdict(src).scopedBy).toBeNull();
+  });
+
+  it("a declaration derived by a constant comparison does not inherit taint", () => {
+    const src = lines(
+      "export async function a(input: { petId: string }) {",
+      "  const session = await requireAdminOrGovtOrRedirect();",
+      '  const isAdmin = session.profile.role === "admin";',
+      "  const notGovt = !(session.profile.role === ROLES.govt);",
+      "  await w(input.petId, isAdmin, notGovt);",
+      "}",
+    );
+    expect(verdict(src).scopedBy).toBeNull();
+  });
+
+  it("a destructured `error` from a guard is the refusal channel, not scope", () => {
+    const src = lines(
+      "export async function a(input: { orgToken: string; petId: string }) {",
+      '  const { error } = await requireCapabilityForOrgToken("x", input.orgToken);',
+      "  if (error) throw new Error(error);",
+      "  setFailure(error);",
+      "  await db.update(pets).set({ x: 1 }).where(eq(pets.id, input.petId));",
+      "}",
+    );
+    expect(verdict(src)).toMatchObject({ subject: true, scopedBy: null });
+  });
+
+  it("FLAGS a guard pinned to one row while the work touches another by input id", () => {
+    const src = lines(
+      "export async function a(token: string, input: { otherId: string }) {",
+      "  const [appt] = await db.select().from(appointments).where(eq(appointments.publicToken, token));",
+      '  const cap = await requireCapability("appointment.manage", appt.organizationId);',
+      "  if (cap.error) return { error: cap.error };",
+      "  return markNoShow(input.otherId);",
+      "}",
+    );
+    expect(verdict(src)).toMatchObject({ subject: true, scopedBy: null });
+  });
+
   it("analyses an exported async arrow action like a function declaration", () => {
     const src = lines(
       "export const a = async (id: string) => {",

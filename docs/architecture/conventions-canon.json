@@ -4954,7 +4954,7 @@
       ],
       "enforcer": [
         "scripts/check-authz-guards.ts:50-106",
-        "scripts/check-authz-scoping.ts:697",
+        "scripts/check-authz-scoping.ts:796",
         "__tests__/server-actions-auth-coverage.test.ts"
       ],
       "enforcementKind": "lint-script",
@@ -4962,7 +4962,7 @@
       "status": "PARTIAL",
       "partialShape": "subset",
       "clause": "R4",
-      "statusBasis": "scripts/check-authz-guards.ts:434-447 requires a recognised guard CALL somewhere in each exported action body — not 'session, role and ownership before any SQL' (no ordering and no role/ownership predicate) — and scripts/check-authz-scoping.ts:121-137 tolerates named, reasoned baseline exports for tenant scoping. Nothing forces sensitive READS through a server action; RSC pages query Drizzle directly.",
+      "statusBasis": "scripts/check-authz-guards.ts:434-447 requires a recognised guard CALL somewhere in each exported action body — not 'session, role and ownership before any SQL' (no ordering and no role/ownership predicate) — and scripts/check-authz-scoping.ts:129-145 tolerates named, reasoned baseline exports for tenant scoping. Nothing forces sensitive READS through a server action; RSC pages query Drizzle directly.",
       "notes": "the guarded-mutation half is fenced; the 'every sensitive read' and 'before any SQL' halves are not",
       "confidence": 0.8,
       "verifiedAt": "d7dbf25f7"
@@ -6158,7 +6158,7 @@
       ],
       "enforcer": [
         "scripts/check-confused-deputy.ts:9-22",
-        "scripts/check-authz-scoping.ts:697"
+        "scripts/check-authz-scoping.ts:796"
       ],
       "enforcementKind": "lint-script",
       "wired": "verify",
@@ -6166,7 +6166,7 @@
       "partialShape": "subset",
       "clause": "R4",
       "statusBasis": "scripts/check-confused-deputy.ts:172-180 fails only one syntactic shape — an action naming orgToken/senderOrgToken/receiverOrgToken (signature or formData) that gates with bare requireCapability; scripts/check-authz-scoping.ts is a ratchet over a reasoned, per-export baseline (scripts/authz-scoping-baseline.json). 'Never widen authorization scope' is far broader than either predicate.",
-      "notes": "check-authz-scoping.ts:97-119 itself names two uncovered sibling rules (identity-only guard + caller-chosen pet id; role-not-allowed-for-the-effect).",
+      "notes": "check-authz-scoping.ts:105-127 itself names two uncovered sibling rules (identity-only guard + caller-chosen pet id; role-not-allowed-for-the-effect).",
       "confidence": 0.8,
       "verifiedAt": "d7dbf25f7"
     },
@@ -6644,7 +6644,7 @@
         "scripts/check-authz-scoping.ts:9"
       ],
       "enforcer": [
-        "scripts/check-authz-scoping.ts:121,769",
+        "scripts/check-authz-scoping.ts:129,868",
         "scripts/authz-scoping-baseline.json"
       ],
       "enforcementKind": "ratchet",
@@ -6652,7 +6652,7 @@
       "status": "PARTIAL",
       "partialShape": "ratchet",
       "clause": "R6",
-      "statusBasis": "scripts/check-authz-scoping.ts:22-95 decides 'scoped' from the AST since A5d (2026-10-07): a value bound from the guard or the session must reach the action's work (a writer/use-case argument, a predicate, an identity re-check), or the guard must be pinned to the row's own tenant; strings, comments and identifier names do not count. It trusts delegation: a writer handed the actor is not inspected. scripts/authz-scoping-baseline.json tolerates named exports, each with a one-line reason (alert-firings 3, org event wrappers 3, bulk-adoption 2...). The rule text is absolute, so a live baseline >0 leaves those unproven.",
+      "statusBasis": "scripts/check-authz-scoping.ts:22-103 decides 'scoped' from the AST since A5d (2026-10-07): a value bound from the guard or the session must reach the action's work (a writer/use-case argument, a predicate, an identity re-check), or the guard must be pinned to the row's own tenant; strings, comments and identifier names do not count. It trusts delegation: a writer handed the actor is not inspected. scripts/authz-scoping-baseline.json tolerates named exports, each with a one-line reason (alert-firings 3, org event wrappers 3, bulk-adoption 2...). The rule text is absolute, so a live baseline >0 leaves those unproven.",
       "notes": "lint:authz-scoping is in the verify chain (package.json verify). The ratchet is keyed by export since A5d, so a fix plus a new offender in one file no longer nets to zero; stale and UNREVIEWED entries fail. The live count is printed by every run and deliberately not kept here (the row has no numberKey).",
       "confidence": 0.85,
       "verifiedAt": "d7dbf25f7"
