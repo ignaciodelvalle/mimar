@@ -3251,14 +3251,14 @@
         "AGENTS.md:455"
       ],
       "enforcer": [
-        "db/schema.ts:4683-4686"
+        "db/schema.ts:4684-4687"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
       "status": "PARTIAL",
       "partialShape": "subset",
       "clause": "R4",
-      "statusBasis": "db/schema.ts:4270-4273 check cases_opened_reason_structured_pair (`opened_reason_code is null or opened_reason_params is not null`) makes (code, NULL) unrepresentable — the rule's second clause. The `{}` clause is not enforced at write: src/modules/cases/domain/opened-reason.ts:109-208 is a strict discriminated union, but its only parse site is the READ path (opened-reason-display.ts:48); the write path (cases-repository.ts:88, `const { code, ...params } = openedReason`) never parses, so a non-literal carrying extra keys reaches opened_reason_params unchecked.",
+      "statusBasis": "db/schema.ts:4271-4274 check cases_opened_reason_structured_pair (`opened_reason_code is null or opened_reason_params is not null`) makes (code, NULL) unrepresentable — the rule's second clause. The `{}` clause is not enforced at write: src/modules/cases/domain/opened-reason.ts:109-208 is a strict discriminated union, but its only parse site is the READ path (opened-reason-display.ts:48); the write path (cases-repository.ts:88, `const { code, ...params } = openedReason`) never parses, so a non-literal carrying extra keys reaches opened_reason_params unchecked.",
       "notes": "CHANGED FROM MY DRAFT (ENFORCED) after opening opened-reason.ts:109-208 and rg-ing OpenedReasonSchema across src/lib: my draft assumed the closed union was applied at the write door. It is not — the only .parse/.safeParse is on display. tsc's excess-property check still catches literal call sites, and check-opened-reason-coverage.ts:25-27,51 confines the write to cases-repository.ts, so practical coverage is high; the named residue (param-less code + junk params) is real and matches the previous basis and the judge.",
       "confidence": 0.7,
       "verifiedAt": "d7dbf25f7"
@@ -3271,13 +3271,13 @@
         "AGENTS.md:483"
       ],
       "enforcer": [
-        "db/schema.ts:5009-5011"
+        "db/schema.ts:5010-5012"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
       "status": "ENFORCED",
       "clause": "R11",
-      "statusBasis": "db/schema.ts:4596-4598 declares uniqueIndex pet_transfers_one_pending_per_pet on (pet_id) where `status = 'pending'` — the second concurrent pending transfer on one pet raises 23505; closed transfers are outside the predicate so retries stay possible (rationale at :4536-4538). No DROP INDEX for it in db/migrations.",
+      "statusBasis": "db/schema.ts:4597-4599 declares uniqueIndex pet_transfers_one_pending_per_pet on (pet_id) where `status = 'pending'` — the second concurrent pending transfer on one pet raises 23505; closed transfers are outside the predicate so retries stay possible (rationale at :4536-4538). No DROP INDEX for it in db/migrations.",
       "notes": "Declared, not verified against the live catalog.",
       "confidence": 0.92,
       "verifiedAt": "d7dbf25f7"
@@ -3290,13 +3290,13 @@
         "AGENTS.md:496"
       ],
       "enforcer": [
-        "db/schema.ts:5097-5099"
+        "db/schema.ts:5098-5100"
       ],
       "enforcementKind": "db-constraint",
       "wired": "db",
       "status": "ENFORCED",
       "clause": "R11",
-      "statusBasis": "db/schema.ts:4684-4686 declares uniqueIndex pet_identifications_chip_unique on (code) where `kind = 'microchip_iso' AND status = 'active'` — active chips cannot collide, and the predicate leaves tattoo rows (and retired chips) unconstrained, exactly as the rule says. No DROP INDEX for it in db/migrations.",
+      "statusBasis": "db/schema.ts:4685-4687 declares uniqueIndex pet_identifications_chip_unique on (code) where `kind = 'microchip_iso' AND status = 'active'` — active chips cannot collide, and the predicate leaves tattoo rows (and retired chips) unconstrained, exactly as the rule says. No DROP INDEX for it in db/migrations.",
       "notes": "Declared, not verified against the live catalog. Sibling CHECK chip_requires_iso_fields at :4630-4633 pins the 15-char length (see CANON-499).",
       "confidence": 0.92,
       "verifiedAt": "d7dbf25f7"
@@ -4305,7 +4305,7 @@
       "enforcementKind": "none",
       "wired": "none",
       "status": "UNENFORCED",
-      "statusBasis": "A design pattern for a class of flows, with no fence enumerating the class. The pet_transfers instance has a DB partial unique index for the concurrency half (db/schema.ts:4596) but nothing asserts the lazy-cancel behaviour as a general rule.",
+      "statusBasis": "A design pattern for a class of flows, with no fence enumerating the class. The pet_transfers instance has a DB partial unique index for the concurrency half (db/schema.ts:4597) but nothing asserts the lazy-cancel behaviour as a general rule.",
       "confidence": 0.82,
       "verifiedAt": "d7dbf25f7"
     },
@@ -8764,7 +8764,7 @@
       "rule": "A microchip identification's code must be exactly 15 characters and non-null (`chip_requires_iso_fields`), and a profile's dni_hash must be unique when present (`profiles_dni_hash_unique`).",
       "scope": "db",
       "sources": [
-        "db/schema.ts:4788-4791, db/schema.ts:414-416"
+        "db/schema.ts:4789-4792, db/schema.ts:414-416"
       ],
       "enforcer": [
         "db/schema.ts"
@@ -8773,7 +8773,7 @@
       "wired": "db",
       "status": "ENFORCED",
       "clause": "R11",
-      "statusBasis": "db/schema.ts:4687-4690 declares check chip_requires_iso_fields: `kind <> 'microchip_iso' OR (code IS NOT NULL AND length(code) = 15)` — exactly 15 and non-null, both halves. db/schema.ts:414-416 declares uniqueIndex profiles_dni_hash_unique on (dni_hash) where `dni_hash IS NOT NULL` — unique when present. No DROP for either in db/migrations.",
+      "statusBasis": "db/schema.ts:4688-4691 declares check chip_requires_iso_fields: `kind <> 'microchip_iso' OR (code IS NOT NULL AND length(code) = 15)` — exactly 15 and non-null, both halves. db/schema.ts:414-416 declares uniqueIndex profiles_dni_hash_unique on (dni_hash) where `dni_hash IS NOT NULL` — unique when present. No DROP for either in db/migrations.",
       "notes": "Declared, not verified against the live catalog.",
       "confidence": 0.9,
       "verifiedAt": "d7dbf25f7"
