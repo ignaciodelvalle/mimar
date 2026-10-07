@@ -143,3 +143,25 @@ create policy "appointments read by provider vet"
       where provider_user_id = auth.uid()
     )
   );
+
+-- ============================================================================
+-- institutional sessions require aal2 (0231 house rule)
+-- ============================================================================
+-- Since 0288 (byte-identical to that migration): a restrictive policy AND-ed
+-- with every permissive one above, so an institutional account holding only
+-- a password (aal1) token reads none of these three tables. Personal
+-- accounts — owners, the provider vet, personal-account members — pass it.
+drop policy if exists "institutional sessions require aal2" on public.service_schedule_rules;
+create policy "institutional sessions require aal2" on public.service_schedule_rules
+  as restrictive for select to authenticated
+  using ((select public.caller_meets_institutional_aal()));
+
+drop policy if exists "institutional sessions require aal2" on public.time_slots;
+create policy "institutional sessions require aal2" on public.time_slots
+  as restrictive for select to authenticated
+  using ((select public.caller_meets_institutional_aal()));
+
+drop policy if exists "institutional sessions require aal2" on public.appointments;
+create policy "institutional sessions require aal2" on public.appointments
+  as restrictive for select to authenticated
+  using ((select public.caller_meets_institutional_aal()));
