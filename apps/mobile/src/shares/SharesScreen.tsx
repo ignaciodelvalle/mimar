@@ -280,7 +280,7 @@ export function SharesScreen({ publicToken }: { publicToken: string }) {
 
       <ListRow
         label="Enviar la credencial pública"
-        caption="El link del QR: identidad y contacto, sin la libreta."
+        caption="La página pública de su credencial, con lo que elegiste mostrar."
         accessibilityHint="Abre el menú para compartir del teléfono"
         onPress={() => void shareCredential(view.petName)}
       />
