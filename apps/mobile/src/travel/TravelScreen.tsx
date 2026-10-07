@@ -55,6 +55,7 @@ import { apiFailureMessage } from "../api/client";
 import { fetchPetTravel, sendPetTravelCommand } from "../api/endpoints";
 import { sessionPort } from "../auth/session-store";
 import { type AttemptSession, createAttemptSession } from "../pets/idempotency";
+import { DISCARD_COPY, confirmDiscard } from "../pets/use-discard-guard";
 import { Body, Loading, StaleNotice } from "../ui/components";
 import { FONTS } from "../ui/fonts";
 import {
@@ -92,6 +93,7 @@ import {
   EMPTY_CVI_DRAFT,
   NO_CVI_LINE,
   NO_TRIP_LINE,
+  type PaperGroup,
   type TripModuleId,
   buildCancelTrip,
   buildConfirmDocument,
@@ -106,6 +108,7 @@ import {
   initialOpenModule,
   noTripTitle,
   obligationActionLabel,
+  paperKey,
   paperShortName,
   papersCountLabel,
   pendingCountLine,
@@ -196,21 +199,29 @@ export function TravelScreen({ publicToken }: { publicToken: string }) {
   const { anchorRef: errorAnchor, scrollRef } = useScrollToError(visibleError);
 
   // THE BACK GESTURE MAY NOT DISCARD A CHOSEN TRIP OR A TYPED CVI — once there
-  // is nothing a step back could return to. Inside the wizard, every step but
-  // the first goes back one step (the listener below), so the guard only asks
-  // on the first step, and only once something was chosen.
+  // is nothing a step back could return to. ONE HANDLER OWNS EACH GESTURE, never
+  // two (a dialog AND a step back would be one gesture doing two things):
+  //   · reading, no wizard      → the guard, while a CVI is typed;
+  //   · wizard, first step, with
+  //     a destination chosen    → the guard: leaving would lose the choice;
+  //   · wizard, anywhere else   → the listener below: one step back, or closed
+  //     from a clean first step. The CVI draft is not touched by either, so it
+  //     needs no question there.
   const wizardAtStart = wizard !== null && previousStep(wizard) === null;
   const wizardDirty = wizard !== null && wizard.draft !== EMPTY_WIZARD_DRAFT;
-  useDraftDiscardGuard((wizardAtStart && wizardDirty) || cviDraft !== EMPTY_CVI_DRAFT);
+  const wizardOwnsBack = wizard !== null && !(wizardAtStart && wizardDirty);
+  useDraftDiscardGuard(
+    wizard === null ? cviDraft !== EMPTY_CVI_DRAFT : wizardAtStart && wizardDirty,
+  );
 
   useEffect(() => {
-    if (wizard === null || (wizardAtStart && wizardDirty)) return undefined;
+    if (!wizardOwnsBack) return undefined;
     return navigation.addListener("beforeRemove", (event) => {
       event.preventDefault();
       setWizardError(null);
       setWizard((current) => (current === null ? null : previousStep(current)));
     });
-  }, [navigation, wizard, wizardAtStart, wizardDirty]);
+  }, [navigation, wizardOwnsBack]);
 
   // ONE KEY PER ATTEMPT — see the header. `useRef`, so no re-render can mint
   // a different key mid-attempt.
@@ -285,16 +296,35 @@ export function TravelScreen({ publicToken }: { publicToken: string }) {
   );
 
   const openWizard = useCallback((corridorId: string | null) => {
+    // A NEW TRIP IS A NEW ATTEMPT. A key left over from a create whose answer
+    // was lost must not ride along on a different trip (a true duplicate is
+    // still `trip_duplicate` on the server).
+    tripAttempt.current.restart();
     setNotice(null);
     setWizardError(null);
     setConfirmingCancel(null);
     setWizard(startWizard(corridorId));
   }, []);
 
+  /**
+   * "Volver": one step back keeping every answer. From the first step it
+   * closes the wizard — after ASKING when a destination was chosen there, the
+   * same question the back gesture asks, since that answer would be lost.
+   */
   const backInWizard = useCallback(() => {
     setWizardError(null);
-    setWizard((current) => (current === null ? null : previousStep(current)));
-  }, []);
+    if (wizard === null) return;
+    const previous = previousStep(wizard);
+    if (previous !== null) {
+      setWizard(previous);
+      return;
+    }
+    if (wizard.draft === EMPTY_WIZARD_DRAFT) {
+      setWizard(null);
+      return;
+    }
+    confirmDiscard(DISCARD_COPY.form, () => setWizard(null));
+  }, [wizard]);
 
   const createTrip = useCallback(async () => {
     if (wizard === null) return;
@@ -755,17 +785,13 @@ function TripReading({
           open={isOpen("llevar")}
           onToggle={() => toggle("llevar")}
         >
-          {split.papers.map(({ document }) => (
-            <PaperCheckRow
-              key={document.label}
-              label={document.label}
-              status={documentStatusLine(document)}
-              checked={document.confirmed}
-              busy={busy?.what === "document" && busy.label === document.label}
-              disabled={busy !== null}
-              onToggle={
-                canRecord ? () => onConfirmDocument(document.label, !document.confirmed) : undefined
-              }
+          {split.paperGroups.map((group) => (
+            <PaperGroupRows
+              key={group.obligation.id}
+              group={group}
+              busy={busy}
+              canRecord={canRecord}
+              onConfirmDocument={onConfirmDocument}
             />
           ))}
         </CollapsibleModule>
@@ -872,6 +898,75 @@ function ShareStatus({ share, message }: { share: ShareState; message: string })
     );
   }
   return null;
+}
+
+/**
+ * The papers one obligation lists, as boxes — and, around them, what that
+ * obligation says about ITSELF: a stale or unverified source as a warning box
+ * ABOVE the boxes (never folded away: a degraded datum is not drawn as
+ * settled), and its sources and legal note behind "Ver detalle".
+ */
+function PaperGroupRows({
+  group,
+  busy,
+  canRecord,
+  onConfirmDocument,
+}: {
+  group: PaperGroup;
+  busy: Busy;
+  canRecord: boolean;
+  onConfirmDocument: (label: string, confirmed: boolean) => void;
+}) {
+  const [detail, setDetail] = useState(false);
+  const { obligation } = group;
+  const contributors = contributorsLine(obligation);
+  return (
+    <View>
+      {obligation.freshnessNotice ? (
+        <View style={styles.inset}>
+          <Callout tone="warn">
+            <Body>{obligation.freshnessNotice}</Body>
+          </Callout>
+        </View>
+      ) : null}
+      {group.papers.map((paper) => (
+        <PaperCheckRow
+          key={paperKey(paper)}
+          label={paper.document.label}
+          status={documentStatusLine(paper.document)}
+          checked={paper.document.confirmed}
+          busy={busy?.what === "document" && busy.label === paper.document.label}
+          disabled={busy !== null}
+          onToggle={
+            canRecord
+              ? () => onConfirmDocument(paper.document.label, !paper.document.confirmed)
+              : undefined
+          }
+        />
+      ))}
+      <View style={styles.paperFoot}>
+        <LinkText onPress={() => setDetail((open) => !open)}>
+          {detail ? "Ocultar detalle" : "Ver detalle"}
+        </LinkText>
+        {detail ? (
+          <View style={styles.detail}>
+            {obligation.detail ? <Body>{obligation.detail}</Body> : null}
+            {contributors !== null ? <Body>{contributors}</Body> : null}
+            {obligation.sources.map((source) => (
+              <LinkText
+                key={`${source.kind}:${source.sourceUrl}:${source.label}`}
+                accessibilityHint="Abre la fuente publicada."
+                onPress={() => void Linking.openURL(source.sourceUrl).catch(() => {})}
+              >
+                {sourceLine(source)}
+              </LinkText>
+            ))}
+            <Body>{obligation.legalFootnote}</Body>
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
 }
 
 /**
@@ -1117,6 +1212,14 @@ function TripSwitcherSheet({
 
 const styles = StyleSheet.create({
   options: { gap: SPACE.sm },
+  paperFoot: {
+    gap: SPACE.xs,
+    paddingHorizontal: SPACE.md + 2,
+    paddingBottom: SPACE.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.borderSoft,
+    paddingTop: SPACE.sm,
+  },
   form: { gap: SPACE.md },
   inset: { gap: SPACE.sm, paddingHorizontal: SPACE.md + 2, paddingVertical: SPACE.md },
   emptyHero: {

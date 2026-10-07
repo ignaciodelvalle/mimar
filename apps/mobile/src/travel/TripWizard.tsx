@@ -406,7 +406,7 @@ function DateStep({
           tone={tight ? "warn" : "neutral"}
           title={
             tight
-              ? `Faltan ${days} días, menos que los ${leadDays} que pide alguno de estos plazos`
+              ? `${tightLead(days ?? 0)}, menos que los ${leadDays} días que pide alguno de estos plazos`
               : `Para ${corridor.label}, con tiempo`
           }
         >
@@ -427,6 +427,13 @@ function DateStep({
       </View>
     </View>
   );
+}
+
+/** "Faltan 12 días", "Falta 1 día", "Sale hoy" — the start of the tight-date title. */
+function tightLead(days: number): string {
+  if (days === 0) return "Sale hoy";
+  if (days === 1) return "Falta 1 día";
+  return `Faltan ${days} días`;
 }
 
 /** "LATAM, en cabina", "En auto o en micro", or that it is still open. */

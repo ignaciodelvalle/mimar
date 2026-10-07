@@ -81,16 +81,19 @@ export function tripLabel(trip: PetTravelTripV1): string {
   return `${trip.corridorLabel}, ${isoToDateInput(trip.travelDate)}`;
 }
 
-const MODALITY_WORD: Record<TravelModality, string> = {
-  cabin: "cabina",
-  hold: "bodega",
-  cargo: "carga",
-};
+/**
+ * "en cabina", "en bodega", "como carga" — the contract's words, lowercased
+ * for the middle of a line, so the header and the wizard's summary say what
+ * the form said ("Como carga", never "en carga").
+ */
+function modalityPhrase(modality: TravelModality): string {
+  return PET_TRAVEL_MODALITY_LABELS[modality].toLowerCase();
+}
 
 /** "Chile, 12/11/2026 · LATAM, en cabina" — the line under the semáforo. */
 export function tripSummary(trip: PetTravelTripV1): string {
   if (trip.airlineName === null) return tripLabel(trip);
-  const where = trip.intendedModality ? `, en ${MODALITY_WORD[trip.intendedModality]}` : "";
+  const where = trip.intendedModality ? `, ${modalityPhrase(trip.intendedModality)}` : "";
   return `${tripLabel(trip)} · ${trip.airlineName}${where}`;
 }
 
@@ -113,7 +116,7 @@ export function tripMetaLine(trip: PetTravelTripV1, weekday: string | null): str
   const date = isoToDateInput(trip.travelDate);
   const when = weekday === null ? date : `${weekday} ${date}`;
   if (trip.airlineName !== null) {
-    const where = trip.intendedModality ? `, en ${MODALITY_WORD[trip.intendedModality]}` : "";
+    const where = trip.intendedModality ? `, ${modalityPhrase(trip.intendedModality)}` : "";
     return `${when} · ${trip.airlineName}${where}`;
   }
   if (trip.mode !== null) return `${when} · ${MODE_LABELS[trip.mode]}`;
@@ -122,6 +125,19 @@ export function tripMetaLine(trip: PetTravelTripV1, weekday: string | null): str
 
 /** One paper of the trip, with the obligation that lists it. */
 export type TripPaper = { document: PetTravelDocumentV1; obligationId: string };
+
+/**
+ * One obligation that lists papers, with its papers. KEPT WHOLE, not only as
+ * ticks: its freshness notice, sources and legal note are drawn in "Para
+ * llevar" too — an outdated source never reads as settled because the rows
+ * under it became checkboxes.
+ */
+export type PaperGroup = { obligation: PetTravelObligationV1; papers: TripPaper[] };
+
+/** A paper's row key: the same paper may be listed by two obligations. */
+export function paperKey(paper: TripPaper): string {
+  return `${paper.obligationId}:${paper.document.label}`;
+}
 
 /**
  * The trip's reading, split by WHAT IS LEFT TO DO rather than by who asks
@@ -141,16 +157,23 @@ export type TripReadingSplit = {
   pending: PetTravelObligationV1[];
   done: PetTravelObligationV1[];
   papers: TripPaper[];
+  /** The same papers, grouped under the obligation that lists them. */
+  paperGroups: PaperGroup[];
 };
 
 export function splitObligations(compliance: PetTravelComplianceV1 | null): TripReadingSplit {
-  const split: TripReadingSplit = { pending: [], done: [], papers: [] };
+  const split: TripReadingSplit = { pending: [], done: [], papers: [], paperGroups: [] };
   if (compliance === null) return split;
   for (const obligation of compliance.obligations) {
     const documents = obligationDocuments(obligation);
     if (documents.length > 0) {
-      for (const document of documents)
-        split.papers.push({ document, obligationId: obligation.id });
+      const group: PaperGroup = { obligation, papers: [] };
+      for (const document of documents) {
+        const paper = { document, obligationId: obligation.id };
+        split.papers.push(paper);
+        group.papers.push(paper);
+      }
+      split.paperGroups.push(group);
       continue;
     }
     if (obligation.requirementLevel === "info") split.done.push(obligation);

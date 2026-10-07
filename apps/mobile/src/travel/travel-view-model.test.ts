@@ -36,6 +36,7 @@ import {
   initialOpenModule,
   obligationActionLabel,
   obligationDocuments,
+  paperKey,
   paperShortName,
   papersCountLabel,
   pendingCountLine,
@@ -139,7 +140,13 @@ describe("reading", () => {
     expect(split.papers.map((p) => p.document.label)).toEqual(["CZI", "Certificado antirrábico"]);
     expect(papersCountLabel(split.papers)).toBe("1 de 2");
     expect(pendingCountLine(split)).toBe("2 cosas por resolver · 1 ya está");
-    expect(splitObligations(null)).toEqual({ pending: [], done: [], papers: [] });
+    // The obligation stays with its papers: its notice and sources are still drawn.
+    expect(split.paperGroups.map((g) => g.obligation.id)).toEqual(["required_documents"]);
+    expect(split.paperGroups[0]?.papers.map(paperKey)).toEqual([
+      "required_documents:CZI",
+      "required_documents:Certificado antirrábico",
+    ]);
+    expect(splitObligations(null)).toEqual({ pending: [], done: [], papers: [], paperGroups: [] });
   });
 
   it("counts in words that never judge", () => {
@@ -246,6 +253,10 @@ describe("reading", () => {
 
   it("says how the trip goes in the header even without an airline", () => {
     expect(tripMetaLine(TRIP, "Jue")).toBe("Jue 12/11/2026 · LATAM, en cabina");
+    // The form's own word for cargo: "como carga", never "en carga".
+    expect(tripMetaLine({ ...TRIP, intendedModality: "cargo" }, "Jue")).toBe(
+      "Jue 12/11/2026 · LATAM, como carga",
+    );
     expect(tripMetaLine({ ...TRIP, airlineId: null, airlineName: null, mode: "land" }, "Jue")).toBe(
       "Jue 12/11/2026 · En auto o en micro",
     );

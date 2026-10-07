@@ -74,7 +74,7 @@ jest.mock("../pets/idempotency", () => ({
   },
 }));
 
-import { Linking, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, StyleSheet, Text, View } from "react-native";
 
 import { TravelScreen } from "./TravelScreen";
 
@@ -315,7 +315,9 @@ describe("TravelScreen — the trip, in modules", () => {
     await screen.findByText("Revisar pendientes");
     expect(screen.getByText("Nada pendiente detectado")).toBeOnTheScreen();
     expect(screen.getByText("1 de 2")).toBeOnTheScreen();
-    expect(screen.getByRole("checkbox", { name: "Permiso de importación" })).toBeOnTheScreen();
+    expect(
+      screen.getByRole("checkbox", { name: "Permiso de importación, Sin confirmar" }),
+    ).toBeOnTheScreen();
   });
 
   it("seals a requirement met only on the owner's word and offers to send it to the vet", async () => {
@@ -327,7 +329,7 @@ describe("TravelScreen — the trip, in modules", () => {
     expect(screen.getAllByText("Cargar el CZI")).toHaveLength(2);
   });
 
-  it("shows no seal and no action when an older server sends no evidence", async () => {
+  it("shows no seal when an older server sends no evidence, and still asks the vet", async () => {
     const old = { ...RABIES, evidence: undefined, sources: [] };
     mockFetch.mockResolvedValue({
       outcome: "ok",
@@ -663,6 +665,95 @@ describe("TravelScreen — the four-step wizard", () => {
     expect(screen.getByRole("button", { name: /Chile/, selected: true })).toBeOnTheScreen();
   });
 
+  it("'Volver' on the first step asks before dropping a chosen destination", async () => {
+    const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    await openWizard();
+    fireEvent.press(screen.getByText("Chile"));
+    fireEvent.press(screen.getByText("Volver"));
+    expect(screen.getByText("¿A dónde viaja Pampa?")).toBeOnTheScreen();
+    expect(alert).not.toHaveBeenCalled();
+    fireEvent.press(screen.getByText("Volver"));
+    expect(alert).toHaveBeenCalledTimes(1);
+    // Still in the wizard until the person confirms.
+    expect(screen.getByText("¿A dónde viaja Pampa?")).toBeOnTheScreen();
+    const buttons = alert.mock.calls[0]?.[2] as { text: string; onPress?: () => void }[];
+    act(() => buttons.find((b) => b.text === "Salir")?.onPress?.());
+    expect(screen.getByText("Planear un viaje")).toBeOnTheScreen();
+    alert.mockRestore();
+  });
+
+  it("'Volver' on a clean first step just closes the wizard", async () => {
+    const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    await openWizard();
+    fireEvent.press(screen.getByText("Volver"));
+    expect(alert).not.toHaveBeenCalled();
+    expect(screen.getByText("Planear un viaje")).toBeOnTheScreen();
+    alert.mockRestore();
+  });
+
+  it("with a CVI typed, the back gesture past step 1 steps back and asks nothing", async () => {
+    const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Revisar pendientes");
+    fireEvent.press(screen.getAllByText("Cargar el CZI")[0] as never);
+    fireEvent.changeText(screen.getByLabelText("Número de CVI, obligatorio"), "AR-1");
+    fireEvent.press(screen.getByText("Planear otro viaje"));
+    fireEvent.press(screen.getByText("Chile"));
+    let outcome: { blocked: boolean } = { blocked: false };
+    act(() => {
+      outcome = mockNav.pressBack();
+    });
+    expect(outcome.blocked).toBe(true);
+    expect(alert).not.toHaveBeenCalled();
+    expect(screen.getByText("¿A dónde viaja Pampa?")).toBeOnTheScreen();
+    alert.mockRestore();
+  });
+
+  it("a new wizard never reuses the key of an attempt whose answer was lost", async () => {
+    mockSend.mockResolvedValue({
+      outcome: "api-error",
+      code: "travel_failed",
+      retryAfterSeconds: null,
+    });
+    const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    await openWizard();
+    fireEvent.press(screen.getByText("Chile"));
+    fireEvent.press(screen.getByText("En auto o en micro"));
+    fireEvent.changeText(screen.getByLabelText("Fecha de salida, obligatorio"), "15/11/2026");
+    fireEvent.press(screen.getByText("Crear viaje"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+    await screen.findByText(/No pudimos guardar el viaje/);
+    // Out of the wizard (date, mode, destination, then confirm), and in again.
+    fireEvent.press(screen.getByText("Volver"));
+    fireEvent.press(screen.getByText("Volver"));
+    fireEvent.press(screen.getByText("Volver"));
+    const buttons = alert.mock.calls[0]?.[2] as { text: string; onPress?: () => void }[];
+    act(() => buttons.find((b) => b.text === "Salir")?.onPress?.());
+    fireEvent.press(screen.getByText("Planear un viaje"));
+    fireEvent.press(screen.getByText("Brasil"));
+    fireEvent.press(screen.getByText("En auto o en micro"));
+    fireEvent.changeText(screen.getByLabelText("Fecha de salida, obligatorio"), "20/11/2026");
+    fireEvent.press(screen.getByText("Crear viaje"));
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(2));
+    expect(mockSend.mock.calls[0]?.[3]).toBe(mockKeys[0]);
+    expect(mockSend.mock.calls[1]?.[3]).not.toBe(mockKeys[0]);
+    alert.mockRestore();
+  });
+
+  it("warns in words when the date is closer than the destination's longest wait", async () => {
+    await openWizard();
+    fireEvent.press(screen.getByText("Chile"));
+    fireEvent.press(screen.getByText("En auto o en micro"));
+    fireEvent.changeText(screen.getByLabelText("Fecha de salida, obligatorio"), "08/10/2026");
+    expect(
+      screen.getByText("Falta 1 día, menos que los 21 días que pide alguno de estos plazos"),
+    ).toBeOnTheScreen();
+    fireEvent.changeText(screen.getByLabelText("Fecha de salida, obligatorio"), "07/10/2026");
+    expect(
+      screen.getByText("Sale hoy, menos que los 21 días que pide alguno de estos plazos"),
+    ).toBeOnTheScreen();
+  });
+
   it("shows an older server's full airline list, with no search to fall back on", async () => {
     await openWizard({ ...EMPTY, options: OLD_OPTIONS });
     fireEvent.press(screen.getByText("Chile"));
@@ -733,9 +824,14 @@ describe("TravelScreen — Para llevar, one box per paper", () => {
     render(<TravelScreen publicToken={TOKEN} />);
     expect(await screen.findByText("Lo tenés, según indicaste")).toBeOnTheScreen();
     expect(
-      screen.getByRole("checkbox", { name: "Certificado veterinario", checked: true }),
+      screen.getByRole("checkbox", {
+        name: "Certificado veterinario, Lo tenés, según indicaste",
+        checked: true,
+      }),
     ).toBeOnTheScreen();
-    fireEvent.press(screen.getByRole("checkbox", { name: "Permiso de importación" }));
+    fireEvent.press(
+      screen.getByRole("checkbox", { name: "Permiso de importación, Sin confirmar" }),
+    );
     await waitFor(() =>
       expect(mockSend).toHaveBeenCalledWith(
         {},
@@ -761,7 +857,9 @@ describe("TravelScreen — Para llevar, one box per paper", () => {
     });
     render(<TravelScreen publicToken={TOKEN} />);
     await screen.findByText("Lo tenés, según indicaste");
-    fireEvent.press(screen.getByRole("checkbox", { name: "Certificado veterinario" }));
+    fireEvent.press(
+      screen.getByRole("checkbox", { name: "Certificado veterinario, Lo tenés, según indicaste" }),
+    );
     await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
     expect(mockSend.mock.calls[0]?.[2]).toEqual({
       command: "confirm_trip_document",
@@ -777,9 +875,64 @@ describe("TravelScreen — Para llevar, one box per paper", () => {
       payload: withPapers({ capabilities: { canRecord: false } }),
     });
     render(<TravelScreen publicToken={TOKEN} />);
-    const box = await screen.findByRole("checkbox", { name: "Permiso de importación" });
+    const box = await screen.findByRole("checkbox", {
+      name: "Permiso de importación, Sin confirmar",
+    });
     fireEvent.press(box);
     expect(mockSend).not.toHaveBeenCalled();
+  });
+});
+
+describe("TravelScreen — Para llevar never hides what its obligation says", () => {
+  it("draws a stale source's notice above the boxes, and its source and legal note in the detail", async () => {
+    const stale = {
+      ...PAPERS,
+      freshnessNotice: "Verificá — dato sin confirmar con la fuente",
+      sources: [
+        {
+          kind: "corridor" as const,
+          label: "Chile",
+          issuerLabel: "SENASA, requisitos para Chile",
+          sourceUrl: "https://www.argentina.gob.ar/senasa/chile",
+          lastVerifiedAt: "2026-05-01",
+          freshness: "expired" as const,
+        },
+      ],
+    };
+    const base = payload();
+    if (base.compliance === null) throw new Error("fixture");
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: { ...base, compliance: { ...base.compliance, obligations: [AGE, stale] } },
+    });
+    render(<TravelScreen publicToken={TOKEN} />);
+    // Para llevar opens by itself (nothing pending, a paper unticked), and the
+    // notice is OUT of the fold, in front of the boxes.
+    expect(
+      await screen.findByText("Verificá — dato sin confirmar con la fuente"),
+    ).toBeOnTheScreen();
+    expect(screen.queryByText(/Fuente:/)).toBeNull();
+    fireEvent.press(screen.getByText("Ver detalle"));
+    expect(
+      screen.getByText("Fuente: SENASA, requisitos para Chile, revisada el 01/05/2026"),
+    ).toBeOnTheScreen();
+    expect(screen.getByText("Regla del corredor de viaje · Chile")).toBeOnTheScreen();
+  });
+
+  it("keys a paper by its obligation, so the same paper in two obligations draws twice", async () => {
+    const second = { ...PAPERS, id: "required_documents:aerolinea", label: "Papeles de LATAM" };
+    const base = payload();
+    if (base.compliance === null) throw new Error("fixture");
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: { ...base, compliance: { ...base.compliance, obligations: [AGE, PAPERS, second] } },
+    });
+    render(<TravelScreen publicToken={TOKEN} />);
+    await screen.findByText("Revisar pendientes");
+    expect(
+      screen.getAllByRole("checkbox", { name: "Permiso de importación, Sin confirmar" }),
+    ).toHaveLength(2);
+    expect(screen.getByText("2 de 4")).toBeOnTheScreen();
   });
 });
 

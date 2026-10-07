@@ -135,7 +135,9 @@ export function PaperCheckRow({
   return (
     <Pressable
       accessibilityRole="checkbox"
-      accessibilityLabel={label}
+      // The status is part of the name: "Lo tenés, según indicaste" is what the
+      // OWNER said, which a bare checked state cannot say.
+      accessibilityLabel={`${label}, ${busy ? "Guardando…" : status}`}
       accessibilityState={{ checked, disabled: disabled || inert, busy }}
       android_ripple={inert ? undefined : RIPPLE}
       disabled={disabled || inert}
