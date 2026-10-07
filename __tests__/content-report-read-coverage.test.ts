@@ -178,6 +178,14 @@ const NOT_A_LOST_NOTE_READ: readonly string[] = [
   // it selects `pet_events.id` and nothing else, and only its existence is
   // used. No `note_added` row can match and no payload text leaves the query.
   "lib/infra/case-access.ts",
+  // `findBridgedReportReplay` (plan A5c, 2026-10): the denuncia's idempotency
+  // ledger. Filtered by pet, client key, reporter AND `event_type IN
+  // ('abandonment_reported', 'maltreatment_reported', 'symptom_observed')` —
+  // the welfare bridge kinds — it selects the linked report's id and reference
+  // code and nothing from `pet_events`. No `note_added` row can match and no
+  // payload text leaves the query. (The file's other `note_added` mentions are
+  // a comment and a system-note INSERT.)
+  "src/modules/welfare/infrastructure/welfare-repository.ts",
 ];
 
 /** Every non-test source file under the app's own roots. */
