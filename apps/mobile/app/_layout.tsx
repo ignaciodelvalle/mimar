@@ -344,7 +344,9 @@ function RootLayout() {
         {/* The pet screen carries THREE faces now — the owner's chrome, the
             libreta and the public credential — so the header can no longer name
             one of them. "Mascota" is what the screen is; the switcher inside it
-            says which face is showing. */}
+            says which face is showing. It is the FALLBACK, drawn before the
+            fetch: once the document reads the animal's name, the route swaps it
+            in with `navigation.setOptions` (app/mascotas/[publicToken].tsx). */}
         <Stack.Screen
           name="mascotas/[publicToken]"
           options={{ title: "Mascota", headerRight: () => <HeaderActions /> }}
@@ -565,8 +567,8 @@ function RootLayout() {
         {/* DENUNCIAS (M16; renamed by inicio-app-rediseno, PO 2026-10-07). The
             menu's one Comunidad row for denuncias lands here, under the web
             OWNER_NAV's name for it; filing a new one is this screen's primary
-            action, and the list under it keeps its own "Mis denuncias"
-            heading. "Denuncia" is the singular the detail falls back to before
+            action, and the list under it carries no second heading
+            (pulido-kit-listas, 2026-10-07: the body title repeated this one). "Denuncia" is the singular the detail falls back to before
             its kind label loads. Unregistered, the headers would read
             "denuncias/index" and "denuncias/[referenceCode]". */}
         <Stack.Screen name="denuncias/index" options={{ title: "Denuncias" }} />
