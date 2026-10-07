@@ -677,7 +677,10 @@ function makeStatefulDeps() {
   const openCases: { id: string; publicCode: string }[] = [];
   let observationStatus: string | null = null;
   const deps = makeDeps({
-    findIncidentReplay: vi.fn(async (_petId: string, key: string) => ledger.get(key) ?? null),
+    findIncidentReplay: vi.fn(
+      async ({ clientIdempotencyKey }: { clientIdempotencyKey: string }) =>
+        ledger.get(clientIdempotencyKey) ?? null,
+    ),
     insertIncidentEventIdempotent: vi.fn(
       async (values: { clientIdempotencyKey: string; caseId: string }) => {
         const eventId = `a0000000-0000-4000-8000-0000000001${String(ledger.size + 1).padStart(2, "0")}`;
@@ -747,8 +750,38 @@ describe("reportBite — replay check before state guard", () => {
     await reportBite(BASE_INPUT, deps);
     const replayOrder = (deps.repo.findIncidentReplay as ReturnType<typeof vi.fn>).mock
       .invocationCallOrder[0];
-    expect(deps.repo.findIncidentReplay).toHaveBeenCalledWith("pet-1", "key-abc", "fake-tx");
+    expect(deps.repo.findIncidentReplay).toHaveBeenCalledWith(
+      { petId: "pet-1", clientIdempotencyKey: "key-abc", recordedByUserId: "user-1" },
+      "fake-tx",
+    );
     expect(replayOrder).toBeLessThan(deps.openCase.mock.invocationCallOrder[0]);
+  });
+
+  it("a twin with ANOTHER key that opened the case first is the guard's refusal, not a 500", async () => {
+    // What postgres-js throws (wrapped by drizzle) when two different-key
+    // reports pass the guard on the same stale snapshot.
+    const deps = makeDeps();
+    deps.openCase.mockRejectedValue(
+      Object.assign(new Error("Failed query: insert into cases ..."), {
+        cause: {
+          code: "23505",
+          constraint_name: "cases_open_per_pet_kind_idx",
+          message: 'duplicate key value violates unique constraint "cases_open_per_pet_kind_idx"',
+        },
+      }),
+    );
+    const result = await reportBite(BASE_INPUT, deps);
+    expect(result).toEqual({ ok: false, error: OBSERVATION_OPEN_ERROR });
+  });
+
+  it("any other failure keeps the generic refusal", async () => {
+    const deps = makeDeps();
+    deps.openCase.mockRejectedValue(new Error("connection reset"));
+    const result = await reportBite(BASE_INPUT, deps);
+    expect(result).toEqual({
+      ok: false,
+      error: "No se pudo reportar la mordedura: connection reset",
+    });
   });
 
   it("without a key there is nothing to replay: an open observation refuses", async () => {

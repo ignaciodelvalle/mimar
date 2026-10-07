@@ -330,8 +330,7 @@ export async function reportBiteFromOrg(
     gate = await inGatedTransaction(
       transaction,
       repo,
-      pet,
-      input.clientIdempotencyKey,
+      { pet, clientIdempotencyKey: input.clientIdempotencyKey, actorUserId: user.id },
       async (tx) => {
         // 2c. Open bite_incident case (event jurisdiction overrides pet jurisdiction).
         const caseRow = await openCase(

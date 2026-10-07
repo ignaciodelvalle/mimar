@@ -344,11 +344,19 @@ export class SurveillanceRepository {
    * concurrent twin waits for the first to commit and then finds its row here
    * rather than racing it into the unique index. REQUIRES a transaction.
    *
+   * Scoped to WHO RECORDED it as well: a key someone else used on this animal
+   * is not this caller's request, and must not hand them another person's
+   * case code. The lock stays on the key alone — it is the same lock
+   * insertEventIdempotent takes, and an unrelated same-key caller only waits.
+   *
    * Returns the original incident and the case it opened, or null.
    */
   async findIncidentReplay(
-    petId: string,
-    clientIdempotencyKey: string,
+    {
+      petId,
+      clientIdempotencyKey,
+      recordedByUserId,
+    }: { petId: string; clientIdempotencyKey: string; recordedByUserId: string },
     executor: DbOrTx,
   ): Promise<{ eventId: string; caseId: string | null; casePublicCode: string } | null> {
     await executor.execute(sql`select pg_advisory_xact_lock(hashtext(${clientIdempotencyKey}))`);
@@ -361,6 +369,7 @@ export class SurveillanceRepository {
           eq(petEvents.petId, petId),
           eq(petEvents.eventType, "incident_reported"),
           eq(petEvents.clientIdempotencyKey, clientIdempotencyKey),
+          eq(petEvents.recordedByUserId, recordedByUserId),
         ),
       )
       .limit(1);

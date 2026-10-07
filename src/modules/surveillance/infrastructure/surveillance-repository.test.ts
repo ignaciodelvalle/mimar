@@ -881,7 +881,12 @@ describe("reportBite — replay check before state guard (real database)", () =>
     expect(incidents).toHaveLength(1);
 
     // The ledger, asked directly, names the same incident and case code.
-    const replay = await db.transaction((tx) => repo.findIncidentReplay(replayPetId, key, tx));
+    const replay = await db.transaction((tx) =>
+      repo.findIncidentReplay(
+        { petId: replayPetId, clientIdempotencyKey: key, recordedByUserId: reporterId },
+        tx,
+      ),
+    );
     expect(replay).toEqual({
       eventId: first.value.eventId,
       caseId: biteCases[0].id,
@@ -900,8 +905,183 @@ describe("reportBite — replay check before state guard (real database)", () =>
 
   it("an unknown key finds nothing in the ledger", async () => {
     const replay = await db.transaction((tx) =>
-      repo.findIncidentReplay(replayPetId, randomUUID(), tx),
+      repo.findIncidentReplay(
+        { petId: replayPetId, clientIdempotencyKey: randomUUID(), recordedByUserId: reporterId },
+        tx,
+      ),
     );
     expect(replay).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reportBite — concurrency, actor scope and last-stable-wins (real database)
+// ---------------------------------------------------------------------------
+//
+// Each test gets its own pet, so the open observation one leaves behind cannot
+// decide another's outcome.
+
+describe("reportBite — concurrency, actor scope, last-stable-wins (real database)", () => {
+  const petIds: string[] = [];
+  const profileIds: string[] = [];
+
+  async function freshProfile(): Promise<string> {
+    const id = randomUUID();
+    await db.insert(profiles).values({
+      id,
+      displayName: "Bite Replay Concurrency",
+      dniHash: hashDni(String(40_000_000 + Math.floor(Math.random() * 9_999_999))),
+      dniVerified: true,
+      role: "owner",
+    });
+    profileIds.push(id);
+    return id;
+  }
+
+  async function freshPet(): Promise<string> {
+    const [pet] = await db
+      .insert(pets)
+      .values({
+        publicToken: `SURV-BITE-CONC-${randomUUID().slice(0, 8)}`,
+        name: "BiteConcurrencyPet",
+        species: "dog",
+        sex: "unknown",
+        potentiallyDangerousBreed: false,
+      })
+      .returning();
+    petIds.push(pet.id);
+    return pet.id;
+  }
+
+  afterAll(async () => {
+    await withMutationOverride(async (tx) => {
+      for (const id of petIds) {
+        await tx.execute(sql`DELETE FROM pet_events WHERE pet_id = ${id}::uuid`);
+        await tx.execute(sql`DELETE FROM cases WHERE primary_pet_id = ${id}::uuid`);
+        await tx.execute(sql`DELETE FROM pets WHERE id = ${id}::uuid`);
+      }
+      for (const id of profileIds) {
+        await tx.execute(sql`DELETE FROM profiles WHERE id = ${id}::uuid`);
+      }
+    });
+  });
+
+  // Reads the pet when called, the way the web action and the v1 route do.
+  async function report(
+    petId: string,
+    reporterId: string,
+    key: string,
+    severity: "minor" | "moderate" | "severe" = "minor",
+  ) {
+    const [pet] = await db.select().from(pets).where(eq(pets.id, petId));
+    return reportBite(
+      {
+        pet: {
+          id: pet.id,
+          publicToken: pet.publicToken,
+          name: pet.name,
+          species: pet.species,
+          status: pet.status,
+          rabiesObservationStatus: pet.rabiesObservationStatus ?? null,
+          jurisdictionProvince: null,
+          jurisdictionLocality: null,
+          localityId: null,
+        },
+        user: { id: reporterId },
+        eventAuthorship: { authorRole: "owner", authorOrganizationId: null, authorVerified: false },
+        occurredAt: new Date("2026-01-10T12:00:00Z"),
+        victimKind: "human",
+        severity,
+        locationDescription: null,
+        context: null,
+        victimContactName: null,
+        victimContactPhone: null,
+        victimAgeEstimate: null,
+        clientIdempotencyKey: key,
+        eventJurisdictionProvince: null,
+        eventJurisdictionLocality: null,
+        locationLat: null,
+        locationLng: null,
+        locationSource: null,
+      },
+      {
+        repo,
+        openCase: async (input, tx) =>
+          openCase(input as Parameters<typeof openCase>[0], tx as Parameters<typeof openCase>[1]),
+        transaction: db.transaction.bind(db),
+        findAuthoritiesForJurisdiction: async () => [],
+        resolveObservationWindow: async () => ({ days: 10 }),
+      },
+    );
+  }
+
+  async function biteCaseCount(petId: string): Promise<number> {
+    const rows = await db
+      .select({ id: cases.id })
+      .from(cases)
+      .where(and(eq(cases.primaryPetId, petId), eq(cases.caseKind, "bite_incident")));
+    return rows.length;
+  }
+
+  it("two SAME-key requests at once: one writes, the other replays it", async () => {
+    const petId = await freshPet();
+    const reporterId = await freshProfile();
+    const key = randomUUID();
+
+    const results = await Promise.all([
+      report(petId, reporterId, key),
+      report(petId, reporterId, key),
+    ]);
+
+    expect(results.every((r) => r.ok)).toBe(true);
+    const values = results.flatMap((r) => (r.ok ? [r.value] : []));
+    expect(values.map((v) => v.wasDuplicate).sort()).toEqual([false, true]);
+    expect(values[0].eventId).toBe(values[1].eventId);
+    expect(values[0].casePublicCode).toBe(values[1].casePublicCode);
+    expect(await biteCaseCount(petId)).toBe(1);
+  });
+
+  it("two DIFFERENT-key requests at once: one writes, the other is the guard's refusal — not a 500", async () => {
+    const petId = await freshPet();
+    const reporterId = await freshProfile();
+
+    const results = await Promise.all([
+      report(petId, reporterId, randomUUID()),
+      report(petId, reporterId, randomUUID()),
+    ]);
+
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, error: OBSERVATION_OPEN_ERROR }]);
+    expect(await biteCaseCount(petId)).toBe(1);
+  });
+
+  it("someone else's key is not this caller's replay: it meets the guard", async () => {
+    const petId = await freshPet();
+    const key = randomUUID();
+
+    const first = await report(petId, await freshProfile(), key);
+    expect(first.ok).toBe(true);
+    const stranger = await report(petId, await freshProfile(), key);
+
+    expect(stranger).toEqual({ ok: false, error: OBSERVATION_OPEN_ERROR });
+  });
+
+  it("same key, different payload: the ORIGINAL result stands (B8 last-stable-wins)", async () => {
+    const petId = await freshPet();
+    const reporterId = await freshProfile();
+    const key = randomUUID();
+
+    const first = await report(petId, reporterId, key, "minor");
+    const edited = await report(petId, reporterId, key, "severe");
+
+    expect(first.ok && edited.ok).toBe(true);
+    if (!first.ok || !edited.ok) return;
+    expect(edited.value).toEqual({ ...first.value, wasDuplicate: true });
+    const incidents = await db
+      .select({ payload: petEvents.payload })
+      .from(petEvents)
+      .where(and(eq(petEvents.petId, petId), eq(petEvents.eventType, "incident_reported")));
+    expect(incidents).toHaveLength(1);
+    expect((incidents[0].payload as { severity: string }).severity).toBe("minor");
   });
 });
