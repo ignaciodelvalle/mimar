@@ -9,9 +9,13 @@ import {
 import { ACCOUNTS, loginAs } from "./demo/_helpers";
 
 /**
- * Viajes (viajes-fase-2, task 8.1) — the owner's travel flow in a browser.
+ * Viajes (viajes-fase-2, task 8.1; v14 "Viaje en pasos") — the owner's travel
+ * flow in a browser.
  *
- *   V1  record a trip → read its semáforo → record a CVI → export the PDF.
+ *   V1  plan a trip through the chained form (destination → mode → airline →
+ *       modality → date, with the destination's deadlines beside it) → read its
+ *       pase and semáforo → tick a paper in "Para llevar" → record the paper in
+ *       "Papeles" → export the PDF.
  *   V2  a caretaker of the same pet sees none of it: no "Viaje y movilidad"
  *       row, the titular notice on /viaje, and the trip's own event page
  *       answers as if the record did not exist (design D8: a trip says when a
@@ -82,8 +86,10 @@ function arDisplay(iso: string): string {
 }
 
 const TRIP_DATE = arDatePlus(TRIP_DAYS_AHEAD);
-/** travelTripLabel's shape: "Chile, 12/11/2026". */
+/** travelTripLabel's shape: "Chile, 12/11/2026" (the switcher and the cancel question). */
 const TRIP_LABEL = `Chile, ${arDisplay(TRIP_DATE)}`;
+/** The pase's second line ends with the day, the airline and where it flies. */
+const TRIP_META = `${arDisplay(TRIP_DATE)} · LATAM, en cabina`;
 
 /** Shared across the serial walks. */
 let petToken = "";
@@ -106,36 +112,31 @@ async function pickActivePetToken(page: Page): Promise<string> {
   return token;
 }
 
-/** Open /viaje and wait for the page itself, not just the shell. */
-async function openViaje(page: Page): Promise<void> {
-  await page.goto(`/mis-mascotas/${petToken}/viaje`, { waitUntil: "domcontentloaded" });
+/** Open /viaje (with an optional query) and wait for the page itself, not just the shell. */
+async function openViaje(page: Page, query = ""): Promise<void> {
+  await page.goto(`/mis-mascotas/${petToken}/viaje${query}`, { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: /^Viaje de / })).toBeVisible({
     timeout: 20_000,
   });
 }
 
 /**
- * Show THIS run's trip. With one trip the page reads it directly; a trip an
- * earlier failed run left behind turns the reading into tabs, one per trip.
+ * Show THIS run's trip. The page reads the next trip by default; a trip an
+ * earlier failed run left behind would be read instead, so ask for ours.
  */
-async function selectThisTrip(page: Page): Promise<void> {
-  const semaforo = page.getByRole("region", { name: "Semáforo de viaje" });
-  await expect(semaforo).toBeVisible();
-  const tab = page.getByRole("tab", { name: TRIP_LABEL });
-  if ((await page.getByRole("tablist", { name: "Viajes registrados" }).count()) > 0) {
-    await tab.click();
-    await expect(tab).toHaveAttribute("aria-selected", "true");
-  }
-  await expect(semaforo).toContainText(TRIP_LABEL);
+async function selectThisTrip(page: Page, query = ""): Promise<void> {
+  await openViaje(page, `?viaje=${encodeURIComponent(tripEventId)}${query}`);
+  await expect(page.getByRole("region", { name: "Semáforo de viaje" })).toContainText(TRIP_META);
 }
 
-/** Open a closed `<details>` by its summary; a no-op when already open. */
-async function openDetails(page: Page, summary: string): Promise<void> {
-  const details = page.locator("details", { has: page.getByText(summary, { exact: true }) });
-  await expect(details).toBeVisible();
+/** Open a module (a native `<details>`) by its id; a no-op when already open. */
+async function openModule(page: Page, id: string): Promise<void> {
+  const details = page.locator(`details#${id}`);
+  await expect(details).toBeAttached();
   if (!(await details.evaluate((el) => (el as HTMLDetailsElement).open))) {
-    await details.getByText(summary, { exact: true }).click();
+    await details.locator("summary").first().click();
   }
+  await expect(details).toHaveAttribute("open", "");
 }
 
 // ---------------------------------------------------------------------------
@@ -213,60 +214,63 @@ test.describe
       petToken = await pickActivePetToken(page);
       await openViaje(page);
 
-      // ---- record the trip ---------------------------------------------------
-      await openDetails(page, "Destino, fecha y aerolínea");
-      await page.getByLabel(/^Destino/).selectOption("chile");
-      await page.getByLabel(/^Fecha de salida/).fill(arDisplay(TRIP_DATE));
-      await page.getByLabel(/^Aerolínea/).selectOption("latam");
-      await page.getByLabel(/^Dónde viaja la mascota/).selectOption("cabin");
-      await page.getByRole("button", { name: "Registrar viaje" }).click();
+      // ---- plan the trip: the chained form ------------------------------------
+      // With no trip on, the form is open ("Planear un viaje"); with one an
+      // earlier run left, it is folded at the end ("Planear otro viaje").
+      await openModule(page, "nuevo-viaje");
+      const form = page.locator("details#nuevo-viaje");
+      await form.getByLabel(/^Destino/).selectOption("chile");
+      // The destination decides the ways of going: Chile is by air or by land,
+      // never by sea.
+      const mode = form.getByLabel(/^Cómo viajan/);
+      await expect(mode.locator("option")).toHaveText([
+        "Todavía no sé",
+        "En avión",
+        "En auto o en micro",
+      ]);
+      await mode.selectOption("air");
+      // Chile's airlines come first; every other one stays reachable.
+      const airline = form.getByLabel(/^Aerolínea/);
+      await expect(airline.locator('optgroup[label="Vuelan a Chile"] option')).toHaveCount(4);
+      await airline.selectOption("latam");
+      // The airline decides cabin, hold or cargo, with the weight it publishes.
+      const modality = form.getByLabel(/^Dónde viaja la mascota/);
+      await expect(modality.locator("option")).toHaveCount(3);
+      await modality.selectOption("cabin");
+      await form.getByLabel(/^Fecha de salida/).fill(arDisplay(TRIP_DATE));
+      // The destination's deadlines, worded by the server, beside the date.
+      await expect(
+        form.getByText("La antirrábica tiene que tener al menos 21 días el día del viaje."),
+      ).toBeVisible();
+      await form.getByRole("button", { name: "Crear viaje" }).click();
 
-      // ---- its semáforo ------------------------------------------------------
+      // ---- its pase and semáforo ---------------------------------------------
       // The OUTCOME, never the URL: the page reloads itself onto the new trip
-      // (useActionRedirect), so the reading names it. This is the assertion
-      // that caught the form hanging on "Registrando…" with the write already
-      // landed — the Next 15.5 transition that never commits after a
-      // same-route revalidatePath (lib/ui/full-page-action-nav.ts).
+      // (useActionRedirect). This is the assertion that caught the form
+      // hanging on "Registrando…" with the write already landed — the Next 15.5
+      // transition that never commits after a same-route revalidatePath
+      // (lib/ui/full-page-action-nav.ts).
       const semaforo = page.getByRole("region", { name: "Semáforo de viaje" });
-      await expect(semaforo).toContainText(TRIP_LABEL, { timeout: 30_000 });
-      // The trip line names the airline and where the animal travels.
-      await expect(semaforo).toContainText(`${TRIP_LABEL} · LATAM, en cabina`);
+      await expect(semaforo).toContainText(TRIP_META, { timeout: 30_000 });
+      await expect(semaforo).toContainText("Chile");
+      await expect(semaforo).toContainText(/faltan \d+ días/);
       // The reading is one of the four fixed labels, whichever this pet's
       // libreta earns — the label set is the contract, not this seed's state.
       const reading = (await semaforo.locator("output").innerText()).trim();
       expect(Object.values(TRAVEL_SEMAFORO_LABELS)).toContain(reading);
-      // An airline is selected, so its section heads with the "Verificá"
-      // notice: the airline's policy is never presented as certain.
+      // The trip names an airline, so the "Verificá" notice rides with it:
+      // the airline's policy is never presented as certain.
       await expect(page.getByText(`${TRAVEL_AIRLINE_NOTICE}: LATAM`)).toBeVisible();
       // The never-certain rule, over the whole screen.
       await expect(page.locator("main")).not.toContainText(TRAVEL_FORBIDDEN_COPY);
-
-      // ---- tick one required document ("Lo tengo", PO 2026-10-01) -----------
-      // Chile's corridor lists required_documents: a WARNING (never a blocker
-      // on its own) until the titular ticks "Lo tengo" for each one. Ticking is
-      // a correction (confirm_trip_document) that reloads the page like every
-      // other write here — fixed 2026-10-01 after this exact submit hung
-      // forever on staging: TripDocumentsChecklist's sibling rows all bound the
-      // IDENTICAL server action, which broke useActionState's own redirect; it
-      // now calls the action directly and navigates with useActionNavigate,
-      // like DenunciaWizard/ResetCodeStep (lib/ui/use-action-redirect.ts).
-      const documentsList = page.getByRole("list", { name: "Documentos del viaje" });
-      await expect(documentsList).toBeVisible();
-      await expect(page.getByText("Confirmá que tenés cada documento")).toBeVisible();
-      await documentsList.getByRole("button", { name: "Lo tengo" }).first().click();
-      // The OUTCOME, not the URL: the ticked row flips to "Desmarcar" once the
-      // reload lands. No untick needed afterwards — V3 cancels this run's own
-      // trip regardless, taking every tick on it along.
-      await expect(documentsList.getByRole("button", { name: "Desmarcar" })).toBeVisible({
-        timeout: 30_000,
-      });
-      await expect(documentsList.getByText("Lo tenés, según indicaste")).toBeVisible();
+      // The three quick actions are on the first screen.
+      const quick = page.getByRole("complementary", { name: "Acciones del viaje" });
+      await expect(quick.getByRole("button", { name: "Exportar PDF" })).toBeVisible();
+      await expect(quick.getByRole("link", { name: "Cargar el CZI" })).toBeVisible();
+      await expect(quick.getByRole("button", { name: "Mandar a mi veterinaria" })).toBeVisible();
 
       // The trip's event id, for V2 (the caretaker opening it by URL) — the
-      // cancel form carries it, and "Volver" leaves the trip untouched. Scoped
-      // to the cancel form: since the sign-offs above, each ticked document's
-      // own form ALSO carries a hidden tripEventId (TripDocumentsChecklist),
-      // so the bare selector resolves to 4 inputs and trips strict mode.
+      // cancel form carries it, and "Volver" leaves the trip untouched.
       await page.getByRole("button", { name: "Cancelar este viaje" }).click();
       const cancelForm = page.locator("form", {
         has: page.getByRole("button", { name: "Confirmar cancelación" }),
@@ -276,18 +280,49 @@ test.describe
       await page.getByRole("button", { name: "Volver" }).click();
       await expect(page.getByRole("button", { name: "Cancelar este viaje" })).toBeVisible();
 
-      // ---- record a CVI ------------------------------------------------------
-      await openDetails(page, "Registrar un CVI");
-      await page.getByLabel(/^Número de CVI/).fill(CVI_NUMBER);
-      await page.getByLabel(/^Fecha de emisión/).fill(arDisplay(todayInAr()));
-      await page.getByLabel(/^Válido hasta/).fill(arDisplay(arDatePlus(60)));
-      await page.getByRole("button", { name: "Registrar CVI" }).click();
-      // The page reloads with the CVI in its list.
-      await expect(page.getByText(CVI_NUMBER)).toBeVisible({ timeout: 30_000 });
+      // ---- tick a paper in "Para llevar" (PO 2026-10-01) ---------------------
+      // Chile's papers are a WARNING until the titular says they have each one.
+      // A checkbox now (v14), the same confirm_trip_document command; the page
+      // reloads like every other write here. Only PAPERS are listed: the
+      // microchip and the antiparasitario are the libreta's to answer.
+      await openModule(page, "para-llevar");
+      const documentsList = page.getByRole("list", { name: "Documentos del viaje" });
+      const firstPaper = documentsList.getByRole("checkbox").first();
+      await expect(firstPaper).not.toBeChecked();
+      await expect(documentsList).not.toContainText(/microchip|antiparasitario/i);
+      await firstPaper.check();
+      // The OUTCOME, not the URL: once the reload lands the box reads ticked
+      // and says whose word it is. No untick needed afterwards — V3 cancels
+      // this run's own trip regardless, taking every tick on it along.
+      // The module's own tally is the server's word: it moves only once the
+      // reload lands (the box itself flips at once, optimistically).
+      await expect(page.locator("details#para-llevar > summary")).toContainText(/1 de \d+/, {
+        timeout: 30_000,
+      });
+      await openModule(page, "para-llevar");
+      await expect(documentsList.getByRole("checkbox").first()).toBeChecked();
+      await expect(documentsList.getByText("Lo tenés, según indicaste")).toBeVisible();
+
+      // ---- record the paper in "Papeles" -------------------------------------
+      await selectThisTrip(page, "&abrir=papeles");
+      const papers = page.locator("details#papeles");
+      await expect(papers).toContainText(
+        "Chile pide: Certificado Zoosanitario de Importación (CZI)",
+      );
+      await papers.getByLabel(/^Número de CVI/).fill(CVI_NUMBER);
+      await papers.getByLabel(/^Fecha de emisión/).fill(arDisplay(todayInAr()));
+      await papers.getByLabel(/^Válido hasta/).fill(arDisplay(arDatePlus(60)));
+      await papers.getByRole("button", { name: "Registrar CVI" }).click();
+      // The page reloads with the certificate in its list.
+      await expect(async () => {
+        await selectThisTrip(page, "&abrir=papeles");
+        await expect(
+          page.getByRole("list", { name: "Certificados registrados" }).getByText(CVI_NUMBER),
+        ).toBeVisible({ timeout: 5_000 });
+      }).toPass({ timeout: 30_000 });
 
       // ---- export the PDF ----------------------------------------------------
-      await selectThisTrip(page);
-      await page.getByRole("button", { name: "Descargar documentación de viaje (PDF)" }).click();
+      await page.getByRole("button", { name: "Exportar PDF" }).click();
       const pdfLink = page.getByRole("link", { name: "Abrir el PDF generado" });
       await expect(pdfLink, "the export answered with a signed URL, not an error line").toBeVisible(
         { timeout: 30_000 },
@@ -337,6 +372,7 @@ test.describe
           caretakerPage.getByText(/Registrar un viaje: solo la puede hacer el titular/),
         ).toBeVisible({ timeout: 20_000 });
         await expect(caretakerPage.getByText(TRIP_LABEL)).toHaveCount(0);
+        await expect(caretakerPage.getByText(TRIP_META)).toHaveCount(0);
         await expect(caretakerPage.getByText(CVI_NUMBER)).toHaveCount(0);
 
         // ---- NOT REACHED: the trip's own record answers as a missing one -----
@@ -369,9 +405,10 @@ test.describe
       expect(petToken, "V1 picked the pet").toBeTruthy();
 
       await loginAs(page, TITULAR);
-      await openViaje(page);
       await selectThisTrip(page);
 
+      // v14: cancelling is the last thing on the screen, as a link-styled
+      // control, with the same two-step confirmation.
       await page.getByRole("button", { name: "Cancelar este viaje" }).click();
       // The question names the trip it is about to cancel.
       await expect(page.getByText(`¿Cancelar el viaje a ${TRIP_LABEL}?`)).toBeVisible();
@@ -388,13 +425,16 @@ test.describe
       await page.getByRole("button", { name: "Confirmar cancelación" }).click();
       await cancelled;
 
-      // The OUTCOME: the trip is gone from the reading and from the tabs. The
-      // CVI stays — it is a document the owner holds, not part of the trip.
+      // The OUTCOME: the trip is gone from the reading and from the trip list.
+      // The CVI stays — it is a document the owner holds, not part of the trip.
       // Navigating ourselves may race the page's own reload, hence the retry.
       await expect(async () => {
-        await openViaje(page);
-        await expect(page.getByText(CVI_NUMBER)).toBeVisible({ timeout: 5_000 });
+        await openViaje(page, "?abrir=papeles");
+        await expect(
+          page.getByRole("list", { name: "Certificados registrados" }).getByText(CVI_NUMBER),
+        ).toBeVisible({ timeout: 5_000 });
         await expect(page.getByText(TRIP_LABEL)).toHaveCount(0);
+        await expect(page.getByText(TRIP_META)).toHaveCount(0);
       }).toPass({ timeout: 30_000 });
     });
   });
