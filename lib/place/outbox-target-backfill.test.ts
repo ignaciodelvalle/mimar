@@ -106,4 +106,18 @@ describe("planOutboxTarget", () => {
     ).toBeNull();
     expect(planOutboxTarget(row, [])).toBeNull();
   });
+
+  it("a source settled by a projection-only method (0291) decides nothing: the outbox CHECK cannot record it", () => {
+    expect(
+      planOutboxTarget(row, [
+        {
+          source: "event",
+          province: "Buenos Aires",
+          locality: "Mechita",
+          localityId: BRAGADO,
+          method: "homonym_by_coordinates",
+        },
+      ]),
+    ).toBeNull();
+  });
 });
