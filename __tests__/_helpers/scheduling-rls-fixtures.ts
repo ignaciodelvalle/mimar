@@ -1,6 +1,6 @@
-// Shared fixtures for the scheduling RLS suites (migrations 0285 and 0286):
-// appointments, service_schedule_rules and time_slots, seen by every caller
-// shape the policies distinguish.
+// Shared fixtures for the scheduling RLS suites (migrations 0285, 0286, 0288,
+// 0290): appointments, service_schedule_rules, time_slots and their
+// service_offerings, seen by every caller shape the policies distinguish.
 //
 // THE WORLD
 //   orgA      — owns offering "org"; `member` is active in it, `leftMember`
@@ -234,13 +234,19 @@ export async function runAs<T = Record<string, unknown>>(
  */
 export async function visibleKeys(
   world: SchedulingWorld,
-  table: "appointments" | "service_schedule_rules" | "time_slots",
+  table: "appointments" | "service_schedule_rules" | "time_slots" | "service_offerings",
   role: Role,
   userId: string | null,
   aal?: Aal,
 ): Promise<OfferingKey[]> {
   const ids =
-    table === "appointments" ? world.appointment : table === "time_slots" ? world.slot : world.rule;
+    table === "appointments"
+      ? world.appointment
+      : table === "time_slots"
+        ? world.slot
+        : table === "service_offerings"
+          ? world.offering
+          : world.rule;
   const idList = sql.join(
     OFFERING_KEYS.map((k) => sql`${ids[k]}::uuid`),
     sql`, `,
