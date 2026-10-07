@@ -233,7 +233,7 @@ describe("CasesScreen", () => {
     // The nearest host View above each text: the one meta line, for both.
     const lineOf = (node: typeof date) => {
       let at = node.parent;
-      while (at !== null && at.type !== "View") at = at.parent;
+      while (at !== null && (at.type as unknown) !== "View") at = at.parent;
       return at;
     };
     expect(lineOf(date)).not.toBeNull();
