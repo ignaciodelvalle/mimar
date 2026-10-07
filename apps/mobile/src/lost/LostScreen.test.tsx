@@ -1375,3 +1375,33 @@ describe("LostScreen — in perdida, the two acts that matter are first (custody
     expect(screen.getByText("Compartir la búsqueda")).toBeOnTheScreen();
   });
 });
+
+describe("LostScreen — after a landed 'Sí, la encontré' (review finding)", () => {
+  it("brings the new state's primary back instead of leaving the confirmation's hole", async () => {
+    // The re-read is a REFRESH: the overview stays mounted. The confirmation
+    // used to keep hiding the lead act after the server took `canMarkFound`
+    // away, so "Marcar como perdida" vanished until the route was re-entered.
+    mockFetch.mockResolvedValueOnce(ok(searching())).mockResolvedValue(ok(payload()));
+    mockSend.mockResolvedValue(ack("mark_found", true, "active"));
+    render(<LostScreen publicToken={TOKEN} />);
+    fireEvent.press(await screen.findByText("Marcar como encontrada"));
+    fireEvent.press(screen.getByText("Sí, la encontré"));
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+    const button = await screen.findByRole("button", { name: "Marcar como perdida" });
+    expect(button).toBeEnabled();
+    // And the privacy rows unfold with the search over.
+    expect(screen.getAllByRole("switch").length).toBeGreaterThan(0);
+  });
+
+  it("opens the feed when a refresh brings its first message", async () => {
+    mockFetch.mockResolvedValue(ok(searching()));
+    render(<LostScreen publicToken={TOKEN} />);
+    await screen.findByText(/Todavía no hay avistajes/);
+
+    mockFetch.mockResolvedValue(ok(searching({ feed: REPORTABLE_FEED })));
+    await refocus();
+
+    expect(await screen.findByText("Alguien la vio")).toBeOnTheScreen();
+  });
+});
