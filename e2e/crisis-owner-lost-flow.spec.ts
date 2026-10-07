@@ -9,30 +9,22 @@ import { ACCOUNTS, ensurePetFound, loginAs } from "./demo/_helpers";
  * — that the public credential flips to the lost state and only discloses
  * what the owner explicitly opted into.
  *
- * The pet + token are discovered at runtime from /mis-mascotas — never
- * hardcoded. seed-test-users.ts seeds Firulais/Michi/Atún, but that seed
- * only runs its `seedOwnerPets` step when the owner has NO pets yet, so a
- * local dev DB layered with other seed/demo scripts can give owner@dim.test
- * a completely different pet set. We pick the first pet whose registry row
- * shows a non-urgent status flag ("AL DÍA" once compliance is derived,
- * "REGISTRADO/A" before — i.e. not already lost or deceased). The flag
- * agrees with the animal's sex, so the locator must be sex-agnostic —
- * matching only /registrada/i would silently skip every male and every
- * unknown-sex pet, and "skipped" reads as "passed" in CI. The flag is the
- * LnRegRow badge rendered by app/(app)/mis-mascotas/page.tsx.
+ * THE PET IS A NAMED FIXTURE, NOT "THE FIRST ACTIVE ROW" (2026-10-06).
+ * scripts/seed-test-users.ts gives owner@dim.test Firulais, Michi and Atún
+ * and marks the FIRST of them (Firulais) lost as the bootstrap's lost-pet
+ * fixture, so Michi is the seed's active cat with no chip. The token is still
+ * read at runtime — the seed generates it — but from the row whose heading
+ * (LnRegRow's serif span) is exactly "Michi". Picking `.first()` of whatever
+ * looked active let any extra pet a local DB carries (demo seeds, a QA run)
+ * decide which animal this spec walked, and with it the step count and the
+ * outcome. Rows badged "Al cuidado" are somebody else's animal this account
+ * only caretakes and are excluded. A Michi left lost by an earlier aborted
+ * run is put back first with `ensurePetFound`, so the walk starts from the
+ * same state every time.
  *
- * The NAME comes from the row's own heading (LnRegRow's serif span), not
- * from a photo's alt: the seed gives these pets no photo, so the old
- * `:has(img)` locator found nothing on CI's fresh DB and the spec
- * `test.skip`ped every run, green (e2e/README.md, "a skip built on one
- * lies"). Rows badged "Al cuidado" are somebody else's animal this account
- * only caretakes; the mark-lost wizard is the titular's, so they are not
- * candidates.
- *
- * The wizard is driven ADAPTIVELY: the "enriched details" step only exists
- * when the picked pet has neither a microchip nor a tattoo (MarkLostWizard's
- * `showDetailsStep`), so the flow checks for it instead of assuming a fixed
- * step count.
+ * Michi has neither microchip nor tattoo, so the "enriched details" step is
+ * present; the flow still detects it rather than assuming a fixed step count,
+ * because a local Michi can have been given a chip by hand.
  *
  * Location is left empty on purpose: setPetLostAction
  * (src/modules/events/actions.ts) treats location as optional server-side.
@@ -47,6 +39,9 @@ import { ACCOUNTS, ensurePetFound, loginAs } from "./demo/_helpers";
  * three specs at once. The control is named ONCE, in `MARK_FOUND_BUTTON`.
  */
 
+/** The seeded active, chipless cat of owner@dim.test (scripts/seed-test-users.ts). */
+const PET_NAME = "Michi";
+
 test("owner marks a pet lost — public credential flips to lost state for a stranger", async ({
   page,
   browser,
@@ -55,34 +50,29 @@ test("owner marks a pet lost — public credential flips to lost state for a str
 
   await loginAs(page, ACCOUNTS.owner);
 
-  // Discover an active (non-lost, non-deceased) pet the owner OWNS from their
-  // registry — any will do, we just need one currently NOT lost. An
-  // ASSERTION, not a skip: scripts/seed-test-users.ts seeds owner@dim.test
-  // with active pets, so an empty registry is a broken seed. Auto-retrying,
-  // so it also absorbs the registry's streaming render (`Locator.count()` is
-  // one-shot and does not wait — the README's worst shape for a gate).
+  // The seeded fixture, by name — see the header. An ASSERTION, not a skip:
+  // the seed guarantees Michi, so a missing row is a broken seed. Exactly ONE
+  // row: two Michis would make the pick ambiguous again, and that should be
+  // red, not resolved by DOM order. Auto-retrying, so it also absorbs the
+  // registry's streaming render (`Locator.count()` is one-shot).
   await page.goto("/mis-mascotas", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle").catch(() => {});
-  const petLink = page
-    .locator('a[href^="/mis-mascotas/DIM-"]', {
-      hasText: /AL DÍA|REGISTRAD[AO]/i,
-      hasNotText: /Al cuidado/i,
-    })
-    .first();
+  const petLink = page.locator('a[href^="/mis-mascotas/DIM-"]', {
+    has: page.locator("span.font-ln-serif", { hasText: new RegExp(`^${PET_NAME}$`) }),
+    hasNotText: /Al cuidado/i,
+  });
   await expect(
     petLink,
-    "owner@dim.test has no active owned pet — the mark-lost walk needs one (seeded by scripts/seed-test-users.ts).",
-  ).toBeVisible({ timeout: 20_000 });
+    `owner@dim.test must own exactly one pet named ${PET_NAME} (scripts/seed-test-users.ts seedOwnerPets).`,
+  ).toHaveCount(1, { timeout: 20_000 });
   const href = await petLink.getAttribute("href");
   const token = (href ?? "").split("/mis-mascotas/")[1];
   expect(token, "publicToken parsed from registry link").toBeTruthy();
-  // The row's heading is the pet's name (components/ui/RegRow.tsx LnRegRow:
-  // the serif span beside the status flag). Trimmed: the success copy below
-  // interpolates it into a regex.
-  const petName = (
-    (await petLink.locator("span.font-ln-serif").first().textContent()) ?? ""
-  ).trim();
-  expect(petName, "pet name read from the registry row's heading").toBeTruthy();
+  const petName = PET_NAME;
+
+  // A Michi an earlier aborted run left lost is put back before the walk; on
+  // an active Michi this is a no-op (the sheet shows its not-lost notice).
+  await ensurePetFound(page, token);
 
   try {
     await page.goto(`/mis-mascotas/${token}/perdida`, { waitUntil: "domcontentloaded" });
@@ -111,11 +101,20 @@ test("owner marks a pet lost — public credential flips to lost state for a str
     await page.getByRole("switch", { name: "Tu teléfono" }).click();
     await page.getByRole("button", { name: /^marcar como perdid(?:o|a|o\/a)$/i }).click();
 
-    await expect(
-      page.getByText(new RegExp(`activamos la búsqueda de ${petName}`, "i")),
-    ).toBeVisible({
-      timeout: 15_000,
+    // The confirmation is its own ROUTE (perdida/activada), rendered from the
+    // open episode in the database — not wizard state, which the action's
+    // revalidation used to unmount before it ever showed. So this waits for
+    // the URL AND that route's heading: the heading alone could not tell the
+    // route from a resurrected in-place view, and the URL alone could be a
+    // redirect back out of it (the route sends a pet with no open episode to
+    // its profile). The navigation is fired imperatively from the submit
+    // handler, not from an effect on a component the refresh can unmount.
+    await expect(page).toHaveURL(new RegExp(`/mis-mascotas/${token}/perdida/activada$`), {
+      timeout: 20_000,
     });
+    await expect(
+      page.getByRole("heading", { level: 1, name: `Activamos la búsqueda de ${petName}` }),
+    ).toBeVisible();
 
     // ---- Verify as a STRANGER — brand-new context, zero cookies/session. ----
     const strangerContext = await browser.newContext();

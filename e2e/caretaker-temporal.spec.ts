@@ -119,10 +119,16 @@ async function designate(page: Page, token: string): Promise<void> {
   await page.getByLabel(/^Hasta/i).fill(arDatePlus(7));
   await page.getByRole("button", { name: "Invitar como cuidador/a" }).click();
 
-  // The OUTCOME, not the URL: the form ends on a SuccessScreen naming the
-  // invitee. Trámite-style flows never end on a silent redirect, and the N3
-  // client hop is exactly the thing e2e must not wait on.
-  await expect(page.getByText("Invitación enviada")).toBeVisible();
+  // The success screen is a ROUTE (cuidado/invitacion-enviada) that names the
+  // invitee from the pending grant in the database. It used to be state in the
+  // form, which the action's revalidation unmounted — and the old
+  // `getByText("Invitación enviada")` here kept passing anyway, because it
+  // also matches the "Invitación enviada, sin responder" callout /cuidado
+  // renders after the refresh. So: the route, its exact h1, and the invitee.
+  await expect(page).toHaveURL(new RegExp(`/mis-mascotas/${token}/cuidado/invitacion-enviada$`), {
+    timeout: 20_000,
+  });
+  await expect(page.getByRole("heading", { level: 1, name: "Invitación enviada" })).toBeVisible();
   await expect(page.getByText(new RegExp(CARETAKER, "i"))).toBeVisible();
 }
 

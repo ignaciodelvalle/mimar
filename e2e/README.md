@@ -41,7 +41,9 @@ explicit `env:` block is untouched. See `scripts/run-e2e.ts`; a bare
   of each, so these tests wait for the link instead of skipping.
 - `crisis-owner-lost-flow.spec.ts` — AUTHENTICATED owner flow: logs in as
   `owner@dim.test`, drives the real "Marcar como perdida" wizard on the
-  seeded pet Michi, then opens a **fresh browser context** (no session) to
+  seeded pet Michi (picked by name, never `.first()`), waits for the
+  confirmation route `/mis-mascotas/<token>/perdida/activada` and its
+  heading, then opens a **fresh browser context** (no session) to
   verify the public credential as a stranger would see it — lost banner,
   disclosed phone CTA, and that undisclosed fields (owner name, last-seen
   location) stay hidden. Reverts Michi to "found" in a `finally` block so
@@ -184,6 +186,14 @@ coverage. They need no secret beyond the public `STAGING_URL`.
   matter — the documented Next 15.5.x behaviour in
   `lib/ui/full-page-action-nav.ts`. Assert the OUTCOME the mutation produces;
   if you need an id the redirect carried, read it from the index page instead.
+  **One exception: a confirmation that IS a route.** Mark-lost ends on
+  `/perdida/activada`, a page rendered from the open episode, and its
+  navigation is fired from the submit handler, not from an effect; there the
+  URL plus that route's heading IS the outcome (`crisis-owner-lost-flow`,
+  `crisis-seams`). The drop this rule guards against is at least partly the
+  same mechanism that hid that screen: a revalidating action re-renders the
+  current route, and an effect-based `useActionRedirect` on a component the
+  re-render unmounts never runs.
 - **Dates must be ART-local**, not `toISOString()`. The server rejects future
   dates in Argentina time, and from ~21:00 ART the UTC date is already
   tomorrow — that made a seam pass every morning and fail every night.

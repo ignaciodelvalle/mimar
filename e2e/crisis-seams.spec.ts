@@ -234,7 +234,17 @@ test.describe("crisis seams — cross-POV critical journeys", () => {
       await expect(page.getByText(/qué se muestra al público/i)).toBeVisible();
       await page.getByRole("switch", { name: "Tu teléfono" }).click();
       await page.getByRole("button", { name: /^marcar como perdid(?:o|a|o\/a)$/i }).click();
-      await expect(page.getByText(/activamos la búsqueda de/i)).toBeVisible({ timeout: 20_000 });
+      // The confirmation is a ROUTE (perdida/activada) rendered from the open
+      // episode, not wizard state: the action's revalidation re-renders
+      // /perdida as the update form and used to unmount the in-place success
+      // view, so this text raced the refresh. Wait for the route AND its
+      // heading — see crisis-owner-lost-flow.spec.ts for why both.
+      await expect(page).toHaveURL(new RegExp(`/mis-mascotas/${token}/perdida/activada$`), {
+        timeout: 20_000,
+      });
+      await expect(
+        page.getByRole("heading", { level: 1, name: `Activamos la búsqueda de ${petName}` }),
+      ).toBeVisible();
 
       // --- Stranger POV: public credential flips to lost + /perdidas lists it -
       const stranger = await browser.newContext();

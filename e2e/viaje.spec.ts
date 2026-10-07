@@ -177,7 +177,10 @@ async function designateCaretaker(page: Page): Promise<void> {
   await page.getByLabel(/^Desde/i).fill(todayInAr());
   await page.getByLabel(/^Hasta/i).fill(arDatePlus(7));
   await page.getByRole("button", { name: "Invitar como cuidador/a" }).click();
-  await expect(page.getByText("Invitación enviada")).toBeVisible();
+  // The success route, not text: "Invitación enviada" alone also matches the
+  // pending callout /cuidado shows (see caretaker-temporal.spec.ts).
+  await expect(page).toHaveURL(/\/cuidado\/invitacion-enviada$/, { timeout: 20_000 });
+  await expect(page.getByRole("heading", { level: 1, name: "Invitación enviada" })).toBeVisible();
 }
 
 async function acceptInvitation(page: Page): Promise<void> {
