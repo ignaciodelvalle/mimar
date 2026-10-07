@@ -83,7 +83,7 @@ virtualStoreDirMaxLength: 60
 # ===========================================================================
 # overrides — versiones parcheadas para dependencias TRANSITIVAS
 # ===========================================================================
-# Ninguno de estos siete es una dependencia directa: los siete llegan arrastrados
+# Ninguno de estos seis es una dependencia directa: los seis llegan arrastrados
 # y sus padres fijan una version con una vulnerabilidad abierta, asi que
 # `pnpm update` no los alcanza (medido: no movio ninguno).
 #
@@ -106,10 +106,10 @@ virtualStoreDirMaxLength: 60
 #             Windows; 0.28.0 -> 0.28.2 es un parche. La clave lleva version
 #             (`esbuild@0.28`) a proposito: el arbol tiene otras dos lineas de
 #             esbuild y ninguna de las dos debe moverse por esto.
-#   tar     — la trae el CLI de supabase para desempaquetar sus binarios. Dos
-#             avisos: confusion de tipos numericos PAX (cuelga el parser) y un
-#             diferencial de interpretacion que permite contrabandear archivos.
-#             7.5.13 -> 7.5.22 se queda dentro de la misma minor.
+#   (tar  — lo traia el CLI de supabase para desempaquetar sus binarios. Desde
+#             supabase 2.119 el CLI llega como paquetes por plataforma y tar
+#             salio del arbol, asi que su override se quito en vez de dejarlo
+#             puesto sin nada que fijar.)
 #
 # ===========================================================================
 # VITE NO ESTA EN ESTA LISTA, Y NO ES PORQUE NO SE ARREGLE
@@ -166,7 +166,6 @@ overrides:
   js-yaml@3: ^3.15.2
   js-yaml@4: ^4.3.2
   esbuild@0.28: ^0.28.1
-  tar: ^7.5.18
 
 # ===========================================================================
 # patchedDependencies — one patch, on postgres.js
