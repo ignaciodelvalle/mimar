@@ -4,7 +4,7 @@ import { seedFixtureVerdict } from "./_seed-profile";
 import {
   SPONSOR_PET_PREFIX,
   endSponsorship,
-  registerSponsorablePet,
+  provisionSponsorablePet,
   resetToNone,
   sponsorPet,
 } from "./_shelter-custody";
@@ -309,9 +309,11 @@ test.describe("the adoption contract print surface", () => {
     // registry also holds pets owner@ fosters or cares for — rows the rehome
     // page answers with another screen or a 404 (registerSponsorablePet says
     // which, and why the failure looked like "landed on the org panel"). A
-    // run-unique name, picked by exact name, removed in `finally`.
+    // run-unique name, picked by exact name, removed in `finally` — on a local
+    // DB. Off-local (staging) nothing can remove it, so the run reuses ONE pet
+    // under a fixed name instead (provisionSponsorablePet).
     test.setTimeout(180_000);
-    const petName = `${SPONSOR_PET_PREFIX}${Date.now()}`;
+    let petName = "";
     await deletePetsByNamePrefix(SPONSOR_PET_PREFIX);
     await loginAs(page, ACCOUNTS.orgAdmin);
     const titularContext = await browser.newContext();
@@ -319,7 +321,7 @@ test.describe("the adoption contract print surface", () => {
     let petToken = "";
     try {
       await loginAs(titular, ACCOUNTS.owner);
-      petToken = await registerSponsorablePet(titular, petName);
+      ({ name: petName, token: petToken } = await provisionSponsorablePet(titular));
       await resetToNone(titular, petToken);
       const orgToken = await sponsorPet(titular, page, petToken);
 

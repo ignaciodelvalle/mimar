@@ -39,6 +39,7 @@
 import { type Page, expect } from "@playwright/test";
 
 import { speciesLabel } from "../lib/utils/species";
+import { isLocalDatabase } from "./demo/_db-cleanup";
 import { resolveOrgToken, wizardStep } from "./demo/_helpers";
 
 /** The org seed-test-users.ts provisions — "Refugio Test", legal "Refugio Test (Seed)". */
@@ -114,6 +115,53 @@ export async function intakeShelterPet(
 export const SPONSOR_PET_PREFIX = "E2ESponsor-";
 
 /**
+ * The ONE sponsorable pet a run against a database it cannot clean (staging,
+ * the nightly) reuses. `deletePetsByNamePrefix` is a no-op there and there is
+ * no "delete my pet" flow, so a run-unique pet would add one undeletable row
+ * to owner@'s registry every night; find-or-create under a fixed name keeps it
+ * at one, ever. It carries the prefix, so a local sweep removes it too.
+ */
+export const STABLE_SPONSOR_PET_NAME = `${SPONSOR_PET_PREFIX}stable`;
+
+/**
+ * A pet owner@ holds as titular, in a zone the seed refugio covers, for this
+ * run to sponsor. On a LOCAL database (one the prefix sweep can clean) it is a
+ * fresh, run-unique registration; anywhere else it is
+ * {@link STABLE_SPONSOR_PET_NAME}, registered only the first time. Either way
+ * it is selected by exact name, never by position in the registry.
+ */
+export async function provisionSponsorablePet(
+  page: Page,
+): Promise<{ name: string; token: string }> {
+  if (isLocalDatabase()) {
+    const name = `${SPONSOR_PET_PREFIX}${Date.now()}`;
+    return { name, token: await registerSponsorablePet(page, name) };
+  }
+  const name = STABLE_SPONSOR_PET_NAME;
+  // Every non-urgent row is gated behind the auto-retrying assertion inside
+  // listCandidatePetTokens, so the one-shot read below sees a settled registry.
+  await listCandidatePetTokens(page);
+  const existing = petRowByName(page, name);
+  if ((await existing.count()) > 0) return { name, token: await tokenOfRow(existing) };
+  return { name, token: await registerSponsorablePet(page, name) };
+}
+
+/** The registry row that carries exactly `name`. */
+function petRowByName(page: Page, name: string) {
+  return page
+    .locator('a[href^="/mis-mascotas/DIM-"]')
+    .filter({ has: page.getByText(name, { exact: true }) });
+}
+
+async function tokenOfRow(row: ReturnType<typeof petRowByName>): Promise<string> {
+  await expect(row, "exactly one registry row carries the pet's name").toHaveCount(1);
+  const href = (await row.getAttribute("href")) ?? "";
+  const token = href.split("/mis-mascotas/")[1] ?? "";
+  expect(token, "public token, from the pet's registry row").toMatch(/^DIM-/);
+  return token;
+}
+
+/**
  * The titular registers a NEW pet in Palermo — a zone the seed refugio covers
  * (scripts/seed-test-users.ts) — and gets back its public token, read from the
  * registry row that carries exactly `name`.
@@ -171,17 +219,12 @@ export async function registerSponsorablePet(page: Page, name: string): Promise<
 
   const registry = await page.context().newPage();
   try {
-    const row = registry
-      .locator('a[href^="/mis-mascotas/DIM-"]')
-      .filter({ has: registry.getByText(name, { exact: true }) });
+    const row = petRowByName(registry, name);
     await expect(async () => {
       await registry.goto("/mis-mascotas", { waitUntil: "domcontentloaded" });
       await expect(row).toHaveCount(1, { timeout: 5_000 });
     }, `${name} is in the titular's registry`).toPass({ timeout: 60_000 });
-    const href = (await row.getAttribute("href")) ?? "";
-    const token = href.split("/mis-mascotas/")[1] ?? "";
-    expect(token, `public token of ${name}, from its registry row`).toMatch(/^DIM-/);
-    return token;
+    return await tokenOfRow(row);
   } finally {
     await registry.close();
   }
