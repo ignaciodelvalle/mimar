@@ -1446,7 +1446,8 @@ export const KPI_CATALOG: Record<KpiId, KpiDefinition> = {
       "De las observaciones rábicas cerradas en el período, ¿qué porcentaje cerró dentro del plazo legal de 10 días?",
     target: {
       value: 100,
-      source: "Ord. CABA 41.831 art. 9 / Decreto 4669/1973 PBA — plazo legal según jurisdicción",
+      source:
+        "Ord. CABA 41.831 arts. 13 y 15 / Decreto 4669/1973 PBA, art. 19 — plazo legal según jurisdicción",
       // 100% IS "never missed the legal deadline" — the ordinance/decree sets
       // the 10-day window itself (resolved per-jurisdiction via
       // resolveBusinessRule — an implementation detail, never operator copy).

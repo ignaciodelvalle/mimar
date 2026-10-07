@@ -138,7 +138,7 @@ export const LEGAL_KNOWLEDGE_GROUPS: LegalKnowledgeGroup[] = [
         plainMeaning:
           "Es la norma general de tenencia de perros y gatos en la Ciudad de Buenos Aires.",
         whatItSays:
-          "Crea el Registro Municipal de Animales Domésticos, hace obligatoria la vacuna antirrábica desde los 3 meses y pide identificar al animal.",
+          "Crea el Registro Municipal de Animales Domésticos, hace obligatoria la vacuna antirrábica, con la frecuencia que fije la autoridad sanitaria, y pide identificar al animal.",
         whoItAppliesTo: "Dueños de perros y gatos que viven en la Ciudad de Buenos Aires.",
         mimarObligation:
           "Es la norma de la Ciudad que más se relaciona con lo que registra miMAR: la identificación de tu mascota, sus vacunas y los períodos de observación antirrábica.",
