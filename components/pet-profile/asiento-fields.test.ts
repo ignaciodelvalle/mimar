@@ -22,6 +22,7 @@ import {
   tripPapersContext,
   tripPapersGroupLabel,
   tripPapersTickKey,
+  tripPapersTickLabel,
 } from "./asiento-fields";
 
 const NOW = new Date("2026-07-04T12:00:00Z");
@@ -558,16 +559,29 @@ describe("trip papers ticks — one row per trip and day (presentation only)", (
   });
 
   it("keys a tick by trip and ARGENTINE day, and every other row by nothing", () => {
+    const trips = tripPapersContext([trip]);
     // 01:00 UTC on the 2nd is still the 1st in Argentina.
-    expect(tripPapersTickKey(tick("t1", "trip-1", "2026-07-02T01:00:00Z"))).toBe(
+    expect(tripPapersTickKey(tick("t1", "trip-1", "2026-07-02T01:00:00Z"), trips)).toBe(
       "trip-1|2026-07-01",
     );
-    expect(tripPapersTickKey(trip)).toBeNull();
+    expect(tripPapersTickKey(trip, trips)).toBeNull();
     const correction = {
       ...tick("c1", "trip-1", "2026-07-01T12:00:00Z"),
       payload: { target_event_id: "trip-1", changes: [{ field: "travel_date" }] },
     };
-    expect(tripPapersTickKey(correction)).toBeNull();
+    expect(tripPapersTickKey(correction, trips)).toBeNull();
+  });
+
+  it("never keys a tick whose trip is not in the read", () => {
+    expect(tripPapersTickKey(tick("t1", "trip-1", "2026-07-01T12:00:00Z"), new Map())).toBeNull();
+  });
+
+  it("numbers a run's ticks in the order they happened", () => {
+    expect([0, 1, 2].map((i) => tripPapersTickLabel(i, 3))).toEqual([
+      "Cambio 3 de 3",
+      "Cambio 2 de 3",
+      "Cambio 1 de 3",
+    ]);
   });
 
   it("collapses only ADJACENT runs that share a key, and leaves a run of one alone", () => {

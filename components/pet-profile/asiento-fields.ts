@@ -168,15 +168,29 @@ export function tripPapersContext(rows: ReadonlyArray<HistorialEventRow>): TripP
  * The grouping key of a papers tick — its trip and its Argentine day — or null
  * for every other row. Two ticks group only when this is equal AND they are
  * adjacent in the timeline.
+ *
+ * A TICK WHOSE TRIP IS NOT IN THE READ NEVER GROUPS. A long libreta's capped
+ * read can keep the ticks and lose the trip row; the app cannot tell such
+ * ticks apart (no id crosses the wire, and the trip's facts are missing), so
+ * both platforms take the same safe side and draw them one by one.
  */
 export function tripPapersTickKey(
   row: Pick<HistorialEventRow, "eventType" | "payload" | "occurredAt">,
+  trips: TripPapersContext,
 ): string | null {
   if (row.eventType !== "event_amended" || !isTripPapersAmendment(row.payload)) return null;
   const target = (row.payload as { target_event_id?: unknown } | null)?.target_event_id;
   const date = new Date(row.occurredAt);
-  if (typeof target !== "string" || !isValidDate(date)) return null;
+  if (typeof target !== "string" || !trips.has(target) || !isValidDate(date)) return null;
   return `${target}|${isoDateInAr(date)}`;
+}
+
+/**
+ * One tick's line inside a collapsed row, numbered in the order they happened
+ * (the timeline is newest first, so the first entry is the last change).
+ */
+export function tripPapersTickLabel(indexNewestFirst: number, total: number): string {
+  return `Cambio ${total - indexNewestFirst} de ${total}`;
 }
 
 /** "Papeles del viaje actualizados · 3 cambios · Chile". */

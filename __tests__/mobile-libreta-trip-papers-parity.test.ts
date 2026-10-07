@@ -92,7 +92,7 @@ const ROWS: HistorialEventRow[] = [
 /** The web libreta's drawn titles. */
 function webTitles(rows: HistorialEventRow[]): string[] {
   const trips = tripPapersContext(rows);
-  return collapseTripPaperTicks(rows, tripPapersTickKey).map((item) => {
+  return collapseTripPaperTicks(rows, (r) => tripPapersTickKey(r, trips)).map((item) => {
     if (item.kind === "single") return toAsientoView(item.entry, "TOK", VIEWER, NOW, trips).title;
     const head = item.entries[0] as HistorialEventRow;
     const target = (head.payload as { target_event_id: string }).target_event_id;
@@ -141,16 +141,17 @@ describe("trip papers ticks collapse identically on the web and in the app", () 
     expect(appTitles(ROWS)).toEqual(web);
   });
 
-  it("never merges in the app what the web keeps apart when the trips fell out of the read", () => {
-    // A capped read can keep the ticks and lose the trip rows. The web still
-    // tells the trips apart by id; the app, with no destination to key on,
-    // must not merge them on the day alone.
+  it("draws ticks whose trip fell out of the read one by one, on both", () => {
+    // A capped read can keep the ticks and lose the trip rows. Adjacent ticks
+    // of ONE such trip, and of two, must come out the same on each platform:
+    // ungrouped, since the app has nothing left to tell the trips apart by.
     const orphans = [
+      tick("x3", "trip-a", "2026-07-02T19:00:00Z"),
       tick("x2", "trip-a", "2026-07-02T18:00:00Z"),
       tick("y1", "trip-b", "2026-07-02T17:00:00Z"),
       tick("x1", "trip-a", "2026-07-02T16:00:00Z"),
     ];
-    expect(webTitles(orphans)).toEqual(Array(3).fill(TRIP_PAPERS_UPDATED_LABEL));
+    expect(webTitles(orphans)).toEqual(Array(4).fill(TRIP_PAPERS_UPDATED_LABEL));
     expect(appTitles(orphans)).toEqual(webTitles(orphans));
   });
 
