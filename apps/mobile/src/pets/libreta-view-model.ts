@@ -26,7 +26,6 @@ import type {
   LibretaVaccinationSection,
   PetLibretaV1,
 } from "@dim/contract/api";
-
 import { pluralizeEs } from "@dim/contract/reference";
 
 import { unknownEnumLabel } from "../ui/enum-label";
@@ -253,12 +252,17 @@ export function upcomingRowLabel(item: LibretaUpcomingItemV1): string {
 
 /**
  * "quedan N dosis" under a medication row whose course has more than the dose
- * it names; null otherwise, including a server that sends no count.
+ * it names, plus "· M atrasadas" when some of those N are already late — N
+ * alone read as N doses AHEAD. Null otherwise, including a server that sends
+ * no count. The web words it the same way (`FutureLedgerList.tsx`).
  */
 export function upcomingRemainingLabel(item: LibretaUpcomingItemV1): string | null {
   if (item.kind !== "medication") return null;
   const remaining = item.remainingDoses ?? null;
-  return remaining !== null && remaining > 1 ? `quedan ${remaining} dosis` : null;
+  if (remaining === null || remaining <= 1) return null;
+  const overdue = item.overdueDoses ?? 0;
+  const late = overdue === 0 ? "" : ` · ${overdue} ${pluralizeEs(overdue, "atrasada")}`;
+  return `quedan ${remaining} dosis${late}`;
 }
 
 /**

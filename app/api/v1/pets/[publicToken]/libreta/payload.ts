@@ -139,6 +139,7 @@ export function buildPetLibretaV1(input: BuildPetLibretaInput): PetLibretaV1 {
       // One row per medication course (mergeFutureLedger); the rest of the
       // course travels as a count.
       remainingDoses: item.kind === "medication" ? (item.remainingDoses ?? 1) : null,
+      overdueDoses: item.kind === "medication" ? (item.overdueDoses ?? 0) : null,
     })),
   };
 

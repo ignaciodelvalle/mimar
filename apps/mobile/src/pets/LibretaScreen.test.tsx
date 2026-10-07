@@ -324,6 +324,7 @@ describe("a medication course in Próximo", () => {
                 dueAt: "2026-12-01T03:00:00.000Z",
                 reminderId: null,
                 remainingDoses: 4,
+                overdueDoses: 1,
               },
             ],
           },
@@ -335,7 +336,7 @@ describe("a medication course in Próximo", () => {
 
     await waitFor(() => expect(screen.getByText("Próximo")).toBeTruthy());
     expect(screen.getByText("Antiparasitario de amplio espectro · próxima dosis")).toBeTruthy();
-    expect(screen.getByText("quedan 4 dosis")).toBeTruthy();
+    expect(screen.getByText("quedan 4 dosis · 1 atrasada")).toBeTruthy();
     expect(screen.queryByText(/Dosis · /)).toBeNull();
   });
 });

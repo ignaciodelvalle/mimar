@@ -19,7 +19,7 @@ import { LnLinkButton } from "@/components/ui/LinkButton";
 import { LnListRow } from "@/components/ui/ListRow";
 import { buildReminderVaccineUrl } from "@/lib/ui/reminder-urls";
 import { useActionRedirect } from "@/lib/ui/use-action-redirect";
-import { AR_TIME_ZONE, formatDiasAgo } from "@/lib/utils/format";
+import { AR_TIME_ZONE, formatDiasAgo, pluralizeEs } from "@/lib/utils/format";
 import type { EventFormState } from "@/src/modules/events/actions";
 import { markMedicationDoseTakenAction } from "@/src/modules/events/actions-medical";
 import Link from "next/link";
@@ -61,13 +61,18 @@ function daysUntil(date: Date, now: Date): number {
 
 /**
  * " · quedan N dosis" on a medication row whose course has more than the one
- * dose it names. The server collapses a course to one row
- * (`collapseMedicationCourses`); this is what is left of the rest of it.
+ * dose it names, plus " · M atrasadas" when some of those N are already late:
+ * N alone read as N doses AHEAD. The server collapses a course to one row
+ * (`collapseMedicationCourses`); this is what is left of the rest of it. The
+ * app words it the same way (`upcomingRemainingLabel`, mobile view model).
  */
 function medicationCourseNote(item: FutureLedgerItem): string | null {
   if (item.kind !== "medication") return null;
   const remaining = item.remainingDoses ?? 1;
-  return remaining > 1 ? ` · quedan ${remaining} dosis` : null;
+  if (remaining <= 1) return null;
+  const overdue = item.overdueDoses ?? 0;
+  const late = overdue === 0 ? "" : ` · ${overdue} ${pluralizeEs(overdue, "atrasada")}`;
+  return ` · quedan ${remaining} dosis${late}`;
 }
 
 // MarkDoseForm — "Marcar dada" per medication row. The action returns

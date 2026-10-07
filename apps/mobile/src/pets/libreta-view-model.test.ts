@@ -275,6 +275,17 @@ describe("an upcoming row's text — the kind is said once", () => {
     expect(upcomingRemainingLabel(item({ kind: "medication" }))).toBeNull();
     expect(upcomingRemainingLabel(item({ remainingDoses: null }))).toBeNull();
   });
+
+  it("says how many of the doses left are already late", () => {
+    const med = (overdueDoses: number | null | undefined) =>
+      upcomingRemainingLabel(item({ kind: "medication", remainingDoses: 5, overdueDoses }));
+    expect(med(3)).toBe("quedan 5 dosis · 3 atrasadas");
+    expect(med(1)).toBe("quedan 5 dosis · 1 atrasada");
+    expect(med(0)).toBe("quedan 5 dosis");
+    // A server that sends no overdue count is not claiming none are late — it
+    // is silent, and so is the row.
+    expect(med(undefined)).toBe("quedan 5 dosis");
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -160,4 +160,26 @@ describe("FutureLedgerList — a medication course is one row", () => {
     expect(screen.getByText(/Próxima dosis · /)).toBeInTheDocument();
     expect(screen.queryByText(/quedan/)).not.toBeInTheDocument();
   });
+
+  it("says how many of the doses left are already late", () => {
+    const late: FutureLedgerItem = {
+      ...medicationItem(4),
+      dueAt: new Date("2020-01-01T12:00:00Z"),
+      overdueDoses: 2,
+    };
+    render(<FutureLedgerList items={[late]} petPublicToken={PET_TOKEN} />);
+
+    expect(screen.getByText(/Venció .* · quedan 4 dosis · 2 atrasadas/)).toBeInTheDocument();
+  });
+
+  it("says nothing about lateness when no dose is late", () => {
+    render(
+      <FutureLedgerList
+        items={[{ ...medicationItem(4), overdueDoses: 0 }]}
+        petPublicToken={PET_TOKEN}
+      />,
+    );
+
+    expect(screen.queryByText(/atrasada/)).not.toBeInTheDocument();
+  });
 });

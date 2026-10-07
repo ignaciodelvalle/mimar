@@ -335,6 +335,25 @@ describe("mergeFutureLedger — a medication course is one row", () => {
     expect(result[0]?.id).toBe("med-m1");
     expect(result[0]?.dueAt).toEqual(day(-2));
     expect(result[0]?.remainingDoses).toBe(3);
+    // Of the three left, ONE is already late — "quedan 3" alone read as three ahead.
+    expect(result[0]?.overdueDoses).toBe(1);
+  });
+
+  it("counts every late dose of the course, by instant rather than by calendar day", () => {
+    const hoursAgo = (h: number) => new Date(now.getTime() - h * 60 * 60 * 1000);
+    const result = mergeFutureLedger(
+      [],
+      [],
+      // Due two hours ago is late even though its day is still today.
+      [dose("m1", day(-1)), dose("m2", hoursAgo(2)), dose("m3", day(1)), dose("m4", day(2))],
+      now,
+    );
+    expect(result[0]).toMatchObject({ id: "med-m1", remainingDoses: 4, overdueDoses: 2 });
+  });
+
+  it("a course entirely in the future has no late doses", () => {
+    const [row] = mergeFutureLedger([], [], [dose("m1", day(1)), dose("m2", day(2))], now);
+    expect(row?.overdueDoses).toBe(0);
   });
 
   it("doses with no course id are not grouped — each stays its own row", () => {

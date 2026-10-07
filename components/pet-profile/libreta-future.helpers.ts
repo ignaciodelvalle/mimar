@@ -32,6 +32,12 @@ export type FutureLedgerItem = {
    * flood of per-dose rows.
    */
   remainingDoses?: number;
+  /**
+   * `kind: "medication"` rows only: how many of `remainingDoses` were due
+   * before `now` and never marked. "quedan 5 dosis" alone read as five doses
+   * AHEAD when three of them were already late.
+   */
+  overdueDoses?: number;
 };
 
 export type FutureReminderInput = {
@@ -103,7 +109,8 @@ export const REMINDER_SURFACE_WINDOW_DAYS = 30;
  */
 export function collapseMedicationCourses(
   doses: FutureMedicationDoseInput[],
-): Array<{ next: FutureMedicationDoseInput; remaining: number }> {
+  now: Date = new Date(),
+): Array<{ next: FutureMedicationDoseInput; remaining: number; overdue: number }> {
   const courses = new Map<string, FutureMedicationDoseInput[]>();
   for (const dose of doses) {
     const key = dose.courseId ? `course:${dose.courseId}` : `dose:${dose.reminderId}`;
@@ -115,7 +122,11 @@ export function collapseMedicationCourses(
     const next = course.reduce((earliest, dose) =>
       dose.dueAt.getTime() < earliest.dueAt.getTime() ? dose : earliest,
     );
-    return { next, remaining: course.length };
+    // An INSTANT comparison, not a calendar-day one: a dose every 8 hours that
+    // was due this morning is late by this afternoon, even though its day is
+    // still "today".
+    const overdue = course.filter((dose) => dose.dueAt.getTime() < now.getTime()).length;
+    return { next, remaining: course.length, overdue };
   });
 }
 
@@ -160,14 +171,15 @@ export function mergeFutureLedger(
     action: { type: "reschedule", href: `/mis-turnos/${a.publicToken}` },
   }));
 
-  const medicationItems: FutureLedgerItem[] = collapseMedicationCourses(medicationDoses).map(
-    ({ next, remaining }) => ({
+  const medicationItems: FutureLedgerItem[] = collapseMedicationCourses(medicationDoses, now).map(
+    ({ next, remaining, overdue }) => ({
       id: `med-${next.reminderId}`,
       kind: "medication",
       label: next.drugName,
       dueAt: next.dueAt,
       action: { type: "mark-dose", reminderId: next.reminderId },
       remainingDoses: remaining,
+      overdueDoses: overdue,
     }),
   );
 

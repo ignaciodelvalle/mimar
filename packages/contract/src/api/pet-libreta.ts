@@ -185,6 +185,13 @@ export type LibretaUpcomingItemV1 = {
    * from before the collapse omits it, and a client reads absent as "no count".
    */
   remainingDoses?: number | null;
+  /**
+   * `kind: "medication"` only: how many of `remainingDoses` were due before the
+   * payload was built and never marked, so "quedan 5 dosis" can say that three
+   * of them are already late. Null on every other kind; additive and OPTIONAL
+   * on the same terms as `remainingDoses`.
+   */
+  overdueDoses?: number | null;
 };
 
 export type LibretaUpcomingSection = { items: LibretaUpcomingItemV1[] };

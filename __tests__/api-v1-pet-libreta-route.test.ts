@@ -291,6 +291,7 @@ describe("buildPetLibretaV1 — what crosses, and what must not", () => {
           dueAt: new Date("2026-09-02T12:00:00Z"),
           action: { type: "mark-dose", reminderId: "m1" },
           remainingDoses: 4,
+          overdueDoses: 2,
         },
         {
           id: "rem-1",
@@ -302,9 +303,9 @@ describe("buildPetLibretaV1 — what crosses, and what must not", () => {
       ],
     });
     const items = okSection(build({ data }).upcoming).items;
-    expect(items.map((i) => [i.id, i.label, i.remainingDoses])).toEqual([
-      ["med-m1", "Antiparasitario de amplio espectro", 4],
-      ["rem-1", "Antirrábica anual", null],
+    expect(items.map((i) => [i.id, i.label, i.remainingDoses, i.overdueDoses])).toEqual([
+      ["med-m1", "Antiparasitario de amplio espectro", 4, 2],
+      ["rem-1", "Antirrábica anual", null, null],
     ]);
   });
 
