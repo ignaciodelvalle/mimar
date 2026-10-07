@@ -137,7 +137,10 @@ const canon: Canon = loadCanon(REPO_ROOT);
 // 20 -> 22 on 2026-09-30 (viajes-fase-2 Phase 2): lint:travel-freshness and
 // scripts/check-travel-reference-freshness.ts, the non-blocking travel
 // reference freshness fence. Same reason.
-const UNMAPPED_COUNT = 22;
+//
+// 22 -> 23 on 2026-10-07 (viaje v14 review): the client-module value-import
+// fence, __tests__/client-module-value-import-fence.test.ts. Same reason.
+const UNMAPPED_COUNT = 23;
 
 /**
  * Enforcement the filename glob below cannot see.

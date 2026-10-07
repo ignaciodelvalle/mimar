@@ -10094,6 +10094,12 @@
       "id": "scripts/check-travel-reference-freshness.ts",
       "path": "scripts/check-travel-reference-freshness.ts",
       "note": "Travel reference freshness fence (viajes-fase-2 Phase 2, design D6). Fails only on STRUCTURE — a missing or non-https sourceUrl, a malformed date, reviewBy before lastVerifiedAt or beyond the TTL (180 days for countries, 90 for airlines), a lastVerifiedAt in the future, an unverified value without a note, a corridor rule without provenance. A rule merely past its review date is a warning and exits 0: the calendar never turns a merge red. Red controls in __tests__/check-travel-reference-freshness.test.ts; canon row pending."
+    },
+    {
+      "kind": "fence-test",
+      "id": "__tests__/client-module-value-import-fence.test.ts",
+      "path": "__tests__/client-module-value-import-fence.test.ts",
+      "note": "Added 2026-10-07 after the viaje redesign shipped a production render crash that tsc, biome, every verify lint and next build passed: the /viaje page (a server component) called isShortcutCorridor, exported by the \"use client\" TripForm.tsx, and a server component receives client REFERENCES for a client module's exports, not the values. The fence scans the App Router entry files (page, layout, template, default, not-found, loading, route) and \"use server\" files, resolves every named value import, and fails on any non-PascalCase name taken from a \"use client\" module; type-only imports are erased and pass. Its first run found a second, latent instance: the public credential page read MEDICAL_SECTION_ID from the client CredentialActionBar. Floors at 200 entry files and 200 client modules so a broken walk cannot go quietly green; the detector is exercised on synthetic sources. Canon row pending."
     }
   ]
 }
