@@ -95,3 +95,41 @@ describe("travel-copy semáforo labels", () => {
     expect(TRAVEL_SEMAFORO_LABELS.verde).toBe("Sin pendientes detectados");
   });
 });
+
+describe("<TravelSemaforo> — the pase (v14)", () => {
+  const pass = {
+    destination: "Chile",
+    countdown: "faltan 39 días",
+    meta: "Domingo 15/11/2026 · LATAM, en cabina",
+    tally: "3 cosas por resolver · 2 ya están",
+    past: false,
+  };
+
+  it("draws the destination, the countdown, the day and the tally over the server's label", () => {
+    const html = render(<TravelSemaforo semaforo="amarillo" corridors={[CORRIDOR]} pass={pass} />);
+    for (const text of [
+      "Chile",
+      "faltan 39 días",
+      "Domingo 15/11/2026 · LATAM, en cabina",
+      "3 cosas por resolver · 2 ya están",
+      TRAVEL_SEMAFORO_LABELS.amarillo,
+    ]) {
+      expect(html).toContain(text);
+    }
+  });
+
+  it("says the disclaimer exactly once, and the airline notice only when given", () => {
+    const html = render(<TravelSemaforo semaforo="verde" corridors={[CORRIDOR]} pass={pass} />);
+    expect(html.split("Verificá con SENASA").length - 1).toBe(1);
+    expect(html).not.toContain("Verificá con tu aerolínea");
+    const withAirline = render(
+      <TravelSemaforo
+        semaforo="verde"
+        corridors={[CORRIDOR]}
+        pass={pass}
+        airlineNotice="Verificá con tu aerolínea: LATAM"
+      />,
+    );
+    expect(withAirline).toContain("Verificá con tu aerolínea: LATAM");
+  });
+});

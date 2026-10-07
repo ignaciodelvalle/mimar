@@ -16,15 +16,11 @@ import { apiV1Envelope, apiV1Error, apiV1Json } from "@/lib/infra/api-v1";
 import { DbBudgetExceededError, withDbBudgetOrThrow } from "@/lib/infra/db-budget";
 import { type PetHolderAccess, resolvePetHolderAccess } from "@/lib/infra/pet-access";
 import { resolveSiteUrl } from "@/lib/infra/site-url";
-import { AIRLINES, type Airline, getAirline, isAirlineId } from "@/lib/reference/airlines";
+import { getAirline, isAirlineId } from "@/lib/reference/airlines";
 import {
-  CORRIDORS,
   CORRIDOR_IDS,
-  type Corridor,
   type CorridorId,
   TRAVEL_DISCLAIMER,
-  corridorLeadDays,
-  corridorLeadHints,
   getCorridor,
 } from "@/lib/reference/cross-border-corridors";
 import {
@@ -32,12 +28,10 @@ import {
   type TravelViewPet,
   loadTravelView,
 } from "@/src/modules/pets/application/travel/load-travel-view";
+import { travelFormOptions } from "@/src/modules/pets/application/travel/travel-options";
 import {
   PET_TRAVEL_PAYLOAD_VERSION,
   PET_TRAVEL_STALE_AFTER_MS,
-  type PetTravelAirlineModalityV1,
-  type PetTravelAirlineOptionV1,
-  type PetTravelCorridorOptionV1,
   type PetTravelObligationV1,
   type PetTravelTripV1,
   type PetTravelV1,
@@ -96,43 +90,6 @@ function toWireObligation(
   };
 }
 
-/** v14 — a destination as the form offers it: its paper and its deadlines. */
-export function toCorridorOption(corridor: Corridor): PetTravelCorridorOptionV1 {
-  return {
-    id: corridor.id,
-    label: corridor.label,
-    paper: { ...corridor.paper },
-    leadHints: corridorLeadHints(corridor),
-    leadDays: corridorLeadDays(corridor),
-  };
-}
-
-const MODALITY_ORDER = ["cabin", "hold", "cargo"] as const;
-
-/**
- * v14 — an airline as the form offers it: the destinations it is suggested
- * for, and the modalities it publishes as offered (anything but "no").
- */
-export function toAirlineOption(airline: Airline): PetTravelAirlineOptionV1 {
-  const modalities: PetTravelAirlineModalityV1[] = [];
-  for (const modality of MODALITY_ORDER) {
-    const row = airline.modalities[modality];
-    if (!row || row.offered.value === "no") continue;
-    modalities.push({
-      modality,
-      offered: row.offered.value,
-      maxWeightKg: row.maxWeightKg?.value.kg ?? null,
-      includesCarrier: row.maxWeightKg?.value.includesCarrier ?? false,
-    });
-  }
-  return {
-    id: airline.id,
-    name: airline.name,
-    corridors: [...airline.servesCorridors],
-    modalities,
-  };
-}
-
 export function buildPetTravelV1(params: {
   pet: { publicToken: string; name: string; status: string };
   view: TravelView;
@@ -161,8 +118,8 @@ export function buildPetTravelV1(params: {
     cvis: view.cvis,
     disclaimers: [TRAVEL_DISCLAIMER, `${TRAVEL_AIRLINE_NOTICE} antes de reservar.`],
     options: {
-      corridors: CORRIDORS.map(toCorridorOption),
-      airlines: AIRLINES.map(toAirlineOption),
+      // v14: the same objects the /viaje form receives (travel-options.ts).
+      ...travelFormOptions(),
     },
     capabilities: { canRecord: pet.status !== "deceased" },
     exportWebUrl: `${resolveSiteUrl()}/mis-mascotas/${encodeURIComponent(pet.publicToken)}/viaje`,

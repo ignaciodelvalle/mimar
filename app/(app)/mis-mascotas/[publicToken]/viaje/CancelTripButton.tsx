@@ -40,7 +40,15 @@ export function CancelTripButton({
 
   if (!confirming) {
     return (
-      <LnButton type="button" variant="ghost" size="sm" onClick={() => setConfirming(true)}>
+      // v14: the destructive action is the LAST thing on the screen, as a
+      // seal-red text link — no longer the second-biggest control.
+      <LnButton
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => setConfirming(true)}
+        className="border-transparent bg-transparent text-[var(--color-ln-seal)] underline underline-offset-[3px] hover:bg-transparent"
+      >
         Cancelar este viaje
       </LnButton>
     );

@@ -23,10 +23,13 @@ const ERROR_MESSAGES: Record<string, string> = {
 export function TravelExportButton({
   petPublicToken,
   tripEventId,
+  block = false,
 }: {
   petPublicToken: string;
   /** The trip the page is showing: the PDF reads the same one. */
   tripEventId: string;
+  /** Full width, as in the quick actions (v14). */
+  block?: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
@@ -47,8 +50,15 @@ export function TravelExportButton({
 
   return (
     <section aria-label="Exportar documentación de viaje" className="space-y-2">
-      <LnButton type="button" variant="ghost" onClick={handleExport} loading={isPending}>
-        {isPending ? "Generando PDF…" : "Descargar documentación de viaje (PDF)"}
+      <LnButton
+        type="button"
+        variant="primary"
+        size="sm"
+        block={block}
+        onClick={handleExport}
+        loading={isPending}
+      >
+        {isPending ? "Generando PDF…" : "Exportar PDF"}
       </LnButton>
       {signedUrl && (
         <p className="text-sm">

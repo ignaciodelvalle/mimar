@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import type { TravelObligation } from "@/lib/projections/travel-compliance";
+import { PET_TRAVEL_DECLARED_SEAL } from "@dim/contract/api";
 import { TravelObligationsPanel } from "./TravelObligationsPanel";
 import {
   DOCUMENT_CONFIRMED_LINE,
@@ -97,7 +98,8 @@ describe("<TravelObligationsPanel>", () => {
       ],
     };
     const html = render(<TravelObligationsPanel obligations={[withSource]} />);
-    expect(html).toContain("Fuente: Chile");
+    // v14: the source names who PUBLISHES the rule, not the destination.
+    expect(html).toContain("Fuente: SENASA, requisitos para Chile");
     expect(html).toContain("revisada el 30/09/2026");
     expect(html).toContain('href="https://www.sag.gob.cl"');
   });
@@ -120,7 +122,7 @@ describe("<TravelObligationsPanel>", () => {
     expect(html).not.toContain("Lo tengo");
   });
 
-  it("draws the 'Lo tengo' control per paper on the titular's page", () => {
+  it("draws a checkbox per paper on the titular's page (v14 'Para llevar')", () => {
     const html = render(
       <TravelObligationsPanel
         obligations={[PAPERS]}
@@ -134,9 +136,9 @@ describe("<TravelObligationsPanel>", () => {
         )}
       />,
     );
-    // The unticked paper offers "Lo tengo"; the ticked one offers to take it back.
-    expect(html).toContain("Lo tengo");
-    expect(html).toContain("Desmarcar");
+    // One box per paper; the ticked one shows ticked and posts the untick.
+    expect(html.match(/type="checkbox"/g)?.length).toBe(2);
+    expect(html).toMatch(/<input[^>]*type="checkbox"[^>]*checked=""/);
     expect(html).toContain(DOCUMENT_CONFIRMED_LINE);
     expect(html).toContain(DOCUMENT_PENDING_LINE);
     expect(html).toContain('name="document" value="Permiso de importación"');
@@ -147,5 +149,50 @@ describe("<TravelObligationsPanel>", () => {
   it("renders an empty-list message when there are no obligations", () => {
     const html = render(<TravelObligationsPanel obligations={[]} />);
     expect(html).toContain("Sin requisitos");
+  });
+});
+
+describe("<TravelObligationsPanel> — v14 rows", () => {
+  it("a requirement met only on the owner's word carries the declared seal", () => {
+    const declared: TravelObligation = {
+      ...BLOCKER,
+      requirementLevel: "warning",
+      evidence: "declared",
+    };
+    expect(render(<TravelObligationsPanel obligations={[declared]} />)).toContain(
+      PET_TRAVEL_DECLARED_SEAL,
+    );
+    expect(render(<TravelObligationsPanel obligations={[BLOCKER]} />)).not.toContain(
+      PET_TRAVEL_DECLARED_SEAL,
+    );
+  });
+
+  it("folds the rule, who demands it and the footnote behind 'Ver detalle', and draws the action", () => {
+    const html = render(
+      <TravelObligationsPanel
+        obligations={[BLOCKER]}
+        renderAction={() => <a href="#x">Pedírselo a mi veterinaria</a>}
+      />,
+    );
+    expect(html).toContain("Ver detalle");
+    expect(html).toMatch(/<details[\s\S]*Exigido por: Chile[\s\S]*<\/details>/);
+    expect(html).toContain("Pedírselo a mi veterinaria");
+  });
+
+  it("keeps a stale source's notice in view, never folded", () => {
+    const html = render(<TravelObligationsPanel obligations={[INFO]} />);
+    const notice = html.indexOf("Verificá — dato sin confirmar con la fuente");
+    expect(notice).toBeGreaterThan(-1);
+    expect(notice).toBeLessThan(html.indexOf("<details"));
+  });
+
+  it("hides the papers list where the papers have their own module", () => {
+    const papers: TravelObligation = {
+      ...INFO,
+      documents: [{ label: "Certificado veterinario", confirmed: false }],
+    };
+    expect(
+      render(<TravelObligationsPanel obligations={[papers]} showDocuments={false} />),
+    ).not.toContain("Certificado veterinario: sin confirmar");
   });
 });

@@ -53,14 +53,14 @@ import { cancelTrip } from "@/src/modules/pets/application/travel/cancel-trip";
 import { loadTravelView, selectTrip } from "@/src/modules/pets/application/travel/load-travel-view";
 import { recordCvi } from "@/src/modules/pets/application/travel/record-cvi";
 import { recordTrip } from "@/src/modules/pets/application/travel/record-trip";
+import {
+  toAirlineOption,
+  toCorridorOption,
+} from "@/src/modules/pets/application/travel/travel-options";
 import type { TravelActor } from "@/src/modules/pets/application/travel/types";
 import type { PetTravelExportV1, PetTravelV1 } from "@dim/contract/api";
 import { exportPetTravel } from "../app/api/v1/pets/[publicToken]/travel/export/export";
-import {
-  readPetTravel,
-  toAirlineOption,
-  toCorridorOption,
-} from "../app/api/v1/pets/[publicToken]/travel/payload";
+import { readPetTravel } from "../app/api/v1/pets/[publicToken]/travel/payload";
 import { withMutationOverride } from "./_helpers/db-overrides";
 
 const OWNER_ID = "33333333-4444-4555-8666-7777777700b1";
