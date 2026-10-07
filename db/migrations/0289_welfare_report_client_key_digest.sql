@@ -39,11 +39,20 @@
 -- the rate-limit fingerprint is the caller IP — storing it (or a hash of it,
 -- which is brute-forceable over IPv4) beside the report would re-attach a
 -- network identity to an anonymous denuncia. So the anonymous scope is the
--- key alone: a client-generated crypto.randomUUID() (122 random bits), with a
--- server-side minimum length (REPORT_KEY_MIN_LENGTH = 32) below which no key
--- is stored or replayed at all. And because the key is the only proof, an
--- anonymous replay returns NOTHING about the original — no reference code, no
--- reporter session — only "ya la recibimos".
+-- key alone: a client-generated crypto.randomUUID() (122 random bits); a key
+-- that is not a UUID (IDEMPOTENCY_KEY_PATTERN, @dim/contract/api) is never
+-- stored or replayed at all, so a buggy client's constant string cannot
+-- swallow every later anonymous report. And because the key is the only proof,
+-- an anonymous replay returns NOTHING about the original — no reference code,
+-- no reporter session — only "ya la recibimos".
+--
+-- NOR IS THE RAW KEY WRITTEN ANYWHERE ELSE for an anonymous report. Before
+-- this change the pet-event bridge stored it verbatim in
+-- pet_events.client_idempotency_key for an anonymous denuncia about a
+-- registered pet — readable beside the pet's events, and the very input this
+-- column's digest refuses to keep. The bridge now writes NULL there when the
+-- reporter is anonymous; the report-level claim (this column) is what
+-- deduplicates that retry.
 --
 -- Classified reporter_identity (lib/domain/denuncia-data-partition.ts): it is
 -- a handle on WHO submitted, never on what was alleged, so it belongs to the
