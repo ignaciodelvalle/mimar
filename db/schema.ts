@@ -2186,9 +2186,20 @@ export const welfareReports = pgTable(
     // `description` (which IS rendered). Never select this column in a
     // citizen/operator-facing query.
     seedTag: text("seed_tag"),
+
+    // Digest of the submit's client idempotency key (migration 0289, plan A5f),
+    // scoped `user:<id>` | `anon` INSIDE the digest — never the key itself, so
+    // nothing read off this row can be presented as a retry. Written with
+    // case_id inside the write transaction; a retry with the same key lands on
+    // this report. See src/modules/welfare/domain/report-key-digest.ts.
+    clientKeyDigest: text("client_key_digest"),
   },
   (table) => ({
     referenceCodeIdx: uniqueIndex("welfare_reports_reference_code_unique").on(table.referenceCode),
+    // One report per (scope, key); the scope is inside the digest (0289).
+    clientKeyDigestIdx: uniqueIndex("welfare_reports_client_key_digest_unique")
+      .on(table.clientKeyDigest)
+      .where(sql`${table.clientKeyDigest} IS NOT NULL`),
     reporterIdx: index("welfare_reports_reporter_idx").on(table.reporterUserId),
     statusIdx: index("welfare_reports_status_idx").on(table.status),
     subjectPetIdx: index("welfare_reports_subject_pet_idx").on(table.subjectPetId),
@@ -2222,6 +2233,10 @@ export const welfareReports = pgTable(
     openCreatedAtIdx: index("welfare_reports_open_created_at_idx")
       .on(table.jurisdictionProvince, table.jurisdictionLocality, table.createdAt)
       .where(sql`${table.status} = 'open'`),
+    welfareReportsClientKeyDigestFormat: check(
+      "welfare_reports_client_key_digest_format",
+      sql`${table.clientKeyDigest} IS NULL OR ${table.clientKeyDigest} ~ '^[0-9a-f]{64}$'`,
+    ),
     welfareReportsJurisdictionProvinceCanonical: check(
       "welfare_reports_jurisdiction_province_canonical",
       sql`${table.jurisdictionProvince} is null or ${table.jurisdictionProvince} in ${CANONICAL_PROVINCE_SQL_LIST}`,
