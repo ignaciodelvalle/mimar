@@ -12,12 +12,17 @@
 //
 // Note: pet_events is append-only (db/triggers.sql). Cleanup uses withMutationOverride.
 
+import { randomUUID } from "node:crypto";
+
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { cases, db, enoProcessingQueue, petEvents, pets } from "@/db";
+import { cases, db, enoProcessingQueue, petEvents, pets, profiles } from "@/db";
+import { openCase } from "@/lib/infra/case-helpers";
+import { hashDni } from "@/lib/utils/dni-hash";
 import { withMutationOverride } from "../../../../__tests__/_helpers/db-overrides";
+import { OBSERVATION_OPEN_ERROR, reportBite } from "../application/report-bite";
 import { isRabiesVaccineValid } from "../domain/rabies-observation";
 import { SurveillanceRepository } from "./surveillance-repository";
 
@@ -759,5 +764,144 @@ describe("SurveillanceRepository.findGovtTargetsForJurisdiction", () => {
     for (const r of results) {
       expect(typeof r.userId).toBe("string");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findIncidentReplay + reportBite on the real database (plan A5c)
+// ---------------------------------------------------------------------------
+//
+// The bug this pins lived in the database, not in the use case's branches: a
+// retry of a report that SUCCEEDED opened a second bite_incident case, and
+// `cases_open_per_pet_kind_idx` threw. So the proof is the real index, the
+// real ledger and the real transaction — no fakes between them.
+
+describe("reportBite — replay check before state guard (real database)", () => {
+  // Per-run token: a run that lost its afterAll leaves a pet whose events and
+  // case a plain DELETE cannot remove, and a fixed token would inherit it.
+  const REPLAY_PET_TOKEN = `SURV-REPO-BITE-REPLAY-${randomUUID().slice(0, 8)}`;
+  let replayPetId: string;
+  let reporterId: string;
+
+  beforeAll(async () => {
+    reporterId = randomUUID();
+    await db.insert(profiles).values({
+      id: reporterId,
+      displayName: "Bite Replay Reporter",
+      dniHash: hashDni(String(30_000_000 + Math.floor(Math.random() * 9_999_999))),
+      dniVerified: true,
+      role: "owner",
+    });
+    const [pet] = await db
+      .insert(pets)
+      .values({
+        publicToken: REPLAY_PET_TOKEN,
+        name: "BiteReplayPet",
+        species: "dog",
+        sex: "unknown",
+        potentiallyDangerousBreed: false,
+      })
+      .returning();
+    replayPetId = pet.id;
+  });
+
+  afterAll(async () => {
+    await withMutationOverride(async (tx) => {
+      await tx.execute(sql`DELETE FROM pet_events WHERE pet_id = ${replayPetId}::uuid`);
+      await tx.execute(sql`DELETE FROM cases WHERE primary_pet_id = ${replayPetId}::uuid`);
+      await tx.execute(sql`DELETE FROM pets WHERE id = ${replayPetId}::uuid`);
+      await tx.execute(sql`DELETE FROM profiles WHERE id = ${reporterId}::uuid`);
+    });
+  });
+
+  // Each call reads the pet AFTER the previous one, the way a real retry does.
+  async function report(key: string) {
+    const [pet] = await db.select().from(pets).where(eq(pets.id, replayPetId));
+    return reportBite(
+      {
+        pet: {
+          id: pet.id,
+          publicToken: pet.publicToken,
+          name: pet.name,
+          species: pet.species,
+          status: pet.status,
+          rabiesObservationStatus: pet.rabiesObservationStatus ?? null,
+          jurisdictionProvince: null,
+          jurisdictionLocality: null,
+          localityId: null,
+        },
+        user: { id: reporterId },
+        eventAuthorship: { authorRole: "owner", authorOrganizationId: null, authorVerified: false },
+        occurredAt: new Date("2026-01-10T12:00:00Z"),
+        victimKind: "human",
+        severity: "minor",
+        locationDescription: null,
+        context: null,
+        victimContactName: null,
+        victimContactPhone: null,
+        victimAgeEstimate: null,
+        clientIdempotencyKey: key,
+        eventJurisdictionProvince: null,
+        eventJurisdictionLocality: null,
+        locationLat: null,
+        locationLng: null,
+        locationSource: null,
+      },
+      {
+        repo,
+        openCase: async (input, tx) =>
+          openCase(input as Parameters<typeof openCase>[0], tx as Parameters<typeof openCase>[1]),
+        transaction: db.transaction.bind(db),
+        findAuthoritiesForJurisdiction: async () => [],
+        resolveObservationWindow: async () => ({ days: 10 }),
+      },
+    );
+  }
+
+  it("the same key twice returns the original result and leaves ONE case; another key is refused", async () => {
+    const key = randomUUID();
+
+    const first = await report(key);
+    expect(first.ok).toBe(true);
+    const retry = await report(key);
+    expect(retry.ok).toBe(true);
+    if (!first.ok || !retry.ok) return;
+    expect(first.value.casePublicCode).toMatch(/^CAS-/);
+    expect(retry.value).toEqual({ ...first.value, wasDuplicate: true });
+
+    const biteCases = await db
+      .select({ id: cases.id })
+      .from(cases)
+      .where(and(eq(cases.primaryPetId, replayPetId), eq(cases.caseKind, "bite_incident")));
+    expect(biteCases).toHaveLength(1);
+    const incidents = await db
+      .select({ id: petEvents.id })
+      .from(petEvents)
+      .where(and(eq(petEvents.petId, replayPetId), eq(petEvents.eventType, "incident_reported")));
+    expect(incidents).toHaveLength(1);
+
+    // The ledger, asked directly, names the same incident and case code.
+    const replay = await db.transaction((tx) => repo.findIncidentReplay(replayPetId, key, tx));
+    expect(replay).toEqual({
+      eventId: first.value.eventId,
+      caseId: biteCases[0].id,
+      casePublicCode: first.value.casePublicCode,
+    });
+
+    // A NEW report (another key) still meets the open-observation guard.
+    const other = await report(randomUUID());
+    expect(other).toEqual({ ok: false, error: OBSERVATION_OPEN_ERROR });
+    const stillOne = await db
+      .select({ id: cases.id })
+      .from(cases)
+      .where(and(eq(cases.primaryPetId, replayPetId), eq(cases.caseKind, "bite_incident")));
+    expect(stillOne).toHaveLength(1);
+  });
+
+  it("an unknown key finds nothing in the ledger", async () => {
+    const replay = await db.transaction((tx) =>
+      repo.findIncidentReplay(replayPetId, randomUUID(), tx),
+    );
+    expect(replay).toBeNull();
   });
 });

@@ -7,7 +7,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { SurveillanceRepository } from "../infrastructure/surveillance-repository";
-import { type ReportBiteInput, reportBite } from "./report-bite";
+import { OBSERVATION_OPEN_ERROR, type ReportBiteInput, reportBite } from "./report-bite";
 
 // ---------------------------------------------------------------------------
 // Minimal fake types
@@ -23,6 +23,7 @@ const FAKE_OBS_ID = "a0000000-0000-4000-8000-000000000002";
 function makeRepo(overrides: FakeRepo = {}): SurveillanceRepository {
   return {
     findLatestRabiesVaccineEvent: vi.fn().mockResolvedValue(null),
+    findIncidentReplay: vi.fn().mockResolvedValue(null),
     insertIncidentEventIdempotent: vi.fn().mockResolvedValue({
       event: { id: FAKE_BITE_ID },
       wasNoop: false,
@@ -658,5 +659,110 @@ describe("reportBite — an unresolved pin is never filed at the home pair", () 
     const call = (deps.repo.insertIncidentEventIdempotent as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as { payload: Record<string, unknown> };
     expect(call.payload.place).toEqual(place);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Replay check before state guard (plan A5c)
+// ---------------------------------------------------------------------------
+//
+// A successful report invalidates its own precondition: it opens the case and
+// the observation a second report is refused for. The fake below keeps that
+// state between calls the way the database does — one ledger keyed on the
+// idempotency key, one open bite case per pet (cases_open_per_pet_kind_idx) —
+// and each call reads the pet AFTER the previous one, as a real retry does.
+
+function makeStatefulDeps() {
+  const ledger = new Map<string, { eventId: string; caseId: string; casePublicCode: string }>();
+  const openCases: { id: string; publicCode: string }[] = [];
+  let observationStatus: string | null = null;
+  const deps = makeDeps({
+    findIncidentReplay: vi.fn(async (_petId: string, key: string) => ledger.get(key) ?? null),
+    insertIncidentEventIdempotent: vi.fn(
+      async (values: { clientIdempotencyKey: string; caseId: string }) => {
+        const eventId = `a0000000-0000-4000-8000-0000000001${String(ledger.size + 1).padStart(2, "0")}`;
+        const opened = openCases.find((c) => c.id === values.caseId);
+        ledger.set(values.clientIdempotencyKey, {
+          eventId,
+          caseId: values.caseId,
+          casePublicCode: opened?.publicCode ?? "",
+        });
+        return { event: { id: eventId }, wasNoop: false };
+      },
+    ),
+    setObservationStatus: vi.fn(async (_petId: string, status: string) => {
+      observationStatus = status;
+    }),
+  });
+  deps.openCase.mockImplementation(async () => {
+    if (openCases.length > 0) {
+      throw new Error(
+        'duplicate key value violates unique constraint "cases_open_per_pet_kind_idx"',
+      );
+    }
+    const row = { id: `case-${openCases.length + 1}`, publicCode: "CAS-REPL-AY01" };
+    openCases.push(row);
+    return row;
+  });
+  const inputWith = (key: string): ReportBiteInput => ({
+    ...BASE_INPUT,
+    pet: { ...BASE_INPUT.pet, rabiesObservationStatus: observationStatus },
+    clientIdempotencyKey: key,
+  });
+  return { deps, openCases, inputWith };
+}
+
+describe("reportBite — replay check before state guard", () => {
+  it("the same request twice with the same key returns the original result and opens one case", async () => {
+    const { deps, openCases, inputWith } = makeStatefulDeps();
+
+    const first = await reportBite(inputWith("key-retry"), deps);
+    const retry = await reportBite(inputWith("key-retry"), deps);
+
+    expect(first.ok).toBe(true);
+    expect(retry.ok).toBe(true);
+    if (!first.ok || !retry.ok) return;
+    expect(retry.value).toEqual({ ...first.value, wasDuplicate: true });
+    expect(first.value.wasDuplicate).toBe(false);
+    expect(openCases).toHaveLength(1);
+    expect(deps.openCase).toHaveBeenCalledTimes(1);
+    expect(deps.repo.insertObservationStarted).toHaveBeenCalledTimes(1);
+    // The original call already announced it; a replay pages nobody again.
+    expect(retry.notifications).toEqual([]);
+  });
+
+  it("a different key on the same pet is still refused by the state guard", async () => {
+    const { deps, openCases, inputWith } = makeStatefulDeps();
+
+    await reportBite(inputWith("key-first"), deps);
+    const other = await reportBite(inputWith("key-second"), deps);
+
+    expect(other).toEqual({ ok: false, error: OBSERVATION_OPEN_ERROR });
+    expect(deps.openCase).toHaveBeenCalledTimes(1);
+    expect(openCases).toHaveLength(1);
+  });
+
+  it("asks the ledger inside the transaction, before opening the case", async () => {
+    const deps = makeDeps();
+    await reportBite(BASE_INPUT, deps);
+    const replayOrder = (deps.repo.findIncidentReplay as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0];
+    expect(deps.repo.findIncidentReplay).toHaveBeenCalledWith("pet-1", "key-abc", "fake-tx");
+    expect(replayOrder).toBeLessThan(deps.openCase.mock.invocationCallOrder[0]);
+  });
+
+  it("without a key there is nothing to replay: an open observation refuses", async () => {
+    const deps = makeDeps();
+    const result = await reportBite(
+      {
+        ...BASE_INPUT,
+        clientIdempotencyKey: null,
+        pet: { ...BASE_INPUT.pet, rabiesObservationStatus: "window_expired_unclosed" },
+      },
+      deps,
+    );
+    expect(result).toEqual({ ok: false, error: OBSERVATION_OPEN_ERROR });
+    expect(deps.repo.findIncidentReplay).not.toHaveBeenCalled();
+    expect(deps.openCase).not.toHaveBeenCalled();
   });
 });

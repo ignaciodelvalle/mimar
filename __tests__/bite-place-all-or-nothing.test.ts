@@ -48,6 +48,7 @@ const PET_HOME = {
 function makeRepo(): SurveillanceRepository {
   return {
     findLatestRabiesVaccineEvent: vi.fn().mockResolvedValue(null),
+    findIncidentReplay: vi.fn().mockResolvedValue(null),
     insertIncidentEventIdempotent: vi
       .fn()
       .mockResolvedValue({ event: { id: "a0000000-0000-4000-8000-0000000000b1" }, wasNoop: false }),

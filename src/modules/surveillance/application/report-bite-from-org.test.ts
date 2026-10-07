@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { computeObservationUntil } from "../domain/rabies-observation";
 import type { SurveillanceRepository } from "../infrastructure/surveillance-repository";
+import { OBSERVATION_OPEN_ERROR } from "./report-bite";
 import { type ReportBiteFromOrgInput, reportBiteFromOrg } from "./report-bite-from-org";
 
 const FAKE_BITE_ORG_ID = "a0000000-0000-4000-8000-000000000003";
@@ -17,6 +18,7 @@ const FAKE_OBS_ORG_ID = "a0000000-0000-4000-8000-000000000004";
 function makeRepo(overrides: Partial<Record<keyof SurveillanceRepository, unknown>> = {}) {
   return {
     findLatestRabiesVaccineEvent: vi.fn().mockResolvedValue(null),
+    findIncidentReplay: vi.fn().mockResolvedValue(null),
     insertIncidentEventIdempotent: vi
       .fn()
       .mockResolvedValue({ event: { id: FAKE_BITE_ORG_ID }, wasNoop: false }),
@@ -785,5 +787,88 @@ describe("reportBiteFromOrg — an unresolved pin is never filed at the home pai
     const call = (deps.repo.insertIncidentEventIdempotent as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as { payload: Record<string, unknown> };
     expect(call.payload.place).toEqual(place);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Replay check before state guard (plan A5c) — twin of report-bite.test.ts
+// ---------------------------------------------------------------------------
+
+function makeStatefulOrgDeps() {
+  const ledger = new Map<string, { eventId: string; caseId: string; casePublicCode: string }>();
+  const openCases: { id: string; publicCode: string }[] = [];
+  let observationStatus: string | null = null;
+  const deps = makeDeps({
+    findIncidentReplay: vi.fn(async (_petId: string, key: string) => ledger.get(key) ?? null),
+    insertIncidentEventIdempotent: vi.fn(
+      async (values: { clientIdempotencyKey: string; caseId: string }) => {
+        const eventId = `a0000000-0000-4000-8000-0000000002${String(ledger.size + 1).padStart(2, "0")}`;
+        const opened = openCases.find((c) => c.id === values.caseId);
+        ledger.set(values.clientIdempotencyKey, {
+          eventId,
+          caseId: values.caseId,
+          casePublicCode: opened?.publicCode ?? "",
+        });
+        return { event: { id: eventId }, wasNoop: false };
+      },
+    ),
+    setObservationStatus: vi.fn(async (_petId: string, status: string) => {
+      observationStatus = status;
+    }),
+  });
+  deps.openCase.mockImplementation(async () => {
+    if (openCases.length > 0) {
+      throw new Error(
+        'duplicate key value violates unique constraint "cases_open_per_pet_kind_idx"',
+      );
+    }
+    const row = { id: `case-org-${openCases.length + 1}`, publicCode: "CAS-ORGR-PLAY" };
+    openCases.push(row);
+    return row;
+  });
+  const inputWith = (key: string): ReportBiteFromOrgInput => ({
+    ...BASE_INPUT,
+    pet: { ...BASE_INPUT.pet, rabiesObservationStatus: observationStatus },
+    clientIdempotencyKey: key,
+  });
+  return { deps, openCases, inputWith };
+}
+
+describe("reportBiteFromOrg — replay check before state guard", () => {
+  it("the same request twice with the same key returns the original result and opens one case", async () => {
+    const { deps, openCases, inputWith } = makeStatefulOrgDeps();
+
+    const first = await reportBiteFromOrg(inputWith("org-key-retry"), deps);
+    const retry = await reportBiteFromOrg(inputWith("org-key-retry"), deps);
+
+    expect(first.ok).toBe(true);
+    expect(retry.ok).toBe(true);
+    if (!first.ok || !retry.ok) return;
+    expect(retry.value).toEqual(first.value);
+    expect(retry.value.casePublicCode).toBe("CAS-ORGR-PLAY");
+    expect(openCases).toHaveLength(1);
+    expect(deps.openCase).toHaveBeenCalledTimes(1);
+    // A replay describes no new mutation: no second audit row, no second page.
+    expect(deps.repo.insertAuditLog).toHaveBeenCalledTimes(1);
+    expect(retry.notifications).toEqual([]);
+  });
+
+  it("a different key on the same pet is still refused by the state guard", async () => {
+    const { deps, openCases, inputWith } = makeStatefulOrgDeps();
+
+    await reportBiteFromOrg(inputWith("org-key-first"), deps);
+    const other = await reportBiteFromOrg(inputWith("org-key-second"), deps);
+
+    expect(other).toEqual({ ok: false, error: OBSERVATION_OPEN_ERROR });
+    expect(deps.openCase).toHaveBeenCalledTimes(1);
+    expect(openCases).toHaveLength(1);
+  });
+
+  it("the authority gate still runs before the ledger: a replay is no way around authorization", async () => {
+    const deps = makeDeps();
+    deps.loadOrgPetAuthority.mockResolvedValue({ hasPetRelation: false, coverageAreas: [] });
+    const result = await reportBiteFromOrg({ ...BASE_INPUT, clientIdempotencyKey: "k" }, deps);
+    expect(result.ok).toBe(false);
+    expect(deps.repo.findIncidentReplay).not.toHaveBeenCalled();
   });
 });
