@@ -95,9 +95,23 @@ describe("/privacidad — providers and the international transfer", () => {
   });
 
   it("carries the version that records this revision", () => {
-    // A substantive revision (new disclosure + consent by name) bumps the
-    // version new acceptances record. Written out on purpose.
-    expect(LEGAL_VERSION).toBe("2026-09-24");
+    // A substantive revision bumps the version new acceptances record: first
+    // the disclosure + consent by name (2026-09-24), then the separate transfer
+    // box naming the countries (2026-10-07, legal review P10). Written out on
+    // purpose.
+    expect(LEGAL_VERSION).toBe("2026-10-07");
+  });
+
+  it("says the transfer consent is its own box, and that older accounts are asked again", () => {
+    // Legal review 2026-10-02, row P10 (Dec. 1558/2001 art. 5 inc. 1): the
+    // consent is given in a box apart from the one that accepts this policy,
+    // and an account older than this version is asked for it at its next
+    // sign-in (the re-acceptance screen). The page must say both, and no more.
+    const body = text(providersSection());
+    expect(body).toContain("con una casilla aparte de la que acepta esta política");
+    expect(body).toContain(
+      "si tu cuenta es anterior a esta versión, te lo pedimos la próxima vez que entres",
+    );
   });
 });
 

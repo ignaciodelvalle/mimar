@@ -6,10 +6,15 @@
 // This module is kept as the web's import path so the legal pages and the
 // server writers do not each learn a second one.
 export {
+  ADULT_DECLARATION_SENTENCE,
   KNOWN_LEGAL_VERSIONS,
   LEGAL_VERSION,
+  LEGAL_VERSION_CHANGES,
   LEGAL_VERSION_LABEL,
   type LegalVersion,
   PREVIOUS_LEGAL_VERSION,
+  TRANSFER_CONSENT_NOTICE,
+  TRANSFER_CONSENT_SENTENCE,
+  legalChangesSince,
   resolveAcceptedLegalVersion,
 } from "@dim/contract/reference";

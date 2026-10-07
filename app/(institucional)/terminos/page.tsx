@@ -7,6 +7,20 @@ export const metadata: Metadata = {
   description: "Condiciones de uso del servicio miMAR — Mi Mascota Argentina.",
 };
 
+// LEGAL REVIEW 2026-10-02, row P11 and D5 (PO decision D2 = b: conservative
+// interim, counsel may loosen it). Three sentences were REMOVED on 2026-10-07
+// and __tests__/terminos-abusive-clauses.test.tsx pins their absence:
+//   · "El uso del servicio implica la aceptación de estos términos" — acceptance
+//     by mere use (Disp. 377/2026, inc. p);
+//   · "En ningún caso seremos responsables por daños indirectos…" — against a
+//     consumer it is held unwritten (Ley 24.240, art. 37 a; Disp. 377/2026,
+//     inc. g);
+//   · "Podemos actualizar estos términos. Los cambios relevantes se notificarán
+//     por correo" — unilateral change by notice (Disp. 377/2026, inc. b). It is
+//     replaced by what the product now does: a substantive change asks for a new
+//     acceptance (lib/domain/legal-acceptance.ts, /aceptar-condiciones).
+// The 18+ sentence is review row P9 (interim threshold). The "Términos para
+// profesionales" annex (T4-4) waits for counsel.
 export default function TerminosPage() {
   return (
     <div className="bg-[var(--color-ln-paper)]">
@@ -31,7 +45,7 @@ export default function TerminosPage() {
           <p className="text-sm text-[var(--color-ln-ink-2)] leading-relaxed">
             miMAR (Mi Mascota Argentina) es una plataforma digital que permite a dueños de mascotas
             gestionar la credencial sanitaria de sus animales, reportar pérdidas, denunciar maltrato
-            y conectar con refugios. El uso del servicio implica la aceptación de estos términos.
+            y conectar con refugios.
           </p>
         </section>
 
@@ -43,7 +57,8 @@ export default function TerminosPage() {
             Podés registrarte gratuitamente como dueño, veterinario, refugio o representante de un
             organismo público. Sos responsable de la veracidad de los datos que ingresás y de
             mantener la confidencialidad de tu contraseña. Las cuentas institucionales (gobierno,
-            veterinarios, refugios) son habilitadas por miMAR previa verificación.
+            veterinarios, refugios) son habilitadas por miMAR previa verificación. Para crear una
+            cuenta tenés que tener 18 años o más.
           </p>
         </section>
 
@@ -76,8 +91,7 @@ export default function TerminosPage() {
           <p className="text-sm text-[var(--color-ln-ink-2)] leading-relaxed">
             miMAR pone a disposición la infraestructura técnica pero no garantiza la resolución de
             ningún caso (pérdida, denuncia, adopción). La plataforma puede tener interrupciones de
-            servicio. En ningún caso seremos responsables por daños indirectos derivados del uso o
-            imposibilidad de uso del servicio.
+            servicio.
           </p>
         </section>
 
@@ -86,8 +100,9 @@ export default function TerminosPage() {
             Modificaciones y contacto
           </h2>
           <p className="text-sm text-[var(--color-ln-ink-2)] leading-relaxed">
-            Podemos actualizar estos términos. Los cambios relevantes se notificarán por correo a
-            los usuarios registrados. Para consultas, escribinos a{" "}
+            Si cambiamos estos términos en algo importante, te vamos a pedir que los aceptes de
+            nuevo antes de seguir usando tu cuenta. Si no estás de acuerdo, podés descargar tus
+            datos y eliminar tu cuenta. Para consultas, escribinos a{" "}
             <a
               href={mailtoHref(CONTACT_EMAILS.general)}
               className="underline underline-offset-4 hover:text-[var(--color-ln-azul)] transition-colors"

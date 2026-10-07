@@ -170,9 +170,16 @@ export default function PrivacidadPage() {
           and only for a client that DISPLAYED this version: signup step 1 puts
           the version the client showed in app_metadata (server-only), and
           complete-identity-for-user.ts stamps it (known versions only; absent
-          = 2026-07-23, e.g. an old Android bundle). Nothing compares a stored
-          version against the current one, so existing accounts keep theirs and
-          are not asked anything — see the PO-DECISION note below.
+          = 2026-07-23, e.g. an old Android bundle).
+
+          2026-10-07 (legal review 2026-10-02, row P10; PO decision D2 = b,
+          conservative interim): the transfer consent left the Terms box and
+          became a box of its own, naming Brasil and Estados Unidos
+          (Dec. 1558/2001 art. 5 inc. 1, "expresa y destacada"), and a stored
+          version IS now compared with the current one: a personal account whose
+          recorded version is older is asked for the three boxes again before
+          it can use the owner portal or the app (lib/domain/legal-acceptance.ts).
+          The paragraph below says exactly that and no more.
         */}
         <section id="proveedores" className="space-y-3 scroll-mt-6">
           <h2 className="text-base font-semibold text-[var(--color-ln-ink)]">
@@ -261,27 +268,27 @@ export default function PrivacidadPage() {
             <strong>Transferencia internacional.</strong> Brasil y Estados Unidos no figuran entre
             los países con un nivel de protección adecuado (Disposición DNPDP 60-E/2016, art. 3,
             texto según Res. AAIP 34/2019). Por eso pedimos tu consentimiento expreso para enviar
-            tus datos a estos proveedores (art. 12 de la Ley 25.326): lo das al crear tu cuenta,
-            cuando aceptás esta versión de la política. Si usás miMAR sin cuenta —por ejemplo, para
-            escanear un código QR o hacer una denuncia anónima—, lo que envíes también pasa por
+            tus datos a estos proveedores (art. 12 de la Ley 25.326), con una casilla aparte de la
+            que acepta esta política: lo das al crear tu cuenta y, si tu cuenta es anterior a esta
+            versión, te lo pedimos la próxima vez que entres. Si usás miMAR sin cuenta —por ejemplo,
+            para escanear un código QR o hacer una denuncia anónima—, lo que envíes también pasa por
             estos proveedores. En todos los casos podés ejercer tus derechos ante miMAR, como se
             explica a continuación.
           </p>
-          {/* PO-DECISION: the express consent above exists ONLY for accounts
-              whose signup sentence named the transfer (profiles.tos_version >=
-              2026-09-24). Three groups have NO art. 12 consent on record and the
-              page must not pretend otherwise: (1) accounts created before
-              2026-09-24 (tos_version 2026-07-23 or NULL); (2) institutional
-              accounts an admin creates (create-institutional-account.ts), which
-              never see a consent sentence; (3) people using miMAR without an
-              account (QR scans, anonymous denuncias, sightings), whose data still
-              reaches Vercel, Supabase and OpenStreetMap. Options: (a) a
-              re-consent step at next login for (1) and (2) — a screen and a
-              write that do not exist yet; (b) a different legal basis for some
-              or all of the flows (e.g. art. 12.2 exceptions, or processors bound
-              by a contract with adequate safeguards — none is on file in this
-              repo); (c) both. Until the PO decides, the public text names the
-              consent only for new accounts and promises no flow. */}
+          {/* PO-DECISION (updated 2026-10-07). The re-consent step for
+              PERSONAL accounts with a recorded older acceptance now exists
+              (/aceptar-condiciones and the app's twin), which is what the
+              paragraph above promises. Still with NO art. 12 consent on record:
+              (1) personal accounts with no recorded acceptance at all
+              (tos_accepted_at NULL — older than migration 0087), which the gate
+              does not ask; (2) institutional accounts an admin creates
+              (create-institutional-account.ts), which never see a consent
+              sentence and are not gated; (3) people using miMAR without an
+              account (QR scans, anonymous denuncias, sightings), whose data
+              still reaches Vercel, Supabase and OpenStreetMap. For (2) and (3)
+              the review's answer is a different legal basis — processors bound
+              by the model clauses (review row P12; none is on file in this
+              repo) — which is a PO and counsel decision, not a box. */}
         </section>
 
         <section className="space-y-3">
@@ -347,13 +354,13 @@ export default function PrivacidadPage() {
 
           WHY LEGAL_VERSION WAS NOT BUMPED FOR THIS SECTION (the providers
           section above WAS a bump, 2026-09-24 — its comment says why the two
-          differ). It records WHAT a user consented to,
-          and there is no re-acceptance flow (lib/reference/legal-version.ts).
-          This section adds no collection, no sharing and no retention — it
-          documents a right the page already granted and a mechanism that already
-          shipped. Bumping would put every existing profile's stored consent
-          version behind the current one, with nothing able to resolve the gap,
-          in exchange for recording a clarification as a substantive revision.
+          differ). It records WHAT a user consented to, and since 2026-10-07 a
+          bump sends every personal account to the re-acceptance screen
+          (lib/reference/legal-version.ts). This section adds no collection, no
+          sharing and no retention — it documents a right the page already
+          granted and a mechanism that already shipped. Bumping for it would
+          ask every account to accept again a clarification, as if it were a
+          substantive revision.
         */}
         <section className="space-y-3">
           <h2 className="text-base font-semibold text-[var(--color-ln-ink)]">

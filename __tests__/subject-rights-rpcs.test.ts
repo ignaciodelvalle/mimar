@@ -1240,10 +1240,12 @@ describe("consent persistence (art. 5)", () => {
   }
 
   it("records the version step 1 displayed when it is a known one", async () => {
+    expect(await completeWithMeta({ app: "2026-10-07" })).toBe("2026-10-07");
     expect(await completeWithMeta({ app: "2026-09-24" })).toBe("2026-09-24");
     expect(await completeWithMeta({ app: "2026-07-23" })).toBe("2026-07-23");
-    // The current constant is among the known ones (written out above).
-    expect(LEGAL_VERSION).toBe("2026-09-24");
+    // The current constant is among the known ones (written out above): the
+    // three-box interim of 2026-10-07 (legal review P9/P10).
+    expect(LEGAL_VERSION).toBe("2026-10-07");
   });
 
   it("records the PREVIOUS version when step 1 left none (old bundle, pre-change signup)", async () => {
