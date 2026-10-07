@@ -128,6 +128,7 @@ import {
   RECORD_KINDS,
   WRITABLE_KINDS as WRITABLE_KIND_SET,
   emptyDraft,
+  kindSubtitle,
   kindTitle,
   recordEventCta,
 } from "./record-event-view-model";
@@ -315,6 +316,8 @@ describe("RecordEventScreen — the picker's conditional rows", () => {
     mockFetchOwnerPetDetail.mockResolvedValue(petDetail({ pregnancyStatus: null }));
     render(<RecordEventScreen publicToken={TOKEN} />);
     expect(await screen.findByText(kindTitle("pregnancy_start"))).toBeOnTheScreen();
+    // In its own trailing group, so its arrival moves no fixed row.
+    expect(screen.getByText("Para esta mascota")).toBeOnTheScreen();
     expect(screen.queryByText(kindTitle("pregnancy_end"))).toBeNull();
   });
 
@@ -403,6 +406,34 @@ describe("RecordEventScreen — the picker's conditional rows", () => {
     // the wrong form would show the picker's list again.
     expect(screen.getByText("¿Cómo terminó?")).toBeOnTheScreen();
     expect(screen.getByText("Nacieron con vida")).toBeOnTheScreen();
+  });
+});
+
+describe("RecordEventScreen — the picker is grouped like the web", () => {
+  it("draws one Eyebrow per category with its rows and their captions", () => {
+    render(<RecordEventScreen publicToken={TOKEN} />);
+    for (const heading of ["Salud", "Identificación", "Incidentes", "Notas"]) {
+      expect(screen.getByText(heading)).toBeOnTheScreen();
+    }
+    expect(screen.getByText("Vacuna")).toBeOnTheScreen();
+    expect(screen.getByText("antirrábica, séxtuple, triple felina…")).toBeOnTheScreen();
+    expect(screen.getByText("abre un caso y la observación antirrábica")).toBeOnTheScreen();
+    // The rows are rows now, not thirteen stretched pills.
+    expect(screen.queryByText("Para esta mascota")).toBeNull();
+  });
+
+  it("keeps the long explanation as the row's accessibility hint", () => {
+    render(<RecordEventScreen publicToken={TOKEN} />);
+    const row = screen.getByText("Vacuna");
+    let node: typeof row | null = row;
+    while (node !== null && node.props.accessibilityHint === undefined) node = node.parent;
+    expect(node?.props.accessibilityHint).toBe(kindSubtitle("vaccination"));
+  });
+
+  it("opens the form when a row is tapped", async () => {
+    render(<RecordEventScreen publicToken={TOKEN} />);
+    fireEvent.press(screen.getByText("Peso"));
+    expect(await screen.findByText(kindSubtitle("weight"))).toBeOnTheScreen();
   });
 });
 
@@ -2565,10 +2596,13 @@ describe("RecordEventScreen — la captura rápida, arriba del menú", () => {
     // libreta que no se edita. La tarjeta es el único momento en que se lee la
     // INTERPRETACIÓN de la app en vez de un formulario.
     render(<RecordEventScreen publicToken={TOKEN} />);
+    // The picker's own captions mention "antirrábica" too (vacuna, mordedura),
+    // so the card is the match the capture ADDS, not the only one on screen.
+    const before = screen.queryAllByText(/antirrábica/).length;
     capture("le di la antirrábica hoy");
 
     expect(screen.getByText("Entendimos esto:")).toBeOnTheScreen();
-    expect(screen.getByText(/antirrábica/)).toBeOnTheScreen();
+    expect(screen.queryAllByText(/antirrábica/)).toHaveLength(before + 1);
     // Ni el formulario ni su botón: sigue siendo el menú.
     expect(screen.queryByText("Registrar vacuna")).toBeNull();
     expect(screen.getByText("Abrir vacuna")).toBeOnTheScreen();

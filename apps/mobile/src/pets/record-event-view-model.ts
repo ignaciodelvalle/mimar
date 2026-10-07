@@ -96,6 +96,51 @@ export const RECORD_KINDS = [
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 
+/**
+ * The picker's sections — THE WEB'S OWN CATEGORIES, in the web's order.
+ *
+ * `anotar/CaptureOptionsList.tsx` groups the same acts under the `category`
+ * each row of `ALL_CAPTURE_OPTIONS` (`anotar/handoff.ts`) carries: Salud,
+ * Identificación, Incidentes, Notas. A person who used one door must recognise
+ * the other, so this restates those four words and nothing else; a root parity
+ * test (`__tests__/mobile-anotar-groups-parity.test.ts`) reads both tables and
+ * fails the day they part ways.
+ *
+ * INSIDE A GROUP THE ORDER IS `RECORD_KINDS`' (how often the act happens), and
+ * every kind appears in exactly one group — the unit test pins both.
+ */
+export const RECORD_KIND_GROUPS: ReadonlyArray<{
+  category: string;
+  kinds: readonly RecordKind[];
+}> = [
+  {
+    category: "Salud",
+    kinds: [
+      "vaccination",
+      "weight",
+      "deworming",
+      "symptom",
+      "medication_start",
+      "vet_visit",
+      "clinical_info",
+      "sterilization",
+    ],
+  },
+  { category: "Identificación", kinds: ["microchip", "tattoo"] },
+  { category: "Incidentes", kinds: ["bite"] },
+  { category: "Notas", kinds: ["note"] },
+];
+
+/**
+ * The heading over the conditional rows (`CONDITIONAL_KINDS`).
+ *
+ * THEIR OWN GROUP, LAST, and not folded into Salud or a new "Adopción": they
+ * arrive a beat after the fixed rows (the pet's facts are a second read), and a
+ * row appended inside the first group would push every group below it down
+ * under somebody's thumb. Appending at the very end moves nothing.
+ */
+export const CONDITIONAL_KINDS_HEADING = "Para esta mascota";
+
 /** Every kind this screen can write, including the one reached from an asiento. */
 /**
  * Every kind this screen can write, including the ones NOT in the picker's
@@ -350,6 +395,58 @@ export function kindTitle(kind: WritableKind): string {
     // menu the web has, and a person who used one should recognise the other.
     case "post_adoption_checkin":
       return "Check-in post-adopción";
+  }
+}
+
+/**
+ * The picker row's caption: a few examples, so a person can tell the rows
+ * apart at a glance ("antirrábica, séxtuple…" under "Vacuna").
+ *
+ * SHORTER THAN `kindSubtitle`, which stays the row's accessibility hint and the
+ * form's own lead: this is a recognition aid, not the explanation. Where the
+ * act has a consequence a person must know BEFORE opening it (a bite opens a
+ * case), the caption says that instead of examples.
+ */
+export function kindCaption(kind: WritableKind): string {
+  switch (kind) {
+    case "vaccination":
+      return "antirrábica, séxtuple, triple felina…";
+    case "weight":
+      return "en la veterinaria o en casa";
+    case "deworming":
+      return "pipeta, comprimido, collar…";
+    case "symptom":
+      return "vómitos, tos, decaimiento, picazón…";
+    case "medication_start":
+      return "antibiótico, antiinflamatorio… con sus dosis";
+    case "medication_end":
+      return "el final de un tratamiento";
+    case "vet_visit":
+      return "control, consulta, urgencia…";
+    case "clinical_info":
+      return "análisis, radiografía, cirugía, alergia…";
+    case "sterilization":
+      return "castración u ovariectomía, una sola vez";
+    case "microchip":
+      return "el número del chip implantado";
+    case "tattoo":
+      return "con una foto del tatuaje";
+    case "bite":
+      return "abre un caso y la observación antirrábica";
+    case "note":
+      return "lo que quieras dejar anotado";
+    case "microchip_replace":
+      return "el chip actual deja de valer";
+    case "dangerous_breed_attestation":
+      return "la declaración ante el registro";
+    case "death":
+      return "cierra el registro del animal";
+    case "pregnancy_start":
+      return "controles quincenales hasta el parto";
+    case "pregnancy_end":
+      return "parto u otro desenlace";
+    case "post_adoption_checkin":
+      return "le llega al refugio que lo pidió";
   }
 }
 
