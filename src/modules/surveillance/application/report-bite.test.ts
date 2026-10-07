@@ -7,7 +7,12 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { SurveillanceRepository } from "../infrastructure/surveillance-repository";
-import { OBSERVATION_OPEN_ERROR, type ReportBiteInput, reportBite } from "./report-bite";
+import {
+  KEY_TAKEN_ERROR,
+  OBSERVATION_OPEN_ERROR,
+  type ReportBiteInput,
+  reportBite,
+} from "./report-bite";
 
 // ---------------------------------------------------------------------------
 // Minimal fake types
@@ -212,8 +217,12 @@ describe("reportBite — incident coordinate (Slice 2)", () => {
 // Idempotency noop path (spec §A: biteNoop early return)
 // ---------------------------------------------------------------------------
 
-describe("reportBite — idempotency noop", () => {
-  it("returns ok=true but does NOT call insertObservationStarted when biteNoop=true", async () => {
+// A same-key retry by the SAME actor is answered by the ledger before any
+// write (see "replay check before state guard" below). An incident that still
+// dedupes inside the write is ANOTHER actor's key: the transaction is rolled
+// back — no orphan open case — and the person is told to resend.
+describe("reportBite — an incident that dedupes inside the write (another actor's key)", () => {
+  it("refuses with KEY_TAKEN_ERROR and writes no observation", async () => {
     const deps = makeDeps({
       insertIncidentEventIdempotent: vi.fn().mockResolvedValue({
         event: { id: "evt-bite-1" },
@@ -221,22 +230,30 @@ describe("reportBite — idempotency noop", () => {
       }),
     });
     const result = await reportBite(BASE_INPUT, deps);
-    expect(result.ok).toBe(true);
+    expect(result).toEqual({ ok: false, error: KEY_TAKEN_ERROR });
     expect(deps.repo.insertObservationStarted).not.toHaveBeenCalled();
     expect(deps.repo.setObservationStatus).not.toHaveBeenCalled();
   });
 
-  it("returns empty notifications on noop", async () => {
+  it("throws inside the transaction, so the case it opened is rolled back with it", async () => {
+    let bodyError: unknown = null;
     const deps = makeDeps({
       insertIncidentEventIdempotent: vi.fn().mockResolvedValue({
         event: { id: "evt-bite-1" },
         wasNoop: true,
       }),
     });
-    const result = await reportBite(BASE_INPUT, deps);
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.notifications).toHaveLength(0);
+    deps.transaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
+      try {
+        return await cb("fake-tx");
+      } catch (err) {
+        bodyError = err;
+        throw err;
+      }
+    });
+    await reportBite(BASE_INPUT, deps);
+    expect(deps.openCase).toHaveBeenCalledTimes(1);
+    expect(bodyError).toBeInstanceOf(Error);
   });
 });
 
