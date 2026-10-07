@@ -8,6 +8,7 @@ import { parseDateInput } from "@/lib/utils/format";
 import type { EventFormState } from "@/src/modules/events/actions";
 import { getGrantedCapabilities } from "@/src/modules/organizations/infrastructure/authz-resolver";
 import { replaceMicrochipForUser } from "@/src/modules/pets/application/microchip/replace-microchip";
+import { findReplayedReplacement } from "@/src/modules/pets/application/microchip/replacement-replay";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 
 const VET_REASONS = new Set([
@@ -63,9 +64,15 @@ export async function replaceMicrochipVetAction(
 
   const { pet } = petRow;
 
+  const clientIdempotencyKey = String(formData.get("clientIdempotencyKey") ?? "").trim() || null;
+
   // ARCH-S: legacy pets.microchipId column dropped — read from canonical.
   const canonicalIds = await fetchActiveIdentifications(pet.id);
   if (!canonicalIds.microchip) {
+    // Replay check before state guard (plan A5c) — see replacement-replay.ts.
+    if ((await findReplayedReplacement(pet.id, clientIdempotencyKey, user.id)) !== null) {
+      return { error: null, ok: true, redirectTo: `/org/${orgToken}/mascotas` };
+    }
     return { error: "Esta mascota no tiene microchip registrado." };
   }
 
@@ -74,7 +81,6 @@ export async function replaceMicrochipVetAction(
   const replacedBy = String(formData.get("replacedBy") ?? "").trim() || null;
   const replacedAtRaw = String(formData.get("replacedAt") ?? "").trim();
   const notes = String(formData.get("notes") ?? "").trim() || null;
-  const clientIdempotencyKey = String(formData.get("clientIdempotencyKey") ?? "").trim() || null;
 
   if (!VET_REASONS.has(reason)) {
     return { error: "Motivo inválido." };

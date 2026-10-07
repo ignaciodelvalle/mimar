@@ -447,58 +447,111 @@ describe("replaceMicrochipAdminAction — reason validation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Replay check before state guard (plan A5c). A fraud revocation leaves the pet
-// with no active chip (and opens a microchip_remediation case); its retry must
-// replay, not meet "no tiene microchip registrado".
+// Replay check before state guard (plan A5c). A pure revocation leaves the pet
+// with no active chip (and the admin's fraud_detected opens a
+// microchip_remediation case); its retry must replay, not meet "no tiene
+// microchip registrado". All three web doors share replacement-replay.ts.
 // ---------------------------------------------------------------------------
 
-describe("replaceMicrochipAdminAction — replay before the no-chip refusal", () => {
-  beforeEach(async () => {
-    await resetActionMocks();
-    mockFindExistingByKey.mockReset();
-    const { fetchActiveIdentifications } = await import("@/lib/infra/pet-identifiers");
-    // The state the FIRST successful revocation leaves behind.
-    vi.mocked(fetchActiveIdentifications).mockResolvedValueOnce({ microchip: null, tattoo: null });
-  });
+type ReplayDoor = {
+  name: string;
+  actorUserId: string;
+  destination: string;
+  revocation: Record<string, string>;
+  run: (fd: FormData) => Promise<{ error: string | null; ok?: boolean; redirectTo?: string }>;
+};
 
-  const revocation = (key: string) =>
-    makeFormData({
+const REPLAY_DOORS: ReplayDoor[] = [
+  {
+    name: "owner",
+    actorUserId: OWNER_USER_ID,
+    destination: `/mis-mascotas/${PET_TOKEN}`,
+    revocation: { reason: "owner_request", newChipNumber: "", replacedAt: TODAY },
+    run: async (fd) => {
+      const { replaceMicrochipOwnerAction } = await import(
+        "@/app/(app)/mis-mascotas/[publicToken]/eventos/nuevo/microchip-reemplazo/action"
+      );
+      return replaceMicrochipOwnerAction(PET_TOKEN, { error: null }, fd);
+    },
+  },
+  {
+    name: "org",
+    actorUserId: VET_USER_ID,
+    destination: `/org/${ORG_TOKEN}/mascotas`,
+    revocation: { reason: "device_failure", newChipNumber: "", replacedAt: TODAY },
+    run: async (fd) => {
+      const { replaceMicrochipVetAction } = await import(
+        "@/app/org/[orgToken]/mascotas/[publicToken]/microchip/reemplazar/action"
+      );
+      return replaceMicrochipVetAction(ORG_TOKEN, PET_TOKEN, { error: null }, fd);
+    },
+  },
+  {
+    name: "admin",
+    actorUserId: "admin-user-id",
+    destination: "/admin/observaciones",
+    revocation: {
       reason: "fraud_detected",
       newChipNumber: "",
       replacedAt: TODAY,
       notes: "Chip fraudulento — expediente policial 12345.",
-      clientIdempotencyKey: key,
+    },
+    run: async (fd) => {
+      const { replaceMicrochipAdminAction } = await import(
+        "@/app/admin/observaciones/[publicToken]/microchip/reemplazar/action"
+      );
+      return replaceMicrochipAdminAction(PET_TOKEN, { error: null }, fd);
+    },
+  },
+];
+
+describe.each(REPLAY_DOORS)(
+  "replaceMicrochip $name action — replay before the no-chip refusal",
+  (door) => {
+    beforeEach(async () => {
+      await resetActionMocks();
+      mockFindExistingByKey.mockReset();
+      const { fetchActiveIdentifications } = await import("@/lib/infra/pet-identifiers");
+      // The state the FIRST successful revocation leaves behind.
+      vi.mocked(fetchActiveIdentifications).mockResolvedValueOnce({
+        microchip: null,
+        tattoo: null,
+      });
     });
 
-  it("the same key again returns the original success, writing nothing", async () => {
-    mockFindExistingByKey.mockResolvedValue({ id: "evt-original", caseId: "case-1" });
-    const { replaceMicrochipAdminAction } = await import(
-      "@/app/admin/observaciones/[publicToken]/microchip/reemplazar/action"
-    );
+    const revocation = (key: string) =>
+      makeFormData({ ...door.revocation, clientIdempotencyKey: key });
 
-    await expectNavigatesTo(
-      replaceMicrochipAdminAction(PET_TOKEN, { error: null }, revocation("key-retry")),
-      "/admin/observaciones",
-    );
-    expect(mockFindExistingByKey).toHaveBeenCalledWith(PET_ID, "microchip_replaced", "key-retry");
-    expect(mockReplaceMicrochipForUser).not.toHaveBeenCalled();
-  });
+    it("the same key again returns the original success, writing nothing", async () => {
+      mockFindExistingByKey.mockResolvedValue({
+        id: "evt-original",
+        recordedByUserId: door.actorUserId,
+      });
 
-  it("a different key is still refused by the no-chip guard", async () => {
-    mockFindExistingByKey.mockResolvedValue(null);
-    const { replaceMicrochipAdminAction } = await import(
-      "@/app/admin/observaciones/[publicToken]/microchip/reemplazar/action"
-    );
+      await expectNavigatesTo(door.run(revocation("key-retry")), door.destination);
+      expect(mockFindExistingByKey).toHaveBeenCalledWith(PET_ID, "microchip_replaced", "key-retry");
+      expect(mockReplaceMicrochipForUser).not.toHaveBeenCalled();
+    });
 
-    const result = await replaceMicrochipAdminAction(
-      PET_TOKEN,
-      { error: null },
-      revocation("key-other"),
-    );
-    expect(result).toEqual({ error: "Esta mascota no tiene microchip registrado." });
-    expect(mockReplaceMicrochipForUser).not.toHaveBeenCalled();
-  });
-});
+    it("a different key is still refused by the no-chip guard", async () => {
+      mockFindExistingByKey.mockResolvedValue(null);
+
+      const result = await door.run(revocation("key-other"));
+      expect(result).toEqual({ error: "Esta mascota no tiene microchip registrado." });
+      expect(mockReplaceMicrochipForUser).not.toHaveBeenCalled();
+    });
+
+    it("someone ELSE's key on this pet is not this caller's replay", async () => {
+      mockFindExistingByKey.mockResolvedValue({
+        id: "evt-theirs",
+        recordedByUserId: "another-user",
+      });
+
+      const result = await door.run(revocation("key-theirs"));
+      expect(result).toEqual({ error: "Esta mascota no tiene microchip registrado." });
+    });
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Date plausibility (PO 2026-07-16) — same-day AR accepted, tomorrow rejected.

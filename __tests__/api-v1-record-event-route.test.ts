@@ -71,7 +71,7 @@ const control = vi.hoisted(() => ({
    * key already wrote — the case a PURE REVOCATION's retry lands in, where the
    * animal has no chip left and the naive answer is 409 forever.
    */
-  replayEvent: null as null | { id: string },
+  replayEvent: null as null | { id: string; recordedByUserId?: string | null },
   /** A prior `clinical_info_logged` under this key — either pregnancy phase. */
   replayedPregnancy: null as null | { id: string },
   biteResult: null as null | (() => unknown),
@@ -1305,11 +1305,21 @@ describe("POST .../events - reemplazo de microchip, whose web door is not the al
     // replace" would answer 409 forever to a write that already happened.
     control.access = owner();
     control.canonicalChip = null;
-    control.replayEvent = { id: "ev-original" };
+    control.replayEvent = { id: "ev-original", recordedByUserId: OWNER_ID };
     const response = await call(A_REVOCATION);
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual({ eventId: "ev-original", wasDuplicate: true });
     // NON-VACUITY: the replay is answered from the ledger, not by writing again.
+    expect(control.writes).toEqual([]);
+  });
+
+  it("does NOT replay a revocation SOMEONE ELSE's key wrote: that is not this caller's request", async () => {
+    control.access = owner();
+    control.canonicalChip = null;
+    control.replayEvent = { id: "ev-theirs", recordedByUserId: "someone-else" };
+    const response = await call(A_REVOCATION);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "event_not_allowed" });
     expect(control.writes).toEqual([]);
   });
 
