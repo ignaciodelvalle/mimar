@@ -532,3 +532,37 @@ describe("choosing the zone", () => {
     expect(screen.getByText("Elegir una localidad.")).toBeTruthy();
   });
 });
+
+describe("the picker is the kit's list, under the header's title", () => {
+  const HIDDEN = { includeHiddenElements: true } as const;
+
+  it("draws the first load as a list skeleton, not a spinner", async () => {
+    let resolve: (value: unknown) => void = () => {};
+    mockSearch.mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    render(<BuscarTurnoScreen onOpenOffering={jest.fn()} />);
+    expect(screen.getByLabelText("Cargando servicios…")).toBeOnTheScreen();
+    expect(screen.queryByText("Cargando servicios…")).toBeNull(); // no spinner caption
+    resolve({ outcome: "ok", payload: payload() });
+    await screen.findByText("Vacunación antirrábica");
+  });
+
+  it("each service is a ListRow ending in the kit's chevron, with no typed '›'", async () => {
+    mockSearch.mockResolvedValue({ outcome: "ok", payload: payload() });
+    render(<BuscarTurnoScreen onOpenOffering={jest.fn()} />);
+    await screen.findByText("Vacunación antirrábica");
+    expect(screen.getByRole("button", { name: "Vacunación antirrábica" })).toBeTruthy();
+    expect(screen.getAllByTestId("list-row-trailing", HIDDEN)).toHaveLength(2);
+    expect(screen.queryByText("›", HIDDEN)).toBeNull();
+  });
+
+  it("does not repeat 'Buscar turno' in the body — the header says it", async () => {
+    mockSearch.mockResolvedValue({ outcome: "ok", payload: payload() });
+    render(<BuscarTurnoScreen onOpenOffering={jest.fn()} />);
+    await screen.findByText("Indicá qué servicio buscás.");
+    expect(screen.queryByText("Buscar turno")).toBeNull();
+  });
+});
