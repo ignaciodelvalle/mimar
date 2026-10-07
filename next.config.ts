@@ -33,6 +33,14 @@ const DENUNCIA_PRIVATE_HEADERS = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // postgres.js is NOT bundled: the server requires it from node_modules at
+  // runtime, and Next's trace (*.nft.json) ships those files to the function.
+  // patches/postgres.patch lives in node_modules, so this makes the patched
+  // copy the ONLY copy. Bundled, webpack kept a second one inside .next, and a
+  // stale .next served it unpatched (every transaction: UNSAFE_TRANSACTION)
+  // while the pre-build node_modules check passed. scripts/build.mjs asserts
+  // the output after the build (scripts/lib/postgres-patch-check.mjs).
+  serverExternalPackages: ["postgres"],
   async headers() {
     return [
       {

@@ -25,16 +25,23 @@ import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { availableParallelism, totalmem } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { unpatchedPostgresFiles, unpatchedPostgresMessage } from "./lib/postgres-patch-check.mjs";
+import {
+  builtPostgresMessage,
+  builtPostgresProblems,
+  unpatchedPostgresFiles,
+  unpatchedPostgresMessage,
+} from "./lib/postgres-patch-check.mjs";
 
 // FIRST, before any heap arithmetic: refuse to build without the postgres.js
 // patch. The app's pools run with max_pipeline 0 and upstream cannot run a
 // transaction that way, so an unpatched build deploys a site whose every write
 // transaction fails. A stale build cache is the likely way here; see
 // scripts/lib/postgres-patch-check.mjs.
-const unpatched = unpatchedPostgresFiles(fileURLToPath(new URL("..", import.meta.url)));
+const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+const unpatched = unpatchedPostgresFiles(repoRoot);
 if (unpatched.length > 0) {
   console.error(unpatchedPostgresMessage(unpatched));
   process.exit(1);
@@ -284,7 +291,20 @@ child.on("exit", (code, signal) => {
     console.error(`[build] next build was killed by ${signal}${hint}`);
     process.exit(1);
   }
-  process.exit(code ?? 1);
+  if (code !== 0) process.exit(code ?? 1);
+  // LAST, after a green build: the same refusal, against what will actually
+  // run. The pre-build check reads node_modules; a stale .next can still ship
+  // another copy (see builtPostgresProblems). Default distDir: next.config.ts
+  // sets none.
+  const built = builtPostgresProblems(join(repoRoot, ".next"));
+  if (built.problems.length > 0) {
+    console.error(builtPostgresMessage(built.problems));
+    process.exit(1);
+  }
+  console.log(
+    `[build] postgres.js in the output is patched (${built.traced} traced file(s), ${built.bundled} bundled copy/copies)`,
+  );
+  process.exit(0);
 });
 child.on("error", (error) => {
   console.error(`[build] could not start next build: ${error.message}`);
