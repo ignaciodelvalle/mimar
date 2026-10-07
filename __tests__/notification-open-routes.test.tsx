@@ -191,6 +191,15 @@ describe("/notificaciones/{id}/abrir", () => {
     expect(location.pathname).toBe("/iniciar-sesion");
     expect(location.searchParams.get("returnTo")).toBe(`/notificaciones/${ID}/abrir`);
   });
+
+  // The legal re-acceptance (2026-10-07): the acceptance screen, then back to
+  // this notification — not the login, which would lose the way back.
+  it("sends an account that owes the legal re-acceptance to accept it, keeping the way back", async () => {
+    control.live = () => ({ ok: false, reason: "LEGAL_ACCEPTANCE_REQUIRED" });
+    const location = new URL((await open()).headers.get("location") ?? "");
+    expect(location.pathname).toBe("/aceptar-condiciones");
+    expect(location.searchParams.get("returnTo")).toBe(`/notificaciones/${ID}/abrir`);
+  });
 });
 
 describe("/notificaciones/{id}/abrir — the limiter runs first", () => {

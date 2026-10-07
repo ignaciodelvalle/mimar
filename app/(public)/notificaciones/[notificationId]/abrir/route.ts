@@ -23,6 +23,7 @@
 // crawler following it must not change somebody's inbox.
 
 import { notificationTargetPorts } from "@/app/_composition/notification-target-ports";
+import { legalAcceptanceHref } from "@/lib/domain/legal-acceptance";
 import { caseViewerFromProfile } from "@/lib/infra/case-read";
 import { DbBudgetExceededError, withDbBudgetOrThrow } from "@/lib/infra/db-budget";
 import { type LiveUserResult, requireLiveUser } from "@/lib/infra/live-user";
@@ -79,6 +80,12 @@ function refusalPath(live: Extract<LiveUserResult, { ok: false }>, notificationI
       // Reads stay open for a deactivated account (auth-guards.ts); the
       // explanation page is a read and resolves through the tolerant guard.
       return notificationExplanationWebPath(notificationId);
+    // The legal re-acceptance (2026-10-07): the screen that asks for it, then
+    // back to this notification. CLIENT_UPGRADE_REQUIRED is bearer-only and
+    // cannot reach a browser tap; folded in for the same destination.
+    case "LEGAL_ACCEPTANCE_REQUIRED":
+    case "CLIENT_UPGRADE_REQUIRED":
+      return legalAcceptanceHref(returnTo);
     default:
       return "/iniciar-sesion";
   }

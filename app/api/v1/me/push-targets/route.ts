@@ -107,10 +107,32 @@ export async function POST(request: Request) {
   // into a module-level function reads as ABSENT — and that is the right rule
   // rather than a limitation: a reader auditing who may reach this URL should
   // find the answer here, not one indirection away.
+  // THE BODY IS READ BEFORE THE GUARD, ONLY TO KNOW WHICH COMMAND THIS IS
+  // (re-review of textos-legales-v14, 2026-10-07). `revoke` is what the app's
+  // sign-out sends before it drops its tokens, and it must work for an account
+  // that owes the legal re-acceptance: refusing it would leave a shared phone
+  // receiving that account's pushes after "Cerrar sesión". Nothing is decided
+  // from the body before the guard runs — the refusal for a malformed body
+  // still comes after it, below.
+  let body: unknown = null;
+  let bodyReadable = true;
+  try {
+    body = await request.json();
+  } catch {
+    bodyReadable = false;
+  }
+  const parsed = pushRegistrationInputSchema.safeParse(body);
+  const isRevoke = parsed.success && parsed.data.command === "revoke";
+
   let live: Awaited<ReturnType<typeof requireLiveUser>>;
   try {
     live = await withDbBudgetOrThrow(
-      requireLiveUser({ supabase: client.supabase, accessToken: client.token }),
+      requireLiveUser({
+        supabase: client.supabase,
+        accessToken: client.token,
+        // Sign-out's push revoke only — `register` stays behind the gate.
+        ...(isRevoke ? { allowPendingLegal: true } : {}),
+      }),
       AUTH_BUDGET_MS,
       "api-v1-me-push-targets-auth",
     );
@@ -130,17 +152,11 @@ export async function POST(request: Request) {
     return apiV1Error("rate_limited", 429);
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return apiV1Error("invalid_request", 400);
-  }
+  if (!bodyReadable) return apiV1Error("invalid_request", 400);
 
   // The client validated against this schema first and got per-field codes
   // locally. This is the backstop for a client out of step with the contract,
   // which is why it carries no field detail — the envelope is one key.
-  const parsed = pushRegistrationInputSchema.safeParse(body);
   if (!parsed.success) return apiV1Error("invalid_request", 400);
 
   // THE WRITES ARE DELIBERATELY OUTSIDE ANY DB BUDGET, for the reason

@@ -33,6 +33,8 @@ const EXEMPT = [
   "me/route.ts",
   "me/legal-acceptance/route.ts",
   "me/privacy/route.ts",
+  // Only for the sign-out `revoke` command; pinned by its own case below.
+  "me/push-targets/route.ts",
   "me/revoke-sessions/route.ts",
 ].sort();
 
@@ -52,6 +54,14 @@ describe("/api/v1 — the legal re-acceptance refusal on the wire", () => {
       )
       .map((r) => r.rel);
     expect(wrong).toEqual([]);
+  });
+
+  it("push-targets opts out for the sign-out `revoke` ONLY, never for `register`", () => {
+    const route = ROUTES.find((r) => r.rel === "me/push-targets/route.ts");
+    expect(route).toBeDefined();
+    const src = route?.src ?? "";
+    expect(src).toContain('const isRevoke = parsed.success && parsed.data.command === "revoke";');
+    expect(src).toContain("...(isRevoke ? { allowPendingLegal: true } : {})");
   });
 
   it("only the exempt routes opt out of the gate", () => {
