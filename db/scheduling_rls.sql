@@ -1,13 +1,19 @@
 -- Scheduling system — Row Level Security
 -- ----------------------------------------
--- NOTE (V0-4): REFERENCE ONLY. Source of truth is
--- db/migrations/0086_track_rls_in_migrations.sql. No longer applied by bootstrap.
+-- APPLIED BY scripts/deploy-provision.ts (step 4, LOOSE_SQL_ORDER), AFTER the
+-- migration replay — so every statement here is the LAST word on a freshly
+-- provisioned database. Migrations stay the source of truth (0086 ported this
+-- file): a change here is written as a forward-only db/migrations/NNNN_*.sql
+-- first and mirrored here. Since 0285 the mirror is byte-identical between
+-- that migration's `-- >>> scheduling_rls.sql mirror` markers, which the
+-- scheduling RLS tests pin (0285, 0286, 0288). Older migrations were not all
+-- mirrored: 0137's `(select auth.uid())` initplan wrap of the owner and
+-- provider-vet policies is NOT carried here, so a provision puts the bare
+-- auth.uid() back on those three (same access, slower plan). A statement here
+-- that a later migration dropped would put it back on every provision.
+-- db:migrate never applies this file, and neither does db-bootstrap.
 -- Governs PostgREST access (defense-in-depth). All Drizzle server-action
 -- queries bypass RLS via the direct DB connection.
--- DO NOT APPLY THIS FILE (A02-2). Migrations are the only path that changes a
--- database: write a forward-only db/migrations/NNNN_*.sql, applied by
--- db:migrate. Pasting this file into the Supabase Studio SQL Editor would
--- re-create policies later migrations dropped (0175, 0211, 0212, …).
 
 -- ============================================================================
 -- service_offerings
