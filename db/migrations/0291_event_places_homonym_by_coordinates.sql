@@ -40,9 +40,17 @@
 -- names Postgres gave them — __tests__/schema-check-parity.test.ts) and in
 -- lib/domain/place.ts EVENT_PLACE_METHODS.
 --
--- Idempotent (DROP CONSTRAINT IF EXISTS, then ADD). Forward-only. Rollback: a
--- forward migration may narrow the lists again once no row carries the value.
+-- Idempotent (DROP CONSTRAINT IF EXISTS, then ADD). The old CHECKs are
+-- dropped by NAME, so the closing block verifies by SHAPE: any CHECK left on
+-- either table that lists the method vocabulary without the new value (a differently
+-- named survivor of a drizzle push, say) would still refuse it, and fails the
+-- migration instead. Forward-only. Rollback: a forward migration may narrow
+-- the lists again once no row carries the value.
 -- ────────────────────────────────────────────────────────────────────────────
+
+-- ADD CONSTRAINT takes an ACCESS EXCLUSIVE lock and validates every row: wait
+-- for the lock briefly, never queue every reader of the table behind it.
+SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE public.event_places DROP CONSTRAINT IF EXISTS event_places_method_check;
 ALTER TABLE public.event_places
@@ -59,3 +67,23 @@ ALTER TABLE public.place_resolutions
     'folded_name_unique', 'geocode_unique', 'user_picked',
     'spine_rederived', 'legacy_unique_name', 'admin_queue',
     'unresolved', 'homonym_by_coordinates'));
+
+DO $$
+DECLARE
+  stale text;
+BEGIN
+  SELECT string_agg(format('%s.%s', c.conrelid::regclass, c.conname), ', ')
+    INTO stale
+    FROM pg_catalog.pg_constraint c
+   WHERE c.contype = 'c'
+     AND c.conrelid IN ('public.event_places'::regclass, 'public.place_resolutions'::regclass)
+     -- A vocabulary CHECK (it lists the methods; admin_queue is in every list
+     -- since 0250), not the (method = 'unresolved') = (locality_id IS NULL) one.
+     AND pg_get_constraintdef(c.oid) ~ '\mmethod\M'
+     AND pg_get_constraintdef(c.oid) ~ 'admin_queue'
+     AND pg_get_constraintdef(c.oid) !~ 'homonym_by_coordinates';
+  IF stale IS NOT NULL THEN
+    RAISE EXCEPTION '0291: CHECK(s) on method still refuse homonym_by_coordinates: %', stale;
+  END IF;
+END
+$$;
