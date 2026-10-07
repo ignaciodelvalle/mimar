@@ -48,9 +48,20 @@ import { apiFailureMessage } from "../api/client";
 import { fetchMyCaretakerGrants, sendCaretakerCommand } from "../api/endpoints";
 import { KEEP_DESTINATION_ON_SIGN_OUT } from "../auth/return-to";
 import { sessionPort, signOut } from "../auth/session-store";
-import { Body, Card, Loading, Row } from "../ui/components";
-import { Callout, Choice, PrimaryButton, Screen, SecondaryButton, Title } from "../ui/kit";
-import { SPACE } from "../ui/theme";
+import { Body, Row } from "../ui/components";
+import {
+  Callout,
+  Choice,
+  Eyebrow,
+  ListRow,
+  PrimaryButton,
+  Screen,
+  SecondaryButton,
+  Subtitle,
+  Title,
+} from "../ui/kit";
+import { ListSkeleton } from "../ui/skeleton";
+import { COLORS, SPACE } from "../ui/theme";
 
 import {
   buildAcceptCaretakerGrant,
@@ -92,6 +103,9 @@ type Notice = { tone: "ok" | "err"; message: string } | null;
 const CONSENT_OPTIONS = ["no", "si"] as const;
 type Consent = (typeof CONSENT_OPTIONS)[number];
 
+/** Which answer is being confirmed, if any. Both take two taps. */
+type Pane = "idle" | "accept" | "reject";
+
 export function CaretakerGrantScreen({
   grantToken,
   onAccepted,
@@ -103,8 +117,7 @@ export function CaretakerGrantScreen({
   const [state, setState] = useState<ScreenState>({ phase: "loading" });
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
-  const [confirmingAccept, setConfirmingAccept] = useState(false);
-  const [confirmingReject, setConfirmingReject] = useState(false);
+  const [pane, setPane] = useState<Pane>("idle");
   const [consent, setConsent] = useState<Consent>("no");
 
   const load = useCallback(async () => {
@@ -131,8 +144,7 @@ export function CaretakerGrantScreen({
       setNotice(null);
       const result = await sendCaretakerCommand(sessionPort, input);
       setBusy(false);
-      setConfirmingAccept(false);
-      setConfirmingReject(false);
+      setPane("idle");
       if (result.outcome !== "ok") {
         setNotice({
           tone: "err",
@@ -160,7 +172,14 @@ export function CaretakerGrantScreen({
     [load, onAccepted],
   );
 
-  if (state.phase === "loading") return <Loading label="Cargando la invitación…" />;
+  if (state.phase === "loading") {
+    return (
+      <Screen>
+        <Title>Cuidado temporal</Title>
+        <ListSkeleton rows={2} label="Cargando la invitación…" />
+      </Screen>
+    );
+  }
 
   if (state.phase === "failed") {
     return (
@@ -169,7 +188,7 @@ export function CaretakerGrantScreen({
         <Callout tone="err">
           <Body>{state.message}</Body>
         </Callout>
-        <SecondaryButton label="Reintentar" onPress={() => void load()} />
+        <PrimaryButton label="Reintentar" onPress={() => void load()} />
       </Screen>
     );
   }
@@ -194,7 +213,7 @@ export function CaretakerGrantScreen({
     return (
       <Screen>
         <Title>Cuidado temporal</Title>
-        <Card>
+        <Callout tone="neutral">
           <Body>
             No encontramos esta invitación en tu cuenta. Puede que ya no esté disponible o que no
             sea para vos.
@@ -221,8 +240,14 @@ export function CaretakerGrantScreen({
             Si en cambio tenés otra cuenta, puede que se la hayan enviado a ese correo: entrá con
             esa cuenta, o pedile a quien te invitó que la reenvíe a este correo.
           </Body>
-        </Card>
-        <SecondaryButton label="Reintentar" onPress={() => void load()} />
+        </Callout>
+        {/* NO PRIMARY HERE, on purpose: the arm cannot tell which of its two
+            causes is the reader's, so neither way out is "the" next step. */}
+        <ListRow
+          label="Reintentar"
+          caption="Volver a leer tus invitaciones."
+          onPress={() => void load()}
+        />
         {/* THE LABEL NAMES THE CASE IT BELONGS TO (finding F9): "Cerrar sesión"
             next to "puede que no sea para vos" reads as an instruction to
             whoever is looking at it, and this arm cannot tell who that is.
@@ -233,8 +258,9 @@ export function CaretakerGrantScreen({
             NOT `signOut(pathname)`: the gate suppresses `next` for the screen a
             person deliberately closed, and this sign-out exists to come back
             here. See `KEEP_DESTINATION_ON_SIGN_OUT`. */}
-        <SecondaryButton
+        <ListRow
           label="Entrar con otra cuenta"
+          caption="Si te la enviaron a otro correo tuyo."
           onPress={() => void signOut(KEEP_DESTINATION_ON_SIGN_OUT)}
         />
       </Screen>
@@ -242,17 +268,13 @@ export function CaretakerGrantScreen({
   }
 
   const grant = state.grant;
-  const counterparty = caretakerCounterpartyLabel(grant);
-  const titular = grant.counterpartyName ?? "El titular";
-  const { canAccept, canReject } = grant.capabilities;
-
-  const accepted = buildAcceptCaretakerGrant(grant.grantToken, consent === "si");
-  const rejected = buildRejectCaretakerGrant(grant.grantToken);
 
   return (
     <Screen>
-      <Title>{caretakerHeadline(grant)}</Title>
-      <Body>{caretakerStatusLabel(grant.status)}</Body>
+      <View style={styles.header}>
+        <Title>{caretakerHeadline(grant)}</Title>
+        <Subtitle>{caretakerStatusLabel(grant.status)}</Subtitle>
+      </View>
 
       {notice !== null && (
         <Callout tone={notice.tone}>
@@ -260,105 +282,164 @@ export function CaretakerGrantScreen({
         </Callout>
       )}
 
-      <Card title="Qué te están pidiendo">
-        {counterparty !== null && <Body>{counterparty}</Body>}
-        <Row label="Período" value={caretakerPeriodLabel(grant)} />
-        {grant.note !== null && <Row label="Nota del titular" value={grant.note} />}
-        {/* BOTH HALVES, ALWAYS, and from the server. See the header. */}
-        <Row label="Qué podés hacer" value={grant.scopeSentence} />
-      </Card>
+      <GrantActions
+        grant={grant}
+        busy={busy}
+        pane={pane}
+        onPane={setPane}
+        consent={consent}
+        onConsent={setConsent}
+        onRun={(input) => void run(input)}
+      />
 
-      {/* EVERY CONTROL IS GATED ON A SERVER FLAG, never on `status`. The two are
-          independent: an invitation whose period already lapsed can still be
-          REJECTED and no longer accepted, which is the writers' own asymmetry. */}
-      {canAccept && (
-        <View style={styles.actions}>
-          {confirmingAccept ? (
-            <Callout tone="ok">
-              <Body>
-                Vas a quedar como cuidador/a temporal de {grant.pet.name}. {titular} puede finalizar
-                el cuidado en cualquier momento.
-              </Body>
-              {/* KEY 2. Starts on "No" — silence is never consent — and the copy
-                  says the other key is the titular's, so answering "Sí" is not the
-                  same as "mi teléfono se publica". */}
-              <Choice
-                label={`Si ${grant.pet.name} se pierde, ¿permitís que ${titular} muestre tu contacto en la credencial pública?`}
-                options={CONSENT_OPTIONS}
-                selected={consent}
-                optionLabel={(value) => (value === "si" ? "Sí" : "No")}
-                onSelect={setConsent}
-                disabled={busy}
-              />
-              <Body>Podés cuidarla igual sin aceptar esto.</Body>
-              <PrimaryButton
-                label={busy ? "Confirmando…" : "Confirmar el cuidado"}
-                disabled={busy || !accepted.ok}
-                onPress={() => accepted.ok && void run(accepted.input)}
-              />
-              <SecondaryButton
-                label="No, volver"
-                disabled={busy}
-                onPress={() => setConfirmingAccept(false)}
-              />
-            </Callout>
-          ) : (
-            <PrimaryButton
-              label="Aceptar el cuidado"
-              disabled={busy}
-              onPress={() => setConfirmingAccept(true)}
-            />
-          )}
-        </View>
-      )}
-
-      {canReject && (
-        <View style={styles.actions}>
-          {confirmingReject ? (
-            <Callout tone="warn">
-              <Body>
-                {titular} va a recibir el aviso de que no podés cuidar a {grant.pet.name}. Si
-                cambiás de idea después, te tiene que invitar de nuevo.
-              </Body>
-              <PrimaryButton
-                tone="seal"
-                label={busy ? "Enviando…" : "Confirmar el rechazo"}
-                disabled={busy || !rejected.ok}
-                onPress={() => rejected.ok && void run(rejected.input)}
-              />
-              <SecondaryButton
-                label="Volver"
-                disabled={busy}
-                onPress={() => setConfirmingReject(false)}
-              />
-            </Callout>
-          ) : (
-            <SecondaryButton
-              label="Rechazar la invitación"
-              disabled={busy}
-              onPress={() => setConfirmingReject(true)}
-            />
-          )}
-        </View>
-      )}
-
-      {/* NO CONTROL AT ALL for an arrangement this person already accepted, and
-          that is the WEB'S state rather than an omission: a caretaker cannot step
-          down from a browser either — `withdrawCaretakerGrantAction` exists and
-          nothing calls it. Offering it here would be a native-only power. The
-          sentence says who CAN end it, so nobody is left pressing at a screen. */}
-      {!canAccept && !canReject && grant.status === "accepted" && (
-        <Card>
-          <Body>
-            Este cuidado está activo hasta la fecha de arriba. Si necesitás terminarlo antes,
-            coordinalo con {titular}: la finalización la hace el titular.
-          </Body>
-        </Card>
-      )}
+      <GrantFacts grant={grant} />
     </Screen>
   );
 }
 
+/**
+ * The answer, ONE PANE AT A TIME (custody polish, 2026-10-07). Accepting is
+ * the primary — it is what the invitation asks — and rejecting is a row under
+ * it. While either confirmation is open it is the only action on screen, so
+ * the screen never shows two primaries; each has its own way back.
+ *
+ * EVERY CONTROL IS GATED ON A SERVER FLAG, never on `status`. The two are
+ * independent: an invitation whose period already lapsed can still be
+ * REJECTED and no longer accepted, which is the writers' own asymmetry.
+ */
+function GrantActions({
+  grant,
+  busy,
+  pane,
+  onPane,
+  consent,
+  onConsent,
+  onRun,
+}: {
+  grant: MyCaretakerGrantV1;
+  busy: boolean;
+  pane: Pane;
+  onPane: (pane: Pane) => void;
+  consent: Consent;
+  onConsent: (consent: Consent) => void;
+  onRun: (input: CaretakerCommandInput) => void;
+}) {
+  const titular = grant.counterpartyName ?? "El titular";
+  const { canAccept, canReject } = grant.capabilities;
+
+  if (pane === "accept" && canAccept) {
+    const accepted = buildAcceptCaretakerGrant(grant.grantToken, consent === "si");
+    return (
+      <Callout tone="ok" title="¿Aceptás el cuidado?">
+        <Body>
+          Vas a quedar como cuidador/a temporal de {grant.pet.name}. {titular} puede finalizar el
+          cuidado en cualquier momento.
+        </Body>
+        {/* KEY 2. Starts on "No" — silence is never consent — and the copy
+            says the other key is the titular's, so answering "Sí" is not the
+            same as "mi teléfono se publica". */}
+        <Choice
+          label={`Si ${grant.pet.name} se pierde, ¿permitís que ${titular} muestre tu contacto en la credencial pública?`}
+          options={CONSENT_OPTIONS}
+          selected={consent}
+          optionLabel={(value) => (value === "si" ? "Sí" : "No")}
+          onSelect={onConsent}
+          disabled={busy}
+        />
+        <Body>Podés cuidarla igual sin aceptar esto.</Body>
+        <PrimaryButton
+          label={busy ? "Confirmando…" : "Confirmar el cuidado"}
+          disabled={busy || !accepted.ok}
+          onPress={() => accepted.ok && onRun(accepted.input)}
+        />
+        <SecondaryButton label="No, volver" disabled={busy} onPress={() => onPane("idle")} />
+      </Callout>
+    );
+  }
+
+  if (pane === "reject" && canReject) {
+    const rejected = buildRejectCaretakerGrant(grant.grantToken);
+    return (
+      <Callout tone="warn" title="¿Rechazás la invitación?">
+        <Body>
+          {titular} va a recibir el aviso de que no podés cuidar a {grant.pet.name}. Si cambiás de
+          idea después, te tiene que invitar de nuevo.
+        </Body>
+        <PrimaryButton
+          tone="seal"
+          label={busy ? "Enviando…" : "Confirmar el rechazo"}
+          disabled={busy || !rejected.ok}
+          onPress={() => rejected.ok && onRun(rejected.input)}
+        />
+        <SecondaryButton label="Volver" disabled={busy} onPress={() => onPane("idle")} />
+      </Callout>
+    );
+  }
+
+  // NO CONTROL AT ALL for an arrangement this person already accepted, and that
+  // is the WEB'S state rather than an omission: a caretaker cannot step down
+  // from a browser either — `withdrawCaretakerGrantAction` exists and nothing
+  // calls it. Offering it here would be a native-only power. The sentence says
+  // who CAN end it, so nobody is left pressing at a screen.
+  if (!canAccept && !canReject && grant.status === "accepted") {
+    return (
+      <Callout tone="neutral">
+        <Body>
+          Este cuidado está activo hasta la fecha de abajo. Si necesitás terminarlo antes,
+          coordinalo con {titular}: la finalización la hace el titular.
+        </Body>
+      </Callout>
+    );
+  }
+
+  return (
+    <>
+      {canAccept ? (
+        <PrimaryButton
+          label="Aceptar el cuidado"
+          disabled={busy}
+          onPress={() => onPane("accept")}
+        />
+      ) : null}
+      {/* Inert (no `onPress`) while a command is in flight — how `ListRow`
+          draws and announces a disabled row. */}
+      {canReject ? (
+        <ListRow
+          label="Rechazar la invitación"
+          caption="Le avisamos al titular que no podés cuidarla."
+          onPress={busy ? undefined : () => onPane("reject")}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * What is being asked. THE SCOPE IS RENDERED BESIDE THE BUTTON THAT AGREES TO
+ * IT — the same screen, under the answer — and BOTH HALVES ALWAYS (header).
+ */
+function GrantFacts({ grant }: { grant: MyCaretakerGrantV1 }) {
+  const counterparty = caretakerCounterpartyLabel(grant);
+  return (
+    <View style={styles.section}>
+      <Eyebrow>Qué te están pidiendo</Eyebrow>
+      {counterparty !== null && <Body>{counterparty}</Body>}
+      <Row label="Período" value={caretakerPeriodLabel(grant)} />
+      {grant.note !== null && <Row label="Nota del titular" value={grant.note} />}
+      {/* BOTH HALVES, ALWAYS, and from the server. See the header. */}
+      <Row label="Qué podés hacer" value={grant.scopeSentence} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  actions: { gap: SPACE.sm, marginTop: SPACE.md },
+  header: { gap: SPACE.xs },
+  // The request, as label/value lines rather than a titled Card: it is read,
+  // not acted on, so it sits under the answer.
+  section: {
+    gap: SPACE.sm,
+    paddingTop: SPACE.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: COLORS.border,
+  },
 });
