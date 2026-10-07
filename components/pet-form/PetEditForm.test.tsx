@@ -181,6 +181,23 @@ describe("Editar datos on the web — landing on a section", () => {
 });
 
 describe("Editar datos on the web — the age is read on Argentina's calendar", () => {
+  // alta-validacion-edad (fresh-context review): `max="40"` on Años made the
+  // BROWSER refuse the whole form — every section saves it — for a stored date
+  // that reads past 40, before the server's gate (which lets an untouched
+  // stored age through) could run. The colour of a 76-year-old record, or of
+  // an 80-year-old tortuga, could not be fixed on the web.
+  it("lets a stored age past 40 through the browser's own validation", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-01T15:00:00.000Z"));
+    const old = { ...PET, dateOfBirth: "1950-05-01" } as unknown as Pet;
+    const { container } = render(<PetForm action={actionMock} existingPet={old} />);
+    const years = container.querySelector("#ageYears") as HTMLInputElement;
+    expect(years.value).toBe("76");
+    expect(years.checkValidity()).toBe(true);
+    const form = container.querySelector("form") as HTMLFormElement;
+    expect(form.checkValidity()).toBe(true);
+  });
+
   it("shows the age the stored date reads as in Argentina, not in the browser's zone", () => {
     // 01:30 UTC on Oct 1 is still Sep 30 in Argentina: a dog born Oct 1, 2025
     // is eleven months old there, and a browser reading UTC would call it one.
