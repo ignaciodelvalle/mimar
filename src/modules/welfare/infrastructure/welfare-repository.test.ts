@@ -18,10 +18,15 @@
 // Postgres is required. If unavailable the test file will fail at connection
 // and that is expected — the failure is reported as an infra block.
 
+import { randomUUID } from "node:crypto";
+
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { db, pets, welfareReportAttachments, welfareReports } from "@/db";
+import { cases, db, pets, profiles, welfareReportAttachments, welfareReports } from "@/db";
+import { validateEventPayload } from "@/lib/events/event-schemas";
+import { hashDni } from "@/lib/utils/dni-hash";
+import { withMutationOverride } from "../../../../__tests__/_helpers/db-overrides";
 import { WelfareRepository } from "./welfare-repository";
 
 // ---------------------------------------------------------------------------
@@ -434,5 +439,129 @@ describe("WelfareRepository.findOpenOtherWelfareCasesForPet", () => {
     expect(Array.isArray(results)).toBe(true);
     // Cleanup
     await db.delete(welfareReports).where(eq(welfareReports.id, report.id));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findBridgedReportReplay — the ledger a retried denuncia asks (plan A5c)
+// ---------------------------------------------------------------------------
+//
+// Built the way a filed report about a registered pet leaves the database:
+// report row -> welfare_denuncia case linked back to it -> the bridge event
+// under the client's key, carrying the case. The query must find the report
+// from (pet, key, reporter) and from nothing less.
+
+describe("WelfareRepository.findBridgedReportReplay", () => {
+  const replayPetToken = `WFR-REPLAY-${randomUUID().slice(0, 8)}`;
+  const key = randomUUID();
+  let replayPetId: string;
+  let reporterId: string;
+  let otherUserId: string;
+  let reportId: string;
+  let referenceCode: string;
+
+  async function makeProfile(label: string): Promise<string> {
+    const id = randomUUID();
+    await db.insert(profiles).values({
+      id,
+      displayName: `WFR replay ${label}`,
+      dniHash: hashDni(String(20_000_000 + Math.floor(Math.random() * 9_999_999))),
+      dniVerified: true,
+      role: "owner",
+    });
+    return id;
+  }
+
+  beforeAll(async () => {
+    reporterId = await makeProfile("reporter");
+    otherUserId = await makeProfile("other");
+    const [pet] = await db
+      .insert(pets)
+      .values({
+        publicToken: replayPetToken,
+        name: "WelfareReplayPet",
+        species: "dog",
+        sex: "unknown",
+        potentiallyDangerousBreed: false,
+      })
+      .returning();
+    replayPetId = pet.id;
+
+    const report = await repo.insertReportWithRetry({
+      referenceCode: `${REF_PREFIX}RPL-${randomUUID().slice(0, 6)}`,
+      reporterUserId: reporterId,
+      kind: "physical_abuse",
+      severity: "high",
+      description: "Replay fixture: golpes visibles al animal (≥20 chars).",
+      subjectKind: "registered_pet",
+    });
+    reportId = report.id;
+    referenceCode = report.referenceCode;
+
+    const [caseRow] = await db
+      .insert(cases)
+      .values({
+        publicCode: `CAS-WRPL-${randomUUID().slice(0, 4).toUpperCase()}`,
+        caseKind: "welfare_denuncia",
+        primarySubjectKind: "registered_pet",
+        primaryPetId: replayPetId,
+        openedReason: "Integration test — welfare replay ledger",
+        status: "open",
+        welfareReportId: reportId,
+      })
+      .returning();
+    await repo.linkCase(reportId, caseRow.id);
+
+    await db.transaction((tx) =>
+      repo.insertPetEventIdempotent(
+        {
+          petId: replayPetId,
+          eventType: "maltreatment_reported",
+          occurredAt: new Date("2026-01-10T12:00:00Z"),
+          recordedAt: new Date("2026-01-10T12:00:00Z"),
+          recordedByUserId: reporterId,
+          authorRole: "scanner",
+          payload: validateEventPayload("maltreatment_reported", {
+            welfare_report_id: reportId,
+            reporter_role: "witness",
+            description: "Replay fixture: golpes visibles al animal (≥20 chars).",
+            severity: "high",
+            kind: "physical_abuse",
+          }),
+          caseId: caseRow.id,
+          clientIdempotencyKey: key,
+        },
+        tx,
+      ),
+    );
+  });
+
+  afterAll(async () => {
+    await withMutationOverride(async (tx) => {
+      await tx.execute(sql`DELETE FROM pet_events WHERE pet_id = ${replayPetId}::uuid`);
+      await tx.execute(sql`DELETE FROM cases WHERE primary_pet_id = ${replayPetId}::uuid`);
+      await tx.execute(sql`DELETE FROM welfare_reports WHERE id = ${reportId}::uuid`);
+      await tx.execute(sql`DELETE FROM pets WHERE id = ${replayPetId}::uuid`);
+      await tx.execute(
+        sql`DELETE FROM profiles WHERE id IN (${reporterId}::uuid, ${otherUserId}::uuid)`,
+      );
+    });
+  });
+
+  it("finds the original report for the same pet, key and reporter", async () => {
+    await expect(repo.findBridgedReportReplay(replayPetId, key, reporterId)).resolves.toEqual({
+      reportId,
+      referenceCode,
+    });
+  });
+
+  it("another reporter presenting the same key gets nothing", async () => {
+    await expect(repo.findBridgedReportReplay(replayPetId, key, otherUserId)).resolves.toBeNull();
+  });
+
+  it("another key gets nothing", async () => {
+    await expect(
+      repo.findBridgedReportReplay(replayPetId, randomUUID(), reporterId),
+    ).resolves.toBeNull();
   });
 });

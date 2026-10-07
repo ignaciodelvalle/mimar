@@ -11,7 +11,7 @@
 //   - No auth logic — auth lives at the action / use-case edge.
 //   - Reads return Drizzle row shapes ($inferSelect) — callers expect them.
 
-import { and, desc, eq, gte, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, ne } from "drizzle-orm";
 
 import {
   auditLog,
@@ -460,6 +460,50 @@ export class WelfareRepository {
       .select({ id: pets.id, seedTag: pets.seedTag })
       .from(pets)
       .where(eq(pets.publicToken, publicToken))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
+   * The report a previous submit with this key already filed about this pet,
+   * BY THIS REPORTER — or null. Replay check before state (plan A5c).
+   *
+   * The ledger is the pet-event bridge: a report about a registered pet writes
+   * abandonment_reported / maltreatment_reported / symptom_observed under the
+   * client's key, carrying the case, and the case is linked back to the report
+   * (`welfare_reports.case_id`). A retry used to insert a SECOND report and
+   * open a SECOND welfare_denuncia case (that kind is exempt from the
+   * one-open-case index) while the bridge insert deduped to the first — two
+   * reports, two cases, one event pointing at only one of them.
+   *
+   * Scoped to the reporter on both sides, so a key someone else used on this
+   * pet never answers this caller. Anonymous reports have no reporter to scope
+   * by and are never replayed here; neither are reports with no bridge event
+   * (no registered pet, or a kind that writes none) — those have no ledger
+   * until welfare_reports carries the key itself.
+   */
+  async findBridgedReportReplay(
+    petId: string,
+    clientIdempotencyKey: string,
+    reporterUserId: string,
+  ): Promise<{ reportId: string; referenceCode: string } | null> {
+    const [row] = await db
+      .select({ reportId: welfareReports.id, referenceCode: welfareReports.referenceCode })
+      .from(petEvents)
+      .innerJoin(welfareReports, eq(welfareReports.caseId, petEvents.caseId))
+      .where(
+        and(
+          eq(petEvents.petId, petId),
+          eq(petEvents.clientIdempotencyKey, clientIdempotencyKey),
+          inArray(petEvents.eventType, [
+            "abandonment_reported",
+            "maltreatment_reported",
+            "symptom_observed",
+          ]),
+          eq(petEvents.recordedByUserId, reporterUserId),
+          eq(welfareReports.reporterUserId, reporterUserId),
+        ),
+      )
       .limit(1);
     return row ?? null;
   }
