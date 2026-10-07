@@ -244,7 +244,29 @@ export type MeV1User =
       displayName: string;
       role: "owner" | "vet" | "govt" | "admin" | "national";
       accountType: "personal" | "institutional";
+      /**
+       * PRESENT AND `true` ONLY when this personal account accepted an older
+       * legal version than the current one and must accept the current one
+       * before using the app (2026-10-07; Disp. 377/2026 inc. b — a
+       * substantive change needs a new acceptance). The client sends the person
+       * to its re-acceptance screen, which posts `POST /api/v1/me/legal-acceptance`.
+       *
+       * OPTIONAL AND ABSENT WHEN FALSE, on purpose: every account that owes
+       * nothing gets the exact payload it got before, and a server built before
+       * this field existed is read as "nothing owed" — the same answer an old
+       * server gave. A pending identity cannot owe one: the version is
+       * recorded at signup step 2, so this field lives only on this arm.
+       */
+      legalAcceptancePending?: true;
     };
+
+/**
+ * `POST /api/v1/me/legal-acceptance` — the account after it accepted the
+ * current legal version. Same reason as `IdentityCompletedV1`: the caller
+ * called because its stored user says `legalAcceptancePending`, and a bare
+ * acknowledgement would leave it holding a state it knows to be stale.
+ */
+export type LegalAcceptedV1 = { user: MeV1User };
 
 export type MeV1 = {
   payloadVersion: typeof ME_PAYLOAD_VERSION;

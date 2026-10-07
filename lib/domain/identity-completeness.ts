@@ -54,6 +54,8 @@
 
 import type { MeV1User } from "@dim/contract/api";
 
+import { isLegalAcceptancePending } from "./legal-acceptance";
+
 /**
  * The provisional display name the `handle_new_user` trigger derives from an
  * email address.
@@ -130,6 +132,13 @@ export function toMeV1User(input: {
     displayName: string;
     role: "owner" | "vet" | "govt" | "admin" | "national";
     accountType: "personal" | "institutional";
+    /**
+     * The recorded legal acceptance (2026-10-07). Optional: a caller that does
+     * not load the two columns projects "nothing owed", never a false gate —
+     * see `isLegalAcceptancePending`.
+     */
+    tosAcceptedAt?: Date | string | null;
+    tosVersion?: string | null;
   } | null;
 }): MeV1User {
   if (
@@ -145,5 +154,8 @@ export function toMeV1User(input: {
     displayName: input.profile.displayName,
     role: input.profile.role,
     accountType: input.profile.accountType,
+    // Only when owed, so an account that owes nothing gets byte-for-byte the
+    // payload it got before the field existed (see `MeV1User`).
+    ...(isLegalAcceptancePending(input.profile) ? { legalAcceptancePending: true as const } : {}),
   };
 }

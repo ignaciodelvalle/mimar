@@ -14,6 +14,10 @@
 //     displayName   — required by every layout nav bar
 //     accountType   — required by requireAdminOrRedirect (institutional check)
 //     deactivatedAt — required by requireAdminOrRedirect (active check)
+//     tosAcceptedAt / tosVersion — required by the (app) layout and GET
+//                     /api/v1/me, which send a personal account that owes a
+//                     re-acceptance of the current legal version to the
+//                     re-acceptance screen (lib/domain/legal-acceptance.ts)
 //
 //   Pages that need additional columns (phone, avatarUrl, dniVerified, etc.)
 //   for display purposes — e.g. /cuenta, /cuenta/editar — keep their own
@@ -65,6 +69,13 @@ export type CachedProfile = {
   // (requireUserOrRedirect bounces it to /login). Distinct from deactivatedAt,
   // which is the institutional-account admin deactivation flag.
   deletedAt: Date | null;
+  // The recorded legal acceptance (Ley 25.326 art. 5; re-acceptance gate,
+  // 2026-10-07). OPTIONAL in the type although this read always selects them:
+  // the predicate that reads them treats an absent value as "nothing owed", so
+  // a test double or a hand-built profile that omits them can never gate
+  // anybody by accident (lib/domain/legal-acceptance.ts).
+  tosAcceptedAt?: Date | null;
+  tosVersion?: string | null;
 };
 
 /**
@@ -81,6 +92,8 @@ export const getProfileCached = cache(async (userId: string): Promise<CachedProf
       accountType: profiles.accountType,
       deactivatedAt: profiles.deactivatedAt,
       deletedAt: profiles.deletedAt,
+      tosAcceptedAt: profiles.tosAcceptedAt,
+      tosVersion: profiles.tosVersion,
     })
     .from(profiles)
     .where(eq(profiles.id, userId))

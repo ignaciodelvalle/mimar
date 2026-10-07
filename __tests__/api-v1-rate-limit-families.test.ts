@@ -1207,7 +1207,11 @@ describe("/api/v1 rate-limit families — the numbers the derivation committed t
     // 20.304 WITH THE NOTIFICATION TARGET READ (`GET me/notifications/{id}/
     // target`, notificaciones-destinos). One authenticated-read bucket (27 × 600
     // = 16.200), and 19.704 + 600 = 20.304 agrees.
-    expect(API_V1_CGNAT_FAMILY_IP_CEILING_PER_MINUTE).toBe(20_304);
+    //
+    // 20.424 WITH THE LEGAL RE-ACCEPTANCE DOOR (`POST me/legal-acceptance`,
+    // 2026-10-07, legal review P10/P11). POST-only, so one authenticated-write
+    // bucket (19 × 120 = 2.280), and 20.304 + 120 = 20.424 agrees.
+    expect(API_V1_CGNAT_FAMILY_IP_CEILING_PER_MINUTE).toBe(20_424);
   });
 
   it("keeps pet-disclosure-write at N callers on BOTH windows", () => {

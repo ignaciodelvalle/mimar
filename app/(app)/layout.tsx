@@ -30,6 +30,7 @@ import { LnMaintenanceScreen } from "@/components/ui/MaintenanceScreen";
 import { LnOfflineBanner } from "@/components/ui/OfflineBanner";
 import { shouldShowDemoBanner } from "@/lib/domain/demo-mode";
 import { isIdentityPending } from "@/lib/domain/identity-completeness";
+import { isLegalAcceptancePending, legalAcceptanceHref } from "@/lib/domain/legal-acceptance";
 import { requireUserOrRedirect } from "@/lib/infra/auth-guards";
 import { isPlatformInMaintenance } from "@/lib/infra/live-user";
 import {
@@ -50,6 +51,9 @@ import { AppSessionUnavailable } from "./_components/AppSessionUnavailable";
 // "Denuncias · Gobierno — miMAR", and one that sets none falls back to
 // `default`. The portal name is the part that has to survive truncation in a
 // narrow tab, so it goes before the brand.
+/** The one owner-portal page an account that owes a re-acceptance may open. */
+const LEGAL_ACCEPTANCE_EXEMPT_PREFIX = "/cuenta/privacidad";
+
 export const metadata: Metadata = {
   title: {
     default: `Mis mascotas — ${BRANDING.appName}`,
@@ -140,6 +144,24 @@ export default async function AuthenticatedLayout({
   // affordance. Absent it (e.g. in a non-middleware render), default to the
   // role home so showReturn resolves to false rather than crashing.
   const pathname = (await headers()).get("x-pathname") ?? "/inicio";
+
+  // THE RE-ACCEPTANCE GATE (2026-10-07; legal review 2026-10-02 rows P10/P11,
+  // PO decision D2 = b). A personal account whose recorded legal version is not
+  // the current one accepts the current one before using the owner portal —
+  // re-derived from the profile on every request, so an already-open session is
+  // caught too, not only a fresh sign-in (login.ts does that half). Who owes it:
+  // lib/domain/legal-acceptance.ts.
+  //
+  // ONE EXEMPTION: /cuenta/privacidad. Somebody who does not accept must still
+  // be able to download their data and delete their account (Ley 25.326 arts.
+  // 14 and 16); gating that page would make refusing the new terms a dead end.
+  if (
+    profile &&
+    isLegalAcceptancePending(profile) &&
+    !pathname.startsWith(LEGAL_ACCEPTANCE_EXEMPT_PREFIX)
+  ) {
+    redirect(legalAcceptanceHref(pathname));
+  }
 
   // Recovery path for an abandoned signup step 2 (staging finding 2026-08-01).
   // Re-derived from the profile row on EVERY request — the abandoned state used

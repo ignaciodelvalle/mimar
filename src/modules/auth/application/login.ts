@@ -34,6 +34,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 
 import { db, organizationMemberships, profiles } from "@/db";
+import { isLegalAcceptancePending, legalAcceptanceHref } from "@/lib/domain/legal-acceptance";
 import { RateLimitError, emailRateLimitKey, enforceRateLimit } from "@/lib/infra/rate-limit";
 import {
   isDeactivatedInstitutional,
@@ -131,6 +132,13 @@ export type LoginValue = {
     role: "owner" | "vet" | "govt" | "admin" | "national";
     accountType: "personal" | "institutional";
     displayName: string;
+    /**
+     * The recorded legal acceptance, so `POST /api/v1/auth/login` can project
+     * `legalAcceptancePending` through `toMeV1User` without a second read.
+     * Optional for the reason `CachedProfile` gives.
+     */
+    tosAcceptedAt?: Date | null;
+    tosVersion?: string | null;
   } | null;
   /**
    * Where the WEB should land. Resolved here because resolving it needs the
@@ -223,6 +231,10 @@ export async function login(input: LoginInput, deps: LoginDeps): Promise<LoginRe
       // immediately to learn the name to greet the user with.
       displayName: profiles.displayName,
       deactivatedAt: profiles.deactivatedAt,
+      // The re-acceptance gate (2026-10-07): a personal account that owes an
+      // acceptance of the current legal version lands on that screen first.
+      tosAcceptedAt: profiles.tosAcceptedAt,
+      tosVersion: profiles.tosVersion,
     })
     .from(profiles)
     .where(eq(profiles.id, userId))
@@ -256,9 +268,19 @@ export async function login(input: LoginInput, deps: LoginDeps): Promise<LoginRe
         role: profile.role,
         accountType: profile.accountType,
         displayName: profile.displayName,
+        tosAcceptedAt: profile.tosAcceptedAt,
+        tosVersion: profile.tosVersion,
       }
     : null;
   const session = toAuthSessionV1(signInData.session);
+
+  // THE RE-ACCEPTANCE GATE COMES FIRST (2026-10-07). A personal account that
+  // accepted an older legal version lands on the screen that asks for the
+  // current one, carrying the destination it would have had. The (app) layout
+  // enforces the same rule for a session that is already open; this only saves
+  // the person one bounce. See lib/domain/legal-acceptance.ts.
+  const legalPending = profile ? isLegalAcceptancePending(profile) : false;
+  const land = (path: string) => (legalPending ? legalAcceptanceHref(path) : path);
 
   // Institutional roles ignore returnTo here: their portal guard restores the
   // attempted deep link itself (x-full-path, lib/infra/auth-guards.ts).
@@ -270,7 +292,7 @@ export async function login(input: LoginInput, deps: LoginDeps): Promise<LoginRe
         email: accountEmail,
         role,
         profile: resolvedProfile,
-        landingPath: returnTo,
+        landingPath: land(returnTo),
         session,
       },
     };
@@ -284,7 +306,7 @@ export async function login(input: LoginInput, deps: LoginDeps): Promise<LoginRe
         email: accountEmail,
         role,
         profile: resolvedProfile,
-        landingPath: await resolveVetLanding(userId),
+        landingPath: land(await resolveVetLanding(userId)),
         session,
       },
     };
@@ -315,7 +337,7 @@ export async function login(input: LoginInput, deps: LoginDeps): Promise<LoginRe
       email: accountEmail,
       role,
       profile: resolvedProfile,
-      landingPath: pathForRole(role, { hasOrgAdminMembership }),
+      landingPath: land(pathForRole(role, { hasOrgAdminMembership })),
       session,
     },
   };

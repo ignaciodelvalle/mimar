@@ -25,6 +25,7 @@ export {
   ME_PAYLOAD_VERSION,
   ME_STALE_AFTER_MS,
   type AuthSessionV1,
+  type LegalAcceptedV1,
   type LoginV1,
   type MeV1,
   type MeV1User,

@@ -1117,6 +1117,12 @@ export const API_V1_IP_BUCKET_FAMILIES: Readonly<Record<string, ApiV1IpFamily>> 
   // account costs one UPDATE per request and buys the caller nothing.
   api_v1_me_identity_ip: "authenticated-write",
 
+  // Landed with the legal re-acceptance door (`me/legal-acceptance`,
+  // 2026-10-07). The identity door's reasoning, unchanged: one person, one
+  // form, their own row, and an idempotent value — a second call on the
+  // current version writes nothing.
+  api_v1_me_legal_acceptance_ip: "authenticated-write",
+
   // Landed with the native turnos door (WU-S, `me/appointments`). Both halves
   // take the GENERIC families, and BOTH choices are the neighbouring one being
   // rejected rather than a default being taken.

@@ -136,8 +136,15 @@ export const BASELINE = 0;
  * to this fence forever, on the strength of a comment nobody has to justify
  * to anything but a code reviewer who happens to be looking. This ratchet
  * makes growing that count a DELIBERATE, tracked act — a new marker without
- * a matching bump here fails the same way a new unsafe form does. */
-export const ALLOWLISTED_BASELINE = 7;
+ * a matching bump here fails the same way a new unsafe form does.
+ *
+ * 7 → 8 (2026-10-07): app/(auth)/aceptar-condiciones/LegalAcceptanceForm.tsx,
+ * the re-acceptance of the current legal version (legal review 2026-10-02,
+ * P10/P11). Its ONLY fields are three consent checkboxes and two hidden
+ * constants, and the consents are deliberately never restored after a failed
+ * submit — the same PO-gated posture SignupForm's terms box is allowlisted
+ * for (a box the system re-ticks is one the person did not tick). */
+export const ALLOWLISTED_BASELINE = 8;
 
 const SCAN_GLOB = "{app,components}/**/*.tsx";
 
