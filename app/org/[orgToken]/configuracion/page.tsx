@@ -2,8 +2,14 @@ import { redirect } from "next/navigation";
 
 import { OpCard, OpCardBody, OpCardHead, OpCrumbs } from "@/components/ui/dashboard";
 import { requireOrgAccessByToken } from "@/lib/infra/auth-guards";
+import {
+  FOUND_ANIMAL_INTAKE_OFF,
+  canReceiveFoundAnimals,
+} from "@/src/modules/organizations/domain/found-animal-intake";
+import { readFoundAnimalIntake } from "@/src/modules/organizations/infrastructure/found-animal-intake-write";
 
 import { EditOrgForm } from "./EditOrgForm";
+import { FoundAnimalIntakeForm } from "./FoundAnimalIntakeForm";
 
 export default async function OrgConfigPage({
   params,
@@ -18,6 +24,13 @@ export default async function OrgConfigPage({
   if (membership.role !== "admin") {
     redirect(`/org/${orgToken}`);
   }
+
+  // P4 (migration 0292): only the org types that may receive found animals
+  // get the card; a never-saved org reads as off.
+  const receivesFoundAnimals = canReceiveFoundAnimals(organization.orgType);
+  const intake = receivesFoundAnimals
+    ? ((await readFoundAnimalIntake(organization.id)) ?? FOUND_ANIMAL_INTAKE_OFF)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -40,6 +53,23 @@ export default async function OrgConfigPage({
           <EditOrgForm organization={organization} />
         </OpCardBody>
       </OpCard>
+
+      {intake && (
+        <OpCard>
+          <OpCardHead title="Animales encontrados" />
+          <OpCardBody>
+            <FoundAnimalIntakeForm
+              orgToken={organization.publicToken}
+              settings={intake}
+              verified={organization.verified}
+              hasLocation={
+                (organization.locationLat !== null && organization.locationLng !== null) ||
+                organization.localityId !== null
+              }
+            />
+          </OpCardBody>
+        </OpCard>
+      )}
 
       <p className="text-sm text-ln-op-mute">
         El tipo de organización, la jurisdicción y el estado de verificación son gestionados por el
