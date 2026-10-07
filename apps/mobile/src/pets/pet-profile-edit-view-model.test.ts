@@ -686,7 +686,8 @@ describe("each section's Guardar sends its own section and null for the rest", (
     const built = buildProfileIdentity(
       drafts.identity,
       drafts.profile.identityExtras,
-      view().identity,
+      withProfile(),
+      NOW,
     );
     expect(built).toEqual({
       ok: true,
@@ -708,7 +709,8 @@ describe("each section's Guardar sends its own section and null for the rest", (
     const blank = buildProfileIdentity(
       drafts.identity,
       { sex: "male", ageYears: " ", ageMonths: "" },
-      view().identity,
+      withProfile(),
+      NOW,
     );
     expect(blank.ok && blank.input).toMatchObject({
       identity: { sex: "male", ageYears: null, ageMonths: null },
@@ -717,10 +719,65 @@ describe("each section's Guardar sends its own section and null for the rest", (
     const tooLong = buildProfileIdentity(
       { ...drafts.identity, name: "Pampa ".repeat(30) },
       drafts.profile.identityExtras,
-      view().identity,
+      withProfile(),
+      NOW,
     );
     expect(tooLong.ok).toBe(false);
     if (!tooLong.ok) expect(tooLong.code).toBe("NAME_TOO_LONG");
+  });
+
+  // alta-validacion-edad: the edit door used to CLAMP "3310" to 250 too. Now a
+  // TYPED age is held to the alta's rule, while one posted back as shown passes
+  // at any value — a stored date the old clamp let through must not block a
+  // colour fix.
+  describe("Identidad: the age rule, for a TYPED age only", () => {
+    const save = (extras: { ageYears: string; ageMonths: string }, over = {}) => {
+      const drafts = seeded(over);
+      return buildProfileIdentity(
+        drafts.identity,
+        { ...drafts.profile.identityExtras, ...extras },
+        withProfile(over),
+        NOW,
+      );
+    };
+
+    it("refuses a newly typed '3310' años with the alta's sentence, before the round trip", () => {
+      const built = save({ ageYears: "3310", ageMonths: "" });
+      expect(built).toEqual({
+        ok: false,
+        code: "AGE_TOO_HIGH",
+        message: "Revisá la edad: no puede pasar de 40 años.",
+      });
+    });
+
+    it("lets an implausible STORED age through when it is posted back untouched", () => {
+      // A dog born in 1950 — 76 years — written while the door clamped at 250.
+      const odd = { profile: { ...PROFILE, dateOfBirth: "1950-05-01" } };
+      const drafts = seeded(odd);
+      expect(drafts.profile.identityExtras.ageYears).toBe("76");
+      const built = buildProfileIdentity(
+        { ...drafts.identity, color: "Negra" },
+        drafts.profile.identityExtras,
+        withProfile(odd),
+        NOW,
+      );
+      expect(built.ok).toBe(true);
+      // …but changing it to another implausible number is a typed age again.
+      expect(save({ ageYears: "77", ageMonths: "0" }, odd).ok).toBe(false);
+    });
+
+    it("holds the boundaries the alta holds", () => {
+      expect(save({ ageYears: "40", ageMonths: "0" }).ok).toBe(true);
+      expect(save({ ageYears: "41", ageMonths: "" }).ok).toBe(false);
+      expect(save({ ageYears: "40", ageMonths: "1" }).ok).toBe(false);
+      expect(save({ ageYears: "2", ageMonths: "12" })).toMatchObject({
+        code: "AGE_MONTHS_OUT_OF_RANGE",
+      });
+      expect(save({ ageYears: "aprox 2", ageMonths: "" })).toMatchObject({
+        code: "AGE_YEARS_INVALID",
+      });
+      expect(save({ ageYears: "80", ageMonths: "" }, { species: "other" }).ok).toBe(true);
+    });
   });
 
   it("Salud y cuidados: chips plus the typed rest, de-duplicated, and every condition code kept", () => {
