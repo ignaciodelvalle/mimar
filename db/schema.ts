@@ -3036,9 +3036,10 @@ export const AUDIT_LOG_ACTIONS = [
   // is audited too. Only when a governed column changes.
   //   org_found_animal_intake_changed payload:
   //     { org_id, before_values: { accepting, capacity_status,
-  //       public_contact_kind, public_contact_published, public_hours } | null,
-  //       after_values: { …same keys }, public_contact_value_changed }
-  //   The contact VALUE is never in the payload (append-only, unredactable).
+  //       public_contact_kind, public_contact_published, public_hours_published }
+  //       | null, after_values: { …same keys }, public_contact_value_changed,
+  //       public_hours_changed }
+  //   No free-text VALUE is in the payload (append-only, unredactable).
   "org_found_animal_intake_changed",
   // V1-9: org-side PII access trail. Emitted when an org reviewer opens an
   // adoption application and reads the applicant's full identity (name, phone,

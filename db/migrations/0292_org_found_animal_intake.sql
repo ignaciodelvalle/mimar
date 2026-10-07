@@ -22,6 +22,10 @@
 --                         to publish it; never copied from organizations.email
 --                         or .phone, which were given to miMAR, not to the public
 --   public_hours          optional free text
+--   updated_at            the last time an admin SAVED the card: a
+--                         "recibimos" older than 30 days is published as
+--                         "consultar" (src/modules/organizations/domain/
+--                         found-animal-intake.ts → INTAKE_CONFIRMATION_DAYS)
 -- No person column: who changed what lives in audit_log.
 --
 -- WHO IS LISTED — decided in the query, not here
@@ -47,9 +51,9 @@
 -- An app-side audit row covers the app's write and nothing else; the RLS write
 -- path above would be an unaudited door. So the database writes the row:
 -- org_found_animal_intake_changed, payload { org_id, before_values,
--- after_values, public_contact_value_changed }, on INSERT and on any UPDATE
--- that changes a governed column. The contact VALUE itself is never copied
--- there (audit_log is append-only and cannot be redacted; the value may be a
+-- after_values, public_contact_value_changed, public_hours_changed }, on
+-- INSERT and on any UPDATE that changes a governed column. Neither free-text
+-- VALUE (contact, hours) is ever copied there (audit_log is append-only and cannot be redacted; the value may be a
 -- natural person's phone): the payload says it changed, and its kind.
 -- The actor is auth.uid() (a PostgREST write) or the transaction-local
 -- app.actor_user_id the server action sets. A write with NEITHER is refused:
@@ -61,6 +65,12 @@
 -- ROLLBACK (no deploy): UPDATE public.org_found_animal_intake SET accepting =
 -- false — every org leaves the finder's list at once.
 -- ────────────────────────────────────────────────────────────────────────────
+
+-- Every lock this file takes waits at most 5 s, then fails the migration
+-- (it is retried) instead of queueing writers behind it — §6 rewrites the
+-- CHECK on audit_log, the hottest write table in the schema. SET LOCAL ends
+-- with the runner's per-file transaction.
+SET LOCAL lock_timeout = '5s';
 
 -- ---------------------------------------------------------------------------
 -- 1. The table
@@ -166,14 +176,25 @@ AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
     NEW.created_at := now();
+    NEW.updated_at := now();
   ELSE
     IF NEW.organization_id IS DISTINCT FROM OLD.organization_id THEN
       RAISE EXCEPTION 'org_found_animal_intake.organization_id is immutable'
         USING ERRCODE = 'check_violation';
     END IF;
     NEW.created_at := OLD.created_at;
+    -- updated_at is the CONFIRMATION date the public list reads: a
+    -- "Recibimos" not confirmed in 30 days is shown as "Consultar antes".
+    -- A save (even with nothing changed) confirms it. A writer may set it
+    -- explicitly only into the PAST — which can only make the status read
+    -- staler — never into the future, which would keep a stale "Recibimos"
+    -- fresh without anyone confirming it.
+    IF NEW.updated_at IS DISTINCT FROM OLD.updated_at THEN
+      NEW.updated_at := LEAST(NEW.updated_at, now());
+    ELSE
+      NEW.updated_at := now();
+    END IF;
   END IF;
-  NEW.updated_at := now();
   RETURN NEW;
 END
 $$;
@@ -199,16 +220,16 @@ DECLARE
   v_actor  uuid;
   v_raw    text;
 BEGIN
-  -- The contact VALUE is never copied into audit_log: audit_log is
-  -- append-only and cannot be redacted, and for a one-person org the published
-  -- channel may be a natural person's phone or e-mail. The row records THAT it
-  -- changed and its kind; the value lives only in this table.
+  -- Neither free-text VALUE (the contact, the hours) is copied into
+  -- audit_log: audit_log is append-only and cannot be redacted, and an admin
+  -- may type a natural person's phone into either. The row records THAT each
+  -- changed (and the contact's kind); the values live only in this table.
   v_after := jsonb_build_object(
     'accepting', NEW.accepting,
     'capacity_status', NEW.capacity_status,
     'public_contact_kind', NEW.public_contact_kind,
     'public_contact_published', NEW.public_contact_value IS NOT NULL,
-    'public_hours', NEW.public_hours
+    'public_hours_published', NEW.public_hours IS NOT NULL
   );
   IF TG_OP = 'UPDATE' THEN
     v_before := jsonb_build_object(
@@ -216,11 +237,12 @@ BEGIN
       'capacity_status', OLD.capacity_status,
       'public_contact_kind', OLD.public_contact_kind,
       'public_contact_published', OLD.public_contact_value IS NOT NULL,
-      'public_hours', OLD.public_hours
+      'public_hours_published', OLD.public_hours IS NOT NULL
     );
     -- A re-save with nothing changed is not a change.
     IF v_before = v_after
-       AND NEW.public_contact_value IS NOT DISTINCT FROM OLD.public_contact_value THEN
+       AND NEW.public_contact_value IS NOT DISTINCT FROM OLD.public_contact_value
+       AND NEW.public_hours IS NOT DISTINCT FROM OLD.public_hours THEN
       RETURN NULL;
     END IF;
   END IF;
@@ -247,7 +269,9 @@ BEGIN
       'before_values', v_before,
       'after_values', v_after,
       'public_contact_value_changed',
-        TG_OP = 'INSERT' OR NEW.public_contact_value IS DISTINCT FROM OLD.public_contact_value
+        TG_OP = 'INSERT' OR NEW.public_contact_value IS DISTINCT FROM OLD.public_contact_value,
+      'public_hours_changed',
+        TG_OP = 'INSERT' OR NEW.public_hours IS DISTINCT FROM OLD.public_hours
     )
   );
   RETURN NULL;
@@ -265,6 +289,13 @@ CREATE TRIGGER org_found_animal_intake_audit
 -- 6. The audit action
 -- ---------------------------------------------------------------------------
 
+-- Added NOT VALID, then VALIDATEd: the end state is the same validated
+-- constraint 0283 and 0287 left (a NOT VALID one would tolerate the rows it
+-- claims to forbid — see 0201's note). Honest about the lock: inside the
+-- runner's per-file transaction the DROP already holds ACCESS EXCLUSIVE, so
+-- the VALIDATE scan runs under it too; the bound on that is the lock_timeout
+-- above. The split makes a later move of VALIDATE to its own transaction a
+-- one-line change.
 ALTER TABLE public.audit_log
   DROP CONSTRAINT IF EXISTS audit_log_action_valid;
 ALTER TABLE public.audit_log
@@ -408,7 +439,8 @@ ALTER TABLE public.audit_log
     'welfare_report_submitted_by_org',
     'welfare_report_triaged',
     'welfare_report_unflagged'
-  ));
+  )) NOT VALID;
+ALTER TABLE public.audit_log VALIDATE CONSTRAINT audit_log_action_valid;
 
 -- ---------------------------------------------------------------------------
 -- Post-condition — ask the catalog what it actually holds.
@@ -430,6 +462,13 @@ BEGIN
               WHERE schemaname = 'public' AND tablename = 'org_found_animal_intake'
                 AND (cmd = 'DELETE' OR cmd = 'ALL' OR NOT (roles = ARRAY['authenticated']::name[]))) THEN
     RAISE EXCEPTION 'Migration 0292 did not close: a policy on org_found_animal_intake admits DELETE or a role other than authenticated';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                  WHERE conname = 'audit_log_action_valid'
+                    AND conrelid = 'public.audit_log'::regclass
+                    AND convalidated
+                    AND pg_get_constraintdef(oid) LIKE '%org_found_animal_intake_changed%') THEN
+    RAISE EXCEPTION 'Migration 0292 did not close: audit_log_action_valid is missing, not validated, or lacks org_found_animal_intake_changed';
   END IF;
   IF has_function_privilege('anon', 'public.caller_is_active_org_admin(uuid)', 'EXECUTE')
      OR NOT has_function_privilege('authenticated', 'public.caller_is_active_org_admin(uuid)', 'EXECUTE') THEN
