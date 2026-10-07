@@ -8,8 +8,8 @@
 // POR QUÉ EXISTE ESTE ARCHIVO (2026-08-12). El lado de ESCRITURA ya estaba
 // cubierto por write-path-matrix.test.ts y el de STORAGE por el check 4 de
 // scripts/check-rls-coverage.ts. La lectura de tablas `public` no la miraba
-// nadie: `time_slots` tiene `SELECT USING (true)` a anon y ningún fence dice
-// nada. Esa tabla es benigna —oferta, horarios, capacidad, contador, cero
+// nadie: `time_slots` tenía `SELECT USING (true)` a anon (hasta 0286) y ningún
+// fence decía nada. Esa tabla es benigna —oferta, horarios, capacidad, contador, cero
 // identidad— pero la ausencia del chequeo significa que una policy igual sobre
 // una tabla CON identidad tampoco saltaría.
 //
@@ -45,14 +45,10 @@ import { db } from "@/db";
 // columnas tiene y por qué ninguna identifica a una persona.
 // ---------------------------------------------------------------------------
 const INTENTIONAL_UNCONDITIONAL_READS: Readonly<Record<string, string>> = {
-  // Disponibilidad de turnos: service_offering_id, starts_at, ends_at, capacity,
-  // bookings_count, status. Cero identidad — ni quién reservó ni cuántos son
-  // esas reservas de quién. El buscador público de turnos (/turnos/buscar) lee
-  // esta tabla sin sesión por diseño: es la vidriera de horarios disponibles.
-  // Verificado columna por columna el 2026-08-12; si alguna vez se le agrega
-  // una columna que apunte a una persona, esta excepción deja de ser válida.
-  "time_slots.SELECT":
-    "Disponibilidad pública de turnos; la tabla no tiene ninguna columna que identifique a una persona (offering, horarios, capacidad, contador).",
+  // Vacía desde 0286. La única entrada era "time_slots.SELECT" (disponibilidad
+  // de turnos, USING (true) a anon y authenticated): el buscador y la reserva
+  // leen time_slots por Drizzle del lado del servidor, nunca por PostgREST, así
+  // que la apertura no tenía lector y publicaba la ocupación de cada agenda.
 };
 
 // ---------------------------------------------------------------------------

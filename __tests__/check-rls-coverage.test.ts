@@ -188,7 +188,6 @@ describe("evaluateAnonReadSurface", () => {
     const { violations } = evaluateAnonReadSurface(
       [
         { table_name: "organization_coverage", anon_columns: ["id"] },
-        { table_name: "time_slots", anon_columns: ["id"] },
         {
           table_name: "service_offerings",
           anon_columns: ["id", "provider_user_id", "reviewed_by_user_id", "rejection_reason"],
@@ -213,7 +212,6 @@ describe("evaluateAnonReadSurface", () => {
       [
         { table_name: "organizations", anon_columns: ["id", "verified"] },
         { table_name: "organization_coverage", anon_columns: ["id"] },
-        { table_name: "time_slots", anon_columns: ["id"] },
       ],
       ANON_READ_SURFACE,
     );
@@ -222,11 +220,31 @@ describe("evaluateAnonReadSurface", () => {
     ]);
   });
 
-  it("ships declaring only whole-row public tables, each with a reason (0279, 0280)", () => {
-    expect(Object.keys(ANON_READ_SURFACE).sort()).toEqual(["organization_coverage", "time_slots"]);
+  it("flags the pre-0286 catalog once time_slots left the declaration", () => {
+    // 0286 replaced "time_slots read publicly" (TO anon, authenticated USING
+    // (true)) with member / provider reads TO authenticated. A database still
+    // carrying the public policy must go red as UNDECLARED.
+    const { violations } = evaluateAnonReadSurface(
+      [
+        { table_name: "organization_coverage", anon_columns: ["id"] },
+        { table_name: "time_slots", anon_columns: ["id", "capacity", "bookings_count"] },
+      ],
+      ANON_READ_SURFACE,
+    );
+    expect(violations).toEqual([
+      {
+        kind: "undeclared",
+        table_name: "time_slots",
+        anon_columns: ["id", "capacity", "bookings_count"],
+      },
+    ]);
+  });
+
+  it("ships declaring only whole-row public tables, each with a reason (0279, 0280, 0286)", () => {
+    expect(Object.keys(ANON_READ_SURFACE).sort()).toEqual(["organization_coverage"]);
     // A column list would not survive deploy-provision's re-grant (0280): every
     // remaining entry is "*".
-    expect(Object.values(ANON_READ_SURFACE).map((e) => e.columns)).toEqual(["*", "*"]);
+    expect(Object.values(ANON_READ_SURFACE).map((e) => e.columns)).toEqual(["*"]);
     const unreasoned = Object.entries(ANON_READ_SURFACE)
       .filter(([, entry]) => entry.reason.trim().length === 0)
       .map(([table]) => table);
@@ -239,7 +257,6 @@ describe("anonReadProvisionShortfalls (deploy-provision, after the re-grant)", (
     const shortfalls = anonReadProvisionShortfalls([
       { table_name: "organizations", anon_columns: PRE_0278_ORG_COLUMNS },
       { table_name: "organization_coverage", anon_columns: ["id"] },
-      { table_name: "time_slots", anon_columns: ["id"] },
     ]);
     expect(shortfalls).toHaveLength(1);
     expect(shortfalls[0]).toContain("organizations");
@@ -260,7 +277,6 @@ describe("anonReadProvisionShortfalls (deploy-provision, after the re-grant)", (
     expect(
       anonReadProvisionShortfalls([
         { table_name: "organization_coverage", anon_columns: PRE_0278_ORG_COLUMNS },
-        { table_name: "time_slots", anon_columns: ["id"] },
       ]),
     ).toEqual([]);
     expect(
