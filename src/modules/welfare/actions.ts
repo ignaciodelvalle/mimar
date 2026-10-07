@@ -72,6 +72,7 @@ import { createWelfareReport } from "./application/create-welfare-report";
 import { escalateModerationToAdmin } from "./application/escalate-moderation-to-admin";
 import { generateMpfExport } from "./application/generate-mpf-export";
 import { passWelfareToTriage } from "./application/pass-welfare-to-triage";
+import { ANONYMOUS_REPLAY_NOTICE, findKeyedReport } from "./application/report-key-claim";
 import {
   loadAndVerifyScope as loadAndVerifyScopeFor,
   loadInScopeReport as loadInScopeReportFor,
@@ -986,10 +987,17 @@ export async function createWelfareReportAction(
       : null;
   if (subjectPet && isSyntheticPet(subjectPet)) return { error: SYNTHETIC_PET_WRITE_REFUSED };
 
-  // REPLAY BEFORE THE REPORT ROW EXISTS (plan A5c): a retry of a report that
-  // already succeeded lands on the original, not on a second report and case.
-  // Only an identified reporter about a registered pet has a ledger to ask —
-  // see findBridgedReportReplay for what it can and cannot answer.
+  // REPLAY BEFORE THE REPORT ROW EXISTS (plans A5c, A5f): a retry of a report
+  // that already succeeded lands on the original, not on a second report and
+  // case. First the report-level ledger (0289) — every submit with a long
+  // enough key, anonymous ones included; an anonymous replay is told only that
+  // it was received (report-key-claim.ts). Then the pet-event bridge, for an
+  // identified reporter's report filed before 0289.
+  if (await findKeyedReport(repo, { clientIdempotencyKey, reporterUserId })) {
+    return reporterUserId
+      ? { error: null, redirectTo: "/denuncias/mias" }
+      : { error: ANONYMOUS_REPLAY_NOTICE };
+  }
   if (clientIdempotencyKey && subjectPet && reporterUserId) {
     const replayed = await repo.findBridgedReportReplay(
       subjectPet.id,
@@ -1163,6 +1171,13 @@ export async function createWelfareReportAction(
     await removeWelfareEvidence(uploadResult?.uploadedPaths ?? []);
     return { error: result.error };
   }
+  if ("anonymousReplay" in result) {
+    // An anonymous twin filed it first: this one's row and files go, and NO
+    // reporter session is minted — the key alone is not proof enough to open
+    // someone's denuncia to its holder.
+    await discardSupersededReport(insertedId, uploadResult?.uploadedPaths ?? []);
+    return { error: ANONYMOUS_REPLAY_NOTICE };
+  }
   if (result.discardInserted) {
     // A twin of this submit filed it first: this one's row and files go.
     await discardSupersededReport(insertedId, uploadResult?.uploadedPaths ?? []);
@@ -1297,9 +1312,17 @@ export async function createOrgWelfareReportAction(
   const occurredAt = occurredAtRaw ? parseDateInput(occurredAtRaw) : null;
   if (occurredAtRaw && !occurredAt) return { error: "Fecha del hecho inválida." };
 
-  // Replay before the report row exists (plan A5c) — same reasoning as the
-  // citizen action above. Asked before the evidence gate too: the retry of a
-  // report that succeeded must not be refused for its files.
+  // Replay before the report row exists (plans A5c, A5f) — same reasoning as
+  // the citizen action above. Asked before the evidence gate too: the retry of
+  // a report that succeeded must not be refused for its files. The member is
+  // always identified (and scoped to this org), so the replay answers the original.
+  const orgReplayed = await findKeyedReport(repo, {
+    clientIdempotencyKey: orgClientIdempotencyKey,
+    reporterUserId: user.id,
+    reporterOrganizationId: orgRow.orgId,
+  });
+  if (orgReplayed)
+    return { error: null, redirectTo: orgReportRedirect(orgToken, orgReplayed.referenceCode) };
   if (orgClientIdempotencyKey && subjectKind === "registered_pet" && subjectPetToken) {
     const replayPet = await repo.findPetByToken(subjectPetToken);
     const replayed = replayPet

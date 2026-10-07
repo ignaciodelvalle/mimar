@@ -708,3 +708,207 @@ describe("createWelfareReport — same-key twins in parallel (real database)", (
     expect(rows.map((r) => r.id)).toEqual([filed[0].insertedId]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The report-level ledger (plan A5f, migration 0289), on the real database
+// ---------------------------------------------------------------------------
+//
+// An ANONYMOUS denuncia about an unowned animal: no reporter, no pet, no bridge
+// event — nothing A5c could replay. The key's digest on welfare_reports is the
+// whole ledger now. Each "submit" does what the action does: insert its report
+// row, run the use case's write, and discard its own row on a replay.
+
+describe("createWelfareReport — the report-level replay (real database)", () => {
+  const insertedIds: string[] = [];
+  let identifiedReporterId: string;
+
+  beforeAll(async () => {
+    identifiedReporterId = randomUUID();
+    await db.insert(profiles).values({
+      id: identifiedReporterId,
+      displayName: "WFR key-digest reporter",
+      dniHash: hashDni(String(60_000_000 + Math.floor(Math.random() * 9_999_999))),
+      dniVerified: true,
+      role: "owner",
+    });
+  });
+
+  afterAll(async () => {
+    await withMutationOverride(async (tx) => {
+      for (const id of insertedIds) {
+        await tx.execute(sql`UPDATE welfare_reports SET case_id = NULL WHERE id = ${id}::uuid`);
+        await tx.execute(sql`DELETE FROM cases WHERE welfare_report_id = ${id}::uuid`);
+        await tx.execute(sql`DELETE FROM welfare_reports WHERE id = ${id}::uuid`);
+      }
+      await tx.execute(sql`DELETE FROM profiles WHERE id = ${identifiedReporterId}::uuid`);
+    });
+  });
+
+  const DESCRIPTION = "Key-digest fixture: perro atado sin agua en la vereda (≥20 chars).";
+  const SUBJECT = "Perro mestizo atado en la vereda.";
+
+  async function submit(key: string, reporterUserId: string | null = null) {
+    const report = await repo.insertReportWithRetry({
+      referenceCode: `${REF_PREFIX}KD-${randomUUID().slice(0, 8)}`,
+      reporterUserId,
+      kind: "neglect",
+      severity: "medium",
+      description: DESCRIPTION,
+      subjectKind: "unowned_animal",
+      subjectDescription: SUBJECT,
+    });
+    insertedIds.push(report.id);
+    const result = await createWelfareReport(
+      {
+        reportId: report.id,
+        referenceCode: report.referenceCode,
+        kind: "neglect",
+        severity: "medium",
+        description: DESCRIPTION,
+        subjectKind: "unowned_animal",
+        subjectPetId: null,
+        isOwnerOfSubjectPet: false,
+        subjectDescription: SUBJECT,
+        locationAddress: null,
+        jurisdictionProvince: null,
+        jurisdictionLocality: null,
+        locationLat: null,
+        locationLng: null,
+        occurredAt: null,
+        reporterContactEmail: null,
+        reporterContactPhone: null,
+        observedSymptoms: null,
+        attachments: [],
+        uploadedPaths: [],
+        reporterUserId,
+        dwellTimeMs: undefined,
+        honeypotValue: "",
+        clientIdempotencyKey: key,
+      },
+      {
+        repo,
+        openCase: async (input, tx) =>
+          openCase(input as Parameters<typeof openCase>[0], tx as Parameters<typeof openCase>[1]),
+        computeFlagReasons: async () => [],
+        signal: async () => {},
+        transaction: db.transaction.bind(db),
+        surveillance: {
+          match: async () => {
+            throw new Error("no pet in this fixture");
+          },
+          emitSignals: async () => {
+            throw new Error("no pet in this fixture");
+          },
+        } as unknown as Parameters<typeof createWelfareReport>[1]["surveillance"],
+      },
+    );
+    if (result.ok && result.discardInserted) await repo.deleteUnlinkedReport(report.id);
+    return { insertedId: report.id, result };
+  }
+
+  /** The submits' rows that still exist, and the denuncia cases opened over them. */
+  async function filed(ids: string[]) {
+    const idList = sql.join(
+      ids.map((id) => sql`${id}::uuid`),
+      sql`, `,
+    );
+    const reports = await db
+      .select({ id: welfareReports.id, digest: welfareReports.clientKeyDigest })
+      .from(welfareReports)
+      .where(sql`${welfareReports.id} IN (${idList})`);
+    const denuncias = await db
+      .select({ id: cases.id })
+      .from(cases)
+      .where(
+        sql`${cases.welfareReportId} IN (${idList}) AND ${cases.caseKind} = 'welfare_denuncia'`,
+      );
+    return { reports, denuncias };
+  }
+
+  function isFiled(result: Awaited<ReturnType<typeof submit>>["result"]): boolean {
+    return result.ok && !result.discardInserted;
+  }
+
+  it("same key, one after the other: one report and one case", async () => {
+    const key = randomUUID();
+    const first = await submit(key);
+    const retry = await submit(key);
+
+    expect(isFiled(first.result)).toBe(true);
+    expect(retry.result).toEqual({ ok: true, anonymousReplay: true, discardInserted: true });
+
+    const { reports, denuncias } = await filed([first.insertedId, retry.insertedId]);
+    expect(reports.map((r) => r.id)).toEqual([first.insertedId]);
+    expect(denuncias).toHaveLength(1);
+    // The stored value is a digest, never the key.
+    expect(reports[0].digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(reports[0].digest).not.toContain(key);
+  });
+
+  it("different keys: two reports and two cases", async () => {
+    const a = await submit(randomUUID());
+    const b = await submit(randomUUID());
+
+    expect(isFiled(a.result)).toBe(true);
+    expect(isFiled(b.result)).toBe(true);
+    const { reports, denuncias } = await filed([a.insertedId, b.insertedId]);
+    expect(reports).toHaveLength(2);
+    expect(denuncias).toHaveLength(2);
+  });
+
+  it("same key in parallel: exactly one files, the others leave no report or case", async () => {
+    const key = randomUUID();
+    const submits = await Promise.all([submit(key), submit(key), submit(key)]);
+
+    expect(submits.filter((s) => isFiled(s.result))).toHaveLength(1);
+    const { reports, denuncias } = await filed(submits.map((s) => s.insertedId));
+    expect(reports).toHaveLength(1);
+    expect(denuncias).toHaveLength(1);
+  });
+
+  it("another submitter replaying an anonymous key learns nothing about the report", async () => {
+    const key = randomUUID();
+    const victim = await submit(key);
+    if (!victim.result.ok || "anonymousReplay" in victim.result) {
+      throw new Error("fixture: the first submit must file");
+    }
+    const { referenceCode } = victim.result;
+
+    // Another anonymous submitter holding the key: nothing is filed, and the
+    // answer carries no id and no reference code — no handle on the denuncia.
+    const intruder = await submit(key);
+    expect(intruder.result).toEqual({ ok: true, anonymousReplay: true, discardInserted: true });
+    expect(JSON.stringify(intruder.result)).not.toContain(referenceCode);
+    expect(JSON.stringify(intruder.result)).not.toContain(victim.insertedId);
+
+    // An identified account presenting the same key reaches its OWN slot: it
+    // files its own report and never surfaces the anonymous one.
+    const identified = await submit(key, identifiedReporterId);
+    expect(isFiled(identified.result)).toBe(true);
+    const { reports } = await filed([victim.insertedId, identified.insertedId]);
+    expect(reports).toHaveLength(2);
+    expect(new Set(reports.map((r) => r.digest)).size).toBe(2);
+  });
+
+  it("the database refuses a second row under one digest (the index behind the lock)", async () => {
+    const first = await submit(randomUUID());
+    const [stored] = await db
+      .select({ digest: welfareReports.clientKeyDigest })
+      .from(welfareReports)
+      .where(eq(welfareReports.id, first.insertedId));
+    const other = await repo.insertReportWithRetry({
+      referenceCode: `${REF_PREFIX}KD-${randomUUID().slice(0, 8)}`,
+      kind: "neglect",
+      severity: "medium",
+      description: "Key-digest fixture: fila que intenta el mismo digest (≥20 chars).",
+      subjectKind: "general",
+    });
+    insertedIds.push(other.id);
+    await expect(
+      db
+        .update(welfareReports)
+        .set({ clientKeyDigest: stored.digest })
+        .where(eq(welfareReports.id, other.id)),
+    ).rejects.toThrow();
+  });
+});

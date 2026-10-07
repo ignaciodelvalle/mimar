@@ -35,7 +35,12 @@ import {
 } from "../domain/report-classification";
 import type { WelfareSymptomSurveillance } from "../domain/symptom-surveillance-port";
 import type { WelfareRepository } from "../infrastructure/welfare-repository";
-import { claimReportKey, replayOrFailure } from "./report-key-claim";
+import {
+  type AnonymousReplay,
+  anonymousReplayOf,
+  claimReportKey,
+  replayOrFailure,
+} from "./report-key-claim";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -109,7 +114,7 @@ export type CreateWelfareReportInput = {
   reporterUserId: string | null;
   dwellTimeMs: number | undefined;
   honeypotValue: string;
-  /** Client-generated UUID for idempotency on the pet-event bridge inserts. */
+  /** Client-generated UUID: the bridge inserts' key and the report-level replay (0289). */
   clientIdempotencyKey: string | null;
 };
 
@@ -122,6 +127,7 @@ type Deps = {
     | "insertPetEventIdempotent"
     | "setFlagged"
     | "lockAndFindBridgedReportReplay"
+    | "lockAndFindReportByKeyDigest"
   >;
   /**
    * Opened INSIDE the write's transaction (plan A5c): outside it, the holder of
@@ -156,6 +162,12 @@ export type CreateWelfareReportResult =
       /** A concurrent twin filed it first: the caller removes the row IT inserted. */
       discardInserted?: true;
     }
+  /**
+   * An ANONYMOUS concurrent twin filed it first: the caller removes the row it
+   * inserted, mints no reporter session, and answers "ya la recibimos" with
+   * nothing about the original (report-key-claim.ts).
+   */
+  | AnonymousReplay
   | { ok: false; error: string };
 
 // ---------------------------------------------------------------------------
@@ -203,7 +215,11 @@ export async function createWelfareReport(
   try {
     await transaction(async (tx) => {
       // 4·. A twin of this submit already filed it → write nothing (report-key-claim.ts).
-      await claimReportKey(repo, { subjectPetId, clientIdempotencyKey, reporterUserId }, tx);
+      const keyDigest = await claimReportKey(
+        repo,
+        { subjectPetId, clientIdempotencyKey, reporterUserId },
+        tx,
+      );
 
       // 4a. Attachment rows
       if (attachments.length > 0) {
@@ -261,8 +277,13 @@ export async function createWelfareReport(
         tx,
       );
 
-      // 4c. Link case to the report
-      await repo.linkCase(reportId, caseRow.id, tx as Parameters<typeof repo.linkCase>[2]);
+      // 4c. Link case to the report — and stamp the claimed key digest with it (0289).
+      await repo.linkCase(
+        reportId,
+        caseRow.id,
+        tx as Parameters<typeof repo.linkCase>[2],
+        keyDigest,
+      );
 
       // 4d. Pet-event bridge (registered_pet only)
       if (subjectKind === "registered_pet" && subjectPetId) {
@@ -373,8 +394,10 @@ export async function createWelfareReport(
     });
   } catch (err) {
     // Tx failed — caller (action) is responsible for storage cleanup. A twin's
-    // replay is not a failure: it answers the original (authenticated only, so
-    // the redirect is the reporter's list).
+    // replay is not a failure: an identified reporter's answers the original
+    // (the redirect is the reporter's list); an anonymous one answers nothing.
+    const anonymousReplay = anonymousReplayOf(err);
+    if (anonymousReplay) return anonymousReplay;
     return replayOrFailure(err, () => "/denuncias/mias", {
       ok: false as const,
       error:
