@@ -134,7 +134,7 @@ function obligationLines(o: TravelObligation): string[] {
       : []),
     ...o.sources.map(
       (s) =>
-        `  Fuente: ${s.label} (${s.sourceUrl}), verificada el ${isoToArDateDisplay(s.lastVerifiedAt)}`,
+        `  Fuente: ${s.issuerLabel} (${s.sourceUrl}), verificada el ${isoToArDateDisplay(s.lastVerifiedAt)}`,
     ),
   ];
 }

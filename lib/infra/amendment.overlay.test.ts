@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { overlayAmendments } from "./amendment";
+import { isTripPapersAmendment, overlayAmendments, tripPapersOnlyTargets } from "./amendment";
 
 type Row = {
   id: string;
@@ -299,5 +299,43 @@ describe("overlayAmendments", () => {
       expect((target?.payload as Record<string, unknown>).vaccine_name).toBe("Antirrábica");
       expect(target?.amendedAt).toBe("2026-02-01");
     });
+  });
+});
+
+describe("trip papers ticks are not corrections (QA 2026-10-07, copy 8)", () => {
+  const tick = (id: string, target: string) => ({
+    id,
+    eventType: "event_amended",
+    payload: {
+      target_event_id: target,
+      changes: [{ field: "documents_confirmed", old: [], new: ["CZI"] }],
+    },
+  });
+  const fix = (id: string, target: string) => ({
+    id,
+    eventType: "event_amended",
+    payload: {
+      target_event_id: target,
+      changes: [{ field: "travel_date", old: "2026-11-01", new: "2026-11-02" }],
+    },
+  });
+
+  it("a change of documents_confirmed alone is a papers tick; anything else is a correction", () => {
+    expect(isTripPapersAmendment(tick("a", "t").payload)).toBe(true);
+    expect(isTripPapersAmendment(fix("a", "t").payload)).toBe(false);
+    expect(isTripPapersAmendment({ changes: [] })).toBe(false);
+    expect(isTripPapersAmendment(null)).toBe(false);
+  });
+
+  it("names the trips whose every amendment is a tick, and only those", () => {
+    const stream = [
+      tick("a1", "trip-ticked"),
+      tick("a2", "trip-ticked"),
+      tick("a3", "trip-fixed"),
+      fix("a4", "trip-fixed"),
+      { id: "x", eventType: "movement_recorded", payload: {} },
+    ];
+    const targets = tripPapersOnlyTargets(stream);
+    expect([...targets]).toEqual(["trip-ticked"]);
   });
 });

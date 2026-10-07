@@ -14,7 +14,7 @@ import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import type { WeightSample } from "@/components/pet-profile/WeightSparkline";
 import { formatDelta, formatRate } from "@/lib/utils/format";
-import type { AsientoView } from "./asiento-fields";
+import { type AsientoView, TRIP_PAPERS_UPDATED_LABEL } from "./asiento-fields";
 
 function AsientoSparkline({ samples }: { samples: WeightSample[] }) {
   if (samples.length < 2) {
@@ -168,6 +168,11 @@ export function AsientoCard({
         {view.amended && (
           <span className="font-ln-mono text-xs uppercase tracking-[.06em] text-[var(--color-ln-faint)]">
             · corregido
+          </span>
+        )}
+        {view.papersUpdated && !view.amended && (
+          <span className="font-ln-mono text-xs uppercase tracking-[.06em] text-[var(--color-ln-faint)]">
+            · {TRIP_PAPERS_UPDATED_LABEL.toLowerCase()}
           </span>
         )}
         <span className="ln-fspace" />

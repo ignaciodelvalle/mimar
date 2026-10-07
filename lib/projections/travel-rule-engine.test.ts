@@ -466,10 +466,34 @@ describe("CVI window", () => {
     );
   });
 
-  it("no CVI yet: pending with its window", () => {
+  it("no CVI yet: pending with its window, named the way the destination names its paper", () => {
     const o = window([]);
     expect(o.requirementLevel).toBe("warning");
-    expect(o.state).toMatch(/^Pendiente: emitirlo entre el/);
+    // Uruguay's window (60 days) opened long ago: the range starts TODAY.
+    expect(o.state).toBe(
+      "Pendiente: pedí el CVI Mercosur desde hoy y hasta el 15 de noviembre de 2026",
+    );
+    expect(o.label).toBe(
+      "Certificado Veterinario Internacional (CVI) modelo Mercosur · ventana de emisión",
+    );
+  });
+
+  it("a window that opens later names its first day (Chile, 10 days)", () => {
+    const o = find(
+      deriveTravelCompliance(input({ corridors: [getCorridor("chile")] })),
+      "document_issuance_window_days:senasa_cvi",
+    );
+    expect(o.label).toBe("Certificado Zoosanitario de Importación (CZI) · ventana de emisión");
+    expect(o.state).toBe(
+      "Pendiente: pedí el CZI desde el 5 de noviembre de 2026 y hasta el 15 de noviembre de 2026",
+    );
+  });
+
+  it("a lapsed window says what to do next", () => {
+    const o = window([cvi("2026-08-01")]);
+    expect(o.state).toBe(
+      "El CVI Mercosur se emitió antes de la ventana. Consultá con tu veterinaria si conviene un certificado nuevo o mover la fecha del viaje.",
+    );
   });
 
   it("the USA 5-day window is the miasis certificate's, and stays a warning", () => {
@@ -622,5 +646,158 @@ describe("honesty and copy", () => {
         }
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v14 — declared vs verified (QA 2026-10-07 bug 1, PO 2026-10-07)
+// ---------------------------------------------------------------------------
+
+describe("declared vs verified — only a vet or an institution verifies a travel fact", () => {
+  const chile = [getCorridor("chile")];
+  const tiered = (e: TravelComplianceEvent, tier: TravelComplianceEvent["confidenceTier"]) => ({
+    ...e,
+    confidenceTier: tier,
+  });
+  const wait = (events: TravelComplianceEvent[]) =>
+    find(
+      deriveTravelCompliance(input({ corridors: chile, events })),
+      "rabies_vaccination_to_travel_wait_days",
+    );
+
+  it("a vet's antirrábica meets the wait: verified, Ya está", () => {
+    const o = wait([tiered(rabies("2026-09-01T15:00:00Z"), "professional_verified")]);
+    expect(o.requirementLevel).toBe("info");
+    expect(o.evidence).toBe("verified");
+  });
+
+  it("the owner's own antirrábica stays at Atención, says so, and is never Ya está", () => {
+    const o = wait([tiered(rabies("2026-09-01T15:00:00Z"), "self_reported")]);
+    expect(o.requirementLevel).toBe("warning");
+    expect(o.evidence).toBe("declared");
+    expect(o.state).toBe(
+      "Registrada en la libreta, según indicaste. Para el viaje cuenta cuando lo registra un veterinario.",
+    );
+  });
+
+  it("an organisation without matrícula only declares (org_registered)", () => {
+    const o = wait([tiered(rabies("2026-09-01T15:00:00Z"), "org_registered")]);
+    expect(o.evidence).toBe("declared");
+    expect(o.requirementLevel).toBe("warning");
+  });
+
+  it("an institution verifies (institutional_verified)", () => {
+    const o = wait([tiered(rabies("2026-09-01T15:00:00Z"), "institutional_verified")]);
+    expect(o.evidence).toBe("verified");
+  });
+
+  it("nothing on record is evidence none, with the verified reading's state", () => {
+    const o = wait([]);
+    expect(o.evidence).toBe("none");
+    expect(o.state).toBe("Pendiente");
+  });
+
+  it("a declared dose that would NOT meet the wait does not dress the requirement up", () => {
+    // Applied 5 days before travel: too recent either way.
+    const o = wait([tiered(rabies("2026-11-10T15:00:00Z"), "self_reported")]);
+    expect(o.evidence).toBe("none");
+    expect(o.state).toBe("Pendiente");
+  });
+
+  it("a fully declared Chile libreta never reaches verde, even with every paper ticked", () => {
+    const declared = COMPLETE_CHILE_LIBRETA.map((e) =>
+      e.eventType === "movement_recorded" ? e : tiered(e, "self_reported"),
+    );
+    const papers =
+      find(
+        deriveTravelCompliance(input({ corridors: chile, events: declared })),
+        "required_documents",
+      ).documents?.map((d) => d.label) ?? [];
+    const state = deriveTravelCompliance(
+      input({ corridors: chile, events: declared, confirmedDocuments: papers }),
+    );
+    expect(state.semaforo).toBe("amarillo");
+    const declaredOnes = state.obligations.filter((o) => o.evidence === "declared");
+    expect(declaredOnes.map((o) => o.key).sort()).toEqual(
+      [
+        "microchip_required",
+        "parasite_treatment_window_days",
+        "rabies_vaccination_to_travel_wait_days",
+        "required_vaccines",
+      ].sort(),
+    );
+    for (const o of declaredOnes) expect(o.requirementLevel, o.id).toBe("warning");
+  });
+
+  it("the owner's own CVI and weight still count: they are the owner's to record", () => {
+    const o = find(
+      deriveTravelCompliance(
+        input({
+          corridors: [getCorridor("uruguay")],
+          events: [tiered(cvi("2026-11-01"), "self_reported")],
+        }),
+      ),
+      "document_issuance_window_days:senasa_cvi",
+    );
+    expect(o.requirementLevel).toBe("info");
+  });
+
+  it("only the libreta's answers carry evidence; papers and destination rules do not", () => {
+    const state = deriveTravelCompliance(input({ corridors: chile }));
+    expect(find(state, "required_documents").evidence).toBeUndefined();
+    expect(find(state, "document_issuance_window_days:senasa_cvi").evidence).toBeUndefined();
+    expect(find(state, "microchip_required").evidence).toBe("none");
+  });
+});
+
+describe("v14 copy — papers only, the paper's own name, next steps", () => {
+  it("required_documents lists papers, never a microchip or an antiparasitario (QA copy 2)", () => {
+    for (const id of ["chile", "uruguay", "brasil", "ue_espana", "usa"] as const) {
+      const state = deriveTravelCompliance(input({ corridors: [getCorridor(id)] }));
+      const labels = find(state, "required_documents").documents?.map((d) => d.label) ?? [];
+      expect(labels.length, id).toBeGreaterThan(0);
+      for (const label of labels) {
+        expect(label, id).not.toMatch(/microchip|antiparasitario|examen clínico/i);
+      }
+    }
+  });
+
+  it("Chile's microchip requirement is 'Microchip o tatuaje' (QA copy 7); the UE's is not", () => {
+    const chile = deriveTravelCompliance(input({ corridors: [getCorridor("chile")] }));
+    expect(find(chile, "microchip_required").label).toBe("Microchip o tatuaje");
+    const ue = deriveTravelCompliance(input({ corridors: [getCorridor("ue_espana")] }));
+    expect(find(ue, "microchip_required").label).toBe("Microchip");
+  });
+
+  it("the deworming window is worded against the destination's paper", () => {
+    const o = find(
+      deriveTravelCompliance(input({ corridors: [getCorridor("chile")] })),
+      "parasite_treatment_window_days",
+    );
+    expect(o.detail).toBe("Antiparasitario interno y externo entre 5 y 30 días antes del CZI");
+  });
+
+  it("a lapsed rabies wait says what to do next (QA copy 6)", () => {
+    const close = new Date("2026-10-15T00:00:00Z");
+    const o = find(
+      deriveTravelCompliance(input({ corridors: [getCorridor("chile")], travelDate: close })),
+      "rabies_vaccination_to_travel_wait_days",
+    );
+    expect(o.requirementLevel).toBe("blocker");
+    expect(o.state).toBe(
+      "Plazo vencido: aunque se vacune hoy, no llega a los 21 días antes del viaje. Consultá con tu veterinaria si conviene mover la fecha del viaje.",
+    );
+  });
+
+  it("a deworming missing before the issued paper says what to do next", () => {
+    const o = find(
+      deriveTravelCompliance(
+        input({ corridors: [getCorridor("chile")], events: [cvi("2026-11-08")] }),
+      ),
+      "parasite_treatment_window_days",
+    );
+    expect(o.state).toBe(
+      "Sin antiparasitario registrado dentro de la ventana antes del CZI del 8 de noviembre de 2026. Consultá con tu veterinaria si conviene un certificado nuevo o mover la fecha del viaje.",
+    );
   });
 });

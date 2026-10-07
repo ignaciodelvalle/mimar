@@ -34,6 +34,7 @@ import type {
   TravelRuleType,
   TravelSpecies,
 } from "@/lib/domain/travel-strictness";
+import type { ConfidenceTier } from "@/lib/events/event-confidence";
 import type { ComplianceTone } from "@/lib/projections/pet-compliance";
 import {
   type CheckContext,
@@ -90,6 +91,8 @@ export type TravelComplianceEvent = {
   eventType: string;
   payload: unknown;
   occurredAt: Date | string;
+  /** See TravelLibretaEvent.confidenceTier: absent means the caller vouches. */
+  confidenceTier?: ConfidenceTier | null;
 };
 
 export type TravelComplianceInput = {
@@ -164,7 +167,16 @@ export type TravelObligation = {
    * "Lo tengo" for it on this trip. Absent on every other obligation.
    */
   documents?: TravelDocumentItem[];
+  /**
+   * Only on what the libreta answers (group "libreta"): whether a verified
+   * entry meets it, only a DECLARED one would ("declared" — always a warning,
+   * never "Ya está"; PO 2026-10-07), or nothing does. Absent elsewhere.
+   */
+  evidence?: TravelEvidence;
 };
+
+/** What backs a libreta-answered requirement (see TravelObligation.evidence). */
+export type TravelEvidence = "verified" | "declared" | "none";
 
 /** One paper the trip asks for, and whether the owner said they have it. */
 export type TravelDocumentItem = {
@@ -383,6 +395,8 @@ type EvalEnv = {
   modality: Modality | null;
   /** The papers the owner ticked "Lo tengo" for on this trip. */
   confirmedDocuments: ReadonlySet<string>;
+  /** Every destination of the reading accepts a tattoo for the chip (Chile). */
+  acceptsTattoo: boolean;
 };
 type Evaluator = (rule: MergedRule, env: EvalEnv) => Evaluation | null;
 
@@ -461,7 +475,8 @@ const EVALUATORS: Record<TravelRuleType, Evaluator> = {
     list<string>(r).length > 0 ? evaluateRequiredVaccines(list<string>(r), ctx) : null,
   min_animal_age_days: (r, { ctx }) => evaluateMinAnimalAge(num(r), ctx),
   rabies_vaccination_max_days_before_travel: (r, { ctx }) => evaluateRabiesMaxAge(num(r), ctx),
-  microchip_required: (r, { ctx }) => (flag(r) ? evaluateMicrochipRequired(ctx) : null),
+  microchip_required: (r, { ctx, acceptsTattoo }) =>
+    flag(r) ? evaluateMicrochipRequired(ctx, acceptsTattoo) : null,
   max_weight_kg: (r, { ctx }) =>
     evaluateMaxWeight(num(r), r.includesCarrier, airlineNameOf(r), ctx),
   breed_restrictions: (r, { ctx, modality }) =>
@@ -515,11 +530,81 @@ function groupFor(rule: MergedRule, binding: readonly RuleSourceRef[]): TravelOb
   return binding.length > 0 && binding.every((s) => s.kind === "airline") ? "aerolinea" : "destino";
 }
 
-function labelFor(rule: MergedRule): string {
+function labelFor(rule: MergedRule, env: EvalEnv): string {
   if (rule.ruleType === "document_issuance_window_days" && rule.document) {
-    return `${TRAVEL_DOCUMENT_LABELS[rule.document]} · ventana de emisión`;
+    // The destination's own paper, as it names it (QA 2026-10-07, copy 4).
+    const paper = rule.document === "senasa_cvi" ? env.ctx.paper?.name : null;
+    return `${paper ?? TRAVEL_DOCUMENT_LABELS[rule.document]} · ventana de emisión`;
   }
+  if (rule.ruleType === "microchip_required" && env.acceptsTattoo) return "Microchip o tatuaje";
   return RULE_LABELS[rule.ruleType];
+}
+
+const TONE_RANK: Record<ComplianceTone, number> = {
+  over: 0,
+  due: 1,
+  neutral: 2,
+  reserved: 3,
+  ok: 4,
+};
+
+const LEVEL_RANK: Record<RequirementLevel, number> = { blocker: 0, warning: 1, info: 2 };
+
+function levelOf(e: Evaluation): RequirementLevel {
+  return e.level ?? requirementLevelFor(e.tone, e.deadlineLapsed);
+}
+
+/** Whether `a` reads strictly better for the owner than `b`. */
+function readsBetter(a: Evaluation, b: Evaluation): boolean {
+  const la = LEVEL_RANK[levelOf(a)];
+  const lb = LEVEL_RANK[levelOf(b)];
+  return la !== lb ? la > lb : TONE_RANK[a.tone] > TONE_RANK[b.tone];
+}
+
+const DECLARED_TAIL = "Para el viaje cuenta cuando lo registra un veterinario.";
+
+/**
+ * A libreta check run twice (PO 2026-10-07): on the VERIFIED entries, and —
+ * when some are merely declared — on every entry. If the declared ones are
+ * what would meet it, the requirement stays a WARNING ("Atención") that says
+ * so; it never reaches "Ya está" on the owner's word.
+ */
+function evaluateWithEvidence(
+  rule: MergedRule,
+  env: EvalEnv,
+): { evaluation: Evaluation; evidence: TravelEvidence } | null {
+  const verified = EVALUATORS[rule.ruleType](rule, env);
+  if (!verified) return null;
+  if (verified.tone === "ok") return { evaluation: verified, evidence: "verified" };
+  const withDeclared = env.ctx.libreta.withDeclared;
+  if (withDeclared) {
+    const all = EVALUATORS[rule.ruleType](rule, {
+      ...env,
+      ctx: { ...env.ctx, libreta: withDeclared },
+    });
+    if (all && readsBetter(all, verified)) {
+      return {
+        evaluation: {
+          tone: "due",
+          deadlineLapsed: false,
+          state: `${all.state}, según indicaste. ${DECLARED_TAIL}`,
+          detail: all.detail,
+          level: "warning",
+        },
+        evidence: "declared",
+      };
+    }
+  }
+  return { evaluation: verified, evidence: "none" };
+}
+
+/** A rule the libreta does not answer (a destination rule, papers, airline). */
+function evaluateWithoutEvidence(
+  rule: MergedRule,
+  env: EvalEnv,
+): { evaluation: Evaluation; evidence: null } | null {
+  const evaluation = EVALUATORS[rule.ruleType](rule, env);
+  return evaluation ? { evaluation, evidence: null } : null;
 }
 
 /**
@@ -536,6 +621,7 @@ function ruleObligation(
   rule: MergedRule,
   evaluation: Evaluation,
   companions: readonly MergedRule[],
+  label: string,
 ): TravelObligation {
   const binding = uniqueSources([...rule.binding, ...companions.flatMap((c) => c.binding)]);
   const all = uniqueSources([...rule.all, ...companions.flatMap((c) => c.all)]);
@@ -544,7 +630,7 @@ function ruleObligation(
     id: rule.document ? `${rule.ruleType}:${rule.document}` : rule.ruleType,
     key: rule.ruleType,
     group: groupFor(rule, binding),
-    label: labelFor(rule),
+    label,
     state: evaluation.state,
     tone: evaluation.tone,
     detail: evaluation.detail,
@@ -585,6 +671,7 @@ function incompatibleWindows(rules: readonly MergedRule[]): {
       ceiling,
       { tone: "over", deadlineLapsed: true, state: "Ventanas incompatibles", detail },
       [floor],
+      RULE_LABELS[ceiling.ruleType],
     );
     obligations.push({
       ...obligation,
@@ -599,9 +686,17 @@ function ruleObligations(rules: readonly MergedRule[], env: EvalEnv): TravelObli
   const { obligations, skip } = incompatibleWindows(rules);
   for (const rule of rules) {
     if (skip.has(rule.ruleType)) continue;
-    const evaluation = EVALUATORS[rule.ruleType](rule, env);
-    if (!evaluation) continue;
-    const obligation = ruleObligation(rule, evaluation, companionsOf(rule, rules));
+    const checked = LIBRETA_CHECKED.has(rule.ruleType)
+      ? evaluateWithEvidence(rule, env)
+      : evaluateWithoutEvidence(rule, env);
+    if (!checked) continue;
+    const obligation = ruleObligation(
+      rule,
+      checked.evaluation,
+      companionsOf(rule, rules),
+      labelFor(rule, env),
+    );
+    if (checked.evidence) obligation.evidence = checked.evidence;
     if (rule.ruleType === "required_documents") {
       obligation.documents = list<string>(rule).map((label) => ({
         label,
@@ -799,12 +894,16 @@ export function deriveTravelCompliance(input: TravelComplianceInput): TravelComp
     travelDay: input.travelDate ? dayOfDateOnly(input.travelDate) : null,
     pet: input.pet ?? null,
     libreta: readLibreta(input.events),
+    // One destination names its own paper; several fall back to "CVI".
+    paper: input.corridors.length === 1 ? input.corridors[0].paper : null,
   };
   const obligations = ruleObligations(rules, {
     ctx,
     rules,
     modality,
     confirmedDocuments: new Set(input.confirmedDocuments ?? []),
+    acceptsTattoo:
+      corridorsWithRules.length > 0 && corridorsWithRules.every((c) => c.acceptsTattoo === true),
   });
   if (input.airline) {
     obligations.push(...airlineGates(input.airline, modality, input.pet?.species ?? null, now));

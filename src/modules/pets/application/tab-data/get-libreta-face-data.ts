@@ -44,7 +44,7 @@ import { fetchActiveRemindersForPet, fetchPetWeightHistory } from "@/lib/analyti
 import { computeVaccinationSummary } from "@/lib/domain/libreta-health-status";
 import { drugNameFromDoseReminderTitle } from "@/lib/domain/medication-dose-title";
 import { excludeAuthorityOnlyClause, excludeSelfScansClause } from "@/lib/events/events";
-import { overlayAmendments } from "@/lib/infra/amendment";
+import { overlayAmendments, tripPapersOnlyTargets } from "@/lib/infra/amendment";
 import { resolveBusinessRule } from "@/lib/infra/business-rules-resolver";
 import { notReportedClause } from "@/lib/infra/content-reports";
 import { withholdUnreadableDecomisoEvidence } from "@/lib/infra/decomiso-evidence-access";
@@ -318,17 +318,24 @@ export async function getLibretaFaceData(
   // happens the original isn't rendered anyway, so there's no stale/
   // half-corrected row on screen — nothing to project it onto.
   const projectedEvents = overlayAmendments(pastEvents);
+  // A trip whose only amendments are "Lo tengo" ticks was not corrected.
+  const papersOnly = tripPapersOnlyTargets(pastEvents);
 
-  const past: HistorialEventRow[] = projectedEvents.map((e) => ({
-    ...e,
-    authorOrgName: e.authorOrganizationId
-      ? (orgNameById.get(e.authorOrganizationId) ?? null)
-      : null,
-    attachmentUrl: urlByEventId.get(e.id) ?? null,
-    hasAttachment: eventsWithAttachment.has(e.id),
-    amendedAt:
-      e.amendedAt instanceof Date ? e.amendedAt : e.amendedAt ? new Date(e.amendedAt) : null,
-  }));
+  const past: HistorialEventRow[] = projectedEvents.map((e) => {
+    const amendedAt =
+      e.amendedAt instanceof Date ? e.amendedAt : e.amendedAt ? new Date(e.amendedAt) : null;
+    const ticksOnly = papersOnly.has(e.id);
+    return {
+      ...e,
+      authorOrgName: e.authorOrganizationId
+        ? (orgNameById.get(e.authorOrganizationId) ?? null)
+        : null,
+      attachmentUrl: urlByEventId.get(e.id) ?? null,
+      hasAttachment: eventsWithAttachment.has(e.id),
+      amendedAt: ticksOnly ? null : amendedAt,
+      papersUpdatedAt: ticksOnly ? amendedAt : null,
+    };
+  });
 
   // Vaccination summary is computed from the SEPARATE uncapped/type-narrow
   // query (VACCINATION_SUMMARY_EVENT_TYPES docblock) — NOT from the bounded

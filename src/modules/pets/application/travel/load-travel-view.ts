@@ -24,6 +24,7 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { type OwnershipRole, type Pet, db, petEvents } from "@/db";
+import { computeConfidence } from "@/lib/events/event-confidence";
 import { overlayAmendments } from "@/lib/infra/amendment";
 import { type PetAccessPath, canAccessTravel } from "@/lib/infra/pet-access";
 import {
@@ -114,7 +115,26 @@ type ViewEvent = {
   eventType: string;
   occurredAt: Date | string;
   payload: unknown;
+  /**
+   * The row's author columns. The loader always reads them: they decide
+   * whether an entry VERIFIES a travel fact or only declares it (PO
+   * 2026-10-07). Absent only in pure fixtures, where the caller vouches.
+   */
+  authorRole?: string;
+  authorVerified?: boolean;
+  authorOrganizationId?: string | null;
 };
+
+/** The entry's confidence tier, when its author columns were read. */
+function tierOf(e: ViewEvent): TravelComplianceEvent["confidenceTier"] {
+  if (e.authorRole === undefined) return undefined;
+  return computeConfidence({
+    authorRole: e.authorRole,
+    authorVerified: e.authorVerified ?? false,
+    authorOrganizationId: e.authorOrganizationId ?? null,
+    payload: (e.payload ?? {}) as Record<string, unknown>,
+  });
+}
 
 function isCorridorId(value: string): value is CorridorId {
   return (CORRIDOR_IDS as readonly string[]).includes(value);
@@ -198,7 +218,12 @@ export function buildTravelView(params: {
 
   const libreta: TravelComplianceEvent[] = events
     .filter((e) => e.eventType !== "event_amended")
-    .map((e) => ({ eventType: e.eventType, payload: e.payload, occurredAt: e.occurredAt }));
+    .map((e) => ({
+      eventType: e.eventType,
+      payload: e.payload,
+      occurredAt: e.occurredAt,
+      confidenceTier: tierOf(e),
+    }));
 
   const compliance = deriveTravelCompliance({
     now,
@@ -250,6 +275,9 @@ export async function loadTravelView(params: {
       occurredAt: petEvents.occurredAt,
       recordedAt: petEvents.recordedAt,
       payload: petEvents.payload,
+      authorRole: petEvents.authorRole,
+      authorVerified: petEvents.authorVerified,
+      authorOrganizationId: petEvents.authorOrganizationId,
     })
     .from(petEvents)
     .where(

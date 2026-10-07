@@ -22,6 +22,7 @@ import type {
   RequirementLevel,
   TravelDocument,
 } from "@/lib/domain/travel-strictness";
+import type { ConfidenceTier } from "@/lib/events/event-confidence";
 import type { ComplianceTone } from "@/lib/projections/pet-compliance";
 import { brachycephalicBreedsFor } from "@/lib/reference/brachycephalic-breeds";
 import {
@@ -49,7 +50,39 @@ export type TravelLibretaEvent = {
   eventType: string;
   payload: unknown;
   occurredAt: Date | string;
+  /**
+   * Who stands behind the entry (computeConfidence over the row's author
+   * columns). For travel, only `professional_verified` and
+   * `institutional_verified` VERIFY a fact; anything else only DECLARES it
+   * (PO 2026-10-07). Every reader of the spine passes it — loadTravelView
+   * does. ABSENT means the caller vouches for the entry (pure fixtures).
+   */
+  confidenceTier?: ConfidenceTier | null;
 };
+
+/** The tiers that verify a fact for travel (PO 2026-10-07). */
+export const TRAVEL_VERIFIED_TIERS: ReadonlySet<ConfidenceTier> = new Set<ConfidenceTier>([
+  "professional_verified",
+  "institutional_verified",
+]);
+
+/**
+ * The medical facts a trip checks. A paper the owner copies (the CVI) and a
+ * weight are the owner's to record: those are read from every entry.
+ */
+const MEDICAL_EVENT_TYPES: ReadonlySet<string> = new Set([
+  "vaccination_administered",
+  "deworming_administered",
+  "microchip_implanted",
+  "microchip_replaced",
+  "clinical_info_logged",
+]);
+
+/** Whether an entry verifies its fact for travel. */
+export function verifiesForTravel(e: TravelLibretaEvent): boolean {
+  if (e.confidenceTier === undefined || e.confidenceTier === null) return true;
+  return TRAVEL_VERIFIED_TIERS.has(e.confidenceTier);
+}
 
 /** The pet facts the travel checks need, from the `pets` row. */
 export type TravelPetFacts = {
@@ -79,6 +112,12 @@ export type LibretaFacts = {
   titerTests: number[];
   /** Every vaccine name on record, lower-cased and without accents. */
   vaccineNames: string[];
+  /**
+   * The same facts read from EVERY entry, declared ones included — present only
+   * when some medical entry is merely declared. The checks run on the verified
+   * facts; this is what tells "met on the owner's word" apart from "not met".
+   */
+  withDeclared?: LibretaFacts | null;
 };
 
 const DAY_MS = 86_400_000;
@@ -157,8 +196,26 @@ function isTiterRecord(e: TravelLibretaEvent): boolean {
   return TITER.test(text) && RABIES.test(text);
 }
 
-/** Everything the travel checks read from the libreta, in one pass. */
+/**
+ * Everything the travel checks read from the libreta. Medical facts come from
+ * VERIFIED entries only; `withDeclared` re-reads them from every entry when
+ * some are merely declared (QA 2026-10-07, bug 1: an owner's own entry closed
+ * the requirement).
+ */
 export function readLibreta(events: readonly TravelLibretaEvent[]): LibretaFacts {
+  const trusted = events.filter(
+    (e) => !MEDICAL_EVENT_TYPES.has(e.eventType) || verifiesForTravel(e),
+  );
+  const facts = readFacts(trusted, events);
+  const declaredExists = trusted.length < events.length;
+  return { ...facts, withDeclared: declaredExists ? readFacts(events, events) : null };
+}
+
+/** The medical facts of `events`, plus the CVI and the weight from `all`. */
+function readFacts(
+  events: readonly TravelLibretaEvent[],
+  all: readonly TravelLibretaEvent[],
+): LibretaFacts {
   const asc = (xs: number[]) => xs.sort((a, b) => a - b);
   const vaccinations = events.filter((e) => e.eventType === "vaccination_administered");
   const vaccineNames = vaccinations.map((e) => fold(str(payloadOf(e).vaccine_name)));
@@ -188,8 +245,8 @@ export function readLibreta(events: readonly TravelLibretaEvent[]): LibretaFacts
         type: payloadOf(e).type as DewormingType,
       }))
       .filter((d) => d.type === "internal" || d.type === "external" || d.type === "both"),
-    latestCvi: readCvi(events),
-    latestWeightKg: readWeight(events),
+    latestCvi: readCvi(all),
+    latestWeightKg: readWeight(all),
     titerTests: asc(events.filter(isTiterRecord).map((e) => dayOfInstant(e.occurredAt))),
     vaccineNames,
   };
@@ -201,7 +258,22 @@ export type CheckContext = {
   travelDay: number | null;
   pet: TravelPetFacts | null;
   libreta: LibretaFacts;
+  /**
+   * The paper the destination asks for, as IT names it ("CZI"). Null when the
+   * reading spans several destinations: then the generic "CVI".
+   */
+  paper?: { name: string; shortName: string } | null;
 };
+
+/** Short name of the trip's paper: "CZI", "CVI Mercosur", or "CVI". */
+function paperShort(ctx: CheckContext): string {
+  return ctx.paper?.shortName ?? "CVI";
+}
+
+/** What a lapsed deadline says next (QA 2026-10-07, copy 6). */
+const NEXT_STEP_MOVE_DATE = "Consultá con tu veterinaria si conviene mover la fecha del viaje.";
+const NEXT_STEP_NEW_PAPER =
+  "Consultá con tu veterinaria si conviene un certificado nuevo o mover la fecha del viaje.";
 
 const NO_TRAVEL_DATE: Evaluation = {
   tone: "neutral",
@@ -244,7 +316,9 @@ export function evaluateRabiesWait(waitDays: number, ctx: CheckContext): Evaluat
   return {
     tone: "due",
     deadlineLapsed: lapsed,
-    state: lapsed ? "Plazo vencido" : "Pendiente",
+    state: lapsed
+      ? `Plazo vencido: aunque se vacune hoy, no llega a los ${waitDays} días antes del viaje. ${NEXT_STEP_MOVE_DATE}`
+      : "Pendiente",
     detail,
   };
 }
@@ -331,8 +405,10 @@ export function evaluateMinAnimalAge(minAgeDays: number, ctx: CheckContext): Eva
 // Microchip
 // ---------------------------------------------------------------------------
 
-export function evaluateMicrochipRequired(ctx: CheckContext): Evaluation {
-  const detail = "Microchip ISO 11784/11785 obligatorio";
+export function evaluateMicrochipRequired(ctx: CheckContext, acceptsTattoo = false): Evaluation {
+  const detail = acceptsTattoo
+    ? "Microchip ISO 11784/11785 o tatuaje obligatorio; lo registra tu veterinaria"
+    : "Microchip ISO 11784/11785 obligatorio; lo registra tu veterinaria";
   const { chipImplants, chipRevoked } = ctx.libreta;
   if (chipImplants.length === 0 || chipRevoked) {
     return { tone: "due", deadlineLapsed: false, state: "Sin microchip registrado", detail };
@@ -391,13 +467,13 @@ export function evaluateMicrochipBeforeRabies(ctx: CheckContext): Evaluation {
 // Deworming window (Chile 5–30 before the CZI, Brasil/Uruguay ≤15 before the CVI)
 // ---------------------------------------------------------------------------
 
-function dewormingDetail(ceiling: number | null, floor: number | null): string {
+function dewormingDetail(ceiling: number | null, floor: number | null, paper: string): string {
   const what = "Antiparasitario interno y externo";
   if (ceiling !== null && floor !== null) {
-    return `${what} entre ${floor} y ${ceiling} días antes del CVI`;
+    return `${what} entre ${floor} y ${ceiling} días antes del ${paper}`;
   }
-  if (ceiling !== null) return `${what} hasta ${ceiling} días antes del CVI`;
-  return `${what} al menos ${floor} días antes del CVI`;
+  if (ceiling !== null) return `${what} hasta ${ceiling} días antes del ${paper}`;
+  return `${what} al menos ${floor} días antes del ${paper}`;
 }
 
 function covers(doses: readonly { type: DewormingType }[]): {
@@ -427,7 +503,8 @@ export function evaluateDeworming(
   floor: number | null,
   ctx: CheckContext,
 ): Evaluation {
-  const detail = dewormingDetail(ceiling, floor);
+  const paper = paperShort(ctx);
+  const detail = dewormingDetail(ceiling, floor, paper);
   const cvi = ctx.libreta.latestCvi;
   const anchor = cvi?.issuedDay ?? ctx.travelDay;
   if (anchor === null) return withDetail(NO_TRAVEL_DATE, detail);
@@ -443,7 +520,7 @@ export function evaluateDeworming(
     return {
       tone: "neutral",
       deadlineLapsed: false,
-      state: "Registrado en la libreta; la ventana se confirma con la fecha del CVI",
+      state: `Registrado en la libreta; la ventana se confirma con la fecha del ${paper}`,
       detail,
     };
   }
@@ -451,7 +528,7 @@ export function evaluateDeworming(
     return {
       tone: "over",
       deadlineLapsed: true,
-      state: `${missingCoverageState(coverage)} antes del CVI del ${formatDay(cvi.issuedDay)}`,
+      state: `${missingCoverageState(coverage)} antes del ${paper} del ${formatDay(cvi.issuedDay)}. ${NEXT_STEP_NEW_PAPER}`,
       detail,
     };
   }
@@ -459,7 +536,9 @@ export function evaluateDeworming(
   return {
     tone: "due",
     deadlineLapsed: lapsed,
-    state: lapsed ? "Plazo vencido" : missingCoverageState(coverage),
+    state: lapsed
+      ? `Plazo vencido: ya no entra en la ventana antes del viaje. ${NEXT_STEP_MOVE_DATE}`
+      : missingCoverageState(coverage),
     detail,
   };
 }
@@ -488,32 +567,43 @@ export function evaluateDocumentWindow(
   ctx: CheckContext,
 ): Evaluation {
   const doc = document ?? "senasa_cvi";
-  const detail = `Emitir el ${TRAVEL_DOCUMENT_LABELS[doc]} como máximo ${windowDays} días antes del viaje`;
-  if (doc !== "senasa_cvi") {
+  const isPaper = doc === "senasa_cvi";
+  const name = isPaper && ctx.paper ? ctx.paper.name : TRAVEL_DOCUMENT_LABELS[doc];
+  const detail = `Emitir el ${name} como máximo ${windowDays} días antes del viaje`;
+  if (!isPaper) {
     return { tone: "neutral", deadlineLapsed: false, state: "A verificar", detail };
   }
   if (ctx.travelDay === null) return withDetail(NO_TRAVEL_DATE, detail);
+  const paper = paperShort(ctx);
   const opens = ctx.travelDay - windowDays;
   const cvi = ctx.libreta.latestCvi;
   if (!cvi) {
     const lapsed = ctx.today > ctx.travelDay;
+    // The range starts TODAY once it opened: a day already gone is not a day
+    // anybody can still ask for (QA 2026-10-07, copy 6).
+    const from = opens > ctx.today ? `desde el ${formatDay(opens)}` : "desde hoy";
     return {
       tone: "due",
       deadlineLapsed: lapsed,
       state: lapsed
-        ? "Plazo vencido"
-        : `Pendiente: emitirlo entre el ${formatDay(opens)} y el ${formatDay(ctx.travelDay)}`,
+        ? "Plazo vencido: la fecha del viaje ya pasó. Si el viaje cambió de fecha, cancelalo y creá uno con la fecha nueva."
+        : `Pendiente: pedí el ${paper} ${from} y hasta el ${formatDay(ctx.travelDay)}`,
       detail,
     };
   }
   if (cvi.validUntilDay !== null && cvi.validUntilDay < ctx.travelDay) {
-    return { tone: "over", deadlineLapsed: true, state: "El CVI vence antes del viaje", detail };
+    return {
+      tone: "over",
+      deadlineLapsed: true,
+      state: `El ${paper} vence antes del viaje. ${NEXT_STEP_NEW_PAPER}`,
+      detail,
+    };
   }
   if (cvi.issuedDay < opens) {
     return {
       tone: "over",
       deadlineLapsed: true,
-      state: "El CVI se emitió antes de la ventana: hace falta uno nuevo",
+      state: `El ${paper} se emitió antes de la ventana. ${NEXT_STEP_NEW_PAPER}`,
       detail,
     };
   }
@@ -521,7 +611,7 @@ export function evaluateDocumentWindow(
     return {
       tone: "neutral",
       deadlineLapsed: false,
-      state: "La fecha de emisión del CVI es posterior al viaje: revisala",
+      state: `La fecha de emisión del ${paper} es posterior al viaje: revisala`,
       detail,
     };
   }

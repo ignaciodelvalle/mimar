@@ -531,6 +531,46 @@ type PendingAmendment = {
  *    targets the original), and `amendedAt` set to the latest one's occurredAt.
  *  - Untargeted rows get `amendedAt: null`.
  */
+/**
+ * Whether an `event_amended` payload only ticks or unticks the papers of a
+ * trip ("Lo tengo", confirmTripDocument): every change is the trip's
+ * `documents_confirmed`. That is the owner keeping a checklist, NOT a
+ * correction of the record — the libreta says "Papeles del viaje
+ * actualizados", never "Corregido" (QA 2026-10-07, copy 8).
+ */
+export function isTripPapersAmendment(payload: unknown): boolean {
+  const changes = (payload as { changes?: unknown } | null)?.changes;
+  return (
+    Array.isArray(changes) &&
+    changes.length > 0 &&
+    changes.every(
+      (c) =>
+        typeof c === "object" &&
+        c !== null &&
+        (c as { field?: unknown }).field === "documents_confirmed",
+    )
+  );
+}
+
+/**
+ * The ids of the records whose EVERY amendment in `events` is a papers tick
+ * (isTripPapersAmendment). A record with one real correction among its ticks
+ * is not here: it was corrected, and says so.
+ */
+export function tripPapersOnlyTargets(
+  events: ReadonlyArray<{ eventType: string; payload: unknown }>,
+): Set<string> {
+  const ticksOnly = new Map<string, boolean>();
+  for (const e of events) {
+    if (e.eventType !== "event_amended") continue;
+    const target = (e.payload as { target_event_id?: unknown } | null)?.target_event_id;
+    if (typeof target !== "string") continue;
+    const tick = isTripPapersAmendment(e.payload);
+    ticksOnly.set(target, (ticksOnly.get(target) ?? true) && tick);
+  }
+  return new Set([...ticksOnly].filter(([, only]) => only).map(([id]) => id));
+}
+
 export function overlayAmendments<T extends OverlayableEvent>(
   events: T[],
 ): Array<T & { amendedAt: Date | string | null }> & AmendmentOverlaidBrand {

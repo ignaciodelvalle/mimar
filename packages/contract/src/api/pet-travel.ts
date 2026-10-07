@@ -268,7 +268,9 @@ export function petTravelObligationAction(obligation: {
   requirementLevel: "blocker" | "warning" | "info";
   evidence?: PetTravelEvidenceV1 | null;
 }): PetTravelActionKindV1 | null {
-  if (obligation.requirementLevel === "info") return null;
+  // Met already — or met by a verified entry and only kept amber by a stale
+  // source, which no vet visit fixes.
+  if (obligation.requirementLevel === "info" || obligation.evidence === "verified") return null;
   const kind = PET_TRAVEL_RULE_ACTIONS[petTravelRuleTypeOf(obligation.id)] ?? null;
   if (kind === "ask_vet" && obligation.evidence === "declared") return "send_to_vet";
   return kind;

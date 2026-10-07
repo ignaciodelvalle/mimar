@@ -104,7 +104,10 @@ describe("corridor registry — 2026-09-30 corrections (viajes-fase-2)", () => {
     expect(brasil.rules.rabies_vaccination_to_travel_wait_days?.value).toBe(21);
     expect(brasil.rules.parasite_treatment_window_days?.value).toBe(15);
     expect(brasil.rules.microchip_required).toBeUndefined();
-    expect(brasil.rules.required_documents?.value.join("\n")).toMatch(/Microchip opcional/);
+    // Since 2026.4 required_documents is papers only: the optional chip and the
+    // clinical exam ride on the CVI window's note.
+    expect(brasil.rules.document_issuance_window_days?.note).toMatch(/microchip es opcional/);
+    expect(brasil.rules.document_issuance_window_days?.note).toMatch(/Examen clínico/);
   });
 
   it("USA: the CDC 6-month minimum is a dog-only min_animal_age_days rule", () => {

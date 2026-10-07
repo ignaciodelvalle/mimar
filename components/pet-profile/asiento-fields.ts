@@ -32,6 +32,7 @@ import {
 import { computeConfidence } from "@/lib/events/event-confidence";
 import { upcastPayload } from "@/lib/events/event-upcasters";
 import { eventPayloadDetails, eventPayloadSummary } from "@/lib/events/events";
+import { isTripPapersAmendment } from "@/lib/infra/amendment";
 import { AR_TIME_ZONE, calendarDaysAgoInAr, eventTypeLabel } from "@/lib/utils/format";
 import type { HistorialEventRow } from "@/src/modules/pets/application/tab-data/types";
 
@@ -91,7 +92,12 @@ export type AsientoView = {
   verifyHref?: string;
   /** Corrected by a later amendment (append-only — a correction is a new asiento). */
   amended?: boolean;
+  /** Its only amendments ticked the papers of a trip: not a correction. */
+  papersUpdated?: boolean;
 };
+
+/** What a papers tick is called in the libreta (QA 2026-10-07, copy 8). */
+export const TRIP_PAPERS_UPDATED_LABEL = "Papeles del viaje actualizados";
 
 // ---------------------------------------------------------------------------
 // Dates
@@ -384,7 +390,19 @@ export function toAsientoView(
     whenAbsolute: aplicada,
     provenance,
     amended: Boolean(row.amendedAt),
+    papersUpdated: Boolean(row.papersUpdatedAt),
   };
+
+  // A "Lo tengo" tick is the owner keeping a trip's checklist, not a
+  // correction: it is named for what it is.
+  if (eventType === "event_amended" && isTripPapersAmendment(row.payload)) {
+    return {
+      ...base,
+      kind: "Viaje",
+      title: TRIP_PAPERS_UPDATED_LABEL,
+      facts: [{ key: "Fecha", value: aplicada }],
+    };
+  }
 
   switch (eventType) {
     case "vaccination_administered": {

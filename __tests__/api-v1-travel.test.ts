@@ -42,7 +42,7 @@ vi.mock("@/lib/supabase/admin", () => ({
   }),
 }));
 
-import { db, ownerships, pets, profiles } from "@/db";
+import { db, ownerships, petEvents, pets, profiles } from "@/db";
 import { TRAVEL_FORBIDDEN_COPY, TRAVEL_SEMAFORO_LABELS } from "@/lib/domain/travel-copy";
 import { OWNER_AUTHORSHIP } from "@/lib/infra/pet-access";
 import type { TravelTrip } from "@/lib/projections/travel-compliance";
@@ -198,8 +198,47 @@ describe("GET /api/v1/pets/{token}/travel — the web loader's reading, on the w
     );
     // An airline was chosen, so its block is on the wire.
     expect(body.compliance.obligations.some((o) => o.group === "aerolinea")).toBe(true);
+    // v14: what backs each libreta answer, and who publishes each source.
+    expect(body.compliance.obligations.map((o) => [o.id, o.evidence])).toEqual(
+      compliance.obligations.map((o) => [o.id, o.evidence ?? null]),
+    );
+    expect(body.compliance.obligations.find((o) => o.id === "microchip_required")?.label).toBe(
+      "Microchip o tatuaje",
+    );
+    for (const o of body.compliance.obligations) {
+      for (const s of o.sources) expect(s.issuerLabel, o.id).toBeTruthy();
+    }
     expect(body.exportWebUrl).toMatch(new RegExp(`/mis-mascotas/${pet.publicToken}/viaje$`));
     expect(body.capabilities).toEqual({ canRecord: true });
+  });
+
+  it("the loader reads who wrote each entry: the owner's antirrábica only declares (QA bug 1)", async () => {
+    const pet = await insertTestPet("DECL");
+    await addTrip(pet, "chile", 40);
+    const dose = (authorRole: "owner" | "vet", authorVerified: boolean) =>
+      db.insert(petEvents).values({
+        petId: pet.id,
+        eventType: "vaccination_administered",
+        occurredAt: new Date(Date.now() - 30 * DAY_MS),
+        recordedByUserId: OWNER_ID,
+        authorRole,
+        authorVerified,
+        payload: { vaccine_name: "Antirrábica", next_due_at: null },
+      });
+
+    await dose("owner", false);
+    const declared = (await read(pet, OWNER_ID)).body.compliance?.obligations.find(
+      (o) => o.id === "rabies_vaccination_to_travel_wait_days",
+    );
+    expect(declared?.evidence).toBe("declared");
+    expect(declared?.requirementLevel).toBe("warning");
+
+    await dose("vet", true);
+    const verified = (await read(pet, OWNER_ID)).body.compliance?.obligations.find(
+      (o) => o.id === "rabies_vaccination_to_travel_wait_days",
+    );
+    expect(verified?.evidence).toBe("verified");
+    expect(verified?.requirementLevel).toBe("info");
   });
 
   it("?trip= reads the trip asked for", async () => {

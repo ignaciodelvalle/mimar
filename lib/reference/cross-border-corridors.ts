@@ -118,8 +118,15 @@ const DOGS: readonly TravelSpecies[] = ["dog"];
 // "requisitos pendientes de validación oficial" warning off
 // `Object.keys(rules).length === 0`; with Chile and Brasil populated, no
 // corridor surfaces it any more.
-const RULES_VERSION = "2026.3";
-const RULES_EFFECTIVE_FROM = "2026-09-30";
+//
+// 2026.4 (v14, QA 2026-10-07 copy 2): `required_documents` lists PAPERS only —
+// what the owner carries and ticks "Lo tengo" for. The conditions it used to
+// mix in (microchip, antiparasitario, examen clínico) are rule types the
+// libreta answers, or a note on the paper's window; an owner could tick "Lo
+// tengo" on a microchip the libreta said was missing. No regulatory value
+// changed; the sources were not re-read, so `lastVerifiedAt` stays.
+const RULES_VERSION = "2026.4";
+const RULES_EFFECTIVE_FROM = "2026-10-07";
 
 // Every corridor value was checked against its source on this date.
 const LAST_VERIFIED = "2026-09-30";
@@ -215,12 +222,9 @@ export const CORRIDORS: readonly Corridor[] = [
         note: "Microchip o tatuaje ISO obligatorio para perros y gatos desde el 27/07/2026.",
       }),
       rabies_titer_test_required: rule(false, SENASA_CHILE),
+      // Papers only: the microchip and the antiparasitario are rule types above.
       required_documents: rule(
-        [
-          "Certificado Zoosanitario de Importación (CZI) — CVI digital SENASA",
-          "Microchip ISO 11784/11785 o tatuaje (obligatorio desde el 27/07/2026)",
-          "Antiparasitario interno y externo entre 5 y 30 días antes del CZI",
-        ],
+        ["Certificado Zoosanitario de Importación (CZI) — CVI digital SENASA"],
         SENASA_CHILE,
       ),
       required_vaccines: rule(["Antirrábica"], SENASA_CHILE),
@@ -265,11 +269,11 @@ export const CORRIDORS: readonly Corridor[] = [
         species: DOGS,
         note: "Perros de más de 90 días (Res. 273 DGSG, 27/08/2018); no se exige a gatos.",
       }),
+      // Papers only: the microchip and the antiparasitario are rule types
+      // above. The leishmaniasis result IS a paper the owner carries.
       required_documents: rule(
         [
           "Certificado Veterinario Internacional (CVI) modelo Mercosur — SENASA",
-          "Microchip ISO 11784/11785 (perros >90 días; Res. 273 DGSG)",
-          "Antiparasitario interno con praziquantel + externo, hasta 15 días antes del CVI",
           "Test de leishmaniasis negativo (perros >90 días, hasta 60 días antes del ingreso)",
         ],
         UY_INGRESO,
@@ -299,7 +303,12 @@ export const CORRIDORS: readonly Corridor[] = [
     },
     rules: {
       // CVI válido 60 días desde la emisión.
-      document_issuance_window_days: rule(60, SENASA_MERCOSUR, { document: "senasa_cvi" }),
+      // The two conditions that are not rule types travel as the window's note
+      // (they left `required_documents`, which is papers only since 2026.4).
+      document_issuance_window_days: rule(60, SENASA_MERCOSUR, {
+        document: "senasa_cvi",
+        note: "Examen clínico hasta 10 días antes de la emisión del CVI. El microchip es opcional: si está implantado, tiene que figurar en el CVI.",
+      }),
       rabies_vaccination_to_travel_wait_days: rule(21, SENASA_MERCOSUR),
       // Antirrábica exigida a mascotas de más de 90 días.
       rabies_vaccination_min_age_days: rule(90, SENASA_MERCOSUR),
@@ -307,12 +316,7 @@ export const CORRIDORS: readonly Corridor[] = [
       // Brasil no exige titulación a ningún origen.
       rabies_titer_test_required: rule(false, SENASA_MERCOSUR),
       required_documents: rule(
-        [
-          "Certificado Veterinario Internacional (CVI) modelo Portaria MAPA n.º 741/2024 — SENASA",
-          "Examen clínico hasta 10 días antes de la emisión del CVI",
-          "Antiparasitario interno y externo hasta 15 días antes del CVI",
-          "Microchip opcional: si está implantado, tiene que figurar en el CVI",
-        ],
+        ["Certificado Veterinario Internacional (CVI) modelo Portaria MAPA n.º 741/2024 — SENASA"],
         SENASA_MERCOSUR,
       ),
       required_vaccines: rule(["Antirrábica"], SENASA_MERCOSUR),
@@ -360,11 +364,9 @@ export const CORRIDORS: readonly Corridor[] = [
       // El microchip DEBE implantarse ANTES de la vacuna antirrábica para
       // que la vacuna cuente — requisito explícito de la fuente.
       microchip_before_vaccination_required: rule(true, EU_2026_636),
+      // Papers only: the microchip and its order are rule types above.
       required_documents: rule(
-        [
-          "Certificado Sanitario UE emitido por veterinario oficial SENASA",
-          "Microchip ISO 11784/11785 implantado antes de la vacuna antirrábica",
-        ],
+        ["Certificado Sanitario UE emitido por veterinario oficial SENASA"],
         EU_2026_636,
       ),
       required_vaccines: rule(["Antirrábica"], EU_2026_636),
@@ -424,7 +426,6 @@ export const CORRIDORS: readonly Corridor[] = [
           "Certificado Veterinario Internacional (CVI) — SENASA",
           "Certificado Libre de Miasis (screwworm), emitido hasta 5 días antes del embarque",
           "CDC Dog Import Form (online, completado por el dueño; válido 6 meses)",
-          "Microchip legible ISO 11784/11785 (detectable por escáner universal)",
         ],
         CDC_DOGS,
       ),

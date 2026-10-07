@@ -278,7 +278,7 @@ describe("buildTravelExportDto — the screen's reading, not a second computatio
     expect(text).toContain("Modalidad elegida: bodega");
     const sourced = dto.obligations.flatMap((o) => o.sources);
     expect(sourced.length).toBeGreaterThan(0);
-    for (const s of sourced) expect(text).toContain(`Fuente: ${s.label} (${s.sourceUrl})`);
+    for (const s of sourced) expect(text).toContain(`Fuente: ${s.issuerLabel} (${s.sourceUrl})`);
   });
 
   it("names the trip it read", () => {

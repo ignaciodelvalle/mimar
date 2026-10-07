@@ -11,7 +11,12 @@
 
 import type { HistorialEventRow } from "@/src/modules/pets/application/tab-data/types";
 import { describe, expect, it } from "vitest";
-import { type AsientoViewer, formatRelative, toAsientoView } from "./asiento-fields";
+import {
+  type AsientoViewer,
+  TRIP_PAPERS_UPDATED_LABEL,
+  formatRelative,
+  toAsientoView,
+} from "./asiento-fields";
 
 const NOW = new Date("2026-07-04T12:00:00Z");
 
@@ -452,5 +457,47 @@ describe("toAsientoView — non-owner roles never borrow the titular's voice", (
     expect(view.provenance.verified).toBe(false);
     expect(view.provenance.label).toBe("Registrado sin verificar");
     expect(view.provenance.label).not.toContain("vos");
+  });
+});
+
+describe("toAsientoView — a trip's papers tick reads as what it is (QA 2026-10-07, copy 8)", () => {
+  const base: HistorialEventRow = {
+    id: "evt-tick",
+    petId: "pet-1",
+    eventType: "event_amended",
+    payload: {
+      target_event_id: "trip-1",
+      reason: "Papeles del viaje",
+      changes: [{ field: "documents_confirmed", old: [], new: ["CZI"] }],
+    },
+    occurredAt: new Date("2026-07-01T12:00:00Z"),
+    notes: null,
+    recordedByUserId: GRACIELA,
+    authorRole: "owner",
+    authorVerified: false,
+    authorOrganizationId: null,
+    attachmentUrl: null,
+    hasAttachment: false,
+    amendedAt: null,
+  };
+
+  it("the tick's own asiento is titled 'Papeles del viaje actualizados', not a correction", () => {
+    const view = toAsientoView(base, "TOKEN-1234", SELF, NOW);
+    expect(view.title).toBe(TRIP_PAPERS_UPDATED_LABEL);
+    expect(view.title).not.toMatch(/correc/i);
+  });
+
+  it("the trip it ticked says papers updated, and is not marked corrected", () => {
+    const trip: HistorialEventRow = {
+      ...base,
+      id: "trip-1",
+      eventType: "movement_recorded",
+      payload: { sub_kind: "transport_recorded", corridor_id: "chile", travel_date: "2026-11-15" },
+      amendedAt: null,
+      papersUpdatedAt: new Date("2026-07-02T12:00:00Z"),
+    };
+    const view = toAsientoView(trip, "TOKEN-1234", SELF, NOW);
+    expect(view.amended).toBe(false);
+    expect(view.papersUpdated).toBe(true);
   });
 });

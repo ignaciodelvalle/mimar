@@ -69,6 +69,12 @@ export type HistorialEventRow = {
   // "Corregido · ver original" affordance (WS-3). Enriched in the tab-data shim.
   amendedAt?: Date | null;
   /**
+   * Set INSTEAD of `amendedAt` when every amendment of this record only ticked
+   * the papers of a trip (tripPapersOnlyTargets): "Papeles del viaje
+   * actualizados", never "Corregido".
+   */
+  papersUpdatedAt?: Date | null;
+  /**
    * The visit this record was written in (pet_events.visit_id, migration
    * 0273) — stamped at insert, never backfilled, so null for every record
    * written outside a vet's atención. Renderers group by it.
