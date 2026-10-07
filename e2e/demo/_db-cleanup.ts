@@ -395,3 +395,46 @@ export async function deletePetsByNamePrefix(prefix: string): Promise<number> {
     await sql.end({ timeout: 5 });
   }
 }
+
+/**
+ * Put a seeded account on a given legal version (the re-acceptance walk,
+ * e2e/legal-reacceptance.spec.ts). Returns false — and changes nothing — on any
+ * non-local database: rewriting a staging account's recorded consent is not a
+ * fixture repair. `version` null clears the acceptance.
+ */
+export async function setLegalVersionForEmail(
+  email: string,
+  version: string | null,
+): Promise<boolean> {
+  const target = resolveCleanupTarget();
+  if (target.kind === "undeclared") announceUndeclared();
+  if (target.kind !== "local") return false;
+  const sql = postgres(target.url, { max: 1, onnotice: () => {} });
+  try {
+    const rows = await sql`
+      UPDATE public.profiles p
+         SET tos_version = ${version},
+             tos_accepted_at = CASE WHEN ${version}::text IS NULL THEN NULL ELSE now() END
+        FROM auth.users u
+       WHERE u.id = p.id AND lower(u.email) = lower(${email})
+      RETURNING p.id`;
+    return rows.length === 1;
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+}
+
+/** The legal version an account has on record, or null. Local only. */
+export async function legalVersionForEmail(email: string): Promise<string | null> {
+  const target = resolveCleanupTarget();
+  if (target.kind !== "local") return null;
+  const sql = postgres(target.url, { max: 1, onnotice: () => {} });
+  try {
+    const rows = await sql<{ tos_version: string | null }[]>`
+      SELECT p.tos_version FROM public.profiles p JOIN auth.users u ON u.id = p.id
+       WHERE lower(u.email) = lower(${email})`;
+    return rows[0]?.tos_version ?? null;
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+}
