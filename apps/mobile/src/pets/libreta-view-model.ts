@@ -27,6 +27,8 @@ import type {
   PetLibretaV1,
 } from "@dim/contract/api";
 
+import { pluralizeEs } from "@dim/contract/reference";
+
 import { unknownEnumLabel } from "../ui/enum-label";
 import { type SectionView, sectionView } from "./owner-face-view-model";
 import { speciesLabel } from "./species";
@@ -310,16 +312,18 @@ export function tripPapersTickKey(entry: LibretaEntryV1): string | null {
   if (entry.eventType !== "event_amended" || entry.title !== TRIP_PAPERS_UPDATED_LABEL) {
     return null;
   }
-  return [
-    factValue(entry, "Destino") ?? "",
-    factValue(entry, "Fecha del viaje") ?? "",
-    entry.whenAbsolute,
-  ].join("|");
+  // NO DESTINATION, NO GROUPING. The facts come from the trip row, and a long
+  // libreta's capped read can lose the trip while keeping its ticks; keyed on
+  // the day alone, ticks of two different trips would merge here while the
+  // web (keyed on the trip's id) keeps them apart. Ungrouped is the safe side.
+  const destination = factValue(entry, "Destino");
+  if (destination === null) return null;
+  return [destination, factValue(entry, "Fecha del viaje") ?? "", entry.whenAbsolute].join("|");
 }
 
 /** "Papeles del viaje actualizados · 3 cambios · Chile" — the web's words. */
 export function tripPapersGroupLabel(count: number, country: string | null): string {
-  return [TRIP_PAPERS_UPDATED_LABEL, count === 1 ? "1 cambio" : `${count} cambios`, country]
+  return [TRIP_PAPERS_UPDATED_LABEL, `${count} ${pluralizeEs(count, "cambio")}`, country]
     .filter(Boolean)
     .join(" · ");
 }

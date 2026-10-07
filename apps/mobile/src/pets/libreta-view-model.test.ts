@@ -339,6 +339,18 @@ describe("groupLedgerEntries — papers ticks drawn as one row", () => {
     expect(tripPapersTickKey(aTick("t"))).toBe("Chile|15 de nov de 2026|1 de jul de 2026");
   });
 
+  it("does not group ticks whose trip fell out of the read (no Destino)", () => {
+    const orphan = (id: string) =>
+      aTick(id, {
+        facts: [{ key: "Fecha", value: "1 de jul de 2026", missing: false, mono: false }],
+      });
+    expect(tripPapersTickKey(orphan("o1"))).toBeNull();
+    expect(groupLedgerEntries([orphan("o2"), orphan("o1")]).map((i) => i.kind)).toEqual([
+      "entry",
+      "entry",
+    ]);
+  });
+
   it("omits an unknown country from the label", () => {
     expect(tripPapersGroupLabel(2, null)).toBe("Papeles del viaje actualizados · 2 cambios");
   });
