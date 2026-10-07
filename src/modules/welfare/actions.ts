@@ -970,6 +970,19 @@ export async function createWelfareReportAction(
       : null;
   if (subjectPet && isSyntheticPet(subjectPet)) return { error: SYNTHETIC_PET_WRITE_REFUSED };
 
+  // REPLAY BEFORE THE REPORT ROW EXISTS (plan A5c): a retry of a report that
+  // already succeeded lands on the original, not on a second report and case.
+  // Only an identified reporter about a registered pet has a ledger to ask —
+  // see findBridgedReportReplay for what it can and cannot answer.
+  if (clientIdempotencyKey && subjectPet && reporterUserId) {
+    const replayed = await repo.findBridgedReportReplay(
+      subjectPet.id,
+      clientIdempotencyKey,
+      reporterUserId,
+    );
+    if (replayed) return { error: null, redirectTo: "/denuncias/mias" };
+  }
+
   let locationLat: string | null = null;
   let locationLng: string | null = null;
   if (locationLatRaw || locationLngRaw) {
@@ -1261,6 +1274,22 @@ export async function createOrgWelfareReportAction(
 
   const occurredAt = occurredAtRaw ? parseDateInput(occurredAtRaw) : null;
   if (occurredAtRaw && !occurredAt) return { error: "Fecha del hecho inválida." };
+
+  // Replay before the report row exists (plan A5c) — same reasoning as the
+  // citizen action above. Asked before the evidence gate too: the retry of a
+  // report that succeeded must not be refused for its files.
+  if (orgClientIdempotencyKey && subjectKind === "registered_pet" && subjectPetToken) {
+    const replayPet = await repo.findPetByToken(subjectPetToken);
+    const replayed = replayPet
+      ? await repo.findBridgedReportReplay(replayPet.id, orgClientIdempotencyKey, user.id)
+      : null;
+    if (replayed) {
+      return {
+        error: null,
+        redirectTo: `/org/${orgToken}/maltrato/recibidos?tab=emitidos&creado=${encodeURIComponent(replayed.referenceCode)}`,
+      };
+    }
+  }
 
   // File upload required for org reports (spec R2)
   const attachmentEntries = formData.getAll("attachment");

@@ -27,6 +27,7 @@ const {
   mockOpenCase,
   mockRedirect,
   mockTransaction,
+  mockFindBridgedReportReplay,
 } = vi.hoisted(() => ({
   mockInsertReportWithRetry: vi.fn(),
   mockFindPetByToken: vi.fn(),
@@ -38,6 +39,7 @@ const {
   mockOpenCase: vi.fn(),
   mockRedirect: vi.fn(),
   mockTransaction: vi.fn(),
+  mockFindBridgedReportReplay: vi.fn(),
 }));
 
 vi.mock("../../infrastructure/welfare-repository", () => {
@@ -49,6 +51,7 @@ vi.mock("../../infrastructure/welfare-repository", () => {
     linkCase = mockLinkCase;
     insertPetEventIdempotent = mockInsertPetEventIdempotent;
     setFlagged = mockSetFlagged;
+    findBridgedReportReplay = mockFindBridgedReportReplay;
   }
   return { WelfareRepository };
 });
@@ -251,5 +254,75 @@ describe("createWelfareReportAction — anonymity fully unlinks the account", ()
     expect(reporterUserIdFromInsert()).toBeNull();
     expect(state.redirectTo).toBe(`/denuncias/codigo/${REF_CODE}?nueva=1`);
     expect(mockRedirect).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Replay before the report row exists (plan A5c). A retry of a denuncia that
+// already succeeded used to insert a second report and open a second
+// welfare_denuncia case (that kind is exempt from the one-open-case index).
+// ---------------------------------------------------------------------------
+
+describe("createWelfareReportAction — a retry with the same key replays", () => {
+  vi.setConfig({ testTimeout: 20_000 });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockInsertReportWithRetry.mockResolvedValue({ id: "report-2", referenceCode: REF_CODE });
+    mockFindPetByToken.mockResolvedValue({ id: "pet-1", seedTag: null });
+    mockFindActiveOwnership.mockResolvedValue(null);
+    mockOpenCase.mockResolvedValue({ id: "case-2", publicCode: "CASE-2" });
+    mockInsertPetEventIdempotent.mockResolvedValue({ wasNoop: false, eventId: "evt-1" });
+    mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => cb({}));
+  });
+
+  function petReport(key: string, contactMode: "anonymous" | "with_contact"): FormData {
+    const fd = baseFormData(contactMode);
+    fd.set("kind", "physical_abuse");
+    fd.set("subjectKind", "registered_pet");
+    fd.set("subjectPetToken", "DIM-PET1-TEST");
+    fd.set("clientIdempotencyKey", key);
+    if (contactMode === "with_contact") fd.set("reporterContactEmail", "reporter@example.com");
+    return fd;
+  }
+
+  it("same key, same reporter: lands on the original — no second report, no second case", async () => {
+    setUser({ id: "user-123" });
+    mockFindBridgedReportReplay.mockResolvedValue({
+      reportId: "report-1",
+      referenceCode: REF_CODE,
+    });
+
+    const { createWelfareReportAction } = await import("../../actions");
+    const state = await createWelfareReportAction(
+      { error: null },
+      petReport("key-retry", "with_contact"),
+    );
+
+    expect(state).toEqual({ error: null, redirectTo: "/denuncias/mias" });
+    expect(mockFindBridgedReportReplay).toHaveBeenCalledWith("pet-1", "key-retry", "user-123");
+    expect(mockInsertReportWithRetry).not.toHaveBeenCalled();
+    expect(mockOpenCase).not.toHaveBeenCalled();
+  });
+
+  it("a key the ledger has never seen files a new report", async () => {
+    setUser({ id: "user-123" });
+    mockFindBridgedReportReplay.mockResolvedValue(null);
+
+    const { createWelfareReportAction } = await import("../../actions");
+    await createWelfareReportAction({ error: null }, petReport("key-new", "with_contact"));
+
+    expect(mockInsertReportWithRetry).toHaveBeenCalledTimes(1);
+    expect(mockOpenCase).toHaveBeenCalledTimes(1);
+  });
+
+  it("an anonymous report is never replayed: there is no reporter to scope the key to", async () => {
+    setUser({ id: "user-123" });
+
+    const { createWelfareReportAction } = await import("../../actions");
+    await createWelfareReportAction({ error: null }, petReport("key-anon", "anonymous"));
+
+    expect(mockFindBridgedReportReplay).not.toHaveBeenCalled();
+    expect(mockInsertReportWithRetry).toHaveBeenCalledTimes(1);
   });
 });
