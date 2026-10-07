@@ -167,6 +167,39 @@ describe("LaunchMark — the hand-off", () => {
     expect(hide).toHaveBeenCalledTimes(1);
   });
 
+  // Review INFO (2026-10-06): a logo that fails to decode must still release
+  // the native splash — and not only on the fallback, since `onError` already
+  // says there is nothing left to wait for.
+  it("releases the native splash at once when the logo fails to load", async () => {
+    reduceMotion(false);
+    render(<LaunchMark ready={false} />);
+    await settleQuery();
+    fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
+    expect(hide).not.toHaveBeenCalled();
+
+    fireEvent(screen.getByTestId("launch-mark-logo"), "error", {
+      nativeEvent: { error: "decode failed" },
+    });
+    expect(hide).toHaveBeenCalledTimes(1);
+    // Neither the fallback nor a late load hands off a second time.
+    advance(LAUNCH_MARK_HANDOFF_FALLBACK_MS);
+    fireEvent(screen.getByTestId("launch-mark-logo"), "load");
+    expect(hide).toHaveBeenCalledTimes(1);
+  });
+
+  it("still waits for layout when the logo fails before it", async () => {
+    reduceMotion(false);
+    render(<LaunchMark ready={false} />);
+    await settleQuery();
+    fireEvent(screen.getByTestId("launch-mark-logo"), "error", {
+      nativeEvent: { error: "decode failed" },
+    });
+    expect(hide).not.toHaveBeenCalled();
+
+    fireEvent(screen.getByTestId("launch-mark"), "layout", LAYOUT);
+    expect(hide).toHaveBeenCalledTimes(1);
+  });
+
   it("shrinks to its resting size when the system allows motion", async () => {
     reduceMotion(false);
     const timing = jest.spyOn(Animated, "timing");

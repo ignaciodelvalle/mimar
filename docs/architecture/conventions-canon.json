@@ -8268,10 +8268,10 @@
       "wired": "none",
       "status": "UNENFORCED",
       "clause": "R7",
-      "statusBasis": "__tests__/e2e-seed-profile.test.ts:13-68 only exercises resolveSeedProfile/seedFixtureVerdict on literal args; nothing scans e2e/*.spec.ts. The banned shape is live and unfenced: e2e/print-surfaces.spec.ts:53,76,87 test.skip((await petLink.count()) === 0, ...) and e2e/race-battery.spec.ts:74 — verbatim the construct the rule disallows.",
+      "statusBasis": "__tests__/e2e-seed-profile.test.ts:13-68 only exercises resolveSeedProfile/seedFixtureVerdict on literal args; nothing scans e2e/*.spec.ts. The banned shape is live and unfenced: e2e/print-surfaces.spec.ts:54 test.skip((await petLink.count()) === 0, ...) and e2e/race-battery.spec.ts:74 — verbatim the construct the rule disallows.",
       "notes": "v3 reached the same gap ('nothing scans e2e/*.spec.ts for the BANNED shape') but capped at PARTIAL. R7's second branch: the rule's predicate IS adoption of the seed profile, so the helper's own test proves nothing about callers and no fence mandates the single door.",
       "confidence": 0.85,
-      "verifiedAt": "d7dbf25f7"
+      "verifiedAt": "688ca3c74"
     },
     {
       "id": "CANON-469",
@@ -8288,10 +8288,10 @@
       "status": "PARTIAL",
       "partialShape": "adoption-unfenced",
       "clause": "R7",
-      "statusBasis": "__tests__/e2e-seed-profile.test.ts:59-68 asserts seedFixtureVerdict(0, ..., 'bootstrap') returns verdict 'skip' with a reason containing 'NO COVERAGE' — the helper's behaviour is genuinely pinned. No caller is forced through it: e2e/print-surfaces.spec.ts:53,76,87 and e2e/race-battery.spec.ts:74 gate on data with no profile at all.",
+      "statusBasis": "__tests__/e2e-seed-profile.test.ts:59-68 asserts seedFixtureVerdict(0, ..., 'bootstrap') returns verdict 'skip' with a reason containing 'NO COVERAGE' — the helper's behaviour is genuinely pinned. No caller is forced through it: e2e/print-surfaces.spec.ts:54 and e2e/race-battery.spec.ts:74 gate on data with no profile at all (the sticky-bar test that was :76,87 now asserts the seeded lost pet, :84).",
       "notes": "R7 first branch — the rule states the mechanism's BEHAVIOUR, adoption implied, so PARTIAL not ENFORCED. v3 called this ENFORCED while calling the sibling CANON-479 adoption-unfenced on the same file; the gap is the same one. The bootstrap case pins only the 'NO COVERAGE' marker — the fixture/unmeasured naming is pinned on the 'full' branch (:46-53), not here.",
       "confidence": 0.72,
-      "verifiedAt": "d7dbf25f7"
+      "verifiedAt": "688ca3c74"
     },
     {
       "id": "CANON-470",
@@ -8308,10 +8308,10 @@
       "status": "PARTIAL",
       "partialShape": "adoption-unfenced",
       "clause": "R7",
-      "statusBasis": "__tests__/e2e-seed-profile.test.ts:41-53 asserts seedFixtureVerdict(0, ..., 'full').verdict === 'fail' and that the reason names both the fixture ('/perdidas') and what went unmeasured ('the axe audit'). Callers escape: e2e/print-surfaces.spec.ts:53,76,87 skip on (await petLink.count()) === 0 regardless of profile, so under 'full' a missing fixture there still skips instead of failing.",
+      "statusBasis": "__tests__/e2e-seed-profile.test.ts:41-53 asserts seedFixtureVerdict(0, ..., 'full').verdict === 'fail' and that the reason names both the fixture ('/perdidas') and what went unmeasured ('the axe audit'). Callers escape: e2e/print-surfaces.spec.ts:54 skips on (await petLink.count()) === 0 regardless of profile, so under 'full' a missing fixture there still skips instead of failing.",
       "notes": "Helper behaviour fully pinned in both directions (:36-39 runs when present); the rule's effect on the corpus is not. Same R7 first-branch reasoning as CANON-469.",
       "confidence": 0.72,
-      "verifiedAt": "d7dbf25f7"
+      "verifiedAt": "688ca3c74"
     },
     {
       "id": "CANON-471",
@@ -8448,10 +8448,10 @@
       "wired": "none",
       "status": "UNENFORCED",
       "clause": "R7",
-      "statusBasis": "__tests__/e2e-seed-profile.test.ts:35-68 judges only the helper's return values on literal arguments. e2e/print-surfaces.spec.ts:53 skips with 'No adoptable pets seeded — no credential to print.' — a fixture the repo's own seed provides — and nothing turns red; no fence reads e2e spec source for skip predicates.",
+      "statusBasis": "__tests__/e2e-seed-profile.test.ts:35-68 judges only the helper's return values on literal arguments. e2e/print-surfaces.spec.ts:54 skips with 'No adoptable pets seeded — no credential to print.' — a fixture every seed profile guarantees (e2e/_seed-profile.ts:25-27: one lost pet and one adoption listing) — and nothing turns red. Its sibling, the sticky-bar test, was converted to an assertion on the seeded lost pet (:84), which proves the shape is adoptable spec by spec and is not fenced; no fence reads e2e spec source for skip predicates.",
       "notes": "v3 named the same adoption gap and capped at PARTIAL. The rule's predicate is a directive to spec authors ('skips are for environmental conditions; if the seed guarantees it, ASSERT it'), i.e. adoption proper → R7 second branch, and a live violating skip exists. Blind calibration dissent (1 of 18 sampled rows): the blind reader derived PARTIAL (adoption-unfenced) where v4 says UNENFORCED. v4's verdict stands — the rule's predicate is adoption itself and no production path is forced through the helper.",
       "confidence": 0.75,
-      "verifiedAt": "d7dbf25f7"
+      "verifiedAt": "688ca3c74"
     },
     {
       "id": "CANON-480",
@@ -8467,10 +8467,10 @@
       "wired": "none",
       "status": "UNENFORCED",
       "clause": "R7",
-      "statusBasis": ".github/workflows/ci.yml:1034 `pnpm e2e --reporter=list,github,html` is a config string and checks nothing about skips. The rule's predicate is adoption ('every remaining skip prints its reason') and only the helper is pinned: __tests__/e2e-seed-profile.test.ts:66-67 asserts the seed-profile outcome carries a reason, while each spec is free to call test.skip with an empty string (e2e/print-surfaces.spec.ts:185 passes \"\" on its non-skip branch).",
+      "statusBasis": ".github/workflows/ci.yml:1034 `pnpm e2e --reporter=list,github,html` is a config string and checks nothing about skips. The rule's predicate is adoption ('every remaining skip prints its reason') and only the helper is pinned: __tests__/e2e-seed-profile.test.ts:66-67 asserts the seed-profile outcome carries a reason, while each spec is free to call test.skip with an empty string (e2e/print-surfaces.spec.ts:191 passes \"\" on its non-skip branch).",
       "notes": "No scripts/check-*.ts scans e2e/ for skips without a reason. The v3 basis called the reporter half 'the enforced half', but a reporter flag is R2 config: with the obligation half unfenced and the config half not an enforcer at all, there is no covered part left to make this PARTIAL.",
       "confidence": 0.75,
-      "verifiedAt": "d7dbf25f7"
+      "verifiedAt": "688ca3c74"
     },
     {
       "id": "CANON-481",

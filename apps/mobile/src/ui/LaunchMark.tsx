@@ -17,7 +17,8 @@
 //      2026-10-06) the fade uncovered an overlay whose image had not decoded
 //      yet, and the logo dipped to half opacity for ~100ms. If the image never
 //      reports a load, `LAUNCH_MARK_HANDOFF_FALLBACK_MS` after layout the splash
-//      is released anyway — a failed decode must not trap anybody.
+//      is released anyway — a failed decode must not trap anybody. A decode
+//      that reports its failure (`onError`) releases at once, layout permitting.
 //   4. After that fade, and only if the system allows motion, the logo shrinks
 //      to `LAUNCH_MARK_REST_SCALE` and stays there.
 //   5. When the app is ready (and the shrink has landed) the overlay fades out
@@ -295,6 +296,14 @@ export function LaunchMark({ ready }: { ready: boolean }) {
     handOff(false);
   };
 
+  // A decode that FAILS is an answer too: there is nothing left to wait for,
+  // so the hand-off does not sit out the fallback. It still waits for layout —
+  // the overlay's ground must be on screen before the native splash fades.
+  const onImageError = () => {
+    imagePainted.current = true;
+    handOff(false);
+  };
+
   return (
     <Animated.View
       testID="launch-mark"
@@ -312,6 +321,7 @@ export function LaunchMark({ ready }: { ready: boolean }) {
         testID="launch-mark-logo"
         source={SPLASH_IMAGE}
         onLoad={onImageLoad}
+        onError={onImageError}
         resizeMode="contain"
         style={{
           width: LAUNCH_MARK_SIZE_DP,

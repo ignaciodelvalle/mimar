@@ -26,6 +26,7 @@ import { type StyleProp, StyleSheet, type ViewStyle } from "react-native";
 import {
   DocumentChromeNative,
   type DocumentFace,
+  bandGradientWidth,
   bandSkin,
   credentialBandSkin,
 } from "./DocumentChromeNative";
@@ -259,6 +260,40 @@ describe("band background — the gradient covers the whole band on Android", ()
       const own = StyleSheet.flatten(svg.props.style) ?? {};
       expect(own.position).not.toBe("absolute");
     }
+  });
+
+  // Review INFO (2026-10-06): rounding to NEAREST drew a 389dp Svg in a
+  // 389.4dp band and left a sub-dp navy hairline at the right edge. The width
+  // rounds OUTWARD; the wrapper's overflow clips the overshoot.
+  it("rounds a fractional band width outward, never leaving an edge uncovered", () => {
+    for (const measured of [343, 343.01, 389.4, 389.5, 389.99, 0.2]) {
+      const width = bandGradientWidth(measured);
+      expect(Number.isInteger(width)).toBe(true);
+      expect(width).toBeGreaterThanOrEqual(measured);
+      expect(width - measured).toBeLessThan(1);
+    }
+    expect(bandGradientWidth(0)).toBe(0);
+    expect(bandGradientWidth(-3)).toBe(0);
+  });
+
+  it("feeds the rounded-outward width to the Svg the band actually paints", () => {
+    render(
+      createElement(DocumentChromeNative, {
+        face: "credencial",
+        isLibretaActive: false,
+        onTurn: () => {},
+        situation: null,
+      }),
+    );
+    layOutBand(389.4);
+    const svgs = screen
+      .getByTestId("band-background")
+      .findAll((node) => typeof node.props?.viewBox === "string");
+    expect(svgs.length).toBeGreaterThan(0);
+    for (const svg of svgs) expect(svg.props.width).toBe(390);
+    expect(StyleSheet.flatten(screen.getByTestId("band-background").props.style).overflow).toBe(
+      "hidden",
+    );
   });
 });
 

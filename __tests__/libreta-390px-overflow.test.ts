@@ -137,26 +137,125 @@ function inBlock(css: string, header: string, selector: string, name: string): s
   return prop(rule.body, name);
 }
 
-/** Top-level track count of a grid-template-columns value. */
-function trackCount(value: string): number {
-  return value
-    .replace(/\([^()]*\)/g, "X")
-    .trim()
-    .split(/\s+/).length;
+/**
+ * Split `value` on `separator` (a single-char test) at parenthesis depth 0 —
+ * `minmax(0, 1fr)` and `repeat(2, …)` stay one piece.
+ */
+function splitTopLevel(value: string, isSeparator: (ch: string) => boolean): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of value) {
+    if (ch === "(" || ch === "[") depth++;
+    else if (ch === ")" || ch === "]") depth--;
+    if (depth === 0 && isSeparator(ch)) {
+      if (current.trim() !== "") parts.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim() !== "") parts.push(current.trim());
+  return parts;
 }
+
+/**
+ * Top-level track count of a grid-template-columns value.
+ *
+ * `repeat(n, <tracks>)` counts as n × its tracks — `repeat(3, 156px)` is three
+ * tracks, not one word — and `repeat(auto-fill|auto-fit, …)` as unbounded,
+ * since it can lay out three or more. Line names (`[a]`) are not tracks.
+ * Review INFO 2026-10-06: the old version collapsed one level of parentheses
+ * and split on spaces, so `repeat(3, 1fr)` read as ONE track and a three-track
+ * identity grid written that way passed the fence below.
+ */
+function trackCount(value: string): number {
+  let total = 0;
+  for (const token of splitTopLevel(value.trim(), (ch) => /\s/.test(ch))) {
+    if (token.startsWith("[")) continue;
+    const repeat = /^repeat\(([\s\S]*)\)$/i.exec(token);
+    if (!repeat) {
+      total += 1;
+      continue;
+    }
+    const [times = "", ...rest] = splitTopLevel(repeat[1] ?? "", (ch) => ch === ",");
+    const inner = trackCount(rest.join(","));
+    if (/^auto-(fill|fit)$/i.test(times.trim())) return Number.POSITIVE_INFINITY;
+    const n = Number.parseInt(times, 10);
+    if (!Number.isFinite(n)) throw new Error(`unreadable repeat() count: ${token}`);
+    total += n * inner;
+  }
+  return total;
+}
+
+/** The compounds of one complex selector, split on combinators at depth 0. */
+function compounds(complex: string): string[] {
+  return splitTopLevel(complex.replace(/\s*([>+~])\s*/g, " "), (ch) => /\s/.test(ch));
+}
+
+/** Whether a compound carries `:not(…)` whose argument list excludes `[data-cell=none]`. */
+function excludesDeceased(compound: string): boolean {
+  for (const m of compound.matchAll(/:not\(((?:[^()]|\([^()]*\))*)\)/gi)) {
+    const args = splitTopLevel(m[1] ?? "", (ch) => ch === ",");
+    if (args.some((arg) => /^\[\s*data-cell\s*=\s*(["']?)none\1\s*\]$/i.test(arg.trim()))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * A rule that sets columns must never outrank the deceased one-track rule.
+ *
+ * EVERY selector in the list must qualify, and the qualifier must sit on the
+ * SUBJECT compound — the element whose columns are set. Review INFO
+ * 2026-10-06: `selector.includes(':not([data-cell="none"])')` accepted
+ * `.x:not([data-cell="none"]) .pc-id`, where the :not() guards an ANCESTOR
+ * and a deceased `.pc-id` below it is still overridden; and any selector list
+ * with one qualifying member.
+ */
+function respectsDeceased(selector: string): boolean {
+  return splitTopLevel(selector, (ch) => ch === ",").every((complex) => {
+    if (complex.trim() === ".pc-id") return true;
+    const subject = compounds(complex).at(-1) ?? "";
+    return subject.includes('[data-photo="hero"]') || excludesDeceased(subject);
+  });
+}
+
+describe("the CSS helpers this file trusts", () => {
+  it("trackCount reads repeat(), nested functions and line names", () => {
+    expect(trackCount("156px 156px")).toBe(2);
+    expect(trackCount("156px minmax(0, 1fr) 156px")).toBe(3);
+    expect(trackCount("minmax(0, 1fr)")).toBe(1);
+    expect(trackCount("repeat(3, 1fr)")).toBe(3);
+    expect(trackCount("repeat(2, minmax(0, 1fr))")).toBe(2);
+    expect(trackCount("repeat(2, 116px minmax(0, 1fr)) 40px")).toBe(5);
+    expect(trackCount("[start] 116px [mid] 116px [end]")).toBe(2);
+    expect(trackCount("repeat(auto-fill, minmax(116px, 1fr))")).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it("respectsDeceased only trusts a qualifier on the subject, for every list member", () => {
+    expect(respectsDeceased(".pc-id")).toBe(true);
+    expect(respectsDeceased('.pc-id[data-photo="hero"]')).toBe(true);
+    expect(respectsDeceased('.fp .pc-id:not([data-cell="none"]):not([data-photo="hero"])')).toBe(
+      true,
+    );
+    expect(respectsDeceased(".pc-id:not([data-cell=none])")).toBe(true);
+    expect(respectsDeceased(".pc-id:not(.x, [data-cell='none'])")).toBe(true);
+    // The :not() guards an ancestor: a deceased .pc-id below it is overridden.
+    expect(respectsDeceased('.pc-cred:not([data-cell="none"]) .pc-id')).toBe(false);
+    expect(respectsDeceased('.pc-cred:not([data-cell="none"]) > .pc-id')).toBe(false);
+    // One qualifying member does not launder the rest of the list.
+    expect(respectsDeceased('.pc-id:not([data-cell="none"]), .fp .pc-id')).toBe(false);
+    // Same specificity as the deceased rule — order would decide, so not trusted.
+    expect(respectsDeceased(".fp .pc-id")).toBe(false);
+    expect(respectsDeceased(".pc-id:not(.x)")).toBe(false);
+  });
+});
 
 const WIDE = "@container (min-width: 572px)";
 const PHONE = "@media (max-width: 440px)";
 const FICHA_PHONE = "@container (max-width: 440px)";
-
-/** A rule that sets columns must never outrank the deceased one-track rule. */
-function respectsDeceased(selector: string): boolean {
-  return (
-    selector === ".pc-id" ||
-    selector.includes('[data-photo="hero"]') ||
-    selector.includes(':not([data-cell="none"])')
-  );
-}
 
 // The /p/ and owner-face identity row (`.pc-id`), laid out by the CARD's width
 // (`.pc-cred` is an inline-size container), not the viewport. /p/ caps the card

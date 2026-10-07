@@ -271,6 +271,18 @@ export function situationChipSkin(situationKey: string): {
   }
 }
 
+/**
+ * The gradient Svg's width for a measured band width: rounded OUTWARD. A
+ * fractional measure (389.4dp on a 1.5x screen) rounded to nearest drew a
+ * 389dp Svg and left a sub-dp hairline of the wrapper's flat navy at the right
+ * edge. Ceil overshoots by under 1dp instead, and the wrapper's
+ * `overflow: hidden` clips it — the same rule `faceWatermarkGeometry` follows.
+ * Zero and negative measures stay 0 (nothing drawn yet).
+ */
+export function bandGradientWidth(measured: number): number {
+  return measured > 0 ? Math.ceil(measured) : 0;
+}
+
 /** Landing-sweep band ground — gradient only, no pinstripes. */
 /**
  * The band's gradient. NUMERIC SIZE, INSIDE AN ABSOLUTE WRAPPER — never a
@@ -286,7 +298,7 @@ function BandBackground() {
   const skin = credentialBandSkin();
   const [width, setWidth] = useState(0);
   const onLayout = (event: LayoutChangeEvent) => {
-    const measured = Math.round(event.nativeEvent.layout.width);
+    const measured = bandGradientWidth(event.nativeEvent.layout.width);
     if (measured > 0 && measured !== width) setWidth(measured);
   };
   return (
