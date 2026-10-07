@@ -1,6 +1,7 @@
 "use server";
 
 import { db, pets } from "@/db";
+import { findExistingByKey } from "@/lib/events/event-idempotency";
 import { checkOccurredAtPlausible } from "@/lib/events/plausibility";
 import { requireAdminOrRedirect } from "@/lib/infra/auth-guards";
 import { fetchActiveIdentifications } from "@/lib/infra/pet-identifiers";
@@ -20,6 +21,12 @@ const ADMIN_REASONS = new Set([
 ]);
 
 const REVOCATION_REASONS = new Set(["owner_request", "device_failure", "fraud_detected"]);
+
+/** Whether this key already wrote a `microchip_replaced` on the pet. */
+async function isReplayedReplacement(petId: string, key: string | null): Promise<boolean> {
+  if (!key) return false;
+  return (await findExistingByKey(petId, "microchip_replaced", key)) !== null;
+}
 
 export async function replaceMicrochipAdminAction(
   publicToken: string,
@@ -45,9 +52,19 @@ export async function replaceMicrochipAdminAction(
     .limit(1);
   if (!pet) return { error: "Mascota no encontrada." };
 
+  const clientIdempotencyKey = String(formData.get("clientIdempotencyKey") ?? "").trim() || null;
+
   // ARCH-S: legacy pets.microchipId column dropped — read from canonical.
   const canonicalIds = await fetchActiveIdentifications(pet.id);
   if (!canonicalIds.microchip) {
+    // REPLAY CHECK BEFORE STATE GUARD (plan A5c) — the same order the v1 events
+    // route keeps (append-special-kinds.ts). A pure revocation leaves the
+    // animal with no active chip, and `fraud_detected` also opens a
+    // microchip_remediation case: the retry of a request that SUCCEEDED used to
+    // land here and be told the pet has no chip. Ask the ledger first.
+    if (await isReplayedReplacement(pet.id, clientIdempotencyKey)) {
+      return { error: null, ok: true, redirectTo: "/admin/observaciones" };
+    }
     return { error: "Esta mascota no tiene microchip registrado." };
   }
 
@@ -56,7 +73,6 @@ export async function replaceMicrochipAdminAction(
   const replacedBy = String(formData.get("replacedBy") ?? "").trim() || null;
   const replacedAtRaw = String(formData.get("replacedAt") ?? "").trim();
   const notes = String(formData.get("notes") ?? "").trim() || null;
-  const clientIdempotencyKey = String(formData.get("clientIdempotencyKey") ?? "").trim() || null;
 
   if (!ADMIN_REASONS.has(reason)) {
     return { error: "Motivo inválido." };

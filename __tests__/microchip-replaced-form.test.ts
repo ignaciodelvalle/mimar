@@ -159,6 +159,13 @@ vi.mock("@/db", () => {
   };
 });
 
+// Admin action's replay lookup (plan A5c) — asked only when no chip is active.
+const mockFindExistingByKey = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
+vi.mock("@/lib/events/event-idempotency", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/events/event-idempotency")>()),
+  findExistingByKey: (...args: unknown[]) => mockFindExistingByKey(...args),
+}));
+
 // ARCH-S: form actions now call fetchActiveIdentifications to get the current chip.
 // Mock it to return a pre-existing chip so the "accepts" tests reach replaceMicrochipForUser.
 vi.mock("@/lib/infra/pet-identifiers", () => ({
@@ -436,6 +443,60 @@ describe("replaceMicrochipAdminAction — reason validation", () => {
     );
 
     expect(mockReplaceMicrochipForUser).toHaveBeenCalledOnce();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Replay check before state guard (plan A5c). A fraud revocation leaves the pet
+// with no active chip (and opens a microchip_remediation case); its retry must
+// replay, not meet "no tiene microchip registrado".
+// ---------------------------------------------------------------------------
+
+describe("replaceMicrochipAdminAction — replay before the no-chip refusal", () => {
+  beforeEach(async () => {
+    await resetActionMocks();
+    mockFindExistingByKey.mockReset();
+    const { fetchActiveIdentifications } = await import("@/lib/infra/pet-identifiers");
+    // The state the FIRST successful revocation leaves behind.
+    vi.mocked(fetchActiveIdentifications).mockResolvedValueOnce({ microchip: null, tattoo: null });
+  });
+
+  const revocation = (key: string) =>
+    makeFormData({
+      reason: "fraud_detected",
+      newChipNumber: "",
+      replacedAt: TODAY,
+      notes: "Chip fraudulento — expediente policial 12345.",
+      clientIdempotencyKey: key,
+    });
+
+  it("the same key again returns the original success, writing nothing", async () => {
+    mockFindExistingByKey.mockResolvedValue({ id: "evt-original", caseId: "case-1" });
+    const { replaceMicrochipAdminAction } = await import(
+      "@/app/admin/observaciones/[publicToken]/microchip/reemplazar/action"
+    );
+
+    await expectNavigatesTo(
+      replaceMicrochipAdminAction(PET_TOKEN, { error: null }, revocation("key-retry")),
+      "/admin/observaciones",
+    );
+    expect(mockFindExistingByKey).toHaveBeenCalledWith(PET_ID, "microchip_replaced", "key-retry");
+    expect(mockReplaceMicrochipForUser).not.toHaveBeenCalled();
+  });
+
+  it("a different key is still refused by the no-chip guard", async () => {
+    mockFindExistingByKey.mockResolvedValue(null);
+    const { replaceMicrochipAdminAction } = await import(
+      "@/app/admin/observaciones/[publicToken]/microchip/reemplazar/action"
+    );
+
+    const result = await replaceMicrochipAdminAction(
+      PET_TOKEN,
+      { error: null },
+      revocation("key-other"),
+    );
+    expect(result).toEqual({ error: "Esta mascota no tiene microchip registrado." });
+    expect(mockReplaceMicrochipForUser).not.toHaveBeenCalled();
   });
 });
 
