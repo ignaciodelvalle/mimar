@@ -2,7 +2,7 @@
 //
 // WHAT THIS SCREEN IS, AND WHERE IT STOPS
 // ---------------------------------------------------------------------------
-// The web collects an account (email, password twice, the legal checkbox) and
+// The web collects an account (email, password twice, the legal checkboxes) and
 // then, on the same page, an identity (nombre, apellido, DNI, localidad). This
 // screen is the first half and hands the second to `identidad-pendiente`, which
 // already exists and already says why it refuses to collect a name natively:
@@ -65,13 +65,10 @@
 // order, so the message is about the first field of the form and not about
 // whichever rule zod happened to collect first.
 
-import * as Linking from "expo-linking";
 import { useCallback, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
-import { PRIVACY_URL, TERMS_URL } from "../config/api";
 import { Body, Card, ErrorNotice } from "../ui/components";
-import { FONTS } from "../ui/fonts";
 import {
   Callout,
   Eyebrow,
@@ -85,8 +82,9 @@ import {
   TextField,
   Title,
 } from "../ui/kit";
-import { COLORS, LEADING, RADIUS, SPACE, TYPE } from "../ui/theme";
+import { SPACE } from "../ui/theme";
 import { useReturnKeyChain } from "../ui/use-return-key-chain";
+import { LegalConsentBoxes } from "./LegalConsentBoxes";
 import { signUp } from "./session-store";
 import {
   EMPTY_SIGNUP_DRAFT,
@@ -95,83 +93,11 @@ import {
   toSignupInput,
 } from "./signup-input";
 
-/**
- * The legal checkbox, LOCAL TO THIS SCREEN rather than promoted into `kit.tsx`.
- *
- * That is the kit's own rule, stated on `Choice`: "a primitive with one caller
- * is a guess about the second. It moves the day a second screen needs it." This
- * app has exactly one checkbox and it is this one — a Términos acceptance is
- * not a general boolean control, it is a legal act with a fixed shape.
- *
- * `accessibilityRole="checkbox"` with `accessibilityState.checked` is what makes
- * a screen reader announce it as something with two states rather than as a
- * button that does something unnamed. The label is the whole sentence, and the
- * two document links inside it are their OWN targets — nested `Pressable`s
- * would swallow the tap, so the links are separate rows under the sentence
- * instead of inline inside it. That is a deliberate divergence from the web,
- * where an inline `<a>` inside a `<label>` works and here it does not.
- */
-/**
- * The consent sentence, once, so the visible label and the screen-reader name
- * cannot say two different things.
- *
- * The transfer clause (Ley 25.326 art. 12, PO decision 6A, 2026-09-24): Brazil
- * and the US are not on the AAIP adequacy list (Disposición DNPDP 60-E/2016, art. 3), so the
- * international transfer to the providers the privacy policy lists rests on
- * express consent, and a consent the sentence does not NAME is not express. It
- * is the same words as the web form (app/(auth)/registro/SignupForm.tsx) —
- * change one, change both. The policy link below opens the page the clause
- * refers to.
- */
-const TOS_SENTENCE =
-  "Leí y acepto los Términos y condiciones y la Política de privacidad, incluida la transferencia de mis datos fuera de la Argentina a los proveedores que se detallan en ella";
-
-function TosCheckbox({
-  checked,
-  onToggle,
-  disabled,
-}: {
-  checked: boolean;
-  onToggle: () => void;
-  disabled: boolean;
-}) {
-  return (
-    <View style={styles.tos}>
-      <Pressable
-        accessibilityRole="checkbox"
-        accessibilityLabel={`${TOS_SENTENCE}, obligatorio`}
-        accessibilityState={{ checked, disabled }}
-        disabled={disabled}
-        hitSlop={SPACE.sm}
-        onPress={onToggle}
-        style={styles.tosRow}
-      >
-        <View style={[styles.box, checked ? styles.boxChecked : null]}>
-          {/* Decoration. The state a screen reader needs travels on
-              `accessibilityState`, never on this glyph. */}
-          <Text accessibilityElementsHidden importantForAccessibility="no" style={styles.boxMark}>
-            {checked ? "✓" : ""}
-          </Text>
-        </View>
-        <Text style={styles.tosLabel}>{TOS_SENTENCE}.</Text>
-      </Pressable>
-      <View style={styles.tosLinks}>
-        <LinkText
-          accessibilityHint="Se abre en el navegador"
-          onPress={() => void Linking.openURL(TERMS_URL)}
-        >
-          Términos y condiciones
-        </LinkText>
-        <LinkText
-          accessibilityHint="Se abre en el navegador"
-          onPress={() => void Linking.openURL(PRIVACY_URL)}
-        >
-          Política de privacidad
-        </LinkText>
-      </View>
-    </View>
-  );
-}
+// THE LEGAL BOXES MOVED to `./LegalConsentBoxes.tsx` (2026-10-07) when they
+// became three and a second screen (`AceptarCondicionesScreen`) needed them:
+// Terms and Privacy; the international transfer to Brasil and Estados Unidos,
+// on its own and set apart; and the 18+ declaration (legal review 2026-10-02,
+// rows P10 and P9; PO decision D2 = b). The web form says the same words.
 
 export function CrearCuentaScreen({ onGoToSignIn }: { onGoToSignIn: () => void }) {
   const [draft, setDraft] = useState<SignupDraft>(EMPTY_SIGNUP_DRAFT);
@@ -320,10 +246,14 @@ export function CrearCuentaScreen({ onGoToSignIn }: { onGoToSignIn: () => void }
           value={draft.confirmPassword}
         />
 
-        <TosCheckbox
-          checked={draft.tosAccepted}
+        <LegalConsentBoxes
+          value={{
+            tosAccepted: draft.tosAccepted,
+            transferAccepted: draft.transferAccepted,
+            adultDeclared: draft.adultDeclared,
+          }}
           disabled={busy}
-          onToggle={() => patch({ tosAccepted: !draft.tosAccepted })}
+          onChange={patch}
         />
 
         {failure === null ? null : <ErrorNotice message={failure} />}
@@ -366,34 +296,4 @@ const styles = StyleSheet.create({
   heading: { alignItems: "center", gap: SPACE.xs + 2 },
   form: { gap: SPACE.lg },
   footer: { alignItems: "center", gap: SPACE.xs },
-
-  tos: { gap: SPACE.sm },
-  tosRow: { flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm },
-  box: {
-    width: TYPE.lg,
-    height: TYPE.lg,
-    borderWidth: 1,
-    borderColor: COLORS.borderStrong,
-    borderRadius: RADIUS.control,
-    backgroundColor: COLORS.surface,
-    alignItems: "center",
-    justifyContent: "center",
-    // The control is small by design (it sits inside a sentence); the TAP
-    // target is the whole row plus the hitSlop above, which is what WCAG 2.5.5
-    // is about. `marginTop` aligns the box with the first line of the label
-    // rather than with the block.
-    marginTop: (TYPE.md * LEADING.md - TYPE.lg) / 2,
-  },
-  boxChecked: { borderColor: COLORS.accent, backgroundColor: COLORS.focusRing },
-  boxMark: { fontFamily: FONTS.sansSemibold, fontSize: TYPE.sm, color: COLORS.accent },
-  tosLabel: {
-    flex: 1,
-    fontFamily: FONTS.sans,
-    fontSize: TYPE.md,
-    lineHeight: TYPE.md * LEADING.md,
-    color: COLORS.ink,
-  },
-  // Indented to the label's left edge so the two documents read as belonging to
-  // the sentence above them rather than as two more form rows.
-  tosLinks: { gap: SPACE.xs, paddingLeft: TYPE.lg + SPACE.sm },
 });

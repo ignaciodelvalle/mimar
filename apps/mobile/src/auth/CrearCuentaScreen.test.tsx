@@ -13,8 +13,9 @@
 //      the route's redirect fires; this screen names no destination, because
 //      `useGate` is what decides that a brand-new account goes to
 //      identidad-pendiente.
-//   4. THE LEGAL CHECKBOX IS A CHECKBOX to a screen reader, starts unchecked,
-//      and gates the submit.
+//   4. THE LEGAL CHECKBOXES ARE CHECKBOXES to a screen reader, start unchecked,
+//      and EACH gates the submit on its own — Terms and Privacy, the transfer
+//      to Brasil and Estados Unidos, and 18 or older (2026-10-07).
 //   5. THE SERVER'S REFUSALS ARE RENDERED AS-IS, including the one that matters
 //      most here — `rate_limited`, which this screen can reach three submits
 //      into a minute.
@@ -33,11 +34,15 @@ jest.mock("./session-store", () => ({
 
 import { CrearCuentaScreen } from "./CrearCuentaScreen";
 
-// Written out, not imported: the consent sentence is a legal text, and a test
-// that derived it from the screen's own constant would agree with any edit.
-// The transfer clause is Ley 25.326 art. 12 (PO decision 6A, 2026-09-24).
+// Written out, not imported: the consent sentences are legal texts, and a test
+// that derived them from the screen's own constants would agree with any edit.
+// Three separate boxes since 2026-10-07 (legal review 2026-10-02, P10 and P9):
+// the transfer is no longer a clause inside the Terms box.
 const TOS_LABEL =
-  "Leí y acepto los Términos y condiciones y la Política de privacidad, incluida la transferencia de mis datos fuera de la Argentina a los proveedores que se detallan en ella, obligatorio";
+  "Leí y acepto los Términos y condiciones y la Política de privacidad, obligatorio";
+const TRANSFER_LABEL =
+  "Acepto que mis datos se transfieran a proveedores en Brasil y en Estados Unidos, países que no figuran en la lista argentina de países con protección adecuada de datos personales, obligatorio";
+const ADULT_LABEL = "Tengo 18 años o más, obligatorio";
 
 const noop = () => {};
 
@@ -46,7 +51,7 @@ function renderScreen(onGoToSignIn: () => void = noop) {
 }
 
 /**
- * Fill the form. `accept` false leaves the legal checkbox alone.
+ * Fill the form. `accept` false leaves the three legal checkboxes alone.
  *
  * The three names carry ", obligatorio" (CA-M1, finding A1-entrada-07): these
  * fields name their own `accessibilityLabel`, which the kit used to let REPLACE
@@ -60,7 +65,11 @@ function fill(overrides: { password?: string; confirmPassword?: string; accept?:
     screen.getByLabelText("Repetir contraseña, obligatorio"),
     overrides.confirmPassword ?? password,
   );
-  if (overrides.accept !== false) fireEvent.press(screen.getByLabelText(TOS_LABEL));
+  if (overrides.accept !== false) {
+    fireEvent.press(screen.getByLabelText(TOS_LABEL));
+    fireEvent.press(screen.getByLabelText(TRANSFER_LABEL));
+    fireEvent.press(screen.getByLabelText(ADULT_LABEL));
+  }
 }
 
 beforeEach(() => {
@@ -122,15 +131,41 @@ describe("the legal checkbox", () => {
     expect(screen.getByLabelText(TOS_LABEL).props.accessibilityState.checked).toBe(true);
   });
 
-  it("names the international transfer in the VISIBLE sentence, not only the spoken one", () => {
+  it("names the international transfer in its OWN visible box, naming both countries", () => {
     renderScreen();
-    // A sighted person consents to what they read. Ley 25.326 art. 12 needs
-    // the transfer in the sentence they tick, not only in the policy it links.
+    // A sighted person consents to what they read. The transfer is no longer a
+    // clause of the Terms sentence (Dec. 1558/2001 art. 5 inc. 1: "expresa y
+    // destacada"); it is its own box under its own heading.
+    expect(
+      screen.getByText("Leí y acepto los Términos y condiciones y la Política de privacidad."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/incluida la transferencia/)).toBeNull();
+    expect(screen.getByText("Transferencia internacional de tus datos")).toBeTruthy();
     expect(
       screen.getByText(
-        "Leí y acepto los Términos y condiciones y la Política de privacidad, incluida la transferencia de mis datos fuera de la Argentina a los proveedores que se detallan en ella.",
+        "Acepto que mis datos se transfieran a proveedores en Brasil y en Estados Unidos, países que no figuran en la lista argentina de países con protección adecuada de datos personales.",
       ),
     ).toBeTruthy();
+    // The art. 6 notice beside the box (legal review T3-1).
+    expect(screen.getByText(/^Para qué: guardar tu cuenta/)).toBeTruthy();
+    expect(screen.getByText(/Podés retirar este consentimiento cuando quieras/)).toBeTruthy();
+    fireEvent.press(screen.getByText("Ver qué proveedores son y qué datos reciben"));
+    expect(String(mockOpenURL.mock.calls[0]?.[0])).toContain("/privacidad#proveedores");
+  });
+
+  it.each([
+    ["the Terms box", TOS_LABEL],
+    ["the transfer box", TRANSFER_LABEL],
+    ["the 18+ box", ADULT_LABEL],
+  ])("each box is required on its own: leaving %s unticked sends nothing", (_name, label) => {
+    renderScreen();
+    fill({ accept: false });
+    for (const other of [TOS_LABEL, TRANSFER_LABEL, ADULT_LABEL]) {
+      if (other !== label) fireEvent.press(screen.getByLabelText(other));
+    }
+    expect(screen.getByLabelText(label).props.accessibilityState.checked).toBe(false);
+    fireEvent.press(screen.getByText("Continuar"));
+    expect(mockSignUp).not.toHaveBeenCalled();
   });
 });
 
@@ -159,7 +194,7 @@ describe("validation before the network", () => {
 });
 
 describe("sending", () => {
-  it("hands the store exactly the five fields the endpoint takes", async () => {
+  it("hands the store exactly the seven fields the endpoint takes", async () => {
     mockSignUp.mockResolvedValue({ ok: true, signedIn: true });
     renderScreen();
     fill();
@@ -171,7 +206,9 @@ describe("sending", () => {
       password: "unaClaveLarga",
       confirmPassword: "unaClaveLarga",
       tosAccepted: true,
-      legalVersion: "2026-09-24",
+      transferAccepted: true,
+      adultDeclared: true,
+      legalVersion: "2026-10-07",
     });
   });
 

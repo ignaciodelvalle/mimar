@@ -68,6 +68,7 @@ import {
   type GeocodingAckV1,
   type IdentityCompletedV1,
   LOCALITIES_PAYLOAD_VERSION,
+  type LegalAcceptedV1,
   type LocalitiesV1,
   type LoginV1,
   type LostCommandAckV1,
@@ -149,6 +150,7 @@ import type {
   CompleteIdentityInput,
   FosterCommandInput,
   GeocodingCommandInput,
+  LegalAcceptanceInput,
   LostCommandInput,
   MyProfileEditInput,
   NotificationCommandInput,
@@ -364,6 +366,26 @@ export function completeIdentity(
 ): Promise<ApiResult<IdentityCompletedV1>> {
   return apiRequest<IdentityCompletedV1>(
     { path: "/api/v1/me/identity", method: "POST", body: input },
+    session,
+  );
+}
+
+/**
+ * `POST /me/legal-acceptance` — an existing account accepts the current legal
+ * version (2026-10-07; legal review 2026-10-02 rows P10/P11).
+ *
+ * Same shape as `completeIdentity` and for the same reason: the response IS the
+ * new session state (`legalAcceptancePending` gone), so the caller stores it
+ * instead of spending a `/me` round trip with its gate still refusing.
+ *
+ * NO `idempotencyKey`: accepting is a VALUE; a second call answers the same user.
+ */
+export function acceptLegalTerms(
+  session: SessionPort,
+  input: LegalAcceptanceInput,
+): Promise<ApiResult<LegalAcceptedV1>> {
+  return apiRequest<LegalAcceptedV1>(
+    { path: "/api/v1/me/legal-acceptance", method: "POST", body: input },
     session,
   );
 }

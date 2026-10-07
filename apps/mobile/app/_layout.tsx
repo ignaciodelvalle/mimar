@@ -317,6 +317,13 @@ function RootLayout() {
           // over once one is set.
           options={{ title: "Falta un paso", headerBackVisible: false, headerLeft: () => null }}
         />
+        {/* The re-acceptance gate (2026-10-07): no back control, for
+            `identidad-pendiente`'s reason — there is nothing behind it to go
+            back to until the person accepts or signs out. */}
+        <Stack.Screen
+          name="aceptar-condiciones"
+          options={{ title: "Términos", headerBackVisible: false, headerLeft: () => null }}
+        />
         {/* HEADER MENU ON BOTH — U-1 (M2, Samsung J7 2016 / Android 8): every
             top-level destination used to be a footer link below every pet
             card, unreachable from here or from the pet screen without

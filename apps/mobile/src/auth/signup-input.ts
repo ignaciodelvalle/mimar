@@ -31,7 +31,9 @@
 // guard here. Said out loud rather than left as an absence: every other write
 // this app makes carries a day and goes through that helper, and a reader
 // checking for the anti-rollover treatment should find the answer rather than
-// the silence. Signup collects an email, a password twice and one checkbox.
+// the silence. Signup collects an email, a password twice and three checkboxes
+// (Terms and Privacy; the international transfer; 18 or older — legal review
+// 2026-10-02 rows P10 and P9, see `LegalConsentBoxes.tsx`).
 
 import {
   MIN_PASSWORD_LENGTH,
@@ -43,12 +45,14 @@ import {
 } from "@dim/contract/input";
 import { LEGAL_VERSION } from "@dim/contract/reference";
 
-/** What the form holds: strings and one boolean, because that is what it has. */
+/** What the form holds: strings and three booleans, because that is what it has. */
 export type SignupDraft = {
   email: string;
   password: string;
   confirmPassword: string;
   tosAccepted: boolean;
+  transferAccepted: boolean;
+  adultDeclared: boolean;
 };
 
 export const EMPTY_SIGNUP_DRAFT: SignupDraft = {
@@ -56,6 +60,8 @@ export const EMPTY_SIGNUP_DRAFT: SignupDraft = {
   password: "",
   confirmPassword: "",
   tosAccepted: false,
+  transferAccepted: false,
+  adultDeclared: false,
 };
 
 export type SignupDraftVerdict =
@@ -88,6 +94,10 @@ export function signupErrorMessage(code: SignupInputCode): string {
       return "Las contraseñas no coinciden.";
     case "TOS_NOT_ACCEPTED":
       return "Tenés que aceptar los Términos y la Política de privacidad.";
+    case "TRANSFER_NOT_ACCEPTED":
+      return "Tenés que aceptar la transferencia de tus datos a Brasil y Estados Unidos para crear la cuenta.";
+    case "ADULT_NOT_DECLARED":
+      return "Para crear una cuenta tenés que tener 18 años o más.";
   }
 }
 
@@ -98,6 +108,8 @@ export function toSignupInput(draft: SignupDraft): SignupDraftVerdict {
     password: draft.password,
     confirmPassword: draft.confirmPassword,
     tosAccepted: draft.tosAccepted,
+    transferAccepted: draft.transferAccepted,
+    adultDeclared: draft.adultDeclared,
     // THE VERSION THIS BUNDLE DISPLAYS, not one the server picks. The consent
     // sentence on CrearCuentaScreen ships inside this bundle; the server records
     // what the phone showed, and a bundle that sends nothing is recorded as the
@@ -126,7 +138,7 @@ export function toSignupInput(draft: SignupDraft): SignupDraftVerdict {
  * the verdict that decides whether a request is sent is always
  * `toSignupInput`.
  *
- * It checks presence and the checkbox and nothing else, on purpose. Disabling
+ * It checks presence and the three checkboxes and nothing else, on purpose. Disabling
  * the button for a password that is too short would hide the SENTENCE that says
  * why, and a person staring at a dead button with no explanation is the failure
  * mode this deliberately avoids: let them press it, then tell them.
@@ -136,6 +148,8 @@ export function canSubmitSignup(draft: SignupDraft): boolean {
     draft.email.trim().length > 0 &&
     draft.password.length > 0 &&
     draft.confirmPassword.length > 0 &&
-    draft.tosAccepted
+    draft.tosAccepted &&
+    draft.transferAccepted &&
+    draft.adultDeclared
   );
 }

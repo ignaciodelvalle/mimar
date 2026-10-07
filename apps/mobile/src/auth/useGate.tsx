@@ -29,6 +29,13 @@
 //                         handing over a web URL, so the gate now leads
 //                         somewhere the person can finish. `allowPendingIdentity`
 //                         is what lets that one screen render in this state.
+//   legalAcceptancePending → the re-acceptance gate (2026-10-07). Signed in,
+//                         identity complete, but the account accepted an older
+//                         legal version than the current one (legal review
+//                         2026-10-02, P10/P11). `aceptar-condiciones` asks for
+//                         the three boxes; `allowPendingLegal` lets that one
+//                         screen render. Checked AFTER the identity arm: a
+//                         pending identity cannot owe one.
 //
 // THE SIGN-IN REDIRECT CARRIES A DESTINATION (WU-O), AND IT HAS TO NOW
 // ---------------------------------------------------------------------------
@@ -60,13 +67,15 @@ import { Body, Card, ErrorNotice, Loading } from "../ui/components";
 import { PrimaryButton, Screen, SecondaryButton, Title } from "../ui/kit";
 import { ROUTES } from "../ui/routes";
 import { SPACE } from "../ui/theme";
-import { pendingIdentityHref, signedOutHref } from "./return-to";
+import { legalAcceptanceHref, pendingIdentityHref, signedOutHref } from "./return-to";
 import { bootstrapSession, reactivateAccount, signOut } from "./session-store";
 import { useSession } from "./useSession";
 
 export type Gate = { allowed: true; user: MeV1User } | { allowed: false; element: ReactElement };
 
-export function useGate(options: { allowPendingIdentity?: boolean } = {}): Gate {
+export function useGate(
+  options: { allowPendingIdentity?: boolean; allowPendingLegal?: boolean } = {},
+): Gate {
   const state = useSession();
   // Read UNCONDITIONALLY, above the switch: hooks may not run behind a branch,
   // and the value is only used in one arm.
@@ -113,6 +122,13 @@ export function useGate(options: { allowPendingIdentity?: boolean } = {}): Gate 
         // same thing it costs there: the person finishes step 2 and lands on an
         // empty pet list with no idea what the link was for.
         return { allowed: false, element: <Redirect href={pendingIdentityHref(pathname)} /> };
+      }
+      if (
+        !state.user.profilePending &&
+        state.user.legalAcceptancePending === true &&
+        options.allowPendingLegal !== true
+      ) {
+        return { allowed: false, element: <Redirect href={legalAcceptanceHref(pathname)} /> };
       }
       return { allowed: true, user: state.user };
   }

@@ -12,7 +12,10 @@
 //      not check it either. A native form stricter than the browser form is two
 //      doors refusing different inputs — the drift the contract exists to stop.
 //   4. `tosAccepted` IS REQUIRED TRUE and never defaulted. A legal acceptance a
-//      client can omit into existence is not an acceptance.
+//      client can omit into existence is not an acceptance. Since 2026-10-07 the
+//      same holds for `transferAccepted` (the separate transfer box, legal
+//      review P10) and `adultDeclared` (the 18+ box, P9): each is its own
+//      refusal and none is implied by another.
 //   5. THE COPY SWITCH IS TOTAL over the contract's declared code list — proved
 //      by iterating the list itself, so a widened vocabulary fails here rather
 //      than rendering a blank hint.
@@ -34,6 +37,8 @@ const GOOD: SignupDraft = {
   password: "unaClaveLarga",
   confirmPassword: "unaClaveLarga",
   tosAccepted: true,
+  transferAccepted: true,
+  adultDeclared: true,
 };
 
 function draft(overrides: Partial<SignupDraft>): SignupDraft {
@@ -50,9 +55,11 @@ describe("the happy path", () => {
       password: "unaClaveLarga",
       confirmPassword: "unaClaveLarga",
       tosAccepted: true,
-      // Written out: the version whose consent sentence this bundle displays
-      // (the transfer clause, 2026-09-24). Bumping it is a deliberate edit here.
-      legalVersion: "2026-09-24",
+      transferAccepted: true,
+      adultDeclared: true,
+      // Written out: the version whose consent sentences this bundle displays
+      // (three separate boxes, 2026-10-07). Bumping it is a deliberate edit here.
+      legalVersion: "2026-10-07",
     });
   });
 
@@ -119,6 +126,26 @@ describe("the refusals, in the contract's declared order", () => {
     // ticked is a legal acceptance nobody performed.
     expect(EMPTY_SIGNUP_DRAFT.tosAccepted).toBe(false);
   });
+
+  it("refuses an unticked TRANSFER box even with the Terms accepted (P10)", () => {
+    // The transfer used to ride on the Terms box. It is its own act now, and
+    // accepting the Terms must not imply it.
+    const verdict = toSignupInput(draft({ transferAccepted: false }));
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.code).toBe("TRANSFER_NOT_ACCEPTED");
+    expect(verdict.message).toContain("Brasil");
+    expect(EMPTY_SIGNUP_DRAFT.transferAccepted).toBe(false);
+  });
+
+  it("refuses an undeclared age (P9, interim 18+)", () => {
+    const verdict = toSignupInput(draft({ adultDeclared: false }));
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.code).toBe("ADULT_NOT_DECLARED");
+    expect(verdict.message).toContain("18 años");
+    expect(EMPTY_SIGNUP_DRAFT.adultDeclared).toBe(false);
+  });
 });
 
 describe("the copy", () => {
@@ -136,9 +163,11 @@ describe("the copy", () => {
 });
 
 describe("canSubmitSignup — a convenience, not the authority", () => {
-  it("requires presence and the checkbox, and nothing else", () => {
+  it("requires presence and the three checkboxes, and nothing else", () => {
     expect(canSubmitSignup(EMPTY_SIGNUP_DRAFT)).toBe(false);
     expect(canSubmitSignup(draft({ tosAccepted: false }))).toBe(false);
+    expect(canSubmitSignup(draft({ transferAccepted: false }))).toBe(false);
+    expect(canSubmitSignup(draft({ adultDeclared: false }))).toBe(false);
     expect(canSubmitSignup(draft({ confirmPassword: "" }))).toBe(false);
     expect(canSubmitSignup(draft({ email: "   " }))).toBe(false);
     expect(canSubmitSignup(GOOD)).toBe(true);

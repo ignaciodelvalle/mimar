@@ -50,6 +50,12 @@ export const ROUTES = {
    */
   recuperar: "/recuperar",
   identidadPendiente: "/identidad-pendiente",
+  /**
+   * The re-acceptance gate (2026-10-07): a signed-in personal account whose
+   * `/me` says `legalAcceptancePending` accepts the current legal version here
+   * before anything else. Same path as the web's twin. NOT a deep-link target.
+   */
+  aceptarCondiciones: "/aceptar-condiciones",
   misMascotas: "/mascotas",
   /**
    * The owner's casos — every open cycle plus the recent history, the web's

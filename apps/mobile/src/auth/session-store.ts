@@ -64,6 +64,7 @@ import {
   apiFailureMessage,
 } from "../api/client";
 import {
+  acceptLegalTerms as acceptLegalTermsRequest,
   completeIdentity as completeIdentityRequest,
   eraseMyAccount,
   fetchMe,
@@ -1003,6 +1004,9 @@ export async function signUp(input: {
   password: string;
   confirmPassword: string;
   tosAccepted: boolean;
+  /** The separate transfer box and the 18+ box (2026-10-07, review P10/P9). */
+  transferAccepted: boolean;
+  adultDeclared: boolean;
   /** The legal version whose consent sentence this bundle displayed. */
   legalVersion?: string;
 }): Promise<SignUpResult> {
@@ -1143,6 +1147,36 @@ export async function completeIdentity(input: {
       if (state.phase === "signed-in" && !state.user.profilePending) return { ok: true };
     }
     return { ok: false, message: apiFailureMessage(result) ?? "No pudimos guardar tus datos." };
+  }
+  setState({ phase: "signed-in", user: result.payload.user });
+  return { ok: true };
+}
+
+export type AcceptLegalTermsResult = { ok: true } | { ok: false; message: string };
+
+/**
+ * The re-acceptance of the current legal version: `POST /api/v1/me/legal-acceptance`
+ * (2026-10-07). `useGate` sends a signed-in user whose `/me` says
+ * `legalAcceptancePending` to `aceptar-condiciones`; this is that screen's
+ * submit.
+ *
+ * Here and not in the screen for `completeIdentity`'s reason: the call and the
+ * session-state transition are ONE act. The stored user comes from the
+ * response, which no longer carries `legalAcceptancePending`, so the gate lets
+ * go on the next render. On failure the state is left alone.
+ */
+export async function acceptLegalTerms(input: {
+  tosAccepted: boolean;
+  transferAccepted: boolean;
+  adultDeclared: boolean;
+  legalVersion: string;
+}): Promise<AcceptLegalTermsResult> {
+  const result = await acceptLegalTermsRequest(sessionPort, input);
+  if (result.outcome !== "ok") {
+    return {
+      ok: false,
+      message: apiFailureMessage(result) ?? "No pudimos guardar tu aceptación.",
+    };
   }
   setState({ phase: "signed-in", user: result.payload.user });
   return { ok: true };

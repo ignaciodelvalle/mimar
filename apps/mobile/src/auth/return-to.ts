@@ -152,8 +152,22 @@ function worthCarrying(next: string): boolean {
     next !== "/" &&
     next !== ROUTES.ingreso &&
     next !== ROUTES.misMascotas &&
-    next !== ROUTES.identidadPendiente
+    next !== ROUTES.identidadPendiente &&
+    next !== ROUTES.aceptarCondiciones
   );
+}
+
+/**
+ * Where a signed-in visitor who owes a re-acceptance of the current legal
+ * version goes — carrying where they were going, for `pendingIdentityHref`'s
+ * reason and with its security (`usePathname()` in, `returnHref` re-checks).
+ */
+export function legalAcceptanceHref(
+  pathname: string,
+): string | { pathname: string; params: { next: string } } {
+  const next = pathname.trim();
+  if (!worthCarrying(next)) return ROUTES.aceptarCondiciones;
+  return { pathname: ROUTES.aceptarCondiciones, params: { next } };
 }
 
 /**

@@ -1037,6 +1037,8 @@ describe("signUp — the follow-up /me read fails", () => {
       password: "hunter2hunter2",
       confirmPassword: "hunter2hunter2",
       tosAccepted: true,
+      transferAccepted: true,
+      adultDeclared: true,
     });
 
     expect(result.ok).toBe(false);
@@ -1052,6 +1054,8 @@ describe("signUp — the follow-up /me read fails", () => {
       password: "hunter2hunter2",
       confirmPassword: "hunter2hunter2",
       tosAccepted: true,
+      transferAccepted: true,
+      adultDeclared: true,
     });
 
     expect(result).toEqual({ ok: true, signedIn: true });
@@ -1120,6 +1124,8 @@ describe("the store's refusals speak through apiFailureMessage (F-6)", () => {
     password: "hunter2hunter2",
     confirmPassword: "hunter2hunter2",
     tosAccepted: true,
+    transferAccepted: true,
+    adultDeclared: true,
   };
 
   it("signUp counts a 429 down instead of saying 'esperá un momento'", async () => {

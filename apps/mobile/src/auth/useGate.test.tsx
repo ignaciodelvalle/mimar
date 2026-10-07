@@ -109,6 +109,44 @@ describe("useGate — the identity arm carries the destination (A4-custodia-03)"
   });
 });
 
+describe("useGate — the re-acceptance arm (2026-10-07, legal review P10/P11)", () => {
+  const OWES: MeV1User = { ...USER, legalAcceptancePending: true };
+
+  it("sends an account that owes a re-acceptance to aceptar-condiciones WITH `next`", () => {
+    mockSession.state = { phase: "signed-in", user: OWES };
+    mockPathname.value = "/cuidado/GRT-ABCD-2345";
+
+    expect(redirectHref(readGate(() => useGate()))).toEqual({
+      pathname: ROUTES.aceptarCondiciones,
+      params: { next: "/cuidado/GRT-ABCD-2345" },
+    });
+  });
+
+  it("lets the re-acceptance screen itself render (allowPendingLegal)", () => {
+    mockSession.state = { phase: "signed-in", user: OWES };
+
+    expect(readGate(() => useGate({ allowPendingLegal: true }))).toEqual({
+      allowed: true,
+      user: OWES,
+    });
+  });
+
+  it("asks for the identity FIRST: a pending identity goes to identidad-pendiente", () => {
+    // The acceptance is recorded at signup step 2, so a pending identity cannot
+    // owe one; the identity arm wins whatever else the payload says.
+    mockSession.state = { phase: "signed-in", user: { profilePending: true, id: "user-001" } };
+    mockPathname.value = ROUTES.misMascotas;
+
+    expect(redirectHref(readGate(() => useGate()))).toBe(ROUTES.identidadPendiente);
+  });
+
+  it("lets through an account whose payload does not carry the flag (an older server)", () => {
+    mockSession.state = { phase: "signed-in", user: USER };
+
+    expect(readGate(() => useGate())).toEqual({ allowed: true, user: USER });
+  });
+});
+
 describe("useDisplayOnlyGate — the offline cache is reachable (A6-cuenta-resiliencia-05)", () => {
   it("allows an UNVERIFIED session through, with no user", () => {
     mockSession.state = { phase: "session-unverified", message: "No hay conexión." };
