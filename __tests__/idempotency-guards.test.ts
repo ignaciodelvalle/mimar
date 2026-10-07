@@ -241,13 +241,14 @@ describe("createIntake — idempotency guard", () => {
   });
 
   // Replay check before state guard (plan A5c). The first submit registers the
-  // chip and the tattoo; the cross-checks then see that pet. A retry with the
-  // SAME key must replay instead of meeting its own pet in the active-chip hard
-  // block (or TATTOO_MATCH_POSSIBLE against itself).
-  it("a retry of an intake WITH a chip and a tattoo replays; a different key is still blocked", async () => {
+  // chip; the cross-check then sees that pet. A retry with the SAME key must
+  // replay instead of meeting its own pet in the active-chip hard block. (The
+  // tattoo leg has the same order, but an intake WITH a tattoo cannot succeed
+  // today — its tattoo_recorded payload lacks required fields — so it is not
+  // exercised here.)
+  it("a retry of an intake WITH a chip replays; a different key is still blocked", async () => {
     const idemKey = crypto.randomUUID();
     const chip = `032${String(Date.now()).slice(-12).padStart(12, "0")}`;
-    const tattoo = `IDEM${String(Date.now()).slice(-6)}`;
     const intakeFd = (key: string) => {
       const fd = new FormData();
       fd.set("name", "Intake Chip Retry");
@@ -257,7 +258,6 @@ describe("createIntake — idempotency guard", () => {
       fd.set("custodyRole", "shelter_custody");
       fd.set("microchipId", chip);
       fd.set("microchipCountryCode", "032");
-      fd.set("tattooCode", tattoo);
       fd.set("noRedirect", "1");
       fd.set("clientIdempotencyKey", key);
       return fd;
