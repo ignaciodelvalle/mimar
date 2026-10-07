@@ -11,8 +11,11 @@ jest.mock("@sentry/react-native", () => ({
   addBreadcrumb: () => undefined,
 }));
 
-import type { SessionPort } from "./client";
+import { PET_TRAVEL_REFUSAL_MESSAGES } from "@dim/contract/api";
+
+import { type SessionPort, apiFailureMessage } from "./client";
 import { fetchPetTravel, requestPetTravelExport, sendPetTravelCommand } from "./endpoints";
+import { apiErrorMessage, apiRefusalMessage } from "./error-copy";
 
 type Captured = { url: string; init: RequestInit | undefined };
 
@@ -129,5 +132,90 @@ describe("requestPetTravelExport", () => {
       { pdfUrl: "https://storage.example/viaje.pdf", expiresAt: "2026-10-01T00:00:00Z" },
     );
     expect(new URL(url).searchParams.has("trip")).toBe(false);
+  });
+});
+
+describe("a refused trip names WHICH input was wrong (v14 `reason`)", () => {
+  const TRIP = {
+    command: "record_trip" as const,
+    corridorId: "chile" as const,
+    travelDate: "2026-10-01",
+    mode: null,
+    airlineId: null,
+    intendedModality: null,
+  };
+
+  /** One POST answered 400 with `body`, or with a body that is not JSON. */
+  async function refused(body: unknown | "not-json") {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      ({
+        status: 400,
+        ok: false,
+        headers: { get: () => null },
+        json: async () => {
+          if (body === "not-json") throw new SyntaxError("Unexpected token <");
+          return body;
+        },
+      }) as unknown as Response) as unknown as typeof fetch;
+    try {
+      return await sendPetTravelCommand(fakeSession(), "DIM-PAMP-0001", TRIP, "key");
+    } finally {
+      globalThis.fetch = original;
+    }
+  }
+
+  /** The sentence without the correlation line a reported failure carries. */
+  function sentence(result: Parameters<typeof apiFailureMessage>[0]): string | undefined {
+    return apiFailureMessage(result)?.split("\n")[0];
+  }
+
+  it("a known reason gets the contract's own sentence", async () => {
+    const result = await refused({
+      error: "travel_input_invalid",
+      reason: "TRAVEL_DATE_OUT_OF_RANGE",
+    });
+    expect(result).toMatchObject({
+      outcome: "api-error",
+      code: "travel_input_invalid",
+      reason: "TRAVEL_DATE_OUT_OF_RANGE",
+    });
+    expect(sentence(result)).toBe(PET_TRAVEL_REFUSAL_MESSAGES.TRAVEL_DATE_OUT_OF_RANGE);
+  });
+
+  it("a reason this build does not know falls back to the code's sentence", async () => {
+    const result = await refused({ error: "travel_input_invalid", reason: "SOMETHING_NEWER" });
+    expect(result).toMatchObject({ outcome: "api-error", reason: "SOMETHING_NEWER" });
+    expect(sentence(result)).toBe(apiErrorMessage("travel_input_invalid"));
+  });
+
+  it("no reason (an older server) keeps the code's sentence and adds no field", async () => {
+    const result = await refused({ error: "travel_input_invalid" });
+    expect(result.outcome).toBe("api-error");
+    expect("reason" in result).toBe(false);
+    expect(sentence(result)).toBe(apiErrorMessage("travel_input_invalid"));
+  });
+
+  it("a reason that is not a non-empty string is ignored", async () => {
+    for (const reason of [42, "", null, { nested: true }]) {
+      const result = await refused({ error: "travel_input_invalid", reason });
+      expect("reason" in result).toBe(false);
+    }
+  });
+
+  it("a body that is not JSON reads as the outage it is, with no reason", async () => {
+    const result = await refused("not-json");
+    expect(result).toMatchObject({ outcome: "api-error", code: "temporarily_unavailable" });
+    expect("reason" in result).toBe(false);
+    expect(sentence(result)).toBe(apiErrorMessage("temporarily_unavailable"));
+  });
+
+  it("a reason never rewords another code", () => {
+    expect(apiRefusalMessage("trip_duplicate", "TRAVEL_DATE_OUT_OF_RANGE")).toBe(
+      apiErrorMessage("trip_duplicate"),
+    );
+    expect(apiRefusalMessage("travel_input_invalid", "AIRLINE_UNKNOWN")).toBe(
+      PET_TRAVEL_REFUSAL_MESSAGES.AIRLINE_UNKNOWN,
+    );
   });
 });
