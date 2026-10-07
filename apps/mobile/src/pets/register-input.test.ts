@@ -14,12 +14,7 @@
 
 import { describe, expect, it } from "@jest/globals";
 
-import {
-  MAX_PET_AGE_MONTHS,
-  MAX_PET_AGE_YEARS,
-  REGISTER_PET_INPUT_CODES,
-  registerPetInputSchema,
-} from "@dim/contract/input";
+import { REGISTER_PET_INPUT_CODES, registerPetInputSchema } from "@dim/contract/input";
 
 import { createAttemptSession } from "./idempotency";
 import {
@@ -27,6 +22,7 @@ import {
   type PetDraft,
   WIZARD_STEPS,
   advanceBlockedReason,
+  ageFieldError,
   canAdvance,
   draftErrorMessage,
   provinceLabel,
@@ -91,20 +87,42 @@ describe("toRegisterPetInput — the coercions a hand-rolled form would get wron
     expect(inputFor({ breed: "  Mestizo " }).breed).toBe("Mestizo");
   });
 
-  it("parses ages from strings and clamps them to the contract's ceilings", () => {
+  it("parses ages from strings", () => {
     expect(inputFor({ ageYears: "3", ageMonths: "5" }).ageYears).toBe(3);
     expect(inputFor({ ageYears: "3", ageMonths: "5" }).ageMonths).toBe(5);
-    expect(inputFor({ ageYears: "9999" }).ageYears).toBe(MAX_PET_AGE_YEARS);
-    expect(inputFor({ ageMonths: "999999" }).ageMonths).toBe(MAX_PET_AGE_MONTHS);
-    expect(inputFor({ ageYears: "-4" }).ageYears).toBe(0);
+    expect(inputFor({ ageYears: "40" }).ageYears).toBe(40);
   });
 
-  it("reads unparseable age text as 0 rather than refusing the whole form", () => {
-    // Deliberate schema behaviour, and NOT what a native form would have done:
-    // the obvious hand-rolled version refuses, which loses everything the person
-    // typed on five other screens because of one bad character in an optional
-    // field.
-    expect(inputFor({ ageYears: "tres" }).ageYears).toBe(0);
+  // alta-validacion-edad (QA on a real phone): "3310" used to CLAMP to 250 and
+  // read as valid, so the confirm step showed "3310 años" and the server would
+  // have stored a different number than the one on screen. Refused now, with
+  // its own sentence.
+  it("refuses an implausible or malformed age instead of clamping it", () => {
+    const codeFor = (overrides: Partial<PetDraft>) => {
+      const verdict = toRegisterPetInput({ ...VALID, ...overrides });
+      return verdict.ok ? null : verdict.code;
+    };
+    expect(codeFor({ ageYears: "3310" })).toBe("AGE_TOO_HIGH");
+    expect(codeFor({ ageYears: "41" })).toBe("AGE_TOO_HIGH");
+    expect(codeFor({ ageMonths: "999999" })).toBe("AGE_TOO_HIGH");
+    expect(codeFor({ ageYears: "-4" })).toBe("AGE_YEARS_INVALID");
+    expect(codeFor({ ageYears: "tres" })).toBe("AGE_YEARS_INVALID");
+    expect(codeFor({ ageMonths: "6,5" })).toBe("AGE_MONTHS_INVALID");
+    expect(codeFor({ ageYears: "2", ageMonths: "14" })).toBe("AGE_MONTHS_OUT_OF_RANGE");
+    // A cachorro's age in months alone is how people say it.
+    expect(codeFor({ ageMonths: "18" })).toBeNull();
+  });
+
+  it("words the age cap with the number the schema enforced for THIS species", () => {
+    expect(draftErrorMessage("AGE_TOO_HIGH", "dog")).toBe(
+      "Revisá la edad: no puede pasar de 40 años.",
+    );
+    // `other` keeps the wider ceiling (a tortuga terrestre) — the sentence must
+    // not tell its owner "40".
+    expect(draftErrorMessage("AGE_TOO_HIGH", "other")).toBe(
+      "Revisá la edad: no puede pasar de 250 años.",
+    );
+    expect(toRegisterPetInput({ ...VALID, species: "other", ageYears: "80" }).ok).toBe(true);
   });
 
   it("leaves an untouched age as null, which is not the same as zero", () => {
@@ -171,6 +189,40 @@ describe("canAdvance", () => {
   it("defers the final verdict to the schema", () => {
     expect(canAdvance("confirmar", VALID)).toBe(true);
     expect(canAdvance("confirmar", EMPTY_DRAFT)).toBe(false);
+  });
+});
+
+describe("ageFieldError — the age refusal shown on 'detalles', not three screens later", () => {
+  it("is null for a blank or plausible age", () => {
+    expect(ageFieldError(VALID)).toBeNull();
+    expect(ageFieldError({ ...VALID, ageYears: "12", ageMonths: "3" })).toBeNull();
+  });
+
+  it("points at the field that carries the refusal", () => {
+    expect(ageFieldError({ ...VALID, ageYears: "3310" })).toEqual({
+      field: "ageYears",
+      message: "Revisá la edad: no puede pasar de 40 años.",
+    });
+    expect(ageFieldError({ ...VALID, ageYears: "2", ageMonths: "14" })).toEqual({
+      field: "ageMonths",
+      message: "Si pusiste años, los meses van de 0 a 11.",
+    });
+  });
+
+  it("ignores other fields' refusals — the name is not this step's business", () => {
+    expect(ageFieldError({ ...EMPTY_DRAFT, ageYears: "3" })).toBeNull();
+    expect(ageFieldError({ ...VALID, estimatedWeightKg: "gordito" })).toBeNull();
+    // …and another field failing does not hide the age's own refusal.
+    expect(ageFieldError({ ...VALID, name: "", ageYears: "3310" })?.field).toBe("ageYears");
+  });
+
+  it("holds 'Continuar' on 'detalles' and says why", () => {
+    const draft = { ...VALID, ageYears: "3310" };
+    expect(canAdvance("detalles", draft)).toBe(false);
+    expect(advanceBlockedReason("detalles", draft)).toBe(
+      "Revisá la edad: no puede pasar de 40 años.",
+    );
+    expect(canAdvance("confirmar", draft)).toBe(false);
   });
 });
 
