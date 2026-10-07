@@ -49,7 +49,10 @@ import type { PetEventAuthorship } from "@/lib/infra/pet-access";
 import { FosterRepository } from "@/src/modules/foster/infrastructure/foster-repository";
 import { confirmChipMatchAsRefugioWriter } from "@/src/modules/pets/application/chip-match/confirm-chip-match-refugio";
 import { confirmChipMatchAsVecinoWriter } from "@/src/modules/pets/application/chip-match/confirm-chip-match-vecino";
-import { createIntake } from "@/src/modules/pets/application/intake/create-intake";
+import {
+  chipMatchActiveBlockMessage,
+  createIntake,
+} from "@/src/modules/pets/application/intake/create-intake";
 import { setPetDisclosurePrefs } from "@/src/modules/pets/application/lost-mode/set-pet-disclosure-prefs";
 import { createVaccineReminder } from "@/src/modules/pets/application/reminders/create-vaccine-reminder";
 import { createTattooForUser } from "@/src/modules/pets/application/tattoo/create-tattoo";
@@ -235,6 +238,68 @@ describe("createIntake — idempotency guard", () => {
         ),
       );
     expect(custody.length).toBe(1);
+  });
+
+  // Replay check before state guard (plan A5c). The first submit registers the
+  // chip and the tattoo; the cross-checks then see that pet. A retry with the
+  // SAME key must replay instead of meeting its own pet in the active-chip hard
+  // block (or TATTOO_MATCH_POSSIBLE against itself).
+  it("a retry of an intake WITH a chip and a tattoo replays; a different key is still blocked", async () => {
+    const idemKey = crypto.randomUUID();
+    const chip = `032${String(Date.now()).slice(-12).padStart(12, "0")}`;
+    const tattoo = `IDEM${String(Date.now()).slice(-6)}`;
+    const intakeFd = (key: string) => {
+      const fd = new FormData();
+      fd.set("name", "Intake Chip Retry");
+      fd.set("species", "dog");
+      fd.set("sex", "unknown");
+      fd.set("intakeReason", "rescue");
+      fd.set("custodyRole", "shelter_custody");
+      fd.set("microchipId", chip);
+      fd.set("microchipCountryCode", "032");
+      fd.set("tattooCode", tattoo);
+      fd.set("noRedirect", "1");
+      fd.set("clientIdempotencyKey", key);
+      return fd;
+    };
+    const actorUser = { id: ownerUserId };
+    const actorOrg = { id: orgId, displayName: "Refugio Idempotencia", verified: true };
+
+    const first = await createIntake("IDEMORGTOK", actorUser, actorOrg, intakeFd(idemKey));
+    expect(first.error).toBeNull();
+    expect(first.ok).toBe(true);
+    const [createdPet] = await db
+      .select({ id: pets.id })
+      .from(pets)
+      .where(eq(pets.publicToken, first.createdPetToken as string))
+      .limit(1);
+    createdPetIds.push(createdPet.id);
+
+    const retry = await createIntake("IDEMORGTOK", actorUser, actorOrg, intakeFd(idemKey));
+    expect(retry).toEqual(first);
+
+    const registered = await db
+      .select({ id: petEvents.id })
+      .from(petEvents)
+      .where(
+        and(eq(petEvents.eventType, "pet_registered"), eq(petEvents.clientIdempotencyKey, idemKey)),
+      );
+    expect(registered.length).toBe(1);
+
+    // A NEW submit (another key) for the same chip still meets the guard.
+    const other = await createIntake(
+      "IDEMORGTOK",
+      actorUser,
+      actorOrg,
+      intakeFd(crypto.randomUUID()),
+    );
+    expect(other.ok).not.toBe(true);
+    expect(other.createdPetToken).toBeUndefined();
+    // The pet the first submit created now holds the chip → the active-chip
+    // hard block (either custody wording), not some unrelated refusal.
+    expect([chipMatchActiveBlockMessage(null), chipMatchActiveBlockMessage("owner")]).toContain(
+      other.error,
+    );
   });
 });
 

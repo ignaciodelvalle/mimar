@@ -230,6 +230,48 @@ export function parseIntakeForm(formData: FormData) {
   };
 }
 
+/**
+ * The pet a previous submit with this key already registered, or null.
+ * The `pet_registered` event is the ledger entry the key anchors on.
+ */
+async function findIntakeReplay(
+  executor: Pick<typeof db, "select">,
+  clientIdempotencyKey: string,
+): Promise<{ publicToken: string; name: string } | null> {
+  const [existing] = await executor
+    .select({ publicToken: pets.publicToken, name: pets.name })
+    .from(petEvents)
+    .innerJoin(pets, eq(pets.id, petEvents.petId))
+    .where(
+      and(
+        eq(petEvents.eventType, "pet_registered"),
+        eq(petEvents.clientIdempotencyKey, clientIdempotencyKey),
+      ),
+    )
+    .limit(1);
+  return existing ?? null;
+}
+
+/** The success surface a replay answers — the original pet, nothing new. */
+function intakeReplayResult(
+  orgToken: string,
+  formData: FormData,
+  original: { publicToken: string; name: string },
+): IntakeFormState {
+  if (String(formData.get("noRedirect") ?? "") === "1") {
+    return {
+      error: null,
+      ok: true,
+      createdPetToken: original.publicToken,
+      createdPetName: original.name,
+    };
+  }
+  return {
+    error: null,
+    redirectTo: `/org/${orgToken}/mascotas?nueva=${original.publicToken}`,
+  };
+}
+
 export async function createIntake(
   orgToken: string,
   user: { id: string },
@@ -238,6 +280,19 @@ export async function createIntake(
 ): Promise<IntakeFormState> {
   const { parsed, error: parseError } = parseIntakeForm(formData);
   if (parseError || !parsed) return { error: parseError ?? "Datos inválidos." };
+
+  // REPLAY CHECK BEFORE STATE GUARD (plan A5c). A successful intake invalidates
+  // the cross-checks below: the pet it created now carries the chip and the
+  // tattoo, so a retry of the SAME submit used to meet its own pet there — the
+  // active-chip hard block, or TATTOO_MATCH_POSSIBLE against itself — instead
+  // of the original result. The CSV import resubmits a chunk with the same
+  // derived keys and promises a no-op; for any row with a chip or a tattoo it
+  // got a failure. So the ledger answers first. The locked re-check inside the
+  // transaction still serializes two concurrent twins.
+  if (parsed.clientIdempotencyKey) {
+    const replayed = await findIntakeReplay(db, parsed.clientIdempotencyKey);
+    if (replayed) return intakeReplayResult(orgToken, formData, replayed);
+  }
 
   // Structural locality-attribution FK (migration 0147). Resolved from the
   // strict canonicalization below; stays null when there's no locality to resolve.
@@ -403,17 +458,7 @@ export async function createIntake(
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(hashtext(${parsed.clientIdempotencyKey}))`,
         );
-        const [existing] = await tx
-          .select({ publicToken: pets.publicToken, name: pets.name })
-          .from(petEvents)
-          .innerJoin(pets, eq(pets.id, petEvents.petId))
-          .where(
-            and(
-              eq(petEvents.eventType, "pet_registered"),
-              eq(petEvents.clientIdempotencyKey, parsed.clientIdempotencyKey),
-            ),
-          )
-          .limit(1);
+        const existing = await findIntakeReplay(tx, parsed.clientIdempotencyKey);
         if (existing) {
           duplicateOf = existing;
           return;
@@ -663,19 +708,11 @@ export async function createIntake(
   // Duplicate submit — the first submit already created the pet. Surface the
   // original result (no second pet, no second notifications).
   if (duplicateOf !== null) {
-    const original = duplicateOf as { publicToken: string; name: string };
-    if (String(formData.get("noRedirect") ?? "") === "1") {
-      return {
-        error: null,
-        ok: true,
-        createdPetToken: original.publicToken,
-        createdPetName: original.name,
-      };
-    }
-    return {
-      error: null,
-      redirectTo: `/org/${orgToken}/mascotas?nueva=${original.publicToken}`,
-    };
+    return intakeReplayResult(
+      orgToken,
+      formData,
+      duplicateOf as { publicToken: string; name: string },
+    );
   }
 
   if (pendingNotifications.length > 0) {
