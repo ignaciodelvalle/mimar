@@ -7,6 +7,8 @@ import { isSafeExternalUrl, isSafeInternalPath } from "@dim/contract/notificatio
 
 import type { ApiResult } from "../api/client";
 
+import { INBOX_DETAIL_ORIGIN } from "./notifications-view-model";
+
 /**
  * GO when the server resolved a native screen; OPEN the outside link for an
  * `external` outcome; STAY and explain otherwise.
@@ -61,4 +63,39 @@ export function targetFailure(
 export function webOnlyUrl(origin: string, target: NotificationTargetV1): string | null {
   if (!isSafeInternalPath(target.webHref)) return null;
   return `${origin.replace(/\/+$/, "")}${target.webHref}`;
+}
+
+/**
+ * What the inbox handed the detail screen (`notificationDetailRoute`), or
+ * `null` when the screen was not opened from the inbox — a push tap, an old
+ * link — and keeps its resolve-and-replace behaviour.
+ *
+ * The pet link needs BOTH halves: a token with no name would print "Ver " and a
+ * name with no token would open nothing.
+ */
+export type InboxDetail = {
+  actionLabel: string | null;
+  pet: { publicToken: string; name: string } | null;
+};
+
+type RouteParam = string | string[] | undefined;
+
+function firstParam(value: RouteParam): string {
+  return ((Array.isArray(value) ? value[0] : value) ?? "").trim();
+}
+
+export function inboxDetailFromParams(params: {
+  origen?: RouteParam;
+  accion?: RouteParam;
+  mascota?: RouteParam;
+  nombre?: RouteParam;
+}): InboxDetail | null {
+  if (firstParam(params.origen) !== INBOX_DETAIL_ORIGIN) return null;
+  const actionLabel = firstParam(params.accion);
+  const publicToken = firstParam(params.mascota);
+  const name = firstParam(params.nombre);
+  return {
+    actionLabel: actionLabel.length > 0 ? actionLabel : null,
+    pet: publicToken.length > 0 && name.length > 0 ? { publicToken, name } : null,
+  };
 }

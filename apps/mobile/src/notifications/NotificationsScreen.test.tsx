@@ -8,7 +8,8 @@
 //   2. THE AFFORDANCES ARE THE SERVER'S. `petLinkAvailable: false` on a row that
 //      HAS a pet must hide the link — that combination is the whole point of the
 //      denylist, and a screen that decided from `pet !== null` would offer a
-//      guaranteed dead end.
+//      guaranteed dead end. Since pulido-avisos the link lives on the detail, so
+//      what is asserted here is what the ROW hands the detail.
 //   3. A CTA WITH NO NATIVE ROUTE IS NOT PRESSABLE. Pushing a web path opens the
 //      app onto a blank stack, which is the failure mode this whole resolution
 //      exists to prevent.
@@ -268,16 +269,143 @@ describe("NotificationsScreen — cursor pagination (D5)", () => {
   });
 });
 
-describe("NotificationsScreen — the affordances are the server's", () => {
-  it("hides the pet link when the server says the destination is dead for this reader", async () => {
+/** Decode the query the row handed `aviso/{id}`. */
+function detailParams(route: string): Record<string, string> {
+  const [, query = ""] = route.split("?");
+  return Object.fromEntries(
+    query
+      .split("&")
+      .filter((pair) => pair.length > 0)
+      .map((pair) => {
+        const [key = "", value = ""] = pair.split("=");
+        return [key, decodeURIComponent(value)];
+      }),
+  );
+}
+
+describe("NotificationsScreen — compact rows (pulido-avisos)", () => {
+  it("draws a row as title, body and date, with no buttons of its own", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ total: 1, unreadCount: 1, notifications: [aNotification()] }),
+    });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText("Avistaje de Pampa")).toBeTruthy());
+    expect(screen.getByText("Alguien la vio en Palermo.")).toBeTruthy();
+    // The four per-row actions moved to the detail.
+    expect(screen.queryByText("Archivar")).toBeNull();
+    expect(screen.queryByText("Marcar como leída")).toBeNull();
+    expect(screen.queryByText("Ver Pampa")).toBeNull();
+    expect(screen.queryByText("Ver detalle")).toBeNull();
+  });
+
+  it("clamps the body to two lines", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ total: 1, notifications: [aNotification()] }),
+    });
+    renderScreen();
+    const body = await screen.findByText("Alguien la vio en Palermo.");
+    expect(body.props.numberOfLines).toBe(2);
+  });
+
+  it("does not draw the page title twice — the stack header already says it", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ total: 1, unreadCount: 1, notifications: [aNotification()] }),
+    });
+    renderScreen();
+    await waitFor(() => expect(screen.getByText("1 sin leer · 1 en total")).toBeTruthy());
+    expect(screen.queryByText("Notificaciones")).toBeNull();
+  });
+});
+
+describe("NotificationsScreen — tapping a row opens the detail and marks it read", () => {
+  it("navigates to aviso/{id} as the inbox's detail and marks the row read", async () => {
+    const pushed: string[] = [];
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ total: 1, unreadCount: 1, notifications: [aNotification()] }),
+    });
+    mockSend.mockResolvedValue({
+      outcome: "ok",
+      payload: { command: "mark_read", changed: true, unreadCount: 0 },
+    });
+    renderScreen((route) => pushed.push(route));
+    fireEvent.press(await screen.findByText("Avistaje de Pampa"));
+
+    expect(pushed).toHaveLength(1);
+    expect(pushed[0]?.startsWith("/aviso/n-1?")).toBe(true);
+    expect(detailParams(pushed[0] ?? "").origen).toBe("bandeja");
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+    expect(mockSend.mock.calls[0]?.[1]).toEqual({
+      command: "mark_read",
+      notificationIds: ["n-1"],
+    });
+    // The re-read is what keeps the dot, the summary and the badge agreeing.
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+  });
+
+  it("marks nothing when the row is already read, and still opens it", async () => {
+    const pushed: string[] = [];
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ total: 1, notifications: [aNotification({ read: true })] }),
+    });
+    renderScreen((route) => pushed.push(route));
+    fireEvent.press(await screen.findByText("Avistaje de Pampa"));
+    expect(pushed).toHaveLength(1);
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it("re-reads when it comes back from the detail, so the row reads as read", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ total: 1, unreadCount: 1, notifications: [aNotification()] }),
+    });
+    mockSend.mockReturnValue(new Promise(() => {}));
+    renderScreen();
+    fireEvent.press(await screen.findByText("Avistaje de Pampa"));
+    await refocus();
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a refused mark-read instead of pretending the tap worked", async () => {
+    mockFetch.mockResolvedValue({
+      outcome: "ok",
+      payload: payload({ total: 1, unreadCount: 1, notifications: [aNotification()] }),
+    });
+    mockSend.mockResolvedValue({
+      outcome: "api-error",
+      code: "rate_limited",
+      retryAfterSeconds: 30,
+    });
+    renderScreen();
+    fireEvent.press(await screen.findByText("Avistaje de Pampa"));
+
+    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+    // No re-read was triggered by a write that did not land.
+    await waitFor(() =>
+      expect(screen.getByText("Demasiadas consultas. Probá de nuevo en 30 segundos.")).toBeTruthy(),
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("NotificationsScreen — what the row hands the detail is the server's", () => {
+  it("hands over the pet link only when the server says the destination is alive", async () => {
     // The row HAS a pet. `pet_transfer_accepted` means custody LEFT the reader,
     // so the pet page is a guaranteed dead end and only the denylist knows it.
+    const pushed: string[] = [];
     mockFetch.mockResolvedValue({
       outcome: "ok",
       payload: payload({
-        total: 1,
+        total: 2,
         notifications: [
+          aNotification({ id: "n-alive", title: "Viva" }),
           aNotification({
+            id: "n-dead",
+            title: "Transferida",
             notificationType: "pet_transfer_accepted",
             petLinkAvailable: false,
             read: true,
@@ -285,15 +413,23 @@ describe("NotificationsScreen — the affordances are the server's", () => {
         ],
       }),
     });
-    renderScreen();
-    await waitFor(() => expect(screen.getByText("Archivar")).toBeTruthy());
-    expect(screen.queryByText("Ver Pampa")).toBeNull();
+    mockSend.mockReturnValue(new Promise(() => {}));
+    renderScreen((route) => pushed.push(route));
+    fireEvent.press(await screen.findByText("Viva"));
+    fireEvent.press(screen.getByText("Transferida"));
+
+    expect(detailParams(pushed[0] ?? "")).toMatchObject({
+      mascota: "DIM-PAMP-0001",
+      nombre: "Pampa",
+    });
+    expect(detailParams(pushed[1] ?? "").mascota).toBeUndefined();
+    expect(detailParams(pushed[1] ?? "").nombre).toBeUndefined();
   });
 
-  // notificaciones-destinos (2026-10): the CTA no longer pushes the stored
-  // route — it opens `aviso/{id}`, which asks the server where to go at tap
-  // time. Still a NATIVE route, still never a web path.
-  it("pushes the CTA through aviso/{id}, a native route, never a web path", async () => {
+  // notificaciones-destinos (2026-10): the CTA never pushes the stored route —
+  // it goes through `aviso/{id}`, which asks the server where to go. Still a
+  // NATIVE route, still never a web path.
+  it("opens aviso/{id}, a native route, never the stored web path", async () => {
     const pushed: string[] = [];
     mockFetch.mockResolvedValue({
       outcome: "ok",
@@ -301,43 +437,27 @@ describe("NotificationsScreen — the affordances are the server's", () => {
         total: 1,
         notifications: [
           aNotification({
+            read: true,
             cta: { label: "Ver el registro", route: "/mascotas/DIM-PAMP-0001/eventos/ev-1" },
           }),
         ],
       }),
     });
     renderScreen((route) => pushed.push(route));
-    await waitFor(() => expect(screen.getByText("Ver el registro")).toBeTruthy());
-    fireEvent.press(screen.getByText("Ver el registro"));
-    expect(pushed).toEqual(["/aviso/n-1"]);
+    fireEvent.press(await screen.findByText("Avistaje de Pampa"));
+    expect(pushed[0]?.startsWith("/aviso/n-1?")).toBe(true);
+    expect(pushed[0]).not.toContain("eventos");
+    expect(detailParams(pushed[0] ?? "").accion).toBe("Ver el registro");
   });
 
-  it("makes a routeless CTA a real button onto aviso/{id}, never inert text", async () => {
+  it("hands over 'Ver detalle' for a row with no CTA, unless the kind is informational", async () => {
     const pushed: string[] = [];
-    mockFetch.mockResolvedValue({
-      outcome: "ok",
-      payload: payload({
-        total: 1,
-        notifications: [aNotification({ cta: { label: "Leer la resolución", route: null } })],
-      }),
-    });
-    renderScreen((route) => pushed.push(route));
-    // notificaciones-destinos replaced the "abrilo desde la web" text
-    // (A5-ciudadanas-03's honest stopgap): the explanation screen now resolves
-    // the destination, and for a web-only one says so and offers the browser.
-    const button = await screen.findByRole("button", { name: "Leer la resolución" });
-    expect(screen.queryByText(/abrilo desde la web/)).toBeNull();
-    fireEvent.press(button);
-    expect(pushed).toEqual(["/aviso/n-1"]);
-  });
-
-  it("offers 'Ver detalle' on a row the writer gave no CTA, unless the kind is informational", async () => {
     mockFetch.mockResolvedValue({
       outcome: "ok",
       payload: payload({
         total: 2,
         notifications: [
-          aNotification({ id: "n-1", cta: null }),
+          aNotification({ id: "n-1", cta: null, read: true }),
           aNotification({
             id: "n-2",
             notificationType: "pet_transfer_cancelled",
@@ -345,23 +465,16 @@ describe("NotificationsScreen — the affordances are the server's", () => {
             cta: null,
             pet: null,
             petLinkAvailable: false,
+            read: true,
           }),
         ],
       }),
     });
-    renderScreen();
-    await waitFor(() => expect(screen.getByText("Transferencia cancelada")).toBeTruthy());
-    expect(screen.getAllByText("Ver detalle")).toHaveLength(1);
-  });
-
-  it("offers 'marcar como leída' only while the row is unread", async () => {
-    mockFetch.mockResolvedValue({
-      outcome: "ok",
-      payload: payload({ total: 1, notifications: [aNotification({ read: true })] }),
-    });
-    renderScreen();
-    await waitFor(() => expect(screen.getByText("Archivar")).toBeTruthy());
-    expect(screen.queryByText("Marcar como leída")).toBeNull();
+    renderScreen((route) => pushed.push(route));
+    fireEvent.press(await screen.findByText("Avistaje de Pampa"));
+    fireEvent.press(screen.getByText("Transferencia cancelada"));
+    expect(detailParams(pushed[0] ?? "").accion).toBe("Ver detalle");
+    expect(detailParams(pushed[1] ?? "").accion).toBeUndefined();
   });
 
   it("offers 'marcar todas' only while something is unread", async () => {
@@ -374,50 +487,12 @@ describe("NotificationsScreen — the affordances are the server's", () => {
       }),
     });
     renderScreen();
-    await waitFor(() => expect(screen.getByText("Archivar")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Avistaje de Pampa")).toBeTruthy());
     expect(screen.queryByText("Marcar todas como leídas")).toBeNull();
   });
 });
 
 describe("NotificationsScreen — the writes", () => {
-  it("marks one row read through the contract and re-reads the list", async () => {
-    mockFetch.mockResolvedValue({
-      outcome: "ok",
-      payload: payload({ total: 1, unreadCount: 1, notifications: [aNotification()] }),
-    });
-    mockSend.mockResolvedValue({
-      outcome: "ok",
-      payload: { command: "mark_read", changed: true, unreadCount: 0 },
-    });
-    renderScreen();
-    await waitFor(() => expect(screen.getByText("Marcar como leída")).toBeTruthy());
-    fireEvent.press(screen.getByText("Marcar como leída"));
-
-    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
-    expect(mockSend.mock.calls[0]?.[1]).toEqual({
-      command: "mark_read",
-      notificationIds: ["n-1"],
-    });
-    // The re-read is what keeps the badge and the rows from disagreeing.
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
-  });
-
-  it("archives one row and never a batch of them", async () => {
-    mockFetch.mockResolvedValue({
-      outcome: "ok",
-      payload: payload({ total: 1, notifications: [aNotification({ read: true })] }),
-    });
-    mockSend.mockResolvedValue({
-      outcome: "ok",
-      payload: { command: "archive", changed: true, unreadCount: 0 },
-    });
-    renderScreen();
-    await waitFor(() => expect(screen.getByText("Archivar")).toBeTruthy());
-    fireEvent.press(screen.getByText("Archivar"));
-    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
-    expect(mockSend.mock.calls[0]?.[1]).toEqual({ command: "archive", notificationId: "n-1" });
-  });
-
   it("marks the whole inbox read", async () => {
     mockFetch.mockResolvedValue({
       outcome: "ok",
@@ -432,27 +507,6 @@ describe("NotificationsScreen — the writes", () => {
     fireEvent.press(screen.getByText("Marcar todas como leídas"));
     await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
     expect(mockSend.mock.calls[0]?.[1]).toEqual({ command: "mark_all_read" });
-  });
-
-  it("reports a refused write instead of pretending the tap worked", async () => {
-    mockFetch.mockResolvedValue({
-      outcome: "ok",
-      payload: payload({ total: 1, unreadCount: 1, notifications: [aNotification()] }),
-    });
-    mockSend.mockResolvedValue({
-      outcome: "api-error",
-      code: "rate_limited",
-      retryAfterSeconds: 30,
-    });
-    renderScreen();
-    await waitFor(() => expect(screen.getByText("Marcar como leída")).toBeTruthy());
-    fireEvent.press(screen.getByText("Marcar como leída"));
-
-    await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
-    // The row is still unread on screen and the failure is stated. Optimism here
-    // would leave the badge and the row disagreeing after a refusal.
-    await waitFor(() => expect(screen.getByText("Marcar como leída")).toBeTruthy());
-    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -530,7 +584,7 @@ describe("NotificationsScreen — a failed re-read keeps the inbox (S-2)", () =>
 
     await waitFor(() => expect(screen.getByText("No pudimos actualizar")).toBeTruthy());
     expect(screen.getByText("Avistaje de Pampa")).toBeTruthy();
-    expect(screen.getByText("Notificaciones")).toBeTruthy();
+    expect(screen.getByText("1 sin leer · 1 en total")).toBeTruthy();
   });
 
   it("still shows the full error when the FIRST read fails", async () => {
@@ -566,7 +620,7 @@ describe("NotificationsScreen — switching tabs keeps the chrome (S-2b)", () =>
       fireEvent.press(screen.getByLabelText("Custodia, 1"));
     });
 
-    expect(screen.getByText("Notificaciones")).toBeTruthy();
+    expect(screen.getByText("1 sin leer · 1 en total")).toBeTruthy();
     expect(screen.getByLabelText("Custodia, 1")).toBeTruthy();
     expect(screen.getByLabelText("Cargando notificaciones…")).toBeTruthy();
   });
@@ -633,7 +687,8 @@ describe("NotificationsScreen — switching tabs keeps the chrome (S-2b)", () =>
 
 // R11 — an erased row (Ley 25.326 art. 16) says nothing more: no button at all.
 describe("NotificationsScreen — an erased row", () => {
-  it("offers no open button", async () => {
+  it("hands the detail no open action", async () => {
+    const pushed: string[] = [];
     mockFetch.mockResolvedValue({
       outcome: "ok",
       payload: payload({
@@ -641,6 +696,7 @@ describe("NotificationsScreen — an erased row", () => {
         notifications: [
           aNotification({
             title: "[eliminado]",
+            read: true,
             body: "[contenido eliminado a pedido del titular]",
             cta: null,
             pet: null,
@@ -649,8 +705,8 @@ describe("NotificationsScreen — an erased row", () => {
         ],
       }),
     });
-    renderScreen();
-    await waitFor(() => expect(screen.getByText("[eliminado]")).toBeTruthy());
-    expect(screen.queryByText("Ver detalle")).toBeNull();
+    renderScreen((route) => pushed.push(route));
+    fireEvent.press(await screen.findByText("[eliminado]"));
+    expect(detailParams(pushed[0] ?? "").accion).toBeUndefined();
   });
 });

@@ -36,6 +36,8 @@ import {
   emptyTitle,
   inboxSummary,
   notificationDateLabel,
+  notificationDetailRoute,
+  notificationRelativeDateLabel,
   notificationsForDisplay,
   rowsOf,
   severityLabel,
@@ -261,5 +263,53 @@ describe("appendNotificationsPage — D5, a page appends and does not replace", 
     // The SECOND page's cursor wins — it is the one that actually answers
     // "is there anything past what is now on screen".
     expect(merged.nextCursor).toBeNull();
+  });
+});
+
+describe("notificationRelativeDateLabel — the compact row's date", () => {
+  // 2026-10-07 15:00 in Buenos Aires (UTC−3).
+  const now = new Date("2026-10-07T18:00:00.000Z");
+
+  it("speaks in minutes, then hours, within the same Argentine day", () => {
+    expect(notificationRelativeDateLabel("2026-10-07T17:59:40.000Z", now)).toBe("ahora");
+    expect(notificationRelativeDateLabel("2026-10-07T17:48:00.000Z", now)).toBe("hace 12 min");
+    expect(notificationRelativeDateLabel("2026-10-07T15:00:00.000Z", now)).toBe("hace 3 h");
+  });
+
+  it("counts calendar days in Argentina, not elapsed hours", () => {
+    // 20:00 yesterday in Buenos Aires is "ayer", not "hace 19 h".
+    expect(notificationRelativeDateLabel("2026-10-06T23:00:00.000Z", now)).toBe("ayer");
+    // 23:30 on the 6th in Buenos Aires is 02:30 UTC on the 7th — still "ayer".
+    expect(notificationRelativeDateLabel("2026-10-07T02:30:00.000Z", now)).toBe("ayer");
+    expect(notificationRelativeDateLabel("2026-10-03T18:00:00.000Z", now)).toBe("hace 4 días");
+  });
+
+  it("falls back to the date past a week, and never prints a negative age", () => {
+    expect(notificationRelativeDateLabel("2026-09-20T18:00:00.000Z", now)).toBe(
+      notificationDateLabel("2026-09-20T18:00:00.000Z"),
+    );
+    expect(notificationRelativeDateLabel("2026-10-07T18:05:00.000Z", now)).toBe("ahora");
+    expect(notificationRelativeDateLabel("no es una fecha", now)).toBe("fecha desconocida");
+  });
+});
+
+describe("notificationDetailRoute — what a row opens", () => {
+  const base = {
+    id: "n-1",
+    notificationType: "pet_sighting",
+    title: "Avistaje de Pampa",
+    cta: null,
+    pet: { publicToken: "DIM-PAMP-0001", name: "Pampa" },
+    petLinkAvailable: true,
+  };
+
+  it("opens aviso/{id} as the inbox's detail, with the CTA label and the pet link", () => {
+    expect(notificationDetailRoute(base)).toBe(
+      "/aviso/n-1?origen=bandeja&accion=Ver%20detalle&mascota=DIM-PAMP-0001&nombre=Pampa",
+    );
+  });
+
+  it("leaves the pet out when the server denied the link", () => {
+    expect(notificationDetailRoute({ ...base, petLinkAvailable: false })).not.toContain("mascota");
   });
 });
