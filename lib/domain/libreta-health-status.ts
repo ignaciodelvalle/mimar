@@ -230,8 +230,7 @@ export function computeVaccinationSummary(
     // dog plainly received SOMETHING besides rabies (PO 2026-07-28 rule below).
     const catalogDef = findVaccineByName(rawName);
     const def =
-      catalogDef ??
-      (isRabiesVaccineName(rawName) ? findVaccineByName(RABIES_VACCINE_NAME) : null);
+      catalogDef ?? (isRabiesVaccineName(rawName) ? findVaccineByName(RABIES_VACCINE_NAME) : null);
     if (def && !catalogDef && !isPlainRabiesVaccineName(rawName)) {
       const normalized = vaccineNameKey(rawName);
       if (normalized) otherNames.add(normalized);

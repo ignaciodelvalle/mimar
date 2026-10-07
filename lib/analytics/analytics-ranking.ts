@@ -14,6 +14,7 @@ import { analyticsDb as db, petEvents, pets } from "@/db";
 import { amendedPayloadText } from "@/lib/infra/amendment-sql";
 import { buildProjectionScope } from "@/lib/metrics/context";
 import { planProvinceDisclosure } from "@/lib/metrics/province-disclosure";
+import { rabiesVaccineNameSql } from "@/lib/metrics/rabies";
 import { jurisdictionPairClause, withoutSyntheticRows } from "@/lib/metrics/scope";
 import {
   type DashboardActor,
@@ -166,8 +167,8 @@ export type RegionRankingResult = {
  * Source:
  *  - Denominator: pets with status 'active' or 'lost' per province.
  *  - Numerator: distinct pet IDs with ≥1 vaccination_administered where
- *    vaccine_name accent-insensitively matches "%rabi%" (same unaccent logic
- *    as fetchAnalyticsMetrics).
+ *    vaccine_name matches the shared rabies predicate (rabiesVaccineNameSql,
+ *    same as fetchAnalyticsMetrics).
  *
  * Scope: admin sees all provinces; govt sees only their assigned provinces.
  * When a province has 0 active/lost pets it is excluded from the ranking
@@ -236,7 +237,7 @@ export async function fetchRegionRanking(
   const rabiesConditions = [
     eq(petEvents.eventType, "vaccination_administered"),
     // Amendment overlay (audit A2): rank provinces by the CURRENT vaccine name.
-    sql`unaccent(${amendedPayloadText("vaccine_name")}) ILIKE unaccent(${"%rabi%"})`,
+    rabiesVaccineNameSql(amendedPayloadText("vaccine_name")),
     sql`${pets.status} IN ('active', 'lost')`,
     inArray(pets.jurisdictionProvince, provinceNames),
   ];

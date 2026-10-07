@@ -74,6 +74,7 @@ import {
   lnPetStatusFromCompliance,
   microchipHeroTag,
 } from "@/lib/projections/pet-compliance";
+import { isRabiesVaccineName } from "@/lib/reference/lookups";
 import { PET_SITUATIONS, type PetSituation, derivePetSituation } from "@/lib/ui/pet-situation";
 import {
   ageFromDateOfBirth,
@@ -661,7 +662,7 @@ export async function loadOwnerPetDetail<
 
   // --- Derivations ----------------------------------------------------------
   const now = deps.now();
-  const rabiesReminderRow = reminders.find((r) => /antirr[aá]b|rabi/i.test(r.title));
+  const rabiesReminderRow = reminders.find((r) => isRabiesVaccineName(r.title));
   const compliance = deriveComplianceState({
     now,
     events: typedEvents,

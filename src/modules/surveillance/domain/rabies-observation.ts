@@ -6,9 +6,12 @@
 //   - Ordenanza CABA 41.831/1987 — analogous in CABA.
 //   - Resolución MS 1144/2018 — national rabies prevention guidance, APR protocol.
 //
-// Zero runtime imports — this file is pure domain logic.
+// Pure domain logic. Its one runtime import is the shared, pure rabies
+// vaccine-name matcher (lib/reference/lookups.ts).
 // @/db/schema type-only imports are allowed for Drizzle row shapes used by
 // the repository layer; none are needed here.
+
+import { isRabiesVaccineName as isSharedRabiesVaccineName } from "@/lib/reference/lookups";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -282,21 +285,21 @@ export type LatestVaccineEvent = {
  *
  * Mirrors the SQL + JS logic in app/actions/bite.ts exactly:
  *   1. null → false (no vaccine on record).
- *   2. vaccine_name must match ~* '(antirr[áa]bica|rabies)' regex — if
+ *   2. vaccine_name must be a rabies vaccine (isRabiesVaccineName) — if
  *      not, the caller passed the wrong event (callers must pre-filter),
  *      but we guard here for purity.
  *   3. next_due_at present & valid → return next_due_at > biteDate.
  *   4. Fallback: administered + 1yr (setFullYear) > biteDate.
  *   5. Invalid occurredAt → false.
  *
- * The regex is case-insensitive (i flag) matching the Postgres ~* operator.
+ * The rabies test is THE shared matcher (lib/reference/lookups.ts), folded for
+ * accents and case — the same one the owner's credential and the SQL metrics
+ * (rabiesVaccineNameSql) use, so a dose cannot be rabies on one surface and
+ * not on another (surface audit 2026-10-07, A).
  */
-const RABIES_VACCINE_NAME_REGEX = /antirr[áa]bica|rabies/i;
-
 /** True when a (corrected) vaccine_name names a rabies vaccine. */
-export function isRabiesVaccineName(vaccineName: unknown): boolean {
-  return typeof vaccineName === "string" && RABIES_VACCINE_NAME_REGEX.test(vaccineName);
-}
+export const isRabiesVaccineName = (vaccineName: unknown): boolean =>
+  isSharedRabiesVaccineName(vaccineName);
 
 export function isRabiesVaccineValid(
   latestEvent: LatestVaccineEvent | null,

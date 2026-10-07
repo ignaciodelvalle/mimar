@@ -22,6 +22,7 @@
 
 import type { IconName } from "@/components/Icon";
 import type { EventType } from "@/db/schema";
+import { isRabiesVaccineName } from "@/lib/reference/lookups";
 import { BRANDING } from "@/lib/ui/branding";
 import {
   AR_TIME_ZONE,
@@ -131,7 +132,8 @@ export const PAMPA_SHELTER = "Refugio Patitas";
 // module pulls drizzle-orm into this client bundle.
 
 /** asiento-fields.ts:317 — the rabies test that makes a vaccine "obligatoria". */
-const RABIES_RE = /antirr[aá]b|rabi/i;
+// Rabies is recognised by THE shared matcher (isRabiesVaccineName, folded for
+// accents and case) — one rule across every surface (surface audit 2026-10-07).
 
 /** lib/events/events.ts:443-451 — clinical_info_logged's sub_kind labels. */
 const CLINICAL_SUB_KIND_LABELS: Record<string, string> = {
@@ -179,7 +181,7 @@ function asientoCopy(e: PampaSeedEvent): AsientoCopy | null {
       // :401-412 — the rows the native card prints; the laboratory and batch
       // are the two this story needs (the rest are omitted, not altered).
       return {
-        kind: RABIES_RE.test(name) ? "Vacuna · obligatoria" : "Vacuna",
+        kind: isRabiesVaccineName(name) ? "Vacuna · obligatoria" : "Vacuna",
         title: name || "Vacuna",
         facts: [
           { key: "Laboratorio", value: str(p.brand) },

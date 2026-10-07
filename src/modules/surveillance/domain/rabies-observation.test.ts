@@ -207,7 +207,7 @@ describe("resolveObservationDeadline", () => {
 // ---------------------------------------------------------------------------
 // isRabiesVaccineValid — pure predicate (parity quirk #1)
 //
-// Spec: SQL `~* '(antirr[áa]bica|rabies)'` vaccine_name regex;
+// Spec: the shared rabies matcher (isRabiesVaccineName ≡ rabiesVaccineNameSql);
 //       next_due_at > biteDate if present, else administered + 1yr > biteDate;
 //       no vaccine → false.
 //
@@ -229,7 +229,18 @@ describe("isRabiesVaccineValid", () => {
     expect(isRabiesVaccineValid(null, biteDate)).toBe(false);
   });
 
-  // ---- vaccine_name matching (regex `~* '(antirr[áa]bica|rabies)'`) ----
+  // ---- vaccine_name matching (the shared folded matcher, isRabiesVaccineName) ----
+
+  it.each(["Rabia", "ANTIRRABICA", "Antirrábica"])(
+    "matches %j like the owner's credential does (one matcher, surface audit 2026-10-07)",
+    (name) => {
+      const event: VaccineEvent = {
+        occurredAt: new Date("2025-07-01Z"),
+        payload: { vaccine_name: name },
+      };
+      expect(isRabiesVaccineValid(event, biteDate)).toBe(true);
+    },
+  );
 
   it("returns false when vaccine_name does not match rabies regex", () => {
     const event: VaccineEvent = {

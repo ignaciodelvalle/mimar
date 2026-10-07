@@ -222,8 +222,8 @@ export type RabiesCoverageKpi = {
  * KPI: rabies_coverage_dogs_12m (see lib/metrics/kpi-catalog.ts)
  *
  * NUMERATOR:   COUNT DISTINCT dogs with ≥1 vaccination_administered event
- *              whose vaccine_name matches /(antirr[áa]bica|rabies)/i (accent-
- *              aware, amendment-overlay-aware) that is CURRENTLY VALID as of
+ *              whose vaccine_name is a rabies vaccine (rabiesVaccineNameSql:
+ *              folded unaccent(lower()), amendment-overlay-aware) that is CURRENTLY VALID as of
  *              ctx.period.until: `until <= next_due_at` when the dose sets an
  *              explicit expiry, else the trailing-12m proxy (occurred_at within
  *              12 months ending at ctx.period.until). See rabiesCurrentlyValidCondition
@@ -284,13 +284,10 @@ export async function fetchRabiesCoverage(
   const petsScope = petsScopeClause(ctx);
 
   // Distinct dogs with a rabies vaccination event in scope, last 12 months.
-  // vaccination_administered payload carries `vaccine_name`. Match the SAME
-  // accent-aware regex the surveillance module uses
-  // (~* '(antirr[áa]bica|rabies)'), NOT ILIKE '%rabi%': ILIKE is
-  // accent-SENSITIVE, so it silently MISSED the canonical form name
-  // "Antirrábica" (the accented á breaks the 'rabi' substring) and
-  // undercounted coverage to ~zero. Keeping the same regex as
-  // surveillance-repository.ts keeps "is a rabies vaccine" consistent.
+  // vaccination_administered payload carries `vaccine_name`. Match through
+  // rabiesVaccineNameSql — the SQL twin of the one TS matcher the owner's
+  // credential and surveillance use. (A bare ILIKE '%rabi%' is accent-
+  // SENSITIVE and once undercounted "Antirrábica" to ~zero.)
   // Name AND expiry both read through the amendment overlay, in one lateral
   // probe (rabiesDoseQualifies): a corrected vaccine counts with its CURRENT
   // name (projection-cron audit 2026-07-03 A2) and a corrected booster date

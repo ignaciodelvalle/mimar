@@ -333,7 +333,7 @@ export async function fetchDataQuality(ctx: ProjectionContext): Promise<DataQual
  *
  * rabies rows:
  *   NUMERATOR:   COUNT DISTINCT active dogs with a rabies vaccination event
- *                matching /(antirr[áa]bica|rabies)/i — IDENTICAL definition
+ *                matching rabiesVaccineNameSql — IDENTICAL definition
  *                to rabies_coverage_dogs_12m (fetchRabiesCoverage), grouped
  *                by province instead of aggregated nationally.
  *   DENOMINATOR: COUNT active dogs in the province (skipped if < K_ANON_MIN).

@@ -9989,6 +9989,12 @@
     },
     {
       "kind": "fence-test",
+      "id": "__tests__/rabies-name-sql-parity.test.ts",
+      "path": "__tests__/rabies-name-sql-parity.test.ts",
+      "note": "Surface audit 2026-10-07 (item A): the SQL rabies matcher (rabiesVaccineNameSql, lib/metrics/rabies.ts) gives the same verdict as the TypeScript one (isRabiesVaccineName, lib/reference/lookups.ts) for every name, through the real Postgres unaccent. A canon row for 'one rabies matcher across SQL and TS' is not written yet; until then this parity test is listed here."
+    },
+    {
+      "kind": "fence-test",
       "id": "__tests__/lost-routing-web-mobile-parity.test.ts",
       "path": "__tests__/lost-routing-web-mobile-parity.test.ts",
       "note": "Stage A of the SDD change localidades-por-id (2026-09-25): a lost report from the web and from the app routes to the same authority (where the pet was lost, never its home). The canon row for place-by-id lands with the change's stage E, when the name path is retired; until then this fence is listed here."

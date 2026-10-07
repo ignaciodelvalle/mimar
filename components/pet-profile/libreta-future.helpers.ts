@@ -4,6 +4,7 @@
 // components/PetUpcomingCareSection.helpers.ts's mergeUpcomingItems (that one
 // caps at 5 + hasMore for the old Resumen tab widget; Face 2's PRÓXIMO section
 // shows every future item, so no cap here).
+import { isRabiesVaccineName } from "@/lib/reference/lookups";
 
 export type FutureLedgerAction =
   | { type: "mark-dose"; reminderId: string }
@@ -60,7 +61,8 @@ export type FutureMedicationDoseInput = {
   courseId?: string | null;
 };
 
-const RABIES_TITLE_RE = /antirr[aá]b|rabi/i;
+// Rabies is recognised by THE shared matcher (isRabiesVaccineName, folded for
+// accents and case) — one rule across every surface (surface audit 2026-10-07).
 const DUE_OR_OVER_VARIANTS = new Set(["due_soon", "overdue", "overdue_critical"]);
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -139,8 +141,7 @@ export function mergeFutureLedger(
       return daysUntilDue <= REMINDER_SURFACE_WINDOW_DAYS;
     })
     .map((r) => {
-      const isRabiesDueOrOver =
-        RABIES_TITLE_RE.test(r.title) && DUE_OR_OVER_VARIANTS.has(r.variant);
+      const isRabiesDueOrOver = isRabiesVaccineName(r.title) && DUE_OR_OVER_VARIANTS.has(r.variant);
       return {
         id: `reminder-${r.reminderId}`,
         kind: "reminder" as const,

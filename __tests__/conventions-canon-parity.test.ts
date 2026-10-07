@@ -140,7 +140,11 @@ const canon: Canon = loadCanon(REPO_ROOT);
 //
 // 22 -> 23 on 2026-10-07 (viaje v14 review): the client-module value-import
 // fence, __tests__/client-module-value-import-fence.test.ts. Same reason.
-const UNMAPPED_COUNT = 23;
+//
+// 23 -> 24 on 2026-10-07 (surface audit, item A): the SQL/TS rabies-matcher
+// parity test, __tests__/rabies-name-sql-parity.test.ts. No canon row covers
+// "one rabies matcher" yet.
+const UNMAPPED_COUNT = 24;
 
 /**
  * Enforcement the filename glob below cannot see.

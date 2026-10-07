@@ -33,6 +33,7 @@ import { computeConfidence } from "@/lib/events/event-confidence";
 import { upcastPayload } from "@/lib/events/event-upcasters";
 import { eventPayloadDetails, eventPayloadSummary } from "@/lib/events/events";
 import { isTripPapersAmendment } from "@/lib/infra/amendment";
+import { isRabiesVaccineName } from "@/lib/reference/lookups";
 import { AR_TIME_ZONE, calendarDaysAgoInAr, eventTypeLabel } from "@/lib/utils/format";
 import type { HistorialEventRow } from "@/src/modules/pets/application/tab-data/types";
 
@@ -320,7 +321,8 @@ function fact(
   return value ? { key, value, mono: opts.mono } : { key, value: placeholder, missing: true };
 }
 
-const RABIES_RE = /antirr[aá]b|rabi/i;
+// Rabies is recognised by THE shared matcher (isRabiesVaccineName, folded for
+// accents and case) — one rule across every surface (surface audit 2026-10-07).
 
 // ---------------------------------------------------------------------------
 // "Aplicó" attribution fallback (staging validation 2026-07-04, bug 1)
@@ -407,7 +409,7 @@ export function toAsientoView(
   switch (eventType) {
     case "vaccination_administered": {
       const name = str(p, "vaccine_name");
-      const isRabies = RABIES_RE.test(name ?? "");
+      const isRabies = isRabiesVaccineName(name ?? "");
       const administeredBy = str(p, "administered_by");
       // Recompute provenance WITH the cited professional so a vaccine that names
       // "Dra. Paz — MP 4821" reads correctly: verified → "Verificado por Dra.
