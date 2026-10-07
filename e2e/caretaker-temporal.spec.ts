@@ -399,4 +399,74 @@ test.describe
         await clearExistingGrant(page);
       }
     });
+
+    // -------------------------------------------------------------------------
+    // TE3 — a pending invitation is impossible to miss
+    // -------------------------------------------------------------------------
+    //
+    // Staging, 2026-10: an invitee "did not see" a pending invitation that was
+    // linked to his account, because it lived only in the bell and on
+    // /transferencias. This walk is the fix's contract: the invitee opens the
+    // app the way people do — /inicio — lands on the index instead of inside a
+    // pet, the "Esperan tu respuesta" banner names who asked and for which
+    // animal, and its button opens the invitation. No notification involved.
+
+    test("TE3 — la invitación pendiente se ve al abrir Mis mascotas y lleva a /cuidado", async ({
+      page,
+      browser,
+    }) => {
+      test.setTimeout(120_000);
+
+      await loginAs(page, TITULAR);
+      const token = await pickActivePetToken(page);
+      // The name is how this walk finds ITS row: the banner lists every pending
+      // invitation the account has, and a run elsewhere may have left another.
+      const petName = (
+        await page
+          .locator(`a[href="/mis-mascotas/${token}"] span.font-ln-serif`)
+          .first()
+          .innerText()
+      ).trim();
+      expect(petName, "pet name read from the titular's registry row").toBeTruthy();
+      const petNamePattern = petName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      await designate(page, token);
+
+      const caretakerContext = await browser.newContext();
+      const caretakerPage = await caretakerContext.newPage();
+      try {
+        await loginAs(caretakerPage, CARETAKER);
+
+        // The front door lands on the index while something waits on an answer.
+        await caretakerPage.goto("/inicio", { waitUntil: "domcontentloaded" });
+        await caretakerPage.waitForURL((url) => url.pathname === "/mis-mascotas", {
+          timeout: 20_000,
+        });
+
+        const banner = caretakerPage.locator('[data-section="pending-incoming-banner"]');
+        await expect(banner).toBeVisible();
+        const row = banner.locator("li", { hasText: petName });
+        // What it takes to decide is on the row itself: what is being asked,
+        // for which animal, and until when.
+        await expect(row).toContainText(new RegExp(`que cuides a ${petNamePattern}`));
+        await expect(row).toContainText(/ del \d{2}\/\d{2}.* al \d{2}\/\d{2}/);
+
+        // /transferencias is linked from the index header too.
+        await expect(
+          caretakerPage.getByRole("link", { name: /Transferencias y cuidados/ }).first(),
+        ).toBeVisible();
+
+        await row.getByRole("link", { name: "Ver invitación" }).click();
+        await caretakerPage.waitForURL(/\/cuidado\/[^/?#]+$/);
+        await expect(
+          caretakerPage.getByRole("heading", {
+            name: new RegExp(`Te invitaron a cuidar a ${petNamePattern}`),
+          }),
+        ).toBeVisible();
+      } finally {
+        // Leave the DB as we found it: withdraw the invitation this walk sent.
+        await caretakerContext.close();
+        await page.goto(`/mis-mascotas/${token}/cuidado`, { waitUntil: "domcontentloaded" });
+        await clearExistingGrant(page);
+      }
+    });
   });
