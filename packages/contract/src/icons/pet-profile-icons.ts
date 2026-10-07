@@ -78,6 +78,21 @@ export const PET_PROFILE_ICONS = {
   edit: "Pencil",
   "alert-triangle": "AlertTriangle",
   ellipsis: "MoreHorizontal",
+
+  // Owner action panel rows (pulido-kit-listas, 2026-10-07) — one glyph per
+  // row under LA MASCOTA / SALUD / VIAJES / CUSTODIA. `edit`, `paw`, `casa`
+  // and `fallecimiento` above already name four of them.
+  camara: "Camera",
+  telefono: "Phone",
+  tag: "Tag",
+  bell: "Bell",
+  valija: "Luggage",
+  usuarios: "Users",
+  "door-open": "DoorOpen",
+  trato: "Handshake",
+
+  // ListRow's trailing affordance: a row that is a destination.
+  "chevron-right": "ChevronRight",
 } as const;
 
 export type PetProfileIconName = keyof typeof PET_PROFILE_ICONS;

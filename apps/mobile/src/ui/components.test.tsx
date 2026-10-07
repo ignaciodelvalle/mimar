@@ -14,8 +14,17 @@ const mockOpenURL = jest.fn<(url: string) => Promise<unknown>>().mockResolvedVal
 
 jest.mock("expo-linking", () => ({ openURL: (url: string) => mockOpenURL(url) }));
 
-import { Alert, ContactRow, ErrorNotice, LABEL_VALUE_FLEX, Row, StaleNotice } from "./components";
+import {
+  Alert,
+  ContactRow,
+  EmptyState,
+  ErrorNotice,
+  LABEL_VALUE_FLEX,
+  Row,
+  StaleNotice,
+} from "./components";
 import { RIPPLE } from "./kit";
+import { COLORS } from "./theme";
 
 // The mock is module-scoped, so without this every `toHaveBeenCalledWith`
 // assertion below is satisfied by ANY earlier test's press. That is not
@@ -232,5 +241,31 @@ describe("Row's label/value flex contract", () => {
     expect(value.flexShrink).toBe(0);
     expect(value.maxWidth).toBe("70%");
     expect(styleOf("Contacto")).toMatchObject(LABEL_VALUE_FLEX.label);
+  });
+});
+
+describe("EmptyState — the compact variant is one grey line", () => {
+  it("renders the headline alone, as a single text node in a muted ink", () => {
+    render(<EmptyState compact headline="No tenés transferencias recibidas." />);
+    const line = screen.getByText("No tenés transferencias recibidas.");
+    expect(screen.toJSON()).toMatchObject({ type: "Text" }); // no box around it
+    const style = StyleSheet.flatten(line.props.style) as { color?: string };
+    expect(style.color).toBe(COLORS.inkMuted);
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("the full variant still draws its box, body and action", () => {
+    const onAction = jest.fn();
+    render(
+      <EmptyState
+        headline="No tenés turnos próximos."
+        body="Buscá un turno para tu mascota."
+        actionLabel="Buscar un turno"
+        onAction={onAction}
+      />,
+    );
+    expect(screen.getByText("Buscá un turno para tu mascota.")).toBeOnTheScreen();
+    fireEvent.press(screen.getByRole("button", { name: "Buscar un turno" }));
+    expect(onAction).toHaveBeenCalledTimes(1);
   });
 });
